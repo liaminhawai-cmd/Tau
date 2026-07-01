@@ -1093,55 +1093,55 @@
 
 </script>
 <script>
-// ---------- Board & piece geometry (mm, board centre = 0,0) taken from Bord.dxf ----------
+// ---------- Board & piece geometry (board units; 1 unit = 2.0 mm) ----------
+// Ground truth: Bord.dxf + the board design render (90469014_… .jpg).
+// The playing surface ends (drop-off) at r=66.667 — there is NO line there; the
+// 73.333 circle in the DXF is the base plate, not a playing line. The two rings
+// sit at exactly 0.60 and 0.80 of the edge. Side lens arcs have the same radius
+// as the inner ring and are centred ON the rim, running rim-to-rim.
 const CFG = {
-    edgeMm: 73.333,                        // outermost circle = board edge
-    ringsMm: [40, 53.3, 66.667],          // interior concentric crossing lines
-    sideArcs: [                           // the two lens arcs, radius 40, centred left/right
-        { cx: -66.666, cy: 0.335, r: 40, a0: -72.83, a1: 72.25 },
-        { cx:  66.667, cy: 0.077, r: 40, a0: 107.52, a1: 252.61 }
+    edgeU: 66.667,                 // drop-off radius (266.67mm board, matches Metal base 266.666.stl)
+    rings: [40, 53.3],             // the two concentric crossing lines
+    sideArcs: [                    // lens arcs, r=40, centred on the rim; ends land exactly on the rim
+        { cx: -66.667, cy: 0, r: 40, a0: -72.542, a1: 72.542 },
+        { cx:  66.667, cy: 0, r: 40, a0: 107.458, a1: 252.542 }
     ],
-    edgeEpsMm: 0.5,
-    // Board edge = 73.33 units. Physical board = 266.7mm → 1 unit ≈ 1.818mm.
-    // Tripod (STL, equilateral, 46.19mm hub→foot) = 25.4 units; feet land on the start dots.
-    footCircumMm: 25.4,                   // hub → foot distance, in board-units
-    startOffsetMm: 33.67,                 // hub x-offset so the 3 feet sit exactly on the dots
-    startDots: [[-46.37,22],[-46.37,-22],[-8.27,0],[46.37,22],[46.37,-22],[8.27,0]],
+    edgeEps: 0.5,
+    footR: 23.095,                 // hub→foot = 46.19mm (tripod smoove 2021.stl)
+    startX: 30.597,                // hub offset: puts the two back feet exactly halfway between the rings
     maxCrossingsPerTurn: 1,
-    crossEps: 0.4,        // grace band: a foot starting on a line may leave it for free
+    crossEps: 0.4,                 // grace band: a foot starting on a line may leave it for free
     substepDeg: 0.4,
     minMoveDeg: 1.5,
-    legRadius: 2.2,       // leg collision thickness — catches contact before legs cross
-    hubHeight: 25.4,      // = footCircum → legs are true quarter-circle arcs (visual only)
-    inertiaK: 0.7,        // rotational inertia factor (lower = redirects/spins more easily)
-    pushIters: 10,        // contact-solver iterations per sub-step
-    pushRelax: 1.0,       // 1.0 = fully resolve penetration each step (no pass-through)
-    maxPenPerIter: 0.8    // cap on correction per iteration — prevents overshoot/sign-flip tunneling
+    legRadius: 2.0,                // leg tube radius (≈8mm printed) — used for BOTH collision and render
+    hubHeight: 23.095,             // = footR → legs are true quarter-circle arcs
+    legSegs: 12,                   // 3D arc polyline resolution for collision
+    inertiaK: 0.7,                 // rotational inertia factor (lower = redirects/spins more easily)
+    pushIters: 10,                 // contact-solver iterations per sub-step
+    pushRelax: 1.0,
+    maxPenPerIter: 0.8,            // cap on correction per iteration — prevents overshoot/sign-flip tunneling
+    minHorizFrac: 0.35             // steepest contact normal we fully separate against (pieces only move horizontally)
 };
+// The six start dots are the feet of the two tripods at their start pose (hub on the
+// x-axis at ±startX, front foot pointing at the centre) — matching the printed board.
+CFG.startDots = (() => {
+    const d = [], R = CFG.footR, X = CFG.startX;
+    for (const s of [-1, 1])
+        for (let i = 0; i < 3; i++) {
+            const a = (s < 0 ? 0 : Math.PI) + i * 2 * Math.PI / 3;
+            d.push([s * X + Math.cos(a) * R, Math.sin(a) * R]);
+        }
+    return d;   // first 3 = left (blue), last 3 = right (red)
+})();
 
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-let cx = 0, cy = 0, scale = 1;   // recomputed on resize (px)
-let renderer=null, scene, camera, controls, tripods=[], show3d=true;   // 3D side view
-let clock=null, fall={active:false};                                  // loss-animation state
-
-// ---------- coordinate conversion ----------
-const bx2px = (mx, my) => ({ x: cx + mx * scale, y: cy + my * scale });
-const px2b  = (px, py) => ({ x: (px - cx) / scale, y: (py - cy) / scale });
 const norm  = a => { while (a > Math.PI) a -= 2*Math.PI; while (a < -Math.PI) a += 2*Math.PI; return a; };
-const radMm = p => Math.hypot(p.x, p.y);
-function distPointSeg(p, a, b) {
-    const abx=b.x-a.x, aby=b.y-a.y, apx=p.x-a.x, apy=p.y-a.y;
-    const len2 = abx*abx+aby*aby || 1e-9;
-    let t = Math.max(0, Math.min(1, (apx*abx+apy*aby)/len2));
-    return Math.hypot(a.x+t*abx-p.x, a.y+t*aby-p.y);
-}
+const radU  = p => Math.hypot(p.x, p.y);
 
-// ---------- Piece (positions stored in mm) ----------
+// ---------- Piece (positions in board units) ----------
 class Piece {
-    constructor(id) { this.id=id; this.color = id===0 ? '#ff6b6b' : '#6b9eff'; this.x=0; this.y=0; this.rot=0; }
+    constructor(id) { this.id=id; this.color = id===0 ? '#6b9eff' : '#ff6b6b'; this.x=0; this.y=0; this.rot=0; }
     feet() {
-        const r = CFG.footCircumMm, out = [];
+        const r = CFG.footR, out = [];
         for (let i=0;i<3;i++){ const a=this.rot+i*(2*Math.PI/3);
             out.push({ x:this.x+Math.cos(a)*r, y:this.y+Math.sin(a)*r }); }
         return out;
@@ -1150,33 +1150,25 @@ class Piece {
         const c=Math.cos(dA), s=Math.sin(dA), rx=this.x-px, ry=this.y-py;
         this.x = px + rx*c - ry*s; this.y = py + rx*s + ry*c; this.rot += dA;
     }
-    anyFootOff() { return this.feet().some(f => radMm(f) > CFG.edgeMm + CFG.edgeEpsMm); }
+    anyFootOff() { return this.feet().some(f => radU(f) > CFG.edgeU + CFG.edgeEps); }
     legs() { const h={x:this.x,y:this.y}; return this.feet().map(f => [h, f]); }
-    draw(activeIdx) {
-        const feet = this.feet().map(f => bx2px(f.x, f.y));
-        const c = bx2px(this.x, this.y);
-        ctx.strokeStyle=this.color; ctx.lineWidth=4; ctx.lineCap='round';
-        for (const f of feet){ ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.lineTo(f.x,f.y); ctx.stroke(); }
-        ctx.fillStyle=this.color; ctx.beginPath(); ctx.arc(c.x,c.y,5,0,2*Math.PI); ctx.fill();
-        for (let i=0;i<3;i++){ const f=feet[i];
-            ctx.beginPath(); ctx.arc(f.x,f.y,9,0,2*Math.PI);
-            ctx.fillStyle=(activeIdx===i)?'#ffd23f':this.color; ctx.fill();
-            ctx.lineWidth=2; ctx.strokeStyle='#0c0e11'; ctx.stroke(); }
+    // 3D polylines of the quarter-circle legs — the same curve the 3D view renders,
+    // so what you see touching is exactly what the physics feels. {x,y} board plane, h up.
+    legArcs() {
+        const R=CFG.footR, H=CFG.hubHeight, N=CFG.legSegs, out=[];
+        for (let i=0;i<3;i++){
+            const a=this.rot+i*(2*Math.PI/3), ca=Math.cos(a), sa=Math.sin(a), pts=[];
+            for (let k=0;k<=N;k++){
+                const ph=(k/N)*(Math.PI/2), s=Math.sin(ph)*R;
+                pts.push({ x:this.x+ca*s, y:this.y+sa*s, h:Math.cos(ph)*H });
+            }
+            out.push(pts);
+        }
+        return out;
     }
 }
 
-// ---------- Game ----------
-let G;
-function reset() {
-    const red=new Piece(0), blue=new Piece(1);
-    red.x  = -CFG.startOffsetMm; red.rot  = 0;
-    blue.x =  CFG.startOffsetMm; blue.rot = Math.PI;
-    G = { pieces:[red,blue], active:0, pinned:null, pivot:null, handle:null, turnDir:0,
-          crossings:0, atLimit:false, movedDeg:0, ptrAngle:null, over:false, winner:null,
-          startedOnLine:[false,false,false], usedGrace:[false,false,false] };
-    fall.active=false;
-    render();
-}
+// ---------- Line-crossing rules ----------
 function angInSpan(deg, a0, a1) {
     const w = x => { while(x<0)x+=360; while(x>=360)x-=360; return x; };
     deg=w(deg); let lo=w(a0), hi=w(a1);
@@ -1187,8 +1179,8 @@ function countCrossings(oldFeet, newFeet) {
     const per=[0,0,0];
     for (let i=0;i<3;i++){
         const o=oldFeet[i], n=newFeet[i];
-        const ro=radMm(o), rn=radMm(n);
-        for (const r of CFG.ringsMm) if ((ro<r&&rn>=r)||(ro>r&&rn<=r)) per[i]++;
+        const ro=radU(o), rn=radU(n);
+        for (const r of CFG.rings) if ((ro<r&&rn>=r)||(ro>r&&rn<=r)) per[i]++;
         for (const a of CFG.sideArcs){
             const dOld=Math.hypot(o.x-a.cx,o.y-a.cy), dNew=Math.hypot(n.x-a.cx,n.y-a.cy);
             if ((dOld<a.r&&dNew>=a.r)||(dOld>a.r&&dNew<=a.r)){
@@ -1201,15 +1193,17 @@ function countCrossings(oldFeet, newFeet) {
 }
 // is a foot sitting on a line right now? (used once, at turn start, for the leave-a-line grace)
 function isNearAnyLine(f) {
-    const eps=CFG.crossEps, r=radMm(f);
-    for (const R of CFG.ringsMm) if (Math.abs(r-R)<eps) return true;
+    const eps=CFG.crossEps, r=radU(f);
+    for (const R of CFG.rings) if (Math.abs(r-R)<eps) return true;
     for (const a of CFG.sideArcs){
         const d=Math.hypot(f.x-a.cx,f.y-a.cy);
         if (Math.abs(d-a.r)<eps && angInSpan(Math.atan2(f.y-a.cy,f.x-a.cx)*180/Math.PI,a.a0,a.a1)) return true;
     }
     return false;
 }
-// closest points between segments ab and cd (Ericson) → {pa, pb, dist}
+
+// ---------- Contact geometry ----------
+// closest points between 2D segments ab and cd (Ericson) → {pa, pb, dist}
 function segClosest(a, b, c, d) {
     const d1={x:b.x-a.x,y:b.y-a.y}, d2={x:d.x-c.x,y:d.y-c.y}, r={x:a.x-c.x,y:a.y-c.y};
     const A=d1.x*d1.x+d1.y*d1.y, E=d2.x*d2.x+d2.y*d2.y, F=d2.x*r.x+d2.y*r.y;
@@ -1221,57 +1215,137 @@ function segClosest(a, b, c, d) {
     const pa={x:a.x+d1.x*s,y:a.y+d1.y*s}, pb={x:c.x+d2.x*t,y:c.y+d2.y*t};
     return { pa, pb, dist:Math.hypot(pa.x-pb.x,pa.y-pb.y) };
 }
+// closest points between 3D segments p1→q1 and p2→q2 → {pa, pb, dist}
+function segClosest3(p1,q1,p2,q2){
+    const d1={x:q1.x-p1.x,y:q1.y-p1.y,h:q1.h-p1.h};
+    const d2={x:q2.x-p2.x,y:q2.y-p2.y,h:q2.h-p2.h};
+    const r ={x:p1.x-p2.x,y:p1.y-p2.y,h:p1.h-p2.h};
+    const a=d1.x*d1.x+d1.y*d1.y+d1.h*d1.h, e=d2.x*d2.x+d2.y*d2.y+d2.h*d2.h;
+    const f=d2.x*r.x+d2.y*r.y+d2.h*r.h,   c=d1.x*r.x+d1.y*r.y+d1.h*r.h;
+    const b=d1.x*d2.x+d1.y*d2.y+d1.h*d2.h, denom=a*e-b*b;
+    let s = denom>1e-12 ? Math.min(1,Math.max(0,(b*f-c*e)/denom)) : 0;
+    let t = e>1e-12 ? (b*s+f)/e : 0;
+    if (t<0){ t=0; s=Math.min(1,Math.max(0, a>1e-12 ? -c/a : 0)); }
+    else if (t>1){ t=1; s=Math.min(1,Math.max(0, a>1e-12 ? (b-c)/a : 0)); }
+    const pa={x:p1.x+d1.x*s, y:p1.y+d1.y*s, h:p1.h+d1.h*s};
+    const pb={x:p2.x+d2.x*t, y:p2.y+d2.y*t, h:p2.h+d2.h*t};
+    const dx=pb.x-pa.x, dy=pb.y-pa.y, dh=pb.h-pa.h;
+    return { pa, pb, dist:Math.sqrt(dx*dx+dy*dy+dh*dh) };
+}
+// min-distance closest points between two arc polylines
+function arcClosest(A, B){
+    let best=null;
+    for (let i=0;i<A.length-1;i++) for (let j=0;j<B.length-1;j++){
+        const c=segClosest3(A[i],A[i+1],B[j],B[j+1]);
+        if (!best || c.dist<best.dist) best=c;
+    }
+    return best;
+}
+// closest point on arc polyline A to 3D point p → {pt, dist}
+function pointArcClosest(p, A){
+    let best=null;
+    for (let i=0;i<A.length-1;i++){
+        const a=A[i], b=A[i+1];
+        const dx=b.x-a.x, dy=b.y-a.y, dh=b.h-a.h;
+        const len2=dx*dx+dy*dy+dh*dh || 1e-12;
+        let t=((p.x-a.x)*dx+(p.y-a.y)*dy+(p.h-a.h)*dh)/len2;
+        t=Math.max(0,Math.min(1,t));
+        const pt={x:a.x+dx*t, y:a.y+dy*t, h:a.h+dh*t};
+        const d=Math.hypot(pt.x-p.x, pt.y-p.y, pt.h-p.h);
+        if (!best || d<best.dist) best={pt, dist:d};
+    }
+    return best;
+}
 
 // The active piece is player-driven (kinematic); the opponent is a free rigid body.
-// Position-based contact: pushing near the opponent's hub translates it; pushing out
-// on a leg (leverage) rotates it — that's the redirect/weight-distribution behaviour.
+// Contact is TRUE 3D: each leg is the same quarter-circle arc tube the 3D view draws,
+// so legs really do pass over/under each other when there is clearance (a low foot can
+// slip under a high part of a leg) and push only when the tubes actually touch.
+// Pieces can only translate/rotate in the board plane, so a 3D contact is resolved by
+// moving the opponent along the horizontal part of the contact normal; pushing near
+// its hub translates it, pushing out on a leg (leverage) rotates it.
 function resolvePush(active, opp) {
-    const aLegs = active.legs();
-    const minDist = CFG.legRadius * 2;
-    const m = 1, I = CFG.inertiaK * CFG.footCircumMm * CFG.footCircumMm;
-    // freeze the opponent's "which side" reference before iterating: the crossed-leg
-    // branch below decides a push direction from opp's position, and if that position
-    // is itself the thing being corrected inside this same loop, the sign can flip
-    // between iterations — the piece then oscillates in place at the crossing instead
-    // of escaping to either side. Deciding the side once per call removes that chatter.
+    const minD = CFG.legRadius*2, hubR = CFG.legRadius*1.9, H = CFG.hubHeight;
+    const m = 1, I = CFG.inertiaK * CFG.footR * CFG.footR;
+    // freeze the opponent's "which side" reference: the deep-crossing branch picks a
+    // push direction from opp's position, and if that position is itself being corrected
+    // inside this loop the sign can flip between iterations and the piece just chatters.
     const opp0 = { x: opp.x, y: opp.y };
-    // Contact is always solid — legs never pass through each other. An earlier version
-    // let a low leg slip under a high one (matching the real 3D arcs), but the 2D
-    // collision model uses straight hub→foot chords rather than the true curved arcs,
-    // so the "under" zone didn't line up with what was visually happening and produced
-    // inconsistent pass-throughs. Solid contact also matches the rules: pushes are meant
-    // to move pieces together, not slide past.
+    const aArcs = active.legArcs(), aChords = active.legs();
+    const aHub = { x:active.x, y:active.y, h:H };
+
+    // horizontal push of magnitude sep along unit (nx,ny), applied at contact point (px,py)
+    const apply = (px, py, nx, ny, sep) => {
+        // cap the correction per iteration — a full-penetration shove recomputes direction
+        // from a position that already moved, and a big jump can overshoot past the piece.
+        sep = Math.min(sep, CFG.maxPenPerIter);
+        const rx = px-opp.x, ry = py-opp.y;
+        const rn = rx*ny - ry*nx;                    // r × n
+        const wEff = 1/m + rn*rn/I;
+        const lambda = CFG.pushRelax * sep / wEff;
+        opp.x   += (lambda/m)*nx;
+        opp.y   += (lambda/m)*ny;
+        opp.rot += (lambda*rn)/I;
+    };
+    // turn a 3D contact (pa on active, pb on opp, dist) into a horizontal push
+    const push3d = (pa, pb, dist, gap) => {
+        const nx3=(pb.x-pa.x)/dist, ny3=(pb.y-pa.y)/dist;
+        const hf = Math.hypot(nx3, ny3);             // horizontal fraction of the contact normal
+        if (hf < 1e-4) return;                       // dead-vertical stack: horizontal motion can't separate it
+        // separating the tubes by `gap` along the normal needs gap/hf of horizontal travel;
+        // floor hf so a steep (near-vertical) graze doesn't demand a huge shove.
+        apply(pb.x, pb.y, nx3/hf, ny3/hf, gap/Math.max(hf, CFG.minHorizFrac));
+    };
+
     for (let iter=0; iter<CFG.pushIters; iter++) {
-        const oLegs = opp.legs();
-        for (const al of aLegs) for (const ol of oLegs) {
-            const cp = segClosest(al[0], al[1], ol[0], ol[1]);
-            if (cp.dist < minDist) {
-                let nx, ny, pen;
-                if (cp.dist > 0.4) {                            // normal points active → opp
-                    pen = minDist - cp.dist;
-                    nx = (cp.pb.x-cp.pa.x)/cp.dist; ny = (cp.pb.y-cp.pa.y)/cp.dist;
-                } else {                                        // legs crossed: push ⟂ to the active leg, off it
-                    const ax=al[1].x-al[0].x, ay=al[1].y-al[0].y, L=Math.hypot(ax,ay)||1;
-                    nx=-ay/L; ny=ax/L;
-                    if (nx*(opp0.x-cp.pa.x)+ny*(opp0.y-cp.pa.y) < 0){ nx=-nx; ny=-ny; }
-                    pen = minDist;
-                }
-                // cap the correction applied in any single iteration — a full-penetration
-                // shove recomputes direction from a position that already moved, and a big
-                // enough jump can flip the sign and shoot the piece through to the far side.
-                // Small, repeated nudges (this loop runs pushIters times) get the same
-                // separation without ever risking an overshoot past the opponent.
-                pen = Math.min(pen, CFG.maxPenPerIter);
-                const rx = cp.pb.x-opp.x, ry = cp.pb.y-opp.y;
-                const rn = rx*ny - ry*nx;                    // r × n
-                const wEff = 1/m + rn*rn/I;
-                const lambda = CFG.pushRelax * pen / wEff;
-                opp.x   += (lambda/m)*nx;
-                opp.y   += (lambda/m)*ny;
-                opp.rot += (lambda*rn)/I;
+        const oArcs = opp.legArcs(), oChords = opp.legs();
+        const oHub = { x:opp.x, y:opp.y, h:H };
+        let any = false;
+        for (let i=0;i<3;i++) for (let j=0;j<3;j++) {
+            // exact prune: an arc projects straight down onto its hub→foot chord, so the 3D
+            // gap can never be smaller than the flat top-down gap between the chords.
+            if (segClosest(aChords[i][0],aChords[i][1],oChords[j][0],oChords[j][1]).dist >= minD) continue;
+            const c = arcClosest(aArcs[i], oArcs[j]);
+            if (c.dist >= minD) continue;            // clears over/under — no touch, no push
+            any = true;
+            if (c.dist < 0.3) {                      // tubes deeply crossed: shove ⟂ off the active leg, toward opp's side
+                const A=aChords[i], ax=A[1].x-A[0].x, ay=A[1].y-A[0].y, L=Math.hypot(ax,ay)||1;
+                let nx=-ay/L, ny=ax/L;
+                if (nx*(opp0.x-c.pa.x)+ny*(opp0.y-c.pa.y) < 0){ nx=-nx; ny=-ny; }
+                apply(c.pb.x, c.pb.y, nx, ny, minD);
+            } else {
+                push3d(c.pa, c.pb, c.dist, minD - c.dist);
             }
         }
+        // hub ball contacts: my hub vs their legs, their hub vs my legs, hub vs hub
+        const hubLegD = hubR + CFG.legRadius;
+        for (let j=0;j<3;j++){
+            const c = pointArcClosest(aHub, oArcs[j]);
+            if (c.dist < hubLegD && c.dist > 1e-6){ any=true; push3d(aHub, c.pt, c.dist, hubLegD - c.dist); }
+        }
+        for (let i=0;i<3;i++){
+            const c = pointArcClosest(oHub, aArcs[i]);
+            if (c.dist < hubLegD && c.dist > 1e-6){ any=true; push3d(c.pt, oHub, c.dist, hubLegD - c.dist); }
+        }
+        {
+            const dx=opp.x-active.x, dy=opp.y-active.y, d=Math.hypot(dx,dy);
+            if (d < 2*hubR && d > 1e-6){ any=true; apply(opp.x, opp.y, dx/d, dy/d, 2*hubR - d); }
+        }
+        if (!any) break;
     }
+}
+
+// ---------- Game ----------
+let G;
+function reset() {
+    const blue=new Piece(0), red=new Piece(1);
+    blue.x = -CFG.startX; blue.rot = 0;         // blue starts on the left, as on the printed board
+    red.x  =  CFG.startX; red.rot  = Math.PI;
+    G = { pieces:[blue,red], active:0, pinned:null, pivot:null, handle:null, turnDir:0,
+          crossings:0, atLimit:false, movedDeg:0, ptrAngle:null, over:false, winner:null,
+          startedOnLine:[false,false,false], usedGrace:[false,false,false] };
+    fall.active=false;
+    render();
 }
 function applySwing(dA) {
     if (dA===0) return;
@@ -1295,6 +1369,43 @@ function applySwing(dA) {
         resolvePush(active, opp);
     }
 }
+
+// ---------- Canvas / view state ----------
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let cx = 0, cy = 0, scale = 1;   // recomputed every frame by syncCanvas (px)
+let renderer=null, scene, camera, controls, tripods=[], show3d=true;   // 3D side view
+let clock=null, fall={active:false};                                  // loss-animation state
+
+// Keep the 2D canvas backing store, DPR transform and board scale correct no matter
+// what happened since the last frame (missed resize event, DPR change, the browser
+// discarding canvas state in a background tab, …). Assigning canvas.width resets the
+// context transform, so everything is re-derived here, idempotently, each render —
+// this is what previously made the whole board shrink into the top-left corner.
+function syncCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth || 300;
+    const bw = Math.round(w * dpr);
+    if (canvas.width !== bw || canvas.height !== bw) { canvas.width = bw; canvas.height = bw; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx = w/2; cy = w/2;
+    scale = (w * 0.92) / (2 * CFG.edgeU);
+}
+const bx2px = (mx, my) => ({ x: cx + mx * scale, y: cy + my * scale });
+const px2b  = (px, py) => ({ x: (px - cx) / scale, y: (py - cy) / scale });
+
+// ---------- Piece drawing (2D top view) ----------
+Piece.prototype.draw = function(activeIdx) {
+    const feet = this.feet().map(f => bx2px(f.x, f.y));
+    const c = bx2px(this.x, this.y);
+    ctx.strokeStyle=this.color; ctx.lineWidth=4; ctx.lineCap='round';
+    for (const f of feet){ ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.lineTo(f.x,f.y); ctx.stroke(); }
+    ctx.fillStyle=this.color; ctx.beginPath(); ctx.arc(c.x,c.y,5,0,2*Math.PI); ctx.fill();
+    for (let i=0;i<3;i++){ const f=feet[i];
+        ctx.beginPath(); ctx.arc(f.x,f.y,9,0,2*Math.PI);
+        ctx.fillStyle=(activeIdx===i)?'#ffd23f':this.color; ctx.fill();
+        ctx.lineWidth=2; ctx.strokeStyle='#0c0e11'; ctx.stroke(); }
+};
 
 // ---------- Input ----------
 function pointerPos(e) {
@@ -1364,14 +1475,12 @@ function drawHead(x, y, ang) {           // small filled triangle pointing along
 }
 function drawSpinHint(pv, dir) {          // curved arrow(s): dir 0=both, +1 CW, -1 CCW (screen)
     const r=26; ctx.strokeStyle='#ffd23f'; ctx.lineWidth=2.5; ctx.lineCap='round';
-    // clockwise arc (top-right), arrowhead leading downward on the right
     if (dir>=0){ ctx.beginPath(); ctx.arc(pv.x,pv.y,r,-2.3,-0.5,false); ctx.stroke();
         const a=-0.5; drawHead(pv.x+Math.cos(a)*r, pv.y+Math.sin(a)*r, a+Math.PI/2); }
-    // counter-clockwise arc (top-left), arrowhead leading downward on the left
     if (dir<=0){ ctx.beginPath(); ctx.arc(pv.x,pv.y,r,-0.85,-2.65,true); ctx.stroke();
         const a=-2.65; drawHead(pv.x+Math.cos(a)*r, pv.y+Math.sin(a)*r, a-Math.PI/2); }
 }
-function strokeArcMm(acx, acy, r, a0, a1) {
+function strokeArcU(acx, acy, r, a0, a1) {
     const segs=72; ctx.beginPath();
     for (let k=0;k<=segs;k++){ const t=(a0+(a1-a0)*k/segs)*Math.PI/180;
         const p=bx2px(acx+Math.cos(t)*r, acy+Math.sin(t)*r);
@@ -1380,20 +1489,19 @@ function strokeArcMm(acx, acy, r, a0, a1) {
 }
 function render() {
     if (!G) return;
-    ctx.fillStyle='#0c0e11'; ctx.fillRect(0,0,canvas.clientWidth,canvas.clientHeight);
+    syncCanvas();
+    const w = canvas.clientWidth || 300;
+    ctx.fillStyle='#0c0e11'; ctx.fillRect(0,0,w,w);
     const O=bx2px(0,0);
-    // board disc
-    ctx.beginPath(); ctx.arc(O.x,O.y,CFG.edgeMm*scale,0,2*Math.PI);
-    ctx.fillStyle='#12161b'; ctx.fill();
-    // interior rings
-    ctx.lineWidth=1; ctx.strokeStyle='#39424c';
-    for (const r of CFG.ringsMm){ ctx.beginPath(); ctx.arc(O.x,O.y,r*scale,0,2*Math.PI); ctx.stroke(); }
+    // board disc — the surface simply ends at the drop-off; no line is printed there
+    ctx.beginPath(); ctx.arc(O.x,O.y,CFG.edgeU*scale,0,2*Math.PI);
+    ctx.fillStyle='#171c22'; ctx.fill();
+    // the two interior rings
+    ctx.lineWidth=1; ctx.strokeStyle='#414b56';
+    for (const r of CFG.rings){ ctx.beginPath(); ctx.arc(O.x,O.y,r*scale,0,2*Math.PI); ctx.stroke(); }
     // side lens arcs
-    for (const a of CFG.sideArcs) strokeArcMm(a.cx,a.cy,a.r,a.a0,a.a1);
-    // edge
-    ctx.lineWidth=2; ctx.strokeStyle='#5b6874';
-    ctx.beginPath(); ctx.arc(O.x,O.y,CFG.edgeMm*scale,0,2*Math.PI); ctx.stroke();
-    // start dots
+    for (const a of CFG.sideArcs) strokeArcU(a.cx,a.cy,a.r,a.a0,a.a1);
+    // start dots (the printed board's dots — also the feet start positions)
     for (let k=0;k<6;k++){ const d=CFG.startDots[k], p=bx2px(d[0],d[1]);
         ctx.beginPath(); ctx.arc(p.x,p.y,2.5,0,2*Math.PI);
         ctx.fillStyle = k<3 ? 'rgba(107,158,255,0.6)' : 'rgba(255,107,107,0.6)'; ctx.fill(); }
@@ -1403,22 +1511,20 @@ function render() {
 
     if (G.pinned!==null && !G.over) {
         const feet=G.pieces[G.active].feet();
-        // ring the two grabbable feet (step 2)
         if (G.handle===null) {
             ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=1.5;
             for (let i=0;i<3;i++) if (i!==G.pinned){ const f=bx2px(feet[i].x,feet[i].y);
                 ctx.beginPath(); ctx.arc(f.x,f.y,13,0,2*Math.PI); ctx.stroke(); }
         }
-        // spin-direction hint around the pivot
         const pv=bx2px(G.pivot.x,G.pivot.y);
         ctx.beginPath(); ctx.arc(pv.x,pv.y,3.5,0,2*Math.PI); ctx.fillStyle='#fff'; ctx.fill();
         drawSpinHint(pv, G.turnDir);
     }
 
     const s=document.getElementById('status'), m=document.getElementById('meta'), h=document.getElementById('help');
-    if (G.over){ const w=G.winner===0?'red':'blue';
-        s.innerHTML=`<span class="${w}">${w[0].toUpperCase()+w.slice(1)} wins</span>`; m.textContent=''; h.textContent='Press Reset to play again.';
-    } else { const c=G.active===0?'red':'blue';
+    if (G.over){ const w2=G.winner===0?'blue':'red';
+        s.innerHTML=`<span class="${w2}">${w2[0].toUpperCase()+w2.slice(1)} wins</span>`; m.textContent=''; h.textContent='Press Reset to play again.';
+    } else { const c=G.active===0?'blue':'red';
         s.innerHTML=`<span class="${c}">${c[0].toUpperCase()+c.slice(1)}</span> to move`;
         m.textContent = G.pinned!==null ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?' — line limit, stop here':''}` : '';
         h.textContent = G.pinned===null
@@ -1432,23 +1538,25 @@ function render() {
 // ---------- 3D side view (three.js) ----------
 function boardTexture() {
     const S=1024, cv=document.createElement('canvas'); cv.width=cv.height=S;
-    const c=cv.getContext('2d'), sc=(S*0.985)/(2*CFG.edgeMm), O=S/2;
+    const c=cv.getContext('2d'), sc=(S*0.985)/(2*CFG.edgeU), O=S/2;
     const b=(mx,my)=>({x:O+mx*sc, y:O+my*sc});
-    c.fillStyle='#efe4a6'; c.beginPath(); c.arc(O,O,CFG.edgeMm*sc,0,7); c.fill();   // pale board
+    c.fillStyle='#efe4a6'; c.beginPath(); c.arc(O,O,CFG.edgeU*sc,0,7); c.fill();   // pale board — no edge line
     c.strokeStyle='#26251f'; c.lineWidth=3;
-    for (const r of CFG.ringsMm){ c.beginPath(); c.arc(O,O,r*sc,0,7); c.stroke(); }
+    for (const r of CFG.rings){ c.beginPath(); c.arc(O,O,r*sc,0,7); c.stroke(); }
     for (const a of CFG.sideArcs){ c.beginPath(); const seg=90;
         for (let k=0;k<=seg;k++){ const t=(a.a0+(a.a1-a.a0)*k/seg)*Math.PI/180;
             const p=b(a.cx+Math.cos(t)*a.r, a.cy+Math.sin(t)*a.r); k?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y); }
         c.stroke(); }
-    c.lineWidth=5; c.beginPath(); c.arc(O,O,CFG.edgeMm*sc,0,7); c.stroke();
+    for (let k=0;k<6;k++){ const d=CFG.startDots[k], p=b(d[0],d[1]);
+        c.beginPath(); c.arc(p.x,p.y,5,0,7);
+        c.fillStyle = k<3 ? '#4a6fd4' : '#c0392b'; c.fill(); }
     return new THREE.CanvasTexture(cv);
 }
 function buildTripod(hex) {
     const g=new THREE.Group();
     const mat=new THREE.MeshStandardMaterial({color:hex, roughness:0.45, metalness:0.15});
-    const R=CFG.footCircumMm, H=CFG.hubHeight, legRad=1.7;
-    // each leg is a true quarter-circle arc (radius R about the base centre): hub at top → foot on ground.
+    const R=CFG.footR, H=CFG.hubHeight, legRad=CFG.legRadius;
+    // each leg is a true quarter-circle arc: hub at top → foot on the ground.
     // The arc meets the ground almost vertically, so tapering along the LAST segment's own
     // tangent drives the point down through the floor. Instead the tube stops a few
     // samples early and a cone spans that point through to the true foot (exactly on the
@@ -1478,20 +1586,20 @@ function init3D() {
     clock=new THREE.Clock();
     scene=new THREE.Scene(); scene.background=new THREE.Color(0x0c0e11);
     camera=new THREE.PerspectiveCamera(42,1,1,3000);
-    camera.position.set(0,96,126); camera.lookAt(0,6,0);
+    camera.position.set(0,88,115); camera.lookAt(0,6,0);
     controls=new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping=true; controls.dampingFactor=0.08; controls.enablePan=false;
-    controls.minDistance=70; controls.maxDistance=340; controls.maxPolarAngle=Math.PI*0.49;
+    controls.minDistance=62; controls.maxDistance=310; controls.maxPolarAngle=Math.PI*0.49;
     controls.target.set(0,6,0); controls.update();
     scene.add(new THREE.HemisphereLight(0xffffff,0x2a2e33,0.95));
     const dl=new THREE.DirectionalLight(0xffffff,0.55); dl.position.set(45,90,55); scene.add(dl);
-    const top=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeMm,96),
+    const top=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU,96),
         new THREE.MeshStandardMaterial({map:boardTexture(), roughness:0.95}));
     top.rotation.x=-Math.PI/2; top.position.y=0.15; scene.add(top);
-    const rim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeMm*1.05,CFG.edgeMm*1.09,5,96),
+    const rim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.05,CFG.edgeU*1.09,5,96),
         new THREE.MeshStandardMaterial({color:0x8b9199, roughness:0.6, metalness:0.2}));
     rim.position.y=-2.4; scene.add(rim);
-    tripods=[buildTripod(0xff6b6b), buildTripod(0x6b9eff)];
+    tripods=[buildTripod(0x6b9eff), buildTripod(0xff6b6b)];   // [blue, red] = pieces order
     tripods.forEach(t=>scene.add(t));
 }
 // kick off the dramatic slide-off when someone loses
@@ -1508,7 +1616,7 @@ function stepFall(dt) {
     const t = tripods[fall.idx];
     t.position.x += fall.vx*dt; t.position.z += fall.vz*dt;   // slide outward across the board
     const r = Math.hypot(t.position.x, t.position.z);
-    if (r > CFG.edgeMm) {                              // past the rim → frictionless slope, tip and fall
+    if (r > CFG.edgeU) {                              // past the rim → frictionless slope, tip and fall
         fall.vy -= 220*dt;
         fall.vx *= (1+0.4*dt); fall.vz *= (1+0.4*dt);
         t.position.y += fall.vy*dt;
@@ -1525,6 +1633,7 @@ function animate() {
         if (fall.active && i===fall.idx) continue;   // don't overwrite the falling piece
         tripods[i].position.set(G.pieces[i].x, 0, G.pieces[i].y);
         tripods[i].rotation.set(0, -G.pieces[i].rot, 0);
+        tripods[i].scale.set(1,1,1);
     }
     if (fall.active) stepFall(dt);
     renderer.render(scene,camera);
@@ -1548,12 +1657,7 @@ function resize() {
     else if (wide)  size = Math.max(200, Math.min((availW-gap)/2, availH));
     else            size = Math.max(170, Math.min(availW, (availH-gap)/2));
 
-    const dpr = window.devicePixelRatio || 1;
     canvas.style.width = size+'px'; canvas.style.height = size+'px';
-    canvas.width = Math.round(size*dpr); canvas.height = Math.round(size*dpr);
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    cx = size/2; cy = size/2;
-    scale = (size*0.92) / (2*CFG.edgeMm);
 
     if (renderer){
         if (show){ cv3.style.display='block'; cv3.style.width=size+'px'; cv3.style.height=size+'px';
@@ -1564,6 +1668,7 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', resize);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
 document.getElementById('toggle3d').addEventListener('click', ()=>{
     show3d=!show3d; document.getElementById('toggle3d').textContent='3D: '+(show3d?'on':'off'); resize();
 });
