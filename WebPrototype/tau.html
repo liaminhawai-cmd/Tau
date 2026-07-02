@@ -20,10 +20,19 @@
     button { background:#2c3138; color:#e6e6e6; border:1px solid #3a4048; padding:5px 14px;
              border-radius:4px; cursor:pointer; margin:4px 0 6px; font-size:13px; }
     button:active { background:#3a4048; }
-    #menu { display:flex; flex-direction:column; align-items:center; gap:14px; margin-top:18vh; }
+    #menu { display:flex; flex-direction:column; align-items:center; gap:14px; margin-top:10vh; }
     #menu p { color:#9aa4ad; font-size:13px; margin:0; }
     #menu .modeBtn { font-size:16px; padding:14px 34px; border-radius:8px; }
     #game { display:none; flex-direction:column; align-items:center; width:100%; }
+    #account { display:none; flex-direction:column; align-items:center; gap:10px; margin-top:6px;
+               border-top:1px solid #2c3138; padding-top:18px; width:260px; }
+    #account input { background:#1a1e24; color:#e6e6e6; border:1px solid #3a4048; border-radius:4px;
+                      padding:8px 10px; font-size:13px; width:100%; box-sizing:border-box; }
+    #account .row { display:flex; gap:8px; width:100%; }
+    #account .msg { font-size:12px; color:#9aa4ad; min-height:16px; text-align:center; }
+    #account .profile { font-size:14px; text-align:center; }
+    #account .elo { color:#ffd23f; font-weight:bold; }
+    #account button:disabled { opacity:0.5; cursor:default; }
 </style>
 </head>
 <body>
@@ -33,6 +42,21 @@
         <p>Choose how to play</p>
         <button class="modeBtn" id="modeLocal">Local 1v1</button>
         <button class="modeBtn" id="modeAI">vs AI</button>
+        <button class="modeBtn" id="modeOnline">Online</button>
+        <div id="account">
+            <div id="acctSignedOut">
+                <div class="row">
+                    <input id="acctEmail" type="email" placeholder="you@example.com" autocomplete="email">
+                    <button id="acctSendLink">Send link</button>
+                </div>
+                <p class="msg" id="acctMsg"></p>
+            </div>
+            <div id="acctSignedIn" style="display:none;">
+                <p class="profile">Signed in as <b id="acctName"></b><br>Rating: <span class="elo" id="acctElo"></span></p>
+                <button id="acctFindMatch" disabled>Find match (coming soon)</button>
+                <button id="acctSignOut">Sign out</button>
+            </div>
+        </div>
     </div>
     <div id="game">
         <div id="status"></div>
@@ -1941,6 +1965,69 @@ init3D();
 reset();
 resize();
 animate();
+</script>
+
+<script>
+// ---------- Online accounts (Supabase: auth + profiles/ELO) ----------
+// Filled in once the Supabase project exists — see WebPrototype/server/schema.sql for the
+// matching database setup. Until both are set, the Online panel explains that instead of
+// failing confusingly. Local play and vs AI never touch this script or need a network call.
+const SUPABASE_URL = 'YOUR_SUPABASE_PROJECT_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+
+let sb = null, sbUser = null;
+function sbConfigured() { return !SUPABASE_URL.startsWith('YOUR_') && !SUPABASE_ANON_KEY.startsWith('YOUR_'); }
+
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src; s.onload = resolve; s.onerror = () => reject(new Error('failed to load ' + src));
+        document.head.appendChild(s);
+    });
+}
+
+async function ensureSupabase() {
+    if (sb) return sb;
+    await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js');
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    sb.auth.onAuthStateChange((_event, session) => setSession(session));
+    const { data: { session } } = await sb.auth.getSession();
+    await setSession(session);
+    return sb;
+}
+
+async function setSession(session) {
+    sbUser = session ? session.user : null;
+    const signedOut = document.getElementById('acctSignedOut'), signedIn = document.getElementById('acctSignedIn');
+    if (!sbUser) { signedOut.style.display = 'block'; signedIn.style.display = 'none'; return; }
+    signedOut.style.display = 'none'; signedIn.style.display = 'flex';
+    const { data, error } = await sb.from('profiles').select('username, elo').eq('id', sbUser.id).single();
+    document.getElementById('acctName').textContent = error ? sbUser.email : data.username;
+    document.getElementById('acctElo').textContent = error ? '—' : data.elo;
+}
+
+document.getElementById('modeOnline').addEventListener('click', async () => {
+    const acct = document.getElementById('account'), msg = document.getElementById('acctMsg');
+    acct.style.display = 'flex';
+    if (!sbConfigured()) {
+        msg.textContent = 'Online play isn’t set up yet on this build.';
+        document.getElementById('acctSendLink').disabled = true;
+        return;
+    }
+    msg.textContent = 'Connecting…';
+    try { await ensureSupabase(); msg.textContent = sbUser ? '' : 'Enter your email for a one-click sign-in link.'; }
+    catch (e) { msg.textContent = 'Could not reach the login service — check your connection.'; }
+});
+
+document.getElementById('acctSendLink').addEventListener('click', async () => {
+    const email = document.getElementById('acctEmail').value.trim();
+    const msg = document.getElementById('acctMsg');
+    if (!email) { msg.textContent = 'Enter an email address first.'; return; }
+    msg.textContent = 'Sending…';
+    const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
+    msg.textContent = error ? error.message : 'Check your email for a sign-in link.';
+});
+document.getElementById('acctSignOut').addEventListener('click', async () => { await sb.auth.signOut(); });
 </script>
 </body>
 </html>
