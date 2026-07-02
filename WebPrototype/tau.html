@@ -20,19 +20,30 @@
     button { background:#2c3138; color:#e6e6e6; border:1px solid #3a4048; padding:5px 14px;
              border-radius:4px; cursor:pointer; margin:4px 0 6px; font-size:13px; }
     button:active { background:#3a4048; }
+    #menu { display:flex; flex-direction:column; align-items:center; gap:14px; margin-top:18vh; }
+    #menu p { color:#9aa4ad; font-size:13px; margin:0; }
+    #menu .modeBtn { font-size:16px; padding:14px 34px; border-radius:8px; }
+    #game { display:none; flex-direction:column; align-items:center; width:100%; }
 </style>
 </head>
 <body>
 <div id="wrap">
     <h1>TAU</h1>
-    <div id="status"></div>
-    <div id="meta"></div>
-    <div id="views">
-        <canvas id="canvas"></canvas>
-        <canvas id="view3d"></canvas>
+    <div id="menu">
+        <p>Choose how to play</p>
+        <button class="modeBtn" id="modeLocal">Local 1v1</button>
+        <button class="modeBtn" id="modeAI">vs AI</button>
     </div>
-    <p id="help"></p>
-    <div id="btns"><button id="toggle3d">3D: on</button><button id="toggleAI">vs AI: off</button><button id="reset">Reset</button></div>
+    <div id="game">
+        <div id="status"></div>
+        <div id="meta"></div>
+        <div id="views">
+            <canvas id="canvas"></canvas>
+            <canvas id="view3d"></canvas>
+        </div>
+        <p id="help"></p>
+        <div id="btns"><button id="toggle3d">3D: on</button><button id="reset">Reset</button><button id="menuBtn">Menu</button></div>
+    </div>
 </div>
 
 <script>
@@ -1590,10 +1601,22 @@ function stepAi() {
         finishTurn();
     }
 }
-document.getElementById('toggleAI').addEventListener('click', ()=>{
-    vsAI = !vsAI; document.getElementById('toggleAI').textContent = 'vs AI: '+(vsAI?'on':'off');
-    if (vsAI && !G.over && G.active===AI_IDX && !aiAnim) startAiTurn();
-});
+// ---------- Menu: choose a mode before every game, "Menu" to come back and re-choose ----------
+function startGame(aiMode) {
+    vsAI = aiMode;
+    clearTimeout(aiTimer); aiAnim = null;
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('game').style.display = 'flex';
+    reset(); resize();
+}
+function backToMenu() {
+    clearTimeout(aiTimer); aiAnim = null;
+    document.getElementById('game').style.display = 'none';
+    document.getElementById('menu').style.display = 'flex';
+}
+document.getElementById('modeLocal').addEventListener('click', ()=>startGame(false));
+document.getElementById('modeAI').addEventListener('click', ()=>startGame(true));
+document.getElementById('menuBtn').addEventListener('click', backToMenu);
 canvas.addEventListener('mousedown', onDown);
 canvas.addEventListener('mousemove', onMove);
 window.addEventListener('mouseup', onUp);
