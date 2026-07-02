@@ -60,6 +60,11 @@ To enable it on your own deployment:
    Both are safe to embed in client code — access is controlled by the
    database's row/column policies in `schema.sql`, not by hiding that key.
 
+The Supabase client library itself is inlined directly into `tau.html`
+(fetched from npm, not a CDN) the same way three.js is, so there's no
+third-party script host in the loop at runtime — only the Supabase project
+itself needs to be reachable.
+
 Currently working: email magic-link sign-in, and an auto-created profile
 with a starting rating of 1200. Matchmaking, live move sync, and ELO
 updates on match results are the next chunks — until then "Find match" is a
