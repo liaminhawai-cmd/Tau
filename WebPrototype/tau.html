@@ -1682,7 +1682,13 @@ function render() {
 // ---------- 3D side view (three.js) ----------
 function boardTexture() {
     const S=1024, cv=document.createElement('canvas'); cv.width=cv.height=S;
-    const c=cv.getContext('2d'), sc=(S*0.985)/(2*CFG.edgeU), O=S/2;
+    // sc must match the mesh's own UV mapping (the full canvas -> the full CFG.edgeU-radius
+    // disc) exactly. A margin factor here previously left the mesh's UV sampling and this
+    // draw scale off by ~1.5%, so every ring/arc/dot was drawn a bit too close to centre —
+    // invisible on the flat 2D canvas (which uses one consistent scale throughout) but a
+    // real, growing-with-radius mismatch against the pieces (positioned from true board
+    // coordinates) in the 3D view.
+    const c=cv.getContext('2d'), sc=S/(2*CFG.edgeU), O=S/2;
     const b=(mx,my)=>({x:O+mx*sc, y:O+my*sc});
     c.fillStyle='#efe4a6'; c.beginPath(); c.arc(O,O,CFG.edgeU*sc,0,7); c.fill();   // pale board — no edge line
     c.strokeStyle='#26251f'; c.lineWidth=3;
