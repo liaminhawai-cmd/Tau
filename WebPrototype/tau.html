@@ -1118,6 +1118,7 @@ const CFG = {
         { cx:  66.667, cy: 0, r: 40, a0: 107.458, a1: 252.542 }
     ],
     edgeEps: 0.5,
+    lineWidthFrac: 0.0079,          // printed ring/arc line width, as a fraction of edgeU (measured off the design photo)
     footR: 23.095,                 // hub→foot = 46.19mm (tripod smoove 2021.stl)
     startX: 30.597,                // hub offset: puts the two back feet exactly halfway between the rings
     maxCrossingsPerTurn: 1,
@@ -1660,7 +1661,7 @@ function render() {
     ctx.beginPath(); ctx.arc(O.x,O.y,CFG.edgeU*scale,0,2*Math.PI);
     ctx.fillStyle='#171c22'; ctx.fill();
     // the two interior rings
-    ctx.lineWidth=1; ctx.strokeStyle='#414b56';
+    ctx.lineWidth=Math.max(1, CFG.edgeU*CFG.lineWidthFrac*scale); ctx.strokeStyle='#414b56';
     for (const r of CFG.rings){ ctx.beginPath(); ctx.arc(O.x,O.y,r*scale,0,2*Math.PI); ctx.stroke(); }
     // side lens arcs
     for (const a of CFG.sideArcs) strokeArcU(a.cx,a.cy,a.r,a.a0,a.a1);
@@ -1714,7 +1715,7 @@ function boardTexture() {
     const c=cv.getContext('2d'), sc=S/(2*CFG.edgeU), O=S/2;
     const b=(mx,my)=>({x:O+mx*sc, y:O+my*sc});
     c.fillStyle='#efe4a6'; c.beginPath(); c.arc(O,O,CFG.edgeU*sc,0,7); c.fill();   // pale board — no edge line
-    c.strokeStyle='#26251f'; c.lineWidth=3;
+    c.strokeStyle='#26251f'; c.lineWidth=Math.max(2, CFG.edgeU*CFG.lineWidthFrac*sc);
     for (const r of CFG.rings){ c.beginPath(); c.arc(O,O,r*sc,0,7); c.stroke(); }
     for (const a of CFG.sideArcs){ c.beginPath(); const seg=90;
         for (let k=0;k<=seg;k++){ const t=(a.a0+(a.a1-a.a0)*k/seg)*Math.PI/180;
