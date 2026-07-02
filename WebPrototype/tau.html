@@ -1112,7 +1112,8 @@ const CFG = {
     maxCrossingsPerTurn: 1,
     crossEps: 0.4,                 // grace band: a foot starting on a line may leave it for free
     substepDeg: 0.4,
-    minMoveDeg: 1.5,
+    minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
+    lockDeg: 2,                    // net rotation before the one-direction-per-turn lock engages
     legRadius: 2.0,                // leg tube radius (≈8mm printed) — used for BOTH collision and render
     hubHeight: 23.095,             // = footR → legs are true quarter-circle arcs
     legSegs: 12,                   // 3D arc polyline resolution for collision
@@ -1342,15 +1343,26 @@ function reset() {
     blue.x = -CFG.startX; blue.rot = 0;         // blue starts on the left, as on the printed board
     red.x  =  CFG.startX; red.rot  = Math.PI;
     G = { pieces:[blue,red], active:0, pinned:null, pivot:null, handle:null, turnDir:0,
-          crossings:0, atLimit:false, movedDeg:0, ptrAngle:null, over:false, winner:null,
-          startedOnLine:[false,false,false], usedGrace:[false,false,false] };
+          crossings:0, atLimit:false, netRad:0, ptrAngle:null, over:false, winner:null,
+          snap:null, startedOnLine:[false,false,false], usedGrace:[false,false,false] };
     fall.active=false;
     render();
 }
+// snapshot / restore both pieces so an aborted turn (released before minMoveDeg of net
+// rotation) fully undoes itself — including any nudges already given to the opponent.
+function takeSnap(){ return G.pieces.map(p=>({x:p.x, y:p.y, rot:p.rot})); }
+function restoreSnap(){
+    if (!G.snap) return;
+    G.pieces.forEach((p,i)=>{ p.x=G.snap[i].x; p.y=G.snap[i].y; p.rot=G.snap[i].rot; });
+    G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
+    G.usedGrace=[false,false,false];
+}
 function applySwing(dA) {
     if (dA===0) return;
-    if (G.turnDir===0) G.turnDir=Math.sign(dA);
-    if (Math.sign(dA)!==G.turnDir) return;
+    // one direction per turn — but only lock it once the player has clearly committed
+    // (|net| >= lockDeg). Locking on the very first pointer sample let touch jitter pick
+    // the direction, and then every drag the player actually intended was rejected.
+    if (G.turnDir!==0 && Math.sign(dA)!==G.turnDir) return;
     const active=G.pieces[G.active], opp=G.pieces[1-G.active];
     const stepMax=CFG.substepDeg*Math.PI/180;
     const steps=Math.max(1, Math.ceil(Math.abs(dA)/stepMax));
@@ -1365,9 +1377,11 @@ function applySwing(dA) {
             added+=ci; }
         if (G.crossings+added > CFG.maxCrossingsPerTurn){
             active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true; break; }
-        G.crossings+=added; G.movedDeg+=Math.abs(step)*180/Math.PI;
+        G.crossings+=added; G.netRad+=step;
         resolvePush(active, opp);
     }
+    if (G.turnDir===0 && Math.abs(G.netRad) >= CFG.lockDeg*Math.PI/180)
+        G.turnDir = Math.sign(G.netRad);
 }
 
 // ---------- Canvas / view state ----------
@@ -1413,22 +1427,41 @@ function pointerPos(e) {
     const t=e.touches&&e.touches[0] ? e.touches[0] : e;
     return px2b(t.clientX-r.left, t.clientY-r.top);
 }
-const HIT = 8;   // foot hit radius (board units)
+// foot hit radius: at least 9 board units, and never less than 26 CSS px — fixed
+// board-unit radii shrink to fat-finger-hostile targets on small phone canvases.
+function hitRadius(){ return Math.max(9, 26/scale); }
+function nearestFoot(p, feet, exclude) {
+    let best=-1, bestD=hitRadius();
+    for (let i=0;i<3;i++){
+        if (i===exclude) continue;
+        const d=Math.hypot(feet[i].x-p.x, feet[i].y-p.y);
+        if (d<bestD){ bestD=d; best=i; }
+    }
+    return best;
+}
 function onDown(e) {
     if (G.over) return; e.preventDefault();
     const p=pointerPos(e), feet=G.pieces[G.active].feet();
-    const hit = i => Math.hypot(feet[i].x-p.x, feet[i].y-p.y) < HIT;
     if (G.pinned===null) {
         // Step 1 — lock a foot as the pivot
-        for (let i=0;i<3;i++) if (hit(i)){
+        const i=nearestFoot(p, feet, -1);
+        if (i>=0){
             G.pinned=i; G.pivot={x:feet[i].x,y:feet[i].y};
-            G.turnDir=0; G.crossings=0; G.atLimit=false; G.movedDeg=0;
-            G.startedOnLine=feet.map(isNearAnyLine); G.usedGrace=[false,false,false]; break; }
+            G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
+            G.snap=takeSnap();
+            G.startedOnLine=feet.map(isNearAnyLine); G.usedGrace=[false,false,false];
+        }
     } else {
-        // Step 2 — grab a DIFFERENT foot to swing, or re-tap the pivot to re-pick
-        if (hit(G.pinned) && G.movedDeg < CFG.minMoveDeg) { G.pinned=null; G.pivot=null; }
-        else for (let i=0;i<3;i++) if (i!==G.pinned && hit(i)){
-            G.handle=i; G.ptrAngle=Math.atan2(p.y-G.pivot.y, p.x-G.pivot.x); break; }
+        // Step 2 — grab a DIFFERENT foot to swing, or re-tap the pivot to re-pick.
+        // The pivot only "wins" the tap if it is the closest foot — a sloppy tap near a
+        // swing foot must grab that foot, not silently unpin.
+        const dPin=Math.hypot(feet[G.pinned].x-p.x, feet[G.pinned].y-p.y);
+        const i=nearestFoot(p, feet, G.pinned);
+        if (i>=0 && (dPin>=hitRadius() || Math.hypot(feet[i].x-p.x,feet[i].y-p.y)<=dPin)){
+            G.handle=i; G.ptrAngle=Math.atan2(p.y-G.pivot.y, p.x-G.pivot.x);
+        } else if (dPin<hitRadius() && Math.abs(G.netRad) < CFG.minMoveDeg*Math.PI/180){
+            restoreSnap(); G.pinned=null; G.pivot=null;
+        }
     }
     render();
 }
@@ -1443,10 +1476,11 @@ function onMove(e) {
 function onUp() {
     if (G.handle===null) return;
     G.handle=null; G.ptrAngle=null;
-    if (G.movedDeg >= CFG.minMoveDeg) endTurn(); else render();
+    if (Math.abs(G.netRad) >= CFG.minMoveDeg*Math.PI/180) endTurn();
+    else { restoreSnap(); render(); }   // too small to count — undo it (incl. any nudge), keep the pivot
 }
 function clearTurn(){ G.pinned=null; G.pivot=null; G.handle=null; G.turnDir=0;
-    G.crossings=0; G.atLimit=false; G.movedDeg=0; G.ptrAngle=null;
+    G.crossings=0; G.atLimit=false; G.netRad=0; G.ptrAngle=null; G.snap=null;
     G.startedOnLine=[false,false,false]; G.usedGrace=[false,false,false]; }
 function endTurn() {
     const active=G.pieces[G.active], opp=G.pieces[1-G.active];
@@ -1463,6 +1497,7 @@ window.addEventListener('mouseup', onUp);
 canvas.addEventListener('touchstart', onDown, {passive:false});
 canvas.addEventListener('touchmove', onMove, {passive:false});
 window.addEventListener('touchend', onUp);
+window.addEventListener('touchcancel', onUp);
 document.getElementById('reset').addEventListener('click', reset);
 
 // ---------- Render ----------
@@ -1513,8 +1548,9 @@ function render() {
         const feet=G.pieces[G.active].feet();
         if (G.handle===null) {
             ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=1.5;
+            const rr=Math.max(13, hitRadius()*scale);
             for (let i=0;i<3;i++) if (i!==G.pinned){ const f=bx2px(feet[i].x,feet[i].y);
-                ctx.beginPath(); ctx.arc(f.x,f.y,13,0,2*Math.PI); ctx.stroke(); }
+                ctx.beginPath(); ctx.arc(f.x,f.y,rr,0,2*Math.PI); ctx.stroke(); }
         }
         const pv=bx2px(G.pivot.x,G.pivot.y);
         ctx.beginPath(); ctx.arc(pv.x,pv.y,3.5,0,2*Math.PI); ctx.fillStyle='#fff'; ctx.fill();
