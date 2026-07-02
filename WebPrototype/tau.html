@@ -32,7 +32,7 @@
         <canvas id="view3d"></canvas>
     </div>
     <p id="help"></p>
-    <div id="btns"><button id="toggle3d">3D: on</button><button id="reset">Reset</button></div>
+    <div id="btns"><button id="toggle3d">3D: on</button><button id="toggleAI">vs AI: off</button><button id="reset">Reset</button></div>
 </div>
 
 <script>
@@ -1357,6 +1357,15 @@ function restoreSnap(){
     G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
     G.usedGrace=[false,false,false];
 }
+// lock a foot of the ACTIVE piece as the pivot — the same setup whether a human tapped it
+// or the AI chose it, so the two input paths can't drift apart.
+function pinFoot(idx) {
+    const feet = G.pieces[G.active].feet();
+    G.pinned = idx; G.pivot = { x:feet[idx].x, y:feet[idx].y };
+    G.turnDir = 0; G.crossings = 0; G.atLimit = false; G.netRad = 0;
+    G.snap = takeSnap();
+    G.startedOnLine = feet.map(isNearAnyLine); G.usedGrace = [false,false,false];
+}
 function applySwing(dA) {
     if (dA===0) return;
     // one direction per turn — but only lock it once the player has clearly committed
@@ -1382,6 +1391,78 @@ function applySwing(dA) {
     }
     if (G.turnDir===0 && Math.abs(G.netRad) >= CFG.lockDeg*Math.PI/180)
         G.turnDir = Math.sign(G.netRad);
+}
+
+function clearTurn(){ G.pinned=null; G.pivot=null; G.handle=null; G.turnDir=0;
+    G.crossings=0; G.atLimit=false; G.netRad=0; G.ptrAngle=null; G.snap=null;
+    G.startedOnLine=[false,false,false]; G.usedGrace=[false,false,false]; }
+// pure win-check + turn handoff — no DOM. UI-visible effects (fall animation, render,
+// kicking off the AI) are layered on top by ui.js's finishTurn().
+function endTurn() {
+    const active=G.pieces[G.active], opp=G.pieces[1-G.active];
+    if (active.anyFootOff()){ G.over=true; G.winner=1-G.active; }
+    else if (opp.anyFootOff()){ G.over=true; G.winner=G.active; }
+    else G.active=1-G.active;
+    clearTurn();
+}
+
+// ---------- Simple heuristic AI ----------
+// "Dumb" on purpose — no lookahead, no evaluation, one fixed rule:
+//   - AI closer to the board centre than the human  → OFFENSE: pin the foot
+//     second-furthest from the human, swing the foot furthest from the human
+//     as far toward the human as the rules allow.
+//   - AI further from the centre than the human      → DEFENSE: pin the foot
+//     second-furthest from centre, swing the foot furthest from centre as far
+//     toward the centre as the rules allow.
+// "As far as it can" = keep swinging that one direction until the line-crossing
+// limit stops it (or a generous safety cap) — no attempt to find a better stopping point.
+const AI_STEP_RAD = 3 * Math.PI/180;
+const AI_SAFETY_CAP_RAD = 170 * Math.PI/180;
+function directionToward(pivot, footPos, targetPos) {
+    const aFoot=Math.atan2(footPos.y-pivot.y, footPos.x-pivot.x);
+    const aTarget=Math.atan2(targetPos.y-pivot.y, targetPos.x-pivot.x);
+    return norm(aTarget-aFoot) >= 0 ? 1 : -1;
+}
+function aiChoosePlan(aiIdx) {
+    const ai=G.pieces[aiIdx], human=G.pieces[1-aiIdx];
+    const offense = radU(ai) < radU(human);
+    const ref = offense ? {x:human.x,y:human.y} : {x:0,y:0};
+    const feet = ai.feet();
+    const order=[0,1,2].sort((p,q)=>
+        radU({x:feet[q].x-ref.x,y:feet[q].y-ref.y}) - radU({x:feet[p].x-ref.x,y:feet[p].y-ref.y}));
+    return { pivotIdx:order[1], swingIdx:order[0], target:ref };   // order[0]=furthest, order[1]=2nd-furthest
+}
+// swings the pinned piece in one direction until blocked; returns net radians actually applied
+function aiSwingDir(dir) {
+    let total=0;
+    while (Math.abs(total) < AI_SAFETY_CAP_RAD) {
+        applySwing(dir*AI_STEP_RAD);
+        total = G.netRad;
+        if (G.atLimit) break;
+    }
+    return G.netRad;
+}
+// runs one full AI move to completion synchronously — used by the animated UI stepper
+// (one call per frame there) and directly by headless tests (one call = one full turn).
+function aiTakeTurnSync() {
+    const aiIdx=G.active, plan=aiChoosePlan(aiIdx);
+    pinFoot(plan.pivotIdx);
+    let feet=G.pieces[aiIdx].feet();
+    let dir=directionToward(G.pivot, feet[plan.swingIdx], plan.target);
+    if (Math.abs(aiSwingDir(dir)) < 1e-9) {                 // chosen direction fully blocked — try the other way
+        G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
+        aiSwingDir(-dir);
+    }
+    if (Math.abs(G.netRad) < 1e-9) {                        // last resort: any legal pivot/foot/direction pairing
+        outer:
+        for (let p=0;p<3;p++) for (let s=0;s<3;s++) {
+            if (p===s) continue;
+            pinFoot(p);
+            for (const d of [1,-1]) { if (Math.abs(aiSwingDir(d)) > 1e-9) break outer;
+                G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; }
+        }
+    }
+    endTurn();
 }
 
 // ---------- Canvas / view state ----------
@@ -1440,17 +1521,12 @@ function nearestFoot(p, feet, exclude) {
     return best;
 }
 function onDown(e) {
-    if (G.over) return; e.preventDefault();
+    if (G.over || aiAnim) return; e.preventDefault();
     const p=pointerPos(e), feet=G.pieces[G.active].feet();
     if (G.pinned===null) {
         // Step 1 — lock a foot as the pivot
         const i=nearestFoot(p, feet, -1);
-        if (i>=0){
-            G.pinned=i; G.pivot={x:feet[i].x,y:feet[i].y};
-            G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
-            G.snap=takeSnap();
-            G.startedOnLine=feet.map(isNearAnyLine); G.usedGrace=[false,false,false];
-        }
+        if (i>=0) pinFoot(i);
     } else {
         // Step 2 — grab a DIFFERENT foot to swing, or re-tap the pivot to re-pick.
         // The pivot only "wins" the tap if it is the closest foot — a sloppy tap near a
@@ -1466,7 +1542,7 @@ function onDown(e) {
     render();
 }
 function onMove(e) {
-    if (G.handle===null || G.over) return; e.preventDefault();
+    if (G.handle===null || G.over || aiAnim) return; e.preventDefault();
     const p=pointerPos(e);
     const a=Math.atan2(p.y-G.pivot.y, p.x-G.pivot.x);
     if (G.ptrAngle===null){ G.ptrAngle=a; return; }
@@ -1476,21 +1552,48 @@ function onMove(e) {
 function onUp() {
     if (G.handle===null) return;
     G.handle=null; G.ptrAngle=null;
-    if (Math.abs(G.netRad) >= CFG.minMoveDeg*Math.PI/180) endTurn();
+    if (Math.abs(G.netRad) >= CFG.minMoveDeg*Math.PI/180) finishTurn();
     else { restoreSnap(); render(); }   // too small to count — undo it (incl. any nudge), keep the pivot
 }
-function clearTurn(){ G.pinned=null; G.pivot=null; G.handle=null; G.turnDir=0;
-    G.crossings=0; G.atLimit=false; G.netRad=0; G.ptrAngle=null; G.snap=null;
-    G.startedOnLine=[false,false,false]; G.usedGrace=[false,false,false]; }
-function endTurn() {
-    const active=G.pieces[G.active], opp=G.pieces[1-G.active];
-    if (active.anyFootOff()){ G.over=true; G.winner=1-G.active; }
-    else if (opp.anyFootOff()){ G.over=true; G.winner=G.active; }
-    else G.active=1-G.active;
-    clearTurn();
+// endTurn()/clearTurn() (win check, active swap, turn-state reset) live in game.js and are
+// pure — no DOM, testable headlessly. This wraps them with the visual/UI side effects
+// (the fall animation, a render, and kicking off the AI's turn) shared by every path that
+// ends a turn: a human release, and the AI's own swing finishing.
+function finishTurn() {
+    endTurn();
     if (G.over) triggerFall();
     render();
+    if (vsAI && !G.over && G.active===AI_IDX) aiTimer = setTimeout(startAiTurn, 450);   // brief "thinking" pause
 }
+// ---------- AI opponent (plays red / index 1) ----------
+const AI_IDX = 1;
+let vsAI = false, aiAnim = null, aiTimer = null;
+function startAiTurn() {
+    if (G.over || G.active!==AI_IDX) return;
+    const plan = aiChoosePlan(AI_IDX);
+    pinFoot(plan.pivotIdx);
+    const feet = G.pieces[AI_IDX].feet();
+    aiAnim = { dir: directionToward(G.pivot, feet[plan.swingIdx], plan.target), triedFlip:false };
+    render();
+}
+// advances the AI's swing by one animation step; called from the main render loop
+function stepAi() {
+    if (!aiAnim || G.over) return;
+    if (!G.atLimit) { applySwing(aiAnim.dir*AI_STEP_RAD); render(); }
+    if (G.atLimit || Math.abs(G.netRad) >= AI_SAFETY_CAP_RAD) {
+        if (Math.abs(G.netRad) < 1e-9 && !aiAnim.triedFlip) {   // chosen direction fully blocked — try the other way
+            aiAnim.dir *= -1; aiAnim.triedFlip = true;
+            G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
+            return;
+        }
+        aiAnim = null;
+        finishTurn();
+    }
+}
+document.getElementById('toggleAI').addEventListener('click', ()=>{
+    vsAI = !vsAI; document.getElementById('toggleAI').textContent = 'vs AI: '+(vsAI?'on':'off');
+    if (vsAI && !G.over && G.active===AI_IDX && !aiAnim) startAiTurn();
+});
 canvas.addEventListener('mousedown', onDown);
 canvas.addEventListener('mousemove', onMove);
 window.addEventListener('mouseup', onUp);
@@ -1498,7 +1601,9 @@ canvas.addEventListener('touchstart', onDown, {passive:false});
 canvas.addEventListener('touchmove', onMove, {passive:false});
 window.addEventListener('touchend', onUp);
 window.addEventListener('touchcancel', onUp);
-document.getElementById('reset').addEventListener('click', reset);
+document.getElementById('reset').addEventListener('click', ()=>{
+    clearTimeout(aiTimer); aiAnim=null; reset();
+});
 
 // ---------- Render ----------
 function drawHead(x, y, ang) {           // small filled triangle pointing along `ang`
@@ -1558,16 +1663,19 @@ function render() {
     }
 
     const s=document.getElementById('status'), m=document.getElementById('meta'), h=document.getElementById('help');
+    const aiTurn = vsAI && G.active===AI_IDX && !G.over;
     if (G.over){ const w2=G.winner===0?'blue':'red';
         s.innerHTML=`<span class="${w2}">${w2[0].toUpperCase()+w2.slice(1)} wins</span>`; m.textContent=''; h.textContent='Press Reset to play again.';
     } else { const c=G.active===0?'blue':'red';
-        s.innerHTML=`<span class="${c}">${c[0].toUpperCase()+c.slice(1)}</span> to move`;
+        s.innerHTML=`<span class="${c}">${c[0].toUpperCase()+c.slice(1)}</span> to move${aiTurn?' <span style="color:#69727b">(AI)</span>':''}`;
         m.textContent = G.pinned!==null ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?' — line limit, stop here':''}` : '';
-        h.textContent = G.pinned===null
-            ? 'Step 1 — tap one of your feet to lock it as the pivot.'
-            : (G.handle===null
-                ? 'Step 2 — drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.'
-                : 'Swinging… release to end your turn.');
+        h.textContent = aiTurn
+            ? (aiAnim ? 'AI is swinging…' : 'AI is thinking…')
+            : (G.pinned===null
+                ? 'Step 1 — tap one of your feet to lock it as the pivot.'
+                : (G.handle===null
+                    ? 'Step 2 — drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.'
+                    : 'Swinging… release to end your turn.'));
     }
 }
 
@@ -1588,29 +1696,57 @@ function boardTexture() {
         c.fillStyle = k<3 ? '#4a6fd4' : '#c0392b'; c.fill(); }
     return new THREE.CanvasTexture(cv);
 }
+// A leg as ONE continuous mesh: full legRad radius for most of the quarter-circle arc,
+// smoothly (smoothstep) tapering to a true point exactly at the foot (ground, y=0).
+// Built by hand off the curve's own Frenet frames (the same frames TubeGeometry uses
+// internally), so the taper always meets the cylindrical part following the curve's real
+// tangent — never a separately-oriented cone glued on with an approximate straight-line
+// axis, which is what produced a visible seam/notch where the two pieces met.
+function buildTaperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
+    const frames = curve.computeFrenetFrames(lenSegs, false);
+    const positions=[], normals=[], indices=[];
+    for (let i=0;i<=lenSegs;i++){
+        const u=i/lenSegs, center=curve.getPointAt(u);
+        const N=frames.normals[i], B=frames.binormals[i];
+        let rad=legRad;
+        if (u > 1-taperFrac){
+            const t=(u-(1-taperFrac))/taperFrac, s=t*t*(3-2*t);   // smoothstep, 0→1
+            rad=legRad*(1-s);
+        }
+        for (let j=0;j<radialSegs;j++){
+            const phi=j/radialSegs*Math.PI*2;
+            const nx=Math.cos(phi), ny=Math.sin(phi);
+            const nrm=new THREE.Vector3().addScaledVector(N,nx).addScaledVector(B,ny).normalize();
+            positions.push(center.x+nrm.x*rad, center.y+nrm.y*rad, center.z+nrm.z*rad);
+            normals.push(nrm.x, nrm.y, nrm.z);
+        }
+    }
+    for (let i=0;i<lenSegs;i++) for (let j=0;j<radialSegs;j++){
+        const jn=(j+1)%radialSegs;
+        const a=i*radialSegs+j, b=i*radialSegs+jn, c=(i+1)*radialSegs+j, d=(i+1)*radialSegs+jn;
+        indices.push(a,c,b, b,c,d);
+    }
+    // apex: a real point, exactly on the ground, fan-connected to the last (near-zero) ring
+    const apexIdx=(lenSegs+1)*radialSegs, apex=curve.getPointAt(1), tan=curve.getTangentAt(1);
+    positions.push(apex.x, apex.y, apex.z); normals.push(tan.x, tan.y, tan.z);
+    const lastRing=lenSegs*radialSegs;
+    for (let j=0;j<radialSegs;j++){ const jn=(j+1)%radialSegs;
+        indices.push(lastRing+j, lastRing+jn, apexIdx); }
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals,3));
+    geo.setIndex(indices);
+    return new THREE.Mesh(geo, mat);
+}
 function buildTripod(hex) {
     const g=new THREE.Group();
     const mat=new THREE.MeshStandardMaterial({color:hex, roughness:0.45, metalness:0.15});
     const R=CFG.footR, H=CFG.hubHeight, legRad=CFG.legRadius;
-    // each leg is a true quarter-circle arc: hub at top → foot on the ground.
-    // The arc meets the ground almost vertically, so tapering along the LAST segment's own
-    // tangent drives the point down through the floor. Instead the tube stops a few
-    // samples early and a cone spans that point through to the true foot (exactly on the
-    // ground, y=0), following the curve's broader direction rather than its unstable end tangent.
-    const nTaper=6;
     for (let i=0;i<3;i++){ const th=i*2*Math.PI/3, pts=[];
         for (let k=0;k<=20;k++){ const ph=(k/20)*(Math.PI/2);
             pts.push(new THREE.Vector3(Math.sin(ph)*R*Math.cos(th), Math.cos(ph)*H, Math.sin(ph)*R*Math.sin(th))); }
-        const tubePts = pts.slice(0, pts.length-nTaper+1);
-        const curve=new THREE.CatmullRomCurve3(tubePts);
-        g.add(new THREE.Mesh(new THREE.TubeGeometry(curve,24,legRad,12,false), mat));
-        const baseP=pts[pts.length-nTaper], tipP=pts[pts.length-1];   // tipP = true foot, on the ground
-        const axis=new THREE.Vector3().subVectors(tipP,baseP);
-        const axisLen=axis.length(); axis.normalize();
-        const cone=new THREE.Mesh(new THREE.ConeGeometry(legRad*1.05, axisLen, 14), mat);
-        cone.position.copy(baseP).add(tipP).multiplyScalar(0.5);
-        cone.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), axis);
-        g.add(cone);
+        const curve=new THREE.CatmullRomCurve3(pts);
+        g.add(buildTaperedLeg(curve, mat, legRad, 14, 24, 0.3));
     }
     const hub=new THREE.Mesh(new THREE.SphereGeometry(legRad*1.9,14,12), mat); hub.position.set(0,H,0); g.add(hub);
     return g;
@@ -1660,8 +1796,10 @@ function stepFall(dt) {
     }
     if (t.position.y < -700) fall.active=false;
 }
+let aiFrameCount=0;
 function animate() {
     requestAnimationFrame(animate);
+    if (aiAnim && (++aiFrameCount % 4)===0) stepAi();   // ~15 steps/sec at 60fps — a visible, brisk swing
     if (!renderer || !show3d) return;
     controls.update();
     const dt = Math.min(clock ? clock.getDelta() : 0.016, 0.05);

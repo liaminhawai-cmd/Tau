@@ -19,7 +19,24 @@ server needed — just open `tau.html` in a browser (desktop or mobile).
    slides off the frictionless rim and tumbles off the table.
 
 Toggle the "3D: on" button for a live, camera-orbitable 3D side view (drag to
-rotate, scroll/pinch to zoom) synced to the 2D board.
+rotate, scroll/pinch to zoom) synced to the 2D board. Toggle "vs AI: on" to
+play red against a simple heuristic opponent (see below) instead of a second
+human.
+
+## The AI opponent
+
+Deliberately dumb — one fixed rule, no lookahead, no evaluation:
+
+- If the AI is currently closer to the board centre than you are, it goes on
+  **offense**: pins the foot second-furthest from your piece, and swings the
+  foot furthest from your piece toward you, as far as the rules allow.
+- Otherwise (it's further from the centre than you) it plays **defense**:
+  pins the foot second-furthest from the centre, and swings the foot furthest
+  from the centre back toward the centre, as far as the rules allow.
+
+"As far as the rules allow" means it keeps swinging that one direction until
+the line-crossing limit stops it — it doesn't look for a better stopping
+point along the way.
 
 ## Status / what's modelled
 
@@ -37,5 +54,6 @@ rotate, scroll/pinch to zoom) synced to the 2D board.
   view renders (sampled as a polyline), with 3D closest-distance contact and
   position-based resolution in the board plane. Legs pass over/under each
   other when there is real clearance and push only on actual touch.
-- This is a prototype for testing rules and feel, not a finished game: no
-  AI opponent, no online play, no persistence.
+- This is a prototype for testing rules and feel, not a finished game: the AI
+  is a simple fixed heuristic (see above), and there's no online play or
+  persistence.
