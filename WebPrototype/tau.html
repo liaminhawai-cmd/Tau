@@ -42,7 +42,7 @@
             <canvas id="view3d"></canvas>
         </div>
         <p id="help"></p>
-        <div id="btns"><button id="toggle3d">3D: on</button><button id="reset">Reset</button><button id="menuBtn">Menu</button></div>
+        <div id="btns"><button id="toggle3d">3D: on</button><button id="toggleCam">Auto cam: off</button><button id="reset">Reset</button><button id="menuBtn">Menu</button></div>
     </div>
 </div>
 
@@ -1790,7 +1790,7 @@ function init3D() {
     camera.position.set(0,88,115); camera.lookAt(0,6,0);
     controls=new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping=true; controls.dampingFactor=0.08; controls.enablePan=false;
-    controls.minDistance=62; controls.maxDistance=310; controls.maxPolarAngle=Math.PI*0.49;
+    controls.minDistance=62; controls.maxDistance=420; controls.maxPolarAngle=Math.PI*0.49;   // 420: headroom for auto-cam's worst-case zoom-out
     controls.target.set(0,6,0); controls.update();
     scene.add(new THREE.HemisphereLight(0xffffff,0x2a2e33,0.95));
     const dl=new THREE.DirectionalLight(0xffffff,0.55); dl.position.set(45,90,55); scene.add(dl);
@@ -1825,13 +1825,73 @@ function stepFall(dt) {
     }
     if (t.position.y < -700) fall.active=false;
 }
+// ---------- Auto camera: keep both pieces framed, equidistant, whole board visible ----------
+let autoCam = false;
+const acTgt = new THREE.Vector3(), acPos = new THREE.Vector3();
+// Placing the camera along the horizontal direction PERPENDICULAR to the line joining the
+// two piece hubs, looking AT their midpoint — at ANY distance along that line — keeps it
+// exactly equidistant from both hubs by construction (that perpendicular, through the
+// midpoint, is precisely the set of points equidistant from the two hubs). The DISTANCE is
+// then solved for numerically each frame (small binary search, ~1900 cheap point checks —
+// negligible next to a WebGL frame) so the whole board rim just fits the view: tight when
+// the pieces are near centre, backing off automatically if they drift toward an edge
+// together, rather than a fixed worst-case zoom that would be needlessly distant normally.
+const AUTOCAM_BASE_DIST = 145, AUTOCAM_MARGIN = 0.87, AUTOCAM_TARGET_Y = 6, AUTOCAM_SMOOTH = 3.2;
+const AUTOCAM_RATIO_D = 115, AUTOCAM_RATIO_H = 82;   // offset "shape" (azimuth/elevation), from the original hand-tuned view
+const AUTOCAM_RATIO_L = Math.hypot(AUTOCAM_RATIO_D, AUTOCAM_RATIO_H);
+const acRimPts = []; for (let k=0;k<48;k++){ const t=k/48*2*Math.PI; acRimPts.push([Math.cos(t)*CFG.edgeU, Math.sin(t)*CFG.edgeU]); }
+// worst (largest-magnitude) NDC coordinate of the board rim, for a candidate eye distance
+// `dist` along the fixed azimuth (px,pz) + elevation ratio from midpoint (mx,mz).
+function autoCamNdcAt(dist, mx, mz, px, pz, targetY) {
+    const ex=mx+px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), ey=targetY+dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), ez=mz+pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L);
+    let zx=ex-mx, zy=ey-targetY, zz=ez-mz; const zl=Math.hypot(zx,zy,zz)||1; zx/=zl; zy/=zl; zz/=zl;
+    let xx=-zy, xy=zx, xz=0;                          // cross(worldUp=(0,1,0), zAxis)
+    const xl=Math.hypot(xx,xy,xz)||1; xx/=xl; xy/=xl; xz/=xl;
+    const yx=zy*xz-zz*xy, yy=zz*xx-zx*xz, yz=zx*xy-zy*xx;
+    const t=Math.tan(21*Math.PI/180);                 // half of the 42° vertical FOV, square aspect
+    let maxAbs=0;
+    for (const rp of acRimPts){
+        const relx=rp[0]-ex, rely=-ey, relz=rp[1]-ez;
+        const vx=relx*xx+rely*xy+relz*xz, vy=relx*yx+rely*yy+relz*yz, vz=relx*zx+rely*zy+relz*zz;
+        if (vz>=0) return Infinity;                    // rim point behind the camera
+        const a=Math.abs(vx/(-vz*t)), b=Math.abs(vy/(-vz*t));
+        if (a>maxAbs) maxAbs=a; if (b>maxAbs) maxAbs=b;
+    }
+    return maxAbs;
+}
+function autoCamDistance(mx, mz, px, pz, targetY) {
+    let lo=AUTOCAM_BASE_DIST, hi=AUTOCAM_BASE_DIST, iter=0;
+    while (autoCamNdcAt(hi,mx,mz,px,pz,targetY) > AUTOCAM_MARGIN && iter++<20) hi*=1.3;
+    for (let i=0;i<20;i++){ const mid=(lo+hi)/2;
+        if (autoCamNdcAt(mid,mx,mz,px,pz,targetY) > AUTOCAM_MARGIN) lo=mid; else hi=mid; }
+    return Math.max(hi, AUTOCAM_BASE_DIST);
+}
+function updateAutoCam(dt) {
+    const p0=G.pieces[0], p1=G.pieces[1];
+    const mx=(p0.x+p1.x)/2, mz=(p0.y+p1.y)/2;
+    let dx=p1.x-p0.x, dz=p1.y-p0.y; const len=Math.hypot(dx,dz);
+    if (len < 1e-6) { dx=1; dz=0; } else { dx/=len; dz/=len; }   // degenerate (coincident hubs): fixed fallback axis
+    const px=-dz, pz=dx;                                          // horizontal, ⟂ to the piece-to-piece line
+    const dist = autoCamDistance(mx, mz, px, pz, AUTOCAM_TARGET_Y);
+    acTgt.set(mx, AUTOCAM_TARGET_Y, mz);
+    acPos.set(mx+px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), AUTOCAM_TARGET_Y+dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), mz+pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L));
+    const k = 1 - Math.exp(-AUTOCAM_SMOOTH*dt);                    // frame-rate-independent easing
+    camera.position.lerp(acPos, k);
+    controls.target.lerp(acTgt, k);
+}
+document.getElementById('toggleCam').addEventListener('click', ()=>{
+    autoCam = !autoCam;
+    document.getElementById('toggleCam').textContent = 'Auto cam: '+(autoCam?'on':'off');
+});
 let aiFrameCount=0;
 function animate() {
     requestAnimationFrame(animate);
     if (aiAnim && (++aiFrameCount % 4)===0) stepAi();   // ~15 steps/sec at 60fps — a visible, brisk swing
     if (!renderer || !show3d) return;
-    controls.update();
     const dt = Math.min(clock ? clock.getDelta() : 0.016, 0.05);
+    if (autoCam) updateAutoCam(dt);
+    controls.update();   // recomputes its internal state fresh from camera.position each call,
+                          // so it composes cleanly with the manual lerp above (see commit notes)
     for (let i=0;i<2;i++){
         if (fall.active && i===fall.idx) continue;   // don't overwrite the falling piece
         tripods[i].position.set(G.pieces[i].x, 0, G.pieces[i].y);
