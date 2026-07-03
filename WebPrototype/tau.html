@@ -20,42 +20,53 @@
     button { background:#2c3138; color:#e6e6e6; border:1px solid #3a4048; padding:5px 14px;
              border-radius:4px; cursor:pointer; margin:4px 0 6px; font-size:13px; }
     button:active { background:#3a4048; }
-    #menu { display:flex; flex-direction:column; align-items:center; gap:14px; margin-top:10vh; }
+    #menu { display:flex; flex-direction:column; align-items:center; gap:10px; margin-top:4vh; }
     #menu p { color:#9aa4ad; font-size:13px; margin:0; }
     #menu .modeBtn { font-size:16px; padding:14px 34px; border-radius:8px; }
     #game { display:none; flex-direction:column; align-items:center; width:100%; }
-    #account { display:none; flex-direction:column; align-items:center; gap:10px; margin-top:6px;
-               border-top:1px solid #2c3138; padding-top:18px; width:260px; }
-    #account input { background:#1a1e24; color:#e6e6e6; border:1px solid #3a4048; border-radius:4px;
+    #demoCanvas { background:#0c0e11; border:1px solid #2c3138; border-radius:8px; margin-bottom:8px; }
+    #acctStep, #modeStep { display:flex; flex-direction:column; align-items:center; gap:10px; width:260px; }
+    #acctSignedOut, #acctSignedIn { flex-direction:column; align-items:center; gap:8px; width:100%; }
+    #acctStep input { background:#1a1e24; color:#e6e6e6; border:1px solid #3a4048; border-radius:4px;
                       padding:8px 10px; font-size:13px; width:100%; box-sizing:border-box; }
-    #account .row { display:flex; gap:8px; width:100%; }
-    #account .msg { font-size:12px; color:#9aa4ad; min-height:16px; text-align:center; }
-    #account .profile { font-size:14px; text-align:center; }
-    #account .elo { color:#ffd23f; font-weight:bold; }
-    #account button:disabled { opacity:0.5; cursor:default; }
+    #acctStep .row { display:flex; gap:8px; width:100%; }
+    #acctStep .msg { font-size:12px; color:#9aa4ad; min-height:16px; text-align:center; }
+    #acctStep .profile { font-size:14px; text-align:center; }
+    #acctStep .elo { color:#ffd23f; font-weight:bold; }
+    #modeStep #modeWho { margin-bottom:4px; }
+    #backToAccount { font-size:12px; opacity:0.75; }
 </style>
 </head>
 <body>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
-        <p>Choose how to play</p>
-        <button class="modeBtn" id="modeLocal">Local 1v1</button>
-        <button class="modeBtn" id="modeAI">vs AI</button>
-        <button class="modeBtn" id="modeOnline">Online</button>
-        <div id="account">
+        <canvas id="demoCanvas" width="240" height="240"></canvas>
+
+        <div id="acctStep">
+            <p>Sign in to save your rating online, or jump right in.</p>
             <div id="acctSignedOut">
                 <div class="row">
                     <input id="acctEmail" type="email" placeholder="you@example.com" autocomplete="email">
                     <button id="acctSendLink">Send link</button>
                 </div>
+                <button id="acctGoogle">Sign in with Google</button>
                 <p class="msg" id="acctMsg"></p>
+                <button class="modeBtn" id="continueGuest">Continue as Guest</button>
             </div>
             <div id="acctSignedIn" style="display:none;">
                 <p class="profile">Signed in as <b id="acctName"></b><br>Rating: <span class="elo" id="acctElo"></span></p>
-                <button id="acctFindMatch" disabled>Find match (coming soon)</button>
+                <button class="modeBtn" id="continueSignedIn">Continue</button>
                 <button id="acctSignOut">Sign out</button>
             </div>
+        </div>
+
+        <div id="modeStep" style="display:none;">
+            <p id="modeWho"></p>
+            <button class="modeBtn" id="modeLocal">Local 1v1</button>
+            <button class="modeBtn" id="modeOnline">Online 1v1</button>
+            <button class="modeBtn" id="modeAI">vs AI</button>
+            <button id="backToAccount">&larr; Switch account</button>
         </div>
     </div>
     <div id="game">
@@ -1626,8 +1637,81 @@ function stepAi() {
         finishTurn();
     }
 }
-// ---------- Menu: choose a mode before every game, "Menu" to come back and re-choose ----------
+// ---------- Landing demo: two AIs play each other continuously behind the menu ----------
+// Reuses the same pure game.js turn logic as real "vs AI" games (aiChoosePlan,
+// directionToward, applySwing, endTurn) on the shared G, since the demo and a real match
+// are never on screen at the same time. The only difference from a real AI turn: after
+// reaching the natural stopping point, back off a small random amount so the loop doesn't
+// look identical every time — a direct rotateAround, not a new applySwing call, since it's
+// purely cosmetic and re-running the crossing-limit check on the way back would just
+// re-trigger the same limit it's backing off from.
+const DEMO_STEP_RAD = 3*Math.PI/180;
+let demoOn=false, demoAnim=null, demoTimer=null, demoCtx=null;
+function demoDraw() {
+    if (!demoCtx || !G) return;
+    const cv=document.getElementById('demoCanvas'), w=cv.width, sc=(w*0.86)/(2*CFG.edgeU), o=w/2;
+    const b=(mx,my)=>({x:o+mx*sc, y:o+my*sc});
+    demoCtx.fillStyle='#0c0e11'; demoCtx.fillRect(0,0,w,w);
+    demoCtx.beginPath(); demoCtx.arc(o,o,CFG.edgeU*sc,0,7); demoCtx.fillStyle='#171c22'; demoCtx.fill();
+    demoCtx.lineWidth=Math.max(1, CFG.edgeU*CFG.lineWidthFrac*sc); demoCtx.strokeStyle='#414b56';
+    for (const r of CFG.rings){ demoCtx.beginPath(); demoCtx.arc(o,o,r*sc,0,7); demoCtx.stroke(); }
+    for (const a of CFG.sideArcs){ demoCtx.beginPath(); const seg=48;
+        for (let k=0;k<=seg;k++){ const t=(a.a0+(a.a1-a.a0)*k/seg)*Math.PI/180;
+            const p=b(a.cx+Math.cos(t)*a.r, a.cy+Math.sin(t)*a.r); k?demoCtx.lineTo(p.x,p.y):demoCtx.moveTo(p.x,p.y); }
+        demoCtx.stroke(); }
+    for (const p of G.pieces) {
+        const feet=p.feet().map(f=>b(f.x,f.y)), hub=b(p.x,p.y);
+        demoCtx.strokeStyle=p.color; demoCtx.lineWidth=3; demoCtx.lineCap='round';
+        for (const f of feet){ demoCtx.beginPath(); demoCtx.moveTo(hub.x,hub.y); demoCtx.lineTo(f.x,f.y); demoCtx.stroke(); }
+        demoCtx.fillStyle=p.color;
+        for (const f of feet){ demoCtx.beginPath(); demoCtx.arc(f.x,f.y,4.5,0,7); demoCtx.fill(); }
+        demoCtx.beginPath(); demoCtx.arc(hub.x,hub.y,3,0,7); demoCtx.fill();
+    }
+}
+function demoStepLoop() {
+    if (!demoOn || !demoAnim) return;
+    if (!G.atLimit) applySwing(demoAnim.dir*DEMO_STEP_RAD);
+    demoDraw();
+    if (G.atLimit) {
+        if (Math.abs(G.netRad) < 1e-9 && !demoAnim.triedFlip) {   // fully blocked — try the other way
+            demoAnim.dir *= -1; demoAnim.triedFlip = true;
+            G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
+        } else {
+            const backoffDeg = 2 + Math.random()*8;   // small range short of the final crossing, for visual variety
+            G.pieces[G.active].rotateAround(G.pivot.x, G.pivot.y, -demoAnim.dir*backoffDeg*Math.PI/180);
+            demoAnim = null; endTurn(); demoDraw();
+            demoTimer = setTimeout(demoPlayTurn, 320);
+            return;
+        }
+    }
+    demoTimer = setTimeout(demoStepLoop, 35);
+}
+function demoPlayTurn() {
+    if (!demoOn) return;
+    if (G.over) { demoTimer = setTimeout(()=>{ reset(); demoDraw(); demoPlayTurn(); }, 1400); return; }
+    const idx = G.active, plan = aiChoosePlan(idx);
+    pinFoot(plan.pivotIdx);
+    const feet = G.pieces[idx].feet();
+    demoAnim = { dir: directionToward(G.pivot, feet[plan.swingIdx], plan.target), triedFlip:false };
+    demoStepLoop();
+}
+function demoStart() {
+    if (demoOn) return;
+    if (!demoCtx) demoCtx = document.getElementById('demoCanvas').getContext('2d');
+    demoOn = true; reset(); demoDraw(); demoPlayTurn();
+}
+function demoStop() { demoOn=false; demoAnim=null; clearTimeout(demoTimer); }
+
+// ---------- Menu: account -> mode -> game, "Menu" to come back and re-choose ----------
+function showModeStep() {
+    document.getElementById('acctStep').style.display = 'none';
+    document.getElementById('modeStep').style.display = 'flex';
+    document.getElementById('modeWho').textContent = sbUser
+        ? 'Signed in as ' + (document.getElementById('acctName').textContent || sbUser.email)
+        : 'Playing as Guest';
+}
 function startGame(aiMode) {
+    demoStop();
     vsAI = aiMode;
     clearTimeout(aiTimer); aiAnim = null;
     document.getElementById('menu').style.display = 'none';
@@ -1638,9 +1722,19 @@ function backToMenu() {
     clearTimeout(aiTimer); aiAnim = null;
     document.getElementById('game').style.display = 'none';
     document.getElementById('menu').style.display = 'flex';
+    demoStart();
 }
 document.getElementById('modeLocal').addEventListener('click', ()=>startGame(false));
 document.getElementById('modeAI').addEventListener('click', ()=>startGame(true));
+document.getElementById('modeOnline').addEventListener('click', () => {
+    const who = document.getElementById('modeWho');
+    who.textContent = sbUser ? 'Online 1v1 is coming soon.' : 'Sign in to play online — switch account below.';
+});
+document.getElementById('continueGuest').addEventListener('click', showModeStep);
+document.getElementById('backToAccount').addEventListener('click', () => {
+    document.getElementById('modeStep').style.display = 'none';
+    document.getElementById('acctStep').style.display = 'flex';
+});
 document.getElementById('menuBtn').addEventListener('click', backToMenu);
 canvas.addEventListener('mousedown', onDown);
 canvas.addEventListener('mousemove', onMove);
@@ -1965,6 +2059,7 @@ init3D();
 reset();
 resize();
 animate();
+demoStart();
 </script>
 
 <script>
@@ -2007,25 +2102,26 @@ async function ensureSupabase() {
 async function setSession(session) {
     sbUser = session ? session.user : null;
     const signedOut = document.getElementById('acctSignedOut'), signedIn = document.getElementById('acctSignedIn');
-    if (!sbUser) { signedOut.style.display = 'block'; signedIn.style.display = 'none'; return; }
+    if (!sbUser) { signedOut.style.display = 'flex'; signedIn.style.display = 'none'; return; }
     signedOut.style.display = 'none'; signedIn.style.display = 'flex';
     const { data, error } = await sb.from('profiles').select('username, elo').eq('id', sbUser.id).single();
     document.getElementById('acctName').textContent = error ? sbUser.email : data.username;
     document.getElementById('acctElo').textContent = error ? '—' : data.elo;
 }
 
-document.getElementById('modeOnline').addEventListener('click', async () => {
-    const acct = document.getElementById('account'), msg = document.getElementById('acctMsg');
-    acct.style.display = 'flex';
-    if (!sbConfigured()) {
-        msg.textContent = 'Online play isn’t set up yet on this build.';
-        document.getElementById('acctSendLink').disabled = true;
-        return;
-    }
-    msg.textContent = 'Connecting…';
-    try { await ensureSupabase(); msg.textContent = sbUser ? '' : 'Enter your email for a one-click sign-in link.'; }
-    catch (e) { msg.textContent = 'Could not reach the login service — check your connection.'; }
-});
+// Checked once on load (the account step is the first screen now, not gated behind a
+// click) so a returning signed-in player sees their status immediately. Guest play never
+// depends on this succeeding — if it's unconfigured or unreachable, signedOut stays
+// visible and "Continue as Guest" works regardless.
+if (sbConfigured()) {
+    ensureSupabase().catch(() => {
+        document.getElementById('acctMsg').textContent = 'Could not reach the login service — you can still play as a guest.';
+    });
+} else {
+    document.getElementById('acctMsg').textContent = 'Online accounts aren’t set up yet on this build — play as a guest.';
+    document.getElementById('acctSendLink').disabled = true;
+    document.getElementById('acctGoogle').disabled = true;
+}
 
 document.getElementById('acctSendLink').addEventListener('click', async () => {
     const email = document.getElementById('acctEmail').value.trim();
@@ -2035,7 +2131,12 @@ document.getElementById('acctSendLink').addEventListener('click', async () => {
     const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
     msg.textContent = error ? error.message : 'Check your email for a sign-in link.';
 });
+document.getElementById('acctGoogle').addEventListener('click', async () => {
+    const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.href } });
+    if (error) document.getElementById('acctMsg').textContent = error.message;
+});
 document.getElementById('acctSignOut').addEventListener('click', async () => { await sb.auth.signOut(); });
+document.getElementById('continueSignedIn').addEventListener('click', showModeStep);
 </script>
 </body>
 </html>
