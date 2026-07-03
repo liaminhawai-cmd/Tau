@@ -65,12 +65,20 @@ The Supabase client library itself is inlined directly into `tau.html`
 third-party script host in the loop at runtime — only the Supabase project
 itself needs to be reachable.
 
-Currently working: email magic-link sign-in, and an auto-created profile
-with a starting rating of 1200. Matchmaking, live move sync, and ELO
-updates on match results are the next chunks — until then "Find match" is a
-placeholder. Without the two config values filled in, the Online panel says
-so and the rest of the game is completely unaffected (no network calls are
-made unless you open that panel).
+Currently working: username+password sign-in, email magic-link sign-in,
+Google sign-in, and an auto-created profile with a starting rating of 1200.
+Matchmaking, live move sync, and ELO updates on match results are the next
+chunks — until then "Find match" is a placeholder. Without the two config
+values filled in, the Online panel says so and the rest of the game is
+completely unaffected (no network calls are made unless you open that panel).
+
+Username+password works without the player ever supplying a real email:
+each username maps to a synthetic `username@users.tau.invalid` address
+under the hood (`.invalid` is a TLD reserved by RFC 2606 to never resolve),
+and that's what Supabase actually authenticates. For this to sign a player
+in immediately (rather than waiting on a confirmation email that can never
+arrive at a `.invalid` address), turn off **Auth → Providers → Email →
+Confirm email** in the Supabase dashboard.
 
 ## Status / what's modelled
 
