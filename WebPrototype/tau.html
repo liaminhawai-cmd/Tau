@@ -61,6 +61,9 @@
     .htpSlide:first-child { padding-top:2px; }
     .htpSlide:last-child { border-bottom:none; }
     .htpSlide canvas { display:block; margin:0 auto 8px; background:#0c0e11; border-radius:6px; max-width:100%; height:auto; }
+    #htpFallSlot { width:220px; height:220px; max-width:100%; aspect-ratio:1/1; margin:0 auto 8px;
+                   background:#0c0e11; border-radius:6px; overflow:hidden; }
+    #htpFallSlot canvas { width:100% !important; height:100% !important; }
     .htpSlide p { text-align:left; margin:0; font-size:13px; color:#c7ccd1; }
     .htpSlide p b { color:#e6e6e6; }
     #htpNav { display:flex; align-items:center; justify-content:space-between; gap:10px;
@@ -1618,6 +1621,7 @@ const ctx = canvas.getContext('2d');
 let cx = 0, cy = 0, scale = 1;   // recomputed every frame by syncCanvas (px)
 let renderer=null, scene, camera, controls, tripods=[];   // 3D side view — always shown once THREE loads
 let pivotGlowMesh=null, boardTop=null, camProbe=null;   // pivot glow + board surface + fit-probe camera (built in init3D)
+let htpTripods=[];   // throwaway pieces for the how-to-play "push them off" 3D demo (built in init3D)
 let currentTheme = 'light';   // 'light' = pale physical-board look; 'dark' = sleek dark board
 try { currentTheme = localStorage.getItem('tauTheme') || 'light'; } catch(e) {}
 // One palette for every flat board drawing (2D game canvas, landing demo, how-to-play slides)
@@ -2015,37 +2019,114 @@ function htpSlideCross(c,w,h,t){
         c.beginPath(); c.arc(O.x,O.y,CFG.rings[1]*m.sc,0,7); c.stroke(); }
     htpPiece(c,p,m.b,pivotIdx,t);
 }
-function htpSlideWin(c,w,h,t){
-    const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
-    const cyc=(t%2.8)/2.8;
-    const ss=x=>{ x=Math.max(0,Math.min(1,x)); return x*x*(3-2*x); };
-    const rotP=ss(cyc/0.45), slideP=ss((cyc-0.45)/0.4);    // phase 1: push; phase 2: red slides off the board
-    const blue=mkP(0,-2,0,0.3), red=mkP(1,38,0,Math.PI);
-    const pv=blue.feet()[2];
-    const steps=22, step=(rotP*(-70*Math.PI/180))/steps || 0;
-    for(let s=0;s<steps;s++){ blue.rotateAround(pv.x,pv.y,step); resolvePush(blue,red); }   // real push physics
-    red.x += slideP*32; red.y -= slideP*2; red.rot += slideP*1.1;   // slides right off the board, tumbling
-    htpPiece(c,red,m.b,-1,t);
-    htpPiece(c,blue,m.b,2,t);
-    if(red.feet().some(f=>radU(f)>CFG.edgeU) && slideP>0.12){
-        c.textAlign='center'; c.font='bold 20px Arial';
-        c.fillStyle='rgba(0,0,0,0.55)'; c.fillText('You win!', w/2+1, 23);
-        c.fillStyle='#ffd23f'; c.fillText('You win!', w/2, 22);
+// Slide 5 is the real 3D view (the #view3d WebGL canvas, reparented in while the modal is
+// open — see htp3DEnter/Exit), not a 2D drawing: two throwaway pieces (never G.pieces, which
+// the ambient landing demo keeps animating behind the modal) get pushed with the real
+// resolvePush physics, then the loser falls using the exact same formulas as a real match's
+// triggerFall/stepFall (slide out, gravity accel, tumble) — "falls off naturally" because it's
+// the same physics, not a re-drawn approximation of it.
+let htp3DActive=false, htpBlueP=null, htpRedP=null, htpFallState=null, htpPhase='push', htpPhaseT=0, htpDropT=0;
+function htp3DReset() {
+    htpBlueP = mkP(0,-2,0,0.3); htpRedP = mkP(1,38,0,Math.PI);
+    htpFallState = null; htpPhase='push'; htpPhaseT=0; htpDropT=0;
+}
+function htp3DStep(dt) {
+    htpPhaseT += dt;
+    if (htpPhase==='push') {
+        const pv = htpBlueP.feet()[2];
+        const angVel = (-70*Math.PI/180) / 0.9;             // matches the same swing used in the earlier 2D version
+        htpBlueP.rotateAround(pv.x, pv.y, angVel*dt);
+        resolvePush(htpBlueP, htpRedP);
+        if (htpPhaseT >= 0.9 || htpRedP.feet().some(f=>radU(f)>CFG.edgeU)) {
+            htpPhase='fall'; htpPhaseT=0;
+            let fx=0, fz=0, fr=-1;
+            for (const f of htpRedP.feet()){ const r=Math.hypot(f.x,f.y); if (r>fr){ fr=r; fx=f.x; fz=f.y; } }
+            const d = Math.hypot(fx,fz)||1;
+            htpFallState = { vx:fx/d*50, vz:fz/d*50, vy:0,
+                wx:(Math.random()-0.5)*7, wy:(Math.random()-0.5)*3, wz:(Math.random()-0.5)*7 };
+        }
+    } else if (htpPhase==='fall') {
+        const t=htpTripods[1], f=htpFallState;
+        t.position.x += f.vx*dt; t.position.z += f.vz*dt;      // slide outward across the board
+        const r = Math.hypot(t.position.x, t.position.z);
+        if (r > CFG.edgeU) {                                   // past the rim -> frictionless slope, tip and fall
+            f.vy -= 220*dt;
+            f.vx *= (1+0.4*dt); f.vz *= (1+0.4*dt);
+            t.position.y += f.vy*dt;
+            t.rotation.x += f.wx*dt; t.rotation.y += f.wy*dt; t.rotation.z += f.wz*dt;
+            // A real match watches the whole 700-unit drop (fine there — it's a one-off, framed
+            // by the "You win!" popup). Looping that here would zoom the camera out until the
+            // piece vanishes into blank space, confusing rather than dramatic. Same gravity, same
+            // tumble, just cut to "done" once it's clearly, obviously off — timed from when
+            // gravity actually starts (crossing the rim), not from the start of the slide.
+            htpDropT += dt;
+            if (htpDropT > 0.42) { htpPhase='done'; htpPhaseT=0; htpDropT=0; }
+        }
+    } else if (htpPhase==='done' && htpPhaseT > 1.1) {
+        htp3DReset();
+    }
+}
+function htp3DUpdateCam(dt) {
+    const blue=htpTripods[0].position, red=htpTripods[1].position;
+    const mx=(blue.x+red.x)/2, mz=(blue.z+red.z)/2;
+    let dx=red.x-blue.x, dz=red.z-blue.z; const len=Math.hypot(dx,dz)||1; dx/=len; dz/=len;
+    const px=-dz, pz=dx;
+    const extra = htpPhase==='fall' ? [[red.x, red.z, red.y]] : null;
+    const dist = autoCamDistance(mx, mz, px, pz, AUTOCAM_TARGET_Y, extra);
+    acTgt.set(mx, AUTOCAM_TARGET_Y, mz);
+    acPos.set(mx+px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), AUTOCAM_TARGET_Y+dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), mz+pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L));
+    const k = 1 - Math.exp(-AUTOCAM_SMOOTH*dt);
+    camera.position.lerp(acPos, k);
+    controls.target.lerp(acTgt, k);
+}
+function htp3DTick(dt) {
+    htp3DStep(dt);
+    htpTripods[0].position.set(htpBlueP.x, 0, htpBlueP.y);
+    htpTripods[0].rotation.set(0, -htpBlueP.rot, 0);
+    if (htpPhase==='push') {   // during 'fall'/'done' the fall physics above drives tripod 1 directly
+        htpTripods[1].position.set(htpRedP.x, 0, htpRedP.y);
+        htpTripods[1].rotation.set(0, -htpRedP.rot, 0);
+    }
+    htp3DUpdateCam(dt);
+}
+function htp3DEnter() {
+    if (!renderer) return;
+    const slot = document.getElementById('htpFallSlot');
+    if (!slot) return;
+    slot.appendChild(document.getElementById('view3d'));
+    const size = 220;
+    const cv3 = document.getElementById('view3d');
+    cv3.style.width = size+'px'; cv3.style.height = size+'px'; cv3.style.display = 'block';
+    renderer.setSize(size, size, false); camera.aspect = 1; camera.updateProjectionMatrix();
+    tripods.forEach(t => t.visible = false);
+    htpTripods.forEach(t => t.visible = true);
+    htp3DReset();
+    htp3DActive = true;
+}
+function htp3DExit() {
+    htp3DActive = false;
+    tripods.forEach(t => t.visible = true);
+    htpTripods.forEach(t => t.visible = false);
+    // how-to-play only ever opens from the menu, so the ambient demo is always the right home
+    if (renderer && document.getElementById('demoViews')) {
+        document.getElementById('demoViews').appendChild(document.getElementById('view3d'));
+        demoResize();
     }
 }
 // Wording taken from the designer's own rules (Written elements.docx).
 const HTP_STEPS = [
-    { title:'Hold one foot', text:'Hold one foot still and rotate the other two around it. The held foot glows.', draw:htpSlidePivot },
-    { title:'Move in circles', text:'The moving feet trace an arc. Movement is continuous, so you can stop anywhere. You may only move one direction per turn.', draw:htpSlideSwing },
+    { title:'Hold one foot', text:'Hold one foot still and rotate the other two.', draw:htpSlidePivot },
+    { title:'Move in circles', text:'The moving feet trace an arc. You may only move in one direction per turn.', draw:htpSlideSwing },
     { title:'Push your opponent', text:'Push your opponent by moving into them slowly and smoothly, so the pieces move together.', draw:htpSlidePush },
-    { title:'One line per turn', text:'You may cross only one line per turn, and must stop before a second. A foot that starts on a line leaves it for free.', draw:htpSlideCross },
-    { title:'Push them off', text:'Push your opponent off the edge. When one of their feet leaves the board, you win.', draw:htpSlideWin },
+    { title:'One line per turn', text:'You may cross only one line per turn. A foot that starts on a line leaves it for free.', draw:htpSlideCross },
+    { title:'Push them off', text:'Push your opponent off the edge. When one of their feet leaves the board, you win.', is3D:true },
 ];
 let htpRaf=null, htpScrollBox=null, htpScrollHandler=null;
 function stopHowToPlayAnim() {
     if (htpRaf) cancelAnimationFrame(htpRaf); htpRaf=null;
     if (htpScrollBox && htpScrollHandler) htpScrollBox.removeEventListener('scroll', htpScrollHandler);
     htpScrollBox=null; htpScrollHandler=null;
+    if (htp3DActive) htp3DExit();
 }
 function openHowToPlay() {
     stopHowToPlayAnim();
@@ -2056,16 +2137,17 @@ function openHowToPlay() {
             <button id="htpNext">Next &rsaquo;</button>
         </div>` + HTP_STEPS.map((s,i) => `
         <div class="htpSlide" data-idx="${i}">
-            <canvas id="htpCanvas${i}" width="220" height="150"></canvas>
+            ${s.is3D ? `<div id="htpFallSlot"></div>` : `<canvas id="htpCanvas${i}" width="220" height="150"></canvas>`}
             <p><b>${s.title}</b><br>${s.text}</p>
         </div>`).join('');
     showModal('How to play', slidesHtml, [ { label: 'Got it', onClick: stopHowToPlayAnim } ], true);
+    htp3DEnter();
 
-    const ctxs = HTP_STEPS.map((_,i) => document.getElementById('htpCanvas'+i).getContext('2d'));
+    const ctxs = HTP_STEPS.map((s,i) => s.is3D ? null : document.getElementById('htpCanvas'+i).getContext('2d'));
     const t0 = performance.now();
     const loop = () => {
         const t = (performance.now()-t0)/1000;
-        HTP_STEPS.forEach((s,i) => s.draw(ctxs[i], 220, 150, t));
+        HTP_STEPS.forEach((s,i) => { if (!s.is3D) s.draw(ctxs[i], 220, 150, t); });
         htpRaf = requestAnimationFrame(loop);
     };
     loop();
@@ -2364,6 +2446,8 @@ function init3D() {
     rim.position.y=-2.4; scene.add(rim);
     tripods=[buildTripod(0x6b9eff), buildTripod(0xff6b6b)];   // [blue, red] = pieces order
     tripods.forEach(t=>scene.add(t));
+    htpTripods=[buildTripod(0x6b9eff), buildTripod(0xff6b6b)];   // how-to-play's own pair, hidden until slide 5 is open
+    htpTripods.forEach(t => { t.visible=false; scene.add(t); });
 
     // pivot glow — a glowing highlight on the pinned foot (the 3D echo of the 2D pivot dot).
     pivotGlowMesh = new THREE.Mesh(
@@ -2538,6 +2622,14 @@ function animate() {
     if (aiAnim && (++aiFrameCount % 4)===0) stepAi();   // ~15 steps/sec at 60fps — a visible, brisk swing
     if (!renderer) return;
     const dt = Math.min(clock ? clock.getDelta() : 0.016, 0.05);
+    if (htp3DActive) {   // how-to-play's own push+fall demo — never touches G, which the ambient
+                          // landing demo keeps animating behind the modal
+        htp3DTick(dt);
+        controls.update();
+        pivotGlowMesh.visible = false;
+        renderer.render(scene,camera);
+        return;
+    }
     for (let i=0;i<2;i++){
         if (fall.active && i===fall.idx) continue;   // don't overwrite the falling piece
         tripods[i].position.set(G.pieces[i].x, 0, G.pieces[i].y);
