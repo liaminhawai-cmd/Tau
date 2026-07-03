@@ -39,6 +39,15 @@
     #acctPanel .profile { font-size:14px; text-align:center; }
     #acctPanel .elo { color:#ffd23f; font-weight:bold; }
     #modeMsg { min-height:16px; text-align:center; }
+    #modalBackdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6);
+                      align-items:center; justify-content:center; z-index:50; }
+    #modalBox { background:#1a1e24; border:1px solid #3a4048; border-radius:10px;
+                padding:22px 26px; text-align:center; max-width:300px; }
+    #modalBox h2 { margin:0 0 4px; font-size:21px; }
+    #modalBox p { color:#9aa4ad; font-size:13px; margin:6px 0 14px; }
+    #modalBox p:empty { display:none; }
+    #modalBtns { display:flex; flex-direction:column; gap:8px; }
+    #modalBtns button { font-size:15px; padding:10px; margin:0; width:100%; box-sizing:border-box; }
 </style>
 </head>
 <body>
@@ -90,7 +99,14 @@
             <canvas id="view3d"></canvas>
         </div>
         <p id="help"></p>
-        <div id="btns"><button id="toggle3d">3D: on</button><button id="toggleCam">Auto cam: off</button><button id="reset">Reset</button><button id="menuBtn">Menu</button></div>
+        <div id="btns"><button id="reset">Reset</button><button id="menuBtn">Menu</button></div>
+    </div>
+</div>
+<div id="modalBackdrop">
+    <div id="modalBox">
+        <h2 id="modalTitle"></h2>
+        <p id="modalBody"></p>
+        <div id="modalBtns"></div>
     </div>
 </div>
 
@@ -1178,6 +1194,10 @@ const CFG = {
     minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
     lockDeg: 2,                    // net rotation before the one-direction-per-turn lock engages
     legRadius: 2.0,                // leg tube radius (≈8mm printed) — used for BOTH collision and render
+    footPadFrac: 0.55,             // 3D leg's flat foot cap, as a fraction of legRadius — bigger than the
+                                     // magnet/dot (padRadius below): the real leg keeps a blunt, printable
+                                     // flat foot around the small embedded magnet, it doesn't shrink the
+                                     // WHOLE foot down to magnet size (that read as a sharp needle on screen)
     hubHeight: 23.095,             // = footR → legs are true quarter-circle arcs
     legSegs: 12,                   // 3D arc polyline resolution for collision
     inertiaK: 0.7,                 // rotational inertia factor (lower = redirects/spins more easily)
@@ -1198,6 +1218,7 @@ CFG.startDots = (() => {
     return d;   // first 3 = left (blue), last 3 = right (red)
 })();
 CFG.padRadius = CFG.edgeU * CFG.padRadiusFrac;
+CFG.footPadRadius = CFG.legRadius * CFG.footPadFrac;
 
 const norm  = a => { while (a > Math.PI) a -= 2*Math.PI; while (a < -Math.PI) a += 2*Math.PI; return a; };
 const radU  = p => Math.hypot(p.x, p.y);
@@ -1263,6 +1284,33 @@ function isNearAnyLine(f) {
     for (const a of CFG.sideArcs){
         const d=Math.hypot(f.x-a.cx,f.y-a.cy);
         if (Math.abs(d-a.r)<eps && angInSpan(Math.atan2(f.y-a.cy,f.x-a.cx)*180/Math.PI,a.a0,a.a1)) return true;
+    }
+    return false;
+}
+// Once this turn's crossing budget is spent, a foot must be stopped before it even
+// TOUCHES another line, not just before it fully crosses one — a foot resting flush
+// against a second line reads as ambiguous (did that count?). "Touching" reuses the same
+// eps already used elsewhere to mean "on a line" (isNearAnyLine/crossEps), so a foot is
+// stopped once it's within that band of a line it hasn't already crossed this substep
+// (a foot moving AWAY from a line it already used its crossing on is unaffected — only
+// closing distance on a not-yet-crossed line trips this).
+function wouldTouchUncrossedLine(oldFeet, newFeet) {
+    const eps=CFG.crossEps;
+    for (let i=0;i<3;i++){
+        const o=oldFeet[i], n=newFeet[i];
+        const ro=radU(o), rn=radU(n);
+        for (const r of CFG.rings){
+            if ((ro<r&&rn>=r)||(ro>r&&rn<=r)) continue;   // an actual crossing — handled elsewhere
+            if (Math.abs(rn-r)<eps && Math.abs(rn-r)<Math.abs(ro-r)) return true;
+        }
+        for (const a of CFG.sideArcs){
+            const dOld=Math.hypot(o.x-a.cx,o.y-a.cy), dNew=Math.hypot(n.x-a.cx,n.y-a.cy);
+            if ((dOld<a.r&&dNew>=a.r)||(dOld>a.r&&dNew<=a.r)) continue;
+            if (Math.abs(dNew-a.r)<eps && Math.abs(dNew-a.r)<Math.abs(dOld-a.r)){
+                const mx=(o.x+n.x)/2-a.cx, my=(o.y+n.y)/2-a.cy;
+                if (angInSpan(Math.atan2(my,mx)*180/Math.PI, a.a0, a.a1)) return true;
+            }
+        }
     }
     return false;
 }
@@ -1443,12 +1491,16 @@ function applySwing(dA) {
     for (let s=0;s<steps;s++){
         const before=active.feet();
         active.rotateAround(G.pivot.x, G.pivot.y, step);
-        const per=countCrossings(before, active.feet());
+        const after=active.feet();
+        const per=countCrossings(before, after);
         let added=0;
         for (let i=0;i<3;i++){ let ci=per[i];
             if (ci>0 && G.startedOnLine[i] && !G.usedGrace[i]){ ci--; G.usedGrace[i]=true; }  // grace: leave a start line once
             added+=ci; }
-        if (G.crossings+added > CFG.maxCrossingsPerTurn){
+        const wouldExceed = G.crossings+added > CFG.maxCrossingsPerTurn;
+        const wouldTouch = !wouldExceed && added===0 && G.crossings>=CFG.maxCrossingsPerTurn
+            && wouldTouchUncrossedLine(before, after);
+        if (wouldExceed || wouldTouch){
             active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true; break; }
         G.crossings+=added; G.netRad+=step;
         resolvePush(active, opp);
@@ -1533,7 +1585,7 @@ function aiTakeTurnSync() {
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 let cx = 0, cy = 0, scale = 1;   // recomputed every frame by syncCanvas (px)
-let renderer=null, scene, camera, controls, tripods=[], show3d=true;   // 3D side view
+let renderer=null, scene, camera, controls, tripods=[];   // 3D side view — always shown once THREE loads
 let clock=null, fall={active:false};                                  // loss-animation state
 
 // Keep the 2D canvas backing store, DPR transform and board scale correct no matter
@@ -1585,7 +1637,7 @@ function nearestFoot(p, feet, exclude) {
     return best;
 }
 function onDown(e) {
-    if (G.over || aiAnim) return; e.preventDefault();
+    if (G.over || aiAnim || (vsAI && G.active===aiIdx)) return; e.preventDefault();
     const p=pointerPos(e), feet=G.pieces[G.active].feet();
     if (G.pinned===null) {
         // Step 1 — lock a foot as the pivot
@@ -1606,7 +1658,7 @@ function onDown(e) {
     render();
 }
 function onMove(e) {
-    if (G.handle===null || G.over || aiAnim) return; e.preventDefault();
+    if (G.handle===null || G.over || aiAnim || (vsAI && G.active===aiIdx)) return; e.preventDefault();
     const p=pointerPos(e);
     const a=Math.atan2(p.y-G.pivot.y, p.x-G.pivot.x);
     if (G.ptrAngle===null){ G.ptrAngle=a; return; }
@@ -1625,18 +1677,20 @@ function onUp() {
 // ends a turn: a human release, and the AI's own swing finishing.
 function finishTurn() {
     endTurn();
-    if (G.over) triggerFall();
+    if (G.over) { triggerFall(); showGameOverModal(); }
     render();
-    if (vsAI && !G.over && G.active===AI_IDX) aiTimer = setTimeout(startAiTurn, 450);   // brief "thinking" pause
+    if (vsAI && !G.over && G.active===aiIdx) aiTimer = setTimeout(startAiTurn, 450);   // brief "thinking" pause
 }
-// ---------- AI opponent (plays red / index 1) ----------
-const AI_IDX = 1;
+// ---------- AI opponent ----------
+// aiIdx/humanIdx (which colour is AI vs human) are chosen per-game at startGame(), since the
+// player can pick either colour — not fixed to red.
+let aiIdx = 1, humanIdx = 0;
 let vsAI = false, aiAnim = null, aiTimer = null;
 function startAiTurn() {
-    if (G.over || G.active!==AI_IDX) return;
-    const plan = aiChoosePlan(AI_IDX);
+    if (G.over || G.active!==aiIdx) return;
+    const plan = aiChoosePlan(aiIdx);
     pinFoot(plan.pivotIdx);
-    const feet = G.pieces[AI_IDX].feet();
+    const feet = G.pieces[aiIdx].feet();
     aiAnim = { dir: directionToward(G.pivot, feet[plan.swingIdx], plan.target), triedFlip:false };
     render();
 }
@@ -1740,7 +1794,6 @@ function demoPlayTurn() {
 function demoResize() {
     const cv3 = document.getElementById('view3d');
     if (!renderer || cv3.parentElement.id !== 'demoViews') return;
-    if (!show3d) { cv3.style.display = 'none'; return; }
     const size = 240;
     cv3.style.width = size+'px'; cv3.style.height = size+'px'; cv3.style.display = 'block';
     renderer.setSize(size, size, false);
@@ -1767,23 +1820,69 @@ function updateAcctStatus() {
 let pendingOnline = false;   // true while the account panel was opened FROM "Online 1v1"
 function openAcctPanel() { document.getElementById('acctPanel').style.display = 'flex'; }
 function closeAcctPanel() { document.getElementById('acctPanel').style.display = 'none'; pendingOnline = false; }
-function startGame(aiMode) {
+// ---------- Generic modal: colour choice before a vs-AI game, and the game-over popup ----------
+function showModal(title, body, buttons) {
+    document.getElementById('modalTitle').textContent = title;
+    document.getElementById('modalBody').textContent = body || '';
+    const wrap = document.getElementById('modalBtns');
+    wrap.innerHTML = '';
+    for (const b of buttons) {
+        const el = document.createElement('button');
+        el.textContent = b.label;
+        el.addEventListener('click', () => { hideModal(); b.onClick(); });
+        wrap.appendChild(el);
+    }
+    document.getElementById('modalBackdrop').style.display = 'flex';
+}
+function hideModal() { document.getElementById('modalBackdrop').style.display = 'none'; }
+let gameOverTimer = null;
+// Shown after a short pause so the losing piece's fall animation gets to play out first,
+// rather than slamming a popup over it the instant the game ends.
+function showGameOverModal() {
+    clearTimeout(gameOverTimer);
+    gameOverTimer = setTimeout(() => {
+        if (document.getElementById('game').style.display !== 'flex') return;   // player already left to the menu
+        if (vsAI) {
+            showModal(G.winner===humanIdx ? 'You win!' : 'You lose', '', [
+                { label: 'Play as Blue', onClick: () => startGame(true, 0) },
+                { label: 'Play as Red',  onClick: () => startGame(true, 1) },
+                { label: 'Menu', onClick: backToMenu },
+            ]);
+        } else {
+            showModal((G.winner===0?'Blue':'Red') + ' wins!', '', [
+                { label: 'Rematch', onClick: () => startGame(false) },
+                { label: 'Menu', onClick: backToMenu },
+            ]);
+        }
+    }, 2200);
+}
+function startGame(aiMode, humanColorIdx) {
+    hideModal(); clearTimeout(gameOverTimer);
     demoStop();
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
     vsAI = aiMode;
+    humanIdx = humanColorIdx===undefined ? 0 : humanColorIdx;
+    aiIdx = 1 - humanIdx;
     clearTimeout(aiTimer); aiAnim = null;
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
     reset(); resize();
+    if (vsAI && G.active===aiIdx) aiTimer = setTimeout(startAiTurn, 450);
 }
 function backToMenu() {
+    hideModal(); clearTimeout(gameOverTimer);
     clearTimeout(aiTimer); aiAnim = null;
     document.getElementById('game').style.display = 'none';
     document.getElementById('menu').style.display = 'flex';
     demoStart();
 }
 document.getElementById('modeLocal').addEventListener('click', ()=>startGame(false));
-document.getElementById('modeAI').addEventListener('click', ()=>startGame(true));
+document.getElementById('modeAI').addEventListener('click', () => {
+    showModal('Choose your colour', 'Blue always moves first.', [
+        { label: 'Play as Blue', onClick: () => startGame(true, 0) },
+        { label: 'Play as Red',  onClick: () => startGame(true, 1) },
+    ]);
+});
 document.getElementById('modeOnline').addEventListener('click', () => {
     const msg = document.getElementById('modeMsg');
     if (sbUser) { msg.textContent = 'Online 1v1 is coming soon.'; return; }
@@ -1862,7 +1961,7 @@ function render() {
     }
 
     const s=document.getElementById('status'), m=document.getElementById('meta'), h=document.getElementById('help');
-    const aiTurn = vsAI && G.active===AI_IDX && !G.over;
+    const aiTurn = vsAI && G.active===aiIdx && !G.over;
     if (G.over){ const w2=G.winner===0?'blue':'red';
         s.innerHTML=`<span class="${w2}">${w2[0].toUpperCase()+w2.slice(1)} wins</span>`; m.textContent=''; h.textContent='Press Reset to play again.';
     } else { const c=G.active===0?'blue':'red';
@@ -1902,11 +2001,13 @@ function boardTexture() {
     return new THREE.CanvasTexture(cv);
 }
 // A leg as ONE continuous mesh: full legRad radius for most of the quarter-circle arc,
-// smoothly (smoothstep) tapering down to a flat CFG.padRadius pad exactly at the foot
-// (ground, y=0) — matching the physical piece, where a magnet the same size as the printed
-// dot sits in the foot, fully covering it, rather than an infinitely sharp point. Built by
-// hand off the curve's own Frenet frames (the same frames TubeGeometry uses internally), so
-// the taper always meets the cylindrical part following the curve's real tangent — never a
+// smoothly (smoothstep) tapering down to a flat CFG.footPadRadius pad exactly at the foot
+// (ground, y=0) — matching the physical piece: a small magnet sits embedded in the middle
+// of that flat foot face (see CFG.padRadius, used for the board-texture dot), but the foot
+// itself stays a blunt, printable flat pad, not shrunk all the way down to magnet size —
+// that read as an infinitely sharp needle rather than a flat-bottomed foot. Built by hand
+// off the curve's own Frenet frames (the same frames TubeGeometry uses internally), so the
+// taper always meets the cylindrical part following the curve's real tangent — never a
 // separately-oriented cone glued on with an approximate straight-line axis, which is what
 // produced a visible seam/notch where the two pieces met.
 function buildTaperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
@@ -1918,7 +2019,7 @@ function buildTaperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
         let rad=legRad;
         if (u > 1-taperFrac){
             const t=(u-(1-taperFrac))/taperFrac, s=t*t*(3-2*t);   // smoothstep, 0→1
-            rad=legRad*(1-s) + CFG.padRadius*s;                    // taper to the pad radius, not to zero
+            rad=legRad*(1-s) + CFG.footPadRadius*s;                // taper to the flat foot pad, not to zero
         }
         for (let j=0;j<radialSegs;j++){
             const phi=j/radialSegs*Math.PI*2;
@@ -1933,7 +2034,7 @@ function buildTaperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
         const a=i*radialSegs+j, b=i*radialSegs+jn, c=(i+1)*radialSegs+j, d=(i+1)*radialSegs+jn;
         indices.push(a,c,b, b,c,d);
     }
-    // centre of the flat pad, exactly on the ground, at the SAME point as the last (padRadius)
+    // centre of the flat pad, exactly on the ground, at the SAME point as the last (footPadRadius)
     // ring — fanning a same-position ring+centre makes a flat disk cap, not a cone to a point.
     const apexIdx=(lenSegs+1)*radialSegs, apex=curve.getPointAt(1), tan=curve.getTangentAt(1);
     positions.push(apex.x, apex.y, apex.z); normals.push(tan.x, tan.y, tan.z);
@@ -1954,7 +2055,7 @@ function buildTripod(hex) {
         for (let k=0;k<=20;k++){ const ph=(k/20)*(Math.PI/2);
             pts.push(new THREE.Vector3(Math.sin(ph)*R*Math.cos(th), Math.cos(ph)*H, Math.sin(ph)*R*Math.sin(th))); }
         const curve=new THREE.CatmullRomCurve3(pts);
-        g.add(buildTaperedLeg(curve, mat, legRad, 14, 24, 0.3));
+        g.add(buildTaperedLeg(curve, mat, legRad, 14, 24, 0.6));
     }
     const hub=new THREE.Mesh(new THREE.SphereGeometry(legRad*1.9,14,12), mat); hub.position.set(0,H,0); g.add(hub);
     return g;
@@ -1971,6 +2072,7 @@ function init3D() {
     controls.enableDamping=true; controls.dampingFactor=0.08; controls.enablePan=false;
     controls.minDistance=62; controls.maxDistance=420; controls.maxPolarAngle=Math.PI*0.49;   // 420: headroom for auto-cam's worst-case zoom-out
     controls.target.set(0,6,0); controls.update();
+    controls.addEventListener('start', () => { autoCam = false; });   // any manual drag/zoom/pinch hands off auto-cam
     scene.add(new THREE.HemisphereLight(0xffffff,0x2a2e33,0.95));
     const dl=new THREE.DirectionalLight(0xffffff,0.55); dl.position.set(45,90,55); scene.add(dl);
     const top=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU,96),
@@ -2005,7 +2107,11 @@ function stepFall(dt) {
     if (t.position.y < -700) fall.active=false;
 }
 // ---------- Auto camera: keep both pieces framed, equidistant, whole board visible ----------
-let autoCam = false;
+// Smart default, not a toggle: auto-cam runs until the player manually grabs the camera
+// (OrbitControls' own 'start' event, fired on the first drag/zoom input), then stays hands-off
+// until a foot actually drifts out of frame — at which point it re-engages on its own. Nobody
+// should feel like they're "wrestling" a camera that fights their input.
+let autoCam = true;
 const acTgt = new THREE.Vector3(), acPos = new THREE.Vector3();
 // Placing the camera along the horizontal direction PERPENDICULAR to the line joining the
 // two piece hubs, looking AT their midpoint — at ANY distance along that line — keeps it
@@ -2058,16 +2164,29 @@ function updateAutoCam(dt) {
     camera.position.lerp(acPos, k);
     controls.target.lerp(acTgt, k);
 }
-document.getElementById('toggleCam').addEventListener('click', ()=>{
-    autoCam = !autoCam;
-    document.getElementById('toggleCam').textContent = 'Auto cam: '+(autoCam?'on':'off');
-});
+// Re-engage check while the player has manual control: is any of the 6 feet outside the
+// visible frame? Margin (0.96) is deliberately looser than auto-cam's own fit target (0.87
+// NDC, see AUTOCAM_MARGIN) so grabbing the camera right after auto-cam framed everything
+// doesn't immediately snap control back — there's real slack before this can retrigger.
+const FRAME_MARGIN = 0.96;
+const acFootVec = new THREE.Vector3();
+function anyFootOutOfFrame() {
+    if (!G) return false;
+    camera.updateMatrixWorld();
+    for (const p of G.pieces) for (const f of p.feet()) {
+        acFootVec.set(f.x, 0, f.y).project(camera);
+        if (Math.abs(acFootVec.x) > FRAME_MARGIN || Math.abs(acFootVec.y) > FRAME_MARGIN
+            || acFootVec.z < -1 || acFootVec.z > 1) return true;
+    }
+    return false;
+}
 let aiFrameCount=0;
 function animate() {
     requestAnimationFrame(animate);
     if (aiAnim && (++aiFrameCount % 4)===0) stepAi();   // ~15 steps/sec at 60fps — a visible, brisk swing
-    if (!renderer || !show3d) return;
+    if (!renderer) return;
     const dt = Math.min(clock ? clock.getDelta() : 0.016, 0.05);
+    if (!autoCam && anyFootOutOfFrame()) autoCam = true;
     if (autoCam) updateAutoCam(dt);
     controls.update();   // recomputes its internal state fresh from camera.position each call,
                           // so it composes cleanly with the manual lerp above (see commit notes)
@@ -2091,7 +2210,7 @@ function resize() {
                + document.getElementById('btns').offsetHeight + 46;
     const availW = window.innerWidth - 12;
     const availH = window.innerHeight - used;
-    const gap = 10, show = show3d && renderer, wide = window.innerWidth >= 760;
+    const gap = 10, show = !!renderer, wide = window.innerWidth >= 760;
 
     // both panels are square; side-by-side on wide screens, stacked on narrow ones
     let size;
@@ -2111,9 +2230,6 @@ function resize() {
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', resize);
 if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
-document.getElementById('toggle3d').addEventListener('click', ()=>{
-    show3d=!show3d; document.getElementById('toggle3d').textContent='3D: '+(show3d?'on':'off'); resize();
-});
 
 init3D();
 reset();
