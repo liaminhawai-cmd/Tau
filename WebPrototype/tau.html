@@ -12,6 +12,9 @@
     canvas { background:#0c0e11; touch-action:none; display:block; }
     #views { display:flex; gap:10px; align-items:flex-start; justify-content:center; flex-wrap:wrap; }
     #view3d { border:1px solid #2c3138; border-radius:4px; }
+    /* Stacked (narrow) layout: 3D on top, 2D underneath -- matches the `wide` breakpoint
+       resize() uses in the game script (window.innerWidth >= 760) for side-by-side vs stacked. */
+    @media (max-width: 759px) { #view3d { order: -1; } }
     #btns { display:flex; gap:10px; }
     #status { font-size:18px; font-weight:bold; margin:6px 0 2px; height:22px; }
     #meta { font-size:12px; color:#69727b; height:15px; }
@@ -1594,6 +1597,7 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 let cx = 0, cy = 0, scale = 1;   // recomputed every frame by syncCanvas (px)
 let renderer=null, scene, camera, controls, tripods=[];   // 3D side view — always shown once THREE loads
+let pivotGlowMesh=null, sweepArcMeshes=[];   // pivot glow + sweep-arc hints (built in init3D)
 let clock=null, fall={active:false};                                  // loss-animation state
 
 // Keep the 2D canvas backing store, DPR transform and board scale correct no matter
@@ -2105,6 +2109,20 @@ function init3D() {
     rim.position.y=-2.4; scene.add(rim);
     tripods=[buildTripod(0x6b9eff), buildTripod(0xff6b6b)];   // [blue, red] = pieces order
     tripods.forEach(t=>scene.add(t));
+
+    // pivot glow + sweep-arc hints — the 3D echo of the 2D view's pivot dot + candidate-foot
+    // rings: a glowing ring right at the pinned foot, and a faint circle at each of the other
+    // two feet's current radius from the pivot, showing the arc they'll sweep as it rotates.
+    pivotGlowMesh = new THREE.Mesh(
+        new THREE.RingGeometry(CFG.footPadRadius*1.3, CFG.footPadRadius*3.4, 28),
+        new THREE.MeshBasicMaterial({ color:0xffd23f, transparent:true, opacity:0.9, side:THREE.DoubleSide, depthWrite:false }));
+    pivotGlowMesh.rotation.x = -Math.PI/2; pivotGlowMesh.visible = false; scene.add(pivotGlowMesh);
+    const circlePts = []; for (let k=0;k<=64;k++){ const t=k/64*2*Math.PI; circlePts.push(new THREE.Vector3(Math.cos(t),0,Math.sin(t))); }
+    const circleGeo = new THREE.BufferGeometry().setFromPoints(circlePts);
+    sweepArcMeshes = [0,1].map(() => {
+        const m = new THREE.Line(circleGeo, new THREE.LineBasicMaterial({ color:0xffd23f, transparent:true, opacity:0.35 }));
+        m.visible = false; scene.add(m); return m;
+    });
 }
 // kick off the dramatic slide-off when someone loses
 function triggerFall() {
@@ -2259,6 +2277,22 @@ function animate() {
     }
     controls.update();   // recomputes its internal state fresh from camera.position each call,
                           // so it composes cleanly with the manual lerp above (see commit notes)
+    if (G.pinned!==null && !G.over) {
+        const feet = G.pieces[G.active].feet();
+        const glowPulse = 0.75 + Math.sin(performance.now()*0.006)*0.15;
+        pivotGlowMesh.visible = true; pivotGlowMesh.material.opacity = glowPulse;
+        pivotGlowMesh.position.set(G.pivot.x, 0.25, G.pivot.y);
+        let slot = 0;
+        for (let i=0;i<3;i++){
+            if (i===G.pinned) continue;
+            const f = feet[i], rad = Math.hypot(f.x-G.pivot.x, f.y-G.pivot.y);
+            const arc = sweepArcMeshes[slot++];
+            arc.visible = true; arc.position.set(G.pivot.x, 0.22, G.pivot.y); arc.scale.set(rad, 1, rad);
+        }
+    } else {
+        pivotGlowMesh.visible = false;
+        sweepArcMeshes.forEach(a => a.visible = false);
+    }
     renderer.render(scene,camera);
 }
 
