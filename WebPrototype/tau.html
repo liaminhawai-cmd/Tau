@@ -101,7 +101,7 @@
                     <button id="acctSignUp">Sign up</button>
                 </div>
                 <p class="msg" id="acctMsg"></p>
-                <p class="msg">— or —</p>
+                <p class="msg">or</p>
                 <div class="row">
                     <input id="acctEmail" type="email" placeholder="you@example.com" autocomplete="email">
                     <button id="acctSendLink">Send link</button>
@@ -2017,24 +2017,29 @@ function htpSlideCross(c,w,h,t){
 }
 function htpSlideWin(c,w,h,t){
     const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
-    const prog=htpEaseHold((t%2.6)/2.6);
-    const blue=mkP(0,-2,0,0.3), red=mkP(1,38,0,Math.PI);   // real push that carries red over the edge
-    const pivotIdx=2, pv=blue.feet()[pivotIdx];
-    const steps=22, step=(prog*(-70*Math.PI/180))/steps || 0;
-    for(let s=0;s<steps;s++){ blue.rotateAround(pv.x,pv.y,step); resolvePush(blue,red); }
+    const cyc=(t%2.8)/2.8;
+    const ss=x=>{ x=Math.max(0,Math.min(1,x)); return x*x*(3-2*x); };
+    const rotP=ss(cyc/0.45), slideP=ss((cyc-0.45)/0.4);    // phase 1: push; phase 2: red slides off the board
+    const blue=mkP(0,-2,0,0.3), red=mkP(1,38,0,Math.PI);
+    const pv=blue.feet()[2];
+    const steps=22, step=(rotP*(-70*Math.PI/180))/steps || 0;
+    for(let s=0;s<steps;s++){ blue.rotateAround(pv.x,pv.y,step); resolvePush(blue,red); }   // real push physics
+    red.x += slideP*32; red.y -= slideP*2; red.rot += slideP*1.1;   // slides right off the board, tumbling
     htpPiece(c,red,m.b,-1,t);
-    htpPiece(c,blue,m.b,pivotIdx,t);
-    if(red.feet().some(f=>radU(f)>CFG.edgeU)){
-        c.fillStyle='#ffd23f'; c.font='bold 16px Arial'; c.textAlign='center'; c.fillText('You win!', w/2, 18);
+    htpPiece(c,blue,m.b,2,t);
+    if(red.feet().some(f=>radU(f)>CFG.edgeU) && slideP>0.12){
+        c.textAlign='center'; c.font='bold 20px Arial';
+        c.fillStyle='rgba(0,0,0,0.55)'; c.fillText('You win!', w/2+1, 23);
+        c.fillStyle='#ffd23f'; c.fillText('You win!', w/2, 22);
     }
 }
 // Wording taken from the designer's own rules (Written elements.docx).
 const HTP_STEPS = [
-    { title:'Hold one foot', text:'Move your piece by holding one foot still and rotating the other two around it. The held foot glows.', draw:htpSlidePivot },
-    { title:'Move in circles', text:'The two moving feet trace an arc. Movement is continuous, so stop anywhere you like — but you can only turn one direction per turn.', draw:htpSlideSwing },
-    { title:'Push your opponent', text:'Push the opponent’s piece by moving into it, slowly and smoothly, so the pieces move together.', draw:htpSlidePush },
-    { title:'One line per turn', text:'A piece may cross only one line per turn, and must stop before a second. If a foot starts on a line, leaving it doesn’t count.', draw:htpSlideCross },
-    { title:'Push them off the edge', text:'You win when one or more of your opponent’s feet are pushed off the edge of the board.', draw:htpSlideWin },
+    { title:'Hold one foot', text:'Hold one foot still and rotate the other two around it. The held foot glows.', draw:htpSlidePivot },
+    { title:'Move in circles', text:'The moving feet trace an arc. Movement is continuous, so you can stop anywhere. You may only move one direction per turn.', draw:htpSlideSwing },
+    { title:'Push your opponent', text:'Push your opponent by moving into them slowly and smoothly, so the pieces move together.', draw:htpSlidePush },
+    { title:'One line per turn', text:'You may cross only one line per turn, and must stop before a second. A foot that starts on a line leaves it for free.', draw:htpSlideCross },
+    { title:'Push them off', text:'Push your opponent off the edge. When one of their feet leaves the board, you win.', draw:htpSlideWin },
 ];
 let htpRaf=null, htpScrollBox=null, htpScrollHandler=null;
 function stopHowToPlayAnim() {
@@ -2216,13 +2221,13 @@ function render() {
         s.innerHTML=`<span class="${w2}">${w2[0].toUpperCase()+w2.slice(1)} wins</span>`; m.textContent=''; h.textContent='Press Reset to play again.';
     } else { const c=G.active===0?'blue':'red';
         s.innerHTML=`<span class="${c}">${c[0].toUpperCase()+c.slice(1)}</span> to move${aiTurn?' <span style="color:#69727b">(AI)</span>':''}`;
-        m.textContent = G.pinned!==null ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?' — line limit, stop here':''}` : '';
+        m.textContent = G.pinned!==null ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?'. Line limit, stop here':''}` : '';
         h.textContent = aiTurn
             ? (aiAnim ? 'AI is swinging…' : 'AI is thinking…')
             : (G.pinned===null
-                ? 'Step 1 — tap one of your feet to lock it as the pivot.'
+                ? 'Step 1. Tap one of your feet to lock it as the pivot.'
                 : (G.handle===null
-                    ? 'Step 2 — drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.'
+                    ? 'Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.'
                     : 'Swinging… release to end your turn.'));
     }
 }
@@ -2640,7 +2645,7 @@ async function setSession(session) {
     signedOut.style.display = 'none'; signedIn.style.display = 'flex';
     const { data, error } = await sb.from('profiles').select('username, elo').eq('id', sbUser.id).single();
     document.getElementById('acctName').textContent = error ? sbUser.email : data.username;
-    document.getElementById('acctElo').textContent = error ? '—' : data.elo;
+    document.getElementById('acctElo').textContent = error ? '?' : data.elo;
     updateAcctStatus();
     // signing in from "Online 1v1" -> automatically pick the conversation back up
     if (pendingOnline) { closeAcctPanel(); document.getElementById('modeMsg').textContent = 'Online 1v1 is coming soon.'; }
@@ -2651,10 +2656,10 @@ async function setSession(session) {
 // immediately regardless, and the account panel only opens if/when the player asks for it.
 if (sbConfigured()) {
     ensureSupabase().catch(() => {
-        document.getElementById('acctMsg').textContent = 'Could not reach the login service — you can still play as a guest.';
+        document.getElementById('acctMsg').textContent = 'Could not reach the login service. You can still play as a guest.';
     });
 } else {
-    document.getElementById('acctMsg').textContent = 'Online accounts aren’t set up yet on this build — play as a guest.';
+    document.getElementById('acctMsg').textContent = 'Online accounts aren’t set up yet on this build. Play as a guest.';
     document.getElementById('acctSendLink').disabled = true;
     document.getElementById('acctGoogle').disabled = true;
     document.getElementById('acctSignUp').disabled = true;
@@ -2673,7 +2678,7 @@ document.getElementById('acctSignUp').addEventListener('click', async () => {
     const msg = document.getElementById('acctMsg');
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) { msg.textContent = 'Username must be 3-20 letters, numbers, or underscores.'; return; }
     if (password.length < 6) { msg.textContent = 'Password must be at least 6 characters.'; return; }
-    if (!sb) { msg.textContent = 'Still connecting — try again in a moment.'; return; }
+    if (!sb) { msg.textContent = 'Still connecting. Try again in a moment.'; return; }
     msg.textContent = 'Checking username…';
     const { data: taken } = await sb.from('profiles').select('id').eq('username', username).maybeSingle();
     if (taken) { msg.textContent = 'That username is already taken.'; return; }
@@ -2681,14 +2686,14 @@ document.getElementById('acctSignUp').addEventListener('click', async () => {
     const { error } = await sb.auth.signUp({
         email: usernameToEmail(username), password, options: { data: { username } }
     });
-    msg.textContent = error ? error.message : 'Account created — you are signed in.';
+    msg.textContent = error ? error.message : 'Account created. You are signed in.';
 });
 document.getElementById('acctLogIn').addEventListener('click', async () => {
     const username = document.getElementById('acctUser').value.trim();
     const password = document.getElementById('acctPass').value;
     const msg = document.getElementById('acctMsg');
     if (!username || !password) { msg.textContent = 'Enter your username and password.'; return; }
-    if (!sb) { msg.textContent = 'Still connecting — try again in a moment.'; return; }
+    if (!sb) { msg.textContent = 'Still connecting. Try again in a moment.'; return; }
     msg.textContent = 'Signing in…';
     const { error } = await sb.auth.signInWithPassword({ email: usernameToEmail(username), password });
     msg.textContent = error ? 'Incorrect username or password.' : '';
@@ -2697,14 +2702,14 @@ document.getElementById('acctSendLink').addEventListener('click', async () => {
     const email = document.getElementById('acctEmail').value.trim();
     const msg = document.getElementById('acctMsg');
     if (!email) { msg.textContent = 'Enter an email address first.'; return; }
-    if (!sb) { msg.textContent = 'Still connecting — try again in a moment.'; return; }
+    if (!sb) { msg.textContent = 'Still connecting. Try again in a moment.'; return; }
     msg.textContent = 'Sending…';
     const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
     msg.textContent = error ? error.message : 'Check your email for a sign-in link.';
 });
 document.getElementById('acctGoogle').addEventListener('click', async () => {
     const msg = document.getElementById('acctMsg');
-    if (!sb) { msg.textContent = 'Still connecting — try again in a moment.'; return; }
+    if (!sb) { msg.textContent = 'Still connecting. Try again in a moment.'; return; }
     const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.href } });
     if (error) msg.textContent = error.message;
 });
