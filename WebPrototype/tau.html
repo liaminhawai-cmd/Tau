@@ -20,31 +20,42 @@
     button { background:#2c3138; color:#e6e6e6; border:1px solid #3a4048; padding:5px 14px;
              border-radius:4px; cursor:pointer; margin:4px 0 6px; font-size:13px; }
     button:active { background:#3a4048; }
-    #menu { display:flex; flex-direction:column; align-items:center; gap:10px; margin-top:4vh; }
+    #menu { display:flex; flex-direction:column; align-items:center; gap:10px; margin-top:3vh; }
     #menu p { color:#9aa4ad; font-size:13px; margin:0; }
-    #menu .modeBtn { font-size:16px; padding:14px 34px; border-radius:8px; }
+    #menu .modeBtn { font-size:16px; padding:14px 34px; border-radius:8px; width:260px; box-sizing:border-box; }
     #game { display:none; flex-direction:column; align-items:center; width:100%; }
-    #demoCanvas { background:#0c0e11; border:1px solid #2c3138; border-radius:8px; margin-bottom:8px; }
-    #acctStep, #modeStep { display:flex; flex-direction:column; align-items:center; gap:10px; width:260px; }
-    #acctSignedOut, #acctSignedIn { flex-direction:column; align-items:center; gap:8px; width:100%; }
-    #acctStep input { background:#1a1e24; color:#e6e6e6; border:1px solid #3a4048; border-radius:4px;
+    #demoViews { display:flex; gap:8px; margin-bottom:4px; }
+    #demoCanvas, #demoViews #view3d { background:#0c0e11; border:1px solid #2c3138; border-radius:8px; }
+    #acctStatus { margin-bottom:4px; }
+    .link { background:none; border:none; color:#6b9eff; padding:0; margin:0; font-size:13px;
+            text-decoration:underline; cursor:pointer; }
+    #acctPanel { display:flex; flex-direction:column; align-items:center; gap:8px; width:260px;
+                 border-top:1px solid #2c3138; padding-top:14px; margin-top:6px; }
+    #acctSignedOut, #acctSignedIn { display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; }
+    #acctPanel input { background:#1a1e24; color:#e6e6e6; border:1px solid #3a4048; border-radius:4px;
                       padding:8px 10px; font-size:13px; width:100%; box-sizing:border-box; }
-    #acctStep .row { display:flex; gap:8px; width:100%; }
-    #acctStep .msg { font-size:12px; color:#9aa4ad; min-height:16px; text-align:center; }
-    #acctStep .profile { font-size:14px; text-align:center; }
-    #acctStep .elo { color:#ffd23f; font-weight:bold; }
-    #modeStep #modeWho { margin-bottom:4px; }
-    #backToAccount { font-size:12px; opacity:0.75; }
+    #acctPanel .row { display:flex; gap:8px; width:100%; }
+    #acctPanel .msg { font-size:12px; color:#9aa4ad; min-height:16px; text-align:center; }
+    #acctPanel .profile { font-size:14px; text-align:center; }
+    #acctPanel .elo { color:#ffd23f; font-weight:bold; }
+    #modeMsg { min-height:16px; text-align:center; }
 </style>
 </head>
 <body>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
-        <canvas id="demoCanvas" width="240" height="240"></canvas>
+        <div id="demoViews">
+            <canvas id="demoCanvas" width="240" height="240"></canvas>
+        </div>
 
-        <div id="acctStep">
-            <p>Sign in to save your rating online, or jump right in.</p>
+        <p id="acctStatus">Playing as Guest &middot; <button class="link" id="acctStatusBtn">Sign in</button></p>
+        <button class="modeBtn" id="modeLocal">Local 1v1</button>
+        <button class="modeBtn" id="modeOnline">Online 1v1</button>
+        <button class="modeBtn" id="modeAI">vs AI</button>
+        <p class="msg" id="modeMsg"></p>
+
+        <div id="acctPanel" style="display:none;">
             <div id="acctSignedOut">
                 <div class="row">
                     <input id="acctEmail" type="email" placeholder="you@example.com" autocomplete="email">
@@ -52,21 +63,12 @@
                 </div>
                 <button id="acctGoogle">Sign in with Google</button>
                 <p class="msg" id="acctMsg"></p>
-                <button class="modeBtn" id="continueGuest">Continue as Guest</button>
             </div>
             <div id="acctSignedIn" style="display:none;">
                 <p class="profile">Signed in as <b id="acctName"></b><br>Rating: <span class="elo" id="acctElo"></span></p>
-                <button class="modeBtn" id="continueSignedIn">Continue</button>
                 <button id="acctSignOut">Sign out</button>
             </div>
-        </div>
-
-        <div id="modeStep" style="display:none;">
-            <p id="modeWho"></p>
-            <button class="modeBtn" id="modeLocal">Local 1v1</button>
-            <button class="modeBtn" id="modeOnline">Online 1v1</button>
-            <button class="modeBtn" id="modeAI">vs AI</button>
-            <button id="backToAccount">&larr; Switch account</button>
+            <button id="acctPanelClose">Close</button>
         </div>
     </div>
     <div id="game">
@@ -1154,6 +1156,9 @@ const CFG = {
     ],
     edgeEps: 0.5,
     lineWidthFrac: 0.0079,          // printed ring/arc line width, as a fraction of edgeU (measured off the design photo)
+    padRadiusFrac: 0.0082,          // printed dot radius, as a fraction of edgeU (measured off the design photo) —
+                                     // the real feet have magnets this size, so a foot fully covers its dot at rest
+                                     // rather than tapering to an infinitely sharp point.
     footR: 23.095,                 // hub→foot = 46.19mm (tripod smoove 2021.stl)
     startX: 30.597,                // hub offset: puts the two back feet exactly halfway between the rings
     maxCrossingsPerTurn: 1,
@@ -1181,6 +1186,7 @@ CFG.startDots = (() => {
         }
     return d;   // first 3 = left (blue), last 3 = right (red)
 })();
+CFG.padRadius = CFG.edgeU * CFG.padRadiusFrac;
 
 const norm  = a => { while (a > Math.PI) a -= 2*Math.PI; while (a < -Math.PI) a += 2*Math.PI; return a; };
 const radU  = p => Math.hypot(p.x, p.y);
@@ -1677,8 +1683,14 @@ function demoStepLoop() {
             demoAnim.dir *= -1; demoAnim.triedFlip = true;
             G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
         } else {
-            const backoffDeg = 2 + Math.random()*8;   // small range short of the final crossing, for visual variety
-            G.pieces[G.active].rotateAround(G.pivot.x, G.pivot.y, -demoAnim.dir*backoffDeg*Math.PI/180);
+            // Back off a random PROPORTION of this turn's own swing, not a fixed degree
+            // range: a fixed backoff could exceed (or nearly cancel) a short swing when the
+            // piece started close to the blocking line, undoing real progress and reading as
+            // a twitch turn after turn. A proportional backoff always keeps most of whatever
+            // this turn actually covered — "cross the first line, stop somewhere random
+            // before the second" rather than "stop, then jitter back by a fixed amount".
+            const keepFrac = 0.6 + Math.random()*0.3;   // keep 60%-90% of the full legal swing
+            G.pieces[G.active].rotateAround(G.pivot.x, G.pivot.y, -demoAnim.dir*Math.abs(G.netRad)*(1-keepFrac));
             demoAnim = null; endTurn(); demoDraw();
             demoTimer = setTimeout(demoPlayTurn, 320);
             return;
@@ -1695,23 +1707,43 @@ function demoPlayTurn() {
     demoAnim = { dir: directionToward(G.pivot, feet[plan.swingIdx], plan.target), triedFlip:false };
     demoStepLoop();
 }
+// While the demo runs, the SAME #view3d canvas/renderer normally used for real play is
+// reparented into the menu (WebGL context survives a DOM move) so the idle screen shows the
+// 3D view too, side by side with the flat 2D one — more fun to watch than either alone.
+// It moves back into #game the moment a real match starts.
+function demoResize() {
+    const cv3 = document.getElementById('view3d');
+    if (!renderer || cv3.parentElement.id !== 'demoViews') return;
+    if (!show3d) { cv3.style.display = 'none'; return; }
+    const size = 240;
+    cv3.style.width = size+'px'; cv3.style.height = size+'px'; cv3.style.display = 'block';
+    renderer.setSize(size, size, false);
+    camera.aspect = 1; camera.updateProjectionMatrix();
+}
 function demoStart() {
     if (demoOn) return;
     if (!demoCtx) demoCtx = document.getElementById('demoCanvas').getContext('2d');
+    if (renderer) { document.getElementById('demoViews').appendChild(document.getElementById('view3d')); demoResize(); }
     demoOn = true; reset(); demoDraw(); demoPlayTurn();
 }
 function demoStop() { demoOn=false; demoAnim=null; clearTimeout(demoTimer); }
 
-// ---------- Menu: account -> mode -> game, "Menu" to come back and re-choose ----------
-function showModeStep() {
-    document.getElementById('acctStep').style.display = 'none';
-    document.getElementById('modeStep').style.display = 'flex';
-    document.getElementById('modeWho').textContent = sbUser
+// ---------- Menu: mode buttons are always visible; sign-in is opt-in, not a gate ----------
+function updateAcctStatus() {
+    document.getElementById('acctStatus').innerHTML = sbUser
         ? 'Signed in as ' + (document.getElementById('acctName').textContent || sbUser.email)
-        : 'Playing as Guest';
+            + ' &middot; <button class="link" id="acctStatusBtn2">Sign out</button>'
+        : 'Playing as Guest &middot; <button class="link" id="acctStatusBtn2">Sign in</button>';
+    document.getElementById('acctStatusBtn2').addEventListener('click', () => {
+        if (sbUser) sb.auth.signOut(); else openAcctPanel();
+    });
 }
+let pendingOnline = false;   // true while the account panel was opened FROM "Online 1v1"
+function openAcctPanel() { document.getElementById('acctPanel').style.display = 'flex'; }
+function closeAcctPanel() { document.getElementById('acctPanel').style.display = 'none'; pendingOnline = false; }
 function startGame(aiMode) {
     demoStop();
+    if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
     vsAI = aiMode;
     clearTimeout(aiTimer); aiAnim = null;
     document.getElementById('menu').style.display = 'none';
@@ -1727,14 +1759,13 @@ function backToMenu() {
 document.getElementById('modeLocal').addEventListener('click', ()=>startGame(false));
 document.getElementById('modeAI').addEventListener('click', ()=>startGame(true));
 document.getElementById('modeOnline').addEventListener('click', () => {
-    const who = document.getElementById('modeWho');
-    who.textContent = sbUser ? 'Online 1v1 is coming soon.' : 'Sign in to play online — switch account below.';
+    const msg = document.getElementById('modeMsg');
+    if (sbUser) { msg.textContent = 'Online 1v1 is coming soon.'; return; }
+    msg.textContent = '';
+    pendingOnline = true;
+    openAcctPanel();
 });
-document.getElementById('continueGuest').addEventListener('click', showModeStep);
-document.getElementById('backToAccount').addEventListener('click', () => {
-    document.getElementById('modeStep').style.display = 'none';
-    document.getElementById('acctStep').style.display = 'flex';
-});
+document.getElementById('acctPanelClose').addEventListener('click', closeAcctPanel);
 document.getElementById('menuBtn').addEventListener('click', backToMenu);
 canvas.addEventListener('mousedown', onDown);
 canvas.addEventListener('mousemove', onMove);
@@ -1840,16 +1871,18 @@ function boardTexture() {
             const p=b(a.cx+Math.cos(t)*a.r, a.cy+Math.sin(t)*a.r); k?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y); }
         c.stroke(); }
     for (let k=0;k<6;k++){ const d=CFG.startDots[k], p=b(d[0],d[1]);
-        c.beginPath(); c.arc(p.x,p.y,5,0,7);
+        c.beginPath(); c.arc(p.x,p.y,CFG.padRadius*sc,0,7);
         c.fillStyle = k<3 ? '#4a6fd4' : '#c0392b'; c.fill(); }
     return new THREE.CanvasTexture(cv);
 }
 // A leg as ONE continuous mesh: full legRad radius for most of the quarter-circle arc,
-// smoothly (smoothstep) tapering to a true point exactly at the foot (ground, y=0).
-// Built by hand off the curve's own Frenet frames (the same frames TubeGeometry uses
-// internally), so the taper always meets the cylindrical part following the curve's real
-// tangent — never a separately-oriented cone glued on with an approximate straight-line
-// axis, which is what produced a visible seam/notch where the two pieces met.
+// smoothly (smoothstep) tapering down to a flat CFG.padRadius pad exactly at the foot
+// (ground, y=0) — matching the physical piece, where a magnet the same size as the printed
+// dot sits in the foot, fully covering it, rather than an infinitely sharp point. Built by
+// hand off the curve's own Frenet frames (the same frames TubeGeometry uses internally), so
+// the taper always meets the cylindrical part following the curve's real tangent — never a
+// separately-oriented cone glued on with an approximate straight-line axis, which is what
+// produced a visible seam/notch where the two pieces met.
 function buildTaperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
     const frames = curve.computeFrenetFrames(lenSegs, false);
     const positions=[], normals=[], indices=[];
@@ -1859,7 +1892,7 @@ function buildTaperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
         let rad=legRad;
         if (u > 1-taperFrac){
             const t=(u-(1-taperFrac))/taperFrac, s=t*t*(3-2*t);   // smoothstep, 0→1
-            rad=legRad*(1-s);
+            rad=legRad*(1-s) + CFG.padRadius*s;                    // taper to the pad radius, not to zero
         }
         for (let j=0;j<radialSegs;j++){
             const phi=j/radialSegs*Math.PI*2;
@@ -1874,7 +1907,8 @@ function buildTaperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
         const a=i*radialSegs+j, b=i*radialSegs+jn, c=(i+1)*radialSegs+j, d=(i+1)*radialSegs+jn;
         indices.push(a,c,b, b,c,d);
     }
-    // apex: a real point, exactly on the ground, fan-connected to the last (near-zero) ring
+    // centre of the flat pad, exactly on the ground, at the SAME point as the last (padRadius)
+    // ring — fanning a same-position ring+centre makes a flat disk cap, not a cone to a point.
     const apexIdx=(lenSegs+1)*radialSegs, apex=curve.getPointAt(1), tan=curve.getTangentAt(1);
     positions.push(apex.x, apex.y, apex.z); normals.push(tan.x, tan.y, tan.z);
     const lastRing=lenSegs*radialSegs;
@@ -2089,6 +2123,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_qo7O-7f6Wa69SV4f66aLXw_V67tpjNp';
 
 let sb = null, sbUser = null;
 function sbConfigured() { return !SUPABASE_URL.startsWith('YOUR_') && !SUPABASE_ANON_KEY.startsWith('YOUR_'); }
+updateAcctStatus();   // now that sbUser exists, wire the real click handler before any async auth check resolves
 
 async function ensureSupabase() {
     if (sb) return sb;
@@ -2102,17 +2137,19 @@ async function ensureSupabase() {
 async function setSession(session) {
     sbUser = session ? session.user : null;
     const signedOut = document.getElementById('acctSignedOut'), signedIn = document.getElementById('acctSignedIn');
-    if (!sbUser) { signedOut.style.display = 'flex'; signedIn.style.display = 'none'; return; }
+    if (!sbUser) { signedOut.style.display = 'flex'; signedIn.style.display = 'none'; updateAcctStatus(); return; }
     signedOut.style.display = 'none'; signedIn.style.display = 'flex';
     const { data, error } = await sb.from('profiles').select('username, elo').eq('id', sbUser.id).single();
     document.getElementById('acctName').textContent = error ? sbUser.email : data.username;
     document.getElementById('acctElo').textContent = error ? '—' : data.elo;
+    updateAcctStatus();
+    // signing in from "Online 1v1" -> automatically pick the conversation back up
+    if (pendingOnline) { closeAcctPanel(); document.getElementById('modeMsg').textContent = 'Online 1v1 is coming soon.'; }
 }
 
-// Checked once on load (the account step is the first screen now, not gated behind a
-// click) so a returning signed-in player sees their status immediately. Guest play never
-// depends on this succeeding — if it's unconfigured or unreachable, signedOut stays
-// visible and "Continue as Guest" works regardless.
+// Checked once on load, in the background, so a returning signed-in player's status shows
+// up without any click. Guest play never depends on this succeeding — mode buttons are live
+// immediately regardless, and the account panel only opens if/when the player asks for it.
 if (sbConfigured()) {
     ensureSupabase().catch(() => {
         document.getElementById('acctMsg').textContent = 'Could not reach the login service — you can still play as a guest.';
@@ -2127,16 +2164,18 @@ document.getElementById('acctSendLink').addEventListener('click', async () => {
     const email = document.getElementById('acctEmail').value.trim();
     const msg = document.getElementById('acctMsg');
     if (!email) { msg.textContent = 'Enter an email address first.'; return; }
+    if (!sb) { msg.textContent = 'Still connecting — try again in a moment.'; return; }
     msg.textContent = 'Sending…';
     const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
     msg.textContent = error ? error.message : 'Check your email for a sign-in link.';
 });
 document.getElementById('acctGoogle').addEventListener('click', async () => {
+    const msg = document.getElementById('acctMsg');
+    if (!sb) { msg.textContent = 'Still connecting — try again in a moment.'; return; }
     const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.href } });
-    if (error) document.getElementById('acctMsg').textContent = error.message;
+    if (error) msg.textContent = error.message;
 });
-document.getElementById('acctSignOut').addEventListener('click', async () => { await sb.auth.signOut(); });
-document.getElementById('continueSignedIn').addEventListener('click', showModeStep);
+document.getElementById('acctSignOut').addEventListener('click', async () => { await sb.auth.signOut(); closeAcctPanel(); });
 </script>
 </body>
 </html>
