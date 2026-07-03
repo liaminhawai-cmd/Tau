@@ -32,6 +32,13 @@
     #acctStatus { margin-bottom:4px; }
     .link { background:none; border:none; color:#6b9eff; padding:0; margin:0; font-size:13px;
             text-decoration:underline; cursor:pointer; }
+    /* Always-visible but understated: sits in the corner on every screen (menu and in-game),
+       low-contrast until hovered so it never competes with the board. */
+    #themeToggle { position:fixed; top:9px; right:12px; z-index:60; background:none; border:none;
+                   color:#9aa4ad; font-size:19px; line-height:1; padding:6px 7px; margin:0;
+                   opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
+    #themeToggle:hover { opacity:0.95; }
+    #themeToggle:active { background:none; }
     #acctPanel { display:flex; flex-direction:column; align-items:center; gap:8px; width:260px;
                  border-top:1px solid #2c3138; padding-top:14px; margin-top:6px; }
     #acctSignedOut, #acctSignedIn { display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; }
@@ -77,6 +84,7 @@
 </style>
 </head>
 <body>
+<button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -1622,8 +1630,8 @@ let cx = 0, cy = 0, scale = 1;   // recomputed every frame by syncCanvas (px)
 let renderer=null, scene, camera, controls, tripods=[];   // 3D side view — always shown once THREE loads
 let pivotGlowMesh=null, boardTop=null, camProbe=null;   // pivot glow + board surface + fit-probe camera (built in init3D)
 let htpTripods=[];   // throwaway pieces for the how-to-play "push them off" 3D demo (built in init3D)
-let currentTheme = 'light';   // 'light' = pale physical-board look; 'dark' = sleek dark board
-try { currentTheme = localStorage.getItem('tauTheme') || 'light'; } catch(e) {}
+let currentTheme = 'dark';   // 'dark' = sleek dark board (default); 'light' = pale physical-board look
+try { currentTheme = localStorage.getItem('tauTheme') || 'dark'; } catch(e) {}
 // One palette for every flat board drawing (2D game canvas, landing demo, how-to-play slides)
 // so the 2D and 3D boards always match: light = pale physical board, dark = sleek dark board.
 function boardColors() {
@@ -2233,7 +2241,23 @@ function setTheme(t) {
     currentTheme = t;
     try { localStorage.setItem('tauTheme', t); } catch(e) {}
     applyTheme();
+    updateThemeToggleIcon();
+    // Repaint every visible 2D surface right away so the switch is instant, rather than waiting
+    // for the next game move / demo animation frame: the in-game board (render) AND the landing
+    // demo board (demoDraw, which otherwise only redraws mid-animation, not during its between-
+    // move pauses). Both are guarded internally, so calling them off-screen is harmless.
+    render();
+    demoDraw();
 }
+// The corner button shows the theme you'll switch TO: a sun while dark (tap to brighten),
+// a moon while light (tap to darken).
+function updateThemeToggleIcon() {
+    const btn = document.getElementById('themeToggle');
+    if (btn) btn.textContent = currentTheme === 'dark' ? '☀' : '☾';
+}
+document.getElementById('themeToggle').addEventListener('click',
+    () => setTheme(currentTheme === 'dark' ? 'light' : 'dark'));
+updateThemeToggleIcon();
 function openSettings() {
     const body = `<div class="setRow"><span>Board theme</span>
         <span class="seg" id="themeSeg">
@@ -2828,7 +2852,13 @@ document.getElementById('acctLogIn').addEventListener('click', async () => {
     if (!sb) { msg.textContent = 'Still connecting. Try again in a moment.'; return; }
     msg.textContent = 'Signing in…';
     const { error } = await sb.auth.signInWithPassword({ email: usernameToEmail(username), password });
-    msg.textContent = error ? 'Incorrect username or password.' : '';
+    if (!error) { msg.textContent = ''; return; }
+    // "Invalid login credentials" is the ordinary wrong-username/password case; anything else
+    // (e.g. "Email not confirmed" when Supabase's email-confirmation toggle is on, which breaks
+    // the synthetic-username scheme) is shown verbatim so it can actually be diagnosed.
+    msg.textContent = /invalid login credentials/i.test(error.message)
+        ? 'Incorrect username or password.'
+        : error.message;
 });
 document.getElementById('acctSendLink').addEventListener('click', async () => {
     const email = document.getElementById('acctEmail').value.trim();
