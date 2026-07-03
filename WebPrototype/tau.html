@@ -58,11 +58,22 @@
         <div id="acctPanel" style="display:none;">
             <div id="acctSignedOut">
                 <div class="row">
+                    <input id="acctUser" type="text" placeholder="username" autocomplete="username" maxlength="20">
+                </div>
+                <div class="row">
+                    <input id="acctPass" type="password" placeholder="password" autocomplete="current-password">
+                </div>
+                <div class="row">
+                    <button id="acctLogIn">Log in</button>
+                    <button id="acctSignUp">Sign up</button>
+                </div>
+                <p class="msg" id="acctMsg"></p>
+                <p class="msg">— or —</p>
+                <div class="row">
                     <input id="acctEmail" type="email" placeholder="you@example.com" autocomplete="email">
                     <button id="acctSendLink">Send link</button>
                 </div>
                 <button id="acctGoogle">Sign in with Google</button>
-                <p class="msg" id="acctMsg"></p>
             </div>
             <div id="acctSignedIn" style="display:none;">
                 <p class="profile">Signed in as <b id="acctName"></b><br>Rating: <span class="elo" id="acctElo"></span></p>
@@ -2173,8 +2184,42 @@ if (sbConfigured()) {
     document.getElementById('acctMsg').textContent = 'Online accounts aren’t set up yet on this build — play as a guest.';
     document.getElementById('acctSendLink').disabled = true;
     document.getElementById('acctGoogle').disabled = true;
+    document.getElementById('acctSignUp').disabled = true;
+    document.getElementById('acctLogIn').disabled = true;
 }
 
+// Supabase auth is email-keyed, but we want plain username+password so players don't need
+// a fresh magic link every time. Map each username to a synthetic address under the
+// `.invalid` TLD (reserved by RFC 2606 to never resolve to a real mailbox) and use that
+// under the hood — the player never sees or types an email for this flow.
+function usernameToEmail(username) { return username.trim().toLowerCase() + '@users.tau.invalid'; }
+
+document.getElementById('acctSignUp').addEventListener('click', async () => {
+    const username = document.getElementById('acctUser').value.trim();
+    const password = document.getElementById('acctPass').value;
+    const msg = document.getElementById('acctMsg');
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) { msg.textContent = 'Username must be 3-20 letters, numbers, or underscores.'; return; }
+    if (password.length < 6) { msg.textContent = 'Password must be at least 6 characters.'; return; }
+    if (!sb) { msg.textContent = 'Still connecting — try again in a moment.'; return; }
+    msg.textContent = 'Checking username…';
+    const { data: taken } = await sb.from('profiles').select('id').eq('username', username).maybeSingle();
+    if (taken) { msg.textContent = 'That username is already taken.'; return; }
+    msg.textContent = 'Creating account…';
+    const { error } = await sb.auth.signUp({
+        email: usernameToEmail(username), password, options: { data: { username } }
+    });
+    msg.textContent = error ? error.message : 'Account created — you are signed in.';
+});
+document.getElementById('acctLogIn').addEventListener('click', async () => {
+    const username = document.getElementById('acctUser').value.trim();
+    const password = document.getElementById('acctPass').value;
+    const msg = document.getElementById('acctMsg');
+    if (!username || !password) { msg.textContent = 'Enter your username and password.'; return; }
+    if (!sb) { msg.textContent = 'Still connecting — try again in a moment.'; return; }
+    msg.textContent = 'Signing in…';
+    const { error } = await sb.auth.signInWithPassword({ email: usernameToEmail(username), password });
+    msg.textContent = error ? 'Incorrect username or password.' : '';
+});
 document.getElementById('acctSendLink').addEventListener('click', async () => {
     const email = document.getElementById('acctEmail').value.trim();
     const msg = document.getElementById('acctMsg');

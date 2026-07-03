@@ -41,7 +41,14 @@ security definer set search_path = public
 as $$
 begin
   insert into public.profiles (id, username)
-  values (new.id, coalesce(new.raw_user_meta_data->>'full_name', 'Player_' || substr(new.id::text, 1, 6)));
+  values (
+    new.id,
+    coalesce(
+      nullif(new.raw_user_meta_data->>'username', ''),
+      nullif(new.raw_user_meta_data->>'full_name', ''),
+      'Player_' || substr(new.id::text, 1, 6)
+    )
+  );
   return new;
 end;
 $$;
