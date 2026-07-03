@@ -2017,20 +2017,24 @@ function htpSlideCross(c,w,h,t){
 }
 function htpSlideWin(c,w,h,t){
     const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
-    const prog=htpEaseHold((t%2.4)/2.4);
-    htpPiece(c, mkP(0,-30,6,0.3), m.b, -1, t);             // winner stays put
-    const red=mkP(1, 26+prog*46, 2, prog*0.9);             // loser pushed out over the edge
-    htpPiece(c, red, m.b, -1, t);
+    const prog=htpEaseHold((t%2.6)/2.6);
+    const blue=mkP(0,-2,0,0.3), red=mkP(1,38,0,Math.PI);   // real push that carries red over the edge
+    const pivotIdx=2, pv=blue.feet()[pivotIdx];
+    const steps=22, step=(prog*(-70*Math.PI/180))/steps || 0;
+    for(let s=0;s<steps;s++){ blue.rotateAround(pv.x,pv.y,step); resolvePush(blue,red); }
+    htpPiece(c,red,m.b,-1,t);
+    htpPiece(c,blue,m.b,pivotIdx,t);
     if(red.feet().some(f=>radU(f)>CFG.edgeU)){
         c.fillStyle='#ffd23f'; c.font='bold 16px Arial'; c.textAlign='center'; c.fillText('You win!', w/2, 18);
     }
 }
+// Wording taken from the designer's own rules (Written elements.docx).
 const HTP_STEPS = [
-    { title:'1. Pick your pivot', text:'Tap one of your feet to lock it in place — it stays put (glowing) while the other two swing.', draw:htpSlidePivot },
-    { title:'2. Swing around it', text:'Drag a different foot around the pivot to rotate your piece.', draw:htpSlideSwing },
-    { title:'3. Push on contact', text:'Swing into your opponent’s legs to push them — contact is true 3D, so a low foot can slip under a higher one.', draw:htpSlidePush },
-    { title:'4. One line per turn', text:'You may cross only one board line per turn — a second crossing is blocked.', draw:htpSlideCross },
-    { title:'5. Win by pushing them off', text:'Win when any of your opponent’s feet cross the outer edge.', draw:htpSlideWin },
+    { title:'Hold one foot', text:'Move your piece by holding one foot still and rotating the other two around it. The held foot glows.', draw:htpSlidePivot },
+    { title:'Move in circles', text:'The two moving feet trace an arc. Movement is continuous, so stop anywhere you like — but you can only turn one direction per turn.', draw:htpSlideSwing },
+    { title:'Push your opponent', text:'Push the opponent’s piece by moving into it, slowly and smoothly, so the pieces move together.', draw:htpSlidePush },
+    { title:'One line per turn', text:'A piece may cross only one line per turn, and must stop before a second. If a foot starts on a line, leaving it doesn’t count.', draw:htpSlideCross },
+    { title:'Push them off the edge', text:'You win when one or more of your opponent’s feet are pushed off the edge of the board.', draw:htpSlideWin },
 ];
 let htpRaf=null, htpScrollBox=null, htpScrollHandler=null;
 function stopHowToPlayAnim() {
