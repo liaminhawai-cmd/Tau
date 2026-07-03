@@ -51,6 +51,12 @@
     #modalBody:empty { display:none; }
     #modalBtns { display:flex; flex-direction:column; gap:8px; }
     #modalBtns button { font-size:15px; padding:10px; margin:0; width:100%; box-sizing:border-box; }
+    #menuLinks { display:flex; gap:16px; }
+    .setRow { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:4px 0; }
+    .setRow > span:first-child { font-size:14px; color:#e6e6e6; }
+    .seg { display:inline-flex; border:1px solid #3a4048; border-radius:6px; overflow:hidden; }
+    .seg button { margin:0; border:none; border-radius:0; padding:6px 16px; font-size:13px; background:#1a1e24; color:#c7ccd1; }
+    .seg button.active { background:#ffd23f; color:#15181c; font-weight:bold; }
     .htpSlide { padding:12px 0; border-bottom:1px solid #2c3138; scroll-margin-top:4px; }
     .htpSlide:first-child { padding-top:2px; }
     .htpSlide:last-child { border-bottom:none; }
@@ -80,7 +86,7 @@
         <button class="modeBtn" id="modeOnline">Online 1v1</button>
         <button class="modeBtn" id="modeAI">vs AI</button>
         <p class="msg" id="modeMsg"></p>
-        <button class="link" id="howToPlayBtn">How to play</button>
+        <div id="menuLinks"><button class="link" id="howToPlayBtn">How to play</button><button class="link" id="settingsBtn">Settings</button></div>
 
         <div id="acctPanel" style="display:none;">
             <div id="acctSignedOut">
@@ -1611,7 +1617,9 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 let cx = 0, cy = 0, scale = 1;   // recomputed every frame by syncCanvas (px)
 let renderer=null, scene, camera, controls, tripods=[];   // 3D side view — always shown once THREE loads
-let pivotGlowMesh=null, sweepArcMeshes=[];   // pivot glow + sweep-arc hints (built in init3D)
+let pivotGlowMesh=null, boardTop=null, camProbe=null;   // pivot glow + board surface + fit-probe camera (built in init3D)
+let currentTheme = 'light';   // 'light' = pale physical-board look; 'dark' = 3D board matches the 2D board
+try { currentTheme = localStorage.getItem('tauTheme') || 'light'; } catch(e) {}
 let clock=null, fall={active:false};                                  // loss-animation state
 
 // Keep the 2D canvas backing store, DPR transform and board scale correct no matter
@@ -1703,6 +1711,7 @@ function onUp() {
 // ends a turn: a human release, and the AI's own swing finishing.
 function finishTurn() {
     endTurn();
+    progressCentering();   // each completed move creeps the camera a quarter back toward centre
     if (G.over) { triggerFall(); showGameOverModal(); }
     render();
     if (vsAI && !G.over && G.active===aiIdx) aiTimer = setTimeout(startAiTurn, 450);   // brief "thinking" pause
@@ -1801,7 +1810,7 @@ function demoStepLoop() {
         demoDraw();
         demoTimer = setTimeout(demoStepLoop, 35);
     } else {
-        demoAnim = null; endTurn(); demoDraw();
+        demoAnim = null; endTurn(); progressCentering(); demoDraw();
         demoTimer = setTimeout(demoPlayTurn, 320);
     }
 }
@@ -1894,6 +1903,7 @@ function startGame(aiMode, humanColorIdx) {
     humanIdx = humanColorIdx===undefined ? 0 : humanColorIdx;
     aiIdx = 1 - humanIdx;
     clearTimeout(aiTimer); aiAnim = null;
+    camCenterFrac = 1; camManualSet = false;   // fresh game starts fully centred
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
     reset(); resize();
@@ -1902,6 +1912,7 @@ function startGame(aiMode, humanColorIdx) {
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
     clearTimeout(aiTimer); aiAnim = null;
+    camCenterFrac = 1; camManualSet = false;   // the menu demo frames itself fully
     document.getElementById('game').style.display = 'none';
     document.getElementById('menu').style.display = 'flex';
     demoStart();
@@ -2060,6 +2071,32 @@ function openHowToPlay() {
     setActive(0);
 }
 document.getElementById('howToPlayBtn').addEventListener('click', openHowToPlay);
+// ---------- Settings: board theme (dark/light) ----------
+function applyTheme() {
+    if (!boardTop) return;   // 3D not built (THREE failed to load) — nothing to retexture
+    const tex = boardTexture(currentTheme === 'dark');
+    const old = boardTop.material.map;
+    boardTop.material.map = tex; boardTop.material.needsUpdate = true;
+    if (old) old.dispose();
+}
+function setTheme(t) {
+    currentTheme = t;
+    try { localStorage.setItem('tauTheme', t); } catch(e) {}
+    applyTheme();
+}
+function openSettings() {
+    const body = `<div class="setRow"><span>Board theme</span>
+        <span class="seg" id="themeSeg">
+            <button data-theme="light">Light</button>
+            <button data-theme="dark">Dark</button>
+        </span></div>`;
+    showModal('Settings', body, [ { label: 'Done', onClick: () => {} } ], true);
+    const seg = document.getElementById('themeSeg');
+    const mark = () => seg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.theme === currentTheme));
+    mark();
+    seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { setTheme(b.dataset.theme); mark(); }));
+}
+document.getElementById('settingsBtn').addEventListener('click', openSettings);
 document.getElementById('modeOnline').addEventListener('click', () => {
     const msg = document.getElementById('modeMsg');
     if (sbUser) { msg.textContent = 'Online 1v1 is coming soon.'; return; }
@@ -2166,7 +2203,10 @@ function glowTexture() {
     c.fillStyle=g; c.fillRect(0,0,S,S);
     return new THREE.CanvasTexture(cv);
 }
-function boardTexture() {
+// Light theme = the pale physical-board look; dark theme = same dark palette as the flat 2D
+// board (disc #171c22, lines #414b56), so in dark mode the two views match instead of the 3D
+// board being a bright pale disc next to a dark 2D one.
+function boardTexture(dark) {
     const S=1024, cv=document.createElement('canvas'); cv.width=cv.height=S;
     // sc must match the mesh's own UV mapping (the full canvas -> the full CFG.edgeU-radius
     // disc) exactly. A margin factor here previously left the mesh's UV sampling and this
@@ -2176,8 +2216,12 @@ function boardTexture() {
     // coordinates) in the 3D view.
     const c=cv.getContext('2d'), sc=S/(2*CFG.edgeU), O=S/2;
     const b=(mx,my)=>({x:O+mx*sc, y:O+my*sc});
-    c.fillStyle='#efe4a6'; c.beginPath(); c.arc(O,O,CFG.edgeU*sc,0,7); c.fill();   // pale board — no edge line
-    c.strokeStyle='#26251f'; c.lineWidth=Math.max(2, CFG.edgeU*CFG.lineWidthFrac*sc);
+    const boardCol = dark ? '#171c22' : '#efe4a6';
+    const lineCol  = dark ? '#414b56' : '#26251f';
+    const dotBlue  = dark ? '#6b9eff' : '#4a6fd4';
+    const dotRed   = dark ? '#ff6b6b' : '#c0392b';
+    c.fillStyle=boardCol; c.beginPath(); c.arc(O,O,CFG.edgeU*sc,0,7); c.fill();   // board — no edge line
+    c.strokeStyle=lineCol; c.lineWidth=Math.max(2, CFG.edgeU*CFG.lineWidthFrac*sc);
     for (const r of CFG.rings){ c.beginPath(); c.arc(O,O,r*sc,0,7); c.stroke(); }
     for (const a of CFG.sideArcs){ c.beginPath(); const seg=90;
         for (let k=0;k<=seg;k++){ const t=(a.a0+(a.a1-a.a0)*k/seg)*Math.PI/180;
@@ -2185,7 +2229,7 @@ function boardTexture() {
         c.stroke(); }
     for (let k=0;k<6;k++){ const d=CFG.startDots[k], p=b(d[0],d[1]);
         c.beginPath(); c.arc(p.x,p.y,CFG.padRadius*sc,0,7);
-        c.fillStyle = k<3 ? '#4a6fd4' : '#c0392b'; c.fill(); }
+        c.fillStyle = k<3 ? dotBlue : dotRed; c.fill(); }
     return new THREE.CanvasTexture(cv);
 }
 // A leg as ONE continuous mesh: full legRad radius for most of the quarter-circle arc,
@@ -2256,35 +2300,35 @@ function init3D() {
     scene=new THREE.Scene(); scene.background=new THREE.Color(0x0c0e11);
     camera=new THREE.PerspectiveCamera(42,1,1,3000);
     camera.position.set(0,88,115); camera.lookAt(0,6,0);
+    camProbe=new THREE.PerspectiveCamera(42,1,1,3000);   // off-screen: tests whether a candidate view fits all 6 feet
     controls=new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping=true; controls.dampingFactor=0.08; controls.enablePan=false;
     controls.minDistance=62; controls.maxDistance=420; controls.maxPolarAngle=Math.PI*0.49;   // 420: headroom for auto-cam's worst-case zoom-out
     controls.target.set(0,6,0); controls.update();
-    controls.addEventListener('start', () => { autoCam = false; });   // any manual drag/zoom/pinch hands off auto-cam
+    // Manual camera control: while the player is actively dragging/zooming we never fight them
+    // ('start'→'end'). On release we remember that view as the "0% centred" reference and reset
+    // the progressive-centring counter, so the camera drifts back toward centre only gradually,
+    // a quarter of the remaining gap per subsequent move (see updateGentleCam).
+    controls.addEventListener('start', () => { camDragging = true; });
+    controls.addEventListener('end',   () => { camDragging = false;
+        camManualPos.copy(camera.position); camManualTgt.copy(controls.target);
+        camManualSet = true; camCenterFrac = 0; });
     scene.add(new THREE.HemisphereLight(0xffffff,0x2a2e33,0.95));
     const dl=new THREE.DirectionalLight(0xffffff,0.55); dl.position.set(45,90,55); scene.add(dl);
-    const top=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU,96),
-        new THREE.MeshStandardMaterial({map:boardTexture(), roughness:0.95}));
-    top.rotation.x=-Math.PI/2; top.position.y=0.15; scene.add(top);
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU,96),
+        new THREE.MeshStandardMaterial({map:boardTexture(currentTheme==='dark'), roughness:0.95}));
+    boardTop.rotation.x=-Math.PI/2; boardTop.position.y=0.15; scene.add(boardTop);
     const rim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.05,CFG.edgeU*1.09,5,96),
         new THREE.MeshStandardMaterial({color:0x8b9199, roughness:0.6, metalness:0.2}));
     rim.position.y=-2.4; scene.add(rim);
     tripods=[buildTripod(0x6b9eff), buildTripod(0xff6b6b)];   // [blue, red] = pieces order
     tripods.forEach(t=>scene.add(t));
 
-    // pivot glow + sweep-arc hints — the 3D echo of the 2D view's pivot dot + candidate-foot
-    // rings: a glowing ring right at the pinned foot, and a faint circle at each of the other
-    // two feet's current radius from the pivot, showing the arc they'll sweep as it rotates.
+    // pivot glow — a glowing highlight on the pinned foot (the 3D echo of the 2D pivot dot).
     pivotGlowMesh = new THREE.Mesh(
         new THREE.PlaneGeometry(CFG.footPadRadius*18, CFG.footPadRadius*18),
         new THREE.MeshBasicMaterial({ map: glowTexture(), transparent:true, depthWrite:false, blending: THREE.AdditiveBlending }));
     pivotGlowMesh.rotation.x = -Math.PI/2; pivotGlowMesh.visible = false; scene.add(pivotGlowMesh);
-    const circlePts = []; for (let k=0;k<=64;k++){ const t=k/64*2*Math.PI; circlePts.push(new THREE.Vector3(Math.cos(t),0,Math.sin(t))); }
-    const circleGeo = new THREE.BufferGeometry().setFromPoints(circlePts);
-    sweepArcMeshes = [0,1].map(() => {
-        const m = new THREE.Line(circleGeo, new THREE.LineBasicMaterial({ color:0xffd23f, transparent:true, opacity:0.35 }));
-        m.visible = false; scene.add(m); return m;
-    });
 }
 // kick off the dramatic slide-off when someone loses
 function triggerFall() {
@@ -2306,14 +2350,25 @@ function stepFall(dt) {
         t.position.y += fall.vy*dt;
         t.rotation.x += fall.wx*dt; t.rotation.y += fall.wy*dt; t.rotation.z += fall.wz*dt;
     }
-    if (t.position.y < -700) { fall.active=false; autoCam=true; }   // hand back to normal framing once it's done
+    if (t.position.y < -700) { fall.active=false; camCenterFrac=1; camManualSet=false; }   // hand back to centred framing once it's done
 }
-// ---------- Auto camera: keep both pieces framed, equidistant, whole board visible ----------
-// Smart default, not a toggle: auto-cam runs until the player manually grabs the camera
-// (OrbitControls' own 'start' event, fired on the first drag/zoom input), then stays hands-off
-// until a foot actually drifts out of frame — at which point it re-engages on its own. Nobody
-// should feel like they're "wrestling" a camera that fights their input.
-let autoCam = true;
+// ---------- Auto camera: gentle, never a fight ----------
+// The camera is driven by two things blended together:
+//   • a "full frame" target that centres both pieces and fits the whole board (computed below),
+//   • the view the player last set by hand (camManualPos/Tgt), the 0%-centred reference.
+// camCenterFrac is how far along that blend we currently want to sit: 1 = fully centred, 0 =
+// exactly where the player left it. Manual control drops it to 0; each move nudges it back up a
+// quarter of the remaining gap. During a move we additionally make the MINIMAL extra push toward
+// centre needed to keep all 6 feet on screen — never a full recentre snap. Between moves the
+// camera is left wherever it is (you can rest it super zoomed-in if you like).
+let camCenterFrac = 1;                 // 0 = leave it where the player put it; 1 = fully centred/framed
+let camDragging = false;               // true between OrbitControls 'start' and 'end'
+let camManualSet = false;              // has the player ever set a manual view this game?
+const camManualPos = new THREE.Vector3(), camManualTgt = new THREE.Vector3();
+const camFullPos = new THREE.Vector3(), camFullTgt = new THREE.Vector3();
+const camWantPos = new THREE.Vector3(), camWantTgt = new THREE.Vector3();
+const _fitP = new THREE.Vector3();
+const FIT_MARGIN = 0.9;                // feet must project within ±0.9 NDC to count as "on screen"
 const acTgt = new THREE.Vector3(), acPos = new THREE.Vector3();
 // Placing the camera along the horizontal direction PERPENDICULAR to the line joining the
 // two piece hubs, looking AT their midpoint — at ANY distance along that line — keeps it
@@ -2362,7 +2417,9 @@ function autoCamDistance(mx, mz, px, pz, targetY, extraPts) {
         if (autoCamNdcAt(mid,mx,mz,px,pz,targetY,extraPts) > AUTOCAM_MARGIN) lo=mid; else hi=mid; }
     return Math.max(hi, AUTOCAM_BASE_DIST);
 }
-function updateAutoCam(dt) {
+// Fills outPos/outTgt with the fully-centred, whole-board-framed view (the 100%-centred end
+// of the blend). No easing here — just the target.
+function computeFullFrame(outPos, outTgt) {
     let mx, mz, px, pz;
     if (G.over) {
         // once the fall finishes, the loser's G-piece coordinates are just wherever they were
@@ -2377,16 +2434,48 @@ function updateAutoCam(dt) {
         px=-dz; pz=dx;                                                // horizontal, ⟂ to the piece-to-piece line
     }
     const dist = autoCamDistance(mx, mz, px, pz, AUTOCAM_TARGET_Y);
-    acTgt.set(mx, AUTOCAM_TARGET_Y, mz);
-    acPos.set(mx+px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), AUTOCAM_TARGET_Y+dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), mz+pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L));
-    const k = 1 - Math.exp(-AUTOCAM_SMOOTH*dt);                    // frame-rate-independent easing
-    camera.position.lerp(acPos, k);
-    controls.target.lerp(acTgt, k);
+    outTgt.set(mx, AUTOCAM_TARGET_Y, mz);
+    outPos.set(mx+px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), AUTOCAM_TARGET_Y+dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), mz+pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L));
+}
+// Called once per completed move: creep a quarter of the remaining gap back toward centre.
+function progressCentering() { camCenterFrac = Math.min(1, camCenterFrac + 0.25); }
+// Would a camera at (pos looking at tgt) keep all 6 feet on screen?
+function feetFitAt(pos, tgt) {
+    camProbe.position.copy(pos); camProbe.up.set(0,1,0); camProbe.lookAt(tgt); camProbe.updateMatrixWorld(true);
+    for (const p of G.pieces) for (const f of p.feet()) {
+        _fitP.set(f.x, 0, f.y).project(camProbe);
+        if (Math.abs(_fitP.x)>FIT_MARGIN || Math.abs(_fitP.y)>FIT_MARGIN || _fitP.z<-1 || _fitP.z>1) return false;
+    }
+    return true;
+}
+function updateGentleCam(dt) {
+    if (camDragging) return;                       // never fight active manual control
+    computeFullFrame(camFullPos, camFullTgt);
+    const baseP = camManualSet ? camManualPos : camFullPos;   // the 0%-centred reference
+    const baseT = camManualSet ? camManualTgt : camFullTgt;
+    let frac = camCenterFrac;
+    camWantPos.lerpVectors(baseP, camFullPos, frac);
+    camWantTgt.lerpVectors(baseT, camFullTgt, frac);
+    // Only enforce "all feet in view" while a piece is actually moving — resting the camera
+    // super zoomed-in between moves is allowed; the fit is a response to motion, not a leash.
+    const moving = G.handle!==null || !!aiAnim || !!demoAnim;
+    if (moving && !feetFitAt(camWantPos, camWantTgt)) {
+        // minimal extra push toward the (always-fits) full-frame view — smallest frac in
+        // [current, 1] that gets every foot back on screen.
+        let lo=frac, hi=1;
+        for (let i=0;i<8;i++){ const mid=(lo+hi)/2;
+            camWantPos.lerpVectors(baseP, camFullPos, mid); camWantTgt.lerpVectors(baseT, camFullTgt, mid);
+            if (feetFitAt(camWantPos, camWantTgt)) hi=mid; else lo=mid; }
+        camWantPos.lerpVectors(baseP, camFullPos, hi); camWantTgt.lerpVectors(baseT, camFullTgt, hi);
+    }
+    const k = 1 - Math.exp(-AUTOCAM_SMOOTH*dt);    // frame-rate-independent easing
+    camera.position.lerp(camWantPos, k);
+    controls.target.lerp(camWantTgt, k);
 }
 // While the losing piece is sliding/tumbling off the table, follow the drama: frame the
 // midpoint of the (stationary) winner and the falling piece's LIVE position — not the
 // loser's frozen game-logic coordinates, which stop updating the instant the game ends —
-// zooming out as needed (same rim-fit search as updateAutoCam, plus the falling piece as an
+// zooming out as needed (same rim-fit search as computeFullFrame, plus the falling piece as an
 // extra must-stay-in-frame point) so it's never lost off-screen as it slides and drops.
 function updateFallCam(dt) {
     const winnerPiece = G.pieces[G.winner], fallT = tripods[fall.idx].position;
@@ -2401,28 +2490,6 @@ function updateFallCam(dt) {
     const k = 1 - Math.exp(-AUTOCAM_SMOOTH*dt);
     camera.position.lerp(acPos, k);
     controls.target.lerp(acTgt, k);
-}
-// Re-engage check while the player has manual control: is any of the 6 feet outside the
-// visible frame? Margin (0.96) is deliberately looser than auto-cam's own fit target (0.87
-// NDC, see AUTOCAM_MARGIN) so grabbing the camera right after auto-cam framed everything
-// doesn't immediately snap control back — there's real slack before this can retrigger.
-// Only checked while a piece is actually mid-swing (a human drag, the AI's animated turn, or
-// the landing demo) — never just because the camera itself is sitting there zoomed in. Checking
-// unconditionally every frame meant crossing the margin during your OWN drag/zoom gesture would
-// snap auto-cam back on before you'd even finished moving it, fighting your input; resting the
-// camera however tight you like between moves is fine and shouldn't be touched until something
-// next actually moves and would carry a foot out of view.
-const FRAME_MARGIN = 0.96;
-const acFootVec = new THREE.Vector3();
-function anyFootOutOfFrame() {
-    if (!G) return false;
-    camera.updateMatrixWorld();
-    for (const p of G.pieces) for (const f of p.feet()) {
-        acFootVec.set(f.x, 0, f.y).project(camera);
-        if (Math.abs(acFootVec.x) > FRAME_MARGIN || Math.abs(acFootVec.y) > FRAME_MARGIN
-            || acFootVec.z < -1 || acFootVec.z > 1) return true;
-    }
-    return false;
 }
 let aiFrameCount=0;
 function animate() {
@@ -2440,27 +2507,16 @@ function animate() {
     if (fall.active) {
         updateFallCam(dt);   // dramatic loss cam takes over regardless of manual/auto state
     } else {
-        const moving = G.handle!==null || !!aiAnim || !!demoAnim;
-        if (!autoCam && moving && anyFootOutOfFrame()) autoCam = true;
-        if (autoCam) updateAutoCam(dt);
+        updateGentleCam(dt);
     }
     controls.update();   // recomputes its internal state fresh from camera.position each call,
                           // so it composes cleanly with the manual lerp above (see commit notes)
     if (G.pinned!==null && !G.over) {
-        const feet = G.pieces[G.active].feet();
         const glowPulse = 0.75 + Math.sin(performance.now()*0.006)*0.15;
         pivotGlowMesh.visible = true; pivotGlowMesh.material.opacity = glowPulse;
         pivotGlowMesh.position.set(G.pivot.x, 0.25, G.pivot.y);
-        let slot = 0;
-        for (let i=0;i<3;i++){
-            if (i===G.pinned) continue;
-            const f = feet[i], rad = Math.hypot(f.x-G.pivot.x, f.y-G.pivot.y);
-            const arc = sweepArcMeshes[slot++];
-            arc.visible = true; arc.position.set(G.pivot.x, 0.22, G.pivot.y); arc.scale.set(rad, 1, rad);
-        }
     } else {
         pivotGlowMesh.visible = false;
-        sweepArcMeshes.forEach(a => a.visible = false);
     }
     renderer.render(scene,camera);
 }
