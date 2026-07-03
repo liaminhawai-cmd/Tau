@@ -42,7 +42,7 @@
     #modalBackdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6);
                       align-items:center; justify-content:center; z-index:50; }
     #modalBox { background:#1a1e24; border:1px solid #3a4048; border-radius:10px;
-                padding:22px 26px; text-align:center; max-width:300px; }
+                padding:22px 26px; text-align:center; max-width:320px; max-height:80vh; overflow-y:auto; }
     #modalBox h2 { margin:0 0 4px; font-size:21px; }
     #modalBox p { color:#9aa4ad; font-size:13px; margin:6px 0 14px; }
     #modalBox p:empty { display:none; }
@@ -63,6 +63,7 @@
         <button class="modeBtn" id="modeOnline">Online 1v1</button>
         <button class="modeBtn" id="modeAI">vs AI</button>
         <p class="msg" id="modeMsg"></p>
+        <button class="link" id="howToPlayBtn">How to play</button>
 
         <div id="acctPanel" style="display:none;">
             <div id="acctSignedOut">
@@ -1820,10 +1821,12 @@ function updateAcctStatus() {
 let pendingOnline = false;   // true while the account panel was opened FROM "Online 1v1"
 function openAcctPanel() { document.getElementById('acctPanel').style.display = 'flex'; }
 function closeAcctPanel() { document.getElementById('acctPanel').style.display = 'none'; pendingOnline = false; }
-// ---------- Generic modal: colour choice before a vs-AI game, and the game-over popup ----------
-function showModal(title, body, buttons) {
+// ---------- Generic modal: colour choice before a vs-AI game, the game-over popup, and
+// the how-to-play sheet. `isHtml` lets the how-to-play body use a left-aligned list. ----------
+function showModal(title, body, buttons, isHtml) {
     document.getElementById('modalTitle').textContent = title;
-    document.getElementById('modalBody').textContent = body || '';
+    const bodyEl = document.getElementById('modalBody');
+    if (isHtml) bodyEl.innerHTML = body || ''; else bodyEl.textContent = body || '';
     const wrap = document.getElementById('modalBtns');
     wrap.innerHTML = '';
     for (const b of buttons) {
@@ -1837,7 +1840,9 @@ function showModal(title, body, buttons) {
 function hideModal() { document.getElementById('modalBackdrop').style.display = 'none'; }
 let gameOverTimer = null;
 // Shown after a short pause so the losing piece's fall animation gets to play out first,
-// rather than slamming a popup over it the instant the game ends.
+// rather than slamming a popup over it the instant the game ends. ~2.8s covers a typical
+// slide-to-the-rim-then-tip-and-fall (the vertical fall alone, under stepFall's constant
+// "gravity", takes ~2.5s regardless of how far it slides first).
 function showGameOverModal() {
     clearTimeout(gameOverTimer);
     gameOverTimer = setTimeout(() => {
@@ -1854,7 +1859,7 @@ function showGameOverModal() {
                 { label: 'Menu', onClick: backToMenu },
             ]);
         }
-    }, 2200);
+    }, 2800);
 }
 function startGame(aiMode, humanColorIdx) {
     hideModal(); clearTimeout(gameOverTimer);
@@ -1882,6 +1887,16 @@ document.getElementById('modeAI').addEventListener('click', () => {
         { label: 'Play as Blue', onClick: () => startGame(true, 0) },
         { label: 'Play as Red',  onClick: () => startGame(true, 1) },
     ]);
+});
+document.getElementById('howToPlayBtn').addEventListener('click', () => {
+    showModal('How to play', `<ul style="text-align:left; padding-left:20px; margin:0;">
+        <li>Tap one of your feet to lock it as the pivot.</li>
+        <li>Drag a different foot around the pivot to swing your piece.</li>
+        <li>Push your opponent by swinging into their legs — contact is true 3D, so a low
+            foot can slip under a higher part of an opposing leg.</li>
+        <li>You may cross only one board line per turn.</li>
+        <li>Win when any of your opponent's feet cross the outer edge.</li>
+    </ul>`, [ { label: 'Got it', onClick: () => {} } ], true);
 });
 document.getElementById('modeOnline').addEventListener('click', () => {
     const msg = document.getElementById('modeMsg');
@@ -2104,7 +2119,7 @@ function stepFall(dt) {
         t.position.y += fall.vy*dt;
         t.rotation.x += fall.wx*dt; t.rotation.y += fall.wy*dt; t.rotation.z += fall.wz*dt;
     }
-    if (t.position.y < -700) fall.active=false;
+    if (t.position.y < -700) { fall.active=false; autoCam=true; }   // hand back to normal framing once it's done
 }
 // ---------- Auto camera: keep both pieces framed, equidistant, whole board visible ----------
 // Smart default, not a toggle: auto-cam runs until the player manually grabs the camera
@@ -2124,10 +2139,12 @@ const acTgt = new THREE.Vector3(), acPos = new THREE.Vector3();
 const AUTOCAM_BASE_DIST = 145, AUTOCAM_MARGIN = 0.87, AUTOCAM_TARGET_Y = 6, AUTOCAM_SMOOTH = 3.2;
 const AUTOCAM_RATIO_D = 115, AUTOCAM_RATIO_H = 82;   // offset "shape" (azimuth/elevation), from the original hand-tuned view
 const AUTOCAM_RATIO_L = Math.hypot(AUTOCAM_RATIO_D, AUTOCAM_RATIO_H);
-const acRimPts = []; for (let k=0;k<48;k++){ const t=k/48*2*Math.PI; acRimPts.push([Math.cos(t)*CFG.edgeU, Math.sin(t)*CFG.edgeU]); }
-// worst (largest-magnitude) NDC coordinate of the board rim, for a candidate eye distance
-// `dist` along the fixed azimuth (px,pz) + elevation ratio from midpoint (mx,mz).
-function autoCamNdcAt(dist, mx, mz, px, pz, targetY) {
+const acRimPts = []; for (let k=0;k<48;k++){ const t=k/48*2*Math.PI; acRimPts.push([Math.cos(t)*CFG.edgeU, Math.sin(t)*CFG.edgeU, 0]); }
+// worst (largest-magnitude) NDC coordinate of the board rim (plus optional extra [x,z,h]
+// points — used during the loss fall, to also keep the tumbling piece in frame), for a
+// candidate eye distance `dist` along the fixed azimuth (px,pz) + elevation ratio from
+// midpoint (mx,mz).
+function autoCamNdcAt(dist, mx, mz, px, pz, targetY, extraPts) {
     const ex=mx+px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), ey=targetY+dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), ez=mz+pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L);
     let zx=ex-mx, zy=ey-targetY, zz=ez-mz; const zl=Math.hypot(zx,zy,zz)||1; zx/=zl; zy/=zl; zz/=zl;
     let xx=-zy, xy=zx, xz=0;                          // cross(worldUp=(0,1,0), zAxis)
@@ -2136,31 +2153,65 @@ function autoCamNdcAt(dist, mx, mz, px, pz, targetY) {
     const t=Math.tan(21*Math.PI/180);                 // half of the 42° vertical FOV, square aspect
     let maxAbs=0;
     for (const rp of acRimPts){
-        const relx=rp[0]-ex, rely=-ey, relz=rp[1]-ez;
+        const relx=rp[0]-ex, rely=(rp[2]||0)-ey, relz=rp[1]-ez;
         const vx=relx*xx+rely*xy+relz*xz, vy=relx*yx+rely*yy+relz*yz, vz=relx*zx+rely*zy+relz*zz;
         if (vz>=0) return Infinity;                    // rim point behind the camera
         const a=Math.abs(vx/(-vz*t)), b=Math.abs(vy/(-vz*t));
         if (a>maxAbs) maxAbs=a; if (b>maxAbs) maxAbs=b;
     }
+    if (extraPts) for (const rp of extraPts){
+        const relx=rp[0]-ex, rely=(rp[2]||0)-ey, relz=rp[1]-ez;
+        const vx=relx*xx+rely*xy+relz*xz, vy=relx*yx+rely*yy+relz*yz, vz=relx*zx+rely*zy+relz*zz;
+        if (vz>=0) return Infinity;
+        const a=Math.abs(vx/(-vz*t)), b=Math.abs(vy/(-vz*t));
+        if (a>maxAbs) maxAbs=a; if (b>maxAbs) maxAbs=b;
+    }
     return maxAbs;
 }
-function autoCamDistance(mx, mz, px, pz, targetY) {
+function autoCamDistance(mx, mz, px, pz, targetY, extraPts) {
     let lo=AUTOCAM_BASE_DIST, hi=AUTOCAM_BASE_DIST, iter=0;
-    while (autoCamNdcAt(hi,mx,mz,px,pz,targetY) > AUTOCAM_MARGIN && iter++<20) hi*=1.3;
+    while (autoCamNdcAt(hi,mx,mz,px,pz,targetY,extraPts) > AUTOCAM_MARGIN && iter++<20) hi*=1.3;
     for (let i=0;i<20;i++){ const mid=(lo+hi)/2;
-        if (autoCamNdcAt(mid,mx,mz,px,pz,targetY) > AUTOCAM_MARGIN) lo=mid; else hi=mid; }
+        if (autoCamNdcAt(mid,mx,mz,px,pz,targetY,extraPts) > AUTOCAM_MARGIN) lo=mid; else hi=mid; }
     return Math.max(hi, AUTOCAM_BASE_DIST);
 }
 function updateAutoCam(dt) {
-    const p0=G.pieces[0], p1=G.pieces[1];
-    const mx=(p0.x+p1.x)/2, mz=(p0.y+p1.y)/2;
-    let dx=p1.x-p0.x, dz=p1.y-p0.y; const len=Math.hypot(dx,dz);
-    if (len < 1e-6) { dx=1; dz=0; } else { dx/=len; dz/=len; }   // degenerate (coincident hubs): fixed fallback axis
-    const px=-dz, pz=dx;                                          // horizontal, ⟂ to the piece-to-piece line
+    let mx, mz, px, pz;
+    if (G.over) {
+        // once the fall finishes, the loser's G-piece coordinates are just wherever they were
+        // the instant the game ended (often already well past the rim) and never move again —
+        // framing around them would hold the view needlessly zoomed out. Settle on the winner.
+        const w = G.pieces[G.winner]; mx=w.x; mz=w.y; px=0; pz=1;
+    } else {
+        const p0=G.pieces[0], p1=G.pieces[1];
+        mx=(p0.x+p1.x)/2; mz=(p0.y+p1.y)/2;
+        let dx=p1.x-p0.x, dz=p1.y-p0.y; const len=Math.hypot(dx,dz);
+        if (len < 1e-6) { dx=1; dz=0; } else { dx/=len; dz/=len; }   // degenerate (coincident hubs): fixed fallback axis
+        px=-dz; pz=dx;                                                // horizontal, ⟂ to the piece-to-piece line
+    }
     const dist = autoCamDistance(mx, mz, px, pz, AUTOCAM_TARGET_Y);
     acTgt.set(mx, AUTOCAM_TARGET_Y, mz);
     acPos.set(mx+px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), AUTOCAM_TARGET_Y+dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), mz+pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L));
     const k = 1 - Math.exp(-AUTOCAM_SMOOTH*dt);                    // frame-rate-independent easing
+    camera.position.lerp(acPos, k);
+    controls.target.lerp(acTgt, k);
+}
+// While the losing piece is sliding/tumbling off the table, follow the drama: frame the
+// midpoint of the (stationary) winner and the falling piece's LIVE position — not the
+// loser's frozen game-logic coordinates, which stop updating the instant the game ends —
+// zooming out as needed (same rim-fit search as updateAutoCam, plus the falling piece as an
+// extra must-stay-in-frame point) so it's never lost off-screen as it slides and drops.
+function updateFallCam(dt) {
+    const winnerPiece = G.pieces[G.winner], fallT = tripods[fall.idx].position;
+    const mx=(winnerPiece.x+fallT.x)/2, mz=(winnerPiece.y+fallT.z)/2;
+    let dx=fallT.x-winnerPiece.x, dz=fallT.z-winnerPiece.y; const len=Math.hypot(dx,dz);
+    if (len < 1e-6) { dx=1; dz=0; } else { dx/=len; dz/=len; }
+    const px=-dz, pz=dx;
+    const extra = [[fallT.x, fallT.z, fallT.y]];
+    const dist = autoCamDistance(mx, mz, px, pz, AUTOCAM_TARGET_Y, extra);
+    acTgt.set(mx, AUTOCAM_TARGET_Y, mz);
+    acPos.set(mx+px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), AUTOCAM_TARGET_Y+dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), mz+pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L));
+    const k = 1 - Math.exp(-AUTOCAM_SMOOTH*dt);
     camera.position.lerp(acPos, k);
     controls.target.lerp(acTgt, k);
 }
@@ -2186,10 +2237,6 @@ function animate() {
     if (aiAnim && (++aiFrameCount % 4)===0) stepAi();   // ~15 steps/sec at 60fps — a visible, brisk swing
     if (!renderer) return;
     const dt = Math.min(clock ? clock.getDelta() : 0.016, 0.05);
-    if (!autoCam && anyFootOutOfFrame()) autoCam = true;
-    if (autoCam) updateAutoCam(dt);
-    controls.update();   // recomputes its internal state fresh from camera.position each call,
-                          // so it composes cleanly with the manual lerp above (see commit notes)
     for (let i=0;i<2;i++){
         if (fall.active && i===fall.idx) continue;   // don't overwrite the falling piece
         tripods[i].position.set(G.pieces[i].x, 0, G.pieces[i].y);
@@ -2197,6 +2244,14 @@ function animate() {
         tripods[i].scale.set(1,1,1);
     }
     if (fall.active) stepFall(dt);
+    if (fall.active) {
+        updateFallCam(dt);   // dramatic loss cam takes over regardless of manual/auto state
+    } else {
+        if (!autoCam && anyFootOutOfFrame()) autoCam = true;
+        if (autoCam) updateAutoCam(dt);
+    }
+    controls.update();   // recomputes its internal state fresh from camera.position each call,
+                          // so it composes cleanly with the manual lerp above (see commit notes)
     renderer.render(scene,camera);
 }
 
