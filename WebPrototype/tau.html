@@ -2906,6 +2906,21 @@ async function startOnlineMatchmaking() {
             const { data: row } = await sb.from('matches').select('*').eq('id', matchId).single();
             if (row) { enterOnlineMatch(row); return; }
         }
+        // Realtime backstop: if the OTHER player's try_match() call is the one that actually
+        // paired us (deleting our queue row before we ever got the matches-INSERT event), we'd
+        // otherwise just re-queue ourselves forever and depend entirely on that Realtime event
+        // arriving. Poll directly for any active match we're already in, so a dropped/delayed
+        // Realtime event can't leave a player stuck on "Searching…" indefinitely. Wrapped in its
+        // own try/catch so a failure HERE (network hiccup, etc) can't kill the whole retry loop
+        // below — worse than not having this backstop at all.
+        if (matchmakingActive) {
+            try {
+                const { data: existing } = await sb.from('matches').select('*')
+                    .or(`blue_id.eq.${sbUser.id},red_id.eq.${sbUser.id}`)
+                    .eq('status', 'active').order('created_at', { ascending: false }).limit(1).maybeSingle();
+                if (existing && matchmakingActive) { enterOnlineMatch(existing); return; }
+            } catch (e) { console.error('matchmaking backstop poll failed', e); }
+        }
         if (matchmakingActive) matchmakingTimer = setTimeout(tryOnce, 1800);
     };
     tryOnce();
@@ -2925,7 +2940,7 @@ async function enterOnlineMatch(row) {
     hideModal();
     demoStop();
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
-    onlineMatch = { id: row.id, myColor: row.blue_id===sbUser.id ? 'blue' : 'red', nextMoveIndex: 0 };
+    onlineMatch = { id: row.id, myColor: row.blue_id===sbUser.id ? 'blue' : 'red', nextMoveIndex: 0, _replayingIndex: -1 };
     vsAI = false;
     camCenterFrac = 1; camManualSet = false;
     document.getElementById('menu').style.display = 'none';
@@ -2936,11 +2951,28 @@ async function enterOnlineMatch(row) {
             payload => { if (onlineMatch && payload.new.mover_color !== onlineMatch.myColor) replayOpponentMove(payload.new); })
         .subscribe();
     await catchUpOnlineMatch();   // pick up any moves already played before we subscribed (rematch/reconnect)
+    startOnlineMovePoll();
 }
 function exitOnlineMatch() {
     if (moveChannel) { sb.removeChannel(moveChannel); moveChannel = null; }
+    clearInterval(onlineMovePoll); onlineMovePoll = null;
     onlineMatch = null;
     pendingKeyframes = []; lastKeyframeT = 0;
+}
+// Realtime backstop for mid-match sync, same reasoning as matchmaking's: if the
+// match_moves-INSERT event is dropped or delayed, poll directly for the specific next move
+// we're expecting instead of waiting on the opponent's turn forever.
+let onlineMovePoll = null;
+function startOnlineMovePoll() {
+    clearInterval(onlineMovePoll);
+    onlineMovePoll = setInterval(async () => {
+        if (!onlineMatch || myOnlineTurnNow()) return;
+        try {
+            const { data } = await sb.from('match_moves').select('*')
+                .eq('match_id', onlineMatch.id).eq('move_index', onlineMatch.nextMoveIndex).maybeSingle();
+            if (data && onlineMatch && !myOnlineTurnNow()) replayOpponentMove(data);
+        } catch (e) { console.error('move-sync backstop poll failed', e); }
+    }, 2500);
 }
 // Fast-forwards straight to each historical move's authoritative final_state (no animation --
 // this is catch-up, not something the player is watching live) so joining a match that
@@ -2993,6 +3025,11 @@ function finishOnlineTurn() {
     }).then(({ error }) => { if (error) console.error('sending move failed', error); });
 }
 async function replayOpponentMove(row) {
+    // The Realtime push and the poll backstop (startOnlineMovePoll) can both observe the same
+    // row — skip if it's already applied or already being applied, so we don't double-flip
+    // G.active / double-consume the same move.
+    if (!onlineMatch || row.move_index < onlineMatch.nextMoveIndex || onlineMatch._replayingIndex === row.move_index) return;
+    onlineMatch._replayingIndex = row.move_index;
     for (const kf of (row.keyframes || [])) {
         if (!onlineMatch) return;   // left the match mid-replay (e.g. hit Menu)
         G.pieces[0].x=kf.bx; G.pieces[0].y=kf.by; G.pieces[0].rot=kf.brot;
@@ -3005,6 +3042,11 @@ async function replayOpponentMove(row) {
     G.pieces[0].x=fs.blue.x; G.pieces[0].y=fs.blue.y; G.pieces[0].rot=fs.blue.rot;
     G.pieces[1].x=fs.red.x; G.pieces[1].y=fs.red.y; G.pieces[1].rot=fs.red.rot;
     G.active = 1-G.active;
+    // Both players' clients share one move_index sequence (match_moves has a unique
+    // (match_id, move_index) constraint) — without bumping this here, this client would keep
+    // numbering ITS OWN next move from wherever it last left off (e.g. 0), colliding with the
+    // index the opponent's move just used and silently failing to insert every other turn.
+    onlineMatch.nextMoveIndex = Math.max(onlineMatch.nextMoveIndex, row.move_index + 1);
     clearTurn();
     progressCentering();
     if (fs.winner) {
