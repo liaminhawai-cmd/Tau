@@ -1275,6 +1275,13 @@ function countCrossings(oldFeet, newFeet) {
                 if (angInSpan(Math.atan2(my,mx)*180/Math.PI, a.a0, a.a1)) per[i]++;
             }
         }
+        // A foot passing through where a ring meets a side arc crosses BOTH within the same
+        // (fine, sub-degree) substep — geometrically that only happens right at one of those
+        // intersections, never as a coarse-stepping artifact between well-separated lines. On
+        // the physical board that reads as one satisfying crossing, not two, so it costs the
+        // turn's budget only once; without this cap it silently exceeded a 1-crossing budget
+        // and blocked every intersection crossing outright.
+        per[i] = Math.min(per[i], 1);
     }
     return per;
 }
