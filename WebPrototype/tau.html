@@ -2042,23 +2042,32 @@ function htp3DStep(dt) {
             let fx=0, fz=0, fr=-1;
             for (const f of htpRedP.feet()){ const r=Math.hypot(f.x,f.y); if (r>fr){ fr=r; fx=f.x; fz=f.y; } }
             const d = Math.hypot(fx,fz)||1;
-            htpFallState = { vx:fx/d*50, vz:fz/d*50, vy:0,
+            htpFallState = { vx:fx/d*50, vz:fz/d*50, vy:0, tipRate:0,
                 wx:(Math.random()-0.5)*7, wy:(Math.random()-0.5)*3, wz:(Math.random()-0.5)*7 };
         }
     } else if (htpPhase==='fall') {
         const t=htpTripods[1], f=htpFallState;
         t.position.x += f.vx*dt; t.position.z += f.vz*dt;      // slide outward across the board
         const r = Math.hypot(t.position.x, t.position.z);
-        if (r > CFG.edgeU) {                                   // past the rim -> frictionless slope, tip and fall
+        if (r > CFG.edgeU) {                                   // past the rim -> tips over, then falls and tumbles
             f.vy -= 220*dt;
             f.vx *= (1+0.4*dt); f.vz *= (1+0.4*dt);
             t.position.y += f.vy*dt;
-            t.rotation.x += f.wx*dt; t.rotation.y += f.wy*dt; t.rotation.z += f.wz*dt;
+            // Tip around the horizontal axis perpendicular to the slide direction, starting the
+            // instant it crosses the rim (see stepFall's matching comment for why) — reads as
+            // "tipped over the edge" immediately, rather than floating in a straight line before
+            // gravity visibly kicks in. Chaotic tumble blends in only once clear of the rim.
+            f.tipRate = Math.min(9, f.tipRate + 14*dt);
+            const speed = Math.hypot(f.vx, f.vz) || 1;
+            t.rotation.x += (-f.vz/speed) * f.tipRate * dt;
+            t.rotation.z += ( f.vx/speed) * f.tipRate * dt;
+            const clear = Math.max(0, Math.min(1, (r - CFG.edgeU) / 25));
+            t.rotation.x += f.wx*dt*clear; t.rotation.y += f.wy*dt*clear; t.rotation.z += f.wz*dt*clear;
             // A real match watches the whole 700-unit drop (fine there — it's a one-off, framed
             // by the "You win!" popup). Looping that here would zoom the camera out until the
-            // piece vanishes into blank space, confusing rather than dramatic. Same gravity, same
-            // tumble, just cut to "done" once it's clearly, obviously off — timed from when
-            // gravity actually starts (crossing the rim), not from the start of the slide.
+            // piece vanishes into blank space, confusing rather than dramatic. Same physics,
+            // just cut to "done" once it's clearly, obviously off — timed from when gravity
+            // actually starts (crossing the rim), not from the start of the slide.
             htpDropT += dt;
             if (htpDropT > 0.42) { htpPhase='done'; htpPhaseT=0; htpDropT=0; }
         }
@@ -2117,7 +2126,7 @@ function htp3DExit() {
 const HTP_STEPS = [
     { title:'Hold one foot', text:'Hold one foot still and rotate the other two.', draw:htpSlidePivot },
     { title:'Move in circles', text:'The moving feet trace an arc. You may only move in one direction per turn.', draw:htpSlideSwing },
-    { title:'Push your opponent', text:'Push your opponent by moving into them slowly and smoothly, so the pieces move together.', draw:htpSlidePush },
+    { title:'Push your opponent', text:'Push your opponent by moving into their legs.', draw:htpSlidePush },
     { title:'One line per turn', text:'You may cross only one line per turn. A foot that starts on a line leaves it for free.', draw:htpSlideCross },
     { title:'Push them off', text:'Push your opponent off the edge. When one of their feet leaves the board, you win.', is3D:true },
 ];
@@ -2462,7 +2471,7 @@ function triggerFall() {
     let fx=0, fz=0, fr=-1;                            // slide out along the off-board foot direction
     for (const f of p.feet()){ const r=Math.hypot(f.x,f.y); if (r>fr){ fr=r; fx=f.x; fz=f.y; } }
     const d = Math.hypot(fx,fz)||1;
-    fall = { active:true, idx:li, vx:fx/d*50, vz:fz/d*50, vy:0,
+    fall = { active:true, idx:li, vx:fx/d*50, vz:fz/d*50, vy:0, tipRate:0,
              wx:(Math.random()-0.5)*7, wy:(Math.random()-0.5)*3, wz:(Math.random()-0.5)*7 };
 }
 function stepFall(dt) {
@@ -2473,7 +2482,19 @@ function stepFall(dt) {
         fall.vy -= 220*dt;
         fall.vx *= (1+0.4*dt); fall.vz *= (1+0.4*dt);
         t.position.y += fall.vy*dt;
-        t.rotation.x += fall.wx*dt; t.rotation.y += fall.wy*dt; t.rotation.z += fall.wz*dt;
+        // Tip forward around the horizontal axis perpendicular to the slide direction — like an
+        // object tipping off a table edge — starting the INSTANT it crosses the rim. Without
+        // this, vy (which starts at 0) takes a beat to build up, so the piece visibly slides in
+        // a dead-straight line for a moment before anything looks different; the tip gives
+        // immediate visual feedback that it's gone over. The chaotic tumble (wx/wy/wz) only
+        // blends in once well clear of the rim, so the first instant reads as "tipped over the
+        // edge", not "flung into a random spin".
+        fall.tipRate = Math.min(9, fall.tipRate + 14*dt);
+        const speed = Math.hypot(fall.vx, fall.vz) || 1;
+        t.rotation.x += (-fall.vz/speed) * fall.tipRate * dt;
+        t.rotation.z += ( fall.vx/speed) * fall.tipRate * dt;
+        const clear = Math.max(0, Math.min(1, (r - CFG.edgeU) / 25));
+        t.rotation.x += fall.wx*dt*clear; t.rotation.y += fall.wy*dt*clear; t.rotation.z += fall.wz*dt*clear;
     }
     if (t.position.y < -700) { fall.active=false; camCenterFrac=1; camManualSet=false; }   // hand back to centred framing once it's done
 }
