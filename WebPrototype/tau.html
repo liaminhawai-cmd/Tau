@@ -1674,38 +1674,53 @@ function demoDraw() {
         demoCtx.beginPath(); demoCtx.arc(hub.x,hub.y,3,0,7); demoCtx.fill();
     }
 }
+// Decides the whole turn BEFORE any visible motion: runs the swing to its true natural
+// limit (crossing exactly one line, stopping right at the second) on the live G, records
+// that angle, then rolls G all the way back to how it was before this lookahead touched it
+// (takeSnap/restoreSnap already cover both pieces, since a lookahead swing can push the
+// opponent same as a real one). The visible animation then only ever moves forward, to a
+// randomized point short of that recorded limit — no backward correction needed, because
+// the stopping point was already known before the first visible frame.
+function demoComputePlan() {
+    const idx = G.active, plan = aiChoosePlan(idx);
+    pinFoot(plan.pivotIdx);
+    const feet = G.pieces[idx].feet();
+    let dir = directionToward(G.pivot, feet[plan.swingIdx], plan.target);
+    const snap = takeSnap();
+    const lookahead = d => {
+        let total=0;
+        while (Math.abs(total) < AI_SAFETY_CAP_RAD) { applySwing(d*DEMO_STEP_RAD); total=G.netRad; if (G.atLimit) break; }
+        return G.netRad;
+    };
+    const rollback = () => {
+        G.pieces.forEach((p,i)=>{ p.x=snap[i].x; p.y=snap[i].y; p.rot=snap[i].rot; });
+        G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
+    };
+    let fullRad = lookahead(dir);
+    if (Math.abs(fullRad) < 1e-9) { rollback(); dir=-dir; fullRad=lookahead(dir); }   // blocked immediately — try the other way
+    rollback();
+    if (Math.abs(fullRad) < 1e-9) return null;   // stuck both directions (rare) — caller retries next tick
+    const keepFrac = 0.6 + Math.random()*0.3;    // stop somewhere random in the last 10-40% before the true limit
+    return { dir, targetRad: fullRad*keepFrac };
+}
 function demoStepLoop() {
     if (!demoOn || !demoAnim) return;
-    if (!G.atLimit) applySwing(demoAnim.dir*DEMO_STEP_RAD);
-    demoDraw();
-    if (G.atLimit) {
-        if (Math.abs(G.netRad) < 1e-9 && !demoAnim.triedFlip) {   // fully blocked — try the other way
-            demoAnim.dir *= -1; demoAnim.triedFlip = true;
-            G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
-        } else {
-            // Back off a random PROPORTION of this turn's own swing, not a fixed degree
-            // range: a fixed backoff could exceed (or nearly cancel) a short swing when the
-            // piece started close to the blocking line, undoing real progress and reading as
-            // a twitch turn after turn. A proportional backoff always keeps most of whatever
-            // this turn actually covered — "cross the first line, stop somewhere random
-            // before the second" rather than "stop, then jitter back by a fixed amount".
-            const keepFrac = 0.6 + Math.random()*0.3;   // keep 60%-90% of the full legal swing
-            G.pieces[G.active].rotateAround(G.pivot.x, G.pivot.y, -demoAnim.dir*Math.abs(G.netRad)*(1-keepFrac));
-            demoAnim = null; endTurn(); demoDraw();
-            demoTimer = setTimeout(demoPlayTurn, 320);
-            return;
-        }
+    if (!G.atLimit && Math.abs(G.netRad) < Math.abs(demoAnim.targetRad)) {
+        applySwing(demoAnim.dir*DEMO_STEP_RAD);
+        demoDraw();
+        demoTimer = setTimeout(demoStepLoop, 35);
+    } else {
+        demoAnim = null; endTurn(); demoDraw();
+        demoTimer = setTimeout(demoPlayTurn, 320);
     }
-    demoTimer = setTimeout(demoStepLoop, 35);
 }
 function demoPlayTurn() {
     if (!demoOn) return;
     if (G.over) { demoTimer = setTimeout(()=>{ reset(); demoDraw(); demoPlayTurn(); }, 1400); return; }
-    const idx = G.active, plan = aiChoosePlan(idx);
-    pinFoot(plan.pivotIdx);
-    const feet = G.pieces[idx].feet();
-    demoAnim = { dir: directionToward(G.pivot, feet[plan.swingIdx], plan.target), triedFlip:false };
-    demoStepLoop();
+    const plan = demoComputePlan();
+    if (!plan) { clearTurn(); demoTimer = setTimeout(demoPlayTurn, 320); return; }
+    demoAnim = { dir: plan.dir, targetRad: plan.targetRad };
+    demoTimer = setTimeout(demoStepLoop, 500);   // half-second pause "to think" before the swing starts
 }
 // While the demo runs, the SAME #view3d canvas/renderer normally used for real play is
 // reparented into the menu (WebGL context survives a DOM move) so the idle screen shows the
