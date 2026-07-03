@@ -47,10 +47,24 @@
     #modalBox { background:#1a1e24; border:1px solid #3a4048; border-radius:10px;
                 padding:22px 26px; text-align:center; max-width:320px; max-height:80vh; overflow-y:auto; }
     #modalBox h2 { margin:0 0 4px; font-size:21px; }
-    #modalBox p { color:#9aa4ad; font-size:13px; margin:6px 0 14px; }
-    #modalBox p:empty { display:none; }
+    #modalBody { color:#9aa4ad; font-size:13px; margin:6px 0 14px; }
+    #modalBody:empty { display:none; }
     #modalBtns { display:flex; flex-direction:column; gap:8px; }
     #modalBtns button { font-size:15px; padding:10px; margin:0; width:100%; box-sizing:border-box; }
+    .htpSlide { padding:12px 0; border-bottom:1px solid #2c3138; scroll-margin-top:4px; }
+    .htpSlide:first-child { padding-top:2px; }
+    .htpSlide:last-child { border-bottom:none; }
+    .htpSlide canvas { display:block; margin:0 auto 8px; background:#0c0e11; border-radius:6px; max-width:100%; height:auto; }
+    .htpSlide p { text-align:left; margin:0; font-size:13px; color:#c7ccd1; }
+    .htpSlide p b { color:#e6e6e6; }
+    #htpNav { display:flex; align-items:center; justify-content:space-between; gap:10px;
+              margin:4px 0 12px; position:sticky; top:0; background:#1a1e24; padding-bottom:6px; }
+    #htpNav button { margin:0; padding:6px 12px; font-size:13px; }
+    #htpNav button:disabled { opacity:0.35; cursor:default; }
+    #htpDots { display:flex; gap:6px; }
+    .htpDot { width:7px; height:7px; border-radius:50%; background:#3a4048; padding:0; border:none;
+              cursor:pointer; }
+    .htpDot.active { background:#ffd23f; }
 </style>
 </head>
 <body>
@@ -109,7 +123,7 @@
 <div id="modalBackdrop">
     <div id="modalBox">
         <h2 id="modalTitle"></h2>
-        <p id="modalBody"></p>
+        <div id="modalBody"></div>
         <div id="modalBtns"></div>
     </div>
 </div>
@@ -1899,16 +1913,153 @@ document.getElementById('modeAI').addEventListener('click', () => {
         { label: 'Play as Red',  onClick: () => startGame(true, 1) },
     ]);
 });
-document.getElementById('howToPlayBtn').addEventListener('click', () => {
-    showModal('How to play', `<ul style="text-align:left; padding-left:20px; margin:0;">
-        <li>Tap one of your feet to lock it as the pivot.</li>
-        <li>Drag a different foot around the pivot to swing your piece.</li>
-        <li>Push your opponent by swinging into their legs — contact is true 3D, so a low
-            foot can slip under a higher part of an opposing leg.</li>
-        <li>You may cross only one board line per turn.</li>
-        <li>Win when any of your opponent's feet cross the outer edge.</li>
-    </ul>`, [ { label: 'Got it', onClick: () => {} } ], true);
-});
+// ---------- How to play: one short looping canvas animation per rule ----------
+// Vertically stacked slides inside the (already-scrollable) modal body, so scrolling and the
+// Prev/Next/dot buttons are just two ways to move through the SAME list -- no separate
+// "modes" to keep in sync beyond an IntersectionObserver driving which dot is active.
+function drawHtpPivot(ctx,w,h,t) {
+    ctx.clearRect(0,0,w,h);
+    const cx=w/2, cy=h/2+8, R=34;
+    const feet=[0,1,2].map(i=>{ const a=Math.PI+i*2*Math.PI/3; return {x:cx+Math.cos(a)*R,y:cy+Math.sin(a)*R}; });
+    ctx.strokeStyle='#6b9eff'; ctx.lineWidth=4; ctx.lineCap='round';
+    feet.forEach(f=>{ ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(f.x,f.y); ctx.stroke(); });
+    ctx.fillStyle='#6b9eff'; ctx.beginPath(); ctx.arc(cx,cy,5,0,7); ctx.fill();
+    feet.forEach((f,i)=>{ ctx.beginPath(); ctx.arc(f.x,f.y,7,0,7); ctx.fillStyle=i===0?'#ffd23f':'#6b9eff'; ctx.fill(); });
+    const phase=(t%1.4)/1.4;   // tap ripple pulsing outward on the pivot foot
+    ctx.strokeStyle=`rgba(255,210,63,${(1-phase)*0.9})`; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(feet[0].x,feet[0].y,9+phase*16,0,7); ctx.stroke();
+}
+function drawHtpSwing(ctx,w,h,t) {
+    ctx.clearRect(0,0,w,h);
+    const cx=w/2, cy=h/2+8, R=34, pivotAngle=Math.PI;
+    const pivot={x:cx+Math.cos(pivotAngle)*R,y:cy+Math.sin(pivotAngle)*R};
+    const swing=Math.sin(t*1.3)*0.85;
+    const rot=p=>{ const dx=p.x-pivot.x,dy=p.y-pivot.y,c=Math.cos(swing),s=Math.sin(swing);
+        return {x:pivot.x+dx*c-dy*s, y:pivot.y+dx*s+dy*c}; };
+    const baseFeet=[0,1,2].map(i=>{ const a=pivotAngle+i*2*Math.PI/3; return {x:cx+Math.cos(a)*R,y:cy+Math.sin(a)*R}; });
+    const hub=rot({x:cx,y:cy}), feet=baseFeet.map(rot);
+    [1,2].forEach(i=>{ const rad=Math.hypot(baseFeet[i].x-pivot.x, baseFeet[i].y-pivot.y);
+        ctx.strokeStyle='rgba(255,210,63,0.25)'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.arc(pivot.x,pivot.y,rad,0,7); ctx.stroke(); });
+    ctx.strokeStyle='#6b9eff'; ctx.lineWidth=4; ctx.lineCap='round';
+    feet.forEach(f=>{ ctx.beginPath(); ctx.moveTo(hub.x,hub.y); ctx.lineTo(f.x,f.y); ctx.stroke(); });
+    ctx.fillStyle='#6b9eff'; ctx.beginPath(); ctx.arc(hub.x,hub.y,5,0,7); ctx.fill();
+    feet.forEach((f,i)=>{ ctx.beginPath(); ctx.arc(f.x,f.y,7,0,7); ctx.fillStyle=i===0?'#ffd23f':'#6b9eff'; ctx.fill(); });
+}
+function drawHtpPush(ctx,w,h,t) {
+    ctx.clearRect(0,0,w,h);
+    const cy=h/2+8, R=24, cycle=(t%3)/3;
+    const approach=Math.min(1,cycle/0.55), pushed=cycle>0.55?Math.min(1,(cycle-0.55)/0.2):0;
+    const blueHub={x:w/2-44+approach*18,y:cy}, redHub={x:w/2+44-pushed*14,y:cy};
+    const drawTri=(hub,color,facing)=>{
+        ctx.strokeStyle=color; ctx.lineWidth=4; ctx.lineCap='round';
+        for (let i=0;i<3;i++){ const a=facing+i*2*Math.PI/3, f={x:hub.x+Math.cos(a)*R,y:hub.y+Math.sin(a)*R};
+            ctx.beginPath(); ctx.moveTo(hub.x,hub.y); ctx.lineTo(f.x,f.y); ctx.stroke(); }
+        ctx.fillStyle=color; ctx.beginPath(); ctx.arc(hub.x,hub.y,5,0,7); ctx.fill();
+    };
+    drawTri(blueHub,'#6b9eff',0);
+    drawTri(redHub,'#ff6b6b',Math.PI+pushed*0.6);
+}
+function drawHtpCross(ctx,w,h,t) {
+    ctx.clearRect(0,0,w,h);
+    const cx=w/2, cy=h/2+8, r1=28, r2=50;
+    ctx.strokeStyle='#414b56'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(cx,cy,r1,0,7); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx,cy,r2,0,7); ctx.stroke();
+    const cycle=(t%2.6)/2.6, maxTravel=r2-6, dist=Math.min(maxTravel,cycle*68), blocked=dist>=maxTravel-0.5;
+    const px=cx+dist, py=cy;
+    ctx.fillStyle=blocked?'#ff6b6b':'#ffd23f'; ctx.beginPath(); ctx.arc(px,py,6,0,7); ctx.fill();
+    if (blocked){ ctx.strokeStyle='rgba(255,107,107,0.6)'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(px,py,10+Math.sin(t*8)*3,0,7); ctx.stroke(); }
+}
+function drawHtpWin(ctx,w,h,t) {
+    ctx.clearRect(0,0,w,h);
+    const cx=w/2, cy=h/2+8, edgeR=52, cycle=(t%2.6)/2.6, dist=cycle*76;
+    ctx.strokeStyle='#414b56'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(cx,cy,edgeR,0,7); ctx.stroke();
+    const off=dist>edgeR, alpha=off?Math.max(0,1-(dist-edgeR)/22):1;
+    ctx.fillStyle=`rgba(255,107,107,${alpha})`;
+    ctx.beginPath(); ctx.arc(cx+dist,cy,7,0,7); ctx.fill();
+    if (off && alpha<0.9){ ctx.fillStyle='#ffd23f'; ctx.font='bold 15px Arial'; ctx.textAlign='center';
+        ctx.fillText('WIN!', cx, cy-edgeR-14); }
+}
+const HTP_STEPS = [
+    { title:'1. Pick your pivot', text:'Tap one of your feet to lock it in place — it stays put while the other two swing.', draw:drawHtpPivot },
+    { title:'2. Swing around it', text:'Drag a different foot around the pivot to rotate your piece.', draw:drawHtpSwing },
+    { title:'3. Push on contact', text:'Swing into your opponent’s legs to push them — contact is true 3D, so a low foot can slip under a higher one.', draw:drawHtpPush },
+    { title:'4. One line per turn', text:'You may cross only one board line per turn — a second crossing is blocked.', draw:drawHtpCross },
+    { title:'5. Win by pushing them off', text:'Win when any of your opponent’s feet cross the outer edge.', draw:drawHtpWin },
+];
+let htpRaf=null, htpScrollBox=null, htpScrollHandler=null;
+function stopHowToPlayAnim() {
+    if (htpRaf) cancelAnimationFrame(htpRaf); htpRaf=null;
+    if (htpScrollBox && htpScrollHandler) htpScrollBox.removeEventListener('scroll', htpScrollHandler);
+    htpScrollBox=null; htpScrollHandler=null;
+}
+function openHowToPlay() {
+    stopHowToPlayAnim();
+    const slidesHtml = `
+        <div id="htpNav">
+            <button id="htpPrev">&lsaquo; Prev</button>
+            <span id="htpDots">${HTP_STEPS.map((_,i)=>`<button class="htpDot" data-idx="${i}"></button>`).join('')}</span>
+            <button id="htpNext">Next &rsaquo;</button>
+        </div>` + HTP_STEPS.map((s,i) => `
+        <div class="htpSlide" data-idx="${i}">
+            <canvas id="htpCanvas${i}" width="220" height="150"></canvas>
+            <p><b>${s.title}</b><br>${s.text}</p>
+        </div>`).join('');
+    showModal('How to play', slidesHtml, [ { label: 'Got it', onClick: stopHowToPlayAnim } ], true);
+
+    const ctxs = HTP_STEPS.map((_,i) => document.getElementById('htpCanvas'+i).getContext('2d'));
+    const t0 = performance.now();
+    const loop = () => {
+        const t = (performance.now()-t0)/1000;
+        HTP_STEPS.forEach((s,i) => s.draw(ctxs[i], 220, 150, t));
+        htpRaf = requestAnimationFrame(loop);
+    };
+    loop();
+
+    const dots = Array.from(document.querySelectorAll('.htpDot'));
+    const prevBtn = document.getElementById('htpPrev'), nextBtn = document.getElementById('htpNext');
+    let current = 0;
+    const setActive = idx => {
+        current = idx;
+        dots.forEach((d,i) => d.classList.toggle('active', i===idx));
+        prevBtn.disabled = idx===0; nextBtn.disabled = idx===HTP_STEPS.length-1;
+    };
+    const goTo = idx => document.querySelector(`.htpSlide[data-idx="${idx}"]`).scrollIntoView({behavior:'smooth', block:'start'});
+    prevBtn.addEventListener('click', () => { if (current>0) goTo(current-1); });
+    nextBtn.addEventListener('click', () => { if (current<HTP_STEPS.length-1) goTo(current+1); });
+    dots.forEach(d => d.addEventListener('click', () => goTo(+d.dataset.idx)));
+
+    // Drives the active dot/Prev/Next state from wherever the box actually is scrolled to —
+    // one plain scroll listener covers both the button-driven scrollIntoView calls above AND
+    // the player just scrolling by hand, so "click through" and "scroll through" always agree
+    // (an IntersectionObserver here was flaky: a big jump can cross several slides' thresholds
+    // in one batch, and whichever entry happened to come last in that batch "won" arbitrarily).
+    const slideEls = Array.from(document.querySelectorAll('.htpSlide'));
+    htpScrollBox = document.getElementById('modalBox');
+    htpScrollHandler = () => {
+        // scrollIntoView({block:'start'}) can't fully align the LAST slide's top with the
+        // container's top if there isn't enough trailing content to scroll that far — it
+        // clamps to the max scroll instead, which the "closest slide top" match below would
+        // then mis-read as an earlier slide. Handle the two ends explicitly; everything else
+        // still falls out of "which slide's top is nearest the container's top".
+        const maxScroll = htpScrollBox.scrollHeight - htpScrollBox.clientHeight;
+        if (htpScrollBox.scrollTop <= 1) { setActive(0); return; }
+        if (htpScrollBox.scrollTop >= maxScroll - 1) { setActive(slideEls.length-1); return; }
+        const boxTop = htpScrollBox.getBoundingClientRect().top;
+        let best=0, bestDist=Infinity;
+        slideEls.forEach((el,i) => {
+            const d = Math.abs(el.getBoundingClientRect().top - boxTop);
+            if (d < bestDist) { bestDist=d; best=i; }
+        });
+        setActive(best);
+    };
+    htpScrollBox.addEventListener('scroll', htpScrollHandler);
+    setActive(0);
+}
+document.getElementById('howToPlayBtn').addEventListener('click', openHowToPlay);
 document.getElementById('modeOnline').addEventListener('click', () => {
     const msg = document.getElementById('modeMsg');
     if (sbUser) { msg.textContent = 'Online 1v1 is coming soon.'; return; }
