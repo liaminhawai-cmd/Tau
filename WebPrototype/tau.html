@@ -97,7 +97,7 @@
         <button class="modeBtn" id="modeOnline">Online 1v1</button>
         <button class="modeBtn" id="modeAI">vs AI</button>
         <p class="msg" id="modeMsg"></p>
-        <div id="menuLinks"><button class="link" id="howToPlayBtn">How to play</button><button class="link" id="leaderboardBtn">Leaderboard</button><button class="link" id="settingsBtn">Settings</button></div>
+        <div id="menuLinks"><button class="link" id="howToPlayBtn">How to play</button><button class="link" id="leaderboardBtn">Leaderboard</button></div>
 
         <div id="acctPanel" style="display:none;">
             <div id="acctSignedOut">
@@ -2086,8 +2086,8 @@ function htp3DStep(dt) {
             // gravity visibly kicks in. Chaotic tumble blends in only once clear of the rim.
             f.tipRate = Math.min(9, f.tipRate + 14*dt);
             const speed = Math.hypot(f.vx, f.vz) || 1;
-            t.rotation.x += (-f.vz/speed) * f.tipRate * dt;
-            t.rotation.z += ( f.vx/speed) * f.tipRate * dt;
+            t.rotation.x += ( f.vz/speed) * f.tipRate * dt;   // leading edge pitches down (see stepFall)
+            t.rotation.z += (-f.vx/speed) * f.tipRate * dt;
             const clear = Math.max(0, Math.min(1, (r - CFG.edgeU) / 25));
             t.rotation.x += f.wx*dt*clear; t.rotation.y += f.wy*dt*clear; t.rotation.z += f.wz*dt*clear;
             // A real match watches the whole 700-unit drop (fine there — it's a one-off, framed
@@ -2258,19 +2258,8 @@ function updateThemeToggleIcon() {
 document.getElementById('themeToggle').addEventListener('click',
     () => setTheme(currentTheme === 'dark' ? 'light' : 'dark'));
 updateThemeToggleIcon();
-function openSettings() {
-    const body = `<div class="setRow"><span>Board theme</span>
-        <span class="seg" id="themeSeg">
-            <button data-theme="light">Light</button>
-            <button data-theme="dark">Dark</button>
-        </span></div>`;
-    showModal('Settings', body, [ { label: 'Done', onClick: () => {} } ], true);
-    const seg = document.getElementById('themeSeg');
-    const mark = () => seg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.theme === currentTheme));
-    mark();
-    seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { setTheme(b.dataset.theme); mark(); }));
-}
-document.getElementById('settingsBtn').addEventListener('click', openSettings);
+// (The old Settings panel only held the theme switch, which now lives in the always-visible
+// corner toggle above — so Settings was removed as redundant.)
 document.getElementById('modeOnline').addEventListener('click', () => {
     const msg = document.getElementById('modeMsg');
     if (sbUser) { msg.textContent = ''; startOnlineMatchmaking(); return; }
@@ -2534,8 +2523,11 @@ function stepFall(dt) {
         // edge", not "flung into a random spin".
         fall.tipRate = Math.min(9, fall.tipRate + 14*dt);
         const speed = Math.hypot(fall.vx, fall.vz) || 1;
-        t.rotation.x += (-fall.vz/speed) * fall.tipRate * dt;
-        t.rotation.z += ( fall.vx/speed) * fall.tipRate * dt;
+        // Rotate about the horizontal axis (vz,0,-vx) — perpendicular to travel — so the LEADING
+        // edge pitches DOWN and the piece goes over the rim face-first, the way it tips off a
+        // real table edge (not leaning backward, which is what the opposite sign gave).
+        t.rotation.x += ( fall.vz/speed) * fall.tipRate * dt;
+        t.rotation.z += (-fall.vx/speed) * fall.tipRate * dt;
         const clear = Math.max(0, Math.min(1, (r - CFG.edgeU) / 25));
         t.rotation.x += fall.wx*dt*clear; t.rotation.y += fall.wy*dt*clear; t.rotation.z += fall.wz*dt*clear;
     }
