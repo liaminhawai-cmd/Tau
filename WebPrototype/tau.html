@@ -2004,6 +2004,17 @@ function render() {
 }
 
 // ---------- 3D side view (three.js) ----------
+// Soft radial-gradient glow, additively blended so it reads as a bright highlight regardless
+// of what's underneath it (the flat, hard-edged ring this replaced blended into the board's
+// own pale yellow and was easy to miss entirely).
+function glowTexture() {
+    const S=128, cv=document.createElement('canvas'); cv.width=cv.height=S;
+    const c=cv.getContext('2d'), g=c.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2);
+    g.addColorStop(0,'rgba(255,225,140,1)'); g.addColorStop(0.35,'rgba(255,210,63,0.75)');
+    g.addColorStop(0.7,'rgba(255,210,63,0.25)'); g.addColorStop(1,'rgba(255,210,63,0)');
+    c.fillStyle=g; c.fillRect(0,0,S,S);
+    return new THREE.CanvasTexture(cv);
+}
 function boardTexture() {
     const S=1024, cv=document.createElement('canvas'); cv.width=cv.height=S;
     // sc must match the mesh's own UV mapping (the full canvas -> the full CFG.edgeU-radius
@@ -2114,8 +2125,8 @@ function init3D() {
     // rings: a glowing ring right at the pinned foot, and a faint circle at each of the other
     // two feet's current radius from the pivot, showing the arc they'll sweep as it rotates.
     pivotGlowMesh = new THREE.Mesh(
-        new THREE.RingGeometry(CFG.footPadRadius*1.3, CFG.footPadRadius*3.4, 28),
-        new THREE.MeshBasicMaterial({ color:0xffd23f, transparent:true, opacity:0.9, side:THREE.DoubleSide, depthWrite:false }));
+        new THREE.PlaneGeometry(CFG.footPadRadius*18, CFG.footPadRadius*18),
+        new THREE.MeshBasicMaterial({ map: glowTexture(), transparent:true, depthWrite:false, blending: THREE.AdditiveBlending }));
     pivotGlowMesh.rotation.x = -Math.PI/2; pivotGlowMesh.visible = false; scene.add(pivotGlowMesh);
     const circlePts = []; for (let k=0;k<=64;k++){ const t=k/64*2*Math.PI; circlePts.push(new THREE.Vector3(Math.cos(t),0,Math.sin(t))); }
     const circleGeo = new THREE.BufferGeometry().setFromPoints(circlePts);
