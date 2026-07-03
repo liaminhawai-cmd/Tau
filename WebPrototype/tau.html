@@ -2244,6 +2244,12 @@ function updateFallCam(dt) {
 // visible frame? Margin (0.96) is deliberately looser than auto-cam's own fit target (0.87
 // NDC, see AUTOCAM_MARGIN) so grabbing the camera right after auto-cam framed everything
 // doesn't immediately snap control back — there's real slack before this can retrigger.
+// Only checked while a piece is actually mid-swing (a human drag, the AI's animated turn, or
+// the landing demo) — never just because the camera itself is sitting there zoomed in. Checking
+// unconditionally every frame meant crossing the margin during your OWN drag/zoom gesture would
+// snap auto-cam back on before you'd even finished moving it, fighting your input; resting the
+// camera however tight you like between moves is fine and shouldn't be touched until something
+// next actually moves and would carry a foot out of view.
 const FRAME_MARGIN = 0.96;
 const acFootVec = new THREE.Vector3();
 function anyFootOutOfFrame() {
@@ -2272,7 +2278,8 @@ function animate() {
     if (fall.active) {
         updateFallCam(dt);   // dramatic loss cam takes over regardless of manual/auto state
     } else {
-        if (!autoCam && anyFootOutOfFrame()) autoCam = true;
+        const moving = G.handle!==null || !!aiAnim || !!demoAnim;
+        if (!autoCam && moving && anyFootOutOfFrame()) autoCam = true;
         if (autoCam) updateAutoCam(dt);
     }
     controls.update();   // recomputes its internal state fresh from camera.position each call,
