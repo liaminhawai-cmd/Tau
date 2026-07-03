@@ -89,7 +89,7 @@
         <button class="modeBtn" id="modeOnline">Online 1v1</button>
         <button class="modeBtn" id="modeAI">vs AI</button>
         <p class="msg" id="modeMsg"></p>
-        <div id="menuLinks"><button class="link" id="howToPlayBtn">How to play</button><button class="link" id="settingsBtn">Settings</button></div>
+        <div id="menuLinks"><button class="link" id="howToPlayBtn">How to play</button><button class="link" id="leaderboardBtn">Leaderboard</button><button class="link" id="settingsBtn">Settings</button></div>
 
         <div id="acctPanel" style="display:none;">
             <div id="acctSignedOut">
@@ -1683,13 +1683,19 @@ function nearestFoot(p, feet, exclude) {
     }
     return best;
 }
+// Whose turn is it to actually touch the board right now? Local 1v1 is always "yours" (pass
+// the device); vs AI blocks input on the AI's colour; online blocks input unless the active
+// colour is the one this client was assigned.
+function inputBlocked() {
+    return (vsAI && G.active===aiIdx) || (onlineMatch && !myOnlineTurnNow());
+}
 function onDown(e) {
-    if (G.over || aiAnim || (vsAI && G.active===aiIdx)) return; e.preventDefault();
+    if (G.over || aiAnim || inputBlocked()) return; e.preventDefault();
     const p=pointerPos(e), feet=G.pieces[G.active].feet();
     if (G.pinned===null) {
         // Step 1 — lock a foot as the pivot
         const i=nearestFoot(p, feet, -1);
-        if (i>=0) pinFoot(i);
+        if (i>=0) { pinFoot(i); if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; } }
     } else {
         // Step 2 — grab a DIFFERENT foot to swing, or re-tap the pivot to re-pick.
         // The pivot only "wins" the tap if it is the closest foot — a sloppy tap near a
@@ -1705,18 +1711,23 @@ function onDown(e) {
     render();
 }
 function onMove(e) {
-    if (G.handle===null || G.over || aiAnim || (vsAI && G.active===aiIdx)) return; e.preventDefault();
+    if (G.handle===null || G.over || aiAnim || inputBlocked()) return; e.preventDefault();
     const p=pointerPos(e);
     const a=Math.atan2(p.y-G.pivot.y, p.x-G.pivot.x);
     if (G.ptrAngle===null){ G.ptrAngle=a; return; }
     const dA=norm(a-G.ptrAngle); G.ptrAngle=a;
     applySwing(dA); render();
+    if (onlineMatch) recordKeyframe();
 }
 function onUp() {
     if (G.handle===null) return;
     G.handle=null; G.ptrAngle=null;
-    if (Math.abs(G.netRad) >= CFG.minMoveDeg*Math.PI/180) finishTurn();
-    else { restoreSnap(); render(); }   // too small to count — undo it (incl. any nudge), keep the pivot
+    if (Math.abs(G.netRad) >= CFG.minMoveDeg*Math.PI/180) {
+        if (onlineMatch) finishOnlineTurn(); else finishTurn();
+    } else {
+        restoreSnap(); render();   // too small to count — undo it (incl. any nudge), keep the pivot
+        if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; }
+    }
 }
 // endTurn()/clearTurn() (win check, active swap, turn-state reset) live in game.js and are
 // pure — no DOM, testable headlessly. This wraps them with the visual/UI side effects
@@ -1895,7 +1906,13 @@ function showGameOverModal() {
     clearTimeout(gameOverTimer);
     gameOverTimer = setTimeout(() => {
         if (document.getElementById('game').style.display !== 'flex') return;   // player already left to the menu
-        if (vsAI) {
+        if (onlineMatch) {
+            const myWin = (G.winner===0?'blue':'red') === onlineMatch.myColor;
+            showModal(myWin ? 'You win!' : 'You lose', '', [
+                { label: 'Rematch', onClick: rematchOnline },
+                { label: 'Menu', onClick: backToMenu },
+            ]);
+        } else if (vsAI) {
             showModal(G.winner===humanIdx ? 'You win!' : 'You lose', '', [
                 { label: 'Play as Blue', onClick: () => startGame(true, 0) },
                 { label: 'Play as Red',  onClick: () => startGame(true, 1) },
@@ -1912,6 +1929,7 @@ function showGameOverModal() {
 function startGame(aiMode, humanColorIdx) {
     hideModal(); clearTimeout(gameOverTimer);
     demoStop();
+    cancelMatchmaking(); exitOnlineMatch();
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
     vsAI = aiMode;
     humanIdx = humanColorIdx===undefined ? 0 : humanColorIdx;
@@ -1926,6 +1944,7 @@ function startGame(aiMode, humanColorIdx) {
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
     clearTimeout(aiTimer); aiAnim = null;
+    cancelMatchmaking(); exitOnlineMatch();
     camCenterFrac = 1; camManualSet = false;   // the menu demo frames itself fully
     document.getElementById('game').style.display = 'none';
     document.getElementById('menu').style.display = 'flex';
@@ -2230,7 +2249,7 @@ function openSettings() {
 document.getElementById('settingsBtn').addEventListener('click', openSettings);
 document.getElementById('modeOnline').addEventListener('click', () => {
     const msg = document.getElementById('modeMsg');
-    if (sbUser) { msg.textContent = 'Online 1v1 is coming soon.'; return; }
+    if (sbUser) { msg.textContent = ''; startOnlineMatchmaking(); return; }
     msg.textContent = '';
     pendingOnline = true;
     openAcctPanel();
@@ -2761,7 +2780,7 @@ async function setSession(session) {
     document.getElementById('acctElo').textContent = error ? '?' : data.elo;
     updateAcctStatus();
     // signing in from "Online 1v1" -> automatically pick the conversation back up
-    if (pendingOnline) { closeAcctPanel(); document.getElementById('modeMsg').textContent = 'Online 1v1 is coming soon.'; }
+    if (pendingOnline) { closeAcctPanel(); startOnlineMatchmaking(); }
 }
 
 // Checked once on load, in the background, so a returning signed-in player's status shows
@@ -2827,6 +2846,193 @@ document.getElementById('acctGoogle').addEventListener('click', async () => {
     if (error) msg.textContent = error.message;
 });
 document.getElementById('acctSignOut').addEventListener('click', async () => { await sb.auth.signOut(); closeAcctPanel(); });
+
+// ---------- Online 1v1: matchmaking, live move sync, ELO ----------
+// Sync model: whoever's turn it is computes their own move locally (instant feedback — no
+// round trip needed to play) and broadcasts the recorded trajectory plus the resulting
+// authoritative state; the OTHER client never re-runs the physics, it only replays/tweens the
+// received keyframes and then snaps to final_state. This sidesteps a real risk with the
+// alternative (both clients independently simulating "the same" turn): resolvePush calls
+// Math.sin/cos across up to 10 iterations x hundreds of substeps per turn, and those
+// transcendental functions aren't guaranteed bit-identical across browser engines (IEEE754
+// only guarantees +-*/ and sqrt are correctly rounded) — two clients replaying a long game
+// independently could silently drift apart. Trust model: a player's own turn is self-reported
+// (fine for a casual beta; server-side move validation would be a hardening pass, not v1).
+let onlineMatch = null;   // { id, myColor, nextMoveIndex } while actively in an online game
+let matchmakingActive = false, matchmakingTimer = null, matchmakingChannel = null, moveChannel = null;
+let pendingKeyframes = [], lastKeyframeT = 0;
+
+function myOnlineTurnNow() {
+    if (!onlineMatch) return true;
+    return (G.active===0 && onlineMatch.myColor==='blue') || (G.active===1 && onlineMatch.myColor==='red');
+}
+
+async function startOnlineMatchmaking() {
+    if (!sb || !sbUser) return;
+    matchmakingActive = true;
+    showModal('Online 1v1', 'Searching for an opponent…', [ { label: 'Cancel', onClick: cancelMatchmaking } ]);
+    matchmakingChannel = sb.channel('matchmaking-'+sbUser.id)
+        .on('postgres_changes', { event:'INSERT', schema:'public', table:'matches' }, payload => {
+            if (matchmakingActive) enterOnlineMatch(payload.new);
+        })
+        .subscribe();
+    const tryOnce = async () => {
+        if (!matchmakingActive) return;
+        const { data: matchId, error } = await sb.rpc('try_match');
+        if (error) console.error('try_match failed', error);
+        if (matchId && matchmakingActive) {
+            const { data: row } = await sb.from('matches').select('*').eq('id', matchId).single();
+            if (row) { enterOnlineMatch(row); return; }
+        }
+        if (matchmakingActive) matchmakingTimer = setTimeout(tryOnce, 1800);
+    };
+    tryOnce();
+}
+function cancelMatchmaking() {
+    if (!matchmakingActive) return;
+    matchmakingActive = false;
+    clearTimeout(matchmakingTimer);
+    if (matchmakingChannel) { sb.removeChannel(matchmakingChannel); matchmakingChannel = null; }
+    if (sb) sb.rpc('leave_queue').catch(()=>{});
+}
+
+async function enterOnlineMatch(row) {
+    matchmakingActive = false;
+    clearTimeout(matchmakingTimer);
+    if (matchmakingChannel) { sb.removeChannel(matchmakingChannel); matchmakingChannel = null; }
+    hideModal();
+    demoStop();
+    if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
+    onlineMatch = { id: row.id, myColor: row.blue_id===sbUser.id ? 'blue' : 'red', nextMoveIndex: 0 };
+    vsAI = false;
+    camCenterFrac = 1; camManualSet = false;
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('game').style.display = 'flex';
+    reset(); resize();
+    moveChannel = sb.channel('match-moves-'+row.id)
+        .on('postgres_changes', { event:'INSERT', schema:'public', table:'match_moves', filter:'match_id=eq.'+row.id },
+            payload => { if (onlineMatch && payload.new.mover_color !== onlineMatch.myColor) replayOpponentMove(payload.new); })
+        .subscribe();
+    await catchUpOnlineMatch();   // pick up any moves already played before we subscribed (rematch/reconnect)
+}
+function exitOnlineMatch() {
+    if (moveChannel) { sb.removeChannel(moveChannel); moveChannel = null; }
+    onlineMatch = null;
+    pendingKeyframes = []; lastKeyframeT = 0;
+}
+// Fast-forwards straight to each historical move's authoritative final_state (no animation --
+// this is catch-up, not something the player is watching live) so joining a match that
+// already has moves in it (a rematch the opponent started first, or a reconnect) lands on the
+// right board instead of the fresh start reset() gave it.
+async function catchUpOnlineMatch() {
+    if (!onlineMatch) return;
+    const { data: history, error } = await sb.from('match_moves').select('*')
+        .eq('match_id', onlineMatch.id).order('move_index', { ascending:true });
+    if (error || !history || !history.length) return;
+    for (const mv of history) {
+        const fs = mv.final_state;
+        G.pieces[0].x=fs.blue.x; G.pieces[0].y=fs.blue.y; G.pieces[0].rot=fs.blue.rot;
+        G.pieces[1].x=fs.red.x; G.pieces[1].y=fs.red.y; G.pieces[1].rot=fs.red.rot;
+        G.active = 1-G.active;
+        if (fs.winner) { G.over=true; G.winner = fs.winner==='blue'?0:1; }
+    }
+    onlineMatch.nextMoveIndex = history.length;
+    clearTurn();
+    render();
+}
+
+function recordKeyframe() {
+    const now = performance.now();
+    if (now - lastKeyframeT < 40) return;
+    lastKeyframeT = now;
+    pendingKeyframes.push({
+        bx:+G.pieces[0].x.toFixed(3), by:+G.pieces[0].y.toFixed(3), brot:+G.pieces[0].rot.toFixed(4),
+        rx:+G.pieces[1].x.toFixed(3), ry:+G.pieces[1].y.toFixed(3), rrot:+G.pieces[1].rot.toFixed(4),
+    });
+}
+function finishOnlineTurn() {
+    const keyframes = pendingKeyframes.slice();
+    pendingKeyframes = []; lastKeyframeT = 0;
+    endTurn();
+    progressCentering();
+    const winnerColor = G.over ? (G.winner===0?'blue':'red') : null;
+    const finalState = {
+        blue: { x:G.pieces[0].x, y:G.pieces[0].y, rot:G.pieces[0].rot },
+        red:  { x:G.pieces[1].x, y:G.pieces[1].y, rot:G.pieces[1].rot },
+        winner: winnerColor,
+    };
+    if (G.over) { triggerFall(); showGameOverModal(); onlineFinishMatch(winnerColor); }
+    render();
+    const moveIndex = onlineMatch.nextMoveIndex++;
+    const matchId = onlineMatch.id, myColor = onlineMatch.myColor;
+    sb.from('match_moves').insert({
+        match_id: matchId, move_index: moveIndex, mover_color: myColor,
+        keyframes, final_state: finalState,
+    }).then(({ error }) => { if (error) console.error('sending move failed', error); });
+}
+async function replayOpponentMove(row) {
+    for (const kf of (row.keyframes || [])) {
+        if (!onlineMatch) return;   // left the match mid-replay (e.g. hit Menu)
+        G.pieces[0].x=kf.bx; G.pieces[0].y=kf.by; G.pieces[0].rot=kf.brot;
+        G.pieces[1].x=kf.rx; G.pieces[1].y=kf.ry; G.pieces[1].rot=kf.rrot;
+        render();
+        await new Promise(r => setTimeout(r, 40));
+    }
+    if (!onlineMatch) return;
+    const fs = row.final_state;
+    G.pieces[0].x=fs.blue.x; G.pieces[0].y=fs.blue.y; G.pieces[0].rot=fs.blue.rot;
+    G.pieces[1].x=fs.red.x; G.pieces[1].y=fs.red.y; G.pieces[1].rot=fs.red.rot;
+    G.active = 1-G.active;
+    clearTurn();
+    progressCentering();
+    if (fs.winner) {
+        G.over = true; G.winner = fs.winner==='blue' ? 0 : 1;
+        triggerFall(); showGameOverModal(); onlineFinishMatch(fs.winner);
+    }
+    render();
+}
+function onlineFinishMatch(winnerColor) {
+    if (!onlineMatch || !sb) return;
+    sb.rpc('finish_match', { p_match_id: onlineMatch.id, p_winner_color: winnerColor })
+      .then(({ error }) => { if (error) console.error('finish_match failed', error); });
+}
+// Only actually starts a new match once BOTH players have clicked Rematch (rematch() is
+// idempotent per source match — see schema_matches.sql — so whichever of the two calls this
+// first creates the row, and the other converges on that same row an instant later).
+function rematchOnline() {
+    if (!onlineMatch || !sb) return;
+    const prevMatchId = onlineMatch.id;
+    exitOnlineMatch();
+    showModal('Online 1v1', 'Waiting for your opponent…', [ { label: 'Cancel', onClick: backToMenu } ]);
+    sb.rpc('rematch', { p_prev_match_id: prevMatchId }).then(({ data, error }) => {
+        if (error || !data) { backToMenu(); return; }
+        sb.from('matches').select('*').eq('id', data).single().then(({ data: row }) => {
+            if (row) enterOnlineMatch(row); else backToMenu();
+        });
+    });
+}
+
+// ---------- Leaderboard ----------
+function openLeaderboard() {
+    showModal('Leaderboard', '<p style="text-align:center;color:#9aa4ad;">Loading…</p>', [ { label:'Close', onClick:()=>{} } ], true);
+    if (!sb) { document.getElementById('modalBody').innerHTML = '<p style="text-align:center;color:#9aa4ad;">Online accounts aren’t set up on this build.</p>'; return; }
+    sb.from('profiles').select('username, elo, wins, losses').order('elo', { ascending:false }).limit(20)
+      .then(({ data, error }) => {
+        const body = document.getElementById('modalBody');
+        if (error || !data) { body.innerHTML = '<p style="text-align:center;color:#9aa4ad;">Could not load the leaderboard.</p>'; return; }
+        if (!data.length) { body.innerHTML = '<p style="text-align:center;color:#9aa4ad;">No rated players yet.</p>'; return; }
+        body.innerHTML = `<table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <tr style="color:#9aa4ad; text-align:left;"><th style="padding:4px 6px;">#</th><th style="padding:4px 6px;">Player</th><th style="padding:4px 6px; text-align:right;">Elo</th><th style="padding:4px 6px; text-align:right;">W-L</th></tr>
+            ${data.map((p,i)=>`<tr style="border-top:1px solid #2c3138;">
+                <td style="padding:4px 6px; color:#9aa4ad;">${i+1}</td>
+                <td style="padding:4px 6px;">${p.username}</td>
+                <td style="padding:4px 6px; text-align:right; color:#ffd23f; font-weight:bold;">${p.elo}</td>
+                <td style="padding:4px 6px; text-align:right; color:#9aa4ad;">${p.wins}-${p.losses}</td>
+            </tr>`).join('')}
+        </table>`;
+      });
+}
+document.getElementById('leaderboardBtn').addEventListener('click', openLeaderboard);
 </script>
 </body>
 </html>
