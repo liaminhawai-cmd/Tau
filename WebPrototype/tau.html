@@ -1618,8 +1618,17 @@ const ctx = canvas.getContext('2d');
 let cx = 0, cy = 0, scale = 1;   // recomputed every frame by syncCanvas (px)
 let renderer=null, scene, camera, controls, tripods=[];   // 3D side view — always shown once THREE loads
 let pivotGlowMesh=null, boardTop=null, camProbe=null;   // pivot glow + board surface + fit-probe camera (built in init3D)
-let currentTheme = 'light';   // 'light' = pale physical-board look; 'dark' = 3D board matches the 2D board
+let currentTheme = 'light';   // 'light' = pale physical-board look; 'dark' = sleek dark board
 try { currentTheme = localStorage.getItem('tauTheme') || 'light'; } catch(e) {}
+// One palette for every flat board drawing (2D game canvas, landing demo, how-to-play slides)
+// so the 2D and 3D boards always match: light = pale physical board, dark = sleek dark board.
+function boardColors() {
+    // bg (the surround) stays dark in both themes, matching the 3D scene where the board disc
+    // floats on a dark backdrop — only the disc/lines change with the theme.
+    return currentTheme === 'dark'
+        ? { bg:'#0c0e11', disc:'#171c22', line:'#414b56', dotBlue:'rgba(107,158,255,0.6)', dotRed:'rgba(255,107,107,0.6)' }
+        : { bg:'#0c0e11', disc:'#efe4a6', line:'#26251f', dotBlue:'rgba(74,111,212,0.85)', dotRed:'rgba(192,57,43,0.85)' };
+}
 let clock=null, fall={active:false};                                  // loss-animation state
 
 // Keep the 2D canvas backing store, DPR transform and board scale correct no matter
@@ -1757,9 +1766,10 @@ function demoDraw() {
     if (!demoCtx || !G) return;
     const cv=document.getElementById('demoCanvas'), w=cv.width, sc=(w*0.86)/(2*CFG.edgeU), o=w/2;
     const b=(mx,my)=>({x:o+mx*sc, y:o+my*sc});
-    demoCtx.fillStyle='#0c0e11'; demoCtx.fillRect(0,0,w,w);
-    demoCtx.beginPath(); demoCtx.arc(o,o,CFG.edgeU*sc,0,7); demoCtx.fillStyle='#171c22'; demoCtx.fill();
-    demoCtx.lineWidth=Math.max(1, CFG.edgeU*CFG.lineWidthFrac*sc); demoCtx.strokeStyle='#414b56';
+    const col=boardColors();
+    demoCtx.fillStyle=col.bg; demoCtx.fillRect(0,0,w,w);
+    demoCtx.beginPath(); demoCtx.arc(o,o,CFG.edgeU*sc,0,7); demoCtx.fillStyle=col.disc; demoCtx.fill();
+    demoCtx.lineWidth=Math.max(1, CFG.edgeU*CFG.lineWidthFrac*sc); demoCtx.strokeStyle=col.line;
     for (const r of CFG.rings){ demoCtx.beginPath(); demoCtx.arc(o,o,r*sc,0,7); demoCtx.stroke(); }
     for (const a of CFG.sideArcs){ demoCtx.beginPath(); const seg=48;
         for (let k=0;k<=seg;k++){ const t=(a.a0+(a.a1-a.a0)*k/seg)*Math.PI/180;
@@ -1928,78 +1938,99 @@ document.getElementById('modeAI').addEventListener('click', () => {
 // Vertically stacked slides inside the (already-scrollable) modal body, so scrolling and the
 // Prev/Next/dot buttons are just two ways to move through the SAME list -- no separate
 // "modes" to keep in sync beyond an IntersectionObserver driving which dot is active.
-function drawHtpPivot(ctx,w,h,t) {
-    ctx.clearRect(0,0,w,h);
-    const cx=w/2, cy=h/2+8, R=34;
-    const feet=[0,1,2].map(i=>{ const a=Math.PI+i*2*Math.PI/3; return {x:cx+Math.cos(a)*R,y:cy+Math.sin(a)*R}; });
-    ctx.strokeStyle='#6b9eff'; ctx.lineWidth=4; ctx.lineCap='round';
-    feet.forEach(f=>{ ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(f.x,f.y); ctx.stroke(); });
-    ctx.fillStyle='#6b9eff'; ctx.beginPath(); ctx.arc(cx,cy,5,0,7); ctx.fill();
-    feet.forEach((f,i)=>{ ctx.beginPath(); ctx.arc(f.x,f.y,7,0,7); ctx.fillStyle=i===0?'#ffd23f':'#6b9eff'; ctx.fill(); });
-    const phase=(t%1.4)/1.4;   // tap ripple pulsing outward on the pivot foot
-    ctx.strokeStyle=`rgba(255,210,63,${(1-phase)*0.9})`; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.arc(feet[0].x,feet[0].y,9+phase*16,0,7); ctx.stroke();
+// The slides render REAL Piece geometry driven by the REAL rules/physics (rotateAround,
+// resolvePush, countCrossings) on throwaway local pieces — so they look exactly like the game
+// and can't drift out of sync with it, instead of the hand-faked shapes they replaced.
+function htpMap(w,h){ const sc=(h*0.92)/(2*CFG.edgeU); const O={x:w/2,y:h/2}; return { sc, b:(mx,my)=>({x:O.x+mx*sc, y:O.y+my*sc}) }; }
+function mkP(id,x,y,rot){ const p=new Piece(id); p.x=x; p.y=y; p.rot=rot; return p; }
+function htpEaseHold(cyc){ const p=Math.min(1,cyc/0.72); return p*p*(3-2*p); }   // ease to the end by 72%, then hold
+function htpBoard(c,b,sc){
+    const col=boardColors(), O=b(0,0);
+    c.fillStyle=col.bg; c.fillRect(0,0,c.canvas.width,c.canvas.height);
+    c.beginPath(); c.arc(O.x,O.y,CFG.edgeU*sc,0,7); c.fillStyle=col.disc; c.fill();
+    c.strokeStyle=col.line; c.lineWidth=Math.max(1,CFG.edgeU*CFG.lineWidthFrac*sc);
+    for(const r of CFG.rings){ c.beginPath(); c.arc(O.x,O.y,r*sc,0,7); c.stroke(); }
+    for(const a of CFG.sideArcs){ c.beginPath(); const seg=48;
+        for(let k=0;k<=seg;k++){ const tt=(a.a0+(a.a1-a.a0)*k/seg)*Math.PI/180; const p=b(a.cx+Math.cos(tt)*a.r,a.cy+Math.sin(tt)*a.r); k?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y); }
+        c.stroke(); }
 }
-function drawHtpSwing(ctx,w,h,t) {
-    ctx.clearRect(0,0,w,h);
-    const cx=w/2, cy=h/2+8, R=34, pivotAngle=Math.PI;
-    const pivot={x:cx+Math.cos(pivotAngle)*R,y:cy+Math.sin(pivotAngle)*R};
-    const swing=Math.sin(t*1.3)*0.85;
-    const rot=p=>{ const dx=p.x-pivot.x,dy=p.y-pivot.y,c=Math.cos(swing),s=Math.sin(swing);
-        return {x:pivot.x+dx*c-dy*s, y:pivot.y+dx*s+dy*c}; };
-    const baseFeet=[0,1,2].map(i=>{ const a=pivotAngle+i*2*Math.PI/3; return {x:cx+Math.cos(a)*R,y:cy+Math.sin(a)*R}; });
-    const hub=rot({x:cx,y:cy}), feet=baseFeet.map(rot);
-    [1,2].forEach(i=>{ const rad=Math.hypot(baseFeet[i].x-pivot.x, baseFeet[i].y-pivot.y);
-        ctx.strokeStyle='rgba(255,210,63,0.25)'; ctx.lineWidth=1;
-        ctx.beginPath(); ctx.arc(pivot.x,pivot.y,rad,0,7); ctx.stroke(); });
-    ctx.strokeStyle='#6b9eff'; ctx.lineWidth=4; ctx.lineCap='round';
-    feet.forEach(f=>{ ctx.beginPath(); ctx.moveTo(hub.x,hub.y); ctx.lineTo(f.x,f.y); ctx.stroke(); });
-    ctx.fillStyle='#6b9eff'; ctx.beginPath(); ctx.arc(hub.x,hub.y,5,0,7); ctx.fill();
-    feet.forEach((f,i)=>{ ctx.beginPath(); ctx.arc(f.x,f.y,7,0,7); ctx.fillStyle=i===0?'#ffd23f':'#6b9eff'; ctx.fill(); });
+function htpPiece(c,piece,b,pin,t){
+    const feet=piece.feet().map(f=>b(f.x,f.y)), hub=b(piece.x,piece.y);
+    c.strokeStyle=piece.color; c.lineWidth=3; c.lineCap='round';
+    feet.forEach(f=>{ c.beginPath(); c.moveTo(hub.x,hub.y); c.lineTo(f.x,f.y); c.stroke(); });
+    c.fillStyle=piece.color; c.beginPath(); c.arc(hub.x,hub.y,3.5,0,7); c.fill();
+    feet.forEach((f,i)=>{
+        if(i===pin){ const pulse=0.55+Math.sin(t*6)*0.25;
+            const g=c.createRadialGradient(f.x,f.y,0,f.x,f.y,13);
+            g.addColorStop(0,`rgba(255,225,140,${pulse})`); g.addColorStop(0.5,`rgba(255,210,63,${pulse*0.55})`); g.addColorStop(1,'rgba(255,210,63,0)');
+            c.fillStyle=g; c.beginPath(); c.arc(f.x,f.y,13,0,7); c.fill(); }
+        c.beginPath(); c.arc(f.x,f.y,5,0,7); c.fillStyle=(i===pin)?'#ffd23f':piece.color; c.fill();
+    });
 }
-function drawHtpPush(ctx,w,h,t) {
-    ctx.clearRect(0,0,w,h);
-    const cy=h/2+8, R=24, cycle=(t%3)/3;
-    const approach=Math.min(1,cycle/0.55), pushed=cycle>0.55?Math.min(1,(cycle-0.55)/0.2):0;
-    const blueHub={x:w/2-44+approach*18,y:cy}, redHub={x:w/2+44-pushed*14,y:cy};
-    const drawTri=(hub,color,facing)=>{
-        ctx.strokeStyle=color; ctx.lineWidth=4; ctx.lineCap='round';
-        for (let i=0;i<3;i++){ const a=facing+i*2*Math.PI/3, f={x:hub.x+Math.cos(a)*R,y:hub.y+Math.sin(a)*R};
-            ctx.beginPath(); ctx.moveTo(hub.x,hub.y); ctx.lineTo(f.x,f.y); ctx.stroke(); }
-        ctx.fillStyle=color; ctx.beginPath(); ctx.arc(hub.x,hub.y,5,0,7); ctx.fill();
-    };
-    drawTri(blueHub,'#6b9eff',0);
-    drawTri(redHub,'#ff6b6b',Math.PI+pushed*0.6);
+const htpCache = {};
+// Largest swing (radians) around pivotIdx, in direction dir, that stays within the 1-crossing
+// rule — used by the "one line per turn" slide so it stops itself exactly where the game would.
+function htpCrossLimit(base,pivotIdx,dir){
+    const pv=base.feet()[pivotIdx], p=mkP(base.id,base.x,base.y,base.rot);
+    const step=dir*1.5*Math.PI/180; let crossings=0, ang=0;
+    for(let s=0;s<260;s++){
+        const before=p.feet(); p.rotateAround(pv.x,pv.y,step);
+        const added=countCrossings(before,p.feet()).reduce((a,v)=>a+v,0);
+        if(crossings+added>1) break;
+        crossings+=added; ang+=Math.abs(step);
+        if(crossings>=1 && ang>22*Math.PI/180) break;   // enough travel past the crossing to read it
+    }
+    return ang;
 }
-function drawHtpCross(ctx,w,h,t) {
-    ctx.clearRect(0,0,w,h);
-    const cx=w/2, cy=h/2+8, r1=28, r2=50;
-    ctx.strokeStyle='#414b56'; ctx.lineWidth=1.5;
-    ctx.beginPath(); ctx.arc(cx,cy,r1,0,7); ctx.stroke();
-    ctx.beginPath(); ctx.arc(cx,cy,r2,0,7); ctx.stroke();
-    const cycle=(t%2.6)/2.6, maxTravel=r2-6, dist=Math.min(maxTravel,cycle*68), blocked=dist>=maxTravel-0.5;
-    const px=cx+dist, py=cy;
-    ctx.fillStyle=blocked?'#ff6b6b':'#ffd23f'; ctx.beginPath(); ctx.arc(px,py,6,0,7); ctx.fill();
-    if (blocked){ ctx.strokeStyle='rgba(255,107,107,0.6)'; ctx.lineWidth=2;
-        ctx.beginPath(); ctx.arc(px,py,10+Math.sin(t*8)*3,0,7); ctx.stroke(); }
+function htpSlidePivot(c,w,h,t){
+    const {b}=htpMap(w,h); htpBoard(c,b,htpMap(w,h).sc);
+    htpPiece(c, mkP(0,2,3,-0.5), b, 0, t);   // one piece, resting; the pinned foot glows
 }
-function drawHtpWin(ctx,w,h,t) {
-    ctx.clearRect(0,0,w,h);
-    const cx=w/2, cy=h/2+8, edgeR=52, cycle=(t%2.6)/2.6, dist=cycle*76;
-    ctx.strokeStyle='#414b56'; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.arc(cx,cy,edgeR,0,7); ctx.stroke();
-    const off=dist>edgeR, alpha=off?Math.max(0,1-(dist-edgeR)/22):1;
-    ctx.fillStyle=`rgba(255,107,107,${alpha})`;
-    ctx.beginPath(); ctx.arc(cx+dist,cy,7,0,7); ctx.fill();
-    if (off && alpha<0.9){ ctx.fillStyle='#ffd23f'; ctx.font='bold 15px Arial'; ctx.textAlign='center';
-        ctx.fillText('WIN!', cx, cy-edgeR-14); }
+function htpSlideSwing(c,w,h,t){
+    const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
+    const base=mkP(0,6,6,-0.4), pv=base.feet()[0];
+    const ang=(30*Math.PI/180)*Math.sin(t*3.0);            // ping-pong ~1s each way around the pinned foot
+    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,ang);
+    htpPiece(c,p,m.b,0,t);
+}
+function htpSlidePush(c,w,h,t){
+    const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
+    const period=2.0, prog=htpEaseHold((t%period)/period);
+    const blue=mkP(0,-20,0,0.3), red=mkP(1,20,0,Math.PI);   // face each other; blue swings a leg into red
+    const pivotIdx=2, pv=blue.feet()[pivotIdx];             // (pivot/dir found by search to give a clear shove)
+    const steps=16, step=(prog*(-55*Math.PI/180))/steps || 0;
+    for(let s=0;s<steps;s++){ blue.rotateAround(pv.x,pv.y,step); resolvePush(blue,red); }   // real push physics
+    htpPiece(c,red,m.b,-1,t);
+    htpPiece(c,blue,m.b,pivotIdx,t);
+}
+function htpSlideCross(c,w,h,t){
+    const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
+    if(!htpCache.crossBase) htpCache.crossBase=mkP(0,-24,12,0.5);
+    const base=htpCache.crossBase, pivotIdx=2, dir=1;
+    if(htpCache.crossLim===undefined) htpCache.crossLim=htpCrossLimit(base,pivotIdx,dir);
+    const prog=htpEaseHold((t%2.4)/2.4), pv=base.feet()[pivotIdx];
+    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*htpCache.crossLim);
+    if(prog>0.8){ const O=m.b(0,0), flash=0.35+0.4*Math.abs(Math.sin(t*8));   // the next ring flashes "blocked"
+        c.strokeStyle=`rgba(255,107,107,${flash})`; c.lineWidth=3;
+        c.beginPath(); c.arc(O.x,O.y,CFG.rings[1]*m.sc,0,7); c.stroke(); }
+    htpPiece(c,p,m.b,pivotIdx,t);
+}
+function htpSlideWin(c,w,h,t){
+    const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
+    const prog=htpEaseHold((t%2.4)/2.4);
+    htpPiece(c, mkP(0,-30,6,0.3), m.b, -1, t);             // winner stays put
+    const red=mkP(1, 26+prog*46, 2, prog*0.9);             // loser pushed out over the edge
+    htpPiece(c, red, m.b, -1, t);
+    if(red.feet().some(f=>radU(f)>CFG.edgeU)){
+        c.fillStyle='#ffd23f'; c.font='bold 16px Arial'; c.textAlign='center'; c.fillText('You win!', w/2, 18);
+    }
 }
 const HTP_STEPS = [
-    { title:'1. Pick your pivot', text:'Tap one of your feet to lock it in place — it stays put while the other two swing.', draw:drawHtpPivot },
-    { title:'2. Swing around it', text:'Drag a different foot around the pivot to rotate your piece.', draw:drawHtpSwing },
-    { title:'3. Push on contact', text:'Swing into your opponent’s legs to push them — contact is true 3D, so a low foot can slip under a higher one.', draw:drawHtpPush },
-    { title:'4. One line per turn', text:'You may cross only one board line per turn — a second crossing is blocked.', draw:drawHtpCross },
-    { title:'5. Win by pushing them off', text:'Win when any of your opponent’s feet cross the outer edge.', draw:drawHtpWin },
+    { title:'1. Pick your pivot', text:'Tap one of your feet to lock it in place — it stays put (glowing) while the other two swing.', draw:htpSlidePivot },
+    { title:'2. Swing around it', text:'Drag a different foot around the pivot to rotate your piece.', draw:htpSlideSwing },
+    { title:'3. Push on contact', text:'Swing into your opponent’s legs to push them — contact is true 3D, so a low foot can slip under a higher one.', draw:htpSlidePush },
+    { title:'4. One line per turn', text:'You may cross only one board line per turn — a second crossing is blocked.', draw:htpSlideCross },
+    { title:'5. Win by pushing them off', text:'Win when any of your opponent’s feet cross the outer edge.', draw:htpSlideWin },
 ];
 let htpRaf=null, htpScrollBox=null, htpScrollHandler=null;
 function stopHowToPlayAnim() {
@@ -2143,20 +2174,21 @@ function render() {
     if (!G) return;
     syncCanvas();
     const w = canvas.clientWidth || 300;
-    ctx.fillStyle='#0c0e11'; ctx.fillRect(0,0,w,w);
+    const col=boardColors();
+    ctx.fillStyle=col.bg; ctx.fillRect(0,0,w,w);
     const O=bx2px(0,0);
     // board disc — the surface simply ends at the drop-off; no line is printed there
     ctx.beginPath(); ctx.arc(O.x,O.y,CFG.edgeU*scale,0,2*Math.PI);
-    ctx.fillStyle='#171c22'; ctx.fill();
+    ctx.fillStyle=col.disc; ctx.fill();
     // the two interior rings
-    ctx.lineWidth=Math.max(1, CFG.edgeU*CFG.lineWidthFrac*scale); ctx.strokeStyle='#414b56';
+    ctx.lineWidth=Math.max(1, CFG.edgeU*CFG.lineWidthFrac*scale); ctx.strokeStyle=col.line;
     for (const r of CFG.rings){ ctx.beginPath(); ctx.arc(O.x,O.y,r*scale,0,2*Math.PI); ctx.stroke(); }
     // side lens arcs
     for (const a of CFG.sideArcs) strokeArcU(a.cx,a.cy,a.r,a.a0,a.a1);
     // start dots (the printed board's dots — also the feet start positions)
     for (let k=0;k<6;k++){ const d=CFG.startDots[k], p=bx2px(d[0],d[1]);
         ctx.beginPath(); ctx.arc(p.x,p.y,2.5,0,2*Math.PI);
-        ctx.fillStyle = k<3 ? 'rgba(107,158,255,0.6)' : 'rgba(255,107,107,0.6)'; ctx.fill(); }
+        ctx.fillStyle = k<3 ? col.dotBlue : col.dotRed; ctx.fill(); }
 
     G.pieces[0].draw(G.active===0?G.pinned:null);
     G.pieces[1].draw(G.active===1?G.pinned:null);
