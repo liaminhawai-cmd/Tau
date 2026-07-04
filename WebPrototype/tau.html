@@ -98,7 +98,7 @@
 </head>
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
-<div id="buildTag">build 6</div>
+<div id="buildTag">build 7</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -2961,7 +2961,16 @@ function promoteGuestToPersistent() {
 async function ensureSupabase() {
     if (sb) return sb;
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storage: dualAuthStorage } });
-    sb.auth.onAuthStateChange((_event, session) => setSession(session));
+    // setSession MUST be deferred out of the callback, not called directly. The library AWAITS
+    // this callback while it's still initializing, and setSession calls sb.from('profiles') --
+    // which internally awaits auth.getSession(), whose first step is awaiting that same
+    // still-running initialization. Calling it synchronously therefore deadlocks the whole
+    // client on any page load that already has a session in storage (i.e. every refresh while
+    // signed in): the profile fetch never resolves, initialization never completes, and every
+    // later auth/data call silently hangs forever -- log-in clicks doing nothing, leaderboard
+    // stuck on "Loading…", matchmaking stuck on "Searching…". A fresh visit (no session) never
+    // hit it, which is why guest play worked until the first refresh.
+    sb.auth.onAuthStateChange((_event, session) => { setTimeout(() => setSession(session), 0); });
     const { data: { session } } = await sb.auth.getSession();
     await setSession(session);
     return sb;
@@ -2984,7 +2993,9 @@ async function setSession(session) {
     // forever instead of just a moment later.
     let data, error;
     for (let attempt = 0; attempt < 4; attempt++) {
-        ({ data, error } = await sb.from('profiles').select('username, elo').eq('id', sbUser.id).single());
+        try {
+            ({ data, error } = await sb.from('profiles').select('username, elo').eq('id', sbUser.id).single());
+        } catch (e) { error = e; }   // a rejected (network-level) failure counts as a retryable error too
         if (!error) break;
         await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
     }
