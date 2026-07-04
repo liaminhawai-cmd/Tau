@@ -23,7 +23,12 @@
     button { background:#2c3138; color:#e6e6e6; border:1px solid #3a4048; padding:5px 14px;
              border-radius:4px; cursor:pointer; margin:4px 0 6px; font-size:13px; }
     button:active { background:#3a4048; }
-    #menu { display:flex; flex-direction:column; align-items:center; gap:10px; margin-top:3vh; }
+    /* body/html keep overflow:hidden so dragging a piece in #game never bounces/scrolls the
+       page, but that also means anything in #menu taller than the viewport (e.g. the account
+       panel expanded with every field, incl. the Google button) would just be clipped with no
+       way to reach it -- let the menu scroll internally instead. */
+    #menu { display:flex; flex-direction:column; align-items:center; gap:10px; margin-top:3vh;
+            max-height:97vh; overflow-y:auto; -webkit-overflow-scrolling:touch; }
     #menu p { color:#9aa4ad; font-size:13px; margin:0; }
     #menu .modeBtn { font-size:16px; padding:14px 34px; border-radius:8px; width:260px; box-sizing:border-box; }
     #game { display:none; flex-direction:column; align-items:center; width:100%; }
@@ -1860,9 +1865,17 @@ function demoPlayTurn() {
 // 3D view too, side by side with the flat 2D one — more fun to watch than either alone.
 // It moves back into #game the moment a real match starts.
 function demoResize() {
+    const cv2 = document.getElementById('demoCanvas');
+    const gap = 8, dpr = window.devicePixelRatio || 1;
+    // Fills a comfortable chunk of the window instead of a fixed 240px, same idea as the
+    // in-game resize() below but against the menu's own (much simpler, single-column) layout.
+    const availW = window.innerWidth - 24, availH = window.innerHeight * 0.5;
+    const size = Math.max(140, Math.min((availW - gap) / 2, availH, 340));
+    cv2.style.width = size+'px'; cv2.style.height = size+'px';
+    const bw = Math.round(size * dpr);
+    if (cv2.width !== bw) { cv2.width = bw; cv2.height = bw; }
     const cv3 = document.getElementById('view3d');
     if (!renderer || cv3.parentElement.id !== 'demoViews') return;
-    const size = 240;
     cv3.style.width = size+'px'; cv3.style.height = size+'px'; cv3.style.display = 'block';
     renderer.setSize(size, size, false);
     camera.aspect = 1; camera.updateProjectionMatrix();
@@ -2096,7 +2109,7 @@ function htp3DStep(dt) {
             // just cut to "done" once it's clearly, obviously off — timed from when gravity
             // actually starts (crossing the rim), not from the start of the slide.
             htpDropT += dt;
-            if (htpDropT > 0.42) { htpPhase='done'; htpPhaseT=0; htpDropT=0; }
+            if (htpDropT > 1.3) { htpPhase='done'; htpPhaseT=0; htpDropT=0; }
         }
     } else if (htpPhase==='done' && htpPhaseT > 1.1) {
         htp3DReset();
@@ -2737,9 +2750,22 @@ function resize() {
     }
     render();
 }
-window.addEventListener('resize', resize);
-window.addEventListener('orientationchange', resize);
-if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+// resize() assumes the #game layout (it measures #status/#meta/#help/#btns, which are all
+// display:none on the menu screen) — calling it while the menu/demo is showing instead
+// mis-sizes the SHARED view3d canvas against that irrelevant layout, blowing the demo's board
+// preview up to whatever huge size an ~empty #game layout computes. Route to whichever sizing
+// function actually matches what's on screen.
+function handleWindowResize() {
+    if (document.getElementById('game').style.display === 'flex') resize(); else demoResize();
+}
+window.addEventListener('resize', handleWindowResize);
+window.addEventListener('orientationchange', handleWindowResize);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', () => {
+    // Pinch-zoom fires this too (iOS keeps allowing it despite our user-scalable=no meta tag),
+    // but a magnification gesture shouldn't re-run our own layout math and "snap" the board to
+    // a different CSS size — only react when this wasn't purely a zoom-scale change.
+    if (Math.abs(window.visualViewport.scale - 1) < 0.01) handleWindowResize();
+});
 
 init3D();
 reset();
