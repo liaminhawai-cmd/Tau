@@ -17,6 +17,8 @@
     @media (max-width: 759px) { #view3d { order: -1; } }
     #btns { display:flex; gap:10px; }
     #status { font-size:18px; font-weight:bold; margin:6px 0 2px; height:22px; }
+    #statusRow { display:flex; align-items:center; justify-content:center; gap:6px; }
+    #turnTimer { width:18px; height:18px; }
     #meta { font-size:12px; color:#69727b; height:15px; }
     #help { font-size:12px; color:#9aa4ad; margin:2px 8px; text-align:center; max-width:560px; }
     .red { color:#ff6b6b; } .blue { color:#6b9eff; }
@@ -139,7 +141,7 @@
         </div>
     </div>
     <div id="game">
-        <div id="status"></div>
+        <div id="statusRow"><canvas id="turnTimer" width="56" height="56" style="display:none;"></canvas><div id="status"></div></div>
         <div id="meta"></div>
         <div id="views">
             <canvas id="canvas"></canvas>
@@ -1654,6 +1656,11 @@ function boardColors() {
         : { bg:'#0c0e11', disc:'#efe4a6', line:'#26251f', dotBlue:'rgba(74,111,212,0.85)', dotRed:'rgba(192,57,43,0.85)' };
 }
 let clock=null, fall={active:false};                                  // loss-animation state
+// Declared here (rather than down in the "online accounts" script block where the rest of the
+// online-play state lives) because animate()'s very first synchronous call happens as part of
+// THIS script tag running, before that later one has executed at all -- referencing onlineMatch
+// from inside animate() before its declaring script has run would throw "not defined".
+let onlineMatch = null, onlineTurnDeadline = null;
 
 // Keep the 2D canvas backing store, DPR transform and board scale correct no matter
 // what happened since the last frame (missed resize event, DPR change, the browser
@@ -1965,6 +1972,7 @@ function showGameOverModal() {
             const myWin = (G.winner===0?'blue':'red') === onlineMatch.myColor;
             showModal(myWin ? 'You win!' : 'You lose', '', [
                 { label: 'Rematch', onClick: rematchOnline },
+                { label: 'Find new opponent', onClick: findNewOpponent },
                 { label: 'Menu', onClick: backToMenu },
             ]);
         } else if (vsAI) {
@@ -2344,28 +2352,11 @@ function surrender() {
     if (!G || G.over) return;
     clearTimeout(aiTimer); aiAnim = null;
     const loserIdx = onlineMatch ? (onlineMatch.myColor === 'blue' ? 0 : 1) : vsAI ? humanIdx : G.active;
+    if (onlineMatch) { endOnlineMatch(loserIdx); return; }
     G.over = true; G.winner = 1 - loserIdx;
     clearTurn();
     triggerFall(); showGameOverModal();
     render();
-    if (onlineMatch) {
-        const winnerColor = G.winner === 0 ? 'blue' : 'red';
-        onlineFinishMatch(winnerColor);
-        // No real move happened -- keyframes stay empty -- but the opponent's client only
-        // learns the match ended via a match_moves row (Realtime push or the poll backstop),
-        // the same path a normal winning move takes, so it needs one here too.
-        const moveIndex = onlineMatch.nextMoveIndex++;
-        const matchId = onlineMatch.id, myColor = onlineMatch.myColor;
-        sb.from('match_moves').insert({
-            match_id: matchId, move_index: moveIndex, mover_color: myColor,
-            keyframes: [],
-            final_state: {
-                blue: { x: G.pieces[0].x, y: G.pieces[0].y, rot: G.pieces[0].rot },
-                red:  { x: G.pieces[1].x, y: G.pieces[1].y, rot: G.pieces[1].rot },
-                winner: winnerColor,
-            },
-        }).then(({ error }) => { if (error) console.error('sending surrender failed', error); });
-    }
 }
 document.getElementById('reset').addEventListener('click', surrender);
 
@@ -2432,9 +2423,30 @@ function render() {
     if (G.over){ const w2=G.winner===0?'blue':'red';
         s.innerHTML=`<span class="${w2}">${w2[0].toUpperCase()+w2.slice(1)} wins</span>`; m.textContent=''; h.textContent='Press Reset to play again.';
     } else { const c=G.active===0?'blue':'red';
-        s.innerHTML=`<span class="${c}">${c[0].toUpperCase()+c.slice(1)}</span> to move${aiTurn?' <span style="color:#69727b">(AI)</span>':''}`;
-        m.textContent = G.pinned!==null ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?'. Line limit, stop here':''}` : '';
-        h.textContent = aiTurn
+        if (onlineMatch) {
+            // "Your turn" vs the opponent's own username (not just their colour) -- that's who
+            // you're actually waiting on, and it's not obvious at a glance which colour is you.
+            // Built via textContent, not innerHTML: opponentName is THEIR chosen username, and
+            // there's no server-side format check on it (only a client-side one at sign-up) --
+            // templating it into innerHTML would be a stored-XSS hole.
+            s.innerHTML = '';
+            const turnSpan = document.createElement('span'); turnSpan.className = c;
+            turnSpan.textContent = myOnlineTurnNow() ? 'Your turn' : (onlineMatch.opponentName + "'s turn");
+            s.appendChild(turnSpan);
+            m.textContent = myOnlineTurnNow() && G.pinned!==null
+                ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?'. Line limit, stop here':''}`
+                : `Playing ${onlineMatch.myColor} vs ${onlineMatch.opponentName}`;
+        } else {
+            s.innerHTML=`<span class="${c}">${c[0].toUpperCase()+c.slice(1)}</span> to move${aiTurn?' <span style="color:#69727b">(AI)</span>':''}`;
+            m.textContent = G.pinned!==null ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?'. Line limit, stop here':''}` : '';
+        }
+        h.textContent = onlineMatch
+            ? (myOnlineTurnNow()
+                ? (G.pinned===null ? 'Step 1. Tap one of your feet to lock it as the pivot.'
+                    : (G.handle===null ? 'Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.'
+                        : 'Swinging… release to end your turn.'))
+                : 'Waiting for your opponent…')
+            : aiTurn
             ? (aiAnim ? 'AI is swinging…' : 'AI is thinking…')
             : (G.pinned===null
                 ? 'Step 1. Tap one of your feet to lock it as the pivot.'
@@ -2777,6 +2789,7 @@ let aiFrameCount=0;
 function animate() {
     requestAnimationFrame(animate);
     if (aiAnim && (++aiFrameCount % 4)===0) stepAi();   // ~15 steps/sec at 60fps — a visible, brisk swing
+    if (onlineMatch) { drawTurnTimer(); checkOnlineTimeout(); }
     if (!renderer) return;
     const dt = Math.min(clock ? clock.getDelta() : 0.016, 0.05);
     if (htp3DActive) {   // how-to-play's own push+fall demo — never touches G, which the ambient
@@ -3047,13 +3060,69 @@ document.getElementById('acctSignOut').addEventListener('click', async () => { a
 // only guarantees +-*/ and sqrt are correctly rounded) — two clients replaying a long game
 // independently could silently drift apart. Trust model: a player's own turn is self-reported
 // (fine for a casual beta; server-side move validation would be a hardening pass, not v1).
-let onlineMatch = null;   // { id, myColor, nextMoveIndex } while actively in an online game
+// onlineMatch itself is declared much earlier (see the comment there) -- { id, myColor,
+// nextMoveIndex } while actively in an online game.
 let matchmakingActive = false, matchmakingTimer = null, matchmakingChannel = null, moveChannel = null;
 let pendingKeyframes = [], lastKeyframeT = 0;
 
 function myOnlineTurnNow() {
     if (!onlineMatch) return true;
     return (G.active===0 && onlineMatch.myColor==='blue') || (G.active===1 && onlineMatch.myColor==='red');
+}
+
+// ---------- Per-turn clock: 30s, whoever's turn it is loses if it runs out ----------
+// A subtle pie-wedge ring (no numbers) in the active side's colour, sweeping clockwise as time
+// runs out. Checked from both clients' own animate() loop -- either side may notice a stalled
+// opponent first (e.g. a backgrounded tab throttles timers, so whichever client is actually in
+// the foreground is the one likely to catch it) -- and this doubles as disconnect handling: a
+// closed tab just never moves, so its opponent's own clock eventually calls the same timeout.
+// (onlineTurnDeadline itself is declared earlier alongside onlineMatch -- see that comment.)
+const TURN_CLOCK_MS = 30000;
+function startOnlineTurnClock() { onlineTurnDeadline = onlineMatch ? performance.now() + TURN_CLOCK_MS : null; }
+function drawTurnTimer() {
+    const cv = document.getElementById('turnTimer');
+    if (!onlineMatch || G.over || !onlineTurnDeadline) { cv.style.display = 'none'; return; }
+    cv.style.display = 'block';
+    const tctx = cv.getContext('2d'), w = cv.width, o = w/2, rad = w/2 - 2;
+    tctx.clearRect(0, 0, w, w);
+    const frac = Math.max(0, Math.min(1, (performance.now() - (onlineTurnDeadline - TURN_CLOCK_MS)) / TURN_CLOCK_MS));
+    const activeColor = G.active===0 ? '#6b9eff' : '#ff6b6b', waitingColor = G.active===0 ? '#ff6b6b' : '#6b9eff';
+    // Base circle is the CURRENT (active/moving) side's colour; the growing wedge is the WAITING
+    // side's colour, sweeping clockwise as if it's "reclaiming" the clock while it waits.
+    tctx.beginPath(); tctx.arc(o, o, rad, 0, 2*Math.PI);
+    tctx.fillStyle = activeColor; tctx.fill();
+    if (frac > 0) {
+        tctx.beginPath(); tctx.moveTo(o, o);
+        const start = -Math.PI/2, end = start + frac*2*Math.PI;
+        tctx.arc(o, o, rad, start, end); tctx.closePath();
+        tctx.fillStyle = waitingColor; tctx.fill();
+    }
+}
+function checkOnlineTimeout() {
+    if (!onlineMatch || G.over || !onlineTurnDeadline || performance.now() < onlineTurnDeadline) return;
+    onlineTurnDeadline = null;
+    endOnlineMatch(G.active);   // whoever's turn it was when the clock ran out loses
+}
+// Shared by a manual Surrender and a timed-out turn: forces the match to end with the given
+// side as loser, and tells the opponent's client the same way a real winning move would.
+function endOnlineMatch(loserIdx) {
+    G.over = true; G.winner = 1 - loserIdx;
+    clearTurn();
+    triggerFall(); showGameOverModal();
+    render();
+    const winnerColor = G.winner===0 ? 'blue' : 'red';
+    onlineFinishMatch(winnerColor);
+    const moveIndex = onlineMatch.nextMoveIndex++;
+    const matchId = onlineMatch.id, myColor = onlineMatch.myColor;
+    sb.from('match_moves').insert({
+        match_id: matchId, move_index: moveIndex, mover_color: myColor,
+        keyframes: [],
+        final_state: {
+            blue: { x:G.pieces[0].x, y:G.pieces[0].y, rot:G.pieces[0].rot },
+            red:  { x:G.pieces[1].x, y:G.pieces[1].y, rot:G.pieces[1].rot },
+            winner: winnerColor,
+        },
+    }).then(({ error }) => { if (error) console.error('sending match-end failed', error); });
 }
 
 async function startOnlineMatchmaking() {
@@ -3107,23 +3176,31 @@ async function enterOnlineMatch(row) {
     hideModal();
     demoStop();
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
-    onlineMatch = { id: row.id, myColor: row.blue_id===sbUser.id ? 'blue' : 'red', nextMoveIndex: 0, _replayingIndex: -1 };
+    const myColor = row.blue_id===sbUser.id ? 'blue' : 'red';
+    const opponentId = myColor==='blue' ? row.red_id : row.blue_id;
+    onlineMatch = { id: row.id, myColor, opponentName: 'your opponent', nextMoveIndex: 0, _replayingIndex: -1 };
     vsAI = false;
     camCenterFrac = 1; camManualSet = false;
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
     reset(); resize();
+    sb.from('profiles').select('username').eq('id', opponentId).single().then(({ data, error }) => {
+        if (!error && data && onlineMatch) { onlineMatch.opponentName = data.username; render(); }
+    });
     moveChannel = sb.channel('match-moves-'+row.id)
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'match_moves', filter:'match_id=eq.'+row.id },
             payload => { if (onlineMatch && payload.new.mover_color !== onlineMatch.myColor) replayOpponentMove(payload.new); })
         .subscribe();
     await catchUpOnlineMatch();   // pick up any moves already played before we subscribed (rematch/reconnect)
     startOnlineMovePoll();
+    if (!G.over) startOnlineTurnClock();
 }
 function exitOnlineMatch() {
     if (moveChannel) { sb.removeChannel(moveChannel); moveChannel = null; }
     clearInterval(onlineMovePoll); onlineMovePoll = null;
     onlineMatch = null;
+    onlineTurnDeadline = null;
+    document.getElementById('turnTimer').style.display = 'none';   // animate() stops drawing it once onlineMatch is null, so hide it explicitly rather than leaving the last frame on screen
     pendingKeyframes = []; lastKeyframeT = 0;
 }
 // Realtime backstop for mid-match sync, same reasoning as matchmaking's: if the
@@ -3183,6 +3260,7 @@ function finishOnlineTurn() {
         winner: winnerColor,
     };
     if (G.over) { triggerFall(); showGameOverModal(); onlineFinishMatch(winnerColor); }
+    else startOnlineTurnClock();
     render();
     const moveIndex = onlineMatch.nextMoveIndex++;
     const matchId = onlineMatch.id, myColor = onlineMatch.myColor;
@@ -3219,7 +3297,7 @@ async function replayOpponentMove(row) {
     if (fs.winner) {
         G.over = true; G.winner = fs.winner==='blue' ? 0 : 1;
         triggerFall(); showGameOverModal(); onlineFinishMatch(fs.winner);
-    }
+    } else startOnlineTurnClock();
     render();
 }
 function onlineFinishMatch(winnerColor) {
@@ -3242,8 +3320,17 @@ function rematchOnline() {
         });
     });
 }
+// Unlike Rematch (tied to the specific match just played, via rematch_of), this queues fresh
+// against anyone waiting -- same entry point as a first-time "Online 1v1" click.
+function findNewOpponent() {
+    exitOnlineMatch();
+    startOnlineMatchmaking();
+}
 
 // ---------- Leaderboard ----------
+// Usernames are player-chosen and have no server-side format check (only a client-side one at
+// sign-up), so they can't be trusted verbatim inside an HTML template string.
+const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function openLeaderboard() {
     showModal('Leaderboard', '<p style="text-align:center;color:#9aa4ad;">Loading…</p>', [ { label:'Close', onClick:()=>{} } ], true);
     if (!sb) { document.getElementById('modalBody').innerHTML = '<p style="text-align:center;color:#9aa4ad;">Online accounts aren’t set up on this build.</p>'; return; }
@@ -3256,7 +3343,7 @@ function openLeaderboard() {
             <tr style="color:#9aa4ad; text-align:left;"><th style="padding:4px 6px;">#</th><th style="padding:4px 6px;">Player</th><th style="padding:4px 6px; text-align:right;">Elo</th><th style="padding:4px 6px; text-align:right;">W-L</th></tr>
             ${data.map((p,i)=>`<tr style="border-top:1px solid #2c3138;">
                 <td style="padding:4px 6px; color:#9aa4ad;">${i+1}</td>
-                <td style="padding:4px 6px;">${p.username}</td>
+                <td style="padding:4px 6px;">${escapeHtml(p.username)}</td>
                 <td style="padding:4px 6px; text-align:right; color:#ffd23f; font-weight:bold;">${p.elo}</td>
                 <td style="padding:4px 6px; text-align:right; color:#9aa4ad;">${p.wins}-${p.losses}</td>
             </tr>`).join('')}
