@@ -98,7 +98,7 @@
 </head>
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
-<div id="buildTag">build 7</div>
+<div id="buildTag">build 8</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -3247,6 +3247,12 @@ function cancelMatchmaking() {
     if (matchmakingChannel) { sb.removeChannel(matchmakingChannel); matchmakingChannel = null; }
     if (sb) sb.rpc('leave_queue').catch(()=>{});
 }
+// Best-effort instant cleanup for an ordinary tab close while queued -- there's no guarantee
+// this network call actually completes before the page is torn down, so it's a nice-to-have,
+// not the real fix: try_match()'s own last_seen staleness check (schema_matches.sql) is what
+// actually guarantees a closed/crashed/abandoned tab can never be matched against, whether or
+// not this fires.
+addEventListener('pagehide', () => { if (matchmakingActive && sb) sb.rpc('leave_queue').catch(()=>{}); });
 
 async function enterOnlineMatch(row) {
     matchmakingActive = false;

@@ -5,7 +5,13 @@
 create table public.matchmaking_queue (
   user_id uuid primary key references auth.users(id) on delete cascade,
   elo integer not null,
-  queued_at timestamptz not null default now()
+  queued_at timestamptz not null default now(),
+  -- Refreshed on every poll (see try_match() below), separately from queued_at (which stays
+  -- fixed and is used only for FIFO fairness among candidates that ARE still live). Lets
+  -- try_match() tell a genuinely-still-queued player apart from a closed/crashed/abandoned tab
+  -- whose row would otherwise sit there forever looking like the oldest (and therefore
+  -- first-picked) opponent for everyone who queues after it.
+  last_seen timestamptz not null default now()
 );
 
 alter table public.matchmaking_queue enable row level security;
@@ -123,13 +129,20 @@ begin
   select elo into my_elo from public.profiles where id = me;
   if my_elo is null then return null; end if;
 
-  insert into public.matchmaking_queue (user_id, elo)
-  values (me, my_elo)
-  on conflict (user_id) do update set elo = excluded.elo;
+  -- Passive garbage collection: anyone who hasn't polled in a while (tab closed, crashed, lost
+  -- network) gets dropped before they could ever be picked as someone's opponent. No cron job
+  -- needed -- every actively-queued client calls this function itself every ~1.8s.
+  delete from public.matchmaking_queue
+  where user_id <> me and last_seen < now() - interval '60 seconds';
+
+  insert into public.matchmaking_queue (user_id, elo, last_seen)
+  values (me, my_elo, now())
+  on conflict (user_id) do update set elo = excluded.elo, last_seen = now();
 
   select q.user_id, q.elo into opp
   from public.matchmaking_queue q
   where q.user_id <> me
+    and q.last_seen > now() - interval '10 seconds'
   order by q.queued_at asc
   for update skip locked
   limit 1;
