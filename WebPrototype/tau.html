@@ -2421,7 +2421,7 @@ function render() {
     const s=document.getElementById('status'), m=document.getElementById('meta'), h=document.getElementById('help');
     const aiTurn = vsAI && G.active===aiIdx && !G.over;
     if (G.over){ const w2=G.winner===0?'blue':'red';
-        s.innerHTML=`<span class="${w2}">${w2[0].toUpperCase()+w2.slice(1)} wins</span>`; m.textContent=''; h.textContent='Press Reset to play again.';
+        s.innerHTML=`<span class="${w2}">${w2[0].toUpperCase()+w2.slice(1)} wins</span>`; m.textContent=''; h.textContent='';
     } else { const c=G.active===0?'blue':'red';
         if (onlineMatch) {
             // "Your turn" vs the opponent's own username (not just their colour) -- that's who
