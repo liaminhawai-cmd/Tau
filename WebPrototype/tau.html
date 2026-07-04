@@ -46,6 +46,11 @@
                    opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
     #themeToggle:hover { opacity:0.95; }
     #themeToggle:active { background:none; }
+    #soundToggle { position:fixed; top:9px; right:46px; z-index:60; background:none; border:none;
+                   color:#9aa4ad; font-size:17px; line-height:1; padding:6px 7px; margin:0;
+                   opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
+    #soundToggle:hover { opacity:0.95; }
+    #soundToggle:active { background:none; }
     /* Deliberately barely visible -- purely so a screenshot/report can be matched to the exact
        commit it came from (cache/CDN lag otherwise makes "still broken" reports ambiguous). */
     #buildTag { position:fixed; bottom:4px; left:6px; z-index:60; font-size:10px; color:#3a4048;
@@ -98,7 +103,8 @@
 </head>
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
-<div id="buildTag">build 9</div>
+<button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
+<div id="buildTag">build 10</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -134,7 +140,7 @@
                 <button id="acctGoogle">Sign in with Google</button>
             </div>
             <div id="acctSignedIn" style="display:none;">
-                <p class="profile">Signed in as <b id="acctName"></b> <button class="link" id="acctRename">change</button><br>Rating: <span class="elo" id="acctElo"></span></p>
+                <p class="profile">Signed in as <b id="acctName"></b><br>Rating: <span class="elo" id="acctElo"></span></p>
                 <button id="acctSignOut">Sign out</button>
             </div>
             <button id="acctPanelClose">Close</button>
@@ -1614,21 +1620,24 @@ function aiSwingDir(dir) {
     }
     return G.netRad;
 }
+// aiDifficulty: 'normal' (fixed heuristic, no search), 'zone' (1-ply cell-value scoring),
+// 'hard' (2-ply minimax). Looks up and executes a searched plan (zone/hard share the same
+// { pivotIdx, dir, targetRad } shape); returns true if it found and ran one, false if the
+// planner came up empty (extremely rare) so the caller should fall back to the simple heuristic.
+function searchedPlanFor(difficulty, aiIdx){ return difficulty==='hard' ? aiChoosePlanHard(aiIdx) : difficulty==='zone' ? aiChoosePlanZone(aiIdx) : null; }
 // runs one full AI move to completion synchronously — used by the animated UI stepper
 // (one call per frame there) and directly by headless tests (one call = one full turn).
 function aiTakeTurnSync() {
     const aiIdx=G.active;
-    if (aiHard) {                                           // "Hard": execute the searched best plan (see aiChoosePlanHard)
-        const hp = aiChoosePlanHard(aiIdx);
-        if (hp) {
-            pinFoot(hp.pivotIdx);
-            let guard=0;
-            while (Math.abs(G.netRad) < hp.targetRad && !G.atLimit && guard++ < 500) applySwing(hp.dir*AI_STEP_RAD);
-            endTurn();
-            return;
-        }
-        // no legal scored move found (extremely rare) — fall through to the simple planner
+    const sp = searchedPlanFor(aiDifficulty, aiIdx);
+    if (sp) {
+        pinFoot(sp.pivotIdx);
+        let guard=0;
+        while (Math.abs(G.netRad) < sp.targetRad && !G.atLimit && guard++ < 500) applySwing(sp.dir*AI_STEP_RAD);
+        endTurn();
+        return;
     }
+    // no legal scored move found (extremely rare for zone/hard) — fall through to the simple planner
     const plan=aiChoosePlan(aiIdx);
     pinFoot(plan.pivotIdx);
     let feet=G.pieces[aiIdx].feet();
@@ -1705,6 +1714,48 @@ function aiChoosePlanHard(aiIdx){
             }
             score = worst === Infinity ? marginFor(aiIdx) : worst;   // human had no legal reply — take my own position
         }
+        if (!best || score > best.score) best = { pivotIdx: mp, dir: md, targetRad: Math.abs(net), score };
+    }
+    restore(snap0); G.active = origActive;
+    return best;
+}
+
+// ---------- "Zone" AI: 1-ply, cell-value scoring (no opponent lookahead) ----------
+// Straight from the hand-drawn board diagram: every point on the board gets an integer VALUE —
+// 4 in the very centre, down to 1 at the most exposed corners near the rim — and the picture turns
+// out to reduce to one clean rule once you check it against the actual line geometry (CFG.rings /
+// CFG.sideArcs already used by the real crossing rules): value = (which of the 3 radial bands the
+// point is in: centre=4, mid=3, outer=2) MINUS 1 if the point falls inside either of the two
+// corner "lens" pockets (the region within 40 units of a side rim-point — same radius as the inner
+// ring, just re-centred out at the rim — which is where each tripod's start position sits). That
+// -1 exactly reproduces every number in the sketch: lens-outer=1, lens-mid=2 (the sketch's small
+// squashed "2"), lens-centre=3 (where the start dots sit), and plain outer/mid/centre = 2/3/4.
+// For each of the 6 (pivot × direction) swings available this turn (max distance, same as Hard),
+// tallies (sum of my 3 feet's values) − (sum of the human's 3 feet's values) and keeps the best —
+// unlike Hard, it never looks at how the human could reply.
+function zoneValue(p){
+    const r = radU(p);
+    const band = r < CFG.rings[0] ? 4 : r < CFG.rings[1] ? 3 : 2;
+    const inLens = CFG.sideArcs.some(a => Math.hypot(p.x-a.cx, p.y-a.cy) < a.r);
+    return inLens ? band - 1 : band;
+}
+function pieceZoneScore(piece){ return piece.feet().reduce((s,f) => s + zoneValue(f), 0); }
+function aiChoosePlanZone(aiIdx){
+    const humanIdx = 1 - aiIdx, origActive = G.active;
+    const snap0 = takeSnap();
+    const restore = (snap) => {
+        G.pieces.forEach((p,i)=>{ p.x=snap[i].x; p.y=snap[i].y; p.rot=snap[i].rot; });
+        G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
+    };
+    let best = null;   // { pivotIdx, dir, targetRad, score }
+    for (let mp=0; mp<3; mp++) for (const md of [1,-1]) {
+        restore(snap0); G.active = aiIdx;
+        const net = simMoveToLimit(mp, md);
+        if (Math.abs(net) < HARD_MIN_MOVE_RAD) continue;
+        if (G.pieces[aiIdx].anyFootOff()) continue;
+        const score = G.pieces[humanIdx].anyFootOff()
+            ? HARD_WIN_BONUS + pieceZoneScore(G.pieces[aiIdx])
+            : pieceZoneScore(G.pieces[aiIdx]) - pieceZoneScore(G.pieces[humanIdx]);
         if (!best || score > best.score) best = { pivotIdx: mp, dir: md, targetRad: Math.abs(net), score };
     }
     restore(snap0); G.active = origActive;
@@ -1796,7 +1847,7 @@ function onDown(e) {
     if (G.pinned===null) {
         // Step 1 — lock a foot as the pivot
         const i=nearestFoot(p, feet, -1);
-        if (i>=0) { pinFoot(i); if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; } }
+        if (i>=0) { pinFoot(i); playMoveStab(); if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; } }
     } else {
         // Step 2 — grab a DIFFERENT foot to swing, or re-tap the pivot to re-pick.
         // The pivot only "wins" the tap if it is the closest foot — a sloppy tap near a
@@ -1846,16 +1897,15 @@ function finishTurn() {
 // aiIdx/humanIdx (which colour is AI vs human) are chosen per-game at startGame(), since the
 // player can pick either colour — not fixed to red.
 let aiIdx = 1, humanIdx = 0;
-let vsAI = false, aiAnim = null, aiTimer = null, aiHard = false;   // aiHard: "Hard" difficulty (1-ply search) vs the simple heuristic
+let vsAI = false, aiAnim = null, aiTimer = null, aiDifficulty = 'normal';   // 'normal' | 'zone' | 'hard' — see searchedPlanFor()
 function startAiTurn() {
     if (G.over || G.active!==aiIdx) return;
-    if (aiHard) {
-        const hp = aiChoosePlanHard(aiIdx);   // decide the whole move up front, then animate straight to it
-        if (hp) { pinFoot(hp.pivotIdx); aiAnim = { dir: hp.dir, triedFlip:true, targetRad: hp.targetRad }; render(); return; }
-        // no scored move — fall through to the simple planner (still swings to its natural limit)
-    }
+    const sp = searchedPlanFor(aiDifficulty, aiIdx);   // decide the whole move up front, then animate straight to it
+    if (sp) { pinFoot(sp.pivotIdx); playMoveStab(); aiAnim = { dir: sp.dir, triedFlip:true, targetRad: sp.targetRad }; render(); return; }
+    // no scored move (only possible for zone/hard, extremely rare) — fall through to the simple planner
     const plan = aiChoosePlan(aiIdx);
     pinFoot(plan.pivotIdx);
+    playMoveStab();
     const feet = G.pieces[aiIdx].feet();
     aiAnim = { dir: directionToward(G.pivot, feet[plan.swingIdx], plan.target), triedFlip:false, targetRad: Infinity };
     render();
@@ -2011,7 +2061,11 @@ function updateAcctStatus() {
         el.append(box, ' · ');
         link.textContent = 'Sign in';
     } else if (sbUser) {
-        el.append('Signed in as ' + (document.getElementById('acctName').textContent || sbUser.email) + ' · ');
+        el.append('Signed in as ' + (document.getElementById('acctName').textContent || sbUser.email) + ' ');
+        const editBtn = document.createElement('button');
+        editBtn.className = 'link'; editBtn.textContent = '(edit)';
+        editBtn.addEventListener('click', () => openRenamePrompt(document.getElementById('acctName').textContent, false));
+        el.append(editBtn, ' · ');
         link.textContent = 'Sign out';
     } else {
         el.append('Playing as Guest · ');
@@ -2063,8 +2117,8 @@ function showGameOverModal() {
             ]);
         } else if (vsAI) {
             showModal(G.winner===humanIdx ? 'You win!' : 'You lose', '', [
-                { label: 'Play as Blue', onClick: () => startGame(true, 0, aiHard) },   // keep the same difficulty on replay
-                { label: 'Play as Red',  onClick: () => startGame(true, 1, aiHard) },
+                { label: 'Play as Blue', onClick: () => startGame(true, 0, aiDifficulty) },   // keep the same difficulty on replay
+                { label: 'Play as Red',  onClick: () => startGame(true, 1, aiDifficulty) },
                 { label: 'Menu', onClick: backToMenu },
             ]);
         } else {
@@ -2075,13 +2129,13 @@ function showGameOverModal() {
         }
     }, 2800);
 }
-function startGame(aiMode, humanColorIdx, hard) {
+function startGame(aiMode, humanColorIdx, difficulty) {
     hideModal(); clearTimeout(gameOverTimer);
     demoStop();
     cancelMatchmaking(); exitOnlineMatch();
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
     vsAI = aiMode;
-    aiHard = !!hard;
+    aiDifficulty = difficulty || 'normal';
     humanIdx = humanColorIdx===undefined ? 0 : humanColorIdx;
     aiIdx = 1 - humanIdx;
     clearTimeout(aiTimer); aiAnim = null;
@@ -2089,6 +2143,7 @@ function startGame(aiMode, humanColorIdx, hard) {
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
     reset(); resize();
+    resetAudioForNewGame();
     if (!aiMode) startOnlineTurnClock(); else onlineTurnDeadline = null;
     if (vsAI && G.active===aiIdx) aiTimer = setTimeout(startAiTurn, 450);
 }
@@ -2106,16 +2161,20 @@ function backToMenu() {
 document.getElementById('modeLocal').addEventListener('click', ()=>startGame(false));
 document.getElementById('modeAI').addEventListener('click', () => {
     showModal('vs AI', 'Pick a difficulty.', [
-        { label: 'Normal', onClick: () => chooseAiColour(false) },
-        { label: 'Hard',   onClick: () => chooseAiColour(true) },
+        { label: 'Normal', onClick: () => chooseAiColour('normal') },
+        { label: 'Medium', onClick: () => chooseAiColour('zone') },
+        { label: 'Hard',   onClick: () => chooseAiColour('hard') },
     ]);
 });
-// Hard looks a move ahead (tries every foot/direction, keeps the position that most puts you near
-// the rim while staying safe itself); Normal follows one fixed offense/defense rule with no search.
-function chooseAiColour(hard) {
+// Normal follows one fixed offense/defense rule, no search. Medium scores every one of its 6
+// possible (pivot × direction) moves by board-position value (see aiChoosePlanZone) and picks the
+// best, but never considers how the human might reply. Hard does the same 6-way search but looks
+// one full move further, through the human's best reply (aiChoosePlanHard) — measured strongest of
+// the three, with Medium in between and Normal weakest.
+function chooseAiColour(difficulty) {
     showModal('Choose your colour', 'Blue always moves first.', [
-        { label: 'Play as Blue', onClick: () => startGame(true, 0, hard) },
-        { label: 'Play as Red',  onClick: () => startGame(true, 1, hard) },
+        { label: 'Play as Blue', onClick: () => startGame(true, 0, difficulty) },
+        { label: 'Play as Red',  onClick: () => startGame(true, 1, difficulty) },
     ]);
 }
 // ---------- How to play: one short looping canvas animation per rule ----------
@@ -2410,6 +2469,118 @@ document.getElementById('themeToggle').addEventListener('click',
 updateThemeToggleIcon();
 // (The old Settings panel only held the theme switch, which now lives in the always-visible
 // corner toggle above — so Settings was removed as redundant.)
+
+// ---------- Sound: white noise textured by an EQ peak that tracks the moving piece ----------
+// One continuously-running white-noise loop through a sharp bandpass filter. The filter's centre
+// frequency tracks how far the CURRENTLY-ACTIVE piece's hub is from the board centre — low near
+// the middle, rising to a bright, sharp peak near the rim — so the pitch always tells you where on
+// the board the live piece is, whether a human, the AI, or an online replay is driving it (this
+// piggybacks on animate()'s existing per-frame read of G.pieces, so one hook covers every path). A
+// short low-passed "thump" fires once at the start of every REAL move (not the AI's internal
+// what-if search — see the specific call sites below, never a blanket hook on pinFoot() itself,
+// which the Hard/Zone planners also call dozens of times per decision while just thinking). On a
+// loss, the filter snaps wide open, volume fades out, and the sound leans hard into a synthesized
+// long reverb tail (no external audio asset — the whole file stays self-contained).
+let audioCtx=null, noiseSrc=null, bandpass=null, masterGain=null, dryGain=null, wetGain=null, convolver=null, audioReady=false;
+let soundOn = true;
+try { soundOn = localStorage.getItem('tauSound') !== '0'; } catch(e) {}
+const AUDIO_BASE_GAIN = 0.14;
+function makeNoiseBuffer(ctx, seconds) {
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate*seconds), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
+    return buf;
+}
+// Synthesized "cathedral" impulse response for the ConvolverNode: exponentially-decaying filtered
+// noise (a standard synthetic-reverb trick) — a real recorded impulse would sound better, but this
+// needs no network fetch and works identically offline.
+function makeCathedralImpulse(ctx) {
+    const len = Math.floor(ctx.sampleRate*3.2);
+    const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch=0; ch<2; ch++) {
+        const d = buf.getChannelData(ch);
+        for (let i=0;i<len;i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/len, 2.6);
+    }
+    return buf;
+}
+function gameVisible() { return document.getElementById('game').style.display === 'flex'; }
+function initAudio() {
+    if (audioCtx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    audioCtx = new AC();
+    noiseSrc = audioCtx.createBufferSource();
+    noiseSrc.buffer = makeNoiseBuffer(audioCtx, 2);
+    noiseSrc.loop = true;
+    bandpass = audioCtx.createBiquadFilter();
+    bandpass.type = 'bandpass'; bandpass.frequency.value = 200; bandpass.Q.value = 9;
+    masterGain = audioCtx.createGain(); masterGain.gain.value = soundOn ? AUDIO_BASE_GAIN : 0;
+    dryGain = audioCtx.createGain(); dryGain.gain.value = 1;
+    wetGain = audioCtx.createGain(); wetGain.gain.value = 0;
+    convolver = audioCtx.createConvolver();
+    convolver.buffer = makeCathedralImpulse(audioCtx);
+    noiseSrc.connect(bandpass);
+    bandpass.connect(dryGain); dryGain.connect(masterGain);
+    bandpass.connect(convolver); convolver.connect(wetGain); wetGain.connect(masterGain);
+    masterGain.connect(audioCtx.destination);
+    noiseSrc.start();
+    audioReady = true;
+}
+// Move-start "thump": a short separate low-pass + gain-envelope tap off the same noise loop, so it
+// doesn't fight the continuously-updating bandpass frequency used for the pitch sweep.
+function playMoveStab() {
+    if (!audioReady || !soundOn || !gameVisible()) return;
+    const lp = audioCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 160;
+    const g = audioCtx.createGain(); const t0 = audioCtx.currentTime;
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.35, t0+0.015);
+    g.gain.linearRampToValueAtTime(0, t0+0.1);
+    bandpass.connect(lp); lp.connect(g); g.connect(masterGain);
+    setTimeout(() => { lp.disconnect(); g.disconnect(); }, 150);
+}
+const AUDIO_MIN_HZ = 200, AUDIO_MAX_HZ = 10000;
+// Called every animate() frame while a game is on screen -- tracks whichever piece is active.
+function updateAudioPitch() {
+    if (!audioReady || !soundOn || !G || !gameVisible()) return;
+    const frac = Math.max(0, Math.min(1, radU(G.pieces[G.active]) / CFG.edgeU));
+    // Logarithmic sweep -- pitch perception is logarithmic, so this reads as an even glide across
+    // the whole board instead of bunching up near the rim.
+    bandpass.frequency.setTargetAtTime(AUDIO_MIN_HZ * Math.pow(AUDIO_MAX_HZ/AUDIO_MIN_HZ, frac), audioCtx.currentTime, 0.05);
+}
+// Loss: the sharp peak opens into full-spectrum noise, the reverb tail takes over, then it all fades.
+function playLossSound() {
+    if (!audioReady || !soundOn) return;
+    const t0 = audioCtx.currentTime;
+    bandpass.Q.setTargetAtTime(0.3, t0, 0.4);
+    bandpass.frequency.setTargetAtTime(4000, t0, 0.4);
+    wetGain.gain.setTargetAtTime(0.9, t0, 0.3);
+    dryGain.gain.setTargetAtTime(0.2, t0, 0.3);
+    masterGain.gain.setTargetAtTime(0, t0+0.15, 0.5);
+}
+// Undoes playLossSound()'s open/faded state at the start of a fresh game.
+function resetAudioForNewGame() {
+    if (!audioReady) return;
+    const t0 = audioCtx.currentTime;
+    bandpass.Q.setTargetAtTime(9, t0, 0.05);
+    wetGain.gain.setTargetAtTime(0, t0, 0.05);
+    dryGain.gain.setTargetAtTime(1, t0, 0.05);
+    masterGain.gain.setTargetAtTime(soundOn ? AUDIO_BASE_GAIN : 0, t0, 0.05);
+}
+function updateSoundToggleIcon() {
+    const btn = document.getElementById('soundToggle');
+    if (btn) btn.textContent = soundOn ? '🔊' : '🔇';
+}
+function setSoundOn(on) {
+    soundOn = on;
+    try { localStorage.setItem('tauSound', on ? '1' : '0'); } catch(e) {}
+    if (masterGain) masterGain.gain.setTargetAtTime(on ? AUDIO_BASE_GAIN : 0, audioCtx.currentTime, 0.08);
+    updateSoundToggleIcon();
+}
+document.getElementById('soundToggle').addEventListener('click', () => { initAudio(); setSoundOn(!soundOn); });
+updateSoundToggleIcon();
+// Autoplay policies require a user gesture before any audio node can actually start — the FIRST
+// tap/click anywhere quietly boots the engine; nothing plays before this fires.
+addEventListener('pointerdown', initAudio, { once:true });
 document.getElementById('modeOnline').addEventListener('click', () => {
     document.getElementById('modeMsg').textContent = '';
     ensureOnlineIdentity(startOnlineMatchmaking);
@@ -2721,6 +2892,7 @@ function applyFallRotation(t, f, dt, clear) {
 }
 // kick off the dramatic slide-off when someone loses
 function triggerFall() {
+    playLossSound();
     if (!renderer) return;
     const li = 1 - G.winner, p = G.pieces[li];
     let fx=0, fz=0, fr=-1;                            // slide out along the off-board foot direction
@@ -2910,6 +3082,7 @@ function animate() {
     // very first few frames (same reason onlineMatch needed its own early declaration above) --
     // typeof is the one safe way to reference a not-yet-existing top-level binding.
     if (typeof drawTurnTimer === 'function') { drawTurnTimer(); checkOnlineTimeout(); }
+    updateAudioPitch();
     if (!renderer) return;
     if (htp3DActive) {   // how-to-play's own push+fall demo — never touches G, which the ambient
                           // landing demo keeps animating behind the modal
@@ -3159,6 +3332,7 @@ document.getElementById('acctSignUp').addEventListener('click', async () => {
     const password = document.getElementById('acctPass').value;
     const msg = document.getElementById('acctMsg');
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) { msg.textContent = 'Username must be 3-20 letters, numbers, or underscores.'; return; }
+    if (usernameHasBannedWord(username)) { msg.textContent = 'That username isn’t allowed. Please choose another.'; return; }
     if (password.length < 6) { msg.textContent = 'Password must be at least 6 characters.'; return; }
     if (!sb) { msg.textContent = 'Still connecting. Try again in a moment.'; return; }
     msg.textContent = 'Checking username…';
@@ -3234,11 +3408,27 @@ document.getElementById('acctGoogle').addEventListener('click', async () => {
 });
 document.getElementById('acctSignOut').addEventListener('click', async () => { await sb.auth.signOut(); closeAcctPanel(); });
 
-// Any signed-in player can rename themselves -- this is also the "choose your name" path for
-// Google/magic-link sign-ins, which start on an auto-generated Player_xxxx handle. Renames use the
-// column-level UPDATE grant on profiles.username (schema.sql); the uniqueness check here is
-// best-effort (the DB's unique constraint is the real guard).
+// Any signed-in player can rename themselves at any time -- via the "(edit)" link next to their
+// name on the main menu (updateAcctStatus() above) -- this doubles as the "choose your name" path
+// for Google/magic-link sign-ins, which start on an auto-generated Player_xxxx handle. The menu is
+// hidden during an actual game AND behind the full-screen modal backdrop while matchmaking/in a
+// private-match lobby, so there's no path to it mid-game or mid-lobby without extra guarding here.
+// Renames use the column-level UPDATE grant on profiles.username (schema.sql); the uniqueness and
+// profanity checks here are best-effort UX -- the DB's unique constraint is the real uniqueness
+// guard, and there is deliberately no server-side profanity enforcement (the list would need
+// constant upkeep; this is a courtesy filter, not a security boundary).
 let renamePrompted = false;
+// Small built-in blocklist for the "no swearwords / no sexual terms" ask -- covers common English
+// profanity/slurs and sexual terms (substring match, so simple leetspeak like "5hit" still needs
+// exact chars but "shit1" or "assxyz" are still caught since it's a substring test either way).
+// Deliberately conservative and English-only; a real deployment would want a maintained word list.
+const USERNAME_BLOCKLIST = ['fuck','shit','bitch','cunt','asshole','dick','pussy','cock','whore',
+    'slut','nigger','nigga','faggot','fag','rape','porn','sex','anal','penis','vagina','cum',
+    'boner','nazi','retard'];
+function usernameHasBannedWord(name) {
+    const n = name.toLowerCase();
+    return USERNAME_BLOCKLIST.some(w => n.includes(w));
+}
 function openRenamePrompt(prefill, isAuto) {
     if (!sb || !sbUser) return;
     const body = `<div class="row">
@@ -3251,13 +3441,14 @@ function openRenamePrompt(prefill, isAuto) {
         const name = document.getElementById('renameInput').value.trim();
         const msg = document.getElementById('renameMsg');
         if (!/^[a-zA-Z0-9_]{3,20}$/.test(name)) { msg.textContent = 'Username must be 3-20 letters, numbers, or underscores.'; return; }
+        if (usernameHasBannedWord(name)) { msg.textContent = 'That username isn’t allowed. Please choose another.'; return; }
         if (name === prefill) { hideModal(); return; }
         msg.textContent = 'Saving…';
         try {
             const { data: taken } = await sb.from('profiles').select('id').eq('username', name).maybeSingle();
             if (taken) { msg.textContent = 'That username is already taken.'; return; }
             const { error } = await sb.from('profiles').update({ username: name }).eq('id', sbUser.id);
-            if (error) { msg.textContent = error.message; return; }
+            if (error) { msg.textContent = /duplicate|unique/i.test(error.message) ? 'That username is already taken.' : error.message; return; }
             const nameEl = document.getElementById('acctName'); if (nameEl) nameEl.textContent = name;
             updateAcctStatus();
             hideModal();
@@ -3268,7 +3459,6 @@ function openRenamePrompt(prefill, isAuto) {
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
     inp.focus(); inp.select();
 }
-document.getElementById('acctRename').addEventListener('click', () => openRenamePrompt(document.getElementById('acctName').textContent, false));
 
 // ---------- Online 1v1: matchmaking, live move sync, ELO ----------
 // Sync model: whoever's turn it is computes their own move locally (instant feedback — no
@@ -3453,6 +3643,7 @@ async function enterOnlineMatch(row) {
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
     reset(); resize();
+    resetAudioForNewGame();
     sb.from('profiles').select('username').eq('id', opponentId).single().then(({ data, error }) => {
         if (!error && data && onlineMatch) { onlineMatch.opponentName = data.username; render(); }
     }).catch(() => {});   // already degrades gracefully to the 'your opponent' placeholder name
@@ -3546,21 +3737,49 @@ function finishOnlineTurn() {
     }).then(({ error }) => { if (error) console.error('sending move failed', error); })
       .catch(e => console.error('sending move failed', e));
 }
+// Replay pacing: a fixed on-screen angular speed, independent of how fast the opponent actually
+// dragged their piece in real time. recordKeyframe() only samples once every >=40ms, so a fast
+// real flick produces just a couple of widely-spaced keyframes -- snapping straight to each one
+// (the old behaviour) made a quick opponent move look like it teleported in jerky jumps, while a
+// slow deliberate drag (many closely-spaced keyframes) already looked smooth. Retiming to a fixed
+// deg/sec (same pace as the AI's own visible swing, AI_STEP_RAD * 15/sec = 45deg/sec, so every
+// animated motion in the app reads at one consistent speed) and tweening THROUGH every recorded
+// keyframe rather than snapping to it fixes both: fast moves now glide instead of jumping, and
+// slow moves are unaffected since they already implied a duration at or above the floor.
+const REPLAY_DEG_PER_SEC = 45;
+const REPLAY_MIN_MS = 350;     // floor so even a barely-there move doesn't look like an instant snap
+const REPLAY_STEP_MS = 1000/15;
+const lerpAngle = (a, b, t) => a + norm(b - a) * t;
 async function replayOpponentMove(row) {
     // The Realtime push and the poll backstop (startOnlineMovePoll) can both observe the same
     // row — skip if it's already applied or already being applied, so we don't double-flip
     // G.active / double-consume the same move.
     if (!onlineMatch || row.move_index < onlineMatch.nextMoveIndex || onlineMatch._replayingIndex === row.move_index) return;
     onlineMatch._replayingIndex = row.move_index;
-    for (const kf of (row.keyframes || [])) {
-        if (!onlineMatch) return;   // left the match mid-replay (e.g. hit Menu)
-        G.pieces[0].x=kf.bx; G.pieces[0].y=kf.by; G.pieces[0].rot=kf.brot;
-        G.pieces[1].x=kf.rx; G.pieces[1].y=kf.ry; G.pieces[1].rot=kf.rrot;
-        render();
-        await new Promise(r => setTimeout(r, 40));
+    if (row.keyframes && row.keyframes.length) playMoveStab();   // a real swing, not a forfeit/timeout (those send keyframes:[])
+
+    const fs = row.final_state;
+    const start = { bx:G.pieces[0].x, by:G.pieces[0].y, brot:G.pieces[0].rot,
+                     rx:G.pieces[1].x, ry:G.pieces[1].y, rrot:G.pieces[1].rot };
+    const end = { bx:fs.blue.x, by:fs.blue.y, brot:fs.blue.rot, rx:fs.red.x, ry:fs.red.y, rrot:fs.red.rot };
+    const legs = [start, ...(row.keyframes || []), end];   // tween THROUGH every recorded waypoint, not just to it
+    const gaps = legs.length - 1;
+    const totalDeg = Math.max(Math.abs(norm(end.brot-start.brot)), Math.abs(norm(end.rrot-start.rrot))) * 180/Math.PI;
+    const totalMs = Math.max(REPLAY_MIN_MS, totalDeg / REPLAY_DEG_PER_SEC * 1000);
+    const gapMs = totalMs / gaps;
+    for (let g = 0; g < gaps; g++) {
+        const a = legs[g], b = legs[g+1];
+        const steps = Math.max(1, Math.round(gapMs / REPLAY_STEP_MS));
+        for (let s = 1; s <= steps; s++) {
+            if (!onlineMatch) return;   // left the match mid-replay (e.g. hit Menu)
+            const t = s/steps;
+            G.pieces[0].x = a.bx+(b.bx-a.bx)*t; G.pieces[0].y = a.by+(b.by-a.by)*t; G.pieces[0].rot = lerpAngle(a.brot, b.brot, t);
+            G.pieces[1].x = a.rx+(b.rx-a.rx)*t; G.pieces[1].y = a.ry+(b.ry-a.ry)*t; G.pieces[1].rot = lerpAngle(a.rrot, b.rrot, t);
+            render();
+            await new Promise(r => setTimeout(r, REPLAY_STEP_MS));
+        }
     }
     if (!onlineMatch) return;
-    const fs = row.final_state;
     G.pieces[0].x=fs.blue.x; G.pieces[0].y=fs.blue.y; G.pieces[0].rot=fs.blue.rot;
     G.pieces[1].x=fs.red.x; G.pieces[1].y=fs.red.y; G.pieces[1].rot=fs.red.rot;
     G.active = 1-G.active;
@@ -3574,7 +3793,7 @@ async function replayOpponentMove(row) {
     if (fs.winner) {
         G.over = true; G.winner = fs.winner==='blue' ? 0 : 1;
         triggerFall(); showGameOverModal(); onlineFinishMatch(fs.winner);
-    } else startOnlineTurnClock();
+    } else startOnlineTurnClock();   // the 30s clock for MY turn only starts once the tween above is fully done
     render();
 }
 function onlineFinishMatch(winnerColor) {
