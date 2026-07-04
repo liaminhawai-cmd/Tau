@@ -146,7 +146,7 @@
             <canvas id="view3d"></canvas>
         </div>
         <p id="help"></p>
-        <div id="btns"><button id="reset">Reset</button><button id="menuBtn">Menu</button></div>
+        <div id="btns"><button id="reset">Surrender</button><button id="menuBtn">Menu</button></div>
     </div>
 </div>
 <div id="modalBackdrop">
@@ -2132,11 +2132,8 @@ function htp3DStep(dt) {
             // "tipped over the edge" immediately, rather than floating in a straight line before
             // gravity visibly kicks in. Chaotic tumble blends in only once clear of the rim.
             f.tipRate = Math.min(9, f.tipRate + 14*dt);
-            const speed = Math.hypot(f.vx, f.vz) || 1;
-            t.rotation.x += ( f.vz/speed) * f.tipRate * dt;   // leading edge pitches down (see stepFall)
-            t.rotation.z += (-f.vx/speed) * f.tipRate * dt;
             const clear = Math.max(0, Math.min(1, (r - CFG.edgeU) / 25));
-            t.rotation.x += f.wx*dt*clear; t.rotation.y += f.wy*dt*clear; t.rotation.z += f.wz*dt*clear;
+            applyFallRotation(t, f, dt, clear);
             // A real match watches the whole 700-unit drop (fine there — it's a one-off, framed
             // by the "You win!" popup). Looping that here would zoom the camera out until the
             // piece vanishes into blank space, confusing rather than dramatic. Same physics,
@@ -2338,9 +2335,39 @@ canvas.addEventListener('touchstart', onDown, {passive:false});
 canvas.addEventListener('touchmove', onMove, {passive:false});
 window.addEventListener('touchend', onUp);
 window.addEventListener('touchcancel', onUp);
-document.getElementById('reset').addEventListener('click', ()=>{
-    clearTimeout(aiTimer); aiAnim=null; reset();
-});
+// Concedes immediately -- the OTHER colour wins -- instead of silently restarting the board.
+// Whoever "surrenders" depends on the mode: online/vs-AI always concede on behalf of the local
+// human (regardless of whose turn it currently is), since giving up is that player's own call,
+// not a rules outcome; local pass-and-play has no separate "my colour", so it's whoever's turn
+// it is right now.
+function surrender() {
+    if (!G || G.over) return;
+    clearTimeout(aiTimer); aiAnim = null;
+    const loserIdx = onlineMatch ? (onlineMatch.myColor === 'blue' ? 0 : 1) : vsAI ? humanIdx : G.active;
+    G.over = true; G.winner = 1 - loserIdx;
+    clearTurn();
+    triggerFall(); showGameOverModal();
+    render();
+    if (onlineMatch) {
+        const winnerColor = G.winner === 0 ? 'blue' : 'red';
+        onlineFinishMatch(winnerColor);
+        // No real move happened -- keyframes stay empty -- but the opponent's client only
+        // learns the match ended via a match_moves row (Realtime push or the poll backstop),
+        // the same path a normal winning move takes, so it needs one here too.
+        const moveIndex = onlineMatch.nextMoveIndex++;
+        const matchId = onlineMatch.id, myColor = onlineMatch.myColor;
+        sb.from('match_moves').insert({
+            match_id: matchId, move_index: moveIndex, mover_color: myColor,
+            keyframes: [],
+            final_state: {
+                blue: { x: G.pieces[0].x, y: G.pieces[0].y, rot: G.pieces[0].rot },
+                red:  { x: G.pieces[1].x, y: G.pieces[1].y, rot: G.pieces[1].rot },
+                winner: winnerColor,
+            },
+        }).then(({ error }) => { if (error) console.error('sending surrender failed', error); });
+    }
+}
+document.getElementById('reset').addEventListener('click', surrender);
 
 // ---------- Render ----------
 function drawHead(x, y, ang) {           // small filled triangle pointing along `ang`
@@ -2558,6 +2585,24 @@ function init3D() {
         new THREE.MeshBasicMaterial({ map: glowTexture(), transparent:true, depthWrite:false, blending: THREE.AdditiveBlending }));
     pivotGlowMesh.rotation.x = -Math.PI/2; pivotGlowMesh.visible = false; scene.add(pivotGlowMesh);
 }
+// Scratch vectors for the fall's tip-over rotation (shared by stepFall and htp3DStep). Rotation
+// is applied via rotateOnWorldAxis (proper axis-angle/quaternion composition) rather than by
+// incrementing rotation.x/y/z directly: those are Euler angles, and accumulating them
+// independently frame-by-frame does NOT compose into "spin cleanly around one fixed axis" — the
+// components interact non-commutatively as they build up, which is what produced the earlier
+// "flying/spinning the wrong way" look instead of a believable tip-and-fall.
+const fallTipAxis = new THREE.Vector3();
+const FALL_AXIS_X = new THREE.Vector3(1,0,0), FALL_AXIS_Y = new THREE.Vector3(0,1,0), FALL_AXIS_Z = new THREE.Vector3(0,0,1);
+function applyFallRotation(t, f, dt, clear) {
+    const speed = Math.hypot(f.vx, f.vz) || 1;
+    fallTipAxis.set(f.vz/speed, 0, -f.vx/speed);        // horizontal, perpendicular to travel
+    t.rotateOnWorldAxis(fallTipAxis, f.tipRate*dt);     // leading edge pitches down over the rim
+    if (clear > 0) {
+        t.rotateOnWorldAxis(FALL_AXIS_X, f.wx*dt*clear);
+        t.rotateOnWorldAxis(FALL_AXIS_Y, f.wy*dt*clear);
+        t.rotateOnWorldAxis(FALL_AXIS_Z, f.wz*dt*clear);
+    }
+}
 // kick off the dramatic slide-off when someone loses
 function triggerFall() {
     if (!renderer) return;
@@ -2584,14 +2629,8 @@ function stepFall(dt) {
         // blends in once well clear of the rim, so the first instant reads as "tipped over the
         // edge", not "flung into a random spin".
         fall.tipRate = Math.min(9, fall.tipRate + 14*dt);
-        const speed = Math.hypot(fall.vx, fall.vz) || 1;
-        // Rotate about the horizontal axis (vz,0,-vx) — perpendicular to travel — so the LEADING
-        // edge pitches DOWN and the piece goes over the rim face-first, the way it tips off a
-        // real table edge (not leaning backward, which is what the opposite sign gave).
-        t.rotation.x += ( fall.vz/speed) * fall.tipRate * dt;
-        t.rotation.z += (-fall.vx/speed) * fall.tipRate * dt;
         const clear = Math.max(0, Math.min(1, (r - CFG.edgeU) / 25));
-        t.rotation.x += fall.wx*dt*clear; t.rotation.y += fall.wy*dt*clear; t.rotation.z += fall.wz*dt*clear;
+        applyFallRotation(t, fall, dt, clear);
     }
     if (t.position.y < -700) { fall.active=false; camCenterFrac=1; camManualSet=false; }   // hand back to centred framing once it's done
 }
@@ -2929,10 +2968,14 @@ if (sbConfigured()) {
 }
 
 // Supabase auth is email-keyed, but we want plain username+password so players don't need
-// a fresh magic link every time. Map each username to a synthetic address under the
-// `.invalid` TLD (reserved by RFC 2606 to never resolve to a real mailbox) and use that
-// under the hood — the player never sees or types an email for this flow.
-function usernameToEmail(username) { return username.trim().toLowerCase() + '@users.tau.invalid'; }
+// a fresh magic link every time. Map each username to a synthetic address under `example.com`
+// (RFC 2606-reserved for documentation, guaranteed never to deliver real mail) and use that
+// under the hood — the player never sees or types an email for this flow. An earlier version
+// used the `.invalid` pseudo-TLD (also RFC 2606-reserved for exactly this purpose), but
+// Supabase's own email-format validator rejects it outright ("Email address is invalid") since
+// it isn't a real, registered TLD — example.com uses a real one, so it passes that check while
+// still being RFC-guaranteed to never actually deliver anything.
+function usernameToEmail(username) { return username.trim().toLowerCase() + '.tau@example.com'; }
 
 document.getElementById('acctSignUp').addEventListener('click', async () => {
     const username = document.getElementById('acctUser').value.trim();
