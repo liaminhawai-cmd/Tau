@@ -44,6 +44,12 @@
                    opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
     #themeToggle:hover { opacity:0.95; }
     #themeToggle:active { background:none; }
+    /* Deliberately barely visible -- purely so a screenshot/report can be matched to the exact
+       commit it came from (cache/CDN lag otherwise makes "still broken" reports ambiguous). */
+    #buildTag { position:fixed; bottom:4px; left:6px; z-index:60; font-size:10px; color:#3a4048;
+                pointer-events:none; user-select:text; }
+    .nameBox { background:#1a1e24; color:#e6e6e6; border:1px solid #3a4048; border-radius:4px;
+               padding:1px 6px; font-size:13px; width:120px; text-align:center; cursor:pointer; }
     #acctPanel { display:flex; flex-direction:column; align-items:center; gap:8px; width:260px;
                  border-top:1px solid #2c3138; padding-top:14px; margin-top:6px; }
     #acctSignedOut, #acctSignedIn { display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; }
@@ -90,6 +96,7 @@
 </head>
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
+<div id="buildTag">build 1</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -1889,13 +1896,40 @@ function demoStart() {
 function demoStop() { demoOn=false; demoAnim=null; clearTimeout(demoTimer); }
 
 // ---------- Menu: mode buttons are always visible; sign-in is opt-in, not a gate ----------
+// Built via DOM methods (not innerHTML) since the displayed name can be an arbitrary
+// player-chosen username -- textContent/value keeps it inert no matter what's in it.
 function updateAcctStatus() {
-    document.getElementById('acctStatus').innerHTML = sbUser
-        ? 'Signed in as ' + (document.getElementById('acctName').textContent || sbUser.email)
-            + ' &middot; <button class="link" id="acctStatusBtn2">Sign out</button>'
-        : 'Playing as Guest &middot; <button class="link" id="acctStatusBtn2">Sign in</button>';
-    document.getElementById('acctStatusBtn2').addEventListener('click', () => {
-        if (sbUser) sb.auth.signOut(); else openAcctPanel();
+    const el = document.getElementById('acctStatus');
+    el.innerHTML = '';
+    const link = document.createElement('button');
+    link.className = 'link'; link.id = 'acctStatusBtn2';
+    if (sbUser && sbUser.is_anonymous) {
+        el.append('Playing as ');
+        const box = document.createElement('input');
+        box.type = 'text'; box.className = 'nameBox'; box.maxLength = 20; box.readOnly = true;
+        box.value = document.getElementById('acctName').textContent || 'Guest';
+        // Looks like a normal editable field (that's the point -- it invites the tap), but
+        // trying to actually use it means picking a real, permanent username, which only a
+        // signed-up account gets to keep -- so redirect there instead of a silent local edit.
+        box.addEventListener('focus', () => {
+            box.blur();
+            pendingOnline = false;
+            document.getElementById('acctMsg').textContent = 'Sign up to choose your own name — you keep your current rating.';
+            openAcctPanel();
+            document.getElementById('acctUser').focus();
+        });
+        el.append(box, ' · ');
+        link.textContent = 'Sign in';
+    } else if (sbUser) {
+        el.append('Signed in as ' + (document.getElementById('acctName').textContent || sbUser.email) + ' · ');
+        link.textContent = 'Sign out';
+    } else {
+        el.append('Playing as Guest · ');
+        link.textContent = 'Sign in';
+    }
+    el.append(link);
+    link.addEventListener('click', () => {
+        if (sbUser && !sbUser.is_anonymous) sb.auth.signOut(); else openAcctPanel();
     });
 }
 let pendingOnline = false;   // true while the account panel was opened FROM "Online 1v1"
@@ -2274,12 +2308,27 @@ updateThemeToggleIcon();
 // (The old Settings panel only held the theme switch, which now lives in the always-visible
 // corner toggle above — so Settings was removed as redundant.)
 document.getElementById('modeOnline').addEventListener('click', () => {
-    const msg = document.getElementById('modeMsg');
-    if (sbUser) { msg.textContent = ''; startOnlineMatchmaking(); return; }
-    msg.textContent = '';
-    pendingOnline = true;
-    openAcctPanel();
+    document.getElementById('modeMsg').textContent = '';
+    if (sbUser) { startOnlineMatchmaking(); return; }   // already a real account or a guest this tab
+    showModal('Online 1v1', 'Play with a saved account, or jump in now as a guest? Guests still get a rating and a leaderboard spot — signing up just keeps it after you close the tab.', [
+        { label: 'Sign in', onClick: () => { pendingOnline = true; openAcctPanel(); } },
+        { label: 'Play as Guest', onClick: playAsGuest },
+    ]);
 });
+// Anonymous auth: real auth.uid(), real profiles row (the existing handle_new_user trigger
+// already falls back to a 'Player_xxxxxx' name when there's no username/full_name metadata,
+// which an anonymous sign-in never has), so guests need zero special-casing anywhere else --
+// matchmaking, ELO, and the leaderboard all already just key off auth.uid()/profiles.
+async function playAsGuest() {
+    showModal('Online 1v1', 'Setting up a guest profile…', []);
+    if (!sb) await ensureSupabase().catch(() => {});
+    if (!sb) { showModal('Online 1v1', 'Could not reach the login service.', [{ label: 'OK', onClick: () => {} }]); return; }
+    pendingOnline = true;
+    const { error } = await sb.auth.signInAnonymously();
+    if (error) { pendingOnline = false; showModal('Online 1v1', 'Could not start a guest session: ' + error.message, [{ label: 'OK', onClick: () => {} }]); return; }
+    // setSession() (fired via onAuthStateChange) sees pendingOnline and starts matchmaking once
+    // the session/profile are ready -- nothing further to do here.
+}
 document.getElementById('acctPanelClose').addEventListener('click', closeAcctPanel);
 document.getElementById('menuBtn').addEventListener('click', backToMenu);
 canvas.addEventListener('mousedown', onDown);
@@ -2803,9 +2852,35 @@ let sb = null, sbUser = null;
 function sbConfigured() { return !SUPABASE_URL.startsWith('YOUR_') && !SUPABASE_ANON_KEY.startsWith('YOUR_'); }
 updateAcctStatus();   // now that sbUser exists, wire the real click handler before any async auth check resolves
 
+// A guest (anonymous) session should live only as long as the tab: closing it lets the next
+// visit start with a fresh random identity rather than silently keeping the same one forever.
+// A real account (sign-up/log-in/Google/magic-link) should persist normally across visits.
+// supabase-js can't switch its storage backend mid-session, so this proxies every read/write to
+// session or local storage based on a flag that flips the moment a guest becomes a real account
+// (see promoteGuestToPersistent(), called from setSession() below).
+const AUTH_PERSIST_FLAG = 'tauAuthPersist';
+function authBackingStore() { return localStorage.getItem(AUTH_PERSIST_FLAG) === '1' ? localStorage : sessionStorage; }
+const dualAuthStorage = {
+    getItem: (key) => authBackingStore().getItem(key),
+    setItem: (key, value) => { authBackingStore().setItem(key, value); },
+    removeItem: (key) => { localStorage.removeItem(key); sessionStorage.removeItem(key); },
+};
+// Matches supabase-js's own default storage key algorithm (`sb-<project-ref>-auth-token`) so
+// the copy below moves the actual session data, without needing to hardcode a key that would
+// silently go stale if the library's own default ever changes.
+const SB_STORAGE_KEY = 'sb-' + new URL(SUPABASE_URL).hostname.split('.')[0] + '-auth-token';
+function promoteGuestToPersistent() {
+    if (localStorage.getItem(AUTH_PERSIST_FLAG) === '1') return;
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith(SB_STORAGE_KEY)) localStorage.setItem(k, sessionStorage.getItem(k));
+    }
+    localStorage.setItem(AUTH_PERSIST_FLAG, '1');
+}
+
 async function ensureSupabase() {
     if (sb) return sb;
-    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storage: dualAuthStorage } });
     sb.auth.onAuthStateChange((_event, session) => setSession(session));
     const { data: { session } } = await sb.auth.getSession();
     await setSession(session);
@@ -2815,13 +2890,26 @@ async function ensureSupabase() {
 async function setSession(session) {
     sbUser = session ? session.user : null;
     const signedOut = document.getElementById('acctSignedOut'), signedIn = document.getElementById('acctSignedIn');
-    if (!sbUser) { signedOut.style.display = 'flex'; signedIn.style.display = 'none'; updateAcctStatus(); return; }
-    signedOut.style.display = 'none'; signedIn.style.display = 'flex';
+    if (!sbUser) {
+        // Reset so the NEXT sign-in -- if it's another guest -- starts session-only again,
+        // rather than inheriting persistence from whatever this browser last signed into.
+        localStorage.removeItem(AUTH_PERSIST_FLAG);
+        signedOut.style.display = 'flex'; signedIn.style.display = 'none'; updateAcctStatus(); return;
+    }
     const { data, error } = await sb.from('profiles').select('username, elo').eq('id', sbUser.id).single();
     document.getElementById('acctName').textContent = error ? sbUser.email : data.username;
     document.getElementById('acctElo').textContent = error ? '?' : data.elo;
+    if (sbUser.is_anonymous) {
+        // A guest is signed in at the auth layer (real auth.uid(), real profile/ELO row) but
+        // still sees the sign-up form here, not "Signed in as .../Sign out" -- opening this
+        // panel for a guest is always about upgrading THIS identity to a real one.
+        signedOut.style.display = 'flex'; signedIn.style.display = 'none';
+    } else {
+        promoteGuestToPersistent();
+        signedOut.style.display = 'none'; signedIn.style.display = 'flex';
+    }
     updateAcctStatus();
-    // signing in from "Online 1v1" -> automatically pick the conversation back up
+    // signing in (or a guest completing sign-up) from "Online 1v1" -> pick the flow back up
     if (pendingOnline) { closeAcctPanel(); startOnlineMatchmaking(); }
 }
 
@@ -2856,11 +2944,21 @@ document.getElementById('acctSignUp').addEventListener('click', async () => {
     msg.textContent = 'Checking username…';
     const { data: taken } = await sb.from('profiles').select('id').eq('username', username).maybeSingle();
     if (taken) { msg.textContent = 'That username is already taken.'; return; }
-    msg.textContent = 'Creating account…';
-    const { error } = await sb.auth.signUp({
-        email: usernameToEmail(username), password, options: { data: { username } }
-    });
-    msg.textContent = error ? error.message : 'Account created. You are signed in.';
+    const email = usernameToEmail(username);
+    const guest = sbUser && sbUser.is_anonymous;
+    msg.textContent = guest ? 'Saving your account…' : 'Creating account…';
+    // A guest already has a real auth.uid() (and profiles/ELO row) from signInAnonymously() --
+    // updateUser() links THIS session to a permanent identity in place (same uid), instead of
+    // signUp()'s usual "create an unrelated new user", which would abandon their rating.
+    const { error } = guest
+        ? await sb.auth.updateUser({ email, password, data: { username } })
+        : await sb.auth.signUp({ email, password, options: { data: { username } } });
+    if (error) { msg.textContent = error.message; return; }
+    // updateUser() changes auth metadata but doesn't touch public.profiles -- there's no
+    // "user updated" trigger, only the on-signup one -- so the rename is applied here, under
+    // the `grant update (username) on public.profiles` column-level grant from schema.sql.
+    if (guest) await sb.from('profiles').update({ username }).eq('id', sbUser.id);
+    msg.textContent = guest ? 'Account saved. You are signed in.' : 'Account created. You are signed in.';
 });
 document.getElementById('acctLogIn').addEventListener('click', async () => {
     const username = document.getElementById('acctUser').value.trim();
