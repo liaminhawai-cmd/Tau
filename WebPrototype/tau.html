@@ -98,7 +98,7 @@
 </head>
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
-<div id="buildTag">build 4</div>
+<div id="buildTag">build 5</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -111,7 +111,7 @@
         <button class="modeBtn" id="modeOnline">Online 1v1</button>
         <button class="modeBtn" id="modeAI">vs AI</button>
         <p class="msg" id="modeMsg"></p>
-        <div id="menuLinks"><button class="link" id="howToPlayBtn">How to play</button><button class="link" id="leaderboardBtn">Leaderboard</button></div>
+        <div id="menuLinks"><button class="link" id="howToPlayBtn">How to play</button><button class="link" id="leaderboardBtn">Leaderboard</button><button class="link" id="privateMatchBtn">Private match</button></div>
 
         <div id="acctPanel" style="display:none;">
             <div id="acctSignedOut">
@@ -1921,7 +1921,7 @@ function updateAcctStatus() {
         // signed-up account gets to keep -- so redirect there instead of a silent local edit.
         box.addEventListener('focus', () => {
             box.blur();
-            pendingOnline = false;
+            pendingOnlineAction = null;
             document.getElementById('acctMsg').textContent = 'Sign up to choose your own name — you keep your current rating.';
             openAcctPanel();
             document.getElementById('acctUser').focus();
@@ -1940,9 +1940,12 @@ function updateAcctStatus() {
         if (sbUser && !sbUser.is_anonymous) sb.auth.signOut(); else openAcctPanel();
     });
 }
-let pendingOnline = false;   // true while the account panel was opened FROM "Online 1v1"
+// Set to a callback while the account panel was opened from a flow that should resume once
+// sign-in/guest completes (e.g. startOnlineMatchmaking, or opening the private-match menu);
+// null when the panel was opened for its own sake (e.g. just renaming, or the status line link).
+let pendingOnlineAction = null;
 function openAcctPanel() { document.getElementById('acctPanel').style.display = 'flex'; }
-function closeAcctPanel() { document.getElementById('acctPanel').style.display = 'none'; pendingOnline = false; }
+function closeAcctPanel() { document.getElementById('acctPanel').style.display = 'none'; pendingOnlineAction = null; }
 // ---------- Generic modal: colour choice before a vs-AI game, the game-over popup, and
 // the how-to-play sheet. `isHtml` lets the how-to-play body use a left-aligned list. ----------
 function showModal(title, body, buttons, isHtml) {
@@ -2318,25 +2321,31 @@ updateThemeToggleIcon();
 // corner toggle above — so Settings was removed as redundant.)
 document.getElementById('modeOnline').addEventListener('click', () => {
     document.getElementById('modeMsg').textContent = '';
-    if (sbUser) { startOnlineMatchmaking(); return; }   // already a real account or a guest this tab
-    showModal('Online 1v1', 'Play with a saved account, or jump in now as a guest? Guests still get a rating and a leaderboard spot — signing up just keeps it after you close the tab.', [
-        { label: 'Sign in', onClick: () => { pendingOnline = true; openAcctPanel(); } },
-        { label: 'Play as Guest', onClick: playAsGuest },
-    ]);
+    ensureOnlineIdentity(startOnlineMatchmaking);
 });
+// Shows the Sign in / Play as Guest choice if nobody's signed in yet, resuming with `next` once
+// an identity (real or guest) exists; runs `next` immediately if one already does. Shared by
+// "Online 1v1" and "Private match", which both need an account before they can do anything else.
+function ensureOnlineIdentity(next) {
+    if (sbUser) { next(); return; }   // already a real account or a guest this tab
+    showModal('Online 1v1', 'Play with a saved account, or jump in now as a guest? Guests still get a rating and a leaderboard spot — signing up just keeps it after you close the tab.', [
+        { label: 'Sign in', onClick: () => { pendingOnlineAction = next; openAcctPanel(); } },
+        { label: 'Play as Guest', onClick: () => playAsGuest(next) },
+    ]);
+}
 // Anonymous auth: real auth.uid(), real profiles row (the existing handle_new_user trigger
 // already falls back to a 'Player_xxxxxx' name when there's no username/full_name metadata,
 // which an anonymous sign-in never has), so guests need zero special-casing anywhere else --
 // matchmaking, ELO, and the leaderboard all already just key off auth.uid()/profiles.
-async function playAsGuest() {
+async function playAsGuest(next) {
     showModal('Online 1v1', 'Setting up a guest profile…', []);
     if (!sb) await ensureSupabase().catch(() => {});
     if (!sb) { showModal('Online 1v1', 'Could not reach the login service.', [{ label: 'OK', onClick: () => {} }]); return; }
-    pendingOnline = true;
+    pendingOnlineAction = next;
     const { error } = await sb.auth.signInAnonymously();
-    if (error) { pendingOnline = false; showModal('Online 1v1', 'Could not start a guest session: ' + error.message, [{ label: 'OK', onClick: () => {} }]); return; }
-    // setSession() (fired via onAuthStateChange) sees pendingOnline and starts matchmaking once
-    // the session/profile are ready -- nothing further to do here.
+    if (error) { pendingOnlineAction = null; showModal('Online 1v1', 'Could not start a guest session: ' + error.message, [{ label: 'OK', onClick: () => {} }]); return; }
+    // setSession() (fired via onAuthStateChange) sees pendingOnlineAction and resumes with it
+    // once the session/profile are ready -- nothing further to do here.
 }
 document.getElementById('acctPanelClose').addEventListener('click', closeAcctPanel);
 document.getElementById('menuBtn').addEventListener('click', backToMenu);
@@ -2991,8 +3000,9 @@ async function setSession(session) {
         signedOut.style.display = 'none'; signedIn.style.display = 'flex';
     }
     updateAcctStatus();
-    // signing in (or a guest completing sign-up) from "Online 1v1" -> pick the flow back up
-    if (pendingOnline) { closeAcctPanel(); startOnlineMatchmaking(); }
+    // signing in (or a guest completing sign-up) from "Online 1v1"/"Private match" -> pick the
+    // flow back up with whichever one triggered it
+    if (pendingOnlineAction) { const next = pendingOnlineAction; pendingOnlineAction = null; closeAcctPanel(); next(); }
 }
 
 // Checked once on load, in the background, so a returning signed-in player's status shows
@@ -3001,7 +3011,7 @@ async function setSession(session) {
 if (sbConfigured()) {
     ensureSupabase().catch(() => {
         document.getElementById('acctMsg').textContent = 'Could not reach the login service. You can still play as a guest.';
-    });
+    }).then(checkJoinLink);
 } else {
     document.getElementById('acctMsg').textContent = 'Online accounts aren’t set up yet on this build. Play as a guest.';
     document.getElementById('acctSendLink').disabled = true;
@@ -3395,6 +3405,87 @@ function openLeaderboard() {
       });
 }
 document.getElementById('leaderboardBtn').addEventListener('click', openLeaderboard);
+
+// ---------- Private matches: invite a specific person by code or link ----------
+document.getElementById('privateMatchBtn').addEventListener('click', () => ensureOnlineIdentity(openPrivateMatchMenu));
+function openPrivateMatchMenu() {
+    showModal('Private match', 'Play a rated 1v1 against someone specific instead of the random queue.', [
+        { label: 'Create a match', onClick: createPrivateMatch },
+        { label: 'Join with a code', onClick: joinPrivateMatchPrompt },
+        { label: 'Cancel', onClick: () => {} },
+    ]);
+}
+
+let privateWaitChannel = null;
+function cleanupPrivateWait() {
+    if (privateWaitChannel) { sb.removeChannel(privateWaitChannel); privateWaitChannel = null; }
+}
+async function createPrivateMatch() {
+    showModal('Private match', 'Creating your invite…', []);
+    const { data, error } = await sb.rpc('create_private_match');
+    const row0 = Array.isArray(data) ? data[0] : data;   // Postgres set-returning functions come back as an array of rows via PostgREST
+    if (error || !row0 || !row0.match_id) {
+        showModal('Private match', 'Could not create an invite: ' + (error ? error.message : 'unknown error'), [ { label: 'OK', onClick: () => {} } ]);
+        return;
+    }
+    showPrivateWaitScreen(row0.match_id, row0.code);
+    privateWaitChannel = sb.channel('private-wait-'+row0.match_id)
+        .on('postgres_changes', { event:'UPDATE', schema:'public', table:'matches', filter:'id=eq.'+row0.match_id }, payload => {
+            if (payload.new.status !== 'active') return;
+            cleanupPrivateWait();
+            sb.from('matches').select('*').eq('id', row0.match_id).single().then(({ data: row }) => { if (row) enterOnlineMatch(row); });
+        })
+        .subscribe();
+}
+function showPrivateWaitScreen(matchId, code) {
+    const link = location.origin + location.pathname + '?join=' + encodeURIComponent(code);
+    const body = `<p style="margin:0 0 10px;">Share this code, or send the link:</p>
+        <p style="font-size:28px; font-weight:bold; letter-spacing:4px; color:#ffd23f; margin:0 0 12px;">${escapeHtml(code)}</p>
+        <div class="row" style="justify-content:center;"><button id="privCopyLink">Copy invite link</button></div>
+        <p class="msg" id="privWaitMsg" style="margin-top:10px;">Waiting for them to join…</p>`;
+    showModal('Private match', body, [ { label: 'Cancel', onClick: () => cancelPrivateMatchWait(matchId) } ], true);
+    document.getElementById('privCopyLink').addEventListener('click', () => {
+        navigator.clipboard.writeText(link)
+            .then(() => { document.getElementById('privWaitMsg').textContent = 'Link copied! Waiting for them to join…'; })
+            .catch(() => { document.getElementById('privWaitMsg').textContent = 'Could not copy — the code above still works.'; });
+    });
+}
+function cancelPrivateMatchWait(matchId) {
+    cleanupPrivateWait();
+    sb.rpc('cancel_private_match', { p_match_id: matchId }).catch(() => {});
+}
+function joinPrivateMatchPrompt() {
+    const body = `<div class="row">
+            <input id="privCodeInput" type="text" placeholder="CODE" maxlength="6"
+                   style="text-transform:uppercase; text-align:center; letter-spacing:3px; font-size:18px;">
+            <button id="privJoinGo">Join</button>
+        </div>
+        <p class="msg" id="privJoinMsg"></p>`;
+    showModal('Join private match', body, [ { label: 'Cancel', onClick: () => {} } ], true);
+    const go = () => joinPrivateMatchWithCode(document.getElementById('privCodeInput').value);
+    document.getElementById('privJoinGo').addEventListener('click', go);
+    document.getElementById('privCodeInput').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    document.getElementById('privCodeInput').focus();
+}
+async function joinPrivateMatchWithCode(rawCode) {
+    const code = (rawCode || '').trim().toUpperCase();   // the code box's CSS text-transform is display-only, so normalize the actual value too (the server also upper()s it, but no reason to rely on that alone)
+    const msg = document.getElementById('privJoinMsg');
+    if (!code) { if (msg) msg.textContent = 'Enter a code first.'; return; }
+    if (msg) msg.textContent = 'Joining…';
+    const { data: matchId, error } = await sb.rpc('join_private_match', { p_code: code });
+    if (error || !matchId) { if (msg) msg.textContent = 'That code is invalid, already used, or your own.'; return; }
+    const { data: row, error: rowErr } = await sb.from('matches').select('*').eq('id', matchId).single();
+    if (row) enterOnlineMatch(row); else if (msg) msg.textContent = 'Could not load the match.';
+}
+// A shared invite link (?join=CODE) auto-joins once an identity (real or guest) is ready --
+// waits for the background ensureSupabase() check to settle first (success or failure) so an
+// already-signed-in returning player doesn't get asked to choose Sign in/Guest unnecessarily.
+function checkJoinLink() {
+    const code = new URLSearchParams(location.search).get('join');
+    if (!code) return;
+    history.replaceState(null, '', location.pathname);   // don't re-trigger this on a later refresh
+    ensureOnlineIdentity(() => joinPrivateMatchWithCode(code));
+}
 </script>
 </body>
 </html>
