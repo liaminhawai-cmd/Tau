@@ -104,7 +104,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 11</div>
+<div id="buildTag">build 12</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -117,7 +117,7 @@
         <button class="modeBtn" id="modeOnline">Online 1v1</button>
         <button class="modeBtn" id="modeAI">vs AI</button>
         <p class="msg" id="modeMsg"></p>
-        <div id="menuLinks"><button class="link" id="howToPlayBtn">How to play</button><button class="link" id="leaderboardBtn">Leaderboard</button><button class="link" id="privateMatchBtn">Private match</button></div>
+        <div id="menuLinks"><button class="link" id="howToPlayBtn">How to play</button><button class="link" id="leaderboardBtn">Leaderboard</button><button class="link" id="privateMatchBtn">Private match</button><button class="link" id="soundPanelBtn">Sound</button></div>
 
         <div id="acctPanel" style="display:none;">
             <div id="acctSignedOut">
@@ -1244,7 +1244,12 @@ const CFG = {
     footR: 23.095,                 // hub→foot = 46.19mm (tripod smoove 2021.stl)
     startX: 30.597,                // hub offset: puts the two back feet exactly halfway between the rings
     maxCrossingsPerTurn: 1,
-    crossEps: 0.4,                 // grace band: a foot starting on a line may leave it for free
+    // Grace band for "a foot is on a line" (both the leave-a-start-line freebie and the
+    // stop-before-touching-a-2nd-line rule). Crossing is measured at the foot's CENTRE POINT (the
+    // magnet), not the wider printed footprint (~footPadRadius ≈ 1.1u), so this band is what stands
+    // in for the foot having real size -- widened from 0.4 toward the footprint so lining a foot up
+    // on/along a line is as forgiving as nudging the physical tripod until its pad straddles the line.
+    crossEps: 0.9,
     substepDeg: 0.4,
     minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
     lockDeg: 2,                    // net rotation before the one-direction-per-turn lock engages
@@ -1847,7 +1852,7 @@ function onDown(e) {
     if (G.pinned===null) {
         // Step 1 — lock a foot as the pivot
         const i=nearestFoot(p, feet, -1);
-        if (i>=0) { pinFoot(i); playFootTap(); if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; } }
+        if (i>=0) { pinFoot(i); playSelectClick(); if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; } }
     } else {
         // Step 2 — grab a DIFFERENT foot to swing, or re-tap the pivot to re-pick.
         // The pivot only "wins" the tap if it is the closest foot — a sloppy tap near a
@@ -1897,15 +1902,15 @@ function finishTurn() {
 // aiIdx/humanIdx (which colour is AI vs human) are chosen per-game at startGame(), since the
 // player can pick either colour — not fixed to red.
 let aiIdx = 1, humanIdx = 0;
-let vsAI = false, aiAnim = null, aiTimer = null, aiDifficulty = 'normal';   // 'normal' | 'zone' | 'hard' — see searchedPlanFor()
+let vsAI = false, aiAnim = null, aiTimer = null, aiDifficulty = 'easy';   // 'easy' | 'zone' | 'hard' — see searchedPlanFor()
 function startAiTurn() {
     if (G.over || G.active!==aiIdx) return;
     const sp = searchedPlanFor(aiDifficulty, aiIdx);   // decide the whole move up front, then animate straight to it
-    if (sp) { pinFoot(sp.pivotIdx); playFootTap(); playMoveBass(); aiAnim = { dir: sp.dir, triedFlip:true, targetRad: sp.targetRad }; render(); return; }
+    if (sp) { pinFoot(sp.pivotIdx); playSelectClick(); playMoveBass(); aiAnim = { dir: sp.dir, triedFlip:true, targetRad: sp.targetRad }; render(); return; }
     // no scored move (only possible for zone/hard, extremely rare) — fall through to the simple planner
     const plan = aiChoosePlan(aiIdx);
     pinFoot(plan.pivotIdx);
-    playFootTap(); playMoveBass();
+    playSelectClick(); playMoveBass();
     const feet = G.pieces[aiIdx].feet();
     aiAnim = { dir: directionToward(G.pivot, feet[plan.swingIdx], plan.target), triedFlip:false, targetRad: Infinity };
     render();
@@ -2161,16 +2166,16 @@ function backToMenu() {
 document.getElementById('modeLocal').addEventListener('click', ()=>startGame(false));
 document.getElementById('modeAI').addEventListener('click', () => {
     showModal('vs AI', 'Pick a difficulty.', [
-        { label: 'Normal', onClick: () => chooseAiColour('normal') },
+        { label: 'Easy',   onClick: () => chooseAiColour('easy') },
         { label: 'Medium', onClick: () => chooseAiColour('zone') },
         { label: 'Hard',   onClick: () => chooseAiColour('hard') },
     ]);
 });
-// Normal follows one fixed offense/defense rule, no search. Medium scores every one of its 6
+// Easy follows one fixed offense/defense rule, no search. Medium scores every one of its 6
 // possible (pivot × direction) moves by board-position value (see aiChoosePlanZone) and picks the
 // best, but never considers how the human might reply. Hard does the same 6-way search but looks
 // one full move further, through the human's best reply (aiChoosePlanHard) — measured strongest of
-// the three, with Medium in between and Normal weakest.
+// the three, with Medium in between and Easy weakest.
 function chooseAiColour(difficulty) {
     showModal('Choose your colour', 'Blue always moves first.', [
         { label: 'Play as Blue', onClick: () => startGame(true, 0, difficulty) },
@@ -2470,29 +2475,41 @@ updateThemeToggleIcon();
 // (The old Settings panel only held the theme switch, which now lives in the always-visible
 // corner toggle above — so Settings was removed as redundant.)
 
-// ---------- Sound: white noise textured by an EQ peak that tracks the moving piece ----------
-// One continuously-running white-noise loop through a sharp bandpass filter. The filter's centre
-// frequency tracks how far the CURRENTLY-ACTIVE piece's hub is from the board centre — low near
-// the middle, rising to a bright, sharp peak near the rim — so the pitch always tells you where on
-// the board the live piece is, whether a human, the AI, or an online replay is driving it (this
-// piggybacks on animate()'s existing per-frame read of G.pieces, so one hook covers every path). A
-// short low-passed "thump" fires once at the start of every REAL move (not the AI's internal
-// what-if search — see the specific call sites below, never a blanket hook on pinFoot() itself,
-// which the Hard/Zone planners also call dozens of times per decision while just thinking). On a
-// loss, the filter snaps wide open, volume fades out, and the sound leans hard into a synthesized
-// long reverb tail (no external audio asset — the whole file stays self-contained).
-// Layers: (1) a quiet ambient bed of PLAIN white noise (no EQ) at ~10% volume with a permanent
-// ~20% reverb send, so there's always a little space around the sound; (2) the same noise through a
-// sharp bandpass whose centre frequency tracks the MOVING piece's distance from centre -- this peak
-// is DRY. Everything sits behind a gate that stays silent until you actually start moving your
-// piece (first foot tap), so a still board is quiet. Discrete one-shots -- a very short low "chalk
-// tap" when you pick up a foot, and a ~0.1s bass thump when a move begins -- bypass the gate so they
-// always land. On win OR loss the whole thing opens to ~90% wet and the EQ peak flattens.
-let audioCtx=null, noiseSrc=null, bandpass=null, peakGain=null, bedGain=null, bedDry=null, bedWet=null,
-    peakDry=null, peakWet=null, convolver=null, reverbReturn=null, toneLP=null, gateGain=null, masterGain=null, audioReady=false;
-let soundOn = true, audioGateOpen = false, audioReplayIdx = null;
+// ---------- Sound: white noise through a pitch-tracking EQ peak, driven by movement speed --------
+// A single looping white-noise source runs through a sharp bandpass (the "voice"). Its centre
+// frequency tracks the MOVING piece's distance from the board centre (low in the middle → higher
+// toward the rim) — whoever is moving, human / AI / online-replay opponent. Crucially the voice is
+// GATED BY MOVEMENT SPEED: silent when nothing moves, louder the faster the piece is swung, dropping
+// straight back to silence the instant it stops (so a still board is silent, no "always-on bed").
+// A second high-passed noise layer ("scrape") rides the same speed for a chalky texture. One-shots:
+// a crisp high "chalk click" when you pick up a foot, and a short bass thump when a move begins. On
+// win OR loss the voice swells into the reverb and the EQ flattens. Every audible parameter lives in
+// the SFX object and is live-tunable from the Sound panel (openSoundPanel) — no external audio asset.
+const SFX_DEFAULTS = {
+    master: 0.16,      // overall volume
+    minHz: 190,        // voice pitch when the piece is at the centre
+    maxHz: 3600,       // voice pitch at the rim (10k read as "freaked out", so kept well down)
+    q: 7,              // bandpass sharpness (the peak)
+    highCut: 6000,     // master low-pass — trims harsh high end
+    speedRef: 26,      // board-units/sec of foot speed that reaches full voice volume
+    speedGain: 1.0,    // overall multiplier on the speed→volume curve
+    scrape: 0.4,       // amount of the high-passed "chalk grain" layer, relative to the voice
+    scrapeHz: 2600,    // high-pass cutoff for that grain layer
+    reverb: 0.12,      // wet reverb mix during normal play
+    reverbEnd: 0.85,   // wet reverb mix on win/loss
+    clickVol: 0.6,     // "chalk click" loudness when selecting a foot
+    clickHz: 2000,     // click tone — high-pass cutoff (higher = tick-ier)
+    clickLen: 0.035,   // click duration (s)
+    bassVol: 0.5,      // move-start bass thump loudness
+    bassHz: 95,        // bass thump frequency (raise if your speakers can't reproduce it)
+    bassLen: 0.11,     // bass thump duration (s)
+};
+const SFX = Object.assign({}, SFX_DEFAULTS);
+try { Object.assign(SFX, JSON.parse(localStorage.getItem('tauSfx')||'{}')); } catch(e) {}
+let audioCtx=null, noiseSrc=null, bandpass=null, voiceGain=null, scrapeHP=null, scrapeGain=null,
+    dryGain=null, convolver=null, wetGain=null, toneLP=null, masterGain=null, audioReady=false;
+let soundOn = true, audioReplayIdx = null, audioPrevFeet = null;
 try { soundOn = localStorage.getItem('tauSound') !== '0'; } catch(e) {}
-const AUDIO_BASE_GAIN = 0.16;
 function makeNoiseBuffer(ctx, seconds) {
     const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate*seconds), ctx.sampleRate);
     const d = buf.getChannelData(0);
@@ -2520,95 +2537,113 @@ function initAudio() {
     noiseSrc = audioCtx.createBufferSource();
     noiseSrc.buffer = makeNoiseBuffer(audioCtx, 2);
     noiseSrc.loop = true;
-    bandpass = audioCtx.createBiquadFilter();
-    bandpass.type = 'bandpass'; bandpass.frequency.value = AUDIO_MIN_HZ; bandpass.Q.value = 7;
-    peakGain = audioCtx.createGain(); peakGain.gain.value = 0.55;
-    bedGain = audioCtx.createGain(); bedGain.gain.value = 0.10;   // plain-noise bed at ~10%
-    bedDry = audioCtx.createGain(); bedDry.gain.value = 0.8;
-    bedWet = audioCtx.createGain(); bedWet.gain.value = 0.2;       // ~20% of the bed goes to reverb
-    peakDry = audioCtx.createGain(); peakDry.gain.value = 1.0;
-    peakWet = audioCtx.createGain(); peakWet.gain.value = 0.0;     // peak is dry until win/loss
+    bandpass = audioCtx.createBiquadFilter(); bandpass.type='bandpass'; bandpass.frequency.value=SFX.minHz; bandpass.Q.value=SFX.q;
+    voiceGain = audioCtx.createGain(); voiceGain.gain.value = 0;   // speed-driven; silent at rest
+    scrapeHP = audioCtx.createBiquadFilter(); scrapeHP.type='highpass'; scrapeHP.frequency.value=SFX.scrapeHz;
+    scrapeGain = audioCtx.createGain(); scrapeGain.gain.value = 0;
+    dryGain = audioCtx.createGain(); dryGain.gain.value = 1;
     convolver = audioCtx.createConvolver(); convolver.buffer = makeCathedralImpulse(audioCtx);
-    reverbReturn = audioCtx.createGain(); reverbReturn.gain.value = 1.0;
-    toneLP = audioCtx.createBiquadFilter(); toneLP.type = 'lowpass'; toneLP.frequency.value = 6000;   // trim harsh top end
-    gateGain = audioCtx.createGain(); gateGain.gain.value = 0;     // silent until you start moving
-    masterGain = audioCtx.createGain(); masterGain.gain.value = soundOn ? AUDIO_BASE_GAIN : 0;
-    // bed (plain noise)
-    noiseSrc.connect(bedGain);
-    bedGain.connect(bedDry); bedDry.connect(toneLP);
-    bedGain.connect(bedWet); bedWet.connect(convolver);
-    // peak (bandpass, dry)
-    noiseSrc.connect(bandpass); bandpass.connect(peakGain);
-    peakGain.connect(peakDry); peakDry.connect(toneLP);
-    peakGain.connect(peakWet); peakWet.connect(convolver);
-    // reverb return + tone shaping → gate → master
-    convolver.connect(reverbReturn); reverbReturn.connect(toneLP);
-    toneLP.connect(gateGain); gateGain.connect(masterGain);
+    wetGain = audioCtx.createGain(); wetGain.gain.value = SFX.reverb;
+    toneLP = audioCtx.createBiquadFilter(); toneLP.type='lowpass'; toneLP.frequency.value = SFX.highCut;
+    masterGain = audioCtx.createGain(); masterGain.gain.value = soundOn ? SFX.master : 0;
+    noiseSrc.connect(bandpass); bandpass.connect(voiceGain); voiceGain.connect(toneLP);
+    noiseSrc.connect(scrapeHP); scrapeHP.connect(scrapeGain); scrapeGain.connect(toneLP);
+    toneLP.connect(dryGain); dryGain.connect(masterGain);
+    toneLP.connect(convolver); convolver.connect(wetGain); wetGain.connect(masterGain);
     masterGain.connect(audioCtx.destination);
     noiseSrc.start();
     audioReady = true;
 }
-// Opens the "only once you're moving" gate; the first foot tap in a game calls it, and it stays open
-// for the rest of that game (bed keeps breathing through the opponent's turns too).
-function openAudioGate() {
-    if (!audioReady || audioGateOpen) return;
-    audioGateOpen = true;
-    gateGain.gain.setTargetAtTime(1, audioCtx.currentTime, 0.08);
-}
-// "Chalk tap": a very short, low (20–60 Hz) noise tick when a foot is picked up. Bypasses the gate so
-// it sounds even on the very first pick-up, and opens the gate so the bed/peak fade in from here.
-function playFootTap() {
-    if (!audioReady) return;
-    openAudioGate();
-    if (!soundOn || !gameVisible()) return;
-    const bp = audioCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=40; bp.Q.value=1.1;
+// Mobile (esp. iOS) starts the context 'suspended'; it only resumes inside a user gesture. Call this
+// from every gesture until it's running — that's why phones were silent while laptops worked.
+function resumeAudio() { initAudio(); if (audioCtx && audioCtx.state !== 'running') audioCtx.resume(); }
+// "Chalk click" when a foot is picked up: a very short high-passed noise tick. Crisp, not a rumble.
+function playSelectClick() {
+    resumeAudio();
+    if (!audioReady || !soundOn || !gameVisible()) return;
+    const hp = audioCtx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=SFX.clickHz; hp.Q.value=0.7;
     const g = audioCtx.createGain(); const t0 = audioCtx.currentTime;
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(0.6, t0+0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0+0.05);
-    noiseSrc.connect(bp); bp.connect(g); g.connect(masterGain);
-    setTimeout(() => { try { bp.disconnect(); g.disconnect(); } catch(e){} }, 120);
+    g.gain.exponentialRampToValueAtTime(SFX.clickVol, t0+0.001);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+SFX.clickLen);
+    noiseSrc.connect(hp); hp.connect(g); g.connect(masterGain);
+    setTimeout(() => { try { hp.disconnect(); g.disconnect(); } catch(e){} }, (SFX.clickLen+0.1)*1000);
 }
-// Move-start bass: ~0.1s low thump that quickly fades, leaving the tracking mid peak.
+// Move-start bass: a short low thump that quickly fades, leaving the tracking voice.
 function playMoveBass() {
     if (!audioReady || !soundOn || !gameVisible()) return;
-    const lp = audioCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=110;
+    const lp = audioCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=Math.max(60, SFX.bassHz*1.6);
+    const osc = audioCtx.createOscillator(); osc.type='sine'; osc.frequency.value=SFX.bassHz;   // a tone floors out better than filtered noise on small speakers
     const g = audioCtx.createGain(); const t0 = audioCtx.currentTime;
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(0.42, t0+0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0+0.11);
-    noiseSrc.connect(lp); lp.connect(g); g.connect(masterGain);
-    setTimeout(() => { try { lp.disconnect(); g.disconnect(); } catch(e){} }, 200);
+    g.gain.exponentialRampToValueAtTime(SFX.bassVol, t0+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+SFX.bassLen);
+    osc.connect(lp); lp.connect(g); g.connect(masterGain);
+    osc.start(t0); osc.stop(t0+SFX.bassLen+0.05);
+    setTimeout(() => { try { lp.disconnect(); g.disconnect(); } catch(e){} }, (SFX.bassLen+0.15)*1000);
 }
-const AUDIO_MIN_HZ = 190, AUDIO_MAX_HZ = 3600;   // top brought well down -- 10k read as "freaked out"
-// Called every animate() frame while a game is on screen. Tracks whichever piece is actually moving:
-// the opponent's during an online replay (audioReplayIdx), otherwise the active side.
-function updateAudioPitch() {
-    if (!audioReady || !soundOn || !G || !gameVisible()) return;
-    const idx = audioReplayIdx !== null ? audioReplayIdx : G.active;
-    const frac = Math.max(0, Math.min(1, radU(G.pieces[idx]) / CFG.edgeU));
-    bandpass.frequency.setTargetAtTime(AUDIO_MIN_HZ * Math.pow(AUDIO_MAX_HZ/AUDIO_MIN_HZ, frac), audioCtx.currentTime, 0.05);
+// Per-frame driver: sets the voice PITCH from the moving piece's distance-from-centre, and the voice
+// VOLUME from how fast its feet are actually moving this frame (silent at rest). Skipped once the
+// game is over so playLossSound's swell owns the voice.
+function updateAudioMovement(dt) {
+    if (!audioReady) return;
+    const idx = audioReplayIdx !== null ? audioReplayIdx : (G ? G.active : 0);
+    if (!soundOn || !G || !gameVisible()) {
+        voiceGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+        scrapeGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+        audioPrevFeet = null; return;
+    }
+    if (G.over) { audioPrevFeet = null; return; }
+    const now = audioCtx.currentTime, p = G.pieces[idx];
+    const frac = Math.max(0, Math.min(1, radU(p) / CFG.edgeU));
+    bandpass.frequency.setTargetAtTime(SFX.minHz * Math.pow(SFX.maxHz/SFX.minHz, frac), now, 0.03);
+    const feet = p.feet();
+    let speed = 0;
+    if (audioPrevFeet && dt > 1e-4) {
+        for (let i=0;i<3;i++){ const d = Math.hypot(feet[i].x-audioPrevFeet[i].x, feet[i].y-audioPrevFeet[i].y); if (d>speed) speed=d; }
+        speed /= dt;   // board-units per second of the fastest-moving foot
+    }
+    audioPrevFeet = feet;
+    const lvl = Math.min(1, speed / Math.max(1, SFX.speedRef)) * SFX.speedGain;
+    voiceGain.gain.setTargetAtTime(lvl, now, 0.02);
+    scrapeGain.gain.setTargetAtTime(lvl * SFX.scrape, now, 0.02);
 }
-// Win OR loss (both call triggerFall): open to ~90% wet and flatten the EQ peak. Kept audible rather
-// than faded to nothing, so the reverb swell reads as the finish.
+// Win OR loss (both route through triggerFall): swell the voice into the reverb and flatten the EQ.
 function playLossSound() {
     if (!audioReady || !soundOn) return;
-    openAudioGate();
+    resumeAudio();
     const t0 = audioCtx.currentTime;
-    bandpass.Q.setTargetAtTime(0.4, t0, 0.4);
-    bandpass.frequency.setTargetAtTime(700, t0, 0.4);
-    bedDry.gain.setTargetAtTime(0.1, t0, 0.3);  bedWet.gain.setTargetAtTime(0.9, t0, 0.3);
-    peakDry.gain.setTargetAtTime(0.1, t0, 0.3); peakWet.gain.setTargetAtTime(0.9, t0, 0.3);
+    bandpass.Q.setTargetAtTime(0.5, t0, 0.4);
+    bandpass.frequency.setTargetAtTime((SFX.minHz+SFX.maxHz)/3, t0, 0.4);
+    wetGain.gain.setTargetAtTime(SFX.reverbEnd, t0, 0.3);
+    dryGain.gain.setTargetAtTime(1-SFX.reverbEnd, t0, 0.3);
+    voiceGain.gain.cancelScheduledValues(t0);
+    voiceGain.gain.setTargetAtTime(0.9, t0, 0.05);
+    voiceGain.gain.setTargetAtTime(0.0, t0+0.5, 0.9);
+    scrapeGain.gain.setTargetAtTime(0, t0, 0.3);
 }
-// Restores the normal ~20%-wet-bed / dry-peak balance and re-closes the gate for a fresh game.
+// Restores the dry/normal balance and silences the voice for a fresh game.
 function resetAudioForNewGame() {
     if (!audioReady) return;
     const t0 = audioCtx.currentTime;
-    audioGateOpen = false; gateGain.gain.setTargetAtTime(0, t0, 0.05);
-    bandpass.Q.setTargetAtTime(7, t0, 0.05);
-    bedDry.gain.setTargetAtTime(0.8, t0, 0.05);  bedWet.gain.setTargetAtTime(0.2, t0, 0.05);
-    peakDry.gain.setTargetAtTime(1.0, t0, 0.05); peakWet.gain.setTargetAtTime(0.0, t0, 0.05);
-    masterGain.gain.setTargetAtTime(soundOn ? AUDIO_BASE_GAIN : 0, t0, 0.05);
+    audioPrevFeet = null;
+    bandpass.Q.setTargetAtTime(SFX.q, t0, 0.05);
+    voiceGain.gain.setTargetAtTime(0, t0, 0.05);
+    scrapeGain.gain.setTargetAtTime(0, t0, 0.05);
+    dryGain.gain.setTargetAtTime(1, t0, 0.05);
+    wetGain.gain.setTargetAtTime(SFX.reverb, t0, 0.05);
+    masterGain.gain.setTargetAtTime(soundOn ? SFX.master : 0, t0, 0.05);
+}
+// Push the current SFX values to the live nodes (called live while dragging the Sound panel sliders)
+// and persist them so a tuned mix survives a reload.
+function applySfx() {
+    try { localStorage.setItem('tauSfx', JSON.stringify(SFX)); } catch(e) {}
+    if (!audioReady) return;
+    const t0 = audioCtx.currentTime;
+    masterGain.gain.setTargetAtTime(soundOn ? SFX.master : 0, t0, 0.03);
+    toneLP.frequency.setTargetAtTime(SFX.highCut, t0, 0.03);
+    scrapeHP.frequency.setTargetAtTime(SFX.scrapeHz, t0, 0.03);
+    if (!G || !G.over) { bandpass.Q.setTargetAtTime(SFX.q, t0, 0.03); wetGain.gain.setTargetAtTime(SFX.reverb, t0, 0.03); }
 }
 function updateSoundToggleIcon() {
     const btn = document.getElementById('soundToggle');
@@ -2617,14 +2652,55 @@ function updateSoundToggleIcon() {
 function setSoundOn(on) {
     soundOn = on;
     try { localStorage.setItem('tauSound', on ? '1' : '0'); } catch(e) {}
-    if (masterGain) masterGain.gain.setTargetAtTime(on ? AUDIO_BASE_GAIN : 0, audioCtx.currentTime, 0.08);
+    if (masterGain) masterGain.gain.setTargetAtTime(on ? SFX.master : 0, audioCtx.currentTime, 0.08);
     updateSoundToggleIcon();
 }
-document.getElementById('soundToggle').addEventListener('click', () => { initAudio(); setSoundOn(!soundOn); });
+document.getElementById('soundToggle').addEventListener('click', () => { resumeAudio(); setSoundOn(!soundOn); });
 updateSoundToggleIcon();
-// Autoplay policies require a user gesture before any audio node can actually start — the FIRST
-// tap/click anywhere quietly boots the engine; nothing plays before this fires.
-addEventListener('pointerdown', initAudio, { once:true });
+// Autoplay policy needs a user gesture to start/resume the context. Not { once:true }: mobile (iOS)
+// often stays 'suspended' after the first gesture and only actually resumes on a later one, so keep
+// trying to resume on every pointerdown until it's running (resume() is a cheap no-op once it is).
+addEventListener('pointerdown', resumeAudio);
+
+// ---------- Sound settings panel: live sliders + a "copy values" dump ----------
+// Each row binds a range input to one SFX field, live-applies on input (applySfx / immediate node
+// tweaks), and persists. "Copy values" dumps the current SFX JSON so a hand-tuned mix can be pasted
+// back and locked in as the new defaults.
+const SFX_SLIDERS = [
+    ['master','Master volume',0,0.5,0.01], ['speedGain','Move loudness',0,2,0.05], ['speedRef','Speed→loud (units/s)',6,80,1],
+    ['minHz','Pitch: centre (Hz)',60,600,5], ['maxHz','Pitch: rim (Hz)',800,8000,50], ['q','Peak sharpness',0.5,20,0.5],
+    ['highCut','High cut (Hz)',2000,12000,100], ['scrape','Chalk grain',0,1.5,0.05], ['scrapeHz','Grain tone (Hz)',800,6000,50],
+    ['reverb','Reverb (play)',0,1,0.02], ['reverbEnd','Reverb (win/lose)',0,1,0.02],
+    ['clickVol','Click volume',0,1.5,0.05], ['clickHz','Click tone (Hz)',400,6000,50], ['clickLen','Click length (s)',0.005,0.15,0.005],
+    ['bassVol','Bass thump vol',0,1.2,0.05], ['bassHz','Bass thump (Hz)',40,300,5], ['bassLen','Bass length (s)',0.02,0.4,0.01],
+];
+function openSoundPanel() {
+    resumeAudio();
+    const rows = SFX_SLIDERS.map(([k,label,mn,mx,st]) =>
+        `<div class="setRow" style="gap:8px;">
+            <label style="flex:1; text-align:left; font-size:12px;">${label}</label>
+            <input type="range" id="sfx_${k}" min="${mn}" max="${mx}" step="${st}" value="${SFX[k]}" style="flex:1.2;">
+            <span id="sfxv_${k}" style="width:52px; text-align:right; font-size:12px; color:#9aa4ad;">${SFX[k]}</span>
+        </div>`).join('');
+    const body = `<p style="margin:0 0 8px; font-size:12px; color:#9aa4ad;">Move a piece while you tweak — the voice only sounds while it's moving.</p>
+        ${rows}
+        <div class="row" style="margin-top:10px; justify-content:center; gap:8px;">
+            <button id="sfxCopy">Copy values</button><button id="sfxReset">Reset</button>
+        </div>
+        <textarea id="sfxDump" readonly style="width:100%; height:70px; margin-top:8px; font-size:11px; box-sizing:border-box; display:none;"></textarea>`;
+    showModal('Sound', body, [ { label:'Done', onClick:()=>{} } ], true);
+    for (const [k] of SFX_SLIDERS) {
+        const inp = document.getElementById('sfx_'+k), val = document.getElementById('sfxv_'+k);
+        inp.addEventListener('input', () => { SFX[k] = parseFloat(inp.value); val.textContent = inp.value; applySfx(); });
+    }
+    document.getElementById('sfxCopy').addEventListener('click', () => {
+        const json = JSON.stringify(SFX, null, 0);
+        const ta = document.getElementById('sfxDump'); ta.style.display='block'; ta.value = json; ta.select();
+        navigator.clipboard && navigator.clipboard.writeText(json).catch(()=>{});
+    });
+    document.getElementById('sfxReset').addEventListener('click', () => { Object.assign(SFX, SFX_DEFAULTS); applySfx(); openSoundPanel(); });
+}
+document.getElementById('soundPanelBtn').addEventListener('click', openSoundPanel);
 document.getElementById('modeOnline').addEventListener('click', () => {
     document.getElementById('modeMsg').textContent = '';
     ensureOnlineIdentity(startOnlineMatchmaking);
@@ -3126,7 +3202,7 @@ function animate() {
     // very first few frames (same reason onlineMatch needed its own early declaration above) --
     // typeof is the one safe way to reference a not-yet-existing top-level binding.
     if (typeof drawTurnTimer === 'function') { drawTurnTimer(); checkOnlineTimeout(); }
-    updateAudioPitch();
+    if (typeof updateAudioMovement === 'function') updateAudioMovement(dt);
     if (!renderer) return;
     if (htp3DActive) {   // how-to-play's own push+fall demo — never touches G, which the ambient
                           // landing demo keeps animating behind the modal
@@ -3846,7 +3922,7 @@ async function replayOpponentMove(row) {
     }
     // A real move clears that player's pass streak.
     if (onlineMatch.passStreak) onlineMatch.passStreak[row.mover_color] = 0;
-    if (row.keyframes && row.keyframes.length) { playFootTap(); playMoveBass(); }   // a real swing, not a forfeit/timeout (those send keyframes:[])
+    if (row.keyframes && row.keyframes.length) { playSelectClick(); playMoveBass(); }   // a real swing, not a forfeit/timeout (those send keyframes:[])
     audioReplayIdx = moverIdx;   // pitch tracks the OPPONENT's piece while their move replays
 
     const start = { bx:G.pieces[0].x, by:G.pieces[0].y, brot:G.pieces[0].rot,
