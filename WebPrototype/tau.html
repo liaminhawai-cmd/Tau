@@ -104,7 +104,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 10</div>
+<div id="buildTag">build 11</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -1847,7 +1847,7 @@ function onDown(e) {
     if (G.pinned===null) {
         // Step 1 — lock a foot as the pivot
         const i=nearestFoot(p, feet, -1);
-        if (i>=0) { pinFoot(i); playMoveStab(); if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; } }
+        if (i>=0) { pinFoot(i); playFootTap(); if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; } }
     } else {
         // Step 2 — grab a DIFFERENT foot to swing, or re-tap the pivot to re-pick.
         // The pivot only "wins" the tap if it is the closest foot — a sloppy tap near a
@@ -1855,7 +1855,7 @@ function onDown(e) {
         const dPin=Math.hypot(feet[G.pinned].x-p.x, feet[G.pinned].y-p.y);
         const i=nearestFoot(p, feet, G.pinned);
         if (i>=0 && (dPin>=hitRadius() || Math.hypot(feet[i].x-p.x,feet[i].y-p.y)<=dPin)){
-            G.handle=i; G.ptrAngle=Math.atan2(p.y-G.pivot.y, p.x-G.pivot.x);
+            G.handle=i; G.ptrAngle=Math.atan2(p.y-G.pivot.y, p.x-G.pivot.x); playMoveBass();   // grabbing a foot to swing = move begins
         } else if (dPin<hitRadius() && Math.abs(G.netRad) < CFG.minMoveDeg*Math.PI/180){
             restoreSnap(); G.pinned=null; G.pivot=null;
         }
@@ -1901,11 +1901,11 @@ let vsAI = false, aiAnim = null, aiTimer = null, aiDifficulty = 'normal';   // '
 function startAiTurn() {
     if (G.over || G.active!==aiIdx) return;
     const sp = searchedPlanFor(aiDifficulty, aiIdx);   // decide the whole move up front, then animate straight to it
-    if (sp) { pinFoot(sp.pivotIdx); playMoveStab(); aiAnim = { dir: sp.dir, triedFlip:true, targetRad: sp.targetRad }; render(); return; }
+    if (sp) { pinFoot(sp.pivotIdx); playFootTap(); playMoveBass(); aiAnim = { dir: sp.dir, triedFlip:true, targetRad: sp.targetRad }; render(); return; }
     // no scored move (only possible for zone/hard, extremely rare) — fall through to the simple planner
     const plan = aiChoosePlan(aiIdx);
     pinFoot(plan.pivotIdx);
-    playMoveStab();
+    playFootTap(); playMoveBass();
     const feet = G.pieces[aiIdx].feet();
     aiAnim = { dir: directionToward(G.pivot, feet[plan.swingIdx], plan.target), triedFlip:false, targetRad: Infinity };
     render();
@@ -2481,10 +2481,18 @@ updateThemeToggleIcon();
 // which the Hard/Zone planners also call dozens of times per decision while just thinking). On a
 // loss, the filter snaps wide open, volume fades out, and the sound leans hard into a synthesized
 // long reverb tail (no external audio asset — the whole file stays self-contained).
-let audioCtx=null, noiseSrc=null, bandpass=null, masterGain=null, dryGain=null, wetGain=null, convolver=null, audioReady=false;
-let soundOn = true;
+// Layers: (1) a quiet ambient bed of PLAIN white noise (no EQ) at ~10% volume with a permanent
+// ~20% reverb send, so there's always a little space around the sound; (2) the same noise through a
+// sharp bandpass whose centre frequency tracks the MOVING piece's distance from centre -- this peak
+// is DRY. Everything sits behind a gate that stays silent until you actually start moving your
+// piece (first foot tap), so a still board is quiet. Discrete one-shots -- a very short low "chalk
+// tap" when you pick up a foot, and a ~0.1s bass thump when a move begins -- bypass the gate so they
+// always land. On win OR loss the whole thing opens to ~90% wet and the EQ peak flattens.
+let audioCtx=null, noiseSrc=null, bandpass=null, peakGain=null, bedGain=null, bedDry=null, bedWet=null,
+    peakDry=null, peakWet=null, convolver=null, reverbReturn=null, toneLP=null, gateGain=null, masterGain=null, audioReady=false;
+let soundOn = true, audioGateOpen = false, audioReplayIdx = null;
 try { soundOn = localStorage.getItem('tauSound') !== '0'; } catch(e) {}
-const AUDIO_BASE_GAIN = 0.14;
+const AUDIO_BASE_GAIN = 0.16;
 function makeNoiseBuffer(ctx, seconds) {
     const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate*seconds), ctx.sampleRate);
     const d = buf.getChannelData(0);
@@ -2513,57 +2521,93 @@ function initAudio() {
     noiseSrc.buffer = makeNoiseBuffer(audioCtx, 2);
     noiseSrc.loop = true;
     bandpass = audioCtx.createBiquadFilter();
-    bandpass.type = 'bandpass'; bandpass.frequency.value = 200; bandpass.Q.value = 9;
+    bandpass.type = 'bandpass'; bandpass.frequency.value = AUDIO_MIN_HZ; bandpass.Q.value = 7;
+    peakGain = audioCtx.createGain(); peakGain.gain.value = 0.55;
+    bedGain = audioCtx.createGain(); bedGain.gain.value = 0.10;   // plain-noise bed at ~10%
+    bedDry = audioCtx.createGain(); bedDry.gain.value = 0.8;
+    bedWet = audioCtx.createGain(); bedWet.gain.value = 0.2;       // ~20% of the bed goes to reverb
+    peakDry = audioCtx.createGain(); peakDry.gain.value = 1.0;
+    peakWet = audioCtx.createGain(); peakWet.gain.value = 0.0;     // peak is dry until win/loss
+    convolver = audioCtx.createConvolver(); convolver.buffer = makeCathedralImpulse(audioCtx);
+    reverbReturn = audioCtx.createGain(); reverbReturn.gain.value = 1.0;
+    toneLP = audioCtx.createBiquadFilter(); toneLP.type = 'lowpass'; toneLP.frequency.value = 6000;   // trim harsh top end
+    gateGain = audioCtx.createGain(); gateGain.gain.value = 0;     // silent until you start moving
     masterGain = audioCtx.createGain(); masterGain.gain.value = soundOn ? AUDIO_BASE_GAIN : 0;
-    dryGain = audioCtx.createGain(); dryGain.gain.value = 1;
-    wetGain = audioCtx.createGain(); wetGain.gain.value = 0;
-    convolver = audioCtx.createConvolver();
-    convolver.buffer = makeCathedralImpulse(audioCtx);
-    noiseSrc.connect(bandpass);
-    bandpass.connect(dryGain); dryGain.connect(masterGain);
-    bandpass.connect(convolver); convolver.connect(wetGain); wetGain.connect(masterGain);
+    // bed (plain noise)
+    noiseSrc.connect(bedGain);
+    bedGain.connect(bedDry); bedDry.connect(toneLP);
+    bedGain.connect(bedWet); bedWet.connect(convolver);
+    // peak (bandpass, dry)
+    noiseSrc.connect(bandpass); bandpass.connect(peakGain);
+    peakGain.connect(peakDry); peakDry.connect(toneLP);
+    peakGain.connect(peakWet); peakWet.connect(convolver);
+    // reverb return + tone shaping → gate → master
+    convolver.connect(reverbReturn); reverbReturn.connect(toneLP);
+    toneLP.connect(gateGain); gateGain.connect(masterGain);
     masterGain.connect(audioCtx.destination);
     noiseSrc.start();
     audioReady = true;
 }
-// Move-start "thump": a short separate low-pass + gain-envelope tap off the same noise loop, so it
-// doesn't fight the continuously-updating bandpass frequency used for the pitch sweep.
-function playMoveStab() {
-    if (!audioReady || !soundOn || !gameVisible()) return;
-    const lp = audioCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 160;
-    const g = audioCtx.createGain(); const t0 = audioCtx.currentTime;
-    g.gain.setValueAtTime(0, t0);
-    g.gain.linearRampToValueAtTime(0.35, t0+0.015);
-    g.gain.linearRampToValueAtTime(0, t0+0.1);
-    bandpass.connect(lp); lp.connect(g); g.connect(masterGain);
-    setTimeout(() => { lp.disconnect(); g.disconnect(); }, 150);
+// Opens the "only once you're moving" gate; the first foot tap in a game calls it, and it stays open
+// for the rest of that game (bed keeps breathing through the opponent's turns too).
+function openAudioGate() {
+    if (!audioReady || audioGateOpen) return;
+    audioGateOpen = true;
+    gateGain.gain.setTargetAtTime(1, audioCtx.currentTime, 0.08);
 }
-const AUDIO_MIN_HZ = 200, AUDIO_MAX_HZ = 10000;
-// Called every animate() frame while a game is on screen -- tracks whichever piece is active.
+// "Chalk tap": a very short, low (20–60 Hz) noise tick when a foot is picked up. Bypasses the gate so
+// it sounds even on the very first pick-up, and opens the gate so the bed/peak fade in from here.
+function playFootTap() {
+    if (!audioReady) return;
+    openAudioGate();
+    if (!soundOn || !gameVisible()) return;
+    const bp = audioCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=40; bp.Q.value=1.1;
+    const g = audioCtx.createGain(); const t0 = audioCtx.currentTime;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.6, t0+0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+0.05);
+    noiseSrc.connect(bp); bp.connect(g); g.connect(masterGain);
+    setTimeout(() => { try { bp.disconnect(); g.disconnect(); } catch(e){} }, 120);
+}
+// Move-start bass: ~0.1s low thump that quickly fades, leaving the tracking mid peak.
+function playMoveBass() {
+    if (!audioReady || !soundOn || !gameVisible()) return;
+    const lp = audioCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=110;
+    const g = audioCtx.createGain(); const t0 = audioCtx.currentTime;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.42, t0+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+0.11);
+    noiseSrc.connect(lp); lp.connect(g); g.connect(masterGain);
+    setTimeout(() => { try { lp.disconnect(); g.disconnect(); } catch(e){} }, 200);
+}
+const AUDIO_MIN_HZ = 190, AUDIO_MAX_HZ = 3600;   // top brought well down -- 10k read as "freaked out"
+// Called every animate() frame while a game is on screen. Tracks whichever piece is actually moving:
+// the opponent's during an online replay (audioReplayIdx), otherwise the active side.
 function updateAudioPitch() {
     if (!audioReady || !soundOn || !G || !gameVisible()) return;
-    const frac = Math.max(0, Math.min(1, radU(G.pieces[G.active]) / CFG.edgeU));
-    // Logarithmic sweep -- pitch perception is logarithmic, so this reads as an even glide across
-    // the whole board instead of bunching up near the rim.
+    const idx = audioReplayIdx !== null ? audioReplayIdx : G.active;
+    const frac = Math.max(0, Math.min(1, radU(G.pieces[idx]) / CFG.edgeU));
     bandpass.frequency.setTargetAtTime(AUDIO_MIN_HZ * Math.pow(AUDIO_MAX_HZ/AUDIO_MIN_HZ, frac), audioCtx.currentTime, 0.05);
 }
-// Loss: the sharp peak opens into full-spectrum noise, the reverb tail takes over, then it all fades.
+// Win OR loss (both call triggerFall): open to ~90% wet and flatten the EQ peak. Kept audible rather
+// than faded to nothing, so the reverb swell reads as the finish.
 function playLossSound() {
     if (!audioReady || !soundOn) return;
+    openAudioGate();
     const t0 = audioCtx.currentTime;
-    bandpass.Q.setTargetAtTime(0.3, t0, 0.4);
-    bandpass.frequency.setTargetAtTime(4000, t0, 0.4);
-    wetGain.gain.setTargetAtTime(0.9, t0, 0.3);
-    dryGain.gain.setTargetAtTime(0.2, t0, 0.3);
-    masterGain.gain.setTargetAtTime(0, t0+0.15, 0.5);
+    bandpass.Q.setTargetAtTime(0.4, t0, 0.4);
+    bandpass.frequency.setTargetAtTime(700, t0, 0.4);
+    bedDry.gain.setTargetAtTime(0.1, t0, 0.3);  bedWet.gain.setTargetAtTime(0.9, t0, 0.3);
+    peakDry.gain.setTargetAtTime(0.1, t0, 0.3); peakWet.gain.setTargetAtTime(0.9, t0, 0.3);
 }
-// Undoes playLossSound()'s open/faded state at the start of a fresh game.
+// Restores the normal ~20%-wet-bed / dry-peak balance and re-closes the gate for a fresh game.
 function resetAudioForNewGame() {
     if (!audioReady) return;
     const t0 = audioCtx.currentTime;
-    bandpass.Q.setTargetAtTime(9, t0, 0.05);
-    wetGain.gain.setTargetAtTime(0, t0, 0.05);
-    dryGain.gain.setTargetAtTime(1, t0, 0.05);
+    audioGateOpen = false; gateGain.gain.setTargetAtTime(0, t0, 0.05);
+    bandpass.Q.setTargetAtTime(7, t0, 0.05);
+    bedDry.gain.setTargetAtTime(0.8, t0, 0.05);  bedWet.gain.setTargetAtTime(0.2, t0, 0.05);
+    peakDry.gain.setTargetAtTime(1.0, t0, 0.05); peakWet.gain.setTargetAtTime(0.0, t0, 0.05);
     masterGain.gain.setTargetAtTime(soundOn ? AUDIO_BASE_GAIN : 0, t0, 0.05);
 }
 function updateSoundToggleIcon() {
@@ -3522,10 +3566,12 @@ function checkOnlineTimeout() {
     const mode = turnClockMode();
     if (!mode || G.over || !onlineTurnDeadline || performance.now() < onlineTurnDeadline) return;
     onlineTurnDeadline = null;
-    // Online: a timed-out turn is a surrender -- kept as a forfeit both because you can't trust an
-    // opponent not to stall, and because it doubles as disconnect handling (a closed/crashed tab
-    // just never moves, so its opponent's own clock eventually ends the match here).
-    if (mode === 'online') { endOnlineMatch(G.active); return; }
+    // Online: a timed-out turn PASSES -- but a player who misses TWICE in a row surrenders (which
+    // also cleanly handles a disconnect: a closed tab just misses every turn -> loses one cycle
+    // later). Only the NON-active client resolves the active player's timeout, so the two clients
+    // never race to record the same pass; a disconnected active player can't act anyway. If it's MY
+    // clock that expired, I do nothing and let my opponent's client drive it.
+    if (mode === 'online') { if (!myOnlineTurnNow()) onlineResolveOpponentTimeout(); return; }
     // Local pass-and-play: running the clock out simply PASSES the turn -- no forfeit. Same device,
     // both players present, so there's nothing to abuse; it just nudges a dawdling player along.
     clearTurn();
@@ -3533,6 +3579,27 @@ function checkOnlineTimeout() {
     showPassToast('Out of time — turn passed');
     startOnlineTurnClock();
     render();
+}
+// The opponent (the active player) let their clock run out. I'm the one present, so I resolve it:
+// their 1st miss just passes the turn back to me; their 2nd miss in a row is a surrender.
+function onlineResolveOpponentTimeout() {
+    if (!onlineMatch || !sb) return;
+    const passerIdx = G.active, passerColor = passerIdx === 0 ? 'blue' : 'red';
+    onlineMatch.passStreak = onlineMatch.passStreak || { blue:0, red:0 };
+    onlineMatch.passStreak[passerColor] = (onlineMatch.passStreak[passerColor]||0) + 1;
+    if (onlineMatch.passStreak[passerColor] >= 2) { endOnlineMatch(passerIdx); return; }   // 2nd miss -> they lose
+    // 1st miss -> pass the turn to me, and tell the opponent's client so it flips too.
+    clearTurn();
+    G.active = 1 - G.active;
+    showPassToast('Opponent out of time — your turn');
+    startOnlineTurnClock();
+    render();
+    const moveIndex = onlineMatch.nextMoveIndex++;
+    sb.from('match_moves').insert({
+        match_id: onlineMatch.id, move_index: moveIndex, mover_color: passerColor,
+        keyframes: [], final_state: { pass: true },
+    }).then(({ error }) => { if (error) console.error('sending pass failed', error); })
+      .catch(e => console.error('sending pass failed', e));
 }
 // Small transient banner (created lazily, no markup needed) -- used for the pass-on-timeout notice.
 let passToastTimer = null;
@@ -3694,8 +3761,14 @@ async function catchUpOnlineMatch() {
             .eq('match_id', onlineMatch.id).order('move_index', { ascending:true }));
     } catch (e) { return; }
     if (error || !history || !history.length) return;
+    onlineMatch.passStreak = onlineMatch.passStreak || { blue:0, red:0 };
     for (const mv of history) {
         const fs = mv.final_state;
+        if (fs && fs.pass) {   // a pass carries no position, just flips the turn
+            onlineMatch.passStreak[mv.mover_color] = (onlineMatch.passStreak[mv.mover_color]||0) + 1;
+            G.active = 1-G.active; continue;
+        }
+        onlineMatch.passStreak[mv.mover_color] = 0;   // a real move clears that player's streak
         G.pieces[0].x=fs.blue.x; G.pieces[0].y=fs.blue.y; G.pieces[0].rot=fs.blue.rot;
         G.pieces[1].x=fs.red.x; G.pieces[1].y=fs.red.y; G.pieces[1].rot=fs.red.rot;
         G.active = 1-G.active;
@@ -3718,6 +3791,7 @@ function recordKeyframe() {
 function finishOnlineTurn() {
     const keyframes = pendingKeyframes.slice();
     pendingKeyframes = []; lastKeyframeT = 0;
+    if (onlineMatch && onlineMatch.passStreak) onlineMatch.passStreak[onlineMatch.myColor] = 0;   // I moved -> reset my miss streak
     endTurn();
     progressCentering();
     const winnerColor = G.over ? (G.winner===0?'blue':'red') : null;
@@ -3756,9 +3830,25 @@ async function replayOpponentMove(row) {
     // G.active / double-consume the same move.
     if (!onlineMatch || row.move_index < onlineMatch.nextMoveIndex || onlineMatch._replayingIndex === row.move_index) return;
     onlineMatch._replayingIndex = row.move_index;
-    if (row.keyframes && row.keyframes.length) playMoveStab();   // a real swing, not a forfeit/timeout (those send keyframes:[])
-
+    const moverIdx = row.mover_color === 'blue' ? 0 : 1;
     const fs = row.final_state;
+    // A pass (opponent's clock ran out, but not their 2nd miss in a row) carries no motion -- just
+    // record the streak and hand the turn to me. (See onlineResolveOpponentTimeout for the rule.)
+    if (fs && fs.pass) {
+        onlineMatch.passStreak = onlineMatch.passStreak || { blue:0, red:0 };
+        onlineMatch.passStreak[row.mover_color] = (onlineMatch.passStreak[row.mover_color]||0) + 1;
+        onlineMatch.nextMoveIndex = Math.max(onlineMatch.nextMoveIndex, row.move_index + 1);
+        onlineMatch._replayingIndex = -1;
+        clearTurn(); G.active = 1 - G.active;
+        showPassToast("Opponent didn’t move — your turn");
+        startOnlineTurnClock(); render();
+        return;
+    }
+    // A real move clears that player's pass streak.
+    if (onlineMatch.passStreak) onlineMatch.passStreak[row.mover_color] = 0;
+    if (row.keyframes && row.keyframes.length) { playFootTap(); playMoveBass(); }   // a real swing, not a forfeit/timeout (those send keyframes:[])
+    audioReplayIdx = moverIdx;   // pitch tracks the OPPONENT's piece while their move replays
+
     const start = { bx:G.pieces[0].x, by:G.pieces[0].y, brot:G.pieces[0].rot,
                      rx:G.pieces[1].x, ry:G.pieces[1].y, rrot:G.pieces[1].rot };
     const end = { bx:fs.blue.x, by:fs.blue.y, brot:fs.blue.rot, rx:fs.red.x, ry:fs.red.y, rrot:fs.red.rot };
@@ -3779,6 +3869,7 @@ async function replayOpponentMove(row) {
             await new Promise(r => setTimeout(r, REPLAY_STEP_MS));
         }
     }
+    audioReplayIdx = null;   // replay done -- pitch reverts to the active side (which is about to be me)
     if (!onlineMatch) return;
     G.pieces[0].x=fs.blue.x; G.pieces[0].y=fs.blue.y; G.pieces[0].rot=fs.blue.rot;
     G.pieces[1].x=fs.red.x; G.pieces[1].y=fs.red.y; G.pieces[1].rot=fs.red.rot;
