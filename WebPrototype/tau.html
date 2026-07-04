@@ -98,7 +98,7 @@
 </head>
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
-<div id="buildTag">build 5</div>
+<div id="buildTag">build 6</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -3038,23 +3038,31 @@ document.getElementById('acctSignUp').addEventListener('click', async () => {
     if (password.length < 6) { msg.textContent = 'Password must be at least 6 characters.'; return; }
     if (!sb) { msg.textContent = 'Still connecting. Try again in a moment.'; return; }
     msg.textContent = 'Checking username…';
-    const { data: taken } = await sb.from('profiles').select('id').eq('username', username).maybeSingle();
-    if (taken) { msg.textContent = 'That username is already taken.'; return; }
-    const email = usernameToEmail(username);
-    const guest = sbUser && sbUser.is_anonymous;
-    msg.textContent = guest ? 'Saving your account…' : 'Creating account…';
-    // A guest already has a real auth.uid() (and profiles/ELO row) from signInAnonymously() --
-    // updateUser() links THIS session to a permanent identity in place (same uid), instead of
-    // signUp()'s usual "create an unrelated new user", which would abandon their rating.
-    const { error } = guest
-        ? await sb.auth.updateUser({ email, password, data: { username } })
-        : await sb.auth.signUp({ email, password, options: { data: { username } } });
-    if (error) { msg.textContent = error.message; return; }
-    // updateUser() changes auth metadata but doesn't touch public.profiles -- there's no
-    // "user updated" trigger, only the on-signup one -- so the rename is applied here, under
-    // the `grant update (username) on public.profiles` column-level grant from schema.sql.
-    if (guest) await sb.from('profiles').update({ username }).eq('id', sbUser.id);
-    msg.textContent = guest ? 'Account saved. You are signed in.' : 'Account created. You are signed in.';
+    // The whole flow is wrapped in try/catch: a genuine network-level failure (rather than a
+    // normal {error} response) on ANY of these awaited calls would otherwise leave msg stuck on
+    // whatever it last said (e.g. "Checking username…") forever, with sign-up silently going
+    // nowhere -- same failure mode as the matchmaking retry-loop bug.
+    try {
+        const { data: taken } = await sb.from('profiles').select('id').eq('username', username).maybeSingle();
+        if (taken) { msg.textContent = 'That username is already taken.'; return; }
+        const email = usernameToEmail(username);
+        const guest = sbUser && sbUser.is_anonymous;
+        msg.textContent = guest ? 'Saving your account…' : 'Creating account…';
+        // A guest already has a real auth.uid() (and profiles/ELO row) from signInAnonymously() --
+        // updateUser() links THIS session to a permanent identity in place (same uid), instead of
+        // signUp()'s usual "create an unrelated new user", which would abandon their rating.
+        const { error } = guest
+            ? await sb.auth.updateUser({ email, password, data: { username } })
+            : await sb.auth.signUp({ email, password, options: { data: { username } } });
+        if (error) { msg.textContent = error.message; return; }
+        // updateUser() changes auth metadata but doesn't touch public.profiles -- there's no
+        // "user updated" trigger, only the on-signup one -- so the rename is applied here, under
+        // the `grant update (username) on public.profiles` column-level grant from schema.sql.
+        if (guest) await sb.from('profiles').update({ username }).eq('id', sbUser.id);
+        msg.textContent = guest ? 'Account saved. You are signed in.' : 'Account created. You are signed in.';
+    } catch (e) {
+        msg.textContent = 'Could not reach the account service — check your connection and try again.';
+    }
 });
 document.getElementById('acctLogIn').addEventListener('click', async () => {
     const username = document.getElementById('acctUser').value.trim();
@@ -3176,7 +3184,8 @@ function endOnlineMatch(loserIdx) {
             red:  { x:G.pieces[1].x, y:G.pieces[1].y, rot:G.pieces[1].rot },
             winner: winnerColor,
         },
-    }).then(({ error }) => { if (error) console.error('sending match-end failed', error); });
+    }).then(({ error }) => { if (error) console.error('sending match-end failed', error); })
+      .catch(e => console.error('sending match-end failed', e));
 }
 
 async function startOnlineMatchmaking() {
@@ -3190,27 +3199,32 @@ async function startOnlineMatchmaking() {
         .subscribe();
     const tryOnce = async () => {
         if (!matchmakingActive) return;
-        const { data: matchId, error } = await sb.rpc('try_match');
-        if (error) console.error('try_match failed', error);
-        if (matchId && matchmakingActive) {
-            const { data: row } = await sb.from('matches').select('*').eq('id', matchId).single();
-            if (row) { enterOnlineMatch(row); return; }
-        }
-        // Realtime backstop: if the OTHER player's try_match() call is the one that actually
-        // paired us (deleting our queue row before we ever got the matches-INSERT event), we'd
-        // otherwise just re-queue ourselves forever and depend entirely on that Realtime event
-        // arriving. Poll directly for any active match we're already in, so a dropped/delayed
-        // Realtime event can't leave a player stuck on "Searching…" indefinitely. Wrapped in its
-        // own try/catch so a failure HERE (network hiccup, etc) can't kill the whole retry loop
-        // below — worse than not having this backstop at all.
-        if (matchmakingActive) {
-            try {
+        // The ENTIRE body is one try/catch: supabase-js's REST/RPC layer doesn't always
+        // normalize a genuine network-level failure (dropped WiFi, a DNS hiccup) into
+        // {data:null,error} the way its auth methods do -- it can just reject the promise. An
+        // unhandled rejection from ANY step here (not just the backstop poll) would otherwise
+        // abort the function before ever reaching the setTimeout below, permanently killing the
+        // retry loop and leaving the player stuck on "Searching…" forever after one bad network
+        // moment -- worse than the backstop poll it's meant to protect against.
+        try {
+            const { data: matchId, error } = await sb.rpc('try_match');
+            if (error) console.error('try_match failed', error);
+            if (matchId && matchmakingActive) {
+                const { data: row } = await sb.from('matches').select('*').eq('id', matchId).single();
+                if (row) { enterOnlineMatch(row); return; }
+            }
+            // Realtime backstop: if the OTHER player's try_match() call is the one that actually
+            // paired us (deleting our queue row before we ever got the matches-INSERT event),
+            // we'd otherwise just re-queue ourselves forever and depend entirely on that
+            // Realtime event arriving. Poll directly for any active match we're already in, so a
+            // dropped/delayed Realtime event can't leave a player stuck indefinitely either.
+            if (matchmakingActive) {
                 const { data: existing } = await sb.from('matches').select('*')
                     .or(`blue_id.eq.${sbUser.id},red_id.eq.${sbUser.id}`)
                     .eq('status', 'active').order('created_at', { ascending: false }).limit(1).maybeSingle();
                 if (existing && matchmakingActive) { enterOnlineMatch(existing); return; }
-            } catch (e) { console.error('matchmaking backstop poll failed', e); }
-        }
+            }
+        } catch (e) { console.error('matchmaking poll failed', e); }
         if (matchmakingActive) matchmakingTimer = setTimeout(tryOnce, 1800);
     };
     tryOnce();
@@ -3240,7 +3254,7 @@ async function enterOnlineMatch(row) {
     reset(); resize();
     sb.from('profiles').select('username').eq('id', opponentId).single().then(({ data, error }) => {
         if (!error && data && onlineMatch) { onlineMatch.opponentName = data.username; render(); }
-    });
+    }).catch(() => {});   // already degrades gracefully to the 'your opponent' placeholder name
     moveChannel = sb.channel('match-moves-'+row.id)
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'match_moves', filter:'match_id=eq.'+row.id },
             payload => { if (onlineMatch && payload.new.mover_color !== onlineMatch.myColor) replayOpponentMove(payload.new); })
@@ -3278,8 +3292,15 @@ function startOnlineMovePoll() {
 // right board instead of the fresh start reset() gave it.
 async function catchUpOnlineMatch() {
     if (!onlineMatch) return;
-    const { data: history, error } = await sb.from('match_moves').select('*')
-        .eq('match_id', onlineMatch.id).order('move_index', { ascending:true });
+    // Wrapped in try/catch: a rejected promise here (rather than a normal {error} response)
+    // would otherwise propagate up through enterOnlineMatch's await and abort it before it ever
+    // calls startOnlineMovePoll()/startOnlineTurnClock() -- leaving the match on screen but with
+    // no move-sync polling or turn clock running.
+    let history, error;
+    try {
+        ({ data: history, error } = await sb.from('match_moves').select('*')
+            .eq('match_id', onlineMatch.id).order('move_index', { ascending:true }));
+    } catch (e) { return; }
     if (error || !history || !history.length) return;
     for (const mv of history) {
         const fs = mv.final_state;
@@ -3321,7 +3342,8 @@ function finishOnlineTurn() {
     sb.from('match_moves').insert({
         match_id: matchId, move_index: moveIndex, mover_color: myColor,
         keyframes, final_state: finalState,
-    }).then(({ error }) => { if (error) console.error('sending move failed', error); });
+    }).then(({ error }) => { if (error) console.error('sending move failed', error); })
+      .catch(e => console.error('sending move failed', e));
 }
 async function replayOpponentMove(row) {
     // The Realtime push and the poll backstop (startOnlineMovePoll) can both observe the same
@@ -3357,7 +3379,8 @@ async function replayOpponentMove(row) {
 function onlineFinishMatch(winnerColor) {
     if (!onlineMatch || !sb) return;
     sb.rpc('finish_match', { p_match_id: onlineMatch.id, p_winner_color: winnerColor })
-      .then(({ error }) => { if (error) console.error('finish_match failed', error); });
+      .then(({ error }) => { if (error) console.error('finish_match failed', error); })
+      .catch(e => console.error('finish_match failed', e));
 }
 // Only actually starts a new match once BOTH players have clicked Rematch (rematch() is
 // idempotent per source match — see schema_matches.sql — so whichever of the two calls this
@@ -3371,8 +3394,10 @@ function rematchOnline() {
         if (error || !data) { backToMenu(); return; }
         sb.from('matches').select('*').eq('id', data).single().then(({ data: row }) => {
             if (row) enterOnlineMatch(row); else backToMenu();
-        });
-    });
+        }).catch(() => backToMenu());
+    // A rejected promise (network-level failure) here would otherwise leave the "Waiting for
+    // your opponent…" modal on screen forever -- fall back to the menu instead.
+    }).catch(() => backToMenu());
 }
 // Unlike Rematch (tied to the specific match just played, via rematch_of), this queues fresh
 // against anyone waiting -- same entry point as a first-time "Online 1v1" click.
@@ -3402,6 +3427,13 @@ function openLeaderboard() {
                 <td style="padding:4px 6px; text-align:right; color:#9aa4ad;">${p.wins}-${p.losses}</td>
             </tr>`).join('')}
         </table>`;
+      })
+      // A genuine network-level failure (dropped connection, DNS hiccup) can reject this promise
+      // outright instead of resolving to {error} -- without this, the modal is left on "Loading…"
+      // forever since the .then() above simply never runs.
+      .catch(() => {
+        const body = document.getElementById('modalBody');
+        if (body) body.innerHTML = '<p style="text-align:center;color:#9aa4ad;">Could not load the leaderboard — check your connection.</p>';
       });
 }
 document.getElementById('leaderboardBtn').addEventListener('click', openLeaderboard);
@@ -3422,7 +3454,16 @@ function cleanupPrivateWait() {
 }
 async function createPrivateMatch() {
     showModal('Private match', 'Creating your invite…', []);
-    const { data, error } = await sb.rpc('create_private_match');
+    // Wrapped in try/catch: like startOnlineMatchmaking()'s tryOnce(), a genuine network-level
+    // failure here can reject the promise outright rather than resolving to {error} -- without
+    // catching it, the modal would be stuck on "Creating your invite…" forever.
+    let data, error;
+    try {
+        ({ data, error } = await sb.rpc('create_private_match'));
+    } catch (e) {
+        showModal('Private match', 'Could not create an invite — check your connection.', [ { label: 'OK', onClick: () => {} } ]);
+        return;
+    }
     const row0 = Array.isArray(data) ? data[0] : data;   // Postgres set-returning functions come back as an array of rows via PostgREST
     if (error || !row0 || !row0.match_id) {
         showModal('Private match', 'Could not create an invite: ' + (error ? error.message : 'unknown error'), [ { label: 'OK', onClick: () => {} } ]);
@@ -3433,7 +3474,9 @@ async function createPrivateMatch() {
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'matches', filter:'id=eq.'+row0.match_id }, payload => {
             if (payload.new.status !== 'active') return;
             cleanupPrivateWait();
-            sb.from('matches').select('*').eq('id', row0.match_id).single().then(({ data: row }) => { if (row) enterOnlineMatch(row); });
+            sb.from('matches').select('*').eq('id', row0.match_id).single()
+              .then(({ data: row }) => { if (row) enterOnlineMatch(row); })
+              .catch(e => console.error('loading joined private match failed', e));   // Realtime already told us it's active; Cancel still works if this leaves the wait screen up
         })
         .subscribe();
 }
@@ -3472,10 +3515,15 @@ async function joinPrivateMatchWithCode(rawCode) {
     const msg = document.getElementById('privJoinMsg');
     if (!code) { if (msg) msg.textContent = 'Enter a code first.'; return; }
     if (msg) msg.textContent = 'Joining…';
-    const { data: matchId, error } = await sb.rpc('join_private_match', { p_code: code });
-    if (error || !matchId) { if (msg) msg.textContent = 'That code is invalid, already used, or your own.'; return; }
-    const { data: row, error: rowErr } = await sb.from('matches').select('*').eq('id', matchId).single();
-    if (row) enterOnlineMatch(row); else if (msg) msg.textContent = 'Could not load the match.';
+    try {
+        const { data: matchId, error } = await sb.rpc('join_private_match', { p_code: code });
+        if (error || !matchId) { if (msg) msg.textContent = 'That code is invalid, already used, or your own.'; return; }
+        const { data: row, error: rowErr } = await sb.from('matches').select('*').eq('id', matchId).single();
+        if (row) enterOnlineMatch(row); else if (msg) msg.textContent = 'Could not load the match.';
+    } catch (e) {
+        // A network-level rejection here would otherwise leave the box stuck on "Joining…" forever.
+        if (msg) msg.textContent = 'Could not join — check your connection and try again.';
+    }
 }
 // A shared invite link (?join=CODE) auto-joins once an identity (real or guest) is ready --
 // waits for the background ensureSupabase() check to settle first (success or failure) so an
