@@ -98,7 +98,7 @@
 </head>
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
-<div id="buildTag">build 1</div>
+<div id="buildTag">build 4</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -2785,13 +2785,25 @@ function updateFallCam(dt) {
     camera.position.lerp(acPos, k);
     controls.target.lerp(acTgt, k);
 }
-let aiFrameCount=0;
+// AI swing pacing is elapsed-time-based (an accumulator), not "every Nth requestAnimationFrame
+// callback": counting frames assumes rAF fires at a steady, predictable cadence, but it doesn't
+// have to -- any per-frame cost elsewhere (camera-fit recalculation while a piece is moving, a
+// big board redraw, a slower machine) makes rAF's real-world timing uneven, and "every 4th
+// frame" then advances the swing at an uneven real-time rate too: exactly the "stop-motion"
+// stutter reported, since the landing-page demo (paced by its own steady setTimeout loop,
+// wholly decoupled from rAF/render cost) never showed it. Accumulating real elapsed time and
+// draining it in fixed-size steps self-corrects after a slow frame instead of just drifting.
+let aiStepAccum = 0;
+const AI_STEP_INTERVAL = 1/15;   // seconds -- matches the old "~15 steps/sec" cadence
 function animate() {
     requestAnimationFrame(animate);
-    if (aiAnim && (++aiFrameCount % 4)===0) stepAi();   // ~15 steps/sec at 60fps — a visible, brisk swing
+    const dt = Math.min(clock ? clock.getDelta() : 0.016, 0.05);
+    if (aiAnim) {
+        aiStepAccum += dt;
+        while (aiAnim && aiStepAccum >= AI_STEP_INTERVAL) { stepAi(); aiStepAccum -= AI_STEP_INTERVAL; }
+    } else aiStepAccum = 0;
     if (onlineMatch) { drawTurnTimer(); checkOnlineTimeout(); }
     if (!renderer) return;
-    const dt = Math.min(clock ? clock.getDelta() : 0.016, 0.05);
     if (htp3DActive) {   // how-to-play's own push+fall demo — never touches G, which the ambient
                           // landing demo keeps animating behind the modal
         htp3DTick(dt);
