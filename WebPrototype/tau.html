@@ -98,7 +98,7 @@
 </head>
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
-<div id="buildTag">build 8</div>
+<div id="buildTag">build 9</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -134,7 +134,7 @@
                 <button id="acctGoogle">Sign in with Google</button>
             </div>
             <div id="acctSignedIn" style="display:none;">
-                <p class="profile">Signed in as <b id="acctName"></b><br>Rating: <span class="elo" id="acctElo"></span></p>
+                <p class="profile">Signed in as <b id="acctName"></b> <button class="link" id="acctRename">change</button><br>Rating: <span class="elo" id="acctElo"></span></p>
                 <button id="acctSignOut">Sign out</button>
             </div>
             <button id="acctPanelClose">Close</button>
@@ -1617,7 +1617,19 @@ function aiSwingDir(dir) {
 // runs one full AI move to completion synchronously — used by the animated UI stepper
 // (one call per frame there) and directly by headless tests (one call = one full turn).
 function aiTakeTurnSync() {
-    const aiIdx=G.active, plan=aiChoosePlan(aiIdx);
+    const aiIdx=G.active;
+    if (aiHard) {                                           // "Hard": execute the searched best plan (see aiChoosePlanHard)
+        const hp = aiChoosePlanHard(aiIdx);
+        if (hp) {
+            pinFoot(hp.pivotIdx);
+            let guard=0;
+            while (Math.abs(G.netRad) < hp.targetRad && !G.atLimit && guard++ < 500) applySwing(hp.dir*AI_STEP_RAD);
+            endTurn();
+            return;
+        }
+        // no legal scored move found (extremely rare) — fall through to the simple planner
+    }
+    const plan=aiChoosePlan(aiIdx);
     pinFoot(plan.pivotIdx);
     let feet=G.pieces[aiIdx].feet();
     let dir=directionToward(G.pivot, feet[plan.swingIdx], plan.target);
@@ -1635,6 +1647,68 @@ function aiTakeTurnSync() {
         }
     }
     endTurn();
+}
+
+// ---------- "Hard" AI: 2-ply minimax over (pivot foot × direction) ----------
+// Builds on the hand-described idea ("pin a central foot, rotate toward centre as far as it goes,
+// keep whichever leaves me safest relative to the human") but makes it actually strong. A purely
+// greedy 1-ply version of that metric turned out PASSIVE and lost to the simple heuristic: it
+// happily tucked its own feet toward centre to look "safe" without ever engaging. So Hard looks a
+// full move ahead instead — for each of MY six (pivot × direction) swings-to-the-limit, it lets the
+// human answer with THEIR best six-way reply, and scores the move by the WORST case that leaves
+// (minimax). That kills two bad habits at once: over-committing pushes (the human punishes them
+// next turn) and passive retreats (giving up contact just lets the human shove me instead).
+// Leaf score is exactly the requested margin: (my outermost foot's clearance from the rim) −
+// (the human's), i.e. how much nearer the edge the human is than me. Pushing a human foot off the
+// board is +BIG (always wins); getting one of MY feet pushed off is −BIG (never chosen unless it's
+// the only line left). It all runs on takeSnap()/rollback of the live G — "in its head" — so none
+// of the tried lines are ever drawn, the same rollback trick demoComputePlan() already uses.
+const HARD_WIN_BONUS = 1e6;
+const HARD_MIN_MOVE_RAD = CFG.minMoveDeg * Math.PI/180;   // a swing under this isn't a real (countable) move
+function outermostRadU(piece){ let m=0; for (const f of piece.feet()){ const r=radU(f); if (r>m) m=r; } return m; }
+// position value from idx's point of view: bigger = the OTHER piece is nearer the rim than idx is
+function marginFor(idx){ return outermostRadU(G.pieces[1-idx]) - outermostRadU(G.pieces[idx]); }
+// swing the CURRENTLY-ACTIVE piece (G.active) around foot `pivot` in `dir` to its natural limit
+// (the 1-crossing rule or the safety cap); returns the net radians actually applied.
+function simMoveToLimit(pivot, dir){
+    pinFoot(pivot);   // resets the turn accumulators AND arms the leave-a-start-line grace
+    let guard=0;
+    while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && guard++ < 500) applySwing(dir*AI_STEP_RAD);
+    return G.netRad;
+}
+function aiChoosePlanHard(aiIdx){
+    const humanIdx = 1 - aiIdx, origActive = G.active;
+    const snap0 = takeSnap();
+    const restore = (snap) => {
+        G.pieces.forEach((p,i)=>{ p.x=snap[i].x; p.y=snap[i].y; p.rot=snap[i].rot; });
+        G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
+    };
+    let best = null;   // { pivotIdx, dir, targetRad, score }
+    for (let mp=0; mp<3; mp++) for (const md of [1,-1]) {
+        restore(snap0); G.active = aiIdx;
+        const net = simMoveToLimit(mp, md);
+        if (Math.abs(net) < HARD_MIN_MOVE_RAD) continue;          // this pivot/dir can't make a real move
+        if (G.pieces[aiIdx].anyFootOff()) continue;               // swinging this far offs my OWN foot — never
+        let score;
+        if (G.pieces[humanIdx].anyFootOff()) {
+            score = HARD_WIN_BONUS + marginFor(aiIdx);            // this move pushes the human off — instant win
+        } else {
+            const snap1 = takeSnap();                             // the human now replies with their best six-way move
+            let worst = Infinity;
+            for (let op=0; op<3; op++) for (const od of [1,-1]) {
+                restore(snap1); G.active = humanIdx;
+                const onet = simMoveToLimit(op, od);
+                if (Math.abs(onet) < HARD_MIN_MOVE_RAD) continue;
+                if (G.pieces[humanIdx].anyFootOff()) continue;    // the human wouldn't off their own foot — ignore
+                const m = G.pieces[aiIdx].anyFootOff() ? -HARD_WIN_BONUS : marginFor(aiIdx);
+                if (m < worst) worst = m;
+            }
+            score = worst === Infinity ? marginFor(aiIdx) : worst;   // human had no legal reply — take my own position
+        }
+        if (!best || score > best.score) best = { pivotIdx: mp, dir: md, targetRad: Math.abs(net), score };
+    }
+    restore(snap0); G.active = origActive;
+    return best;
 }
 
 // ---------- Canvas / view state ----------
@@ -1772,20 +1846,28 @@ function finishTurn() {
 // aiIdx/humanIdx (which colour is AI vs human) are chosen per-game at startGame(), since the
 // player can pick either colour — not fixed to red.
 let aiIdx = 1, humanIdx = 0;
-let vsAI = false, aiAnim = null, aiTimer = null;
+let vsAI = false, aiAnim = null, aiTimer = null, aiHard = false;   // aiHard: "Hard" difficulty (1-ply search) vs the simple heuristic
 function startAiTurn() {
     if (G.over || G.active!==aiIdx) return;
+    if (aiHard) {
+        const hp = aiChoosePlanHard(aiIdx);   // decide the whole move up front, then animate straight to it
+        if (hp) { pinFoot(hp.pivotIdx); aiAnim = { dir: hp.dir, triedFlip:true, targetRad: hp.targetRad }; render(); return; }
+        // no scored move — fall through to the simple planner (still swings to its natural limit)
+    }
     const plan = aiChoosePlan(aiIdx);
     pinFoot(plan.pivotIdx);
     const feet = G.pieces[aiIdx].feet();
-    aiAnim = { dir: directionToward(G.pivot, feet[plan.swingIdx], plan.target), triedFlip:false };
+    aiAnim = { dir: directionToward(G.pivot, feet[plan.swingIdx], plan.target), triedFlip:false, targetRad: Infinity };
     render();
 }
 // advances the AI's swing by one animation step; called from the main render loop
 function stepAi() {
     if (!aiAnim || G.over) return;
-    if (!G.atLimit) { applySwing(aiAnim.dir*AI_STEP_RAD); render(); }
-    if (G.atLimit || Math.abs(G.netRad) >= AI_SAFETY_CAP_RAD) {
+    // targetRad caps the swing: Infinity for the simple planner (swing to the natural limit),
+    // a specific angle for Hard (stop exactly at the searched best position).
+    const cap = Math.min(aiAnim.targetRad, AI_SAFETY_CAP_RAD);
+    if (!G.atLimit && Math.abs(G.netRad) < aiAnim.targetRad) { applySwing(aiAnim.dir*AI_STEP_RAD); render(); }
+    if (G.atLimit || Math.abs(G.netRad) >= cap) {
         if (Math.abs(G.netRad) < 1e-9 && !aiAnim.triedFlip) {   // chosen direction fully blocked — try the other way
             aiAnim.dir *= -1; aiAnim.triedFlip = true;
             G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
@@ -1981,8 +2063,8 @@ function showGameOverModal() {
             ]);
         } else if (vsAI) {
             showModal(G.winner===humanIdx ? 'You win!' : 'You lose', '', [
-                { label: 'Play as Blue', onClick: () => startGame(true, 0) },
-                { label: 'Play as Red',  onClick: () => startGame(true, 1) },
+                { label: 'Play as Blue', onClick: () => startGame(true, 0, aiHard) },   // keep the same difficulty on replay
+                { label: 'Play as Red',  onClick: () => startGame(true, 1, aiHard) },
                 { label: 'Menu', onClick: backToMenu },
             ]);
         } else {
@@ -1993,12 +2075,13 @@ function showGameOverModal() {
         }
     }, 2800);
 }
-function startGame(aiMode, humanColorIdx) {
+function startGame(aiMode, humanColorIdx, hard) {
     hideModal(); clearTimeout(gameOverTimer);
     demoStop();
     cancelMatchmaking(); exitOnlineMatch();
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
     vsAI = aiMode;
+    aiHard = !!hard;
     humanIdx = humanColorIdx===undefined ? 0 : humanColorIdx;
     aiIdx = 1 - humanIdx;
     clearTimeout(aiTimer); aiAnim = null;
@@ -2022,11 +2105,19 @@ function backToMenu() {
 }
 document.getElementById('modeLocal').addEventListener('click', ()=>startGame(false));
 document.getElementById('modeAI').addEventListener('click', () => {
-    showModal('Choose your colour', 'Blue always moves first.', [
-        { label: 'Play as Blue', onClick: () => startGame(true, 0) },
-        { label: 'Play as Red',  onClick: () => startGame(true, 1) },
+    showModal('vs AI', 'Pick a difficulty.', [
+        { label: 'Normal', onClick: () => chooseAiColour(false) },
+        { label: 'Hard',   onClick: () => chooseAiColour(true) },
     ]);
 });
+// Hard looks a move ahead (tries every foot/direction, keeps the position that most puts you near
+// the rim while staying safe itself); Normal follows one fixed offense/defense rule with no search.
+function chooseAiColour(hard) {
+    showModal('Choose your colour', 'Blue always moves first.', [
+        { label: 'Play as Blue', onClick: () => startGame(true, 0, hard) },
+        { label: 'Play as Red',  onClick: () => startGame(true, 1, hard) },
+    ]);
+}
 // ---------- How to play: one short looping canvas animation per rule ----------
 // Vertically stacked slides inside the (already-scrollable) modal body, so scrolling and the
 // Prev/Next/dot buttons are just two ways to move through the SAME list -- no separate
@@ -3009,6 +3100,12 @@ async function setSession(session) {
     } else {
         promoteGuestToPersistent();
         signedOut.style.display = 'none'; signedIn.style.display = 'flex';
+        // A Google/magic-link sign-in lands on an auto-generated Player_xxxx handle (see the trigger
+        // in schema.sql). Offer to choose a real name once, so those players aren't stuck with it.
+        if (!renamePrompted && !error && data && /^Player_[0-9a-fA-F]{4,}$/.test(data.username)) {
+            renamePrompted = true;
+            setTimeout(() => openRenamePrompt(data.username, true), 400);
+        }
     }
     updateAcctStatus();
     // signing in (or a guest completing sign-up) from "Online 1v1"/"Private match" -> pick the
@@ -3019,6 +3116,22 @@ async function setSession(session) {
 // Checked once on load, in the background, so a returning signed-in player's status shows
 // up without any click. Guest play never depends on this succeeding — mode buttons are live
 // immediately regardless, and the account panel only opens if/when the player asks for it.
+// If we're returning from an OAuth / magic-link redirect that FAILED (the user denied access, the
+// provider errored, or the redirect URL wasn't allow-listed), the provider hands the reason back in
+// the URL -- in the query for the code flow, in the hash for the implicit flow this app uses.
+// Surface it instead of silently dropping the user back on the signed-out screen (which is exactly
+// what "the Google part looked right then nothing happened" looked like before).
+function surfaceAuthRedirectError() {
+    const parse = s => new URLSearchParams((s || '').replace(/^[#?]/, ''));
+    const h = parse(location.hash), q = parse(location.search);
+    const desc = h.get('error_description') || q.get('error_description') || h.get('error') || q.get('error');
+    if (!desc) return;
+    const el = document.getElementById('modeMsg');
+    if (el) el.textContent = 'Google/email sign-in didn’t complete: ' + decodeURIComponent(desc).replace(/\+/g, ' ');
+    if (h.get('error') || h.get('error_description')) history.replaceState(null, '', location.pathname + location.search);   // clear the hash so a refresh doesn't keep showing it
+}
+surfaceAuthRedirectError();
+
 if (sbConfigured()) {
     ensureSupabase().catch(() => {
         document.getElementById('acctMsg').textContent = 'Could not reach the login service. You can still play as a guest.';
@@ -3097,16 +3210,65 @@ document.getElementById('acctSendLink').addEventListener('click', async () => {
     if (!email) { msg.textContent = 'Enter an email address first.'; return; }
     if (!sb) { msg.textContent = 'Still connecting. Try again in a moment.'; return; }
     msg.textContent = 'Sending…';
-    const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
+    // Same reasoning as the Google button: a magic-link sign-in is a real account, so persist to
+    // localStorage, and use a stable redirect URL that matches the allow-list.
+    localStorage.setItem(AUTH_PERSIST_FLAG, '1');
+    const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
+    if (error) localStorage.removeItem(AUTH_PERSIST_FLAG);
     msg.textContent = error ? error.message : 'Check your email for a sign-in link.';
 });
 document.getElementById('acctGoogle').addEventListener('click', async () => {
     const msg = document.getElementById('acctMsg');
     if (!sb) { msg.textContent = 'Still connecting. Try again in a moment.'; return; }
-    const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.href } });
-    if (error) msg.textContent = error.message;
+    // A real (persistent) account is being created, so flip auth storage to localStorage BEFORE the
+    // redirect: the session that comes back has to survive the round-trip out to Google and back,
+    // and iOS Safari does NOT reliably keep sessionStorage across a cross-site OAuth redirect --
+    // that's the "the Google screen looked right, then it just came back signed out" symptom on
+    // some iPhones while other devices work. Revert if the redirect never even starts.
+    localStorage.setItem(AUTH_PERSIST_FLAG, '1');
+    // Stable redirect target (no query/hash) so it always matches the project's allowed Redirect
+    // URLs no matter how the page was opened (e.g. via a ?join= invite link).
+    const redirectTo = location.origin + location.pathname;
+    const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } });
+    if (error) { localStorage.removeItem(AUTH_PERSIST_FLAG); msg.textContent = error.message; }
 });
 document.getElementById('acctSignOut').addEventListener('click', async () => { await sb.auth.signOut(); closeAcctPanel(); });
+
+// Any signed-in player can rename themselves -- this is also the "choose your name" path for
+// Google/magic-link sign-ins, which start on an auto-generated Player_xxxx handle. Renames use the
+// column-level UPDATE grant on profiles.username (schema.sql); the uniqueness check here is
+// best-effort (the DB's unique constraint is the real guard).
+let renamePrompted = false;
+function openRenamePrompt(prefill, isAuto) {
+    if (!sb || !sbUser) return;
+    const body = `<div class="row">
+            <input id="renameInput" type="text" maxlength="20" placeholder="username" autocomplete="off" value="${escapeHtml(prefill || '')}">
+            <button id="renameGo">Save</button>
+        </div><p class="msg" id="renameMsg">3–20 letters, numbers, or underscores.</p>`;
+    showModal(isAuto ? 'Pick a username' : 'Change username', body,
+        [ { label: isAuto ? 'Keep this one' : 'Cancel', onClick: () => {} } ], true);
+    const go = async () => {
+        const name = document.getElementById('renameInput').value.trim();
+        const msg = document.getElementById('renameMsg');
+        if (!/^[a-zA-Z0-9_]{3,20}$/.test(name)) { msg.textContent = 'Username must be 3-20 letters, numbers, or underscores.'; return; }
+        if (name === prefill) { hideModal(); return; }
+        msg.textContent = 'Saving…';
+        try {
+            const { data: taken } = await sb.from('profiles').select('id').eq('username', name).maybeSingle();
+            if (taken) { msg.textContent = 'That username is already taken.'; return; }
+            const { error } = await sb.from('profiles').update({ username: name }).eq('id', sbUser.id);
+            if (error) { msg.textContent = error.message; return; }
+            const nameEl = document.getElementById('acctName'); if (nameEl) nameEl.textContent = name;
+            updateAcctStatus();
+            hideModal();
+        } catch (e) { msg.textContent = 'Could not save — check your connection.'; }
+    };
+    document.getElementById('renameGo').addEventListener('click', go);
+    const inp = document.getElementById('renameInput');
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    inp.focus(); inp.select();
+}
+document.getElementById('acctRename').addEventListener('click', () => openRenamePrompt(document.getElementById('acctName').textContent, false));
 
 // ---------- Online 1v1: matchmaking, live move sync, ELO ----------
 // Sync model: whoever's turn it is computes their own move locally (instant feedback — no
@@ -3170,11 +3332,33 @@ function checkOnlineTimeout() {
     const mode = turnClockMode();
     if (!mode || G.over || !onlineTurnDeadline || performance.now() < onlineTurnDeadline) return;
     onlineTurnDeadline = null;
-    if (mode === 'online') { endOnlineMatch(G.active); return; }   // whoever's turn it was loses
-    G.over = true; G.winner = 1 - G.active;
+    // Online: a timed-out turn is a surrender -- kept as a forfeit both because you can't trust an
+    // opponent not to stall, and because it doubles as disconnect handling (a closed/crashed tab
+    // just never moves, so its opponent's own clock eventually ends the match here).
+    if (mode === 'online') { endOnlineMatch(G.active); return; }
+    // Local pass-and-play: running the clock out simply PASSES the turn -- no forfeit. Same device,
+    // both players present, so there's nothing to abuse; it just nudges a dawdling player along.
     clearTurn();
-    triggerFall(); showGameOverModal();
+    G.active = 1 - G.active;
+    showPassToast('Out of time — turn passed');
+    startOnlineTurnClock();
     render();
+}
+// Small transient banner (created lazily, no markup needed) -- used for the pass-on-timeout notice.
+let passToastTimer = null;
+function showPassToast(text) {
+    let el = document.getElementById('passToast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'passToast';
+        el.style.cssText = 'position:fixed; left:50%; top:14%; transform:translateX(-50%); ' +
+            'background:rgba(20,24,28,0.92); color:#e6e6e6; padding:8px 16px; border-radius:8px; ' +
+            'font-size:14px; pointer-events:none; z-index:50; opacity:0; transition:opacity .3s;';
+        document.body.appendChild(el);
+    }
+    el.textContent = text; el.style.opacity = '1';
+    clearTimeout(passToastTimer);
+    passToastTimer = setTimeout(() => { el.style.opacity = '0'; }, 1600);
 }
 // Shared by a manual Surrender and a timed-out turn: forces the match to end with the given
 // side as loser, and tells the opponent's client the same way a real winning move would.
@@ -3430,19 +3614,26 @@ const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&l
 function openLeaderboard() {
     showModal('Leaderboard', '<p style="text-align:center;color:#9aa4ad;">Loading…</p>', [ { label:'Close', onClick:()=>{} } ], true);
     if (!sb) { document.getElementById('modalBody').innerHTML = '<p style="text-align:center;color:#9aa4ad;">Online accounts aren’t set up on this build.</p>'; return; }
-    sb.from('profiles').select('username, elo, wins, losses').order('elo', { ascending:false }).limit(20)
+    sb.from('profiles').select('username, elo, wins, losses').order('elo', { ascending:false }).limit(10)
       .then(({ data, error }) => {
         const body = document.getElementById('modalBody');
         if (error || !data) { body.innerHTML = '<p style="text-align:center;color:#9aa4ad;">Could not load the leaderboard.</p>'; return; }
         if (!data.length) { body.innerHTML = '<p style="text-align:center;color:#9aa4ad;">No rated players yet.</p>'; return; }
+        // #1 is bold and noticeably bigger; #2 and #3 a touch bigger; the rest at the base size.
+        // Top three get a medal in the rank column instead of a plain number.
         body.innerHTML = `<table style="width:100%; border-collapse:collapse; font-size:13px;">
             <tr style="color:#9aa4ad; text-align:left;"><th style="padding:4px 6px;">#</th><th style="padding:4px 6px;">Player</th><th style="padding:4px 6px; text-align:right;">Elo</th><th style="padding:4px 6px; text-align:right;">W-L</th></tr>
-            ${data.map((p,i)=>`<tr style="border-top:1px solid #2c3138;">
-                <td style="padding:4px 6px; color:#9aa4ad;">${i+1}</td>
-                <td style="padding:4px 6px;">${escapeHtml(p.username)}</td>
-                <td style="padding:4px 6px; text-align:right; color:#ffd23f; font-weight:bold;">${p.elo}</td>
-                <td style="padding:4px 6px; text-align:right; color:#9aa4ad;">${p.wins}-${p.losses}</td>
-            </tr>`).join('')}
+            ${data.map((p,i)=>{
+                const rank=i+1;
+                const fs = rank===1 ? '18px' : rank<=3 ? '15px' : '13px';
+                const fw = rank===1 ? '800' : rank<=3 ? '650' : '400';
+                const rankCell = rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':rank;
+                return `<tr style="border-top:1px solid #2c3138; font-size:${fs}; font-weight:${fw}; line-height:1.35;">
+                <td style="padding:5px 6px; color:#9aa4ad;">${rankCell}</td>
+                <td style="padding:5px 6px;">${escapeHtml(p.username)}</td>
+                <td style="padding:5px 6px; text-align:right; color:#ffd23f;">${p.elo}</td>
+                <td style="padding:5px 6px; text-align:right; color:#9aa4ad; font-weight:400;">${p.wins}-${p.losses}</td>
+            </tr>`;}).join('')}
         </table>`;
       })
       // A genuine network-level failure (dropped connection, DNS hiccup) can reject this promise
