@@ -1764,6 +1764,7 @@ function finishTurn() {
     endTurn();
     progressCentering();   // each completed move creeps the camera a quarter back toward centre
     if (G.over) { triggerFall(); showGameOverModal(); }
+    else if (!vsAI) startOnlineTurnClock();   // local pass-and-play gets the same 30s turn clock as online; vs AI doesn't
     render();
     if (vsAI && !G.over && G.active===aiIdx) aiTimer = setTimeout(startAiTurn, 450);   // brief "thinking" pause
 }
@@ -2002,12 +2003,15 @@ function startGame(aiMode, humanColorIdx) {
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
     reset(); resize();
+    if (!aiMode) startOnlineTurnClock(); else onlineTurnDeadline = null;
     if (vsAI && G.active===aiIdx) aiTimer = setTimeout(startAiTurn, 450);
 }
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
     clearTimeout(aiTimer); aiAnim = null;
     cancelMatchmaking(); exitOnlineMatch();
+    onlineTurnDeadline = null;
+    document.getElementById('turnTimer').style.display = 'none';
     camCenterFrac = 1; camManualSet = false;   // the menu demo frames itself fully
     document.getElementById('game').style.display = 'none';
     document.getElementById('menu').style.display = 'flex';
@@ -2802,7 +2806,10 @@ function animate() {
         aiStepAccum += dt;
         while (aiAnim && aiStepAccum >= AI_STEP_INTERVAL) { stepAi(); aiStepAccum -= AI_STEP_INTERVAL; }
     } else aiStepAccum = 0;
-    if (onlineMatch) { drawTurnTimer(); checkOnlineTimeout(); }
+    // Declared in the later "online accounts" script tag, which hasn't run yet for animate()'s
+    // very first few frames (same reason onlineMatch needed its own early declaration above) --
+    // typeof is the one safe way to reference a not-yet-existing top-level binding.
+    if (typeof drawTurnTimer === 'function') { drawTurnTimer(); checkOnlineTimeout(); }
     if (!renderer) return;
     if (htp3DActive) {   // how-to-play's own push+fall demo — never touches G, which the ambient
                           // landing demo keeps animating behind the modal
@@ -2960,8 +2967,19 @@ async function setSession(session) {
         localStorage.removeItem(AUTH_PERSIST_FLAG);
         signedOut.style.display = 'flex'; signedIn.style.display = 'none'; updateAcctStatus(); return;
     }
-    const { data, error } = await sb.from('profiles').select('username, elo').eq('id', sbUser.id).single();
-    document.getElementById('acctName').textContent = error ? sbUser.email : data.username;
+    // The profiles row is created by a server-side trigger on auth.users, which can very
+    // occasionally not yet be visible to this immediately-following SELECT (e.g. right after
+    // signInAnonymously() resolves) -- without retrying, that shows up as the guest's name
+    // rendering as blank/"undefined" and, worse, matchmaking never finding an ELO to queue with
+    // (try_match() requires the profiles row to exist), leaving them stuck on "Searching…"
+    // forever instead of just a moment later.
+    let data, error;
+    for (let attempt = 0; attempt < 4; attempt++) {
+        ({ data, error } = await sb.from('profiles').select('username, elo').eq('id', sbUser.id).single());
+        if (!error) break;
+        await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
+    }
+    document.getElementById('acctName').textContent = error ? (sbUser.email || 'Guest') : data.username;
     document.getElementById('acctElo').textContent = error ? '?' : data.elo;
     if (sbUser.is_anonymous) {
         // A guest is signed in at the auth layer (real auth.uid(), real profile/ELO row) but
@@ -3083,17 +3101,26 @@ function myOnlineTurnNow() {
 }
 
 // ---------- Per-turn clock: 30s, whoever's turn it is loses if it runs out ----------
-// A subtle pie-wedge ring (no numbers) in the active side's colour, sweeping clockwise as time
-// runs out. Checked from both clients' own animate() loop -- either side may notice a stalled
-// opponent first (e.g. a backgrounded tab throttles timers, so whichever client is actually in
-// the foreground is the one likely to catch it) -- and this doubles as disconnect handling: a
-// closed tab just never moves, so its opponent's own clock eventually calls the same timeout.
+// Same mechanic for online AND local pass-and-play (not vs AI, which has no "stalled human" to
+// time out on the AI's own turn). A subtle pie-wedge ring (no numbers) in the active side's
+// colour, sweeping clockwise as time runs out. For online, checked from both clients' own
+// animate() loop -- either side may notice a stalled opponent first (e.g. a backgrounded tab
+// throttles timers, so whichever client is actually in the foreground is the one likely to
+// catch it) -- and this doubles as disconnect handling: a closed tab just never moves, so its
+// opponent's own clock eventually calls the same timeout.
 // (onlineTurnDeadline itself is declared earlier alongside onlineMatch -- see that comment.)
 const TURN_CLOCK_MS = 30000;
-function startOnlineTurnClock() { onlineTurnDeadline = onlineMatch ? performance.now() + TURN_CLOCK_MS : null; }
+// Returns 'online' / 'local' / null (no clock this mode -- vs AI, or no game showing at all).
+function turnClockMode() {
+    if (document.getElementById('game').style.display !== 'flex') return null;
+    if (onlineMatch) return 'online';
+    if (!vsAI) return 'local';
+    return null;
+}
+function startOnlineTurnClock() { onlineTurnDeadline = turnClockMode() ? performance.now() + TURN_CLOCK_MS : null; }
 function drawTurnTimer() {
     const cv = document.getElementById('turnTimer');
-    if (!onlineMatch || G.over || !onlineTurnDeadline) { cv.style.display = 'none'; return; }
+    if (!turnClockMode() || G.over || !onlineTurnDeadline) { cv.style.display = 'none'; return; }
     cv.style.display = 'block';
     const tctx = cv.getContext('2d'), w = cv.width, o = w/2, rad = w/2 - 2;
     tctx.clearRect(0, 0, w, w);
@@ -3111,9 +3138,14 @@ function drawTurnTimer() {
     }
 }
 function checkOnlineTimeout() {
-    if (!onlineMatch || G.over || !onlineTurnDeadline || performance.now() < onlineTurnDeadline) return;
+    const mode = turnClockMode();
+    if (!mode || G.over || !onlineTurnDeadline || performance.now() < onlineTurnDeadline) return;
     onlineTurnDeadline = null;
-    endOnlineMatch(G.active);   // whoever's turn it was when the clock ran out loses
+    if (mode === 'online') { endOnlineMatch(G.active); return; }   // whoever's turn it was loses
+    G.over = true; G.winner = 1 - G.active;
+    clearTurn();
+    triggerFall(); showGameOverModal();
+    render();
 }
 // Shared by a manual Surrender and a timed-out turn: forces the match to end with the given
 // side as loser, and tells the opponent's client the same way a real winning move would.
