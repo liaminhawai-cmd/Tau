@@ -106,7 +106,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 14</div>
+<div id="buildTag">build 15</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -1246,12 +1246,13 @@ const CFG = {
     footR: 23.095,                 // hub→foot = 46.19mm (tripod smoove 2021.stl)
     startX: 30.597,                // hub offset: puts the two back feet exactly halfway between the rings
     maxCrossingsPerTurn: 1,
-    // Grace band for "a foot is on a line" (both the leave-a-start-line freebie and the
-    // stop-before-touching-a-2nd-line rule). Crossing is measured at the foot's CENTRE POINT (the
-    // magnet), not the wider printed footprint (~footPadRadius ≈ 1.1u), so this band is what stands
-    // in for the foot having real size -- set to the full footprint radius so lining a foot up
-    // on/along a line is as forgiving as nudging the physical tripod until its pad straddles the line.
-    crossEps: 1.2,
+    // Tolerance band for "a foot is on a line", measured at the foot's CENTRE POINT (the magnet).
+    // Used three ways: the leave-a-start-line grace, the stop-before-touching-an-already-crossed
+    // line rule, and the can't-COME-TO-REST-on-a-line check. Back at the small magnet size (0.4):
+    // the full-footprint 1.2 made resting near an arc trip the rest check on lots of otherwise-legal
+    // arc swings. Corner crossings stay easy regardless of this value -- that's handled separately by
+    // the ring∩arc intersection cap and by tying the grace to the specific line a foot started on.
+    crossEps: 0.4,
     substepDeg: 0.4,
     minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
     lockDeg: 2,                    // net rotation before the one-direction-per-turn lock engages
