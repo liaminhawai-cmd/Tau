@@ -106,7 +106,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 15</div>
+<div id="buildTag">build 16</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -1246,13 +1246,14 @@ const CFG = {
     footR: 23.095,                 // hub→foot = 46.19mm (tripod smoove 2021.stl)
     startX: 30.597,                // hub offset: puts the two back feet exactly halfway between the rings
     maxCrossingsPerTurn: 1,
-    // Tolerance band for "a foot is on a line", measured at the foot's CENTRE POINT (the magnet).
-    // Used three ways: the leave-a-start-line grace, the stop-before-touching-an-already-crossed
-    // line rule, and the can't-COME-TO-REST-on-a-line check. Back at the small magnet size (0.4):
-    // the full-footprint 1.2 made resting near an arc trip the rest check on lots of otherwise-legal
-    // arc swings. Corner crossings stay easy regardless of this value -- that's handled separately by
-    // the ring∩arc intersection cap and by tying the grace to the specific line a foot started on.
+    // Small magnet-size band (measured at the foot's CENTRE POINT), used for the leave-a-start-line
+    // grace and the can't-COME-TO-REST-on-a-line check. Kept small: the full footprint made resting
+    // near an arc trip the rest check on lots of otherwise-legal arc swings.
     crossEps: 0.4,
+    // Footprint radius, used ONLY to stop a foot before its PAD touches a not-yet-crossed line once
+    // the turn's one crossing is spent -- a real magnet-foot has width, so it should halt when its
+    // edge reaches that second line, not when its centre does. Bigger than crossEps on purpose.
+    touchEps: 1.2,
     substepDeg: 0.4,
     minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
     lockDeg: 2,                    // net rotation before the one-direction-per-turn lock engages
@@ -1362,7 +1363,7 @@ function nearLineIds(f) {
 // (a foot moving AWAY from a line it already used its crossing on is unaffected — only
 // closing distance on a not-yet-crossed line trips this).
 function wouldTouchUncrossedLine(oldFeet, newFeet) {
-    const eps=CFG.crossEps;
+    const eps=CFG.touchEps;   // footprint width: stop when the PAD (not just the centre) reaches the 2nd line
     for (let i=0;i<3;i++){
         const o=oldFeet[i], n=newFeet[i];
         const ro=radU(o), rn=radU(n);
@@ -1568,9 +1569,14 @@ function applySwing(dA) {
             // Grace: leaving a line the foot STARTED ON is free, once -- but only THAT line. The
             // old any-line version let a foot that merely started near one line cross a totally
             // different line for free and then spend its budget on a second (the 2-lines-in-one-
-            // turn bug, which crossEps 1.2 made easy to hit near the ring/arc intersections).
+            // turn bug, which a wide band made easy to hit near the ring/arc intersections).
             if (ci>0 && !G.usedGrace[i] && per[i].some(id => G.startedOnLine[i].includes(id))){ ci=0; G.usedGrace[i]=true; }
             added+=ci; }
+        // Forgive simultaneity: two feet crossing (or a foot crossing a ring∩arc intersection) within
+        // the SAME sub-degree substep is one continuous motion over one intersection region -- charge
+        // it as a single crossing rather than blocking the whole move. Crossings in DIFFERENT substeps
+        // still each cost their own, so the one-line-per-turn limit holds for genuinely separate ones.
+        added = Math.min(added, 1);
         const wouldExceed = G.crossings+added > CFG.maxCrossingsPerTurn;
         const wouldTouch = !wouldExceed && added===0 && G.crossings>=CFG.maxCrossingsPerTurn
             && wouldTouchUncrossedLine(before, after);
@@ -2541,11 +2547,14 @@ const SFX_DEFAULTS = {
     speedRef: 80, speedGain: 0.3, scrape: 0.05, scrapeHz: 6000,
     reverb: 0, reverbEnd: 0.85,
     clickVol: 0.6, clickHz: 400, clickLen: 0.035,
-    bassVol: 1.2, bassHz: 150, bassLen: 0.4,
-    bowlVol: 0.22, bowlHz: 220,   // game-start "singing bowl" strike: quiet, long, slightly beating
+    bassVol: 1.0, bassHz: 50, bassLen: 0.16,   // move-start "808" kick: low sine, snappy pitch-drop, short
+    bowlVol: 0.22, bowlHz: 330,   // game-start "singing bowl" strike: quiet, long, beating (a fifth up from 220)
 };
+// Bumped whenever the DEFAULTS change enough that a stored older tuning should be dropped rather
+// than mask them (e.g. the 808 bass / higher bowl). Old stored values are ignored on a mismatch.
+const SFX_VERSION = 2;
 const SFX = Object.assign({}, SFX_DEFAULTS);
-try { Object.assign(SFX, JSON.parse(localStorage.getItem('tauSfx')||'{}')); } catch(e) {}
+try { if (+localStorage.getItem('tauSfxV') === SFX_VERSION) Object.assign(SFX, JSON.parse(localStorage.getItem('tauSfx')||'{}')); } catch(e) {}
 let audioCtx=null, noiseSrc=null, bandpass=null, voiceGain=null, scrapeHP=null, scrapeGain=null,
     dryGain=null, convolver=null, wetGain=null, toneLP=null, masterGain=null, audioReady=false;
 let soundOn = true, audioReplayIdx = null, audioPrevFeet = null;
@@ -2621,18 +2630,22 @@ function playSelectClick() {
     noiseSrc.connect(hp); hp.connect(g); g.connect(masterGain);
     setTimeout(() => { try { hp.disconnect(); g.disconnect(); } catch(e){} }, (SFX.clickLen+0.1)*1000);
 }
-// Move-start bass: a short low thump that quickly fades, leaving the tracking voice.
+// Move-start bass: an "808"-style kick. A sine whose pitch snaps down from a few x the fundamental
+// to the low fundamental in ~40ms (that fast pitch envelope IS the kick "punch"), with a quick
+// exponential amplitude decay. Short and low.
 function playMoveBass() {
     if (!audioReady || !soundOn || !gameVisible()) return;
-    const lp = audioCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=Math.max(60, SFX.bassHz*1.6);
-    const osc = audioCtx.createOscillator(); osc.type='sine'; osc.frequency.value=SFX.bassHz;   // a tone floors out better than filtered noise on small speakers
-    const g = audioCtx.createGain(); const t0 = audioCtx.currentTime;
+    const t0 = audioCtx.currentTime, f0 = SFX.bassHz;
+    const osc = audioCtx.createOscillator(); osc.type='sine';
+    osc.frequency.setValueAtTime(f0*3.2, t0);
+    osc.frequency.exponentialRampToValueAtTime(f0, t0+0.045);
+    const g = audioCtx.createGain();
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(SFX.bassVol, t0+0.01);
+    g.gain.exponentialRampToValueAtTime(SFX.bassVol, t0+0.004);
     g.gain.exponentialRampToValueAtTime(0.0001, t0+SFX.bassLen);
-    osc.connect(lp); lp.connect(g); g.connect(masterGain);
+    osc.connect(g); g.connect(masterGain);
     osc.start(t0); osc.stop(t0+SFX.bassLen+0.05);
-    setTimeout(() => { try { lp.disconnect(); g.disconnect(); } catch(e){} }, (SFX.bassLen+0.15)*1000);
+    setTimeout(() => { try { g.disconnect(); } catch(e){} }, (SFX.bassLen+0.15)*1000);
 }
 // "Singing bowl" strike at the start of a game: a real struck bowl rings at inharmonic partials
 // (≈1 : 2.7 : 4.1 : 5.4 of the fundamental) with each partial split into a barely-detuned pair --
@@ -2717,7 +2730,7 @@ function resetAudioForNewGame() {
 // Push the current SFX values to the live nodes (called live while dragging the Sound panel sliders)
 // and persist them so a tuned mix survives a reload.
 function applySfx() {
-    try { localStorage.setItem('tauSfx', JSON.stringify(SFX)); } catch(e) {}
+    try { localStorage.setItem('tauSfx', JSON.stringify(SFX)); localStorage.setItem('tauSfxV', SFX_VERSION); } catch(e) {}
     if (!audioReady) return;
     const t0 = audioCtx.currentTime;
     masterGain.gain.setTargetAtTime(soundOn ? SFX.master : 0, t0, 0.03);
@@ -2757,7 +2770,7 @@ const SFX_SLIDERS = [
     ['highCut','High cut (Hz)',2000,12000,100], ['scrape','Chalk grain',0,1.5,0.05], ['scrapeHz','Grain tone (Hz)',800,6000,50],
     ['reverb','Reverb (play)',0,1,0.02], ['reverbEnd','Reverb (win/lose)',0,1,0.02],
     ['clickVol','Click volume',0,1.5,0.05], ['clickHz','Click tone (Hz)',400,6000,50], ['clickLen','Click length (s)',0.005,0.15,0.005],
-    ['bassVol','Bass thump vol',0,1.2,0.05], ['bassHz','Bass thump (Hz)',40,300,5], ['bassLen','Bass length (s)',0.02,0.4,0.01],
+    ['bassVol','Bass (808) vol',0,1.2,0.05], ['bassHz','Bass (808) Hz',28,200,2], ['bassLen','Bass length (s)',0.02,0.4,0.01],
     ['bowlVol','Start bowl vol',0,0.8,0.02], ['bowlHz','Start bowl (Hz)',110,440,5],
 ];
 function openSoundPanel() {
@@ -2838,6 +2851,14 @@ canvas.addEventListener('touchstart', onDown, {passive:false});
 canvas.addEventListener('touchmove', onMove, {passive:false});
 window.addEventListener('touchend', onUp);
 window.addEventListener('touchcancel', onUp);
+// Mobile browsers throw away a 2D canvas's backing store while the tab is backgrounded (e.g. you
+// switch to Messenger and come back) -- the 3D view redraws every animation frame so it recovers on
+// its own, but the 2D board is only painted on demand and would come back BLANK. Repaint it (and
+// re-fit the layout) whenever the page becomes visible again or is restored from the bfcache.
+function repaintOnReturn() { if (G && document.getElementById('game').style.display === 'flex') { resize(); render(); } }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) repaintOnReturn(); });
+addEventListener('pageshow', repaintOnReturn);
+addEventListener('focus', repaintOnReturn);
 // Concedes immediately -- the OTHER colour wins -- instead of silently restarting the board.
 // Whoever "surrenders" depends on the mode: online/vs-AI always concede on behalf of the local
 // human (regardless of whose turn it currently is), since giving up is that player's own call,
@@ -3134,6 +3155,10 @@ function triggerFall() {
 //   free  — once well past vertical it lets go: ballistic fall carrying the velocity the pivot
 //           gave it, plus the chaotic wobble.
 const fallQ = new THREE.Quaternion(), fallP = new THREE.Vector3(), fallAxisV2 = new THREE.Vector3(), fallLever = new THREE.Vector3();
+// Local-space positions of the three feet (buildTripod puts them at radius footR, height 0) and a
+// scratch for their world positions -- used to keep feet from scything through the board mid-tip.
+const FALL_FEET_LOCAL = [0,1,2].map(i => new THREE.Vector3(Math.cos(i*2*Math.PI/3)*CFG.footR, 0, Math.sin(i*2*Math.PI/3)*CFG.footR));
+const fallFootW = new THREE.Vector3();
 function stepFall(dt) {
     const t = tripods[fall.idx];
     if (fall.phase === 'slide') {
@@ -3169,6 +3194,20 @@ function stepFall(dt) {
         t.position.x += fall.vx*dt; t.position.y += fall.vy*dt; t.position.z += fall.vz*dt;
         const r = Math.hypot(t.position.x, t.position.z);
         applyFallRotation(t, fall, dt, Math.max(0, Math.min(1, (r - CFG.edgeU) / 25)));
+    }
+    // Multi-contact board rest (slide + pivot only, NOT free fall): after the frame's rigid motion,
+    // no foot that is still horizontally OVER the board may sit below its surface -- lift the whole
+    // piece so the most-sunk such foot rests on top. That's what stops the trailing feet from cutting
+    // down through the board as it tips; once every foot has cleared the rim, nothing holds it and it
+    // falls. Feet already past the rim are over the void and free to drop.
+    if (fall.phase !== 'free') {
+        t.updateMatrixWorld();
+        let minY = 0;
+        for (let i=0;i<3;i++){
+            fallFootW.copy(FALL_FEET_LOCAL[i]).applyMatrix4(t.matrixWorld);
+            if (Math.hypot(fallFootW.x, fallFootW.z) < CFG.edgeU && fallFootW.y < minY) minY = fallFootW.y;
+        }
+        if (minY < 0) t.position.y -= minY;
     }
     if (t.position.y < -700) { fall.active=false; camCenterFrac=1; camManualSet=false; }   // hand back to centred framing once it's done
 }
