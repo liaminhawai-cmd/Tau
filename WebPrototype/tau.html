@@ -106,7 +106,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 21</div>
+<div id="buildTag">build 22</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -1254,12 +1254,6 @@ const CFG = {
     // the turn's one crossing is spent -- a real magnet-foot has width, so it should halt when its
     // edge reaches that second line, not when its centre does. Bigger than crossEps on purpose.
     touchEps: 1.2,
-    // How close BOTH of a foot's two line-crossings must be to a true ring∩arc intersection point
-    // to count as ONE crossing (crossing the corner where the lines meet) rather than two (cutting
-    // across the corner region). ~footprint-sized: pass your pad over the meeting point and it's one;
-    // clip the corner a few units away and it's two. Bigger merged corner-cuts that shouldn't (build
-    // 18 used 8u measured between the two crossings, which let a foot skip a cell at the corner).
-    intersectMergeDist: 2.5,
     substepDeg: 0.4,
     minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
     lockDeg: 2,                    // net rotation before the one-direction-per-turn lock engages
@@ -1289,22 +1283,6 @@ CFG.startDots = (() => {
 })();
 CFG.padRadius = CFG.edgeU * CFG.padRadiusFrac;
 CFG.footPadRadius = CFG.legRadius * CFG.footPadFrac;
-// The actual points where a ring and a side arc MEET. Crossing counts as one only if the foot
-// passes through such a point (within intersectMergeDist); cutting the corner a few units off
-// crosses two separate lines and costs two. (angInSpan is hoisted, so it's callable here.)
-CFG.intersections = (() => {
-    const out = [];
-    for (const R of CFG.rings) for (const a of CFG.sideArcs) {   // arc centres are on the x-axis (cy=0)
-        const x = (R*R + a.cx*a.cx - a.r*a.r) / (2*a.cx);
-        const y2 = R*R - x*x;
-        if (y2 < 0) continue;
-        const y = Math.sqrt(y2);
-        for (const yy of (y > 1e-6 ? [y, -y] : [0])) {
-            if (angInSpan(Math.atan2(yy - a.cy, x - a.cx) * 180/Math.PI, a.a0, a.a1)) out.push({ x, y: yy });
-        }
-    }
-    return out;
-})();
 
 const norm  = a => { while (a > Math.PI) a -= 2*Math.PI; while (a < -Math.PI) a += 2*Math.PI; return a; };
 const radU  = p => Math.hypot(p.x, p.y);
@@ -1366,10 +1344,12 @@ function countCrossings(oldFeet, newFeet) {
     }
     return per;
 }
-// which lines is a foot sitting on right now? (turn start: arms the leave-a-line grace for exactly
-// those lines; turn end: feet may not come to REST in the band of any OTHER line)
-function nearLineIds(f) {
-    const eps=CFG.crossEps, r=radU(f), ids=[];
+// which lines is a foot's PAD sitting on right now, within `eps` (default = the magnet band). Used
+// with the footprint band (touchEps) to tell whether the piece is still "on a line" (mid-crossing),
+// and with the small band for the turn-start grace and the can't-rest-on-a-line check.
+function nearLineIds(f, eps) {
+    if (eps===undefined) eps=CFG.crossEps;
+    const r=radU(f), ids=[];
     CFG.rings.forEach((R,k)=>{ if (Math.abs(r-R)<eps) ids.push('r'+k); });
     CFG.sideArcs.forEach((a,k)=>{
         const d=Math.hypot(f.x-a.cx,f.y-a.cy);
@@ -1377,31 +1357,14 @@ function nearLineIds(f) {
     });
     return ids;
 }
-// Once this turn's crossing budget is spent, a foot must be stopped before it even
-// TOUCHES another line, not just before it fully crosses one — a foot resting flush
-// against a second line reads as ambiguous (did that count?). "Touching" reuses the same
-// eps already used elsewhere to mean "on a line" (isNearAnyLine/crossEps), so a foot is
-// stopped once it's within that band of a line it hasn't already crossed this substep
-// (a foot moving AWAY from a line it already used its crossing on is unaffected — only
-// closing distance on a not-yet-crossed line trips this).
-function wouldTouchUncrossedLine(oldFeet, newFeet) {
-    const eps=CFG.touchEps;   // footprint width: stop when the PAD (not just the centre) reaches the 2nd line
-    for (let i=0;i<3;i++){
-        const o=oldFeet[i], n=newFeet[i];
-        const ro=radU(o), rn=radU(n);
-        for (let k=0;k<CFG.rings.length;k++){ const r=CFG.rings[k];
-            if ((ro<r&&rn>=r)||(ro>r&&rn<=r)) continue;   // an actual crossing — handled elsewhere
-            if (Math.abs(rn-r)<eps && Math.abs(rn-r)<Math.abs(ro-r) && !isIntersectionMerge(i,n,['r'+k])) return true;
-        }
-        for (let k=0;k<CFG.sideArcs.length;k++){ const a=CFG.sideArcs[k];
-            const dOld=Math.hypot(o.x-a.cx,o.y-a.cy), dNew=Math.hypot(n.x-a.cx,n.y-a.cy);
-            if ((dOld<a.r&&dNew>=a.r)||(dOld>a.r&&dNew<=a.r)) continue;
-            if (Math.abs(dNew-a.r)<eps && Math.abs(dNew-a.r)<Math.abs(dOld-a.r) && !isIntersectionMerge(i,n,['a'+k])){
-                const mx=(o.x+n.x)/2-a.cx, my=(o.y+n.y)/2-a.cy;
-                if (angInSpan(Math.atan2(my,mx)*180/Math.PI, a.a0, a.a1)) return true;
-            }
-        }
-    }
+// Is the piece STILL touching a line it's in the process of crossing? (any foot whose pad, within
+// the footprint band, is on a line it did NOT start the turn on -- the pivot and other start-line
+// feet are grandfathered so they don't hold a crossing "open" forever). A crossing only completes
+// when this goes false, which is what makes a corner (ring then arc) or two feet crossing while the
+// first is still on its line count as one continuous crossing.
+function pieceTouchingNewLine(feet) {
+    for (let i=0;i<3;i++)
+        if (nearLineIds(feet[i], CFG.touchEps).some(id => !G.startedOnLine[i].includes(id))) return true;
     return false;
 }
 
@@ -1546,7 +1509,7 @@ function reset() {
     red.x  =  CFG.startX; red.rot  = Math.PI;
     G = { pieces:[blue,red], active:0, pinned:null, pivot:null, handle:null, turnDir:0,
           crossings:0, atLimit:false, netRad:0, ptrAngle:null, over:false, winner:null,
-          snap:null, startedOnLine:[[],[],[]], usedGrace:[false,false,false], crossPt:[null,null,null], crossFam:[null,null,null] };
+          snap:null, startedOnLine:[[],[],[]], usedGrace:[false,false,false], inCrossing:false };
     fall.active=false;
     replayFrames.length = 0; replayActive = false;   // every fresh board starts a fresh recording
     render();
@@ -1558,7 +1521,7 @@ function restoreSnap(){
     if (!G.snap) return;
     G.pieces.forEach((p,i)=>{ p.x=G.snap[i].x; p.y=G.snap[i].y; p.rot=G.snap[i].rot; });
     G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
-    G.usedGrace=[false,false,false]; G.crossPt=[null,null,null]; G.crossFam=[null,null,null];
+    G.usedGrace=[false,false,false]; G.inCrossing=false;
 }
 // lock a foot of the ACTIVE piece as the pivot — the same setup whether a human tapped it
 // or the AI chose it, so the two input paths can't drift apart.
@@ -1567,19 +1530,10 @@ function pinFoot(idx) {
     G.pinned = idx; G.pivot = { x:feet[idx].x, y:feet[idx].y };
     G.turnDir = 0; G.crossings = 0; G.atLimit = false; G.netRad = 0; G.limitReason = null;
     G.snap = takeSnap();
-    G.startedOnLine = feet.map(nearLineIds); G.usedGrace = [false,false,false];
-    G.crossPt = [null,null,null]; G.crossFam = [null,null,null];
-}
-// True if foot i crossing `lineIds` right now is really the SAME intersection crossing as the one
-// it already made this turn: near its recorded crossing point, and crossing the OTHER family (a
-// ring after an arc, or vice-versa). Lets a foot be walked through a ring∩arc intersection over a
-// few substeps for the cost of one crossing, and exempts it from the touch-stop there.
-function isIntersectionMerge(i, pos, lineIds) {
-    const cp = G.crossPt[i]; if (!cp) return false;
-    const otherFam = G.crossFam[i]==='r' ? 'a' : 'r';
-    if (!lineIds.some(id => id[0]===otherFam)) return false;   // must be crossing the OTHER family (ring vs arc)
-    const d = CFG.intersectMergeDist;                          // AND both crossings must hug the SAME true meeting point
-    return CFG.intersections.some(P => Math.hypot(pos.x-P.x, pos.y-P.y) < d && Math.hypot(cp.x-P.x, cp.y-P.y) < d);
+    // Grandfather any line the foot's PAD already sits on at turn start (footprint band), so the
+    // stationary pivot / a foot resting on a line don't hold a crossing open or trip the rest check.
+    G.startedOnLine = feet.map(f => nearLineIds(f, CFG.touchEps)); G.usedGrace = [false,false,false];
+    G.inCrossing = false;
 }
 function applySwing(dA) {
     if (dA===0 || !G.pivot) return;   // no pivot: a stale animation tick raced a reset — ignore it
@@ -1595,36 +1549,26 @@ function applySwing(dA) {
         const before=active.feet();
         active.rotateAround(G.pivot.x, G.pivot.y, step);
         const after=active.feet();
+        // Did any foot's CENTRE pass a line this substep? A leave of a line the foot STARTED on is
+        // free (the once-per-line grace) -- that's only the tail half of a not-on -> on -> not-on
+        // cycle, never a full crossing.
         const per=countCrossings(before, after);
-        let added=0;
-        const record=[null,null,null];   // feet that make a genuinely NEW charged crossing this substep
+        let centreCrossed=false;
         for (let i=0;i<3;i++){
             if (per[i].length===0) continue;
-            // Grace: leaving a line the foot STARTED ON is free, once -- but only THAT line. The old
-            // any-line version let a foot that merely started near one line cross a totally different
-            // one for free (the 2-lines-in-one-turn bug near ring/arc intersections).
             if (!G.usedGrace[i] && per[i].some(id => G.startedOnLine[i].includes(id))){ G.usedGrace[i]=true; continue; }
-            // Intersection merge: the other family of line, near this foot's earlier crossing == same
-            // intersection maneuver, free (this is what lets a foot walk through the intersection into
-            // the nook without a pixel-perfect simultaneous cross).
-            if (isIntersectionMerge(i, after[i], per[i])) continue;
-            // Otherwise it's a real new crossing (a substep crossing a ring AND an arc at once still
-            // costs just 1 -- the ring∩arc intersection).
-            added += 1; record[i] = { pos: after[i], fam: per[i][0][0] };
+            centreCrossed=true;
         }
-        // Simultaneity: two feet crossing in the SAME sub-degree substep is one continuous motion --
-        // charge one, not two. Separate-substep crossings still each cost their own.
-        added = Math.min(added, 1);
-        const wouldExceed = G.crossings+added > CFG.maxCrossingsPerTurn;
-        // Touch-stop: budget spent and a foot's PAD (touchEps) is about to reach a not-yet-crossed
-        // line -- but NOT if that line is the far side of an intersection this foot is walking through.
-        const wouldTouch = !wouldExceed && added===0 && G.crossings>=CFG.maxCrossingsPerTurn
-            && wouldTouchUncrossedLine(before, after);
-        if (wouldExceed || wouldTouch){
-            active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true;
-            G.limitReason = wouldExceed ? 'cross' : 'touch'; break; }
-        G.crossings+=added; G.netRad+=step;
-        for (let i=0;i<3;i++) if (record[i]) { G.crossPt[i]=record[i].pos; G.crossFam[i]=record[i].fam; }
+        // A crossing is one continuous "on a line" episode: not-on-line -> on-line -> not-on-line.
+        // While the piece is still on some line the crossing isn't finished yet, so a foot rounding a
+        // corner (ring then arc) or a second foot crossing while the first is still on its line all
+        // stay ONE crossing. STARTING a fresh crossing (a centre passes a line while the piece isn't
+        // already mid-crossing) is only allowed while the one-per-turn budget is unspent.
+        if (centreCrossed && !G.inCrossing && G.crossings >= CFG.maxCrossingsPerTurn){
+            active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true; G.limitReason='cross'; break; }
+        if (centreCrossed) G.inCrossing=true;
+        if (G.inCrossing && !pieceTouchingNewLine(after)){ G.crossings++; G.inCrossing=false; }   // episode complete -> count it
+        G.netRad+=step;
         resolvePush(active, opp);
     }
     if (G.turnDir===0 && Math.abs(G.netRad) >= CFG.lockDeg*Math.PI/180)
@@ -1633,7 +1577,7 @@ function applySwing(dA) {
 
 function clearTurn(){ G.pinned=null; G.pivot=null; G.handle=null; G.turnDir=0;
     G.crossings=0; G.atLimit=false; G.netRad=0; G.ptrAngle=null; G.snap=null;
-    G.startedOnLine=[[],[],[]]; G.usedGrace=[false,false,false]; G.crossPt=[null,null,null]; G.crossFam=[null,null,null]; }
+    G.startedOnLine=[[],[],[]]; G.usedGrace=[false,false,false]; G.inCrossing=false; }
 // pure win-check + turn handoff — no DOM. UI-visible effects (fall animation, render,
 // kicking off the AI) are layered on top by ui.js's finishTurn().
 function endTurn() {
@@ -3039,11 +2983,11 @@ function render() {
             turnSpan.textContent = myOnlineTurnNow() ? 'Your turn' : (onlineMatch.opponentName + "'s turn");
             s.appendChild(turnSpan);
             m.textContent = myOnlineTurnNow() && G.pinned!==null
-                ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?(G.limitReason===`touch`?`. A foot is up against another line`:`. That would cross a 2nd line`):``}`
+                ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?`. That would cross a 2nd line`:``}`
                 : `Playing ${onlineMatch.myColor} vs ${onlineMatch.opponentName}`;
         } else {
             s.innerHTML=`<span class="${c}">${c[0].toUpperCase()+c.slice(1)}</span> to move${aiTurn?' <span style="color:#69727b">(AI)</span>':''}`;
-            m.textContent = G.pinned!==null ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?(G.limitReason===`touch`?`. A foot is up against another line`:`. That would cross a 2nd line`):``}` : '';
+            m.textContent = G.pinned!==null ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?`. That would cross a 2nd line`:``}` : '';
         }
         h.textContent = onlineMatch
             ? (myOnlineTurnNow()
@@ -3163,12 +3107,11 @@ function buildTripod(hex) {
             pts.push(new THREE.Vector3(Math.sin(ph)*R*Math.cos(th), Math.cos(ph)*H, Math.sin(ph)*R*Math.sin(th))); }
         const curve=new THREE.CatmullRomCurve3(pts);
         g.add(buildTaperedLeg(curve, mat, legRad, 14, 24, 0.6));
-        // Blunt printed foot at the contact point: a short, slightly conical stub that swallows the
-        // leg tube's end. Without it the tapered tube's dark end-cap ellipse read as a HOLE from low
-        // angles and the taper as a pinched crescent -- the real printed leg ends in a flat-bottomed
-        // foot, not a cut-off tube.
-        const foot=new THREE.Mesh(new THREE.CylinderGeometry(legRad*0.62, legRad*0.8, 1.7, 12), mat);
-        foot.position.set(Math.cos(th)*R, 0.85, Math.sin(th)*R);
+        // Rounded printed foot pad: a squashed dome capping the leg tube's end (which otherwise read
+        // as a dark hole / pinched crescent from low angles). A flattened sphere -- the earlier flared
+        // cylinder looked like a little hoof.
+        const foot=new THREE.Mesh(new THREE.SphereGeometry(legRad*0.72, 14, 10), mat);
+        foot.scale.set(1, 0.5, 1); foot.position.set(Math.cos(th)*R, 0.5, Math.sin(th)*R);
         g.add(foot);
     }
     const hub=new THREE.Mesh(new THREE.SphereGeometry(legRad*1.9,14,12), mat); hub.position.set(0,H,0); g.add(hub);
