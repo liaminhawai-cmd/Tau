@@ -104,7 +104,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 12</div>
+<div id="buildTag">build 13</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -117,7 +117,7 @@
         <button class="modeBtn" id="modeOnline">Online 1v1</button>
         <button class="modeBtn" id="modeAI">vs AI</button>
         <p class="msg" id="modeMsg"></p>
-        <div id="menuLinks"><button class="link" id="howToPlayBtn">How to play</button><button class="link" id="leaderboardBtn">Leaderboard</button><button class="link" id="privateMatchBtn">Private match</button><button class="link" id="soundPanelBtn">Sound</button></div>
+        <div id="menuLinks"><button class="link" id="howToPlayBtn">How to play</button><button class="link" id="leaderboardBtn">Leaderboard</button><button class="link" id="soundPanelBtn">Sound</button></div>
 
         <div id="acctPanel" style="display:none;">
             <div id="acctSignedOut">
@@ -1247,9 +1247,9 @@ const CFG = {
     // Grace band for "a foot is on a line" (both the leave-a-start-line freebie and the
     // stop-before-touching-a-2nd-line rule). Crossing is measured at the foot's CENTRE POINT (the
     // magnet), not the wider printed footprint (~footPadRadius ≈ 1.1u), so this band is what stands
-    // in for the foot having real size -- widened from 0.4 toward the footprint so lining a foot up
+    // in for the foot having real size -- set to the full footprint radius so lining a foot up
     // on/along a line is as forgiving as nudging the physical tripod until its pad straddles the line.
-    crossEps: 0.9,
+    crossEps: 1.2,
     substepDeg: 0.4,
     minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
     lockDeg: 2,                    // net rotation before the one-direction-per-turn lock engages
@@ -1971,8 +1971,19 @@ function demoDraw() {
 // opponent same as a real one). The visible animation then only ever moves forward, to a
 // randomized point short of that recorded limit — no backward correction needed, because
 // the stopping point was already known before the first visible frame.
+// Each demo turn rolls a die for which brain to use — 'dumb' (the wobbly original: heuristic move
+// stopped randomly short of the limit), 'easy' (heuristic, full swing), 'zone' (Medium) or 'hard'
+// (the 2-ply minimax) — so the two demo tripods lurch between clueless and genuinely sharp play.
+const DEMO_MODES = ['dumb','easy','zone','hard'];
 function demoComputePlan() {
-    const idx = G.active, plan = aiChoosePlan(idx);
+    const idx = G.active;
+    const mode = DEMO_MODES[Math.floor(Math.random()*DEMO_MODES.length)];
+    if (mode === 'zone' || mode === 'hard') {
+        const sp = searchedPlanFor(mode, idx);   // {pivotIdx,dir,targetRad}; restores G internally
+        if (sp) { pinFoot(sp.pivotIdx); return { dir: sp.dir, targetRad: sp.targetRad }; }
+        // no scored move (rare) — fall through to the heuristic below
+    }
+    const plan = aiChoosePlan(idx);
     pinFoot(plan.pivotIdx);
     const feet = G.pieces[idx].feet();
     let dir = directionToward(G.pivot, feet[plan.swingIdx], plan.target);
@@ -1990,7 +2001,7 @@ function demoComputePlan() {
     if (Math.abs(fullRad) < 1e-9) { rollback(); dir=-dir; fullRad=lookahead(dir); }   // blocked immediately — try the other way
     rollback();
     if (Math.abs(fullRad) < 1e-9) return null;   // stuck both directions (rare) — caller retries next tick
-    const keepFrac = 0.6 + Math.random()*0.3;    // stop somewhere random in the last 10-40% before the true limit
+    const keepFrac = mode === 'easy' ? 1 : (0.6 + Math.random()*0.3);   // 'easy' swings to the limit; 'dumb' stops randomly short
     return { dir, targetRad: fullRad*keepFrac };
 }
 function demoStepLoop() {
@@ -2485,24 +2496,13 @@ updateThemeToggleIcon();
 // a crisp high "chalk click" when you pick up a foot, and a short bass thump when a move begins. On
 // win OR loss the voice swells into the reverb and the EQ flattens. Every audible parameter lives in
 // the SFX object and is live-tunable from the Sound panel (openSoundPanel) — no external audio asset.
+// Defaults are the hand-tuned mix from the Sound panel's "Copy values" dump.
 const SFX_DEFAULTS = {
-    master: 0.16,      // overall volume
-    minHz: 190,        // voice pitch when the piece is at the centre
-    maxHz: 3600,       // voice pitch at the rim (10k read as "freaked out", so kept well down)
-    q: 7,              // bandpass sharpness (the peak)
-    highCut: 6000,     // master low-pass — trims harsh high end
-    speedRef: 26,      // board-units/sec of foot speed that reaches full voice volume
-    speedGain: 1.0,    // overall multiplier on the speed→volume curve
-    scrape: 0.4,       // amount of the high-passed "chalk grain" layer, relative to the voice
-    scrapeHz: 2600,    // high-pass cutoff for that grain layer
-    reverb: 0.12,      // wet reverb mix during normal play
-    reverbEnd: 0.85,   // wet reverb mix on win/loss
-    clickVol: 0.6,     // "chalk click" loudness when selecting a foot
-    clickHz: 2000,     // click tone — high-pass cutoff (higher = tick-ier)
-    clickLen: 0.035,   // click duration (s)
-    bassVol: 0.5,      // move-start bass thump loudness
-    bassHz: 95,        // bass thump frequency (raise if your speakers can't reproduce it)
-    bassLen: 0.11,     // bass thump duration (s)
+    master: 0.13, minHz: 340, maxHz: 4850, q: 4, highCut: 8000,
+    speedRef: 80, speedGain: 0.3, scrape: 0.05, scrapeHz: 6000,
+    reverb: 0, reverbEnd: 0.85,
+    clickVol: 0.6, clickHz: 400, clickLen: 0.035,
+    bassVol: 1.2, bassHz: 150, bassLen: 0.4,
 };
 const SFX = Object.assign({}, SFX_DEFAULTS);
 try { Object.assign(SFX, JSON.parse(localStorage.getItem('tauSfx')||'{}')); } catch(e) {}
@@ -2555,8 +2555,20 @@ function initAudio() {
     audioReady = true;
 }
 // Mobile (esp. iOS) starts the context 'suspended'; it only resumes inside a user gesture. Call this
-// from every gesture until it's running — that's why phones were silent while laptops worked.
-function resumeAudio() { initAudio(); if (audioCtx && audioCtx.state !== 'running') audioCtx.resume(); }
+// from every gesture until it's running — that's why phones were silent while laptops worked. Also
+// fire a one-sample silent buffer the first time (the long-standing iOS WebAudio "unlock" gesture).
+// NOTE: this cannot defeat the iPhone's physical ring/silent switch -- if that's flipped to silent,
+// iOS mutes WebAudio entirely (Android doesn't), which is the most likely reason one phone was
+// silent and the other wasn't.
+let audioUnlocked = false;
+function resumeAudio() {
+    initAudio();
+    if (audioCtx && audioCtx.state !== 'running') audioCtx.resume();
+    if (audioCtx && !audioUnlocked) {
+        try { const b = audioCtx.createBufferSource(); b.buffer = audioCtx.createBuffer(1,1,22050); b.connect(audioCtx.destination); b.start(0); } catch(e){}
+        audioUnlocked = true;
+    }
+}
 // "Chalk click" when a foot is picked up: a very short high-passed noise tick. Crisp, not a rumble.
 function playSelectClick() {
     resumeAudio();
@@ -2608,19 +2620,24 @@ function updateAudioMovement(dt) {
     voiceGain.gain.setTargetAtTime(lvl, now, 0.02);
     scrapeGain.gain.setTargetAtTime(lvl * SFX.scrape, now, 0.02);
 }
-// Win OR loss (both route through triggerFall): swell the voice into the reverb and flatten the EQ.
+// Win OR loss (both route through triggerFall): CONTINUE from the exact pitch the voice was at when
+// the piece hit the edge (no jump), keep sweeping it higher, ease the volume down, and swell the
+// reverb up -- a rising fade-into-space finish rather than a discontinuous new note.
 function playLossSound() {
     if (!audioReady || !soundOn) return;
     resumeAudio();
     const t0 = audioCtx.currentTime;
-    bandpass.Q.setTargetAtTime(0.5, t0, 0.4);
-    bandpass.frequency.setTargetAtTime((SFX.minHz+SFX.maxHz)/3, t0, 0.4);
-    wetGain.gain.setTargetAtTime(SFX.reverbEnd, t0, 0.3);
-    dryGain.gain.setTargetAtTime(1-SFX.reverbEnd, t0, 0.3);
+    const curFreq = bandpass.frequency.value;          // where the tracking pitch left off
+    const curVoice = Math.max(voiceGain.gain.value, 0.35);   // continue from current level (floor so the sweep is audible)
+    bandpass.frequency.cancelScheduledValues(t0);
+    bandpass.frequency.setValueAtTime(curFreq, t0);
+    bandpass.frequency.setTargetAtTime(SFX.maxHz * 1.7, t0, 1.3);   // keep climbing
     voiceGain.gain.cancelScheduledValues(t0);
-    voiceGain.gain.setTargetAtTime(0.9, t0, 0.05);
-    voiceGain.gain.setTargetAtTime(0.0, t0+0.5, 0.9);
+    voiceGain.gain.setValueAtTime(curVoice, t0);
+    voiceGain.gain.setTargetAtTime(0.0, t0, 1.4);       // ease volume down through the tail
     scrapeGain.gain.setTargetAtTime(0, t0, 0.3);
+    wetGain.gain.setTargetAtTime(SFX.reverbEnd, t0, 0.5);   // raise wet reverb
+    dryGain.gain.setTargetAtTime(1-SFX.reverbEnd, t0, 0.5);
 }
 // Restores the dry/normal balance and silences the voice for a fresh game.
 function resetAudioForNewGame() {
@@ -2703,8 +2720,17 @@ function openSoundPanel() {
 document.getElementById('soundPanelBtn').addEventListener('click', openSoundPanel);
 document.getElementById('modeOnline').addEventListener('click', () => {
     document.getElementById('modeMsg').textContent = '';
-    ensureOnlineIdentity(startOnlineMatchmaking);
+    ensureOnlineIdentity(chooseOnlineMode);
 });
+// Online sub-menu: a random ranked opponent, or a private invite match. (Private match used to be a
+// separate link at the bottom of the menu -- it lives here now, inside the online flow.)
+function chooseOnlineMode() {
+    showModal('Online 1v1', 'Play a random ranked opponent, or invite someone specific?', [
+        { label: 'Find an opponent', onClick: startOnlineMatchmaking },
+        { label: 'Private match',    onClick: openPrivateMatchMenu },
+        { label: 'Cancel',           onClick: () => {} },
+    ]);
+}
 // Shows the Sign in / Play as Guest choice if nobody's signed in yet, resuming with `next` once
 // an identity (real or guest) exists; runs `next` immediately if one already does. Shared by
 // "Online 1v1" and "Private match", which both need an account before they can do anything else.
@@ -4033,7 +4059,7 @@ function openLeaderboard() {
 document.getElementById('leaderboardBtn').addEventListener('click', openLeaderboard);
 
 // ---------- Private matches: invite a specific person by code or link ----------
-document.getElementById('privateMatchBtn').addEventListener('click', () => ensureOnlineIdentity(openPrivateMatchMenu));
+// (Entry point is the "Private match" option inside the Online 1v1 sub-menu; see chooseOnlineMode.)
 function openPrivateMatchMenu() {
     showModal('Private match', 'Play a rated 1v1 against someone specific instead of the random queue.', [
         { label: 'Create a match', onClick: createPrivateMatch },
@@ -4119,14 +4145,35 @@ async function joinPrivateMatchWithCode(rawCode) {
         if (msg) msg.textContent = 'Could not join — check your connection and try again.';
     }
 }
-// A shared invite link (?join=CODE) auto-joins once an identity (real or guest) is ready --
-// waits for the background ensureSupabase() check to settle first (success or failure) so an
-// already-signed-in returning player doesn't get asked to choose Sign in/Guest unnecessarily.
+// A shared invite link (?join=CODE) auto-joins once an identity (real or guest) is ready. The code
+// is stashed in localStorage (not just a closure) because signing in with Google/magic-link
+// REDIRECTS the whole page away and back -- the ?join= is already stripped by then, so a closure
+// would be lost across the round-trip and the returning player would just land on the main menu
+// (exactly the "it asked her to sign in then went to the main page" report). localStorage survives
+// the redirect; ensureSupabase() awaits the restored session, so by the time checkJoinLink() runs
+// on the return load, sbUser exists and the stashed code is consumed. Stamped with a time so a
+// long-forgotten link doesn't auto-join out of nowhere on some unrelated future visit.
+const PENDING_JOIN_KEY = 'tauPendingJoin', PENDING_JOIN_TTL_MS = 15*60*1000;
+function stashPendingJoin(code) { try { localStorage.setItem(PENDING_JOIN_KEY, code + '|' + Date.now()); } catch(e){} }
+function readPendingJoin() {
+    let raw; try { raw = localStorage.getItem(PENDING_JOIN_KEY); } catch(e){ return null; }
+    if (!raw) return null;
+    const bar = raw.lastIndexOf('|'), code = raw.slice(0, bar), t = +raw.slice(bar+1);
+    if (!code || !(Date.now() - t < PENDING_JOIN_TTL_MS)) { try { localStorage.removeItem(PENDING_JOIN_KEY); } catch(e){} return null; }
+    return code;
+}
+function consumePendingJoin() {
+    const code = readPendingJoin();
+    if (!code || !sbUser) return;
+    try { localStorage.removeItem(PENDING_JOIN_KEY); } catch(e){}
+    joinPrivateMatchWithCode(code);
+}
 function checkJoinLink() {
     const code = new URLSearchParams(location.search).get('join');
-    if (!code) return;
-    history.replaceState(null, '', location.pathname);   // don't re-trigger this on a later refresh
-    ensureOnlineIdentity(() => joinPrivateMatchWithCode(code));
+    if (code) { stashPendingJoin(code); history.replaceState(null, '', location.pathname); }   // don't re-trigger on refresh
+    if (!readPendingJoin()) return;                 // nothing waiting -> don't prompt sign-in for no reason
+    if (sbUser) { consumePendingJoin(); return; }   // already have an identity (incl. after an OAuth redirect return)
+    ensureOnlineIdentity(consumePendingJoin);       // guest / same-tab sign-in resumes via pendingOnlineAction
 }
 </script>
 </body>
