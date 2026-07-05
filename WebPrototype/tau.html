@@ -9,9 +9,11 @@
                 font-family:Arial, sans-serif; color:#e6e6e6; overflow:hidden; }
     #wrap { display:flex; flex-direction:column; align-items:center; height:100%; }
     h1 { margin:6px 0 2px; letter-spacing:6px; font-weight:300; font-size:22px; line-height:0; }
-    /* The wordmark: three real pieces held at angles that read "Tau" (see logo_studio.html).
-       The page chrome is always dark, so the neutral light-grey render sits on it directly. */
-    #logoImg { display:block; width:190px; max-width:58vw; height:auto; }
+    /* The wordmark: three real pieces held at angles that read "Tau" (see logo_studio.html),
+       rendered live in 3D so the colour can breathe blue<->red. The page chrome is always dark,
+       so the pieces sit on it directly. #logoImg is a static fallback if WebGL is unavailable. */
+    #logoCanvas { display:block; width:216px; max-width:60vw; height:auto; background:#15181c; }
+    #logoImg { display:none; width:190px; max-width:58vw; height:auto; }   /* shown by JS only if WebGL fails */
     canvas { background:#0c0e11; touch-action:none; display:block; }
     #views { display:flex; gap:10px; align-items:flex-start; justify-content:center; flex-wrap:wrap; }
     #view3d { border:1px solid #2c3138; border-radius:4px; }
@@ -110,9 +112,9 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 25</div>
+<div id="buildTag">build 26</div>
 <div id="wrap">
-    <h1><img id="logoImg" src="tau-logo.png" alt="Tau"></h1>
+    <h1><canvas id="logoCanvas" width="216" height="72"></canvas><img id="logoImg" src="tau-logo.png" alt="Tau" hidden></h1>
     <div id="menu">
         <div id="demoViews">
             <canvas id="demoCanvas" width="240" height="240"></canvas>
@@ -3175,6 +3177,7 @@ function buildTripod(hex) {
         g.add(foot);
     }
     const hub=new THREE.Mesh(new THREE.SphereGeometry(legRad*1.9,14,12), mat); hub.position.set(0,H,0); g.add(hub);
+    g.userData.mat = mat;   // one shared material per piece — exposed so the menu logo can recolour it live
     return g;
 }
 function init3D() {
@@ -3575,6 +3578,61 @@ reset();
 resize();
 animate();
 demoStart();
+
+// ---------- Live menu logo: three real pieces posed to read "T a u", colour breathing blue<->red ----------
+// Rendered as three sub-viewports of one small canvas (each piece centred in its own third, exactly
+// how logo_studio.html frames a single piece), so no 3D layout math is needed. Poses are the exact
+// values dialled in the studio. Falls back to the static PNG if WebGL is unavailable.
+(function initMenuLogo(){
+    const canvas = document.getElementById('logoCanvas'), fallback = document.getElementById('logoImg');
+    const fail = () => { if (canvas) canvas.style.display='none'; if (fallback) fallback.style.display='block'; };
+    if (typeof THREE === 'undefined' || !canvas) { fail(); return; }
+    let lr;
+    try { lr = new THREE.WebGLRenderer({ canvas, antialias:true }); }
+    catch(e) { fail(); return; }
+    lr.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+    lr.setClearColor(0x15181c, 1);   // match the page chrome so the mark blends (no alpha-compositing needed)
+    const D = Math.PI/180, H = CFG.hubHeight;
+    const lscene = new THREE.Scene();
+    lscene.add(new THREE.HemisphereLight(0xffffff, 0x2a2e33, 0.85));        // ambient (studio "ambient")
+    const key = new THREE.DirectionalLight(0xffffff, 0.95);                 // key light at az 40 / el 20
+    key.position.set(Math.sin(40*D)*Math.cos(20*D), Math.sin(20*D), Math.cos(40*D)*Math.cos(20*D)).multiplyScalar(200);
+    lscene.add(key);
+    const lcam = new THREE.PerspectiveCamera(32, 1, 1, 4000);
+    lcam.position.set(0, 12, 235); lcam.lookAt(0,0,0);
+    const ORDER = ['T','a','u'], POSES = { T:[-54,-31,0], a:[-6,2,0], u:[174,-65,0] };
+    const holders = {};
+    for (const L of ORDER) {
+        const holder = new THREE.Group();
+        const trip = buildTripod(0x6b9eff); trip.position.y = -H/2; holder.add(trip);
+        const p = POSES[L]; holder.rotation.set(p[0]*D, p[1]*D, p[2]*D);
+        holder.userData.mat = trip.userData.mat;
+        lscene.add(holder); holders[L] = holder;
+    }
+    const BLUE = new THREE.Color(0x6b9eff), RED = new THREE.Color(0xff6b6b), tmp = new THREE.Color();
+    function resizeLogo(){ lr.setSize(canvas.clientWidth || 216, canvas.clientHeight || 72, false); }
+    resizeLogo(); window.addEventListener('resize', resizeLogo);
+    const t0 = performance.now();
+    (function logoFrame(){
+        requestAnimationFrame(logoFrame);
+        if (document.getElementById('menu').style.display === 'none') return;   // only animate on the menu
+        const w = canvas.clientWidth, h = canvas.clientHeight, third = w/3;
+        if (!w || !h) return;
+        lcam.aspect = third/h; lcam.updateProjectionMatrix();
+        const time = (performance.now()-t0)/1000;
+        lr.setScissorTest(true);
+        for (let i=0;i<3;i++){
+            const L = ORDER[i];
+            const mix = 0.5 + 0.5*Math.sin(time*0.6 - i*0.7);   // slow ~10s cycle, flowing across the word
+            holders[L].userData.mat.color.copy(tmp.copy(BLUE).lerp(RED, mix));
+            for (const k of ORDER) holders[k].visible = (k===L);
+            lr.setViewport(i*third, 0, third, h);
+            lr.setScissor(i*third, 0, third, h);
+            lr.render(lscene, lcam);
+        }
+        lr.setScissorTest(false);
+    })();
+})();
 </script>
 
 <script>
