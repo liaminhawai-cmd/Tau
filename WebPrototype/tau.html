@@ -106,7 +106,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 16</div>
+<div id="buildTag">build 17</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -1526,6 +1526,7 @@ function reset() {
           crossings:0, atLimit:false, netRad:0, ptrAngle:null, over:false, winner:null,
           snap:null, startedOnLine:[[],[],[]], usedGrace:[false,false,false] };
     fall.active=false;
+    replayFrames.length = 0; replayActive = false;   // every fresh board starts a fresh recording
     render();
 }
 // snapshot / restore both pieces so an aborted turn (released before minMoveDeg of net
@@ -1799,6 +1800,50 @@ function boardColors() {
         : { bg:'#0c0e11', disc:'#efe4a6', line:'#26251f', dotBlue:'rgba(74,111,212,0.85)', dotRed:'rgba(192,57,43,0.85)' };
 }
 let clock=null, fall={active:false};                                  // loss-animation state
+// ---------- Replay recorder ----------
+// Records the VISIBLE motion of a live game as raw per-frame poses (both pieces' x/y/rot), sampled
+// in animate() only on frames where something actually moved -- so thinking time, turn clocks and
+// network waits simply never appear in the recording, and every mover (human drag, eased AI swing,
+// online tween, physics pushes) is captured identically because it's the rendered result being
+// sampled, not any one input path. ~48 bytes/frame; 30k frames ≈ several minutes of pure motion.
+let replayFrames = [], replayActive = false, replayPos = 0, replayFinalPose = null;
+const REPLAY_MAX_FRAMES = 30000, REPLAY_SPEEDUP = 2;   // playback advances 2 recorded frames per rendered frame
+function recordReplayFrame() {
+    if (replayActive || !G || G.over) return;
+    if (document.getElementById('game').style.display !== 'flex') return;   // never record the menu demo
+    const b=G.pieces[0], r=G.pieces[1], last=replayFrames[replayFrames.length-1];
+    if (last && Math.abs(last[0]-b.x)<1e-4 && Math.abs(last[1]-b.y)<1e-4 && Math.abs(last[2]-b.rot)<1e-4
+             && Math.abs(last[3]-r.x)<1e-4 && Math.abs(last[4]-r.y)<1e-4 && Math.abs(last[5]-r.rot)<1e-4) return;
+    replayFrames.push([b.x,b.y,b.rot,r.x,r.y,r.rot]);
+    if (replayFrames.length > REPLAY_MAX_FRAMES) replayFrames.splice(0, replayFrames.length - REPLAY_MAX_FRAMES);
+}
+function startReplay() {
+    if (!replayFrames.length || !G) return;
+    hideModal(); clearTimeout(gameOverTimer);
+    fall.active = false;                       // the fallen piece pops back to the board for the re-run
+    replayFinalPose = takeSnap();
+    replayActive = true; replayPos = 0;
+    showPassToast('Replay — tap the board to skip');
+}
+// Steps the playback (called from animate); when the recording runs out, restores the true final
+// pose and re-runs the tumble (silently), then brings the game-over choices back.
+function stepReplay() {
+    for (let k=0; k<REPLAY_SPEEDUP && replayPos<replayFrames.length; k++, replayPos++){
+        const f = replayFrames[replayPos];
+        G.pieces[0].x=f[0]; G.pieces[0].y=f[1]; G.pieces[0].rot=f[2];
+        G.pieces[1].x=f[3]; G.pieces[1].y=f[4]; G.pieces[1].rot=f[5];
+    }
+    render();
+    if (replayPos >= replayFrames.length) endReplay();
+}
+function endReplay() {
+    if (!replayActive) return;
+    replayActive = false;
+    if (replayFinalPose) { G.pieces.forEach((p,i)=>{ p.x=replayFinalPose[i].x; p.y=replayFinalPose[i].y; p.rot=replayFinalPose[i].rot; }); }
+    render();
+    triggerFall(true);                         // re-run the tip-over, but without re-firing the loss sound
+    showGameOverModal();
+}
 // Declared here (rather than down in the "online accounts" script block where the rest of the
 // online-play state lives) because animate()'s very first synchronous call happens as part of
 // THIS script tag running, before that later one has executed at all -- referencing onlineMatch
@@ -1860,6 +1905,7 @@ function inputBlocked() {
     return (vsAI && G.active===aiIdx) || (onlineMatch && !myOnlineTurnNow());
 }
 function onDown(e) {
+    if (typeof replayActive !== 'undefined' && replayActive) { e.preventDefault(); endReplay(); return; }   // tap the board = skip the replay
     if (G.over || aiAnim || inputBlocked()) return; e.preventDefault();
     const p=pointerPos(e), feet=G.pieces[G.active].feet();
     if (G.pinned===null) {
@@ -2169,25 +2215,26 @@ function showGameOverModal() {
     clearTimeout(gameOverTimer);
     gameOverTimer = setTimeout(() => {
         if (document.getElementById('game').style.display !== 'flex') return;   // player already left to the menu
+        let title, buttons;
         if (onlineMatch) {
-            const myWin = (G.winner===0?'blue':'red') === onlineMatch.myColor;
-            showModal(myWin ? 'You win!' : 'You lose', '', [
+            title = ((G.winner===0?'blue':'red') === onlineMatch.myColor) ? 'You win!' : 'You lose';
+            buttons = [
                 { label: 'Rematch', onClick: rematchOnline },
                 { label: 'Find new opponent', onClick: findNewOpponent },
-                { label: 'Menu', onClick: backToMenu },
-            ]);
+            ];
         } else if (vsAI) {
-            showModal(G.winner===humanIdx ? 'You win!' : 'You lose', '', [
+            title = G.winner===humanIdx ? 'You win!' : 'You lose';
+            buttons = [
                 { label: 'Play as Blue', onClick: () => startGame(true, 0, aiDifficulty) },   // keep the same difficulty on replay
                 { label: 'Play as Red',  onClick: () => startGame(true, 1, aiDifficulty) },
-                { label: 'Menu', onClick: backToMenu },
-            ]);
+            ];
         } else {
-            showModal((G.winner===0?'Blue':'Red') + ' wins!', '', [
-                { label: 'Rematch', onClick: () => startGame(false) },
-                { label: 'Menu', onClick: backToMenu },
-            ]);
+            title = (G.winner===0?'Blue':'Red') + ' wins!';
+            buttons = [ { label: 'Rematch', onClick: () => startGame(false) } ];
         }
+        if (replayFrames.length > 60) buttons.push({ label: 'Watch replay', onClick: startReplay });
+        buttons.push({ label: 'Menu', onClick: backToMenu });
+        showModal(title, '', buttons);
     }, 2800);
 }
 function startGame(aiMode, humanColorIdx, difficulty) {
@@ -2211,6 +2258,7 @@ function startGame(aiMode, humanColorIdx, difficulty) {
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
     clearTimeout(aiTimer); aiAnim = null;
+    replayActive = false;
     cancelMatchmaking(); exitOnlineMatch();
     onlineTurnDeadline = null;
     document.getElementById('turnTimer').style.display = 'none';
@@ -3052,8 +3100,13 @@ function buildTaperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
     const apexIdx=(lenSegs+1)*radialSegs, apex=curve.getPointAt(1), tan=curve.getTangentAt(1);
     positions.push(apex.x, apex.y, apex.z); normals.push(tan.x, tan.y, tan.z);
     const lastRing=lenSegs*radialSegs;
+    // Fan the cap BOTH winding orders: the ring's order depends on the curve's Frenet-frame
+    // handedness, so a single winding could face INTO the tube -- back-face culled from outside,
+    // leaving an open end you could see straight into (the other half of the hollow-foot look).
+    // Doubling it is 14 extra triangles and guarantees the pad is solid from every angle.
     for (let j=0;j<radialSegs;j++){ const jn=(j+1)%radialSegs;
-        indices.push(lastRing+j, lastRing+jn, apexIdx); }
+        indices.push(lastRing+j, lastRing+jn, apexIdx);
+        indices.push(lastRing+jn, lastRing+j, apexIdx); }
     const geo=new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals,3));
@@ -3069,6 +3122,13 @@ function buildTripod(hex) {
             pts.push(new THREE.Vector3(Math.sin(ph)*R*Math.cos(th), Math.cos(ph)*H, Math.sin(ph)*R*Math.sin(th))); }
         const curve=new THREE.CatmullRomCurve3(pts);
         g.add(buildTaperedLeg(curve, mat, legRad, 14, 24, 0.6));
+        // Blunt printed foot at the contact point: a short, slightly conical stub that swallows the
+        // leg tube's end. Without it the tapered tube's dark end-cap ellipse read as a HOLE from low
+        // angles and the taper as a pinched crescent -- the real printed leg ends in a flat-bottomed
+        // foot, not a cut-off tube.
+        const foot=new THREE.Mesh(new THREE.CylinderGeometry(legRad*0.62, legRad*0.8, 1.7, 12), mat);
+        foot.position.set(Math.cos(th)*R, 0.85, Math.sin(th)*R);
+        g.add(foot);
     }
     const hub=new THREE.Mesh(new THREE.SphereGeometry(legRad*1.9,14,12), mat); hub.position.set(0,H,0); g.add(hub);
     return g;
@@ -3098,7 +3158,10 @@ function init3D() {
     const dl=new THREE.DirectionalLight(0xffffff,0.55); dl.position.set(45,90,55); scene.add(dl);
     boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU,96),
         new THREE.MeshStandardMaterial({map:boardTexture(currentTheme==='dark'), roughness:0.95}));
-    boardTop.rotation.x=-Math.PI/2; boardTop.position.y=0.15; scene.add(boardTop);
+    // Board surface sits just BELOW y=0 (where the feet's flat pads end): with it at +0.15 the
+    // bottom of every foot was buried in the board, so what showed was the leg's taper sliced by
+    // the board plane -- exactly the "crescent / hollow" foot look from low angles.
+    boardTop.rotation.x=-Math.PI/2; boardTop.position.y=-0.05; scene.add(boardTop);
     const rim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.05,CFG.edgeU*1.09,5,96),
         new THREE.MeshStandardMaterial({color:0x8b9199, roughness:0.6, metalness:0.2}));
     rim.position.y=-2.4; scene.add(rim);
@@ -3131,9 +3194,9 @@ function applyFallRotation(t, f, dt, clear) {
         t.rotateOnWorldAxis(FALL_AXIS_Z, f.wz*dt*clear);
     }
 }
-// kick off the dramatic slide-off when someone loses
-function triggerFall() {
-    playLossSound();
+// kick off the dramatic slide-off when someone loses (silent=true for the replay's re-run)
+function triggerFall(silent) {
+    if (!silent) playLossSound();
     if (!renderer) return;
     const li = 1 - G.winner, p = G.pieces[li];
     let fx=0, fz=0, fr=-1;                            // slide out along the off-board foot direction
@@ -3356,6 +3419,7 @@ function animate() {
     // AI swing advances every frame along its eased time-arc (see stepAi) — per-frame real-dt
     // stepping is what keeps both the motion AND the speed-driven sound perfectly smooth.
     if (aiAnim) stepAi(dt);
+    if (replayActive) stepReplay(); else recordReplayFrame();
     // Declared in the later "online accounts" script tag, which hasn't run yet for animate()'s
     // very first few frames (same reason onlineMatch needed its own early declaration above) --
     // typeof is the one safe way to reference a not-yet-existing top-level binding.
