@@ -106,7 +106,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 19</div>
+<div id="buildTag">build 20</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -3187,7 +3187,11 @@ function init3D() {
     boardTop.rotation.x=-Math.PI/2; boardTop.position.y=-0.05; scene.add(boardTop);
     const rim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.05,CFG.edgeU*1.09,5,96),
         new THREE.MeshStandardMaterial({color:0x8b9199, roughness:0.6, metalness:0.2}));
-    rim.position.y=-2.4; scene.add(rim);
+    // Top of this grey base band must stay just BELOW the board surface, else it occludes the dark
+    // textured top from above and the whole disc reads as blank pale grey (regression when the board
+    // was lowered to -0.05 to un-bury the feet: the old rim top at +0.1 then poked through). Height
+    // is 5, so centre -2.7 -> top -0.2, safely under boardTop's -0.05.
+    rim.position.y=-2.7; scene.add(rim);
     tripods=[buildTripod(0x6b9eff), buildTripod(0xff6b6b)];   // [blue, red] = pieces order
     tripods.forEach(t=>scene.add(t));
     htpTripods=[buildTripod(0x6b9eff), buildTripod(0xff6b6b)];   // how-to-play's own pair, hidden until slide 5 is open
