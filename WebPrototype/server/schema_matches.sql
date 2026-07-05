@@ -314,3 +314,29 @@ create policy "anyone can watch public match moves"
     exists (select 1 from public.matches m
             where m.id = match_moves.match_id and m.invite_code is null)
   );
+
+-- ---------- retire abandoned matches ----------
+-- A match only leaves 'active' when a live client ends it (a win or the 30s turn-clock forfeit). If
+-- both players' tabs close, no one runs the clock and the row would sit 'active' forever, cluttering
+-- the Watch list. This finishes any active match with no move in the last few minutes (30s clock => a
+-- live match records a move at least every 30s, so 3 min of silence means abandoned). Winner stays
+-- null (no ELO change). Called best-effort by the client when the Watch menu opens.
+create or replace function public.gc_stale_matches()
+returns integer
+language plpgsql
+security definer set search_path = public
+as $$
+declare n integer;
+begin
+  update public.matches m
+     set status = 'finished'
+   where m.status = 'active'
+     and coalesce(
+           (select max(mm.created_at) from public.match_moves mm where mm.match_id = m.id),
+           m.created_at
+         ) < now() - interval '3 minutes';
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+grant execute on function public.gc_stale_matches() to authenticated;

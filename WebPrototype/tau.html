@@ -8,7 +8,10 @@
     html,body { margin:0; padding:0; height:100%; background:#15181c;
                 font-family:Arial, sans-serif; color:#e6e6e6; overflow:hidden; }
     #wrap { display:flex; flex-direction:column; align-items:center; height:100%; }
-    h1 { margin:6px 0 2px; letter-spacing:6px; font-weight:300; font-size:22px; }
+    h1 { margin:6px 0 2px; letter-spacing:6px; font-weight:300; font-size:22px; line-height:0; }
+    /* The wordmark: three real pieces held at angles that read "Tau" (see logo_studio.html).
+       The page chrome is always dark, so the neutral light-grey render sits on it directly. */
+    #logoImg { display:block; width:190px; max-width:58vw; height:auto; }
     canvas { background:#0c0e11; touch-action:none; display:block; }
     #views { display:flex; gap:10px; align-items:flex-start; justify-content:center; flex-wrap:wrap; }
     #view3d { border:1px solid #2c3138; border-radius:4px; }
@@ -107,9 +110,9 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 24</div>
+<div id="buildTag">build 25</div>
 <div id="wrap">
-    <h1>TAU</h1>
+    <h1><img id="logoImg" src="tau-logo.png" alt="Tau"></h1>
     <div id="menu">
         <div id="demoViews">
             <canvas id="demoCanvas" width="240" height="240"></canvas>
@@ -2239,6 +2242,7 @@ function startGame(aiMode, humanColorIdx, difficulty) {
     camCenterFrac = 1; camManualSet = false;   // fresh game starts fully centred
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
+    setSpectatorChrome(false);
     reset(); resize();
     resetAudioForNewGame(); playGameBowl();
     if (!aiMode) startOnlineTurnClock(); else onlineTurnDeadline = null;
@@ -2374,6 +2378,26 @@ function htpSlideDouble(c,w,h,t){
     }
     htpPiece(c,p,m.b,pivotIdx,t);
 }
+// Two DIFFERENT feet crossing two DIFFERENT lines in one continuous slide. Pose/pivot/swing found
+// by search (find2.mjs): pinning foot 1 and swinging back, foot 0 slides across the inner ring at
+// the same time foot 2 slides across the outer ring — both pads on a line together, mid-swing. While
+// any foot stays on a line the crossing episode hasn't ended, so this whole move is ONE crossing.
+// Both moving feet glow green whenever their pad is on a line.
+function htpSlideTwoFeet(c,w,h,t){
+    const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
+    const base=mkP(0,18,-20,48*Math.PI/180), pivotIdx=1, dir=-1, lim=23*Math.PI/180;
+    const prog=htpEaseHold((t%2.8)/2.8), pv=base.feet()[pivotIdx];
+    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*lim);
+    for (const i of [0,2]){                                  // the two moving feet (pivot is foot 1)
+        const f=p.feet()[i];
+        if (nearLineIds(f, CFG.touchEps).length){
+            const g=m.b(f.x,f.y), flash=0.4+0.35*Math.abs(Math.sin(t*6));
+            c.strokeStyle=`rgba(120,220,140,${flash})`; c.lineWidth=3;
+            c.beginPath(); c.arc(g.x,g.y,11,0,7); c.stroke();
+        }
+    }
+    htpPiece(c,p,m.b,pivotIdx,t);
+}
 // Slide 5 is the real 3D view (the #view3d WebGL canvas, reparented in while the modal is
 // open — see htp3DEnter/Exit), not a 2D drawing: two throwaway pieces (never G.pieces, which
 // the ambient landing demo keeps animating behind the modal) get pushed with the real
@@ -2480,7 +2504,8 @@ const HTP_STEPS = [
     { title:'Move in circles', text:'The moving feet trace an arc. You may only move in one direction per turn.', draw:htpSlideSwing },
     { title:'Push your opponent', text:'Push your opponent by moving into their legs.', draw:htpSlidePush },
     { title:'One line per turn', text:'You may cross only one line per turn. A foot that starts on a line leaves it for free.', draw:htpSlideCross },
-    { title:'Corners count once', text:'A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet — or two feet crossing in one continuous slide — counts as <b>one</b> crossing.', draw:htpSlideDouble },
+    { title:'Corners count once', text:'A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.', draw:htpSlideDouble },
+    { title:'Two feet at once', text:'Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.', draw:htpSlideTwoFeet },
     { title:'Push them off', text:'Push your opponent off the edge. When one of their feet leaves the board, you win.', is3D:true },
 ];
 let htpRaf=null, htpScrollBox=null, htpScrollHandler=null;
@@ -2933,6 +2958,12 @@ function surrender() {
     render();
 }
 document.getElementById('reset').addEventListener('click', surrender);
+// When spectating there's nothing to surrender -- both buttons would just leave -- so hide the
+// redundant Surrender and relabel the remaining button "Stop watching".
+function setSpectatorChrome(on) {
+    document.getElementById('reset').style.display = on ? 'none' : '';
+    document.getElementById('menuBtn').textContent = on ? 'Stop watching' : 'Menu';
+}
 
 // ---------- Render ----------
 function drawHead(x, y, ang) {           // small filled triangle pointing along `ang`
@@ -4051,6 +4082,7 @@ async function enterOnlineMatch(row) {
     camCenterFrac = 1; camManualSet = false;
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
+    setSpectatorChrome(false);
     reset(); resize();
     resetAudioForNewGame(); playGameBowl();
     sb.from('profiles').select('username').eq('id', opponentId).single().then(({ data, error }) => {
@@ -4432,17 +4464,36 @@ function updatePresenceCounts() {
 // normal online-match machinery with a spectator flag: input blocked, no clock enforcement, no
 // result reporting, EVERY move replayed (not just the opponent's).
 document.getElementById('watchBtn').addEventListener('click', () => ensureOnlineIdentity(openWatchMenu));
+// A match only leaves 'active' when a live client drives its end (a win, or the turn-clock forfeit).
+// If BOTH tabs vanish there's no one left to run the clock, so the row would sit 'active' forever and
+// show up here as "two idle players staring at each other". Two guards against that: (1) best-effort
+// ask the server to retire matches with no move in a while (gc_stale_matches, see apply_to_live_db.sql),
+// and (2) hide any still-listed match whose last move is older than the staleness window, so the list
+// self-cleans even before that patch is applied. 30s turn clock => a genuinely live match records a
+// move (a real move or a timeout-pass) at least every 30s, so 3 min of silence means it's abandoned.
+const WATCH_STALE_MS = 3 * 60 * 1000;
 async function openWatchMenu() {
     showModal('Watch live', '<p style="text-align:center;color:#9aa4ad;">Looking for games\u2026</p>', [ { label:'Close', onClick:()=>{} } ], true);
+    try { await sb.rpc('gc_stale_matches'); } catch(e) {}   // no-op if the patch isn't applied yet
     let games, err;
     try {
         ({ data: games, error: err } = await sb.from('matches').select('id, blue_id, red_id, created_at')
-            .eq('status','active').is('invite_code', null).order('created_at', { ascending:false }).limit(10));
+            .eq('status','active').is('invite_code', null).order('created_at', { ascending:false }).limit(20));
     } catch(e) { err = e; }
     const body = document.getElementById('modalBody');
     if (!body) return;
     if (err) { body.innerHTML = '<p style="text-align:center;color:#9aa4ad;">Could not load live games \u2014 has the spectator patch been run in Supabase?</p>'; return; }
     games = (games||[]).filter(g => !sbUser || (g.blue_id !== sbUser.id && g.red_id !== sbUser.id));
+    // Drop matches with no recent activity (last move, or creation if no moves yet, older than the window).
+    if (games.length) {
+        const cutoff = Date.now() - WATCH_STALE_MS, lastMove = {};
+        try {
+            const { data: mv } = await sb.from('match_moves').select('match_id, created_at').in('match_id', games.map(g => g.id));
+            (mv||[]).forEach(r => { const ts = new Date(r.created_at).getTime();
+                if (!(r.match_id in lastMove) || ts > lastMove[r.match_id]) lastMove[r.match_id] = ts; });
+        } catch(e) {}
+        games = games.filter(g => (lastMove[g.id] || new Date(g.created_at).getTime()) >= cutoff).slice(0, 10);
+    }
     if (!games.length) { body.innerHTML = '<p style="text-align:center;color:#9aa4ad;">No public games being played right now.</p>'; return; }
     const ids = [...new Set(games.flatMap(g => [g.blue_id, g.red_id]))];
     let names = {};
@@ -4470,6 +4521,7 @@ async function spectateMatch(row, names) {
     camCenterFrac = 1; camManualSet = false;
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
+    setSpectatorChrome(true);
     reset(); resize();
     resetAudioForNewGame();
     moveChannel = sb.channel('spectate-' + row.id)

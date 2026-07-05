@@ -119,7 +119,7 @@ const piece = buildTripod(0x6b9eff); scene.add(piece);
 const LETTERS = ['T','a','u'];
 // starting pose per letter (from the design brief), colour, and a place to keep the snapped sprite.
 const S = {
-    T: { rx:-78, ry:0,   rz:0, col:'#6b9eff', sprite:null },
+    T: { rx:-58, ry:90,  rz:0, col:'#6b9eff', sprite:null },
     a: { rx:0,   ry:36,  rz:0, col:'#ff6b6b', sprite:null },
     u: { rx:180, ry:-18, rz:0, col:'#6b9eff', sprite:null },
 };
@@ -341,7 +341,7 @@ document.querySelectorAll('#viewTabs button').forEach(b=>b.addEventListener('cli
 document.getElementById('snapBtn').addEventListener('click', snapCurrent);
 document.getElementById('exportBtn').addEventListener('click', exportLogo);
 document.getElementById('flipBtn').addEventListener('click', ()=>{ S[cur].rx=((S[cur].rx+180+540)%360)-180; syncPose(); applyPose(); });
-document.getElementById('resetPoseBtn').addEventListener('click', ()=>{ const d={T:{rx:-78,ry:0,rz:0},a:{rx:0,ry:36,rz:0},u:{rx:180,ry:-18,rz:0}}[cur]; Object.assign(S[cur],d); syncPose(); applyPose(); });
+document.getElementById('resetPoseBtn').addEventListener('click', ()=>{ const d={T:{rx:-58,ry:90,rz:0},a:{rx:0,ry:36,rz:0},u:{rx:180,ry:-18,rz:0}}[cur]; Object.assign(S[cur],d); syncPose(); applyPose(); });
 document.getElementById('alignBtn').addEventListener('click', autoSpace);
 document.getElementById('reposeBtn').addEventListener('click', ()=>{ cur=arrSel; document.getElementById('pieceColor').value=S[cur].col; syncPose(); setView('pose'); });
 document.getElementById('pieceColor').addEventListener('input', e=>{ S[cur].col=e.target.value; piece.userData.mat.color.set(e.target.value); });
