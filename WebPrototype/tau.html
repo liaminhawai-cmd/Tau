@@ -106,7 +106,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 22</div>
+<div id="buildTag">build 23</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -1562,9 +1562,10 @@ function applySwing(dA) {
         // A crossing is one continuous "on a line" episode: not-on-line -> on-line -> not-on-line.
         // While the piece is still on some line the crossing isn't finished yet, so a foot rounding a
         // corner (ring then arc) or a second foot crossing while the first is still on its line all
-        // stay ONE crossing. STARTING a fresh crossing (a centre passes a line while the piece isn't
-        // already mid-crossing) is only allowed while the one-per-turn budget is unspent.
-        if (centreCrossed && !G.inCrossing && G.crossings >= CFG.maxCrossingsPerTurn){
+        // stay ONE crossing. Once the one-per-turn crossing is SPENT and the piece is off all lines,
+        // don't even let a foot MOUNT the next line -- stop it just short, so releasing there simply
+        // keeps that position instead of resetting the whole move.
+        if (G.crossings >= CFG.maxCrossingsPerTurn && !G.inCrossing && pieceTouchingNewLine(after)){
             active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true; G.limitReason='cross'; break; }
         if (centreCrossed) G.inCrossing=true;
         if (G.inCrossing && !pieceTouchingNewLine(after)){ G.crossings++; G.inCrossing=false; }   // episode complete -> count it
@@ -1924,20 +1925,9 @@ function onUp() {
     if (G.handle===null) return;
     G.handle=null; G.ptrAngle=null;
     if (Math.abs(G.netRad) >= CFG.minMoveDeg*Math.PI/180) {
-        // A foot may not come to REST inside the on-a-line band (crossEps ~ the pad's footprint):
-        // a pad parked straddling a line is ambiguous on the physical board. Passing THROUGH is
-        // fine -- this only checks the release pose. Feet that BEGAN the turn on a line (e.g. the
-        // stationary pivot, or a foot the opponent pushed onto a line last turn) are exempt for
-        // that same line, otherwise they could never legally stay put. Undone like a too-small
-        // move: full rollback, pivot kept, so the player just re-swings.
-        const feet = G.pieces[G.active].feet();
-        const badRest = feet.some((f,i) => nearLineIds(f).some(id => !G.startedOnLine[i].includes(id)));
-        if (badRest) {
-            restoreSnap(); render();
-            showPassToast('A foot can’t stop on a line — swing undone');
-            if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; }
-            return;
-        }
+        // No rest-pose reset any more: the swing already stops itself just short of mounting a
+        // second line (see applySwing), so wherever the player lets go is a position they were
+        // allowed to reach -- it simply stays there.
         if (onlineMatch) finishOnlineTurn(); else finishTurn();
     } else {
         restoreSnap(); render();   // too small to count — undo it (incl. any nudge), keep the pivot
