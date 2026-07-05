@@ -2,55 +2,80 @@
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>TAU logo studio</title>
 <style>
     html,body { margin:0; height:100%; background:#15181c; color:#e6e6e6;
-                font-family:-apple-system,'Segoe UI',Roboto,sans-serif; font-size:13px; }
+                font-family:-apple-system,'Segoe UI',Roboto,sans-serif; font-size:13px; overflow:hidden; }
     #wrap { display:flex; height:100%; }
     #stage { flex:1; min-width:0; position:relative; }
-    #stage canvas { width:100%; height:100%; display:block; }
-    #panel { width:300px; overflow-y:auto; padding:12px; background:#1a1e24; border-left:1px solid #2c3138; box-sizing:border-box; }
-    h1 { font-size:15px; margin:0 0 10px; letter-spacing:2px; }
+    #stage canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+    #composeCanvas { touch-action:none; }
+    #stageHint { position:absolute; left:12px; bottom:10px; color:#69727b; font-size:12px; pointer-events:none; }
+    #panel { width:290px; overflow-y:auto; padding:12px; background:#1a1e24; border-left:1px solid #2c3138; box-sizing:border-box; }
+    h1 { font-size:15px; margin:0 0 8px; letter-spacing:2px; }
     h2 { font-size:12px; margin:14px 0 4px; color:#9aa4ad; text-transform:uppercase; letter-spacing:1px; }
-    .row { display:flex; align-items:center; gap:6px; margin:3px 0; }
-    .row label { flex:0 0 92px; color:#c7ccd1; }
-    .row input[type=range] { flex:1; }
-    .row .val { flex:0 0 40px; text-align:right; color:#9aa4ad; font-variant-numeric:tabular-nums; }
-    .pieceTabs { display:flex; gap:6px; margin:6px 0; }
-    .pieceTabs button { flex:1; background:#2c3138; color:#e6e6e6; border:1px solid #3a4048; padding:6px; border-radius:6px; cursor:pointer; }
-    .pieceTabs button.sel { background:#3d5afe33; border-color:#6b9eff; }
-    #shoot { width:100%; padding:10px; margin-top:12px; font-size:14px; background:#2c3138; color:#fff; border:1px solid #3a4048; border-radius:8px; cursor:pointer; }
-    #shoot:hover { background:#39414b; }
-    button.small { background:#2c3138; color:#e6e6e6; border:1px solid #3a4048; padding:4px 10px; border-radius:6px; cursor:pointer; }
+    p.hint { color:#9aa4ad; margin:0 0 8px; line-height:1.4; }
+    .row { display:flex; align-items:center; gap:6px; margin:4px 0; }
+    .row label { flex:0 0 86px; color:#c7ccd1; }
+    .row input[type=range] { flex:1; min-width:0; }
+    .row .val { flex:0 0 38px; text-align:right; color:#9aa4ad; font-variant-numeric:tabular-nums; }
+    .viewTabs, .letterTabs { display:flex; gap:6px; margin:6px 0; }
+    .viewTabs button, .letterTabs button { flex:1; background:#2c3138; color:#e6e6e6; border:1px solid #3a4048; padding:7px 4px; border-radius:6px; cursor:pointer; position:relative; }
+    .viewTabs button.sel, .letterTabs button.sel { background:#3d5afe33; border-color:#6b9eff; }
+    .letterTabs button .tick { position:absolute; top:2px; right:5px; color:#7ee39a; font-size:11px; }
+    button.big { width:100%; padding:11px; margin-top:10px; font-size:14px; background:#2c3138; color:#fff; border:1px solid #3a4048; border-radius:8px; cursor:pointer; }
+    button.big:hover { background:#39414b; }
+    button.big.primary { background:#2f4bd6; border-color:#3d5afe; }
+    button.small { background:#2c3138; color:#e6e6e6; border:1px solid #3a4048; padding:5px 10px; border-radius:6px; cursor:pointer; }
     input[type=color] { width:40px; height:24px; border:none; background:none; padding:0; }
+    select { background:#2c3138; color:#e6e6e6; border:1px solid #3a4048; border-radius:6px; padding:3px; }
+    .disabled { opacity:.4; pointer-events:none; }
 </style>
 </head>
 <body>
 <div id="wrap">
-    <div id="stage"></div>
+    <div id="stage">
+        <canvas id="glCanvas"></canvas>
+        <canvas id="composeCanvas" style="display:none;"></canvas>
+        <div id="stageHint"></div>
+    </div>
     <div id="panel">
         <h1>T A U — logo studio</h1>
-        <p style="color:#9aa4ad; margin:0 0 6px;">Drag a piece to move it, drag empty space to orbit, scroll/pinch to zoom — or use the sliders. Then 📷 export a transparent PNG.</p>
-        <div class="pieceTabs" id="tabs"></div>
-        <div id="pieceSliders"></div>
-        <h2>Kerning &amp; layout</h2>
-        <div id="layoutSliders"></div>
-        <h2>Camera</h2>
-        <div id="camSliders"></div>
-        <h2>Lighting</h2>
-        <div id="lightSliders"></div>
-        <div class="row"><label>Background</label>
-            <select id="bgMode"><option value="transparent">transparent</option><option value="dark">dark</option><option value="custom">custom…</option></select>
-            <input type="color" id="bgColor" value="#15181c">
+        <div class="viewTabs" id="viewTabs">
+            <button data-v="pose" class="sel">1 · Pose &amp; snap</button>
+            <button data-v="arrange" id="arrangeTab">2 · Arrange</button>
         </div>
-        <div class="row"><label>Piece colour</label><input type="color" id="pieceColor" value="#6b9eff"><button class="small" id="applyColorAll">all</button></div>
-        <button id="shoot">📷 Export PNG (3200px)</button>
-        <div class="row" style="margin-top:8px;"><button class="small" id="preset">Reset to TAU preset</button><button class="small" id="copyPose">Copy pose JSON</button></div>
-        <textarea id="poseDump" style="width:100%;height:56px;display:none;margin-top:6px;font-size:11px;"></textarea>
+
+        <!-- POSE VIEW -->
+        <div id="posePanel">
+            <p class="hint">Pick a letter, drag in the box to turn it (or use the sliders), then snap it to a flat cut-out.</p>
+            <div class="letterTabs" id="letterTabs"></div>
+            <h2>Pose</h2>
+            <div id="poseSliders"></div>
+            <div class="row" style="gap:8px;"><button class="small" id="flipBtn">Flip ↕</button><button class="small" id="resetPoseBtn">Reset pose</button></div>
+            <h2>Look</h2>
+            <div class="row"><label>Colour</label><input type="color" id="pieceColor"></div>
+            <div id="lightSliders"></div>
+            <button class="big primary" id="snapBtn">📸 Snap this letter</button>
+        </div>
+
+        <!-- ARRANGE VIEW -->
+        <div id="arrangePanel" style="display:none;">
+            <p class="hint">Drag each cut-out to space them out. Wheel / the slider scales the selected one.</p>
+            <div class="letterTabs" id="arrangeLetterTabs"></div>
+            <div id="arrangeSliders"></div>
+            <div class="row" style="gap:8px;"><button class="small" id="alignBtn">Auto-space</button><button class="small" id="reposeBtn">Re-pose this letter</button></div>
+            <h2>Background</h2>
+            <div class="row"><label>Fill</label>
+                <select id="bgMode"><option value="transparent">transparent</option><option value="dark">dark</option><option value="custom">custom…</option></select>
+                <input type="color" id="bgColor" value="#15181c">
+            </div>
+            <button class="big primary" id="exportBtn">⬇ Export logo PNG</button>
+        </div>
     </div>
 </div>
 <script>
-/* Three.js r128, inlined from tau.html so the studio works offline/anywhere. */
 /**
  * @license
  * Copyright 2010-2021 Three.js Authors
@@ -61,254 +86,278 @@
 
 </script>
 <script>
-// ---- geometry: same proportions as the game's tripod (quarter-circle legs, hub ball, foot domes) ----
-const FOOT_R = 23.095, HUB_H = 23.095, LEG_RAD = 2.0;
+// ================= geometry (same proportions as the game's tripod) =================
+const FOOT_R = 23.095, HUB_H = 23.095, LEG_RAD = 2.0, D = Math.PI/180;
 function buildTripod(hex) {
     const g = new THREE.Group();
     const mat = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.45, metalness: 0.15 });
     for (let i = 0; i < 3; i++) {
-        const th = i * 2 * Math.PI / 3, pts = [];
-        for (let k = 0; k <= 24; k++) {
-            const ph = (k / 24) * (Math.PI / 2);
-            pts.push(new THREE.Vector3(Math.sin(ph) * FOOT_R * Math.cos(th), Math.cos(ph) * HUB_H, Math.sin(ph) * FOOT_R * Math.sin(th)));
-        }
+        const th = i * 2*Math.PI/3, pts = [];
+        for (let k = 0; k <= 24; k++) { const ph = (k/24)*(Math.PI/2);
+            pts.push(new THREE.Vector3(Math.sin(ph)*FOOT_R*Math.cos(th), Math.cos(ph)*HUB_H, Math.sin(ph)*FOOT_R*Math.sin(th))); }
         g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 32, LEG_RAD, 12, false), mat));
-        const foot = new THREE.Mesh(new THREE.SphereGeometry(LEG_RAD * 0.9, 14, 10), mat);
-        foot.scale.set(1, 0.55, 1); foot.position.set(Math.cos(th) * FOOT_R, 0.5, Math.sin(th) * FOOT_R);
-        g.add(foot);
+        const foot = new THREE.Mesh(new THREE.SphereGeometry(LEG_RAD*0.9, 14, 10), mat);
+        foot.scale.set(1, 0.55, 1); foot.position.set(Math.cos(th)*FOOT_R, 0.5, Math.sin(th)*FOOT_R); g.add(foot);
     }
-    const hub = new THREE.Mesh(new THREE.SphereGeometry(LEG_RAD * 1.9, 16, 14), mat);
-    hub.position.set(0, HUB_H, 0); g.add(hub);
-    // wrap in a parent so rotations apply about the piece's own centre (mid-height), not its feet
-    const holder = new THREE.Group();
-    g.position.y = -HUB_H / 2;
-    holder.add(g);
-    holder.userData.mat = mat;
+    const hub = new THREE.Mesh(new THREE.SphereGeometry(LEG_RAD*1.9, 16, 14), mat); hub.position.set(0, HUB_H, 0); g.add(hub);
+    const holder = new THREE.Group(); g.position.y = -HUB_H/2; holder.add(g); holder.userData.mat = mat;
     return holder;
 }
 
-// ---- scene ----
+// ================= scene: exactly ONE piece in the box at a time =================
 const stage = document.getElementById('stage');
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
-stage.appendChild(renderer.domElement);
+const glCanvas = document.getElementById('glCanvas');
+const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio||1, 2));
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(35, 1, 1, 4000);
+const camera = new THREE.PerspectiveCamera(32, 1, 1, 4000);
 const key = new THREE.DirectionalLight(0xffffff, 0.9); scene.add(key);
 const amb = new THREE.HemisphereLight(0xffffff, 0x2a2e33, 0.8); scene.add(amb);
-const pieces = [buildTripod(0x6b9eff), buildTripod(0xff6b6b), buildTripod(0x6b9eff)];
-pieces.forEach(p => scene.add(p));
+const piece = buildTripod(0x6b9eff); scene.add(piece);
 
-// ---- parameters ----
-// The TAU preset, per the designer's description:
-//  T — held so you look at the feet, tilted away → a curly-T silhouette.
-//  a — sitting flat, camera on the horizon, two feet close together on the left, one on the right.
-//  u — upside down, two feet on the right almost overlapping.
-const PRESET = {
-    pieces: [
-        { rx: -78, ry: 0,   rz: 0,  x: -70, y: 6,  s: 1.0 },   // T
-        { rx: 0,   ry: 36,  rz: 0,  x: 0,   y: 0,  s: 1.0 },   // a
-        { rx: 180, ry: -18, rz: 0,  x: 70,  y: 26, s: 1.0 },   // u  (flipped: hub down, feet up)
-    ],
-    cam:   { az: 0, el: 4, dist: 240, fov: 35 },
-    light: { az: 40, el: 55, key: 0.9, amb: 0.8 },
+// ================= state =================
+const LETTERS = ['T','a','u'];
+// starting pose per letter (from the design brief), colour, and a place to keep the snapped sprite.
+const S = {
+    T: { rx:-78, ry:0,   rz:0, col:'#6b9eff', sprite:null },
+    a: { rx:0,   ry:36,  rz:0, col:'#ff6b6b', sprite:null },
+    u: { rx:180, ry:-18, rz:0, col:'#6b9eff', sprite:null },
 };
-let P = JSON.parse(JSON.stringify(PRESET));
-let selected = 0;
+const LOOK = { dist:230, laz:40, lel:55, key:0.9, amb:0.8 };
+let cur = 'T';                 // letter being posed
+let view = 'pose';
+let arrSel = 'T';              // selected sprite in Arrange
+// arrange layout: per-letter placement on the compose canvas (canvas px), set by auto-space.
+const A = { T:{x:0,y:0,scale:1}, a:{x:0,y:0,scale:1}, u:{x:0,y:0,scale:1} };
 
-// ---- slider factory ----
+// ================= slider helper =================
 function sliderRow(parent, label, min, max, step, get, set) {
-    const row = document.createElement('div'); row.className = 'row';
-    const lab = document.createElement('label'); lab.textContent = label;
-    const inp = document.createElement('input'); inp.type = 'range'; inp.min = min; inp.max = max; inp.step = step; inp.value = get();
-    const val = document.createElement('span'); val.className = 'val'; val.textContent = get();
-    inp.addEventListener('input', () => { set(parseFloat(inp.value)); val.textContent = inp.value; apply(); });
+    const row = document.createElement('div'); row.className='row';
+    const lab = document.createElement('label'); lab.textContent=label;
+    const inp = document.createElement('input'); inp.type='range'; inp.min=min; inp.max=max; inp.step=step; inp.value=get();
+    const val = document.createElement('span'); val.className='val'; val.textContent=(+get()).toFixed(step<1?2:0);
+    inp.addEventListener('input', () => { set(parseFloat(inp.value)); val.textContent=(+inp.value).toFixed(step<1?2:0); redraw(); });
     row.append(lab, inp, val); parent.appendChild(row);
-    row.sync = () => { inp.value = get(); val.textContent = inp.value; };
+    row.sync = () => { inp.value=get(); val.textContent=(+get()).toFixed(step<1?2:0); };
     return row;
 }
-const rows = [];
-function buildPieceSliders() {
-    const host = document.getElementById('pieceSliders'); host.innerHTML = '';
-    const pp = () => P.pieces[selected];
-    [['tilt (X°)','rx',-180,180,1], ['spin (Y°)','ry',-180,180,1], ['roll (Z°)','rz',-180,180,1],
-     ['height','y',-80,80,1], ['scale','s',0.4,2,0.02]]
-        .forEach(([lab,k,mn,mx,st]) => rows.push(sliderRow(host, lab, mn, mx, st, () => pp()[k], v => pp()[k] = v)));
+const poseRows=[], lightRows=[], arrRows=[];
+function buildPoseSliders() {
+    const host=document.getElementById('poseSliders'); host.innerHTML=''; poseRows.length=0;
+    [['tilt (X°)','rx',-180,180,1],['spin (Y°)','ry',-180,180,1],['roll (Z°)','rz',-180,180,1]]
+        .forEach(([lab,k,mn,mx,st]) => poseRows.push(sliderRow(host,lab,mn,mx,st,()=>S[cur][k],v=>S[cur][k]=v)));
+    poseRows.push(sliderRow(host,'zoom',120,520,2,()=>LOOK.dist,v=>LOOK.dist=v));
+    const li=document.getElementById('lightSliders'); li.innerHTML=''; lightRows.length=0;
+    [['key az°','laz',-180,180,2],['key ht°','lel',5,85,1],['key pwr','key',0,2,0.05],['ambient','amb',0,2,0.05]]
+        .forEach(([lab,k,mn,mx,st]) => lightRows.push(sliderRow(li,lab,mn,mx,st,()=>LOOK[k],v=>LOOK[k]=v)));
 }
-function buildStatic() {
-    const lay = document.getElementById('layoutSliders');
-    [['T ↔ a','k0'], ['a ↔ u','k1']].forEach(([lab, k], i) => {
-        if (!('k0' in P)) { P.k0 = 0; P.k1 = 0; }
-        rows.push(sliderRow(lay, lab, -60, 60, 1, () => P[k] || 0, v => P[k] = v));
-    });
-    const cam = document.getElementById('camSliders');
-    [['azimuth°','az',-180,180,1], ['elevation°','el',-20,80,1], ['distance','dist',100,600,2], ['zoom (fov)','fov',15,70,1]]
-        .forEach(([lab,k,mn,mx,st]) => rows.push(sliderRow(cam, lab, mn, mx, st, () => P.cam[k], v => P.cam[k] = v)));
-    const li = document.getElementById('lightSliders');
-    [['key azimuth°','az',-180,180,2], ['key height°','el',5,85,1], ['key power','key',0,2,0.05], ['ambient','amb',0,2,0.05]]
-        .forEach(([lab,k,mn,mx,st]) => rows.push(sliderRow(li, lab, mn, mx, st, () => P.light[k], v => P.light[k] = v)));
+function buildArrSliders() {
+    const host=document.getElementById('arrangeSliders'); host.innerHTML=''; arrRows.length=0;
+    arrRows.push(sliderRow(host,'size',0.2,3,0.02,()=>A[arrSel].scale,v=>{A[arrSel].scale=v;}));
+    arrRows.push(sliderRow(host,'up / down',-300,300,1,()=>-A[arrSel].y,v=>{A[arrSel].y=-v;}));
 }
-function buildTabs() {
-    const tabs = document.getElementById('tabs'); tabs.innerHTML = '';
-    ['T', 'a', 'u'].forEach((n, i) => {
-        const b = document.createElement('button'); b.textContent = n;
-        if (i === selected) b.classList.add('sel');
-        b.addEventListener('click', () => { selected = i; buildTabs(); buildPieceSliders(); rows.forEach(r => r.sync && r.sync()); });
-        tabs.appendChild(b);
+function syncPose(){ poseRows.forEach(r=>r.sync()); lightRows.forEach(r=>r.sync()); }
+
+// ================= letter tabs =================
+function letterTabs(hostId, onPick, selLetter) {
+    const host=document.getElementById(hostId); host.innerHTML='';
+    LETTERS.forEach(L => {
+        const b=document.createElement('button'); b.textContent=L;
+        if (L===selLetter) b.classList.add('sel');
+        if (S[L].sprite) { const t=document.createElement('span'); t.className='tick'; t.textContent='✓'; b.appendChild(t); }
+        b.addEventListener('click',()=>onPick(L));
+        host.appendChild(b);
     });
 }
-
-// ---- apply parameters to the scene ----
-const D = Math.PI / 180;
-function apply() {
-    P.pieces.forEach((pc, i) => {
-        const o = pieces[i];
-        const kern = i === 0 ? -(P.k0 || 0) : i === 2 ? (P.k1 || 0) : 0;
-        o.position.set(pc.x + kern, pc.y, 0);
-        o.rotation.set(pc.rx * D, pc.ry * D, pc.rz * D);
-        o.scale.setScalar(pc.s);
-    });
-    camera.fov = P.cam.fov;
-    const az = P.cam.az * D, el = P.cam.el * D, d = P.cam.dist;
-    camera.position.set(Math.sin(az) * Math.cos(el) * d, Math.sin(el) * d, Math.cos(az) * Math.cos(el) * d);
-    camera.lookAt(0, 0, 0);
-    camera.updateProjectionMatrix();
-    const laz = P.light.az * D, lel = P.light.el * D;
-    key.position.set(Math.sin(laz) * Math.cos(lel), Math.sin(lel), Math.cos(laz) * Math.cos(lel)).multiplyScalar(200);
-    key.intensity = P.light.key; amb.intensity = P.light.amb;
-    const mode = document.getElementById('bgMode').value;
-    if (mode === 'transparent') { renderer.setClearColor(0x000000, 0); }
-    else if (mode === 'dark') { renderer.setClearColor(0x15181c, 1); }
-    else { renderer.setClearColor(document.getElementById('bgColor').value, 1); }
+function refreshTabs() {
+    letterTabs('letterTabs', L=>{ cur=L; document.getElementById('pieceColor').value=S[L].col; piece.userData.mat.color.set(S[L].col); syncPose(); applyPose(); refreshTabs(); }, cur);
+    letterTabs('arrangeLetterTabs', L=>{ arrSel=L; buildArrSliders(); refreshTabs(); }, arrSel);
+    const at=document.getElementById('arrangeTab');
+    const any = LETTERS.some(L=>S[L].sprite);
+    at.classList.toggle('disabled', !any);
 }
 
-// ---- UI wiring ----
-buildTabs(); buildPieceSliders(); buildStatic();
-document.getElementById('bgMode').addEventListener('change', apply);
-document.getElementById('bgColor').addEventListener('input', apply);
-document.getElementById('pieceColor').addEventListener('input', e => { pieces[selected].userData.mat.color.set(e.target.value); });
-document.getElementById('applyColorAll').addEventListener('click', () => {
-    const c = document.getElementById('pieceColor').value;
-    pieces.forEach(p => p.userData.mat.color.set(c));
-});
-document.getElementById('preset').addEventListener('click', () => {
-    P = JSON.parse(JSON.stringify(PRESET)); rows.forEach(r => r.sync && r.sync()); apply();
-});
-document.getElementById('copyPose').addEventListener('click', () => {
-    const ta = document.getElementById('poseDump'); ta.style.display = 'block';
-    ta.value = JSON.stringify(P); ta.select();
-    navigator.clipboard && navigator.clipboard.writeText(ta.value).catch(() => {});
-});
-// Hi-res export: render once at 3200px wide into the same canvas, grab it, restore.
-document.getElementById('shoot').addEventListener('click', () => {
-    const W = 3200, H = Math.round(W * stage.clientHeight / stage.clientWidth);
-    const pr = renderer.getPixelRatio();
-    renderer.setPixelRatio(1); renderer.setSize(W, H, false);
-    camera.aspect = W / H; camera.updateProjectionMatrix();
-    renderer.render(scene, camera);
-    const a = document.createElement('a');
-    a.download = 'tau-logo.png'; a.href = renderer.domElement.toDataURL('image/png'); a.click();
-    renderer.setPixelRatio(pr); resize();
-});
+// redraw whichever view a slider belongs to
+function redraw(){ if (view==='pose') applyPose(); else drawCompose(); }
 
-// ---- direct manipulation: drag a piece to reposition it, drag empty space to orbit the camera,
-// wheel/pinch to zoom. Pointer Events unify mouse + touch (one code path for both). ----
-const dom = renderer.domElement;
-dom.style.touchAction = 'none';   // we handle drag/pinch ourselves -- stop the browser's own panning/zooming
-dom.style.cursor = 'grab';
-const clamp = (v, mn, mx) => Math.max(mn, Math.min(mx, v));
-const raycaster = new THREE.Raycaster();
-const pointerNDC = new THREE.Vector2();
-const dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);   // pieces all sit at world z=0
-const planeHit = new THREE.Vector3();
-function ndcFromEvent(e) {
-    const r = dom.getBoundingClientRect();
-    pointerNDC.x = ((e.clientX - r.left) / r.width) * 2 - 1;
-    pointerNDC.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+// ================= apply pose to the single live piece =================
+function applyPose() {
+    const p=S[cur];
+    piece.rotation.set(p.rx*D, p.ry*D, p.rz*D);
+    piece.userData.mat.color.set(p.col);
+    camera.position.set(0, 12, LOOK.dist); camera.lookAt(0,0,0); camera.updateProjectionMatrix();
+    const laz=LOOK.laz*D, lel=LOOK.lel*D;
+    key.position.set(Math.sin(laz)*Math.cos(lel), Math.sin(lel), Math.cos(laz)*Math.cos(lel)).multiplyScalar(200);
+    key.intensity=LOOK.key; amb.intensity=LOOK.amb;
 }
-function planeIntersect() { raycaster.setFromCamera(pointerNDC, camera); raycaster.ray.intersectPlane(dragPlane, planeHit); return planeHit; }
 
-const activePointers = new Map();   // pointerId -> {x,y}, tracks up to 2 fingers for pinch-zoom
-let dragMode = null, dragPieceIdx = -1, dragStart = null, dragOrigPos = null;
-let orbitStart = null, orbitOrig = null;
-let pinchStartDist = null, pinchStartCamDist = null;
-
-dom.addEventListener('pointerdown', e => {
-    try { dom.setPointerCapture(e.pointerId); } catch (err) {}   // keeps the drag alive if the pointer strays off-canvas; non-fatal if unsupported
-    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (activePointers.size === 2) {
-        dragMode = null;   // a second finger landed -- hand off from whatever single-pointer drag was starting
-        const pts = [...activePointers.values()];
-        pinchStartDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-        pinchStartCamDist = P.cam.dist;
-        return;
-    }
-    ndcFromEvent(e);
-    raycaster.setFromCamera(pointerNDC, camera);
-    const hits = raycaster.intersectObjects(pieces, true);
-    if (hits.length) {
-        let obj = hits[0].object;
-        while (obj.parent && pieces.indexOf(obj) === -1) obj = obj.parent;
-        const idx = pieces.indexOf(obj);
-        if (idx !== -1) {
-            selected = idx; buildTabs(); buildPieceSliders(); rows.forEach(r => r.sync && r.sync());
-            dragMode = 'piece'; dragPieceIdx = idx;
-            dragStart = planeIntersect().clone();
-            dragOrigPos = { x: P.pieces[idx].x, y: P.pieces[idx].y };
-            dom.style.cursor = 'grabbing';
-            return;
-        }
-    }
-    dragMode = 'orbit';
-    orbitStart = { x: e.clientX, y: e.clientY };
-    orbitOrig = { az: P.cam.az, el: P.cam.el };
-    dom.style.cursor = 'grabbing';
-});
-dom.addEventListener('pointermove', e => {
-    if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (activePointers.size === 2 && pinchStartDist) {
-        const pts = [...activePointers.values()];
-        const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
-        P.cam.dist = clamp(pinchStartCamDist * (pinchStartDist / d), 100, 600);
-        rows.forEach(r => r.sync && r.sync()); apply();
-        return;
-    }
-    if (dragMode === 'piece') {
-        ndcFromEvent(e);
-        const hit = planeIntersect();
-        P.pieces[dragPieceIdx].x = dragOrigPos.x + (hit.x - dragStart.x);
-        P.pieces[dragPieceIdx].y = dragOrigPos.y + (hit.y - dragStart.y);
-        if (selected === dragPieceIdx) rows.forEach(r => r.sync && r.sync());
-        apply();
-    } else if (dragMode === 'orbit') {
-        const dx = e.clientX - orbitStart.x, dy = e.clientY - orbitStart.y;
-        P.cam.az = clamp(orbitOrig.az - dx * 0.3, -180, 180);
-        P.cam.el = clamp(orbitOrig.el + dy * 0.3, -20, 80);
-        rows.forEach(r => r.sync && r.sync()); apply();
-    }
-});
-function endPointer(e) {
-    activePointers.delete(e.pointerId);
-    if (activePointers.size < 2) { pinchStartDist = null; }
-    if (activePointers.size === 0) { dragMode = null; dom.style.cursor = 'grab'; }
+// ================= SNAP: render the piece transparent, crop to its pixels, store as a sprite =================
+function snapCurrent() {
+    const W=1800, H=1800, prevPR=renderer.getPixelRatio();
+    renderer.setPixelRatio(1); renderer.setSize(W,H,false);
+    camera.aspect=1; camera.updateProjectionMatrix();
+    renderer.setClearColor(0x000000, 0); renderer.render(scene, camera);
+    // read pixels via a 2D canvas so we can find the non-transparent bounding box and crop tight.
+    const src=document.createElement('canvas'); src.width=W; src.height=H;
+    const sctx=src.getContext('2d'); sctx.drawImage(glCanvas,0,0,W,H);
+    const data=sctx.getImageData(0,0,W,H).data;
+    let minX=W,minY=H,maxX=-1,maxY=-1;
+    for (let y=0;y<H;y++) for (let x=0;x<W;x++) if (data[(y*W+x)*4+3]>10){ if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y; }
+    resize();
+    if (maxX<0) return;   // nothing rendered
+    const pad=10; minX=Math.max(0,minX-pad); minY=Math.max(0,minY-pad); maxX=Math.min(W-1,maxX+pad); maxY=Math.min(H-1,maxY+pad);
+    const cw=maxX-minX+1, ch=maxY-minY+1;
+    const crop=document.createElement('canvas'); crop.width=cw; crop.height=ch;
+    crop.getContext('2d').drawImage(src, minX,minY,cw,ch, 0,0,cw,ch);
+    const url=crop.toDataURL('image/png');
+    const img=new Image(); img.onload=drawCompose; img.src=url;
+    S[cur].sprite = { url, w:cw, h:ch, img };
+    refreshTabs();
+    autoSpace();
+    // advance to the next letter that still needs snapping
+    const next = LETTERS.find(L=>!S[L].sprite);
+    if (next) { cur=next; document.getElementById('pieceColor').value=S[cur].col; syncPose(); applyPose(); refreshTabs(); }
+    else setView('arrange');
 }
-dom.addEventListener('pointerup', endPointer);
-dom.addEventListener('pointercancel', endPointer);
-dom.addEventListener('wheel', e => {
-    e.preventDefault();
-    P.cam.dist = clamp(P.cam.dist + e.deltaY * 0.4, 100, 600);
-    rows.forEach(r => r.sync && r.sync()); apply();
-}, { passive: false });
+
+// ================= ARRANGE (2D compose) =================
+const composeCanvas = document.getElementById('composeCanvas');
+const cctx = composeCanvas.getContext('2d');
+function placed(){ return LETTERS.filter(L=>S[L].sprite); }
+// Fit all sprites to a common display height, lay them left-to-right centred on the canvas.
+function autoSpace() {
+    const list=placed(); if(!list.length) return;
+    const cw=composeCanvas.width/ (window.devicePixelRatio||1), ch=composeCanvas.height/(window.devicePixelRatio||1);
+    let targetH = Math.min(ch*0.5, 260);
+    const spriteW=L=>S[L].sprite.w*(targetH/S[L].sprite.h);
+    const rowW=()=>list.reduce((s,L)=>s+spriteW(L),0) + targetH*0.06*(list.length-1);
+    // if the row is wider than the canvas, shrink the common height until it fits
+    if (rowW() > cw*0.9) targetH *= (cw*0.9)/rowW();
+    const scales={}; let totalW=0;
+    for (const L of list){ scales[L]=targetH/S[L].sprite.h; totalW += S[L].sprite.w*scales[L]; }
+    const gap = targetH*0.06; totalW += gap*(list.length-1);
+    let x=(cw-totalW)/2;
+    for (const L of list){ const s=scales[L]; A[L].scale=s; A[L].x=x; A[L].y=(ch-S[L].sprite.h*s)/2 - ch/2 + 0; x += S[L].sprite.w*s + gap; }
+    // store y as offset from vertical centre so the up/down slider is intuitive
+    for (const L of list){ A[L].y = 0; }
+    drawCompose();
+    if (arrRows.length) arrRows.forEach(r=>r.sync());
+}
+function drawCompose() {
+    if (view!=='arrange') return;
+    const dpr=window.devicePixelRatio||1, cw=composeCanvas.width/dpr, ch=composeCanvas.height/dpr;
+    cctx.setTransform(dpr,0,0,dpr,0,0);
+    cctx.clearRect(0,0,cw,ch);
+    const mode=document.getElementById('bgMode').value;
+    if (mode==='dark'){ cctx.fillStyle='#15181c'; cctx.fillRect(0,0,cw,ch); }
+    else if (mode==='custom'){ cctx.fillStyle=document.getElementById('bgColor').value; cctx.fillRect(0,0,cw,ch); }
+    else { // checkerboard so a transparent export is obvious on screen
+        const t=12; for(let y=0;y<ch;y+=t) for(let x=0;x<cw;x+=t){ cctx.fillStyle=((x/t+y/t)&1)?'#1c2026':'#222831'; cctx.fillRect(x,y,t,t); }
+    }
+    for (const L of placed()){
+        const sp=S[L].sprite, a=A[L]; if(!sp.img.complete) continue;
+        const w=sp.w*a.scale, h=sp.h*a.scale;
+        cctx.drawImage(sp.img, a.x, ch/2 + a.y - h/2, w, h);
+        if (L===arrSel){ cctx.strokeStyle='rgba(107,158,255,0.8)'; cctx.lineWidth=1.5; cctx.setLineDash([5,4]);
+            cctx.strokeRect(a.x, ch/2 + a.y - h/2, w, h); cctx.setLineDash([]); }
+    }
+}
+function spriteRect(L){ const sp=S[L].sprite,a=A[L]; const dpr=window.devicePixelRatio||1, ch=composeCanvas.height/dpr;
+    const w=sp.w*a.scale,h=sp.h*a.scale; return { x:a.x, y:ch/2+a.y-h/2, w, h }; }
+
+// ================= view switching =================
+function setView(v) {
+    if (v==='arrange' && !placed().length) return;
+    view=v;
+    document.querySelectorAll('#viewTabs button').forEach(b=>b.classList.toggle('sel', b.dataset.v===v));
+    document.getElementById('posePanel').style.display = v==='pose'?'':'none';
+    document.getElementById('arrangePanel').style.display = v==='arrange'?'':'none';
+    glCanvas.style.display = v==='pose'?'':'none';
+    composeCanvas.style.display = v==='arrange'?'':'none';
+    document.getElementById('stageHint').textContent = v==='pose'
+        ? 'Drag to turn · wheel/pinch to zoom' : 'Drag a cut-out to move it';
+    if (v==='arrange'){ if(!placed().includes(arrSel)) arrSel=placed()[0]; buildArrSliders(); refreshTabs();
+        if (A[placed()[0]].x===0 && A[placed()[0]].scale===1) autoSpace(); else drawCompose(); }
+    else { applyPose(); refreshTabs(); }
+}
+
+// ================= drag: pose (turn piece / zoom) and arrange (move sprites) =================
+const clamp=(v,mn,mx)=>Math.max(mn,Math.min(mx,v));
+const ptrs=new Map(); let mode=null, dragL=null, dragOff=null, orbitStart=null, orbitOrig=null, pinchD=null, pinchZ=null;
+function evXY(e){ const r=stage.getBoundingClientRect(); return { x:e.clientX-r.left, y:e.clientY-r.top }; }
+stage.addEventListener('pointerdown', e=>{
+    try{ stage.setPointerCapture(e.pointerId); }catch(err){}
+    ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if (ptrs.size===2){ mode=null; const p=[...ptrs.values()]; pinchD=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);
+        pinchZ = view==='pose'? LOOK.dist : A[arrSel].scale; return; }
+    const q=evXY(e);
+    if (view==='pose'){ mode='orbit'; orbitStart={x:e.clientX,y:e.clientY}; orbitOrig={rx:S[cur].rx,ry:S[cur].ry}; }
+    else { // arrange: pick topmost sprite under the pointer
+        const list=placed(); let hit=null;
+        for (let i=list.length-1;i>=0;i--){ const R=spriteRect(list[i]);
+            if (q.x>=R.x&&q.x<=R.x+R.w&&q.y>=R.y&&q.y<=R.y+R.h){ hit=list[i]; break; } }
+        if (hit){ arrSel=hit; buildArrSliders(); refreshTabs(); mode='sprite'; dragL=hit; dragOff={x:q.x-A[hit].x, y:q.y-(A[hit].y)}; drawCompose(); }
+    }
+});
+stage.addEventListener('pointermove', e=>{
+    if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if (ptrs.size===2 && pinchD){ const p=[...ptrs.values()]; const d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)||1;
+        if (view==='pose'){ LOOK.dist=clamp(pinchZ*(pinchD/d),120,520); syncPose(); applyPose(); }
+        else { A[arrSel].scale=clamp(pinchZ*(d/pinchD),0.1,4); arrRows.forEach(r=>r.sync()); drawCompose(); } return; }
+    if (mode==='orbit'){ const dx=e.clientX-orbitStart.x, dy=e.clientY-orbitStart.y;
+        S[cur].ry=clamp(orbitOrig.ry - dx*0.4,-180,180); S[cur].rx=clamp(orbitOrig.rx + dy*0.4,-180,180); syncPose(); applyPose(); }
+    else if (mode==='sprite'){ const q=evXY(e); const dpr=window.devicePixelRatio||1, ch=composeCanvas.height/dpr;
+        A[dragL].x=q.x-dragOff.x; A[dragL].y=q.y-dragOff.y; drawCompose(); }
+});
+function endPtr(e){ ptrs.delete(e.pointerId); if(ptrs.size<2) pinchD=null; if(ptrs.size===0) mode=null; }
+stage.addEventListener('pointerup', endPtr); stage.addEventListener('pointercancel', endPtr);
+stage.addEventListener('wheel', e=>{ e.preventDefault();
+    if (view==='pose'){ LOOK.dist=clamp(LOOK.dist+e.deltaY*0.4,120,520); syncPose(); applyPose(); }
+    else { A[arrSel].scale=clamp(A[arrSel].scale*(e.deltaY>0?0.94:1.06),0.1,4); arrRows.forEach(r=>r.sync()); drawCompose(); }
+}, {passive:false});
+
+// ================= export the arranged logo =================
+function exportLogo() {
+    const list=placed(); if(!list.length) return;
+    let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+    for (const L of list){ const w=S[L].sprite.w*A[L].scale, h=S[L].sprite.h*A[L].scale;
+        minX=Math.min(minX,A[L].x); maxX=Math.max(maxX,A[L].x+w);
+        minY=Math.min(minY,A[L].y-h/2); maxY=Math.max(maxY,A[L].y+h/2); }
+    const pad=Math.max(20, (maxX-minX)*0.03);
+    const OW=(maxX-minX+pad*2), OH=(maxY-minY+pad*2);
+    const scale=Math.min(4, 3000/OW);   // upscale toward ~3000px wide, capped
+    const out=document.createElement('canvas'); out.width=Math.round(OW*scale); out.height=Math.round(OH*scale);
+    const octx=out.getContext('2d');
+    const mode=document.getElementById('bgMode').value;
+    if (mode==='dark'){ octx.fillStyle='#15181c'; octx.fillRect(0,0,out.width,out.height); }
+    else if (mode==='custom'){ octx.fillStyle=document.getElementById('bgColor').value; octx.fillRect(0,0,out.width,out.height); }
+    for (const L of list){ const sp=S[L].sprite,w=sp.w*A[L].scale,h=sp.h*A[L].scale;
+        octx.drawImage(sp.img, (A[L].x-minX+pad)*scale, (A[L].y-h/2-minY+pad)*scale, w*scale, h*scale); }
+    const a=document.createElement('a'); a.download='tau-logo.png'; a.href=out.toDataURL('image/png'); a.click();
+}
+
+// ================= wiring =================
+document.querySelectorAll('#viewTabs button').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.v)));
+document.getElementById('snapBtn').addEventListener('click', snapCurrent);
+document.getElementById('exportBtn').addEventListener('click', exportLogo);
+document.getElementById('flipBtn').addEventListener('click', ()=>{ S[cur].rx=((S[cur].rx+180+540)%360)-180; syncPose(); applyPose(); });
+document.getElementById('resetPoseBtn').addEventListener('click', ()=>{ const d={T:{rx:-78,ry:0,rz:0},a:{rx:0,ry:36,rz:0},u:{rx:180,ry:-18,rz:0}}[cur]; Object.assign(S[cur],d); syncPose(); applyPose(); });
+document.getElementById('alignBtn').addEventListener('click', autoSpace);
+document.getElementById('reposeBtn').addEventListener('click', ()=>{ cur=arrSel; document.getElementById('pieceColor').value=S[cur].col; syncPose(); setView('pose'); });
+document.getElementById('pieceColor').addEventListener('input', e=>{ S[cur].col=e.target.value; piece.userData.mat.color.set(e.target.value); });
+document.getElementById('bgMode').addEventListener('change', drawCompose);
+document.getElementById('bgColor').addEventListener('input', drawCompose);
 
 function resize() {
-    const w = stage.clientWidth, h = stage.clientHeight;
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h; camera.updateProjectionMatrix();
-    apply();
+    const w=stage.clientWidth, h=stage.clientHeight, dpr=Math.min(window.devicePixelRatio||1,2);
+    renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
+    composeCanvas.width=Math.round(w*dpr); composeCanvas.height=Math.round(h*dpr);
+    if (view==='pose') applyPose(); else drawCompose();
 }
 addEventListener('resize', resize);
-resize();
-(function loop() { requestAnimationFrame(loop); renderer.render(scene, camera); })();
+buildPoseSliders(); document.getElementById('pieceColor').value=S[cur].col; refreshTabs(); resize();
+document.getElementById('stageHint').textContent='Drag to turn · wheel/pinch to zoom';
+(function loop(){ requestAnimationFrame(loop); if(view==='pose') renderer.render(scene,camera); })();
 </script>
 </body>
 </html>
