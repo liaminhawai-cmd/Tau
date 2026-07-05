@@ -9,11 +9,11 @@
                 font-family:Arial, sans-serif; color:#e6e6e6; overflow:hidden; }
     #wrap { display:flex; flex-direction:column; align-items:center; height:100%; }
     h1 { margin:6px 0 2px; letter-spacing:6px; font-weight:300; font-size:22px; line-height:0; }
-    /* The wordmark: three real pieces held at angles that read "Tau" (see logo_studio.html),
-       rendered live in 3D so the colour can breathe blue<->red. The page chrome is always dark,
-       so the pieces sit on it directly. #logoImg is a static fallback if WebGL is unavailable. */
-    #logoCanvas { display:block; width:216px; max-width:60vw; height:auto; background:#15181c; }
-    #logoImg { display:none; width:190px; max-width:58vw; height:auto; }   /* shown by JS only if WebGL fails */
+    /* The wordmark: three real pieces held at angles that read "Tau" (see logo_studio.html), baked
+       into tau-logo.png and tinted live on a 2D canvas so the colour can signal state. Transparent
+       background blends with the dark chrome. #logoFallback is a plain text mark if the image fails. */
+    #logoCanvas { display:block; width:236px; max-width:62vw; aspect-ratio:1100/309; height:auto; background:transparent; }
+    #logoFallback { display:none; letter-spacing:6px; font-weight:300; font-size:22px; }
     canvas { background:#0c0e11; touch-action:none; display:block; }
     #views { display:flex; gap:10px; align-items:flex-start; justify-content:center; flex-wrap:wrap; }
     #view3d { border:1px solid #2c3138; border-radius:4px; }
@@ -112,9 +112,9 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 27</div>
+<div id="buildTag">build 28</div>
 <div id="wrap">
-    <h1><canvas id="logoCanvas" width="216" height="72"></canvas><img id="logoImg" src="tau-logo.png" alt="Tau" hidden></h1>
+    <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
         <div id="demoViews">
             <canvas id="demoCanvas" width="240" height="240"></canvas>
@@ -3584,67 +3584,51 @@ resize();
 animate();
 demoStart();
 
-// ---------- Live menu logo: three real pieces posed to read "T a u" ----------
-// One scene, the three pieces placed close together (like the exported wordmark), rendered live so
-// the colour can signal state: soft-white breathing on the main menu, your side's colour in a game,
-// a searching-pulse while matchmaking. Poses are the exact values dialled in logo_studio.html. Falls
-// back to the static PNG if WebGL is unavailable.
+// ---------- Menu logo: the composed wordmark (tau-logo.png), tinted live to signal state ----------
+// The three posed pieces are baked into one cleanly laid-out PNG (logo_studio.html did the spacing);
+// here we just draw it and multiply a state colour over it each frame — multiply keeps the 3D shading
+// while changing the hue. Colour signals: soft breath on the main menu, YOUR side's colour in a game,
+// a searching-pulse while matchmaking. Falls back to a plain "TAU" if the image can't load.
 (function initMenuLogo(){
-    const canvas = document.getElementById('logoCanvas'), fallback = document.getElementById('logoImg');
-    const fail = () => { if (canvas) canvas.style.display='none'; if (fallback) fallback.style.display='block'; };
-    if (typeof THREE === 'undefined' || !canvas) { fail(); return; }
-    let lr;
-    try { lr = new THREE.WebGLRenderer({ canvas, antialias:true }); }
-    catch(e) { fail(); return; }
-    lr.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
-    lr.setClearColor(0x15181c, 1);   // match the page chrome so the mark blends (no alpha-compositing needed)
-    const D = Math.PI/180, H = CFG.hubHeight;
-    const lscene = new THREE.Scene();
-    lscene.add(new THREE.HemisphereLight(0xffffff, 0x2a2e33, 0.85));        // ambient (studio "ambient")
-    const key = new THREE.DirectionalLight(0xffffff, 0.95);                 // key light at az 40 / el 20
-    key.position.set(Math.sin(40*D)*Math.cos(20*D), Math.sin(20*D), Math.cos(40*D)*Math.cos(20*D)).multiplyScalar(200);
-    lscene.add(key);
-    const lcam = new THREE.PerspectiveCamera(32, 3, 1, 4000);
-    lcam.position.set(0, 3, 235); lcam.lookAt(0, 3, 0);
-    const ORDER = ['T','a','u'], POSES = { T:[-54,-31,0], a:[-6,2,0], u:[174,-65,0] };
-    // [worldX, worldY, scale] — tuned so the three sit close together like the exported wordmark
-    const LAY = { T:[-98, 5, 2.28], a:[2, 9, 2.18], u:[102, -3, 2.18] };
-    const holders = {};
-    for (const L of ORDER) {
-        const holder = new THREE.Group();
-        const trip = buildTripod(0x6b9eff); trip.position.y = -H/2; holder.add(trip);
-        const p = POSES[L]; holder.rotation.set(p[0]*D, p[1]*D, p[2]*D);
-        const l = LAY[L]; holder.position.set(l[0], l[1], 0); holder.scale.setScalar(l[2]);
-        holder.userData.mat = trip.userData.mat;
-        lscene.add(holder); holders[L] = holder;
-    }
-    const BLUE = new THREE.Color(0x6b9eff), RED = new THREE.Color(0xff6b6b), WHITE = new THREE.Color(0xe8ebef), tmp = new THREE.Color();
-    // Pick a colour for piece i at time t, from the current game state.
-    function logoColor(i, t) {
+    const canvas = document.getElementById('logoCanvas'), fallback = document.getElementById('logoFallback');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.onerror = () => { canvas.style.display='none'; if (fallback) fallback.style.display='inline'; };
+    img.src = 'tau-logo.png';
+    const BLUE=[107,158,255], RED=[255,107,107], WHITE=[232,235,239];
+    const lerp=(a,b,t)=>[a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t];
+    // A single colour for the whole wordmark, from the current game state.
+    function stateColor(t){
         const gameOn = document.getElementById('game').style.display === 'flex';
         if (gameOn && typeof onlineMatch!=='undefined' && onlineMatch && !onlineMatch.spectator)
-            return onlineMatch.myColor==='blue' ? BLUE : RED;                       // online: your side
+            return onlineMatch.myColor==='blue' ? BLUE : RED;                      // online: your side
         if (gameOn && typeof onlineMatch!=='undefined' && onlineMatch && onlineMatch.spectator)
-            return tmp.copy(BLUE).lerp(RED, 0.5+0.5*Math.sin(t*0.3 - i*0.6));       // spectating: slow blue<->red
+            return lerp(BLUE, RED, 0.5+0.5*Math.sin(t*0.3));                       // spectating: slow blue<->red
         if (gameOn && typeof vsAI!=='undefined' && vsAI)
-            return (typeof humanIdx!=='undefined' && humanIdx===1) ? RED : BLUE;    // vs AI: your side
+            return (typeof humanIdx!=='undefined' && humanIdx===1) ? RED : BLUE;   // vs AI: your side
         if (gameOn)
-            return (typeof G!=='undefined' && G && G.active===1) ? RED : BLUE;      // local: whose turn it is
+            return (typeof G!=='undefined' && G && G.active===1) ? RED : BLUE;     // local: whose turn it is
         if (typeof matchmakingActive!=='undefined' && matchmakingActive)
-            return tmp.copy(WHITE).lerp(BLUE, 0.55*(0.5+0.5*Math.sin(t*2.0)));      // lobby: searching pulse
-        const b = Math.sin(t*0.22 - i*0.5);                                         // main menu: soft white, slow breath
-        return tmp.copy(WHITE).lerp(b>0?BLUE:RED, 0.16*Math.abs(b));
+            return lerp(WHITE, BLUE, 0.5+0.5*Math.sin(t*2.0));                     // lobby: searching pulse
+        const b = Math.sin(t*0.22);                                                // main menu: soft, slow breath
+        return lerp(WHITE, b>0?BLUE:RED, 0.32*Math.abs(b));
     }
-    function resizeLogo(){ const w=canvas.clientWidth||216, h=canvas.clientHeight||72;
-        lr.setSize(w, h, false); lcam.aspect = w/h; lcam.updateProjectionMatrix(); }
-    resizeLogo(); window.addEventListener('resize', resizeLogo);
     const t0 = performance.now();
-    (function logoFrame(){
-        requestAnimationFrame(logoFrame);
-        if (document.hidden) return;
-        const time = (performance.now()-t0)/1000;
-        for (let i=0;i<3;i++) holders[ORDER[i]].userData.mat.color.copy(logoColor(i, time));
-        lr.render(lscene, lcam);
+    (function draw(){
+        requestAnimationFrame(draw);
+        if (document.hidden || !img.complete || !img.naturalWidth) return;
+        const dpr = Math.min(window.devicePixelRatio||1, 2);
+        const cw = canvas.clientWidth, ch = canvas.clientHeight; if (!cw || !ch) return;
+        if (canvas.width !== Math.round(cw*dpr)) { canvas.width = Math.round(cw*dpr); canvas.height = Math.round(ch*dpr); }
+        const c = stateColor((performance.now()-t0)/1000);
+        const s = Math.min(cw/img.naturalWidth, ch/img.naturalHeight);
+        const w = img.naturalWidth*s, h = img.naturalHeight*s, x = (cw-w)/2, y = (ch-h)/2;
+        ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,cw,ch);
+        ctx.globalCompositeOperation='source-over'; ctx.drawImage(img, x, y, w, h);          // shaded grey wordmark
+        ctx.globalCompositeOperation='multiply';    ctx.fillStyle=`rgb(${c[0]|0},${c[1]|0},${c[2]|0})`; ctx.fillRect(x,y,w,h);
+        ctx.globalCompositeOperation='destination-in'; ctx.drawImage(img, x, y, w, h);        // clip the tint to the wordmark
+        ctx.globalCompositeOperation='source-over';
     })();
 })();
 </script>
