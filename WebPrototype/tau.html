@@ -112,7 +112,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 26</div>
+<div id="buildTag">build 27</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="216" height="72"></canvas><img id="logoImg" src="tau-logo.png" alt="Tau" hidden></h1>
     <div id="menu">
@@ -1257,10 +1257,15 @@ const CFG = {
     // grace and the can't-COME-TO-REST-on-a-line check. Kept small: the full footprint made resting
     // near an arc trip the rest check on lots of otherwise-legal arc swings.
     crossEps: 0.4,
-    // Footprint radius, used ONLY to stop a foot before its PAD touches a not-yet-crossed line once
-    // the turn's one crossing is spent -- a real magnet-foot has width, so it should halt when its
-    // edge reaches that second line, not when its centre does. Bigger than crossEps on purpose.
-    touchEps: 1.2,
+    // Footprint radius: how close a foot's PAD counts as "on a line". Used to keep a crossing episode
+    // open (so a genuine continuous double-cross reads as one crossing) and to stop a foot before its
+    // pad touches a not-yet-crossed line once the turn's crossing is spent. Set to the real pad+line
+    // geometry (pad radius ~0.55 + half line width ~0.26 ~= 0.8): a wider band (was 1.2) let a foot's
+    // fat pad bridge the gap between two SEPARATE crossings, so a casual "left foot over one line, then
+    // right foot over the other" chained into one crossing. At 0.8 that gap registers and the second is
+    // a second crossing (blocked) -- you now have to genuinely keep a foot on a line the whole way to
+    // pull off the double-cross, exactly like the physical game.
+    touchEps: 0.8,
     substepDeg: 0.4,
     minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
     lockDeg: 2,                    // net rotation before the one-direction-per-turn lock engages
@@ -3579,10 +3584,11 @@ resize();
 animate();
 demoStart();
 
-// ---------- Live menu logo: three real pieces posed to read "T a u", colour breathing blue<->red ----------
-// Rendered as three sub-viewports of one small canvas (each piece centred in its own third, exactly
-// how logo_studio.html frames a single piece), so no 3D layout math is needed. Poses are the exact
-// values dialled in the studio. Falls back to the static PNG if WebGL is unavailable.
+// ---------- Live menu logo: three real pieces posed to read "T a u" ----------
+// One scene, the three pieces placed close together (like the exported wordmark), rendered live so
+// the colour can signal state: soft-white breathing on the main menu, your side's colour in a game,
+// a searching-pulse while matchmaking. Poses are the exact values dialled in logo_studio.html. Falls
+// back to the static PNG if WebGL is unavailable.
 (function initMenuLogo(){
     const canvas = document.getElementById('logoCanvas'), fallback = document.getElementById('logoImg');
     const fail = () => { if (canvas) canvas.style.display='none'; if (fallback) fallback.style.display='block'; };
@@ -3598,39 +3604,47 @@ demoStart();
     const key = new THREE.DirectionalLight(0xffffff, 0.95);                 // key light at az 40 / el 20
     key.position.set(Math.sin(40*D)*Math.cos(20*D), Math.sin(20*D), Math.cos(40*D)*Math.cos(20*D)).multiplyScalar(200);
     lscene.add(key);
-    const lcam = new THREE.PerspectiveCamera(32, 1, 1, 4000);
-    lcam.position.set(0, 12, 235); lcam.lookAt(0,0,0);
+    const lcam = new THREE.PerspectiveCamera(32, 3, 1, 4000);
+    lcam.position.set(0, 3, 235); lcam.lookAt(0, 3, 0);
     const ORDER = ['T','a','u'], POSES = { T:[-54,-31,0], a:[-6,2,0], u:[174,-65,0] };
+    // [worldX, worldY, scale] — tuned so the three sit close together like the exported wordmark
+    const LAY = { T:[-98, 5, 2.28], a:[2, 9, 2.18], u:[102, -3, 2.18] };
     const holders = {};
     for (const L of ORDER) {
         const holder = new THREE.Group();
         const trip = buildTripod(0x6b9eff); trip.position.y = -H/2; holder.add(trip);
         const p = POSES[L]; holder.rotation.set(p[0]*D, p[1]*D, p[2]*D);
+        const l = LAY[L]; holder.position.set(l[0], l[1], 0); holder.scale.setScalar(l[2]);
         holder.userData.mat = trip.userData.mat;
         lscene.add(holder); holders[L] = holder;
     }
-    const BLUE = new THREE.Color(0x6b9eff), RED = new THREE.Color(0xff6b6b), tmp = new THREE.Color();
-    function resizeLogo(){ lr.setSize(canvas.clientWidth || 216, canvas.clientHeight || 72, false); }
+    const BLUE = new THREE.Color(0x6b9eff), RED = new THREE.Color(0xff6b6b), WHITE = new THREE.Color(0xe8ebef), tmp = new THREE.Color();
+    // Pick a colour for piece i at time t, from the current game state.
+    function logoColor(i, t) {
+        const gameOn = document.getElementById('game').style.display === 'flex';
+        if (gameOn && typeof onlineMatch!=='undefined' && onlineMatch && !onlineMatch.spectator)
+            return onlineMatch.myColor==='blue' ? BLUE : RED;                       // online: your side
+        if (gameOn && typeof onlineMatch!=='undefined' && onlineMatch && onlineMatch.spectator)
+            return tmp.copy(BLUE).lerp(RED, 0.5+0.5*Math.sin(t*0.3 - i*0.6));       // spectating: slow blue<->red
+        if (gameOn && typeof vsAI!=='undefined' && vsAI)
+            return (typeof humanIdx!=='undefined' && humanIdx===1) ? RED : BLUE;    // vs AI: your side
+        if (gameOn)
+            return (typeof G!=='undefined' && G && G.active===1) ? RED : BLUE;      // local: whose turn it is
+        if (typeof matchmakingActive!=='undefined' && matchmakingActive)
+            return tmp.copy(WHITE).lerp(BLUE, 0.55*(0.5+0.5*Math.sin(t*2.0)));      // lobby: searching pulse
+        const b = Math.sin(t*0.22 - i*0.5);                                         // main menu: soft white, slow breath
+        return tmp.copy(WHITE).lerp(b>0?BLUE:RED, 0.16*Math.abs(b));
+    }
+    function resizeLogo(){ const w=canvas.clientWidth||216, h=canvas.clientHeight||72;
+        lr.setSize(w, h, false); lcam.aspect = w/h; lcam.updateProjectionMatrix(); }
     resizeLogo(); window.addEventListener('resize', resizeLogo);
     const t0 = performance.now();
     (function logoFrame(){
         requestAnimationFrame(logoFrame);
-        if (document.getElementById('menu').style.display === 'none') return;   // only animate on the menu
-        const w = canvas.clientWidth, h = canvas.clientHeight, third = w/3;
-        if (!w || !h) return;
-        lcam.aspect = third/h; lcam.updateProjectionMatrix();
+        if (document.hidden) return;
         const time = (performance.now()-t0)/1000;
-        lr.setScissorTest(true);
-        for (let i=0;i<3;i++){
-            const L = ORDER[i];
-            const mix = 0.5 + 0.5*Math.sin(time*0.6 - i*0.7);   // slow ~10s cycle, flowing across the word
-            holders[L].userData.mat.color.copy(tmp.copy(BLUE).lerp(RED, mix));
-            for (const k of ORDER) holders[k].visible = (k===L);
-            lr.setViewport(i*third, 0, third, h);
-            lr.setScissor(i*third, 0, third, h);
-            lr.render(lscene, lcam);
-        }
-        lr.setScissorTest(false);
+        for (let i=0;i<3;i++) holders[ORDER[i]].userData.mat.color.copy(logoColor(i, time));
+        lr.render(lscene, lcam);
     })();
 })();
 </script>
