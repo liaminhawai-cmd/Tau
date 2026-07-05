@@ -106,7 +106,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 20</div>
+<div id="buildTag">build 21</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -1254,11 +1254,12 @@ const CFG = {
     // the turn's one crossing is spent -- a real magnet-foot has width, so it should halt when its
     // edge reaches that second line, not when its centre does. Bigger than crossEps on purpose.
     touchEps: 1.2,
-    // How close a foot's SECOND line-crossing (of the OTHER family: ring vs side-arc) can be to its
-    // first and still count as the SAME crossing -- i.e. crossing a ring∩arc intersection even when
-    // the two lines aren't cleared in the exact same sub-degree substep. This is what lets a foot
-    // be walked through an intersection into the nook beyond without needing a pixel-perfect cross.
-    intersectMergeDist: 8,
+    // How close BOTH of a foot's two line-crossings must be to a true ring∩arc intersection point
+    // to count as ONE crossing (crossing the corner where the lines meet) rather than two (cutting
+    // across the corner region). ~footprint-sized: pass your pad over the meeting point and it's one;
+    // clip the corner a few units away and it's two. Bigger merged corner-cuts that shouldn't (build
+    // 18 used 8u measured between the two crossings, which let a foot skip a cell at the corner).
+    intersectMergeDist: 2.5,
     substepDeg: 0.4,
     minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
     lockDeg: 2,                    // net rotation before the one-direction-per-turn lock engages
@@ -1288,6 +1289,22 @@ CFG.startDots = (() => {
 })();
 CFG.padRadius = CFG.edgeU * CFG.padRadiusFrac;
 CFG.footPadRadius = CFG.legRadius * CFG.footPadFrac;
+// The actual points where a ring and a side arc MEET. Crossing counts as one only if the foot
+// passes through such a point (within intersectMergeDist); cutting the corner a few units off
+// crosses two separate lines and costs two. (angInSpan is hoisted, so it's callable here.)
+CFG.intersections = (() => {
+    const out = [];
+    for (const R of CFG.rings) for (const a of CFG.sideArcs) {   // arc centres are on the x-axis (cy=0)
+        const x = (R*R + a.cx*a.cx - a.r*a.r) / (2*a.cx);
+        const y2 = R*R - x*x;
+        if (y2 < 0) continue;
+        const y = Math.sqrt(y2);
+        for (const yy of (y > 1e-6 ? [y, -y] : [0])) {
+            if (angInSpan(Math.atan2(yy - a.cy, x - a.cx) * 180/Math.PI, a.a0, a.a1)) out.push({ x, y: yy });
+        }
+    }
+    return out;
+})();
 
 const norm  = a => { while (a > Math.PI) a -= 2*Math.PI; while (a < -Math.PI) a += 2*Math.PI; return a; };
 const radU  = p => Math.hypot(p.x, p.y);
@@ -1559,9 +1576,10 @@ function pinFoot(idx) {
 // few substeps for the cost of one crossing, and exempts it from the touch-stop there.
 function isIntersectionMerge(i, pos, lineIds) {
     const cp = G.crossPt[i]; if (!cp) return false;
-    if (Math.hypot(pos.x-cp.x, pos.y-cp.y) > CFG.intersectMergeDist) return false;
     const otherFam = G.crossFam[i]==='r' ? 'a' : 'r';
-    return lineIds.some(id => id[0]===otherFam);
+    if (!lineIds.some(id => id[0]===otherFam)) return false;   // must be crossing the OTHER family (ring vs arc)
+    const d = CFG.intersectMergeDist;                          // AND both crossings must hug the SAME true meeting point
+    return CFG.intersections.some(P => Math.hypot(pos.x-P.x, pos.y-P.y) < d && Math.hypot(cp.x-P.x, cp.y-P.y) < d);
 }
 function applySwing(dA) {
     if (dA===0 || !G.pivot) return;   // no pivot: a stale animation tick raced a reset — ignore it
