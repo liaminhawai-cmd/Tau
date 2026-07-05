@@ -112,7 +112,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 28</div>
+<div id="buildTag">build 29</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -1637,15 +1637,21 @@ function aiSwingDir(dir) {
     }
     return G.netRad;
 }
-// Four difficulties (menu labels in brackets):
-//   'dumb' [Easy]      — the landing demo's wobbly brain: heuristic pivot/direction, but stops a
-//                        random 60-90% short of the natural limit, so it never commits fully.
-//   'easy' [Medium]    — same heuristic, always swings to the natural limit.
-//   'zone' [Hard]      — 1-ply cell-value scoring over all 6 (pivot × direction) swings.
-//   'hard' [Very hard] — 2-ply minimax through the human's best reply.
-// zone/hard return a searched plan ({ pivotIdx, dir, targetRad }); dumb/easy fall through to the
-// heuristic (null), with dumb applying the random stop-short fraction.
-function searchedPlanFor(difficulty, aiIdx){ return difficulty==='hard' ? aiChoosePlanHard(aiIdx) : difficulty==='zone' ? aiChoosePlanZone(aiIdx) : null; }
+// Five difficulties (menu labels in brackets):
+//   'dumb'   [Easy]      — the landing demo's wobbly brain: heuristic pivot/direction, but stops a
+//                          random 60-90% short of the natural limit, so it never commits fully.
+//   'easy'   [Medium]    — same heuristic, always swings to the natural limit.
+//   'zone'   [Hard]      — 1-ply cell-value scoring over all 6 (pivot × direction) swings.
+//   'hard'   [Very hard] — 2-ply minimax through the human's best reply.
+//   'master' [Expert]    — 3-ply minimax: my move, the human's best reply, THEN my best follow-up —
+//                          so it won't take a move that looks good now but walks into a bad reply.
+// zone/hard/master return a searched plan ({ pivotIdx, dir, targetRad }); dumb/easy fall through to
+// the heuristic (null), with dumb applying the random stop-short fraction.
+function searchedPlanFor(difficulty, aiIdx){
+    return difficulty==='master' ? aiChoosePlanMaster(aiIdx)
+         : difficulty==='hard'   ? aiChoosePlanHard(aiIdx)
+         : difficulty==='zone'   ? aiChoosePlanZone(aiIdx) : null;
+}
 function aiStopFrac(){ return aiDifficulty==='dumb' ? 0.6 + Math.random()*0.3 : 1; }
 // runs one full AI move to completion synchronously — used by headless tests (one call = one full turn).
 function aiTakeTurnSync() {
@@ -1739,6 +1745,62 @@ function aiChoosePlanHard(aiIdx){
                 if (m < worst) worst = m;
             }
             score = worst === Infinity ? marginFor(aiIdx) : worst;   // human had no legal reply — take my own position
+        }
+        if (!best || score > best.score) best = { pivotIdx: mp, dir: md, targetRad: Math.abs(net), score };
+    }
+    restore(snap0); G.active = origActive;
+    return best;
+}
+
+// ---------- "Master" AI: 3-ply minimax (me, human's best reply, then my best follow-up) ----------
+// Same shape as Hard, one ply deeper: instead of scoring a move by the margin left after the
+// human's best reply, it scores by the BEST margin I can still reach after that reply — so a move
+// that looks strong right now but only leads to a cramped follow-up loses to one that looks merely
+// okay now but keeps a strong follow-up alive. Any node that's already a forced win/loss (a foot off
+// the board) short-circuits immediately rather than searching deeper from there.
+function aiChoosePlanMaster(aiIdx){
+    const humanIdx = 1 - aiIdx, origActive = G.active;
+    const snap0 = takeSnap();
+    const restore = (snap) => {
+        G.pieces.forEach((p,i)=>{ p.x=snap[i].x; p.y=snap[i].y; p.rot=snap[i].rot; });
+        G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
+    };
+    let best = null;   // { pivotIdx, dir, targetRad, score }
+    for (let mp=0; mp<3; mp++) for (const md of [1,-1]) {
+        restore(snap0); G.active = aiIdx;
+        const net = simMoveToLimit(mp, md);
+        if (Math.abs(net) < HARD_MIN_MOVE_RAD) continue;
+        if (G.pieces[aiIdx].anyFootOff()) continue;
+        let score;
+        if (G.pieces[humanIdx].anyFootOff()) {
+            score = HARD_WIN_BONUS + marginFor(aiIdx);            // immediate win -- no need to look further
+        } else {
+            const snap1 = takeSnap();
+            let worst = Infinity;                                 // the human picks their best (= my worst) reply
+            for (let op=0; op<3; op++) for (const od of [1,-1]) {
+                restore(snap1); G.active = humanIdx;
+                const onet = simMoveToLimit(op, od);
+                if (Math.abs(onet) < HARD_MIN_MOVE_RAD) continue;
+                if (G.pieces[humanIdx].anyFootOff()) continue;     // the human wouldn't off their own foot
+                let replyScore;
+                if (G.pieces[aiIdx].anyFootOff()) {
+                    replyScore = -HARD_WIN_BONUS;                  // that reply wins for the human outright
+                } else {
+                    const snap2 = takeSnap();
+                    let bestFollow = -Infinity;                    // my turn again -- take my best follow-up
+                    for (let fp=0; fp<3; fp++) for (const fd of [1,-1]) {
+                        restore(snap2); G.active = aiIdx;
+                        const fnet = simMoveToLimit(fp, fd);
+                        if (Math.abs(fnet) < HARD_MIN_MOVE_RAD) continue;
+                        if (G.pieces[aiIdx].anyFootOff()) continue;
+                        const fscore = G.pieces[humanIdx].anyFootOff() ? HARD_WIN_BONUS + marginFor(aiIdx) : marginFor(aiIdx);
+                        if (fscore > bestFollow) bestFollow = fscore;
+                    }
+                    replyScore = bestFollow === -Infinity ? marginFor(aiIdx) : bestFollow;   // no legal follow-up -- take the current margin
+                }
+                if (replyScore < worst) worst = replyScore;
+            }
+            score = worst === Infinity ? marginFor(aiIdx) : worst;   // the human had no legal reply at all
         }
         if (!best || score > best.score) best = { pivotIdx: mp, dir: md, targetRad: Math.abs(net), score };
     }
@@ -1971,7 +2033,7 @@ function finishTurn() {
 // aiIdx/humanIdx (which colour is AI vs human) are chosen per-game at startGame(), since the
 // player can pick either colour — not fixed to red.
 let aiIdx = 1, humanIdx = 0;
-let vsAI = false, aiAnim = null, aiTimer = null, aiDifficulty = 'easy';   // 'dumb' | 'easy' | 'zone' | 'hard' — see searchedPlanFor()
+let vsAI = false, aiAnim = null, aiTimer = null, aiDifficulty = 'easy';   // 'dumb' | 'easy' | 'zone' | 'hard' | 'master' — see searchedPlanFor()
 // Every difficulty decides its whole move up front (pivot, direction, exact stop angle) so the
 // visible swing can be played back as ONE smooth eased arc -- slow start, fastest at the midpoint,
 // slow settle -- instead of the old fixed-rate 15Hz stepping. That stepping was also why opponent
@@ -2053,13 +2115,14 @@ function demoDraw() {
 // randomized point short of that recorded limit — no backward correction needed, because
 // the stopping point was already known before the first visible frame.
 // Each demo turn rolls a die for which brain to use — 'dumb' (the wobbly original: heuristic move
-// stopped randomly short of the limit), 'easy' (heuristic, full swing), 'zone' (Medium) or 'hard'
-// (the 2-ply minimax) — so the two demo tripods lurch between clueless and genuinely sharp play.
-const DEMO_MODES = ['dumb','easy','zone','hard'];
+// stopped randomly short of the limit), 'easy' (heuristic, full swing), 'zone' (Medium), 'hard'
+// (2-ply minimax), or 'master' (3-ply) — so the two demo tripods lurch between clueless and
+// genuinely sharp play.
+const DEMO_MODES = ['dumb','easy','zone','hard','master'];
 function demoComputePlan() {
     const idx = G.active;
     const mode = DEMO_MODES[Math.floor(Math.random()*DEMO_MODES.length)];
-    if (mode === 'zone' || mode === 'hard') {
+    if (mode === 'zone' || mode === 'hard' || mode === 'master') {
         const sp = searchedPlanFor(mode, idx);   // {pivotIdx,dir,targetRad}; restores G internally
         if (sp) { pinFoot(sp.pivotIdx); return { dir: sp.dir, targetRad: sp.targetRad }; }
         // no scored move (rare) — fall through to the heuristic below
@@ -2274,13 +2337,15 @@ document.getElementById('modeAI').addEventListener('click', () => {
         { label: 'Medium',    onClick: () => chooseAiColour('easy') },
         { label: 'Hard',      onClick: () => chooseAiColour('zone') },
         { label: 'Very hard', onClick: () => chooseAiColour('hard') },
+        { label: 'Expert',    onClick: () => chooseAiColour('master') },
     ]);
 });
-// Easy follows one fixed offense/defense rule, no search. Medium scores every one of its 6
-// possible (pivot × direction) moves by board-position value (see aiChoosePlanZone) and picks the
-// best, but never considers how the human might reply. Hard does the same 6-way search but looks
-// one full move further, through the human's best reply (aiChoosePlanHard) — measured strongest of
-// the three, with Medium in between and Easy weakest.
+// Easy follows one fixed offense/defense rule, no search. Medium scores every one of its 6 possible
+// (pivot × direction) moves by board-position value (see aiChoosePlanZone) and picks the best, but
+// never considers how the human might reply. Hard does the same 6-way search but looks one full move
+// further, through the human's best reply (aiChoosePlanHard). Expert goes one move further still —
+// through the human's best reply AND its own best follow-up (aiChoosePlanMaster) — measured
+// strongest of the five, weakest to strongest: Easy, Medium, Hard, Very hard, Expert.
 function chooseAiColour(difficulty) {
     showModal('Choose your colour', 'Blue always moves first.', [
         { label: 'Play as Blue', onClick: () => startGame(true, 0, difficulty) },
