@@ -14,7 +14,9 @@
     #view3d { border:1px solid #2c3138; border-radius:4px; }
     /* Stacked (narrow) layout: 3D on top, 2D underneath -- matches the `wide` breakpoint
        resize() uses in the game script (window.innerWidth >= 760) for side-by-side vs stacked. */
-    @media (max-width: 759px) { #view3d { order: -1; } }
+    /* When resize() decides the boards stack (portrait), the 3D view goes on top — same rule the
+       old width-only media query applied, but now driven by the actual layout decision. */
+    #views.stacked #view3d { order: -1; }
     #btns { display:flex; gap:10px; }
     #status { font-size:18px; font-weight:bold; margin:6px 0 2px; height:22px; }
     #statusRow { display:flex; align-items:center; justify-content:center; gap:6px; }
@@ -104,7 +106,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 13</div>
+<div id="buildTag">build 14</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -1320,39 +1322,36 @@ function angInSpan(deg, a0, a1) {
     deg=w(deg); let lo=w(a0), hi=w(a1);
     return lo<=hi ? (deg>=lo&&deg<=hi) : (deg>=lo||deg<=hi);
 }
-// per-foot line-crossings (rings + side arcs) between old and new positions.
+// per-foot line-crossings (rings + side arcs) between old and new positions, identified by WHICH
+// line was crossed ('r0'/'r1' = rings, 'a0'/'a1' = side arcs). Callers cap a multi-id substep to
+// ONE crossing (the ring-meets-arc intersection case) but need the identities so the
+// leave-a-start-line grace only forgives the line the foot actually started on.
 function countCrossings(oldFeet, newFeet) {
-    const per=[0,0,0];
+    const per=[[],[],[]];
     for (let i=0;i<3;i++){
         const o=oldFeet[i], n=newFeet[i];
         const ro=radU(o), rn=radU(n);
-        for (const r of CFG.rings) if ((ro<r&&rn>=r)||(ro>r&&rn<=r)) per[i]++;
-        for (const a of CFG.sideArcs){
+        CFG.rings.forEach((r,k)=>{ if ((ro<r&&rn>=r)||(ro>r&&rn<=r)) per[i].push('r'+k); });
+        CFG.sideArcs.forEach((a,k)=>{
             const dOld=Math.hypot(o.x-a.cx,o.y-a.cy), dNew=Math.hypot(n.x-a.cx,n.y-a.cy);
             if ((dOld<a.r&&dNew>=a.r)||(dOld>a.r&&dNew<=a.r)){
                 const mx=(o.x+n.x)/2-a.cx, my=(o.y+n.y)/2-a.cy;
-                if (angInSpan(Math.atan2(my,mx)*180/Math.PI, a.a0, a.a1)) per[i]++;
+                if (angInSpan(Math.atan2(my,mx)*180/Math.PI, a.a0, a.a1)) per[i].push('a'+k);
             }
-        }
-        // A foot passing through where a ring meets a side arc crosses BOTH within the same
-        // (fine, sub-degree) substep — geometrically that only happens right at one of those
-        // intersections, never as a coarse-stepping artifact between well-separated lines. On
-        // the physical board that reads as one satisfying crossing, not two, so it costs the
-        // turn's budget only once; without this cap it silently exceeded a 1-crossing budget
-        // and blocked every intersection crossing outright.
-        per[i] = Math.min(per[i], 1);
+        });
     }
     return per;
 }
-// is a foot sitting on a line right now? (used once, at turn start, for the leave-a-line grace)
-function isNearAnyLine(f) {
-    const eps=CFG.crossEps, r=radU(f);
-    for (const R of CFG.rings) if (Math.abs(r-R)<eps) return true;
-    for (const a of CFG.sideArcs){
+// which lines is a foot sitting on right now? (turn start: arms the leave-a-line grace for exactly
+// those lines; turn end: feet may not come to REST in the band of any OTHER line)
+function nearLineIds(f) {
+    const eps=CFG.crossEps, r=radU(f), ids=[];
+    CFG.rings.forEach((R,k)=>{ if (Math.abs(r-R)<eps) ids.push('r'+k); });
+    CFG.sideArcs.forEach((a,k)=>{
         const d=Math.hypot(f.x-a.cx,f.y-a.cy);
-        if (Math.abs(d-a.r)<eps && angInSpan(Math.atan2(f.y-a.cy,f.x-a.cx)*180/Math.PI,a.a0,a.a1)) return true;
-    }
-    return false;
+        if (Math.abs(d-a.r)<eps && angInSpan(Math.atan2(f.y-a.cy,f.x-a.cx)*180/Math.PI,a.a0,a.a1)) ids.push('a'+k);
+    });
+    return ids;
 }
 // Once this turn's crossing budget is spent, a foot must be stopped before it even
 // TOUCHES another line, not just before it fully crosses one — a foot resting flush
@@ -1523,7 +1522,7 @@ function reset() {
     red.x  =  CFG.startX; red.rot  = Math.PI;
     G = { pieces:[blue,red], active:0, pinned:null, pivot:null, handle:null, turnDir:0,
           crossings:0, atLimit:false, netRad:0, ptrAngle:null, over:false, winner:null,
-          snap:null, startedOnLine:[false,false,false], usedGrace:[false,false,false] };
+          snap:null, startedOnLine:[[],[],[]], usedGrace:[false,false,false] };
     fall.active=false;
     render();
 }
@@ -1543,10 +1542,10 @@ function pinFoot(idx) {
     G.pinned = idx; G.pivot = { x:feet[idx].x, y:feet[idx].y };
     G.turnDir = 0; G.crossings = 0; G.atLimit = false; G.netRad = 0;
     G.snap = takeSnap();
-    G.startedOnLine = feet.map(isNearAnyLine); G.usedGrace = [false,false,false];
+    G.startedOnLine = feet.map(nearLineIds); G.usedGrace = [false,false,false];
 }
 function applySwing(dA) {
-    if (dA===0) return;
+    if (dA===0 || !G.pivot) return;   // no pivot: a stale animation tick raced a reset — ignore it
     // one direction per turn — but only lock it once the player has clearly committed
     // (|net| >= lockDeg). Locking on the very first pointer sample let touch jitter pick
     // the direction, and then every drag the player actually intended was rejected.
@@ -1561,8 +1560,15 @@ function applySwing(dA) {
         const after=active.feet();
         const per=countCrossings(before, after);
         let added=0;
-        for (let i=0;i<3;i++){ let ci=per[i];
-            if (ci>0 && G.startedOnLine[i] && !G.usedGrace[i]){ ci--; G.usedGrace[i]=true; }  // grace: leave a start line once
+        for (let i=0;i<3;i++){
+            // Intersection cap: a substep crossing a ring AND an arc can only happen right where
+            // they meet -- on the physical board that's one satisfying crossing, so it costs 1.
+            let ci=Math.min(per[i].length, 1);
+            // Grace: leaving a line the foot STARTED ON is free, once -- but only THAT line. The
+            // old any-line version let a foot that merely started near one line cross a totally
+            // different line for free and then spend its budget on a second (the 2-lines-in-one-
+            // turn bug, which crossEps 1.2 made easy to hit near the ring/arc intersections).
+            if (ci>0 && !G.usedGrace[i] && per[i].some(id => G.startedOnLine[i].includes(id))){ ci=0; G.usedGrace[i]=true; }
             added+=ci; }
         const wouldExceed = G.crossings+added > CFG.maxCrossingsPerTurn;
         const wouldTouch = !wouldExceed && added===0 && G.crossings>=CFG.maxCrossingsPerTurn
@@ -1578,7 +1584,7 @@ function applySwing(dA) {
 
 function clearTurn(){ G.pinned=null; G.pivot=null; G.handle=null; G.turnDir=0;
     G.crossings=0; G.atLimit=false; G.netRad=0; G.ptrAngle=null; G.snap=null;
-    G.startedOnLine=[false,false,false]; G.usedGrace=[false,false,false]; }
+    G.startedOnLine=[[],[],[]]; G.usedGrace=[false,false,false]; }
 // pure win-check + turn handoff — no DOM. UI-visible effects (fall animation, render,
 // kicking off the AI) are layered on top by ui.js's finishTurn().
 function endTurn() {
@@ -1880,6 +1886,20 @@ function onUp() {
     if (G.handle===null) return;
     G.handle=null; G.ptrAngle=null;
     if (Math.abs(G.netRad) >= CFG.minMoveDeg*Math.PI/180) {
+        // A foot may not come to REST inside the on-a-line band (crossEps ~ the pad's footprint):
+        // a pad parked straddling a line is ambiguous on the physical board. Passing THROUGH is
+        // fine -- this only checks the release pose. Feet that BEGAN the turn on a line (e.g. the
+        // stationary pivot, or a foot the opponent pushed onto a line last turn) are exempt for
+        // that same line, otherwise they could never legally stay put. Undone like a too-small
+        // move: full rollback, pivot kept, so the player just re-swings.
+        const feet = G.pieces[G.active].feet();
+        const badRest = feet.some((f,i) => nearLineIds(f).some(id => !G.startedOnLine[i].includes(id)));
+        if (badRest) {
+            restoreSnap(); render();
+            showPassToast('A foot can’t stop on a line — swing undone');
+            if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; }
+            return;
+        }
         if (onlineMatch) finishOnlineTurn(); else finishTurn();
     } else {
         restoreSnap(); render();   // too small to count — undo it (incl. any nudge), keep the pivot
@@ -1903,34 +1923,46 @@ function finishTurn() {
 // player can pick either colour — not fixed to red.
 let aiIdx = 1, humanIdx = 0;
 let vsAI = false, aiAnim = null, aiTimer = null, aiDifficulty = 'easy';   // 'easy' | 'zone' | 'hard' — see searchedPlanFor()
+// Every difficulty decides its whole move up front (pivot, direction, exact stop angle) so the
+// visible swing can be played back as ONE smooth eased arc -- slow start, fastest at the midpoint,
+// slow settle -- instead of the old fixed-rate 15Hz stepping. That stepping was also why opponent
+// moves SOUNDED like "ch ch ch ch": the speed-driven voice saw movement land in one rAF frame out
+// of four and fluttered at 15Hz. Easy's natural-limit stop is found by a rolled-back lookahead
+// (the same deterministic physics, so the replayed swing stops exactly where the sim did).
+const AI_SWING_AVG_SPEED = 0.8;   // rad/s averaged over the swing (peak ≈1.5x at the arc's midpoint)
 function startAiTurn() {
     if (G.over || G.active!==aiIdx) return;
-    const sp = searchedPlanFor(aiDifficulty, aiIdx);   // decide the whole move up front, then animate straight to it
-    if (sp) { pinFoot(sp.pivotIdx); playSelectClick(); playMoveBass(); aiAnim = { dir: sp.dir, triedFlip:true, targetRad: sp.targetRad }; render(); return; }
-    // no scored move (only possible for zone/hard, extremely rare) — fall through to the simple planner
-    const plan = aiChoosePlan(aiIdx);
-    pinFoot(plan.pivotIdx);
+    let pivotIdx, dir, target = 0;
+    const sp = searchedPlanFor(aiDifficulty, aiIdx);
+    if (sp) { pivotIdx = sp.pivotIdx; dir = sp.dir; target = sp.targetRad; }
+    else {
+        const plan = aiChoosePlan(aiIdx);
+        pivotIdx = plan.pivotIdx;
+        const feet = G.pieces[aiIdx].feet();
+        dir = directionToward(feet[plan.pivotIdx], feet[plan.swingIdx], plan.target);
+        const snap0 = takeSnap();
+        const restore = () => { G.pieces.forEach((p,i)=>{ p.x=snap0[i].x; p.y=snap0[i].y; p.rot=snap0[i].rot; });
+                                G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; };
+        let net = simMoveToLimit(pivotIdx, dir); restore();
+        if (Math.abs(net) < 1e-9) { dir = -dir; net = simMoveToLimit(pivotIdx, dir); restore(); }
+        target = Math.abs(net);
+    }
+    pinFoot(pivotIdx);
+    if (target < 1e-9) { finishTurn(); return; }   // blocked both ways from this pivot (rare) — forfeit the motion
     playSelectClick(); playMoveBass();
-    const feet = G.pieces[aiIdx].feet();
-    aiAnim = { dir: directionToward(G.pivot, feet[plan.swingIdx], plan.target), triedFlip:false, targetRad: Infinity };
+    aiAnim = { dir, targetRad: target, t: 0, dur: Math.max(0.55, target / AI_SWING_AVG_SPEED) };
     render();
 }
-// advances the AI's swing by one animation step; called from the main render loop
-function stepAi() {
+// Advances the AI's swing along the eased arc; called every frame from animate() with real dt.
+function stepAi(dt) {
     if (!aiAnim || G.over) return;
-    // targetRad caps the swing: Infinity for the simple planner (swing to the natural limit),
-    // a specific angle for Hard (stop exactly at the searched best position).
-    const cap = Math.min(aiAnim.targetRad, AI_SAFETY_CAP_RAD);
-    if (!G.atLimit && Math.abs(G.netRad) < aiAnim.targetRad) { applySwing(aiAnim.dir*AI_STEP_RAD); render(); }
-    if (G.atLimit || Math.abs(G.netRad) >= cap) {
-        if (Math.abs(G.netRad) < 1e-9 && !aiAnim.triedFlip) {   // chosen direction fully blocked — try the other way
-            aiAnim.dir *= -1; aiAnim.triedFlip = true;
-            G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
-            return;
-        }
-        aiAnim = null;
-        finishTurn();
-    }
+    aiAnim.t += dt;
+    const s = Math.min(1, aiAnim.t / aiAnim.dur);
+    const eased = s*s*(3-2*s);                        // smoothstep: slow -> fast -> slow
+    const want = aiAnim.targetRad * eased;
+    const delta = want - Math.abs(G.netRad);
+    if (delta > 1e-6 && !G.atLimit) { applySwing(aiAnim.dir*delta); render(); }
+    if (s >= 1 || G.atLimit) { aiAnim = null; finishTurn(); }
 }
 // ---------- Landing demo: two AIs play each other continuously behind the menu ----------
 // Reuses the same pure game.js turn logic as real "vs AI" games (aiChoosePlan,
@@ -2012,7 +2044,13 @@ function demoStepLoop() {
         demoTimer = setTimeout(demoStepLoop, 35);
     } else {
         demoAnim = null; endTurn(); progressCentering(); demoDraw();
-        demoTimer = setTimeout(demoPlayTurn, 320);
+        if (G.over) {
+            // Let the loser actually tumble off the 3D board (same triggerFall/stepFall as a real
+            // game -- playLossSound is gameVisible-guarded, so the menu demo falls silently), THEN
+            // reset for the next demo game.
+            triggerFall();
+            demoTimer = setTimeout(() => { if (demoOn) { reset(); demoDraw(); demoPlayTurn(); } }, 3000);
+        } else demoTimer = setTimeout(demoPlayTurn, 320);
     }
 }
 function demoPlayTurn() {
@@ -2159,7 +2197,7 @@ function startGame(aiMode, humanColorIdx, difficulty) {
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
     reset(); resize();
-    resetAudioForNewGame();
+    resetAudioForNewGame(); playGameBowl();
     if (!aiMode) startOnlineTurnClock(); else onlineTurnDeadline = null;
     if (vsAI && G.active===aiIdx) aiTimer = setTimeout(startAiTurn, 450);
 }
@@ -2234,7 +2272,7 @@ function htpCrossLimit(base,pivotIdx,dir){
     const step=dir*1.5*Math.PI/180; let crossings=0, ang=0;
     for(let s=0;s<260;s++){
         const before=p.feet(); p.rotateAround(pv.x,pv.y,step);
-        const added=countCrossings(before,p.feet()).reduce((a,v)=>a+v,0);
+        const added=countCrossings(before,p.feet()).reduce((a,v)=>a+Math.min(v.length,1),0);
         if(crossings+added>1) break;
         crossings+=added; ang+=Math.abs(step);
         if(crossings>=1 && ang>22*Math.PI/180) break;   // enough travel past the crossing to read it
@@ -2503,6 +2541,7 @@ const SFX_DEFAULTS = {
     reverb: 0, reverbEnd: 0.85,
     clickVol: 0.6, clickHz: 400, clickLen: 0.035,
     bassVol: 1.2, bassHz: 150, bassLen: 0.4,
+    bowlVol: 0.22, bowlHz: 220,   // game-start "singing bowl" strike: quiet, long, slightly beating
 };
 const SFX = Object.assign({}, SFX_DEFAULTS);
 try { Object.assign(SFX, JSON.parse(localStorage.getItem('tauSfx')||'{}')); } catch(e) {}
@@ -2594,6 +2633,28 @@ function playMoveBass() {
     osc.start(t0); osc.stop(t0+SFX.bassLen+0.05);
     setTimeout(() => { try { lp.disconnect(); g.disconnect(); } catch(e){} }, (SFX.bassLen+0.15)*1000);
 }
+// "Singing bowl" strike at the start of a game: a real struck bowl rings at inharmonic partials
+// (≈1 : 2.7 : 4.1 : 5.4 of the fundamental) with each partial split into a barely-detuned pair --
+// the detuning is what produces the slow shimmer/beating a bowl has that a plain chord doesn't.
+// Soft attack, long exponential ring-out, routed through toneLP so it inherits the ambient reverb.
+function playGameBowl() {
+    resumeAudio();
+    if (!audioReady || !soundOn) return;
+    const t0 = audioCtx.currentTime;
+    const partials = [ [1,1.0], [2.71,0.45], [4.07,0.22], [5.42,0.1] ];
+    for (const [ratio, amp] of partials) {
+        for (const det of [-0.35, 0.35]) {                       // Hz of detune -> slow beat
+            const osc = audioCtx.createOscillator(); osc.type='sine';
+            osc.frequency.value = SFX.bowlHz*ratio + det*ratio;
+            const g = audioCtx.createGain();
+            g.gain.setValueAtTime(0.0001, t0);
+            g.gain.exponentialRampToValueAtTime(SFX.bowlVol*amp*0.5, t0+0.02);   // 0.5: the pair sums back to amp
+            g.gain.exponentialRampToValueAtTime(0.0001, t0+4.5);
+            osc.connect(g); g.connect(toneLP);
+            osc.start(t0); osc.stop(t0+4.6);
+        }
+    }
+}
 // Per-frame driver: sets the voice PITCH from the moving piece's distance-from-centre, and the voice
 // VOLUME from how fast its feet are actually moving this frame (silent at rest). Skipped once the
 // game is over so playLossSound's swell owns the voice.
@@ -2621,23 +2682,24 @@ function updateAudioMovement(dt) {
     scrapeGain.gain.setTargetAtTime(lvl * SFX.scrape, now, 0.02);
 }
 // Win OR loss (both route through triggerFall): CONTINUE from the exact pitch the voice was at when
-// the piece hit the edge (no jump), keep sweeping it higher, ease the volume down, and swell the
-// reverb up -- a rising fade-into-space finish rather than a discontinuous new note.
+// the piece hit the edge (no jump), then SLOWLY climb in pitch while the volume drops away fast and
+// the reverb swells fast -- the note recedes into the cathedral rather than getting louder. (The
+// previous version floored the volume up to 0.35 with a 1.4s decay, which made a quiet moment of
+// impact come out LOUDER on the loss -- exactly the reported problem.)
 function playLossSound() {
-    if (!audioReady || !soundOn) return;
+    if (!audioReady || !soundOn || !gameVisible()) return;   // gameVisible: the menu demo also falls now, silently
     resumeAudio();
     const t0 = audioCtx.currentTime;
-    const curFreq = bandpass.frequency.value;          // where the tracking pitch left off
-    const curVoice = Math.max(voiceGain.gain.value, 0.35);   // continue from current level (floor so the sweep is audible)
+    const curFreq = bandpass.frequency.value;                 // where the tracking pitch left off
     bandpass.frequency.cancelScheduledValues(t0);
     bandpass.frequency.setValueAtTime(curFreq, t0);
-    bandpass.frequency.setTargetAtTime(SFX.maxHz * 1.7, t0, 1.3);   // keep climbing
+    bandpass.frequency.setTargetAtTime(SFX.maxHz * 1.8, t0, 1.2);            // slow climb
     voiceGain.gain.cancelScheduledValues(t0);
-    voiceGain.gain.setValueAtTime(curVoice, t0);
-    voiceGain.gain.setTargetAtTime(0.0, t0, 1.4);       // ease volume down through the tail
-    scrapeGain.gain.setTargetAtTime(0, t0, 0.3);
-    wetGain.gain.setTargetAtTime(SFX.reverbEnd, t0, 0.5);   // raise wet reverb
-    dryGain.gain.setTargetAtTime(1-SFX.reverbEnd, t0, 0.5);
+    voiceGain.gain.setValueAtTime(Math.max(voiceGain.gain.value, 0.2), t0);  // just enough to hear the tail
+    voiceGain.gain.setTargetAtTime(0, t0, 0.3);                              // volume down real quick
+    scrapeGain.gain.setTargetAtTime(0, t0, 0.1);
+    wetGain.gain.setTargetAtTime(SFX.reverbEnd, t0, 0.12);                   // reverb up real quick
+    dryGain.gain.setTargetAtTime(1-SFX.reverbEnd, t0, 0.12);
 }
 // Restores the dry/normal balance and silences the voice for a fresh game.
 function resetAudioForNewGame() {
@@ -2676,8 +2738,13 @@ document.getElementById('soundToggle').addEventListener('click', () => { resumeA
 updateSoundToggleIcon();
 // Autoplay policy needs a user gesture to start/resume the context. Not { once:true }: mobile (iOS)
 // often stays 'suspended' after the first gesture and only actually resumes on a later one, so keep
-// trying to resume on every pointerdown until it's running (resume() is a cheap no-op once it is).
+// trying on every gesture until it's running (resume() is a cheap no-op once it is). iOS Safari
+// specifically has NOT historically counted touchstart/pointerdown as an audio-unlocking gesture —
+// only touchend/click — which is exactly the "silent on iPhone Safari, fine everywhere else"
+// symptom, so listen on those too.
 addEventListener('pointerdown', resumeAudio);
+addEventListener('touchend', resumeAudio);
+addEventListener('click', resumeAudio);
 
 // ---------- Sound settings panel: live sliders + a "copy values" dump ----------
 // Each row binds a range input to one SFX field, live-applies on input (applySfx / immediate node
@@ -2690,6 +2757,7 @@ const SFX_SLIDERS = [
     ['reverb','Reverb (play)',0,1,0.02], ['reverbEnd','Reverb (win/lose)',0,1,0.02],
     ['clickVol','Click volume',0,1.5,0.05], ['clickHz','Click tone (Hz)',400,6000,50], ['clickLen','Click length (s)',0.005,0.15,0.005],
     ['bassVol','Bass thump vol',0,1.2,0.05], ['bassHz','Bass thump (Hz)',40,300,5], ['bassLen','Bass length (s)',0.02,0.4,0.01],
+    ['bowlVol','Start bowl vol',0,0.8,0.02], ['bowlHz','Start bowl (Hz)',110,440,5],
 ];
 function openSoundPanel() {
     resumeAudio();
@@ -2758,7 +2826,12 @@ async function playAsGuest(next) {
 document.getElementById('acctPanelClose').addEventListener('click', closeAcctPanel);
 document.getElementById('menuBtn').addEventListener('click', backToMenu);
 canvas.addEventListener('mousedown', onDown);
-canvas.addEventListener('mousemove', onMove);
+// mousemove is WINDOW-level, not canvas-level: during a drag the cursor routinely leaves the
+// canvas, and canvas-only tracking made the piece freeze there, then "decouple" on re-entry (a big
+// stale angle jump the one-direction lock then fought). onMove already no-ops unless a swing foot
+// is actually held, so window-level tracking costs nothing when idle. (Touch needs no equivalent:
+// touchmove keeps firing on the element the touch STARTED on, wherever the finger goes.)
+window.addEventListener('mousemove', onMove);
 window.addEventListener('mouseup', onUp);
 canvas.addEventListener('touchstart', onDown, {passive:false});
 canvas.addEventListener('touchmove', onMove, {passive:false});
@@ -3044,27 +3117,57 @@ function triggerFall() {
     let fx=0, fz=0, fr=-1;                            // slide out along the off-board foot direction
     for (const f of p.feet()){ const r=Math.hypot(f.x,f.y); if (r>fr){ fr=r; fx=f.x; fz=f.y; } }
     const d = Math.hypot(fx,fz)||1;
-    fall = { active:true, idx:li, vx:fx/d*50, vz:fz/d*50, vy:0, tipRate:0,
+    fall = { active:true, idx:li, phase:'slide', vx:fx/d*50, vz:fz/d*50, vy:0, tipRate:0,
+             px:0, pz:0, ax:0, az:0, theta:0, omega:0,
              wx:(Math.random()-0.5)*7, wy:(Math.random()-0.5)*3, wz:(Math.random()-0.5)*7 };
 }
+// Three phases, so the piece behaves like a rigid body going over a real table edge instead of
+// sliding out onto an invisible extension of the board and then sinking:
+//   slide — flat travel while the centre of mass (≈ the hub) is still over the board; the trailing
+//           feet genuinely support it, so staying level here IS physical.
+//   pivot — the instant the CoM passes the rim, the piece rotates about the RIM CONTACT POINT
+//           (position and orientation together — the hub swings down-and-out around that point),
+//           with the rotation rate accelerating as the lean grows, exactly like a book pushed
+//           slowly off a table. The old code rotated it about its own hub while it kept
+//           translating flat, which is what read as "the invisible plane disappears".
+//   free  — once well past vertical it lets go: ballistic fall carrying the velocity the pivot
+//           gave it, plus the chaotic wobble.
+const fallQ = new THREE.Quaternion(), fallP = new THREE.Vector3(), fallAxisV2 = new THREE.Vector3(), fallLever = new THREE.Vector3();
 function stepFall(dt) {
     const t = tripods[fall.idx];
-    t.position.x += fall.vx*dt; t.position.z += fall.vz*dt;   // slide outward across the board
-    const r = Math.hypot(t.position.x, t.position.z);
-    if (r > CFG.edgeU) {                              // past the rim → frictionless slope, tip and fall
-        fall.vy -= 220*dt;
-        fall.vx *= (1+0.4*dt); fall.vz *= (1+0.4*dt);
-        t.position.y += fall.vy*dt;
-        // Tip forward around the horizontal axis perpendicular to the slide direction — like an
-        // object tipping off a table edge — starting the INSTANT it crosses the rim. Without
-        // this, vy (which starts at 0) takes a beat to build up, so the piece visibly slides in
-        // a dead-straight line for a moment before anything looks different; the tip gives
-        // immediate visual feedback that it's gone over. The chaotic tumble (wx/wy/wz) only
-        // blends in once well clear of the rim, so the first instant reads as "tipped over the
-        // edge", not "flung into a random spin".
-        fall.tipRate = Math.min(9, fall.tipRate + 14*dt);
-        const clear = Math.max(0, Math.min(1, (r - CFG.edgeU) / 25));
-        applyFallRotation(t, fall, dt, clear);
+    if (fall.phase === 'slide') {
+        t.position.x += fall.vx*dt; t.position.z += fall.vz*dt;
+        const r = Math.hypot(t.position.x, t.position.z);
+        if (r >= CFG.edgeU) {
+            const ux = t.position.x/r, uz = t.position.z/r;
+            fall.px = ux*CFG.edgeU; fall.pz = uz*CFG.edgeU;
+            fall.ax = uz; fall.az = -ux;       // rim-tangent axis, signed so the outboard side rotates DOWN
+            fall.theta = 0; fall.omega = 0.3;  // small initial rate: the tip reads immediately, then gravity takes over
+            fall.phase = 'pivot';
+        }
+    } else if (fall.phase === 'pivot') {
+        fall.omega += (5 + 9*fall.theta) * dt;         // gravity torque grows with the lean
+        const dth = fall.omega * dt;
+        fall.theta += dth;
+        fallAxisV2.set(fall.ax, 0, fall.az);
+        fallQ.setFromAxisAngle(fallAxisV2, dth);
+        fallP.set(fall.px, 0, fall.pz);
+        t.position.sub(fallP).applyQuaternion(fallQ).add(fallP);   // orbit the contact point…
+        t.quaternion.premultiply(fallQ);                            // …and lean by the same angle
+        fall.vx *= Math.max(0, 1-2.5*dt); fall.vz *= Math.max(0, 1-2.5*dt);   // residual slide bleeds off
+        t.position.x += fall.vx*dt; t.position.z += fall.vz*dt;
+        if (fall.theta > 1.9) {                        // ~110° past level: contact can't hold — let go
+            fallLever.set(t.position.x-fall.px, t.position.y, t.position.z-fall.pz);
+            fallLever.cross(fallAxisV2).multiplyScalar(-fall.omega);   // v = ω (axis × lever): carry the pivot's exit velocity
+            fall.vx += fallLever.x; fall.vy = fallLever.y; fall.vz += fallLever.z;
+            fall.tipRate = fall.omega;
+            fall.phase = 'free';
+        }
+    } else {
+        fall.vy -= 260*dt;
+        t.position.x += fall.vx*dt; t.position.y += fall.vy*dt; t.position.z += fall.vz*dt;
+        const r = Math.hypot(t.position.x, t.position.z);
+        applyFallRotation(t, fall, dt, Math.max(0, Math.min(1, (r - CFG.edgeU) / 25)));
     }
     if (t.position.y < -700) { fall.active=false; camCenterFrac=1; camManualSet=false; }   // hand back to centred framing once it's done
 }
@@ -3207,23 +3310,12 @@ function updateFallCam(dt) {
     camera.position.lerp(acPos, k);
     controls.target.lerp(acTgt, k);
 }
-// AI swing pacing is elapsed-time-based (an accumulator), not "every Nth requestAnimationFrame
-// callback": counting frames assumes rAF fires at a steady, predictable cadence, but it doesn't
-// have to -- any per-frame cost elsewhere (camera-fit recalculation while a piece is moving, a
-// big board redraw, a slower machine) makes rAF's real-world timing uneven, and "every 4th
-// frame" then advances the swing at an uneven real-time rate too: exactly the "stop-motion"
-// stutter reported, since the landing-page demo (paced by its own steady setTimeout loop,
-// wholly decoupled from rAF/render cost) never showed it. Accumulating real elapsed time and
-// draining it in fixed-size steps self-corrects after a slow frame instead of just drifting.
-let aiStepAccum = 0;
-const AI_STEP_INTERVAL = 1/15;   // seconds -- matches the old "~15 steps/sec" cadence
 function animate() {
     requestAnimationFrame(animate);
     const dt = Math.min(clock ? clock.getDelta() : 0.016, 0.05);
-    if (aiAnim) {
-        aiStepAccum += dt;
-        while (aiAnim && aiStepAccum >= AI_STEP_INTERVAL) { stepAi(); aiStepAccum -= AI_STEP_INTERVAL; }
-    } else aiStepAccum = 0;
+    // AI swing advances every frame along its eased time-arc (see stepAi) — per-frame real-dt
+    // stepping is what keeps both the motion AND the speed-driven sound perfectly smooth.
+    if (aiAnim) stepAi(dt);
     // Declared in the later "online accounts" script tag, which hasn't run yet for animate()'s
     // very first few frames (same reason onlineMatch needed its own early declaration above) --
     // typeof is the one safe way to reference a not-yet-existing top-level binding.
@@ -3272,13 +3364,20 @@ function resize() {
                + document.getElementById('btns').offsetHeight + 46;
     const availW = window.innerWidth - 12;
     const availH = window.innerHeight - used;
-    const gap = 10, show = !!renderer, wide = window.innerWidth >= 760;
+    const gap = 10, show = !!renderer;
 
-    // both panels are square; side-by-side on wide screens, stacked on narrow ones
+    // Both panels are square. Rather than keying the layout off a fixed width breakpoint (which
+    // left a portrait-rotated monitor side-by-side with two tiny boards), compute the board size
+    // BOTH layouts would give and use whichever is bigger -- landscape naturally goes side-by-side,
+    // portrait (phones AND rotated desktops) naturally stacks.
+    const sideSize  = Math.max(200, Math.min((availW-gap)/2, availH));
+    const stackSize = Math.max(170, Math.min(availW, (availH-gap)/2));
+    const wide = sideSize >= stackSize;
+    document.getElementById('views').classList.toggle('stacked', show && !wide);
     let size;
     if (!show)      size = Math.max(220, Math.min(availW, availH));
-    else if (wide)  size = Math.max(200, Math.min((availW-gap)/2, availH));
-    else            size = Math.max(170, Math.min(availW, (availH-gap)/2));
+    else if (wide)  size = sideSize;
+    else            size = stackSize;
 
     canvas.style.width = size+'px'; canvas.style.height = size+'px';
 
@@ -3687,6 +3786,10 @@ function checkOnlineTimeout() {
 function onlineResolveOpponentTimeout() {
     if (!onlineMatch || !sb) return;
     const passerIdx = G.active, passerColor = passerIdx === 0 ? 'blue' : 'red';
+    // Never moved at all this match and let their very first clock run out? That's an abandoned/
+    // ghost session (matchmade from a dead tab), not someone thinking -- end the match right away
+    // instead of granting a pass that just strings the live player along.
+    if (onlineMatch.movesMade && onlineMatch.movesMade[passerColor] === 0) { endOnlineMatch(passerIdx); return; }
     onlineMatch.passStreak = onlineMatch.passStreak || { blue:0, red:0 };
     onlineMatch.passStreak[passerColor] = (onlineMatch.passStreak[passerColor]||0) + 1;
     if (onlineMatch.passStreak[passerColor] >= 2) { endOnlineMatch(passerIdx); return; }   // 2nd miss -> they lose
@@ -3806,13 +3909,14 @@ async function enterOnlineMatch(row) {
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
     const myColor = row.blue_id===sbUser.id ? 'blue' : 'red';
     const opponentId = myColor==='blue' ? row.red_id : row.blue_id;
-    onlineMatch = { id: row.id, myColor, opponentName: 'your opponent', nextMoveIndex: 0, _replayingIndex: -1 };
+    onlineMatch = { id: row.id, myColor, opponentName: 'your opponent', nextMoveIndex: 0, _replayingIndex: -1,
+                    movesMade: { blue: 0, red: 0 } };   // REAL moves per side -- a first-turn timeout with 0 moves is a no-show, not a pass
     vsAI = false;
     camCenterFrac = 1; camManualSet = false;
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
     reset(); resize();
-    resetAudioForNewGame();
+    resetAudioForNewGame(); playGameBowl();
     sb.from('profiles').select('username').eq('id', opponentId).single().then(({ data, error }) => {
         if (!error && data && onlineMatch) { onlineMatch.opponentName = data.username; render(); }
     }).catch(() => {});   // already degrades gracefully to the 'your opponent' placeholder name
@@ -3864,6 +3968,7 @@ async function catchUpOnlineMatch() {
     } catch (e) { return; }
     if (error || !history || !history.length) return;
     onlineMatch.passStreak = onlineMatch.passStreak || { blue:0, red:0 };
+    onlineMatch.movesMade = onlineMatch.movesMade || { blue:0, red:0 };
     for (const mv of history) {
         const fs = mv.final_state;
         if (fs && fs.pass) {   // a pass carries no position, just flips the turn
@@ -3871,6 +3976,7 @@ async function catchUpOnlineMatch() {
             G.active = 1-G.active; continue;
         }
         onlineMatch.passStreak[mv.mover_color] = 0;   // a real move clears that player's streak
+        onlineMatch.movesMade[mv.mover_color]++;
         G.pieces[0].x=fs.blue.x; G.pieces[0].y=fs.blue.y; G.pieces[0].rot=fs.blue.rot;
         G.pieces[1].x=fs.red.x; G.pieces[1].y=fs.red.y; G.pieces[1].rot=fs.red.rot;
         G.active = 1-G.active;
@@ -3894,6 +4000,7 @@ function finishOnlineTurn() {
     const keyframes = pendingKeyframes.slice();
     pendingKeyframes = []; lastKeyframeT = 0;
     if (onlineMatch && onlineMatch.passStreak) onlineMatch.passStreak[onlineMatch.myColor] = 0;   // I moved -> reset my miss streak
+    if (onlineMatch && onlineMatch.movesMade) onlineMatch.movesMade[onlineMatch.myColor]++;
     endTurn();
     progressCentering();
     const winnerColor = G.over ? (G.winner===0?'blue':'red') : null;
@@ -3946,8 +4053,9 @@ async function replayOpponentMove(row) {
         startOnlineTurnClock(); render();
         return;
     }
-    // A real move clears that player's pass streak.
+    // A real move clears that player's pass streak (and counts toward the no-show check).
     if (onlineMatch.passStreak) onlineMatch.passStreak[row.mover_color] = 0;
+    if (onlineMatch.movesMade) onlineMatch.movesMade[row.mover_color]++;
     if (row.keyframes && row.keyframes.length) { playSelectClick(); playMoveBass(); }   // a real swing, not a forfeit/timeout (those send keyframes:[])
     audioReplayIdx = moverIdx;   // pitch tracks the OPPONENT's piece while their move replays
 
@@ -3955,21 +4063,34 @@ async function replayOpponentMove(row) {
                      rx:G.pieces[1].x, ry:G.pieces[1].y, rrot:G.pieces[1].rot };
     const end = { bx:fs.blue.x, by:fs.blue.y, brot:fs.blue.rot, rx:fs.red.x, ry:fs.red.y, rrot:fs.red.rot };
     const legs = [start, ...(row.keyframes || []), end];   // tween THROUGH every recorded waypoint, not just to it
-    const gaps = legs.length - 1;
+    // One single eased timeline over the WHOLE path (slow -> fast at the midpoint -> slow), stepped
+    // at ~60Hz, with progress distributed across the waypoints by how much motion each leg actually
+    // contains. The old per-gap constant-speed stepping paused at every waypoint boundary and moved
+    // in 15Hz chunks -- which the speed-driven audio faithfully reproduced as "ch ch ch ch". A
+    // smooth velocity arc makes the sound swell and fade smoothly for free.
+    const legLen = [];
+    let totalLen = 0;
+    for (let g = 0; g < legs.length-1; g++) {
+        const a = legs[g], b = legs[g+1];
+        const L = Math.max(Math.abs(norm(b.brot-a.brot)), Math.abs(norm(b.rrot-a.rrot)))
+                + (Math.hypot(b.bx-a.bx, b.by-a.by) + Math.hypot(b.rx-a.rx, b.ry-a.ry)) / (2*CFG.footR) + 1e-6;
+        legLen.push(L); totalLen += L;
+    }
     const totalDeg = Math.max(Math.abs(norm(end.brot-start.brot)), Math.abs(norm(end.rrot-start.rrot))) * 180/Math.PI;
     const totalMs = Math.max(REPLAY_MIN_MS, totalDeg / REPLAY_DEG_PER_SEC * 1000);
-    const gapMs = totalMs / gaps;
-    for (let g = 0; g < gaps; g++) {
-        const a = legs[g], b = legs[g+1];
-        const steps = Math.max(1, Math.round(gapMs / REPLAY_STEP_MS));
-        for (let s = 1; s <= steps; s++) {
-            if (!onlineMatch) return;   // left the match mid-replay (e.g. hit Menu)
-            const t = s/steps;
-            G.pieces[0].x = a.bx+(b.bx-a.bx)*t; G.pieces[0].y = a.by+(b.by-a.by)*t; G.pieces[0].rot = lerpAngle(a.brot, b.brot, t);
-            G.pieces[1].x = a.rx+(b.rx-a.rx)*t; G.pieces[1].y = a.ry+(b.ry-a.ry)*t; G.pieces[1].rot = lerpAngle(a.rrot, b.rrot, t);
-            render();
-            await new Promise(r => setTimeout(r, REPLAY_STEP_MS));
-        }
+    const tStart = performance.now();
+    while (true) {
+        await new Promise(r => setTimeout(r, 16));
+        if (!onlineMatch) { audioReplayIdx = null; return; }   // left the match mid-replay (e.g. hit Menu)
+        const s = Math.min(1, (performance.now() - tStart) / totalMs);
+        const eased = s*s*(3-2*s);                              // smoothstep velocity arc
+        let d = eased * totalLen, g = 0;
+        while (g < legLen.length-1 && d > legLen[g]) { d -= legLen[g]; g++; }
+        const a = legs[g], b = legs[g+1], t = Math.min(1, d / legLen[g]);
+        G.pieces[0].x = a.bx+(b.bx-a.bx)*t; G.pieces[0].y = a.by+(b.by-a.by)*t; G.pieces[0].rot = lerpAngle(a.brot, b.brot, t);
+        G.pieces[1].x = a.rx+(b.rx-a.rx)*t; G.pieces[1].y = a.ry+(b.ry-a.ry)*t; G.pieces[1].rot = lerpAngle(a.rrot, b.rrot, t);
+        render();
+        if (s >= 1) break;
     }
     audioReplayIdx = null;   // replay done -- pitch reverts to the active side (which is about to be me)
     if (!onlineMatch) return;
