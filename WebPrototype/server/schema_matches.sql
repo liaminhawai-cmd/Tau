@@ -296,3 +296,21 @@ grant execute on function public.rematch(uuid) to authenticated;
 -- Replication -> supabase_realtime in the dashboard, or run directly here):
 alter publication supabase_realtime add table public.matches;
 alter publication supabase_realtime add table public.match_moves;
+
+-- ---------- spectating ----------
+-- Any signed-in player may READ public (non-private) matches and their moves, so live games can be
+-- watched from the "Watch" menu. Private matches keep an invite_code, which excludes them here.
+-- (Direct rematches of private matches currently have no invite_code and so ARE watchable -- a
+-- known beta looseness, not a security boundary.) Write access is unchanged.
+create policy "anyone can watch public matches"
+  on public.matches for select
+  to authenticated
+  using (invite_code is null and status in ('active','finished'));
+
+create policy "anyone can watch public match moves"
+  on public.match_moves for select
+  to authenticated
+  using (
+    exists (select 1 from public.matches m
+            where m.id = match_moves.match_id and m.invite_code is null)
+  );

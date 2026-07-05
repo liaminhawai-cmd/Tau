@@ -229,3 +229,24 @@ begin
 end;
 $$;
 grant execute on function public.join_private_match(text) to authenticated;
+
+
+-- ---------------------------------------------------------------------------------------
+-- 4. Spectating (the "Watch" menu): any signed-in player may READ public (non-private)
+--    matches and their moves. Private matches keep an invite_code, which excludes them.
+--    Safe to re-run: drops the policies first if they already exist.
+-- ---------------------------------------------------------------------------------------
+drop policy if exists "anyone can watch public matches" on public.matches;
+create policy "anyone can watch public matches"
+  on public.matches for select
+  to authenticated
+  using (invite_code is null and status in ('active','finished'));
+
+drop policy if exists "anyone can watch public match moves" on public.match_moves;
+create policy "anyone can watch public match moves"
+  on public.match_moves for select
+  to authenticated
+  using (
+    exists (select 1 from public.matches m
+            where m.id = match_moves.match_id and m.invite_code is null)
+  );
