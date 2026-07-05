@@ -30,7 +30,7 @@
     <div id="stage"></div>
     <div id="panel">
         <h1>T A U — logo studio</h1>
-        <p style="color:#9aa4ad; margin:0 0 6px;">Pose each piece, slide the kerning, light it, then 📷 export a transparent PNG.</p>
+        <p style="color:#9aa4ad; margin:0 0 6px;">Drag a piece to move it, drag empty space to orbit, scroll/pinch to zoom — or use the sliders. Then 📷 export a transparent PNG.</p>
         <div class="pieceTabs" id="tabs"></div>
         <div id="pieceSliders"></div>
         <h2>Kerning &amp; layout</h2>
@@ -142,7 +142,7 @@ function buildStatic() {
         rows.push(sliderRow(lay, lab, -60, 60, 1, () => P[k] || 0, v => P[k] = v));
     });
     const cam = document.getElementById('camSliders');
-    [['azimuth°','az',-90,90,1], ['elevation°','el',-20,80,1], ['distance','dist',100,600,2], ['zoom (fov)','fov',15,70,1]]
+    [['azimuth°','az',-180,180,1], ['elevation°','el',-20,80,1], ['distance','dist',100,600,2], ['zoom (fov)','fov',15,70,1]]
         .forEach(([lab,k,mn,mx,st]) => rows.push(sliderRow(cam, lab, mn, mx, st, () => P.cam[k], v => P.cam[k] = v)));
     const li = document.getElementById('lightSliders');
     [['key azimuth°','az',-180,180,2], ['key height°','el',5,85,1], ['key power','key',0,2,0.05], ['ambient','amb',0,2,0.05]]
@@ -210,6 +210,95 @@ document.getElementById('shoot').addEventListener('click', () => {
     a.download = 'tau-logo.png'; a.href = renderer.domElement.toDataURL('image/png'); a.click();
     renderer.setPixelRatio(pr); resize();
 });
+
+// ---- direct manipulation: drag a piece to reposition it, drag empty space to orbit the camera,
+// wheel/pinch to zoom. Pointer Events unify mouse + touch (one code path for both). ----
+const dom = renderer.domElement;
+dom.style.touchAction = 'none';   // we handle drag/pinch ourselves -- stop the browser's own panning/zooming
+dom.style.cursor = 'grab';
+const clamp = (v, mn, mx) => Math.max(mn, Math.min(mx, v));
+const raycaster = new THREE.Raycaster();
+const pointerNDC = new THREE.Vector2();
+const dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);   // pieces all sit at world z=0
+const planeHit = new THREE.Vector3();
+function ndcFromEvent(e) {
+    const r = dom.getBoundingClientRect();
+    pointerNDC.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+    pointerNDC.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+}
+function planeIntersect() { raycaster.setFromCamera(pointerNDC, camera); raycaster.ray.intersectPlane(dragPlane, planeHit); return planeHit; }
+
+const activePointers = new Map();   // pointerId -> {x,y}, tracks up to 2 fingers for pinch-zoom
+let dragMode = null, dragPieceIdx = -1, dragStart = null, dragOrigPos = null;
+let orbitStart = null, orbitOrig = null;
+let pinchStartDist = null, pinchStartCamDist = null;
+
+dom.addEventListener('pointerdown', e => {
+    try { dom.setPointerCapture(e.pointerId); } catch (err) {}   // keeps the drag alive if the pointer strays off-canvas; non-fatal if unsupported
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (activePointers.size === 2) {
+        dragMode = null;   // a second finger landed -- hand off from whatever single-pointer drag was starting
+        const pts = [...activePointers.values()];
+        pinchStartDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        pinchStartCamDist = P.cam.dist;
+        return;
+    }
+    ndcFromEvent(e);
+    raycaster.setFromCamera(pointerNDC, camera);
+    const hits = raycaster.intersectObjects(pieces, true);
+    if (hits.length) {
+        let obj = hits[0].object;
+        while (obj.parent && pieces.indexOf(obj) === -1) obj = obj.parent;
+        const idx = pieces.indexOf(obj);
+        if (idx !== -1) {
+            selected = idx; buildTabs(); buildPieceSliders(); rows.forEach(r => r.sync && r.sync());
+            dragMode = 'piece'; dragPieceIdx = idx;
+            dragStart = planeIntersect().clone();
+            dragOrigPos = { x: P.pieces[idx].x, y: P.pieces[idx].y };
+            dom.style.cursor = 'grabbing';
+            return;
+        }
+    }
+    dragMode = 'orbit';
+    orbitStart = { x: e.clientX, y: e.clientY };
+    orbitOrig = { az: P.cam.az, el: P.cam.el };
+    dom.style.cursor = 'grabbing';
+});
+dom.addEventListener('pointermove', e => {
+    if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (activePointers.size === 2 && pinchStartDist) {
+        const pts = [...activePointers.values()];
+        const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+        P.cam.dist = clamp(pinchStartCamDist * (pinchStartDist / d), 100, 600);
+        rows.forEach(r => r.sync && r.sync()); apply();
+        return;
+    }
+    if (dragMode === 'piece') {
+        ndcFromEvent(e);
+        const hit = planeIntersect();
+        P.pieces[dragPieceIdx].x = dragOrigPos.x + (hit.x - dragStart.x);
+        P.pieces[dragPieceIdx].y = dragOrigPos.y + (hit.y - dragStart.y);
+        if (selected === dragPieceIdx) rows.forEach(r => r.sync && r.sync());
+        apply();
+    } else if (dragMode === 'orbit') {
+        const dx = e.clientX - orbitStart.x, dy = e.clientY - orbitStart.y;
+        P.cam.az = clamp(orbitOrig.az - dx * 0.3, -180, 180);
+        P.cam.el = clamp(orbitOrig.el + dy * 0.3, -20, 80);
+        rows.forEach(r => r.sync && r.sync()); apply();
+    }
+});
+function endPointer(e) {
+    activePointers.delete(e.pointerId);
+    if (activePointers.size < 2) { pinchStartDist = null; }
+    if (activePointers.size === 0) { dragMode = null; dom.style.cursor = 'grab'; }
+}
+dom.addEventListener('pointerup', endPointer);
+dom.addEventListener('pointercancel', endPointer);
+dom.addEventListener('wheel', e => {
+    e.preventDefault();
+    P.cam.dist = clamp(P.cam.dist + e.deltaY * 0.4, 100, 600);
+    rows.forEach(r => r.sync && r.sync()); apply();
+}, { passive: false });
 
 function resize() {
     const w = stage.clientWidth, h = stage.clientHeight;
