@@ -106,7 +106,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 18</div>
+<div id="buildTag">build 19</div>
 <div id="wrap">
     <h1>TAU</h1>
     <div id="menu">
@@ -1548,7 +1548,7 @@ function restoreSnap(){
 function pinFoot(idx) {
     const feet = G.pieces[G.active].feet();
     G.pinned = idx; G.pivot = { x:feet[idx].x, y:feet[idx].y };
-    G.turnDir = 0; G.crossings = 0; G.atLimit = false; G.netRad = 0;
+    G.turnDir = 0; G.crossings = 0; G.atLimit = false; G.netRad = 0; G.limitReason = null;
     G.snap = takeSnap();
     G.startedOnLine = feet.map(nearLineIds); G.usedGrace = [false,false,false];
     G.crossPt = [null,null,null]; G.crossFam = [null,null,null];
@@ -1603,7 +1603,8 @@ function applySwing(dA) {
         const wouldTouch = !wouldExceed && added===0 && G.crossings>=CFG.maxCrossingsPerTurn
             && wouldTouchUncrossedLine(before, after);
         if (wouldExceed || wouldTouch){
-            active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true; break; }
+            active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true;
+            G.limitReason = wouldExceed ? 'cross' : 'touch'; break; }
         G.crossings+=added; G.netRad+=step;
         for (let i=0;i<3;i++) if (record[i]) { G.crossPt[i]=record[i].pos; G.crossFam[i]=record[i].fam; }
         resolvePush(active, opp);
@@ -3020,11 +3021,11 @@ function render() {
             turnSpan.textContent = myOnlineTurnNow() ? 'Your turn' : (onlineMatch.opponentName + "'s turn");
             s.appendChild(turnSpan);
             m.textContent = myOnlineTurnNow() && G.pinned!==null
-                ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?'. Line limit, stop here':''}`
+                ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?(G.limitReason===`touch`?`. A foot is up against another line`:`. That would cross a 2nd line`):``}`
                 : `Playing ${onlineMatch.myColor} vs ${onlineMatch.opponentName}`;
         } else {
             s.innerHTML=`<span class="${c}">${c[0].toUpperCase()+c.slice(1)}</span> to move${aiTurn?' <span style="color:#69727b">(AI)</span>':''}`;
-            m.textContent = G.pinned!==null ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?'. Line limit, stop here':''}` : '';
+            m.textContent = G.pinned!==null ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?(G.limitReason===`touch`?`. A foot is up against another line`:`. That would cross a 2nd line`):``}` : '';
         }
         h.textContent = onlineMatch
             ? (myOnlineTurnNow()
