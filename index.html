@@ -130,7 +130,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 34</div>
+<div id="buildTag">build 35</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -139,6 +139,7 @@
         </div>
 
         <p id="acctStatus">Playing as Guest &middot; <button class="link" id="acctStatusBtn">Sign in</button></p>
+        <p id="rankLine" style="font-size:11px;color:#69727b;margin:-4px 0 2px;"></p>
         <button class="modeBtn" id="modeLocal">Local 1v1</button>
         <button class="modeBtn" id="modeOnline">Online 1v1</button>
         <button class="modeBtn" id="modeAI">vs AI</button>
@@ -2299,6 +2300,31 @@ function updateAcctStatus() {
     link.addEventListener('click', () => {
         if (sbUser && !sbUser.is_anonymous) sb.auth.signOut(); else openAcctPanel();
     });
+    updateRankLine();
+}
+// Small "Ranked #3 of 17" line under the name. Only shown for players who have finished at least
+// one RANKED game (wins+losses > 0 — private/casual games don't touch those counters), ranked among
+// that same group by ELO (competition ranking: 1 + number of strictly better players). Best-effort:
+// any failure just leaves the line blank.
+let rankLineSeq = 0;
+async function updateRankLine() {
+    const el = document.getElementById('rankLine');
+    if (!el) return;
+    const seq = ++rankLineSeq;                       // ignore out-of-date responses after quick auth changes
+    if (!sb || !sbUser) { el.textContent = ''; return; }
+    try {
+        const { data: me } = await sb.from('profiles').select('elo, wins, losses').eq('id', sbUser.id).maybeSingle();
+        if (seq !== rankLineSeq) return;
+        if (!me || (me.wins + me.losses) === 0) { el.textContent = ''; return; }
+        const ranked = q => q.or('wins.gt.0,losses.gt.0');
+        const [{ count: better }, { count: total }] = await Promise.all([
+            ranked(sb.from('profiles').select('id', { count: 'exact', head: true }).gt('elo', me.elo)),
+            ranked(sb.from('profiles').select('id', { count: 'exact', head: true })),
+        ]);
+        if (seq !== rankLineSeq) return;
+        if (total == null || better == null) { el.textContent = ''; return; }
+        el.textContent = `Ranked #${better + 1} of ${total}`;
+    } catch (e) { el.textContent = ''; }
 }
 // Set to a callback while the account panel was opened from a flow that should resume once
 // sign-in/guest completes (e.g. startOnlineMatchmaking, or opening the private-match menu);
@@ -3482,9 +3508,15 @@ function init3D() {
 const fallTipAxis = new THREE.Vector3();
 const FALL_AXIS_X = new THREE.Vector3(1,0,0), FALL_AXIS_Y = new THREE.Vector3(0,1,0), FALL_AXIS_Z = new THREE.Vector3(0,0,1);
 function applyFallRotation(t, f, dt, clear) {
-    const speed = Math.hypot(f.vx, f.vz) || 1;
-    fallTipAxis.set(f.vz/speed, 0, -f.vx/speed);        // horizontal, perpendicular to travel
-    t.rotateOnWorldAxis(fallTipAxis, f.tipRate*dt);     // leading edge pitches down over the rim
+    // Angular momentum carries over: after the rim pivot lets go, the piece must keep tumbling about
+    // the SAME axis it was pivoting on (f.ax/f.az, set when the pivot began). The old code re-derived
+    // the axis from the CURRENT horizontal velocity each frame -- but past ~90 deg of tip the pivot's
+    // exit velocity can point back INWARD over the board, which flipped the derived axis ~180 deg and
+    // made the spin visibly reverse direction mid-fall. The velocity-derived axis remains only as the
+    // fallback for fall states that never pivoted (the how-to demo's simple tip-while-sliding).
+    if (f.ax !== undefined) fallTipAxis.set(f.ax, 0, f.az);
+    else { const speed = Math.hypot(f.vx, f.vz) || 1; fallTipAxis.set(f.vz/speed, 0, -f.vx/speed); }
+    t.rotateOnWorldAxis(fallTipAxis, f.tipRate*dt);     // leading edge keeps pitching over the rim
     if (clear > 0) {
         t.rotateOnWorldAxis(FALL_AXIS_X, f.wx*dt*clear);
         t.rotateOnWorldAxis(FALL_AXIS_Y, f.wy*dt*clear);
@@ -4617,7 +4649,8 @@ async function replayOpponentMove(row) {
 function onlineFinishMatch(winnerColor) {
     if (!onlineMatch || !sb || onlineMatch.spectator) return;   // spectators never report results
     sb.rpc('finish_match', { p_match_id: onlineMatch.id, p_winner_color: winnerColor })
-      .then(({ error }) => { if (error) console.error('finish_match failed', error); })
+      .then(({ error }) => { if (error) console.error('finish_match failed', error);
+                             else if (typeof updateRankLine === 'function') updateRankLine(); })   // ELO moved -> refresh "Ranked #x of y"
       .catch(e => console.error('finish_match failed', e));
 }
 // Only actually starts a new match once BOTH players have clicked Rematch (rematch() is
