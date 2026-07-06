@@ -504,3 +504,34 @@ begin
 end;
 $$;
 -- Not granted to `authenticated`: this is an admin maintenance call, run from the SQL editor only.
+
+-- ---------------------------------------------------------------------------------------
+-- 9. Steel-edition waitlist: public email capture ("get notified when the steel edition
+--    drops"). Anyone — including signed-out visitors — may INSERT; nobody can read, change
+--    or delete rows through the API (no select/update/delete policies), so the list is only
+--    visible from this SQL editor / the service role. Duplicate emails are rejected by the
+--    unique index; the client treats that as "already on the list". Safe to re-run.
+--
+--    To EXPORT the list later: run
+--        select email, lang, created_at from public.waitlist order by created_at;
+--    in the SQL editor and use its "Download CSV" button.
+-- ---------------------------------------------------------------------------------------
+create table if not exists public.waitlist (
+  id uuid primary key default gen_random_uuid(),
+  email text not null,
+  lang text,                       -- UI language at signup: rough locale split for launch emails
+  source text not null default 'web',
+  created_at timestamptz not null default now(),
+  constraint waitlist_email_format
+    check (email ~* '^[^@\s]+@[^@\s]+\.[^@\s]+$' and length(email) <= 254)
+);
+create unique index if not exists waitlist_email_uniq on public.waitlist (lower(email));
+
+alter table public.waitlist enable row level security;
+drop policy if exists "anyone can join the waitlist" on public.waitlist;
+create policy "anyone can join the waitlist"
+  on public.waitlist for insert
+  to anon, authenticated
+  with check (true);
+grant insert on public.waitlist to anon, authenticated;
+revoke select, update, delete on public.waitlist from anon, authenticated;

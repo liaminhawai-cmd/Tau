@@ -157,7 +157,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 43</div>
+<div id="buildTag">build 45</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -173,6 +173,8 @@
         <p class="msg" id="modeMsg"></p>
         <div id="menuLinks"><button class="link" id="howToPlayBtn">How to play</button><button class="link" id="leaderboardBtn">Leaderboard</button><button class="link" id="watchBtn">Watch</button></div>
         <p id="presenceLine" style="font-size:12px;color:#69727b;margin:2px 0 0;"></p>
+        <!-- understated one-liner, never gates anything: email capture for the physical steel edition -->
+        <p id="steelLine" style="margin:6px 0 0;"><button class="link" id="steelBtn" style="font-size:11px;color:#5a6570;">Steel edition — get notified</button></p>
 
         <div id="acctPanel" style="display:none;">
             <div id="acctSignedOut">
@@ -1343,6 +1345,8 @@ ja: {
 "Corners count once":"角は1回だけ","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"線の上にいる間は「線越え」は続いています。2本の線が交わる角を回っても<b>1回</b>の線越えです。",
 "Two feet at once":"2本の足を同時に","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"1回のスライドで2本の足が別々の線を越えられます。線から離れない限り<b>1回</b>の線越えです。",
 "Push them off":"押し出して勝つ","Push your opponent off the edge. When one of their feet leaves the board, you win.":"相手をボードの外へ押し出しましょう。相手の足が1本でも落ちたら勝ちです。",
+"Play the AI while you wait":"待ち時間にAIと対戦","Still searching — you’ll be told when an opponent appears.":"対戦相手を探し続けています — 見つかったらお知らせします。","Opponent found!":"対戦相手が見つかりました！","Play now":"今すぐ対戦",
+"Steel edition — get notified":"スチール版 — 発売通知を受け取る","On the steel-edition list ✓":"スチール版の通知リスト登録済み ✓","Steel edition":"スチール版","A real steel-and-magnets Tau is coming. Leave your email and you’ll be the first to know.":"スチール＆マグネットの実物版Tauが登場予定。メールを登録すると最初にお知らせします。","Notify me":"通知を受け取る","You’re on the list!":"登録しました！","That doesn’t look like an email address.":"メールアドレスの形式が正しくありません。","email":"メールアドレス","Could not save — check your connection.":"保存できませんでした — 接続を確認してください。",
 "Continue with Google":"Googleで続行","or use a username & password":"またはユーザー名とパスワードを使う","hide username & password":"ユーザー名の入力を隠す",
 "or a one-time email link":"またはメールでワンタイムリンク","Log in":"ログイン","Sign up":"新規登録","Send link":"リンクを送信","username":"ユーザー名","password":"パスワード",
 "Sign up to choose your own name — you keep your current rating.":"登録すると名前を選べます — レートは引き継がれます。",
@@ -1386,6 +1390,8 @@ zh: {
 "Corners count once":"交角只算一次","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"只要棋子仍在线上，这次过线就未结束。绕过两线相交的角也只算<b>一次</b>过线。",
 "Two feet at once":"双脚同时过线","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"两只脚可以在同一次滑动中越过两条不同的线。只要棋子始终未离开线，这仍算<b>一次</b>过线。",
 "Push them off":"推下棋盘","Push your opponent off the edge. When one of their feet leaves the board, you win.":"把对手推下棋盘边缘。对方任何一只脚离开棋盘，你就获胜。",
+"Play the AI while you wait":"等待时和AI对战","Still searching — you’ll be told when an opponent appears.":"仍在寻找对手——找到后会通知你。","Opponent found!":"找到对手了！","Play now":"立即对战",
+"Steel edition — get notified":"钢制版 — 上市时通知我","On the steel-edition list ✓":"已加入钢制版通知列表 ✓","Steel edition":"钢制版","A real steel-and-magnets Tau is coming. Leave your email and you’ll be the first to know.":"钢制磁吸实体版Tau即将推出。留下邮箱，第一时间通知你。","Notify me":"通知我","You’re on the list!":"已加入通知列表！","That doesn’t look like an email address.":"邮箱格式不正确。","email":"邮箱","Could not save — check your connection.":"保存失败——请检查网络连接。",
 "Continue with Google":"使用Google登录","or use a username & password":"或使用用户名和密码","hide username & password":"收起用户名登录",
 "or a one-time email link":"或使用一次性邮件链接","Log in":"登录","Sign up":"注册","Send link":"发送链接","username":"用户名","password":"密码",
 "Sign up to choose your own name — you keep your current rating.":"注册后可自选用户名——当前等级分会保留。",
@@ -1429,6 +1435,8 @@ zht: {
 "Corners count once":"轉角只算一次","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"只要棋子仍在線上，這次過線就未結束。繞過兩線相交的轉角也只算<b>一次</b>過線。",
 "Two feet at once":"雙腳同時過線","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"兩隻腳可以在同一次滑動中越過兩條不同的線。只要棋子始終未離開線，仍算<b>一次</b>過線。",
 "Push them off":"推下棋盤","Push your opponent off the edge. When one of their feet leaves the board, you win.":"把對手推下棋盤邊緣。對方任何一隻腳離開棋盤，你就獲勝。",
+"Play the AI while you wait":"等待時和AI對戰","Still searching — you’ll be told when an opponent appears.":"仍在尋找對手——找到後會通知你。","Opponent found!":"找到對手了！","Play now":"立即對戰",
+"Steel edition — get notified":"鋼製版 — 上市時通知我","On the steel-edition list ✓":"已加入鋼製版通知名單 ✓","Steel edition":"鋼製版","A real steel-and-magnets Tau is coming. Leave your email and you’ll be the first to know.":"鋼製磁吸實體版Tau即將推出。留下Email，第一時間通知你。","Notify me":"通知我","You’re on the list!":"已加入通知名單！","That doesn’t look like an email address.":"Email格式不正確。","email":"Email","Could not save — check your connection.":"儲存失敗——請檢查網路連線。",
 "Continue with Google":"使用Google繼續","or use a username & password":"或使用帳號密碼","hide username & password":"隱藏帳號密碼欄位",
 "or a one-time email link":"或使用一次性電子郵件連結","Log in":"登入","Sign up":"註冊","Send link":"傳送連結","username":"帳號","password":"密碼",
 "Sign up to choose your own name — you keep your current rating.":"註冊後可自選名稱——目前的等級分會保留。",
@@ -1472,6 +1480,8 @@ ko: {
 "Corners count once":"모서리는 한 번","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"말이 선 위에 있는 동안은 같은 ‘선 넘기’가 이어집니다. 두 선이 만나는 모서리를 돌아도 <b>한 번</b>으로 칩니다.",
 "Two feet at once":"두 발 동시에","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"한 번의 이동으로 두 발이 서로 다른 선을 넘을 수 있습니다. 말이 선에서 떨어지지 않는 한 여전히 <b>한 번</b>입니다.",
 "Push them off":"밀어서 떨어뜨리기","Push your opponent off the edge. When one of their feet leaves the board, you win.":"상대를 가장자리 밖으로 밀어내세요. 상대 발이 하나라도 보드를 벗어나면 승리합니다.",
+"Play the AI while you wait":"기다리는 동안 AI와 대전","Still searching — you’ll be told when an opponent appears.":"계속 상대를 찾는 중 — 찾으면 알려드립니다.","Opponent found!":"상대를 찾았습니다!","Play now":"지금 대전",
+"Steel edition — get notified":"스틸 에디션 — 출시 알림 받기","On the steel-edition list ✓":"스틸 에디션 알림 신청됨 ✓","Steel edition":"스틸 에디션","A real steel-and-magnets Tau is coming. Leave your email and you’ll be the first to know.":"강철과 자석으로 만든 실물 Tau가 준비 중입니다. 이메일을 남기면 가장 먼저 알려드립니다.","Notify me":"알림 받기","You’re on the list!":"신청 완료!","That doesn’t look like an email address.":"이메일 주소 형식이 올바르지 않습니다.","email":"이메일","Could not save — check your connection.":"저장하지 못했습니다 — 연결을 확인하세요.",
 "Continue with Google":"Google로 계속하기","or use a username & password":"또는 아이디와 비밀번호 사용","hide username & password":"아이디 입력 숨기기",
 "or a one-time email link":"또는 일회용 이메일 링크","Log in":"로그인","Sign up":"가입","Send link":"링크 보내기","username":"아이디","password":"비밀번호",
 "Sign up to choose your own name — you keep your current rating.":"가입하면 원하는 이름을 고를 수 있습니다 — 현재 레이팅은 유지됩니다.",
@@ -1515,6 +1525,8 @@ de: {
 "Corners count once":"Ecken zählen einmal","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"Eine Überquerung dauert an, solange die Figur auf einer Linie bleibt. Auch um eine Ecke, wo zwei Linien sich treffen, zählt es als <b>eine</b> Überquerung.",
 "Two feet at once":"Zwei Füße auf einmal","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"Zwei Füße können im selben Zug zwei verschiedene Linien kreuzen. Solange die Figur keine Linie verlässt, zählt es als <b>eine</b> Überquerung.",
 "Push them off":"Runterschieben","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Schieb deinen Gegner über den Rand. Sobald einer seiner Füße das Brett verlässt, gewinnst du.",
+"Play the AI while you wait":"Gegen KI spielen, während du wartest","Still searching — you’ll be told when an opponent appears.":"Suche läuft weiter – du wirst benachrichtigt, sobald ein Gegner da ist.","Opponent found!":"Gegner gefunden!","Play now":"Jetzt spielen",
+"Steel edition — get notified":"Steel Edition – benachrichtigt werden","On the steel-edition list ✓":"Auf der Steel-Edition-Liste ✓","Steel edition":"Steel Edition","A real steel-and-magnets Tau is coming. Leave your email and you’ll be the first to know.":"Ein echtes Tau aus Stahl und Magneten kommt. Lass deine E-Mail da und erfahre es als Erster.","Notify me":"Benachrichtige mich","You’re on the list!":"Du stehst auf der Liste!","That doesn’t look like an email address.":"Das sieht nicht nach einer E-Mail-Adresse aus.","email":"E-Mail","Could not save — check your connection.":"Speichern fehlgeschlagen – prüfe deine Verbindung.",
 "Continue with Google":"Weiter mit Google","or use a username & password":"oder Benutzername & Passwort","hide username & password":"Benutzername & Passwort ausblenden",
 "or a one-time email link":"oder ein einmaliger E-Mail-Link","Log in":"Einloggen","Sign up":"Registrieren","Send link":"Link senden","username":"Benutzername","password":"Passwort",
 "Sign up to choose your own name — you keep your current rating.":"Registriere dich und wähle deinen Namen – deine Wertung bleibt erhalten.",
@@ -1558,6 +1570,8 @@ fr: {
 "Corners count once":"Les coins comptent une fois","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"Un franchissement dure tant que la pièce reste sur une ligne. Contourner un coin où deux lignes se croisent compte pour <b>un seul</b> franchissement.",
 "Two feet at once":"Deux pieds à la fois","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"Deux pieds peuvent franchir deux lignes différentes dans le même geste. Tant que la pièce ne quitte pas de ligne, cela compte pour <b>un seul</b> franchissement.",
 "Push them off":"Fais-le tomber","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Pousse ton adversaire hors du plateau. Dès qu'un de ses pieds quitte le plateau, tu gagnes.",
+"Play the AI while you wait":"Jouer contre l'IA en attendant","Still searching — you’ll be told when an opponent appears.":"Recherche en cours — tu seras prévenu dès qu'un adversaire arrive.","Opponent found!":"Adversaire trouvé !","Play now":"Jouer maintenant",
+"Steel edition — get notified":"Édition acier — être prévenu","On the steel-edition list ✓":"Inscrit pour l'édition acier ✓","Steel edition":"Édition acier","A real steel-and-magnets Tau is coming. Leave your email and you’ll be the first to know.":"Un vrai Tau en acier et aimants arrive. Laisse ton e-mail pour être prévenu en premier.","Notify me":"Me prévenir","You’re on the list!":"Tu es sur la liste !","That doesn’t look like an email address.":"Ça ne ressemble pas à une adresse e-mail.","email":"e-mail","Could not save — check your connection.":"Enregistrement impossible — vérifie ta connexion.",
 "Continue with Google":"Continuer avec Google","or use a username & password":"ou identifiant & mot de passe","hide username & password":"masquer identifiant & mot de passe",
 "or a one-time email link":"ou un lien par e-mail","Log in":"Connexion","Sign up":"Créer un compte","Send link":"Envoyer le lien","username":"identifiant","password":"mot de passe",
 "Sign up to choose your own name — you keep your current rating.":"Crée un compte pour choisir ton nom — tu gardes ton Elo actuel.",
@@ -1601,6 +1615,8 @@ es: {
 "Corners count once":"Las esquinas cuentan una vez","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"Un cruce dura mientras la pieza siga sobre una línea. Rodear una esquina donde se juntan dos líneas sigue contando como <b>un</b> cruce.",
 "Two feet at once":"Dos pies a la vez","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"Dos pies pueden cruzar dos líneas distintas en el mismo giro. Mientras la pieza no deje la línea, sigue siendo <b>un</b> cruce.",
 "Push them off":"Échalo del tablero","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Empuja a tu rival fuera del borde. Cuando uno de sus pies sale del tablero, ganas.",
+"Play the AI while you wait":"Jugar contra la IA mientras esperas","Still searching — you’ll be told when an opponent appears.":"Seguimos buscando — te avisaremos cuando aparezca un rival.","Opponent found!":"¡Rival encontrado!","Play now":"Jugar ya",
+"Steel edition — get notified":"Edición de acero — avísame","On the steel-edition list ✓":"En la lista de la edición de acero ✓","Steel edition":"Edición de acero","A real steel-and-magnets Tau is coming. Leave your email and you’ll be the first to know.":"Se acerca un Tau real de acero e imanes. Deja tu correo y serás el primero en saberlo.","Notify me":"Avísame","You’re on the list!":"¡Estás en la lista!","That doesn’t look like an email address.":"Eso no parece un correo electrónico.","email":"correo","Could not save — check your connection.":"No se pudo guardar — revisa tu conexión.",
 "Continue with Google":"Continuar con Google","or use a username & password":"o usar nombre de usuario y contraseña","hide username & password":"ocultar usuario y contraseña",
 "or a one-time email link":"o un enlace de un solo uso por correo","Log in":"Entrar","Sign up":"Registrarse","Send link":"Enviar enlace","username":"usuario","password":"contraseña",
 "Sign up to choose your own name — you keep your current rating.":"Regístrate para elegir tu nombre — conservas tu Elo actual.",
@@ -1644,6 +1660,8 @@ pt: {
 "Corners count once":"Cantos contam uma vez","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"Um cruzamento dura enquanto a peça estiver sobre uma linha. Contornar um canto onde duas linhas se encontram ainda conta como <b>um</b> cruzamento.",
 "Two feet at once":"Dois pés de uma vez","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"Dois pés podem cruzar duas linhas diferentes no mesmo giro. Enquanto a peça não sair da linha, ainda é <b>um</b> cruzamento.",
 "Push them off":"Derrube do tabuleiro","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Empurre o oponente para fora da borda. Quando um pé dele sai do tabuleiro, você vence.",
+"Play the AI while you wait":"Jogar contra a IA enquanto espera","Still searching — you’ll be told when an opponent appears.":"Ainda procurando — avisaremos quando aparecer um oponente.","Opponent found!":"Oponente encontrado!","Play now":"Jogar agora",
+"Steel edition — get notified":"Edição de aço — quero ser avisado","On the steel-edition list ✓":"Na lista da edição de aço ✓","Steel edition":"Edição de aço","A real steel-and-magnets Tau is coming. Leave your email and you’ll be the first to know.":"Um Tau de verdade, em aço e ímãs, está chegando. Deixe seu e-mail e saiba primeiro.","Notify me":"Me avise","You’re on the list!":"Você está na lista!","That doesn’t look like an email address.":"Isso não parece um e-mail.","email":"e-mail","Could not save — check your connection.":"Não foi possível salvar — verifique sua conexão.",
 "Continue with Google":"Continuar com o Google","or use a username & password":"ou usar nome de usuário e senha","hide username & password":"esconder usuário e senha",
 "or a one-time email link":"ou um link único por e-mail","Log in":"Entrar","Sign up":"Cadastrar","Send link":"Enviar link","username":"usuário","password":"senha",
 "Sign up to choose your own name — you keep your current rating.":"Cadastre-se para escolher seu nome — você mantém seu Elo atual.",
@@ -1687,6 +1705,8 @@ ru: {
 "Corners count once":"Угол считается один раз","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"Пересечение длится, пока фигура остаётся на линии. Обход угла, где встречаются две линии, всё равно считается <b>одним</b> пересечением.",
 "Two feet at once":"Две ножки сразу","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"Две ножки могут пересечь две разные линии за одно движение. Пока фигура не сходит с линии, это всё ещё <b>одно</b> пересечение.",
 "Push them off":"Столкните его","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Столкните соперника с края. Как только одна его ножка покидает доску — вы победили.",
+"Play the AI while you wait":"Сыграть с ИИ, пока ждёте","Still searching — you’ll be told when an opponent appears.":"Поиск продолжается — мы сообщим, когда появится соперник.","Opponent found!":"Соперник найден!","Play now":"Играть сейчас",
+"Steel edition — get notified":"Стальная версия — сообщить о выходе","On the steel-edition list ✓":"Вы в списке стальной версии ✓","Steel edition":"Стальная версия","A real steel-and-magnets Tau is coming. Leave your email and you’ll be the first to know.":"Настоящий Tau из стали и магнитов уже в пути. Оставьте почту — узнаете первым.","Notify me":"Сообщить мне","You’re on the list!":"Вы в списке!","That doesn’t look like an email address.":"Это не похоже на адрес почты.","email":"почта","Could not save — check your connection.":"Не удалось сохранить — проверьте соединение.",
 "Continue with Google":"Продолжить с Google","or use a username & password":"или имя пользователя и пароль","hide username & password":"скрыть имя пользователя и пароль",
 "or a one-time email link":"или одноразовая ссылка на почту","Log in":"Войти","Sign up":"Регистрация","Send link":"Отправить ссылку","username":"имя пользователя","password":"пароль",
 "Sign up to choose your own name — you keep your current rating.":"Зарегистрируйтесь, чтобы выбрать имя — рейтинг сохранится.",
@@ -2241,12 +2261,37 @@ function aiChoosePlanHard(aiIdx){
     return best;
 }
 
-// ---------- "Master" AI: 3-ply minimax (me, human's best reply, then my best follow-up) ----------
-// Same shape as Hard, one ply deeper: instead of scoring a move by the margin left after the
-// human's best reply, it scores by the BEST margin I can still reach after that reply — so a move
-// that looks strong right now but only leads to a cramped follow-up loses to one that looks merely
-// okay now but keeps a strong follow-up alive. Any node that's already a forced win/loss (a foot off
-// the board) short-circuits immediately rather than searching deeper from there.
+// ---------- "Master" AI: 3-ply minimax with park-aware moves + positional eval ----------
+// Same 3-ply shape as Hard-plus-one (me, the human's best reply, then my best follow-up), with two
+// upgrades over the old Master, both aimed at the two-turn "double cross":
+//
+// 1. MOVE SET. Besides the 6 swing-to-the-limit moves, the root also considers EARLY STOPS that
+//    PARK a moving foot in the grace band of a line (pad on it, magnet off it). A parked foot
+//    leaves its line for free next turn (pinFoot's startedOnLine grandfathering), so a second foot's
+//    crossing rides along — two lines gained for one crossing. Strong humans set this up from the
+//    opening and the old to-the-limit-only move set could neither play it nor race it. The deeper
+//    plies stay 6-way to-the-limit: pinFoot re-arms the grace from each simulated pose, so a ply-1
+//    park automatically shows its payoff in the ply-3 leaves.
+// 2. EVAL. Leaves score margin (rim safety, as before) PLUS the zone/cell values from the hand-drawn
+//    board grading (centre 4 … exposed lens 1 — the Hard-mode logic) and a small bonus per foot
+//    parked on a line (grace potential, mine minus theirs). The old margin-only eval was blind to
+//    the central head start a double-cross buys: it only saw trouble once rim distances moved,
+//    several moves too late. The win/loss bonus still dominates everything.
+//
+// Root candidates are quick-scored, and only the best MASTER_ROOT_KEEP are searched in depth
+// (park stops are restored from snapshots taken during the same sweep, so ply 1 is never re-simmed).
+const MASTER_ZONE_W = 1.5;      // board-units of rim margin one zone point is worth
+const MASTER_PARK_W = 1.2;      // rim-margin value of one grace-armed (parked) foot
+const MASTER_ROOT_KEEP = 9;     // deep-searched root candidates (of up to 18 generated)
+const PARK_LO = 0.5, PARK_HI = 0.72;   // recordable park band: outside holdEps+margin, inside touchEps−margin
+function masterEval(aiIdx){
+    let parks = 0;
+    for (const f of G.pieces[aiIdx].feet())   if (nearLineIds(f, 0.75).length) parks++;
+    for (const f of G.pieces[1-aiIdx].feet()) if (nearLineIds(f, 0.75).length) parks--;
+    return marginFor(aiIdx)
+         + MASTER_ZONE_W * (pieceZoneScore(G.pieces[aiIdx]) - pieceZoneScore(G.pieces[1-aiIdx]))
+         + MASTER_PARK_W * parks;
+}
 function aiChoosePlanMaster(aiIdx){
     const humanIdx = 1 - aiIdx, origActive = G.active;
     const snap0 = takeSnap();
@@ -2254,18 +2299,50 @@ function aiChoosePlanMaster(aiIdx){
         G.pieces.forEach((p,i)=>{ p.x=snap[i].x; p.y=snap[i].y; p.rot=snap[i].rot; });
         G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
     };
-    let best = null;   // { pivotIdx, dir, targetRad, score }
+    // ply 1: sweep each (pivot × direction) once to its limit, snapshotting up to 2 park stops per
+    // sweep on the way (first entry per foot×line pair) plus the limit itself.
+    const cands = [];
     for (let mp=0; mp<3; mp++) for (const md of [1,-1]) {
         restore(snap0); G.active = aiIdx;
-        const net = simMoveToLimit(mp, md);
-        if (Math.abs(net) < HARD_MIN_MOVE_RAD) continue;
-        if (G.pieces[aiIdx].anyFootOff()) continue;
+        pinFoot(mp);
+        const seen = {}; let parksHere = 0, guard = 0;
+        while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && guard++ < 500) {
+            applySwing(md*AI_STEP_RAD);
+            if (parksHere < 2 && Math.abs(G.netRad) >= HARD_MIN_MOVE_RAD && !G.pieces[aiIdx].anyFootOff()) {
+                const feet = G.pieces[aiIdx].feet();
+                for (let i=0; i<3 && parksHere<2; i++) {
+                    if (i === mp) continue;
+                    for (const id of nearLineIds(feet[i], PARK_HI)) {
+                        if (nearLineIds(feet[i], PARK_LO).includes(id)) continue;   // too deep: magnet on the line
+                        const key = i+':'+id;
+                        if (seen[key]) continue;
+                        seen[key] = true;
+                        cands.push({ pivotIdx: mp, dir: md, targetRad: Math.abs(G.netRad), snap: takeSnap() });
+                        parksHere++; break;
+                    }
+                }
+            }
+        }
+        if (Math.abs(G.netRad) >= HARD_MIN_MOVE_RAD && !G.pieces[aiIdx].anyFootOff())
+            cands.push({ pivotIdx: mp, dir: md, targetRad: Math.abs(G.netRad), snap: takeSnap() });
+    }
+    // order by a 0-ply glance and keep the strongest few — wins float to the top on the bonus
+    for (const c of cands) {
+        restore(c.snap);
+        c.quick = G.pieces[humanIdx].anyFootOff() ? HARD_WIN_BONUS + masterEval(aiIdx) : masterEval(aiIdx);
+    }
+    cands.sort((a,b) => b.quick - a.quick);
+    if (cands.length > MASTER_ROOT_KEEP) cands.length = MASTER_ROOT_KEEP;
+    let best = null;   // { pivotIdx, dir, targetRad, score }
+    for (const c of cands) {
+        restore(c.snap); G.active = aiIdx;
         let score;
         if (G.pieces[humanIdx].anyFootOff()) {
-            score = HARD_WIN_BONUS + marginFor(aiIdx);            // immediate win -- no need to look further
+            score = HARD_WIN_BONUS + masterEval(aiIdx);            // immediate win -- no need to look further
         } else {
             const snap1 = takeSnap();
-            let worst = Infinity;                                 // the human picks their best (= my worst) reply
+            let worst = Infinity;                                  // the human picks their best (= my worst) reply
+            reply:
             for (let op=0; op<3; op++) for (const od of [1,-1]) {
                 restore(snap1); G.active = humanIdx;
                 const onet = simMoveToLimit(op, od);
@@ -2277,21 +2354,22 @@ function aiChoosePlanMaster(aiIdx){
                 } else {
                     const snap2 = takeSnap();
                     let bestFollow = -Infinity;                    // my turn again -- take my best follow-up
-                    for (let fp=0; fp<3; fp++) for (const fd of [1,-1]) {
+                    for (let fp=0; fp<3 && bestFollow < HARD_WIN_BONUS/2; fp++) for (const fd of [1,-1]) {
                         restore(snap2); G.active = aiIdx;
                         const fnet = simMoveToLimit(fp, fd);
                         if (Math.abs(fnet) < HARD_MIN_MOVE_RAD) continue;
                         if (G.pieces[aiIdx].anyFootOff()) continue;
-                        const fscore = G.pieces[humanIdx].anyFootOff() ? HARD_WIN_BONUS + marginFor(aiIdx) : marginFor(aiIdx);
+                        const fscore = G.pieces[humanIdx].anyFootOff() ? HARD_WIN_BONUS + masterEval(aiIdx) : masterEval(aiIdx);
                         if (fscore > bestFollow) bestFollow = fscore;
                     }
-                    replyScore = bestFollow === -Infinity ? marginFor(aiIdx) : bestFollow;   // no legal follow-up -- take the current margin
+                    replyScore = bestFollow === -Infinity ? masterEval(aiIdx) : bestFollow;   // no legal follow-up -- take the current margin
                 }
                 if (replyScore < worst) worst = replyScore;
+                if (best && worst <= best.score) break reply;      // can't beat the incumbent — stop refuting
             }
-            score = worst === Infinity ? marginFor(aiIdx) : worst;   // the human had no legal reply at all
+            score = worst === Infinity ? masterEval(aiIdx) : worst;   // the human had no legal reply at all
         }
-        if (!best || score > best.score) best = { pivotIdx: mp, dir: md, targetRad: Math.abs(net), score };
+        if (!best || score > best.score) best = { pivotIdx: c.pivotIdx, dir: c.dir, targetRad: c.targetRad, score };
     }
     restore(snap0); G.active = origActive;
     return best;
@@ -3071,7 +3149,8 @@ function showGameOverModal() {
 function startGame(aiMode, humanColorIdx, difficulty) {
     hideModal(); clearTimeout(gameOverTimer);
     demoStop();
-    cancelMatchmaking(); exitOnlineMatch();
+    if (!mmWaitingAI) cancelMatchmaking();   // the play-AI-while-you-wait game keeps the queue alive
+    exitOnlineMatch();
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
     vsAI = aiMode;
     aiDifficulty = difficulty || 'normal';
@@ -3093,6 +3172,7 @@ function backToMenu() {
     clearTimeout(aiTimer); aiAnim = null;
     replayActive = false;
     if (typeof rmxTeardown === 'function') rmxTeardown(true);   // tell a waiting opponent we left
+    mmWaitingAI = false;   // leaving to the menu also leaves the play-AI-while-you-wait queue
     cancelMatchmaking(); exitOnlineMatch();
     onlineTurnDeadline = null;
     document.getElementById('turnTimer').style.display = 'none';
@@ -4924,6 +5004,49 @@ function openRenamePrompt(prefill, isAuto) {
     inp.focus(); inp.select();
 }
 
+// ---------- Steel-edition waitlist ----------
+// One subtle line on the menu -> a modal that captures an email into public.waitlist
+// (insert-only for everyone incl. signed-out visitors; only the SQL editor can read it back —
+// see apply_to_live_db.sql section 9). Never gates anything; a duplicate email counts as
+// "already on the list". localStorage remembers a successful join so the line flips to a ✓.
+const WAITLIST_FLAG = 'tauWaitlist';
+function refreshSteelLine() {
+    const btn = document.getElementById('steelBtn');
+    if (!btn) return;
+    let joined = false;
+    try { joined = !!localStorage.getItem(WAITLIST_FLAG); } catch(e) {}
+    btn.textContent = joined ? t('On the steel-edition list ✓') : t('Steel edition — get notified');
+}
+function openWaitlistPrompt() {
+    const body = `<p class="msg" style="margin:0 0 8px;">${escapeHtml(t('A real steel-and-magnets Tau is coming. Leave your email and you’ll be the first to know.'))}</p>
+        <div class="row">
+            <input id="wlEmail" type="email" maxlength="254" placeholder="${escapeHtml(t('email'))}" autocomplete="email">
+            <button id="wlGo">${escapeHtml(t('Notify me'))}</button>
+        </div><p class="msg" id="wlMsg"></p>`;
+    showModal(t('Steel edition'), body, [ { label: t('Close'), onClick: () => {} } ], true);
+    const go = async () => {
+        const em = (document.getElementById('wlEmail').value || '').trim();
+        const msg = document.getElementById('wlMsg');
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { msg.textContent = t('That doesn’t look like an email address.'); return; }
+        msg.textContent = '…';
+        try {
+            if (!sb) await ensureSupabase();
+            const { error } = await sb.from('waitlist').insert({ email: em, lang: LANG });
+            if (error && !/duplicate|unique/i.test(error.message || '')) throw error;   // a duplicate IS "on the list"
+            try { localStorage.setItem(WAITLIST_FLAG, '1'); } catch(e) {}
+            msg.textContent = t('You’re on the list!');
+            refreshSteelLine();
+            setTimeout(hideModal, 900);
+        } catch (e) { msg.textContent = t('Could not save — check your connection.'); }
+    };
+    document.getElementById('wlGo').addEventListener('click', go);
+    const em = document.getElementById('wlEmail');
+    em.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    em.focus();
+}
+document.getElementById('steelBtn').addEventListener('click', openWaitlistPrompt);
+refreshSteelLine();
+
 // ---------- Online 1v1: matchmaking, live move sync, ELO ----------
 // Sync model: whoever's turn it is computes their own move locally (instant feedback — no
 // round trip needed to play) and broadcasts the recorded trajectory plus the resulting
@@ -4938,6 +5061,10 @@ function openRenamePrompt(prefill, isAuto) {
 // onlineMatch itself is declared much earlier (see the comment there) -- { id, myColor,
 // nextMoveIndex } while actively in an online game.
 let matchmakingActive = false, matchmakingTimer = null, matchmakingChannel = null, moveChannel = null;
+// Play-the-AI-while-you-wait: after a few empty polls the searching modal grows an extra button
+// that starts a normal vs-AI game WITHOUT leaving the queue; when a real opponent appears the
+// player is told and jumps straight into the online match (the AI game is simply abandoned).
+let mmWaitingAI = false, mmAiOffered = false;
 let pendingKeyframes = [], lastKeyframeT = 0;
 
 function myOnlineTurnNow() {
@@ -5067,7 +5194,8 @@ function endOnlineMatch(loserIdx) {
 
 async function startOnlineMatchmaking() {
     if (!sb || !sbUser) return;
-    matchmakingActive = true;
+    matchmakingActive = true; mmWaitingAI = false; mmAiOffered = false;
+    let emptyPolls = 0;
     showModal(t('Online 1v1'), t('Searching for an opponent…'), [ { label: t('Cancel'), onClick: cancelMatchmaking } ]);
     matchmakingChannel = sb.channel('matchmaking-'+sbUser.id)
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'matches' }, payload => {
@@ -5076,6 +5204,14 @@ async function startOnlineMatchmaking() {
         .subscribe();
     const tryOnce = async () => {
         if (!matchmakingActive) return;
+        // Nobody around after a few polls: offer a vs-AI game that keeps the queue running.
+        if (++emptyPolls === 3 && !mmAiOffered && !mmWaitingAI) {
+            mmAiOffered = true;
+            showModal(t('Online 1v1'), t('Searching for an opponent…'), [
+                { label: t('Play the AI while you wait'), onClick: startAiWhileWaiting },
+                { label: t('Cancel'), onClick: cancelMatchmaking },
+            ]);
+        }
         // The ENTIRE body is one try/catch: supabase-js's REST/RPC layer doesn't always
         // normalize a genuine network-level failure (dropped WiFi, a DNS hiccup) into
         // {data:null,error} the way its auth methods do -- it can just reject the promise. An
@@ -5108,10 +5244,16 @@ async function startOnlineMatchmaking() {
 }
 function cancelMatchmaking() {
     if (!matchmakingActive) return;
-    matchmakingActive = false;
+    matchmakingActive = false; mmWaitingAI = false;
     clearTimeout(matchmakingTimer);
     if (matchmakingChannel) { sb.removeChannel(matchmakingChannel); matchmakingChannel = null; }
     if (sb) sb.rpc('leave_queue').catch(()=>{});
+}
+// Start a normal vs-AI game (player = blue, last-used difficulty) with the queue still live.
+function startAiWhileWaiting() {
+    mmWaitingAI = true;
+    startGame(true, 0, AI_DIFF_LABEL[aiDifficulty] ? aiDifficulty : 'easy');
+    showPassToast(t('Still searching — you’ll be told when an opponent appears.'));
 }
 // Best-effort instant cleanup for an ordinary tab close while queued -- there's no guarantee
 // this network call actually completes before the page is torn down, so it's a nice-to-have,
@@ -5122,9 +5264,23 @@ addEventListener('pagehide', () => { if (matchmakingActive && sb) sb.rpc('leave_
 
 async function enterOnlineMatch(row) {
     matchmakingActive = false;
-    setPresenceStatus('match');
     clearTimeout(matchmakingTimer);
     if (matchmakingChannel) { sb.removeChannel(matchmakingChannel); matchmakingChannel = null; }
+    // Found a real opponent while the player was passing time against the AI: don't yank them out
+    // mid-swing — tell them, and one tap drops the AI game (it costs nothing to abandon).
+    if (mmWaitingAI && vsAI && G && !G.over) {
+        mmWaitingAI = false;
+        showModal(t('Online 1v1'), t('Opponent found!'), [
+            { label: t('Play now'), onClick: () => { finishEnterOnlineMatch(row); } },
+        ]);
+        return;
+    }
+    mmWaitingAI = false;
+    return finishEnterOnlineMatch(row);
+}
+async function finishEnterOnlineMatch(row) {
+    setPresenceStatus('match');
+    clearTimeout(aiTimer); aiAnim = null;   // a pending AI-while-you-wait move must not fire into the online match
     hideModal();
     demoStop();
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
