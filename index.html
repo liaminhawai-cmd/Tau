@@ -2,8 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Tau</title>
+<meta name="description" content="A physics-based abstract strategy board game. Play the AI, a friend, or online — free, in your browser.">
+<!-- Installable web app (Add to Home Screen on iOS/Android) -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#15181c">
+<link rel="icon" href="favicon-32.png" sizes="32x32">
+<link rel="icon" href="icon-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tau">
+<meta name="mobile-web-app-capable" content="yes">
 <style>
     html,body { margin:0; padding:0; height:100%; background:#15181c;
                 font-family:Arial, sans-serif; color:#e6e6e6; overflow:hidden; }
@@ -32,6 +43,11 @@
     button { background:#2c3138; color:#e6e6e6; border:1px solid #3a4048; padding:5px 14px;
              border-radius:4px; cursor:pointer; margin:4px 0 6px; font-size:13px; }
     button:active { background:#3a4048; }
+    /* Google is the primary sign-in path -- make it the visually dominant control in the panel. */
+    button.primaryAuth { width:100%; box-sizing:border-box; padding:11px; font-size:15px; margin:2px 0 8px;
+                         background:#2f4bd6; border-color:#3d5afe; color:#fff; }
+    button.primaryAuth:hover { background:#3a57e0; }
+    #acctMoreOptions { display:block; margin:2px auto 6px; font-size:12px; }
     /* body/html keep overflow:hidden so dragging a piece in #game never bounces/scrolls the
        page, but that also means anything in #menu taller than the viewport (e.g. the account
        panel expanded with every field, incl. the Google button) would just be clipped with no
@@ -114,7 +130,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 32</div>
+<div id="buildTag">build 33</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -132,23 +148,27 @@
 
         <div id="acctPanel" style="display:none;">
             <div id="acctSignedOut">
-                <div class="row">
-                    <input id="acctUser" type="text" placeholder="username" autocomplete="username" maxlength="20">
-                </div>
-                <div class="row">
-                    <input id="acctPass" type="password" placeholder="password" autocomplete="current-password">
-                </div>
-                <div class="row">
-                    <button id="acctLogIn">Log in</button>
-                    <button id="acctSignUp">Sign up</button>
-                </div>
+                <!-- Google first: the smoothest path and the one that doesn't depend on email delivery. -->
+                <button id="acctGoogle" class="primaryAuth">Continue with Google</button>
                 <p class="msg" id="acctMsg"></p>
-                <p class="msg">or</p>
-                <div class="row">
-                    <input id="acctEmail" type="email" placeholder="you@example.com" autocomplete="email">
-                    <button id="acctSendLink">Send link</button>
+                <button id="acctMoreOptions" class="link">or use a username &amp; password</button>
+                <div id="acctEmailOptions" style="display:none;">
+                    <div class="row">
+                        <input id="acctUser" type="text" placeholder="username" autocomplete="username" maxlength="20">
+                    </div>
+                    <div class="row">
+                        <input id="acctPass" type="password" placeholder="password" autocomplete="current-password">
+                    </div>
+                    <div class="row">
+                        <button id="acctLogIn">Log in</button>
+                        <button id="acctSignUp">Sign up</button>
+                    </div>
+                    <p class="msg" style="margin-top:6px;">or a one-time email link</p>
+                    <div class="row">
+                        <input id="acctEmail" type="email" placeholder="you@example.com" autocomplete="email">
+                        <button id="acctSendLink">Send link</button>
+                    </div>
                 </div>
-                <button id="acctGoogle">Sign in with Google</button>
             </div>
             <div id="acctSignedIn" style="display:none;">
                 <p class="profile">Signed in as <b id="acctName"></b><br>Rating: <span class="elo" id="acctElo"></span></p>
@@ -2312,7 +2332,7 @@ function showGameOverModal() {
     clearTimeout(gameOverTimer);
     gameOverTimer = setTimeout(() => {
         if (document.getElementById('game').style.display !== 'flex') return;   // player already left to the menu
-        let title, buttons;
+        let title, buttons, bodyHtml = '';
         if (onlineMatch && onlineMatch.spectator) {
             title = (G.winner===0 ? onlineMatch.blueName : onlineMatch.redName) + ' wins!';
             buttons = [ { label: 'Watch another', onClick: () => { exitOnlineMatch(); openWatchMenu(); } } ];
@@ -2324,6 +2344,8 @@ function showGameOverModal() {
             ];
         } else if (vsAI) {
             title = G.winner===humanIdx ? 'You win!' : 'You lose';
+            // tap the chip to change difficulty (reopens the picker); the two buttons replay at the current one
+            bodyHtml = `<button id="goDiffChip" style="margin:0 auto 8px;font-size:13px;">Difficulty: <b>${AI_DIFF_LABEL[aiDifficulty]||aiDifficulty}</b> &#9662;</button>`;
             buttons = [
                 { label: 'Play as Blue', onClick: () => startGame(true, 0, aiDifficulty) },   // keep the same difficulty on replay
                 { label: 'Play as Red',  onClick: () => startGame(true, 1, aiDifficulty) },
@@ -2334,7 +2356,9 @@ function showGameOverModal() {
         }
         if (replayFrames.length > 60) buttons.push({ label: 'Watch replay', onClick: startReplay });
         buttons.push({ label: 'Menu', onClick: backToMenu });
-        showModal(title, '', buttons);
+        showModal(title, bodyHtml, buttons, !!bodyHtml);
+        const chip = document.getElementById('goDiffChip');
+        if (chip) chip.addEventListener('click', () => { hideModal(); openAiDifficultyMenu(); });
     }, 2800);
 }
 function startGame(aiMode, humanColorIdx, difficulty) {
@@ -2369,7 +2393,9 @@ function backToMenu() {
     demoStart();
 }
 document.getElementById('modeLocal').addEventListener('click', ()=>startGame(false));
-document.getElementById('modeAI').addEventListener('click', () => {
+// Menu labels for the internal difficulty ids, used by the picker and the game-over difficulty chip.
+const AI_DIFF_LABEL = { dumb:'Easy', easy:'Medium', zone:'Hard', hard:'Very hard', master:'Expert' };
+function openAiDifficultyMenu() {
     showModal('vs AI', 'Pick a difficulty.', [
         { label: 'Easy',      onClick: () => chooseAiColour('dumb') },
         { label: 'Medium',    onClick: () => chooseAiColour('easy') },
@@ -2377,7 +2403,8 @@ document.getElementById('modeAI').addEventListener('click', () => {
         { label: 'Very hard', onClick: () => chooseAiColour('hard') },
         { label: 'Expert',    onClick: () => chooseAiColour('master') },
     ]);
-});
+}
+document.getElementById('modeAI').addEventListener('click', openAiDifficultyMenu);
 // Easy follows one fixed offense/defense rule, no search. Medium scores every one of its 6 possible
 // (pivot × direction) moves by board-position value (see aiChoosePlanZone) and picks the best, but
 // never considers how the human might reply. Hard does the same 6-way search but looks one full move
@@ -4089,6 +4116,14 @@ document.getElementById('acctGoogle').addEventListener('click', async () => {
     if (error) { localStorage.removeItem(AUTH_PERSIST_FLAG); msg.textContent = error.message; }
 });
 document.getElementById('acctSignOut').addEventListener('click', async () => { await sb.auth.signOut(); closeAcctPanel(); });
+// Google is the default; username/password + one-time email link are tucked behind a disclosure so
+// they don't compete with it (and so magic-link, which depends on email delivery, stays secondary).
+document.getElementById('acctMoreOptions').addEventListener('click', function() {
+    const box = document.getElementById('acctEmailOptions');
+    const open = box.style.display !== 'none';
+    box.style.display = open ? 'none' : 'block';
+    this.textContent = open ? 'or use a username & password' : 'hide username & password';
+});
 
 // Any signed-in player can rename themselves at any time -- via the "(edit)" link next to their
 // name on the main menu (updateAcctStatus() above) -- this doubles as the "choose your name" path
@@ -4108,7 +4143,11 @@ const USERNAME_BLOCKLIST = ['fuck','shit','bitch','cunt','asshole','dick','pussy
     'slut','nigger','nigga','faggot','fag','rape','porn','sex','anal','penis','vagina','cum',
     'boner','nazi','retard'];
 function usernameHasBannedWord(name) {
-    const n = name.toLowerCase();
+    // Normalise common leetspeak/obfuscation so "sh1t", "b!tch", "f_u_c_k", "n1gg3r" are caught too:
+    // strip non-letters/digits, then fold digit look-alikes back to letters.
+    const n = name.toLowerCase().replace(/[^a-z0-9]/g,'')
+        .replace(/1/g,'i').replace(/3/g,'e').replace(/4/g,'a').replace(/0/g,'o')
+        .replace(/5/g,'s').replace(/7/g,'t').replace(/8/g,'b').replace(/9/g,'g');
     return USERNAME_BLOCKLIST.some(w => n.includes(w));
 }
 function openRenamePrompt(prefill, isAuto) {
@@ -4835,6 +4874,12 @@ function checkJoinLink() {
     if (sbUser) { consumePendingJoin(); return; }   // already have an identity (incl. after an OAuth redirect return)
     ensureOnlineIdentity(consumePendingJoin);       // guest / same-tab sign-in resumes via pendingOnlineAction
 }
+</script>
+<script>
+// Register the service worker so the game is installable and works offline. Best-effort: over file://
+// or if the browser lacks support it simply no-ops, and it never blocks the game from loading.
+if ('serviceWorker' in navigator && location.protocol.startsWith('http'))
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 </script>
 </body>
 </html>
