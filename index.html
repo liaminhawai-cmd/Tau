@@ -130,7 +130,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 33</div>
+<div id="buildTag">build 34</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -2304,7 +2304,15 @@ function updateAcctStatus() {
 // sign-in/guest completes (e.g. startOnlineMatchmaking, or opening the private-match menu);
 // null when the panel was opened for its own sake (e.g. just renaming, or the status line link).
 let pendingOnlineAction = null;
-function openAcctPanel() { document.getElementById('acctPanel').style.display = 'flex'; }
+function openAcctPanel() {
+    document.getElementById('acctPanel').style.display = 'flex';
+    // In an in-app browser, Google can't work -- lead with username/password and say why up front.
+    if (typeof isInAppBrowser==='function' && isInAppBrowser()) {
+        const msg = document.getElementById('acctMsg');
+        if (msg && !msg.textContent) msg.textContent = 'Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.';
+        if (typeof showAcctEmailOptions==='function') showAcctEmailOptions(true);
+    }
+}
 function closeAcctPanel() { document.getElementById('acctPanel').style.display = 'none'; pendingOnlineAction = null; }
 // ---------- Generic modal: colour choice before a vs-AI game, the game-over popup, and
 // the how-to-play sheet. `isHtml` lets the how-to-play body use a left-aligned list. ----------
@@ -4102,6 +4110,11 @@ document.getElementById('acctSendLink').addEventListener('click', async () => {
 });
 document.getElementById('acctGoogle').addEventListener('click', async () => {
     const msg = document.getElementById('acctMsg');
+    if (isInAppBrowser()) {   // Google would just 403 here -- guide out instead of failing silently
+        msg.textContent = 'Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.';
+        showAcctEmailOptions(true);
+        return;
+    }
     if (!sb) { msg.textContent = 'Still connecting. Try again in a moment.'; return; }
     // A real (persistent) account is being created, so flip auth storage to localStorage BEFORE the
     // redirect: the session that comes back has to survive the round-trip out to Google and back,
@@ -4116,14 +4129,25 @@ document.getElementById('acctGoogle').addEventListener('click', async () => {
     if (error) { localStorage.removeItem(AUTH_PERSIST_FLAG); msg.textContent = error.message; }
 });
 document.getElementById('acctSignOut').addEventListener('click', async () => { await sb.auth.signOut(); closeAcctPanel(); });
+// In-app browsers (LINE preview, Facebook/Instagram/WeChat/TikTok webviews, Android WebView) get a
+// 403 "disallowed_useragent" from Google OAuth by design -- Google refuses it, and there's no way
+// around it in-app. Detect them so we can steer to a real browser / username+password instead.
+function isInAppBrowser() {
+    const ua = navigator.userAgent || '';
+    return /(FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|Twitter|TikTok|musical_ly|BytedanceWebview|Snapchat|Pinterest|WhatsApp|GSA\/)/i.test(ua)
+        || (/Android/.test(ua) && /\bwv\b/.test(ua));
+}
+function isIOS() { return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream; }
+function isStandalonePWA() { return window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches; }
 // Google is the default; username/password + one-time email link are tucked behind a disclosure so
 // they don't compete with it (and so magic-link, which depends on email delivery, stays secondary).
-document.getElementById('acctMoreOptions').addEventListener('click', function() {
-    const box = document.getElementById('acctEmailOptions');
-    const open = box.style.display !== 'none';
-    box.style.display = open ? 'none' : 'block';
-    this.textContent = open ? 'or use a username & password' : 'hide username & password';
-});
+function showAcctEmailOptions(open) {
+    const box = document.getElementById('acctEmailOptions'), btn = document.getElementById('acctMoreOptions');
+    const show = open===undefined ? (box.style.display==='none') : open;
+    box.style.display = show ? 'block' : 'none';
+    if (btn) btn.textContent = show ? 'hide username & password' : 'or use a username & password';
+}
+document.getElementById('acctMoreOptions').addEventListener('click', () => showAcctEmailOptions());
 
 // Any signed-in player can rename themselves at any time -- via the "(edit)" link next to their
 // name on the main menu (updateAcctStatus() above) -- this doubles as the "choose your name" path
@@ -4880,6 +4904,27 @@ function checkJoinLink() {
 // or if the browser lacks support it simply no-ops, and it never blocks the game from loading.
 if ('serviceWorker' in navigator && location.protocol.startsWith('http'))
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+
+// iOS Safari never fires an install prompt (Android/Chrome does), so iPhone users don't know they
+// can install. Nudge them once toward "Add to Home Screen" -- only in real Safari (not an in-app
+// webview, where the option doesn't exist), not when already installed, auto-dismissing so it can't
+// linger over a game.
+window.addEventListener('load', () => {
+    try {
+        if (!isIOS() || isStandalonePWA() || isInAppBrowser()) return;
+        if (localStorage.getItem('tauIosInstallHint') === '1') return;
+        const bar = document.createElement('div');
+        bar.style.cssText = 'position:fixed; left:8px; right:8px; bottom:calc(8px + env(safe-area-inset-bottom)); '
+            + 'z-index:70; background:#1a1e24; border:1px solid #3a4048; border-radius:10px; padding:10px 12px; '
+            + 'font-size:13px; color:#c7ccd1; display:flex; align-items:center; gap:10px; box-shadow:0 4px 18px rgba(0,0,0,0.45);';
+        bar.innerHTML = '<span style="flex:1">Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.</span>'
+            + '<button style="margin:0;padding:5px 10px;">Got it</button>';
+        const dismiss = () => { try { localStorage.setItem('tauIosInstallHint', '1'); } catch(e){} bar.remove(); };
+        bar.querySelector('button').addEventListener('click', dismiss);
+        document.body.appendChild(bar);
+        setTimeout(() => bar.remove(), 9000);   // fade out on its own; the flag is only set on explicit dismiss
+    } catch(e) {}
+});
 </script>
 </body>
 </html>
