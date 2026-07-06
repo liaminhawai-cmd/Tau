@@ -38,6 +38,8 @@
        background blends with the dark chrome. #logoFallback is a plain text mark if the image fails. */
     #logoCanvas { display:block; width:236px; max-width:62vw; aspect-ratio:1100/309; height:auto; background:transparent; }
     #logoFallback { display:none; letter-spacing:6px; font-weight:300; font-size:22px; }
+    /* In a game the wordmark is pure decoration -- give its row to the boards instead. */
+    body.ingame h1 { display:none; }
     canvas { background:#0c0e11; touch-action:none; display:block; }
     #views { display:flex; gap:10px; align-items:flex-start; justify-content:center; flex-wrap:wrap; }
     #view3d { border:1px solid #2c3138; border-radius:4px; }
@@ -2618,6 +2620,7 @@ async function bootSharedReplay(hash) {
         vsAI = false;
         document.getElementById('menu').style.display = 'none';
         document.getElementById('game').style.display = 'flex';
+    document.body.classList.add('ingame');   // hides the wordmark row: in a game every vertical px goes to the boards
         document.getElementById('reset').style.display = 'none';
         document.getElementById('menuBtn').textContent = t('Play Tau');
         reset(); resize();
@@ -2659,7 +2662,7 @@ function syncCanvas() {
     if (canvas.width !== bw || canvas.height !== bw) { canvas.width = bw; canvas.height = bw; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     cx = w/2; cy = w/2;
-    scale = (w * 0.92) / (2 * CFG.edgeU);
+    scale = (w * 0.95) / (2 * CFG.edgeU);   // 2.5% rim margin: enough for a foot pad drawn at the very edge
 }
 const bx2px = (mx, my) => ({ x: cx + mx * scale, y: cy + my * scale });
 const px2b  = (px, py) => ({ x: (px - cx) / scale, y: (py - cy) / scale });
@@ -3078,6 +3081,7 @@ function startGame(aiMode, humanColorIdx, difficulty) {
     camCenterFrac = 1; camManualSet = false;   // fresh game starts fully centred
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
+    document.body.classList.add('ingame');   // hides the wordmark row: in a game every vertical px goes to the boards
     setSpectatorChrome(false);
     reset(); resize();
     resetAudioForNewGame(); playGameBowl();
@@ -3095,6 +3099,7 @@ function backToMenu() {
     camCenterFrac = 1; camManualSet = false;   // the menu demo frames itself fully
     document.getElementById('game').style.display = 'none';
     document.getElementById('menu').style.display = 'flex';
+    document.body.classList.remove('ingame');
     demoStart();
 }
 document.getElementById('modeLocal').addEventListener('click', ()=>startGame(false));
@@ -4383,33 +4388,37 @@ function animate() {
 // ---------- Responsive sizing ----------
 function resize() {
     const cv3=document.getElementById('view3d');
-    const used = document.querySelector('h1').offsetHeight
+    const used = document.querySelector('h1').offsetHeight   // 0 in-game (body.ingame hides it)
                + document.getElementById('status').offsetHeight
                + document.getElementById('meta').offsetHeight
                + document.getElementById('help').offsetHeight
-               + document.getElementById('btns').offsetHeight + 46;
-    const availW = window.innerWidth - 12;
+               + document.getElementById('btns').offsetHeight + 34;
+    const availW = window.innerWidth - 8;
     const availH = window.innerHeight - used;
-    const gap = 10, show = !!renderer;
+    const gap = 8, show = !!renderer;
 
-    // Both panels are square. Rather than keying the layout off a fixed width breakpoint (which
-    // left a portrait-rotated monitor side-by-side with two tiny boards), compute the board size
-    // BOTH layouts would give and use whichever is bigger -- landscape naturally goes side-by-side,
-    // portrait (phones AND rotated desktops) naturally stacks.
+    // Side-by-side keeps two squares. Stacked (portrait) gives the 3D view a SHORT, WIDE tile —
+    // from the low camera angle the dish is much wider than tall, so a square tile is mostly
+    // empty backdrop — and hands the saved height to the 2D board, the one you actually touch.
+    // The fit probe stays aspect-1, which is conservative for a wider-than-square viewport
+    // (same vertical FOV, more real width than it assumes), so nothing gets cropped.
     const sideSize  = Math.max(200, Math.min((availW-gap)/2, availH));
-    const stackSize = Math.max(170, Math.min(availW, (availH-gap)/2));
+    let stackH3     = show ? Math.min(0.58*availW, Math.max(150, 0.40*(availH-gap))) : 0;
+    const stackSize = Math.max(170, Math.min(availW, availH - gap - stackH3));
+    // a width-capped 2D board leaves vertical slack — give it to the 3D tile (still wide, not square)
+    if (show) stackH3 = Math.min(Math.max(stackH3, availH - gap - stackSize), 0.75*availW);
     const wide = sideSize >= stackSize;
     document.getElementById('views').classList.toggle('stacked', show && !wide);
-    let size;
-    if (!show)      size = Math.max(220, Math.min(availW, availH));
-    else if (wide)  size = sideSize;
-    else            size = stackSize;
+    let size, w3, h3;
+    if (!show)      { size = Math.max(220, Math.min(availW, availH)); }
+    else if (wide)  { size = sideSize; w3 = size; h3 = size; }
+    else            { size = stackSize; w3 = availW; h3 = stackH3; }
 
     canvas.style.width = size+'px'; canvas.style.height = size+'px';
 
     if (renderer){
-        if (show){ cv3.style.display='block'; cv3.style.width=size+'px'; cv3.style.height=size+'px';
-            renderer.setSize(size,size,false); camera.aspect=1; camera.updateProjectionMatrix(); }
+        if (show){ cv3.style.display='block'; cv3.style.width=w3+'px'; cv3.style.height=h3+'px';
+            renderer.setSize(w3,h3,false); camera.aspect=w3/h3; camera.updateProjectionMatrix(); }
         else cv3.style.display='none';
     }
     render();
@@ -5127,6 +5136,7 @@ async function enterOnlineMatch(row) {
     camCenterFrac = 1; camManualSet = false;
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
+    document.body.classList.add('ingame');   // hides the wordmark row: in a game every vertical px goes to the boards
     setSpectatorChrome(false);
     reset(); resize();
     resetAudioForNewGame(); playGameBowl();
@@ -5667,6 +5677,7 @@ async function spectateMatch(row, names) {
     camCenterFrac = 1; camManualSet = false;
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
+    document.body.classList.add('ingame');   // hides the wordmark row: in a game every vertical px goes to the boards
     setSpectatorChrome(true);
     reset(); resize();
     resetAudioForNewGame();
