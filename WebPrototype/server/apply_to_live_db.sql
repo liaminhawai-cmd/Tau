@@ -280,3 +280,42 @@ begin
 end;
 $$;
 grant execute on function public.gc_stale_matches() to authenticated;
+
+
+-- ---------------------------------------------------------------------------------------
+-- 6. Server-side username hygiene. The client validates format + profanity, but a user has a
+--    column-level UPDATE grant on profiles.username, so a direct API call could set anything.
+--    Enforce it in the database too: a format CHECK (added NOT VALID so it never fails on rows
+--    that already exist) plus a BEFORE INSERT/UPDATE trigger that rejects a small leetspeak-folded
+--    slur list. Safe to re-run.
+-- ---------------------------------------------------------------------------------------
+alter table public.profiles drop constraint if exists profiles_username_format;
+alter table public.profiles add constraint profiles_username_format
+  check (username ~ '^[A-Za-z0-9_]{3,40}$') not valid;   -- 40: room for the Player_<hex> auto-handles
+
+create or replace function public.check_username_clean()
+returns trigger
+language plpgsql set search_path = public
+as $$
+declare
+  folded text;
+  bad text;
+  words text[] := array['fuck','shit','bitch','cunt','asshole','nigger','nigga','faggot',
+                         'rape','whore','slut','retard','nazi','kike','spic'];
+begin
+  -- fold common leetspeak (1->i 3->e 4->a 0->o 5->s 7->t 8->b 9->g), drop non-letters, then substring-match
+  folded := translate(lower(new.username), '13405789', 'ieaostbg');
+  folded := regexp_replace(folded, '[^a-z]', '', 'g');
+  foreach bad in array words loop
+    if position(bad in folded) > 0 then
+      raise exception 'username not allowed';
+    end if;
+  end loop;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_username_clean on public.profiles;
+create trigger profiles_username_clean
+  before insert or update of username on public.profiles
+  for each row execute function public.check_username_clean();

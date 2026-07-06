@@ -75,3 +75,35 @@ $$;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- ---------- username hygiene (server-side) ----------
+-- The client validates username format + profanity, but users hold a column-level UPDATE grant on
+-- profiles.username, so enforce it in the DB too: a format CHECK plus a BEFORE INSERT/UPDATE trigger
+-- that rejects a small leetspeak-folded slur list.
+alter table public.profiles add constraint profiles_username_format
+  check (username ~ '^[A-Za-z0-9_]{3,40}$');
+
+create or replace function public.check_username_clean()
+returns trigger
+language plpgsql set search_path = public
+as $$
+declare
+  folded text;
+  bad text;
+  words text[] := array['fuck','shit','bitch','cunt','asshole','nigger','nigga','faggot',
+                         'rape','whore','slut','retard','nazi','kike','spic'];
+begin
+  folded := translate(lower(new.username), '13405789', 'ieaostbg');
+  folded := regexp_replace(folded, '[^a-z]', '', 'g');
+  foreach bad in array words loop
+    if position(bad in folded) > 0 then
+      raise exception 'username not allowed';
+    end if;
+  end loop;
+  return new;
+end;
+$$;
+
+create trigger profiles_username_clean
+  before insert or update of username on public.profiles
+  for each row execute function public.check_username_clean();
