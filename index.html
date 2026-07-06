@@ -155,7 +155,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 41</div>
+<div id="buildTag">build 42</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -1721,7 +1721,7 @@ function reset() {
           crossings:0, atLimit:false, netRad:0, ptrAngle:null, over:false, winner:null,
           snap:null, startedOnLine:[[],[],[]], usedGrace:[false,false,false], touchedLine:[[],[],[]], inCrossing:false };
     fall.active=false;
-    replayFrames.length = 0; replayActive = false;   // every fresh board starts a fresh recording
+    replayFrames.length = 0; replayTimes.length = 0; replayActive = false;   // every fresh board starts a fresh recording
     render();
 }
 // snapshot / restore both pieces so an aborted turn (released before minMoveDeg of net
@@ -2057,15 +2057,31 @@ let clock=null, fall={active:false};                                  // loss-an
 // online tween, physics pushes) is captured identically because it's the rendered result being
 // sampled, not any one input path. ~48 bytes/frame; 30k frames ≈ several minutes of pure motion.
 let replayFrames = [], replayActive = false, replayFinalPose = null;
-// Playback is ARC-LENGTH parameterised: startReplay precomputes how far the pieces actually move
-// between each pair of recorded frames (foot-travel approximation: hub distance + |dRot|*footR,
-// worst piece), and stepReplay advances through that cumulative distance at a CONSTANT speed,
-// interpolating between the straddling frames. Frame-count pacing (the previous approach) replayed
-// the original speed profile — a fast flick and a slow careful drag inside one swing came out just
-// as uneven on playback; distance pacing makes every swing glide at the same steady rate.
+// Playback pacing is a tuned BLEND between the original recording and a computed profile, applied
+// per TURN (runs where the same piece is the primary mover). For each turn:
+//   - duration = lerp(original wall-clock length, distance/average-speed "smoothed" length, turnLen)
+//   - pose(u)  = lerp(original velocity profile, arc-length position through an ease curve, velBlend)
+//   - a short pause holds the end pose between turns (blend of the real thinking gap, capped, and a
+//     prechosen pause).
+// Values below came out of the standalone replay-pacing tuner (dump from play-testing); pure
+// original pacing replayed every wobble of the drag, pure constant velocity felt robotic.
 const REPLAY_MAX_FRAMES = 30000;
-const REPLAY_UNITS_PER_SEC = 22;   // board-units of piece travel per second of playback
-let replayArc = null, replayArcPos = 0, replayLastT = 0;
+const REPLAY_TUNE = {
+    turnLen: 0.5,          // turn length: 0 = original timing, 1 = smoothed/even
+    speed: 1,              // overall speed multiplier
+    velBlend: 0.24,        // within a turn: 0 = exactly as played, 1 = the computed ease curve
+    curveExp: 4.2,         // computed ease: 1 = linear, higher = slow ends / fast middle
+    pauseMs: 600,          // prechosen between-turn pause
+    pauseBlend: 0.6,       // 0 = original thinking gap (capped), 1 = fully prechosen
+    minTurnDur: 0.18,      // floor (s) so a tiny corrective nudge can't flash past
+    maxOrigPauseSec: 2.0,  // cap on the real thinking gap fed into the pause blend
+    sharedUnitsPerSec: 22, // fallback average speed for shared links (they carry no timing)
+};
+// Wall-clock timestamps recorded alongside the frames (7th column would break encodeReplay, so a
+// parallel array). Gives exact original pacing on any display refresh rate; shared links don't
+// carry it and fall back to smoothed pacing, which is what the tuner showed for them anyway.
+let replayTimes = [];
+let replayTurns = [], replayTurnIdx = 0, replayPhase = 'play', replayPhaseT = 0, replayLastT = 0;
 function recordReplayFrame() {
     if (replayActive || !G || G.over) return;
     if (document.getElementById('game').style.display !== 'flex') return;   // never record the menu demo
@@ -2073,7 +2089,11 @@ function recordReplayFrame() {
     if (last && Math.abs(last[0]-b.x)<1e-4 && Math.abs(last[1]-b.y)<1e-4 && Math.abs(last[2]-b.rot)<1e-4
              && Math.abs(last[3]-r.x)<1e-4 && Math.abs(last[4]-r.y)<1e-4 && Math.abs(last[5]-r.rot)<1e-4) return;
     replayFrames.push([b.x,b.y,b.rot,r.x,r.y,r.rot]);
-    if (replayFrames.length > REPLAY_MAX_FRAMES) replayFrames.splice(0, replayFrames.length - REPLAY_MAX_FRAMES);
+    replayTimes.push(performance.now() / 1000);
+    if (replayFrames.length > REPLAY_MAX_FRAMES) {
+        const drop = replayFrames.length - REPLAY_MAX_FRAMES;
+        replayFrames.splice(0, drop); replayTimes.splice(0, drop);
+    }
 }
 // Distance moved between two recorded frames — the worst piece's hub travel plus rotation
 // converted to foot travel, which is what the eye tracks.
@@ -2082,36 +2102,115 @@ function replayFrameDist(f, g) {
     const dR = Math.hypot(g[3]-f[3], g[4]-f[4]) + Math.abs(g[5]-f[5]) * CFG.footR;
     return Math.max(dB, dR);
 }
+// A pacing "turn" = a run of frames where the same piece is the primary mover (by foot travel).
+// Runs shorter than 6 frames — contact jitter while pushing — merge into their neighbour.
+function segmentReplayTurns() {
+    const F = replayFrames;
+    if (F.length < 3) return [{ s: 0, e: F.length - 1 }];
+    const mover = [];
+    for (let i = 1; i < F.length; i++) {
+        const dB = Math.hypot(F[i][0]-F[i-1][0], F[i][1]-F[i-1][1]) + Math.abs(F[i][2]-F[i-1][2])*CFG.footR;
+        const dR = Math.hypot(F[i][3]-F[i-1][3], F[i][4]-F[i-1][4]) + Math.abs(F[i][5]-F[i-1][5])*CFG.footR;
+        mover.push(dB >= dR ? 0 : 1);
+    }
+    const raw = []; let start = 0, cur = mover[0];
+    for (let i = 1; i < mover.length; i++) if (mover[i] !== cur) { raw.push({ s: start, e: i }); start = i; cur = mover[i]; }
+    raw.push({ s: start, e: F.length - 1 });
+    const out = [];
+    for (const t of raw) { if (out.length && (t.e - t.s) < 6) out[out.length-1].e = t.e; else out.push({ s: t.s, e: t.e }); }
+    return out;
+}
 function startReplay() {
-    if (!replayFrames.length || !G) return;
+    if (replayFrames.length < 2 || !G) return;
     hideModal(); clearTimeout(gameOverTimer);
     fall.active = false;                       // the fallen piece pops back to the board for the re-run
     replayFinalPose = takeSnap();
-    replayArc = new Float64Array(replayFrames.length);
-    for (let i = 1; i < replayFrames.length; i++)
-        replayArc[i] = replayArc[i-1] + replayFrameDist(replayFrames[i-1], replayFrames[i]);
-    replayArcPos = 0; replayLastT = performance.now();
+    const T = REPLAY_TUNE, haveTimes = replayTimes.length === replayFrames.length;
+    let totalArc = 0, totalActive = 0;
+    replayTurns = segmentReplayTurns().map(t => {
+        const n = t.e - t.s + 1, arc = new Float64Array(n);
+        for (let j = 1; j < n; j++) arc[j] = arc[j-1] + replayFrameDist(replayFrames[t.s+j-1], replayFrames[t.s+j]);
+        // Adjacent turns share their boundary frame (keeps playback continuous), so the thinking
+        // gap sits between s and s+1 — active time is measured from the first MOVED frame.
+        const durRec = haveTimes ? Math.max(0, replayTimes[t.e] - replayTimes[Math.min(t.s + 1, t.e)]) : 0;
+        totalArc += arc[n-1]; totalActive += durRec;
+        return { s: t.s, e: t.e, n, arc, A: arc[n-1], durRec };
+    });
+    // "Smoothed" speed = the recording's own average pace, so the smoothed total run length matches
+    // the original; shared links carry no timing, so they get the tuned constant instead.
+    const avgSpeed = haveTimes && totalActive > 0.2 ? totalArc / totalActive : T.sharedUnitsPerSec;
+    for (let i = 0; i < replayTurns.length; i++) {
+        const m = replayTurns[i];
+        const durSmooth = avgSpeed > 1e-9 ? m.A / avgSpeed : m.durRec;
+        const durRec = haveTimes ? m.durRec : durSmooth;    // no timing → original == smoothed
+        m.dur = Math.max(T.minTurnDur, ((1-T.turnLen)*durRec + T.turnLen*durSmooth) / T.speed);
+        // between-turn hold: blend of the real (capped) thinking gap and the prechosen pause.
+        // The next turn's s is this turn's e (shared boundary frame), so the real gap runs from
+        // this turn's last frame to the next turn's first MOVED frame.
+        const next = replayTurns[i+1];
+        const gap = (haveTimes && next)
+            ? Math.min(T.maxOrigPauseSec, Math.max(0, replayTimes[Math.min(next.s + 1, next.e)] - replayTimes[m.e])) : 0;
+        m.pause = i+1 < replayTurns.length ? ((1-T.pauseBlend)*gap + T.pauseBlend*(T.pauseMs/1000)) : 0;
+    }
+    replayTurnIdx = 0; replayPhase = 'play'; replayPhaseT = 0; replayLastT = performance.now();
     replayActive = true;
     if (typeof rmxSend === 'function') rmxSend('watching');   // opponent's sheet: "X is watching the replay"
     showPassToast(t('Replay — tap the board to skip'));
+}
+const replayLerpPose = (a, b, u) => a.map((v, k) => v + (b[k]-v)*u);
+// symmetric ease through the arc: exp 1 = linear, higher = slow at the ends, fast through the middle
+function replayEase(u, p) { u = Math.max(0, Math.min(1, u)); return u < 0.5 ? 0.5*Math.pow(2*u, p) : 1 - 0.5*Math.pow(2*(1-u), p); }
+// Pose by ORIGINAL pacing: u is a fraction of the turn's recorded wall-clock time (index fraction
+// when there are no timestamps, i.e. a shared link).
+function replayPoseAtTime(m, u) {
+    if (replayTimes.length === replayFrames.length && m.durRec > 1e-6) {
+        // durRec runs from the first MOVED frame (s+1) — the gap before it is the previous turn's
+        // thinking pause, not part of this turn's motion.
+        const target = replayTimes[Math.min(m.s + 1, m.e)] + u*m.durRec;
+        let lo = m.s, hi = m.e;
+        while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (replayTimes[mid] <= target) lo = mid; else hi = mid - 1; }
+        const i1 = Math.min(lo + 1, m.e), seg = replayTimes[i1] - replayTimes[lo];
+        return replayLerpPose(replayFrames[lo], replayFrames[i1], seg > 1e-9 ? Math.min(1, (target - replayTimes[lo]) / seg) : 1);
+    }
+    const x = Math.max(0, Math.min(1, u)) * (m.n - 1), j0 = Math.floor(x), j1 = Math.min(j0 + 1, m.n - 1);
+    return replayLerpPose(replayFrames[m.s + j0], replayFrames[m.s + j1], x - j0);
+}
+// Pose by COMPUTED pacing: u is a fraction of the turn's total piece travel (arc length).
+function replayPoseAtArc(m, u) {
+    if (m.A < 1e-9) return replayFrames[m.s].slice();
+    const target = Math.max(0, Math.min(1, u)) * m.A;
+    let lo = 0, hi = m.n - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (m.arc[mid] <= target) lo = mid; else hi = mid - 1; }
+    const j1 = Math.min(lo + 1, m.n - 1), seg = m.arc[j1] - m.arc[lo];
+    return replayLerpPose(replayFrames[m.s + lo], replayFrames[m.s + j1], seg > 1e-9 ? Math.min(1, (target - m.arc[lo]) / seg) : 1);
+}
+function replayApplyPose(p) {
+    G.pieces[0].x=p[0]; G.pieces[0].y=p[1]; G.pieces[0].rot=p[2];
+    G.pieces[1].x=p[3]; G.pieces[1].y=p[4]; G.pieces[1].rot=p[5];
 }
 // Steps the playback (called from animate); when the recording runs out, restores the true final
 // pose and re-runs the tumble (silently), then brings the game-over choices back.
 function stepReplay() {
     const now = performance.now();
     const dt = Math.min(0.1, (now - replayLastT) / 1000); replayLastT = now;   // real dt: same speed on 60Hz and 120Hz screens
-    replayArcPos += REPLAY_UNITS_PER_SEC * dt;
-    const last = replayFrames.length - 1;
-    let lo = 0, hi = last;                                    // binary search: frame whose arc straddles the position
-    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (replayArc[mid] <= replayArcPos) lo = mid; else hi = mid - 1; }
-    const i0 = Math.min(lo, last), i1 = Math.min(i0 + 1, last);
-    const seg = replayArc[i1] - replayArc[i0];
-    const u = seg > 1e-9 ? Math.min(1, (replayArcPos - replayArc[i0]) / seg) : 1;
-    const f = replayFrames[i0], g = replayFrames[i1];
-    G.pieces[0].x=f[0]+(g[0]-f[0])*u; G.pieces[0].y=f[1]+(g[1]-f[1])*u; G.pieces[0].rot=f[2]+(g[2]-f[2])*u;
-    G.pieces[1].x=f[3]+(g[3]-f[3])*u; G.pieces[1].y=f[4]+(g[4]-f[4])*u; G.pieces[1].rot=f[5]+(g[5]-f[5])*u;
-    render();
-    if (replayArcPos >= replayArc[last]) endReplay();
+    if (!replayTurns.length) { endReplay(); return; }
+    const m = replayTurns[replayTurnIdx];
+    replayPhaseT += dt;
+    if (replayPhase === 'play') {
+        const u = Math.min(1, replayPhaseT / m.dur);
+        const comp = replayPoseAtArc(m, replayEase(u, REPLAY_TUNE.curveExp));
+        replayApplyPose(REPLAY_TUNE.velBlend >= 1 ? comp
+            : replayLerpPose(replayPoseAtTime(m, u), comp, REPLAY_TUNE.velBlend));
+        render();
+        if (u >= 1) {
+            if (replayTurnIdx + 1 >= replayTurns.length) { endReplay(); return; }
+            if (m.pause > 0) { replayPhase = 'pause'; replayPhaseT = 0; }
+            else { replayTurnIdx++; replayPhaseT = 0; }
+        }
+    } else {                                  // hold the turn's end pose through the pause
+        replayApplyPose(replayFrames[m.e]); render();
+        if (replayPhaseT >= m.pause) { replayTurnIdx++; replayPhase = 'play'; replayPhaseT = 0; }
+    }
 }
 function endReplay() {
     if (!replayActive) return;
@@ -2213,6 +2312,7 @@ async function bootSharedReplay(hash) {
         reset(); resize();
         camCenterFrac = 1; camManualSet = false;
         replayFrames = frames.map(f => f.slice());
+        replayTimes = [];                       // shared links carry no timing -> smoothed pacing
         if (winner !== null) { G.winner = winner; }
         G.sharedWinner = winner;
         startReplay();
