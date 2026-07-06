@@ -123,8 +123,6 @@
     .htpSlide:first-child { padding-top:2px; }
     .htpSlide:last-child { border-bottom:none; }
     .htpSlide canvas { display:block; margin:0 auto 8px; background:#0c0e11; border-radius:6px; max-width:100%; height:auto; }
-    .htpSlide canvas.htpInteractive { box-shadow:0 0 0 1.5px #3d5afe66; }
-    #prResetBtn { margin-top:6px; }
     #htpFallSlot { width:220px; height:220px; max-width:100%; aspect-ratio:1/1; margin:0 auto 8px;
                    background:#0c0e11; border-radius:6px; overflow:hidden; }
     #htpFallSlot canvas { width:100% !important; height:100% !important; }
@@ -143,7 +141,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 38</div>
+<div id="buildTag">build 39</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -153,6 +151,7 @@
 
         <p id="acctStatus">Playing as Guest &middot; <button class="link" id="acctStatusBtn">Sign in</button></p>
         <p id="rankLine" style="font-size:11px;color:#69727b;margin:-4px 0 2px;"></p>
+        <p id="langRow" style="font-size:11px;color:#4a525a;margin:10px 0 0;"></p>
         <button class="modeBtn" id="modeLocal">Local 1v1</button>
         <button class="modeBtn" id="modeOnline">Online 1v1</button>
         <button class="modeBtn" id="modeAI">vs AI</button>
@@ -1274,6 +1273,108 @@
 // 73.333 circle in the DXF is the base plate, not a playing line. The two rings
 // sit at exactly 0.60 and 0.80 of the edge. Side lens arcs have the same radius
 // as the inner ring and are centred ON the rim, running rim-to-rim.
+
+// ---------- i18n: English / 日本語 / 中文 ----------
+// Device language is detected once (ja* -> Japanese, zh* -> Chinese, else English) and can be
+// overridden from the subtle language row on the menu (stored in localStorage; switching reloads).
+// t() falls back to the English source string for any missing key, so untranslated corners of the
+// UI degrade to English instead of breaking.
+const LANG = (() => {
+    try { const s = localStorage.getItem('tauLang'); if (s === 'en' || s === 'ja' || s === 'zh') return s; } catch(e) {}
+    const l = (navigator.language || 'en').toLowerCase();
+    return l.startsWith('ja') ? 'ja' : l.startsWith('zh') ? 'zh' : 'en';
+})();
+function t(str) { const d = I18N[LANG]; return (d && d[str]) || str; }
+function tf(str, vars) { let r = t(str); for (const k in vars) r = r.split('{'+k+'}').join(vars[k]); return r; }
+const I18N = {
+ja: {
+"Local 1v1":"ローカル対戦","Online 1v1":"オンライン対戦","vs AI":"AI対戦","How to play":"遊び方","Leaderboard":"ランキング","Watch":"観戦",
+"Sign in":"ログイン","Sign out":"ログアウト","Playing as Guest · ":"ゲストでプレイ中 · ","Signed in as ":"ログイン中: ","(edit)":"(変更)","Guest":"ゲスト",
+"Play as Guest":"ゲストでプレイ","Surrender":"降参","Menu":"メニュー","Stop watching":"観戦をやめる","Rating:":"レート:",
+"Your turn":"あなたの番","{name}'s turn":"{name}の番","{color} to move":"{color}の番","{color} wins":"{color}の勝ち","Blue":"青","Red":"赤","blue":"青","red":"赤",
+"Step 1. Tap one of your feet to lock it as the pivot.":"ステップ1: 自分の足をタップして軸足を固定。",
+"Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.":"ステップ2: 別の足（丸印）を軸の周りにドラッグ。黄色の足を再タップで選び直せます。",
+"Swinging… release to end your turn.":"スイング中… 離すとターン終了。","Waiting for your opponent…":"相手を待っています…",
+"AI is thinking…":"AI思考中…","AI is swinging…":"AIの移動中…","crossings {c}/{m}":"線越え {c}/{m}",". That would cross a 2nd line":"（2本目の線は越えられません）",
+"Watching {a} vs {b}":"{a} vs {b} を観戦中","Playing {color} vs {name}":"{color}でプレイ中 vs {name}",
+"Pick a difficulty.":"難易度を選んでください。","Easy":"かんたん","Medium":"ふつう","Hard":"むずかしい","Very hard":"超むずかしい","Expert":"達人",
+"Choose your colour":"色を選んでください","Blue always moves first.":"青が先手です。","Play as Blue":"青でプレイ","Play as Red":"赤でプレイ",
+"You win!":"勝ち！","You lose":"負け…","{name} wins!":"{name}の勝ち！","Rematch":"再戦","Accept rematch":"再戦を受ける","Find new opponent":"別の相手を探す",
+"Watch replay":"リプレイを見る","Share replay":"リプレイを共有","Watch another":"他の対局を見る","Difficulty":"難易度","Got it":"OK",
+"Waiting for {name}…":"{name}を待っています…","{name} wants a rematch!":"{name}が再戦を希望しています！","{name} is watching the replay.":"{name}はリプレイを見ています。",
+"{name} is still watching the replay.":"{name}はまだリプレイを見ています。","{name} left.":"{name}は退出しました。",
+"Searching for an opponent…":"対戦相手を探しています…","Cancel":"キャンセル","Play a random ranked opponent, or invite someone specific?":"ランダムなランク戦か、招待対戦かを選んでください。",
+"Find an opponent":"対戦相手を探す","Private match":"プライベート対戦","Play a casual 1v1 against someone specific instead of the random queue.":"特定の相手とカジュアル対戦します（レート変動なし）。",
+"Create a match":"対戦を作成","Join with a code":"コードで参加","Creating your invite…":"招待を作成中…","OK":"OK",
+"Share this code, or send the link:":"このコードを伝えるか、リンクを送ってください：","Copy invite link":"招待リンクをコピー","Waiting for them to join…":"参加を待っています…",
+"Link copied! Waiting for them to join…":"リンクをコピーしました！参加を待っています…","Could not copy — the code above still works.":"コピーできませんでした — 上のコードは使えます。",
+"Watch live":"ライブ観戦","Looking for games…":"対局を探しています…","No public games being played right now.":"現在観戦できる対局はありません。","Close":"閉じる",
+"Loading…":"読み込み中…","No rated players yet.":"まだプレイヤーがいません。","Could not load the leaderboard.":"ランキングを読み込めませんでした。",
+"Player":"プレイヤー","Elo":"レート","W-L":"勝-敗","(you)":"(あなた)","Ranked #{r} of {n}":"ランキング {n}人中 {r}位",
+"{n} playing now":"現在{n}人がプレイ中"," · {m} in matches":" ・対戦中{m}人",
+"Out of time — turn passed":"時間切れ — ターンをパス","Opponent out of time — your turn":"相手が時間切れ — あなたの番","Turn passed":"ターンをパス",
+"Opponent didn’t move — your turn":"相手が動きませんでした — あなたの番","Replay — tap the board to skip":"リプレイ — タップでスキップ",
+"Replay link copied!":"リプレイのリンクをコピーしました！","Could not create the link.":"リンクを作成できませんでした。","Watch this Tau game:":"このTauの対局を見てください：",
+"Replay finished":"リプレイ終了","Watch again":"もう一度見る","Play Tau":"Tauをプレイ","Prev":"前へ","Next":"次へ",
+"Hold one foot":"片足を固定","Hold one foot still and rotate the other two.":"1本の足を固定し、残りの2本を回します。",
+"Move in circles":"円を描いて動く","The moving feet trace an arc. You may only move in one direction per turn.":"動く足は円弧を描きます。1ターンに動かせる方向は一方向だけです。",
+"Push your opponent":"相手を押す","Push your opponent by moving into their legs.":"相手の脚に当てて押し出しましょう。",
+"One line per turn":"1ターンに1本の線","You may cross only one line per turn. A foot that starts on a line leaves it for free.":"1ターンに越えられる線は1本だけ。線の上から始まる足は、その線を自由に離れられます。",
+"Corners count once":"角は1回だけ","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"線の上にいる間は「線越え」は続いています。2本の線が交わる角を回っても<b>1回</b>の線越えです。",
+"Two feet at once":"2本の足を同時に","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"1回のスライドで2本の足が別々の線を越えられます。線から離れない限り<b>1回</b>の線越えです。",
+"Push them off":"押し出して勝つ","Push your opponent off the edge. When one of their feet leaves the board, you win.":"相手をボードの外へ押し出しましょう。相手の足が1本でも落ちたら勝ちです。",
+"Continue with Google":"Googleで続行","or use a username & password":"またはユーザー名とパスワードを使う","hide username & password":"ユーザー名の入力を隠す",
+"or a one-time email link":"またはメールでワンタイムリンク","Log in":"ログイン","Sign up":"新規登録","Send link":"リンクを送信","username":"ユーザー名","password":"パスワード",
+"Sign up to choose your own name — you keep your current rating.":"登録すると名前を選べます — レートは引き継がれます。",
+"Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"このアプリ内ではGoogleログインが使えません。共有メニューから「Safari/Chromeで開く」を選ぶか、下のユーザー名とパスワードをご利用ください。",
+"Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Googleログインには通常のブラウザが必要です（共有 → Safari/Chromeで開く）。このアプリ内ではユーザー名とパスワードをご利用ください。",
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Tauをインストール：<b>共有</b> →<b>ホーム画面に追加</b>。"
+},
+zh: {
+"Local 1v1":"本地对战","Online 1v1":"在线对战","vs AI":"人机对战","How to play":"玩法说明","Leaderboard":"排行榜","Watch":"观战",
+"Sign in":"登录","Sign out":"退出登录","Playing as Guest · ":"游客模式 · ","Signed in as ":"已登录: ","(edit)":"(修改)","Guest":"游客",
+"Play as Guest":"以游客身份玩","Surrender":"认输","Menu":"菜单","Stop watching":"退出观战","Rating:":"等级分:",
+"Your turn":"轮到你了","{name}'s turn":"轮到{name}","{color} to move":"轮到{color}","{color} wins":"{color}获胜","Blue":"蓝方","Red":"红方","blue":"蓝方","red":"红方",
+"Step 1. Tap one of your feet to lock it as the pivot.":"第1步：点击己方一只脚，固定为轴心。",
+"Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.":"第2步：拖动另一只脚（带圈）绕轴转动。再次点击黄色脚可重新选择。",
+"Swinging… release to end your turn.":"转动中……松开即结束回合。","Waiting for your opponent…":"等待对手……",
+"AI is thinking…":"AI思考中……","AI is swinging…":"AI移动中……","crossings {c}/{m}":"过线 {c}/{m}",". That would cross a 2nd line":"（不能越过第二条线）",
+"Watching {a} vs {b}":"正在观战 {a} vs {b}","Playing {color} vs {name}":"你执{color}，对阵 {name}",
+"Pick a difficulty.":"请选择难度。","Easy":"简单","Medium":"中等","Hard":"困难","Very hard":"非常难","Expert":"专家",
+"Choose your colour":"选择颜色","Blue always moves first.":"蓝方先行。","Play as Blue":"执蓝","Play as Red":"执红",
+"You win!":"你赢了！","You lose":"你输了","{name} wins!":"{name}获胜！","Rematch":"再来一局","Accept rematch":"接受再战","Find new opponent":"寻找新对手",
+"Watch replay":"观看回放","Share replay":"分享回放","Watch another":"观看其他对局","Difficulty":"难度","Got it":"知道了",
+"Waiting for {name}…":"等待{name}……","{name} wants a rematch!":"{name}想再来一局！","{name} is watching the replay.":"{name}正在看回放。",
+"{name} is still watching the replay.":"{name}还在看回放。","{name} left.":"{name}已离开。",
+"Searching for an opponent…":"正在寻找对手……","Cancel":"取消","Play a random ranked opponent, or invite someone specific?":"随机排位赛，还是邀请好友？",
+"Find an opponent":"寻找对手","Private match":"私人对局","Play a casual 1v1 against someone specific instead of the random queue.":"与指定的人进行休闲对局（不计等级分）。",
+"Create a match":"创建对局","Join with a code":"输入邀请码加入","Creating your invite…":"正在创建邀请……","OK":"确定",
+"Share this code, or send the link:":"分享此邀请码，或发送链接：","Copy invite link":"复制邀请链接","Waiting for them to join…":"等待对方加入……",
+"Link copied! Waiting for them to join…":"链接已复制！等待对方加入……","Could not copy — the code above still works.":"复制失败——上面的邀请码仍然有效。",
+"Watch live":"观看直播","Looking for games…":"正在查找对局……","No public games being played right now.":"当前没有可观战的对局。","Close":"关闭",
+"Loading…":"加载中……","No rated players yet.":"暂无排名玩家。","Could not load the leaderboard.":"无法加载排行榜。",
+"Player":"玩家","Elo":"等级分","W-L":"胜-负","(you)":"(你)","Ranked #{r} of {n}":"排名 第{r}名（共{n}人）",
+"{n} playing now":"当前{n}人在线"," · {m} in matches":" · {m}人对战中",
+"Out of time — turn passed":"超时——回合跳过","Opponent out of time — your turn":"对手超时——轮到你","Turn passed":"回合已跳过",
+"Opponent didn’t move — your turn":"对手未行动——轮到你","Replay — tap the board to skip":"回放中——点击棋盘跳过",
+"Replay link copied!":"回放链接已复制！","Could not create the link.":"无法生成链接。","Watch this Tau game:":"来看这局Tau：",
+"Replay finished":"回放结束","Watch again":"再看一遍","Play Tau":"开始游戏","Prev":"上一页","Next":"下一页",
+"Hold one foot":"固定一只脚","Hold one foot still and rotate the other two.":"固定一只脚，转动另外两只。",
+"Move in circles":"沿圆弧移动","The moving feet trace an arc. You may only move in one direction per turn.":"移动的脚沿圆弧运动。每回合只能朝一个方向转动。",
+"Push your opponent":"推挤对手","Push your opponent by moving into their legs.":"用你的脚推动对手的脚。",
+"One line per turn":"每回合一条线","You may cross only one line per turn. A foot that starts on a line leaves it for free.":"每回合只能越过一条线。回合开始时已在线上的脚可以自由离开该线。",
+"Corners count once":"交角只算一次","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"只要棋子仍在线上，这次过线就未结束。绕过两线相交的角也只算<b>一次</b>过线。",
+"Two feet at once":"双脚同时过线","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"两只脚可以在同一次滑动中越过两条不同的线。只要棋子始终未离开线，这仍算<b>一次</b>过线。",
+"Push them off":"推下棋盘","Push your opponent off the edge. When one of their feet leaves the board, you win.":"把对手推下棋盘边缘。对方任何一只脚离开棋盘，你就获胜。",
+"Continue with Google":"使用Google登录","or use a username & password":"或使用用户名和密码","hide username & password":"收起用户名登录",
+"or a one-time email link":"或使用一次性邮件链接","Log in":"登录","Sign up":"注册","Send link":"发送链接","username":"用户名","password":"密码",
+"Sign up to choose your own name — you keep your current rating.":"注册后可自选用户名——当前等级分会保留。",
+"Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"应用内浏览器无法使用Google登录。请通过分享菜单选择「在Safari/Chrome中打开」，或使用下方的用户名和密码。",
+"Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Google登录需要真正的浏览器（分享 → 在Safari/Chrome中打开）。在此应用内请使用下方的用户名和密码。",
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"安装Tau：点按<b>分享</b>，再选<b>添加到主屏幕</b>。"
+}
+};
+
 const CFG = {
     edgeU: 66.667,                 // drop-off radius (266.67mm board, matches Metal base 266.666.stl)
     rings: [40, 53.3],             // the two concentric crossing lines
@@ -1942,12 +2043,16 @@ let clock=null, fall={active:false};                                  // loss-an
 // network waits simply never appear in the recording, and every mover (human drag, eased AI swing,
 // online tween, physics pushes) is captured identically because it's the rendered result being
 // sampled, not any one input path. ~48 bytes/frame; 30k frames ≈ several minutes of pure motion.
-let replayFrames = [], replayActive = false, replayPos = 0, replayFinalPose = null;
-// replayPos is a FLOAT: each rendered frame advances it by REPLAY_RATE recorded frames and the pose
-// is interpolated between the two straddling frames. Rate < 1 plays slower than the original motion,
-// and the interpolation smooths out the uneven spacing of the recording (frames are only captured
-// while something moved) — together that fixes the old jerky, sped-up (2x, frame-skipping) playback.
-const REPLAY_MAX_FRAMES = 30000, REPLAY_RATE = 0.5;
+let replayFrames = [], replayActive = false, replayFinalPose = null;
+// Playback is ARC-LENGTH parameterised: startReplay precomputes how far the pieces actually move
+// between each pair of recorded frames (foot-travel approximation: hub distance + |dRot|*footR,
+// worst piece), and stepReplay advances through that cumulative distance at a CONSTANT speed,
+// interpolating between the straddling frames. Frame-count pacing (the previous approach) replayed
+// the original speed profile — a fast flick and a slow careful drag inside one swing came out just
+// as uneven on playback; distance pacing makes every swing glide at the same steady rate.
+const REPLAY_MAX_FRAMES = 30000;
+const REPLAY_UNITS_PER_SEC = 22;   // board-units of piece travel per second of playback
+let replayArc = null, replayArcPos = 0, replayLastT = 0;
 function recordReplayFrame() {
     if (replayActive || !G || G.over) return;
     if (document.getElementById('game').style.display !== 'flex') return;   // never record the menu demo
@@ -1957,35 +2062,160 @@ function recordReplayFrame() {
     replayFrames.push([b.x,b.y,b.rot,r.x,r.y,r.rot]);
     if (replayFrames.length > REPLAY_MAX_FRAMES) replayFrames.splice(0, replayFrames.length - REPLAY_MAX_FRAMES);
 }
+// Distance moved between two recorded frames — the worst piece's hub travel plus rotation
+// converted to foot travel, which is what the eye tracks.
+function replayFrameDist(f, g) {
+    const dB = Math.hypot(g[0]-f[0], g[1]-f[1]) + Math.abs(g[2]-f[2]) * CFG.footR;
+    const dR = Math.hypot(g[3]-f[3], g[4]-f[4]) + Math.abs(g[5]-f[5]) * CFG.footR;
+    return Math.max(dB, dR);
+}
 function startReplay() {
     if (!replayFrames.length || !G) return;
     hideModal(); clearTimeout(gameOverTimer);
     fall.active = false;                       // the fallen piece pops back to the board for the re-run
     replayFinalPose = takeSnap();
-    replayActive = true; replayPos = 0;
+    replayArc = new Float64Array(replayFrames.length);
+    for (let i = 1; i < replayFrames.length; i++)
+        replayArc[i] = replayArc[i-1] + replayFrameDist(replayFrames[i-1], replayFrames[i]);
+    replayArcPos = 0; replayLastT = performance.now();
+    replayActive = true;
     if (typeof rmxSend === 'function') rmxSend('watching');   // opponent's sheet: "X is watching the replay"
-    showPassToast('Replay — tap the board to skip');
+    showPassToast(t('Replay — tap the board to skip'));
 }
 // Steps the playback (called from animate); when the recording runs out, restores the true final
 // pose and re-runs the tumble (silently), then brings the game-over choices back.
 function stepReplay() {
+    const now = performance.now();
+    const dt = Math.min(0.1, (now - replayLastT) / 1000); replayLastT = now;   // real dt: same speed on 60Hz and 120Hz screens
+    replayArcPos += REPLAY_UNITS_PER_SEC * dt;
     const last = replayFrames.length - 1;
-    const i0 = Math.min(Math.floor(replayPos), last), i1 = Math.min(i0 + 1, last);
-    const f = replayFrames[i0], g = replayFrames[i1], u = replayPos - i0;   // interpolate between the two straddling frames
+    let lo = 0, hi = last;                                    // binary search: frame whose arc straddles the position
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (replayArc[mid] <= replayArcPos) lo = mid; else hi = mid - 1; }
+    const i0 = Math.min(lo, last), i1 = Math.min(i0 + 1, last);
+    const seg = replayArc[i1] - replayArc[i0];
+    const u = seg > 1e-9 ? Math.min(1, (replayArcPos - replayArc[i0]) / seg) : 1;
+    const f = replayFrames[i0], g = replayFrames[i1];
     G.pieces[0].x=f[0]+(g[0]-f[0])*u; G.pieces[0].y=f[1]+(g[1]-f[1])*u; G.pieces[0].rot=f[2]+(g[2]-f[2])*u;
     G.pieces[1].x=f[3]+(g[3]-f[3])*u; G.pieces[1].y=f[4]+(g[4]-f[4])*u; G.pieces[1].rot=f[5]+(g[5]-f[5])*u;
     render();
-    replayPos += REPLAY_RATE;
-    if (replayPos >= last) endReplay();
+    if (replayArcPos >= replayArc[last]) endReplay();
 }
 function endReplay() {
     if (!replayActive) return;
     replayActive = false;
     if (replayFinalPose) { G.pieces.forEach((p,i)=>{ p.x=replayFinalPose[i].x; p.y=replayFinalPose[i].y; p.rot=replayFinalPose[i].rot; }); }
     render();
+    if (sharedReplay) { endSharedReplay(); return; }
     if (typeof rmxSend === 'function') rmxSend('watch-done');
     triggerFall(true);                         // re-run the tip-over, but without re-firing the loss sound
     showGameOverModal();
+}
+
+// ---------- Shareable replays ----------
+// The whole recording travels INSIDE the link (no server): frames are downsampled to ~0.15u of
+// motion, delta-encoded against the reconstructed previous frame (so quantisation error can't
+// accumulate), quantised to int16 (positions 0.002u, rotations 0.0002rad), deflate-compressed and
+// base64url'd into the #r= fragment. Opening such a link boots straight into a replay viewer.
+// This is also the trailer pipeline: a link replays the exact game, ready to be screen-captured.
+const SHARE_QP = 0.002, SHARE_QR = 0.0002, SHARE_MIN_DIST = 0.15;
+const b64uEncode = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+function b64uDecode(s) {
+    s = s.replace(/-/g,'+').replace(/_/g,'/'); while (s.length % 4) s += '=';
+    const bin = atob(s), out = new Uint8Array(bin.length);
+    for (let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
+    return out;
+}
+async function deflateBytes(bytes) {
+    if (typeof CompressionStream === 'undefined') return null;
+    const r = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(r).arrayBuffer());
+}
+async function inflateBytes(bytes) {
+    const r = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(r).arrayBuffer());
+}
+async function encodeReplay(frames, winner) {
+    // downsample: keep only frames at least SHARE_MIN_DIST of motion apart (interp smooths the rest)
+    const kept = [frames[0]];
+    for (let i=1;i<frames.length;i++)
+        if (replayFrameDist(kept[kept.length-1], frames[i]) >= SHARE_MIN_DIST || i === frames.length-1) kept.push(frames[i]);
+    const n = kept.length;
+    const buf = new ArrayBuffer(1 + 4 + 24 + (n-1)*12);
+    const dv = new DataView(buf);
+    dv.setUint8(0, winner === 0 ? 0 : winner === 1 ? 1 : 255);
+    dv.setUint32(1, n, true);
+    const recon = kept[0].slice();                         // encoder-side reconstruction: drift-free deltas
+    for (let k=0;k<6;k++) dv.setFloat32(5 + k*4, kept[0][k], true);
+    let off = 29;
+    for (let i=1;i<n;i++) for (let k=0;k<6;k++) {
+        const q = k===2||k===5 ? SHARE_QR : SHARE_QP;
+        let d = Math.round((kept[i][k] - recon[k]) / q);
+        d = Math.max(-32768, Math.min(32767, d));
+        recon[k] += d * q;
+        dv.setInt16(off, d, true); off += 2;
+    }
+    const raw = new Uint8Array(buf);
+    const packed = await deflateBytes(raw);
+    return packed ? 'd' + b64uEncode(packed) : 'p' + b64uEncode(raw);
+}
+async function decodeReplay(str) {
+    const bytes = str[0] === 'd' ? await inflateBytes(b64uDecode(str.slice(1))) : b64uDecode(str.slice(1));
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const winner = dv.getUint8(0), n = dv.getUint32(1, true);
+    const frames = [];
+    const cur = [];
+    for (let k=0;k<6;k++) cur[k] = dv.getFloat32(5 + k*4, true);
+    frames.push(cur.slice());
+    let off = 29;
+    for (let i=1;i<n;i++) {
+        for (let k=0;k<6;k++) { const q = k===2||k===5 ? SHARE_QR : SHARE_QP; cur[k] += dv.getInt16(off, true) * q; off += 2; }
+        frames.push(cur.slice());
+    }
+    return { frames, winner: winner === 255 ? null : winner };
+}
+async function shareReplay() {
+    if (replayFrames.length < 2) return;
+    try {
+        const payload = await encodeReplay(replayFrames, G && G.over ? G.winner : null);
+        const url = location.origin + location.pathname + '#r=' + payload;
+        if (navigator.share) { await navigator.share({ title: 'Tau', text: t('Watch this Tau game:'), url }); return; }
+        await navigator.clipboard.writeText(url);
+        showPassToast(t('Replay link copied!'));
+    } catch (e) { if (e && e.name !== 'AbortError') showPassToast(t('Could not create the link.')); }
+}
+// Opened via a #r= link: play the embedded game on a clean board, then offer to watch again or play.
+let sharedReplay = false;
+async function bootSharedReplay(hash) {
+    try {
+        const { frames, winner } = await decodeReplay(hash);
+        if (!frames || frames.length < 2) return;
+        sharedReplay = true;
+        demoStop(); hideModal();
+        if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
+        vsAI = false;
+        document.getElementById('menu').style.display = 'none';
+        document.getElementById('game').style.display = 'flex';
+        document.getElementById('reset').style.display = 'none';
+        document.getElementById('menuBtn').textContent = t('Play Tau');
+        reset(); resize();
+        camCenterFrac = 1; camManualSet = false;
+        replayFrames = frames.map(f => f.slice());
+        if (winner !== null) { G.winner = winner; }
+        G.sharedWinner = winner;
+        startReplay();
+    } catch (e) { console.error('shared replay failed', e); }
+}
+function endSharedReplay() {
+    if (G.sharedWinner !== null && G.sharedWinner !== undefined) {
+        G.over = true; G.winner = G.sharedWinner;
+        triggerFall(true);                     // the loser still gets its tumble at the end of a shared replay
+    }
+    setTimeout(() => {
+        showModal(t('Replay finished'), '', [
+            { label: t('Watch again'), onClick: () => { fall.active = false; G.over = false; startReplay(); } },
+            { label: t('Play Tau'),    onClick: () => { location.hash = ''; sharedReplay = false; G.over = false; setSpectatorChrome(false); backToMenu(); } },
+        ]);
+    }, G.sharedWinner != null ? 2800 : 200);
 }
 // Declared here (rather than down in the "online accounts" script block where the rest of the
 // online-play state lives) because animate()'s very first synchronous call happens as part of
@@ -2287,29 +2517,29 @@ function updateAcctStatus() {
         el.append('Playing as ');
         const box = document.createElement('input');
         box.type = 'text'; box.className = 'nameBox'; box.maxLength = 20; box.readOnly = true;
-        box.value = document.getElementById('acctName').textContent || 'Guest';
+        box.value = document.getElementById('acctName').textContent || t('Guest');
         // Looks like a normal editable field (that's the point -- it invites the tap), but
         // trying to actually use it means picking a real, permanent username, which only a
         // signed-up account gets to keep -- so redirect there instead of a silent local edit.
         box.addEventListener('focus', () => {
             box.blur();
             pendingOnlineAction = null;
-            document.getElementById('acctMsg').textContent = 'Sign up to choose your own name — you keep your current rating.';
+            document.getElementById('acctMsg').textContent = t('Sign up to choose your own name — you keep your current rating.');
             openAcctPanel();
             document.getElementById('acctUser').focus();
         });
         el.append(box, ' · ');
-        link.textContent = 'Sign in';
+        link.textContent = t('Sign in');
     } else if (sbUser) {
-        el.append('Signed in as ' + (document.getElementById('acctName').textContent || sbUser.email) + ' ');
+        el.append(t('Signed in as ') + (document.getElementById('acctName').textContent || sbUser.email) + ' ');
         const editBtn = document.createElement('button');
-        editBtn.className = 'link'; editBtn.textContent = '(edit)';
+        editBtn.className = 'link'; editBtn.textContent = t('(edit)');
         editBtn.addEventListener('click', () => openRenamePrompt(document.getElementById('acctName').textContent, false));
         el.append(editBtn, ' · ');
-        link.textContent = 'Sign out';
+        link.textContent = t('Sign out');
     } else {
-        el.append('Playing as Guest · ');
-        link.textContent = 'Sign in';
+        el.append(t('Playing as Guest · '));
+        link.textContent = t('Sign in');
     }
     el.append(link);
     link.addEventListener('click', () => {
@@ -2338,7 +2568,7 @@ async function updateRankLine() {
         ]);
         if (seq !== rankLineSeq) return;
         if (total == null || better == null) { el.textContent = ''; return; }
-        el.textContent = `Ranked #${better + 1} of ${total}`;
+        el.textContent = tf('Ranked #{r} of {n}', { r: better + 1, n: total });
     } catch (e) { el.textContent = ''; }
 }
 // Set to a callback while the account panel was opened from a flow that should resume once
@@ -2350,7 +2580,7 @@ function openAcctPanel() {
     // In an in-app browser, Google can't work -- lead with username/password and say why up front.
     if (typeof isInAppBrowser==='function' && isInAppBrowser()) {
         const msg = document.getElementById('acctMsg');
-        if (msg && !msg.textContent) msg.textContent = 'Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.';
+        if (msg && !msg.textContent) msg.textContent = t('Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.');
         if (typeof showAcctEmailOptions==='function') showAcctEmailOptions(true);
     }
 }
@@ -2383,28 +2613,29 @@ function showGameOverModal() {
         if (document.getElementById('game').style.display !== 'flex') return;   // player already left to the menu
         let title, buttons, bodyHtml = '';
         if (onlineMatch && onlineMatch.spectator) {
-            title = (G.winner===0 ? onlineMatch.blueName : onlineMatch.redName) + ' wins!';
-            buttons = [ { label: 'Watch another', onClick: () => { exitOnlineMatch(); openWatchMenu(); } } ];
+            title = tf('{name} wins!', { name: G.winner===0 ? onlineMatch.blueName : onlineMatch.redName });
+            buttons = [ { label: t('Watch another'), onClick: () => { exitOnlineMatch(); openWatchMenu(); } } ];
         } else if (onlineMatch) {
             // Online: the whole post-game sheet is state-driven (rematch handshake, names, live
             // "watching the replay" notes) — see the rmx module next to rematchOnline().
-            rmxEnsure(((G.winner===0?'blue':'red') === onlineMatch.myColor) ? 'You win!' : 'You lose');
+            rmxEnsure(((G.winner===0?'blue':'red') === onlineMatch.myColor) ? t('You win!') : t('You lose'));
             if (rmx) { rmx.uiReady = true; rmxRender(); }
             return;
         } else if (vsAI) {
-            title = G.winner===humanIdx ? 'You win!' : 'You lose';
+            title = G.winner===humanIdx ? t('You win!') : t('You lose');
             // tap the chip to change difficulty (reopens the picker); the two buttons replay at the current one
-            bodyHtml = `<button id="goDiffChip" style="margin:0 auto 8px;font-size:13px;">Difficulty: <b>${AI_DIFF_LABEL[aiDifficulty]||aiDifficulty}</b> &#9662;</button>`;
+            bodyHtml = `<button id="goDiffChip" style="margin:0 auto 8px;font-size:13px;">${t('Difficulty')}: <b>${escapeHtml(t(AI_DIFF_LABEL[aiDifficulty]||aiDifficulty))}</b> &#9662;</button>`;
             buttons = [
-                { label: 'Play as Blue', onClick: () => startGame(true, 0, aiDifficulty) },   // keep the same difficulty on replay
-                { label: 'Play as Red',  onClick: () => startGame(true, 1, aiDifficulty) },
+                { label: t('Play as Blue'), onClick: () => startGame(true, 0, aiDifficulty) },   // keep the same difficulty on replay
+                { label: t('Play as Red'),  onClick: () => startGame(true, 1, aiDifficulty) },
             ];
         } else {
-            title = (G.winner===0?'Blue':'Red') + ' wins!';
-            buttons = [ { label: 'Rematch', onClick: () => startGame(false) } ];
+            title = tf('{name} wins!', { name: t(G.winner===0?'Blue':'Red') });
+            buttons = [ { label: t('Rematch'), onClick: () => startGame(false) } ];
         }
-        if (replayFrames.length > 60) buttons.push({ label: 'Watch replay', onClick: startReplay });
-        buttons.push({ label: 'Menu', onClick: backToMenu });
+        if (replayFrames.length > 60) { buttons.push({ label: t('Watch replay'), onClick: startReplay });
+                                        buttons.push({ label: t('Share replay'), onClick: shareReplay }); }
+        buttons.push({ label: t('Menu'), onClick: backToMenu });
         showModal(title, bodyHtml, buttons, !!bodyHtml);
         const chip = document.getElementById('goDiffChip');
         if (chip) chip.addEventListener('click', () => { hideModal(); openAiDifficultyMenu(); });
@@ -2446,12 +2677,12 @@ document.getElementById('modeLocal').addEventListener('click', ()=>startGame(fal
 // Menu labels for the internal difficulty ids, used by the picker and the game-over difficulty chip.
 const AI_DIFF_LABEL = { dumb:'Easy', easy:'Medium', zone:'Hard', hard:'Very hard', master:'Expert' };
 function openAiDifficultyMenu() {
-    showModal('vs AI', 'Pick a difficulty.', [
-        { label: 'Easy',      onClick: () => chooseAiColour('dumb') },
-        { label: 'Medium',    onClick: () => chooseAiColour('easy') },
-        { label: 'Hard',      onClick: () => chooseAiColour('zone') },
-        { label: 'Very hard', onClick: () => chooseAiColour('hard') },
-        { label: 'Expert',    onClick: () => chooseAiColour('master') },
+    showModal(t('vs AI'), t('Pick a difficulty.'), [
+        { label: t('Easy'),      onClick: () => chooseAiColour('dumb') },
+        { label: t('Medium'),    onClick: () => chooseAiColour('easy') },
+        { label: t('Hard'),      onClick: () => chooseAiColour('zone') },
+        { label: t('Very hard'), onClick: () => chooseAiColour('hard') },
+        { label: t('Expert'),    onClick: () => chooseAiColour('master') },
     ]);
 }
 document.getElementById('modeAI').addEventListener('click', openAiDifficultyMenu);
@@ -2462,9 +2693,9 @@ document.getElementById('modeAI').addEventListener('click', openAiDifficultyMenu
 // through the human's best reply AND its own best follow-up (aiChoosePlanMaster) — measured
 // strongest of the five, weakest to strongest: Easy, Medium, Hard, Very hard, Expert.
 function chooseAiColour(difficulty) {
-    showModal('Choose your colour', 'Blue always moves first.', [
-        { label: 'Play as Blue', onClick: () => startGame(true, 0, difficulty) },
-        { label: 'Play as Red',  onClick: () => startGame(true, 1, difficulty) },
+    showModal(t('Choose your colour'), t('Blue always moves first.'), [
+        { label: t('Play as Blue'), onClick: () => startGame(true, 0, difficulty) },
+        { label: t('Play as Red'),  onClick: () => startGame(true, 1, difficulty) },
     ]);
 }
 // ---------- How to play: one short looping canvas animation per rule ----------
@@ -2685,103 +2916,15 @@ function htp3DExit() {
         demoResize();
     }
 }
-// ---------- Interactive practice (the how-to "Try it" slide) ----------
-// A real, playable sandbox: your blue piece and a red target on one board. Tap a blue foot to pin it,
-// then drag another foot to swing the piece around it — driven by the SAME rules and physics as a
-// real game (crossingSubstep stops you at one line per turn; resolvePush shoves red). Push red off
-// the rim to win. Self-contained: it uses its own pieces and turn-state, never G (which the ambient
-// menu demo owns), so the two never fight.
-let prBlue=null, prRed=null, prSt=null, prPinned=null, prHandle=null, prPtrA=null, prMsg='', prWon=false;
-function prReset(){
-    prBlue = mkP(0, -14, 6, 0.30);
-    prRed  = mkP(1, 45, 0, Math.PI);
-    prSt=null; prPinned=null; prHandle=null; prPtrA=null; prWon=false;
-    prMsg='Tap one of the blue feet to hold it still.';
-    const el=document.getElementById('prMsg'); if(el) el.textContent=prMsg;
-}
-function prHitR(sc){ return Math.max(9, 22/sc); }
-function prNearestFoot(p, feet, exclude, hitR){
-    let best=-1, bestD=hitR;
-    for (let i=0;i<3;i++){ if(i===exclude) continue;
-        const d=Math.hypot(feet[i].x-p.x, feet[i].y-p.y); if(d<bestD){ bestD=d; best=i; } }
-    return best;
-}
-function prBoardPt(e, cv){
-    const r=cv.getBoundingClientRect(), t=(e.touches&&e.touches[0])?e.touches[0]:e;
-    const ix=(t.clientX-r.left)*(cv.width/r.width), iy=(t.clientY-r.top)*(cv.height/r.height);
-    const sc=htpMap(cv.width,cv.height).sc;
-    return { x:(ix-cv.width/2)/sc, y:(iy-cv.height/2)/sc };
-}
-function prPin(idx){
-    const feet=prBlue.feet();
-    prSt = { pivot:{x:feet[idx].x,y:feet[idx].y}, turnDir:0, crossings:0, atLimit:false, netRad:0,
-             startedOnLine: feet.map(f=>nearLineIds(f,CFG.touchEps)), usedGrace:[false,false,false], inCrossing:false };
-    prSt.touchedLine = prSt.startedOnLine.map(a=>a.slice());
-    prPinned=idx; prMsg='Now drag another blue foot around it to swing.';
-}
-function prSwing(dA){
-    if (!prSt || dA===0) return;
-    if (prSt.turnDir!==0 && Math.sign(dA)!==prSt.turnDir) return;   // one direction per turn
-    const step0=CFG.substepDeg*Math.PI/180, steps=Math.max(1,Math.ceil(Math.abs(dA)/step0)), step=dA/steps;
-    for (let s=0;s<steps;s++){
-        const before=prBlue.feet();
-        prBlue.rotateAround(prSt.pivot.x, prSt.pivot.y, step);
-        if (crossingSubstep(before, prBlue.feet(), prSt)){
-            prBlue.rotateAround(prSt.pivot.x, prSt.pivot.y, -step); prSt.atLimit=true;
-            prMsg='That’s one line crossed — the turn stops here.'; break; }
-        prSt.netRad+=step;
-        resolvePush(prBlue, prRed);
-    }
-    if (prSt.turnDir===0 && Math.abs(prSt.netRad)>=CFG.lockDeg*Math.PI/180) prSt.turnDir=Math.sign(prSt.netRad);
-    if (!prWon && prRed.anyFootOff()){ prWon=true; prMsg='Nice — red’s off the edge. That’s a win! (Reset to try again.)'; }
-}
-// Pointer handlers mirror the real board's onDown/onMove/onUp exactly, so the practice teaches the
-// real controls. Pointer capture routes move/up back here even outside the small canvas.
-function prDown(e, cv){
-    if (prWon) return; e.preventDefault();
-    const p=prBoardPt(e,cv), feet=prBlue.feet(), hitR=prHitR(htpMap(cv.width,cv.height).sc);
-    if (prPinned===null){
-        const i=prNearestFoot(p,feet,-1,hitR); if(i>=0) prPin(i);
-    } else {
-        const dPin=Math.hypot(feet[prPinned].x-p.x, feet[prPinned].y-p.y);
-        const i=prNearestFoot(p,feet,prPinned,hitR);
-        if (i>=0 && (dPin>=hitR || Math.hypot(feet[i].x-p.x,feet[i].y-p.y)<=dPin)){
-            prHandle=i; prPtrA=Math.atan2(p.y-prSt.pivot.y, p.x-prSt.pivot.x);
-        } else if (dPin<hitR && Math.abs(prSt.netRad)<CFG.minMoveDeg*Math.PI/180){
-            prSt=null; prPinned=null; prMsg='Tap one of the blue feet to hold it still.';
-        }
-    }
-}
-function prMove(e, cv){
-    if (prHandle===null || prWon) return; e.preventDefault();
-    const p=prBoardPt(e,cv), a=Math.atan2(p.y-prSt.pivot.y, p.x-prSt.pivot.x);
-    if (prPtrA===null){ prPtrA=a; return; }
-    const dA=norm(a-prPtrA); prPtrA=a; prSwing(dA);
-}
-function prUp(){
-    if (prHandle===null) return;
-    prHandle=null; prPtrA=null;
-    if (prSt && !prWon && Math.abs(prSt.netRad)>=CFG.minMoveDeg*Math.PI/180){   // real move made: new turn, re-pin to continue
-        prSt=null; prPinned=null; prMsg='Good. Tap a foot to start another move.';
-    }
-}
-function prDrawSlide(c,w,h,t){
-    if (!prBlue) prReset();
-    const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
-    htpPiece(c, prRed, m.b, -1, t);
-    htpPiece(c, prBlue, m.b, prPinned===null?-1:prPinned, t);
-    const el=document.getElementById('prMsg'); if(el && el.textContent!==prMsg) el.textContent=prMsg;
-}
 // Wording taken from the designer's own rules (Written elements.docx).
 const HTP_STEPS = [
-    { title:'Try it yourself', text:'Tap a blue foot to pin it, then drag another foot to swing. Push red off the edge to win.<br><span id="prMsg" style="color:#7ee39a"></span>', draw:prDrawSlide, interactive:true },
-    { title:'Hold one foot', text:'Hold one foot still and rotate the other two.', draw:htpSlidePivot },
-    { title:'Move in circles', text:'The moving feet trace an arc. You may only move in one direction per turn.', draw:htpSlideSwing },
-    { title:'Push your opponent', text:'Push your opponent by moving into their legs.', draw:htpSlidePush },
-    { title:'One line per turn', text:'You may cross only one line per turn. A foot that starts on a line leaves it for free.', draw:htpSlideCross },
-    { title:'Corners count once', text:'A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.', draw:htpSlideDouble },
-    { title:'Two feet at once', text:'Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.', draw:htpSlideTwoFeet },
-    { title:'Push them off', text:'Push your opponent off the edge. When one of their feet leaves the board, you win.', is3D:true },
+    { title:t('Hold one foot'), text:t('Hold one foot still and rotate the other two.'), draw:htpSlidePivot },
+    { title:t('Move in circles'), text:t('The moving feet trace an arc. You may only move in one direction per turn.'), draw:htpSlideSwing },
+    { title:t('Push your opponent'), text:t('Push your opponent by moving into their legs.'), draw:htpSlidePush },
+    { title:t('One line per turn'), text:t('You may cross only one line per turn. A foot that starts on a line leaves it for free.'), draw:htpSlideCross },
+    { title:t('Corners count once'), text:t('A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.'), draw:htpSlideDouble },
+    { title:t('Two feet at once'), text:t('Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.'), draw:htpSlideTwoFeet },
+    { title:t('Push them off'), text:t('Push your opponent off the edge. When one of their feet leaves the board, you win.'), is3D:true },
 ];
 let htpRaf=null, htpScrollBox=null, htpScrollHandler=null;
 function stopHowToPlayAnim() {
@@ -2794,32 +2937,17 @@ function openHowToPlay() {
     stopHowToPlayAnim();
     const slidesHtml = `
         <div id="htpNav">
-            <button id="htpPrev">&lsaquo; Prev</button>
+            <button id="htpPrev">&lsaquo; ${t('Prev')}</button>
             <span id="htpDots">${HTP_STEPS.map((_,i)=>`<button class="htpDot" data-idx="${i}"></button>`).join('')}</span>
-            <button id="htpNext">Next &rsaquo;</button>
+            <button id="htpNext">${t('Next')} &rsaquo;</button>
         </div>` + HTP_STEPS.map((s,i) => `
         <div class="htpSlide" data-idx="${i}">
-            ${s.is3D ? `<div id="htpFallSlot"></div>` : `<canvas id="htpCanvas${i}"${s.interactive?' class="htpInteractive"':''} width="340" height="230"></canvas>`}
+            ${s.is3D ? `<div id="htpFallSlot"></div>` : `<canvas id="htpCanvas${i}" width="340" height="230"></canvas>`}
             <p><b>${s.title}</b><br>${s.text}</p>
-            ${s.interactive ? `<button id="prResetBtn" class="link">↻ Reset</button>` : ``}
         </div>`).join('');
-    showModal('How to play', slidesHtml, [ { label: 'Got it', onClick: stopHowToPlayAnim } ], true);
+    showModal(t('How to play'), slidesHtml, [ { label: t('Got it'), onClick: stopHowToPlayAnim } ], true);
     document.getElementById('modalBox').classList.add('wide');
     htp3DEnter();
-
-    // Wire the interactive practice slide: fresh board, real-controls pointer handling (pointer
-    // capture routes move/up back even outside the small canvas), and a Reset.
-    prReset();
-    HTP_STEPS.forEach((s,i) => {
-        if (!s.interactive) return;
-        const cv = document.getElementById('htpCanvas'+i);
-        cv.style.touchAction = 'none'; cv.style.cursor = 'pointer';
-        cv.addEventListener('pointerdown', e => { try{ cv.setPointerCapture(e.pointerId); }catch(_){} prDown(e, cv); });
-        cv.addEventListener('pointermove', e => prMove(e, cv));
-        cv.addEventListener('pointerup',   () => prUp());
-        cv.addEventListener('pointercancel', () => prUp());
-    });
-    const prBtn = document.getElementById('prResetBtn'); if (prBtn) prBtn.addEventListener('click', prReset);
 
     const ctxs = HTP_STEPS.map((s,i) => s.is3D ? null : document.getElementById('htpCanvas'+i).getContext('2d'));
     const t0 = performance.now();
@@ -3179,10 +3307,10 @@ document.getElementById('modeOnline').addEventListener('click', () => {
 // Online sub-menu: a random ranked opponent, or a private invite match. (Private match used to be a
 // separate link at the bottom of the menu -- it lives here now, inside the online flow.)
 function chooseOnlineMode() {
-    showModal('Online 1v1', 'Play a random ranked opponent, or invite someone specific?', [
-        { label: 'Find an opponent', onClick: startOnlineMatchmaking },
-        { label: 'Private match',    onClick: openPrivateMatchMenu },
-        { label: 'Cancel',           onClick: () => {} },
+    showModal(t('Online 1v1'), t('Play a random ranked opponent, or invite someone specific?'), [
+        { label: t('Find an opponent'), onClick: startOnlineMatchmaking },
+        { label: t('Private match'),    onClick: openPrivateMatchMenu },
+        { label: t('Cancel'),           onClick: () => {} },
     ]);
 }
 // Shows the Sign in / Play as Guest choice if nobody's signed in yet, resuming with `next` once
@@ -3191,8 +3319,8 @@ function chooseOnlineMode() {
 function ensureOnlineIdentity(next) {
     if (sbUser) { next(); return; }   // already a real account or a guest this tab
     showModal('Online 1v1', 'Play with a saved account, or jump in now as a guest? Guests still get a rating and a leaderboard spot — signing up just keeps it after you close the tab.', [
-        { label: 'Sign in', onClick: () => { pendingOnlineAction = next; openAcctPanel(); } },
-        { label: 'Play as Guest', onClick: () => playAsGuest(next) },
+        { label: t('Sign in'), onClick: () => { pendingOnlineAction = next; openAcctPanel(); } },
+        { label: t('Play as Guest'), onClick: () => playAsGuest(next) },
     ]);
 }
 // Anonymous auth: real auth.uid(), real profiles row (the existing handle_new_user trigger
@@ -3252,7 +3380,7 @@ document.getElementById('reset').addEventListener('click', surrender);
 // redundant Surrender and relabel the remaining button "Stop watching".
 function setSpectatorChrome(on) {
     document.getElementById('reset').style.display = on ? 'none' : '';
-    document.getElementById('menuBtn').textContent = on ? 'Stop watching' : 'Menu';
+    document.getElementById('menuBtn').textContent = on ? t('Stop watching') : t('Menu');
 }
 
 // ---------- Render ----------
@@ -3316,7 +3444,7 @@ function render() {
     const s=document.getElementById('status'), m=document.getElementById('meta'), h=document.getElementById('help');
     const aiTurn = vsAI && G.active===aiIdx && !G.over;
     if (G.over){ const w2=G.winner===0?'blue':'red';
-        s.innerHTML=`<span class="${w2}">${w2[0].toUpperCase()+w2.slice(1)} wins</span>`; m.textContent=''; h.textContent='';
+        s.innerHTML=`<span class="${w2}">${tf('{color} wins',{color:t(w2==='blue'?'Blue':'Red')})}</span>`; m.textContent=''; h.textContent='';
     } else { const c=G.active===0?'blue':'red';
         if (onlineMatch) {
             // "Your turn" vs the opponent's own username (not just their colour) -- that's who
@@ -3327,31 +3455,31 @@ function render() {
             s.innerHTML = '';
             const turnSpan = document.createElement('span'); turnSpan.className = c;
             turnSpan.textContent = onlineMatch.spectator
-                ? ((G.active===0 ? onlineMatch.blueName : onlineMatch.redName) + "'s turn")
-                : (myOnlineTurnNow() ? 'Your turn' : (onlineMatch.opponentName + "'s turn"));
+                ? tf("{name}'s turn", { name: G.active===0 ? onlineMatch.blueName : onlineMatch.redName })
+                : (myOnlineTurnNow() ? t('Your turn') : tf("{name}'s turn", { name: onlineMatch.opponentName }));
             s.appendChild(turnSpan);
             m.textContent = onlineMatch.spectator
-                ? `Watching ${onlineMatch.blueName} vs ${onlineMatch.redName}`
+                ? tf('Watching {a} vs {b}', { a: onlineMatch.blueName, b: onlineMatch.redName })
                 : myOnlineTurnNow() && G.pinned!==null
-                ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?`. That would cross a 2nd line`:``}`
-                : `Playing ${onlineMatch.myColor} vs ${onlineMatch.opponentName}`;
+                ? tf('crossings {c}/{m}',{c:G.crossings,m:CFG.maxCrossingsPerTurn}) + (G.atLimit? t('. That would cross a 2nd line') : '')
+                : tf('Playing {color} vs {name}', { color: t(onlineMatch.myColor), name: onlineMatch.opponentName });
         } else {
-            s.innerHTML=`<span class="${c}">${c[0].toUpperCase()+c.slice(1)}</span> to move${aiTurn?' <span style="color:#69727b">(AI)</span>':''}`;
-            m.textContent = G.pinned!==null ? `crossings ${G.crossings}/${CFG.maxCrossingsPerTurn}${G.atLimit?`. That would cross a 2nd line`:``}` : '';
+            s.innerHTML=tf('{color} to move',{color:`<span class="${c}">${t(c==='blue'?'Blue':'Red')}</span>`})+`${aiTurn?' <span style="color:#69727b">(AI)</span>':''}`;
+            m.textContent = G.pinned!==null ? tf('crossings {c}/{m}',{c:G.crossings,m:CFG.maxCrossingsPerTurn}) + (G.atLimit? t('. That would cross a 2nd line') : '') : '';
         }
         h.textContent = onlineMatch
             ? (myOnlineTurnNow()
-                ? (G.pinned===null ? 'Step 1. Tap one of your feet to lock it as the pivot.'
-                    : (G.handle===null ? 'Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.'
-                        : 'Swinging… release to end your turn.'))
-                : 'Waiting for your opponent…')
+                ? (G.pinned===null ? t('Step 1. Tap one of your feet to lock it as the pivot.')
+                    : (G.handle===null ? t('Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.')
+                        : t('Swinging… release to end your turn.')))
+                : t('Waiting for your opponent…'))
             : aiTurn
-            ? (aiAnim ? 'AI is swinging…' : 'AI is thinking…')
+            ? (aiAnim ? t('AI is swinging…') : t('AI is thinking…'))
             : (G.pinned===null
-                ? 'Step 1. Tap one of your feet to lock it as the pivot.'
+                ? t('Step 1. Tap one of your feet to lock it as the pivot.')
                 : (G.handle===null
-                    ? 'Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.'
-                    : 'Swinging… release to end your turn.'));
+                    ? t('Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.')
+                    : t('Swinging… release to end your turn.')));
     }
 }
 
@@ -3541,6 +3669,7 @@ function applyFallRotation(t, f, dt, clear) {
 }
 // kick off the dramatic slide-off when someone loses (silent=true for the replay's re-run)
 function triggerFall(silent) {
+    if (G.winner === null || G.winner === undefined) return;   // no winner, no faller (e.g. a replay with no recorded result)
     if (!silent) playLossSound();
     if (!renderer) return;
     const li = 1 - G.winner, p = G.pieces[li];
@@ -3769,6 +3898,7 @@ function updateGentleCam(dt) {
 // extra must-stay-in-frame point) so it's never lost off-screen as it slides and drops.
 function updateFallCam(dt) {
     const winnerPiece = G.pieces[G.winner], fallT = tripods[fall.idx].position;
+    if (!winnerPiece) { fall.active = false; return; }
     const mx=(winnerPiece.x+fallT.x)/2, mz=(winnerPiece.y+fallT.z)/2;
     let dx=fallT.x-winnerPiece.x, dz=fallT.z-winnerPiece.y; const len=Math.hypot(dx,dz);
     if (len < 1e-6) { dx=1; dz=0; } else { dx/=len; dz/=len; }
@@ -3882,6 +4012,35 @@ reset();
 resize();
 animate();
 demoStart();
+// Apply translations to the static HTML and build the subtle language row. English needs no
+// rewriting (sources are English); the row always renders so any language can switch away.
+(function applyI18nStatic(){
+    if (LANG !== 'en') {
+        const setTxt = (id, key) => { const el = document.getElementById(id); if (el) el.textContent = t(key); };
+        setTxt('modeLocal','Local 1v1'); setTxt('modeOnline','Online 1v1'); setTxt('modeAI','vs AI');
+        setTxt('howToPlayBtn','How to play'); setTxt('leaderboardBtn','Leaderboard'); setTxt('watchBtn','Watch');
+        setTxt('reset','Surrender'); setTxt('menuBtn','Menu');
+        setTxt('acctGoogle','Continue with Google'); setTxt('acctMoreOptions','or use a username & password');
+        setTxt('acctLogIn','Log in'); setTxt('acctSignUp','Sign up'); setTxt('acctSendLink','Send link');
+        setTxt('acctPanelClose','Close'); setTxt('acctSignOut','Sign out');
+        const u=document.getElementById('acctUser'); if (u) u.placeholder=t('username');
+        const pw=document.getElementById('acctPass'); if (pw) pw.placeholder=t('password');
+        const oneTime=document.querySelector('#acctEmailOptions p.msg'); if (oneTime) oneTime.textContent=t('or a one-time email link');
+        const prof=document.querySelector('#acctSignedIn .profile');
+        if (prof && prof.childNodes.length>=4){ prof.childNodes[0].textContent=t('Signed in as '); prof.childNodes[3].textContent=t('Rating:')+' '; }
+    }
+    const row = document.getElementById('langRow');
+    if (row) {
+        [['en','English'],['ja','日本語'],['zh','中文']].forEach(([code,label],i) => {
+            if (i) row.append(' · ');
+            const b=document.createElement('button'); b.className='link'; b.textContent=label;
+            b.style.cssText='font-size:11px;'+(code===LANG?'color:#9aa4ad;':'color:#4a525a;');
+            b.addEventListener('click',()=>{ try{localStorage.setItem('tauLang',code);}catch(e){} location.reload(); });
+            row.appendChild(b);
+        });
+    }
+})();
+if (location.hash.startsWith('#r=')) bootSharedReplay(location.hash.slice(3));   // opened from a shared replay link
 
 // ---------- Menu logo: the composed wordmark (tau-logo.png), tinted live to signal state ----------
 // The three posed pieces are baked into one cleanly laid-out PNG (logo_studio.html did the spacing);
@@ -4159,7 +4318,7 @@ document.getElementById('acctSendLink').addEventListener('click', async () => {
 document.getElementById('acctGoogle').addEventListener('click', async () => {
     const msg = document.getElementById('acctMsg');
     if (isInAppBrowser()) {   // Google would just 403 here -- guide out instead of failing silently
-        msg.textContent = 'Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.';
+        msg.textContent = t('Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.');
         showAcctEmailOptions(true);
         return;
     }
@@ -4326,7 +4485,7 @@ function checkOnlineTimeout() {
     // both players present, so there's nothing to abuse; it just nudges a dawdling player along.
     clearTurn();
     G.active = 1 - G.active;
-    showPassToast('Out of time — turn passed');
+    showPassToast(t('Out of time — turn passed'));
     startOnlineTurnClock();
     render();
 }
@@ -4345,7 +4504,7 @@ function onlineResolveOpponentTimeout() {
     // 1st miss -> pass the turn to me, and tell the opponent's client so it flips too.
     clearTurn();
     G.active = 1 - G.active;
-    showPassToast('Opponent out of time — your turn');
+    showPassToast(t('Opponent out of time — your turn'));
     startOnlineTurnClock();
     render();
     const moveIndex = onlineMatch.nextMoveIndex++;
@@ -4397,7 +4556,7 @@ function endOnlineMatch(loserIdx) {
 async function startOnlineMatchmaking() {
     if (!sb || !sbUser) return;
     matchmakingActive = true;
-    showModal('Online 1v1', 'Searching for an opponent…', [ { label: 'Cancel', onClick: cancelMatchmaking } ]);
+    showModal(t('Online 1v1'), t('Searching for an opponent…'), [ { label: t('Cancel'), onClick: cancelMatchmaking } ]);
     matchmakingChannel = sb.channel('matchmaking-'+sbUser.id)
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'matches' }, payload => {
             if (matchmakingActive) enterOnlineMatch(payload.new);
@@ -4601,7 +4760,7 @@ async function replayOpponentMove(row) {
         onlineMatch.nextMoveIndex = Math.max(onlineMatch.nextMoveIndex, row.move_index + 1);
         onlineMatch._replayingIndex = -1;
         clearTurn(); G.active = 1 - G.active;
-        showPassToast(onlineMatch.spectator ? "Turn passed" : "Opponent didn’t move — your turn");
+        showPassToast(onlineMatch.spectator ? t('Turn passed') : t('Opponent didn’t move — your turn'));
         startOnlineTurnClock(); render();
         return;
     }
@@ -4737,15 +4896,16 @@ function rmxRender() {
     if (replayActive) return;                                    // don't fight the replay for the screen
     const opp = escapeHtml(rmx.oppName);
     let status = '';
-    if (rmx.oppLeft)            status = `${opp} left.`;
-    else if (rmx.iWant)         status = `Waiting for ${opp}…` + (rmx.oppWatching ? `<br>${opp} is still watching the replay.` : '');
-    else if (rmx.oppWant)       status = `<b style="color:#7ee39a">${opp} wants a rematch!</b>`;
-    else if (rmx.oppWatching)   status = `${opp} is watching the replay.`;
+    if (rmx.oppLeft)            status = tf('{name} left.', { name: opp });
+    else if (rmx.iWant)         status = tf('Waiting for {name}…', { name: opp }) + (rmx.oppWatching ? '<br>' + tf('{name} is still watching the replay.', { name: opp }) : '');
+    else if (rmx.oppWant)       status = `<b style="color:#7ee39a">${tf('{name} wants a rematch!', { name: opp })}</b>`;
+    else if (rmx.oppWatching)   status = tf('{name} is watching the replay.', { name: opp });
     const buttons = [];
-    if (!rmx.oppLeft && !rmx.iWant) buttons.push({ label: rmx.oppWant ? `Accept rematch` : 'Rematch', onClick: rematchOnline });
-    buttons.push({ label: 'Find new opponent', onClick: findNewOpponent });
-    if (replayFrames.length > 60) buttons.push({ label: 'Watch replay', onClick: startReplay });
-    buttons.push({ label: 'Menu', onClick: backToMenu });
+    if (!rmx.oppLeft && !rmx.iWant) buttons.push({ label: rmx.oppWant ? t('Accept rematch') : t('Rematch'), onClick: rematchOnline });
+    buttons.push({ label: t('Find new opponent'), onClick: findNewOpponent });
+    if (replayFrames.length > 60) { buttons.push({ label: t('Watch replay'), onClick: startReplay });
+                                    buttons.push({ label: t('Share replay'), onClick: shareReplay }); }
+    buttons.push({ label: t('Menu'), onClick: backToMenu });
     showModal(rmx.title, status ? `<p style="margin:0 0 4px;color:#c7ccd1;">${status}</p>` : '', buttons, true);
 }
 // Click Rematch / Accept: create-or-converge on the shared row, tell the other side, and wait for
@@ -4779,17 +4939,17 @@ function findNewOpponent() {
 // sign-up), so they can't be trusted verbatim inside an HTML template string.
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function openLeaderboard() {
-    showModal('Leaderboard', '<p style="text-align:center;color:#9aa4ad;">Loading…</p>', [ { label:'Close', onClick:()=>{} } ], true);
+    showModal(t('Leaderboard'), '<p style="text-align:center;color:#9aa4ad;">'+t('Loading…')+'</p>', [ { label:t('Close'), onClick:()=>{} } ], true);
     if (!sb) { document.getElementById('modalBody').innerHTML = '<p style="text-align:center;color:#9aa4ad;">Online accounts aren’t set up on this build.</p>'; return; }
     sb.from('profiles').select('username, elo, wins, losses').order('elo', { ascending:false }).limit(10)
       .then(({ data, error }) => {
         const body = document.getElementById('modalBody');
         if (error || !data) { body.innerHTML = '<p style="text-align:center;color:#9aa4ad;">Could not load the leaderboard.</p>'; return; }
-        if (!data.length) { body.innerHTML = '<p style="text-align:center;color:#9aa4ad;">No rated players yet.</p>'; return; }
+        if (!data.length) { body.innerHTML = '<p style="text-align:center;color:#9aa4ad;">'+t('No rated players yet.')+'</p>'; return; }
         // #1 is bold and noticeably bigger; #2 and #3 a touch bigger; the rest at the base size.
         // Top three get a medal in the rank column instead of a plain number.
         body.innerHTML = `<table style="width:100%; border-collapse:collapse; font-size:13px;">
-            <tr style="color:#9aa4ad; text-align:left;"><th style="padding:4px 6px;">#</th><th style="padding:4px 6px;">Player</th><th style="padding:4px 6px; text-align:right;">Elo</th><th style="padding:4px 6px; text-align:right;">W-L</th></tr>
+            <tr style="color:#9aa4ad; text-align:left;"><th style="padding:4px 6px;">#</th><th style="padding:4px 6px;">${t('Player')}</th><th style="padding:4px 6px; text-align:right;">${t('Elo')}</th><th style="padding:4px 6px; text-align:right;">${t('W-L')}</th></tr>
             ${data.map((p,i)=>{
                 const rank=i+1;
                 const fs = rank===1 ? '18px' : rank<=3 ? '15px' : '13px';
@@ -4800,7 +4960,7 @@ function openLeaderboard() {
                 const hl = mine ? ' background:rgba(61,90,254,0.16); box-shadow:inset 3px 0 0 #3d5afe;' : '';
                 return `<tr style="border-top:1px solid #2c3138; font-size:${fs}; font-weight:${fw}; line-height:1.35;${hl}">
                 <td style="padding:5px 6px; color:#9aa4ad;">${rankCell}</td>
-                <td style="padding:5px 6px;">${escapeHtml(p.username)}${mine?' <span style="color:#6b9eff;font-size:11px;font-weight:400;">(you)</span>':''}</td>
+                <td style="padding:5px 6px;">${escapeHtml(p.username)}${mine?' <span style="color:#6b9eff;font-size:11px;font-weight:400;">'+t('(you)')+'</span>':''}</td>
                 <td style="padding:5px 6px; text-align:right; color:#ffd23f;">${p.elo}</td>
                 <td style="padding:5px 6px; text-align:right; color:#9aa4ad; font-weight:400;">${p.wins}-${p.losses}</td>
             </tr>`;}).join('')}
@@ -4819,9 +4979,9 @@ document.getElementById('leaderboardBtn').addEventListener('click', openLeaderbo
 // ---------- Private matches: invite a specific person by code or link ----------
 // (Entry point is the "Private match" option inside the Online 1v1 sub-menu; see chooseOnlineMode.)
 function openPrivateMatchMenu() {
-    showModal('Private match', 'Play a rated 1v1 against someone specific instead of the random queue.', [
-        { label: 'Create a match', onClick: createPrivateMatch },
-        { label: 'Join with a code', onClick: joinPrivateMatchPrompt },
+    showModal(t('Private match'), t('Play a casual 1v1 against someone specific instead of the random queue.'), [
+        { label: t('Create a match'), onClick: createPrivateMatch },
+        { label: t('Join with a code'), onClick: joinPrivateMatchPrompt },
         { label: 'Cancel', onClick: () => {} },
     ]);
 }
@@ -4831,7 +4991,7 @@ function cleanupPrivateWait() {
     if (privateWaitChannel) { sb.removeChannel(privateWaitChannel); privateWaitChannel = null; }
 }
 async function createPrivateMatch() {
-    showModal('Private match', 'Creating your invite…', []);
+    showModal(t('Private match'), t('Creating your invite…'), []);
     // Wrapped in try/catch: like startOnlineMatchmaking()'s tryOnce(), a genuine network-level
     // failure here can reject the promise outright rather than resolving to {error} -- without
     // catching it, the modal would be stuck on "Creating your invite…" forever.
@@ -4860,15 +5020,15 @@ async function createPrivateMatch() {
 }
 function showPrivateWaitScreen(matchId, code) {
     const link = location.origin + location.pathname + '?join=' + encodeURIComponent(code);
-    const body = `<p style="margin:0 0 10px;">Share this code, or send the link:</p>
+    const body = `<p style="margin:0 0 10px;">${t('Share this code, or send the link:')}</p>
         <p style="font-size:28px; font-weight:bold; letter-spacing:4px; color:#ffd23f; margin:0 0 12px;">${escapeHtml(code)}</p>
-        <div class="row" style="justify-content:center;"><button id="privCopyLink">Copy invite link</button></div>
-        <p class="msg" id="privWaitMsg" style="margin-top:10px;">Waiting for them to join…</p>`;
-    showModal('Private match', body, [ { label: 'Cancel', onClick: () => cancelPrivateMatchWait(matchId) } ], true);
+        <div class="row" style="justify-content:center;"><button id="privCopyLink">${t('Copy invite link')}</button></div>
+        <p class="msg" id="privWaitMsg" style="margin-top:10px;">${t('Waiting for them to join…')}</p>`;
+    showModal(t('Private match'), body, [ { label: t('Cancel'), onClick: () => cancelPrivateMatchWait(matchId) } ], true);
     document.getElementById('privCopyLink').addEventListener('click', () => {
         navigator.clipboard.writeText(link)
-            .then(() => { document.getElementById('privWaitMsg').textContent = 'Link copied! Waiting for them to join…'; })
-            .catch(() => { document.getElementById('privWaitMsg').textContent = 'Could not copy — the code above still works.'; });
+            .then(() => { document.getElementById('privWaitMsg').textContent = t('Link copied! Waiting for them to join…'); })
+            .catch(() => { document.getElementById('privWaitMsg').textContent = t('Could not copy — the code above still works.'); });
     });
 }
 function cancelPrivateMatchWait(matchId) {
@@ -4937,7 +5097,7 @@ function updatePresenceCounts() {
     // the server times it out) -- trust the NEWEST meta, not "any meta says match". Spectators
     // ('watch') count toward "playing now" but not "in matches".
     for (const k of keys) { const metas = state[k]; if (metas.length && metas[metas.length-1].s === 'match') inMatch++; }
-    el.textContent = keys.length < 2 ? '' : keys.length + ' playing now' + (inMatch ? ' \u00b7 ' + inMatch + ' in matches' : '');
+    el.textContent = keys.length < 2 ? '' : tf('{n} playing now', { n: keys.length }) + (inMatch ? tf(' · {m} in matches', { m: inMatch }) : '');
 }
 
 // ---------- Watch: spectate any public (non-private) live match ----------
@@ -4955,7 +5115,7 @@ document.getElementById('watchBtn').addEventListener('click', () => ensureOnline
 // move (a real move or a timeout-pass) at least every 30s, so 3 min of silence means it's abandoned.
 const WATCH_STALE_MS = 3 * 60 * 1000;
 async function openWatchMenu() {
-    showModal('Watch live', '<p style="text-align:center;color:#9aa4ad;">Looking for games\u2026</p>', [ { label:'Close', onClick:()=>{} } ], true);
+    showModal(t('Watch live'), '<p style="text-align:center;color:#9aa4ad;">'+t('Looking for games…')+'</p>', [ { label:t('Close'), onClick:()=>{} } ], true);
     try { await sb.rpc('gc_stale_matches'); } catch(e) {}   // no-op if the patch isn't applied yet
     let games, err;
     try {
@@ -4976,7 +5136,7 @@ async function openWatchMenu() {
         } catch(e) {}
         games = games.filter(g => (lastMove[g.id] || new Date(g.created_at).getTime()) >= cutoff).slice(0, 10);
     }
-    if (!games.length) { body.innerHTML = '<p style="text-align:center;color:#9aa4ad;">No public games being played right now.</p>'; return; }
+    if (!games.length) { body.innerHTML = '<p style="text-align:center;color:#9aa4ad;">'+t('No public games being played right now.')+'</p>'; return; }
     const ids = [...new Set(games.flatMap(g => [g.blue_id, g.red_id]))];
     let names = {};
     try {
@@ -4987,7 +5147,7 @@ async function openWatchMenu() {
     for (const g of games) {
         const btn = document.createElement('button');
         btn.style.cssText = 'display:block;width:100%;margin:4px 0;';
-        btn.textContent = (names[g.blue_id]||'Blue') + ' vs ' + (names[g.red_id]||'Red');
+        btn.textContent = (names[g.blue_id]||t('Blue')) + ' vs ' + (names[g.red_id]||t('Red'));
         btn.addEventListener('click', () => { hideModal(); spectateMatch(g, names); });
         body.appendChild(btn);
     }
@@ -5065,8 +5225,8 @@ window.addEventListener('load', () => {
         bar.style.cssText = 'position:fixed; left:8px; right:8px; bottom:calc(8px + env(safe-area-inset-bottom)); '
             + 'z-index:70; background:#1a1e24; border:1px solid #3a4048; border-radius:10px; padding:10px 12px; '
             + 'font-size:13px; color:#c7ccd1; display:flex; align-items:center; gap:10px; box-shadow:0 4px 18px rgba(0,0,0,0.45);';
-        bar.innerHTML = '<span style="flex:1">Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.</span>'
-            + '<button style="margin:0;padding:5px 10px;">Got it</button>';
+        bar.innerHTML = '<span style="flex:1">' + t('Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.') + '</span>'
+            + '<button style="margin:0;padding:5px 10px;">' + t('Got it') + '</button>';
         const dismiss = () => { try { localStorage.setItem('tauIosInstallHint', '1'); } catch(e){} bar.remove(); };
         bar.querySelector('button').addEventListener('click', dismiss);
         document.body.appendChild(bar);
