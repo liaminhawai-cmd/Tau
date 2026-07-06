@@ -143,7 +143,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 37</div>
+<div id="buildTag">build 38</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -1963,6 +1963,7 @@ function startReplay() {
     fall.active = false;                       // the fallen piece pops back to the board for the re-run
     replayFinalPose = takeSnap();
     replayActive = true; replayPos = 0;
+    if (typeof rmxSend === 'function') rmxSend('watching');   // opponent's sheet: "X is watching the replay"
     showPassToast('Replay — tap the board to skip');
 }
 // Steps the playback (called from animate); when the recording runs out, restores the true final
@@ -1982,6 +1983,7 @@ function endReplay() {
     replayActive = false;
     if (replayFinalPose) { G.pieces.forEach((p,i)=>{ p.x=replayFinalPose[i].x; p.y=replayFinalPose[i].y; p.rot=replayFinalPose[i].rot; }); }
     render();
+    if (typeof rmxSend === 'function') rmxSend('watch-done');
     triggerFall(true);                         // re-run the tip-over, but without re-firing the loss sound
     showGameOverModal();
 }
@@ -2384,11 +2386,11 @@ function showGameOverModal() {
             title = (G.winner===0 ? onlineMatch.blueName : onlineMatch.redName) + ' wins!';
             buttons = [ { label: 'Watch another', onClick: () => { exitOnlineMatch(); openWatchMenu(); } } ];
         } else if (onlineMatch) {
-            title = ((G.winner===0?'blue':'red') === onlineMatch.myColor) ? 'You win!' : 'You lose';
-            buttons = [
-                { label: 'Rematch', onClick: rematchOnline },
-                { label: 'Find new opponent', onClick: findNewOpponent },
-            ];
+            // Online: the whole post-game sheet is state-driven (rematch handshake, names, live
+            // "watching the replay" notes) — see the rmx module next to rematchOnline().
+            rmxEnsure(((G.winner===0?'blue':'red') === onlineMatch.myColor) ? 'You win!' : 'You lose');
+            if (rmx) { rmx.uiReady = true; rmxRender(); }
+            return;
         } else if (vsAI) {
             title = G.winner===humanIdx ? 'You win!' : 'You lose';
             // tap the chip to change difficulty (reopens the picker); the two buttons replay at the current one
@@ -2431,6 +2433,7 @@ function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
     clearTimeout(aiTimer); aiAnim = null;
     replayActive = false;
+    if (typeof rmxTeardown === 'function') rmxTeardown(true);   // tell a waiting opponent we left
     cancelMatchmaking(); exitOnlineMatch();
     onlineTurnDeadline = null;
     document.getElementById('turnTimer').style.display = 'none';
@@ -4666,26 +4669,107 @@ function onlineFinishMatch(winnerColor) {
                              else if (typeof updateRankLine === 'function') updateRankLine(); })   // ELO moved -> refresh "Ranked #x of y"
       .catch(e => console.error('finish_match failed', e));
 }
-// Only actually starts a new match once BOTH players have clicked Rematch (rematch() is
-// idempotent per source match — see schema_matches.sql — so whichever of the two calls this
-// first creates the row, and the other converges on that same row an instant later).
-function rematchOnline() {
-    if (!onlineMatch || !sb) return;
-    const prevMatchId = onlineMatch.id;
+// ---------- Post-game rematch handshake (rmx) ----------
+// A rematch only starts once BOTH players click. The two clients keep a broadcast channel open on
+// the finished match ('rmx-<id>') and exchange tiny named events so each side can see what the
+// other is doing by name: "Waiting for Liam…", "Chester wants a rematch!", "Chester is still
+// watching the replay." Clicking Rematch calls the idempotent rematch() RPC (which creates or
+// returns the shared new row) but does NOT enter it — entry happens only when the other side has
+// clicked too ('want' seen from both / 'accepted'), so nobody sits alone in a live match with the
+// turn clock running against an opponent who hasn't agreed yet. A 3s tick re-broadcasts the request
+// (covers the other side joining the channel late) and polls the new match's moves as a fallback
+// (covers a missed 'accepted': if the opponent is in and has moved, just join them).
+let rmx = null;
+function rmxMyName(){ return document.getElementById('acctName').textContent || 'Your opponent'; }
+function rmxEnsure(title) {
+    if (rmx || !onlineMatch || !sb) { if (rmx) rmx.title = title || rmx.title; return; }
+    rmx = { prevId: onlineMatch.id, title: title || '', oppName: onlineMatch.opponentName || 'Your opponent',
+            iWant:false, oppWant:false, oppWatching:false, oppLeft:false, row:null, entered:false,
+            uiReady:false, chan:null, tick:null };
+    rmx.chan = sb.channel('rmx-' + rmx.prevId)
+        .on('broadcast', { event:'rmx' }, ({ payload }) => {
+            if (!rmx || !payload) return;
+            if (payload.name) rmx.oppName = payload.name;
+            if (payload.kind === 'want')       { rmx.oppWant = true; rmx.oppLeft = false; if (rmx.iWant) rmxEnter('accepted-both'); }
+            else if (payload.kind === 'watching')   rmx.oppWatching = true;
+            else if (payload.kind === 'watch-done') rmx.oppWatching = false;
+            else if (payload.kind === 'accepted')   { if (rmx.iWant) rmxEnter(null); }
+            else if (payload.kind === 'left')  { rmx.oppLeft = true; rmx.oppWant = false; rmx.oppWatching = false; }
+            rmxRender();
+        })
+        .subscribe();
+    rmx.tick = setInterval(async () => {
+        if (!rmx) return;
+        if (rmx.iWant && !rmx.entered) {
+            rmxSend('want');                                    // keep the request visible to a late joiner
+            if (rmx.row) try {                                  // missed 'accepted' fallback: opponent already moved?
+                const { count } = await sb.from('match_moves').select('id', { count:'exact', head:true }).eq('match_id', rmx.row.id);
+                if (count > 0) rmxEnter(null);
+            } catch(e) {}
+        }
+    }, 3000);
+}
+function rmxSend(kind) { if (rmx && rmx.chan) { try { rmx.chan.send({ type:'broadcast', event:'rmx', payload:{ kind, name: rmxMyName() } }); } catch(e) {} } }
+function rmxTeardown(announce) {
+    if (!rmx) return;
+    if (announce) rmxSend('left');
+    clearInterval(rmx.tick);
+    if (rmx.chan) { try { sb.removeChannel(rmx.chan); } catch(e) {} }
+    rmx = null;
+}
+// Both sides have agreed — leave the finished match and enter the shared rematch row.
+function rmxEnter(alsoSend) {
+    if (!rmx || rmx.entered) return;
+    if (!rmx.row) { rmx.enterWhenReady = true; return; }        // rpc still in flight: enter as soon as it lands
+    rmx.entered = true;
+    if (alsoSend) rmxSend('accepted');
+    const row = rmx.row;
+    rmxTeardown(false);
+    hideModal(); clearTimeout(gameOverTimer);
     exitOnlineMatch();
-    showModal('Online 1v1', 'Waiting for your opponent…', [ { label: 'Cancel', onClick: backToMenu } ]);
-    sb.rpc('rematch', { p_prev_match_id: prevMatchId }).then(({ data, error }) => {
-        if (error || !data) { backToMenu(); return; }
+    enterOnlineMatch(row);
+}
+// Renders the post-game sheet from the current handshake state. Called on every rmx event and
+// whenever the modal (re)opens, so the buttons and status line always match reality.
+function rmxRender() {
+    if (!rmx || !rmx.uiReady) return;                            // uiReady: not before the fall animation's pause is over
+    if (document.getElementById('game').style.display !== 'flex') return;
+    if (replayActive) return;                                    // don't fight the replay for the screen
+    const opp = escapeHtml(rmx.oppName);
+    let status = '';
+    if (rmx.oppLeft)            status = `${opp} left.`;
+    else if (rmx.iWant)         status = `Waiting for ${opp}…` + (rmx.oppWatching ? `<br>${opp} is still watching the replay.` : '');
+    else if (rmx.oppWant)       status = `<b style="color:#7ee39a">${opp} wants a rematch!</b>`;
+    else if (rmx.oppWatching)   status = `${opp} is watching the replay.`;
+    const buttons = [];
+    if (!rmx.oppLeft && !rmx.iWant) buttons.push({ label: rmx.oppWant ? `Accept rematch` : 'Rematch', onClick: rematchOnline });
+    buttons.push({ label: 'Find new opponent', onClick: findNewOpponent });
+    if (replayFrames.length > 60) buttons.push({ label: 'Watch replay', onClick: startReplay });
+    buttons.push({ label: 'Menu', onClick: backToMenu });
+    showModal(rmx.title, status ? `<p style="margin:0 0 4px;color:#c7ccd1;">${status}</p>` : '', buttons, true);
+}
+// Click Rematch / Accept: create-or-converge on the shared row, tell the other side, and wait for
+// them (or enter right away if they were already waiting on us).
+function rematchOnline() {
+    if (!rmx || !sb) return;
+    rmx.iWant = true;
+    rmxSend('want');
+    rmxRender();
+    sb.rpc('rematch', { p_prev_match_id: rmx.prevId }).then(({ data, error }) => {
+        if (!rmx) return;
+        if (error || !data) { rmxTeardown(true); backToMenu(); return; }
         sb.from('matches').select('*').eq('id', data).single().then(({ data: row }) => {
-            if (row) enterOnlineMatch(row); else backToMenu();
-        }).catch(() => backToMenu());
-    // A rejected promise (network-level failure) here would otherwise leave the "Waiting for
-    // your opponent…" modal on screen forever -- fall back to the menu instead.
-    }).catch(() => backToMenu());
+            if (!rmx) return;
+            if (!row) { rmxTeardown(true); backToMenu(); return; }
+            rmx.row = row;
+            if (rmx.oppWant || rmx.enterWhenReady) rmxEnter('accepted-late');
+        }).catch(() => { if (rmx) { rmxTeardown(true); backToMenu(); } });
+    }).catch(() => { if (rmx) { rmxTeardown(true); backToMenu(); } });
 }
 // Unlike Rematch (tied to the specific match just played, via rematch_of), this queues fresh
 // against anyone waiting -- same entry point as a first-time "Online 1v1" click.
 function findNewOpponent() {
+    rmxTeardown(true);
     exitOnlineMatch();
     startOnlineMatchmaking();
 }
@@ -4711,9 +4795,12 @@ function openLeaderboard() {
                 const fs = rank===1 ? '18px' : rank<=3 ? '15px' : '13px';
                 const fw = rank===1 ? '800' : rank<=3 ? '650' : '400';
                 const rankCell = rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':rank;
-                return `<tr style="border-top:1px solid #2c3138; font-size:${fs}; font-weight:${fw}; line-height:1.35;">
+                // your own row gets a highlight — people scan for their name first
+                const mine = p.username === (document.getElementById('acctName').textContent || null);
+                const hl = mine ? ' background:rgba(61,90,254,0.16); box-shadow:inset 3px 0 0 #3d5afe;' : '';
+                return `<tr style="border-top:1px solid #2c3138; font-size:${fs}; font-weight:${fw}; line-height:1.35;${hl}">
                 <td style="padding:5px 6px; color:#9aa4ad;">${rankCell}</td>
-                <td style="padding:5px 6px;">${escapeHtml(p.username)}</td>
+                <td style="padding:5px 6px;">${escapeHtml(p.username)}${mine?' <span style="color:#6b9eff;font-size:11px;font-weight:400;">(you)</span>':''}</td>
                 <td style="padding:5px 6px; text-align:right; color:#ffd23f;">${p.elo}</td>
                 <td style="padding:5px 6px; text-align:right; color:#9aa4ad; font-weight:400;">${p.wins}-${p.losses}</td>
             </tr>`;}).join('')}
