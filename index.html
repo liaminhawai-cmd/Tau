@@ -155,7 +155,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 42</div>
+<div id="buildTag">build 43</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -1287,15 +1287,20 @@
 // sit at exactly 0.60 and 0.80 of the edge. Side lens arcs have the same radius
 // as the inner ring and are centred ON the rim, running rim-to-rim.
 
-// ---------- i18n: English / 日本語 / 中文 ----------
-// Device language is detected once (ja* -> Japanese, zh* -> Chinese, else English) and can be
-// overridden from the subtle language row on the menu (stored in localStorage; switching reloads).
+// ---------- i18n ----------
+// Device language is detected once and can be overridden from the 🌐 corner menu (stored in
+// localStorage; switching reloads). Chinese splits on script: zh-TW/HK/MO and zh-Hant* get
+// Traditional (Taiwan-flavoured vocabulary), other zh* gets Simplified — mismatching script reads
+// as "the other side's" localisation to both audiences, so the split matters more than the words.
 // t() falls back to the English source string for any missing key, so untranslated corners of the
 // UI degrade to English instead of breaking.
+const LANGS = ['en','ja','zh','zht','ko','de','fr','es','pt','ru'];
 const LANG = (() => {
-    try { const s = localStorage.getItem('tauLang'); if (s === 'en' || s === 'ja' || s === 'zh') return s; } catch(e) {}
+    try { const s = localStorage.getItem('tauLang'); if (LANGS.includes(s)) return s; } catch(e) {}
     const l = (navigator.language || 'en').toLowerCase();
-    return l.startsWith('ja') ? 'ja' : l.startsWith('zh') ? 'zh' : 'en';
+    if (l.startsWith('zh')) return /tw|hk|mo|hant/.test(l) ? 'zht' : 'zh';
+    const base = l.slice(0, 2);
+    return LANGS.includes(base) ? base : 'en';
 })();
 function t(str) { const d = I18N[LANG]; return (d && d[str]) || str; }
 function tf(str, vars) { let r = t(str); for (const k in vars) r = r.split('{'+k+'}').join(vars[k]); return r; }
@@ -1385,6 +1390,307 @@ zh: {
 "Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"应用内浏览器无法使用Google登录。请通过分享菜单选择「在Safari/Chrome中打开」，或使用下方的用户名和密码。",
 "Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Google登录需要真正的浏览器（分享 → 在Safari/Chrome中打开）。在此应用内请使用下方的用户名和密码。",
 "Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"安装Tau：点按<b>分享</b>，再选<b>添加到主屏幕</b>。"
+},
+zht: {
+"Local 1v1":"本機對戰","Online 1v1":"線上對戰","vs AI":"人機對戰","How to play":"玩法說明","Leaderboard":"排行榜","Watch":"觀戰",
+"Sign in":"登入","Sign out":"登出","Playing as Guest · ":"訪客模式 · ","Signed in as ":"已登入: ","(edit)":"(修改)","Guest":"訪客",
+"Play as Guest":"以訪客身分玩","Surrender":"認輸","Menu":"選單","Stop watching":"退出觀戰","Rating:":"等級分:",
+"Your turn":"輪到你了","{name}'s turn":"輪到{name}","{color} to move":"輪到{color}","{color} wins":"{color}獲勝","Blue":"藍方","Red":"紅方","blue":"藍方","red":"紅方",
+"Step 1. Tap one of your feet to lock it as the pivot.":"第1步：點擊己方一隻腳，固定為軸心。",
+"Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.":"第2步：拖動另一隻腳（帶圈）繞軸轉動。再次點擊黃色腳可重新選擇。",
+"Swinging… release to end your turn.":"轉動中……放開即結束回合。","Waiting for your opponent…":"等待對手……",
+"AI is thinking…":"AI思考中……","AI is swinging…":"AI移動中……","crossings {c}/{m}":"過線 {c}/{m}",". That would cross a 2nd line":"（不能越過第二條線）",
+"Watching {a} vs {b}":"正在觀戰 {a} vs {b}","Playing {color} vs {name}":"你執{color}，對戰 {name}",
+"Pick a difficulty.":"請選擇難度。","Easy":"簡單","Medium":"中等","Hard":"困難","Very hard":"非常難","Expert":"專家",
+"Choose your colour":"選擇顏色","Blue always moves first.":"藍方先行。","Play as Blue":"執藍","Play as Red":"執紅",
+"You win!":"你贏了！","You lose":"你輸了","{name} wins!":"{name}獲勝！","Rematch":"再來一局","Accept rematch":"接受再戰","Find new opponent":"尋找新對手",
+"Watch replay":"觀看重播","Share replay":"分享重播","Watch another":"觀看其他對局","Difficulty":"難度","Got it":"知道了",
+"Waiting for {name}…":"等待{name}……","{name} wants a rematch!":"{name}想再來一局！","{name} is watching the replay.":"{name}正在看重播。",
+"{name} is still watching the replay.":"{name}還在看重播。","{name} left.":"{name}已離開。",
+"Searching for an opponent…":"正在尋找對手……","Cancel":"取消","Play a random ranked opponent, or invite someone specific?":"隨機排位賽，還是邀請好友？",
+"Find an opponent":"尋找對手","Private match":"私人對局","Play a casual 1v1 against someone specific instead of the random queue.":"與指定對象進行休閒對局（不計等級分）。",
+"Create a match":"建立對局","Join with a code":"輸入邀請碼加入","Creating your invite…":"正在建立邀請……","OK":"確定",
+"Share this code, or send the link:":"分享此邀請碼，或傳送連結：","Copy invite link":"複製邀請連結","Waiting for them to join…":"等待對方加入……",
+"Link copied! Waiting for them to join…":"連結已複製！等待對方加入……","Could not copy — the code above still works.":"複製失敗——上面的邀請碼仍然有效。",
+"Watch live":"觀看直播","Looking for games…":"正在尋找對局……","No public games being played right now.":"目前沒有可觀戰的對局。","Close":"關閉",
+"Loading…":"載入中……","No rated players yet.":"尚無排名玩家。","Could not load the leaderboard.":"無法載入排行榜。",
+"Player":"玩家","Elo":"等級分","W-L":"勝-敗","(you)":"(你)","Ranked #{r} of {n}":"排名 第{r}名（共{n}人）",
+"{n} playing now":"目前{n}人在玩"," · {m} in matches":" · {m}人對戰中",
+"Out of time — turn passed":"逾時——回合跳過","Opponent out of time — your turn":"對手逾時——輪到你","Turn passed":"回合已跳過",
+"Opponent didn’t move — your turn":"對手未行動——輪到你","Replay — tap the board to skip":"重播中——點擊棋盤跳過",
+"Replay link copied!":"重播連結已複製！","Could not create the link.":"無法產生連結。","Watch this Tau game:":"來看這局Tau：",
+"Replay finished":"重播結束","Watch again":"再看一次","Play Tau":"開始遊戲","Prev":"上一頁","Next":"下一頁",
+"Hold one foot":"固定一隻腳","Hold one foot still and rotate the other two.":"固定一隻腳，轉動另外兩隻。",
+"Move in circles":"沿圓弧移動","The moving feet trace an arc. You may only move in one direction per turn.":"移動的腳沿圓弧運動。每回合只能朝一個方向轉動。",
+"Push your opponent":"推擠對手","Push your opponent by moving into their legs.":"用你的腳推動對手的腳。",
+"One line per turn":"每回合一條線","You may cross only one line per turn. A foot that starts on a line leaves it for free.":"每回合只能越過一條線。回合開始時已在線上的腳可以自由離開該線。",
+"Corners count once":"轉角只算一次","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"只要棋子仍在線上，這次過線就未結束。繞過兩線相交的轉角也只算<b>一次</b>過線。",
+"Two feet at once":"雙腳同時過線","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"兩隻腳可以在同一次滑動中越過兩條不同的線。只要棋子始終未離開線，仍算<b>一次</b>過線。",
+"Push them off":"推下棋盤","Push your opponent off the edge. When one of their feet leaves the board, you win.":"把對手推下棋盤邊緣。對方任何一隻腳離開棋盤，你就獲勝。",
+"Continue with Google":"使用Google繼續","or use a username & password":"或使用帳號密碼","hide username & password":"隱藏帳號密碼欄位",
+"or a one-time email link":"或使用一次性電子郵件連結","Log in":"登入","Sign up":"註冊","Send link":"傳送連結","username":"帳號","password":"密碼",
+"Sign up to choose your own name — you keep your current rating.":"註冊後可自選名稱——目前的等級分會保留。",
+"Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"此應用程式內無法使用Google登入。請點分享選單選擇「在Safari/Chrome開啟」，或使用下方的帳號密碼。",
+"Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Google登入需要真正的瀏覽器（分享 → 在Safari或Chrome開啟）。在此應用程式內請使用下方的帳號密碼。",
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"安裝Tau：點<b>分享</b>，再選<b>加入主畫面</b>。"
+},
+ko: {
+"Local 1v1":"로컬 대전","Online 1v1":"온라인 대전","vs AI":"AI 대전","How to play":"게임 방법","Leaderboard":"랭킹","Watch":"관전",
+"Sign in":"로그인","Sign out":"로그아웃","Playing as Guest · ":"게스트로 플레이 중 · ","Signed in as ":"로그인됨: ","(edit)":"(변경)","Guest":"게스트",
+"Play as Guest":"게스트로 플레이","Surrender":"기권","Menu":"메뉴","Stop watching":"관전 종료","Rating:":"레이팅:",
+"Your turn":"내 차례","{name}'s turn":"{name}의 차례","{color} to move":"{color} 차례","{color} wins":"{color} 승리","Blue":"파랑","Red":"빨강","blue":"파랑","red":"빨강",
+"Step 1. Tap one of your feet to lock it as the pivot.":"1단계: 내 발 하나를 탭해 축으로 고정하세요.",
+"Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.":"2단계: 다른 발(테두리 표시)을 축 중심으로 드래그하세요. 노란 발을 다시 탭하면 다시 고를 수 있습니다.",
+"Swinging… release to end your turn.":"회전 중… 놓으면 턴이 끝납니다.","Waiting for your opponent…":"상대를 기다리는 중…",
+"AI is thinking…":"AI 생각 중…","AI is swinging…":"AI 이동 중…","crossings {c}/{m}":"선 넘기 {c}/{m}",". That would cross a 2nd line":" (두 번째 선은 넘을 수 없습니다)",
+"Watching {a} vs {b}":"{a} vs {b} 관전 중","Playing {color} vs {name}":"{color}로 플레이 중 vs {name}",
+"Pick a difficulty.":"난이도를 선택하세요.","Easy":"쉬움","Medium":"보통","Hard":"어려움","Very hard":"매우 어려움","Expert":"전문가",
+"Choose your colour":"색을 선택하세요","Blue always moves first.":"파랑이 항상 선공입니다.","Play as Blue":"파랑으로 플레이","Play as Red":"빨강으로 플레이",
+"You win!":"승리!","You lose":"패배…","{name} wins!":"{name} 승리!","Rematch":"재대결","Accept rematch":"재대결 수락","Find new opponent":"새 상대 찾기",
+"Watch replay":"리플레이 보기","Share replay":"리플레이 공유","Watch another":"다른 경기 보기","Difficulty":"난이도","Got it":"확인",
+"Waiting for {name}…":"{name}님을 기다리는 중…","{name} wants a rematch!":"{name}님이 재대결을 원합니다!","{name} is watching the replay.":"{name}님이 리플레이를 보고 있습니다.",
+"{name} is still watching the replay.":"{name}님이 아직 리플레이를 보고 있습니다.","{name} left.":"{name}님이 나갔습니다.",
+"Searching for an opponent…":"상대를 찾는 중…","Cancel":"취소","Play a random ranked opponent, or invite someone specific?":"랜덤 랭크전을 할까요, 아니면 친구를 초대할까요?",
+"Find an opponent":"상대 찾기","Private match":"친선전","Play a casual 1v1 against someone specific instead of the random queue.":"대기열 대신 특정 상대와 캐주얼 1v1을 즐기세요 (레이팅 변동 없음).",
+"Create a match":"대결 만들기","Join with a code":"코드로 참가","Creating your invite…":"초대 생성 중…","OK":"확인",
+"Share this code, or send the link:":"이 코드를 알려주거나 링크를 보내세요:","Copy invite link":"초대 링크 복사","Waiting for them to join…":"참가를 기다리는 중…",
+"Link copied! Waiting for them to join…":"링크 복사됨! 참가를 기다리는 중…","Could not copy — the code above still works.":"복사 실패 — 위 코드는 그대로 사용할 수 있습니다.",
+"Watch live":"라이브 관전","Looking for games…":"경기를 찾는 중…","No public games being played right now.":"지금 관전할 수 있는 경기가 없습니다.","Close":"닫기",
+"Loading…":"불러오는 중…","No rated players yet.":"아직 랭크된 플레이어가 없습니다.","Could not load the leaderboard.":"랭킹을 불러올 수 없습니다.",
+"Player":"플레이어","Elo":"레이팅","W-L":"승-패","(you)":"(나)","Ranked #{r} of {n}":"{n}명 중 {r}위",
+"{n} playing now":"지금 {n}명 플레이 중"," · {m} in matches":" · 대전 중 {m}명",
+"Out of time — turn passed":"시간 초과 — 턴 넘김","Opponent out of time — your turn":"상대 시간 초과 — 내 차례","Turn passed":"턴 넘김",
+"Opponent didn’t move — your turn":"상대가 움직이지 않음 — 내 차례","Replay — tap the board to skip":"리플레이 — 보드를 탭하면 건너뜁니다",
+"Replay link copied!":"리플레이 링크 복사됨!","Could not create the link.":"링크를 만들 수 없습니다.","Watch this Tau game:":"이 Tau 경기를 보세요:",
+"Replay finished":"리플레이 종료","Watch again":"다시 보기","Play Tau":"Tau 플레이","Prev":"이전","Next":"다음",
+"Hold one foot":"한 발 고정","Hold one foot still and rotate the other two.":"한 발을 고정하고 나머지 두 발을 회전시키세요.",
+"Move in circles":"원을 그리며 이동","The moving feet trace an arc. You may only move in one direction per turn.":"움직이는 발은 호를 그립니다. 한 턴에 한 방향으로만 움직일 수 있습니다.",
+"Push your opponent":"상대 밀기","Push your opponent by moving into their legs.":"상대의 다리에 부딪혀 밀어내세요.",
+"One line per turn":"한 턴에 선 하나","You may cross only one line per turn. A foot that starts on a line leaves it for free.":"한 턴에 선 하나만 넘을 수 있습니다. 턴 시작 시 선 위에 있는 발은 그 선을 자유롭게 벗어날 수 있습니다.",
+"Corners count once":"모서리는 한 번","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"말이 선 위에 있는 동안은 같은 ‘선 넘기’가 이어집니다. 두 선이 만나는 모서리를 돌아도 <b>한 번</b>으로 칩니다.",
+"Two feet at once":"두 발 동시에","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"한 번의 이동으로 두 발이 서로 다른 선을 넘을 수 있습니다. 말이 선에서 떨어지지 않는 한 여전히 <b>한 번</b>입니다.",
+"Push them off":"밀어서 떨어뜨리기","Push your opponent off the edge. When one of their feet leaves the board, you win.":"상대를 가장자리 밖으로 밀어내세요. 상대 발이 하나라도 보드를 벗어나면 승리합니다.",
+"Continue with Google":"Google로 계속하기","or use a username & password":"또는 아이디와 비밀번호 사용","hide username & password":"아이디 입력 숨기기",
+"or a one-time email link":"또는 일회용 이메일 링크","Log in":"로그인","Sign up":"가입","Send link":"링크 보내기","username":"아이디","password":"비밀번호",
+"Sign up to choose your own name — you keep your current rating.":"가입하면 원하는 이름을 고를 수 있습니다 — 현재 레이팅은 유지됩니다.",
+"Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"이 앱 안에서는 Google 로그인이 차단됩니다. ⋯ / 공유 아이콘을 눌러 “Safari/Chrome에서 열기”를 선택하거나, 아래에서 아이디와 비밀번호를 사용하세요.",
+"Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Google 로그인에는 일반 브라우저가 필요합니다 (⋯ / 공유 → Safari 또는 Chrome에서 열기). 이 앱 안에서는 아래의 아이디와 비밀번호를 사용하세요.",
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Tau 설치: <b>공유</b>를 누른 뒤 <b>홈 화면에 추가</b>를 선택하세요."
+},
+de: {
+"Local 1v1":"Lokales 1v1","Online 1v1":"Online-1v1","vs AI":"Gegen KI","How to play":"Spielanleitung","Leaderboard":"Bestenliste","Watch":"Zuschauen",
+"Sign in":"Anmelden","Sign out":"Abmelden","Playing as Guest · ":"Spielst als Gast · ","Signed in as ":"Angemeldet als ","(edit)":"(ändern)","Guest":"Gast",
+"Play as Guest":"Als Gast spielen","Surrender":"Aufgeben","Menu":"Menü","Stop watching":"Nicht mehr zuschauen","Rating:":"Wertung:",
+"Your turn":"Du bist dran","{name}'s turn":"{name} ist dran","{color} to move":"{color} am Zug","{color} wins":"{color} gewinnt","Blue":"Blau","Red":"Rot","blue":"Blau","red":"Rot",
+"Step 1. Tap one of your feet to lock it as the pivot.":"Schritt 1: Tippe auf einen deiner Füße, um ihn als Drehpunkt zu fixieren.",
+"Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.":"Schritt 2: Ziehe einen anderen Fuß (markiert) um den Drehpunkt. Tippe erneut auf den gelben Fuß, um neu zu wählen.",
+"Swinging… release to end your turn.":"Schwung läuft … loslassen beendet den Zug.","Waiting for your opponent…":"Warte auf deinen Gegner …",
+"AI is thinking…":"KI denkt nach …","AI is swinging…":"KI zieht …","crossings {c}/{m}":"Linien {c}/{m}",". That would cross a 2nd line":" – das würde eine 2. Linie kreuzen",
+"Watching {a} vs {b}":"Zuschauen: {a} vs {b}","Playing {color} vs {name}":"Du spielst {color} gegen {name}",
+"Pick a difficulty.":"Wähle einen Schwierigkeitsgrad.","Easy":"Leicht","Medium":"Mittel","Hard":"Schwer","Very hard":"Sehr schwer","Expert":"Experte",
+"Choose your colour":"Wähle deine Farbe","Blue always moves first.":"Blau zieht immer zuerst.","Play as Blue":"Als Blau spielen","Play as Red":"Als Rot spielen",
+"You win!":"Gewonnen!","You lose":"Verloren","{name} wins!":"{name} gewinnt!","Rematch":"Revanche","Accept rematch":"Revanche annehmen","Find new opponent":"Neuen Gegner suchen",
+"Watch replay":"Wiederholung ansehen","Share replay":"Wiederholung teilen","Watch another":"Anderes Spiel ansehen","Difficulty":"Schwierigkeit","Got it":"Alles klar",
+"Waiting for {name}…":"Warte auf {name} …","{name} wants a rematch!":"{name} will eine Revanche!","{name} is watching the replay.":"{name} sieht sich die Wiederholung an.",
+"{name} is still watching the replay.":"{name} sieht sich noch die Wiederholung an.","{name} left.":"{name} ist gegangen.",
+"Searching for an opponent…":"Suche einen Gegner …","Cancel":"Abbrechen","Play a random ranked opponent, or invite someone specific?":"Zufälligen Ranglisten-Gegner spielen oder jemanden einladen?",
+"Find an opponent":"Gegner suchen","Private match":"Privates Match","Play a casual 1v1 against someone specific instead of the random queue.":"Spiele ein lockeres 1v1 gegen jemand Bestimmtes statt der zufälligen Warteschlange.",
+"Create a match":"Match erstellen","Join with a code":"Mit Code beitreten","Creating your invite…":"Einladung wird erstellt …","OK":"OK",
+"Share this code, or send the link:":"Teile diesen Code oder schick den Link:","Copy invite link":"Einladungslink kopieren","Waiting for them to join…":"Warte auf Beitritt …",
+"Link copied! Waiting for them to join…":"Link kopiert! Warte auf Beitritt …","Could not copy — the code above still works.":"Kopieren fehlgeschlagen – der Code oben funktioniert trotzdem.",
+"Watch live":"Live zuschauen","Looking for games…":"Suche Spiele …","No public games being played right now.":"Gerade werden keine öffentlichen Spiele gespielt.","Close":"Schließen",
+"Loading…":"Lädt …","No rated players yet.":"Noch keine gewerteten Spieler.","Could not load the leaderboard.":"Bestenliste konnte nicht geladen werden.",
+"Player":"Spieler","Elo":"Elo","W-L":"S-N","(you)":"(du)","Ranked #{r} of {n}":"Platz {r} von {n}",
+"{n} playing now":"{n} spielen gerade"," · {m} in matches":" · {m} in Partien",
+"Out of time — turn passed":"Zeit abgelaufen – Zug übersprungen","Opponent out of time — your turn":"Gegner-Zeit abgelaufen – du bist dran","Turn passed":"Zug übersprungen",
+"Opponent didn’t move — your turn":"Gegner hat nicht gezogen – du bist dran","Replay — tap the board to skip":"Wiederholung – tippe aufs Brett zum Überspringen",
+"Replay link copied!":"Wiederholungslink kopiert!","Could not create the link.":"Link konnte nicht erstellt werden.","Watch this Tau game:":"Schau dir dieses Tau-Spiel an:",
+"Replay finished":"Wiederholung beendet","Watch again":"Nochmal ansehen","Play Tau":"Tau spielen","Prev":"Zurück","Next":"Weiter",
+"Hold one foot":"Einen Fuß fixieren","Hold one foot still and rotate the other two.":"Halte einen Fuß fest und drehe die anderen beiden.",
+"Move in circles":"Im Kreis bewegen","The moving feet trace an arc. You may only move in one direction per turn.":"Die bewegten Füße beschreiben einen Bogen. Pro Zug darfst du dich nur in eine Richtung drehen.",
+"Push your opponent":"Schieb deinen Gegner","Push your opponent by moving into their legs.":"Schieb deinen Gegner, indem du in seine Beine ziehst.",
+"One line per turn":"Eine Linie pro Zug","You may cross only one line per turn. A foot that starts on a line leaves it for free.":"Du darfst pro Zug nur eine Linie kreuzen. Ein Fuß, der auf einer Linie startet, darf sie frei verlassen.",
+"Corners count once":"Ecken zählen einmal","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"Eine Überquerung dauert an, solange die Figur auf einer Linie bleibt. Auch um eine Ecke, wo zwei Linien sich treffen, zählt es als <b>eine</b> Überquerung.",
+"Two feet at once":"Zwei Füße auf einmal","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"Zwei Füße können im selben Zug zwei verschiedene Linien kreuzen. Solange die Figur keine Linie verlässt, zählt es als <b>eine</b> Überquerung.",
+"Push them off":"Runterschieben","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Schieb deinen Gegner über den Rand. Sobald einer seiner Füße das Brett verlässt, gewinnst du.",
+"Continue with Google":"Weiter mit Google","or use a username & password":"oder Benutzername & Passwort","hide username & password":"Benutzername & Passwort ausblenden",
+"or a one-time email link":"oder ein einmaliger E-Mail-Link","Log in":"Einloggen","Sign up":"Registrieren","Send link":"Link senden","username":"Benutzername","password":"Passwort",
+"Sign up to choose your own name — you keep your current rating.":"Registriere dich und wähle deinen Namen – deine Wertung bleibt erhalten.",
+"Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"Google-Anmeldung ist in dieser App blockiert. Tippe auf ⋯ / Teilen und wähle „In Safari/Chrome öffnen“, oder nutze unten Benutzername & Passwort.",
+"Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Google-Anmeldung braucht einen richtigen Browser (⋯ / Teilen → In Safari oder Chrome öffnen). Nutze in dieser App unten Benutzername & Passwort.",
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Tau installieren: <b>Teilen</b> antippen, dann <b>Zum Home-Bildschirm</b>."
+},
+fr: {
+"Local 1v1":"1v1 local","Online 1v1":"1v1 en ligne","vs AI":"Contre l'IA","How to play":"Comment jouer","Leaderboard":"Classement","Watch":"Regarder",
+"Sign in":"Se connecter","Sign out":"Se déconnecter","Playing as Guest · ":"En invité · ","Signed in as ":"Connecté : ","(edit)":"(modifier)","Guest":"Invité",
+"Play as Guest":"Jouer en invité","Surrender":"Abandonner","Menu":"Menu","Stop watching":"Arrêter de regarder","Rating:":"Elo :",
+"Your turn":"À toi de jouer","{name}'s turn":"Au tour de {name}","{color} to move":"{color} joue","{color} wins":"{color} gagne","Blue":"Bleu","Red":"Rouge","blue":"bleu","red":"rouge",
+"Step 1. Tap one of your feet to lock it as the pivot.":"Étape 1 : touche un de tes pieds pour le verrouiller comme pivot.",
+"Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.":"Étape 2 : fais glisser un autre pied (entouré) autour du pivot. Retouche le pied jaune pour changer.",
+"Swinging… release to end your turn.":"Rotation… relâche pour finir ton tour.","Waiting for your opponent…":"En attente de ton adversaire…",
+"AI is thinking…":"L'IA réfléchit…","AI is swinging…":"L'IA joue…","crossings {c}/{m}":"lignes {c}/{m}",". That would cross a 2nd line":" (impossible de franchir une 2e ligne)",
+"Watching {a} vs {b}":"Spectateur : {a} vs {b}","Playing {color} vs {name}":"Tu joues {color} contre {name}",
+"Pick a difficulty.":"Choisis une difficulté.","Easy":"Facile","Medium":"Moyen","Hard":"Difficile","Very hard":"Très difficile","Expert":"Expert",
+"Choose your colour":"Choisis ta couleur","Blue always moves first.":"Bleu commence toujours.","Play as Blue":"Jouer Bleu","Play as Red":"Jouer Rouge",
+"You win!":"Gagné !","You lose":"Perdu","{name} wins!":"{name} gagne !","Rematch":"Revanche","Accept rematch":"Accepter la revanche","Find new opponent":"Nouvel adversaire",
+"Watch replay":"Voir le replay","Share replay":"Partager le replay","Watch another":"Voir une autre partie","Difficulty":"Difficulté","Got it":"Compris",
+"Waiting for {name}…":"En attente de {name}…","{name} wants a rematch!":"{name} veut une revanche !","{name} is watching the replay.":"{name} regarde le replay.",
+"{name} is still watching the replay.":"{name} regarde encore le replay.","{name} left.":"{name} est parti.",
+"Searching for an opponent…":"Recherche d'un adversaire…","Cancel":"Annuler","Play a random ranked opponent, or invite someone specific?":"Partie classée aléatoire, ou inviter quelqu'un ?",
+"Find an opponent":"Trouver un adversaire","Private match":"Partie privée","Play a casual 1v1 against someone specific instead of the random queue.":"Joue un 1v1 amical contre quelqu'un de précis plutôt que la file aléatoire.",
+"Create a match":"Créer une partie","Join with a code":"Rejoindre avec un code","Creating your invite…":"Création de l'invitation…","OK":"OK",
+"Share this code, or send the link:":"Partage ce code, ou envoie le lien :","Copy invite link":"Copier le lien d'invitation","Waiting for them to join…":"En attente de l'autre joueur…",
+"Link copied! Waiting for them to join…":"Lien copié ! En attente de l'autre joueur…","Could not copy — the code above still works.":"Copie impossible — le code ci-dessus fonctionne quand même.",
+"Watch live":"Regarder en direct","Looking for games…":"Recherche de parties…","No public games being played right now.":"Aucune partie publique en cours.","Close":"Fermer",
+"Loading…":"Chargement…","No rated players yet.":"Pas encore de joueurs classés.","Could not load the leaderboard.":"Impossible de charger le classement.",
+"Player":"Joueur","Elo":"Elo","W-L":"V-D","(you)":"(toi)","Ranked #{r} of {n}":"Classé {r}e sur {n}",
+"{n} playing now":"{n} en train de jouer"," · {m} in matches":" · {m} en partie",
+"Out of time — turn passed":"Temps écoulé — tour passé","Opponent out of time — your turn":"Adversaire hors délai — à toi de jouer","Turn passed":"Tour passé",
+"Opponent didn’t move — your turn":"L'adversaire n'a pas joué — à toi","Replay — tap the board to skip":"Replay — touche le plateau pour passer",
+"Replay link copied!":"Lien du replay copié !","Could not create the link.":"Impossible de créer le lien.","Watch this Tau game:":"Regarde cette partie de Tau :",
+"Replay finished":"Replay terminé","Watch again":"Revoir","Play Tau":"Jouer à Tau","Prev":"Préc.","Next":"Suiv.",
+"Hold one foot":"Bloque un pied","Hold one foot still and rotate the other two.":"Garde un pied immobile et fais tourner les deux autres.",
+"Move in circles":"Des arcs de cercle","The moving feet trace an arc. You may only move in one direction per turn.":"Les pieds mobiles tracent un arc. Un seul sens de rotation par tour.",
+"Push your opponent":"Pousse ton adversaire","Push your opponent by moving into their legs.":"Pousse ton adversaire en venant au contact de ses jambes.",
+"One line per turn":"Une ligne par tour","You may cross only one line per turn. A foot that starts on a line leaves it for free.":"Tu ne peux franchir qu'une ligne par tour. Un pied qui démarre sur une ligne peut la quitter librement.",
+"Corners count once":"Les coins comptent une fois","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"Un franchissement dure tant que la pièce reste sur une ligne. Contourner un coin où deux lignes se croisent compte pour <b>un seul</b> franchissement.",
+"Two feet at once":"Deux pieds à la fois","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"Deux pieds peuvent franchir deux lignes différentes dans le même geste. Tant que la pièce ne quitte pas de ligne, cela compte pour <b>un seul</b> franchissement.",
+"Push them off":"Fais-le tomber","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Pousse ton adversaire hors du plateau. Dès qu'un de ses pieds quitte le plateau, tu gagnes.",
+"Continue with Google":"Continuer avec Google","or use a username & password":"ou identifiant & mot de passe","hide username & password":"masquer identifiant & mot de passe",
+"or a one-time email link":"ou un lien par e-mail","Log in":"Connexion","Sign up":"Créer un compte","Send link":"Envoyer le lien","username":"identifiant","password":"mot de passe",
+"Sign up to choose your own name — you keep your current rating.":"Crée un compte pour choisir ton nom — tu gardes ton Elo actuel.",
+"Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"La connexion Google est bloquée dans cette appli. Touche ⋯ / partager et choisis « Ouvrir dans Safari/Chrome », ou utilise identifiant & mot de passe ci-dessous.",
+"Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"La connexion Google demande un vrai navigateur (⋯ / partager → Ouvrir dans Safari ou Chrome). Dans cette appli, utilise identifiant & mot de passe ci-dessous.",
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Installer Tau : touche <b>Partager</b> puis <b>Sur l'écran d'accueil</b>."
+},
+es: {
+"Local 1v1":"1v1 local","Online 1v1":"1v1 en línea","vs AI":"Contra la IA","How to play":"Cómo se juega","Leaderboard":"Clasificación","Watch":"Ver",
+"Sign in":"Iniciar sesión","Sign out":"Cerrar sesión","Playing as Guest · ":"Jugando como invitado · ","Signed in as ":"Sesión iniciada: ","(edit)":"(editar)","Guest":"Invitado",
+"Play as Guest":"Jugar como invitado","Surrender":"Rendirse","Menu":"Menú","Stop watching":"Dejar de ver","Rating:":"Elo:",
+"Your turn":"Tu turno","{name}'s turn":"Turno de {name}","{color} to move":"Mueve {color}","{color} wins":"Gana {color}","Blue":"Azul","Red":"Rojo","blue":"azul","red":"rojo",
+"Step 1. Tap one of your feet to lock it as the pivot.":"Paso 1: toca uno de tus pies para fijarlo como pivote.",
+"Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.":"Paso 2: arrastra otro pie (marcado) alrededor del pivote. Vuelve a tocar el pie amarillo para cambiar.",
+"Swinging… release to end your turn.":"Girando… suelta para terminar tu turno.","Waiting for your opponent…":"Esperando a tu rival…",
+"AI is thinking…":"La IA está pensando…","AI is swinging…":"La IA está moviendo…","crossings {c}/{m}":"cruces {c}/{m}",". That would cross a 2nd line":" (eso cruzaría una 2.ª línea)",
+"Watching {a} vs {b}":"Viendo {a} vs {b}","Playing {color} vs {name}":"Juegas con {color} contra {name}",
+"Pick a difficulty.":"Elige una dificultad.","Easy":"Fácil","Medium":"Medio","Hard":"Difícil","Very hard":"Muy difícil","Expert":"Experto",
+"Choose your colour":"Elige tu color","Blue always moves first.":"Azul siempre mueve primero.","Play as Blue":"Jugar con Azul","Play as Red":"Jugar con Rojo",
+"You win!":"¡Ganaste!","You lose":"Perdiste","{name} wins!":"¡Gana {name}!","Rematch":"Revancha","Accept rematch":"Aceptar revancha","Find new opponent":"Buscar otro rival",
+"Watch replay":"Ver repetición","Share replay":"Compartir repetición","Watch another":"Ver otra partida","Difficulty":"Dificultad","Got it":"Entendido",
+"Waiting for {name}…":"Esperando a {name}…","{name} wants a rematch!":"¡{name} quiere la revancha!","{name} is watching the replay.":"{name} está viendo la repetición.",
+"{name} is still watching the replay.":"{name} sigue viendo la repetición.","{name} left.":"{name} se fue.",
+"Searching for an opponent…":"Buscando rival…","Cancel":"Cancelar","Play a random ranked opponent, or invite someone specific?":"¿Partida clasificatoria aleatoria o invitar a alguien?",
+"Find an opponent":"Buscar rival","Private match":"Partida privada","Play a casual 1v1 against someone specific instead of the random queue.":"Juega un 1v1 casual contra alguien concreto en vez de la cola aleatoria.",
+"Create a match":"Crear partida","Join with a code":"Unirse con código","Creating your invite…":"Creando la invitación…","OK":"OK",
+"Share this code, or send the link:":"Comparte este código o envía el enlace:","Copy invite link":"Copiar enlace de invitación","Waiting for them to join…":"Esperando a que se una…",
+"Link copied! Waiting for them to join…":"¡Enlace copiado! Esperando a que se una…","Could not copy — the code above still works.":"No se pudo copiar — el código de arriba sigue valiendo.",
+"Watch live":"Ver en directo","Looking for games…":"Buscando partidas…","No public games being played right now.":"Ahora mismo no hay partidas públicas.","Close":"Cerrar",
+"Loading…":"Cargando…","No rated players yet.":"Aún no hay jugadores clasificados.","Could not load the leaderboard.":"No se pudo cargar la clasificación.",
+"Player":"Jugador","Elo":"Elo","W-L":"G-P","(you)":"(tú)","Ranked #{r} of {n}":"Puesto {r} de {n}",
+"{n} playing now":"{n} jugando ahora"," · {m} in matches":" · {m} en partida",
+"Out of time — turn passed":"Tiempo agotado — turno pasado","Opponent out of time — your turn":"Rival sin tiempo — te toca","Turn passed":"Turno pasado",
+"Opponent didn’t move — your turn":"Tu rival no movió — te toca","Replay — tap the board to skip":"Repetición — toca el tablero para saltarla",
+"Replay link copied!":"¡Enlace de la repetición copiado!","Could not create the link.":"No se pudo crear el enlace.","Watch this Tau game:":"Mira esta partida de Tau:",
+"Replay finished":"Repetición terminada","Watch again":"Ver otra vez","Play Tau":"Jugar a Tau","Prev":"Ant.","Next":"Sig.",
+"Hold one foot":"Fija un pie","Hold one foot still and rotate the other two.":"Mantén un pie quieto y gira los otros dos.",
+"Move in circles":"Muévete en arcos","The moving feet trace an arc. You may only move in one direction per turn.":"Los pies móviles trazan un arco. Solo puedes girar en un sentido por turno.",
+"Push your opponent":"Empuja a tu rival","Push your opponent by moving into their legs.":"Empuja a tu rival entrando en contacto con sus patas.",
+"One line per turn":"Una línea por turno","You may cross only one line per turn. A foot that starts on a line leaves it for free.":"Solo puedes cruzar una línea por turno. Un pie que empieza sobre una línea puede dejarla gratis.",
+"Corners count once":"Las esquinas cuentan una vez","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"Un cruce dura mientras la pieza siga sobre una línea. Rodear una esquina donde se juntan dos líneas sigue contando como <b>un</b> cruce.",
+"Two feet at once":"Dos pies a la vez","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"Dos pies pueden cruzar dos líneas distintas en el mismo giro. Mientras la pieza no deje la línea, sigue siendo <b>un</b> cruce.",
+"Push them off":"Échalo del tablero","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Empuja a tu rival fuera del borde. Cuando uno de sus pies sale del tablero, ganas.",
+"Continue with Google":"Continuar con Google","or use a username & password":"o usar nombre de usuario y contraseña","hide username & password":"ocultar usuario y contraseña",
+"or a one-time email link":"o un enlace de un solo uso por correo","Log in":"Entrar","Sign up":"Registrarse","Send link":"Enviar enlace","username":"usuario","password":"contraseña",
+"Sign up to choose your own name — you keep your current rating.":"Regístrate para elegir tu nombre — conservas tu Elo actual.",
+"Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"Esta app bloquea el inicio de sesión con Google. Toca ⋯ / compartir y elige «Abrir en Safari/Chrome», o usa usuario y contraseña abajo.",
+"Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Google necesita un navegador real (⋯ / compartir → Abrir en Safari o Chrome). En esta app, usa usuario y contraseña abajo.",
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Instala Tau: toca <b>Compartir</b> y luego <b>Añadir a pantalla de inicio</b>."
+},
+pt: {
+"Local 1v1":"1v1 local","Online 1v1":"1v1 online","vs AI":"Contra a IA","How to play":"Como jogar","Leaderboard":"Ranking","Watch":"Assistir",
+"Sign in":"Entrar","Sign out":"Sair","Playing as Guest · ":"Jogando como convidado · ","Signed in as ":"Conectado como ","(edit)":"(editar)","Guest":"Convidado",
+"Play as Guest":"Jogar como convidado","Surrender":"Desistir","Menu":"Menu","Stop watching":"Parar de assistir","Rating:":"Elo:",
+"Your turn":"Sua vez","{name}'s turn":"Vez de {name}","{color} to move":"{color} joga","{color} wins":"{color} vence","Blue":"Azul","Red":"Vermelho","blue":"azul","red":"vermelho",
+"Step 1. Tap one of your feet to lock it as the pivot.":"Passo 1: toque em um dos seus pés para travá-lo como pivô.",
+"Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.":"Passo 2: arraste outro pé (marcado) ao redor do pivô. Toque de novo no pé amarelo para trocar.",
+"Swinging… release to end your turn.":"Girando… solte para encerrar a vez.","Waiting for your opponent…":"Esperando seu oponente…",
+"AI is thinking…":"A IA está pensando…","AI is swinging…":"A IA está jogando…","crossings {c}/{m}":"cruzamentos {c}/{m}",". That would cross a 2nd line":" (isso cruzaria uma 2ª linha)",
+"Watching {a} vs {b}":"Assistindo {a} vs {b}","Playing {color} vs {name}":"Jogando de {color} contra {name}",
+"Pick a difficulty.":"Escolha a dificuldade.","Easy":"Fácil","Medium":"Médio","Hard":"Difícil","Very hard":"Muito difícil","Expert":"Especialista",
+"Choose your colour":"Escolha sua cor","Blue always moves first.":"O Azul sempre começa.","Play as Blue":"Jogar de Azul","Play as Red":"Jogar de Vermelho",
+"You win!":"Você venceu!","You lose":"Você perdeu","{name} wins!":"{name} venceu!","Rematch":"Revanche","Accept rematch":"Aceitar revanche","Find new opponent":"Buscar novo oponente",
+"Watch replay":"Ver replay","Share replay":"Compartilhar replay","Watch another":"Assistir outra","Difficulty":"Dificuldade","Got it":"Entendi",
+"Waiting for {name}…":"Esperando {name}…","{name} wants a rematch!":"{name} quer revanche!","{name} is watching the replay.":"{name} está vendo o replay.",
+"{name} is still watching the replay.":"{name} ainda está vendo o replay.","{name} left.":"{name} saiu.",
+"Searching for an opponent…":"Procurando oponente…","Cancel":"Cancelar","Play a random ranked opponent, or invite someone specific?":"Jogar ranqueada contra alguém aleatório, ou convidar alguém?",
+"Find an opponent":"Buscar oponente","Private match":"Partida privada","Play a casual 1v1 against someone specific instead of the random queue.":"Jogue um 1v1 casual contra alguém específico em vez da fila aleatória.",
+"Create a match":"Criar partida","Join with a code":"Entrar com código","Creating your invite…":"Criando seu convite…","OK":"OK",
+"Share this code, or send the link:":"Compartilhe este código ou envie o link:","Copy invite link":"Copiar link do convite","Waiting for them to join…":"Esperando a pessoa entrar…",
+"Link copied! Waiting for them to join…":"Link copiado! Esperando a pessoa entrar…","Could not copy — the code above still works.":"Não deu para copiar — o código acima continua valendo.",
+"Watch live":"Assistir ao vivo","Looking for games…":"Procurando partidas…","No public games being played right now.":"Nenhuma partida pública rolando agora.","Close":"Fechar",
+"Loading…":"Carregando…","No rated players yet.":"Ainda não há jogadores ranqueados.","Could not load the leaderboard.":"Não foi possível carregar o ranking.",
+"Player":"Jogador","Elo":"Elo","W-L":"V-D","(you)":"(você)","Ranked #{r} of {n}":"{r}º de {n}",
+"{n} playing now":"{n} jogando agora"," · {m} in matches":" · {m} em partida",
+"Out of time — turn passed":"Tempo esgotado — vez passada","Opponent out of time — your turn":"Oponente estourou o tempo — sua vez","Turn passed":"Vez passada",
+"Opponent didn’t move — your turn":"O oponente não jogou — sua vez","Replay — tap the board to skip":"Replay — toque no tabuleiro para pular",
+"Replay link copied!":"Link do replay copiado!","Could not create the link.":"Não foi possível criar o link.","Watch this Tau game:":"Assista a esta partida de Tau:",
+"Replay finished":"Replay encerrado","Watch again":"Ver de novo","Play Tau":"Jogar Tau","Prev":"Ant.","Next":"Próx.",
+"Hold one foot":"Trave um pé","Hold one foot still and rotate the other two.":"Mantenha um pé parado e gire os outros dois.",
+"Move in circles":"Movimentos em arco","The moving feet trace an arc. You may only move in one direction per turn.":"Os pés em movimento traçam um arco. Só é possível girar em um sentido por vez.",
+"Push your opponent":"Empurre o oponente","Push your opponent by moving into their legs.":"Empurre o oponente encostando nas pernas dele.",
+"One line per turn":"Uma linha por vez","You may cross only one line per turn. A foot that starts on a line leaves it for free.":"Você só pode cruzar uma linha por vez. Um pé que começa sobre uma linha pode sair dela de graça.",
+"Corners count once":"Cantos contam uma vez","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"Um cruzamento dura enquanto a peça estiver sobre uma linha. Contornar um canto onde duas linhas se encontram ainda conta como <b>um</b> cruzamento.",
+"Two feet at once":"Dois pés de uma vez","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"Dois pés podem cruzar duas linhas diferentes no mesmo giro. Enquanto a peça não sair da linha, ainda é <b>um</b> cruzamento.",
+"Push them off":"Derrube do tabuleiro","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Empurre o oponente para fora da borda. Quando um pé dele sai do tabuleiro, você vence.",
+"Continue with Google":"Continuar com o Google","or use a username & password":"ou usar nome de usuário e senha","hide username & password":"esconder usuário e senha",
+"or a one-time email link":"ou um link único por e-mail","Log in":"Entrar","Sign up":"Cadastrar","Send link":"Enviar link","username":"usuário","password":"senha",
+"Sign up to choose your own name — you keep your current rating.":"Cadastre-se para escolher seu nome — você mantém seu Elo atual.",
+"Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"O login do Google é bloqueado dentro deste app. Toque em ⋯ / compartilhar e escolha “Abrir no Safari/Chrome”, ou use usuário e senha abaixo.",
+"Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"O login do Google precisa de um navegador de verdade (⋯ / compartilhar → Abrir no Safari ou Chrome). Neste app, use usuário e senha abaixo.",
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Instale o Tau: toque em <b>Compartilhar</b> e depois <b>Adicionar à Tela de Início</b>."
+},
+ru: {
+"Local 1v1":"Локальный 1v1","Online 1v1":"Онлайн 1v1","vs AI":"Против ИИ","How to play":"Как играть","Leaderboard":"Таблица лидеров","Watch":"Смотреть",
+"Sign in":"Войти","Sign out":"Выйти","Playing as Guest · ":"Играете как гость · ","Signed in as ":"Вы вошли как ","(edit)":"(изменить)","Guest":"Гость",
+"Play as Guest":"Играть гостем","Surrender":"Сдаться","Menu":"Меню","Stop watching":"Прекратить просмотр","Rating:":"Рейтинг:",
+"Your turn":"Ваш ход","{name}'s turn":"Ходит {name}","{color} to move":"Ходят {color}","{color} wins":"{color} победили","Blue":"Синие","Red":"Красные","blue":"синие","red":"красные",
+"Step 1. Tap one of your feet to lock it as the pivot.":"Шаг 1. Коснитесь одной из своих ножек, чтобы зафиксировать её как ось.",
+"Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.":"Шаг 2. Тяните другую ножку (с кольцом) вокруг оси. Коснитесь жёлтой ножки ещё раз, чтобы выбрать заново.",
+"Swinging… release to end your turn.":"Поворот… отпустите, чтобы завершить ход.","Waiting for your opponent…":"Ждём соперника…",
+"AI is thinking…":"ИИ думает…","AI is swinging…":"ИИ ходит…","crossings {c}/{m}":"пересечения {c}/{m}",". That would cross a 2nd line":" (это пересекло бы 2-ю линию)",
+"Watching {a} vs {b}":"Смотрим: {a} против {b}","Playing {color} vs {name}":"Вы — {color}, соперник — {name}",
+"Pick a difficulty.":"Выберите сложность.","Easy":"Легко","Medium":"Средне","Hard":"Сложно","Very hard":"Очень сложно","Expert":"Эксперт",
+"Choose your colour":"Выберите цвет","Blue always moves first.":"Синие всегда ходят первыми.","Play as Blue":"Играть за синих","Play as Red":"Играть за красных",
+"You win!":"Победа!","You lose":"Поражение","{name} wins!":"{name} побеждает!","Rematch":"Реванш","Accept rematch":"Принять реванш","Find new opponent":"Найти нового соперника",
+"Watch replay":"Смотреть повтор","Share replay":"Поделиться повтором","Watch another":"Смотреть другую","Difficulty":"Сложность","Got it":"Понятно",
+"Waiting for {name}…":"Ждём {name}…","{name} wants a rematch!":"{name} хочет реванш!","{name} is watching the replay.":"{name} смотрит повтор.",
+"{name} is still watching the replay.":"{name} всё ещё смотрит повтор.","{name} left.":"{name} вышел.",
+"Searching for an opponent…":"Ищем соперника…","Cancel":"Отмена","Play a random ranked opponent, or invite someone specific?":"Случайный рейтинговый соперник или пригласить друга?",
+"Find an opponent":"Найти соперника","Private match":"Приватный матч","Play a casual 1v1 against someone specific instead of the random queue.":"Сыграйте товарищеский 1v1 с конкретным человеком вместо случайной очереди.",
+"Create a match":"Создать матч","Join with a code":"Войти по коду","Creating your invite…":"Создаём приглашение…","OK":"OK",
+"Share this code, or send the link:":"Передайте этот код или отправьте ссылку:","Copy invite link":"Скопировать ссылку-приглашение","Waiting for them to join…":"Ждём подключения…",
+"Link copied! Waiting for them to join…":"Ссылка скопирована! Ждём подключения…","Could not copy — the code above still works.":"Не удалось скопировать — код выше всё равно работает.",
+"Watch live":"Смотреть вживую","Looking for games…":"Ищем игры…","No public games being played right now.":"Сейчас нет открытых игр.","Close":"Закрыть",
+"Loading…":"Загрузка…","No rated players yet.":"Пока нет игроков с рейтингом.","Could not load the leaderboard.":"Не удалось загрузить таблицу лидеров.",
+"Player":"Игрок","Elo":"Эло","W-L":"В-П","(you)":"(вы)","Ranked #{r} of {n}":"Место {r} из {n}",
+"{n} playing now":"Сейчас играют: {n}"," · {m} in matches":" · в матчах: {m}",
+"Out of time — turn passed":"Время вышло — ход пропущен","Opponent out of time — your turn":"У соперника вышло время — ваш ход","Turn passed":"Ход пропущен",
+"Opponent didn’t move — your turn":"Соперник не сходил — ваш ход","Replay — tap the board to skip":"Повтор — коснитесь доски, чтобы пропустить",
+"Replay link copied!":"Ссылка на повтор скопирована!","Could not create the link.":"Не удалось создать ссылку.","Watch this Tau game:":"Посмотрите эту партию в Tau:",
+"Replay finished":"Повтор окончен","Watch again":"Смотреть ещё раз","Play Tau":"Играть в Tau","Prev":"Назад","Next":"Далее",
+"Hold one foot":"Зафиксируйте одну ножку","Hold one foot still and rotate the other two.":"Держите одну ножку на месте и вращайте две другие.",
+"Move in circles":"Движение по дугам","The moving feet trace an arc. You may only move in one direction per turn.":"Движущиеся ножки описывают дугу. За ход можно вращаться только в одну сторону.",
+"Push your opponent":"Толкайте соперника","Push your opponent by moving into their legs.":"Толкайте соперника, упираясь в его ножки.",
+"One line per turn":"Одна линия за ход","You may cross only one line per turn. A foot that starts on a line leaves it for free.":"За ход можно пересечь только одну линию. Ножка, начавшая ход на линии, покидает её бесплатно.",
+"Corners count once":"Угол считается один раз","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"Пересечение длится, пока фигура остаётся на линии. Обход угла, где встречаются две линии, всё равно считается <b>одним</b> пересечением.",
+"Two feet at once":"Две ножки сразу","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"Две ножки могут пересечь две разные линии за одно движение. Пока фигура не сходит с линии, это всё ещё <b>одно</b> пересечение.",
+"Push them off":"Столкните его","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Столкните соперника с края. Как только одна его ножка покидает доску — вы победили.",
+"Continue with Google":"Продолжить с Google","or use a username & password":"или имя пользователя и пароль","hide username & password":"скрыть имя пользователя и пароль",
+"or a one-time email link":"или одноразовая ссылка на почту","Log in":"Войти","Sign up":"Регистрация","Send link":"Отправить ссылку","username":"имя пользователя","password":"пароль",
+"Sign up to choose your own name — you keep your current rating.":"Зарегистрируйтесь, чтобы выбрать имя — рейтинг сохранится.",
+"Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"Вход через Google заблокирован внутри этого приложения. Нажмите ⋯ / «поделиться» и выберите «Открыть в Safari/Chrome», или используйте имя пользователя и пароль ниже.",
+"Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Для входа через Google нужен обычный браузер (⋯ / поделиться → Открыть в Safari или Chrome). В этом приложении используйте имя пользователя и пароль ниже.",
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Установите Tau: нажмите <b>Поделиться</b>, затем <b>На экран «Домой»</b>."
 }
 };
 
@@ -2039,7 +2345,12 @@ let renderer=null, scene, camera, controls, tripods=[];   // 3D side view — al
 let pivotGlowMesh=null, boardTop=null, camProbe=null;   // pivot glow + board surface + fit-probe camera (built in init3D)
 let htpTripods=[];   // throwaway pieces for the how-to-play "push them off" 3D demo (built in init3D)
 let currentTheme = 'dark';   // 'dark' = sleek dark board (default); 'light' = pale physical-board look
-try { currentTheme = localStorage.getItem('tauTheme') || 'dark'; } catch(e) {}
+// First visit follows the device's light/dark preference; the ☀ toggle stores an explicit choice
+// which wins from then on.
+try {
+    currentTheme = localStorage.getItem('tauTheme')
+        || (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+} catch(e) {}
 // One palette for every flat board drawing (2D game canvas, landing demo, how-to-play slides)
 // so the 2D and 3D boards always match: light = pale physical board, dark = sleek dark board.
 function boardColors() {
@@ -4144,10 +4455,12 @@ demoStart();
     }
     // Language picker lives in the top-right corner cluster (next to sound/theme), not the menu:
     // it's a set-once control, so it stays out of the way behind a small 🌐 button.
+    document.documentElement.lang = LANG === 'zht' ? 'zh-Hant' : LANG === 'zh' ? 'zh-Hans' : LANG;
     const langMenu = document.getElementById('langMenu'), langBtn = document.getElementById('langToggle');
     if (langMenu && langBtn) {
         langMenu.textContent = '';
-        [['en','English'],['ja','日本語'],['zh','中文']].forEach(([code,label]) => {
+        [['en','English'],['ja','日本語'],['zh','简体中文'],['zht','繁體中文'],['ko','한국어'],
+         ['de','Deutsch'],['fr','Français'],['es','Español'],['pt','Português'],['ru','Русский']].forEach(([code,label]) => {
             const b=document.createElement('button'); b.textContent=label;
             if (code===LANG) b.className='cur';
             b.addEventListener('click',()=>{ try{localStorage.setItem('tauLang',code);}catch(e){} location.reload(); });
