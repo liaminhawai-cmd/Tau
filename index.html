@@ -94,6 +94,8 @@
     .htpSlide:first-child { padding-top:2px; }
     .htpSlide:last-child { border-bottom:none; }
     .htpSlide canvas { display:block; margin:0 auto 8px; background:#0c0e11; border-radius:6px; max-width:100%; height:auto; }
+    .htpSlide canvas.htpInteractive { box-shadow:0 0 0 1.5px #3d5afe66; }
+    #prResetBtn { margin-top:6px; }
     #htpFallSlot { width:220px; height:220px; max-width:100%; aspect-ratio:1/1; margin:0 auto 8px;
                    background:#0c0e11; border-radius:6px; overflow:hidden; }
     #htpFallSlot canvas { width:100% !important; height:100% !important; }
@@ -112,7 +114,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 31</div>
+<div id="buildTag">build 32</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -1381,9 +1383,11 @@ function nearLineIds(f, eps) {
 // two separate crossings — the first pad's contact hadn't ended when the second pad's began, even
 // though the first magnet was already well off its line — which let "left foot over one line, right
 // foot over the other" slip through as one crossing. At magnet scale that chain breaks.
-function pieceHoldingLine(feet) {
+// `st` carries the turn's line bookkeeping (startedOnLine/touchedLine); the live game passes G, the
+// how-to practice widget passes its own state object with the same fields.
+function pieceHoldingLine(feet, st) {
     for (let i=0;i<3;i++)
-        if (nearLineIds(feet[i], CFG.holdEps).some(id => !G.startedOnLine[i].includes(id))) return true;
+        if (nearLineIds(feet[i], CFG.holdEps).some(id => !st.startedOnLine[i].includes(id))) return true;
     return false;
 }
 // Is any foot's PAD (touchEps) on a line that foot has not yet touched this turn? Used to stop the
@@ -1391,9 +1395,38 @@ function pieceHoldingLine(feet) {
 // lines the foot has already visited (touchedLine), not just its start lines: with the hold band
 // smaller than the pad band, a foot's pad is still over the line it just finished crossing — that
 // leftover contact is departure, not a new mount, and must not trip the stop.
-function pieceTouchingUntouchedLine(feet) {
+function pieceTouchingUntouchedLine(feet, st) {
     for (let i=0;i<3;i++)
-        if (nearLineIds(feet[i], CFG.touchEps).some(id => !G.touchedLine[i].includes(id))) return true;
+        if (nearLineIds(feet[i], CFG.touchEps).some(id => !st.touchedLine[i].includes(id))) return true;
+    return false;
+}
+// One sub-step of the crossing rule, shared by real turns (applySwing) and the how-to practice
+// widget so they can't drift apart. `st` is any object with the per-turn fields (crossings,
+// inCrossing, usedGrace, startedOnLine, touchedLine); G is one such object. Given the feet BEFORE
+// and AFTER a small rotation, it updates st's crossing bookkeeping and returns true if the swing has
+// hit the one-crossing limit and must be rolled back by the caller.
+function crossingSubstep(before, after, st) {
+    const per = countCrossings(before, after);
+    let centreCrossed = false;
+    for (let i=0;i<3;i++){
+        let ids = per[i];
+        if (ids.length===0) continue;
+        if (!st.usedGrace[i] && ids.some(id => st.startedOnLine[i].includes(id))){
+            st.usedGrace[i]=true;
+            ids = ids.filter(id => !st.startedOnLine[i].includes(id));
+            if (ids.length===0) continue;
+        }
+        centreCrossed = true;
+    }
+    // Once the one-per-turn crossing is SPENT and the episode is closed, stop: no foot's centre may
+    // cross any further line, and no foot's pad may even MOUNT a line it hasn't visited this turn.
+    if (st.crossings >= CFG.maxCrossingsPerTurn && !st.inCrossing
+        && (centreCrossed || pieceTouchingUntouchedLine(after, st))) return true;
+    if (centreCrossed) st.inCrossing = true;
+    if (st.inCrossing && !pieceHoldingLine(after, st)){ st.crossings++; st.inCrossing = false; }   // episode complete -> count it
+    for (let i=0;i<3;i++)   // record pad contact after the checks, so approach is caught before mount
+        for (const id of nearLineIds(after[i], CFG.touchEps))
+            if (!st.touchedLine[i].includes(id)) st.touchedLine[i].push(id);
     return false;
 }
 
@@ -1579,39 +1612,8 @@ function applySwing(dA) {
     for (let s=0;s<steps;s++){
         const before=active.feet();
         active.rotateAround(G.pivot.x, G.pivot.y, step);
-        const after=active.feet();
-        // Did any foot's CENTRE pass a line this substep? A leave of a line the foot STARTED on is
-        // free (the once-per-line grace) -- that's only the tail half of a not-on -> on -> not-on
-        // cycle, never a full crossing. The grace covers ONLY the start line itself: a foot exiting
-        // through a corner also crosses the other line, and that one still counts.
-        const per=countCrossings(before, after);
-        let centreCrossed=false;
-        for (let i=0;i<3;i++){
-            let ids=per[i];
-            if (ids.length===0) continue;
-            if (!G.usedGrace[i] && ids.some(id => G.startedOnLine[i].includes(id))){
-                G.usedGrace[i]=true;
-                ids = ids.filter(id => !G.startedOnLine[i].includes(id));
-                if (ids.length===0) continue;
-            }
-            centreCrossed=true;
-        }
-        // A crossing is one continuous "magnet on a line" episode: not-on -> on -> not-on. While a
-        // magnet is still on some line the crossing isn't finished, so a foot rounding a corner (ring
-        // then arc), or a second foot's magnet reaching its line while the first is still on its own,
-        // stay ONE crossing. Once the one-per-turn crossing is SPENT and the episode is closed:
-        //   - no foot's centre may cross ANY further line (catches re-crossing an already-used line,
-        //     whose pad-contact exemption below can't stop it), and
-        //   - no foot's pad may even MOUNT a line it hasn't visited this turn -- stop just short, so
-        //     releasing there simply keeps the position instead of resetting the whole move.
-        if (G.crossings >= CFG.maxCrossingsPerTurn && !G.inCrossing
-            && (centreCrossed || pieceTouchingUntouchedLine(after))){
+        if (crossingSubstep(before, active.feet(), G)){          // hit the one-crossing limit: roll this step back
             active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true; G.limitReason='cross'; break; }
-        if (centreCrossed) G.inCrossing=true;
-        if (G.inCrossing && !pieceHoldingLine(after)){ G.crossings++; G.inCrossing=false; }   // episode complete -> count it
-        for (let i=0;i<3;i++)   // record pad contact after the checks, so approach is caught before mount
-            for (const id of nearLineIds(after[i], CFG.touchEps))
-                if (!G.touchedLine[i].includes(id)) G.touchedLine[i].push(id);
         G.netRad+=step;
         resolvePush(active, opp);
     }
@@ -1907,7 +1909,11 @@ let clock=null, fall={active:false};                                  // loss-an
 // online tween, physics pushes) is captured identically because it's the rendered result being
 // sampled, not any one input path. ~48 bytes/frame; 30k frames ≈ several minutes of pure motion.
 let replayFrames = [], replayActive = false, replayPos = 0, replayFinalPose = null;
-const REPLAY_MAX_FRAMES = 30000, REPLAY_SPEEDUP = 2;   // playback advances 2 recorded frames per rendered frame
+// replayPos is a FLOAT: each rendered frame advances it by REPLAY_RATE recorded frames and the pose
+// is interpolated between the two straddling frames. Rate < 1 plays slower than the original motion,
+// and the interpolation smooths out the uneven spacing of the recording (frames are only captured
+// while something moved) — together that fixes the old jerky, sped-up (2x, frame-skipping) playback.
+const REPLAY_MAX_FRAMES = 30000, REPLAY_RATE = 0.5;
 function recordReplayFrame() {
     if (replayActive || !G || G.over) return;
     if (document.getElementById('game').style.display !== 'flex') return;   // never record the menu demo
@@ -1928,13 +1934,14 @@ function startReplay() {
 // Steps the playback (called from animate); when the recording runs out, restores the true final
 // pose and re-runs the tumble (silently), then brings the game-over choices back.
 function stepReplay() {
-    for (let k=0; k<REPLAY_SPEEDUP && replayPos<replayFrames.length; k++, replayPos++){
-        const f = replayFrames[replayPos];
-        G.pieces[0].x=f[0]; G.pieces[0].y=f[1]; G.pieces[0].rot=f[2];
-        G.pieces[1].x=f[3]; G.pieces[1].y=f[4]; G.pieces[1].rot=f[5];
-    }
+    const last = replayFrames.length - 1;
+    const i0 = Math.min(Math.floor(replayPos), last), i1 = Math.min(i0 + 1, last);
+    const f = replayFrames[i0], g = replayFrames[i1], u = replayPos - i0;   // interpolate between the two straddling frames
+    G.pieces[0].x=f[0]+(g[0]-f[0])*u; G.pieces[0].y=f[1]+(g[1]-f[1])*u; G.pieces[0].rot=f[2]+(g[2]-f[2])*u;
+    G.pieces[1].x=f[3]+(g[3]-f[3])*u; G.pieces[1].y=f[4]+(g[4]-f[4])*u; G.pieces[1].rot=f[5]+(g[5]-f[5])*u;
     render();
-    if (replayPos >= replayFrames.length) endReplay();
+    replayPos += REPLAY_RATE;
+    if (replayPos >= last) endReplay();
 }
 function endReplay() {
     if (!replayActive) return;
@@ -2601,8 +2608,96 @@ function htp3DExit() {
         demoResize();
     }
 }
+// ---------- Interactive practice (the how-to "Try it" slide) ----------
+// A real, playable sandbox: your blue piece and a red target on one board. Tap a blue foot to pin it,
+// then drag another foot to swing the piece around it — driven by the SAME rules and physics as a
+// real game (crossingSubstep stops you at one line per turn; resolvePush shoves red). Push red off
+// the rim to win. Self-contained: it uses its own pieces and turn-state, never G (which the ambient
+// menu demo owns), so the two never fight.
+let prBlue=null, prRed=null, prSt=null, prPinned=null, prHandle=null, prPtrA=null, prMsg='', prWon=false;
+function prReset(){
+    prBlue = mkP(0, -14, 6, 0.30);
+    prRed  = mkP(1, 45, 0, Math.PI);
+    prSt=null; prPinned=null; prHandle=null; prPtrA=null; prWon=false;
+    prMsg='Tap one of the blue feet to hold it still.';
+    const el=document.getElementById('prMsg'); if(el) el.textContent=prMsg;
+}
+function prHitR(sc){ return Math.max(9, 22/sc); }
+function prNearestFoot(p, feet, exclude, hitR){
+    let best=-1, bestD=hitR;
+    for (let i=0;i<3;i++){ if(i===exclude) continue;
+        const d=Math.hypot(feet[i].x-p.x, feet[i].y-p.y); if(d<bestD){ bestD=d; best=i; } }
+    return best;
+}
+function prBoardPt(e, cv){
+    const r=cv.getBoundingClientRect(), t=(e.touches&&e.touches[0])?e.touches[0]:e;
+    const ix=(t.clientX-r.left)*(cv.width/r.width), iy=(t.clientY-r.top)*(cv.height/r.height);
+    const sc=htpMap(cv.width,cv.height).sc;
+    return { x:(ix-cv.width/2)/sc, y:(iy-cv.height/2)/sc };
+}
+function prPin(idx){
+    const feet=prBlue.feet();
+    prSt = { pivot:{x:feet[idx].x,y:feet[idx].y}, turnDir:0, crossings:0, atLimit:false, netRad:0,
+             startedOnLine: feet.map(f=>nearLineIds(f,CFG.touchEps)), usedGrace:[false,false,false], inCrossing:false };
+    prSt.touchedLine = prSt.startedOnLine.map(a=>a.slice());
+    prPinned=idx; prMsg='Now drag another blue foot around it to swing.';
+}
+function prSwing(dA){
+    if (!prSt || dA===0) return;
+    if (prSt.turnDir!==0 && Math.sign(dA)!==prSt.turnDir) return;   // one direction per turn
+    const step0=CFG.substepDeg*Math.PI/180, steps=Math.max(1,Math.ceil(Math.abs(dA)/step0)), step=dA/steps;
+    for (let s=0;s<steps;s++){
+        const before=prBlue.feet();
+        prBlue.rotateAround(prSt.pivot.x, prSt.pivot.y, step);
+        if (crossingSubstep(before, prBlue.feet(), prSt)){
+            prBlue.rotateAround(prSt.pivot.x, prSt.pivot.y, -step); prSt.atLimit=true;
+            prMsg='That’s one line crossed — the turn stops here.'; break; }
+        prSt.netRad+=step;
+        resolvePush(prBlue, prRed);
+    }
+    if (prSt.turnDir===0 && Math.abs(prSt.netRad)>=CFG.lockDeg*Math.PI/180) prSt.turnDir=Math.sign(prSt.netRad);
+    if (!prWon && prRed.anyFootOff()){ prWon=true; prMsg='Nice — red’s off the edge. That’s a win! (Reset to try again.)'; }
+}
+// Pointer handlers mirror the real board's onDown/onMove/onUp exactly, so the practice teaches the
+// real controls. Pointer capture routes move/up back here even outside the small canvas.
+function prDown(e, cv){
+    if (prWon) return; e.preventDefault();
+    const p=prBoardPt(e,cv), feet=prBlue.feet(), hitR=prHitR(htpMap(cv.width,cv.height).sc);
+    if (prPinned===null){
+        const i=prNearestFoot(p,feet,-1,hitR); if(i>=0) prPin(i);
+    } else {
+        const dPin=Math.hypot(feet[prPinned].x-p.x, feet[prPinned].y-p.y);
+        const i=prNearestFoot(p,feet,prPinned,hitR);
+        if (i>=0 && (dPin>=hitR || Math.hypot(feet[i].x-p.x,feet[i].y-p.y)<=dPin)){
+            prHandle=i; prPtrA=Math.atan2(p.y-prSt.pivot.y, p.x-prSt.pivot.x);
+        } else if (dPin<hitR && Math.abs(prSt.netRad)<CFG.minMoveDeg*Math.PI/180){
+            prSt=null; prPinned=null; prMsg='Tap one of the blue feet to hold it still.';
+        }
+    }
+}
+function prMove(e, cv){
+    if (prHandle===null || prWon) return; e.preventDefault();
+    const p=prBoardPt(e,cv), a=Math.atan2(p.y-prSt.pivot.y, p.x-prSt.pivot.x);
+    if (prPtrA===null){ prPtrA=a; return; }
+    const dA=norm(a-prPtrA); prPtrA=a; prSwing(dA);
+}
+function prUp(){
+    if (prHandle===null) return;
+    prHandle=null; prPtrA=null;
+    if (prSt && !prWon && Math.abs(prSt.netRad)>=CFG.minMoveDeg*Math.PI/180){   // real move made: new turn, re-pin to continue
+        prSt=null; prPinned=null; prMsg='Good. Tap a foot to start another move.';
+    }
+}
+function prDrawSlide(c,w,h,t){
+    if (!prBlue) prReset();
+    const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
+    htpPiece(c, prRed, m.b, -1, t);
+    htpPiece(c, prBlue, m.b, prPinned===null?-1:prPinned, t);
+    const el=document.getElementById('prMsg'); if(el && el.textContent!==prMsg) el.textContent=prMsg;
+}
 // Wording taken from the designer's own rules (Written elements.docx).
 const HTP_STEPS = [
+    { title:'Try it yourself', text:'Tap a blue foot to pin it, then drag another foot to swing. Push red off the edge to win.<br><span id="prMsg" style="color:#7ee39a"></span>', draw:prDrawSlide, interactive:true },
     { title:'Hold one foot', text:'Hold one foot still and rotate the other two.', draw:htpSlidePivot },
     { title:'Move in circles', text:'The moving feet trace an arc. You may only move in one direction per turn.', draw:htpSlideSwing },
     { title:'Push your opponent', text:'Push your opponent by moving into their legs.', draw:htpSlidePush },
@@ -2627,12 +2722,27 @@ function openHowToPlay() {
             <button id="htpNext">Next &rsaquo;</button>
         </div>` + HTP_STEPS.map((s,i) => `
         <div class="htpSlide" data-idx="${i}">
-            ${s.is3D ? `<div id="htpFallSlot"></div>` : `<canvas id="htpCanvas${i}" width="340" height="230"></canvas>`}
+            ${s.is3D ? `<div id="htpFallSlot"></div>` : `<canvas id="htpCanvas${i}"${s.interactive?' class="htpInteractive"':''} width="340" height="230"></canvas>`}
             <p><b>${s.title}</b><br>${s.text}</p>
+            ${s.interactive ? `<button id="prResetBtn" class="link">↻ Reset</button>` : ``}
         </div>`).join('');
     showModal('How to play', slidesHtml, [ { label: 'Got it', onClick: stopHowToPlayAnim } ], true);
     document.getElementById('modalBox').classList.add('wide');
     htp3DEnter();
+
+    // Wire the interactive practice slide: fresh board, real-controls pointer handling (pointer
+    // capture routes move/up back even outside the small canvas), and a Reset.
+    prReset();
+    HTP_STEPS.forEach((s,i) => {
+        if (!s.interactive) return;
+        const cv = document.getElementById('htpCanvas'+i);
+        cv.style.touchAction = 'none'; cv.style.cursor = 'pointer';
+        cv.addEventListener('pointerdown', e => { try{ cv.setPointerCapture(e.pointerId); }catch(_){} prDown(e, cv); });
+        cv.addEventListener('pointermove', e => prMove(e, cv));
+        cv.addEventListener('pointerup',   () => prUp());
+        cv.addEventListener('pointercancel', () => prUp());
+    });
+    const prBtn = document.getElementById('prResetBtn'); if (prBtn) prBtn.addEventListener('click', prReset);
 
     const ctxs = HTP_STEPS.map((s,i) => s.is3D ? null : document.getElementById('htpCanvas'+i).getContext('2d'));
     const t0 = performance.now();
