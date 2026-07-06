@@ -442,6 +442,13 @@ grant execute on function public.rematch(uuid) to authenticated;
 --    are skipped, same as live play. Safe to re-run: it always rebuilds from scratch, so running
 --    it twice gives the same result. After deploying section 7, run this ONCE:
 --        select public.recompute_all_elo();
+--
+--    First it normalizes any LEGACY username that predates the format constraint (added NOT VALID,
+--    so old rows like "H.Y. G-K" were grandfathered). Those rows can't be UPDATEd -- not by this
+--    recompute and not by finish_match when that player next wins/loses -- because Postgres re-checks
+--    the CHECK on every row update. Normalizing them (non-alphanumerics -> underscore; fall back to a
+--    Player_<hex> handle if nothing usable survives) clears that landmine. Affected players can pick a
+--    new name in-app afterward.
 -- ---------------------------------------------------------------------------------------
 create or replace function public.recompute_all_elo()
 returns void
@@ -455,6 +462,15 @@ declare
   expected numeric;
   k constant integer := 24;
 begin
+  -- Repair legacy out-of-format usernames first (see header) so the resets below can't be blocked.
+  update public.profiles
+  set username = case
+    when trim(both '_' from regexp_replace(username, '[^A-Za-z0-9]+', '_', 'g')) ~ '^[A-Za-z0-9_]{3,40}$'
+      then trim(both '_' from regexp_replace(username, '[^A-Za-z0-9]+', '_', 'g'))
+    else 'Player_' || substr(replace(id::text, '-', ''), 1, 8)
+  end
+  where username !~ '^[A-Za-z0-9_]{3,40}$';
+
   update public.profiles set elo = 1200, wins = 0, losses = 0;
 
   for r in
