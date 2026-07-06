@@ -112,7 +112,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 29</div>
+<div id="buildTag">build 30</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -3366,13 +3366,7 @@ function stepFall(dt) {
         t.quaternion.premultiply(fallQ);                            // …and lean by the same angle
         fall.vx *= Math.max(0, 1-2.5*dt); fall.vz *= Math.max(0, 1-2.5*dt);   // residual slide bleeds off
         t.position.x += fall.vx*dt; t.position.z += fall.vz*dt;
-        if (fall.theta > 1.9) {                        // ~110° past level: contact can't hold — let go
-            fallLever.set(t.position.x-fall.px, t.position.y, t.position.z-fall.pz);
-            fallLever.cross(fallAxisV2).multiplyScalar(-fall.omega);   // v = ω (axis × lever): carry the pivot's exit velocity
-            fall.vx += fallLever.x; fall.vy = fallLever.y; fall.vz += fallLever.z;
-            fall.tipRate = fall.omega;
-            fall.phase = 'free';
-        }
+        if (fall.theta > 1.9) fallLetGo(t);            // ~110° past level: contact can't hold — let go
     } else {
         fall.vy -= 260*dt;
         t.position.x += fall.vx*dt; t.position.y += fall.vy*dt; t.position.z += fall.vz*dt;
@@ -3384,6 +3378,12 @@ function stepFall(dt) {
     // piece so the most-sunk such foot rests on top. That's what stops the trailing feet from cutting
     // down through the board as it tips; once every foot has cleared the rim, nothing holds it and it
     // falls. Feet already past the rim are over the void and free to drop.
+    // ONLY small corrections count as resting contact. Late in the pivot a foot can swing clear
+    // around UNDERNEATH the board and back inboard of the rim -- lifting the whole piece by that
+    // foot's depth (30u+) made the half-fallen piece visibly jump back up and "fall again". A foot
+    // that far under isn't supporting anything: the piece has simply lost contact, so let go into
+    // free fall instead. (Measured: genuine resting corrections are <0.01u/frame; the bogus
+    // curled-under case is >15u -- cleanly separable.)
     if (fall.phase !== 'free') {
         t.updateMatrixWorld();
         let minY = 0;
@@ -3391,9 +3391,24 @@ function stepFall(dt) {
             fallFootW.copy(FALL_FEET_LOCAL[i]).applyMatrix4(t.matrixWorld);
             if (Math.hypot(fallFootW.x, fallFootW.z) < CFG.edgeU && fallFootW.y < minY) minY = fallFootW.y;
         }
-        if (minY < 0) t.position.y -= minY;
+        if (minY < 0) {
+            if (-minY <= 2) t.position.y -= minY;                    // resting contact: keep feet on the surface
+            else if (fall.phase === 'pivot') fallLetGo(t);           // foot curled under the board: no support left
+            else t.position.y -= minY;                               // sliding flat: always a surface rest
+        }
     }
     if (t.position.y < -700) { fall.active=false; camCenterFrac=1; camManualSet=false; }   // hand back to centred framing once it's done
+}
+// End the pivot: hand the piece over to ballistic free fall, carrying the exit velocity the pivot
+// rotation gave it (v = ω · (axis × lever) about the rim contact point). Shared by the normal
+// past-vertical release and the lost-contact (foot-curled-under) release above.
+function fallLetGo(t) {
+    fallAxisV2.set(fall.ax, 0, fall.az);
+    fallLever.set(t.position.x-fall.px, t.position.y, t.position.z-fall.pz);
+    fallLever.cross(fallAxisV2).multiplyScalar(-fall.omega);
+    fall.vx += fallLever.x; fall.vy = fallLever.y; fall.vz += fallLever.z;
+    fall.tipRate = fall.omega;
+    fall.phase = 'free';
 }
 // ---------- Auto camera: gentle, never a fight ----------
 // The camera is driven by two things blended together:
