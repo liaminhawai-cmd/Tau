@@ -112,7 +112,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 30</div>
+<div id="buildTag">build 31</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -1257,14 +1257,17 @@ const CFG = {
     // grace and the can't-COME-TO-REST-on-a-line check. Kept small: the full footprint made resting
     // near an arc trip the rest check on lots of otherwise-legal arc swings.
     crossEps: 0.4,
-    // Footprint radius: how close a foot's PAD counts as "on a line". Used to keep a crossing episode
-    // open (so a genuine continuous double-cross reads as one crossing) and to stop a foot before its
-    // pad touches a not-yet-crossed line once the turn's crossing is spent. Set to the real pad+line
-    // geometry (pad radius ~0.55 + half line width ~0.26 ~= 0.8): a wider band (was 1.2) let a foot's
-    // fat pad bridge the gap between two SEPARATE crossings, so a casual "left foot over one line, then
-    // right foot over the other" chained into one crossing. At 0.8 that gap registers and the second is
-    // a second crossing (blocked) -- you now have to genuinely keep a foot on a line the whole way to
-    // pull off the double-cross, exactly like the physical game.
+    // Magnet band for HOLDING a crossing episode open: the crossing "hasn't happened yet" only while
+    // a foot's MAGNET is genuinely on the line (dot radius ~0.55 judged at centre, slightly tight).
+    // This must be magnet-scale, not pad-scale: with the pad band holding episodes open, one smooth
+    // swing chained two separate crossings (left pad's contact hadn't ended when right pad's began
+    // even though left's magnet was long off its line). At magnet scale the chain breaks -- to double
+    // cross you must genuinely have one foot ON its line while the other crosses (park a foot on the
+    // line one turn, continue over it the next: left, left, then right).
+    holdEps: 0.45,
+    // Footprint radius: how close a foot's PAD counts as touching a line. Used to stop a foot just
+    // short of MOUNTING a not-yet-visited line once the turn's crossing is spent (real pad radius
+    // ~0.55 + half line width ~0.26 ~= 0.8), and for the turn-start "started on a line" list.
     touchEps: 0.8,
     substepDeg: 0.4,
     minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
@@ -1369,14 +1372,28 @@ function nearLineIds(f, eps) {
     });
     return ids;
 }
-// Is the piece STILL touching a line it's in the process of crossing? (any foot whose pad, within
-// the footprint band, is on a line it did NOT start the turn on -- the pivot and other start-line
-// feet are grandfathered so they don't hold a crossing "open" forever). A crossing only completes
-// when this goes false, which is what makes a corner (ring then arc) or two feet crossing while the
-// first is still on its line count as one continuous crossing.
-function pieceTouchingNewLine(feet) {
+// Is the piece STILL on a line it's in the process of crossing? Judged at MAGNET scale (holdEps):
+// the crossing episode stays open only while some foot's magnet is genuinely on a line it did not
+// start the turn on (start-line feet are grandfathered so they don't hold a crossing open forever).
+// A crossing completes when this goes false — a corner (ring then arc), or a second foot's magnet
+// reaching its line while the first magnet is still on its own line, stay ONE crossing. The band
+// being magnet-sized matters: with the full pad width (touchEps) here, one smooth swing could CHAIN
+// two separate crossings — the first pad's contact hadn't ended when the second pad's began, even
+// though the first magnet was already well off its line — which let "left foot over one line, right
+// foot over the other" slip through as one crossing. At magnet scale that chain breaks.
+function pieceHoldingLine(feet) {
     for (let i=0;i<3;i++)
-        if (nearLineIds(feet[i], CFG.touchEps).some(id => !G.startedOnLine[i].includes(id))) return true;
+        if (nearLineIds(feet[i], CFG.holdEps).some(id => !G.startedOnLine[i].includes(id))) return true;
+    return false;
+}
+// Is any foot's PAD (touchEps) on a line that foot has not yet touched this turn? Used to stop the
+// swing just short of MOUNTING a fresh line once the turn's crossing is spent. Judged against the
+// lines the foot has already visited (touchedLine), not just its start lines: with the hold band
+// smaller than the pad band, a foot's pad is still over the line it just finished crossing — that
+// leftover contact is departure, not a new mount, and must not trip the stop.
+function pieceTouchingUntouchedLine(feet) {
+    for (let i=0;i<3;i++)
+        if (nearLineIds(feet[i], CFG.touchEps).some(id => !G.touchedLine[i].includes(id))) return true;
     return false;
 }
 
@@ -1521,7 +1538,7 @@ function reset() {
     red.x  =  CFG.startX; red.rot  = Math.PI;
     G = { pieces:[blue,red], active:0, pinned:null, pivot:null, handle:null, turnDir:0,
           crossings:0, atLimit:false, netRad:0, ptrAngle:null, over:false, winner:null,
-          snap:null, startedOnLine:[[],[],[]], usedGrace:[false,false,false], inCrossing:false };
+          snap:null, startedOnLine:[[],[],[]], usedGrace:[false,false,false], touchedLine:[[],[],[]], inCrossing:false };
     fall.active=false;
     replayFrames.length = 0; replayActive = false;   // every fresh board starts a fresh recording
     render();
@@ -1534,6 +1551,7 @@ function restoreSnap(){
     G.pieces.forEach((p,i)=>{ p.x=G.snap[i].x; p.y=G.snap[i].y; p.rot=G.snap[i].rot; });
     G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
     G.usedGrace=[false,false,false]; G.inCrossing=false;
+    if (G.startedOnLine) G.touchedLine = G.startedOnLine.map(a=>a.slice());   // feet are back at their start pose
 }
 // lock a foot of the ACTIVE piece as the pivot — the same setup whether a human tapped it
 // or the AI chose it, so the two input paths can't drift apart.
@@ -1545,6 +1563,7 @@ function pinFoot(idx) {
     // Grandfather any line the foot's PAD already sits on at turn start (footprint band), so the
     // stationary pivot / a foot resting on a line don't hold a crossing open or trip the rest check.
     G.startedOnLine = feet.map(f => nearLineIds(f, CFG.touchEps)); G.usedGrace = [false,false,false];
+    G.touchedLine = G.startedOnLine.map(a => a.slice());   // grows as feet visit lines during the turn
     G.inCrossing = false;
 }
 function applySwing(dA) {
@@ -1563,24 +1582,36 @@ function applySwing(dA) {
         const after=active.feet();
         // Did any foot's CENTRE pass a line this substep? A leave of a line the foot STARTED on is
         // free (the once-per-line grace) -- that's only the tail half of a not-on -> on -> not-on
-        // cycle, never a full crossing.
+        // cycle, never a full crossing. The grace covers ONLY the start line itself: a foot exiting
+        // through a corner also crosses the other line, and that one still counts.
         const per=countCrossings(before, after);
         let centreCrossed=false;
         for (let i=0;i<3;i++){
-            if (per[i].length===0) continue;
-            if (!G.usedGrace[i] && per[i].some(id => G.startedOnLine[i].includes(id))){ G.usedGrace[i]=true; continue; }
+            let ids=per[i];
+            if (ids.length===0) continue;
+            if (!G.usedGrace[i] && ids.some(id => G.startedOnLine[i].includes(id))){
+                G.usedGrace[i]=true;
+                ids = ids.filter(id => !G.startedOnLine[i].includes(id));
+                if (ids.length===0) continue;
+            }
             centreCrossed=true;
         }
-        // A crossing is one continuous "on a line" episode: not-on-line -> on-line -> not-on-line.
-        // While the piece is still on some line the crossing isn't finished yet, so a foot rounding a
-        // corner (ring then arc) or a second foot crossing while the first is still on its line all
-        // stay ONE crossing. Once the one-per-turn crossing is SPENT and the piece is off all lines,
-        // don't even let a foot MOUNT the next line -- stop it just short, so releasing there simply
-        // keeps that position instead of resetting the whole move.
-        if (G.crossings >= CFG.maxCrossingsPerTurn && !G.inCrossing && pieceTouchingNewLine(after)){
+        // A crossing is one continuous "magnet on a line" episode: not-on -> on -> not-on. While a
+        // magnet is still on some line the crossing isn't finished, so a foot rounding a corner (ring
+        // then arc), or a second foot's magnet reaching its line while the first is still on its own,
+        // stay ONE crossing. Once the one-per-turn crossing is SPENT and the episode is closed:
+        //   - no foot's centre may cross ANY further line (catches re-crossing an already-used line,
+        //     whose pad-contact exemption below can't stop it), and
+        //   - no foot's pad may even MOUNT a line it hasn't visited this turn -- stop just short, so
+        //     releasing there simply keeps the position instead of resetting the whole move.
+        if (G.crossings >= CFG.maxCrossingsPerTurn && !G.inCrossing
+            && (centreCrossed || pieceTouchingUntouchedLine(after))){
             active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true; G.limitReason='cross'; break; }
         if (centreCrossed) G.inCrossing=true;
-        if (G.inCrossing && !pieceTouchingNewLine(after)){ G.crossings++; G.inCrossing=false; }   // episode complete -> count it
+        if (G.inCrossing && !pieceHoldingLine(after)){ G.crossings++; G.inCrossing=false; }   // episode complete -> count it
+        for (let i=0;i<3;i++)   // record pad contact after the checks, so approach is caught before mount
+            for (const id of nearLineIds(after[i], CFG.touchEps))
+                if (!G.touchedLine[i].includes(id)) G.touchedLine[i].push(id);
         G.netRad+=step;
         resolvePush(active, opp);
     }
@@ -1590,7 +1621,7 @@ function applySwing(dA) {
 
 function clearTurn(){ G.pinned=null; G.pivot=null; G.handle=null; G.turnDir=0;
     G.crossings=0; G.atLimit=false; G.netRad=0; G.ptrAngle=null; G.snap=null;
-    G.startedOnLine=[[],[],[]]; G.usedGrace=[false,false,false]; G.inCrossing=false; }
+    G.startedOnLine=[[],[],[]]; G.usedGrace=[false,false,false]; G.touchedLine=[[],[],[]]; G.inCrossing=false; }
 // pure win-check + turn handoff — no DOM. UI-visible effects (fall animation, render,
 // kicking off the AI) are layered on top by ui.js's finishTurn().
 function endTurn() {
@@ -2436,14 +2467,14 @@ function htpSlideCross(c,w,h,t){
 // The continuous-crossing rule: the REAL opening from the start pose (pin a rear foot, swing the
 // other rear foot through the ring∩arc corner). While the foot's pad stays on a line the crossing
 // hasn't finished, so rounding the corner -- or two feet crossing in one continuous slide -- counts
-// as ONE crossing. The moving foot glows green whenever its pad is on a line.
+// as ONE crossing. The moving foot glows green whenever its magnet is on a line.
 function htpSlideDouble(c,w,h,t){
     const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
-    const base=mkP(0,-CFG.startX,0,0), pivotIdx=1, dir=1, lim=15.2*Math.PI/180;   // the verified in-game limit
+    const base=mkP(0,-CFG.startX,0,0), pivotIdx=1, dir=1, lim=14*Math.PI/180;   // the verified in-game limit (holdEps band)
     const prog=htpEaseHold((t%2.8)/2.8), pv=base.feet()[pivotIdx];
     const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*lim);
     const f=p.feet()[2];
-    if (nearLineIds(f, CFG.touchEps).length){
+    if (nearLineIds(f, CFG.holdEps).length){
         const g=m.b(f.x,f.y), flash=0.4+0.35*Math.abs(Math.sin(t*6));
         c.strokeStyle=`rgba(120,220,140,${flash})`; c.lineWidth=3;
         c.beginPath(); c.arc(g.x,g.y,11,0,7); c.stroke();
@@ -2452,9 +2483,9 @@ function htpSlideDouble(c,w,h,t){
 }
 // Two DIFFERENT feet crossing two DIFFERENT lines in one continuous slide. Pose/pivot/swing found
 // by search (find2.mjs): pinning foot 1 and swinging back, foot 0 slides across the inner ring at
-// the same time foot 2 slides across the outer ring — both pads on a line together, mid-swing. While
-// any foot stays on a line the crossing episode hasn't ended, so this whole move is ONE crossing.
-// Both moving feet glow green whenever their pad is on a line.
+// the same time foot 2 slides across the outer ring — both magnets on a line together, mid-swing.
+// While a magnet stays on a line the crossing episode hasn't ended, so this whole move is ONE
+// crossing. Both moving feet glow green whenever their magnet is on a line.
 function htpSlideTwoFeet(c,w,h,t){
     const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
     const base=mkP(0,18,-20,48*Math.PI/180), pivotIdx=1, dir=-1, lim=23*Math.PI/180;
@@ -2462,7 +2493,7 @@ function htpSlideTwoFeet(c,w,h,t){
     const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*lim);
     for (const i of [0,2]){                                  // the two moving feet (pivot is foot 1)
         const f=p.feet()[i];
-        if (nearLineIds(f, CFG.touchEps).length){
+        if (nearLineIds(f, CFG.holdEps).length){
             const g=m.b(f.x,f.y), flash=0.4+0.35*Math.abs(Math.sin(t*6));
             c.strokeStyle=`rgba(120,220,140,${flash})`; c.lineWidth=3;
             c.beginPath(); c.arc(g.x,g.y,11,0,7); c.stroke();
@@ -3373,17 +3404,15 @@ function stepFall(dt) {
         const r = Math.hypot(t.position.x, t.position.z);
         applyFallRotation(t, fall, dt, Math.max(0, Math.min(1, (r - CFG.edgeU) / 25)));
     }
-    // Multi-contact board rest (slide + pivot only, NOT free fall): after the frame's rigid motion,
-    // no foot that is still horizontally OVER the board may sit below its surface -- lift the whole
-    // piece so the most-sunk such foot rests on top. That's what stops the trailing feet from cutting
-    // down through the board as it tips; once every foot has cleared the rim, nothing holds it and it
-    // falls. Feet already past the rim are over the void and free to drop.
-    // ONLY small corrections count as resting contact. Late in the pivot a foot can swing clear
-    // around UNDERNEATH the board and back inboard of the rim -- lifting the whole piece by that
-    // foot's depth (30u+) made the half-fallen piece visibly jump back up and "fall again". A foot
-    // that far under isn't supporting anything: the piece has simply lost contact, so let go into
-    // free fall instead. (Measured: genuine resting corrections are <0.01u/frame; the bogus
-    // curled-under case is >15u -- cleanly separable.)
+    // Board rest. During the flat SLIDE the trailing feet genuinely rest on the surface, so any foot
+    // still horizontally over the board is lifted back onto it. During the PIVOT the piece rotates
+    // rigidly about the rim contact -- that rotation RAISES the inboard feet, so a still-over-board
+    // foot ending up below the surface doesn't mean "sunk, nudge the piece up": it means the rigid
+    // pivot is no longer compatible with resting contact at all (a foot has swung around under the
+    // board). Nudging the piece up per-frame there is what read as the tumble "bouncing" and the
+    // trailing feet "sticking" (and, unbounded, as the old 30u+ mid-fall teleport). The physical
+    // piece has already let go at that point, so let go: hand over to ballistic free fall the moment
+    // a still-over-board foot would have to pass through the surface.
     if (fall.phase !== 'free') {
         t.updateMatrixWorld();
         let minY = 0;
@@ -3391,11 +3420,8 @@ function stepFall(dt) {
             fallFootW.copy(FALL_FEET_LOCAL[i]).applyMatrix4(t.matrixWorld);
             if (Math.hypot(fallFootW.x, fallFootW.z) < CFG.edgeU && fallFootW.y < minY) minY = fallFootW.y;
         }
-        if (minY < 0) {
-            if (-minY <= 2) t.position.y -= minY;                    // resting contact: keep feet on the surface
-            else if (fall.phase === 'pivot') fallLetGo(t);           // foot curled under the board: no support left
-            else t.position.y -= minY;                               // sliding flat: always a surface rest
-        }
+        if (fall.phase === 'slide') { if (minY < 0) t.position.y -= minY; }
+        else if (minY < -0.6) fallLetGo(t);
     }
     if (t.position.y < -700) { fall.active=false; camCenterFrac=1; camManualSet=false; }   // hand back to centred framing once it's done
 }
