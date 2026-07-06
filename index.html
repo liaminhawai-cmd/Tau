@@ -157,7 +157,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 46</div>
+<div id="buildTag">build 47</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -2287,11 +2287,14 @@ function aiChoosePlanHard(aiIdx){
 //    the central head start a double-cross buys: it only saw trouble once rim distances moved,
 //    several moves too late. The win/loss bonus still dominates everything.
 //
-// Root candidates are quick-scored, and only the best MASTER_ROOT_KEEP are searched in depth
-// (park stops are restored from snapshots taken during the same sweep, so ply 1 is never re-simmed).
-const MASTER_ZONE_W = 1.5;      // board-units of rim margin one zone point is worth
-const MASTER_PARK_W = 1.2;      // rim-margin value of one grace-armed (parked) foot
-const MASTER_ROOT_KEEP = 9;     // deep-searched root candidates (of up to 18 generated)
+// All six to-the-limit moves (the old Expert's whole move set) are ALWAYS searched in depth —
+// pruning them by a 0-ply glance dropped the strongest margin move often enough to lose games.
+// Park candidates are quick-scored and only the best few join them. Positional weights are
+// seasoning on top of the margin, not a second objective; margin still decides close calls.
+// (Park stops are restored from snapshots taken during the same sweep, so ply 1 is never re-simmed.)
+const MASTER_ZONE_W = 0.5;      // board-units of rim margin one zone point is worth
+const MASTER_PARK_W = 0.8;      // rim-margin value of one grace-armed (parked) foot
+const MASTER_PARK_KEEP = 4;     // deep-searched PARK candidates on top of the six limit moves
 const PARK_LO = 0.5, PARK_HI = 0.72;   // recordable park band: outside holdEps+margin, inside touchEps−margin
 function masterEval(aiIdx){
     let parks = 0;
@@ -2326,7 +2329,7 @@ function aiChoosePlanMaster(aiIdx){
                         const key = i+':'+id;
                         if (seen[key]) continue;
                         seen[key] = true;
-                        cands.push({ pivotIdx: mp, dir: md, targetRad: Math.abs(G.netRad), snap: takeSnap() });
+                        cands.push({ pivotIdx: mp, dir: md, targetRad: Math.abs(G.netRad), snap: takeSnap(), park: true });
                         parksHere++; break;
                     }
                 }
@@ -2335,13 +2338,16 @@ function aiChoosePlanMaster(aiIdx){
         if (Math.abs(G.netRad) >= HARD_MIN_MOVE_RAD && !G.pieces[aiIdx].anyFootOff())
             cands.push({ pivotIdx: mp, dir: md, targetRad: Math.abs(G.netRad), snap: takeSnap() });
     }
-    // order by a 0-ply glance and keep the strongest few — wins float to the top on the bonus
+    // 0-ply glance: keep every limit move, and only the strongest few parks (wins float up)
     for (const c of cands) {
         restore(c.snap);
         c.quick = G.pieces[humanIdx].anyFootOff() ? HARD_WIN_BONUS + masterEval(aiIdx) : masterEval(aiIdx);
     }
     cands.sort((a,b) => b.quick - a.quick);
-    if (cands.length > MASTER_ROOT_KEEP) cands.length = MASTER_ROOT_KEEP;
+    let parksKept = 0;
+    for (let i = 0; i < cands.length; ) {
+        if (cands[i].park && ++parksKept > MASTER_PARK_KEEP) cands.splice(i, 1); else i++;
+    }
     let best = null;   // { pivotIdx, dir, targetRad, score }
     for (const c of cands) {
         restore(c.snap); G.active = aiIdx;
@@ -4500,7 +4506,14 @@ function resize() {
     document.getElementById('views').classList.toggle('stacked', show && !wide);
     let size, w3, h3;
     if (!show)      { size = Math.max(220, Math.min(availW, availH)); }
-    else if (wide)  { size = sideSize; w3 = size; h3 = size; }
+    else if (wide)  {
+        // Landscape: the 2D board is a height-limited square, and two squares leave the rest of a
+        // wide screen as dead margin — so the 3D tile absorbs the leftover width instead (capped so
+        // an ultrawide doesn't stretch it silly). The aspect-1 fit probe is conservative for a
+        // wider viewport, so the camera never crops a foot.
+        size = sideSize; h3 = size;
+        w3 = Math.max(size, Math.min(size*1.8, availW - size - gap));
+    }
     else            { size = stackSize; w3 = availW; h3 = stackH3; }
 
     canvas.style.width = size+'px'; canvas.style.height = size+'px';
