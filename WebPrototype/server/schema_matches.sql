@@ -153,11 +153,12 @@ begin
 
   delete from public.matchmaking_queue where user_id in (me, opp.user_id);
 
-  select count(*) into n_finished from public.matches where status = 'finished';
+  -- Only RANKED (public) games feed the blue/red fairness estimate; private/casual results excluded.
+  select count(*) into n_finished from public.matches where status = 'finished' and invite_code is null;
   if n_finished >= 20 then
     select count(*) filter (where winner_color = 'blue')::numeric / count(*)
       into blue_win_rate
-      from public.matches where status = 'finished';
+      from public.matches where status = 'finished' and invite_code is null;
     blue_win_rate := greatest(0.02, least(0.98, blue_win_rate));
     blue_adv := 400 * log(10, blue_win_rate / (1 - blue_win_rate));
   end if;
@@ -200,6 +201,9 @@ grant execute on function public.leave_queue() to authenticated;
 -- ---------- finish_match(): settle a result, update both ratings atomically ----------
 -- Idempotent (a no-op if the match is already finished) since either client may call this
 -- the instant it locally detects the win — no coordination needed over who "reports" first.
+-- PRIVATE matches (invite_code set) are casual: the result is still recorded so the game can end
+-- and be replayed, but ELO and win/loss counts are NOT touched — otherwise two friends could farm
+-- rating by playing each other with an invite link. Ranking must only come from public matchmaking.
 create or replace function public.finish_match(p_match_id uuid, p_winner_color text)
 returns void
 language plpgsql
@@ -223,6 +227,15 @@ begin
     raise exception 'not a player in this match';
   end if;
 
+  -- Record the outcome for every match (needed to end/replay it and to clear it from "active").
+  update public.matches
+    set status = 'finished', winner_color = p_winner_color, finished_at = now()
+    where id = p_match_id;
+
+  if m.invite_code is not null then
+    return;   -- private/casual game: no rating or win/loss change
+  end if;
+
   if p_winner_color = 'blue' then
     winner_id := m.blue_id; loser_id := m.red_id;
     winner_elo := m.blue_elo; loser_elo := m.red_elo;
@@ -239,10 +252,6 @@ begin
   update public.profiles
     set elo = round(loser_elo + k * (0 - (1 - expected))), losses = losses + 1
     where id = loser_id;
-
-  update public.matches
-    set status = 'finished', winner_color = p_winner_color, finished_at = now()
-    where id = p_match_id;
 end;
 $$;
 
@@ -262,6 +271,7 @@ declare
   winner_id uuid; loser_id uuid;
   winner_elo integer; loser_elo integer;
   new_id uuid;
+  new_code text := null;
 begin
   select * into m from public.matches where id = p_prev_match_id;
   if m.id is null then return null; end if;
@@ -276,9 +286,14 @@ begin
   select elo into winner_elo from public.profiles where id = winner_id;
   select elo into loser_elo from public.profiles where id = loser_id;
 
+  -- A rematch of a PRIVATE game must STAY private (non-ranked). Mark it with a unique, non-joinable
+  -- invite_code derived from the source id so finish_match skips ELO for it too — otherwise two
+  -- friends could rematch out of a private game into a ranked one and farm rating.
+  if m.invite_code is not null then new_code := 'pv:' || p_prev_match_id::text; end if;
+
   begin
-    insert into public.matches (blue_id, red_id, blue_elo, red_elo, rematch_of)
-    values (loser_id, winner_id, loser_elo, winner_elo, p_prev_match_id)
+    insert into public.matches (blue_id, red_id, blue_elo, red_elo, rematch_of, invite_code)
+    values (loser_id, winner_id, loser_elo, winner_elo, p_prev_match_id, new_code)
     returning id into new_id;
   exception when unique_violation then
     select id into new_id from public.matches where rematch_of = p_prev_match_id;
