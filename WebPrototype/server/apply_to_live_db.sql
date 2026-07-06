@@ -362,11 +362,20 @@ begin
 
   if p_winner_color = 'blue' then
     winner_id := m.blue_id; loser_id := m.red_id;
-    winner_elo := m.blue_elo; loser_elo := m.red_elo;
   else
     winner_id := m.red_id; loser_id := m.blue_id;
-    winner_elo := m.red_elo; loser_elo := m.blue_elo;
   end if;
+
+  -- Rate off each player's CURRENT profile ELO, not the snapshot taken when the match was created
+  -- (m.blue_elo / m.red_elo). That snapshot is only a display/history record. A player routinely
+  -- finishes several games between when a given match is queued and when it actually ends (rematch
+  -- chains, overlapping tabs, spectator-triggered finishes), and rating off the stale snapshot means
+  -- results don't compound: a later-finishing match writes `snapshot + one_win` and silently
+  -- overwrites everything earned in between. That's why standings drifted out of line with win/loss
+  -- records (a 4-1 player stuck at ~1212, a 5-4 sitting at 1244). Reading live ELO makes each result
+  -- build on the last, exactly as rematch() already does.
+  select elo into winner_elo from public.profiles where id = winner_id;
+  select elo into loser_elo from public.profiles where id = loser_id;
 
   expected := 1.0 / (1.0 + power(10, (loser_elo - winner_elo) / 400.0));
 
@@ -422,3 +431,60 @@ begin
 end;
 $$;
 grant execute on function public.rematch(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------------------
+-- 8. One-time repair of existing standings.
+--    The ratings already in `profiles` were produced by the old snapshot-based finish_match
+--    (section 7 above), so they don't agree with players' win/loss records. This wipes every
+--    rating back to the 1200 baseline and replays every finished PUBLIC match in the order it
+--    finished, applying the exact same K=24 formula finish_match now uses -- producing a clean,
+--    self-consistent ladder that matches the games actually played. Private (invite_code) games
+--    are skipped, same as live play. Safe to re-run: it always rebuilds from scratch, so running
+--    it twice gives the same result. After deploying section 7, run this ONCE:
+--        select public.recompute_all_elo();
+-- ---------------------------------------------------------------------------------------
+create or replace function public.recompute_all_elo()
+returns void
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  r record;
+  winner_id uuid; loser_id uuid;
+  winner_elo integer; loser_elo integer;
+  expected numeric;
+  k constant integer := 24;
+begin
+  update public.profiles set elo = 1200, wins = 0, losses = 0;
+
+  for r in
+    select blue_id, red_id, winner_color
+    from public.matches
+    where status = 'finished'
+      and winner_color is not null
+      and invite_code is null            -- ranked games only, same as finish_match
+    order by finished_at asc nulls last, created_at asc
+  loop
+    if r.winner_color = 'blue' then
+      winner_id := r.blue_id; loser_id := r.red_id;
+    else
+      winner_id := r.red_id; loser_id := r.blue_id;
+    end if;
+    if winner_id is null or loser_id is null then continue; end if;
+
+    select elo into winner_elo from public.profiles where id = winner_id;
+    select elo into loser_elo from public.profiles where id = loser_id;
+    if winner_elo is null or loser_elo is null then continue; end if;  -- profile deleted since
+
+    expected := 1.0 / (1.0 + power(10, (loser_elo - winner_elo) / 400.0));
+
+    update public.profiles
+      set elo = round(winner_elo + k * (1 - expected)), wins = wins + 1
+      where id = winner_id;
+    update public.profiles
+      set elo = round(loser_elo + k * (0 - (1 - expected))), losses = losses + 1
+      where id = loser_id;
+  end loop;
+end;
+$$;
+-- Not granted to `authenticated`: this is an admin maintenance call, run from the SQL editor only.

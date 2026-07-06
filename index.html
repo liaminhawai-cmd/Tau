@@ -141,7 +141,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 39</div>
+<div id="buildTag">build 40</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -4190,6 +4190,17 @@ async function setSession(session) {
     document.getElementById('acctName').textContent = error ? (sbUser.email || 'Guest') : data.username;
     document.getElementById('acctElo').textContent = error ? '?' : data.elo;
     if (sbUser.is_anonymous) {
+        // Upgrade a brand-new guest's raw Player_xxxx handle to a friendly one (BigJumpingFish) so
+        // the leaderboard and their opponent see a real name. Only touch the default handle, and
+        // await it before the pendingOnlineAction resume below so matchmaking queues with the new
+        // name. A guest who already renamed keeps their choice.
+        if (!error && data && /^Player_[0-9a-fA-F]{4,}$/.test(data.username)) {
+            const fun = await assignGuestName(data.username);
+            if (fun !== data.username) {
+                data.username = fun;
+                const nameEl = document.getElementById('acctName'); if (nameEl) nameEl.textContent = fun;
+            }
+        }
         // A guest is signed in at the auth layer (real auth.uid(), real profile/ELO row) but
         // still sees the sign-up form here, not "Signed in as .../Sign out" -- opening this
         // panel for a guest is always about upgrading THIS identity to a real one.
@@ -4381,6 +4392,63 @@ function usernameHasBannedWord(name) {
         .replace(/5/g,'s').replace(/7/g,'t').replace(/8/g,'b').replace(/9/g,'g');
     return USERNAME_BLOCKLIST.some(w => n.includes(w));
 }
+
+// ---------- Guest handles: cheerful "AdjVerbingAnimal" names instead of Player_xxxx ----------
+// A brand-new guest gets a friendly, memorable handle like BigJumpingFish or SadSingingWalrus
+// rather than the raw Player_<hex> the signup trigger assigns. Three word banks (64 x 48 x 64 ≈
+// 196k combinations) keep collisions rare; on the rare clash we just append a number and retry.
+// Signed-in (Google/magic-link) users are untouched — they still choose their own name.
+const GUEST_ADJ = ['Big','Small','Happy','Sad','Angry','Sleepy','Brave','Shy','Sneaky','Grumpy',
+    'Jolly','Fuzzy','Wobbly','Speedy','Lazy','Clever','Cosmic','Electric','Golden','Silent',
+    'Loud','Tiny','Giant','Mighty','Gentle','Fierce','Curious','Dizzy','Frosty','Sunny',
+    'Stormy','Wild','Calm','Bouncy','Cheeky','Dapper','Feral','Glowing','Humble','Icy',
+    'Jazzy','Keen','Lucky','Mellow','Noble','Plucky','Quiet','Rowdy','Spry','Turbo',
+    'Velvet','Witty','Zesty','Amber','Bold','Cozy','Daring','Eager','Fancy','Groovy',
+    'Hasty','Merry','Nimble','Radiant'];
+const GUEST_VERB = ['Jumping','Singing','Dancing','Running','Sleeping','Laughing','Sneaking','Diving',
+    'Flying','Spinning','Rolling','Hopping','Skating','Surfing','Climbing','Gliding','Bouncing',
+    'Wandering','Prowling','Galloping','Marching','Strutting','Waddling','Twirling','Whistling',
+    'Munching','Dreaming','Plotting','Juggling','Snoozing','Wiggling','Zooming','Yodeling','Vaulting',
+    'Trotting','Skipping','Roaming','Pouncing','Nodding','Meandering','Lurking','Kicking','Humming',
+    'Grinning','Floating','Drifting','Cruising','Charging'];
+const GUEST_ANIMAL = ['Fish','Walrus','Otter','Panda','Tiger','Falcon','Badger','Moose','Gecko','Llama',
+    'Narwhal','Ocelot','Penguin','Quokka','Raccoon','Sloth','Toucan','Urchin','Vulture','Wombat',
+    'Yak','Zebra','Beaver','Cheetah','Dolphin','Eagle','Ferret','Giraffe','Hedgehog','Iguana',
+    'Jaguar','Koala','Lemur','Meerkat','Newt','Octopus','Puffin','Rabbit','Salmon','Turtle',
+    'Weasel','Bison','Camel','Dingo','Heron','Lobster','Manatee','Numbat','Osprey','Pelican',
+    'Reindeer','Seagull','Tapir','Beetle','Cobra','Donkey','Ermine','Flamingo','Gopher','Hamster',
+    'Kestrel','Lynx','Mongoose','Platypus'];
+const pickRand = a => a[Math.floor(Math.random() * a.length)];
+let guestNamed = false;   // guard: only assign a fun handle once per page load
+// Build a clean handle. Stripping separators can make two innocent words abut into a banned run,
+// so run the same profanity check chosen names get (plus the DB trigger's extra 'kike'/'spic'); on
+// a hit, reroll. Returns null if nothing clean turned up (keep the Player_xxxx fallback).
+function makeGuestName() {
+    for (let i = 0; i < 24; i++) {
+        const n = pickRand(GUEST_ADJ) + pickRand(GUEST_VERB) + pickRand(GUEST_ANIMAL);
+        if (n.length <= 36 && !usernameHasBannedWord(n) && !/kike|spic/.test(n.toLowerCase())) return n;
+    }
+    return null;
+}
+async function assignGuestName(currentName) {
+    if (guestNamed || !sb || !sbUser) return currentName;
+    guestNamed = true;
+    const base = makeGuestName();
+    if (!base) return currentName;
+    // Let the DB's unique constraint arbitrate collisions rather than a pre-check (race-free): try
+    // the clean name, and if it's taken, append a small number and retry. Any non-collision error
+    // (or network failure) just leaves the guest on their Player_xxxx handle — no worse than before.
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const candidate = attempt === 0 ? base : (base + (Math.floor(Math.random() * 900) + 10)).slice(0, 40);
+        try {
+            const { error } = await sb.from('profiles').update({ username: candidate }).eq('id', sbUser.id);
+            if (!error) return candidate;
+            if (!/duplicate|unique/i.test(error.message || '')) return currentName;
+        } catch (e) { return currentName; }
+    }
+    return currentName;
+}
+
 function openRenamePrompt(prefill, isAuto) {
     if (!sb || !sbUser) return;
     const body = `<div class="row">

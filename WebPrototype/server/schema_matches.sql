@@ -238,11 +238,18 @@ begin
 
   if p_winner_color = 'blue' then
     winner_id := m.blue_id; loser_id := m.red_id;
-    winner_elo := m.blue_elo; loser_elo := m.red_elo;
   else
     winner_id := m.red_id; loser_id := m.blue_id;
-    winner_elo := m.red_elo; loser_elo := m.blue_elo;
   end if;
+
+  -- Rate off each player's CURRENT profile ELO, not the snapshot stored on the match at creation
+  -- (m.blue_elo / m.red_elo) -- that snapshot is only a display/history record. A player often
+  -- finishes several games between when a match is queued and when it ends (rematch chains,
+  -- overlapping tabs), so rating off the stale snapshot doesn't compound: a later-finishing match
+  -- overwrites the ratings earned in between, drifting standings out of line with win/loss records.
+  -- Live ELO makes each result build on the last, exactly as rematch() already reads it.
+  select elo into winner_elo from public.profiles where id = winner_id;
+  select elo into loser_elo from public.profiles where id = loser_id;
 
   expected := 1.0 / (1.0 + power(10, (loser_elo - winner_elo) / 400.0));
 
