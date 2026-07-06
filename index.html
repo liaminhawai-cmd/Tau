@@ -143,7 +143,7 @@
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
-<div id="buildTag">build 36</div>
+<div id="buildTag">build 37</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -4479,8 +4479,8 @@ async function enterOnlineMatch(row) {
 function exitOnlineMatch() {
     if (moveChannel) { sb.removeChannel(moveChannel); moveChannel = null; }
     clearInterval(onlineMovePoll); onlineMovePoll = null;
-    if (onlineMatch) setPresenceStatus('idle');
     onlineMatch = null;
+    setPresenceStatus(presenceStatusNow());   // after nulling onlineMatch, so it always says 'idle'
     onlineTurnDeadline = null;
     document.getElementById('turnTimer').style.display = 'none';   // animate() stops drawing it once onlineMatch is null, so hide it explicitly rather than leaving the last frame on screen
     pendingKeyframes = []; lastKeyframeT = 0;
@@ -4818,15 +4818,26 @@ async function joinPrivateMatchWithCode(rawCode) {
 }
 
 // ---------- Presence: who's on right now ----------
-// A single Realtime presence channel; every open tab tracks {s:'idle'|'match'} under a random key.
-// The menu line shows "N playing now - M in matches" from the synced state. No schema needed.
+// A single Realtime presence channel; every open tab tracks {s:'idle'|'match'|'watch'} under a
+// random key. The menu line shows "N playing now - M in matches" from the synced state.
 let presenceChannel = null;
+// The status this tab SHOULD be advertising right now, derived from live state rather than pushed
+// only at transition points: 'match' = playing an online game, 'watch' = spectating, 'idle' = menu.
+// Deriving matters on phones: backgrounding suspends the websocket, and a status pushed while the
+// channel was dead is silently lost -- so everything below re-asserts this value (on reconnect, on
+// returning to the foreground, and on a slow heartbeat) instead of trusting that the transition-time
+// push got through. That's what un-sticks "still shows 2 in matches after everyone left to the menu".
+function presenceStatusNow() {
+    return onlineMatch ? (onlineMatch.spectator ? 'watch' : 'match') : 'idle';
+}
 function joinPresence() {
     if (!sb || presenceChannel) return;
     presenceChannel = sb.channel('presence-lobby', { config: { presence: { key: 'p-' + Math.random().toString(36).slice(2,10) } } });
     presenceChannel
         .on('presence', { event: 'sync' }, updatePresenceCounts)
-        .subscribe(status => { if (status === 'SUBSCRIBED') { try { presenceChannel.track({ s: onlineMatch ? 'match' : 'idle' }); } catch(e){} } });
+        .subscribe(status => { if (status === 'SUBSCRIBED') setPresenceStatus(presenceStatusNow()); });
+    setInterval(() => setPresenceStatus(presenceStatusNow()), 25000);   // self-heal: overwrite any stale advertised state
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) setPresenceStatus(presenceStatusNow()); });
 }
 function setPresenceStatus(st) { if (presenceChannel) { try { presenceChannel.track({ s: st }); } catch(e){} } }
 function updatePresenceCounts() {
@@ -4835,7 +4846,10 @@ function updatePresenceCounts() {
     const state = presenceChannel.presenceState();
     const keys = Object.keys(state);
     let inMatch = 0;
-    for (const k of keys) if (state[k].some(m => m.s === 'match')) inMatch++;
+    // A key can briefly carry two metas after a reconnect (the dead connection's entry lingers until
+    // the server times it out) -- trust the NEWEST meta, not "any meta says match". Spectators
+    // ('watch') count toward "playing now" but not "in matches".
+    for (const k of keys) { const metas = state[k]; if (metas.length && metas[metas.length-1].s === 'match') inMatch++; }
     el.textContent = keys.length < 2 ? '' : keys.length + ' playing now' + (inMatch ? ' \u00b7 ' + inMatch + ' in matches' : '');
 }
 
@@ -4899,6 +4913,7 @@ async function spectateMatch(row, names) {
                     opponentName: '', nextMoveIndex: 0, _replayingIndex: -1,
                     movesMade: { blue: 0, red: 0 }, passStreak: { blue: 0, red: 0 } };
     vsAI = false;
+    setPresenceStatus(presenceStatusNow());   // advertise 'watch' — counts as online, not "in a match"
     camCenterFrac = 1; camManualSet = false;
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
