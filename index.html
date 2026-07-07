@@ -170,7 +170,8 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 59</div>
+<div id="buildTag">build 60</div>
+<div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -4338,6 +4339,28 @@ function render() {
                     ? t('Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.')
                     : t('Swinging… release to end your turn.')));
     }
+    if (DEBUG_CROSS) updateDebugHud();
+}
+// Crossing-rule debug read-out (add #debug to the URL, or run localStorage.tauDebug='1'). Shows, per
+// foot of the moving piece: the lines it STARTED the turn on (the grace source), whether its PAD /
+// MAGNET is on a line right now, and whether its one-per-turn grace has been spent. When a swing
+// crosses two lines, this reveals exactly which foot got a free pass and from what — screenshot it
+// during the double-cross and it's unambiguous whether the park was legitimate.
+let DEBUG_CROSS = false;
+try { DEBUG_CROSS = /(?:^|[#&])debug\b/.test(location.hash) || localStorage.getItem('tauDebug') === '1'; } catch (e) {}
+function updateDebugHud() {
+    const el = document.getElementById('dbgHud'); if (!el) return;
+    if (!G || G.over || (typeof replayActive!=='undefined' && replayActive) || document.getElementById('game').style.display!=='flex') { el.style.display='none'; return; }
+    const c = G.active, feet = G.pieces[c].feet();
+    const rows = feet.map((f,i) => {
+        const pad = nearLineIds(f, CFG.touchEps).join('') || '-';
+        const mag = nearLineIds(f, CFG.holdEps).join('') || '-';
+        const start = ((G.startedOnLine && G.startedOnLine[i]) || []).join('') || '-';
+        const grace = (G.usedGrace && G.usedGrace[i]) ? 'USED' : '·';
+        return `f${i}${i===G.pinned?'*':' '} start:${start.padEnd(4)} pad:${pad.padEnd(4)} mag:${mag.padEnd(4)} grace:${grace}`;
+    });
+    el.textContent = `${c===0?'BLUE':'RED'}  cross ${G.crossings}/${CFG.maxCrossingsPerTurn}  inCross:${G.inCrossing?'Y':'n'}  net:${(G.netRad*180/Math.PI).toFixed(0)}deg\n` + rows.join('\n');
+    el.style.display = 'block';
 }
 
 // ---------- 3D side view (three.js) ----------
