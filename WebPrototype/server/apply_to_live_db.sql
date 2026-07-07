@@ -506,25 +506,29 @@ $$;
 -- Not granted to `authenticated`: this is an admin maintenance call, run from the SQL editor only.
 
 -- ---------------------------------------------------------------------------------------
--- 9. Steel-edition waitlist: public email capture ("get notified when the steel edition
---    drops"). Anyone — including signed-out visitors — may INSERT; nobody can read, change
---    or delete rows through the API (no select/update/delete policies), so the list is only
---    visible from this SQL editor / the service role. Duplicate emails are rejected by the
---    unique index; the client treats that as "already on the list". Safe to re-run.
+-- 9. Physical-game waitlist: public email capture ("Tau is a real tabletop game too").
+--    Anyone — including signed-out visitors — may INSERT; nobody can read, change or delete
+--    rows through the API (no select/update/delete policies), so the list is only visible from
+--    this SQL editor / the service role. Duplicate emails are rejected by the unique index; the
+--    client treats that as "already on the list". `interest` records which they want to hear
+--    about: 'diy' (free print-and-play files), 'kit' (the full shipped set), or 'both'. Safe to
+--    re-run — the ALTER adds the column to a table created before this revision.
 --
 --    To EXPORT the list later: run
---        select email, lang, created_at from public.waitlist order by created_at;
+--        select email, interest, lang, created_at from public.waitlist order by created_at;
 --    in the SQL editor and use its "Download CSV" button.
 -- ---------------------------------------------------------------------------------------
 create table if not exists public.waitlist (
   id uuid primary key default gen_random_uuid(),
   email text not null,
   lang text,                       -- UI language at signup: rough locale split for launch emails
+  interest text,                   -- 'diy' | 'kit' | 'both' — what they asked to hear about
   source text not null default 'web',
   created_at timestamptz not null default now(),
   constraint waitlist_email_format
     check (email ~* '^[^@\s]+@[^@\s]+\.[^@\s]+$' and length(email) <= 254)
 );
+alter table public.waitlist add column if not exists interest text;   -- for tables predating this revision
 create unique index if not exists waitlist_email_uniq on public.waitlist (lower(email));
 
 alter table public.waitlist enable row level security;
