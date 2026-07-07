@@ -178,7 +178,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 69</div>
+<div id="buildTag">build 70</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
@@ -4781,6 +4781,15 @@ function fallLetGo(t) {
     fallLever.set(t.position.x-fall.px, t.position.y, t.position.z-fall.pz);
     fallLever.cross(fallAxisV2).multiplyScalar(-fall.omega);
     fall.vx += fallLever.x; fall.vy = fallLever.y; fall.vz += fallLever.z;
+    // The pivot swings the hub DOWN about the rim like a pendulum, so past ~90° its orbital velocity
+    // points back INBOARD — handing that to free fall flung the just-tipped piece back across (and
+    // under) the board instead of dropping it off the edge ("curling under the board"). Remove only
+    // the inboard part of the horizontal exit velocity: the piece keeps its downward drop, any
+    // genuine outward drift, and its spin, so it falls away off the rim as it tumbles.
+    const ol = Math.hypot(fall.px, fall.pz) || 1;   // contact point direction = the outward radial
+    const ux = fall.px/ol, uz = fall.pz/ol;
+    const radial = fall.vx*ux + fall.vz*uz;
+    if (radial < 0) { fall.vx -= radial*ux; fall.vz -= radial*uz; }
     fall.tipRate = fall.omega;
     fall.phase = 'free';
 }
