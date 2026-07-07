@@ -187,3 +187,61 @@ open(os.path.join(outdir, 'tau_insert_tray.svg'), 'w').write(tray_svg())
 d = box_dims()
 print('box dims:', {k: round(v, 1) for k, v in d.items()})
 print('files written to', outdir)
+
+# ======================================================================================
+# FLAT-PACK MODE (segmented lean rim, tau_cad.py): the rim ships as flat segments stacked
+# on the steel disk, pieces alongside — a rectangular telescoping tray instead of the round
+# hatbox. Far lower dimensional weight; the likely shipped format for the 400 SKU.
+# Dims derive from the same master variable (disk Ø) + the lean-rim spec in tau_cad.py.
+def flatpack_dims(disk_d, n_seg):
+    s = disk_d / 266.7
+    rim_outer = disk_d + 2*(0.35*s + 8.0*s)          # tau_cad: disk_clear + wall_thick
+    rim_h     = (3.0*s + 2.0) + 2.0*s                # ledge + steel + lip
+    dovetail  = 4.0*s
+    seg_w = rim_outer + dovetail                      # widest segment span (half: full Ø; quarter: ~0.75Ø but bound by disk anyway)
+    piece_h = 54.0
+    stack   = 2.0 + (rim_h * (2 if n_seg == 2 else 4))   # disk + segments piled flat
+    inner_w = max(disk_d, seg_w) + 5.0
+    inner_l = disk_d + 5.0
+    depth   = max(stack + 3.0 + piece_h, stack + 20) + 6.0   # tray floor + pieces + top pad
+    return dict(inner_w=round(inner_w,1), inner_l=round(inner_l,1), depth=round(depth,1),
+                lid_depth=round(depth*0.42), rim_h=round(rim_h,1), stack=round(stack,1))
+
+def rect_tray(x, y, W, L, D, tag):
+    """Cross-layout tray dieline: centre panel W x L, four walls D, corner glue tabs."""
+    b  = text(x, y-6, tag, NOTE)
+    # fold rectangle (centre panel)
+    b += f'<rect x="{x+D}" y="{y+D}" width="{W}" height="{L}" style="{FOLD}"/>'
+    # outer cut boundary (cross with tabs on the W-walls)
+    t = min(18, D*0.8)
+    p = [
+        (x+D, y), (x+D+W, y),                                     # top wall top edge
+        (x+D+W, y+D), (x+D+W+t, y+D), (x+D+W+t, y+D+L), (x+D+W, y+D+L),   # right wall + tabs
+        (x+D+W, y+2*D+L), (x+D, y+2*D+L),                         # bottom wall
+        (x+D, y+D+L), (x+D-t, y+D+L), (x+D-t, y+D), (x+D, y+D),   # left wall + tabs
+    ]
+    pts = ' '.join(f'{px:.1f},{py:.1f}' for px, py in p)
+    b += f'<polygon points="{pts}" style="{CUT}"/>'
+    # wall fold lines
+    for (x1,y1,x2,y2) in [(x+D,y+D,x+D+W,y+D),(x+D,y+D+L,x+D+W,y+D+L),
+                          (x+D,y+D,x+D,y+D+L),(x+D+W,y+D,x+D+W,y+D+L)]:
+        b += f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" style="{FOLD}"/>'
+    return b
+
+def flatpack_svg(disk_d, n_seg, label):
+    d = flatpack_dims(disk_d, n_seg)
+    W, L, D, LD = d['inner_w'], d['inner_l'], d['depth'], d['lid_depth']
+    W2, L2 = W + 2*GREYBOARD + 2*0.6, L + 2*GREYBOARD + 2*0.6
+    total_w = max(W, W2) + 2*max(D, LD) + 40
+    total_h = (L + 2*D) + (L2 + 2*LD) + 90
+    b  = text(15, 14, f'TAU — FLAT-PACK box ({label}): rectangular telescoping tray, 1 unit = 1 mm', TITLE)
+    b += text(15, 27, f'Inner {W} x {L} x {D} deep. Packing: steel disk flat -> {n_seg} rim segments stacked ({d["stack"]} mm) -> insert tray -> pieces -> pad.', NOTE)
+    b += rect_tray(20, 46, W, L, D, f'BASE tray  {W} x {L} x {D}')
+    b += rect_tray(20, 46 + L + 2*D + 34, W2, L2, LD, f'LID  {W2} x {L2} x {LD} (telescopes over base)')
+    return svg_doc(math.ceil(total_w), math.ceil(total_h), b, f'Tau flat-pack box {label}')
+
+if __name__ == '__main__' or True:
+    for disk_d, n_seg, label in [(266.7, 2, '267'), (400.0, 4, '400')]:
+        fn = os.path.join(outdir, f'tau_box_flatpack_{label}.svg')
+        open(fn, 'w').write(flatpack_svg(disk_d, n_seg, label))
+        print('flat-pack:', fn, flatpack_dims(disk_d, n_seg))
