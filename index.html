@@ -157,7 +157,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 50</div>
+<div id="buildTag">build 51</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -2452,7 +2452,13 @@ let pivotGlowMesh=null, boardTop=null, boardRim=null, camProbe=null;   // pivot 
 // everywhere the board is drawn (2D game, demo, how-to, and the 3D texture). Keys match the colour
 // sandbox dump so a dumped JSON pastes straight in.
 let SKIN = null, colorLab = false, colorLabTimer = null;
-function pieceHex(id){ return SKIN ? (id===0 ? SKIN.pb : SKIN.pr) : (id===0 ? '#6b9eff' : '#ff6b6b'); }
+// The digital LIGHT theme is the "Slate" colourway (graphite graded board + steel pieces); DARK is
+// the original flat dark board. So the active board skin is: an explicit override (colour lab) if
+// set, else Slate in light mode, else null (= the default flat dark look).
+const SLATE_SKIN = { shadeByZoneValue:true, v4:'#5a636c', v3:'#4b535b', v2:'#3c434a', v1:'#2f353b',
+    flat:'#454d55', lines:'#12161a', rim:'#8f979e', bg:'#0c0e11', pb:'#5487c4', pr:'#d05a48' };
+function activeSkin(){ return SKIN || (currentTheme === 'light' ? SLATE_SKIN : null); }
+function pieceHex(id){ const sk = activeSkin(); return sk ? (id===0 ? sk.pb : sk.pr) : (id===0 ? '#6b9eff' : '#ff6b6b'); }
 function hexA(h, a){ const n=parseInt(h.slice(1),16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; }
 // Fill the board disc for any top-down view (2D game, demo, how-to, 3D texture) at centre (ox,oy)
 // with board-units->px scale sc. Default: one flat disc (exactly as before). With a zone-shaded
@@ -2460,21 +2466,22 @@ function hexA(h, a){ const n=parseInt(h.slice(1),16); return `rgba(${(n>>16)&255
 // the disc AND the lens circle) — reproducing the crossings-to-centre grading. Lens centres sit on
 // y=0, so the caller's y-axis direction is irrelevant here.
 function fillBoardDisc(ctx, ox, oy, sc){
+    const sk = activeSkin();
     const disc = r => { ctx.beginPath(); ctx.arc(ox, oy, r*sc, 0, 7); };
-    if (!SKIN || !SKIN.shadeByZoneValue){
-        ctx.fillStyle = SKIN ? SKIN.flat : (currentTheme==='dark' ? '#171c22' : '#efe4a6');
+    if (!sk || !sk.shadeByZoneValue){
+        ctx.fillStyle = sk ? sk.flat : '#171c22';   // no skin = the dark theme's flat disc
         disc(CFG.edgeU); ctx.fill(); return;
     }
-    ctx.fillStyle=SKIN.v2; disc(CFG.edgeU);    ctx.fill();
-    ctx.fillStyle=SKIN.v3; disc(CFG.rings[1]); ctx.fill();
-    ctx.fillStyle=SKIN.v4; disc(CFG.rings[0]); ctx.fill();
+    ctx.fillStyle=sk.v2; disc(CFG.edgeU);    ctx.fill();
+    ctx.fillStyle=sk.v3; disc(CFG.rings[1]); ctx.fill();
+    ctx.fillStyle=sk.v4; disc(CFG.rings[0]); ctx.fill();
     for (const a of CFG.sideArcs){
         ctx.save();
         disc(CFG.edgeU); ctx.clip();
         ctx.beginPath(); ctx.arc(ox + a.cx*sc, oy + a.cy*sc, a.r*sc, 0, 7); ctx.clip();
-        ctx.fillStyle=SKIN.v1; disc(CFG.edgeU);    ctx.fill();
-        ctx.fillStyle=SKIN.v2; disc(CFG.rings[1]); ctx.fill();
-        ctx.fillStyle=SKIN.v3; disc(CFG.rings[0]); ctx.fill();
+        ctx.fillStyle=sk.v1; disc(CFG.edgeU);    ctx.fill();
+        ctx.fillStyle=sk.v2; disc(CFG.rings[1]); ctx.fill();
+        ctx.fillStyle=sk.v3; disc(CFG.rings[0]); ctx.fill();
         ctx.restore();
     }
 }
@@ -2489,12 +2496,12 @@ try {
 // One palette for every flat board drawing (2D game canvas, landing demo, how-to-play slides)
 // so the 2D and 3D boards always match: light = pale physical board, dark = sleek dark board.
 function boardColors() {
-    // bg (the surround) stays dark in both themes, matching the 3D scene where the board disc
-    // floats on a dark backdrop — only the disc/lines change with the theme.
-    if (SKIN) return { bg:SKIN.bg, disc:SKIN.flat, line:SKIN.lines, dotBlue:hexA(SKIN.pb,0.6), dotRed:hexA(SKIN.pr,0.6) };
-    return currentTheme === 'dark'
-        ? { bg:'#0c0e11', disc:'#171c22', line:'#414b56', dotBlue:'rgba(107,158,255,0.6)', dotRed:'rgba(255,107,107,0.6)' }
-        : { bg:'#0c0e11', disc:'#efe4a6', line:'#26251f', dotBlue:'rgba(74,111,212,0.85)', dotRed:'rgba(192,57,43,0.85)' };
+    // bg (the surround) stays dark in every look, matching the 3D scene where the board disc floats
+    // on a dark backdrop — only the disc/lines/pieces change. Light theme runs through the Slate
+    // skin (activeSkin); dark theme is the flat dark board below.
+    const sk = activeSkin();
+    if (sk) return { bg:sk.bg, disc:sk.flat, line:sk.lines, dotBlue:hexA(sk.pb,0.6), dotRed:hexA(sk.pr,0.6) };
+    return { bg:'#0c0e11', disc:'#171c22', line:'#414b56', dotBlue:'rgba(107,158,255,0.6)', dotRed:'rgba(255,107,107,0.6)' };
 }
 let clock=null, fall={active:false};                                  // loss-animation state
 // ---------- Replay recorder ----------
@@ -3605,12 +3612,21 @@ function openHowToPlay() {
 }
 document.getElementById('howToPlayBtn').addEventListener('click', openHowToPlay);
 // ---------- Settings: board theme (dark/light) ----------
+// Apply the CURRENT look (active skin = colour-lab override, else Slate in light mode, else the flat
+// dark default) to every 3D material and the 2D piece colours. Rebuilds the board texture (disposing
+// the old one), and recolours the rim, both piece materials, the scene backdrop and the 2D pieces.
 function applyTheme() {
-    if (!boardTop) return;   // 3D not built (THREE failed to load) — nothing to retexture
-    const tex = boardTexture(currentTheme === 'dark');
-    const old = boardTop.material.map;
-    boardTop.material.map = tex; boardTop.material.needsUpdate = true;
-    if (old) old.dispose();
+    const sk = activeSkin();
+    if (boardTop) {
+        const tex = boardTexture(currentTheme === 'dark');
+        const old = boardTop.material.map;
+        boardTop.material.map = tex; boardTop.material.needsUpdate = true;
+        if (old) old.dispose();
+    }
+    if (boardRim) boardRim.material.color.set(sk ? sk.rim : 0x8b9199);
+    if (tripods && tripods.length === 2){ tripods[0].userData.mat.color.set(pieceHex(0)); tripods[1].userData.mat.color.set(pieceHex(1)); }
+    if (scene) scene.background = new THREE.Color(sk ? sk.bg : 0x0c0e11);
+    if (G && G.pieces){ G.pieces[0].color = pieceHex(0); G.pieces[1].color = pieceHex(1); }
 }
 function setTheme(t) {
     currentTheme = t;
@@ -4112,10 +4128,11 @@ function boardTexture(dark) {
     // coordinates) in the 3D view.
     const c=cv.getContext('2d'), sc=S/(2*CFG.edgeU), O=S/2;
     const b=(mx,my)=>({x:O+mx*sc, y:O+my*sc});
-    const lineCol  = SKIN ? SKIN.lines : (dark ? '#414b56' : '#26251f');
-    const dotBlue  = SKIN ? SKIN.pb : (dark ? '#6b9eff' : '#4a6fd4');
-    const dotRed   = SKIN ? SKIN.pr : (dark ? '#ff6b6b' : '#c0392b');
-    fillBoardDisc(c, O, O, sc);   // board — no edge line
+    const sk = activeSkin();
+    const lineCol  = sk ? sk.lines : '#414b56';
+    const dotBlue  = sk ? sk.pb : '#6b9eff';
+    const dotRed   = sk ? sk.pr : '#ff6b6b';
+    fillBoardDisc(c, O, O, sc);   // board — no edge line (fillBoardDisc reads the active skin itself)
     c.strokeStyle=lineCol; c.lineWidth=Math.max(2, CFG.edgeU*CFG.lineWidthFrac*sc);
     for (const r of CFG.rings){ c.beginPath(); c.arc(O,O,r*sc,0,7); c.stroke(); }
     for (const a of CFG.sideArcs){ c.beginPath(); const seg=90;
@@ -4623,6 +4640,7 @@ if (window.visualViewport) window.visualViewport.addEventListener('resize', () =
 
 init3D();
 reset();
+applyTheme();   // first load may be light (Slate) from the device preference — sync pieces/rim/bg to it
 resize();
 animate();
 demoStart();
@@ -4680,14 +4698,7 @@ const COLORLAB_PRESETS = {
   'Digital dark (live)':{ shadeByZoneValue:false, v4:'#22262b', v3:'#22262b', v2:'#22262b', v1:'#22262b', flat:'#171c22', lines:'#414b56', rim:'#8b9199', bg:'#0c0e11', pb:'#6b9eff', pr:'#ff6b6b' },
 };
 const COLORLAB_KEYS = ['v4','v3','v2','v1','flat','lines','rim','bg','pb','pr'];
-function applySkin(){
-    if (boardTop){ boardTop.material.map = boardTexture(currentTheme==='dark'); boardTop.material.map.needsUpdate = true; boardTop.material.needsUpdate = true; }
-    if (boardRim && SKIN) boardRim.material.color.set(SKIN.rim);
-    if (tripods && tripods.length===2){ tripods[0].userData.mat.color.set(pieceHex(0)); tripods[1].userData.mat.color.set(pieceHex(1)); }
-    if (scene && SKIN) scene.background = new THREE.Color(SKIN.bg);
-    if (G && G.pieces){ G.pieces[0].color = pieceHex(0); G.pieces[1].color = pieceHex(1); }
-    if (G) render();
-}
+function applySkin(){ applyTheme(); if (G) render(); }   // colour lab: rebuild everything from the active skin
 function colorLabReset(first){
     clearTimeout(colorLabTimer); aiAnim = null; fall.active = false;
     reset(); if (typeof resize === 'function') resize();
