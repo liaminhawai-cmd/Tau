@@ -170,7 +170,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 64</div>
+<div id="buildTag">build 65</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
@@ -2959,14 +2959,20 @@ async function decodeReplay(str) {
 }
 async function shareReplay() {
     if (replayFrames.length < 2) return;
+    let url;
     try {
         const payload = await encodeReplay(replayFrames, G && G.over ? G.winner : null, replayNames || replayPlayerNames(),
             (sbUser && !sbUser.is_anonymous) ? sbUser.id : null, myReplayColor());
-        const url = location.origin + location.pathname + '#r=' + payload;
-        if (navigator.share) { await navigator.share({ title: 'Tau', text: t('Watch this Tau game:'), url }); return; }
-        await navigator.clipboard.writeText(url);
-        showPassToast(t('Replay link copied!'));
-    } catch (e) { if (e && e.name !== 'AbortError') showPassToast(t('Could not create the link.')); }
+        url = location.origin + location.pathname + '#r=' + payload;
+    } catch (e) { showPassToast(t('Could not create the link.')); return; }
+    // Try the native share sheet, but FALL BACK to the clipboard if it rejects — some OS share
+    // sheets choke on the very long URL of a long game, which used to fail silently to the toast.
+    if (navigator.share) {
+        try { await navigator.share({ title: 'Tau', text: t('Watch this Tau game:'), url }); return; }
+        catch (e) { if (e && e.name === 'AbortError') return; }   // user cancelled the sheet: don't also copy
+    }
+    try { await navigator.clipboard.writeText(url); showPassToast(t('Replay link copied!')); }
+    catch (e) { showPassToast(t('Could not create the link.')); }
 }
 // ---------- Saved replays (local collection) ----------
 // "Save replay" keeps finished games in localStorage as the same self-contained payloads share
@@ -2977,7 +2983,8 @@ function loadSavedReplays() {
     try { return JSON.parse(localStorage.getItem(SAVED_REPLAYS_KEY)) || []; } catch(e) { return []; }
 }
 function storeSavedReplays(list) {
-    try { localStorage.setItem(SAVED_REPLAYS_KEY, JSON.stringify(list.slice(0, SAVED_REPLAYS_MAX))); } catch(e) {}
+    try { localStorage.setItem(SAVED_REPLAYS_KEY, JSON.stringify(list.slice(0, SAVED_REPLAYS_MAX))); return true; }
+    catch(e) { return false; }   // quota exceeded (a long game is a big payload) — caller retries
 }
 function replayCollectionTitle() {
     if (onlineMatch && onlineMatch.spectator) return onlineMatch.blueName + ' vs ' + onlineMatch.redName;
@@ -2995,8 +3002,12 @@ async function saveReplayToCollection() {
             (sbUser && !sbUser.is_anonymous) ? sbUser.id : null, myReplayColor());
         const list = loadSavedReplays();
         list.unshift({ t: replayCollectionTitle(), d: Date.now(), p: payload });
-        storeSavedReplays(list);
-        showPassToast(t('Saved to My replays!'));
+        // A long game is a big payload; if localStorage is full, drop the OLDEST saves and retry so
+        // the new one still fits — instead of silently swallowing the quota error and (wrongly)
+        // reporting success, which is what lost a long game before.
+        let ok = storeSavedReplays(list);
+        while (!ok && list.length > 1) { list.pop(); ok = storeSavedReplays(list); }
+        showPassToast(ok ? t('Saved to My replays!') : t('Could not create the link.'));
         // If this replay is a real server match, tick its save_count so it can surface as
         // "Most watched" for everyone. No-ops until the bump_save_count patch is applied.
         const mid = (onlineMatch && onlineMatch.id) || replaySourceMatchId || null;
