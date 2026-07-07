@@ -7,9 +7,13 @@ chat always knows where things stand. Keep it ruthless: delete lines that stop m
 ## Now (blockers & five-minute wins)
 - [✔] **Supabase SQL**: run section **9** (waitlist — now with `interest`) and section **10**
       (save_count / most-watched) from `WebPrototype/server/apply_to_live_db.sql`.
-- [ ] **Fix username sign-up**: Supabase rejects the synthetic `@tau-game.com` emails because the
-      domain has no MX record. Cheapest fix: Cloudflare → tau-game.com → Email → **enable Email
-      Routing** (adds MX records, ~2 clicks, free). Then re-test username+password sign-up.
+- [ ] **Fix username sign-up** (corrected): the code synthesizes `username.tau@example.com`, and
+      `example.com` is a reserved domain many validators reject — likely why signups fail now. Two
+      options: (a) tell me and I'll switch the synthetic domain to `@tau-game.com` for NEW accounts
+      (existing `@example.com` logins keep working) AND you enable Cloudflare Email Routing on
+      tau-game.com so it has MX records; or (b) push people to Google / magic-link instead. NOTE: the
+      `guyincognito@tau-game.com is invalid` error you saw was a *magic-link* attempt to an address on
+      your own domain that can't receive mail — not the username path. Confirm which flow you want.
 - [✔] **Auth settings**: Supabase → Auth → Sign In / Up → turn **"Confirm email" OFF** (username
       accounts can't confirm; magic links still verify by their nature).
 - [ ] **Custom SMTP**: the built-in mailer is capped at **2 emails/hour** — that's the "rate limit
