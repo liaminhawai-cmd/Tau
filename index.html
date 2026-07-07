@@ -178,7 +178,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 71</div>
+<div id="buildTag">build 72</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
@@ -2006,10 +2006,16 @@ function crossingSubstep(before, after, st) {
     // physical board, and dependent on which side of the lens the path grazed, which is why it
     // seemed to work in one turn direction and not the mirror. Same-line re-crossings stay merged.
     if (centreCrossed) {
-        if (!st.inCrossing || !st.epLines) st.epLines = {};
+        if (!st.inCrossing || !st.epLines) { st.epLines = {}; st.epFoot = {}; }
         let hasLine = st.inCrossing && Object.keys(st.epLines).length > 0;
         for (const [i, id] of newCrossings) {
-            if (st.epLines[id]) continue;                                  // same line again: fine
+            // The SAME foot re-crossing the line it already crossed this episode is departure wiggle —
+            // merge it (no new count). A DIFFERENT foot crossing that same line is a genuine SECOND
+            // crossing of it (the reported "two feet cross the same arc at different times"): it must
+            // NOT merge — it falls through to the jump test and is blocked unless it is a true corner
+            // jump. epFoot records which foot owns each open line; foot indices can be 0, so guard on
+            // the epLines boolean, not epFoot's truthiness.
+            if (st.epLines[id] && st.epFoot[id] === i) continue;
             if (hasLine && !jumpsIntersection(after[i], id, st.epLines)) {
                 // #debug HUD: record exactly what was refused and how far off the corner it was
                 if (typeof DEBUG_CROSS !== 'undefined' && DEBUG_CROSS && typeof dbgLog !== 'undefined') {
@@ -2021,11 +2027,12 @@ function crossingSubstep(before, after, st) {
                 }
                 return true;
             }
+            if (!st.epLines[id]) st.epFoot[id] = i;    // first foot to cross this line owns it
             st.epLines[id] = true; hasLine = true;
         }
         st.inCrossing = true;
     }
-    if (st.inCrossing && !pieceHoldingLine(after, st)){ st.crossings++; st.inCrossing = false; st.epLines = null; }   // episode complete -> count it
+    if (st.inCrossing && !pieceHoldingLine(after, st)){ st.crossings++; st.inCrossing = false; st.epLines = null; st.epFoot = null; }   // episode complete -> count it
     for (let i=0;i<3;i++)   // record pad contact after the checks, so approach is caught before mount
         for (const id of nearLineIds(after[i], CFG.touchEps))
             if (!st.touchedLine[i].includes(id)) st.touchedLine[i].push(id);
