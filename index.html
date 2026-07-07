@@ -178,7 +178,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 70</div>
+<div id="buildTag">build 71</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
@@ -2174,7 +2174,8 @@ function reset() {
     G = { pieces:[blue,red], active:0, pinned:null, pivot:null, handle:null, turnDir:0,
           crossings:0, atLimit:false, netRad:0, ptrAngle:null, over:false, winner:null,
           snap:null, startedOnLine:[[],[],[]], usedGrace:[false,false,false], touchedLine:[[],[],[]], inCrossing:false };
-    fall.active=false;
+    fall.active=false; fallenIdx=-1;
+    if (typeof tripods !== 'undefined' && tripods) tripods.forEach(tp => { if (tp) tp.visible = true; });   // un-hide a piece that fell off last game
     replayFrames.length = 0; replayTimes.length = 0; replayActive = false; replayNames = null;   // every fresh board starts a fresh recording
     render();
 }
@@ -2629,6 +2630,11 @@ function boardColors() {
     return { bg:'#0c0e11', disc:'#171c22', line:'#414b56', dotBlue:'rgba(107,158,255,0.6)', dotRed:'rgba(255,107,107,0.6)' };
 }
 let clock=null, fall={active:false};                                  // loss-animation state
+// Which tripod has finished tumbling off the board (-1 = none). Once a piece falls off at game over,
+// its LOGICAL position (G.pieces[i]) still holds its last on-board spot, so the render loop would
+// snap the mesh back onto the board the instant fall.active clears — the piece "reappearing" at the
+// end of a replay. Keep it hidden until a real restart (reset/startReplay) clears this.
+let fallenIdx = -1;
 // ---------- Replay recorder ----------
 // Records the VISIBLE motion of a live game as raw per-frame poses (both pieces' x/y/rot), sampled
 // in animate() only on frames where something actually moved -- so thinking time, turn clocks and
@@ -2717,7 +2723,8 @@ function segmentReplayTurns() {
 function startReplay() {
     if (replayFrames.length < 2 || !G) return;
     hideModal(); clearTimeout(gameOverTimer);
-    fall.active = false;                       // the fallen piece pops back to the board for the re-run
+    fall.active = false; fallenIdx = -1;       // the fallen piece pops back to the board for the re-run
+    if (typeof tripods !== 'undefined' && tripods) tripods.forEach(tp => { if (tp) tp.visible = true; });
     // Post-game: the board still holds the true final position — snapshot it. A shared/link replay
     // has no live final position (the board was reset to boot it), so its final pose is the LAST
     // RECORDED FRAME — snapshotting the board there froze the STARTING pose, and the end-of-replay
@@ -2858,6 +2865,14 @@ function endReplay() {
     document.getElementById('btns').style.display = 'flex';
     if (replayFinalPose) { G.pieces.forEach((p,i)=>{ p.x=replayFinalPose[i].x; p.y=replayFinalPose[i].y; p.rot=replayFinalPose[i].rot; }); }
     render();
+    // Studio embed (studio.html): play the closing tumble, then loop back to the start so the preview
+    // always has motion. No modal, no "watch again" — the parent controls the transport.
+    if (STUDIO_EMBED) {
+        if (G.winner !== null && G.winner !== undefined) triggerFall();
+        clearTimeout(studioLoopTimer);
+        studioLoopTimer = setTimeout(() => { fall.active = false; if (replayFrames.length > 1) startReplay(); }, 2600);
+        return;
+    }
     if (sharedReplay) { endSharedReplay(); return; }
     if (typeof rmxSend === 'function') rmxSend('watch-done');
     triggerFall();                             // re-run the tip-over WITH its loss sound, so the replay ends like the game did
@@ -4624,7 +4639,10 @@ function buildTripod(hex) {
 }
 function init3D() {
     if (typeof THREE==='undefined') return;
-    renderer=new THREE.WebGLRenderer({canvas:document.getElementById('view3d'), antialias:true});
+    // preserveDrawingBuffer lets the Cinematic Studio (studio.html, same-origin parent) read this
+    // canvas with drawImage on ITS animation frame, not just inside our own render tick — needed to
+    // composite the 3D view into an exported video. Negligible cost for a scene this small.
+    renderer=new THREE.WebGLRenderer({canvas:document.getElementById('view3d'), antialias:true, preserveDrawingBuffer:true});
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
     clock=new THREE.Clock();
     scene=new THREE.Scene(); scene.background=new THREE.Color(0x0c0e11);
@@ -4771,7 +4789,9 @@ function stepFall(dt) {
         if (fall.phase === 'slide') { if (minY < 0) t.position.y -= minY; }
         else if (minY < -0.6) fallLetGo(t);
     }
-    if (t.position.y < -700) { fall.active=false; camCenterFrac=1; camManualSet=false; }   // hand back to centred framing once it's done
+    // Done falling: stop the animation AND remember which piece fell, so the render loop keeps it
+    // hidden instead of snapping its mesh back onto the board (its logical position never moved).
+    if (t.position.y < -700) { fall.active=false; fallenIdx=fall.idx; t.visible=false; camCenterFrac=1; camManualSet=false; }
 }
 // End the pivot: hand the piece over to ballistic free fall, carrying the exit velocity the pivot
 // rotation gave it (v = ω · (axis × lever) about the rim contact point). Shared by the normal
@@ -4975,6 +4995,7 @@ function animate() {
     }
     for (let i=0;i<2;i++){
         if (fall.active && i===fall.idx) continue;   // don't overwrite the falling piece
+        if (i===fallenIdx) continue;                 // already tumbled off — stay gone, don't snap back on
         tripods[i].position.set(G.pieces[i].x, 0, G.pieces[i].y);
         tripods[i].rotation.set(0, -G.pieces[i].rot, 0);
         tripods[i].scale.set(1,1,1);
@@ -5132,6 +5153,55 @@ addEventListener('hashchange', () => {
     hideModal(); if (typeof demoStop === 'function') demoStop();
     bootHashReplay(location.hash);
 });
+
+// ---------- Cinematic Studio embed (studio.html loads this page in a same-origin iframe) ----------
+// With #studioembed, strip ALL game chrome and just loop the given replay's 2D (#canvas) + 3D
+// (#view3d) rendering, muted, no modals. The parent (studio.html) repositions those two canvases
+// into its own draggable/resizable layout and reads them to composite an exported video. The parent
+// hands over the replay and drives play/pause/seek by postMessage; we report progress back.
+const STUDIO_EMBED = location.hash === '#studioembed';
+let studioLoopTimer = null;
+async function studioLoadReplay(hash) {
+    try {
+        demoStop(); hideModal();
+        if (hash.startsWith('#s=')) await bootSharedReplayCode(hash.slice(3));
+        else if (hash.startsWith('#r=')) await bootSharedReplay(hash.slice(3));
+        else return;
+        hideModal();                                   // the studio drives playback; no tap-to-play gate
+        if (replayFrames.length > 1) startReplay();
+        parent.postMessage({ tau:'studio', type:'loaded', frames: replayFrames.length,
+                             turns: (typeof segmentReplayTurns==='function' ? segmentReplayTurns().length : 0) }, '*');
+    } catch (e) { parent.postMessage({ tau:'studio', type:'error', message:String(e&&e.message||e) }, '*'); }
+}
+// Jump the running replay to a fraction (0..1) of its turns — coarse seek by turn boundary, enough
+// for the studio's trim In/Out. Snaps to the start of the nearest turn.
+function studioSeek(frac) {
+    if (!replayActive || !replayTurns.length) { if (replayFrames.length>1) startReplay(); }
+    if (!replayTurns.length) return;
+    const i = Math.max(0, Math.min(replayTurns.length-1, Math.round(frac*(replayTurns.length-1))));
+    replayTurnIdx = i; replayPhase = 'play'; replayPhaseT = 0; replayLastT = performance.now();
+    replaySoundedTurn = -1;
+}
+if (STUDIO_EMBED) {
+    document.documentElement.classList.add('studioEmbed');
+    try { if (typeof soundOn !== 'undefined') soundOn = false; } catch(e){}
+    addEventListener('message', ev => {
+        const d = ev.data; if (!d || d.tau !== 'studio') return;
+        if (d.type === 'load' && d.hash) studioLoadReplay(d.hash);
+        else if (d.type === 'play') { if (!replayActive && replayFrames.length>1) startReplay(); replayActive = true; }
+        else if (d.type === 'pause') { replayActive = false; }
+        else if (d.type === 'restart') { if (replayFrames.length>1) startReplay(); }
+        else if (d.type === 'seek') studioSeek(d.frac||0);
+    });
+    // Report playback progress (turn index within the run) so the parent's timeline can track it.
+    setInterval(() => {
+        if (!STUDIO_EMBED) return;
+        parent.postMessage({ tau:'studio', type:'progress',
+            playing: !!replayActive, turn: replayTurnIdx, turns: replayTurns.length }, '*');
+    }, 120);
+    addEventListener('load', () => parent.postMessage({ tau:'studio', type:'ready' }, '*'));
+    if (document.readyState === 'complete') parent.postMessage({ tau:'studio', type:'ready' }, '*');
+}
 
 // ---------- Colour lab (open with #colorlab): AI-vs-AI on the full game screen + a live skin panel ----------
 // Everything a normal player sees is unchanged (SKIN stays null); this only runs when the URL hash
