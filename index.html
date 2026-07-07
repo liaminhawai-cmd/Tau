@@ -158,7 +158,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 55</div>
+<div id="buildTag">build 56</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -2875,7 +2875,15 @@ async function bootSharedReplay(hash) {
         replayTimes = [];                       // shared links carry no timing -> smoothed pacing
         if (winner !== null) { G.winner = winner; }
         G.sharedWinner = winner;
-        startReplay();
+        // A cold page load has no audio gesture yet, so an auto-started replay is silent (that's why
+        // the post-game replay has sound but a link replay didn't). Gate it behind one tap: the tap
+        // unlocks the AudioContext, so a link replay then sounds exactly like the post-game one.
+        if (audioReady && audioCtx && audioCtx.state === 'running') {
+            startReplay();
+        } else {
+            replayApplyPose(replayFrames[0]); render();   // poster frame: the opening position
+            showModal(t('Watch replay'), '', [{ label: '▶', onClick: () => { resumeAudio(); startReplay(); } }]);
+        }
     } catch (e) { console.error('shared replay failed', e); }
 }
 function endSharedReplay() {
