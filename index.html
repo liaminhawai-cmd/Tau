@@ -170,7 +170,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 63</div>
+<div id="buildTag">build 64</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
@@ -1800,10 +1800,10 @@ const CFG = {
     minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
     lockDeg: 2,                    // net rotation before the one-direction-per-turn lock engages
     legRadius: 2.0,                // leg tube radius (≈8mm printed) — used for BOTH collision and render
-    footPadFrac: 0.55,             // 3D leg's flat foot cap, as a fraction of legRadius — bigger than the
-                                     // magnet/dot (padRadius below): the real leg keeps a blunt, printable
-                                     // flat foot around the small embedded magnet, it doesn't shrink the
-                                     // WHOLE foot down to magnet size (that read as a sharp needle on screen)
+    footPadFrac: 0.4,              // 3D leg's flat foot cap, as a fraction of legRadius. Kept slim so the
+                                     // rendered foot matches the real printed piece — a thin leg ending in a
+                                     // small rounded foot, NOT the wider gameplay footprint. (Still well above
+                                     // magnet/dot size so it doesn't read as a sharp needle.)
     hubHeight: 23.095,             // = footR → legs are true quarter-circle arcs
     legSegs: 12,                   // 3D arc polyline resolution for collision
     inertiaK: 0.7,                 // rotational inertia factor (lower = redirects/spins more easily)
@@ -1955,9 +1955,10 @@ const LINE_INTERSECTIONS = (() => {
 // crossing. Merely bridging the corner LENS — magnet near both lines but well off the point
 // (~0.85u in the reported corner-cut games) — is two separate crossings and must be rolled back.
 // JUMP_EPS sits between the tight hold band (0.45) and the pad band (0.8): the physical magnet is
-// ~1.45u radius, so 0.6 is still conservative, while forgiving jump attempts that visually cover
-// the corner; the reported exploit passed at 0.84+ and stays blocked with margin.
-const JUMP_EPS = 0.6;
+// ~1.45u radius, so this stays conservative, while forgiving jump attempts that visually cover the
+// corner; the reported exploit passed at 0.84+ and stays blocked with margin. 0.63 = 0.6 nudged 5%
+// more forgiving, per play-testing.
+const JUMP_EPS = 0.63;
 function jumpsIntersection(foot, newId, epLines) {
     for (const P of LINE_INTERSECTIONS) {
         if (!P.lines.includes(newId)) continue;
@@ -4563,11 +4564,11 @@ function buildTripod(hex) {
             pts.push(new THREE.Vector3(Math.sin(ph)*R*Math.cos(th), Math.cos(ph)*H, Math.sin(ph)*R*Math.sin(th))); }
         const curve=new THREE.CatmullRomCurve3(pts);
         g.add(buildTaperedLeg(curve, mat, legRad, 14, 24, 0.6));
-        // Rounded printed foot pad: a squashed dome capping the leg tube's end (which otherwise read
-        // as a dark hole / pinched crescent from low angles). A flattened sphere -- the earlier flared
-        // cylinder looked like a little hoof.
-        const foot=new THREE.Mesh(new THREE.SphereGeometry(legRad*0.72, 14, 10), mat);
-        foot.scale.set(1, 0.5, 1); foot.position.set(Math.cos(th)*R, 0.5, Math.sin(th)*R);
+        // Rounded printed foot: a small squashed dome capping the leg end (which otherwise read as a
+        // dark hole from low angles). Sized to sit flush with the tapered tip, not bulge past it — the
+        // earlier bigger sphere flared out like a little hoof; the real piece just tapers to a small foot.
+        const foot=new THREE.Mesh(new THREE.SphereGeometry(legRad*0.45, 14, 10), mat);
+        foot.scale.set(1, 0.55, 1); foot.position.set(Math.cos(th)*R, 0.4, Math.sin(th)*R);
         g.add(foot);
     }
     const hub=new THREE.Mesh(new THREE.SphereGeometry(legRad*1.9,14,12), mat); hub.position.set(0,H,0); g.add(hub);
