@@ -568,3 +568,73 @@ $$;
 -- Guests and signed-in players alike can tick the counter (a save is a save).
 revoke all on function public.bump_save_count(uuid) from public;
 grant execute on function public.bump_save_count(uuid) to anon, authenticated;
+
+-- ---------------------------------------------------------------------------------------
+-- 11. Shared-replay short links. A replay's full move data can run to tens of KB for a long
+--     game, and some OS share sheets / messaging apps reject a URL that long outright (the
+--     "couldn't share my long AI game" report). Instead of embedding the whole payload in the
+--     link (#r=<payload>), the Share button now uploads the payload ONCE here and links to a
+--     short code instead (#s=<code>) -- a handful of characters, any game length. A game that's
+--     never shared never touches this table -- rows are only created on an explicit share tap.
+--     Rows expire after 90 days (a stale share link is an acceptable trade for storage that can
+--     never grow unbounded); re-sharing just uploads a fresh row. No client INSERT policy: rows
+--     are only created through create_shared_replay() below, so the size cap and code generation
+--     are enforced centrally and a client can never overwrite someone else's code. Safe to re-run.
+-- ---------------------------------------------------------------------------------------
+create table if not exists public.shared_replays (
+  id text primary key,
+  payload text not null,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '90 days'),
+  constraint shared_replays_payload_size check (length(payload) <= 200000)
+);
+
+alter table public.shared_replays enable row level security;
+
+drop policy if exists "anyone can read a live shared replay" on public.shared_replays;
+create policy "anyone can read a live shared replay"
+  on public.shared_replays for select
+  to anon, authenticated
+  using (expires_at > now());
+
+revoke insert, update, delete on public.shared_replays from anon, authenticated;
+
+create or replace function public.create_shared_replay(p_payload text)
+returns text
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  chars constant text := 'abcdefghijkmnpqrstuvwxyz23456789ABCDEFGHJKMNPQRSTUVWXYZ';   -- no 0/O/1/I/l
+  code text;
+begin
+  if p_payload is null or length(p_payload) = 0 then
+    raise exception 'empty payload';
+  end if;
+  if length(p_payload) > 200000 then
+    raise exception 'payload too large';
+  end if;
+  loop
+    code := '';
+    for i in 1..8 loop
+      code := code || substr(chars, 1 + floor(random() * length(chars))::int, 1);
+    end loop;
+    exit when not exists (select 1 from public.shared_replays where id = code);
+  end loop;
+  insert into public.shared_replays (id, payload) values (code, p_payload);
+  return code;
+end;
+$$;
+grant execute on function public.create_shared_replay(text) to anon, authenticated;
+
+-- Best-effort cleanup, same pattern as gc_stale_matches: the client calls this whenever the Watch
+-- menu opens, so the table self-trims without needing pg_cron (fine to also schedule it if enabled).
+create or replace function public.gc_expired_shared_replays()
+returns integer
+language sql
+security definer set search_path = public
+as $$
+  with deleted as (delete from public.shared_replays where expires_at < now() returning 1)
+  select count(*)::integer from deleted;
+$$;
+grant execute on function public.gc_expired_shared_replays() to anon, authenticated;
