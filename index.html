@@ -158,7 +158,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 54</div>
+<div id="buildTag">build 55</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -2539,7 +2539,7 @@ let clock=null, fall={active:false};                                  // loss-an
 // network waits simply never appear in the recording, and every mover (human drag, eased AI swing,
 // online tween, physics pushes) is captured identically because it's the rendered result being
 // sampled, not any one input path. ~48 bytes/frame; 30k frames ≈ several minutes of pure motion.
-let replayFrames = [], replayActive = false, replayFinalPose = null;
+let replayFrames = [], replayActive = false, replayFinalPose = null, replaySoundedTurn = -1;
 // Playback pacing is a tuned BLEND between the original recording and a computed profile, applied
 // per TURN (runs where the same piece is the primary mover). For each turn:
 //   - duration = lerp(original wall-clock length, distance/average-speed "smoothed" length, turnLen)
@@ -2636,7 +2636,12 @@ function startReplay() {
         m.pause = i+1 < replayTurns.length ? ((1-T.pauseBlend)*gap + T.pauseBlend*(T.pauseMs/1000)) : 0;
     }
     replayTurnIdx = 0; replayPhase = 'play'; replayPhaseT = 0; replayLastT = performance.now();
-    replayActive = true;
+    replayActive = true; replaySoundedTurn = -1;
+    // Replay uses the SAME audio engine as a live game: first clear the loss-swell reverb the game
+    // left cranked up (else the whole replay sounds drenched), then ring the start bowl like a fresh
+    // game. Per-turn pick-up clicks / move-bass fire in stepReplay; the closing loss plays in endReplay.
+    if (typeof resetAudioForNewGame === 'function') resetAudioForNewGame();
+    if (typeof playGameBowl === 'function') playGameBowl();
     document.getElementById('btns').style.display = 'none';           // no Surrender while watching
     document.getElementById('replayBtns').style.display = 'flex';     // Share this game / Skip
     if (typeof rmxSend === 'function') rmxSend('watching');   // opponent's sheet: "X is watching the replay"
@@ -2699,6 +2704,11 @@ function stepReplay() {
     const m = replayTurns[replayTurnIdx];
     replayPhaseT += dt;
     if (replayPhase === 'play') {
+        if (replaySoundedTurn !== replayTurnIdx) {   // a new turn's swing begins: same click + kick a live move makes
+            replaySoundedTurn = replayTurnIdx;
+            if (typeof playSelectClick === 'function') playSelectClick();
+            if (typeof playMoveBass === 'function') playMoveBass();
+        }
         audioReplayIdx = m.mover;   // sound tracks whichever piece is moving THIS turn (both players)
         const u = Math.min(1, replayPhaseT / m.dur);
         // Blend the arc FRACTION (how far along the path), not the poses — averaging two poses cuts a
@@ -2727,7 +2737,7 @@ function endReplay() {
     render();
     if (sharedReplay) { endSharedReplay(); return; }
     if (typeof rmxSend === 'function') rmxSend('watch-done');
-    triggerFall(true);                         // re-run the tip-over, but without re-firing the loss sound
+    triggerFall();                             // re-run the tip-over WITH its loss sound, so the replay ends like the game did
     showGameOverModal();
 }
 document.getElementById('replayShare').addEventListener('click', () => shareReplay());
@@ -2871,7 +2881,8 @@ async function bootSharedReplay(hash) {
 function endSharedReplay() {
     if (G.sharedWinner !== null && G.sharedWinner !== undefined) {
         G.over = true; G.winner = G.sharedWinner;
-        triggerFall(true);                     // the loser still gets its tumble at the end of a shared replay
+        replayActive = false;                  // hand the voice to the loss swell (same as a live loss)
+        triggerFall();                         // the loser gets its tumble AND the loss sound at the end
     }
     setTimeout(() => {
         showModal(t('Replay finished'), '', [
