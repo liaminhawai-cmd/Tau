@@ -158,7 +158,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 56</div>
+<div id="buildTag">build 57</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -2600,7 +2600,20 @@ function segmentReplayTurns() {
     for (let i = 1; i < mover.length; i++) if (mover[i] !== cur) { raw.push({ s: start, e: i, mover: cur }); start = i; cur = mover[i]; }
     raw.push({ s: start, e: F.length - 1, mover: cur });
     const out = [];
-    for (const t of raw) { if (out.length && (t.e - t.s) < 6) out[out.length-1].e = t.e; else out.push({ s: t.s, e: t.e, mover: t.mover }); }
+    for (const t of raw) {
+        // Merge only true contact-jitter blips (a foot nudged while being pushed): judge by ARC —
+        // how far the piece actually travelled — not by frame count. A distance-downsampled share
+        // link keeps only frames ≥0.15u apart, so a whole real turn can be just a few frames; the old
+        // "<6 frames" test merged those real turns into their neighbour, which fused two players'
+        // moves together and deleted the pause between them. Arc is resolution-independent.
+        let arc = 0;
+        for (let j = t.s + 1; j <= t.e; j++) arc += replayFrameDist(F[j-1], F[j]);
+        // Full-res behaviour is preserved (short blips still merge); the added arc guard just stops a
+        // genuine big-travel turn from being merged when it happens to be only a few frames — which
+        // is every turn in a downsampled share link. <4u of piece travel = a nudge, not a move.
+        if (out.length && (t.e - t.s) < 6 && arc < 4.0) out[out.length-1].e = t.e;
+        else out.push({ s: t.s, e: t.e, mover: t.mover });
+    }
     return out;
 }
 function startReplay() {
@@ -2633,7 +2646,12 @@ function startReplay() {
         const next = replayTurns[i+1];
         const gap = (haveTimes && next)
             ? Math.min(T.maxOrigPauseSec, Math.max(0, replayTimes[Math.min(next.s + 1, next.e)] - replayTimes[m.e])) : 0;
-        m.pause = i+1 < replayTurns.length ? ((1-T.pauseBlend)*gap + T.pauseBlend*(T.pauseMs/1000)) : 0;
+        // Timed replay: blend the real thinking gap with the tuned pause. Share link (no timing):
+        // there's no real gap to blend, so use the FULL tuned pause — otherwise blending toward 0
+        // halved it and the between-turn beat was barely there.
+        m.pause = i+1 < replayTurns.length
+            ? (haveTimes ? ((1-T.pauseBlend)*gap + T.pauseBlend*(T.pauseMs/1000)) : (T.pauseMs/1000))
+            : 0;
     }
     replayTurnIdx = 0; replayPhase = 'play'; replayPhaseT = 0; replayLastT = performance.now();
     replayActive = true; replaySoundedTurn = -1;
