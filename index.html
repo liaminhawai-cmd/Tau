@@ -4,19 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Tau</title>
-<meta name="description" content="A physics-based abstract strategy board game. Play the AI, a friend, or online — free, in your browser.">
+<meta name="description" content="Abstract grappling: one three-legged piece each, one round board. Pin a foot, swing the other two, slide your opponent off the edge. Free in your browser.">
 <!-- Social preview (Open Graph / Twitter) so shared links show a real card, not a bare URL -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Tau">
-<meta property="og:title" content="Tau — a board game of balance">
-<meta property="og:description" content="Pin one foot, swing the others, push your opponent off the edge. Free in your browser: AI, local, and online ranked play.">
+<meta property="og:title" content="Tau — abstract grappling">
+<meta property="og:description" content="One three-legged piece each, one round board. Pin a foot, swing the other two, slide your opponent off the edge — continuous movement, no squares. Free in your browser.">
 <meta property="og:url" content="https://tau-game.com/">
 <meta property="og:image" content="https://tau-game.com/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Tau — a board game of balance">
-<meta name="twitter:description" content="Pin one foot, swing the others, push your opponent off the edge. Free in your browser.">
+<meta name="twitter:description" content="Abstract grappling. Pin a foot, swing, slide your opponent off the edge. Free in your browser.">
 <meta name="twitter:image" content="https://tau-game.com/og-image.png">
 <!-- Installable web app (Add to Home Screen on iOS/Android) -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -75,6 +75,18 @@
     #game { display:none; flex-direction:column; align-items:center; width:100%; }
     #demoViews { display:flex; gap:8px; margin-bottom:4px; }
     #demoCanvas, #demoViews #view3d { background:#0c0e11; border:1px solid #2c3138; border-radius:8px; }
+    /* Short desktop windows: shrink the menu so everything — incl. sign-in — fits without scrolling */
+    @media (max-height: 800px) {
+        #wrap h1 { margin: 2px 0 0; }
+        #logoCanvas { height: 44px; width: auto; }
+        #menu { gap: 6px; margin-top: 1vh; }
+        #menu .modeBtn { padding: 9px 34px; font-size: 15px; }
+        #demoCanvas, #demoViews #view3d { height: min(240px, 28vh); width: auto; }
+    }
+    /* While the sign-in panel is open, clear the demo tiles + footer lines out of the way so the
+       whole auth flow is on screen at once — no scrolling to find "Continue with Google". */
+    #menu.acctOpen #demoViews, #menu.acctOpen #steelLine, #menu.acctOpen #presenceLine,
+    #menu.acctOpen #menuLinks, #menu.acctOpen .modeBtn, #menu.acctOpen #modeMsg { display: none; }
     #acctStatus { margin-bottom:4px; }
     .link { background:none; border:none; color:#6b9eff; padding:0; margin:0; font-size:13px;
             text-decoration:underline; cursor:pointer; }
@@ -158,7 +170,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 57</div>
+<div id="buildTag">build 58</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -218,7 +230,7 @@
         <p id="help"></p>
         <div id="btns"><button id="reset">Surrender</button><button id="menuBtn">Menu</button></div>
         <!-- replaces Surrender/Menu while a replay is playing: share the game or skip to the end -->
-        <div id="replayBtns" style="display:none;gap:10px;"><button id="replayShare">Share this game</button><button id="replaySkip">Skip ⏭</button></div>
+        <div id="replayBtns" style="display:none;gap:10px;"><button id="replayShare">Share this game</button><button id="replaySpeed" title="Playback speed">1×</button><button id="replaySkip">Skip ⏭</button></div>
     </div>
 </div>
 <div id="modalBackdrop">
@@ -1349,7 +1361,7 @@ ja: {
 "Two feet at once":"2本の足を同時に","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"1回のスライドで2本の足が別々の線を越えられます。線から離れない限り<b>1回</b>の線越えです。",
 "Push them off":"押し出して勝つ","Push your opponent off the edge. When one of their feet leaves the board, you win.":"相手をボードの外へ押し出しましょう。相手の足が1本でも落ちたら勝ちです。",
 "Play the AI while you wait":"待ち時間にAIと対戦","Still searching — you’ll be told when an opponent appears.":"対戦相手を探し続けています — 見つかったらお知らせします。","Opponent found!":"対戦相手が見つかりました！","Play now":"今すぐ対戦",
-"Get Tau in real life →":"Tauを現実で遊ぶ →","On the list ✓":"登録済み ✓","Tau on a real table":"Tauを実際の卓で","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tauは実物のボードゲームでもあります。ご希望をお知らせください — スパムはなし、準備ができたらメールでお知らせします。","Free print-and-play files":"無料の印刷して遊べるデータ","Make your own set at home":"自宅で自作できます","The full kit, shipped":"完成キットをお届け","A ready-to-play board and pieces":"すぐ遊べるボードとコマ","Pick at least one option.":"少なくとも1つ選んでください。","Notify me":"通知を受け取る","You’re on the list!":"登録しました！","That doesn’t look like an email address.":"メールアドレスの形式が正しくありません。","email":"メールアドレス","Could not save — check your connection.":"保存できませんでした — 接続を確認してください。",
+"Get Tau in real life →":"Tauを現実で遊ぶ →","On the list ✓":"登録済み ✓","The physical game":"実物のゲーム","Tau was a physical game first — a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tauはもともと実物のゲームでした — 鋼の円盤と磁石の三脚コマ。いまセットを準備しています。欲しいものを選んでください。準備ができたら一度だけメールします。","Free print-and-play files":"無料の印刷して遊べるデータ","Make your own set at home":"自宅で自作できます","The full kit, shipped":"完成キットをお届け","A ready-to-play board and pieces":"すぐ遊べるボードとコマ","Pick at least one option.":"少なくとも1つ選んでください。","Notify me":"通知を受け取る","You’re on the list!":"登録しました！","That doesn’t look like an email address.":"メールアドレスの形式が正しくありません。","email":"メールアドレス","Could not save — check your connection.":"保存できませんでした — 接続を確認してください。",
 "Most recent game":"直近の対局","Top-rated game":"最高レートの対局","Most watched game":"最も見られた対局","Live now":"対局中","Replays":"リプレイ","Nothing to replay in that game.":"この対局には再生できる内容がありません。",
 "Save replay":"リプレイを保存","Saved to My replays!":"マイリプレイに保存しました！","My replays":"マイリプレイ","Delete":"削除",
 "Share this game":"この対局を共有","Skip ⏭":"スキップ ⏭",
@@ -1397,7 +1409,7 @@ zh: {
 "Two feet at once":"双脚同时过线","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"两只脚可以在同一次滑动中越过两条不同的线。只要棋子始终未离开线，这仍算<b>一次</b>过线。",
 "Push them off":"推下棋盘","Push your opponent off the edge. When one of their feet leaves the board, you win.":"把对手推下棋盘边缘。对方任何一只脚离开棋盘，你就获胜。",
 "Play the AI while you wait":"等待时和AI对战","Still searching — you’ll be told when an opponent appears.":"仍在寻找对手——找到后会通知你。","Opponent found!":"找到对手了！","Play now":"立即对战",
-"Get Tau in real life →":"把Tau带到现实 →","On the list ✓":"已登记 ✓","Tau on a real table":"实体桌面版Tau","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tau也是一款实体桌游。告诉我们你感兴趣的内容——绝无骚扰，准备就绪时给你发一封邮件。","Free print-and-play files":"免费自制文件","Make your own set at home":"在家自己制作一套","The full kit, shipped":"整套成品，包邮到家","A ready-to-play board and pieces":"开箱即玩的棋盘和棋子","Pick at least one option.":"请至少选择一项。","Notify me":"通知我","You’re on the list!":"已加入通知列表！","That doesn’t look like an email address.":"邮箱格式不正确。","email":"邮箱","Could not save — check your connection.":"保存失败——请检查网络连接。",
+"Get Tau in real life →":"把Tau带到现实 →","On the list ✓":"已登记 ✓","The physical game":"实体版","Tau was a physical game first — a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau最初就是一款实体游戏——钢制圆盘和两只磁脚三脚棋。我正在制作成套。选择你想要的，做好后我只发一封邮件。","Free print-and-play files":"免费自制文件","Make your own set at home":"在家自己制作一套","The full kit, shipped":"整套成品，包邮到家","A ready-to-play board and pieces":"开箱即玩的棋盘和棋子","Pick at least one option.":"请至少选择一项。","Notify me":"通知我","You’re on the list!":"已加入通知列表！","That doesn’t look like an email address.":"邮箱格式不正确。","email":"邮箱","Could not save — check your connection.":"保存失败——请检查网络连接。",
 "Most recent game":"最近的对局","Top-rated game":"最高分对局","Most watched game":"观看最多的对局","Live now":"正在进行","Replays":"回放","Nothing to replay in that game.":"该对局没有可回放的内容。",
 "Save replay":"保存回放","Saved to My replays!":"已保存到我的回放！","My replays":"我的回放","Delete":"删除",
 "Share this game":"分享此对局","Skip ⏭":"跳过 ⏭",
@@ -1445,7 +1457,7 @@ zht: {
 "Two feet at once":"雙腳同時過線","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"兩隻腳可以在同一次滑動中越過兩條不同的線。只要棋子始終未離開線，仍算<b>一次</b>過線。",
 "Push them off":"推下棋盤","Push your opponent off the edge. When one of their feet leaves the board, you win.":"把對手推下棋盤邊緣。對方任何一隻腳離開棋盤，你就獲勝。",
 "Play the AI while you wait":"等待時和AI對戰","Still searching — you’ll be told when an opponent appears.":"仍在尋找對手——找到後會通知你。","Opponent found!":"找到對手了！","Play now":"立即對戰",
-"Get Tau in real life →":"把Tau帶到現實 →","On the list ✓":"已登記 ✓","Tau on a real table":"實體桌上版Tau","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tau也是一款實體桌遊。告訴我們你感興趣的內容——絕不騷擾，準備好時寄一封Email給你。","Free print-and-play files":"免費自製檔案","Make your own set at home":"在家自己做一套","The full kit, shipped":"整套成品，寄到府","A ready-to-play board and pieces":"開箱即玩的棋盤與棋子","Pick at least one option.":"請至少選擇一項。","Notify me":"通知我","You’re on the list!":"已加入通知名單！","That doesn’t look like an email address.":"Email格式不正確。","email":"Email","Could not save — check your connection.":"儲存失敗——請檢查網路連線。",
+"Get Tau in real life →":"把Tau帶到現實 →","On the list ✓":"已登記 ✓","The physical game":"實體版","Tau was a physical game first — a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau最初就是一款實體遊戲——鋼製圓盤和兩隻磁腳三腳棋。我正在製作成套。選擇你想要的，做好後我只寄一封Email。","Free print-and-play files":"免費自製檔案","Make your own set at home":"在家自己做一套","The full kit, shipped":"整套成品，寄到府","A ready-to-play board and pieces":"開箱即玩的棋盤與棋子","Pick at least one option.":"請至少選擇一項。","Notify me":"通知我","You’re on the list!":"已加入通知名單！","That doesn’t look like an email address.":"Email格式不正確。","email":"Email","Could not save — check your connection.":"儲存失敗——請檢查網路連線。",
 "Most recent game":"最近的對局","Top-rated game":"最高分對局","Most watched game":"觀看最多的對局","Live now":"正在進行","Replays":"重播","Nothing to replay in that game.":"該對局沒有可重播的內容。",
 "Save replay":"儲存重播","Saved to My replays!":"已儲存到我的重播！","My replays":"我的重播","Delete":"刪除",
 "Share this game":"分享此對局","Skip ⏭":"跳過 ⏭",
@@ -1493,7 +1505,7 @@ ko: {
 "Two feet at once":"두 발 동시에","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"한 번의 이동으로 두 발이 서로 다른 선을 넘을 수 있습니다. 말이 선에서 떨어지지 않는 한 여전히 <b>한 번</b>입니다.",
 "Push them off":"밀어서 떨어뜨리기","Push your opponent off the edge. When one of their feet leaves the board, you win.":"상대를 가장자리 밖으로 밀어내세요. 상대 발이 하나라도 보드를 벗어나면 승리합니다.",
 "Play the AI while you wait":"기다리는 동안 AI와 대전","Still searching — you’ll be told when an opponent appears.":"계속 상대를 찾는 중 — 찾으면 알려드립니다.","Opponent found!":"상대를 찾았습니다!","Play now":"지금 대전",
-"Get Tau in real life →":"Tau를 실물로 즐기기 →","On the list ✓":"신청 완료 ✓","Tau on a real table":"실제 테이블 위의 Tau","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tau는 실물 보드게임이기도 합니다. 관심 있는 항목을 알려주세요 — 스팸 없이, 준비되면 이메일 한 통만 보내드립니다.","Free print-and-play files":"무료 프린트&플레이 파일","Make your own set at home":"집에서 직접 만들기","The full kit, shipped":"완성 키트 배송","A ready-to-play board and pieces":"바로 즐기는 보드와 말","Pick at least one option.":"최소 한 가지를 선택하세요.","Notify me":"알림 받기","You’re on the list!":"신청 완료!","That doesn’t look like an email address.":"이메일 주소 형식이 올바르지 않습니다.","email":"이메일","Could not save — check your connection.":"저장하지 못했습니다 — 연결을 확인하세요.",
+"Get Tau in real life →":"Tau를 실물로 즐기기 →","On the list ✓":"신청 완료 ✓","The physical game":"실물 게임","Tau was a physical game first — a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau는 원래 실물 게임이었습니다 — 강철 원반과 자석 삼각 말 두 개. 지금 세트를 준비하고 있습니다. 원하는 것을 고르면 준비됐을 때 딱 한 번 메일을 보내드립니다.","Free print-and-play files":"무료 프린트&플레이 파일","Make your own set at home":"집에서 직접 만들기","The full kit, shipped":"완성 키트 배송","A ready-to-play board and pieces":"바로 즐기는 보드와 말","Pick at least one option.":"최소 한 가지를 선택하세요.","Notify me":"알림 받기","You’re on the list!":"신청 완료!","That doesn’t look like an email address.":"이메일 주소 형식이 올바르지 않습니다.","email":"이메일","Could not save — check your connection.":"저장하지 못했습니다 — 연결을 확인하세요.",
 "Most recent game":"최근 경기","Top-rated game":"최고 레이팅 경기","Most watched game":"가장 많이 본 경기","Live now":"진행 중","Replays":"리플레이","Nothing to replay in that game.":"이 경기에는 재생할 내용이 없습니다.",
 "Save replay":"리플레이 저장","Saved to My replays!":"내 리플레이에 저장됨!","My replays":"내 리플레이","Delete":"삭제",
 "Share this game":"이 경기 공유","Skip ⏭":"건너뛰기 ⏭",
@@ -1541,7 +1553,7 @@ de: {
 "Two feet at once":"Zwei Füße auf einmal","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"Zwei Füße können im selben Zug zwei verschiedene Linien kreuzen. Solange die Figur keine Linie verlässt, zählt es als <b>eine</b> Überquerung.",
 "Push them off":"Runterschieben","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Schieb deinen Gegner über den Rand. Sobald einer seiner Füße das Brett verlässt, gewinnst du.",
 "Play the AI while you wait":"Gegen KI spielen, während du wartest","Still searching — you’ll be told when an opponent appears.":"Suche läuft weiter – du wirst benachrichtigt, sobald ein Gegner da ist.","Opponent found!":"Gegner gefunden!","Play now":"Jetzt spielen",
-"Get Tau in real life →":"Tau in echt holen →","On the list ✓":"Auf der Liste ✓","Tau on a real table":"Tau auf einem echten Tisch","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tau gibt es auch als echtes Brettspiel. Sag uns, wovon du hören möchtest – kein Spam, nur eine E-Mail, wenn es so weit ist.","Free print-and-play files":"Kostenlose Print-and-Play-Dateien","Make your own set at home":"Bau dir dein eigenes Set","The full kit, shipped":"Das komplette Set, geliefert","A ready-to-play board and pieces":"Spielfertiges Brett samt Figuren","Pick at least one option.":"Wähle mindestens eine Option.","Notify me":"Benachrichtige mich","You’re on the list!":"Du stehst auf der Liste!","That doesn’t look like an email address.":"Das sieht nicht nach einer E-Mail-Adresse aus.","email":"E-Mail","Could not save — check your connection.":"Speichern fehlgeschlagen – prüfe deine Verbindung.",
+"Get Tau in real life →":"Tau in echt holen →","On the list ✓":"Auf der Liste ✓","The physical game":"Das physische Spiel","Tau was a physical game first — a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau war zuerst ein physisches Spiel — eine Stahlscheibe und zwei magnetische Dreibeiner. Ich stelle gerade Sets zusammen. Wähl aus, was du willst, und ich schreibe dir genau einmal, wenn es fertig ist.","Free print-and-play files":"Kostenlose Print-and-Play-Dateien","Make your own set at home":"Bau dir dein eigenes Set","The full kit, shipped":"Das komplette Set, geliefert","A ready-to-play board and pieces":"Spielfertiges Brett samt Figuren","Pick at least one option.":"Wähle mindestens eine Option.","Notify me":"Benachrichtige mich","You’re on the list!":"Du stehst auf der Liste!","That doesn’t look like an email address.":"Das sieht nicht nach einer E-Mail-Adresse aus.","email":"E-Mail","Could not save — check your connection.":"Speichern fehlgeschlagen – prüfe deine Verbindung.",
 "Most recent game":"Neuestes Spiel","Top-rated game":"Bestbewertetes Spiel","Most watched game":"Meistgesehenes Spiel","Live now":"Jetzt live","Replays":"Wiederholungen","Nothing to replay in that game.":"In diesem Spiel gibt es nichts abzuspielen.",
 "Save replay":"Wiederholung speichern","Saved to My replays!":"Unter Meine Wiederholungen gespeichert!","My replays":"Meine Wiederholungen","Delete":"Löschen",
 "Share this game":"Diese Partie teilen","Skip ⏭":"Überspringen ⏭",
@@ -1589,7 +1601,7 @@ fr: {
 "Two feet at once":"Deux pieds à la fois","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"Deux pieds peuvent franchir deux lignes différentes dans le même geste. Tant que la pièce ne quitte pas de ligne, cela compte pour <b>un seul</b> franchissement.",
 "Push them off":"Fais-le tomber","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Pousse ton adversaire hors du plateau. Dès qu'un de ses pieds quitte le plateau, tu gagnes.",
 "Play the AI while you wait":"Jouer contre l'IA en attendant","Still searching — you’ll be told when an opponent appears.":"Recherche en cours — tu seras prévenu dès qu'un adversaire arrive.","Opponent found!":"Adversaire trouvé !","Play now":"Jouer maintenant",
-"Get Tau in real life →":"Tau en vrai →","On the list ✓":"Inscrit ✓","Tau on a real table":"Tau sur une vraie table","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tau existe aussi en vrai jeu de plateau. Dis-nous ce qui t’intéresse — pas de spam, juste un e-mail quand ce sera prêt.","Free print-and-play files":"Fichiers à imprimer gratuits","Make your own set at home":"Fabrique ton propre jeu chez toi","The full kit, shipped":"Le kit complet, livré","A ready-to-play board and pieces":"Un plateau et des pièces prêts à jouer","Pick at least one option.":"Choisis au moins une option.","Notify me":"Me prévenir","You’re on the list!":"Tu es sur la liste !","That doesn’t look like an email address.":"Ça ne ressemble pas à une adresse e-mail.","email":"e-mail","Could not save — check your connection.":"Enregistrement impossible — vérifie ta connexion.",
+"Get Tau in real life →":"Tau en vrai →","On the list ✓":"Inscrit ✓","The physical game":"Le jeu physique","Tau was a physical game first — a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau était d’abord un jeu physique — un disque d’acier et deux trépieds magnétiques. Je prépare des sets en ce moment. Choisis ce qui t’intéresse et je t’enverrai un seul e-mail, quand ce sera prêt.","Free print-and-play files":"Fichiers à imprimer gratuits","Make your own set at home":"Fabrique ton propre jeu chez toi","The full kit, shipped":"Le kit complet, livré","A ready-to-play board and pieces":"Un plateau et des pièces prêts à jouer","Pick at least one option.":"Choisis au moins une option.","Notify me":"Me prévenir","You’re on the list!":"Tu es sur la liste !","That doesn’t look like an email address.":"Ça ne ressemble pas à une adresse e-mail.","email":"e-mail","Could not save — check your connection.":"Enregistrement impossible — vérifie ta connexion.",
 "Most recent game":"Partie la plus récente","Top-rated game":"Partie la mieux cotée","Most watched game":"Partie la plus regardée","Live now":"En direct","Replays":"Replays","Nothing to replay in that game.":"Rien à revoir dans cette partie.",
 "Save replay":"Enregistrer le replay","Saved to My replays!":"Ajouté à Mes replays !","My replays":"Mes replays","Delete":"Supprimer",
 "Share this game":"Partager cette partie","Skip ⏭":"Passer ⏭",
@@ -1637,7 +1649,7 @@ es: {
 "Two feet at once":"Dos pies a la vez","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"Dos pies pueden cruzar dos líneas distintas en el mismo giro. Mientras la pieza no deje la línea, sigue siendo <b>un</b> cruce.",
 "Push them off":"Échalo del tablero","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Empuja a tu rival fuera del borde. Cuando uno de sus pies sale del tablero, ganas.",
 "Play the AI while you wait":"Jugar contra la IA mientras esperas","Still searching — you’ll be told when an opponent appears.":"Seguimos buscando — te avisaremos cuando aparezca un rival.","Opponent found!":"¡Rival encontrado!","Play now":"Jugar ya",
-"Get Tau in real life →":"Tau en la vida real →","On the list ✓":"En la lista ✓","Tau on a real table":"Tau en una mesa de verdad","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tau también es un juego de mesa real. Cuéntanos qué te interesa — sin spam, solo un correo cuando esté listo.","Free print-and-play files":"Archivos gratis para imprimir y jugar","Make your own set at home":"Hazte tu propia copia en casa","The full kit, shipped":"El kit completo, enviado","A ready-to-play board and pieces":"Un tablero y piezas listos para jugar","Pick at least one option.":"Elige al menos una opción.","Notify me":"Avísame","You’re on the list!":"¡Estás en la lista!","That doesn’t look like an email address.":"Eso no parece un correo electrónico.","email":"correo","Could not save — check your connection.":"No se pudo guardar — revisa tu conexión.",
+"Get Tau in real life →":"Tau en la vida real →","On the list ✓":"En la lista ✓","The physical game":"El juego físico","Tau was a physical game first — a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau fue primero un juego físico — un disco de acero y dos trípodes magnéticos. Estoy preparando sets ahora. Elige lo que quieras y te mandaré un solo correo cuando esté listo.","Free print-and-play files":"Archivos gratis para imprimir y jugar","Make your own set at home":"Hazte tu propia copia en casa","The full kit, shipped":"El kit completo, enviado","A ready-to-play board and pieces":"Un tablero y piezas listos para jugar","Pick at least one option.":"Elige al menos una opción.","Notify me":"Avísame","You’re on the list!":"¡Estás en la lista!","That doesn’t look like an email address.":"Eso no parece un correo electrónico.","email":"correo","Could not save — check your connection.":"No se pudo guardar — revisa tu conexión.",
 "Most recent game":"Partida más reciente","Top-rated game":"Partida mejor clasificada","Most watched game":"Partida más vista","Live now":"En vivo","Replays":"Repeticiones","Nothing to replay in that game.":"No hay nada que reproducir en esa partida.",
 "Save replay":"Guardar repetición","Saved to My replays!":"¡Guardada en Mis repeticiones!","My replays":"Mis repeticiones","Delete":"Eliminar",
 "Share this game":"Compartir esta partida","Skip ⏭":"Saltar ⏭",
@@ -1685,7 +1697,7 @@ pt: {
 "Two feet at once":"Dois pés de uma vez","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"Dois pés podem cruzar duas linhas diferentes no mesmo giro. Enquanto a peça não sair da linha, ainda é <b>um</b> cruzamento.",
 "Push them off":"Derrube do tabuleiro","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Empurre o oponente para fora da borda. Quando um pé dele sai do tabuleiro, você vence.",
 "Play the AI while you wait":"Jogar contra a IA enquanto espera","Still searching — you’ll be told when an opponent appears.":"Ainda procurando — avisaremos quando aparecer um oponente.","Opponent found!":"Oponente encontrado!","Play now":"Jogar agora",
-"Get Tau in real life →":"Tau na vida real →","On the list ✓":"Na lista ✓","Tau on a real table":"Tau numa mesa de verdade","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tau também é um jogo de tabuleiro de verdade. Diga o que te interessa — sem spam, só um e-mail quando estiver pronto.","Free print-and-play files":"Arquivos grátis para imprimir e jogar","Make your own set at home":"Monte o seu próprio set em casa","The full kit, shipped":"O kit completo, enviado","A ready-to-play board and pieces":"Tabuleiro e peças prontos para jogar","Pick at least one option.":"Escolha ao menos uma opção.","Notify me":"Me avise","You’re on the list!":"Você está na lista!","That doesn’t look like an email address.":"Isso não parece um e-mail.","email":"e-mail","Could not save — check your connection.":"Não foi possível salvar — verifique sua conexão.",
+"Get Tau in real life →":"Tau na vida real →","On the list ✓":"Na lista ✓","The physical game":"O jogo físico","Tau was a physical game first — a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau nasceu como jogo físico — um disco de aço e dois tripés magnéticos. Estou montando os kits agora. Escolha o que quiser e eu mando um único e-mail quando estiver pronto.","Free print-and-play files":"Arquivos grátis para imprimir e jogar","Make your own set at home":"Monte o seu próprio set em casa","The full kit, shipped":"O kit completo, enviado","A ready-to-play board and pieces":"Tabuleiro e peças prontos para jogar","Pick at least one option.":"Escolha ao menos uma opção.","Notify me":"Me avise","You’re on the list!":"Você está na lista!","That doesn’t look like an email address.":"Isso não parece um e-mail.","email":"e-mail","Could not save — check your connection.":"Não foi possível salvar — verifique sua conexão.",
 "Most recent game":"Partida mais recente","Top-rated game":"Partida mais bem ranqueada","Most watched game":"Partida mais assistida","Live now":"Ao vivo","Replays":"Replays","Nothing to replay in that game.":"Nada para reproduzir nessa partida.",
 "Save replay":"Salvar replay","Saved to My replays!":"Salvo em Meus replays!","My replays":"Meus replays","Delete":"Excluir",
 "Share this game":"Compartilhar esta partida","Skip ⏭":"Pular ⏭",
@@ -1733,7 +1745,7 @@ ru: {
 "Two feet at once":"Две ножки сразу","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"Две ножки могут пересечь две разные линии за одно движение. Пока фигура не сходит с линии, это всё ещё <b>одно</b> пересечение.",
 "Push them off":"Столкните его","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Столкните соперника с края. Как только одна его ножка покидает доску — вы победили.",
 "Play the AI while you wait":"Сыграть с ИИ, пока ждёте","Still searching — you’ll be told when an opponent appears.":"Поиск продолжается — мы сообщим, когда появится соперник.","Opponent found!":"Соперник найден!","Play now":"Играть сейчас",
-"Get Tau in real life →":"Tau вживую →","On the list ✓":"Вы в списке ✓","Tau on a real table":"Tau на настоящем столе","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tau — это ещё и настоящая настольная игра. Расскажите, что вам интересно — без спама, лишь одно письмо, когда всё будет готово.","Free print-and-play files":"Бесплатные файлы «распечатай и играй»","Make your own set at home":"Соберите свой набор дома","The full kit, shipped":"Полный набор с доставкой","A ready-to-play board and pieces":"Готовое поле и фигуры","Pick at least one option.":"Выберите хотя бы один вариант.","Notify me":"Сообщить мне","You’re on the list!":"Вы в списке!","That doesn’t look like an email address.":"Это не похоже на адрес почты.","email":"почта","Could not save — check your connection.":"Не удалось сохранить — проверьте соединение.",
+"Get Tau in real life →":"Tau вживую →","On the list ✓":"Вы в списке ✓","The physical game":"Физическая игра","Tau was a physical game first — a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau сначала был физической игрой — стальной диск и две магнитные треноги. Сейчас я собираю наборы. Выберите, что вам нужно, и я напишу один раз, когда всё будет готово.","Free print-and-play files":"Бесплатные файлы «распечатай и играй»","Make your own set at home":"Соберите свой набор дома","The full kit, shipped":"Полный набор с доставкой","A ready-to-play board and pieces":"Готовое поле и фигуры","Pick at least one option.":"Выберите хотя бы один вариант.","Notify me":"Сообщить мне","You’re on the list!":"Вы в списке!","That doesn’t look like an email address.":"Это не похоже на адрес почты.","email":"почта","Could not save — check your connection.":"Не удалось сохранить — проверьте соединение.",
 "Most recent game":"Последняя партия","Top-rated game":"Партия с высшим рейтингом","Most watched game":"Самая просматриваемая партия","Live now":"Идут сейчас","Replays":"Повторы","Nothing to replay in that game.":"В этой партии нечего воспроизводить.",
 "Save replay":"Сохранить повтор","Saved to My replays!":"Сохранено в Мои повторы!","My replays":"Мои повторы","Delete":"Удалить",
 "Share this game":"Поделиться этой партией","Skip ⏭":"Пропустить ⏭",
@@ -2079,7 +2091,7 @@ function reset() {
           crossings:0, atLimit:false, netRad:0, ptrAngle:null, over:false, winner:null,
           snap:null, startedOnLine:[[],[],[]], usedGrace:[false,false,false], touchedLine:[[],[],[]], inCrossing:false };
     fall.active=false;
-    replayFrames.length = 0; replayTimes.length = 0; replayActive = false;   // every fresh board starts a fresh recording
+    replayFrames.length = 0; replayTimes.length = 0; replayActive = false; replayNames = null;   // every fresh board starts a fresh recording
     render();
 }
 // snapshot / restore both pieces so an aborted turn (released before minMoveDeg of net
@@ -2540,6 +2552,8 @@ let clock=null, fall={active:false};                                  // loss-an
 // online tween, physics pushes) is captured identically because it's the rendered result being
 // sampled, not any one input path. ~48 bytes/frame; 30k frames ≈ several minutes of pure motion.
 let replayFrames = [], replayActive = false, replayFinalPose = null, replaySoundedTurn = -1;
+let replayNames = null;        // [blueName, redName] for the replay on screen (from live context or the share payload)
+let replaySpeedMult = 1;       // playback speed: 1 / 1.5 / 2, cycled by the ×-button in the replay bar
 // Playback pacing is a tuned BLEND between the original recording and a computed profile, applied
 // per TURN (runs where the same piece is the primary mover). For each turn:
 //   - duration = lerp(original wall-clock length, distance/average-speed "smoothed" length, turnLen)
@@ -2620,7 +2634,13 @@ function startReplay() {
     if (replayFrames.length < 2 || !G) return;
     hideModal(); clearTimeout(gameOverTimer);
     fall.active = false;                       // the fallen piece pops back to the board for the re-run
-    replayFinalPose = takeSnap();
+    // Post-game: the board still holds the true final position — snapshot it. A shared/link replay
+    // has no live final position (the board was reset to boot it), so its final pose is the LAST
+    // RECORDED FRAME — snapshotting the board there froze the STARTING pose, and the end-of-replay
+    // "restore + tumble" visibly teleported the pieces back to their start spots.
+    replayFinalPose = sharedReplay
+        ? (f => [{x:f[0],y:f[1],rot:f[2]},{x:f[3],y:f[4],rot:f[5]}])(replayFrames[replayFrames.length-1])
+        : takeSnap();
     const T = REPLAY_TUNE, haveTimes = replayTimes.length === replayFrames.length;
     let totalArc = 0, totalActive = 0;
     replayTurns = segmentReplayTurns().map(t => {
@@ -2655,6 +2675,7 @@ function startReplay() {
     }
     replayTurnIdx = 0; replayPhase = 'play'; replayPhaseT = 0; replayLastT = performance.now();
     replayActive = true; replaySoundedTurn = -1;
+    if (!replayNames) replayNames = replayPlayerNames();   // label the turns (post-game path)
     // Replay uses the SAME audio engine as a live game: first clear the loss-swell reverb the game
     // left cranked up (else the whole replay sounds drenched), then ring the start bowl like a fresh
     // game. Per-turn pick-up clicks / move-bass fire in stepReplay; the closing loss plays in endReplay.
@@ -2717,7 +2738,7 @@ function replayApplyPose(p) {
 // pose and re-runs the tumble (silently), then brings the game-over choices back.
 function stepReplay() {
     const now = performance.now();
-    const dt = Math.min(0.1, (now - replayLastT) / 1000); replayLastT = now;   // real dt: same speed on 60Hz and 120Hz screens
+    const dt = Math.min(0.1, (now - replayLastT) / 1000) * replaySpeedMult; replayLastT = now;   // real dt (same on 60/120Hz), scaled by the ×-button
     if (!replayTurns.length) { endReplay(); return; }
     const m = replayTurns[replayTurnIdx];
     replayPhaseT += dt;
@@ -2760,6 +2781,10 @@ function endReplay() {
 }
 document.getElementById('replayShare').addEventListener('click', () => shareReplay());
 document.getElementById('replaySkip').addEventListener('click', () => { if (replayActive) endReplay(); });
+document.getElementById('replaySpeed').addEventListener('click', () => {   // 1x -> 1.5x -> 2x -> 1x
+    replaySpeedMult = replaySpeedMult >= 2 ? 1 : replaySpeedMult === 1 ? 1.5 : 2;
+    document.getElementById('replaySpeed').textContent = replaySpeedMult + '×';
+});
 
 // ---------- Shareable replays ----------
 // The whole recording travels INSIDE the link (no server): frames are downsampled to ~0.15u of
@@ -2784,13 +2809,18 @@ async function inflateBytes(bytes) {
     const r = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
     return new Uint8Array(await new Response(r).arrayBuffer());
 }
-async function encodeReplay(frames, winner) {
+async function encodeReplay(frames, winner, names) {
     // downsample: keep only frames at least SHARE_MIN_DIST of motion apart (interp smooths the rest)
     const kept = [frames[0]];
     for (let i=1;i<frames.length;i++)
         if (replayFrameDist(kept[kept.length-1], frames[i]) >= SHARE_MIN_DIST || i === frames.length-1) kept.push(frames[i]);
     const n = kept.length;
-    const buf = new ArrayBuffer(1 + 4 + 24 + (n-1)*12);
+    // names ride at the tail as two length-prefixed UTF-8 strings — old clients simply never read
+    // past the frame data, so links stay compatible both ways.
+    const te = new TextEncoder();
+    const nb = te.encode(((names && names[0]) || '').slice(0, 40));
+    const nr = te.encode(((names && names[1]) || '').slice(0, 40));
+    const buf = new ArrayBuffer(1 + 4 + 24 + (n-1)*12 + 2 + nb.length + nr.length);
     const dv = new DataView(buf);
     dv.setUint8(0, winner === 0 ? 0 : winner === 1 ? 1 : 255);
     dv.setUint32(1, n, true);
@@ -2804,6 +2834,8 @@ async function encodeReplay(frames, winner) {
         recon[k] += d * q;
         dv.setInt16(off, d, true); off += 2;
     }
+    dv.setUint8(off++, nb.length); new Uint8Array(buf, off, nb.length).set(nb); off += nb.length;
+    dv.setUint8(off++, nr.length); new Uint8Array(buf, off, nr.length).set(nr); off += nr.length;
     const raw = new Uint8Array(buf);
     const packed = await deflateBytes(raw);
     return packed ? 'd' + b64uEncode(packed) : 'p' + b64uEncode(raw);
@@ -2821,12 +2853,23 @@ async function decodeReplay(str) {
         for (let k=0;k<6;k++) { const q = k===2||k===5 ? SHARE_QR : SHARE_QP; cur[k] += dv.getInt16(off, true) * q; off += 2; }
         frames.push(cur.slice());
     }
-    return { frames, winner: winner === 255 ? null : winner };
+    let names = null;   // links from before names existed just end at the frame data
+    if (off + 2 <= bytes.byteLength) {
+        try {
+            const td = new TextDecoder();
+            const bl = dv.getUint8(off); off += 1;
+            const bName = td.decode(new Uint8Array(bytes.buffer, bytes.byteOffset + off, bl)); off += bl;
+            const rl = dv.getUint8(off); off += 1;
+            const rName = td.decode(new Uint8Array(bytes.buffer, bytes.byteOffset + off, rl)); off += rl;
+            if (bName || rName) names = [bName || 'Blue', rName || 'Red'];
+        } catch (e) {}
+    }
+    return { frames, winner: winner === 255 ? null : winner, names };
 }
 async function shareReplay() {
     if (replayFrames.length < 2) return;
     try {
-        const payload = await encodeReplay(replayFrames, G && G.over ? G.winner : null);
+        const payload = await encodeReplay(replayFrames, G && G.over ? G.winner : null, replayNames || replayPlayerNames());
         const url = location.origin + location.pathname + '#r=' + payload;
         if (navigator.share) { await navigator.share({ title: 'Tau', text: t('Watch this Tau game:'), url }); return; }
         await navigator.clipboard.writeText(url);
@@ -2856,7 +2899,7 @@ function replayCollectionTitle() {
 async function saveReplayToCollection() {
     if (replayFrames.length < 2) return;
     try {
-        const payload = await encodeReplay(replayFrames, G && G.over ? G.winner : null);
+        const payload = await encodeReplay(replayFrames, G && G.over ? G.winner : null, replayNames || replayPlayerNames());
         const list = loadSavedReplays();
         list.unshift({ t: replayCollectionTitle(), d: Date.now(), p: payload });
         storeSavedReplays(list);
@@ -2867,6 +2910,21 @@ async function saveReplayToCollection() {
         if (mid) { try { await sb.rpc('bump_save_count', { mid }); } catch (e) {} }
     } catch (e) { showPassToast(t('Could not create the link.')); }
 }
+// Who the two sides are, from the LIVE game context — used to label replay turns and stamped into
+// share links so a forwarded game brags properly ("Tim's turn" / "Very hard AI's turn").
+function replayPlayerNames() {
+    const meName = () => (document.getElementById('acctName').textContent || t('Guest'));
+    if (onlineMatch) {
+        if (onlineMatch.spectator) return [onlineMatch.blueName, onlineMatch.redName];
+        return onlineMatch.myColor === 'blue' ? [meName(), onlineMatch.opponentName]
+                                              : [onlineMatch.opponentName, meName()];
+    }
+    if (vsAI) {
+        const ai = t(AI_DIFF_LABEL[aiDifficulty] || aiDifficulty) + ' AI';
+        return humanIdx === 0 ? [meName(), ai] : [ai, meName()];
+    }
+    return [t('Blue'), t('Red')];
+}
 // Opened via a #r= link: play the embedded game on a clean board, then offer to watch again or play.
 let sharedReplay = false;
 // The server match id behind the current replay, if any (a watched public game, or your own online
@@ -2875,7 +2933,7 @@ let sharedReplay = false;
 let replaySourceMatchId = null;
 async function bootSharedReplay(hash) {
     try {
-        const { frames, winner } = await decodeReplay(hash);
+        const { frames, winner, names } = await decodeReplay(hash);
         if (!frames || frames.length < 2) return;
         sharedReplay = true;
         replaySourceMatchId = null;          // a #r= link carries only embedded frames, no server row
@@ -2890,6 +2948,7 @@ async function bootSharedReplay(hash) {
         reset(); resize();
         camCenterFrac = 1; camManualSet = false;
         replayFrames = frames.map(f => f.slice());
+        replayNames = names || null;            // the link may carry who was playing
         replayTimes = [];                       // shared links carry no timing -> smoothed pacing
         if (winner !== null) { G.winner = winner; }
         G.sharedWinner = winner;
@@ -3296,6 +3355,7 @@ async function updateRankLine() {
 let pendingOnlineAction = null;
 function openAcctPanel() {
     document.getElementById('acctPanel').style.display = 'flex';
+    document.getElementById('menu').classList.add('acctOpen');   // demo tiles give way: sign-in fits unscrolled
     // In an in-app browser, Google can't work -- lead with username/password and say why up front.
     if (typeof isInAppBrowser==='function' && isInAppBrowser()) {
         const msg = document.getElementById('acctMsg');
@@ -3303,7 +3363,8 @@ function openAcctPanel() {
         if (typeof showAcctEmailOptions==='function') showAcctEmailOptions(true);
     }
 }
-function closeAcctPanel() { document.getElementById('acctPanel').style.display = 'none'; pendingOnlineAction = null; }
+function closeAcctPanel() { document.getElementById('acctPanel').style.display = 'none';
+    document.getElementById('menu').classList.remove('acctOpen'); pendingOnlineAction = null; }
 // ---------- Generic modal: colour choice before a vs-AI game, the game-over popup, and
 // the how-to-play sheet. `isHtml` lets the how-to-play body use a left-aligned list. ----------
 function showModal(title, body, buttons, isHtml) {
@@ -4180,8 +4241,23 @@ function render() {
 
     const s=document.getElementById('status'), m=document.getElementById('meta'), h=document.getElementById('help');
     const aiTurn = vsAI && G.active===aiIdx && !G.over;
-    if (G.over){ const w2=G.winner===0?'blue':'red';
-        s.innerHTML=`<span class="${w2}">${tf('{color} wins',{color:t(w2==='blue'?'Blue':'Red')})}</span>`; m.textContent=''; h.textContent='';
+    if (replayActive && replayTurns.length) {
+        // Replays announce WHO is moving (built via textContent — names are user-controlled).
+        const mv = replayTurns[Math.min(replayTurnIdx, replayTurns.length-1)].mover;
+        s.innerHTML = '';
+        const sp = document.createElement('span'); sp.className = mv===0 ? 'blue' : 'red';
+        sp.textContent = tf("{name}'s turn", { name: replayNames ? replayNames[mv] : t(mv===0?'Blue':'Red') });
+        s.appendChild(sp);
+        m.textContent = replayNames ? tf('Watching {a} vs {b}', { a: replayNames[0], b: replayNames[1] }) : '';
+        h.textContent = '';
+    } else if (G.over){ const w2=G.winner===0?'blue':'red';
+        if (replayNames && G.winner != null) {   // a replayed game names its winner, too
+            s.innerHTML = '';
+            const sp = document.createElement('span'); sp.className = w2;
+            sp.textContent = tf('{color} wins', { color: replayNames[G.winner] });
+            s.appendChild(sp); m.textContent=''; h.textContent='';
+        } else
+        s.innerHTML=`<span class="${w2}">${tf('{color} wins',{color:t(w2==='blue'?'Blue':'Red')})}</span>`, m.textContent='', h.textContent='';
     } else { const c=G.active===0?'blue':'red';
         if (onlineMatch) {
             // "Your turn" vs the opponent's own username (not just their colour) -- that's who
@@ -4587,6 +4663,12 @@ function computeFullFrame(outPos, outTgt) {
         let dx=p1.x-p0.x, dz=p1.y-p0.y; const len=Math.hypot(dx,dz);
         if (len < 1e-6) { dx=1; dz=0; } else { dx/=len; dz/=len; }   // degenerate (coincident hubs): fixed fallback axis
         px=-dz; pz=dx;                                                // horizontal, ⟂ to the piece-to-piece line
+        if (pz < 0) { px = -px; pz = -pz; }        // of the two ⟂ directions, take the one on the 2D map's side
+        // gentle pull toward the 2D map's orientation (camera home at +z): ~15% pressure, so the
+        // equidistant two-piece framing still leads and the view just leans toward familiar north-up
+        const ORIENT_K = 0.15;
+        px *= (1-ORIENT_K); pz = pz*(1-ORIENT_K) + ORIENT_K;
+        const pl = Math.hypot(px, pz) || 1; px /= pl; pz /= pl;
     }
     const dist = autoCamDistance(mx, mz, px, pz, AUTOCAM_TARGET_Y);
     outTgt.set(mx, AUTOCAM_TARGET_Y, mz);
@@ -5351,14 +5433,14 @@ function openWaitlistPrompt() {
     const opt = (id, title, sub) => `<label style="display:flex;gap:9px;align-items:flex-start;margin:7px 0;font-size:13px;cursor:pointer;">`
         + `<input type="checkbox" id="${id}" checked style="margin-top:3px;transform:scale(1.15);">`
         + `<span><b>${escapeHtml(title)}</b><br><span style="color:#8b95a0;font-size:12px;">${escapeHtml(sub)}</span></span></label>`;
-    const body = `<p class="msg" style="margin:0 0 8px;">${escapeHtml(t('Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.'))}</p>`
+    const body = `<p class="msg" style="margin:0 0 8px;">${escapeHtml(t('Tau was a physical game first — a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.'))}</p>`
         + opt('wlDiy', t('Free print-and-play files'), t('Make your own set at home'))
         + opt('wlKit', t('The full kit, shipped'), t('A ready-to-play board and pieces'))
         + `<div class="row" style="margin-top:10px;">
             <input id="wlEmail" type="email" maxlength="254" placeholder="${escapeHtml(t('email'))}" autocomplete="email">
             <button id="wlGo">${escapeHtml(t('Notify me'))}</button>
         </div><p class="msg" id="wlMsg"></p>`;
-    showModal(t('Tau on a real table'), body, [ { label: t('Close'), onClick: () => {} } ], true);
+    showModal(t('The physical game'), body, [ { label: t('Close'), onClick: () => {} } ], true);
     const go = async () => {
         const em = (document.getElementById('wlEmail').value || '').trim();
         const msg = document.getElementById('wlMsg');
@@ -6258,14 +6340,14 @@ async function appendFinishedGamePicks(body) {
         const btn = document.createElement('button');
         btn.style.cssText = 'display:block;width:100%;margin:4px 0;';
         btn.textContent = label + ': ' + (names2[g.blue_id]||t('Blue')) + ' vs ' + (names2[g.red_id]||t('Red'));
-        btn.addEventListener('click', () => watchFinishedGame(g));
+        btn.addEventListener('click', () => watchFinishedGame(g, [names2[g.blue_id]||t('Blue'), names2[g.red_id]||t('Red')]));
         body.appendChild(btn);
     }
 }
 // Replay a FINISHED public game: stitch its match_moves keyframes into a replayFrames recording
 // and hand it to the shared-replay viewer (same pacing/skip/end-modal as a #r= link — no timing
 // data, so it plays at the smoothed cinematic profile).
-async function watchFinishedGame(row) {
+async function watchFinishedGame(row, wNames) {
     showModal(t('Watch live'), '<p style="text-align:center;color:#9aa4ad;">'+t('Loading…')+'</p>', [ { label:t('Close'), onClick:()=>{} } ], true);
     let moves = null;
     try {
@@ -6293,6 +6375,7 @@ async function watchFinishedGame(row) {
     camCenterFrac = 1; camManualSet = false;
     reset(); resize();
     sharedReplay = true;                     // reuse the shared-replay end flow (Watch again / Play Tau)
+    replayNames = wNames || null;            // label the turns with the real usernames
     replaySourceMatchId = row.id;            // saving this replay bumps the match's "most watched" count
     replayFrames = frames; replayTimes = [];
     const w = row.winner_color === 'blue' ? 0 : row.winner_color === 'red' ? 1 : null;
