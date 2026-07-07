@@ -31,7 +31,8 @@
 <style>
     html,body { margin:0; padding:0; height:100%; background:#15181c;
                 font-family:Arial, sans-serif; color:#e6e6e6; overflow:hidden; }
-    #wrap { display:flex; flex-direction:column; align-items:center; height:100%; }
+    #wrap { display:flex; flex-direction:column; align-items:center; height:100%;
+            box-sizing:border-box; padding-top:env(safe-area-inset-top); }
     h1 { margin:6px 0 2px; letter-spacing:6px; font-weight:300; font-size:22px; line-height:0; }
     /* The wordmark: three real pieces held at angles that read "Tau" (see logo_studio.html), baked
        into tau-logo.png and tinted live on a 2D canvas so the colour can signal state. Transparent
@@ -79,22 +80,22 @@
             text-decoration:underline; cursor:pointer; }
     /* Always-visible but understated: sits in the corner on every screen (menu and in-game),
        low-contrast until hovered so it never competes with the board. */
-    #themeToggle { position:fixed; top:9px; right:12px; z-index:60; background:none; border:none;
+    #themeToggle { position:fixed; top:calc(9px + env(safe-area-inset-top)); right:12px; z-index:60; background:none; border:none;
                    color:#9aa4ad; font-size:19px; line-height:1; padding:6px 7px; margin:0;
                    opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
     #themeToggle:hover { opacity:0.95; }
     #themeToggle:active { background:none; }
-    #soundToggle { position:fixed; top:9px; right:46px; z-index:60; background:none; border:none;
+    #soundToggle { position:fixed; top:calc(9px + env(safe-area-inset-top)); right:46px; z-index:60; background:none; border:none;
                    color:#9aa4ad; font-size:17px; line-height:1; padding:6px 7px; margin:0;
                    opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
     #soundToggle:hover { opacity:0.95; }
     #soundToggle:active { background:none; }
-    #langToggle { position:fixed; top:9px; right:82px; z-index:60; background:none; border:none;
+    #langToggle { position:fixed; top:calc(9px + env(safe-area-inset-top)); right:82px; z-index:60; background:none; border:none;
                   color:#9aa4ad; font-size:16px; line-height:1; padding:6px 7px; margin:0;
                   opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
     #langToggle:hover { opacity:0.95; }
     #langToggle:active { background:none; }
-    #langMenu { position:fixed; top:38px; right:70px; z-index:61; display:none; flex-direction:column;
+    #langMenu { position:fixed; top:calc(38px + env(safe-area-inset-top)); right:70px; z-index:61; display:none; flex-direction:column;
                 background:#1c2126; border:1px solid #2c333b; border-radius:7px; padding:4px;
                 box-shadow:0 6px 20px rgba(0,0,0,0.4); }
     #langMenu button { background:none; border:none; color:#8b949d; font-size:12px; text-align:left;
@@ -103,7 +104,7 @@
     #langMenu button.cur { color:#e6ecf2; }
     /* Deliberately barely visible -- purely so a screenshot/report can be matched to the exact
        commit it came from (cache/CDN lag otherwise makes "still broken" reports ambiguous). */
-    #buildTag { position:fixed; bottom:4px; left:6px; z-index:60; font-size:10px; color:#3a4048;
+    #buildTag { position:fixed; bottom:calc(4px + env(safe-area-inset-bottom)); left:6px; z-index:60; font-size:10px; color:#3a4048;
                 pointer-events:none; user-select:text; }
     .nameBox { background:#1a1e24; color:#e6e6e6; border:1px solid #3a4048; border-radius:4px;
                padding:1px 6px; font-size:13px; width:120px; text-align:center; cursor:pointer; }
@@ -157,7 +158,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 51</div>
+<div id="buildTag">build 52</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -4584,8 +4585,11 @@ function resize() {
                + document.getElementById('meta').offsetHeight
                + document.getElementById('help').offsetHeight
                + document.getElementById('btns').offsetHeight + 34;
+    // #wrap now pads down by the iOS safe-area inset (notch/Dynamic Island); that padding eats into
+    // the height available for the boards, so measure it and subtract it too (0 on non-notched devices).
+    const safeTop = parseFloat(getComputedStyle(document.getElementById('wrap')).paddingTop) || 0;
     const availW = window.innerWidth - 8;
-    const availH = window.innerHeight - used;
+    const availH = window.innerHeight - used - safeTop;
     const gap = 8, show = !!renderer;
 
     // Side-by-side keeps two squares. Stacked (portrait) gives the 3D view a SHORT, WIDE tile —
