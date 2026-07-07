@@ -12,8 +12,10 @@ constants if the pieces grow too) and re-run.
 
 Measured inputs (from the uploaded files):
   - magnetic playing disk  Ø266.7 mm      (Bord.dxf edge r 66.667 board-units, 1 unit = 2 mm)
-  - BASE (chunky_1.stl)    297.5 x 277.5 mm footprint, 15 mm tall — the disk is recessed in it.
-      * slightly oval, so the round box is sized to the LARGER span (297.5) and clears the 277.5.
+  - BASE (chunky_1.stl)    ROUND, Ø297.5 mm, 15 mm tall — the disk seats recessed inside it.
+      * it IS a circle: the outer diameter is 297.5 both ways; the 277.5 the bounding box reports on
+        the short axis is only because two finger-scoop notches are cut into the rim (top & bottom,
+        ~10 mm deep each) so you can lift the disk out. So the round box is sized to Ø297.5.
       * the Bord.dxf r=73.333u (Ø293.3) circle is the same base in the design file; the print came
         out ~4 mm larger, so trust the STL.
   - tripod piece  85.8 x 75.1 x 53.8 mm   (tripod_smoove_2021.stl; feet 46.19 mm from the hub axis).

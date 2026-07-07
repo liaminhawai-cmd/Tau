@@ -21,4 +21,6 @@ stale fastest.
 - **tau_box_dieline.svg** / **tau_insert_tray.svg** — the generated print-true dielines (1 unit = 1 mm).
 - **tau_cost_model_v2.1.html** — open in a browser; interactive unit-cost / margin calculator.
 
-Confirmed base footprint (from `chunky.stl`): **297.5 × 277.5 × 15 mm**, disk recessed in the base.
+Confirmed base (from `chunky.stl`): a **round ring, Ø297.5 × 15 mm**, with two ~10 mm finger-scoop
+notches at top & bottom (those are why the bounding box reads 297.5 × 277.5). The metal playing disk
+seats recessed inside it.
