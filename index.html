@@ -158,7 +158,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 53</div>
+<div id="buildTag">build 54</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -3032,10 +3032,20 @@ function startAiTurn() {
         if (Math.abs(net) < 1e-9) { dir = -dir; net = simMoveToLimit(pivotIdx, dir); restore(); }
         target = Math.abs(net) * aiStopFrac();   // dumb (Easy) stops a random 60-90% short of the limit
     }
+    // How far this pivot+dir COULD swing (crossing one line, stopping at the next). If the AI is
+    // deliberately stopping well short of that, it isn't committing to the line — play the swing
+    // "carefully": a gentler, longer settle, the way a person eases a piece into a considered spot
+    // rather than driving it home. (For a committed move that goes all the way, keep the firmer stop.)
+    const snapNL = takeSnap();
+    const naturalLimit = Math.abs(simMoveToLimit(pivotIdx, dir));
+    G.pieces.forEach((p,i)=>{ p.x=snapNL[i].x; p.y=snapNL[i].y; p.rot=snapNL[i].rot; });
+    const careful = target < naturalLimit - 4*Math.PI/180;   // stops >4° short of the natural line-stop
     pinFoot(pivotIdx);
     if (target < 1e-9) { finishTurn(); return; }   // blocked both ways from this pivot (rare) — forfeit the motion
     playSelectClick(); playMoveBass();
-    aiAnim = { dir, targetRad: target, t: 0, dur: Math.max(0.55, target / AI_SWING_AVG_SPEED) };
+    // careful moves run ~25% slower so the deliberate settle reads
+    const dur = Math.max(0.55, target / AI_SWING_AVG_SPEED) * (careful ? 1.25 : 1);
+    aiAnim = { dir, targetRad: target, t: 0, dur, careful };
     render();
 }
 // Advances the AI's swing along the eased arc; called every frame from animate() with real dt.
@@ -3043,7 +3053,9 @@ function stepAi(dt) {
     if (!aiAnim || G.over) return;
     aiAnim.t += dt;
     const s = Math.min(1, aiAnim.t / aiAnim.dur);
-    const eased = s*s*(3-2*s);                        // smoothstep: slow -> fast -> slow
+    // committed move: smoothstep (slow -> fast -> firm stop). careful move: smootherstep, whose
+    // deceleration tail is much gentler/longer -> it visibly eases to a stop, "being careful".
+    const eased = aiAnim.careful ? s*s*s*(s*(s*6-15)+10) : s*s*(3-2*s);
     const want = aiAnim.targetRad * eased;
     const delta = want - Math.abs(G.netRad);
     if (delta > 1e-6 && !G.atLimit) { applySwing(aiAnim.dir*delta); render(); }
@@ -3866,7 +3878,9 @@ function updateAudioMovement(dt) {
         scrapeGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
         audioPrevFeet = null; return;
     }
-    if (G.over) { audioPrevFeet = null; return; }
+    // A real loss hands the voice to playLossSound's swell — but a post-game replay leaves G.over
+    // true while it plays back, and we DO want the movement sound then, so let the replay through.
+    if (G.over && !replayActive) { audioPrevFeet = null; return; }
     const now = audioCtx.currentTime, p = G.pieces[idx];
     const frac = Math.max(0, Math.min(1, radU(p) / CFG.edgeU));
     bandpass.frequency.setTargetAtTime(SFX.minHz * Math.pow(SFX.maxHz/SFX.minHz, frac), now, 0.03);
