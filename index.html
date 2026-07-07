@@ -157,7 +157,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 48</div>
+<div id="buildTag">build 49</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -2446,7 +2446,38 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 let cx = 0, cy = 0, scale = 1;   // recomputed every frame by syncCanvas (px)
 let renderer=null, scene, camera, controls, tripods=[];   // 3D side view — always shown once THREE loads
-let pivotGlowMesh=null, boardTop=null, camProbe=null;   // pivot glow + board surface + fit-probe camera (built in init3D)
+let pivotGlowMesh=null, boardTop=null, boardRim=null, camProbe=null;   // pivot glow + board surface + rim + fit-probe camera (built in init3D)
+// Board SKIN: null = the default theme look (pure passthrough — normal players never touch this).
+// When set (colour lab / #colorlab), it overrides board zone colours, lines and piece colours
+// everywhere the board is drawn (2D game, demo, how-to, and the 3D texture). Keys match the colour
+// sandbox dump so a dumped JSON pastes straight in.
+let SKIN = null, colorLab = false, colorLabTimer = null;
+function pieceHex(id){ return SKIN ? (id===0 ? SKIN.pb : SKIN.pr) : (id===0 ? '#6b9eff' : '#ff6b6b'); }
+function hexA(h, a){ const n=parseInt(h.slice(1),16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; }
+// Fill the board disc for any top-down view (2D game, demo, how-to, 3D texture) at centre (ox,oy)
+// with board-units->px scale sc. Default: one flat disc (exactly as before). With a zone-shaded
+// SKIN: three concentric value bands, then each lens pocket re-filled one value darker (clipped to
+// the disc AND the lens circle) — reproducing the crossings-to-centre grading. Lens centres sit on
+// y=0, so the caller's y-axis direction is irrelevant here.
+function fillBoardDisc(ctx, ox, oy, sc){
+    const disc = r => { ctx.beginPath(); ctx.arc(ox, oy, r*sc, 0, 7); };
+    if (!SKIN || !SKIN.shadeByZoneValue){
+        ctx.fillStyle = SKIN ? SKIN.flat : (currentTheme==='dark' ? '#171c22' : '#efe4a6');
+        disc(CFG.edgeU); ctx.fill(); return;
+    }
+    ctx.fillStyle=SKIN.v2; disc(CFG.edgeU);    ctx.fill();
+    ctx.fillStyle=SKIN.v3; disc(CFG.rings[1]); ctx.fill();
+    ctx.fillStyle=SKIN.v4; disc(CFG.rings[0]); ctx.fill();
+    for (const a of CFG.sideArcs){
+        ctx.save();
+        disc(CFG.edgeU); ctx.clip();
+        ctx.beginPath(); ctx.arc(ox + a.cx*sc, oy + a.cy*sc, a.r*sc, 0, 7); ctx.clip();
+        ctx.fillStyle=SKIN.v1; disc(CFG.edgeU);    ctx.fill();
+        ctx.fillStyle=SKIN.v2; disc(CFG.rings[1]); ctx.fill();
+        ctx.fillStyle=SKIN.v3; disc(CFG.rings[0]); ctx.fill();
+        ctx.restore();
+    }
+}
 let htpTripods=[];   // throwaway pieces for the how-to-play "push them off" 3D demo (built in init3D)
 let currentTheme = 'dark';   // 'dark' = sleek dark board (default); 'light' = pale physical-board look
 // First visit follows the device's light/dark preference; the ☀ toggle stores an explicit choice
@@ -2460,6 +2491,7 @@ try {
 function boardColors() {
     // bg (the surround) stays dark in both themes, matching the 3D scene where the board disc
     // floats on a dark backdrop — only the disc/lines change with the theme.
+    if (SKIN) return { bg:SKIN.bg, disc:SKIN.flat, line:SKIN.lines, dotBlue:hexA(SKIN.pb,0.6), dotRed:hexA(SKIN.pr,0.6) };
     return currentTheme === 'dark'
         ? { bg:'#0c0e11', disc:'#171c22', line:'#414b56', dotBlue:'rgba(107,158,255,0.6)', dotRed:'rgba(255,107,107,0.6)' }
         : { bg:'#0c0e11', disc:'#efe4a6', line:'#26251f', dotBlue:'rgba(74,111,212,0.85)', dotRed:'rgba(192,57,43,0.85)' };
@@ -2803,12 +2835,13 @@ const px2b  = (px, py) => ({ x: (px - cx) / scale, y: (py - cy) / scale });
 Piece.prototype.draw = function(activeIdx) {
     const feet = this.feet().map(f => bx2px(f.x, f.y));
     const c = bx2px(this.x, this.y);
-    ctx.strokeStyle=this.color; ctx.lineWidth=4; ctx.lineCap='round';
+    const col = pieceHex(this.id);
+    ctx.strokeStyle=col; ctx.lineWidth=4; ctx.lineCap='round';
     for (const f of feet){ ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.lineTo(f.x,f.y); ctx.stroke(); }
-    ctx.fillStyle=this.color; ctx.beginPath(); ctx.arc(c.x,c.y,5,0,2*Math.PI); ctx.fill();
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(c.x,c.y,5,0,2*Math.PI); ctx.fill();
     for (let i=0;i<3;i++){ const f=feet[i];
         ctx.beginPath(); ctx.arc(f.x,f.y,9,0,2*Math.PI);
-        ctx.fillStyle=(activeIdx===i)?'#ffd23f':this.color; ctx.fill();
+        ctx.fillStyle=(activeIdx===i)?'#ffd23f':col; ctx.fill();
         ctx.lineWidth=2; ctx.strokeStyle='#0c0e11'; ctx.stroke(); }
 };
 
@@ -2887,6 +2920,11 @@ function onUp() {
 function finishTurn() {
     endTurn();
     progressCentering();   // each completed move creeps the camera a quarter back toward centre
+    if (colorLab) {   // colour-lab AI-vs-AI: show the tumble on a loss, then reset and keep playing
+        if (G.over) { triggerFall(); colorLabTimer = setTimeout(colorLabReset, 2600); }
+        else colorLabTimer = setTimeout(colorLabTurn, 550);
+        render(); return;
+    }
     if (G.over) { triggerFall(); showGameOverModal(); }
     else if (!vsAI) startOnlineTurnClock();   // local pass-and-play gets the same 30s turn clock as online; vs AI doesn't
     render();
@@ -2954,7 +2992,7 @@ function demoDraw() {
     const b=(mx,my)=>({x:o+mx*sc, y:o+my*sc});
     const col=boardColors();
     demoCtx.fillStyle=col.bg; demoCtx.fillRect(0,0,w,w);
-    demoCtx.beginPath(); demoCtx.arc(o,o,CFG.edgeU*sc,0,7); demoCtx.fillStyle=col.disc; demoCtx.fill();
+    fillBoardDisc(demoCtx, o, o, sc);
     demoCtx.lineWidth=Math.max(1, CFG.edgeU*CFG.lineWidthFrac*sc); demoCtx.strokeStyle=col.line;
     for (const r of CFG.rings){ demoCtx.beginPath(); demoCtx.arc(o,o,r*sc,0,7); demoCtx.stroke(); }
     for (const a of CFG.sideArcs){ demoCtx.beginPath(); const seg=48;
@@ -3278,7 +3316,7 @@ function htpEaseHold(cyc){ const p=Math.min(1,cyc/0.72); return p*p*(3-2*p); }  
 function htpBoard(c,b,sc){
     const col=boardColors(), O=b(0,0);
     c.fillStyle=col.bg; c.fillRect(0,0,c.canvas.width,c.canvas.height);
-    c.beginPath(); c.arc(O.x,O.y,CFG.edgeU*sc,0,7); c.fillStyle=col.disc; c.fill();
+    fillBoardDisc(c, O.x, O.y, sc);
     c.strokeStyle=col.line; c.lineWidth=Math.max(1,CFG.edgeU*CFG.lineWidthFrac*sc);
     for(const r of CFG.rings){ c.beginPath(); c.arc(O.x,O.y,r*sc,0,7); c.stroke(); }
     for(const a of CFG.sideArcs){ c.beginPath(); const seg=48;
@@ -3980,8 +4018,7 @@ function render() {
     ctx.fillStyle=col.bg; ctx.fillRect(0,0,w,w);
     const O=bx2px(0,0);
     // board disc — the surface simply ends at the drop-off; no line is printed there
-    ctx.beginPath(); ctx.arc(O.x,O.y,CFG.edgeU*scale,0,2*Math.PI);
-    ctx.fillStyle=col.disc; ctx.fill();
+    fillBoardDisc(ctx, O.x, O.y, scale);
     // the two interior rings
     ctx.lineWidth=Math.max(1, CFG.edgeU*CFG.lineWidthFrac*scale); ctx.strokeStyle=col.line;
     for (const r of CFG.rings){ ctx.beginPath(); ctx.arc(O.x,O.y,r*scale,0,2*Math.PI); ctx.stroke(); }
@@ -4075,11 +4112,10 @@ function boardTexture(dark) {
     // coordinates) in the 3D view.
     const c=cv.getContext('2d'), sc=S/(2*CFG.edgeU), O=S/2;
     const b=(mx,my)=>({x:O+mx*sc, y:O+my*sc});
-    const boardCol = dark ? '#171c22' : '#efe4a6';
-    const lineCol  = dark ? '#414b56' : '#26251f';
-    const dotBlue  = dark ? '#6b9eff' : '#4a6fd4';
-    const dotRed   = dark ? '#ff6b6b' : '#c0392b';
-    c.fillStyle=boardCol; c.beginPath(); c.arc(O,O,CFG.edgeU*sc,0,7); c.fill();   // board — no edge line
+    const lineCol  = SKIN ? SKIN.lines : (dark ? '#414b56' : '#26251f');
+    const dotBlue  = SKIN ? SKIN.pb : (dark ? '#6b9eff' : '#4a6fd4');
+    const dotRed   = SKIN ? SKIN.pr : (dark ? '#ff6b6b' : '#c0392b');
+    fillBoardDisc(c, O, O, sc);   // board — no edge line
     c.strokeStyle=lineCol; c.lineWidth=Math.max(2, CFG.edgeU*CFG.lineWidthFrac*sc);
     for (const r of CFG.rings){ c.beginPath(); c.arc(O,O,r*sc,0,7); c.stroke(); }
     for (const a of CFG.sideArcs){ c.beginPath(); const seg=90;
@@ -4192,13 +4228,13 @@ function init3D() {
     // bottom of every foot was buried in the board, so what showed was the leg's taper sliced by
     // the board plane -- exactly the "crescent / hollow" foot look from low angles.
     boardTop.rotation.x=-Math.PI/2; boardTop.position.y=-0.05; scene.add(boardTop);
-    const rim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.05,CFG.edgeU*1.09,5,96),
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.05,CFG.edgeU*1.09,5,96),
         new THREE.MeshStandardMaterial({color:0x8b9199, roughness:0.6, metalness:0.2}));
     // Top of this grey base band must stay just BELOW the board surface, else it occludes the dark
     // textured top from above and the whole disc reads as blank pale grey (regression when the board
     // was lowered to -0.05 to un-bury the feet: the old rim top at +0.1 then poked through). Height
     // is 5, so centre -2.7 -> top -0.2, safely under boardTop's -0.05.
-    rim.position.y=-2.7; scene.add(rim);
+    boardRim.position.y=-2.7; scene.add(boardRim);
     tripods=[buildTripod(0x6b9eff), buildTripod(0xff6b6b)];   // [blue, red] = pieces order
     tripods.forEach(t=>scene.add(t));
     htpTripods=[buildTripod(0x6b9eff), buildTripod(0xff6b6b)];   // how-to-play's own pair, hidden until slide 5 is open
@@ -4630,6 +4666,91 @@ demoStart();
     }
 })();
 if (location.hash.startsWith('#r=')) bootSharedReplay(location.hash.slice(3));   // opened from a shared replay link
+
+// ---------- Colour lab (open with #colorlab): AI-vs-AI on the full game screen + a live skin panel ----------
+// Everything a normal player sees is unchanged (SKIN stays null); this only runs when the URL hash
+// asks for it. Lets you audition a board/piece colourway on the REAL renderer (true 3D camera,
+// physics, materials) with a demo game running, then Dump values to send back.
+const COLORLAB_PRESETS = {
+  'Slate (steel)':      { shadeByZoneValue:true, v4:'#5a636c', v3:'#4b535b', v2:'#3c434a', v1:'#2f353b', flat:'#454d55', lines:'#12161a', rim:'#8f979e', bg:'#0f1216', pb:'#5487c4', pr:'#d05a48' },
+  'Dojo (indigo/verm.)':{ shadeByZoneValue:true, v4:'#e9d9b3', v3:'#ddc99b', v2:'#cbb47e', v1:'#b89a62', flat:'#d9c9a3', lines:'#3a2f22', rim:'#8a6f4a', bg:'#171310', pb:'#243f78', pr:'#cf3b26' },
+  'Yellow — original':  { shadeByZoneValue:true, v4:'#f7e600', v3:'#f6ee4a', v2:'#faf3a0', v1:'#fdf8cf', flat:'#f6ee4a', lines:'#141414', rim:'#c2c6ca', bg:'#15181c', pb:'#2b4f9e', pr:'#8e1f1f' },
+  'Celadon (gallery)':  { shadeByZoneValue:true, v4:'#dbe4d4', v3:'#c7d3bd', v2:'#b0bfa4', v1:'#98a98b', flat:'#c7d3bd', lines:'#2c332a', rim:'#9aa891', bg:'#e7e4dc', pb:'#356074', pr:'#c05a3c' },
+  'Neon (streaming)':   { shadeByZoneValue:true, v4:'#123038', v3:'#0f2a31', v2:'#0c2329', v1:'#091b20', flat:'#0f2a31', lines:'#1d4b56', rim:'#0a1417', bg:'#0a0d10', pb:'#37c2e0', pr:'#ff6a4d' },
+  'Digital dark (live)':{ shadeByZoneValue:false, v4:'#22262b', v3:'#22262b', v2:'#22262b', v1:'#22262b', flat:'#171c22', lines:'#414b56', rim:'#8b9199', bg:'#0c0e11', pb:'#6b9eff', pr:'#ff6b6b' },
+};
+const COLORLAB_KEYS = ['v4','v3','v2','v1','flat','lines','rim','bg','pb','pr'];
+function applySkin(){
+    if (boardTop){ boardTop.material.map = boardTexture(currentTheme==='dark'); boardTop.material.map.needsUpdate = true; boardTop.material.needsUpdate = true; }
+    if (boardRim && SKIN) boardRim.material.color.set(SKIN.rim);
+    if (tripods && tripods.length===2){ tripods[0].userData.mat.color.set(pieceHex(0)); tripods[1].userData.mat.color.set(pieceHex(1)); }
+    if (scene && SKIN) scene.background = new THREE.Color(SKIN.bg);
+    if (G && G.pieces){ G.pieces[0].color = pieceHex(0); G.pieces[1].color = pieceHex(1); }
+    if (G) render();
+}
+function colorLabReset(first){
+    clearTimeout(colorLabTimer); aiAnim = null; fall.active = false;
+    reset(); if (typeof resize === 'function') resize();
+    G.pieces.forEach(p => { p.rot += (Math.random()-0.5)*0.5; });   // vary successive games
+    if (G && G.pieces){ G.pieces[0].color = pieceHex(0); G.pieces[1].color = pieceHex(1); }
+    camCenterFrac = 1; camManualSet = false; render();
+    colorLabTimer = setTimeout(colorLabTurn, first ? 700 : 500);
+}
+function colorLabTurn(){
+    if (!colorLab || !G || G.over) return;
+    aiIdx = G.active;          // let startAiTurn animate whichever side is up
+    aiDifficulty = 'zone';     // lively games, quick to compute
+    startAiTurn();             // stepAi -> finishTurn -> (colorLab hook) schedules the next turn
+}
+function startColorLab(){
+    if (!renderer){ setTimeout(startColorLab, 200); return; }   // wait for init3D
+    colorLab = true;
+    if (!SKIN) SKIN = Object.assign({}, COLORLAB_PRESETS['Slate (steel)']);
+    demoStop(); hideModal();
+    document.getElementById('views').appendChild(document.getElementById('view3d'));
+    vsAI = false;
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('game').style.display = 'flex';
+    document.body.classList.add('ingame');
+    const rs = document.getElementById('reset'); if (rs) rs.style.display = 'none';
+    if (typeof setSpectatorChrome === 'function') setSpectatorChrome(false);
+    colorLabReset(true);
+    buildColorLabPanel();
+    applySkin();
+}
+function buildColorLabPanel(){
+    if (document.getElementById('colorLabPanel')) return;
+    const labels = { v4:'Value 4 (centre)', v3:'Value 3 (mid)', v2:'Value 2 (outer)', v1:'Value 1 (lens edge)',
+        flat:'Flat disc', lines:'Lines', rim:'Base / rim', bg:'Surround', pb:'Blue piece', pr:'Red piece' };
+    const p = document.createElement('div'); p.id = 'colorLabPanel';
+    p.style.cssText = 'position:fixed; top:8px; left:8px; z-index:80; width:210px; max-height:92vh; overflow-y:auto; '
+        + 'background:rgba(20,24,29,0.94); border:1px solid #2c343d; border-radius:10px; padding:11px 12px; '
+        + 'font:12px/1.4 -apple-system,Segoe UI,Roboto,sans-serif; color:#c7cfd6; box-shadow:0 8px 30px rgba(0,0,0,0.5);';
+    let html = '<div style="font-weight:600;font-size:12px;margin-bottom:6px;">Colour lab</div>';
+    html += '<select id="clPreset" style="width:100%;margin-bottom:8px;padding:5px;border-radius:6px;background:#12161a;color:#c7cfd6;border:1px solid #333c44;">';
+    Object.keys(COLORLAB_PRESETS).forEach(n => html += `<option>${n}</option>`);
+    html += '</select>';
+    html += '<label style="display:flex;justify-content:space-between;align-items:center;margin:4px 0;">Zone shading<input type="checkbox" id="clShade"></label>';
+    COLORLAB_KEYS.forEach(k => { html += `<label style="display:flex;justify-content:space-between;align-items:center;margin:3px 0;color:#aeb8c2;">${labels[k]}<input type="color" id="cl_${k}" style="width:38px;height:24px;border:none;background:none;padding:0;"></label>`; });
+    html += '<div style="display:flex;gap:6px;margin-top:8px;"><button id="clDump" style="flex:1;padding:6px;border-radius:6px;border:1px solid #3b78b3;background:#2a5d8f;color:#eaf2fa;cursor:pointer;">Dump &amp; copy</button><button id="clClose" style="padding:6px 9px;border-radius:6px;border:1px solid #333c44;background:#1b222a;color:#cdd6df;cursor:pointer;">✕</button></div>';
+    html += '<textarea id="clOut" readonly rows="4" style="width:100%;margin-top:7px;background:#0f1318;border:1px solid #262f38;border-radius:6px;color:#b7c1cb;font:10.5px/1.3 ui-monospace,monospace;padding:6px;"></textarea>';
+    p.innerHTML = html;
+    document.body.appendChild(p);
+    const syncInputs = () => { document.getElementById('clShade').checked = !!SKIN.shadeByZoneValue;
+        COLORLAB_KEYS.forEach(k => document.getElementById('cl_'+k).value = SKIN[k]); };
+    syncInputs();
+    document.getElementById('clPreset').value = 'Slate (steel)';
+    document.getElementById('clPreset').addEventListener('change', e => { SKIN = Object.assign({}, COLORLAB_PRESETS[e.target.value]); syncInputs(); applySkin(); });
+    document.getElementById('clShade').addEventListener('input', e => { SKIN.shadeByZoneValue = e.target.checked; applySkin(); });
+    COLORLAB_KEYS.forEach(k => document.getElementById('cl_'+k).addEventListener('input', e => { SKIN[k] = e.target.value; applySkin(); }));
+    document.getElementById('clDump').addEventListener('click', () => {
+        const out = { shadeByZoneValue: !!SKIN.shadeByZoneValue }; COLORLAB_KEYS.forEach(k => out[k] = SKIN[k]);
+        const txt = JSON.stringify(out, null, 1); document.getElementById('clOut').value = txt;
+        navigator.clipboard && navigator.clipboard.writeText(txt).catch(()=>{});
+    });
+    document.getElementById('clClose').addEventListener('click', () => { location.hash = ''; location.reload(); });
+}
+if (location.hash.toLowerCase().includes('colorlab')) setTimeout(startColorLab, 300);
 
 // ---------- Menu logo: the composed wordmark (tau-logo.png), tinted live to signal state ----------
 // The three posed pieces are baked into one cleanly laid-out PNG (logo_studio.html did the spacing);
