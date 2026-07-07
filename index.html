@@ -158,7 +158,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 52</div>
+<div id="buildTag">build 53</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -217,6 +217,8 @@
         </div>
         <p id="help"></p>
         <div id="btns"><button id="reset">Surrender</button><button id="menuBtn">Menu</button></div>
+        <!-- replaces Surrender/Menu while a replay is playing: share the game or skip to the end -->
+        <div id="replayBtns" style="display:none;gap:10px;"><button id="replayShare">Share this game</button><button id="replaySkip">Skip ⏭</button></div>
     </div>
 </div>
 <div id="modalBackdrop">
@@ -1350,6 +1352,7 @@ ja: {
 "Get Tau in real life →":"Tauを現実で遊ぶ →","On the list ✓":"登録済み ✓","Tau on a real table":"Tauを実際の卓で","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tauは実物のボードゲームでもあります。ご希望をお知らせください — スパムはなし、準備ができたらメールでお知らせします。","Free print-and-play files":"無料の印刷して遊べるデータ","Make your own set at home":"自宅で自作できます","The full kit, shipped":"完成キットをお届け","A ready-to-play board and pieces":"すぐ遊べるボードとコマ","Pick at least one option.":"少なくとも1つ選んでください。","Notify me":"通知を受け取る","You’re on the list!":"登録しました！","That doesn’t look like an email address.":"メールアドレスの形式が正しくありません。","email":"メールアドレス","Could not save — check your connection.":"保存できませんでした — 接続を確認してください。",
 "Most recent game":"直近の対局","Top-rated game":"最高レートの対局","Nothing to replay in that game.":"この対局には再生できる内容がありません。",
 "Save replay":"リプレイを保存","Saved to My replays!":"マイリプレイに保存しました！","My replays":"マイリプレイ","Delete":"削除",
+"Share this game":"この対局を共有","Skip ⏭":"スキップ ⏭",
 "Continue with Google":"Googleで続行","or use a username & password":"またはユーザー名とパスワードを使う","hide username & password":"ユーザー名の入力を隠す",
 "or a one-time email link":"またはメールでワンタイムリンク","Log in":"ログイン","Sign up":"新規登録","Send link":"リンクを送信","username":"ユーザー名","password":"パスワード",
 "Sign up to choose your own name — you keep your current rating.":"登録すると名前を選べます — レートは引き継がれます。",
@@ -1397,6 +1400,7 @@ zh: {
 "Get Tau in real life →":"把Tau带到现实 →","On the list ✓":"已登记 ✓","Tau on a real table":"实体桌面版Tau","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tau也是一款实体桌游。告诉我们你感兴趣的内容——绝无骚扰，准备就绪时给你发一封邮件。","Free print-and-play files":"免费自制文件","Make your own set at home":"在家自己制作一套","The full kit, shipped":"整套成品，包邮到家","A ready-to-play board and pieces":"开箱即玩的棋盘和棋子","Pick at least one option.":"请至少选择一项。","Notify me":"通知我","You’re on the list!":"已加入通知列表！","That doesn’t look like an email address.":"邮箱格式不正确。","email":"邮箱","Could not save — check your connection.":"保存失败——请检查网络连接。",
 "Most recent game":"最近的对局","Top-rated game":"最高分对局","Nothing to replay in that game.":"该对局没有可回放的内容。",
 "Save replay":"保存回放","Saved to My replays!":"已保存到我的回放！","My replays":"我的回放","Delete":"删除",
+"Share this game":"分享此对局","Skip ⏭":"跳过 ⏭",
 "Continue with Google":"使用Google登录","or use a username & password":"或使用用户名和密码","hide username & password":"收起用户名登录",
 "or a one-time email link":"或使用一次性邮件链接","Log in":"登录","Sign up":"注册","Send link":"发送链接","username":"用户名","password":"密码",
 "Sign up to choose your own name — you keep your current rating.":"注册后可自选用户名——当前等级分会保留。",
@@ -1444,6 +1448,7 @@ zht: {
 "Get Tau in real life →":"把Tau帶到現實 →","On the list ✓":"已登記 ✓","Tau on a real table":"實體桌上版Tau","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tau也是一款實體桌遊。告訴我們你感興趣的內容——絕不騷擾，準備好時寄一封Email給你。","Free print-and-play files":"免費自製檔案","Make your own set at home":"在家自己做一套","The full kit, shipped":"整套成品，寄到府","A ready-to-play board and pieces":"開箱即玩的棋盤與棋子","Pick at least one option.":"請至少選擇一項。","Notify me":"通知我","You’re on the list!":"已加入通知名單！","That doesn’t look like an email address.":"Email格式不正確。","email":"Email","Could not save — check your connection.":"儲存失敗——請檢查網路連線。",
 "Most recent game":"最近的對局","Top-rated game":"最高分對局","Nothing to replay in that game.":"該對局沒有可重播的內容。",
 "Save replay":"儲存重播","Saved to My replays!":"已儲存到我的重播！","My replays":"我的重播","Delete":"刪除",
+"Share this game":"分享此對局","Skip ⏭":"跳過 ⏭",
 "Continue with Google":"使用Google繼續","or use a username & password":"或使用帳號密碼","hide username & password":"隱藏帳號密碼欄位",
 "or a one-time email link":"或使用一次性電子郵件連結","Log in":"登入","Sign up":"註冊","Send link":"傳送連結","username":"帳號","password":"密碼",
 "Sign up to choose your own name — you keep your current rating.":"註冊後可自選名稱——目前的等級分會保留。",
@@ -1491,6 +1496,7 @@ ko: {
 "Get Tau in real life →":"Tau를 실물로 즐기기 →","On the list ✓":"신청 완료 ✓","Tau on a real table":"실제 테이블 위의 Tau","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tau는 실물 보드게임이기도 합니다. 관심 있는 항목을 알려주세요 — 스팸 없이, 준비되면 이메일 한 통만 보내드립니다.","Free print-and-play files":"무료 프린트&플레이 파일","Make your own set at home":"집에서 직접 만들기","The full kit, shipped":"완성 키트 배송","A ready-to-play board and pieces":"바로 즐기는 보드와 말","Pick at least one option.":"최소 한 가지를 선택하세요.","Notify me":"알림 받기","You’re on the list!":"신청 완료!","That doesn’t look like an email address.":"이메일 주소 형식이 올바르지 않습니다.","email":"이메일","Could not save — check your connection.":"저장하지 못했습니다 — 연결을 확인하세요.",
 "Most recent game":"최근 경기","Top-rated game":"최고 레이팅 경기","Nothing to replay in that game.":"이 경기에는 재생할 내용이 없습니다.",
 "Save replay":"리플레이 저장","Saved to My replays!":"내 리플레이에 저장됨!","My replays":"내 리플레이","Delete":"삭제",
+"Share this game":"이 경기 공유","Skip ⏭":"건너뛰기 ⏭",
 "Continue with Google":"Google로 계속하기","or use a username & password":"또는 아이디와 비밀번호 사용","hide username & password":"아이디 입력 숨기기",
 "or a one-time email link":"또는 일회용 이메일 링크","Log in":"로그인","Sign up":"가입","Send link":"링크 보내기","username":"아이디","password":"비밀번호",
 "Sign up to choose your own name — you keep your current rating.":"가입하면 원하는 이름을 고를 수 있습니다 — 현재 레이팅은 유지됩니다.",
@@ -1538,6 +1544,7 @@ de: {
 "Get Tau in real life →":"Tau in echt holen →","On the list ✓":"Auf der Liste ✓","Tau on a real table":"Tau auf einem echten Tisch","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tau gibt es auch als echtes Brettspiel. Sag uns, wovon du hören möchtest – kein Spam, nur eine E-Mail, wenn es so weit ist.","Free print-and-play files":"Kostenlose Print-and-Play-Dateien","Make your own set at home":"Bau dir dein eigenes Set","The full kit, shipped":"Das komplette Set, geliefert","A ready-to-play board and pieces":"Spielfertiges Brett samt Figuren","Pick at least one option.":"Wähle mindestens eine Option.","Notify me":"Benachrichtige mich","You’re on the list!":"Du stehst auf der Liste!","That doesn’t look like an email address.":"Das sieht nicht nach einer E-Mail-Adresse aus.","email":"E-Mail","Could not save — check your connection.":"Speichern fehlgeschlagen – prüfe deine Verbindung.",
 "Most recent game":"Neuestes Spiel","Top-rated game":"Bestbewertetes Spiel","Nothing to replay in that game.":"In diesem Spiel gibt es nichts abzuspielen.",
 "Save replay":"Wiederholung speichern","Saved to My replays!":"Unter Meine Wiederholungen gespeichert!","My replays":"Meine Wiederholungen","Delete":"Löschen",
+"Share this game":"Diese Partie teilen","Skip ⏭":"Überspringen ⏭",
 "Continue with Google":"Weiter mit Google","or use a username & password":"oder Benutzername & Passwort","hide username & password":"Benutzername & Passwort ausblenden",
 "or a one-time email link":"oder ein einmaliger E-Mail-Link","Log in":"Einloggen","Sign up":"Registrieren","Send link":"Link senden","username":"Benutzername","password":"Passwort",
 "Sign up to choose your own name — you keep your current rating.":"Registriere dich und wähle deinen Namen – deine Wertung bleibt erhalten.",
@@ -1585,6 +1592,7 @@ fr: {
 "Get Tau in real life →":"Tau en vrai →","On the list ✓":"Inscrit ✓","Tau on a real table":"Tau sur une vraie table","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tau existe aussi en vrai jeu de plateau. Dis-nous ce qui t’intéresse — pas de spam, juste un e-mail quand ce sera prêt.","Free print-and-play files":"Fichiers à imprimer gratuits","Make your own set at home":"Fabrique ton propre jeu chez toi","The full kit, shipped":"Le kit complet, livré","A ready-to-play board and pieces":"Un plateau et des pièces prêts à jouer","Pick at least one option.":"Choisis au moins une option.","Notify me":"Me prévenir","You’re on the list!":"Tu es sur la liste !","That doesn’t look like an email address.":"Ça ne ressemble pas à une adresse e-mail.","email":"e-mail","Could not save — check your connection.":"Enregistrement impossible — vérifie ta connexion.",
 "Most recent game":"Partie la plus récente","Top-rated game":"Partie la mieux cotée","Nothing to replay in that game.":"Rien à revoir dans cette partie.",
 "Save replay":"Enregistrer le replay","Saved to My replays!":"Ajouté à Mes replays !","My replays":"Mes replays","Delete":"Supprimer",
+"Share this game":"Partager cette partie","Skip ⏭":"Passer ⏭",
 "Continue with Google":"Continuer avec Google","or use a username & password":"ou identifiant & mot de passe","hide username & password":"masquer identifiant & mot de passe",
 "or a one-time email link":"ou un lien par e-mail","Log in":"Connexion","Sign up":"Créer un compte","Send link":"Envoyer le lien","username":"identifiant","password":"mot de passe",
 "Sign up to choose your own name — you keep your current rating.":"Crée un compte pour choisir ton nom — tu gardes ton Elo actuel.",
@@ -1632,6 +1640,7 @@ es: {
 "Get Tau in real life →":"Tau en la vida real →","On the list ✓":"En la lista ✓","Tau on a real table":"Tau en una mesa de verdad","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tau también es un juego de mesa real. Cuéntanos qué te interesa — sin spam, solo un correo cuando esté listo.","Free print-and-play files":"Archivos gratis para imprimir y jugar","Make your own set at home":"Hazte tu propia copia en casa","The full kit, shipped":"El kit completo, enviado","A ready-to-play board and pieces":"Un tablero y piezas listos para jugar","Pick at least one option.":"Elige al menos una opción.","Notify me":"Avísame","You’re on the list!":"¡Estás en la lista!","That doesn’t look like an email address.":"Eso no parece un correo electrónico.","email":"correo","Could not save — check your connection.":"No se pudo guardar — revisa tu conexión.",
 "Most recent game":"Partida más reciente","Top-rated game":"Partida mejor clasificada","Nothing to replay in that game.":"No hay nada que reproducir en esa partida.",
 "Save replay":"Guardar repetición","Saved to My replays!":"¡Guardada en Mis repeticiones!","My replays":"Mis repeticiones","Delete":"Eliminar",
+"Share this game":"Compartir esta partida","Skip ⏭":"Saltar ⏭",
 "Continue with Google":"Continuar con Google","or use a username & password":"o usar nombre de usuario y contraseña","hide username & password":"ocultar usuario y contraseña",
 "or a one-time email link":"o un enlace de un solo uso por correo","Log in":"Entrar","Sign up":"Registrarse","Send link":"Enviar enlace","username":"usuario","password":"contraseña",
 "Sign up to choose your own name — you keep your current rating.":"Regístrate para elegir tu nombre — conservas tu Elo actual.",
@@ -1679,6 +1688,7 @@ pt: {
 "Get Tau in real life →":"Tau na vida real →","On the list ✓":"Na lista ✓","Tau on a real table":"Tau numa mesa de verdade","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tau também é um jogo de tabuleiro de verdade. Diga o que te interessa — sem spam, só um e-mail quando estiver pronto.","Free print-and-play files":"Arquivos grátis para imprimir e jogar","Make your own set at home":"Monte o seu próprio set em casa","The full kit, shipped":"O kit completo, enviado","A ready-to-play board and pieces":"Tabuleiro e peças prontos para jogar","Pick at least one option.":"Escolha ao menos uma opção.","Notify me":"Me avise","You’re on the list!":"Você está na lista!","That doesn’t look like an email address.":"Isso não parece um e-mail.","email":"e-mail","Could not save — check your connection.":"Não foi possível salvar — verifique sua conexão.",
 "Most recent game":"Partida mais recente","Top-rated game":"Partida mais bem ranqueada","Nothing to replay in that game.":"Nada para reproduzir nessa partida.",
 "Save replay":"Salvar replay","Saved to My replays!":"Salvo em Meus replays!","My replays":"Meus replays","Delete":"Excluir",
+"Share this game":"Compartilhar esta partida","Skip ⏭":"Pular ⏭",
 "Continue with Google":"Continuar com o Google","or use a username & password":"ou usar nome de usuário e senha","hide username & password":"esconder usuário e senha",
 "or a one-time email link":"ou um link único por e-mail","Log in":"Entrar","Sign up":"Cadastrar","Send link":"Enviar link","username":"usuário","password":"senha",
 "Sign up to choose your own name — you keep your current rating.":"Cadastre-se para escolher seu nome — você mantém seu Elo atual.",
@@ -1726,6 +1736,7 @@ ru: {
 "Get Tau in real life →":"Tau вживую →","On the list ✓":"Вы в списке ✓","Tau on a real table":"Tau на настоящем столе","Tau is a real tabletop game too. Tell us what you’d like to hear about — no spam, just an email when it’s ready.":"Tau — это ещё и настоящая настольная игра. Расскажите, что вам интересно — без спама, лишь одно письмо, когда всё будет готово.","Free print-and-play files":"Бесплатные файлы «распечатай и играй»","Make your own set at home":"Соберите свой набор дома","The full kit, shipped":"Полный набор с доставкой","A ready-to-play board and pieces":"Готовое поле и фигуры","Pick at least one option.":"Выберите хотя бы один вариант.","Notify me":"Сообщить мне","You’re on the list!":"Вы в списке!","That doesn’t look like an email address.":"Это не похоже на адрес почты.","email":"почта","Could not save — check your connection.":"Не удалось сохранить — проверьте соединение.",
 "Most recent game":"Последняя партия","Top-rated game":"Партия с высшим рейтингом","Nothing to replay in that game.":"В этой партии нечего воспроизводить.",
 "Save replay":"Сохранить повтор","Saved to My replays!":"Сохранено в Мои повторы!","My replays":"Мои повторы","Delete":"Удалить",
+"Share this game":"Поделиться этой партией","Skip ⏭":"Пропустить ⏭",
 "Continue with Google":"Продолжить с Google","or use a username & password":"или имя пользователя и пароль","hide username & password":"скрыть имя пользователя и пароль",
 "or a one-time email link":"или одноразовая ссылка на почту","Log in":"Войти","Sign up":"Регистрация","Send link":"Отправить ссылку","username":"имя пользователя","password":"пароль",
 "Sign up to choose your own name — you keep your current rating.":"Зарегистрируйтесь, чтобы выбрать имя — рейтинг сохранится.",
@@ -2456,9 +2467,22 @@ let SKIN = null, colorLab = false, colorLabTimer = null;
 // The digital LIGHT theme is the "Slate" colourway (graphite graded board + steel pieces); DARK is
 // the original flat dark board. So the active board skin is: an explicit override (colour lab) if
 // set, else Slate in light mode, else null (= the default flat dark look).
-const SLATE_SKIN = { shadeByZoneValue:true, v4:'#5a636c', v3:'#4b535b', v2:'#3c434a', v1:'#2f353b',
+const SLATE_SKIN  = { shadeByZoneValue:true, v4:'#5a636c', v3:'#4b535b', v2:'#3c434a', v1:'#2f353b',
     flat:'#454d55', lines:'#12161a', rim:'#8f979e', bg:'#0c0e11', pb:'#5487c4', pr:'#d05a48' };
-function activeSkin(){ return SKIN || (currentTheme === 'light' ? SLATE_SKIN : null); }
+const DOJO_SKIN   = { shadeByZoneValue:true, v4:'#e9d9b3', v3:'#ddc99b', v2:'#cbb47e', v1:'#b89a62',
+    flat:'#d9c9a3', lines:'#3a2f22', rim:'#8a6f4a', bg:'#0c0e11', pb:'#243f78', pr:'#cf3b26' };
+const YELLOW_SKIN = { shadeByZoneValue:false, v4:'#efe4a6', v3:'#efe4a6', v2:'#efe4a6', v1:'#efe4a6',
+    flat:'#efe4a6', lines:'#26251f', rim:'#cfd3d7', bg:'#0c0e11', pb:'#6b9eff', pr:'#ff6b6b' };
+// Board looks, ordered DARKEST -> LIGHTEST; the ☀ button steps through and loops. null = the flat
+// dark board. Dark and Yellow are the two originals; Slate and Dojo are the graded colourways.
+const BOARD_SKINS = [
+    { id:'dark',   name:'Dark',   skin:null },
+    { id:'slate',  name:'Slate',  skin:SLATE_SKIN },
+    { id:'dojo',   name:'Dojo',   skin:DOJO_SKIN },
+    { id:'yellow', name:'Yellow', skin:YELLOW_SKIN },
+];
+let skinIdx = 0;
+function activeSkin(){ return SKIN || BOARD_SKINS[skinIdx].skin; }
 function pieceHex(id){ const sk = activeSkin(); return sk ? (id===0 ? sk.pb : sk.pr) : (id===0 ? '#6b9eff' : '#ff6b6b'); }
 function hexA(h, a){ const n=parseInt(h.slice(1),16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; }
 // Fill the board disc for any top-down view (2D game, demo, how-to, 3D texture) at centre (ox,oy)
@@ -2487,12 +2511,16 @@ function fillBoardDisc(ctx, ox, oy, sc){
     }
 }
 let htpTripods=[];   // throwaway pieces for the how-to-play "push them off" 3D demo (built in init3D)
-let currentTheme = 'dark';   // 'dark' = sleek dark board (default); 'light' = pale physical-board look
-// First visit follows the device's light/dark preference; the ☀ toggle stores an explicit choice
-// which wins from then on.
+let currentTheme = 'dark';   // 'dark' for the dark/flat board (skin 0), 'light' otherwise — only used for
+                             // the board's default (unskinned) colours.
+// First visit follows the device preference: dark -> the Dark board, light -> the original Yellow. An
+// explicit choice (the ☀ cycle) is remembered and wins from then on.
 try {
-    currentTheme = localStorage.getItem('tauTheme')
-        || (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    const saved = localStorage.getItem('tauSkin');
+    const i = saved != null ? BOARD_SKINS.findIndex(s => s.id === saved) : -1;
+    if (i >= 0) skinIdx = i;
+    else if (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches) skinIdx = 3;   // Yellow
+    currentTheme = skinIdx === 0 ? 'dark' : 'light';
 } catch(e) {}
 // One palette for every flat board drawing (2D game canvas, landing demo, how-to-play slides)
 // so the 2D and 3D boards always match: light = pale physical board, dark = sleek dark board.
@@ -2522,12 +2550,12 @@ let replayFrames = [], replayActive = false, replayFinalPose = null;
 // original pacing replayed every wobble of the drag, pure constant velocity felt robotic.
 const REPLAY_MAX_FRAMES = 30000;
 const REPLAY_TUNE = {
-    turnLen: 0.5,          // turn length: 0 = original timing, 1 = smoothed/even
+    turnLen: 0.41,         // turn length: 0 = original timing, 1 = smoothed/even
     speed: 1,              // overall speed multiplier
-    velBlend: 0.24,        // within a turn: 0 = exactly as played, 1 = the computed ease curve
-    curveExp: 4.2,         // computed ease: 1 = linear, higher = slow ends / fast middle
-    pauseMs: 600,          // prechosen between-turn pause
-    pauseBlend: 0.6,       // 0 = original thinking gap (capped), 1 = fully prechosen
+    velBlend: 0.66,        // within a turn: 0 = exactly as played, 1 = the computed ease curve
+    curveExp: 3.4,         // computed ease: 1 = linear, higher = slow ends / fast middle
+    pauseMs: 675,          // prechosen between-turn pause
+    pauseBlend: 0.5,       // 0 = original thinking gap (capped), 1 = fully prechosen
     minTurnDur: 0.18,      // floor (s) so a tiny corrective nudge can't flash past
     maxOrigPauseSec: 2.0,  // cap on the real thinking gap fed into the pause blend
     sharedUnitsPerSec: 22, // fallback average speed for shared links (they carry no timing)
@@ -2561,7 +2589,7 @@ function replayFrameDist(f, g) {
 // Runs shorter than 6 frames — contact jitter while pushing — merge into their neighbour.
 function segmentReplayTurns() {
     const F = replayFrames;
-    if (F.length < 3) return [{ s: 0, e: F.length - 1 }];
+    if (F.length < 3) return [{ s: 0, e: F.length - 1, mover: 0 }];
     const mover = [];
     for (let i = 1; i < F.length; i++) {
         const dB = Math.hypot(F[i][0]-F[i-1][0], F[i][1]-F[i-1][1]) + Math.abs(F[i][2]-F[i-1][2])*CFG.footR;
@@ -2569,10 +2597,10 @@ function segmentReplayTurns() {
         mover.push(dB >= dR ? 0 : 1);
     }
     const raw = []; let start = 0, cur = mover[0];
-    for (let i = 1; i < mover.length; i++) if (mover[i] !== cur) { raw.push({ s: start, e: i }); start = i; cur = mover[i]; }
-    raw.push({ s: start, e: F.length - 1 });
+    for (let i = 1; i < mover.length; i++) if (mover[i] !== cur) { raw.push({ s: start, e: i, mover: cur }); start = i; cur = mover[i]; }
+    raw.push({ s: start, e: F.length - 1, mover: cur });
     const out = [];
-    for (const t of raw) { if (out.length && (t.e - t.s) < 6) out[out.length-1].e = t.e; else out.push({ s: t.s, e: t.e }); }
+    for (const t of raw) { if (out.length && (t.e - t.s) < 6) out[out.length-1].e = t.e; else out.push({ s: t.s, e: t.e, mover: t.mover }); }
     return out;
 }
 function startReplay() {
@@ -2589,7 +2617,7 @@ function startReplay() {
         // gap sits between s and s+1 — active time is measured from the first MOVED frame.
         const durRec = haveTimes ? Math.max(0, replayTimes[t.e] - replayTimes[Math.min(t.s + 1, t.e)]) : 0;
         totalArc += arc[n-1]; totalActive += durRec;
-        return { s: t.s, e: t.e, n, arc, A: arc[n-1], durRec };
+        return { s: t.s, e: t.e, n, arc, A: arc[n-1], durRec, mover: t.mover };
     });
     // "Smoothed" speed = the recording's own average pace, so the smoothed total run length matches
     // the original; shared links carry no timing, so they get the tuned constant instead.
@@ -2609,6 +2637,8 @@ function startReplay() {
     }
     replayTurnIdx = 0; replayPhase = 'play'; replayPhaseT = 0; replayLastT = performance.now();
     replayActive = true;
+    document.getElementById('btns').style.display = 'none';           // no Surrender while watching
+    document.getElementById('replayBtns').style.display = 'flex';     // Share this game / Skip
     if (typeof rmxSend === 'function') rmxSend('watching');   // opponent's sheet: "X is watching the replay"
     showPassToast(t('Replay — tap the board to skip'));
 }
@@ -2629,6 +2659,23 @@ function replayPoseAtTime(m, u) {
     }
     const x = Math.max(0, Math.min(1, u)) * (m.n - 1), j0 = Math.floor(x), j1 = Math.min(j0 + 1, m.n - 1);
     return replayLerpPose(replayFrames[m.s + j0], replayFrames[m.s + j1], x - j0);
+}
+// The arc fraction the piece was actually at, at real-time fraction u of the recorded turn. This is
+// how the ORIGINAL pacing enters the blend below — as a TIMING, not a pose. (With timestamps it uses
+// real time; a shared link has none, so it falls back to frame index, which for a distance-
+// downsampled link is already near constant-velocity.)
+function replayArcFracAtTime(m, u) {
+    if (m.A < 1e-9) return 0;
+    if (replayTimes.length === replayFrames.length && m.durRec > 1e-6) {
+        const target = replayTimes[Math.min(m.s + 1, m.e)] + u * m.durRec;
+        let lo = m.s, hi = m.e;
+        while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (replayTimes[mid] <= target) lo = mid; else hi = mid - 1; }
+        const i1 = Math.min(lo + 1, m.e), seg = replayTimes[i1] - replayTimes[lo];
+        const ff = seg > 1e-9 ? Math.min(1, (target - replayTimes[lo]) / seg) : 1;
+        return (m.arc[lo - m.s] + (m.arc[i1 - m.s] - m.arc[lo - m.s]) * ff) / m.A;
+    }
+    const x = Math.max(0, Math.min(1, u)) * (m.n - 1), j0 = Math.floor(x), j1 = Math.min(j0 + 1, m.n - 1);
+    return (m.arc[j0] + (m.arc[j1] - m.arc[j0]) * (x - j0)) / m.A;
 }
 // Pose by COMPUTED pacing: u is a fraction of the turn's total piece travel (arc length).
 function replayPoseAtArc(m, u) {
@@ -2652,10 +2699,14 @@ function stepReplay() {
     const m = replayTurns[replayTurnIdx];
     replayPhaseT += dt;
     if (replayPhase === 'play') {
+        audioReplayIdx = m.mover;   // sound tracks whichever piece is moving THIS turn (both players)
         const u = Math.min(1, replayPhaseT / m.dur);
-        const comp = replayPoseAtArc(m, replayEase(u, REPLAY_TUNE.curveExp));
-        replayApplyPose(REPLAY_TUNE.velBlend >= 1 ? comp
-            : replayLerpPose(replayPoseAtTime(m, u), comp, REPLAY_TUNE.velBlend));
+        // Blend the arc FRACTION (how far along the path), not the poses — averaging two poses cuts a
+        // chord across the curved motion and adds wobble; blending the timing keeps the piece exactly
+        // on its recorded path. 0 = original speed profile, 1 = the computed ease curve.
+        const sOrig = replayArcFracAtTime(m, u);
+        const sComp = replayEase(u, REPLAY_TUNE.curveExp);
+        replayApplyPose(replayPoseAtArc(m, sOrig + (sComp - sOrig) * REPLAY_TUNE.velBlend));
         render();
         if (u >= 1) {
             if (replayTurnIdx + 1 >= replayTurns.length) { endReplay(); return; }
@@ -2669,7 +2720,9 @@ function stepReplay() {
 }
 function endReplay() {
     if (!replayActive) return;
-    replayActive = false;
+    replayActive = false; audioReplayIdx = null;
+    document.getElementById('replayBtns').style.display = 'none';
+    document.getElementById('btns').style.display = 'flex';
     if (replayFinalPose) { G.pieces.forEach((p,i)=>{ p.x=replayFinalPose[i].x; p.y=replayFinalPose[i].y; p.rot=replayFinalPose[i].rot; }); }
     render();
     if (sharedReplay) { endSharedReplay(); return; }
@@ -2677,6 +2730,8 @@ function endReplay() {
     triggerFall(true);                         // re-run the tip-over, but without re-firing the loss sound
     showGameOverModal();
 }
+document.getElementById('replayShare').addEventListener('click', () => shareReplay());
+document.getElementById('replaySkip').addEventListener('click', () => { if (replayActive) endReplay(); });
 
 // ---------- Shareable replays ----------
 // The whole recording travels INSIDE the link (no server): frames are downsampled to ~0.15u of
@@ -3629,26 +3684,24 @@ function applyTheme() {
     if (scene) scene.background = new THREE.Color(sk ? sk.bg : 0x0c0e11);
     if (G && G.pieces){ G.pieces[0].color = pieceHex(0); G.pieces[1].color = pieceHex(1); }
 }
-function setTheme(t) {
-    currentTheme = t;
-    try { localStorage.setItem('tauTheme', t); } catch(e) {}
+function applyBoardSkin() {
+    currentTheme = skinIdx === 0 ? 'dark' : 'light';
+    try { localStorage.setItem('tauSkin', BOARD_SKINS[skinIdx].id); } catch(e) {}
     applyTheme();
     updateThemeToggleIcon();
-    // Repaint every visible 2D surface right away so the switch is instant, rather than waiting
-    // for the next game move / demo animation frame: the in-game board (render) AND the landing
-    // demo board (demoDraw, which otherwise only redraws mid-animation, not during its between-
-    // move pauses). Both are guarded internally, so calling them off-screen is harmless.
+    // Repaint every visible 2D surface right away so the switch is instant (the in-game board AND
+    // the landing demo board, which otherwise only redraws mid-animation). Both are guarded.
     render();
     demoDraw();
 }
-// The corner button shows the theme you'll switch TO: a sun while dark (tap to brighten),
-// a moon while light (tap to darken).
+function cycleBoardSkin() { skinIdx = (skinIdx + 1) % BOARD_SKINS.length; applyBoardSkin(); }
+// The corner button always shows a sun — each tap steps one shade lighter and loops; the tooltip
+// names the board you'll switch TO.
 function updateThemeToggleIcon() {
     const btn = document.getElementById('themeToggle');
-    if (btn) btn.textContent = currentTheme === 'dark' ? '☀' : '☾';
+    if (btn) { btn.textContent = '☀'; btn.title = 'Board: ' + BOARD_SKINS[(skinIdx + 1) % BOARD_SKINS.length].name; }
 }
-document.getElementById('themeToggle').addEventListener('click',
-    () => setTheme(currentTheme === 'dark' ? 'light' : 'dark'));
+document.getElementById('themeToggle').addEventListener('click', cycleBoardSkin);
 updateThemeToggleIcon();
 // (The old Settings panel only held the theme switch, which now lives in the always-visible
 // corner toggle above — so Settings was removed as redundant.)
@@ -3813,7 +3866,8 @@ function updateAudioMovement(dt) {
         speed /= dt;   // board-units per second of the fastest-moving foot
     }
     audioPrevFeet = feet;
-    const lvl = Math.min(1, speed / Math.max(1, SFX.speedRef)) * SFX.speedGain;
+    const boost = replayActive ? 2.0 : 1;   // replay is slower than real time, so its foot speed (and thus volume) is lower
+    const lvl = Math.min(1, speed * boost / Math.max(1, SFX.speedRef)) * SFX.speedGain;
     voiceGain.gain.setTargetAtTime(lvl, now, 0.02);
     scrapeGain.gain.setTargetAtTime(lvl * SFX.scrape, now, 0.02);
 }
@@ -4143,6 +4197,18 @@ function boardTexture(dark) {
     for (let k=0;k<6;k++){ const d=CFG.startDots[k], p=b(d[0],d[1]);
         c.beginPath(); c.arc(p.x,p.y,CFG.padRadius*sc,0,7);
         c.fillStyle = k<3 ? dotBlue : dotRed; c.fill(); }
+    // The 3D board is LIT (hemisphere + directional), so a skinned board reads noticeably brighter
+    // than the flat 2D map drawn from the same colours. Pre-darken the texture (multiply) by roughly
+    // the inverse of the average board lighting so the lit 3D disc lands back at the 2D colour — most
+    // visible on the light Dojo/Yellow boards. The flat dark default (no skin) is left untouched.
+    if (sk) {
+        c.save();
+        c.beginPath(); c.arc(O, O, CFG.edgeU*sc, 0, 7); c.clip();
+        c.globalCompositeOperation = 'multiply';
+        c.fillStyle = '#b7b7b7';   // ~0.72 — lit board (~1.4x) x 0.72 ≈ the 2D colour
+        c.fillRect(0, 0, S, S);
+        c.restore();
+    }
     return new THREE.CanvasTexture(cv);
 }
 // A leg as ONE continuous mesh: full legRad radius for most of the quarter-circle arc,
@@ -4656,6 +4722,7 @@ demoStart();
         setTxt('modeLocal','Local 1v1'); setTxt('modeOnline','Online 1v1'); setTxt('modeAI','vs AI');
         setTxt('howToPlayBtn','How to play'); setTxt('leaderboardBtn','Leaderboard'); setTxt('watchBtn','Watch');
         setTxt('reset','Surrender'); setTxt('menuBtn','Menu');
+        setTxt('replayShare','Share this game'); setTxt('replaySkip','Skip ⏭');
         setTxt('acctGoogle','Continue with Google'); setTxt('acctMoreOptions','or use a username & password');
         setTxt('acctLogIn','Log in'); setTxt('acctSignUp','Sign up'); setTxt('acctSendLink','Send link');
         setTxt('acctPanelClose','Close'); setTxt('acctSignOut','Sign out');
