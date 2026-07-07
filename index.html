@@ -170,7 +170,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 62</div>
+<div id="buildTag">build 63</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
@@ -1950,15 +1950,19 @@ const LINE_INTERSECTIONS = (() => {
     return pts;
 })();
 // Is this foot genuinely JUMPING a marked intersection as it crosses `newId`? True only if its
-// magnet (holdEps) covers an intersection point shared by newId and a line already crossed in the
-// open episode. The physical read: the magnet sits ON the printed crossing point, one contact, one
-// crossing. Merely bridging the corner LENS — magnet near both lines but ~0.85u off the point, as in
-// the reported corner-cut games — is two separate crossings on the table and must be rolled back.
+// magnet covers an intersection point shared by newId and a line already crossed in the open
+// episode. The physical read: the magnet sits ON the printed crossing point — one contact, one
+// crossing. Merely bridging the corner LENS — magnet near both lines but well off the point
+// (~0.85u in the reported corner-cut games) — is two separate crossings and must be rolled back.
+// JUMP_EPS sits between the tight hold band (0.45) and the pad band (0.8): the physical magnet is
+// ~1.45u radius, so 0.6 is still conservative, while forgiving jump attempts that visually cover
+// the corner; the reported exploit passed at 0.84+ and stays blocked with margin.
+const JUMP_EPS = 0.6;
 function jumpsIntersection(foot, newId, epLines) {
     for (const P of LINE_INTERSECTIONS) {
         if (!P.lines.includes(newId)) continue;
         if (!P.lines.some(id => epLines[id])) continue;
-        if (Math.hypot(foot.x - P.x, foot.y - P.y) <= CFG.holdEps) return true;
+        if (Math.hypot(foot.x - P.x, foot.y - P.y) <= JUMP_EPS) return true;
     }
     return false;
 }
@@ -1997,7 +2001,17 @@ function crossingSubstep(before, after, st) {
         let hasLine = st.inCrossing && Object.keys(st.epLines).length > 0;
         for (const [i, id] of newCrossings) {
             if (st.epLines[id]) continue;                                  // same line again: fine
-            if (hasLine && !jumpsIntersection(after[i], id, st.epLines)) return true;
+            if (hasLine && !jumpsIntersection(after[i], id, st.epLines)) {
+                // #debug HUD: record exactly what was refused and how far off the corner it was
+                if (typeof DEBUG_CROSS !== 'undefined' && DEBUG_CROSS && typeof dbgLog !== 'undefined') {
+                    let d = 1e9;
+                    for (const P of LINE_INTERSECTIONS) if (P.lines.includes(id))
+                        d = Math.min(d, Math.hypot(after[i].x - P.x, after[i].y - P.y));
+                    dbgLog.push(`BLOCK f${i} x ${id} (ep:${Object.keys(st.epLines).join('')}) d=${d.toFixed(2)}`);
+                    if (dbgLog.length > 6) dbgLog.shift();
+                }
+                return true;
+            }
             st.epLines[id] = true; hasLine = true;
         }
         st.inCrossing = true;
@@ -5038,6 +5052,18 @@ demoStart();
     }
 })();
 if (location.hash.startsWith('#r=')) bootSharedReplay(location.hash.slice(3));   // opened from a shared replay link
+// Tapping a share link often focuses an EXISTING tau tab instead of opening a new one — the OS just
+// changes the hash, nothing reloads, and the link silently does nothing (the reported "it had me
+// play against myself": the old page simply stayed up). Boot the replay on hashchange too. Don't
+// hijack a live ONLINE match — a mis-tap there would forfeit; anything local is cheap to leave.
+let bootedReplayHash = location.hash;
+addEventListener('hashchange', () => {
+    if (!location.hash.startsWith('#r=') || location.hash === bootedReplayHash) return;
+    if (typeof onlineMatch !== 'undefined' && onlineMatch && !onlineMatch.spectator) return;
+    bootedReplayHash = location.hash;
+    hideModal(); if (typeof demoStop === 'function') demoStop();
+    bootSharedReplay(location.hash.slice(3));
+});
 
 // ---------- Colour lab (open with #colorlab): AI-vs-AI on the full game screen + a live skin panel ----------
 // Everything a normal player sees is unchanged (SKIN stays null); this only runs when the URL hash
