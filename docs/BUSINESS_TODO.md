@@ -5,12 +5,12 @@ just edit the file). A Claude Project connected to this repo can read this file,
 chat always knows where things stand. Keep it ruthless: delete lines that stop mattering.
 
 ## Now (blockers & five-minute wins)
-- [ ] **Supabase SQL**: run section **9** (waitlist — now with `interest`) and section **10**
+- [✔] **Supabase SQL**: run section **9** (waitlist — now with `interest`) and section **10**
       (save_count / most-watched) from `WebPrototype/server/apply_to_live_db.sql`.
 - [ ] **Fix username sign-up**: Supabase rejects the synthetic `@tau-game.com` emails because the
       domain has no MX record. Cheapest fix: Cloudflare → tau-game.com → Email → **enable Email
       Routing** (adds MX records, ~2 clicks, free). Then re-test username+password sign-up.
-- [ ] **Auth settings**: Supabase → Auth → Sign In / Up → turn **"Confirm email" OFF** (username
+- [✔] **Auth settings**: Supabase → Auth → Sign In / Up → turn **"Confirm email" OFF** (username
       accounts can't confirm; magic links still verify by their nature).
 - [ ] **Custom SMTP**: the built-in mailer is capped at **2 emails/hour** — that's the "rate limit
       exceeded" you hit. Point Supabase at Resend/Postmark/SES (free tiers are fine) and raise the
@@ -19,7 +19,7 @@ chat always knows where things stand. Keep it ruthless: delete lines that stop m
       100/h is safer for a launch spike.
 
 ## Seed & polish (before any public post)
-- [ ] Get ~10 friends to sign in and play ranked so the lobby isn't a ghost town.
+- [✔] Get ~10 friends to sign in and play ranked so the lobby isn't a ghost town.
 - [ ] Save/share a few good games so Watch has content at 3am (cold-open insurance).
 - [ ] Print the **test coupons** (`physical/out_cad/tau_coupon_seam*_dt.stl` + `tau_coupon_foot_*.stl`)
       — lean-test the dovetail, press-fit a 5×2 magnet, check board grip.
