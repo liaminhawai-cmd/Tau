@@ -231,13 +231,16 @@ requestAnimationFrame(loop);
 
 // ---- draggable / resizable panels ----
 function layoutHandles(){
+  // .ph handles are children of #stageBox (position:relative) and the canvas fills it, so their
+  // absolute left/top are already relative to the stage's top-left — just scale the 0..1 rect by
+  // the displayed stage size. (Adding the stageBox offset within stageWrap double-counted it and
+  // pushed the guides off the composited boards.)
   const box = stageBox.getBoundingClientRect();
-  const wrapBox = $('stageWrap').getBoundingClientRect();
   [['ph3d','d3'],['ph2d','d2']].forEach(([id,key])=>{
     const el = $(id), p = panels[key];
     el.style.display = p.on ? 'block' : 'none';
-    el.style.left = (box.left - wrapBox.left + p.x*box.width) + 'px';
-    el.style.top  = (box.top - wrapBox.top + p.y*box.height) + 'px';
+    el.style.left = (p.x*box.width) + 'px';
+    el.style.top  = (p.y*box.height) + 'px';
     el.style.width = (p.w*box.width) + 'px';
     el.style.height = (p.h*box.height) + 'px';
   });
@@ -357,6 +360,7 @@ $('menuToggle').addEventListener('click', ()=> $('side').classList.toggle('open'
 // init
 setAspect(1920,1080);
 setStatus('Starting engine…');
+})();
 </script>
 </body>
 </html>
