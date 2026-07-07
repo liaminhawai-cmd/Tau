@@ -539,3 +539,32 @@ create policy "anyone can join the waitlist"
   with check (true);
 grant insert on public.waitlist to anon, authenticated;
 revoke select, update, delete on public.waitlist from anon, authenticated;
+
+-- ---------------------------------------------------------------------------------------
+-- 10. "Most watched" replays: how many times each finished match has been saved to a
+--     collection. Powers the Watch menu's "Most watched game" pick. Optional — the client
+--     no-ops gracefully if this section hasn't been applied (the pick simply doesn't show;
+--     Most recent / Top-rated still work).
+--
+--     A plain counter column, bumped through a SECURITY DEFINER RPC so clients can increment
+--     it without holding UPDATE on `matches` (which they must not — that table is trusted).
+--     No spam guard: a save is cheap and the ranking is coarse, and guests (the bulk of casual
+--     players) save too, so anon may call it. If it ever gets gamed, dedupe by (match, user) in
+--     a side table instead. Safe to re-run.
+alter table public.matches add column if not exists save_count integer not null default 0;
+create index if not exists matches_save_count_idx on public.matches (save_count desc)
+  where status = 'finished' and invite_code is null;
+
+create or replace function public.bump_save_count(mid uuid)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.matches
+     set save_count = save_count + 1
+   where id = mid and status = 'finished' and invite_code is null;
+$$;
+-- Guests and signed-in players alike can tick the counter (a save is a save).
+revoke all on function public.bump_save_count(uuid) from public;
+grant execute on function public.bump_save_count(uuid) to anon, authenticated;
