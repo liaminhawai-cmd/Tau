@@ -170,7 +170,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 60</div>
+<div id="buildTag">build 61</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
@@ -4348,10 +4348,26 @@ function render() {
 // during the double-cross and it's unambiguous whether the park was legitimate.
 let DEBUG_CROSS = false;
 try { DEBUG_CROSS = /(?:^|[#&])debug\b/.test(location.hash) || localStorage.getItem('tauDebug') === '1'; } catch (e) {}
+let dbgLog = [], dbgLastFeet = null, dbgLastPinned = null, dbgTurnNo = 0;
 function updateDebugHud() {
     const el = document.getElementById('dbgHud'); if (!el) return;
     if (!G || G.over || (typeof replayActive!=='undefined' && replayActive) || document.getElementById('game').style.display!=='flex') { el.style.display='none'; return; }
     const c = G.active, feet = G.pieces[c].feet();
+    // Log each line-crossing the moment it happens: which foot, which line, and whether that foot
+    // STARTED the turn on that line (= it crossed for free via grace — the double-cross's engine).
+    if (G.pinned !== null) {
+        if (dbgLastPinned === null) { dbgTurnNo++; dbgLastFeet = null; }   // a new turn just began
+        if (dbgLastFeet) {
+            const per = countCrossings(dbgLastFeet, feet);
+            for (let i=0;i<3;i++) for (const id of per[i]) {
+                const graced = ((G.startedOnLine && G.startedOnLine[i]) || []).includes(id);
+                dbgLog.push(`t${dbgTurnNo} ${c===0?'B':'R'} f${i} x ${id}${graced ? ' <GRACE' : ''}`);
+                if (dbgLog.length > 6) dbgLog.shift();
+            }
+        }
+        dbgLastFeet = feet.map(f => ({ x: f.x, y: f.y }));
+    } else { dbgLastFeet = null; }
+    dbgLastPinned = G.pinned;
     const rows = feet.map((f,i) => {
         const pad = nearLineIds(f, CFG.touchEps).join('') || '-';
         const mag = nearLineIds(f, CFG.holdEps).join('') || '-';
@@ -4359,7 +4375,9 @@ function updateDebugHud() {
         const grace = (G.usedGrace && G.usedGrace[i]) ? 'USED' : '·';
         return `f${i}${i===G.pinned?'*':' '} start:${start.padEnd(4)} pad:${pad.padEnd(4)} mag:${mag.padEnd(4)} grace:${grace}`;
     });
-    el.textContent = `${c===0?'BLUE':'RED'}  cross ${G.crossings}/${CFG.maxCrossingsPerTurn}  inCross:${G.inCrossing?'Y':'n'}  net:${(G.netRad*180/Math.PI).toFixed(0)}deg\n` + rows.join('\n');
+    el.textContent = `${c===0?'BLUE':'RED'}  cross ${G.crossings}/${CFG.maxCrossingsPerTurn}  inCross:${G.inCrossing?'Y':'n'}  net:${(G.netRad*180/Math.PI).toFixed(0)}deg\n`
+        + rows.join('\n')
+        + (dbgLog.length ? '\n---- crossings ----\n' + dbgLog.join('\n') : '');
     el.style.display = 'block';
 }
 
