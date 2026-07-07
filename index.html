@@ -170,7 +170,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 61</div>
+<div id="buildTag">build 62</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
@@ -1925,6 +1925,43 @@ function pieceTouchingUntouchedLine(feet, st) {
         if (nearLineIds(feet[i], CFG.touchEps).some(id => !st.touchedLine[i].includes(id))) return true;
     return false;
 }
+// Every point where two printed lines actually meet (each ring x each side arc, ends respecting the
+// arc spans). These are the ONLY places a single swing may take one crossing episode across two
+// distinct lines — the "jump the crossing" manoeuvre. Computed once from CFG.
+const LINE_INTERSECTIONS = (() => {
+    const circles = [
+        ...CFG.rings.map((R,k) => ({ id:'r'+k, cx:0, cy:0, r:R })),
+        ...CFG.sideArcs.map((a,k) => ({ id:'a'+k, cx:a.cx, cy:a.cy, r:a.r, a0:a.a0, a1:a.a1 })),
+    ];
+    const pts = [];
+    for (let i=0;i<circles.length;i++) for (let j=i+1;j<circles.length;j++){
+        const A=circles[i], B=circles[j];
+        const dx=B.cx-A.cx, dy=B.cy-A.cy, d=Math.hypot(dx,dy);
+        if (d<1e-9 || d>A.r+B.r || d<Math.abs(A.r-B.r)) continue;   // concentric rings / no contact
+        const x=(d*d + A.r*A.r - B.r*B.r)/(2*d), y2=A.r*A.r - x*x;
+        if (y2 < 0) continue;
+        const y=Math.sqrt(y2), ux=dx/d, uy=dy/d;
+        for (const s of [1,-1]){
+            const px=A.cx + x*ux - s*y*uy, py=A.cy + x*uy + s*y*ux;
+            const inSpan = c => c.a0===undefined || angInSpan(Math.atan2(py-c.cy,px-c.cx)*180/Math.PI, c.a0, c.a1);
+            if (inSpan(A) && inSpan(B)) pts.push({ x:px, y:py, lines:[A.id, B.id] });
+        }
+    }
+    return pts;
+})();
+// Is this foot genuinely JUMPING a marked intersection as it crosses `newId`? True only if its
+// magnet (holdEps) covers an intersection point shared by newId and a line already crossed in the
+// open episode. The physical read: the magnet sits ON the printed crossing point, one contact, one
+// crossing. Merely bridging the corner LENS — magnet near both lines but ~0.85u off the point, as in
+// the reported corner-cut games — is two separate crossings on the table and must be rolled back.
+function jumpsIntersection(foot, newId, epLines) {
+    for (const P of LINE_INTERSECTIONS) {
+        if (!P.lines.includes(newId)) continue;
+        if (!P.lines.some(id => epLines[id])) continue;
+        if (Math.hypot(foot.x - P.x, foot.y - P.y) <= CFG.holdEps) return true;
+    }
+    return false;
+}
 // One sub-step of the crossing rule, shared by real turns (applySwing) and the how-to practice
 // widget so they can't drift apart. `st` is any object with the per-turn fields (crossings,
 // inCrossing, usedGrace, startedOnLine, touchedLine); G is one such object. Given the feet BEFORE
@@ -1933,6 +1970,7 @@ function pieceTouchingUntouchedLine(feet, st) {
 function crossingSubstep(before, after, st) {
     const per = countCrossings(before, after);
     let centreCrossed = false;
+    const newCrossings = [];   // [footIdx, lineId] of every non-graced centre-crossing this substep
     for (let i=0;i<3;i++){
         let ids = per[i];
         if (ids.length===0) continue;
@@ -1942,13 +1980,29 @@ function crossingSubstep(before, after, st) {
             if (ids.length===0) continue;
         }
         centreCrossed = true;
+        for (const id of ids) newCrossings.push([i, id]);
     }
     // Once the one-per-turn crossing is SPENT and the episode is closed, stop: no foot's centre may
     // cross any further line, and no foot's pad may even MOUNT a line it hasn't visited this turn.
     if (st.crossings >= CFG.maxCrossingsPerTurn && !st.inCrossing
         && (centreCrossed || pieceTouchingUntouchedLine(after, st))) return true;
-    if (centreCrossed) st.inCrossing = true;
-    if (st.inCrossing && !pieceHoldingLine(after, st)){ st.crossings++; st.inCrossing = false; }   // episode complete -> count it
+    // Corner rule: one episode covers ONE line — a second DISTINCT line joins the same episode only
+    // via a genuine intersection jump (magnet on the marked point). Without this, the magnet bands
+    // of a ring and an arc overlap in a small lens around their corner, and a swing threading that
+    // lens chained both lines into one counted crossing ("cutting the corner") — impossible on the
+    // physical board, and dependent on which side of the lens the path grazed, which is why it
+    // seemed to work in one turn direction and not the mirror. Same-line re-crossings stay merged.
+    if (centreCrossed) {
+        if (!st.inCrossing || !st.epLines) st.epLines = {};
+        let hasLine = st.inCrossing && Object.keys(st.epLines).length > 0;
+        for (const [i, id] of newCrossings) {
+            if (st.epLines[id]) continue;                                  // same line again: fine
+            if (hasLine && !jumpsIntersection(after[i], id, st.epLines)) return true;
+            st.epLines[id] = true; hasLine = true;
+        }
+        st.inCrossing = true;
+    }
+    if (st.inCrossing && !pieceHoldingLine(after, st)){ st.crossings++; st.inCrossing = false; st.epLines = null; }   // episode complete -> count it
     for (let i=0;i<3;i++)   // record pad contact after the checks, so approach is caught before mount
         for (const id of nearLineIds(after[i], CFG.touchEps))
             if (!st.touchedLine[i].includes(id)) st.touchedLine[i].push(id);

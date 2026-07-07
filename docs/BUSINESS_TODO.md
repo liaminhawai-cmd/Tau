@@ -15,9 +15,11 @@ read this file, so the Project chat always sees current state. Keep it ruthless 
       username sign-up and lean on Google + magic link. Waiting on your call (see your list).
 
 **Soon**
-- [ ] **Double-cross glitch**: on hold until you catch a *grace*-tagged 2-line turn in the `#debug`
-      HUD (a plain LR that crosses two lines with `<GRACE`). The intersection double-cross you found
-      (t14: one foot jumps r0∩a1) is the legit "jump the crossing" trick — not a bug.
+- [✔] **Corner-cut glitch FIXED (build 62)**: a swing could chain ring + arc into one crossing by
+      bridging the magnet bands near their corner (~0.85u off the point) — your "impossible game"
+      replay re-simulated through the fixed engine now blocks both turns. A second line can join a
+      crossing only by genuinely jumping the marked intersection (magnet on the point, ≤0.45u).
+      Retest on the live site once the tag says 62 — both turn orders should now be equally blocked.
 - [ ] **Tripod piece CAD**: regenerate the playing piece with a foot magnet pocket bored to a stock
       magnet + a fillet on the fragile ankle joints (finishes the physical set alongside the rim).
 - [ ] **Cinema mode**: clean, UI-less render driven by a share link (the trailer pipeline) — build
