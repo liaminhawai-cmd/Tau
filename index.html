@@ -154,14 +154,18 @@
        so they never fight with any pointer/touch handling on the canvases themselves. */
     .dirWrap { position:fixed; z-index:20; }
     .dirWrap canvas { width:100% !important; height:100% !important; display:block; }
-    .dirGrip { position:absolute; width:28px; height:28px; display:flex; align-items:center; justify-content:center;
+    .dirGrip { position:absolute; width:28px; height:28px; display:none; align-items:center; justify-content:center;
                border-radius:50%; background:rgba(61,90,254,.92); color:#fff; font-size:13px; cursor:move;
                touch-action:none; z-index:2; user-select:none; box-shadow:0 2px 8px rgba(0,0,0,.4); }
+    /* Grips only show while EDITING. Locking (the checkbox off) hides them but keeps the boards/logo
+       exactly where they were dragged -- freezing the arrangement for capture, not reverting it. */
+    body.dirEditing .dirGrip { display:flex; }
     .dirGrip.rs { border-radius:6px; background:rgba(255,210,63,.94); color:#15181c; cursor:nwse-resize; }
     .dirWrap .dirGrip.mv { top:-14px; left:-14px; }
     .dirWrap .dirGrip.rs { bottom:-14px; right:-14px; }
-    body.dirLogoOn.ingame.dirUnlocked h1 { pointer-events:auto; cursor:move; }
-    body.dirLogoOn.ingame.dirUnlocked h1 .dirGrip.mv { top:-8px; left:-8px; }
+    body.dirLogoOn.ingame.dirEditing h1 { pointer-events:auto; cursor:move; }
+    body.dirLogoOn.ingame h1 .dirGrip.mv { top:-8px; left:-8px; }
+    body.dirLogoOn.ingame h1 .dirGrip.rs { bottom:-8px; right:-8px; }
     /* Safe-area guide: a centred box at the target aspect ratio, everything outside it dimmed via a
        giant box-shadow "spotlight" trick -- shows what a crop to that ratio would actually capture,
        independent of the real window/monitor shape. Pure visual guide, never intercepts clicks. */
@@ -262,7 +266,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 78</div>
+<div id="buildTag">build 79</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2072,16 +2076,18 @@ const LINE_INTERSECTIONS = (() => {
     }
     return pts;
 })();
-// Is this foot genuinely JUMPING a marked intersection as it crosses `newId`? True only if its
-// magnet covers an intersection point shared by newId and a line already crossed in the open
-// episode. The physical read: the magnet sits ON the printed crossing point — one contact, one
-// crossing. Merely bridging the corner LENS — magnet near both lines but well off the point
-// (~0.85u in the reported corner-cut games) — is two separate crossings and must be rolled back.
-// JUMP_EPS sits between the tight hold band (0.45) and the pad band (0.8): the physical magnet is
-// ~1.45u radius, so this stays conservative, while forgiving jump attempts that visually cover the
-// corner; the reported exploit passed at 0.84+ and stays blocked with margin. 0.63 = 0.6 nudged 5%
-// more forgiving, per play-testing.
-const JUMP_EPS = 0.63;
+// Is this foot genuinely JUMPING a marked intersection as it crosses `newId`? True only if the
+// foot passes close enough to an intersection point shared by newId and a line already crossed in
+// the open episode that its magnet never lost contact with that line — i.e. it truly ROUNDED the
+// corner (one continuous contact = one crossing) rather than lifting off and re-landing (two).
+// The threshold is the magnet's line-contact reach: at the r0∩a1 corner, a magnet crossing r0 at
+// straight-line distance d from the point sits gap≈0.92·d from the a1 line, and the magnet
+// (radius ≈0.55u) still overlaps that line's stroke (half-width ≈0.26u) out to gap ≈0.81u, i.e.
+// d ≈ 0.88u. 0.80 sits just inside that: genuine rounds — including the 0.71–0.78u ones the strict
+// old 0.63 wrongly blocked — pass, while a swing that cuts wide (magnet clear of the line) is still
+// two crossings. Opening double-crosses stay impossible regardless: from the start no swing ever
+// even brings a foot near a second line while one is open (verified by exhaustive search).
+const JUMP_EPS = 0.80;
 function jumpsIntersection(foot, newId, epLines) {
     for (const P of LINE_INTERSECTIONS) {
         if (!P.lines.includes(newId)) continue;
@@ -3303,13 +3309,20 @@ Piece.prototype.draw = function(activeIdx) {
     const feet = this.feet().map(f => bx2px(f.x, f.y));
     const c = bx2px(this.x, this.y);
     const col = pieceHex(this.id);
-    ctx.strokeStyle=col; ctx.lineWidth=4; ctx.lineCap='round';
+    // Slim legs + small feet, matching the real tripod (a thin arm ending in a small magnet foot),
+    // instead of the old fat flared pad. The drawn foot tracks the real foot's board size
+    // (footPadRadius) so what you SEE is close to what actually crosses a line — the earlier 9px
+    // pad drew the foot ~5× wider than its magnet, so a corner the fat pad "covered" was often well
+    // short of the true contact point and read as an unfair block. A small px floor keeps it visible
+    // and the separate (larger) hitRadius keeps it easy to tap on a phone.
+    ctx.strokeStyle=col; ctx.lineWidth=3; ctx.lineCap='round';
     for (const f of feet){ ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.lineTo(f.x,f.y); ctx.stroke(); }
-    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(c.x,c.y,5,0,2*Math.PI); ctx.fill();
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(c.x,c.y,4,0,2*Math.PI); ctx.fill();
+    const fr = Math.max(4.5, CFG.footPadRadius*scale);        // ≈ the real foot; floored so it stays visible
     for (let i=0;i<3;i++){ const f=feet[i];
-        ctx.beginPath(); ctx.arc(f.x,f.y,9,0,2*Math.PI);
+        ctx.beginPath(); ctx.arc(f.x,f.y, activeIdx===i ? fr+1.5 : fr, 0, 2*Math.PI);
         ctx.fillStyle=(activeIdx===i)?'#ffd23f':col; ctx.fill();
-        ctx.lineWidth=2; ctx.strokeStyle='#0c0e11'; ctx.stroke(); }
+        ctx.lineWidth=1; ctx.strokeStyle='rgba(12,14,17,0.6)'; ctx.stroke(); }
 };
 
 // ---------- Input ----------
@@ -5205,11 +5218,14 @@ function resize() {
                               (typeof onlineMatch !== 'undefined' && onlineMatch && onlineMatch.spectator));
     if (passive) {
         if (wide) {
-            const shrink = 0.62;
-            const newSize = Math.max(150, size * shrink);
-            h3 = Math.min(availH, h3 / shrink);
-            w3 = Math.min(availW - newSize - gap, Math.max(w3, h3 * 1.7));
-            size = newSize;
+            // Desktop/landscape: shrink the 2D board (a watcher never touches it) and give the freed
+            // WIDTH to the 3D view — but keep the row's HEIGHT the same as the interactive layout, so
+            // the button row below doesn't jump when a replay starts (the reported "after sharing, the
+            // lower menu shifts and is hard to click" on PC). Bigger 3D, smaller 2D, no vertical reflow.
+            const rowH = size;                                   // interactive views-row height (== square side)
+            size = Math.max(150, size * 0.72);
+            h3 = rowH;
+            w3 = Math.min(availW - size - gap, Math.max(w3, rowH * 1.7));
         } else {
             const newH3 = Math.min(availH - gap - 120, h3 * 1.9);
             size = Math.max(120, Math.min(size, availH - gap - newH3, availW));
@@ -5514,39 +5530,52 @@ if (location.hash.toLowerCase().includes('director')) {
         const h1 = document.querySelector('h1');
         if (h1.querySelector('.dirGrip.mv')) return;
         const mv = document.createElement('div'); mv.className = 'dirGrip mv'; mv.textContent = '✥';
-        h1.appendChild(mv);
-        let dragging = false;
-        const move = e => {
-            if (!dragging) return;
+        const rs = document.createElement('div'); rs.className = 'dirGrip rs'; rs.textContent = '⤡';
+        h1.append(mv, rs);
+        // MOVE: snapshot the on-screen position fresh at drag START, not when the grip was created --
+        // this grip can exist before the logo watermark is even turned on (the toggle can be flipped
+        // first), when h1 isn't position:fixed yet and getComputedStyle would return "auto"; caching
+        // THAT up front left every drag computing NaN and silently doing nothing once the logo showed.
+        let mvDrag = false;
+        const mvMove = e => { if (!mvDrag) return;
             h1.style.left = (parseFloat(h1.style.left)+e.movementX)+'px';
-            h1.style.top = (parseFloat(h1.style.top)+e.movementY)+'px';
-        };
-        const up = () => { dragging = false; removeEventListener('pointermove', move); };
+            h1.style.top  = (parseFloat(h1.style.top )+e.movementY)+'px'; };
+        const mvUp = () => { mvDrag = false; removeEventListener('pointermove', mvMove); };
         mv.addEventListener('pointerdown', e => {
-            // Snapshot the on-screen position fresh at drag START, not when the grip was created --
-            // this grip can exist before the logo watermark is even turned on (the Move/resize boards
-            // toggle can be flipped first), when h1 isn't position:fixed yet and getComputedStyle would
-            // return "auto" -- caching THAT up front left every drag computing NaN and silently doing
-            // nothing the moment the logo did turn on.
-            const r = h1.getBoundingClientRect();
-            h1.style.left = r.left+'px'; h1.style.top = r.top+'px';
-            dragging = true; e.preventDefault(); e.stopPropagation();
-            addEventListener('pointermove', move); addEventListener('pointerup', up, { once:true });
+            const r = h1.getBoundingClientRect(); h1.style.left = r.left+'px'; h1.style.top = r.top+'px';
+            mvDrag = true; e.preventDefault(); e.stopPropagation();
+            addEventListener('pointermove', mvMove); addEventListener('pointerup', mvUp, { once:true });
+        });
+        // RESIZE: the logo is drawn at transform:scale(--dirLogoScale); drag right/down to grow it.
+        // We drive the SAME slider var (and keep the slider in sync) so the panel and the grip agree.
+        let rsDrag = false, rsScale = 0;
+        const slider = document.getElementById('dirLogo');
+        const rsMove = e => { if (!rsDrag) return;
+            rsScale = Math.max(0.1, Math.min(2.5, rsScale + (e.movementX + e.movementY) * 0.004));
+            document.body.style.setProperty('--dirLogoScale', rsScale);
+            document.body.classList.add('dirLogoOn');
+            if (slider) slider.value = Math.min(parseFloat(slider.max)||0.9, rsScale); };
+        const rsUp = () => { rsDrag = false; removeEventListener('pointermove', rsMove); };
+        rs.addEventListener('pointerdown', e => {
+            rsScale = parseFloat(getComputedStyle(document.body).getPropertyValue('--dirLogoScale')) || 0.4;
+            rsDrag = true; e.preventDefault(); e.stopPropagation();
+            addEventListener('pointermove', rsMove); addEventListener('pointerup', rsUp, { once:true });
         });
     }
     document.getElementById('dirUnlock').addEventListener('change', e => {
-        const on = e.target.checked;
-        document.body.classList.toggle('dirUnlocked', on);
-        if (on) {
+        const editing = e.target.checked;
+        document.body.classList.toggle('dirEditing', editing);
+        if (editing) {
+            // Enter edit mode: build the manual layout the first time, then just re-show the grips.
+            // `dirUnlocked` stays on for the whole manual session so resize() keeps its hands off the
+            // boards -- so LOCKING (unchecking) freezes the current arrangement instead of reverting it.
+            document.body.classList.add('dirUnlocked');
             dirWrapCanvas(document.getElementById('canvas'), false);
             if (renderer) dirWrapCanvas(document.getElementById('view3d'), true);
             dirBindLogoGrip();
-        } else {
-            dirUnwrapAll();
-            const grip = document.querySelector('h1 .dirGrip.mv'); if (grip) grip.remove();
-            const h1 = document.querySelector('h1'); h1.style.left = ''; h1.style.top = '';
-            if (typeof resize === 'function') resize();
         }
+        // Unchecking leaves the wraps, positions and logo scale exactly as arranged; the grips just
+        // hide (CSS, via .dirEditing) so nothing can be nudged while recording.
     });
 }
 
@@ -7310,8 +7339,16 @@ window.addEventListener('load', () => {
         const bar = document.createElement('div');
         bar.style.cssText = 'position:fixed; left:8px; right:8px; bottom:calc(8px + env(safe-area-inset-bottom)); '
             + 'z-index:70; background:#1a1e24; border:1px solid #3a4048; border-radius:10px; padding:10px 12px; '
-            + 'font-size:13px; color:#c7ccd1; display:flex; align-items:center; gap:10px; box-shadow:0 4px 18px rgba(0,0,0,0.45);';
-        bar.innerHTML = '<span style="flex:1">' + t('Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.') + '</span>'
+            + 'font-size:13px; color:#c7ccd1; display:flex; align-items:center; gap:10px; flex-wrap:wrap; box-shadow:0 4px 18px rgba(0,0,0,0.45);';
+        // The two icons the user actually has to find in Safari, drawn to match: the Share glyph (a
+        // box with an up-arrow, in Safari's toolbar) then the Add to Home Screen glyph (a rounded
+        // square with a +, inside the share sheet). Shown as a visual key so the words in the sentence
+        // map to real buttons -- works in every language since the pictures carry the meaning.
+        const shareIcon = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4da3ff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M12 3v11"/><path d="M8.5 6.5 12 3l3.5 3.5"/><path d="M7 10H5v11h14V10h-2"/></svg>';
+        const addIcon   = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4da3ff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><rect x="4" y="4" width="16" height="16" rx="4.5"/><path d="M12 8.5v7M8.5 12h7"/></svg>';
+        bar.innerHTML = '<span style="display:flex;align-items:center;gap:6px;flex:none">' + shareIcon
+            + '<span style="color:#6b7480">→</span>' + addIcon + '</span>'
+            + '<span style="flex:1;min-width:140px">' + t('Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.') + '</span>'
             + '<button style="margin:0;padding:5px 10px;">' + t('Got it') + '</button>';
         const dismiss = () => { try { localStorage.setItem('tauIosInstallHint', '1'); } catch(e){} bar.remove(); };
         bar.querySelector('button').addEventListener('click', dismiss);
