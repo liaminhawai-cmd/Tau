@@ -219,7 +219,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 73</div>
+<div id="buildTag">build 74</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -249,6 +249,12 @@
         <p id="presenceLine" style="font-size:12px;color:#69727b;margin:2px 0 0;"></p>
         <!-- understated one-liner, never gates anything: physical-game interest capture (DIY files / full kit) -->
         <p id="steelLine" style="margin:6px 0 0;"><button class="link" id="steelBtn" style="font-size:11px;color:#5a6570;">Get a physical set →</button></p>
+        <!-- Hidden until the browser fires beforeinstallprompt (confirms it's actually installable) --
+             many Chromium browsers (Samsung Internet included) stopped surfacing their own automatic
+             install banner/prompt, so a visitor with zero UI cue may simply never see one at all. An
+             explicit button that calls the SAME browser-native prompt is the reliable cross-browser
+             path; it just no-ops (stays hidden) on browsers with no install support, e.g. iOS Safari. -->
+        <p id="installLine" style="display:none;margin:6px 0 0;"><button class="link" id="installBtn" style="font-size:11px;color:#5a6570;">📲 Install app →</button></p>
 
         <div id="acctPanel" style="display:none;">
             <div id="acctSignedOut">
@@ -2234,7 +2240,12 @@ function reset() {
           crossings:0, atLimit:false, netRad:0, ptrAngle:null, over:false, winner:null,
           snap:null, startedOnLine:[[],[],[]], usedGrace:[false,false,false], touchedLine:[[],[],[]], inCrossing:false };
     fall.active=false; fallenIdx=-1;
-    if (typeof tripods !== 'undefined' && tripods) tripods.forEach(tp => { if (tp) tp.visible = true; });   // un-hide a piece that fell off last game
+    // Un-hide a piece that fell off last game -- but NOT while the how-to-play 3D demo owns the
+    // scene (htp3DActive): tripods and htpTripods share the same view3d/scene, so forcing tripods
+    // visible while htpTripods are also visible would show both pairs at once. Belt-and-suspenders
+    // alongside htp3DEnter() pausing the ambient demo's own reset() loop for the same reason.
+    if (typeof tripods !== 'undefined' && tripods && !(typeof htp3DActive !== 'undefined' && htp3DActive))
+        tripods.forEach(tp => { if (tp) tp.visible = true; });
     replayFrames.length = 0; replayTimes.length = 0; replayActive = false; replayNames = null;   // every fresh board starts a fresh recording
     render();
 }
@@ -2783,7 +2794,8 @@ function startReplay() {
     if (replayFrames.length < 2 || !G) return;
     hideModal(); clearTimeout(gameOverTimer);
     fall.active = false; fallenIdx = -1;       // the fallen piece pops back to the board for the re-run
-    if (typeof tripods !== 'undefined' && tripods) tripods.forEach(tp => { if (tp) tp.visible = true; });
+    if (typeof tripods !== 'undefined' && tripods && !(typeof htp3DActive !== 'undefined' && htp3DActive))
+        tripods.forEach(tp => { if (tp) tp.visible = true; });
     // Post-game: the board still holds the true final position — snapshot it. A shared/link replay
     // has no live final position (the board was reset to boot it), so its final pose is the LAST
     // RECORDED FRAME — snapshotting the board there froze the STARTING pose, and the end-of-replay
@@ -3911,6 +3923,11 @@ function htp3DEnter() {
     if (!renderer) return;
     const slot = document.getElementById('htpFallSlot');
     if (!slot) return;
+    // The ambient menu demo restarts itself on its own setTimeout loop (demoTimer), independent of
+    // whatever's open on top of it. Left running, that timer's own reset() call re-shows `tripods`
+    // mid-how-to-play -- landing right on top of htpTripods, which are still visible: two pairs of
+    // pieces in the same scene ("multiple reds and blues"). Stop it for the duration of this demo.
+    if (typeof demoStop === 'function') demoStop();
     slot.appendChild(document.getElementById('view3d'));
     const size = 220;
     const cv3 = document.getElementById('view3d');
@@ -3930,6 +3947,7 @@ function htp3DExit() {
         document.getElementById('demoViews').appendChild(document.getElementById('view3d'));
         demoResize();
     }
+    if (typeof demoStart === 'function') demoStart();   // resume the ambient loop we paused on entry
 }
 // Wording taken from the designer's own rules (Written elements.docx).
 const HTP_STEPS = [
@@ -6955,6 +6973,32 @@ function checkJoinLink() {
 // or if the browser lacks support it simply no-ops, and it never blocks the game from loading.
 if ('serviceWorker' in navigator && location.protocol.startsWith('http'))
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+
+// ---------- "Install app" (explicit, since browsers no longer reliably self-prompt) ----------
+// beforeinstallprompt only fires once the browser has independently verified installability
+// (manifest + service worker + HTTPS all check out), so showing the button only after it fires
+// means we never show a button that would fail. Stashing the event and calling .prompt() from a
+// tap is the standard pattern -- the browser suppresses its own mini-infobar once preventDefault()
+// is called, so this and any native banner never show at the same time.
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    const line = document.getElementById('installLine');
+    if (line) line.style.display = 'block';
+});
+window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    const line = document.getElementById('installLine');
+    if (line) line.style.display = 'none';
+});
+document.getElementById('installBtn').addEventListener('click', async () => {
+    if (!deferredInstallPrompt) return;
+    const evt = deferredInstallPrompt;
+    deferredInstallPrompt = null;                              // a captured prompt can only be used once
+    document.getElementById('installLine').style.display = 'none';
+    try { await evt.prompt(); } catch (e) {}
+});
 
 // iOS Safari never fires an install prompt (Android/Chrome does), so iPhone users don't know they
 // can install. Nudge them once toward "Add to Home Screen" -- only in real Safari (not an in-app
