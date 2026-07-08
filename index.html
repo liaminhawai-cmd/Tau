@@ -145,6 +145,23 @@
     body.dirLogoOn.ingame h1 { display:block; position:fixed; top:calc(8px + env(safe-area-inset-top)); left:10px;
                                 z-index:40; margin:0; pointer-events:none;
                                 transform:scale(var(--dirLogoScale, 0.4)); transform-origin:top left; }
+    /* ---------- Director mode: unlock layout (drag/resize the REAL boards + move the logo) ----------
+       #canvas/#view3d are wrapped in a .dirWrap div only while unlocked (see dirWrapCanvas/dirUnwrapAll)
+       so they can be freely positioned outside the normal #views flex flow, then unwrapped back to
+       their normal spot when locked again -- the same reparent-into-a-slot technique already used for
+       #view3d elsewhere in this file (htp3DEnter/Exit, spectateMatch, etc), just via a throwaway wrapper
+       instead of an existing container. Grips are small overlaid controls, not the whole board surface,
+       so they never fight with any pointer/touch handling on the canvases themselves. */
+    .dirWrap { position:fixed; z-index:20; }
+    .dirWrap canvas { width:100% !important; height:100% !important; display:block; }
+    .dirGrip { position:absolute; width:28px; height:28px; display:flex; align-items:center; justify-content:center;
+               border-radius:50%; background:rgba(61,90,254,.92); color:#fff; font-size:13px; cursor:move;
+               touch-action:none; z-index:2; user-select:none; box-shadow:0 2px 8px rgba(0,0,0,.4); }
+    .dirGrip.rs { border-radius:6px; background:rgba(255,210,63,.94); color:#15181c; cursor:nwse-resize; }
+    .dirWrap .dirGrip.mv { top:-14px; left:-14px; }
+    .dirWrap .dirGrip.rs { bottom:-14px; right:-14px; }
+    body.dirLogoOn.ingame.dirUnlocked h1 { pointer-events:auto; cursor:move; }
+    body.dirLogoOn.ingame.dirUnlocked h1 .dirGrip.mv { top:-8px; left:-8px; }
     /* Safe-area guide: a centred box at the target aspect ratio, everything outside it dimmed via a
        giant box-shadow "spotlight" trick -- shows what a crop to that ratio would actually capture,
        independent of the real window/monitor shape. Pure visual guide, never intercepts clicks. */
@@ -245,7 +262,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 76</div>
+<div id="buildTag">build 77</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -257,6 +274,7 @@
         <button id="dirSafeOff" class="on">Off</button><button id="dirSafeLand">16:9</button><button id="dirSafePort">9:16</button>
     </div></div>
     <div class="dRow"><label for="dirHide">Hide UI</label><input id="dirHide" type="checkbox"></div>
+    <div class="dRow"><label for="dirUnlock">🔓 Move/resize boards</label><input id="dirUnlock" type="checkbox"></div>
 </div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
@@ -330,7 +348,7 @@
         <p id="help"></p>
         <div id="btns"><button id="reset">Surrender</button><button id="menuBtn">Menu</button></div>
         <!-- replaces Surrender/Menu while a replay is playing: share the game or skip to the end -->
-        <div id="replayBtns" style="display:none;gap:10px;"><button id="replayShare">Share this game</button><button id="replaySpeed" title="Playback speed">1×</button><button id="replaySkip">Skip ⏭</button></div>
+        <div id="replayBtns" style="display:none;gap:10px;"><button id="replayShare">Share this game</button><button id="replaySave">Save this game</button><button id="replaySpeed" title="Playback speed">1×</button><button id="replaySkip">Skip ⏭</button></div>
     </div>
 </div>
 <div id="modalBackdrop">
@@ -1476,7 +1494,7 @@ ja: {
 "Get a physical set →":"実物のセットを手に入れる →","On the list ✓":"登録済み ✓","The physical game":"実物のゲーム","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tauはもともと実物のゲームでした — 鋼の円盤と磁石の三脚コマ。いまセットを準備しています。欲しいものを選んでください。準備ができたら一度だけメールします。","Free print-and-play files":"無料の印刷して遊べるデータ","Make your own set at home":"自宅で自作できます","The full kit, shipped":"完成キットをお届け","A ready-to-play board and pieces":"すぐ遊べるボードとコマ","Pick at least one option.":"少なくとも1つ選んでください。","Notify me":"通知を受け取る","You’re on the list!":"登録しました！","That doesn’t look like an email address.":"メールアドレスの形式が正しくありません。","email":"メールアドレス","Could not save — check your connection.":"保存できませんでした — 接続を確認してください。",
 "Most recent game":"直近の対局","Top ranked games":"上位ランキング対局","My saved games":"マイ保存対局","Most watched games":"最も見られた対局","No saved games yet.":"保存した対局はまだありません。","No ranked games yet.":"ランキング対局はまだありません。","Could not load.":"読み込めませんでした。","You are offline.":"オフラインです。","Sign in to browse games.":"ログインすると対局を閲覧できます。","live":"ライブ","Most saved games":"保存数の多い対局","Top players’ latest games":"上位プレイヤーの最新対局","Watch {name}’s latest game":"{name}の直近の対局を見る","vs {name}":"{name}戦","Live now":"対局中","Replays":"リプレイ","Nothing to replay in that game.":"この対局には再生できる内容がありません。",
 "Save replay":"リプレイを保存","Saved to My replays!":"マイリプレイに保存しました！","My replays":"マイリプレイ","Delete":"削除",
-"Share this game":"この対局を共有","Skip ⏭":"スキップ ⏭",
+"Share this game":"この対局を共有","Save this game":"この対局を保存","Skip ⏭":"スキップ ⏭",
 "Continue with Google":"Googleで続行","or use a username & password":"またはユーザー名とパスワードを使う","hide username & password":"ユーザー名の入力を隠す",
 "or a one-time email link":"またはメールでワンタイムリンク","Log in":"ログイン","Sign up":"新規登録","Send link":"リンクを送信","username":"ユーザー名","password":"パスワード",
 "Sign up to choose your own name — you keep your current rating.":"登録すると名前を選べます — レートは引き継がれます。",
@@ -1524,7 +1542,7 @@ zh: {
 "Get a physical set →":"获取实体套装 →","On the list ✓":"已登记 ✓","The physical game":"实体版","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau最初就是一款实体游戏——钢制圆盘和两只磁脚三脚棋。我正在制作成套。选择你想要的，做好后我只发一封邮件。","Free print-and-play files":"免费自制文件","Make your own set at home":"在家自己制作一套","The full kit, shipped":"整套成品，包邮到家","A ready-to-play board and pieces":"开箱即玩的棋盘和棋子","Pick at least one option.":"请至少选择一项。","Notify me":"通知我","You’re on the list!":"已加入通知列表！","That doesn’t look like an email address.":"邮箱格式不正确。","email":"邮箱","Could not save — check your connection.":"保存失败——请检查网络连接。",
 "Most recent game":"最近的对局","Top ranked games":"排名靠前的对局","My saved games":"我保存的对局","Most watched games":"观看最多的对局","No saved games yet.":"还没有保存的对局。","No ranked games yet.":"还没有排名对局。","Could not load.":"无法加载。","You are offline.":"你已离线。","Sign in to browse games.":"登录后浏览对局。","live":"直播","Most saved games":"收藏最多的对局","Top players’ latest games":"顶尖玩家的最新对局","Watch {name}’s latest game":"观看{name}的最近对局","vs {name}":"对 {name}","Live now":"正在进行","Replays":"回放","Nothing to replay in that game.":"该对局没有可回放的内容。",
 "Save replay":"保存回放","Saved to My replays!":"已保存到我的回放！","My replays":"我的回放","Delete":"删除",
-"Share this game":"分享此对局","Skip ⏭":"跳过 ⏭",
+"Share this game":"分享此对局","Save this game":"保存此对局","Skip ⏭":"跳过 ⏭",
 "Continue with Google":"使用Google登录","or use a username & password":"或使用用户名和密码","hide username & password":"收起用户名登录",
 "or a one-time email link":"或使用一次性邮件链接","Log in":"登录","Sign up":"注册","Send link":"发送链接","username":"用户名","password":"密码",
 "Sign up to choose your own name — you keep your current rating.":"注册后可自选用户名——当前等级分会保留。",
@@ -1572,7 +1590,7 @@ zht: {
 "Get a physical set →":"取得實體套裝 →","On the list ✓":"已登記 ✓","The physical game":"實體版","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau最初就是一款實體遊戲——鋼製圓盤和兩隻磁腳三腳棋。我正在製作成套。選擇你想要的，做好後我只寄一封Email。","Free print-and-play files":"免費自製檔案","Make your own set at home":"在家自己做一套","The full kit, shipped":"整套成品，寄到府","A ready-to-play board and pieces":"開箱即玩的棋盤與棋子","Pick at least one option.":"請至少選擇一項。","Notify me":"通知我","You’re on the list!":"已加入通知名單！","That doesn’t look like an email address.":"Email格式不正確。","email":"Email","Could not save — check your connection.":"儲存失敗——請檢查網路連線。",
 "Most recent game":"最近的對局","Top ranked games":"排名靠前的對局","My saved games":"我儲存的對局","Most watched games":"觀看最多的對局","No saved games yet.":"還沒有儲存的對局。","No ranked games yet.":"還沒有排名對局。","Could not load.":"無法載入。","You are offline.":"你已離線。","Sign in to browse games.":"登入後瀏覽對局。","live":"直播","Most saved games":"收藏最多的對局","Top players’ latest games":"頂尖玩家的最新對局","Watch {name}’s latest game":"觀看{name}的最近對局","vs {name}":"對 {name}","Live now":"正在進行","Replays":"重播","Nothing to replay in that game.":"該對局沒有可重播的內容。",
 "Save replay":"儲存重播","Saved to My replays!":"已儲存到我的重播！","My replays":"我的重播","Delete":"刪除",
-"Share this game":"分享此對局","Skip ⏭":"跳過 ⏭",
+"Share this game":"分享此對局","Save this game":"儲存此對局","Skip ⏭":"跳過 ⏭",
 "Continue with Google":"使用Google繼續","or use a username & password":"或使用帳號密碼","hide username & password":"隱藏帳號密碼欄位",
 "or a one-time email link":"或使用一次性電子郵件連結","Log in":"登入","Sign up":"註冊","Send link":"傳送連結","username":"帳號","password":"密碼",
 "Sign up to choose your own name — you keep your current rating.":"註冊後可自選名稱——目前的等級分會保留。",
@@ -1620,7 +1638,7 @@ ko: {
 "Get a physical set →":"실물 세트 구하기 →","On the list ✓":"신청 완료 ✓","The physical game":"실물 게임","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau는 원래 실물 게임이었습니다 — 강철 원반과 자석 삼각 말 두 개. 지금 세트를 준비하고 있습니다. 원하는 것을 고르면 준비됐을 때 딱 한 번 메일을 보내드립니다.","Free print-and-play files":"무료 프린트&플레이 파일","Make your own set at home":"집에서 직접 만들기","The full kit, shipped":"완성 키트 배송","A ready-to-play board and pieces":"바로 즐기는 보드와 말","Pick at least one option.":"최소 한 가지를 선택하세요.","Notify me":"알림 받기","You’re on the list!":"신청 완료!","That doesn’t look like an email address.":"이메일 주소 형식이 올바르지 않습니다.","email":"이메일","Could not save — check your connection.":"저장하지 못했습니다 — 연결을 확인하세요.",
 "Most recent game":"최근 경기","Top ranked games":"상위 랭킹 경기","My saved games":"내 저장한 경기","Most watched games":"가장 많이 본 경기","No saved games yet.":"저장한 경기가 아직 없습니다.","No ranked games yet.":"랭킹 경기가 아직 없습니다.","Could not load.":"불러올 수 없습니다.","You are offline.":"오프라인 상태입니다.","Sign in to browse games.":"로그인하면 경기를 둘러볼 수 있습니다.","live":"라이브","Most saved games":"저장 많이 된 경기","Top players’ latest games":"상위 플레이어의 최근 경기","Watch {name}’s latest game":"{name}의 최근 경기 보기","vs {name}":"{name} 상대","Live now":"진행 중","Replays":"리플레이","Nothing to replay in that game.":"이 경기에는 재생할 내용이 없습니다.",
 "Save replay":"리플레이 저장","Saved to My replays!":"내 리플레이에 저장됨!","My replays":"내 리플레이","Delete":"삭제",
-"Share this game":"이 경기 공유","Skip ⏭":"건너뛰기 ⏭",
+"Share this game":"이 경기 공유","Save this game":"이 경기 저장","Skip ⏭":"건너뛰기 ⏭",
 "Continue with Google":"Google로 계속하기","or use a username & password":"또는 아이디와 비밀번호 사용","hide username & password":"아이디 입력 숨기기",
 "or a one-time email link":"또는 일회용 이메일 링크","Log in":"로그인","Sign up":"가입","Send link":"링크 보내기","username":"아이디","password":"비밀번호",
 "Sign up to choose your own name — you keep your current rating.":"가입하면 원하는 이름을 고를 수 있습니다 — 현재 레이팅은 유지됩니다.",
@@ -1668,7 +1686,7 @@ de: {
 "Get a physical set →":"Ein physisches Set bekommen →","On the list ✓":"Auf der Liste ✓","The physical game":"Das physische Spiel","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau war zuerst ein physisches Spiel — eine Stahlscheibe und zwei magnetische Dreibeiner. Ich stelle gerade Sets zusammen. Wähl aus, was du willst, und ich schreibe dir genau einmal, wenn es fertig ist.","Free print-and-play files":"Kostenlose Print-and-Play-Dateien","Make your own set at home":"Bau dir dein eigenes Set","The full kit, shipped":"Das komplette Set, geliefert","A ready-to-play board and pieces":"Spielfertiges Brett samt Figuren","Pick at least one option.":"Wähle mindestens eine Option.","Notify me":"Benachrichtige mich","You’re on the list!":"Du stehst auf der Liste!","That doesn’t look like an email address.":"Das sieht nicht nach einer E-Mail-Adresse aus.","email":"E-Mail","Could not save — check your connection.":"Speichern fehlgeschlagen – prüfe deine Verbindung.",
 "Most recent game":"Neuestes Spiel","Top ranked games":"Bestbewertete Spiele","My saved games":"Meine gespeicherten Spiele","Most watched games":"Meistgesehene Spiele","No saved games yet.":"Noch keine gespeicherten Spiele.","No ranked games yet.":"Noch keine gewerteten Spiele.","Could not load.":"Konnte nicht geladen werden.","You are offline.":"Du bist offline.","Sign in to browse games.":"Melde dich an, um Spiele zu durchsuchen.","live":"live","Most saved games":"Meistgespeicherte Spiele","Top players’ latest games":"Neueste Spiele der Top-Spieler","Watch {name}’s latest game":"Neuestes Spiel von {name} ansehen","vs {name}":"gegen {name}","Live now":"Jetzt live","Replays":"Wiederholungen","Nothing to replay in that game.":"In diesem Spiel gibt es nichts abzuspielen.",
 "Save replay":"Wiederholung speichern","Saved to My replays!":"Unter Meine Wiederholungen gespeichert!","My replays":"Meine Wiederholungen","Delete":"Löschen",
-"Share this game":"Diese Partie teilen","Skip ⏭":"Überspringen ⏭",
+"Share this game":"Diese Partie teilen","Save this game":"Diese Partie speichern","Skip ⏭":"Überspringen ⏭",
 "Continue with Google":"Weiter mit Google","or use a username & password":"oder Benutzername & Passwort","hide username & password":"Benutzername & Passwort ausblenden",
 "or a one-time email link":"oder ein einmaliger E-Mail-Link","Log in":"Einloggen","Sign up":"Registrieren","Send link":"Link senden","username":"Benutzername","password":"Passwort",
 "Sign up to choose your own name — you keep your current rating.":"Registriere dich und wähle deinen Namen – deine Wertung bleibt erhalten.",
@@ -1716,7 +1734,7 @@ fr: {
 "Get a physical set →":"Obtenir un exemplaire physique →","On the list ✓":"Inscrit ✓","The physical game":"Le jeu physique","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau était d’abord un jeu physique — un disque d’acier et deux trépieds magnétiques. Je prépare des sets en ce moment. Choisis ce qui t’intéresse et je t’enverrai un seul e-mail, quand ce sera prêt.","Free print-and-play files":"Fichiers à imprimer gratuits","Make your own set at home":"Fabrique ton propre jeu chez toi","The full kit, shipped":"Le kit complet, livré","A ready-to-play board and pieces":"Un plateau et des pièces prêts à jouer","Pick at least one option.":"Choisis au moins une option.","Notify me":"Me prévenir","You’re on the list!":"Tu es sur la liste !","That doesn’t look like an email address.":"Ça ne ressemble pas à une adresse e-mail.","email":"e-mail","Could not save — check your connection.":"Enregistrement impossible — vérifie ta connexion.",
 "Most recent game":"Partie la plus récente","Top ranked games":"Parties les mieux classées","My saved games":"Mes parties enregistrées","Most watched games":"Parties les plus regardées","No saved games yet.":"Aucune partie enregistrée pour l'instant.","No ranked games yet.":"Aucune partie classée pour l'instant.","Could not load.":"Échec du chargement.","You are offline.":"Tu es hors ligne.","Sign in to browse games.":"Connecte-toi pour parcourir les parties.","live":"en direct","Most saved games":"Parties les plus sauvegardées","Top players’ latest games":"Dernières parties des meilleurs joueurs","Watch {name}’s latest game":"Voir la dernière partie de {name}","vs {name}":"contre {name}","Live now":"En direct","Replays":"Replays","Nothing to replay in that game.":"Rien à revoir dans cette partie.",
 "Save replay":"Enregistrer le replay","Saved to My replays!":"Ajouté à Mes replays !","My replays":"Mes replays","Delete":"Supprimer",
-"Share this game":"Partager cette partie","Skip ⏭":"Passer ⏭",
+"Share this game":"Partager cette partie","Save this game":"Enregistrer cette partie","Skip ⏭":"Passer ⏭",
 "Continue with Google":"Continuer avec Google","or use a username & password":"ou identifiant & mot de passe","hide username & password":"masquer identifiant & mot de passe",
 "or a one-time email link":"ou un lien par e-mail","Log in":"Connexion","Sign up":"Créer un compte","Send link":"Envoyer le lien","username":"identifiant","password":"mot de passe",
 "Sign up to choose your own name — you keep your current rating.":"Crée un compte pour choisir ton nom — tu gardes ton Elo actuel.",
@@ -1764,7 +1782,7 @@ es: {
 "Get a physical set →":"Consigue un set físico →","On the list ✓":"En la lista ✓","The physical game":"El juego físico","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau fue primero un juego físico — un disco de acero y dos trípodes magnéticos. Estoy preparando sets ahora. Elige lo que quieras y te mandaré un solo correo cuando esté listo.","Free print-and-play files":"Archivos gratis para imprimir y jugar","Make your own set at home":"Hazte tu propia copia en casa","The full kit, shipped":"El kit completo, enviado","A ready-to-play board and pieces":"Un tablero y piezas listos para jugar","Pick at least one option.":"Elige al menos una opción.","Notify me":"Avísame","You’re on the list!":"¡Estás en la lista!","That doesn’t look like an email address.":"Eso no parece un correo electrónico.","email":"correo","Could not save — check your connection.":"No se pudo guardar — revisa tu conexión.",
 "Most recent game":"Partida más reciente","Top ranked games":"Partidas mejor clasificadas","My saved games":"Mis partidas guardadas","Most watched games":"Partidas más vistas","No saved games yet.":"Aún no hay partidas guardadas.","No ranked games yet.":"Aún no hay partidas clasificadas.","Could not load.":"No se pudo cargar.","You are offline.":"Estás sin conexión.","Sign in to browse games.":"Inicia sesión para explorar partidas.","live":"en vivo","Most saved games":"Partidas más guardadas","Top players’ latest games":"Últimas partidas de los mejores jugadores","Watch {name}’s latest game":"Ver la última partida de {name}","vs {name}":"vs {name}","Live now":"En vivo","Replays":"Repeticiones","Nothing to replay in that game.":"No hay nada que reproducir en esa partida.",
 "Save replay":"Guardar repetición","Saved to My replays!":"¡Guardada en Mis repeticiones!","My replays":"Mis repeticiones","Delete":"Eliminar",
-"Share this game":"Compartir esta partida","Skip ⏭":"Saltar ⏭",
+"Share this game":"Compartir esta partida","Save this game":"Guardar esta partida","Skip ⏭":"Saltar ⏭",
 "Continue with Google":"Continuar con Google","or use a username & password":"o usar nombre de usuario y contraseña","hide username & password":"ocultar usuario y contraseña",
 "or a one-time email link":"o un enlace de un solo uso por correo","Log in":"Entrar","Sign up":"Registrarse","Send link":"Enviar enlace","username":"usuario","password":"contraseña",
 "Sign up to choose your own name — you keep your current rating.":"Regístrate para elegir tu nombre — conservas tu Elo actual.",
@@ -1812,7 +1830,7 @@ pt: {
 "Get a physical set →":"Consiga um kit físico →","On the list ✓":"Na lista ✓","The physical game":"O jogo físico","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau nasceu como jogo físico — um disco de aço e dois tripés magnéticos. Estou montando os kits agora. Escolha o que quiser e eu mando um único e-mail quando estiver pronto.","Free print-and-play files":"Arquivos grátis para imprimir e jogar","Make your own set at home":"Monte o seu próprio set em casa","The full kit, shipped":"O kit completo, enviado","A ready-to-play board and pieces":"Tabuleiro e peças prontos para jogar","Pick at least one option.":"Escolha ao menos uma opção.","Notify me":"Me avise","You’re on the list!":"Você está na lista!","That doesn’t look like an email address.":"Isso não parece um e-mail.","email":"e-mail","Could not save — check your connection.":"Não foi possível salvar — verifique sua conexão.",
 "Most recent game":"Partida mais recente","Top ranked games":"Partidas mais bem ranqueadas","My saved games":"Minhas partidas salvas","Most watched games":"Partidas mais assistidas","No saved games yet.":"Ainda não há partidas salvas.","No ranked games yet.":"Ainda não há partidas ranqueadas.","Could not load.":"Não foi possível carregar.","You are offline.":"Você está offline.","Sign in to browse games.":"Entre para explorar partidas.","live":"ao vivo","Most saved games":"Partidas mais salvas","Top players’ latest games":"Últimas partidas dos melhores jogadores","Watch {name}’s latest game":"Ver a última partida de {name}","vs {name}":"vs {name}","Live now":"Ao vivo","Replays":"Replays","Nothing to replay in that game.":"Nada para reproduzir nessa partida.",
 "Save replay":"Salvar replay","Saved to My replays!":"Salvo em Meus replays!","My replays":"Meus replays","Delete":"Excluir",
-"Share this game":"Compartilhar esta partida","Skip ⏭":"Pular ⏭",
+"Share this game":"Compartilhar esta partida","Save this game":"Salvar esta partida","Skip ⏭":"Pular ⏭",
 "Continue with Google":"Continuar com o Google","or use a username & password":"ou usar nome de usuário e senha","hide username & password":"esconder usuário e senha",
 "or a one-time email link":"ou um link único por e-mail","Log in":"Entrar","Sign up":"Cadastrar","Send link":"Enviar link","username":"usuário","password":"senha",
 "Sign up to choose your own name — you keep your current rating.":"Cadastre-se para escolher seu nome — você mantém seu Elo atual.",
@@ -1860,7 +1878,7 @@ ru: {
 "Get a physical set →":"Получить физический набор →","On the list ✓":"Вы в списке ✓","The physical game":"Физическая игра","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau сначала был физической игрой — стальной диск и две магнитные треноги. Сейчас я собираю наборы. Выберите, что вам нужно, и я напишу один раз, когда всё будет готово.","Free print-and-play files":"Бесплатные файлы «распечатай и играй»","Make your own set at home":"Соберите свой набор дома","The full kit, shipped":"Полный набор с доставкой","A ready-to-play board and pieces":"Готовое поле и фигуры","Pick at least one option.":"Выберите хотя бы один вариант.","Notify me":"Сообщить мне","You’re on the list!":"Вы в списке!","That doesn’t look like an email address.":"Это не похоже на адрес почты.","email":"почта","Could not save — check your connection.":"Не удалось сохранить — проверьте соединение.",
 "Most recent game":"Последняя партия","Top ranked games":"Партии с высшим рейтингом","My saved games":"Мои сохранённые партии","Most watched games":"Самые просматриваемые партии","No saved games yet.":"Пока нет сохранённых партий.","No ranked games yet.":"Пока нет рейтинговых партий.","Could not load.":"Не удалось загрузить.","You are offline.":"Вы офлайн.","Sign in to browse games.":"Войдите, чтобы просматривать партии.","live":"в эфире","Most saved games":"Самые сохраняемые партии","Top players’ latest games":"Последние партии лучших игроков","Watch {name}’s latest game":"Смотреть последнюю партию {name}","vs {name}":"против {name}","Live now":"Идут сейчас","Replays":"Повторы","Nothing to replay in that game.":"В этой партии нечего воспроизводить.",
 "Save replay":"Сохранить повтор","Saved to My replays!":"Сохранено в Мои повторы!","My replays":"Мои повторы","Delete":"Удалить",
-"Share this game":"Поделиться этой партией","Skip ⏭":"Пропустить ⏭",
+"Share this game":"Поделиться этой партией","Save this game":"Сохранить эту партию","Skip ⏭":"Пропустить ⏭",
 "Continue with Google":"Продолжить с Google","or use a username & password":"или имя пользователя и пароль","hide username & password":"скрыть имя пользователя и пароль",
 "or a one-time email link":"или одноразовая ссылка на почту","Log in":"Войти","Sign up":"Регистрация","Send link":"Отправить ссылку","username":"имя пользователя","password":"пароль",
 "Sign up to choose your own name — you keep your current rating.":"Зарегистрируйтесь, чтобы выбрать имя — рейтинг сохранится.",
@@ -2876,6 +2894,7 @@ function startReplay() {
     }
     replayTurnIdx = 0; replayPhase = 'play'; replayPhaseT = 0; replayLastT = performance.now();
     replayActive = true; replaySoundedTurn = -1;
+    if (typeof resize === 'function') resize();   // re-flow to the bigger-3D "watching" layout now that replayActive is true
     if (!replayNames) replayNames = replayPlayerNames();   // label the turns (post-game path)
     // Replay uses the SAME audio engine as a live game: first clear the loss-swell reverb the game
     // left cranked up (else the whole replay sounds drenched), then ring the start bowl like a fresh
@@ -2989,6 +3008,7 @@ function endReplay() {
     showGameOverModal();
 }
 document.getElementById('replayShare').addEventListener('click', () => shareReplay());
+document.getElementById('replaySave').addEventListener('click', () => saveReplayToCollection());
 document.getElementById('replaySkip').addEventListener('click', () => { if (replayActive) endReplay(); });
 document.getElementById('replaySpeed').addEventListener('click', () => {   // 1x -> 1.5x -> 2x -> 1x
     replaySpeedMult = replaySpeedMult >= 2 ? 1 : replaySpeedMult === 1 ? 1.5 : 2;
@@ -3249,6 +3269,7 @@ function endSharedReplay() {
     setTimeout(() => {
         showModal(t('Replay finished'), '', [
             { label: t('Watch again'),   onClick: () => { fall.active = false; G.over = false; startReplay(); } },
+            { label: t('Save replay'),   onClick: () => { saveReplayToCollection(); } },
             { label: t('Watch another'), onClick: () => { location.hash = ''; sharedReplay = false; G.over = false; setSpectatorChrome(false); backToMenu(); openWatchScreen(); } },
             { label: t('Play Tau'),      onClick: () => { location.hash = ''; sharedReplay = false; G.over = false; setSpectatorChrome(false); backToMenu(); } },
         ]);
@@ -5136,6 +5157,10 @@ function animate() {
 
 // ---------- Responsive sizing ----------
 function resize() {
+    // Director mode's "unlock layout" hands board sizing over to manual drag/resize (see
+    // dirWrapCanvas) -- the auto-layout math below would immediately stomp that on the next window
+    // resize/orientation event, so just repaint at whatever size is already set.
+    if (document.body.classList.contains('dirUnlocked')) { render(); return; }
     const cv3=document.getElementById('view3d');
     const used = document.querySelector('h1').offsetHeight   // 0 in-game (body.ingame hides it)
                + document.getElementById('status').offsetHeight
@@ -5172,6 +5197,25 @@ function resize() {
         w3 = Math.max(size, Math.min(size*1.8, availW - size - gap));
     }
     else            { size = stackSize; w3 = availW; h3 = stackH3; }
+
+    // Watching, not playing (replay, shared link, or spectating): you never touch the 2D board, so
+    // give the 3D view the bulk of the room instead of the touch-priority split above.
+    const passive = show && ((typeof replayActive !== 'undefined' && replayActive) ||
+                              (typeof sharedReplay !== 'undefined' && sharedReplay) ||
+                              (typeof onlineMatch !== 'undefined' && onlineMatch && onlineMatch.spectator));
+    if (passive) {
+        if (wide) {
+            const shrink = 0.62;
+            const newSize = Math.max(150, size * shrink);
+            h3 = Math.min(availH, h3 / shrink);
+            w3 = Math.min(availW - newSize - gap, Math.max(w3, h3 * 1.7));
+            size = newSize;
+        } else {
+            const newH3 = Math.min(availH - gap - 120, h3 * 1.9);
+            size = Math.max(120, Math.min(size, availH - gap - newH3, availW));
+            h3 = newH3;
+        }
+    }
 
     canvas.style.width = size+'px'; canvas.style.height = size+'px';
 
@@ -5213,7 +5257,7 @@ demoStart();
         setTxt('modeLocal','Local 1v1'); setTxt('modeOnline','Online 1v1'); setTxt('modeAI','vs AI');
         setTxt('howToPlayBtn','How to play'); setTxt('leaderboardBtn','Leaderboard'); setTxt('watchBtn','Watch');
         setTxt('reset','Surrender'); setTxt('menuBtn','Menu');
-        setTxt('replayShare','Share this game'); setTxt('replaySkip','Skip ⏭');
+        setTxt('replayShare','Share this game'); setTxt('replaySave','Save this game'); setTxt('replaySkip','Skip ⏭');
         setTxt('acctGoogle','Continue with Google'); setTxt('acctMoreOptions','or use a username & password');
         setTxt('acctLogIn','Log in'); setTxt('acctSignUp','Sign up'); setTxt('acctSendLink','Send link');
         setTxt('acctPanelClose','Close'); setTxt('acctSignOut','Sign out');
@@ -5421,6 +5465,89 @@ if (location.hash.toLowerCase().includes('director')) {
     safeBtns.land.addEventListener('click', () => setSafe('land'));
     safeBtns.port.addEventListener('click', () => setSafe('port'));
     document.getElementById('dirHide').addEventListener('change', e => document.body.classList.toggle('dirHideUI', e.target.checked));
+
+    // ---- Unlock layout: drag/resize the real #canvas/#view3d, drag the logo watermark ----
+    // Load whichever replay/game you want to show FIRST, then unlock -- switching to a different
+    // replay while unlocked reparents #view3d back into #views (same as leaving director mode
+    // entirely would), popping it out of its wrapper; just toggle unlock off/on again afterward.
+    let dirWraps = [];
+    function dirBindDrag(handle, onMove) {
+        let dragging = false;
+        const move = e => { if (!dragging) return; onMove(e.movementX, e.movementY); };
+        const up = () => { dragging = false; removeEventListener('pointermove', move); };
+        handle.addEventListener('pointerdown', e => {
+            dragging = true; e.preventDefault(); e.stopPropagation();
+            addEventListener('pointermove', move); addEventListener('pointerup', up, { once:true });
+        });
+    }
+    function dirWrapCanvas(el, is3D) {
+        if (el.parentElement.classList && el.parentElement.classList.contains('dirWrap')) return;
+        const r = el.getBoundingClientRect();
+        const wrap = document.createElement('div');
+        wrap.className = 'dirWrap';
+        wrap.style.left = r.left+'px'; wrap.style.top = r.top+'px';
+        wrap.style.width = r.width+'px'; wrap.style.height = r.height+'px';
+        el.parentElement.insertBefore(wrap, el);
+        wrap.appendChild(el);
+        const mv = document.createElement('div'); mv.className = 'dirGrip mv'; mv.textContent = '✥';
+        const rs = document.createElement('div'); rs.className = 'dirGrip rs'; rs.textContent = '⤡';
+        wrap.append(mv, rs);
+        dirBindDrag(mv, (dx,dy) => {
+            wrap.style.left = (parseFloat(wrap.style.left)+dx)+'px';
+            wrap.style.top = (parseFloat(wrap.style.top)+dy)+'px';
+        });
+        dirBindDrag(rs, (dx,dy) => {
+            const w = Math.max(80, parseFloat(wrap.style.width)+dx);
+            const h = Math.max(80, parseFloat(wrap.style.height)+dy);
+            wrap.style.width = w+'px'; wrap.style.height = h+'px';
+            // #canvas picks up its new size next frame via syncCanvas() (reads clientWidth every
+            // render()); the 3D view needs its renderer/camera told explicitly, same as resize() does.
+            if (is3D && renderer) { renderer.setSize(w,h,false); camera.aspect = w/h; camera.updateProjectionMatrix(); }
+        });
+        dirWraps.push({ el, wrap });
+    }
+    function dirUnwrapAll() {
+        dirWraps.forEach(({el,wrap}) => { if (wrap.parentElement) wrap.parentElement.insertBefore(el, wrap); wrap.remove(); });
+        dirWraps = [];
+    }
+    function dirBindLogoGrip() {
+        const h1 = document.querySelector('h1');
+        if (h1.querySelector('.dirGrip.mv')) return;
+        const mv = document.createElement('div'); mv.className = 'dirGrip mv'; mv.textContent = '✥';
+        h1.appendChild(mv);
+        let dragging = false;
+        const move = e => {
+            if (!dragging) return;
+            h1.style.left = (parseFloat(h1.style.left)+e.movementX)+'px';
+            h1.style.top = (parseFloat(h1.style.top)+e.movementY)+'px';
+        };
+        const up = () => { dragging = false; removeEventListener('pointermove', move); };
+        mv.addEventListener('pointerdown', e => {
+            // Snapshot the on-screen position fresh at drag START, not when the grip was created --
+            // this grip can exist before the logo watermark is even turned on (the Move/resize boards
+            // toggle can be flipped first), when h1 isn't position:fixed yet and getComputedStyle would
+            // return "auto" -- caching THAT up front left every drag computing NaN and silently doing
+            // nothing the moment the logo did turn on.
+            const r = h1.getBoundingClientRect();
+            h1.style.left = r.left+'px'; h1.style.top = r.top+'px';
+            dragging = true; e.preventDefault(); e.stopPropagation();
+            addEventListener('pointermove', move); addEventListener('pointerup', up, { once:true });
+        });
+    }
+    document.getElementById('dirUnlock').addEventListener('change', e => {
+        const on = e.target.checked;
+        document.body.classList.toggle('dirUnlocked', on);
+        if (on) {
+            dirWrapCanvas(document.getElementById('canvas'), false);
+            if (renderer) dirWrapCanvas(document.getElementById('view3d'), true);
+            dirBindLogoGrip();
+        } else {
+            dirUnwrapAll();
+            const grip = document.querySelector('h1 .dirGrip.mv'); if (grip) grip.remove();
+            const h1 = document.querySelector('h1'); h1.style.left = ''; h1.style.top = '';
+            if (typeof resize === 'function') resize();
+        }
+    });
 }
 
 // ---------- Menu logo: the composed wordmark (tau-logo.png), tinted live to signal state ----------
@@ -5761,7 +5888,13 @@ function isInAppBrowser() {
     return /(FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|Twitter|TikTok|musical_ly|BytedanceWebview|Snapchat|Pinterest|WhatsApp|GSA\/)/i.test(ua)
         || (/Android/.test(ua) && /\bwv\b/.test(ua));
 }
-function isIOS() { return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream; }
+// Since iPadOS 13, Safari's default UA reports as desktop Mac (no "iPad" substring at all) unless the
+// user has switched on "Request Mobile Website" -- the classic tell instead is a "Mac" platform that
+// nonetheless has touch points, which no real Mac does.
+function isIOS() {
+    return (/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream)
+        || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
 function isStandalonePWA() { return window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches; }
 // Google is the default; username/password + one-time email link are tucked behind a disclosure so
 // they don't compete with it (and so magic-link, which depends on email delivery, stays secondary).
@@ -7055,8 +7188,9 @@ async function watchFinishedGame(row, wNames) {
     document.body.classList.add('ingame');
     document.getElementById('reset').style.display = 'none';
     camCenterFrac = 1; camManualSet = false;
+    sharedReplay = true;                     // reuse the shared-replay end flow (Watch again / Play Tau) -- set
+                                              // BEFORE resize() so it sees the "watching" state and biases 3D bigger
     reset(); resize();
-    sharedReplay = true;                     // reuse the shared-replay end flow (Watch again / Play Tau)
     replayNames = wNames || null;            // label the turns with the real usernames
     replaySourceMatchId = row.id;            // saving this replay bumps the match's "most watched" count
     replayFrames = frames; replayTimes = [];
