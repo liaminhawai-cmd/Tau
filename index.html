@@ -173,6 +173,32 @@
     #modeMsg { min-height:16px; text-align:center; }
     #modalBackdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6);
                       align-items:center; justify-content:center; z-index:50; }
+    /* ---------- Watch: a full-screen browse menu (not the small modal) ---------- */
+    /* z-index above the fixed corner buttons (theme/sound/lang at 60) so the header covers that
+       cluster instead of them poking through next to the close ✕. */
+    #watchScreen { display:none; position:fixed; inset:0; z-index:65; background:var(--bg,#0c0e11);
+                   flex-direction:column; }
+    #watchScreen.open { display:flex; }
+    #wsHead { display:flex; align-items:center; gap:10px; padding:calc(12px + env(safe-area-inset-top)) 14px 10px;
+              border-bottom:1px solid #2c3138; flex:0 0 auto; }
+    #wsHead h2 { margin:0; font-size:18px; flex:1; }
+    #wsHead button { margin:0; font-size:14px; padding:7px 14px; background:#1a1e24; border:1px solid #3a4048; border-radius:8px; color:#e6e6e6; }
+    #wsBody { flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch;
+              padding:8px 14px calc(20px + env(safe-area-inset-bottom)); width:100%;
+              max-width:640px; margin:0 auto; box-sizing:border-box; }
+    .wsSec { margin:14px 0 4px; }
+    .wsSec > h3 { font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:#69727b;
+                  margin:0 0 6px; font-weight:600; }
+    .wsSec .wsEmpty { color:#69727b; font-size:13px; text-align:center; padding:8px 0; }
+    .wsRow { display:flex; gap:6px; margin:5px 0; align-items:stretch; }
+    .wsRow > button.wsPlay { flex:1; margin:0; text-align:left; padding:11px 12px; font-size:14px;
+                             background:#1a1e24; border:1px solid #2c3138; border-radius:8px; color:#e6e6e6;
+                             overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .wsRow > button.wsPlay .wsTag { color:#69727b; font-size:11px; font-weight:400; }
+    .wsRow > button.wsPlay .wsLiveDot { color:#4caf50; }
+    .wsRow > button.wsIcon { margin:0; width:42px; flex:0 0 42px; padding:0; font-size:15px;
+                             background:#1a1e24; border:1px solid #2c3138; border-radius:8px; color:#9aa4ad; }
+    .wsRank { flex:0 0 26px; display:flex; align-items:center; justify-content:center; color:#9aa4ad; font-size:13px; }
     #modalBox.wide { max-width: min(560px, 94vw); }
     /* Leaderboard "watch their latest game": a quiet line under the row on narrow/portrait screens
        (the row stays lean), the same info as small inline text on the side once there's room. */
@@ -219,7 +245,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 75</div>
+<div id="buildTag">build 76</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -244,8 +270,9 @@
         <button class="modeBtn" id="modeLocal">Local 1v1</button>
         <button class="modeBtn" id="modeOnline">Online 1v1</button>
         <button class="modeBtn" id="modeAI">vs AI</button>
+        <button class="modeBtn" id="watchBtn" style="background:#12151a;">▶ Watch games</button>
         <p class="msg" id="modeMsg"></p>
-        <div id="menuLinks"><button class="link" id="howToPlayBtn">How to play</button><button class="link" id="leaderboardBtn">Leaderboard</button><button class="link" id="watchBtn">Watch</button></div>
+        <div id="menuLinks"><button class="link" id="howToPlayBtn">How to play</button><button class="link" id="leaderboardBtn">Leaderboard</button></div>
         <p id="presenceLine" style="font-size:12px;color:#69727b;margin:2px 0 0;"></p>
         <!-- understated one-liner, never gates anything: physical-game interest capture (DIY files / full kit) -->
         <p id="steelLine" style="margin:6px 0 0;"><button class="link" id="steelBtn" style="font-size:11px;color:#5a6570;">Get a physical set →</button></p>
@@ -311,6 +338,18 @@
         <h2 id="modalTitle"></h2>
         <div id="modalBody"></div>
         <div id="modalBtns"></div>
+    </div>
+</div>
+
+<!-- Full-screen Watch browse menu. Sections load independently (see openWatchScreen) so one slow
+     query can never leave the whole screen stuck "searching". -->
+<div id="watchScreen">
+    <div id="wsHead"><h2 id="wsTitle">Watch</h2><button id="wsClose">✕</button></div>
+    <div id="wsBody">
+        <div class="wsSec" id="wsSaved"><h3></h3><div class="wsList"></div></div>
+        <div class="wsSec" id="wsRanked"><h3></h3><div class="wsList"></div></div>
+        <div class="wsSec" id="wsWatched"><h3></h3><div class="wsList"></div></div>
+        <div class="wsSec" id="wsLive"><h3></h3><div class="wsList"></div></div>
     </div>
 </div>
 
@@ -1435,7 +1474,7 @@ ja: {
 "Push them off":"押し出して勝つ","Push your opponent off the edge. When one of their feet leaves the board, you win.":"相手をボードの外へ押し出しましょう。相手の足が1本でも落ちたら勝ちです。",
 "Play the AI while you wait":"待ち時間にAIと対戦","Still searching — you’ll be told when an opponent appears.":"対戦相手を探し続けています — 見つかったらお知らせします。","Opponent found!":"対戦相手が見つかりました！","Play now":"今すぐ対戦",
 "Get a physical set →":"実物のセットを手に入れる →","On the list ✓":"登録済み ✓","The physical game":"実物のゲーム","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tauはもともと実物のゲームでした — 鋼の円盤と磁石の三脚コマ。いまセットを準備しています。欲しいものを選んでください。準備ができたら一度だけメールします。","Free print-and-play files":"無料の印刷して遊べるデータ","Make your own set at home":"自宅で自作できます","The full kit, shipped":"完成キットをお届け","A ready-to-play board and pieces":"すぐ遊べるボードとコマ","Pick at least one option.":"少なくとも1つ選んでください。","Notify me":"通知を受け取る","You’re on the list!":"登録しました！","That doesn’t look like an email address.":"メールアドレスの形式が正しくありません。","email":"メールアドレス","Could not save — check your connection.":"保存できませんでした — 接続を確認してください。",
-"Most recent game":"直近の対局","Top ranked games":"上位ランキング対局","Most saved games":"保存数の多い対局","Top players’ latest games":"上位プレイヤーの最新対局","Watch {name}’s latest game":"{name}の直近の対局を見る","vs {name}":"{name}戦","Live now":"対局中","Replays":"リプレイ","Nothing to replay in that game.":"この対局には再生できる内容がありません。",
+"Most recent game":"直近の対局","Top ranked games":"上位ランキング対局","My saved games":"マイ保存対局","Most watched games":"最も見られた対局","No saved games yet.":"保存した対局はまだありません。","No ranked games yet.":"ランキング対局はまだありません。","Could not load.":"読み込めませんでした。","You are offline.":"オフラインです。","Sign in to browse games.":"ログインすると対局を閲覧できます。","live":"ライブ","Most saved games":"保存数の多い対局","Top players’ latest games":"上位プレイヤーの最新対局","Watch {name}’s latest game":"{name}の直近の対局を見る","vs {name}":"{name}戦","Live now":"対局中","Replays":"リプレイ","Nothing to replay in that game.":"この対局には再生できる内容がありません。",
 "Save replay":"リプレイを保存","Saved to My replays!":"マイリプレイに保存しました！","My replays":"マイリプレイ","Delete":"削除",
 "Share this game":"この対局を共有","Skip ⏭":"スキップ ⏭",
 "Continue with Google":"Googleで続行","or use a username & password":"またはユーザー名とパスワードを使う","hide username & password":"ユーザー名の入力を隠す",
@@ -1483,7 +1522,7 @@ zh: {
 "Push them off":"推下棋盘","Push your opponent off the edge. When one of their feet leaves the board, you win.":"把对手推下棋盘边缘。对方任何一只脚离开棋盘，你就获胜。",
 "Play the AI while you wait":"等待时和AI对战","Still searching — you’ll be told when an opponent appears.":"仍在寻找对手——找到后会通知你。","Opponent found!":"找到对手了！","Play now":"立即对战",
 "Get a physical set →":"获取实体套装 →","On the list ✓":"已登记 ✓","The physical game":"实体版","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau最初就是一款实体游戏——钢制圆盘和两只磁脚三脚棋。我正在制作成套。选择你想要的，做好后我只发一封邮件。","Free print-and-play files":"免费自制文件","Make your own set at home":"在家自己制作一套","The full kit, shipped":"整套成品，包邮到家","A ready-to-play board and pieces":"开箱即玩的棋盘和棋子","Pick at least one option.":"请至少选择一项。","Notify me":"通知我","You’re on the list!":"已加入通知列表！","That doesn’t look like an email address.":"邮箱格式不正确。","email":"邮箱","Could not save — check your connection.":"保存失败——请检查网络连接。",
-"Most recent game":"最近的对局","Top ranked games":"排名靠前的对局","Most saved games":"收藏最多的对局","Top players’ latest games":"顶尖玩家的最新对局","Watch {name}’s latest game":"观看{name}的最近对局","vs {name}":"对 {name}","Live now":"正在进行","Replays":"回放","Nothing to replay in that game.":"该对局没有可回放的内容。",
+"Most recent game":"最近的对局","Top ranked games":"排名靠前的对局","My saved games":"我保存的对局","Most watched games":"观看最多的对局","No saved games yet.":"还没有保存的对局。","No ranked games yet.":"还没有排名对局。","Could not load.":"无法加载。","You are offline.":"你已离线。","Sign in to browse games.":"登录后浏览对局。","live":"直播","Most saved games":"收藏最多的对局","Top players’ latest games":"顶尖玩家的最新对局","Watch {name}’s latest game":"观看{name}的最近对局","vs {name}":"对 {name}","Live now":"正在进行","Replays":"回放","Nothing to replay in that game.":"该对局没有可回放的内容。",
 "Save replay":"保存回放","Saved to My replays!":"已保存到我的回放！","My replays":"我的回放","Delete":"删除",
 "Share this game":"分享此对局","Skip ⏭":"跳过 ⏭",
 "Continue with Google":"使用Google登录","or use a username & password":"或使用用户名和密码","hide username & password":"收起用户名登录",
@@ -1531,7 +1570,7 @@ zht: {
 "Push them off":"推下棋盤","Push your opponent off the edge. When one of their feet leaves the board, you win.":"把對手推下棋盤邊緣。對方任何一隻腳離開棋盤，你就獲勝。",
 "Play the AI while you wait":"等待時和AI對戰","Still searching — you’ll be told when an opponent appears.":"仍在尋找對手——找到後會通知你。","Opponent found!":"找到對手了！","Play now":"立即對戰",
 "Get a physical set →":"取得實體套裝 →","On the list ✓":"已登記 ✓","The physical game":"實體版","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau最初就是一款實體遊戲——鋼製圓盤和兩隻磁腳三腳棋。我正在製作成套。選擇你想要的，做好後我只寄一封Email。","Free print-and-play files":"免費自製檔案","Make your own set at home":"在家自己做一套","The full kit, shipped":"整套成品，寄到府","A ready-to-play board and pieces":"開箱即玩的棋盤與棋子","Pick at least one option.":"請至少選擇一項。","Notify me":"通知我","You’re on the list!":"已加入通知名單！","That doesn’t look like an email address.":"Email格式不正確。","email":"Email","Could not save — check your connection.":"儲存失敗——請檢查網路連線。",
-"Most recent game":"最近的對局","Top ranked games":"排名靠前的對局","Most saved games":"收藏最多的對局","Top players’ latest games":"頂尖玩家的最新對局","Watch {name}’s latest game":"觀看{name}的最近對局","vs {name}":"對 {name}","Live now":"正在進行","Replays":"重播","Nothing to replay in that game.":"該對局沒有可重播的內容。",
+"Most recent game":"最近的對局","Top ranked games":"排名靠前的對局","My saved games":"我儲存的對局","Most watched games":"觀看最多的對局","No saved games yet.":"還沒有儲存的對局。","No ranked games yet.":"還沒有排名對局。","Could not load.":"無法載入。","You are offline.":"你已離線。","Sign in to browse games.":"登入後瀏覽對局。","live":"直播","Most saved games":"收藏最多的對局","Top players’ latest games":"頂尖玩家的最新對局","Watch {name}’s latest game":"觀看{name}的最近對局","vs {name}":"對 {name}","Live now":"正在進行","Replays":"重播","Nothing to replay in that game.":"該對局沒有可重播的內容。",
 "Save replay":"儲存重播","Saved to My replays!":"已儲存到我的重播！","My replays":"我的重播","Delete":"刪除",
 "Share this game":"分享此對局","Skip ⏭":"跳過 ⏭",
 "Continue with Google":"使用Google繼續","or use a username & password":"或使用帳號密碼","hide username & password":"隱藏帳號密碼欄位",
@@ -1579,7 +1618,7 @@ ko: {
 "Push them off":"밀어서 떨어뜨리기","Push your opponent off the edge. When one of their feet leaves the board, you win.":"상대를 가장자리 밖으로 밀어내세요. 상대 발이 하나라도 보드를 벗어나면 승리합니다.",
 "Play the AI while you wait":"기다리는 동안 AI와 대전","Still searching — you’ll be told when an opponent appears.":"계속 상대를 찾는 중 — 찾으면 알려드립니다.","Opponent found!":"상대를 찾았습니다!","Play now":"지금 대전",
 "Get a physical set →":"실물 세트 구하기 →","On the list ✓":"신청 완료 ✓","The physical game":"실물 게임","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau는 원래 실물 게임이었습니다 — 강철 원반과 자석 삼각 말 두 개. 지금 세트를 준비하고 있습니다. 원하는 것을 고르면 준비됐을 때 딱 한 번 메일을 보내드립니다.","Free print-and-play files":"무료 프린트&플레이 파일","Make your own set at home":"집에서 직접 만들기","The full kit, shipped":"완성 키트 배송","A ready-to-play board and pieces":"바로 즐기는 보드와 말","Pick at least one option.":"최소 한 가지를 선택하세요.","Notify me":"알림 받기","You’re on the list!":"신청 완료!","That doesn’t look like an email address.":"이메일 주소 형식이 올바르지 않습니다.","email":"이메일","Could not save — check your connection.":"저장하지 못했습니다 — 연결을 확인하세요.",
-"Most recent game":"최근 경기","Top ranked games":"상위 랭킹 경기","Most saved games":"저장 많이 된 경기","Top players’ latest games":"상위 플레이어의 최근 경기","Watch {name}’s latest game":"{name}의 최근 경기 보기","vs {name}":"{name} 상대","Live now":"진행 중","Replays":"리플레이","Nothing to replay in that game.":"이 경기에는 재생할 내용이 없습니다.",
+"Most recent game":"최근 경기","Top ranked games":"상위 랭킹 경기","My saved games":"내 저장한 경기","Most watched games":"가장 많이 본 경기","No saved games yet.":"저장한 경기가 아직 없습니다.","No ranked games yet.":"랭킹 경기가 아직 없습니다.","Could not load.":"불러올 수 없습니다.","You are offline.":"오프라인 상태입니다.","Sign in to browse games.":"로그인하면 경기를 둘러볼 수 있습니다.","live":"라이브","Most saved games":"저장 많이 된 경기","Top players’ latest games":"상위 플레이어의 최근 경기","Watch {name}’s latest game":"{name}의 최근 경기 보기","vs {name}":"{name} 상대","Live now":"진행 중","Replays":"리플레이","Nothing to replay in that game.":"이 경기에는 재생할 내용이 없습니다.",
 "Save replay":"리플레이 저장","Saved to My replays!":"내 리플레이에 저장됨!","My replays":"내 리플레이","Delete":"삭제",
 "Share this game":"이 경기 공유","Skip ⏭":"건너뛰기 ⏭",
 "Continue with Google":"Google로 계속하기","or use a username & password":"또는 아이디와 비밀번호 사용","hide username & password":"아이디 입력 숨기기",
@@ -1627,7 +1666,7 @@ de: {
 "Push them off":"Runterschieben","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Schieb deinen Gegner über den Rand. Sobald einer seiner Füße das Brett verlässt, gewinnst du.",
 "Play the AI while you wait":"Gegen KI spielen, während du wartest","Still searching — you’ll be told when an opponent appears.":"Suche läuft weiter – du wirst benachrichtigt, sobald ein Gegner da ist.","Opponent found!":"Gegner gefunden!","Play now":"Jetzt spielen",
 "Get a physical set →":"Ein physisches Set bekommen →","On the list ✓":"Auf der Liste ✓","The physical game":"Das physische Spiel","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau war zuerst ein physisches Spiel — eine Stahlscheibe und zwei magnetische Dreibeiner. Ich stelle gerade Sets zusammen. Wähl aus, was du willst, und ich schreibe dir genau einmal, wenn es fertig ist.","Free print-and-play files":"Kostenlose Print-and-Play-Dateien","Make your own set at home":"Bau dir dein eigenes Set","The full kit, shipped":"Das komplette Set, geliefert","A ready-to-play board and pieces":"Spielfertiges Brett samt Figuren","Pick at least one option.":"Wähle mindestens eine Option.","Notify me":"Benachrichtige mich","You’re on the list!":"Du stehst auf der Liste!","That doesn’t look like an email address.":"Das sieht nicht nach einer E-Mail-Adresse aus.","email":"E-Mail","Could not save — check your connection.":"Speichern fehlgeschlagen – prüfe deine Verbindung.",
-"Most recent game":"Neuestes Spiel","Top ranked games":"Bestbewertete Spiele","Most saved games":"Meistgespeicherte Spiele","Top players’ latest games":"Neueste Spiele der Top-Spieler","Watch {name}’s latest game":"Neuestes Spiel von {name} ansehen","vs {name}":"gegen {name}","Live now":"Jetzt live","Replays":"Wiederholungen","Nothing to replay in that game.":"In diesem Spiel gibt es nichts abzuspielen.",
+"Most recent game":"Neuestes Spiel","Top ranked games":"Bestbewertete Spiele","My saved games":"Meine gespeicherten Spiele","Most watched games":"Meistgesehene Spiele","No saved games yet.":"Noch keine gespeicherten Spiele.","No ranked games yet.":"Noch keine gewerteten Spiele.","Could not load.":"Konnte nicht geladen werden.","You are offline.":"Du bist offline.","Sign in to browse games.":"Melde dich an, um Spiele zu durchsuchen.","live":"live","Most saved games":"Meistgespeicherte Spiele","Top players’ latest games":"Neueste Spiele der Top-Spieler","Watch {name}’s latest game":"Neuestes Spiel von {name} ansehen","vs {name}":"gegen {name}","Live now":"Jetzt live","Replays":"Wiederholungen","Nothing to replay in that game.":"In diesem Spiel gibt es nichts abzuspielen.",
 "Save replay":"Wiederholung speichern","Saved to My replays!":"Unter Meine Wiederholungen gespeichert!","My replays":"Meine Wiederholungen","Delete":"Löschen",
 "Share this game":"Diese Partie teilen","Skip ⏭":"Überspringen ⏭",
 "Continue with Google":"Weiter mit Google","or use a username & password":"oder Benutzername & Passwort","hide username & password":"Benutzername & Passwort ausblenden",
@@ -1675,7 +1714,7 @@ fr: {
 "Push them off":"Fais-le tomber","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Pousse ton adversaire hors du plateau. Dès qu'un de ses pieds quitte le plateau, tu gagnes.",
 "Play the AI while you wait":"Jouer contre l'IA en attendant","Still searching — you’ll be told when an opponent appears.":"Recherche en cours — tu seras prévenu dès qu'un adversaire arrive.","Opponent found!":"Adversaire trouvé !","Play now":"Jouer maintenant",
 "Get a physical set →":"Obtenir un exemplaire physique →","On the list ✓":"Inscrit ✓","The physical game":"Le jeu physique","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau était d’abord un jeu physique — un disque d’acier et deux trépieds magnétiques. Je prépare des sets en ce moment. Choisis ce qui t’intéresse et je t’enverrai un seul e-mail, quand ce sera prêt.","Free print-and-play files":"Fichiers à imprimer gratuits","Make your own set at home":"Fabrique ton propre jeu chez toi","The full kit, shipped":"Le kit complet, livré","A ready-to-play board and pieces":"Un plateau et des pièces prêts à jouer","Pick at least one option.":"Choisis au moins une option.","Notify me":"Me prévenir","You’re on the list!":"Tu es sur la liste !","That doesn’t look like an email address.":"Ça ne ressemble pas à une adresse e-mail.","email":"e-mail","Could not save — check your connection.":"Enregistrement impossible — vérifie ta connexion.",
-"Most recent game":"Partie la plus récente","Top ranked games":"Parties les mieux classées","Most saved games":"Parties les plus sauvegardées","Top players’ latest games":"Dernières parties des meilleurs joueurs","Watch {name}’s latest game":"Voir la dernière partie de {name}","vs {name}":"contre {name}","Live now":"En direct","Replays":"Replays","Nothing to replay in that game.":"Rien à revoir dans cette partie.",
+"Most recent game":"Partie la plus récente","Top ranked games":"Parties les mieux classées","My saved games":"Mes parties enregistrées","Most watched games":"Parties les plus regardées","No saved games yet.":"Aucune partie enregistrée pour l'instant.","No ranked games yet.":"Aucune partie classée pour l'instant.","Could not load.":"Échec du chargement.","You are offline.":"Tu es hors ligne.","Sign in to browse games.":"Connecte-toi pour parcourir les parties.","live":"en direct","Most saved games":"Parties les plus sauvegardées","Top players’ latest games":"Dernières parties des meilleurs joueurs","Watch {name}’s latest game":"Voir la dernière partie de {name}","vs {name}":"contre {name}","Live now":"En direct","Replays":"Replays","Nothing to replay in that game.":"Rien à revoir dans cette partie.",
 "Save replay":"Enregistrer le replay","Saved to My replays!":"Ajouté à Mes replays !","My replays":"Mes replays","Delete":"Supprimer",
 "Share this game":"Partager cette partie","Skip ⏭":"Passer ⏭",
 "Continue with Google":"Continuer avec Google","or use a username & password":"ou identifiant & mot de passe","hide username & password":"masquer identifiant & mot de passe",
@@ -1723,7 +1762,7 @@ es: {
 "Push them off":"Échalo del tablero","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Empuja a tu rival fuera del borde. Cuando uno de sus pies sale del tablero, ganas.",
 "Play the AI while you wait":"Jugar contra la IA mientras esperas","Still searching — you’ll be told when an opponent appears.":"Seguimos buscando — te avisaremos cuando aparezca un rival.","Opponent found!":"¡Rival encontrado!","Play now":"Jugar ya",
 "Get a physical set →":"Consigue un set físico →","On the list ✓":"En la lista ✓","The physical game":"El juego físico","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau fue primero un juego físico — un disco de acero y dos trípodes magnéticos. Estoy preparando sets ahora. Elige lo que quieras y te mandaré un solo correo cuando esté listo.","Free print-and-play files":"Archivos gratis para imprimir y jugar","Make your own set at home":"Hazte tu propia copia en casa","The full kit, shipped":"El kit completo, enviado","A ready-to-play board and pieces":"Un tablero y piezas listos para jugar","Pick at least one option.":"Elige al menos una opción.","Notify me":"Avísame","You’re on the list!":"¡Estás en la lista!","That doesn’t look like an email address.":"Eso no parece un correo electrónico.","email":"correo","Could not save — check your connection.":"No se pudo guardar — revisa tu conexión.",
-"Most recent game":"Partida más reciente","Top ranked games":"Partidas mejor clasificadas","Most saved games":"Partidas más guardadas","Top players’ latest games":"Últimas partidas de los mejores jugadores","Watch {name}’s latest game":"Ver la última partida de {name}","vs {name}":"vs {name}","Live now":"En vivo","Replays":"Repeticiones","Nothing to replay in that game.":"No hay nada que reproducir en esa partida.",
+"Most recent game":"Partida más reciente","Top ranked games":"Partidas mejor clasificadas","My saved games":"Mis partidas guardadas","Most watched games":"Partidas más vistas","No saved games yet.":"Aún no hay partidas guardadas.","No ranked games yet.":"Aún no hay partidas clasificadas.","Could not load.":"No se pudo cargar.","You are offline.":"Estás sin conexión.","Sign in to browse games.":"Inicia sesión para explorar partidas.","live":"en vivo","Most saved games":"Partidas más guardadas","Top players’ latest games":"Últimas partidas de los mejores jugadores","Watch {name}’s latest game":"Ver la última partida de {name}","vs {name}":"vs {name}","Live now":"En vivo","Replays":"Repeticiones","Nothing to replay in that game.":"No hay nada que reproducir en esa partida.",
 "Save replay":"Guardar repetición","Saved to My replays!":"¡Guardada en Mis repeticiones!","My replays":"Mis repeticiones","Delete":"Eliminar",
 "Share this game":"Compartir esta partida","Skip ⏭":"Saltar ⏭",
 "Continue with Google":"Continuar con Google","or use a username & password":"o usar nombre de usuario y contraseña","hide username & password":"ocultar usuario y contraseña",
@@ -1771,7 +1810,7 @@ pt: {
 "Push them off":"Derrube do tabuleiro","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Empurre o oponente para fora da borda. Quando um pé dele sai do tabuleiro, você vence.",
 "Play the AI while you wait":"Jogar contra a IA enquanto espera","Still searching — you’ll be told when an opponent appears.":"Ainda procurando — avisaremos quando aparecer um oponente.","Opponent found!":"Oponente encontrado!","Play now":"Jogar agora",
 "Get a physical set →":"Consiga um kit físico →","On the list ✓":"Na lista ✓","The physical game":"O jogo físico","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau nasceu como jogo físico — um disco de aço e dois tripés magnéticos. Estou montando os kits agora. Escolha o que quiser e eu mando um único e-mail quando estiver pronto.","Free print-and-play files":"Arquivos grátis para imprimir e jogar","Make your own set at home":"Monte o seu próprio set em casa","The full kit, shipped":"O kit completo, enviado","A ready-to-play board and pieces":"Tabuleiro e peças prontos para jogar","Pick at least one option.":"Escolha ao menos uma opção.","Notify me":"Me avise","You’re on the list!":"Você está na lista!","That doesn’t look like an email address.":"Isso não parece um e-mail.","email":"e-mail","Could not save — check your connection.":"Não foi possível salvar — verifique sua conexão.",
-"Most recent game":"Partida mais recente","Top ranked games":"Partidas mais bem ranqueadas","Most saved games":"Partidas mais salvas","Top players’ latest games":"Últimas partidas dos melhores jogadores","Watch {name}’s latest game":"Ver a última partida de {name}","vs {name}":"vs {name}","Live now":"Ao vivo","Replays":"Replays","Nothing to replay in that game.":"Nada para reproduzir nessa partida.",
+"Most recent game":"Partida mais recente","Top ranked games":"Partidas mais bem ranqueadas","My saved games":"Minhas partidas salvas","Most watched games":"Partidas mais assistidas","No saved games yet.":"Ainda não há partidas salvas.","No ranked games yet.":"Ainda não há partidas ranqueadas.","Could not load.":"Não foi possível carregar.","You are offline.":"Você está offline.","Sign in to browse games.":"Entre para explorar partidas.","live":"ao vivo","Most saved games":"Partidas mais salvas","Top players’ latest games":"Últimas partidas dos melhores jogadores","Watch {name}’s latest game":"Ver a última partida de {name}","vs {name}":"vs {name}","Live now":"Ao vivo","Replays":"Replays","Nothing to replay in that game.":"Nada para reproduzir nessa partida.",
 "Save replay":"Salvar replay","Saved to My replays!":"Salvo em Meus replays!","My replays":"Meus replays","Delete":"Excluir",
 "Share this game":"Compartilhar esta partida","Skip ⏭":"Pular ⏭",
 "Continue with Google":"Continuar com o Google","or use a username & password":"ou usar nome de usuário e senha","hide username & password":"esconder usuário e senha",
@@ -1819,7 +1858,7 @@ ru: {
 "Push them off":"Столкните его","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Столкните соперника с края. Как только одна его ножка покидает доску — вы победили.",
 "Play the AI while you wait":"Сыграть с ИИ, пока ждёте","Still searching — you’ll be told when an opponent appears.":"Поиск продолжается — мы сообщим, когда появится соперник.","Opponent found!":"Соперник найден!","Play now":"Играть сейчас",
 "Get a physical set →":"Получить физический набор →","On the list ✓":"Вы в списке ✓","The physical game":"Физическая игра","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau сначала был физической игрой — стальной диск и две магнитные треноги. Сейчас я собираю наборы. Выберите, что вам нужно, и я напишу один раз, когда всё будет готово.","Free print-and-play files":"Бесплатные файлы «распечатай и играй»","Make your own set at home":"Соберите свой набор дома","The full kit, shipped":"Полный набор с доставкой","A ready-to-play board and pieces":"Готовое поле и фигуры","Pick at least one option.":"Выберите хотя бы один вариант.","Notify me":"Сообщить мне","You’re on the list!":"Вы в списке!","That doesn’t look like an email address.":"Это не похоже на адрес почты.","email":"почта","Could not save — check your connection.":"Не удалось сохранить — проверьте соединение.",
-"Most recent game":"Последняя партия","Top ranked games":"Партии с высшим рейтингом","Most saved games":"Самые сохраняемые партии","Top players’ latest games":"Последние партии лучших игроков","Watch {name}’s latest game":"Смотреть последнюю партию {name}","vs {name}":"против {name}","Live now":"Идут сейчас","Replays":"Повторы","Nothing to replay in that game.":"В этой партии нечего воспроизводить.",
+"Most recent game":"Последняя партия","Top ranked games":"Партии с высшим рейтингом","My saved games":"Мои сохранённые партии","Most watched games":"Самые просматриваемые партии","No saved games yet.":"Пока нет сохранённых партий.","No ranked games yet.":"Пока нет рейтинговых партий.","Could not load.":"Не удалось загрузить.","You are offline.":"Вы офлайн.","Sign in to browse games.":"Войдите, чтобы просматривать партии.","live":"в эфире","Most saved games":"Самые сохраняемые партии","Top players’ latest games":"Последние партии лучших игроков","Watch {name}’s latest game":"Смотреть последнюю партию {name}","vs {name}":"против {name}","Live now":"Идут сейчас","Replays":"Повторы","Nothing to replay in that game.":"В этой партии нечего воспроизводить.",
 "Save replay":"Сохранить повтор","Saved to My replays!":"Сохранено в Мои повторы!","My replays":"Мои повторы","Delete":"Удалить",
 "Share this game":"Поделиться этой партией","Skip ⏭":"Пропустить ⏭",
 "Continue with Google":"Продолжить с Google","or use a username & password":"или имя пользователя и пароль","hide username & password":"скрыть имя пользователя и пароль",
@@ -3210,7 +3249,7 @@ function endSharedReplay() {
     setTimeout(() => {
         showModal(t('Replay finished'), '', [
             { label: t('Watch again'),   onClick: () => { fall.active = false; G.over = false; startReplay(); } },
-            { label: t('Watch another'), onClick: () => { location.hash = ''; sharedReplay = false; G.over = false; setSpectatorChrome(false); backToMenu(); openWatchMenu(); } },
+            { label: t('Watch another'), onClick: () => { location.hash = ''; sharedReplay = false; G.over = false; setSpectatorChrome(false); backToMenu(); openWatchScreen(); } },
             { label: t('Play Tau'),      onClick: () => { location.hash = ''; sharedReplay = false; G.over = false; setSpectatorChrome(false); backToMenu(); } },
         ]);
     }, G.sharedWinner != null ? 2800 : 200);
@@ -3636,7 +3675,7 @@ function renderGameOverSheet() {
     let title, buttons, bodyHtml = '';
     if (onlineMatch && onlineMatch.spectator) {
         title = tf('{name} wins!', { name: G.winner===0 ? onlineMatch.blueName : onlineMatch.redName });
-        buttons = [ { label: t('Watch another'), onClick: () => { exitOnlineMatch(); openWatchMenu(); } } ];
+        buttons = [ { label: t('Watch another'), onClick: () => { exitOnlineMatch(); openWatchScreen(); } } ];
     } else if (onlineMatch) {
         // Online: the whole post-game sheet is state-driven (rematch handshake, names, live
         // "watching the replay" notes) — see the rmx module next to rematchOnline().
@@ -5460,6 +5499,12 @@ const SUPABASE_ANON_KEY = 'sb_publishable_qo7O-7f6Wa69SV4f66aLXw_V67tpjNp';
 
 let sb = null, sbUser = null;
 function sbConfigured() { return !SUPABASE_URL.startsWith('YOUR_') && !SUPABASE_ANON_KEY.startsWith('YOUR_'); }
+// Fire-and-forget a Supabase query/RPC, ignoring any error. IMPORTANT: supabase-js query builders
+// are thenables that implement .then but NOT .catch — so `sb.rpc(x).catch(...)` throws "catch is not
+// a function" AND, because the builder only runs when awaited/then'd, the query never even fires.
+// (That thrown line is what left the Watch menu stuck on "Looking for games…".) Promise.resolve()
+// adopts the thenable — actually running it — into a real Promise that .catch() can guard.
+function sbFire(builder) { try { Promise.resolve(builder).catch(() => {}); } catch (e) {} }
 updateAcctStatus();   // now that sbUser exists, wire the real click handler before any async auth check resolves
 
 // A guest (anonymous) session should live only as long as the tab: closing it lets the next
@@ -6092,7 +6137,7 @@ function cancelMatchmaking() {
     matchmakingActive = false; mmWaitingAI = false;
     clearTimeout(matchmakingTimer);
     if (matchmakingChannel) { sb.removeChannel(matchmakingChannel); matchmakingChannel = null; }
-    if (sb) sb.rpc('leave_queue').catch(()=>{});
+    if (sb) sbFire(sb.rpc('leave_queue'));
 }
 // Start a normal vs-AI game (player = blue, last-used difficulty) with the queue still live.
 function startAiWhileWaiting() {
@@ -6105,7 +6150,7 @@ function startAiWhileWaiting() {
 // not the real fix: try_match()'s own last_seen staleness check (schema_matches.sql) is what
 // actually guarantees a closed/crashed/abandoned tab can never be matched against, whether or
 // not this fires.
-addEventListener('pagehide', () => { if (matchmakingActive && sb) sb.rpc('leave_queue').catch(()=>{}); });
+addEventListener('pagehide', () => { if (matchmakingActive && sb) sbFire(sb.rpc('leave_queue')); });
 
 async function enterOnlineMatch(row) {
     matchmakingActive = false;
@@ -6573,7 +6618,7 @@ function showPrivateWaitScreen(matchId, code) {
 }
 function cancelPrivateMatchWait(matchId) {
     cleanupPrivateWait();
-    sb.rpc('cancel_private_match', { p_match_id: matchId }).catch(() => {});
+    sbFire(sb.rpc('cancel_private_match', { p_match_id: matchId }));
 }
 function joinPrivateMatchPrompt() {
     const body = `<div class="row">
@@ -6646,10 +6691,11 @@ function updatePresenceCounts() {
 // normal online-match machinery with a spectator flag: input blocked, no clock enforcement, no
 // result reporting, EVERY move replayed (not just the opponent's).
 document.getElementById('watchBtn').addEventListener('click', () => {
-    // Offline (e.g. installed PWA on a plane): skip the identity gate — live spectating can't work
-    // anyway, but the locally saved "My replays" collection still can.
-    if (!sbUser && !navigator.onLine) { openWatchMenu(); return; }
-    ensureOnlineIdentity(openWatchMenu);
+    // The screen opens instantly and its sections load independently, so a signed-out visitor still
+    // sees their saved games right away; the server-backed sections fill in once there's a session.
+    // Offline (installed PWA on a plane): still open — saved replays are local and work fine.
+    openWatchScreen();
+    if (!sbUser && navigator.onLine) ensureOnlineIdentity(() => wsLoadServerSections());
 });
 // A match only leaves 'active' when a live client drives its end (a win, or the turn-clock forfeit).
 // If BOTH tabs vanish there's no one left to run the clock, so the row would sit 'active' forever and
@@ -6697,62 +6743,169 @@ function appendSavedReplaySection(body) {
         body.appendChild(row);
     });
 }
-async function openWatchMenu() {
-    showModal(t('Watch live'), '<p style="text-align:center;color:#9aa4ad;">'+t('Looking for games…')+'</p>', [ { label:t('Close'), onClick:()=>{} } ], true);
-    try { await sb.rpc('gc_stale_matches'); } catch(e) {}   // no-op if the patch isn't applied yet
-    sb.rpc('gc_expired_shared_replays').catch(() => {});    // best-effort trim of stale share links
-    let games, err;
-    try {
-        ({ data: games, error: err } = await sb.from('matches').select('id, blue_id, red_id, created_at')
-            .eq('status','active').is('invite_code', null).order('created_at', { ascending:false }).limit(20));
-    } catch(e) { err = e; }
-    const body = document.getElementById('modalBody');
-    if (!body) return;
-    if (err) {
-        body.innerHTML = '<p style="text-align:center;color:#9aa4ad;">Could not load live games \u2014 has the spectator patch been run in Supabase?</p>';
-        appendSavedReplaySection(body);   // the local collection still works offline
+// ---------- Full-screen Watch browse menu ----------
+// Four sections, each loaded INDEPENDENTLY so a single slow/failed query can never leave the whole
+// screen stuck "searching" (the reported bug): My saved games (local, instant), Top ranked (all
+// time), Most watched, and Live now. Each server section renders "Loading" then either its rows,
+// an empty state, or a "couldn't load" line -- and every network read is raced against a timeout so
+// a hung request resolves to that line instead of spinning forever.
+function wsTimeout(promise, ms) {
+    return Promise.race([
+        promise,
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
+    ]);
+}
+function wsSectionEls(id) {
+    const sec = document.getElementById(id);
+    return { sec, head: sec.querySelector('h3'), list: sec.querySelector('.wsList') };
+}
+function wsEmpty(list, msg) { list.innerHTML = '<p class="wsEmpty">' + escapeHtml(msg) + '</p>'; }
+function wsLoading(list) { wsEmpty(list, t('Loading…')); }
+// One matchup row: a wide play button (label + optional dim tag), optional leading rank, optional
+// trailing icon buttons (share/delete for saved replays). onPlay fires the actual viewer.
+function wsRow(list, opts) {
+    const row = document.createElement('div'); row.className = 'wsRow';
+    if (opts.rank != null) { const r = document.createElement('div'); r.className = 'wsRank'; r.textContent = opts.rank; row.appendChild(r); }
+    const play = document.createElement('button'); play.className = 'wsPlay';
+    play.innerHTML = escapeHtml(opts.label) + (opts.tag ? ' <span class="wsTag">' + opts.tag + '</span>' : '');
+    play.addEventListener('click', opts.onPlay);
+    row.appendChild(play);
+    (opts.icons || []).forEach(ic => {
+        const b = document.createElement('button'); b.className = 'wsIcon'; b.textContent = ic.txt; b.title = ic.title || '';
+        b.addEventListener('click', ic.onClick); row.appendChild(b);
+    });
+    list.appendChild(row);
+    return row;
+}
+let watchScreenOpen = false;
+function openWatchScreen() {
+    watchScreenOpen = true;
+    demoStop();
+    document.getElementById('wsTitle').textContent = t('Watch');
+    wsSectionEls('wsSaved').head.textContent = t('My saved games');
+    wsSectionEls('wsRanked').head.textContent = t('Top ranked games');
+    wsSectionEls('wsWatched').head.textContent = t('Most watched games');
+    wsSectionEls('wsLive').head.textContent = t('Live now');
+    document.getElementById('watchScreen').classList.add('open');
+    wsRenderSaved();                 // local: always instant, works signed-out and offline
+    wsLoadServerSections();          // ranked / watched / live: independent, timed-out, non-blocking
+}
+function closeWatchScreen() {
+    watchScreenOpen = false;
+    document.getElementById('watchScreen').classList.remove('open');
+    if (document.getElementById('menu').style.display !== 'none') demoStart();   // resume the ambient menu demo
+}
+document.getElementById('wsClose').addEventListener('click', closeWatchScreen);
+// The locally saved "My replays" collection -- no network, so it always populates immediately.
+function wsRenderSaved() {
+    const { list } = wsSectionEls('wsSaved');
+    list.innerHTML = '';
+    const saved = loadSavedReplays();
+    if (!saved.length) { wsEmpty(list, t('No saved games yet.')); return; }
+    saved.slice(0, 20).forEach(r => {
+        wsRow(list, {
+            label: r.t, tag: new Date(r.d).toLocaleDateString(),
+            onPlay: () => { closeWatchScreen(); bootSharedReplay(r.p); },
+            icons: [
+                { txt:'⧉', title:t('Share replay'), onClick: async () => {
+                    const url = await makeShareUrl(r.p);
+                    try { if (navigator.share) await navigator.share({ title:'Tau', text:t('Watch this Tau game:'), url });
+                          else { await navigator.clipboard.writeText(url); showPassToast(t('Replay link copied!')); } } catch(e){}
+                } },
+                { txt:'✕', title:t('Delete'), onClick: (e) => {
+                    const cur = loadSavedReplays(), k = cur.findIndex(x => x.d === r.d && x.p === r.p);
+                    if (k >= 0) { cur.splice(k, 1); storeSavedReplays(cur); }
+                    e.target.closest('.wsRow').remove();
+                    if (!loadSavedReplays().length) wsEmpty(list, t('No saved games yet.'));
+                } },
+            ],
+        });
+    });
+}
+function wsLoadServerSections() {
+    if (!sb || !navigator.onLine) {
+        const off = navigator.onLine ? t('Sign in to browse games.') : t('You are offline.');
+        ['wsRanked','wsWatched','wsLive'].forEach(id => {
+            const { list } = wsSectionEls(id); if (!list.querySelector('.wsRow')) wsEmpty(list, off);
+        });
         return;
     }
-    games = (games||[]).filter(g => !sbUser || (g.blue_id !== sbUser.id && g.red_id !== sbUser.id));
-    // Drop matches with no recent activity (last move, or creation if no moves yet, older than the window).
+    sbFire(sb.rpc('gc_stale_matches'));            // best-effort housekeeping, never awaited
+    sbFire(sb.rpc('gc_expired_shared_replays'));
+    wsRenderRanked(); wsRenderWatched(); wsRenderLive();
+}
+// Fetch usernames for a set of profile ids -> { id: username }. Tolerates failure (returns {}).
+async function wsNames(ids) {
+    ids = [...new Set(ids)].filter(Boolean);
+    if (!ids.length) return {};
+    try {
+        const { data } = await wsTimeout(sb.from('profiles').select('id, username').in('id', ids), 8000);
+        const m = {}; (data || []).forEach(p => m[p.id] = p.username); return m;
+    } catch(e) { return {}; }
+}
+function wsVs(names, g) { return (names[g.blue_id] || t('Blue')) + ' vs ' + (names[g.red_id] || t('Red')); }
+// Top ranked: highest-rated finished games. PostgREST can't order by GREATEST(blue_elo,red_elo)
+// without a generated column, so pull a generous recent window and rank client-side -- for a game
+// this size that window IS effectively all of them.
+async function wsRenderRanked() {
+    const { list } = wsSectionEls('wsRanked'); wsLoading(list);
+    let rows;
+    try {
+        ({ data: rows } = await wsTimeout(sb.from('matches')
+            .select('id, blue_id, red_id, blue_elo, red_elo, winner_color, finished_at')
+            .eq('status','finished').is('invite_code', null).not('winner_color','is',null)
+            .order('finished_at', { ascending:false }).limit(500), 8000));
+    } catch(e) { wsEmpty(list, t('Could not load.')); return; }
+    rows = (rows || []).sort((a,b) => Math.max(b.blue_elo||0,b.red_elo||0) - Math.max(a.blue_elo||0,a.red_elo||0)).slice(0, 10);
+    if (!rows.length) { wsEmpty(list, t('No ranked games yet.')); return; }
+    const names = await wsNames(rows.flatMap(g => [g.blue_id, g.red_id]));
+    list.innerHTML = '';
+    rows.forEach((g, i) => wsRow(list, { rank: i+1, label: wsVs(names, g),
+        tag: '★ ' + Math.max(g.blue_elo||0, g.red_elo||0),
+        onPlay: () => { closeWatchScreen(); watchFinishedGame(g, [names[g.blue_id]||t('Blue'), names[g.red_id]||t('Red')]); } }));
+}
+// Most watched: saved-to-collection the most (save_count). No-ops gracefully if the save_count
+// column/patch is not applied (query errors -> "could not load", the other sections are unaffected).
+async function wsRenderWatched() {
+    const { list } = wsSectionEls('wsWatched'); wsLoading(list);
+    let rows;
+    try {
+        ({ data: rows } = await wsTimeout(sb.from('matches')
+            .select('id, blue_id, red_id, save_count, winner_color')
+            .eq('status','finished').is('invite_code', null).not('winner_color','is',null)
+            .order('save_count', { ascending:false }).limit(10), 8000));
+    } catch(e) { wsEmpty(list, t('Could not load.')); return; }
+    rows = (rows || []).filter(g => (g.save_count||0) > 0);
+    if (!rows.length) { wsEmpty(list, t('No saved games yet.')); return; }
+    const names = await wsNames(rows.flatMap(g => [g.blue_id, g.red_id]));
+    list.innerHTML = '';
+    rows.forEach((g, i) => wsRow(list, { rank: i+1, label: wsVs(names, g),
+        tag: '⧉ ' + g.save_count,
+        onPlay: () => { closeWatchScreen(); watchFinishedGame(g, [names[g.blue_id]||t('Blue'), names[g.red_id]||t('Red')]); } }));
+}
+// Live now: currently-active public matches, minus your own and any that have gone quiet.
+async function wsRenderLive() {
+    const { list } = wsSectionEls('wsLive'); wsLoading(list);
+    let games;
+    try {
+        ({ data: games } = await wsTimeout(sb.from('matches').select('id, blue_id, red_id, created_at')
+            .eq('status','active').is('invite_code', null).order('created_at', { ascending:false }).limit(20), 8000));
+    } catch(e) { wsEmpty(list, t('Could not load.')); return; }
+    games = (games || []).filter(g => !sbUser || (g.blue_id !== sbUser.id && g.red_id !== sbUser.id));
     if (games.length) {
         const cutoff = Date.now() - WATCH_STALE_MS, lastMove = {};
         try {
-            const { data: mv } = await sb.from('match_moves').select('match_id, created_at').in('match_id', games.map(g => g.id));
+            const { data: mv } = await wsTimeout(sb.from('match_moves').select('match_id, created_at').in('match_id', games.map(g => g.id)), 8000);
             (mv||[]).forEach(r => { const ts = new Date(r.created_at).getTime();
                 if (!(r.match_id in lastMove) || ts > lastMove[r.match_id]) lastMove[r.match_id] = ts; });
         } catch(e) {}
-        games = games.filter(g => (lastMove[g.id] || new Date(g.created_at).getTime()) >= cutoff).slice(0, 10);
+        games = games.filter(g => (lastMove[g.id] || new Date(g.created_at).getTime()) >= cutoff).slice(0, 12);
     }
-    if (!games.length) {
-        body.innerHTML = '<p style="text-align:center;color:#9aa4ad;">'+t('No public games being played right now.')+'</p>';
-        // Watch is never a dead end: browsable finished-game replays + the local saved collection.
-        await appendFinishedGamePicks(body);
-        await appendTopPlayersRecentGames(body);
-        appendSavedReplaySection(body);
-        return;
-    }
-    const ids = [...new Set(games.flatMap(g => [g.blue_id, g.red_id]))];
-    let names = {};
-    try {
-        const { data: profs } = await sb.from('profiles').select('id, username').in('id', ids);
-        (profs||[]).forEach(pr => names[pr.id] = pr.username);
-    } catch(e) {}
-    body.innerHTML = '';
-    const liveHdr = document.createElement('p');
-    liveHdr.style.cssText = 'text-align:center;color:#69727b;font-size:12px;margin:0 0 2px;';
-    liveHdr.textContent = t('Live now');
-    body.appendChild(liveHdr);
-    for (const g of games) {
-        const btn = document.createElement('button');
-        btn.style.cssText = 'display:block;width:100%;margin:4px 0;';
-        btn.textContent = (names[g.blue_id]||t('Blue')) + ' vs ' + (names[g.red_id]||t('Red'));
-        btn.addEventListener('click', () => { hideModal(); spectateMatch(g, names); });
-        body.appendChild(btn);
-    }
-    await appendFinishedGamePicks(body);   // categories stay browsable even when games are live
-    await appendTopPlayersRecentGames(body);
-    appendSavedReplaySection(body);
+    if (!games.length) { wsEmpty(list, t('No public games being played right now.')); return; }
+    const names = await wsNames(games.flatMap(g => [g.blue_id, g.red_id]));
+    list.innerHTML = '';
+    games.forEach(g => wsRow(list, { label: wsVs(names, g), tag: '<span class="wsLiveDot">● ' + t('live') + '</span>',
+        onPlay: () => { closeWatchScreen(); spectateMatch(g, names); } }));
 }
 // Browsable finished-game replays: Most recent, Top-rated, and (once the save-count patch is
 // applied) Most watched. Each reuses the shared-replay viewer. Degrades gracefully — a missing
