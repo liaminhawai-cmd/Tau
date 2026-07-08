@@ -118,6 +118,47 @@
        commit it came from (cache/CDN lag otherwise makes "still broken" reports ambiguous). */
     #buildTag { position:fixed; bottom:calc(4px + env(safe-area-inset-bottom)); left:6px; z-index:60; font-size:10px; color:#3a4048;
                 pointer-events:none; user-select:text; }
+    /* ---------- Director mode (#director): a capture-prep overlay for an EXTERNAL screen recorder --
+       nothing here touches rendering or records anything itself, it just helps frame the shot: a
+       corner logo watermark (normally hidden in-game), a 16:9/9:16 safe-area guide, and a one-tap
+       "hide all UI" for a clean board-only shot. The toggle FAB is exempt from hide-UI (else there'd
+       be no way to turn it back on) -- deliberately dim so it's easy to crop out or ignore. */
+    #dirFab { display:none; position:fixed; bottom:calc(10px + env(safe-area-inset-bottom)); right:10px; z-index:90;
+              width:34px; height:34px; border-radius:50%; background:#1a1e24; border:1px solid #3a4048;
+              color:#c7ccd1; font-size:15px; line-height:1; opacity:0.45; cursor:pointer; }
+    #dirFab:hover { opacity:1; }
+    body.directorOn #dirFab { display:block; }
+    #dirPanel { display:none; position:fixed; bottom:calc(52px + env(safe-area-inset-bottom)); right:10px; z-index:90;
+                width:220px; background:#1a1e24; border:1px solid #3a4048; border-radius:10px; padding:12px;
+                box-shadow:0 8px 30px rgba(0,0,0,0.5); font-size:12px; color:#9aa4ad; }
+    #dirPanel.open { display:block; }
+    #dirPanel .dRow { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:8px 0; }
+    #dirPanel .dRow:first-child { margin-top:0; }
+    #dirPanel label { color:#c7ccd1; }
+    #dirPanel input[type=range] { width:100%; }
+    #dirPanel .seg { display:flex; gap:4px; }
+    #dirPanel .seg button { flex:1; margin:0; padding:5px 4px; font-size:11px; background:#12151a; border:1px solid #3a4048; color:#9aa4ad; }
+    #dirPanel .seg button.on { background:#3d5afe; border-color:#3d5afe; color:#fff; }
+    /* Corner logo watermark: in a live game/replay h1 is normally display:none (see body.ingame h1
+       above) so every pixel goes to the boards -- director mode overrides that and repositions the
+       SAME logo element (no duplicate rendering) as a small fixed corner mark, sized by a slider. */
+    body.dirLogoOn.ingame h1 { display:block; position:fixed; top:calc(8px + env(safe-area-inset-top)); left:10px;
+                                z-index:40; margin:0; pointer-events:none;
+                                transform:scale(var(--dirLogoScale, 0.4)); transform-origin:top left; }
+    /* Safe-area guide: a centred box at the target aspect ratio, everything outside it dimmed via a
+       giant box-shadow "spotlight" trick -- shows what a crop to that ratio would actually capture,
+       independent of the real window/monitor shape. Pure visual guide, never intercepts clicks. */
+    #dirSafeMask { display:none; position:fixed; inset:0; z-index:65; pointer-events:none;
+                   align-items:center; justify-content:center; }
+    #dirSafeMask.on { display:flex; }
+    #dirSafeBox { border:2px dashed rgba(255,255,255,0.55); box-shadow:0 0 0 2000px rgba(0,0,0,0.4); }
+    #dirSafeBox.land { width:min(94vw, 94vh*16/9, 167vh); aspect-ratio:16/9; }
+    #dirSafeBox.port { width:min(94vh*9/16, 94vw, 52.9vh); aspect-ratio:9/16; }
+    /* Clean board-only shot: everything that isn't the boards or the (opted-in) logo watermark. */
+    body.dirHideUI #themeToggle, body.dirHideUI #soundToggle, body.dirHideUI #langToggle,
+    body.dirHideUI #langMenu, body.dirHideUI #buildTag, body.dirHideUI #statusRow,
+    body.dirHideUI #meta, body.dirHideUI #help, body.dirHideUI #btns,
+    body.dirHideUI #replayBtns, body.dirHideUI #passToast { display:none !important; }
     .nameBox { background:#1a1e24; color:#e6e6e6; border:1px solid #3a4048; border-radius:4px;
                padding:1px 6px; font-size:13px; width:120px; text-align:center; cursor:pointer; }
     #acctPanel { display:flex; flex-direction:column; align-items:center; gap:8px; width:260px;
@@ -178,8 +219,19 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 72</div>
+<div id="buildTag">build 73</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
+<!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
+     logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
+<div id="dirSafeMask"><div id="dirSafeBox" class="land"></div></div>
+<button id="dirFab" title="Director mode">🎬</button>
+<div id="dirPanel">
+    <div class="dRow"><label for="dirLogo">Logo</label><input id="dirLogo" type="range" min="0" max="0.9" step="0.02" value="0"></div>
+    <div class="dRow"><label>Safe area</label><div class="seg">
+        <button id="dirSafeOff" class="on">Off</button><button id="dirSafeLand">16:9</button><button id="dirSafePort">9:16</button>
+    </div></div>
+    <div class="dRow"><label for="dirHide">Hide UI</label><input id="dirHide" type="checkbox"></div>
+</div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <div id="menu">
@@ -5287,6 +5339,32 @@ function buildColorLabPanel(){
     document.getElementById('clClose').addEventListener('click', () => { location.hash = ''; location.reload(); });
 }
 if (location.hash.toLowerCase().includes('colorlab')) setTimeout(startColorLab, 300);
+
+// ---------- Director mode (open with #director) ----------
+// Pure capture-prep chrome for an external screen recorder: nothing here renders or records video
+// itself, it just helps frame the shot against the REAL game (full native res/fps, no re-encoding
+// tax) instead of the Cinematic Studio's re-composited copy. See the CSS block (search "Director
+// mode") for what each toggle actually does.
+if (location.hash.toLowerCase().includes('director')) {
+    document.body.classList.add('directorOn');
+    const fab = document.getElementById('dirFab'), panel = document.getElementById('dirPanel');
+    fab.addEventListener('click', () => panel.classList.toggle('open'));
+    document.getElementById('dirLogo').addEventListener('input', e => {
+        const v = parseFloat(e.target.value);
+        document.body.style.setProperty('--dirLogoScale', v);
+        document.body.classList.toggle('dirLogoOn', v > 0);
+    });
+    const safeBtns = { off: document.getElementById('dirSafeOff'), land: document.getElementById('dirSafeLand'), port: document.getElementById('dirSafePort') };
+    const setSafe = mode => {
+        document.getElementById('dirSafeMask').classList.toggle('on', mode !== 'off');
+        document.getElementById('dirSafeBox').className = mode === 'port' ? 'port' : 'land';
+        Object.entries(safeBtns).forEach(([k,b]) => b.classList.toggle('on', k === mode));
+    };
+    safeBtns.off.addEventListener('click', () => setSafe('off'));
+    safeBtns.land.addEventListener('click', () => setSafe('land'));
+    safeBtns.port.addEventListener('click', () => setSafe('port'));
+    document.getElementById('dirHide').addEventListener('change', e => document.body.classList.toggle('dirHideUI', e.target.checked));
+}
 
 // ---------- Menu logo: the composed wordmark (tau-logo.png), tinted live to signal state ----------
 // The three posed pieces are baked into one cleanly laid-out PNG (logo_studio.html did the spacing);
