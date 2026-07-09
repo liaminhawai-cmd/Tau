@@ -266,7 +266,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 82</div>
+<div id="buildTag">build 83</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -6706,7 +6706,14 @@ function openLeaderboard() {
         body.innerHTML = `<table style="width:100%; border-collapse:collapse; font-size:13px;">
             <tr style="color:#9aa4ad; text-align:left;"><th style="padding:4px 6px;">#</th><th style="padding:4px 6px;">${t('Player')}</th><th style="padding:4px 6px; text-align:right;">${t('Elo')}</th><th style="padding:4px 6px; text-align:right;">${t('W-L')}</th><th class="lbWatchInline" style="padding:4px 6px;"></th></tr>
             ${data.map((p,i)=>{
-                const rank=i+1;
+                // Competition ranking (1 + how many rank ABOVE you), same formula updateRankLine() uses
+                // for the menu's "Ranked #r of n" line -- NOT the row's position. Row position (i+1)
+                // silently breaks ties: three players tied at the same Elo showed as #8/#9/#10 instead
+                // of all three reading #8, which is exactly what made this table disagree with the menu
+                // line for anyone caught in a tie. Safe to count ties only within this fetched page:
+                // it's already sorted by Elo DESC, so anyone with a strictly greater Elo than a row in
+                // it is guaranteed to also be in it (they'd otherwise have displaced this row's spot).
+                const rank = 1 + data.filter(x => x.elo > p.elo).length;
                 const fs = rank===1 ? '18px' : rank<=3 ? '15px' : '13px';
                 const fw = rank===1 ? '800' : rank<=3 ? '650' : '400';
                 const rankCell = rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':rank;
