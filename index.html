@@ -266,7 +266,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 81</div>
+<div id="buildTag">build 82</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -6689,7 +6689,11 @@ function openLeaderboard() {
     showModal(t('Leaderboard'), '<p style="text-align:center;color:#9aa4ad;">'+t('Loading…')+'</p>', [ { label:t('Close'), onClick:()=>{} } ], true);
     document.getElementById('modalBox').classList.add('wide');   // room for the per-row "watch their latest game" text
     if (!sb) { document.getElementById('modalBody').innerHTML = '<p style="text-align:center;color:#9aa4ad;">Online accounts aren’t set up on this build.</p>'; return; }
-    sb.from('profiles').select('id, username, elo, wins, losses').order('elo', { ascending:false }).limit(10)
+    // Only players who've actually finished a ranked game (wins/losses > 0) are eligible -- same rule
+    // updateRankLine() uses for the menu's "Ranked #r of n" line. Without this filter here, a never-
+    // played account sitting at the default starting Elo could land in this top-10 and its # position
+    // wouldn't match the rank the menu line just showed you -- the reported mismatch between the two.
+    sb.from('profiles').select('id, username, elo, wins, losses').or('wins.gt.0,losses.gt.0').order('elo', { ascending:false }).limit(10)
       .then(async ({ data, error }) => {
         const body = document.getElementById('modalBody');
         if (error || !data) { body.innerHTML = '<p style="text-align:center;color:#9aa4ad;">Could not load the leaderboard.</p>'; return; }
