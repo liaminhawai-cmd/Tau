@@ -266,7 +266,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 79</div>
+<div id="buildTag">build 80</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2863,9 +2863,17 @@ function startReplay() {
     // has no live final position (the board was reset to boot it), so its final pose is the LAST
     // RECORDED FRAME — snapshotting the board there froze the STARTING pose, and the end-of-replay
     // "restore + tumble" visibly teleported the pieces back to their start spots.
-    replayFinalPose = sharedReplay
-        ? (f => [{x:f[0],y:f[1],rot:f[2]},{x:f[3],y:f[4],rot:f[5]}])(replayFrames[replayFrames.length-1])
-        : takeSnap();
+    const lastFrame = (f => [{x:f[0],y:f[1],rot:f[2]},{x:f[3],y:f[4],rot:f[5]}])(replayFrames[replayFrames.length-1]);
+    replayFinalPose = sharedReplay ? lastFrame : takeSnap();
+    // Belt-and-braces against the reported "loser AND winner snap to their start spots, then the loser
+    // slides off" ending: that is exactly what a final pose equal to the RESET START board produces
+    // (endReplay restores pieces to replayFinalPose, then tumbles). A real game never ENDS at the start
+    // dots, so if the snapshot came out there — any entry path that reset the board before we snapped —
+    // fall back to the last recorded frame, which is always a genuine end position.
+    const atStart = replayFinalPose
+        && Math.hypot(replayFinalPose[0].x + CFG.startX, replayFinalPose[0].y) < 3
+        && Math.hypot(replayFinalPose[1].x - CFG.startX, replayFinalPose[1].y) < 3;
+    if (atStart) replayFinalPose = lastFrame;
     const T = REPLAY_TUNE, haveTimes = replayTimes.length === replayFrames.length;
     let totalArc = 0, totalActive = 0;
     replayTurns = segmentReplayTurns().map(t => {
@@ -3131,11 +3139,21 @@ async function makeShareUrl(payload) {
     }
     return location.origin + location.pathname + '#r=' + payload;
 }
+// The winner to stamp into a shared/saved payload. A post-game replay has the live result on G
+// (G.over + G.winner); a SHARED replay you're re-sharing has G.over=false — it's not the live game —
+// but carries the decoded result in G.sharedWinner. Without this, re-sharing or re-saving a replay
+// you're watching dropped the winner, and the next viewer's copy then played with NO closing tumble
+// at all (endSharedReplay only falls when a winner is present).
+function replayResultWinner() {
+    if (typeof sharedReplay !== 'undefined' && sharedReplay &&
+        G && G.sharedWinner !== undefined && G.sharedWinner !== null) return G.sharedWinner;
+    return (G && G.over) ? G.winner : null;
+}
 async function shareReplay() {
     if (replayFrames.length < 2) return;
     let url;
     try {
-        const payload = await encodeReplay(replayFrames, G && G.over ? G.winner : null, replayNames || replayPlayerNames(),
+        const payload = await encodeReplay(replayFrames, replayResultWinner(), replayNames || replayPlayerNames(),
             (sbUser && !sbUser.is_anonymous) ? sbUser.id : null, myReplayColor());
         url = await makeShareUrl(payload);
     } catch (e) { showPassToast(t('Could not create the link.')); return; }
@@ -3172,7 +3190,7 @@ function replayCollectionTitle() {
 async function saveReplayToCollection() {
     if (replayFrames.length < 2) return;
     try {
-        const payload = await encodeReplay(replayFrames, G && G.over ? G.winner : null, replayNames || replayPlayerNames(),
+        const payload = await encodeReplay(replayFrames, replayResultWinner(), replayNames || replayPlayerNames(),
             (sbUser && !sbUser.is_anonymous) ? sbUser.id : null, myReplayColor());
         const list = loadSavedReplays();
         list.unshift({ t: replayCollectionTitle(), d: Date.now(), p: payload });
