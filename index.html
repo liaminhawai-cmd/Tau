@@ -266,7 +266,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 83</div>
+<div id="buildTag">build 84</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -6714,9 +6714,14 @@ function openLeaderboard() {
                 // it's already sorted by Elo DESC, so anyone with a strictly greater Elo than a row in
                 // it is guaranteed to also be in it (they'd otherwise have displaced this row's spot).
                 const rank = 1 + data.filter(x => x.elo > p.elo).length;
+                // Standard competition ranking is the chess/sports convention: tied players SHARE a
+                // rank and the next rank skips the gap (three tied at 5th -> 5,5,5, next is 8th). Show
+                // the tie the way those leaderboards do — an "=" prefix ("=5") — so a shared number
+                // reads as "tied for 5th" instead of looking like a repeated-number bug.
+                const tied = data.filter(x => x.elo === p.elo).length > 1;
                 const fs = rank===1 ? '18px' : rank<=3 ? '15px' : '13px';
                 const fw = rank===1 ? '800' : rank<=3 ? '650' : '400';
-                const rankCell = rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':rank;
+                const rankCell = rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':(tied?'=':'')+rank;
                 // your own row gets a highlight — people scan for their name first
                 const mine = p.username === (document.getElementById('acctName').textContent || null);
                 const hl = mine ? ' background:rgba(61,90,254,0.16); box-shadow:inset 3px 0 0 #3d5afe;' : '';
