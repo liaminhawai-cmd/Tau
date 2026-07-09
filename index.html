@@ -266,7 +266,7 @@
 <button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 80</div>
+<div id="buildTag">build 81</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2804,6 +2804,13 @@ let replayTimes = [];
 let replayTurns = [], replayTurnIdx = 0, replayPhase = 'play', replayPhaseT = 0, replayLastT = 0;
 function recordReplayFrame() {
     if (replayActive || !G || G.over) return;
+    // A shared/link/watch replay's frames are FIXED — never append to them. This matters for the
+    // cold-load poster state: bootSharedReplay draws the opening pose (frame 0) behind a [▶] modal
+    // WITHOUT starting playback (replayActive is still false), so without this guard the recorder
+    // pushed that start pose onto the END of replayFrames. That poison frame made the replay slide
+    // back to the start dots right before the closing tumble — the reported "shared links do weird
+    // stuff at the end" (post-game replays never hit it: they call startReplay immediately).
+    if (typeof sharedReplay !== 'undefined' && sharedReplay) return;
     if (document.getElementById('game').style.display !== 'flex') return;   // never record the menu demo
     const b=G.pieces[0], r=G.pieces[1], last=replayFrames[replayFrames.length-1];
     if (last && Math.abs(last[0]-b.x)<1e-4 && Math.abs(last[1]-b.y)<1e-4 && Math.abs(last[2]-b.rot)<1e-4
