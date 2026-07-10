@@ -114,6 +114,18 @@
                        padding:6px 12px; border-radius:4px; cursor:pointer; white-space:nowrap; }
     #langMenu button:hover { background:#262d35; color:#cdd4db; }
     #langMenu button.cur { color:#e6ecf2; }
+    /* Volume popover: a tiny tripod you rotate around one of its feet (same rigid pin-and-swing
+       mechanic as the real game piece) instead of a plain slider bar -- on-theme, and the swept
+       angle IS the volume, so there's nothing to visually calibrate against a track/fill. */
+    #volPopover { position:fixed; top:calc(38px + env(safe-area-inset-top)); right:40px; z-index:61; display:none;
+                  flex-direction:column; align-items:center; gap:2px; background:#1c2126; border:1px solid #2c333b;
+                  border-radius:9px; padding:8px 10px; box-shadow:0 6px 20px rgba(0,0,0,0.4); }
+    #volDial { touch-action:none; cursor:grab; }
+    #volDial:active { cursor:grabbing; }
+    #volRow { display:flex; align-items:center; gap:8px; }
+    #volMuteBtn { background:none; border:none; color:#9aa4ad; font-size:15px; padding:2px 4px; margin:0; cursor:pointer; }
+    #volMuteBtn:hover { color:#cdd4db; }
+    #volPct { font-size:12px; color:#8b949d; min-width:30px; text-align:right; }
     /* Deliberately barely visible -- purely so a screenshot/report can be matched to the exact
        commit it came from (cache/CDN lag otherwise makes "still broken" reports ambiguous). */
     #buildTag { position:fixed; bottom:calc(4px + env(safe-area-inset-bottom)); left:6px; z-index:60; font-size:10px; color:#3a4048;
@@ -177,7 +189,7 @@
     #dirSafeBox.port { width:min(94vh*9/16, 94vw, 52.9vh); aspect-ratio:9/16; }
     /* Clean board-only shot: everything that isn't the boards or the (opted-in) logo watermark. */
     body.dirHideUI #themeToggle, body.dirHideUI #soundToggle, body.dirHideUI #langToggle,
-    body.dirHideUI #langMenu, body.dirHideUI #buildTag, body.dirHideUI #statusRow,
+    body.dirHideUI #volPopover, body.dirHideUI #langMenu, body.dirHideUI #buildTag, body.dirHideUI #statusRow,
     body.dirHideUI #meta, body.dirHideUI #help, body.dirHideUI #btns,
     body.dirHideUI #replayBtns, body.dirHideUI #passToast { display:none !important; }
     .nameBox { background:#1a1e24; color:#e6e6e6; border:1px solid #3a4048; border-radius:4px;
@@ -263,10 +275,14 @@
 </head>
 <body>
 <button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
-<button id="soundToggle" title="Toggle sound" aria-label="Toggle sound">🔊</button>
+<button id="soundToggle" title="Sound volume" aria-label="Sound volume">🔊</button>
+<div id="volPopover">
+    <canvas id="volDial" width="112" height="100" title="Drag to set volume"></canvas>
+    <div id="volRow"><button id="volMuteBtn" aria-label="Mute">🔊</button><span id="volPct">70%</span></div>
+</div>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 84</div>
+<div id="buildTag">build 85</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -4197,6 +4213,13 @@ let audioCtx=null, noiseSrc=null, bandpass=null, voiceGain=null, scrapeHP=null, 
     dryGain=null, convolver=null, wetGain=null, toneLP=null, masterGain=null, audioReady=false;
 let soundOn = true, audioReplayIdx = null, audioPrevFeet = null;
 try { soundOn = localStorage.getItem('tauSound') !== '0'; } catch(e) {}
+// User volume (0-100, independent of the tuned SFX.master mix). 70 is the DEFAULT and is calibrated
+// to reproduce today's already-tuned loudness exactly (userVol/70 == 1) -- so nobody's experience
+// changes unless they touch the dial, but there's real headroom above 70 for anyone who wants it
+// louder (was reported as "pretty quiet, not too bad").
+let userVol = 70;
+try { const v = parseInt(localStorage.getItem('tauVolume'), 10); if (Number.isFinite(v) && v>=0 && v<=100) userVol = v; } catch(e) {}
+function effectiveMaster() { return SFX.master * (userVol / 70); }
 function makeNoiseBuffer(ctx, seconds) {
     const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate*seconds), ctx.sampleRate);
     const d = buf.getChannelData(0);
@@ -4232,7 +4255,7 @@ function initAudio() {
     convolver = audioCtx.createConvolver(); convolver.buffer = makeCathedralImpulse(audioCtx);
     wetGain = audioCtx.createGain(); wetGain.gain.value = SFX.reverb;
     toneLP = audioCtx.createBiquadFilter(); toneLP.type='lowpass'; toneLP.frequency.value = SFX.highCut;
-    masterGain = audioCtx.createGain(); masterGain.gain.value = soundOn ? SFX.master : 0;
+    masterGain = audioCtx.createGain(); masterGain.gain.value = soundOn ? effectiveMaster() : 0;
     noiseSrc.connect(bandpass); bandpass.connect(voiceGain); voiceGain.connect(toneLP);
     noiseSrc.connect(scrapeHP); scrapeHP.connect(scrapeGain); scrapeGain.connect(toneLP);
     toneLP.connect(dryGain); dryGain.connect(masterGain);
@@ -4366,7 +4389,7 @@ function resetAudioForNewGame() {
     scrapeGain.gain.setTargetAtTime(0, t0, 0.05);
     dryGain.gain.setTargetAtTime(1, t0, 0.05);
     wetGain.gain.setTargetAtTime(SFX.reverb, t0, 0.05);
-    masterGain.gain.setTargetAtTime(soundOn ? SFX.master : 0, t0, 0.05);
+    masterGain.gain.setTargetAtTime(soundOn ? effectiveMaster() : 0, t0, 0.05);
 }
 // Push the current SFX values to the live nodes (called live while dragging the Sound panel sliders)
 // and persist them so a tuned mix survives a reload.
@@ -4374,23 +4397,105 @@ function applySfx() {
     try { localStorage.setItem('tauSfx', JSON.stringify(SFX)); localStorage.setItem('tauSfxV', SFX_VERSION); } catch(e) {}
     if (!audioReady) return;
     const t0 = audioCtx.currentTime;
-    masterGain.gain.setTargetAtTime(soundOn ? SFX.master : 0, t0, 0.03);
+    masterGain.gain.setTargetAtTime(soundOn ? effectiveMaster() : 0, t0, 0.03);
     toneLP.frequency.setTargetAtTime(SFX.highCut, t0, 0.03);
     scrapeHP.frequency.setTargetAtTime(SFX.scrapeHz, t0, 0.03);
     if (!G || !G.over) { bandpass.Q.setTargetAtTime(SFX.q, t0, 0.03); wetGain.gain.setTargetAtTime(SFX.reverb, t0, 0.03); }
 }
 function updateSoundToggleIcon() {
-    const btn = document.getElementById('soundToggle');
-    if (btn) btn.textContent = soundOn ? '🔊' : '🔇';
+    const icon = soundOn ? '🔊' : '🔇';
+    const btn = document.getElementById('soundToggle'); if (btn) btn.textContent = icon;
+    const muteBtn = document.getElementById('volMuteBtn'); if (muteBtn) muteBtn.textContent = icon;
 }
 function setSoundOn(on) {
     soundOn = on;
     try { localStorage.setItem('tauSound', on ? '1' : '0'); } catch(e) {}
-    if (masterGain) masterGain.gain.setTargetAtTime(on ? SFX.master : 0, audioCtx.currentTime, 0.08);
+    if (masterGain) masterGain.gain.setTargetAtTime(on ? effectiveMaster() : 0, audioCtx.currentTime, 0.08);
     updateSoundToggleIcon();
+    drawVolDial();   // the dial's colour dims while muted
 }
-document.getElementById('soundToggle').addEventListener('click', () => { resumeAudio(); setSoundOn(!soundOn); });
 updateSoundToggleIcon();
+
+// ---------- Volume dial: a mini tripod pinned on one foot, swung around it to set the level ----------
+// Same rigid pin-and-swing geometry the real piece uses (rotateAround): foot 0 is fixed on screen at
+// VOL_PIVOT; the hub and the other two feet orbit it as "rot" sweeps from VOL_ROT_MIN (0%) to
+// VOL_ROT_MAX (100%) — dragging anywhere on the dial IS setting the volume, the same way pinning a
+// foot and swinging the piece IS making a move. Geometry constants were fitted (not eyeballed) to
+// fill a 112x100 canvas across the whole sweep — see scratch derivation, not reproduced here.
+const VOL_PIVOT = { x: 56, y: 58 }, VOL_R = 26, VOL_ROT_MIN = -10 * Math.PI/180, VOL_ROT_MAX = 130 * Math.PI/180;
+function volRotFor(vol) { return VOL_ROT_MIN + (VOL_ROT_MAX-VOL_ROT_MIN) * Math.max(0, Math.min(100, vol))/100; }
+function volPoseFor(rot) {
+    const hub = { x: VOL_PIVOT.x - VOL_R*Math.cos(rot), y: VOL_PIVOT.y - VOL_R*Math.sin(rot) };
+    const feet = [0,1,2].map(i => { const a = rot + i*2*Math.PI/3; return { x: hub.x+VOL_R*Math.cos(a), y: hub.y+VOL_R*Math.sin(a) }; });
+    return { hub, feet };
+}
+function drawVolDial() {
+    const canvas = document.getElementById('volDial');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+    const { hub, feet } = volPoseFor(volRotFor(userVol));
+    const col = soundOn ? '#6b9eff' : '#5a6570';   // dims while muted, same colour language as a game piece
+    ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    feet.forEach(f => { ctx.beginPath(); ctx.moveTo(hub.x, hub.y); ctx.lineTo(f.x, f.y); ctx.stroke(); });
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(hub.x, hub.y, 3.5, 0, 7); ctx.fill();
+    feet.forEach(f => { ctx.beginPath(); ctx.arc(f.x, f.y, 4, 0, 7); ctx.fill(); });
+    // the pinned foot gets a ring so it visibly reads as the fixed anchor you're swinging around
+    ctx.beginPath(); ctx.arc(VOL_PIVOT.x, VOL_PIVOT.y, 6.5, 0, 7);
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+}
+// Canvas-space coordinates for a client (pointer) position, correcting for CSS scaling of the canvas.
+function volCanvasPt(clientX, clientY) {
+    const canvas = document.getElementById('volDial'), r = canvas.getBoundingClientRect();
+    return { x: (clientX - r.left) * (canvas.width / r.width), y: (clientY - r.top) * (canvas.height / r.height) };
+}
+function volAngleFromPivot(pt) { return Math.atan2(pt.y - VOL_PIVOT.y, pt.x - VOL_PIVOT.x); }
+// Rigid rotation about a fixed point: for ANY point on the shape, a Δrot rotation of the whole piece
+// changes that point's angle-from-pivot by exactly the same Δrot (only its distance-from-pivot varies
+// by which point it is). So grabbing ANYWHERE on the piece and tracking the CHANGE in your pointer's
+// angle from the pivot — not its raw absolute angle, which differs per point you happen to grab — is
+// the correct, grab-point-independent way to drive rot. Exactly how dragging a live piece works.
+function normAngleDelta(a) { while (a > Math.PI) a -= 2*Math.PI; while (a < -Math.PI) a += 2*Math.PI; return a; }
+function setUserVol(v) {
+    userVol = Math.max(0, Math.min(100, Math.round(v)));
+    try { localStorage.setItem('tauVolume', String(userVol)); } catch(e) {}
+    const pct = document.getElementById('volPct'); if (pct) pct.textContent = userVol + '%';
+    if (!soundOn) { setSoundOn(true); return; }   // dragging the dial un-mutes, like a normal OS volume slider
+    if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(effectiveMaster(), audioCtx.currentTime, 0.05);
+    drawVolDial();
+}
+(function initVolDial(){
+    const canvas = document.getElementById('volDial'), popover = document.getElementById('volPopover'),
+          soundBtn = document.getElementById('soundToggle'), muteBtn = document.getElementById('volMuteBtn'),
+          pct = document.getElementById('volPct');
+    if (!canvas || !popover || !soundBtn) return;
+    if (pct) pct.textContent = userVol + '%';
+    let dragging = false, dragStartAngle = 0, dragStartRot = 0;
+    const move = e => {
+        if (!dragging) return;
+        const delta = normAngleDelta(volAngleFromPivot(volCanvasPt(e.clientX, e.clientY)) - dragStartAngle);
+        const rot = Math.max(VOL_ROT_MIN, Math.min(VOL_ROT_MAX, dragStartRot + delta));
+        setUserVol(100 * (rot - VOL_ROT_MIN) / (VOL_ROT_MAX - VOL_ROT_MIN));
+    };
+    const up = () => { dragging = false; removeEventListener('pointermove', move); };
+    canvas.addEventListener('pointerdown', e => {
+        e.preventDefault(); e.stopPropagation(); resumeAudio();
+        dragStartAngle = volAngleFromPivot(volCanvasPt(e.clientX, e.clientY));
+        dragStartRot = volRotFor(userVol);
+        dragging = true;
+        addEventListener('pointermove', move); addEventListener('pointerup', up, { once:true });
+    });
+    if (muteBtn) muteBtn.addEventListener('click', e => { e.stopPropagation(); resumeAudio(); setSoundOn(!soundOn); });
+    soundBtn.addEventListener('click', e => {
+        e.stopPropagation(); resumeAudio();
+        popover.style.display = popover.style.display === 'flex' ? 'none' : 'flex';
+        if (popover.style.display === 'flex') drawVolDial();
+    });
+    document.addEventListener('click', e => {
+        if (popover.style.display === 'flex' && e.target !== soundBtn && !popover.contains(e.target)) popover.style.display = 'none';
+    });
+    drawVolDial();
+})();
 // Autoplay policy needs a user gesture to start/resume the context. Not { once:true }: mobile (iOS)
 // often stays 'suspended' after the first gesture and only actually resumes on a later one, so keep
 // trying on every gesture until it's running (resume() is a cheap no-op once it is). iOS Safari
@@ -4505,7 +4610,7 @@ addEventListener('focus', updateAudioForVisibility);
 function windowActive() { return !document.hidden && (typeof document.hasFocus !== 'function' || document.hasFocus()); }
 function updateAudioForVisibility() {
     if (!audioReady) return;
-    masterGain.gain.setTargetAtTime(windowActive() && soundOn ? SFX.master : 0, audioCtx.currentTime, 0.05);
+    masterGain.gain.setTargetAtTime(windowActive() && soundOn ? effectiveMaster() : 0, audioCtx.currentTime, 0.05);
 }
 addEventListener('pageshow', repaintOnReturn);
 addEventListener('focus', repaintOnReturn);
