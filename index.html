@@ -96,11 +96,13 @@
                   border:1px solid transparent; background:none; width:100%; box-sizing:border-box;
                   color:#e6e6e6; font-family:inherit; text-align:left; cursor:pointer; transition:background .12s; }
     .ladderRung .ln { width:20px; text-align:center; font-weight:700; font-size:14px; color:#69727b; font-variant-numeric:tabular-nums; }
-    .ladderRung .lp { display:flex; gap:2px; }
+    .ladderRung .lp { display:flex; gap:4px; }
+    /* each tripod is its own tap target: click Blue to play Blue, Red to play Red */
+    .ltri { background:none; border:none; cursor:pointer; padding:3px 5px; border-radius:8px; line-height:0; }
+    .ltri:hover { background:rgba(255,255,255,.08); }
     .ladderRung .lname { flex:1; font-size:14.5px; font-weight:700; color:#cdd3d9; }
-    .ladderRung.avail:hover { background:rgba(107,158,255,.07); }
+    .ladderRung.avail:hover { background:rgba(107,158,255,.05); }
     .ladderRung.cur { background:rgba(107,158,255,.10); border-color:rgba(107,158,255,.45); }
-    .ladderRung.locked { opacity:.4; cursor:default; }
     .ladderRung.done .lname { color:#8f979e; }
     .ladderStat { flex:0 0 auto; font-size:11px; color:#69727b; white-space:nowrap; }
     /* Always-visible but understated: sits in the corner on every screen (menu and in-game),
@@ -316,7 +318,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 95</div>
+<div id="buildTag">build 96</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3209,7 +3211,9 @@ function replayCollectionTitle() {
         return onlineMatch.myColor === 'blue' ? me + ' vs ' + onlineMatch.opponentName
                                               : onlineMatch.opponentName + ' vs ' + me;
     }
-    return vsAI ? t('vs AI') + ' · ' + t(AI_DIFF_LABEL[aiDifficulty] || aiDifficulty) : t('Local 1v1');
+    if (vsAI) return ladderLevel != null ? tf('Level {n} Computer', { n: ladderLevel+1 })
+                                         : t('vs AI') + ' · ' + t(AI_DIFF_LABEL[aiDifficulty] || aiDifficulty);
+    return t('Local 1v1');
 }
 async function saveReplayToCollection() {
     if (replayFrames.length < 2) return;
@@ -3245,7 +3249,8 @@ function replayPlayerNames() {
                                               : [onlineMatch.opponentName, meName()];
     }
     if (vsAI) {
-        const ai = t(AI_DIFF_LABEL[aiDifficulty] || aiDifficulty) + ' AI';
+        const ai = ladderLevel != null ? tf('Level {n} Computer', { n: ladderLevel+1 })
+                                       : t(AI_DIFF_LABEL[aiDifficulty] || aiDifficulty) + ' AI';
         return humanIdx === 0 ? [meName(), ai] : [ai, meName()];
     }
     return [t('Blue'), t('Red')];
@@ -3953,12 +3958,12 @@ function renderGameOverSheet() {
         if (won) {
             if (color === 0 && !ladderCleared(n, 1))                     // beat it as Blue -> try the harder Red clear
                 buttons.push({ label: tf('Level {n} as Red', { n }), onClick: () => startLadderLevel(n-1, 1) });
-            if (n < LADDER_N && ladderBlueAvail(n+1))                    // next rung now unlocked
+            if (n < LADDER_N)
                 buttons.push({ label: t('Next level'), onClick: () => startLadderLevel(n, 0) });
         } else {
             buttons.push({ label: t('Try again'), onClick: () => startLadderLevel(n-1, color) });
         }
-        buttons.push({ label: t('The ladder'), onClick: () => { hideModal(); openLadderMenu(); } });
+        buttons.push({ label: t('Levels'), onClick: () => { hideModal(); openLadderMenu(); } });
     } else if (vsAI) {
         title = G.winner===humanIdx ? t('You win!') : t('You lose');
         // tap the chip to change difficulty (reopens the picker); the two buttons replay at the current one
@@ -4057,39 +4062,43 @@ function ladderProgress(){ try { return JSON.parse(localStorage.getItem('tauLadd
 function saveLadderProgress(p){ try { localStorage.setItem('tauLadder', JSON.stringify(p)); } catch(e){} }
 function ladderCleared(n, color){ const p=ladderProgress(); return !!(color===0?p.b:p.r)[n]; }
 function markLadderCleared(n, color){ const p=ladderProgress(); (color===0?p.b:p.r)[n]=1; saveLadderProgress(p); }
-// Soft gate: clear a level as Blue to unlock the NEXT level (Blue) and this level's Red (the harder clear).
-function ladderBlueAvail(n){ return n===1 || ladderCleared(n-1,0); }
-function ladderRedAvail(n){ return ladderCleared(n,0); }
 function ladderTripodSVG(color, lit){
-    return `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="${color}" stroke-width="1.9" stroke-linecap="round" style="opacity:${lit?1:.22};${lit?`filter:drop-shadow(0 0 3px ${color}aa);`:''}">`
+    return `<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="${color}" stroke-width="1.9" stroke-linecap="round" style="opacity:${lit?1:.22};${lit?`filter:drop-shadow(0 0 3px ${color}aa);`:''}">`
         + `<path d="M12 13V5.2"/><path d="M12 13L5.4 18.6"/><path d="M12 13l6.6 5.6"/>`
         + `<circle cx="12" cy="4.4" r="1.5" fill="${color}"/><circle cx="5" cy="19" r="1.4" fill="${color}"/><circle cx="19" cy="19" r="1.4" fill="${color}"/><circle cx="12" cy="13" r="2.1" fill="${color}"/></svg>`;
 }
+// Every rung is always playable (no locking). A tap plays Blue if you haven't cleared it as Blue,
+// then Red, then replays. The one highlight marks the level you're up to (your Blue frontier).
 function ladderRungState(n){
     const bC=ladderCleared(n,0), rC=ladderCleared(n,1);
-    if (bC && rC) return { play:'blue', state:'done', bC, rC };                 // fully mastered -> replay as Blue
-    if (!bC && ladderBlueAvail(n)) return { play:'blue', state:'avail', bC, rC };
-    if (bC && !rC && ladderRedAvail(n)) return { play:'red', state:'avail', bC, rC };
-    return { play:'none', state:'locked', bC, rC };
+    return { play: !bC ? 'blue' : !rC ? 'red' : 'blue', state: (bC&&rC) ? 'done' : 'avail', bC, rC };
 }
 function openLadderMenu(){
-    let curN = 0;   // lowest not-fully-mastered, playable rung -> carries the only highlight
-    for (let n=1;n<=LADDER_N;n++){ const s=ladderRungState(n); if (s.play!=='none' && !(s.bC&&s.rC)){ curN=n; break; } }
+    let curN = 0;
+    for (let n=1;n<=LADDER_N;n++){ if (!ladderCleared(n,0)){ curN=n; break; } }        // next Blue to beat
+    if (!curN) for (let n=1;n<=LADDER_N;n++){ if (!ladderCleared(n,1)){ curN=n; break; } }  // all Blue done -> next Red
     let html='<div id="ladderList">';
     for (let n=LADDER_N;n>=1;n--){
         const s=ladderRungState(n), cls = s.state + (n===curN ? ' cur' : '');
-        html += `<button class="ladderRung ${cls}" data-n="${n}" data-play="${s.play}"${s.play==='none'?' disabled':''}>`
+        html += `<div class="ladderRung ${cls}" data-n="${n}" data-play="${s.play}">`
             + `<span class="ln">${n}</span>`
-            + `<span class="lp">${ladderTripodSVG('#6b9eff',s.bC)}${ladderTripodSVG('#ff6b6b',s.rC)}</span>`
+            + `<span class="lp">`
+            +   `<button class="ltri" data-n="${n}" data-color="0" aria-label="${tf('Play Level {n} as Blue',{n})}">${ladderTripodSVG('#6b9eff',s.bC)}</button>`
+            +   `<button class="ltri" data-n="${n}" data-color="1" aria-label="${tf('Play Level {n} as Red',{n})}">${ladderTripodSVG('#ff6b6b',s.rC)}</button>`
+            + `</span>`
             + `<span class="lname">${t('Level')} ${n}</span>`
-            + `</button>`;
+            + `</div>`;
     }
     html += '</div>';
-    showModal(t('The ladder'), html, [{ label: t('Close'), onClick: hideModal }], true);
+    showModal(t('Levels'), html, [{ label: t('Close'), onClick: hideModal }], true);
+    const playLevel = (n, color) => { hideModal(); startLadderLevel(n - 1, color); };
+    // tap a specific tripod -> play THAT colour
+    document.querySelectorAll('#ladderList .ltri').forEach(el => el.addEventListener('click', e => {
+        e.stopPropagation(); playLevel(parseInt(el.dataset.n,10), parseInt(el.dataset.color,10));
+    }));
+    // tap elsewhere on the rung -> play your next colour (Blue until cleared, then Red)
     document.querySelectorAll('#ladderList .ladderRung').forEach(el => el.addEventListener('click', () => {
-        if (el.dataset.play === 'none') return;
-        hideModal();
-        startLadderLevel(parseInt(el.dataset.n,10) - 1, el.dataset.play === 'red' ? 1 : 0);
+        playLevel(parseInt(el.dataset.n,10), el.dataset.play === 'red' ? 1 : 0);
     }));
 }
 // ---------- How to play: one short looping canvas animation per rule ----------
