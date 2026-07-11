@@ -104,7 +104,9 @@
     .ladderRung.avail:hover { background:rgba(107,158,255,.05); }
     .ladderRung.cur { background:rgba(107,158,255,.10); border-color:rgba(107,158,255,.45); }
     .ladderRung.done .lname { color:#8f979e; }
-    .ladderStat { flex:0 0 auto; font-size:11px; color:#69727b; white-space:nowrap; }
+    #levelTip { position:fixed; transform:translate(-50%,-100%); background:#1b1f25; border:1px solid #2c3138;
+                color:#cdd3d9; font-size:11.5px; padding:5px 9px; border-radius:7px; white-space:nowrap;
+                pointer-events:none; z-index:200; box-shadow:0 6px 20px rgba(0,0,0,.5); display:none; }
     /* Always-visible but understated: sits in the corner on every screen (menu and in-game),
        low-contrast until hovered so it never competes with the board. */
     #themeToggle { position:fixed; top:calc(9px + env(safe-area-inset-top)); right:12px; z-index:60; background:none; border:none;
@@ -318,7 +320,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 96</div>
+<div id="buildTag">build 97</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3952,7 +3954,7 @@ function renderGameOverSheet() {
         return;
     } else if (ladderLevel != null) {
         const n = ladderLevel + 1, color = humanIdx, won = G.winner === humanIdx;
-        if (won) markLadderCleared(n, color);
+        if (won) { markLadderCleared(n, color); recordLevelClear(n, color); }
         title = won ? tf('Level {n} cleared!', { n }) : tf('Level {n} — not cleared', { n });
         buttons = [];
         if (won) {
@@ -4090,17 +4092,57 @@ function openLadderMenu(){
             + `</div>`;
     }
     html += '</div>';
-    showModal(t('Levels'), html, [{ label: t('Close'), onClick: hideModal }], true);
-    const playLevel = (n, color) => { hideModal(); startLadderLevel(n - 1, color); };
+    showModal(t('Levels'), html, [{ label: t('Close'), onClick: () => { hideLevelTip(); hideModal(); } }], true);
+    const playLevel = (n, color) => { hideLevelTip(); hideModal(); startLadderLevel(n - 1, color); };
     // tap a specific tripod -> play THAT colour
-    document.querySelectorAll('#ladderList .ltri').forEach(el => el.addEventListener('click', e => {
-        e.stopPropagation(); playLevel(parseInt(el.dataset.n,10), parseInt(el.dataset.color,10));
-    }));
+    document.querySelectorAll('#ladderList .ltri').forEach(el => {
+        const n=parseInt(el.dataset.n,10), c=parseInt(el.dataset.color,10);
+        el.addEventListener('click', e => { e.stopPropagation(); playLevel(n, c); });
+        // hover a tripod -> that colour's crowd stat (Blue tripod = Blue's, Red = Red's)
+        el.addEventListener('mouseenter', () => showLevelTip(el, n, c));
+        el.addEventListener('mouseleave', hideLevelTip);
+    });
     // tap elsewhere on the rung -> play your next colour (Blue until cleared, then Red)
     document.querySelectorAll('#ladderList .ladderRung').forEach(el => el.addEventListener('click', () => {
         playLevel(parseInt(el.dataset.n,10), el.dataset.play === 'red' ? 1 : 0);
     }));
+    fetchLevelStats();   // refresh the crowd numbers each time the screen opens
 }
+// ---- Levels crowd stats (per level × colour): Unbeaten / beaten-by-N (<=5) / usually-above-X (6+) ----
+let levelStats = null;   // { level*10 + colour -> { clears, p25 } }
+async function fetchLevelStats(){
+    if (typeof sb === 'undefined' || !sb) return;
+    try {
+        const { data, error } = await sb.rpc('level_stats');
+        if (error || !data) return;
+        const m = {};
+        for (const r of data) m[r.level*10 + r.colour] = { clears: r.clears, p25: r.p25_elo };
+        levelStats = m; refreshLevelTip();
+    } catch(e) {}
+}
+function levelStatText(n, color){
+    const label = color===0 ? t('Blue') : t('Red');
+    if (!levelStats) return label + ' · …';
+    const s = levelStats[n*10 + color];
+    if (!s || !s.clears) return label + ' · ' + t('Unbeaten');
+    if (s.clears <= 5)   return label + ' · ' + tf('beaten by {c}', { c: s.clears });
+    return label + ' · ' + tf('usually cleared above {x}', { x: Math.round(s.p25/25)*25 });
+}
+function recordLevelClear(n, color){
+    if (typeof sb === 'undefined' || !sb) return;
+    try { sb.rpc('record_level_clear', { p_level: n, p_colour: color }).then(()=>{}, ()=>{}); } catch(e) {}
+}
+function levelTipEl(){ let el=document.getElementById('levelTip');
+    if (!el){ el=document.createElement('div'); el.id='levelTip'; document.body.appendChild(el); } return el; }
+function showLevelTip(target, n, color){
+    const el=levelTipEl(); el._n=n; el._c=color; el.textContent=levelStatText(n,color);
+    el.style.display='block';
+    const r=target.getBoundingClientRect();
+    el.style.left=(r.left+r.width/2)+'px'; el.style.top=(r.top-8)+'px';
+}
+function hideLevelTip(){ const el=document.getElementById('levelTip'); if(el) el.style.display='none'; }
+function refreshLevelTip(){ const el=document.getElementById('levelTip');
+    if (el && el.style.display==='block' && el._n!=null) el.textContent=levelStatText(el._n, el._c); }
 // ---------- How to play: one short looping canvas animation per rule ----------
 // Vertically stacked slides inside the (already-scrollable) modal body, so scrolling and the
 // Prev/Next/dot buttons are just two ways to move through the SAME list -- no separate
