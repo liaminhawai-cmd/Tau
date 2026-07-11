@@ -303,7 +303,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 90</div>
+<div id="buildTag">build 91</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -1966,6 +1966,13 @@ const CFG = {
     // can't flicker in and out of contact at the band edge — the flicker was what made corner calls
     // and start-line departures feel different clockwise vs anticlockwise.
     lineStick: 0.25,
+    // "Jumping the crossing" tolerance: a second line may join a foot's open contact episode for
+    // free only within this distance of the printed intersection point of the two lines. Foot dot
+    // ~0.55 + the corner's ink blob ~0.5 ≈ 1.05 — i.e. the drawn foot has to visually touch the
+    // drawn corner. Without this cap the merge was allowed anywhere the two contact bands overlap,
+    // which at the shallow ring-arc corners stretched ~1.7 from the corner point: the foot visibly
+    // passed BESIDE the corner, crossed ring then arc separately, and still paid one crossing.
+    cornerEps: 1.1,
     substepDeg: 0.4,
     minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
     lockDeg: 2,                    // net rotation before the one-direction-per-turn lock engages
@@ -2102,20 +2109,23 @@ const LINE_INTERSECTIONS = (() => {
 // so a path grazing along a line can't flicker out of contact — flicker at a single hard band was
 // what made corner calls and start-line departures feel clockwise/anticlockwise-dependent).
 //
-// A contact EPISODE is any interval during which the piece (any foot) holds line contact. Each
-// off→on transition of the whole piece opens a new episode and costs one crossing; opening a
-// second is refused (the substep rolls back, so the swing stops just short of touching). The
-// episode already open at turn start — feet that begin on lines — was never "entered", so it is
-// inherently free: that IS the "a foot that starts on a line leaves it for free" rule, with no
-// separate grace bookkeeping. Everything the old engine special-cased falls out naturally:
-//   · corner rounding: the new line joins while the old contact holds — same episode, one crossing,
-//     and symmetric in swing direction ("rounding a corner still counts as one crossing");
+// A contact EPISODE is any interval during which a FOOT holds line contact — episodes are per
+// foot, so a pivot foot parked on a line keeps its own episode open all turn without shielding
+// the other feet's crossings. Each foot's off→on transition opens a new episode and costs one
+// crossing; opening a second is refused (the substep rolls back, so the swing stops just short
+// of touching). The episodes already open at turn start — feet that begin on lines — were never
+// "entered", so they are inherently free: that IS the "a foot that starts on a line leaves it
+// for free" rule, with no separate grace bookkeeping. The rulebook cases fall out naturally:
+//   · jumping the crossing: a second line joins an open episode free only AT the printed corner
+//     (within cornerEps of its actual intersection with a line the foot is on). Cross both lines
+//     over the corner point = one crossing; cross them 1.5u to the side of it = two = refused —
+//     same call a physical opponent would make. Symmetric in swing direction;
 //   · the centre-spin (pin a foot at the board middle: the other two ride EXACTLY on the inner
-//     ring, footR·√3 = 40.0) crosses arc after arc for free — contact never breaks;
-//   · two feet over two lines in one slide with contact maintained = one crossing (rulebook);
+//     ring, footR·√3 = 40.0) sweeps through corner after corner for free — the ring passes dead
+//     through each corner point, so every arc joins at distance ~0;
 //   · the old exploits stay dead: cross-then-leave-then-anything-touches-again = second episode =
-//     refused, which also covers "two feet cross the same arc at different times" and the far
-//     re-cross of your own start line that used to ride the grace.
+//     refused; two feet crossing two lines (same or different) in one swing = two episodes =
+//     refused; the far re-cross of your own start line that used to ride the grace = refused.
 // st is G for live play (pinFoot/clearTurn/restoreSnap null st.contact; it re-derives lazily from
 // the first substep's BEFORE feet, i.e. the turn-start pose, so AI lookahead resets stay correct).
 function crossingSubstep(before, after, st) {
@@ -2132,8 +2142,17 @@ function crossingSubstep(before, after, st) {
         const kept = st.contact[i].filter(id => nearLineIds(after[i], stickEps).includes(id));
         let entered = false;
         for (const id of nearLineIds(after[i], CFG.touchEps))
-            if (!kept.includes(id)) { kept.push(id); entered = true; }
-        if (entered && !hadContact) opened++;   // this foot went off→on: it opens a fresh crossing episode
+            if (!kept.includes(id)) {
+                // A new line joins an open episode free ONLY at the corner: it must actually meet a
+                // line this foot is still on, at a printed intersection within cornerEps of the foot.
+                // Anywhere else, touching a second line is a second crossing, contact or no contact.
+                const atCorner = hadContact && kept.some(h => LINE_INTERSECTIONS.some(P =>
+                    P.lines.includes(id) && P.lines.includes(h) &&
+                    Math.hypot(after[i].x-P.x, after[i].y-P.y) <= CFG.cornerEps));
+                kept.push(id);
+                if (!atCorner) entered = true;
+            }
+        if (entered) opened++;   // this foot opened a fresh crossing (off→on, or a non-corner second line)
         next.push(kept);
     }
     if (opened) {                          // bill each foot that started a fresh episode this substep
