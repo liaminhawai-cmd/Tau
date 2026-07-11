@@ -303,7 +303,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 88</div>
+<div id="buildTag">build 89</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -5337,6 +5337,13 @@ function resize() {
 
     if (renderer){
         if (show){ cv3.style.display='block'; cv3.style.width=w3+'px'; cv3.style.height=h3+'px';
+            // Watching (replay/shared/spectate) grows the 3D tile large; a buffer capped at 2x on a 3x
+            // phone screen then gets upscaled 2x->3x by the compositor -> the reported "pixelated in
+            // replay" softness (the flat 2D board uses the full device ratio via syncCanvas, so it stays
+            // crisp -- the visible contrast). Replay is just lightweight playback of recorded frames with
+            // no AI/interaction cost, so spend the extra pixels there; keep the 2x cap during interactive
+            // play as a battery/perf guard. setSize below rebuilds the buffer at whatever ratio we set.
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, passive ? 3 : 2));
             renderer.setSize(w3,h3,false); camera.aspect=w3/h3; camera.updateProjectionMatrix(); }
         else cv3.style.display='none';
     }
