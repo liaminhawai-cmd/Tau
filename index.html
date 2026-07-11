@@ -320,7 +320,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 99</div>
+<div id="buildTag">build 100</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3459,7 +3459,11 @@ function finishTurn() {
         else colorLabTimer = setTimeout(colorLabTurn, 550);
         render(); return;
     }
-    if (G.over) { triggerFall(); showGameOverModal(); }
+    if (G.over) { triggerFall(); showGameOverModal();
+        // First real, played-out finish (NOT a surrender — that path calls showGameOverModal directly)
+        // is when we mint a guest identity: a genuine engagement signal, so level clears record and
+        // presence counts them, without an account for every bounce/crawler.
+        if (typeof ensureGuestSession === 'function') ensureGuestSession(); }
     else if (!vsAI) startOnlineTurnClock();   // local pass-and-play gets the same 30s turn clock as online; vs AI doesn't
     render();
     if (vsAI && !G.over && G.active===aiIdx) aiTimer = setTimeout(startAiTurn, 450);   // brief "thinking" pause
@@ -3982,17 +3986,25 @@ function renderGameOverSheet() {
                                     buttons.push({ label: t('Share replay'), onClick: () => { shareReplay(); renderGameOverSheet(); } });
                                     buttons.push({ label: t('Save replay'), onClick: () => { saveReplayToCollection(); renderGameOverSheet(); } }); }
     buttons.push({ label: t('Menu'), onClick: backToMenu });
+    // Claim-your-progress nudge at the peak: a guest who just won is invited (once per session, so it
+    // never nags) to keep their name/rank/progress under a real account.
+    let iWon = false;
+    if (onlineMatch && !onlineMatch.spectator) iWon = ((G.winner===0?'blue':'red') === onlineMatch.myColor);
+    else if (ladderLevel != null || vsAI) iWon = (G.winner === humanIdx);
+    if (iWon && sbUser && sbUser.is_anonymous && !claimNudgedThisSession) {
+        claimNudgedThisSession = true;
+        bodyHtml += `<div style="margin:8px auto 0;font-size:12px;color:#9aa4ad;text-align:center;">${t('Playing as a guest.')} <button class="link" id="goClaim" style="font-size:12px;">${t('Sign in to keep your progress')}</button></div>`;
+    }
     showModal(title, bodyHtml, buttons, !!bodyHtml);
     const chip = document.getElementById('goDiffChip');
     if (chip) chip.addEventListener('click', () => { hideModal(); openAiDifficultyMenu(); });
+    const goClaim = document.getElementById('goClaim');
+    if (goClaim) goClaim.addEventListener('click', () => { hideModal(); openAcctPanel(); });
 }
+let claimNudgedThisSession = false;
 function startGame(aiMode, humanColorIdx, difficulty) {
     hideModal(); clearTimeout(gameOverTimer);
     demoStop();
-    // Mint a guest identity the first time someone actually PLAYS (not on mere page load), so level
-    // clears record and presence counts them -- while bounces/crawlers never create an account. Guests
-    // still never touch the leaderboard (it needs a real win/loss, which only online human matches set).
-    if (typeof ensureGuestSession === 'function') ensureGuestSession();
     replaySourceMatchId = null;              // a freshly started game isn't a watched public replay
     if (!mmWaitingAI) cancelMatchmaking();   // the play-AI-while-you-wait game keeps the queue alive
     exitOnlineMatch();
@@ -6181,11 +6193,10 @@ async function ensureSupabase() {
     return sb;
 }
 
-// Give every visitor an identity up front: if there's no session yet, sign in anonymously so they
-// get a real auth.uid() + profiles/ELO row from the moment they arrive. That's what makes level
-// clears record, presence count them, and the leaderboard know who they are -- rather than an
-// "undefined" nobody until they happen to click something online. They're still just a guest until
-// they sign in to name/keep the account (the account panel already shows "Playing as …" + sign-in).
+// Sign in anonymously (real auth.uid() + profiles/ELO row) when there's no session yet, so a guest's
+// level clears record and presence counts them -- rather than an "undefined" nobody. Called on the
+// first played-out game finish (see finishTurn), a real engagement signal, so idle visitors never
+// mint an account. They stay a guest until they sign in to name/keep it (account panel shows that).
 let guestSignInTried = false;
 async function ensureGuestSession() {
     if (!sb || sbUser || guestSignInTried) return;
@@ -7239,6 +7250,16 @@ function openLeaderboard() {
             const w = watchable[btn.dataset.pid];
             if (w) watchFinishedGame(w.row, w.names);
         }));
+        // Claim-your-rank nudge: a guest has earned a real, anonymous standing — invite them to keep
+        // it under a name. The honest, high-intent sign-in moment (they already have something to lose).
+        if (sbUser && sbUser.is_anonymous) {
+            const foot = document.createElement('div');
+            foot.style.cssText = 'margin-top:14px; text-align:center; font-size:12.5px; color:#9aa4ad;';
+            foot.innerHTML = t('You’re playing as a guest.') + ' <button class="link" id="lbClaim" style="font-size:12.5px;">' + t('Sign in to keep your rank &amp; name') + '</button>';
+            body.appendChild(foot);
+            const c = document.getElementById('lbClaim');
+            if (c) c.addEventListener('click', () => { hideModal(); openAcctPanel(); });
+        }
       })
       // A genuine network-level failure (dropped connection, DNS hiccup) can reject this promise
       // outright instead of resolving to {error} -- without this, the modal is left on "Loading…"
