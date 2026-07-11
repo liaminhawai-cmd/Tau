@@ -126,6 +126,24 @@
     #volMuteBtn { background:none; border:none; color:#9aa4ad; font-size:15px; padding:2px 4px; margin:0; cursor:pointer; }
     #volMuteBtn:hover { color:#cdd4db; }
     #volPct { font-size:12px; color:#8b949d; min-width:30px; text-align:right; }
+    /* Persistent lobby-search pill (shown while queued, incl. during any AI-while-you-wait games). */
+    /* Compact pill in the TOP-LEFT: clears both the centred turn-status text and the top-right icon
+       cluster, and stays put across AI games (a centred/bottom pill collided with the status or the
+       Surrender/Menu row, since an in-game board fills the whole viewport). */
+    #waitBanner { display:none; position:fixed; left:8px; top:calc(6px + env(safe-area-inset-top));
+                  z-index:55; align-items:center; gap:6px; background:rgba(20,24,28,0.94); border:1px solid #2c333b;
+                  border-radius:20px; padding:4px 6px 4px 10px; font-size:12px; color:#c7ccd1; box-shadow:0 3px 12px rgba(0,0,0,0.4);
+                  max-width:46vw; white-space:nowrap; }
+    #waitBanner.on { display:flex; }
+    #waitBannerDot { color:#6b9eff; animation:waitPulse 1.3s ease-in-out infinite; }
+    @keyframes waitPulse { 0%,100%{opacity:0.35;} 50%{opacity:1;} }
+    #waitBannerStop { background:none; border:none; color:#8b949d; font-size:13px; line-height:1; padding:2px 5px; margin:0;
+                      cursor:pointer; border-radius:50%; }
+    #waitBannerStop:hover { color:#e6ecf2; background:#2c333b; }
+    /* On very narrow phones the centred turn-status ("AI is thinking…") reaches far enough left to
+       meet the pill; drop the word there (pulsing dot + ✕ still read as "searching, tap to stop",
+       and the "Still searching…" toast already spelled it out) so they never overlap. */
+    @media (max-width:399px) { #waitBannerText { display:none; } }
     /* Deliberately barely visible -- purely so a screenshot/report can be matched to the exact
        commit it came from (cache/CDN lag otherwise makes "still broken" reports ambiguous). */
     #buildTag { position:fixed; bottom:calc(4px + env(safe-area-inset-bottom)); left:6px; z-index:60; font-size:10px; color:#3a4048;
@@ -191,7 +209,7 @@
     body.dirHideUI #themeToggle, body.dirHideUI #soundToggle, body.dirHideUI #langToggle,
     body.dirHideUI #volPopover, body.dirHideUI #langMenu, body.dirHideUI #buildTag, body.dirHideUI #statusRow,
     body.dirHideUI #meta, body.dirHideUI #help, body.dirHideUI #btns,
-    body.dirHideUI #replayBtns, body.dirHideUI #passToast { display:none !important; }
+    body.dirHideUI #replayBtns, body.dirHideUI #passToast, body.dirHideUI #waitBanner { display:none !important; }
     .nameBox { background:#1a1e24; color:#e6e6e6; border:1px solid #3a4048; border-radius:4px;
                padding:1px 6px; font-size:13px; width:120px; text-align:center; cursor:pointer; }
     #acctPanel { display:flex; flex-direction:column; align-items:center; gap:8px; width:260px;
@@ -282,7 +300,10 @@
 </div>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
-<div id="buildTag">build 85</div>
+<!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
+     the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
+<div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
+<div id="buildTag">build 86</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -1498,7 +1519,7 @@ ja: {
 "Watch live":"ライブ観戦","Looking for games…":"対局を探しています…","No public games being played right now.":"現在観戦できる対局はありません。","Close":"閉じる",
 "Loading…":"読み込み中…","No rated players yet.":"まだプレイヤーがいません。","Could not load the leaderboard.":"ランキングを読み込めませんでした。",
 "Player":"プレイヤー","Elo":"レート","W-L":"勝-敗","(you)":"(あなた)","Ranked #{r} of {n}":"ランキング {n}人中 {r}位",
-"{n} playing now":"現在{n}人がプレイ中"," · {m} in matches":" ・対戦中{m}人",
+"{n} playing now":"現在{n}人がプレイ中"," · {m} in matches":" ・対戦中{m}人"," · {w} waiting to play":" ・対戦待ち{w}人","Stopped searching.":"検索を停止しました。","Searching…":"検索中…",
 "Out of time — turn passed":"時間切れ — ターンをパス","Opponent out of time — your turn":"相手が時間切れ — あなたの番","Turn passed":"ターンをパス",
 "Opponent didn’t move — your turn":"相手が動きませんでした — あなたの番","Replay — tap the board to skip":"リプレイ — タップでスキップ",
 "Replay link copied!":"リプレイのリンクをコピーしました！","Copy full link (offline)":"完全なリンクをコピー（オフライン）","Full link copied!":"完全なリンクをコピーしました！","Could not create the link.":"リンクを作成できませんでした。","Watch this Tau game:":"このTauの対局を見てください：","This replay link has expired.":"この共有リンクの有効期限が切れています。","Installed — check your home screen or app list.":"インストールしました — ホーム画面かアプリ一覧をご確認ください。",
@@ -1546,7 +1567,7 @@ zh: {
 "Watch live":"观看直播","Looking for games…":"正在查找对局……","No public games being played right now.":"当前没有可观战的对局。","Close":"关闭",
 "Loading…":"加载中……","No rated players yet.":"暂无排名玩家。","Could not load the leaderboard.":"无法加载排行榜。",
 "Player":"玩家","Elo":"等级分","W-L":"胜-负","(you)":"(你)","Ranked #{r} of {n}":"排名 第{r}名（共{n}人）",
-"{n} playing now":"当前{n}人在线"," · {m} in matches":" · {m}人对战中",
+"{n} playing now":"当前{n}人在线"," · {m} in matches":" · {m}人对战中"," · {w} waiting to play":" · {w}人等待对战","Stopped searching.":"已停止搜索。","Searching…":"搜索中…",
 "Out of time — turn passed":"超时——回合跳过","Opponent out of time — your turn":"对手超时——轮到你","Turn passed":"回合已跳过",
 "Opponent didn’t move — your turn":"对手未行动——轮到你","Replay — tap the board to skip":"回放中——点击棋盘跳过",
 "Replay link copied!":"回放链接已复制！","Copy full link (offline)":"复制完整链接（离线）","Full link copied!":"完整链接已复制！","Could not create the link.":"无法生成链接。","Watch this Tau game:":"来看这局Tau：","This replay link has expired.":"此重播链接已过期。","Installed — check your home screen or app list.":"已安装 — 请查看主屏幕或应用列表。",
@@ -1594,7 +1615,7 @@ zht: {
 "Watch live":"觀看直播","Looking for games…":"正在尋找對局……","No public games being played right now.":"目前沒有可觀戰的對局。","Close":"關閉",
 "Loading…":"載入中……","No rated players yet.":"尚無排名玩家。","Could not load the leaderboard.":"無法載入排行榜。",
 "Player":"玩家","Elo":"等級分","W-L":"勝-敗","(you)":"(你)","Ranked #{r} of {n}":"排名 第{r}名（共{n}人）",
-"{n} playing now":"目前{n}人在玩"," · {m} in matches":" · {m}人對戰中",
+"{n} playing now":"目前{n}人在玩"," · {m} in matches":" · {m}人對戰中"," · {w} waiting to play":" · {w}人等待對戰","Stopped searching.":"已停止搜尋。","Searching…":"搜尋中…",
 "Out of time — turn passed":"逾時——回合跳過","Opponent out of time — your turn":"對手逾時——輪到你","Turn passed":"回合已跳過",
 "Opponent didn’t move — your turn":"對手未行動——輪到你","Replay — tap the board to skip":"重播中——點擊棋盤跳過",
 "Replay link copied!":"重播連結已複製！","Copy full link (offline)":"複製完整連結（離線）","Full link copied!":"完整連結已複製！","Could not create the link.":"無法產生連結。","Watch this Tau game:":"來看這局Tau：","This replay link has expired.":"此重播連結已過期。","Installed — check your home screen or app list.":"已安裝 — 請查看主畫面或應用程式清單。","Installed — check your home screen or app list.":"已安裝 — 請查看主畫面或應用程式清單。",
@@ -1642,7 +1663,7 @@ ko: {
 "Watch live":"라이브 관전","Looking for games…":"경기를 찾는 중…","No public games being played right now.":"지금 관전할 수 있는 경기가 없습니다.","Close":"닫기",
 "Loading…":"불러오는 중…","No rated players yet.":"아직 랭크된 플레이어가 없습니다.","Could not load the leaderboard.":"랭킹을 불러올 수 없습니다.",
 "Player":"플레이어","Elo":"레이팅","W-L":"승-패","(you)":"(나)","Ranked #{r} of {n}":"{n}명 중 {r}위",
-"{n} playing now":"지금 {n}명 플레이 중"," · {m} in matches":" · 대전 중 {m}명",
+"{n} playing now":"지금 {n}명 플레이 중"," · {m} in matches":" · 대전 중 {m}명"," · {w} waiting to play":" · 대전 대기 {w}명","Stopped searching.":"검색을 중지했습니다.","Searching…":"검색 중…",
 "Out of time — turn passed":"시간 초과 — 턴 넘김","Opponent out of time — your turn":"상대 시간 초과 — 내 차례","Turn passed":"턴 넘김",
 "Opponent didn’t move — your turn":"상대가 움직이지 않음 — 내 차례","Replay — tap the board to skip":"리플레이 — 보드를 탭하면 건너뜁니다",
 "Replay link copied!":"리플레이 링크 복사됨!","Copy full link (offline)":"전체 링크 복사(오프라인)","Full link copied!":"전체 링크가 복사되었습니다!","Could not create the link.":"링크를 만들 수 없습니다.","Watch this Tau game:":"이 Tau 경기를 보세요:","This replay link has expired.":"이 리플레이 링크는 만료되었습니다.","Installed — check your home screen or app list.":"설치됨 — 홈 화면이나 앱 목록을 확인하세요.","Installed — check your home screen or app list.":"설치되었습니다 — 홈 화면이나 앱 목록을 확인하세요.",
@@ -1690,7 +1711,7 @@ de: {
 "Watch live":"Live zuschauen","Looking for games…":"Suche Spiele …","No public games being played right now.":"Gerade werden keine öffentlichen Spiele gespielt.","Close":"Schließen",
 "Loading…":"Lädt …","No rated players yet.":"Noch keine gewerteten Spieler.","Could not load the leaderboard.":"Bestenliste konnte nicht geladen werden.",
 "Player":"Spieler","Elo":"Elo","W-L":"S-N","(you)":"(du)","Ranked #{r} of {n}":"Platz {r} von {n}",
-"{n} playing now":"{n} spielen gerade"," · {m} in matches":" · {m} in Partien",
+"{n} playing now":"{n} spielen gerade"," · {m} in matches":" · {m} in Partien"," · {w} waiting to play":" · {w} warten auf ein Spiel","Stopped searching.":"Suche gestoppt.","Searching…":"Suche läuft…",
 "Out of time — turn passed":"Zeit abgelaufen – Zug übersprungen","Opponent out of time — your turn":"Gegner-Zeit abgelaufen – du bist dran","Turn passed":"Zug übersprungen",
 "Opponent didn’t move — your turn":"Gegner hat nicht gezogen – du bist dran","Replay — tap the board to skip":"Wiederholung – tippe aufs Brett zum Überspringen",
 "Replay link copied!":"Wiederholungslink kopiert!","Copy full link (offline)":"Vollständigen Link kopieren (offline)","Full link copied!":"Vollständiger Link kopiert!","Could not create the link.":"Link konnte nicht erstellt werden.","Watch this Tau game:":"Schau dir dieses Tau-Spiel an:","This replay link has expired.":"Dieser Wiederholungslink ist abgelaufen.","Installed — check your home screen or app list.":"Installiert – schau auf dem Startbildschirm oder in der App-Liste nach.","Installed — check your home screen or app list.":"Installiert — schau auf deinem Homescreen oder in der App-Liste nach.",
@@ -1738,7 +1759,7 @@ fr: {
 "Watch live":"Regarder en direct","Looking for games…":"Recherche de parties…","No public games being played right now.":"Aucune partie publique en cours.","Close":"Fermer",
 "Loading…":"Chargement…","No rated players yet.":"Pas encore de joueurs classés.","Could not load the leaderboard.":"Impossible de charger le classement.",
 "Player":"Joueur","Elo":"Elo","W-L":"V-D","(you)":"(toi)","Ranked #{r} of {n}":"Classé {r}e sur {n}",
-"{n} playing now":"{n} en train de jouer"," · {m} in matches":" · {m} en partie",
+"{n} playing now":"{n} en train de jouer"," · {m} in matches":" · {m} en partie"," · {w} waiting to play":" · {w} en attente d'une partie","Stopped searching.":"Recherche arrêtée.","Searching…":"Recherche…",
 "Out of time — turn passed":"Temps écoulé — tour passé","Opponent out of time — your turn":"Adversaire hors délai — à toi de jouer","Turn passed":"Tour passé",
 "Opponent didn’t move — your turn":"L'adversaire n'a pas joué — à toi","Replay — tap the board to skip":"Replay — touche le plateau pour passer",
 "Replay link copied!":"Lien du replay copié !","Copy full link (offline)":"Copier le lien complet (hors ligne)","Full link copied!":"Lien complet copié !","Could not create the link.":"Impossible de créer le lien.","Watch this Tau game:":"Regarde cette partie de Tau :","This replay link has expired.":"Ce lien de replay a expiré.","Installed — check your home screen or app list.":"Installé — regarde sur ton écran d'accueil ou dans la liste des applis.","Installed — check your home screen or app list.":"Installé — regarde ton écran d'accueil ou la liste des applis.",
@@ -1786,7 +1807,7 @@ es: {
 "Watch live":"Ver en directo","Looking for games…":"Buscando partidas…","No public games being played right now.":"Ahora mismo no hay partidas públicas.","Close":"Cerrar",
 "Loading…":"Cargando…","No rated players yet.":"Aún no hay jugadores clasificados.","Could not load the leaderboard.":"No se pudo cargar la clasificación.",
 "Player":"Jugador","Elo":"Elo","W-L":"G-P","(you)":"(tú)","Ranked #{r} of {n}":"Puesto {r} de {n}",
-"{n} playing now":"{n} jugando ahora"," · {m} in matches":" · {m} en partida",
+"{n} playing now":"{n} jugando ahora"," · {m} in matches":" · {m} en partida"," · {w} waiting to play":" · {w} esperando partida","Stopped searching.":"Búsqueda detenida.","Searching…":"Buscando…",
 "Out of time — turn passed":"Tiempo agotado — turno pasado","Opponent out of time — your turn":"Rival sin tiempo — te toca","Turn passed":"Turno pasado",
 "Opponent didn’t move — your turn":"Tu rival no movió — te toca","Replay — tap the board to skip":"Repetición — toca el tablero para saltarla",
 "Replay link copied!":"¡Enlace de la repetición copiado!","Copy full link (offline)":"Copiar enlace completo (sin conexión)","Full link copied!":"¡Enlace completo copiado!","Could not create the link.":"No se pudo crear el enlace.","Watch this Tau game:":"Mira esta partida de Tau:","This replay link has expired.":"Este enlace de repetición ha caducado.","Installed — check your home screen or app list.":"Instalado — busca en tu pantalla de inicio o lista de apps.","Installed — check your home screen or app list.":"Instalado — revisa tu pantalla de inicio o la lista de apps.",
@@ -1834,7 +1855,7 @@ pt: {
 "Watch live":"Assistir ao vivo","Looking for games…":"Procurando partidas…","No public games being played right now.":"Nenhuma partida pública rolando agora.","Close":"Fechar",
 "Loading…":"Carregando…","No rated players yet.":"Ainda não há jogadores ranqueados.","Could not load the leaderboard.":"Não foi possível carregar o ranking.",
 "Player":"Jogador","Elo":"Elo","W-L":"V-D","(you)":"(você)","Ranked #{r} of {n}":"{r}º de {n}",
-"{n} playing now":"{n} jogando agora"," · {m} in matches":" · {m} em partida",
+"{n} playing now":"{n} jogando agora"," · {m} in matches":" · {m} em partida"," · {w} waiting to play":" · {w} aguardando partida","Stopped searching.":"Busca interrompida.","Searching…":"Procurando…",
 "Out of time — turn passed":"Tempo esgotado — vez passada","Opponent out of time — your turn":"Oponente estourou o tempo — sua vez","Turn passed":"Vez passada",
 "Opponent didn’t move — your turn":"O oponente não jogou — sua vez","Replay — tap the board to skip":"Replay — toque no tabuleiro para pular",
 "Replay link copied!":"Link do replay copiado!","Copy full link (offline)":"Copiar link completo (offline)","Full link copied!":"Link completo copiado!","Could not create the link.":"Não foi possível criar o link.","Watch this Tau game:":"Assista a esta partida de Tau:","This replay link has expired.":"Este link de replay expirou.","Installed — check your home screen or app list.":"Instalado — veja na tela inicial ou na lista de apps.","Installed — check your home screen or app list.":"Instalado — confira sua tela inicial ou a lista de apps.",
@@ -1882,7 +1903,7 @@ ru: {
 "Watch live":"Смотреть вживую","Looking for games…":"Ищем игры…","No public games being played right now.":"Сейчас нет открытых игр.","Close":"Закрыть",
 "Loading…":"Загрузка…","No rated players yet.":"Пока нет игроков с рейтингом.","Could not load the leaderboard.":"Не удалось загрузить таблицу лидеров.",
 "Player":"Игрок","Elo":"Эло","W-L":"В-П","(you)":"(вы)","Ranked #{r} of {n}":"Место {r} из {n}",
-"{n} playing now":"Сейчас играют: {n}"," · {m} in matches":" · в матчах: {m}",
+"{n} playing now":"Сейчас играют: {n}"," · {m} in matches":" · в матчах: {m}"," · {w} waiting to play":" · ждут игру: {w}","Stopped searching.":"Поиск остановлен.","Searching…":"Поиск…",
 "Out of time — turn passed":"Время вышло — ход пропущен","Opponent out of time — your turn":"У соперника вышло время — ваш ход","Turn passed":"Ход пропущен",
 "Opponent didn’t move — your turn":"Соперник не сходил — ваш ход","Replay — tap the board to skip":"Повтор — коснитесь доски, чтобы пропустить",
 "Replay link copied!":"Ссылка на повтор скопирована!","Copy full link (offline)":"Скопировать полную ссылку (офлайн)","Full link copied!":"Полная ссылка скопирована!","Could not create the link.":"Не удалось создать ссылку.","Watch this Tau game:":"Посмотрите эту партию в Tau:","This replay link has expired.":"Срок действия этой ссылки на повтор истёк.","Installed — check your home screen or app list.":"Установлено — проверьте главный экран или список приложений.","Installed — check your home screen or app list.":"Установлено — проверьте главный экран или список приложений.",
@@ -3798,6 +3819,7 @@ function startGame(aiMode, humanColorIdx, difficulty) {
     resetAudioForNewGame(); playGameBowl();
     if (!aiMode) startOnlineTurnClock(); else onlineTurnDeadline = null;
     if (vsAI && G.active===aiIdx) aiTimer = setTimeout(startAiTurn, 450);
+    if (typeof updateWaitBanner === 'function') updateWaitBanner();   // keep the "still searching" pill across repeated AI games
 }
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
@@ -6377,6 +6399,7 @@ function endOnlineMatch(loserIdx) {
 async function startOnlineMatchmaking() {
     if (!sb || !sbUser) return;
     matchmakingActive = true; mmWaitingAI = false; mmAiOffered = false;
+    if (typeof setPresenceStatus === 'function') setPresenceStatus('queue');   // advertise "waiting" at once
     let emptyPolls = 0;
     showModal(t('Online 1v1'), t('Searching for an opponent…'), [ { label: t('Cancel'), onClick: cancelMatchmaking } ]);
     matchmakingChannel = sb.channel('matchmaking-'+sbUser.id)
@@ -6430,13 +6453,32 @@ function cancelMatchmaking() {
     clearTimeout(matchmakingTimer);
     if (matchmakingChannel) { sb.removeChannel(matchmakingChannel); matchmakingChannel = null; }
     if (sb) sbFire(sb.rpc('leave_queue'));
+    if (typeof setPresenceStatus === 'function') setPresenceStatus(presenceStatusNow());   // stop advertising 'queue'
+    updateWaitBanner();
+}
+// The persistent "still searching" pill: visible whenever you're queued AND on the board (i.e. during
+// any AI-while-you-wait game), so the search never silently reads as "dropped out" the way the
+// one-time toast did. Hidden during the Searching modal itself (that modal IS the indicator) and once
+// a match is entered or the queue is cancelled.
+function updateWaitBanner() {
+    const el = document.getElementById('waitBanner');
+    if (!el) return;
+    const show = (typeof matchmakingActive !== 'undefined' && matchmakingActive) && gameVisible();
+    el.classList.toggle('on', show);
+    if (show) document.getElementById('waitBannerText').textContent = t('Searching…');
 }
 // Start a normal vs-AI game (player = blue, last-used difficulty) with the queue still live.
 function startAiWhileWaiting() {
     mmWaitingAI = true;
     startGame(true, 0, AI_DIFF_LABEL[aiDifficulty] ? aiDifficulty : 'easy');
     showPassToast(t('Still searching — you’ll be told when an opponent appears.'));
+    updateWaitBanner();
 }
+// The pill's ✕ = stop searching but keep playing the AI game you're in (queue only, game untouched).
+document.getElementById('waitBannerStop').addEventListener('click', () => {
+    cancelMatchmaking();
+    showPassToast(t('Stopped searching.'));
+});
 // Best-effort instant cleanup for an ordinary tab close while queued -- there's no guarantee
 // this network call actually completes before the page is torn down, so it's a nice-to-have,
 // not the real fix: try_match()'s own last_seen staleness check (schema_matches.sql) is what
@@ -6448,6 +6490,7 @@ async function enterOnlineMatch(row) {
     matchmakingActive = false;
     clearTimeout(matchmakingTimer);
     if (matchmakingChannel) { sb.removeChannel(matchmakingChannel); matchmakingChannel = null; }
+    updateWaitBanner();   // queue's over -> drop the "still searching" pill
     // Found a real opponent while the player was passing time against the AI: don't yank them out
     // mid-swing — tell them, and one tap drops the AI game (it costs nothing to abandon).
     if (mmWaitingAI && vsAI && G && !G.over) {
@@ -6968,7 +7011,11 @@ let presenceChannel = null;
 // returning to the foreground, and on a slow heartbeat) instead of trusting that the transition-time
 // push got through. That's what un-sticks "still shows 2 in matches after everyone left to the menu".
 function presenceStatusNow() {
-    return onlineMatch ? (onlineMatch.spectator ? 'watch' : 'match') : 'idle';
+    if (onlineMatch) return onlineMatch.spectator ? 'watch' : 'match';
+    // In the matchmaking queue (including while passing time in an AI-while-you-wait game) -> tell
+    // everyone else you're here and ready, so a lone waiter is visible and others know to join.
+    if (typeof matchmakingActive !== 'undefined' && matchmakingActive) return 'queue';
+    return 'idle';
 }
 function joinPresence() {
     if (!sb || presenceChannel) return;
@@ -6985,12 +7032,16 @@ function updatePresenceCounts() {
     if (!el || !presenceChannel) return;
     const state = presenceChannel.presenceState();
     const keys = Object.keys(state);
-    let inMatch = 0;
+    let inMatch = 0, waiting = 0;
     // A key can briefly carry two metas after a reconnect (the dead connection's entry lingers until
     // the server times it out) -- trust the NEWEST meta, not "any meta says match". Spectators
-    // ('watch') count toward "playing now" but not "in matches".
-    for (const k of keys) { const metas = state[k]; if (metas.length && metas[metas.length-1].s === 'match') inMatch++; }
-    el.textContent = keys.length < 2 ? '' : tf('{n} playing now', { n: keys.length }) + (inMatch ? tf(' · {m} in matches', { m: inMatch }) : '');
+    // ('watch') count toward "playing now" but not "in matches"; queued players count as "waiting".
+    for (const k of keys) { const metas = state[k]; if (!metas.length) continue; const s = metas[metas.length-1].s;
+        if (s === 'match') inMatch++; else if (s === 'queue') waiting++; }
+    let txt = keys.length < 2 ? '' : tf('{n} playing now', { n: keys.length });
+    if (txt && inMatch)  txt += tf(' · {m} in matches', { m: inMatch });
+    if (txt && waiting)  txt += tf(' · {w} waiting to play', { w: waiting });
+    el.textContent = txt;
 }
 
 // ---------- Watch: spectate any public (non-private) live match ----------
