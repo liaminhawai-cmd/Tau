@@ -303,7 +303,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 87</div>
+<div id="buildTag">build 88</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -1956,10 +1956,16 @@ const CFG = {
     // cross you must genuinely have one foot ON its line while the other crosses (park a foot on the
     // line one turn, continue over it the next: left, left, then right).
     holdEps: 0.45,
-    // Footprint radius: how close a foot's PAD counts as touching a line. Used to stop a foot just
-    // short of MOUNTING a not-yet-visited line once the turn's crossing is spent (real pad radius
-    // ~0.55 + half line width ~0.26 ~= 0.8), and for the turn-start "started on a line" list.
+    // Line-contact band: a foot is ON a line when its centre is within touchEps of the stroke's
+    // centreline — real pad radius ~0.55 + half line width ~0.26 ≈ 0.8, i.e. exactly when the drawn
+    // foot visually touches the drawn line. The whole crossing rule keys off this one band (see
+    // crossingSubstep).
     touchEps: 0.8,
+    // Contact-release hysteresis: once ON a line, a foot stays in contact until touchEps+lineStick.
+    // The feet behave a tiny bit "wider"/stickier than they look, so a path that grazes along a line
+    // can't flicker in and out of contact at the band edge — the flicker was what made corner calls
+    // and start-line departures feel different clockwise vs anticlockwise.
+    lineStick: 0.25,
     substepDeg: 0.4,
     minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
     lockDeg: 2,                    // net rotation before the one-direction-per-turn lock engages
@@ -2063,32 +2069,6 @@ function nearLineIds(f, eps) {
     });
     return ids;
 }
-// Is the piece STILL on a line it's in the process of crossing? Judged at MAGNET scale (holdEps):
-// the crossing episode stays open only while some foot's magnet is genuinely on a line it did not
-// start the turn on (start-line feet are grandfathered so they don't hold a crossing open forever).
-// A crossing completes when this goes false — a corner (ring then arc), or a second foot's magnet
-// reaching its line while the first magnet is still on its own line, stay ONE crossing. The band
-// being magnet-sized matters: with the full pad width (touchEps) here, one smooth swing could CHAIN
-// two separate crossings — the first pad's contact hadn't ended when the second pad's began, even
-// though the first magnet was already well off its line — which let "left foot over one line, right
-// foot over the other" slip through as one crossing. At magnet scale that chain breaks.
-// `st` carries the turn's line bookkeeping (startedOnLine/touchedLine); the live game passes G, the
-// how-to practice widget passes its own state object with the same fields.
-function pieceHoldingLine(feet, st) {
-    for (let i=0;i<3;i++)
-        if (nearLineIds(feet[i], CFG.holdEps).some(id => !st.startedOnLine[i].includes(id))) return true;
-    return false;
-}
-// Is any foot's PAD (touchEps) on a line that foot has not yet touched this turn? Used to stop the
-// swing just short of MOUNTING a fresh line once the turn's crossing is spent. Judged against the
-// lines the foot has already visited (touchedLine), not just its start lines: with the hold band
-// smaller than the pad band, a foot's pad is still over the line it just finished crossing — that
-// leftover contact is departure, not a new mount, and must not trip the stop.
-function pieceTouchingUntouchedLine(feet, st) {
-    for (let i=0;i<3;i++)
-        if (nearLineIds(feet[i], CFG.touchEps).some(id => !st.touchedLine[i].includes(id))) return true;
-    return false;
-}
 // Every point where two printed lines actually meet (each ring x each side arc, ends respecting the
 // arc spans). These are the ONLY places a single swing may take one crossing episode across two
 // distinct lines — the "jump the crossing" manoeuvre. Computed once from CFG.
@@ -2113,103 +2093,47 @@ const LINE_INTERSECTIONS = (() => {
     }
     return pts;
 })();
-// Is this foot genuinely JUMPING a marked intersection as it crosses `newId`? True only if the
-// foot passes close enough to an intersection point shared by newId and a line already crossed in
-// the open episode that its magnet never lost contact with that line — i.e. it truly ROUNDED the
-// corner (one continuous contact = one crossing) rather than lifting off and re-landing (two).
-// Implemented as the rulebook states it ("a crossing lasts as long as the piece stays on a line"):
-// the crossing FOOT must still be in pad contact with an episode line OTHER than the one it is now
-// crossing. This replaced an older distance-to-the-corner-POINT test (JUMP_EPS): that proxy was
-// sampled only at the post-substep position, and a 0.4° substep is ~0.28u of travel at ring radius —
-// against a hard radial cutoff, whether a genuine round passed depended on where the substeps
-// happened to land, which flipped with swing DIRECTION (the reported "sometimes I'm right on the
-// corner and blocked, other times it's forgiving" / clockwise-vs-anticlockwise feel). Contact with
-// the LINE varies slowly and is checked at before/mid/after, so direction can't bias it. Excluding
-// the line being crossed is what keeps the build-72 ruling intact: a foot is trivially "in contact"
-// with the line it is crossing, so without the exclusion any same-line re-cross would self-merge.
-// Geometry note: rings are concentric and the two side arcs never meet, so cross-contact with a
-// DIFFERENT line is only physically possible near a printed corner — this can't loosen anything
-// away from corners.
-function cornerContact(before, after, newId, epLines) {
-    const mid = { x:(before.x+after.x)/2, y:(before.y+after.y)/2 };
-    for (const p of [before, mid, after])
-        if (nearLineIds(p, CFG.touchEps).some(l => l !== newId && epLines[l])) return true;
-    return false;
-}
-// One sub-step of the crossing rule, shared by real turns (applySwing) and the how-to practice
-// widget so they can't drift apart. `st` is any object with the per-turn fields (crossings,
-// inCrossing, usedGrace, startedOnLine, touchedLine); G is one such object. Given the feet BEFORE
-// and AFTER a small rotation, it updates st's crossing bookkeeping and returns true if the swing has
-// hit the one-crossing limit and must be rolled back by the caller.
+// ---------- The crossing rule: line-contact episodes ----------
+// One mechanism, straight from the rulebook: "a crossing lasts as long as the piece stays on a
+// line". A foot is ON a line while its magnet touches the printed stroke — it makes contact when
+// its centre comes within touchEps of the line (which is exactly when the drawn foot visually
+// kisses the drawn stroke: foot dot ~0.55u + half line width ~0.26u), and stays in contact until
+// it moves lineStick further out (hysteresis: the feet act a tiny bit "stickier" than they look,
+// so a path grazing along a line can't flicker out of contact — flicker at a single hard band was
+// what made corner calls and start-line departures feel clockwise/anticlockwise-dependent).
+//
+// A contact EPISODE is any interval during which the piece (any foot) holds line contact. Each
+// off→on transition of the whole piece opens a new episode and costs one crossing; opening a
+// second is refused (the substep rolls back, so the swing stops just short of touching). The
+// episode already open at turn start — feet that begin on lines — was never "entered", so it is
+// inherently free: that IS the "a foot that starts on a line leaves it for free" rule, with no
+// separate grace bookkeeping. Everything the old engine special-cased falls out naturally:
+//   · corner rounding: the new line joins while the old contact holds — same episode, one crossing,
+//     and symmetric in swing direction ("rounding a corner still counts as one crossing");
+//   · the centre-spin (pin a foot at the board middle: the other two ride EXACTLY on the inner
+//     ring, footR·√3 = 40.0) crosses arc after arc for free — contact never breaks;
+//   · two feet over two lines in one slide with contact maintained = one crossing (rulebook);
+//   · the old exploits stay dead: cross-then-leave-then-anything-touches-again = second episode =
+//     refused, which also covers "two feet cross the same arc at different times" and the far
+//     re-cross of your own start line that used to ride the grace.
+// st is G for live play (pinFoot/clearTurn/restoreSnap null st.contact; it re-derives lazily from
+// the first substep's BEFORE feet, i.e. the turn-start pose, so AI lookahead resets stay correct).
 function crossingSubstep(before, after, st) {
-    // Departure-grace LOCALITY: a start line stays grace-eligible for a foot only while that foot has
-    // remained in continuous pad contact with it since the turn began. Without this, the grace had no
-    // locality at all — a foot that started on the left arc, swung 40+ units around the board, and
-    // re-crossed that same arc somewhere else entirely got its crossing forgiven as a "departure"
-    // (seen in the wild: a 164° AI swing that visibly crossed the arc twice and the ring once, at the
-    // cost of zero counted crossings). graceLive is initialised from startedOnLine by pinFoot() /
-    // restoreSnap() (lazily here for any caller that predates the field) and only ever SHRINKS during
-    // a turn: once contact with a start line breaks, re-touching it later doesn't restore the grace.
-    if (!st.graceLive) st.graceLive = st.startedOnLine.map(a => a.slice());
-    const per = countCrossings(before, after);
-    let centreCrossed = false;
-    const newCrossings = [];   // [footIdx, lineId] of every non-graced centre-crossing this substep
+    if (!st.contact) st.contact = before.map(f => nearLineIds(f, CFG.touchEps));
+    const stickEps = CFG.touchEps + CFG.lineStick;
+    const hadContact = st.contact.some(a => a.length > 0);
+    const next = []; let entered = false;
     for (let i=0;i<3;i++){
-        let ids = per[i];
-        if (ids.length===0) continue;
-        if (!st.usedGrace[i] && ids.some(id => st.graceLive[i].includes(id))){
-            st.usedGrace[i]=true;
-            ids = ids.filter(id => !st.graceLive[i].includes(id));
-            if (ids.length===0) continue;
-        }
-        centreCrossed = true;
-        for (const id of ids) newCrossings.push([i, id]);
+        const kept = st.contact[i].filter(id => nearLineIds(after[i], stickEps).includes(id));
+        for (const id of nearLineIds(after[i], CFG.touchEps))
+            if (!kept.includes(id)) { kept.push(id); entered = true; }
+        next.push(kept);
     }
-    // Once the one-per-turn crossing is SPENT and the episode is closed, stop: no foot's centre may
-    // cross any further line, and no foot's pad may even MOUNT a line it hasn't visited this turn.
-    if (st.crossings >= CFG.maxCrossingsPerTurn && !st.inCrossing
-        && (centreCrossed || pieceTouchingUntouchedLine(after, st))) return true;
-    // Corner rule: one episode covers ONE line — a second DISTINCT line joins the same episode only
-    // when the crossing foot genuinely rounds a printed corner (still in contact with an episode
-    // line as it crosses the new one — see cornerContact). Same-line re-crossings by the same foot
-    // stay merged.
-    if (centreCrossed) {
-        if (!st.inCrossing || !st.epLines) { st.epLines = {}; st.epFoot = {}; }
-        let hasLine = st.inCrossing && Object.keys(st.epLines).length > 0;
-        for (const [i, id] of newCrossings) {
-            // The SAME foot re-crossing the line it already crossed this episode is departure wiggle —
-            // merge it (no new count). A DIFFERENT foot crossing that same line is a genuine SECOND
-            // crossing of it (the reported "two feet cross the same arc at different times"): it must
-            // NOT merge — it falls through to the corner-contact test and is blocked unless it is a
-            // true corner round. epFoot records which foot owns each open line; foot indices can be 0,
-            // so guard on the epLines boolean, not epFoot's truthiness.
-            if (st.epLines[id] && st.epFoot[id] === i) continue;
-            if (hasLine && !cornerContact(before[i], after[i], id, st.epLines)) {
-                // #debug HUD: record exactly what was refused and how far off the corner it was
-                if (typeof DEBUG_CROSS !== 'undefined' && DEBUG_CROSS && typeof dbgLog !== 'undefined') {
-                    let d = 1e9;
-                    for (const P of LINE_INTERSECTIONS) if (P.lines.includes(id))
-                        d = Math.min(d, Math.hypot(after[i].x - P.x, after[i].y - P.y));
-                    dbgLog.push(`BLOCK f${i} x ${id} (ep:${Object.keys(st.epLines).join('')}) d=${d.toFixed(2)}`);
-                    if (dbgLog.length > 6) dbgLog.shift();
-                }
-                return true;
-            }
-            if (!st.epLines[id]) st.epFoot[id] = i;    // first foot to cross this line owns it
-            st.epLines[id] = true; hasLine = true;
-        }
-        st.inCrossing = true;
+    if (entered && !hadContact) {          // piece off→on: a new contact episode wants to open
+        if (st.crossings >= CFG.maxCrossingsPerTurn) return true;   // one per turn: refuse, roll back
+        st.crossings++;                     // billed when it OPENS (parking on a line spends it too)
     }
-    if (st.inCrossing && !pieceHoldingLine(after, st)){ st.crossings++; st.inCrossing = false; st.epLines = null; st.epFoot = null; }   // episode complete -> count it
-    for (let i=0;i<3;i++) {  // record pad contact after the checks, so approach is caught before mount
-        const near = nearLineIds(after[i], CFG.touchEps);
-        for (const id of near)
-            if (!st.touchedLine[i].includes(id)) st.touchedLine[i].push(id);
-        // grace-locality upkeep: drop any start line this foot is no longer touching. Done AFTER the
-        // grace check above, so the departure crossing itself (foot still within pad contact at the
-        // instant its centre crosses) is always forgiven before eligibility can lapse.
-        if (st.graceLive[i].length) st.graceLive[i] = st.graceLive[i].filter(id => near.includes(id));
-    }
+    st.contact = next;
     return false;
 }
 
@@ -2354,7 +2278,7 @@ function reset() {
     red.x  =  CFG.startX; red.rot  = Math.PI;
     G = { pieces:[blue,red], active:0, pinned:null, pivot:null, handle:null, turnDir:0,
           crossings:0, atLimit:false, netRad:0, ptrAngle:null, over:false, winner:null,
-          snap:null, startedOnLine:[[],[],[]], usedGrace:[false,false,false], graceLive:[[],[],[]], touchedLine:[[],[],[]], inCrossing:false };
+          snap:null, contact:null };   // contact: per-foot line-contact sets, lazily derived at the first substep
     fall.active=false; fallenIdx=-1;
     // Un-hide a piece that fell off last game -- but NOT while the how-to-play 3D demo owns the
     // scene (htp3DActive): tripods and htpTripods share the same view3d/scene, so forcing tripods
@@ -2371,12 +2295,8 @@ function takeSnap(){ return G.pieces.map(p=>({x:p.x, y:p.y, rot:p.rot})); }
 function restoreSnap(){
     if (!G.snap) return;
     G.pieces.forEach((p,i)=>{ p.x=G.snap[i].x; p.y=G.snap[i].y; p.rot=G.snap[i].rot; });
-    G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
-    G.usedGrace=[false,false,false]; G.inCrossing=false;
-    if (G.startedOnLine) {   // feet are back at their start pose, so contact history restarts too
-        G.touchedLine = G.startedOnLine.map(a=>a.slice());
-        G.graceLive  = G.startedOnLine.map(a=>a.slice());
-    }
+    G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null;
+    G.contact = null;   // feet are back at their start pose — contact re-derives from it next substep
 }
 // lock a foot of the ACTIVE piece as the pivot — the same setup whether a human tapped it
 // or the AI chose it, so the two input paths can't drift apart.
@@ -2385,12 +2305,9 @@ function pinFoot(idx) {
     G.pinned = idx; G.pivot = { x:feet[idx].x, y:feet[idx].y };
     G.turnDir = 0; G.crossings = 0; G.atLimit = false; G.netRad = 0; G.limitReason = null;
     G.snap = takeSnap();
-    // Grandfather any line the foot's PAD already sits on at turn start (footprint band), so the
-    // stationary pivot / a foot resting on a line don't hold a crossing open or trip the rest check.
-    G.startedOnLine = feet.map(f => nearLineIds(f, CFG.touchEps)); G.usedGrace = [false,false,false];
-    G.touchedLine = G.startedOnLine.map(a => a.slice());   // grows as feet visit lines during the turn
-    G.graceLive  = G.startedOnLine.map(a => a.slice());    // shrinks as feet break contact (grace locality)
-    G.inCrossing = false;
+    // Contact state re-derives from the pinned pose at the first substep; whatever the feet already
+    // sit on becomes the turn's FREE opening episode ("a foot that starts on a line leaves it for free").
+    G.contact = null;
 }
 function applySwing(dA) {
     if (dA===0 || !G.pivot) return;   // no pivot: a stale animation tick raced a reset — ignore it
@@ -2416,7 +2333,7 @@ function applySwing(dA) {
 
 function clearTurn(){ G.pinned=null; G.pivot=null; G.handle=null; G.turnDir=0;
     G.crossings=0; G.atLimit=false; G.netRad=0; G.ptrAngle=null; G.snap=null;
-    G.startedOnLine=[[],[],[]]; G.usedGrace=[false,false,false]; G.graceLive=[[],[],[]]; G.touchedLine=[[],[],[]]; G.inCrossing=false; }
+    G.contact=null; }
 // pure win-check + turn handoff — no DOM. UI-visible effects (fall animation, render,
 // kicking off the AI) are layered on top by ui.js's finishTurn().
 function endTurn() {
@@ -2497,7 +2414,7 @@ function aiTakeTurnSync() {
     let dir=directionToward(feet[plan.pivotIdx], feet[plan.swingIdx], plan.target);
     const snap0=takeSnap();
     const restore=()=>{ G.pieces.forEach((p,i)=>{ p.x=snap0[i].x; p.y=snap0[i].y; p.rot=snap0[i].rot; });
-                        G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; };
+                        G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null; };
     let net = simMoveToLimit(plan.pivotIdx, dir); restore();
     if (Math.abs(net) < 1e-9) { dir=-dir; net=simMoveToLimit(plan.pivotIdx, dir); restore(); }
     pinFoot(plan.pivotIdx);
@@ -2510,7 +2427,7 @@ function aiTakeTurnSync() {
             if (p===s) continue;
             pinFoot(p);
             for (const d of [1,-1]) { if (Math.abs(aiSwingDir(d)) > 1e-9) break outer;
-                G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; }
+                G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null; }
         }
     }
     endTurn();
@@ -2548,7 +2465,7 @@ function aiChoosePlanHard(aiIdx){
     const snap0 = takeSnap();
     const restore = (snap) => {
         G.pieces.forEach((p,i)=>{ p.x=snap[i].x; p.y=snap[i].y; p.rot=snap[i].rot; });
-        G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
+        G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null;
     };
     let best = null;   // { pivotIdx, dir, targetRad, score }
     for (let mp=0; mp<3; mp++) for (const md of [1,-1]) {
@@ -2584,7 +2501,7 @@ function aiChoosePlanHard(aiIdx){
 //
 // 1. MOVE SET. Besides the 6 swing-to-the-limit moves, the root also considers EARLY STOPS that
 //    PARK a moving foot in the grace band of a line (pad on it, magnet off it). A parked foot
-//    leaves its line for free next turn (pinFoot's startedOnLine grandfathering), so a second foot's
+//    leaves its line for free next turn (the free start-contact episode), so a second foot's
 //    crossing rides along — two lines gained for one crossing. Strong humans set this up from the
 //    opening and the old to-the-limit-only move set could neither play it nor race it. The deeper
 //    plies stay 6-way to-the-limit: pinFoot re-arms the grace from each simulated pose, so a ply-1
@@ -2617,7 +2534,7 @@ function aiChoosePlanMaster(aiIdx){
     const snap0 = takeSnap();
     const restore = (snap) => {
         G.pieces.forEach((p,i)=>{ p.x=snap[i].x; p.y=snap[i].y; p.rot=snap[i].rot; });
-        G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
+        G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null;
     };
     // ply 1: sweep each (pivot × direction) once to its limit, snapshotting up to 2 park stops per
     // sweep on the way (first entry per foot×line pair) plus the limit itself.
@@ -2723,7 +2640,7 @@ function aiChoosePlanZone(aiIdx){
     const snap0 = takeSnap();
     const restore = (snap) => {
         G.pieces.forEach((p,i)=>{ p.x=snap[i].x; p.y=snap[i].y; p.rot=snap[i].rot; });
-        G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
+        G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null;
     };
     let best = null;   // { pivotIdx, dir, targetRad, score }
     for (let mp=0; mp<3; mp++) for (const md of [1,-1]) {
@@ -3403,7 +3320,12 @@ Piece.prototype.draw = function(activeIdx) {
     ctx.strokeStyle=col; ctx.lineWidth=3; ctx.lineCap='round';
     for (const f of feet){ ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.lineTo(f.x,f.y); ctx.stroke(); }
     ctx.fillStyle=col; ctx.beginPath(); ctx.arc(c.x,c.y,4,0,2*Math.PI); ctx.fill();
-    const fr = Math.max(4.5, CFG.footPadRadius*scale);        // ≈ the real foot; floored so it stays visible
+    // Pointy magnet feet: drawn at the MAGNET/dot size (padRadius ≈ 0.55u), which makes the visual
+    // honest against the crossing rule — the drawn dot touches the drawn line stroke at almost
+    // exactly the distance the engine registers contact (0.55 + half line width ≈ touchEps). The
+    // engine's release band is a whisker wider (lineStick) — the feet act a tiny bit stickier than
+    // they look, by design. Floored in px so they stay visible/tappable-looking on small boards.
+    const fr = Math.max(3.5, CFG.padRadius*scale);
     for (let i=0;i<3;i++){ const f=feet[i];
         ctx.beginPath(); ctx.arc(f.x,f.y, activeIdx===i ? fr+1.5 : fr, 0, 2*Math.PI);
         ctx.fillStyle=(activeIdx===i)?'#ffd23f':col; ctx.fill();
@@ -3519,7 +3441,7 @@ function startAiTurn() {
         dir = directionToward(feet[plan.pivotIdx], feet[plan.swingIdx], plan.target);
         const snap0 = takeSnap();
         const restore = () => { G.pieces.forEach((p,i)=>{ p.x=snap0[i].x; p.y=snap0[i].y; p.rot=snap0[i].rot; });
-                                G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; };
+                                G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null; };
         let net = simMoveToLimit(pivotIdx, dir); restore();
         if (Math.abs(net) < 1e-9) { dir = -dir; net = simMoveToLimit(pivotIdx, dir); restore(); }
         target = Math.abs(net) * aiStopFrac();   // dumb (Easy) stops a random 60-90% short of the limit
@@ -3617,7 +3539,7 @@ function demoComputePlan() {
     };
     const rollback = () => {
         G.pieces.forEach((p,i)=>{ p.x=snap[i].x; p.y=snap[i].y; p.rot=snap[i].rot; });
-        G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
+        G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null;
     };
     let fullRad = lookahead(dir);
     if (Math.abs(fullRad) < 1e-9) { rollback(); dir=-dir; fullRad=lookahead(dir); }   // blocked immediately — try the other way
@@ -4809,15 +4731,14 @@ function updateDebugHud() {
     const el = document.getElementById('dbgHud'); if (!el) return;
     if (!G || G.over || (typeof replayActive!=='undefined' && replayActive) || document.getElementById('game').style.display!=='flex') { el.style.display='none'; return; }
     const c = G.active, feet = G.pieces[c].feet();
-    // Log each line-crossing the moment it happens: which foot, which line, and whether that foot
-    // STARTED the turn on that line (= it crossed for free via grace — the double-cross's engine).
+    // Log each centreline-crossing the moment it happens (visual reference only — billing is by
+    // contact episodes now, shown in the per-foot rows below).
     if (G.pinned !== null) {
         if (dbgLastPinned === null) { dbgTurnNo++; dbgLastFeet = null; }   // a new turn just began
         if (dbgLastFeet) {
             const per = countCrossings(dbgLastFeet, feet);
             for (let i=0;i<3;i++) for (const id of per[i]) {
-                const graced = ((G.startedOnLine && G.startedOnLine[i]) || []).includes(id);
-                dbgLog.push(`t${dbgTurnNo} ${c===0?'B':'R'} f${i} x ${id}${graced ? ' <GRACE' : ''}`);
+                dbgLog.push(`t${dbgTurnNo} ${c===0?'B':'R'} f${i} x ${id}`);
                 if (dbgLog.length > 6) dbgLog.shift();
             }
         }
@@ -4825,13 +4746,12 @@ function updateDebugHud() {
     } else { dbgLastFeet = null; }
     dbgLastPinned = G.pinned;
     const rows = feet.map((f,i) => {
-        const pad = nearLineIds(f, CFG.touchEps).join('') || '-';
-        const mag = nearLineIds(f, CFG.holdEps).join('') || '-';
-        const start = ((G.startedOnLine && G.startedOnLine[i]) || []).join('') || '-';
-        const grace = (G.usedGrace && G.usedGrace[i]) ? 'USED' : '·';
-        return `f${i}${i===G.pinned?'*':' '} start:${start.padEnd(4)} pad:${pad.padEnd(4)} mag:${mag.padEnd(4)} grace:${grace}`;
+        const band = nearLineIds(f, CFG.touchEps).join('') || '-';
+        const held = ((G.contact && G.contact[i]) || []).join('') || '-';   // engine's sticky contact set
+        return `f${i}${i===G.pinned?'*':' '} band:${band.padEnd(4)} contact:${held.padEnd(4)}`;
     });
-    el.textContent = `${c===0?'BLUE':'RED'}  cross ${G.crossings}/${CFG.maxCrossingsPerTurn}  inCross:${G.inCrossing?'Y':'n'}  net:${(G.netRad*180/Math.PI).toFixed(0)}deg\n`
+    const open = G.contact && G.contact.some(a => a.length > 0);
+    el.textContent = `${c===0?'BLUE':'RED'}  cross ${G.crossings}/${CFG.maxCrossingsPerTurn}  episode:${open?'OPEN':'-'}  net:${(G.netRad*180/Math.PI).toFixed(0)}deg\n`
         + rows.join('\n')
         + (dbgLog.length ? '\n---- crossings ----\n' + dbgLog.join('\n') : '');
     el.style.display = 'block';
