@@ -303,7 +303,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 93</div>
+<div id="buildTag">build 94</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3456,10 +3456,192 @@ let vsAI = false, aiAnim = null, aiTimer = null, aiDifficulty = 'easy';   // 'du
 // of four and fluttered at 15Hz. Easy's natural-limit stop is found by a rolled-back lookahead
 // (the same deterministic physics, so the replayed swing stops exactly where the sim did).
 const AI_SWING_AVG_SPEED = 0.8;   // rad/s averaged over the swing (peak ≈1.5x at the arc's midpoint)
+
+// ===================== AI LADDER (vs Computer): 8 tournament-calibrated rungs =====================
+// Difficulty is a curve, not five loose presets. Each rung is a brain tuned so it beats the rung
+// below ~60-65% (a genuine, felt step). Elos are from ~600-game AI-vs-AI round robins:
+//   L1 l1 (0) · L2 dumb (117) · L3 (~200) · L4 centre (273) · L5 corner (323) · L6 solid (392) ·
+//   L7 master/Expert (461) · L8 (550, Expert+90 — the current engine ceiling; a real achievement).
+// A brain is either a built-in ('dumb'/'master'), the L1 pushover, or a parametric planner scored by
+// evalPos weights: margin=rim safety, zone=hand-drawn cell values, center=bonus for a foot near the
+// middle (dramatic swings), park=bonus for a foot on a line near a corner (armed to cut next turn),
+// attack=how far the opponent has been shoved past the rim. `noise` = play a random legal move that
+// often (the weakness dial — weakening a competent brain reads better than one that under-commits).
+const AI_LADDER = [
+    { kind:'l1' },                                                                              // L1 pushover
+    { kind:'builtin', brain:'dumb' },                                                           // L2 menu-Easy
+    { kind:'p', w:{margin:.6},                     o:{sampleDeg:26,depth:1,keepStops:1}, noise:.30 }, // L3 cautious pusher
+    { kind:'p', w:{margin:.5,zone:.3,center:1.5},  o:{sampleDeg:18,depth:1,keepStops:2} },      // L4 centre-dancer
+    { kind:'p', w:{margin:.6,zone:.4,park:2},      o:{sampleDeg:18,depth:1,keepStops:2} },      // L5 corner-cutter
+    { kind:'p', w:{margin:1},                      o:{sampleDeg:24,depth:2,keepStops:1,maxCands:8} }, // L6 solid, 2-ply
+    { kind:'builtin', brain:'master' },                                                         // L7 Expert
+    { kind:'p3', w:{margin:1,zone:.5,park:.9,center:.15}, o:{sampleDeg:18,depth:3,keepStops:2,maxCands:11} }, // L8 cap
+];
+let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
+
+function ladderRestore(s){ G.pieces.forEach((p,i)=>{p.x=s[i].x;p.y=s[i].y;p.rot=s[i].rot;}); G.turnDir=0;G.crossings=0;G.atLimit=false;G.netRad=0;G.contact=null; }
+function ladderEval(idx, w){
+    let s = 0;
+    if (w.margin) s += w.margin * marginFor(idx);
+    if (w.zone)   s += w.zone * (pieceZoneScore(G.pieces[idx]) - pieceZoneScore(G.pieces[1-idx]));
+    if (w.center){ let d=1e9; for (const f of G.pieces[idx].feet()) d=Math.min(d, Math.hypot(f.x,f.y)); s += w.center * Math.max(0, 1 - d/12) * 10; }
+    if (w.park){ let a=0;
+        for (const f of G.pieces[idx].feet()){ const on = nearLineIds(f, 0.75);
+            if (on.length){ a += 1;
+                for (const P of LINE_INTERSECTIONS) if (P.lines.some(l=>on.includes(l)) && Math.hypot(f.x-P.x,f.y-P.y) < 9){ a += 1; break; } } }
+        s += w.park * a; }
+    if (w.attack) s += w.attack * (outermostRadU(G.pieces[1-idx]) - CFG.rings[1]);
+    return s;
+}
+// depth 1/2 planner over sampled STOP POINTS along each sweep (the visible partial rotations)
+function ladderSampledPlan(idx, w, o){
+    const origActive=G.active, snap0=takeSnap(); const cands=[];
+    for (let pv=0; pv<3; pv++) for (const dir of [1,-1]){
+        ladderRestore(snap0); G.active=idx; pinFoot(pv);
+        let guard=0, lastMark=0; const local=[];
+        while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && guard++ < 500){
+            applySwing(dir*AI_STEP_RAD); const a=Math.abs(G.netRad);
+            if (o.sampleDeg && a-lastMark >= o.sampleDeg*Math.PI/180 && a >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()){
+                lastMark=a; local.push({pivotIdx:pv,dir,targetRad:a,snap:takeSnap(),q:ladderEval(idx,w)+(G.pieces[1-idx].anyFootOff()?HARD_WIN_BONUS:0)}); }
+        }
+        if (Math.abs(G.netRad) >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff())
+            local.push({pivotIdx:pv,dir,targetRad:Math.abs(G.netRad),snap:takeSnap(),q:ladderEval(idx,w)+(G.pieces[1-idx].anyFootOff()?HARD_WIN_BONUS:0)});
+        local.sort((a,b)=>b.q-a.q); cands.push(...local.slice(0, o.keepStops||2));
+    }
+    if (!cands.length){ ladderRestore(snap0); G.active=origActive; return null; }
+    let best=null;
+    if ((o.depth||1) < 2){ for (const c of cands) if (!best || c.q>best.q) best=c; best={pivotIdx:best.pivotIdx,dir:best.dir,targetRad:best.targetRad}; }
+    else {
+        cands.sort((a,b)=>b.q-a.q);
+        for (const c of cands.slice(0, o.maxCands||10)){
+            ladderRestore(c.snap); let score;
+            if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
+            else {
+                const s1=takeSnap(); let worst=Infinity;
+                reply: for (let op=0; op<3; op++) for (const od of [1,-1]){
+                    ladderRestore(s1); G.active=1-idx;
+                    const onet=simMoveToLimit(op,od);
+                    if (Math.abs(onet) < HARD_MIN_MOVE_RAD) continue;
+                    if (G.pieces[1-idx].anyFootOff()) continue;
+                    const rs = G.pieces[idx].anyFootOff() ? -HARD_WIN_BONUS : ladderEval(idx,w);
+                    if (rs < worst) worst = rs;
+                    if (best && worst <= best.score) break reply;
+                }
+                score = worst===Infinity ? c.q : worst;
+            }
+            if (!best || score > best.score) best={pivotIdx:c.pivotIdx,dir:c.dir,targetRad:c.targetRad,score};
+        }
+    }
+    ladderRestore(snap0); G.active=origActive; return best;
+}
+// depth-3: my sampled move -> opponent's best reply -> my best follow-up (Expert's shape, +partial roots)
+function ladderPlan3(idx, w, o){
+    const origActive=G.active, snap0=takeSnap(); const roots=[];
+    for (let pv=0; pv<3; pv++) for (const dir of [1,-1]){
+        ladderRestore(snap0); G.active=idx; pinFoot(pv);
+        let guard=0, lastMark=0; const local=[];
+        while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && guard++ < 500){
+            applySwing(dir*AI_STEP_RAD); const a=Math.abs(G.netRad);
+            if (o.sampleDeg && a-lastMark >= o.sampleDeg*Math.PI/180 && a >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()){
+                lastMark=a; local.push({pivotIdx:pv,dir,targetRad:a,snap:takeSnap(),q:ladderEval(idx,w)+(G.pieces[1-idx].anyFootOff()?HARD_WIN_BONUS:0)}); }
+        }
+        if (Math.abs(G.netRad) >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff())
+            local.push({pivotIdx:pv,dir,targetRad:Math.abs(G.netRad),snap:takeSnap(),q:ladderEval(idx,w)+(G.pieces[1-idx].anyFootOff()?HARD_WIN_BONUS:0)});
+        local.sort((a,b)=>b.q-a.q); roots.push(...local.slice(0, o.keepStops||2));
+    }
+    if (!roots.length){ ladderRestore(snap0); G.active=origActive; return null; }
+    roots.sort((a,b)=>b.q-a.q); let best=null;
+    for (const c of roots.slice(0, o.maxCands||10)){
+        ladderRestore(c.snap); let score;
+        if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
+        else {
+            const s1=takeSnap(); let worst=Infinity;
+            reply: for (let op=0; op<3; op++) for (const od of [1,-1]){
+                ladderRestore(s1); G.active=1-idx;
+                const onet=simMoveToLimit(op,od);
+                if (Math.abs(onet) < HARD_MIN_MOVE_RAD) continue;
+                if (G.pieces[1-idx].anyFootOff()) continue;
+                let rs;
+                if (G.pieces[idx].anyFootOff()) rs = -HARD_WIN_BONUS;
+                else {
+                    const s2=takeSnap(); let bf=-Infinity;
+                    for (let fp=0; fp<3 && bf<HARD_WIN_BONUS/2; fp++) for (const fd of [1,-1]){
+                        ladderRestore(s2); G.active=idx;
+                        const fnet=simMoveToLimit(fp,fd);
+                        if (Math.abs(fnet) < HARD_MIN_MOVE_RAD) continue;
+                        if (G.pieces[idx].anyFootOff()) continue;
+                        const fs = G.pieces[1-idx].anyFootOff() ? HARD_WIN_BONUS+ladderEval(idx,w) : ladderEval(idx,w);
+                        if (fs>bf) bf=fs;
+                    }
+                    rs = bf===-Infinity ? ladderEval(idx,w) : bf;
+                }
+                if (rs<worst) worst=rs;
+                if (best && worst<=best.score) break reply;
+            }
+            score = worst===Infinity ? c.q : worst;
+        }
+        if (!best || score>best.score) best={pivotIdx:c.pivotIdx,dir:c.dir,targetRad:c.targetRad,score};
+    }
+    ladderRestore(snap0); G.active=origActive; return best;
+}
+// manual sweep returning the natural limit + where the first crossing gets billed (for L1/random)
+function ladderProbe(idx, pv, dir){
+    const snap0=takeSnap(); pinFoot(pv);
+    let guard=0, radAtCross=null;
+    while (Math.abs(G.netRad)<AI_SAFETY_CAP_RAD && !G.atLimit && guard++<500){
+        applySwing(dir*AI_STEP_RAD);
+        if (radAtCross===null && G.crossings>0) radAtCross=Math.abs(G.netRad);
+    }
+    const lim=Math.abs(G.netRad); ladderRestore(snap0); return {lim, radAtCross};
+}
+// L2's brain as a PLAN (heuristic pivot/dir, stop a random 60-90% short — the current menu-Easy)
+function ladderDumbPlan(idx){
+    const plan=aiChoosePlan(idx), feet=G.pieces[idx].feet();
+    let dir=directionToward(feet[plan.pivotIdx], feet[plan.swingIdx], plan.target);
+    const snap0=takeSnap();
+    let net=simMoveToLimit(plan.pivotIdx,dir); ladderRestore(snap0);
+    if (Math.abs(net)<1e-9){ dir=-dir; net=simMoveToLimit(plan.pivotIdx,dir); ladderRestore(snap0); }
+    return {pivotIdx:plan.pivotIdx, dir, targetRad:Math.abs(net)*aiStopFrac()};
+}
+// L1 pushover: pivot the foot nearest the opponent, swing the far foot toward them, don't fully
+// commit and often stop shy of a line; no thought for its own safety.
+function ladderL1Plan(idx){
+    const opp=G.pieces[1-idx], feet=G.pieces[idx].feet();
+    let pv=0,dmin=1e9; feet.forEach((f,i)=>{const d=Math.hypot(f.x-opp.x,f.y-opp.y); if(d<dmin){dmin=d;pv=i;}});
+    if (Math.random()<0.2) pv=Math.floor(Math.random()*3);
+    let sw=(pv+1)%3,dmax=-1; feet.forEach((f,i)=>{ if(i!==pv){const d=Math.hypot(f.x-opp.x,f.y-opp.y); if(d>dmax){dmax=d;sw=i;}}});
+    let dir=directionToward(feet[pv],feet[sw],{x:opp.x,y:opp.y});
+    let p=ladderProbe(idx,pv,dir);
+    if (p.lim<HARD_MIN_MOVE_RAD){ dir=-dir; p=ladderProbe(idx,pv,dir); }
+    if (p.lim<HARD_MIN_MOVE_RAD) return ladderDumbPlan(idx);
+    let target=p.lim*(0.45+Math.random()*0.35);
+    if (Math.random()<0.55 && p.radAtCross!==null && p.radAtCross*0.8 > HARD_MIN_MOVE_RAD*1.5)
+        target=Math.min(target, p.radAtCross*0.8);
+    return {pivotIdx:pv, dir, targetRad:target};
+}
+// a random legal plan (the noise dial's move)
+function ladderRandomPlan(idx){
+    for(let t=0;t<8;t++){ const pv=Math.floor(Math.random()*3), dir=Math.random()<0.5?1:-1;
+        const p=ladderProbe(idx,pv,dir);
+        if (p.lim>=HARD_MIN_MOVE_RAD) return {pivotIdx:pv, dir, targetRad:p.lim*(0.3+Math.random()*0.6)}; }
+    return ladderDumbPlan(idx);
+}
+// returns { pivotIdx, dir, targetRad } for the ladder brain at `levelIdx`, whoever is active (idx)
+function ladderPlanFor(levelIdx, idx){
+    const def=AI_LADDER[levelIdx]; if (!def) return null;
+    if (def.noise && Math.random()<def.noise) return ladderRandomPlan(idx);
+    if (def.kind==='l1') return ladderL1Plan(idx);
+    if (def.kind==='builtin') return def.brain==='master' ? searchedPlanFor('master', idx) : ladderDumbPlan(idx);
+    if (def.kind==='p3') return ladderPlan3(idx, def.w, def.o);
+    return ladderSampledPlan(idx, def.w, def.o);
+}
+
 function startAiTurn() {
     if (G.over || G.active!==aiIdx) return;
     let pivotIdx, dir, target = 0;
-    const sp = searchedPlanFor(aiDifficulty, aiIdx);
+    // Ladder games route through the tuned per-level brain; everything else uses the classic
+    // difficulty planner. Both return the same { pivotIdx, dir, targetRad } the animation plays.
+    const sp = (ladderLevel!=null) ? ladderPlanFor(ladderLevel, aiIdx) : searchedPlanFor(aiDifficulty, aiIdx);
     if (sp) { pivotIdx = sp.pivotIdx; dir = sp.dir; target = sp.targetRad; }
     else {
         const plan = aiChoosePlan(aiIdx);
@@ -3779,6 +3961,7 @@ function startGame(aiMode, humanColorIdx, difficulty) {
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
     vsAI = aiMode;
     aiDifficulty = difficulty || 'normal';
+    if (difficulty !== 'ladder') ladderLevel = null;   // classic AI / online / local game — not a ladder rung
     humanIdx = humanColorIdx===undefined ? 0 : humanColorIdx;
     aiIdx = 1 - humanIdx;
     clearTimeout(aiTimer); aiAnim = null;
@@ -3793,10 +3976,16 @@ function startGame(aiMode, humanColorIdx, difficulty) {
     if (vsAI && G.active===aiIdx) aiTimer = setTimeout(startAiTurn, 450);
     if (typeof updateWaitBanner === 'function') updateWaitBanner();   // keep the "still searching" pill across repeated AI games
 }
+// Start a ladder rung (0-based). humanColorIdx 0 = play Blue (the usual first climb), 1 = Red (the
+// harder second clear). Routes through startGame with the 'ladder' tag so the tuned brain is used.
+function startLadderLevel(levelIdx, humanColorIdx) {
+    ladderLevel = levelIdx;
+    startGame(true, humanColorIdx===undefined ? 0 : humanColorIdx, 'ladder');
+}
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
     clearTimeout(aiTimer); aiAnim = null;
-    replayActive = false;
+    replayActive = false; ladderLevel = null;
     if (typeof rmxTeardown === 'function') rmxTeardown(true);   // tell a waiting opponent we left
     mmWaitingAI = false;   // leaving to the menu also leaves the play-AI-while-you-wait queue
     cancelMatchmaking(); exitOnlineMatch();
