@@ -303,7 +303,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 91</div>
+<div id="buildTag">build 92</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2700,9 +2700,9 @@ let SKIN = null, colorLab = false, colorLabTimer = null;
 const SLATE_SKIN  = { shadeByZoneValue:true, v4:'#5a636c', v3:'#4b535b', v2:'#3c434a', v1:'#2f353b',
     flat:'#454d55', lines:'#12161a', rim:'#8f979e', bg:'#0c0e11', pb:'#5487c4', pr:'#d05a48' };
 const DOJO_SKIN   = { shadeByZoneValue:true, v4:'#e9d9b3', v3:'#ddc99b', v2:'#cbb47e', v1:'#b89a62',
-    flat:'#d9c9a3', lines:'#3a2f22', rim:'#8a6f4a', bg:'#0c0e11', pb:'#243f78', pr:'#cf3b26' };
+    flat:'#d9c9a3', lines:'#3a2f22', rim:'#3c434a', bg:'#0c0e11', pb:'#243f78', pr:'#cf3b26' };
 const YELLOW_SKIN = { shadeByZoneValue:false, v4:'#efe4a6', v3:'#efe4a6', v2:'#efe4a6', v1:'#efe4a6',
-    flat:'#efe4a6', lines:'#26251f', rim:'#cfd3d7', bg:'#0c0e11', pb:'#6b9eff', pr:'#ff6b6b' };
+    flat:'#efe4a6', lines:'#26251f', rim:'#3c434a', bg:'#0c0e11', pb:'#6b9eff', pr:'#ff6b6b' };
 // Board looks, ordered DARKEST -> LIGHTEST; the ☀ button steps through and loops. null = the flat
 // dark board. Dark and Yellow are the two originals; Slate and Dojo are the graded colourways.
 const BOARD_SKINS = [
