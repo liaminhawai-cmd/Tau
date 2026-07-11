@@ -320,7 +320,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 98</div>
+<div id="buildTag">build 99</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3989,6 +3989,10 @@ function renderGameOverSheet() {
 function startGame(aiMode, humanColorIdx, difficulty) {
     hideModal(); clearTimeout(gameOverTimer);
     demoStop();
+    // Mint a guest identity the first time someone actually PLAYS (not on mere page load), so level
+    // clears record and presence counts them -- while bounces/crawlers never create an account. Guests
+    // still never touch the leaderboard (it needs a real win/loss, which only online human matches set).
+    if (typeof ensureGuestSession === 'function') ensureGuestSession();
     replaySourceMatchId = null;              // a freshly started game isn't a watched public replay
     if (!mmWaitingAI) cancelMatchmaking();   // the play-AI-while-you-wait game keeps the queue alive
     exitOnlineMatch();
@@ -6177,6 +6181,18 @@ async function ensureSupabase() {
     return sb;
 }
 
+// Give every visitor an identity up front: if there's no session yet, sign in anonymously so they
+// get a real auth.uid() + profiles/ELO row from the moment they arrive. That's what makes level
+// clears record, presence count them, and the leaderboard know who they are -- rather than an
+// "undefined" nobody until they happen to click something online. They're still just a guest until
+// they sign in to name/keep the account (the account panel already shows "Playing as …" + sign-in).
+let guestSignInTried = false;
+async function ensureGuestSession() {
+    if (!sb || sbUser || guestSignInTried) return;
+    guestSignInTried = true;
+    try { await sb.auth.signInAnonymously(); }               // onAuthStateChange -> setSession fills sbUser
+    catch (e) { guestSignInTried = false; }                  // let a later game retry if the network hiccuped
+}
 async function setSession(session) {
     sbUser = session ? session.user : null;
     const signedOut = document.getElementById('acctSignedOut'), signedIn = document.getElementById('acctSignedIn');
