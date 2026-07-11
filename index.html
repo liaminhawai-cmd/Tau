@@ -303,7 +303,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 92</div>
+<div id="buildTag">build 93</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2915,6 +2915,7 @@ function startReplay() {
     }
     replayTurnIdx = 0; replayPhase = 'play'; replayPhaseT = 0; replayLastT = performance.now();
     replayActive = true; replaySoundedTurn = -1;
+    camCenterFrac = 1; camManualSet = false;   // watch from the auto board-centred frame, not the view left over from the live game
     if (!replayNames) replayNames = replayPlayerNames();   // label the turns (post-game path)
     // Replay uses the SAME audio engine as a live game: first clear the loss-swell reverb the game
     // left cranked up (else the whole replay sounds drenched), then ring the start bowl like a fresh
@@ -5153,6 +5154,32 @@ function autoCamDistance(mx, mz, px, pz, targetY, extraPts) {
 // of the blend). No easing here — just the target.
 function computeFullFrame(outPos, outTgt) {
     let mx, mz, px, pz;
+    // Watching, not playing (replay / shared link / spectating): don't chase the pieces. The live
+    // game's frame targets the piece midpoint (or the winner, once G.over) and swings its heading
+    // with the pieces — great when you're steering, but as a passive viewer it reads as the board
+    // sliding around under a camera "locked to the wrong point" (PC) and following too hard (phone).
+    // Instead lean the target most of the way back to the board CENTRE, hold a near-fixed north-up
+    // heading so the view doesn't swivel, and fit the rim with a little extra margin (a hair zoomed
+    // out) so the whole board stays comfortably on show while the pieces dance on it.
+    const watching = (typeof replayActive !== 'undefined' && replayActive)
+                  || (typeof sharedReplay  !== 'undefined' && sharedReplay)
+                  || (typeof onlineMatch   !== 'undefined' && onlineMatch && onlineMatch.spectator);
+    if (watching && G.pieces && G.pieces.length === 2) {
+        const p0 = G.pieces[0], p1 = G.pieces[1];
+        const TB = 0.6;                                  // target: 60% toward board centre, 40% the action
+        mx = (p0.x + p1.x) / 2 * (1 - TB);
+        mz = (p0.y + p1.y) / 2 * (1 - TB);
+        let dx = p1.x - p0.x, dz = p1.y - p0.y; const len = Math.hypot(dx, dz);
+        if (len < 1e-6) { dx = 1; dz = 0; } else { dx /= len; dz /= len; }
+        let hx = -dz, hz = dx; if (hz < 0) { hx = -hx; hz = -hz; }
+        const HB = 0.7;                                  // heading: 70% toward fixed north (+z), so it barely swings
+        hx *= (1 - HB); hz = hz * (1 - HB) + HB;
+        const hl = Math.hypot(hx, hz) || 1; px = hx / hl; pz = hz / hl;
+        const dist = autoCamDistance(mx, mz, px, pz, AUTOCAM_TARGET_Y) * 1.08;
+        outTgt.set(mx, AUTOCAM_TARGET_Y, mz);
+        outPos.set(mx + px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), AUTOCAM_TARGET_Y + dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), mz + pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L));
+        return;
+    }
     if (G.over) {
         // once the fall finishes, the loser's G-piece coordinates are just wherever they were
         // the instant the game ended (often already well past the rim) and never move again —
