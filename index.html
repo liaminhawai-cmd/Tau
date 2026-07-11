@@ -320,7 +320,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 97</div>
+<div id="buildTag">build 98</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -6785,10 +6785,14 @@ function updateWaitBanner() {
     el.classList.toggle('on', show);
     if (show) document.getElementById('waitBannerText').textContent = t('Searching…');
 }
-// Start a normal vs-AI game (player = blue, last-used difficulty) with the queue still live.
+// Start a ladder game at the player's current level (first Blue not yet cleared) with the queue
+// still live — so the wait-filler uses the same tuned brains as the Levels screen, not a retired
+// difficulty. A win here counts toward the ladder like any other; a found match interrupts it.
 function startAiWhileWaiting() {
     mmWaitingAI = true;
-    startGame(true, 0, AI_DIFF_LABEL[aiDifficulty] ? aiDifficulty : 'easy');
+    let lvl = LADDER_N;
+    for (let n=1; n<=LADDER_N; n++){ if (!ladderCleared(n,0)){ lvl=n; break; } }
+    startLadderLevel(lvl-1, 0);
     showPassToast(t('Still searching — you’ll be told when an opponent appears.'));
     updateWaitBanner();
 }
@@ -6823,7 +6827,7 @@ async function enterOnlineMatch(row) {
 }
 async function finishEnterOnlineMatch(row) {
     setPresenceStatus('match');
-    clearTimeout(aiTimer); aiAnim = null;   // a pending AI-while-you-wait move must not fire into the online match
+    clearTimeout(aiTimer); aiAnim = null; ladderLevel = null;   // a pending AI-while-you-wait move must not fire into the online match
     hideModal();
     demoStop();
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
