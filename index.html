@@ -303,7 +303,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 86</div>
+<div id="buildTag">build 87</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2117,20 +2117,23 @@ const LINE_INTERSECTIONS = (() => {
 // foot passes close enough to an intersection point shared by newId and a line already crossed in
 // the open episode that its magnet never lost contact with that line — i.e. it truly ROUNDED the
 // corner (one continuous contact = one crossing) rather than lifting off and re-landing (two).
-// The threshold is the magnet's line-contact reach: at the r0∩a1 corner, a magnet crossing r0 at
-// straight-line distance d from the point sits gap≈0.92·d from the a1 line, and the magnet
-// (radius ≈0.55u) still overlaps that line's stroke (half-width ≈0.26u) out to gap ≈0.81u, i.e.
-// d ≈ 0.88u. 0.80 sits just inside that: genuine rounds — including the 0.71–0.78u ones the strict
-// old 0.63 wrongly blocked — pass, while a swing that cuts wide (magnet clear of the line) is still
-// two crossings. Opening double-crosses stay impossible regardless: from the start no swing ever
-// even brings a foot near a second line while one is open (verified by exhaustive search).
-const JUMP_EPS = 0.80;
-function jumpsIntersection(foot, newId, epLines) {
-    for (const P of LINE_INTERSECTIONS) {
-        if (!P.lines.includes(newId)) continue;
-        if (!P.lines.some(id => epLines[id])) continue;
-        if (Math.hypot(foot.x - P.x, foot.y - P.y) <= JUMP_EPS) return true;
-    }
+// Implemented as the rulebook states it ("a crossing lasts as long as the piece stays on a line"):
+// the crossing FOOT must still be in pad contact with an episode line OTHER than the one it is now
+// crossing. This replaced an older distance-to-the-corner-POINT test (JUMP_EPS): that proxy was
+// sampled only at the post-substep position, and a 0.4° substep is ~0.28u of travel at ring radius —
+// against a hard radial cutoff, whether a genuine round passed depended on where the substeps
+// happened to land, which flipped with swing DIRECTION (the reported "sometimes I'm right on the
+// corner and blocked, other times it's forgiving" / clockwise-vs-anticlockwise feel). Contact with
+// the LINE varies slowly and is checked at before/mid/after, so direction can't bias it. Excluding
+// the line being crossed is what keeps the build-72 ruling intact: a foot is trivially "in contact"
+// with the line it is crossing, so without the exclusion any same-line re-cross would self-merge.
+// Geometry note: rings are concentric and the two side arcs never meet, so cross-contact with a
+// DIFFERENT line is only physically possible near a printed corner — this can't loosen anything
+// away from corners.
+function cornerContact(before, after, newId, epLines) {
+    const mid = { x:(before.x+after.x)/2, y:(before.y+after.y)/2 };
+    for (const p of [before, mid, after])
+        if (nearLineIds(p, CFG.touchEps).some(l => l !== newId && epLines[l])) return true;
     return false;
 }
 // One sub-step of the crossing rule, shared by real turns (applySwing) and the how-to practice
@@ -2139,15 +2142,24 @@ function jumpsIntersection(foot, newId, epLines) {
 // and AFTER a small rotation, it updates st's crossing bookkeeping and returns true if the swing has
 // hit the one-crossing limit and must be rolled back by the caller.
 function crossingSubstep(before, after, st) {
+    // Departure-grace LOCALITY: a start line stays grace-eligible for a foot only while that foot has
+    // remained in continuous pad contact with it since the turn began. Without this, the grace had no
+    // locality at all — a foot that started on the left arc, swung 40+ units around the board, and
+    // re-crossed that same arc somewhere else entirely got its crossing forgiven as a "departure"
+    // (seen in the wild: a 164° AI swing that visibly crossed the arc twice and the ring once, at the
+    // cost of zero counted crossings). graceLive is initialised from startedOnLine by pinFoot() /
+    // restoreSnap() (lazily here for any caller that predates the field) and only ever SHRINKS during
+    // a turn: once contact with a start line breaks, re-touching it later doesn't restore the grace.
+    if (!st.graceLive) st.graceLive = st.startedOnLine.map(a => a.slice());
     const per = countCrossings(before, after);
     let centreCrossed = false;
     const newCrossings = [];   // [footIdx, lineId] of every non-graced centre-crossing this substep
     for (let i=0;i<3;i++){
         let ids = per[i];
         if (ids.length===0) continue;
-        if (!st.usedGrace[i] && ids.some(id => st.startedOnLine[i].includes(id))){
+        if (!st.usedGrace[i] && ids.some(id => st.graceLive[i].includes(id))){
             st.usedGrace[i]=true;
-            ids = ids.filter(id => !st.startedOnLine[i].includes(id));
+            ids = ids.filter(id => !st.graceLive[i].includes(id));
             if (ids.length===0) continue;
         }
         centreCrossed = true;
@@ -2158,11 +2170,9 @@ function crossingSubstep(before, after, st) {
     if (st.crossings >= CFG.maxCrossingsPerTurn && !st.inCrossing
         && (centreCrossed || pieceTouchingUntouchedLine(after, st))) return true;
     // Corner rule: one episode covers ONE line — a second DISTINCT line joins the same episode only
-    // via a genuine intersection jump (magnet on the marked point). Without this, the magnet bands
-    // of a ring and an arc overlap in a small lens around their corner, and a swing threading that
-    // lens chained both lines into one counted crossing ("cutting the corner") — impossible on the
-    // physical board, and dependent on which side of the lens the path grazed, which is why it
-    // seemed to work in one turn direction and not the mirror. Same-line re-crossings stay merged.
+    // when the crossing foot genuinely rounds a printed corner (still in contact with an episode
+    // line as it crosses the new one — see cornerContact). Same-line re-crossings by the same foot
+    // stay merged.
     if (centreCrossed) {
         if (!st.inCrossing || !st.epLines) { st.epLines = {}; st.epFoot = {}; }
         let hasLine = st.inCrossing && Object.keys(st.epLines).length > 0;
@@ -2170,11 +2180,11 @@ function crossingSubstep(before, after, st) {
             // The SAME foot re-crossing the line it already crossed this episode is departure wiggle —
             // merge it (no new count). A DIFFERENT foot crossing that same line is a genuine SECOND
             // crossing of it (the reported "two feet cross the same arc at different times"): it must
-            // NOT merge — it falls through to the jump test and is blocked unless it is a true corner
-            // jump. epFoot records which foot owns each open line; foot indices can be 0, so guard on
-            // the epLines boolean, not epFoot's truthiness.
+            // NOT merge — it falls through to the corner-contact test and is blocked unless it is a
+            // true corner round. epFoot records which foot owns each open line; foot indices can be 0,
+            // so guard on the epLines boolean, not epFoot's truthiness.
             if (st.epLines[id] && st.epFoot[id] === i) continue;
-            if (hasLine && !jumpsIntersection(after[i], id, st.epLines)) {
+            if (hasLine && !cornerContact(before[i], after[i], id, st.epLines)) {
                 // #debug HUD: record exactly what was refused and how far off the corner it was
                 if (typeof DEBUG_CROSS !== 'undefined' && DEBUG_CROSS && typeof dbgLog !== 'undefined') {
                     let d = 1e9;
@@ -2191,9 +2201,15 @@ function crossingSubstep(before, after, st) {
         st.inCrossing = true;
     }
     if (st.inCrossing && !pieceHoldingLine(after, st)){ st.crossings++; st.inCrossing = false; st.epLines = null; st.epFoot = null; }   // episode complete -> count it
-    for (let i=0;i<3;i++)   // record pad contact after the checks, so approach is caught before mount
-        for (const id of nearLineIds(after[i], CFG.touchEps))
+    for (let i=0;i<3;i++) {  // record pad contact after the checks, so approach is caught before mount
+        const near = nearLineIds(after[i], CFG.touchEps);
+        for (const id of near)
             if (!st.touchedLine[i].includes(id)) st.touchedLine[i].push(id);
+        // grace-locality upkeep: drop any start line this foot is no longer touching. Done AFTER the
+        // grace check above, so the departure crossing itself (foot still within pad contact at the
+        // instant its centre crosses) is always forgiven before eligibility can lapse.
+        if (st.graceLive[i].length) st.graceLive[i] = st.graceLive[i].filter(id => near.includes(id));
+    }
     return false;
 }
 
@@ -2338,7 +2354,7 @@ function reset() {
     red.x  =  CFG.startX; red.rot  = Math.PI;
     G = { pieces:[blue,red], active:0, pinned:null, pivot:null, handle:null, turnDir:0,
           crossings:0, atLimit:false, netRad:0, ptrAngle:null, over:false, winner:null,
-          snap:null, startedOnLine:[[],[],[]], usedGrace:[false,false,false], touchedLine:[[],[],[]], inCrossing:false };
+          snap:null, startedOnLine:[[],[],[]], usedGrace:[false,false,false], graceLive:[[],[],[]], touchedLine:[[],[],[]], inCrossing:false };
     fall.active=false; fallenIdx=-1;
     // Un-hide a piece that fell off last game -- but NOT while the how-to-play 3D demo owns the
     // scene (htp3DActive): tripods and htpTripods share the same view3d/scene, so forcing tripods
@@ -2357,7 +2373,10 @@ function restoreSnap(){
     G.pieces.forEach((p,i)=>{ p.x=G.snap[i].x; p.y=G.snap[i].y; p.rot=G.snap[i].rot; });
     G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
     G.usedGrace=[false,false,false]; G.inCrossing=false;
-    if (G.startedOnLine) G.touchedLine = G.startedOnLine.map(a=>a.slice());   // feet are back at their start pose
+    if (G.startedOnLine) {   // feet are back at their start pose, so contact history restarts too
+        G.touchedLine = G.startedOnLine.map(a=>a.slice());
+        G.graceLive  = G.startedOnLine.map(a=>a.slice());
+    }
 }
 // lock a foot of the ACTIVE piece as the pivot — the same setup whether a human tapped it
 // or the AI chose it, so the two input paths can't drift apart.
@@ -2370,6 +2389,7 @@ function pinFoot(idx) {
     // stationary pivot / a foot resting on a line don't hold a crossing open or trip the rest check.
     G.startedOnLine = feet.map(f => nearLineIds(f, CFG.touchEps)); G.usedGrace = [false,false,false];
     G.touchedLine = G.startedOnLine.map(a => a.slice());   // grows as feet visit lines during the turn
+    G.graceLive  = G.startedOnLine.map(a => a.slice());    // shrinks as feet break contact (grace locality)
     G.inCrossing = false;
 }
 function applySwing(dA) {
@@ -2396,7 +2416,7 @@ function applySwing(dA) {
 
 function clearTurn(){ G.pinned=null; G.pivot=null; G.handle=null; G.turnDir=0;
     G.crossings=0; G.atLimit=false; G.netRad=0; G.ptrAngle=null; G.snap=null;
-    G.startedOnLine=[[],[],[]]; G.usedGrace=[false,false,false]; G.touchedLine=[[],[],[]]; G.inCrossing=false; }
+    G.startedOnLine=[[],[],[]]; G.usedGrace=[false,false,false]; G.graceLive=[[],[],[]]; G.touchedLine=[[],[],[]]; G.inCrossing=false; }
 // pure win-check + turn handoff — no DOM. UI-visible effects (fall animation, render,
 // kicking off the AI) are layered on top by ui.js's finishTurn().
 function endTurn() {
@@ -2952,7 +2972,6 @@ function startReplay() {
     }
     replayTurnIdx = 0; replayPhase = 'play'; replayPhaseT = 0; replayLastT = performance.now();
     replayActive = true; replaySoundedTurn = -1;
-    if (typeof resize === 'function') resize();   // re-flow to the bigger-3D "watching" layout now that replayActive is true
     if (!replayNames) replayNames = replayPlayerNames();   // label the turns (post-game path)
     // Replay uses the SAME audio engine as a live game: first clear the loss-swell reverb the game
     // left cranked up (else the whole replay sounds drenched), then ring the start bowl like a fresh
@@ -2961,6 +2980,10 @@ function startReplay() {
     if (typeof playGameBowl === 'function') playGameBowl();
     document.getElementById('btns').style.display = 'none';           // no Surrender while watching
     document.getElementById('replayBtns').style.display = 'flex';     // Share this game / Skip
+    // Re-flow to the bigger-3D "watching" layout. AFTER the button-row swap above, so resize()
+    // measures the row that will actually be on screen (the replay bar can be taller than
+    // Surrender/Menu when its four buttons wrap on a narrow phone).
+    if (typeof resize === 'function') resize();
     if (typeof rmxSend === 'function') rmxSend('watching');   // opponent's sheet: "X is watching the replay"
     showPassToast(t('Replay — tap the board to skip'));
 }
@@ -5331,7 +5354,12 @@ function resize() {
                + document.getElementById('status').offsetHeight
                + document.getElementById('meta').offsetHeight
                + document.getElementById('help').offsetHeight
-               + document.getElementById('btns').offsetHeight + 34;
+               // whichever button row is actually showing: #btns normally, #replayBtns during a
+               // replay (they swap display). Measuring only #btns under-counted by the whole replay
+               // bar while watching (a hidden row is 0px), so the boards oversized and the replay
+               // controls were pushed part-way below the fold — the reported obscured lower buttons.
+               + Math.max(document.getElementById('btns').offsetHeight,
+                          document.getElementById('replayBtns').offsetHeight) + 34;
     // #wrap now pads down by the iOS safe-area inset (notch/Dynamic Island); that padding eats into
     // the height available for the boards, so measure it and subtract it too (0 on non-notched devices).
     const safeTop = parseFloat(getComputedStyle(document.getElementById('wrap')).paddingTop) || 0;
