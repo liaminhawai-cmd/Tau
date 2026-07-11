@@ -303,7 +303,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 89</div>
+<div id="buildTag">build 90</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2121,17 +2121,24 @@ const LINE_INTERSECTIONS = (() => {
 function crossingSubstep(before, after, st) {
     if (!st.contact) st.contact = before.map(f => nearLineIds(f, CFG.touchEps));
     const stickEps = CFG.touchEps + CFG.lineStick;
-    const hadContact = st.contact.some(a => a.length > 0);
-    const next = []; let entered = false;
+    const next = []; let opened = 0;
     for (let i=0;i<3;i++){
+        // PER-FOOT contact episodes. hadContact must be this foot's own state, NOT the whole piece's:
+        // a stationary pivot foot resting on a line keeps continuous contact all turn, and a piece-level
+        // "any foot in contact" flag let that permanent contact mask every OTHER foot's crossings (pin a
+        // foot on the inner ring, then sweep the others across as many lines as you like, all free — the
+        // reported illegal AI/demo moves). Tracking each foot's own off→on transition closes that.
+        const hadContact = st.contact[i].length > 0;
         const kept = st.contact[i].filter(id => nearLineIds(after[i], stickEps).includes(id));
+        let entered = false;
         for (const id of nearLineIds(after[i], CFG.touchEps))
             if (!kept.includes(id)) { kept.push(id); entered = true; }
+        if (entered && !hadContact) opened++;   // this foot went off→on: it opens a fresh crossing episode
         next.push(kept);
     }
-    if (entered && !hadContact) {          // piece off→on: a new contact episode wants to open
-        if (st.crossings >= CFG.maxCrossingsPerTurn) return true;   // one per turn: refuse, roll back
-        st.crossings++;                     // billed when it OPENS (parking on a line spends it too)
+    if (opened) {                          // bill each foot that started a fresh episode this substep
+        if (st.crossings + opened > CFG.maxCrossingsPerTurn) return true;   // over the one-per-turn budget: roll back
+        st.crossings += opened;             // billed when it OPENS (parking on a line spends it too)
     }
     st.contact = next;
     return false;
