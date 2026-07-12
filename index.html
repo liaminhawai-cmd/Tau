@@ -98,12 +98,12 @@
     .zcY { display:inline-flex; flex-direction:column; justify-content:center;
         font-size:clamp(8px, 0.5em, 14px); line-height:1; font-weight:500; opacity:0.92; margin-left:2px; user-select:none; }
     .ltstat .zcY { font-size:7px; }   /* the crowd stat itself is only 10px -- needs its own smaller floor */
-    /* Second tier, all one size: Local 1v1, Watch, How to play, Get a physical set, Leaderboard --
-       clearly lighter than the AI/Online pair above, but each still a real button, not a text link.
-       Wider than the primary row on purpose (not capped to 260px) so the five pack into two tidy
-       rows instead of stacking one-per-line -- that 260px cap was the mess. */
-    .playRowSmall { display:flex; flex-wrap:wrap; gap:7px; justify-content:center; width:min(360px, 92vw); }
-    #menu .pbtnQuiet { flex:none; width:auto; font-size:12.5px; font-weight:600; padding:7px 14px;
+    /* Second tier, all one size, clearly lighter than the AI/Online pair. The 4 utilities are an even
+       2-column grid (auto columns sized to content, so every language gets two tidy rows of two with
+       aligned columns, not the ragged/orphaned wrap the old flex layout produced); the wide
+       physical-set CTA sits on its own centered row (a direct #playArea child, so it centers). */
+    .utilGrid { display:grid; grid-template-columns:auto auto; gap:8px; width:fit-content; max-width:92vw; margin:0 auto; }
+    #menu .pbtnQuiet { font-size:12.5px; font-weight:600; padding:7px 14px;
                        white-space:nowrap; border-radius:20px; color:#9aa4ad; border-color:#2c3138; }
     #menu .pbtnQuiet:hover { color:#e6e6e6; border-color:#3a4048; }
     #game { display:none; flex-direction:column; align-items:center; width:100%; }
@@ -377,7 +377,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 115</div>
+<div id="buildTag">build 116</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -405,14 +405,16 @@
                 <button class="pbtn" id="modeAI">vs AI</button>
                 <button class="pbtn" id="modeOnline">Online 1v1</button>
             </div>
-            <!-- Everything below is one visual tier: small, same-weight buttons, no text-link styling. -->
-            <div class="playRowSmall">
+            <!-- Second tier, all small + same weight. The 4 similar-width utilities tile as an even
+                 2x2 grid; the much-wider "Get a physical set" CTA gets its own centered row below so
+                 it can't orphan a button or force ragged rows (which it did in de/fr/ru especially). -->
+            <div class="utilGrid">
                 <button class="pbtn pbtnQuiet" id="modeLocal">Local 1v1</button>
                 <button class="pbtn pbtnQuiet" id="watchBtn">Watch</button>
                 <button class="pbtn pbtnQuiet" id="howToPlayBtn">How to play</button>
-                <button class="pbtn pbtnQuiet" id="steelBtn">Get a physical set</button>
                 <button class="pbtn pbtnQuiet" id="leaderboardBtn">Leaderboard</button>
             </div>
+            <button class="pbtn pbtnQuiet" id="steelBtn">Get a physical set</button>
         </div>
         <p class="msg" id="modeMsg"></p>
         <p id="presenceLine" style="font-size:12px;color:#69727b;margin:2px 0 0;"></p>
