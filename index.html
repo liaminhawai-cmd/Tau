@@ -77,15 +77,17 @@
     #menu .modeBtn { font-size:16px; padding:14px 34px; border-radius:8px; width:260px; box-sizing:border-box; }
     /* Poise menu: ghosted outline play buttons on one vertical axis. AI + Online are the primary pair
        (steer new players toward a real opponent, not local pass-and-play); Local is a quiet secondary. */
-    #playArea { display:flex; flex-direction:column; align-items:center; gap:11px; width:260px; }
-    .playRow { display:flex; gap:10px; width:100%; }
+    #playArea { display:flex; flex-direction:column; align-items:center; gap:11px; }
+    .playRow { display:flex; gap:10px; width:260px; }
     #menu .pbtn { flex:1; background:transparent; border:1px solid #3a4048; border-radius:9px; color:#e6e6e6;
                   font-family:inherit; font-size:16px; font-weight:700; padding:15px 10px; cursor:pointer;
                   box-sizing:border-box; transition:border-color .12s, background .12s; }
     #menu .pbtn:hover { border-color:#6b9eff; background:rgba(107,158,255,.06); }
     /* Second tier, all one size: Local 1v1, Watch, How to play, Get a physical set, Leaderboard --
-       clearly lighter than the AI/Online pair above, but each still a real button, not a text link. */
-    .playRowSmall { display:flex; flex-wrap:wrap; gap:7px; justify-content:center; width:100%; }
+       clearly lighter than the AI/Online pair above, but each still a real button, not a text link.
+       Wider than the primary row on purpose (not capped to 260px) so the five pack into two tidy
+       rows instead of stacking one-per-line -- that 260px cap was the mess. */
+    .playRowSmall { display:flex; flex-wrap:wrap; gap:7px; justify-content:center; width:min(360px, 92vw); }
     #menu .pbtnQuiet { flex:none; width:auto; font-size:12.5px; font-weight:600; padding:7px 14px;
                        border-radius:20px; color:#9aa4ad; border-color:#2c3138; }
     #menu .pbtnQuiet:hover { color:#e6e6e6; border-color:#3a4048; }
@@ -346,7 +348,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 107</div>
+<div id="buildTag">build 108</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
