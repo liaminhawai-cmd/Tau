@@ -78,11 +78,15 @@
     /* Poise menu: ghosted outline play buttons on one vertical axis. AI + Online are the primary pair
        (steer new players toward a real opponent, not local pass-and-play); Local is a quiet secondary. */
     #playArea { display:flex; flex-direction:column; align-items:center; gap:11px; }
-    .playRow { display:flex; gap:10px; width:260px; }
+    .playRow { display:flex; gap:10px; width:280px; }
     #menu .pbtn { flex:1; background:transparent; border:1px solid #3a4048; border-radius:9px; color:#e6e6e6;
-                  font-family:inherit; font-size:16px; font-weight:700; padding:15px 10px; cursor:pointer;
+                  font-family:inherit; font-size:18px; font-weight:700; padding:18px 10px; cursor:pointer;
                   box-sizing:border-box; transition:border-color .12s, background .12s; }
     #menu .pbtn:hover { border-color:#6b9eff; background:rgba(107,158,255,.06); }
+    /* Ruby (bopomofo) sits above the base character; keep it small and quiet so it reads as a
+       pronunciation hint, not competing text. */
+    #menu .pbtn ruby, #menu .pbtnQuiet ruby { ruby-position: over; }
+    #menu .pbtn rt, #menu .pbtnQuiet rt { font-size:0.42em; font-weight:400; opacity:0.8; user-select:none; }
     /* Second tier, all one size: Local 1v1, Watch, How to play, Get a physical set, Leaderboard --
        clearly lighter than the AI/Online pair above, but each still a real button, not a text link.
        Wider than the primary row on purpose (not capped to 260px) so the five pack into two tidy
@@ -100,7 +104,7 @@
         #logoCanvas { height: 44px; width: auto; }
         #menu { gap: 6px; margin-top: 1vh; }
         #menu .modeBtn { padding: 9px 34px; font-size: 15px; }
-        #menu .pbtn { padding: 11px 10px; font-size: 15px; }
+        #menu .pbtn { padding: 12px 10px; font-size: 16px; }
         #menu .pbtnQuiet { padding: 6px 16px; }
         #demoCanvas, #demoViews #view3d { height: min(240px, 28vh); width: auto; }
     }
@@ -153,6 +157,12 @@
                   opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
     #langToggle:hover { opacity:0.95; }
     #langToggle:active { background:none; }
+    #bopomofoToggle { position:fixed; top:calc(9px + env(safe-area-inset-top)); right:118px; z-index:60; background:none; border:none;
+                       color:#9aa4ad; font-size:13px; line-height:1; padding:6px 7px; margin:0;
+                       opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
+    #bopomofoToggle:hover { opacity:0.95; }
+    #bopomofoToggle:active { background:none; }
+    #bopomofoToggle.off { opacity:0.16; }
     #langMenu { position:fixed; top:calc(38px + env(safe-area-inset-top)); right:70px; z-index:61; display:none; flex-direction:column;
                 background:#1c2126; border:1px solid #2c333b; border-radius:7px; padding:4px;
                 box-shadow:0 6px 20px rgba(0,0,0,0.4); }
@@ -345,10 +355,13 @@
 </div>
 <button id="langToggle" title="Language" aria-label="Language">🌐</button>
 <div id="langMenu"></div>
+<!-- Traditional-Chinese-only: shown by applyI18nStatic() once LANG is known. Ruby (bopomofo)
+     annotations on by default; tap to turn off. -->
+<button id="bopomofoToggle" title="Bopomofo annotations (tap to turn off)" aria-label="Bopomofo annotations" style="display:none;">ㄅㄆㄇ</button>
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 108</div>
+<div id="buildTag">build 109</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -1546,6 +1559,38 @@ const LANG = (() => {
 })();
 function t(str) { const d = I18N[LANG]; return (d && d[str]) || str; }
 function tf(str, vars) { let r = t(str); for (const k in vars) r = r.split('{'+k+'}').join(vars[k]); return r; }
+// ---------- Bopomofo (Zhuyin): ruby annotations for the Traditional Chinese menu, on by default,
+// toggle at #bopomofoToggle. Curated per-character (not a general converter), covering only the
+// characters that appear in the menu strings below -- a character missing from the map just renders
+// plain, never a guessed reading, since this is meant to teach a correct pronunciation, not a rough one.
+const ZHUYIN = {
+    '本':'ㄅㄣˇ','機':'ㄐㄧ','對':'ㄉㄨㄟˋ','戰':'ㄓㄢˋ','線':'ㄒㄧㄢˋ','上':'ㄕㄤˋ','人':'ㄖㄣˊ',
+    '玩':'ㄨㄢˊ','法':'ㄈㄚˇ','說':'ㄕㄨㄛ','明':'ㄇㄧㄥˊ','排':'ㄆㄞˊ','行':'ㄏㄤˊ','榜':'ㄅㄤˇ',
+    '觀':'ㄍㄨㄢ','取':'ㄑㄩˇ','得':'ㄉㄜˊ','實':'ㄕˊ','體':'ㄊㄧˇ','套':'ㄊㄠˋ','裝':'ㄓㄨㄤ',
+    '已':'ㄧˇ','登':'ㄉㄥ','記':'ㄐㄧˋ',
+};
+let bopomofoOn = true;
+try { const v = localStorage.getItem('tauBopomofo'); if (v !== null) bopomofoOn = v !== '0'; } catch(e) {}
+function rubyize(str) {
+    const esc = c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c] || c);
+    let out = '';
+    for (const ch of str) out += ZHUYIN[ch] ? `<ruby>${ch}<rt>${ZHUYIN[ch]}</rt></ruby>` : esc(ch);
+    return out;
+}
+// The 6 mode buttons + the physical-set button (2 possible labels): paints plain text normally,
+// ruby-annotated HTML when on Traditional Chinese with the toggle on. Re-callable so the toggle can
+// flip live without a reload, not just at first paint.
+const BOPOMOFO_IDS = [['modeLocal','Local 1v1'],['modeOnline','Online 1v1'],['modeAI','vs AI'],
+    ['howToPlayBtn','How to play'],['leaderboardBtn','Leaderboard'],['watchBtn','Watch']];
+function applyMenuBopomofo() {
+    const zy = LANG === 'zht' && bopomofoOn;
+    for (const [id, key] of BOPOMOFO_IDS) {
+        const el = document.getElementById(id); if (!el) continue;
+        const val = t(key);
+        if (zy) el.innerHTML = rubyize(val); else el.textContent = val;
+    }
+    if (typeof refreshSteelLine === 'function') refreshSteelLine();
+}
 const I18N = {
 ja: {
 "Local 1v1":"ローカル対戦","Online 1v1":"オンライン対戦","vs AI":"AI対戦","How to play":"遊び方","Leaderboard":"ランキング","Watch":"観戦",
@@ -5888,8 +5933,7 @@ demoStart();
 (function applyI18nStatic(){
     if (LANG !== 'en') {
         const setTxt = (id, key) => { const el = document.getElementById(id); if (el) el.textContent = t(key); };
-        setTxt('modeLocal','Local 1v1'); setTxt('modeOnline','Online 1v1'); setTxt('modeAI','vs AI');
-        setTxt('howToPlayBtn','How to play'); setTxt('leaderboardBtn','Leaderboard'); setTxt('watchBtn','Watch');
+        applyMenuBopomofo();   // the 6 mode buttons + Get a physical set (ruby-annotated on zht)
         setTxt('reset','Surrender'); setTxt('menuBtn','Menu');
         setTxt('replayShare','Share this game'); setTxt('replaySave','Save this game'); setTxt('replaySkip','Skip ⏭');
         setTxt('acctGoogle','Continue with Google'); setTxt('acctMoreOptions','or use a username & password');
@@ -5900,6 +5944,18 @@ demoStart();
         const oneTime=document.querySelector('#acctEmailOptions p.msg'); if (oneTime) oneTime.textContent=t('or a one-time email link');
         const prof=document.querySelector('#acctSignedIn .profile');
         if (prof && prof.childNodes.length>=4){ prof.childNodes[0].textContent=t('Signed in as '); prof.childNodes[3].textContent=t('Rating:')+' '; }
+    }
+    // Bopomofo toggle: only meaningful (and only shown) on Traditional Chinese.
+    const bpBtn = document.getElementById('bopomofoToggle');
+    if (bpBtn && LANG === 'zht') {
+        bpBtn.style.display = 'block';
+        bpBtn.classList.toggle('off', !bopomofoOn);
+        bpBtn.addEventListener('click', () => {
+            bopomofoOn = !bopomofoOn;
+            try { localStorage.setItem('tauBopomofo', bopomofoOn ? '1' : '0'); } catch(e) {}
+            bpBtn.classList.toggle('off', !bopomofoOn);
+            applyMenuBopomofo();
+        });
     }
     // Language picker lives in the top-right corner cluster (next to sound/theme), not the menu:
     // it's a set-once control, so it stays out of the way behind a small 🌐 button.
@@ -6702,7 +6758,8 @@ function refreshSteelLine() {
     if (!btn) return;
     let joined = false;
     try { joined = !!localStorage.getItem(WAITLIST_FLAG); } catch(e) {}
-    btn.textContent = joined ? t('On the list ✓') : t('Get a physical set →');
+    const val = joined ? t('On the list ✓') : t('Get a physical set →');
+    if (LANG === 'zht' && bopomofoOn) btn.innerHTML = rubyize(val); else btn.textContent = val;
 }
 function openWaitlistPrompt() {
     const opt = (id, title, sub) => `<label style="display:flex;gap:9px;align-items:flex-start;margin:7px 0;font-size:13px;cursor:pointer;">`
