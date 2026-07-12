@@ -90,12 +90,14 @@
     /* Bopomofo: each character's zhuyin symbols stack vertically immediately to its right (see
        rubyize()) -- built by hand, not CSS ruby-position, since inter-character isn't actually
        supported here. Not scoped to #menu: rubyize() output now appears in modals (showModal,
-       Levels) too, wherever it appears. clamp()'s floor is what matters: an em-relative size looked
-       fine on the 18px primary buttons but was unreadably small on 12.5px pills / 11px crowd stats,
-       so this is sized in real px with a floor, not a ratio. */
+       Levels) too, wherever it appears. clamp()'s floor is what matters: too small (an em-only
+       ratio) was unreadable; too big (an 11px floor) made the annotation look larger than the
+       10px crowd-stat text it was sitting next to. 8px reads as a hint next to normal UI text
+       without dominating the smallest text in the app. */
     .zc { display:inline-flex; align-items:center; }
     .zcY { display:inline-flex; flex-direction:column; justify-content:center;
-        font-size:clamp(11px, 0.55em, 15px); line-height:1; font-weight:500; opacity:0.92; margin-left:2px; user-select:none; }
+        font-size:clamp(8px, 0.5em, 14px); line-height:1; font-weight:500; opacity:0.92; margin-left:2px; user-select:none; }
+    .ltstat .zcY { font-size:7px; }   /* the crowd stat itself is only 10px -- needs its own smaller floor */
     /* Second tier, all one size: Local 1v1, Watch, How to play, Get a physical set, Leaderboard --
        clearly lighter than the AI/Online pair above, but each still a real button, not a text link.
        Wider than the primary row on purpose (not capped to 260px) so the five pack into two tidy
@@ -169,9 +171,11 @@
     /* Stacked BELOW the theme icon (not extended further left on the same row): on a narrow phone the
        in-game status text is centered and can reach surprisingly close to the corner, so widening the
        icon row's reach left of langToggle collided with it. A 2nd row stays inside the corner. */
-    #bopomofoToggle { position:fixed; top:calc(38px + env(safe-area-inset-top)); right:12px; z-index:60; background:none; border:none;
-                       color:#9aa4ad; font-size:13px; line-height:1; padding:6px 7px; margin:0;
-                       opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
+    /* Bigger and a touch more visible at rest than the other corner icons: it's off by default now,
+       so it has to be findable rather than just recognizable once you already know it's there. */
+    #bopomofoToggle { position:fixed; top:calc(38px + env(safe-area-inset-top)); right:10px; z-index:60; background:none; border:none;
+                       color:#9aa4ad; font-size:20px; line-height:1; padding:7px 9px; margin:0;
+                       opacity:0.55; cursor:pointer; transition:opacity 0.15s; }
     #bopomofoToggle:hover { opacity:0.95; }
     #bopomofoToggle:active { background:none; }
     #bopomofoToggle.off { opacity:0.16; }
@@ -373,7 +377,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 113</div>
+<div id="buildTag">build 114</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -1571,7 +1575,7 @@ const LANG = (() => {
 })();
 function t(str) { const d = I18N[LANG]; return (d && d[str]) || str; }
 function tf(str, vars) { let r = t(str); for (const k in vars) r = r.split('{'+k+'}').join(vars[k]); return r; }
-// ---------- Bopomofo (Zhuyin): ruby annotations for the Traditional Chinese UI, on by default,
+// ---------- Bopomofo (Zhuyin): ruby annotations for the Traditional Chinese UI, off by default,
 // toggle at #bopomofoToggle. Curated per-character (not a general converter) -- a character missing
 // from the map just renders plain, never a guessed reading, since this is meant to teach a correct
 // pronunciation, not a rough one. Covers the main menu, the Levels/vs-AI screen (title, per-level
@@ -1587,10 +1591,11 @@ const ZHUYIN = {
     '關':'ㄍㄨㄢ','卡':'ㄎㄚˇ','第':'ㄉㄧˋ','過':'ㄍㄨㄛˋ','尚':'ㄕㄤˋ','未':'ㄨㄟˋ','以':'ㄧˇ',
     '紅':'ㄏㄨㄥˊ','方':'ㄈㄤ','挑':'ㄊㄧㄠˇ','一':'ㄧˋ','再':'ㄗㄞˋ','試':'ㄕˋ','次':'ㄘˋ',
     '選':'ㄒㄩㄢˇ','單':'ㄉㄢ','通':'ㄊㄨㄥ','常':'ㄔㄤˊ','分':'ㄈㄣ','可':'ㄎㄜˇ',
+    '電':'ㄉㄧㄢˋ','腦':'ㄋㄠˇ','下':'ㄒㄧㄚˋ','藍':'ㄌㄢˊ','無':'ㄨˊ',
     // Common modal chrome, picked up for free once anything using showModal is on screen
     '閉':'ㄅㄧˋ','消':'ㄒㄧㄠ','你':'ㄋㄧˇ','贏':'ㄧㄥˊ','了':'ㄌㄜ˙','輸':'ㄕㄨ','確':'ㄑㄩㄝˋ','定':'ㄉㄧㄥˋ',
 };
-let bopomofoOn = true;
+let bopomofoOn = false;   // default off; the toggle remembers whatever you last set it to
 try { const v = localStorage.getItem('tauBopomofo'); if (v !== null) bopomofoOn = v !== '0'; } catch(e) {}
 // Built by hand, not the CSS <ruby>/ruby-position:inter-character (checked: unsupported in this
 // engine, CSS.supports returns false and it silently falls back to "over") -- each zhuyin symbol
@@ -6031,12 +6036,16 @@ demoStart();
     // Bopomofo toggle: only meaningful (and only shown) on Traditional Chinese.
     const bpBtn = document.getElementById('bopomofoToggle');
     if (bpBtn && LANG === 'zht') {
+        const syncBpBtn = () => {
+            bpBtn.classList.toggle('off', !bopomofoOn);
+            bpBtn.title = bopomofoOn ? 'Bopomofo annotations (tap to turn off)' : 'Bopomofo annotations (tap to turn on)';
+        };
         bpBtn.style.display = 'block';
-        bpBtn.classList.toggle('off', !bopomofoOn);
+        syncBpBtn();
         bpBtn.addEventListener('click', () => {
             bopomofoOn = !bopomofoOn;
             try { localStorage.setItem('tauBopomofo', bopomofoOn ? '1' : '0'); } catch(e) {}
-            bpBtn.classList.toggle('off', !bopomofoOn);
+            syncBpBtn();
             applyMenuBopomofo();
         });
     }
