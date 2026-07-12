@@ -102,11 +102,12 @@
     .ltri:hover { background:rgba(255,255,255,.08); }
     .ladderRung .lname { flex:1; font-size:14.5px; font-weight:700; color:#cdd3d9; }
     /* Touch devices have no hover, so the crowd stat (shown as a tooltip on desktop) is rendered
-       inline on its own line instead. Hidden on hover-capable screens so they keep the clean look. */
-    .ladderRung .lstat { display:none; flex-basis:100%; margin:1px 0 0 33px; font-size:11.5px;
-                         color:#9aa4ad; font-variant-numeric:tabular-nums; }
-    .ladderRung .lstat .lssep { opacity:.4; margin:0 6px; }
-    @media (hover:none) { .ladderRung { flex-wrap:wrap; } .ladderRung .lstat { display:block; } }
+       inline on its own line instead. Two fixed columns keep Red aligned across rows no matter how
+       long Blue's stat runs. Hidden on hover-capable screens so they keep the clean look. */
+    .ladderRung .lstat { display:none; flex-basis:100%; margin:2px 0 0 33px; font-size:10px;
+                         color:#9aa4ad; font-variant-numeric:tabular-nums;
+                         grid-template-columns:1fr 1fr; gap:6px; }
+    @media (hover:none) { .ladderRung { flex-wrap:wrap; } .ladderRung .lstat { display:grid; } }
     .ladderRung.avail:hover { background:rgba(107,158,255,.05); }
     .ladderRung.cur { background:rgba(107,158,255,.10); border-color:rgba(107,158,255,.45); }
     .ladderRung.done .lname { color:#8f979e; }
@@ -326,7 +327,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 102</div>
+<div id="buildTag">build 103</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -4106,11 +4107,11 @@ function openLadderMenu(){
         const s=ladderRungState(n), cls = s.state + (n===curN ? ' cur' : '');
         html += `<div class="ladderRung ${cls}" data-n="${n}" data-play="${s.play}">`
             + `<span class="ln">${n}</span>`
+            + `<span class="lname">${t('Level')} ${n}</span>`
             + `<span class="lp">`
             +   `<button class="ltri" data-n="${n}" data-color="0" aria-label="${tf('Play Level {n} as Blue',{n})}">${ladderTripodSVG('#6b9eff',s.bC)}</button>`
             +   `<button class="ltri" data-n="${n}" data-color="1" aria-label="${tf('Play Level {n} as Red',{n})}">${ladderTripodSVG('#ff6b6b',s.rC)}</button>`
             + `</span>`
-            + `<span class="lname">${t('Level')} ${n}</span>`
             + `<span class="lstat" data-n="${n}"></span>`
             + `</div>`;
     }
@@ -4159,12 +4160,11 @@ function levelStatText(n, color){   // labelled, for the desktop hover tooltip
     return (color===0 ? t('Blue') : t('Red')) + ' · ' + levelStatBody(n, color);
 }
 // Touch fallback: paint both colours' stats inline in a rung (colour conveys which is which).
-function paintLevelStatInline(el){
+function paintLevelStatInline(el){   // two colour-coded columns; Red column aligns across rows
     const n = parseInt(el.dataset.n, 10);
     const b = document.createElement('span'); b.style.color = '#6b9eff'; b.textContent = levelStatBody(n, 0);
     const r = document.createElement('span'); r.style.color = '#ff6b6b'; r.textContent = levelStatBody(n, 1);
-    const sep = document.createElement('span'); sep.className = 'lssep'; sep.textContent = '·';
-    el.replaceChildren(b, sep, r);
+    el.replaceChildren(b, r);
 }
 function recordLevelClear(n, color){
     if (typeof sb === 'undefined' || !sb) return;
