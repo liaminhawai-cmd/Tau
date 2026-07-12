@@ -341,6 +341,10 @@
     #modalBody:empty { display:none; }
     #modalBtns { display:flex; flex-direction:column; gap:8px; }
     #modalBtns button { font-size:15px; padding:10px; margin:0; width:100%; box-sizing:border-box; }
+    /* De-emphasized modal action -- e.g. "Next level" on the level-cleared screen, so the encouraged
+       "play the other colour" button reads as the default choice and this stays available but quieter. */
+    #modalBtns button.modalBtnQuiet { background:transparent; color:#7d858d; border-color:#2c3138; font-size:13px; padding:8px; }
+    #modalBtns button.modalBtnQuiet:active { background:#22262c; }
     .setRow { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:4px 0; }
     .setRow > span:first-child { font-size:14px; color:#e6e6e6; }
     .seg { display:inline-flex; border:1px solid #3a4048; border-radius:6px; overflow:hidden; }
@@ -380,7 +384,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 124</div>
+<div id="buildTag">build 125</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -4118,6 +4122,7 @@ function showModal(title, body, buttons, isHtml) {
     for (const b of buttons) {
         const el = document.createElement('button');
         if (zy) el.innerHTML = rubyize(b.label); else el.textContent = b.label;
+        if (b.cls) el.className = b.cls;
         el.addEventListener('click', () => { hideModal(); b.onClick(); });
         wrap.appendChild(el);
     }
@@ -4153,10 +4158,13 @@ function renderGameOverSheet() {
         title = won ? tf('Level {n} cleared!', { n }) : tf('Level {n} not cleared', { n });
         buttons = [];
         if (won) {
-            if (color === 0 && !ladderCleared(n, 1))                     // beat it as Blue -> try the harder Red clear
+            // "Play as Red" is the encouraged next step (both colours on THIS level before moving on),
+            // so it stays the normal/primary-styled button; "Next level" is offered too -- some players
+            // do just want to see new content -- but visually demoted so it doesn't read as the default.
+            if (color === 0 && !ladderCleared(n, 1))
                 buttons.push({ label: tf('Level {n} as Red', { n }), onClick: () => startLadderLevel(n-1, 1) });
             if (n < LADDER_N)
-                buttons.push({ label: t('Next level'), onClick: () => startLadderLevel(n, 0) });
+                buttons.push({ label: t('Next level'), onClick: () => startLadderLevel(n, 0), cls: (color === 0 && !ladderCleared(n, 1)) ? 'modalBtnQuiet' : undefined });
         } else {
             buttons.push({ label: t('Try again'), onClick: () => startLadderLevel(n-1, color) });
         }
@@ -4283,9 +4291,12 @@ function ladderRungState(n){
     return { play: !bC ? 'blue' : !rC ? 'red' : 'blue', state: (bC&&rC) ? 'done' : 'avail', bC, rC };
 }
 function openLadderMenu(){
+    // The highlighted "current" rung sweeps Blue THEN Red on the SAME level before moving to the
+    // next one -- not every level's Blue first and only circling back for Red at the very end. That
+    // all-Blue sweep was the biggest push toward "everyone plays Blue only": it's what the player is
+    // shown as their next step at every single level, all the way to the top of the ladder.
     let curN = 0;
-    for (let n=1;n<=LADDER_N;n++){ if (!ladderCleared(n,0)){ curN=n; break; } }        // next Blue to beat
-    if (!curN) for (let n=1;n<=LADDER_N;n++){ if (!ladderCleared(n,1)){ curN=n; break; } }  // all Blue done -> next Red
+    for (let n=1;n<=LADDER_N;n++){ if (!ladderCleared(n,0) || !ladderCleared(n,1)){ curN=n; break; } }
     let html='<div id="ladderList">';
     for (let n=LADDER_N;n>=1;n--){
         const s=ladderRungState(n), cls = s.state + (n===curN ? ' cur' : '');
