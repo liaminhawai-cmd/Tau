@@ -1,0 +1,33 @@
+-- ============================================================================
+-- Lock down admin/internal-only functions that were reachable by anyone
+-- ----------------------------------------------------------------------------
+-- Supabase's security linter flagged these as SECURITY DEFINER functions
+-- callable by anon/authenticated via /rest/v1/rpc/<name>. Checked the client
+-- (index.html) against every function currently flagged: gc_stale_matches and
+-- gc_expired_shared_replays ARE called directly from the client for
+-- opportunistic housekeeping and must stay reachable -- left untouched. The
+-- two below are never called by the client and have no legitimate reason to
+-- be public:
+--
+--   handle_new_user   -- the auth.users signup trigger (schema.sql). Trigger
+--                         functions run under the trigger's own context, not
+--                         the calling role's grants, so revoking direct EXECUTE
+--                         has zero effect on sign-up; it only removes the
+--                         ability to call it directly as an RPC.
+--   recompute_all_elo -- a manual, run-once-by-hand admin repair tool (see its
+--                         own header comment in apply_to_live_db.sql: "run
+--                         this ONCE"). Wipes and rebuilds every player's
+--                         rating from match history -- expensive, and not
+--                         something a visitor's browser should ever trigger.
+--
+-- Revoking from PUBLIC too, not just anon/authenticated: PUBLIC is the
+-- default grant every function gets on creation, and anon/authenticated
+-- otherwise inherit through it.
+--
+-- Safe to re-run (REVOKE on a grant that's already gone is a no-op). Apply in
+-- the Supabase SQL editor. You (the project owner / postgres role) are
+-- unaffected either way and can still run recompute_all_elo() by hand.
+-- ============================================================================
+
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+revoke execute on function public.recompute_all_elo() from public, anon, authenticated;
