@@ -85,6 +85,8 @@
   }
   .verdict b { color:var(--ink); font-weight:700; }
   .verdict .dot { width:9px; height:9px; border-radius:50%; background:var(--blue); align-self:center; }
+  .byline { margin:20px 0 0; font-size:13.5px; color:var(--ink-3); max-width:62ch; line-height:1.5; }
+  .byline b { color:var(--ink-2); font-weight:650; }
 
   /* ---- stat tiles ---- */
   .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:44px 0; }
@@ -179,6 +181,7 @@
     <h1>The evidence points to a genuinely deep game.</h1>
     <p class="lede">We ran <span class="num">1,280</span> computer-versus-computer games across eight strength levels, each starting from a slightly different position, to answer one question a strong abstract game has to pass: as the players get better, does the game collapse onto a single winning recipe, or does skilled play stay varied?</p>
     <div class="verdict"><span class="dot"></span><span>Verdict: &nbsp;<b>it stays varied at every level, and no forced win was found.</b></span></div>
+    <p class="byline">Produced with <b>Claude</b>, Anthropic&rsquo;s AI assistant, running the game&rsquo;s own engine. This is an AI analysis, not an independent human study.</p>
   </div>
 </header>
 
