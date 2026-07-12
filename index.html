@@ -377,7 +377,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 116</div>
+<div id="buildTag">build 117</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -5216,9 +5216,9 @@ function drawCrossFlashes() {
             ctx.shadowColor = 'rgba(255,210,63,0.9)'; ctx.shadowBlur = 12 * alpha;
             ctx.lineWidth = Math.max(3, CFG.edgeU*CFG.lineWidthFrac*scale*2.4);
         } else {
-            ctx.strokeStyle = `rgba(255,210,63,${alpha*0.35})`;
-            ctx.shadowBlur = 0;
-            ctx.lineWidth = Math.max(2, CFG.edgeU*CFG.lineWidthFrac*scale*1.3);
+            ctx.strokeStyle = `rgba(255,210,63,${alpha*0.55})`;
+            ctx.shadowColor = 'rgba(255,210,63,0.9)'; ctx.shadowBlur = 5 * alpha;
+            ctx.lineWidth = Math.max(2, CFG.edgeU*CFG.lineWidthFrac*scale*1.7);
         }
         if (g.a0 === undefined) {
             const o = bx2px(g.cx, g.cy);
