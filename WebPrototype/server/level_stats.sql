@@ -2,7 +2,7 @@
 -- Levels (vs Computer) crowd stats
 -- ----------------------------------------------------------------------------
 -- Records who has beaten each level and at what rating, so the Levels screen can
--- show, per level (1..8) AND per colour (0 = Blue, 1 = Red) — 16 independent
+-- show, per level (1..9) AND per colour (0 = Blue, 1 = Red) — 18 independent
 -- stats — either "Unbeaten", a raw count (<= 5 clears), or "usually cleared
 -- above ~X" (25th-percentile rating, at 6+ clears).
 --
@@ -17,7 +17,7 @@
 
 create table if not exists public.level_clears (
   user_id    uuid        not null references auth.users(id) on delete cascade,
-  level      smallint    not null check (level between 1 and 8),
+  level      smallint    not null check (level between 1 and 9),
   colour     smallint    not null check (colour in (0, 1)),   -- 0 = Blue, 1 = Red
   player_elo integer     not null,
   created_at timestamptz not null default now(),
@@ -46,7 +46,7 @@ declare
   my_elo integer;
 begin
   if me is null then return; end if;
-  if p_level is null or p_level < 1 or p_level > 8 then return; end if;
+  if p_level is null or p_level < 1 or p_level > 9 then return; end if;
   if p_colour is null or p_colour not in (0, 1) then return; end if;
 
   select elo into my_elo from public.profiles where id = me;
