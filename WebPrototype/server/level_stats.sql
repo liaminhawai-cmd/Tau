@@ -60,20 +60,22 @@ $$;
 -- ----------------------------------------------------------------------------
 -- Per-level-per-colour aggregate for the Levels screen.
 -- Returns only (level, colour) pairs with >= 1 clear; the client treats any
--- missing pair as "Unbeaten". `pct` is the share of all distinct ladder players
--- (anyone who has cleared any level in any colour) who have cleared this one.
+-- missing pair as "Unbeaten". Returns the raw numbers -- `clears` for this
+-- (level, colour) and `players` (all distinct players who have cleared any
+-- level in any colour) -- and the client turns them into the shown share, so
+-- the display cutoffs can change without another migration.
 -- ----------------------------------------------------------------------------
 create or replace function public.level_stats()
-returns table (level integer, colour integer, clears integer, pct integer)
+returns table (level integer, colour integer, clears integer, players integer)
 language sql
 security definer set search_path = public
 stable
 as $$
-  with base as (select count(distinct user_id)::numeric as total from public.level_clears)
+  with base as (select count(distinct user_id)::integer as total from public.level_clears)
   select lc.level::integer,
          lc.colour::integer,
          count(*)::integer as clears,
-         case when b.total > 0 then round(count(*) * 100.0 / b.total)::integer else 0 end as pct
+         b.total as players
   from public.level_clears lc cross join base b
   group by lc.level, lc.colour, b.total;
 $$;

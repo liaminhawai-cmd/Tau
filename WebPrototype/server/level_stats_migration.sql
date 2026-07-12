@@ -9,7 +9,8 @@
 --   2. Replace the crowd stat: instead of a 25th-percentile *rating* (which was
 --      meaningless because most players only play the AI and sit at the 1200
 --      default rating), report the *share of players* who have beaten each
---      level. level_stats() now returns `pct` (0..100) in place of `p25_elo`.
+--      level. level_stats() now returns raw `clears` + `players` (total distinct
+--      ladder players) in place of `p25_elo`; the app computes the share.
 -- ============================================================================
 
 -- 1a) widen the level CHECK constraint from 1..8 to 1..9
@@ -43,22 +44,23 @@ $$;
 
 grant execute on function public.record_level_clear(integer, integer) to anon, authenticated;
 
--- 2) crowd stat as a share of players. `pct` = of all distinct players who have
---    cleared any level in any colour, what fraction cleared this (level, colour).
---    The return signature changes (pct replaces p25_elo); create or replace
---    cannot change a function's OUT columns, so drop it first.
+-- 2) crowd stat as raw counts: `clears` for this (level, colour) and `players`
+--    (all distinct players who have cleared any level). The app turns them into
+--    the shown share. The return signature changes (clears+players replace
+--    p25_elo); create or replace cannot change a function's OUT columns, so drop
+--    it first.
 drop function if exists public.level_stats();
 create or replace function public.level_stats()
-returns table (level integer, colour integer, clears integer, pct integer)
+returns table (level integer, colour integer, clears integer, players integer)
 language sql
 security definer set search_path = public
 stable
 as $$
-  with base as (select count(distinct user_id)::numeric as total from public.level_clears)
+  with base as (select count(distinct user_id)::integer as total from public.level_clears)
   select lc.level::integer,
          lc.colour::integer,
          count(*)::integer as clears,
-         case when b.total > 0 then round(count(*) * 100.0 / b.total)::integer else 0 end as pct
+         b.total as players
   from public.level_clears lc cross join base b
   group by lc.level, lc.colour, b.total;
 $$;
