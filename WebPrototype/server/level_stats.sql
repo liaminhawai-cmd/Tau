@@ -3,14 +3,13 @@
 -- ----------------------------------------------------------------------------
 -- Records who has beaten each level and at what rating, so the Levels screen can
 -- show, per level (1..9) AND per colour (0 = Blue, 1 = Red) — 18 independent
--- stats — either "Unbeaten", a raw count (<= 5 clears), or "usually cleared
--- above ~X" (25th-percentile rating, at 6+ clears).
+-- stats — either "Unbeaten", a raw count (<= 5 clears), or "beaten by X% of
+-- players" (share of all ladder players who have cleared it, at 6+ clears).
 --
--- One row per player per (level, colour). The stored rating is the player's
--- rating at their FIRST clear of that level in that colour, so replays never
--- reshuffle the number. Every user (including anonymous guests) has a profile
--- row with a rating, so the rating is read server-side and cannot be spoofed by
--- the client.
+-- One row per player per (level, colour). player_elo is still stored (the
+-- rating at first clear) for history, but the crowd stat is now a share of
+-- players, which needs no rating and cannot be skewed by the many players who
+-- only play the AI (and so sit at the default rating).
 --
 -- Safe to run more than once (idempotent). Apply in the Supabase SQL editor.
 -- ============================================================================
@@ -61,20 +60,22 @@ $$;
 -- ----------------------------------------------------------------------------
 -- Per-level-per-colour aggregate for the Levels screen.
 -- Returns only (level, colour) pairs with >= 1 clear; the client treats any
--- missing pair as "Unbeaten".
+-- missing pair as "Unbeaten". `pct` is the share of all distinct ladder players
+-- (anyone who has cleared any level in any colour) who have cleared this one.
 -- ----------------------------------------------------------------------------
 create or replace function public.level_stats()
-returns table (level integer, colour integer, clears integer, p25_elo integer)
+returns table (level integer, colour integer, clears integer, pct integer)
 language sql
 security definer set search_path = public
 stable
 as $$
-  select level::integer,
-         colour::integer,
+  with base as (select count(distinct user_id)::numeric as total from public.level_clears)
+  select lc.level::integer,
+         lc.colour::integer,
          count(*)::integer as clears,
-         round(percentile_cont(0.25) within group (order by player_elo))::integer as p25_elo
-  from public.level_clears
-  group by level, colour;
+         case when b.total > 0 then round(count(*) * 100.0 / b.total)::integer else 0 end as pct
+  from public.level_clears lc cross join base b
+  group by lc.level, lc.colour, b.total;
 $$;
 
 grant execute on function public.record_level_clear(integer, integer) to anon, authenticated;
