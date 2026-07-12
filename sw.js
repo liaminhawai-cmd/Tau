@@ -3,7 +3,7 @@
 // network-first (so an online player always gets the newest build), with the cached copy as the
 // offline fallback; static assets are cache-first. Cross-origin requests (Supabase auth/realtime)
 // are never touched — they always go straight to the network.
-const CACHE = 'tau-v4';   // bump on asset changes so clients drop the old cache
+const CACHE = 'tau-v5';   // bump on asset changes so clients drop the old cache
 const ASSETS = [
   './', './index.html', './tau-logo.png',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon-32.png',
@@ -26,10 +26,16 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin || req.method !== 'GET') return;   // Supabase etc. -> network only
 
-  if (req.mode === 'navigate') {   // the page: newest when online, cached when offline
+  if (req.mode === 'navigate') {   // pages: newest when online, cached when offline
     e.respondWith(
-      fetch(req).then(r => { const cp = r.clone(); caches.open(CACHE).then(c => c.put('./index.html', cp)); return r; })
-        .catch(() => caches.match('./index.html'))
+      fetch(req).then(r => {
+        const cp = r.clone();
+        // refresh the game's offline shell only for the game itself; other pages (e.g. the hidden
+        // /depth.html) are cached under their own URL so they never clobber the game shell.
+        const key = (url.pathname === '/' || url.pathname.endsWith('/index.html')) ? './index.html' : req;
+        caches.open(CACHE).then(c => c.put(key, cp));
+        return r;
+      }).catch(() => caches.match(req).then(r => r || caches.match('./index.html')))
     );
     return;
   }

@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<title>Tau · Strategic Depth</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+  :root {
+    --bg:#0b0e12; --surface:#141a20; --surface-2:#1b232b;
+    --ink:#eef2f5; --ink-2:#9aa4ad; --ink-3:#69727b;
+    --line:#243039; --board:#e7d59a; --blue:#6b9eff; --red:#ff6b6b; --mid:#2f3a44;
+    --shadow:0 1px 0 rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.35);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:#eef1f4; --surface:#ffffff; --surface-2:#f6f8fa;
+      --ink:#10151a; --ink-2:#4b5560; --ink-3:#79838d;
+      --line:#dfe4e9; --board:#b9922e; --blue:#2f6ad0; --red:#d83f3f; --mid:#d9dee3;
+      --shadow:0 1px 2px rgba(16,21,26,.04), 0 12px 34px rgba(16,21,26,.08);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#0b0e12; --surface:#141a20; --surface-2:#1b232b;
+    --ink:#eef2f5; --ink-2:#9aa4ad; --ink-3:#69727b;
+    --line:#243039; --board:#e7d59a; --blue:#6b9eff; --red:#ff6b6b; --mid:#2f3a44;
+    --shadow:0 1px 0 rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.35);
+  }
+  :root[data-theme="light"] {
+    --bg:#eef1f4; --surface:#ffffff; --surface-2:#f6f8fa;
+    --ink:#10151a; --ink-2:#4b5560; --ink-3:#79838d;
+    --line:#dfe4e9; --board:#b9922e; --blue:#2f6ad0; --red:#d83f3f; --mid:#d9dee3;
+    --shadow:0 1px 2px rgba(16,21,26,.04), 0 12px 34px rgba(16,21,26,.08);
+  }
+
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.6; font-size:17px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:860px; margin:0 auto; padding:0 22px; }
+  .num { font-variant-numeric:tabular-nums; }
+
+  /* ---- theme toggle ---- */
+  .themebtn {
+    position:fixed; top:14px; right:14px; z-index:20;
+    background:var(--surface); color:var(--ink-2); border:1px solid var(--line);
+    border-radius:999px; padding:7px 13px; font-size:12.5px; cursor:pointer;
+    letter-spacing:.02em; box-shadow:var(--shadow);
+  }
+  .themebtn:hover { color:var(--ink); }
+  .themebtn:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+  .backbtn {
+    position:fixed; top:14px; left:14px; z-index:20;
+    background:var(--surface); color:var(--ink-2); border:1px solid var(--line);
+    border-radius:999px; padding:7px 14px; font-size:12.5px; cursor:pointer;
+    letter-spacing:.02em; box-shadow:var(--shadow); text-decoration:none;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .backbtn:hover { color:var(--ink); }
+  .backbtn:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+
+  /* ---- hero ---- */
+  header.hero { position:relative; overflow:hidden; border-bottom:1px solid var(--line); }
+  #heroRings { position:absolute; inset:0; width:100%; height:100%; opacity:.5; pointer-events:none; }
+  .hero-inner { position:relative; padding:96px 0 52px; }
+  .eyebrow {
+    font-size:12.5px; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--ink-3); margin:0 0 22px; font-weight:600;
+  }
+  h1 {
+    font-size:clamp(34px,6.2vw,58px); line-height:1.04; letter-spacing:-.02em;
+    font-weight:800; margin:0 0 20px; text-wrap:balance; max-width:16ch;
+  }
+  .lede { font-size:clamp(17px,2.2vw,20px); color:var(--ink-2); max-width:60ch; margin:0 0 26px; }
+  .verdict {
+    display:inline-flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+    padding:14px 20px; background:var(--surface); border:1px solid var(--line);
+    border-radius:12px; box-shadow:var(--shadow); font-size:16px; color:var(--ink-2);
+  }
+  .verdict b { color:var(--ink); font-weight:700; }
+  .verdict .dot { width:9px; height:9px; border-radius:50%; background:var(--blue); align-self:center; }
+
+  /* ---- stat tiles ---- */
+  .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:44px 0; }
+  @media (max-width:720px){ .tiles { grid-template-columns:repeat(2,1fr); } }
+  .tile { background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:20px 18px; box-shadow:var(--shadow); }
+  .tile .k { font-size:clamp(28px,4.4vw,38px); font-weight:800; letter-spacing:-.02em; line-height:1; }
+  .tile .k.blue { color:var(--blue); } .tile .k.board { color:var(--board); }
+  .tile .lab { margin-top:9px; font-size:13px; color:var(--ink-2); line-height:1.4; }
+
+  /* ---- sections ---- */
+  section { padding:40px 0; border-top:1px solid var(--line); }
+  .kicker { font-size:12px; letter-spacing:.2em; text-transform:uppercase; color:var(--board); font-weight:700; margin:0 0 12px; }
+  h2 { font-size:clamp(23px,3.4vw,30px); line-height:1.15; letter-spacing:-.015em; font-weight:750; margin:0 0 14px; text-wrap:balance; }
+  h2 { font-weight:800; }
+  section p { color:var(--ink-2); max-width:64ch; margin:0 0 16px; }
+  section p strong { color:var(--ink); font-weight:650; }
+  .readout { color:var(--ink); }
+
+  /* ---- figure / charts ---- */
+  figure { margin:26px 0 8px; background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:22px 20px 16px; box-shadow:var(--shadow); }
+  figure .cap { font-size:12.5px; color:var(--ink-3); margin-top:14px; line-height:1.5; }
+  .chart svg { width:100%; height:auto; display:block; overflow:visible; }
+  .legend { display:flex; gap:18px; flex-wrap:wrap; font-size:12.5px; color:var(--ink-2); margin-bottom:8px; }
+  .legend span { display:inline-flex; align-items:center; gap:7px; }
+  .swatch { width:12px; height:12px; border-radius:3px; display:inline-block; }
+  text { font-family:system-ui,sans-serif; }
+
+  .axislab { fill:var(--ink-3); font-size:11px; }
+  .vallab { fill:var(--ink); font-size:12px; font-weight:650; }
+  .vallab.tab { font-variant-numeric:tabular-nums; }
+
+  /* tooltip */
+  #tip { position:fixed; z-index:40; pointer-events:none; background:var(--surface-2); color:var(--ink);
+    border:1px solid var(--line); border-radius:9px; padding:8px 10px; font-size:12.5px; line-height:1.4;
+    box-shadow:var(--shadow); opacity:0; transition:opacity .1s; max-width:230px; }
+  #tip .tk { font-variant-numeric:tabular-nums; font-weight:700; }
+
+  /* heatmap cells */
+  .cell rect { rx:3px; }
+  .cell:hover rect { stroke:var(--ink); stroke-width:2; }
+
+  /* method */
+  .method { background:var(--surface-2); border:1px solid var(--line); border-radius:16px; padding:24px 22px; margin-top:8px; }
+  .method h3 { font-size:14px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-2); margin:0 0 14px; font-weight:700; }
+  .method dl { display:grid; grid-template-columns:170px 1fr; gap:10px 20px; margin:0; font-size:14.5px; }
+  @media (max-width:620px){ .method dl { grid-template-columns:1fr; gap:3px 0; } .method dd { margin-bottom:12px; } }
+  .method dt { color:var(--ink); font-weight:650; }
+  .method dd { color:var(--ink-2); margin:0; }
+  footer { padding:40px 0 70px; color:var(--ink-3); font-size:13px; border-top:1px solid var(--line); }
+  footer a { color:var(--ink-2); }
+
+  /* ---- technical appendix ---- */
+  .appendix-open { border-top:3px double var(--line); margin-top:8px; padding-top:44px; }
+  .appendix-open .kicker { color:var(--blue); }
+  .appendix section { border-top:1px solid var(--line); }
+  .mono { font-family:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace; }
+  h3.subh { font-size:18px; font-weight:750; letter-spacing:-.01em; margin:26px 0 6px; color:var(--ink); }
+  .datawrap { overflow-x:auto; margin:18px 0 6px; border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); background:var(--surface); }
+  table.data { border-collapse:collapse; width:100%; font-size:13px; font-variant-numeric:tabular-nums; }
+  table.data caption { text-align:left; padding:13px 15px 4px; color:var(--ink-2); font-size:12.5px; line-height:1.45; caption-side:top; }
+  table.data th, table.data td { padding:7px 11px; text-align:right; border-bottom:1px solid var(--line); white-space:nowrap; }
+  table.data thead th { color:var(--ink-2); font-weight:650; background:var(--surface-2); }
+  table.data td:first-child, table.data th:first-child { text-align:left; color:var(--ink); font-weight:600; }
+  table.data tbody tr:last-child td { border-bottom:none; }
+  table.data tbody tr:hover td { background:var(--surface-2); }
+  table.data td.na { color:var(--ink-3); }
+  .heatnum td.hi { color:var(--blue); font-weight:700; } .heatnum td.lo { color:var(--red); font-weight:700; }
+  .brain { border:1px solid var(--line); border-left:3px solid var(--board); border-radius:10px; padding:15px 17px; margin:12px 0; background:var(--surface); }
+  .brain h4 { margin:0; font-size:15.5px; display:flex; flex-wrap:wrap; align-items:baseline; gap:10px; }
+  .brain h4 .elo { font-size:12px; color:var(--ink-3); font-weight:600; }
+  .brain .cfg { font-family:ui-monospace,Menlo,monospace; font-size:11.5px; color:var(--ink-2); margin:7px 0 0; word-break:break-word; }
+  .brain p { margin:8px 0 0; font-size:14px; color:var(--ink-2); max-width:none; }
+  .brain p strong { color:var(--ink); }
+  .defbox { background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:6px 20px; margin:18px 0; }
+  .defbox dl { display:grid; grid-template-columns:150px 1fr; gap:2px 20px; margin:14px 0; font-size:14px; }
+  @media (max-width:620px){ .defbox dl { grid-template-columns:1fr; gap:2px 0; } .defbox dd { margin-bottom:12px; } }
+  .defbox dt { color:var(--ink); font-weight:650; font-family:ui-monospace,Menlo,monospace; font-size:12.5px; }
+  .defbox dd { color:var(--ink-2); margin:0; }
+  .callout { border:1px solid var(--line); border-left:3px solid var(--blue); background:var(--surface); border-radius:10px; padding:14px 18px; margin:18px 0; font-size:14.5px; color:var(--ink-2); }
+  .callout b { color:var(--ink); }
+  @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body>
+<a class="backbtn" href="/" aria-label="Back to the Tau game">&larr;&nbsp;Play Tau</a>
+<button class="themebtn" id="themeBtn" aria-label="Switch light or dark theme">Theme</button>
+
+<header class="hero">
+  <svg id="heroRings" viewBox="0 0 860 460" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
+  <div class="wrap hero-inner">
+    <p class="eyebrow">Tau &nbsp;·&nbsp; Strategic-depth analysis</p>
+    <h1>The evidence points to a genuinely deep game.</h1>
+    <p class="lede">We ran <span class="num">1,280</span> computer-versus-computer games across eight strength levels, each starting from a slightly different position, to answer one question a strong abstract game has to pass: as the players get better, does the game collapse onto a single winning recipe, or does skilled play stay varied?</p>
+    <div class="verdict"><span class="dot"></span><span>Verdict: &nbsp;<b>it stays varied at every level, and no forced win was found.</b></span></div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="tiles" id="tiles"></div>
+
+  <section id="s-converge">
+    <p class="kicker">The headline question</p>
+    <h2>Strong play stays varied. It never narrows to one line.</h2>
+    <p>The clearest warning sign in an abstract game is <em>convergence</em>: once players are good enough, everyone plays the same handful of moves and the game feels solved. To test for it we had each strength level play <strong>itself</strong>, 24 times, from tiny random starting nudges, and looked at how many genuinely different opening lines came out (counting which foot pivots and which way it turns, ignoring exact angles).</p>
+    <p>A solved or degenerate game would land near the bottom of the chart: one or two lines, repeated over and over. Tau does the opposite. Even the <strong>strongest</strong> level, playing itself, produces a dozen distinct opening lines across 24 games, and its single most-common line shows up in only about <span class="readout num">1 in 5</span>. Skilled play does focus a little as strength rises, exactly as it does in chess or Go, but it stays a long way from a single forced line.</p>
+    <figure>
+      <div class="chart" id="chart-converge"></div>
+      <figcaption class="cap">Distinct opening lines out of 24 self-play games, at the weakest, a middle, and the strongest level. The shaded band near the bottom marks what a solved or degenerate game would look like. Every level sits far above it.</figcaption>
+    </figure>
+  </section>
+
+  <section id="s-comeback">
+    <p class="kicker">Comeback potential</p>
+    <h2>Being ahead helps. It rarely settles the game.</h2>
+    <p>Depth also lives in whether a lead is safe. We pooled every position from all 1,280 games and measured, for a given size of lead, how often the player who was ahead actually went on to win. If a small edge locked in the result, the game would be shallow.</p>
+    <p>It does not. From a dead-even position the eventual winner is a coin flip (<span class="readout num">47%</span>). A real, visible lead is worth only about <span class="readout num">75%</span>, so better than one game in five is still lost from there. It takes a commanding lead to reach <span class="readout num">~85%</span>, and even that is not certain. In practice the outcome almost never becomes a foregone conclusion: <strong>only <span class="num">0.9%</span> of games</strong> reached a point where the result was locked in before the closing moves.</p>
+    <figure>
+      <div class="legend"><span><span class="swatch" style="background:var(--blue)"></span>Chance the leader wins</span><span><span class="swatch" style="background:var(--mid);border:1px solid var(--line)"></span>Coin flip (even position)</span></div>
+      <div class="chart" id="chart-comeback"></div>
+      <figcaption class="cap">Reading left to right: how likely the first player is to win as their position goes from far behind to far ahead. The curve rises gently and never reaches certainty, the signature of a game you can fight back in.</figcaption>
+    </figure>
+  </section>
+
+  <section id="s-fair">
+    <p class="kicker">Fairness</p>
+    <h2>Going first is a small edge at most, never a decisive one.</h2>
+    <p>Many simple games are quietly settled by who moves first. Tau is not one of them. Across all <span class="num">1,280</span> games the first player wins exactly <strong><span class="num">50%</span></strong>; in level-versus-itself play it averages <span class="num">41%</span>, if anything a slight edge to the responder. The edge does vary by level, and at the very top there is a mild first-mover advantage of roughly <strong>two-thirds</strong>. That is the ordinary, healthy edge strong abstract games carry; chess, Go and Hex all favour the opener a little. What matters is that nowhere, at any level, does it come near the near-certain win a forced opening would produce.</p>
+    <figure>
+      <div class="chart" id="chart-fair"></div>
+      <figcaption class="cap">First-player win rate when a level plays itself, level by level. The edge runs both ways and stays mild: a responder advantage at several levels, a moderate first-mover edge at the strongest. None approaches the near-certain win a forced opening would show.</figcaption>
+    </figure>
+  </section>
+
+  <section id="s-ladder">
+    <p class="kicker">The strength range</p>
+    <h2>The eight levels are a real ladder, not window dressing.</h2>
+    <p>For the analysis above to mean anything, the eight levels have to actually differ in skill and span a wide range. They do. The strongest levels beat the entire field below them cleanly, so the "does it converge at the top?" question really is being asked at the top of a genuine ladder, not among near-equal opponents. Lower down it gets more interesting: the aggressive early levels can punish the cautious middle ones, so skill here is not a single straight line. Style beating style is itself a mark of a game with more than one good idea in it.</p>
+    <figure>
+      <div class="legend"><span><span class="swatch" style="background:var(--blue)"></span>First player (row) wins more</span><span><span class="swatch" style="background:var(--red)"></span>Second player (column) wins more</span></div>
+      <div class="chart" id="chart-heat"></div>
+      <figcaption class="cap">Each cell: how often the row level (playing first) beats the column level. Bottom-left is deep blue (strong levels crush weak ones); the near-even diagonal is the same level against itself.</figcaption>
+    </figure>
+  </section>
+
+  <section id="s-length">
+    <p class="kicker">Shape of a game</p>
+    <h2>Games have an arc, and they vary.</h2>
+    <p>Finally, the games are not all the same length or over in a flash. A typical game runs <strong><span class="num">17</span> turns</strong> to someone going off the edge, with plenty of short skirmishes and long grinds on either side. Under <span class="num">3%</span> ran long enough to hit our safety cut-off. That spread is what you want: room for different kinds of games rather than one rhythm on repeat.</p>
+    <p>We checked whether that cut-off was hiding true stalemates, and it is not. Of the games that reached it, only a handful were genuine deadlocks with neither side making progress: about <strong><span class="num">0.3%</span> of all games</strong>. The rest had a clear leader and simply had not landed the finishing push yet. The few real grinds nearly all came from one very defensive strength level playing itself, the matchup most prone to it. When we raised the cut-off to <span class="num">300</span> turns and replayed those matchups, they resolved: the two strongest levels ended <strong>every</strong> game, and even that grinding matchup finished nine in ten. Tau has slow positions, not stalemated ones.</p>
+    <figure>
+      <div class="chart" id="chart-length"></div>
+      <figcaption class="cap">How many turns games lasted before a piece was pushed off the board. The tall middle and long tail show variety, not a single fixed length.</figcaption>
+    </figure>
+  </section>
+
+  <section id="s-method">
+    <p class="kicker">How this was measured</p>
+    <h2>Method, in plain terms.</h2>
+    <p>Everything here comes from the game's real engine playing against itself, not a simplified model. The same code that runs the game ran the tournament.</p>
+    <div class="method">
+      <h3>At a glance</h3>
+      <dl>
+        <dt>Games played</dt><dd class="num">1,280 full games (every pairing of 8 levels, both colours first, 20 games each) plus 72 self-play games for the opening-variety test.</dd>
+        <dt>Players</dt><dd>The eight built-in difficulty levels, from a gentle beginner to the engine's strongest setting.</dd>
+        <dt>Starting positions</dt><dd>Each game began from the standard setup with a small random nudge to both pieces, so no two games were forced to be identical.</dd>
+        <dt>What "a lead" means</dt><dd>How much closer to safety one player's nearest-the-edge piece sits than the other's. The win-chance curve is measured, not assumed.</dd>
+        <dt>Honest caveats</dt><dd>This is the computer opponents playing themselves. Strong self-play is good evidence of depth but not a substitute for a human tournament; a fuller picture would add human games over time. The opening-variety counts use a modest sample per level.</dd>
+      </dl>
+    </div>
+  </section>
+  <div class="appendix">
+  <section class="appendix-open" id="s-appendix">
+    <p class="kicker">Technical appendix</p>
+    <h2>The detail, for readers who want it.</h2>
+    <p>Everything above stands on its own. This appendix is for the technically inclined: how the eight computer opponents actually work and how they differ, the exact parameters, the full result tables, and a stress test that pushed the strongest brain harder still. None of it is needed to read the report, and none of it changes the conclusion.</p>
+  </section>
+
+  <section id="s-engine">
+    <h3 class="subh">The engine and the tournament</h3>
+    <p>Every game was played by the shipping game's own code, not a re-implementation or a simplified model. A turn is driven synchronously: the active brain returns a plan, the piece is rotated in 3-degree steps until it reaches that plan's stop angle or the rules halt it, and the turn ends. The physics is deterministic, so a chosen plan replays to exactly the position the brain searched.</p>
+    <p>To stop the near-deterministic top brains from playing the identical game every time, each game began from the standard start with an independent random rotation of up to <span class="mono">&plusmn;6&deg;</span> applied to each piece. That keeps every position a real, legal Tau position while giving genuinely different lines. Games ran to a piece leaving the board, or to a <span class="num">70</span>-turn safety cap (reached in <span class="num">2.9%</span> of games), after which the piece with the better rim margin was recorded as ahead.</p>
+    <p>The full tournament was <strong>every ordered pairing of the eight levels</strong> (64 pairings, both colours getting the first move), <span class="num">20</span> games each, for <span class="num">1,280</span> games. A separate <span class="num">72</span>-game run (24 self-play games at three levels) measured opening variety, and the stress test below added more.</p>
+  </section>
+
+  <section id="s-brains">
+    <h3 class="subh">The eight brains, one by one</h3>
+    <p>Six of the eight share one planner. A move is a triple: which of the three feet is pinned, which way it rotates, and the stop angle. The planner sweeps each of the six (pivot &times; direction) options in 3&deg; steps until the one-crossing rule or a 170&deg; safety cap stops it, scores candidate stopping points with a weighted evaluation of the resulting position, and, on the deeper rungs, searches the opponent's reply and its own follow-up. Two brains are deliberate exceptions. Elo figures come from a roughly 600-game round-robin; each rung is tuned to beat the one below it about 60 to 65% of the time.</p>
+
+    <div class="brain"><h4>L1 &middot; Pushover <span class="elo">Elo 0 (baseline)</span></h4>
+      <p class="cfg">kind: l1</p>
+      <p>Pins the foot nearest the opponent, swings the farthest foot toward them, but stops at a random <strong>45 to 80%</strong> of the legal limit and often halts before even the first crossing. One move in five picks a random pivot instead. It gives no thought to its own safety. Built to be beatable by a complete first-timer.</p></div>
+
+    <div class="brain"><h4>L2 &middot; Menu &ldquo;Easy&rdquo; <span class="elo">Elo ~117</span></h4>
+      <p class="cfg">kind: builtin &middot; dumb heuristic &middot; no lookahead, no evaluation</p>
+      <p>One fixed rule. If it sits closer to the centre than the opponent it <strong>attacks</strong> (pin the foot second-farthest from the opponent, swing the farthest foot toward them); otherwise it <strong>defends</strong> with the same shape aimed at the centre. It always stops a random 60 to 90% short of the natural limit, so it never fully commits.</p></div>
+
+    <div class="brain"><h4>L3 &middot; Cautious pusher <span class="elo">Elo ~200</span></h4>
+      <p class="cfg">kind: p &middot; 1-ply &middot; sampleDeg 26 &middot; keepStops 1 &middot; w: margin .6 &middot; noise .30</p>
+      <p>The first brain on the shared planner: one ply, coarse 26&deg; sampling, scored on <strong>rim safety alone</strong>. A weakness dial makes it play a purely random legal move 30% of the time. Diluting a competent brain this way reads as more human than a brain that simply under-commits.</p></div>
+
+    <div class="brain"><h4>L4 &middot; Centre-dancer <span class="elo">Elo ~273</span></h4>
+      <p class="cfg">kind: p &middot; 1-ply &middot; sampleDeg 18 &middot; keepStops 2 &middot; w: margin .5, zone .3, center 1.5</p>
+      <p>Finer 18&deg; sampling, still one ply, but now valuing <strong>board control</strong>: rim safety, the hand-graded cell values, and a strong bonus for keeping a foot near the middle. That centre bonus is what produces its dramatic full-board swings.</p></div>
+
+    <div class="brain"><h4>L5 &middot; Corner-cutter <span class="elo">Elo ~323</span></h4>
+      <p class="cfg">kind: p &middot; 1-ply &middot; sampleDeg 18 &middot; keepStops 2 &middot; w: margin .6, zone .4, park 2</p>
+      <p>Adds the <strong>park</strong> term: a bonus for resting a foot on a line near a corner intersection, arming it to cut a second line next turn. It begins setting up the two-lines-for-one-crossing trick, though it still does not look at the reply.</p></div>
+
+    <div class="brain"><h4>L6 &middot; Solid <span class="elo">Elo ~392</span></h4>
+      <p class="cfg">kind: p &middot; 2-ply &middot; sampleDeg 24 &middot; keepStops 1 &middot; maxCands 8 &middot; w: margin 1</p>
+      <p>The first brain that <strong>looks ahead</strong>. For each sampled move it lets the opponent answer with their best sweep-to-limit reply and scores by the worst case (minimax). Pure rim safety, but now defended against the punishing counter that a one-ply brain walks into.</p></div>
+
+    <div class="brain"><h4>L7 &middot; Expert <span class="elo">Elo ~461</span></h4>
+      <p class="cfg">kind: builtin &middot; master &middot; 3-ply minimax</p>
+      <p>Full <strong>three-ply</strong> search: its move, the opponent's best reply, then its own best follow-up, so it will not take a move that looks good now but walks into a bad answer. Its move set adds early <strong>park stops</strong> that deliberately arm a foot in a line's grace band, letting the deeper plies see and race the double-cross. Evaluation is margin plus zone plus a park bonus, with the win/loss term dominating. Alpha-beta-style cutoffs keep it quick.</p></div>
+
+    <div class="brain"><h4>L8 &middot; Cap <span class="elo">Elo ~550 (Expert +90, engine ceiling)</span></h4>
+      <p class="cfg">kind: p3 &middot; 3-ply &middot; sampleDeg 18 &middot; keepStops 2 &middot; maxCands 11 &middot; w: margin 1, zone .5, park .9, center .15</p>
+      <p>Expert's three-ply shape, but the root is built from <strong>fine 18&deg; partial-rotation stops</strong> rather than only sweep-to-limit moves, so it weighs stopping points Expert never considers, under the fullest weight set (all four positional terms). This is the strongest opponent the game ships.</p></div>
+  </section>
+
+  <section id="s-eval">
+    <h3 class="subh">What the brains value</h3>
+    <p>Positions are scored by a weighted sum of these terms. Weights are the per-level dials listed above; a winning or losing position dominates every positional term.</p>
+    <div class="defbox"><dl>
+      <dt>margin</dt><dd>Rim safety: the opponent's outermost foot clearance from the edge minus mine. Positive means the opponent is nearer to falling. This is the core objective and it decides close calls.</dd>
+      <dt>zone</dt><dd>Hand-graded cell value: 4 in the centre, 3 mid, 2 outer, minus 1 inside either corner lens pocket. Summed over my three feet minus the opponent's.</dd>
+      <dt>center</dt><dd>Bonus for keeping a foot near the board's middle, which drives large board-crossing swings.</dd>
+      <dt>park</dt><dd>Bonus per foot resting in a line's grace band near an intersection, ready to cross a second line next turn (the double-cross setup).</dd>
+      <dt>noise</dt><dd>Probability of ignoring the evaluation entirely and playing a random legal move. The weakness dial for the lower rungs.</dd>
+    </dl></div>
+    <div class="datawrap"><table class="data">
+      <caption>Search configuration of every rung. &ldquo;Plies&rdquo; is how many half-moves ahead the brain reads; sampleDeg is the spacing between candidate stop angles along a sweep.</caption>
+      <thead><tr><th>Level</th><th>Kind</th><th>Plies</th><th>sampleDeg</th><th>keepStops</th><th>maxCands</th><th>Weights</th></tr></thead>
+      <tbody>
+        <tr><td>L1</td><td>pushover</td><td class="na">n/a</td><td class="na">n/a</td><td class="na">n/a</td><td class="na">n/a</td><td>hand rule</td></tr>
+        <tr><td>L2</td><td>heuristic</td><td>0</td><td class="na">n/a</td><td class="na">n/a</td><td class="na">n/a</td><td>hand rule</td></tr>
+        <tr><td>L3</td><td>planner</td><td>1</td><td>26&deg;</td><td>1</td><td class="na">n/a</td><td>margin .6 (+30% noise)</td></tr>
+        <tr><td>L4</td><td>planner</td><td>1</td><td>18&deg;</td><td>2</td><td class="na">n/a</td><td>margin .5, zone .3, center 1.5</td></tr>
+        <tr><td>L5</td><td>planner</td><td>1</td><td>18&deg;</td><td>2</td><td class="na">n/a</td><td>margin .6, zone .4, park 2</td></tr>
+        <tr><td>L6</td><td>planner</td><td>2</td><td>24&deg;</td><td>1</td><td>8</td><td>margin 1</td></tr>
+        <tr><td>L7</td><td>master</td><td>3</td><td>limit + parks</td><td>4 parks</td><td>all</td><td>margin, zone .5, park .8</td></tr>
+        <tr><td>L8</td><td>planner</td><td>3</td><td>18&deg;</td><td>2</td><td>11</td><td>margin 1, zone .5, park .9, center .15</td></tr>
+        <tr><td>L8+</td><td>planner</td><td>3</td><td>9&deg;</td><td>4</td><td>28</td><td>same as L8</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="s-stress">
+    <h3 class="subh">The deeper-search stress test (L8+)</h3>
+    <p>The one worry the main report cannot fully close is subtle: what if the game only looks varied because even L8 is not strong enough to find a hidden best line, and a deeper search would collapse onto it? To probe that, we built <strong>L8+</strong>: the exact same evaluation as L8 (identical weights, identical judgement) given a much wider, finer search: half the sample spacing, double the kept stops, and roughly 2.5 times as many candidate lines searched in full. This is more thinking time, not a different player.</p>
+    <p>First we confirmed the extra search actually makes it stronger, so the test is meaningful: <span class="readout">L8+ beat stock L8 in 16 of 24 head-to-head games (67%)</span>. It is a genuinely better player, not just a different one. Then the two depth questions:</p>
+    <div class="callout">
+      <p style="margin:0 0 8px"><b>Opening variety went up, not down.</b> Playing itself from perturbed starts, L8+ produced <b>17 distinct opening lines out of 24</b> games with its single most-common line appearing only <b>8%</b> of the time, more varied than stock L8 (12 of 24, top line 21%). A deeper search found <em>more</em> good ideas, not one forced line.</p>
+      <p style="margin:0"><b>No forced line at any depth.</b> Playing itself 30 times from perturbed starts, L8+ produced <b>30 distinct games</b>: no full move sequence ever repeated another. Its median game ran 21 turns. Going first was worth about two-thirds here (20 of 30), the same mild first-mover edge stock L8 shows at the top of the ladder, and nowhere near a forced win.</p>
+    </div>
+    <p>This is the strongest single piece of evidence in the report. The exact failure a publisher would fear, that strength hides a degenerate line, is where the game held up best: give the top brain far more search and it fans out rather than narrowing.</p>
+  </section>
+
+  <section id="s-termination">
+    <h3 class="subh">Termination: does the cut-off hide draws?</h3>
+    <p>Games in the main tournament ran to a piece leaving the board or a 70-turn cap, and 2.9% hit the cap. A fair worry is that the cap converts genuine stalemates into recorded wins. We checked two ways.</p>
+    <p>First, we classified all 37 capped games by their margin trajectory. Only <strong>4</strong> (0.3% of all 1,280 games) were near-even deadlocks with neither side progressing. The median capped game held a rim-margin lead of <strong>15</strong>, a clear leader that simply had not delivered the final push. And 22 of the 37 were a level playing itself, 10 of those the pure-defence L6 against its clone, exactly the matchup that should grind.</p>
+    <p>Second, we replayed the stall-prone self-play matchups with the cap raised to 300 turns:</p>
+    <div class="datawrap"><table class="data">
+      <caption>Stall-prone matchups replayed to a 300-turn cap. &ldquo;Resolved&rdquo; means a piece actually left the board. Even the grindiest matchup finishes nine games in ten; the two exceptions still held a clear leader (final margins 12 and 14), not a dead heat. The two strongest levels ended every game, none even reaching the original 70-turn cap.</caption>
+      <thead><tr><th>Matchup</th><th>Resolved by turn 300</th><th>Median length</th><th>Longest</th></tr></thead>
+      <tbody>
+        <tr><td>L6 vs L6 (pure defence)</td><td>18 / 20 (90%)</td><td>43</td><td>283</td></tr>
+        <tr><td>L4 vs L4</td><td>16 / 16 (100%)</td><td>22</td><td>75</td></tr>
+        <tr><td>L7 vs L7 (Expert)</td><td>10 / 10 (100%)</td><td>27</td><td>36</td></tr>
+        <tr><td>L8 vs L8 (strongest)</td><td>10 / 10 (100%)</td><td>21</td><td>63</td></tr>
+      </tbody>
+    </table></div>
+    <p>The conclusion is that Tau has slow positions, not stalemated ones. The cap truncates the occasional grind between defensive players; it does not paper over a pool of unresolvable draws. For strict bookkeeping, the four near-even caps in the main tournament are recorded at their tiny margins (within a few units of even), so they already count as all-but-draws rather than clean wins, and re-scoring them as formal draws moves nothing in the results.</p>
+  </section>
+
+  <section id="s-tables">
+    <h3 class="subh">Full result tables</h3>
+
+    <div class="datawrap"><table class="data heatnum">
+      <caption>Win-rate matrix. Each cell is how often the <strong>row</strong> level, moving first, beat the <strong>column</strong> level, over 20 games. The diagonal is a level against itself (first-mover rate). Note the upper rungs (L6 to L8) beat the whole field cleanly, while the lower-middle rungs are non-transitive: L2's all-out aggression punishes the more passive L3 to L5, yet folds to the searching brains. Style beating style is itself a sign of depth, not a defect.</caption>
+      <thead><tr><th>first &darr; / 2nd &rarr;</th><th>L1</th><th>L2</th><th>L3</th><th>L4</th><th>L5</th><th>L6</th><th>L7</th><th>L8</th></tr></thead>
+      <tbody id="matrixBody"></tbody>
+    </table></div>
+
+    <div class="datawrap"><table class="data">
+      <caption>Win-chance calibration. For each size of lead (rim margin, in board units), the share of pooled positions from which the leading first player went on to win, and the number of positions in that bucket. Even is 47%; the curve is gentle and never reaches certainty.</caption>
+      <thead><tr><th>Lead (margin)</th><th>First player wins</th><th>Positions</th></tr></thead>
+      <tbody id="calibBody"></tbody>
+    </table></div>
+
+    <div class="datawrap"><table class="data">
+      <caption>Opening variety, angle-independent. Distinct opening structures (which foot pivots and which way, ignoring exact angles) over the first six moves of 24 self-play games per level, and the share taken by the single most-common line.</caption>
+      <thead><tr><th>Level</th><th>Distinct openings / 24</th><th>Most-common line</th></tr></thead>
+      <tbody id="structBody"></tbody>
+    </table></div>
+
+    <div class="datawrap"><table class="data">
+      <caption>Game-length distribution, all 1,280 games, in 5-turn buckets. Median 17 turns, quartiles 12 and 26, mean 21.4. The final row is games that hit the 70-turn safety cap.</caption>
+      <thead><tr><th>Turns</th><th>Games</th><th>Share</th></tr></thead>
+      <tbody id="histBody"></tbody>
+    </table></div>
+  </section>
+
+  <section id="s-defs">
+    <h3 class="subh">Definitions and honest limits</h3>
+    <div class="defbox"><dl>
+      <dt>perturbation</dt><dd>The &plusmn;6&deg; per-piece rotation applied at the start of every game so the near-deterministic brains do not replay one fixed line.</dd>
+      <dt>fingerprint</dt><dd>An FNV-1a hash of a game's full move sequence (pivot, direction, stop angle to the nearest degree). Two games sharing a fingerprint played literally identically, the strongest possible signal of a forced line.</dd>
+      <dt>point of no return</dt><dd>The first turn after which the eventual winner's calibrated win chance stays at or above 90% to the end. It exists in only 0.86% of games (11 of 1,280).</dd>
+      <dt>calibration</dt><dd>The measured, not assumed, map from lead size to win chance, pooled over every position in every decided game.</dd>
+    </dl></div>
+    <p><strong>What this is and is not.</strong> Strong self-play is good evidence of depth, but it is the computer opponents playing themselves, not a human tournament. A fuller picture would add human games over time. The calibration pools positions across games and turns, so its buckets are not independent samples; it is a descriptive curve, not a fitted model. The opening-variety counts use a modest 24-game sample per level. And because Tau's state is continuous (any stop angle is legal), no amount of self-play can <em>prove</em> no forced win exists; it can only fail to find one across a wide, strong search, which is what happened here. The reproducible artifacts are the 1,280-game record, the analysis scripts, and the deeper-search run described above.</p>
+  </section>
+  </div>
+
+</main>
+
+<footer class="wrap">
+  Tau strategic-depth analysis. Figures generated from the game's own engine. Player colours match the pieces on the board. <a href="/">Return to the game &rarr;</a>
+</footer>
+
+<div id="tip" role="status" aria-live="polite"></div>
+
+<script>
+const DATA = {"totalGames":1280,"matrix":[[45,5,5,0,0,0,0,0],[100,25,85,75,65,35,0,0],[100,20,55,35,15,0,0,0],[100,55,60,55,40,0,0,0],[100,55,90,50,20,0,5,5],[100,100,100,100,95,25,10,0],[100,100,100,100,100,95,40,30],[100,100,100,100,100,75,80,65]],"calib":[{"margin":-40,"p":2,"n":41},{"margin":-32,"p":13,"n":163},{"margin":-24,"p":20,"n":738},{"margin":-16,"p":22,"n":4137},{"margin":-8,"p":25,"n":4497},{"margin":0,"p":47,"n":6253},{"margin":8,"p":68,"n":4949},{"margin":16,"p":75,"n":5221},{"margin":24,"p":78,"n":1140},{"margin":32,"p":84,"n":207},{"margin":40,"p":87,"n":46}],"hist":[{"bucket":0,"n":6},{"bucket":5,"n":129},{"bucket":10,"n":371},{"bucket":15,"n":246},{"bucket":20,"n":180},{"bucket":25,"n":97},{"bucket":30,"n":63},{"bucket":35,"n":55},{"bucket":40,"n":32},{"bucket":45,"n":29},{"bucket":50,"n":16},{"bucket":55,"n":11},{"bucket":60,"n":4},{"bucket":65,"n":3},{"bucket":70,"n":38}],"selfFirst":[{"rung":1,"p":45},{"rung":2,"p":25},{"rung":3,"p":55},{"rung":4,"p":55},{"rung":5,"p":20},{"rung":6,"p":25},{"rung":7,"p":40},{"rung":8,"p":65}],"lengthStats":{"median":17,"p25":12,"p75":26,"mean":21.4,"min":1,"max":70,"cappedPct":2.9},"firstMoverPct":50.2,"selfFirstMoverPct":41.3,"ponrGames":11,"ponrPct":0.86,"structural":[{"rung":1,"distinct":22,"of":24,"topShare":8},{"rung":4,"distinct":15,"of":24,"topShare":17},{"rung":8,"distinct":12,"of":24,"topShare":21}]};
+
+/* ---------- shared helpers ---------- */
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, kids){ const e=document.createElementNS(NS,tag); for(const k in (attrs||{})) e.setAttribute(k, attrs[k]); (kids||[]).forEach(c=>e.appendChild(c)); return e; }
+function txt(tag, attrs, s){ const e=el(tag,attrs); e.textContent=s; return e; }
+function cvar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+const tip = document.getElementById('tip');
+function showTip(html, x, y){ tip.innerHTML=html; tip.style.opacity=1; const r=tip.getBoundingClientRect(); let tx=x+14, ty=y+14; if(tx+r.width>innerWidth-8) tx=x-r.width-14; if(ty+r.height>innerHeight-8) ty=y-r.height-14; tip.style.left=tx+'px'; tip.style.top=ty+'px'; }
+function hideTip(){ tip.style.opacity=0; }
+function bindTip(node, html){ node.style.cursor='default'; node.addEventListener('pointermove', e=>showTip(html, e.clientX, e.clientY)); node.addEventListener('pointerleave', hideTip); }
+
+/* ---------- stat tiles ---------- */
+(function(){
+  const tiles = [
+    { k:'12 / 24', cls:'board', lab:'distinct opening lines even at maximum strength. No single line tops ~20%.' },
+    { k:'47%', cls:'blue', lab:'win chance from a dead-even position. A lead rarely decides the game.' },
+    { k:'50 / 50', cls:'blue', lab:'the first move barely matters: an even split across all 1,280 games, a mild edge at most at the very top, never a forced win.' },
+    { k:'0', cls:'board', lab:'forced wins found, at any of the eight strength levels.' },
+  ];
+  const host = document.getElementById('tiles');
+  tiles.forEach(t=>{ const d=document.createElement('div'); d.className='tile';
+    d.innerHTML = '<div class="k '+t.cls+' num">'+t.k+'</div><div class="lab">'+t.lab+'</div>'; host.appendChild(d); });
+})();
+
+/* ---------- 1. convergence bars ---------- */
+function drawConverge(){
+  const box={w:760,h:300,l:52,r:20,t:18,b:58};
+  const svg=el('svg',{viewBox:`0 0 ${box.w} ${box.h}`,role:'img','aria-label':'Distinct opening lines by strength level'});
+  const d=DATA.structural, maxV=24;
+  const labs=['Weakest (L1)','Middle (L4)','Strongest (L8)'];
+  const plotW=box.w-box.l-box.r, plotH=box.h-box.t-box.b, base=box.t+plotH;
+  const y=v=> base - (v/maxV)*plotH;
+  // gridlines
+  [0,6,12,18,24].forEach(g=>{ svg.appendChild(el('line',{x1:box.l,x2:box.w-box.r,y1:y(g),y2:y(g),stroke:cvar('--line'),'stroke-width':1}));
+    svg.appendChild(txt('text',{x:box.l-10,y:y(g)+4,'text-anchor':'end',class:'axislab'},String(g))); });
+  // "solved game" band 0..2
+  svg.appendChild(el('rect',{x:box.l,y:y(2),width:plotW,height:base-y(2),fill:cvar('--red'),opacity:.10}));
+  svg.appendChild(txt('text',{x:box.w-box.r-4,y:y(2)-6,'text-anchor':'end',class:'axislab',fill:cvar('--red')},'solved / forced-game territory'));
+  const bw=96, gap=(plotW-bw*3)/4;
+  d.forEach((row,i)=>{
+    const x=box.l+gap+(bw+gap)*i, h=base-y(row.distinct);
+    const g=el('g',{class:'cell'});
+    g.appendChild(el('rect',{x,y:y(row.distinct),width:bw,height:h,rx:5,fill:cvar('--board')}));
+    g.appendChild(txt('text',{x:x+bw/2,y:y(row.distinct)-9,'text-anchor':'middle',class:'vallab tab'},row.distinct+' of 24'));
+    g.appendChild(txt('text',{x:x+bw/2,y:base+22,'text-anchor':'middle',class:'axislab'},labs[i]));
+    g.appendChild(txt('text',{x:x+bw/2,y:base+38,'text-anchor':'middle',class:'axislab'},'top line '+row.topShare+'%'));
+    bindTip(g, `<span class="tk">${row.distinct}</span> distinct lines of 24<br>most-common line: <span class="tk">${row.topShare}%</span>`);
+    svg.appendChild(g);
+  });
+  svg.appendChild(txt('text',{x:box.l-38,y:box.t+plotH/2,'text-anchor':'middle',class:'axislab',transform:`rotate(-90 ${box.l-38} ${box.t+plotH/2})`},'distinct lines / 24'));
+  document.getElementById('chart-converge').appendChild(svg);
+}
+
+/* ---------- 2. comeback / calibration line ---------- */
+function drawComeback(){
+  const box={w:760,h:320,l:52,r:20,t:16,b:52};
+  const svg=el('svg',{viewBox:`0 0 ${box.w} ${box.h}`,role:'img','aria-label':'Win chance versus size of lead'});
+  const d=DATA.calib, plotW=box.w-box.l-box.r, plotH=box.h-box.t-box.b, base=box.t+plotH;
+  const xmin=-40, xmax=40;
+  const x=m=> box.l + ((m-xmin)/(xmax-xmin))*plotW;
+  const y=p=> box.t + (1-p/100)*plotH;
+  // y grid
+  [0,25,50,75,100].forEach(g=>{ svg.appendChild(el('line',{x1:box.l,x2:box.w-box.r,y1:y(g),y2:y(g),stroke:cvar('--line'),'stroke-width':1}));
+    svg.appendChild(txt('text',{x:box.l-10,y:y(g)+4,'text-anchor':'end',class:'axislab'},g+'%')); });
+  // 50% coin-flip reference
+  svg.appendChild(el('line',{x1:box.l,x2:box.w-box.r,y1:y(50),y2:y(50),stroke:cvar('--mid'),'stroke-width':2,'stroke-dasharray':'2 5'}));
+  // x ticks
+  [-40,-20,0,20,40].forEach(m=>{ svg.appendChild(txt('text',{x:x(m),y:base+22,'text-anchor':'middle',class:'axislab'}, m===0?'even':(m>0?'+'+m:''+m))); });
+  svg.appendChild(txt('text',{x:box.l,y:base+40,'text-anchor':'start',class:'axislab'},'← behind'));
+  svg.appendChild(txt('text',{x:box.w-box.r,y:base+40,'text-anchor':'end',class:'axislab'},'ahead →'));
+  // area under curve
+  let dPath='', aPath=`M ${x(d[0].margin)} ${base} `;
+  d.forEach((c,i)=>{ dPath+=(i?'L':'M')+x(c.margin)+' '+y(c.p)+' '; aPath+='L '+x(c.margin)+' '+y(c.p)+' '; });
+  aPath+=`L ${x(d[d.length-1].margin)} ${base} Z`;
+  svg.appendChild(el('path',{d:aPath,fill:cvar('--blue'),opacity:.12}));
+  svg.appendChild(el('path',{d:dPath,fill:'none',stroke:cvar('--blue'),'stroke-width':2.5,'stroke-linejoin':'round','stroke-linecap':'round'}));
+  // markers + selective labels
+  d.forEach(c=>{ const cx=x(c.margin), cy=y(c.p);
+    const dot=el('circle',{cx,cy,r:4.5,fill:cvar('--blue'),stroke:cvar('--surface'),'stroke-width':2});
+    bindTip(dot, `lead <span class="tk">${c.margin>0?'+':''}${c.margin}</span><br>wins <span class="tk">${c.p}%</span> of the time<br><span style="color:var(--ink-3)">${c.n.toLocaleString()} positions</span>`);
+    svg.appendChild(dot);
+  });
+  [ {m:0,p:47,dx:6,dy:-12,t:'even → 47%'}, {m:16,p:75,dx:8,dy:-10,t:'clear lead → 75%'}, {m:32,p:84,dx:-6,dy:18,t:'big lead → 84%'} ].forEach(a=>{
+    svg.appendChild(txt('text',{x:x(a.m)+a.dx,y:y(a.p)+a.dy,'text-anchor':a.dx<0?'end':'start',class:'vallab'},a.t));
+  });
+  document.getElementById('chart-comeback').appendChild(svg);
+}
+
+/* ---------- 3. first-mover fairness bars ---------- */
+function drawFair(){
+  const box={w:760,h:250,l:40,r:18,t:22,b:40};
+  const svg=el('svg',{viewBox:`0 0 ${box.w} ${box.h}`,role:'img','aria-label':'First-player win rate by level in self-play'});
+  const d=DATA.selfFirst, plotW=box.w-box.l-box.r, plotH=box.h-box.t-box.b, base=box.t+plotH;
+  const y=v=> base-(v/100)*plotH;
+  [0,50,100].forEach(g=>{ svg.appendChild(el('line',{x1:box.l,x2:box.w-box.r,y1:y(g),y2:y(g),stroke:cvar('--line'),'stroke-width':1}));
+    svg.appendChild(txt('text',{x:box.l-8,y:y(g)+4,'text-anchor':'end',class:'axislab'},g+'%')); });
+  // even reference
+  svg.appendChild(el('line',{x1:box.l,x2:box.w-box.r,y1:y(50),y2:y(50),stroke:cvar('--mid'),'stroke-width':2,'stroke-dasharray':'2 5'}));
+  svg.appendChild(txt('text',{x:box.w-box.r,y:y(50)-6,'text-anchor':'end',class:'axislab'},'even (50%)'));
+  const n=d.length, gap=plotW/n*0.34, bw=plotW/n-gap;
+  d.forEach((row,i)=>{
+    const x=box.l+ (plotW/n)*i + gap/2, top=y(row.p), h=base-top;
+    const g=el('g',{class:'cell'});
+    g.appendChild(el('rect',{x,y:top,width:bw,height:h,rx:4,fill:cvar('--blue'),opacity:.92}));
+    g.appendChild(txt('text',{x:x+bw/2,y:top-7,'text-anchor':'middle',class:'vallab tab',style:'font-size:11px'},row.p+'%'));
+    g.appendChild(txt('text',{x:x+bw/2,y:base+18,'text-anchor':'middle',class:'axislab'},'L'+row.rung));
+    bindTip(g, `Level ${row.rung} vs itself<br>first player wins <span class="tk">${row.p}%</span>`);
+    svg.appendChild(g);
+  });
+  document.getElementById('chart-fair').appendChild(svg);
+}
+
+/* ---------- 4. win-rate heatmap ---------- */
+function drawHeat(){
+  const N=8, cell=64, padL=54, padT=44, gap=4;
+  const w=padL+N*(cell+gap)+40, h=padT+N*(cell+gap)+40;
+  const svg=el('svg',{viewBox:`0 0 ${w} ${h}`,role:'img','aria-label':'Win rate matrix, each level versus each level'});
+  // diverging colour: 0% -> red, 50% -> mid, 100% -> blue
+  function lerp(a,b,t){ return a+(b-a)*t; }
+  function hexToRgb(H){ H=H.replace('#',''); return [parseInt(H.slice(0,2),16),parseInt(H.slice(2,4),16),parseInt(H.slice(4,6),16)]; }
+  const blue=hexToRgb(cvar('--blue')), red=hexToRgb(cvar('--red')), mid=hexToRgb(cvar('--mid'));
+  function colour(p){ // p 0..100
+    let a,b,t; if(p>=50){ a=mid;b=blue;t=(p-50)/50; } else { a=red;b=mid;t=p/50; }
+    return `rgb(${Math.round(lerp(a[0],b[0],t))},${Math.round(lerp(a[1],b[1],t))},${Math.round(lerp(a[2],b[2],t))})`;
+  }
+  // axis titles
+  svg.appendChild(txt('text',{x:padL+N*(cell+gap)/2,y:20,'text-anchor':'middle',class:'axislab',style:'font-size:12px;font-weight:650;fill:var(--ink-2)'},'Second player (column)'));
+  const g0=txt('text',{x:16,y:padT+N*(cell+gap)/2,'text-anchor':'middle',class:'axislab',style:'font-size:12px;font-weight:650;fill:var(--ink-2)',transform:`rotate(-90 16 ${padT+N*(cell+gap)/2})`},'First player (row)');
+  svg.appendChild(g0);
+  for(let i=0;i<N;i++){
+    svg.appendChild(txt('text',{x:padL+i*(cell+gap)+cell/2,y:padT-10,'text-anchor':'middle',class:'axislab'},'L'+(i+1)));
+    svg.appendChild(txt('text',{x:padL-10,y:padT+i*(cell+gap)+cell/2+4,'text-anchor':'end',class:'axislab'},'L'+(i+1)));
+  }
+  for(let r=0;r<N;r++) for(let c=0;c<N;c++){
+    const p=DATA.matrix[r][c]; if(p===null) continue;
+    const x=padL+c*(cell+gap), y=padT+r*(cell+gap);
+    const g=el('g',{class:'cell'});
+    g.appendChild(el('rect',{x,y,width:cell,height:cell,rx:3,fill:colour(p),stroke:cvar('--surface'),'stroke-width':2}));
+    // pick readable text ink: dark on light-ish cells
+    const lum = p>72 || p<24 ? '#fff' : (p>=44&&p<=56? cvar('--ink') : '#0b0e12');
+    g.appendChild(txt('text',{x:x+cell/2,y:y+cell/2+4,'text-anchor':'middle',style:`font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;fill:${p>=44&&p<=56?cvar('--ink'):(p>72||p<24?'#fff':'#10151a')}`},p+'%'));
+    bindTip(g, `L${r+1} (first) vs L${c+1}<br>wins <span class="tk">${p}%</span>`);
+    svg.appendChild(g);
+  }
+  document.getElementById('chart-heat').appendChild(svg);
+}
+
+/* ---------- 5. game-length histogram ---------- */
+function drawLength(){
+  const box={w:760,h:300,l:46,r:18,t:18,b:52};
+  const svg=el('svg',{viewBox:`0 0 ${box.w} ${box.h}`,role:'img','aria-label':'Distribution of game lengths in turns'});
+  // merge the 70 (cap) bucket note; show 0..70
+  const d=DATA.hist, plotW=box.w-box.l-box.r, plotH=box.h-box.t-box.b, base=box.t+plotH;
+  const maxN=Math.max(...d.map(b=>b.n));
+  const y=v=> base-(v/maxN)*plotH;
+  [0,100,200,300,400].forEach(g=>{ if(g>maxN) return; svg.appendChild(el('line',{x1:box.l,x2:box.w-box.r,y1:y(g),y2:y(g),stroke:cvar('--line'),'stroke-width':1}));
+    svg.appendChild(txt('text',{x:box.l-8,y:y(g)+4,'text-anchor':'end',class:'axislab'},String(g))); });
+  const n=d.length, bw=plotW/n-3;
+  d.forEach((b,i)=>{
+    const x=box.l+(plotW/n)*i+1.5, top=y(b.n), h=base-top;
+    const isCap = b.bucket===70;
+    const g=el('g',{class:'cell'});
+    g.appendChild(el('rect',{x,y:top,width:bw,height:Math.max(h,0),rx:2.5,fill:isCap?cvar('--red'):cvar('--board'),opacity:isCap?.55:1}));
+    if(i%2===0 || isCap) g.appendChild(txt('text',{x:x+bw/2,y:base+18,'text-anchor':'middle',class:'axislab'}, isCap?'cap':String(b.bucket)));
+    bindTip(g, (isCap?`hit the ${b.bucket}-turn cut-off`:`${b.bucket}–${b.bucket+4} turns`)+`<br><span class="tk">${b.n}</span> games`);
+    svg.appendChild(g);
+  });
+  // median marker
+  const medBucket=15;
+  svg.appendChild(txt('text',{x:box.l,y:base+40,'text-anchor':'start',class:'axislab'},'turns until a piece is pushed off  ·  typical game ≈ 17 turns'));
+  document.getElementById('chart-length').appendChild(svg);
+}
+
+/* ---------- hero rings (echo of the board) ---------- */
+function drawHeroRings(){
+  const svg=document.getElementById('heroRings');
+  const cx=650, cy=210;
+  [150,112,74,38].forEach(r=> svg.appendChild(el('circle',{cx,cy,r,fill:'none',stroke:cvar('--line'),'stroke-width':1.5})));
+  // faint lens arcs
+  svg.appendChild(el('circle',{cx:cx-150,cy,r:96,fill:'none',stroke:cvar('--line'),'stroke-width':1.5}));
+  svg.appendChild(el('circle',{cx:cx+150,cy,r:96,fill:'none',stroke:cvar('--line'),'stroke-width':1.5}));
+  // two tripod feet dots (blue + red) at their start spots
+  function tri(px,col){ const g=el('g',{}); const R=26;
+    for(let k=0;k<3;k++){ const a=(px<cx?0:Math.PI)+k*2*Math.PI/3; const fx=px+Math.cos(a)*R, fy=cy+Math.sin(a)*R;
+      g.appendChild(el('line',{x1:px,y1:cy,x2:fx,y2:fy,stroke:col,'stroke-width':1.5,opacity:.7}));
+      g.appendChild(el('circle',{cx:fx,cy:fy,r:2.6,fill:col})); }
+    g.appendChild(el('circle',{cx:px,cy,r:3.2,fill:col}));
+    return g;
+  }
+  svg.appendChild(tri(cx-52, cvar('--blue')));
+  svg.appendChild(tri(cx+52, cvar('--red')));
+}
+
+/* ---------- theme toggle ---------- */
+(function(){
+  const btn=document.getElementById('themeBtn');
+  function redraw(){ document.querySelectorAll('.chart').forEach(c=>c.innerHTML=''); document.getElementById('heroRings').innerHTML='';
+    drawConverge(); drawComeback(); drawFair(); drawHeat(); drawLength(); drawHeroRings(); }
+  btn.addEventListener('click', ()=>{
+    const cur=document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+    const next=cur==='dark'?'light':'dark';
+    document.documentElement.setAttribute('data-theme',next);
+    redraw();
+  });
+})();
+
+/* ---------- appendix data tables ---------- */
+function buildTables(){
+  // win-rate matrix
+  const mb=document.getElementById('matrixBody');
+  DATA.matrix.forEach((row,r)=>{
+    let tr='<tr><td>L'+(r+1)+' (first)</td>';
+    row.forEach((p,c)=>{ const cls = r===c ? 'style="font-weight:700"' : (p>=66?'class="hi"':(p<=34?'class="lo"':''));
+      tr+='<td '+cls+'>'+p+'%</td>'; });
+    mb.insertAdjacentHTML('beforeend', tr+'</tr>');
+  });
+  // calibration
+  const cb=document.getElementById('calibBody');
+  DATA.calib.forEach(c=>{ const lab = c.margin===0?'even':(c.margin>0?'+'+c.margin:''+c.margin);
+    cb.insertAdjacentHTML('beforeend','<tr><td>'+lab+'</td><td>'+c.p+'%</td><td>'+c.n.toLocaleString()+'</td></tr>'); });
+  // structural diversity (+ L8+ stress row)
+  const sb=document.getElementById('structBody');
+  const rows = DATA.structural.map(s=>({lab:'L'+s.rung,d:s.distinct,of:s.of,top:s.topShare}));
+  rows.push({lab:'L8+ (deeper search)',d:17,of:24,top:8});
+  rows.forEach(s=> sb.insertAdjacentHTML('beforeend','<tr><td>'+s.lab+'</td><td>'+s.d+' / '+s.of+'</td><td>'+s.top+'%</td></tr>'));
+  // length histogram
+  const hb=document.getElementById('histBody'); const tot=DATA.hist.reduce((a,b)=>a+b.n,0);
+  DATA.hist.forEach(b=>{ const isCap=b.bucket===70; const lab=isCap?'70 (cap)':b.bucket+'–'+(b.bucket+4);
+    hb.insertAdjacentHTML('beforeend','<tr><td>'+lab+'</td><td>'+b.n+'</td><td>'+(b.n/tot*100).toFixed(1)+'%</td></tr>'); });
+}
+buildTables();
+
+drawConverge(); drawComeback(); drawFair(); drawHeat(); drawLength(); drawHeroRings();
+</script>
+</body>
+</html>
