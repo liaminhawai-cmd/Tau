@@ -77,12 +77,15 @@
     #menu .modeBtn { font-size:16px; padding:14px 34px; border-radius:8px; width:260px; box-sizing:border-box; }
     /* Poise menu: ghosted outline play buttons on one vertical axis. AI + Online are the primary pair
        (steer new players toward a real opponent, not local pass-and-play); Local is a quiet secondary. */
-    #playArea { display:flex; flex-direction:column; align-items:center; gap:11px; }
-    /* fit-content, not a fixed px width: zhuyin-annotated Chinese needs more room than English or
-       plain Chinese, and a fixed width either wrapped mid-character or squeezed the pill's own text
-       onto two lines. Letting the row size to its actual content (capped for tiny screens) plus
-       nowrap on the buttons themselves is what actually prevents both. */
-    .playRow { display:flex; gap:10px; width:fit-content; max-width:94vw; }
+    /* One shared button-block width so the primary pair, the utility grid, and the CTA all line up.
+       Scales with the viewport (uses the horizontal space when it's there) but capped so buttons
+       don't sprawl on a wide monitor; the 92vw floor keeps it inside a phone. All three rows below
+       fill this width, with nowrap on the buttons so a long label never wraps. */
+    #playArea { display:flex; flex-direction:column; align-items:center; gap:11px; --btnw: min(460px, 92vw); }
+    .playRow { display:flex; gap:10px; width:var(--btnw); }
+    #menu .pbtn { flex:1; background:transparent; border:1px solid #3a4048; border-radius:9px; color:#e6e6e6;
+                  font-family:inherit; font-size:19px; font-weight:700; padding:21px 17px; cursor:pointer;
+                  white-space:nowrap; box-sizing:border-box; transition:border-color .12s, background .12s; }
     #menu .pbtn { flex:1; background:transparent; border:1px solid #3a4048; border-radius:9px; color:#e6e6e6;
                   font-family:inherit; font-size:19px; font-weight:700; padding:21px 17px; cursor:pointer;
                   white-space:nowrap; box-sizing:border-box; transition:border-color .12s, background .12s; }
@@ -99,11 +102,11 @@
         font-size:clamp(8px, 0.5em, 14px); line-height:1; font-weight:500; opacity:0.92; margin-left:2px; user-select:none; }
     .ltstat .zcY { font-size:7px; }   /* the crowd stat itself is only 10px -- needs its own smaller floor */
     /* Second tier, all one size, clearly lighter than the AI/Online pair. The 4 utilities are an even
-       2-column grid (auto columns sized to content, so every language gets two tidy rows of two with
-       aligned columns, not the ragged/orphaned wrap the old flex layout produced); the wide
-       physical-set CTA sits on its own centered row (a direct #playArea child, so it centers). */
-    .utilGrid { display:grid; grid-template-columns:auto auto; gap:8px; width:fit-content; max-width:92vw; margin:0 auto; }
-    #menu .pbtnQuiet { font-size:12.5px; font-weight:600; padding:7px 14px;
+       2-column grid (equal 1fr columns, so they fill the shared button width in two tidy rows of two);
+       the wide physical-set CTA sits on its own row below, same width, as a footer bar. */
+    .utilGrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; width:var(--btnw); }
+    #steelBtn { width:var(--btnw); }
+    #menu .pbtnQuiet { font-size:12.5px; font-weight:600; padding:9px 14px;
                        white-space:nowrap; border-radius:20px; color:#9aa4ad; border-color:#2c3138; }
     #menu .pbtnQuiet:hover { color:#e6e6e6; border-color:#3a4048; }
     #game { display:none; flex-direction:column; align-items:center; width:100%; }
@@ -377,7 +380,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 117</div>
+<div id="buildTag">build 118</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
