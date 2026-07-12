@@ -84,7 +84,7 @@
        nowrap on the buttons themselves is what actually prevents both. */
     .playRow { display:flex; gap:10px; width:fit-content; max-width:94vw; }
     #menu .pbtn { flex:1; background:transparent; border:1px solid #3a4048; border-radius:9px; color:#e6e6e6;
-                  font-family:inherit; font-size:18px; font-weight:700; padding:18px 14px; cursor:pointer;
+                  font-family:inherit; font-size:19px; font-weight:700; padding:21px 17px; cursor:pointer;
                   white-space:nowrap; box-sizing:border-box; transition:border-color .12s, background .12s; }
     #menu .pbtn:hover { border-color:#6b9eff; background:rgba(107,158,255,.06); }
     /* Bopomofo: each character's zhuyin symbols stack vertically immediately to its right (see
@@ -115,7 +115,7 @@
         #logoCanvas { height: 44px; width: auto; }
         #menu { gap: 6px; margin-top: 1vh; }
         #menu .modeBtn { padding: 9px 34px; font-size: 15px; }
-        #menu .pbtn { padding: 12px 10px; font-size: 16px; }
+        #menu .pbtn { padding: 14px 14px; font-size: 17px; }
         #menu .pbtnQuiet { padding: 6px 16px; }
         #demoCanvas, #demoViews #view3d { height: min(240px, 28vh); width: auto; }
     }
@@ -377,7 +377,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 114</div>
+<div id="buildTag">build 115</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
