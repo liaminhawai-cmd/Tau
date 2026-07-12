@@ -384,7 +384,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 125</div>
+<div id="buildTag">build 126</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -4159,12 +4159,14 @@ function renderGameOverSheet() {
         buttons = [];
         if (won) {
             // "Play as Red" is the encouraged next step (both colours on THIS level before moving on),
-            // so it stays the normal/primary-styled button; "Next level" is offered too -- some players
-            // do just want to see new content -- but visually demoted so it doesn't read as the default.
-            if (color === 0 && !ladderCleared(n, 1))
+            // so it stays offered and normal/primary-styled every time you beat it as Blue -- same as
+            // "Next level" stays offered even after you've already beaten the next level too, no
+            // cleverness about hiding an option just because it's already been cleared once. "Next
+            // level" is visually demoted here so the encouraged step reads as the default, not removed.
+            if (color === 0)
                 buttons.push({ label: tf('Level {n} as Red', { n }), onClick: () => startLadderLevel(n-1, 1) });
             if (n < LADDER_N)
-                buttons.push({ label: t('Next level'), onClick: () => startLadderLevel(n, 0), cls: (color === 0 && !ladderCleared(n, 1)) ? 'modalBtnQuiet' : undefined });
+                buttons.push({ label: t('Next level'), onClick: () => startLadderLevel(n, 0), cls: color === 0 ? 'modalBtnQuiet' : undefined });
         } else {
             buttons.push({ label: t('Try again'), onClick: () => startLadderLevel(n-1, color) });
         }
