@@ -50,6 +50,9 @@
        old width-only media query applied, but now driven by the actual layout decision. */
     #views.stacked #view3d { order: -1; }
     #btns { display:flex; gap:10px; }
+    #btns .iconToggle { padding:5px 10px; font-size:15px; line-height:1; opacity:0.75; }
+    #btns .iconToggle:hover { opacity:1; }
+    #btns .iconToggle.off { opacity:0.3; }
     #status { font-size:18px; font-weight:bold; margin:6px 0 2px; height:22px; }
     #statusRow { display:flex; align-items:center; justify-content:center; gap:6px; }
     #turnTimer { width:18px; height:18px; }
@@ -74,13 +77,16 @@
     #menu .modeBtn { font-size:16px; padding:14px 34px; border-radius:8px; width:260px; box-sizing:border-box; }
     /* Poise menu: ghosted outline play buttons on one vertical axis. AI + Online are the primary pair
        (steer new players toward a real opponent, not local pass-and-play); Local is a quiet secondary. */
-    #playArea { display:flex; flex-direction:column; gap:9px; width:260px; }
-    .playRow { display:flex; gap:10px; }
+    #playArea { display:flex; flex-direction:column; align-items:center; gap:10px; width:260px; }
+    .playRow { display:flex; gap:10px; width:100%; }
     #menu .pbtn { flex:1; background:transparent; border:1px solid #3a4048; border-radius:9px; color:#e6e6e6;
                   font-family:inherit; font-size:16px; font-weight:700; padding:15px 10px; cursor:pointer;
                   box-sizing:border-box; transition:border-color .12s, background .12s; }
     #menu .pbtn:hover { border-color:#6b9eff; background:rgba(107,158,255,.06); }
-    #menu .pbtnQuiet { font-size:14px; font-weight:600; padding:10px; color:#9aa4ad; border-color:#2c3138; }
+    /* Local is a much smaller pill, not a third full-width button, so it visibly reads as secondary
+       next to the primary AI/Online pair rather than matching their weight. */
+    #menu .pbtnQuiet { flex:none; width:auto; font-size:12.5px; font-weight:600; padding:7px 18px;
+                       border-radius:20px; color:#9aa4ad; border-color:#2c3138; }
     #menu .pbtnQuiet:hover { color:#e6e6e6; border-color:#3a4048; }
     #menuLinks .lnkDot { color:#3a4048; }
     #game { display:none; flex-direction:column; align-items:center; width:100%; }
@@ -93,7 +99,7 @@
         #menu { gap: 6px; margin-top: 1vh; }
         #menu .modeBtn { padding: 9px 34px; font-size: 15px; }
         #menu .pbtn { padding: 11px 10px; font-size: 15px; }
-        #menu .pbtnQuiet { padding: 8px; }
+        #menu .pbtnQuiet { padding: 6px 16px; }
         #demoCanvas, #demoViews #view3d { height: min(240px, 28vh); width: auto; }
     }
     /* While the sign-in panel is open, clear the demo tiles + footer lines out of the way so the
@@ -341,7 +347,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 105</div>
+<div id="buildTag">build 106</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -374,8 +380,9 @@
         <p class="msg" id="modeMsg"></p>
         <div id="menuLinks"><button class="link" id="howToPlayBtn">How to play</button><span class="lnkDot">·</span><button class="link" id="leaderboardBtn">Leaderboard</button><span class="lnkDot">·</span><button class="link" id="watchBtn">Watch</button></div>
         <p id="presenceLine" style="font-size:12px;color:#69727b;margin:2px 0 0;"></p>
-        <!-- understated one-liner, never gates anything: physical-game interest capture (DIY files / full kit) -->
-        <p id="steelLine" style="margin:6px 0 0;"><button class="link" id="steelBtn" style="font-size:11px;color:#5a6570;">Get a physical set →</button></p>
+        <!-- Never gates anything: physical-game interest capture (DIY files / full kit). Same weight
+             as the other menu links now, not buried -- it was reading as near-invisible before. -->
+        <p id="steelLine" style="margin:9px 0 0;"><button class="link" id="steelBtn" style="font-size:13px;font-weight:600;">Get a physical set →</button></p>
         <!-- Hidden until the browser fires beforeinstallprompt (confirms it's actually installable) --
              many Chromium browsers (Samsung Internet included) stopped surfacing their own automatic
              install banner/prompt, so a visitor with zero UI cue may simply never see one at all. An
@@ -428,7 +435,7 @@
             <canvas id="view3d"></canvas>
         </div>
         <p id="help"></p>
-        <div id="btns"><button id="reset">Surrender</button><button id="menuBtn">Menu</button></div>
+        <div id="btns"><button id="reset">Surrender</button><button id="menuBtn">Menu</button><button id="crossFlashToggle" class="iconToggle" title="Highlight the line you cross (tap to turn off)" aria-label="Highlight the line you cross">✨</button></div>
         <!-- replaces Surrender/Menu while a replay is playing: share the game or skip to the end -->
         <div id="replayBtns" style="display:none;gap:10px;"><button id="replayShare">Share this game</button><button id="replaySave">Save this game</button><button id="replaySpeed" title="Playback speed">1×</button><button id="replaySkip">Skip ⏭</button></div>
     </div>
@@ -2141,6 +2148,11 @@ const LINE_INTERSECTIONS = (() => {
     }
     return pts;
 })();
+// Drawable geometry for each line id, keyed the same way as nearLineIds/countCrossings — lets the
+// line-cross highlight (see drawCrossFlashes) redraw exactly the ring or arc a foot just touched.
+const LINE_GEOM = {};
+CFG.rings.forEach((R,k) => LINE_GEOM['r'+k] = { cx:0, cy:0, r:R });
+CFG.sideArcs.forEach((a,k) => LINE_GEOM['a'+k] = { cx:a.cx, cy:a.cy, r:a.r, a0:a.a0, a1:a.a1 });
 // ---------- The crossing rule: line-contact episodes ----------
 // One mechanism, straight from the rulebook: "a crossing lasts as long as the piece stays on a
 // line". A foot is ON a line while its magnet touches the printed stroke — it makes contact when
@@ -2173,6 +2185,7 @@ function crossingSubstep(before, after, st) {
     if (!st.contact) st.contact = before.map(f => nearLineIds(f, CFG.touchEps));
     const stickEps = CFG.touchEps + CFG.lineStick;
     const next = []; let opened = 0;
+    const justCrossed = [];   // every line id a foot's PAD newly touched this substep (billed or free)
     for (let i=0;i<3;i++){
         // PER-FOOT contact episodes. hadContact must be this foot's own state, NOT the whole piece's:
         // a stationary pivot foot resting on a line keeps continuous contact all turn, and a piece-level
@@ -2191,6 +2204,7 @@ function crossingSubstep(before, after, st) {
                     P.lines.includes(id) && P.lines.includes(h) &&
                     Math.hypot(after[i].x-P.x, after[i].y-P.y) <= CFG.cornerEps));
                 kept.push(id);
+                justCrossed.push(id);
                 if (!atCorner) entered = true;
             }
         if (entered) opened++;   // this foot opened a fresh crossing (off→on, or a non-corner second line)
@@ -2201,6 +2215,9 @@ function crossingSubstep(before, after, st) {
         st.crossings += opened;             // billed when it OPENS (parking on a line spends it too)
     }
     st.contact = next;
+    // Only reaches here on a committed substep (the budget check above already returned on a
+    // rollback), so this never records a crossing that got undone.
+    if (justCrossed.length) st.justCrossed = (st.justCrossed || []).concat(justCrossed);
     return false;
 }
 
@@ -5023,8 +5040,47 @@ function strokeArcU(acx, acy, r, a0, a1) {
         k===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y); }
     ctx.stroke();
 }
+// ---------- Line-cross highlight: flash the ring/arc a foot just touched (a teaching aid, on by
+// default for everyone -- new players especially -- toggle at #crossFlashToggle). Fed by
+// G.justCrossed (set in crossingSubstep), drawn as a fading glow on top of the ordinary line. ----------
+let crossHighlightOn = true;
+try { crossHighlightOn = localStorage.getItem('tauCrossFlash') !== '0'; } catch(e) {}
+let crossFlashes = [];   // { id, t: performance.now() at the moment of contact }
+const CROSS_FLASH_MS = 850;
+function drawCrossFlashes() {
+    if (!crossFlashes.length) return;
+    const now = performance.now();
+    crossFlashes = crossFlashes.filter(f => now - f.t < CROSS_FLASH_MS);
+    if (!crossFlashes.length) return;
+    ctx.save(); ctx.lineCap = 'round';
+    for (const f of crossFlashes) {
+        const g = LINE_GEOM[f.id]; if (!g) continue;
+        const alpha = 1 - (now - f.t) / CROSS_FLASH_MS;
+        ctx.strokeStyle = `rgba(255,210,63,${alpha})`;
+        ctx.shadowColor = 'rgba(255,210,63,0.9)'; ctx.shadowBlur = 12 * alpha;
+        ctx.lineWidth = Math.max(3, CFG.edgeU*CFG.lineWidthFrac*scale*2.4);
+        if (g.a0 === undefined) {
+            const o = bx2px(g.cx, g.cy);
+            ctx.beginPath(); ctx.arc(o.x, o.y, g.r*scale, 0, 2*Math.PI); ctx.stroke();
+        } else strokeArcU(g.cx, g.cy, g.r, g.a0, g.a1);
+    }
+    ctx.restore();
+}
+document.getElementById('crossFlashToggle').classList.toggle('off', !crossHighlightOn);
+document.getElementById('crossFlashToggle').addEventListener('click', () => {
+    crossHighlightOn = !crossHighlightOn;
+    try { localStorage.setItem('tauCrossFlash', crossHighlightOn ? '1' : '0'); } catch(e) {}
+    if (!crossHighlightOn) crossFlashes = [];   // turning off clears any glow already mid-fade
+    document.getElementById('crossFlashToggle').classList.toggle('off', !crossHighlightOn);
+});
 function render() {
     if (!G) return;
+    // Pick up any lines a foot touched since the last render (crossingSubstep fills this in) and
+    // turn them into fading flashes; drained here so a rollback never gets flashed twice.
+    if (G.justCrossed && G.justCrossed.length) {
+        if (crossHighlightOn) { const now = performance.now(); for (const id of G.justCrossed) crossFlashes.push({ id, t: now }); }
+        G.justCrossed = [];
+    }
     syncCanvas();
     const w = canvas.clientWidth || 300;
     const col=boardColors();
@@ -5037,6 +5093,7 @@ function render() {
     for (const r of CFG.rings){ ctx.beginPath(); ctx.arc(O.x,O.y,r*scale,0,2*Math.PI); ctx.stroke(); }
     // side lens arcs
     for (const a of CFG.sideArcs) strokeArcU(a.cx,a.cy,a.r,a.a0,a.a1);
+    drawCrossFlashes();
     // start dots (the printed board's dots — also the feet start positions)
     for (let k=0;k<6;k++){ const d=CFG.startDots[k], p=bx2px(d[0],d[1]);
         ctx.beginPath(); ctx.arc(p.x,p.y,2.5,0,2*Math.PI);
@@ -5642,6 +5699,9 @@ function updateFallCam(dt) {
 function animate() {
     requestAnimationFrame(animate);
     const dt = Math.min(clock ? clock.getDelta() : 0.016, 0.05);
+    // The 2D board only redraws on discrete input events, so a lingering line-cross flash needs its
+    // own tick to fade out smoothly; self-terminating the moment the last flash ages past CROSS_FLASH_MS.
+    if (crossFlashes.length) render();
     // AI swing advances every frame along its eased time-arc (see stepAi) — per-frame real-dt
     // stepping is what keeps both the motion AND the speed-driven sound perfectly smooth.
     if (aiAnim) stepAi(dt);
