@@ -89,10 +89,12 @@
     #menu .pbtn:hover { border-color:#6b9eff; background:rgba(107,158,255,.06); }
     /* Bopomofo: each character's zhuyin symbols stack vertically immediately to its right (see
        rubyize()) -- built by hand, not CSS ruby-position, since inter-character isn't actually
-       supported here. clamp()'s floor is what actually matters: .pbtnQuiet's 12.5px base font made
-       an em-relative size unreadably small, so this is sized in real px with a floor, not a ratio. */
-    #menu .pbtn .zc, #menu .pbtnQuiet .zc { display:inline-flex; align-items:center; }
-    #menu .pbtn .zcY, #menu .pbtnQuiet .zcY { display:inline-flex; flex-direction:column; justify-content:center;
+       supported here. Not scoped to #menu: rubyize() output now appears in modals (showModal,
+       Levels) too, wherever it appears. clamp()'s floor is what matters: an em-relative size looked
+       fine on the 18px primary buttons but was unreadably small on 12.5px pills / 11px crowd stats,
+       so this is sized in real px with a floor, not a ratio. */
+    .zc { display:inline-flex; align-items:center; }
+    .zcY { display:inline-flex; flex-direction:column; justify-content:center;
         font-size:clamp(11px, 0.55em, 15px); line-height:1; font-weight:500; opacity:0.92; margin-left:2px; user-select:none; }
     /* Second tier, all one size: Local 1v1, Watch, How to play, Get a physical set, Leaderboard --
        clearly lighter than the AI/Online pair above, but each still a real button, not a text link.
@@ -164,7 +166,10 @@
                   opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
     #langToggle:hover { opacity:0.95; }
     #langToggle:active { background:none; }
-    #bopomofoToggle { position:fixed; top:calc(9px + env(safe-area-inset-top)); right:118px; z-index:60; background:none; border:none;
+    /* Stacked BELOW the theme icon (not extended further left on the same row): on a narrow phone the
+       in-game status text is centered and can reach surprisingly close to the corner, so widening the
+       icon row's reach left of langToggle collided with it. A 2nd row stays inside the corner. */
+    #bopomofoToggle { position:fixed; top:calc(38px + env(safe-area-inset-top)); right:12px; z-index:60; background:none; border:none;
                        color:#9aa4ad; font-size:13px; line-height:1; padding:6px 7px; margin:0;
                        opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
     #bopomofoToggle:hover { opacity:0.95; }
@@ -269,7 +274,7 @@
     #dirSafeBox.land { width:min(94vw, 94vh*16/9, 167vh); aspect-ratio:16/9; }
     #dirSafeBox.port { width:min(94vh*9/16, 94vw, 52.9vh); aspect-ratio:9/16; }
     /* Clean board-only shot: everything that isn't the boards or the (opted-in) logo watermark. */
-    body.dirHideUI #themeToggle, body.dirHideUI #soundToggle, body.dirHideUI #langToggle,
+    body.dirHideUI #themeToggle, body.dirHideUI #soundToggle, body.dirHideUI #langToggle, body.dirHideUI #bopomofoToggle,
     body.dirHideUI #volPopover, body.dirHideUI #langMenu, body.dirHideUI #buildTag, body.dirHideUI #statusRow,
     body.dirHideUI #meta, body.dirHideUI #help, body.dirHideUI #btns,
     body.dirHideUI #replayBtns, body.dirHideUI #passToast, body.dirHideUI #waitBanner { display:none !important; }
@@ -368,7 +373,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 111</div>
+<div id="buildTag">build 113</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -1566,15 +1571,24 @@ const LANG = (() => {
 })();
 function t(str) { const d = I18N[LANG]; return (d && d[str]) || str; }
 function tf(str, vars) { let r = t(str); for (const k in vars) r = r.split('{'+k+'}').join(vars[k]); return r; }
-// ---------- Bopomofo (Zhuyin): ruby annotations for the Traditional Chinese menu, on by default,
-// toggle at #bopomofoToggle. Curated per-character (not a general converter), covering only the
-// characters that appear in the menu strings below -- a character missing from the map just renders
-// plain, never a guessed reading, since this is meant to teach a correct pronunciation, not a rough one.
+// ---------- Bopomofo (Zhuyin): ruby annotations for the Traditional Chinese UI, on by default,
+// toggle at #bopomofoToggle. Curated per-character (not a general converter) -- a character missing
+// from the map just renders plain, never a guessed reading, since this is meant to teach a correct
+// pronunciation, not a rough one. Covers the main menu, the Levels/vs-AI screen (title, per-level
+// label, crowd stats, game-over modal), and common modal chrome (showModal ruby-izes titles/buttons/
+// plain bodies automatically -- see showModal -- so this list only needs to grow as new words
+// actually appear on screen, not the whole app's vocabulary up front).
 const ZHUYIN = {
     '本':'ㄅㄣˇ','機':'ㄐㄧ','對':'ㄉㄨㄟˋ','戰':'ㄓㄢˋ','線':'ㄒㄧㄢˋ','上':'ㄕㄤˋ','人':'ㄖㄣˊ',
     '玩':'ㄨㄢˊ','法':'ㄈㄚˇ','說':'ㄕㄨㄛ','明':'ㄇㄧㄥˊ','排':'ㄆㄞˊ','行':'ㄏㄤˊ','榜':'ㄅㄤˇ',
     '觀':'ㄍㄨㄢ','取':'ㄑㄩˇ','得':'ㄉㄜˊ','實':'ㄕˊ','體':'ㄊㄧˇ','套':'ㄊㄠˋ','裝':'ㄓㄨㄤ',
     '已':'ㄧˇ','登':'ㄉㄥ','記':'ㄐㄧˋ',
+    // Levels / vs-AI screen (title, "Level N", crowd stats, game-over modal)
+    '關':'ㄍㄨㄢ','卡':'ㄎㄚˇ','第':'ㄉㄧˋ','過':'ㄍㄨㄛˋ','尚':'ㄕㄤˋ','未':'ㄨㄟˋ','以':'ㄧˇ',
+    '紅':'ㄏㄨㄥˊ','方':'ㄈㄤ','挑':'ㄊㄧㄠˇ','一':'ㄧˋ','再':'ㄗㄞˋ','試':'ㄕˋ','次':'ㄘˋ',
+    '選':'ㄒㄩㄢˇ','單':'ㄉㄢ','通':'ㄊㄨㄥ','常':'ㄔㄤˊ','分':'ㄈㄣ','可':'ㄎㄜˇ',
+    // Common modal chrome, picked up for free once anything using showModal is on screen
+    '閉':'ㄅㄧˋ','消':'ㄒㄧㄠ','你':'ㄋㄧˇ','贏':'ㄧㄥˊ','了':'ㄌㄜ˙','輸':'ㄕㄨ','確':'ㄑㄩㄝˋ','定':'ㄉㄧㄥˋ',
 };
 let bopomofoOn = true;
 try { const v = localStorage.getItem('tauBopomofo'); if (v !== null) bopomofoOn = v !== '0'; } catch(e) {}
@@ -1619,6 +1633,10 @@ ja: {
 "AI is thinking…":"AI思考中…","AI is swinging…":"AIの移動中…","crossings {c}/{m}":"線越え {c}/{m}",". That would cross a 2nd line":"（2本目の線は越えられません）",
 "Watching {a} vs {b}":"{a} vs {b} を観戦中","Playing {color} vs {name}":"{color}でプレイ中 vs {name}",
 "Pick a difficulty.":"難易度を選んでください。","Easy":"かんたん","Medium":"ふつう","Hard":"むずかしい","Very hard":"超むずかしい","Expert":"達人",
+"Levels":"レベル","Level {n}":"レベル{n}","Level {n} Computer":"レベル{n} CPU","Level {n} cleared!":"レベル{n}クリア！","Level {n} not cleared":"レベル{n}クリアならず",
+"Next level":"次のレベルへ","Try again":"もう一度","Level {n} as Red":"赤でレベル{n}に挑戦",
+"Play Level {n} as Blue":"レベル{n}を青でプレイ","Play Level {n} as Red":"レベル{n}を赤でプレイ",
+"Unbeaten":"未クリア","beaten by {c}":"{c}人がクリア","usually cleared above {x}":"だいたい{x}以上でクリア",
 "Choose your colour":"色を選んでください","Blue always moves first.":"青が先手です。","Play as Blue":"青でプレイ","Play as Red":"赤でプレイ",
 "You win!":"勝ち！","You lose":"負け…","{name} wins!":"{name}の勝ち！","Rematch":"再戦","Accept rematch":"再戦を受ける","Find new opponent":"別の相手を探す",
 "Watch replay":"リプレイを見る","Share replay":"リプレイを共有","Watch another":"他の対局を見る","Difficulty":"難易度","Got it":"OK",
@@ -1667,6 +1685,10 @@ zh: {
 "AI is thinking…":"AI思考中……","AI is swinging…":"AI移动中……","crossings {c}/{m}":"过线 {c}/{m}",". That would cross a 2nd line":"（不能越过第二条线）",
 "Watching {a} vs {b}":"正在观战 {a} vs {b}","Playing {color} vs {name}":"你执{color}，对阵 {name}",
 "Pick a difficulty.":"请选择难度。","Easy":"简单","Medium":"中等","Hard":"困难","Very hard":"非常难","Expert":"专家",
+"Levels":"关卡","Level {n}":"第{n}关","Level {n} Computer":"第{n}关电脑","Level {n} cleared!":"已通过第{n}关！","Level {n} not cleared":"未通过第{n}关",
+"Next level":"下一关","Try again":"再试一次","Level {n} as Red":"以红方挑战第{n}关",
+"Play Level {n} as Blue":"以蓝方玩第{n}关","Play Level {n} as Red":"以红方玩第{n}关",
+"Unbeaten":"尚无人通关","beaten by {c}":"{c}人通关","usually cleared above {x}":"通常{x}分以上可通关",
 "Choose your colour":"选择颜色","Blue always moves first.":"蓝方先行。","Play as Blue":"执蓝","Play as Red":"执红",
 "You win!":"你赢了！","You lose":"你输了","{name} wins!":"{name}获胜！","Rematch":"再来一局","Accept rematch":"接受再战","Find new opponent":"寻找新对手",
 "Watch replay":"观看回放","Share replay":"分享回放","Watch another":"观看其他对局","Difficulty":"难度","Got it":"知道了",
@@ -1715,6 +1737,10 @@ zht: {
 "AI is thinking…":"AI思考中……","AI is swinging…":"AI移動中……","crossings {c}/{m}":"過線 {c}/{m}",". That would cross a 2nd line":"（不能越過第二條線）",
 "Watching {a} vs {b}":"正在觀戰 {a} vs {b}","Playing {color} vs {name}":"你執{color}，對戰 {name}",
 "Pick a difficulty.":"請選擇難度。","Easy":"簡單","Medium":"中等","Hard":"困難","Very hard":"非常難","Expert":"專家",
+"Levels":"關卡","Level {n}":"第{n}關","Level {n} Computer":"第{n}關電腦","Level {n} cleared!":"已過第{n}關！","Level {n} not cleared":"尚未過第{n}關",
+"Next level":"下一關","Try again":"再試一次","Level {n} as Red":"以紅方挑戰第{n}關",
+"Play Level {n} as Blue":"以藍方玩第{n}關","Play Level {n} as Red":"以紅方玩第{n}關",
+"Unbeaten":"尚無人過關","beaten by {c}":"{c}人過關","usually cleared above {x}":"通常{x}分以上可過關",
 "Choose your colour":"選擇顏色","Blue always moves first.":"藍方先行。","Play as Blue":"執藍","Play as Red":"執紅",
 "You win!":"你贏了！","You lose":"你輸了","{name} wins!":"{name}獲勝！","Rematch":"再來一局","Accept rematch":"接受再戰","Find new opponent":"尋找新對手",
 "Watch replay":"觀看重播","Share replay":"分享重播","Watch another":"觀看其他對局","Difficulty":"難度","Got it":"知道了",
@@ -1763,6 +1789,10 @@ ko: {
 "AI is thinking…":"AI 생각 중…","AI is swinging…":"AI 이동 중…","crossings {c}/{m}":"선 넘기 {c}/{m}",". That would cross a 2nd line":" (두 번째 선은 넘을 수 없습니다)",
 "Watching {a} vs {b}":"{a} vs {b} 관전 중","Playing {color} vs {name}":"{color}로 플레이 중 vs {name}",
 "Pick a difficulty.":"난이도를 선택하세요.","Easy":"쉬움","Medium":"보통","Hard":"어려움","Very hard":"매우 어려움","Expert":"전문가",
+"Levels":"레벨","Level {n}":"레벨 {n}","Level {n} Computer":"레벨{n} 컴퓨터","Level {n} cleared!":"레벨{n} 클리어!","Level {n} not cleared":"레벨{n} 클리어 실패",
+"Next level":"다음 레벨","Try again":"다시 시도","Level {n} as Red":"빨강으로 레벨{n} 도전",
+"Play Level {n} as Blue":"레벨{n} 파랑으로 플레이","Play Level {n} as Red":"레벨{n} 빨강으로 플레이",
+"Unbeaten":"아직 없음","beaten by {c}":"{c}명 클리어","usually cleared above {x}":"보통 {x} 이상에서 클리어",
 "Choose your colour":"색을 선택하세요","Blue always moves first.":"파랑이 항상 선공입니다.","Play as Blue":"파랑으로 플레이","Play as Red":"빨강으로 플레이",
 "You win!":"승리!","You lose":"패배…","{name} wins!":"{name} 승리!","Rematch":"재대결","Accept rematch":"재대결 수락","Find new opponent":"새 상대 찾기",
 "Watch replay":"리플레이 보기","Share replay":"리플레이 공유","Watch another":"다른 경기 보기","Difficulty":"난이도","Got it":"확인",
@@ -1811,6 +1841,10 @@ de: {
 "AI is thinking…":"KI denkt nach …","AI is swinging…":"KI zieht …","crossings {c}/{m}":"Linien {c}/{m}",". That would cross a 2nd line":" – das würde eine 2. Linie kreuzen",
 "Watching {a} vs {b}":"Zuschauen: {a} vs {b}","Playing {color} vs {name}":"Du spielst {color} gegen {name}",
 "Pick a difficulty.":"Wähle einen Schwierigkeitsgrad.","Easy":"Leicht","Medium":"Mittel","Hard":"Schwer","Very hard":"Sehr schwer","Expert":"Experte",
+"Levels":"Level","Level {n}":"Level {n}","Level {n} Computer":"Level {n} Computer","Level {n} cleared!":"Level {n} geschafft!","Level {n} not cleared":"Level {n} nicht geschafft",
+"Next level":"Nächstes Level","Try again":"Nochmal versuchen","Level {n} as Red":"Level {n} als Rot",
+"Play Level {n} as Blue":"Level {n} als Blau spielen","Play Level {n} as Red":"Level {n} als Rot spielen",
+"Unbeaten":"Unbesiegt","beaten by {c}":"von {c} geschafft","usually cleared above {x}":"meist ab {x} geschafft",
 "Choose your colour":"Wähle deine Farbe","Blue always moves first.":"Blau zieht immer zuerst.","Play as Blue":"Als Blau spielen","Play as Red":"Als Rot spielen",
 "You win!":"Gewonnen!","You lose":"Verloren","{name} wins!":"{name} gewinnt!","Rematch":"Revanche","Accept rematch":"Revanche annehmen","Find new opponent":"Neuen Gegner suchen",
 "Watch replay":"Wiederholung ansehen","Share replay":"Wiederholung teilen","Watch another":"Anderes Spiel ansehen","Difficulty":"Schwierigkeit","Got it":"Alles klar",
@@ -1859,6 +1893,10 @@ fr: {
 "AI is thinking…":"L'IA réfléchit…","AI is swinging…":"L'IA joue…","crossings {c}/{m}":"lignes {c}/{m}",". That would cross a 2nd line":" (impossible de franchir une 2e ligne)",
 "Watching {a} vs {b}":"Spectateur : {a} vs {b}","Playing {color} vs {name}":"Tu joues {color} contre {name}",
 "Pick a difficulty.":"Choisis une difficulté.","Easy":"Facile","Medium":"Moyen","Hard":"Difficile","Very hard":"Très difficile","Expert":"Expert",
+"Levels":"Niveaux","Level {n}":"Niveau {n}","Level {n} Computer":"Ordinateur niveau {n}","Level {n} cleared!":"Niveau {n} réussi !","Level {n} not cleared":"Niveau {n} non réussi",
+"Next level":"Niveau suivant","Try again":"Réessayer","Level {n} as Red":"Niveau {n} en Rouge",
+"Play Level {n} as Blue":"Jouer le niveau {n} en Bleu","Play Level {n} as Red":"Jouer le niveau {n} en Rouge",
+"Unbeaten":"Invaincu","beaten by {c}":"réussi par {c}","usually cleared above {x}":"généralement réussi dès {x}",
 "Choose your colour":"Choisis ta couleur","Blue always moves first.":"Bleu commence toujours.","Play as Blue":"Jouer Bleu","Play as Red":"Jouer Rouge",
 "You win!":"Gagné !","You lose":"Perdu","{name} wins!":"{name} gagne !","Rematch":"Revanche","Accept rematch":"Accepter la revanche","Find new opponent":"Nouvel adversaire",
 "Watch replay":"Voir le replay","Share replay":"Partager le replay","Watch another":"Voir une autre partie","Difficulty":"Difficulté","Got it":"Compris",
@@ -1907,6 +1945,10 @@ es: {
 "AI is thinking…":"La IA está pensando…","AI is swinging…":"La IA está moviendo…","crossings {c}/{m}":"cruces {c}/{m}",". That would cross a 2nd line":" (eso cruzaría una 2.ª línea)",
 "Watching {a} vs {b}":"Viendo {a} vs {b}","Playing {color} vs {name}":"Juegas con {color} contra {name}",
 "Pick a difficulty.":"Elige una dificultad.","Easy":"Fácil","Medium":"Medio","Hard":"Difícil","Very hard":"Muy difícil","Expert":"Experto",
+"Levels":"Niveles","Level {n}":"Nivel {n}","Level {n} Computer":"Ordenador nivel {n}","Level {n} cleared!":"¡Nivel {n} superado!","Level {n} not cleared":"Nivel {n} no superado",
+"Next level":"Siguiente nivel","Try again":"Intentar de nuevo","Level {n} as Red":"Nivel {n} con Rojo",
+"Play Level {n} as Blue":"Jugar el nivel {n} con Azul","Play Level {n} as Red":"Jugar el nivel {n} con Rojo",
+"Unbeaten":"Invicto","beaten by {c}":"superado por {c}","usually cleared above {x}":"normalmente superado desde {x}",
 "Choose your colour":"Elige tu color","Blue always moves first.":"Azul siempre mueve primero.","Play as Blue":"Jugar con Azul","Play as Red":"Jugar con Rojo",
 "You win!":"¡Ganaste!","You lose":"Perdiste","{name} wins!":"¡Gana {name}!","Rematch":"Revancha","Accept rematch":"Aceptar revancha","Find new opponent":"Buscar otro rival",
 "Watch replay":"Ver repetición","Share replay":"Compartir repetición","Watch another":"Ver otra partida","Difficulty":"Dificultad","Got it":"Entendido",
@@ -1955,6 +1997,10 @@ pt: {
 "AI is thinking…":"A IA está pensando…","AI is swinging…":"A IA está jogando…","crossings {c}/{m}":"cruzamentos {c}/{m}",". That would cross a 2nd line":" (isso cruzaria uma 2ª linha)",
 "Watching {a} vs {b}":"Assistindo {a} vs {b}","Playing {color} vs {name}":"Jogando de {color} contra {name}",
 "Pick a difficulty.":"Escolha a dificuldade.","Easy":"Fácil","Medium":"Médio","Hard":"Difícil","Very hard":"Muito difícil","Expert":"Especialista",
+"Levels":"Níveis","Level {n}":"Nível {n}","Level {n} Computer":"Computador nível {n}","Level {n} cleared!":"Nível {n} concluído!","Level {n} not cleared":"Nível {n} não concluído",
+"Next level":"Próximo nível","Try again":"Tentar de novo","Level {n} as Red":"Nível {n} de Vermelho",
+"Play Level {n} as Blue":"Jogar o nível {n} de Azul","Play Level {n} as Red":"Jogar o nível {n} de Vermelho",
+"Unbeaten":"Invicto","beaten by {c}":"concluído por {c}","usually cleared above {x}":"geralmente concluído a partir de {x}",
 "Choose your colour":"Escolha sua cor","Blue always moves first.":"O Azul sempre começa.","Play as Blue":"Jogar de Azul","Play as Red":"Jogar de Vermelho",
 "You win!":"Você venceu!","You lose":"Você perdeu","{name} wins!":"{name} venceu!","Rematch":"Revanche","Accept rematch":"Aceitar revanche","Find new opponent":"Buscar novo oponente",
 "Watch replay":"Ver replay","Share replay":"Compartilhar replay","Watch another":"Assistir outra","Difficulty":"Dificuldade","Got it":"Entendi",
@@ -2003,6 +2049,10 @@ ru: {
 "AI is thinking…":"ИИ думает…","AI is swinging…":"ИИ ходит…","crossings {c}/{m}":"пересечения {c}/{m}",". That would cross a 2nd line":" (это пересекло бы 2-ю линию)",
 "Watching {a} vs {b}":"Смотрим: {a} против {b}","Playing {color} vs {name}":"Вы — {color}, соперник — {name}",
 "Pick a difficulty.":"Выберите сложность.","Easy":"Легко","Medium":"Средне","Hard":"Сложно","Very hard":"Очень сложно","Expert":"Эксперт",
+"Levels":"Уровни","Level {n}":"Уровень {n}","Level {n} Computer":"Компьютер уровня {n}","Level {n} cleared!":"Уровень {n} пройден!","Level {n} not cleared":"Уровень {n} не пройден",
+"Next level":"Следующий уровень","Try again":"Попробовать снова","Level {n} as Red":"Уровень {n} за красных",
+"Play Level {n} as Blue":"Играть уровень {n} за синих","Play Level {n} as Red":"Играть уровень {n} за красных",
+"Unbeaten":"Никем не пройден","beaten by {c}":"пройден: {c}","usually cleared above {x}":"обычно проходят от {x}",
 "Choose your colour":"Выберите цвет","Blue always moves first.":"Синие всегда ходят первыми.","Play as Blue":"Играть за синих","Play as Red":"Играть за красных",
 "You win!":"Победа!","You lose":"Поражение","{name} wins!":"{name} побеждает!","Rematch":"Реванш","Accept rematch":"Принять реванш","Find new opponent":"Найти нового соперника",
 "Watch replay":"Смотреть повтор","Share replay":"Поделиться повтором","Watch another":"Смотреть другую","Difficulty":"Сложность","Got it":"Понятно",
@@ -4031,14 +4081,25 @@ function closeAcctPanel() { document.getElementById('acctPanel').style.display =
 // ---------- Generic modal: colour choice before a vs-AI game, the game-over popup, and
 // the how-to-play sheet. `isHtml` lets the how-to-play body use a left-aligned list. ----------
 function showModal(title, body, buttons, isHtml) {
-    document.getElementById('modalTitle').textContent = title;
+    // Bopomofo applies to the title, every button label, and a PLAIN-TEXT body (never an isHtml
+    // body -- that's caller-built markup, not text, and re-scanning it character-by-character
+    // would mangle its own tags). rubyize() escapes &/</> per character before adding any ruby
+    // wrapping, so this is safe even for text that could be user-controlled (e.g. an opponent's
+    // chosen name occasionally passing through a title/button elsewhere) -- injected markup gets
+    // neutralized exactly as textContent would have kept it inert; unmapped characters (which is
+    // everything foreign text will be) just render as plain text, unchanged from before.
+    const zy = LANG === 'zht' && bopomofoOn;
+    const titleEl = document.getElementById('modalTitle');
+    if (zy) titleEl.innerHTML = rubyize(title); else titleEl.textContent = title;
     const bodyEl = document.getElementById('modalBody');
-    if (isHtml) bodyEl.innerHTML = body || ''; else bodyEl.textContent = body || '';
+    if (isHtml) bodyEl.innerHTML = body || '';
+    else if (zy) bodyEl.innerHTML = rubyize(body || '');
+    else bodyEl.textContent = body || '';
     const wrap = document.getElementById('modalBtns');
     wrap.innerHTML = '';
     for (const b of buttons) {
         const el = document.createElement('button');
-        el.textContent = b.label;
+        if (zy) el.innerHTML = rubyize(b.label); else el.textContent = b.label;
         el.addEventListener('click', () => { hideModal(); b.onClick(); });
         wrap.appendChild(el);
     }
@@ -4212,7 +4273,7 @@ function openLadderMenu(){
         const s=ladderRungState(n), cls = s.state + (n===curN ? ' cur' : '');
         html += `<div class="ladderRung ${cls}" data-n="${n}" data-play="${s.play}">`
             + `<span class="ln">${n}</span>`
-            + `<span class="lname">${t('Level')} ${n}</span>`
+            + `<span class="lname">${(LANG==='zht'&&bopomofoOn) ? rubyize(tf('Level {n}', { n })) : tf('Level {n}', { n })}</span>`
             + `<span class="lp">`
             +   `<span class="lcol" data-n="${n}" data-color="0">`
             +     `<button class="ltri" data-n="${n}" data-color="0" aria-label="${tf('Play Level {n} as Blue',{n})}">${ladderTripodSVG('#6b9eff',s.bC)}</button>`
@@ -4272,7 +4333,8 @@ function levelStatText(n, color){   // labelled, for the desktop hover tooltip
 // Touch fallback: paint one colour's stat under its tripod (el is a .ltstat, colour-matched).
 function paintLevelStatInline(el){
     const n = parseInt(el.dataset.n, 10), c = parseInt(el.dataset.color, 10);
-    el.textContent = levelStatBody(n, c);
+    const val = levelStatBody(n, c);
+    if (LANG === 'zht' && bopomofoOn) el.innerHTML = rubyize(val); else el.textContent = val;
     el.style.color = c === 0 ? '#6b9eff' : '#ff6b6b';
 }
 function recordLevelClear(n, color){
@@ -4282,14 +4344,19 @@ function recordLevelClear(n, color){
 function levelTipEl(){ let el=document.getElementById('levelTip');
     if (!el){ el=document.createElement('div'); el.id='levelTip'; document.body.appendChild(el); } return el; }
 function showLevelTip(target, n, color){
-    const el=levelTipEl(); el._n=n; el._c=color; el.textContent=levelStatText(n,color);
+    const el=levelTipEl(); el._n=n; el._c=color;
+    const val = levelStatText(n,color);
+    if (LANG === 'zht' && bopomofoOn) el.innerHTML = rubyize(val); else el.textContent = val;
     el.style.display='block';
     const r=target.getBoundingClientRect();
     el.style.left=(r.left+r.width/2)+'px'; el.style.top=(r.top-8)+'px';
 }
 function hideLevelTip(){ const el=document.getElementById('levelTip'); if(el) el.style.display='none'; }
 function refreshLevelTip(){ const el=document.getElementById('levelTip');
-    if (el && el.style.display==='block' && el._n!=null) el.textContent=levelStatText(el._n, el._c); }
+    if (!el || el.style.display!=='block' || el._n==null) return;
+    const val = levelStatText(el._n, el._c);
+    if (LANG === 'zht' && bopomofoOn) el.innerHTML = rubyize(val); else el.textContent = val;
+}
 // ---------- How to play: one short looping canvas animation per rule ----------
 // Vertically stacked slides inside the (already-scrollable) modal body, so scrolling and the
 // Prev/Next/dot buttons are just two ways to move through the SAME list -- no separate
