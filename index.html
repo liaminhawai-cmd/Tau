@@ -380,7 +380,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 123</div>
+<div id="buildTag">build 124</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -5140,10 +5140,18 @@ canvas.addEventListener('touchmove', onMove, {passive:false});
 window.addEventListener('touchend', onUp);
 window.addEventListener('touchcancel', onUp);
 // Mobile browsers throw away a 2D canvas's backing store while the tab is backgrounded (e.g. you
-// switch to Messenger and come back) -- the 3D view redraws every animation frame so it recovers on
-// its own, but the 2D board is only painted on demand and would come back BLANK. Repaint it (and
-// re-fit the layout) whenever the page becomes visible again or is restored from the bfcache.
-function repaintOnReturn() { if (G && document.getElementById('game').style.display === 'flex') { resize(); render(); } }
+// switch to Messenger and come back) -- the 3D view redraws every animation frame DURING A MATCH so
+// it recovers on its own there, but the 2D board is only painted on demand and would come back BLANK.
+// Repaint it (and re-fit the layout) whenever the page becomes visible again or is restored from the
+// bfcache. On the MENU screen neither view repaints on its own -- the ambient demo only redraws when
+// its own turn-by-turn state actually changes -- so a backgrounded tab can return with a stale or
+// (on some phones, after the OS reclaims GPU memory) solid-black 3D preview and a flat 2D one. Force
+// the same full repaint applyBoardSkin() already does on a manual theme switch, which is why toggling
+// the board colour has been the workaround.
+function repaintOnReturn() {
+    if (G && document.getElementById('game').style.display === 'flex') { resize(); render(); }
+    else if (demoOn) { demoResize(); render(); demoDraw(); }
+}
 document.addEventListener('visibilitychange', () => { if (!document.hidden) repaintOnReturn(); updateAudioForVisibility(); });
 addEventListener('blur', updateAudioForVisibility);    // alt-tab often fires blur, not visibilitychange
 addEventListener('focus', updateAudioForVisibility);
@@ -5529,6 +5537,12 @@ function init3D() {
     // composite the 3D view into an exported video. Negligible cost for a scene this small.
     renderer=new THREE.WebGLRenderer({canvas:document.getElementById('view3d'), antialias:true, preserveDrawingBuffer:true});
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    // Some phones (seen on Android) actually discard the GPU context under memory pressure while the
+    // tab is backgrounded, not just leave a stale frame -- a plain repaint on return can't fix that,
+    // the browser has to be told we'll handle recovery (preventDefault on the loss event) and the
+    // board texture has to be rebuilt once it's back, same as applyBoardSkin()'s manual fix does.
+    renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); }, false);
+    renderer.domElement.addEventListener('webglcontextrestored', () => { applyTheme(); render(); demoDraw(); }, false);
     clock=new THREE.Clock();
     scene=new THREE.Scene(); scene.background=new THREE.Color(0x0c0e11);
     camera=new THREE.PerspectiveCamera(42,1,1,3000);
