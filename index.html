@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Tau</title>
-<meta name="description" content="Abstract grappling: one three-legged piece each, one round board. Pin a foot, swing the other two, slide your opponent off the edge. Free in your browser.">
+<title>Tau: Physics-Based Abstract Strategy Board Game | Play Free</title>
+<meta name="description" content="Tau is a physics-based abstract strategy game often compared to Abalone and Kabuto Sumo: pin a foot, swing the other two, and slide your opponent off a round board. Free in your browser, no download.">
+<link rel="canonical" href="https://tau-game.com/">
 <!-- Social preview (Open Graph / Twitter) so shared links show a real card, not a bare URL -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Tau">
@@ -18,6 +19,25 @@
 <meta name="twitter:title" content="Tau: a board game of balance">
 <meta name="twitter:description" content="Abstract grappling. Pin a foot, swing, slide your opponent off the edge. Free in your browser.">
 <meta name="twitter:image" content="https://tau-game.com/og-image.png">
+<!-- Structured data so search engines can understand the page as a game, not just a generic app.
+     Deliberately no aggregateRating/review -- fabricating one to chase a stars rich-result would be
+     the kind of fake markup Google's guidelines explicitly penalize; add it for real once there's an
+     honest rating source. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "VideoGame",
+  "name": "Tau",
+  "url": "https://tau-game.com/",
+  "description": "A physics-based abstract strategy game: pin a foot, swing the other two, and slide your opponent off a round board. Continuous movement, not square by square.",
+  "image": "https://tau-game.com/og-image.png",
+  "genre": ["Abstract Strategy", "Board Game"],
+  "playMode": ["SinglePlayer", "MultiPlayer"],
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Any (runs in a web browser)",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
 <!-- Installable web app (Add to Home Screen on iOS/Android) -->
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#15181c">
@@ -41,6 +61,13 @@
     #logoFallback { display:none; letter-spacing:6px; font-weight:300; font-size:22px; }
     /* In a game the wordmark is pure decoration -- give its row to the boards instead. */
     body.ingame h1 { display:none; }
+    /* Standard accessible-hidden pattern (kept in the DOM/accessibility tree, not display:none or
+       visibility:hidden, so screen readers AND search engines still read it) -- used for one real
+       descriptive paragraph. The whole app is one screen's worth of interactive UI with no room for
+       visible marketing copy, but a crawler landing on a heavy canvas/WebGL page still needs SOME
+       actual sentence describing what the game is and how it's played, not just short button labels. */
+    .srOnly { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
+              clip:rect(0,0,0,0); white-space:nowrap; border:0; }
     canvas { background:#0c0e11; touch-action:none; display:block; }
     #views { display:flex; gap:10px; align-items:flex-start; justify-content:center; flex-wrap:wrap; }
     #view3d { border:1px solid #2c3138; border-radius:4px; }
@@ -384,7 +411,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 126</div>
+<div id="buildTag">build 127</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -400,6 +427,7 @@
 </div>
 <div id="wrap">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
+    <p class="srOnly">Tau is a physics-based abstract strategy board game, sometimes compared to Abalone or Kabuto Sumo. Each player controls one three-legged piece. On your turn, pin one foot in place and swing the other two around it in a continuous arc, not a jump between grid squares. Cross a line to close in on your opponent, but you may only cross one line per turn. Push their piece past the edge of the round board to win. Play against the computer across nine difficulty levels, locally against a friend, or online against another player. Free to play in your browser.</p>
     <div id="menu">
         <div id="demoViews">
             <canvas id="demoCanvas" width="240" height="240"></canvas>
