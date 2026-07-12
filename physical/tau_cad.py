@@ -93,6 +93,18 @@ def rim_ring(sp: Spec):
               .extrude(sp.groove_depth*2).translate((0,0,sp.rim_h - sp.groove_depth)))
     return ring
 
+def seam_offset(n_seg):
+    """Angular offset (rad) for the ring of seams that best clears the two finger grooves (on +-Y).
+    A seam landing on a groove would run through a thinned wall, so from a few natural offsets pick
+    the one whose seams sit farthest from +-90 deg. Works for any count (the old pi/n rule put a seam
+    straight onto a groove at n=6)."""
+    step = 2 * math.pi / n_seg
+    grooves = (math.pi/2, 3*math.pi/2)
+    def clearance(off):
+        seams = [(off + step*k) % (2*math.pi) for k in range(n_seg)]
+        return min(min(abs(((s - g + math.pi) % (2*math.pi)) - math.pi) for g in grooves) for s in seams)
+    return max((0.0, step/2, step/4, 3*step/4), key=clearance)
+
 def wedge(a0, a1, R, H):
     """Angular pie-slice solid, z 0..H (a0/a1 radians)."""
     steps = max(3, int(math.degrees(a1-a0)/6))
@@ -162,7 +174,11 @@ def build(disk_d, n_seg, outdir, label, variant='dt'):
         md, mt = sp.pick_seam_magnet()
         rpt.append(f"  seam magnet {md}x{mt} bore Ø{sp.bore(md):.2f} ({sp.fit}) — opposite poles across each seam")
     ring = rim_ring(sp)
-    off = 0.0 if n_seg == 2 else math.pi/n_seg          # keep seams off the grooves
+    if variant == 'dt':                                  # whole base as ONE solid, for viewing/editing in Fusion
+        fbase = os.path.join(outdir, f"tau_rim_{label}_full")
+        cq.exporters.export(ring, fbase + ".step"); cq.exporters.export(ring, fbase + ".stl")
+        rpt.append(f"  full ring (single solid) -> tau_rim_{label}_full.step/.stl")
+    off = seam_offset(n_seg)                             # keep seams off the finger grooves
     R = sp.outer_r*2
     seams = [off + 2*math.pi*k/n_seg for k in range(n_seg)]
     for k in range(n_seg):
@@ -207,7 +223,10 @@ def build(disk_d, n_seg, outdir, label, variant='dt'):
 
 if __name__ == "__main__":
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out_cad")
+    # Segment counts sized for a 220x220 bed (Ender 3): the longest arc must fit with margin for a
+    # skirt. 267 -> 4 arcs (~200 mm), 400 -> 8 arcs (~162 mm). Fewer, larger arcs are possible if you
+    # print them across the bed diagonal; change the count here if you prefer that.
     for variant in ('dt', 'mag'):
-        print(build(266.7, 2, out, "267", variant))
-        print(build(400.0, 4, out, "400", variant))
+        print(build(266.7, 4, out, "267", variant))
+        print(build(400.0, 8, out, "400", variant))
     print(f"\nParts written to {out}")
