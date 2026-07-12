@@ -78,24 +78,29 @@
     /* Poise menu: ghosted outline play buttons on one vertical axis. AI + Online are the primary pair
        (steer new players toward a real opponent, not local pass-and-play); Local is a quiet secondary. */
     #playArea { display:flex; flex-direction:column; align-items:center; gap:11px; }
-    .playRow { display:flex; gap:10px; width:280px; }
+    /* fit-content, not a fixed px width: zhuyin-annotated Chinese needs more room than English or
+       plain Chinese, and a fixed width either wrapped mid-character or squeezed the pill's own text
+       onto two lines. Letting the row size to its actual content (capped for tiny screens) plus
+       nowrap on the buttons themselves is what actually prevents both. */
+    .playRow { display:flex; gap:10px; width:fit-content; max-width:94vw; }
     #menu .pbtn { flex:1; background:transparent; border:1px solid #3a4048; border-radius:9px; color:#e6e6e6;
-                  font-family:inherit; font-size:18px; font-weight:700; padding:18px 10px; cursor:pointer;
-                  box-sizing:border-box; transition:border-color .12s, background .12s; }
+                  font-family:inherit; font-size:18px; font-weight:700; padding:18px 14px; cursor:pointer;
+                  white-space:nowrap; box-sizing:border-box; transition:border-color .12s, background .12s; }
     #menu .pbtn:hover { border-color:#6b9eff; background:rgba(107,158,255,.06); }
     /* Bopomofo: each character's zhuyin symbols stack vertically immediately to its right (see
        rubyize()) -- built by hand, not CSS ruby-position, since inter-character isn't actually
-       supported here. Kept small and quiet so it reads as a pronunciation hint, not competing text. */
+       supported here. clamp()'s floor is what actually matters: .pbtnQuiet's 12.5px base font made
+       an em-relative size unreadably small, so this is sized in real px with a floor, not a ratio. */
     #menu .pbtn .zc, #menu .pbtnQuiet .zc { display:inline-flex; align-items:center; }
     #menu .pbtn .zcY, #menu .pbtnQuiet .zcY { display:inline-flex; flex-direction:column; justify-content:center;
-        font-size:0.32em; font-weight:400; line-height:1.05; opacity:0.8; margin-left:1px; user-select:none; }
+        font-size:clamp(11px, 0.55em, 15px); line-height:1; font-weight:500; opacity:0.92; margin-left:2px; user-select:none; }
     /* Second tier, all one size: Local 1v1, Watch, How to play, Get a physical set, Leaderboard --
        clearly lighter than the AI/Online pair above, but each still a real button, not a text link.
        Wider than the primary row on purpose (not capped to 260px) so the five pack into two tidy
        rows instead of stacking one-per-line -- that 260px cap was the mess. */
     .playRowSmall { display:flex; flex-wrap:wrap; gap:7px; justify-content:center; width:min(360px, 92vw); }
     #menu .pbtnQuiet { flex:none; width:auto; font-size:12.5px; font-weight:600; padding:7px 14px;
-                       border-radius:20px; color:#9aa4ad; border-color:#2c3138; }
+                       white-space:nowrap; border-radius:20px; color:#9aa4ad; border-color:#2c3138; }
     #menu .pbtnQuiet:hover { color:#e6e6e6; border-color:#3a4048; }
     #game { display:none; flex-direction:column; align-items:center; width:100%; }
     #demoViews { display:flex; gap:8px; margin-bottom:4px; }
@@ -363,7 +368,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 110</div>
+<div id="buildTag">build 111</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
