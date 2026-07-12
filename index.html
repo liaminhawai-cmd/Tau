@@ -83,10 +83,12 @@
                   font-family:inherit; font-size:18px; font-weight:700; padding:18px 10px; cursor:pointer;
                   box-sizing:border-box; transition:border-color .12s, background .12s; }
     #menu .pbtn:hover { border-color:#6b9eff; background:rgba(107,158,255,.06); }
-    /* Ruby (bopomofo) sits above the base character; keep it small and quiet so it reads as a
-       pronunciation hint, not competing text. */
-    #menu .pbtn ruby, #menu .pbtnQuiet ruby { ruby-position: over; }
-    #menu .pbtn rt, #menu .pbtnQuiet rt { font-size:0.42em; font-weight:400; opacity:0.8; user-select:none; }
+    /* Bopomofo: each character's zhuyin symbols stack vertically immediately to its right (see
+       rubyize()) -- built by hand, not CSS ruby-position, since inter-character isn't actually
+       supported here. Kept small and quiet so it reads as a pronunciation hint, not competing text. */
+    #menu .pbtn .zc, #menu .pbtnQuiet .zc { display:inline-flex; align-items:center; }
+    #menu .pbtn .zcY, #menu .pbtnQuiet .zcY { display:inline-flex; flex-direction:column; justify-content:center;
+        font-size:0.32em; font-weight:400; line-height:1.05; opacity:0.8; margin-left:1px; user-select:none; }
     /* Second tier, all one size: Local 1v1, Watch, How to play, Get a physical set, Leaderboard --
        clearly lighter than the AI/Online pair above, but each still a real button, not a text link.
        Wider than the primary row on purpose (not capped to 260px) so the five pack into two tidy
@@ -361,7 +363,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 109</div>
+<div id="buildTag">build 110</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -1571,10 +1573,19 @@ const ZHUYIN = {
 };
 let bopomofoOn = true;
 try { const v = localStorage.getItem('tauBopomofo'); if (v !== null) bopomofoOn = v !== '0'; } catch(e) {}
+// Built by hand, not the CSS <ruby>/ruby-position:inter-character (checked: unsupported in this
+// engine, CSS.supports returns false and it silently falls back to "over") -- each zhuyin symbol
+// (and the tone mark) stacked in its own vertical column immediately right of the character, which
+// is the actual "on the side" zhuyin layout, not the furigana-style "above" one.
 function rubyize(str) {
     const esc = c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c] || c);
     let out = '';
-    for (const ch of str) out += ZHUYIN[ch] ? `<ruby>${ch}<rt>${ZHUYIN[ch]}</rt></ruby>` : esc(ch);
+    for (const ch of str) {
+        const zy = ZHUYIN[ch];
+        if (!zy) { out += esc(ch); continue; }
+        const marks = [...zy].map(m => `<span>${esc(m)}</span>`).join('');
+        out += `<span class="zc"><span class="zcH">${esc(ch)}</span><span class="zcY">${marks}</span></span>`;
+    }
     return out;
 }
 // The 6 mode buttons + the physical-set button (2 possible labels): paints plain text normally,
