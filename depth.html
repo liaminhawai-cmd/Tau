@@ -179,8 +179,8 @@
   <div class="wrap hero-inner">
     <p class="eyebrow">Tau &nbsp;·&nbsp; Strategic-depth analysis</p>
     <h1>The evidence points to a genuinely deep game.</h1>
-    <p class="lede">We ran <span class="num">1,280</span> computer-versus-computer games across eight strength levels, each starting from a slightly different position, to answer one question a strong abstract game has to pass: as the players get better, does the game collapse onto a single winning recipe, or does skilled play stay varied?</p>
-    <div class="verdict"><span class="dot"></span><span>Verdict: &nbsp;<b>it stays varied at every level, and no forced win was found.</b></span></div>
+    <p class="lede">We ran <span class="num">1,280</span> computer-versus-computer games across eight strength levels, each starting from a slightly different position, to answer one question a strong abstract game has to pass: as the players get better, does the game collapse onto a single winning recipe, or does skilled play stay varied? Then, for this second edition, we grew the ladder to <span class="num">eleven</span> levels and spent another <span class="num">900+</span> games actively trying to break the result: single-idea bots against the champions, same-brain searches at different depths, and a hunt for a best strategy at the ceiling.</p>
+    <div class="verdict"><span class="dot"></span><span>Verdict: &nbsp;<b>it stays varied at every level, no forced win was found, and no single best strategy exists at the top.</b></span></div>
     <p class="byline">Produced with <b>Claude</b>, Anthropic&rsquo;s AI assistant, running the game&rsquo;s own engine. This is an AI analysis, not an independent human study.</p>
   </div>
 </header>
@@ -243,6 +243,15 @@
       <div class="chart" id="chart-length"></div>
       <figcaption class="cap">How many turns games lasted before a piece was pushed off the board. The tall middle and long tail show variety, not a single fixed length.</figcaption>
     </figure>
+  </section>
+
+  <section id="s-battery">
+    <p class="kicker">The second edition: hunting hidden shallowness</p>
+    <h2>We tried to break it. Here is what actually bent.</h2>
+    <p>After the first edition, the ladder grew to eleven levels: the deeper-search stress player shipped as Level 9, and two rounds of feature research produced Levels 10 and 11, each a decisive step. Then we turned around and went hunting for ways the game could still be secretly shallow, with a battery of adversarial tests. The full data is in the appendix; three findings deserve the front page, and one of them is not flattering.</p>
+    <p><strong>The score is not the strategy.</strong> We built six bots that each optimise a <em>single</em> variable, gave every one of them the top level's full search so only the judgement differs, and played a 336-game round-robin against the shipped multi-idea brains. The bot that optimises the actual win condition, rim safety, finished mid-table. Four single ideas collapsed without support. Winning Tau means optimising something other than the score, the same displacement chess and Go show between the objective and the strategy that achieves it.</p>
+    <p><strong>At the ceiling, no strategy is safe.</strong> The three strongest brains in the study, pure territory, pure inside-line, and the shipped combined evaluation, beat each other in a circle: territory beats the combined brain, the combined brain beats inside-line, inside-line beats territory, each by the same modest edge. There is no best way to play Tau in this population, only answers to answers. A game with a metagame among its strongest players is the opposite of a solved one.</p>
+    <p><strong>And the unflattering one, reported straight:</strong> two of the six single ideas, territory and the inside-line angle, played at the level of the best combined brains. At the engines' current three-ply depth, one well-chosen idea can carry you to the top of this population. That is a genuine narrowness signal at this search depth, and the appendix quantifies it rather than hiding it. The counterweights are real too: which idea matters enormously, the single-idea champions struggle to actually finish games they dominate, and the ceiling itself has moved three times in one day of research, which is not what an exhausted game looks like.</p>
   </section>
 
   <section id="s-method">
@@ -383,6 +392,60 @@
       </tbody>
     </table></div>
     <p>The conclusion is that Tau has slow positions, not stalemated ones. The cap truncates the occasional grind between defensive players; it does not paper over a pool of unresolvable draws. For strict bookkeeping, the four near-even caps in the main tournament are recorded at their tiny margins (within a few units of even), so they already count as all-but-draws rather than clean wins, and re-scoring them as formal draws moves nothing in the results.</p>
+  </section>
+
+  <section id="s-battery-detail">
+    <h3 class="subh">The shallowness battery, in full</h3>
+    <p>Every test below was designed to <em>find</em> shallowness, not to showcase depth: each one encodes a specific way an abstract game can be secretly simple, and asks whether Tau is. All games ran under the current rules with the usual &plusmn;6&deg; start perturbation and 70-turn cap.</p>
+
+    <h4 class="subh" style="font-size:15px">Test 1 &middot; Can one idea run the game? (336 games)</h4>
+    <p>Six bots, each optimising a single evaluation term, every one given the top level's full search (9&deg; sampling, 3-ply, 28 candidates) so the <em>only</em> difference is what they value. They played a full round-robin against each other and against the shipped multi-term brains L10 and L11, 12 games per pairing, both colours.</p>
+    <div class="datawrap"><table class="data">
+      <caption>The single-variable round-robin. "Wins at cap" is the share of a bot's wins that came from the 70-turn adjudication rather than actually pushing the opponent off, a measure of positional strength without killing ability.</caption>
+      <thead><tr><th>Bot (optimises)</th><th>Overall win rate</th><th>vs L10</th><th>vs L11</th><th>Wins at cap</th></tr></thead>
+      <tbody>
+        <tr><td>L11 (all ideas + triangle)</td><td>77%</td><td>75%</td><td class="na">&mdash;</td><td>9%</td></tr>
+        <tr><td>zone (territory only)</td><td>75%</td><td>67%</td><td>58%</td><td>16%</td></tr>
+        <tr><td>triMe (inside-line only)</td><td>75%</td><td>58%</td><td>42%</td><td>2%</td></tr>
+        <tr><td>L10 (all ideas)</td><td>67%</td><td class="na">&mdash;</td><td>25%</td><td>14%</td></tr>
+        <tr><td>margin (the score itself)</td><td>62%</td><td>33%</td><td>33%</td><td>29%</td></tr>
+        <tr><td>oppFree (boxing-in only)</td><td>24%</td><td>0%</td><td>0%</td><td>5%</td></tr>
+        <tr><td>center (middle only)</td><td>14%</td><td>0%</td><td>0%</td><td>83%</td></tr>
+        <tr><td>park (double-cross setup only)</td><td>6%</td><td>0%</td><td>0%</td><td>80%</td></tr>
+      </tbody>
+    </table></div>
+    <p>Three readings, in order of honesty. First, the narrowness signal: <strong>territory alone and the inside-line angle alone both played at the level of the best combined brains.</strong> At three plies, a single well-chosen idea is not dominated. Second, the depth signals inside the same table: the bot optimising the literal win condition finished fifth of eight; three of the six ideas are useless alone (two of them "win" almost exclusively by cap adjudication, never by an actual push); and the two single-idea champions differ sharply in killing ability, with the inside-line bot converting nearly every win into a real push-off while the territory bot parks on dominant positions it cannot always finish. Third, the caveat that cuts both ways: all of this is at 3-ply. Whether a deeper searcher could separate the combined evaluation from the single ideas is exactly the kind of question the first edition's L8+ test asked one level down, and it remains open at this level.</p>
+
+    <h4 class="subh" style="font-size:15px">Test 2 &middot; Is there a best strategy? (the top-four cycle)</h4>
+    <div class="datawrap"><table class="data">
+      <caption>Head-to-head wins out of 12 among the four strongest brains in the study. Read across: the row's wins against each column.</caption>
+      <thead><tr><th></th><th>zone</th><th>triMe</th><th>L10</th><th>L11</th></tr></thead>
+      <tbody>
+        <tr><td><b>zone</b></td><td class="na">&mdash;</td><td>5</td><td>8</td><td>7</td></tr>
+        <tr><td><b>triMe</b></td><td>7</td><td class="na">&mdash;</td><td>7</td><td>5</td></tr>
+        <tr><td><b>L10</b></td><td>4</td><td>5</td><td class="na">&mdash;</td><td>3</td></tr>
+        <tr><td><b>L11</b></td><td>5</td><td>7</td><td>9</td><td class="na">&mdash;</td></tr>
+      </tbody>
+    </table></div>
+    <p>The cycle is exact: zone beats L11, L11 beats triMe, triMe beats zone, each 7&ndash;5, and all three beat L10 cleanly. Twelve-game edges are individually weak evidence, but the structure matters: in this population there is <strong>no dominant brain</strong>. Pure territory play is punished by inside-line play, inside-line play is punished by the combined evaluation, and the combined evaluation is punished by pure territory. Every fixed strategy at the ceiling has a counter, which is the working definition of a metagame. Notably the strongest bots were also the hardest to separate (7&ndash;5s at the top against 12&ndash;0s at the bottom), the same compression real game populations show as skill rises.</p>
+
+    <h4 class="subh" style="font-size:15px">Test 3 &middot; Are the strategic variables real, or one thing renamed? (6,086 positions)</h4>
+    <p>If the eval's six terms secretly measured one quantity, combining them would be theatre. Measured across 6,086 positions from 180 games: margin, zone and triMe do form a correlated cluster (r = 0.66 to 0.87), they are three lenses on "who stands better", while park, center and oppFree are nearly orthogonal to it and to each other (|r| &le; 0.19). As a static <em>readout</em> of who is winning, one lens is nearly enough: zone alone scores a held-out AUC of 0.770 against 0.785 for all six combined. But Test 1 shows the flip side: bots that only differ in which correlated lens they optimise (margin-only vs zone-only) are separated by 13 points of win rate, and the near-orthogonal support terms, useless alone, are part of why the combined brains convert wins the single-idea bots cannot. Easy to score, harder to play: the judgement and the strategy are not the same object.</p>
+
+    <h4 class="subh" style="font-size:15px">Test 4 &middot; Does reading ahead pay?</h4>
+    <p class="pending-depthladder">Results pending at press time.</p>
+
+    <h4 class="subh" style="font-size:15px">Test 5 &middot; Do the new champions converge?</h4>
+    <p class="pending-topvariety">Results pending at press time.</p>
+
+    <h4 class="subh" style="font-size:15px">Test 6 &middot; How many good moves does a position hold?</h4>
+    <p class="pending-richness">Results pending at press time.</p>
+
+    <h4 class="subh" style="font-size:15px">Test 7 &middot; Is the ceiling real, or does it keep receding?</h4>
+    <p>A solved-ish game runs out of new ideas: past some point, neither more search nor more knowledge buys wins. Tau's two axes currently behave very differently. <strong>Search saturated:</strong> pushing the top brain's sampling finer than 9&deg; (7&deg;, 40 candidates) actually lost head-to-heads (44%), and a wider beam at 9&deg; gained nothing (58%, within noise) &mdash; more thinking time alone stopped paying. <strong>Knowledge did not:</strong> refitting the evaluation's weights from self-play data was worth a full rung (Level 10, 77% over Level 9), a single new geometric idea was worth another (Level 11, 67% over Level 10), and this battery immediately found two more brains that beat L10 in turn. One measured-but-unused idea is already banked: the opponent's real swept-arc width predicts wins out of sample but costs six engine sweeps per evaluated position, waiting on a faster engine. A game whose evaluation keeps admitting new ideas, while raw search has gone flat, is bounded by our understanding, not by its own bottom.</p>
+
+    <h4 class="subh" style="font-size:15px">So is it as deep as Go? What this battery can and cannot say.</h4>
+    <p>Honestly: no self-play study with hand-built three-ply bots can certify parity with a game whose depth is proven by three thousand years of still-deepening human theory and by the fact that mastering it required superhuman compute. What this battery can do is measure the signatures that separate deep games from shallow ones, and try hard to trigger the shallow ones. The scorecard: no forced win found at any strength and opening variety that <em>rises</em> with search (deep-game signature, both editions); a first-move edge that stays mild everywhere (healthy range, alongside chess and Go); essentially no draws against chess's high and rising draw rate at strength; leads that never lock the game (comeback room); the objective displaced from the strategy (Test 1); a strategy cycle rather than a best answer at the ceiling (Test 2); a receding knowledge ceiling (Test 7). Set against that: a single static idea can reach this population's ceiling (Test 1), the strategic readout is low-dimensional (Test 3), and games are decided in far fewer moves than Go's hundreds, so the sheer volume of decisions per game is not comparable. The fair summary is that Tau passes, at its current engine strength, every falsification test we could construct, several of them designed specifically to catch a game that merely looks varied, and the two tests it does not pass cleanly are bounded by the engines' depth, not by evidence of a degenerate core. The next tier of evidence would need a fundamentally stronger player (tree search over the continuous move space, or a learned policy) and human tournament data. Both are noted as open work, not assumed.</p>
   </section>
 
   <section id="s-tables">
