@@ -411,7 +411,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 130</div>
+<div id="buildTag">build 131</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2340,6 +2340,12 @@ function lineSideOf(f, id) {
     const a = CFG.sideArcs[+id[1]];
     return Math.sign(Math.hypot(f.x-a.cx, f.y-a.cy) - a.r) || 1;
 }
+// distance from a point to a line's centreline (span already vetted by the contact that led here)
+function lineDistOf(f, id) {
+    if (id[0]==='r') return Math.abs(radU(f) - CFG.rings[+id[1]]);
+    const a = CFG.sideArcs[+id[1]];
+    return Math.abs(Math.hypot(f.x-a.cx, f.y-a.cy) - a.r);
+}
 // Every point where two printed lines actually meet (each ring x each side arc, ends respecting the
 // arc spans). These are the ONLY places a single swing may take one crossing episode across two
 // distinct lines — the "jump the crossing" manoeuvre. Computed once from CFG.
@@ -2411,9 +2417,13 @@ function crossingSubstep(before, after, st) {
         // visibly finish ON the line, not next to it.
         st.earned = before.map(f => nearLineIds(f, CFG.crossEps));
         st.startSide = before.map((f,i) => { const m={}; for (const id of st.contact[i]) m[id]=lineSideOf(f,id); return m; });
+        st.entrySide = [{},{},{}];     // approach side of each line entered THIS turn
+        st.pendingMerge = [{},{},{}];  // corner-merged lines awaiting centreline validation: id -> sponsor id
     }
     const stickEps = CFG.touchEps + CFG.lineStick;
     const next = [], nextEarned = []; let opened = 0;
+    const newSides = [{},{},{}];   // entrySide additions, committed only if the substep stands
+    const newPending = [{},{},{}], resolvedPending = [[],[],[]];
     const justCrossed = [];   // every line id a foot's PAD newly touched this substep (billed or free)
     for (let i=0;i<3;i++){
         // PER-FOOT contact episodes. hadContact must be this foot's own state, NOT the whole piece's:
@@ -2435,6 +2445,32 @@ function crossingSubstep(before, after, st) {
                 justCrossed.push(id);
             }
         }
+        // Deferred corner-merge validation: a merged line rode in free on the promise that the foot
+        // is rounding the PRINTED CORNER — one continuous crossing over the point where the lines
+        // meet. That promise is checked the moment the merged line's CENTRELINE is actually crossed:
+        // right at the corner, the sponsoring line passes through the same point, so the magnet is
+        // still on it (≤ holdEps at any incidence angle). A foot slipping PAST the corner crosses
+        // the second centreline with the sponsor's line 0.6+ behind it — magnet clearly off — and
+        // that crossing is billed here as a fresh one (blocking if over budget). This is what makes
+        // the CW/CCW two-step opening slip impossible while the centre-spin (feet riding dead ON
+        // the ring, magnet distance ~0 at every corner) keeps sweeping corners for free.
+        for (const id of kept) {
+            const sponsor = st.pendingMerge[i][id];
+            if (sponsor === undefined) continue;
+            const flipped = st.entrySide[i][id] !== undefined && lineSideOf(after[i], id) !== st.entrySide[i][id];
+            if (flipped) {
+                if (lineDistOf(after[i], sponsor) > CFG.holdEps) opened++;   // missed the corner: it's a real 2nd crossing
+                resolvedPending[i].push(id);   // validated once, at the first centreline flip
+            } else if (lineDistOf(after[i], id) <= CFG.crossEps && lineDistOf(after[i], sponsor) > CFG.holdEps) {
+                // The sponsor is already lost and the foot is about to reach the merged line's
+                // magnet zone: the corner roll is doomed, so convert it to an ordinary billed
+                // crossing NOW, while the foot is still outside grace reach. If the budget rejects,
+                // the swing stops here — resting beyond crossEps, so next turn can't grace-cross
+                // the line it never paid for (the three-step version of the corner slip).
+                opened++;
+                resolvedPending[i].push(id);
+            }
+        }
         let entered = false;
         for (const id of nearLineIds(after[i], CFG.touchEps))
             if (!kept.includes(id)) {
@@ -2442,12 +2478,16 @@ function crossingSubstep(before, after, st) {
                 // line this foot is still on, at a printed intersection within cornerEps of the foot.
                 // Anywhere else, touching a second line is a second crossing, contact or no contact.
                 // The sponsoring line must be EARNED (magnet-on at turn start, billed, or itself
-                // merged at a corner) — a parked-beside line can't carry a free corner ride.
+                // merged at a corner) — a parked-beside line can't carry a free corner ride. The
+                // merge is provisional: see the centreline validation above.
+                let sponsorId;
                 const atCorner = hadContact && kept.some(h => earned.includes(h) && LINE_INTERSECTIONS.some(P =>
                     P.lines.includes(id) && P.lines.includes(h) &&
-                    Math.hypot(after[i].x-P.x, after[i].y-P.y) <= CFG.cornerEps));
+                    Math.hypot(after[i].x-P.x, after[i].y-P.y) <= CFG.cornerEps) && (sponsorId = h, true));
                 kept.push(id);
                 if (!earned.includes(id)) earned.push(id);   // fresh billed entry or corner merge: genuine contact
+                newSides[i][id] = lineSideOf(after[i], id);  // approach side, for the centreline-flip check
+                if (atCorner) newPending[i][id] = sponsorId;
                 justCrossed.push(id);
                 if (!atCorner) entered = true;
             }
@@ -2461,6 +2501,12 @@ function crossingSubstep(before, after, st) {
     }
     st.contact = next;
     st.earned = nextEarned;
+    for (let i=0;i<3;i++) {
+        for (const id in newSides[i]) st.entrySide[i][id] = newSides[i][id];
+        for (const id in newPending[i]) st.pendingMerge[i][id] = newPending[i][id];
+        for (const id of resolvedPending[i]) delete st.pendingMerge[i][id];
+        for (const id in st.pendingMerge[i]) if (!next[i].includes(id)) delete st.pendingMerge[i][id];   // backed out of the band unflipped: free retreat
+    }
     // Only reaches here on a committed substep (the budget check above already returned on a
     // rollback), so this never records a crossing that got undone.
     if (justCrossed.length) st.justCrossed = (st.justCrossed || []).concat(justCrossed);
