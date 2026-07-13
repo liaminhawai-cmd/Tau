@@ -411,7 +411,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 127</div>
+<div id="buildTag">build 128</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -425,7 +425,7 @@
     <div class="dRow"><label for="dirHide">Hide UI</label><input id="dirHide" type="checkbox"></div>
     <div class="dRow"><label for="dirUnlock">🔓 Move/resize boards</label><input id="dirUnlock" type="checkbox"></div>
 </div>
-<div id="wrap">
+<div id="wrap" role="main">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
     <p class="srOnly">Tau is a physics-based abstract strategy board game, sometimes compared to Abalone or Kabuto Sumo. Each player controls one three-legged piece. On your turn, pin one foot in place and swing the other two around it in a continuous arc, not a jump between grid squares. Cross a line to close in on your opponent, but you may only cross one line per turn. Push their piece past the edge of the round board to win. Play against the computer across nine difficulty levels, locally against a friend, or online against another player. Free to play in your browser.</p>
     <div id="menu">
