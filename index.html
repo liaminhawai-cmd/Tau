@@ -411,7 +411,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 135</div>
+<div id="buildTag">build 136</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3855,7 +3855,7 @@ const AI_LADDER = [
     { kind:'p', w:{margin:.6},                     o:{sampleDeg:26,depth:1,keepStops:1}, noise:.30 }, // L3 cautious pusher
     { kind:'p', w:{margin:.5,zone:.3,center:1.5},  o:{sampleDeg:18,depth:1,keepStops:2} },      // L4 centre-dancer
     { kind:'p', w:{margin:.6,zone:.4,park:2},      o:{sampleDeg:18,depth:1,keepStops:2} },      // L5 corner-cutter
-    { kind:'p', w:{margin:1},                      o:{sampleDeg:24,depth:2,keepStops:1,maxCands:8} }, // L6 solid, 2-ply
+    { kind:'p', w:{margin:1,triMe:.1},             o:{sampleDeg:24,depth:2,keepStops:1,maxCands:8} }, // L6 solid, 2-ply + a touch of inside-line triangle (softens L7's edge, funkier L6)
     // L7/L9 re-spread (the "sprinkle" pass): before it, L8vL7 sat at exact parity and L10
     // towered 77% over L9. A light dose of the fitted weights in L7 (which softens Master a
     // touch at this shallow search) and a half dose in L9 evened the whole top of the ladder:
