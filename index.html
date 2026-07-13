@@ -411,7 +411,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 128</div>
+<div id="buildTag">build 129</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -1602,7 +1602,7 @@
 // as "the other side's" localisation to both audiences, so the split matters more than the words.
 // t() falls back to the English source string for any missing key, so untranslated corners of the
 // UI degrade to English instead of breaking.
-const LANGS = ['en','ja','zh','zht','ko','de','fr','es','pt','ru'];
+const LANGS = ['en','ja','zh','zht','ko','de','fr','es','pt','ru','vi'];
 const LANG = (() => {
     try { const s = localStorage.getItem('tauLang'); if (LANGS.includes(s)) return s; } catch(e) {}
     const l = (navigator.language || 'en').toLowerCase();
@@ -2131,6 +2131,58 @@ ru: {
 "Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"Вход через Google заблокирован внутри этого приложения. Нажмите ⋯ / «поделиться» и выберите «Открыть в Safari/Chrome», или используйте имя пользователя и пароль ниже.",
 "Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Для входа через Google нужен обычный браузер (⋯ / поделиться → Открыть в Safari или Chrome). В этом приложении используйте имя пользователя и пароль ниже.",
 "Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Установите Tau: нажмите <b>Поделиться</b>, затем <b>На экран «Домой»</b>."
+},
+vi: {
+"Local 1v1":"1 chọi 1 tại chỗ","Online 1v1":"1 chọi 1 online","vs AI":"Đấu AI","How to play":"Cách chơi","Leaderboard":"Bảng xếp hạng","Watch":"Xem",
+"Sign in":"Đăng nhập","Sign out":"Đăng xuất","Playing as Guest · ":"Chơi với tư cách khách · ","Signed in as ":"Đã đăng nhập với tên ","(edit)":"(sửa)","Guest":"Khách",
+"Play as Guest":"Chơi với tư cách khách","Surrender":"Đầu hàng","Menu":"Menu","Stop watching":"Ngừng xem","Rating:":"Elo:",
+"Your turn":"Lượt của bạn","{name}'s turn":"Lượt của {name}","{color} to move":"{color} đi","{color} wins":"{color} thắng","Blue":"Xanh dương","Red":"Đỏ","blue":"xanh dương","red":"đỏ",
+"Step 1. Tap one of your feet to lock it as the pivot.":"Bước 1: Chạm vào một chân để khóa làm trụ.",
+"Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.":"Bước 2: Kéo chân còn lại (có vòng tròn) quanh trụ. Chạm lại vào chân màu vàng để chọn lại.",
+"Swinging… release to end your turn.":"Đang xoay… thả ra để kết thúc lượt.","Waiting for your opponent…":"Đang chờ đối thủ…",
+"AI is thinking…":"AI đang suy nghĩ…","AI is swinging…":"AI đang xoay…","crossings {c}/{m}":"số lần vượt {c}/{m}",". That would cross a 2nd line":" (sẽ vượt qua đường thứ 2)",". Your own foot would leave the board":" (chân của bạn sẽ rời khỏi bàn cờ)",
+"Watching {a} vs {b}":"Đang xem {a} đấu {b}","Playing {color} vs {name}":"Chơi {color} đấu với {name}",
+"Pick a difficulty.":"Chọn độ khó.","Easy":"Dễ","Medium":"Trung bình","Hard":"Khó","Very hard":"Rất khó","Expert":"Chuyên gia",
+"Levels":"Cấp độ","Level {n}":"Cấp {n}","Level {n} Computer":"Máy tính cấp {n}","Level {n} cleared!":"Đã vượt qua cấp {n}!","Level {n} not cleared":"Chưa vượt qua cấp {n}",
+"Next level":"Cấp tiếp theo","Try again":"Thử lại","Level {n} as Red":"Cấp {n} với quân Đỏ",
+"Play Level {n} as Blue":"Chơi cấp {n} với quân Xanh","Play Level {n} as Red":"Chơi cấp {n} với quân Đỏ",
+"Unbeaten":"Chưa ai thắng","beaten by {c}":"{c} người đã thắng","usually cleared above {x}":"thường vượt qua ở mức trên {x}","beaten by {x}% of players":"{x}% người chơi đã thắng",
+"Choose your colour":"Chọn màu quân của bạn","Blue always moves first.":"Quân Xanh luôn đi trước.","Play as Blue":"Chơi quân Xanh","Play as Red":"Chơi quân Đỏ",
+"You win!":"Bạn thắng rồi!","You lose":"Bạn thua rồi","{name} wins!":"{name} thắng rồi!","Rematch":"Đấu lại","Accept rematch":"Chấp nhận đấu lại","Find new opponent":"Tìm đối thủ mới",
+"Watch replay":"Xem lại","Share replay":"Chia sẻ trận đấu","Watch another":"Xem trận khác","Difficulty":"Độ khó","Got it":"Đã hiểu",
+"Waiting for {name}…":"Đang chờ {name}…","{name} wants a rematch!":"{name} muốn đấu lại!","{name} is watching the replay.":"{name} đang xem lại trận đấu.",
+"{name} is still watching the replay.":"{name} vẫn đang xem lại trận đấu.","{name} left.":"{name} đã rời đi.",
+"Searching for an opponent…":"Đang tìm đối thủ…","Cancel":"Hủy","Play a random ranked opponent, or invite someone specific?":"Đấu xếp hạng với người ngẫu nhiên, hay mời một người cụ thể?",
+"Find an opponent":"Tìm đối thủ","Private match":"Trận đấu riêng","Play a casual 1v1 against someone specific instead of the random queue.":"Chơi 1 chọi 1 thân mật với một người cụ thể thay vì hàng chờ ngẫu nhiên.",
+"Create a match":"Tạo trận đấu","Join with a code":"Tham gia bằng mã","Creating your invite…":"Đang tạo lời mời…","OK":"OK",
+"Share this code, or send the link:":"Chia sẻ mã này, hoặc gửi link:","Copy invite link":"Sao chép link mời","Waiting for them to join…":"Đang chờ họ tham gia…",
+"Link copied! Waiting for them to join…":"Đã sao chép link! Đang chờ họ tham gia…","Could not copy. The code above still works.":"Không sao chép được. Mã ở trên vẫn dùng được.",
+"Watch live":"Xem trực tiếp","Looking for games…":"Đang tìm trận đấu…","No public games being played right now.":"Hiện không có trận đấu công khai nào.","Close":"Đóng",
+"Loading…":"Đang tải…","No rated players yet.":"Chưa có người chơi xếp hạng.","Could not load the leaderboard.":"Không thể tải bảng xếp hạng.",
+"Player":"Người chơi","Elo":"Elo","W-L":"T-B","(you)":"(bạn)","Ranked #{r} of {n}":"Hạng {r} trong {n}",
+"{n} playing now":"{n} người đang chơi"," · {m} in matches":" · {m} đang thi đấu"," · {w} waiting for an opponent":" · {w} đang chờ đối thủ","Stopped searching.":"Đã dừng tìm kiếm.","Searching…":"Đang tìm…",
+"Out of time, turn passed":"Hết giờ, bỏ lượt","Opponent out of time, your turn":"Đối thủ hết giờ, đến lượt bạn","Turn passed":"Đã bỏ lượt",
+"Opponent didn’t move, your turn":"Đối thủ không đi, đến lượt bạn","Replay, tap the board to skip":"Đang xem lại — chạm vào bàn cờ để bỏ qua",
+"Replay link copied!":"Đã sao chép link xem lại!","Copy full link (offline)":"Sao chép link đầy đủ (ngoại tuyến)","Full link copied!":"Đã sao chép link đầy đủ!","Could not create the link.":"Không thể tạo link.","Watch this Tau game:":"Xem trận Tau này:","This replay link has expired.":"Link xem lại này đã hết hạn.","Installed. Check your home screen or app list.":"Đã cài đặt — kiểm tra màn hình chính hoặc danh sách ứng dụng.",
+"Replay finished":"Đã xem lại xong","Watch again":"Xem lại lần nữa","Play Tau":"Chơi Tau","Prev":"Trước","Next":"Tiếp",
+"Hold one foot":"Giữ một chân","Hold one foot still and rotate the other two.":"Giữ yên một chân và xoay hai chân còn lại.",
+"Move in circles":"Di chuyển theo vòng cung","The moving feet trace an arc. You may only move in one direction per turn.":"Các chân di chuyển vẽ nên một vòng cung. Mỗi lượt chỉ được xoay theo một hướng.",
+"Push your opponent":"Đẩy đối thủ","Push your opponent by moving into their legs.":"Đẩy đối thủ bằng cách chạm vào chân của họ.",
+"One line per turn":"Một đường mỗi lượt","You may cross only one line per turn. A foot that starts on a line leaves it for free.":"Mỗi lượt chỉ được vượt qua một đường. Chân nào bắt đầu trên một đường thì được rời khỏi đường đó miễn phí.",
+"Corners count once":"Góc chỉ tính một lần","A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.":"Một lần vượt kéo dài chừng nào quân cờ còn nằm trên đường. Đi vòng qua góc nơi hai đường gặp nhau vẫn chỉ tính là <b>một</b> lần vượt.",
+"Two feet at once":"Hai chân cùng lúc","Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.":"Hai chân có thể vượt qua hai đường khác nhau trong cùng một lần xoay. Miễn là quân cờ không rời khỏi đường, đó vẫn chỉ là <b>một</b> lần vượt.",
+"Push them off":"Đẩy đối thủ ra ngoài","Push your opponent off the edge. When one of their feet leaves the board, you win.":"Đẩy đối thủ ra khỏi mép bàn cờ. Khi một chân của họ rời khỏi bàn cờ, bạn thắng.",
+"Play the AI while you wait":"Đấu AI trong lúc chờ","Still searching. You’ll be told when an opponent appears.":"Vẫn đang tìm kiếm — bạn sẽ được báo khi có đối thủ.","Opponent found!":"Đã tìm thấy đối thủ!","Play now":"Chơi ngay",
+"Get a physical set →":"Nhận bộ chơi vật lý →","On the list ✓":"Đã có trong danh sách ✓","The physical game":"Trò chơi vật lý","Tau was a physical game first, a steel disk and two magnetic tripods. I’m putting sets together now. Pick what you want and I’ll email you once, when it’s ready.":"Tau vốn là một trò chơi vật lý trước tiên — một đĩa thép và hai chân đế nam châm. Mình đang chuẩn bị các bộ chơi. Chọn thứ bạn muốn và mình sẽ gửi email một lần khi nó sẵn sàng.","Free print-and-play files":"File in và chơi miễn phí","Make your own set at home":"Tự làm bộ chơi tại nhà","The full kit, shipped":"Bộ đầy đủ, giao tận nơi","A ready-to-play board and pieces":"Bàn cờ và quân cờ sẵn sàng để chơi","Pick at least one option.":"Chọn ít nhất một lựa chọn.","Notify me":"Báo cho tôi","You’re on the list!":"Bạn đã có trong danh sách!","That doesn’t look like an email address.":"Cái này không giống địa chỉ email.","email":"email","Could not save. Check your connection.":"Không thể lưu — kiểm tra kết nối của bạn.",
+"Most recent game":"Trận gần nhất","Top ranked games":"Trận xếp hạng cao nhất","My saved games":"Trận đã lưu của tôi","Most watched games":"Trận được xem nhiều nhất","No saved games yet.":"Chưa có trận nào được lưu.","No ranked games yet.":"Chưa có trận xếp hạng nào.","Could not load.":"Không thể tải.","You are offline.":"Bạn đang ngoại tuyến.","Sign in to browse games.":"Đăng nhập để xem các trận đấu.","live":"trực tiếp","Most saved games":"Trận được lưu nhiều nhất","Top players’ latest games":"Trận gần nhất của người chơi hàng đầu","Watch {name}’s latest game":"Xem trận gần nhất của {name}","vs {name}":"đấu {name}","Live now":"Đang diễn ra","Replays":"Xem lại","Nothing to replay in that game.":"Không có gì để xem lại trong trận này.",
+"Save replay":"Lưu trận đấu","Saved to My replays!":"Đã lưu vào Trận của tôi!","My replays":"Trận của tôi","Delete":"Xóa",
+"Share this game":"Chia sẻ trận đấu này","Save this game":"Lưu trận đấu này","Skip ⏭":"Bỏ qua ⏭",
+"Continue with Google":"Tiếp tục với Google","or use a username & password":"hoặc dùng tên đăng nhập & mật khẩu","hide username & password":"ẩn tên đăng nhập & mật khẩu",
+"or a one-time email link":"hoặc link email dùng một lần","Log in":"Đăng nhập","Sign up":"Đăng ký","Send link":"Gửi link","username":"tên đăng nhập","password":"mật khẩu",
+"Sign up to choose your own name. You keep your current rating.":"Đăng ký để tự chọn tên của bạn — bạn vẫn giữ nguyên Elo hiện tại.",
+"Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"Đăng nhập Google bị chặn trong ứng dụng này. Chạm vào biểu tượng ⋯ / chia sẻ và chọn “Mở trong Safari/Chrome”, hoặc dùng tên đăng nhập & mật khẩu bên dưới.",
+"Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Đăng nhập Google cần một trình duyệt thật (⋯ / chia sẻ → Mở trong Safari hoặc Chrome). Trong ứng dụng này, hãy dùng tên đăng nhập & mật khẩu bên dưới.",
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Cài Tau: chạm <b>Chia sẻ</b> rồi <b>Thêm vào Màn hình chính</b>."
 }
 };
 
@@ -6136,7 +6188,7 @@ demoStart();
     if (langMenu && langBtn) {
         langMenu.textContent = '';
         [['en','English'],['ja','日本語'],['zh','简体中文'],['zht','繁體中文'],['ko','한국어'],
-         ['de','Deutsch'],['fr','Français'],['es','Español'],['pt','Português'],['ru','Русский']].forEach(([code,label]) => {
+         ['de','Deutsch'],['fr','Français'],['es','Español'],['pt','Português'],['ru','Русский'],['vi','Tiếng Việt']].forEach(([code,label]) => {
             const b=document.createElement('button'); b.textContent=label;
             if (code===LANG) b.className='cur';
             b.addEventListener('click',()=>{ try{localStorage.setItem('tauLang',code);}catch(e){} location.reload(); });
