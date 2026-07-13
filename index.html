@@ -411,7 +411,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 134</div>
+<div id="buildTag">build 135</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3868,6 +3868,9 @@ const AI_LADDER = [
     // dropped (it predicted LOSSES once zone/park were priced), and the oppFree boxing-in term
     // added. Beat the shipping L9 head-to-head 46/60 (77%) over three independent runs.
     { kind:'p3', w:{margin:1,zone:12,park:8,oppFree:-1.1}, o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },
+    // L11: L10 plus the triangle-angle term (keep my hub between the board centre and theirs).
+    // Beat plain L10 24/36 (67%) head-to-head; same search cost, the extra term is arithmetic.
+    { kind:'p3', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 
@@ -3892,6 +3895,14 @@ function ladderEval(idx, w){
             CFG.sideArcs.forEach(a => { if (angInSpan(Math.atan2(f.y-a.cy,f.x-a.cx)*180/Math.PI, a.a0, a.a1)) d=Math.min(d, Math.abs(Math.hypot(f.x-a.cx,f.y-a.cy)-a.r)); });
             free += Math.min(d, 10); }
         s += w.oppFree * free; }
+    // triMe: the angle at MY hub between the board centre and the opponent's hub, in degrees.
+    // Big angle = my piece sits between the centre and theirs (owning the inside line facing
+    // them). The strongest single predictor found in the judo-feature round; validated in play
+    // (L10 search + this term beat plain L10 67%).
+    if (w.triMe){ const me=G.pieces[idx], op=G.pieces[1-idx];
+        const ax=-me.x, ay=-me.y, bx=op.x-me.x, by=op.y-me.y;
+        const la=Math.hypot(ax,ay)||1e-9, lb=Math.hypot(bx,by)||1e-9;
+        s += w.triMe * (Math.acos(Math.max(-1,Math.min(1,(ax*bx+ay*by)/(la*lb))))*180/Math.PI); }
     return s;
 }
 // depth 1/2 planner over sampled STOP POINTS along each sweep (the visible partial rotations)
