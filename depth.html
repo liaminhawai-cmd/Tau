@@ -226,6 +226,7 @@
     <p class="kicker">The strength range</p>
     <h2>The eight levels are a real ladder, not window dressing.</h2>
     <p>For the analysis above to mean anything, the eight levels have to actually differ in skill and span a wide range. They do. The strongest levels beat the entire field below them cleanly, so the "does it converge at the top?" question really is being asked at the top of a genuine ladder, not among near-equal opponents. Lower down it gets more interesting: the aggressive early levels can punish the cautious middle ones, so skill here is not a single straight line. Style beating style is itself a mark of a game with more than one good idea in it.</p>
+    <p>Since this matrix was recorded the ladder has kept growing: the game now ships <strong>eleven</strong> levels. The deeper-search stress player from the appendix became Level 9, and two rounds of feature research produced Levels 10 and 11, each beating the rung below it decisively when added (77% and 67%). Under the current rules the ladder's adjacent steps measure 83, 63, 67, 71 and 67 percent from L6 up to L11, a smooth staircase with no rung skippable and no rung a wall. The point for depth is not the count; it is that three new, stronger brains were found <em>after</em> the first edition and none of them collapsed the game (the full battery below).</p>
     <figure>
       <div class="legend"><span><span class="swatch" style="background:var(--blue)"></span>First player (row) wins more</span><span><span class="swatch" style="background:var(--red)"></span>Second player (column) wins more</span></div>
       <div class="chart" id="chart-heat"></div>
@@ -270,7 +271,8 @@
     <h3 class="subh">The engine and the tournament</h3>
     <p>Every game was played by the shipping game's own code, not a re-implementation or a simplified model. A turn is driven synchronously: the active brain returns a plan, the piece is rotated in 3-degree steps until it reaches that plan's stop angle or the rules halt it, and the turn ends. The physics is deterministic, so a chosen plan replays to exactly the position the brain searched.</p>
     <p>To stop the near-deterministic top brains from playing the identical game every time, each game began from the standard start with an independent random rotation of up to <span class="mono">&plusmn;6&deg;</span> applied to each piece. That keeps every position a real, legal Tau position while giving genuinely different lines. Games ran to a piece leaving the board, or to a <span class="num">70</span>-turn safety cap (reached in <span class="num">2.9%</span> of games), after which the piece with the better rim margin was recorded as ahead.</p>
-    <p>The full tournament was <strong>every ordered pairing of the eight levels</strong> (64 pairings, both colours getting the first move), <span class="num">20</span> games each, for <span class="num">1,280</span> games. A separate <span class="num">72</span>-game run (24 self-play games at three levels) measured opening variety, and the stress test below added more.</p>
+    <p>The full tournament was <strong>every ordered pairing of the eight levels</strong> (64 pairings, both colours getting the first move), <span class="num">20</span> games each, for <span class="num">1,280</span> games. A separate <span class="num">72</span>-game run (24 self-play games at three levels) measured opening variety, and the stress tests below added more.</p>
+    <p><em>A note on rules builds.</em> Between the first edition and the second-edition battery, the game's crossing rule was tightened twice (the leave-a-line grace band went from pad scale to magnet scale, and corner crossings gained a deferred validity check) after two exploits were found and closed. The 1,280-game base tournament predates that tune; every second-edition test ran under the current rules. The change closes two specific cheap tricks; it does not alter the objective, the move set, or the board. We re-verified the ladder's ordering under the current rules with fresh adjacent-rung head-to-heads before extending it, and the one rung the retune had silently weakened (L8's park aim) was repaired before any new measurement was taken.</p>
   </section>
 
   <section id="s-brains">
@@ -298,16 +300,28 @@
       <p>Adds the <strong>park</strong> term: a bonus for resting a foot on a line near a corner intersection, arming it to cut a second line next turn. It begins setting up the two-lines-for-one-crossing trick, though it still does not look at the reply.</p></div>
 
     <div class="brain"><h4>L6 &middot; Solid <span class="elo">Elo ~392</span></h4>
-      <p class="cfg">kind: p &middot; 2-ply &middot; sampleDeg 24 &middot; keepStops 1 &middot; maxCands 8 &middot; w: margin 1</p>
-      <p>The first brain that <strong>looks ahead</strong>. For each sampled move it lets the opponent answer with their best sweep-to-limit reply and scores by the worst case (minimax). Pure rim safety, but now defended against the punishing counter that a one-ply brain walks into.</p></div>
+      <p class="cfg">kind: p &middot; 2-ply &middot; sampleDeg 24 &middot; keepStops 1 &middot; maxCands 8 &middot; w: margin 1, triMe .1</p>
+      <p>The first brain that <strong>looks ahead</strong>. For each sampled move it lets the opponent answer with their best sweep-to-limit reply and scores by the worst case (minimax). Rim safety plus a touch of the inside-line triangle term (see L11), added later to even the gap to L7 and give L6 a personality of its own.</p></div>
 
     <div class="brain"><h4>L7 &middot; Expert <span class="elo">Elo ~461</span></h4>
-      <p class="cfg">kind: builtin &middot; master &middot; 3-ply minimax</p>
-      <p>Full <strong>three-ply</strong> search: its move, the opponent's best reply, then its own best follow-up, so it will not take a move that looks good now but walks into a bad answer. Its move set adds early <strong>park stops</strong> that deliberately arm a foot in a line's grace band, letting the deeper plies see and race the double-cross. Evaluation is margin plus zone plus a park bonus, with the win/loss term dominating. Alpha-beta-style cutoffs keep it quick.</p></div>
+      <p class="cfg">kind: builtin &middot; master &middot; 3-ply minimax &middot; ladder weights zone 2.5, park 2.2, oppFree &minus;.3</p>
+      <p>Full <strong>three-ply</strong> search: its move, the opponent's best reply, then its own best follow-up, so it will not take a move that looks good now but walks into a bad answer. Its move set adds early <strong>park stops</strong> that deliberately arm a foot in a line's grace band, letting the deeper plies see and race the double-cross. Evaluation is margin plus zone plus a park bonus, with the win/loss term dominating. The ladder's copy carries a light dose of the self-play-fitted weights (the re-spread described below); the vs-Computer menu's Expert keeps the stock constants.</p></div>
 
-    <div class="brain"><h4>L8 &middot; Cap <span class="elo">Elo ~550 (Expert +90, engine ceiling)</span></h4>
+    <div class="brain"><h4>L8 &middot; Cap <span class="elo">Elo ~550 (Expert +90)</span></h4>
       <p class="cfg">kind: p3 &middot; 3-ply &middot; sampleDeg 18 &middot; keepStops 2 &middot; maxCands 11 &middot; w: margin 1, zone .5, park .9, center .15</p>
-      <p>Expert's three-ply shape, but the root is built from <strong>fine 18&deg; partial-rotation stops</strong> rather than only sweep-to-limit moves, so it weighs stopping points Expert never considers, under the fullest weight set (all four positional terms). This is the strongest opponent the game ships.</p></div>
+      <p>Expert's three-ply shape, but the root is built from <strong>fine 18&deg; partial-rotation stops</strong> rather than only sweep-to-limit moves, so it weighs stopping points Expert never considers, under the fullest weight set (all four positional terms). The strongest opponent the game shipped when the main tournament was run.</p></div>
+
+    <div class="brain"><h4>L9 &middot; Deep <span class="elo">est. Elo ~670</span></h4>
+      <p class="cfg">kind: p3 &middot; 3-ply &middot; sampleDeg 9 &middot; keepStops 4 &middot; maxCands 28 &middot; w: margin 1, zone 2.2, park 1.9, center .12, oppFree &minus;.2</p>
+      <p>L8's brain given roughly <strong>2.5&times; the search</strong>: half the sample spacing, double the kept stops, 28 candidate lines searched in full. This is the L8+ stress-test player from the appendix below, later shipped as a real rung, and its weights now carry a half dose of the self-play-fitted eval so the ladder's steps stay even.</p></div>
+
+    <div class="brain"><h4>L10 &middot; Refit <span class="elo">est. Elo ~780</span></h4>
+      <p class="cfg">kind: p3 &middot; same search as L9 &middot; w: margin 1, zone 12, park 8, oppFree &minus;1.1</p>
+      <p>L9's exact search with the evaluation <strong>re-learned from data</strong>: logistic regression over thousands of labeled self-play positions, tested on held-out games. The fit promoted zone and park hard, deleted the centre bonus outright (it predicted losses once territory was priced), and added <strong>oppFree</strong>, a boxing-in term that shrinks the opponent's room to their nearest line. Beat the shipping L9 46 of 60 (77%).</p></div>
+
+    <div class="brain"><h4>L11 &middot; Triangle <span class="elo">est. Elo ~900 (current ceiling)</span></h4>
+      <p class="cfg">kind: p3 &middot; same search as L10 &middot; w: L10 + triMe .2</p>
+      <p>L10 plus one new idea: <strong>triMe</strong>, the angle at the piece's own hub between the board centre and the opponent's hub. A wide angle means the piece owns the inside line between the centre and its opponent. It was the strongest single predictor found in a second feature-research round and carried a full rung on its own: L11 beat L10 head-to-head 24 of 36 (67%) at identical search cost.</p></div>
   </section>
 
   <section id="s-eval">
@@ -318,6 +332,8 @@
       <dt>zone</dt><dd>Hand-graded cell value: 4 in the centre, 3 mid, 2 outer, minus 1 inside either corner lens pocket. Summed over my three feet minus the opponent's.</dd>
       <dt>center</dt><dd>Bonus for keeping a foot near the board's middle, which drives large board-crossing swings.</dd>
       <dt>park</dt><dd>Bonus per foot resting in a line's grace band near an intersection, ready to cross a second line next turn (the double-cross setup).</dd>
+      <dt>oppFree</dt><dd>The opponent's summed room to their nearest line, clamped per foot. Weighted negative: shrinking it herds their feet against lines so their sweeps hit the one-crossing budget sooner. Learned from self-play data (L9 to L11).</dd>
+      <dt>triMe</dt><dd>The angle at my hub between the board centre and the opponent's hub, in degrees. Wide = I own the inside line between the centre and them. The strongest single predictor found in the feature research (L6, L11).</dd>
       <dt>noise</dt><dd>Probability of ignoring the evaluation entirely and playing a random legal move. The weakness dial for the lower rungs.</dd>
     </dl></div>
     <div class="datawrap"><table class="data">
@@ -329,10 +345,12 @@
         <tr><td>L3</td><td>planner</td><td>1</td><td>26&deg;</td><td>1</td><td class="na">n/a</td><td>margin .6 (+30% noise)</td></tr>
         <tr><td>L4</td><td>planner</td><td>1</td><td>18&deg;</td><td>2</td><td class="na">n/a</td><td>margin .5, zone .3, center 1.5</td></tr>
         <tr><td>L5</td><td>planner</td><td>1</td><td>18&deg;</td><td>2</td><td class="na">n/a</td><td>margin .6, zone .4, park 2</td></tr>
-        <tr><td>L6</td><td>planner</td><td>2</td><td>24&deg;</td><td>1</td><td>8</td><td>margin 1</td></tr>
-        <tr><td>L7</td><td>master</td><td>3</td><td>limit + parks</td><td>4 parks</td><td>all</td><td>margin, zone .5, park .8</td></tr>
+        <tr><td>L6</td><td>planner</td><td>2</td><td>24&deg;</td><td>1</td><td>8</td><td>margin 1, triMe .1</td></tr>
+        <tr><td>L7</td><td>master</td><td>3</td><td>limit + parks</td><td>4 parks</td><td>all</td><td>margin, zone 2.5, park 2.2, oppFree &minus;.3 (ladder copy)</td></tr>
         <tr><td>L8</td><td>planner</td><td>3</td><td>18&deg;</td><td>2</td><td>11</td><td>margin 1, zone .5, park .9, center .15</td></tr>
-        <tr><td>L8+</td><td>planner</td><td>3</td><td>9&deg;</td><td>4</td><td>28</td><td>same as L8</td></tr>
+        <tr><td>L9 (= L8+)</td><td>planner</td><td>3</td><td>9&deg;</td><td>4</td><td>28</td><td>margin 1, zone 2.2, park 1.9, center .12, oppFree &minus;.2</td></tr>
+        <tr><td>L10</td><td>planner</td><td>3</td><td>9&deg;</td><td>4</td><td>28</td><td>margin 1, zone 12, park 8, oppFree &minus;1.1 (fitted)</td></tr>
+        <tr><td>L11</td><td>planner</td><td>3</td><td>9&deg;</td><td>4</td><td>28</td><td>L10 + triMe .2</td></tr>
       </tbody>
     </table></div>
   </section>
@@ -345,7 +363,8 @@
       <p style="margin:0 0 8px"><b>Opening variety went up, not down.</b> Playing itself from perturbed starts, L8+ produced <b>17 distinct opening lines out of 24</b> games with its single most-common line appearing only <b>8%</b> of the time, more varied than stock L8 (12 of 24, top line 21%). A deeper search found <em>more</em> good ideas, not one forced line.</p>
       <p style="margin:0"><b>No forced line at any depth.</b> Playing itself 30 times from perturbed starts, L8+ produced <b>30 distinct games</b>: no full move sequence ever repeated another. Its median game ran 21 turns. Going first was worth about two-thirds here (20 of 30), the same mild first-mover edge stock L8 shows at the top of the ladder, and nowhere near a forced win.</p>
     </div>
-    <p>This is the strongest single piece of evidence in the report. The exact failure a publisher would fear, that strength hides a degenerate line, is where the game held up best: give the top brain far more search and it fans out rather than narrowing.</p>
+    <p>This was the strongest single piece of evidence in the first edition of this report. The exact failure a publisher would fear, that strength hides a degenerate line, is where the game held up best: give the top brain far more search and it fans out rather than narrowing.</p>
+    <p><em>Postscript:</em> L8+ proved strong enough that it has since shipped as <strong>Level 9</strong>, and the research that followed produced Levels 10 and 11 above it. The second-edition battery below re-runs the convergence and determinism tests at the new ceiling.</p>
   </section>
 
   <section id="s-termination">
