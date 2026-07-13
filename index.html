@@ -411,7 +411,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 129</div>
+<div id="buildTag">build 130</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2333,6 +2333,13 @@ function nearLineIds(f, eps) {
     });
     return ids;
 }
+// which side of a line's centreline the point sits on (+1 outside / -1 inside its circle) — used to
+// tell "backed away from a line it was parked beside" apart from "actually crossed it".
+function lineSideOf(f, id) {
+    if (id[0]==='r') return Math.sign(radU(f) - CFG.rings[+id[1]]) || 1;
+    const a = CFG.sideArcs[+id[1]];
+    return Math.sign(Math.hypot(f.x-a.cx, f.y-a.cy) - a.r) || 1;
+}
 // Every point where two printed lines actually meet (each ring x each side arc, ends respecting the
 // arc spans). These are the ONLY places a single swing may take one crossing episode across two
 // distinct lines — the "jump the crossing" manoeuvre. Computed once from CFG.
@@ -2391,9 +2398,22 @@ CFG.sideArcs.forEach((a,k) => LINE_GEOM['a'+k] = { cx:a.cx, cy:a.cy, r:a.r, a0:a
 // st is G for live play (pinFoot/clearTurn/restoreSnap null st.contact; it re-derives lazily from
 // the first substep's BEFORE feet, i.e. the turn-start pose, so AI lookahead resets stay correct).
 function crossingSubstep(before, after, st) {
-    if (!st.contact) st.contact = before.map(f => nearLineIds(f, CFG.touchEps));
+    if (!st.contact) {
+        st.contact = before.map(f => nearLineIds(f, CFG.touchEps));
+        // The turn-start grace ("a foot that starts on a line leaves it for free") is EARNED at
+        // magnet scale (crossEps), not pad scale: only a foot whose magnet genuinely sits on the
+        // line at turn start may cross it for free. A foot merely parked BESIDE a line (pad grazing
+        // the stroke, crossEps..touchEps out) keeps a contact entry — so drifting inside the band
+        // never phantom-bills — but that contact is UNEARNED: if the foot actually crosses to the
+        // line's other side this turn, the crossing is billed when it leaves the band (below).
+        // This closes the parked-beside-the-line double cross (free ring + billed arc in one swing)
+        // that pad-scale grace allowed: the deliberate park play still works, the foot just has to
+        // visibly finish ON the line, not next to it.
+        st.earned = before.map(f => nearLineIds(f, CFG.crossEps));
+        st.startSide = before.map((f,i) => { const m={}; for (const id of st.contact[i]) m[id]=lineSideOf(f,id); return m; });
+    }
     const stickEps = CFG.touchEps + CFG.lineStick;
-    const next = []; let opened = 0;
+    const next = [], nextEarned = []; let opened = 0;
     const justCrossed = [];   // every line id a foot's PAD newly touched this substep (billed or free)
     for (let i=0;i<3;i++){
         // PER-FOOT contact episodes. hadContact must be this foot's own state, NOT the whole piece's:
@@ -2402,28 +2422,45 @@ function crossingSubstep(before, after, st) {
         // foot on the inner ring, then sweep the others across as many lines as you like, all free — the
         // reported illegal AI/demo moves). Tracking each foot's own off→on transition closes that.
         const hadContact = st.contact[i].length > 0;
-        const kept = st.contact[i].filter(id => nearLineIds(after[i], stickEps).includes(id));
+        const near = nearLineIds(after[i], stickEps);
+        const kept = st.contact[i].filter(id => near.includes(id));
+        const earned = (st.earned && st.earned[i]) ? st.earned[i].slice() : st.contact[i].slice();
+        // Departure of an UNEARNED start line: free only if the foot backed away on the side it
+        // started (never crossed the centreline). Leaving on the OTHER side means this turn really
+        // crossed the line — bill it now, exactly like a fresh entry.
+        for (const id of st.contact[i]) if (!near.includes(id) && !earned.includes(id)) {
+            if (st.startSide && st.startSide[i] && st.startSide[i][id] !== undefined &&
+                lineSideOf(after[i], id) !== st.startSide[i][id]) {
+                opened++;
+                justCrossed.push(id);
+            }
+        }
         let entered = false;
         for (const id of nearLineIds(after[i], CFG.touchEps))
             if (!kept.includes(id)) {
                 // A new line joins an open episode free ONLY at the corner: it must actually meet a
                 // line this foot is still on, at a printed intersection within cornerEps of the foot.
                 // Anywhere else, touching a second line is a second crossing, contact or no contact.
-                const atCorner = hadContact && kept.some(h => LINE_INTERSECTIONS.some(P =>
+                // The sponsoring line must be EARNED (magnet-on at turn start, billed, or itself
+                // merged at a corner) — a parked-beside line can't carry a free corner ride.
+                const atCorner = hadContact && kept.some(h => earned.includes(h) && LINE_INTERSECTIONS.some(P =>
                     P.lines.includes(id) && P.lines.includes(h) &&
                     Math.hypot(after[i].x-P.x, after[i].y-P.y) <= CFG.cornerEps));
                 kept.push(id);
+                if (!earned.includes(id)) earned.push(id);   // fresh billed entry or corner merge: genuine contact
                 justCrossed.push(id);
                 if (!atCorner) entered = true;
             }
         if (entered) opened++;   // this foot opened a fresh crossing (off→on, or a non-corner second line)
         next.push(kept);
+        nextEarned.push(earned.filter(id => kept.includes(id)));
     }
-    if (opened) {                          // bill each foot that started a fresh episode this substep
+    if (opened) {                          // bill each fresh episode AND each unearned line actually crossed
         if (st.crossings + opened > CFG.maxCrossingsPerTurn) return true;   // over the one-per-turn budget: roll back
         st.crossings += opened;             // billed when it OPENS (parking on a line spends it too)
     }
     st.contact = next;
+    st.earned = nextEarned;
     // Only reaches here on a committed substep (the budget check above already returned on a
     // rollback), so this never records a crossing that got undone.
     if (justCrossed.length) st.justCrossed = (st.justCrossed || []).concat(justCrossed);
@@ -2825,11 +2862,14 @@ function aiChoosePlanHard(aiIdx){
 const MASTER_ZONE_W = 0.5;      // board-units of rim margin one zone point is worth
 const MASTER_PARK_W = 0.8;      // rim-margin value of one grace-armed (parked) foot
 const MASTER_PARK_KEEP = 4;     // deep-searched PARK candidates on top of the six limit moves
-const PARK_LO = 0.5, PARK_HI = 0.72;   // recordable park band: outside holdEps+margin, inside touchEps−margin
+// Recordable park band: the turn-start grace is earned at MAGNET scale (crossEps — see
+// crossingSubstep), so a park only banks a free departure if the magnet genuinely finishes ON the
+// line. Parks beside the line (the old 0.5–0.72 pad-graze band) no longer bank anything.
+const PARK_LO = 0.05, PARK_HI = 0.34;
 function masterEval(aiIdx){
     let parks = 0;
-    for (const f of G.pieces[aiIdx].feet())   if (nearLineIds(f, 0.75).length) parks++;
-    for (const f of G.pieces[1-aiIdx].feet()) if (nearLineIds(f, 0.75).length) parks--;
+    for (const f of G.pieces[aiIdx].feet())   if (nearLineIds(f, CFG.crossEps).length) parks++;   // magnet-on: only parks that actually bank grace
+    for (const f of G.pieces[1-aiIdx].feet()) if (nearLineIds(f, CFG.crossEps).length) parks--;
     return marginFor(aiIdx)
          + MASTER_ZONE_W * (pieceZoneScore(G.pieces[aiIdx]) - pieceZoneScore(G.pieces[1-aiIdx]))
          + MASTER_PARK_W * parks;
@@ -2855,7 +2895,7 @@ function aiChoosePlanMaster(aiIdx){
                 for (let i=0; i<3 && parksHere<2; i++) {
                     if (i === mp) continue;
                     for (const id of nearLineIds(feet[i], PARK_HI)) {
-                        if (nearLineIds(feet[i], PARK_LO).includes(id)) continue;   // too deep: magnet on the line
+                        if (nearLineIds(feet[i], PARK_LO).includes(id)) continue;   // skip dead-centre stops; park just off centre, magnet still on the ink
                         const key = i+':'+id;
                         if (seen[key]) continue;
                         seen[key] = true;
@@ -3774,7 +3814,7 @@ function ladderEval(idx, w){
     if (w.zone)   s += w.zone * (pieceZoneScore(G.pieces[idx]) - pieceZoneScore(G.pieces[1-idx]));
     if (w.center){ let d=1e9; for (const f of G.pieces[idx].feet()) d=Math.min(d, Math.hypot(f.x,f.y)); s += w.center * Math.max(0, 1 - d/12) * 10; }
     if (w.park){ let a=0;
-        for (const f of G.pieces[idx].feet()){ const on = nearLineIds(f, 0.75);
+        for (const f of G.pieces[idx].feet()){ const on = nearLineIds(f, CFG.crossEps);   // magnet-on: only parks that actually bank grace
             if (on.length){ a += 1;
                 for (const P of LINE_INTERSECTIONS) if (P.lines.some(l=>on.includes(l)) && Math.hypot(f.x-P.x,f.y-P.y) < 9){ a += 1; break; } } }
         s += w.park * a; }
