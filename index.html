@@ -411,7 +411,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 132</div>
+<div id="buildTag">build 133</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3850,6 +3850,11 @@ const AI_LADDER = [
     { kind:'builtin', brain:'master' },                                                         // L7 Expert
     { kind:'p3', w:{margin:1,zone:.5,park:.9,center:.15}, o:{sampleDeg:18,depth:3,keepStops:2,maxCands:11} }, // L8 cap
     { kind:'p3', w:{margin:1,zone:.5,park:.9,center:.15}, o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },  // L9 deep: L8's eval, ~2.5x the search
+    // L10 refit: L9's search with weights re-fitted from ~1500 labeled self-play positions
+    // (logistic regression, game-level split). Zone and park promoted hard, the centre bonus
+    // dropped (it predicted LOSSES once zone/park were priced), and the oppFree boxing-in term
+    // added. Beat the shipping L9 head-to-head 46/60 (77%) over three independent runs.
+    { kind:'p3', w:{margin:1,zone:12,park:8,oppFree:-1.1}, o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 
@@ -3865,6 +3870,15 @@ function ladderEval(idx, w){
                 for (const P of LINE_INTERSECTIONS) if (P.lines.some(l=>on.includes(l)) && Math.hypot(f.x-P.x,f.y-P.y) < 9){ a += 1; break; } } }
         s += w.park * a; }
     if (w.attack) s += w.attack * (outermostRadU(G.pieces[1-idx]) - CFG.rings[1]);
+    // oppFree (negative weight): the opponent's summed room-to-nearest-line, clamped per foot.
+    // Shrinking it herds their feet against lines, so their sweeps hit the one-crossing budget
+    // sooner — the "box them in" idea the self-play fit surfaced (lineFreedomOp).
+    if (w.oppFree){ let free=0;
+        for (const f of G.pieces[1-idx].feet()){ let d=1e9;
+            CFG.rings.forEach(R => d=Math.min(d, Math.abs(radU(f)-R)));
+            CFG.sideArcs.forEach(a => { if (angInSpan(Math.atan2(f.y-a.cy,f.x-a.cx)*180/Math.PI, a.a0, a.a1)) d=Math.min(d, Math.abs(Math.hypot(f.x-a.cx,f.y-a.cy)-a.r)); });
+            free += Math.min(d, 10); }
+        s += w.oppFree * free; }
     return s;
 }
 // depth 1/2 planner over sampled STOP POINTS along each sweep (the visible partial rotations)
@@ -4464,7 +4478,7 @@ function chooseAiColour(difficulty) {
 // ===================== AI Ladder UI (vs Computer) =====================
 // Progress is per level AND per colour: beating a rung as Blue and as Red are separate clears.
 // The tripods carry the state (faint = not yet, lit = beaten) — no status text, per the design.
-const LADDER_N = AI_LADDER.length;   // 8
+const LADDER_N = AI_LADDER.length;
 function ladderProgress(){ try { return JSON.parse(localStorage.getItem('tauLadder')||'{"b":{},"r":{}}'); } catch(e){ return {b:{},r:{}}; } }
 function saveLadderProgress(p){ try { localStorage.setItem('tauLadder', JSON.stringify(p)); } catch(e){} }
 function ladderCleared(n, color){ const p=ladderProgress(); return !!(color===0?p.b:p.r)[n]; }
