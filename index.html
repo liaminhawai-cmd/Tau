@@ -411,7 +411,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 131</div>
+<div id="buildTag">build 132</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3913,15 +3913,37 @@ function ladderPlan3(idx, w, o){
     const origActive=G.active, snap0=takeSnap(); const roots=[];
     for (let pv=0; pv<3; pv++) for (const dir of [1,-1]){
         ladderRestore(snap0); G.active=idx; pinFoot(pv);
-        let guard=0, lastMark=0; const local=[];
+        let guard=0, lastMark=0, parksHere=0; const local=[]; const seenPark={};
         while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && guard++ < 500){
             applySwing(dir*AI_STEP_RAD); const a=Math.abs(G.netRad);
             if (o.sampleDeg && a-lastMark >= o.sampleDeg*Math.PI/180 && a >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()){
                 lastMark=a; local.push({pivotIdx:pv,dir,targetRad:a,snap:takeSnap(),q:ladderEval(idx,w)+(G.pieces[1-idx].anyFootOff()?HARD_WIN_BONUS:0)}); }
+            // PARK stops, same as Master's recorder: since the turn-start grace went magnet-scale
+            // (build 130), the coarse sampleDeg stops almost never land a foot genuinely ON a line,
+            // which silently took the park/double-cross play away from the p3 rungs (measured: L8
+            // fell from ~63% to ~43% vs L7, whose dedicated recorder kept its aim). Record up to two
+            // exact in-band stops per sweep so the deep search can weigh real parks again.
+            if (parksHere < 2 && Math.abs(G.netRad) >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()){
+                const feet = G.pieces[idx].feet();
+                for (let fi=0; fi<3 && parksHere<2; fi++){
+                    if (fi === pv) continue;
+                    for (const id of nearLineIds(feet[fi], PARK_HI)) {
+                        if (nearLineIds(feet[fi], PARK_LO).includes(id)) continue;
+                        const key = fi+':'+id;
+                        if (seenPark[key]) continue;
+                        seenPark[key] = true;
+                        local.push({pivotIdx:pv,dir,targetRad:Math.abs(G.netRad),snap:takeSnap(),park:true,
+                                    q:ladderEval(idx,w)+(G.pieces[1-idx].anyFootOff()?HARD_WIN_BONUS:0)});
+                        parksHere++; break;
+                    }
+                }
+            }
         }
         if (Math.abs(G.netRad) >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff())
             local.push({pivotIdx:pv,dir,targetRad:Math.abs(G.netRad),snap:takeSnap(),q:ladderEval(idx,w)+(G.pieces[1-idx].anyFootOff()?HARD_WIN_BONUS:0)});
-        local.sort((a,b)=>b.q-a.q); roots.push(...local.slice(0, o.keepStops||2));
+        // parks ride along IN ADDITION to the keepStops best sampled stops, like Master's cands
+        local.sort((a,b)=>b.q-a.q);
+        roots.push(...local.filter(c=>!c.park).slice(0, o.keepStops||2), ...local.filter(c=>c.park));
     }
     if (!roots.length){ ladderRestore(snap0); G.active=origActive; return null; }
     roots.sort((a,b)=>b.q-a.q); let best=null;
