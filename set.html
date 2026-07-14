@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<title>Tau · The physical game</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+  :root {
+    --bg:#0b0e12; --surface:#141a20; --surface-2:#1b232b;
+    --ink:#eef2f5; --ink-2:#9aa4ad; --ink-3:#69727b;
+    --line:#243039; --blue:#6b9eff; --red:#ff6b6b; --board:#e7d59a;
+    --shadow:0 1px 0 rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.35);
+  }
+  @media (prefers-color-scheme: light) { :root {
+    --bg:#eef1f4; --surface:#ffffff; --surface-2:#f6f8fa;
+    --ink:#10151a; --ink-2:#4b5560; --ink-3:#79838d;
+    --line:#dfe4e9; --blue:#2f6ad0; --red:#d83f3f; --board:#b9922e;
+    --shadow:0 1px 2px rgba(16,21,26,.04), 0 12px 34px rgba(16,21,26,.08);
+  } }
+  :root[data-theme="dark"] {
+    --bg:#0b0e12; --surface:#141a20; --surface-2:#1b232b; --ink:#eef2f5; --ink-2:#9aa4ad;
+    --ink-3:#69727b; --line:#243039; --blue:#6b9eff; --red:#ff6b6b; --board:#e7d59a;
+  }
+  :root[data-theme="light"] {
+    --bg:#eef1f4; --surface:#ffffff; --surface-2:#f6f8fa; --ink:#10151a; --ink-2:#4b5560;
+    --ink-3:#79838d; --line:#dfe4e9; --blue:#2f6ad0; --red:#d83f3f; --board:#b9922e;
+  }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.62; font-size:17px; -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:760px; margin:0 auto; padding:0 22px; }
+  a { color:var(--blue); }
+
+  .backbtn, .themebtn {
+    position:fixed; top:14px; z-index:20; background:var(--surface); color:var(--ink-2);
+    border:1px solid var(--line); border-radius:999px; padding:7px 13px; font-size:12.5px;
+    cursor:pointer; letter-spacing:.02em; box-shadow:var(--shadow); text-decoration:none;
+  }
+  .backbtn { left:14px; } .themebtn { right:14px; }
+  .backbtn:hover, .themebtn:hover { color:var(--ink); }
+  .backbtn:focus-visible, .themebtn:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+
+  header.hero { padding:92px 0 30px; }
+  .eyebrow { font-size:12.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin:0 0 14px; }
+  .greet { color:var(--blue); }
+  h1 { font-size:clamp(30px,6vw,46px); line-height:1.08; margin:0 0 18px; text-wrap:balance; letter-spacing:-.01em; }
+  .lede { font-size:19px; color:var(--ink); margin:0 0 10px; }
+  .sub { color:var(--ink-2); margin:0; }
+
+  .cta-row { display:flex; flex-wrap:wrap; gap:12px; margin:30px 0 8px; }
+  .cta {
+    display:inline-flex; align-items:center; gap:8px; padding:13px 20px; border-radius:12px;
+    font-size:15.5px; font-weight:600; text-decoration:none; border:1px solid transparent;
+  }
+  .cta.primary { background:var(--blue); color:#0b0e12; }
+  .cta.primary:hover { filter:brightness(1.07); }
+  .cta.ghost { background:var(--surface); color:var(--ink); border-color:var(--line); box-shadow:var(--shadow); }
+  .cta.ghost:hover { border-color:var(--ink-3); }
+
+  section { padding:26px 0; border-top:1px solid var(--line); }
+  h2 { font-size:20px; margin:0 0 12px; letter-spacing:-.01em; }
+  p { margin:0 0 14px; } p:last-child { margin-bottom:0; }
+  .muted { color:var(--ink-2); }
+
+  /* photo grid: images self-heal — drop files into /set/ and they appear; until then, tasteful slots */
+  .shots { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:6px; }
+  .shots figure { margin:0; }
+  .shots img {
+    width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px;
+    background:var(--surface-2); border:1px solid var(--line); display:block;
+  }
+  .shots img.ph { object-fit:contain; }
+  figcaption { color:var(--ink-3); font-size:12.5px; margin-top:7px; }
+  .shots figure:first-child { grid-column:1 / -1; }
+  .shots figure:first-child img { aspect-ratio:16/9; }
+  @media (max-width:560px){ .shots { grid-template-columns:1fr; } }
+
+  .list { list-style:none; padding:0; margin:0; }
+  .list li { position:relative; padding:6px 0 6px 22px; color:var(--ink-2); }
+  .list li::before { content:""; position:absolute; left:2px; top:15px; width:7px; height:7px; border-radius:2px; background:var(--board); }
+
+  form.wl { display:flex; gap:9px; flex-wrap:wrap; margin-top:14px; }
+  form.wl input[type=email] {
+    flex:1 1 220px; min-width:0; padding:12px 14px; border-radius:10px; font-size:15px;
+    background:var(--surface); color:var(--ink); border:1px solid var(--line);
+  }
+  form.wl input[type=email]:focus { outline:2px solid var(--blue); outline-offset:1px; }
+  form.wl button {
+    padding:12px 20px; border-radius:10px; font-size:15px; font-weight:600; cursor:pointer;
+    background:var(--ink); color:var(--bg); border:1px solid var(--ink);
+  }
+  form.wl button:hover { filter:brightness(1.08); }
+  .wl-opts { display:flex; gap:18px; margin-top:12px; flex-wrap:wrap; }
+  .wl-opts label { display:flex; gap:8px; align-items:center; font-size:14px; color:var(--ink-2); cursor:pointer; }
+  #wlMsg { font-size:13.5px; color:var(--ink-2); min-height:1.2em; margin-top:8px; }
+
+  footer { padding:30px 0 60px; color:var(--ink-3); font-size:13.5px; border-top:1px solid var(--line); margin-top:8px; }
+</style>
+</head>
+
+<a class="backbtn" href="/" aria-label="Play the Tau game">&larr;&nbsp;Play Tau</a>
+<button class="themebtn" id="themeBtn" aria-label="Toggle light or dark">◐</button>
+
+<header class="hero wrap">
+  <p class="eyebrow" id="eyebrow">The physical game</p>
+  <h1 id="headline">Tau, the version you hold in your hands.</h1>
+  <p class="lede" id="hook">It started as a steel disk and two magnetic tripods on my table. You off-balance the other tripod and walk it off the edge, without toppling your own. I&rsquo;m putting real sets together now.</p>
+  <p class="sub">Play it in your browser in thirty seconds, no download, no sign-up, no opponent needed.</p>
+  <div class="cta-row">
+    <a class="cta primary" href="/">Play it now</a>
+    <a class="cta ghost" href="/depth.html">Read the depth analysis &rarr;</a>
+  </div>
+</header>
+
+<main>
+  <section class="wrap">
+    <h2>What it is</h2>
+    <p>Two tripods on a round board marked with rings and arcs. On your turn you pin one foot and swing the piece around it. Cross a line and you have to stop. The whole game is leverage: get the other piece near the edge at a bad angle, then push it off, while keeping your own three points of contact safe. Anyone who wrestles or trains judo reads it instantly, it is <em>kuzushi</em> with a scoreboard.</p>
+    <ul class="list">
+      <li>Two players, a few minutes a game, no luck.</li>
+      <li>Steel board, magnetic pieces, they hold their line like the real thing.</li>
+      <li>The same rules as the digital version, which you can play right now to learn it.</li>
+    </ul>
+  </section>
+
+  <section class="wrap">
+    <h2>The set</h2>
+    <div class="shots">
+      <figure><img src="set/photo-1.jpg" alt="The Tau board and pieces" onerror="this.classList.add('ph');this.src='/favicon-32.png'"><figcaption>The board and the two tripods.</figcaption></figure>
+      <figure><img src="set/photo-2.jpg" alt="A game in progress" onerror="this.classList.add('ph');this.src='/favicon-32.png'"><figcaption>Mid-game.</figcaption></figure>
+      <figure><img src="set/photo-3.jpg" alt="Close-up of a magnetic tripod" onerror="this.classList.add('ph');this.src='/favicon-32.png'"><figcaption>A single piece.</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <h2>Want one?</h2>
+    <p class="muted">I&rsquo;m making the first sets now. Leave an email and I&rsquo;ll write once, when they&rsquo;re ready, whether you want to print your own or have a finished set shipped.</p>
+    <form class="wl" id="wlForm" novalidate>
+      <input type="email" id="wlEmail" placeholder="your email" autocomplete="email" maxlength="254" aria-label="Email address">
+      <button type="submit" id="wlGo">Keep me posted</button>
+    </form>
+    <div class="wl-opts">
+      <label><input type="checkbox" id="wlDiy" checked> Free print-and-play files</label>
+      <label><input type="checkbox" id="wlKit" checked> The full kit, shipped</label>
+    </div>
+    <p id="wlMsg" aria-live="polite"></p>
+  </section>
+</main>
+
+<footer class="wrap" id="footer">
+  Tau is a two-player game of balance and leverage. Built and printed by hand. <a href="/">Play the digital version &rarr;</a>
+</footer>
+
+<script>
+(function(){
+  // ---- theme toggle (matches the depth page) ----
+  try {
+    var saved = localStorage.getItem('tauPageTheme');
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+  } catch(e){}
+  document.getElementById('themeBtn').addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme');
+    if (!cur) cur = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    var next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('tauPageTheme', next); } catch(e){}
+  });
+
+  // ---- personalisation: /set.html?for=<slug> swaps in a line written for that person ----
+  // Slugs are looked up from this map only; the raw query is never written into the page, so a
+  // stranger can't inject anything. Add a name here, send set.html?for=<slug>, done.
+  var PEOPLE = {
+    blow:    { name:'Jonathan', hook:'You think about what makes a game deep more carefully than almost anyone. So: I tried to prove this one is shallow, two thousand self-play games of it, and wrote up exactly where it held and where it bent. Mostly, though, I just think you&rsquo;d like playing it.' },
+    danaher: { name:'John',     hook:'It&rsquo;s kuzushi as a board game. Break the other base, walk it off the edge, keep your own three points of contact. Systems all the way down. I&rsquo;d love to know what you see in it.' },
+    zahabi:  { name:'Firas',    hook:'A strategy game that&rsquo;s really about leverage and balance: off-balance the other piece and push it off, without overcommitting your own. Cerebral in the way I think you&rsquo;d enjoy.' },
+    askren:  { name:'Ben',      hook:'It&rsquo;s funky. Shove the other guy out of bounds without stepping out yourself. Feels like wrestling, plays like chess. Thought it was your kind of thing.' },
+    fridman: { name:'Lex',      hook:'A tiny two-piece game with a surprising amount of depth, enough that I ran a whole self-play tournament to measure it. Figured it&rsquo;d be up your alley.' }
+  };
+  var slug = 'set';
+  try {
+    var q = new URLSearchParams(location.search).get('for') || '';
+    q = q.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (q) slug = q;
+  } catch(e){}
+  var p = PEOPLE[slug];
+  if (p) {
+    document.getElementById('eyebrow').textContent = 'For you';
+    document.getElementById('headline').innerHTML = '<span class="greet">' + p.name + '</span> — I made you a game.';
+    document.getElementById('hook').innerHTML = p.hook;
+  }
+  window.__tauRef = slug;   // tag any signup with who the link was for
+
+  // ---- waitlist capture: reuse the app's public.waitlist table via the REST endpoint ----
+  var SB = 'https://lwjanmztbtfipsyfrcwg.supabase.co';
+  var KEY = 'sb_publishable_qo7O-7f6Wa69SV4f66aLXw_V67tpjNp';
+  function insert(body){
+    return fetch(SB + '/rest/v1/waitlist', {
+      method:'POST',
+      headers:{ apikey:KEY, Authorization:'Bearer '+KEY, 'Content-Type':'application/json', Prefer:'return=minimal' },
+      body: JSON.stringify(body)
+    });
+  }
+  var form = document.getElementById('wlForm'), msg = document.getElementById('wlMsg');
+  form.addEventListener('submit', async function(ev){
+    ev.preventDefault();
+    var em = (document.getElementById('wlEmail').value || '').trim();
+    var diy = document.getElementById('wlDiy').checked, kit = document.getElementById('wlKit').checked;
+    if (!diy && !kit) { msg.textContent = 'Pick at least one option.'; return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { msg.textContent = 'That doesn’t look like an email address.'; return; }
+    var interest = diy && kit ? 'both' : diy ? 'diy' : 'kit';
+    msg.textContent = '…';
+    try {
+      // try with a ref tag first; if the column isn't there yet, fall back to the plain insert
+      var r = await insert({ email: em, lang: (navigator.language||'en').slice(0,2), interest: interest, ref: window.__tauRef });
+      if (!r.ok && r.status === 400) r = await insert({ email: em, lang: (navigator.language||'en').slice(0,2), interest: interest });
+      if (!r.ok && r.status !== 409) throw new Error('save failed');   // 409 = already on the list, which is fine
+      msg.textContent = 'You’re on the list. Thanks.';
+      form.querySelector('button').disabled = true;
+    } catch(e) { msg.textContent = 'Could not save, check your connection and try again.'; }
+  });
+})();
+</script>
+</html>

@@ -1,4 +1,5 @@
 User-agent: *
 Allow: /
+Disallow: /set.html
 
 Sitemap: https://tau-game.com/sitemap.xml
