@@ -411,7 +411,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 138</div>
+<div id="buildTag">build 139</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -8438,6 +8438,25 @@ function checkJoinLink() {
 // or if the browser lacks support it simply no-ops, and it never blocks the game from loading.
 if ('serviceWorker' in navigator && location.protocol.startsWith('http'))
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+
+// ---------- Orientation policy (runtime, so it beats a cached manifest) ----------
+// An installed PWA bakes in the manifest's orientation at install time, and the service worker even
+// serves the old manifest from cache, so editing the manifest can't stop an already-installed phone
+// from auto-rotating. Do it from JS instead: lock PHONES to their natural (portrait) orientation, and
+// actively UNLOCK tablets so they can still be turned. Everything is wrapped so a context that
+// disallows the call (a normal browser tab, where the OS rotation lock already governs) just no-ops.
+function applyOrientationPolicy(){
+    try {
+        const so = screen.orientation; if (!so) return;
+        const shortSide = Math.min(screen.width || 9999, screen.height || 9999);
+        const isPhone = shortSide < 540;   // phones ~360-430 CSS px on the short side; tablets 600+
+        if (isPhone){ if (so.lock) so.lock('natural').catch(()=>{}); }
+        else if (so.unlock) so.unlock();
+    } catch(e) {}
+}
+addEventListener('load', applyOrientationPolicy);
+// Android can drop an orientation lock when the app is backgrounded; re-assert it on return.
+document.addEventListener('visibilitychange', () => { if (!document.hidden) applyOrientationPolicy(); });
 
 // ---------- "Install app" (explicit, since browsers no longer reliably self-prompt) ----------
 // beforeinstallprompt only fires once the browser has independently verified installability
