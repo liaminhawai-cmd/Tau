@@ -411,7 +411,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 137</div>
+<div id="buildTag">build 138</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3068,9 +3068,9 @@ let pivotGlowMesh=null, boardTop=null, boardRim=null, camProbe=null;   // pivot 
 // everywhere the board is drawn (2D game, demo, how-to, and the 3D texture). Keys match the colour
 // sandbox dump so a dumped JSON pastes straight in.
 let SKIN = null, colorLab = false, colorLabTimer = null;
-// The digital LIGHT theme is the "Slate" colourway (graphite graded board + steel pieces); DARK is
-// the original flat dark board. So the active board skin is: an explicit override (colour lab) if
-// set, else Slate in light mode, else null (= the default flat dark look).
+// Default boards are the GRADED colourways: Dojo (warm wood) on a light device, Slate (graphite) on
+// a dark one. The flat Dark and Yellow boards remain in the ☀ cycle for anyone who prefers them. The
+// active board skin is an explicit override (colour lab) if set, else the cycle's current entry.
 const SLATE_SKIN  = { shadeByZoneValue:true, v4:'#5a636c', v3:'#4b535b', v2:'#3c434a', v1:'#2f353b',
     flat:'#454d55', lines:'#12161a', rim:'#8f979e', bg:'#0c0e11', pb:'#5487c4', pr:'#d05a48' };
 const DOJO_SKIN   = { shadeByZoneValue:true, v4:'#e9d9b3', v3:'#ddc99b', v2:'#cbb47e', v1:'#b89a62',
@@ -3117,13 +3117,14 @@ function fillBoardDisc(ctx, ox, oy, sc){
 let htpTripods=[];   // throwaway pieces for the how-to-play "push them off" 3D demo (built in init3D)
 let currentTheme = 'dark';   // 'dark' for the dark/flat board (skin 0), 'light' otherwise — only used for
                              // the board's default (unskinned) colours.
-// First visit follows the device preference: dark -> the Dark board, light -> the original Yellow. An
-// explicit choice (the ☀ cycle) is remembered and wins from then on.
+// First visit follows the device preference and lands on a GRADED board (not a flat one): light ->
+// Dojo (warm wood), dark -> Slate (graphite). An explicit choice (the ☀ cycle) is remembered and
+// wins from then on, so returning players keep whatever board they already picked.
 try {
     const saved = localStorage.getItem('tauSkin');
     const i = saved != null ? BOARD_SKINS.findIndex(s => s.id === saved) : -1;
     if (i >= 0) skinIdx = i;
-    else if (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches) skinIdx = 3;   // Yellow
+    else skinIdx = (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches) ? 2 : 1;   // Dojo for light, Slate for dark
     currentTheme = skinIdx === 0 ? 'dark' : 'light';
 } catch(e) {}
 // One palette for every flat board drawing (2D game canvas, landing demo, how-to-play slides)
