@@ -109,23 +109,23 @@
 
 <header class="hero wrap">
   <p class="eyebrow" id="eyebrow">The physical game</p>
-  <h1 id="headline">Balance. Leverage. One wrong move and you&rsquo;re off the board.</h1>
-  <p class="lede" id="hook">Tau&rsquo;s a two-player balance game. You&rsquo;ve each got a magnetic tripod and you&rsquo;re trying to shove, block or trick the other one off the edge of the board. Get too close to the rim and you tip right off. I built the digital version first, but it started as a steel disk on my table, and that&rsquo;s the set I&rsquo;m putting together now.</p>
-  <p class="sub">Free to play in your browser right now, against the computer, a friend, or online.</p>
+  <h1 id="headline">An abstract fighting game based on sumo, judo and wrestling.</h1>
+  <p class="lede" id="hook">You&rsquo;re trying to push, block or bait the other piece off the edge of the board. I wanted to make the fighting game equivalent of chess, so it&rsquo;s simple deterministic rules, continuous movement, no straight lines. I built the digital version first, but it started as a metal board and magnetic tripods on my table, and that&rsquo;s the set I&rsquo;m making now.</p>
+  <p class="sub">Free to play in your browser right now. Easier to understand by playing than reading.</p>
   <div class="cta-row">
     <a class="cta primary" href="/">Play it now</a>
-    <a class="cta ghost" href="/depth.html">Is it actually deep? &rarr;</a>
+    <a class="cta ghost" href="/depth.html">Is there a forced win? I checked &rarr;</a>
   </div>
 </header>
 
 <main>
   <section class="wrap">
     <h2>How it plays</h2>
-    <p>Two pieces, one each, and the only way to win is to push the other off the edge. Each turn you keep one foot planted and swing the other two around it in an arc. The movement&rsquo;s continuous so you can stop wherever you like, but you can only cross one line on the board per move. That one limit does all the work. It&rsquo;s what opens up the sweeps and throws and makes it feel like sumo. Simple to pick up, hard to actually be good at.</p>
+    <p>The rules are simple. Two pieces, one each, and the only way to win is to push your opponent off the edge. Each turn you keep one foot planted and swing the other two around it in an arc. The movement&rsquo;s continuous so you can stop wherever you like, but you can only cross one line on the board per move. That limit is what makes it a fighting game and opens up lots of fun counterintuitive sweeps and throws.</p>
     <ul class="list">
-      <li>Two players, a few minutes a game. No dice, no cards, nothing hidden.</li>
-      <li>Steel board and magnets in the feet, so the pieces slide smooth without it turning into a dexterity game.</li>
-      <li>Same rules as the free digital version, so you can learn it in your browser right now.</li>
+      <li>Two pieces, a board of concentric rings, essentially two rules.</li>
+      <li>Magnets in the feet and a metal board, so the pieces move smoothly without momentum turning it into a dexterity game.</li>
+      <li>Same rules as the free digital version, so you can learn it in your browser.</li>
     </ul>
   </section>
 
@@ -140,7 +140,7 @@
 
   <section class="wrap">
     <h2>Want one?</h2>
-    <p class="muted">I&rsquo;m making the first sets now. Leave your email and I&rsquo;ll message you once, when they&rsquo;re ready, whether you want to print your own or get a finished set shipped. One email, that&rsquo;s it, I won&rsquo;t spam you.</p>
+    <p class="muted">I&rsquo;m making the first sets now, magnets in the feet, a metal board, the weird curved pieces and all. Leave your email and I&rsquo;ll let you know when they&rsquo;re ready, whether you want to print your own or get a finished set shipped. One email, that&rsquo;s it.</p>
     <form class="wl" id="wlForm" novalidate>
       <input type="email" id="wlEmail" placeholder="your email" autocomplete="email" maxlength="254" aria-label="Email address">
       <button type="submit" id="wlGo">Keep me posted</button>
@@ -154,7 +154,7 @@
 </main>
 
 <footer class="wrap" id="footer">
-  Tau, a two-player game about balance and leverage. Made by hand. <a href="/">Play the digital version &rarr;</a>
+  Tau, an abstract fighting game based on sumo, judo and wrestling. Made by hand. <a href="/">Play the digital version &rarr;</a>
 </footer>
 
 <script>
@@ -176,11 +176,11 @@
   // Slugs are looked up from this map only; the raw query is never written into the page, so a
   // stranger can't inject anything. Add a name here, send set.html?for=<slug>, done.
   var PEOPLE = {
-    blow:    'Hi Jonathan. You think harder about what makes a game deep than just about anyone, so I wanted you to have this one. It&rsquo;s a two-piece abstract about balance and leverage, push the other one off the edge without going off yourself. I even ran a couple thousand AI self-play games trying to prove it&rsquo;s shallow, and wrote up where it held. Mostly though I just reckon you&rsquo;d enjoy playing it.',
-    danaher: 'Hi John. It&rsquo;s a board game about off-balancing, break the other base and walk it off the edge while keeping your own three points of contact. Kuzushi with a scoreboard, basically. I&rsquo;d love to know what you make of it.',
-    zahabi:  'Hi Firas. I made an abstract strategy game that&rsquo;s really about leverage and distance, off-balance the other piece and push it off without overcommitting your own. Cerebral in a way I reckon you&rsquo;d get. Would love your take.',
-    askren:  'Hi Ben. It&rsquo;s a funky little game, shove the other guy out without stepping out yourself. Feels like wrestling, plays a bit like chess. Thought it might be up your alley.',
-    fridman: 'Hi Lex. Little two-piece abstract game with more depth than it looks, I ran a whole AI self-play tournament just to measure it. Figured it&rsquo;d be your kind of thing.'
+    blow:    'Hi Jonathan. You think about what makes a game deep more than just about anyone, so I wanted you to try this one. It&rsquo;s a two-piece abstract fighting game, push the other piece off the edge without going off yourself. I ran a couple thousand AI self-play games to check there&rsquo;s no forced win, and wrote it up. But it&rsquo;s more fun to play than to read about.',
+    danaher: 'Hi John. It&rsquo;s an abstract fighting game built on off-balancing, get the other piece to the edge at a bad angle and push it off, without going off yourself. I was trying to capture the fundamental essence of grappling in a simple set of rules. Would be very curious what you make of it.',
+    zahabi:  'Hi Firas. I made an abstract fighting game that&rsquo;s really about leverage and distance management, the footwork and positioning side of the sport more than the strength. Would love your take on it.',
+    askren:  'Hi Ben. It&rsquo;s an abstract sumo and wrestling game, push the other guy off the edge without going off yourself. The rules are simple but there&rsquo;s a lot of counterintuitive sweeps and throws in it. Thought you might like it.',
+    fridman: 'Hi Lex. A tiny two-piece abstract game with more depth than it looks, I ran a whole AI self-play tournament to measure it. Thought it might be your kind of thing.'
   };
   var slug = 'set';
   try {
@@ -219,7 +219,7 @@
       var r = await insert({ email: em, lang: (navigator.language||'en').slice(0,2), interest: interest, ref: window.__tauRef });
       if (!r.ok && r.status === 400) r = await insert({ email: em, lang: (navigator.language||'en').slice(0,2), interest: interest });
       if (!r.ok && r.status !== 409) throw new Error('save failed');   // 409 = already on the list, which is fine
-      msg.textContent = 'You’re on the list. Cheers.';
+      msg.textContent = 'You’re on the list, I’ll be in touch.';
       form.querySelector('button').disabled = true;
     } catch(e) { msg.textContent = 'Could not save, check your connection and give it another go.'; }
   });
