@@ -411,7 +411,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 140</div>
+<div id="buildTag">build 141</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -8445,24 +8445,34 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http'))
 // from auto-rotating. Do it from JS instead: lock PHONES to their natural (portrait) orientation, and
 // actively UNLOCK tablets so they can still be turned. Everything is wrapped so a context that
 // disallows the call (a normal browser tab, where the OS rotation lock already governs) just no-ops.
+let __oriLocked = false, __oriTries = 0;
+function lockPortrait(so){
+    // Try the most widely supported lock value first. 'natural' proved unreliable on some Android
+    // builds; 'portrait' / 'portrait-primary' stick where it didn't. Any success flips __oriLocked.
+    __oriTries++;
+    so.lock('portrait').then(() => { __oriLocked = true; }, () =>
+      so.lock('portrait-primary').then(() => { __oriLocked = true; }, () =>
+        so.lock('natural').then(() => { __oriLocked = true; }, () => {})));
+}
 function applyOrientationPolicy(){
     try {
-        const so = screen.orientation; if (!so) return;
+        const so = screen.orientation; if (!so || !so.lock) return;
         // Detect a phone by the user-agent FIRST: inside an installed PWA some Android builds report
-        // screen.width in physical pixels (e.g. 1080), which made a phone look like a tablet and get
-        // unlocked. The UA "mobile" flag has no such ambiguity. Fall back to the small-screen test
-        // only when the UA is unavailable. Only a clearly-large, non-mobile device counts as a tablet.
+        // screen.width in physical pixels (e.g. 1080), which made a phone look like a tablet. The UA
+        // "mobile" flag has no such ambiguity. Only a clearly-large, non-mobile device is a tablet.
         const uaMobile = navigator.userAgentData ? !!navigator.userAgentData.mobile
                         : /Mobi|iPhone|iPod|Android.*Mobile|Windows Phone/i.test(navigator.userAgent || '');
-        const shortSide = Math.min(screen.width || 9999, screen.height || 9999);
-        const isPhone = uaMobile || shortSide < 540;
-        if (isPhone){ if (so.lock) so.lock('natural').catch(()=>{}); }
+        const isPhone = uaMobile || Math.min(screen.width || 9999, screen.height || 9999) < 540;
+        if (isPhone){ if (!__oriLocked && __oriTries < 12) lockPortrait(so); }
         else if (so.unlock) so.unlock();
     } catch(e) {}
 }
 addEventListener('load', applyOrientationPolicy);
 // Android can drop an orientation lock when the app is backgrounded; re-assert it on return.
 document.addEventListener('visibilitychange', () => { if (!document.hidden) applyOrientationPolicy(); });
+// KEY on some Android builds: orientation.lock() only sticks when tied to a user gesture. The
+// on-load call has none, so also (re)try on the first taps until it takes.
+['pointerdown', 'click'].forEach(evt => addEventListener(evt, applyOrientationPolicy, { passive: true }));
 
 // ---------- "Install app" (explicit, since browsers no longer reliably self-prompt) ----------
 // beforeinstallprompt only fires once the browser has independently verified installability
