@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<title>Tau · About</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+  :root {
+    --bg:#0b0e12; --surface:#141a20; --surface-2:#1b232b;
+    --ink:#eef2f5; --ink-2:#9aa4ad; --ink-3:#69727b;
+    --line:#243039; --blue:#6b9eff; --red:#ff6b6b; --board:#e7d59a;
+    --shadow:0 1px 0 rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.35);
+  }
+  @media (prefers-color-scheme: light) { :root {
+    --bg:#eef1f4; --surface:#ffffff; --surface-2:#f6f8fa;
+    --ink:#10151a; --ink-2:#4b5560; --ink-3:#79838d;
+    --line:#dfe4e9; --blue:#2f6ad0; --red:#d83f3f; --board:#b9922e;
+    --shadow:0 1px 2px rgba(16,21,26,.04), 0 12px 34px rgba(16,21,26,.08);
+  } }
+  :root[data-theme="dark"] {
+    --bg:#0b0e12; --surface:#141a20; --surface-2:#1b232b; --ink:#eef2f5; --ink-2:#9aa4ad;
+    --ink-3:#69727b; --line:#243039; --blue:#6b9eff; --red:#ff6b6b; --board:#e7d59a;
+  }
+  :root[data-theme="light"] {
+    --bg:#eef1f4; --surface:#ffffff; --surface-2:#f6f8fa; --ink:#10151a; --ink-2:#4b5560;
+    --ink-3:#79838d; --line:#dfe4e9; --blue:#2f6ad0; --red:#d83f3f; --board:#b9922e;
+  }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:Georgia,"Times New Roman",serif;
+    line-height:1.68; font-size:18px; -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:660px; margin:0 auto; padding:0 22px; }
+  a { color:var(--blue); }
+
+  .backbtn, .themebtn {
+    position:fixed; top:14px; z-index:20; background:var(--surface); color:var(--ink-2);
+    border:1px solid var(--line); border-radius:999px; padding:7px 13px; font-size:12.5px;
+    cursor:pointer; letter-spacing:.02em; box-shadow:var(--shadow); text-decoration:none;
+    font-family:system-ui,-apple-system,sans-serif;
+  }
+  .backbtn { left:14px; } .themebtn { right:14px; }
+  .backbtn:hover, .themebtn:hover { color:var(--ink); }
+  .backbtn:focus-visible, .themebtn:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+
+  header.hero { padding:96px 0 8px; }
+  .eyebrow { font-family:system-ui,sans-serif; font-size:12.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-3); margin:0 0 18px; }
+  .greet { color:var(--ink-2); font-style:italic; margin:0 0 20px; font-size:17px; }
+  h1 { font-size:clamp(30px,6vw,44px); line-height:1.14; margin:0 0 22px; text-wrap:balance; letter-spacing:-.01em; font-weight:normal; }
+  p { margin:0 0 20px; } p:last-child { margin-bottom:0; }
+
+  section { padding:8px 0 6px; }
+  h2 { font-family:system-ui,sans-serif; font-size:14px; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-3); margin:34px 0 14px; font-weight:600; }
+  em.term { font-style:italic; color:var(--ink); }
+
+  .actions { display:flex; flex-wrap:wrap; gap:20px; align-items:center; margin:34px 0 6px; font-family:system-ui,sans-serif; font-size:15.5px; }
+  .actions a { text-decoration:none; font-weight:500; }
+  .actions a:hover { text-decoration:underline; }
+  .actions .go { color:var(--ink); }
+
+  .more { border-top:1px solid var(--line); margin-top:34px; padding-top:22px; font-family:system-ui,sans-serif; font-size:15.5px; }
+  .more a { text-decoration:none; } .more a:hover { text-decoration:underline; }
+
+  footer { font-family:system-ui,sans-serif; padding:30px 0 60px; color:var(--ink-3); font-size:13px; border-top:1px solid var(--line); margin-top:34px; }
+
+  /* Draft marker — remove once Liam has written over this. Only shows to signal it's placeholder. */
+  .draftnote { font-family:system-ui,sans-serif; font-size:12px; color:var(--ink-3); border:1px dashed var(--line); border-radius:8px; padding:8px 12px; margin:0 0 26px; }
+</style>
+</head>
+
+<a class="backbtn" href="/" aria-label="Play the Tau game">&larr;&nbsp;Play Tau</a>
+<button class="themebtn" id="themeBtn" aria-label="Toggle light or dark">◐</button>
+
+<header class="hero wrap">
+  <p class="eyebrow">Tau</p>
+  <p class="greet" id="greet" hidden></p>
+  <h1>A new class of board game.</h1>
+  <p class="draftnote">Starting draft — Liam to rewrite in his own hand. The frame below is a ladder, not a cage.</p>
+  <p>Innovation usually begins not by adding to what already exists, but by removing an established rule or convention. Most abstract strategy games, checkers, chess, Go, share a few: several pieces to coordinate, movement along straight lines, and moves made in discrete steps. Tau is what is left when you take all three away.</p>
+</header>
+
+<main class="wrap">
+  <section>
+    <h2>One rule on a continuous space</h2>
+    <p>Each player has a single three-legged piece on a circular board, and the only way to win is to push the other piece off the edge. You keep one leg planted and swing the other two around it in an arc. The movement is continuous, so you could stop anywhere, and that is precisely the problem a game has to solve: pure continuity is formless. The single constraint that you may cross only one line per move is what gives the freedom a shape. From that one rule the whole tactics fall out.</p>
+  </section>
+
+  <section>
+    <h2>A third kind of complexity</h2>
+    <p>Chess is <em class="term">complicated</em>: a complicated arrangement of simple pieces and rules, producing complex problems you could in principle compute. Go is <em class="term">emergent</em>: simple rules and pieces, with complexity appearing at scale. Tau reaches for a third kind. When two people grapple, their exchange cannot be recorded and replayed precisely; they are not reading long sequences, they are dealing with an opponent that is fundamentally complicated, using a different style of judgement. Call it <em class="term">irreducible</em> — a game whose best play has no short description, no book, no solved line.</p>
+  </section>
+
+  <section>
+    <h2>The wager, and the evidence</h2>
+    <p>That was the bet, years before there was a way to test it. Strip strength and dexterity out of grappling and keep the decision underneath: balance, distance, the angle of leverage, the moment to commit. Later, a self-play study run to answer a different question found the shape of the bet paying off, the strongest players get more varied rather than converging on a line, judgement matters more than calculation, and the outcome can turn on less than a hundredth of a degree.</p>
+    <div class="actions">
+      <a class="go" href="/">Play it now &rarr;</a>
+      <a href="/depth.html">The depth analysis</a>
+    </div>
+  </section>
+
+  <div class="more wrap" style="padding-left:0;padding-right:0;">
+    <a href="/set.html">See the physical set &rarr;</a>
+  </div>
+</main>
+
+<footer class="wrap">
+  Tau. <a href="/">Play the digital version &rarr;</a>
+</footer>
+
+<script>
+(function(){
+  try { var saved = localStorage.getItem('tauPageTheme'); if (saved) document.documentElement.setAttribute('data-theme', saved); } catch(e){}
+  document.getElementById('themeBtn').addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme');
+    if (!cur) cur = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    var next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('tauPageTheme', next); } catch(e){}
+  });
+  // ?for=<slug> adds a short opening line for a specific reader. Looked up from this map only.
+  var PEOPLE = {
+    blow:    'Jonathan, you think about what makes a game deep more than just about anyone, so I wanted you to see this one.',
+    danaher: 'John, this one is built on off-balancing, so I thought it might interest you.',
+    zahabi:  'Firas, an abstract game about leverage and distance, the footwork side more than the strength.',
+    askren:  'Ben, it&rsquo;s an abstract sumo and wrestling game. Thought you might like it.',
+    fridman: 'Lex, a tiny game with far more depth than it looks.'
+  };
+  var slug = 'about';
+  try { var q = (new URLSearchParams(location.search).get('for')||'').toLowerCase().replace(/[^a-z0-9]/g,''); if (q) slug = q; } catch(e){}
+  var note = PEOPLE[slug];
+  if (note) { var g = document.getElementById('greet'); g.innerHTML = note; g.hidden = false; }
+})();
+</script>
+</html>
