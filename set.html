@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="robots" content="noindex, nofollow">
-<title>Tau · The physical game</title>
+<title>Tau · A new class of board game</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -32,75 +32,66 @@
   html { -webkit-text-size-adjust:100%; }
   body {
     margin:0; background:var(--bg); color:var(--ink);
-    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    line-height:1.62; font-size:17px; -webkit-font-smoothing:antialiased;
+    font-family:Georgia,"Times New Roman",serif;
+    line-height:1.68; font-size:18px; -webkit-font-smoothing:antialiased;
   }
-  .wrap { max-width:760px; margin:0 auto; padding:0 22px; }
+  .wrap { max-width:660px; margin:0 auto; padding:0 22px; }
   a { color:var(--blue); }
+  .sans { font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
 
   .backbtn, .themebtn {
     position:fixed; top:14px; z-index:20; background:var(--surface); color:var(--ink-2);
     border:1px solid var(--line); border-radius:999px; padding:7px 13px; font-size:12.5px;
     cursor:pointer; letter-spacing:.02em; box-shadow:var(--shadow); text-decoration:none;
+    font-family:system-ui,-apple-system,sans-serif;
   }
   .backbtn { left:14px; } .themebtn { right:14px; }
   .backbtn:hover, .themebtn:hover { color:var(--ink); }
   .backbtn:focus-visible, .themebtn:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
 
-  header.hero { padding:92px 0 30px; }
-  .eyebrow { font-size:12.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin:0 0 14px; }
-  h1 { font-size:clamp(27px,5.4vw,40px); line-height:1.12; margin:0 0 18px; text-wrap:balance; letter-spacing:-.01em; }
-  .lede { font-size:19px; color:var(--ink); margin:0 0 10px; }
-  .sub { color:var(--ink-2); margin:0; }
+  header.hero { padding:96px 0 8px; }
+  .eyebrow { font-family:system-ui,sans-serif; font-size:12.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-3); margin:0 0 18px; }
+  .greet { color:var(--ink-2); font-style:italic; margin:0 0 20px; font-size:17px; }
+  h1 { font-size:clamp(30px,6vw,44px); line-height:1.14; margin:0 0 22px; text-wrap:balance; letter-spacing:-.01em; font-weight:normal; }
+  p { margin:0 0 20px; } p:last-child { margin-bottom:0; }
+  .drop::first-letter { }
 
-  .cta-row { display:flex; flex-wrap:wrap; gap:12px; margin:30px 0 8px; }
-  .cta {
-    display:inline-flex; align-items:center; gap:8px; padding:13px 20px; border-radius:12px;
-    font-size:15.5px; font-weight:600; text-decoration:none; border:1px solid transparent;
-  }
-  .cta.primary { background:var(--blue); color:#0b0e12; }
-  .cta.primary:hover { filter:brightness(1.07); }
-  .cta.ghost { background:var(--surface); color:var(--ink); border-color:var(--line); box-shadow:var(--shadow); }
-  .cta.ghost:hover { border-color:var(--ink-3); }
+  section { padding:8px 0 6px; }
+  h2 { font-family:system-ui,sans-serif; font-size:14px; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-3); margin:34px 0 14px; font-weight:600; }
+  em.term { font-style:italic; color:var(--ink); }
 
-  section { padding:26px 0; border-top:1px solid var(--line); }
-  h2 { font-size:20px; margin:0 0 12px; letter-spacing:-.01em; }
-  p { margin:0 0 14px; } p:last-child { margin-bottom:0; }
-  .muted { color:var(--ink-2); }
+  .actions { display:flex; flex-wrap:wrap; gap:20px; align-items:center; margin:30px 0 6px; font-family:system-ui,sans-serif; font-size:15.5px; }
+  .actions a { text-decoration:none; font-weight:500; }
+  .actions a:hover { text-decoration:underline; }
+  .actions .go { color:var(--ink); }
 
-  /* photo grid: images self-heal — drop files into /set/ and they appear; until then, tasteful slots */
-  .shots { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:6px; }
+  .shots { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:8px 0 6px; }
   .shots figure { margin:0; }
   .shots img {
-    width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:12px;
+    width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:10px;
     background:var(--surface-2); border:1px solid var(--line); display:block;
   }
-  .shots img.ph { object-fit:contain; opacity:.5; }
-  figcaption { color:var(--ink-3); font-size:12.5px; margin-top:7px; }
+  .shots img.ph { object-fit:contain; opacity:.4; }
+  figcaption { font-family:system-ui,sans-serif; color:var(--ink-3); font-size:12px; margin-top:6px; }
   .shots figure:first-child { grid-column:1 / -1; }
   .shots figure:first-child img { aspect-ratio:16/9; }
   @media (max-width:560px){ .shots { grid-template-columns:1fr; } }
 
-  .list { list-style:none; padding:0; margin:0; }
-  .list li { position:relative; padding:6px 0 6px 22px; color:var(--ink-2); }
-  .list li::before { content:""; position:absolute; left:2px; top:15px; width:7px; height:7px; border-radius:2px; background:var(--board); }
-
-  form.wl { display:flex; gap:9px; flex-wrap:wrap; margin-top:14px; }
+  .quiet-set { border-top:1px solid var(--line); margin-top:34px; padding-top:26px; }
+  form.wl { display:flex; gap:9px; flex-wrap:wrap; margin-top:14px; font-family:system-ui,sans-serif; }
   form.wl input[type=email] {
-    flex:1 1 220px; min-width:0; padding:12px 14px; border-radius:10px; font-size:15px;
-    background:var(--surface); color:var(--ink); border:1px solid var(--line);
+    flex:1 1 220px; min-width:0; padding:11px 14px; border-radius:9px; font-size:15px;
+    background:var(--surface); color:var(--ink); border:1px solid var(--line); font-family:inherit;
   }
   form.wl input[type=email]:focus { outline:2px solid var(--blue); outline-offset:1px; }
   form.wl button {
-    padding:12px 20px; border-radius:10px; font-size:15px; font-weight:600; cursor:pointer;
-    background:var(--ink); color:var(--bg); border:1px solid var(--ink);
+    padding:11px 18px; border-radius:9px; font-size:15px; cursor:pointer;
+    background:var(--surface); color:var(--ink); border:1px solid var(--line); font-family:inherit;
   }
-  form.wl button:hover { filter:brightness(1.08); }
-  .wl-opts { display:flex; gap:18px; margin-top:12px; flex-wrap:wrap; }
-  .wl-opts label { display:flex; gap:8px; align-items:center; font-size:14px; color:var(--ink-2); cursor:pointer; }
-  #wlMsg { font-size:13.5px; color:var(--ink-2); min-height:1.2em; margin-top:8px; }
+  form.wl button:hover { border-color:var(--ink-3); }
+  #wlMsg { font-family:system-ui,sans-serif; font-size:13px; color:var(--ink-2); min-height:1.1em; margin-top:9px; }
 
-  footer { padding:30px 0 60px; color:var(--ink-3); font-size:13.5px; border-top:1px solid var(--line); margin-top:8px; }
+  footer { font-family:system-ui,sans-serif; padding:30px 0 60px; color:var(--ink-3); font-size:13px; border-top:1px solid var(--line); margin-top:34px; }
 </style>
 </head>
 
@@ -108,53 +99,47 @@
 <button class="themebtn" id="themeBtn" aria-label="Toggle light or dark">◐</button>
 
 <header class="hero wrap">
-  <p class="eyebrow" id="eyebrow">The physical game</p>
-  <h1 id="headline">An abstract fighting game based on sumo, judo and wrestling.</h1>
-  <p class="lede" id="hook">You&rsquo;re trying to push, block or bait the other piece off the edge of the board. I wanted to make the fighting game equivalent of chess, so it&rsquo;s simple deterministic rules, continuous movement, no straight lines. I built the digital version first, but it started as a metal board and magnetic tripods on my table, and that&rsquo;s the set I&rsquo;m making now.</p>
-  <p class="sub">Free to play in your browser right now. Easier to understand by playing than reading.</p>
-  <div class="cta-row">
-    <a class="cta primary" href="/">Play it now</a>
-    <a class="cta ghost" href="/depth.html">Is there a forced win? I checked &rarr;</a>
-  </div>
+  <p class="eyebrow">Tau</p>
+  <p class="greet" id="greet" hidden></p>
+  <h1>A new class of board game.</h1>
+  <p>Innovation usually begins not by adding to what already exists, but by removing an established rule or convention. Most abstract strategy games, checkers, chess, Go, have a few things in common: several pieces to coordinate, pieces that move along straight lines, and moves made in discrete steps, no fraction of a move allowed. Tau is what&rsquo;s left when you take all three away.</p>
 </header>
 
-<main>
-  <section class="wrap">
-    <h2>How it plays</h2>
-    <p>The rules are simple. Two pieces, one each, and the only way to win is to push your opponent off the edge. Each turn you keep one foot planted and swing the other two around it in an arc. The movement&rsquo;s continuous so you can stop wherever you like, but you can only cross one line on the board per move. That limit is what makes it a fighting game and opens up lots of fun counterintuitive sweeps and throws.</p>
-    <ul class="list">
-      <li>Two pieces, a board of concentric rings, essentially two rules.</li>
-      <li>Magnets in the feet and a metal board, so the pieces move smoothly without momentum turning it into a dexterity game.</li>
-      <li>Same rules as the free digital version, so you can learn it in your browser.</li>
-    </ul>
+<main class="wrap">
+  <section>
+    <p>Each player has a single three-legged piece on a circular board. The object is to push your opponent&rsquo;s piece off the edge, using your own. Each turn one leg is kept in place while the other two swing around it in an arc. That movement is continuous, and while there&rsquo;s a limit to how far you can go, you can stop at any point before it. When the pieces collide they move in regular but intrinsically complex ways, out of the geometry and weight of the piece. It rewards spatial thinking and precision over calculation.</p>
+    <div class="actions">
+      <a class="go" href="/">Play it now &rarr;</a>
+      <a href="/depth.html">Is there a forced win? I checked</a>
+    </div>
   </section>
 
-  <section class="wrap">
+  <section>
+    <h2>A third kind of complexity</h2>
+    <p>All competitive board games are a contest over who best grapples with complexity, and they mostly get there two ways. Chess is <em class="term">complicated</em>: a complicated assortment of simple pieces and rules, making complex tactical problems. Go is <em class="term">emergent</em>: simple rules and pieces, with the complexity appearing at scale.</p>
+    <p>Tau is reaching for a third kind. When two people grapple, their moves can&rsquo;t be recorded and repeated precisely. They aren&rsquo;t analysing long sequences; they&rsquo;re dealing with an opponent that is fundamentally complicated, using a different style of judgement to decide. Call it <em class="term">irreducible</em>. Tau distils that down to a simple set of rules, takes out the strength and the dexterity, and tries to keep some of the irreducible complexity of the interaction.</p>
+  </section>
+
+  <section>
     <h2>The set</h2>
     <div class="shots">
       <figure><img src="set/photo-1.jpg" alt="The Tau board and pieces" onerror="this.classList.add('ph');this.src='/favicon-32.png'"><figcaption>The board and the two tripods.</figcaption></figure>
       <figure><img src="set/photo-2.jpg" alt="A game in progress" onerror="this.classList.add('ph');this.src='/favicon-32.png'"><figcaption>Mid-game.</figcaption></figure>
       <figure><img src="set/photo-3.jpg" alt="Close-up of a magnetic tripod" onerror="this.classList.add('ph');this.src='/favicon-32.png'"><figcaption>A single piece.</figcaption></figure>
     </div>
-  </section>
-
-  <section class="wrap">
-    <h2>Want one?</h2>
-    <p class="muted">I&rsquo;m making the first sets now, magnets in the feet, a metal board, the weird curved pieces and all. Leave your email and I&rsquo;ll let you know when they&rsquo;re ready, whether you want to print your own or get a finished set shipped. One email, that&rsquo;s it.</p>
-    <form class="wl" id="wlForm" novalidate>
-      <input type="email" id="wlEmail" placeholder="your email" autocomplete="email" maxlength="254" aria-label="Email address">
-      <button type="submit" id="wlGo">Keep me posted</button>
-    </form>
-    <div class="wl-opts">
-      <label><input type="checkbox" id="wlDiy" checked> Free print-and-play files</label>
-      <label><input type="checkbox" id="wlKit" checked> The full kit, shipped</label>
+    <div class="quiet-set">
+      <p>It began as a metal board and magnetic tripods on my table, the magnets so the pieces move smoothly without momentum turning it into a dexterity game. I&rsquo;m making the first proper sets now. If you&rsquo;d like to know when they&rsquo;re ready, leave an email and I&rsquo;ll write when there&rsquo;s something to say.</p>
+      <form class="wl" id="wlForm" novalidate>
+        <input type="email" id="wlEmail" placeholder="your email" autocomplete="email" maxlength="254" aria-label="Email address">
+        <button type="submit" id="wlGo">Keep me posted</button>
+      </form>
+      <p id="wlMsg" aria-live="polite"></p>
     </div>
-    <p id="wlMsg" aria-live="polite"></p>
   </section>
 </main>
 
-<footer class="wrap" id="footer">
-  Tau, an abstract fighting game based on sumo, judo and wrestling. Made by hand. <a href="/">Play the digital version &rarr;</a>
+<footer class="wrap">
+  Tau. A two-player abstract game of distance, balance and leverage. <a href="/">Play the digital version &rarr;</a>
 </footer>
 
 <script>
@@ -172,15 +157,14 @@
     try { localStorage.setItem('tauPageTheme', next); } catch(e){}
   });
 
-  // ---- personalisation: /set.html?for=<slug> swaps the opening note for one written for that person ----
-  // Slugs are looked up from this map only; the raw query is never written into the page, so a
-  // stranger can't inject anything. Add a name here, send set.html?for=<slug>, done.
+  // ---- personalisation: /set.html?for=<slug> adds a short opening line for that person ----
+  // Slugs are looked up from this map only; the raw query is never written into the page.
   var PEOPLE = {
-    blow:    'Hi Jonathan. You think about what makes a game deep more than just about anyone, so I wanted you to try this one. It&rsquo;s a two-piece abstract fighting game, push the other piece off the edge without going off yourself. I ran a couple thousand AI self-play games to check there&rsquo;s no forced win, and wrote it up. But it&rsquo;s more fun to play than to read about.',
-    danaher: 'Hi John. It&rsquo;s an abstract fighting game built on off-balancing, get the other piece to the edge at a bad angle and push it off, without going off yourself. I was trying to capture the fundamental essence of grappling in a simple set of rules. Would be very curious what you make of it.',
-    zahabi:  'Hi Firas. I made an abstract fighting game that&rsquo;s really about leverage and distance management, the footwork and positioning side of the sport more than the strength. Would love your take on it.',
-    askren:  'Hi Ben. It&rsquo;s an abstract sumo and wrestling game, push the other guy off the edge without going off yourself. The rules are simple but there&rsquo;s a lot of counterintuitive sweeps and throws in it. Thought you might like it.',
-    fridman: 'Hi Lex. A tiny two-piece abstract game with more depth than it looks, I ran a whole AI self-play tournament to measure it. Thought it might be your kind of thing.'
+    blow:    'Jonathan, you think about what makes a game deep more than just about anyone, so I wanted you to see this one.',
+    danaher: 'John, this one is built on off-balancing, so I thought it might interest you.',
+    zahabi:  'Firas, an abstract game about leverage and distance, the footwork side of the sport more than the strength. Thought you&rsquo;d get it.',
+    askren:  'Ben, it&rsquo;s an abstract sumo and wrestling game. Thought you might like it.',
+    fridman: 'Lex, a tiny game with far more depth than it looks. Thought it might be your kind of thing.'
   };
   var slug = 'set';
   try {
@@ -188,10 +172,10 @@
     q = q.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (q) slug = q;
   } catch(e){}
-  var hook = PEOPLE[slug];
-  if (hook) {
-    document.getElementById('eyebrow').textContent = 'For you';
-    document.getElementById('hook').innerHTML = hook;
+  var note = PEOPLE[slug];
+  if (note) {
+    var g = document.getElementById('greet');
+    g.innerHTML = note; g.hidden = false;
   }
   window.__tauRef = slug;   // tag any signup with who the link was for
 
@@ -209,16 +193,12 @@
   form.addEventListener('submit', async function(ev){
     ev.preventDefault();
     var em = (document.getElementById('wlEmail').value || '').trim();
-    var diy = document.getElementById('wlDiy').checked, kit = document.getElementById('wlKit').checked;
-    if (!diy && !kit) { msg.textContent = 'Pick at least one option.'; return; }
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { msg.textContent = 'That doesn’t look like an email address.'; return; }
-    var interest = diy && kit ? 'both' : diy ? 'diy' : 'kit';
     msg.textContent = '…';
     try {
-      // try with a ref tag first; if the column isn't there yet, fall back to the plain insert
-      var r = await insert({ email: em, lang: (navigator.language||'en').slice(0,2), interest: interest, ref: window.__tauRef });
-      if (!r.ok && r.status === 400) r = await insert({ email: em, lang: (navigator.language||'en').slice(0,2), interest: interest });
-      if (!r.ok && r.status !== 409) throw new Error('save failed');   // 409 = already on the list, which is fine
+      var r = await insert({ email: em, lang: (navigator.language||'en').slice(0,2), interest: 'kit', ref: window.__tauRef });
+      if (!r.ok && r.status === 400) r = await insert({ email: em, lang: (navigator.language||'en').slice(0,2), interest: 'kit' });
+      if (!r.ok && r.status !== 409) throw new Error('save failed');   // 409 = already on the list
       msg.textContent = 'You’re on the list, I’ll be in touch.';
       form.querySelector('button').disabled = true;
     } catch(e) { msg.textContent = 'Could not save, check your connection and give it another go.'; }
