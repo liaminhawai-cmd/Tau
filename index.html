@@ -411,7 +411,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 136</div>
+<div id="buildTag">build 137</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -4562,16 +4562,27 @@ function openLadderMenu(){
     fetchLevelStats();     // refresh the crowd numbers each time the screen opens
 }
 // ---- Levels crowd stats (per level × colour): Unbeaten / beaten-by-N (<=5) / beaten-by-X%-of-players (6+) ----
-let levelStats = null;   // { level*10 + colour -> { clears, players } }
-async function fetchLevelStats(){
-    if (typeof sb === 'undefined' || !sb) return;
+// Last-known crowd stats survive a page load in localStorage, so the Levels screen shows real
+// numbers instantly (and offline) rather than "…" while the network catches up. { key -> {clears,players} }
+let levelStats = (() => { try { return JSON.parse(localStorage.getItem('tauLevelStats')) || null; } catch(e){ return null; } })();
+let levelStatsFetching = false;
+// Flaky connections (and the supabase-js init race on a cold load) used to leave stats null after a
+// single silent failure, so the screen showed nothing until you closed and reopened it. Now the
+// fetch waits for supabase and retries with backoff, and a good result is cached for next time.
+async function fetchLevelStats(attempt){
+    attempt = attempt || 0;
+    if (attempt === 0){ if (levelStatsFetching) return; levelStatsFetching = true; }
+    const retry = () => { if (attempt < 6) setTimeout(() => fetchLevelStats(attempt+1), 800*(attempt+1)); else levelStatsFetching = false; };
+    if (typeof sb === 'undefined' || !sb){ retry(); return; }   // supabase not ready yet — wait and retry
     try {
         const { data, error } = await sb.rpc('level_stats');
-        if (error || !data) return;
+        if (error || !data) throw error || new Error('no level_stats');
         const m = {};
         for (const r of data) m[r.level*10 + r.colour] = { clears: r.clears, players: r.players };
         levelStats = m; refreshLevelStats();
-    } catch(e) {}
+        try { localStorage.setItem('tauLevelStats', JSON.stringify(m)); } catch(e){}
+        levelStatsFetching = false;
+    } catch(e) { retry(); }
 }
 function refreshLevelStats(){
     refreshLevelTip();
