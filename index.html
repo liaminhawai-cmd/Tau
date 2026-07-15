@@ -411,7 +411,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 142</div>
+<div id="buildTag">build 143</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3864,11 +3864,13 @@ const AI_LADDER = [
     { kind:'builtin', brain:'master', mw:{zone:2.5,park:2.2,oppFree:-0.3} },                    // L7 Expert, sprinkled
     { kind:'p3', w:{margin:1,zone:.5,park:.9,center:.15}, o:{sampleDeg:18,depth:3,keepStops:2,maxCands:11} }, // L8 cap
     { kind:'p3', w:{margin:1,zone:2.2,park:1.9,center:.12,oppFree:-0.2}, o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },  // L9 deep: L8's search x2.5, half-dose fitted eval
-    // L10 refit: L9's search with weights re-fitted from ~1500 labeled self-play positions
-    // (logistic regression, game-level split). Zone and park promoted hard, the centre bonus
-    // dropped (it predicted LOSSES once zone/park were priced), and the oppFree boxing-in term
-    // added. Beat the shipping L9 head-to-head 46/60 (77%) over three independent runs.
-    { kind:'p3', w:{margin:1,zone:12,park:8,oppFree:-1.1}, o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },
+    // L10 (interim): the refitted territory eval beat all self-play opponents (incl. the aggressive
+    // dumb AI 100%) yet a human found it trivially exploitable, because the ladder top is a STYLE
+    // cycle, not a strict ranking -- L10's territory style preys on L9 but has a hole a human's style
+    // walks through. The triMe (inside-line) term is what makes L11 hard for that human style, so a
+    // dose of it is added here too as a stopgap until a replay of the exploit lets it be fixed
+    // properly. Kept below L11's triMe .2 so L11 stays on top (L9 < L10 < L11 held in self-play).
+    { kind:'p3', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.15}, o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },
     // L11: L10 plus the triangle-angle term (keep my hub between the board centre and theirs).
     // Beat plain L10 24/36 (67%) head-to-head; same search cost, the extra term is arithmetic.
     { kind:'p3', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },
