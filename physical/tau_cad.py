@@ -10,10 +10,26 @@ Measured inputs (from the clean repo STLs — do not re-guess):
     tripod       hub->foot 46.19 mm, height 53.77 mm
     old rim      inner face FLARED outward (bug) — inner disk-contact face here is VERTICAL.
 
-Seam joints: a vertical-slide DOVETAIL carries prying/shear (assemble by dropping the segment in;
-the disk capture lip then locks vertical lift, hooping the ring). Magnets are alignment/click only —
-geometry is identical on both faces; glue them in with opposite poles facing across each seam
-(polarity is an assembly step, not geometry). A no-magnet variant is exported too.
+Disk seat: FLUSH. The rim's whole top (inner seat wall and outer wall alike) sits level with the
+disk's own playing surface -- nothing stands proud of it anywhere. An earlier version capped the
+disk with an inward lip 2mm above the play surface (fine for manufacturing, wrong for play: a piece
+sliding toward the rim would hit that wall instead of reaching the true edge and falling off).
+Fixed by owner's report: "the pieces won't fall off the edge... they'll crash into it."
+
+Seam joints: an ENCLOSED press-fit lock, not a Lego tube-clutch (that needs tolerances tighter than
+a home FDM printer holds reliably) and not the old open-top dovetail (fine against sideways
+prying, but nothing stopped a segment being lifted straight back out -- "easily knocked apart").
+The new tab/pocket is Z-bounded within the wall, so once seated a segment has solid material above
+AND below it and physically cannot lift out; assembly is a straight in-plane PRESS (segments
+pushed together sideways at the seam), not a vertical slide. A small retention dome near the tip
+pops into a shallow pocket at full depth for the actual click, backed by the thick wall rather than
+a thin flexing arm (a skinny cantilever is the fatigue-prone part of most snap-fits after repeated
+assembly cycles). Print-and-tune like the old dovetail: the coupon pair is the fast way to dial in
+lock_clear / bump_proud / dimple_depth before committing to a full rim.
+
+Seam magnets no longer fit at this (shorter, corrected) rim height -- the 'mag' seam variant is
+dropped. FOOT magnets (in the tripod feet, gripping the steel disk -- unrelated to seam assembly)
+are unaffected.
 
 Run:  python3 tau_cad.py           # both SKUs -> ./out_cad/*.step + *.stl
 """
@@ -33,31 +49,24 @@ class Spec:
         self.wall_thick  = 8.0  * s       # radial wall at the disk edge
         self.ledge_h     = 3.0  * s       # rim floor under the disk edge
         self.ledge_w     = 2.5  * s       # reach under the disk
-        self.lip_overlap = 2.5  * s       # top lip caps the disk -> hoops the segments
-        self.lip_height  = 2.0  * s
         self.skirt_bevel = 6.0  * s       # outer skirt slopes in toward the bottom
         self.groove_w    = 34.0 * s       # finger scoops: ALWAYS 2, player axis, any N_SEG
         self.groove_depth= 10.0 * s
         self.n_seg       = n_seg
         self.fit         = fit            # 'press' (-0.10 bore) | 'glue' (+0.15 bore)
         self.mag_backing = 1.2
-        # dovetail (scale-aware, sized off the wall)
-        self.dt_depth    = 4.0 * s        # tangential protrusion into the neighbour
-        self.dt_neck     = 3.2 * s        # radial width at the seam face
-        self.dt_flare    = 5.6 * s        # radial width at the tip (wider = the lock)
-        self.dt_clear    = 0.15           # mortise oversize per side (print fit; NOT scaled)
+        # enclosed press-lock (scale-aware, sized off the wall)
+        self.lock_len    = 5.0  * s       # tangential engagement depth
+        self.lock_w      = 4.4  * s       # radial width of the tab (constant cross-section)
+        self.lock_margin = 0.7  * s       # solid ceiling+floor left above/below the tab in the wall
+        self.lock_clear  = 0.20           # mortise oversize per side (print fit; NOT scaled)
+        self.bump_d      = 1.8  * s       # retention dome diameter
+        self.bump_proud  = 0.35 * s       # how far the dome stands proud of the tab
+        self.dimple_depth= 0.20 * s       # matching pocket depth (shallower than bump_proud -> real interference)
     def bore(self, mag_d): return mag_d + (-0.10 if self.fit == 'press' else 0.15)
-    def pick_seam_magnet(self):
-        """Largest stocked magnet whose bore fits the seam face height with 1mm walls."""
-        max_bore = self.rim_h - 2.0
-        ok = [m for m in MAGNETS if self.bore(m[0]) <= max_bore]
-        assert ok, f"no stocked magnet fits a {self.rim_h:.1f} mm seam face — deepen the rim"
-        return max(ok, key=lambda m: (m[0], m[1]))
     # derived ------------------------------------------------------------------
     @property
     def seat_r(self):   return self.disk_d/2 + self.disk_clear      # vertical inner face
-    @property
-    def lip_r(self):    return self.seat_r - self.lip_overlap
     @property
     def floor_r(self):  return self.seat_r - self.ledge_w
     @property
@@ -67,20 +76,22 @@ class Spec:
     @property
     def disk_top_z(self): return self.ledge_h + self.disk_t
     @property
-    def rim_h(self):    return self.disk_top_z + self.lip_height
+    def rim_h(self):    return self.disk_top_z   # FLUSH: rim top = disk top, everywhere
     @property
     def wall_mid_r(self): return (self.seat_r + self.outer_r) / 2
+    @property
+    def lock_h(self):   return self.rim_h - 2*self.lock_margin
 
 # ------------------------------------------------------------------ solids
 def rim_ring(sp: Spec):
-    """Solid of revolution: vertical inner face, top capture lip, bottom ledge, sloped skirt."""
+    """Solid of revolution: vertical inner face, FLUSH top (no proud lip), bottom ledge, sloped
+    skirt. The whole rim tops out level with the disk's own playing surface -- a piece sliding
+    toward the rim reaches the true edge with nothing standing above it to catch on."""
     pts = [
         (sp.floor_r,     0),
         (sp.outer_bot_r, 0),
         (sp.outer_r,     sp.rim_h),
-        (sp.lip_r,       sp.rim_h),
-        (sp.lip_r,       sp.disk_top_z),
-        (sp.seat_r,      sp.disk_top_z),
+        (sp.seat_r,      sp.rim_h),
         (sp.seat_r,      sp.ledge_h),
         (sp.floor_r,     sp.ledge_h),
     ]
@@ -112,113 +123,96 @@ def wedge(a0, a1, R, H):
                      for i in range(steps+1)]
     return cq.Workplane("XY").polyline(pts).close().extrude(H)
 
-def dovetail(sp: Spec, ang, clear=0.0):
-    """Tapered prism at seam angle `ang`: neck at the seam plane, flaring wider with tangential
-    protrusion — resists tangential pull-apart; assembled by vertical slide. `clear` grows the
-    solid for the mortise cut."""
-    d  = sp.dt_depth + clear            # protrusion (tangential)
-    w1 = sp.dt_neck  + 2*clear          # radial width at seam
-    w2 = sp.dt_flare + 2*clear          # radial width at tip
+def lock_tab(sp: Spec, ang, clear=0.0):
+    """Rectangular tab (clear=0) or its oversized mortise cut (clear>0) at seam angle `ang`.
+    Constant cross-section, Z-BOUNDED within the wall (lock_margin of solid ceiling+floor is left
+    on the mortise side), so once seated the tab cannot be lifted out vertically at all -- that
+    solid ceiling/floor is what the old open-top dovetail was missing. Assembled by a straight
+    in-plane PRESS: the two segments are pushed together sideways at the seam, at a fixed height,
+    not slid down from above."""
+    L, W = sp.lock_len + clear, sp.lock_w + 2*clear
     rm = sp.wall_mid_r
-    # local frame at the seam: u = tangential (protrude), v = radial
     ca, sa = math.cos(ang), math.sin(ang)
-    ux, uy = -sa, ca                    # +tangential
+    ux, uy = -sa, ca                    # +tangential (protrusion direction)
     vx, vy = ca, sa                     # +radial
-    quad = [(-0.4, -w1/2), (-0.4, w1/2), (d, w2/2), (d, -w2/2)]   # -0.4: bury the neck in the owner
+    quad = [(-0.4, -W/2), (-0.4, W/2), (L, W/2), (L, -W/2)]   # -0.4: bury the root in the owner
     pts = [(rm*vx + u*ux + v*vx, rm*vy + u*uy + v*vy) for (u, v) in quad]
-    h = clear  # mortise also over-tall so the slide isn't a force fit
+    zlo = sp.lock_margin - clear
     return (cq.Workplane("XY").polyline(pts).close()
-            .extrude(sp.rim_h + 2*h).translate((0,0,-h)))
+            .extrude(sp.lock_h + 2*clear).translate((0, 0, zlo)))
 
-def seam_magnet_pocket(sp: Spec, ang, side):
-    """Cylindrical bore into a seam face, axis tangential. side=+1 bores into the segment ABOVE
-    the seam angle, -1 below. Same geometry both faces (polarity = assembly)."""
-    md, mt = sp.pick_seam_magnet()
-    bore_r = sp.bore(md)/2
-    depth  = mt + sp.mag_backing
+def lock_bump(sp: Spec, ang, dimple=False):
+    """A small dome near the tab's tip (dimple=False), or its shallower matching pocket cut into
+    the socket's ceiling (dimple=True). The dome sits proud by bump_proud; the dimple is cut
+    shallower than that (dimple_depth), so seating the tab means genuinely compressing past it --
+    that's the actual click, and what resists it being pressed straight back out. Backed by the
+    thick wall on both sides, not a thin flexing arm, so it isn't the fatigue-prone part."""
+    rm = sp.wall_mid_r
     ca, sa = math.cos(ang), math.sin(ang)
-    ux, uy = -sa*side, ca*side          # into the target segment
-    # radial placement: inner half of the wall, clear of the (outer-half) dovetail
-    r_mag = sp.seat_r + sp.wall_thick*0.28
-    cx, cy = r_mag*ca, r_mag*sa
-    pocket = (cq.Workplane("XY").circle(bore_r).extrude(depth)
-              .rotate((0,0,0),(1,0,0),90))                     # cylinder axis -> +Y
-    a_deg = math.degrees(math.atan2(uy, ux))
-    pocket = pocket.rotate((0,0,0),(0,0,1), a_deg - 90 + 180)  # axis -> (ux,uy), opening at the face
-    return pocket.translate((cx, cy, sp.rim_h/2))
-
-# Can a dovetail AND a magnet share the seam face? On the lean rim (7 mm face x 8 mm wall) they
-# cannot — measured, not guessed — so joints come in two variants: dovetail-only (default,
-# structural; the vertical slide + disk lip already align and retain) and magnet-click (tool-less,
-# weaker). If the rim is ever made chunky enough, combo re-enables automatically.
-def combo_fits(sp: Spec):
-    try: md, _ = sp.pick_seam_magnet()
-    except AssertionError: return False
-    mag_outer_edge = sp.seat_r + 0.8 + sp.bore(md)
-    dt_inner_edge  = sp.wall_mid_r - sp.dt_flare/2
-    return mag_outer_edge < dt_inner_edge - 0.6
+    ux, uy = -sa, ca; vx, vy = ca, sa
+    u0 = sp.lock_len * 0.72                          # near the tip, so it engages at full depth
+    cx, cy = rm*vx + u0*ux, rm*vy + u0*uy
+    cz = sp.lock_margin + sp.lock_h                   # the tab's top face / socket's ceiling
+    r = sp.bump_d / 2
+    if not dimple:
+        # a sphere sunk so only `bump_proud` of it pokes above the tab's top face
+        return (cq.Workplane("XY").workplane(offset=cz - (r - sp.bump_proud))
+                .center(cx, cy).sphere(r))
+    else:
+        # same cap position/shape as the bump above, just shallower (dimple_depth < bump_proud) --
+        # the leftover difference is the interference that has to compress to seat, and resists
+        # pulling the tab back out.
+        return (cq.Workplane("XY").workplane(offset=cz - (r*1.05 - sp.dimple_depth))
+                .center(cx, cy).sphere(r * 1.05))
 
 # ------------------------------------------------------------------ build
-def build(disk_d, n_seg, outdir, label, variant='dt'):
+def build(disk_d, n_seg, outdir, label, variant='snap'):
     sp = Spec(disk_d, n_seg)
-    if variant == 'combo' and not combo_fits(sp):
-        return f"--- SKU {label}: combo joint does not fit at scale {sp.scale:.2f} (lean rim) — skipped"
-    dovetails = variant in ('dt', 'combo')
-    magnets   = variant in ('mag', 'combo')
     os.makedirs(outdir, exist_ok=True)
     tag = f"{label}_{variant}"
     rpt = [f"--- SKU {tag}: DISK_D={disk_d} scale={sp.scale:.3f} N_SEG={n_seg} ---",
-           f"  outer Ø{2*sp.outer_r:.1f}, rim height {sp.rim_h:.1f}, seat Ø{2*sp.seat_r:.1f} (vertical), lip overlap {sp.lip_overlap:.1f}"]
-    if dovetails: rpt.append(f"  dovetail neck {sp.dt_neck:.1f} -> tip {sp.dt_flare:.1f}, depth {sp.dt_depth:.1f}, mortise clearance {sp.dt_clear}")
-    if magnets:
-        md, mt = sp.pick_seam_magnet()
-        rpt.append(f"  seam magnet {md}x{mt} bore Ø{sp.bore(md):.2f} ({sp.fit}) — opposite poles across each seam")
+           f"  outer Ø{2*sp.outer_r:.1f}, rim height {sp.rim_h:.1f} (flush with disk top), seat Ø{2*sp.seat_r:.1f} (vertical)",
+           f"  lock: {sp.lock_len:.1f} deep x {sp.lock_w:.1f} wide, {sp.lock_h:.1f} tall (margin {sp.lock_margin:.2f} top/bottom), "
+           f"mortise clearance {sp.lock_clear}, bump Ø{sp.bump_d:.1f} proud {sp.bump_proud:.2f} / dimple depth {sp.dimple_depth:.2f}"]
     ring = rim_ring(sp)
-    if variant == 'dt':                                  # whole base as ONE solid, for viewing/editing in Fusion
-        fbase = os.path.join(outdir, f"tau_rim_{label}_full")
-        cq.exporters.export(ring, fbase + ".step"); cq.exporters.export(ring, fbase + ".stl")
-        rpt.append(f"  full ring (single solid) -> tau_rim_{label}_full.step/.stl")
+    fbase = os.path.join(outdir, f"tau_rim_{label}_full")                # whole base as ONE solid, for viewing/editing
+    cq.exporters.export(ring, fbase + ".step"); cq.exporters.export(ring, fbase + ".stl")
+    rpt.append(f"  full ring (single solid) -> tau_rim_{label}_full.step/.stl")
     off = seam_offset(n_seg)                             # keep seams off the finger grooves
     R = sp.outer_r*2
     seams = [off + 2*math.pi*k/n_seg for k in range(n_seg)]
     for k in range(n_seg):
         a0, a1 = seams[k], off + 2*math.pi*(k+1)/n_seg
+        a1m = a1 % (2*math.pi)
         seg = ring.intersect(wedge(a0, a1, R, sp.rim_h))
-        if dovetails:
-            seg = seg.union(dovetail(sp, a1 % (2*math.pi)))                # tenon at my a1 end
-            seg = seg.cut(dovetail(sp, a0, clear=sp.dt_clear))             # mortise at my a0 end
-        if magnets:
-            seg = seg.cut(seam_magnet_pocket(sp, a1 % (2*math.pi), +1))    # face pockets, both ends
-            seg = seg.cut(seam_magnet_pocket(sp, a0, -1))
+        seg = seg.union(lock_tab(sp, a1m)).union(lock_bump(sp, a1m))                  # tab + its dome at my a1 end
+        seg = seg.cut(lock_tab(sp, a0, clear=sp.lock_clear)).cut(lock_bump(sp, a0, dimple=True))   # pocket + dimple at my a0 end
         solid = seg.val()
         ok = solid.isValid() and solid.Volume() > 0
         base = os.path.join(outdir, f"tau_rim_{tag}_seg{k+1}of{n_seg}")
         cq.exporters.export(seg, base + ".step")
         cq.exporters.export(seg, base + ".stl")
         rpt.append(f"  seg {k+1}/{n_seg}: valid={ok} vol={solid.Volume()/1000:.1f} cm3 -> {os.path.basename(base)}.step/.stl")
-    # ---- coupons: seam pair for THIS variant, plus the foot-pocket stub (dt run only) ----
+    # ---- coupons: one seam pair, plus the foot-pocket stub ----
     stub = ring.intersect(wedge(-math.radians(14), math.radians(14), R, sp.rim_h))
     half_a = stub.intersect(wedge(-math.radians(14), 0, R, sp.rim_h))
     half_b = stub.intersect(wedge(0, math.radians(14), R, sp.rim_h))
-    if dovetails:
-        half_b = half_b.union(dovetail(sp, 0.0))
-        half_a = half_a.cut(dovetail(sp, 0.0, clear=sp.dt_clear))
-    if magnets:
-        half_a = half_a.cut(seam_magnet_pocket(sp, 0.0, -1))
-        half_b = half_b.cut(seam_magnet_pocket(sp, 0.0, +1))
+    half_b = half_b.union(lock_tab(sp, 0.0)).union(lock_bump(sp, 0.0))
+    half_a = half_a.cut(lock_tab(sp, 0.0, clear=sp.lock_clear)).cut(lock_bump(sp, 0.0, dimple=True))
     for nm, part in [("A", half_a), ("B", half_b)]:
+        solid = part.val()
+        ok = solid.isValid() and solid.Volume() > 0
         base = os.path.join(outdir, f"tau_coupon_seam{nm}_{tag}")
         cq.exporters.export(part, base + ".step"); cq.exporters.export(part, base + ".stl")
-    rpt.append(f"  coupons: seamA/B ({variant})")
-    if variant == 'dt':
-        fm_d, fm_t = (5,2)   # foot magnets grip the steel board — polarity irrelevant
-        foot_pad_r = 6.5 * sp.scale
-        assert sp.bore(fm_d)/2 <= foot_pad_r - 0.8, "foot magnet too big for the pad — pick smaller stock"
-        pad = (cq.Workplane("XY").circle(foot_pad_r + 2).extrude(9)
-               .cut(cq.Workplane("XY").circle(sp.bore(fm_d)/2).extrude(fm_t + sp.mag_backing)))
-        base = os.path.join(outdir, f"tau_coupon_foot_{label}")
-        cq.exporters.export(pad, base + ".step"); cq.exporters.export(pad, base + ".stl")
-        rpt.append(f"  coupon: foot pocket ({fm_d}x{fm_t})")
+        rpt.append(f"  coupon seam{nm}: valid={ok} -> {os.path.basename(base)}.step/.stl")
+    fm_d, fm_t = (5,2)   # foot magnets grip the steel board — polarity irrelevant
+    foot_pad_r = 6.5 * sp.scale
+    assert sp.bore(fm_d)/2 <= foot_pad_r - 0.8, "foot magnet too big for the pad — pick smaller stock"
+    pad = (cq.Workplane("XY").circle(foot_pad_r + 2).extrude(9)
+           .cut(cq.Workplane("XY").circle(sp.bore(fm_d)/2).extrude(fm_t + sp.mag_backing)))
+    base = os.path.join(outdir, f"tau_coupon_foot_{label}")
+    cq.exporters.export(pad, base + ".step"); cq.exporters.export(pad, base + ".stl")
+    rpt.append(f"  coupon: foot pocket ({fm_d}x{fm_t})")
     return "\n".join(rpt)
 
 if __name__ == "__main__":
@@ -226,7 +220,6 @@ if __name__ == "__main__":
     # Segment counts sized for a 220x220 bed (Ender 3): the longest arc must fit with margin for a
     # skirt. 267 -> 4 arcs (~200 mm), 400 -> 8 arcs (~162 mm). Fewer, larger arcs are possible if you
     # print them across the bed diagonal; change the count here if you prefer that.
-    for variant in ('dt', 'mag'):
-        print(build(266.7, 4, out, "267", variant))
-        print(build(400.0, 8, out, "400", variant))
+    print(build(266.7, 4, out, "267"))
+    print(build(400.0, 8, out, "400"))
     print(f"\nParts written to {out}")
