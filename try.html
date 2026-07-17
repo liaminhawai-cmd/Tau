@@ -379,11 +379,13 @@ function clearTurn(){ G.pinned=null; G.pivot=null; G.turnDir=0;
 
 /* ---------------- Scenario (found by search with the real engine; see ?author=1) ------------- */
 const SCN = {
-    blue: { x: 47.0, y: 10.0, rot: 1.0 },
-    red:  { x: 23.6, y: -5.2, rot: 1.2 },
-    charge: { pivot: 0, dir: 1, deg: 75 },        // red's scripted overcommit
-    move1: { pivot: 0, dir: -1, deg: 16, tol: 6 }, // blue slips the charge
-    move2: { pivot: 0, dir: 1, deg: 23, tol: 8 }   // blue redirects red off
+    start: { blue: { x: 27.2, y: 12.7, rot: 1.0 },  // mid-board, red engaged inside
+             red:  { x: -5.2, y: 6.4,  rot: 0.2 } },
+    shove:  { pivot: 1, dir: 1, deg: 70 },          // beat 1 (scripted): red drives you to the rim
+    psych:  { pivot: 0, dir: 1, deg: 12, tol: 5 },  // beat 2 (you): shove back — the bait
+    windup: { pivot: 1, dir: 1, deg: 35 },          // beat 3a (scripted): red steps back for the blow
+    charge: { pivot: 1, dir: 1, deg: 90 },          // beat 3b (scripted): the lunge — whiffs, overextends
+    fin:    { pivot: 0, dir: 1, deg: 15, tol: 6 }   // beat 4 (you): same foot again — throw red off
 };
 try {
     const qs = new URLSearchParams(location.search).get('scn');
@@ -392,7 +394,7 @@ try {
 
 function resetScenario(){
     const blue = new Piece(0), red = new Piece(1);
-    Object.assign(blue, SCN.blue); Object.assign(red, SCN.red);
+    Object.assign(blue, SCN.start.blue); Object.assign(red, SCN.start.red);
     G = { pieces:[blue,red], active:0, pinned:null, pivot:null, turnDir:0,
           crossings:0, atLimit:false, netRad:0, over:false, winner:null,
           snap:null, contact:null, justCrossed:[] };
@@ -457,8 +459,8 @@ function drawPiece(p, opts){
 /* ---------------- Guided-flow state machine ---------------- */
 const lineEl=document.getElementById('line'), subEl=document.getElementById('subline');
 const ctaEl=document.getElementById('cta');
-let phase='intro';            // intro -> pin1 -> swing1 -> charge -> pin2 -> swing2 -> fall -> done
-let pulse=0, redFall=null, chargeAnim=null, settleAnim=null;
+let phase='intro';   // intro -> shove -> pin1 -> swing1(psych) -> charge -> pin2 -> swing2(fin) -> fall -> done
+let pulse=0, redFall=null, scriptAnim=null, settleAnim=null;
 let curMove=null;             // {pivot,dir,deg,tol} for the active guided move
 let ptrAngle=null, dragging=false;
 
@@ -535,16 +537,16 @@ function draw(ts){
         ctx.strokeStyle=`rgba(255,210,63,${0.9-0.4*pulse})`; ctx.lineWidth=2.5; ctx.stroke();
     }
 
-    // scripted red charge animation
-    if (chargeAnim){
-        const step = chargeAnim.speed;
-        const remaining = chargeAnim.target - Math.abs(G.netRad);
+    // scripted red move animation (shove and charge beats)
+    if (scriptAnim){
+        const step = scriptAnim.speed;
+        const remaining = scriptAnim.target - Math.abs(G.netRad);
         if (remaining > 1e-4 && !G.atLimit){
-            applySwing(chargeAnim.dir * Math.min(step, remaining));
+            applySwing(scriptAnim.dir * Math.min(step, remaining));
         } else {
-            chargeAnim = null;
+            const done = scriptAnim.onDone; scriptAnim = null;
             clearTurn(); G.active = 0;
-            afterCharge();
+            done();
         }
     }
     // auto-settle animation for tap-to-play / assisted finish
@@ -562,31 +564,48 @@ function draw(ts){
 
 function beginIntro(){
     resetScenario();
-    phase='intro'; curMove=SCN.move1; redFall=null;
-    say('<span class="red">Red</span> has you on the edge.', 'One shove and you&rsquo;re off.');
-    setTimeout(()=>{ if (phase==='intro'){ phase='pin1'; G.active=0;
-        say('Pin the <b style="color:var(--gold)">glowing foot</b>.', 'Tap it. That foot stays planted.'); } }, 1600);
+    phase='intro'; curMove=SCN.psych; redFall=null; scriptAnim=null; settleAnim=null;
+    say('<span class="red">Red</span> has the momentum.', '&nbsp;');
+    setTimeout(()=>{ if (phase==='intro'){
+        phase='shove';
+        G.active=1; pinFoot(SCN.shove.pivot);
+        scriptAnim = { dir: SCN.shove.dir, target: SCN.shove.deg*Math.PI/180,
+                       speed: 1.8*Math.PI/180, onDone: afterShove };
+        say('<span class="red">Red</span> shoves you back&hellip;', 'You&rsquo;re nearly on the rim.');
+    } }, 1200);
+}
+function afterShove(){
+    phase='pin1'; G.active=0;
+    say('Push <b>back</b>. Pin the <b style="color:var(--gold)">glowing foot</b>.', 'Tap it. That foot stays planted.');
 }
 function afterPin(){
     if (phase==='pin1'){ phase='swing1';
-        say('Swing to the <b style="color:var(--gold)">marker</b>.', 'Drag anywhere. Slip out of the charge.');
+        say('Shove into <span class="red">them</span>.', 'Drag to the marker. Make them answer.');
     } else { phase='swing2';
-        say('Now swing <b>into their leg</b>.', 'Drag to the marker. Let them keep the momentum.');
+        say('Slip out the side &mdash; <b>and throw</b>.', 'Drag to the marker. Use their momentum.');
     }
 }
+function beginLunge(){
+    G.active = 1;
+    pinFoot(SCN.charge.pivot);
+    scriptAnim = { dir: SCN.charge.dir, target: SCN.charge.deg*Math.PI/180,
+                   speed: 2.6*Math.PI/180, onDone: afterCharge };
+    say('&hellip;and <b>lunges</b>.', '&nbsp;');
+}
 function afterCharge(){
-    curMove = SCN.move2;
+    curMove = SCN.fin;
     phase='pin2';
-    say('<span class="red">Red</span> lunged. And missed.', 'They&rsquo;re overextended. Pin the glowing foot.');
+    say('<span class="red">Red</span> lunges. And misses.', 'They&rsquo;re overextended. Pin the glowing foot.');
 }
 function commitMove(){
     clearTurn();
     if (phase==='swing1'){
         G.active = 1;
-        pinFoot(SCN.charge.pivot);
-        chargeAnim = { dir: SCN.charge.dir, target: SCN.charge.deg*Math.PI/180, speed: 2.2*Math.PI/180 };
+        pinFoot(SCN.windup.pivot);
+        scriptAnim = { dir: SCN.windup.dir, target: SCN.windup.deg*Math.PI/180,
+                       speed: 1.6*Math.PI/180, onDone: beginLunge };
         phase='charge';
-        say('<span class="red">Red</span> lunges&hellip;', '&nbsp;');
+        say('<span class="red">Red</span> rears back&hellip;', '&nbsp;');
     } else if (phase==='swing2'){
         if (G.pieces[1].anyFootOff()){
             phase='fall';
@@ -641,15 +660,22 @@ function onDown(e){
         if (e.pointerId!==undefined && canvas.setPointerCapture)
             try { canvas.setPointerCapture(e.pointerId); } catch(_) {}
         ptrAngle = Math.atan2(p.y-G.pivot.y, p.x-G.pivot.x);
-        // tap directly on the landing marker = play the move for me
+        // tap directly on the landing marker = play the move for me. For short moves the
+        // marker sits close to the foot itself, and grabbing the foot is how people start
+        // a drag — so only autoplay when the tap is clearly on the marker, not the foot.
         const targ = curMove.dir*curMove.deg*Math.PI/180;
         const sf = (()=>{ const sp=new Piece(0); Object.assign(sp, G.snap[0]); return sp.feet(); })();
+        const curFeet = G.pieces[0].feet();
+        let dFoot = 1e9;
+        for (let i=0;i<3;i++){ if (i===G.pinned) continue;
+            dFoot = Math.min(dFoot, Math.hypot(p.x-curFeet[i].x, p.y-curFeet[i].y)); }
         for (let i=0;i<3;i++){
             if (i===G.pinned) continue;
             const r=Math.hypot(sf[i].x-G.pivot.x, sf[i].y-G.pivot.y);
             const a0=Math.atan2(sf[i].y-G.pivot.y, sf[i].x-G.pivot.x);
             const ex=G.pivot.x + r*Math.cos(a0+targ), ey=G.pivot.y + r*Math.sin(a0+targ);
-            if (Math.hypot(p.x-ex,p.y-ey) < Math.max(8, 24/scale)){
+            const dM = Math.hypot(p.x-ex,p.y-ey);
+            if (dM < Math.max(8, 24/scale) && dM < dFoot){
                 dragging=false;
                 settleAnim={ dir:curMove.dir, target:curMove.deg*Math.PI/180, speed:2.4*Math.PI/180 };
                 return;
@@ -692,58 +718,121 @@ canvas.addEventListener('touchstart', e=>e.preventDefault(), {passive:false});
 
 /* ---------------- Authoring search (dev only): ?author=1 ---------------- */
 if (new URLSearchParams(location.search).get('author')){
+    // Chained search over the four-beat story:
+    //   shove (red, scripted) -> psych (blue, interactive) -> charge (red, scripted)
+    //   -> fin (blue, interactive: slip + throw in one swing).
+    // All sims use the UI animation step (2.2 deg/frame) so found == shipped.
+    const D = Math.PI/180;
+    const sim = (who, pivot, dir, deg) => {   // returns degrees actually swung
+        G.active=who; pinFoot(pivot);
+        let guard=0; const t=deg*D;
+        while (Math.abs(G.netRad)<t-1e-4 && !G.atLimit && guard++<600)
+            applySwing(dir*Math.min(2.2*D, t-Math.abs(G.netRad)));
+        const done = Math.abs(G.netRad)/D; clearTurn(); return done;
+    };
+    const stSave = () => G.pieces.map(p=>({x:p.x,y:p.y,rot:p.rot}));
+    const stLoad = (s) => { G.pieces.forEach((p,i)=>Object.assign(p,s[i])); clearTurn(); };
+    const hubR = (i) => Math.hypot(G.pieces[i].x, G.pieces[i].y);
+    const maxFootR = (i) => Math.max(...G.pieces[i].feet().map(radU));
+
+    // Physics notes that shaped the story (measured, not guessed):
+    // - A charge that CONNECTS stops at the opponent's body — red never gets near the rim
+    //   that way. Red can only overextend by MISSING.
+    // - From contact range red's feet geometrically max out ~59 (rim 66.7): after a
+    //   connecting shove, no swing can overextend red. Red must first step BACK — the
+    //   wind-up — and then lunge through where blue stood. The pull-back telegraphs it.
+    // So: shove connects; psych both shoves red back (the bait) and shifts blue off the
+    // lunge line; windup opens the gap; the lunge catches air and careens to the rim.
     window.__search = function(opts){
         opts = opts || {};
-        const results = [];
-        const degs1 = opts.degs1 || [14,18,22,26,30,34,38];
-        const degs2 = opts.degs2 || [20,26,32,38,44,50,56,62];
-        const chargeDegs = opts.chargeDegs || [40,50,60,70,80];
-        const sim = (who, pivot, dir, deg) => {   // returns degrees actually swung
-            G.active=who; pinFoot(pivot);
-            let guard=0; const t=deg*Math.PI/180;
-            while (Math.abs(G.netRad)<t && !G.atLimit && guard++<400) applySwing(dir*0.02);
-            const done = Math.abs(G.netRad)*180/Math.PI; clearTurn(); return done;
-        };
-        // drama precheck: keep only charges that would knock an UNMOVED blue off
-        // (the engine stops a piece from swinging itself off, so red always survives its charge)
-        const threats = [];
-        for (const cp of [0,1,2]) for (const cd of [1,-1]) for (const cdeg of chargeDegs){
+        const out = [];
+        const shoveDegs  = opts.shoveDegs  || [50,70,90,110];
+        const psychDegs  = opts.psychDegs  || [8,12,16,20];
+        const windupDegs = opts.windupDegs || [15,25,35];
+        const chargeDegs = opts.chargeDegs || [60,90,120];
+        const finDegs    = opts.finDegs    || [20,28,36,44,52];
+        const whiffTol   = opts.whiffTol   || 1.0;   // how much the lunge may graze blue (units)
+        const overMin    = opts.overMin    || 63;    // how far red must careen (rim at 66.7)
+        const C = { drive:0, psych:0, windup:0, whiff:0, over:0, cf:0, fin:0 };
+        const hubGap = () => Math.hypot(G.pieces[0].x-G.pieces[1].x, G.pieces[0].y-G.pieces[1].y);
+        for (const sp of [0,1,2]) for (const sd of [1,-1]) for (const sdeg of shoveDegs){
             resetScenario();
-            sim(1, cp, cd, cdeg);
-            if (G.pieces[0].anyFootOff()) threats.push({cp,cd,cdeg});
-        }
-        if (opts.threatOnly) return threats;
-        for (const {cp,cd,cdeg} of threats)
-        for (const p1 of [0,1,2]) for (const d1 of [1,-1]) for (const deg1 of degs1){
-            resetScenario();
-            // move 1 (blue slips the charge)
-            const m1done = sim(0, p1, d1, deg1);
-            if (m1done < deg1-2) continue;              // move got blocked: not a clean guided move
-            // red charge (scripted, same pin/dir/target as the threat)
-            sim(1, cp, cd, cdeg);
-            if (G.pieces[0].anyFootOff()) continue;      // charge must NOT kill evaded blue
-            const redMaxR = Math.max(...G.pieces[1].feet().map(radU));
-            const after = G.pieces.map(p=>({x:p.x,y:p.y,rot:p.rot}));
-            // move 2 (blue punish) — restore the post-charge state per candidate
-            for (const p2 of [0,1,2]) for (const d2 of [1,-1]) for (const deg2 of degs2){
-                G.pieces.forEach((p,i)=>{ p.x=after[i].x; p.y=after[i].y; p.rot=after[i].rot; });
-                const m2done = sim(0, p2, d2, deg2);
-                if (!G.pieces[1].anyFootOff()) continue;
-                results.push({ move1:{pivot:p1,dir:d1,deg:deg1}, charge:{pivot:cp,dir:cd,deg:cdeg},
-                               move2:{pivot:p2,dir:d2,deg:Math.round(m2done)}, redMaxR:+redMaxR.toFixed(1),
-                               m1done:+m1done.toFixed(1) });
+            const bR0 = hubR(0);
+            sim(1, sp, sd, sdeg);
+            if (G.pieces[0].anyFootOff() || G.pieces[1].anyFootOff()) continue;
+            if (hubR(0) < 46 || hubR(0)-bR0 < 4) continue;   // must drive blue near the rim
+            C.drive++;
+            const s1 = stSave();
+            for (const pp of [0,1,2]) for (const pd of [1,-1]) for (const pdeg of psychDegs){
+                stLoad(s1);
+                const rx0=G.pieces[1].x, ry0=G.pieces[1].y;
+                const pdone = sim(0, pp, pd, pdeg);
+                if (pdone < 6 || G.pieces[0].anyFootOff()) continue;
+                if (Math.hypot(G.pieces[1].x-rx0, G.pieces[1].y-ry0) < 0.3) continue; // must shove red
+                C.psych++;
+                const s2 = stSave();
+                for (const wp of [0,1,2]) for (const wd of [1,-1]) for (const wdeg of windupDegs){
+                    stLoad(s2);
+                    const gap0 = hubGap();
+                    sim(1, wp, wd, wdeg);
+                    if (G.pieces[0].anyFootOff() || G.pieces[1].anyFootOff()) continue;
+                    if (hubGap() - gap0 < 3) continue;       // wind-up must open the gap
+                    C.windup++;
+                    const s2w = stSave();
+                    for (const cp of [0,1,2]) for (const cd of [1,-1]) for (const cdeg of chargeDegs){
+                        // real: after the psych, the lunge whiffs and red careens to the rim
+                        stLoad(s2w);
+                        const bx0=G.pieces[0].x, by0=G.pieces[0].y;
+                        sim(1, cp, cd, cdeg);
+                        if (G.pieces[0].anyFootOff()) continue;
+                        if (Math.hypot(G.pieces[0].x-bx0, G.pieces[0].y-by0) > whiffTol) continue;
+                        C.whiff++;
+                        const rOver = maxFootR(1);
+                        if (rOver < overMin) continue;       // overextended to the rim
+                        C.over++;
+                        const s3 = stSave();
+                        // counterfactual: no psych, same windup + lunge kills blue where it stood
+                        stLoad(s1);
+                        sim(1, wp, wd, wdeg);
+                        sim(1, cp, cd, cdeg);
+                        if (!G.pieces[0].anyFootOff()) continue;
+                        C.cf++;
+                        // fin: one blue swing that throws red off while blue stays on
+                        for (const fp of [0,1,2]) for (const fd of [1,-1]) for (const fdeg of finDegs){
+                            stLoad(s3);
+                            const fdone = sim(0, fp, fd, fdeg);
+                            if (!G.pieces[1].anyFootOff() || G.pieces[0].anyFootOff()) continue;
+                            C.fin++;
+                            out.push({ shove:{pivot:sp,dir:sd,deg:sdeg},
+                                       psych:{pivot:pp,dir:pd,deg:pdeg},
+                                       windup:{pivot:wp,dir:wd,deg:wdeg},
+                                       charge:{pivot:cp,dir:cd,deg:cdeg},
+                                       fin:{pivot:fp,dir:fd,deg:Math.round(fdone)},
+                                       rOver:+rOver.toFixed(1) });
+                        }
+                    }
+                }
             }
         }
-        return results;
+        return opts.diag ? C : out;
     };
-    // threat check: does the charge punish an UNMOVED blue? (drama validation)
+    // replay the baked SCN's scripted beats; report the drama checks
     window.__threat = function(){
         resetScenario();
-        G.active=1; pinFoot(SCN.charge.pivot);
-        let guard=0; const t=SCN.charge.deg*Math.PI/180;
-        while (Math.abs(G.netRad)<t && !G.atLimit && guard++<400) applySwing(SCN.charge.dir*0.02);
-        return { blueOff: G.pieces[0].anyFootOff(),
-                 blueMaxR: +Math.max(...G.pieces[0].feet().map(radU)).toFixed(1) };
+        sim(1, SCN.shove.pivot, SCN.shove.dir, SCN.shove.deg);
+        const s1 = stSave();
+        const afterShove = { blueHubR:+hubR(0).toFixed(1), blueOn:!G.pieces[0].anyFootOff() };
+        // counterfactual: no psych — baked windup + lunge vs the unpsyched blue
+        sim(1, SCN.windup.pivot, SCN.windup.dir, SCN.windup.deg);
+        sim(1, SCN.charge.pivot, SCN.charge.dir, SCN.charge.deg);
+        const counterfactualKills = G.pieces[0].anyFootOff();
+        stLoad(s1);
+        sim(0, SCN.psych.pivot, SCN.psych.dir, SCN.psych.deg);
+        sim(1, SCN.windup.pivot, SCN.windup.dir, SCN.windup.deg);
+        sim(1, SCN.charge.pivot, SCN.charge.dir, SCN.charge.deg);
+        const afterCharge = { blueOn:!G.pieces[0].anyFootOff(),
+                              redOver:+maxFootR(1).toFixed(1) };
+        return { afterShove, counterfactualKills, afterCharge };
     };
 }
 
