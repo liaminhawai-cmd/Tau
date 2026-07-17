@@ -362,7 +362,13 @@
         .lbWatchRow { display:none; }
     }
     #modalBox { background:#1a1e24; border:1px solid #3a4048; border-radius:10px;
-                padding:22px 26px; text-align:center; max-width:320px; max-height:80vh; overflow-y:auto; }
+                padding:22px 26px; text-align:center; max-width:320px; max-height:80vh; overflow-y:auto;
+                position:relative; }
+    /* corner ✕: same "go back a step" action as tapping outside the box; hidden on modals
+       whose only sensible exit is an explicit button (e.g. "Opponent found → Play now") */
+    #modalX { position:absolute; top:6px; right:6px; width:32px; height:32px; padding:0; margin:0;
+              background:none; border:none; color:#69727b; font-size:17px; line-height:32px; cursor:pointer; }
+    #modalX:active { color:#c7ccd1; }
     #modalBox h2 { margin:0 0 4px; font-size:21px; }
     #modalBody { color:#9aa4ad; font-size:13px; margin:6px 0 14px; }
     #modalBody:empty { display:none; }
@@ -411,7 +417,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 144</div>
+<div id="buildTag">build 145</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -512,6 +518,7 @@
 </div>
 <div id="modalBackdrop">
     <div id="modalBox">
+        <button id="modalX" aria-label="Close">✕</button>
         <h2 id="modalTitle"></h2>
         <div id="modalBody"></div>
         <div id="modalBtns"></div>
@@ -3656,7 +3663,7 @@ async function bootSharedReplay(hash) {
             startReplay();
         } else {
             replayApplyPose(replayFrames[0]); render();   // poster frame: the opening position
-            showModal(t('Watch replay'), '', [{ label: '▶', onClick: () => { resumeAudio(); startReplay(); } }]);
+            showModal(t('Watch replay'), '', [{ label: '▶', onClick: () => { resumeAudio(); startReplay(); } }], false, { dismiss: false });
         }
     } catch (e) { console.error('shared replay failed', e); }
 }
@@ -4318,6 +4325,7 @@ async function updateRankLine() {
 // null when the panel was opened for its own sake (e.g. just renaming, or the status line link).
 let pendingOnlineAction = null;
 function openAcctPanel() {
+    acctPanelOpenedAt = Date.now();
     document.getElementById('acctPanel').style.display = 'flex';
     document.getElementById('menu').classList.add('acctOpen');   // demo tiles give way: sign-in fits unscrolled
     // In an in-app browser, Google can't work -- lead with username/password and say why up front.
@@ -4329,9 +4337,20 @@ function openAcctPanel() {
 }
 function closeAcctPanel() { document.getElementById('acctPanel').style.display = 'none';
     document.getElementById('menu').classList.remove('acctOpen'); pendingOnlineAction = null; }
+// Tap/click anywhere outside the account panel closes it, same as its Close button. The
+// timestamp guard swallows the click that opened it (whether on the "Sign in" menu line or
+// a modal button that routed here), which would otherwise land on document and close it again.
+let acctPanelOpenedAt = 0;
+document.addEventListener('click', (e) => {
+    const p = document.getElementById('acctPanel');
+    if (p.style.display !== 'flex') return;
+    if (Date.now() - acctPanelOpenedAt < 350) return;
+    if (p.contains(e.target)) return;
+    closeAcctPanel();
+});
 // ---------- Generic modal: colour choice before a vs-AI game, the game-over popup, and
 // the how-to-play sheet. `isHtml` lets the how-to-play body use a left-aligned list. ----------
-function showModal(title, body, buttons, isHtml) {
+function showModal(title, body, buttons, isHtml, opts) {
     // Bopomofo applies to the title, every button label, and a PLAIN-TEXT body (never an isHtml
     // body -- that's caller-built markup, not text, and re-scanning it character-by-character
     // would mangle its own tags). rubyize() escapes &/</> per character before adding any ruby
@@ -4355,9 +4374,28 @@ function showModal(title, body, buttons, isHtml) {
         el.addEventListener('click', () => { hideModal(); b.onClick(); });
         wrap.appendChild(el);
     }
+    // "Go back a step" affordances: corner ✕, tap outside the box, Escape. A single-button
+    // modal's lone button already IS the back/close action, so it doubles as the dismisser
+    // unless the caller says otherwise (opts.dismiss: false = none; true = just close;
+    // fn = close + fn). Multi-button modals get none unless they opt in — dismissing a
+    // decision (game over, rematch offer) has no obvious meaning.
+    const dis = opts && 'dismiss' in opts ? opts.dismiss
+              : (buttons.length === 1 ? buttons[0].onClick : false);
+    modalDismiss = dis === false ? null
+                 : () => { hideModal(); if (typeof dis === 'function') dis(); };
+    document.getElementById('modalX').style.display = modalDismiss ? '' : 'none';
     document.getElementById('modalBackdrop').style.display = 'flex';
 }
-function hideModal() { document.getElementById('modalBackdrop').style.display = 'none'; document.getElementById('modalBox').classList.remove('wide'); }
+let modalDismiss = null;
+document.getElementById('modalX').addEventListener('click', () => { if (modalDismiss) modalDismiss(); });
+document.getElementById('modalBackdrop').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget && modalDismiss) modalDismiss();
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modalDismiss
+        && document.getElementById('modalBackdrop').style.display !== 'none') modalDismiss();
+});
+function hideModal() { modalDismiss = null; document.getElementById('modalBackdrop').style.display = 'none'; document.getElementById('modalBox').classList.remove('wide'); }
 let gameOverTimer = null;
 // Shown after a short pause so the losing piece's fall animation gets to play out first,
 // rather than slamming a popup over it the instant the game ends. ~2.8s covers a typical
@@ -4487,7 +4525,7 @@ function openAiDifficultyMenu() {
         { label: t('Hard'),      onClick: () => chooseAiColour('zone') },
         { label: t('Very hard'), onClick: () => chooseAiColour('hard') },
         { label: t('Expert'),    onClick: () => chooseAiColour('master') },
-    ]);
+    ], false, { dismiss: true });
 }
 document.getElementById('modeAI').addEventListener('click', openLadderMenu);
 // Easy follows one fixed offense/defense rule, no search. Medium scores every one of its 6 possible
@@ -4500,7 +4538,7 @@ function chooseAiColour(difficulty) {
     showModal(t('Choose your colour'), t('Blue always moves first.'), [
         { label: t('Play as Blue'), onClick: () => startGame(true, 0, difficulty) },
         { label: t('Play as Red'),  onClick: () => startGame(true, 1, difficulty) },
-    ]);
+    ], false, { dismiss: true });
 }
 // ===================== AI Ladder UI (vs Computer) =====================
 // Progress is per level AND per colour: beating a rung as Blue and as Red are separate clears.
@@ -5352,7 +5390,7 @@ function chooseOnlineMode() {
         { label: t('Find an opponent'), onClick: startOnlineMatchmaking },
         { label: t('Private match'),    onClick: openPrivateMatchMenu },
         { label: t('Cancel'),           onClick: () => {} },
-    ]);
+    ], false, { dismiss: true });
 }
 // Shows the Sign in / Play as Guest choice if nobody's signed in yet, resuming with `next` once
 // an identity (real or guest) exists; runs `next` immediately if one already does. Shared by
@@ -5362,7 +5400,7 @@ function ensureOnlineIdentity(next) {
     showModal('Online 1v1', 'Play with a saved account, or jump in now as a guest? Guests still get a rating and a leaderboard spot. Signing up just keeps it after you close the tab.', [
         { label: t('Sign in'), onClick: () => { pendingOnlineAction = next; openAcctPanel(); } },
         { label: t('Play as Guest'), onClick: () => playAsGuest(next) },
-    ]);
+    ], false, { dismiss: true });
 }
 // Anonymous auth: real auth.uid(), real profiles row (the existing handle_new_user trigger
 // already falls back to a 'Player_xxxxxx' name when there's no username/full_name metadata,
@@ -7333,7 +7371,7 @@ async function startOnlineMatchmaking() {
     matchmakingActive = true; mmWaitingAI = false; mmAiOffered = false;
     if (typeof setPresenceStatus === 'function') setPresenceStatus('queue');   // advertise "waiting" at once
     let emptyPolls = 0;
-    showModal(t('Online 1v1'), t('Searching for an opponent…'), [ { label: t('Cancel'), onClick: cancelMatchmaking } ]);
+    showModal(t('Online 1v1'), t('Searching for an opponent…'), [ { label: t('Cancel'), onClick: cancelMatchmaking } ], false, { dismiss: false });
     matchmakingChannel = sb.channel('matchmaking-'+sbUser.id)
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'matches' }, payload => {
             if (matchmakingActive) enterOnlineMatch(payload.new);
@@ -7433,7 +7471,7 @@ async function enterOnlineMatch(row) {
         mmWaitingAI = false;
         showModal(t('Online 1v1'), t('Opponent found!'), [
             { label: t('Play now'), onClick: () => { finishEnterOnlineMatch(row); } },
-        ]);
+        ], false, { dismiss: false });
         return;
     }
     mmWaitingAI = false;
@@ -7865,7 +7903,7 @@ function openPrivateMatchMenu() {
         { label: t('Create a match'), onClick: createPrivateMatch },
         { label: t('Join with a code'), onClick: joinPrivateMatchPrompt },
         { label: 'Cancel', onClick: () => {} },
-    ]);
+    ], false, { dismiss: true });
 }
 
 let privateWaitChannel = null;
