@@ -1,0 +1,838 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Tau · Try the redirect</title>
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<style>
+  /* Slate, single committed look — this page renders inside feeds/embeds where a theme
+     toggle is noise. Palette = the game's SLATE_SKIN exactly. */
+  :root { --bg:#0c0e11; --ink:#eef2f5; --ink2:#9aa4ad; --ink3:#69727b; --blue:#5487c4; --red:#d05a48; --gold:#ffd23f; }
+  * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; }
+  body {
+    background:var(--bg); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    overflow:hidden; touch-action:none; user-select:none; -webkit-user-select:none;
+  }
+  #stage { width:min(94vmin, 440px); display:flex; flex-direction:column; align-items:center; gap:10px; }
+  #coach {
+    min-height:44px; text-align:center; font-size:16.5px; line-height:1.35; padding:0 8px;
+    display:flex; flex-direction:column; justify-content:flex-end; letter-spacing:.01em;
+  }
+  #coach .sub { font-size:13px; color:var(--ink2); margin-top:3px; }
+  #coach .blue { color:var(--blue); font-weight:600; } #coach .red { color:var(--red); font-weight:600; }
+  #wrap { position:relative; width:100%; aspect-ratio:1; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  #tag { font-size:11.5px; letter-spacing:.22em; text-transform:uppercase; color:var(--ink3); }
+
+  #cta {
+    position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; text-align:center; background:radial-gradient(ellipse at center, rgba(12,14,17,.55) 40%, rgba(12,14,17,.92) 100%);
+    border-radius:12px; opacity:0; transition:opacity .6s ease;
+  }
+  #cta.show { display:flex; } #cta.in { opacity:1; }
+  #cta h2 { font-size:30px; font-weight:600; letter-spacing:-.01em; }
+  #cta p { color:var(--ink2); font-size:15px; max-width:270px; line-height:1.45; }
+  #cta a.play {
+    display:inline-block; background:var(--ink); color:var(--bg); text-decoration:none;
+    font-size:16px; font-weight:600; padding:13px 30px; border-radius:12px; margin-top:6px;
+  }
+  #cta a.play:active { transform:scale(.98); }
+  #cta .again { background:none; border:none; color:var(--ink3); font-size:13px; cursor:pointer; text-decoration:underline; font-family:inherit; }
+  #cta .free { font-size:12px; color:var(--ink3); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="coach"><span id="line">&nbsp;</span><span class="sub" id="subline">&nbsp;</span></div>
+  <div id="wrap">
+    <canvas id="c"></canvas>
+    <div id="cta">
+      <h2>Redirected.</h2>
+      <p>Their push, your angles. Use the opponent&rsquo;s commitment against them. That&rsquo;s Tau.</p>
+      <a class="play" href="https://tau-game.com/?utm_source=playable&utm_medium=referral&utm_campaign=try" target="_top">Play the full game</a>
+      <span class="free">Free, in your browser. No download.</span>
+      <button class="again" id="again">watch that again</button>
+    </div>
+  </div>
+  <div id="tag">TAU &middot; a game of balance</div>
+</div>
+
+<script>
+'use strict';
+/* ============================================================================
+   ENGINE — copied VERBATIM from the shipped game (index.html). Same constants,
+   same Piece, same crossing rules, same 3D-arc contact solver. This demo is the
+   real physics, not an imitation; only rendering, input-guidance and the
+   scripted scenario around it are new. Keep in sync if the game's CFG changes.
+   ========================================================================== */
+const CFG = {
+    edgeU: 66.667, rings: [40, 53.3],
+    sideArcs: [
+        { cx: -66.667, cy: 0, r: 40, a0: -72.542, a1: 72.542 },
+        { cx:  66.667, cy: 0, r: 40, a0: 107.458, a1: 252.542 }
+    ],
+    edgeEps: 0.5, lineWidthFrac: 0.0079, padRadiusFrac: 0.0082,
+    footR: 23.095, startX: 30.597, maxCrossingsPerTurn: 1,
+    crossEps: 0.4, holdEps: 0.45, touchEps: 0.8, lineStick: 0.25, cornerEps: 1.1,
+    substepDeg: 0.4, minMoveDeg: 2, lockDeg: 2,
+    legRadius: 2.0, hubHeight: 23.095, legSegs: 12,
+    inertiaK: 0.7, pushIters: 10, pushRelax: 1.0, maxPenPerIter: 0.8, minHorizFrac: 0.35
+};
+CFG.padRadius = CFG.edgeU * CFG.padRadiusFrac;
+const norm  = a => { while (a > Math.PI) a -= 2*Math.PI; while (a < -Math.PI) a += 2*Math.PI; return a; };
+const radU  = p => Math.hypot(p.x, p.y);
+
+class Piece {
+    constructor(id) { this.id=id; this.x=0; this.y=0; this.rot=0; }
+    feet() {
+        const r = CFG.footR, out = [];
+        for (let i=0;i<3;i++){ const a=this.rot+i*(2*Math.PI/3);
+            out.push({ x:this.x+Math.cos(a)*r, y:this.y+Math.sin(a)*r }); }
+        return out;
+    }
+    rotateAround(px, py, dA) {
+        const c=Math.cos(dA), s=Math.sin(dA), rx=this.x-px, ry=this.y-py;
+        this.x = px + rx*c - ry*s; this.y = py + rx*s + ry*c; this.rot += dA;
+    }
+    anyFootOff() { return this.feet().some(f => radU(f) > CFG.edgeU + CFG.edgeEps); }
+    legs() { const h={x:this.x,y:this.y}; return this.feet().map(f => [h, f]); }
+    legArcs() {
+        const R=CFG.footR, H=CFG.hubHeight, N=CFG.legSegs, out=[];
+        for (let i=0;i<3;i++){
+            const a=this.rot+i*(2*Math.PI/3), ca=Math.cos(a), sa=Math.sin(a), pts=[];
+            for (let k=0;k<=N;k++){
+                const ph=(k/N)*(Math.PI/2), s=Math.sin(ph)*R;
+                pts.push({ x:this.x+ca*s, y:this.y+sa*s, h:Math.cos(ph)*H });
+            }
+            out.push(pts);
+        }
+        return out;
+    }
+}
+
+function angInSpan(deg, a0, a1) {
+    const w = x => { while(x<0)x+=360; while(x>=360)x-=360; return x; };
+    deg=w(deg); let lo=w(a0), hi=w(a1);
+    return lo<=hi ? (deg>=lo&&deg<=hi) : (deg>=lo||deg<=hi);
+}
+function nearLineIds(f, eps) {
+    if (eps===undefined) eps=CFG.crossEps;
+    const r=radU(f), ids=[];
+    CFG.rings.forEach((R,k)=>{ if (Math.abs(r-R)<eps) ids.push('r'+k); });
+    CFG.sideArcs.forEach((a,k)=>{
+        const d=Math.hypot(f.x-a.cx,f.y-a.cy);
+        if (Math.abs(d-a.r)<eps && angInSpan(Math.atan2(f.y-a.cy,f.x-a.cx)*180/Math.PI,a.a0,a.a1)) ids.push('a'+k);
+    });
+    return ids;
+}
+function lineSideOf(f, id) {
+    if (id[0]==='r') return Math.sign(radU(f) - CFG.rings[+id[1]]) || 1;
+    const a = CFG.sideArcs[+id[1]];
+    return Math.sign(Math.hypot(f.x-a.cx, f.y-a.cy) - a.r) || 1;
+}
+function lineDistOf(f, id) {
+    if (id[0]==='r') return Math.abs(radU(f) - CFG.rings[+id[1]]);
+    const a = CFG.sideArcs[+id[1]];
+    return Math.abs(Math.hypot(f.x-a.cx, f.y-a.cy) - a.r);
+}
+const LINE_INTERSECTIONS = (() => {
+    const circles = [
+        ...CFG.rings.map((R,k) => ({ id:'r'+k, cx:0, cy:0, r:R })),
+        ...CFG.sideArcs.map((a,k) => ({ id:'a'+k, cx:a.cx, cy:a.cy, r:a.r, a0:a.a0, a1:a.a1 })),
+    ];
+    const pts = [];
+    for (let i=0;i<circles.length;i++) for (let j=i+1;j<circles.length;j++){
+        const A=circles[i], B=circles[j];
+        const dx=B.cx-A.cx, dy=B.cy-A.cy, d=Math.hypot(dx,dy);
+        if (d<1e-9 || d>A.r+B.r || d<Math.abs(A.r-B.r)) continue;
+        const x=(d*d + A.r*A.r - B.r*B.r)/(2*d), y2=A.r*A.r - x*x;
+        if (y2 < 0) continue;
+        const y=Math.sqrt(y2), ux=dx/d, uy=dy/d;
+        for (const s of [1,-1]){
+            const px=A.cx + x*ux - s*y*uy, py=A.cy + x*uy + s*y*ux;
+            const inSpan = c => c.a0===undefined || angInSpan(Math.atan2(py-c.cy,px-c.cx)*180/Math.PI, c.a0, c.a1);
+            if (inSpan(A) && inSpan(B)) pts.push({ x:px, y:py, lines:[A.id, B.id] });
+        }
+    }
+    return pts;
+})();
+function crossingSubstep(before, after, st) {
+    if (!st.contact) {
+        st.contact = before.map(f => nearLineIds(f, CFG.touchEps));
+        st.earned = before.map(f => nearLineIds(f, CFG.crossEps));
+        st.startSide = before.map((f,i) => { const m={}; for (const id of st.contact[i]) m[id]=lineSideOf(f,id); return m; });
+        st.entrySide = [{},{},{}];
+        st.pendingMerge = [{},{},{}];
+    }
+    const stickEps = CFG.touchEps + CFG.lineStick;
+    const next = [], nextEarned = []; let opened = 0;
+    const newSides = [{},{},{}];
+    const newPending = [{},{},{}], resolvedPending = [[],[],[]];
+    const justCrossed = [];
+    for (let i=0;i<3;i++){
+        const hadContact = st.contact[i].length > 0;
+        const near = nearLineIds(after[i], stickEps);
+        const kept = st.contact[i].filter(id => near.includes(id));
+        const earned = (st.earned && st.earned[i]) ? st.earned[i].slice() : st.contact[i].slice();
+        for (const id of st.contact[i]) if (!near.includes(id) && !earned.includes(id)) {
+            if (st.startSide && st.startSide[i] && st.startSide[i][id] !== undefined &&
+                lineSideOf(after[i], id) !== st.startSide[i][id]) {
+                opened++;
+                justCrossed.push(id);
+            }
+        }
+        for (const id of kept) {
+            const sponsor = st.pendingMerge[i][id];
+            if (sponsor === undefined) continue;
+            const flipped = st.entrySide[i][id] !== undefined && lineSideOf(after[i], id) !== st.entrySide[i][id];
+            if (flipped) {
+                if (lineDistOf(after[i], sponsor) > CFG.holdEps) opened++;
+                resolvedPending[i].push(id);
+            } else if (lineDistOf(after[i], id) <= CFG.crossEps && lineDistOf(after[i], sponsor) > CFG.holdEps) {
+                opened++;
+                resolvedPending[i].push(id);
+            }
+        }
+        let entered = false;
+        for (const id of nearLineIds(after[i], CFG.touchEps))
+            if (!kept.includes(id)) {
+                let sponsorId;
+                const atCorner = hadContact && kept.some(h => earned.includes(h) && LINE_INTERSECTIONS.some(P =>
+                    P.lines.includes(id) && P.lines.includes(h) &&
+                    Math.hypot(after[i].x-P.x, after[i].y-P.y) <= CFG.cornerEps) && (sponsorId = h, true));
+                kept.push(id);
+                if (!earned.includes(id)) earned.push(id);
+                newSides[i][id] = lineSideOf(after[i], id);
+                if (atCorner) newPending[i][id] = sponsorId;
+                justCrossed.push(id);
+                if (!atCorner) entered = true;
+            }
+        if (entered) opened++;
+        next.push(kept);
+        nextEarned.push(earned.filter(id => kept.includes(id)));
+    }
+    if (opened) {
+        if (st.crossings + opened > CFG.maxCrossingsPerTurn) return true;
+        st.crossings += opened;
+    }
+    st.contact = next;
+    st.earned = nextEarned;
+    for (let i=0;i<3;i++) {
+        for (const id in newSides[i]) st.entrySide[i][id] = newSides[i][id];
+        for (const id in newPending[i]) st.pendingMerge[i][id] = newPending[i][id];
+        for (const id of resolvedPending[i]) delete st.pendingMerge[i][id];
+        for (const id in st.pendingMerge[i]) if (!next[i].includes(id)) delete st.pendingMerge[i][id];
+    }
+    if (justCrossed.length) st.justCrossed = (st.justCrossed || []).concat(justCrossed);
+    return false;
+}
+
+function segClosest(a, b, c, d) {
+    const d1={x:b.x-a.x,y:b.y-a.y}, d2={x:d.x-c.x,y:d.y-c.y}, r={x:a.x-c.x,y:a.y-c.y};
+    const A=d1.x*d1.x+d1.y*d1.y, E=d2.x*d2.x+d2.y*d2.y, F=d2.x*r.x+d2.y*r.y;
+    const C=d1.x*r.x+d1.y*r.y, B=d1.x*d2.x+d1.y*d2.y, denom=A*E-B*B;
+    let s = denom!==0 ? Math.min(1,Math.max(0,(B*F-C*E)/denom)) : 0;
+    let t = (B*s+F)/E;
+    if (t<0){ t=0; s=Math.min(1,Math.max(0,-C/A)); }
+    else if (t>1){ t=1; s=Math.min(1,Math.max(0,(B-C)/A)); }
+    const pa={x:a.x+d1.x*s,y:a.y+d1.y*s}, pb={x:c.x+d2.x*t,y:c.y+d2.y*t};
+    return { pa, pb, dist:Math.hypot(pa.x-pb.x,pa.y-pb.y) };
+}
+function segClosest3(p1,q1,p2,q2){
+    const d1={x:q1.x-p1.x,y:q1.y-p1.y,h:q1.h-p1.h};
+    const d2={x:q2.x-p2.x,y:q2.y-p2.y,h:q2.h-p2.h};
+    const r ={x:p1.x-p2.x,y:p1.y-p2.y,h:p1.h-p2.h};
+    const a=d1.x*d1.x+d1.y*d1.y+d1.h*d1.h, e=d2.x*d2.x+d2.y*d2.y+d2.h*d2.h;
+    const f=d2.x*r.x+d2.y*r.y+d2.h*r.h,   c=d1.x*r.x+d1.y*r.y+d1.h*r.h;
+    const b=d1.x*d2.x+d1.y*d2.y+d1.h*d2.h, denom=a*e-b*b;
+    let s = denom>1e-12 ? Math.min(1,Math.max(0,(b*f-c*e)/denom)) : 0;
+    let t = e>1e-12 ? (b*s+f)/e : 0;
+    if (t<0){ t=0; s=Math.min(1,Math.max(0, a>1e-12 ? -c/a : 0)); }
+    else if (t>1){ t=1; s=Math.min(1,Math.max(0, a>1e-12 ? (b-c)/a : 0)); }
+    const pa={x:p1.x+d1.x*s, y:p1.y+d1.y*s, h:p1.h+d1.h*s};
+    const pb={x:p2.x+d2.x*t, y:p2.y+d2.y*t, h:p2.h+d2.h*t};
+    const dx=pb.x-pa.x, dy=pb.y-pa.y, dh=pb.h-pa.h;
+    return { pa, pb, dist:Math.sqrt(dx*dx+dy*dy+dh*dh) };
+}
+function arcClosest(A, B){
+    let best=null;
+    for (let i=0;i<A.length-1;i++) for (let j=0;j<B.length-1;j++){
+        const c=segClosest3(A[i],A[i+1],B[j],B[j+1]);
+        if (!best || c.dist<best.dist) best=c;
+    }
+    return best;
+}
+function pointArcClosest(p, A){
+    let best=null;
+    for (let i=0;i<A.length-1;i++){
+        const a=A[i], b=A[i+1];
+        const dx=b.x-a.x, dy=b.y-a.y, dh=b.h-a.h;
+        const len2=dx*dx+dy*dy+dh*dh || 1e-12;
+        let t=((p.x-a.x)*dx+(p.y-a.y)*dy+(p.h-a.h)*dh)/len2;
+        t=Math.max(0,Math.min(1,t));
+        const pt={x:a.x+dx*t, y:a.y+dy*t, h:a.h+dh*t};
+        const d=Math.hypot(pt.x-p.x, pt.y-p.y, pt.h-p.h);
+        if (!best || d<best.dist) best={pt, dist:d};
+    }
+    return best;
+}
+function resolvePush(active, opp) {
+    const minD = CFG.legRadius*2, hubR = CFG.legRadius*1.9, H = CFG.hubHeight;
+    const m = 1, I = CFG.inertiaK * CFG.footR * CFG.footR;
+    const opp0 = { x: opp.x, y: opp.y };
+    const aArcs = active.legArcs(), aChords = active.legs();
+    const aHub = { x:active.x, y:active.y, h:H };
+    const apply = (px, py, nx, ny, sep) => {
+        sep = Math.min(sep, CFG.maxPenPerIter);
+        const rx = px-opp.x, ry = py-opp.y;
+        const rn = rx*ny - ry*nx;
+        const wEff = 1/m + rn*rn/I;
+        const lambda = CFG.pushRelax * sep / wEff;
+        opp.x   += (lambda/m)*nx;
+        opp.y   += (lambda/m)*ny;
+        opp.rot += (lambda*rn)/I;
+    };
+    const push3d = (pa, pb, dist, gap) => {
+        const nx3=(pb.x-pa.x)/dist, ny3=(pb.y-pa.y)/dist;
+        const hf = Math.hypot(nx3, ny3);
+        if (hf < 1e-4) return;
+        apply(pb.x, pb.y, nx3/hf, ny3/hf, gap/Math.max(hf, CFG.minHorizFrac));
+    };
+    for (let iter=0; iter<CFG.pushIters; iter++) {
+        const oArcs = opp.legArcs(), oChords = opp.legs();
+        const oHub = { x:opp.x, y:opp.y, h:H };
+        let any = false;
+        for (let i=0;i<3;i++) for (let j=0;j<3;j++) {
+            if (segClosest(aChords[i][0],aChords[i][1],oChords[j][0],oChords[j][1]).dist >= minD) continue;
+            const c = arcClosest(aArcs[i], oArcs[j]);
+            if (c.dist >= minD) continue;
+            any = true;
+            if (c.dist < 0.3) {
+                const A=aChords[i], ax=A[1].x-A[0].x, ay=A[1].y-A[0].y, L=Math.hypot(ax,ay)||1;
+                let nx=-ay/L, ny=ax/L;
+                if (nx*(opp0.x-c.pa.x)+ny*(opp0.y-c.pa.y) < 0){ nx=-nx; ny=-ny; }
+                apply(c.pb.x, c.pb.y, nx, ny, minD);
+            } else {
+                push3d(c.pa, c.pb, c.dist, minD - c.dist);
+            }
+        }
+        const hubLegD = hubR + CFG.legRadius;
+        for (let j=0;j<3;j++){
+            const c = pointArcClosest(aHub, oArcs[j]);
+            if (c.dist < hubLegD && c.dist > 1e-6){ any=true; push3d(aHub, c.pt, c.dist, hubLegD - c.dist); }
+        }
+        for (let i=0;i<3;i++){
+            const c = pointArcClosest(oHub, aArcs[i]);
+            if (c.dist < hubLegD && c.dist > 1e-6){ any=true; push3d(c.pt, oHub, c.dist, hubLegD - c.dist); }
+        }
+        {
+            const dx=opp.x-active.x, dy=opp.y-active.y, d=Math.hypot(dx,dy);
+            if (d < 2*hubR && d > 1e-6){ any=true; apply(opp.x, opp.y, dx/d, dy/d, 2*hubR - d); }
+        }
+        if (!any) break;
+    }
+}
+
+let G;
+function takeSnap(){ return G.pieces.map(p=>({x:p.x, y:p.y, rot:p.rot})); }
+function restoreSnap(){
+    if (!G.snap) return;
+    G.pieces.forEach((p,i)=>{ p.x=G.snap[i].x; p.y=G.snap[i].y; p.rot=G.snap[i].rot; });
+    G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null; G.justCrossed=[];
+}
+function pinFoot(idx) {
+    const feet = G.pieces[G.active].feet();
+    G.pinned = idx; G.pivot = { x:feet[idx].x, y:feet[idx].y };
+    G.turnDir = 0; G.crossings = 0; G.atLimit = false; G.netRad = 0; G.limitReason = null;
+    G.snap = takeSnap();
+    G.contact = null;
+    G.justCrossed = [];
+}
+function applySwing(dA) {
+    if (dA===0 || !G.pivot) return;
+    if (G.turnDir!==0 && Math.sign(dA)!==G.turnDir) return;
+    const active=G.pieces[G.active], opp=G.pieces[1-G.active];
+    const stepMax=CFG.substepDeg*Math.PI/180;
+    const steps=Math.max(1, Math.ceil(Math.abs(dA)/stepMax));
+    const step=dA/steps;
+    for (let s=0;s<steps;s++){
+        const before=active.feet();
+        active.rotateAround(G.pivot.x, G.pivot.y, step);
+        if (active.anyFootOff()){
+            active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true; G.limitReason='selfoff'; break; }
+        if (crossingSubstep(before, active.feet(), G)){
+            active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true; G.limitReason='cross'; break; }
+        G.netRad+=step;
+        resolvePush(active, opp);
+    }
+    if (G.turnDir===0 && Math.abs(G.netRad) >= CFG.lockDeg*Math.PI/180)
+        G.turnDir = Math.sign(G.netRad);
+}
+function clearTurn(){ G.pinned=null; G.pivot=null; G.turnDir=0;
+    G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null; }
+/* ========================== end verbatim engine ========================== */
+
+/* ---------------- Scenario (found by search with the real engine; see ?author=1) ------------- */
+const SCN = {
+    start: { blue: { x: 29.9, y: 6.4, rot: 1.0 },  // mid-board, red engaged inside
+             red:  { x: 3.5,  y: 0.8, rot: 1.2 } },
+    shove:  { pivot: 0, dir: 1, deg: 70 },          // beat 1 (scripted): red drives you to the rim
+    psych:  { pivot: 0, dir: 1, deg: 12, tol: 5 },  // beat 2 (you): shove back — the bait
+    windup: { pivot: 0, dir: -1, deg: 25 },         // beat 3a (scripted): red rears back for the blow
+    charge: { pivot: 0, dir: 1, deg: 90 },          // beat 3b (scripted): the lunge — whiffs, overextends
+    fin:    { pivot: 0, dir: 1, deg: 30, tol: 8 }   // beat 4 (you): slip out the side, throw red off
+};
+try {
+    const qs = new URLSearchParams(location.search).get('scn');
+    if (qs) Object.assign(SCN, JSON.parse(atob(qs)));   // authoring override
+} catch(e) {}
+
+function resetScenario(){
+    const blue = new Piece(0), red = new Piece(1);
+    Object.assign(blue, SCN.start.blue); Object.assign(red, SCN.start.red);
+    G = { pieces:[blue,red], active:0, pinned:null, pivot:null, turnDir:0,
+          crossings:0, atLimit:false, netRad:0, over:false, winner:null,
+          snap:null, contact:null, justCrossed:[] };
+}
+
+/* ---------------- Rendering (Slate skin, matches the shipped game) ---------------- */
+const SKIN = { v4:'#5a636c', v3:'#4b535b', v2:'#3c434a', v1:'#2f353b',
+               lines:'#12161a', pb:'#5487c4', pr:'#d05a48', bg:'#0c0e11' };
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let cx=0, cy=0, scale=1;
+function syncCanvas(){
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth || 300;
+    const bw = Math.round(w * dpr);
+    if (canvas.width !== bw || canvas.height !== bw){ canvas.width = bw; canvas.height = bw; }
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    cx = w/2; cy = w/2;
+    scale = (w * 0.95) / (2*CFG.edgeU);
+}
+const bx2px = (mx,my) => ({ x: cx + mx*scale, y: cy + my*scale });
+const px2b  = (px,py) => ({ x: (px-cx)/scale, y: (py-cy)/scale });
+
+function fillBoardDisc(){
+    const O = bx2px(0,0);
+    const disc = r => { ctx.beginPath(); ctx.arc(O.x, O.y, r*scale, 0, 7); };
+    ctx.fillStyle=SKIN.v2; disc(CFG.edgeU);    ctx.fill();
+    ctx.fillStyle=SKIN.v3; disc(CFG.rings[1]); ctx.fill();
+    ctx.fillStyle=SKIN.v4; disc(CFG.rings[0]); ctx.fill();
+    for (const a of CFG.sideArcs){
+        ctx.save();
+        disc(CFG.edgeU); ctx.clip();
+        ctx.beginPath(); ctx.arc(O.x + a.cx*scale, O.y + a.cy*scale, a.r*scale, 0, 7); ctx.clip();
+        ctx.fillStyle=SKIN.v1; disc(CFG.edgeU);    ctx.fill();
+        ctx.fillStyle=SKIN.v2; disc(CFG.rings[1]); ctx.fill();
+        ctx.fillStyle=SKIN.v3; disc(CFG.rings[0]); ctx.fill();
+        ctx.restore();
+    }
+}
+function strokeArcU(cxu,cyu,r,a0,a1){
+    const p=bx2px(cxu,cyu);
+    ctx.beginPath(); ctx.arc(p.x,p.y,r*scale,a0*Math.PI/180,a1*Math.PI/180); ctx.stroke();
+}
+function drawPiece(p, opts){
+    opts = opts || {};
+    const feet = p.feet().map(f => bx2px(f.x,f.y));
+    const c = bx2px(p.x,p.y);
+    const col = p.id===0 ? SKIN.pb : SKIN.pr;
+    ctx.globalAlpha = opts.alpha!==undefined ? opts.alpha : 1;
+    ctx.strokeStyle=col; ctx.lineWidth=3; ctx.lineCap='round';
+    for (const f of feet){ ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.lineTo(f.x,f.y); ctx.stroke(); }
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(c.x,c.y,4,0,2*Math.PI); ctx.fill();
+    const fr = Math.max(3.5, CFG.padRadius*scale);
+    for (let i=0;i<3;i++){ const f=feet[i];
+        const isPin = opts.pin===i;
+        ctx.beginPath(); ctx.arc(f.x,f.y, isPin? fr+1.5 : fr, 0, 2*Math.PI);
+        ctx.fillStyle = isPin ? '#ffd23f' : col; ctx.fill();
+        ctx.lineWidth=1; ctx.strokeStyle='rgba(12,14,17,0.6)'; ctx.stroke(); }
+    ctx.globalAlpha = 1;
+}
+
+/* ---------------- Guided-flow state machine ---------------- */
+const lineEl=document.getElementById('line'), subEl=document.getElementById('subline');
+const ctaEl=document.getElementById('cta');
+let phase='intro';   // intro -> shove -> pin1 -> swing1(psych) -> charge -> pin2 -> swing2(fin) -> fall -> done
+let pulse=0, redFall=null, scriptAnim=null, settleAnim=null;
+let curMove=null;             // {pivot,dir,deg,tol} for the active guided move
+let ptrAngle=null, dragging=false;
+
+function say(main, sub){ lineEl.innerHTML=main; subEl.innerHTML=sub||'&nbsp;'; }
+
+function targetGhost(){
+    // ghost of where the swing should land: the moving feet's arc from current to target angle
+    if (!curMove || G.pinned===null) return null;
+    const remaining = curMove.dir*(curMove.deg*Math.PI/180) - G.netRad;
+    return remaining;
+}
+
+function draw(ts){
+    syncCanvas();
+    const w = canvas.clientWidth||300;
+    ctx.fillStyle=SKIN.bg; ctx.fillRect(0,0,w,w);
+    fillBoardDisc();
+    ctx.lineWidth=Math.max(1, CFG.edgeU*CFG.lineWidthFrac*scale); ctx.strokeStyle=SKIN.lines;
+    const O=bx2px(0,0);
+    for (const r of CFG.rings){ ctx.beginPath(); ctx.arc(O.x,O.y,r*scale,0,2*Math.PI); ctx.stroke(); }
+    for (const a of CFG.sideArcs) strokeArcU(a.cx,a.cy,a.r,a.a0,a.a1);
+
+    pulse = (Math.sin(ts/380)+1)/2;
+
+    // ghost target arc for the active guided move
+    if ((phase==='swing1'||phase==='swing2') && G.pinned!==null && curMove){
+        const targ = curMove.dir*curMove.deg*Math.PI/180;
+        const pv = G.pivot;
+        const feet0 = G.snap ? G.snap : takeSnap();
+        // arc traced by each moving foot from its START angle to target, faint; end dot brighter
+        ctx.setLineDash([4,6]); ctx.lineWidth=2; ctx.strokeStyle='rgba(255,210,63,0.5)';
+        const startPiece = new Piece(0); Object.assign(startPiece, G.snap[0]);
+        const sf = startPiece.feet();
+        for (let i=0;i<3;i++){
+            if (i===G.pinned) continue;
+            const r = Math.hypot(sf[i].x-pv.x, sf[i].y-pv.y);
+            const a0 = Math.atan2(sf[i].y-pv.y, sf[i].x-pv.x);
+            const p = bx2px(pv.x, pv.y);
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, r*scale, a0, a0+targ, curMove.dir<0);
+            ctx.stroke();
+            // landing dot
+            const ex = pv.x + r*Math.cos(a0+targ), ey = pv.y + r*Math.sin(a0+targ);
+            const ep = bx2px(ex,ey);
+            ctx.setLineDash([]);
+            ctx.beginPath(); ctx.arc(ep.x,ep.y, 5+2*pulse, 0, 2*Math.PI);
+            ctx.fillStyle=`rgba(255,210,63,${0.45+0.3*pulse})`; ctx.fill();
+            ctx.setLineDash([4,6]);
+        }
+        ctx.setLineDash([]);
+    }
+
+    // pieces (red may be mid-fall)
+    if (redFall){
+        const t = Math.min(1, (ts-redFall.t0)/900);
+        const e = t*t;
+        const p = G.pieces[1];
+        p.x = redFall.x0 + redFall.dx*e*26;
+        p.y = redFall.y0 + redFall.dy*e*26;
+        p.rot = redFall.r0 + e*0.9;
+        drawPiece(G.pieces[0]);
+        drawPiece(p, { alpha: 1-e*0.85 });
+        if (t>=1 && phase==='fall'){ phase='done'; showCTA(); }
+    } else {
+        drawPiece(G.pieces[1]);
+        drawPiece(G.pieces[0], { pin: G.active===0 ? G.pinned : null });
+    }
+
+    // pulsing highlight on the foot to tap (pin phases)
+    if (phase==='pin1' || phase==='pin2'){
+        const f = G.pieces[0].feet()[curMove.pivot];
+        const p = bx2px(f.x,f.y);
+        ctx.beginPath(); ctx.arc(p.x,p.y, 14+6*pulse, 0, 2*Math.PI);
+        ctx.strokeStyle=`rgba(255,210,63,${0.9-0.4*pulse})`; ctx.lineWidth=2.5; ctx.stroke();
+    }
+
+    // scripted red move animation (shove and charge beats)
+    if (scriptAnim){
+        const step = scriptAnim.speed;
+        const remaining = scriptAnim.target - Math.abs(G.netRad);
+        if (remaining > 1e-4 && !G.atLimit){
+            applySwing(scriptAnim.dir * Math.min(step, remaining));
+        } else {
+            const done = scriptAnim.onDone; scriptAnim = null;
+            clearTurn(); G.active = 0;
+            done();
+        }
+    }
+    // auto-settle animation for tap-to-play / assisted finish
+    if (settleAnim){
+        const remaining = settleAnim.target - Math.abs(G.netRad);
+        if (remaining > 1e-4 && !G.atLimit){
+            applySwing(settleAnim.dir * Math.min(settleAnim.speed, remaining));
+        } else {
+            settleAnim = null;
+            commitMove();
+        }
+    }
+    requestAnimationFrame(draw);
+}
+
+function beginIntro(){
+    resetScenario();
+    phase='intro'; curMove=SCN.psych; redFall=null; scriptAnim=null; settleAnim=null;
+    say('<span class="red">Red</span> has the momentum.', '&nbsp;');
+    setTimeout(()=>{ if (phase==='intro'){
+        phase='shove';
+        G.active=1; pinFoot(SCN.shove.pivot);
+        scriptAnim = { dir: SCN.shove.dir, target: SCN.shove.deg*Math.PI/180,
+                       speed: 1.8*Math.PI/180, onDone: afterShove };
+        say('<span class="red">Red</span> shoves you back&hellip;', 'You&rsquo;re nearly on the rim.');
+    } }, 1200);
+}
+function afterShove(){
+    phase='pin1'; G.active=0;
+    say('Push <b>back</b>. Pin the <b style="color:var(--gold)">glowing foot</b>.', 'Tap it. That foot stays planted.');
+}
+function afterPin(){
+    if (phase==='pin1'){ phase='swing1';
+        say('Shove into <span class="red">them</span>.', 'Drag to the marker. Make them answer.');
+    } else { phase='swing2';
+        say('Slip out the side &mdash; <b>and throw</b>.', 'Drag to the marker. Use their momentum.');
+    }
+}
+function beginLunge(){
+    G.active = 1;
+    pinFoot(SCN.charge.pivot);
+    scriptAnim = { dir: SCN.charge.dir, target: SCN.charge.deg*Math.PI/180,
+                   speed: 2.6*Math.PI/180, onDone: afterCharge };
+    say('&hellip;and <b>lunges</b>.', '&nbsp;');
+}
+function afterCharge(){
+    curMove = SCN.fin;
+    phase='pin2';
+    say('<span class="red">Red</span> answers. Hard.', 'You&rsquo;re on the very edge &mdash; and they&rsquo;re overextended. Pin the glowing foot.');
+}
+function commitMove(){
+    clearTurn();
+    if (phase==='swing1'){
+        G.active = 1;
+        pinFoot(SCN.windup.pivot);
+        scriptAnim = { dir: SCN.windup.dir, target: SCN.windup.deg*Math.PI/180,
+                       speed: 1.6*Math.PI/180, onDone: beginLunge };
+        phase='charge';
+        say('<span class="red">Red</span> rears back&hellip;', '&nbsp;');
+    } else if (phase==='swing2'){
+        if (G.pieces[1].anyFootOff()){
+            phase='fall';
+            const p=G.pieces[1];
+            // fall direction: from board centre through the offending foot
+            const off = p.feet().reduce((a,b)=> radU(a)>radU(b)?a:b);
+            const d = radU(off)||1;
+            redFall = { t0: performance.now(), x0:p.x, y0:p.y, r0:p.rot, dx:off.x/d, dy:off.y/d };
+            say('<b>Over the edge.</b>', 'Their own momentum did the work.');
+        } else {
+            // shouldn't happen with the authored target, but stay honest: retry
+            restoreSnap();
+            say('Almost — swing <b>all the way</b> to the marker.', 'Drag again, through their leg.');
+            phase='swing2'; pinFoot(curMove.pivot); afterPinNoAdvance();
+        }
+    }
+}
+function afterPinNoAdvance(){}
+
+function showCTA(){
+    ctaEl.classList.add('show');
+    requestAnimationFrame(()=>ctaEl.classList.add('in'));
+}
+document.getElementById('again').addEventListener('click', (e)=>{
+    e.preventDefault();
+    ctaEl.classList.remove('in'); ctaEl.classList.remove('show');
+    beginIntro();
+});
+
+/* ---------------- Input: tap the glowing foot, drag to swing (assisted) ---------------- */
+function pointerBoard(e){
+    const r=canvas.getBoundingClientRect();
+    const t=(e.touches&&e.touches[0]) ? e.touches[0] : e;
+    return px2b(t.clientX-r.left, t.clientY-r.top);
+}
+function onDown(e){
+    e.preventDefault();
+    const p = pointerBoard(e);
+    if (phase==='pin1' || phase==='pin2'){
+        const f = G.pieces[0].feet()[curMove.pivot];
+        if (Math.hypot(p.x-f.x, p.y-f.y) < Math.max(10, 30/scale)){
+            G.active=0; pinFoot(curMove.pivot);
+            afterPin();
+        } else {
+            // gentle nudge: flash the sub line
+            subEl.innerHTML = 'The <b style="color:var(--gold)">glowing</b> one.';
+        }
+        return;
+    }
+    if (phase==='swing1' || phase==='swing2'){
+        dragging=true;
+        if (e.pointerId!==undefined && canvas.setPointerCapture)
+            try { canvas.setPointerCapture(e.pointerId); } catch(_) {}
+        ptrAngle = Math.atan2(p.y-G.pivot.y, p.x-G.pivot.x);
+        // tap directly on the landing marker = play the move for me
+        const targ = curMove.dir*curMove.deg*Math.PI/180;
+        const sf = (()=>{ const sp=new Piece(0); Object.assign(sp, G.snap[0]); return sp.feet(); })();
+        for (let i=0;i<3;i++){
+            if (i===G.pinned) continue;
+            const r=Math.hypot(sf[i].x-G.pivot.x, sf[i].y-G.pivot.y);
+            const a0=Math.atan2(sf[i].y-G.pivot.y, sf[i].x-G.pivot.x);
+            const ex=G.pivot.x + r*Math.cos(a0+targ), ey=G.pivot.y + r*Math.sin(a0+targ);
+            if (Math.hypot(p.x-ex,p.y-ey) < Math.max(8, 24/scale)){
+                dragging=false;
+                settleAnim={ dir:curMove.dir, target:curMove.deg*Math.PI/180, speed:2.4*Math.PI/180 };
+                return;
+            }
+        }
+    }
+}
+function onMove(e){
+    if (!dragging || (phase!=='swing1' && phase!=='swing2')) return;
+    e.preventDefault();
+    const p = pointerBoard(e);
+    const a = Math.atan2(p.y-G.pivot.y, p.x-G.pivot.x);
+    let dA = norm(a - ptrAngle);
+    ptrAngle = a;
+    // guided groove: only allow the authored direction, and stop at the target angle
+    if (Math.sign(dA)!==curMove.dir && G.turnDir===0) return;   // ignore backwards starts
+    const targ = curMove.deg*Math.PI/180;
+    const cur = Math.abs(G.netRad);
+    if (curMove.dir>0) dA = Math.min(dA, Math.max(0, targ-cur+0.03));
+    else               dA = Math.max(dA, Math.min(0, -(targ-cur+0.03)));
+    applySwing(dA);
+}
+function onUp(e){
+    if (!dragging) return;
+    dragging=false;
+    if (phase!=='swing1' && phase!=='swing2') return;
+    const doneDeg = Math.abs(G.netRad)*180/Math.PI;
+    if (doneDeg >= curMove.deg - curMove.tol){
+        // close enough: settle the last few degrees and commit
+        settleAnim={ dir:curMove.dir, target:curMove.deg*Math.PI/180, speed:2.4*Math.PI/180 };
+    } else if (doneDeg > 2){
+        restoreSnap();
+        subEl.innerHTML='Keep going — all the way to the <b style="color:var(--gold)">marker</b>.';
+    }
+}
+canvas.addEventListener('pointerdown', onDown);
+canvas.addEventListener('pointermove', onMove);
+window.addEventListener('pointerup', onUp);
+canvas.addEventListener('touchstart', e=>e.preventDefault(), {passive:false});
+
+/* ---------------- Authoring search (dev only): ?author=1 ---------------- */
+if (new URLSearchParams(location.search).get('author')){
+    // Chained search over the four-beat story:
+    //   shove (red, scripted) -> psych (blue, interactive) -> charge (red, scripted)
+    //   -> fin (blue, interactive: slip + throw in one swing).
+    // All sims use the UI animation step (2.2 deg/frame) so found == shipped.
+    const D = Math.PI/180;
+    const sim = (who, pivot, dir, deg) => {   // returns degrees actually swung
+        G.active=who; pinFoot(pivot);
+        let guard=0; const t=deg*D;
+        while (Math.abs(G.netRad)<t-1e-4 && !G.atLimit && guard++<600)
+            applySwing(dir*Math.min(2.2*D, t-Math.abs(G.netRad)));
+        const done = Math.abs(G.netRad)/D; clearTurn(); return done;
+    };
+    const stSave = () => G.pieces.map(p=>({x:p.x,y:p.y,rot:p.rot}));
+    const stLoad = (s) => { G.pieces.forEach((p,i)=>Object.assign(p,s[i])); clearTurn(); };
+    const hubR = (i) => Math.hypot(G.pieces[i].x, G.pieces[i].y);
+    const maxFootR = (i) => Math.max(...G.pieces[i].feet().map(radU));
+
+    // Physics notes that shaped the story (measured, not guessed):
+    // - A charge that CONNECTS stops at the opponent's body — red never gets near the rim
+    //   that way. Red can only overextend by MISSING.
+    // - From contact range red's feet geometrically max out ~59 (rim 66.7): after a
+    //   connecting shove, no swing can overextend red. Red must first step BACK — the
+    //   wind-up — and then lunge through where blue stood. The pull-back telegraphs it.
+    // So: shove connects; psych both shoves red back (the bait) and shifts blue off the
+    // lunge line; windup opens the gap; the lunge catches air and careens to the rim.
+    window.__search = function(opts){
+        opts = opts || {};
+        const out = [];
+        const shoveDegs  = opts.shoveDegs  || [50,70,90,110];
+        const psychDegs  = opts.psychDegs  || [8,12,16,20];
+        const windupDegs = opts.windupDegs || [15,25,35];
+        const chargeDegs = opts.chargeDegs || [60,90,120];
+        const finDegs    = opts.finDegs    || [20,28,36,44,52];
+        const whiffTol   = opts.whiffTol   || 1.0;   // how much the lunge may graze blue (units)
+        const overMin    = opts.overMin    || 63;    // how far red must careen (rim at 66.7)
+        const C = { drive:0, psych:0, windup:0, whiff:0, over:0, cf:0, fin:0 };
+        const hubGap = () => Math.hypot(G.pieces[0].x-G.pieces[1].x, G.pieces[0].y-G.pieces[1].y);
+        for (const sp of [0,1,2]) for (const sd of [1,-1]) for (const sdeg of shoveDegs){
+            resetScenario();
+            const bR0 = hubR(0);
+            sim(1, sp, sd, sdeg);
+            if (G.pieces[0].anyFootOff() || G.pieces[1].anyFootOff()) continue;
+            if (hubR(0) < 46 || hubR(0)-bR0 < 4) continue;   // must drive blue near the rim
+            C.drive++;
+            const s1 = stSave();
+            for (const pp of [0,1,2]) for (const pd of [1,-1]) for (const pdeg of psychDegs){
+                stLoad(s1);
+                const rx0=G.pieces[1].x, ry0=G.pieces[1].y;
+                const pdone = sim(0, pp, pd, pdeg);
+                if (pdone < 6 || G.pieces[0].anyFootOff()) continue;
+                if (Math.hypot(G.pieces[1].x-rx0, G.pieces[1].y-ry0) < 0.3) continue; // must shove red
+                C.psych++;
+                const s2 = stSave();
+                for (const wp of [0,1,2]) for (const wd of [1,-1]) for (const wdeg of windupDegs){
+                    stLoad(s2);
+                    const gap0 = hubGap();
+                    sim(1, wp, wd, wdeg);
+                    if (G.pieces[0].anyFootOff() || G.pieces[1].anyFootOff()) continue;
+                    if (hubGap() - gap0 < 3) continue;       // wind-up must open the gap
+                    C.windup++;
+                    const s2w = stSave();
+                    for (const cp of [0,1,2]) for (const cd of [1,-1]) for (const cdeg of chargeDegs){
+                        // real: after the psych, the lunge whiffs and red careens to the rim
+                        stLoad(s2w);
+                        const bx0=G.pieces[0].x, by0=G.pieces[0].y;
+                        sim(1, cp, cd, cdeg);
+                        if (G.pieces[0].anyFootOff()) continue;
+                        if (Math.hypot(G.pieces[0].x-bx0, G.pieces[0].y-by0) > whiffTol) continue;
+                        C.whiff++;
+                        const rOver = maxFootR(1);
+                        if (rOver < overMin) continue;       // overextended to the rim
+                        C.over++;
+                        const s3 = stSave();
+                        // counterfactual: no psych, same windup + lunge kills blue where it stood
+                        stLoad(s1);
+                        sim(1, wp, wd, wdeg);
+                        sim(1, cp, cd, cdeg);
+                        if (!G.pieces[0].anyFootOff()) continue;
+                        C.cf++;
+                        // fin: one blue swing that throws red off while blue stays on
+                        for (const fp of [0,1,2]) for (const fd of [1,-1]) for (const fdeg of finDegs){
+                            stLoad(s3);
+                            const fdone = sim(0, fp, fd, fdeg);
+                            if (!G.pieces[1].anyFootOff() || G.pieces[0].anyFootOff()) continue;
+                            C.fin++;
+                            out.push({ shove:{pivot:sp,dir:sd,deg:sdeg},
+                                       psych:{pivot:pp,dir:pd,deg:pdeg},
+                                       windup:{pivot:wp,dir:wd,deg:wdeg},
+                                       charge:{pivot:cp,dir:cd,deg:cdeg},
+                                       fin:{pivot:fp,dir:fd,deg:Math.round(fdone)},
+                                       rOver:+rOver.toFixed(1) });
+                        }
+                    }
+                }
+            }
+        }
+        return opts.diag ? C : out;
+    };
+    // replay the baked SCN's scripted beats; report the drama checks
+    window.__threat = function(){
+        resetScenario();
+        sim(1, SCN.shove.pivot, SCN.shove.dir, SCN.shove.deg);
+        const s1 = stSave();
+        const afterShove = { blueHubR:+hubR(0).toFixed(1), blueOn:!G.pieces[0].anyFootOff() };
+        // counterfactual: no psych — baked windup + lunge vs the unpsyched blue
+        sim(1, SCN.windup.pivot, SCN.windup.dir, SCN.windup.deg);
+        sim(1, SCN.charge.pivot, SCN.charge.dir, SCN.charge.deg);
+        const counterfactualKills = G.pieces[0].anyFootOff();
+        stLoad(s1);
+        sim(0, SCN.psych.pivot, SCN.psych.dir, SCN.psych.deg);
+        sim(1, SCN.windup.pivot, SCN.windup.dir, SCN.windup.deg);
+        sim(1, SCN.charge.pivot, SCN.charge.dir, SCN.charge.deg);
+        const afterCharge = { blueOn:!G.pieces[0].anyFootOff(),
+                              redOver:+maxFootR(1).toFixed(1) };
+        return { afterShove, counterfactualKills, afterCharge };
+    };
+}
+
+/* ---------------- boot ---------------- */
+resetScenario();
+requestAnimationFrame(draw);
+beginIntro();
+</script>
+</body>
+</html>
