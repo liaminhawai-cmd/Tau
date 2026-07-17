@@ -459,8 +459,8 @@ function drawPiece(p, opts){
 /* ---------------- Guided-flow state machine ---------------- */
 const lineEl=document.getElementById('line'), subEl=document.getElementById('subline');
 const ctaEl=document.getElementById('cta');
-let phase='intro';   // intro -> shove -> pin1 -> swing1(psych) -> charge -> pin2 -> swing2(fin) -> fall -> done
-let pulse=0, redFall=null, scriptAnim=null, settleAnim=null;
+let phase='intro';   // intro -> shove -> pin1 -> swing1(psych) -> charge -> pin2 -> swing2(fin) -> cine -> done
+let pulse=0, cine=null, scriptAnim=null, settleAnim=null;
 let curMove=null;             // {pivot,dir,deg,tol} for the active guided move
 let ptrAngle=null, dragging=false;
 
@@ -475,6 +475,11 @@ function targetGhost(){
 
 function draw(ts){
     syncCanvas();
+    if (phase==='cine' || phase==='done'){
+        drawCine(ts);
+        requestAnimationFrame(draw);
+        return;
+    }
     const w = canvas.clientWidth||300;
     ctx.fillStyle=SKIN.bg; ctx.fillRect(0,0,w,w);
     fillBoardDisc();
@@ -513,21 +518,9 @@ function draw(ts){
         ctx.setLineDash([]);
     }
 
-    // pieces (red may be mid-fall)
-    if (redFall){
-        const t = Math.min(1, (ts-redFall.t0)/900);
-        const e = t*t;
-        const p = G.pieces[1];
-        p.x = redFall.x0 + redFall.dx*e*26;
-        p.y = redFall.y0 + redFall.dy*e*26;
-        p.rot = redFall.r0 + e*0.9;
-        drawPiece(G.pieces[0]);
-        drawPiece(p, { alpha: 1-e*0.85 });
-        if (t>=1 && phase==='fall'){ phase='done'; showCTA(); }
-    } else {
-        drawPiece(G.pieces[1]);
-        drawPiece(G.pieces[0], { pin: G.active===0 ? G.pinned : null });
-    }
+    // pieces
+    drawPiece(G.pieces[1]);
+    drawPiece(G.pieces[0], { pin: G.active===0 ? G.pinned : null });
 
     // pulsing highlight on the foot to tap (pin phases)
     if (phase==='pin1' || phase==='pin2'){
@@ -564,7 +557,7 @@ function draw(ts){
 
 function beginIntro(){
     resetScenario();
-    phase='intro'; curMove=SCN.psych; redFall=null; scriptAnim=null; settleAnim=null;
+    phase='intro'; curMove=SCN.psych; cine=null; scriptAnim=null; settleAnim=null;
     say('<span class="red">Red</span> has the momentum.', '&nbsp;');
     setTimeout(()=>{ if (phase==='intro'){
         phase='shove';
@@ -608,13 +601,7 @@ function commitMove(){
         say('<span class="red">Red</span> rears back&hellip;', '&nbsp;');
     } else if (phase==='swing2'){
         if (G.pieces[1].anyFootOff()){
-            phase='fall';
-            const p=G.pieces[1];
-            // fall direction: from board centre through the offending foot
-            const off = p.feet().reduce((a,b)=> radU(a)>radU(b)?a:b);
-            const d = radU(off)||1;
-            redFall = { t0: performance.now(), x0:p.x, y0:p.y, r0:p.rot, dx:off.x/d, dy:off.y/d };
-            say('<b>Over the edge.</b>', 'Their own momentum did the work.');
+            cineStart();
         } else {
             // shouldn't happen with the authored target, but stay honest: retry
             restoreSnap();
@@ -624,6 +611,140 @@ function commitMove(){
     }
 }
 function afterPinNoAdvance(){}
+
+/* ---------------- 3D cinematic finale (hand-rolled tilt projection, no libraries) ----------------
+   On the win, the flat board tilts down into a 3D view and replays the whole exchange from a
+   deterministic re-simulation of the script, ending with red tumbling over the rim. The replay
+   starts at exactly the 2D camera (elevation 90°), so the flip is seamless. */
+function buildCineRec(){
+    const D=Math.PI/180, rec=[];
+    const cap =()=> rec.push(G.pieces.map(p=>({x:p.x,y:p.y,rot:p.rot})));
+    const play=(who,m,stopOnKill)=>{
+        G.active=who; pinFoot(m.pivot);
+        let g=0; const t=m.deg*D;
+        while (Math.abs(G.netRad)<t-1e-4 && !G.atLimit && g++<600){
+            applySwing(m.dir*Math.min(2.2*D, t-Math.abs(G.netRad)));
+            cap();
+            if (stopOnKill && G.pieces[1].anyFootOff()) break;
+        }
+        clearTurn();
+    };
+    resetScenario(); cap();
+    play(1,SCN.shove); play(0,SCN.psych); play(1,SCN.windup); play(1,SCN.charge); play(0,SCN.fin,true);
+    return rec;
+}
+function cineStart(){
+    cine = { rec: buildCineRec(), t0: performance.now(), lastTs: null, fi: 0, fall: null };
+    phase='cine';
+    say('<b>Thrown.</b>', 'Watch that back.');
+}
+// tilt projection: world z is height above the board. At el=90° this is exactly the 2D view.
+function cineProj(el, az){
+    const ce=Math.cos(el), se=Math.sin(el), ca=Math.cos(az), sa=Math.sin(az);
+    return (x,y,z)=>{
+        const x1=x*ca-y*sa, y1=x*sa+y*ca;
+        return { x: cx + x1*scale, y: cy + (y1*se - (z||0)*ce)*scale, d: y1*ce + (z||0)*se };
+    };
+}
+function cinePath(P, pts, close){
+    const p2=new Path2D();
+    pts.forEach((q,i)=>{ const s=P(q[0],q[1],q[2]||0); i?p2.lineTo(s.x,s.y):p2.moveTo(s.x,s.y); });
+    if (close) p2.closePath();
+    return p2;
+}
+const circPts=(cxu,cyu,r,z)=>{ const a=[]; for(let i=0;i<72;i++){ const t=i/72*2*Math.PI;
+    a.push([cxu+r*Math.cos(t), cyu+r*Math.sin(t), z||0]); } return a; };
+const arcPts=(A)=>{ const a=[]; for(let i=0;i<=48;i++){ const t=(A.a0+(A.a1-A.a0)*i/48)*Math.PI/180;
+    a.push([A.cx+A.r*Math.cos(t), A.cy+A.r*Math.sin(t), 0]); } return a; };
+function drawBoard3(P){
+    // slab underside first: board thickness shows once the camera comes down
+    ctx.fillStyle='#07090b';
+    ctx.fill(cinePath(P, circPts(0,0,CFG.edgeU,-7), true));
+    const disc = r => cinePath(P, circPts(0,0,r), true);
+    ctx.fillStyle=SKIN.v2; ctx.fill(disc(CFG.edgeU));
+    ctx.fillStyle=SKIN.v3; ctx.fill(disc(CFG.rings[1]));
+    ctx.fillStyle=SKIN.v4; ctx.fill(disc(CFG.rings[0]));
+    for (const a of CFG.sideArcs){
+        ctx.save();
+        ctx.clip(disc(CFG.edgeU));
+        ctx.clip(cinePath(P, circPts(a.cx,a.cy,a.r), true));
+        ctx.fillStyle=SKIN.v1; ctx.fill(disc(CFG.edgeU));
+        ctx.fillStyle=SKIN.v2; ctx.fill(disc(CFG.rings[1]));
+        ctx.fillStyle=SKIN.v3; ctx.fill(disc(CFG.rings[0]));
+        ctx.restore();
+    }
+    ctx.strokeStyle=SKIN.lines;
+    ctx.lineWidth=Math.max(1, CFG.edgeU*CFG.lineWidthFrac*scale);
+    for (const r of CFG.rings) ctx.stroke(cinePath(P, circPts(0,0,r), true));
+    for (const a of CFG.sideArcs) ctx.stroke(cinePath(P, arcPts(a), false));
+}
+function pieceGeom3(st, id){
+    const pc=new Piece(id); Object.assign(pc, st);
+    return { hub:[pc.x,pc.y,CFG.hubHeight], feet:pc.feet().map(f=>[f.x,f.y,0]) };
+}
+// Rodrigues rotation of a piece about the rim tangent line at the fall point
+function tipGeom(g, p0, k, ang){
+    const rot=(v)=>{
+        const px=v[0]-p0[0], py=v[1]-p0[1], pz=v[2]-p0[2];
+        const c=Math.cos(ang), s=Math.sin(ang), dot=k[0]*px+k[1]*py+k[2]*pz;
+        const qx=k[1]*pz-k[2]*py, qy=k[2]*px-k[0]*pz, qz=k[0]*py-k[1]*px;
+        return [ p0[0]+px*c+qx*s+k[0]*dot*(1-c),
+                 p0[1]+py*c+qy*s+k[1]*dot*(1-c),
+                 p0[2]+pz*c+qz*s+k[2]*dot*(1-c) ];
+    };
+    return { hub:rot(g.hub), feet:g.feet.map(rot) };
+}
+function drawPiece3(P, g, col, alpha){
+    ctx.globalAlpha = alpha===undefined ? 1 : alpha;
+    const h=P(...g.hub);
+    ctx.strokeStyle=col; ctx.lineWidth=3; ctx.lineCap='round';
+    for (const f of g.feet){ const q=P(...f);
+        ctx.beginPath(); ctx.moveTo(h.x,h.y); ctx.lineTo(q.x,q.y); ctx.stroke(); }
+    const fr=Math.max(3.5, CFG.padRadius*scale);
+    ctx.fillStyle=col;
+    for (const f of g.feet){ const q=P(...f);
+        ctx.beginPath(); ctx.arc(q.x,q.y,fr,0,2*Math.PI); ctx.fill(); }
+    ctx.beginPath(); ctx.arc(h.x,h.y,4.5,0,2*Math.PI); ctx.fill();
+    ctx.globalAlpha=1;
+}
+function drawCine(ts){
+    const w = canvas.clientWidth||300;
+    ctx.fillStyle=SKIN.bg; ctx.fillRect(0,0,w,w);
+    const t=(ts-cine.t0)/1000;
+    const dt=cine.lastTs===null ? 0 : Math.min(0.05,(ts-cine.lastTs)/1000);
+    cine.lastTs=ts;
+    // camera: tilt 90° -> 34° over 1.3s (smoothstep), then a slow azimuth drift for life
+    const k=Math.min(1,t/1.3), e=k*k*(3-2*k);
+    const el=(90-56*e)*Math.PI/180;
+    const az=(-14*e + Math.min(10, Math.max(0,t-1.3)*2.2))*Math.PI/180;
+    const P=cineProj(el,az);
+    drawBoard3(P);
+    // replay advances at ~32 recorded substeps/s (whole exchange ≈ 3s), after a short
+    // beat so the flip itself registers first
+    if (!cine.fall && t>0.45){
+        cine.fi=Math.min(cine.rec.length-1, cine.fi + dt*32);
+        if (cine.fi>=cine.rec.length-1){
+            const st=cine.rec[cine.rec.length-1][1];
+            const pc=new Piece(1); Object.assign(pc,st);
+            const off=pc.feet().reduce((a,b)=>radU(a)>radU(b)?a:b);
+            const phi=Math.atan2(off.y,off.x);
+            cine.fall={ start:t, p0:[Math.cos(phi)*CFG.edgeU, Math.sin(phi)*CFG.edgeU, 0],
+                        k:[-Math.sin(phi),Math.cos(phi),0] };
+        }
+    }
+    const st=cine.rec[Math.floor(cine.fi)];
+    let gB=pieceGeom3(st[0],0), gR=pieceGeom3(st[1],1), rAlpha=1;
+    if (cine.fall){
+        const ft=Math.min(1,(t-cine.fall.start)/1.4);
+        gR=tipGeom(gR, cine.fall.p0, cine.fall.k, ft*ft*1.9);
+        rAlpha=ft<0.78 ? 1 : Math.max(0, 1-(ft-0.78)/0.22);
+        if (ft>=1 && phase==='cine' && t>cine.fall.start+1.9){ phase='done'; showCTA(); }
+    }
+    // painter's order: farther hub first
+    const pieces=[[gB,SKIN.pb,1],[gR,SKIN.pr,rAlpha]]
+        .sort((a,b)=>P(...a[0].hub).d - P(...b[0].hub).d);
+    for (const [g,col,al] of pieces) if (al>0.01) drawPiece3(P,g,col,al);
+}
 
 function showCTA(){
     ctaEl.classList.add('show');
@@ -753,6 +874,8 @@ if (new URLSearchParams(location.search).get('author')){
         const finDegs    = opts.finDegs    || [20,28,36,44,52];
         const whiffTol   = opts.whiffTol   || 1.0;   // how much the lunge may graze blue (units)
         const overMin    = opts.overMin    || 63;    // how far red must careen (rim at 66.7)
+        const overMax    = opts.overMax    || 66;    // ...but still standing, not already hanging off
+        const throwMin   = opts.throwMin   || 2.0;   // fin must really MOVE red (a throw, not a tap)
         const C = { drive:0, psych:0, windup:0, whiff:0, over:0, cf:0, fin:0 };
         const hubGap = () => Math.hypot(G.pieces[0].x-G.pieces[1].x, G.pieces[0].y-G.pieces[1].y);
         for (const sp of [0,1,2]) for (const sd of [1,-1]) for (const sdeg of shoveDegs){
@@ -788,7 +911,7 @@ if (new URLSearchParams(location.search).get('author')){
                         if (Math.hypot(G.pieces[0].x-bx0, G.pieces[0].y-by0) > whiffTol) continue;
                         C.whiff++;
                         const rOver = maxFootR(1);
-                        if (rOver < overMin) continue;       // overextended to the rim
+                        if (rOver < overMin || rOver > overMax) continue; // overextended, still standing
                         C.over++;
                         const s3 = stSave();
                         // counterfactual: no psych, same windup + lunge kills blue where it stood
@@ -797,18 +920,21 @@ if (new URLSearchParams(location.search).get('author')){
                         sim(1, cp, cd, cdeg);
                         if (!G.pieces[0].anyFootOff()) continue;
                         C.cf++;
-                        // fin: one blue swing that throws red off while blue stays on
+                        // fin: one blue swing that THROWS red off (real displacement) while blue stays on
                         for (const fp of [0,1,2]) for (const fd of [1,-1]) for (const fdeg of finDegs){
                             stLoad(s3);
+                            const frx0=G.pieces[1].x, fry0=G.pieces[1].y;
                             const fdone = sim(0, fp, fd, fdeg);
                             if (!G.pieces[1].anyFootOff() || G.pieces[0].anyFootOff()) continue;
+                            const rdisp = Math.hypot(G.pieces[1].x-frx0, G.pieces[1].y-fry0);
+                            if (rdisp < throwMin) continue;
                             C.fin++;
                             out.push({ shove:{pivot:sp,dir:sd,deg:sdeg},
                                        psych:{pivot:pp,dir:pd,deg:pdeg},
                                        windup:{pivot:wp,dir:wd,deg:wdeg},
                                        charge:{pivot:cp,dir:cd,deg:cdeg},
                                        fin:{pivot:fp,dir:fd,deg:Math.round(fdone)},
-                                       rOver:+rOver.toFixed(1) });
+                                       rOver:+rOver.toFixed(1), rdisp:+rdisp.toFixed(1) });
                         }
                     }
                 }
