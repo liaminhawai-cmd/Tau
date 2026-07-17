@@ -379,13 +379,13 @@ function clearTurn(){ G.pinned=null; G.pivot=null; G.turnDir=0;
 
 /* ---------------- Scenario (found by search with the real engine; see ?author=1) ------------- */
 const SCN = {
-    start: { blue: { x: 27.2, y: 12.7, rot: 1.0 },  // mid-board, red engaged inside
-             red:  { x: -5.2, y: 6.4,  rot: 0.2 } },
-    shove:  { pivot: 1, dir: 1, deg: 70 },          // beat 1 (scripted): red drives you to the rim
-    psych:  { pivot: 0, dir: 1, deg: 12, tol: 5 },  // beat 2 (you): shove back — the bait
-    windup: { pivot: 1, dir: 1, deg: 35 },          // beat 3a (scripted): red steps back for the blow
-    charge: { pivot: 1, dir: 1, deg: 90 },          // beat 3b (scripted): the lunge — whiffs, overextends
-    fin:    { pivot: 0, dir: 1, deg: 15, tol: 6 }   // beat 4 (you): same foot again — throw red off
+    start: { blue: { x: 27.6, y: 23.1, rot: 1.0 },  // mid-board, red engaged inside
+             red:  { x: 7.7,  y: 6.4,  rot: 1.0 } },
+    shove:  { pivot: 1, dir: 1, deg: 50 },          // beat 1 (scripted): red drives you to the rim
+    psych:  { pivot: 0, dir: 1, deg: 16, tol: 6 },  // beat 2 (you): shove back — the bait
+    windup: { pivot: 1, dir: 1, deg: 25 },          // beat 3a (scripted): red steps back for the blow
+    charge: { pivot: 2, dir: -1, deg: 90 },         // beat 3b (scripted): the lunge — whiffs, lands at 63.8
+    fin:    { pivot: 0, dir: -1, deg: 30, tol: 8 }  // beat 4 (you): same foot, whip back — hurls red 7 units
 };
 try {
     const qs = new URLSearchParams(location.search).get('scn');
