@@ -8476,8 +8476,29 @@ function checkJoinLink() {
 <script>
 // Register the service worker so the game is installable and works offline. Best-effort: over file://
 // or if the browser lacks support it simply no-ops, and it never blocks the game from loading.
-if ('serviceWorker' in navigator && location.protocol.startsWith('http'))
-    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+// A bare register() leaves an update stranded once found -- the new worker sits "waiting" until
+// every open tab is fully closed, which on a tab someone keeps pinned/open for weeks can mean never.
+// So: actively ask for an update check (a stale sw.js can otherwise go unnoticed for a long time,
+// especially behind a caching proxy), and the moment a new worker actually takes control, reload
+// once so the update applies immediately instead of silently waiting.
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').then(reg => {
+            reg.update().catch(() => {});
+            // Re-check whenever the tab regains focus -- catches an update found while it sat
+            // backgrounded, without needing to poll on a timer.
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') reg.update().catch(() => {});
+            });
+        }).catch(() => {});
+        let refreshedOnce = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (refreshedOnce) return;   // guard against a reload loop
+            refreshedOnce = true;
+            location.reload();
+        });
+    });
+}
 
 // ---------- Orientation policy (runtime, so it beats a cached manifest) ----------
 // An installed PWA bakes in the manifest's orientation at install time, and the service worker even
