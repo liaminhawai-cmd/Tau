@@ -3,7 +3,7 @@
 // network-first (so an online player always gets the newest build), with the cached copy as the
 // offline fallback; static assets are cache-first. Cross-origin requests (Supabase auth/realtime)
 // are never touched — they always go straight to the network.
-const CACHE = 'tau-v10';  // bump on asset changes so clients drop the old cache (v10: popup dismiss affordances)
+const CACHE = 'tau-v11';  // bump on asset changes so clients drop the old cache (v11: non-game pages never fall back to the game shell)
 const ASSETS = [
   './', './index.html', './tau-logo.png',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon-32.png',
@@ -32,10 +32,18 @@ self.addEventListener('fetch', e => {
         const cp = r.clone();
         // refresh the game's offline shell only for the game itself; other pages (e.g. the hidden
         // /depth.html) are cached under their own URL so they never clobber the game shell.
-        const key = (url.pathname === '/' || url.pathname.endsWith('/index.html')) ? './index.html' : req;
+        const isGame = (url.pathname === '/' || url.pathname.endsWith('/index.html'));
+        const key = isGame ? './index.html' : req;
         caches.open(CACHE).then(c => c.put(key, cp));
         return r;
-      }).catch(() => caches.match(req).then(r => r || caches.match('./index.html')))
+      }).catch(() => caches.match(req).then(r => {
+        // Offline fallback: serve the cached copy of THIS page if we have one. Only the game's
+        // own routes fall back to the game shell — a hidden page (depth/set/about/try) must never
+        // be answered with the game, which is exactly the "depth.html shows the game" bug.
+        if (r) return r;
+        const isGame = (url.pathname === '/' || url.pathname.endsWith('/index.html'));
+        return isGame ? caches.match('./index.html') : Response.error();
+      }))
     );
     return;
   }
