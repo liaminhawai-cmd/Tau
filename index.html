@@ -417,7 +417,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 150</div>
+<div id="buildTag">build 151</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -6550,9 +6550,10 @@ if (isShareHash(location.hash)) {
     const bootFromHash = () => bootHashReplay(location.hash);
     if (document.readyState === 'complete') bootFromHash(); else addEventListener('load', bootFromHash, { once: true });
 }
-// #coach — boot straight into the coached "land the winning throw" moment (see startCoach). Waits
-// for load so the 3D renderer and every game function exist first, same as the share-hash boot.
-if (location.hash === '#coach') {
+// #coach — boot straight into the coached opening (see startCoach). Waits for load so the 3D
+// renderer and every game function exist first, same as the share-hash boot. Forgiving match:
+// #coach, #Coach, #coach.html, #coach/ all work (typed-by-hand links get mangled).
+if (/^#coach\b/i.test(location.hash)) {
     const bootCoach = () => { try { startCoach(); } catch (e) { console.error('coach boot failed', e); } };
     if (document.readyState === 'complete') bootCoach(); else addEventListener('load', bootCoach, { once: true });
 }
