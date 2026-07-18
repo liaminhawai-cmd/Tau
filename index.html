@@ -417,7 +417,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 145</div>
+<div id="buildTag">build 146</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3766,6 +3766,7 @@ function nearestFoot(p, feet, exclude) {
 // the device); vs AI blocks input on the AI's colour; online blocks input unless the active
 // colour is the one this client was assigned.
 function inputBlocked() {
+    if (coachActive) return coachInputLocked;   // coach mode gates input by phase, not by aiIdx
     return (vsAI && G.active===aiIdx) || (onlineMatch && !myOnlineTurnNow());
 }
 function onDown(e) {
@@ -3817,6 +3818,7 @@ function onUp() {
 // (the fall animation, a render, and kicking off the AI's turn) shared by every path that
 // ends a turn: a human release, and the AI's own swing finishing.
 function finishTurn() {
+    if (coachActive) { coachFinishTurn(); return; }   // coached moment drives its own turn flow
     endTurn();
     progressCentering();   // each completed move creeps the camera a quarter back toward centre
     if (colorLab) {   // colour-lab AI-vs-AI: show the tumble on a loss, then reset and keep playing
@@ -4499,6 +4501,99 @@ function startGame(aiMode, humanColorIdx, difficulty) {
 function startLadderLevel(levelIdx, humanColorIdx) {
     ladderLevel = levelIdx;
     startGame(true, humanColorIdx===undefined ? 0 : humanColorIdx, 'ladder');
+}
+
+// ===================== Coached moment (#coach): land the winning throw =====================
+// A guided one-move hook on the REAL game — real 3D board, real drag-to-swing, real sound, real
+// tumble. The board is seeded to a real position mined from an Expert vs dumb-aggressive game,
+// one move before the win. Red plays its (scripted) move, then the player is coached to pin the
+// glowing foot and sweep Red off the edge. Meant as the landing experience a video ad clicks into.
+// Fully isolated behind the hash: nothing here runs unless startCoach() is called.
+const COACH_SCN = {
+    // seed = clip-5 state 18 (real L7-vs-L2 game); redBeat = Red's real next move; winPivot hints
+    // the player's winning pin. Any move that pushes Red off wins — the pivot is just the nudge.
+    blue: { x: -6.772, y: 28.780, rot: 5.8161 },
+    red:  { x: -23.606, y: 40.001, rot: 7.1485 },
+    redBeat: { pivot: 0, dir: 1, deg: 34.5 },
+    winPivot: 1,
+};
+let coachActive = false, coachPhase = 'off', coachInputLocked = false, coachPostRedSnap = null;
+let coachGoal = '', coachSub = '';   // render() reflects these into #status / #help while coaching
+function coachSay(main, sub) {
+    coachGoal = main || ''; coachSub = sub || '';
+    const s = document.getElementById('status'); if (s) s.innerHTML = coachGoal;
+    const h = document.getElementById('help');   if (h) h.innerHTML = coachSub;
+}
+function startCoach() {
+    hideModal(); clearTimeout(gameOverTimer); clearTimeout(aiTimer); aiAnim = null;
+    demoStop();
+    if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
+    vsAI = true; aiDifficulty = 'coach'; ladderLevel = null; humanIdx = 0; aiIdx = 1;
+    camCenterFrac = 1; camManualSet = false;
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('game').style.display = 'flex';
+    document.body.classList.add('ingame');
+    setSpectatorChrome(false);
+    reset(); resize();
+    // seed the real mined position
+    G.pieces[0].x = COACH_SCN.blue.x; G.pieces[0].y = COACH_SCN.blue.y; G.pieces[0].rot = COACH_SCN.blue.rot;
+    G.pieces[1].x = COACH_SCN.red.x;  G.pieces[1].y = COACH_SCN.red.y;  G.pieces[1].rot = COACH_SCN.red.rot;
+    G.active = 1; G.over = false; G.winner = null;
+    resetAudioForNewGame(); playGameBowl();
+    coachActive = true; coachPhase = 'intro'; coachInputLocked = true; coachPostRedSnap = null;
+    coachSay('You&rsquo;re <b style="color:#5487c4">Blue</b>. Red just overreached &mdash; watch.', '&nbsp;');
+    render();
+    setTimeout(() => { if (coachActive && coachPhase === 'intro') coachPlayRed(); }, 1400);
+}
+function coachPlayRed() {
+    coachPhase = 'redMove'; coachInputLocked = true;
+    G.active = 1;
+    pinFoot(COACH_SCN.redBeat.pivot);
+    const target = COACH_SCN.redBeat.deg * Math.PI/180, dir = COACH_SCN.redBeat.dir;
+    playSelectClick(); playMoveBass();
+    aiAnim = { dir, targetRad: target, t: 0, dur: Math.max(0.6, target / AI_SWING_AVG_SPEED), careful: false };
+    coachSay('<span style="color:#d05a48">Red</span> presses in&hellip;', '&nbsp;');
+    render();
+}
+// Called from finishTurn (which routes here while coachActive) instead of the normal end-of-turn flow.
+function coachFinishTurn() {
+    const mover = G.active;                 // who just completed a move
+    if (coachPhase === 'redMove') {
+        endTurn();                          // hand the turn to Blue (the player)
+        coachPostRedSnap = takeSnap();      // so a non-winning player move can be undone to here
+        coachPhase = 'yourMove'; coachInputLocked = false;
+        coachSay('Your move. Pin the <b style="color:#ffd23f">glowing foot</b>, then sweep <span style="color:#d05a48">Red</span> off the edge.',
+                 'Drag a different foot around it.');
+        render(); return;
+    }
+    if (coachPhase === 'yourMove') {
+        const redOff = G.pieces[1].anyFootOff(), blueOff = G.pieces[0].anyFootOff();
+        if (redOff && !blueOff) {            // the win
+            endTurn();                       // sets G.over / winner = Blue
+            coachPhase = 'won'; coachInputLocked = true;
+            triggerFall();
+            coachSay('<b>Off the board.</b> That&rsquo;s the whole game.', '&nbsp;');
+            clearTimeout(gameOverTimer); gameOverTimer = setTimeout(coachCTA, 2200);
+            render(); return;
+        }
+        // not a win (or you swung yourself off): undo back to Red's finish and let them retry
+        if (coachPostRedSnap) { G.snap = coachPostRedSnap; restoreSnap(); }
+        G.active = 0; G.pinned = null; G.pivot = null;
+        coachSay('Not quite &mdash; you need to push <span style="color:#d05a48">Red</span> right off the edge.',
+                 'Pin the <b style="color:#ffd23f">glowing foot</b> and sweep the outer one hard.');
+        render(); return;
+    }
+    render();
+}
+function coachCTA() {
+    showModal('That’s Tau', 'One shove decides it. Now play a full game — free, in your browser.',
+        [ { label: 'Play the full game', onClick: () => { coachEnd(); location.hash = ''; openLadderMenu(); } },
+          { label: 'Watch it again',     onClick: () => { startCoach(); }, cls: 'ghostBtn' } ],
+        false, { dismiss: false });
+}
+function coachEnd() {
+    coachActive = false; coachPhase = 'off'; coachInputLocked = false; coachPostRedSnap = null;
+    aiDifficulty = 'normal';
 }
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
@@ -5656,6 +5751,12 @@ function render() {
                     ? t('Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.')
                     : t('Swinging… release to end your turn.')));
     }
+    // Coach mode owns the top line (the GOAL); it keeps the game's own Step-1/Step-2 help below
+    // for the mechanics, so the player still learns pin-then-drag from the real prompts.
+    if (coachActive) {
+        s.innerHTML = coachGoal; m.textContent = '';
+        if (coachPhase !== 'yourMove') h.innerHTML = coachSub;   // during your move, keep the real step help
+    }
     if (DEBUG_CROSS) updateDebugHud();
 }
 // Crossing-rule debug read-out (add #debug to the URL, or run localStorage.tauDebug='1'). Shows, per
@@ -6231,6 +6332,12 @@ function animate() {
         const glowPulse = 0.75 + Math.sin(performance.now()*0.006)*0.15;
         pivotGlowMesh.visible = true; pivotGlowMesh.material.opacity = glowPulse;
         pivotGlowMesh.position.set(G.pivot.x, 0.25, G.pivot.y);
+    } else if (coachActive && coachPhase==='yourMove' && G.pinned===null && !G.over) {
+        // coach hint: pulse the glow on the foot the player should pin, before they've pinned it
+        const f = G.pieces[0].feet()[COACH_SCN.winPivot];
+        const glowPulse = 0.55 + Math.sin(performance.now()*0.006)*0.3;
+        pivotGlowMesh.visible = true; pivotGlowMesh.material.opacity = glowPulse;
+        pivotGlowMesh.position.set(f.x, 0.25, f.y);
     } else {
         pivotGlowMesh.visible = false;
     }
@@ -6412,6 +6519,12 @@ function bootHashReplay(h) { h.startsWith('#s=') ? bootSharedReplayCode(h.slice(
 if (isShareHash(location.hash)) {
     const bootFromHash = () => bootHashReplay(location.hash);
     if (document.readyState === 'complete') bootFromHash(); else addEventListener('load', bootFromHash, { once: true });
+}
+// #coach — boot straight into the coached "land the winning throw" moment (see startCoach). Waits
+// for load so the 3D renderer and every game function exist first, same as the share-hash boot.
+if (location.hash === '#coach') {
+    const bootCoach = () => { try { startCoach(); } catch (e) { console.error('coach boot failed', e); } };
+    if (document.readyState === 'complete') bootCoach(); else addEventListener('load', bootCoach, { once: true });
 }
 // Tapping a share link often focuses an EXISTING tau tab instead of opening a new one — the OS just
 // changes the hash, nothing reloads, and the link silently does nothing (the reported "it had me
