@@ -417,7 +417,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 146</div>
+<div id="buildTag">build 147</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3840,22 +3840,45 @@ function finishTurn() {
 // player can pick either colour — not fixed to red.
 let aiIdx = 1, humanIdx = 0;
 let vsAI = false, aiAnim = null, aiTimer = null, aiGapTimer = null, aiDifficulty = 'easy';   // 'dumb' | 'easy' | 'zone' | 'hard' | 'master' — see searchedPlanFor()
-// Human "pick up → aim → commit" feel for an AI move: the pickup click fires as the foot is grabbed
-// (it's already glowing), then a short beat, then the 808 "doof" lands exactly as the swing starts.
-// The beat is short for a decisive shove that drives all the way to the next line, and longer (with
-// a slower settle) for a careful placement that stops short of it — plus per-move jitter so nothing
-// feels metronomic. Capped ~0.5s. Shared by real AI turns and the coached opponent move.
-function aiBeginSwing(dir, target, naturalLimit) {
+// Does the ACTUAL (target-angle) swing shove the opponent? Simulated on a throwaway snapshot, then
+// fully restored — this is the "aggression" axis for the human-feel timing below.
+function aiMovePushesOpp(pivotIdx, dir, target) {
+    const snap = takeSnap();
+    pinFoot(pivotIdx);
+    const opp = 1 - G.active;
+    const before = G.pieces[opp].feet().map(f => ({ x:f.x, y:f.y }));
+    const t = Math.abs(target); let g=0;
+    while (Math.abs(G.netRad) < t-1e-4 && !G.atLimit && g++<600) applySwing(dir*Math.min(2*Math.PI/180, t-Math.abs(G.netRad)));
+    const after = G.pieces[opp].feet();
+    const moved = before.some((f,i)=>Math.hypot(f.x-after[i].x, f.y-after[i].y) > 0.3);
+    G.pieces.forEach((p,i)=>{ p.x=snap[i].x; p.y=snap[i].y; p.rot=snap[i].rot; });
+    G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null;
+    return moved;
+}
+// Human "pick up → aim → commit" feel. The pickup click fires as the foot is grabbed (it's already
+// glowing), then a beat, then the 808 "doof" lands exactly as the swing starts. The beat AND the
+// swing speed are keyed to two things — whether the move shoves the opponent (aggression), and
+// whether it drives all the way to the next line or stops short (commitment):
+//   push + full  → a decisive shove to a line: snappy, current speed
+//   push + short → a measured shove: a good beat slower
+//   self + full  → a full repositioning swing that touches no one: a bit slower, less urgent
+//   self + short → a careful placement of its own foot: the longest pause (~½s), slowest settle
+// Plus wide per-move jitter so no two moves feel metronomic. Capped ~0.5s.
+function aiBeginSwing(dir, target, naturalLimit, pushesOpp) {
     playSelectClick();   // the pinned foot is already lit; this is the "pick it up" tick
     render();
-    const shortfall = Math.max(0, naturalLimit - target);
-    const shortFrac = Math.min(1, shortfall / (30*Math.PI/180));   // 0 = drives to the line · 1 = stops ≥30° short
-    const arcFrac   = Math.min(1, target / (120*Math.PI/180));     // a touch more wind-up for a bigger sweep
-    let gapMs = 90 + 300*shortFrac + 55*arcFrac;                   // ~150ms committed → ~450ms careful
-    gapMs *= 0.78 + Math.random()*0.5;                            // ± human jitter
-    gapMs = Math.max(70, Math.min(500, gapMs));
-    const careful = target < naturalLimit - 4*Math.PI/180;
-    const dur = Math.max(0.55, target / AI_SWING_AVG_SPEED) * (1 + 0.35*shortFrac);   // careful placements settle slower
+    const full = target >= naturalLimit - 4*Math.PI/180;   // drives essentially all the way to the next line
+    let baseMs, durMult;
+    if (pushesOpp && full)  { baseMs = 130; durMult = 1.00; }   // aggressive commit
+    else if (pushesOpp)     { baseMs = 300; durMult = 1.30; }   // measured shove
+    else if (full)          { baseMs = 220; durMult = 1.15; }   // full but non-contact
+    else                    { baseMs = 440; durMult = 1.40; }   // careful self-placement
+    const arc = Math.min(1, target / (110*Math.PI/180));       // small intra-category nudge for variety
+    let gapMs = baseMs + 40*arc;
+    gapMs *= 0.72 + Math.random()*0.6;                         // wide jitter (±~30%) so the variance is audible
+    gapMs = Math.max(70, Math.min(500, gapMs));                // ~half a second at most
+    const careful = !full;                                      // easing: the gentle smootherstep settle on a stop-short
+    const dur = Math.max(0.55, target / AI_SWING_AVG_SPEED) * durMult;
     clearTimeout(aiGapTimer);
     aiGapTimer = setTimeout(() => {
         aiGapTimer = null;
@@ -4132,9 +4155,10 @@ function startAiTurn() {
     const snapNL = takeSnap();
     const naturalLimit = Math.abs(simMoveToLimit(pivotIdx, dir));
     G.pieces.forEach((p,i)=>{ p.x=snapNL[i].x; p.y=snapNL[i].y; p.rot=snapNL[i].rot; });
+    const pushesOpp = aiMovePushesOpp(pivotIdx, dir, target);   // aggression axis for the human-feel timing
     pinFoot(pivotIdx);
     if (target < 1e-9) { finishTurn(); return; }   // blocked both ways from this pivot (rare) — forfeit the motion
-    aiBeginSwing(dir, target, naturalLimit);        // pickup click → human beat → 808 + swing
+    aiBeginSwing(dir, target, naturalLimit, pushesOpp);   // pickup click → human beat → 808 + swing
 }
 // Advances the AI's swing along the eased arc; called every frame from animate() with real dt.
 function stepAi(dt) {
@@ -4568,13 +4592,14 @@ function coachPlayRed() {
     coachPhase = 'redMove'; coachInputLocked = true;
     G.active = 1;
     const target = COACH_SCN.redBeat.deg * Math.PI/180, dir = COACH_SCN.redBeat.dir;
-    // natural limit of Red's scripted move, so the pickup→doof beat reads the same way a real AI's does
+    // natural limit + push detection of Red's scripted move, so its beat reads like a real AI's
     const snapNL = takeSnap();
     const naturalLimit = Math.abs(simMoveToLimit(COACH_SCN.redBeat.pivot, dir));
     G.pieces.forEach((p,i)=>{ p.x=snapNL[i].x; p.y=snapNL[i].y; p.rot=snapNL[i].rot; });
+    const pushesOpp = aiMovePushesOpp(COACH_SCN.redBeat.pivot, dir, target);
     pinFoot(COACH_SCN.redBeat.pivot);
     coachSay('<span style="color:#d05a48">Red</span> presses in&hellip;', '&nbsp;');
-    aiBeginSwing(dir, target, naturalLimit);
+    aiBeginSwing(dir, target, naturalLimit, pushesOpp);
 }
 // Called from finishTurn (which routes here while coachActive) instead of the normal end-of-turn flow.
 function coachFinishTurn() {
