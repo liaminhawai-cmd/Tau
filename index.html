@@ -3839,7 +3839,31 @@ function finishTurn() {
 // aiIdx/humanIdx (which colour is AI vs human) are chosen per-game at startGame(), since the
 // player can pick either colour — not fixed to red.
 let aiIdx = 1, humanIdx = 0;
-let vsAI = false, aiAnim = null, aiTimer = null, aiDifficulty = 'easy';   // 'dumb' | 'easy' | 'zone' | 'hard' | 'master' — see searchedPlanFor()
+let vsAI = false, aiAnim = null, aiTimer = null, aiGapTimer = null, aiDifficulty = 'easy';   // 'dumb' | 'easy' | 'zone' | 'hard' | 'master' — see searchedPlanFor()
+// Human "pick up → aim → commit" feel for an AI move: the pickup click fires as the foot is grabbed
+// (it's already glowing), then a short beat, then the 808 "doof" lands exactly as the swing starts.
+// The beat is short for a decisive shove that drives all the way to the next line, and longer (with
+// a slower settle) for a careful placement that stops short of it — plus per-move jitter so nothing
+// feels metronomic. Capped ~0.5s. Shared by real AI turns and the coached opponent move.
+function aiBeginSwing(dir, target, naturalLimit) {
+    playSelectClick();   // the pinned foot is already lit; this is the "pick it up" tick
+    render();
+    const shortfall = Math.max(0, naturalLimit - target);
+    const shortFrac = Math.min(1, shortfall / (30*Math.PI/180));   // 0 = drives to the line · 1 = stops ≥30° short
+    const arcFrac   = Math.min(1, target / (120*Math.PI/180));     // a touch more wind-up for a bigger sweep
+    let gapMs = 90 + 300*shortFrac + 55*arcFrac;                   // ~150ms committed → ~450ms careful
+    gapMs *= 0.78 + Math.random()*0.5;                            // ± human jitter
+    gapMs = Math.max(70, Math.min(500, gapMs));
+    const careful = target < naturalLimit - 4*Math.PI/180;
+    const dur = Math.max(0.55, target / AI_SWING_AVG_SPEED) * (1 + 0.35*shortFrac);   // careful placements settle slower
+    clearTimeout(aiGapTimer);
+    aiGapTimer = setTimeout(() => {
+        aiGapTimer = null;
+        if (!G || G.over || G.pinned === null || aiAnim) return;   // turn aborted or superseded during the beat
+        playMoveBass();                                            // the "doof" lands as motion begins
+        aiAnim = { dir, targetRad: target, t: 0, dur, careful };
+    }, gapMs);
+}
 // Every difficulty decides its whole move up front (pivot, direction, exact stop angle) so the
 // visible swing can be played back as ONE smooth eased arc -- slow start, fastest at the midpoint,
 // slow settle -- instead of the old fixed-rate 15Hz stepping. That stepping was also why opponent
@@ -4108,14 +4132,9 @@ function startAiTurn() {
     const snapNL = takeSnap();
     const naturalLimit = Math.abs(simMoveToLimit(pivotIdx, dir));
     G.pieces.forEach((p,i)=>{ p.x=snapNL[i].x; p.y=snapNL[i].y; p.rot=snapNL[i].rot; });
-    const careful = target < naturalLimit - 4*Math.PI/180;   // stops >4° short of the natural line-stop
     pinFoot(pivotIdx);
     if (target < 1e-9) { finishTurn(); return; }   // blocked both ways from this pivot (rare) — forfeit the motion
-    playSelectClick(); playMoveBass();
-    // careful moves run ~25% slower so the deliberate settle reads
-    const dur = Math.max(0.55, target / AI_SWING_AVG_SPEED) * (careful ? 1.25 : 1);
-    aiAnim = { dir, targetRad: target, t: 0, dur, careful };
-    render();
+    aiBeginSwing(dir, target, naturalLimit);        // pickup click → human beat → 808 + swing
 }
 // Advances the AI's swing along the eased arc; called every frame from animate() with real dt.
 function stepAi(dt) {
@@ -4484,7 +4503,7 @@ function startGame(aiMode, humanColorIdx, difficulty) {
     if (difficulty !== 'ladder') ladderLevel = null;   // classic AI / online / local game — not a ladder rung
     humanIdx = humanColorIdx===undefined ? 0 : humanColorIdx;
     aiIdx = 1 - humanIdx;
-    clearTimeout(aiTimer); aiAnim = null;
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
     camCenterFrac = 1; camManualSet = false;   // fresh game starts fully centred
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
@@ -4525,7 +4544,7 @@ function coachSay(main, sub) {
     const h = document.getElementById('help');   if (h) h.innerHTML = coachSub;
 }
 function startCoach() {
-    hideModal(); clearTimeout(gameOverTimer); clearTimeout(aiTimer); aiAnim = null;
+    hideModal(); clearTimeout(gameOverTimer); clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
     demoStop();
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
     vsAI = true; aiDifficulty = 'coach'; ladderLevel = null; humanIdx = 0; aiIdx = 1;
@@ -4548,12 +4567,14 @@ function startCoach() {
 function coachPlayRed() {
     coachPhase = 'redMove'; coachInputLocked = true;
     G.active = 1;
-    pinFoot(COACH_SCN.redBeat.pivot);
     const target = COACH_SCN.redBeat.deg * Math.PI/180, dir = COACH_SCN.redBeat.dir;
-    playSelectClick(); playMoveBass();
-    aiAnim = { dir, targetRad: target, t: 0, dur: Math.max(0.6, target / AI_SWING_AVG_SPEED), careful: false };
+    // natural limit of Red's scripted move, so the pickup→doof beat reads the same way a real AI's does
+    const snapNL = takeSnap();
+    const naturalLimit = Math.abs(simMoveToLimit(COACH_SCN.redBeat.pivot, dir));
+    G.pieces.forEach((p,i)=>{ p.x=snapNL[i].x; p.y=snapNL[i].y; p.rot=snapNL[i].rot; });
+    pinFoot(COACH_SCN.redBeat.pivot);
     coachSay('<span style="color:#d05a48">Red</span> presses in&hellip;', '&nbsp;');
-    render();
+    aiBeginSwing(dir, target, naturalLimit);
 }
 // Called from finishTurn (which routes here while coachActive) instead of the normal end-of-turn flow.
 function coachFinishTurn() {
@@ -4597,7 +4618,7 @@ function coachEnd() {
 }
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
-    clearTimeout(aiTimer); aiAnim = null;
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
     replayActive = false; ladderLevel = null;
     if (typeof rmxTeardown === 'function') rmxTeardown(true);   // tell a waiting opponent we left
     mmWaitingAI = false;   // leaving to the menu also leaves the play-AI-while-you-wait queue
@@ -5558,7 +5579,7 @@ addEventListener('focus', repaintOnReturn);
 function surrender() {
     if (!G || G.over) return;
     if (onlineMatch && onlineMatch.spectator) { backToMenu(); return; }   // "Surrender" = stop watching
-    clearTimeout(aiTimer); aiAnim = null;
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
     const loserIdx = onlineMatch ? (onlineMatch.myColor === 'blue' ? 0 : 1) : vsAI ? humanIdx : G.active;
     if (onlineMatch) { endOnlineMatch(loserIdx); return; }
     G.over = true; G.winner = 1 - loserIdx;
@@ -7592,7 +7613,7 @@ async function enterOnlineMatch(row) {
 }
 async function finishEnterOnlineMatch(row) {
     setPresenceStatus('match');
-    clearTimeout(aiTimer); aiAnim = null; ladderLevel = null;   // a pending AI-while-you-wait move must not fire into the online match
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null; ladderLevel = null;   // a pending AI-while-you-wait move must not fire into the online match
     hideModal();
     demoStop();
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
