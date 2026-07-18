@@ -417,7 +417,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 147</div>
+<div id="buildTag">build 148</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -5193,7 +5193,14 @@ try { soundOn = localStorage.getItem('tauSound') !== '0'; } catch(e) {}
 // louder (was reported as "pretty quiet, not too bad").
 let userVol = 70;
 try { const v = parseInt(localStorage.getItem('tauVolume'), 10); if (Number.isFinite(v) && v>=0 && v<=100) userVol = v; } catch(e) {}
-function effectiveMaster() { return SFX.master * (userVol / 70); }
+// 0–70% is unchanged (70 = today's tuned baseline, userVol/70 == 1 there). Above 70% it ramps
+// steeper so 100% lands 50% louder than it used to be (old 100% was 100/70 ≈ 1.43× baseline → now
+// 1.5× that ≈ 2.14× baseline) — real headroom for anyone who wants it loud.
+function effectiveMaster() {
+    const v = Math.max(0, Math.min(100, userVol));
+    const f = v <= 70 ? v/70 : 1 + (v-70)/30 * ((100/70)*1.5 - 1);
+    return SFX.master * f;
+}
 function makeNoiseBuffer(ctx, seconds) {
     const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate*seconds), ctx.sampleRate);
     const d = buf.getChannelData(0);
@@ -5396,7 +5403,11 @@ updateSoundToggleIcon();
 // VOL_ROT_MAX (100%) — dragging anywhere on the dial IS setting the volume, the same way pinning a
 // foot and swinging the piece IS making a move. Geometry constants were fitted (not eyeballed) to
 // fill a 112x100 canvas across the whole sweep — see scratch derivation, not reproduced here.
-const VOL_PIVOT = { x: 56, y: 58 }, VOL_R = 26, VOL_ROT_MIN = -10 * Math.PI/180, VOL_ROT_MAX = 130 * Math.PI/180;
+// 0% stands the tripod straight up; volume winds it a near-full turn clockwise to 100%. The sweep
+// stops 20° short of a literal 360° so 100% and 0% are still visually distinct (the % readout
+// disambiguates too). Pivot centred and radius shrunk so the whole rotation stays inside the canvas.
+const VOL_PIVOT = { x: 56, y: 50 }, VOL_R = 20;
+const VOL_ROT_MIN = -3*Math.PI/2, VOL_ROT_MAX = VOL_ROT_MIN + 340*Math.PI/180;
 function volRotFor(vol) { return VOL_ROT_MIN + (VOL_ROT_MAX-VOL_ROT_MIN) * Math.max(0, Math.min(100, vol))/100; }
 function volPoseFor(rot) {
     const hub = { x: VOL_PIVOT.x - VOL_R*Math.cos(rot), y: VOL_PIVOT.y - VOL_R*Math.sin(rot) };
@@ -5444,18 +5455,23 @@ function setUserVol(v) {
           pct = document.getElementById('volPct');
     if (!canvas || !popover || !soundBtn) return;
     if (pct) pct.textContent = userVol + '%';
-    let dragging = false, dragStartAngle = 0, dragStartRot = 0;
+    // Incremental angle accumulation: each move adds the small change in pointer-angle since the last
+    // move to the current rot. Unlike a delta measured from a fixed drag-start (which wraps at ±180°
+    // and so can't span the near-full sweep), this lets one continuous circular drag wind the dial all
+    // the way around, clamping cleanly at each end.
+    let dragging = false, lastAngle = 0;
     const move = e => {
         if (!dragging) return;
-        const delta = normAngleDelta(volAngleFromPivot(volCanvasPt(e.clientX, e.clientY)) - dragStartAngle);
-        const rot = Math.max(VOL_ROT_MIN, Math.min(VOL_ROT_MAX, dragStartRot + delta));
+        const a = volAngleFromPivot(volCanvasPt(e.clientX, e.clientY));
+        const d = normAngleDelta(a - lastAngle);
+        lastAngle = a;
+        const rot = Math.max(VOL_ROT_MIN, Math.min(VOL_ROT_MAX, volRotFor(userVol) + d));
         setUserVol(100 * (rot - VOL_ROT_MIN) / (VOL_ROT_MAX - VOL_ROT_MIN));
     };
     const up = () => { dragging = false; removeEventListener('pointermove', move); };
     canvas.addEventListener('pointerdown', e => {
         e.preventDefault(); e.stopPropagation(); resumeAudio();
-        dragStartAngle = volAngleFromPivot(volCanvasPt(e.clientX, e.clientY));
-        dragStartRot = volRotFor(userVol);
+        lastAngle = volAngleFromPivot(volCanvasPt(e.clientX, e.clientY));
         dragging = true;
         addEventListener('pointermove', move); addEventListener('pointerup', up, { once:true });
     });
