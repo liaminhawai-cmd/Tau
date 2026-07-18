@@ -417,7 +417,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 148</div>
+<div id="buildTag">build 149</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -5184,22 +5184,28 @@ const SFX_VERSION = 2;
 const SFX = Object.assign({}, SFX_DEFAULTS);
 try { if (+localStorage.getItem('tauSfxV') === SFX_VERSION) Object.assign(SFX, JSON.parse(localStorage.getItem('tauSfx')||'{}')); } catch(e) {}
 let audioCtx=null, noiseSrc=null, bandpass=null, voiceGain=null, scrapeHP=null, scrapeGain=null,
-    dryGain=null, convolver=null, wetGain=null, toneLP=null, masterGain=null, audioReady=false;
+    dryGain=null, convolver=null, wetGain=null, toneLP=null, masterGain=null, limiter=null, audioReady=false;
 let soundOn = true, audioReplayIdx = null, audioPrevFeet = null;
 try { soundOn = localStorage.getItem('tauSound') !== '0'; } catch(e) {}
 // User volume (0-100, independent of the tuned SFX.master mix). 70 is the DEFAULT and is calibrated
 // to reproduce today's already-tuned loudness exactly (userVol/70 == 1) -- so nobody's experience
 // changes unless they touch the dial, but there's real headroom above 70 for anyone who wants it
 // louder (was reported as "pretty quiet, not too bad").
-let userVol = 70;
-try { const v = parseInt(localStorage.getItem('tauVolume'), 10); if (Number.isFinite(v) && v>=0 && v<=100) userVol = v; } catch(e) {}
-// 0–70% is unchanged (70 = today's tuned baseline, userVol/70 == 1 there). Above 70% it ramps
-// steeper so 100% lands 50% louder than it used to be (old 100% was 100/70 ≈ 1.43× baseline → now
-// 1.5× that ≈ 2.14× baseline) — real headroom for anyone who wants it loud.
+// Dial scale is 0–200%, default 100%. Calibrated from a MEASURED worst-case peak (voice at max
+// speed + click + 808 + loss swell stacked): at unit master-factor that peak is 1.194 of full
+// scale, so the no-clip ceiling is factor ≈ 0.745 (peak ≈ 0.89). 200% drives exactly that — as
+// loud as the mix can truly go — with a brickwall limiter (see initAudio) catching any unlucky
+// transient stacking beyond it. 100% = 1.71× the tuned baseline (≈80% of the previous dial max),
+// so the default is noticeably louder than the old out-of-box level. Stored under a NEW key
+// (tauVolume2); the old 0-100 key is deliberately not migrated so everyone starts at the new 100%.
+let userVol = 100;
+try { const v = parseInt(localStorage.getItem('tauVolume2'), 10); if (Number.isFinite(v) && v>=0 && v<=200) userVol = v; } catch(e) {}
+const VOL_MULT_100 = 1.714, VOL_MULT_200 = 5.731;   // × SFX.master; 200 hits the measured no-clip ceiling
 function effectiveMaster() {
-    const v = Math.max(0, Math.min(100, userVol));
-    const f = v <= 70 ? v/70 : 1 + (v-70)/30 * ((100/70)*1.5 - 1);
-    return SFX.master * f;
+    const p = Math.max(0, Math.min(200, userVol));
+    const mult = p <= 100 ? (p/100) * VOL_MULT_100
+                          : VOL_MULT_100 + (p-100)/100 * (VOL_MULT_200 - VOL_MULT_100);
+    return SFX.master * mult;
 }
 function makeNoiseBuffer(ctx, seconds) {
     const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate*seconds), ctx.sampleRate);
@@ -5237,11 +5243,17 @@ function initAudio() {
     wetGain = audioCtx.createGain(); wetGain.gain.value = SFX.reverb;
     toneLP = audioCtx.createBiquadFilter(); toneLP.type='lowpass'; toneLP.frequency.value = SFX.highCut;
     masterGain = audioCtx.createGain(); masterGain.gain.value = soundOn ? effectiveMaster() : 0;
+    // Brickwall safety limiter: the volume scale is calibrated to stay just under clip at 200%,
+    // and this catches any transient stacking beyond the calibration (e.g. click + 808 + swell
+    // landing in phase) — the level can be pushed loud without ever clipping OR stabbing ears.
+    limiter = audioCtx.createDynamicsCompressor();
+    limiter.threshold.value = -3; limiter.knee.value = 3; limiter.ratio.value = 20;
+    limiter.attack.value = 0.002; limiter.release.value = 0.12;
     noiseSrc.connect(bandpass); bandpass.connect(voiceGain); voiceGain.connect(toneLP);
     noiseSrc.connect(scrapeHP); scrapeHP.connect(scrapeGain); scrapeGain.connect(toneLP);
     toneLP.connect(dryGain); dryGain.connect(masterGain);
     toneLP.connect(convolver); convolver.connect(wetGain); wetGain.connect(masterGain);
-    masterGain.connect(audioCtx.destination);
+    masterGain.connect(limiter); limiter.connect(audioCtx.destination);
     noiseSrc.start();
     audioReady = true;
 }
@@ -5408,7 +5420,10 @@ updateSoundToggleIcon();
 // disambiguates too). Pivot centred and radius shrunk so the whole rotation stays inside the canvas.
 const VOL_PIVOT = { x: 56, y: 50 }, VOL_R = 20;
 const VOL_ROT_MIN = -3*Math.PI/2, VOL_ROT_MAX = VOL_ROT_MIN + 340*Math.PI/180;
-function volRotFor(vol) { return VOL_ROT_MIN + (VOL_ROT_MAX-VOL_ROT_MIN) * Math.max(0, Math.min(100, vol))/100; }
+// The dial spans 0–200%: 100% (the default) sits at HALF rotation, 200% at the full wind. People
+// psychologically crank dials to the top — the top here is genuinely max-without-clipping, and the
+// half-way "100%" is the sensible default level.
+function volRotFor(vol) { return VOL_ROT_MIN + (VOL_ROT_MAX-VOL_ROT_MIN) * Math.max(0, Math.min(200, vol))/200; }
 function volPoseFor(rot) {
     const hub = { x: VOL_PIVOT.x - VOL_R*Math.cos(rot), y: VOL_PIVOT.y - VOL_R*Math.sin(rot) };
     const feet = [0,1,2].map(i => { const a = rot + i*2*Math.PI/3; return { x: hub.x+VOL_R*Math.cos(a), y: hub.y+VOL_R*Math.sin(a) }; });
@@ -5442,8 +5457,8 @@ function volAngleFromPivot(pt) { return Math.atan2(pt.y - VOL_PIVOT.y, pt.x - VO
 // the correct, grab-point-independent way to drive rot. Exactly how dragging a live piece works.
 function normAngleDelta(a) { while (a > Math.PI) a -= 2*Math.PI; while (a < -Math.PI) a += 2*Math.PI; return a; }
 function setUserVol(v) {
-    userVol = Math.max(0, Math.min(100, Math.round(v)));
-    try { localStorage.setItem('tauVolume', String(userVol)); } catch(e) {}
+    userVol = Math.max(0, Math.min(200, Math.round(v)));
+    try { localStorage.setItem('tauVolume2', String(userVol)); } catch(e) {}
     const pct = document.getElementById('volPct'); if (pct) pct.textContent = userVol + '%';
     if (!soundOn) { setSoundOn(true); return; }   // dragging the dial un-mutes, like a normal OS volume slider
     if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(effectiveMaster(), audioCtx.currentTime, 0.05);
@@ -5466,7 +5481,7 @@ function setUserVol(v) {
         const d = normAngleDelta(a - lastAngle);
         lastAngle = a;
         const rot = Math.max(VOL_ROT_MIN, Math.min(VOL_ROT_MAX, volRotFor(userVol) + d));
-        setUserVol(100 * (rot - VOL_ROT_MIN) / (VOL_ROT_MAX - VOL_ROT_MIN));
+        setUserVol(200 * (rot - VOL_ROT_MIN) / (VOL_ROT_MAX - VOL_ROT_MIN));
     };
     const up = () => { dragging = false; removeEventListener('pointermove', move); };
     canvas.addEventListener('pointerdown', e => {
