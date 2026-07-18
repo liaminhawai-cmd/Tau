@@ -417,7 +417,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 149</div>
+<div id="buildTag">build 150</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3401,6 +3401,7 @@ function endReplay() {
     document.getElementById('btns').style.display = 'flex';
     if (replayFinalPose) { G.pieces.forEach((p,i)=>{ p.x=replayFinalPose[i].x; p.y=replayFinalPose[i].y; p.rot=replayFinalPose[i].rot; }); }
     render();
+    if (coachActive) { coachHandoff(); return; }   // coached opening: hand the position to the player
     // Studio embed (studio.html): play the closing tumble, then loop back to the start so the preview
     // always has motion. No modal, no "watch again" — the parent controls the transport.
     if (STUDIO_EMBED) {
@@ -3766,7 +3767,6 @@ function nearestFoot(p, feet, exclude) {
 // the device); vs AI blocks input on the AI's colour; online blocks input unless the active
 // colour is the one this client was assigned.
 function inputBlocked() {
-    if (coachActive) return coachInputLocked;   // coach mode gates input by phase, not by aiIdx
     return (vsAI && G.active===aiIdx) || (onlineMatch && !myOnlineTurnNow());
 }
 function onDown(e) {
@@ -3818,7 +3818,6 @@ function onUp() {
 // (the fall animation, a render, and kicking off the AI's turn) shared by every path that
 // ends a turn: a human release, and the AI's own swing finishing.
 function finishTurn() {
-    if (coachActive) { coachFinishTurn(); return; }   // coached moment drives its own turn flow
     endTurn();
     progressCentering();   // each completed move creeps the camera a quarter back toward centre
     if (colorLab) {   // colour-lab AI-vs-AI: show the tumble on a loss, then reset and keep playing
@@ -4546,105 +4545,65 @@ function startLadderLevel(levelIdx, humanColorIdx) {
     startGame(true, humanColorIdx===undefined ? 0 : humanColorIdx, 'ladder');
 }
 
-// ===================== Coached moment (#coach): land the winning throw =====================
-// A guided one-move hook on the REAL game — real 3D board, real drag-to-swing, real sound, real
-// tumble. The board is seeded to a real position mined from an Expert vs dumb-aggressive game,
-// one move before the win. Red plays its (scripted) move, then the player is coached to pin the
-// glowing foot and sweep Red off the edge. Meant as the landing experience a video ad clicks into.
-// Fully isolated behind the hash: nothing here runs unless startCoach() is called.
-const COACH_SCN = {
-    // seed = clip-5 state 18 (real L7-vs-L2 game); redBeat = Red's real next move; winPivot hints
-    // the player's winning pin. Any move that pushes Red off wins — the pivot is just the nudge.
-    blue: { x: -6.772, y: 28.780, rot: 5.8161 },
-    red:  { x: -23.606, y: 40.001, rot: 7.1485 },
-    redBeat: { pivot: 0, dir: 1, deg: 34.5 },
-    winPivot: 1,
-};
-let coachActive = false, coachPhase = 'off', coachInputLocked = false, coachPostRedSnap = null;
-let coachGoal = '', coachSub = '';   // render() reflects these into #status / #help while coaching
-function coachSay(main, sub) {
-    coachGoal = main || ''; coachSub = sub || '';
-    const s = document.getElementById('status'); if (s) s.innerHTML = coachGoal;
-    const h = document.getElementById('help');   if (h) h.innerHTML = coachSub;
-}
+// ===================== Coached opening (#coach): watch a real tussle, take over as Blue =====================
+// A genuine mid-game stretch (turns 13-19 of a real Liam-vs-Level-8 game, from its share-link
+// replay): Red shoves Blue right back, Blue answers, they trade — and just as the momentum turns
+// Blue's way, the watcher is invited to TAKE OVER as Blue against the gentle menu-Easy brain,
+// continuing from that exact position. Real board, real replay motion + movement-driven sound;
+// tapping the board skips straight to the takeover. Isolated behind the #coach hash.
+const COACH_R = {"turnMeta":[{"s":0,"e":19,"mover":1},{"s":19,"e":121,"mover":0},{"s":121,"e":144,"mover":1},{"s":144,"e":223,"mover":0},{"s":223,"e":268,"mover":1},{"s":268,"e":331,"mover":0},{"s":331,"e":346,"mover":1}],"frames":[[6.39,-0.07,1.63,12.42,-17.11,2.65],[6.25,-0.03,1.63,12.21,-16.75,2.63],[5.78,0.12,1.62,11.68,-15.82,2.59],[4.92,0.47,1.6,10.84,-14.08,2.5],[4.13,0.93,1.58,10.29,-12.68,2.44],[3.52,1.36,1.57,9.93,-11.59,2.39],[3.19,2.27,1.56,9.66,-10.64,2.35],[3.35,3.58,1.55,9.43,-9.67,2.3],[3.67,5.39,1.55,9.19,-8.3,2.24],[4.17,7.41,1.55,9.01,-6.75,2.17],[4.83,9.46,1.54,8.94,-5.15,2.1],[6.74,13.7,1.54,9.16,-1.71,1.96],[7.87,15.61,1.54,9.44,-0.1,1.88],[10.21,19.09,1.54,10.28,2.85,1.75],[11.31,20.75,1.54,10.81,4.2,1.69],[12.24,22.41,1.54,11.41,5.49,1.63],[12.82,24.09,1.54,12.12,6.79,1.56],[13.08,25.64,1.54,13.7,9.14,1.44],[14.14,26.7,1.56,14.47,10.09,1.39],[15.02,27.6,1.58,15.16,10.86,1.34],[14.96,27.48,1.59,15.09,10.8,1.34],[14.88,27.34,1.59,15.02,10.72,1.35],[14.83,27.25,1.6,14.97,10.67,1.35],[14.77,27.15,1.6,14.92,10.61,1.35],[14.71,27.03,1.61,14.86,10.55,1.35],[14.64,26.9,1.61,14.79,10.47,1.35],[14.57,26.76,1.62,14.72,10.39,1.35],[14.49,26.61,1.63,14.64,10.31,1.36],[14.41,26.44,1.64,14.55,10.21,1.36],[14.32,26.26,1.65,14.46,10.11,1.36],[14.23,26.07,1.65,14.37,9.99,1.36],[14.14,25.87,1.66,14.27,9.87,1.36],[14.04,25.65,1.67,14.16,9.74,1.37],[13.94,25.42,1.69,14.07,9.57,1.37],[13.84,25.18,1.7,14.01,9.36,1.37],[13.74,24.94,1.71,13.96,9.15,1.37],[13.63,24.67,1.72,13.9,8.91,1.37],[13.53,24.4,1.73,13.84,8.68,1.37],[13.42,24.11,1.75,13.78,8.42,1.37],[13.31,23.82,1.76,13.72,8.17,1.37],[13.21,23.51,1.77,13.66,7.91,1.37],[13.11,23.2,1.79,13.61,7.64,1.37],[13.01,22.89,1.8,13.56,7.37,1.37],[12.91,22.54,1.82,13.5,7.08,1.37],[12.82,22.21,1.83,13.45,6.79,1.37],[12.73,21.86,1.85,13.41,6.49,1.37],[12.64,21.49,1.87,13.36,6.17,1.37],[12.56,21.12,1.88,13.32,5.85,1.37],[12.48,20.74,1.9,13.29,5.53,1.37],[12.4,20.34,1.92,13.25,5.18,1.37],[12.34,19.96,1.93,13.22,4.86,1.36],[12.28,19.57,1.95,13.2,4.53,1.36],[12.22,19.17,1.97,13.18,4.19,1.36],[12.17,18.75,1.99,13.17,3.84,1.36],[12.13,18.34,2,13.16,3.5,1.36],[12.1,17.91,2.02,13.15,3.13,1.36],[12.07,17.47,2.04,13.15,2.77,1.35],[12.05,17.04,2.06,13.16,2.41,1.35],[12.04,16.59,2.08,13.18,2.04,1.35],[12.04,16.17,2.1,13.2,1.69,1.34],[12.04,15.72,2.12,13.22,1.32,1.34],[12.06,15.26,2.14,13.26,0.95,1.34],[12.08,14.8,2.16,13.3,0.57,1.33],[12.11,14.36,2.18,13.34,0.22,1.33],[12.16,13.9,2.2,13.4,-0.15,1.33],[12.21,13.46,2.22,13.45,-0.5,1.32],[12.27,12.99,2.24,13.52,-0.87,1.32],[12.34,12.54,2.26,13.59,-1.22,1.31],[12.42,12.08,2.28,13.67,-1.58,1.31],[12.5,11.63,2.3,13.75,-1.93,1.3],[12.6,11.16,2.32,13.85,-2.28,1.29],[12.71,10.7,2.34,13.99,-2.71,1.29],[12.82,10.27,2.36,14.25,-3.13,1.29],[12.94,9.83,2.38,14.59,-3.63,1.29],[13.08,9.39,2.4,14.95,-4.11,1.3],[13.22,8.94,2.42,15.32,-4.61,1.3],[13.37,8.51,2.44,15.7,-5.07,1.3],[13.52,8.09,2.46,16.07,-5.51,1.31],[13.68,7.67,2.47,16.46,-5.95,1.31],[13.85,7.26,2.49,16.85,-6.38,1.31],[14.03,6.85,2.51,17.26,-6.81,1.32],[14.23,6.43,2.53,17.69,-7.25,1.32],[14.42,6.02,2.55,18.11,-7.67,1.32],[14.6,5.66,2.57,18.49,-8.02,1.32],[14.8,5.28,2.59,18.91,-8.4,1.32],[15.01,4.9,2.61,19.34,-8.78,1.33],[15.23,4.52,2.63,19.78,-9.15,1.33],[15.45,4.16,2.65,20.21,-9.5,1.33],[15.66,3.82,2.66,20.63,-9.82,1.33],[15.88,3.48,2.68,21.06,-10.14,1.33],[16.11,3.15,2.7,21.49,-10.45,1.33],[16.34,2.82,2.71,21.93,-10.76,1.34],[16.56,2.51,2.73,22.35,-11.04,1.34],[16.79,2.2,2.75,22.78,-11.31,1.34],[17.02,1.91,2.76,23.2,-11.57,1.34],[17.25,1.63,2.78,23.61,-11.81,1.34],[17.49,1.33,2.8,24.06,-12.07,1.34],[17.71,1.08,2.81,24.45,-12.28,1.34],[17.95,0.81,2.83,24.87,-12.5,1.34],[18.16,0.58,2.84,25.24,-12.71,1.34],[18.39,0.34,2.85,25.64,-12.89,1.34],[18.6,0.11,2.87,26.02,-13.09,1.35],[18.82,-0.11,2.88,26.4,-13.27,1.35],[19.03,-0.32,2.89,26.76,-13.43,1.35],[19.24,-0.52,2.91,27.12,-13.58,1.35],[19.45,-0.71,2.92,27.47,-13.72,1.35],[19.63,-0.88,2.93,27.79,-13.84,1.35],[19.83,-1.06,2.94,28.12,-13.97,1.35],[20,-1.21,2.95,28.41,-14.08,1.35],[20.19,-1.37,2.96,28.72,-14.19,1.35],[20.35,-1.5,2.97,28.98,-14.28,1.35],[20.5,-1.63,2.98,29.24,-14.37,1.35],[20.66,-1.76,2.99,29.5,-14.46,1.35],[20.79,-1.86,3,29.72,-14.52,1.35],[20.92,-1.97,3,29.94,-14.59,1.35],[21.04,-2.06,3.01,30.14,-14.67,1.35],[21.15,-2.14,3.02,30.31,-14.72,1.35],[21.25,-2.22,3.02,30.47,-14.77,1.35],[21.34,-2.29,3.03,30.62,-14.81,1.35],[21.43,-2.35,3.03,30.77,-14.85,1.35],[21.54,-2.43,3.04,30.93,-14.89,1.35],[21.6,-2.47,3.04,31.04,-14.91,1.35],[21.21,-2.23,3.03,30.54,-14.79,1.33],[20.89,-2,3.02,30.11,-14.68,1.31],[20.61,-1.8,3.02,29.74,-14.58,1.29],[20.37,-1.62,3.01,29.43,-14.48,1.28],[20.24,-1.52,3.01,29.26,-14.43,1.27],[20.04,-1.37,3.01,29,-14.35,1.26],[19.71,-1.1,3,28.56,-14.2,1.24],[19.2,-0.67,2.99,27.87,-13.95,1.21],[18.02,0.43,2.96,26.28,-13.27,1.13],[17.68,0.78,2.95,25.81,-13.05,1.11],[17.45,1.03,2.95,25.49,-12.88,1.09],[17.29,1.19,2.95,25.28,-12.78,1.08],[16.76,1.79,2.94,24.55,-12.37,1.05],[16.36,2.28,2.93,23.97,-12.03,1.02],[16.27,2.38,2.92,23.86,-11.95,1.01],[16.12,2.57,2.92,23.64,-11.82,1],[15.97,2.76,2.92,23.44,-11.68,0.99],[15.68,3.14,2.91,23.02,-11.41,0.97],[15.44,3.47,2.91,22.68,-11.17,0.95],[15.16,3.86,2.9,22.28,-10.88,0.93],[14.59,4.73,2.89,21.45,-10.23,0.88],[13.8,6.06,2.87,20.28,-9.2,0.82],[13.66,6.33,2.87,20.07,-8.99,0.8],[13.58,6.31,2.87,20.05,-9.01,0.8],[13.5,6.29,2.88,20.04,-9.03,0.8],[13.38,6.26,2.88,20.03,-9.06,0.8],[13.22,6.21,2.89,20.01,-9.11,0.8],[13.12,6.19,2.89,19.99,-9.13,0.8],[13.01,6.15,2.9,19.98,-9.17,0.81],[12.89,6.12,2.9,19.96,-9.2,0.81],[12.75,6.08,2.91,19.94,-9.24,0.81],[12.6,6.03,2.92,19.92,-9.28,0.81],[12.45,5.98,2.92,19.9,-9.33,0.81],[12.27,5.92,2.93,19.87,-9.38,0.81],[12.08,5.86,2.94,19.84,-9.43,0.81],[11.87,5.79,2.95,19.82,-9.49,0.81],[11.66,5.72,2.96,19.79,-9.56,0.81],[11.44,5.64,2.97,19.75,-9.62,0.81],[11.2,5.55,2.98,19.72,-9.7,0.81],[10.95,5.45,2.99,19.68,-9.77,0.81],[10.67,5.34,3.01,19.64,-9.86,0.82],[10.41,5.23,3.02,19.61,-9.94,0.82],[10.13,5.11,3.03,19.55,-10.03,0.82],[9.85,4.99,3.04,19.5,-10.12,0.82],[9.55,4.84,3.06,19.44,-10.22,0.82],[9.22,4.69,3.08,19.38,-10.33,0.82],[8.92,4.54,3.09,19.32,-10.44,0.83],[8.6,4.37,3.11,19.26,-10.55,0.83],[8.27,4.19,3.12,19.19,-10.67,0.83],[7.94,4,3.14,19.13,-10.79,0.83],[7.6,3.81,3.15,19.06,-10.91,0.84],[7.25,3.6,3.17,19,-11.04,0.84],[6.9,3.37,3.19,18.93,-11.18,0.84],[6.51,3.12,3.21,18.85,-11.33,0.84],[6.22,2.92,3.23,18.8,-11.44,0.85],[5.87,2.67,3.24,18.73,-11.58,0.85],[5.52,2.41,3.26,18.66,-11.72,0.85],[5.19,2.16,3.28,18.6,-11.87,0.86],[4.82,1.86,3.3,18.53,-12.02,0.86],[4.49,1.59,3.32,18.46,-12.17,0.86],[4.16,1.3,3.34,18.4,-12.32,0.87],[3.83,1.01,3.36,18.34,-12.47,0.87],[3.5,0.71,3.38,18.27,-12.62,0.87],[3.18,0.4,3.4,18.21,-12.78,0.88],[2.87,0.08,3.42,18.15,-12.93,0.88],[2.57,-0.24,3.44,18.09,-13.08,0.88],[2.27,-0.56,3.45,18.03,-13.24,0.89],[1.98,-0.89,3.47,17.98,-13.4,0.89],[1.7,-1.22,3.49,17.92,-13.55,0.89],[1.42,-1.56,3.51,17.87,-13.71,0.9],[1.18,-1.86,3.53,17.82,-13.85,0.9],[0.92,-2.2,3.55,17.77,-14,0.9],[0.68,-2.53,3.56,17.72,-14.16,0.91],[0.45,-2.85,3.58,17.68,-14.3,0.91],[0.23,-3.17,3.6,17.64,-14.44,0.91],[0.02,-3.5,3.61,17.59,-14.59,0.92],[-0.18,-3.81,3.63,17.55,-14.73,0.92],[-0.37,-4.12,3.65,17.51,-14.86,0.92],[-0.55,-4.42,3.66,17.47,-14.99,0.93],[-0.72,-4.72,3.68,17.43,-15.13,0.93],[-0.88,-5.01,3.69,17.39,-15.25,0.93],[-1.03,-5.29,3.71,17.36,-15.38,0.94],[-1.17,-5.56,3.72,17.33,-15.49,0.94],[-1.3,-5.82,3.73,17.3,-15.6,0.94],[-1.42,-6.07,3.74,17.27,-15.71,0.95],[-1.54,-6.31,3.75,17.24,-15.81,0.95],[-1.64,-6.54,3.77,17.22,-15.91,0.95],[-1.74,-6.77,3.78,17.19,-16.01,0.95],[-1.83,-6.98,3.79,17.17,-16.1,0.96],[-1.91,-7.16,3.79,17.15,-16.18,0.96],[-1.99,-7.35,3.8,17.14,-16.25,0.96],[-2.05,-7.51,3.81,17.12,-16.32,0.96],[-2.11,-7.67,3.82,17.1,-16.39,0.96],[-2.17,-7.81,3.82,17.09,-16.45,0.96],[-2.22,-7.94,3.83,17.08,-16.51,0.97],[-2.27,-8.07,3.84,17.07,-16.56,0.97],[-2.3,-8.17,3.84,17.06,-16.6,0.97],[-2.34,-8.27,3.85,17.05,-16.64,0.97],[-2.37,-8.35,3.85,17.04,-16.68,0.97],[-2.39,-8.42,3.85,17.03,-16.71,0.97],[-2.43,-8.54,3.86,17.03,-16.75,0.97],[-2.46,-8.61,3.86,17.02,-16.79,0.97],[-2.44,-8.49,3.87,16.74,-16.63,0.96],[-2.35,-8.04,3.88,16.13,-16.19,0.93],[-2.15,-7.18,3.91,15.07,-15.34,0.87],[-1.93,-6.26,3.93,14.06,-14.43,0.81],[-1.72,-5.45,3.95,13.26,-13.63,0.76],[-1.47,-4.59,3.97,12.5,-12.8,0.71],[-1.89,-3.05,3.97,11.71,-11.82,0.66],[-2.44,-1.72,3.97,11.08,-10.97,0.61],[-2.95,-0.57,3.97,10.57,-10.21,0.57],[-3.35,0.26,3.97,10.21,-9.63,0.54],[-3.77,1.08,3.97,9.86,-9.04,0.51],[-4.11,2.03,3.98,9.5,-8.37,0.48],[-4.42,3.16,3.99,9.1,-7.56,0.44],[-4.64,4.19,4,8.76,-6.81,0.4],[-4.79,5.22,4.01,8.45,-6.05,0.37],[-4.9,7.07,4.03,7.97,-4.66,0.31],[-4.83,9.2,4.05,7.51,-3.01,0.23],[-4.71,10.33,4.07,7.32,-2.1,0.19],[-4.53,11.36,4.08,7.17,-1.28,0.15],[-4.29,12.47,4.1,7.05,-0.37,0.12],[-3.98,13.63,4.11,6.96,0.59,0.07],[-3.64,14.88,4.13,6.91,1.62,0.03],[-3.34,16,4.15,6.9,2.54,-0.01],[-2.88,17.74,4.17,6.96,3.97,-0.07],[-2.7,18.43,4.18,7.01,4.55,-0.1],[-2.55,19.05,4.19,7.06,5.06,-0.12],[-2.42,19.59,4.2,7.12,5.51,-0.14],[-2.11,20.79,4.21,7.29,6.53,-0.18],[-1.9,21.33,4.22,7.38,7,-0.21],[-1.35,22.74,4.25,7.66,8.2,-0.26],[-1.11,23.38,4.26,7.82,8.75,-0.28],[-0.89,23.96,4.27,7.97,9.25,-0.31],[-0.47,25.08,4.29,8.3,10.21,-0.35],[-0.29,25.56,4.3,8.46,10.63,-0.37],[-0.11,26.03,4.31,8.62,11.04,-0.39],[0.2,26.91,4.33,8.95,11.81,-0.43],[0.33,27.28,4.33,9.1,12.14,-0.44],[0.45,27.61,4.34,9.25,12.44,-0.46],[0.59,27.93,4.35,9.39,12.73,-0.47],[0.7,28.21,4.35,9.52,12.99,-0.48],[0.92,28.78,4.37,9.8,13.49,-0.51],[1.03,29.06,4.38,9.95,13.76,-0.52],[1.15,29.37,4.38,10.11,14.04,-0.53],[1.25,29.65,4.39,10.26,14.29,-0.55],[1.31,29.79,4.39,10.34,14.42,-0.55],[1.35,29.72,4.4,10.35,14.42,-0.56],[1.37,29.63,4.4,10.34,14.39,-0.55],[1.39,29.52,4.41,10.32,14.34,-0.55],[1.43,29.39,4.41,10.3,14.28,-0.55],[1.46,29.23,4.42,10.28,14.22,-0.55],[1.51,29.05,4.43,10.25,14.14,-0.55],[1.56,28.85,4.44,10.23,14.05,-0.55],[1.61,28.63,4.45,10.19,13.95,-0.55],[1.68,28.4,4.46,10.16,13.85,-0.55],[1.75,28.14,4.47,10.13,13.73,-0.55],[1.82,27.88,4.48,10.09,13.61,-0.55],[1.91,27.59,4.5,10.05,13.48,-0.54],[2.01,27.3,4.51,10.01,13.33,-0.54],[2.12,26.98,4.52,9.97,13.17,-0.54],[2.23,26.67,4.54,9.94,13.02,-0.54],[2.35,26.33,4.55,9.92,12.82,-0.54],[2.49,25.99,4.57,9.9,12.61,-0.54],[2.63,25.64,4.59,9.88,12.39,-0.54],[2.81,25.23,4.6,9.86,12.14,-0.54],[2.95,24.91,4.62,9.84,11.94,-0.54],[3.13,24.54,4.64,9.82,11.71,-0.54],[3.32,24.15,4.66,9.8,11.46,-0.54],[3.52,23.76,4.68,9.79,11.21,-0.54],[3.71,23.4,4.69,9.78,10.94,-0.54],[3.93,23.02,4.71,9.78,10.64,-0.53],[4.16,22.64,4.73,9.8,10.3,-0.53],[4.41,22.23,4.75,9.91,9.84,-0.52],[4.64,21.87,4.77,10.19,9.42,-0.52],[4.9,21.48,4.79,10.68,9.04,-0.51],[5.16,21.11,4.81,11.15,8.71,-0.51],[5.44,20.73,4.83,11.67,8.36,-0.51],[5.72,20.36,4.85,12.17,8.04,-0.5],[6.01,20,4.87,12.69,7.72,-0.5],[6.31,19.64,4.89,13.24,7.4,-0.5],[6.6,19.3,4.91,13.74,7.12,-0.5],[6.9,18.97,4.93,14.26,6.85,-0.49],[7.22,18.62,4.95,14.81,6.56,-0.49],[7.53,18.3,4.97,15.34,6.31,-0.49],[7.85,17.99,4.99,15.87,6.06,-0.49],[8.15,17.71,5.01,16.36,5.85,-0.49],[8.47,17.41,5.03,16.9,5.62,-0.48],[8.79,17.13,5.04,17.41,5.42,-0.48],[9.11,16.86,5.06,17.94,5.23,-0.48],[9.42,16.6,5.08,18.44,5.06,-0.48],[9.73,16.36,5.1,18.94,4.89,-0.48],[10.03,16.12,5.11,19.42,4.75,-0.48],[10.33,15.9,5.13,19.89,4.61,-0.48],[10.62,15.69,5.15,20.35,4.49,-0.47],[10.92,15.48,5.16,20.83,4.36,-0.47],[11.18,15.31,5.17,21.23,4.26,-0.47],[11.45,15.14,5.19,21.65,4.18,-0.47],[11.7,14.97,5.2,22.05,4.08,-0.47],[11.95,14.82,5.21,22.42,4.01,-0.47],[12.16,14.69,5.22,22.76,3.95,-0.47],[12.38,14.57,5.24,23.09,3.9,-0.47],[12.58,14.45,5.25,23.39,3.85,-0.47],[12.76,14.35,5.25,23.67,3.81,-0.47],[12.92,14.26,5.26,23.92,3.78,-0.47],[13.07,14.18,5.27,24.14,3.76,-0.47],[13.21,14.11,5.28,24.35,3.71,-0.47],[13.31,14.06,5.28,24.49,3.7,-0.47],[13.39,14.02,5.29,24.62,3.69,-0.47],[13.5,13.96,5.29,24.77,3.69,-0.47],[13.4,14.07,5.29,24.69,3.85,-0.46],[13.25,14.26,5.29,24.53,4.09,-0.45],[12.84,14.74,5.29,24.1,4.7,-0.41],[12.27,15.38,5.28,23.47,5.51,-0.37],[11.62,16.05,5.28,22.75,6.37,-0.32],[10.89,16.73,5.27,21.93,7.24,-0.27],[10.19,17.34,5.26,21.12,8.03,-0.22],[9.46,17.9,5.25,20.27,8.77,-0.17],[8.53,18.56,5.24,19.14,9.66,-0.11],[7.4,19.25,5.22,17.72,10.62,-0.04],[5.32,19.73,5.22,16.21,11.49,0.04],[3.11,19.95,5.23,14.67,12.22,0.11],[1.15,20,5.24,13.29,12.77,0.18],[-0.73,19.94,5.25,11.92,13.22,0.24],[-2.08,19.82,5.25,10.93,13.48,0.29]]};
+// One line per watched turn (movers: R,B,R,B,R,B,R), swapped in as the replay crosses turn bounds.
+const COACH_LINES = [
+    ['<span style="color:#d05a48">Red</span> piles in &mdash; <span style="color:#5487c4">Blue</span> is shoved right back.', 'A real game. Every move pivots on one planted foot.'],
+    ['<span style="color:#5487c4">Blue</span> answers &mdash; a full-arc shove.', ''],
+    ['<span style="color:#d05a48">Red</span> keeps pressing&hellip;', ''],
+    ['<span style="color:#5487c4">Blue</span> pushes the fight back to the middle.', ''],
+    ['They trade again&hellip;', ''],
+    ['<span style="color:#5487c4">Blue</span> is winning the angles now.', ''],
+    ['One more shove from <span style="color:#d05a48">Red</span> &mdash; but the momentum has turned.', 'Your turn next. (Tap the board to skip.)'],
+];
+let coachActive = false;
 function startCoach() {
     hideModal(); clearTimeout(gameOverTimer); clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
     demoStop();
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
-    vsAI = true; aiDifficulty = 'coach'; ladderLevel = null; humanIdx = 0; aiIdx = 1;
+    vsAI = false; ladderLevel = null; humanIdx = 0; aiIdx = 1;
     camCenterFrac = 1; camManualSet = false;
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
     document.body.classList.add('ingame');
     setSpectatorChrome(false);
     reset(); resize();
-    // seed the real mined position
-    G.pieces[0].x = COACH_SCN.blue.x; G.pieces[0].y = COACH_SCN.blue.y; G.pieces[0].rot = COACH_SCN.blue.rot;
-    G.pieces[1].x = COACH_SCN.red.x;  G.pieces[1].y = COACH_SCN.red.y;  G.pieces[1].rot = COACH_SCN.red.rot;
-    G.active = 1; G.over = false; G.winner = null;
     resetAudioForNewGame(); playGameBowl();
-    coachActive = true; coachPhase = 'intro'; coachInputLocked = true; coachPostRedSnap = null;
-    coachSay('You&rsquo;re <b style="color:#5487c4">Blue</b>. Red just overreached &mdash; watch.', '&nbsp;');
-    render();
-    setTimeout(() => { if (coachActive && coachPhase === 'intro') coachPlayRed(); }, 1400);
-}
-function coachPlayRed() {
-    coachPhase = 'redMove'; coachInputLocked = true;
-    G.active = 1;
-    const target = COACH_SCN.redBeat.deg * Math.PI/180, dir = COACH_SCN.redBeat.dir;
-    // natural limit + push detection of Red's scripted move, so its beat reads like a real AI's
-    const snapNL = takeSnap();
-    const naturalLimit = Math.abs(simMoveToLimit(COACH_SCN.redBeat.pivot, dir));
-    G.pieces.forEach((p,i)=>{ p.x=snapNL[i].x; p.y=snapNL[i].y; p.rot=snapNL[i].rot; });
-    const pushesOpp = aiMovePushesOpp(COACH_SCN.redBeat.pivot, dir, target);
-    pinFoot(COACH_SCN.redBeat.pivot);
-    coachSay('<span style="color:#d05a48">Red</span> presses in&hellip;', '&nbsp;');
-    aiBeginSwing(dir, target, naturalLimit, pushesOpp);
-}
-// Called from finishTurn (which routes here while coachActive) instead of the normal end-of-turn flow.
-function coachFinishTurn() {
-    const mover = G.active;                 // who just completed a move
-    if (coachPhase === 'redMove') {
-        endTurn();                          // hand the turn to Blue (the player)
-        coachPostRedSnap = takeSnap();      // so a non-winning player move can be undone to here
-        coachPhase = 'yourMove'; coachInputLocked = false;
-        coachSay('Your move. Pin the <b style="color:#ffd23f">glowing foot</b>, then sweep <span style="color:#d05a48">Red</span> off the edge.',
-                 'Drag a different foot around it.');
-        render(); return;
-    }
-    if (coachPhase === 'yourMove') {
-        const redOff = G.pieces[1].anyFootOff(), blueOff = G.pieces[0].anyFootOff();
-        if (redOff && !blueOff) {            // the win
-            endTurn();                       // sets G.over / winner = Blue
-            coachPhase = 'won'; coachInputLocked = true;
-            triggerFall();
-            coachSay('<b>Off the board.</b> That&rsquo;s the whole game.', '&nbsp;');
-            clearTimeout(gameOverTimer); gameOverTimer = setTimeout(coachCTA, 2200);
-            render(); return;
-        }
-        // not a win (or you swung yourself off): undo back to Red's finish and let them retry
-        if (coachPostRedSnap) { G.snap = coachPostRedSnap; restoreSnap(); }
-        G.active = 0; G.pinned = null; G.pivot = null;
-        coachSay('Not quite &mdash; you need to push <span style="color:#d05a48">Red</span> right off the edge.',
-                 'Pin the <b style="color:#ffd23f">glowing foot</b> and sweep the outer one hard.');
-        render(); return;
-    }
+    replayFrames = COACH_R.frames.map(f => f.slice());
+    replayTimes = [];
+    coachActive = true;
+    startReplay();
+    // the coach is a landing experience: no Share/Save/Skip chrome (tap-to-skip still works),
+    // and no Surrender/Menu row until the takeover
+    document.getElementById('replayBtns').style.display = 'none';
+    document.getElementById('btns').style.display = 'none';
     render();
 }
-function coachCTA() {
-    showModal('That’s Tau', 'One shove decides it. Now play a full game — free, in your browser.',
-        [ { label: 'Play the full game', onClick: () => { coachEnd(); location.hash = ''; openLadderMenu(); } },
-          { label: 'Watch it again',     onClick: () => { startCoach(); }, cls: 'ghostBtn' } ],
+// endReplay diverts here while coachActive (natural end OR tap-to-skip): the board already holds
+// the final watched frame. Hand Blue to the player against the gentle menu-Easy ('dumb') brain.
+function coachHandoff() {
+    coachActive = false;
+    clearTurn(); G.over = false; G.winner = null; G.active = 0;
+    fall.active = false; fallenIdx = -1;
+    vsAI = true; aiDifficulty = 'dumb'; ladderLevel = null; humanIdx = 0; aiIdx = 1;
+    document.getElementById('btns').style.display = 'flex';
+    render();
+    showModal(t('Your move'),
+        'That was a real game, mid-fight — and Blue has the momentum. Take over as Blue and finish it: pin a foot, swing, push Red off the edge.',
+        [ { label: 'Take over as Blue', onClick: () => { resumeAudio(); } },
+          { label: 'Watch that again',  onClick: () => startCoach(), cls: 'ghostBtn' } ],
         false, { dismiss: false });
-}
-function coachEnd() {
-    coachActive = false; coachPhase = 'off'; coachInputLocked = false; coachPostRedSnap = null;
-    aiDifficulty = 'normal';
 }
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
     clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
-    replayActive = false; ladderLevel = null;
+    replayActive = false; ladderLevel = null; coachActive = false;
     if (typeof rmxTeardown === 'function') rmxTeardown(true);   // tell a waiting opponent we left
     mmWaitingAI = false;   // leaving to the menu also leaves the play-AI-while-you-wait queue
     cancelMatchmaking(); exitOnlineMatch();
@@ -5828,11 +5787,11 @@ function render() {
                     ? t('Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.')
                     : t('Swinging… release to end your turn.')));
     }
-    // Coach mode owns the top line (the GOAL); it keeps the game's own Step-1/Step-2 help below
-    // for the mechanics, so the player still learns pin-then-drag from the real prompts.
+    // Coached opening: the top line narrates the watched tussle, one line per replay turn.
     if (coachActive) {
-        s.innerHTML = coachGoal; m.textContent = '';
-        if (coachPhase !== 'yourMove') h.innerHTML = coachSub;   // during your move, keep the real step help
+        const li = Math.max(0, Math.min(typeof replayTurnIdx==='number' ? replayTurnIdx : 0, COACH_LINES.length-1));
+        s.innerHTML = COACH_LINES[li][0]; m.textContent = '';
+        h.innerHTML = COACH_LINES[li][1] || '';
     }
     if (DEBUG_CROSS) updateDebugHud();
 }
@@ -6409,12 +6368,6 @@ function animate() {
         const glowPulse = 0.75 + Math.sin(performance.now()*0.006)*0.15;
         pivotGlowMesh.visible = true; pivotGlowMesh.material.opacity = glowPulse;
         pivotGlowMesh.position.set(G.pivot.x, 0.25, G.pivot.y);
-    } else if (coachActive && coachPhase==='yourMove' && G.pinned===null && !G.over) {
-        // coach hint: pulse the glow on the foot the player should pin, before they've pinned it
-        const f = G.pieces[0].feet()[COACH_SCN.winPivot];
-        const glowPulse = 0.55 + Math.sin(performance.now()*0.006)*0.3;
-        pivotGlowMesh.visible = true; pivotGlowMesh.material.opacity = glowPulse;
-        pivotGlowMesh.position.set(f.x, 0.25, f.y);
     } else {
         pivotGlowMesh.visible = false;
     }
