@@ -421,7 +421,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 159</div>
+<div id="buildTag">build 160</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -6430,6 +6430,20 @@ let camManualSet = false;              // has the player ever set a manual view 
 const camManualPos = new THREE.Vector3(), camManualTgt = new THREE.Vector3();
 const camFullPos = new THREE.Vector3(), camFullTgt = new THREE.Vector3();
 const camWantPos = new THREE.Vector3(), camWantTgt = new THREE.Vector3();
+// Watching<->playing camera handover: the two modes compose the frame differently (see
+// computeFullFrame), and flipping between them used to TELEPORT the lerp's target — the position
+// lerp then launched at max velocity, the visible lurch at every mode swap. Instead the frame
+// crossfades through this 0..1 mix, tweened with SMOOTHSTEP over a fixed duration: zero mix
+// velocity at both ends (an exponential ease still kicks off at full rate, which measured as a
+// 2-frame speed spike), so chained with the position lerp the camera leaves and lands gently.
+let camWatchMix = 0, camMixFrom = 0, camMixTo = 0, camMixT = 1;   // t>=1: tween settled
+const CAM_MODE_TWEEN = 1.15;   // seconds for the watching<->playing frame crossfade
+const _wfPos = new THREE.Vector3(), _wfTgt = new THREE.Vector3();
+function camWatchingNow() {
+    return (typeof replayActive !== 'undefined' && replayActive)
+        || (typeof sharedReplay  !== 'undefined' && sharedReplay)
+        || (typeof onlineMatch   !== 'undefined' && onlineMatch && onlineMatch.spectator);
+}
 const _fitP = new THREE.Vector3();
 const FIT_MARGIN = 0.9;                // feet must project within ±0.9 NDC to count as "on screen"
 const acTgt = new THREE.Vector3(), acPos = new THREE.Vector3();
@@ -6482,34 +6496,28 @@ function autoCamDistance(mx, mz, px, pz, targetY, extraPts) {
 }
 // Fills outPos/outTgt with the fully-centred, whole-board-framed view (the 100%-centred end
 // of the blend). No easing here — just the target.
+// The passive "watching" composition (replay / shared link / spectating): don't chase the pieces.
+// The live game's frame targets the piece midpoint and swings its heading with the pieces — great
+// when you're steering, but as a passive viewer it reads as the board sliding around. Instead lean
+// the target most of the way back to the board CENTRE, hold a near-fixed north-up heading, and fit
+// the rim with a little extra margin so the whole board stays comfortably on show.
+function computeWatchFrame(outPos, outTgt) {
+    const p0 = G.pieces[0], p1 = G.pieces[1];
+    const TB = 0.6;                                  // target: 60% toward board centre, 40% the action
+    const mx = (p0.x + p1.x) / 2 * (1 - TB);
+    const mz = (p0.y + p1.y) / 2 * (1 - TB);
+    let dx = p1.x - p0.x, dz = p1.y - p0.y; const len = Math.hypot(dx, dz);
+    if (len < 1e-6) { dx = 1; dz = 0; } else { dx /= len; dz /= len; }
+    let hx = -dz, hz = dx; if (hz < 0) { hx = -hx; hz = -hz; }
+    const HB = 0.7;                                  // heading: 70% toward fixed north (+z), so it barely swings
+    hx *= (1 - HB); hz = hz * (1 - HB) + HB;
+    const hl = Math.hypot(hx, hz) || 1; const px = hx / hl, pz = hz / hl;
+    const dist = autoCamDistance(mx, mz, px, pz, AUTOCAM_TARGET_Y) * 1.08;
+    outTgt.set(mx, AUTOCAM_TARGET_Y, mz);
+    outPos.set(mx + px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), AUTOCAM_TARGET_Y + dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), mz + pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L));
+}
 function computeFullFrame(outPos, outTgt) {
     let mx, mz, px, pz;
-    // Watching, not playing (replay / shared link / spectating): don't chase the pieces. The live
-    // game's frame targets the piece midpoint (or the winner, once G.over) and swings its heading
-    // with the pieces — great when you're steering, but as a passive viewer it reads as the board
-    // sliding around under a camera "locked to the wrong point" (PC) and following too hard (phone).
-    // Instead lean the target most of the way back to the board CENTRE, hold a near-fixed north-up
-    // heading so the view doesn't swivel, and fit the rim with a little extra margin (a hair zoomed
-    // out) so the whole board stays comfortably on show while the pieces dance on it.
-    const watching = (typeof replayActive !== 'undefined' && replayActive)
-                  || (typeof sharedReplay  !== 'undefined' && sharedReplay)
-                  || (typeof onlineMatch   !== 'undefined' && onlineMatch && onlineMatch.spectator);
-    if (watching && G.pieces && G.pieces.length === 2) {
-        const p0 = G.pieces[0], p1 = G.pieces[1];
-        const TB = 0.6;                                  // target: 60% toward board centre, 40% the action
-        mx = (p0.x + p1.x) / 2 * (1 - TB);
-        mz = (p0.y + p1.y) / 2 * (1 - TB);
-        let dx = p1.x - p0.x, dz = p1.y - p0.y; const len = Math.hypot(dx, dz);
-        if (len < 1e-6) { dx = 1; dz = 0; } else { dx /= len; dz /= len; }
-        let hx = -dz, hz = dx; if (hz < 0) { hx = -hx; hz = -hz; }
-        const HB = 0.7;                                  // heading: 70% toward fixed north (+z), so it barely swings
-        hx *= (1 - HB); hz = hz * (1 - HB) + HB;
-        const hl = Math.hypot(hx, hz) || 1; px = hx / hl; pz = hz / hl;
-        const dist = autoCamDistance(mx, mz, px, pz, AUTOCAM_TARGET_Y) * 1.08;
-        outTgt.set(mx, AUTOCAM_TARGET_Y, mz);
-        outPos.set(mx + px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), AUTOCAM_TARGET_Y + dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), mz + pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L));
-        return;
-    }
     if (G.over) {
         // once the fall finishes, the loser's G-piece coordinates are just wherever they were
         // the instant the game ended (often already well past the rim) and never move again —
@@ -6531,6 +6539,13 @@ function computeFullFrame(outPos, outTgt) {
     const dist = autoCamDistance(mx, mz, px, pz, AUTOCAM_TARGET_Y);
     outTgt.set(mx, AUTOCAM_TARGET_Y, mz);
     outPos.set(mx+px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), AUTOCAM_TARGET_Y+dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), mz+pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L));
+    // Crossfade toward the watching composition by the eased mode mix (see camWatchMix): the
+    // frame the lerp chases moves CONTINUOUSLY between the two modes instead of teleporting.
+    if (camWatchMix > 0 && G.pieces && G.pieces.length === 2) {
+        computeWatchFrame(_wfPos, _wfTgt);
+        outPos.lerpVectors(outPos, _wfPos, camWatchMix);
+        outTgt.lerpVectors(outTgt, _wfTgt, camWatchMix);
+    }
 }
 // Called once per completed move: creep a quarter of the remaining gap back toward centre, and
 // gently unwind the player's manual heading toward the 2D map's orientation (the default view down
@@ -6558,6 +6573,15 @@ function feetFitAt(pos, tgt) {
 }
 function updateGentleCam(dt) {
     if (camDragging) return;                       // never fight active manual control
+    // Tween the watching<->playing mode mix (see camWatchMix). A mode flip mid-tween simply
+    // retargets from the current value, so reversals stay continuous too.
+    const mixWant = camWatchingNow() ? 1 : 0;
+    if (mixWant !== camMixTo) { camMixFrom = camWatchMix; camMixTo = mixWant; camMixT = 0; }
+    if (camMixT < 1) {
+        camMixT = Math.min(1, camMixT + dt / CAM_MODE_TWEEN);
+        const u = camMixT * camMixT * (3 - 2 * camMixT);   // smoothstep: zero velocity at both ends
+        camWatchMix = camMixFrom + (camMixTo - camMixFrom) * u;
+    }
     computeFullFrame(camFullPos, camFullTgt);
     const baseP = camManualSet ? camManualPos : camFullPos;   // the 0%-centred reference
     const baseT = camManualSet ? camManualTgt : camFullTgt;
