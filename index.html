@@ -421,7 +421,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 161</div>
+<div id="buildTag">build 162</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3079,6 +3079,7 @@ const ctx = canvas.getContext('2d');
 let cx = 0, cy = 0, scale = 1;   // recomputed every frame by syncCanvas (px)
 let renderer=null, scene, camera, controls, tripods=[];   // 3D side view — always shown once THREE loads
 let pivotGlowMesh=null, boardTop=null, boardRim=null, camProbe=null, coachArcs=null;   // pivot glow + board surface + rim + fit-probe camera (built in init3D)
+let glowTexGold=null, glowTexHot=null;   // the pivot glow's two tints: gold for dark boards, white-hot for pale ones
 // Board SKIN: null = the default theme look (pure passthrough — normal players never touch this).
 // When set (colour lab / #colorlab), it overrides board zone colours, lines and piece colours
 // everywhere the board is drawn (2D game, demo, how-to, and the 3D texture). Keys match the colour
@@ -3768,7 +3769,12 @@ Piece.prototype.draw = function(activeIdx) {
     for (let i=0;i<3;i++){ const f=feet[i];
         ctx.beginPath(); ctx.arc(f.x,f.y, activeIdx===i ? fr+1.5 : fr, 0, 2*Math.PI);
         ctx.fillStyle=(activeIdx===i)?'#ffd23f':col; ctx.fill();
-        ctx.lineWidth=1; ctx.strokeStyle='rgba(12,14,17,0.6)'; ctx.stroke(); }
+        // The yellow pivot pad is tonally flat against the pale boards (Dojo/Yellow), so there it
+        // gets a real ink ring — a highlighter mark with a pen circle. Everything else keeps the
+        // ordinary hairline.
+        if (activeIdx===i && boardIsPale()) { ctx.lineWidth=2.2; ctx.strokeStyle='rgba(44,52,66,0.9)'; }
+        else { ctx.lineWidth=1; ctx.strokeStyle='rgba(12,14,17,0.6)'; }
+        ctx.stroke(); }
 };
 
 // ---------- Input ----------
@@ -5979,7 +5985,14 @@ function render() {
         const f = bx2px(G.pieces[0].feet()[coachGuided.pivot].x, G.pieces[0].feet()[coachGuided.pivot].y);
         const pulse = 0.6 + 0.4*Math.sin(performance.now()*0.006);
         ctx.beginPath(); ctx.arc(f.x, f.y, 12+5*pulse, 0, 2*Math.PI);
-        ctx.strokeStyle=`rgba(255,210,63,${0.95-0.45*pulse})`; ctx.lineWidth=2.5; ctx.stroke();
+        if (boardIsPale()) {
+            // gold vanishes on the pale boards and plain ink isn't a glow — a white-hot ring over
+            // an ink rim reads as light on paper (the halo trick: brightness needs a dark edge here)
+            ctx.lineWidth=4.2; ctx.strokeStyle=`rgba(44,52,66,${0.8-0.35*pulse})`; ctx.stroke();
+            ctx.lineWidth=2;   ctx.strokeStyle=`rgba(255,255,255,${0.95-0.3*pulse})`; ctx.stroke();
+        } else {
+            ctx.strokeStyle=`rgba(255,210,63,${0.95-0.45*pulse})`; ctx.lineWidth=2.5; ctx.stroke();
+        }
     }
     // The dotted rail — a fixed target in a guided beat, or the reachable swing of whatever foot the
     // player pins during free play. coachRailSpec() picks the right one; null when nothing to draw.
@@ -6108,11 +6121,18 @@ function updateDebugHud() {
 // Soft radial-gradient glow, additively blended so it reads as a bright highlight regardless
 // of what's underneath it (the flat, hard-edged ring this replaced blended into the board's
 // own pale yellow and was easy to miss entirely).
-function glowTexture() {
+function glowTexture(hot) {
+    // Additive gold reads as light on the dark boards but adds ~nothing over a pale yellow disc,
+    // so the pale boards get a WHITE-hot variant instead (white still clips visibly toward paper).
     const S=128, cv=document.createElement('canvas'); cv.width=cv.height=S;
     const c=cv.getContext('2d'), g=c.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2);
-    g.addColorStop(0,'rgba(255,225,140,1)'); g.addColorStop(0.35,'rgba(255,210,63,0.75)');
-    g.addColorStop(0.7,'rgba(255,210,63,0.25)'); g.addColorStop(1,'rgba(255,210,63,0)');
+    if (hot) {
+        g.addColorStop(0,'rgba(255,255,255,1)'); g.addColorStop(0.35,'rgba(255,255,255,0.7)');
+        g.addColorStop(0.7,'rgba(255,255,255,0.22)'); g.addColorStop(1,'rgba(255,255,255,0)');
+    } else {
+        g.addColorStop(0,'rgba(255,225,140,1)'); g.addColorStop(0.35,'rgba(255,210,63,0.75)');
+        g.addColorStop(0.7,'rgba(255,210,63,0.25)'); g.addColorStop(1,'rgba(255,210,63,0)');
+    }
     c.fillStyle=g; c.fillRect(0,0,S,S);
     return new THREE.CanvasTexture(cv);
 }
@@ -6280,9 +6300,10 @@ function init3D() {
     htpTripods.forEach(t => { t.visible=false; scene.add(t); });
 
     // pivot glow — a glowing highlight on the pinned foot (the 3D echo of the 2D pivot dot).
+    glowTexGold = glowTexture(false); glowTexHot = glowTexture(true);
     pivotGlowMesh = new THREE.Mesh(
         new THREE.PlaneGeometry(CFG.footPadRadius*18, CFG.footPadRadius*18),
-        new THREE.MeshBasicMaterial({ map: glowTexture(), transparent:true, depthWrite:false, blending: THREE.AdditiveBlending }));
+        new THREE.MeshBasicMaterial({ map: glowTexGold, transparent:true, depthWrite:false, blending: THREE.AdditiveBlending }));
     pivotGlowMesh.rotation.x = -Math.PI/2; pivotGlowMesh.visible = false; scene.add(pivotGlowMesh);
     // coach projected-arc rails: two dashed lines (one per moving foot), drawn just above the board
     coachArcs = [0,1].map(() => {
@@ -6686,6 +6707,9 @@ function animate() {
     }
     controls.update();   // recomputes its internal state fresh from camera.position each call,
                           // so it composes cleanly with the manual lerp above (see commit notes)
+    // pick the glow tint for the current board (gold dies additively over a pale yellow disc)
+    const glowMap = boardIsPale() ? glowTexHot : glowTexGold;
+    if (glowMap && pivotGlowMesh.material.map !== glowMap) pivotGlowMesh.material.map = glowMap;
     if (G.pinned!==null && !G.over) {
         const glowPulse = 0.75 + Math.sin(performance.now()*0.006)*0.15;
         pivotGlowMesh.visible = true; pivotGlowMesh.material.opacity = glowPulse;
