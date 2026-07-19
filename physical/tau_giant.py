@@ -38,6 +38,23 @@ BUMP_R     = 2.2                  # retention dome sphere radius
 BUMP_PROUD = 0.45                 # how far the dome stands proud of the tenon top
 DIMPLE_D   = 0.25                 # dimple depth (< BUMP_PROUD -> genuine interference click)
 
+# Foot bolts (cost model v5: "domed button-head bolts seated head-down in each foot, 3 per piece"
+# — mass low at the outer points, a rounded steel sliding contact, no magnets). The scaled foot
+# tip is only Ø8.4 so each foot gets a printed BOSS around it: a frustum with a recessed seat the
+# head shoulder pulls up against (dome cap protruding below to be the glide contact) and a snug
+# pilot bore the bolt self-taps into (the piece's weight rests on the seat; the thread only stops
+# the bolt dropping out when the piece is lifted). Defaults = M10 x 40 button head (~30 g each,
+# ~90 g of steel per piece, Bunnings-common); switch BOLT='M8' for the lighter set.
+BOLT = 'M10'
+BOLTS = {                        # head_d, head_h, pilot_d (self-tap in PLA/PETG), min length
+    'M8':  dict(head_d=14.0, head_h=4.4, pilot_d=7.2, length=30),
+    'M10': dict(head_d=18.0, head_h=5.5, pilot_d=8.9, length=40),
+}[BOLT]
+BOSS_BOT_D = BOLTS['head_d'] + 8.0   # boss frustum: bottom Ø (seat + 4 mm wall)
+BOSS_TOP_D = 14.0                    # tapers to hug the ankle
+BOSS_H     = 30.0
+SEAT_DEPTH = 1.5                     # head shoulder recess -> dome cap protrudes head_h-SEAT_DEPTH
+
 def boolean(kind, meshes):
     fn = {'union': trimesh.boolean.union, 'diff': trimesh.boolean.difference,
           'inter': trimesh.boolean.intersection}[kind]
@@ -108,8 +125,31 @@ def bump_solid(dimple=False):
 
 rot120 = trimesh.transformations.rotation_matrix(math.radians(120), [0,0,1])
 
+# ----------------------------------------------------------------------- foot bolt boss
+# frustum hugging the ankle, seat recess for the button head's shoulder (dome cap protrudes below
+# as the glide contact), snug pilot bore the bolt self-taps into.
+pad_c = leg_raw.vertices[leg_raw.vertices[:,2] < 2].mean(axis=0); pad_c[2] = 0.0
+def frustum(r_bot, r_top, h, sections=64):
+    cyl = trimesh.creation.cylinder(radius=r_bot, height=h, sections=sections)
+    v = cyl.vertices.copy()
+    top = v[:,2] > 0
+    v[top,0] *= r_top/r_bot; v[top,1] *= r_top/r_bot
+    cyl.vertices = v
+    return cyl
+boss = frustum(BOSS_BOT_D/2, BOSS_TOP_D/2, BOSS_H)
+boss.apply_translation(pad_c + [0,0,BOSS_H/2])
+seat = trimesh.creation.cylinder(radius=(BOLTS['head_d']+0.6)/2, height=SEAT_DEPTH+4, sections=64)
+seat.apply_translation(pad_c + [0,0,SEAT_DEPTH/2 - 2])          # from below z=0 up to SEAT_DEPTH
+pilot_h = SEAT_DEPTH + BOLTS['length'] + 3
+pilot = trimesh.creation.cylinder(radius=BOLTS['pilot_d']/2, height=pilot_h, sections=48)
+pilot.apply_translation(pad_c + [0,0,pilot_h/2 - 1])            # blind bore up the ankle
+print('foot: boss Ø%.0f->Ø%.0f x %.0f at (%.1f, %.1f); %s x %d button head, dome protrudes %.1f mm'
+      % (BOSS_BOT_D, BOSS_TOP_D, BOSS_H, pad_c[0], pad_c[1], BOLT, BOLTS['length'],
+         BOLTS['head_h'] - SEAT_DEPTH))
+
 # ----------------------------------------------------------------------- build parts
-leg = boolean('union', [leg_raw, tenon_solid(), bump_solid()])
+leg = boolean('union', [leg_raw, boss, tenon_solid(), bump_solid()])
+leg = boolean('diff',  [leg, seat, pilot])
 
 cuts = []
 for k in range(3):
