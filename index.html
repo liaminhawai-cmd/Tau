@@ -421,7 +421,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 160</div>
+<div id="buildTag">build 161</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3323,7 +3323,11 @@ function startReplay() {
     if (typeof resetAudioForNewGame === 'function') resetAudioForNewGame();
     if (typeof playGameBowl === 'function') playGameBowl();
     document.getElementById('btns').style.display = 'none';           // no Surrender while watching
-    document.getElementById('replayBtns').style.display = 'flex';     // Share this game / Skip
+    // Coach beats show no replay chrome at all — and the bar must not even flash on: resize()
+    // below measures the button row, and a bar that's shown here then hidden by the coach right
+    // after left the board sized around a row that wasn't there (a small snap at replay start).
+    document.getElementById('replayBtns').style.display =
+        (typeof coachActive !== 'undefined' && coachActive) ? 'none' : 'flex';   // Share this game / Skip
     // Re-flow to the bigger-3D "watching" layout. AFTER the button-row swap above, so resize()
     // measures the row that will actually be on screen (the replay bar can be taller than
     // Surrender/Menu when its four buttons wrap on a narrow phone).
@@ -4711,16 +4715,17 @@ function coachAdvance() {
         // the move — so the resize and the motion never happen at once (the "pause after resize").
         coachSetPieces(COACH_R.frames[b.s]);
         clearTurn(); G.over = false; G.winner = null;
-        coachSmoothResize();   // shrink to the watching layout (passive via coachStage==='watch'), eased
+        // render() BEFORE the resize: it swaps the status/help text, and those lines are part of
+        // the height resize() measures — measuring the OLD beat's text made the ease land a few px
+        // off, corrected by an instant snap at the settle (the reported end-of-ease size blip).
         render();
+        coachSmoothResize();   // shrink to the watching layout (passive via coachStage==='watch'), eased
         clearTimeout(coachHoldTimer);
         coachHoldTimer = setTimeout(() => {
             if (!coachActive || coachStage !== 'watch') return;
             replayFrames = COACH_R.frames.slice(b.s, b.e + 1).map(f => f.slice());
             replayTimes = [];
-            startReplay();
-            document.getElementById('replayBtns').style.display = 'none';
-            document.getElementById('btns').style.display = 'none';
+            startReplay();   // shows no replay chrome while coachActive, so its resize() is a no-op
             render();
         }, COACH_RESIZE_MS + COACH_POST_RESIZE_HOLD);
     } else {
@@ -4729,8 +4734,8 @@ function coachAdvance() {
         clearTurn(); G.over = false; G.winner = null; G.active = 0;
         coachGuided = { pivot: b.pivot, dir: b.dir, target: b.target, endF: b.endF };
         document.getElementById('btns').style.display = 'none';
+        render();              // text first — resize() must measure the guided beat's real layout
         coachSmoothResize();   // the player touches the 2D board now — ease back to the interactive split
-        render();
     }
 }
 // endReplay diverts here while coachActive (a watched segment finished or was tapped to skip).
@@ -4761,8 +4766,8 @@ function coachHandoff() {
     coachFreeGuide = true; coachFreeArc = null;   // keep the dotted rail + narration going in the live game
     document.getElementById('btns').style.display = 'flex';
     clearTimeout(coachHoldTimer);
+    render();   // no modal, no menu: "Your move." — text set BEFORE the resize measures the layout
     coachSmoothResize();   // watching used the passive layout (small 2D board) — ease to the interactive split
-    render();   // no modal, no menu: it's simply the player's move now ("Your move." on the status line)
 }
 // The rail to draw right now: the guided move's fixed arc, or (in free play) the reachable swing of
 // the pinned foot — both ways until a direction is committed, then just that way. null = draw nothing.
