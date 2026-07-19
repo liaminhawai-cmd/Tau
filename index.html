@@ -421,7 +421,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 158</div>
+<div id="buildTag">build 159</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -4622,13 +4622,13 @@ const COACH_R = {"turnMeta":[{"s":0,"e":19,"mover":1},{"s":19,"e":121,"mover":0}
 // dotted projected-arc rail shows exactly where the swing goes. After the last trade the position
 // is handed over live vs the gentle menu-Easy brain. All copy is placeholder for Liam to rewrite.
 const COACH_BEATS = [
-    { type:'watch',  s:0,   e:19,  line:['<b>The Drive.</b> <span style="color:#d05a48">Red</span> commits its whole weight and shoves <span style="color:#5487c4">Blue</span> right back.', 'A real game. Each move pins one foot and swings the rest.'] },
-    { type:'guided', startF:19,  endF:121, pivot:2, dir:1, target:1.4600, name:'The Counter' },
-    { type:'watch',  s:121, e:144, line:['<b>The Re-plant.</b> <span style="color:#d05a48">Red</span> steps its feet back to rebuild an angle.', ''] },
-    { type:'guided', startF:144, endF:223, pivot:1, dir:1, target:0.9900, name:'The Set-up' },
-    { type:'watch',  s:223, e:268, line:['<b>Red overcommits.</b> All that weight has to land somewhere.', ''] },
-    { type:'guided', startF:268, endF:331, pivot:1, dir:1, target:0.9000, name:'The Answer' },
-    { type:'watch',  s:331, e:346, line:['<span style="color:#d05a48">Red</span>&rsquo;s last push &mdash; but the angles have gone <span style="color:#5487c4">Blue</span>&rsquo;s way.', ''] },
+    { type:'watch',  s:0,   e:19,  line:'<span style="color:#d05a48">Red</span> drives.' },
+    { type:'guided', startF:19,  endF:121, pivot:2, dir:1, target:1.4600, line:'You counter.' },
+    { type:'watch',  s:121, e:144, line:'<span style="color:#d05a48">Red</span> repositions.' },
+    { type:'guided', startF:144, endF:223, pivot:1, dir:1, target:0.9900, line:'You set up.' },
+    { type:'watch',  s:223, e:268, line:'<span style="color:#d05a48">Red</span> overcommits.' },
+    { type:'guided', startF:268, endF:331, pivot:1, dir:1, target:0.9000, line:'You answer.' },
+    { type:'watch',  s:331, e:346, line:'<span style="color:#d05a48">Red</span> pushes again.' },
 ];
 let coachActive = false, coachStage = 'off', coachGuided = null, coachBeatIdx = -1, coachAnimTimer = null;
 let coachHoldTimer = null;          // the "hold still after the board resizes" pause before a move plays
@@ -4648,7 +4648,12 @@ function coachAnimSizeOn() {
     clearTimeout(coachAnimTimer);
     coachAnimTimer = setTimeout(() => {
         v.classList.remove('animSize');
-        resize();   // one crisp resync at the settled size (renders were skipped during the ease)
+        if (document.getElementById('game').style.display !== 'flex') return;   // left to the menu mid-ease
+        // One real buffer swap now the box has settled — resize() applies setSize/aspect (skipped
+        // during the ease) and re-renders the 2D. The synchronous 3D render in the SAME task means
+        // the compositor never paints the freshly-cleared buffer (that blank was the end-of-ease pop).
+        resize();
+        if (renderer) renderer.render(scene, camera);
     }, COACH_RESIZE_MS + 60);
 }
 function coachSmoothResize() { coachAnimSizeOn(); resize(); }
@@ -4755,17 +4760,9 @@ function coachHandoff() {
     vsAI = true; aiDifficulty = 'dumb'; ladderLevel = null; humanIdx = 0; aiIdx = 1;
     coachFreeGuide = true; coachFreeArc = null;   // keep the dotted rail + narration going in the live game
     document.getElementById('btns').style.display = 'flex';
-    coachSmoothResize();   // watching used the passive layout (small 2D board) — ease to the interactive split
-    render();
-    // Let the board finish easing to the interactive split before the modal lands (pause after resize).
     clearTimeout(coachHoldTimer);
-    coachHoldTimer = setTimeout(() => {
-        showModal(t('Now it’s your choice'),
-            'From here it’s a live game — drive, counter, squeeze, or something of your own. Pin any foot and the dotted line shows how far it can swing. Play on as Blue and push Red off the edge.',
-            [ { label: 'Play on as Blue', onClick: () => { resumeAudio(); } },
-              { label: 'Watch that again', onClick: () => startCoach(), cls: 'ghostBtn' } ],
-            false, { dismiss: false });
-    }, COACH_RESIZE_MS + COACH_POST_RESIZE_HOLD);
+    coachSmoothResize();   // watching used the passive layout (small 2D board) — ease to the interactive split
+    render();   // no modal, no menu: it's simply the player's move now ("Your move." on the status line)
 }
 // The rail to draw right now: the guided move's fixed arc, or (in free play) the reachable swing of
 // the pinned foot — both ways until a direction is committed, then just that way. null = draw nothing.
@@ -4837,6 +4834,7 @@ function coachArc3DUpdate() {
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
     clearTimeout(aiTimer); clearTimeout(aiGapTimer); clearTimeout(coachHoldTimer); aiAnim = null;
+    clearTimeout(coachAnimTimer); document.getElementById('views').classList.remove('animSize');
     replayActive = false; ladderLevel = null; coachActive = false;
     coachFreeGuide = false; coachFreeArc = null; coachGuided = null;   // leave the coach guide behind
     if (typeof rmxTeardown === 'function') rmxTeardown(true);   // tell a waiting opponent we left
@@ -6037,37 +6035,28 @@ function render() {
                     ? t('Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.')
                     : t('Swinging… release to end your turn.')));
     }
-    // Coached opening: the top line narrates per beat — a watched turn shows that beat's named-move
-    // line; a guided turn names the move the player is about to make (with Step-1/2 help below).
+    // Coached opening: one terse line per beat, minimal help below. Kept deliberately spare.
     if (coachActive) {
         m.textContent = '';
         const cb = COACH_BEATS[coachBeatIdx];
+        s.innerHTML = (cb && cb.line) || '';
         if (coachStage === 'guided') {
-            s.innerHTML = 'Your hands now: <b>' + ((cb && cb.name) ? cb.name : t('Your move')) + '.</b>';
             h.innerHTML = !coachGuided
-                ? '&#10003; Locked in.'   // committed, holding the finished pose before the next beat
+                ? '&#10003;'   // committed, holding the finished pose before the next beat
                 : G.pinned===null
                 ? 'Tap the <b style="color:#ffd23f">glowing</b> foot.'
-                : (coachGuided.short && G.handle===null
-                    ? '<b>Keep going</b> &mdash; grab a foot and slide it the rest of the way.'
-                    : 'Slide another foot around it &mdash; all the way.');
-        } else if (cb && cb.line) {
-            s.innerHTML = cb.line[0] || '';
-            h.innerHTML = cb.line[1] || '';
-        }
+                : (coachGuided.short && G.handle===null ? '<b>Keep going.</b>' : 'Slide it all the way.');
+        } else h.innerHTML = '';
     }
-    // Handoff free game: keep narrating and pointing at the dotted rail while the player finds their feet.
+    // Handoff free game: keep the terse narration going alongside the dotted rail.
     if (coachFreeGuide && !coachActive && !G.over) {
         m.textContent = '';
         if (vsAI && G.active === aiIdx) {
-            s.innerHTML = '<span style="color:#d05a48">Red</span> answers&hellip;';
-            h.innerHTML = 'Watch the angle shift.';
+            s.innerHTML = '<span style="color:#d05a48">Red</span> answers.'; h.innerHTML = '';
         } else if (G.pinned === null) {
-            s.innerHTML = 'Your move &mdash; pin any foot.';
-            h.innerHTML = 'The dotted line shows how far that foot can swing.';
+            s.innerHTML = 'Your move.'; h.innerHTML = 'Pin any foot. Dots show its swing.';
         } else {
-            s.innerHTML = 'Swing another foot around it.';
-            h.innerHTML = 'Follow the dotted rail as far as you like &mdash; release to lock it in.';
+            s.innerHTML = 'Swing any other foot.'; h.innerHTML = '';
         }
     }
     if (DEBUG_CROSS) updateDebugHud();
@@ -6761,17 +6750,34 @@ function resize() {
 
     if (renderer){
         if (show){ cv3.style.display='block'; cv3.style.width=w3+'px'; cv3.style.height=h3+'px';
-            // Watching (replay/shared/spectate) grows the 3D tile large; a buffer capped at 2x on a 3x
-            // phone screen then gets upscaled 2x->3x by the compositor -> the reported "pixelated in
-            // replay" softness (the flat 2D board uses the full device ratio via syncCanvas, so it stays
-            // crisp -- the visible contrast). Replay is just lightweight playback of recorded frames with
-            // no AI/interaction cost, so spend the extra pixels there; keep the 2x cap during interactive
-            // play as a battery/perf guard. setSize below rebuilds the buffer at whatever ratio we set.
-            // Coach beats swap watch<->play layouts constantly; flipping the buffer ratio 3<->2 with
-            // them adds a visible resolution pop at each swap, so the coach stays at a steady 2.
-            const inCoach = typeof coachActive !== 'undefined' && coachActive;
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, (passive && !inCoach) ? 3 : 2));
-            renderer.setSize(w3,h3,false); camera.aspect=w3/h3; camera.updateProjectionMatrix(); }
+            // While the coach's size ease is running (.animSize), DON'T touch the buffer or the
+            // camera here: the box is still at its OLD size this instant, so the old buffer + old
+            // aspect are exactly right — jumping them to the final dims now warps/blanks the first
+            // frame (the reported start-of-ease jerk). The per-frame tracker in animate() eases the
+            // aspect along the CSS curve, and coachAnimSizeOn's end-timer applies the real setSize
+            // once, synchronously with a re-render, when the box has settled.
+            if (!document.getElementById('views').classList.contains('animSize')) {
+                // Watching (replay/shared/spectate) grows the 3D tile large; a buffer capped at 2x on a 3x
+                // phone screen then gets upscaled 2x->3x by the compositor -> the reported "pixelated in
+                // replay" softness (the flat 2D board uses the full device ratio via syncCanvas, so it stays
+                // crisp -- the visible contrast). Replay is just lightweight playback of recorded frames with
+                // no AI/interaction cost, so spend the extra pixels there; keep the 2x cap during interactive
+                // play as a battery/perf guard. setSize below rebuilds the buffer at whatever ratio we set.
+                // Coach beats swap watch<->play layouts constantly; flipping the buffer ratio 3<->2 with
+                // them adds a visible resolution pop at each swap, so the coach stays at a steady 2.
+                const inCoach = typeof coachActive !== 'undefined' && coachActive;
+                const wantRatio = Math.min(window.devicePixelRatio||1, (passive && !inCoach) ? 3 : 2);
+                // Touch the buffer ONLY when something really changed: assigning canvas.width even
+                // to its current value CLEARS the canvas (a blank frame until the next rAF render),
+                // and setPixelRatio internally re-applies setSize with stale dims. A same-size
+                // resize() — e.g. startReplay() re-flowing a layout that's already in place — must
+                // be buffer-neutral or it blinks right as the replay starts.
+                if (renderer.getPixelRatio() !== wantRatio) renderer.setPixelRatio(wantRatio);
+                if (cv3.width !== Math.floor(w3*wantRatio) || cv3.height !== Math.floor(h3*wantRatio))
+                    renderer.setSize(w3,h3,false);
+                camera.aspect=w3/h3; camera.updateProjectionMatrix();
+            }
+        }
         else cv3.style.display='none';
     }
     render();
