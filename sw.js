@@ -3,7 +3,7 @@
 // network-first (so an online player always gets the newest build), with the cached copy as the
 // offline fallback; static assets are cache-first. Cross-origin requests (Supabase auth/realtime)
 // are never touched — they always go straight to the network.
-const CACHE = 'tau-v22';  // bump on asset changes so clients drop the old cache (v22: pale-board ink cues, keep-going nudge, end-pose fix, smooth 3D resize, ladder game-over sheet)
+const CACHE = 'tau-v23';  // bump on asset changes so clients drop the old cache (v23: coach resize de-jank — zero buffer reallocs during the ease, ease-in-out curve)
 const ASSETS = [
   './', './index.html', './tau-logo.png',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon-32.png',

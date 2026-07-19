@@ -74,7 +74,7 @@
     /* Coach only: ease the board-size change when swapping between watching and playing, instead of
        an instant jump. Scoped to a class that's added for ~230ms around the coach's resize() so
        ordinary window resizes never lag behind the drag. */
-    #views.animSize > canvas { transition: width .65s ease, height .65s ease; }
+    #views.animSize > canvas { transition: width .65s ease-in-out, height .65s ease-in-out; }
     /* Stacked (narrow) layout: 3D on top, 2D underneath -- matches the `wide` breakpoint
        resize() uses in the game script (window.innerWidth >= 760) for side-by-side vs stacked. */
     /* When resize() decides the boards stack (portrait), the 3D view goes on top — same rule the
@@ -421,7 +421,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 157</div>
+<div id="buildTag">build 158</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -4646,7 +4646,10 @@ function coachAnimSizeOn() {
     const v = document.getElementById('views');
     v.classList.add('animSize');
     clearTimeout(coachAnimTimer);
-    coachAnimTimer = setTimeout(() => v.classList.remove('animSize'), COACH_RESIZE_MS + 60);
+    coachAnimTimer = setTimeout(() => {
+        v.classList.remove('animSize');
+        resize();   // one crisp resync at the settled size (renders were skipped during the ease)
+    }, COACH_RESIZE_MS + 60);
 }
 function coachSmoothResize() { coachAnimSizeOn(); resize(); }
 function coachSetPieces(f) {
@@ -6623,21 +6626,24 @@ function animate() {
     // typeof is the one safe way to reference a not-yet-existing top-level binding.
     if (typeof drawTurnTimer === 'function') { drawTurnTimer(); checkOnlineTimeout(); }
     if (typeof updateAudioMovement === 'function') updateAudioMovement(dt);
-    if (typeof coachGuided !== 'undefined' && coachGuided) render();   // keep the 2D glow/arc live during a guided move
+    // Is the coach's board-size transition easing right now? (the .animSize CSS window)
+    const sizeAnim = document.getElementById('views').classList.contains('animSize');
+    // During the transition the 2D canvas just CSS-scales (square -> square, distortion-free), so
+    // per-frame re-renders are skipped: each one would REALLOCATE the backing store to the new
+    // animating width (see syncCanvas) — 40 reallocs across the ease was the residual jerk. One
+    // crisp render lands when the window closes (coachAnimSizeOn's timer runs resize()).
+    if (typeof coachGuided !== 'undefined' && coachGuided && !sizeAnim) render();   // keep the 2D glow/arc live during a guided move
     if (!renderer) return;
-    // While the coach's board-size transition is easing (the .animSize CSS window), track the
-    // ANIMATING size every frame: resize() has already set the renderer/camera to the final dims,
-    // so without this the 3D image renders at the final aspect but is displayed stretched into the
-    // still-easing box — the reported post-resize jerk. Following the CSS ease keeps the picture
-    // true the whole way, and updateGentleCam's lerp absorbs the tiny per-frame aspect steps.
-    if (document.getElementById('views').classList.contains('animSize')) {
+    // 3D during the transition: track ONLY camera.aspect to the animating box. The buffer itself
+    // stays at the final dims resize() allocated — it's just a texture CSS stretches into the box,
+    // and rendering at the DISPLAYED aspect makes that stretch cancel exactly. No per-frame
+    // renderer.setSize: reallocating the WebGL buffer 60x/s was the other half of the jerk.
+    if (sizeAnim) {
         const cv3 = document.getElementById('view3d');
         const w3n = cv3.clientWidth, h3n = cv3.clientHeight;
         if (w3n > 1 && h3n > 1 && Math.abs(camera.aspect - w3n / h3n) > 1e-3) {
-            renderer.setSize(w3n, h3n, false);
             camera.aspect = w3n / h3n; camera.updateProjectionMatrix();
         }
-        render();   // the 2D canvas backing store re-syncs to its animating CSS size too
     }
     if (htp3DActive) {   // how-to-play's own push+fall demo — never touches G, which the ambient
                           // landing demo keeps animating behind the modal
