@@ -421,7 +421,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 156</div>
+<div id="buildTag">build 157</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2667,6 +2667,11 @@ function reset() {
           crossings:0, atLimit:false, netRad:0, ptrAngle:null, over:false, winner:null,
           snap:null, contact:null };   // contact: per-foot line-contact sets, lazily derived at the first substep
     fall.active=false; fallenIdx=-1;
+    // A fresh board is never mid-coach: drop the guided/free-play rail state so a ladder level or
+    // casual game started from the coach's game-over sheet doesn't inherit the dotted guides.
+    // (startCoach() re-arms what it needs right after its own reset() call. typeof guards: these
+    // live in a later script block, and reset() must stay callable during early boot.)
+    if (typeof coachGuided !== 'undefined') { coachGuided = null; coachFreeGuide = false; coachFreeArc = null; }
     // Un-hide a piece that fell off last game -- but NOT while the how-to-play 3D demo owns the
     // scene (htp3DActive): tripods and htpTripods share the same view3d/scene, so forcing tripods
     // visible while htpTripods are also visible would show both pairs at once. Belt-and-suspenders
@@ -3098,6 +3103,14 @@ const BOARD_SKINS = [
 ];
 let skinIdx = 0;
 function activeSkin(){ return SKIN || BOARD_SKINS[skinIdx].skin; }
+// Is the active board a PALE surface (Dojo/Yellow)? Gold highlight cues wash out there, so they
+// shift to a dark slate ink — the value-inverse of gold-on-dark. Decided by the disc's real
+// luminance, not by which skin: Slate is a skin too but a dark one, and gold reads great on it.
+function boardIsPale() {
+    const sk = activeSkin(); if (!sk) return false;
+    const n = parseInt(sk.flat.slice(1), 16);
+    return (0.2126*((n>>16)&255) + 0.7152*((n>>8)&255) + 0.0722*(n&255)) / 255 > 0.5;
+}
 function pieceHex(id){ const sk = activeSkin(); return sk ? (id===0 ? sk.pb : sk.pr) : (id===0 ? '#6b9eff' : '#ff6b6b'); }
 function hexA(h, a){ const n=parseInt(h.slice(1),16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; }
 // Fill the board disc for any top-down view (2D game, demo, how-to, 3D texture) at centre (ox,oy)
@@ -3402,11 +3415,15 @@ function stepReplay() {
 function endReplay() {
     if (!replayActive) return;
     replayActive = false; audioReplayIdx = null;
+    // Coached opening diverts BEFORE the final-pose restore below: replayFinalPose was snapshotted
+    // at startReplay, when the board held the segment's START pose — restoring it here visibly
+    // "undid" the segment's move (the reported end-of-sequence Red-move undo). The coach lands on
+    // the segment's true end frame itself (coachSegmentEnd), so it never wants that restore.
+    if (coachActive) { coachSegmentEnd(); return; }
     document.getElementById('replayBtns').style.display = 'none';
     document.getElementById('btns').style.display = 'flex';
     if (replayFinalPose) { G.pieces.forEach((p,i)=>{ p.x=replayFinalPose[i].x; p.y=replayFinalPose[i].y; p.rot=replayFinalPose[i].rot; }); }
     render();
-    if (coachActive) { coachSegmentEnd(); return; }   // coached opening: next stage (guided move / handoff)
     // Studio embed (studio.html): play the closing tumble, then loop back to the start so the preview
     // always has motion. No modal, no "watch again" — the parent controls the transport.
     if (STUDIO_EMBED) {
@@ -3776,6 +3793,12 @@ function inputBlocked() {
 }
 function onDown(e) {
     if (typeof replayActive !== 'undefined' && replayActive) { e.preventDefault(); endReplay(); return; }   // tap the board = skip the replay
+    // Coach watch beat still in its hold-before-the-move: the replay hasn't started, so the skip
+    // above can't catch this tap — and without this gate it would fall through to live input and
+    // could grab RED's piece. An impatient tap here skips the beat the same way.
+    if (typeof coachActive !== 'undefined' && coachActive && coachStage === 'watch' && !replayActive) {
+        e.preventDefault(); clearTimeout(coachHoldTimer); coachSegmentEnd(); return;
+    }
     if (G.over || aiAnim || inputBlocked()) return; e.preventDefault();
     const p=pointerPos(e), feet=G.pieces[G.active].feet();
     if (G.pinned===null) {
@@ -3823,11 +3846,12 @@ function onUp() {
     if (G.handle===null) return;
     G.handle=null; G.ptrAngle=null;
     if (coachGuided) {
-        // the coached counter always completes: settle the remaining arc (an aiAnim drives it to
-        // the exact target, then finishTurn -> coachGuidedCommit), or commit now if they're there
+        // At the recorded target -> commit. Released short -> DON'T finish the move for them:
+        // keep the pin (and whatever arc they've already swung) and nudge them to keep going —
+        // the move is theirs to complete, that's the whole point of the guided beat.
         if (Math.abs(G.netRad) >= coachGuided.target - 0.02) { coachGuidedCommit(); return; }
-        aiAnim = { dir: coachGuided.dir, targetRad: coachGuided.target, t: 0,
-                   dur: Math.max(0.4, (coachGuided.target - Math.abs(G.netRad)) / AI_SWING_AVG_SPEED), careful: false };
+        coachGuided.short = true;   // render() shows the "Keep going" line until they re-grab
+        render();
         return;
     }
     if (Math.abs(G.netRad) >= CFG.minMoveDeg*Math.PI/180) {
@@ -4511,6 +4535,17 @@ function renderGameOverSheet() {
             buttons.push({ label: t('Try again'), onClick: () => startLadderLevel(n-1, color) });
         }
         buttons.push({ label: t('Levels'), onClick: () => { hideModal(); openLadderMenu(); } });
+    } else if (typeof coachFreeGuide !== 'undefined' && coachFreeGuide && vsAI) {
+        // The coached landing game ended. Next steps speak the CURRENT ladder's language — the
+        // generic vsAI sheet below still offers the old easy/medium difficulty chip, which no
+        // longer matches how the menu presents opponents.
+        const won = G.winner === humanIdx;
+        title = won ? t('You threw the computer!') : t('Red got you this time');
+        buttons = won
+            ? [ { label: t('Take on Level 1'), onClick: () => startLadderLevel(0, 0) },
+                { label: t('Levels'), onClick: () => { hideModal(); openLadderMenu(); } } ]
+            : [ { label: t('Watch the moves again'), onClick: () => startCoach() },
+                { label: t('Level 1 (gentler)'), onClick: () => startLadderLevel(0, 0) } ];
     } else if (vsAI) {
         title = G.winner===humanIdx ? t('You win!') : t('You lose');
         // tap the chip to change difficulty (reopens the picker); the two buttons replay at the current one
@@ -4590,8 +4625,8 @@ const COACH_BEATS = [
     { type:'watch',  s:0,   e:19,  line:['<b>The Drive.</b> <span style="color:#d05a48">Red</span> commits its whole weight and shoves <span style="color:#5487c4">Blue</span> right back.', 'A real game. Each move pins one foot and swings the rest.'] },
     { type:'guided', startF:19,  endF:121, pivot:2, dir:1, target:1.4600, name:'The Counter' },
     { type:'watch',  s:121, e:144, line:['<b>The Re-plant.</b> <span style="color:#d05a48">Red</span> steps its feet back to rebuild an angle.', ''] },
-    { type:'guided', startF:144, endF:223, pivot:1, dir:1, target:0.9900, name:'The Squeeze' },
-    { type:'watch',  s:223, e:268, line:['<b>The Drive again.</b> <span style="color:#d05a48">Red</span> heaves <span style="color:#5487c4">Blue</span> across the board.', ''] },
+    { type:'guided', startF:144, endF:223, pivot:1, dir:1, target:0.9900, name:'The Set-up' },
+    { type:'watch',  s:223, e:268, line:['<b>Red overcommits.</b> All that weight has to land somewhere.', ''] },
     { type:'guided', startF:268, endF:331, pivot:1, dir:1, target:0.9000, name:'The Answer' },
     { type:'watch',  s:331, e:346, line:['<span style="color:#d05a48">Red</span>&rsquo;s last push &mdash; but the angles have gone <span style="color:#5487c4">Blue</span>&rsquo;s way.', ''] },
 ];
@@ -4691,7 +4726,13 @@ function coachAdvance() {
     }
 }
 // endReplay diverts here while coachActive (a watched segment finished or was tapped to skip).
-function coachSegmentEnd() { coachAdvance(); }
+// Land the pieces on the segment's true END frame either way — a natural end is already ~there,
+// and a tap-to-skip jumps straight to it (never back to the start pose; see endReplay's note).
+function coachSegmentEnd() {
+    const b = COACH_BEATS[coachBeatIdx];
+    if (b && b.type === 'watch') { coachSetPieces(COACH_R.frames[b.e]); render(); }
+    coachAdvance();
+}
 // Commit of the guided counter (drag reached target, or the release-settle finished): snap to the
 // RECORDED end frame so the next watched segment continues seamlessly, then advance.
 function coachGuidedCommit() {
@@ -4740,9 +4781,9 @@ function coachRailSpec() {
 // from a0+from to a0+to, with a small arrowhead at whichever ends carry real travel. Theme-tuned.
 function coachDraw2DRail(spec) {
     const pvp = G.pivot, sf = coachPoseFeet(spec.snap);
-    const lightBoard = !!activeSkin();
-    const railCol  = lightBoard ? 'rgba(74,82,94,0.72)' : 'rgba(255,210,63,0.5)';
-    const arrowCol = lightBoard ? 'rgba(58,66,78,0.92)' : 'rgba(255,214,80,0.85)';
+    const pale = boardIsPale();   // gold on Dark AND Slate; ink only on the pale boards (Dojo/Yellow)
+    const railCol  = pale ? 'rgba(74,82,94,0.72)' : 'rgba(255,210,63,0.5)';
+    const arrowCol = pale ? 'rgba(58,66,78,0.92)' : 'rgba(255,214,80,0.85)';
     ctx.save(); ctx.lineCap = 'round';
     const O = bx2px(pvp.x, pvp.y);
     for (let i = 0; i < 3; i++) { if (i === spec.pivot) continue;
@@ -4770,8 +4811,8 @@ function coachArc3DUpdate() {
     const spec = (!G.over) ? coachRailSpec() : null;
     if (!spec) { coachArcs.forEach(l => l.visible = false); return; }
     const pv = G.pivot, sf = coachPoseFeet(spec.snap);
-    // Gold on the dark board (reads great there); a dark grey on the pale board where gold washes out.
-    const railHex = activeSkin() ? 0x5a626e : 0xffd23f;
+    // Gold on the dark boards (incl. Slate, where it reads great); slate ink on the pale ones.
+    const railHex = boardIsPale() ? 0x5a626e : 0xffd23f;
     let li = 0;
     for (let i = 0; i < 3; i++) {
         if (i === spec.pivot) continue;
@@ -5846,16 +5887,21 @@ function drawCrossFlashes() {
     crossFlashes = crossFlashes.filter(f => now - f.t < CROSS_FLASH_MS);
     if (!crossFlashes.length) return;
     ctx.save(); ctx.lineCap = 'round';
+    // Flash colour is the value-inverse of the board: gold (bright warm) on the dark boards, slate
+    // ink (dark cool) on the pale ones — where gold just melts into the tan. Low chroma keeps the
+    // ink clearly apart from the saturated piece blue/red; white would LOSE contrast on a pale disc.
+    const pale = boardIsPale();
+    const fc = pale ? '44,52,66' : '255,210,63', fg = pale ? 'rgba(44,52,66,0.85)' : 'rgba(255,210,63,0.9)';
     for (const f of crossFlashes) {
         const g = LINE_GEOM[f.id]; if (!g) continue;
         const alpha = 1 - (now - f.t) / CROSS_FLASH_MS;
         if (f.mine) {
-            ctx.strokeStyle = `rgba(255,210,63,${alpha})`;
-            ctx.shadowColor = 'rgba(255,210,63,0.9)'; ctx.shadowBlur = 12 * alpha;
+            ctx.strokeStyle = `rgba(${fc},${alpha})`;
+            ctx.shadowColor = fg; ctx.shadowBlur = 12 * alpha;
             ctx.lineWidth = Math.max(3, CFG.edgeU*CFG.lineWidthFrac*scale*2.4);
         } else {
-            ctx.strokeStyle = `rgba(255,210,63,${alpha*0.55})`;
-            ctx.shadowColor = 'rgba(255,210,63,0.9)'; ctx.shadowBlur = 5 * alpha;
+            ctx.strokeStyle = `rgba(${fc},${alpha*0.55})`;
+            ctx.shadowColor = fg; ctx.shadowBlur = 5 * alpha;
             ctx.lineWidth = Math.max(2, CFG.edgeU*CFG.lineWidthFrac*scale*1.7);
         }
         if (g.a0 === undefined) {
@@ -5995,9 +6041,13 @@ function render() {
         const cb = COACH_BEATS[coachBeatIdx];
         if (coachStage === 'guided') {
             s.innerHTML = 'Your hands now: <b>' + ((cb && cb.name) ? cb.name : t('Your move')) + '.</b>';
-            h.innerHTML = G.pinned===null
+            h.innerHTML = !coachGuided
+                ? '&#10003; Locked in.'   // committed, holding the finished pose before the next beat
+                : G.pinned===null
                 ? 'Tap the <b style="color:#ffd23f">glowing</b> foot.'
-                : 'Slide another foot around it &mdash; all the way.';
+                : (coachGuided.short && G.handle===null
+                    ? '<b>Keep going</b> &mdash; grab a foot and slide it the rest of the way.'
+                    : 'Slide another foot around it &mdash; all the way.');
         } else if (cb && cb.line) {
             s.innerHTML = cb.line[0] || '';
             h.innerHTML = cb.line[1] || '';
@@ -6575,6 +6625,20 @@ function animate() {
     if (typeof updateAudioMovement === 'function') updateAudioMovement(dt);
     if (typeof coachGuided !== 'undefined' && coachGuided) render();   // keep the 2D glow/arc live during a guided move
     if (!renderer) return;
+    // While the coach's board-size transition is easing (the .animSize CSS window), track the
+    // ANIMATING size every frame: resize() has already set the renderer/camera to the final dims,
+    // so without this the 3D image renders at the final aspect but is displayed stretched into the
+    // still-easing box — the reported post-resize jerk. Following the CSS ease keeps the picture
+    // true the whole way, and updateGentleCam's lerp absorbs the tiny per-frame aspect steps.
+    if (document.getElementById('views').classList.contains('animSize')) {
+        const cv3 = document.getElementById('view3d');
+        const w3n = cv3.clientWidth, h3n = cv3.clientHeight;
+        if (w3n > 1 && h3n > 1 && Math.abs(camera.aspect - w3n / h3n) > 1e-3) {
+            renderer.setSize(w3n, h3n, false);
+            camera.aspect = w3n / h3n; camera.updateProjectionMatrix();
+        }
+        render();   // the 2D canvas backing store re-syncs to its animating CSS size too
+    }
     if (htp3DActive) {   // how-to-play's own push+fall demo — never touches G, which the ambient
                           // landing demo keeps animating behind the modal
         htp3DTick(dt);
@@ -6697,7 +6761,10 @@ function resize() {
             // crisp -- the visible contrast). Replay is just lightweight playback of recorded frames with
             // no AI/interaction cost, so spend the extra pixels there; keep the 2x cap during interactive
             // play as a battery/perf guard. setSize below rebuilds the buffer at whatever ratio we set.
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, passive ? 3 : 2));
+            // Coach beats swap watch<->play layouts constantly; flipping the buffer ratio 3<->2 with
+            // them adds a visible resolution pop at each swap, so the coach stays at a steady 2.
+            const inCoach = typeof coachActive !== 'undefined' && coachActive;
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, (passive && !inCoach) ? 3 : 2));
             renderer.setSize(w3,h3,false); camera.aspect=w3/h3; camera.updateProjectionMatrix(); }
         else cv3.style.display='none';
     }
