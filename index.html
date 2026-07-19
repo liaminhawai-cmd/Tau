@@ -74,7 +74,7 @@
     /* Coach only: ease the board-size change when swapping between watching and playing, instead of
        an instant jump. Scoped to a class that's added for ~230ms around the coach's resize() so
        ordinary window resizes never lag behind the drag. */
-    #views.animSize > canvas { transition: width .5s ease, height .5s ease; }
+    #views.animSize > canvas { transition: width .65s ease, height .65s ease; }
     /* Stacked (narrow) layout: 3D on top, 2D underneath -- matches the `wide` breakpoint
        resize() uses in the game script (window.innerWidth >= 760) for side-by-side vs stacked. */
     /* When resize() decides the boards stack (portrait), the 3D view goes on top — same rule the
@@ -421,7 +421,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 155</div>
+<div id="buildTag">build 156</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3286,6 +3286,7 @@ function startReplay() {
         const durSmooth = avgSpeed > 1e-9 ? m.A / avgSpeed : m.durRec;
         const durRec = haveTimes ? m.durRec : durSmooth;    // no timing → original == smoothed
         m.dur = Math.max(T.minTurnDur, ((1-T.turnLen)*durRec + T.turnLen*durSmooth) / T.speed);
+        if (typeof coachActive !== 'undefined' && coachActive) m.dur *= COACH_REPLAY_SLOW;   // coach: read-along pace
         // between-turn hold: blend of the real (capped) thinking gap and the prechosen pause.
         // The next turn's s is this turn's e (shared boundary frame), so the real gap runs from
         // this turn's last frame to the next turn's first MOVED frame.
@@ -3784,7 +3785,12 @@ function onDown(e) {
             document.getElementById('help').innerHTML = 'The <b style="color:#ffd23f">glowing</b> foot.';
             return;
         }
-        if (i>=0) { pinFoot(i); playSelectClick(); if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; } }
+        if (i>=0) {
+            pinFoot(i); playSelectClick(); if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; }
+            // Free-play coach rail: cache how far this foot can really swing each way (engine sim),
+            // then re-pin so the live turn state is a clean fresh pin regardless of the sim.
+            if (coachFreeGuide) { const rng = coachSimRange(i); pinFoot(i); coachFreeArc = { pivotIdx:i, cw:rng.cw, ccw:rng.ccw, snap: takeSnap() }; }
+        }
     } else {
         // Step 2 — grab a DIFFERENT foot to swing, or re-tap the pivot to re-pick.
         // The pivot only "wins" the tap if it is the closest foot — a sloppy tap near a
@@ -3794,7 +3800,7 @@ function onDown(e) {
         if (i>=0 && (dPin>=hitRadius() || Math.hypot(feet[i].x-p.x,feet[i].y-p.y)<=dPin)){
             G.handle=i; G.ptrAngle=Math.atan2(p.y-G.pivot.y, p.x-G.pivot.x); playMoveBass();   // grabbing a foot to swing = move begins
         } else if (dPin<hitRadius() && Math.abs(G.netRad) < CFG.minMoveDeg*Math.PI/180){
-            restoreSnap(); G.pinned=null; G.pivot=null;
+            restoreSnap(); G.pinned=null; G.pivot=null; coachFreeArc=null;   // unpinned — drop the cached rail
         }
     }
     render();
@@ -3840,6 +3846,7 @@ function onUp() {
 // ends a turn: a human release, and the AI's own swing finishing.
 function finishTurn() {
     if (coachGuided) { coachGuidedCommit(); return; }   // the coached counter commits its own way
+    coachFreeArc = null;   // move committed — the cached rail is spent
     endTurn();
     progressCentering();   // each completed move creeps the camera a quarter back toward centre
     if (colorLab) {   // colour-lab AI-vs-AI: show the tumble on a loss, then reset and keep playing
@@ -4589,6 +4596,14 @@ const COACH_BEATS = [
     { type:'watch',  s:331, e:346, line:['<span style="color:#d05a48">Red</span>&rsquo;s last push &mdash; but the angles have gone <span style="color:#5487c4">Blue</span>&rsquo;s way.', ''] },
 ];
 let coachActive = false, coachStage = 'off', coachGuided = null, coachBeatIdx = -1, coachAnimTimer = null;
+let coachHoldTimer = null;          // the "hold still after the board resizes" pause before a move plays
+let coachFreeGuide = false;         // handoff free game: keep the dotted rail + narration going
+let coachFreeArc = null;            // cached reachable swing for the pinned foot: {pivotIdx, cw, ccw, snap}
+// Coach pacing — kept deliberately slow and gentle for the landing experience (all in ms).
+const COACH_RESIZE_MS = 650;        // board-size transition (keep in sync with the CSS .65s + the window below)
+const COACH_POST_RESIZE_HOLD = 700; // stillness after the board settles, before the next move plays
+const COACH_COMMIT_HOLD = 1200;     // hold the finished guided move on the big board before the next beat
+const COACH_REPLAY_SLOW = 1.45;     // stretch watched-move playback so each move is easy to read
 // Ease the board-size swap between watching and playing: enable the CSS width/height transition on
 // the two boards for a beat, then drop it so ordinary window resizes stay instant. Split so the
 // watch branch can arm the transition around startReplay()'s own resize() without resizing twice.
@@ -4596,7 +4611,7 @@ function coachAnimSizeOn() {
     const v = document.getElementById('views');
     v.classList.add('animSize');
     clearTimeout(coachAnimTimer);
-    coachAnimTimer = setTimeout(() => v.classList.remove('animSize'), 540);
+    coachAnimTimer = setTimeout(() => v.classList.remove('animSize'), COACH_RESIZE_MS + 60);
 }
 function coachSmoothResize() { coachAnimSizeOn(); resize(); }
 function coachSetPieces(f) {
@@ -4607,6 +4622,20 @@ function coachSetPieces(f) {
 function coachPoseFeet(p) {
     const R = CFG.footR;
     return [0,1,2].map(i => { const a = p.rot + i*(2*Math.PI/3); return { x: p.x + Math.cos(a)*R, y: p.y + Math.sin(a)*R }; });
+}
+// Reachable swing for a pinned foot, both directions, WITHOUT disturbing the live turn: snapshot the
+// board + turn state, run the engine's own to-the-limit simulation each way, then restore. Lets the
+// free-play rail show how far THIS foot can really go, so the preview matches the actual move exactly.
+function coachSimRange(pivotIdx) {
+    const poses = G.pieces.map(p => ({ x:p.x, y:p.y, rot:p.rot }));
+    const save = { pinned:G.pinned, pivot:G.pivot, turnDir:G.turnDir, crossings:G.crossings,
+                   atLimit:G.atLimit, netRad:G.netRad, limitReason:G.limitReason, snap:G.snap,
+                   contact:G.contact, justCrossed:G.justCrossed };
+    const restorePoses = () => G.pieces.forEach((p,i) => { p.x=poses[i].x; p.y=poses[i].y; p.rot=poses[i].rot; });
+    const cw  = Math.abs(simMoveToLimit(pivotIdx, +1)); restorePoses();
+    const ccw = Math.abs(simMoveToLimit(pivotIdx, -1)); restorePoses();
+    Object.assign(G, save);
+    return { cw, ccw };
 }
 function startCoach() {
     hideModal(); clearTimeout(gameOverTimer); clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
@@ -4620,7 +4649,9 @@ function startCoach() {
     setSpectatorChrome(false);
     reset(); resize();
     resetAudioForNewGame(); playGameBowl();
+    clearTimeout(coachHoldTimer);
     coachActive = true; coachGuided = null; coachBeatIdx = -1;
+    coachFreeGuide = false; coachFreeArc = null;
     coachAdvance();
 }
 // Advance to the next beat (or hand off after the last one).
@@ -4631,13 +4662,24 @@ function coachAdvance() {
     const b = COACH_BEATS[coachBeatIdx];
     if (b.type === 'watch') {
         coachStage = 'watch'; coachGuided = null;
-        replayFrames = COACH_R.frames.slice(b.s, b.e + 1).map(f => f.slice());
-        replayTimes = [];
-        coachAnimSizeOn();   // ease the shrink to the watching layout (startReplay() runs resize())
-        startReplay();
         document.getElementById('replayBtns').style.display = 'none';   // landing experience: no Share/Save chrome
         document.getElementById('btns').style.display = 'none';         // no Surrender/Menu while watching
+        // Hold on the segment's opening pose while the board eases to the watching layout, THEN play
+        // the move — so the resize and the motion never happen at once (the "pause after resize").
+        coachSetPieces(COACH_R.frames[b.s]);
+        clearTurn(); G.over = false; G.winner = null;
+        coachSmoothResize();   // shrink to the watching layout (passive via coachStage==='watch'), eased
         render();
+        clearTimeout(coachHoldTimer);
+        coachHoldTimer = setTimeout(() => {
+            if (!coachActive || coachStage !== 'watch') return;
+            replayFrames = COACH_R.frames.slice(b.s, b.e + 1).map(f => f.slice());
+            replayTimes = [];
+            startReplay();
+            document.getElementById('replayBtns').style.display = 'none';
+            document.getElementById('btns').style.display = 'none';
+            render();
+        }, COACH_RESIZE_MS + COACH_POST_RESIZE_HOLD);
     } else {
         coachStage = 'guided';
         coachSetPieces(COACH_R.frames[b.startF]);
@@ -4658,7 +4700,8 @@ function coachGuidedCommit() {
     coachSetPieces(COACH_R.frames[endF]);
     clearTurn(); G.active = 1;
     render();
-    setTimeout(() => { if (coachActive) coachAdvance(); }, 600);
+    clearTimeout(coachHoldTimer);
+    coachHoldTimer = setTimeout(() => { if (coachActive) coachAdvance(); }, COACH_COMMIT_HOLD);
 }
 // Natural end OR tap-to-skip of the last watched segment: hand the position to the player.
 function coachHandoff() {
@@ -4666,32 +4709,79 @@ function coachHandoff() {
     clearTurn(); G.over = false; G.winner = null; G.active = 0;
     fall.active = false; fallenIdx = -1;
     vsAI = true; aiDifficulty = 'dumb'; ladderLevel = null; humanIdx = 0; aiIdx = 1;
+    coachFreeGuide = true; coachFreeArc = null;   // keep the dotted rail + narration going in the live game
     document.getElementById('btns').style.display = 'flex';
     coachSmoothResize();   // watching used the passive layout (small 2D board) — ease to the interactive split
     render();
-    showModal(t('Now it’s your choice'),
-        'From here it’s a live game — drive, counter, squeeze, or something of your own. Play on as Blue and push Red off the edge.',
-        [ { label: 'Play on as Blue', onClick: () => { resumeAudio(); } },
-          { label: 'Watch that again', onClick: () => startCoach(), cls: 'ghostBtn' } ],
-        false, { dismiss: false });
+    // Let the board finish easing to the interactive split before the modal lands (pause after resize).
+    clearTimeout(coachHoldTimer);
+    coachHoldTimer = setTimeout(() => {
+        showModal(t('Now it’s your choice'),
+            'From here it’s a live game — drive, counter, squeeze, or something of your own. Pin any foot and the dotted line shows how far it can swing. Play on as Blue and push Red off the edge.',
+            [ { label: 'Play on as Blue', onClick: () => { resumeAudio(); } },
+              { label: 'Watch that again', onClick: () => startCoach(), cls: 'ghostBtn' } ],
+            false, { dismiss: false });
+    }, COACH_RESIZE_MS + COACH_POST_RESIZE_HOLD);
 }
-// ---- Projected-arc rail: the dotted path each moving foot will trace, on the 3D board (2D in render) ----
+// The rail to draw right now: the guided move's fixed arc, or (in free play) the reachable swing of
+// the pinned foot — both ways until a direction is committed, then just that way. null = draw nothing.
+// Returns { pivot, snap:{x,y,rot}, from, to } as angle offsets relative to each foot's start angle.
+function coachRailSpec() {
+    if (coachGuided && G.pinned !== null && G.snap)
+        return { pivot: coachGuided.pivot, snap: G.snap[G.active], from: 0, to: coachGuided.dir * coachGuided.target };
+    if (coachFreeGuide && G.pinned !== null && G.snap && coachFreeArc && G.pinned === coachFreeArc.pivotIdx) {
+        const td = G.turnDir;
+        return { pivot: coachFreeArc.pivotIdx, snap: G.snap[G.active],
+                 from: td > 0 ? 0 : -coachFreeArc.ccw, to: td < 0 ? 0 : coachFreeArc.cw };
+    }
+    return null;
+}
+// Draw the dotted projected rail on the 2D board: for each non-pivot foot, an arc around the pivot
+// from a0+from to a0+to, with a small arrowhead at whichever ends carry real travel. Theme-tuned.
+function coachDraw2DRail(spec) {
+    const pvp = G.pivot, sf = coachPoseFeet(spec.snap);
+    const lightBoard = !!activeSkin();
+    const railCol  = lightBoard ? 'rgba(74,82,94,0.72)' : 'rgba(255,210,63,0.5)';
+    const arrowCol = lightBoard ? 'rgba(58,66,78,0.92)' : 'rgba(255,214,80,0.85)';
+    ctx.save(); ctx.lineCap = 'round';
+    const O = bx2px(pvp.x, pvp.y);
+    for (let i = 0; i < 3; i++) { if (i === spec.pivot) continue;
+        const r = Math.hypot(sf[i].x - pvp.x, sf[i].y - pvp.y), a0 = Math.atan2(sf[i].y - pvp.y, sf[i].x - pvp.x);
+        const A = a0 + spec.from, B = a0 + spec.to;
+        ctx.setLineDash([2.5, 5]); ctx.strokeStyle = railCol; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(O.x, O.y, r * scale, A, B, B < A); ctx.stroke();
+        ctx.setLineDash([]); ctx.strokeStyle = arrowCol; ctx.lineWidth = 2;
+        const head = (ang, sweep) => {   // arrowhead at absolute angle `ang`, pointing along travel `sweep`
+            const ep = bx2px(pvp.x + r * Math.cos(ang), pvp.y + r * Math.sin(ang));
+            const tang = ang + sweep * Math.PI / 2;
+            ctx.beginPath();
+            ctx.moveTo(ep.x, ep.y); ctx.lineTo(ep.x + Math.cos(tang + 2.5) * 8, ep.y + Math.sin(tang + 2.5) * 8);
+            ctx.moveTo(ep.x, ep.y); ctx.lineTo(ep.x + Math.cos(tang - 2.5) * 8, ep.y + Math.sin(tang - 2.5) * 8);
+            ctx.stroke();
+        };
+        if (spec.to   >  0.05) head(B, +1);
+        if (spec.from < -0.05) head(A, -1);
+    }
+    ctx.restore();
+}
+// ---- Projected-arc rail on the 3D board (2D in render): dotted path each moving foot will trace ----
 function coachArc3DUpdate() {
     if (!coachArcs) return;
-    if (!coachGuided || G.pinned === null || !G.snap) { coachArcs.forEach(l => l.visible = false); return; }
-    const pv = G.pivot, sf = coachPoseFeet(G.snap[G.active]);
+    const spec = (!G.over) ? coachRailSpec() : null;
+    if (!spec) { coachArcs.forEach(l => l.visible = false); return; }
+    const pv = G.pivot, sf = coachPoseFeet(spec.snap);
     // Gold on the dark board (reads great there); a dark grey on the pale board where gold washes out.
     const railHex = activeSkin() ? 0x5a626e : 0xffd23f;
     let li = 0;
     for (let i = 0; i < 3; i++) {
-        if (i === coachGuided.pivot) continue;
+        if (i === spec.pivot) continue;
         const line = coachArcs[li++]; if (!line) break;
         line.material.color.setHex(railHex);
         const r = Math.hypot(sf[i].x - pv.x, sf[i].y - pv.y);
         const a0 = Math.atan2(sf[i].y - pv.y, sf[i].x - pv.x);
         const pos = line.geometry.attributes.position.array, N = pos.length / 3;
         for (let k = 0; k < N; k++) {
-            const a = a0 + coachGuided.dir * coachGuided.target * (k / (N - 1));
+            const a = a0 + spec.from + (spec.to - spec.from) * (k / (N - 1));
             pos[k*3] = pv.x + r*Math.cos(a); pos[k*3+1] = 0.4; pos[k*3+2] = pv.y + r*Math.sin(a);
         }
         line.geometry.attributes.position.needsUpdate = true;
@@ -4702,8 +4792,9 @@ function coachArc3DUpdate() {
 }
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
-    clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); clearTimeout(coachHoldTimer); aiAnim = null;
     replayActive = false; ladderLevel = null; coachActive = false;
+    coachFreeGuide = false; coachFreeArc = null; coachGuided = null;   // leave the coach guide behind
     if (typeof rmxTeardown === 'function') rmxTeardown(true);   // tell a waiting opponent we left
     mmWaitingAI = false;   // leaving to the menu also leaves the play-AI-while-you-wait queue
     cancelMatchmaking(); exitOnlineMatch();
@@ -5829,46 +5920,18 @@ function render() {
         }
         const pv=bx2px(G.pivot.x,G.pivot.y);
         ctx.beginPath(); ctx.arc(pv.x,pv.y,3.5,0,2*Math.PI); ctx.fillStyle='#fff'; ctx.fill();
-        if (!coachGuided) drawSpinHint(pv, G.turnDir);   // the coach shows a full projected arc instead
+        if (!coachGuided && !coachFreeGuide) drawSpinHint(pv, G.turnDir);   // the coach shows a full projected rail instead
     }
-    // Coach: glow the foot to pin (before pinning), then the dotted projected-arc rail (after).
-    if (coachGuided && !G.over) {
-        if (G.pinned===null) {
-            const f = bx2px(G.pieces[0].feet()[coachGuided.pivot].x, G.pieces[0].feet()[coachGuided.pivot].y);
-            const pulse = 0.6 + 0.4*Math.sin(performance.now()*0.006);
-            ctx.beginPath(); ctx.arc(f.x, f.y, 12+5*pulse, 0, 2*Math.PI);
-            ctx.strokeStyle=`rgba(255,210,63,${0.95-0.45*pulse})`; ctx.lineWidth=2.5; ctx.stroke();
-        } else if (G.snap) {
-            // Faint dotted rail: the path each non-pivot foot's pad will trace around the pinned
-            // foot (both feet ride the same circle — the rigid piece just pivots), with a crisp
-            // little arrowhead at each landing point so the direction of the swing still reads.
-            const pvp = G.pivot, sf = coachPoseFeet(G.snap[G.active]);
-            // Gold reads great on the dark board; on the pale board it washes out, so use a dark grey
-            // rail there instead (activeSkin() is truthy only for the light/Slate theme).
-            const lightBoard = !!activeSkin();
-            const railCol  = lightBoard ? 'rgba(74,82,94,0.72)' : 'rgba(255,210,63,0.5)';
-            const arrowCol = lightBoard ? 'rgba(58,66,78,0.92)' : 'rgba(255,214,80,0.85)';
-            ctx.save(); ctx.lineCap='round';
-            const O = bx2px(pvp.x, pvp.y);
-            for (let i=0;i<3;i++){ if (i===coachGuided.pivot) continue;
-                const r=Math.hypot(sf[i].x-pvp.x, sf[i].y-pvp.y), a0=Math.atan2(sf[i].y-pvp.y, sf[i].x-pvp.x);
-                const a1=a0 + coachGuided.dir*coachGuided.target;
-                ctx.setLineDash([2.5,5]); ctx.strokeStyle=railCol; ctx.lineWidth=1.6;
-                ctx.beginPath(); ctx.arc(O.x, O.y, r*scale, a0, a1, coachGuided.dir<0); ctx.stroke();
-                // arrowhead at the target end (solid, a touch stronger, so travel direction is legible)
-                const ep=bx2px(pvp.x + r*Math.cos(a1), pvp.y + r*Math.sin(a1));
-                const tang=a1 + coachGuided.dir*Math.PI/2;   // tangent = direction of travel at the end
-                ctx.setLineDash([]); ctx.strokeStyle=arrowCol; ctx.lineWidth=2;
-                ctx.beginPath();
-                ctx.moveTo(ep.x, ep.y);
-                ctx.lineTo(ep.x + Math.cos(tang+2.5)*8, ep.y + Math.sin(tang+2.5)*8);
-                ctx.moveTo(ep.x, ep.y);
-                ctx.lineTo(ep.x + Math.cos(tang-2.5)*8, ep.y + Math.sin(tang-2.5)*8);
-                ctx.stroke();
-            }
-            ctx.restore();
-        }
+    // Coach: glow the foot to pin (guided beats, before pinning), then the dotted projected-arc rail.
+    if (coachGuided && !G.over && G.pinned===null) {
+        const f = bx2px(G.pieces[0].feet()[coachGuided.pivot].x, G.pieces[0].feet()[coachGuided.pivot].y);
+        const pulse = 0.6 + 0.4*Math.sin(performance.now()*0.006);
+        ctx.beginPath(); ctx.arc(f.x, f.y, 12+5*pulse, 0, 2*Math.PI);
+        ctx.strokeStyle=`rgba(255,210,63,${0.95-0.45*pulse})`; ctx.lineWidth=2.5; ctx.stroke();
     }
+    // The dotted rail — a fixed target in a guided beat, or the reachable swing of whatever foot the
+    // player pins during free play. coachRailSpec() picks the right one; null when nothing to draw.
+    { const spec = (!G.over) ? coachRailSpec() : null; if (spec) coachDraw2DRail(spec); }
 
     const s=document.getElementById('status'), m=document.getElementById('meta'), h=document.getElementById('help');
     const aiTurn = vsAI && G.active===aiIdx && !G.over;
@@ -5938,6 +6001,20 @@ function render() {
         } else if (cb && cb.line) {
             s.innerHTML = cb.line[0] || '';
             h.innerHTML = cb.line[1] || '';
+        }
+    }
+    // Handoff free game: keep narrating and pointing at the dotted rail while the player finds their feet.
+    if (coachFreeGuide && !coachActive && !G.over) {
+        m.textContent = '';
+        if (vsAI && G.active === aiIdx) {
+            s.innerHTML = '<span style="color:#d05a48">Red</span> answers&hellip;';
+            h.innerHTML = 'Watch the angle shift.';
+        } else if (G.pinned === null) {
+            s.innerHTML = 'Your move &mdash; pin any foot.';
+            h.innerHTML = 'The dotted line shows how far that foot can swing.';
+        } else {
+            s.innerHTML = 'Swing another foot around it.';
+            h.innerHTML = 'Follow the dotted rail as far as you like &mdash; release to lock it in.';
         }
     }
     if (DEBUG_CROSS) updateDebugHud();
@@ -6590,7 +6667,9 @@ function resize() {
     // give the 3D view the bulk of the room instead of the touch-priority split above.
     const passive = show && ((typeof replayActive !== 'undefined' && replayActive) ||
                               (typeof sharedReplay !== 'undefined' && sharedReplay) ||
-                              (typeof onlineMatch !== 'undefined' && onlineMatch && onlineMatch.spectator));
+                              (typeof onlineMatch !== 'undefined' && onlineMatch && onlineMatch.spectator) ||
+                              // coach watch beat: shrink to the watching layout BEFORE the replay begins
+                              (typeof coachActive !== 'undefined' && coachActive && coachStage === 'watch'));
     if (passive) {
         if (wide) {
             // Desktop/landscape: shrink the 2D board (a watcher never touches it) and give the freed
