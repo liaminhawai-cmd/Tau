@@ -421,7 +421,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 164</div>
+<div id="buildTag">build 165</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -5919,11 +5919,14 @@ function drawCrossFlashes() {
     crossFlashes = crossFlashes.filter(f => now - f.t < CROSS_FLASH_MS);
     if (!crossFlashes.length) return;
     ctx.save(); ctx.lineCap = 'round';
-    // Flash colour is the value-inverse of the board: gold (bright warm) on the dark boards, slate
-    // ink (dark cool) on the pale ones — where gold just melts into the tan. Low chroma keeps the
-    // ink clearly apart from the saturated piece blue/red; white would LOSE contrast on a pale disc.
+    // The crossing flash should read as ADDED ENERGY. On the dark boards that's gold (a bright warm
+    // glow lifting off a dark ground). On the pale boards you can't get "brighter than cream", and
+    // going DARKER reads as a shadow/hole — wrong signal — so instead spike SATURATION at a similar
+    // value: a vivid teal that pops by warm(board)-vs-cool(flash) contrast, and sits clear of the
+    // blue/red pieces (the grey projected-arc rail stays the neutral "guide"; this is the alert).
     const pale = boardIsPale();
-    const fc = pale ? '44,52,66' : '255,210,63', fg = pale ? 'rgba(44,52,66,0.85)' : 'rgba(255,210,63,0.9)';
+    const paleRGB = (typeof window.__flashPale === 'string') ? window.__flashPale : '13,150,132';   // teal
+    const fc = pale ? paleRGB : '255,210,63', fg = pale ? `rgba(${paleRGB},0.9)` : 'rgba(255,210,63,0.9)';
     for (const f of crossFlashes) {
         const g = LINE_GEOM[f.id]; if (!g) continue;
         const alpha = 1 - (now - f.t) / CROSS_FLASH_MS;
