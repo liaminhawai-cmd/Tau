@@ -57,7 +57,7 @@ const CFG = {
   // sim params (same values as index.html — the rules engine below depends on them)
   edgeEps: 0.5, maxCrossingsPerTurn: 1,
   crossEps: 0.4, holdEps: 0.45, touchEps: 0.8, lineStick: 0.25, cornerEps: 1.1,
-  substepDeg: 0.4, lockDeg: 2, legSegs: 12,
+  substepDeg: 0.4, lockDeg: 2, minMoveDeg: 2, legSegs: 12,
   inertiaK: 0.7, pushIters: 10, pushRelax: 1.0, maxPenPerIter: 0.8, minHorizFrac: 0.35,
 };
 CFG.footPadRadius = CFG.legRadius * CFG.footPadFrac;
@@ -131,7 +131,7 @@ const THEMES = {
     key: { color: 0xfff1dc, intensity: 2.6, pos: [70,130,45], shadow: 0.55 },
     fill:{ color: 0x8fb4ff, intensity: 0.5 },
     band: { color: 0x353a42, rough: 0.35, metal: 0.85 }, slabColor: 0x17191d, tableColor: 0x0d0f13,
-    boardEnv: 0.7, bumpScale: 0.9, boardReflect: 0.34,
+    boardEnv: 0.7, bumpScale: 0.9, boardReflect: 0.34, guide: 0xf3e3c0,
     paint() {
       const [al, a] = canvas2d();
       a.fillStyle = '#23262c'; a.fillRect(0, 0, S, S);
@@ -184,7 +184,7 @@ const THEMES = {
     key: { color: 0xffffff, intensity: 2.2, pos: [40,140,70], shadow: 0.5 },
     fill:{ color: 0xa8c8ff, intensity: 0.65 },
     band: { color: 0x20242c, rough: 0.5, metal: 0.6 }, slabColor: 0x14171d, tableColor: 0x0b0d12,
-    boardEnv: 0.3, bumpScale: 0.35, boardReflect: 0.16,
+    boardEnv: 0.3, bumpScale: 0.35, boardReflect: 0.16, guide: 0xdcecff,
     paint() {
       const [al, a] = canvas2d();
       a.fillStyle = '#141b28'; a.fillRect(0, 0, S, S);          // ink-navy graphite
@@ -235,7 +235,7 @@ const THEMES = {
     key: { color: 0xffdfae, intensity: 2.4, pos: [95,85,30], shadow: 0.65 },
     fill:{ color: 0x7286a8, intensity: 0.35 },
     band: { color: 0x3a2b1c, rough: 0.7, metal: 0.05 }, slabColor: 0x46351f, tableColor: 0x201810,
-    boardEnv: 0.4, bumpScale: 0.9, boardReflect: 0.05,
+    boardEnv: 0.4, bumpScale: 0.9, boardReflect: 0.05, guide: 0xf6dfae,
     paint() {
       const [al, a] = canvas2d();
       a.fillStyle = '#6e4a2c'; a.fillRect(0, 0, S, S);          // deep earth
@@ -290,7 +290,7 @@ const THEMES = {
     key: { color: 0xffc98a, intensity: 2.7, pos: [95,75,25], shadow: 0.6 },
     fill:{ color: 0x86a0c8, intensity: 0.3 },
     band: { color: 0x503722, rough: 0.55, metal: 0.05 }, slabColor: 0x453019, tableColor: 0x33241a,
-    boardEnv: 0.8, bumpScale: 0.6, boardReflect: 0.12,
+    boardEnv: 0.8, bumpScale: 0.6, boardReflect: 0.12, guide: 0xf6ead0,
     paint() {
       const [al, a] = canvas2d();
       a.fillStyle = '#8a6136'; a.fillRect(0, 0, S, S);           // honey oak
@@ -365,7 +365,7 @@ const THEMES = {
     key: { color: 0x9d8ce8, intensity: 1.0, pos: [-70,110,-50], shadow: 0.35 },
     fill:{ color: 0x35e8c8, intensity: 0.55 },
     band: { color: 0x191324, rough: 0.35, metal: 0.25 }, slabColor: 0x110d1a, tableColor: 0x06060c,
-    boardEnv: 0.25, bumpScale: 1.1, emissiveIntensity: 1.5, boardReflect: 0.28,
+    boardEnv: 0.25, bumpScale: 1.1, emissiveIntensity: 1.5, boardReflect: 0.28, guide: 0x8dffe8,
     fog: { color: 0x0a0816, density: 0.0018 },
     paint() {
       // one vein network, drawn into albedo (dark), bump (raised) — precompute the segments
@@ -469,7 +469,7 @@ const THEMES = {
     key: { color: 0xffe6c0, intensity: 3.2, pos: [180,220,90], shadow: 0.85 },
     fill:{ color: 0x9fb4d8, intensity: 0.25 },
     band: { color: 0x8a7a5e, rough: 0.95, metal: 0.0 }, slabColor: 0x7e6f54, tableColor: 0xa08b64,
-    boardEnv: 0.2, bumpScale: 1.2, boardReflect: 0,
+    boardEnv: 0.2, bumpScale: 1.2, boardReflect: 0, guide: 0xff9c3a,
     fog: { color: 0xb9a888, density: 0.0011 },   // haze GRADES with distance — board clear, wall half-gone
     cam: { pos: [-140, 130, 280], target: [0, 26, 0], fov: 36 },   // in the seats: board low, far stands fill the top
     simSpeed: 0.35,
@@ -595,6 +595,15 @@ let T = THEMES.noir;   // set for real by applyTheme(THEME) once the scene exist
     else SND.master.gain.setTargetAtTime(0, SND.ctx.currentTime, 0.1);
   });
   el.appendChild(snd);
+  const gfx = document.createElement('a');
+  gfx.href = '#'; gfx.id = 'gfxToggle'; gfx.textContent = 'gfx';
+  gfx.addEventListener('click', ev => {
+    ev.preventDefault();
+    const order = ['high', 'balanced', 'light'];
+    gfxMode = order[(order.indexOf(gfxMode) + 1) % order.length];
+    applyGfx();
+  });
+  el.appendChild(gfx);
   for (const k of Object.keys(THEMES)) {
     const a = document.createElement('a');
     a.href = '?theme=' + k + (SHOW_FPS ? '&fps' : ''); a.textContent = k; a.dataset.theme = k;
@@ -1008,6 +1017,11 @@ function reset() {
         snap: null, contact: null };
 }
 function takeSnap() { return G.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot })); }
+function restoreSnap() {
+  if (!G.snap) return;
+  G.pieces.forEach((p, i) => { p.x = G.snap[i].x; p.y = G.snap[i].y; p.rot = G.snap[i].rot; });
+  G.turnDir = 0; G.crossings = 0; G.atLimit = false; G.netRad = 0; G.contact = null;
+}
 function pinFoot(idx) {
   const feet = G.pieces[G.active].feet();
   G.pinned = idx; G.pivot = { x: feet[idx].x, y: feet[idx].y };
@@ -1183,9 +1197,15 @@ function stepFall(dt) {
 const SWING_RATE = 1.5;
 const sim = { state: 'think', t: 0, wait: 1.1, plan: null, games: 0 };
 function simTick(dt) {
+  if (sim.state === 'human') return;   // the player is mid-swing — input events drive the game
   if (sim.state === 'think') {
     sim.t += dt;
-    if (sim.t < sim.wait) return;
+    // blue's think pause is the takeover window: longer in attract mode (feet glow, inviting a
+    // grab), 20s when a player owns blue (then the AI covers for them; two covers = attract again)
+    const humanWait = playerMode && G.active === 0;
+    const effWait = humanWait ? 20 : (G.active === 0 && !playerMode ? sim.wait + 1.1 : sim.wait);
+    if (sim.t < effWait) return;
+    if (humanWait) { player.idleCount++; if (player.idleCount >= 2) playerMode = false; }
     const plan = demoPlan();
     if (!plan) { clearTurn(); sim.t = 0; sim.wait = 0.5; return; }
     sim.plan = plan; sim.state = 'swing';
@@ -1220,9 +1240,15 @@ function syncPieces() {
 }
 reset(); syncPieces();
 window.__simInfo = () => ({ state: sim.state, games: sim.games, over: G.over, fall: fall.active,
+  active: G.active, playerMode, netRad: +G.netRad.toFixed(3),
   pieces: G.pieces.map(p => ({ x: +p.x.toFixed(2), y: +p.y.toFixed(2), rot: +p.rot.toFixed(2) })) });
 window.__simTick = simTick;   // headless tests fast-forward the battle without waiting real-time
-window.__dbg = () => ({ scene, camera, get env() { return envGroup; }, fogOff() { scene.fog = null; } });
+window.__dbg = () => ({ scene, camera, get env() { return envGroup; }, fogOff() { scene.fog = null; },
+  footScreen(i) {
+    const f = G.pieces[0].feet()[i];
+    const v = new THREE.Vector3(f.x, 0, f.y).project(camera);
+    return { x: (v.x*0.5 + 0.5)*innerWidth, y: (-v.y*0.5 + 0.5)*innerHeight };
+  } });
 
 // ---- sound — everything synthesized in WebAudio, no assets; OFF until the ♪ toggle -----------
 // A per-theme ambient bed, a whoosh that follows the swinging piece, creaks when legs actually
@@ -1324,7 +1350,7 @@ function sndAmbience(theme) {
 function sndTick(dt) {
   if (!SND.on || !SND.ctx) return;
   const c = SND.ctx, t = c.currentTime;
-  const swinging = sim.state === 'swing' && !G.over;
+  const swinging = (sim.state === 'swing' || sim.state === 'human') && !G.over;
   SND.whoosh.gain.gain.setTargetAtTime(swinging ? 0.13*(T.simSpeed || 1) + 0.04 : 0, t, swinging ? 0.15 : 0.3);
   if (swinging) {
     const p = G.pieces[G.active];
@@ -1355,6 +1381,196 @@ function sndTick(dt) {
     sndBurst(0.02 + Math.random()*0.05, 0.02 + Math.random()*0.03, -0.6 + Math.random()*1.2, 2400, 'highpass');
 }
 
+// ---- player control — grab a blue foot, drag to swing; the AI keeps red ----------------------
+// The ambient battle is the attract mode. During blue's think pause its feet glow; press one to
+// pin it as the pivot (coach-style dotted arcs appear showing how far the other feet can sweep),
+// drag to swing — the same applySwing as everything else, so the crossing rules, direction lock
+// and rim block all hold — release to commit. Ignore your turn for 20s twice and blue goes back
+// to playing itself. Gamepad: stick aims at a foot, A pins, stick swings, A commits, B cancels.
+let playerMode = false;
+const player = { phase: 'idle', hover: -1, drag: null, idleCount: 0 };
+const rayc = new THREE.Raycaster(), ndcV = new THREE.Vector2();
+const planeY = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), planePt = new THREE.Vector3();
+const footW = new THREE.Vector3();
+const canBlueMove = () => sim.state === 'think' && G.active === 0 && !G.over && !fall.active;
+
+// affordances: glow discs on grabbable feet, a ring on the pinned pivot, dotted sweep guides
+const hoverDiscs = [0, 1, 2].map(() => {
+  const m = new THREE.Mesh(new THREE.CircleGeometry(3.4, 24),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4,
+      blending: THREE.AdditiveBlending, depthWrite: false }));
+  m.rotation.x = -Math.PI/2; m.visible = false; scene.add(m);
+  return m;
+});
+const pivotRing = new THREE.Mesh(new THREE.RingGeometry(2.6, 3.7, 28),
+  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85,
+    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+pivotRing.rotation.x = -Math.PI/2; pivotRing.visible = false; scene.add(pivotRing);
+const guideGeo = new THREE.BufferGeometry();
+const guideMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.3, transparent: true,
+  opacity: 0.7, depthWrite: false });
+const guidePts = new THREE.Points(guideGeo, guideMat);
+guidePts.visible = false; guidePts.frustumCulled = false; scene.add(guidePts);
+
+function pointerNDC(ev) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndcV.set(((ev.clientX - r.left)/r.width)*2 - 1, -((ev.clientY - r.top)/r.height)*2 + 1);
+  rayc.setFromCamera(ndcV, camera);
+}
+function hitFoot(ev) {
+  pointerNDC(ev);
+  const feet = G.pieces[0].feet();
+  let best = -1, bd = 1e9;
+  for (let i = 0; i < 3; i++) {
+    const d = rayc.ray.distanceToPoint(footW.set(feet[i].x, 0.8, feet[i].y));
+    if (d < 5.5 && d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+function dragAngle(ev) {   // pointer angle around the pivot, in board coords (game y = world z)
+  // null while the pointer is still within the dead zone around the pivot: right after grabbing,
+  // the pointer sits ON the pivot, where tiny movements read as wild angle swings — the swing
+  // only engages once the pointer has pulled far enough out to crank cleanly
+  pointerNDC(ev);
+  if (!rayc.ray.intersectPlane(planeY, planePt)) return null;
+  if (Math.hypot(planePt.x - G.pivot.x, planePt.z - G.pivot.y) < 8) return null;
+  return Math.atan2(planePt.z - G.pivot.y, planePt.x - G.pivot.x);
+}
+// dotted sweep guides: run the pinned swing to its legal limit both ways (then roll back), and
+// dot each free foot's circular path across exactly that reachable range — coach mode's rail
+function buildGuides() {
+  const snap = takeSnap();
+  const look = d => {
+    let tot = 0;
+    while (Math.abs(tot) < AI_SAFETY_CAP_RAD) { applySwing(d*DEMO_STEP_RAD); tot = G.netRad; if (G.atLimit) break; }
+    return G.netRad;
+  };
+  const roll = () => {
+    G.pieces.forEach((p, i) => { p.x = snap[i].x; p.y = snap[i].y; p.rot = snap[i].rot; });
+    G.turnDir = 0; G.crossings = 0; G.atLimit = false; G.netRad = 0; G.contact = null;
+  };
+  const ccw = look(1); roll(); const cw = look(-1); roll();
+  const feet = G.pieces[0].feet(), pv = G.pivot, pos = [];
+  for (let i = 0; i < 3; i++) {
+    if (i === G.pinned) continue;
+    const R = Math.hypot(feet[i].x - pv.x, feet[i].y - pv.y);
+    const a0 = Math.atan2(feet[i].y - pv.y, feet[i].x - pv.x);
+    for (let t = cw; t <= ccw; t += 2.5*Math.PI/180)
+      pos.push(pv.x + Math.cos(a0 + t)*R, 0.5, pv.y + Math.sin(a0 + t)*R);
+  }
+  guideGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  guideGeo.computeBoundingSphere();
+}
+function startHumanTurn(f) {
+  sim.state = 'human'; sim.plan = null;
+  playerMode = true; player.idleCount = 0;
+  pinFoot(f);
+  buildGuides();
+  controls.enabled = false;
+}
+function humanRelease(cancel) {
+  if (sim.state !== 'human') return;
+  controls.enabled = true;
+  player.phase = 'idle'; player.drag = null;
+  if (!cancel && Math.abs(G.netRad) >= CFG.minMoveDeg*Math.PI/180) {
+    endTurn();
+    if (G.over) { triggerFall(); sim.state = 'fall'; sim.t = 0; }
+    else { sim.state = 'think'; sim.t = 0; sim.wait = 0.5 + Math.random()*0.45; }
+  } else {
+    restoreSnap(); clearTurn();
+    sim.state = 'think'; sim.t = 0; sim.wait = 0.4;   // still blue's turn — waits for the player
+  }
+}
+renderer.domElement.addEventListener('pointerdown', ev => {
+  if (!canBlueMove()) return;
+  const f = hitFoot(ev);
+  if (f < 0) return;
+  ev.preventDefault();
+  startHumanTurn(f);
+  player.phase = 'drag';
+  player.drag = { last: null };
+  try { renderer.domElement.setPointerCapture(ev.pointerId); } catch (e) {}
+});
+renderer.domElement.addEventListener('pointermove', ev => {
+  if (player.phase === 'drag' && sim.state === 'human') {
+    const a = dragAngle(ev);
+    if (a === null) return;
+    if (player.drag.last === null) { player.drag.last = a; return; }
+    const dA = norm(a - player.drag.last);
+    player.drag.last = a;
+    applySwing(dA);
+  } else if (canBlueMove()) {
+    player.hover = hitFoot(ev);
+    renderer.domElement.style.cursor = player.hover >= 0 ? 'grab' : '';
+  } else if (player.hover !== -1) { player.hover = -1; renderer.domElement.style.cursor = ''; }
+});
+addEventListener('pointerup', () => { if (player.phase === 'drag') humanRelease(false); });
+addEventListener('pointercancel', () => { if (player.phase === 'drag') humanRelease(true); });
+
+// gamepad: stick aims, A pins/commits, B cancels; swing speed follows the stick
+const pad = { lastA: false, lastB: false };
+const padV = { right: new THREE.Vector3(), fwd: new THREE.Vector3() };
+function padTick(dt) {
+  const gps = navigator.getGamepads ? navigator.getGamepads() : [];
+  let gp = null;
+  for (const g of gps) if (g && g.connected) { gp = g; break; }
+  if (!gp) return;
+  const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0, mag = Math.hypot(ax, ay);
+  const A = !!(gp.buttons[0] && gp.buttons[0].pressed), B = !!(gp.buttons[1] && gp.buttons[1].pressed);
+  const aEdge = A && !pad.lastA, bEdge = B && !pad.lastB;
+  pad.lastA = A; pad.lastB = B;
+  if ((mag > 0.5 || aEdge) && (canBlueMove() || sim.state === 'human')) { playerMode = true; player.idleCount = 0; }
+  if (canBlueMove()) {
+    if (mag > 0.5) {   // stick direction (screen space) → board direction → nearest foot that way
+      padV.right.setFromMatrixColumn(camera.matrixWorld, 0); padV.right.y = 0; padV.right.normalize();
+      camera.getWorldDirection(padV.fwd); padV.fwd.y = 0; padV.fwd.normalize();
+      const dx = padV.right.x*ax - padV.fwd.x*ay, dz = padV.right.z*ax - padV.fwd.z*ay;
+      const p0 = G.pieces[0], feet = p0.feet();
+      let best = 0, bs = -1e9;
+      for (let i = 0; i < 3; i++) {
+        const s = (feet[i].x - p0.x)*dx + (feet[i].y - p0.y)*dz;
+        if (s > bs) { bs = s; best = i; }
+      }
+      player.hover = best;
+    }
+    if (aEdge && player.hover >= 0) { startHumanTurn(player.hover); player.phase = 'pad'; }
+  } else if (sim.state === 'human' && player.phase === 'pad') {
+    if (Math.abs(ax) > 0.15) applySwing(ax*1.6*dt);
+    if (aEdge) humanRelease(false);
+    if (bEdge) humanRelease(true);
+  }
+}
+let lastTag = '';
+function updateTag() {
+  if (SHOW_FPS) return;
+  let s;
+  if (sim.state === 'human') s = player.phase === 'pad' ? 'swing with the stick · A commit · B cancel'
+                                                        : 'drag to swing — release to commit';
+  else if (canBlueMove()) s = playerMode ? 'your move — hold a blue foot and swing'
+                                         : 'watching — grab a glowing blue foot to play';
+  else if (playerMode && !G.over) s = 'red moves…';
+  else s = 'tau · premium spike — drag to orbit';
+  if (s !== lastTag) { lastTag = s; document.getElementById('tag').textContent = s; }
+}
+function playerTick(dt, now) {
+  const invite = canBlueMove();
+  const feet = invite ? G.pieces[0].feet() : null;
+  for (let i = 0; i < 3; i++) {
+    const d = hoverDiscs[i];
+    d.visible = invite;
+    if (invite) {
+      d.position.set(feet[i].x, 0.4, feet[i].y);
+      d.material.opacity = i === player.hover ? 0.85 : 0.3 + 0.15*Math.sin(now/300 + i*2.1);
+    }
+  }
+  const pinned = sim.state === 'human' && !!G.pivot;
+  pivotRing.visible = pinned;
+  if (pinned) pivotRing.position.set(G.pivot.x, 0.4, G.pivot.y);
+  guidePts.visible = pinned;
+  padTick(dt);
+  updateTag();
+}
+
 // ---- post ------------------------------------------------------------------------------------
 // The composer must bring its own MSAA: post-processing renders into an offscreen target, so the
 // canvas's antialias flag stops applying the moment a composer is used — that unantialiased
@@ -1366,6 +1582,34 @@ composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.2, 0.5, 0.9);
 composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
+
+// ---- graphics presets: one link cycles the knobs that actually cost frames -------------------
+const GFX = {
+  high:     { pr: 2,   reflect: true,  bloom: true,  shadow: true },
+  balanced: { pr: 1.5, reflect: true,  bloom: true,  shadow: true },
+  light:    { pr: 1,   reflect: false, bloom: false, shadow: false },
+};
+let gfxMode = localStorage.getItem('tauSteamGfx') || 'high';
+if (!GFX[gfxMode]) gfxMode = 'high';
+function sizeAll() {
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.setSize(innerWidth, innerHeight);
+  reflector.getRenderTarget().setSize(
+    Math.max(256, Math.floor(innerWidth  * (devicePixelRatio || 1) / 2)),
+    Math.max(256, Math.floor(innerHeight * (devicePixelRatio || 1) / 2)));
+}
+function applyGfx() {
+  const g = GFX[gfxMode];
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, g.pr));
+  key.castShadow = g.shadow;
+  bloomPass.enabled = g.bloom;
+  sizeAll();
+  document.getElementById('gfxToggle').textContent = 'gfx: ' + gfxMode;
+  localStorage.setItem('tauSteamGfx', gfxMode);
+}
+applyGfx();
 
 // ---- apply a theme in place: repaint the board, reskin the pieces, relight -------------------
 let envGroup = null;   // optional per-theme world around the board (colossus' stands, dust…)
@@ -1406,6 +1650,9 @@ function applyTheme(name) {
   const cam = T.cam || { pos: [-18, 58, 122], target: [0, 4, 0], fov: 42 };
   camera.position.set(...cam.pos); controls.target.set(...cam.target);
   camera.fov = cam.fov; camera.updateProjectionMatrix(); controls.update();
+  const gcol = T.guide || 0xffffff;   // input affordances follow the theme's ink
+  guideMat.color.set(gcol); pivotRing.material.color.set(gcol);
+  hoverDiscs.forEach(d => d.material.color.set(gcol));
   document.querySelectorAll('#themes a').forEach(a => a.className = a.dataset.theme === name ? 'cur' : '');
   history.replaceState(null, '', '?theme=' + name + (SHOW_FPS ? '&fps' : ''));
   if (!SHOW_FPS) document.getElementById('tag').textContent = 'tau · premium spike — drag to orbit';
@@ -1413,13 +1660,7 @@ function applyTheme(name) {
 }
 applyTheme(THEME);
 
-addEventListener('resize', () => {
-  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
-  reflector.getRenderTarget().setSize(
-    Math.max(256, Math.floor(innerWidth  * (devicePixelRatio || 1) / 2)),
-    Math.max(256, Math.floor(innerHeight * (devicePixelRatio || 1) / 2)));
-});
+addEventListener('resize', sizeAll);
 
 let frames = 0, fpsAcc = 0, fpsN = 0, lastT = performance.now();
 const tag = document.getElementById('tag');
@@ -1430,8 +1671,9 @@ function loop() {
   simTick(dt * (T.simSpeed || 1));                 // colossus runs slow: giant things move slowly
   syncPieces();
   sndTick(dt);
+  playerTick(dt, now);
   if (envGroup && envGroup.userData.tick) envGroup.userData.tick(now/1000);
-  reflector.visible = (T.boardReflect || 0) > 0.001;
+  reflector.visible = GFX[gfxMode].reflect && (T.boardReflect || 0) > 0.001;
   if (boardMat.userData.shader) {
     boardMat.userData.shader.uniforms.uReflStrength.value = T.boardReflect || 0;
     reflMatrix.copy(REFL_BIAS).multiply(reflector.camera.projectionMatrix).multiply(reflector.camera.matrixWorldInverse);
