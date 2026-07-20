@@ -421,7 +421,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 163</div>
+<div id="buildTag">build 164</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3801,7 +3801,17 @@ function nearestFoot(p, feet, exclude) {
 function inputBlocked() {
     return (vsAI && G.active===aiIdx) || (onlineMatch && !myOnlineTurnNow());
 }
+// Tapping the board dismisses the volume / language popouts. Their own document-level "click
+// outside" closers can't catch a board tap on touch: onDown calls preventDefault() on touchstart,
+// which suppresses the synthetic click those listeners rely on — so close them explicitly here.
+function closeTopPopouts() {
+    for (const id of ['volPopover', 'langMenu']) {
+        const el = document.getElementById(id);
+        if (el && el.style.display !== 'none' && el.style.display !== '') el.style.display = 'none';
+    }
+}
 function onDown(e) {
+    closeTopPopouts();
     if (typeof replayActive !== 'undefined' && replayActive) { e.preventDefault(); endReplay(); return; }   // tap the board = skip the replay
     // Coach watch beat still in its hold-before-the-move: the replay hasn't started, so the skip
     // above can't catch this tap — and without this gate it would fall through to live input and
@@ -5810,6 +5820,10 @@ window.addEventListener('mouseup', onUp);
 canvas.addEventListener('touchstart', onDown, {passive:false});
 canvas.addEventListener('touchmove', onMove, {passive:false});
 window.addEventListener('touchend', onUp);
+// The tripod also shows on the 3D board (OrbitControls); dismiss the popouts when it's touched too.
+// Passive listener — it only hides the menus, never interfering with camera drag.
+{ const v3 = document.getElementById('view3d');
+  if (v3) v3.addEventListener('pointerdown', closeTopPopouts, { passive: true }); }
 window.addEventListener('touchcancel', onUp);
 // Mobile browsers throw away a 2D canvas's backing store while the tab is backgrounded (e.g. you
 // switch to Messenger and come back) -- the 3D view redraws every animation frame DURING A MATCH so
