@@ -22,12 +22,17 @@
 </script>
 <script type="module">
 // Premium render spike for the Steam build — SAME game geometry (CFG dims from index.html),
-// four switchable art directions (?theme=):
+// four art directions, toggled in place from the bottom-right links (?theme= picks the opener):
 //   noir  — glass pieces, brass-inlaid dark slate, moody (the original spike; costliest: transmission)
-//   math  — blackboard/blueprint: construction geometry, graticule, ink-ceramic pieces (cheap)
-//   sumo  — dohyo: packed clay, straw-rope ring lines, salt start dots, urushi-lacquer pieces (cheap)
+//   math  — graphite precision: quiet graticule, implied compass construction, ink-ceramic pieces (cheap)
+//   sumo  — the ring at dusk: deep earth, broad burnished bands, urushi-lacquer pieces (cheap)
 //   cosy  — fireside boardgame: honey wood, cream painted lines, toy-glaze pieces (cheap)
-// ?fps shows a live framerate readout. Look experiment only: no game logic, not linked from the game.
+//   alien — living membrane board with bioluminescent channels, thin-film iridescent chitin pieces
+// The pieces play the menu's ambient AI battle: the game-sim section below is a verbatim port of
+// index.html's engine (Piece, crossing rule, 3D contact push, turn logic) plus the landing demo's
+// wobbly heuristic driver, so the tripods genuinely push each other around and off the rim,
+// tumble, and start a fresh game — keep it in sync with index.html if the rules ever change.
+// ?fps shows a live framerate readout. Look experiment only: not linked from the game.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -43,11 +48,15 @@ const CFG = {
               { cx: 66.667, cy:0, r:40, a0:107.458, a1:252.542 } ],
   lineWidthFrac: 0.0079, padRadiusFrac: 0.0082,
   footR: 23.095, hubHeight: 23.095, legRadius: 2.0, footPadFrac: 0.4, startX: 30.597,
+  // sim params (same values as index.html — the rules engine below depends on them)
+  edgeEps: 0.5, maxCrossingsPerTurn: 1,
+  crossEps: 0.4, holdEps: 0.45, touchEps: 0.8, lineStick: 0.25, cornerEps: 1.1,
+  substepDeg: 0.4, lockDeg: 2, legSegs: 12,
+  inertiaK: 0.7, pushIters: 10, pushRelax: 1.0, maxPenPerIter: 0.8, minHorizFrac: 0.35,
 };
 CFG.footPadRadius = CFG.legRadius * CFG.footPadFrac;
-const POSE = [6.51, 3.12, 3.21, 18.85, -11.33, 0.84];   // a real mid-game pose (coach replay)
 
-const THEME = (new URLSearchParams(location.search).get('theme') || 'noir').toLowerCase();
+let THEME = (new URLSearchParams(location.search).get('theme') || 'noir').toLowerCase();
 const SHOW_FPS = new URLSearchParams(location.search).has('fps');
 
 // ---- shared canvas helpers -------------------------------------------------------------------
@@ -136,17 +145,24 @@ const THEMES = {
     },
     pieces(which) {   // glass — transmission (the expensive material; this theme is the GPU test)
       const c = which === 'blue' ? { tint:0x7aa4ee, att:0x3b74e8 } : { tint:0xee7a6f, att:0xe8483b };
-      const mk = (thickness, attDist, roughness, emiss) => new THREE.MeshPhysicalMaterial({
-        color: c.tint, metalness: 0, roughness, transmission: 1.0, ior: 1.5, thickness,
-        attenuationColor: new THREE.Color(c.att), attenuationDistance: attDist,
-        emissive: new THREE.Color(c.att), emissiveIntensity: emiss,
-        clearcoat: 1.0, clearcoatRoughness: 0.06, specularIntensity: 0.9, envMapIntensity: 0.8,
-      });
-      return { leg: mk(11.0, 4.2, 0.14, 0.16), hub: mk(5.0, 6.5, 0.12, 0.06) };
+      const mk = o => new THREE.MeshPhysicalMaterial(Object.assign({
+        color: c.tint, metalness: 0, transmission: 1.0, ior: 1.5,
+        attenuationColor: new THREE.Color(c.att), emissive: new THREE.Color(c.att),
+      }, o));
+      return {
+        // legs at grazing angles are all Fresnel: with full clearcoat/env they washed to colourless
+        // chrome (phone photo) — so the legs run the attenuation much harder and the reflective
+        // terms much softer, and you see INTO the glass the way you do on the face-on bead.
+        leg: mk({ thickness: 11.0, attenuationDistance: 2.4, roughness: 0.12, emissiveIntensity: 0.24,
+                  clearcoat: 0.45, clearcoatRoughness: 0.14, specularIntensity: 0.4, envMapIntensity: 0.3 }),
+        // the bead — untouched, it reads as real glass
+        hub: mk({ thickness: 5.0, attenuationDistance: 6.5, roughness: 0.12, emissiveIntensity: 0.06,
+                  clearcoat: 1.0, clearcoatRoughness: 0.06, specularIntensity: 0.9, envMapIntensity: 0.8 }),
+      };
     },
   },
 
-  // ============ MATH — blackboard construction: the board IS compass-and-straightedge ============
+  // ============ MATH — graphite precision: the geometry speaks for itself, nothing is written ============
   math: {
     bg: 0x0d1017, exposure: 1.0, bloom: [0.16, 0.45, 0.88],
     key: { color: 0xffffff, intensity: 2.2, pos: [40,140,70], shadow: 0.5 },
@@ -155,42 +171,22 @@ const THEMES = {
     boardEnv: 0.3, bumpScale: 0.35,
     paint() {
       const [al, a] = canvas2d();
-      a.fillStyle = '#141b28'; a.fillRect(0, 0, S, S);          // ink-navy blackboard
-      a.globalAlpha = 0.25; a.drawImage(noiseCanvas(0.07), 0, 0); a.globalAlpha = 1;   // chalk dust
-      // polar graticule — faint circles every 10u + spokes every 15°
-      a.strokeStyle = 'rgba(180,205,235,0.06)'; a.lineWidth = 2;
+      a.fillStyle = '#141b28'; a.fillRect(0, 0, S, S);          // ink-navy graphite
+      a.globalAlpha = 0.25; a.drawImage(noiseCanvas(0.07), 0, 0); a.globalAlpha = 1;
+      // a whisper of a polar graticule — fine circles, a few spokes; no numbers, no ruler
+      a.strokeStyle = 'rgba(180,205,235,0.05)'; a.lineWidth = 2;
       for (let r = 10; r < CFG.edgeU; r += 10) { a.beginPath(); a.arc(ox, oy, px(r), 0, 7); a.stroke(); }
-      for (let d = 0; d < 360; d += 15) {
+      for (let d = 0; d < 360; d += 30) {
         const t = d*Math.PI/180;
         a.beginPath(); a.moveTo(ox, oy); a.lineTo(ox + Math.cos(t)*px(CFG.edgeU), oy + Math.sin(t)*px(CFG.edgeU)); a.stroke();
       }
-      // rim degree ticks
-      for (let d = 0; d < 360; d += 5) {
-        const t = d*Math.PI/180, big = d % 15 === 0, r1 = px(CFG.edgeU) - (big ? 26 : 14);
-        a.strokeStyle = `rgba(190,215,240,${big ? 0.28 : 0.13})`; a.lineWidth = big ? 3 : 2;
-        a.beginPath(); a.moveTo(ox + Math.cos(t)*r1, oy + Math.sin(t)*r1);
-        a.lineTo(ox + Math.cos(t)*px(CFG.edgeU - 1), oy + Math.sin(t)*px(CFG.edgeU - 1)); a.stroke();
-      }
-      // construction: the lens arcs completed as full dashed circles + centre crosses
-      strokeLines(a, 'rgba(0,0,0,0)', 0);   // (no-op, keeps helper warm)
-      a.strokeStyle = 'rgba(150,200,255,0.16)'; a.lineWidth = 2.5; a.setLineDash([14, 12]);
+      // the compass construction, implied: the side arcs completed as faint dashed circles
+      a.strokeStyle = 'rgba(150,200,255,0.13)'; a.lineWidth = 2.5; a.setLineDash([14, 12]);
       for (const s of CFG.sideArcs) { a.beginPath(); a.arc(ox + px(s.cx), oy + px(s.cy), px(s.r), 0, 7); a.stroke(); }
       a.setLineDash([]);
-      for (const s of CFG.sideArcs) {
-        a.strokeStyle = 'rgba(150,200,255,0.4)'; a.lineWidth = 3;
-        const cxp = ox + px(s.cx), cyp = oy + px(s.cy);
-        a.beginPath(); a.moveTo(cxp-14, cyp); a.lineTo(cxp+14, cyp); a.moveTo(cxp, cyp-14); a.lineTo(cxp, cyp+14); a.stroke();
-      }
-      // big faint τ at centre
-      a.fillStyle = 'rgba(170,200,235,0.07)'; a.font = `${Math.round(S*0.30)}px Georgia, serif`;
-      a.textAlign = 'center'; a.textBaseline = 'middle'; a.fillText('τ', ox, oy + S*0.01);
-      // the printed geometry — crisp chalk-ink lines
+      vignette(a, 0.2);
+      // the printed geometry — crisp pale hairlines
       strokeLines(a, 'rgba(228,240,252,0.92)', LW*0.75);
-      // radius annotations
-      a.fillStyle = 'rgba(190,215,240,0.62)'; a.font = `600 ${Math.round(S*0.017)}px ui-monospace, monospace`;
-      a.textAlign = 'left';
-      a.fillText('r = 40',   ox + px(6),  oy - px(CFG.rings[0]) - px(2.2));
-      a.fillText('r = 53.3', ox + px(6),  oy - px(CFG.rings[1]) - px(2.2));
       // start dots as marked points: open circle + centre dot
       const dotR = Math.max(4, px(CFG.edgeU * CFG.padRadiusFrac * 1.9));
       for (const [dx,dy] of DOTS) {
@@ -217,67 +213,46 @@ const THEMES = {
     },
   },
 
-  // ============ SUMO — the dohyo: clay, straw rope, salt ============
+  // ============ SUMO — the ring at dusk: weight and ceremony, no props ============
   sumo: {
     bg: 0x17120d, exposure: 1.02, bloom: [0.15, 0.55, 0.92],
-    key: { color: 0xffdfae, intensity: 2.5, pos: [95,85,30], shadow: 0.65 },
+    key: { color: 0xffdfae, intensity: 2.4, pos: [95,85,30], shadow: 0.65 },
     fill:{ color: 0x7286a8, intensity: 0.35 },
     band: { color: 0x3a2b1c, rough: 0.7, metal: 0.05 }, slabColor: 0x46351f, tableColor: 0x201810,
-    boardEnv: 0.4, bumpScale: 1.4,
+    boardEnv: 0.4, bumpScale: 0.9,
     paint() {
       const [al, a] = canvas2d();
-      a.fillStyle = '#c29a64'; a.fillRect(0, 0, S, S);          // packed clay
+      a.fillStyle = '#6e4a2c'; a.fillRect(0, 0, S, S);          // deep earth
       a.globalCompositeOperation = 'soft-light'; a.globalAlpha = 1;
-      a.drawImage(noiseCanvas(0.16), 0, 0);
+      a.drawImage(noiseCanvas(0.14), 0, 0);
       a.globalCompositeOperation = 'source-over';
-      // foot-scuff smudges
+      // faint worn patches — the ring has been fought on
       let rng = 424242; const rnd = () => (rng = (rng*16807)%2147483647)/2147483647;
-      for (let i = 0; i < 60; i++) {
-        const x = rnd()*S, y = rnd()*S, r = 30 + rnd()*120;
+      for (let i = 0; i < 40; i++) {
+        const x = rnd()*S, y = rnd()*S, r = 40 + rnd()*140;
         const g = a.createRadialGradient(x, y, 0, x, y, r);
-        g.addColorStop(0, `rgba(90,66,38,${0.05 + rnd()*0.06})`); g.addColorStop(1, 'rgba(90,66,38,0)');
+        g.addColorStop(0, `rgba(46,30,16,${0.04 + rnd()*0.05})`); g.addColorStop(1, 'rgba(46,30,16,0)');
         a.fillStyle = g; a.beginPath(); a.arc(x, y, r, 0, 7); a.fill();
       }
-      vignette(a, 0.30);
-      // straw-rope lines (tawara): base rope + braid ticks + top highlight
-      strokeLines(a, 'rgba(70,50,25,0.5)', LW*2.9);                // shadow under the rope
-      strokeLines(a, '#b99a52', LW*2.3);
-      const braid = (radArr) => {                                   // short angled ticks along each path
-        a.lineWidth = Math.max(2, LW*0.5); a.lineCap = 'round';
-        for (const g of radArr) {
-          const R = px(g.r), cx = ox + px(g.cx||0), cy = oy + px(g.cy||0);
-          const a0 = (g.a0 ?? 0)*Math.PI/180, a1 = (g.a1 ?? 360)*Math.PI/180;
-          const step = (LW*1.5) / R;
-          for (let t = a0; t < a1; t += step) {
-            const tang = t + Math.PI/2, tilt = 0.5;
-            const mx = cx + Math.cos(t)*R, my = cy + Math.sin(t)*R, L2 = LW*1.05;
-            a.strokeStyle = (Math.round(t/step) % 2) ? 'rgba(126,96,44,0.55)' : 'rgba(226,196,122,0.5)';
-            a.beginPath();
-            a.moveTo(mx + Math.cos(tang+tilt)*L2, my + Math.sin(tang+tilt)*L2);
-            a.lineTo(mx - Math.cos(tang+tilt)*L2, my - Math.sin(tang+tilt)*L2);
-            a.stroke();
-          }
-        }
-      };
-      braid([{ r: CFG.rings[0] }, { r: CFG.rings[1] },
-             { cx: CFG.sideArcs[0].cx, cy: 0, r: 40, a0: CFG.sideArcs[0].a0, a1: CFG.sideArcs[0].a1 },
-             { cx: CFG.sideArcs[1].cx, cy: 0, r: 40, a0: CFG.sideArcs[1].a0, a1: CFG.sideArcs[1].a1 }]);
-      // salt piles at the start dots
-      const dotR = Math.max(5, px(CFG.edgeU * CFG.padRadiusFrac * 2.4));
+      vignette(a, 0.42);
+      // the lines as broad, calm bands of burnished sand — weight, not rope
+      strokeLines(a, 'rgba(28,16,6,0.55)', LW*2.6);
+      strokeLines(a, '#c89a54', LW*1.8);
+      strokeLines(a, 'rgba(240,206,138,0.5)', LW*0.7);
+      // start dots: plain warm marks
+      const dotR = Math.max(5, px(CFG.edgeU * CFG.padRadiusFrac * 2.0));
       for (const [dx,dy] of DOTS) {
-        const g = a.createRadialGradient(ox+px(dx), oy+px(dy), 0, ox+px(dx), oy+px(dy), dotR*1.5);
-        g.addColorStop(0, 'rgba(252,250,244,0.95)'); g.addColorStop(0.55, 'rgba(248,244,232,0.7)');
-        g.addColorStop(1, 'rgba(248,244,232,0)');
-        a.fillStyle = g; a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR*1.5, 0, 7); a.fill();
+        a.fillStyle = 'rgba(28,16,6,0.45)'; a.beginPath(); a.arc(ox+px(dx), oy+px(dy)+dotR*0.3, dotR*1.25, 0, 7); a.fill();
+        a.fillStyle = '#d9ae62'; a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR, 0, 7); a.fill();
       }
       const [ro, r] = canvas2d();
-      r.fillStyle = '#b5b5b5'; r.fillRect(0, 0, S, S);           // dry clay = rough
+      r.fillStyle = '#b0b0b0'; r.fillRect(0, 0, S, S);           // dry earth = rough
       r.globalAlpha = 0.4; r.drawImage(noiseCanvas(0.12, 555), 0, 0); r.globalAlpha = 1;
-      strokeLines(r, '#8a8a8a', LW*2.3);                          // rope a touch less rough
+      strokeLines(r, '#7a7a7a', LW*1.8);                          // burnished bands sit glossier
       const [bu, b] = canvas2d();
       b.fillStyle = '#808080'; b.fillRect(0, 0, S, S);
-      b.globalAlpha = 0.75; b.drawImage(noiseCanvas(0.14, 313), 0, 0); b.globalAlpha = 1;
-      strokeLines(b, '#c8c8c8', LW*2.3);                          // rope RAISED off the clay
+      b.globalAlpha = 0.6; b.drawImage(noiseCanvas(0.12, 313), 0, 0); b.globalAlpha = 1;
+      strokeLines(b, '#b4b4b4', LW*1.8);                          // bands gently raised
       return { albedo: al, rough: ro, bump: bu };
     },
     pieces(which) {   // urushi lacquer — deep indigo / vermillion, gold-warm sheen
@@ -342,16 +317,123 @@ const THEMES = {
       return { leg, hub };
     },
   },
-};
-const T = THEMES[THEME] || THEMES.noir;
 
-// theme switcher links
+  // ============ ALIEN — foreign biology: the board is alive, the light is wrong ============
+  // No little-green-men skin. The board is a subdermal membrane with a branching vein network,
+  // and the printed geometry is BIOLUMINESCENT — the game lines are channels the organism lights
+  // from inside (emissive map + bloom). The pieces are thin-film iridescent chitin: reflection
+  // colour genuinely shifts with viewing angle (physical thin-film interference, the "weird
+  // refractive index" of beetle shells and oil slicks) — strongest exactly at the grazing angles
+  // that silver ordinary materials. Lighting is deliberately unnatural: a dim violet key from
+  // the wrong side, an acid-teal counter light, and murk instead of air.
+  alien: {
+    bg: 0x04060b, exposure: 1.05, bloom: [0.45, 0.7, 0.72],
+    key: { color: 0x9d8ce8, intensity: 1.0, pos: [-70,110,-50], shadow: 0.35 },
+    fill:{ color: 0x35e8c8, intensity: 0.55 },
+    band: { color: 0x191324, rough: 0.35, metal: 0.25 }, slabColor: 0x110d1a, tableColor: 0x06060c,
+    boardEnv: 0.25, bumpScale: 1.1, emissiveIntensity: 1.5,
+    fog: { color: 0x0a0816, density: 0.0018 },
+    paint() {
+      // one vein network, drawn into albedo (dark), bump (raised) — precompute the segments
+      let rng = 777001; const rnd = () => (rng = (rng*16807)%2147483647)/2147483647;
+      const segs = [], stack = [];
+      for (let i = 0; i < 24; i++)
+        stack.push({ x: rnd()*S, y: rnd()*S, h: rnd()*Math.PI*2, w: 4 + rnd()*5, life: 50 + rnd()*90 });
+      while (stack.length) {
+        const v = stack.pop();
+        while (v.life-- > 0 && v.w > 0.8) {
+          const x0 = v.x, y0 = v.y;
+          v.h += (rnd() - 0.5)*0.55;
+          v.x += Math.cos(v.h)*9; v.y += Math.sin(v.h)*9;
+          v.w *= 0.985;
+          segs.push([x0, y0, v.x, v.y, v.w]);
+          if (rnd() < 0.05 && stack.length < 100)
+            stack.push({ x: v.x, y: v.y, h: v.h + (rnd() < 0.5 ? 0.9 : -0.9), w: v.w*0.7, life: v.life*0.7 });
+        }
+      }
+      const drawVeins = (c, style, wMul) => {
+        c.strokeStyle = style; c.lineCap = 'round';
+        for (const [x0, y0, x1, y1, w] of segs) {
+          c.lineWidth = Math.max(0.6, w*wMul);
+          c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke();
+        }
+      };
+      const [al, a] = canvas2d();
+      a.fillStyle = '#171226'; a.fillRect(0, 0, S, S);          // midnight flesh
+      // subdermal blotches — violet and abyssal teal
+      for (let i = 0; i < 70; i++) {
+        const x = rnd()*S, y = rnd()*S, r = 40 + rnd()*160, teal = rnd() > 0.6;
+        const g = a.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, teal ? `rgba(16,58,66,${0.06 + rnd()*0.08})` : `rgba(58,30,88,${0.05 + rnd()*0.08})`);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        a.fillStyle = g; a.beginPath(); a.arc(x, y, r, 0, 7); a.fill();
+      }
+      a.globalCompositeOperation = 'soft-light'; a.globalAlpha = 0.7;
+      a.drawImage(noiseCanvas(0.12, 909), 0, 0);
+      a.globalCompositeOperation = 'source-over'; a.globalAlpha = 1;
+      drawVeins(a, 'rgba(20,10,32,0.55)', 1);
+      vignette(a, 0.44);
+      // the printed geometry sits dark in the albedo — the light comes from the emissive channels
+      strokeLines(a, 'rgba(6,16,16,0.8)', LW*1.7);
+      strokeLines(a, '#0e3c36', LW);
+      const dotR = Math.max(4, px(CFG.edgeU * CFG.padRadiusFrac * 2.0));
+      for (const [dx,dy] of DOTS) {
+        a.strokeStyle = '#12433c'; a.lineWidth = 3;
+        a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR, 0, 7); a.stroke();
+      }
+      const [ro, r] = canvas2d();
+      r.fillStyle = '#4a4a4a'; r.fillRect(0, 0, S, S);          // moist membrane = glossy
+      r.globalAlpha = 0.5; r.drawImage(noiseCanvas(0.14, 606), 0, 0); r.globalAlpha = 1;
+      drawVeins(r, '#5c5c5c', 1);
+      strokeLines(r, '#303030', LW);                             // wet channels, glossier still
+      const [bu, b] = canvas2d();
+      b.fillStyle = '#808080'; b.fillRect(0, 0, S, S);
+      b.globalAlpha = 0.5; b.drawImage(noiseCanvas(0.10, 505), 0, 0); b.globalAlpha = 1;
+      drawVeins(b, '#9c9c9c', 1);                                // veins sit proud of the membrane
+      strokeLines(b, '#5a5a5a', LW*1.4);                         // channels recessed
+      // emissive: the organism lights its own geometry — layered halo + hot core
+      const [em, e] = canvas2d();
+      e.fillStyle = '#000000'; e.fillRect(0, 0, S, S);
+      strokeLines(e, 'rgba(38,150,128,0.10)', LW*5);
+      strokeLines(e, 'rgba(52,208,178,0.22)', LW*3);
+      strokeLines(e, 'rgba(96,246,214,0.5)', LW*1.6);
+      strokeLines(e, '#b8ffe9', LW*0.7);
+      for (const [dx,dy] of DOTS) {                              // photophore pores at the start dots
+        const g = e.createRadialGradient(ox+px(dx), oy+px(dy), 0, ox+px(dx), oy+px(dy), dotR*2.2);
+        g.addColorStop(0, 'rgba(196,255,238,0.95)'); g.addColorStop(0.4, 'rgba(96,246,214,0.5)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        e.fillStyle = g; e.beginPath(); e.arc(ox+px(dx), oy+px(dy), dotR*2.2, 0, 7); e.fill();
+      }
+      return { albedo: al, rough: ro, bump: bu, emissive: em };
+    },
+    pieces(which) {   // thin-film iridescent chitin with a faint internal glow
+      const base = which === 'blue' ? 0x24558c : 0x7c2030;      // petrol / haem — bright enough to read
+      const film = which === 'blue' ? [140, 520] : [240, 700];  // nm range picks each side's shimmer
+      const mk = o => new THREE.MeshPhysicalMaterial(Object.assign({
+        color: base, metalness: 0, iridescence: 1.0, iridescenceIOR: 1.8,
+        iridescenceThicknessRange: film, emissive: new THREE.Color(base),
+      }, o));
+      return {
+        hub: mk({ roughness: 0.18, clearcoat: 1.0, clearcoatRoughness: 0.1, emissiveIntensity: 0.22,
+                  envMapIntensity: 0.7, specularIntensity: 0.8 }),
+        // legs: PARTIAL thin-film only — at true grazing angles full iridescence goes white in
+        // every wavelength (it replaces Fresnel entirely), so the legs run half-strength shimmer
+        // over waxy chitin, rough enough to diffuse the sheath, with a stronger internal glow
+        leg: mk({ iridescence: 0.45, roughness: 0.44, clearcoat: 0.2, clearcoatRoughness: 0.35,
+                  emissiveIntensity: 0.3, envMapIntensity: 0.15, specularIntensity: 0.35 }),
+      };
+    },
+  },
+};
+let T = THEMES.noir;   // set for real by applyTheme(THEME) once the scene exists
+
+// theme switcher links — swap the look in place, no reload (applyTheme is hoisted from below)
 {
   const el = document.getElementById('themes');
   for (const k of Object.keys(THEMES)) {
     const a = document.createElement('a');
-    a.href = '?theme=' + k + (SHOW_FPS ? '&fps' : ''); a.textContent = k;
-    if (k === THEME) a.className = 'cur';
+    a.href = '?theme=' + k + (SHOW_FPS ? '&fps' : ''); a.textContent = k; a.dataset.theme = k;
+    a.addEventListener('click', ev => { ev.preventDefault(); applyTheme(k); });
     el.appendChild(a);
   }
 }
@@ -363,11 +445,10 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = T.exposure;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(T.bg);
+scene.background = new THREE.Color(0x000000);   // applyTheme sets the real value
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
@@ -379,35 +460,29 @@ controls.target.set(0, 4, 0); controls.maxPolarAngle = Math.PI * 0.49;
 controls.minDistance = 50; controls.maxDistance = 400;
 controls.update();
 
-const key = new THREE.DirectionalLight(T.key.color, T.key.intensity);
-key.position.set(...T.key.pos);
+const key = new THREE.DirectionalLight(0xffffff, 1);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
 key.shadow.camera.left = key.shadow.camera.bottom = -95;
 key.shadow.camera.right = key.shadow.camera.top = 95;
 key.shadow.camera.far = 400;
 key.shadow.bias = -0.0004;
-key.shadow.intensity = T.key.shadow;
 scene.add(key);
-const fill = new THREE.DirectionalLight(T.fill.color, T.fill.intensity);
+const fill = new THREE.DirectionalLight(0xffffff, 0.5);
 fill.position.set(-80, 40, -60); scene.add(fill);
 
-// ---- board -----------------------------------------------------------------------------------
-const maps = T.paint();
-const boardMat = new THREE.MeshStandardMaterial({
-  map: tex(maps.albedo), roughnessMap: texL(maps.rough), roughness: 1.0,
-  bumpMap: texL(maps.bump), bumpScale: T.bumpScale, metalness: 0.04, envMapIntensity: T.boardEnv,
-});
+// ---- board (theme-neutral shells; applyTheme paints them) -------------------------------------
+const boardMat = new THREE.MeshStandardMaterial({ roughness: 1.0, metalness: 0.04 });
 const boardTop = new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU, 128), boardMat);
 boardTop.rotation.x = -Math.PI/2; boardTop.receiveShadow = true; scene.add(boardTop);
-const slab = new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU, CFG.edgeU, 3.2, 128, 1, true),
-  new THREE.MeshStandardMaterial({ color: T.slabColor, roughness: 0.8, metalness: 0.05 }));
+const slabMat = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.05 });
+const slab = new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU, CFG.edgeU, 3.2, 128, 1, true), slabMat);
 slab.position.y = -1.62; scene.add(slab);
-const band = new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.045, CFG.edgeU*1.085, 5.4, 128),
-  new THREE.MeshStandardMaterial({ color: T.band.color, roughness: T.band.rough, metalness: T.band.metal, envMapIntensity: 1.1 }));
+const bandMat = new THREE.MeshStandardMaterial({ envMapIntensity: 1.1 });
+const band = new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.045, CFG.edgeU*1.085, 5.4, 128), bandMat);
 band.position.y = -3.1; band.receiveShadow = true; scene.add(band);
-const table = new THREE.Mesh(new THREE.CircleGeometry(1200, 64),
-  new THREE.MeshStandardMaterial({ color: T.tableColor, roughness: 0.92 }));
+const tableMat = new THREE.MeshStandardMaterial({ roughness: 0.92 });
+const table = new THREE.Mesh(new THREE.CircleGeometry(1200, 64), tableMat);
 table.rotation.x = -Math.PI/2; table.position.y = -5.9; table.receiveShadow = true; scene.add(table);
 
 // ---- pieces (the game's exact tripod geometry) -----------------------------------------------
@@ -441,8 +516,9 @@ function taperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
   const m = new THREE.Mesh(g, mat); m.castShadow = true;
   return m;
 }
-function buildTripod(which) {
-  const g = new THREE.Group(), mats = T.pieces(which);
+const seedMat = new THREE.MeshStandardMaterial();   // replaced by applyTheme before the first frame
+function buildTripod() {
+  const g = new THREE.Group();
   const R = CFG.footR, H = CFG.hubHeight, legRad = CFG.legRadius;
   for (let i = 0; i < 3; i++) {
     const th = i * 2*Math.PI/3, pts = [];
@@ -450,25 +526,536 @@ function buildTripod(which) {
       const ph = (k/20) * (Math.PI/2);
       pts.push(new THREE.Vector3(Math.sin(ph)*R*Math.cos(th), Math.cos(ph)*H, Math.sin(ph)*R*Math.sin(th)));
     }
-    g.add(taperedLeg(new THREE.CatmullRomCurve3(pts), mats.leg, legRad, 20, 36, 0.6));
-    const foot = new THREE.Mesh(new THREE.SphereGeometry(legRad*0.45, 20, 14), mats.leg);
+    const leg = taperedLeg(new THREE.CatmullRomCurve3(pts), seedMat, legRad, 20, 36, 0.6);
+    leg.userData.part = 'leg'; g.add(leg);
+    const foot = new THREE.Mesh(new THREE.SphereGeometry(legRad*0.45, 20, 14), seedMat);
     foot.scale.set(1, 0.55, 1); foot.position.set(Math.cos(th)*R, 0.4, Math.sin(th)*R);
-    foot.castShadow = true; g.add(foot);
+    foot.castShadow = true; foot.userData.part = 'leg'; g.add(foot);
   }
-  const hub = new THREE.Mesh(new THREE.SphereGeometry(legRad*1.9, 28, 20), mats.hub);
-  hub.position.set(0, H, 0); hub.castShadow = true; g.add(hub);
+  const hub = new THREE.Mesh(new THREE.SphereGeometry(legRad*1.9, 28, 20), seedMat);
+  hub.position.set(0, H, 0); hub.castShadow = true; hub.userData.part = 'hub'; g.add(hub);
   return g;
 }
-const blue = buildTripod('blue'), red = buildTripod('red');
-blue.position.set(POSE[0], 0, POSE[1]); blue.rotation.y = -POSE[2];
-red.position.set(POSE[3], 0, POSE[4]); red.rotation.y = -POSE[5];
-scene.add(blue, red);
+const tripodGroups = [buildTripod(), buildTripod()];
+scene.add(...tripodGroups);
+
+// ---- game sim — verbatim port of index.html's engine (keep in sync) --------------------------
+const norm = a => { while (a > Math.PI) a -= 2*Math.PI; while (a < -Math.PI) a += 2*Math.PI; return a; };
+const radU = p => Math.hypot(p.x, p.y);
+
+class Piece {
+  constructor(id) { this.id = id; this.x = 0; this.y = 0; this.rot = 0; }
+  feet() {
+    const r = CFG.footR, out = [];
+    for (let i = 0; i < 3; i++) { const a = this.rot + i*(2*Math.PI/3);
+      out.push({ x: this.x + Math.cos(a)*r, y: this.y + Math.sin(a)*r }); }
+    return out;
+  }
+  rotateAround(px, py, dA) {
+    const c = Math.cos(dA), s = Math.sin(dA), rx = this.x - px, ry = this.y - py;
+    this.x = px + rx*c - ry*s; this.y = py + rx*s + ry*c; this.rot += dA;
+  }
+  anyFootOff() { return this.feet().some(f => radU(f) > CFG.edgeU + CFG.edgeEps); }
+  legs() { const h = { x: this.x, y: this.y }; return this.feet().map(f => [h, f]); }
+  legArcs() {
+    const R = CFG.footR, H = CFG.hubHeight, N = CFG.legSegs, out = [];
+    for (let i = 0; i < 3; i++) {
+      const a = this.rot + i*(2*Math.PI/3), ca = Math.cos(a), sa = Math.sin(a), pts = [];
+      for (let k = 0; k <= N; k++) {
+        const ph = (k/N)*(Math.PI/2), s = Math.sin(ph)*R;
+        pts.push({ x: this.x + ca*s, y: this.y + sa*s, h: Math.cos(ph)*H });
+      }
+      out.push(pts);
+    }
+    return out;
+  }
+}
+
+// line-crossing rules
+function angInSpan(deg, a0, a1) {
+  const w = x => { while (x < 0) x += 360; while (x >= 360) x -= 360; return x; };
+  deg = w(deg); const lo = w(a0), hi = w(a1);
+  return lo <= hi ? (deg >= lo && deg <= hi) : (deg >= lo || deg <= hi);
+}
+function nearLineIds(f, eps) {
+  if (eps === undefined) eps = CFG.crossEps;
+  const r = radU(f), ids = [];
+  CFG.rings.forEach((R, k) => { if (Math.abs(r - R) < eps) ids.push('r'+k); });
+  CFG.sideArcs.forEach((a, k) => {
+    const d = Math.hypot(f.x - a.cx, f.y - a.cy);
+    if (Math.abs(d - a.r) < eps && angInSpan(Math.atan2(f.y - a.cy, f.x - a.cx)*180/Math.PI, a.a0, a.a1)) ids.push('a'+k);
+  });
+  return ids;
+}
+function lineSideOf(f, id) {
+  if (id[0] === 'r') return Math.sign(radU(f) - CFG.rings[+id[1]]) || 1;
+  const a = CFG.sideArcs[+id[1]];
+  return Math.sign(Math.hypot(f.x - a.cx, f.y - a.cy) - a.r) || 1;
+}
+function lineDistOf(f, id) {
+  if (id[0] === 'r') return Math.abs(radU(f) - CFG.rings[+id[1]]);
+  const a = CFG.sideArcs[+id[1]];
+  return Math.abs(Math.hypot(f.x - a.cx, f.y - a.cy) - a.r);
+}
+const LINE_INTERSECTIONS = (() => {
+  const circles = [
+    ...CFG.rings.map((R, k) => ({ id: 'r'+k, cx: 0, cy: 0, r: R })),
+    ...CFG.sideArcs.map((a, k) => ({ id: 'a'+k, cx: a.cx, cy: a.cy, r: a.r, a0: a.a0, a1: a.a1 })),
+  ];
+  const pts = [];
+  for (let i = 0; i < circles.length; i++) for (let j = i+1; j < circles.length; j++) {
+    const A = circles[i], B = circles[j];
+    const dx = B.cx - A.cx, dy = B.cy - A.cy, d = Math.hypot(dx, dy);
+    if (d < 1e-9 || d > A.r + B.r || d < Math.abs(A.r - B.r)) continue;
+    const x = (d*d + A.r*A.r - B.r*B.r)/(2*d), y2 = A.r*A.r - x*x;
+    if (y2 < 0) continue;
+    const y = Math.sqrt(y2), ux = dx/d, uy = dy/d;
+    for (const s of [1, -1]) {
+      const px2 = A.cx + x*ux - s*y*uy, py2 = A.cy + x*uy + s*y*ux;
+      const inSpan = c => c.a0 === undefined || angInSpan(Math.atan2(py2 - c.cy, px2 - c.cx)*180/Math.PI, c.a0, c.a1);
+      if (inSpan(A) && inSpan(B)) pts.push({ x: px2, y: py2, lines: [A.id, B.id] });
+    }
+  }
+  return pts;
+})();
+// one-crossing-per-turn budget via per-foot contact episodes; corner merges validated at the
+// centreline flip. See index.html's crossingSubstep for the full rule-by-rule commentary.
+function crossingSubstep(before, after, st) {
+  if (!st.contact) {
+    st.contact = before.map(f => nearLineIds(f, CFG.touchEps));
+    st.earned = before.map(f => nearLineIds(f, CFG.crossEps));
+    st.startSide = before.map((f, i) => { const m = {}; for (const id of st.contact[i]) m[id] = lineSideOf(f, id); return m; });
+    st.entrySide = [{}, {}, {}];
+    st.pendingMerge = [{}, {}, {}];
+  }
+  const stickEps = CFG.touchEps + CFG.lineStick;
+  const next = [], nextEarned = []; let opened = 0;
+  const newSides = [{}, {}, {}];
+  const newPending = [{}, {}, {}], resolvedPending = [[], [], []];
+  for (let i = 0; i < 3; i++) {
+    const hadContact = st.contact[i].length > 0;
+    const near = nearLineIds(after[i], stickEps);
+    const kept = st.contact[i].filter(id => near.includes(id));
+    const earned = (st.earned && st.earned[i]) ? st.earned[i].slice() : st.contact[i].slice();
+    for (const id of st.contact[i]) if (!near.includes(id) && !earned.includes(id)) {
+      if (st.startSide && st.startSide[i] && st.startSide[i][id] !== undefined &&
+          lineSideOf(after[i], id) !== st.startSide[i][id]) opened++;
+    }
+    for (const id of kept) {
+      const sponsor = st.pendingMerge[i][id];
+      if (sponsor === undefined) continue;
+      const flipped = st.entrySide[i][id] !== undefined && lineSideOf(after[i], id) !== st.entrySide[i][id];
+      if (flipped) {
+        if (lineDistOf(after[i], sponsor) > CFG.holdEps) opened++;
+        resolvedPending[i].push(id);
+      } else if (lineDistOf(after[i], id) <= CFG.crossEps && lineDistOf(after[i], sponsor) > CFG.holdEps) {
+        opened++;
+        resolvedPending[i].push(id);
+      }
+    }
+    let entered = false;
+    for (const id of nearLineIds(after[i], CFG.touchEps))
+      if (!kept.includes(id)) {
+        let sponsorId;
+        const atCorner = hadContact && kept.some(h => earned.includes(h) && LINE_INTERSECTIONS.some(P =>
+          P.lines.includes(id) && P.lines.includes(h) &&
+          Math.hypot(after[i].x - P.x, after[i].y - P.y) <= CFG.cornerEps) && (sponsorId = h, true));
+        kept.push(id);
+        if (!earned.includes(id)) earned.push(id);
+        newSides[i][id] = lineSideOf(after[i], id);
+        if (atCorner) newPending[i][id] = sponsorId;
+        if (!atCorner) entered = true;
+      }
+    if (entered) opened++;
+    next.push(kept);
+    nextEarned.push(earned.filter(id => kept.includes(id)));
+  }
+  if (opened) {
+    if (st.crossings + opened > CFG.maxCrossingsPerTurn) return true;
+    st.crossings += opened;
+  }
+  st.contact = next;
+  st.earned = nextEarned;
+  for (let i = 0; i < 3; i++) {
+    for (const id in newSides[i]) st.entrySide[i][id] = newSides[i][id];
+    for (const id in newPending[i]) st.pendingMerge[i][id] = newPending[i][id];
+    for (const id of resolvedPending[i]) delete st.pendingMerge[i][id];
+    for (const id in st.pendingMerge[i]) if (!next[i].includes(id)) delete st.pendingMerge[i][id];
+  }
+  return false;
+}
+
+// contact geometry + push resolution (true 3D leg arcs, horizontal-only response)
+function segClosest(a, b, c, d) {
+  const d1 = { x: b.x-a.x, y: b.y-a.y }, d2 = { x: d.x-c.x, y: d.y-c.y }, r = { x: a.x-c.x, y: a.y-c.y };
+  const A = d1.x*d1.x + d1.y*d1.y, E = d2.x*d2.x + d2.y*d2.y, F = d2.x*r.x + d2.y*r.y;
+  const C = d1.x*r.x + d1.y*r.y, B = d1.x*d2.x + d1.y*d2.y, denom = A*E - B*B;
+  let s = denom !== 0 ? Math.min(1, Math.max(0, (B*F - C*E)/denom)) : 0;
+  let t = (B*s + F)/E;
+  if (t < 0) { t = 0; s = Math.min(1, Math.max(0, -C/A)); }
+  else if (t > 1) { t = 1; s = Math.min(1, Math.max(0, (B - C)/A)); }
+  const pa = { x: a.x + d1.x*s, y: a.y + d1.y*s }, pb = { x: c.x + d2.x*t, y: c.y + d2.y*t };
+  return { pa, pb, dist: Math.hypot(pa.x - pb.x, pa.y - pb.y) };
+}
+function segClosest3(p1, q1, p2, q2) {
+  const d1 = { x: q1.x-p1.x, y: q1.y-p1.y, h: q1.h-p1.h };
+  const d2 = { x: q2.x-p2.x, y: q2.y-p2.y, h: q2.h-p2.h };
+  const r  = { x: p1.x-p2.x, y: p1.y-p2.y, h: p1.h-p2.h };
+  const a = d1.x*d1.x + d1.y*d1.y + d1.h*d1.h, e = d2.x*d2.x + d2.y*d2.y + d2.h*d2.h;
+  const f = d2.x*r.x + d2.y*r.y + d2.h*r.h,  c = d1.x*r.x + d1.y*r.y + d1.h*r.h;
+  const b = d1.x*d2.x + d1.y*d2.y + d1.h*d2.h, denom = a*e - b*b;
+  let s = denom > 1e-12 ? Math.min(1, Math.max(0, (b*f - c*e)/denom)) : 0;
+  let t = e > 1e-12 ? (b*s + f)/e : 0;
+  if (t < 0) { t = 0; s = Math.min(1, Math.max(0, a > 1e-12 ? -c/a : 0)); }
+  else if (t > 1) { t = 1; s = Math.min(1, Math.max(0, a > 1e-12 ? (b - c)/a : 0)); }
+  const pa = { x: p1.x + d1.x*s, y: p1.y + d1.y*s, h: p1.h + d1.h*s };
+  const pb = { x: p2.x + d2.x*t, y: p2.y + d2.y*t, h: p2.h + d2.h*t };
+  const dx = pb.x-pa.x, dy = pb.y-pa.y, dh = pb.h-pa.h;
+  return { pa, pb, dist: Math.sqrt(dx*dx + dy*dy + dh*dh) };
+}
+function arcClosest(A, B) {
+  let best = null;
+  for (let i = 0; i < A.length-1; i++) for (let j = 0; j < B.length-1; j++) {
+    const c = segClosest3(A[i], A[i+1], B[j], B[j+1]);
+    if (!best || c.dist < best.dist) best = c;
+  }
+  return best;
+}
+function pointArcClosest(p, A) {
+  let best = null;
+  for (let i = 0; i < A.length-1; i++) {
+    const a = A[i], b = A[i+1];
+    const dx = b.x-a.x, dy = b.y-a.y, dh = b.h-a.h;
+    const len2 = dx*dx + dy*dy + dh*dh || 1e-12;
+    let t = ((p.x-a.x)*dx + (p.y-a.y)*dy + (p.h-a.h)*dh)/len2;
+    t = Math.max(0, Math.min(1, t));
+    const pt = { x: a.x + dx*t, y: a.y + dy*t, h: a.h + dh*t };
+    const d = Math.hypot(pt.x - p.x, pt.y - p.y, pt.h - p.h);
+    if (!best || d < best.dist) best = { pt, dist: d };
+  }
+  return best;
+}
+function resolvePush(active, opp) {
+  const minD = CFG.legRadius*2, hubR = CFG.legRadius*1.9, H = CFG.hubHeight;
+  const m = 1, I = CFG.inertiaK * CFG.footR * CFG.footR;
+  const opp0 = { x: opp.x, y: opp.y };
+  const aArcs = active.legArcs(), aChords = active.legs();
+  const aHub = { x: active.x, y: active.y, h: H };
+  const apply = (px2, py2, nx, ny, sep) => {
+    sep = Math.min(sep, CFG.maxPenPerIter);
+    const rx = px2 - opp.x, ry = py2 - opp.y;
+    const rn = rx*ny - ry*nx;
+    const wEff = 1/m + rn*rn/I;
+    const lambda = CFG.pushRelax * sep / wEff;
+    opp.x   += (lambda/m)*nx;
+    opp.y   += (lambda/m)*ny;
+    opp.rot += (lambda*rn)/I;
+  };
+  const push3d = (pa, pb, dist, gap) => {
+    const nx3 = (pb.x - pa.x)/dist, ny3 = (pb.y - pa.y)/dist;
+    const hf = Math.hypot(nx3, ny3);
+    if (hf < 1e-4) return;
+    apply(pb.x, pb.y, nx3/hf, ny3/hf, gap/Math.max(hf, CFG.minHorizFrac));
+  };
+  for (let iter = 0; iter < CFG.pushIters; iter++) {
+    const oArcs = opp.legArcs(), oChords = opp.legs();
+    const oHub = { x: opp.x, y: opp.y, h: H };
+    let any = false;
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+      if (segClosest(aChords[i][0], aChords[i][1], oChords[j][0], oChords[j][1]).dist >= minD) continue;
+      const c = arcClosest(aArcs[i], oArcs[j]);
+      if (c.dist >= minD) continue;
+      any = true;
+      if (c.dist < 0.3) {
+        const A = aChords[i], ax = A[1].x - A[0].x, ay = A[1].y - A[0].y, L = Math.hypot(ax, ay) || 1;
+        let nx = -ay/L, ny = ax/L;
+        if (nx*(opp0.x - c.pa.x) + ny*(opp0.y - c.pa.y) < 0) { nx = -nx; ny = -ny; }
+        apply(c.pb.x, c.pb.y, nx, ny, minD);
+      } else {
+        push3d(c.pa, c.pb, c.dist, minD - c.dist);
+      }
+    }
+    const hubLegD = hubR + CFG.legRadius;
+    for (let j = 0; j < 3; j++) {
+      const c = pointArcClosest(aHub, oArcs[j]);
+      if (c.dist < hubLegD && c.dist > 1e-6) { any = true; push3d(aHub, c.pt, c.dist, hubLegD - c.dist); }
+    }
+    for (let i = 0; i < 3; i++) {
+      const c = pointArcClosest(oHub, aArcs[i]);
+      if (c.dist < hubLegD && c.dist > 1e-6) { any = true; push3d(c.pt, oHub, c.dist, hubLegD - c.dist); }
+    }
+    {
+      const dx = opp.x - active.x, dy = opp.y - active.y, d = Math.hypot(dx, dy);
+      if (d < 2*hubR && d > 1e-6) { any = true; apply(opp.x, opp.y, dx/d, dy/d, 2*hubR - d); }
+    }
+    if (!any) break;
+  }
+}
+
+// turn logic
+let G;
+function reset() {
+  const bluep = new Piece(0), redp = new Piece(1);
+  bluep.x = -CFG.startX; bluep.rot = 0;
+  redp.x  =  CFG.startX; redp.rot  = Math.PI;
+  G = { pieces: [bluep, redp], active: 0, pinned: null, pivot: null, turnDir: 0,
+        crossings: 0, atLimit: false, netRad: 0, over: false, winner: null,
+        snap: null, contact: null };
+}
+function takeSnap() { return G.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot })); }
+function pinFoot(idx) {
+  const feet = G.pieces[G.active].feet();
+  G.pinned = idx; G.pivot = { x: feet[idx].x, y: feet[idx].y };
+  G.turnDir = 0; G.crossings = 0; G.atLimit = false; G.netRad = 0;
+  G.snap = takeSnap();
+  G.contact = null;
+}
+function applySwing(dA) {
+  if (dA === 0 || !G.pivot) return;
+  if (G.turnDir !== 0 && Math.sign(dA) !== G.turnDir) return;
+  const active = G.pieces[G.active], opp = G.pieces[1 - G.active];
+  const stepMax = CFG.substepDeg*Math.PI/180;
+  const steps = Math.max(1, Math.ceil(Math.abs(dA)/stepMax));
+  const step = dA/steps;
+  for (let s = 0; s < steps; s++) {
+    const before = active.feet();
+    active.rotateAround(G.pivot.x, G.pivot.y, step);
+    if (active.anyFootOff()) {
+      active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit = true; break; }
+    if (crossingSubstep(before, active.feet(), G)) {
+      active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit = true; break; }
+    G.netRad += step;
+    resolvePush(active, opp);
+  }
+  if (G.turnDir === 0 && Math.abs(G.netRad) >= CFG.lockDeg*Math.PI/180)
+    G.turnDir = Math.sign(G.netRad);
+}
+function clearTurn() { G.pinned = null; G.pivot = null; G.turnDir = 0;
+  G.crossings = 0; G.atLimit = false; G.netRad = 0; G.snap = null; G.contact = null; }
+function endTurn() {
+  const active = G.pieces[G.active], opp = G.pieces[1 - G.active];
+  if (active.anyFootOff()) { G.over = true; G.winner = 1 - G.active; }
+  else if (opp.anyFootOff()) { G.over = true; G.winner = G.active; }
+  else G.active = 1 - G.active;
+  clearTurn();
+}
+
+// the landing demo's wobbly heuristic brain (index.html's aiChoosePlan + demoComputePlan;
+// the searched zone/hard/master brains stay in the game — the spike just needs a lively tussle)
+const AI_SAFETY_CAP_RAD = 170*Math.PI/180;
+const DEMO_STEP_RAD = 3*Math.PI/180;
+function directionToward(pivot, footPos, targetPos) {
+  const aFoot = Math.atan2(footPos.y - pivot.y, footPos.x - pivot.x);
+  const aTarget = Math.atan2(targetPos.y - pivot.y, targetPos.x - pivot.x);
+  return norm(aTarget - aFoot) >= 0 ? 1 : -1;
+}
+function aiChoosePlan(aiIdx) {
+  const ai = G.pieces[aiIdx], other = G.pieces[1 - aiIdx];
+  const offense = radU(ai) < radU(other);
+  const ref = offense ? { x: other.x, y: other.y } : { x: 0, y: 0 };
+  const feet = ai.feet();
+  const order = [0, 1, 2].sort((p, q) =>
+    radU({ x: feet[q].x - ref.x, y: feet[q].y - ref.y }) - radU({ x: feet[p].x - ref.x, y: feet[p].y - ref.y }));
+  return { pivotIdx: order[1], swingIdx: order[0], target: ref };
+}
+// Decide the whole turn before any visible motion: run the swing to its natural limit on the
+// live G, record the angle, roll everything back; the animation then only ever moves forward.
+// Falls back to random pivots if the heuristic's choice is wedged, so the loop can't stall.
+function tryPivot(pivotIdx, dir0) {
+  pinFoot(pivotIdx);
+  const snap = takeSnap();
+  const lookahead = d => {
+    let total = 0;
+    while (Math.abs(total) < AI_SAFETY_CAP_RAD) { applySwing(d*DEMO_STEP_RAD); total = G.netRad; if (G.atLimit) break; }
+    return G.netRad;
+  };
+  const rollback = () => {
+    G.pieces.forEach((p, i) => { p.x = snap[i].x; p.y = snap[i].y; p.rot = snap[i].rot; });
+    G.turnDir = 0; G.crossings = 0; G.atLimit = false; G.netRad = 0; G.contact = null;
+  };
+  let dir = dir0, fullRad = lookahead(dir);
+  if (Math.abs(fullRad) < 1e-9) { rollback(); dir = -dir; fullRad = lookahead(dir); }
+  rollback();
+  if (Math.abs(fullRad) < 1e-9) return null;
+  return { dir, fullRad };
+}
+function demoPlan() {
+  const plan = aiChoosePlan(G.active);
+  const feetNow = G.pieces[G.active].feet();
+  const dir0 = directionToward(feetNow[plan.pivotIdx], feetNow[plan.swingIdx], plan.target);
+  let sw = tryPivot(plan.pivotIdx, dir0);
+  if (!sw) for (const p of [0, 1, 2].sort(() => Math.random() - 0.5)) {
+    if (p === plan.pivotIdx) continue;
+    sw = tryPivot(p, Math.random() < 0.5 ? 1 : -1);
+    if (sw) break;
+  }
+  if (!sw) return null;
+  const keepFrac = Math.random() < 0.5 ? 1 : (0.6 + Math.random()*0.3);   // 'easy' / 'dumb' roll
+  return { dir: sw.dir, targetRad: sw.fullRad*keepFrac };
+}
+
+// the loser's tip-over-the-rim tumble (index.html's triggerFall/stepFall, on the tripod group)
+let fall = { active: false };
+const fallTipAxis = new THREE.Vector3();
+const FALL_AXIS_X = new THREE.Vector3(1,0,0), FALL_AXIS_Y = new THREE.Vector3(0,1,0), FALL_AXIS_Z = new THREE.Vector3(0,0,1);
+const fallQ = new THREE.Quaternion(), fallP = new THREE.Vector3(), fallAxisV = new THREE.Vector3(), fallLever = new THREE.Vector3();
+const FALL_FEET_LOCAL = [0,1,2].map(i => new THREE.Vector3(Math.cos(i*2*Math.PI/3)*CFG.footR, 0, Math.sin(i*2*Math.PI/3)*CFG.footR));
+const fallFootW = new THREE.Vector3();
+function triggerFall() {
+  const li = 1 - G.winner, p = G.pieces[li];
+  let fx = 0, fz = 0, fr = -1;
+  for (const f of p.feet()) { const r = Math.hypot(f.x, f.y); if (r > fr) { fr = r; fx = f.x; fz = f.y; } }
+  const d = Math.hypot(fx, fz) || 1;
+  fall = { active: true, idx: li, phase: 'slide', vx: fx/d*50, vz: fz/d*50, vy: 0, tipRate: 0,
+           px: 0, pz: 0, ax: 0, az: 0, theta: 0, omega: 0,
+           wx: (Math.random()-0.5)*7, wy: (Math.random()-0.5)*3, wz: (Math.random()-0.5)*7 };
+}
+function fallLetGo(t) {
+  fallAxisV.set(fall.ax, 0, fall.az);
+  fallLever.set(t.position.x - fall.px, t.position.y, t.position.z - fall.pz);
+  fallLever.cross(fallAxisV).multiplyScalar(-fall.omega);
+  fall.vx += fallLever.x; fall.vy = fallLever.y; fall.vz += fallLever.z;
+  const ol = Math.hypot(fall.px, fall.pz) || 1;
+  const ux = fall.px/ol, uz = fall.pz/ol;
+  const radial = fall.vx*ux + fall.vz*uz;
+  if (radial < 0) { fall.vx -= radial*ux; fall.vz -= radial*uz; }
+  fall.tipRate = fall.omega;
+  fall.phase = 'free';
+}
+function applyFallRotation(t, f, dt, clear) {
+  fallTipAxis.set(f.ax, 0, f.az);
+  t.rotateOnWorldAxis(fallTipAxis, f.tipRate*dt);
+  if (clear > 0) {
+    t.rotateOnWorldAxis(FALL_AXIS_X, f.wx*dt*clear);
+    t.rotateOnWorldAxis(FALL_AXIS_Y, f.wy*dt*clear);
+    t.rotateOnWorldAxis(FALL_AXIS_Z, f.wz*dt*clear);
+  }
+}
+function stepFall(dt) {
+  const t = tripodGroups[fall.idx];
+  if (fall.phase === 'slide') {
+    t.position.x += fall.vx*dt; t.position.z += fall.vz*dt;
+    const r = Math.hypot(t.position.x, t.position.z);
+    if (r >= CFG.edgeU) {
+      const ux = t.position.x/r, uz = t.position.z/r;
+      fall.px = ux*CFG.edgeU; fall.pz = uz*CFG.edgeU;
+      fall.ax = uz; fall.az = -ux;
+      fall.theta = 0; fall.omega = 0.3;
+      fall.phase = 'pivot';
+    }
+  } else if (fall.phase === 'pivot') {
+    fall.omega += (5 + 9*fall.theta)*dt;
+    const dth = fall.omega*dt;
+    fall.theta += dth;
+    fallAxisV.set(fall.ax, 0, fall.az);
+    fallQ.setFromAxisAngle(fallAxisV, dth);
+    fallP.set(fall.px, 0, fall.pz);
+    t.position.sub(fallP).applyQuaternion(fallQ).add(fallP);
+    t.quaternion.premultiply(fallQ);
+    fall.vx *= Math.max(0, 1 - 2.5*dt); fall.vz *= Math.max(0, 1 - 2.5*dt);
+    t.position.x += fall.vx*dt; t.position.z += fall.vz*dt;
+    if (fall.theta > 1.9) fallLetGo(t);
+  } else {
+    fall.vy -= 260*dt;
+    t.position.x += fall.vx*dt; t.position.y += fall.vy*dt; t.position.z += fall.vz*dt;
+    const r = Math.hypot(t.position.x, t.position.z);
+    applyFallRotation(t, fall, dt, Math.max(0, Math.min(1, (r - CFG.edgeU)/25)));
+    if (t.position.y < -170) t.visible = false;
+  }
+  if (fall.phase !== 'free') {
+    t.updateMatrixWorld();
+    let minY = 0;
+    for (let i = 0; i < 3; i++) {
+      fallFootW.copy(FALL_FEET_LOCAL[i]).applyMatrix4(t.matrixWorld);
+      if (Math.hypot(fallFootW.x, fallFootW.z) < CFG.edgeU && fallFootW.y < minY) minY = fallFootW.y;
+    }
+    if (fall.phase === 'slide') { if (minY < 0) t.position.y -= minY; }
+    else if (minY < -0.6) fallLetGo(t);
+  }
+}
+
+// driver: think → swing → (fall →) think, paced like the menu demo (3°/35ms ≈ 1.5 rad/s)
+const SWING_RATE = 1.5;
+const sim = { state: 'think', t: 0, wait: 1.1, plan: null, games: 0 };
+function simTick(dt) {
+  if (sim.state === 'think') {
+    sim.t += dt;
+    if (sim.t < sim.wait) return;
+    const plan = demoPlan();
+    if (!plan) { clearTurn(); sim.t = 0; sim.wait = 0.5; return; }
+    sim.plan = plan; sim.state = 'swing';
+  } else if (sim.state === 'swing') {
+    if (!G.atLimit && Math.abs(G.netRad) < Math.abs(sim.plan.targetRad)) {
+      const rem = Math.abs(sim.plan.targetRad) - Math.abs(G.netRad);
+      applySwing(sim.plan.dir*Math.min(SWING_RATE*dt, rem));
+    } else {
+      sim.plan = null; endTurn();
+      if (G.over) { triggerFall(); sim.state = 'fall'; sim.t = 0; }
+      else { sim.state = 'think'; sim.t = 0; sim.wait = 0.5 + Math.random()*0.45; }
+    }
+  } else if (sim.state === 'fall') {
+    if (fall.active) stepFall(dt);
+    sim.t += dt;
+    if (sim.t > 3.4) {
+      tripodGroups[fall.idx].visible = true;
+      fall = { active: false };
+      sim.games++;
+      reset();
+      sim.state = 'think'; sim.t = 0; sim.wait = 1.2;
+    }
+  }
+}
+function syncPieces() {
+  for (let i = 0; i < 2; i++) {
+    if (fall.active && fall.idx === i) continue;
+    const p = G.pieces[i], g = tripodGroups[i];
+    g.position.set(p.x, 0, p.y);
+    g.rotation.set(0, -p.rot, 0);
+  }
+}
+reset(); syncPieces();
+window.__simInfo = () => ({ state: sim.state, games: sim.games, over: G.over, fall: fall.active,
+  pieces: G.pieces.map(p => ({ x: +p.x.toFixed(2), y: +p.y.toFixed(2), rot: +p.rot.toFixed(2) })) });
+window.__simTick = simTick;   // headless tests fast-forward the battle without waiting real-time
 
 // ---- post ------------------------------------------------------------------------------------
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), ...T.bloom));
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.2, 0.5, 0.9);
+composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
+
+// ---- apply a theme in place: repaint the board, reskin the pieces, relight -------------------
+function applyTheme(name) {
+  if (!THEMES[name]) name = 'noir';
+  THEME = name; T = THEMES[name];
+  renderer.toneMappingExposure = T.exposure;
+  scene.background.set(T.bg);
+  key.color.set(T.key.color); key.intensity = T.key.intensity; key.position.set(...T.key.pos);
+  key.shadow.intensity = T.key.shadow;
+  fill.color.set(T.fill.color); fill.intensity = T.fill.intensity;
+  const maps = T.paint();
+  for (const k of ['map', 'roughnessMap', 'bumpMap', 'emissiveMap']) if (boardMat[k]) boardMat[k].dispose();
+  boardMat.map = tex(maps.albedo); boardMat.roughnessMap = texL(maps.rough); boardMat.bumpMap = texL(maps.bump);
+  if (maps.emissive) {   // a board that makes its own light (alien's bioluminescent channels)
+    boardMat.emissiveMap = tex(maps.emissive); boardMat.emissive.set(0xffffff);
+    boardMat.emissiveIntensity = T.emissiveIntensity || 1;
+  } else { boardMat.emissiveMap = null; boardMat.emissive.set(0x000000); boardMat.emissiveIntensity = 1; }
+  boardMat.bumpScale = T.bumpScale; boardMat.envMapIntensity = T.boardEnv; boardMat.needsUpdate = true;
+  scene.fog = T.fog ? new THREE.FogExp2(T.fog.color, T.fog.density) : null;
+  slabMat.color.set(T.slabColor);
+  bandMat.color.set(T.band.color); bandMat.roughness = T.band.rough; bandMat.metalness = T.band.metal;
+  tableMat.color.set(T.tableColor);
+  tripodGroups.forEach((g, gi) => {
+    const mats = T.pieces(gi === 0 ? 'blue' : 'red');
+    g.traverse(o => { if (o.isMesh && o.userData.part) { o.material.dispose(); o.material = mats[o.userData.part]; } });
+  });
+  bloomPass.strength = T.bloom[0]; bloomPass.radius = T.bloom[1]; bloomPass.threshold = T.bloom[2];
+  document.querySelectorAll('#themes a').forEach(a => a.className = a.dataset.theme === name ? 'cur' : '');
+  history.replaceState(null, '', '?theme=' + name + (SHOW_FPS ? '&fps' : ''));
+  if (!SHOW_FPS) document.getElementById('tag').textContent = 'tau · premium spike — drag to orbit';
+}
+applyTheme(THEME);
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
@@ -479,9 +1066,12 @@ let frames = 0, fpsAcc = 0, fpsN = 0, lastT = performance.now();
 const tag = document.getElementById('tag');
 function loop() {
   requestAnimationFrame(loop);
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastT)/1000);   // clamp: a background tab must not fast-forward the sim
+  simTick(dt);
+  syncPieces();
   controls.update();
   composer.render();
-  const now = performance.now();
   if (SHOW_FPS) {
     fpsAcc += 1000 / Math.max(1, now - lastT); fpsN++;
     if (fpsN >= 30) { tag.textContent = `tau · ${THEME} · ${(fpsAcc/fpsN).toFixed(0)} fps`; fpsAcc = fpsN = 0; }
