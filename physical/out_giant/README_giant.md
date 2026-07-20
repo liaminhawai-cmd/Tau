@@ -52,17 +52,29 @@ same dial-in flow as the rim segments.
 
 ## Print settings (starting point)
 
-- **Leg — lay it flat on its side** (it's a planar arc only 22 mm thick). Low, stable, fast, and
-  the layer direction is strongest along the leg. Tree/organic supports on, touching buildplate
-  only mostly suffices; brim optional.
-  Do NOT print it standing on the foot — tall, tiny bed contact, layer lines across the thin
-  ankle (the weak direction).
+- **Leg — use `tau_giant_leg_printflat.stl`.** This is the leg pre-laid flat with a 1.4 mm flat
+  **sole** shaved along its underside, so it grips the bed as a continuous ribbon (≈11 % of the
+  surface in contact) instead of the thin line a round arc makes lying on its side — that thin
+  line, with no brim, is exactly what let the first print detach into spaghetti. It sits fully on
+  the bed (nothing arches up), so it prints with **NO supports**. Drop it straight in and slice;
+  don't let Cura re-orient it upright.
+  (`tau_giant_leg.stl` is the un-shaved leg for reference — don't print that one directly.)
 - **Hub — dome up, flat as it comes.** The three stubs angle down/outward: enable supports
   (tree supports handle them with little scarring on the cut faces; the mating faces tolerate
   a bit of roughness because the tenon carries the fit).
+- **Build-plate adhesion: Brim, ~8 mm.** Non-negotiable for the legs. The failed print had
+  adhesion AND support switched off (see the Cura screenshot) — that's the whole cause.
 - 0.4 nozzle, 0.2 layers, **4 walls** (legs are slender — walls matter more than infill),
-  15 % gyroid infill, PLA or PETG.
+  15 % gyroid infill, PLA or PETG. Clean/level the bed and a dab of glue stick doesn't hurt.
+- **Print ONE leg per plate.** A batch of three shares one first-layer gamble, and one letting go
+  mid-print wrecks its neighbours (and wastes the 12 h). ~4 h and ~45 g per leg on its own.
 - Rough material per piece: ~3 × 45 g (legs) + ~65 g (hub) ≈ **200 g** at these settings.
+
+### Why the first one failed (from the photo + Cura)
+Red spaghetti across the bed = the part detached from the plate early and the nozzle kept
+extruding into air. Cura showed **Support: Off, Adhesion: Off**, and the leg was a round arc on
+its side (near-zero bed contact). Fix = the shaved-sole `_printflat` leg + a brim + one-per-plate.
+Supports weren't even the main issue for the leg — adhesion was.
 
 ## Board reference
 

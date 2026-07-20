@@ -195,8 +195,29 @@ coupon_tenon = boolean('union', [pad, reframe(tenon_solid()), reframe(bump_solid
 for name, m in (('coupon_socket', coupon_socket), ('coupon_tenon', coupon_tenon)):
     assert m.is_watertight, name + ' not watertight'
 
+# ----------------------------------------------------------------------- print-ready leg
+# The leg is a curved rod: laid on its side it kisses the bed along a THIN LINE, so with no brim it
+# detaches and turns into spaghetti (the reported failed print). Lay it flat in its own plane and
+# shave a small FLAT SOLE along the underside -> a continuous ribbon of bed contact the whole
+# length, which sticks with just a skirt and prints with NO supports (nothing arches off the bed).
+# The sole is a hair off the back of the tube, hidden against the board in play; the foot's glide
+# contact is the bolt dome, untouched.
+SOLE_CUT = 1.4        # mm shaved flat along the leg's underside
+R_flat = trimesh.transformations.rotation_matrix(math.radians(-90), [0,1,0])
+leg_flat = leg.copy(); leg_flat.apply_transform(R_flat)
+leg_flat.apply_translation(-leg_flat.bounds[0])                         # drop min corner to origin
+b = leg_flat.bounds
+knife = trimesh.creation.box(extents=[b[1][0]-b[0][0]+20, b[1][1]-b[0][1]+20, SOLE_CUT*2+4])
+knife.apply_translation([(b[0][0]+b[1][0])/2, (b[0][1]+b[1][1])/2, SOLE_CUT - (SOLE_CUT*2+4)/2 + SOLE_CUT])
+leg_flat = boolean('diff', [leg_flat, knife])
+leg_flat.apply_translation([0,0,-leg_flat.bounds[0][2]])                # re-seat on the bed
+pf,_ = trimesh.sample.sample_surface(leg_flat, 60000)
+print('print-flat leg: %.0f x %.0f x %.0f mm, bed-contact surface now %.0f%% (was ~0)'
+      % (*leg_flat.extents, 100*(pf[:,2] < 0.4).mean()))
+assert leg_flat.is_watertight
+
 # ----------------------------------------------------------------------- export
-files = {'tau_giant_leg.stl': leg, 'tau_giant_hub.stl': hub,
+files = {'tau_giant_leg.stl': leg, 'tau_giant_leg_printflat.stl': leg_flat, 'tau_giant_hub.stl': hub,
          'tau_giant_coupon_socket.stl': coupon_socket, 'tau_giant_coupon_tenon.stl': coupon_tenon}
 for fn, m in files.items():
     m.export(os.path.join(OUT, fn))
