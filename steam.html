@@ -8,20 +8,26 @@
 <style>
   html,body { margin:0; height:100%; background:#0a0c10; overflow:hidden; }
   canvas { display:block; }
-  #tag { position:fixed; left:10px; bottom:8px; color:#39404a; font:11px system-ui; user-select:none; }
+  #tag { position:fixed; left:10px; bottom:8px; color:#5a6470; font:11px system-ui; user-select:none; }
+  #themes { position:fixed; right:10px; bottom:8px; font:11px system-ui; }
+  #themes a { color:#5a6470; text-decoration:none; margin-left:10px; }
+  #themes a.cur { color:#c9a24b; }
 </style>
 </head>
 <body>
-<div id="tag">tau · premium spike — drag to orbit, scroll to zoom</div>
+<div id="tag">tau · premium spike — drag to orbit</div>
+<div id="themes"></div>
 <script type="importmap">
 { "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }
 </script>
 <script type="module">
-// Premium render spike for the Steam build: SAME game geometry (CFG dims from index.html),
-// upgraded render path — glass pieces (MeshPhysicalMaterial transmission), slate board with
-// brass-inlaid lines (procedural PBR canvas maps), soft shadow maps, image-based lighting
-// (RoomEnvironment -> PMREM, no external assets), ACES tone mapping + gentle bloom.
-// This page is a LOOK experiment only: no game logic, not linked from the game.
+// Premium render spike for the Steam build — SAME game geometry (CFG dims from index.html),
+// four switchable art directions (?theme=):
+//   noir  — glass pieces, brass-inlaid dark slate, moody (the original spike; costliest: transmission)
+//   math  — blackboard/blueprint: construction geometry, graticule, ink-ceramic pieces (cheap)
+//   sumo  — dohyo: packed clay, straw-rope ring lines, salt start dots, urushi-lacquer pieces (cheap)
+//   cosy  — fireside boardgame: honey wood, cream painted lines, toy-glaze pieces (cheap)
+// ?fps shows a live framerate readout. Look experiment only: no game logic, not linked from the game.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -39,20 +45,316 @@ const CFG = {
   footR: 23.095, hubHeight: 23.095, legRadius: 2.0, footPadFrac: 0.4, startX: 30.597,
 };
 CFG.footPadRadius = CFG.legRadius * CFG.footPadFrac;
+const POSE = [6.51, 3.12, 3.21, 18.85, -11.33, 0.84];   // a real mid-game pose (coach replay)
 
-// a real mid-game pose (coach replay, the tussle) — [bx,by,brot, rx,ry,rrot]
-const POSE = [6.51, 3.12, 3.21, 18.85, -11.33, 0.84];
+const THEME = (new URLSearchParams(location.search).get('theme') || 'noir').toLowerCase();
+const SHOW_FPS = new URLSearchParams(location.search).has('fps');
 
-// ---- tunables (the taste knobs) --------------------------------------------------------------
-const LOOK = {
-  exposure: 1.05,
-  bloom: { strength: 0.22, radius: 0.5, threshold: 0.9 },
-  glass: { roughness: 0.12, thickness: 4.5, ior: 1.5, attDist: 6.0, clearcoat: 1.0 },
-  blue: { tint: 0x7aa4ee, att: 0x3b74e8 }, red: { tint: 0xee7a6f, att: 0xe8483b },   // surface tint + body attenuation
-  slate: { base:'#23262c', light:'#2d3138', dark:'#1a1c21', brass:'#a8843c', brassHi:'#d6b567' },
-  key: { intensity: 2.6, pos: [70, 130, 45], shadow: 0.55 },
-  rim: { color: 0x353a42, metalness: 0.85, roughness: 0.35 },
+// ---- shared canvas helpers -------------------------------------------------------------------
+const S = 2048, sc = S / (2 * CFG.edgeU), ox = S/2, oy = S/2, px = u => u * sc;
+const LW = Math.max(3, px(CFG.edgeU * CFG.lineWidthFrac * 1.35));
+const DOTS = [];
+for (const [hx, rot] of [[-CFG.startX, 0], [CFG.startX, Math.PI]])
+  for (let i = 0; i < 3; i++) {
+    const th = rot + i * 2*Math.PI/3;
+    DOTS.push([hx + Math.cos(th)*CFG.footR, Math.sin(th)*CFG.footR]);
+  }
+function canvas2d() { const cv = document.createElement('canvas'); cv.width = cv.height = S; return [cv, cv.getContext('2d')]; }
+function strokeLines(c, style, width, dash) {          // the printed geometry: 2 rings + 2 lens arcs
+  c.strokeStyle = style; c.lineWidth = width; c.lineCap = 'round';
+  c.setLineDash(dash || []);
+  for (const r of CFG.rings) { c.beginPath(); c.arc(ox, oy, px(r), 0, 7); c.stroke(); }
+  for (const s of CFG.sideArcs) {
+    c.beginPath(); c.arc(ox + px(s.cx), oy + px(s.cy), px(s.r), s.a0*Math.PI/180, s.a1*Math.PI/180); c.stroke();
+  }
+  c.setLineDash([]);
+}
+function noiseCanvas(amp, seed) {
+  const [cv, c] = canvas2d();
+  c.fillStyle = '#808080'; c.fillRect(0, 0, S, S);
+  let rng = seed || 1234567;
+  const rnd = () => (rng = (rng * 16807) % 2147483647) / 2147483647;
+  for (let pass = 0; pass < 3; pass++) {
+    const n = 42 * (pass + 1), r0 = S / (5 + pass * 6);
+    for (let i = 0; i < n; i++) {
+      const x = rnd()*S, y = rnd()*S, r = r0 * (0.5 + rnd()), v = rnd();
+      const g = c.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(${v>0.5?255:0},${v>0.5?255:0},${v>0.5?255:0},${amp/(pass+1)})`);
+      g.addColorStop(1, 'rgba(128,128,128,0)');
+      c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
+    }
+  }
+  const img = c.getImageData(0, 0, S, S), d = img.data;
+  for (let i = 0; i < d.length; i += 4) { const g = (rnd()-0.5)*22; d[i]+=g; d[i+1]+=g; d[i+2]+=g; }
+  c.putImageData(img, 0, 0);
+  return cv;
+}
+function vignette(c, strength) {
+  const vg = c.createRadialGradient(ox, oy, px(CFG.edgeU)*0.35, ox, oy, px(CFG.edgeU));
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, `rgba(0,0,0,${strength})`);
+  c.fillStyle = vg; c.fillRect(0, 0, S, S);
+}
+const tex  = cv => { const t = new THREE.CanvasTexture(cv); t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace; return t; };
+const texL = cv => { const t = new THREE.CanvasTexture(cv); t.anisotropy = 8; return t; };
+
+// ---- themes ----------------------------------------------------------------------------------
+const THEMES = {
+
+  // ============ NOIR — glass on brass-inlaid slate (the original spike) ============
+  noir: {
+    bg: 0x0a0c10, exposure: 1.05, bloom: [0.22, 0.5, 0.9],
+    key: { color: 0xfff1dc, intensity: 2.6, pos: [70,130,45], shadow: 0.55 },
+    fill:{ color: 0x8fb4ff, intensity: 0.5 },
+    band: { color: 0x353a42, rough: 0.35, metal: 0.85 }, slabColor: 0x17191d, tableColor: 0x0d0f13,
+    boardEnv: 0.7, bumpScale: 0.9,
+    paint() {
+      const [al, a] = canvas2d();
+      a.fillStyle = '#23262c'; a.fillRect(0, 0, S, S);
+      a.globalCompositeOperation = 'soft-light'; a.globalAlpha = 0.85;
+      a.drawImage(noiseCanvas(0.12), 0, 0);
+      a.globalCompositeOperation = 'source-over'; a.globalAlpha = 1;
+      vignette(a, 0.34);
+      strokeLines(a, 'rgba(0,0,0,0.55)', LW*1.9);
+      const brass = a.createLinearGradient(0, 0, S, S);
+      brass.addColorStop(0,'#a8843c'); brass.addColorStop(0.5,'#d6b567'); brass.addColorStop(1,'#a8843c');
+      strokeLines(a, brass, LW);
+      const dotR = Math.max(3, px(CFG.edgeU * CFG.padRadiusFrac * 1.6));
+      for (const [dx,dy] of DOTS) {
+        a.fillStyle='rgba(0,0,0,0.5)'; a.beginPath(); a.arc(ox+px(dx), oy+px(dy)+dotR*0.35, dotR*1.25, 0, 7); a.fill();
+        a.fillStyle=brass; a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR, 0, 7); a.fill();
+      }
+      const [ro, r] = canvas2d();
+      r.fillStyle='#9a9a9a'; r.fillRect(0,0,S,S);
+      r.globalAlpha=0.5; r.drawImage(noiseCanvas(0.12, 777), 0, 0); r.globalAlpha=1;
+      strokeLines(r, '#3a3a3a', LW);
+      for (const [dx,dy] of DOTS) { r.fillStyle='#3a3a3a'; r.beginPath(); r.arc(ox+px(dx), oy+px(dy), dotR, 0, 7); r.fill(); }
+      const [bu, b] = canvas2d();
+      b.fillStyle='#808080'; b.fillRect(0,0,S,S);
+      b.globalAlpha=0.6; b.drawImage(noiseCanvas(0.10, 999), 0, 0); b.globalAlpha=1;
+      strokeLines(b, '#5a5a5a', LW*1.6);
+      return { albedo: al, rough: ro, bump: bu };
+    },
+    pieces(which) {   // glass — transmission (the expensive material; this theme is the GPU test)
+      const c = which === 'blue' ? { tint:0x7aa4ee, att:0x3b74e8 } : { tint:0xee7a6f, att:0xe8483b };
+      const mk = (thickness, attDist, roughness, emiss) => new THREE.MeshPhysicalMaterial({
+        color: c.tint, metalness: 0, roughness, transmission: 1.0, ior: 1.5, thickness,
+        attenuationColor: new THREE.Color(c.att), attenuationDistance: attDist,
+        emissive: new THREE.Color(c.att), emissiveIntensity: emiss,
+        clearcoat: 1.0, clearcoatRoughness: 0.06, specularIntensity: 0.9, envMapIntensity: 0.8,
+      });
+      return { leg: mk(11.0, 4.2, 0.14, 0.16), hub: mk(5.0, 6.5, 0.12, 0.06) };
+    },
+  },
+
+  // ============ MATH — blackboard construction: the board IS compass-and-straightedge ============
+  math: {
+    bg: 0x0d1017, exposure: 1.0, bloom: [0.16, 0.45, 0.88],
+    key: { color: 0xffffff, intensity: 2.2, pos: [40,140,70], shadow: 0.5 },
+    fill:{ color: 0xa8c8ff, intensity: 0.65 },
+    band: { color: 0x20242c, rough: 0.5, metal: 0.6 }, slabColor: 0x14171d, tableColor: 0x0b0d12,
+    boardEnv: 0.3, bumpScale: 0.35,
+    paint() {
+      const [al, a] = canvas2d();
+      a.fillStyle = '#141b28'; a.fillRect(0, 0, S, S);          // ink-navy blackboard
+      a.globalAlpha = 0.25; a.drawImage(noiseCanvas(0.07), 0, 0); a.globalAlpha = 1;   // chalk dust
+      // polar graticule — faint circles every 10u + spokes every 15°
+      a.strokeStyle = 'rgba(180,205,235,0.06)'; a.lineWidth = 2;
+      for (let r = 10; r < CFG.edgeU; r += 10) { a.beginPath(); a.arc(ox, oy, px(r), 0, 7); a.stroke(); }
+      for (let d = 0; d < 360; d += 15) {
+        const t = d*Math.PI/180;
+        a.beginPath(); a.moveTo(ox, oy); a.lineTo(ox + Math.cos(t)*px(CFG.edgeU), oy + Math.sin(t)*px(CFG.edgeU)); a.stroke();
+      }
+      // rim degree ticks
+      for (let d = 0; d < 360; d += 5) {
+        const t = d*Math.PI/180, big = d % 15 === 0, r1 = px(CFG.edgeU) - (big ? 26 : 14);
+        a.strokeStyle = `rgba(190,215,240,${big ? 0.28 : 0.13})`; a.lineWidth = big ? 3 : 2;
+        a.beginPath(); a.moveTo(ox + Math.cos(t)*r1, oy + Math.sin(t)*r1);
+        a.lineTo(ox + Math.cos(t)*px(CFG.edgeU - 1), oy + Math.sin(t)*px(CFG.edgeU - 1)); a.stroke();
+      }
+      // construction: the lens arcs completed as full dashed circles + centre crosses
+      strokeLines(a, 'rgba(0,0,0,0)', 0);   // (no-op, keeps helper warm)
+      a.strokeStyle = 'rgba(150,200,255,0.16)'; a.lineWidth = 2.5; a.setLineDash([14, 12]);
+      for (const s of CFG.sideArcs) { a.beginPath(); a.arc(ox + px(s.cx), oy + px(s.cy), px(s.r), 0, 7); a.stroke(); }
+      a.setLineDash([]);
+      for (const s of CFG.sideArcs) {
+        a.strokeStyle = 'rgba(150,200,255,0.4)'; a.lineWidth = 3;
+        const cxp = ox + px(s.cx), cyp = oy + px(s.cy);
+        a.beginPath(); a.moveTo(cxp-14, cyp); a.lineTo(cxp+14, cyp); a.moveTo(cxp, cyp-14); a.lineTo(cxp, cyp+14); a.stroke();
+      }
+      // big faint τ at centre
+      a.fillStyle = 'rgba(170,200,235,0.07)'; a.font = `${Math.round(S*0.30)}px Georgia, serif`;
+      a.textAlign = 'center'; a.textBaseline = 'middle'; a.fillText('τ', ox, oy + S*0.01);
+      // the printed geometry — crisp chalk-ink lines
+      strokeLines(a, 'rgba(228,240,252,0.92)', LW*0.75);
+      // radius annotations
+      a.fillStyle = 'rgba(190,215,240,0.62)'; a.font = `600 ${Math.round(S*0.017)}px ui-monospace, monospace`;
+      a.textAlign = 'left';
+      a.fillText('r = 40',   ox + px(6),  oy - px(CFG.rings[0]) - px(2.2));
+      a.fillText('r = 53.3', ox + px(6),  oy - px(CFG.rings[1]) - px(2.2));
+      // start dots as marked points: open circle + centre dot
+      const dotR = Math.max(4, px(CFG.edgeU * CFG.padRadiusFrac * 1.9));
+      for (const [dx,dy] of DOTS) {
+        a.strokeStyle = 'rgba(228,240,252,0.9)'; a.lineWidth = 3;
+        a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR, 0, 7); a.stroke();
+        a.fillStyle = 'rgba(228,240,252,0.9)';
+        a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR*0.3, 0, 7); a.fill();
+      }
+      const [ro, r] = canvas2d();
+      r.fillStyle = '#8a8a8a'; r.fillRect(0, 0, S, S);          // matte board
+      strokeLines(r, '#5a5a5a', LW*0.75);                        // ink slightly glossier
+      const [bu, b] = canvas2d(); b.fillStyle = '#808080'; b.fillRect(0, 0, S, S);   // near-flat
+      return { albedo: al, rough: ro, bump: bu };
+    },
+    pieces(which) {   // glazed ink ceramic — cheap, phone-friendly
+      const col = which === 'blue' ? 0x2f6fd8 : 0xd8442f;
+      // hubs face the camera so gloss reads as glaze; legs sit at grazing angles where
+      // Fresnel would silver them — they get a duller, lower-spec variant of the same glaze
+      const hub = new THREE.MeshPhysicalMaterial({ color: col, metalness: 0, roughness: 0.45,
+        clearcoat: 0.35, clearcoatRoughness: 0.3, envMapIntensity: 0.45 });
+      const leg = new THREE.MeshPhysicalMaterial({ color: col, metalness: 0, roughness: 0.52,
+        clearcoat: 0.15, clearcoatRoughness: 0.4, envMapIntensity: 0.25, specularIntensity: 0.45 });
+      return { leg, hub };
+    },
+  },
+
+  // ============ SUMO — the dohyo: clay, straw rope, salt ============
+  sumo: {
+    bg: 0x17120d, exposure: 1.02, bloom: [0.15, 0.55, 0.92],
+    key: { color: 0xffdfae, intensity: 2.5, pos: [95,85,30], shadow: 0.65 },
+    fill:{ color: 0x7286a8, intensity: 0.35 },
+    band: { color: 0x3a2b1c, rough: 0.7, metal: 0.05 }, slabColor: 0x46351f, tableColor: 0x201810,
+    boardEnv: 0.4, bumpScale: 1.4,
+    paint() {
+      const [al, a] = canvas2d();
+      a.fillStyle = '#c29a64'; a.fillRect(0, 0, S, S);          // packed clay
+      a.globalCompositeOperation = 'soft-light'; a.globalAlpha = 1;
+      a.drawImage(noiseCanvas(0.16), 0, 0);
+      a.globalCompositeOperation = 'source-over';
+      // foot-scuff smudges
+      let rng = 424242; const rnd = () => (rng = (rng*16807)%2147483647)/2147483647;
+      for (let i = 0; i < 60; i++) {
+        const x = rnd()*S, y = rnd()*S, r = 30 + rnd()*120;
+        const g = a.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(90,66,38,${0.05 + rnd()*0.06})`); g.addColorStop(1, 'rgba(90,66,38,0)');
+        a.fillStyle = g; a.beginPath(); a.arc(x, y, r, 0, 7); a.fill();
+      }
+      vignette(a, 0.30);
+      // straw-rope lines (tawara): base rope + braid ticks + top highlight
+      strokeLines(a, 'rgba(70,50,25,0.5)', LW*2.9);                // shadow under the rope
+      strokeLines(a, '#b99a52', LW*2.3);
+      const braid = (radArr) => {                                   // short angled ticks along each path
+        a.lineWidth = Math.max(2, LW*0.5); a.lineCap = 'round';
+        for (const g of radArr) {
+          const R = px(g.r), cx = ox + px(g.cx||0), cy = oy + px(g.cy||0);
+          const a0 = (g.a0 ?? 0)*Math.PI/180, a1 = (g.a1 ?? 360)*Math.PI/180;
+          const step = (LW*1.5) / R;
+          for (let t = a0; t < a1; t += step) {
+            const tang = t + Math.PI/2, tilt = 0.5;
+            const mx = cx + Math.cos(t)*R, my = cy + Math.sin(t)*R, L2 = LW*1.05;
+            a.strokeStyle = (Math.round(t/step) % 2) ? 'rgba(126,96,44,0.55)' : 'rgba(226,196,122,0.5)';
+            a.beginPath();
+            a.moveTo(mx + Math.cos(tang+tilt)*L2, my + Math.sin(tang+tilt)*L2);
+            a.lineTo(mx - Math.cos(tang+tilt)*L2, my - Math.sin(tang+tilt)*L2);
+            a.stroke();
+          }
+        }
+      };
+      braid([{ r: CFG.rings[0] }, { r: CFG.rings[1] },
+             { cx: CFG.sideArcs[0].cx, cy: 0, r: 40, a0: CFG.sideArcs[0].a0, a1: CFG.sideArcs[0].a1 },
+             { cx: CFG.sideArcs[1].cx, cy: 0, r: 40, a0: CFG.sideArcs[1].a0, a1: CFG.sideArcs[1].a1 }]);
+      // salt piles at the start dots
+      const dotR = Math.max(5, px(CFG.edgeU * CFG.padRadiusFrac * 2.4));
+      for (const [dx,dy] of DOTS) {
+        const g = a.createRadialGradient(ox+px(dx), oy+px(dy), 0, ox+px(dx), oy+px(dy), dotR*1.5);
+        g.addColorStop(0, 'rgba(252,250,244,0.95)'); g.addColorStop(0.55, 'rgba(248,244,232,0.7)');
+        g.addColorStop(1, 'rgba(248,244,232,0)');
+        a.fillStyle = g; a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR*1.5, 0, 7); a.fill();
+      }
+      const [ro, r] = canvas2d();
+      r.fillStyle = '#b5b5b5'; r.fillRect(0, 0, S, S);           // dry clay = rough
+      r.globalAlpha = 0.4; r.drawImage(noiseCanvas(0.12, 555), 0, 0); r.globalAlpha = 1;
+      strokeLines(r, '#8a8a8a', LW*2.3);                          // rope a touch less rough
+      const [bu, b] = canvas2d();
+      b.fillStyle = '#808080'; b.fillRect(0, 0, S, S);
+      b.globalAlpha = 0.75; b.drawImage(noiseCanvas(0.14, 313), 0, 0); b.globalAlpha = 1;
+      strokeLines(b, '#c8c8c8', LW*2.3);                          // rope RAISED off the clay
+      return { albedo: al, rough: ro, bump: bu };
+    },
+    pieces(which) {   // urushi lacquer — deep indigo / vermillion, gold-warm sheen
+      // deep lacquer only works face-on (the hubs); on thin grazing legs the dark diffuse
+      // vanishes under Fresnel and they chrome out — legs use a lighter coat, less spec
+      const hubCol = which === 'blue' ? 0x1d2854 : 0x8c1c12;
+      const legCol = which === 'blue' ? 0x31488f : 0xb03220;
+      const hub = new THREE.MeshPhysicalMaterial({ color: hubCol, metalness: 0, roughness: 0.3,
+        clearcoat: 0.55, clearcoatRoughness: 0.18, envMapIntensity: 0.5 });
+      const leg = new THREE.MeshPhysicalMaterial({ color: legCol, metalness: 0, roughness: 0.42,
+        clearcoat: 0.22, clearcoatRoughness: 0.32, envMapIntensity: 0.2, specularIntensity: 0.5 });
+      return { leg, hub };
+    },
+  },
+
+  // ============ COSY — fireside boardgame: honey wood + cream paint ============
+  cosy: {
+    bg: 0x241a12, exposure: 1.06, bloom: [0.17, 0.6, 0.88],
+    key: { color: 0xffc98a, intensity: 2.7, pos: [95,75,25], shadow: 0.6 },
+    fill:{ color: 0x86a0c8, intensity: 0.3 },
+    band: { color: 0x503722, rough: 0.55, metal: 0.05 }, slabColor: 0x453019, tableColor: 0x33241a,
+    boardEnv: 0.8, bumpScale: 0.6,
+    paint() {
+      const [al, a] = canvas2d();
+      a.fillStyle = '#8a6136'; a.fillRect(0, 0, S, S);           // honey oak
+      // grain: long wavy horizontal streaks
+      let rng = 9090909; const rnd = () => (rng = (rng*16807)%2147483647)/2147483647;
+      for (let i = 0; i < 210; i++) {
+        const y0 = rnd()*S, amp = 4 + rnd()*10, w = 2 + rnd()*7;
+        a.strokeStyle = rnd() > 0.5 ? `rgba(110,74,38,${0.10+rnd()*0.12})` : `rgba(161,121,63,${0.10+rnd()*0.10})`;
+        a.lineWidth = w; a.beginPath();
+        for (let x = 0; x <= S; x += 64) a.lineTo(x, y0 + Math.sin(x*0.004 + rnd()*6)*amp);
+        a.stroke();
+      }
+      a.globalCompositeOperation = 'soft-light'; a.globalAlpha = 0.5;
+      a.drawImage(noiseCanvas(0.08, 202), 0, 0);
+      a.globalCompositeOperation = 'source-over'; a.globalAlpha = 1;
+      vignette(a, 0.26);
+      // cream painted lines, slightly soft-edged
+      strokeLines(a, 'rgba(60,40,20,0.35)', LW*1.8);
+      strokeLines(a, '#efe3c6', LW*1.25);
+      const dotR = Math.max(4, px(CFG.edgeU * CFG.padRadiusFrac * 1.9));
+      for (const [dx,dy] of DOTS) {
+        a.fillStyle = 'rgba(60,40,20,0.3)'; a.beginPath(); a.arc(ox+px(dx), oy+px(dy)+dotR*0.3, dotR*1.2, 0, 7); a.fill();
+        a.fillStyle = '#efe3c6'; a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR, 0, 7); a.fill();
+      }
+      const [ro, r] = canvas2d();
+      r.fillStyle = '#6e6e6e'; r.fillRect(0, 0, S, S);           // varnished wood, medium gloss
+      r.globalAlpha = 0.35; r.drawImage(noiseCanvas(0.10, 404), 0, 0); r.globalAlpha = 1;
+      strokeLines(r, '#9a9a9a', LW*1.25);                         // paint sits matter than varnish
+      const [bu, b] = canvas2d();
+      b.fillStyle = '#808080'; b.fillRect(0, 0, S, S);
+      b.globalAlpha = 0.4; b.drawImage(noiseCanvas(0.08, 505), 0, 0); b.globalAlpha = 1;
+      return { albedo: al, rough: ro, bump: bu };
+    },
+    pieces(which) {   // friendly toy-glaze painted pieces
+      const col = which === 'blue' ? 0x3f6fc4 : 0xcf5030;
+      const hub = new THREE.MeshPhysicalMaterial({ color: col, metalness: 0, roughness: 0.48,
+        clearcoat: 0.3, clearcoatRoughness: 0.3, envMapIntensity: 0.4 });
+      const leg = new THREE.MeshPhysicalMaterial({ color: col, metalness: 0, roughness: 0.52,
+        clearcoat: 0.18, clearcoatRoughness: 0.38, envMapIntensity: 0.28, specularIntensity: 0.55 });
+      return { leg, hub };
+    },
+  },
 };
+const T = THEMES[THEME] || THEMES.noir;
+
+// theme switcher links
+{
+  const el = document.getElementById('themes');
+  for (const k of Object.keys(THEMES)) {
+    const a = document.createElement('a');
+    a.href = '?theme=' + k + (SHOW_FPS ? '&fps' : ''); a.textContent = k;
+    if (k === THEME) a.className = 'cur';
+    el.appendChild(a);
+  }
+}
 
 // ---- renderer / scene ------------------------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -61,13 +363,11 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = LOOK.exposure;
+renderer.toneMappingExposure = T.exposure;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0c10);
-
-// image-based lighting from the procedural room — this is what makes the glass live
+scene.background = new THREE.Color(T.bg);
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
@@ -79,139 +379,38 @@ controls.target.set(0, 4, 0); controls.maxPolarAngle = Math.PI * 0.49;
 controls.minDistance = 50; controls.maxDistance = 400;
 controls.update();
 
-// key light (shadows) + a cool low fill
-const key = new THREE.DirectionalLight(0xfff1dc, LOOK.key.intensity);
-key.position.set(...LOOK.key.pos);
+const key = new THREE.DirectionalLight(T.key.color, T.key.intensity);
+key.position.set(...T.key.pos);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
 key.shadow.camera.left = key.shadow.camera.bottom = -95;
 key.shadow.camera.right = key.shadow.camera.top = 95;
 key.shadow.camera.far = 400;
 key.shadow.bias = -0.0004;
-key.shadow.intensity = LOOK.key.shadow;    // r163+: soften the whole shadow, glass shouldn't throw ink
+key.shadow.intensity = T.key.shadow;
 scene.add(key);
-const fill = new THREE.DirectionalLight(0x8fb4ff, 0.5);
+const fill = new THREE.DirectionalLight(T.fill.color, T.fill.intensity);
 fill.position.set(-80, 40, -60); scene.add(fill);
 
-// ---- slate board with brass-inlaid lines (procedural canvas PBR) -----------------------------
-function noiseCanvas(S, amp) {   // layered soft blobs + fine grain -> value-noise-ish field
-  const cv = document.createElement('canvas'); cv.width = cv.height = S;
-  const c = cv.getContext('2d');
-  c.fillStyle = '#808080'; c.fillRect(0, 0, S, S);
-  let rng = 1234567;
-  const rnd = () => (rng = (rng * 16807) % 2147483647) / 2147483647;
-  for (let pass = 0; pass < 3; pass++) {
-    const n = 42 * (pass + 1), r0 = S / (5 + pass * 6);
-    for (let i = 0; i < n; i++) {
-      const x = rnd()*S, y = rnd()*S, r = r0 * (0.5 + rnd()), v = rnd();
-      const g = c.createRadialGradient(x, y, 0, x, y, r);
-      const a = amp / (pass + 1);
-      g.addColorStop(0, `rgba(${v > 0.5 ? 255 : 0},${v > 0.5 ? 255 : 0},${v > 0.5 ? 255 : 0},${a})`);
-      g.addColorStop(1, 'rgba(128,128,128,0)');
-      c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
-    }
-  }
-  const img = c.getImageData(0, 0, S, S), d = img.data;   // fine grain
-  for (let i = 0; i < d.length; i += 4) {
-    const g = (rnd() - 0.5) * 22; d[i] += g; d[i+1] += g; d[i+2] += g;
-  }
-  c.putImageData(img, 0, 0);
-  return cv;
-}
-function boardMaps() {
-  const S = 2048, sc = S / (2 * CFG.edgeU), ox = S/2, oy = S/2;
-  const px = u => u * sc;
-  const albedo = document.createElement('canvas'); albedo.width = albedo.height = S;
-  const a = albedo.getContext('2d');
-  // slate base: base colour multiplied by the noise field
-  a.fillStyle = LOOK.slate.base; a.fillRect(0, 0, S, S);
-  a.globalCompositeOperation = 'soft-light';
-  a.globalAlpha = 0.85; a.drawImage(noiseCanvas(S, 0.12), 0, 0);
-  a.globalCompositeOperation = 'source-over'; a.globalAlpha = 1;
-  // vignette toward the rim so the disc has depth
-  const vg = a.createRadialGradient(ox, oy, px(CFG.edgeU)*0.35, ox, oy, px(CFG.edgeU));
-  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.34)');
-  a.fillStyle = vg; a.fillRect(0, 0, S, S);
-  // brass inlay: the printed geometry, with a subtle bright edge for the "set into the stone" read
-  const lw = Math.max(3, px(CFG.edgeU * CFG.lineWidthFrac * 1.35));
-  const strokeAll = (style, width, dy) => {
-    a.strokeStyle = style; a.lineWidth = width; a.lineCap = 'round';
-    for (const r of CFG.rings) { a.beginPath(); a.arc(ox, oy + (dy||0), px(r), 0, 7); a.stroke(); }
-    for (const s of CFG.sideArcs) {
-      a.beginPath();
-      a.arc(ox + px(s.cx), oy + px(s.cy) + (dy||0), px(s.r), s.a0 * Math.PI/180, s.a1 * Math.PI/180);
-      a.stroke();
-    }
-  };
-  strokeAll('rgba(0,0,0,0.55)', lw * 1.9, lw*0.5);          // groove shadow under the inlay
-  const brass = a.createLinearGradient(0, 0, S, S);
-  brass.addColorStop(0, LOOK.slate.brass); brass.addColorStop(0.5, LOOK.slate.brassHi); brass.addColorStop(1, LOOK.slate.brass);
-  strokeAll(brass, lw, 0);
-  // start dots — brass studs at the six feet start positions
-  const dotR = Math.max(3, px(CFG.edgeU * CFG.padRadiusFrac * 1.6));
-  const dots = [];
-  for (const [hx, rot] of [[-CFG.startX, 0], [CFG.startX, Math.PI]])
-    for (let i = 0; i < 3; i++) {
-      const th = rot + i * 2*Math.PI/3;
-      dots.push([hx + Math.cos(th)*CFG.footR, Math.sin(th)*CFG.footR]);
-    }
-  for (const [dx, dyy] of dots) {
-    a.fillStyle = 'rgba(0,0,0,0.5)';
-    a.beginPath(); a.arc(ox + px(dx), oy + px(dyy) + dotR*0.35, dotR*1.25, 0, 7); a.fill();
-    a.fillStyle = brass;
-    a.beginPath(); a.arc(ox + px(dx), oy + px(dyy), dotR, 0, 7); a.fill();
-  }
-  // roughness: stone fairly rough with variation; the inlay polished (dark = smooth in this map)
-  const rough = document.createElement('canvas'); rough.width = rough.height = S;
-  const r = rough.getContext('2d');
-  r.fillStyle = '#9a9a9a'; r.fillRect(0, 0, S, S);
-  r.globalAlpha = 0.5; r.drawImage(noiseCanvas(S, 0.12), 0, 0); r.globalAlpha = 1;
-  const strokeR = (style, width) => {
-    r.strokeStyle = style; r.lineWidth = width; r.lineCap = 'round';
-    for (const g of CFG.rings) { r.beginPath(); r.arc(ox, oy, px(g), 0, 7); r.stroke(); }
-    for (const s of CFG.sideArcs) {
-      r.beginPath(); r.arc(ox + px(s.cx), oy + px(s.cy), px(s.r), s.a0*Math.PI/180, s.a1*Math.PI/180); r.stroke();
-    }
-  };
-  strokeR('#3a3a3a', lw);                                    // polished inlay
-  for (const [dx, dyy] of dots) { r.fillStyle = '#3a3a3a'; r.beginPath(); r.arc(ox+px(dx), oy+px(dyy), dotR, 0, 7); r.fill(); }
-  // bump: the stone noise + a dip along the groove
-  const bump = document.createElement('canvas'); bump.width = bump.height = S;
-  const b = bump.getContext('2d');
-  b.fillStyle = '#808080'; b.fillRect(0, 0, S, S);
-  b.globalAlpha = 0.6; b.drawImage(noiseCanvas(S, 0.10), 0, 0); b.globalAlpha = 1;
-  const strokeB = () => {
-    b.strokeStyle = '#5a5a5a'; b.lineWidth = lw * 1.6; b.lineCap = 'round';
-    for (const g of CFG.rings) { b.beginPath(); b.arc(ox, oy, px(g), 0, 7); b.stroke(); }
-    for (const s of CFG.sideArcs) { b.beginPath(); b.arc(ox+px(s.cx), oy+px(s.cy), px(s.r), s.a0*Math.PI/180, s.a1*Math.PI/180); b.stroke(); }
-  };
-  strokeB();
-  const tex = cv => { const t = new THREE.CanvasTexture(cv); t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace; return t; };
-  const texL = cv => { const t = new THREE.CanvasTexture(cv); t.anisotropy = 8; return t; };   // linear (data) maps
-  return { map: tex(albedo), roughnessMap: texL(rough), bumpMap: texL(bump) };
-}
-
-const maps = boardMaps();
+// ---- board -----------------------------------------------------------------------------------
+const maps = T.paint();
 const boardMat = new THREE.MeshStandardMaterial({
-  map: maps.map, roughnessMap: maps.roughnessMap, roughness: 1.0,
-  bumpMap: maps.bumpMap, bumpScale: 0.9, metalness: 0.04, envMapIntensity: 0.7,
+  map: tex(maps.albedo), roughnessMap: texL(maps.rough), roughness: 1.0,
+  bumpMap: texL(maps.bump), bumpScale: T.bumpScale, metalness: 0.04, envMapIntensity: T.boardEnv,
 });
 const boardTop = new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU, 128), boardMat);
-boardTop.rotation.x = -Math.PI/2; boardTop.receiveShadow = true;
-scene.add(boardTop);
-// slab side + polished metal band, slightly below the playing face
+boardTop.rotation.x = -Math.PI/2; boardTop.receiveShadow = true; scene.add(boardTop);
 const slab = new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU, CFG.edgeU, 3.2, 128, 1, true),
-  new THREE.MeshStandardMaterial({ color: 0x17191d, roughness: 0.8, metalness: 0.05 }));
+  new THREE.MeshStandardMaterial({ color: T.slabColor, roughness: 0.8, metalness: 0.05 }));
 slab.position.y = -1.62; scene.add(slab);
 const band = new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.045, CFG.edgeU*1.085, 5.4, 128),
-  new THREE.MeshStandardMaterial({ color: LOOK.rim.color, roughness: LOOK.rim.roughness, metalness: LOOK.rim.metalness, envMapIntensity: 1.1 }));
+  new THREE.MeshStandardMaterial({ color: T.band.color, roughness: T.band.rough, metalness: T.band.metal, envMapIntensity: 1.1 }));
 band.position.y = -3.1; band.receiveShadow = true; scene.add(band);
-// wide dark table so the board doesn't float in void
 const table = new THREE.Mesh(new THREE.CircleGeometry(1200, 64),
-  new THREE.MeshStandardMaterial({ color: 0x0d0f13, roughness: 0.95 }));
+  new THREE.MeshStandardMaterial({ color: T.tableColor, roughness: 0.92 }));
 table.rotation.x = -Math.PI/2; table.position.y = -5.9; table.receiveShadow = true; scene.add(table);
 
-// ---- glass tripods (same geometry as the game's buildTripod, premium material) ---------------
+// ---- pieces (the game's exact tripod geometry) -----------------------------------------------
 function taperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
   const frames = curve.computeFrenetFrames(lenSegs, false);
   const positions = [], normals = [], indices = [];
@@ -224,7 +423,7 @@ function taperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
       rad = legRad * (1 - s) + CFG.footPadRadius * s;
     }
     for (let j = 0; j < radialSegs; j++) {
-      const phi = j/radialSegs * Math.PI * 2, nx = Math.cos(phi), ny = Math.sin(phi);
+      const phi = j/radialSegs * Math.PI*2, nx = Math.cos(phi), ny = Math.sin(phi);
       const n = new THREE.Vector3().addScaledVector(N, nx).addScaledVector(B, ny).normalize();
       positions.push(center.x + n.x*rad, center.y + n.y*rad, center.z + n.z*rad);
       normals.push(n.x, n.y, n.z);
@@ -232,7 +431,7 @@ function taperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
   }
   for (let i = 0; i < lenSegs; i++) for (let j = 0; j < radialSegs; j++) {
     const jn = (j+1) % radialSegs;
-    const a2 = i*radialSegs + j, b2 = i*radialSegs + jn, c2 = (i+1)*radialSegs + j, d2 = (i+1)*radialSegs + jn;
+    const a2 = i*radialSegs+j, b2 = i*radialSegs+jn, c2 = (i+1)*radialSegs+j, d2 = (i+1)*radialSegs+jn;
     indices.push(a2, c2, b2, b2, c2, d2);
   }
   const g = new THREE.BufferGeometry();
@@ -242,22 +441,8 @@ function taperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
   const m = new THREE.Mesh(g, mat); m.castShadow = true;
   return m;
 }
-function glassMat(c, thickness, attDist, roughness, emiss) {
-  return new THREE.MeshPhysicalMaterial({
-    color: c.tint, metalness: 0, roughness,
-    transmission: 1.0, ior: LOOK.glass.ior, thickness,
-    attenuationColor: new THREE.Color(c.att), attenuationDistance: attDist,
-    emissive: new THREE.Color(c.att), emissiveIntensity: emiss,   // internal glow so thin sections carry colour
-    clearcoat: LOOK.glass.clearcoat, clearcoatRoughness: 0.06,
-    specularIntensity: 0.9, envMapIntensity: 0.8,
-  });
-}
-function buildTripod(c) {
-  const g = new THREE.Group();
-  // thin legs need a LONG assumed light path (thickness) + short attenuation distance to read as
-  // coloured glass; the fat hub would crush to black with the same numbers, so it gets its own mix.
-  const mat = glassMat(c, 11.0, 4.2, 0.14, 0.16);   // legs + feet: deep tint, lit from within
-  const hubMat = glassMat(c, 5.0, 6.5, LOOK.glass.roughness, 0.06);
+function buildTripod(which) {
+  const g = new THREE.Group(), mats = T.pieces(which);
   const R = CFG.footR, H = CFG.hubHeight, legRad = CFG.legRadius;
   for (let i = 0; i < 3; i++) {
     const th = i * 2*Math.PI/3, pts = [];
@@ -265,16 +450,16 @@ function buildTripod(c) {
       const ph = (k/20) * (Math.PI/2);
       pts.push(new THREE.Vector3(Math.sin(ph)*R*Math.cos(th), Math.cos(ph)*H, Math.sin(ph)*R*Math.sin(th)));
     }
-    g.add(taperedLeg(new THREE.CatmullRomCurve3(pts), mat, legRad, 20, 36, 0.6));
-    const foot = new THREE.Mesh(new THREE.SphereGeometry(legRad*0.45, 20, 14), mat);
+    g.add(taperedLeg(new THREE.CatmullRomCurve3(pts), mats.leg, legRad, 20, 36, 0.6));
+    const foot = new THREE.Mesh(new THREE.SphereGeometry(legRad*0.45, 20, 14), mats.leg);
     foot.scale.set(1, 0.55, 1); foot.position.set(Math.cos(th)*R, 0.4, Math.sin(th)*R);
     foot.castShadow = true; g.add(foot);
   }
-  const hub = new THREE.Mesh(new THREE.SphereGeometry(legRad*1.9, 28, 20), hubMat);
+  const hub = new THREE.Mesh(new THREE.SphereGeometry(legRad*1.9, 28, 20), mats.hub);
   hub.position.set(0, H, 0); hub.castShadow = true; g.add(hub);
   return g;
 }
-const blue = buildTripod(LOOK.blue), red = buildTripod(LOOK.red);
+const blue = buildTripod('blue'), red = buildTripod('red');
 blue.position.set(POSE[0], 0, POSE[1]); blue.rotation.y = -POSE[2];
 red.position.set(POSE[3], 0, POSE[4]); red.rotation.y = -POSE[5];
 scene.add(blue, red);
@@ -282,9 +467,7 @@ scene.add(blue, red);
 // ---- post ------------------------------------------------------------------------------------
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight),
-  LOOK.bloom.strength, LOOK.bloom.radius, LOOK.bloom.threshold);
-composer.addPass(bloom);
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), ...T.bloom));
 composer.addPass(new OutputPass());
 
 addEventListener('resize', () => {
@@ -292,11 +475,18 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
 });
 
-let frames = 0;
+let frames = 0, fpsAcc = 0, fpsN = 0, lastT = performance.now();
+const tag = document.getElementById('tag');
 function loop() {
   requestAnimationFrame(loop);
   controls.update();
   composer.render();
+  const now = performance.now();
+  if (SHOW_FPS) {
+    fpsAcc += 1000 / Math.max(1, now - lastT); fpsN++;
+    if (fpsN >= 30) { tag.textContent = `tau · ${THEME} · ${(fpsAcc/fpsN).toFixed(0)} fps`; fpsAcc = fpsN = 0; }
+  }
+  lastT = now;
   if (++frames === 6) window.__spikeReady = true;   // headless screenshot hook
 }
 loop();
