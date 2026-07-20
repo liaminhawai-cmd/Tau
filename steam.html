@@ -26,8 +26,13 @@
 //   noir  — glass pieces, brass-inlaid dark slate, moody (the original spike; costliest: transmission)
 //   math  — graphite precision: quiet graticule, implied compass construction, ink-ceramic pieces (cheap)
 //   sumo  — the ring at dusk: deep earth, broad burnished bands, urushi-lacquer pieces (cheap)
-//   cosy  — fireside boardgame: honey wood, cream painted lines, toy-glaze pieces (cheap)
+//   cosy  — fireside boardgame: tree-slice wood, cream painted lines, toy-glaze pieces (cheap)
 //   alien — living membrane board with bioluminescent channels, thin-film iridescent chitin pieces
+//   colossus — building-sized titans in a hazy colosseum, slow motion, telephoto from the stands
+// Premium light without ray tracing: MSAA'd composer target (post-processing kills the canvas's
+// own AA) + a planar mirror pass blended into the board (exact reflections — the board is flat).
+// Sound is fully synthesized WebAudio (per-theme beds, positional creaks/whooshes/thud), OFF
+// until the ♪ toggle is clicked.
 // The pieces play the menu's ambient AI battle: the game-sim section below is a verbatim port of
 // index.html's engine (Piece, crossing rule, 3D contact push, turn logic) plus the landing demo's
 // wobbly heuristic driver, so the tripods genuinely push each other around and off the rim,
@@ -36,6 +41,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -60,7 +66,10 @@ let THEME = (new URLSearchParams(location.search).get('theme') || 'noir').toLowe
 const SHOW_FPS = new URLSearchParams(location.search).has('fps');
 
 // ---- shared canvas helpers -------------------------------------------------------------------
-const S = 2048, sc = S / (2 * CFG.edgeU), ox = S/2, oy = S/2, px = u => u * sc;
+// 4K displays get 4096px board maps so the printed lines stay crisp when the camera leans in;
+// laptops keep 2048 (noise detail is generated at 2048 either way and upscaled — see noiseCanvas)
+const S = (Math.min(screen.width, screen.height) * (devicePixelRatio || 1) >= 2000) ? 4096 : 2048;
+const sc = S / (2 * CFG.edgeU), ox = S/2, oy = S/2, px = u => u * sc;
 const LW = Math.max(3, px(CFG.edgeU * CFG.lineWidthFrac * 1.35));
 const DOTS = [];
 for (const [hx, rot] of [[-CFG.startX, 0], [CFG.startX, Math.PI]])
@@ -79,24 +88,31 @@ function strokeLines(c, style, width, dash) {          // the printed geometry: 
   c.setLineDash([]);
 }
 function noiseCanvas(amp, seed) {
-  const [cv, c] = canvas2d();
-  c.fillStyle = '#808080'; c.fillRect(0, 0, S, S);
+  // always generated at 2048 (the per-pixel grain loop is the slow part) and upscaled to S —
+  // the noise is low-frequency mood, the crispness lives in the vector linework drawn at S
+  const NS = 2048;
+  const cv = document.createElement('canvas'); cv.width = cv.height = NS;
+  const c = cv.getContext('2d');
+  c.fillStyle = '#808080'; c.fillRect(0, 0, NS, NS);
   let rng = seed || 1234567;
   const rnd = () => (rng = (rng * 16807) % 2147483647) / 2147483647;
   for (let pass = 0; pass < 3; pass++) {
-    const n = 42 * (pass + 1), r0 = S / (5 + pass * 6);
+    const n = 42 * (pass + 1), r0 = NS / (5 + pass * 6);
     for (let i = 0; i < n; i++) {
-      const x = rnd()*S, y = rnd()*S, r = r0 * (0.5 + rnd()), v = rnd();
+      const x = rnd()*NS, y = rnd()*NS, r = r0 * (0.5 + rnd()), v = rnd();
       const g = c.createRadialGradient(x, y, 0, x, y, r);
       g.addColorStop(0, `rgba(${v>0.5?255:0},${v>0.5?255:0},${v>0.5?255:0},${amp/(pass+1)})`);
       g.addColorStop(1, 'rgba(128,128,128,0)');
       c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
     }
   }
-  const img = c.getImageData(0, 0, S, S), d = img.data;
+  const img = c.getImageData(0, 0, NS, NS), d = img.data;
   for (let i = 0; i < d.length; i += 4) { const g = (rnd()-0.5)*22; d[i]+=g; d[i+1]+=g; d[i+2]+=g; }
   c.putImageData(img, 0, 0);
-  return cv;
+  if (S === NS) return cv;
+  const up = document.createElement('canvas'); up.width = up.height = S;
+  up.getContext('2d').drawImage(cv, 0, 0, S, S);
+  return up;
 }
 function vignette(c, strength) {
   const vg = c.createRadialGradient(ox, oy, px(CFG.edgeU)*0.35, ox, oy, px(CFG.edgeU));
@@ -115,7 +131,7 @@ const THEMES = {
     key: { color: 0xfff1dc, intensity: 2.6, pos: [70,130,45], shadow: 0.55 },
     fill:{ color: 0x8fb4ff, intensity: 0.5 },
     band: { color: 0x353a42, rough: 0.35, metal: 0.85 }, slabColor: 0x17191d, tableColor: 0x0d0f13,
-    boardEnv: 0.7, bumpScale: 0.9,
+    boardEnv: 0.7, bumpScale: 0.9, boardReflect: 0.34,
     paint() {
       const [al, a] = canvas2d();
       a.fillStyle = '#23262c'; a.fillRect(0, 0, S, S);
@@ -168,7 +184,7 @@ const THEMES = {
     key: { color: 0xffffff, intensity: 2.2, pos: [40,140,70], shadow: 0.5 },
     fill:{ color: 0xa8c8ff, intensity: 0.65 },
     band: { color: 0x20242c, rough: 0.5, metal: 0.6 }, slabColor: 0x14171d, tableColor: 0x0b0d12,
-    boardEnv: 0.3, bumpScale: 0.35,
+    boardEnv: 0.3, bumpScale: 0.35, boardReflect: 0.16,
     paint() {
       const [al, a] = canvas2d();
       a.fillStyle = '#141b28'; a.fillRect(0, 0, S, S);          // ink-navy graphite
@@ -219,7 +235,7 @@ const THEMES = {
     key: { color: 0xffdfae, intensity: 2.4, pos: [95,85,30], shadow: 0.65 },
     fill:{ color: 0x7286a8, intensity: 0.35 },
     band: { color: 0x3a2b1c, rough: 0.7, metal: 0.05 }, slabColor: 0x46351f, tableColor: 0x201810,
-    boardEnv: 0.4, bumpScale: 0.9,
+    boardEnv: 0.4, bumpScale: 0.9, boardReflect: 0.05,
     paint() {
       const [al, a] = canvas2d();
       a.fillStyle = '#6e4a2c'; a.fillRect(0, 0, S, S);          // deep earth
@@ -274,18 +290,36 @@ const THEMES = {
     key: { color: 0xffc98a, intensity: 2.7, pos: [95,75,25], shadow: 0.6 },
     fill:{ color: 0x86a0c8, intensity: 0.3 },
     band: { color: 0x503722, rough: 0.55, metal: 0.05 }, slabColor: 0x453019, tableColor: 0x33241a,
-    boardEnv: 0.8, bumpScale: 0.6,
+    boardEnv: 0.8, bumpScale: 0.6, boardReflect: 0.12,
     paint() {
       const [al, a] = canvas2d();
       a.fillStyle = '#8a6136'; a.fillRect(0, 0, S, S);           // honey oak
-      // grain: long wavy horizontal streaks
+      // the board is a SLICE OF THE TREE: concentric growth rings around an off-centre heart,
+      // each ring a wobbly closed loop (lean years and fat years), plus faint medullary rays
       let rng = 9090909; const rnd = () => (rng = (rng*16807)%2147483647)/2147483647;
-      for (let i = 0; i < 210; i++) {
-        const y0 = rnd()*S, amp = 4 + rnd()*10, w = 2 + rnd()*7;
-        a.strokeStyle = rnd() > 0.5 ? `rgba(110,74,38,${0.10+rnd()*0.12})` : `rgba(161,121,63,${0.10+rnd()*0.10})`;
+      const hx = ox + S*0.07, hy = oy - S*0.05;                  // heartwood, off centre like a real log
+      const wob = [];                                            // per-ring angular wobble harmonics
+      for (let k = 0; k < 4; k++) wob.push({ f: 2 + Math.floor(rnd()*4), ph: rnd()*7, amp: 0.012 + rnd()*0.02 });
+      let ring = S*0.015;
+      while (ring < S*0.78) {
+        const dark = rnd() > 0.45, w = dark ? 2 + rnd()*4 : 1.5 + rnd()*2;
+        a.strokeStyle = dark ? `rgba(104,68,34,${0.16 + rnd()*0.14})` : `rgba(168,126,66,${0.10 + rnd()*0.10})`;
         a.lineWidth = w; a.beginPath();
-        for (let x = 0; x <= S; x += 64) a.lineTo(x, y0 + Math.sin(x*0.004 + rnd()*6)*amp);
-        a.stroke();
+        for (let t = 0; t <= 128; t++) {
+          const th = t/128*Math.PI*2;
+          let rr = ring;
+          for (const h of wob) rr *= 1 + h.amp*Math.sin(h.f*th + h.ph + ring*0.0012);
+          const x2 = hx + Math.cos(th)*rr, y2 = hy + Math.sin(th)*rr;
+          t ? a.lineTo(x2, y2) : a.moveTo(x2, y2);
+        }
+        a.closePath(); a.stroke();
+        ring += S*(0.006 + rnd()*0.012);                         // ring spacing: good years, bad years
+      }
+      for (let i = 0; i < 40; i++) {                             // medullary rays out from the heart
+        const th = rnd()*Math.PI*2, r0 = S*(0.02 + rnd()*0.1), r1 = r0 + S*(0.1 + rnd()*0.45);
+        a.strokeStyle = `rgba(96,62,30,${0.05 + rnd()*0.06})`; a.lineWidth = 1.5 + rnd()*2;
+        a.beginPath(); a.moveTo(hx + Math.cos(th)*r0, hy + Math.sin(th)*r0);
+        a.lineTo(hx + Math.cos(th)*r1, hy + Math.sin(th)*r1); a.stroke();
       }
       a.globalCompositeOperation = 'soft-light'; a.globalAlpha = 0.5;
       a.drawImage(noiseCanvas(0.08, 202), 0, 0);
@@ -331,7 +365,7 @@ const THEMES = {
     key: { color: 0x9d8ce8, intensity: 1.0, pos: [-70,110,-50], shadow: 0.35 },
     fill:{ color: 0x35e8c8, intensity: 0.55 },
     band: { color: 0x191324, rough: 0.35, metal: 0.25 }, slabColor: 0x110d1a, tableColor: 0x06060c,
-    boardEnv: 0.25, bumpScale: 1.1, emissiveIntensity: 1.5,
+    boardEnv: 0.25, bumpScale: 1.1, emissiveIntensity: 1.5, boardReflect: 0.28,
     fog: { color: 0x0a0816, density: 0.0018 },
     paint() {
       // one vein network, drawn into albedo (dark), bump (raised) — precompute the segments
@@ -424,12 +458,143 @@ const THEMES = {
       };
     },
   },
+
+  // ============ COLOSSUS — two titans the size of buildings, seen from the upper seats ============
+  // Enormity is all cues, not size: heavy atmospheric haze (far things fade = far things are FAR),
+  // a telephoto camera high in the stands (long lens compresses = monumental), slow motion
+  // (giant things move slowly — the whole sim runs at a third speed), crowd-speckled tiers for
+  // scale reference, and dust hanging in the sun.
+  colossus: {
+    bg: 0xb9a888, exposure: 1.0, bloom: [0.12, 0.4, 0.95],
+    key: { color: 0xffe6c0, intensity: 3.2, pos: [180,220,90], shadow: 0.85 },
+    fill:{ color: 0x9fb4d8, intensity: 0.25 },
+    band: { color: 0x8a7a5e, rough: 0.95, metal: 0.0 }, slabColor: 0x7e6f54, tableColor: 0xa08b64,
+    boardEnv: 0.2, bumpScale: 1.2, boardReflect: 0,
+    fog: { color: 0xb9a888, density: 0.0011 },   // haze GRADES with distance — board clear, wall half-gone
+    cam: { pos: [-140, 130, 280], target: [0, 26, 0], fov: 36 },   // in the seats: board low, far stands fill the top
+    simSpeed: 0.35,
+    paint() {
+      const [al, a] = canvas2d();
+      a.fillStyle = '#b49b6d'; a.fillRect(0, 0, S, S);           // raked arena sand
+      a.globalCompositeOperation = 'soft-light'; a.globalAlpha = 1;
+      a.drawImage(noiseCanvas(0.15, 111), 0, 0);
+      a.globalCompositeOperation = 'source-over';
+      let rng = 606060; const rnd = () => (rng = (rng*16807)%2147483647)/2147483647;
+      for (let i = 0; i < 50; i++) {                             // churned patches from the last bout
+        const x = rnd()*S, y = rnd()*S, r = 40 + rnd()*160;
+        const g = a.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(122,100,64,${0.05 + rnd()*0.07})`); g.addColorStop(1, 'rgba(122,100,64,0)');
+        a.fillStyle = g; a.beginPath(); a.arc(x, y, r, 0, 7); a.fill();
+      }
+      vignette(a, 0.3);
+      // the lines as ancient basalt inlay set into the sand
+      strokeLines(a, 'rgba(40,32,22,0.5)', LW*2.4);
+      strokeLines(a, '#4a4038', LW*1.7);
+      strokeLines(a, 'rgba(150,138,120,0.35)', LW*0.5);          // worn top sheen
+      const dotR = Math.max(5, px(CFG.edgeU * CFG.padRadiusFrac * 2.2));
+      for (const [dx,dy] of DOTS) {
+        a.fillStyle = 'rgba(40,32,22,0.5)'; a.beginPath(); a.arc(ox+px(dx), oy+px(dy)+dotR*0.3, dotR*1.3, 0, 7); a.fill();
+        a.fillStyle = '#4a4038'; a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR, 0, 7); a.fill();
+      }
+      const [ro, r] = canvas2d();
+      r.fillStyle = '#c2c2c2'; r.fillRect(0, 0, S, S);           // dry sand: fully matte
+      r.globalAlpha = 0.35; r.drawImage(noiseCanvas(0.12, 222), 0, 0); r.globalAlpha = 1;
+      strokeLines(r, '#8a8a8a', LW*1.7);                          // stone slightly less matte
+      const [bu, b] = canvas2d();
+      b.fillStyle = '#808080'; b.fillRect(0, 0, S, S);
+      b.globalAlpha = 0.7; b.drawImage(noiseCanvas(0.14, 333), 0, 0); b.globalAlpha = 1;
+      strokeLines(b, '#565656', LW*1.7);                          // inlay recessed into the sand
+      return { albedo: al, rough: ro, bump: bu };
+    },
+    pieces(which) {   // weathered titans: verdigris bronze vs rusted iron
+      const col = which === 'blue' ? 0x4e7a6e : 0x8a4a30;
+      const hub = new THREE.MeshStandardMaterial({ color: col, metalness: 0.55, roughness: 0.5,
+        envMapIntensity: 0.35 });
+      const leg = new THREE.MeshStandardMaterial({ color: col, metalness: 0.4, roughness: 0.62,
+        envMapIntensity: 0.2 });
+      return { leg, hub };
+    },
+    env() {   // the colosseum: tiered stands flecked with crowd, an arched outer wall, hanging dust
+      const g = new THREE.Group();
+      // crowd texture: rows of tiny multicoloured specks on stone — individual people at this
+      // distance are two pixels wide, which is exactly what sells the size of everything else
+      // person-scale specks: at these radii a spectator is ~2 units tall — big enough to read as
+      // a crowd, small enough that every one of them shouts how big the arena is
+      const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 256;
+      const c = cv.getContext('2d');
+      c.fillStyle = '#867457'; c.fillRect(0, 0, 1024, 256);
+      let rng = 121212; const rnd = () => (rng = (rng*16807)%2147483647)/2147483647;
+      const hues = ['#5a4a38','#8a5b36','#4a4a52','#96826a','#3e3a34','#a8906c','#7a4438','#4e5c6a','#6d5347'];
+      for (let x = 4 + rnd()*6; x < 1024; x += 9 + rnd()*8)
+        if (rnd() > 0.18) {
+          c.fillStyle = hues[Math.floor(rnd()*hues.length)];
+          const h = 90 + rnd()*50;
+          c.fillRect(x, 250 - h, 5 + rnd()*3, h);                      // body
+          c.fillStyle = '#c9a882';
+          c.beginPath(); c.arc(x + 3.5, 246 - h, 4.5, 0, 7); c.fill(); // head
+        }
+      const crowdTex = new THREE.CanvasTexture(cv);
+      crowdTex.wrapS = THREE.RepeatWrapping; crowdTex.repeat.set(24, 1); crowdTex.anisotropy = 8;
+      crowdTex.colorSpace = THREE.SRGBColorSpace;
+      // stepped seating, seen from INSIDE the bowl: a vertical riser faced with crowd, then a
+      // flat stone walkway — the step profile is what reads as architecture instead of wallpaper
+      const crowdMat = new THREE.MeshStandardMaterial({ map: crowdTex, roughness: 0.95, side: THREE.DoubleSide });
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x9a8a6a, roughness: 0.95, side: THREE.DoubleSide });
+      for (let i = 0; i < 7; i++) {
+        const r0 = 200 + i*58, y0 = 2 + i*30;
+        const riser = new THREE.Mesh(new THREE.CylinderGeometry(r0, r0, 30, 96, 1, true), crowdMat);
+        riser.position.y = y0 + 15; g.add(riser);
+        const walk = new THREE.Mesh(new THREE.RingGeometry(r0, r0 + 58, 96), stoneMat);
+        walk.rotation.x = -Math.PI/2; walk.position.y = y0 + 30; g.add(walk);
+      }
+      // outer wall with dark arched openings, mostly swallowed by the haze
+      const wv = document.createElement('canvas'); wv.width = 1024; wv.height = 256;
+      const w = wv.getContext('2d');
+      w.fillStyle = '#93835f'; w.fillRect(0, 0, 1024, 256);
+      for (let x = 20; x < 1024; x += 86) {
+        w.fillStyle = '#2c2618';
+        w.beginPath(); w.moveTo(x, 220); w.lineTo(x, 120);
+        w.arc(x + 23, 120, 23, Math.PI, 0); w.lineTo(x + 46, 220); w.closePath(); w.fill();
+      }
+      const wallTex = new THREE.CanvasTexture(wv);
+      wallTex.wrapS = THREE.RepeatWrapping; wallTex.repeat.set(14, 1); wallTex.anisotropy = 8;
+      wallTex.colorSpace = THREE.SRGBColorSpace;
+      const wall = new THREE.Mesh(new THREE.CylinderGeometry(660, 660, 240, 128, 1, true),
+        new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.95, side: THREE.BackSide }));
+      wall.position.y = 200; g.add(wall);
+      // dust hanging in the sun — the air itself has depth
+      const N = 700, pos = new Float32Array(N*3);
+      for (let i = 0; i < N; i++) {
+        const th = rnd()*Math.PI*2, rr = 30 + rnd()*300;
+        pos[i*3] = Math.cos(th)*rr; pos[i*3+1] = 4 + rnd()*170; pos[i*3+2] = Math.sin(th)*rr;
+      }
+      const dustGeo = new THREE.BufferGeometry();
+      dustGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({
+        color: 0xffedc8, size: 1.4, transparent: true, opacity: 0.22,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+      g.add(dust);
+      g.userData.tick = t => { dust.rotation.y = t*0.004; dust.position.y = Math.sin(t*0.1)*1.5; };
+      return g;
+    },
+  },
 };
 let T = THEMES.noir;   // set for real by applyTheme(THEME) once the scene exists
 
 // theme switcher links — swap the look in place, no reload (applyTheme is hoisted from below)
 {
   const el = document.getElementById('themes');
+  const snd = document.createElement('a');
+  snd.href = '#'; snd.textContent = '♪ off';
+  snd.addEventListener('click', ev => {
+    ev.preventDefault();
+    if (!SND.ctx) sndInit();
+    SND.on = !SND.on;
+    snd.textContent = SND.on ? '♪ on' : '♪ off';
+    if (SND.on) { SND.ctx.resume(); SND.master.gain.setTargetAtTime(0.9, SND.ctx.currentTime, 0.1); sndAmbience(THEME); }
+    else SND.master.gain.setTargetAtTime(0, SND.ctx.currentTime, 0.1);
+  });
+  el.appendChild(snd);
   for (const k of Object.keys(THEMES)) {
     const a = document.createElement('a');
     a.href = '?theme=' + k + (SHOW_FPS ? '&fps' : ''); a.textContent = k; a.dataset.theme = k;
@@ -444,6 +609,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const HI_RES = S === 4096;   // same signal as the board maps: big crisp display, spend more
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 document.body.appendChild(renderer.domElement);
 
@@ -462,7 +628,7 @@ controls.update();
 
 const key = new THREE.DirectionalLight(0xffffff, 1);
 key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
+key.shadow.mapSize.set(HI_RES ? 4096 : 2048, HI_RES ? 4096 : 2048);
 key.shadow.camera.left = key.shadow.camera.bottom = -95;
 key.shadow.camera.right = key.shadow.camera.top = 95;
 key.shadow.camera.far = 400;
@@ -484,6 +650,43 @@ band.position.y = -3.1; band.receiveShadow = true; scene.add(band);
 const tableMat = new THREE.MeshStandardMaterial({ roughness: 0.92 });
 const table = new THREE.Mesh(new THREE.CircleGeometry(1200, 64), tableMat);
 table.rotation.x = -Math.PI/2; table.position.y = -5.9; table.receiveShadow = true; scene.add(table);
+
+// ---- planar board reflections -----------------------------------------------------------------
+// The board is a flat plane, so a mirrored render pass gives EXACT reflections of the pieces —
+// the classic pre-traced-ray trick, no ray tracing hardware required. The Reflector mesh itself
+// never shows (colorWrite off); its texture is blended into the board material below, scaled by
+// each theme's boardReflect and the painted roughness map (glossy ink reflects, dry clay doesn't).
+// Rendered at half res, which doubles as a free gloss blur. Themes with boardReflect 0 hide the
+// mesh entirely and skip the whole mirror pass.
+const reflector = new Reflector(new THREE.CircleGeometry(CFG.edgeU, 64), {
+  textureWidth:  Math.max(256, Math.floor(innerWidth  * (devicePixelRatio || 1) / 2)),
+  textureHeight: Math.max(256, Math.floor(innerHeight * (devicePixelRatio || 1) / 2)),
+  clipBias: 0.01,
+});
+reflector.rotation.x = -Math.PI/2; reflector.position.y = 0.02;
+reflector.material.colorWrite = false; reflector.material.depthWrite = false;
+scene.add(reflector);
+const reflMatrix = new THREE.Matrix4();
+const REFL_BIAS = new THREE.Matrix4().set(0.5,0,0,0.5, 0,0.5,0,0.5, 0,0,0.5,0.5, 0,0,0,1);
+boardMat.onBeforeCompile = shader => {
+  shader.uniforms.tReflect = { value: reflector.getRenderTarget().texture };
+  shader.uniforms.uReflMatrix = { value: reflMatrix };
+  shader.uniforms.uReflStrength = { value: 0 };
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nuniform mat4 uReflMatrix;\nvarying vec4 vReflCoord;')
+    .replace('#include <fog_vertex>', '#include <fog_vertex>\nvReflCoord = uReflMatrix * modelMatrix * vec4(transformed, 1.0);');
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <common>', '#include <common>\nuniform sampler2D tReflect;\nuniform float uReflStrength;\nvarying vec4 vReflCoord;')
+    .replace('#include <opaque_fragment>',
+      'if (uReflStrength > 0.001) {\n' +
+      '  vec2 ruv = vReflCoord.xy / max(vReflCoord.w, 1e-4);\n' +
+      '  vec3 reflCol = texture2D(tReflect, ruv).rgb;\n' +
+      '  float gloss = 1.0 - roughnessFactor;\n' +
+      '  float fres = 0.18 + 0.82 * pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 3.0);\n' +
+      '  outgoingLight += reflCol * uReflStrength * gloss * fres;\n' +
+      '}\n#include <opaque_fragment>');
+  boardMat.userData.shader = shader;
+};
 
 // ---- pieces (the game's exact tripod geometry) -----------------------------------------------
 function taperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
@@ -735,6 +938,7 @@ function pointArcClosest(p, A) {
   }
   return best;
 }
+let pushHit = false;   // set whenever a real contact push lands this frame — the sound layer reads it
 function resolvePush(active, opp) {
   const minD = CFG.legRadius*2, hubR = CFG.legRadius*1.9, H = CFG.hubHeight;
   const m = 1, I = CFG.inertiaK * CFG.footR * CFG.footR;
@@ -742,6 +946,7 @@ function resolvePush(active, opp) {
   const aArcs = active.legArcs(), aChords = active.legs();
   const aHub = { x: active.x, y: active.y, h: H };
   const apply = (px2, py2, nx, ny, sep) => {
+    pushHit = true;
     sep = Math.min(sep, CFG.maxPenPerIter);
     const rx = px2 - opp.x, ry = py2 - opp.y;
     const rn = rx*ny - ry*nx;
@@ -1017,15 +1222,153 @@ reset(); syncPieces();
 window.__simInfo = () => ({ state: sim.state, games: sim.games, over: G.over, fall: fall.active,
   pieces: G.pieces.map(p => ({ x: +p.x.toFixed(2), y: +p.y.toFixed(2), rot: +p.rot.toFixed(2) })) });
 window.__simTick = simTick;   // headless tests fast-forward the battle without waiting real-time
+window.__dbg = () => ({ scene, camera, get env() { return envGroup; }, fogOff() { scene.fog = null; } });
+
+// ---- sound — everything synthesized in WebAudio, no assets; OFF until the ♪ toggle -----------
+// A per-theme ambient bed, a whoosh that follows the swinging piece, creaks when legs actually
+// push (resolvePush sets pushHit), a rising rush when someone goes over and a reverbed thud when
+// they drop past the rim. Panned by board x — cheap positional audio.
+const SND = { on: false, ctx: null, master: null, verb: null, whoosh: null, amb: null,
+              lastCreakT: 0, wasFalling: false, impactDone: false };
+function sndNoiseBuf(c, secs, brown) {
+  const buf = c.createBuffer(1, Math.floor(c.sampleRate*secs), c.sampleRate);
+  const d = buf.getChannelData(0); let last = 0;
+  for (let i = 0; i < d.length; i++) {
+    const w = Math.random()*2 - 1;
+    if (brown) { last = (last + 0.02*w)/1.02; d[i] = last*3.5; } else d[i] = w;
+  }
+  return buf;
+}
+function sndInit() {
+  const c = new (window.AudioContext || window.webkitAudioContext)();
+  const master = c.createGain(); master.gain.value = 0.9; master.connect(c.destination);
+  const ir = c.createBuffer(2, c.sampleRate*1.8, c.sampleRate);   // generated room impulse
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random()*2 - 1)*Math.pow(1 - i/d.length, 3);
+  }
+  const verb = c.createConvolver(); verb.buffer = ir;
+  const vg = c.createGain(); vg.gain.value = 0.3; verb.connect(vg); vg.connect(master);
+  const wSrc = c.createBufferSource(); wSrc.buffer = sndNoiseBuf(c, 2, true); wSrc.loop = true;
+  const wFil = c.createBiquadFilter(); wFil.type = 'bandpass'; wFil.frequency.value = 320; wFil.Q.value = 0.8;
+  const wGain = c.createGain(); wGain.gain.value = 0;
+  const wPan = c.createStereoPanner();
+  wSrc.connect(wFil); wFil.connect(wGain); wGain.connect(wPan); wPan.connect(master); wSrc.start();
+  SND.ctx = c; SND.master = master; SND.verb = verb; SND.whoosh = { gain: wGain, fil: wFil, pan: wPan };
+}
+function sndPan(x) { return Math.max(-1, Math.min(1, x/70)); }
+function sndBlip(freq, dur, gain, pan, type, toVerb) {
+  const c = SND.ctx, t = c.currentTime;
+  const o = c.createOscillator(); o.type = type || 'triangle';
+  o.frequency.setValueAtTime(freq, t);
+  if (type === 'sine') o.frequency.exponentialRampToValueAtTime(Math.max(20, freq*0.55), t + dur);
+  const g = c.createGain();
+  g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
+  const p = c.createStereoPanner(); p.pan.value = pan || 0;
+  o.connect(g); g.connect(p); p.connect(SND.master); if (toVerb) g.connect(SND.verb);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+function sndBurst(dur, gain, pan, filFreq, filType) {
+  const c = SND.ctx, t = c.currentTime;
+  const s = c.createBufferSource(); s.buffer = sndNoiseBuf(c, dur + 0.1);
+  const f = c.createBiquadFilter(); f.type = filType || 'lowpass'; f.frequency.value = filFreq;
+  const g = c.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
+  const p = c.createStereoPanner(); p.pan.value = pan || 0;
+  s.connect(f); f.connect(g); g.connect(p); p.connect(SND.master); g.connect(SND.verb);
+  s.start(t); s.stop(t + dur + 0.1);
+}
+// per-theme ambient bed: [sourceKind, filter type/freq/Q, gain, optional LFO on filter freq]
+const SND_BEDS = {
+  noir:     [{ n: 'brown', f: ['lowpass', 200, 1], g: 0.05, lfo: [0.05, 60] }],
+  math:     [{ o: ['sine', 55], g: 0.012 }, { n: 'brown', f: ['lowpass', 500, 1], g: 0.01 }],
+  sumo:     [{ n: 'brown', f: ['bandpass', 260, 0.6], g: 0.055, lfo: [0.07, 120] }],
+  cosy:     [{ n: 'brown', f: ['lowpass', 130, 1], g: 0.05 }],   // crackle pops live in sndTick
+  alien:    [{ o: ['sine', 66.6], g: 0.014 }, { o: ['sine', 67.1], g: 0.014 }, { o: ['sine', 133.5], g: 0.008 },
+             { n: 'white', f: ['bandpass', 3800, 2], g: 0.005, lfo: [0.03, 1400] }],
+  colossus: [{ n: 'brown', f: ['bandpass', 400, 0.5], g: 0.06, lfo: [0.05, 150] },
+             { n: 'white', f: ['bandpass', 950, 0.7], g: 0.045, lfo: [0.31, 90] }],
+};
+function sndAmbience(theme) {
+  if (!SND.on || !SND.ctx) return;
+  const c = SND.ctx, t = c.currentTime;
+  if (SND.amb) {
+    const old = SND.amb;
+    old.gain.gain.setTargetAtTime(0, t, 0.4);
+    setTimeout(() => old.stops.forEach(s => { try { s.stop(); } catch (e) {} }), 1600);
+  }
+  const bed = SND_BEDS[theme] || SND_BEDS.noir;
+  const master = c.createGain(); master.gain.setValueAtTime(0, t);
+  master.gain.setTargetAtTime(1, t, 0.8); master.connect(SND.master);
+  const stops = [];
+  for (const v of bed) {
+    let src;
+    if (v.o) { src = c.createOscillator(); src.type = v.o[0]; src.frequency.value = v.o[1]; }
+    else { src = c.createBufferSource(); src.buffer = sndNoiseBuf(c, 3, v.n === 'brown'); src.loop = true; }
+    let node = src;
+    if (v.f) {
+      const fil = c.createBiquadFilter();
+      fil.type = v.f[0]; fil.frequency.value = v.f[1]; fil.Q.value = v.f[2];
+      src.connect(fil); node = fil;
+      if (v.lfo) {
+        const lo = c.createOscillator(); lo.frequency.value = v.lfo[0];
+        const lg = c.createGain(); lg.gain.value = v.lfo[1];
+        lo.connect(lg); lg.connect(fil.frequency); lo.start(); stops.push(lo);
+      }
+    }
+    const g = c.createGain(); g.gain.value = v.g;
+    node.connect(g); g.connect(master);
+    src.start(); stops.push(src);
+  }
+  SND.amb = { gain: master, stops };
+}
+function sndTick(dt) {
+  if (!SND.on || !SND.ctx) return;
+  const c = SND.ctx, t = c.currentTime;
+  const swinging = sim.state === 'swing' && !G.over;
+  SND.whoosh.gain.gain.setTargetAtTime(swinging ? 0.13*(T.simSpeed || 1) + 0.04 : 0, t, swinging ? 0.15 : 0.3);
+  if (swinging) {
+    const p = G.pieces[G.active];
+    SND.whoosh.pan.pan.setTargetAtTime(sndPan(p.x), t, 0.2);
+    SND.whoosh.fil.frequency.setTargetAtTime(200 + 260*(T.simSpeed || 1), t, 0.3);
+  }
+  if (pushHit) {
+    pushHit = false;
+    if (t - SND.lastCreakT > 0.09) {
+      SND.lastCreakT = t;
+      const mid = (G.pieces[0].x + G.pieces[1].x)/2;
+      sndBlip(140 + Math.random()*180, 0.05 + Math.random()*0.05, 0.045 + Math.random()*0.04,
+              sndPan(mid), 'square', false);
+    }
+  }
+  if (fall.active && !SND.wasFalling) {   // over the edge: rising rush
+    SND.wasFalling = true; SND.impactDone = false;
+    sndBurst(1.1/(T.simSpeed || 1), 0.15, sndPan(G.pieces[fall.idx].x), 900, 'bandpass');
+  }
+  if (!fall.active) SND.wasFalling = false;
+  if (fall.active && !SND.impactDone && tripodGroups[fall.idx].position.y < -60) {
+    SND.impactDone = true;   // the thud, deep and reverbed — scaled up when the piece is a titan
+    const pan = sndPan(tripodGroups[fall.idx].position.x);
+    sndBlip(T.simSpeed ? 38 : 52, T.simSpeed ? 1.2 : 0.7, 0.5, pan, 'sine', true);
+    sndBurst(0.5, 0.3, pan, 240, 'lowpass');
+  }
+  if (THEME === 'cosy' && Math.random() < dt*6)   // the fireside crackles
+    sndBurst(0.02 + Math.random()*0.05, 0.02 + Math.random()*0.03, -0.6 + Math.random()*1.2, 2400, 'highpass');
+}
 
 // ---- post ------------------------------------------------------------------------------------
-const composer = new EffectComposer(renderer);
+// The composer must bring its own MSAA: post-processing renders into an offscreen target, so the
+// canvas's antialias flag stops applying the moment a composer is used — that unantialiased
+// buffer was exactly the "pixelated at 4K" complaint.
+const composerRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: HI_RES ? 8 : 4 });
+const composer = new EffectComposer(renderer, composerRT);
+composer.setSize(innerWidth, innerHeight);
 composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.2, 0.5, 0.9);
 composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
 
 // ---- apply a theme in place: repaint the board, reskin the pieces, relight -------------------
+let envGroup = null;   // optional per-theme world around the board (colossus' stands, dust…)
 function applyTheme(name) {
   if (!THEMES[name]) name = 'noir';
   THEME = name; T = THEMES[name];
@@ -1051,15 +1394,31 @@ function applyTheme(name) {
     g.traverse(o => { if (o.isMesh && o.userData.part) { o.material.dispose(); o.material = mats[o.userData.part]; } });
   });
   bloomPass.strength = T.bloom[0]; bloomPass.radius = T.bloom[1]; bloomPass.threshold = T.bloom[2];
+  if (envGroup) {
+    scene.remove(envGroup);
+    envGroup.traverse(o => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
+    });
+  }
+  envGroup = T.env ? T.env() : null;
+  if (envGroup) scene.add(envGroup);
+  const cam = T.cam || { pos: [-18, 58, 122], target: [0, 4, 0], fov: 42 };
+  camera.position.set(...cam.pos); controls.target.set(...cam.target);
+  camera.fov = cam.fov; camera.updateProjectionMatrix(); controls.update();
   document.querySelectorAll('#themes a').forEach(a => a.className = a.dataset.theme === name ? 'cur' : '');
   history.replaceState(null, '', '?theme=' + name + (SHOW_FPS ? '&fps' : ''));
   if (!SHOW_FPS) document.getElementById('tag').textContent = 'tau · premium spike — drag to orbit';
+  sndAmbience(name);
 }
 applyTheme(THEME);
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
+  reflector.getRenderTarget().setSize(
+    Math.max(256, Math.floor(innerWidth  * (devicePixelRatio || 1) / 2)),
+    Math.max(256, Math.floor(innerHeight * (devicePixelRatio || 1) / 2)));
 });
 
 let frames = 0, fpsAcc = 0, fpsN = 0, lastT = performance.now();
@@ -1068,8 +1427,15 @@ function loop() {
   requestAnimationFrame(loop);
   const now = performance.now();
   const dt = Math.min(0.05, (now - lastT)/1000);   // clamp: a background tab must not fast-forward the sim
-  simTick(dt);
+  simTick(dt * (T.simSpeed || 1));                 // colossus runs slow: giant things move slowly
   syncPieces();
+  sndTick(dt);
+  if (envGroup && envGroup.userData.tick) envGroup.userData.tick(now/1000);
+  reflector.visible = (T.boardReflect || 0) > 0.001;
+  if (boardMat.userData.shader) {
+    boardMat.userData.shader.uniforms.uReflStrength.value = T.boardReflect || 0;
+    reflMatrix.copy(REFL_BIAS).multiply(reflector.camera.projectionMatrix).multiply(reflector.camera.matrixWorldInverse);
+  }
   controls.update();
   composer.render();
   if (SHOW_FPS) {
