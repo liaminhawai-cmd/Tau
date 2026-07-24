@@ -12,10 +12,15 @@
   #themes { position:fixed; right:10px; bottom:8px; font:11px system-ui; }
   #themes a { color:#5a6470; text-decoration:none; margin-left:10px; }
   #themes a.cur { color:#c9a24b; }
+  /* top-right: empty sky in every theme, so the overlay never sits on top of the 3D pieces */
+  #board2d { position:fixed; right:10px; top:10px; width:min(32vh,270px); height:min(32vh,270px);
+             border-radius:10px; border:1px solid rgba(90,100,112,0.35);
+             background:rgba(10,12,16,0.78); touch-action:none; }
 </style>
 </head>
 <body>
 <div id="tag">tau · premium spike — drag to orbit</div>
+<canvas id="board2d"></canvas>
 <div id="themes"></div>
 <script type="importmap">
 { "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }
@@ -31,8 +36,8 @@
 //   colossus — building-sized titans in a hazy colosseum, slow motion, telephoto from the stands
 // Premium light without ray tracing: MSAA'd composer target (post-processing kills the canvas's
 // own AA) + a planar mirror pass blended into the board (exact reflections — the board is flat).
-// Sound is fully synthesized WebAudio (per-theme beds, positional creaks/whooshes/thud), OFF
-// until the ♪ toggle is clicked.
+// Sound is the game's own pitch+noise voice (ported tuning) with steam-grade acoustics:
+// physics-driven contact clicks, cathedral reverb, loss swell + 808 thud. OFF until ♪ is clicked.
 // The pieces play the menu's ambient AI battle: the game-sim section below is a verbatim port of
 // index.html's engine (Piece, crossing rule, 3D contact push, turn logic) plus the landing demo's
 // wobbly heuristic driver, so the tripods genuinely push each other around and off the rim,
@@ -589,10 +594,11 @@ let T = THEMES.noir;   // set for real by applyTheme(THEME) once the scene exist
   snd.addEventListener('click', ev => {
     ev.preventDefault();
     if (!SND.ctx) sndInit();
+    if (!SND.ready) return;
     SND.on = !SND.on;
     snd.textContent = SND.on ? '♪ on' : '♪ off';
-    if (SND.on) { SND.ctx.resume(); SND.master.gain.setTargetAtTime(0.9, SND.ctx.currentTime, 0.1); sndAmbience(THEME); }
-    else SND.master.gain.setTargetAtTime(0, SND.ctx.currentTime, 0.1);
+    SND.ctx.resume();
+    SND.master.gain.setTargetAtTime(SND.on ? SFX.master : 0, SND.ctx.currentTime, 0.1);
   });
   el.appendChild(snd);
   const gfx = document.createElement('a');
@@ -1240,7 +1246,7 @@ function syncPieces() {
 }
 reset(); syncPieces();
 window.__simInfo = () => ({ state: sim.state, games: sim.games, over: G.over, fall: fall.active,
-  active: G.active, playerMode, netRad: +G.netRad.toFixed(3),
+  active: G.active, playerMode, netRad: +G.netRad.toFixed(3), pinned: G.pinned,
   pieces: G.pieces.map(p => ({ x: +p.x.toFixed(2), y: +p.y.toFixed(2), rot: +p.rot.toFixed(2) })) });
 window.__simTick = simTick;   // headless tests fast-forward the battle without waiting real-time
 window.__dbg = () => ({ scene, camera, get env() { return envGroup; }, fogOff() { scene.fog = null; },
@@ -1248,153 +1254,169 @@ window.__dbg = () => ({ scene, camera, get env() { return envGroup; }, fogOff() 
     const f = G.pieces[0].feet()[i];
     const v = new THREE.Vector3(f.x, 0, f.y).project(camera);
     return { x: (v.x*0.5 + 0.5)*innerWidth, y: (-v.y*0.5 + 0.5)*innerHeight };
+  },
+  foot2d(i) {   // the same foot on the 2D board, in page coords
+    const cv = document.getElementById('board2d'), r = cv.getBoundingClientRect(), w = cv.width;
+    const sc2 = (w*0.86)/(2*CFG.edgeU), o = w/2, f = G.pieces[0].feet()[i];
+    return { x: r.left + (o + f.x*sc2)/w*r.width, y: r.top + (o + f.y*sc2)/w*r.height };
   } });
 
-// ---- sound — everything synthesized in WebAudio, no assets; OFF until the ♪ toggle -----------
-// A per-theme ambient bed, a whoosh that follows the swinging piece, creaks when legs actually
-// push (resolvePush sets pushHit), a rising rush when someone goes over and a reverbed thud when
-// they drop past the rim. Panned by board x — cheap positional audio.
-const SND = { on: false, ctx: null, master: null, verb: null, whoosh: null, amb: null,
-              lastCreakT: 0, wasFalling: false, impactDone: false };
-function sndNoiseBuf(c, secs, brown) {
+// ---- sound — the game's own pitch+noise voice, with steam-grade acoustics --------------------
+// Ported from index.html's audio engine: ONE looped noise source, split into a resonant bandpass
+// "voice" whose PITCH tracks the moving piece's distance from centre and whose VOLUME follows how
+// fast its feet actually move this frame (silent at rest), plus a high-passed chalk-scrape
+// channel — the same tuned SFX numbers as the game. New for the steam build: the synthesized
+// cathedral reverb stays on at a low level during play (the game saves it for the loss swell),
+// contact CLICKS fire straight off the physics (resolvePush), and the loser gets the game's
+// pitch-climb-into-the-cathedral swell plus a deep 808 thud when they drop past the rim.
+// No oscillator beeps, no ambient beds. All synthesized. OFF until the ♪ toggle is clicked.
+const SFX = {
+  master: 0.22, minHz: 340, maxHz: 4850, q: 4, highCut: 8000,
+  speedRef: 80, speedGain: 0.3, scrape: 0.05, scrapeHz: 6000,
+  reverb: 0.18, reverbEnd: 0.85,
+  clickVol: 0.5, clickHz: 400, clickLen: 0.035,
+  bassHz: 50, bassLen: 0.16, bassVol: 0.5,
+};
+const SND = { on: false, ctx: null, ready: false, prevFeet: null, lastClickT: 0,
+              swellDone: false, thudDone: false, wasSwing: false };
+function sndNoiseBuf(c, secs) {
   const buf = c.createBuffer(1, Math.floor(c.sampleRate*secs), c.sampleRate);
-  const d = buf.getChannelData(0); let last = 0;
-  for (let i = 0; i < d.length; i++) {
-    const w = Math.random()*2 - 1;
-    if (brown) { last = (last + 0.02*w)/1.02; d[i] = last*3.5; } else d[i] = w;
-  }
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random()*2 - 1;
   return buf;
 }
 function sndInit() {
-  const c = new (window.AudioContext || window.webkitAudioContext)();
-  const master = c.createGain(); master.gain.value = 0.9; master.connect(c.destination);
-  const ir = c.createBuffer(2, c.sampleRate*1.8, c.sampleRate);   // generated room impulse
-  for (let ch = 0; ch < 2; ch++) {
-    const d = ir.getChannelData(ch);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random()*2 - 1)*Math.pow(1 - i/d.length, 3);
-  }
-  const verb = c.createConvolver(); verb.buffer = ir;
-  const vg = c.createGain(); vg.gain.value = 0.3; verb.connect(vg); vg.connect(master);
-  const wSrc = c.createBufferSource(); wSrc.buffer = sndNoiseBuf(c, 2, true); wSrc.loop = true;
-  const wFil = c.createBiquadFilter(); wFil.type = 'bandpass'; wFil.frequency.value = 320; wFil.Q.value = 0.8;
-  const wGain = c.createGain(); wGain.gain.value = 0;
-  const wPan = c.createStereoPanner();
-  wSrc.connect(wFil); wFil.connect(wGain); wGain.connect(wPan); wPan.connect(master); wSrc.start();
-  SND.ctx = c; SND.master = master; SND.verb = verb; SND.whoosh = { gain: wGain, fil: wFil, pan: wPan };
-}
-function sndPan(x) { return Math.max(-1, Math.min(1, x/70)); }
-function sndBlip(freq, dur, gain, pan, type, toVerb) {
-  const c = SND.ctx, t = c.currentTime;
-  const o = c.createOscillator(); o.type = type || 'triangle';
-  o.frequency.setValueAtTime(freq, t);
-  if (type === 'sine') o.frequency.exponentialRampToValueAtTime(Math.max(20, freq*0.55), t + dur);
-  const g = c.createGain();
-  g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
-  const p = c.createStereoPanner(); p.pan.value = pan || 0;
-  o.connect(g); g.connect(p); p.connect(SND.master); if (toVerb) g.connect(SND.verb);
-  o.start(t); o.stop(t + dur + 0.05);
-}
-function sndBurst(dur, gain, pan, filFreq, filType) {
-  const c = SND.ctx, t = c.currentTime;
-  const s = c.createBufferSource(); s.buffer = sndNoiseBuf(c, dur + 0.1);
-  const f = c.createBiquadFilter(); f.type = filType || 'lowpass'; f.frequency.value = filFreq;
-  const g = c.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
-  const p = c.createStereoPanner(); p.pan.value = pan || 0;
-  s.connect(f); f.connect(g); g.connect(p); p.connect(SND.master); g.connect(SND.verb);
-  s.start(t); s.stop(t + dur + 0.1);
-}
-// per-theme ambient bed: [sourceKind, filter type/freq/Q, gain, optional LFO on filter freq]
-const SND_BEDS = {
-  noir:     [{ n: 'brown', f: ['lowpass', 200, 1], g: 0.05, lfo: [0.05, 60] }],
-  math:     [{ o: ['sine', 55], g: 0.012 }, { n: 'brown', f: ['lowpass', 500, 1], g: 0.01 }],
-  sumo:     [{ n: 'brown', f: ['bandpass', 260, 0.6], g: 0.055, lfo: [0.07, 120] }],
-  cosy:     [{ n: 'brown', f: ['lowpass', 130, 1], g: 0.05 }],   // crackle pops live in sndTick
-  alien:    [{ o: ['sine', 66.6], g: 0.014 }, { o: ['sine', 67.1], g: 0.014 }, { o: ['sine', 133.5], g: 0.008 },
-             { n: 'white', f: ['bandpass', 3800, 2], g: 0.005, lfo: [0.03, 1400] }],
-  colossus: [{ n: 'brown', f: ['bandpass', 400, 0.5], g: 0.06, lfo: [0.05, 150] },
-             { n: 'white', f: ['bandpass', 950, 0.7], g: 0.045, lfo: [0.31, 90] }],
-};
-function sndAmbience(theme) {
-  if (!SND.on || !SND.ctx) return;
-  const c = SND.ctx, t = c.currentTime;
-  if (SND.amb) {
-    const old = SND.amb;
-    old.gain.gain.setTargetAtTime(0, t, 0.4);
-    setTimeout(() => old.stops.forEach(s => { try { s.stop(); } catch (e) {} }), 1600);
-  }
-  const bed = SND_BEDS[theme] || SND_BEDS.noir;
-  const master = c.createGain(); master.gain.setValueAtTime(0, t);
-  master.gain.setTargetAtTime(1, t, 0.8); master.connect(SND.master);
-  const stops = [];
-  for (const v of bed) {
-    let src;
-    if (v.o) { src = c.createOscillator(); src.type = v.o[0]; src.frequency.value = v.o[1]; }
-    else { src = c.createBufferSource(); src.buffer = sndNoiseBuf(c, 3, v.n === 'brown'); src.loop = true; }
-    let node = src;
-    if (v.f) {
-      const fil = c.createBiquadFilter();
-      fil.type = v.f[0]; fil.frequency.value = v.f[1]; fil.Q.value = v.f[2];
-      src.connect(fil); node = fil;
-      if (v.lfo) {
-        const lo = c.createOscillator(); lo.frequency.value = v.lfo[0];
-        const lg = c.createGain(); lg.gain.value = v.lfo[1];
-        lo.connect(lg); lg.connect(fil.frequency); lo.start(); stops.push(lo);
-      }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  const c = new AC();
+  const noise = c.createBufferSource(); noise.buffer = sndNoiseBuf(c, 2); noise.loop = true;
+  const band = c.createBiquadFilter(); band.type = 'bandpass'; band.frequency.value = SFX.minHz; band.Q.value = SFX.q;
+  const voice = c.createGain(); voice.gain.value = 0;
+  const scrHP = c.createBiquadFilter(); scrHP.type = 'highpass'; scrHP.frequency.value = SFX.scrapeHz;
+  const scrape = c.createGain(); scrape.gain.value = 0;
+  const toneLP = c.createBiquadFilter(); toneLP.type = 'lowpass'; toneLP.frequency.value = SFX.highCut;
+  const dry = c.createGain(); dry.gain.value = 1 - SFX.reverb;
+  const conv = c.createConvolver();
+  {   // synthesized cathedral impulse (the game's makeCathedralImpulse)
+    const len = Math.floor(c.sampleRate*3.2), buf = c.createBuffer(2, len, c.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch);
+      for (let i = 0; i < len; i++) d[i] = (Math.random()*2 - 1)*Math.pow(1 - i/len, 2.6);
     }
-    const g = c.createGain(); g.gain.value = v.g;
-    node.connect(g); g.connect(master);
-    src.start(); stops.push(src);
+    conv.buffer = buf;
   }
-  SND.amb = { gain: master, stops };
+  const wet = c.createGain(); wet.gain.value = SFX.reverb;
+  const master = c.createGain(); master.gain.value = 0;
+  const limiter = c.createDynamicsCompressor();
+  limiter.threshold.value = -3; limiter.knee.value = 3; limiter.ratio.value = 20;
+  limiter.attack.value = 0.002; limiter.release.value = 0.12;
+  noise.connect(band); band.connect(voice); voice.connect(toneLP);
+  noise.connect(scrHP); scrHP.connect(scrape); scrape.connect(toneLP);
+  toneLP.connect(dry); dry.connect(master);
+  toneLP.connect(conv); conv.connect(wet); wet.connect(master);
+  master.connect(limiter); limiter.connect(c.destination);
+  noise.start();
+  Object.assign(SND, { ctx: c, ready: true, noise, band, voice, scrape, toneLP, dry, wet, master });
+}
+function sndClick(vol) {   // chalk click: a short high-passed noise tick — never an oscillator
+  const c = SND.ctx, t0 = c.currentTime;
+  const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = SFX.clickHz; hp.Q.value = 0.7;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(vol, t0 + 0.001);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + SFX.clickLen);
+  SND.noise.connect(hp); hp.connect(g); g.connect(SND.master);
+  setTimeout(() => { try { hp.disconnect(); g.disconnect(); } catch (e) {} }, (SFX.clickLen + 0.1)*1000);
+}
+function sndBass(hz, len, vol) {   // "808": a sine whose pitch snaps down — the drop IS the punch
+  const c = SND.ctx, t0 = c.currentTime;
+  const o = c.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(hz*3.2, t0);
+  o.frequency.exponentialRampToValueAtTime(hz, t0 + 0.045);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(vol, t0 + 0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+  o.connect(g); g.connect(SND.toneLP);   // through the room, so the thud has the acoustics
+  o.start(t0); o.stop(t0 + len + 0.05);
 }
 function sndTick(dt) {
-  if (!SND.on || !SND.ctx) return;
-  const c = SND.ctx, t = c.currentTime;
-  const swinging = (sim.state === 'swing' || sim.state === 'human') && !G.over;
-  SND.whoosh.gain.gain.setTargetAtTime(swinging ? 0.13*(T.simSpeed || 1) + 0.04 : 0, t, swinging ? 0.15 : 0.3);
-  if (swinging) {
-    const p = G.pieces[G.active];
-    SND.whoosh.pan.pan.setTargetAtTime(sndPan(p.x), t, 0.2);
-    SND.whoosh.fil.frequency.setTargetAtTime(200 + 260*(T.simSpeed || 1), t, 0.3);
-  }
-  if (pushHit) {
-    pushHit = false;
-    if (t - SND.lastCreakT > 0.09) {
-      SND.lastCreakT = t;
-      const mid = (G.pieces[0].x + G.pieces[1].x)/2;
-      sndBlip(140 + Math.random()*180, 0.05 + Math.random()*0.05, 0.045 + Math.random()*0.04,
-              sndPan(mid), 'square', false);
+  if (!SND.on || !SND.ready) return;
+  const now = SND.ctx.currentTime;
+  // the voice: pitch from the faster-moving piece's distance from centre, volume from the actual
+  // foot speed this frame — swings, shoves and stumbles all sound because they all MOVE
+  const feet = [G.pieces[0].feet(), G.pieces[1].feet()];
+  let speed = 0, radFrac = 0;
+  if (SND.prevFeet && dt > 1e-4) {
+    for (let p = 0; p < 2; p++) for (let i = 0; i < 3; i++) {
+      const d = Math.hypot(feet[p][i].x - SND.prevFeet[p][i].x, feet[p][i].y - SND.prevFeet[p][i].y)/dt;
+      if (d > speed) { speed = d; radFrac = Math.max(0, Math.min(1, radU(G.pieces[p])/CFG.edgeU)); }
     }
   }
-  if (fall.active && !SND.wasFalling) {   // over the edge: rising rush
-    SND.wasFalling = true; SND.impactDone = false;
-    sndBurst(1.1/(T.simSpeed || 1), 0.15, sndPan(G.pieces[fall.idx].x), 900, 'bandpass');
+  SND.prevFeet = feet;
+  if (!G.over) {
+    SND.band.frequency.setTargetAtTime(SFX.minHz*Math.pow(SFX.maxHz/SFX.minHz, radFrac), now, 0.03);
+    const lvl = Math.min(1, speed/Math.max(1, SFX.speedRef))*SFX.speedGain;
+    SND.voice.gain.setTargetAtTime(lvl, now, 0.02);
+    SND.scrape.gain.setTargetAtTime(lvl*SFX.scrape, now, 0.02);
   }
-  if (!fall.active) SND.wasFalling = false;
-  if (fall.active && !SND.impactDone && tripodGroups[fall.idx].position.y < -60) {
-    SND.impactDone = true;   // the thud, deep and reverbed — scaled up when the piece is a titan
-    const pan = sndPan(tripodGroups[fall.idx].position.x);
-    sndBlip(T.simSpeed ? 38 : 52, T.simSpeed ? 1.2 : 0.7, 0.5, pan, 'sine', true);
-    sndBurst(0.5, 0.3, pan, 240, 'lowpass');
+  // move-start 808 on each new swing, AI or human
+  const swinging = sim.state === 'swing' ||
+    (sim.state === 'human' && (player.phase === 'drag' || player.phase === 'pad') && Math.abs(G.netRad) > 0.01);
+  if (swinging && !SND.wasSwing) sndBass(SFX.bassHz, SFX.bassLen, SFX.bassVol);
+  SND.wasSwing = swinging;
+  // contact clicks straight off the physics, rate-limited, harder shove = louder click
+  if (pushHit) {
+    pushHit = false;
+    if (now - SND.lastClickT > 0.11) {
+      SND.lastClickT = now;
+      sndClick(SFX.clickVol*(0.4 + 0.6*Math.min(1, speed/60)));
+    }
   }
-  if (THEME === 'cosy' && Math.random() < dt*6)   // the fireside crackles
-    sndBurst(0.02 + Math.random()*0.05, 0.02 + Math.random()*0.03, -0.6 + Math.random()*1.2, 2400, 'highpass');
+  // the throw: the voice recedes into the cathedral (the game's loss swell)…
+  if (fall.active && !SND.swellDone) {
+    SND.swellDone = true; SND.thudDone = false;
+    const cur = SND.band.frequency.value;
+    SND.band.frequency.cancelScheduledValues(now);
+    SND.band.frequency.setValueAtTime(cur, now);
+    SND.band.frequency.setTargetAtTime(SFX.maxHz*1.8, now, 1.2);
+    SND.voice.gain.cancelScheduledValues(now);
+    SND.voice.gain.setValueAtTime(Math.max(SND.voice.gain.value, 0.2), now);
+    SND.voice.gain.setTargetAtTime(0, now, 0.3);
+    SND.scrape.gain.setTargetAtTime(0, now, 0.1);
+    SND.wet.gain.setTargetAtTime(SFX.reverbEnd, now, 0.12);
+    SND.dry.gain.setTargetAtTime(1 - SFX.reverbEnd, now, 0.12);
+  }
+  // …then the body lands, somewhere below — deeper and longer when it's a titan
+  if (fall.active && !SND.thudDone && tripodGroups[fall.idx].position.y < -60) {
+    SND.thudDone = true;
+    sndBass(T.simSpeed ? 34 : 44, T.simSpeed ? 1.1 : 0.7, 0.9);
+  }
+  if (!fall.active && SND.swellDone) {   // fresh board: dry room back, swell re-armed
+    SND.swellDone = false;
+    SND.wet.gain.setTargetAtTime(SFX.reverb, now, 0.1);
+    SND.dry.gain.setTargetAtTime(1 - SFX.reverb, now, 0.1);
+  }
 }
 
-// ---- player control — grab a blue foot, drag to swing; the AI keeps red ----------------------
-// The ambient battle is the attract mode. During blue's think pause its feet glow; press one to
-// pin it as the pivot (coach-style dotted arcs appear showing how far the other feet can sweep),
-// drag to swing — the same applySwing as everything else, so the crossing rules, direction lock
-// and rim block all hold — release to commit. Ignore your turn for 20s twice and blue goes back
-// to playing itself. Gamepad: stick aims at a foot, A pins, stick swings, A commits, B cancels.
+// ---- player control — the game's own scheme, on both boards --------------------------------
+// Click a blue foot to PIN it as the pivot (ring + dotted sweep guides appear and stay); then
+// click-and-drag one of the OTHER feet to swing it along its arc — the drag feeds the same
+// applySwing as everything else, so the crossing budget, direction lock and rim block all hold.
+// Release commits (a sub-2-degree release just re-arms the pin). Click the pivot again, or empty
+// board, to cancel. Works identically on the 3D scene and the 2D top-down board (bottom-left),
+// which doubles as a minimap while the AIs battle. Gamepad: stick aims, A pins, stick swings,
+// A commits, B cancels. Ignore your turn long enough and blue goes back to playing itself.
 let playerMode = false;
-const player = { phase: 'idle', hover: -1, drag: null, idleCount: 0 };
+const player = { phase: 'idle', hover: -1, drag: null, idleCount: 0, pinT: 0 };
+// phase: 'idle' | 'pinned' (pivot chosen, waiting for a handle) | 'drag' (pointer) | 'pad' (gamepad)
 const rayc = new THREE.Raycaster(), ndcV = new THREE.Vector2();
 const planeY = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), planePt = new THREE.Vector3();
 const footW = new THREE.Vector3();
 const canBlueMove = () => sim.state === 'think' && G.active === 0 && !G.over && !fall.active;
+const isPinned = () => sim.state === 'human' && (player.phase === 'pinned' || player.phase === 'pad');
 
-// affordances: glow discs on grabbable feet, a ring on the pinned pivot, dotted sweep guides
+// 3D affordances: glow discs on grabbable feet, a ring on the pivot, dotted sweep guides
 const hoverDiscs = [0, 1, 2].map(() => {
   const m = new THREE.Mesh(new THREE.CircleGeometry(3.4, 24),
     new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4,
@@ -1411,6 +1433,7 @@ const guideMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.3, transpar
   opacity: 0.7, depthWrite: false });
 const guidePts = new THREE.Points(guideGeo, guideMat);
 guidePts.visible = false; guidePts.frustumCulled = false; scene.add(guidePts);
+let guide2d = null;   // { pv, cw, ccw, arcs:[{R, a0}] } — the same rail, for the 2D board
 
 function pointerNDC(ev) {
   const r = renderer.domElement.getBoundingClientRect();
@@ -1427,10 +1450,7 @@ function hitFoot(ev) {
   }
   return best;
 }
-function dragAngle(ev) {   // pointer angle around the pivot, in board coords (game y = world z)
-  // null while the pointer is still within the dead zone around the pivot: right after grabbing,
-  // the pointer sits ON the pivot, where tiny movements read as wild angle swings — the swing
-  // only engages once the pointer has pulled far enough out to crank cleanly
+function dragAngle3d(ev) {   // pointer angle around the pivot in board coords; null in the dead zone
   pointerNDC(ev);
   if (!rayc.ray.intersectPlane(planeY, planePt)) return null;
   if (Math.hypot(planePt.x - G.pivot.x, planePt.z - G.pivot.y) < 8) return null;
@@ -1450,64 +1470,180 @@ function buildGuides() {
     G.turnDir = 0; G.crossings = 0; G.atLimit = false; G.netRad = 0; G.contact = null;
   };
   const ccw = look(1); roll(); const cw = look(-1); roll();
-  const feet = G.pieces[0].feet(), pv = G.pivot, pos = [];
+  const feet = G.pieces[0].feet(), pv = G.pivot, pos = [], arcs = [];
   for (let i = 0; i < 3; i++) {
     if (i === G.pinned) continue;
     const R = Math.hypot(feet[i].x - pv.x, feet[i].y - pv.y);
     const a0 = Math.atan2(feet[i].y - pv.y, feet[i].x - pv.x);
+    arcs.push({ R, a0 });
     for (let t = cw; t <= ccw; t += 2.5*Math.PI/180)
       pos.push(pv.x + Math.cos(a0 + t)*R, 0.5, pv.y + Math.sin(a0 + t)*R);
   }
   guideGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   guideGeo.computeBoundingSphere();
+  guide2d = { pv: { x: pv.x, y: pv.y }, cw, ccw, arcs };
 }
-function startHumanTurn(f) {
-  sim.state = 'human'; sim.plan = null;
-  playerMode = true; player.idleCount = 0;
+
+// the shared operations both boards (and the gamepad) drive
+function uiPin(f) {
+  if (canBlueMove()) { sim.state = 'human'; playerMode = true; player.idleCount = 0; }
+  else if (sim.state !== 'human') return;
   pinFoot(f);
   buildGuides();
+  player.phase = 'pinned'; player.pinT = 0; player.drag = null;
+}
+function uiUnpin() {
+  if (sim.state !== 'human') return;
+  restoreSnap(); clearTurn();
+  guide2d = null; controls.enabled = true;
+  player.phase = 'idle'; player.drag = null;
+  sim.state = 'think'; sim.t = 0; sim.wait = 0.4;   // still blue's turn — waits for the player
+}
+function uiStartDrag() {
+  player.phase = 'drag'; player.drag = { last: null }; player.pinT = 0;
   controls.enabled = false;
 }
-function humanRelease(cancel) {
-  if (sim.state !== 'human') return;
-  controls.enabled = true;
-  player.phase = 'idle'; player.drag = null;
-  if (!cancel && Math.abs(G.netRad) >= CFG.minMoveDeg*Math.PI/180) {
+function uiDrag(a) {
+  if (a === null || !player.drag) return;
+  if (player.drag.last === null) { player.drag.last = a; return; }
+  const dA = norm(a - player.drag.last);
+  player.drag.last = a;
+  applySwing(dA);
+}
+function uiRelease() {
+  if (player.phase !== 'drag' && player.phase !== 'pad') return;
+  controls.enabled = true; player.drag = null;
+  if (Math.abs(G.netRad) >= CFG.minMoveDeg*Math.PI/180) {
+    guide2d = null; player.phase = 'idle';
     endTurn();
     if (G.over) { triggerFall(); sim.state = 'fall'; sim.t = 0; }
     else { sim.state = 'think'; sim.t = 0; sim.wait = 0.5 + Math.random()*0.45; }
   } else {
-    restoreSnap(); clearTurn();
-    sim.state = 'think'; sim.t = 0; sim.wait = 0.4;   // still blue's turn — waits for the player
+    restoreSnap();                                   // too small to count — undo, stay pinned
+    player.phase = 'pinned'; player.pinT = 0;
   }
 }
+function handleDown(f, startDrag) {   // shared down logic; returns true when a drag began
+  if (isPinned()) {
+    if (f === G.pinned) { uiUnpin(); return false; }
+    if (f >= 0) { startDrag(); return true; }
+    uiUnpin(); return false;
+  }
+  if (canBlueMove() && f >= 0) uiPin(f);
+  return false;
+}
 renderer.domElement.addEventListener('pointerdown', ev => {
-  if (!canBlueMove()) return;
-  const f = hitFoot(ev);
-  if (f < 0) return;
-  ev.preventDefault();
-  startHumanTurn(f);
-  player.phase = 'drag';
-  player.drag = { last: null };
-  try { renderer.domElement.setPointerCapture(ev.pointerId); } catch (e) {}
+  const f = (canBlueMove() || isPinned()) ? hitFoot(ev) : -1;
+  if (f < 0 && !isPinned()) return;
+  if (handleDown(f, uiStartDrag)) {
+    ev.preventDefault();
+    try { renderer.domElement.setPointerCapture(ev.pointerId); } catch (e) {}
+  }
 });
 renderer.domElement.addEventListener('pointermove', ev => {
-  if (player.phase === 'drag' && sim.state === 'human') {
-    const a = dragAngle(ev);
-    if (a === null) return;
-    if (player.drag.last === null) { player.drag.last = a; return; }
-    const dA = norm(a - player.drag.last);
-    player.drag.last = a;
-    applySwing(dA);
-  } else if (canBlueMove()) {
+  if (player.phase === 'drag' && sim.state === 'human') { uiDrag(dragAngle3d(ev)); return; }
+  if (canBlueMove() || isPinned()) {
     player.hover = hitFoot(ev);
-    renderer.domElement.style.cursor = player.hover >= 0 ? 'grab' : '';
+    renderer.domElement.style.cursor = player.hover >= 0 ? 'pointer' : '';
   } else if (player.hover !== -1) { player.hover = -1; renderer.domElement.style.cursor = ''; }
 });
-addEventListener('pointerup', () => { if (player.phase === 'drag') humanRelease(false); });
-addEventListener('pointercancel', () => { if (player.phase === 'drag') humanRelease(true); });
+addEventListener('pointerup', () => { if (player.phase === 'drag') uiRelease(); });
+addEventListener('pointercancel', () => {
+  if (player.phase === 'drag') { restoreSnap(); player.phase = 'pinned'; player.drag = null; controls.enabled = true; }
+});
 
-// gamepad: stick aims, A pins/commits, B cancels; swing speed follows the stick
+// ---- the 2D board: the game's classic top-down view, playable and always live ----------------
+const cv2 = document.getElementById('board2d'), ctx2 = cv2.getContext('2d');
+function size2d() {
+  const r = cv2.getBoundingClientRect(), s2 = Math.round(r.width * (devicePixelRatio || 1));
+  if (s2 && cv2.width !== s2) { cv2.width = s2; cv2.height = s2; }
+}
+size2d();
+function board2dPos(ev) {
+  const r = cv2.getBoundingClientRect(), w = cv2.width;
+  const x = (ev.clientX - r.left)/r.width*w, y = (ev.clientY - r.top)/r.height*w;
+  const sc2 = (w*0.86)/(2*CFG.edgeU), o = w/2;
+  return { x: (x - o)/sc2, y: (y - o)/sc2 };
+}
+function hitFoot2d(ev) {
+  const p = board2dPos(ev), feet = G.pieces[0].feet();
+  let best = -1, bd = 1e9;
+  for (let i = 0; i < 3; i++) {
+    const d = Math.hypot(feet[i].x - p.x, feet[i].y - p.y);
+    if (d < 7 && d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+function dragAngle2d(ev) {
+  const p = board2dPos(ev);
+  if (Math.hypot(p.x - G.pivot.x, p.y - G.pivot.y) < 8) return null;
+  return Math.atan2(p.y - G.pivot.y, p.x - G.pivot.x);
+}
+cv2.addEventListener('pointerdown', ev => {
+  ev.preventDefault();
+  const f = (canBlueMove() || isPinned()) ? hitFoot2d(ev) : -1;
+  if (handleDown(f, uiStartDrag)) { try { cv2.setPointerCapture(ev.pointerId); } catch (e) {} }
+});
+cv2.addEventListener('pointermove', ev => {
+  if (player.phase === 'drag' && sim.state === 'human') { uiDrag(dragAngle2d(ev)); return; }
+  if (canBlueMove() || isPinned()) cv2.style.cursor = hitFoot2d(ev) >= 0 ? 'pointer' : '';
+});
+function guideCol(alpha) {
+  const c = guideMat.color;
+  return `rgba(${Math.round(c.r*255)},${Math.round(c.g*255)},${Math.round(c.b*255)},${alpha})`;
+}
+function draw2d(now) {
+  const w = cv2.width;
+  if (!w) return;
+  const sc2 = (w*0.86)/(2*CFG.edgeU), o = w/2;
+  ctx2.clearRect(0, 0, w, w);
+  ctx2.fillStyle = 'rgba(26,30,38,0.92)';
+  ctx2.beginPath(); ctx2.arc(o, o, CFG.edgeU*sc2, 0, 7); ctx2.fill();
+  ctx2.strokeStyle = guideCol(0.5); ctx2.lineWidth = Math.max(1, w*0.006);
+  for (const R of CFG.rings) { ctx2.beginPath(); ctx2.arc(o, o, R*sc2, 0, 7); ctx2.stroke(); }
+  for (const a of CFG.sideArcs) {
+    ctx2.beginPath();
+    ctx2.arc(o + a.cx*sc2, o + a.cy*sc2, a.r*sc2, a.a0*Math.PI/180, a.a1*Math.PI/180);
+    ctx2.stroke();
+  }
+  ctx2.fillStyle = guideCol(0.35);
+  for (const [dx, dy] of DOTS) { ctx2.beginPath(); ctx2.arc(o + dx*sc2, o + dy*sc2, w*0.008, 0, 7); ctx2.fill(); }
+  if (guide2d && sim.state === 'human') {   // the pinned rail, dashed, plus the pivot ring
+    ctx2.setLineDash([w*0.012, w*0.016]);
+    ctx2.strokeStyle = guideCol(0.85); ctx2.lineWidth = Math.max(1, w*0.005);
+    for (const g of guide2d.arcs) {
+      ctx2.beginPath();
+      ctx2.arc(o + guide2d.pv.x*sc2, o + guide2d.pv.y*sc2, g.R*sc2, g.a0 + guide2d.cw, g.a0 + guide2d.ccw);
+      ctx2.stroke();
+    }
+    ctx2.setLineDash([]);
+    ctx2.strokeStyle = guideCol(0.95); ctx2.lineWidth = Math.max(1.5, w*0.007);
+    ctx2.beginPath(); ctx2.arc(o + guide2d.pv.x*sc2, o + guide2d.pv.y*sc2, w*0.03, 0, 7); ctx2.stroke();
+  }
+  for (const [i, col] of [[0, '#6b9eff'], [1, '#ff6b6b']]) {
+    if (fall.active && fall.idx === i) continue;   // the faller has left the 2D board
+    const p = G.pieces[i], feet = p.feet(), hx = o + p.x*sc2, hy = o + p.y*sc2;
+    ctx2.strokeStyle = col; ctx2.lineWidth = Math.max(2, w*0.011); ctx2.lineCap = 'round';
+    for (const f of feet) {
+      ctx2.beginPath(); ctx2.moveTo(hx, hy); ctx2.lineTo(o + f.x*sc2, o + f.y*sc2); ctx2.stroke();
+    }
+    ctx2.fillStyle = col;
+    for (const f of feet) { ctx2.beginPath(); ctx2.arc(o + f.x*sc2, o + f.y*sc2, w*0.016, 0, 7); ctx2.fill(); }
+    ctx2.beginPath(); ctx2.arc(hx, hy, w*0.011, 0, 7); ctx2.fill();
+  }
+  const invite = canBlueMove(), pinned = isPinned();
+  if (invite || pinned) {   // halo the grabbable feet (all three to pin; the two handles once pinned)
+    const feet = G.pieces[0].feet();
+    for (let i = 0; i < 3; i++) {
+      if (pinned && i === G.pinned) continue;
+      ctx2.strokeStyle = guideCol(0.35 + 0.2*Math.sin(now/300 + i*2.1));
+      ctx2.lineWidth = Math.max(1.5, w*0.006);
+      ctx2.beginPath(); ctx2.arc(o + feet[i].x*sc2, o + feet[i].y*sc2, w*0.032, 0, 7); ctx2.stroke();
+    }
+  }
+}
+
+// gamepad: stick aims, A pins, stick X swings, A commits, B cancels
 const pad = { lastA: false, lastB: false };
 const padV = { right: new THREE.Vector3(), fwd: new THREE.Vector3() };
 function padTick(dt) {
@@ -1528,47 +1664,50 @@ function padTick(dt) {
       const p0 = G.pieces[0], feet = p0.feet();
       let best = 0, bs = -1e9;
       for (let i = 0; i < 3; i++) {
-        const s = (feet[i].x - p0.x)*dx + (feet[i].y - p0.y)*dz;
-        if (s > bs) { bs = s; best = i; }
+        const sc = (feet[i].x - p0.x)*dx + (feet[i].y - p0.y)*dz;
+        if (sc > bs) { bs = sc; best = i; }
       }
       player.hover = best;
     }
-    if (aEdge && player.hover >= 0) { startHumanTurn(player.hover); player.phase = 'pad'; }
+    if (aEdge && player.hover >= 0) { uiPin(player.hover); player.phase = 'pad'; }
   } else if (sim.state === 'human' && player.phase === 'pad') {
-    if (Math.abs(ax) > 0.15) applySwing(ax*1.6*dt);
-    if (aEdge) humanRelease(false);
-    if (bEdge) humanRelease(true);
+    if (Math.abs(ax) > 0.15) { applySwing(ax*1.6*dt); player.pinT = 0; }
+    if (aEdge) uiRelease();
+    if (bEdge) uiUnpin();
   }
 }
 let lastTag = '';
 function updateTag() {
   if (SHOW_FPS) return;
   let s;
-  if (sim.state === 'human') s = player.phase === 'pad' ? 'swing with the stick · A commit · B cancel'
-                                                        : 'drag to swing — release to commit';
-  else if (canBlueMove()) s = playerMode ? 'your move — hold a blue foot and swing'
-                                         : 'watching — grab a glowing blue foot to play';
+  if (player.phase === 'drag') s = 'release to commit the swing';
+  else if (player.phase === 'pad') s = 'swing with the stick · A commit · B cancel';
+  else if (isPinned()) s = 'pivot set — drag one of the other feet · click the pivot to cancel';
+  else if (canBlueMove()) s = playerMode ? 'your move — click a blue foot to pivot'
+                                         : 'watching — click a glowing blue foot to play';
   else if (playerMode && !G.over) s = 'red moves…';
   else s = 'tau · premium spike — drag to orbit';
   if (s !== lastTag) { lastTag = s; document.getElementById('tag').textContent = s; }
 }
 function playerTick(dt, now) {
-  const invite = canBlueMove();
-  const feet = invite ? G.pieces[0].feet() : null;
+  const invite = canBlueMove(), pinned = isPinned();
+  const feet = (invite || pinned) ? G.pieces[0].feet() : null;
   for (let i = 0; i < 3; i++) {
     const d = hoverDiscs[i];
-    d.visible = invite;
-    if (invite) {
+    d.visible = invite || (pinned && i !== G.pinned);
+    if (d.visible) {
       d.position.set(feet[i].x, 0.4, feet[i].y);
       d.material.opacity = i === player.hover ? 0.85 : 0.3 + 0.15*Math.sin(now/300 + i*2.1);
     }
   }
-  const pinned = sim.state === 'human' && !!G.pivot;
-  pivotRing.visible = pinned;
-  if (pinned) pivotRing.position.set(G.pivot.x, 0.4, G.pivot.y);
-  guidePts.visible = pinned;
+  const showPin = sim.state === 'human' && !!G.pivot;
+  pivotRing.visible = showPin;
+  if (showPin) pivotRing.position.set(G.pivot.x, 0.4, G.pivot.y);
+  guidePts.visible = showPin;
+  if (pinned) { player.pinT += dt; if (player.pinT > 25) uiUnpin(); }   // parked pin → attract resumes
   padTick(dt);
   updateTag();
+  draw2d(now);
 }
 
 // ---- post ------------------------------------------------------------------------------------
@@ -1599,6 +1738,7 @@ function sizeAll() {
   reflector.getRenderTarget().setSize(
     Math.max(256, Math.floor(innerWidth  * (devicePixelRatio || 1) / 2)),
     Math.max(256, Math.floor(innerHeight * (devicePixelRatio || 1) / 2)));
+  size2d();
 }
 function applyGfx() {
   const g = GFX[gfxMode];
@@ -1656,7 +1796,6 @@ function applyTheme(name) {
   document.querySelectorAll('#themes a').forEach(a => a.className = a.dataset.theme === name ? 'cur' : '');
   history.replaceState(null, '', '?theme=' + name + (SHOW_FPS ? '&fps' : ''));
   if (!SHOW_FPS) document.getElementById('tag').textContent = 'tau · premium spike — drag to orbit';
-  sndAmbience(name);
 }
 applyTheme(THEME);
 
