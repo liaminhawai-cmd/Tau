@@ -71,7 +71,12 @@ function main() {
         if (!fs.existsSync(part)) continue;
         const d = fs.readFileSync(part, 'utf8');
         ws.write(d); positions += d.split('\n').filter(Boolean).length;
-        fs.unlinkSync(part);
+        // a transient Windows file lock (antivirus/indexing) on a just-closed part file must never
+        // abort this loop -- that would orphan every LATER part unmerged (silent data loss) and,
+        // since this runs inside a child.on('exit') handler, crash the whole selfplay process.
+        // The data is already safely appended to `out` above; a leftover .w<n> file is just clutter.
+        try { fs.unlinkSync(part); }
+        catch (e) { console.warn(`warning: couldn't remove temp file ${part} (${e.message}) -- safe to delete by hand`); }
       }
       ws.end(() => console.log(`all ${parts.length} workers done: ${positions} positions -> ${out} ` +
                                `(${((Date.now() - t0)/1000).toFixed(0)}s)`));
