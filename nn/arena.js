@@ -24,7 +24,9 @@ function makeBrain(spec, eng) {
   const parts = spec.split(':');
   if (parts[0] !== 'nn') throw new Error('unknown brain: ' + spec);
   const temperature = parts[1] ? +parts[1] : 0;
-  const mp = parts[2] || path.join(__dirname, 'models', 'value.json');
+  // everything after the second colon is the model path — REJOINED, because Windows absolute
+  // paths contain a colon themselves (nn:0:C:\Users\...\best.json)
+  const mp = parts.length > 2 ? parts.slice(2).join(':') : path.join(__dirname, 'models', 'value.json');
   const net = MLP.fromJSON(JSON.parse(fs.readFileSync(mp, 'utf8')));
   return { name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + ')',
            fn: idx => nnPlanFor(eng, net, idx, { temperature }) };

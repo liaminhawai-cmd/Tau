@@ -33,6 +33,12 @@ const run = (script, args) => {
   console.log(`\n$ node nn/${script} ${args.join(' ')}`);
   execFileSync('node', [path.join(dir, script), ...args], { stdio: 'inherit' });
 };
+// arenas are informational (the gate promotes on resumed-from-best anyway) — a benchmark crash
+// must never kill an overnight training loop
+const runSoft = (script, args) => {
+  try { run(script, args); }
+  catch (e) { log(`WARNING: ${script} failed (${e.message}) — continuing`); }
+};
 
 for (let iter = 1; ; iter++) {
   // the self-play ramp: bootstrap on ladder games, then hand the curriculum to the net itself
@@ -49,7 +55,7 @@ for (let iter = 1; ; iter++) {
     log(`iteration ${iter} — first model promoted to best.json`);
   } else {
     log(`iteration ${iter} — gate: fresh vs best, ${arenaGames} games`);
-    run('arena.js', ['--a', 'nn:0:' + fresh, '--b', 'nn:0:' + best, '--games', arenaGames]);
+    runSoft('arena.js', ['--a', 'nn:0:' + fresh, '--b', 'nn:0:' + best, '--games', arenaGames]);
     // promotion is decided by re-reading the last arena line is fragile — play it simple and
     // strict instead: re-run a short gate here in-process would double the cost, so we promote
     // on the user's judgement OR automatically when the fresh net trained on strictly more data.
@@ -62,5 +68,5 @@ for (let iter = 1; ; iter++) {
   fs.copyFileSync(best, ckpt);
   log(`iteration ${iter} — checkpoint saved: ${path.basename(ckpt)}`);
   log(`iteration ${iter} — benchmark vs ${vs}`);
-  run('arena.js', ['--a', 'nn:0:' + best, '--b', vs, '--games', arenaGames]);
+  runSoft('arena.js', ['--a', 'nn:0:' + best, '--b', vs, '--games', arenaGames]);
 }
