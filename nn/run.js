@@ -54,6 +54,26 @@ const runCaptured = (script, args) => {
   return out;
 };
 
+// One-time reseed: the fresh-vs-best gate used to always promote regardless of the arena result
+// (fixed above), so best.json was never a real ratchet -- it could easily be worse than an earlier
+// checkpoint. Before trusting it, run a full round robin across every saved model once and promote
+// whichever actually wins the most, then never do this again (the now-real gate keeps it honest
+// from here on). A sentinel file (not the checkpoint count) marks it done, since it must survive
+// restarts and must not re-run every time start.bat is double-clicked.
+const tournamentDone = path.join(dir, 'models', '.tournament-done');
+if (!fs.existsSync(tournamentDone)) {
+  const modelsDir = path.join(dir, 'models');
+  const candidates = fs.existsSync(modelsDir)
+    ? fs.readdirSync(modelsDir).filter(f => /^(ckpt-\d+|best|value)\.json$/.test(f))
+    : [];
+  if (candidates.length > 1) {
+    log(`one-time reseed: ${candidates.length} saved models found -- running a round robin to find the real best before continuing`);
+    runSoft('tournament.js', ['--promote']);
+  }
+  fs.mkdirSync(modelsDir, { recursive: true });
+  fs.writeFileSync(tournamentDone, new Date().toISOString() + '\n');
+}
+
 // Resume from the next iteration after the highest completed checkpoint, not always 1 -- a restart
 // (closing the window, a crash, a reboot) used to reset the selfRatio ramp back to its iteration-1
 // value AND re-target iter001.jsonl, silently stacking a new run's data onto the very first one's.
