@@ -330,6 +330,24 @@
     #modeMsg { min-height:16px; text-align:center; }
     #modalBackdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6);
                       align-items:center; justify-content:center; z-index:50; }
+    /* ---------- Hidden dev mode (#nn): drag a trained model.json in, play it ---------- */
+    #nnDropOverlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:80;
+                      align-items:center; justify-content:center; padding:20px; box-sizing:border-box; }
+    #nnDropOverlay.open { display:flex; }
+    #nnDropOverlay.dragging #nnDropZone { border-color:#5b9bd5; background:rgba(91,155,213,0.12); }
+    #nnDropBox { background:#1a1e24; border:1px solid #3a4048; border-radius:10px; padding:24px 26px;
+                 text-align:center; max-width:380px; width:100%; position:relative; box-sizing:border-box; }
+    #nnDropBox h2 { margin:0 0 8px; font-size:20px; }
+    #nnDropBox p { color:#9aa4ad; font-size:13px; margin:0 0 16px; line-height:1.5; }
+    #nnDropBox code { background:#2c3138; border-radius:4px; padding:1px 5px; font-size:12px; }
+    #nnDropX { position:absolute; top:6px; right:6px; width:32px; height:32px; padding:0; margin:0;
+               background:none; border:none; color:#69727b; font-size:17px; line-height:32px; cursor:pointer; }
+    #nnDropX:active { color:#c7ccd1; }
+    #nnDropZone { border:2px dashed #3a4048; border-radius:8px; padding:26px 16px; display:flex;
+                  flex-direction:column; align-items:center; gap:12px; transition:border-color .15s, background .15s; }
+    #nnDropZoneLabel { color:#7d858d; font-size:13px; }
+    #nnDropMsg { min-height:16px; font-size:12px; color:#e07a5f; margin:12px 0 0; }
+    #nnDropMsg.ok { color:#4caf50; }
     /* ---------- Watch: a full-screen browse menu (not the small modal) ---------- */
     /* z-index above the fixed corner buttons (theme/sound/lang at 60) so the header covers that
        cluster instead of them poking through next to the close ✕. */
@@ -421,7 +439,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 168</div>
+<div id="buildTag">build 169</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -526,6 +544,21 @@
         <h2 id="modalTitle"></h2>
         <div id="modalBody"></div>
         <div id="modalBtns"></div>
+    </div>
+</div>
+<!-- Hidden dev mode (#nn): drag a trained nn/models/*.json checkpoint onto the page to play it on
+     the real board, no local server or URL param needed. Not linked from the menu -- see nn/README.md. -->
+<div id="nnDropOverlay">
+    <div id="nnDropBox">
+        <button id="nnDropX" aria-label="Close">✕</button>
+        <h2>Load a Tau brain</h2>
+        <p>Drop a trained model — a <code>.json</code> checkpoint from <code>nn/models/</code> — to play it on the real board.</p>
+        <div id="nnDropZone">
+            <span id="nnDropZoneLabel">Drop model.json here</span>
+            <button id="nnDropBrowse">Choose file…</button>
+            <input id="nnDropFile" type="file" accept="application/json,.json" style="display:none;">
+        </div>
+        <p id="nnDropMsg"></p>
     </div>
 </div>
 
@@ -4207,12 +4240,96 @@ function ladderPlanFor(levelIdx, idx){
     return ladderSampledPlan(idx, def.w, def.o);
 }
 
+// ===================== Hidden mode (#nn): a trained checkpoint as the AI brain =====================
+// Power-user/dev mode -- drag in a nn/models/*.json checkpoint (see nn/README.md) and it plays on
+// the REAL board with the real rules, no local server or ?nn= URL param needed. nnFeaturesGame/
+// nnForwardGame mirror nn/features.js and nn/net.js exactly (same 16 canonicalized inputs, same
+// tanh MLP), and nnPlanForGame is the same whole-turn-first search the ladder brains use: try every
+// (pivot, direction), roll back to the pre-turn snapshot each time, score the stop with the net,
+// keep the best. Only used when a game was actually started via the #nn drop screen (aiDifficulty
+// 'nn') -- loading a model must never hijack an ordinary ladder/difficulty game.
+let nnModel = null, nnModelName = '';
+function nnFeaturesGame() {
+    const E = CFG.edgeU, me = G.pieces[G.active], op = G.pieces[1 - G.active];
+    const b = Math.atan2(me.y, me.x) || 0;
+    const cb = Math.cos(-b), sb = Math.sin(-b);
+    let oxr = op.x*cb - op.y*sb, oyr = op.x*sb + op.y*cb;
+    const mirror = oyr < 0 ? -1 : 1; oyr *= mirror;
+    const meR = Math.hypot(me.x, me.y);
+    const opB = Math.atan2(op.y, op.x) || 0;
+    const a3m = 3*(me.rot - b), a3o = 3*(op.rot - opB);
+    const footRs = p => {
+        const r = [];
+        for (let i = 0; i < 3; i++) {
+            const a = p.rot + i*2*Math.PI/3;
+            r.push(Math.hypot(p.x + Math.cos(a)*CFG.footR, p.y + Math.sin(a)*CFG.footR));
+        }
+        return r.sort((x, y) => y - x);
+    };
+    const mf = footRs(me), of2 = footRs(op);
+    return [meR/E, Math.cos(a3m), Math.sin(a3m)*mirror, oxr/E, oyr/E, Math.cos(a3o), Math.sin(a3o)*mirror,
+            Math.hypot(op.x - me.x, op.y - me.y)/E, mf[0]/E, mf[1]/E, mf[2]/E, of2[0]/E, of2[1]/E, of2[2]/E,
+            (E - mf[0])/E, (E - of2[0])/E];
+}
+function nnForwardGame(x) {
+    const { sizes, W, b } = nnModel;
+    let a = x;
+    for (let l = 0; l < W.length; l++) {
+        const nIn = sizes[l], nOut = sizes[l + 1], z = new Array(nOut);
+        for (let j = 0; j < nOut; j++) {
+            let s = b[l][j];
+            for (let i = 0; i < nIn; i++) s += W[l][j*nIn + i]*a[i];
+            z[j] = Math.tanh(s);
+        }
+        a = z;
+    }
+    return a[0];
+}
+function nnPlanForGame(idx, temperature) {
+    const snap = takeSnap();
+    const roll = () => { G.pieces.forEach((p,i)=>{p.x=snap[i].x;p.y=snap[i].y;p.rot=snap[i].rot;});
+                          G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null; };
+    const cands = [];
+    for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
+        pinFoot(pv);
+        let tot = 0;
+        while (Math.abs(tot) < AI_SAFETY_CAP_RAD) { applySwing(dir*AI_STEP_RAD); tot = G.netRad; if (G.atLimit) break; }
+        const full = G.netRad;
+        roll();
+        if (Math.abs(full) < HARD_MIN_MOVE_RAD) continue;
+        for (const frac of [1, 0.7, 0.45, 0.22]) {
+            const target = full*frac;
+            if (Math.abs(target) < HARD_MIN_MOVE_RAD) continue;
+            pinFoot(pv);
+            let guard = 0;
+            while (!G.atLimit && Math.abs(G.netRad) < Math.abs(target) && guard++ < 5000)
+                applySwing(dir*Math.min(AI_STEP_RAD, Math.abs(target) - Math.abs(G.netRad)));
+            let v;
+            if (G.pieces[1 - idx].anyFootOff()) v = 1e6 - Math.abs(target)*1e-3;   // a throw -- shortest wins
+            else { G.active = 1 - idx; v = -nnForwardGame(nnFeaturesGame()); G.active = idx; }
+            cands.push({ pivotIdx: pv, dir, targetRad: target, v });
+            roll();
+        }
+    }
+    if (!cands.length) return null;
+    cands.sort((a, b) => b.v - a.v);
+    let k = 0;
+    if (temperature > 1e-6 && cands[0].v < 1e5) {
+        const mx = cands[0].v, ws = cands.map(c => Math.exp((c.v - mx)/temperature));
+        let r = Math.random()*ws.reduce((a, b) => a + b, 0);
+        for (let i = 0; i < cands.length; i++) { r -= ws[i]; if (r <= 0) { k = i; break; } }
+    }
+    return cands[k];
+}
+
 function startAiTurn() {
     if (G.over || G.active!==aiIdx) return;
     let pivotIdx, dir, target = 0;
-    // Ladder games route through the tuned per-level brain; everything else uses the classic
-    // difficulty planner. Both return the same { pivotIdx, dir, targetRad } the animation plays.
-    const sp = (ladderLevel!=null) ? ladderPlanFor(ladderLevel, aiIdx) : searchedPlanFor(aiDifficulty, aiIdx);
+    // Ladder games route through the tuned per-level brain, an #nn game routes through the loaded
+    // checkpoint, everything else uses the classic difficulty planner. All return the same
+    // { pivotIdx, dir, targetRad } the animation plays.
+    const sp = (aiDifficulty === 'nn' && nnModel) ? nnPlanForGame(aiIdx, 0.05)
+             : (ladderLevel!=null) ? ladderPlanFor(ladderLevel, aiIdx) : searchedPlanFor(aiDifficulty, aiIdx);
     if (sp) { pivotIdx = sp.pivotIdx; dir = sp.dir; target = sp.targetRad; }
     else {
         const plan = aiChoosePlan(aiIdx);
@@ -4877,7 +4994,7 @@ function backToMenu() {
 }
 document.getElementById('modeLocal').addEventListener('click', ()=>startGame(false));
 // Menu labels for the internal difficulty ids, used by the picker and the game-over difficulty chip.
-const AI_DIFF_LABEL = { dumb:'Easy', easy:'Medium', zone:'Hard', hard:'Very hard', master:'Expert' };
+const AI_DIFF_LABEL = { dumb:'Easy', easy:'Medium', zone:'Hard', hard:'Very hard', master:'Expert', nn:'Neural net' };
 function openAiDifficultyMenu() {
     showModal(t('vs AI'), t('Pick a difficulty.'), [
         { label: t('Easy'),      onClick: () => chooseAiColour('dumb') },
@@ -6982,6 +7099,51 @@ if (isShareHash(location.hash)) {
 if (/^#coach\b/i.test(location.hash)) {
     const bootCoach = () => { try { startCoach(); } catch (e) { console.error('coach boot failed', e); } };
     if (document.readyState === 'complete') bootCoach(); else addEventListener('load', bootCoach, { once: true });
+}
+// ---------- Hidden mode (#nn) wiring: drag-and-drop a model, pick a colour, play ----------
+function nnOpenDrop() { document.getElementById('nnDropOverlay').classList.add('open'); }
+function nnCloseDrop() {
+    document.getElementById('nnDropOverlay').classList.remove('open');
+    if (/^#nn\b/i.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+}
+function nnLoadModelFile(file) {
+    const msg = document.getElementById('nnDropMsg');
+    if (!file) return;
+    if (!/\.json$/i.test(file.name)) { msg.textContent = 'That needs to be a .json model file.'; msg.className = ''; return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+        let j;
+        try { j = JSON.parse(reader.result); }
+        catch (e) { msg.textContent = 'Could not parse that file as JSON.'; msg.className = ''; return; }
+        if (!j || !j.sizes || !j.W || !j.b) { msg.textContent = "That JSON doesn't look like a Tau model (missing sizes/W/b)."; msg.className = ''; return; }
+        nnModel = j; nnModelName = file.name;
+        msg.textContent = `Loaded ${file.name} ✓`; msg.className = 'ok';
+        setTimeout(() => { nnCloseDrop(); chooseAiColour('nn'); }, 350);
+    };
+    reader.onerror = () => { msg.textContent = 'Could not read that file.'; msg.className = ''; };
+    reader.readAsText(file);
+}
+(function () {
+    const overlay = document.getElementById('nnDropOverlay');
+    const zone = document.getElementById('nnDropZone');
+    const input = document.getElementById('nnDropFile');
+    document.getElementById('nnDropX').addEventListener('click', nnCloseDrop);
+    document.getElementById('nnDropBrowse').addEventListener('click', e => { e.stopPropagation(); input.click(); });
+    input.addEventListener('change', () => { if (input.files[0]) nnLoadModelFile(input.files[0]); });
+    const stop = e => { e.preventDefault(); e.stopPropagation(); };
+    ['dragenter', 'dragover'].forEach(evt => overlay.addEventListener(evt, e => { stop(e); overlay.classList.add('dragging'); }));
+    ['dragleave', 'drop'].forEach(evt => overlay.addEventListener(evt, e => { stop(e); overlay.classList.remove('dragging'); }));
+    overlay.addEventListener('drop', e => {
+        const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (file) nnLoadModelFile(file);
+    });
+    zone.addEventListener('click', () => input.click());
+})();
+// #nn — hidden dev mode: drop a trained nn/models/*.json checkpoint and play it on the real board,
+// no local server needed. Same forgiving match as #coach: #nn, #NN, #nn.html, #nn/ all work.
+if (/^#nn\b/i.test(location.hash)) {
+    const bootNn = () => nnOpenDrop();
+    if (document.readyState === 'complete') bootNn(); else addEventListener('load', bootNn, { once: true });
 }
 // Tapping a share link often focuses an EXISTING tau tab instead of opening a new one — the OS just
 // changes the hash, nothing reloads, and the link silently does nothing (the reported "it had me
