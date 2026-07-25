@@ -421,7 +421,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 165</div>
+<div id="buildTag">build 166</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -6255,7 +6255,11 @@ function buildTaperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
 function buildTripod(hex) {
     const g=new THREE.Group();
     const mat=new THREE.MeshStandardMaterial({color:hex, roughness:0.45, metalness:0.15});
-    const R=CFG.footR, H=CFG.hubHeight, legRad=CFG.legRadius;
+    // Visual legs render a hair wider (1.05x) than the collision radius: contact stops when the
+    // tube CENTRELINES are legRadius*2 apart -- exactly tangent -- and tangent tubes read on
+    // screen as a sliver of daylight between pieces that are "touching". The 5% flare makes
+    // real contact visibly overlap. Physics unchanged.
+    const R=CFG.footR, H=CFG.hubHeight, legRad=CFG.legRadius*1.05;
     for (let i=0;i<3;i++){ const th=i*2*Math.PI/3, pts=[];
         for (let k=0;k<=20;k++){ const ph=(k/20)*(Math.PI/2);
             pts.push(new THREE.Vector3(Math.sin(ph)*R*Math.cos(th), Math.cos(ph)*H, Math.sin(ph)*R*Math.sin(th))); }

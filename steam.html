@@ -776,18 +776,54 @@ float anoise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
   return mix(mix(ahash(i),ahash(i+vec2(1.0,0.0)),u.x), mix(ahash(i+vec2(0.0,1.0)),ahash(i+vec2(1.0,1.0)),u.x), u.y); }
 float afbm(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<6;i++){ s+=a*anoise(p); p=p*2.03+vec2(1.7,9.2); a*=0.5; } return s; }
 `;
+// Math theme's LIVE construction: every foot projects its pivot-sweep circle (radius footR*sqrt3
+// — where that piece's other feet could land if this foot were pinned) onto the board. A ring is
+// invisible along empty stretches and darkens where it approaches a crossing with an OPPOSITE-
+// colour ring or a printed board line — computed per-pixel, so the whole construction glides
+// live with every swing. closeness(other curves) does the intersection detection implicitly:
+// near ring A and near curve B simultaneously = near their crossing.
+const MATH_GLSL = `
+uniform float uMath; uniform vec2 uFeet[6]; uniform float uRingR;
+float mcurve(vec2 p, vec2 c, float r) { return abs(distance(p, c) - r); }
+float mboard(vec2 p) {   // nearest printed line (full circles, as the math board draws them)
+  float d = mcurve(p, vec2(0.0), 40.0);
+  d = min(d, mcurve(p, vec2(0.0), 53.3));
+  d = min(d, mcurve(p, vec2(-66.667, 0.0), 40.0));
+  d = min(d, mcurve(p, vec2(66.667, 0.0), 40.0));
+  return d;
+}
+`;
 boardMat.onBeforeCompile = shader => {
   shader.uniforms.tReflect = { value: reflector.getRenderTarget().texture };
   shader.uniforms.uReflMatrix = { value: reflMatrix };
   shader.uniforms.uReflStrength = { value: 0 };
   shader.uniforms.uAlien = { value: 0 };
   shader.uniforms.uAlienTime = { value: 0 };
+  shader.uniforms.uMath = { value: 0 };
+  shader.uniforms.uRingR = { value: CFG.footR*Math.sqrt(3) };
+  shader.uniforms.uFeet = { value: Array.from({ length: 6 }, () => new THREE.Vector2()) };
   shader.vertexShader = shader.vertexShader
     .replace('#include <common>', '#include <common>\nuniform mat4 uReflMatrix;\nvarying vec4 vReflCoord;\nvarying vec3 vWPos;')
     .replace('#include <fog_vertex>', '#include <fog_vertex>\nvReflCoord = uReflMatrix * modelMatrix * vec4(transformed, 1.0);\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
   shader.fragmentShader = shader.fragmentShader
-    .replace('#include <common>', '#include <common>\nuniform sampler2D tReflect;\nuniform float uReflStrength;\nvarying vec4 vReflCoord;\n' + ALIEN_GLSL)
+    .replace('#include <common>', '#include <common>\nuniform sampler2D tReflect;\nuniform float uReflStrength;\nvarying vec4 vReflCoord;\n' + ALIEN_GLSL + MATH_GLSL)
     .replace('#include <opaque_fragment>',
+      'if (uMath > 0.5) {\n' +
+      '  vec2 p = vWPos.xz;\n' +
+      '  float bd = mboard(p);\n' +
+      '  for (int i = 0; i < 6; i++) {\n' +
+      '    float stroke = smoothstep(0.55, 0.1, mcurve(p, uFeet[i], uRingR));\n' +
+      '    if (stroke < 0.004) continue;\n' +
+      '    float close = smoothstep(9.0, 1.0, bd);\n' +                // near a printed line?
+      '    for (int j = 0; j < 6; j++) {\n' +                          // near an opposite-colour ring?
+      '      if ((i < 3) == (j < 3)) continue;\n' +
+      '      close = max(close, smoothstep(9.0, 1.0, mcurve(p, uFeet[j], uRingR)));\n' +
+      '    }\n' +
+      '    float alpha = stroke * (0.022 + 0.9*close*close);\n' +      // invisible -> faint -> bold
+      '    vec3 tint = i < 3 ? vec3(0.42, 0.64, 1.0) : vec3(1.0, 0.5, 0.42);\n' +
+      '    outgoingLight += tint * alpha * 0.55;\n' +
+      '  }\n' +
+      '}\n' +
       'if (uAlien > 0.5) {\n' +
       '  vec2 p = vWPos.xz * 0.06;\n' +
       '  vec2 q = vec2(afbm(p), afbm(p + vec2(5.2, 1.3)));\n' +
@@ -842,28 +878,30 @@ function taperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
   return m;
 }
 const seedMat = new THREE.MeshStandardMaterial();   // replaced by applyTheme before the first frame
-// The real piece (photo) is THIN uniform wire legs meeting at a tiny fused junction — no bead.
-// Collision still uses CFG.legRadius (2.0); the VISUAL is slimmer so it matches the object.
-const VIS_LEG = CFG.legRadius * 0.62;
+// Visual leg radius is a HAIR wider than the collision radius (1.05x) so when two pieces push
+// (collision fires at CFG.legRadius*2 between centrelines) the visible tubes clearly OVERLAP —
+// contact you can see, matched to contact you hear. Same girth as the shipped game's legs.
+const VIS_LEG = CFG.legRadius * 1.05;
 function buildTripod() {
   const g = new THREE.Group();
   const R = CFG.footR, H = CFG.hubHeight, legRad = VIS_LEG;
   for (let i = 0; i < 3; i++) {
+    // each leg's curve OVERSHOOTS the apex (ph from -0.1 instead of 0): the three tubes cross
+    // through each other at the top and weld into one closed junction — the open tube mouths are
+    // buried inside the neighbouring tubes, so there is no gap and NO plug sphere at all (a plug
+    // always found an angle to poke out at, and showed through noir's transparent glass)
     const th = i * 2*Math.PI/3, pts = [];
-    for (let k = 0; k <= 20; k++) {
-      const ph = (k/20) * (Math.PI/2);
+    for (let k = 0; k <= 21; k++) {
+      const ph = -0.17 + (k/21) * (Math.PI/2 + 0.17);   // deep overshoot: mouths buried ~2 radii in
       pts.push(new THREE.Vector3(Math.sin(ph)*R*Math.cos(th), Math.cos(ph)*H, Math.sin(ph)*R*Math.sin(th)));
     }
-    const leg = taperedLeg(new THREE.CatmullRomCurve3(pts), seedMat, legRad, 16, 40, 0.3);   // near-uniform tube
+    const leg = taperedLeg(new THREE.CatmullRomCurve3(pts), seedMat, legRad, 16, 40, 0.35);   // near-uniform tube
     leg.userData.part = 'leg'; g.add(leg);
-    const foot = new THREE.Mesh(new THREE.SphereGeometry(legRad*0.62, 20, 14), seedMat);
+    const foot = new THREE.Mesh(new THREE.SphereGeometry(legRad*0.6, 20, 14), seedMat);
     foot.scale.set(1, 0.55, 1); foot.position.set(Math.cos(th)*R, 0.4, Math.sin(th)*R);
     foot.castShadow = true; foot.userData.part = 'leg'; g.add(foot);
   }
-  // NO bead: just a small fused knuckle where the three legs meet, the same girth as the tubes so
-  // nothing bulges out (this also kills the "ball floats on top of the legs from every angle" read)
-  const hub = new THREE.Mesh(new THREE.SphereGeometry(legRad*1.02, 24, 18), seedMat);
-  hub.position.set(0, H, 0); hub.castShadow = true; hub.userData.part = 'hub'; g.add(hub);
+  // no hub mesh at all — the overshooting tubes ARE the junction
   return g;
 }
 const tripodGroups = [buildTripod(), buildTripod()];
@@ -1535,6 +1573,17 @@ function sndClick(vol) {   // chalk click: a short high-passed noise tick — ne
   SND.noise.connect(hp); hp.connect(g); g.connect(SND.master);
   setTimeout(() => { try { hp.disconnect(); g.disconnect(); } catch (e) {} }, (SFX.clickLen + 0.1)*1000);
 }
+function sndBurst(dur, vol, pan, filFreq, filType) {   // one-shot filtered noise, through the room
+  const c = SND.ctx, t0 = c.currentTime;
+  const s = c.createBufferSource(); s.buffer = SND.noise.buffer;
+  s.loop = true; s.loopStart = Math.random()*1.5;
+  const f = c.createBiquadFilter(); f.type = filType || 'lowpass'; f.frequency.value = filFreq;
+  const g = c.createGain();
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.0005, t0 + dur);
+  s.connect(f); f.connect(g); g.connect(SND.toneLP);
+  s.start(t0, Math.random()*1.5); s.stop(t0 + dur + 0.05);
+}
 function sndBass(hz, len, vol) {   // "808": a sine whose pitch snaps down — the drop IS the punch
   const c = SND.ctx, t0 = c.currentTime;
   const o = c.createOscillator(); o.type = 'sine';
@@ -1561,26 +1610,33 @@ function sndTick(dt) {
     }
   }
   SND.prevFeet = feet;
+  // contact audio: a solid KNOCK the moment two pieces first touch, then a sustained GRIND fed
+  // into the scrape channel while they stay pushed. The old version was one 35ms high tick at
+  // first contact — buried under the movement voice, effectively inaudible.
+  const contactNow = pushHit; pushHit = false;
+  SND.grind = (SND.grind || 0)*0.85 + (contactNow ? 0.15 : 0);   // smoothed contact pressure
+  if (contactNow && !SND.wasContact && now - SND.lastClickT > 0.12) {
+    SND.lastClickT = now;
+    const v = 0.4 + 0.6*Math.min(1, speed/50);
+    sndBurst(0.09, 0.55*v, 0, 520, 'lowpass');   // the knock's body — low, woody
+    sndClick(SFX.clickVol*1.4*v);                 // the transient tick on top
+    sndBass(90, 0.08, 0.25*v);                    // a small pitch-drop thump underneath
+  }
+  SND.wasContact = contactNow;
   if (!G.over) {
     SND.band.frequency.setTargetAtTime(SFX.minHz*Math.pow(SFX.maxHz/SFX.minHz, radFrac), now, 0.03);
     const lvl = Math.min(1, speed/Math.max(1, SFX.speedRef))*SFX.speedGain;
     SND.voice.gain.setTargetAtTime(lvl, now, 0.02);
-    SND.scrape.gain.setTargetAtTime(lvl*SFX.scrape, now, 0.02);
+    // grinding while in contact: the scrape channel gets a strong extra push scaled by how fast
+    // the pieces are actually rubbing — silent when the shove stalls, harsh when it drives through
+    const grind = SND.grind*Math.min(1, speed/50)*0.5;
+    SND.scrape.gain.setTargetAtTime(lvl*SFX.scrape + grind, now, 0.03);
   }
   // move-start 808 on each new swing, AI or human
   const swinging = sim.state === 'swing' ||
     (sim.state === 'human' && (player.phase === 'drag' || player.phase === 'pad') && Math.abs(G.netRad) > 0.01);
   if (swinging && !SND.wasSwing) sndBass(SFX.bassHz, SFX.bassLen, SFX.bassVol);
   SND.wasSwing = swinging;
-  // contact clicks straight off the physics, rate-limited, harder shove = louder click
-  // ONE knock on the rising edge of a new contact, not a machine-gun of clicks while two pieces
-  // stay overlapped through a whole swing. A fresh contact needs a real gap since the last one.
-  if (pushHit && !SND.wasContact && now - SND.lastClickT > 0.16) {
-    SND.lastClickT = now;
-    sndClick(SFX.clickVol*(0.45 + 0.55*Math.min(1, speed/60)));
-  }
-  SND.wasContact = pushHit;
-  pushHit = false;
   // the throw: the voice recedes into the cathedral (the game's loss swell)…
   if (fall.active && !SND.swellDone) {
     SND.swellDone = true; SND.thudDone = false;
@@ -2022,9 +2078,17 @@ function loop() {
   if (envGroup && envGroup.userData.tick) envGroup.userData.tick(now/1000);
   reflector.visible = GFX[gfxMode].reflect && (T.boardReflect || 0) > 0.001;
   if (boardMat.userData.shader) {
-    boardMat.userData.shader.uniforms.uReflStrength.value = T.boardReflect || 0;
-    boardMat.userData.shader.uniforms.uAlien.value = (THEME === 'alien') ? 1 : 0;
-    boardMat.userData.shader.uniforms.uAlienTime.value = now/1000;
+    const u = boardMat.userData.shader.uniforms;
+    u.uReflStrength.value = T.boardReflect || 0;
+    u.uAlien.value = (THEME === 'alien') ? 1 : 0;
+    u.uAlienTime.value = now/1000;
+    u.uMath.value = (THEME === 'math') ? 1 : 0;
+    if (THEME === 'math') {   // the live construction follows the feet through every swing
+      for (let pi = 0; pi < 2; pi++) {
+        const feet = G.pieces[pi].feet();
+        for (let fi = 0; fi < 3; fi++) u.uFeet.value[pi*3 + fi].set(feet[fi].x, feet[fi].y);
+      }
+    }
     reflMatrix.copy(REFL_BIAS).multiply(reflector.camera.projectionMatrix).multiply(reflector.camera.matrixWorldInverse);
   }
   controls.update();
