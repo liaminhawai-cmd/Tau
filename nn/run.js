@@ -45,7 +45,25 @@ const runSoft = (script, args) => {
   catch (e) { log(`WARNING: ${script} failed (${e.message}) — continuing`); }
 };
 
-for (let iter = 1; ; iter++) {
+// Resume from the next iteration after the highest completed checkpoint, not always 1 -- a restart
+// (closing the window, a crash, a reboot) used to reset the selfRatio ramp back to its iteration-1
+// value AND re-target iter001.jsonl, silently stacking a new run's data onto the very first one's.
+// ckpt-NNN.json is only ever written as an iteration's last step, so the highest one found is the
+// last iteration that actually finished end to end.
+function nextIter() {
+  const modelsDir = path.join(dir, 'models');
+  let max = 0;
+  if (fs.existsSync(modelsDir))
+    for (const f of fs.readdirSync(modelsDir)) {
+      const m = /^ckpt-(\d+)\.json$/.exec(f);
+      if (m) max = Math.max(max, +m[1]);
+    }
+  return max + 1;
+}
+const startIter = nextIter();
+if (startIter > 1) log(`resuming at iteration ${startIter} (found checkpoints up to ckpt-${String(startIter - 1).padStart(3, '0')}.json)`);
+
+for (let iter = startIter; ; iter++) {
   // the self-play ramp: bootstrap on ladder games, then hand the curriculum to the net itself
   const selfRatio = fs.existsSync(best) ? Math.min(0.85, 0.25 + 0.1*(iter - 1)) : 0;
   log(`iteration ${iter} — selfplay ${gamesPerIter} games (selfRatio ${selfRatio.toFixed(2)}, ${workers} workers)`);
