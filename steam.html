@@ -870,6 +870,24 @@ function taperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
     const a2 = i*radialSegs+j, b2 = i*radialSegs+jn, c2 = (i+1)*radialSegs+j, d2 = (i+1)*radialSegs+jn;
     indices.push(a2, c2, b2, b2, c2, d2);
   }
+  // cap both ends — an open Frenet mouth is backface-culled from outside, so at the apex weld
+  // the three mouths read as see-through star-shaped holes
+  for (const [i, sgn] of [[0, -1], [lenSegs, 1]]) {
+    const T = frames.tangents[i], c = curve.getPointAt(i/lenSegs);
+    const ctr = positions.length/3;
+    positions.push(c.x, c.y, c.z); normals.push(T.x*sgn, T.y*sgn, T.z*sgn);
+    const base = positions.length/3;
+    for (let j = 0; j < radialSegs; j++) {              // re-emit the ring with the cap's normal
+      const k = (i*radialSegs + j)*3;
+      positions.push(positions[k], positions[k+1], positions[k+2]);
+      normals.push(T.x*sgn, T.y*sgn, T.z*sgn);
+    }
+    for (let j = 0; j < radialSegs; j++) {
+      const jn = (j+1) % radialSegs;
+      if (sgn < 0) indices.push(ctr, base+jn, base+j);
+      else indices.push(ctr, base+j, base+jn);
+    }
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
@@ -886,22 +904,25 @@ function buildTripod() {
   const g = new THREE.Group();
   const R = CFG.footR, H = CFG.hubHeight, legRad = VIS_LEG;
   for (let i = 0; i < 3; i++) {
-    // each leg's curve OVERSHOOTS the apex (ph from -0.1 instead of 0): the three tubes cross
-    // through each other at the top and weld into one closed junction — the open tube mouths are
-    // buried inside the neighbouring tubes, so there is no gap and NO plug sphere at all (a plug
-    // always found an angle to poke out at, and showed through noir's transparent glass)
+    // each leg ends EXACTLY at the apex; its sealed cap is a disc through the centre point,
+    // fully swallowed by the small weld bead below (like the real printed piece — the legs fuse
+    // at a little solder-blob junction barely wider than the wire).
     const th = i * 2*Math.PI/3, pts = [];
     for (let k = 0; k <= 21; k++) {
-      const ph = -0.17 + (k/21) * (Math.PI/2 + 0.17);   // deep overshoot: mouths buried ~2 radii in
+      const ph = (k/21) * (Math.PI/2);
       pts.push(new THREE.Vector3(Math.sin(ph)*R*Math.cos(th), Math.cos(ph)*H, Math.sin(ph)*R*Math.sin(th)));
     }
-    const leg = taperedLeg(new THREE.CatmullRomCurve3(pts), seedMat, legRad, 16, 40, 0.35);   // near-uniform tube
+    const leg = taperedLeg(new THREE.CatmullRomCurve3(pts), seedMat, legRad, 16, 40, 0.35);
     leg.userData.part = 'leg'; g.add(leg);
     const foot = new THREE.Mesh(new THREE.SphereGeometry(legRad*0.6, 20, 14), seedMat);
     foot.scale.set(1, 0.55, 1); foot.position.set(Math.cos(th)*R, 0.4, Math.sin(th)*R);
     foot.castShadow = true; foot.userData.part = 'leg'; g.add(foot);
   }
-  // no hub mesh at all — the overshooting tubes ARE the junction
+  // small weld bead, like the real printed piece: 1.25x the tube radius, centred on the apex.
+  // It swallows the three cap discs and rounds the crease where the tubes meet.
+  const bead = new THREE.Mesh(new THREE.SphereGeometry(legRad*1.25, 24, 18), seedMat);
+  bead.position.set(0, H, 0); bead.castShadow = true; bead.userData.part = 'leg';
+  g.add(bead);
   return g;
 }
 const tripodGroups = [buildTripod(), buildTripod()];
@@ -1494,7 +1515,7 @@ window.__simInfo = () => ({ state: sim.state, games: sim.games, over: G.over, fa
   active: G.active, playerMode, netRad: +G.netRad.toFixed(3), pinned: G.pinned, nn: !!nnModel,
   pieces: G.pieces.map(p => ({ x: +p.x.toFixed(2), y: +p.y.toFixed(2), rot: +p.rot.toFixed(2) })) });
 window.__simTick = simTick;   // headless tests fast-forward the battle without waiting real-time
-window.__dbg = () => ({ scene, camera, get env() { return envGroup; }, fogOff() { scene.fog = null; },
+window.__dbg = () => ({ scene, camera, controls, get env() { return envGroup; }, fogOff() { scene.fog = null; },
   footScreen(i) {
     const f = G.pieces[0].feet()[i];
     const v = new THREE.Vector3(f.x, 0, f.y).project(camera);

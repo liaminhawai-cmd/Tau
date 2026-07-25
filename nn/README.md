@@ -12,7 +12,11 @@ never drift from the real game's rules.
 node nn/run.js
 ```
 
-Leave it running overnight (Ctrl-C any time — every stage saves). Each iteration:
+Leave it running overnight (Ctrl-C any time — every stage saves). Selfplay automatically spreads
+games across your CPU cores (up to 8 worker processes — a desktop chews through games several
+times faster than one core; `--workers 1` forces serial). Training is CPU-only by design: the
+net is tiny and the real cost is *playing games*, so a GPU would sit idle — don't expect the
+graphics card to light up, expect one busy node process per worker. Each iteration:
 
 1. **selfplay** — 200 games. Iteration 1 is pure ladder sparring (dense, decisive teaching
    games); from then on the net's own share ramps up ~10% per iteration toward 85% self-play —

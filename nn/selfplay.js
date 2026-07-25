@@ -53,13 +53,53 @@ function main() {
   const discount = +arg('discount', 0.995);
   const temperature = +arg('temperature', 0.08);
   const selfRatio = +arg('selfRatio', 0.5);   // share of games the net itself plays in (once it exists)
+  const workers = Math.max(1, Math.floor(+arg('workers', 1)));
   fs.mkdirSync(path.dirname(out), { recursive: true });
 
+  // Parallel mode: split the games across worker processes (each with its own engine sandbox),
+  // then stitch their part-files together. Games are independent, so this is a clean N-way split
+  // — the way to actually use a desktop's cores, since one game only ever busies one.
+  if (workers > 1) {
+    const { fork } = require('child_process');
+    const t0 = Date.now();
+    const per = Math.floor(games/workers), extra = games % workers, parts = [];
+    let live = 0;
+    const finish = () => {
+      const ws = fs.createWriteStream(out, { flags: 'a' });
+      let positions = 0;
+      for (const part of parts) {
+        if (!fs.existsSync(part)) continue;
+        const d = fs.readFileSync(part, 'utf8');
+        ws.write(d); positions += d.split('\n').filter(Boolean).length;
+        fs.unlinkSync(part);
+      }
+      ws.end(() => console.log(`all ${parts.length} workers done: ${positions} positions -> ${out} ` +
+                               `(${((Date.now() - t0)/1000).toFixed(0)}s)`));
+    };
+    for (let w = 0; w < workers; w++) {
+      const n = per + (w < extra ? 1 : 0);
+      if (!n) continue;
+      const part = out + '.w' + w;
+      parts.push(part);
+      try { fs.unlinkSync(part); } catch (e) {}
+      live++;
+      const ch = fork(__filename, ['--games', String(n), '--out', part, '--model', modelPath,
+        '--levels', levels.join(','), '--deep', deep.join(','), '--deepEvery', String(deepEvery),
+        '--discount', String(discount), '--temperature', String(temperature),
+        '--selfRatio', String(selfRatio)],
+        { env: Object.assign({}, process.env, { TAU_WORKER: String(w + 1) }) });
+      ch.on('exit', () => { if (--live === 0) finish(); });
+    }
+    console.log(`spawned ${parts.length} selfplay workers (${games} games total)`);
+    return;
+  }
+
+  const TAG = process.env.TAU_WORKER ? `[w${process.env.TAU_WORKER}] ` : '';
   const eng = createEngine();
   let net = null;
   if (fs.existsSync(modelPath)) {
     net = MLP.fromJSON(JSON.parse(fs.readFileSync(modelPath, 'utf8')));
-    console.log('sparring with model:', modelPath);
+    if (!TAG) console.log('sparring with model:', modelPath);
   }
   const ladderBrain = lvl => idx => eng.ladderPlanFor(lvl - 1, idx);
   const nnBrain = idx => nnPlanFor(eng, net, idx, { temperature });
@@ -94,11 +134,11 @@ function main() {
       }
     }
     if ((g + 1) % 10 === 0 || g === games - 1)
-      console.log(`game ${g + 1}/${games} (${tag}, ${plies} plies, winner ${winner}) — ` +
+      console.log(`${TAG}game ${g + 1}/${games} (${tag}, ${plies} plies, winner ${winner}) — ` +
                   `${positions} positions, ${((Date.now() - t0)/1000).toFixed(0)}s`);
   }
   ws.end();
-  console.log(`done: ${decided}/${games} decided games, ${positions} positions -> ${out}`);
+  console.log(`${TAG}done: ${decided}/${games} decided games, ${positions} positions -> ${out}`);
 }
 
 main();

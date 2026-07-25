@@ -6,6 +6,7 @@
 'use strict';
 const { execFileSync } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 function arg(name, dflt) {
@@ -16,6 +17,9 @@ const gamesPerIter = arg('gamesPerIter', '200');
 const epochs = arg('epochs', '6');
 const arenaGames = arg('arenaGames', '24');
 const vs = arg('vs', 'L8');
+// selfplay is embarrassingly parallel — use most of the machine's cores by default (capped: the
+// gain flattens and each worker holds its own engine sandbox). --workers 1 to go back to serial.
+const workers = arg('workers', String(Math.max(1, Math.min(os.cpus().length - 1, 8))));
 
 const dir = __dirname;
 const best = path.join(dir, 'models', 'best.json');
@@ -33,10 +37,10 @@ const run = (script, args) => {
 for (let iter = 1; ; iter++) {
   // the self-play ramp: bootstrap on ladder games, then hand the curriculum to the net itself
   const selfRatio = fs.existsSync(best) ? Math.min(0.85, 0.25 + 0.1*(iter - 1)) : 0;
-  log(`iteration ${iter} — selfplay ${gamesPerIter} games (selfRatio ${selfRatio.toFixed(2)})`);
+  log(`iteration ${iter} — selfplay ${gamesPerIter} games (selfRatio ${selfRatio.toFixed(2)}, ${workers} workers)`);
   run('selfplay.js', ['--games', gamesPerIter,
     '--out', path.join(dir, 'data', `iter${String(iter).padStart(3, '0')}.jsonl`),
-    '--model', best, '--selfRatio', String(selfRatio)]);
+    '--model', best, '--selfRatio', String(selfRatio), '--workers', workers]);
   log(`iteration ${iter} — train ${epochs} epochs`);
   run('train.js', ['--epochs', epochs, '--out', fresh,
     ...(fs.existsSync(best) ? ['--resume', best] : [])]);
