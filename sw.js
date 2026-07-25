@@ -3,7 +3,7 @@
 // network-first (so an online player always gets the newest build), with the cached copy as the
 // offline fallback; static assets are cache-first. Cross-origin requests (Supabase auth/realtime)
 // are never touched — they always go straight to the network.
-const CACHE = 'tau-v36';  // bump on asset changes so clients drop the old cache (v36: Slate default board for everyone; Ranked mode; Freeplay level-unlock gate)
+const CACHE = 'tau-v37';  // bump on asset changes so clients drop the old cache (v37: board default back to device light/dark pref; Ranked steps by half-level blue/red subrank)
 const ASSETS = [
   './', './index.html', './tau-logo.png',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon-32.png',
