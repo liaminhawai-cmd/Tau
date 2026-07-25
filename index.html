@@ -439,7 +439,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 170</div>
+<div id="buildTag">build 171</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -466,6 +466,7 @@
         <div id="playArea">
             <div class="playRow">
                 <button class="pbtn" id="modeAI">vs AI</button>
+                <button class="pbtn" id="modeRanked">Ranked</button>
                 <button class="pbtn" id="modeOnline">Online 1v1</button>
             </div>
             <!-- Second tier, all small + same weight. The 4 similar-width utilities tile as an even
@@ -1696,7 +1697,7 @@ function rubyize(str) {
 // The 6 mode buttons + the physical-set button (2 possible labels): paints plain text normally,
 // ruby-annotated HTML when on Traditional Chinese with the toggle on. Re-callable so the toggle can
 // flip live without a reload, not just at first paint.
-const BOPOMOFO_IDS = [['modeLocal','Local 1v1'],['modeOnline','Online 1v1'],['modeAI','vs AI'],
+const BOPOMOFO_IDS = [['modeLocal','Local 1v1'],['modeOnline','Online 1v1'],['modeAI','vs AI'],['modeRanked','Ranked'],
     ['howToPlayBtn','How to play'],['leaderboardBtn','Leaderboard'],['watchBtn','Watch']];
 function applyMenuBopomofo() {
     const zy = LANG === 'zht' && bopomofoOn;
@@ -3175,14 +3176,13 @@ function fillBoardDisc(ctx, ox, oy, sc){
 let htpTripods=[];   // throwaway pieces for the how-to-play "push them off" 3D demo (built in init3D)
 let currentTheme = 'dark';   // 'dark' for the dark/flat board (skin 0), 'light' otherwise — only used for
                              // the board's default (unskinned) colours.
-// First visit follows the device preference and lands on a GRADED board (not a flat one): light ->
-// Dojo (warm wood), dark -> Slate (graphite). An explicit choice (the ☀ cycle) is remembered and
-// wins from then on, so returning players keep whatever board they already picked.
+// First visit lands on Slate (graphite) for everyone, regardless of device light/dark preference.
+// An explicit choice (the ☀ cycle) is remembered and wins from then on, so returning players keep
+// whatever board they already picked.
 try {
     const saved = localStorage.getItem('tauSkin');
     const i = saved != null ? BOARD_SKINS.findIndex(s => s.id === saved) : -1;
-    if (i >= 0) skinIdx = i;
-    else skinIdx = (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches) ? 2 : 1;   // Dojo for light, Slate for dark
+    skinIdx = i >= 0 ? i : 1;   // Slate
     currentTheme = skinIdx === 0 ? 'dark' : 'light';
 } catch(e) {}
 // One palette for every flat board drawing (2D game canvas, landing demo, how-to-play slides)
@@ -4667,23 +4667,37 @@ function renderGameOverSheet() {
         return;
     } else if (ladderLevel != null) {
         const n = ladderLevel + 1, color = humanIdx, won = G.winner === humanIdx;
-        if (won) { markLadderCleared(n, color); recordLevelClear(n, color); }
-        title = won ? tf('Level {n} cleared!', { n }) : tf('Level {n} not cleared', { n });
-        buttons = [];
-        if (won) {
-            // "Play as Red" is the encouraged next step (both colours on THIS level before moving on),
-            // so it stays offered and normal/primary-styled every time you beat it as Blue -- same as
-            // "Next level" stays offered even after you've already beaten the next level too, no
-            // cleverness about hiding an option just because it's already been cleared once. "Next
-            // level" is visually demoted here so the encouraged step reads as the default, not removed.
-            if (color === 0)
-                buttons.push({ label: tf('Level {n} as Red', { n }), onClick: () => startLadderLevel(n-1, 1) });
-            if (n < LADDER_N)
-                buttons.push({ label: t('Next level'), onClick: () => startLadderLevel(n, 0), cls: color === 0 ? 'modalBtnQuiet' : undefined });
+        if (won) { markLadderCleared(n, color); recordLevelClear(n, color); }   // both Ranked and Freeplay bank the same clear
+        if (rankedMode) {
+            const newRank = won ? Math.min(LADDER_N, n + 1) : Math.max(1, n - 1);
+            setRankedLevel(newRank);
+            title = won
+                ? (newRank > n ? tf('Ranked: beat Level {n} — up to Level {m}', { n, m: newRank })
+                               : tf('Ranked: beat Level {n} — you’re at the top', { n }))
+                : (newRank < n ? tf('Ranked: Level {n} — down to Level {m}', { n, m: newRank })
+                               : tf('Ranked: Level {n} — Level 1 is the floor', { n }));
+            buttons = [
+                { label: t('Next ranked match'), onClick: startRankedMatch },
+                { label: t('Levels'), onClick: () => { hideModal(); openLadderMenu(); } },
+            ];
         } else {
-            buttons.push({ label: t('Try again'), onClick: () => startLadderLevel(n-1, color) });
+            title = won ? tf('Level {n} cleared!', { n }) : tf('Level {n} not cleared', { n });
+            buttons = [];
+            if (won) {
+                // "Play as Red" is the encouraged next step (both colours on THIS level before moving on),
+                // so it stays offered and normal/primary-styled every time you beat it as Blue -- same as
+                // "Next level" stays offered even after you've already beaten the next level too, no
+                // cleverness about hiding an option just because it's already been cleared once. "Next
+                // level" is visually demoted here so the encouraged step reads as the default, not removed.
+                if (color === 0)
+                    buttons.push({ label: tf('Level {n} as Red', { n }), onClick: () => startLadderLevel(n-1, 1) });
+                if (n < LADDER_N)
+                    buttons.push({ label: t('Next level'), onClick: () => startLadderLevel(n, 0), cls: color === 0 ? 'modalBtnQuiet' : undefined });
+            } else {
+                buttons.push({ label: t('Try again'), onClick: () => startLadderLevel(n-1, color) });
+            }
+            buttons.push({ label: t('Levels'), onClick: () => { hideModal(); openLadderMenu(); } });
         }
-        buttons.push({ label: t('Levels'), onClick: () => { hideModal(); openLadderMenu(); } });
     } else if (typeof coachFreeGuide !== 'undefined' && coachFreeGuide && vsAI) {
         // The coached landing game ended. Next steps speak the CURRENT ladder's language — the
         // generic vsAI sheet below still offers the old easy/medium difficulty chip, which no
@@ -4755,6 +4769,7 @@ function startGame(aiMode, humanColorIdx, difficulty) {
 // harder second clear). Routes through startGame with the 'ladder' tag so the tuned brain is used.
 function startLadderLevel(levelIdx, humanColorIdx) {
     ladderLevel = levelIdx;
+    rankedMode = false;   // plain Freeplay unless startRankedMatch() overrides this right after
     startGame(true, humanColorIdx===undefined ? 0 : humanColorIdx, 'ladder');
 }
 
@@ -5011,6 +5026,7 @@ function openAiDifficultyMenu() {
     ], false, { dismiss: true });
 }
 document.getElementById('modeAI').addEventListener('click', openLadderMenu);
+document.getElementById('modeRanked').addEventListener('click', startRankedMatch);
 // Easy follows one fixed offense/defense rule, no search. Medium scores every one of its 6 possible
 // (pivot × direction) moves by board-position value (see aiChoosePlanZone) and picks the best, but
 // never considers how the human might reply. Hard does the same 6-way search but looks one full move
@@ -5031,6 +5047,26 @@ function ladderProgress(){ try { return JSON.parse(localStorage.getItem('tauLadd
 function saveLadderProgress(p){ try { localStorage.setItem('tauLadder', JSON.stringify(p)); } catch(e){} }
 function ladderCleared(n, color){ const p=ladderProgress(); return !!(color===0?p.b:p.r)[n]; }
 function markLadderCleared(n, color){ const p=ladderProgress(); (color===0?p.b:p.r)[n]=1; saveLadderProgress(p); }
+// ---------- Ranked: no level picker, just your current rank, up a rung on a win / down on a loss ----------
+// rankedMode distinguishes a Ranked game from a plain Freeplay ladder game -- both route through
+// startLadderLevel/ladderLevel, but only Ranked adjusts rank on game-over. Reset to false at the
+// top of startLadderLevel so a Freeplay pick right after a Ranked match can never inherit the flag.
+let rankedMode = false;
+function rankedLevel(){
+    try {
+        const v = localStorage.getItem('tauRankedLevel');
+        if (v != null) return Math.max(1, Math.min(LADDER_N, +v));
+    } catch(e){}
+    return ladderFrontier() || LADDER_N;   // first time: start at your existing Freeplay frontier, not level 1
+}
+function setRankedLevel(n){ try { localStorage.setItem('tauRankedLevel', String(Math.max(1, Math.min(LADDER_N, n)))); } catch(e){} }
+// Same "Blue until cleared, then Red" colour pick Freeplay uses for its rungs -- Ranked just does
+// it automatically instead of showing a list to tap.
+function startRankedMatch(){
+    const n = rankedLevel(), play = ladderRungState(n).play;
+    startLadderLevel(n - 1, play === 'red' ? 1 : 0);
+    rankedMode = true;   // startLadderLevel just reset this false -- this IS the ranked game
+}
 function ladderTripodSVG(color, lit){
     return `<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="${color}" stroke-width="1.9" stroke-linecap="round" style="opacity:${lit?1:.22};${lit?`filter:drop-shadow(0 0 3px ${color}aa);`:''}">`
         + `<path d="M12 13V5.2"/><path d="M12 13L5.4 18.6"/><path d="M12 13l6.6 5.6"/>`
@@ -5042,15 +5078,23 @@ function ladderRungState(n){
     const bC=ladderCleared(n,0), rC=ladderCleared(n,1);
     return { play: !bC ? 'blue' : !rC ? 'red' : 'blue', state: (bC&&rC) ? 'done' : 'avail', bC, rC };
 }
+// The first not-yet-fully-cleared level (both colours) -- your climb frontier. 0 if every level on
+// the ladder is fully cleared. Shared by the menu's unlock gate and Ranked's auto-level-pick.
+function ladderFrontier(){
+    for (let n=1;n<=LADDER_N;n++){ if (!ladderCleared(n,0) || !ladderCleared(n,1)) return n; }
+    return 0;
+}
 function openLadderMenu(){
     // The highlighted "current" rung sweeps Blue THEN Red on the SAME level before moving to the
     // next one -- not every level's Blue first and only circling back for Red at the very end. That
     // all-Blue sweep was the biggest push toward "everyone plays Blue only": it's what the player is
     // shown as their next step at every single level, all the way to the top of the ladder.
-    let curN = 0;
-    for (let n=1;n<=LADDER_N;n++){ if (!ladderCleared(n,0) || !ladderCleared(n,1)){ curN=n; break; } }
+    const curN = ladderFrontier();
+    // Levels beyond your frontier are hidden entirely, not just greyed out -- only what you've
+    // cleared, plus the one you're currently working on, ever shows in the list.
+    const maxVisible = curN || LADDER_N;   // curN===0 -> every level cleared -> show them all
     let html='<div id="ladderList">';
-    for (let n=LADDER_N;n>=1;n--){
+    for (let n=maxVisible;n>=1;n--){
         const s=ladderRungState(n), cls = s.state + (n===curN ? ' cur' : '');
         html += `<div class="ladderRung ${cls}" data-n="${n}" data-play="${s.play}">`
             + `<span class="ln">${n}</span>`
