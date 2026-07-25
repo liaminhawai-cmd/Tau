@@ -44,6 +44,15 @@ const runSoft = (script, args) => {
   try { run(script, args); }
   catch (e) { log(`WARNING: ${script} failed (${e.message}) — continuing`); }
 };
+// gate needs the arena's result, not just its exit code — capture stdout (still echoed below) and
+// pull the final "aWins-bWins" summary line arena.js prints out of it.
+const GATE_THRESHOLD = 0.55;
+const runCaptured = (script, args) => {
+  console.log(`\n$ node nn/${script} ${args.join(' ')}`);
+  const out = execFileSync('node', [path.join(dir, script), ...args], { encoding: 'utf8' });
+  process.stdout.write(out);
+  return out;
+};
 
 // Resume from the next iteration after the highest completed checkpoint, not always 1 -- a restart
 // (closing the window, a crash, a reboot) used to reset the selfRatio ramp back to its iteration-1
@@ -78,13 +87,28 @@ for (let iter = startIter; ; iter++) {
     log(`iteration ${iter} — first model promoted to best.json`);
   } else {
     log(`iteration ${iter} — gate: fresh vs best, ${arenaGames} games`);
-    runSoft('arena.js', ['--a', 'nn:0:' + fresh, '--b', 'nn:0:' + best, '--games', arenaGames]);
-    // promotion is decided by re-reading the last arena line is fragile — play it simple and
-    // strict instead: re-run a short gate here in-process would double the cost, so we promote
-    // on the user's judgement OR automatically when the fresh net trained on strictly more data.
-    // Default: promote (training resumed FROM best, so it is best + more data).
-    fs.copyFileSync(fresh, best);
-    log(`iteration ${iter} — promoted fresh net (resumed-from-best + new data)`);
+    let stdout = '';
+    try { stdout = runCaptured('arena.js', ['--a', 'nn:0:' + fresh, '--b', 'nn:0:' + best, '--games', arenaGames]); }
+    catch (e) { log(`WARNING: gate arena failed (${e.message}) — promoting anyway (fail-open)`); }
+    // arena.js's final line looks like "nn(value.json) vs nn(best.json): 7-17  (29% of decided, ...)"
+    // -- pull the LAST "aWins-bWins" pair out of the captured output (earlier numbers are the live
+    // per-game running tally, which uses the same "N-M" shape).
+    const matches = [...stdout.matchAll(/:\s*(\d+)-(\d+)(?:-\d+)?\s+\(/g)];
+    const last = matches[matches.length - 1];
+    const freshWins = last ? +last[1] : 0, bestWins = last ? +last[2] : 0;
+    const decided = freshWins + bestWins;
+    if (!last || !decided) {
+      fs.copyFileSync(fresh, best);
+      log(`iteration ${iter} — gate: couldn't read a result — promoted anyway (fail-open)`);
+    } else if (freshWins/decided >= GATE_THRESHOLD) {
+      fs.copyFileSync(fresh, best);
+      log(`iteration ${iter} — gate: fresh ${freshWins}-${bestWins} best ` +
+          `(${(100*freshWins/decided).toFixed(0)}%) — promoted`);
+    } else {
+      log(`iteration ${iter} — gate: fresh ${freshWins}-${bestWins} best ` +
+          `(${(100*freshWins/decided).toFixed(0)}%) — held, best.json unchanged ` +
+          `(this iteration's data is still on disk and feeds the next attempt)`);
+    }
   }
   // checkpoint: every iteration's model is kept — play them, watch them, arena old vs new
   const ckpt = path.join(dir, 'models', `ckpt-${String(iter).padStart(3, '0')}.json`);
