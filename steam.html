@@ -8,14 +8,23 @@
 <style>
   html,body { margin:0; height:100%; background:#0a0c10; overflow:hidden; }
   canvas { display:block; }
-  #tag { position:fixed; left:10px; bottom:8px; color:#5a6470; font:11px system-ui; user-select:none; }
-  #themes { position:fixed; right:10px; bottom:8px; font:11px system-ui; }
-  #themes a { color:#5a6470; text-decoration:none; margin-left:10px; }
-  #themes a.cur { color:#c9a24b; }
-  /* top-right: empty sky in every theme, so the overlay never sits on top of the 3D pieces */
-  #board2d { position:fixed; right:10px; top:10px; width:min(32vh,270px); height:min(32vh,270px);
-             border-radius:10px; border:1px solid rgba(90,100,112,0.35);
-             background:rgba(10,12,16,0.78); touch-action:none; }
+  #tag { position:fixed; left:14px; bottom:14px; color:#7a8590; font:12px system-ui; user-select:none;
+         background:rgba(10,12,16,0.55); padding:5px 9px; border-radius:7px; pointer-events:none; }
+  /* real control bar: padded pill buttons with a backdrop — proper hit targets, obvious affordance */
+  #themes { position:fixed; right:14px; bottom:14px; display:flex; gap:6px; align-items:center;
+            padding:6px; border-radius:10px; background:rgba(14,17,22,0.72);
+            backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+            box-shadow:0 4px 20px rgba(0,0,0,0.4); font:600 13px/1 system-ui; z-index:10; }
+  #themes a { color:#c3ccd6; text-decoration:none; padding:7px 12px; border-radius:7px; cursor:pointer;
+              user-select:none; transition:background 0.12s, color 0.12s; white-space:nowrap; }
+  #themes a:hover { background:rgba(255,255,255,0.09); color:#fff; }
+  #themes a.cur { background:#c9a24b; color:#1a140a; }
+  #themes .sep { width:1px; height:20px; background:rgba(255,255,255,0.14); margin:0 2px; }
+  /* top-right minimap: empty sky in every theme, so it never sits on top of the 3D pieces */
+  #board2d { position:fixed; right:14px; top:14px; width:min(30vh,260px); height:min(30vh,260px);
+             border-radius:12px; border:1px solid rgba(120,132,146,0.4);
+             background:rgba(10,12,16,0.8); box-shadow:0 4px 20px rgba(0,0,0,0.4);
+             touch-action:none; z-index:5; }
 </style>
 </head>
 <body>
@@ -191,35 +200,71 @@ const THEMES = {
     band: { color: 0x20242c, rough: 0.5, metal: 0.6 }, slabColor: 0x14171d, tableColor: 0x0b0d12,
     boardEnv: 0.3, bumpScale: 0.35, boardReflect: 0.16, guide: 0xdcecff,
     paint() {
+      // The board drawn the way a geometer would BUILD it: compass and straightedge. Faint pencil
+      // construction (centre pins, radius lines, overshooting compass swings, intersection ticks)
+      // underneath the finished ink figure — the classic "how this shape is constructed" plate.
       const [al, a] = canvas2d();
-      a.fillStyle = '#141b28'; a.fillRect(0, 0, S, S);          // ink-navy graphite
-      a.globalAlpha = 0.25; a.drawImage(noiseCanvas(0.07), 0, 0); a.globalAlpha = 1;
-      // a whisper of a polar graticule — fine circles, a few spokes; no numbers, no ruler
-      a.strokeStyle = 'rgba(180,205,235,0.05)'; a.lineWidth = 2;
-      for (let r = 10; r < CFG.edgeU; r += 10) { a.beginPath(); a.arc(ox, oy, px(r), 0, 7); a.stroke(); }
-      for (let d = 0; d < 360; d += 30) {
-        const t = d*Math.PI/180;
-        a.beginPath(); a.moveTo(ox, oy); a.lineTo(ox + Math.cos(t)*px(CFG.edgeU), oy + Math.sin(t)*px(CFG.edgeU)); a.stroke();
+      a.fillStyle = '#131a26'; a.fillRect(0, 0, S, S);          // dark drafting-paper blue
+      a.globalAlpha = 0.22; a.drawImage(noiseCanvas(0.06), 0, 0); a.globalAlpha = 1;
+      const C = (x, y) => [ox + px(x), oy + px(y)];             // board-units -> canvas px
+      const PENCIL = 'rgba(150,192,236,0.16)', PENCIL2 = 'rgba(150,192,236,0.26)';
+      const INK = 'rgba(228,240,252,0.94)';
+      const pin = (x, y) => {                                   // compass centre: a small + and a prick
+        const [cx, cy] = C(x, y);
+        a.strokeStyle = PENCIL2; a.lineWidth = 2;
+        a.beginPath(); a.moveTo(cx-13, cy); a.lineTo(cx+13, cy); a.moveTo(cx, cy-13); a.lineTo(cx, cy+13); a.stroke();
+        a.fillStyle = PENCIL2; a.beginPath(); a.arc(cx, cy, 3, 0, 7); a.fill();
+      };
+      const swing = (cx, cy, R, a0, a1) => {                    // a compass arc that overshoots its ends
+        const [px0, py0] = C(cx, cy);
+        a.strokeStyle = PENCIL; a.lineWidth = 2.5;
+        a.beginPath(); a.arc(px0, py0, px(R), a0 - 0.28, a1 + 0.28); a.stroke();
+      };
+      const tick = (x, y) => {                                  // mark an intersection point
+        const [cx, cy] = C(x, y);
+        a.strokeStyle = PENCIL2; a.lineWidth = 2;
+        a.beginPath(); a.moveTo(cx-7, cy-7); a.lineTo(cx+7, cy+7); a.moveTo(cx-7, cy+7); a.lineTo(cx+7, cy-7); a.stroke();
+      };
+      // 1) horizontal construction axis + the two ring centres/radii struck from the middle
+      a.strokeStyle = PENCIL; a.lineWidth = 2;
+      a.beginPath(); a.moveTo(...C(-CFG.edgeU, 0)); a.lineTo(...C(CFG.edgeU, 0)); a.stroke();
+      pin(0, 0);
+      for (const R of CFG.rings) {
+        swing(0, 0, R, 0.5, 5.9);                               // the compass swing that becomes the ring
+        const [cx, cy] = C(0, 0);                               // a radius line out to the ring
+        a.strokeStyle = PENCIL; a.lineWidth = 1.5;
+        a.beginPath(); a.moveTo(cx, cy); a.lineTo(...C(Math.cos(-0.6)*R, Math.sin(-0.6)*R)); a.stroke();
       }
-      // the compass construction, implied: the side arcs completed as faint dashed circles
-      a.strokeStyle = 'rgba(150,200,255,0.13)'; a.lineWidth = 2.5; a.setLineDash([14, 12]);
-      for (const s of CFG.sideArcs) { a.beginPath(); a.arc(ox + px(s.cx), oy + px(s.cy), px(s.r), 0, 7); a.stroke(); }
-      a.setLineDash([]);
-      vignette(a, 0.2);
-      // the printed geometry — crisp pale hairlines
-      strokeLines(a, 'rgba(228,240,252,0.92)', LW*0.75);
-      // start dots as marked points: open circle + centre dot
+      // 2) the side arcs: pin at each rim centre, radius line to the rim, an overshooting swing
+      for (const s of CFG.sideArcs) {
+        pin(s.cx, s.cy);
+        a.strokeStyle = PENCIL; a.lineWidth = 1.5;
+        a.beginPath(); a.moveTo(...C(s.cx, s.cy)); a.lineTo(...C(s.cx + Math.cos(s.a0*Math.PI/180)*s.r, s.cy + Math.sin(s.a0*Math.PI/180)*s.r)); a.stroke();
+        swing(s.cx, s.cy, s.r, s.a0*Math.PI/180, s.a1*Math.PI/180);
+      }
+      // 3) intersection ticks where the rings meet the side arcs (the printed corners)
+      for (const s of CFG.sideArcs) for (const R of CFG.rings) {
+        const d = Math.hypot(s.cx, s.cy);
+        if (d < 1e-6 || d > R + s.r || d < Math.abs(R - s.r)) continue;
+        const xx = (d*d + R*R - s.r*s.r)/(2*d), yy2 = R*R - xx*xx;
+        if (yy2 < 0) continue;
+        const yy = Math.sqrt(yy2), ux = s.cx/d, uy = s.cy/d;
+        for (const sgn of [1, -1]) tick(xx*ux - sgn*yy*uy, xx*uy + sgn*yy*ux);
+      }
+      vignette(a, 0.22);
+      // 4) the finished figure inked crisply on top of the pencil work
+      strokeLines(a, INK, LW*0.8);
       const dotR = Math.max(4, px(CFG.edgeU * CFG.padRadiusFrac * 1.9));
       for (const [dx,dy] of DOTS) {
-        a.strokeStyle = 'rgba(228,240,252,0.9)'; a.lineWidth = 3;
+        a.strokeStyle = INK; a.lineWidth = 3;
         a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR, 0, 7); a.stroke();
-        a.fillStyle = 'rgba(228,240,252,0.9)';
-        a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR*0.3, 0, 7); a.fill();
+        a.fillStyle = INK; a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR*0.3, 0, 7); a.fill();
       }
       const [ro, r] = canvas2d();
-      r.fillStyle = '#8a8a8a'; r.fillRect(0, 0, S, S);          // matte board
-      strokeLines(r, '#5a5a5a', LW*0.75);                        // ink slightly glossier
-      const [bu, b] = canvas2d(); b.fillStyle = '#808080'; b.fillRect(0, 0, S, S);   // near-flat
+      r.fillStyle = '#8a8a8a'; r.fillRect(0, 0, S, S);          // matte paper
+      strokeLines(r, '#585858', LW*0.8);                        // inked lines a touch glossier
+      const [bu, b] = canvas2d(); b.fillStyle = '#808080'; b.fillRect(0, 0, S, S);
+      strokeLines(b, '#8e8e8e', LW*0.8);                        // ink raised a hair off the paper
       return { albedo: al, rough: ro, bump: bu };
     },
     pieces(which) {   // glazed ink ceramic — cheap, phone-friendly
@@ -289,70 +334,82 @@ const THEMES = {
     },
   },
 
-  // ============ COSY — fireside boardgame: honey wood + cream paint ============
+  // ============ COSY — heirloom board: figured walnut + gilt inlay, satin-waxed ============
+  // An expensive antique games table, not a kids' toy: deep figured walnut cut across the log,
+  // the lines as thin brass/gilt marquetry inlay, a satin wax finish (not plastic gloss), and
+  // turned rosewood pieces capped in aged brass.
   cosy: {
-    bg: 0x241a12, exposure: 1.06, bloom: [0.17, 0.6, 0.88],
-    key: { color: 0xffc98a, intensity: 2.7, pos: [95,75,25], shadow: 0.6 },
-    fill:{ color: 0x86a0c8, intensity: 0.3 },
-    band: { color: 0x503722, rough: 0.55, metal: 0.05 }, slabColor: 0x453019, tableColor: 0x33241a,
-    boardEnv: 0.8, bumpScale: 0.6, boardReflect: 0.12, guide: 0xf6ead0,
+    bg: 0x1a120c, exposure: 1.04, bloom: [0.14, 0.5, 0.9],
+    key: { color: 0xffcf96, intensity: 2.5, pos: [95,80,30], shadow: 0.6 },
+    fill:{ color: 0x8a94b0, intensity: 0.28 },
+    band: { color: 0x3a2716, rough: 0.4, metal: 0.15 }, slabColor: 0x2e1f12, tableColor: 0x241811,
+    boardEnv: 0.55, bumpScale: 0.5, boardReflect: 0.16, guide: 0xe8cf9a,
     paint() {
       const [al, a] = canvas2d();
-      a.fillStyle = '#8a6136'; a.fillRect(0, 0, S, S);           // honey oak
-      // the board is a SLICE OF THE TREE: concentric growth rings around an off-centre heart,
-      // each ring a wobbly closed loop (lean years and fat years), plus faint medullary rays
+      a.fillStyle = '#4a3220'; a.fillRect(0, 0, S, S);           // dark walnut ground
+      // figured walnut cut across the log: tight, richly coloured growth rings around an off-centre
+      // heart, deep browns to warm amber — the crowded rings near the heart are the "figure"
       let rng = 9090909; const rnd = () => (rng = (rng*16807)%2147483647)/2147483647;
-      const hx = ox + S*0.07, hy = oy - S*0.05;                  // heartwood, off centre like a real log
-      const wob = [];                                            // per-ring angular wobble harmonics
-      for (let k = 0; k < 4; k++) wob.push({ f: 2 + Math.floor(rnd()*4), ph: rnd()*7, amp: 0.012 + rnd()*0.02 });
-      let ring = S*0.015;
-      while (ring < S*0.78) {
-        const dark = rnd() > 0.45, w = dark ? 2 + rnd()*4 : 1.5 + rnd()*2;
-        a.strokeStyle = dark ? `rgba(104,68,34,${0.16 + rnd()*0.14})` : `rgba(168,126,66,${0.10 + rnd()*0.10})`;
+      const hx = ox + S*0.09, hy = oy - S*0.06;
+      const wob = [];
+      for (let k = 0; k < 5; k++) wob.push({ f: 2 + Math.floor(rnd()*5), ph: rnd()*7, amp: 0.010 + rnd()*0.022 });
+      let ring = S*0.01;
+      while (ring < S*0.82) {
+        const dark = rnd() > 0.4, w = dark ? 2.5 + rnd()*5 : 1 + rnd()*2;
+        // amber highs, near-black-brown lows — the chroma range antique walnut has, honey oak doesn't
+        a.strokeStyle = dark ? `rgba(58,34,16,${0.22 + rnd()*0.18})` : `rgba(150,102,52,${0.10 + rnd()*0.12})`;
         a.lineWidth = w; a.beginPath();
-        for (let t = 0; t <= 128; t++) {
-          const th = t/128*Math.PI*2;
+        for (let t = 0; t <= 160; t++) {
+          const th = t/160*Math.PI*2;
           let rr = ring;
-          for (const h of wob) rr *= 1 + h.amp*Math.sin(h.f*th + h.ph + ring*0.0012);
+          for (const h of wob) rr *= 1 + h.amp*Math.sin(h.f*th + h.ph + ring*0.0014);
           const x2 = hx + Math.cos(th)*rr, y2 = hy + Math.sin(th)*rr;
           t ? a.lineTo(x2, y2) : a.moveTo(x2, y2);
         }
         a.closePath(); a.stroke();
-        ring += S*(0.006 + rnd()*0.012);                         // ring spacing: good years, bad years
+        ring += S*(0.004 + rnd()*0.010);                         // tighter spacing = finer, dearer figure
       }
-      for (let i = 0; i < 40; i++) {                             // medullary rays out from the heart
-        const th = rnd()*Math.PI*2, r0 = S*(0.02 + rnd()*0.1), r1 = r0 + S*(0.1 + rnd()*0.45);
-        a.strokeStyle = `rgba(96,62,30,${0.05 + rnd()*0.06})`; a.lineWidth = 1.5 + rnd()*2;
+      for (let i = 0; i < 55; i++) {                             // fine medullary rays / silvering
+        const th = rnd()*Math.PI*2, r0 = S*(0.02 + rnd()*0.12), r1 = r0 + S*(0.08 + rnd()*0.4);
+        a.strokeStyle = `rgba(176,132,74,${0.04 + rnd()*0.06})`; a.lineWidth = 1 + rnd()*2;
         a.beginPath(); a.moveTo(hx + Math.cos(th)*r0, hy + Math.sin(th)*r0);
         a.lineTo(hx + Math.cos(th)*r1, hy + Math.sin(th)*r1); a.stroke();
       }
-      a.globalCompositeOperation = 'soft-light'; a.globalAlpha = 0.5;
-      a.drawImage(noiseCanvas(0.08, 202), 0, 0);
+      a.globalCompositeOperation = 'soft-light'; a.globalAlpha = 0.45;
+      a.drawImage(noiseCanvas(0.07, 202), 0, 0);
+      a.globalCompositeOperation = 'overlay'; a.globalAlpha = 0.3;   // warm waxed sheen pooling at centre
+      const wax = a.createRadialGradient(ox, oy, 0, ox, oy, px(CFG.edgeU));
+      wax.addColorStop(0, 'rgba(120,84,40,0.5)'); wax.addColorStop(1, 'rgba(0,0,0,0)');
+      a.fillStyle = wax; a.beginPath(); a.arc(ox, oy, px(CFG.edgeU), 0, 7); a.fill();
       a.globalCompositeOperation = 'source-over'; a.globalAlpha = 1;
-      vignette(a, 0.26);
-      // cream painted lines, slightly soft-edged
-      strokeLines(a, 'rgba(60,40,20,0.35)', LW*1.8);
-      strokeLines(a, '#efe3c6', LW*1.25);
-      const dotR = Math.max(4, px(CFG.edgeU * CFG.padRadiusFrac * 1.9));
-      for (const [dx,dy] of DOTS) {
-        a.fillStyle = 'rgba(60,40,20,0.3)'; a.beginPath(); a.arc(ox+px(dx), oy+px(dy)+dotR*0.3, dotR*1.2, 0, 7); a.fill();
-        a.fillStyle = '#efe3c6'; a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR, 0, 7); a.fill();
+      vignette(a, 0.34);
+      // the lines as inlaid brass/gilt marquetry: a dark shadow channel, then a thin bright metal line
+      strokeLines(a, 'rgba(24,14,6,0.6)', LW*1.5);
+      const gilt = a.createLinearGradient(0, 0, S, S);
+      gilt.addColorStop(0, '#b78a44'); gilt.addColorStop(0.5, '#e8c778'); gilt.addColorStop(1, '#b78a44');
+      strokeLines(a, gilt, LW*0.8);
+      const dotR = Math.max(4, px(CFG.edgeU * CFG.padRadiusFrac * 1.7));
+      for (const [dx,dy] of DOTS) {                              // inlaid brass studs
+        a.fillStyle = 'rgba(24,14,6,0.55)'; a.beginPath(); a.arc(ox+px(dx), oy+px(dy)+dotR*0.3, dotR*1.15, 0, 7); a.fill();
+        a.fillStyle = gilt; a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR, 0, 7); a.fill();
       }
       const [ro, r] = canvas2d();
-      r.fillStyle = '#6e6e6e'; r.fillRect(0, 0, S, S);           // varnished wood, medium gloss
-      r.globalAlpha = 0.35; r.drawImage(noiseCanvas(0.10, 404), 0, 0); r.globalAlpha = 1;
-      strokeLines(r, '#9a9a9a', LW*1.25);                         // paint sits matter than varnish
+      r.fillStyle = '#7a7a7a'; r.fillRect(0, 0, S, S);           // satin wax: soft mid gloss, not lacquer
+      r.globalAlpha = 0.3; r.drawImage(noiseCanvas(0.09, 404), 0, 0); r.globalAlpha = 1;
+      strokeLines(r, '#4a4a4a', LW*0.8);                          // polished brass inlay reads shinier
       const [bu, b] = canvas2d();
       b.fillStyle = '#808080'; b.fillRect(0, 0, S, S);
-      b.globalAlpha = 0.4; b.drawImage(noiseCanvas(0.08, 505), 0, 0); b.globalAlpha = 1;
+      b.globalAlpha = 0.35; b.drawImage(noiseCanvas(0.07, 505), 0, 0); b.globalAlpha = 1;
+      strokeLines(b, '#6a6a6a', LW*0.9);                          // inlay set slightly INTO the wood
       return { albedo: al, rough: ro, bump: bu };
     },
-    pieces(which) {   // friendly toy-glaze painted pieces
-      const col = which === 'blue' ? 0x3f6fc4 : 0xcf5030;
-      const hub = new THREE.MeshPhysicalMaterial({ color: col, metalness: 0, roughness: 0.48,
-        clearcoat: 0.3, clearcoatRoughness: 0.3, envMapIntensity: 0.4 });
-      const leg = new THREE.MeshPhysicalMaterial({ color: col, metalness: 0, roughness: 0.52,
-        clearcoat: 0.18, clearcoatRoughness: 0.38, envMapIntensity: 0.28, specularIntensity: 0.55 });
+    pieces(which) {   // turned hardwood capped in aged brass — an heirloom set
+      const wood = which === 'blue' ? 0x3a4a66 : 0x5e2a22;       // stained rosewood, blue/red tinted
+      const brass = 0x9a7638;
+      const hub = new THREE.MeshPhysicalMaterial({ color: brass, metalness: 0.75, roughness: 0.42,
+        clearcoat: 0.3, clearcoatRoughness: 0.4, envMapIntensity: 0.55 });   // aged brass bead
+      const leg = new THREE.MeshPhysicalMaterial({ color: wood, metalness: 0, roughness: 0.44,
+        clearcoat: 0.35, clearcoatRoughness: 0.25, envMapIntensity: 0.3, specularIntensity: 0.6 });  // waxed wood
       return { leg, hub };
     },
   },
@@ -610,6 +667,7 @@ let T = THEMES.noir;   // set for real by applyTheme(THEME) once the scene exist
     applyGfx();
   });
   el.appendChild(gfx);
+  const sep = document.createElement('span'); sep.className = 'sep'; el.appendChild(sep);
   for (const k of Object.keys(THEMES)) {
     const a = document.createElement('a');
     a.href = '?theme=' + k + (SHOW_FPS ? '&fps' : ''); a.textContent = k; a.dataset.theme = k;
@@ -750,8 +808,10 @@ function buildTripod() {
     foot.scale.set(1, 0.55, 1); foot.position.set(Math.cos(th)*R, 0.4, Math.sin(th)*R);
     foot.castShadow = true; foot.userData.part = 'leg'; g.add(foot);
   }
-  const hub = new THREE.Mesh(new THREE.SphereGeometry(legRad*1.9, 28, 20), seedMat);
-  hub.position.set(0, H, 0); hub.castShadow = true; hub.userData.part = 'hub'; g.add(hub);
+  // smaller bead, dropped so the three leg-tops merge INTO it rather than plugging a big ball on
+  // top — reads as one continuous cast piece, not a sphere stuck on a tripod
+  const hub = new THREE.Mesh(new THREE.SphereGeometry(legRad*1.35, 28, 20), seedMat);
+  hub.position.set(0, H - legRad*0.5, 0); hub.castShadow = true; hub.userData.part = 'hub'; g.add(hub);
   return g;
 }
 const tripodGroups = [buildTripod(), buildTripod()];
