@@ -52,6 +52,7 @@ function main() {
   const deepEvery = +arg('deepEvery', 12);
   const discount = +arg('discount', 0.995);
   const temperature = +arg('temperature', 0.08);
+  const selfRatio = +arg('selfRatio', 0.5);   // share of games the net itself plays in (once it exists)
   fs.mkdirSync(path.dirname(out), { recursive: true });
 
   const eng = createEngine();
@@ -70,11 +71,14 @@ function main() {
   for (let g = 0; g < games; g++) {
     let brainA, brainB, tag;
     const useDeep = deepEvery > 0 && g % deepEvery === deepEvery - 1;
-    if (net && Math.random() < 0.5) {
-      const lvl = useDeep ? pick(deep) : pick(levels);
-      if (Math.random() < 0.5) { brainA = nnBrain; brainB = ladderBrain(lvl); tag = 'nn vs L' + lvl; }
-      else { brainA = ladderBrain(lvl); brainB = nnBrain; tag = 'L' + lvl + ' vs nn'; }
-      if (Math.random() < 0.25) { brainA = nnBrain; brainB = nnBrain; tag = 'nn vs nn'; }
+    if (net && Math.random() < selfRatio) {
+      // at high selfRatio most of these are pure self-play — the ramp run.js drives
+      if (Math.random() < selfRatio) { brainA = nnBrain; brainB = nnBrain; tag = 'nn vs nn'; }
+      else {
+        const lvl = useDeep ? pick(deep) : pick(levels);
+        if (Math.random() < 0.5) { brainA = nnBrain; brainB = ladderBrain(lvl); tag = 'nn vs L' + lvl; }
+        else { brainA = ladderBrain(lvl); brainB = nnBrain; tag = 'L' + lvl + ' vs nn'; }
+      }
     } else {
       const la = useDeep ? pick(deep) : pick(levels), lb = useDeep ? pick(deep) : pick(levels);
       brainA = ladderBrain(la); brainB = ladderBrain(lb); tag = 'L' + la + ' vs L' + lb;

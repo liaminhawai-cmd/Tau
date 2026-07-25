@@ -1084,6 +1084,96 @@ function aiChoosePlan(aiIdx) {
   return { pivotIdx: order[1], swingIdx: order[0], target: ref };
 }
 // Decide the whole turn before any visible motion: run the swing to its natural limit on the
+// ---- optional neural-net brain (?nn=path/to/model.json) --------------------------------------
+// Load a checkpoint from the nn/ training kit and the battle uses it: red always plays the net,
+// blue plays it too until a human grabs a foot — so ?nn=nn/models/best.json (served locally from
+// the repo) lets you WATCH a checkpoint fight itself and PLAY it on the premium boards.
+// nnFeatures/nnForward mirror nn/features.js and nn/net.js exactly — same 16 canonicalized
+// inputs, same tanh MLP — and candidates are real engine swings, so the rules always hold.
+let nnModel = null;
+{
+  const nnUrl = new URLSearchParams(location.search).get('nn');
+  if (nnUrl) fetch(nnUrl).then(r => r.json()).then(j => {
+    if (j && j.sizes && j.W && j.b) { nnModel = j; console.log('nn model loaded:', nnUrl); }
+  }).catch(() => console.warn('nn model failed to load:', nnUrl));
+}
+function nnFeatures() {
+  const E = CFG.edgeU, me = G.pieces[G.active], op = G.pieces[1 - G.active];
+  const b = Math.atan2(me.y, me.x) || 0;
+  const cb = Math.cos(-b), sb = Math.sin(-b);
+  let oxr = op.x*cb - op.y*sb, oyr = op.x*sb + op.y*cb;
+  const mirror = oyr < 0 ? -1 : 1; oyr *= mirror;
+  const meR = Math.hypot(me.x, me.y);
+  const opB = Math.atan2(op.y, op.x) || 0;
+  const a3m = 3*(me.rot - b), a3o = 3*(op.rot - opB);
+  const footRs = p => {
+    const r = [];
+    for (let i = 0; i < 3; i++) {
+      const a = p.rot + i*2*Math.PI/3;
+      r.push(Math.hypot(p.x + Math.cos(a)*CFG.footR, p.y + Math.sin(a)*CFG.footR));
+    }
+    return r.sort((x, y) => y - x);
+  };
+  const mf = footRs(me), of2 = footRs(op);
+  return [meR/E, Math.cos(a3m), Math.sin(a3m)*mirror, oxr/E, oyr/E, Math.cos(a3o), Math.sin(a3o)*mirror,
+          Math.hypot(op.x - me.x, op.y - me.y)/E, mf[0]/E, mf[1]/E, mf[2]/E, of2[0]/E, of2[1]/E, of2[2]/E,
+          (E - mf[0])/E, (E - of2[0])/E];
+}
+function nnForward(x) {
+  const { sizes, W, b } = nnModel;
+  let a = x;
+  for (let l = 0; l < W.length; l++) {
+    const nIn = sizes[l], nOut = sizes[l + 1], z = new Array(nOut);
+    for (let j = 0; j < nOut; j++) {
+      let s = b[l][j];
+      for (let i = 0; i < nIn; i++) s += W[l][j*nIn + i]*a[i];
+      z[j] = Math.tanh(s);
+    }
+    a = z;
+  }
+  return a[0];
+}
+function nnPlanSteam(idx, temperature) {
+  const snap = takeSnap();
+  const roll = () => {
+    G.pieces.forEach((p, i) => { p.x = snap[i].x; p.y = snap[i].y; p.rot = snap[i].rot; });
+    G.turnDir = 0; G.crossings = 0; G.atLimit = false; G.netRad = 0; G.contact = null;
+    G.pinned = null; G.pivot = null;
+  };
+  const minMove = CFG.minMoveDeg*Math.PI/180, cands = [];
+  for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
+    pinFoot(pv);
+    let tot = 0;
+    while (Math.abs(tot) < AI_SAFETY_CAP_RAD) { applySwing(dir*DEMO_STEP_RAD); tot = G.netRad; if (G.atLimit) break; }
+    const full = G.netRad;
+    roll();
+    if (Math.abs(full) < minMove) continue;
+    for (const frac of [1, 0.7, 0.45, 0.22]) {
+      const target = full*frac;
+      if (Math.abs(target) < minMove) continue;
+      pinFoot(pv);
+      let guard = 0;
+      while (!G.atLimit && Math.abs(G.netRad) < Math.abs(target) && guard++ < 5000)
+        applySwing(dir*Math.min(DEMO_STEP_RAD, Math.abs(target) - Math.abs(G.netRad)));
+      let v;
+      if (G.pieces[1 - idx].anyFootOff()) v = 1e6 - Math.abs(target)*1e-3;   // a throw — shortest wins
+      else { G.active = 1 - idx; v = -nnForward(nnFeatures()); G.active = idx; }
+      cands.push({ pivotIdx: pv, dir, targetRad: target, v });
+      roll();
+    }
+  }
+  if (!cands.length) return null;
+  cands.sort((a, b) => b.v - a.v);
+  let k = 0;
+  if (temperature > 1e-6 && cands[0].v < 1e5) {
+    const mx = cands[0].v, ws = cands.map(c => Math.exp((c.v - mx)/temperature));
+    let r = Math.random()*ws.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < cands.length; i++) { r -= ws[i]; if (r <= 0) { k = i; break; } }
+  }
+  return cands[k];
+}
+
+// Decide the whole turn before any visible motion: run the swing to its natural limit on the
 // live G, record the angle, roll everything back; the animation then only ever moves forward.
 // Falls back to random pivots if the heuristic's choice is wedged, so the loop can't stall.
 function tryPivot(pivotIdx, dir0) {
@@ -1105,6 +1195,11 @@ function tryPivot(pivotIdx, dir0) {
   return { dir, fullRad };
 }
 function demoPlan() {
+  // with a checkpoint loaded, red always plays the net; blue plays it too until a human takes over
+  if (nnModel && (G.active === 1 || !playerMode)) {
+    const p = nnPlanSteam(G.active, 0.06);
+    if (p) { pinFoot(p.pivotIdx); return { dir: p.dir, targetRad: p.targetRad }; }
+  }
   const plan = aiChoosePlan(G.active);
   const feetNow = G.pieces[G.active].feet();
   const dir0 = directionToward(feetNow[plan.pivotIdx], feetNow[plan.swingIdx], plan.target);
@@ -1246,7 +1341,7 @@ function syncPieces() {
 }
 reset(); syncPieces();
 window.__simInfo = () => ({ state: sim.state, games: sim.games, over: G.over, fall: fall.active,
-  active: G.active, playerMode, netRad: +G.netRad.toFixed(3), pinned: G.pinned,
+  active: G.active, playerMode, netRad: +G.netRad.toFixed(3), pinned: G.pinned, nn: !!nnModel,
   pieces: G.pieces.map(p => ({ x: +p.x.toFixed(2), y: +p.y.toFixed(2), rot: +p.rot.toFixed(2) })) });
 window.__simTick = simTick;   // headless tests fast-forward the battle without waiting real-time
 window.__dbg = () => ({ scene, camera, get env() { return envGroup; }, fogOff() { scene.fog = null; },

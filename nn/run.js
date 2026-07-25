@@ -31,10 +31,12 @@ const run = (script, args) => {
 };
 
 for (let iter = 1; ; iter++) {
-  log(`iteration ${iter} — selfplay ${gamesPerIter} games`);
+  // the self-play ramp: bootstrap on ladder games, then hand the curriculum to the net itself
+  const selfRatio = fs.existsSync(best) ? Math.min(0.85, 0.25 + 0.1*(iter - 1)) : 0;
+  log(`iteration ${iter} — selfplay ${gamesPerIter} games (selfRatio ${selfRatio.toFixed(2)})`);
   run('selfplay.js', ['--games', gamesPerIter,
     '--out', path.join(dir, 'data', `iter${String(iter).padStart(3, '0')}.jsonl`),
-    '--model', best]);
+    '--model', best, '--selfRatio', String(selfRatio)]);
   log(`iteration ${iter} — train ${epochs} epochs`);
   run('train.js', ['--epochs', epochs, '--out', fresh,
     ...(fs.existsSync(best) ? ['--resume', best] : [])]);
@@ -51,6 +53,10 @@ for (let iter = 1; ; iter++) {
     fs.copyFileSync(fresh, best);
     log(`iteration ${iter} — promoted fresh net (resumed-from-best + new data)`);
   }
+  // checkpoint: every iteration's model is kept — play them, watch them, arena old vs new
+  const ckpt = path.join(dir, 'models', `ckpt-${String(iter).padStart(3, '0')}.json`);
+  fs.copyFileSync(best, ckpt);
+  log(`iteration ${iter} — checkpoint saved: ${path.basename(ckpt)}`);
   log(`iteration ${iter} — benchmark vs ${vs}`);
   run('arena.js', ['--a', 'nn:0:' + best, '--b', vs, '--games', arenaGames]);
 }

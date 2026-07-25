@@ -14,9 +14,9 @@ node nn/run.js
 
 Leave it running overnight (Ctrl-C any time — every stage saves). Each iteration:
 
-1. **selfplay** — 200 games (ladder-vs-ladder from the fast levels L2-L6, every 12th game from
-   the deep L7/L8 brains; once a model exists, half the games involve the net itself, with a
-   little exploration temperature). Every decided game's positions land in `nn/data/*.jsonl`,
+1. **selfplay** — 200 games. Iteration 1 is pure ladder sparring (dense, decisive teaching
+   games); from then on the net's own share ramps up ~10% per iteration toward 85% self-play —
+   bootstrap on the ladder, then let the curriculum come from its own games. Every decided game's positions land in `nn/data/*.jsonl`,
    labeled with the outcome from the mover's perspective.
 2. **train** — the value MLP (16 symmetry-canonicalized features → 64 → 64 → 1, tanh) resumes
    from the current best and trains on ALL accumulated data.
@@ -46,6 +46,30 @@ ladder brain, so the arena — and eventually the game — can swap it in anywhe
 softens the argmax into a softmax over move values. Temperature 0 = full strength; higher =
 softer, *monotonically* — one continuous knob, no hundred hand-tuned levels. Calibrate a few
 points against the ladder with `arena.js` and interpolate.
+
+## Checkpoints — play them, watch them
+
+`run.js` snapshots every iteration to `nn/models/ckpt-001.json`, `ckpt-002.json`, … so nothing
+is ever lost and any generation can be fought against any other:
+
+```
+node nn/arena.js --a nn:0:nn/models/ckpt-009.json --b nn:0:nn/models/ckpt-003.json --games 24
+```
+
+To WATCH a checkpoint (or play it yourself) on the premium boards: serve the repo locally
+(`python -m http.server` or `npx http-server` in the repo root) and open
+
+```
+http://localhost:8000/steam.html?nn=nn/models/best.json
+```
+
+Red always plays the net; blue plays it too until you grab a blue foot — then it's you vs the
+checkpoint, guides and all. Swap the path for any `ckpt-*.json` to time-travel.
+
+## The easy start (gaming PC)
+
+Double-click **`nn/START.bat`** (Windows). A black window opens and training runs — leave it
+open; closing it stops training with everything saved. `nn/start.sh` is the same for Mac/Linux.
 
 ## Expectations, honestly
 
