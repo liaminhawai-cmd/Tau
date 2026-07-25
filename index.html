@@ -421,7 +421,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 167</div>
+<div id="buildTag">build 168</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -6200,58 +6200,94 @@ function boardTexture(dark) {
     }
     return new THREE.CanvasTexture(cv);
 }
-// A leg as ONE continuous mesh: full legRad radius for most of the quarter-circle arc,
-// smoothly (smoothstep) tapering down to a flat CFG.footPadRadius pad exactly at the foot
-// (ground, y=0) — matching the physical piece: a small magnet sits embedded in the middle
-// of that flat foot face (see CFG.padRadius, used for the board-texture dot), but the foot
-// itself stays a blunt, printable flat pad, not shrunk all the way down to magnet size —
-// that read as an infinitely sharp needle rather than a flat-bottomed foot. Built by hand
-// off the curve's own Frenet frames (the same frames TubeGeometry uses internally), so the
-// taper always meets the cylindrical part following the curve's real tangent — never a
-// separately-oriented cone glued on with an approximate straight-line axis, which is what
-// produced a visible seam/notch where the two pieces met.
-function buildTaperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
-    const frames = curve.computeFrenetFrames(lenSegs, false);
-    const positions=[], normals=[], indices=[];
-    for (let i=0;i<=lenSegs;i++){
-        const u=i/lenSegs, center=curve.getPointAt(u);
-        const N=frames.normals[i], B=frames.binormals[i];
-        let rad=legRad;
-        if (u > 1-taperFrac){
-            const t=(u-(1-taperFrac))/taperFrac, s=t*t*(3-2*t);   // smoothstep, 0→1
-            rad=legRad*(1-s) + CFG.footPadRadius*s;                // taper to the flat foot pad, not to zero
+// The whole piece is ONE watertight mesh, polygonized from a signed-distance field: three
+// quarter-circle leg tubes, a small weld bead at the apex and squashed foot pads, all
+// smooth-min blended into a single surface with normals taken from the field gradient.
+// No stuck-together parts means no part can ever read as "in front of" another — one solid
+// block of material, exactly like the printed piece. (Keep in sync with steam.html's copy.)
+function fusedTripodGeometry(legRad) {
+    const R = CFG.footR, H = CFG.hubHeight, PAD = CFG.footPadRadius;
+    const BEAD = legRad*1.25, HPI = Math.PI/2;
+    const DIR = [0, 1, 2].map(i => [Math.cos(i*2*Math.PI/3), Math.sin(i*2*Math.PI/3)]);
+    const smin = (a, b, k) => {   // polynomial smooth-min: the weld fillet between parts
+        const t = Math.max(k - Math.abs(a - b), 0)/k; return Math.min(a, b) - t*t*k*0.25;
+    };
+    const sd = (x, y, z) => {
+        let d = 1e9;
+        for (let i = 0; i < 3; i++) {   // legs: quarter-circle arcs of radius R centred at the origin
+            const ct = DIR[i][0], st = DIR[i][1];
+            const u = x*ct + z*st, w = z*ct - x*st;
+            let a = Math.atan2(u, y); if (a < 0) a = 0; else if (a > HPI) a = HPI;
+            let rad = legRad;
+            const t = a/HPI;
+            if (t > 0.65) { const q = (t - 0.65)/0.35, s = q*q*(3 - 2*q); rad = legRad*(1 - s) + PAD*s; }
+            d = smin(d, Math.hypot(u - Math.sin(a)*R, y - Math.cos(a)*R, w) - rad, 1.1);
         }
-        for (let j=0;j<radialSegs;j++){
-            const phi=j/radialSegs*Math.PI*2;
-            const nx=Math.cos(phi), ny=Math.sin(phi);
-            const nrm=new THREE.Vector3().addScaledVector(N,nx).addScaledVector(B,ny).normalize();
-            positions.push(center.x+nrm.x*rad, center.y+nrm.y*rad, center.z+nrm.z*rad);
-            normals.push(nrm.x, nrm.y, nrm.z);
+        d = smin(d, Math.hypot(x, y - H, z) - BEAD, 1.5);            // weld bead, fused not stacked
+        for (let i = 0; i < 3; i++)                                  // squashed rounded foot pads
+            d = smin(d, Math.hypot(x - DIR[i][0]*R, (y - 0.5)*1.5, z - DIR[i][1]*R) - PAD*1.6, 0.9);
+        return d;
+    };
+    // ---- surface nets: one vertex per boundary cell, quads across sign-changing grid edges ----
+    const h = 0.5, X = R + 3.6, Y0 = -2.2, Y1 = H + BEAD + 2.2;
+    const nx = Math.ceil(2*X/h), ny = Math.ceil((Y1 - Y0)/h), nz = nx;
+    const gx = nx + 1, gy = ny + 1, gz = nz + 1;
+    const F = new Float32Array(gx*gy*gz);
+    let p = 0;
+    for (let i = 0; i < gx; i++) for (let j = 0; j < gy; j++) for (let k = 0; k < gz; k++)
+        F[p++] = sd(-X + i*h, Y0 + j*h, -X + k*h);
+    const GI = (i, j, k) => (i*gy + j)*gz + k;
+    const CI = (i, j, k) => (i*ny + j)*nz + k;
+    const cellV = new Int32Array(nx*ny*nz).fill(-1);
+    const CORN = [[0,0,0],[1,0,0],[0,1,0],[1,1,0],[0,0,1],[1,0,1],[0,1,1],[1,1,1]];
+    const EDGE = [[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]];
+    const pos = [];
+    const v = new Float64Array(8);
+    for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) for (let k = 0; k < nz; k++) {
+        let m = 0;
+        for (let c = 0; c < 8; c++) { v[c] = F[GI(i+CORN[c][0], j+CORN[c][1], k+CORN[c][2])]; if (v[c] < 0) m++; }
+        if (m === 0 || m === 8) continue;
+        let sx = 0, sy = 0, sz = 0, n = 0;
+        for (const [a, b] of EDGE) {
+            if ((v[a] < 0) === (v[b] < 0)) continue;
+            const t = v[a]/(v[a] - v[b]);
+            sx += CORN[a][0] + (CORN[b][0] - CORN[a][0])*t;
+            sy += CORN[a][1] + (CORN[b][1] - CORN[a][1])*t;
+            sz += CORN[a][2] + (CORN[b][2] - CORN[a][2])*t;
+            n++;
         }
+        cellV[CI(i, j, k)] = pos.length/3;
+        pos.push(-X + (i + sx/n)*h, Y0 + (j + sy/n)*h, -X + (k + sz/n)*h);
     }
-    for (let i=0;i<lenSegs;i++) for (let j=0;j<radialSegs;j++){
-        const jn=(j+1)%radialSegs;
-        const a=i*radialSegs+j, b=i*radialSegs+jn, c=(i+1)*radialSegs+j, d=(i+1)*radialSegs+jn;
-        indices.push(a,c,b, b,c,d);
+    const idx = [];
+    const quad = (a, b, c, d, fwd) => {
+        if (a < 0 || b < 0 || c < 0 || d < 0) return;
+        if (fwd) idx.push(a, b, c, a, c, d); else idx.push(a, c, b, a, d, c);
+    };
+    for (let i = 0; i < gx; i++) for (let j = 0; j < gy; j++) for (let k = 0; k < gz; k++) {
+        const inside = F[GI(i, j, k)] < 0;
+        if (i < nx && j > 0 && j < ny && k > 0 && k < nz && inside !== (F[GI(i+1, j, k)] < 0))
+            quad(cellV[CI(i, j-1, k-1)], cellV[CI(i, j, k-1)], cellV[CI(i, j, k)], cellV[CI(i, j-1, k)], inside);
+        if (j < ny && i > 0 && i < nx && k > 0 && k < nz && inside !== (F[GI(i, j+1, k)] < 0))
+            quad(cellV[CI(i-1, j, k-1)], cellV[CI(i-1, j, k)], cellV[CI(i, j, k)], cellV[CI(i, j, k-1)], inside);
+        if (k < nz && i > 0 && i < nx && j > 0 && j < ny && inside !== (F[GI(i, j, k+1)] < 0))
+            quad(cellV[CI(i-1, j-1, k)], cellV[CI(i, j-1, k)], cellV[CI(i, j, k)], cellV[CI(i-1, j, k)], inside);
     }
-    // centre of the flat pad, exactly on the ground, at the SAME point as the last (footPadRadius)
-    // ring — fanning a same-position ring+centre makes a flat disk cap, not a cone to a point.
-    const apexIdx=(lenSegs+1)*radialSegs, apex=curve.getPointAt(1), tan=curve.getTangentAt(1);
-    positions.push(apex.x, apex.y, apex.z); normals.push(tan.x, tan.y, tan.z);
-    const lastRing=lenSegs*radialSegs;
-    // Fan the cap BOTH winding orders: the ring's order depends on the curve's Frenet-frame
-    // handedness, so a single winding could face INTO the tube -- back-face culled from outside,
-    // leaving an open end you could see straight into (the other half of the hollow-foot look).
-    // Doubling it is 14 extra triangles and guarantees the pad is solid from every angle.
-    for (let j=0;j<radialSegs;j++){ const jn=(j+1)%radialSegs;
-        indices.push(lastRing+j, lastRing+jn, apexIdx);
-        indices.push(lastRing+jn, lastRing+j, apexIdx); }
-    const geo=new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
-    geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals,3));
-    geo.setIndex(indices);
-    return new THREE.Mesh(geo, mat);
+    const nrm = new Float32Array(pos.length);   // smooth normals straight from the SDF gradient
+    for (let q = 0; q < pos.length; q += 3) {
+        const x = pos[q], y = pos[q+1], z = pos[q+2], e = 0.4;
+        const gxv = sd(x+e, y, z) - sd(x-e, y, z), gyv = sd(x, y+e, z) - sd(x, y-e, z),
+              gzv = sd(x, y, z+e) - sd(x, y, z-e);
+        const L = Math.hypot(gxv, gyv, gzv) || 1;
+        nrm[q] = gxv/L; nrm[q+1] = gyv/L; nrm[q+2] = gzv/L;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+    geo.setIndex(idx);
+    return geo;
 }
+let fusedTripodGeo = null;   // built once, shared by every piece (game, how-to-play, menu logo)
 function buildTripod(hex) {
     const g=new THREE.Group();
     const mat=new THREE.MeshStandardMaterial({color:hex, roughness:0.45, metalness:0.15});
@@ -6259,22 +6295,8 @@ function buildTripod(hex) {
     // tube CENTRELINES are legRadius*2 apart -- exactly tangent -- and tangent tubes read on
     // screen as a sliver of daylight between pieces that are "touching". The 5% flare makes
     // real contact visibly overlap. Physics unchanged.
-    const R=CFG.footR, H=CFG.hubHeight, legRad=CFG.legRadius*1.05;
-    for (let i=0;i<3;i++){ const th=i*2*Math.PI/3, pts=[];
-        for (let k=0;k<=20;k++){ const ph=(k/20)*(Math.PI/2);
-            pts.push(new THREE.Vector3(Math.sin(ph)*R*Math.cos(th), Math.cos(ph)*H, Math.sin(ph)*R*Math.sin(th))); }
-        const curve=new THREE.CatmullRomCurve3(pts);
-        g.add(buildTaperedLeg(curve, mat, legRad, 14, 24, 0.6));
-        // Rounded printed foot: a small squashed dome capping the leg end (which otherwise read as a
-        // dark hole from low angles). Sized to sit flush with the tapered tip, not bulge past it — the
-        // earlier bigger sphere flared out like a little hoof; the real piece just tapers to a small foot.
-        const foot=new THREE.Mesh(new THREE.SphereGeometry(legRad*0.45, 14, 10), mat);
-        foot.scale.set(1, 0.55, 1); foot.position.set(Math.cos(th)*R, 0.4, Math.sin(th)*R);
-        g.add(foot);
-    }
-    // Small weld bead like the real printed piece: 1.25x the tube radius (was 1.9 — read as a
-    // big separate ball). Matches the premium spike's junction.
-    const hub=new THREE.Mesh(new THREE.SphereGeometry(legRad*1.25,14,12), mat); hub.position.set(0,H,0); g.add(hub);
+    if (!fusedTripodGeo) fusedTripodGeo = fusedTripodGeometry(CFG.legRadius*1.05);
+    g.add(new THREE.Mesh(fusedTripodGeo, mat));
     g.userData.mat = mat;   // one shared material per piece — exposed so the menu logo can recolour it live
     return g;
 }

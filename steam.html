@@ -847,82 +847,105 @@ boardMat.onBeforeCompile = shader => {
 };
 
 // ---- pieces (the game's exact tripod geometry) -----------------------------------------------
-function taperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
-  const frames = curve.computeFrenetFrames(lenSegs, false);
-  const positions = [], normals = [], indices = [];
-  for (let i = 0; i <= lenSegs; i++) {
-    const u = i/lenSegs, center = curve.getPointAt(u);
-    const N = frames.normals[i], B = frames.binormals[i];
-    let rad = legRad;
-    if (u > 1 - taperFrac) {
-      const t = (u - (1 - taperFrac)) / taperFrac, s = t*t*(3 - 2*t);
-      rad = legRad * (1 - s) + CFG.footPadRadius * s;
-    }
-    for (let j = 0; j < radialSegs; j++) {
-      const phi = j/radialSegs * Math.PI*2, nx = Math.cos(phi), ny = Math.sin(phi);
-      const n = new THREE.Vector3().addScaledVector(N, nx).addScaledVector(B, ny).normalize();
-      positions.push(center.x + n.x*rad, center.y + n.y*rad, center.z + n.z*rad);
-      normals.push(n.x, n.y, n.z);
-    }
-  }
-  for (let i = 0; i < lenSegs; i++) for (let j = 0; j < radialSegs; j++) {
-    const jn = (j+1) % radialSegs;
-    const a2 = i*radialSegs+j, b2 = i*radialSegs+jn, c2 = (i+1)*radialSegs+j, d2 = (i+1)*radialSegs+jn;
-    indices.push(a2, c2, b2, b2, c2, d2);
-  }
-  // cap both ends — an open Frenet mouth is backface-culled from outside, so at the apex weld
-  // the three mouths read as see-through star-shaped holes
-  for (const [i, sgn] of [[0, -1], [lenSegs, 1]]) {
-    const T = frames.tangents[i], c = curve.getPointAt(i/lenSegs);
-    const ctr = positions.length/3;
-    positions.push(c.x, c.y, c.z); normals.push(T.x*sgn, T.y*sgn, T.z*sgn);
-    const base = positions.length/3;
-    for (let j = 0; j < radialSegs; j++) {              // re-emit the ring with the cap's normal
-      const k = (i*radialSegs + j)*3;
-      positions.push(positions[k], positions[k+1], positions[k+2]);
-      normals.push(T.x*sgn, T.y*sgn, T.z*sgn);
-    }
-    for (let j = 0; j < radialSegs; j++) {
-      const jn = (j+1) % radialSegs;
-      if (sgn < 0) indices.push(ctr, base+jn, base+j);
-      else indices.push(ctr, base+j, base+jn);
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-  g.setIndex(indices);
-  const m = new THREE.Mesh(g, mat); m.castShadow = true;
-  return m;
-}
+// The whole piece is ONE watertight mesh, polygonized from a signed-distance field: three
+// quarter-circle leg tubes, a small weld bead at the apex and squashed foot pads, all
+// smooth-min blended into a single surface with normals taken from the field gradient.
+// No stuck-together parts means no part can ever read as "in front of" another — one solid
+// block of material, exactly like the printed piece. (Keep in sync with index.html's copy.)
 const seedMat = new THREE.MeshStandardMaterial();   // replaced by applyTheme before the first frame
 // Visual leg radius is a HAIR wider than the collision radius (1.05x) so when two pieces push
 // (collision fires at CFG.legRadius*2 between centrelines) the visible tubes clearly OVERLAP —
 // contact you can see, matched to contact you hear. Same girth as the shipped game's legs.
 const VIS_LEG = CFG.legRadius * 1.05;
-function buildTripod() {
-  const g = new THREE.Group();
-  const R = CFG.footR, H = CFG.hubHeight, legRad = VIS_LEG;
-  for (let i = 0; i < 3; i++) {
-    // each leg ends EXACTLY at the apex; its sealed cap is a disc through the centre point,
-    // fully swallowed by the small weld bead below (like the real printed piece — the legs fuse
-    // at a little solder-blob junction barely wider than the wire).
-    const th = i * 2*Math.PI/3, pts = [];
-    for (let k = 0; k <= 21; k++) {
-      const ph = (k/21) * (Math.PI/2);
-      pts.push(new THREE.Vector3(Math.sin(ph)*R*Math.cos(th), Math.cos(ph)*H, Math.sin(ph)*R*Math.sin(th)));
+function fusedTripodGeometry(legRad) {
+  const R = CFG.footR, H = CFG.hubHeight, PAD = CFG.footPadRadius;
+  const BEAD = legRad*1.25, HPI = Math.PI/2;
+  const DIR = [0, 1, 2].map(i => [Math.cos(i*2*Math.PI/3), Math.sin(i*2*Math.PI/3)]);
+  const smin = (a, b, k) => {   // polynomial smooth-min: the weld fillet between parts
+    const t = Math.max(k - Math.abs(a - b), 0)/k; return Math.min(a, b) - t*t*k*0.25;
+  };
+  const sd = (x, y, z) => {
+    let d = 1e9;
+    for (let i = 0; i < 3; i++) {   // legs: quarter-circle arcs of radius R centred at the origin
+      const ct = DIR[i][0], st = DIR[i][1];
+      const u = x*ct + z*st, w = z*ct - x*st;
+      let a = Math.atan2(u, y); if (a < 0) a = 0; else if (a > HPI) a = HPI;
+      let rad = legRad;
+      const t = a/HPI;
+      if (t > 0.65) { const q = (t - 0.65)/0.35, s = q*q*(3 - 2*q); rad = legRad*(1 - s) + PAD*s; }
+      d = smin(d, Math.hypot(u - Math.sin(a)*R, y - Math.cos(a)*R, w) - rad, 1.1);
     }
-    const leg = taperedLeg(new THREE.CatmullRomCurve3(pts), seedMat, legRad, 16, 40, 0.35);
-    leg.userData.part = 'leg'; g.add(leg);
-    const foot = new THREE.Mesh(new THREE.SphereGeometry(legRad*0.6, 20, 14), seedMat);
-    foot.scale.set(1, 0.55, 1); foot.position.set(Math.cos(th)*R, 0.4, Math.sin(th)*R);
-    foot.castShadow = true; foot.userData.part = 'leg'; g.add(foot);
+    d = smin(d, Math.hypot(x, y - H, z) - BEAD, 1.5);            // weld bead, fused not stacked
+    for (let i = 0; i < 3; i++)                                  // squashed rounded foot pads
+      d = smin(d, Math.hypot(x - DIR[i][0]*R, (y - 0.5)*1.5, z - DIR[i][1]*R) - PAD*1.6, 0.9);
+    return d;
+  };
+  // ---- surface nets: one vertex per boundary cell, quads across sign-changing grid edges ----
+  const h = 0.5, X = R + 3.6, Y0 = -2.2, Y1 = H + BEAD + 2.2;
+  const nx = Math.ceil(2*X/h), ny = Math.ceil((Y1 - Y0)/h), nz = nx;
+  const gx = nx + 1, gy = ny + 1, gz = nz + 1;
+  const F = new Float32Array(gx*gy*gz);
+  let p = 0;
+  for (let i = 0; i < gx; i++) for (let j = 0; j < gy; j++) for (let k = 0; k < gz; k++)
+    F[p++] = sd(-X + i*h, Y0 + j*h, -X + k*h);
+  const GI = (i, j, k) => (i*gy + j)*gz + k;
+  const CI = (i, j, k) => (i*ny + j)*nz + k;
+  const cellV = new Int32Array(nx*ny*nz).fill(-1);
+  const CORN = [[0,0,0],[1,0,0],[0,1,0],[1,1,0],[0,0,1],[1,0,1],[0,1,1],[1,1,1]];
+  const EDGE = [[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]];
+  const pos = [];
+  const v = new Float64Array(8);
+  for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) for (let k = 0; k < nz; k++) {
+    let m = 0;
+    for (let c = 0; c < 8; c++) { v[c] = F[GI(i+CORN[c][0], j+CORN[c][1], k+CORN[c][2])]; if (v[c] < 0) m++; }
+    if (m === 0 || m === 8) continue;
+    let sx = 0, sy = 0, sz = 0, n = 0;
+    for (const [a, b] of EDGE) {
+      if ((v[a] < 0) === (v[b] < 0)) continue;
+      const t = v[a]/(v[a] - v[b]);
+      sx += CORN[a][0] + (CORN[b][0] - CORN[a][0])*t;
+      sy += CORN[a][1] + (CORN[b][1] - CORN[a][1])*t;
+      sz += CORN[a][2] + (CORN[b][2] - CORN[a][2])*t;
+      n++;
+    }
+    cellV[CI(i, j, k)] = pos.length/3;
+    pos.push(-X + (i + sx/n)*h, Y0 + (j + sy/n)*h, -X + (k + sz/n)*h);
   }
-  // small weld bead, like the real printed piece: 1.25x the tube radius, centred on the apex.
-  // It swallows the three cap discs and rounds the crease where the tubes meet.
-  const bead = new THREE.Mesh(new THREE.SphereGeometry(legRad*1.25, 24, 18), seedMat);
-  bead.position.set(0, H, 0); bead.castShadow = true; bead.userData.part = 'leg';
-  g.add(bead);
+  const idx = [];
+  const quad = (a, b, c, d, fwd) => {
+    if (a < 0 || b < 0 || c < 0 || d < 0) return;
+    if (fwd) idx.push(a, b, c, a, c, d); else idx.push(a, c, b, a, d, c);
+  };
+  for (let i = 0; i < gx; i++) for (let j = 0; j < gy; j++) for (let k = 0; k < gz; k++) {
+    const inside = F[GI(i, j, k)] < 0;
+    if (i < nx && j > 0 && j < ny && k > 0 && k < nz && inside !== (F[GI(i+1, j, k)] < 0))
+      quad(cellV[CI(i, j-1, k-1)], cellV[CI(i, j, k-1)], cellV[CI(i, j, k)], cellV[CI(i, j-1, k)], inside);
+    if (j < ny && i > 0 && i < nx && k > 0 && k < nz && inside !== (F[GI(i, j+1, k)] < 0))
+      quad(cellV[CI(i-1, j, k-1)], cellV[CI(i-1, j, k)], cellV[CI(i, j, k)], cellV[CI(i, j, k-1)], inside);
+    if (k < nz && i > 0 && i < nx && j > 0 && j < ny && inside !== (F[GI(i, j, k+1)] < 0))
+      quad(cellV[CI(i-1, j-1, k)], cellV[CI(i, j-1, k)], cellV[CI(i, j, k)], cellV[CI(i-1, j, k)], inside);
+  }
+  const nrm = new Float32Array(pos.length);   // smooth normals straight from the SDF gradient
+  for (let q = 0; q < pos.length; q += 3) {
+    const x = pos[q], y = pos[q+1], z = pos[q+2], e = 0.4;
+    const gxv = sd(x+e, y, z) - sd(x-e, y, z), gyv = sd(x, y+e, z) - sd(x, y-e, z),
+          gzv = sd(x, y, z+e) - sd(x, y, z-e);
+    const L = Math.hypot(gxv, gyv, gzv) || 1;
+    nrm[q] = gxv/L; nrm[q+1] = gyv/L; nrm[q+2] = gzv/L;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  g.setIndex(idx);
+  return g;
+}
+let fusedGeo = null;   // both pieces share the one geometry; materials differ per mesh
+function buildTripod() {
+  if (!fusedGeo) fusedGeo = fusedTripodGeometry(VIS_LEG);
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(fusedGeo, seedMat);
+  m.castShadow = true; m.userData.part = 'leg';
+  g.add(m);
   return g;
 }
 const tripodGroups = [buildTripod(), buildTripod()];
