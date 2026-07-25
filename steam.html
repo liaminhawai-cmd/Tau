@@ -766,16 +766,40 @@ reflector.material.colorWrite = false; reflector.material.depthWrite = false;
 scene.add(reflector);
 const reflMatrix = new THREE.Matrix4();
 const REFL_BIAS = new THREE.Matrix4().set(0.5,0,0,0.5, 0,0.5,0,0.5, 0,0,0.5,0.5, 0,0,0,1);
+// GLSL: value-noise fBm + ridged domain-warped veins for the alien membrane. Computed per-pixel
+// from world position, so it holds detail at ANY zoom — lean the camera into the board and the
+// veins keep branching into finer capillaries (the "infinite fractal detail" ask), no texture.
+const ALIEN_GLSL = `
+uniform float uAlien; uniform float uAlienTime; varying vec3 vWPos;
+float ahash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453123); }
+float anoise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
+  return mix(mix(ahash(i),ahash(i+vec2(1.0,0.0)),u.x), mix(ahash(i+vec2(0.0,1.0)),ahash(i+vec2(1.0,1.0)),u.x), u.y); }
+float afbm(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<6;i++){ s+=a*anoise(p); p=p*2.03+vec2(1.7,9.2); a*=0.5; } return s; }
+`;
 boardMat.onBeforeCompile = shader => {
   shader.uniforms.tReflect = { value: reflector.getRenderTarget().texture };
   shader.uniforms.uReflMatrix = { value: reflMatrix };
   shader.uniforms.uReflStrength = { value: 0 };
+  shader.uniforms.uAlien = { value: 0 };
+  shader.uniforms.uAlienTime = { value: 0 };
   shader.vertexShader = shader.vertexShader
-    .replace('#include <common>', '#include <common>\nuniform mat4 uReflMatrix;\nvarying vec4 vReflCoord;')
-    .replace('#include <fog_vertex>', '#include <fog_vertex>\nvReflCoord = uReflMatrix * modelMatrix * vec4(transformed, 1.0);');
+    .replace('#include <common>', '#include <common>\nuniform mat4 uReflMatrix;\nvarying vec4 vReflCoord;\nvarying vec3 vWPos;')
+    .replace('#include <fog_vertex>', '#include <fog_vertex>\nvReflCoord = uReflMatrix * modelMatrix * vec4(transformed, 1.0);\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
   shader.fragmentShader = shader.fragmentShader
-    .replace('#include <common>', '#include <common>\nuniform sampler2D tReflect;\nuniform float uReflStrength;\nvarying vec4 vReflCoord;')
+    .replace('#include <common>', '#include <common>\nuniform sampler2D tReflect;\nuniform float uReflStrength;\nvarying vec4 vReflCoord;\n' + ALIEN_GLSL)
     .replace('#include <opaque_fragment>',
+      'if (uAlien > 0.5) {\n' +
+      '  vec2 p = vWPos.xz * 0.06;\n' +
+      '  vec2 q = vec2(afbm(p), afbm(p + vec2(5.2, 1.3)));\n' +
+      '  float warp = afbm(p + 1.8*q + uAlienTime*0.015);\n' +
+      '  float vein = pow(1.0 - abs(warp*2.0 - 1.0), 6.0);\n' +          // main vessels
+      '  float fine = afbm(p*3.9 + 4.0*q);\n' +
+      '  vein += 0.55 * pow(1.0 - abs(fine*2.0 - 1.0), 9.0);\n' +        // finer capillaries (zoom detail)
+      '  float pulse = 0.65 + 0.35*sin(uAlienTime*0.7 + warp*6.28);\n' + // slow bioluminescent throb
+      '  float blotch = smoothstep(0.32, 0.72, q.x);\n' +               // subdermal darkening
+      '  outgoingLight *= (1.0 - blotch*0.3);\n' +
+      '  outgoingLight += vec3(0.10, 0.95, 0.80) * vein * 0.55 * pulse;\n' +
+      '}\n' +
       'if (uReflStrength > 0.001) {\n' +
       '  vec2 ruv = vReflCoord.xy / max(vReflCoord.w, 1e-4);\n' +
       '  vec3 reflCol = texture2D(tReflect, ruv).rgb;\n' +
@@ -1999,6 +2023,8 @@ function loop() {
   reflector.visible = GFX[gfxMode].reflect && (T.boardReflect || 0) > 0.001;
   if (boardMat.userData.shader) {
     boardMat.userData.shader.uniforms.uReflStrength.value = T.boardReflect || 0;
+    boardMat.userData.shader.uniforms.uAlien.value = (THEME === 'alien') ? 1 : 0;
+    boardMat.userData.shader.uniforms.uAlienTime.value = now/1000;
     reflMatrix.copy(REFL_BIAS).multiply(reflector.camera.projectionMatrix).multiply(reflector.camera.matrixWorldInverse);
   }
   controls.update();
