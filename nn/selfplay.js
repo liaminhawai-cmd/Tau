@@ -48,7 +48,11 @@ function main() {
   const out = arg('out', path.join(__dirname, 'data', 'selfplay.jsonl'));
   const modelPath = arg('model', path.join(__dirname, 'models', 'best.json'));
   const levels = arg('levels', '2,3,4,5,6').split(',').map(Number);   // 1-based ladder levels
-  const deep = arg('deep', '7,8').split(',').map(Number);
+  // the deep pool now reaches the top of the ladder: L9-11 search ~every 9° of the real swing, so
+  // they find (and punish) the subtle stops that self-play alone can never surface — both sides
+  // of an nn-vs-nn game share the same search, so neither can expose the other's blind spots.
+  // Deep games are slow (L9-11 are multi-second-per-move brains); deepEvery keeps them a garnish.
+  const deep = arg('deep', '7,8,9,10,11').split(',').map(Number);
   const deepEvery = +arg('deepEvery', 12);
   const discount = +arg('discount', 0.995);
   const temperature = +arg('temperature', 0.08);
