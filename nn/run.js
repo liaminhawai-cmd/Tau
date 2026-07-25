@@ -1,8 +1,12 @@
 // The overnight loop: selfplay -> train -> arena, forever (Ctrl-C any time; every stage saves).
-//   node nn/run.js [--gamesPerIter 200] [--epochs 6] [--arenaGames 24] [--vs L8]
+//   node nn/run.js [--gamesPerIter 200] [--epochs 6] [--arenaGames 24] [--vs L8] [--benchEvery 3]
 // Iteration 1 has no model, so selfplay is pure ladder sparring; from then on the freshest net
 // plays half its own games. A new net is promoted to models/best.json when it beats the current
 // best 55%+ head-to-head (or immediately, the first time). Progress appends to nn/log.txt.
+// The vs-L8 benchmark is pure readout (it never affects promotion, and best.json is already saved
+// by the time it runs) but is easily the priciest stage per iteration -- 30-55+ minutes against 24
+// games' worth of deep search, versus single-digit minutes for everything else combined. --benchEvery
+// N only runs it on every Nth iteration; the skipped ones cost nothing.
 'use strict';
 const { execFileSync } = require('child_process');
 const fs = require('fs');
@@ -17,6 +21,7 @@ const gamesPerIter = arg('gamesPerIter', '200');
 const epochs = arg('epochs', '6');
 const arenaGames = arg('arenaGames', '24');
 const vs = arg('vs', 'L8');
+const benchEvery = Math.max(1, +arg('benchEvery', 3));
 // selfplay is embarrassingly parallel — use most of the machine's cores by default (capped: the
 // gain flattens and each worker holds its own engine sandbox). --workers 1 to go back to serial.
 const workers = arg('workers', String(Math.max(1, Math.min(os.cpus().length - 1, 8))));
@@ -67,6 +72,10 @@ for (let iter = 1; ; iter++) {
   const ckpt = path.join(dir, 'models', `ckpt-${String(iter).padStart(3, '0')}.json`);
   fs.copyFileSync(best, ckpt);
   log(`iteration ${iter} — checkpoint saved: ${path.basename(ckpt)}`);
-  log(`iteration ${iter} — benchmark vs ${vs}`);
-  runSoft('arena.js', ['--a', 'nn:0:' + best, '--b', vs, '--games', arenaGames]);
+  if (iter % benchEvery === 0) {
+    log(`iteration ${iter} — benchmark vs ${vs}`);
+    runSoft('arena.js', ['--a', 'nn:0:' + best, '--b', vs, '--games', arenaGames]);
+  } else {
+    log(`iteration ${iter} — benchmark vs ${vs} skipped (next at iteration ${Math.ceil((iter + 1) / benchEvery) * benchEvery})`);
+  }
 }

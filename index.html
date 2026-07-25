@@ -132,10 +132,10 @@
     .zcY { display:inline-flex; flex-direction:column; justify-content:center;
         font-size:clamp(8px, 0.5em, 14px); line-height:1; font-weight:500; opacity:0.92; margin-left:2px; user-select:none; }
     .ltstat .zcY { font-size:7px; }   /* the crowd stat itself is only 10px -- needs its own smaller floor */
-    /* Second tier, all one size, clearly lighter than the AI/Online pair. The 4 utilities are an even
-       2-column grid (equal 1fr columns, so they fill the shared button width in two tidy rows of two);
+    /* Second tier, all one size, clearly lighter than the AI/1v1 pair. The 3 utilities are an even
+       row (equal 1fr columns, so they fill the shared button width side by side);
        the wide physical-set CTA sits on its own row below, same width, as a footer bar. */
-    .utilGrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; width:var(--btnw); }
+    .utilGrid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; width:var(--btnw); }
     #steelBtn { width:var(--btnw); }
     #menu .pbtnQuiet { font-size:12.5px; font-weight:600; padding:9px 14px;
                        white-space:nowrap; border-radius:20px; color:#9aa4ad; border-color:#2c3138; }
@@ -439,7 +439,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 173</div>
+<div id="buildTag">build 174</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -466,14 +466,13 @@
         <div id="playArea">
             <div class="playRow">
                 <button class="pbtn" id="modeAI">vs AI</button>
-                <button class="pbtn" id="modeRanked">Ranked</button>
-                <button class="pbtn" id="modeOnline">Online 1v1</button>
+                <button class="pbtn" id="modeOnline">1v1</button>
             </div>
-            <!-- Second tier, all small + same weight. The 4 similar-width utilities tile as an even
-                 2x2 grid; the much-wider "Get a physical set" CTA gets its own centered row below so
-                 it can't orphan a button or force ragged rows (which it did in de/fr/ru especially). -->
+            <!-- Second tier, all small + same weight. 3 similar-width utilities tile as one even row
+                 (Local 1v1 moved inside the "1v1" button's own sub-menu, alongside Online Ranked and
+                 Online Private); the much-wider "Get a physical set" CTA gets its own centered row
+                 below so it can't orphan a button or force ragged rows (which it did in de/fr/ru especially). -->
             <div class="utilGrid">
-                <button class="pbtn pbtnQuiet" id="modeLocal">Local 1v1</button>
                 <button class="pbtn pbtnQuiet" id="watchBtn">Watch</button>
                 <button class="pbtn pbtnQuiet" id="howToPlayBtn">How to play</button>
                 <button class="pbtn pbtnQuiet" id="leaderboardBtn">Leaderboard</button>
@@ -1697,7 +1696,7 @@ function rubyize(str) {
 // The 6 mode buttons + the physical-set button (2 possible labels): paints plain text normally,
 // ruby-annotated HTML when on Traditional Chinese with the toggle on. Re-callable so the toggle can
 // flip live without a reload, not just at first paint.
-const BOPOMOFO_IDS = [['modeLocal','Local 1v1'],['modeOnline','Online 1v1'],['modeAI','vs AI'],['modeRanked','Ranked'],
+const BOPOMOFO_IDS = [['modeOnline','1v1'],['modeAI','vs AI'],
     ['howToPlayBtn','How to play'],['leaderboardBtn','Leaderboard'],['watchBtn','Watch']];
 function applyMenuBopomofo() {
     const zy = LANG === 'zht' && bopomofoOn;
@@ -5018,9 +5017,16 @@ function backToMenu() {
     document.body.classList.remove('ingame');
     demoStart();
 }
-document.getElementById('modeLocal').addEventListener('click', ()=>startGame(false));
 // Menu labels for the internal difficulty ids, used by the picker and the game-over difficulty chip.
 const AI_DIFF_LABEL = { dumb:'Easy', easy:'Medium', zone:'Hard', hard:'Very hard', master:'Expert', nn:'Neural net' };
+// In-game turn/win labels for a vsAI game: "Level N AI" (Freeplay/Ranked, ladderLevel set) or the
+// difficulty name + "AI" otherwise, and "You" for the human side -- clearer than raw Blue/Red once
+// one side is always the computer.
+function vsAiOpponentLabel(){
+    return ladderLevel != null ? tf('Level {n} AI', { n: ladderLevel + 1 })
+                                : t(AI_DIFF_LABEL[aiDifficulty] || aiDifficulty) + ' ' + t('AI');
+}
+function vsAiTurnLabel(idx){ return idx === humanIdx ? t('You') : vsAiOpponentLabel(); }
 function openAiDifficultyMenu() {
     showModal(t('vs AI'), t('Pick a difficulty.'), [
         { label: t('Easy'),      onClick: () => chooseAiColour('dumb') },
@@ -5030,8 +5036,25 @@ function openAiDifficultyMenu() {
         { label: t('Expert'),    onClick: () => chooseAiColour('master') },
     ], false, { dismiss: true });
 }
-document.getElementById('modeAI').addEventListener('click', openLadderMenu);
-document.getElementById('modeRanked').addEventListener('click', startRankedMatch);
+// A rank number in half-level notation: Level N Blue = N, Level N Red = N.5 -- so a win (+2
+// subrank = +1 whole level) and a loss (-1 subrank = -0.5) read as simple +1/-0.5 on this number.
+function rankedDisplayLevel(r){
+    const v = (r + 1) / 2;
+    return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+// vs AI opens here first: your current rank front and centre (the "visual" for where you stand),
+// then Ranked (auto-matched at that rank, no picker) or Freeplay (the level list) to actually play.
+function openAiHubMenu(){
+    const html = `<div style="text-align:center;margin:0 0 8px;">`
+        + `<div style="font-size:11px;color:#7d858d;text-transform:uppercase;letter-spacing:.6px;">${t('Your rank')}</div>`
+        + `<div style="font-size:36px;font-weight:800;line-height:1.2;">${tf('Level {n}', { n: rankedDisplayLevel(rankedSubrank()) })}</div>`
+        + `</div>`;
+    showModal(t('vs AI'), html, [
+        { label: t('Ranked'), onClick: startRankedMatch },
+        { label: t('Freeplay'), onClick: openLadderMenu },
+    ], true, { dismiss: true });
+}
+document.getElementById('modeAI').addEventListener('click', openAiHubMenu);
 // Easy follows one fixed offense/defense rule, no search. Medium scores every one of its 6 possible
 // (pivot × direction) moves by board-position value (see aiChoosePlanZone) and picks the best, but
 // never considers how the human might reply. Hard does the same 6-way search but looks one full move
@@ -5967,15 +5990,17 @@ function openSoundPanel() {
 // (Sound tuning panel link removed from the menu -- openSoundPanel() still callable from the console for tuning.)
 document.getElementById('modeOnline').addEventListener('click', () => {
     document.getElementById('modeMsg').textContent = '';
-    ensureOnlineIdentity(chooseOnlineMode);
+    choose1v1Mode();
 });
-// Online sub-menu: a random ranked opponent, or a private invite match. (Private match used to be a
-// separate link at the bottom of the menu -- it lives here now, inside the online flow.)
-function chooseOnlineMode() {
-    showModal(t('Online 1v1'), t('Play a random ranked opponent, or invite someone specific?'), [
-        { label: t('Find an opponent'), onClick: startOnlineMatchmaking },
-        { label: t('Private match'),    onClick: openPrivateMatchMenu },
-        { label: t('Cancel'),           onClick: () => {} },
+// The "1v1" hub: a random ranked opponent, a private invite match, or same-device local play.
+// Local needs no account at all, so it skips ensureOnlineIdentity entirely -- only the two online
+// choices need a real or guest identity before they can do anything.
+function choose1v1Mode() {
+    showModal(t('1v1'), t('Play a random ranked opponent, invite someone specific, or pass-and-play on this device?'), [
+        { label: t('Online Ranked'),  onClick: () => ensureOnlineIdentity(startOnlineMatchmaking) },
+        { label: t('Online Private'), onClick: () => ensureOnlineIdentity(openPrivateMatchMenu) },
+        { label: t('Local 1v1'),      onClick: () => startGame(false) },
+        { label: t('Cancel'),         onClick: () => {} },
     ], false, { dismiss: true });
 }
 // Shows the Sign in / Play as Guest choice if nobody's signed in yet, resuming with `next` once
@@ -6233,8 +6258,12 @@ function render() {
             const sp = document.createElement('span'); sp.className = w2;
             sp.textContent = tf('{color} wins', { color: replayNames[G.winner] });
             s.appendChild(sp); m.textContent=''; h.textContent='';
-        } else
-        s.innerHTML=`<span class="${w2}">${tf('{color} wins',{color:t(w2==='blue'?'Blue':'Red')})}</span>`, m.textContent='', h.textContent='';
+        } else if (vsAI && G.winner === humanIdx) {   // "You win!", not "You wins" -- {color} wins is 3rd-person
+            s.innerHTML = `<span class="${w2}">${t('You win!')}</span>`, m.textContent='', h.textContent='';
+        } else {
+            const label = vsAI ? vsAiTurnLabel(G.winner) : t(w2==='blue'?'Blue':'Red');
+            s.innerHTML=`<span class="${w2}">${tf('{color} wins',{color:label})}</span>`, m.textContent='', h.textContent='';
+        }
     } else { const c=G.active===0?'blue':'red';
         if (onlineMatch) {
             // "Your turn" vs the opponent's own username (not just their colour) -- that's who
@@ -6254,7 +6283,8 @@ function render() {
                 ? tf('crossings {c}/{m}',{c:G.crossings,m:CFG.maxCrossingsPerTurn}) + atLimitSuffix()
                 : tf('Playing {color} vs {name}', { color: t(onlineMatch.myColor), name: onlineMatch.opponentName });
         } else {
-            s.innerHTML=tf('{color} to move',{color:`<span class="${c}">${t(c==='blue'?'Blue':'Red')}</span>`})+`${aiTurn?' <span style="color:#69727b">(AI)</span>':''}`;
+            const label = vsAI ? vsAiTurnLabel(G.active) : t(c==='blue'?'Blue':'Red');
+            s.innerHTML=tf('{color} to move',{color:`<span class="${c}">${label}</span>`});
             m.textContent = G.pinned!==null ? tf('crossings {c}/{m}',{c:G.crossings,m:CFG.maxCrossingsPerTurn}) + atLimitSuffix() : '';
         }
         h.textContent = onlineMatch
@@ -8707,7 +8737,7 @@ function openLeaderboard() {
 document.getElementById('leaderboardBtn').addEventListener('click', openLeaderboard);
 
 // ---------- Private matches: invite a specific person by code or link ----------
-// (Entry point is the "Private match" option inside the Online 1v1 sub-menu; see chooseOnlineMode.)
+// (Entry point is the "Online Private" option inside the "1v1" sub-menu; see choose1v1Mode.)
 function openPrivateMatchMenu() {
     showModal(t('Private match'), t('Play a casual 1v1 against someone specific instead of the random queue.'), [
         { label: t('Create a match'), onClick: createPrivateMatch },
