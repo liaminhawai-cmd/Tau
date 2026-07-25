@@ -200,71 +200,84 @@ const THEMES = {
     band: { color: 0x20242c, rough: 0.5, metal: 0.6 }, slabColor: 0x14171d, tableColor: 0x0b0d12,
     boardEnv: 0.3, bumpScale: 0.35, boardReflect: 0.16, guide: 0xdcecff,
     paint() {
-      // The board drawn the way a geometer would BUILD it: compass and straightedge. Faint pencil
-      // construction (centre pins, radius lines, overshooting compass swings, intersection ticks)
-      // underneath the finished ink figure — the classic "how this shape is constructed" plate.
+      // Pure COMPASS work, no straightedge. Every board curve is drawn as a FULL circle, but the
+      // ink is nearly invisible along empty stretches and DARKENS as it approaches a point where
+      // two circles cross — so the whole figure reads as a constellation of intersections, the
+      // geometry lit only where curves actually meet.
       const [al, a] = canvas2d();
-      a.fillStyle = '#131a26'; a.fillRect(0, 0, S, S);          // dark drafting-paper blue
-      a.globalAlpha = 0.22; a.drawImage(noiseCanvas(0.06), 0, 0); a.globalAlpha = 1;
-      const C = (x, y) => [ox + px(x), oy + px(y)];             // board-units -> canvas px
-      const PENCIL = 'rgba(150,192,236,0.16)', PENCIL2 = 'rgba(150,192,236,0.26)';
-      const INK = 'rgba(228,240,252,0.94)';
-      const pin = (x, y) => {                                   // compass centre: a small + and a prick
-        const [cx, cy] = C(x, y);
-        a.strokeStyle = PENCIL2; a.lineWidth = 2;
-        a.beginPath(); a.moveTo(cx-13, cy); a.lineTo(cx+13, cy); a.moveTo(cx, cy-13); a.lineTo(cx, cy+13); a.stroke();
-        a.fillStyle = PENCIL2; a.beginPath(); a.arc(cx, cy, 3, 0, 7); a.fill();
-      };
-      const swing = (cx, cy, R, a0, a1) => {                    // a compass arc that overshoots its ends
-        const [px0, py0] = C(cx, cy);
-        a.strokeStyle = PENCIL; a.lineWidth = 2.5;
-        a.beginPath(); a.arc(px0, py0, px(R), a0 - 0.28, a1 + 0.28); a.stroke();
-      };
-      const tick = (x, y) => {                                  // mark an intersection point
-        const [cx, cy] = C(x, y);
-        a.strokeStyle = PENCIL2; a.lineWidth = 2;
-        a.beginPath(); a.moveTo(cx-7, cy-7); a.lineTo(cx+7, cy+7); a.moveTo(cx-7, cy+7); a.lineTo(cx+7, cy-7); a.stroke();
-      };
-      // 1) horizontal construction axis + the two ring centres/radii struck from the middle
-      a.strokeStyle = PENCIL; a.lineWidth = 2;
-      a.beginPath(); a.moveTo(...C(-CFG.edgeU, 0)); a.lineTo(...C(CFG.edgeU, 0)); a.stroke();
-      pin(0, 0);
-      for (const R of CFG.rings) {
-        swing(0, 0, R, 0.5, 5.9);                               // the compass swing that becomes the ring
-        const [cx, cy] = C(0, 0);                               // a radius line out to the ring
-        a.strokeStyle = PENCIL; a.lineWidth = 1.5;
-        a.beginPath(); a.moveTo(cx, cy); a.lineTo(...C(Math.cos(-0.6)*R, Math.sin(-0.6)*R)); a.stroke();
-      }
-      // 2) the side arcs: pin at each rim centre, radius line to the rim, an overshooting swing
-      for (const s of CFG.sideArcs) {
-        pin(s.cx, s.cy);
-        a.strokeStyle = PENCIL; a.lineWidth = 1.5;
-        a.beginPath(); a.moveTo(...C(s.cx, s.cy)); a.lineTo(...C(s.cx + Math.cos(s.a0*Math.PI/180)*s.r, s.cy + Math.sin(s.a0*Math.PI/180)*s.r)); a.stroke();
-        swing(s.cx, s.cy, s.r, s.a0*Math.PI/180, s.a1*Math.PI/180);
-      }
-      // 3) intersection ticks where the rings meet the side arcs (the printed corners)
-      for (const s of CFG.sideArcs) for (const R of CFG.rings) {
-        const d = Math.hypot(s.cx, s.cy);
-        if (d < 1e-6 || d > R + s.r || d < Math.abs(R - s.r)) continue;
-        const xx = (d*d + R*R - s.r*s.r)/(2*d), yy2 = R*R - xx*xx;
+      a.fillStyle = '#111826'; a.fillRect(0, 0, S, S);          // dark drafting-paper blue
+      a.globalAlpha = 0.2; a.drawImage(noiseCanvas(0.06), 0, 0); a.globalAlpha = 1;
+      const circles = [
+        { cx: 0, cy: 0, r: CFG.rings[0], ring: true },
+        { cx: 0, cy: 0, r: CFG.rings[1], ring: true },
+        ...CFG.sideArcs.map(s => ({ cx: s.cx, cy: s.cy, r: s.r, ring: false })),
+      ];
+      // every pairwise circle-circle intersection point (full circles, spans ignored)
+      const X = [];
+      for (let i = 0; i < circles.length; i++) for (let j = i+1; j < circles.length; j++) {
+        const A = circles[i], B = circles[j];
+        const dx = B.cx - A.cx, dy = B.cy - A.cy, d = Math.hypot(dx, dy);
+        if (d < 1e-6 || d > A.r + B.r || d < Math.abs(A.r - B.r)) continue;
+        const xx = (d*d + A.r*A.r - B.r*B.r)/(2*d), yy2 = A.r*A.r - xx*xx;
         if (yy2 < 0) continue;
-        const yy = Math.sqrt(yy2), ux = s.cx/d, uy = s.cy/d;
-        for (const sgn of [1, -1]) tick(xx*ux - sgn*yy*uy, xx*uy + sgn*yy*ux);
+        const yy = Math.sqrt(yy2), ux = dx/d, uy = dy/d;
+        for (const sgn of [1, -1]) X.push({ x: A.cx + xx*ux - sgn*yy*uy, y: A.cy + xx*uy + sgn*yy*ux });
+      }
+      const nearX = (x, y) => {                                 // board-unit distance to the closest crossing
+        let m = 1e9;
+        for (const p of X) { const dd = Math.hypot(x - p.x, y - p.y); if (dd < m) m = dd; }
+        return m;
+      };
+      const HOT = 3, COLD = 15;                                 // bright within HOT u, faded out by COLD u
+      // draw each circle as many short segments, alpha & width ramping up toward crossings
+      for (const c of circles) {
+        const [cxp, cyp] = [ox + px(c.cx), oy + px(c.cy)];
+        const steps = 900;
+        let prev = null;
+        for (let k = 0; k <= steps; k++) {
+          const th = k/steps*Math.PI*2;
+          const wx = c.cx + Math.cos(th)*c.r, wy = c.cy + Math.sin(th)*c.r;
+          const cur = [cxp + Math.cos(th)*px(c.r), cyp + Math.sin(th)*px(c.r)];
+          if (prev) {
+            const t = Math.max(0, Math.min(1, (COLD - nearX(wx, wy)) / (COLD - HOT)));
+            const s = t*t*(3 - 2*t);                            // smoothstep emphasis
+            const floor = c.ring ? 0.05 : 0.02;                 // rings keep a faint readable floor
+            const alpha = floor + (0.92 - floor)*s;
+            a.strokeStyle = `rgba(226,240,255,${alpha.toFixed(3)})`;
+            a.lineWidth = LW*(0.55 + 0.9*s);
+            a.lineCap = 'round';
+            a.beginPath(); a.moveTo(prev[0], prev[1]); a.lineTo(cur[0], cur[1]); a.stroke();
+          }
+          prev = cur;
+        }
+      }
+      // a bright node dot right at each crossing
+      for (const p of X) {
+        a.fillStyle = 'rgba(232,244,255,0.95)';
+        a.beginPath(); a.arc(ox + px(p.x), oy + px(p.y), Math.max(3, LW*0.9), 0, 7); a.fill();
+      }
+      // faint compass-centre pricks (points, not lines)
+      for (const c of circles) {
+        a.fillStyle = 'rgba(150,192,236,0.22)';
+        a.beginPath(); a.arc(ox + px(c.cx), oy + px(c.cy), 3, 0, 7); a.fill();
       }
       vignette(a, 0.22);
-      // 4) the finished figure inked crisply on top of the pencil work
-      strokeLines(a, INK, LW*0.8);
+      // start dots as marked points
       const dotR = Math.max(4, px(CFG.edgeU * CFG.padRadiusFrac * 1.9));
       for (const [dx,dy] of DOTS) {
-        a.strokeStyle = INK; a.lineWidth = 3;
+        a.strokeStyle = 'rgba(226,240,255,0.85)'; a.lineWidth = 3;
         a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR, 0, 7); a.stroke();
-        a.fillStyle = INK; a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR*0.3, 0, 7); a.fill();
       }
+      // rough/bump: draw the full circles uniformly so the relief roughly follows the ink
+      const drawCircles = (c2, style, wid) => {
+        c2.strokeStyle = style; c2.lineWidth = wid; c2.lineCap = 'round';
+        for (const c of circles) { c2.beginPath(); c2.arc(ox + px(c.cx), oy + px(c.cy), px(c.r), 0, 7); c2.stroke(); }
+      };
       const [ro, r] = canvas2d();
       r.fillStyle = '#8a8a8a'; r.fillRect(0, 0, S, S);          // matte paper
-      strokeLines(r, '#585858', LW*0.8);                        // inked lines a touch glossier
+      drawCircles(r, '#5c5c5c', LW*0.7);
       const [bu, b] = canvas2d(); b.fillStyle = '#808080'; b.fillRect(0, 0, S, S);
-      strokeLines(b, '#8e8e8e', LW*0.8);                        // ink raised a hair off the paper
+      drawCircles(b, '#8c8c8c', LW*0.7);                        // ink raised a hair
       return { albedo: al, rough: ro, bump: bu };
     },
     pieces(which) {   // glazed ink ceramic — cheap, phone-friendly
@@ -528,12 +541,14 @@ const THEMES = {
   // scale reference, and dust hanging in the sun.
   colossus: {
     bg: 0xb9a888, exposure: 1.0, bloom: [0.12, 0.4, 0.95],
-    key: { color: 0xffe6c0, intensity: 3.2, pos: [180,220,90], shadow: 0.85 },
     fill:{ color: 0x9fb4d8, intensity: 0.25 },
     band: { color: 0x8a7a5e, rough: 0.95, metal: 0.0 }, slabColor: 0x7e6f54, tableColor: 0xa08b64,
     boardEnv: 0.2, bumpScale: 1.2, boardReflect: 0, guide: 0xff9c3a,
-    fog: { color: 0xb9a888, density: 0.0011 },   // haze GRADES with distance — board clear, wall half-gone
-    cam: { pos: [-140, 130, 280], target: [0, 26, 0], fov: 36 },   // in the seats: board low, far stands fill the top
+    fog: { color: 0xc6b593, density: 0.0016 },   // haze GRADES with distance — board clear, wall half-gone
+    // a LOW raking sun casts long dramatic shadows across the sand — nothing says "enormous" like
+    // a shadow that stretches half the arena; camera high in the far seats looking down and across
+    key: { color: 0xffe0b0, intensity: 3.4, pos: [230,90,120], shadow: 0.9 },
+    cam: { pos: [-150, 115, 300], target: [0, 22, 0], fov: 34 },
     simSpeed: 0.35,
     paint() {
       const [al, a] = canvas2d();
@@ -568,13 +583,14 @@ const THEMES = {
       strokeLines(b, '#565656', LW*1.7);                          // inlay recessed into the sand
       return { albedo: al, rough: ro, bump: bu };
     },
-    pieces(which) {   // weathered titans: verdigris bronze vs rusted iron
-      const col = which === 'blue' ? 0x4e7a6e : 0x8a4a30;
-      const hub = new THREE.MeshStandardMaterial({ color: col, metalness: 0.55, roughness: 0.5,
-        envMapIntensity: 0.35 });
-      const leg = new THREE.MeshStandardMaterial({ color: col, metalness: 0.4, roughness: 0.62,
-        envMapIntensity: 0.2 });
-      return { leg, hub };
+    pieces(which) {   // colossal carved STONE — not bronze figurines. Matte, unlit-looking rock with
+      // flat-shaded facets (the tube's segments become chisel planes) reads as roughly-hewn granite;
+      // a low env and no metalness kills the "small shiny figurine" tell entirely. Weathered pale
+      // stone with a faint mineral tint carrying the blue/red identity.
+      const stone = which === 'blue' ? 0x8f97a0 : 0xa8907e;   // bluish granite / warm sandstone
+      const mk = () => new THREE.MeshStandardMaterial({ color: stone, metalness: 0, roughness: 0.95,
+        envMapIntensity: 0.12, flatShading: true });
+      return { leg: mk(), hub: mk() };
     },
     env() {   // the colosseum: tiered stands flecked with crowd, an arched outer wall, hanging dust
       const g = new THREE.Group();
@@ -624,19 +640,28 @@ const THEMES = {
       const wall = new THREE.Mesh(new THREE.CylinderGeometry(660, 660, 240, 128, 1, true),
         new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.95, side: THREE.BackSide }));
       wall.position.y = 200; g.add(wall);
-      // dust hanging in the sun — the air itself has depth
-      const N = 700, pos = new Float32Array(N*3);
-      for (let i = 0; i < N; i++) {
-        const th = rnd()*Math.PI*2, rr = 30 + rnd()*300;
-        pos[i*3] = Math.cos(th)*rr; pos[i*3+1] = 4 + rnd()*170; pos[i*3+2] = Math.sin(th)*rr;
-      }
-      const dustGeo = new THREE.BufferGeometry();
-      dustGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({
-        color: 0xffedc8, size: 1.4, transparent: true, opacity: 0.22,
-        blending: THREE.AdditiveBlending, depthWrite: false }));
-      g.add(dust);
-      g.userData.tick = t => { dust.rotation.y = t*0.004; dust.position.y = Math.sin(t*0.1)*1.5; };
+      // dust hanging in the raking sun — the air itself has depth, and depth reads as SIZE. Two
+      // layers: a fine far haze of motes across the whole bowl, and a coarser near-camera drift of
+      // bigger flecks that catch the light — the parallax between them sells the volume of air.
+      const mkDust = (N, spreadR, spreadY, size, op, seed) => {
+        let dr = seed; const rn = () => (dr = (dr*16807)%2147483647)/2147483647;
+        const pos = new Float32Array(N*3);
+        for (let i = 0; i < N; i++) {
+          const th = rn()*Math.PI*2, rr = 20 + rn()*spreadR;
+          pos[i*3] = Math.cos(th)*rr; pos[i*3+1] = 3 + rn()*spreadY; pos[i*3+2] = Math.sin(th)*rr;
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        return new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffedc8, size, transparent: true,
+          opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true }));
+      };
+      const dustFar = mkDust(1100, 380, 200, 1.3, 0.16, 909);
+      const dustNear = mkDust(320, 200, 90, 3.2, 0.28, 313);
+      g.add(dustFar, dustNear);
+      g.userData.tick = t => {
+        dustFar.rotation.y = t*0.003; dustFar.position.y = Math.sin(t*0.08)*2;
+        dustNear.rotation.y = -t*0.006; dustNear.position.y = Math.sin(t*0.13 + 1)*3;
+      };
       return g;
     },
   },
@@ -793,25 +818,28 @@ function taperedLeg(curve, mat, legRad, radialSegs, lenSegs, taperFrac) {
   return m;
 }
 const seedMat = new THREE.MeshStandardMaterial();   // replaced by applyTheme before the first frame
+// The real piece (photo) is THIN uniform wire legs meeting at a tiny fused junction — no bead.
+// Collision still uses CFG.legRadius (2.0); the VISUAL is slimmer so it matches the object.
+const VIS_LEG = CFG.legRadius * 0.62;
 function buildTripod() {
   const g = new THREE.Group();
-  const R = CFG.footR, H = CFG.hubHeight, legRad = CFG.legRadius;
+  const R = CFG.footR, H = CFG.hubHeight, legRad = VIS_LEG;
   for (let i = 0; i < 3; i++) {
     const th = i * 2*Math.PI/3, pts = [];
     for (let k = 0; k <= 20; k++) {
       const ph = (k/20) * (Math.PI/2);
       pts.push(new THREE.Vector3(Math.sin(ph)*R*Math.cos(th), Math.cos(ph)*H, Math.sin(ph)*R*Math.sin(th)));
     }
-    const leg = taperedLeg(new THREE.CatmullRomCurve3(pts), seedMat, legRad, 20, 36, 0.6);
+    const leg = taperedLeg(new THREE.CatmullRomCurve3(pts), seedMat, legRad, 16, 40, 0.3);   // near-uniform tube
     leg.userData.part = 'leg'; g.add(leg);
-    const foot = new THREE.Mesh(new THREE.SphereGeometry(legRad*0.45, 20, 14), seedMat);
+    const foot = new THREE.Mesh(new THREE.SphereGeometry(legRad*0.62, 20, 14), seedMat);
     foot.scale.set(1, 0.55, 1); foot.position.set(Math.cos(th)*R, 0.4, Math.sin(th)*R);
     foot.castShadow = true; foot.userData.part = 'leg'; g.add(foot);
   }
-  // smaller bead, dropped so the three leg-tops merge INTO it rather than plugging a big ball on
-  // top — reads as one continuous cast piece, not a sphere stuck on a tripod
-  const hub = new THREE.Mesh(new THREE.SphereGeometry(legRad*1.35, 28, 20), seedMat);
-  hub.position.set(0, H - legRad*0.5, 0); hub.castShadow = true; hub.userData.part = 'hub'; g.add(hub);
+  // NO bead: just a small fused knuckle where the three legs meet, the same girth as the tubes so
+  // nothing bulges out (this also kills the "ball floats on top of the legs from every angle" read)
+  const hub = new THREE.Mesh(new THREE.SphereGeometry(legRad*1.02, 24, 18), seedMat);
+  hub.position.set(0, H, 0); hub.castShadow = true; hub.userData.part = 'hub'; g.add(hub);
   return g;
 }
 const tripodGroups = [buildTripod(), buildTripod()];
@@ -1521,13 +1549,14 @@ function sndTick(dt) {
   if (swinging && !SND.wasSwing) sndBass(SFX.bassHz, SFX.bassLen, SFX.bassVol);
   SND.wasSwing = swinging;
   // contact clicks straight off the physics, rate-limited, harder shove = louder click
-  if (pushHit) {
-    pushHit = false;
-    if (now - SND.lastClickT > 0.11) {
-      SND.lastClickT = now;
-      sndClick(SFX.clickVol*(0.4 + 0.6*Math.min(1, speed/60)));
-    }
+  // ONE knock on the rising edge of a new contact, not a machine-gun of clicks while two pieces
+  // stay overlapped through a whole swing. A fresh contact needs a real gap since the last one.
+  if (pushHit && !SND.wasContact && now - SND.lastClickT > 0.16) {
+    SND.lastClickT = now;
+    sndClick(SFX.clickVol*(0.45 + 0.55*Math.min(1, speed/60)));
   }
+  SND.wasContact = pushHit;
+  pushHit = false;
   // the throw: the voice recedes into the cathedral (the game's loss swell)…
   if (fall.active && !SND.swellDone) {
     SND.swellDone = true; SND.thudDone = false;
