@@ -1352,7 +1352,9 @@ function nnPlanSteam(idx, temperature) {
       let v;
       if (G.pieces[1 - idx].anyFootOff()) v = 1e6 - Math.abs(target)*1e-3;   // a throw — shortest wins
       else { G.active = 1 - idx; v = -nnForward(nnFeatures()); G.active = idx; }
-      cands.push({ pivotIdx: pv, dir, targetRad: target, v });
+      // targetRad must be an unsigned magnitude (dir carries the sign) -- target here is signed
+      // (full*frac, full=G.netRad), so a dir=-1 candidate would read as a non-move downstream.
+      cands.push({ pivotIdx: pv, dir, targetRad: Math.abs(target), v });
       roll();
     }
   }
