@@ -31,6 +31,7 @@
 'use strict';
 const { features } = require('./features.js');
 
+const ROUGH_REF = 0.0225;            // measured median sweep roughness over 158 real positions
 const STEP_RAD = 3*Math.PI/180;      // the engine brains' own sampling step
 const CAP_RAD = 170*Math.PI/180;     // same safety cap as every other brain
 const MIN_MOVE = 2*Math.PI/180;      // below this the engine would undo the turn as a non-move
@@ -47,6 +48,7 @@ function nnPlanFor(eng, net, idx, opts) {
     g.pinned = null; g.pivot = null; g.active = idx; g.over = false; g.winner = null;
   };
   const cands = [];
+  let roughSum = 0, roughN = 0;
   for (let pv = 0; pv < 3; pv++) {
     for (const dir of [1, -1]) {
       eng.pinFoot(pv);
@@ -78,14 +80,43 @@ function nnPlanFor(eng, net, idx, opts) {
         w.s = sum/n;
         cands.push(w);
       }
+      // Roughness: how far each waypoint sits from the average of its two neighbours. A smooth ramp
+      // scores ~0; an isolated spike, or a good-bad-good alternation, scores high. Free -- it reuses
+      // values the sweep already computed. Throws are engine-exact (not eval output), so a waypoint
+      // touching one is skipped rather than counted as "the evaluator is unstable here".
+      for (let i = 1; i + 1 < arm.length; i++) {
+        if (arm[i-1].v >= 1e5 || arm[i].v >= 1e5 || arm[i+1].v >= 1e5) continue;
+        roughSum += Math.abs(arm[i].v - (arm[i-1].v + arm[i+1].v)/2);
+        roughN++;
+      }
     }
   }
   if (!cands.length) return null;
   cands.sort((a, b) => b.s - a.s);
 
+  // Normalised roughness: absolute jaggedness means nothing on its own, only relative to how much
+  // this position's eval varies at all (a dead-flat position with tiny wobble is still calm).
+  // High roughness = either genuinely sharp tactics OR an evaluator that's unreliable here -- both
+  // are answered the same way, by searching deeper and leaning on real playouts instead of the net.
+  let lo = Infinity, hi = -Infinity;
+  for (const c of cands) { if (c.v >= 1e5) continue; if (c.v < lo) lo = c.v; if (c.v > hi) hi = c.v; }
+  const spread = hi - lo;
+  const roughness = (roughN && spread > 1e-9) ? (roughSum/roughN)/spread : 0;
+
   const depth = o.depth || 1;
   if (depth >= 2 && cands[0].v < 1e5) {          // a clean throw is already provably best, skip
-    const keep = Math.min(cands.length, o.keepForDepth || 4);
+    // adaptive: spend the search budget where the eval is least trustworthy -- a calm (smooth)
+    // position gets a narrow slice deep-searched, a jagged one gets a wide one. Scaled RELATIVE to
+    // typical roughness rather than by an absolute gain: measured over 158 real positions the
+    // distribution is tight (p10 0.011, median 0.023, p90 0.037), so an absolute multiplier barely
+    // differentiates, while relative scaling spans keep 2 (calm) to ~7 (sharp). Because the mean
+    // roughness sits ~= the median, mean keep stays ~= base: this REDISTRIBUTES a fixed budget
+    // rather than spending more. ROUGH_REF was measured with one net; a very differently-shaped
+    // evaluator may want it re-measured (scratch probe: rough-probe.js).
+    const base = o.keepForDepth || 4;
+    const keep = Math.min(cands.length, o.adaptive
+      ? Math.max(2, Math.min(12, Math.round(base*(roughness/ROUGH_REF))))
+      : base);
     for (let i = 0; i < keep; i++) {
       const c = cands[i];
       eng.applyPlan(c);
@@ -108,13 +139,15 @@ function nnPlanFor(eng, net, idx, opts) {
   }
 
   const temp = o.temperature || 0;
+  let chosen = cands[0];
   if (temp > 1e-6 && cands[0].v < 1e5) {            // never dice away a clean throw
     const mx = cands[0].s;
     const ws = cands.map(c => Math.exp((c.s - mx)/temp));
     let r = Math.random()*ws.reduce((a, b) => a + b, 0);
-    for (let i = 0; i < cands.length; i++) { r -= ws[i]; if (r <= 0) return cands[i]; }
+    for (let i = 0; i < cands.length; i++) { r -= ws[i]; if (r <= 0) { chosen = cands[i]; break; } }
   }
-  return cands[0];
+  chosen.roughness = roughness;   // reported for diagnostics/calibration, never used to rank
+  return chosen;
 }
 
 // Iterative deepening: search depth 1, then 2, then 3... keeping only the last FULLY completed
