@@ -6603,14 +6603,17 @@ function fusedTripodGeometry(legRad) {
     const sd = (x, y, z) => {
         let d = 1e9;
         const yy = y - FOOT_TOP;
-        for (let i = 0; i < 3; i++) {   // legs: quarter-circle arc + straight vertical foot segment
+        for (let i = 0; i < 3; i++) {   // legs: quarter-circle arc + tapered vertical foot
             const ct = DIR[i][0], st = DIR[i][1];
             const u = x*ct + z*st, w = z*ct - x*st;
             let a = Math.atan2(u, yy); if (a < 0) a = 0; else if (a > HPI) a = HPI;
             d = smin(d, Math.hypot(u - Math.sin(a)*R, yy - Math.cos(a)*R, w) - legRad, 1.1);
-            // the foot: same tube continuing straight down from the arc's vertical tangent point
+            // the foot: continues straight down from the arc's vertical tangent point, tapering
+            // (smoothstep, so it flows rather than kinks) from tube width to just over the magnet
+            // pin's width -- the pin then protrudes from the small tapered tip, not a blunt saw-cut
             const ay = Math.min(Math.max(y, TRIPOD_PIN_LIFT), FOOT_TOP);
-            d = Math.min(d, Math.hypot(u - R, w, y - ay) - legRad);
+            const t = (ay - TRIPOD_PIN_LIFT)/TRIPOD_FOOT_LEN, s = t*t*(3 - 2*t);
+            d = Math.min(d, Math.hypot(u - R, w, y - ay) - (TRIPOD_TIP_RAD + (legRad - TRIPOD_TIP_RAD)*s));
         }
         d = smin(d, Math.hypot(x, y - H, z) - BEAD, 1.0);            // crown nub, fused not stacked
         // flat pad bottoms: everything below the pad plane is sliced off (the +0.03 keeps the cut
@@ -6685,7 +6688,8 @@ let tripodPinGeo = null;
 const TRIPOD_VIS_LEG_RAD = 1.44;
 const TRIPOD_PIN_LIFT = 1.0;           // pin protrusion: pad bottoms hover this far above the board
 const TRIPOD_PIN_RAD = 0.55;
-const TRIPOD_FOOT_LEN = 1.5;           // straight vertical foot segment between the arc and the pad
+const TRIPOD_TIP_RAD = 0.72;           // foot tapers to just over the pin, so the pin emerges from a point
+const TRIPOD_FOOT_LEN = 2.6;           // tapered vertical foot between the arc and the magnet tip
 let tripodPinMat = null;               // the magnet slug: dark steel, shared by every piece
 function buildTripod(hex) {
     const g=new THREE.Group();
