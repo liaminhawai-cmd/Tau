@@ -608,7 +608,7 @@
     <div id="labBox">
         <button id="labX" aria-label="Close">✕</button>
         <h2>AI playground</h2>
-        <p>Pick a brain for each side — a ladder level, or drop a trained <code>.json</code> checkpoint — then watch them play.</p>
+        <p>Pick a brain for each side — you, a ladder level, or a trained <code>.json</code> checkpoint. Two AIs? Watch them fight. You on one side? It's a real game.</p>
         <div id="labSides">
             <div class="labSide blue" data-side="0">
                 <h3>Blue</h3>
@@ -4341,7 +4341,7 @@ let nnModel = null, nnModelName = '';
 // deepening (nnPlanForGameTimed) instead of a fixed depth -- both are set from #nnSearchSettings
 // on the drop screen, URL params just seed the initial values.
 let nnDepth = (() => { const m = /[?&]depth=(\d)/.exec(location.hash); return m ? +m[1] : 2; })();
-let nnDynamic = false, nnTimeMs = 2000;
+let nnDynamic = false, nnTimeMs = 2000, nnTemperature = 0.05;
 function nnFeaturesGame() {
     const E = CFG.edgeU, me = G.pieces[G.active], op = G.pieces[1 - G.active];
     const b = Math.atan2(me.y, me.x) || 0;
@@ -4479,7 +4479,7 @@ function startAiTurn() {
     // checkpoint, everything else uses the classic difficulty planner. All return the same
     // { pivotIdx, dir, targetRad } the animation plays.
     const sp = (aiDifficulty === 'nn' && nnModel)
-                 ? (nnDynamic ? nnPlanForGameTimed(aiIdx, 0.05, nnTimeMs) : nnPlanForGame(aiIdx, 0.05, nnDepth))
+                 ? (nnDynamic ? nnPlanForGameTimed(aiIdx, nnTemperature, nnTimeMs) : nnPlanForGame(aiIdx, nnTemperature, nnDepth))
              : (ladderLevel!=null) ? ladderPlanFor(ladderLevel, aiIdx) : searchedPlanFor(aiDifficulty, aiIdx);
     if (sp) { pivotIdx = sp.pivotIdx; dir = sp.dir; target = sp.targetRad; }
     else {
@@ -7441,12 +7441,10 @@ function nnLoadModelFile(file) {
     document.getElementById('nnDepthInput').addEventListener('input', e => { nnDepth = Math.max(1, +e.target.value || 1); });
     document.getElementById('nnTimeInput').addEventListener('input', e => { nnTimeMs = Math.max(200, (+e.target.value || 2)*1000); });
 })();
-// #nn — hidden dev mode: drop a trained nn/models/*.json checkpoint and play it on the real board,
-// no local server needed. Same forgiving match as #coach: #nn, #NN, #nn.html, #nn/ all work.
-if (/^#nn\b/i.test(location.hash)) {
-    const bootNn = () => nnOpenDrop();
-    if (document.readyState === 'complete') bootNn(); else addEventListener('load', bootNn, { once: true });
-}
+// #nn — merged into the lab: same screen, preset to Human (Blue) vs a custom model (Red), so the
+// old "drop a checkpoint, play it" flow is one file-pick away. #nn, #NN, #nn.html, #nn/ all work.
+// (the #nn hash boot lives BELOW the lab section -- it needs labBrains/labSetSide initialised,
+// and consts are TDZ until their declaration runs)
 
 // #lab — hidden dev mode: pick any two brains (ladder level, or a dropped checkpoint with its own
 // depth/temperature) and watch a full game play out through the existing replay viewer. Reuses
@@ -7454,8 +7452,8 @@ if (/^#nn\b/i.test(location.hash)) {
 // what a downsampled shared-replay link already looks like, and the pacing/interpolation system
 // already smooths that into a normal-looking animation, so there's no need to animate the AI-vs-AI
 // game turn-by-turn in real time; it's simulated instantly and then watched at normal speed.
-const labBrains = [{ level: 10, model: null, name: '', depth: 2, temperature: 0, dynamic: false, timeMs: 2000 },
-                    { level: 10, model: null, name: '', depth: 2, temperature: 0, dynamic: false, timeMs: 2000 }];
+const labBrains = [{ level: 10, model: null, name: '', depth: 2, temperature: 0, dynamic: false, timeMs: 2000, human: false },
+                    { level: 10, model: null, name: '', depth: 2, temperature: 0, dynamic: false, timeMs: 2000, human: false }];
 // A #lab game is neither vsAI nor a local/online match -- both G.pieces are AI, no one is ever
 // dragging. Without this flag, renderGameOverSheet()'s fallback branch offers a "Rematch" that
 // calls startGame(false) (a genuine two-human local game) and nothing ever moves again. Cleared by
@@ -7514,6 +7512,24 @@ function labDepthSummary(side) {
 }
 function labWatchGame() {
     const msg = document.getElementById('labMsg');
+    // A human on either side means a LIVE game, not a fast-sim: route through the exact same
+    // startGame machinery the normal menus use, with the other side's brain plugged in. Which side
+    // is Human already says which colour you play, so no colour-picker modal.
+    const h0 = labBrains[0].human, h1 = labBrains[1].human;
+    if (h0 || h1) {
+        labCloseDrop();
+        if (h0 && h1) { startGame(false); return; }              // human vs human = plain local 1v1
+        const ai = h0 ? 1 : 0, b = labBrains[ai];
+        if (b.model) {
+            nnModel = b.model; nnModelName = b.name;
+            nnDepth = b.depth; nnDynamic = b.dynamic; nnTimeMs = b.timeMs;
+            nnTemperature = b.temperature || 0.05;
+            startGame(true, h0 ? 0 : 1, 'nn');
+        } else {
+            startLadderLevel(b.level, h0 ? 0 : 1);               // ladder clears bank as usual
+        }
+        return;
+    }
     msg.textContent = 'Simulating…'; msg.className = '';
     setTimeout(() => {
         try {
@@ -7540,12 +7556,30 @@ function labWatchGame() {
         } catch (e) { msg.textContent = 'Simulation failed: ' + e.message; }
     }, 30);   // let the "Simulating…" label paint before the (synchronous) search blocks the thread
 }
+// A brain choice landed on a side (from the dropdown OR the #nn boot preset). Updates state and
+// the model-settings row; never auto-opens the file picker (the user-initiated change handler
+// does that itself -- a picker popping open on page load would be obnoxious and often blocked).
+function labSetSide(side, val) {
+    const el = document.querySelectorAll('.labSide')[side];
+    el.querySelector('.labLevelSel').value = val;
+    const row = el.querySelector('.labModelRow');
+    labBrains[side].human = val === 'human';
+    if (val === 'custom') row.classList.add('on');
+    else { row.classList.remove('on'); labBrains[side].model = null; if (val !== 'human') labBrains[side].level = +val; }
+    labUpdateBtn();
+}
+function labUpdateBtn() {
+    document.getElementById('labWatchBtn').textContent =
+        (labBrains[0].human || labBrains[1].human) ? 'Play ▶' : 'Watch ▶';
+}
 (function () {
     document.getElementById('labX').addEventListener('click', labCloseDrop);
     document.getElementById('labWatchBtn').addEventListener('click', labWatchGame);
     document.querySelectorAll('.labSide').forEach(el => {
         const side = +el.dataset.side;
         const sel = el.querySelector('.labLevelSel');
+        const humanOpt = document.createElement('option'); humanOpt.value = 'human'; humanOpt.textContent = 'Human (you)';
+        sel.appendChild(humanOpt);
         for (let i = 0; i < AI_LADDER.length; i++) {
             const opt = document.createElement('option'); opt.value = i; opt.textContent = 'Level ' + (i + 1);
             sel.appendChild(opt);
@@ -7553,10 +7587,9 @@ function labWatchGame() {
         const customOpt = document.createElement('option'); customOpt.value = 'custom'; customOpt.textContent = 'Custom model…';
         sel.appendChild(customOpt);
         sel.value = labBrains[side].level;
-        const modelRow = el.querySelector('.labModelRow');
         sel.addEventListener('change', () => {
-            if (sel.value === 'custom') { modelRow.classList.add('on'); el.querySelector('.labFile').click(); }
-            else { modelRow.classList.remove('on'); labBrains[side].model = null; labBrains[side].level = +sel.value; }
+            labSetSide(side, sel.value);
+            if (sel.value === 'custom') el.querySelector('.labFile').click();
         });
         const nameEl = el.querySelector('.labModelName');
         el.querySelector('.labBrowse').addEventListener('click', () => el.querySelector('.labFile').click());
@@ -7583,11 +7616,13 @@ function labWatchGame() {
         el.querySelector('.labTimeMs').addEventListener('input', e => { labBrains[side].timeMs = Math.max(200, (+e.target.value || 2)*1000); });
     });
 })();
-// #lab — hidden dev mode, same forgiving hash match as #nn/#coach.
-if (/^#lab\b/i.test(location.hash)) {
-    const bootLab = () => labOpenDrop();
-    if (document.readyState === 'complete') bootLab(); else addEventListener('load', bootLab, { once: true });
-}
+// #lab / #nn — hidden dev modes, same forgiving hash match as #coach. Boot immediately, not on the
+// load event: everything they touch is already initialised right above, and `load` can hang for
+// many seconds behind a slow third-party fetch (auth/realtime through a proxy), which left the
+// overlay unopened the whole time. #nn is the lab preset to "you vs a dropped checkpoint" — the
+// old separate drop screen's job, one file-pick away.
+if (/^#lab\b/i.test(location.hash)) labOpenDrop();
+else if (/^#nn\b/i.test(location.hash)) { labSetSide(0, 'human'); labSetSide(1, 'custom'); labOpenDrop(); }
 // Tapping a share link often focuses an EXISTING tau tab instead of opening a new one — the OS just
 // changes the hash, nothing reloads, and the link silently does nothing (the reported "it had me
 // play against myself": the old page simply stayed up). Boot the replay on hashchange too. Don't
