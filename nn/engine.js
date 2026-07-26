@@ -12,6 +12,10 @@ const SEEDS = [
   'pinFoot', 'applySwing', 'clearTurn', 'endTurn', 'takeSnap', 'restoreSnap',
   'directionToward', 'aiChoosePlan', 'aiSwingDir', 'searchedPlanFor', 'simMoveToLimit',
   'AI_LADDER', 'ladderPlanFor',
+  // board geometry, for features.js: the printed lines and where they meet. These already rode in
+  // via the rules engine's own dependency closure, but they're seeded explicitly so a future
+  // refactor of applySwing/ladderEval can't silently drop them and break featurisation instead.
+  'angInSpan', 'nearLineIds', 'lineDistOf', 'lineSideOf', 'LINE_INTERSECTIONS',
 ];
 
 function topLevelDefs(src) {
@@ -128,6 +132,7 @@ __exports = {
   pinFoot, applySwing, clearTurn, endTurn, takeSnap, restoreSnap,
   directionToward, aiChoosePlan, simMoveToLimit, searchedPlanFor,
   AI_LADDER, ladderPlanFor,
+  angInSpan, nearLineIds, lineDistOf, lineSideOf, LINE_INTERSECTIONS,
   newGame: __newGame, applyPlan: __applyPlan,
   getG: () => G, setActive: a => { G.active = a; },
 };`, sandbox, { filename: 'tau-engine-extract.js' });
