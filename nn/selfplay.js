@@ -3,10 +3,13 @@
 // (+1 the mover went on to win, -1 they lost), optionally discounted toward 0 for positions far
 // from the end. Sparring is a mix: ladder-vs-ladder games (bulk from the fast levels, a garnish
 // of deep ones) and, once a model exists, NN-vs-ladder and NN-vs-NN games with exploration
-// temperature so the net sees its own play.
+// temperature so the net sees its own play. Every NN move within a game also comes from one
+// randomly-picked search depth for that whole game (--nnDepthMix), mostly cheap 1-ply for volume
+// with a rare deeper-searched game to teach the net about positions a greedy pass blunders into.
 //
 //   node nn/selfplay.js --games 200 --out nn/data/run1.jsonl [--model nn/models/best.json]
 //                       [--levels 2,3,4,5,6] [--deep 7,8] [--deepEvery 12] [--discount 0.995]
+//                       [--nnDepthMix 1:90,2:8,3:2]
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -56,6 +59,22 @@ function main() {
   const deepEvery = +arg('deepEvery', 12);
   const discount = +arg('discount', 0.995);
   const temperature = +arg('temperature', 0.08);
+  // Real lookahead (nnai.js's `depth`) measurably strengthens play (a same-net depth-2 vs depth-1
+  // A/B went 19-5) but costs roughly keepForDepth x per extra ply -- depth 5 for EVERY move would
+  // multiply selfplay's cost by ~300x, a non-starter for bulk data generation. Mostly cheap depth-1
+  // games with a rare depth-2/3 garnish mirrors the same "mostly cheap sparring, rare deep garnish"
+  // shape --deep/--deepEvery already use for opponent difficulty: enough deeper-searched games to
+  // teach the net about positions a 1-ply pass blunders into, without paying that cost everywhere.
+  // Picked once per game (not per move) so a game's moves come from one consistent brain strength.
+  const nnDepthMix = arg('nnDepthMix', '1:90,2:8,3:2').split(',').map(s => {
+    const [d, w] = s.split(':').map(Number); return { depth: d, weight: w };
+  });
+  const pickNnDepth = () => {
+    const total = nnDepthMix.reduce((a, b) => a + b.weight, 0);
+    let r = Math.random()*total;
+    for (const { depth, weight } of nnDepthMix) { r -= weight; if (r <= 0) return depth; }
+    return nnDepthMix[0].depth;
+  };
   const selfRatio = +arg('selfRatio', 0.5);   // share of games the net itself plays in (once it exists)
   const workers = Math.max(1, Math.floor(+arg('workers', 1)));
   fs.mkdirSync(path.dirname(out), { recursive: true });
@@ -95,7 +114,8 @@ function main() {
       const ch = fork(__filename, ['--games', String(n), '--out', part, '--model', modelPath,
         '--levels', levels.join(','), '--deep', deep.join(','), '--deepEvery', String(deepEvery),
         '--discount', String(discount), '--temperature', String(temperature),
-        '--selfRatio', String(selfRatio)],
+        '--selfRatio', String(selfRatio),
+        '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(',')],
         { env: Object.assign({}, process.env, { TAU_WORKER: String(w + 1) }) });
       ch.on('exit', () => { if (--live === 0) finish(); });
     }
@@ -111,7 +131,6 @@ function main() {
     if (!TAG) console.log('sparring with model:', modelPath);
   }
   const ladderBrain = lvl => idx => eng.ladderPlanFor(lvl - 1, idx);
-  const nnBrain = idx => nnPlanFor(eng, net, idx, { temperature });
   const pick = a => a[Math.floor(Math.random()*a.length)];
 
   const ws = fs.createWriteStream(out, { flags: 'a' });
@@ -120,13 +139,17 @@ function main() {
   for (let g = 0; g < games; g++) {
     let brainA, brainB, tag;
     const useDeep = deepEvery > 0 && g % deepEvery === deepEvery - 1;
+    // picked once per game, not per move -- a game's moves come from one consistent brain strength.
+    const nnDepth = pickNnDepth();
+    const nnBrain = idx => nnPlanFor(eng, net, idx, { temperature, depth: nnDepth });
+    const nnTag = nnDepth > 1 ? 'nn(D' + nnDepth + ')' : 'nn';
     if (net && Math.random() < selfRatio) {
       // at high selfRatio most of these are pure self-play — the ramp run.js drives
-      if (Math.random() < selfRatio) { brainA = nnBrain; brainB = nnBrain; tag = 'nn vs nn'; }
+      if (Math.random() < selfRatio) { brainA = nnBrain; brainB = nnBrain; tag = nnTag + ' vs ' + nnTag; }
       else {
         const lvl = useDeep ? pick(deep) : pick(levels);
-        if (Math.random() < 0.5) { brainA = nnBrain; brainB = ladderBrain(lvl); tag = 'nn vs L' + lvl; }
-        else { brainA = ladderBrain(lvl); brainB = nnBrain; tag = 'L' + lvl + ' vs nn'; }
+        if (Math.random() < 0.5) { brainA = nnBrain; brainB = ladderBrain(lvl); tag = nnTag + ' vs L' + lvl; }
+        else { brainA = ladderBrain(lvl); brainB = nnBrain; tag = 'L' + lvl + ' vs ' + nnTag; }
       }
     } else {
       const la = useDeep ? pick(deep) : pick(levels), lb = useDeep ? pick(deep) : pick(levels);
