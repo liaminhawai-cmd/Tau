@@ -82,6 +82,10 @@ function writeStatus(stage) {
     `**Last gate result:** ${statusState.lastGate ?? '(none yet)'}\n\n` +
     `**Last checkpoint:** ${statusState.lastCheckpoint ?? '(none yet)'}\n\n` +
     `**Last vs-${vs} benchmark:** ${statusState.lastBenchmark ?? '(none yet)'}\n`;
+  // The real stderr text, not Node's generic "Command failed: <cmdline>" wrapper -- declared
+  // outside the try so the OUTER catch (an unguarded call like `git add` throwing) can use it too,
+  // not just the inner catches around push/pull.
+  const errText = e => String((e && (e.stderr || e.stdout)) || (e && e.message) || e).trim().split('\n').slice(0, 3).join(' | ');
   try {
     fs.writeFileSync(path.join(dir, 'status.md'), md);
     // shell:true so Windows resolves `git` the same way a typed command would (PATH + PATHEXT) --
@@ -97,15 +101,21 @@ function writeStatus(stage) {
     // every argument ourselves before joining is the fix; verified against a scratch repo that this
     // produces the correct single-line commit message AND still resolves git on the shell path.
     const q = s => '"' + String(s).replace(/"/g, '\\"') + '"';
-    const git = (args) => execFileSync('git', args.map(q), { cwd: repoRoot, stdio: 'ignore', shell: true });
+    // encoding (not stdio:'ignore') so a failure's REAL stderr is visible in log.txt/the console --
+    // a bare "Command failed: git ..." wrapper message with the actual git error thrown away was a
+    // real diagnostic dead end already hit once (see git history): after fixing the ENOENT (git not
+    // found at all) and a quoting bug (args joined without quotes), a THIRD failure showed up with
+    // no way to tell what git itself objected to. Whatever surfaces next gets logged in full instead
+    // of guessed at.
+    const git = (args) => execFileSync('git', args.map(q), { cwd: repoRoot, shell: true, encoding: 'utf8' });
     git(['add', 'nn/status.md']);
     try { git(['commit', '-m', 'nn: status update']); } catch (e) { /* nothing changed -- fine */ }
     try { git(['push']); }
     catch (e) {
       try { git(['pull', '--no-edit', '--no-rebase']); git(['push']); }
-      catch (e2) { log(`status push skipped (${String(e2.message).split('\n')[0]})`); }
+      catch (e2) { log(`status push skipped (${errText(e2)})`); }
     }
-  } catch (e) { log(`WARNING: status write failed (${e.message}) — continuing`); }
+  } catch (e) { log(`WARNING: status write failed (${errText(e)}) — continuing`); }
 }
 
 // One-time reseed: the fresh-vs-best gate used to always promote regardless of the arena result
