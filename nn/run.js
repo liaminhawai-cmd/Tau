@@ -21,7 +21,14 @@ const gamesPerIter = arg('gamesPerIter', '200');
 const epochs = arg('epochs', '6');
 const arenaGames = arg('arenaGames', '24');
 const vs = arg('vs', 'L8');
-const benchEvery = Math.max(1, +arg('benchEvery', 3));
+// The vs-L8 benchmark is pure readout -- it never affects promotion -- but it is by far the most
+// expensive stage, and the thin-leg / no-grace rules made it worse: games run several times longer
+// AND L8 is a multi-second-per-move brain, so a 24-game bench that already took ~1 hour can now run
+// to 2-3. At ~5-7 minutes per training iteration that would spend most of a session measuring
+// instead of learning. Rarer (every 10th iteration) and shorter (12 games) keeps it a sanity check
+// rather than the main cost. --benchEvery 1 --benchGames 24 restores the old behaviour.
+const benchEvery = Math.max(1, +arg('benchEvery', 10));
+const benchGames = arg('benchGames', '12');
 // selfplay is embarrassingly parallel — use most of the machine's cores by default (capped: the
 // gain flattens and each worker holds its own engine sandbox). --workers 1 to go back to serial.
 const workers = arg('workers', String(Math.max(1, Math.min(os.cpus().length - 1, 8))));
@@ -136,7 +143,7 @@ for (let iter = startIter; ; iter++) {
   log(`iteration ${iter} — checkpoint saved: ${path.basename(ckpt)}`);
   if (iter % benchEvery === 0) {
     log(`iteration ${iter} — benchmark vs ${vs}`);
-    runSoft('arena.js', ['--a', 'nn:0:' + best, '--b', vs, '--games', arenaGames]);
+    runSoft('arena.js', ['--a', 'nn:0:' + best, '--b', vs, '--games', benchGames]);
   } else {
     log(`iteration ${iter} — benchmark vs ${vs} skipped (next at iteration ${Math.ceil((iter + 1) / benchEvery) * benchEvery})`);
   }
