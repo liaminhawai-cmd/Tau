@@ -113,6 +113,13 @@ function nnPlanFor(eng, net, idx, opts) {
     // roughness sits ~= the median, mean keep stays ~= base: this REDISTRIBUTES a fixed budget
     // rather than spending more. ROUGH_REF was measured with one net; a very differently-shaped
     // evaluator may want it re-measured (scratch probe: rough-probe.js).
+    //
+    // RESULT SO FAR: INCONCLUSIVE, which is why this stays off by default. A compute-neutral
+    // head-to-head (same net, depth 2, adaptive keep vs fixed keep=4) went 14-10 over 24 games --
+    // 0.8 sigma from the expected 12, two-tailed p ~0.54, i.e. indistinguishable from a coin flip,
+    // and the lead swung both ways during the run. Resolving an effect that small needs ~300 games
+    // (~5h), which is not worth it while label quality is the known binding constraint. Do not read
+    // 14-10 as a win if revisiting this.
     const base = o.keepForDepth || 4;
     const keep = Math.min(cands.length, o.adaptive
       ? Math.max(2, Math.min(12, Math.round(base*(roughness/ROUGH_REF))))
