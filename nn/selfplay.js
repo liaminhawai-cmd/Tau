@@ -9,7 +9,7 @@
 //
 //   node nn/selfplay.js --games 200 --out nn/data/run1.jsonl [--model nn/models/best.json]
 //                       [--levels 2,3,4,5,6] [--deep 7,8] [--deepEvery 12] [--discount 0.995]
-//                       [--nnDepthMix 1:90,2:8,3:2]
+//                       [--nnDepthMix 1:60,2:30,3:10]
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -60,13 +60,20 @@ function main() {
   const discount = +arg('discount', 0.995);
   const temperature = +arg('temperature', 0.08);
   // Real lookahead (nnai.js's `depth`) measurably strengthens play (a same-net depth-2 vs depth-1
-  // A/B went 19-5) but costs roughly keepForDepth x per extra ply -- depth 5 for EVERY move would
-  // multiply selfplay's cost by ~300x, a non-starter for bulk data generation. Mostly cheap depth-1
-  // games with a rare depth-2/3 garnish mirrors the same "mostly cheap sparring, rare deep garnish"
-  // shape --deep/--deepEvery already use for opponent difficulty: enough deeper-searched games to
-  // teach the net about positions a 1-ply pass blunders into, without paying that cost everywhere.
+  // A/B went 19-5) but costs roughly keepForDepth x per extra ply (measured ~5.6x for depth 2, ~20x
+  // for depth 3), so depth 5 everywhere would be a ~300x non-starter for bulk data generation.
   // Picked once per game (not per move) so a game's moves come from one consistent brain strength.
-  const nnDepthMix = arg('nnDepthMix', '1:90,2:8,3:2').split(',').map(s => {
+  //
+  // Why this leans deep rather than cheap: a capacity probe on 101k real positions showed 3.5x the
+  // parameters (64,64 -> 128,128) buying only +0.8 sign-acc, with the WIDE net's train mse no lower
+  // than the small one's -- and every configuration tried (5.3k params, 18.6k params, 8 epochs, 27
+  // accumulated iterations) landing between 68.8% and 71.0%. A ceiling that ignores capacity and
+  // training time that completely is a LABEL ceiling: z is "who won this game", and in mostly-greedy
+  // self-play that outcome is too often decided by whoever blundered last rather than by whose
+  // position was better. Deeper search is what actually cleans those labels, so it's worth real
+  // throughput -- an earlier 1:90,2:8,3:2 split optimised volume, which the probe says is not the
+  // binding constraint.
+  const nnDepthMix = arg('nnDepthMix', '1:60,2:30,3:10').split(',').map(s => {
     const [d, w] = s.split(':').map(Number); return { depth: d, weight: w };
   });
   const pickNnDepth = () => {
