@@ -93,7 +93,7 @@ function nnPlanFor(eng, net, idx, opts) {
       let deep;
       if (g1.over) deep = g1.winner === idx ? 1e6 : -1e6;
       else {
-        const oppPlan = nnPlanFor(eng, net, 1 - idx, { temperature: 0, depth: depth - 1 });
+        const oppPlan = nnPlanFor(eng, net, 1 - idx, { temperature: 0, depth: depth - 1, keepForDepth: o.keepForDepth });
         if (!oppPlan) deep = net.value(features(eng));     // opponent wedged -- score as-is
         else {
           eng.applyPlan(oppPlan);
@@ -117,4 +117,30 @@ function nnPlanFor(eng, net, idx, opts) {
   return cands[0];
 }
 
-module.exports = { nnPlanFor };
+// Iterative deepening: search depth 1, then 2, then 3... keeping only the last FULLY completed
+// depth's answer, until `timeMs` runs out -- exactly how a chess engine uses a time budget instead
+// of a fixed ply count. Never returns a partial (interrupted mid-search) result: depth N's answer
+// only replaces depth N-1's once N has completely finished. Each depth also re-derives its own
+// weighted-average cost estimate from the depths tried so far (roughly keepForDepth x per extra
+// ply), so it stops requesting a depth it almost certainly can't finish rather than overrunning
+// the clock by a large factor.
+function nnPlanForTimed(eng, net, idx, opts) {
+  const o = opts || {};
+  const timeMs = o.timeMs || 2000;
+  const keepForDepth = o.keepForDepth || 4;
+  const t0 = Date.now();
+  let best = null, lastCost = 0, depth = 1;
+  for (;;) {
+    const t1 = Date.now();
+    const plan = nnPlanFor(eng, net, idx, { temperature: o.temperature, depth, keepForDepth });
+    if (!plan) return best;               // wedged -- nothing this depth found, keep whatever we had
+    best = plan; best.searchDepth = depth;
+    lastCost = Date.now() - t1;
+    const elapsed = Date.now() - t0;
+    if (elapsed >= timeMs) return best;
+    if (elapsed + lastCost*keepForDepth > timeMs) return best;   // next depth almost certainly won't finish
+    depth++;
+  }
+}
+
+module.exports = { nnPlanFor, nnPlanForTimed };
