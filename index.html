@@ -7485,6 +7485,13 @@ function labMakeBrainFn(side) {
 // undefined for ladder/fixed-depth moves, so labDepthSummary can tell "didn't reach deep" from
 // "not a dynamic brain" apart.
 const labLastDepths = [[], []];
+// A live game's replay recorder (recordReplayFrame) samples once per RENDERED frame (~60fps), so a
+// push/contact resolving mid-swing is caught at whatever fine angle it actually happened at. This
+// sim has no render loop to piggyback on, so it must sample finer than AI_STEP_RAD (3deg, tuned for
+// SEARCH sampling cost, not replay smoothness) or a push that resolves in under 3deg of the active
+// piece's swing gets flattened into a straight line between two now-distant samples -- the reported
+// "odd wiggles" beyond the already-fixed pivot-foot drift.
+const LAB_SNAP_STEP_RAD = 1 * Math.PI/180;
 function labSimulateGame(brainBlue, brainRed) {
     reset();
     labLastDepths[0].length = 0; labLastDepths[1].length = 0;
@@ -7499,10 +7506,10 @@ function labSimulateGame(brainBlue, brainRed) {
         pinFoot(plan.pivotIdx);
         let g = 0;
         while (!G.atLimit && Math.abs(G.netRad) < plan.targetRad && g++ < 5000) {
-            applySwing(plan.dir*Math.min(AI_STEP_RAD, plan.targetRad - Math.abs(G.netRad)));
-            // a frame per 3-degree step, not per turn: the replay player interpolates hub x/y + rot
-            // LINEARLY between frames, and a pivot turn isn't linear in those -- with only one pose
-            // per turn the planted (pinned) foot visibly drifted along the interpolation
+            applySwing(plan.dir*Math.min(LAB_SNAP_STEP_RAD, plan.targetRad - Math.abs(G.netRad)));
+            // a frame per step, not per turn: the replay player interpolates hub x/y + rot LINEARLY
+            // between frames, and a pivot turn isn't linear in those -- with only one pose per turn
+            // the planted (pinned) foot visibly drifted along the interpolation
             snap();
         }
         endTurn();
@@ -7542,6 +7549,7 @@ function labWatchGame() {
         try {
             const brainBlue = labMakeBrainFn(0), brainRed = labMakeBrainFn(1);
             const frames = labSimulateGame(brainBlue, brainRed);
+            const labWinner = G.winner, labOver = G.over;   // reset() below makes a fresh G (over:false, winner:null) -- save the real result first, or endReplay's closing tumble has no winner to fall
             labCloseDrop();
             hideModal(); clearTimeout(gameOverTimer); demoStop();
             if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
@@ -7553,6 +7561,7 @@ function labWatchGame() {
             document.body.classList.add('ingame');
             setSpectatorChrome(true);
             reset(); resize();
+            G.winner = labWinner; G.over = labOver;   // restore the real result reset() just wiped
             replayNames = [labSideLabel(0), labSideLabel(1)];
             replayFrames = frames.map(f => f.slice());
             const badge = document.getElementById('labDepthBadge');
