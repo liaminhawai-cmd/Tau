@@ -29,7 +29,13 @@ function playGame(eng, brainA, brainB, maxPlies) {
   let plies = 0, nulls = 0;
   while (!eng.getG().over && plies < maxPlies) {
     const idx = eng.getG().active;
-    rows.push({ f: features(eng), mover: idx });
+    // The raw pose rides along with the feature vector. Rows used to store ONLY the features, so
+    // when the feature set changed every accumulated position died with it (~8 hours of compute the
+    // first time). With the position kept, any future feature change is a re-featurise of existing
+    // data rather than a fresh collection run. train.js ignores `p`; it is pure insurance.
+    const ps = eng.getG().pieces;
+    rows.push({ f: features(eng), mover: idx,
+                p: [ps[0].x, ps[0].y, ps[0].rot, ps[1].x, ps[1].y, ps[1].rot] });
     const plan = (idx === 0 ? brainA : brainB)(idx);
     if (!plan) {
       rows.pop();
@@ -73,7 +79,12 @@ function main() {
   // position was better. Deeper search is what actually cleans those labels, so it's worth real
   // throughput -- an earlier 1:90,2:8,3:2 split optimised volume, which the probe says is not the
   // binding constraint.
-  const nnDepthMix = arg('nnDepthMix', '1:60,2:30,3:10').split(',').map(s => {
+  // Weights decay by 1/3.6 per ply -- deliberately matched to how fast COST grows per ply (5.6x
+  // measured at depth 2, 20x at depth 3, i.e. ~3.57x each). Matching the two means every depth
+  // bucket costs the same total compute (~1.1 units each, 5.16x overall, only 1.21x the old
+  // 60/30/10 mix) while still reaching depth 5 occasionally. A gentler decay inverts that: a 2/3
+  // law would put 8% of games at depth 5 and 59% of all compute there.
+  const nnDepthMix = arg('nnDepthMix', '1:1,2:0.278,3:0.077,4:0.021,5:0.006').split(',').map(s => {
     const [d, w] = s.split(':').map(Number); return { depth: d, weight: w };
   });
   const pickNnDepth = () => {
@@ -146,17 +157,25 @@ function main() {
   for (let g = 0; g < games; g++) {
     let brainA, brainB, tag;
     const useDeep = deepEvery > 0 && g % deepEvery === deepEvery - 1;
-    // picked once per game, not per move -- a game's moves come from one consistent brain strength.
-    const nnDepth = pickNnDepth();
-    const nnBrain = idx => nnPlanFor(eng, net, idx, { temperature, depth: nnDepth });
-    const nnTag = nnDepth > 1 ? 'nn(D' + nnDepth + ')' : 'nn';
+    // Each SIDE draws its own depth, rather than one depth for the whole game. With both sides at
+    // the same depth they share the same blind spots, so neither ever plays the move that punishes
+    // the other's mistake and the blunder never appears in the data labelled as a blunder -- the
+    // problem this file's own comment names but the old code still had. Mismatched depths make the
+    // deeper side the examiner: it finds the refutation, the shallower side's position genuinely
+    // loses, and the label is right for the right reason. Depth is still fixed for a whole game so
+    // one game means one consistent brain strength per player.
+    const depthA = pickNnDepth(), depthB = pickNnDepth();
+    const nnBrainAt = d => idx => nnPlanFor(eng, net, idx, { temperature, depth: d });
+    const nnTagAt = d => d > 1 ? 'nn(D' + d + ')' : 'nn';
     if (net && Math.random() < selfRatio) {
       // at high selfRatio most of these are pure self-play — the ramp run.js drives
-      if (Math.random() < selfRatio) { brainA = nnBrain; brainB = nnBrain; tag = nnTag + ' vs ' + nnTag; }
-      else {
+      if (Math.random() < selfRatio) {
+        brainA = nnBrainAt(depthA); brainB = nnBrainAt(depthB);
+        tag = nnTagAt(depthA) + ' vs ' + nnTagAt(depthB);
+      } else {
         const lvl = useDeep ? pick(deep) : pick(levels);
-        if (Math.random() < 0.5) { brainA = nnBrain; brainB = ladderBrain(lvl); tag = nnTag + ' vs L' + lvl; }
-        else { brainA = ladderBrain(lvl); brainB = nnBrain; tag = 'L' + lvl + ' vs ' + nnTag; }
+        if (Math.random() < 0.5) { brainA = nnBrainAt(depthA); brainB = ladderBrain(lvl); tag = nnTagAt(depthA) + ' vs L' + lvl; }
+        else { brainA = ladderBrain(lvl); brainB = nnBrainAt(depthA); tag = 'L' + lvl + ' vs ' + nnTagAt(depthA); }
       }
     } else {
       const la = useDeep ? pick(deep) : pick(levels), lb = useDeep ? pick(deep) : pick(levels);
@@ -168,7 +187,8 @@ function main() {
       for (let i = 0; i < rows.length; i++) {
         const pliesToEnd = rows.length - i;
         const z = (rows[i].mover === winner ? 1 : -1)*Math.pow(discount, pliesToEnd);
-        ws.write(JSON.stringify({ f: rows[i].f.map(v => +v.toFixed(5)), z: +z.toFixed(4) }) + '\n');
+        ws.write(JSON.stringify({ f: rows[i].f.map(v => +v.toFixed(5)), z: +z.toFixed(4),
+                                  p: rows[i].p.map(v => +v.toFixed(4)), m: rows[i].mover }) + '\n');
         positions++;
       }
     }

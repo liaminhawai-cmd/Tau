@@ -1,15 +1,13 @@
 // The overnight loop: selfplay -> train -> arena, forever (Ctrl-C any time; every stage saves).
-//   node nn/run.js [--gamesPerIter 200] [--epochs 6] [--arenaGames 24] [--vs L8] [--benchEvery 3]
-//                  [--benchGames 12] [--bench2Games 4] [--bench3Games 2]
+//   node nn/run.js [--gamesPerIter 30] [--epochs 6] [--benchEvery 10] [--benchLevels 4]
+//                  [--benchCellGames 3] [--benchDeepUntil 4] [--tournamentEvery 10]
 // Iteration 1 has no model, so selfplay is pure ladder sparring; from then on the freshest net
-// plays half its own games. A new net is promoted to models/best.json when it beats the current
-// best 55%+ head-to-head (or immediately, the first time). Progress appends to nn/log.txt.
-// The vs-L8 benchmark is pure readout (it never affects promotion, and best.json is already saved
-// by the time it runs) but is easily the priciest stage per iteration. It now runs the net at
-// 1-, 2- and 3-ply (a few games each, fewer as depth gets pricier) instead of one fixed-depth
-// score, so it's clear how much of any result is the value function versus the search depth it
-// happened to be read at. --benchEvery N only runs it on every Nth iteration; the skipped ones
-// cost nothing.
+// plays most of its own games. Every iteration's net is promoted to models/best.json (see the note
+// on the retired per-iteration gate below); a periodic round robin across every saved checkpoint
+// is what actually decides which one deserves to be best. Progress appends to nn/log.txt.
+// The benchmark is a ladder SWEEP -- a few games in each (ladder level x search depth) cell -- so
+// it reads as a placement rather than a single pass/fail, and the bottom rung retires once the net
+// sweeps it. --benchEvery N only runs it on every Nth iteration; the skipped ones cost nothing.
 'use strict';
 const { execFileSync } = require('child_process');
 const fs = require('fs');
@@ -22,23 +20,20 @@ function arg(name, dflt) {
 }
 const gamesPerIter = arg('gamesPerIter', '200');
 const epochs = arg('epochs', '6');
-const arenaGames = arg('arenaGames', '24');
-const vs = arg('vs', 'L8');
-// The vs-L8 benchmark is pure readout -- it never affects promotion -- but it is by far the most
-// expensive stage, and the thin-leg / no-grace rules made it worse: games run several times longer
-// AND L8 is a multi-second-per-move brain, so a 24-game bench that already took ~1 hour can now run
-// to 2-3. At ~5-7 minutes per training iteration that would spend most of a session measuring
-// instead of learning. Rarer (every 10th iteration) and shorter (12 games) keeps it a sanity check
-// rather than the main cost. --benchEvery 1 --benchGames 24 restores the old behaviour.
 const benchEvery = Math.max(1, +arg('benchEvery', 10));
-const benchGames = arg('benchGames', '12');
-// Granular readout: a few games each at 1/2/3-ply so the benchmark shows how much of the net's
-// strength is coming from search vs the value function itself, rather than one greedy-search data
-// point. Game counts shrink as depth grows since cost scales roughly 5.6x (depth 2) and 20x (depth
-// 3) per NN move (see nnai.js) -- 12/4/2 keeps the three legs in the same rough order of magnitude
-// of wall-clock cost instead of the depth-3 leg alone dwarfing the other two.
-const bench2Games = arg('bench2Games', '4');
-const bench3Games = arg('bench3Games', '2');
+// The benchmark is a SWEEP, not a single score. "0-12 vs L8" says "weaker than L8" and nothing
+// else -- it cannot tell a net that plays like L2 from one that nearly beat L7, which is why four
+// consecutive readings of 0%, 9%, 0%, 17% carried no usable signal. Playing a small number of
+// games in many cells (a few ladder levels x a few search depths) reads as a PLACEMENT instead:
+// each individual cell is noisy, but every depth is backed by all the levels and every level by
+// all the depths, and the shape across cells (does depth 3 beat depth 2? where does the win rate
+// fall off?) is legible long before any one cell is significant.
+const benchLevels = Math.max(1, +arg('benchLevels', 4));      // ladder rungs per sweep
+const benchCellGames = arg('benchCellGames', '3');            // games per (level, depth) cell
+// Search depth costs ~3.6x per ply and high ladder rungs are multi-second-per-move brains, so the
+// full depth range is only affordable while the window sits low. It narrows as the window climbs.
+const benchDeepUntil = Math.max(1, +arg('benchDeepUntil', 4));
+const tournamentEvery = Math.max(1, +arg('tournamentEvery', 10));
 // selfplay is embarrassingly parallel — use most of the machine's cores by default (capped: the
 // gain flattens and each worker holds its own engine sandbox). --workers 1 to go back to serial.
 const workers = arg('workers', String(Math.max(1, Math.min(os.cpus().length - 1, 8))));
@@ -61,15 +56,39 @@ const runSoft = (script, args) => {
   try { run(script, args); }
   catch (e) { log(`WARNING: ${script} failed (${e.message}) — continuing`); }
 };
-// gate needs the arena's result, not just its exit code — capture stdout (still echoed below) and
-// pull the final "aWins-bWins" summary line arena.js prints out of it.
-const GATE_THRESHOLD = 0.55;
+// The sweep needs each arena's RESULT, not just its exit code — capture stdout (still echoed
+// below) and pull the final "aWins-bWins" summary line arena.js prints out of it.
 const runCaptured = (script, args) => {
   console.log(`\n$ node nn/${script} ${args.join(' ')}`);
   const out = execFileSync('node', [path.join(dir, script), ...args], { encoding: 'utf8' });
   process.stdout.write(out);
   return out;
 };
+const runCapturedSoft = (script, args) => {
+  try { return runCaptured(script, args); }
+  catch (e) { log(`WARNING: ${script} failed (${e.message}) — continuing`); return ''; }
+};
+// arena.js's closing line reads "nn(best.json,D2) vs L3: 3-0  (100% of decided, ...)". Take the LAST
+// such pair -- the earlier ones are the live per-game running tally, which has the same "N-M" shape.
+const arenaScore = out => {
+  const m = [...out.matchAll(/:\s*(\d+)-(\d+)(?:-\d+)?\s+\(/g)];
+  return m.length ? { w: +m[m.length - 1][1], l: +m[m.length - 1][2] } : null;
+};
+
+// How many rungs the ladder actually has, read from the game itself rather than hardcoded so the
+// sweep can't walk off the end if a level is ever added or removed.
+let LADDER_N = 11;
+try { LADDER_N = require('./engine.js').createEngine().AI_LADDER.length; } catch (e) {}
+
+// The sweep's bottom rung, persisted: this loop gets restarted constantly (closing the window, a
+// reboot, a code pull), and a window that resets to L1 every time would spend its benchmark budget
+// re-proving levels that were retired hours ago.
+const windowFile = path.join(dir, 'models', '.ladder-window');
+const readWindow = () => {
+  try { const n = +fs.readFileSync(windowFile, 'utf8').trim(); if (n >= 1) return n; } catch (e) {}
+  return 1;
+};
+const writeWindow = n => { try { fs.writeFileSync(windowFile, String(n) + '\n'); } catch (e) {} };
 
 // A small status file, pushed to git at each major transition, so progress can be checked by
 // reading the repo (GitHub's own UI, or `git fetch` anywhere) instead of reading this console --
@@ -91,7 +110,7 @@ function writeStatus(stage) {
     `**selfRatio:** ${statusState.selfRatio ?? '-'}\n\n` +
     `**Last gate result:** ${statusState.lastGate ?? '(none yet)'}\n\n` +
     `**Last checkpoint:** ${statusState.lastCheckpoint ?? '(none yet)'}\n\n` +
-    `**Last vs-${vs} benchmark:** ${statusState.lastBenchmark ?? '(none yet)'}\n`;
+    `**Last ladder sweep:** ${statusState.lastBenchmark ?? '(none yet)'}\n`;
   // The real stderr text, not Node's generic "Command failed: <cmdline>" wrapper -- declared
   // outside the try so the OUTER catch (an unguarded call like `git add` throwing) can use it too,
   // not just the inner catches around push/pull.
@@ -179,63 +198,67 @@ for (let iter = startIter; ; iter++) {
   run('train.js', ['--epochs', epochs, '--out', fresh,
     ...(fs.existsSync(best) ? ['--resume', best] : [])]);
   writeStatus(`training (${epochs} epochs)`);
-  if (!fs.existsSync(best)) {
-    fs.copyFileSync(fresh, best);
-    log(`iteration ${iter} — first model promoted to best.json`);
-    statusState.lastGate = `iteration ${iter} — first model (no gate yet)`;
-  } else {
-    log(`iteration ${iter} — gate: fresh vs best, ${arenaGames} games`);
-    let stdout = '';
-    try { stdout = runCaptured('arena.js', ['--a', 'nn:0:' + fresh, '--b', 'nn:0:' + best, '--games', arenaGames]); }
-    catch (e) { log(`WARNING: gate arena failed (${e.message}) — promoting anyway (fail-open)`); }
-    // arena.js's final line looks like "nn(value.json) vs nn(best.json): 7-17  (29% of decided, ...)"
-    // -- pull the LAST "aWins-bWins" pair out of the captured output (earlier numbers are the live
-    // per-game running tally, which uses the same "N-M" shape).
-    const matches = [...stdout.matchAll(/:\s*(\d+)-(\d+)(?:-\d+)?\s+\(/g)];
-    const last = matches[matches.length - 1];
-    const freshWins = last ? +last[1] : 0, bestWins = last ? +last[2] : 0;
-    const decided = freshWins + bestWins;
-    if (!last || !decided) {
-      fs.copyFileSync(fresh, best);
-      log(`iteration ${iter} — gate: couldn't read a result — promoted anyway (fail-open)`);
-      statusState.lastGate = `iteration ${iter} — couldn't read a result, promoted (fail-open)`;
-    } else if (freshWins/decided >= GATE_THRESHOLD) {
-      fs.copyFileSync(fresh, best);
-      log(`iteration ${iter} — gate: fresh ${freshWins}-${bestWins} best ` +
-          `(${(100*freshWins/decided).toFixed(0)}%) — promoted`);
-      statusState.lastGate = `iteration ${iter} — fresh ${freshWins}-${bestWins} best (${(100*freshWins/decided).toFixed(0)}%) — promoted`;
-    } else {
-      log(`iteration ${iter} — gate: fresh ${freshWins}-${bestWins} best ` +
-          `(${(100*freshWins/decided).toFixed(0)}%) — held, best.json unchanged ` +
-          `(this iteration's data is still on disk and feeds the next attempt)`);
-      statusState.lastGate = `iteration ${iter} — fresh ${freshWins}-${bestWins} best (${(100*freshWins/decided).toFixed(0)}%) — held`;
-    }
-  }
+  // Always promote. The per-iteration fresh-vs-best gate is gone, and this is not a regression to
+  // the old fake gate -- it is deliberate, for three measured reasons:
+  //   1. It could not resolve what it was asked to. 24 games at a 55% bar is cleared by two
+  //      IDENTICAL nets 27% of the time; real per-iteration gains are a couple of percent. It was
+  //      reading noise. (AlphaGo Zero used 400 games for the same 55% threshold; AlphaZero then
+  //      dropped the gate entirely and was stronger for it.)
+  //   2. Worse, it ratcheted on that noise: best.json is a running maximum over noisy draws, so it
+  //      is upward-biased, and a genuinely-equal new net has to beat the luck as well as the
+  //      strength. Observed pass rate was 13.5% -- BELOW the 27% two identical nets would manage.
+  //   3. Because train.js resumes from best.json, a rejection threw the whole iteration's training
+  //      away. Twenty-three iterations without a promotion were twenty-three independent 6-epoch
+  //      attempts from the same frozen weights, not accumulated progress.
+  // The safety net moves to a periodic round robin over every saved checkpoint (below), which
+  // extracts far more signal per game than a 24-game A/B because every model meets every other.
+  fs.copyFileSync(fresh, best);
+  log(`iteration ${iter} — promoted (no per-iteration gate; round robin every ${tournamentEvery} iterations picks the real best)`);
+  statusState.lastGate = `iteration ${iter} — promoted (gate retired; round robin every ${tournamentEvery})`;
   // checkpoint: every iteration's model is kept — play them, watch them, arena old vs new
   const ckpt = path.join(dir, 'models', `ckpt-${String(iter).padStart(3, '0')}.json`);
   fs.copyFileSync(best, ckpt);
   log(`iteration ${iter} — checkpoint saved: ${path.basename(ckpt)}`);
   statusState.lastCheckpoint = `${path.basename(ckpt)} at ${new Date().toISOString()}`;
+  if (iter % tournamentEvery === 0) {
+    log(`iteration ${iter} — round robin across saved checkpoints (this is what picks best.json now)`);
+    writeStatus(`round robin running (started ${new Date().toISOString()})`);
+    runSoft('tournament.js', ['--promote']);
+  }
   if (iter % benchEvery === 0) {
-    log(`iteration ${iter} — benchmark vs ${vs} (1/2/3-ply)`);
-    writeStatus(`benchmark vs ${vs} running (1/2/3-ply, started ${new Date().toISOString()})`);
-    // Three separate arena.js calls, not one at a fixed depth: arena.js's --depth only ever applied
-    // to the nn side of the earlier single-depth benchmark (L8 has no such knob), so every past
-    // result here was the value function played at its greediest, weakest setting -- 1-ply search
-    // was already measured elsewhere to lose ~19-5 to the SAME net at 2-ply. Running all three
-    // depths shows how much of any given iteration's L8 result is the value function versus the
-    // search depth it happened to be read at.
-    for (const { depth, games } of [{ depth: 1, games: benchGames }, { depth: 2, games: bench2Games }, { depth: 3, games: bench3Games }]) {
-      log(`iteration ${iter} — benchmark vs ${vs}, ${depth}-ply (${games} games)`);
-      runSoft('arena.js', ['--a', 'nn:0:' + best, '--b', vs, '--games', games, '--depth', String(depth)]);
+    const bottom = Math.max(1, Math.min(readWindow(), LADDER_N - benchLevels + 1));
+    const top = Math.min(bottom + benchLevels - 1, LADDER_N);
+    const depths = bottom <= benchDeepUntil ? [1, 2, 3, 4] : [1, 2, 3];
+    log(`iteration ${iter} — ladder sweep L${bottom}-L${top} x ${depths.length} depths x ${benchCellGames} games`);
+    writeStatus(`ladder sweep L${bottom}-L${top} running (started ${new Date().toISOString()})`);
+    const grid = {};
+    for (let lvl = bottom; lvl <= top; lvl++)
+      for (const d of depths)
+        grid[lvl + ':' + d] = arenaScore(runCapturedSoft('arena.js',
+          ['--a', 'nn:0:' + best, '--b', 'L' + lvl, '--games', benchCellGames, '--depth', String(d)]));
+    const table = ['         ' + depths.map(d => ('D' + d).padStart(8)).join('')];
+    for (let lvl = bottom; lvl <= top; lvl++)
+      table.push(('L' + lvl).padStart(6) + '   ' + depths.map(d => {
+        const s = grid[lvl + ':' + d];
+        return (s ? `${s.w}-${s.l}` : '-').padStart(8);
+      }).join(''));
+    log(`iteration ${iter} — ladder sweep (net's win-loss per cell):\n` + table.join('\n'));
+    // Retire the bottom rung once even the SHALLOWEST search sweeps it and the rung above clean.
+    // Judging on 1-ply is the conservative choice -- a level only a deep search beats is still
+    // telling you something, so it stays. Demanding 100% is what makes a 3-game cell safe: two
+    // clean sweeps is ~1.6% by luck for an even matchup, and retiring a level slightly early costs
+    // almost nothing, because a level you always beat has stopped carrying information anyway.
+    const swept = l => { const s = grid[l + ':1']; return s && s.w > 0 && s.l === 0; };
+    if (bottom + 1 <= top && swept(bottom) && swept(bottom + 1) && bottom < LADDER_N - benchLevels + 1) {
+      writeWindow(bottom + 1);
+      log(`iteration ${iter} — L${bottom} retired (1-ply swept L${bottom} and L${bottom + 1}); ` +
+          `window moves up to L${bottom + 1}-L${Math.min(bottom + benchLevels, LADDER_N)}`);
     }
-    // the exact scores only ever live in the console (runSoft streams them live, unlike the gate's
-    // runCaptured) -- deliberately not re-run captured here, since that would lose the live
-    // per-game progress output during what is still the single longest stage.
-    statusState.lastBenchmark = `iteration ${iter}, finished ${new Date().toISOString()} — 1/2/3-ply, see console for the scores`;
+    statusState.lastBenchmark = `iteration ${iter}: ladder sweep L${bottom}-L${top} — ` +
+      table.slice(1).map(r => r.trim().replace(/\s+/g, ' ')).join(' | ');
   } else {
     const nextBench = Math.ceil((iter + 1) / benchEvery) * benchEvery;
-    log(`iteration ${iter} — benchmark vs ${vs} skipped (next at iteration ${nextBench})`);
+    log(`iteration ${iter} — ladder sweep skipped (next at iteration ${nextBench})`);
   }
   const nextBenchNote = iter % benchEvery === 0 ? '' :
     ` (next run at iteration ${Math.ceil((iter + 1) / benchEvery) * benchEvery})`;
