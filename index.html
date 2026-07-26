@@ -4798,10 +4798,11 @@ function renderGameOverSheet() {
     let title, buttons, bodyHtml = '';
     if (labActive) {
         // Neither side is a human -- "Rematch" (a real local 1v1) or any vsAI/ladder replay button
-        // would leave both pieces with no one to move them. Re-run the same two brains instead.
+        // would leave both pieces with no one to move them. "Change brains" is the fast lab-specific
+        // option here; a fresh same-brains simulation is offered further down (demoted, clearly
+        // labelled) so it never gets mistaken for the instant "Watch replay" of the game just seen.
         title = tf('{name} wins!', { name: t(G.winner===0?'Blue':'Red') });
-        buttons = [ { label: t('Watch again'), onClick: labWatchGame },
-                    { label: t('Change brains'), onClick: () => { backToMenu(); labOpenDrop(); } } ];
+        buttons = [ { label: t('Change brains'), onClick: () => { backToMenu(); labOpenDrop(); } } ];
     } else if (onlineMatch && onlineMatch.spectator) {
         title = tf('{name} wins!', { name: G.winner===0 ? onlineMatch.blueName : onlineMatch.redName });
         buttons = [ { label: t('Watch another'), onClick: () => { exitOnlineMatch(); openWatchScreen(); } } ];
@@ -4874,6 +4875,10 @@ function renderGameOverSheet() {
     if (replayFrames.length > 15) { buttons.push({ label: t('Watch replay'), onClick: startReplay });
                                     buttons.push({ label: t('Share replay'), onClick: () => { shareReplay(); renderGameOverSheet(); } });
                                     buttons.push({ label: t('Save replay'), onClick: () => { saveReplayToCollection(); renderGameOverSheet(); } }); }
+    // Re-running the search from scratch can take as long as the original sim did (deep ladder
+    // levels, or a dynamic brain's per-move time budget) -- demoted so it's never the thing someone
+    // taps expecting an instant rewatch of the game they just saw (that's "Watch replay" above).
+    if (labActive) buttons.push({ label: t('New sim, same brains'), onClick: labWatchGame, cls: 'modalBtnQuiet' });
     buttons.push({ label: t('Menu'), onClick: backToMenu });
     // Claim-your-progress nudge at the peak: a guest who just won is invited (once per session, so it
     // never nags) to keep their name/rank/progress under a real account.
@@ -6743,7 +6748,10 @@ function init3D() {
     // bottom of every foot was buried in the board, so what showed was the leg's taper sliced by
     // the board plane -- exactly the "crescent / hollow" foot look from low angles.
     boardTop.rotation.x=-Math.PI/2; boardTop.position.y=-0.05; scene.add(boardTop);
-    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.05,CFG.edgeU*1.09,5,96),
+    // Top radius == edgeU exactly: the rim's flare has to start flush with the board surface's true
+    // drop-off radius, or there's a visible ring of solid grey base showing PAST edgeU before the
+    // lip actually slopes away -- a foot crossing edgeU would look like it's still over solid board.
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU*1.04,5,96),
         new THREE.MeshStandardMaterial({color:0x8b9199, roughness:0.6, metalness:0.2}));
     // Top of this grey base band must stay just BELOW the board surface, else it occludes the dark
     // textured top from above and the whole disc reads as blank pale grey (regression when the board
