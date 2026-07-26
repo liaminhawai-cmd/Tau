@@ -84,7 +84,20 @@ function writeStatus(stage) {
     `**Last vs-${vs} benchmark:** ${statusState.lastBenchmark ?? '(none yet)'}\n`;
   try {
     fs.writeFileSync(path.join(dir, 'status.md'), md);
-    const git = (args) => execFileSync('git', args, { cwd: repoRoot, stdio: 'ignore' });
+    // shell:true so Windows resolves `git` the same way a typed command would (PATH + PATHEXT) --
+    // a plain execFileSync bypasses that and fails outright (ENOENT) on setups where git is only
+    // reachable through the shell's own resolution, e.g. a GitHub-Desktop-managed git not
+    // separately added to PATH the way a spawned child process needs. Confirmed on the real
+    // machine: `git pull` inside START.bat (typed-command-equivalent) works fine, the identical
+    // execFileSync('git', ...) here did not, until this fix. shell:true has its own cost, though:
+    // Node just joins the args array with spaces and hands the WHOLE string to the shell, so an
+    // arg containing a space (the commit message) silently splits into two shell words instead of
+    // staying one argument -- confirmed by testing: it produced `git commit -m nn: status update`,
+    // which git parsed as message "nn:" plus two bogus pathspecs and rejected outright. Quoting
+    // every argument ourselves before joining is the fix; verified against a scratch repo that this
+    // produces the correct single-line commit message AND still resolves git on the shell path.
+    const q = s => '"' + String(s).replace(/"/g, '\\"') + '"';
+    const git = (args) => execFileSync('git', args.map(q), { cwd: repoRoot, stdio: 'ignore', shell: true });
     git(['add', 'nn/status.md']);
     try { git(['commit', '-m', 'nn: status update']); } catch (e) { /* nothing changed -- fine */ }
     try { git(['push']); }
