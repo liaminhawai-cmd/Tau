@@ -67,7 +67,9 @@ const CFG = {
   sideArcs: [ { cx:-66.667, cy:0, r:40, a0:-72.542, a1:72.542 },
               { cx: 66.667, cy:0, r:40, a0:107.458, a1:252.542 } ],
   lineWidthFrac: 0.0079, padRadiusFrac: 0.0082,
-  footR: 23.095, hubHeight: 23.095, legRadius: 2.0, footPadFrac: 0.4, startX: 30.597,
+  // legRadius 1.44u = 2.88mm = the real 5.77mm tube measured off tripod smoove 2021.stl (was 2.0u,
+  // "≈8mm printed" -- 39% fatter than the real leg; see index.html's identical fix)
+  footR: 23.095, hubHeight: 23.095, legRadius: 1.44, footPadFrac: 0.4, startX: 30.597,
   // sim params (same values as index.html — the rules engine below depends on them)
   edgeEps: 0.5, maxCrossingsPerTurn: 1,
   crossEps: 0.4, holdEps: 0.45, touchEps: 0.8, lineStick: 0.25, cornerEps: 1.1,
@@ -857,31 +859,39 @@ const seedMat = new THREE.MeshStandardMaterial();   // replaced by applyTheme be
 // (collision fires at CFG.legRadius*2 between centrelines) the visible tubes clearly OVERLAP —
 // contact you can see, matched to contact you hear. Same girth as the shipped game's legs.
 const VIS_LEG = CFG.legRadius * 1.05;
+// True prototype proportions, ported from index.html (tripod smoove 2021.stl, 1u = 2mm): constant
+// tube the whole way (no ankle taper into a bulb pad -- that combo was measured against the STL
+// and found 39% too fat, reading as "tracksuit pants"), quarter-circle centreline, straight foot
+// tapering to the magnet pin's own width, flat pad, standing on the pin tip at y=0.
+const TRIPOD_PIN_LIFT = 1.0, TRIPOD_FOOT_LEN = 2.6, TRIPOD_TIP_RAD = 0.72, TRIPOD_PIN_RAD = 0.55;
+let tripodPinMat = null;   // the magnet slug: dark steel, fixed across every theme (no userData.part)
 function fusedTripodGeometry(legRad) {
-  const R = CFG.footR, H = CFG.hubHeight, PAD = CFG.footPadRadius;
-  const BEAD = legRad*1.25, HPI = Math.PI/2;
+  const R = CFG.footR, HPI = Math.PI/2;
+  const FOOT_TOP = TRIPOD_PIN_LIFT + TRIPOD_FOOT_LEN, H = R + FOOT_TOP;
+  const BEAD = legRad*1.15;
   const DIR = [0, 1, 2].map(i => [Math.cos(i*2*Math.PI/3), Math.sin(i*2*Math.PI/3)]);
   const smin = (a, b, k) => {   // polynomial smooth-min: the weld fillet between parts
     const t = Math.max(k - Math.abs(a - b), 0)/k; return Math.min(a, b) - t*t*k*0.25;
   };
   const sd = (x, y, z) => {
     let d = 1e9;
-    for (let i = 0; i < 3; i++) {   // legs: quarter-circle arcs of radius R centred at the origin
+    const yy = y - FOOT_TOP;
+    for (let i = 0; i < 3; i++) {   // legs: quarter-circle arc + tapered vertical foot
       const ct = DIR[i][0], st = DIR[i][1];
       const u = x*ct + z*st, w = z*ct - x*st;
-      let a = Math.atan2(u, y); if (a < 0) a = 0; else if (a > HPI) a = HPI;
-      let rad = legRad;
-      const t = a/HPI;
-      if (t > 0.65) { const q = (t - 0.65)/0.35, s = q*q*(3 - 2*q); rad = legRad*(1 - s) + PAD*s; }
-      d = smin(d, Math.hypot(u - Math.sin(a)*R, y - Math.cos(a)*R, w) - rad, 1.1);
+      let a = Math.atan2(u, yy); if (a < 0) a = 0; else if (a > HPI) a = HPI;
+      d = smin(d, Math.hypot(u - Math.sin(a)*R, yy - Math.cos(a)*R, w) - legRad, 1.1);
+      // foot: continues straight down from the arc's vertical tangent point, tapering (smoothstep)
+      // from tube width to just over the magnet pin's width, so the pin emerges from a point
+      const ay = Math.min(Math.max(y, TRIPOD_PIN_LIFT), FOOT_TOP);
+      const t = (ay - TRIPOD_PIN_LIFT)/TRIPOD_FOOT_LEN, s = t*t*(3 - 2*t);
+      d = Math.min(d, Math.hypot(u - R, w, y - ay) - (TRIPOD_TIP_RAD + (legRad - TRIPOD_TIP_RAD)*s));
     }
-    d = smin(d, Math.hypot(x, y - H, z) - BEAD, 1.5);            // weld bead, fused not stacked
-    for (let i = 0; i < 3; i++)                                  // squashed rounded foot pads
-      d = smin(d, Math.hypot(x - DIR[i][0]*R, (y - 0.5)*1.5, z - DIR[i][1]*R) - PAD*1.6, 0.9);
-    return d;
+    d = smin(d, Math.hypot(x, y - H, z) - BEAD, 1.0);            // crown nub, fused not stacked
+    return Math.max(d, TRIPOD_PIN_LIFT + 0.03 - y);              // flat pad bottom
   };
   // ---- surface nets: one vertex per boundary cell, quads across sign-changing grid edges ----
-  const h = 0.5, X = R + 3.6, Y0 = -2.2, Y1 = H + BEAD + 2.2;
+  const h = 0.5, X = R + 3.6, Y0 = TRIPOD_PIN_LIFT - 1.2, Y1 = H + BEAD + 2.2;
   const nx = Math.ceil(2*X/h), ny = Math.ceil((Y1 - Y0)/h), nz = nx;
   const gx = nx + 1, gy = ny + 1, gz = nz + 1;
   const F = new Float32Array(gx*gy*gz);
@@ -940,12 +950,24 @@ function fusedTripodGeometry(legRad) {
   return g;
 }
 let fusedGeo = null;   // both pieces share the one geometry; materials differ per mesh
+let tripodPinGeo = null;
 function buildTripod() {
   if (!fusedGeo) fusedGeo = fusedTripodGeometry(VIS_LEG);
   const g = new THREE.Group();
   const m = new THREE.Mesh(fusedGeo, seedMat);
   m.castShadow = true; m.userData.part = 'leg';
   g.add(m);
+  // The three magnet pins the piece actually stands on. No userData.part -- applyTheme's traverse
+  // only touches tagged meshes, so this stays a fixed dark steel look across every theme rather
+  // than needing a 'pin' entry added to each theme's T.pieces() palette.
+  if (!tripodPinGeo) tripodPinGeo = new THREE.CylinderGeometry(TRIPOD_PIN_RAD, TRIPOD_PIN_RAD, TRIPOD_PIN_LIFT + 0.6, 16);
+  if (!tripodPinMat) tripodPinMat = new THREE.MeshStandardMaterial({ color: 0x15151a, roughness: 0.35, metalness: 0.65 });
+  for (let i = 0; i < 3; i++) {
+    const pin = new THREE.Mesh(tripodPinGeo, tripodPinMat);
+    pin.position.set(Math.cos(i*2*Math.PI/3)*CFG.footR, (TRIPOD_PIN_LIFT + 0.6)/2, Math.sin(i*2*Math.PI/3)*CFG.footR);
+    pin.castShadow = true;
+    g.add(pin);
+  }
   return g;
 }
 const tripodGroups = [buildTripod(), buildTripod()];
