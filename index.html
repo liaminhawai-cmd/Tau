@@ -2331,23 +2331,15 @@ const CFG = {
     footR: 23.095,                 // hub→foot = 46.19mm (tripod smoove 2021.stl)
     startX: 30.597,                // hub offset: puts the two back feet exactly halfway between the rings
     maxCrossingsPerTurn: 1,
-    // Small magnet-size band (measured at the foot's CENTRE POINT), used for the leave-a-start-line
-    // grace and the can't-COME-TO-REST-on-a-line check. Kept small: the full footprint made resting
-    // near an arc trip the rest check on lots of otherwise-legal arc swings.
-    crossEps: 0.4,
-    // Magnet band for HOLDING a crossing episode open: the crossing "hasn't happened yet" only while
-    // a foot's MAGNET is genuinely on the line (dot radius ~0.55 judged at centre, slightly tight).
-    // This must be magnet-scale, not pad-scale: with the pad band holding episodes open, one smooth
-    // swing chained two separate crossings (left pad's contact hadn't ended when right pad's began
-    // even though left's magnet was long off its line). At magnet scale the chain breaks -- to double
-    // cross you must genuinely have one foot ON its line while the other crosses (park a foot on the
-    // line one turn, continue over it the next: left, left, then right).
-    holdEps: 0.45,
-    // Line-contact band: a foot is ON a line when its centre is within touchEps of the stroke's
-    // centreline — real pad radius ~0.55 + half line width ~0.26 ≈ 0.8, i.e. exactly when the drawn
-    // foot visually touches the drawn line. The whole crossing rule keys off this one band (see
-    // crossingSubstep).
-    touchEps: 0.8,
+    // ONE band decides everything now: the magnet's SURFACE touching the printed stroke. Magnet
+    // radius 0.55 (2.2mm pin) + half line width 0.26 = 0.81. There used to be three different
+    // sizes here -- a tight magnet-CENTRE band for grace/rest (0.4), another for holding an episode
+    // open (0.45), and a wider pad band for contact (0.8) -- and the gaps between them were exactly
+    // where the grace tricks lived (parked beside a line reads as "on" for one test and "off" for
+    // another). Same number everywhere, so "is the magnet on the line" has one answer.
+    crossEps: 0.81,
+    holdEps: 0.81,          // same magnet-surface band (see crossEps)
+    touchEps: 0.81,         // same magnet-surface band (see crossEps)
     // Contact-release hysteresis: once ON a line, a foot stays in contact until touchEps+lineStick.
     // The feet behave a tiny bit "wider"/stickier than they look, so a path that grazes along a line
     // can't flicker in and out of contact at the band edge — the flicker was what made corner calls
@@ -2538,37 +2530,112 @@ CFG.sideArcs.forEach((a,k) => LINE_GEOM['a'+k] = { cx:a.cx, cy:a.cy, r:a.r, a0:a
 // st is G for live play (pinFoot/clearTurn/restoreSnap null st.contact; it re-derives lazily from
 // the first substep's BEFORE feet, i.e. the turn-start pose, so AI lookahead resets stay correct).
 function crossingSubstep(before, after, st) {
-    let opened = 0;
-    const justCrossed = [];
-    for (let i = 0; i < 3; i++)
-        for (const id of crossedLines(before[i], after[i])) { opened++; justCrossed.push(id); }
-    if (opened) {
-        if (st.crossings + opened > CFG.maxCrossingsPerTurn) return true;   // over budget: roll back
-        st.crossings += opened;
+    if (!st.contact) {
+        st.contact = before.map(f => nearLineIds(f, CFG.touchEps));
+        // st.earned no longer grants any free departure -- there is no turn-start grace at all now
+        // (see the departure billing below). It survives only as the CORNER-SPONSOR set: which lines
+        // this foot is genuinely on, and may therefore carry a free corner merge from. A line joins
+        // it by being sat on at turn start or by being billed as a fresh crossing.
+        st.earned = before.map(f => nearLineIds(f, CFG.touchEps));
+        st.startSide = before.map((f,i) => { const m={}; for (const id of st.contact[i]) m[id]=lineSideOf(f,id); return m; });
+        st.entrySide = [{},{},{}];     // approach side of each line entered THIS turn
+        st.pendingMerge = [{},{},{}];  // corner-merged lines awaiting centreline validation: id -> sponsor id
     }
-    // Kept only so the debug readout and the can't-rest-on-a-line check can still ask "is a magnet
-    // sitting on a stroke right now" -- it no longer feeds the crossing count in any way.
-    st.contact = after.map(f => nearLineIds(f, CFG.touchEps));
+    const stickEps = CFG.touchEps + CFG.lineStick;
+    const next = [], nextEarned = []; let opened = 0;
+    const newSides = [{},{},{}];   // entrySide additions, committed only if the substep stands
+    const newPending = [{},{},{}], resolvedPending = [[],[],[]];
+    const justCrossed = [];   // every line id a foot's PAD newly touched this substep (billed or free)
+    for (let i=0;i<3;i++){
+        // PER-FOOT contact episodes. hadContact must be this foot's own state, NOT the whole piece's:
+        // a stationary pivot foot resting on a line keeps continuous contact all turn, and a piece-level
+        // "any foot in contact" flag let that permanent contact mask every OTHER foot's crossings (pin a
+        // foot on the inner ring, then sweep the others across as many lines as you like, all free — the
+        // reported illegal AI/demo moves). Tracking each foot's own off→on transition closes that.
+        const hadContact = st.contact[i].length > 0;
+        const near = nearLineIds(after[i], stickEps);
+        const kept = st.contact[i].filter(id => near.includes(id));
+        const earned = (st.earned && st.earned[i]) ? st.earned[i].slice() : st.contact[i].slice();
+        // NO GRACE: leaving a start line is free only if the foot backed off the side it started
+        // on. Cross to the OTHER side and it is billed, exactly like a fresh entry -- starting a
+        // turn sat on a line no longer buys a free trip over it.
+        for (const id of st.contact[i]) if (!near.includes(id)) {
+            if (st.startSide && st.startSide[i] && st.startSide[i][id] !== undefined &&
+                lineSideOf(after[i], id) !== st.startSide[i][id]) {
+                opened++;
+                justCrossed.push(id);
+            }
+        }
+        // Deferred corner-merge validation: a merged line rode in free on the promise that the foot
+        // is rounding the PRINTED CORNER — one continuous crossing over the point where the lines
+        // meet. That promise is checked the moment the merged line's CENTRELINE is actually crossed:
+        // right at the corner, the sponsoring line passes through the same point, so the magnet is
+        // still on it (≤ holdEps at any incidence angle). A foot slipping PAST the corner crosses
+        // the second centreline with the sponsor's line 0.6+ behind it — magnet clearly off — and
+        // that crossing is billed here as a fresh one (blocking if over budget). This is what makes
+        // the CW/CCW two-step opening slip impossible while the centre-spin (feet riding dead ON
+        // the ring, magnet distance ~0 at every corner) keeps sweeping corners for free.
+        for (const id of kept) {
+            const sponsor = st.pendingMerge[i][id];
+            if (sponsor === undefined) continue;
+            const flipped = st.entrySide[i][id] !== undefined && lineSideOf(after[i], id) !== st.entrySide[i][id];
+            if (flipped) {
+                if (lineDistOf(after[i], sponsor) > CFG.holdEps) opened++;   // missed the corner: it's a real 2nd crossing
+                resolvedPending[i].push(id);   // validated once, at the first centreline flip
+            } else if (lineDistOf(after[i], id) <= CFG.crossEps && lineDistOf(after[i], sponsor) > CFG.holdEps) {
+                // The sponsor is already lost and the foot is about to reach the merged line's
+                // magnet zone: the corner roll is doomed, so convert it to an ordinary billed
+                // crossing NOW, while the foot is still outside grace reach. If the budget rejects,
+                // the swing stops here — resting beyond crossEps, so next turn can't grace-cross
+                // the line it never paid for (the three-step version of the corner slip).
+                opened++;
+                resolvedPending[i].push(id);
+            }
+        }
+        let entered = false;
+        for (const id of nearLineIds(after[i], CFG.touchEps))
+            if (!kept.includes(id)) {
+                // A new line joins an open episode free ONLY at the corner: it must actually meet a
+                // line this foot is still on, at a printed intersection within cornerEps of the foot.
+                // Anywhere else, touching a second line is a second crossing, contact or no contact.
+                // The sponsoring line must be EARNED (magnet-on at turn start, billed, or itself
+                // merged at a corner) — a parked-beside line can't carry a free corner ride. The
+                // merge is provisional: see the centreline validation above.
+                let sponsorId;
+                const atCorner = hadContact && kept.some(h => earned.includes(h) && LINE_INTERSECTIONS.some(P =>
+                    P.lines.includes(id) && P.lines.includes(h) &&
+                    Math.hypot(after[i].x-P.x, after[i].y-P.y) <= CFG.cornerEps) && (sponsorId = h, true));
+                kept.push(id);
+                if (!earned.includes(id)) earned.push(id);   // fresh billed entry or corner merge: genuine contact
+                newSides[i][id] = lineSideOf(after[i], id);  // approach side, for the centreline-flip check
+                if (atCorner) newPending[i][id] = sponsorId;
+                justCrossed.push(id);
+                if (!atCorner) entered = true;
+            }
+        if (entered) opened++;   // this foot opened a fresh crossing (off→on, or a non-corner second line)
+        next.push(kept);
+        nextEarned.push(earned.filter(id => kept.includes(id)));
+    }
+    // One SWEEP over a line is one crossing, however many feet and lines are involved at that
+    // instant: rounding a printed corner, or two different feet leaving two different lines in the
+    // same motion, is a single crossing of the piece -- not one per foot. Substeps are 0.4 degrees,
+    // so "the same instant" and "the same substep" are the same thing at this resolution.
+    if (opened) {
+        if (st.crossings + 1 > CFG.maxCrossingsPerTurn) return true;   // over the per-turn budget: roll back
+        st.crossings += 1;                  // billed when it OPENS (parking on a line spends it too)
+    }
+    st.contact = next;
+    st.earned = nextEarned;
+    for (let i=0;i<3;i++) {
+        for (const id in newSides[i]) st.entrySide[i][id] = newSides[i][id];
+        for (const id in newPending[i]) st.pendingMerge[i][id] = newPending[i][id];
+        for (const id of resolvedPending[i]) delete st.pendingMerge[i][id];
+        for (const id in st.pendingMerge[i]) if (!next[i].includes(id)) delete st.pendingMerge[i][id];   // backed out of the band unflipped: free retreat
+    }
+    // Only reaches here on a committed substep (the budget check above already returned on a
+    // rollback), so this never records a crossing that got undone.
     if (justCrossed.length) st.justCrossed = (st.justCrossed || []).concat(justCrossed);
     return false;
-}
-// Printed lines whose CENTRELINE the magnet moved across during this substep. Substeps are
-// substepDeg (0.4 degrees) so the motion per step is a small fraction of a line width -- a plain
-// side-flip test needs no swept-segment maths to be exact at this scale.
-function crossedLines(before, after) {
-    const ids = [];
-    const sgn = v => v < 0 ? -1 : 1;        // exactly-on counts as the positive side, consistently
-    CFG.rings.forEach((R, k) => {
-        if (sgn(radU(before) - R) !== sgn(radU(after) - R)) ids.push('r' + k);
-    });
-    CFG.sideArcs.forEach((a, k) => {
-        const db = Math.hypot(before.x - a.cx, before.y - a.cy) - a.r;
-        const da = Math.hypot(after.x  - a.cx, after.y  - a.cy) - a.r;
-        if (sgn(db) === sgn(da)) return;
-        // an arc is only PRINTED over its span; crossing the rest of that circle isn't a line at all
-        if (angInSpan(Math.atan2(after.y - a.cy, after.x - a.cx)*180/Math.PI, a.a0, a.a1)) ids.push('a' + k);
-    });
-    return ids;
 }
 
 // ---------- Contact geometry ----------
