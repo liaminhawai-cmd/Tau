@@ -4798,7 +4798,13 @@ function showGameOverModal() {
 function renderGameOverSheet() {
     if (document.getElementById('game').style.display !== 'flex') return;   // player already left to the menu
     let title, buttons, bodyHtml = '';
-    if (onlineMatch && onlineMatch.spectator) {
+    if (labActive) {
+        // Neither side is a human -- "Rematch" (a real local 1v1) or any vsAI/ladder replay button
+        // would leave both pieces with no one to move them. Re-run the same two brains instead.
+        title = tf('{name} wins!', { name: t(G.winner===0?'Blue':'Red') });
+        buttons = [ { label: t('Watch again'), onClick: labWatchGame },
+                    { label: t('Change brains'), onClick: () => { backToMenu(); labOpenDrop(); } } ];
+    } else if (onlineMatch && onlineMatch.spectator) {
         title = tf('{name} wins!', { name: G.winner===0 ? onlineMatch.blueName : onlineMatch.redName });
         buttons = [ { label: t('Watch another'), onClick: () => { exitOnlineMatch(); openWatchScreen(); } } ];
     } else if (onlineMatch) {
@@ -4890,6 +4896,7 @@ let claimNudgedThisSession = false;
 function startGame(aiMode, humanColorIdx, difficulty) {
     hideModal(); clearTimeout(gameOverTimer);
     demoStop();
+    labActive = false;   // leaving #lab for a real game -- someone needs to actually be able to move
     replaySourceMatchId = null;              // a freshly started game isn't a watched public replay
     if (!mmWaitingAI) cancelMatchmaking();   // the play-AI-while-you-wait game keeps the queue alive
     exitOnlineMatch();
@@ -5144,6 +5151,7 @@ function coachArc3DUpdate() {
 }
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
+    labActive = false;
     clearTimeout(aiTimer); clearTimeout(aiGapTimer); clearTimeout(coachHoldTimer); aiAnim = null;
     clearTimeout(coachAnimTimer); document.getElementById('views').classList.remove('animSize');
     replayActive = false; ladderLevel = null; coachActive = false;
@@ -7417,6 +7425,11 @@ if (/^#nn\b/i.test(location.hash)) {
 // game turn-by-turn in real time; it's simulated instantly and then watched at normal speed.
 const labBrains = [{ level: 10, model: null, name: '', depth: 2, temperature: 0, dynamic: false, timeMs: 2000 },
                     { level: 10, model: null, name: '', depth: 2, temperature: 0, dynamic: false, timeMs: 2000 }];
+// A #lab game is neither vsAI nor a local/online match -- both G.pieces are AI, no one is ever
+// dragging. Without this flag, renderGameOverSheet()'s fallback branch offers a "Rematch" that
+// calls startGame(false) (a genuine two-human local game) and nothing ever moves again. Cleared by
+// startGame()/backToMenu() -- anything that leaves lab mode for a real game.
+let labActive = false;
 function labOpenDrop() { document.getElementById('labOverlay').classList.add('open'); }
 function labCloseDrop() { document.getElementById('labOverlay').classList.remove('open'); }
 function labSideLabel(side) {
@@ -7459,7 +7472,7 @@ function labWatchGame() {
             labCloseDrop();
             hideModal(); clearTimeout(gameOverTimer); demoStop();
             if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
-            vsAI = false; ladderLevel = null;
+            vsAI = false; ladderLevel = null; labActive = true;
             clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
             camCenterFrac = 1; camManualSet = false;
             document.getElementById('menu').style.display = 'none';
