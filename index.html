@@ -348,6 +348,31 @@
     #nnDropZoneLabel { color:#7d858d; font-size:13px; }
     #nnDropMsg { min-height:16px; font-size:12px; color:#e07a5f; margin:12px 0 0; }
     #nnDropMsg.ok { color:#4caf50; }
+    /* ---------- Hidden dev mode (#lab): pit any two brains against each other and watch ---------- */
+    #labOverlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:80;
+                  align-items:center; justify-content:center; padding:20px; box-sizing:border-box; overflow:auto; }
+    #labOverlay.open { display:flex; }
+    #labBox { background:#1a1e24; border:1px solid #3a4048; border-radius:10px; padding:24px 26px;
+              text-align:center; max-width:520px; width:100%; position:relative; box-sizing:border-box; }
+    #labBox h2 { margin:0 0 8px; font-size:20px; }
+    #labBox > p { color:#9aa4ad; font-size:13px; margin:0 0 16px; line-height:1.5; }
+    #labX { position:absolute; top:6px; right:6px; width:32px; height:32px; padding:0; margin:0;
+            background:none; border:none; color:#69727b; font-size:17px; line-height:32px; cursor:pointer; }
+    #labX:active { color:#c7ccd1; }
+    #labSides { display:flex; gap:14px; }
+    .labSide { flex:1; min-width:0; border:1px solid #3a4048; border-radius:8px; padding:14px; text-align:left; }
+    .labSide h3 { margin:0 0 10px; font-size:14px; }
+    .labSide.blue h3 { color:#5b9bd5; } .labSide.red h3 { color:#e07a5f; }
+    .labSide select { width:100%; margin-bottom:8px; background:#2c3138; color:#e6e9ec; border:1px solid #3a4048;
+                       border-radius:6px; padding:6px; font-size:13px; }
+    .labModelRow { display:none; flex-direction:column; gap:6px; margin-top:6px; }
+    .labModelRow.on { display:flex; }
+    .labModelRow button { font-size:12px; padding:6px; }
+    .labModelRow .labModelName { font-size:11px; color:#7d858d; word-break:break-all; }
+    .labNumRow { display:flex; align-items:center; gap:6px; font-size:12px; color:#9aa4ad; }
+    .labNumRow input { width:52px; background:#2c3138; color:#e6e9ec; border:1px solid #3a4048; border-radius:5px; padding:3px 5px; }
+    #labWatchBtn { margin-top:16px; width:100%; }
+    #labMsg { min-height:16px; font-size:12px; color:#e07a5f; margin:10px 0 0; }
     /* ---------- Watch: a full-screen browse menu (not the small modal) ---------- */
     /* z-index above the fixed corner buttons (theme/sound/lang at 60) so the header covers that
        cluster instead of them poking through next to the close ✕. */
@@ -559,6 +584,42 @@
             <input id="nnDropFile" type="file" accept="application/json,.json" style="display:none;">
         </div>
         <p id="nnDropMsg"></p>
+    </div>
+</div>
+<!-- Hidden dev mode (#lab): pick any two brains (ladder level or a dropped model.json, with its own
+     depth/temperature) and watch them play a full game via the existing replay viewer. Not linked
+     from the menu -- see nn/README.md. -->
+<div id="labOverlay">
+    <div id="labBox">
+        <button id="labX" aria-label="Close">✕</button>
+        <h2>AI playground</h2>
+        <p>Pick a brain for each side — a ladder level, or drop a trained <code>.json</code> checkpoint — then watch them play.</p>
+        <div id="labSides">
+            <div class="labSide blue" data-side="0">
+                <h3>Blue</h3>
+                <select class="labLevelSel"></select>
+                <div class="labModelRow">
+                    <button class="labBrowse">Choose file…</button>
+                    <input class="labFile" type="file" accept="application/json,.json" style="display:none;">
+                    <span class="labModelName">No file loaded</span>
+                    <label class="labNumRow">Depth <input class="labDepth" type="number" min="1" max="4" value="2"></label>
+                    <label class="labNumRow">Temp <input class="labTemp" type="number" min="0" max="1" step="0.05" value="0"></label>
+                </div>
+            </div>
+            <div class="labSide red" data-side="1">
+                <h3>Red</h3>
+                <select class="labLevelSel"></select>
+                <div class="labModelRow">
+                    <button class="labBrowse">Choose file…</button>
+                    <input class="labFile" type="file" accept="application/json,.json" style="display:none;">
+                    <span class="labModelName">No file loaded</span>
+                    <label class="labNumRow">Depth <input class="labDepth" type="number" min="1" max="4" value="2"></label>
+                    <label class="labNumRow">Temp <input class="labTemp" type="number" min="0" max="1" step="0.05" value="0"></label>
+                </div>
+            </div>
+        </div>
+        <button id="labWatchBtn">Watch ▶</button>
+        <p id="labMsg"></p>
     </div>
 </div>
 
@@ -4275,8 +4336,8 @@ function nnFeaturesGame() {
             Math.hypot(op.x - me.x, op.y - me.y)/E, mf[0]/E, mf[1]/E, mf[2]/E, of2[0]/E, of2[1]/E, of2[2]/E,
             (E - mf[0])/E, (E - of2[0])/E];
 }
-function nnForwardGame(x) {
-    const { sizes, W, b } = nnModel;
+function nnForwardGame(x, model) {
+    const { sizes, W, b } = model || nnModel;
     let a = x;
     for (let l = 0; l < W.length; l++) {
         const nIn = sizes[l], nOut = sizes[l + 1], z = new Array(nOut);
@@ -4292,7 +4353,8 @@ function nnForwardGame(x) {
 // Mirrors nn/nnai.js exactly (dense ~3deg waypoint sweep, plateau-vs-needle smoothing, optional
 // minimax `depth` on top of the same trained net) so a #nn game is testing the SAME search the
 // net is actually trained and gated with -- not a separate, silently-stale implementation.
-function nnPlanForGame(idx, temperature, depth, keepForDepth) {
+function nnPlanForGame(idx, temperature, depth, keepForDepth, model) {
+    model = model || nnModel;
     const snap = takeSnap();
     const roll = () => { G.pieces.forEach((p,i)=>{p.x=snap[i].x;p.y=snap[i].y;p.rot=snap[i].rot;});
                           G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null;
@@ -4308,7 +4370,7 @@ function nnPlanForGame(idx, temperature, depth, keepForDepth) {
             if (Math.abs(rad) < HARD_MIN_MOVE_RAD) { if (G.atLimit) break; continue; }
             let v;
             if (G.pieces[1 - idx].anyFootOff()) v = 1e6 - Math.abs(rad)*1e-3;   // a throw -- shortest wins
-            else { G.active = 1 - idx; v = -nnForwardGame(nnFeaturesGame()); G.active = idx; }
+            else { G.active = 1 - idx; v = -nnForwardGame(nnFeaturesGame(), model); G.active = idx; }
             arm.push({ pivotIdx: pv, dir, targetRad: Math.abs(rad), v });
         }
         roll();
@@ -4342,11 +4404,11 @@ function nnPlanForGame(idx, temperature, depth, keepForDepth) {
             let deep;
             if (G.over) deep = G.winner === idx ? 1e6 : -1e6;
             else {
-                const oppPlan = nnPlanForGame(1 - idx, 0, depth - 1, keepForDepth);
-                if (!oppPlan) deep = nnForwardGame(nnFeaturesGame());
+                const oppPlan = nnPlanForGame(1 - idx, 0, depth - 1, keepForDepth, model);
+                if (!oppPlan) deep = nnForwardGame(nnFeaturesGame(), model);
                 else {
                     commit(oppPlan);
-                    deep = G.over ? (G.winner === idx ? 1e6 : -1e6) : nnForwardGame(nnFeaturesGame());
+                    deep = G.over ? (G.winner === idx ? 1e6 : -1e6) : nnForwardGame(nnFeaturesGame(), model);
                 }
             }
             roll();
@@ -7288,6 +7350,111 @@ function nnLoadModelFile(file) {
 if (/^#nn\b/i.test(location.hash)) {
     const bootNn = () => nnOpenDrop();
     if (document.readyState === 'complete') bootNn(); else addEventListener('load', bootNn, { once: true });
+}
+
+// #lab — hidden dev mode: pick any two brains (ladder level, or a dropped checkpoint with its own
+// depth/temperature) and watch a full game play out through the existing replay viewer. Reuses
+// replayFrames/startReplay wholesale -- a sparse [start pose, end pose] pair per turn is exactly
+// what a downsampled shared-replay link already looks like, and the pacing/interpolation system
+// already smooths that into a normal-looking animation, so there's no need to animate the AI-vs-AI
+// game turn-by-turn in real time; it's simulated instantly and then watched at normal speed.
+const labBrains = [{ level: 10, model: null, name: '', depth: 2, temperature: 0 },
+                    { level: 10, model: null, name: '', depth: 2, temperature: 0 }];
+function labOpenDrop() { document.getElementById('labOverlay').classList.add('open'); }
+function labCloseDrop() { document.getElementById('labOverlay').classList.remove('open'); }
+function labSideLabel(side) {
+    const b = labBrains[side];
+    return b.model ? (b.name + (b.depth > 1 ? ' D' + b.depth : '')) : ('L' + (b.level + 1));
+}
+function labMakeBrainFn(side) {
+    const b = labBrains[side];
+    if (b.model) return idx => nnPlanForGame(idx, b.temperature, b.depth, 4, b.model);
+    return idx => ladderPlanFor(b.level, idx);
+}
+// Fast-forward a full game between two brains using the same primitives as every real turn (pin,
+// step to target, endTurn) but with no animation delay -- collects a sparse pose per turn.
+function labSimulateGame(brainBlue, brainRed) {
+    reset();
+    const frames = [[G.pieces[0].x, G.pieces[0].y, G.pieces[0].rot, G.pieces[1].x, G.pieces[1].y, G.pieces[1].rot]];
+    let guard = 0;
+    while (!G.over && guard++ < 300) {
+        const idx = G.active;
+        const plan = (idx === 0 ? brainBlue : brainRed)(idx);
+        if (!plan) { G.active = 1 - G.active; continue; }     // wedged -- pass the turn, don't hang forever
+        pinFoot(plan.pivotIdx);
+        let g = 0;
+        while (!G.atLimit && Math.abs(G.netRad) < plan.targetRad && g++ < 5000)
+            applySwing(plan.dir*Math.min(AI_STEP_RAD, plan.targetRad - Math.abs(G.netRad)));
+        endTurn();
+        frames.push([G.pieces[0].x, G.pieces[0].y, G.pieces[0].rot, G.pieces[1].x, G.pieces[1].y, G.pieces[1].rot]);
+    }
+    return frames;
+}
+function labWatchGame() {
+    const msg = document.getElementById('labMsg');
+    msg.textContent = 'Simulating…'; msg.className = '';
+    setTimeout(() => {
+        try {
+            const brainBlue = labMakeBrainFn(0), brainRed = labMakeBrainFn(1);
+            const frames = labSimulateGame(brainBlue, brainRed);
+            labCloseDrop();
+            hideModal(); clearTimeout(gameOverTimer); demoStop();
+            if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
+            vsAI = false; ladderLevel = null;
+            clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
+            camCenterFrac = 1; camManualSet = false;
+            document.getElementById('menu').style.display = 'none';
+            document.getElementById('game').style.display = 'flex';
+            document.body.classList.add('ingame');
+            setSpectatorChrome(true);
+            reset(); resize();
+            replayNames = [labSideLabel(0), labSideLabel(1)];
+            replayFrames = frames.map(f => f.slice());
+            if (replayFrames.length > 1) startReplay();
+        } catch (e) { msg.textContent = 'Simulation failed: ' + e.message; }
+    }, 30);   // let the "Simulating…" label paint before the (synchronous) search blocks the thread
+}
+(function () {
+    document.getElementById('labX').addEventListener('click', labCloseDrop);
+    document.getElementById('labWatchBtn').addEventListener('click', labWatchGame);
+    document.querySelectorAll('.labSide').forEach(el => {
+        const side = +el.dataset.side;
+        const sel = el.querySelector('.labLevelSel');
+        for (let i = 0; i < AI_LADDER.length; i++) {
+            const opt = document.createElement('option'); opt.value = i; opt.textContent = 'Level ' + (i + 1);
+            sel.appendChild(opt);
+        }
+        const customOpt = document.createElement('option'); customOpt.value = 'custom'; customOpt.textContent = 'Custom model…';
+        sel.appendChild(customOpt);
+        sel.value = labBrains[side].level;
+        const modelRow = el.querySelector('.labModelRow');
+        sel.addEventListener('change', () => {
+            if (sel.value === 'custom') { modelRow.classList.add('on'); el.querySelector('.labFile').click(); }
+            else { modelRow.classList.remove('on'); labBrains[side].model = null; labBrains[side].level = +sel.value; }
+        });
+        const nameEl = el.querySelector('.labModelName');
+        el.querySelector('.labBrowse').addEventListener('click', () => el.querySelector('.labFile').click());
+        el.querySelector('.labFile').addEventListener('change', e => {
+            const file = e.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                let j;
+                try { j = JSON.parse(reader.result); }
+                catch (err) { nameEl.textContent = 'Could not parse that file as JSON.'; return; }
+                if (!j || !j.sizes || !j.W || !j.b) { nameEl.textContent = "Doesn't look like a Tau model."; return; }
+                labBrains[side].model = j; labBrains[side].name = file.name;
+                nameEl.textContent = file.name + ' ✓';
+            };
+            reader.readAsText(file);
+        });
+        el.querySelector('.labDepth').addEventListener('input', e => { labBrains[side].depth = Math.max(1, +e.target.value || 1); });
+        el.querySelector('.labTemp').addEventListener('input', e => { labBrains[side].temperature = Math.max(0, +e.target.value || 0); });
+    });
+})();
+// #lab — hidden dev mode, same forgiving hash match as #nn/#coach.
+if (/^#lab\b/i.test(location.hash)) {
+    const bootLab = () => labOpenDrop();
+    if (document.readyState === 'complete') bootLab(); else addEventListener('load', bootLab, { once: true });
 }
 // Tapping a share link often focuses an EXISTING tau tab instead of opening a new one — the OS just
 // changes the hash, nothing reloads, and the link silently does nothing (the reported "it had me
