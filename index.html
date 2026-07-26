@@ -348,6 +348,7 @@
     #nnDropZoneLabel { color:#7d858d; font-size:13px; }
     #nnDropMsg { min-height:16px; font-size:12px; color:#e07a5f; margin:12px 0 0; }
     #nnDropMsg.ok { color:#4caf50; }
+    #nnSearchSettings { margin-top:14px; text-align:left; }
     /* ---------- Hidden dev mode (#lab): pit any two brains against each other and watch ---------- */
     #labOverlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:80;
                   align-items:center; justify-content:center; padding:20px; box-sizing:border-box; overflow:auto; }
@@ -369,8 +370,10 @@
     .labModelRow.on { display:flex; }
     .labModelRow button { font-size:12px; padding:6px; }
     .labModelRow .labModelName { font-size:11px; color:#7d858d; word-break:break-all; }
-    .labNumRow { display:flex; align-items:center; gap:6px; font-size:12px; color:#9aa4ad; }
-    .labNumRow input { width:52px; background:#2c3138; color:#e6e9ec; border:1px solid #3a4048; border-radius:5px; padding:3px 5px; }
+    .searchNumRow { display:flex; align-items:center; gap:6px; font-size:12px; color:#9aa4ad; }
+    .searchNumRow input { width:52px; background:#2c3138; color:#e6e9ec; border:1px solid #3a4048; border-radius:5px; padding:3px 5px; }
+    .searchModeRow { display:flex; gap:14px; margin:6px 0 4px; font-size:12px; }
+    .searchModeRow label { display:flex; align-items:center; gap:5px; cursor:pointer; }
     #labWatchBtn { margin-top:16px; width:100%; }
     #labMsg { min-height:16px; font-size:12px; color:#e07a5f; margin:10px 0 0; }
     /* ---------- Watch: a full-screen browse menu (not the small modal) ---------- */
@@ -583,7 +586,16 @@
             <button id="nnDropBrowse">Choose file…</button>
             <input id="nnDropFile" type="file" accept="application/json,.json" style="display:none;">
         </div>
+        <div id="nnSearchSettings">
+            <div class="searchModeRow">
+                <label><input type="radio" name="nnSearchMode" value="fixed" checked> Fixed depth</label>
+                <label><input type="radio" name="nnSearchMode" value="dynamic"> Dynamic (time limit)</label>
+            </div>
+            <label class="searchNumRow" id="nnDepthRow">Depth <input id="nnDepthInput" type="number" min="1" max="4" value="2"></label>
+            <label class="searchNumRow" id="nnTimeRow" style="display:none;">Seconds <input id="nnTimeInput" type="number" min="0.2" max="30" step="0.5" value="2"></label>
+        </div>
         <p id="nnDropMsg"></p>
+        <button id="nnContinueBtn" style="display:none;">Continue →</button>
     </div>
 </div>
 <!-- Hidden dev mode (#lab): pick any two brains (ladder level or a dropped model.json, with its own
@@ -602,8 +614,13 @@
                     <button class="labBrowse">Choose file…</button>
                     <input class="labFile" type="file" accept="application/json,.json" style="display:none;">
                     <span class="labModelName">No file loaded</span>
-                    <label class="labNumRow">Depth <input class="labDepth" type="number" min="1" max="4" value="2"></label>
-                    <label class="labNumRow">Temp <input class="labTemp" type="number" min="0" max="1" step="0.05" value="0"></label>
+                    <div class="searchModeRow">
+                        <label><input type="radio" name="labSearchMode0" value="fixed" checked> Fixed depth</label>
+                        <label><input type="radio" name="labSearchMode0" value="dynamic"> Dynamic</label>
+                    </div>
+                    <label class="searchNumRow labDepthRow">Depth <input class="labDepth" type="number" min="1" max="4" value="2"></label>
+                    <label class="searchNumRow labTimeRow" style="display:none;">Seconds <input class="labTimeMs" type="number" min="0.2" max="30" step="0.5" value="2"></label>
+                    <label class="searchNumRow">Temp <input class="labTemp" type="number" min="0" max="1" step="0.05" value="0"></label>
                 </div>
             </div>
             <div class="labSide red" data-side="1">
@@ -613,8 +630,13 @@
                     <button class="labBrowse">Choose file…</button>
                     <input class="labFile" type="file" accept="application/json,.json" style="display:none;">
                     <span class="labModelName">No file loaded</span>
-                    <label class="labNumRow">Depth <input class="labDepth" type="number" min="1" max="4" value="2"></label>
-                    <label class="labNumRow">Temp <input class="labTemp" type="number" min="0" max="1" step="0.05" value="0"></label>
+                    <div class="searchModeRow">
+                        <label><input type="radio" name="labSearchMode1" value="fixed" checked> Fixed depth</label>
+                        <label><input type="radio" name="labSearchMode1" value="dynamic"> Dynamic</label>
+                    </div>
+                    <label class="searchNumRow labDepthRow">Depth <input class="labDepth" type="number" min="1" max="4" value="2"></label>
+                    <label class="searchNumRow labTimeRow" style="display:none;">Seconds <input class="labTimeMs" type="number" min="0.2" max="30" step="0.5" value="2"></label>
+                    <label class="searchNumRow">Temp <input class="labTemp" type="number" min="0" max="1" step="0.05" value="0"></label>
                 </div>
             </div>
         </div>
@@ -4312,8 +4334,11 @@ function ladderPlanFor(levelIdx, idx){
 let nnModel = null, nnModelName = '';
 // depth 2 (roughly 5x the compute per NN move for a real strength gain -- see nn/nnai.js): fine for
 // a human-paced game, not something worth defaulting on for bulk training. #nn's URL can override,
-// e.g. #nn?depth=3 or #nn?depth=1 for the old 1-ply behaviour.
+// e.g. #nn?depth=3 or #nn?depth=1 for the old 1-ply behaviour. nnDynamic switches to iterative
+// deepening (nnPlanForGameTimed) instead of a fixed depth -- both are set from #nnSearchSettings
+// on the drop screen, URL params just seed the initial values.
 let nnDepth = (() => { const m = /[?&]depth=(\d)/.exec(location.hash); return m ? +m[1] : 2; })();
+let nnDynamic = false, nnTimeMs = 2000;
 function nnFeaturesGame() {
     const E = CFG.edgeU, me = G.pieces[G.active], op = G.pieces[1 - G.active];
     const b = Math.atan2(me.y, me.x) || 0;
@@ -4425,6 +4450,24 @@ function nnPlanForGame(idx, temperature, depth, keepForDepth, model) {
     }
     return cands[k];
 }
+// Mirrors nn/nnai.js's nnPlanForTimed: search depth 1, then 2, then 3... keeping only the last
+// FULLY completed depth's answer, until timeMs runs out -- "think as long as you're given" instead
+// of a fixed ply count. Each depth estimates whether the next one can plausibly finish (roughly
+// keepForDepth x the previous depth's own cost) before starting it.
+function nnPlanForGameTimed(idx, temperature, timeMs, model, keepForDepth) {
+    keepForDepth = keepForDepth || 4;
+    const t0 = performance.now();
+    let best = null, depth = 1;
+    for (;;) {
+        const t1 = performance.now();
+        const plan = nnPlanForGame(idx, temperature, depth, keepForDepth, model);
+        if (!plan) return best;
+        best = plan; best.searchDepth = depth;
+        const lastCost = performance.now() - t1, elapsed = performance.now() - t0;
+        if (elapsed >= timeMs || elapsed + lastCost*keepForDepth > timeMs) return best;
+        depth++;
+    }
+}
 
 function startAiTurn() {
     if (G.over || G.active!==aiIdx) return;
@@ -4432,7 +4475,8 @@ function startAiTurn() {
     // Ladder games route through the tuned per-level brain, an #nn game routes through the loaded
     // checkpoint, everything else uses the classic difficulty planner. All return the same
     // { pivotIdx, dir, targetRad } the animation plays.
-    const sp = (aiDifficulty === 'nn' && nnModel) ? nnPlanForGame(aiIdx, 0.05, nnDepth)
+    const sp = (aiDifficulty === 'nn' && nnModel)
+                 ? (nnDynamic ? nnPlanForGameTimed(aiIdx, 0.05, nnTimeMs) : nnPlanForGame(aiIdx, 0.05, nnDepth))
              : (ladderLevel!=null) ? ladderPlanFor(ladderLevel, aiIdx) : searchedPlanFor(aiDifficulty, aiIdx);
     if (sp) { pivotIdx = sp.pivotIdx; dir = sp.dir; target = sp.targetRad; }
     else {
@@ -7307,7 +7351,10 @@ if (/^#coach\b/i.test(location.hash)) {
     if (document.readyState === 'complete') bootCoach(); else addEventListener('load', bootCoach, { once: true });
 }
 // ---------- Hidden mode (#nn) wiring: drag-and-drop a model, pick a colour, play ----------
-function nnOpenDrop() { document.getElementById('nnDropOverlay').classList.add('open'); }
+function nnOpenDrop() {
+    document.getElementById('nnDropOverlay').classList.add('open');
+    document.getElementById('nnContinueBtn').style.display = 'none';
+}
 function nnCloseDrop() {
     document.getElementById('nnDropOverlay').classList.remove('open');
     if (/^#nn\b/i.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
@@ -7324,7 +7371,9 @@ function nnLoadModelFile(file) {
         if (!j || !j.sizes || !j.W || !j.b) { msg.textContent = "That JSON doesn't look like a Tau model (missing sizes/W/b)."; msg.className = ''; return; }
         nnModel = j; nnModelName = file.name;
         msg.textContent = `Loaded ${file.name} ✓`; msg.className = 'ok';
-        setTimeout(() => { nnCloseDrop(); chooseAiColour('nn'); }, 350);
+        // No auto-advance: the search settings below (fixed depth vs dynamic time limit) are worth
+        // a second to actually look at and adjust, not skip past 350ms after the drop.
+        document.getElementById('nnContinueBtn').style.display = '';
     };
     reader.onerror = () => { msg.textContent = 'Could not read that file.'; msg.className = ''; };
     reader.readAsText(file);
@@ -7334,6 +7383,7 @@ function nnLoadModelFile(file) {
     const zone = document.getElementById('nnDropZone');
     const input = document.getElementById('nnDropFile');
     document.getElementById('nnDropX').addEventListener('click', nnCloseDrop);
+    document.getElementById('nnContinueBtn').addEventListener('click', () => { nnCloseDrop(); chooseAiColour('nn'); });
     document.getElementById('nnDropBrowse').addEventListener('click', e => { e.stopPropagation(); input.click(); });
     input.addEventListener('change', () => { if (input.files[0]) nnLoadModelFile(input.files[0]); });
     const stop = e => { e.preventDefault(); e.stopPropagation(); };
@@ -7344,6 +7394,13 @@ function nnLoadModelFile(file) {
         if (file) nnLoadModelFile(file);
     });
     zone.addEventListener('click', () => input.click());
+    document.querySelectorAll('input[name="nnSearchMode"]').forEach(r => r.addEventListener('change', () => {
+        nnDynamic = document.querySelector('input[name="nnSearchMode"]:checked').value === 'dynamic';
+        document.getElementById('nnDepthRow').style.display = nnDynamic ? 'none' : '';
+        document.getElementById('nnTimeRow').style.display = nnDynamic ? '' : 'none';
+    }));
+    document.getElementById('nnDepthInput').addEventListener('input', e => { nnDepth = Math.max(1, +e.target.value || 1); });
+    document.getElementById('nnTimeInput').addEventListener('input', e => { nnTimeMs = Math.max(200, (+e.target.value || 2)*1000); });
 })();
 // #nn — hidden dev mode: drop a trained nn/models/*.json checkpoint and play it on the real board,
 // no local server needed. Same forgiving match as #coach: #nn, #NN, #nn.html, #nn/ all work.
@@ -7358,17 +7415,19 @@ if (/^#nn\b/i.test(location.hash)) {
 // what a downsampled shared-replay link already looks like, and the pacing/interpolation system
 // already smooths that into a normal-looking animation, so there's no need to animate the AI-vs-AI
 // game turn-by-turn in real time; it's simulated instantly and then watched at normal speed.
-const labBrains = [{ level: 10, model: null, name: '', depth: 2, temperature: 0 },
-                    { level: 10, model: null, name: '', depth: 2, temperature: 0 }];
+const labBrains = [{ level: 10, model: null, name: '', depth: 2, temperature: 0, dynamic: false, timeMs: 2000 },
+                    { level: 10, model: null, name: '', depth: 2, temperature: 0, dynamic: false, timeMs: 2000 }];
 function labOpenDrop() { document.getElementById('labOverlay').classList.add('open'); }
 function labCloseDrop() { document.getElementById('labOverlay').classList.remove('open'); }
 function labSideLabel(side) {
     const b = labBrains[side];
-    return b.model ? (b.name + (b.depth > 1 ? ' D' + b.depth : '')) : ('L' + (b.level + 1));
+    if (!b.model) return 'L' + (b.level + 1);
+    return b.name + (b.dynamic ? ' (' + (b.timeMs/1000) + 's)' : (b.depth > 1 ? ' D' + b.depth : ''));
 }
 function labMakeBrainFn(side) {
     const b = labBrains[side];
-    if (b.model) return idx => nnPlanForGame(idx, b.temperature, b.depth, 4, b.model);
+    if (b.model) return idx => b.dynamic ? nnPlanForGameTimed(idx, b.temperature, b.timeMs, b.model)
+                                          : nnPlanForGame(idx, b.temperature, b.depth, 4, b.model);
     return idx => ladderPlanFor(b.level, idx);
 }
 // Fast-forward a full game between two brains using the same primitives as every real turn (pin,
@@ -7449,6 +7508,12 @@ function labWatchGame() {
         });
         el.querySelector('.labDepth').addEventListener('input', e => { labBrains[side].depth = Math.max(1, +e.target.value || 1); });
         el.querySelector('.labTemp').addEventListener('input', e => { labBrains[side].temperature = Math.max(0, +e.target.value || 0); });
+        el.querySelectorAll('input[name="labSearchMode' + side + '"]').forEach(r => r.addEventListener('change', () => {
+            labBrains[side].dynamic = el.querySelector('input[name="labSearchMode' + side + '"]:checked').value === 'dynamic';
+            el.querySelector('.labDepthRow').style.display = labBrains[side].dynamic ? 'none' : '';
+            el.querySelector('.labTimeRow').style.display = labBrains[side].dynamic ? '' : 'none';
+        }));
+        el.querySelector('.labTimeMs').addEventListener('input', e => { labBrains[side].timeMs = Math.max(200, (+e.target.value || 2)*1000); });
     });
 })();
 // #lab — hidden dev mode, same forgiving hash match as #nn/#coach.
