@@ -6585,30 +6585,40 @@ function boardTexture(dark) {
 // No stuck-together parts means no part can ever read as "in front of" another — one solid
 // block of material, exactly like the printed piece. (Keep in sync with steam.html's copy.)
 function fusedTripodGeometry(legRad) {
-    const R = CFG.footR, H = CFG.hubHeight, PAD = CFG.footPadRadius;
-    const BEAD = legRad*1.25, HPI = Math.PI/2;
+    // Proportions measured directly off the real prototype (tripod smoove 2021.stl, 1u = 2mm):
+    // constant-diameter tube the WHOLE way (no taper, no flare -- the old ankle-taper + bulb-pad
+    // combo is what read as "tracksuit pants"), quarter-circle centreline that leaves the crown
+    // horizontally and lands at the foot vertically, flat pad bottom, and the piece standing on
+    // its three magnet pins (added as crisp cylinder meshes in buildTripod -- they're thinner than
+    // this SDF grid can resolve). Pad bottoms hover PIN_LIFT above the board, pin tips at y=0,
+    // exactly like the physical piece standing on its magnets.
+    const R = CFG.footR, HPI = Math.PI/2;
+    const FOOT_TOP = TRIPOD_PIN_LIFT + TRIPOD_FOOT_LEN;   // where the vertical foot meets the arc
+    const H = R + FOOT_TOP;                // centreline apex (arc radius R, centre raised)
+    const BEAD = legRad*1.15;              // small crown nub where the three tubes merge
     const DIR = [0, 1, 2].map(i => [Math.cos(i*2*Math.PI/3), Math.sin(i*2*Math.PI/3)]);
     const smin = (a, b, k) => {   // polynomial smooth-min: the weld fillet between parts
         const t = Math.max(k - Math.abs(a - b), 0)/k; return Math.min(a, b) - t*t*k*0.25;
     };
     const sd = (x, y, z) => {
         let d = 1e9;
-        for (let i = 0; i < 3; i++) {   // legs: quarter-circle arcs of radius R centred at the origin
+        const yy = y - FOOT_TOP;
+        for (let i = 0; i < 3; i++) {   // legs: quarter-circle arc + straight vertical foot segment
             const ct = DIR[i][0], st = DIR[i][1];
             const u = x*ct + z*st, w = z*ct - x*st;
-            let a = Math.atan2(u, y); if (a < 0) a = 0; else if (a > HPI) a = HPI;
-            let rad = legRad;
-            const t = a/HPI;
-            if (t > 0.65) { const q = (t - 0.65)/0.35, s = q*q*(3 - 2*q); rad = legRad*(1 - s) + PAD*s; }
-            d = smin(d, Math.hypot(u - Math.sin(a)*R, y - Math.cos(a)*R, w) - rad, 1.1);
+            let a = Math.atan2(u, yy); if (a < 0) a = 0; else if (a > HPI) a = HPI;
+            d = smin(d, Math.hypot(u - Math.sin(a)*R, yy - Math.cos(a)*R, w) - legRad, 1.1);
+            // the foot: same tube continuing straight down from the arc's vertical tangent point
+            const ay = Math.min(Math.max(y, TRIPOD_PIN_LIFT), FOOT_TOP);
+            d = Math.min(d, Math.hypot(u - R, w, y - ay) - legRad);
         }
-        d = smin(d, Math.hypot(x, y - H, z) - BEAD, 1.5);            // weld bead, fused not stacked
-        for (let i = 0; i < 3; i++)                                  // squashed rounded foot pads
-            d = smin(d, Math.hypot(x - DIR[i][0]*R, (y - 0.5)*1.5, z - DIR[i][1]*R) - PAD*1.6, 0.9);
-        return d;
+        d = smin(d, Math.hypot(x, y - H, z) - BEAD, 1.0);            // crown nub, fused not stacked
+        // flat pad bottoms: everything below the pad plane is sliced off (the +0.03 keeps the cut
+        // plane off the sampling grid so surface nets doesn't meet it exactly on cell corners)
+        return Math.max(d, TRIPOD_PIN_LIFT + 0.03 - y);
     };
     // ---- surface nets: one vertex per boundary cell, quads across sign-changing grid edges ----
-    const h = 0.5, X = R + 3.6, Y0 = -2.2, Y1 = H + BEAD + 2.2;
+    const h = 0.5, X = R + 3.6, Y0 = TRIPOD_PIN_LIFT - 1.2, Y1 = H + BEAD + 2.2;
     const nx = Math.ceil(2*X/h), ny = Math.ceil((Y1 - Y0)/h), nz = nx;
     const gx = nx + 1, gy = ny + 1, gz = nz + 1;
     const F = new Float32Array(gx*gy*gz);
@@ -6667,15 +6677,32 @@ function fusedTripodGeometry(legRad) {
     return geo;
 }
 let fusedTripodGeo = null;   // built once, shared by every piece (game, how-to-play, menu logo)
+let tripodPinGeo = null;
+// True prototype proportions (tripod smoove 2021.stl, 1u = 2mm): tube 5.77mm dia -> 1.44u radius,
+// magnet pin 2.1mm dia protruding 2mm below the pad. Render-only -- CFG.legRadius (collision) is
+// untouched, so contact/crossing physics are exactly as before; the visual tube is now the real
+// printed size instead of the collision radius.
+const TRIPOD_VIS_LEG_RAD = 1.44;
+const TRIPOD_PIN_LIFT = 1.0;           // pin protrusion: pad bottoms hover this far above the board
+const TRIPOD_PIN_RAD = 0.55;
+const TRIPOD_FOOT_LEN = 1.5;           // straight vertical foot segment between the arc and the pad
+let tripodPinMat = null;               // the magnet slug: dark steel, shared by every piece
 function buildTripod(hex) {
     const g=new THREE.Group();
     const mat=new THREE.MeshStandardMaterial({color:hex, roughness:0.45, metalness:0.15});
-    // Visual legs render a hair wider (1.05x) than the collision radius: contact stops when the
-    // tube CENTRELINES are legRadius*2 apart -- exactly tangent -- and tangent tubes read on
-    // screen as a sliver of daylight between pieces that are "touching". The 5% flare makes
-    // real contact visibly overlap. Physics unchanged.
-    if (!fusedTripodGeo) fusedTripodGeo = fusedTripodGeometry(CFG.legRadius*1.05);
+    // Visual legs render a hair wider (1.05x) than the true tube: tangent tubes read on screen as
+    // a sliver of daylight between pieces that are "touching", so a nudge of overlap helps.
+    if (!fusedTripodGeo) fusedTripodGeo = fusedTripodGeometry(TRIPOD_VIS_LEG_RAD*1.05);
     g.add(new THREE.Mesh(fusedTripodGeo, mat));
+    // The three magnet pins the piece actually stands on -- separate crisp cylinders (they're too
+    // thin for the SDF grid), tucked up into the pad so no seam shows. Tips land exactly at y=0.
+    if (!tripodPinGeo) tripodPinGeo = new THREE.CylinderGeometry(TRIPOD_PIN_RAD, TRIPOD_PIN_RAD, TRIPOD_PIN_LIFT + 0.6, 16);
+    if (!tripodPinMat) tripodPinMat = new THREE.MeshStandardMaterial({color:0x15151a, roughness:0.35, metalness:0.65});
+    for (let i = 0; i < 3; i++) {
+        const pin = new THREE.Mesh(tripodPinGeo, tripodPinMat);
+        pin.position.set(Math.cos(i*2*Math.PI/3)*CFG.footR, (TRIPOD_PIN_LIFT + 0.6)/2, Math.sin(i*2*Math.PI/3)*CFG.footR);
+        g.add(pin);
+    }
     g.userData.mat = mat;   // one shared material per piece — exposed so the menu logo can recolour it live
     return g;
 }
@@ -7457,6 +7484,7 @@ function labSimulateGame(brainBlue, brainRed) {
     reset();
     labLastDepths[0].length = 0; labLastDepths[1].length = 0;
     const frames = [[G.pieces[0].x, G.pieces[0].y, G.pieces[0].rot, G.pieces[1].x, G.pieces[1].y, G.pieces[1].rot]];
+    const snap = () => frames.push([G.pieces[0].x, G.pieces[0].y, G.pieces[0].rot, G.pieces[1].x, G.pieces[1].y, G.pieces[1].rot]);
     let guard = 0;
     while (!G.over && guard++ < 300) {
         const idx = G.active;
@@ -7465,10 +7493,15 @@ function labSimulateGame(brainBlue, brainRed) {
         labLastDepths[idx].push(plan.searchDepth);
         pinFoot(plan.pivotIdx);
         let g = 0;
-        while (!G.atLimit && Math.abs(G.netRad) < plan.targetRad && g++ < 5000)
+        while (!G.atLimit && Math.abs(G.netRad) < plan.targetRad && g++ < 5000) {
             applySwing(plan.dir*Math.min(AI_STEP_RAD, plan.targetRad - Math.abs(G.netRad)));
+            // a frame per 3-degree step, not per turn: the replay player interpolates hub x/y + rot
+            // LINEARLY between frames, and a pivot turn isn't linear in those -- with only one pose
+            // per turn the planted (pinned) foot visibly drifted along the interpolation
+            snap();
+        }
         endTurn();
-        frames.push([G.pieces[0].x, G.pieces[0].y, G.pieces[0].rot, G.pieces[1].x, G.pieces[1].y, G.pieces[1].rot]);
+        snap();
     }
     return frames;
 }
