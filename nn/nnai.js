@@ -18,6 +18,16 @@
 // whole adaptive-difficulty dial, one number, monotone by construction. (With dense waypoints a
 // plateau contributes several near-identical high-weight entries, so exploration mass leans
 // toward stable regions — intended.)
+//
+// `depth` (default 1, today's behaviour) adds real lookahead on top of the same trained net, the
+// same trick every hand-tuned ladder brain past L6 already uses (a depth:2/3 minimax over its own
+// weighted eval): take the top `keepForDepth` candidates from the 1-ply pass, actually play each
+// one out, let the opponent (same net, recursively) find ITS best reply, and re-rank the top slice
+// by that 2-ply-deeper outcome instead of the shallow score. A static evaluator does not need to be
+// trained "for" search to benefit from it -- search just spends more evaluations to catch what a
+// single greedy pass misses -- so this is a free strength boost on an already-trained net. Kept
+// off by default (depth 1) because it costs roughly keepForDepth x as much per move: fine for the
+// gate/benchmark/human-facing play, too slow to want it in every self-play game by default.
 'use strict';
 const { features } = require('./features.js');
 
@@ -34,7 +44,7 @@ function nnPlanFor(eng, net, idx, opts) {
     const g = eng.getG();
     g.pieces.forEach((p, i) => { p.x = snap[i].x; p.y = snap[i].y; p.rot = snap[i].rot; });
     g.turnDir = 0; g.crossings = 0; g.atLimit = false; g.netRad = 0; g.contact = null;
-    g.pinned = null; g.pivot = null;
+    g.pinned = null; g.pivot = null; g.active = idx; g.over = false; g.winner = null;
   };
   const cands = [];
   for (let pv = 0; pv < 3; pv++) {
@@ -72,6 +82,31 @@ function nnPlanFor(eng, net, idx, opts) {
   }
   if (!cands.length) return null;
   cands.sort((a, b) => b.s - a.s);
+
+  const depth = o.depth || 1;
+  if (depth >= 2 && cands[0].v < 1e5) {          // a clean throw is already provably best, skip
+    const keep = Math.min(cands.length, o.keepForDepth || 4);
+    for (let i = 0; i < keep; i++) {
+      const c = cands[i];
+      eng.applyPlan(c);
+      const g1 = eng.getG();
+      let deep;
+      if (g1.over) deep = g1.winner === idx ? 1e6 : -1e6;
+      else {
+        const oppPlan = nnPlanFor(eng, net, 1 - idx, { temperature: 0, depth: depth - 1 });
+        if (!oppPlan) deep = net.value(features(eng));     // opponent wedged -- score as-is
+        else {
+          eng.applyPlan(oppPlan);
+          const g2 = eng.getG();
+          deep = g2.over ? (g2.winner === idx ? 1e6 : -1e6) : net.value(features(eng));
+        }
+      }
+      restore();
+      c.deep = deep;
+    }
+    cands.splice(0, keep, ...cands.slice(0, keep).sort((a, b) => b.deep - a.deep));
+  }
+
   const temp = o.temperature || 0;
   if (temp > 1e-6 && cands[0].v < 1e5) {            // never dice away a clean throw
     const mx = cands[0].s;

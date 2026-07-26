@@ -18,7 +18,7 @@ function arg(name, dflt) {
   return i >= 0 ? process.argv[i + 1] : dflt;
 }
 
-function makeBrain(spec, eng) {
+function makeBrain(spec, eng, depth, keepForDepth) {
   const m = /^L(\d+)$/i.exec(spec);
   if (m) {
     const lvl = +m[1];
@@ -32,14 +32,18 @@ function makeBrain(spec, eng) {
   // paths contain a colon themselves (nn:0:C:\Users\...\best.json)
   const mp = parts.length > 2 ? parts.slice(2).join(':') : path.join(__dirname, 'models', 'value.json');
   const net = MLP.fromJSON(JSON.parse(fs.readFileSync(mp, 'utf8')));
-  return { name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + ')',
-           fn: idx => nnPlanFor(eng, net, idx, { temperature }) };
+  return { name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + (depth > 1 ? ',D' + depth : '') + ')',
+           fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth }) };
 }
 
 function main() {
   const eng = createEngine();
-  const A = makeBrain(arg('a', 'nn'), eng);
-  const B = makeBrain(arg('b', 'L5'), eng);
+  // depth applies to any nn brain in the match (both --a and --b if both are nn) -- see nnai.js's
+  // depth option. Costs roughly keepForDepth x as long per nn move, so keep games modest at depth 2+.
+  const depth = +arg('depth', 1);
+  const keepForDepth = +arg('keepForDepth', 4);
+  const A = makeBrain(arg('a', 'nn'), eng, depth, keepForDepth);
+  const B = makeBrain(arg('b', 'L5'), eng, depth, keepForDepth);
   const games = +arg('games', 24);
   // both brains are commonly fully deterministic (nn at temperature 0, or a noise-free ladder
   // level) from the same fixed start -- without a shuffled opening, every game with the same

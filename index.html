@@ -4249,6 +4249,10 @@ function ladderPlanFor(levelIdx, idx){
 // keep the best. Only used when a game was actually started via the #nn drop screen (aiDifficulty
 // 'nn') -- loading a model must never hijack an ordinary ladder/difficulty game.
 let nnModel = null, nnModelName = '';
+// depth 2 (roughly 5x the compute per NN move for a real strength gain -- see nn/nnai.js): fine for
+// a human-paced game, not something worth defaulting on for bulk training. #nn's URL can override,
+// e.g. #nn?depth=3 or #nn?depth=1 for the old 1-ply behaviour.
+let nnDepth = (() => { const m = /[?&]depth=(\d)/.exec(location.hash); return m ? +m[1] : 2; })();
 function nnFeaturesGame() {
     const E = CFG.edgeU, me = G.pieces[G.active], op = G.pieces[1 - G.active];
     const b = Math.atan2(me.y, me.x) || 0;
@@ -4285,43 +4289,75 @@ function nnForwardGame(x) {
     }
     return a[0];
 }
-function nnPlanForGame(idx, temperature) {
+// Mirrors nn/nnai.js exactly (dense ~3deg waypoint sweep, plateau-vs-needle smoothing, optional
+// minimax `depth` on top of the same trained net) so a #nn game is testing the SAME search the
+// net is actually trained and gated with -- not a separate, silently-stale implementation.
+function nnPlanForGame(idx, temperature, depth, keepForDepth) {
     const snap = takeSnap();
     const roll = () => { G.pieces.forEach((p,i)=>{p.x=snap[i].x;p.y=snap[i].y;p.rot=snap[i].rot;});
-                          G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null; };
+                          G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null;
+                          G.pinned=null; G.pivot=null; G.active=idx; G.over=false; G.winner=null; };
     const cands = [];
     for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
         pinFoot(pv);
-        let tot = 0;
-        while (Math.abs(tot) < AI_SAFETY_CAP_RAD) { applySwing(dir*AI_STEP_RAD); tot = G.netRad; if (G.atLimit) break; }
-        const full = G.netRad;
-        roll();
-        if (Math.abs(full) < HARD_MIN_MOVE_RAD) continue;
-        for (const frac of [1, 0.7, 0.45, 0.22]) {
-            const target = full*frac;
-            if (Math.abs(target) < HARD_MIN_MOVE_RAD) continue;
-            pinFoot(pv);
-            let guard = 0;
-            while (!G.atLimit && Math.abs(G.netRad) < Math.abs(target) && guard++ < 5000)
-                applySwing(dir*Math.min(AI_STEP_RAD, Math.abs(target) - Math.abs(G.netRad)));
+        const arm = [];
+        let guard = 0;
+        while (!G.atLimit && Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && guard++ < 200) {
+            applySwing(dir*AI_STEP_RAD);
+            const rad = G.netRad;
+            if (Math.abs(rad) < HARD_MIN_MOVE_RAD) { if (G.atLimit) break; continue; }
             let v;
-            if (G.pieces[1 - idx].anyFootOff()) v = 1e6 - Math.abs(target)*1e-3;   // a throw -- shortest wins
+            if (G.pieces[1 - idx].anyFootOff()) v = 1e6 - Math.abs(rad)*1e-3;   // a throw -- shortest wins
             else { G.active = 1 - idx; v = -nnForwardGame(nnFeaturesGame()); G.active = idx; }
-            // targetRad must be an unsigned magnitude -- dir carries the sign. startAiTurn's
-            // "blocked both ways" guard (target < 1e-9) and aiBeginSwing/stepAi's arithmetic both
-            // assume that; `target` here is signed (it's full*frac, and full=G.netRad inherits the
-            // sweep's sign), so every dir=-1 candidate was silently read as "no legal move" and the
-            // turn got thrown away with zero movement -- roughly half of every NN turn, any time in
-            // the game, not just openings.
-            cands.push({ pivotIdx: pv, dir, targetRad: Math.abs(target), v });
-            roll();
+            arm.push({ pivotIdx: pv, dir, targetRad: Math.abs(rad), v });
+        }
+        roll();
+        for (let i = 0; i < arm.length; i++) {
+            const w = arm[i], isThrow = w.v >= 1e5;
+            if (isThrow) { w.s = w.v; cands.push(w); continue; }
+            let sum = w.v, n = 1;
+            if (i > 0 && arm[i-1].v < 1e5) { sum += arm[i-1].v; n++; }
+            if (i + 1 < arm.length && arm[i+1].v < 1e5) { sum += arm[i+1].v; n++; }
+            w.s = sum/n;
+            cands.push(w);
         }
     }
     if (!cands.length) return null;
-    cands.sort((a, b) => b.v - a.v);
+    cands.sort((a, b) => b.s - a.s);
+
+    if ((depth||1) >= 2 && cands[0].v < 1e5) {
+        // commit a candidate for real (pin, step to its target, endTurn) -- unlike the roll-backed
+        // 1-ply pass above, depth needs to actually SEE what the position looks like afterward.
+        const commit = c => {
+            pinFoot(c.pivotIdx);
+            let g = 0;
+            while (!G.atLimit && Math.abs(G.netRad) < c.targetRad && g++ < 5000)
+                applySwing(c.dir*Math.min(AI_STEP_RAD, c.targetRad - Math.abs(G.netRad)));
+            endTurn();
+        };
+        const keep = Math.min(cands.length, keepForDepth||4);
+        for (let i = 0; i < keep; i++) {
+            const c = cands[i];
+            commit(c);
+            let deep;
+            if (G.over) deep = G.winner === idx ? 1e6 : -1e6;
+            else {
+                const oppPlan = nnPlanForGame(1 - idx, 0, depth - 1, keepForDepth);
+                if (!oppPlan) deep = nnForwardGame(nnFeaturesGame());
+                else {
+                    commit(oppPlan);
+                    deep = G.over ? (G.winner === idx ? 1e6 : -1e6) : nnForwardGame(nnFeaturesGame());
+                }
+            }
+            roll();
+            c.deep = deep;
+        }
+        cands.splice(0, keep, ...cands.slice(0, keep).sort((a, b) => b.deep - a.deep));
+    }
+
     let k = 0;
     if (temperature > 1e-6 && cands[0].v < 1e5) {
-        const mx = cands[0].v, ws = cands.map(c => Math.exp((c.v - mx)/temperature));
+        const mx = cands[0].s, ws = cands.map(c => Math.exp((c.s - mx)/temperature));
         let r = Math.random()*ws.reduce((a, b) => a + b, 0);
         for (let i = 0; i < cands.length; i++) { r -= ws[i]; if (r <= 0) { k = i; break; } }
     }
@@ -4334,7 +4370,7 @@ function startAiTurn() {
     // Ladder games route through the tuned per-level brain, an #nn game routes through the loaded
     // checkpoint, everything else uses the classic difficulty planner. All return the same
     // { pivotIdx, dir, targetRad } the animation plays.
-    const sp = (aiDifficulty === 'nn' && nnModel) ? nnPlanForGame(aiIdx, 0.05)
+    const sp = (aiDifficulty === 'nn' && nnModel) ? nnPlanForGame(aiIdx, 0.05, nnDepth)
              : (ladderLevel!=null) ? ladderPlanFor(ladderLevel, aiIdx) : searchedPlanFor(aiDifficulty, aiIdx);
     if (sp) { pivotIdx = sp.pivotIdx; dir = sp.dir; target = sp.targetRad; }
     else {
