@@ -1,12 +1,15 @@
 // The overnight loop: selfplay -> train -> arena, forever (Ctrl-C any time; every stage saves).
 //   node nn/run.js [--gamesPerIter 200] [--epochs 6] [--arenaGames 24] [--vs L8] [--benchEvery 3]
+//                  [--benchGames 12] [--bench2Games 4] [--bench3Games 2]
 // Iteration 1 has no model, so selfplay is pure ladder sparring; from then on the freshest net
 // plays half its own games. A new net is promoted to models/best.json when it beats the current
 // best 55%+ head-to-head (or immediately, the first time). Progress appends to nn/log.txt.
 // The vs-L8 benchmark is pure readout (it never affects promotion, and best.json is already saved
-// by the time it runs) but is easily the priciest stage per iteration -- 30-55+ minutes against 24
-// games' worth of deep search, versus single-digit minutes for everything else combined. --benchEvery
-// N only runs it on every Nth iteration; the skipped ones cost nothing.
+// by the time it runs) but is easily the priciest stage per iteration. It now runs the net at
+// 1-, 2- and 3-ply (a few games each, fewer as depth gets pricier) instead of one fixed-depth
+// score, so it's clear how much of any result is the value function versus the search depth it
+// happened to be read at. --benchEvery N only runs it on every Nth iteration; the skipped ones
+// cost nothing.
 'use strict';
 const { execFileSync } = require('child_process');
 const fs = require('fs');
@@ -29,6 +32,13 @@ const vs = arg('vs', 'L8');
 // rather than the main cost. --benchEvery 1 --benchGames 24 restores the old behaviour.
 const benchEvery = Math.max(1, +arg('benchEvery', 10));
 const benchGames = arg('benchGames', '12');
+// Granular readout: a few games each at 1/2/3-ply so the benchmark shows how much of the net's
+// strength is coming from search vs the value function itself, rather than one greedy-search data
+// point. Game counts shrink as depth grows since cost scales roughly 5.6x (depth 2) and 20x (depth
+// 3) per NN move (see nnai.js) -- 12/4/2 keeps the three legs in the same rough order of magnitude
+// of wall-clock cost instead of the depth-3 leg alone dwarfing the other two.
+const bench2Games = arg('bench2Games', '4');
+const bench3Games = arg('bench3Games', '2');
 // selfplay is embarrassingly parallel — use most of the machine's cores by default (capped: the
 // gain flattens and each worker holds its own engine sandbox). --workers 1 to go back to serial.
 const workers = arg('workers', String(Math.max(1, Math.min(os.cpus().length - 1, 8))));
@@ -207,13 +217,22 @@ for (let iter = startIter; ; iter++) {
   log(`iteration ${iter} — checkpoint saved: ${path.basename(ckpt)}`);
   statusState.lastCheckpoint = `${path.basename(ckpt)} at ${new Date().toISOString()}`;
   if (iter % benchEvery === 0) {
-    log(`iteration ${iter} — benchmark vs ${vs}`);
-    writeStatus(`benchmark vs ${vs} running (${benchGames} games, started ${new Date().toISOString()})`);
-    runSoft('arena.js', ['--a', 'nn:0:' + best, '--b', vs, '--games', benchGames]);
-    // the exact score only ever lives in the console (runSoft streams it live, unlike the gate's
+    log(`iteration ${iter} — benchmark vs ${vs} (1/2/3-ply)`);
+    writeStatus(`benchmark vs ${vs} running (1/2/3-ply, started ${new Date().toISOString()})`);
+    // Three separate arena.js calls, not one at a fixed depth: arena.js's --depth only ever applied
+    // to the nn side of the earlier single-depth benchmark (L8 has no such knob), so every past
+    // result here was the value function played at its greediest, weakest setting -- 1-ply search
+    // was already measured elsewhere to lose ~19-5 to the SAME net at 2-ply. Running all three
+    // depths shows how much of any given iteration's L8 result is the value function versus the
+    // search depth it happened to be read at.
+    for (const { depth, games } of [{ depth: 1, games: benchGames }, { depth: 2, games: bench2Games }, { depth: 3, games: bench3Games }]) {
+      log(`iteration ${iter} — benchmark vs ${vs}, ${depth}-ply (${games} games)`);
+      runSoft('arena.js', ['--a', 'nn:0:' + best, '--b', vs, '--games', games, '--depth', String(depth)]);
+    }
+    // the exact scores only ever live in the console (runSoft streams them live, unlike the gate's
     // runCaptured) -- deliberately not re-run captured here, since that would lose the live
     // per-game progress output during what is still the single longest stage.
-    statusState.lastBenchmark = `iteration ${iter}, finished ${new Date().toISOString()} — see console for the score`;
+    statusState.lastBenchmark = `iteration ${iter}, finished ${new Date().toISOString()} — 1/2/3-ply, see console for the scores`;
   } else {
     const nextBench = Math.ceil((iter + 1) / benchEvery) * benchEvery;
     log(`iteration ${iter} — benchmark vs ${vs} skipped (next at iteration ${nextBench})`);
