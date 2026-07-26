@@ -3,25 +3,30 @@
 // gate never really gated (it always promoted regardless of the arena result -- see run.js's git
 // history), so best.json has been "whichever net trained most recently," not a ratchet that only
 // ever went up. This plays every ckpt-NNN.json (+ best.json / value.json if present) against every
-// other, all at temperature 0 (deterministic, no exploration noise -- an honest strength readout),
-// and ranks by win rate. Pass --promote to back up the current best.json and replace it with the
-// tournament winner, giving the now-real gate an honest net to defend from here on.
+// other, all at temperature 0 (deterministic move choice -- no exploration noise once a game is
+// under way), and ranks by win rate. A couple of forced random opening plies (opening.js) give
+// each of the N games per pairing a genuinely different position to play out from, instead of
+// replaying the same 2 deterministic games (one per starting colour) over and over. Pass --promote
+// to back up the current best.json and replace it with the tournament winner, giving the now-real
+// gate an honest net to defend from here on.
 //
-//   node nn/tournament.js [--dir nn/models] [--games 6] [--promote]
+//   node nn/tournament.js [--dir nn/models] [--games 6] [--openingPlies 2] [--promote]
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const { createEngine } = require('./engine.js');
 const { MLP } = require('./net.js');
 const { nnPlanFor } = require('./nnai.js');
+const { playRandomOpening } = require('./opening.js');
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
   return i >= 0 ? process.argv[i + 1] : dflt;
 }
 
-function playGame(eng, netA, netB, aIsBlue) {
+function playGame(eng, netA, netB, aIsBlue, openingPlies) {
   eng.newGame();
+  playRandomOpening(eng, openingPlies);
   let plies = 0, nulls = 0;
   while (!eng.getG().over && plies < 300) {
     const idx = eng.getG().active;
@@ -40,6 +45,7 @@ function playGame(eng, netA, netB, aIsBlue) {
 function main() {
   const modelsDir = arg('dir', path.join(__dirname, 'models'));
   const gamesPerSide = Math.max(1, +arg('games', 6));   // each side plays first this many times
+  const openingPlies = +arg('openingPlies', 2);
   const doPromote = process.argv.includes('--promote');
 
   const files = fs.readdirSync(modelsDir)
@@ -69,7 +75,7 @@ function main() {
       let aw = 0, bw = 0, draws = 0;
       for (let g = 0; g < perPair; g++) {
         const aIsBlue = g % 2 === 0;
-        const r = playGame(eng, nets[i].net, nets[j].net, aIsBlue);
+        const r = playGame(eng, nets[i].net, nets[j].net, aIsBlue, openingPlies);
         if (r === true) aw++; else if (r === false) bw++; else draws++;
       }
       wins[nets[i].name] += aw; decided[nets[i].name] += aw + bw;

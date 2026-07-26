@@ -1,13 +1,17 @@
 // Head-to-head evaluation. Brains: L1..L11 (ladder levels) or nn[:temperature][:modelPath].
-//   node nn/arena.js --a nn --b L8 --games 24
+//   node nn/arena.js --a nn --b L8 --games 24 [--openingPlies 2]
 //   node nn/arena.js --a nn:0.2 --b nn:0.2:nn/models/prev.json --games 24
-// Colors alternate every game so first-move effects wash out.
+// Colors alternate every game so first-move effects wash out. When both brains are deterministic
+// (temperature 0, or a ladder level with no noise), --openingPlies forces that many random legal
+// opening plies before either brain moves, so "games" are actually distinct positions rather than
+// the same 2 deterministic lines (one per colour) replayed over and over -- see opening.js.
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const { createEngine } = require('./engine.js');
 const { MLP } = require('./net.js');
 const { nnPlanFor } = require('./nnai.js');
+const { playRandomOpening } = require('./opening.js');
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
@@ -37,11 +41,17 @@ function main() {
   const A = makeBrain(arg('a', 'nn'), eng);
   const B = makeBrain(arg('b', 'L5'), eng);
   const games = +arg('games', 24);
+  // both brains are commonly fully deterministic (nn at temperature 0, or a noise-free ladder
+  // level) from the same fixed start -- without a shuffled opening, every game with the same
+  // colour assignment would replay bit-for-bit identically, making "games" a repeat count, not a
+  // sample size. See opening.js.
+  const openingPlies = +arg('openingPlies', 2);
   let aWins = 0, bWins = 0, draws = 0, pliesSum = 0;
   const t0 = Date.now();
   for (let g = 0; g < games; g++) {
     const aIsBlue = g % 2 === 0;
     eng.newGame();
+    playRandomOpening(eng, openingPlies);
     let plies = 0, nulls = 0;
     while (!eng.getG().over && plies < 300) {
       const idx = eng.getG().active;
