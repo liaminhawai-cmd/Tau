@@ -42,9 +42,14 @@ const benchEvery = Math.max(1, +arg('benchEvery', 10));
 // fall off?) is legible long before any one cell is significant.
 const benchLevels = Math.max(1, +arg('benchLevels', 4));      // ladder rungs per sweep
 const benchCellGames = arg('benchCellGames', '3');            // games per (level, depth) cell
-// Search depth costs ~3.6x per ply and high ladder rungs are multi-second-per-move brains, so the
-// full depth range is only affordable while the window sits low. It narrows as the window climbs.
-const benchDeepUntil = Math.max(1, +arg('benchDeepUntil', 4));
+// Depth 4 is off by default because it was measured to buy nothing. Iteration 20's sweep, the
+// first real one: depth 4 returned EXACTLY the same score as depth 3 in every level that finished
+// (L1 3-0/3-0, L2 2-1/2-1, L3 3-0/3-0) while costing 784s/2937s/2913s against depth 3's
+// 241s/961s/293s -- roughly three quarters of the entire sweep's wall clock for zero additional
+// information. Search saturates by depth 3 at these rungs, and that is a fact worth learning once,
+// not re-buying every tenth iteration. Whole sweep drops from ~3h to ~45min. --benchDeepUntil 4
+// puts it back (worth doing once the window climbs, where deeper search may separate again).
+const benchDeepUntil = Math.max(0, +arg('benchDeepUntil', 0));
 const tournamentEvery = Math.max(1, +arg('tournamentEvery', 10));
 // Capped, or this grows every time it fires: ckpt-NNN.json accumulates one file per iteration
 // forever, so an uncapped round robin is O(n^2) in how long the run has been going, not a fixed
