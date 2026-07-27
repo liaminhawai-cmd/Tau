@@ -1,10 +1,12 @@
 // The overnight loop: selfplay -> train -> arena, forever (Ctrl-C any time; every stage saves).
 //   node nn/run.js [--gamesPerIter 30] [--epochs 6] [--benchEvery 10] [--benchLevels 4]
 //                  [--benchCellGames 3] [--benchDeepUntil 4] [--tournamentEvery 10]
+//                  [--tournamentRecent 12]
 // Iteration 1 has no model, so selfplay is pure ladder sparring; from then on the freshest net
 // plays most of its own games. Every iteration's net is promoted to models/best.json (see the note
-// on the retired per-iteration gate below); a periodic round robin across every saved checkpoint
-// is what actually decides which one deserves to be best. Progress appends to nn/log.txt.
+// on the retired per-iteration gate below); a periodic round robin across the most recent
+// --tournamentRecent checkpoints (capped, not every checkpoint ever saved -- see tournament.js) is
+// what actually decides which one deserves to be best. Progress appends to nn/log.txt.
 // The benchmark is a ladder SWEEP -- a few games in each (ladder level x search depth) cell -- so
 // it reads as a placement rather than a single pass/fail, and the bottom rung retires once the net
 // sweeps it. --benchEvery N only runs it on every Nth iteration; the skipped ones cost nothing.
@@ -34,6 +36,10 @@ const benchCellGames = arg('benchCellGames', '3');            // games per (leve
 // full depth range is only affordable while the window sits low. It narrows as the window climbs.
 const benchDeepUntil = Math.max(1, +arg('benchDeepUntil', 4));
 const tournamentEvery = Math.max(1, +arg('tournamentEvery', 10));
+// Capped, or this grows every time it fires: ckpt-NNN.json accumulates one file per iteration
+// forever, so an uncapped round robin is O(n^2) in how long the run has been going, not a fixed
+// cost. --tournamentRecent keeps the field to a fixed-size sliding window (see tournament.js).
+const tournamentRecent = arg('tournamentRecent', '12');
 // selfplay is embarrassingly parallel — use most of the machine's cores by default (capped: the
 // gain flattens and each worker holds its own engine sandbox). --workers 1 to go back to serial.
 const workers = arg('workers', String(Math.max(1, Math.min(os.cpus().length - 1, 8))));
@@ -161,7 +167,7 @@ if (!fs.existsSync(tournamentDone)) {
     : [];
   if (candidates.length > 1) {
     log(`one-time reseed: ${candidates.length} saved models found -- running a round robin to find the real best before continuing`);
-    runSoft('tournament.js', ['--promote']);
+    runSoft('tournament.js', ['--promote', '--recent', tournamentRecent, '--workers', workers]);
   }
   fs.mkdirSync(modelsDir, { recursive: true });
   fs.writeFileSync(tournamentDone, new Date().toISOString() + '\n');
@@ -221,9 +227,9 @@ for (let iter = startIter; ; iter++) {
   log(`iteration ${iter} — checkpoint saved: ${path.basename(ckpt)}`);
   statusState.lastCheckpoint = `${path.basename(ckpt)} at ${new Date().toISOString()}`;
   if (iter % tournamentEvery === 0) {
-    log(`iteration ${iter} — round robin across saved checkpoints (this is what picks best.json now)`);
+    log(`iteration ${iter} — round robin across the most recent ${tournamentRecent} checkpoints (this is what picks best.json now)`);
     writeStatus(`round robin running (started ${new Date().toISOString()})`);
-    runSoft('tournament.js', ['--promote']);
+    runSoft('tournament.js', ['--promote', '--recent', tournamentRecent, '--workers', workers]);
   }
   if (iter % benchEvery === 0) {
     const bottom = Math.max(1, Math.min(readWindow(), LADDER_N - benchLevels + 1));
