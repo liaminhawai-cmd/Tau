@@ -9,7 +9,7 @@
 //
 //   node nn/selfplay.js --games 200 --out nn/data/run1.jsonl [--model nn/models/best.json]
 //                       [--levels 2,3,4,5,6] [--deep 7,8] [--deepEvery 12] [--discount 0.995]
-//                       [--nnDepthMix 1:60,2:30,3:10]
+//                       [--nnDepthMix 1:60,2:30,3:10] [--openingPlies 2]
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -17,14 +17,20 @@ const { createEngine } = require('./engine.js');
 const { features } = require('./features.js');
 const { MLP } = require('./net.js');
 const { nnPlanFor } = require('./nnai.js');
+const { playRandomOpening } = require('./opening.js');
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
   return i >= 0 ? process.argv[i + 1] : dflt;
 }
 
-function playGame(eng, brainA, brainB, maxPlies) {
+function playGame(eng, brainA, brainB, maxPlies, openingPlies) {
   eng.newGame();
+  // Without this, a deterministic-ish ladder pairing (L8-L11 have little to no built-in
+  // randomness) replays close to the same line every time it recurs -- "heaps of games" would
+  // really be a handful of distinct games repeated, not a genuinely large sample. arena.js and
+  // tournament.js already do this for exactly this reason; selfplay.js had quietly skipped it.
+  playRandomOpening(eng, openingPlies);
   const rows = [];
   let plies = 0, nulls = 0;
   while (!eng.getG().over && plies < maxPlies) {
@@ -65,6 +71,7 @@ function main() {
   const deepEvery = +arg('deepEvery', 12);
   const discount = +arg('discount', 0.995);
   const temperature = +arg('temperature', 0.08);
+  const openingPlies = +arg('openingPlies', 2);
   // Real lookahead (nnai.js's `depth`) measurably strengthens play (a same-net depth-2 vs depth-1
   // A/B went 19-5) but costs roughly keepForDepth x per extra ply (measured ~5.6x for depth 2, ~20x
   // for depth 3), so depth 5 everywhere would be a ~300x non-starter for bulk data generation.
@@ -132,7 +139,7 @@ function main() {
       const ch = fork(__filename, ['--games', String(n), '--out', part, '--model', modelPath,
         '--levels', levels.join(','), '--deep', deep.join(','), '--deepEvery', String(deepEvery),
         '--discount', String(discount), '--temperature', String(temperature),
-        '--selfRatio', String(selfRatio),
+        '--selfRatio', String(selfRatio), '--openingPlies', String(openingPlies),
         '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(',')],
         { env: Object.assign({}, process.env, { TAU_WORKER: String(w + 1) }) });
       ch.on('exit', () => { if (--live === 0) finish(); });
@@ -178,10 +185,16 @@ function main() {
         else { brainA = ladderBrain(lvl); brainB = nnBrainAt(depthA); tag = 'L' + lvl + ' vs ' + nnTagAt(depthA); }
       }
     } else {
-      const la = useDeep ? pick(deep) : pick(levels), lb = useDeep ? pick(deep) : pick(levels);
+      // Each SIDE independently rolls whether it draws from the deep pool during a garnish slot,
+      // rather than both sides being forced into the same pool -- the old code could only ever
+      // produce shallow-vs-shallow or deep-vs-deep, never a deliberately mismatched "L3 vs L10".
+      // Cross-tier pairings are exactly the ones the ladder's own spacing checks (see AI_LADDER's
+      // history) care about, and they're free here: still one arena.js-cost game either way.
+      const sidePool = () => useDeep && Math.random() < 0.5 ? deep : levels;
+      const la = pick(sidePool()), lb = pick(sidePool());
       brainA = ladderBrain(la); brainB = ladderBrain(lb); tag = 'L' + la + ' vs L' + lb;
     }
-    const { rows, winner, plies } = playGame(eng, brainA, brainB, 300);
+    const { rows, winner, plies } = playGame(eng, brainA, brainB, 300, openingPlies);
     if (winner !== null) {
       decided++;
       for (let i = 0; i < rows.length; i++) {
