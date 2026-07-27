@@ -22,6 +22,16 @@ function arg(name, dflt) {
 }
 const gamesPerIter = arg('gamesPerIter', '200');
 const epochs = arg('epochs', '6');
+// selfplay.js's game-source mix, once a model exists (before that it's always pure ladder-vs-
+// ladder). This used to be a single "selfRatio" ramped 0.25->0.85 across the first 6 iterations
+// then left completely flat -- but nn-vs-nn scaled as selfRatio^2 while nn-vs-ladder only scaled
+// as selfRatio*(1-selfRatio), so the 0.85 cap actually meant 72% nn-vs-nn / 13% nn-vs-ladder / 15%
+// ladder-only, not the ~85%-self split the number suggested. That heavy, PERMANENTLY-flat nn-vs-nn
+// share is a real suspect in why a round robin found real playing strength peaking at iterations
+// 11-13 and drifting through 14-20 -- ladder brains don't drift with the net, so a bigger, fixed
+// share of them is what keeps the training data from being graded by the same student whose
+// answers are being checked.
+const mix = arg('mix', 'nnnn:0.4,nnladder:0.3,ladder:0.3');
 const benchEvery = Math.max(1, +arg('benchEvery', 10));
 // The benchmark is a SWEEP, not a single score. "0-12 vs L8" says "weaker than L8" and nothing
 // else -- it cannot tell a net that plays like L2 from one that nearly beat L7, which is why four
@@ -113,7 +123,7 @@ function writeStatus(stage) {
   const md = `# Tau NN training status\n_Last updated: ${statusState.updatedAt}_\n\n` +
     `**Iteration:** ${statusState.iter ?? '-'}\n` +
     `**Stage:** ${statusState.stage}\n` +
-    `**selfRatio:** ${statusState.selfRatio ?? '-'}\n\n` +
+    `**mix:** ${statusState.mix ?? '-'}\n\n` +
     `**Last gate result:** ${statusState.lastGate ?? '(none yet)'}\n\n` +
     `**Last checkpoint:** ${statusState.lastCheckpoint ?? '(none yet)'}\n\n` +
     `**Last ladder sweep:** ${statusState.lastBenchmark ?? '(none yet)'}\n`;
@@ -174,8 +184,8 @@ if (!fs.existsSync(tournamentDone)) {
 }
 
 // Resume from the next iteration after the highest completed checkpoint, not always 1 -- a restart
-// (closing the window, a crash, a reboot) used to reset the selfRatio ramp back to its iteration-1
-// value AND re-target iter001.jsonl, silently stacking a new run's data onto the very first one's.
+// (closing the window, a crash, a reboot) used to re-target iter001.jsonl, silently stacking a new
+// run's data onto the very first one's.
 // ckpt-NNN.json is only ever written as an iteration's last step, so the highest one found is the
 // last iteration that actually finished end to end.
 function nextIter() {
@@ -192,14 +202,12 @@ const startIter = nextIter();
 if (startIter > 1) log(`resuming at iteration ${startIter} (found checkpoints up to ckpt-${String(startIter - 1).padStart(3, '0')}.json)`);
 
 for (let iter = startIter; ; iter++) {
-  // the self-play ramp: bootstrap on ladder games, then hand the curriculum to the net itself
-  const selfRatio = fs.existsSync(best) ? Math.min(0.85, 0.25 + 0.1*(iter - 1)) : 0;
-  log(`iteration ${iter} — selfplay ${gamesPerIter} games (selfRatio ${selfRatio.toFixed(2)}, ${workers} workers)`);
-  statusState.iter = iter; statusState.selfRatio = selfRatio.toFixed(2);
+  log(`iteration ${iter} — selfplay ${gamesPerIter} games (mix ${mix}, ${workers} workers)`);
+  statusState.iter = iter; statusState.mix = fs.existsSync(best) ? mix : '(no model yet — pure ladder)';
   writeStatus(`selfplay running (${gamesPerIter} games, started ${new Date().toISOString()})`);
   run('selfplay.js', ['--games', gamesPerIter,
     '--out', path.join(dir, 'data', `iter${String(iter).padStart(3, '0')}.jsonl`),
-    '--model', best, '--selfRatio', String(selfRatio), '--workers', workers]);
+    '--model', best, '--mix', mix, '--workers', workers]);
   log(`iteration ${iter} — train ${epochs} epochs`);
   run('train.js', ['--epochs', epochs, '--out', fresh,
     ...(fs.existsSync(best) ? ['--resume', best] : [])]);

@@ -10,6 +10,7 @@
 //   node nn/selfplay.js --games 200 --out nn/data/run1.jsonl [--model nn/models/best.json]
 //                       [--levels 2,3,4,5,6] [--deep 7,8] [--deepEvery 12] [--discount 0.995]
 //                       [--nnDepthMix 1:60,2:30,3:10] [--openingPlies 2]
+//                       [--mix nnnn:0.4,nnladder:0.3,ladder:0.3]
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -100,7 +101,26 @@ function main() {
     for (const { depth, weight } of nnDepthMix) { r -= weight; if (r <= 0) return depth; }
     return nnDepthMix[0].depth;
   };
-  const selfRatio = +arg('selfRatio', 0.5);   // share of games the net itself plays in (once it exists)
+  // Once a model exists, these three weights (normalised, needn't sum to 1) decide EACH game
+  // independently. Replaces a nested selfRatio coinflip that quietly meant something different from
+  // what it sounded like: nn-vs-nn scaled as selfRatio^2 while nn-vs-ladder only scaled as
+  // selfRatio*(1-selfRatio), so "selfRatio 0.85" produced 72% nn-vs-nn and a SHRINKING 13%
+  // nn-vs-ladder (that term peaks at selfRatio 0.5, not 1) -- not the ~85%-self split the number
+  // suggested. Heavy nn-vs-nn is exactly the self-referential-narrowing risk a round robin caught
+  // (real playing strength peaked iterations 11-13 and drifted through 14-20 while this ratio sat
+  // completely flat at its 0.85 cap the entire time -- ladder brains don't drift with the net, so
+  // giving them a real share is what keeps the training data from being graded by the same student
+  // whose answers are being checked).
+  const mix = arg('mix', 'nnnn:0.4,nnladder:0.3,ladder:0.3').split(',').reduce((o, s) => {
+    const [k, v] = s.split(':'); o[k] = +v; return o;
+  }, {});
+  const mixTotal = mix.nnnn + mix.nnladder + mix.ladder;
+  const pickMix = () => {
+    let r = Math.random()*mixTotal;
+    if ((r -= mix.nnnn) <= 0) return 'nnnn';
+    if ((r -= mix.nnladder) <= 0) return 'nnladder';
+    return 'ladder';
+  };
   const workers = Math.max(1, Math.floor(+arg('workers', 1)));
   fs.mkdirSync(path.dirname(out), { recursive: true });
 
@@ -139,7 +159,8 @@ function main() {
       const ch = fork(__filename, ['--games', String(n), '--out', part, '--model', modelPath,
         '--levels', levels.join(','), '--deep', deep.join(','), '--deepEvery', String(deepEvery),
         '--discount', String(discount), '--temperature', String(temperature),
-        '--selfRatio', String(selfRatio), '--openingPlies', String(openingPlies),
+        '--mix', Object.entries(mix).map(([k, v]) => k + ':' + v).join(','),
+        '--openingPlies', String(openingPlies),
         '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(',')],
         { env: Object.assign({}, process.env, { TAU_WORKER: String(w + 1) }) });
       ch.on('exit', () => { if (--live === 0) finish(); });
@@ -174,16 +195,14 @@ function main() {
     const depthA = pickNnDepth(), depthB = pickNnDepth();
     const nnBrainAt = d => idx => nnPlanFor(eng, net, idx, { temperature, depth: d });
     const nnTagAt = d => d > 1 ? 'nn(D' + d + ')' : 'nn';
-    if (net && Math.random() < selfRatio) {
-      // at high selfRatio most of these are pure self-play — the ramp run.js drives
-      if (Math.random() < selfRatio) {
-        brainA = nnBrainAt(depthA); brainB = nnBrainAt(depthB);
-        tag = nnTagAt(depthA) + ' vs ' + nnTagAt(depthB);
-      } else {
-        const lvl = useDeep ? pick(deep) : pick(levels);
-        if (Math.random() < 0.5) { brainA = nnBrainAt(depthA); brainB = ladderBrain(lvl); tag = nnTagAt(depthA) + ' vs L' + lvl; }
-        else { brainA = ladderBrain(lvl); brainB = nnBrainAt(depthA); tag = 'L' + lvl + ' vs ' + nnTagAt(depthA); }
-      }
+    const kind = net ? pickMix() : 'ladder';
+    if (kind === 'nnnn') {
+      brainA = nnBrainAt(depthA); brainB = nnBrainAt(depthB);
+      tag = nnTagAt(depthA) + ' vs ' + nnTagAt(depthB);
+    } else if (kind === 'nnladder') {
+      const lvl = useDeep ? pick(deep) : pick(levels);
+      if (Math.random() < 0.5) { brainA = nnBrainAt(depthA); brainB = ladderBrain(lvl); tag = nnTagAt(depthA) + ' vs L' + lvl; }
+      else { brainA = ladderBrain(lvl); brainB = nnBrainAt(depthA); tag = 'L' + lvl + ' vs ' + nnTagAt(depthA); }
     } else {
       // Each SIDE independently rolls whether it draws from the deep pool during a garnish slot,
       // rather than both sides being forced into the same pool -- the old code could only ever
