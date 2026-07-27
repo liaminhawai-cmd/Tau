@@ -1,6 +1,6 @@
 // The overnight loop: selfplay -> train -> arena, forever (Ctrl-C any time; every stage saves).
-//   node nn/run.js [--gamesPerIter 30] [--epochs 6] [--benchEvery 10] [--benchLevels 4]
-//                  [--benchCellGames 3] [--benchDeepUntil 4] [--tournamentEvery 10]
+//   node nn/run.js [--gamesPerIter 30] [--epochs 6] [--benchEvery 10] [--benchLevels 3]
+//                  [--benchCellGames 3] [--benchDepths 1,2,3] [--tournamentEvery 10]
 //                  [--tournamentRecent 12]
 // Iteration 1 has no model, so selfplay is pure ladder sparring; from then on the freshest net
 // plays most of its own games. Every iteration's net is promoted to models/best.json (see the note
@@ -8,8 +8,9 @@
 // --tournamentRecent checkpoints (capped, not every checkpoint ever saved -- see tournament.js) is
 // what actually decides which one deserves to be best. Progress appends to nn/log.txt.
 // The benchmark is a ladder SWEEP -- a few games in each (ladder level x search depth) cell -- so
-// it reads as a placement rather than a single pass/fail, and the bottom rung retires once the net
-// sweeps it. --benchEvery N only runs it on every Nth iteration; the skipped ones cost nothing.
+// it reads as a placement rather than a single pass/fail. Each DEPTH keeps its own window and
+// retires its own rungs, so the cells tracked form a diagonal band across the grid rather than a
+// rectangle (see the windows below). --benchEvery N only runs it on every Nth iteration.
 'use strict';
 const { execFileSync } = require('child_process');
 const fs = require('fs');
@@ -40,16 +41,15 @@ const benchEvery = Math.max(1, +arg('benchEvery', 10));
 // each individual cell is noisy, but every depth is backed by all the levels and every level by
 // all the depths, and the shape across cells (does depth 3 beat depth 2? where does the win rate
 // fall off?) is legible long before any one cell is significant.
-const benchLevels = Math.max(1, +arg('benchLevels', 4));      // ladder rungs per sweep
+const benchLevels = Math.max(1, +arg('benchLevels', 3));      // ladder rungs per depth, per sweep
 const benchCellGames = arg('benchCellGames', '3');            // games per (level, depth) cell
-// Depth 4 is off by default because it was measured to buy nothing. Iteration 20's sweep, the
-// first real one: depth 4 returned EXACTLY the same score as depth 3 in every level that finished
-// (L1 3-0/3-0, L2 2-1/2-1, L3 3-0/3-0) while costing 784s/2937s/2913s against depth 3's
-// 241s/961s/293s -- roughly three quarters of the entire sweep's wall clock for zero additional
-// information. Search saturates by depth 3 at these rungs, and that is a fact worth learning once,
-// not re-buying every tenth iteration. Whole sweep drops from ~3h to ~45min. --benchDeepUntil 4
-// puts it back (worth doing once the window climbs, where deeper search may separate again).
-const benchDeepUntil = Math.max(0, +arg('benchDeepUntil', 0));
+// Which depths to sweep. Cost grows ~3.6x PER PLY (measured: 5.6x at depth 2, 20x at depth 3), so
+// this is not a free dial -- depth 4 costs ~47x a depth-1 game and depth 5 ~168x, compounded by the
+// fact that the deeper rungs are themselves searching brains (L8 is a depth-3 search, ~2.5s/call).
+// 1,2,3 is the affordable span; because strength moves along a diagonal (see the windows below),
+// measuring the contour at cheap depths tells you where it sits at expensive ones without paying.
+const benchDepths = arg('benchDepths', '1,2,3').split(',')
+  .map(Number).filter(d => Number.isFinite(d) && d >= 1);
 const tournamentEvery = Math.max(1, +arg('tournamentEvery', 10));
 // Capped, or this grows every time it fires: ckpt-NNN.json accumulates one file per iteration
 // forever, so an uncapped round robin is O(n^2) in how long the run has been going, not a fixed
@@ -101,15 +101,34 @@ const arenaScore = out => {
 let LADDER_N = 11;
 try { LADDER_N = require('./engine.js').createEngine().AI_LADDER.length; } catch (e) {}
 
-// The sweep's bottom rung, persisted: this loop gets restarted constantly (closing the window, a
-// reboot, a code pull), and a window that resets to L1 every time would spend its benchmark budget
-// re-proving levels that were retired hours ago.
+// Each depth carries its OWN window bottom, persisted (restarts are constant here -- closing the
+// window, a reboot, a code pull -- and a window that reset to L1 each time would spend its whole
+// budget re-proving rungs retired hours ago).
+//
+// Per-depth, because strength is a DIAGONAL across the (level x depth) grid, not a vertical line:
+// each extra ply buys roughly another ladder rung, so at any one moment 1-ply is fighting L1-L3
+// while 3-ply is fighting L4-L6. A single shared window forced every depth onto the same rungs,
+// which made most cells a foregone 0-3 or 3-0 -- and a foregone cell costs exactly what an
+// informative one costs. Worse, retirement keyed on 1-ply alone, so the whole sweep was pinned to
+// the slowest-moving row: the net was beating L8 at 4-ply while the window sat at L1-L4, because
+// raw 1-ply still dropped games to L2. Letting each depth climb at its own rate makes the set of
+// window bottoms the progress metric itself (e.g. "1ply:L2 2ply:L4 3ply:L6" -- that IS the
+// diagonal, and it moving up-left is exactly what improvement looks like).
 const windowFile = path.join(dir, 'models', '.ladder-window');
-const readWindow = () => {
-  try { const n = +fs.readFileSync(windowFile, 'utf8').trim(); if (n >= 1) return n; } catch (e) {}
-  return 1;
+const readWindows = () => {
+  const flat = () => { const o = {}; for (const d of benchDepths) o[d] = 1; return o; };
+  try {
+    const raw = fs.readFileSync(windowFile, 'utf8').trim();
+    const n = +raw;
+    // migrate the old format: a bare number was one window shared by every depth
+    if (Number.isFinite(n) && n >= 1) { const o = {}; for (const d of benchDepths) o[d] = n; return o; }
+    const j = JSON.parse(raw), o = {};
+    for (const d of benchDepths) o[d] = (Number.isFinite(+j[d]) && +j[d] >= 1) ? +j[d] : 1;
+    return o;
+  } catch (e) {}
+  return flat();
 };
-const writeWindow = n => { try { fs.writeFileSync(windowFile, String(n) + '\n'); } catch (e) {} };
+const writeWindows = w => { try { fs.writeFileSync(windowFile, JSON.stringify(w) + '\n'); } catch (e) {} };
 
 // A small status file, pushed to git at each major transition, so progress can be checked by
 // reading the repo (GitHub's own UI, or `git fetch` anywhere) instead of reading this console --
@@ -245,36 +264,50 @@ for (let iter = startIter; ; iter++) {
     runSoft('tournament.js', ['--promote', '--recent', tournamentRecent, '--workers', workers]);
   }
   if (iter % benchEvery === 0) {
-    const bottom = Math.max(1, Math.min(readWindow(), LADDER_N - benchLevels + 1));
-    const top = Math.min(bottom + benchLevels - 1, LADDER_N);
-    const depths = bottom <= benchDeepUntil ? [1, 2, 3, 4] : [1, 2, 3];
-    log(`iteration ${iter} — ladder sweep L${bottom}-L${top} x ${depths.length} depths x ${benchCellGames} games`);
-    writeStatus(`ladder sweep L${bottom}-L${top} running (started ${new Date().toISOString()})`);
+    const win = readWindows();
+    const spans = {};
+    for (const d of benchDepths) {
+      const bottom = Math.max(1, Math.min(win[d], LADDER_N - benchLevels + 1));
+      spans[d] = [bottom, Math.min(bottom + benchLevels - 1, LADDER_N)];
+    }
+    const spanNote = benchDepths.map(d => `D${d}:L${spans[d][0]}-L${spans[d][1]}`).join(' ');
+    log(`iteration ${iter} — ladder sweep, per-depth windows ${spanNote} x ${benchCellGames} games`);
+    writeStatus(`ladder sweep running (${spanNote}, started ${new Date().toISOString()})`);
     const grid = {};
-    for (let lvl = bottom; lvl <= top; lvl++)
-      for (const d of depths)
+    for (const d of benchDepths)
+      for (let lvl = spans[d][0]; lvl <= spans[d][1]; lvl++)
         grid[lvl + ':' + d] = arenaScore(runCapturedSoft('arena.js',
           ['--a', 'nn:0:' + best, '--b', 'L' + lvl, '--games', benchCellGames, '--depth', String(d)]));
-    const table = ['         ' + depths.map(d => ('D' + d).padStart(8)).join('')];
-    for (let lvl = bottom; lvl <= top; lvl++)
-      table.push(('L' + lvl).padStart(6) + '   ' + depths.map(d => {
+    const table = benchDepths.map(d => {
+      const cells = [];
+      for (let lvl = spans[d][0]; lvl <= spans[d][1]; lvl++) {
         const s = grid[lvl + ':' + d];
-        return (s ? `${s.w}-${s.l}` : '-').padStart(8);
-      }).join(''));
+        cells.push(`L${lvl} ${s ? s.w + '-' + s.l : '-'}`.padStart(10));
+      }
+      return `    D${d}` + cells.join('');
+    });
     log(`iteration ${iter} — ladder sweep (net's win-loss per cell):\n` + table.join('\n'));
-    // Retire the bottom rung once even the SHALLOWEST search sweeps it and the rung above clean.
-    // Judging on 1-ply is the conservative choice -- a level only a deep search beats is still
-    // telling you something, so it stays. Demanding 100% is what makes a 3-game cell safe: two
-    // clean sweeps is ~1.6% by luck for an even matchup, and retiring a level slightly early costs
-    // almost nothing, because a level you always beat has stopped carrying information anyway.
-    const swept = l => { const s = grid[l + ':1']; return s && s.w > 0 && s.l === 0; };
-    if (bottom + 1 <= top && swept(bottom) && swept(bottom + 1) && bottom < LADDER_N - benchLevels + 1) {
-      writeWindow(bottom + 1);
-      log(`iteration ${iter} — L${bottom} retired (1-ply swept L${bottom} and L${bottom + 1}); ` +
-          `window moves up to L${bottom + 1}-L${Math.min(bottom + benchLevels, LADDER_N)}`);
+    // Retire a rung for THIS DEPTH only -- L1 can be done with at 3-ply while 1-ply still has to
+    // fight it. Demanding 100% on two adjacent rungs is what makes a 3-game cell safe: two clean
+    // sweeps is ~1.6% by luck for an even matchup, and retiring slightly early costs almost
+    // nothing, because a level you always beat has stopped carrying information anyway.
+    const swept = (l, d) => { const s = grid[l + ':' + d]; return s && s.w > 0 && s.l === 0; };
+    for (const d of benchDepths) {
+      const [bottom, top] = spans[d];
+      if (bottom + 1 <= top && swept(bottom, d) && swept(bottom + 1, d) &&
+          bottom < LADDER_N - benchLevels + 1) {
+        win[d] = bottom + 1;
+        log(`iteration ${iter} — depth ${d}: L${bottom} retired (${d}-ply swept L${bottom} and ` +
+            `L${bottom + 1}); its window moves up to L${bottom + 1}-L${Math.min(bottom + benchLevels, LADDER_N)}`);
+      }
     }
-    statusState.lastBenchmark = `iteration ${iter}: ladder sweep L${bottom}-L${top} — ` +
-      table.slice(1).map(r => r.trim().replace(/\s+/g, ' ')).join(' | ');
+    writeWindows(win);
+    // The frontier line is the headline: where each depth is currently fighting. Read across it and
+    // you are reading the diagonal.
+    const frontier = benchDepths.map(d => `${d}ply:L${win[d]}`).join(' ');
+    log(`iteration ${iter} — frontier ${frontier}`);
+    statusState.lastBenchmark = `iteration ${iter}: frontier ${frontier} — ` +
+      table.map(r => r.trim().replace(/\s+/g, ' ')).join(' | ');
   } else {
     const nextBench = Math.ceil((iter + 1) / benchEvery) * benchEvery;
     log(`iteration ${iter} — ladder sweep skipped (next at iteration ${nextBench})`);
