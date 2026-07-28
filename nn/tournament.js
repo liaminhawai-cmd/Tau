@@ -35,12 +35,16 @@ function arg(name, dflt) {
   return i >= 0 ? process.argv[i + 1] : dflt;
 }
 
-// The field: best.json and value.json (if present) always included, plus only the most recent
-// `recent` ckpt-NNN.json by iteration number -- this is what keeps the tournament's cost from
-// growing every time run.js calls it, no matter how long the run has been going.
+// The field: best.json, value.json and scratch.json (if present) always included, plus only the
+// most recent `recent` ckpt-NNN.json by iteration number -- this is what keeps the tournament's
+// cost from growing every time run.js calls it, no matter how long the run has been going.
+// scratch.json is run.js's from-scratch challenger, retrained on all accumulated data immediately
+// before each round robin (see run.js's --scratchEpochs). It must be in the field unconditionally
+// rather than via the --recent window, since it is not a ckpt-NNN and the whole point of it is to
+// be measured against the incrementally-trained incumbent every single time.
 function pickFiles(modelsDir, recent) {
-  const all = fs.readdirSync(modelsDir).filter(f => /^(ckpt-\d+|best|value)\.json$/.test(f));
-  const named = all.filter(f => f === 'best.json' || f === 'value.json');
+  const all = fs.readdirSync(modelsDir).filter(f => /^(ckpt-\d+|best|value|scratch)\.json$/.test(f));
+  const named = all.filter(f => f === 'best.json' || f === 'value.json' || f === 'scratch.json');
   const ckpts = all.filter(f => /^ckpt-\d+\.json$/.test(f))
     .sort((a, b) => +a.match(/\d+/)[0] - +b.match(/\d+/)[0])
     .slice(-Math.max(1, recent));

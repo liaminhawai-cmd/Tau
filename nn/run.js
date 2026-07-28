@@ -68,6 +68,27 @@ const tournamentRecent = arg('tournamentRecent', '12');
 // selfplay is embarrassingly parallel — use most of the machine's cores by default (capped: the
 // gain flattens and each worker holds its own engine sandbox). --workers 1 to go back to serial.
 const workers = arg('workers', String(Math.max(1, Math.min(os.cpus().length - 1, 8))));
+// Every round robin, ALSO train a challenger from scratch on all accumulated data and enter it in
+// the field. Measured, and the reason this exists: an architecture bake-off at iteration 63 played
+// best.json against four fresh 30-epoch nets trained on the same accumulated data, and best.json
+// lost to every single one of them -- 9-31, 11-28, 16-24, 7-32, i.e. 27% across 158 decided games.
+// It even lost 7-32 to the WORST-performing architecture in that field.
+//
+// The mechanism is that train.js reloads the FULL dataset every iteration and resumes from
+// best.json, so by iteration 63 the incumbent had taken ~370 epochs over the same rows against a
+// challenger's 30. That is not accumulated progress, it is accumulated overfitting -- and it was
+// invisible on validation mse, which kept looking healthy the whole time because the 10% holdout
+// is split by ROW while rows come from games (positions from one game land on both sides of the
+// split, so a net that memorises its training games scores well on the val set made of those same
+// games). The round robin below is the only instrument here that measures playing strength rather
+// than the training objective, so the fix is to put a clean retrain in front of it and let games
+// decide. If the incumbent is genuinely ahead, it stays; when it has drifted, the challenger wins
+// and tournament.js --promote adopts it automatically -- no manual intervention, and no way for
+// this failure to run 60 iterations unnoticed again.
+//
+// Cost is one train.js run every tournamentEvery iterations (~3 min against selfplay's ~7 min per
+// ITERATION), so this is close to free. --scratchEpochs 0 disables it.
+const scratchEpochs = arg('scratchEpochs', '30');
 
 const dir = __dirname;
 const best = path.join(dir, 'models', 'best.json');
@@ -104,6 +125,18 @@ const runCapturedSoft = (script, args) => {
 const arenaScore = out => {
   const m = [...out.matchAll(/:\s*(\d+)-(\d+)(?:-\d+)?\s+\(/g)];
   return m.length ? { w: +m[m.length - 1][1], l: +m[m.length - 1][2] } : null;
+};
+
+// The hidden-layer spec of whatever is currently best.json, as train.js's --hidden wants it
+// ("96,96"), so the from-scratch challenger is always the same ARCHITECTURE as the incumbent and
+// the round robin between them is a clean test of the training schedule alone. Returns null if
+// best.json doesn't exist yet or can't be read, in which case train.js's own default applies.
+const hiddenOfBest = () => {
+  try {
+    const j = JSON.parse(fs.readFileSync(best, 'utf8'));
+    if (Array.isArray(j.sizes) && j.sizes.length > 2) return j.sizes.slice(1, -1).join(',');
+  } catch (e) {}
+  return null;
 };
 
 // How many rungs the ladder actually has, read from the game itself rather than hardcoded so the
@@ -312,6 +345,19 @@ for (let iter = startIter; ; iter++) {
   log(`iteration ${iter} — checkpoint saved: ${path.basename(ckpt)}`);
   statusState.lastCheckpoint = `${path.basename(ckpt)} at ${new Date().toISOString()}`;
   if (iter % tournamentEvery === 0) {
+    // The from-scratch challenger (see --scratchEpochs above). Trained BEFORE the round robin so it
+    // is in the field when the round robin runs, and deliberately without --resume: resuming is the
+    // very thing being tested against. The shape is read off best.json rather than left to
+    // train.js's default, so that adopting a different architecture (by copying it over best.json)
+    // isn't silently undone by a challenger that reverts to 96,96 every tournament.
+    if (+scratchEpochs > 0) {
+      const scratch = path.join(dir, 'models', 'scratch.json');
+      const h = hiddenOfBest();
+      log(`iteration ${iter} — training a from-scratch challenger (${scratchEpochs} epochs` +
+          (h ? `, --hidden ${h}` : '') + `) to enter in the round robin`);
+      writeStatus(`from-scratch challenger training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
+      runSoft('train.js', ['--epochs', scratchEpochs, '--out', scratch, ...(h ? ['--hidden', h] : [])]);
+    }
     log(`iteration ${iter} — round robin across the most recent ${tournamentRecent} checkpoints (this is what picks best.json now)`);
     writeStatus(`round robin running (started ${new Date().toISOString()})`);
     runSoft('tournament.js', ['--promote', '--recent', tournamentRecent, '--workers', workers]);
