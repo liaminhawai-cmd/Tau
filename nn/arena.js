@@ -1,10 +1,14 @@
 // Head-to-head evaluation. Brains: L1..L11 (ladder levels) or nn[:temperature][:modelPath].
 //   node nn/arena.js --a nn --b L8 --games 24 [--openingPlies 2]
 //   node nn/arena.js --a nn:0.2 --b nn:0.2:nn/models/prev.json --games 24
+//   node nn/arena.js --a nn:0:models/best.json --b nn:0:models/best.json --depthA 1 --quiesceA --depthB 1
+//     (same net both sides -- isolates what quiescence alone is worth over plain depth 1)
 // Colors alternate every game so first-move effects wash out. When both brains are deterministic
 // (temperature 0, or a ladder level with no noise), --openingPlies forces that many random legal
 // opening plies before either brain moves, so "games" are actually distinct positions rather than
 // the same 2 deterministic lines (one per colour) replayed over and over -- see opening.js.
+// --depth/--quiesce set both sides; --depthA/--depthB/--quiesceA/--quiesceB override per side --
+// needed for a same-net A/B like the one above, which a single shared --depth can't express.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -18,7 +22,7 @@ function arg(name, dflt) {
   return i >= 0 ? process.argv[i + 1] : dflt;
 }
 
-function makeBrain(spec, eng, depth, keepForDepth) {
+function makeBrain(spec, eng, depth, keepForDepth, quiesce) {
   const m = /^L(\d+)$/i.exec(spec);
   if (m) {
     const lvl = +m[1];
@@ -32,18 +36,28 @@ function makeBrain(spec, eng, depth, keepForDepth) {
   // paths contain a colon themselves (nn:0:C:\Users\...\best.json)
   const mp = parts.length > 2 ? parts.slice(2).join(':') : path.join(__dirname, 'models', 'value.json');
   const net = MLP.fromJSON(JSON.parse(fs.readFileSync(mp, 'utf8')));
-  return { name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + (depth > 1 ? ',D' + depth : '') + ')',
-           fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth }) };
+  // Depth is reported as e.g. "D1.5" when quiesce rides on top of a plain depth-1 pass -- matches
+  // how the mix names it, and makes a quiesce-vs-plain A/B legible at a glance in the score line
+  // instead of two "D1" entries that secretly differ.
+  const depthLabel = quiesce ? depth + 0.5 : depth;
+  return { name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + (depthLabel > 1 ? ',D' + depthLabel : '') + ')',
+           fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth, quiesce }) };
 }
 
 function main() {
   const eng = createEngine();
-  // depth applies to any nn brain in the match (both --a and --b if both are nn) -- see nnai.js's
-  // depth option. Costs roughly keepForDepth x as long per nn move, so keep games modest at depth 2+.
+  // --depth is the shared default; --depthA/--depthB (and --quiesceA/--quiesceB) override it per
+  // side. Needed for exactly the comparison a fractional-depth question wants to ask -- "does
+  // quiescence on top of depth 1 beat plain depth 1" is a same-net A/B, which a single --depth
+  // applied to both sides can't express at all. --quiesce sets both sides at once, same as --depth.
   const depth = +arg('depth', 1);
   const keepForDepth = +arg('keepForDepth', 4);
-  const A = makeBrain(arg('a', 'nn'), eng, depth, keepForDepth);
-  const B = makeBrain(arg('b', 'L5'), eng, depth, keepForDepth);
+  const quiesce = process.argv.includes('--quiesce');
+  const depthA = +arg('depthA', depth), depthB = +arg('depthB', depth);
+  const quiesceA = process.argv.includes('--quiesceA') || quiesce;
+  const quiesceB = process.argv.includes('--quiesceB') || quiesce;
+  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepForDepth, quiesceA);
+  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepForDepth, quiesceB);
   const games = +arg('games', 24);
   // both brains are commonly fully deterministic (nn at temperature 0, or a noise-free ladder
   // level) from the same fixed start -- without a shuffled opening, every game with the same
