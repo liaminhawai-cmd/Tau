@@ -32,13 +32,50 @@ function arg(name, dflt) {
 // across iterations, silently fusing unrelated games into one id.
 const RUN_TAG = Math.random().toString(36).slice(2, 8) + process.pid.toString(36);
 
-function playGame(eng, brainA, brainB, maxPlies, openingPlies) {
+// Reservoir-sample k stored decision points from the accumulated data files -- every row carries
+// the raw pose (`p`) and mover (`m`) precisely so positions can be reused later without replaying
+// anything. One uniform pass over all rows, O(k) memory, so this stays cheap no matter how many
+// iterations have accumulated. Rows without a pose (old formats, synthetic fixtures) are skipped.
+function loadSeedPoses(dataDir, k) {
+  const pool = [];
+  let seen = 0, files = [];
+  try { files = fs.readdirSync(dataDir).filter(f => f.endsWith('.jsonl')); } catch (e) { return pool; }
+  for (const f of files) {
+    let txt;
+    try { txt = fs.readFileSync(path.join(dataDir, f), 'utf8'); } catch (e) { continue; }
+    for (const line of txt.split('\n')) {
+      if (!line) continue;
+      try {
+        const j = JSON.parse(line);
+        if (!j.p || j.p.length !== 6 || (j.m !== 0 && j.m !== 1)) continue;
+        seen++;
+        if (pool.length < k) pool.push({ p: j.p, m: j.m });
+        else { const r = Math.floor(Math.random()*seen); if (r < k) pool[r] = { p: j.p, m: j.m }; }
+      } catch (e) {}
+    }
+  }
+  return pool;
+}
+
+function playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose) {
   eng.newGame();
-  // Without this, a deterministic-ish ladder pairing (L8-L11 have little to no built-in
-  // randomness) replays close to the same line every time it recurs -- "heaps of games" would
-  // really be a handful of distinct games repeated, not a genuinely large sample. arena.js and
-  // tournament.js already do this for exactly this reason; selfplay.js had quietly skipped it.
-  playRandomOpening(eng, openingPlies);
+  if (seedPose) {
+    // Start from a stored mid-game decision point instead of the standard opening (see --seedFrom
+    // below). Every data row carries the raw pose (`p`) and whose turn it was (`m`), and a pose
+    // that came through the real rules is guaranteed to be a consistent game state -- the one
+    // caveat is history that lives outside the pose (the turn-start grace for a foot already
+    // parked on a line), which a restore can't reproduce; rare enough to accept.
+    const g = eng.getG(), sp = seedPose.p;
+    g.pieces[0].x = sp[0]; g.pieces[0].y = sp[1]; g.pieces[0].rot = sp[2];
+    g.pieces[1].x = sp[3]; g.pieces[1].y = sp[4]; g.pieces[1].rot = sp[5];
+    eng.setActive(seedPose.m);
+  } else {
+    // Without this, a deterministic-ish ladder pairing (L8-L11 have little to no built-in
+    // randomness) replays close to the same line every time it recurs -- "heaps of games" would
+    // really be a handful of distinct games repeated, not a genuinely large sample. arena.js and
+    // tournament.js already do this for exactly this reason; selfplay.js had quietly skipped it.
+    playRandomOpening(eng, openingPlies);
+  }
   const rows = [];
   let plies = 0, nulls = 0;
   while (!eng.getG().over && plies < maxPlies) {
@@ -92,6 +129,17 @@ function main() {
   const openingPlies = +arg('openingPlies', 4);
   // The in-game ply cap. Exposed as an arg mostly so tests can force cap-draws cheaply.
   const maxPlies = +arg('maxPlies', 300);
+  // --seedFrom F: this fraction of games starts from a STORED mid-game position (drawn from the
+  // accumulated data's `p` poses) instead of the standard opening, with the normal brains playing
+  // it out to a real result. Point: outcome labels are cleanest near the end of a game and
+  // noisiest in the middle ("who blundered last"), and ordinary games only reach a given mid-game
+  // position after spending the plies to get there. Seeding starts play AT such positions, so
+  // label-quality games (especially the deep-ladder garnish -- expert play) concentrate exactly
+  // where the data is weakest. Stored poses rather than uniform-random ones: they came through the
+  // real rules (state bookkeeping consistent), they follow the distribution the net is actually
+  // asked about, and they're already on disk. 0 disables; ignored until enough tagged data exists.
+  const seedFrom = Math.max(0, Math.min(1, +arg('seedFrom', 0.25)));
+  const seedPoolFile = arg('seedPool', null);
   // Real lookahead (nnai.js's `depth`) measurably strengthens play (a same-net depth-2 vs depth-1
   // A/B went 19-5) but costs roughly keepForDepth x per extra ply (measured ~5.6x for depth 2, ~20x
   // for depth 3), so depth 5 everywhere would be a ~300x non-starter for bulk data generation.
@@ -149,9 +197,24 @@ function main() {
   if (workers > 1) {
     const { fork } = require('child_process');
     const t0 = Date.now();
+    // Sample the seed-pose pool ONCE in the parent and hand workers a small file, instead of every
+    // worker re-reading the whole accumulated dataset (which grows forever) just to draw a few
+    // hundred poses. Under ~50 usable poses, seeding is skipped for this run -- a tiny pool would
+    // just replay the same handful of positions with deterministic ladder brains.
+    let seedFile = null;
+    if (seedFrom > 0) {
+      const pool = loadSeedPoses(path.join(__dirname, 'data'), 400);
+      if (pool.length >= 50) {
+        seedFile = out + '.seeds';
+        fs.mkdirSync(path.dirname(out), { recursive: true });
+        fs.writeFileSync(seedFile, JSON.stringify(pool));
+        console.log(`seeding ~${Math.round(seedFrom*100)}% of games from ${pool.length} stored positions`);
+      }
+    }
     const per = Math.floor(games/workers), extra = games % workers, parts = [];
     let live = 0;
     const finish = () => {
+      if (seedFile) { try { fs.unlinkSync(seedFile); } catch (e) {} }
       const ws = fs.createWriteStream(out, { flags: 'a' });
       let positions = 0;
       for (const part of parts) {
@@ -180,6 +243,7 @@ function main() {
         '--discount', String(discount), '--temperature', String(temperature),
         '--mix', Object.entries(mix).map(([k, v]) => k + ':' + v).join(','),
         '--openingPlies', String(openingPlies), '--maxPlies', String(maxPlies),
+        ...(seedFile ? ['--seedFrom', String(seedFrom), '--seedPool', seedFile] : ['--seedFrom', '0']),
         '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(',')],
         { env: Object.assign({}, process.env, { TAU_WORKER: String(w + 1) }) });
       ch.on('exit', () => { if (--live === 0) finish(); });
@@ -197,6 +261,18 @@ function main() {
   }
   const ladderBrain = lvl => idx => eng.ladderPlanFor(lvl - 1, idx);
   const pick = a => a[Math.floor(Math.random()*a.length)];
+
+  // Seed-pose pool: workers get a pre-sampled file from the parent; a direct single-process run
+  // samples for itself. Same <50 floor as the parent, same reason.
+  let seedPool = [];
+  if (seedFrom > 0) {
+    if (seedPoolFile) { try { seedPool = JSON.parse(fs.readFileSync(seedPoolFile, 'utf8')); } catch (e) {} }
+    else {
+      seedPool = loadSeedPoses(path.join(__dirname, 'data'), 400);
+      if (seedPool.length < 50) seedPool = [];
+      else if (!TAG) console.log(`seeding ~${Math.round(seedFrom*100)}% of games from ${seedPool.length} stored positions`);
+    }
+  }
 
   const ws = fs.createWriteStream(out, { flags: 'a' });
   let positions = 0, decided = 0;
@@ -232,7 +308,9 @@ function main() {
       const la = pick(sidePool()), lb = pick(sidePool());
       brainA = ladderBrain(la); brainB = ladderBrain(lb); tag = 'L' + la + ' vs L' + lb;
     }
-    const { rows, winner, plies, capped } = playGame(eng, brainA, brainB, maxPlies, openingPlies);
+    const seedPose = seedPool.length && Math.random() < seedFrom ? pick(seedPool) : null;
+    if (seedPose) tag = 'seeded ' + tag;
+    const { rows, winner, plies, capped } = playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose);
     // `g` marks which game a position came from. Without it train.js can only hold out random
     // ROWS, and consecutive positions in one game are near-identical -- so the same game lands on
     // both sides of the split and the val set stops being held-out data at all. Measured
