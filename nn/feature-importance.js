@@ -24,7 +24,10 @@ if (!modelPath || modelPath.startsWith('--')) {
 const j = JSON.parse(fs.readFileSync(modelPath, 'utf8'));
 if (!j.sizes || !j.W || !j.W[0]) { console.error('not a valid net JSON (missing sizes/W)'); process.exit(1); }
 const nIn = j.sizes[0], nOut = j.sizes[1];
-if (nIn !== 82) console.warn(`warning: this net takes ${nIn} inputs, not 82 -- the names below assume the current feature.js layout and may not line up`);
+if (nIn !== 88 && nIn !== 82)
+  console.warn(`warning: this net takes ${nIn} inputs -- the names below assume the current features.js layout and may not line up`);
+if (nIn === 82)
+  console.warn(`note: 82-input net (pre-L11-parity feature set) -- block D names don't apply`);
 
 // Names in the exact push order features.js builds them, so index i here IS input i.
 const NAMES = [
@@ -46,6 +49,9 @@ for (const who of ['me', 'opp'])
   for (let pv = 0; pv < 3; pv++)
     for (const dir of ['+', '-'])
       for (const s of cSub) NAMES.push(`C: ${who} pivot${pv} dir${dir} ${s}`);
+// Block D -- 6 L11-parity terms
+NAMES.push('D: my zone score', 'D: opp zone score', 'D: my line freedom', 'D: opp line freedom',
+           'D: triangle angle (mine)', 'D: triangle angle (opp)');
 
 const scores = new Array(nIn).fill(0);
 const W = j.W[0]; // flattened [nOut][nIn], row-major per net.js: W[j*nIn+i]
@@ -67,7 +73,7 @@ for (const r of ranked.slice(0, top)) {
 // Block-level summary: which of A/B/C is carrying the most total weight, and on average per input
 // (raw totals would just favour whichever block has more inputs -- block C has more than 2x
 // block A's count, so total alone isn't a fair comparison).
-const blocks = { A: [0, 16], B: [16, 46], C: [46, 82] };
+const blocks = { A: [0, 16], B: [16, 46], C: [46, 82], D: [82, 88] };
 console.log('\nby block (total and mean |outgoing weight| per input):');
 for (const [name, [lo, hi]] of Object.entries(blocks)) {
   if (hi > nIn) continue;

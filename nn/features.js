@@ -29,10 +29,17 @@
 // spend rediscovering sqrt() and atan2() from raw coordinates.
 'use strict';
 
-// A. 16 original + B. 6 feet x 5 + C. 2 pieces x 3 pivots x 2 directions x 3
-const N_FEATURES = 16 + 30 + 36;
+// A. 16 original + B. 6 feet x 5 + C. 2 pieces x 3 pivots x 2 directions x 3 + D. 6 L11-parity
+const N_FEATURES = 16 + 30 + 36 + 6;
 
 const TWO_PI = Math.PI*2;
+// Block C's angles are clamped/normalised by the SWING CAP, not by 180: AI_SAFETY_CAP_RAD is 170
+// degrees, so no sweep can ever reach an angle past it. The old 180 clamp left a dead band where
+// "crossing at 175 degrees" read as reachable when the engine can never get there -- and made
+// "reachable but far" and "unreachable" meet at different values. Now 1.0 means exactly "you
+// cannot reach this before the cap", whether that's because there is no crossing or because it
+// sits past 170.
+const SWING_CAP = 170*Math.PI/180;
 
 // The three feet of a piece, in world coordinates, sorted outermost-first. Sorting is the piece's
 // 3-fold symmetry: which foot is "foot 0" is arbitrary, so the net should see shape, not labels.
@@ -178,12 +185,56 @@ function features(eng) {
         // that state is already carried by the parked-on-a-line term in block B.
         const angs = hits.map(travel).filter(t => t > 0.01).sort((x, y) => x - y);
         const rims = rimHits.map(travel).filter(t => t > 0.01).sort((x, y) => x - y);
-        out.push(Math.min(angs[0] !== undefined ? angs[0] : Math.PI, Math.PI)/Math.PI);
-        out.push(Math.min(angs[1] !== undefined ? angs[1] : Math.PI, Math.PI)/Math.PI);
-        out.push(Math.min(rims[0] !== undefined ? rims[0] : Math.PI, Math.PI)/Math.PI);
+        out.push(Math.min(angs[0] !== undefined ? angs[0] : SWING_CAP, SWING_CAP)/SWING_CAP);
+        out.push(Math.min(angs[1] !== undefined ? angs[1] : SWING_CAP, SWING_CAP)/SWING_CAP);
+        out.push(Math.min(rims[0] !== undefined ? rims[0] : SWING_CAP, SWING_CAP)/SWING_CAP);
       }
     }
   }
+
+  // ---- D. L11 parity: the hand-tuned ladder's own eval terms, precomputed (6 numbers) ----
+  // The top ladder rung scores positions as margin + 12*zone + 8*park + -1.1*oppFree + 0.2*triMe.
+  // Auditing those against blocks A-C: margin is free (a linear difference of two inputs), park is
+  // approximated by the exp() indicators -- but zone needs thresholding distances into bands,
+  // oppFree needs a min() over three distances per foot, and triMe needs a division plus an arccos.
+  // Those are exactly the operations this file's own header says a net cannot afford to
+  // rediscover, and two of them carry the HEAVIEST weights in the best hand-built brain. So the
+  // net was being asked to reconstruct, through tanh arithmetic, the terms its strongest opponent
+  // gets handed directly -- while triMe is on record ("judo features" round) as the strongest
+  // single predictor found. Each term is computed for BOTH sides, not just the mover, since a
+  // value function needs to see the opponent owning these advantages too.
+  //
+  // These MUST stay arithmetically identical to zoneValue/ladderEval in index.html -- same rings,
+  // same lens rule (inside a side arc's full circle, not just its span), same per-foot freedom cap.
+  const zoneOf = f => {
+    const band = f.r < CFG.rings[0] ? 4 : f.r < CFG.rings[1] ? 3 : 2;
+    const inLens = CFG.sideArcs.some(a => Math.hypot(f.x - a.cx, f.y - a.cy) < a.r);
+    return inLens ? band - 1 : band;
+  };
+  const freedomOf = feet => {
+    let free = 0;
+    for (const f of feet) {
+      let d = 1e9;
+      for (const R of CFG.rings) d = Math.min(d, Math.abs(f.r - R));
+      for (const a of CFG.sideArcs)
+        if (angInSpan(Math.atan2(f.y - a.cy, f.x - a.cx)*180/Math.PI, a.a0, a.a1))
+          d = Math.min(d, Math.abs(Math.hypot(f.x - a.cx, f.y - a.cy) - a.r));
+      free += Math.min(d, 10);
+    }
+    return free;
+  };
+  const triAt = (p, q) => {           // angle at p's hub between the board centre and q's hub
+    const ax = -p.x, ay = -p.y, bx = q.x - p.x, by = q.y - p.y;
+    const la = Math.hypot(ax, ay) || 1e-9, lb = Math.hypot(bx, by) || 1e-9;
+    return Math.acos(Math.max(-1, Math.min(1, (ax*bx + ay*by)/(la*lb))))*180/Math.PI;
+  };
+  // zone sums run 3..12 (three feet, values 1..4); freedom runs 0..30 (cap 10 per foot); tri 0..180
+  out.push((zoneOf(mFeet[0]) + zoneOf(mFeet[1]) + zoneOf(mFeet[2]))/12);
+  out.push((zoneOf(oFeet[0]) + zoneOf(oFeet[1]) + zoneOf(oFeet[2]))/12);
+  out.push(freedomOf(mFeet)/30);
+  out.push(freedomOf(oFeet)/30);
+  out.push(triAt(me, op)/180);
+  out.push(triAt(op, me)/180);
   return out;
 }
 
