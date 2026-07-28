@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tau — unit economics explorer v2.1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --clay:#EAE1D0; --clay-2:#F3ECDD; --ink:#20231F; --ink-soft:#5A5A4E;
+    --line:#C9BCA3; --teal:#1F5A68; --teal-deep:#123c46;
+    --blue:#3667a6; --red:#a83a34; --gold:#b5852b;
+    --ok:#3f7a4e; --warn:#a86a1f; --bad:#a83a34;
+    --shadow: 0 1px 0 rgba(0,0,0,.04), 0 8px 24px -18px rgba(30,40,30,.5);
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--clay); color:var(--ink);
+    font-family:"Space Grotesk",system-ui,sans-serif; line-height:1.45; font-size:15px;
+    background-image:radial-gradient(circle at 50% -10%, rgba(31,90,104,.06), transparent 60%);
+  }
+  .mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+  .wrap{max-width:1120px; margin:0 auto; padding:28px 20px 80px}
+
+  header{display:flex; align-items:center; gap:16px; margin-bottom:8px}
+  h1{font-size:26px; font-weight:700; letter-spacing:-.01em; margin:0}
+  h1 .v{font-family:"IBM Plex Mono",monospace; font-size:13px; color:var(--teal); vertical-align:super}
+  .sub{color:var(--ink-soft); font-size:13.5px; margin:2px 0 0}
+  .disclaimer{
+    margin:18px 0 22px; padding:11px 14px; border:1px solid var(--line);
+    border-left:3px solid var(--teal); background:var(--clay-2); border-radius:8px;
+    font-size:13px; color:var(--ink-soft);
+  }
+  .disclaimer b{color:var(--ink)}
+
+  .layout{display:grid; grid-template-columns:1fr 340px; gap:26px; align-items:start}
+  @media(max-width:860px){ .layout{grid-template-columns:1fr} }
+
+  .cat{background:var(--clay-2); border:1px solid var(--line); border-radius:12px; padding:16px 16px 14px; margin-bottom:16px; box-shadow:var(--shadow)}
+  .cat-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:11px}
+  .cat-head .n{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--teal); letter-spacing:.14em; text-transform:uppercase}
+  .cat-head h2{font-size:16px; margin:0; font-weight:600}
+  .cat-head .hint{font-size:12px; color:var(--ink-soft); text-align:right}
+  .opts{display:flex; flex-wrap:wrap; gap:8px}
+  .opt{
+    border:1px solid var(--line); background:var(--clay); color:var(--ink);
+    border-radius:999px; padding:7px 13px; font:inherit; font-size:13px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:7px; transition:.12s;
+  }
+  .opt:hover{border-color:var(--teal)}
+  .opt:focus-visible{outline:2px solid var(--teal); outline-offset:2px}
+  .opt[aria-pressed="true"]{background:var(--teal); border-color:var(--teal); color:#fff; font-weight:500}
+  .opt .dot{width:7px; height:7px; border-radius:50%; flex:0 0 auto}
+  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.conflict{background:var(--bad)}
+  .opt[aria-pressed="true"] .dot{outline:1px solid rgba(255,255,255,.6)}
+
+  .detail{margin-top:13px; padding-top:12px; border-top:1px dashed var(--line); display:grid; grid-template-columns:auto auto 1fr; gap:8px 18px; align-items:center}
+  @media(max-width:520px){ .detail{grid-template-columns:1fr 1fr} }
+  .fieldlbl{font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.08em}
+  .costfield{display:flex; flex-direction:column; gap:3px}
+  .costfield input{
+    width:104px; font-family:"IBM Plex Mono",monospace; font-size:14px; padding:6px 8px;
+    border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink);
+  }
+  .costfield input:focus-visible{outline:2px solid var(--teal); outline-offset:1px}
+  .note{grid-column:1/-1; font-size:12.5px; color:var(--ink-soft); margin-top:2px}
+  .note .flag{font-weight:600}
+  .flag.ok{color:var(--ok)} .flag.warn{color:var(--warn)} .flag.conflict{color:var(--bad)}
+  .src{grid-column:1/-1; font-size:12px; color:var(--ink-soft); margin-top:1px}
+  .src a{color:var(--teal); text-decoration:none; border-bottom:1px solid rgba(31,90,104,.35); white-space:nowrap}
+  .src a:hover{border-color:var(--teal)}
+  .src .asof{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.06em; color:#8b8570; margin-left:6px}
+
+  .controls{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:2px}
+  .ctl{background:var(--clay-2); border:1px solid var(--line); border-radius:10px; padding:11px 13px}
+  .ctl label{display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-soft); margin-bottom:6px}
+  .ctl select, .ctl input{width:100%; font-family:"IBM Plex Mono",monospace; font-size:14px; padding:7px 8px; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink)}
+  .ctl select:focus-visible, .ctl input:focus-visible{outline:2px solid var(--teal); outline-offset:1px}
+
+  /* price anchors */
+  .anchors{margin-top:16px; background:var(--clay-2); border:1px solid var(--line); border-radius:12px; padding:14px 16px 20px}
+  .anchors h3{margin:0 0 4px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-soft); font-weight:600}
+  .anchors p{margin:0 0 14px; font-size:12.5px; color:var(--ink-soft)}
+  .scale{position:relative; height:46px; margin:0 8px}
+  .scale .bar{position:absolute; left:0; right:0; top:22px; height:2px; background:var(--line)}
+  .tick{position:absolute; top:14px; width:2px; height:18px; background:var(--ink-soft); transform:translateX(-1px)}
+  .tick label{position:absolute; top:20px; left:50%; transform:translateX(-50%); font-size:11px; color:var(--ink-soft); white-space:nowrap; padding-top:8px}
+  .you{position:absolute; top:2px; transform:translateX(-50%); text-align:center; transition:left .2s}
+  .you .flagpole{width:2px; height:30px; background:var(--gold); margin:0 auto}
+  .you .lab{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--gold); font-weight:600; white-space:nowrap; margin-bottom:2px}
+
+  .summary{position:sticky; top:20px}
+  .totalcard{background:var(--ink); color:var(--clay); border-radius:14px; padding:20px; position:relative; overflow:hidden}
+  .totalcard .rings{position:absolute; right:-40px; top:-40px; opacity:.14}
+  .totalcard .lbl{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#b9b2a2}
+  .totalcard .big{font-family:"IBM Plex Mono",monospace; font-size:38px; font-weight:600; line-height:1.05; margin:4px 0 2px}
+  .totalcard .big .cur{font-size:19px; color:#b9b2a2; margin-right:2px}
+  .totalcard .perunit{font-size:13px; color:#cfc8b8}
+  .warnbar{margin-top:12px; padding:9px 12px; border-radius:9px; font-size:12.5px; display:none}
+  .warnbar.show{display:block}
+  .warnbar.conflict{background:rgba(168,58,52,.16); border:1px solid rgba(168,58,52,.5); color:#f4d4d1}
+  .warnbar.warn{background:rgba(168,106,31,.16); border:1px solid rgba(168,106,31,.5); color:#f0dcbf}
+
+  .break{background:var(--clay-2); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-top:14px}
+  .break h3{margin:0 0 10px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-soft); font-weight:600}
+  .row{display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:5px 0; font-size:13.5px; border-bottom:1px dotted var(--line)}
+  .row:last-child{border-bottom:0}
+  .row .v{font-family:"IBM Plex Mono",monospace}
+  .row.sum{margin-top:6px; padding-top:9px; border-top:1px solid var(--line); border-bottom:0; font-weight:600}
+  .row .k small{color:var(--ink-soft); font-weight:400}
+  .retail-line .v{color:var(--gold); font-weight:600}
+  .margin-good{color:var(--ok); font-weight:600} .margin-bad{color:var(--bad); font-weight:600}
+
+  .resetbtn{margin-top:14px; width:100%; padding:9px; border:1px solid var(--line); background:var(--clay-2); border-radius:9px; font:inherit; font-size:13px; cursor:pointer; color:var(--ink-soft)}
+  .resetbtn:hover{border-color:var(--teal); color:var(--ink)}
+  .foot{margin-top:26px; font-size:12px; color:var(--ink-soft); line-height:1.6}
+  .foot code{font-family:"IBM Plex Mono",monospace; background:var(--clay-2); padding:1px 5px; border-radius:4px; border:1px solid var(--line)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg width="46" height="46" viewBox="0 0 46 46" aria-hidden="true">
+      <circle cx="23" cy="23" r="21" fill="none" stroke="#1F5A68" stroke-width="1.4"/>
+      <circle cx="23" cy="23" r="14" fill="none" stroke="#1F5A68" stroke-width="1.4"/>
+      <circle cx="23" cy="23" r="7" fill="none" stroke="#1F5A68" stroke-width="1.4"/>
+      <circle cx="18" cy="23" r="2.1" fill="#3667a6"/>
+      <circle cx="28" cy="23" r="2.1" fill="#a83a34"/>
+    </svg>
+    <div>
+      <h1>Tau — unit economics explorer <span class="v">v2.1</span></h1>
+      <p class="sub">Named suppliers with links under each option · figures sanity-checked against July 2026 sources · everything still editable.</p>
+    </div>
+  </header>
+
+  <div class="disclaimer">
+    <b>Still ballpark, now current-ish:</b> defaults are AUD at low volume (~10–50 sets), refreshed against live supplier pages in July 2026 (1&nbsp;USD ≈ A$1.55, 1&nbsp;AUD ≈ NT$20 assumed). Real instant quotes from the linked services beat anything here — paste them in as they arrive. Red dot = fights the magnetic mechanic. Amber = workable with a caveat.
+  </div>
+
+  <div class="layout">
+    <div class="builder" id="builder"></div>
+
+    <aside class="summary">
+      <div class="totalcard">
+        <svg class="rings" width="150" height="150" viewBox="0 0 150 150" aria-hidden="true">
+          <circle cx="75" cy="75" r="70" fill="none" stroke="#EAE1D0" stroke-width="2"/>
+          <circle cx="75" cy="75" r="48" fill="none" stroke="#EAE1D0" stroke-width="2"/>
+          <circle cx="75" cy="75" r="26" fill="none" stroke="#EAE1D0" stroke-width="2"/>
+        </svg>
+        <div class="lbl">Landed cost / set</div>
+        <div class="big"><span class="cur">$</span><span id="perLanded">–</span></div>
+        <div class="perunit"><span id="perVar">–</span> parts + <span id="perOnce">–</span> tooling, spread over <span id="qtyEcho">–</span> sets</div>
+        <div class="warnbar" id="warnbar"></div>
+      </div>
+
+      <div class="break">
+        <h3>Per set</h3>
+        <div id="perRows"></div>
+      </div>
+
+      <div class="break">
+        <h3>This order</h3>
+        <div class="row"><span class="k">Quantity</span><span class="v" id="oQty">–</span></div>
+        <div class="row"><span class="k">Variable <small>(parts × qty)</small></span><span class="v" id="oVar">–</span></div>
+        <div class="row"><span class="k">One-off tooling</span><span class="v" id="oOnce">–</span></div>
+        <div class="row sum"><span class="k">Total to make</span><span class="v" id="oTotal">–</span></div>
+      </div>
+
+      <div class="break">
+        <h3>Across quantities <small style="font-weight:400;color:var(--ink-soft)">(current picks)</small></h3>
+        <div id="tierRows"></div>
+      </div>
+
+      <div class="break">
+        <h3>If you sell it</h3>
+        <div class="row retail-line"><span class="k">Retail / set</span><span class="v" id="rRetail">–</span></div>
+        <div class="row"><span class="k">Landed + postage out</span><span class="v" id="rCost">–</span></div>
+        <div class="row sum"><span class="k">Profit / set</span><span class="v" id="rProfit">–</span></div>
+        <div class="row"><span class="k">Margin</span><span class="v" id="rMargin">–</span></div>
+      </div>
+
+      <button class="resetbtn" id="reset">Reset to defaults</button>
+    </aside>
+  </div>
+
+  <div class="controls">
+    <div class="ctl">
+      <label for="qty">Order quantity (sets)</label>
+      <select id="qty">
+        <option>10</option><option selected>50</option><option>100</option><option>250</option><option>500</option>
+      </select>
+    </div>
+    <div class="ctl">
+      <label for="retail">Target retail price / set (AUD)</label>
+      <input id="retail" type="number" value="199" min="0" step="1">
+    </div>
+    <div class="ctl">
+      <label for="ship">Postage out / set (AUD)</label>
+      <input id="ship" type="number" value="12" min="0" step="0.5">
+    </div>
+    <div class="ctl">
+      <label for="fx">Reference: 1 AUD ≈ NTD (for TW quotes)</label>
+      <input id="fx" type="number" value="20" min="1" step="0.5">
+    </div>
+    <div class="ctl">
+      <label for="fees">Payment + platform fees (% of retail)</label>
+      <input id="fees" type="number" value="3" min="0" step="0.5">
+    </div>
+    <div class="ctl">
+      <label for="returns">Returns / damage allowance (% of retail)</label>
+      <input id="returns" type="number" value="3" min="0" step="0.5">
+    </div>
+  </div>
+
+  <div class="anchors">
+    <h3>Where your price sits on the tactile-duel shelf</h3>
+    <p>Anchors from the two games your buyers already own or covet: Klask (mass-made magnetic dexterity duel) and Crokinole (the premium heirloom disc). The gap between them is your positioning.</p>
+    <div class="scale" id="scale">
+      <div class="bar"></div>
+      <div class="you" id="youMarker"><div class="lab" id="youLab">you $199</div><div class="flagpole"></div></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <p><b>How the maths works:</b> landed cost/set = selected part costs + (one-off tooling ÷ quantity). Profit/set = retail − landed − postage. Nothing is stored or sent anywhere; refresh resets it.</p>
+    <p><b>FX:</b> global services quote USD (defaults here assume 1&nbsp;USD ≈ A$1.55). Your Taiwan quotes come in NTD — at 1&nbsp;AUD ≈ <span id="fxEcho">20</span> NTD, your 2021 quotes were roughly A$<span id="fxCut">19</span>/disc cut (NT$370 @10) and A$<span id="fxPrint">43</span>/disc printed (NT$850 @10).</p>
+    <p><b>v2.1 changes (Claude Code):</b> payment/platform fees and a returns/damage allowance now come off the retail line (they were silently missing from profit) · an "Across quantities" panel shows landed cost and profit per set at 10–500 using the current picks, so tooling amortisation is visible at a glance. All v2 supplier figures untouched.</p>
+    <p><b>v2 changes:</b> supplier links + "checked Jul 2026" stamps per option · MJF default cut roughly in half (JLC3DP-era pricing) · the 304/316 stainless non-magnetic trap flagged on the board options · PA11-for-ankles note · retail anchor scale added · default retail moved to $199.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  // unit = per-set cost (AUD, low volume). once = one-time tooling. tag: ok/warn/conflict.
+  const ASOF = "checked Jul 2026";
+  const CATS = [
+    { id:"board", name:"Board (the disc)", hint:"267 mm now · bigger later",
+      opts:[
+        {id:"tw430", label:"430 steel, Taiwan shop + UV print", unit:38, once:0, tag:"ok",
+          note:"Your proven path: 430 is ferritic (magnets grip) and rustproof. Your 2021 quotes: NT$370/disc cut @10, NT$850/disc spray-printed @10 — re-quote as UV flatbed print, which is now standard at sign shops and fixes the colour-variation caveat on the old quote. Family in Taiwan can collect + QC.",
+          srcs:[{href:"https://jlcmc.com",text:"JLC sheet metal (alt quote)"}], asof:ASOF},
+        {id:"usmild", label:"Powder-coated mild steel — SendCutSend / OSH Cut", unit:55, once:0, tag:"warn",
+          note:"Mild/carbon steel is magnetic ✔ and powder coat stops rust while giving a slick surface. TRAP: do NOT order their default 304/316 stainless — those grades are non-magnetic and silently kill the mechanic. US-based: from $1/part, $39 order minimum, bulk discounts to ~70%, but free shipping is US-only, so freight to AU/TW is the real cost.",
+          srcs:[{href:"https://sendcutsend.com/pricing/",text:"SendCutSend"},{href:"https://www.oshcut.com/",text:"OSH Cut"}], asof:ASOF},
+        {id:"alu", label:"Aluminium + UV print", unit:40, once:0, tag:"conflict",
+          note:"Smooth and light, but non-magnetic — pieces won't grip and the line-grace the game is tuned around disappears.",
+          srcs:[], asof:ASOF},
+        {id:"acrylic", label:"Acrylic, second-surface print", unit:35, once:0, tag:"conflict",
+          note:"Gorgeous protected slide, but non-magnetic. Only if you ever deliberately redesign around pure friction.",
+          srcs:[], asof:ASOF},
+        {id:"chip", label:"Printed chipboard (POD)", unit:9, once:0, tag:"conflict",
+          note:"Paper on card: non-magnetic and wrong surface for a sliding game. Fine only for a print-and-play paper edition.",
+          srcs:[{href:"https://www.thegamecrafter.com/make/pricing",text:"Game Crafter pricing"}], asof:ASOF},
+        {id:"print3d", label:"3D-printed at a service", unit:75, once:0, tag:"warn",
+          note:"Slow, pricey, warp-prone flat disc — and 267 mm exceeds your Ender 3's 220 mm bed anyway. The board is a cutting job, not a printing job.",
+          srcs:[], asof:ASOF},
+      ]},
+    { id:"pieces", name:"Pieces (2 per set)", hint:"one red, one blue tripod",
+      opts:[
+        {id:"jlcmjf", label:"MJF nylon — JLC3DP instant quote", unit:9, once:0, tag:"ok",
+          note:"The batch workhorse: upload STL, instant price, no minimums — parts from ~US$1 before shipping. Spec PA11 over PA12 for the ankles: it's the more ductile, impact-resistant nylon (made for snap-fits and sports parts), so a dropped piece bends instead of snapping. Dye black or leave white for painting.",
+          srcs:[{href:"https://jlc3dp.com/3d-printing/multi-jet-fusion",text:"JLC3DP MJF"}], asof:ASOF},
+        {id:"craftcloud", label:"MJF via Craftcloud (compares many shops)", unit:14, once:0, tag:"ok",
+          note:"Aggregator that price-compares dozens of print services incl. AU-local ones — good for checking JLC's number and for faster domestic shipping when you need sets in Australia quickly.",
+          srcs:[{href:"https://craftcloud3d.com",text:"Craftcloud"}], asof:ASOF},
+        {id:"home", label:"Home FDM (Ender 3, PLA+/PETG)", unit:2, once:0, tag:"ok",
+          note:"Perfect for prototypes and the first influencer sets — cost is filament + your babysitting. Fillet the ankles, widen the pads, and skip brittle silk/PLA in favour of PLA+ or PETG.",
+          srcs:[], asof:ASOF},
+        {id:"cast", label:"Silicone mould + tough urethane cast", unit:8, once:120, tag:"ok",
+          note:"Print one clean master, cast copies in a tough (not display) urethane; you can weight the pour so pieces have heft. Mould is a one-off and good for ~30–50 pulls.",
+          srcs:[{href:"https://www.smooth-on.com",text:"Smooth-On"}], asof:ASOF},
+        {id:"resin", label:"SLA resin", unit:16, once:0, tag:"warn",
+          note:"Beautiful surface, brittle exactly at the ankle — the point that takes the abuse. Photos yes, shipped product no.",
+          srcs:[], asof:ASOF},
+      ]},
+    { id:"magnets", name:"Magnets + insertion", hint:"the grip mechanic",
+      opts:[
+        {id:"bulk", label:"Neodymium discs, bulk 100-packs", unit:0.8, once:0, tag:"ok",
+          note:"6×2 mm or 8×2 mm N35 discs cost a few dollars per 100 from AliExpress/eBay bulk sellers — per set they're under a dollar. The real cost is seating them (press-fit + a drop of CA glue, mind polarity). Fiddly, low-skill: ideal Taiwan-family task.",
+          srcs:[{href:"https://www.aliexpress.com/w/wholesale-neodymium-magnet-6x2mm.html",text:"bulk magnets"}], asof:ASOF},
+        {id:"none", label:"No magnets (pure friction)", unit:0, once:0, tag:"conflict",
+          note:"Ships a different game than the one your tolerances and AI were tuned on. Only as a deliberate redesign.",
+          srcs:[], asof:ASOF},
+      ]},
+    { id:"insert", name:"Insert / cradle", hint:"cardboard-first, per your call",
+      opts:[
+        {id:"card", label:"Die-cut cardboard tray", unit:3, once:80, tag:"ok",
+          note:"Your layered-divider idea done properly: a shaped tray cradling each tripod so nothing shifts against the steel edge. One-off cutting die; at 10-set volume a hand-cut jig version costs almost nothing.",
+          srcs:[{href:"https://www.thegamecrafter.com/make/products",text:"Game Crafter custom punchouts"}], asof:ASOF},
+        {id:"pulp", label:"Moulded pulp cradle (recycled)", unit:2.5, once:1200, tag:"ok",
+          note:"The plastic-free endgame: recycled paper pulp moulded to hug the feet, best drop protection. Tooling runs roughly A$800–2,500, so it only pencils out at ~1,000+ sets — park it for the scale phase.",
+          srcs:[], asof:ASOF},
+        {id:"loose", label:"No insert (loose in box)", unit:0, once:0, tag:"warn",
+          note:"A heavy steel disc plus small pieces loose in a box is how returns happen.",
+          srcs:[], asof:ASOF},
+      ]},
+    { id:"booklet", name:"Rules", hint:"you have a live site",
+      opts:[
+        {id:"qr", label:"QR card → tau-game.com", unit:0.4, once:0, tag:"ok",
+          note:"One handsome card, QR to the interactive tutorial — cheapest, smartest, and it funnels every physical buyer into the online ladder. The rulebook fits on a card; a booklet is padding.",
+          srcs:[{href:"https://www.vistaprint.com.au",text:"any card printer"}], asof:ASOF},
+        {id:"foldcard", label:"Folded rules card", unit:0.7, once:0, tag:"ok",
+          note:"Single folded card, both sides — full rules with diagrams, still no booklet cost.",
+          srcs:[], asof:ASOF},
+        {id:"pod", label:"Printed booklet (POD)", unit:2, once:0, tag:"warn",
+          note:"Premium feel, but overkill for a one-rule-per-turn game.",
+          srcs:[{href:"https://printninja.com",text:"PrintNinja"}], asof:ASOF},
+      ]},
+    { id:"box", name:"Box", hint:"cardboard, protects a heavy disc",
+      opts:[
+        {id:"round", label:"Round telescoping box (hatbox)", unit:9, once:200, tag:"ok",
+          note:"Matches the disc, reads premium, and the telescoping wall is structurally far stronger than a flat clamshell. Custom dieline (Claude Code job) + short-run maker; Chinese/Taiwanese rigid-box shops typically start at MOQ 100–500.",
+          srcs:[{href:"https://www.qinprinting.com",text:"QinPrinting"},{href:"https://pakfactory.com",text:"PakFactory"}], asof:ASOF},
+        {id:"rigid", label:"Rigid two-piece rectangular", unit:11, once:150, tag:"ok",
+          note:"The safe premium default; easiest to source at low MOQ and stacks/ships well, at the cost of the round shelf story.",
+          srcs:[{href:"https://www.qinprinting.com",text:"QinPrinting"}], asof:ASOF},
+        {id:"octagon", label:"Octagonal 'pizza box' (die-cut)", unit:8, once:250, tag:"warn",
+          note:"Your instinct, kept honest: distinctive and on-theme, but a large flat lid is the weakest format under a steel disc — if you choose it, spec double-wall board and a full-depth cradle or it bows in transit.",
+          srcs:[], asof:ASOF},
+        {id:"podbox", label:"Standard rectangular box (POD)", unit:6, once:0, tag:"ok",
+          note:"No tooling, orderable in single digits — right answer for the first 10–20 influencer sets even if the flagship gets a custom box later.",
+          srcs:[{href:"https://www.thegamecrafter.com/make/pricing",text:"Game Crafter pricing"}], asof:ASOF},
+      ]},
+    { id:"assembly", name:"Assembly + fulfilment", hint:"your Taiwan lever",
+      opts:[
+        {id:"tw", label:"Taiwan (family, light assembly)", unit:1, once:0, tag:"ok",
+          note:"Parts converge on family in Taiwan: seat magnets, kit board + pieces + card into box, post regionally. Cheaper labour, far cheaper postage into Asia and competitive worldwide — and JLC/Chinese suppliers ship there fast.",
+          srcs:[], asof:ASOF},
+        {id:"au", label:"Australia (your own time)", unit:6, once:0, tag:"warn",
+          note:"Fine for the first handful; AU labour and outbound postage are the two lines the Taiwan option exists to cut.",
+          srcs:[], asof:ASOF},
+        {id:"copack", label:"Co-packer / fulfilment partner", unit:4, once:0, tag:"ok",
+          note:"The push-one-button answer — only pencils out once volume justifies onboarding a partner.",
+          srcs:[], asof:ASOF},
+      ]},
+  ];
+
+  const DEFAULTS = {board:"tw430", pieces:"jlcmjf", magnets:"bulk", insert:"card", booklet:"qr", box:"round", assembly:"tw"};
+  let sel = Object.assign({}, DEFAULTS);
+  let costs = {};
+  CATS.forEach(c=>c.opts.forEach(o=>{ costs[c.id+"."+o.id] = {unit:o.unit, once:o.once}; }));
+
+  const $ = id => document.getElementById(id);
+  const money = n => (Math.round(n*100)/100).toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const money0 = n => Math.round(n).toLocaleString("en-AU");
+
+  const builder = $("builder");
+  CATS.forEach((c, i)=>{
+    const card = document.createElement("section");
+    card.className = "cat";
+    card.innerHTML = `
+      <div class="cat-head">
+        <div><div class="n">${String(i+1).padStart(2,"0")} · component</div><h2>${c.name}</h2></div>
+        <div class="hint">${c.hint}</div>
+      </div>
+      <div class="opts" role="group" aria-label="${c.name}"></div>
+      <div class="detail" id="detail-${c.id}"></div>`;
+    const optsWrap = card.querySelector(".opts");
+    c.opts.forEach(o=>{
+      const b = document.createElement("button");
+      b.className = "opt"; b.type="button"; b.dataset.cat=c.id; b.dataset.opt=o.id;
+      b.setAttribute("aria-pressed", sel[c.id]===o.id ? "true":"false");
+      b.innerHTML = `<span class="dot ${o.tag}"></span>${o.label}`;
+      b.addEventListener("click", ()=>{ sel[c.id]=o.id; syncCat(c); recompute(); });
+      optsWrap.appendChild(b);
+    });
+    builder.appendChild(card);
+    syncCat(c);
+  });
+
+  function syncCat(c){
+    document.querySelectorAll(`.opt[data-cat="${c.id}"]`).forEach(b=>{
+      b.setAttribute("aria-pressed", sel[c.id]===b.dataset.opt ? "true":"false");
+    });
+    const o = c.opts.find(x=>x.id===sel[c.id]);
+    const key = c.id+"."+o.id;
+    const d = $("detail-"+c.id);
+    const flagTxt = o.tag==="ok" ? "" : (o.tag==="conflict"
+        ? `<span class="flag conflict">⚑ breaks the magnetic mechanic — </span>`
+        : `<span class="flag warn">⚑ watch-out — </span>`);
+    const srcTxt = o.srcs.length
+      ? `<div class="src">${o.srcs.map(s=>`<a href="${s.href}" target="_blank" rel="noopener">${s.text} ↗</a>`).join(" · ")}<span class="asof">${o.asof}</span></div>`
+      : `<div class="src"><span class="asof">${o.asof}</span></div>`;
+    d.innerHTML = `
+      <div class="costfield"><span class="fieldlbl">Cost / set</span>
+        <input type="number" min="0" step="0.5" value="${costs[key].unit}" data-key="${key}" data-f="unit"></div>
+      <div class="costfield"><span class="fieldlbl">One-off tooling</span>
+        <input type="number" min="0" step="10" value="${costs[key].once}" data-key="${key}" data-f="once"></div>
+      <div></div>
+      <div class="note">${flagTxt}${o.note}</div>
+      ${srcTxt}`;
+    d.querySelectorAll("input").forEach(inp=>{
+      inp.addEventListener("input", e=>{
+        const v = parseFloat(e.target.value)||0;
+        costs[e.target.dataset.key][e.target.dataset.f] = v;
+        recompute();
+      });
+    });
+  }
+
+  // price anchors (AUD, indicative retail)
+  const ANCHORS = [
+    {v:95,  lab:"Klask ~$95"},
+    {v:300, lab:"Crokinole entry ~$300"},
+    {v:460, lab:"premium Crokinole $460+"},
+  ];
+  const SCALE_MAX = 520;
+  function buildAnchors(){
+    const scale = $("scale");
+    ANCHORS.forEach(a=>{
+      const t = document.createElement("div");
+      t.className="tick"; t.style.left = (a.v/SCALE_MAX*100)+"%";
+      t.innerHTML = `<label>${a.lab}</label>`;
+      scale.appendChild(t);
+    });
+  }
+
+  const perRows = $("perRows");
+  function recompute(){
+    let variable = 0, once = 0, anyConflict=false, anyWarn=false;
+    perRows.innerHTML = "";
+    CATS.forEach(c=>{
+      const o = c.opts.find(x=>x.id===sel[c.id]);
+      const k = c.id+"."+o.id;
+      variable += costs[k].unit; once += costs[k].once;
+      if(o.tag==="conflict") anyConflict=true;
+      if(o.tag==="warn") anyWarn=true;
+      const r = document.createElement("div");
+      r.className="row";
+      r.innerHTML = `<span class="k">${c.name.replace(/ \(.*\)/,"")} <small>${o.label.length>26?o.label.slice(0,24)+"…":o.label}</small></span><span class="v">$${money(costs[k].unit)}</span>`;
+      perRows.appendChild(r);
+    });
+
+    const qty = parseInt($("qty").value)||1;
+    const retail = parseFloat($("retail").value)||0;
+    const ship = parseFloat($("ship").value)||0;
+    const oncePer = once/qty;
+    const landed = variable + oncePer;
+
+    $("perVar").textContent = "$"+money(variable);
+    $("perOnce").textContent = "$"+money(oncePer);
+    $("perLanded").textContent = money(landed);
+    $("qtyEcho").textContent = qty;
+
+    $("oQty").textContent = qty+" sets";
+    $("oVar").textContent = "$"+money0(variable*qty);
+    $("oOnce").textContent = "$"+money0(once);
+    $("oTotal").textContent = "$"+money0(variable*qty + once);
+
+    const feesPct = parseFloat($("fees").value)||0;
+    const returnsPct = parseFloat($("returns").value)||0;
+    const overhead = retail*(feesPct+returnsPct)/100;
+    const costOut = landed + ship + overhead;
+    const profit = retail - costOut;
+    const margin = retail>0 ? (profit/retail*100) : 0;
+    $("rRetail").textContent = "$"+money(retail);
+    $("rCost").textContent = "$"+money(costOut);
+
+    // tier compare at the current component picks (landed varies only through tooling amortisation)
+    const tiers = [10,50,100,250,500];
+    $("tierRows").innerHTML = tiers.map(q=>{
+      const l = variable + once/q, p = retail - (l + ship + overhead);
+      return `<div class="row"><span class="k">${q} sets</span><span class="v">$${money(l)}/set · <span class="${p>=0?'margin-good':'margin-bad'}">${p>=0?'':'−'}$${money(Math.abs(p))} profit</span></span></div>`;
+    }).join("");
+    $("rProfit").innerHTML = `<span class="${profit>=0?'margin-good':'margin-bad'}">${profit>=0?'':'−'}$${money(Math.abs(profit))}</span>`;
+    $("rMargin").innerHTML = `<span class="${profit>=0?'margin-good':'margin-bad'}">${margin.toFixed(0)}%</span>`;
+
+    // marker on anchor scale
+    const pct = Math.max(0, Math.min(1, retail/SCALE_MAX));
+    $("youMarker").style.left = (pct*100)+"%";
+    $("youLab").textContent = "you $"+money0(retail);
+
+    const wb = $("warnbar");
+    if(anyConflict){
+      wb.className="warnbar conflict show";
+      wb.innerHTML = "⚑ A selected option isn't ferrous / drops the magnets — the pieces won't grip and the line-grace mechanic is gone. Keep a magnetic board (430 or coated mild steel) to ship the game you tuned.";
+    } else if(profit<0){
+      wb.className="warnbar warn show";
+      wb.innerHTML = "⚑ Underwater at this price. Steel + magnets makes Tau a premium object — raise retail toward the Crokinole band, grow volume to spread tooling, or simplify components.";
+    } else if(anyWarn){
+      wb.className="warnbar warn show";
+      wb.innerHTML = "⚑ A selected option has a durability/format/shipping caveat — see its note above.";
+    } else {
+      wb.className="warnbar";
+    }
+
+    const fx = parseFloat($("fx").value)||20;
+    $("fxEcho").textContent = fx;
+    $("fxCut").textContent = Math.round(370/fx);
+    $("fxPrint").textContent = Math.round(850/fx);
+  }
+
+  ["qty","retail","ship","fx","fees","returns"].forEach(id=> $(id).addEventListener("input", recompute));
+  $("reset").addEventListener("click", ()=>{
+    sel = Object.assign({}, DEFAULTS);
+    CATS.forEach(c=>c.opts.forEach(o=>{ costs[c.id+"."+o.id]={unit:o.unit,once:o.once}; }));
+    $("qty").value="50"; $("retail").value="199"; $("ship").value="12"; $("fx").value="20"; $("fees").value="3"; $("returns").value="3";
+    CATS.forEach(syncCat); recompute();
+  });
+
+  buildAnchors();
+  recompute();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="333mm" height="423mm" viewBox="0 0 333 423">
+<title>Tau insert tray</title>
+<rect x="0" y="0" width="333" height="423" fill="white"/>
+<text x="15.00" y="12.00" style="font-family:Arial;font-size:13px;font-weight:bold;fill:#000" text-anchor="start">TAU — insert tray: piece cradle (die-cut), sits ON the base</text>
+<text x="15.00" y="24.00" style="font-family:Arial;font-size:9px;fill:#333" text-anchor="start">Outer Ø302.5 drops into the box on top of the base. Thickness ≥ piece height 54 mm</text>
+<text x="15.00" y="34.00" style="font-family:Arial;font-size:9px;fill:#333" text-anchor="start">(laminate 3×18 mm E-flute, or cut 55 mm EVA). Cavities hold both tripods feet-down; the</text>
+<text x="15.00" y="44.00" style="font-family:Arial;font-size:9px;fill:#333" text-anchor="start">magnetic disk is already protected in the base below. Cavities traced from tripod_smoove_2021.stl.</text>
+<circle cx="166.25" cy="229.25" r="151.25" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<circle cx="105.56" cy="229.25" r="14.00" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<circle cx="151.75" cy="229.25" r="6.50" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<path d="M115.36,234.75 L151.75,234.75 L151.75,223.75 L115.36,223.75 Z" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<circle cx="82.47" cy="269.25" r="6.50" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<path d="M95.90,234.99 L77.70,266.50 L87.23,272.00 L105.42,240.49 Z" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<circle cx="82.46" cy="189.25" r="6.50" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<path d="M105.42,218.01 L87.23,186.50 L77.70,192.00 L95.90,223.51 Z" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<circle cx="226.94" cy="229.25" r="14.00" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<circle cx="250.03" cy="269.25" r="6.50" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<path d="M227.08,240.49 L245.27,272.00 L254.80,266.50 L236.60,234.99 Z" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<circle cx="180.75" cy="229.25" r="6.50" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<path d="M217.14,223.75 L180.75,223.75 L180.75,234.75 L217.14,234.75 Z" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<circle cx="250.03" cy="189.25" r="6.50" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<path d="M236.60,223.51 L254.80,192.00 L245.27,186.50 L227.08,218.01 Z" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<text x="105.56" y="171.06" style="font-family:Arial;font-size:8px;fill:#555" text-anchor="middle">blue piece</text>
+<text x="226.94" y="171.06" style="font-family:Arial;font-size:8px;fill:#555" text-anchor="middle">red piece</text>
+<circle cx="166.25" cy="380.50" r="12.00" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<text x="166.25" y="383.50" style="font-family:Arial;font-size:8px;fill:#555" text-anchor="middle">finger notch</text>
+<circle cx="166.25" cy="78.00" r="12.00" style="fill:none;stroke:#000;stroke-width:0.4"/>
+<text x="166.25" y="81.00" style="font-family:Arial;font-size:8px;fill:#555" text-anchor="middle">finger notch</text>
+<line x1="15.00" y1="392.50" x2="317.50" y2="392.50" style="stroke:#555;stroke-width:0.3"/>
+<line x1="15.00" y1="390.50" x2="15.00" y2="394.50" style="stroke:#555;stroke-width:0.3"/>
+<line x1="317.50" y1="390.50" x2="317.50" y2="394.50" style="stroke:#555;stroke-width:0.3"/>
+<text x="166.25" y="390.50" style="font-family:Arial;font-size:8px;fill:#555" text-anchor="middle">Ø302.5</text>
+</svg>

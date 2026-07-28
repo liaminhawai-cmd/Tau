@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<title>Tau · The physical set</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+  :root {
+    --bg:#0b0e12; --surface:#141a20; --surface-2:#1b232b;
+    --ink:#eef2f5; --ink-2:#9aa4ad; --ink-3:#69727b;
+    --line:#243039; --blue:#6b9eff; --red:#ff6b6b; --board:#e7d59a;
+    --shadow:0 1px 0 rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.35);
+  }
+  @media (prefers-color-scheme: light) { :root {
+    --bg:#eef1f4; --surface:#ffffff; --surface-2:#f6f8fa;
+    --ink:#10151a; --ink-2:#4b5560; --ink-3:#79838d;
+    --line:#dfe4e9; --blue:#2f6ad0; --red:#d83f3f; --board:#b9922e;
+    --shadow:0 1px 2px rgba(16,21,26,.04), 0 12px 34px rgba(16,21,26,.08);
+  } }
+  :root[data-theme="dark"] {
+    --bg:#0b0e12; --surface:#141a20; --surface-2:#1b232b; --ink:#eef2f5; --ink-2:#9aa4ad;
+    --ink-3:#69727b; --line:#243039; --blue:#6b9eff; --red:#ff6b6b; --board:#e7d59a;
+  }
+  :root[data-theme="light"] {
+    --bg:#eef1f4; --surface:#ffffff; --surface-2:#f6f8fa; --ink:#10151a; --ink-2:#4b5560;
+    --ink-3:#79838d; --line:#dfe4e9; --blue:#2f6ad0; --red:#d83f3f; --board:#b9922e;
+  }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.55; font-size:16px; -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:720px; margin:0 auto; padding:0 22px; }
+  a { color:var(--blue); }
+
+  .backbtn, .themebtn {
+    position:fixed; top:14px; z-index:20; background:var(--surface); color:var(--ink-2);
+    border:1px solid var(--line); border-radius:999px; padding:7px 13px; font-size:12.5px;
+    cursor:pointer; letter-spacing:.02em; box-shadow:var(--shadow); text-decoration:none;
+  }
+  .backbtn { left:14px; } .themebtn { right:14px; }
+  .backbtn:hover, .themebtn:hover { color:var(--ink); }
+  .backbtn:focus-visible, .themebtn:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+
+  header { padding:88px 0 8px; }
+  .eyebrow { font-size:12.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-3); margin:0 0 12px; }
+  h1 { font-size:clamp(26px,5vw,34px); line-height:1.15; margin:0 0 8px; letter-spacing:-.01em; }
+  .sub { color:var(--ink-2); margin:0; font-size:16px; }
+
+  h2 { font-size:13px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); margin:36px 0 14px; font-weight:600; }
+
+  /* photo grid: images self-heal — drop files into /set/ and they appear */
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; }
+  figure { margin:0; }
+  figure img {
+    width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:10px;
+    background:var(--surface-2); border:1px solid var(--line); display:block;
+  }
+  figure img.ph { object-fit:contain; opacity:.35; }
+  figcaption { color:var(--ink-2); font-size:13px; margin-top:8px; }
+  figcaption b { color:var(--ink); font-weight:600; }
+
+  table.spec { width:100%; border-collapse:collapse; font-size:15px; }
+  table.spec th, table.spec td { text-align:left; padding:11px 0; border-bottom:1px solid var(--line); vertical-align:top; }
+  table.spec th { color:var(--ink-2); font-weight:500; width:34%; }
+  table.spec td { color:var(--ink); }
+  .tbd { color:var(--ink-3); font-style:italic; }
+
+  .notify { border-top:1px solid var(--line); margin-top:38px; padding-top:24px; }
+  .notify p { color:var(--ink-2); margin:0 0 4px; }
+  form.wl { display:flex; gap:9px; flex-wrap:wrap; margin-top:14px; }
+  form.wl input[type=email] {
+    flex:1 1 220px; min-width:0; padding:11px 14px; border-radius:9px; font-size:15px;
+    background:var(--surface); color:var(--ink); border:1px solid var(--line);
+  }
+  form.wl input[type=email]:focus { outline:2px solid var(--blue); outline-offset:1px; }
+  form.wl button {
+    padding:11px 18px; border-radius:9px; font-size:15px; cursor:pointer;
+    background:var(--ink); color:var(--bg); border:1px solid var(--ink);
+  }
+  form.wl button:hover { filter:brightness(1.08); }
+  #wlMsg { font-size:13px; color:var(--ink-2); min-height:1.1em; margin-top:9px; }
+
+  footer { padding:28px 0 60px; color:var(--ink-3); font-size:13px; border-top:1px solid var(--line); margin-top:34px; }
+</style>
+</head>
+
+<a class="backbtn" href="/" aria-label="Play the Tau game">&larr;&nbsp;Play Tau</a>
+<button class="themebtn" id="themeBtn" aria-label="Toggle light or dark">◐</button>
+
+<header class="wrap">
+  <p class="eyebrow">The physical set</p>
+  <h1>Tau, as a board and pieces.</h1>
+  <p class="sub">A metal board and two magnetic tripods. Pictures, sizes and finishes below.</p>
+</header>
+
+<main class="wrap">
+  <section>
+    <h2>The set</h2>
+    <div class="grid">
+      <figure><img src="set/board.jpg" alt="The board" onerror="this.classList.add('ph');this.src='/favicon-32.png'"><figcaption><b>The board</b><br>Concentric rings and arcs.</figcaption></figure>
+      <figure><img src="set/pieces.jpg" alt="The two tripods" onerror="this.classList.add('ph');this.src='/favicon-32.png'"><figcaption><b>The pieces</b><br>Two magnetic tripods.</figcaption></figure>
+      <figure><img src="set/game.jpg" alt="A game set up" onerror="this.classList.add('ph');this.src='/favicon-32.png'"><figcaption><b>Set up</b><br>Ready to play.</figcaption></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Sizes</h2>
+    <div class="grid">
+      <figure><img src="set/size-standard.jpg" alt="Standard size" onerror="this.classList.add('ph');this.src='/favicon-32.png'"><figcaption><b>Standard</b> &middot; 266&nbsp;mm<br>The original prototype size.</figcaption></figure>
+      <figure><img src="set/size-large.jpg" alt="Large size" onerror="this.classList.add('ph');this.src='/favicon-32.png'"><figcaption><b>Large</b> &middot; 400&nbsp;mm<br>More room for bigger hands.</figcaption></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Finishes</h2>
+    <div class="grid">
+      <figure><img src="set/finish-slate.jpg" alt="Slate finish" onerror="this.classList.add('ph');this.src='/favicon-32.png'"><figcaption><b>Slate</b><br>Graphite, steel pieces.</figcaption></figure>
+      <figure><img src="set/finish-dojo.jpg" alt="Dojo finish" onerror="this.classList.add('ph');this.src='/favicon-32.png'"><figcaption><b>Dojo</b><br>Warm wood tone.</figcaption></figure>
+      <figure><img src="set/finish-premium.jpg" alt="Premium finish" onerror="this.classList.add('ph');this.src='/favicon-32.png'"><figcaption><b>Premium</b><br>Heavier pieces, no magnets.</figcaption></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Specs</h2>
+    <table class="spec">
+      <tr><th>Players</th><td>2</td></tr>
+      <tr><th>Board</th><td>Steel, circular, concentric rings and arcs</td></tr>
+      <tr><th>Pieces</th><td>Two three-legged tripods, magnets in the feet</td></tr>
+      <tr><th>Sizes</th><td>Standard 266&nbsp;mm &middot; Large 400&nbsp;mm</td></tr>
+      <tr><th>Finishes</th><td>Slate &middot; Dojo &middot; Premium</td></tr>
+      <tr><th>Price</th><td class="tbd">To be confirmed</td></tr>
+    </table>
+  </section>
+
+  <div class="notify">
+    <p>The first sets are being made now. Leave an email and I&rsquo;ll write when they&rsquo;re ready.</p>
+    <form class="wl" id="wlForm" novalidate>
+      <input type="email" id="wlEmail" placeholder="your email" autocomplete="email" maxlength="254" aria-label="Email address">
+      <button type="submit" id="wlGo">Keep me posted</button>
+    </form>
+    <p id="wlMsg" aria-live="polite"></p>
+    <p style="margin-top:16px;"><a href="/about.html">Read about the idea &rarr;</a></p>
+  </div>
+</main>
+
+<footer class="wrap">
+  Tau, a two-player abstract game. <a href="/">Play the digital version &rarr;</a>
+</footer>
+
+<script>
+(function(){
+  try { var saved = localStorage.getItem('tauPageTheme'); if (saved) document.documentElement.setAttribute('data-theme', saved); } catch(e){}
+  document.getElementById('themeBtn').addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme');
+    if (!cur) cur = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    var next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('tauPageTheme', next); } catch(e){}
+  });
+  // waitlist capture -> public.waitlist via REST (same table the app uses)
+  var SB = 'https://lwjanmztbtfipsyfrcwg.supabase.co';
+  var KEY = 'sb_publishable_qo7O-7f6Wa69SV4f66aLXw_V67tpjNp';
+  function insert(body){
+    return fetch(SB + '/rest/v1/waitlist', { method:'POST',
+      headers:{ apikey:KEY, Authorization:'Bearer '+KEY, 'Content-Type':'application/json', Prefer:'return=minimal' },
+      body: JSON.stringify(body) });
+  }
+  var form = document.getElementById('wlForm'), msg = document.getElementById('wlMsg');
+  form.addEventListener('submit', async function(ev){
+    ev.preventDefault();
+    var em = (document.getElementById('wlEmail').value || '').trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { msg.textContent = 'That doesn’t look like an email address.'; return; }
+    msg.textContent = '…';
+    try {
+      var r = await insert({ email: em, lang: (navigator.language||'en').slice(0,2), interest: 'kit' });
+      if (!r.ok && r.status !== 409) throw new Error('save failed');
+      msg.textContent = 'You’re on the list, I’ll be in touch.';
+      form.querySelector('button').disabled = true;
+    } catch(e) { msg.textContent = 'Could not save, check your connection and give it another go.'; }
+  });
+})();
+</script>
+</html>

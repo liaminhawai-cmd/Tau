@@ -1,0 +1,202 @@
+// Train the value net on selfplay data.
+//   node nn/train.js --data "nn/data/*.jsonl" --out nn/models/value.json
+//                    [--epochs 8] [--lr 0.001] [--batch 256] [--hidden 64,64] [--resume path]
+//                    [--seed N]
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const { MLP } = require('./net.js');
+const { N_FEATURES } = require('./features.js');
+
+function arg(name, dflt) {
+  const i = process.argv.indexOf('--' + name);
+  return i >= 0 ? process.argv[i + 1] : dflt;
+}
+
+// Deterministic PRNG (mulberry32), used only when --seed is passed. Point: comparing two --hidden
+// architectures is only a clean read on CAPACITY if both see the identical train/val split -- with
+// the default Math.random() shuffle below, two separate runs hold out different games, and
+// that split noise gets baked into whatever val-mse/sign-acc gap you're trying to attribute to the
+// architecture. Opt-in and off by default so normal training (where the split doesn't need to match
+// anything) is unaffected.
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function loadData(pattern) {
+  const dir = path.dirname(pattern), base = path.basename(pattern);
+  const rx = new RegExp('^' + base.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
+  const rows = [];
+  const stale = new Map();          // file -> rows whose feature vector is the wrong length
+  let tagged = 0, inferredGames = 0;
+  for (const f of fs.readdirSync(dir)) {
+    if (!rx.test(f)) continue;
+    // Game-boundary inference, for rows written before selfplay.js started stamping `g`.
+    // selfplay labels a game's positions with z = ±discount^(plies to end), and plies-to-end
+    // COUNTS DOWN through the game, so |z| rises monotonically from the game's first row to its
+    // last and then drops at the next game's first row. A fall in |z| is therefore a game
+    // boundary. Rows are read in the order selfplay appended them (one game's positions
+    // contiguous), and this restarts per file so a file boundary can't fuse two games.
+    // Only a fallback: a row carrying a real `g` always uses it.
+    let prevAbs = Infinity, curInferred = null;
+    for (const line of fs.readFileSync(path.join(dir, f), 'utf8').split('\n')) {
+      if (!line) continue;
+      try {
+        const j = JSON.parse(line);
+        if (!j.f || j.f.length !== N_FEATURES) { stale.set(f, (stale.get(f) || 0) + 1); continue; }
+        let game;
+        if (j.g != null) {
+          game = j.g; tagged++; prevAbs = Infinity;   // reset: next untagged row starts fresh
+        } else {
+          const a = Math.abs(j.z);
+          if (a < prevAbs) { curInferred = f + '#' + inferredGames++; }
+          prevAbs = a;
+          game = curInferred;
+        }
+        rows.push({ x: j.f, y: j.z, game });
+      } catch (e) {}
+    }
+  }
+  // A data file stores the FEATURE VECTOR, not the position, so a feature-set change cannot be
+  // migrated -- those rows are dead. Without this check the net would be built with N_FEATURES
+  // inputs and fed shorter arrays, reading undefined off the end and turning every weight to NaN:
+  // training would "succeed", the gate would compare two broken nets, and hours would be spent
+  // before anyone noticed. Fail loudly instead.
+  if (stale.size) {
+    const total = [...stale.values()].reduce((a, b) => a + b, 0);
+    console.error(`\nERROR: ${total} rows in ${dir} were written with a different feature set ` +
+                  `(this build expects ${N_FEATURES} numbers per position):`);
+    for (const [f, n] of stale) console.error(`   ${f}: ${n} rows`);
+    console.error(`\nThe feature set changed, so that data cannot be reused. Move nn/data and\n` +
+                  `nn/models aside (e.g. into nn/archive-old-features/) and start a fresh run.\n`);
+    process.exit(1);
+  }
+  return { rows, tagged, inferredGames };
+}
+
+function main() {
+  const dataPat = arg('data', path.join(__dirname, 'data', '*.jsonl'));
+  const outPath = arg('out', path.join(__dirname, 'models', 'value.json'));
+  const epochs = +arg('epochs', 8);
+  const lr = +arg('lr', 0.001);
+  const batchSize = +arg('batch', 256);
+  // 96,96 rather than 64,64: the feature vector went 16 -> 82, so the first layer has to be wide
+  // enough to actually read it. ~17.4k params, which on ~30k positions is ~1.7 samples/param --
+  // thinner than the ~5 the old capacity probe ran at, so this wants revisiting (and probably
+  // weight decay, which train.js still has none of) once data accumulates.
+  const hidden = arg('hidden', '96,96').split(',').map(Number);
+  const resume = arg('resume', null);
+  const seedArg = arg('seed', null);
+  const rand = seedArg != null ? mulberry32(+seedArg) : Math.random;
+
+  const { rows, tagged, inferredGames } = loadData(dataPat);
+  if (rows.length < 500) { console.error('not enough data (' + rows.length + ' rows) — run selfplay first'); process.exit(1); }
+
+  // Hold out 10% of GAMES, not 10% of rows. Splitting by row put positions from the same game on
+  // both sides: consecutive positions differ by one move and carry almost the same label, so the
+  // "held-out" set was really a paraphrase of the training set and val mse mostly measured
+  // memorisation. That is how best.json spent 60+ iterations overfitting with its val numbers
+  // still looking fine -- at iteration 63 it had better val mse AND better sign-acc than a
+  // throwaway 5-layer net that then beat it 7-32 over the board.
+  const byGame = new Map();
+  for (const r of rows) {
+    if (!byGame.has(r.game)) byGame.set(r.game, []);
+    byGame.get(r.game).push(r);
+  }
+  // Guard against the inference above degenerating (e.g. --discount 1 makes every |z| equal, so no
+  // fall is ever seen and the whole file reads as one game). Falling back to a row split is the
+  // old, leaky behaviour -- but a leaky split beats holding out 10% of ONE group, which could put
+  // most of the data in val or leave val empty.
+  let ids = [...byGame.keys()];
+  // reduce, not Math.max(...arr): the spread would pass one argument per game, which overflows the
+  // call stack once a run has accumulated enough of them.
+  const biggest = [...byGame.values()].reduce((m, g) => Math.max(m, g.length), 0);
+  if (ids.length < 10 || biggest > rows.length*0.2) {
+    console.warn(`warning: could not identify games (${ids.length} groups, largest ${biggest} rows) ` +
+                 `— falling back to a row-level split, which leaks between train and val`);
+    byGame.clear();
+    for (const r of rows) byGame.set(r, [r]);   // each row is its own "game"
+    ids = [...byGame.keys()];
+  }
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(rand()*(i + 1));
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+  }
+  const nValGames = Math.max(1, Math.floor(ids.length*0.1));
+  const val = [], train = [];
+  ids.forEach((id, i) => (i < nValGames ? val : train).push(...byGame.get(id)));
+  console.log(`data: ${train.length} train / ${val.length} val positions ` +
+              `(${ids.length - nValGames} / ${nValGames} games; ` +
+              `${tagged} rows game-tagged, ${inferredGames} games inferred from older rows)`);
+
+  // Same trap as the stale-data check above, via the other door: resuming from a checkpoint built
+  // for a different input width silently produces a net that can never read its own inputs.
+  let net;
+  if (resume && fs.existsSync(resume)) {
+    const j = JSON.parse(fs.readFileSync(resume, 'utf8'));
+    if (!j.sizes || j.sizes[0] !== N_FEATURES) {
+      console.error(`\nERROR: ${resume} takes ${j.sizes ? j.sizes[0] : '?'} inputs, but the feature ` +
+                    `set now produces ${N_FEATURES}.\nMove nn/models aside and start a fresh run.\n`);
+      process.exit(1);
+    }
+    net = MLP.fromJSON(j);
+  } else net = new MLP([N_FEATURES, ...hidden, 1]);
+
+  const evalSet = set => {
+    let mse = 0, signOk = 0;
+    for (const r of set) {
+      const v = net.value(r.x);
+      mse += (v - r.y)*(v - r.y);
+      if (Math.sign(v) === Math.sign(r.y)) signOk++;
+    }
+    return { mse: mse/set.length, acc: signOk/set.length };
+  };
+
+  // Keep the epoch that scored best on the HELD-OUT rows, not whichever epoch happened to be last.
+  // Measured on 12 consecutive real iterations (48-59), epoch 1 beat epoch 6 on val mse in 11 of
+  // them while train mse fell every time -- i.e. every one of those iterations trained past its own
+  // best model and then saved the overfit one. That compounds: run.js resumes the NEXT iteration
+  // from this file, so the drift accumulates for the whole 10 iterations between round robins. It
+  // shows up in the tournament results as the checkpoint written immediately after a promotion
+  // winning the following round robin (ckpt-031 won at iteration 40, ckpt-041 at iteration 50) --
+  // that one carries 6 epochs of drift on top of a proven model where its successors carry 60.
+  //
+  // Selecting the best of `epochs` noisy val readings is mildly optimistic (the 10% val split is
+  // small), but it is a far smaller error than knowingly saving a worse net, and the round robin
+  // remains the real arbiter of which model is strongest.
+  const keepLast = process.argv.includes('--keepLast');
+  let best = null, bestMse = Infinity, bestEpoch = 0;
+  const t0 = Date.now();
+  for (let e = 1; e <= epochs; e++) {
+    for (let i = train.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random()*(i + 1));
+      [train[i], train[j]] = [train[j], train[i]];
+    }
+    let trainMse = 0, nb = 0;
+    for (let i = 0; i + batchSize <= train.length; i += batchSize) {
+      trainMse += net.trainBatch(train.slice(i, i + batchSize), lr);
+      nb++;
+    }
+    const v = evalSet(val);
+    if (v.mse < bestMse) { bestMse = v.mse; bestEpoch = e; best = net.toJSON(); }
+    console.log(`epoch ${e}/${epochs}: train mse ${(trainMse/nb).toFixed(4)}, ` +
+                `val mse ${v.mse.toFixed(4)}, val sign-acc ${(v.acc*100).toFixed(1)}% ` +
+                `(${((Date.now() - t0)/1000).toFixed(0)}s)`);
+  }
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  if (keepLast || !best) {
+    fs.writeFileSync(outPath, JSON.stringify(net.toJSON()));
+    console.log(`saved ${outPath} (last epoch)`);
+  } else {
+    fs.writeFileSync(outPath, JSON.stringify(best));
+    console.log(`saved ${outPath} (best val mse ${bestMse.toFixed(4)}, from epoch ${bestEpoch}/${epochs})`);
+  }
+}
+
+main();
