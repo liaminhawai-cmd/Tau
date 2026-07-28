@@ -25,6 +25,13 @@ function arg(name, dflt) {
   return i >= 0 ? process.argv[i + 1] : dflt;
 }
 
+// Tags every row this PROCESS writes, so train.js can tell which positions came from the same game
+// (see the `g` field below). Has to be unique per process, not per worker index: the parallel
+// workers write part files that get merged into one iteration file, and train.js then loads EVERY
+// iteration file at once -- so a plain "worker 3, game 7" would collide both across workers and
+// across iterations, silently fusing unrelated games into one id.
+const RUN_TAG = Math.random().toString(36).slice(2, 8) + process.pid.toString(36);
+
 function playGame(eng, brainA, brainB, maxPlies, openingPlies) {
   eng.newGame();
   // Without this, a deterministic-ish ladder pairing (L8-L11 have little to no built-in
@@ -216,11 +223,19 @@ function main() {
     const { rows, winner, plies } = playGame(eng, brainA, brainB, 300, openingPlies);
     if (winner !== null) {
       decided++;
+      // `g` marks which game a position came from. Without it train.js can only hold out random
+      // ROWS, and consecutive positions in one game are near-identical -- so the same game lands on
+      // both sides of the split and the val set stops being held-out data at all. Measured
+      // consequence: at iteration 63 best.json had better val mse (0.5674) and better sign-acc
+      // (70.5%) than a throwaway 5-layer net it then lost to 7-32 in actual games. Validation had
+      // been reporting on memorised training games for the whole run.
+      const gameId = RUN_TAG + '-' + g;
       for (let i = 0; i < rows.length; i++) {
         const pliesToEnd = rows.length - i;
         const z = (rows[i].mover === winner ? 1 : -1)*Math.pow(discount, pliesToEnd);
         ws.write(JSON.stringify({ f: rows[i].f.map(v => +v.toFixed(5)), z: +z.toFixed(4),
-                                  p: rows[i].p.map(v => +v.toFixed(4)), m: rows[i].mover }) + '\n');
+                                  p: rows[i].p.map(v => +v.toFixed(4)), m: rows[i].mover,
+                                  g: gameId }) + '\n');
         positions++;
       }
     }

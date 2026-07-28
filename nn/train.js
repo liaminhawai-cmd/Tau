@@ -15,7 +15,7 @@ function arg(name, dflt) {
 
 // Deterministic PRNG (mulberry32), used only when --seed is passed. Point: comparing two --hidden
 // architectures is only a clean read on CAPACITY if both see the identical train/val split -- with
-// the default Math.random() shuffle below, two separate runs land on different held-out rows, and
+// the default Math.random() shuffle below, two separate runs hold out different games, and
 // that split noise gets baked into whatever val-mse/sign-acc gap you're trying to attribute to the
 // architecture. Opt-in and off by default so normal training (where the split doesn't need to match
 // anything) is unaffected.
@@ -34,14 +34,32 @@ function loadData(pattern) {
   const rx = new RegExp('^' + base.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
   const rows = [];
   const stale = new Map();          // file -> rows whose feature vector is the wrong length
+  let tagged = 0, inferredGames = 0;
   for (const f of fs.readdirSync(dir)) {
     if (!rx.test(f)) continue;
+    // Game-boundary inference, for rows written before selfplay.js started stamping `g`.
+    // selfplay labels a game's positions with z = ±discount^(plies to end), and plies-to-end
+    // COUNTS DOWN through the game, so |z| rises monotonically from the game's first row to its
+    // last and then drops at the next game's first row. A fall in |z| is therefore a game
+    // boundary. Rows are read in the order selfplay appended them (one game's positions
+    // contiguous), and this restarts per file so a file boundary can't fuse two games.
+    // Only a fallback: a row carrying a real `g` always uses it.
+    let prevAbs = Infinity, curInferred = null;
     for (const line of fs.readFileSync(path.join(dir, f), 'utf8').split('\n')) {
       if (!line) continue;
       try {
         const j = JSON.parse(line);
         if (!j.f || j.f.length !== N_FEATURES) { stale.set(f, (stale.get(f) || 0) + 1); continue; }
-        rows.push({ x: j.f, y: j.z });
+        let game;
+        if (j.g != null) {
+          game = j.g; tagged++; prevAbs = Infinity;   // reset: next untagged row starts fresh
+        } else {
+          const a = Math.abs(j.z);
+          if (a < prevAbs) { curInferred = f + '#' + inferredGames++; }
+          prevAbs = a;
+          game = curInferred;
+        }
+        rows.push({ x: j.f, y: j.z, game });
       } catch (e) {}
     }
   }
@@ -59,7 +77,7 @@ function loadData(pattern) {
                   `nn/models aside (e.g. into nn/archive-old-features/) and start a fresh run.\n`);
     process.exit(1);
   }
-  return rows;
+  return { rows, tagged, inferredGames };
 }
 
 function main() {
@@ -77,16 +95,45 @@ function main() {
   const seedArg = arg('seed', null);
   const rand = seedArg != null ? mulberry32(+seedArg) : Math.random;
 
-  const rows = loadData(dataPat);
+  const { rows, tagged, inferredGames } = loadData(dataPat);
   if (rows.length < 500) { console.error('not enough data (' + rows.length + ' rows) — run selfplay first'); process.exit(1); }
-  // shuffle once, hold out 10% for validation
-  for (let i = rows.length - 1; i > 0; i--) {
-    const j = Math.floor(rand()*(i + 1));
-    [rows[i], rows[j]] = [rows[j], rows[i]];
+
+  // Hold out 10% of GAMES, not 10% of rows. Splitting by row put positions from the same game on
+  // both sides: consecutive positions differ by one move and carry almost the same label, so the
+  // "held-out" set was really a paraphrase of the training set and val mse mostly measured
+  // memorisation. That is how best.json spent 60+ iterations overfitting with its val numbers
+  // still looking fine -- at iteration 63 it had better val mse AND better sign-acc than a
+  // throwaway 5-layer net that then beat it 7-32 over the board.
+  const byGame = new Map();
+  for (const r of rows) {
+    if (!byGame.has(r.game)) byGame.set(r.game, []);
+    byGame.get(r.game).push(r);
   }
-  const nVal = Math.floor(rows.length*0.1);
-  const val = rows.slice(0, nVal), train = rows.slice(nVal);
-  console.log(`data: ${train.length} train / ${val.length} val positions`);
+  // Guard against the inference above degenerating (e.g. --discount 1 makes every |z| equal, so no
+  // fall is ever seen and the whole file reads as one game). Falling back to a row split is the
+  // old, leaky behaviour -- but a leaky split beats holding out 10% of ONE group, which could put
+  // most of the data in val or leave val empty.
+  let ids = [...byGame.keys()];
+  // reduce, not Math.max(...arr): the spread would pass one argument per game, which overflows the
+  // call stack once a run has accumulated enough of them.
+  const biggest = [...byGame.values()].reduce((m, g) => Math.max(m, g.length), 0);
+  if (ids.length < 10 || biggest > rows.length*0.2) {
+    console.warn(`warning: could not identify games (${ids.length} groups, largest ${biggest} rows) ` +
+                 `— falling back to a row-level split, which leaks between train and val`);
+    byGame.clear();
+    for (const r of rows) byGame.set(r, [r]);   // each row is its own "game"
+    ids = [...byGame.keys()];
+  }
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(rand()*(i + 1));
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+  }
+  const nValGames = Math.max(1, Math.floor(ids.length*0.1));
+  const val = [], train = [];
+  ids.forEach((id, i) => (i < nValGames ? val : train).push(...byGame.get(id)));
+  console.log(`data: ${train.length} train / ${val.length} val positions ` +
+              `(${ids.length - nValGames} / ${nValGames} games; ` +
+              `${tagged} rows game-tagged, ${inferredGames} games inferred from older rows)`);
 
   // Same trap as the stale-data check above, via the other door: resuming from a checkpoint built
   // for a different input width silently produces a net that can never read its own inputs.
