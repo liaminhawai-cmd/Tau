@@ -111,6 +111,20 @@ function main() {
     return { mse: mse/set.length, acc: signOk/set.length };
   };
 
+  // Keep the epoch that scored best on the HELD-OUT rows, not whichever epoch happened to be last.
+  // Measured on 12 consecutive real iterations (48-59), epoch 1 beat epoch 6 on val mse in 11 of
+  // them while train mse fell every time -- i.e. every one of those iterations trained past its own
+  // best model and then saved the overfit one. That compounds: run.js resumes the NEXT iteration
+  // from this file, so the drift accumulates for the whole 10 iterations between round robins. It
+  // shows up in the tournament results as the checkpoint written immediately after a promotion
+  // winning the following round robin (ckpt-031 won at iteration 40, ckpt-041 at iteration 50) --
+  // that one carries 6 epochs of drift on top of a proven model where its successors carry 60.
+  //
+  // Selecting the best of `epochs` noisy val readings is mildly optimistic (the 10% val split is
+  // small), but it is a far smaller error than knowingly saving a worse net, and the round robin
+  // remains the real arbiter of which model is strongest.
+  const keepLast = process.argv.includes('--keepLast');
+  let best = null, bestMse = Infinity, bestEpoch = 0;
   const t0 = Date.now();
   for (let e = 1; e <= epochs; e++) {
     for (let i = train.length - 1; i > 0; i--) {
@@ -123,13 +137,19 @@ function main() {
       nb++;
     }
     const v = evalSet(val);
+    if (v.mse < bestMse) { bestMse = v.mse; bestEpoch = e; best = net.toJSON(); }
     console.log(`epoch ${e}/${epochs}: train mse ${(trainMse/nb).toFixed(4)}, ` +
                 `val mse ${v.mse.toFixed(4)}, val sign-acc ${(v.acc*100).toFixed(1)}% ` +
                 `(${((Date.now() - t0)/1000).toFixed(0)}s)`);
   }
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, JSON.stringify(net.toJSON()));
-  console.log('saved', outPath);
+  if (keepLast || !best) {
+    fs.writeFileSync(outPath, JSON.stringify(net.toJSON()));
+    console.log(`saved ${outPath} (last epoch)`);
+  } else {
+    fs.writeFileSync(outPath, JSON.stringify(best));
+    console.log(`saved ${outPath} (best val mse ${bestMse.toFixed(4)}, from epoch ${bestEpoch}/${epochs})`);
+  }
 }
 
 main();
