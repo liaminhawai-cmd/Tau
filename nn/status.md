@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-07-28T21:27:24.584Z_
+_Last updated: 2026-07-28T21:33:45.298Z_
 
 **Iteration:** 100
-**Stage:** from-scratch challenger training (30 epochs, started 2026-07-28T21:27:24.584Z)
+**Stage:** round robin running (started 2026-07-28T21:33:45.298Z)
 **mix:** nnnn:0.4,nnladder:0.3,ladder:0.3
 
 **Last gate result:** iteration 100 — promoted (gate retired; round robin every 10)
