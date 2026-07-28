@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tau — unit economics explorer v4</title>
+<style>
+  :root{
+    --bg:#0f0f0e; --panel:#1a1a18; --panel2:#232320; --line:#33322e;
+    --ink:#ece9e2; --ink2:#a7a49b; --ink3:#726f67;
+    --ok:#4a9e6f; --warn:#c9902b; --bad:#c2582f;
+    --accent:#d8894a; --accent2:#7aa7c7;
+    --good:#4a9e6f; --loss:#c2582f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding:24px;max-width:1180px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 2px} h1 .v{color:var(--accent);font-size:13px;vertical-align:super}
+  h2{font-size:15px;margin:0}
+  a{color:var(--accent2)}
+  .sub{color:var(--ink2);margin:0 0 16px;max-width:70ch;font-size:13px}
+  .disclaimer{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:11px 14px;font-size:12.5px;color:var(--ink2);margin-bottom:18px}
+  .disclaimer b{color:var(--ink)}
+
+  /* top controls */
+  .controls{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:18px}
+  @media(max-width:820px){.controls{grid-template-columns:1fr}}
+  .ctl{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .ctl .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink3);margin-bottom:8px}
+  .seg{display:flex;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{flex:1;background:transparent;color:var(--ink2);border:0;padding:9px 6px;
+    font-size:13px;cursor:pointer;font-weight:600}
+  .seg button[aria-pressed="true"]{background:var(--accent);color:#1a1a18}
+  .qtyrow{display:flex;gap:8px;align-items:center}
+  .qtyrow input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:8px;padding:9px 10px;font-size:16px;font-weight:600}
+  .qchips{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+  .qchips button{background:var(--panel2);border:1px solid var(--line);color:var(--ink2);
+    border-radius:6px;padding:4px 9px;font-size:12px;cursor:pointer}
+  .qchips button:hover{border-color:var(--accent)}
+  .sellrow input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:8px;padding:9px 10px;font-size:16px;font-weight:600}
+
+  .grid{display:grid;grid-template-columns:1.55fr 1fr;gap:18px;align-items:start}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+
+  /* component cards */
+  .cat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .cat-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px}
+  .cat-head .n{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
+  .cat-head .hint{font-size:12px;color:var(--ink3);text-align:right}
+  .opts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .opt{background:var(--panel2);border:1px solid var(--line);color:var(--ink2);
+    border-radius:8px;padding:7px 11px;font-size:12.5px;cursor:pointer;display:flex;align-items:center;gap:7px}
+  .opt[aria-pressed="true"]{border-color:var(--accent);color:var(--ink);background:#2b241d}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.conflict{background:var(--bad)} .dot.est{background:var(--accent)}
+  .detail .row1{display:grid;grid-template-columns:auto auto 1fr;gap:14px;align-items:center;margin-bottom:8px}
+  .priced{font-size:20px;font-weight:700}
+  .priced small{font-size:11px;color:var(--ink3);font-weight:400;display:block;letter-spacing:.03em}
+  .costfield{display:flex;flex-direction:column;gap:3px}
+  .costfield .fieldlbl{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3)}
+  .costfield input{width:110px;background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:7px;padding:6px 8px;font-size:14px}
+  .note{font-size:12.5px;color:var(--ink2);margin-top:4px}
+  .flag{font-weight:600}.flag.conflict{color:var(--bad)}.flag.warn{color:var(--warn)}.flag.est{color:var(--accent)}
+
+  /* model toggle */
+  .modelbar{display:flex;gap:10px;margin:0 0 14px;flex-wrap:wrap}
+  .modelbtn{flex:1 1 260px;text-align:left;background:var(--panel);border:1px solid var(--line);
+    color:var(--ink2);border-radius:10px;padding:11px 14px;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+  .modelbtn span{display:block;font-size:12px;color:var(--ink3);font-weight:400;margin-top:2px}
+  .modelbtn:hover{border-color:var(--accent)}
+  .modelbtn[aria-pressed="true"]{background:#2b241d;border-color:var(--accent);color:var(--ink)}
+  .modelbtn[aria-pressed="true"] span{color:var(--ink2)}
+  .modelnote{background:#241d14;border:1px solid var(--accent);color:#e7c8a8;border-radius:10px;
+    padding:10px 14px;font-size:12.5px;margin-bottom:16px;display:none}
+  .modelnote.show{display:block} .modelnote b{color:#fff}
+  .estbox{background:#241d14;border:1px solid var(--accent);color:#e7c8a8;border-radius:8px;
+    padding:8px 11px;font-size:12px;margin-top:10px}
+  .src{margin-top:7px;font-size:11.5px;color:var(--ink3)}
+  .src a{margin-right:4px}
+  .asof{color:var(--ink3);margin-left:6px}
+  .tiernote{font-size:11.5px;color:var(--ink3);margin-top:5px}
+  .tierpill{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:5px;
+    padding:1px 6px;margin:0 3px 3px 0;font-size:11px;color:var(--ink2)}
+  .tierpill.active{border-color:var(--accent);color:var(--accent);font-weight:600}
+
+  /* summary panel */
+  .summary{position:sticky;top:16px}
+  .sumcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px}
+  .sumcard h3{margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink3)}
+  .breakrow{display:flex;justify-content:space-between;gap:8px;padding:4px 0;font-size:13px;border-bottom:1px dotted #2b2a27}
+  .breakrow:last-child{border-bottom:0}
+  .breakrow .k{color:var(--ink2)}.breakrow .k small{color:var(--ink3);font-size:11px}
+  .breakrow .v{font-variant-numeric:tabular-nums}
+  .landed{display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;padding-top:10px;border-top:2px solid var(--line)}
+  .landed .lbl{font-size:13px;color:var(--ink2)}
+  .landed .big{font-size:26px;font-weight:800}
+  .margrow{display:flex;justify-content:space-between;align-items:baseline;margin-top:6px}
+  .margrow .lbl{font-size:13px;color:var(--ink2)}
+  .margrow .big{font-size:22px;font-weight:800}
+  .profit.good{color:var(--good)} .profit.loss{color:var(--loss)}
+  .marginpct{font-size:12px;color:var(--ink3)}
+  .totline{display:flex;justify-content:space-between;font-size:12.5px;color:var(--ink3);margin-top:8px}
+  .warnbox{background:#2a1f14;border:1px solid var(--warn);color:#e7c583;border-radius:8px;
+    padding:8px 11px;font-size:12px;margin-top:10px}
+  .conflictbox{background:#2a1613;border:1px solid var(--bad);color:#e7a488;border-radius:8px;
+    padding:8px 11px;font-size:12px;margin-top:10px}
+
+  /* extra cost fields */
+  .xfields{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .xf{display:flex;flex-direction:column;gap:3px}
+  .xf .fl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3)}
+  .xf .ir{display:flex;align-items:center;gap:4px}
+  .xf input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:7px;padding:6px 8px;font-size:13px}
+  .xf .u{font-size:12px;color:var(--ink3)}
+
+  /* shopping list */
+  .shop .item{display:grid;grid-template-columns:1fr auto;gap:8px;padding:8px 0;border-bottom:1px dotted #2b2a27}
+  .shop .item:last-child{border-bottom:0}
+  .shop .who{font-size:13px}
+  .shop .who .sup{color:var(--ink3);font-size:11.5px}
+  .shop .who a{font-size:11.5px}
+  .shop .amt{text-align:right;font-variant-numeric:tabular-nums;font-size:13px}
+  .shop .amt small{display:block;color:var(--ink3);font-size:11px}
+
+  .foot{color:var(--ink3);font-size:12px;margin-top:20px;border-top:1px solid var(--line);padding-top:12px}
+  .foot b{color:var(--ink2)}
+</style>
+</head>
+<body>
+  <h1>Tau — unit economics explorer <span class="v">v5</span></h1>
+  <p class="sub">Pick a product, a size, a batch quantity and a sell price, and the whole landed cost and margin recompute live. Every field is editable — the magnetic game's numbers are seeded from real quotes; the big magnetless model's are early estimates. The shopping list at the bottom doubles as a procurement checklist.</p>
+
+  <div class="modelbar" role="group" aria-label="Which product to cost">
+    <button class="modelbtn" type="button" data-model="magnetic" aria-pressed="true">Precision · magnetic<span>the premium tabletop game · 267 / 400 mm · real sourced quotes</span></button>
+    <button class="modelbtn" type="button" data-model="big" aria-pressed="false">Big · magnetless<span>the ~1 m floor / outdoor version · early estimates</span></button>
+  </div>
+  <div class="modelnote" id="modelnote"></div>
+
+  <div class="disclaimer">
+    <b>Real quotes where marked (Jul 2026).</b> Board = firm quote (Guangzhou Jiangy, finished 430). Pieces = CONFIRMED Mint Pan per-piece pricing (×2 for a game). Sticker = Sticker Mule. Postage = courier calculators. Assembly is unskilled (glue 6 magnets, box it) so it's cheap even if paid. AUD; 1&nbsp;USD ≈ A$1.55. <b>Key thresholds:</b> finished/painted/magnet-seated pieces only exist at 100+ sets; below that you get bare black prints and finish them yourself. Premium-tier pricing ($150/$200) is what makes the hands-off volume model pencil out.
+  </div>
+
+  <div class="controls">
+    <div class="ctl">
+      <div class="lbl" id="sizeLbl">Which SKU (board size)</div>
+      <div class="seg" id="sizeSeg"></div>
+      <div class="tiernote" style="margin-top:9px" id="sizeNote">The 400mm SKU scales the board, pieces, sticker, box and postage up ~50%.</div>
+    </div>
+    <div class="ctl">
+      <div class="lbl">Batch quantity (this run)</div>
+      <div class="qtyrow"><input type="number" id="qty" min="1" step="1" value="10"> <span style="color:var(--ink3);font-size:13px">sets</span></div>
+      <div class="qchips" id="qchips"></div>
+    </div>
+    <div class="ctl">
+      <div class="lbl">Your sell price (this SKU)</div>
+      <div class="sellrow"><input type="number" id="sell" min="0" step="5" value="120"></div>
+      <div class="tiernote" style="margin-top:9px">Anchors: Klask ~$95 · Crokinole $300–460. Premium is conditional on proven depth (your /depth report).</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div id="builder"></div>
+
+    <div class="summary">
+      <div class="sumcard">
+        <h3>Per-set landed cost · <span id="sumSize">267mm</span> · <span id="sumQty">10</span> sets</h3>
+        <div id="breakRows"></div>
+        <div class="landed"><span class="lbl">Landed cost / set</span><span class="big" id="landed">$0</span></div>
+        <div class="margrow"><span class="lbl">Profit / set</span><span class="big profit" id="profit">$0</span></div>
+        <div style="text-align:right"><span class="marginpct" id="marginpct"></span></div>
+        <div class="totline"><span>Whole run (<span id="totQty">10</span> sets)</span><span id="runProfit"></span></div>
+        <div class="totline"><span>+ one-off tooling / setup</span><span id="tooling">$0</span></div>
+        <div id="flagsBox"></div>
+      </div>
+
+      <div class="sumcard">
+        <h3>Costs beyond parts</h3>
+        <div class="xfields">
+          <div class="xf"><span class="fl">Assembly / set</span><div class="ir"><span class="u">A$</span><input type="number" id="x_assembly" min="0" step="0.25" value="1.50"></div></div>
+          <div class="xf"><span class="fl">Outer mailer / set</span><div class="ir"><span class="u">A$</span><input type="number" id="x_mailer" min="0" step="0.5" value="3.00"></div></div>
+          <div class="xf"><span class="fl">Payment fee</span><div class="ir"><input type="number" id="x_procpct" min="0" step="0.1" value="3.5"><span class="u">% of sell</span></div></div>
+          <div class="xf"><span class="fl">QC wastage</span><div class="ir"><input type="number" id="x_wastepct" min="0" step="0.5" value="5"><span class="u">% of parts</span></div></div>
+          <div class="xf"><span class="fl">Import duty / set</span><div class="ir"><span class="u">A$</span><input type="number" id="x_duty" min="0" step="0.5" value="0"></div></div>
+          <div class="xf"><span class="fl">One-off setup</span><div class="ir"><span class="u">A$</span><input type="number" id="x_tooling" min="0" step="10" value="0"></div></div>
+        </div>
+        <div class="tiernote" style="margin-top:9px">Assembly is unskilled repetitive work (no polarity to mind), so it stays cheap even paid — set to 0 if family does it. Wastage covers reject prints/discs.</div>
+      </div>
+
+      <div class="sumcard shop">
+        <h3>Buy it here — this configuration</h3>
+        <div id="shopList"></div>
+        <div class="tiernote" style="margin-top:10px">Prices are the sourced figures at your current quantity; links are the supplier pages. Verify the live price at order time — these don't auto-update.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <b>v5 changes:</b> added a <b>product toggle</b> — the magnetic game (267/400, real quotes) is untouched, and a second <b>big magnetless model</b> (~1 m floor/outdoor) sits beside it. Big-model figures are ESTIMATES (orange dots) pending firm quotes (Hebei Longjiao mirror-gloss vinyl, Regency acrylic) and the physical slide test that decides whether a piece glides well enough to be a product at all. Shipped-shape is called out: a rigid flat ~1 m board is at/over the AusPost size cap and posts for 3–4× a rolled tube, so rigid reads as local-pickup and a rolled surface is the mailable shape.
+    <br><br><b>v4 changes:</b> live 267/400 SKU toggle (everything size-dependent scales) · quantity input with automatic supplier price-tiering · editable assembly/mailer/fee/wastage/duty lines · sell-price → profit-per-set and whole-run margin · live linked "buy it here" shopping list. Built on v3's real sourced quotes (firm Jiangy board, Sticker Mule, real postage).
+    <br><br><b>Still open:</b> UV-print price on the 430 disc (est. included) · real piece price (upload STL to JLC/Xometry/Craftcloud). Everything else is firm or a known ballpark.
+  </div>
+
+<script>
+// ---- tier price helper: pick price at highest breakpoint <= qty ----
+function tierPrice(tiers, qty){
+  // tiers: array of [minQty, price] ascending
+  let p = tiers[0][1];
+  for(const [q,price] of tiers){ if(qty>=q) p=price; }
+  return p;
+}
+function activeTier(tiers, qty){
+  let idx=0; tiers.forEach((t,i)=>{ if(qty>=t[0]) idx=i; }); return idx;
+}
+
+// ---- DATA: components. Each option gives a cost(size,qty)=>{unit, tiers?, link, sup, note} ----
+// size is 's267' or 's400'. SCALE applied to size-dependent items.
+const SCALE = {s267:1, s400:1.5};
+
+const ASOF = "Jul 2026";
+
+const MAG_CATS = [
+  { id:"board", name:"Board (steel disc)", hint:"the ferrous playing surface",
+    opts:[
+      {id:"jiangy", label:"430 disc, Guangzhou Jiangy + UV", tag:"ok",
+        // firm finished-430 quote, per size, per qty tier
+        tiers:{ s267:[[10,4.75],[50,4.37],[100,4.37],[500,3.87]],
+                s400:[[10,9.50],[50,8.70],[100,8.70],[500,7.70]] },
+        uv:{s267:6, s400:9},  // editable UV-print add estimate
+        sup:"Guangzhou Jiangy (Alibaba)", link:"https://www.alibaba.com",
+        note:"FIRM QUOTE (30-day validity): finished brushed 430 stainless, 1.5mm, effective MOQ 10, from the seller who stated the grade correctly first try (most trustworthy of three). Disc price shown auto-tiers by quantity; the UV-print add is a separate editable estimate — the ONE open board number is the real UV price + whether the ink survives on brushed 430 under sliding feet (a print-a-sample test). Get 430 on the invoice + magnet-test the first sample."},
+      {id:"metalscut", label:"Mild steel disc, MetalsCut4U", tag:"warn",
+        tiers:{ s267:[[1,21.33]], s400:[[1,34.65]] }, uv:{s267:8,s400:12},
+        sup:"MetalsCut4U", link:"https://www.metalscut4u.com",
+        note:"No-account instant quote, flat per-unit (A$21.33 @267mm / A$34.65 @400mm). Dearer than Jiangy AND bare mild steel (rusts, needs finishing) rather than finished 430. Kept as an instant fallback with no MOQ."},
+      {id:"decal", label:"Steel disc + vinyl decal (cheaper print)", tag:"ok",
+        tiers:{ s267:[[10,4.75],[50,4.37],[100,4.37],[500,3.87]],
+                s400:[[10,9.50],[50,8.70],[100,8.70],[500,7.70]] },
+        uv:{s267:0,s400:0}, decal:true,
+        sup:"Jiangy disc + Sticker Mule vinyl", link:"https://www.stickermule.com/products/die-cut-stickers",
+        note:"Same firm Jiangy disc, but skip UV printing — apply a thin die-cut vinyl decal (Sticker Mule, priced in its own row below) instead. Vinyl ~0.1–0.2mm keeps magnet grip. Cheapest board-with-artwork route; paper stickers scratch so vinyl only."},
+      {id:"byo", label:"None — customer brings own steel", tag:"ok",
+        tiers:{ s267:[[1,0]], s400:[[1,0]] }, uv:{s267:0,s400:0}, byo:true,
+        sup:"—", link:"",
+        note:"THE CHEAP TIER: ship no board. Buyer supplies a flat ferrous surface (baking tray). Board cost = 0; you still ship the vinyl overlay (sticker row). Flat, light, cheapest postage. For the print-and-play / 3D-print crowd."},
+    ]},
+  { id:"pieces", name:"Pieces (2 tripods)", hint:"one red, one blue",
+    opts:[
+      {id:"mjf", label:"MJF nylon PA12 — bare black (DIY finish)", tag:"ok",
+        // CONFIRMED: Mint Pan $3/PIECE bare black, 2 pieces/game = $6/game USD ≈ A$9.3 base.
+        // Below 100 sets: bare only (no magnets/paint). You assemble/paint. Scales with size.
+        tiers:{ s267:[[20,9.3],[100,9.3],[200,9.3],[500,9.3]],
+                s400:[[20,14],[100,14],[200,14],[500,14]] },
+        sup:"Mint Pan (Yongkang Qucheng) / JLC / Xometry", link:"https://jlc3dp.com",
+        note:"CONFIRMED per-piece pricing: US$3/PIECE bare black nylon, and a Tau game needs 2 pieces, so ~$6/game (≈A$9.3). HP nylon is black-only. Below 100 sets Mint Pan does bare prints only — no magnets seated, no colour — so YOU seat magnets + paint (or leave black). This is the proof-run / hands-on tier. She has your real STL open in CAD so the quote is against actual geometry. Instant-quote services (JLC/Xometry) are the alternative for the real bare-print number."},
+      {id:"mjf_seated", label:"MJF finished — painted + magnets seated (100+ only)", tag:"ok",
+        // CONFIRMED: $4/PIECE finished (paint + magnet-seat), Liam supplies magnets, 100+ sets only.
+        // 2 pieces/game = $8/game USD ≈ A$12.4. Magnets fold in here.
+        tiers:{ s267:[[100,12.4],[200,12.4],[500,12.4]],
+                s400:[[100,18.6],[200,18.6],[500,18.6]] },
+        seated:true,
+        sup:"Mint Pan (Yongkang Qucheng)", link:"https://jlc3dp.com",
+        note:"THE HANDS-OFF TIER, CONFIRMED: US$4/PIECE finished = spray-painted red/blue + your 6 magnets pressed in. 2 pieces/game = ~$8/game (≈A$12.4). ONLY at 100+ sets — below that she won't do finishing. You supply the magnets (ship them to her). This removes your entire assembly step, the key to a low-touch operation. Note: painted colour (not dyed-through) can scratch over time — spec a durable coat for the heirloom tier. If chosen, set the magnet row to 0 (folded in here) and assembly toward 0."},
+    ]},
+  { id:"magnets", name:"Magnets (6 × 2mm N48)", hint:"3 per foot, polarity irrelevant",
+    opts:[
+      {id:"bulk", label:"2×2mm N48 neodymium, bulk", tag:"ok",
+        tiers:{ s267:[[10,1.20],[50,0.60],[100,0.45],[500,0.30]],
+                s400:[[10,1.20],[50,0.60],[100,0.45],[500,0.30]] }, // magnets don't scale with board size
+        sup:"Dongguan Ruili / Xiamen U Polemag", link:"https://www.alibaba.com",
+        note:"6 discs/set (3 per foot). Trivially cheap: ~US$0.015–0.05 each in bulk, so well under A$1/set. Polarity doesn't matter (feet only touch steel). ~1 month lead time (order ahead). Not a cost driver at any quantity. Set near 0 if you choose factory-seated pieces above."},
+      {id:"none", label:"None (pieces come pre-seated)", tag:"ok",
+        tiers:{ s267:[[1,0]], s400:[[1,0]] },
+        sup:"—", link:"",
+        note:"Choose this if the pieces arrive with magnets already fitted (see the pre-seated pieces option). Magnet cost folds into the piece price."},
+    ]},
+  { id:"sticker", name:"Ring artwork (vinyl decal)", hint:"only if not UV-printed",
+    opts:[
+      {id:"mule", label:"Sticker Mule die-cut vinyl", tag:"ok",
+        // real Sticker Mule pricing ~10.5in; per-sticker; scales up for 400
+        tiers:{ s267:[[50,4.80],[100,3.91],[200,3.29],[500,2.69],[1000,2.33]],
+                s400:[[50,7.20],[100,5.87],[200,4.94],[500,4.04],[1000,3.50]] },
+        sup:"Sticker Mule", link:"https://www.stickermule.com/products/die-cut-stickers",
+        note:"REAL configurator pricing (~10.5in for 267mm; ~50% up for 400mm). Only needed for the decal or bring-your-own board options — if you UV-print directly on steel, set this to 0. Vinyl is thin enough (~0.1–0.2mm) to keep magnet grip."},
+      {id:"none", label:"None (UV-printed on steel)", tag:"ok",
+        tiers:{ s267:[[1,0]], s400:[[1,0]] }, sup:"—", link:"",
+        note:"Artwork is UV-printed straight on the disc (see the Jiangy + UV board option), so no separate sticker."},
+    ]},
+  { id:"box", name:"Box + insert + rules", hint:"packaging & instructions",
+    opts:[
+      {id:"round", label:"Round rigid box + printed card", tag:"ok",
+        tiers:{ s267:[[10,9],[50,7],[100,6],[500,5]],
+                s400:[[10,13],[50,10.5],[100,9],[500,7.5]] },
+        sup:"Alibaba packaging / local", link:"https://www.alibaba.com",
+        note:"Rigid round box sized to the disc, foam/card insert to stop the pieces rattling next to the steel, and a printed rules card. Estimate — scales with size. QR-to-rules keeps print cost down. Flat-pack/segmented options can shrink this later."},
+      {id:"mailer", label:"Flat mailer (BYO-steel SKU)", tag:"ok",
+        tiers:{ s267:[[10,3],[50,2.2],[100,1.8],[500,1.4]],
+                s400:[[10,3.5],[50,2.6],[100,2.1],[500,1.6]] },
+        sup:"generic mailer", link:"",
+        note:"For the bring-your-own-steel tier: just pieces + vinyl overlay + card in a flat mailer. Cheap and light."},
+    ]},
+  { id:"fulfil", name:"Fulfilment origin + postage", hint:"your biggest cost lever",
+    opts:[
+      {id:"asia", label:"Assemble & ship from Asia (Taiwan/China)", tag:"ok",
+        // postage per parcel; 400 slightly heavier. Assembly handled separately in x_assembly.
+        tiers:{ s267:[[1,54]], s400:[[1,62]] },
+        sup:"EMS / forwarder", link:"https://auspost.com.au",
+        note:"REAL postage ~1.5kg boxed: from China ~US$30–45 (≈A$47–70). HALF the Australia-origin cost — the single biggest variable-cost lever in the whole model. Parts converge on family in Taiwan (or an assembly house), post worldwide. 400mm is heavier so slightly more. This is the path that keeps the game profitable to ship."},
+      {id:"au", label:"Assemble & ship from Australia", tag:"warn",
+        tiers:{ s267:[[1,64]], s400:[[1,78]] },
+        sup:"Australia Post Intl", link:"https://auspost.com.au/sending/send-overseas",
+        note:"REAL Aus Post Intl Standard ~1.5kg: ~A$64 to US/UK/Germany (zone-flat), ~A$78 at 1.5–2kg. Roughly A$50/unit worse on shipping than Asia origin. Fine for the first handful of hand-mailed influencer sets, not for scaled fulfilment."},
+    ]},
+];
+
+// editable overrides live in `ov` keyed by cat.opt.field
+const ov = {}; // {"board.jiangy.uv.s267": 6, ...}
+
+const MAG_DEFAULTS = {board:"jiangy", pieces:"mjf", magnets:"bulk", sticker:"none", box:"round", fulfil:"asia"};
+
+// ---- BIG MAGNETLESS MODEL (~1 m board) ----
+// ALL figures are ESTIMATES pending firm quotes (Hebei Longjiao vinyl, Regency acrylic) + the
+// physical slide test. Single size key "b1000". tag "est" = placeholder to overwrite.
+const BIG_CATS = [
+  { id:"surface", name:"Board surface (~1 m)", hint:"slick + how it ships is everything",
+    opts:[
+      {id:"floor", label:"Mirror-gloss vinyl roll flooring (hero)", tag:"est",
+        tiers:{ b1000:[[1,11],[10,11],[100,10],[500,9]] },
+        sup:"Hebei Longjiao (Alibaba)", link:"https://www.alibaba.com",
+        note:"ESTIMATE pending firm quote. Confirmed by supplier: smooth high-gloss MIRROR finish (slick by design, not anti-slip), 2mm, FLEXIBLE self-supporting roll (no adhesive, no substrate), custom-printable, MOQ 1 sqm. Listed ~US$6.91/sqm (≈A$11). Ships ROLLED in a tube, clearing the AusPost caps. The only candidate that is slick + self-supporting + mailable + printable at once. GATE: mirror-gloss soft PVC can look glassy but still drag — the 1 sqm sample buys the slide test before anything is committed."},
+      {id:"acrylic", label:"Rigid acrylic disc, cut-to-circle", tag:"warn",
+        tiers:{ b1000:[[1,45],[10,42],[100,40]] },
+        sup:"CutPrintShip (US) / Regency (Melbourne)", link:"https://cutprintship.com",
+        note:"ESTIMATE pending Regency (AU) reply. Acrylic is naturally slick, laser-cut to a clean circle. SHIPPED-SHAPE PROBLEM: a rigid flat ~1m panel is at/over the AusPost 105cm length cap and posts for 3–4× a rolled tube if at all, so this is realistically LOCAL-PICKUP ONLY, not a mailable national product. CutPrintShip is US-origin (worst-case freight); Regency Plastics Kilsyth VIC is the local maker."},
+      {id:"drawyourown", label:"Blank slick / dry-erase, draw-your-own", tag:"est",
+        tiers:{ b1000:[[1,6],[100,5],[500,4]] },
+        sup:"blank PVC / dry-erase stock", link:"",
+        note:"ESTIMATE. Cheapest tier, most on-brand: a blank smooth mat with numbered anchor dots + string + marker, buyer rules up the compass/straightedge board themselves (the board IS that construction). Dodges chalk-on-bitumen. Dry-erase surface + markers = reusable. Likely the true floor price. Ships rolled."},
+      {id:"skin", label:"Adhesive printed vinyl (skin)", tag:"conflict",
+        tiers:{ b1000:[[1,2]] },
+        sup:"Alibaba adhesive PVC (Daisy/Tina)", link:"",
+        note:"OFF-SPEC as a standalone surface. Adhesive PVC film (~US$0.5–1.1/sqm) is directly printable but it's a STICKER that must be bonded to a rigid slick board — it doesn't ship rolled and doesn't solve the surface, it just decorates a rigid board that's already slick. Here only to document why it's not the rollable answer."},
+    ]},
+  { id:"bigpieces", name:"Pieces (2 tripods)", hint:"printed legs + hub, click-together",
+    opts:[
+      {id:"fdm", label:"Home FDM, Ender 3 (scaled ~3.75×)", tag:"est",
+        tiers:{ b1000:[[1,12]] },
+        sup:"your printer (filament + time)", link:"",
+        note:"ESTIMATE. Prints as separate legs + hub that click together, fitting an Ender-3 bed at 1m board scale (leg reach ~173mm). Cost = filament + time for 2 pieces. The DIY-native option and the point of the parts-based redesign. Print the joint snug/pinned for the feel test — test the slide, not a loose joint."},
+      {id:"mjfbig", label:"MJF / print service (large)", tag:"est",
+        tiers:{ b1000:[[1,40]] },
+        sup:"JLC3DP / Xometry", link:"https://jlc3dp.com",
+        note:"ESTIMATE — upload STL for a real number. Big parts cost far more than the small game's pieces; MJF at this size is dear. Worth it only if the big version becomes a finished product rather than a maker/DIY release."},
+      {id:"wood", label:"Turned / CNC wood (legs + hub)", tag:"est",
+        tiers:{ b1000:[[1,30]] },
+        sup:"local maker", link:"",
+        note:"ESTIMATE. Separable straight legs are what unlock wood — a lathe or dowel can make a leg, which the one-piece tripod never could. This is the heirloom-ish big version. Placeholder until a maker quotes."},
+    ]},
+  { id:"feet", name:"Feet (bolts)", hint:"weight + slide, no magnets",
+    opts:[
+      {id:"bolts", label:"Domed button-head bolts, 6/set", tag:"ok",
+        tiers:{ b1000:[[1,2]] },
+        sup:"hardware store", link:"",
+        note:"Hardware-store bolts seated head-down in each foot (3 per piece). Three jobs: mass low at the outer points so the piece is bottom-heavy and hard to tip (keeps win = push-off, not knock-over), a rounded sliding contact, and if legs are hollow the shank + nut helps lock the click joint. No magnets, no steel. A printed tripod + 6 bolts is fully hobbyist-replicable — ideal for the DIY tier."},
+      {id:"nofeet", label:"Bare printed feet (no bolts)", tag:"warn",
+        tiers:{ b1000:[[1,0]] },
+        sup:"—", link:"",
+        note:"Lightest and cheapest, but a flat printed foot catches on seams and the piece is top-light and tippy on an imperfect surface. The bolt version is what makes the slide predictable."},
+    ]},
+  { id:"pack", name:"Packaging", hint:"the tube is the parcel",
+    opts:[
+      {id:"tube", label:"Mailing tube (rolled surface + parts inside)", tag:"ok",
+        tiers:{ b1000:[[1,3],[100,2.4],[500,2]] },
+        sup:"generic mailing tube", link:"",
+        note:"The tube IS the packaging: pieces nested inside, mat rolled around them, arrives as a cylinder that clears the AusPost caps. This is why the rollable surface wins — format and postage class fall out of the same choice. Set the outer-mailer field to 0 if you use this (it's the mailer)."},
+      {id:"flatbox", label:"Large flat box (for a rigid board)", tag:"warn",
+        tiers:{ b1000:[[1,8],[100,6.5]] },
+        sup:"custom flat box", link:"",
+        note:"Only if you chose the rigid acrylic surface. A ~1m flat box is at/over the AusPost length cap, so it pairs with local pickup, not national mailing."},
+    ]},
+  { id:"bigfulfil", name:"Fulfilment origin + postage", hint:"rolled ships cheap",
+    opts:[
+      {id:"asia", label:"Assemble & ship rolled from Asia", tag:"est",
+        tiers:{ b1000:[[1,30]] },
+        sup:"EMS / forwarder", link:"https://auspost.com.au",
+        note:"ESTIMATE. Magnetless = no magnet-seating, so assembly is just click-together + seat 6 bolts + roll the mat into the tube. Rolled parcels ship cheap; a light tube from Asia is the low-cost route, same logic as the magnetic game. Placeholder postage until a rolled-tube rate is pulled for the real weight/size."},
+      {id:"aulocal", label:"Australia local / pickup", tag:"warn",
+        tiers:{ b1000:[[1,26]] },
+        sup:"Australia Post (rolled tube)", link:"https://auspost.com.au/parcels-mail/calculate-postage-delivery-times",
+        note:"REAL AusPost (domestic, rolled tube 105×15×15cm, 1.5kg): Parcel Post ~A$26 / Express ~A$40. Local PICKUP is A$0 postage and is the natural home for the rigid version, which can't mail at 1m. Rigid-flat by post is ~A$41 / Express ~A$101 and near/over the size cap."},
+    ]},
+];
+const BIG_DEFAULTS = {surface:"floor", bigpieces:"fdm", feet:"bolts", pack:"tube", bigfulfil:"asia"};
+
+// ---- MODEL REGISTRY ----
+const MODELS = {
+  magnetic: {
+    cats: MAG_CATS, defaults: MAG_DEFAULTS,
+    sizes: [{key:"s267", label:"267&nbsp;mm · standard"}, {key:"s400", label:"400&nbsp;mm · big hands"}],
+    sizeLbl: "Which SKU (board size)",
+    sizeNote: "The 400mm SKU scales the board, pieces, sticker, box and postage up ~50%.",
+    sizeText: {s267:"267mm", s400:"400mm"},
+    sell: 120, note: "",
+  },
+  big: {
+    cats: BIG_CATS, defaults: BIG_DEFAULTS,
+    sizes: [{key:"b1000", label:"~1&nbsp;m · floor / outdoor"}],
+    sizeLbl: "Size (fixed for now)",
+    sizeNote: "One ~1 m board for now. Board diameter ≈ 4.1 × the longest flat-printed leg, so it scales if needed.",
+    sizeText: {b1000:"~1 m"},
+    sell: 79,
+    note: "<b>Big model — every number is an estimate.</b> Firm figures are pending on the mirror-gloss vinyl (Hebei Longjiao) and the acrylic (Regency), and the whole model is gated on the physical <b>slide test</b>: if a weighted piece doesn't glide well on the chosen surface, there is no SKU to cost. Treat all figures as placeholders to overwrite, and read shipped-shape (rolled vs rigid-flat) as the thing that actually decides the economics.",
+  },
+};
+
+let model = "magnetic";
+let CATS = MODELS[model].cats;
+let DEFAULTS = MODELS[model].defaults;
+
+let size = "s267";
+let qty = 10;
+let sell = 120;
+let sel = Object.assign({}, DEFAULTS);
+
+const $=id=>document.getElementById(id);
+const money=n=>(Math.round(n*100)/100).toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2});
+const money0=n=>Math.round(n).toLocaleString("en-AU");
+
+// ---- per-option resolved unit cost at current size+qty ----
+function optUnit(cat, o){
+  const t = o.tiers[size];
+  let base = tierPrice(t, qty);
+  // board UV add
+  if(cat.id==="board" && o.uv){
+    const k="board."+o.id+".uv."+size;
+    const uv = (k in ov)? ov[k] : o.uv[size];
+    base += uv;
+  }
+  return base;
+}
+
+// ---- build component cards ----
+const builder=$("builder");
+function renderCards(){
+  builder.innerHTML="";
+  CATS.forEach((c,i)=>{
+    const card=document.createElement("section"); card.className="cat";
+    const o=c.opts.find(x=>x.id===sel[c.id]);
+    const unit=optUnit(c,o);
+    // tier pills
+    const t=o.tiers[size]; const ai=activeTier(t,qty);
+    const pills = t.length>1 ? t.map((tt,idx)=>`<span class="tierpill ${idx===ai?'active':''}">${tt[0]}+ : $${money(tt[1])}</span>`).join("") : "";
+    // board UV field
+    let uvField="";
+    if(c.id==="board" && o.uv){
+      const k="board."+o.id+".uv."+size;
+      const uv=(k in ov)?ov[k]:o.uv[size];
+      uvField=`<div class="costfield"><span class="fieldlbl">UV print add</span>
+        <input type="number" min="0" step="0.5" value="${uv}" data-ov="${k}"></div>`;
+    }
+    const conflictMsg = model==="big"
+      ? `<span class="flag conflict">⚑ not a standalone sliding surface — </span>`
+      : `<span class="flag conflict">⚑ breaks the mechanic — </span>`;
+    const flagTxt = o.tag==="ok" ? ""
+      : o.tag==="conflict" ? conflictMsg
+      : o.tag==="est" ? `<span class="flag est">⚑ estimate, pending firm quote — </span>`
+      : `<span class="flag warn">⚑ note — </span>`;
+    const srcTxt = o.link
+      ? `<div class="src"><a href="${o.link}" target="_blank" rel="noopener">${o.sup} ↗</a><span class="asof">${ASOF}</span></div>`
+      : `<div class="src"><span style="color:var(--ink3)">${o.sup}</span><span class="asof">${ASOF}</span></div>`;
+    card.innerHTML=`
+      <div class="cat-head">
+        <div><div class="n">${String(i+1).padStart(2,"0")} · component</div><h2>${c.name}</h2></div>
+        <div class="hint">${c.hint}</div>
+      </div>
+      <div class="opts" role="group" aria-label="${c.name}"></div>
+      <div class="detail">
+        <div class="row1">
+          <div class="priced">$${money(unit)}<small>per set @ ${qty}</small></div>
+          ${uvField}
+        </div>
+        <div>${pills?`<div class="tiernote">${pills}</div>`:""}</div>
+        <div class="note">${flagTxt}${o.note}</div>
+        ${srcTxt}
+      </div>`;
+    const ow=card.querySelector(".opts");
+    c.opts.forEach(op=>{
+      const b=document.createElement("button");
+      b.className="opt"; b.type="button";
+      b.setAttribute("aria-pressed", sel[c.id]===op.id?"true":"false");
+      b.innerHTML=`<span class="dot ${op.tag}"></span>${op.label}`;
+      b.addEventListener("click",()=>{ sel[c.id]=op.id; renderCards(); recompute(); });
+      ow.appendChild(b);
+    });
+    card.querySelectorAll("input[data-ov]").forEach(inp=>{
+      inp.addEventListener("input",e=>{ ov[e.target.dataset.ov]=parseFloat(e.target.value)||0; renderCards(); recompute(); });
+    });
+    builder.appendChild(card);
+  });
+}
+
+// ---- extra cost fields ----
+function xf(id){ return parseFloat($(id).value)||0; }
+
+// ---- recompute summary ----
+function recompute(){
+  $("sumSize").textContent = MODELS[model].sizeText[size] || size;
+  $("sumQty").textContent = qty; $("totQty").textContent = qty; $("sell").placeholder=sell;
+
+  let parts=0, anyWarn=false, anyConflict=false, anyEst=false;
+  const rows=$("breakRows"); rows.innerHTML="";
+  CATS.forEach(c=>{
+    const o=c.opts.find(x=>x.id===sel[c.id]);
+    const u=optUnit(c,o);
+    parts+=u;
+    if(o.tag==="warn")anyWarn=true; if(o.tag==="conflict")anyConflict=true; if(o.tag==="est")anyEst=true;
+    const r=document.createElement("div"); r.className="breakrow";
+    const lab=o.label.length>28?o.label.slice(0,26)+"…":o.label;
+    r.innerHTML=`<span class="k">${c.name.replace(/ \(.*\)/,"")} <small>${lab}</small></span><span class="v">$${money(u)}</span>`;
+    rows.appendChild(r);
+  });
+
+  const assembly=xf("x_assembly"), mailer=xf("x_mailer");
+  const wastepct=xf("x_wastepct"), procpct=xf("x_procpct"), duty=xf("x_duty");
+  const wastage = parts*(wastepct/100);
+
+  // extra rows
+  function addRow(label,val){ const r=document.createElement("div"); r.className="breakrow";
+    r.innerHTML=`<span class="k">${label}</span><span class="v">$${money(val)}</span>`; rows.appendChild(r); }
+  addRow("Assembly (glue + box)", assembly);
+  addRow("Outer mailer + materials", mailer);
+  addRow(`QC wastage (${wastepct}%)`, wastage);
+  if(duty>0) addRow("Import duty", duty);
+
+  const landed = parts + assembly + mailer + wastage + duty;
+  $("landed").textContent = "$"+money(landed);
+
+  // sell + margin
+  sell = xf("sell");
+  const procFee = sell*(procpct/100);
+  addRow(`Payment fee (${procpct}% of sell)`, procFee);
+  const profit = sell - landed - procFee;
+  const pel=$("profit");
+  pel.textContent = (profit<0?"-$":"$")+money(Math.abs(profit));
+  pel.className = "big profit "+(profit>=0?"good":"loss");
+  const mpct = sell>0 ? (profit/sell*100) : 0;
+  $("marginpct").textContent = sell>0 ? `${mpct.toFixed(0)}% margin on $${money0(sell)} sell price` : "";
+
+  const runProfit = profit*qty;
+  const rp=$("runProfit");
+  rp.textContent = (runProfit<0?"-$":"$")+money0(Math.abs(runProfit));
+  rp.style.color = runProfit>=0? "var(--good)":"var(--loss)";
+
+  const tooling=xf("x_tooling");
+  $("tooling").textContent="$"+money0(tooling);
+
+  // flags
+  const fb=$("flagsBox"); fb.innerHTML="";
+  if(anyConflict && model==="magnetic") fb.innerHTML+=`<div class="conflictbox">⚑ A selected option breaks the magnetic mechanic (non-ferrous board). Fix before ordering.</div>`;
+  if(anyConflict && model==="big") fb.innerHTML+=`<div class="conflictbox">⚑ The adhesive-skin surface isn't a standalone slick sheet — it needs a rigid board under it, so it won't ship rolled. Pick the mirror-gloss vinyl, a rigid disc (local only), or the draw-your-own blank.</div>`;
+  if(model==="big" && (sel.surface==="acrylic" || sel.pack==="flatbox")) fb.innerHTML+=`<div class="warnbox">⚑ Shipped-shape: a rigid flat ~1 m board is at/over the AusPost size cap and posts for 3–4× a rolled tube. This config is realistically local-pickup only; a rolled surface in a tube is the mailable shape.</div>`;
+  if(anyWarn) fb.innerHTML+=`<div class="warnbox">⚑ A selected option has a watch-out (dearer fallback, AU-origin postage, or shipped-shape). Fine, just know the trade-off.</div>`;
+  if(profit<0) fb.innerHTML+=`<div class="conflictbox">⚑ You're losing $${money(Math.abs(profit))}/set at this price and quantity. Raise the price, raise the quantity (cheaper tiers), or cut a cost line.</div>`;
+  if(anyEst) fb.innerHTML+=`<div class="estbox">⚑ Big-model figures are estimates, pending firm quotes (Hebei Longjiao, Regency) and the physical slide test. Overwrite any field as real numbers land.</div>`;
+
+  renderShop(landed);
+}
+
+// ---- shopping list ----
+function renderShop(landed){
+  const sl=$("shopList"); sl.innerHTML="";
+  CATS.forEach(c=>{
+    const o=c.opts.find(x=>x.id===sel[c.id]);
+    const u=optUnit(c,o);
+    if(u<=0 && (o.id==="none"||o.id==="byo")) return; // skip zero "none" lines
+    const who = o.link
+      ? `<div class="who"><b>${c.name.replace(/ \(.*\)/,"")}</b> — ${o.label}<br><span class="sup">${o.sup}</span> · <a href="${o.link}" target="_blank" rel="noopener">open ↗</a></div>`
+      : `<div class="who"><b>${c.name.replace(/ \(.*\)/,"")}</b> — ${o.label}<br><span class="sup">${o.sup}</span></div>`;
+    const item=document.createElement("div"); item.className="item";
+    item.innerHTML=`${who}<div class="amt">$${money(u)}<small>/set × ${qty} = $${money0(u*qty)}</small></div>`;
+    sl.appendChild(item);
+  });
+  // totals line
+  const tot=document.createElement("div"); tot.className="item";
+  tot.innerHTML=`<div class="who"><b>Landed / set</b> (incl. assembly, mailer, wastage, duty)</div><div class="amt">$${money(landed)}<small>× ${qty} = $${money0(landed*qty)}</small></div>`;
+  sl.appendChild(tot);
+}
+
+// ---- controls wiring ----
+$("sizeSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b)return;
+  size=b.dataset.size;
+  document.querySelectorAll("#sizeSeg button").forEach(x=>x.setAttribute("aria-pressed", x===b?"true":"false"));
+  renderCards(); recompute();
+});
+$("qty").addEventListener("input",e=>{ qty=Math.max(1,parseInt(e.target.value)||1); renderCards(); recompute(); });
+$("sell").addEventListener("input",()=>recompute());
+["x_assembly","x_mailer","x_procpct","x_wastepct","x_duty","x_tooling"].forEach(id=>$(id).addEventListener("input",recompute));
+
+// ---- size segment + model loading ----
+function renderSizes(){
+  const m = MODELS[model];
+  $("sizeLbl").innerHTML = m.sizeLbl;
+  $("sizeNote").innerHTML = m.sizeNote;
+  const seg = $("sizeSeg"); seg.innerHTML="";
+  m.sizes.forEach(s=>{
+    const b=document.createElement("button");
+    b.dataset.size=s.key; b.innerHTML=s.label;
+    b.setAttribute("aria-pressed", size===s.key?"true":"false");
+    seg.appendChild(b);
+  });
+}
+function loadModel(key){
+  model = key;
+  CATS = MODELS[key].cats; DEFAULTS = MODELS[key].defaults;
+  size = MODELS[key].sizes[0].key;
+  sel = Object.assign({}, DEFAULTS);
+  sell = MODELS[key].sell; $("sell").value = sell;
+  document.querySelectorAll(".modelbtn").forEach(b=>b.setAttribute("aria-pressed", b.dataset.model===key?"true":"false"));
+  const mn=$("modelnote");
+  if(MODELS[key].note){ mn.innerHTML=MODELS[key].note; mn.classList.add("show"); }
+  else { mn.classList.remove("show"); mn.innerHTML=""; }
+  renderSizes(); renderCards(); recompute();
+}
+document.querySelectorAll(".modelbtn").forEach(b=> b.addEventListener("click", ()=>loadModel(b.dataset.model)) );
+
+// qty chips
+[10,20,50,100,500].forEach(q=>{
+  const b=document.createElement("button"); b.textContent=q;
+  b.addEventListener("click",()=>{ qty=q; $("qty").value=q; renderCards(); recompute(); });
+  $("qchips").appendChild(b);
+});
+
+loadModel("magnetic");
+</script>
+</body>
+</html>
