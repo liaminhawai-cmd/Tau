@@ -89,6 +89,20 @@ const workers = arg('workers', String(Math.max(1, Math.min(os.cpus().length - 1,
 // Cost is one train.js run every tournamentEvery iterations (~3 min against selfplay's ~7 min per
 // ITERATION), so this is close to free. --scratchEpochs 0 disables it.
 const scratchEpochs = arg('scratchEpochs', '30');
+// Pin the from-scratch challenger's ARCHITECTURE instead of copying whatever best.json currently
+// is. Without this the shape choice is a one-way ratchet that can silently undo a measured result:
+// the challenger reads its shape off best.json, so the moment a round robin promotes an older
+// checkpoint of the previous shape, every later challenger is built that shape too, no new nets of
+// the adopted shape are ever generated again, and the adopted lineage ages out of the --recent
+// window within `tournamentRecent` iterations. Gone for good, from a single noisy round robin.
+//
+// That comparison is also confounded in a way the bake-off deliberately wasn't: a checkpoint with
+// 70+ iterations of accumulated training against a challenger with a handful is a test of training
+// history, not of shape. Pinning keeps a freshly-trained net of the chosen architecture in the
+// field at EVERY round robin regardless of what best.json happens to be, so the shape question
+// stays permanently live and reversible instead of being settled once by luck.
+// Unset (the default) keeps the old behaviour of following best.json.
+const scratchHidden = arg('scratchHidden', null);
 
 const dir = __dirname;
 const best = path.join(dir, 'models', 'best.json');
@@ -398,7 +412,7 @@ for (let iter = startIter; ; iter++) {
     // isn't silently undone by a challenger that reverts to 96,96 every tournament.
     if (+scratchEpochs > 0) {
       const scratch = path.join(dir, 'models', 'scratch.json');
-      const h = hiddenOfBest();
+      const h = scratchHidden || hiddenOfBest();
       log(`iteration ${iter} — training a from-scratch challenger (${scratchEpochs} epochs` +
           (h ? `, --hidden ${h}` : '') + `) to enter in the round robin`);
       writeStatus(`from-scratch challenger training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
