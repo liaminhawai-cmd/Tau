@@ -1,7 +1,7 @@
 // The overnight loop: selfplay -> train -> arena, forever (Ctrl-C any time; every stage saves).
 //   node nn/run.js [--gamesPerIter 30] [--epochs 6] [--benchEvery 10] [--benchLevels 3]
 //                  [--benchCellGames 3] [--benchDepths 1,2,3] [--tournamentEvery 10]
-//                  [--tournamentRecent 12]
+//                  [--tournamentRecent 12] [--spotCheckRecent 3] [--spotCheckGames 2]
 // Iteration 1 has no model, so selfplay is pure ladder sparring; from then on the freshest net
 // plays most of its own games. Every iteration's net is promoted to models/best.json (see the note
 // on the retired per-iteration gate below); a periodic round robin across the most recent
@@ -11,6 +11,16 @@
 // it reads as a placement rather than a single pass/fail. Each DEPTH keeps its own window and
 // retires its own rungs, so the cells tracked form a diagonal band across the grid rather than a
 // rectangle (see the windows below). --benchEvery N only runs it on every Nth iteration.
+//
+// The frontier the sweep finds now also feeds BACK into what selfplay.js trains on (see zpdLevels
+// below): each iteration's ladder-opponent pool is biased toward each depth's current frontier --
+// its zone of proximal development, the band just past what it can already beat cleanly -- instead
+// of a flat default range. A rung well below the frontier is easy money with nothing left to teach;
+// one well above it is close to random noise; the frontier itself is exactly where a loss is still
+// informative. The sweep also spot-checks a few already-retired rungs per depth (fewer games each --
+// a check, not a placement) specifically to catch the failure mode where the net gets sharper
+// against one rung at the cost of one it used to have solid; a rung that regresses gets fed back
+// into the training pool at extra weight until a later spot-check shows it's recovered.
 'use strict';
 const { execFileSync } = require('child_process');
 const fs = require('fs');
@@ -130,6 +140,43 @@ const readWindows = () => {
 };
 const writeWindows = w => { try { fs.writeFileSync(windowFile, JSON.stringify(w) + '\n'); } catch (e) {} };
 
+// Regression memory, kept separate from the window file: {depth: [level, level, ...]}, the rungs
+// BELOW each depth's current frontier that used to sweep clean and, on a later spot-check (see the
+// benchmark block below), didn't. Persisted for the same reason the window is -- it must survive a
+// restart, and it must not be recomputed from scratch every run (that would mean losing a whole
+// benchEvery cycle's worth of "still regressed" signal every time the console gets closed).
+const regressedFile = path.join(dir, 'models', '.ladder-regressed');
+const readRegressed = () => {
+  try { return JSON.parse(fs.readFileSync(regressedFile, 'utf8')); } catch (e) { return {}; }
+};
+const writeRegressed = r => { try { fs.writeFileSync(regressedFile, JSON.stringify(r) + '\n'); } catch (e) {} };
+
+// Zone-of-proximal-development sampling: instead of selfplay.js's flat default ladder-opponent pool
+// (2,3,4,5,6, the same range no matter how strong the net already is), build a pool centred on each
+// depth's CURRENT frontier -- win[d]..win[d]+2, the band the sweep says is still undecided for that
+// depth. selfplay.js's pick() is a uniform draw over the array it's given, so weighting is just
+// repetition: a level appearing 9 times is 9x as likely to be drawn as one appearing once, no change
+// needed in selfplay.js itself. Depths are weighted 9:3:1 (roughly the ~3.6x-per-ply decay
+// selfplay.js's own nnDepthMix already uses to match search COST, rounded to a plain 3x step) because
+// that same skew is how much of selfplay's game volume actually plays at each depth -- most games are
+// depth-1, so the depth-1 frontier should dominate the pool, not get diluted by deeper depths' bands
+// that most games never touch anyway. Regressed levels (any depth) are folded in at a flat 3x
+// weight -- deliberately not scaled by depth, since a rung the net USED to have solid is a more
+// urgent gap than a fresh rung it never mastered in the first place.
+function zpdLevels(win, regressed) {
+  const pool = [];
+  const depths = Object.keys(win).map(Number).sort((a, b) => a - b);
+  depths.forEach((d, i) => {
+    const repeat = Math.max(1, Math.round(9 / Math.pow(3, i)));
+    const bottom = Math.max(1, win[d]);
+    for (let l = bottom; l <= Math.min(bottom + 2, LADDER_N); l++)
+      for (let r = 0; r < repeat; r++) pool.push(l);
+  });
+  for (const d of Object.keys(regressed))
+    for (const l of (regressed[d] || [])) for (let r = 0; r < 3; r++) pool.push(l);
+  return pool.length ? pool : null;
+}
+
 // A small status file, pushed to git at each major transition, so progress can be checked by
 // reading the repo (GitHub's own UI, or `git fetch` anywhere) instead of reading this console --
 // this machine is the only thing that can see the console, but anyone with the repo can see git.
@@ -226,12 +273,18 @@ const startIter = nextIter();
 if (startIter > 1) log(`resuming at iteration ${startIter} (found checkpoints up to ckpt-${String(startIter - 1).padStart(3, '0')}.json)`);
 
 for (let iter = startIter; ; iter++) {
-  log(`iteration ${iter} — selfplay ${gamesPerIter} games (mix ${mix}, ${workers} workers)`);
+  // Only bias sampling once there's a model with a real frontier to bias toward -- pre-model, every
+  // game is ladder-vs-ladder anyway (see selfplay.js's own kind selection), so there is no "current
+  // strength" for a ZPD band to be centred on.
+  const dataPool = fs.existsSync(best) ? zpdLevels(readWindows(), readRegressed()) : null;
+  log(`iteration ${iter} — selfplay ${gamesPerIter} games (mix ${mix}, ${workers} workers` +
+      (dataPool ? `, ZPD-biased levels pool` : '') + ')');
   statusState.iter = iter; statusState.mix = fs.existsSync(best) ? mix : '(no model yet — pure ladder)';
   writeStatus(`selfplay running (${gamesPerIter} games, started ${new Date().toISOString()})`);
   run('selfplay.js', ['--games', gamesPerIter,
     '--out', path.join(dir, 'data', `iter${String(iter).padStart(3, '0')}.jsonl`),
-    '--model', best, '--mix', mix, '--workers', workers]);
+    '--model', best, '--mix', mix, '--workers', workers,
+    ...(dataPool ? ['--levels', dataPool.join(',')] : [])]);
   log(`iteration ${iter} — train ${epochs} epochs`);
   run('train.js', ['--epochs', epochs, '--out', fresh,
     ...(fs.existsSync(best) ? ['--resume', best] : [])]);
@@ -287,6 +340,43 @@ for (let iter = startIter; ; iter++) {
       return `    D${d}` + cells.join('');
     });
     log(`iteration ${iter} — ladder sweep (net's win-loss per cell):\n` + table.join('\n'));
+    // Regression spot-check: the sweep above only ever looks at the CURRENT window, so once a rung
+    // retires nothing ever re-examines it -- a net that sharpens against, say, L5 at the cost of an
+    // L4 it used to have solid would never surface that here, maybe not for iterations, because L4
+    // is below the window and simply isn't being asked about. Cheaply re-test the most recently
+    // retired rungs per depth (spotCheckGames, far fewer than benchCellGames -- this is a check, not
+    // a placement, so one dropped game out of two is already worth a flag) instead of every rung ever
+    // retired, for the same reason tournament.js caps its own field with --recent: coverage that grew
+    // with the run's whole history would make this more expensive every time it runs, not a fixed
+    // cost. Wider (checks rungs the main sweep doesn't touch) but thinner (far fewer games each) --
+    // the two trade off, so total spot-check cost stays flat regardless of how far the window has
+    // already climbed.
+    const spotCheckRecent = Math.max(0, +arg('spotCheckRecent', 3));
+    const spotCheckGames = arg('spotCheckGames', '2');
+    if (spotCheckRecent > 0) {
+      const regressed = readRegressed();
+      const notes = [];
+      for (const d of benchDepths) {
+        const from = Math.max(1, win[d] - spotCheckRecent);
+        for (let lvl = from; lvl < win[d]; lvl++) {
+          const s = arenaScore(runCapturedSoft('arena.js',
+            ['--a', 'nn:0:' + best, '--b', 'L' + lvl, '--games', spotCheckGames, '--depth', String(d)]));
+          const ok = s && s.w > 0 && s.l === 0;
+          const was = (regressed[d] || []).includes(lvl);
+          if (!ok && !was) {
+            regressed[d] = [...(regressed[d] || []), lvl];
+            notes.push(`D${d} L${lvl} regressed (${s ? s.w + '-' + s.l : 'n/a'})`);
+          } else if (ok && was) {
+            regressed[d] = regressed[d].filter(x => x !== lvl);
+            notes.push(`D${d} L${lvl} recovered`);
+          }
+        }
+      }
+      if (notes.length) {
+        log(`iteration ${iter} — regression spot-check: ` + notes.join(', '));
+        writeRegressed(regressed);
+      }
+    }
     // Retire a rung for THIS DEPTH only -- L1 can be done with at 3-ply while 1-ply still has to
     // fight it. Demanding 100% on two adjacent rungs is what makes a 3-game cell safe: two clean
     // sweeps is ~1.6% by luck for an even matchup, and retiring slightly early costs almost
@@ -305,8 +395,13 @@ for (let iter = startIter; ; iter++) {
     // The frontier line is the headline: where each depth is currently fighting. Read across it and
     // you are reading the diagonal.
     const frontier = benchDepths.map(d => `${d}ply:L${win[d]}`).join(' ');
-    log(`iteration ${iter} — frontier ${frontier}`);
-    statusState.lastBenchmark = `iteration ${iter}: frontier ${frontier} — ` +
+    const regressedNow = readRegressed();
+    const regressedNote = benchDepths
+      .map(d => (regressedNow[d] || []).length ? `D${d}:L${regressedNow[d].join(',L')}` : null)
+      .filter(Boolean).join(' ');
+    log(`iteration ${iter} — frontier ${frontier}` + (regressedNote ? ` | regressed ${regressedNote}` : ''));
+    statusState.lastBenchmark = `iteration ${iter}: frontier ${frontier}` +
+      (regressedNote ? ` | regressed ${regressedNote}` : '') + ` — ` +
       table.map(r => r.trim().replace(/\s+/g, ' ')).join(' | ');
   } else {
     const nextBench = Math.ceil((iter + 1) / benchEvery) * benchEvery;
