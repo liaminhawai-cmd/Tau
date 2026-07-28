@@ -32,8 +32,15 @@ class MLP {
     return { out: a[0], acts };
   }
   value(x) { return this.forward(x).out; }
-  // one Adam step on a minibatch of { x, y } pairs; returns mean squared error
-  trainBatch(batch, lr) {
+  // One Adam step on a minibatch of { x, y [, w] } pairs; returns (weighted) mean squared error.
+  // `w` is an optional per-row loss weight, default 1 -- the caller normalises weights to mean 1
+  // over the dataset, so the step size stays comparable whether weighting is on or not.
+  // `opts.wd` is DECOUPLED weight decay (the AdamW form: shrink the parameter directly by
+  // lr*wd*P, not by adding wd*P to the gradient -- folding it into the gradient makes Adam's
+  // per-parameter scaling largely cancel the decay, which is the classic L2-with-Adam mistake).
+  // Biases are never decayed, standard practice.
+  trainBatch(batch, lr, opts) {
+    const wd = (opts && opts.wd) || 0;
     if (!this._adam) {
       this._adam = { t: 0, mW: this.W.map(w => new Float64Array(w.length)),
                      vW: this.W.map(w => new Float64Array(w.length)),
@@ -43,12 +50,14 @@ class MLP {
     const gW = this.W.map(w => new Float64Array(w.length));
     const gB = this.b.map(b => new Float64Array(b.length));
     let mse = 0;
-    for (const { x, y } of batch) {
+    for (const { x, y, w } of batch) {
+      const wt = w === undefined ? 1 : w;
       const { out, acts } = this.forward(x);
       const err = out - y;
-      mse += err*err;
-      // backprop: delta at output through tanh' = (1 - a^2)
-      let delta = new Float64Array([2*err*(1 - out*out)]);
+      mse += wt*err*err;
+      // backprop: delta at output through tanh' = (1 - a^2); the row weight scales the whole
+      // gradient, which is exactly weighting the row's term in the loss
+      let delta = new Float64Array([2*wt*err*(1 - out*out)]);
       for (let l = this.W.length - 1; l >= 0; l--) {
         const nIn = this.sizes[l], nOut = this.sizes[l+1];
         const aIn = acts[l], W = this.W[l];
@@ -70,17 +79,17 @@ class MLP {
     const n = batch.length, A = this._adam, b1 = 0.9, b2 = 0.999, eps = 1e-8;
     A.t++;
     const corr = Math.sqrt(1 - Math.pow(b2, A.t))/(1 - Math.pow(b1, A.t));
-    const step = (P, Gd, M, V) => {
+    const step = (P, Gd, M, V, decay) => {
       for (let i = 0; i < P.length; i++) {
         const g = Gd[i]/n;
         M[i] = b1*M[i] + (1 - b1)*g;
         V[i] = b2*V[i] + (1 - b2)*g*g;
-        P[i] -= lr*corr*M[i]/(Math.sqrt(V[i]) + eps);
+        P[i] -= lr*corr*M[i]/(Math.sqrt(V[i]) + eps) + (decay ? lr*wd*P[i] : 0);
       }
     };
     for (let l = 0; l < this.W.length; l++) {
-      step(this.W[l], gW[l], A.mW[l], A.vW[l]);
-      step(this.b[l], gB[l], A.mB[l], A.vB[l]);
+      step(this.W[l], gW[l], A.mW[l], A.vW[l], wd > 0);
+      step(this.b[l], gB[l], A.mB[l], A.vB[l], false);
     }
     return mse/n;
   }

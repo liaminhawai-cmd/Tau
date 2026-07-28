@@ -63,7 +63,10 @@ function playGame(eng, brainA, brainB, maxPlies, openingPlies) {
     plies++;
   }
   const G = eng.getG();
-  return { rows, winner: G.over ? G.winner : null, plies };
+  // capped distinguishes a REAL draw (the ply limit ran out -- a fortress/shuffle stalemate) from
+  // a wedged abandon (both sides null-planned; those rows describe a degenerate stuck state and
+  // stay excluded from the data, as before).
+  return { rows, winner: G.over ? G.winner : null, plies, capped: plies >= maxPlies };
 }
 
 function main() {
@@ -79,7 +82,16 @@ function main() {
   const deepEvery = +arg('deepEvery', 12);
   const discount = +arg('discount', 0.995);
   const temperature = +arg('temperature', 0.08);
-  const openingPlies = +arg('openingPlies', 2);
+  // 4, up from 2: these are RANDOM legal plies both sides play before the brains take over, purely
+  // so games start from different positions -- not lookahead, and unlike temperature (which noises
+  // EVERY move) the play after the scramble stays clean, so labels stay clean. At 2 plies the
+  // mostly-deterministic brains still funnelled into repeated trajectories, and duplicated lines
+  // in the data quietly multiply the effective epochs on them -- the same overfitting the
+  // iteration-63 bake-off caught, fed from the data side. arena.js keeps its own default of 2;
+  // this is a data-diversity dial, not an evaluation setting.
+  const openingPlies = +arg('openingPlies', 4);
+  // The in-game ply cap. Exposed as an arg mostly so tests can force cap-draws cheaply.
+  const maxPlies = +arg('maxPlies', 300);
   // Real lookahead (nnai.js's `depth`) measurably strengthens play (a same-net depth-2 vs depth-1
   // A/B went 19-5) but costs roughly keepForDepth x per extra ply (measured ~5.6x for depth 2, ~20x
   // for depth 3), so depth 5 everywhere would be a ~300x non-starter for bulk data generation.
@@ -167,7 +179,7 @@ function main() {
         '--levels', levels.join(','), '--deep', deep.join(','), '--deepEvery', String(deepEvery),
         '--discount', String(discount), '--temperature', String(temperature),
         '--mix', Object.entries(mix).map(([k, v]) => k + ':' + v).join(','),
-        '--openingPlies', String(openingPlies),
+        '--openingPlies', String(openingPlies), '--maxPlies', String(maxPlies),
         '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(',')],
         { env: Object.assign({}, process.env, { TAU_WORKER: String(w + 1) }) });
       ch.on('exit', () => { if (--live === 0) finish(); });
@@ -220,21 +232,33 @@ function main() {
       const la = pick(sidePool()), lb = pick(sidePool());
       brainA = ladderBrain(la); brainB = ladderBrain(lb); tag = 'L' + la + ' vs L' + lb;
     }
-    const { rows, winner, plies } = playGame(eng, brainA, brainB, 300, openingPlies);
+    const { rows, winner, plies, capped } = playGame(eng, brainA, brainB, maxPlies, openingPlies);
+    // `g` marks which game a position came from. Without it train.js can only hold out random
+    // ROWS, and consecutive positions in one game are near-identical -- so the same game lands on
+    // both sides of the split and the val set stops being held-out data at all. Measured
+    // consequence: at iteration 63 best.json had better val mse (0.5674) and better sign-acc
+    // (70.5%) than a throwaway 5-layer net it then lost to 7-32 in actual games. Validation had
+    // been reporting on memorised training games for the whole run.
+    const gameId = RUN_TAG + '-' + g;
     if (winner !== null) {
       decided++;
-      // `g` marks which game a position came from. Without it train.js can only hold out random
-      // ROWS, and consecutive positions in one game are near-identical -- so the same game lands on
-      // both sides of the split and the val set stops being held-out data at all. Measured
-      // consequence: at iteration 63 best.json had better val mse (0.5674) and better sign-acc
-      // (70.5%) than a throwaway 5-layer net it then lost to 7-32 in actual games. Validation had
-      // been reporting on memorised training games for the whole run.
-      const gameId = RUN_TAG + '-' + g;
       for (let i = 0; i < rows.length; i++) {
         const pliesToEnd = rows.length - i;
         const z = (rows[i].mover === winner ? 1 : -1)*Math.pow(discount, pliesToEnd);
         ws.write(JSON.stringify({ f: rows[i].f.map(v => +v.toFixed(5)), z: +z.toFixed(4),
                                   p: rows[i].p.map(v => +v.toFixed(4)), m: rows[i].mover,
+                                  g: gameId }) + '\n');
+        positions++;
+      }
+    } else if (capped) {
+      // A cap draw is a real result too -- a fortress/shuffle stalemate the net used to never see,
+      // so it had no way to learn what "drawish" looks like or to steer toward/away from it.
+      // Labelled exactly 0 (a discounted decided label can never be 0, so z === 0 is an unambiguous
+      // draw marker -- no format change needed); train.js down-weights these via --drawWeight.
+      // Wedged abandons still write nothing.
+      for (const r of rows) {
+        ws.write(JSON.stringify({ f: r.f.map(v => +v.toFixed(5)), z: 0,
+                                  p: r.p.map(v => +v.toFixed(4)), m: r.mover,
                                   g: gameId }) + '\n');
         positions++;
       }

@@ -135,6 +135,36 @@ function main() {
               `(${ids.length - nValGames} / ${nValGames} games; ` +
               `${tagged} rows game-tagged, ${inferredGames} games inferred from older rows)`);
 
+  // How much does one GAME get to shout? Every position of a decided game becomes a row, so with
+  // flat per-row weighting a 139-ply shuffle-war outvotes a crisp 7-ply throw ~20:1 -- and the long
+  // game's positions are near-duplicates of each other carrying the noisiest labels, so the loss
+  // ends up dominated by exactly the rows with the least independent information. Rows within a
+  // game aren't independent, but they aren't identical either, so the default splits the
+  // difference: weight 1/sqrt(gameLen) per row means a game's total say grows as sqrt of its
+  // length (the usual effective-sample-size shape for correlated clusters).
+  //   --gameWeight sqrt   default, above
+  //   --gameWeight game   every game exactly equal say (1/len per row)
+  //   --gameWeight row    the old flat behaviour
+  // Draw rows (z === 0 exactly -- a discounted decided label can never be 0) additionally get
+  // --drawWeight (default 0.25): "this position is drawish" is worth teaching but shouldn't rival
+  // decided outcomes, and a 300-ply cap game would otherwise be the heaviest game in the file.
+  // Weights are normalised to MEAN 1 over the training set so the effective step size is unchanged
+  // and mse numbers stay comparable across modes.
+  const gwMode = arg('gameWeight', 'sqrt');
+  const drawW = +arg('drawWeight', 0.25);
+  const lens = new Map();
+  for (const r of train) lens.set(r.game, (lens.get(r.game) || 0) + 1);
+  let wSum = 0;
+  for (const r of train) {
+    const len = lens.get(r.game);
+    r.w = gwMode === 'row' ? 1 : gwMode === 'game' ? 1/len : 1/Math.sqrt(len);
+    if (r.y === 0) r.w *= drawW;
+    wSum += r.w;
+  }
+  const wNorm = train.length/wSum;
+  for (const r of train) r.w *= wNorm;
+  console.log(`row weighting: --gameWeight ${gwMode}, --drawWeight ${drawW}`);
+
   // Same trap as the stale-data check above, via the other door: resuming from a checkpoint built
   // for a different input width silently produces a net that can never read its own inputs.
   let net;
@@ -148,14 +178,17 @@ function main() {
     net = MLP.fromJSON(j);
   } else net = new MLP([N_FEATURES, ...hidden, 1]);
 
+  // sign-acc counts DECIDED positions only: a draw row's label is exactly 0, whose sign nothing
+  // can match, so including them would just subtract a constant from the metric. Draws still count
+  // toward mse -- predicting near-0 on them is exactly what the net is being asked to do.
   const evalSet = set => {
-    let mse = 0, signOk = 0;
+    let mse = 0, signOk = 0, decided = 0;
     for (const r of set) {
       const v = net.value(r.x);
       mse += (v - r.y)*(v - r.y);
-      if (Math.sign(v) === Math.sign(r.y)) signOk++;
+      if (r.y !== 0) { decided++; if (Math.sign(v) === Math.sign(r.y)) signOk++; }
     }
-    return { mse: mse/set.length, acc: signOk/set.length };
+    return { mse: mse/set.length, acc: decided ? signOk/decided : 0 };
   };
 
   // Keep the epoch that scored best on the HELD-OUT rows, not whichever epoch happened to be last.
@@ -171,23 +204,34 @@ function main() {
   // small), but it is a far smaller error than knowingly saving a worse net, and the round robin
   // remains the real arbiter of which model is strongest.
   const keepLast = process.argv.includes('--keepLast');
+  // AdamW-style decoupled weight decay (see net.js). train.js's own header has flagged the absence
+  // of any regulariser as overdue since the 96,96 default landed; the iteration-63 bake-off then
+  // measured what that costs. 1e-4 is deliberately light -- the round robin arbitrates, and
+  // --wd 0 restores the old behaviour exactly.
+  const wd = +arg('wd', 1e-4);
+  // Cosine decay from lr to lr/10 across the epoch budget (--lrDecay flat restores constant lr).
+  // A fixed lr that is right for epoch 1 is too coarse near a minimum; with 30-120-epoch scratch
+  // runs now routine, the tail epochs were bouncing around the basin instead of settling into it.
+  const lrDecay = arg('lrDecay', 'cosine');
   let best = null, bestMse = Infinity, bestEpoch = 0;
   const t0 = Date.now();
   for (let e = 1; e <= epochs; e++) {
+    const t = epochs > 1 ? (e - 1)/(epochs - 1) : 0;
+    const lrE = lrDecay === 'flat' ? lr : lr*(0.1 + 0.9*0.5*(1 + Math.cos(Math.PI*t)));
     for (let i = train.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random()*(i + 1));
       [train[i], train[j]] = [train[j], train[i]];
     }
     let trainMse = 0, nb = 0;
     for (let i = 0; i + batchSize <= train.length; i += batchSize) {
-      trainMse += net.trainBatch(train.slice(i, i + batchSize), lr);
+      trainMse += net.trainBatch(train.slice(i, i + batchSize), lrE, { wd });
       nb++;
     }
     const v = evalSet(val);
     if (v.mse < bestMse) { bestMse = v.mse; bestEpoch = e; best = net.toJSON(); }
     console.log(`epoch ${e}/${epochs}: train mse ${(trainMse/nb).toFixed(4)}, ` +
                 `val mse ${v.mse.toFixed(4)}, val sign-acc ${(v.acc*100).toFixed(1)}% ` +
-                `(${((Date.now() - t0)/1000).toFixed(0)}s)`);
+                `(lr ${lrE.toFixed(5)}, ${((Date.now() - t0)/1000).toFixed(0)}s)`);
   }
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   if (keepLast || !best) {
