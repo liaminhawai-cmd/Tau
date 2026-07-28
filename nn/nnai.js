@@ -28,6 +28,13 @@
 // single greedy pass misses -- so this is a free strength boost on an already-trained net. Kept
 // off by default (depth 1) because it costs roughly keepForDepth x as much per move: fine for the
 // gate/benchmark/human-facing play, too slow to want it in every self-play game by default.
+//
+// `quiesce` (default off) is a cheap add-on rather than another ply: it screens the top few
+// candidates for an immediate opponent throw reply using pure contact physics (opponentHasThrow,
+// below) and promotes the first one that survives, with no network calls at all. At depth 1 -- the
+// only ply with no lookahead whatsoever -- this is real information a plain 1-ply pass doesn't
+// have. At depth 2+ it's close to a no-op, since the recursive opponent search already discovers a
+// reply throw on its own; kept available at every depth anyway since it's nearly free.
 'use strict';
 const { features } = require('./features.js');
 
@@ -35,6 +42,50 @@ const ROUGH_REF = 0.0225;            // measured median sweep roughness over 158
 const STEP_RAD = 3*Math.PI/180;      // the engine brains' own sampling step
 const CAP_RAD = 170*Math.PI/180;     // same safety cap as every other brain
 const MIN_MOVE = 2*Math.PI/180;      // below this the engine would undo the turn as a non-move
+
+// Cheap throw-only lookahead, no network calls at all: from the CURRENT position (with `attacker`
+// = 1-victimIdx to move), does ANY of their 6 (pivot x direction) sweeps push a `victimIdx` foot
+// past the rim at any point along the way? Same contact-physics check every brain already does to
+// detect a throw (see the `oppOff` line in nnPlanFor below), just walked for the OTHER side and
+// stopped the instant it finds one instead of continuing to score every remaining waypoint.
+//
+// This exists because a plain depth-1 nnPlanFor pass has NO lookahead at all -- it can walk
+// straight into a position the opponent throws from next turn, because nothing after the move ever
+// asks "can they punish this." depth 2 already asks that (a full recursive nnPlanFor call for the
+// opponent, whose own throw waypoints score 1e6 and win their ranking outright, propagating back as
+// -1e6 to us) -- but paying for a FULL valued opponent search (~60 net.value() calls per arm) just
+// to learn a yes/no is wasteful when the physics stepping itself is orders of magnitude cheaper
+// than a forward pass. This gets the same yes/no for a fraction of the cost.
+//
+// Self-contained: snapshots and restores its own state, so it can be dropped in anywhere the
+// engine is already sitting at the position to check without disturbing the caller.
+function opponentHasThrow(eng, victimIdx) {
+  const attacker = 1 - victimIdx;
+  const origActive = eng.getG().active;
+  const snap = eng.takeSnap();
+  const reset = active => {
+    const g = eng.getG();
+    g.pieces.forEach((p, i) => { p.x = snap[i].x; p.y = snap[i].y; p.rot = snap[i].rot; });
+    g.turnDir = 0; g.crossings = 0; g.atLimit = false; g.netRad = 0; g.contact = null;
+    g.pinned = null; g.pivot = null; g.active = active; g.over = false; g.winner = null;
+  };
+  for (let pv = 0; pv < 3; pv++) {
+    for (const dir of [1, -1]) {
+      reset(attacker);
+      eng.pinFoot(pv);
+      let guard = 0;
+      while (!eng.getG().atLimit && Math.abs(eng.getG().netRad) < CAP_RAD && guard++ < 200) {
+        eng.applySwing(dir*STEP_RAD);
+        if (eng.getG().pieces[victimIdx].feet().some(f => Math.hypot(f.x, f.y) > eng.CFG.edgeU + eng.CFG.edgeEps)) {
+          reset(origActive);
+          return true;
+        }
+      }
+    }
+  }
+  reset(origActive);
+  return false;
+}
 
 function nnPlanFor(eng, net, idx, opts) {
   const o = opts || {};
@@ -145,6 +196,31 @@ function nnPlanFor(eng, net, idx, opts) {
     cands.splice(0, keep, ...cands.slice(0, keep).sort((a, b) => b.deep - a.deep));
   }
 
+  // Quiescence (`o.quiesce`): screen the top few candidates for an immediate opponent throw reply
+  // and promote the first one that survives, using opponentHasThrow's cheap physics-only check
+  // instead of a full deeper search. This is the one place it adds information a plain depth-1
+  // pass doesn't already have -- depth 2+'s recursive opponent search already discovers a reply
+  // throw on its own (see the comment above opponentHasThrow), so a candidate that hangs one
+  // should already be sorted out of the top slice by the time this runs; the check here is close
+  // to a no-op at depth 2+ in practice, and kept uniform across all depths anyway since it's cheap
+  // and harmless where redundant, rather than special-casing depth 1 alone.
+  if (o.quiesce && cands[0].v < 1e5) {           // a proven throw is already provably best, skip
+    const checkN = Math.min(cands.length, o.quiesceCands || o.keepForDepth || 4);
+    for (let i = 0; i < checkN; i++) {
+      const c = cands[i];
+      eng.applyPlan(c);
+      const unsafe = opponentHasThrow(eng, idx);
+      restore();
+      if (!unsafe) {
+        if (i > 0) { cands.splice(i, 1); cands.unshift(c); }
+        break;
+      }
+      // none of the top checkN survive -- every close-to-best move loses immediately. Leave the
+      // ranking as-is rather than reaching further down for a worse-scored "safe" move the eval
+      // itself thinks is bad for other reasons.
+    }
+  }
+
   const temp = o.temperature || 0;
   let chosen = cands[0];
   if (temp > 1e-6 && cands[0].v < 1e5) {            // never dice away a clean throw
@@ -183,4 +259,4 @@ function nnPlanForTimed(eng, net, idx, opts) {
   }
 }
 
-module.exports = { nnPlanFor, nnPlanForTimed };
+module.exports = { nnPlanFor, nnPlanForTimed, opponentHasThrow };
