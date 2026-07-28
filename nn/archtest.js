@@ -194,6 +194,12 @@ async function main() {
   // resumes from best.json, so its shape becomes the run's shape), and one arena at one depth is a
   // thinner basis than that deserves -- rerun at --depth 2 before deciding.
   console.log('(nothing was promoted -- to adopt, copy the winner over models/best.json yourself)');
+  // Record the winner's path so laddertest.js can pick it up without a batch file having to parse
+  // it out of console output -- that is what lets FULLTEST.bat chain bake-off -> ladder placement
+  // as one unattended run.
+  try {
+    fs.writeFileSync(path.join(modelsDir, '.archtest-winner'), ranked[0].file + '\n');
+  } catch (e) { console.warn(`(could not record winner: ${e.message})`); }
 
   // Also write the summary to a file. This run takes a while, so the console has usually
   // scrolled (or been frozen by a QuickEdit selection, which is how you'd copy it) by the time
