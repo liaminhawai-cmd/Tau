@@ -220,6 +220,43 @@ function zpdLevels(win, regressed) {
 // merge, never a force-push) and retries once; if that still fails, it just gives up for this
 // cycle and tries again at the next transition.
 const repoRoot = path.join(dir, '..');
+// Which git can this PROCESS actually run? The shell:true trick below (resolve like a typed
+// command) turned out not to be enough on the real machine either: the trainer's console spammed
+// "'git' is not recognized as an internal or external command" on every single transition of a
+// 10-hour run, because that box pulls with GitHub Desktop and has NO git on PATH at all -- Desktop
+// carries its own bundled copy instead. Probe once, cheapest first: bare `git`, then GitHub
+// Desktop's bundle (a versioned app-x.y.z dir, newest first, since old versions linger after
+// updates), then Git for Windows' default install dirs. null = nothing anywhere; status.md then
+// stays local-only and the log says so ONCE instead of three lines per transition.
+let gitCmd;                                   // undefined = not probed yet, null = probed, none found
+let warnedNoGit = false;
+function findGit() {
+  if (gitCmd !== undefined) return gitCmd;
+  const q = s => '"' + String(s).replace(/"/g, '\\"') + '"';
+  const works = cmd => {
+    try {
+      execFileSync(cmd === 'git' ? 'git' : q(cmd), ['--version'],
+                   { shell: true, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      return true;
+    } catch (e) { return false; }
+  };
+  const candidates = ['git'];
+  try {
+    const base = path.join(process.env.LOCALAPPDATA || '', 'GitHubDesktop');
+    // numeric version compare, not string sort -- "3.4.10" must beat "3.4.2"
+    const ver = f => f.slice(4).split('.').map(Number);
+    const apps = fs.readdirSync(base).filter(f => /^app-/.test(f))
+      .sort((a, b) => { const va = ver(a), vb = ver(b);
+        for (let i = 0; i < 3; i++) if ((vb[i] || 0) !== (va[i] || 0)) return (vb[i] || 0) - (va[i] || 0);
+        return 0; });
+    for (const a of apps) candidates.push(path.join(base, a, 'resources', 'app', 'git', 'cmd', 'git.exe'));
+  } catch (e) {}
+  candidates.push('C:\\Program Files\\Git\\cmd\\git.exe',
+                  'C:\\Program Files (x86)\\Git\\cmd\\git.exe');
+  gitCmd = candidates.find(works) || null;
+  if (gitCmd && gitCmd !== 'git') log(`status updates: using git at ${gitCmd}`);
+  return gitCmd;
+}
 const statusState = {};
 function writeStatus(stage) {
   statusState.stage = stage;
@@ -256,7 +293,16 @@ function writeStatus(stage) {
     // found at all) and a quoting bug (args joined without quotes), a THIRD failure showed up with
     // no way to tell what git itself objected to. Whatever surfaces next gets logged in full instead
     // of guessed at.
-    const git = (args) => execFileSync('git', args.map(q), { cwd: repoRoot, shell: true, encoding: 'utf8' });
+    const found = findGit();
+    if (!found) {
+      if (!warnedNoGit) {
+        warnedNoGit = true;
+        log('status.md stays local-only: no git found (PATH, GitHub Desktop bundle, Program Files all probed)');
+      }
+      return;
+    }
+    const gitExe = found === 'git' ? 'git' : q(found);
+    const git = (args) => execFileSync(gitExe, args.map(q), { cwd: repoRoot, shell: true, encoding: 'utf8' });
     git(['add', 'nn/status.md']);
     try { git(['commit', '-m', 'nn: status update']); } catch (e) { /* nothing changed -- fine */ }
     try { git(['push']); }
