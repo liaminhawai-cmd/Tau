@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-07-28T15:50:04.016Z_
+_Last updated: 2026-07-28T15:57:26.501Z_
 
 **Iteration:** 87
-**Stage:** selfplay running (30 games, started 2026-07-28T15:50:04.016Z)
+**Stage:** training (6 epochs)
 **mix:** nnnn:0.4,nnladder:0.3,ladder:0.3
 
 **Last gate result:** iteration 86 — promoted (gate retired; round robin every 10)
