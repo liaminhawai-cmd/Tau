@@ -1,12 +1,12 @@
 # Tau NN training status
-_Last updated: 2026-07-28T12:36:18.920Z_
+_Last updated: 2026-07-28T12:36:21.969Z_
 
 **Iteration:** 77
-**Stage:** training (6 epochs)
+**Stage:** iteration 77 complete (next run at iteration 80)
 **mix:** nnnn:0.4,nnladder:0.3,ladder:0.3
 
-**Last gate result:** iteration 76 — promoted (gate retired; round robin every 10)
+**Last gate result:** iteration 77 — promoted (gate retired; round robin every 10)
 
-**Last checkpoint:** ckpt-076.json at 2026-07-28T12:23:18.873Z
+**Last checkpoint:** ckpt-077.json at 2026-07-28T12:36:21.968Z
 
 **Last ladder sweep:** (none yet)
