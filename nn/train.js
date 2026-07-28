@@ -1,6 +1,7 @@
 // Train the value net on selfplay data.
 //   node nn/train.js --data "nn/data/*.jsonl" --out nn/models/value.json
 //                    [--epochs 8] [--lr 0.001] [--batch 256] [--hidden 64,64] [--resume path]
+//                    [--seed N]
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -10,6 +11,22 @@ const { N_FEATURES } = require('./features.js');
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
   return i >= 0 ? process.argv[i + 1] : dflt;
+}
+
+// Deterministic PRNG (mulberry32), used only when --seed is passed. Point: comparing two --hidden
+// architectures is only a clean read on CAPACITY if both see the identical train/val split -- with
+// the default Math.random() shuffle below, two separate runs land on different held-out rows, and
+// that split noise gets baked into whatever val-mse/sign-acc gap you're trying to attribute to the
+// architecture. Opt-in and off by default so normal training (where the split doesn't need to match
+// anything) is unaffected.
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 function loadData(pattern) {
@@ -57,12 +74,14 @@ function main() {
   // weight decay, which train.js still has none of) once data accumulates.
   const hidden = arg('hidden', '96,96').split(',').map(Number);
   const resume = arg('resume', null);
+  const seedArg = arg('seed', null);
+  const rand = seedArg != null ? mulberry32(+seedArg) : Math.random;
 
   const rows = loadData(dataPat);
   if (rows.length < 500) { console.error('not enough data (' + rows.length + ' rows) — run selfplay first'); process.exit(1); }
   // shuffle once, hold out 10% for validation
   for (let i = rows.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random()*(i + 1));
+    const j = Math.floor(rand()*(i + 1));
     [rows[i], rows[j]] = [rows[j], rows[i]];
   }
   const nVal = Math.floor(rows.length*0.1);
