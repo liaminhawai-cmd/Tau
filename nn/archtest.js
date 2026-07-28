@@ -72,7 +72,10 @@ for (const h of hiddens) {
   const label = 'arch-' + h.replace(/,/g, 'x');
   const out = path.join(modelsDir, label + '.json');
   if (skipTrain && fs.existsSync(out)) {
-    console.log(`\n(skipping training for ${label} -- file already exists)`);
+    // Note the risk this trades against: the existing file might have been trained at a different
+    // --epochs/--seed, and nothing in it records that. Reusing it then silently compares nets
+    // trained under different budgets. Delete models/arch-*.json to force a clean rebuild.
+    console.log(`\n(--skipTrain: reusing existing ${label}.json -- delete it to retrain)`);
   } else {
     run('train.js', ['--data', dataPat, '--out', out, '--epochs', epochs,
                      '--seed', seed, '--hidden', h]);
@@ -127,3 +130,23 @@ console.log(`\nstrongest: ${ranked[0].label}`);
 // resumes from best.json, so its shape becomes the run's shape), and one arena at one depth is a
 // thinner basis than that deserves -- rerun at --depth 2 before deciding.
 console.log('(nothing was promoted -- to adopt, copy the winner over models/best.json yourself)');
+
+// Also write the summary to a file. This run takes over an hour, so the console has usually
+// scrolled (or been frozen by a QuickEdit selection, which is how you'd copy it) by the time
+// anyone reads it. A file survives both, and can be opened without touching the running window.
+const stamp = new Date().toISOString();
+const report =
+  `Tau architecture bake-off\n${stamp}\n\n` +
+  `settings: ${epochs} epochs, seed ${seed}, ${games} games/pair, search depth ${depth}\n` +
+  `data:     ${dataPat}\n\n` +
+  `head-to-head:\n` + lines.map(l => '  ' + l).join('\n') + '\n\n' +
+  `ranking:\n` + ranked.map((r, i) =>
+    `  ${i + 1}. ${r.label}: ${r.w}/${r.d} decided (${(100*r.rate).toFixed(0)}%)`).join('\n') +
+  `\n\nstrongest: ${ranked[0].label}\n`;
+const reportPath = path.join(dir, 'archtest-result.txt');
+try {
+  fs.appendFileSync(reportPath, report + '\n' + '-'.repeat(60) + '\n\n');
+  console.log(`\nsummary appended to ${reportPath}`);
+} catch (e) {
+  console.warn(`\n(could not write ${reportPath}: ${e.message})`);
+}
