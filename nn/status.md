@@ -1,12 +1,12 @@
 # Tau NN training status
-_Last updated: 2026-07-29T01:27:01.379Z_
+_Last updated: 2026-07-29T01:36:30.329Z_
 
 **Iteration:** 4
-**Stage:** selfplay running (30 games, started 2026-07-29T01:27:01.379Z)
+**Stage:** selfplay running (30 games, started 2026-07-29T01:36:30.329Z)
 **mix:** nnnn:0.4,nnladder:0.3,ladder:0.3
 
-**Last gate result:** iteration 3 — promoted (gate retired; round robin every 10)
+**Last gate result:** (none yet)
 
-**Last checkpoint:** ckpt-003.json at 2026-07-29T01:26:58.079Z
+**Last checkpoint:** (none yet)
 
 **Last ladder sweep:** (none yet)
