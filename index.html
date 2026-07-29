@@ -4344,14 +4344,14 @@ let nnDynamic = false, nnTimeMs = 2000, nnTemperature = 0.05;
 //   A. 16 piece-relative numbers, rotation/mirror canonicalised
 //   B. 6 feet x 5: where each foot sits relative to the printed lines
 //   C. 2 pieces x 3 pivots x 2 directions x 3: how far this piece can swing before it pays
-//   D. 6 L11-parity terms: zone score, line freedom and the triangle angle, both sides -- the
-//      hand-tuned ladder's own heaviest eval terms, precomputed because a tanh net can't afford
-//      to rediscover thresholding/min()/arccos from raw coordinates
+//   D. 12 L11-parity terms: zone score (summed and per-foot), line freedom and the triangle angle,
+//      both sides -- the hand-tuned ladder's own heaviest eval terms, precomputed because a tanh
+//      net can't afford to rediscover thresholding/min()/arccos from raw coordinates
 // B and C are computed in WORLD coordinates on purpose. The rotation in block A is only a legal
 // symmetry for a rotationally symmetric board -- the rings are, the two side arcs (circles pinned
 // to the x axis at +-edgeU) are not -- so on its own it collapses genuinely different positions
 // onto one vector. B and C hand back exactly what it destroys.
-const NN_N_FEATURES = 16 + 30 + 36 + 6;
+const NN_N_FEATURES = 16 + 30 + 36 + 12;
 const NN_TWO_PI = Math.PI*2;
 // block C clamps/normalises by the real swing cap (170°), not 180 -- see nn/features.js
 const NN_SWING_CAP = 170*Math.PI/180;
@@ -4481,6 +4481,8 @@ function nnFeaturesGame() {
     };
     out.push((nnZoneOf(mFeet[0]) + nnZoneOf(mFeet[1]) + nnZoneOf(mFeet[2]))/12);
     out.push((nnZoneOf(oFeet[0]) + nnZoneOf(oFeet[1]) + nnZoneOf(oFeet[2]))/12);
+    out.push(nnZoneOf(mFeet[0])/4, nnZoneOf(mFeet[1])/4, nnZoneOf(mFeet[2])/4);
+    out.push(nnZoneOf(oFeet[0])/4, nnZoneOf(oFeet[1])/4, nnZoneOf(oFeet[2])/4);
     out.push(nnFreedomOf(mFeet)/30);
     out.push(nnFreedomOf(oFeet)/30);
     out.push(nnTriAt(me, op)/180);

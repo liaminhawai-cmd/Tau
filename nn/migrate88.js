@@ -1,18 +1,21 @@
-// One-shot, self-deciding migration to the current feature set (88: the L11-parity expansion).
-// GO.bat runs this before anything else; it works out for itself what still needs doing, so
-// running it twice -- or on a machine that already migrated -- is a fast no-op. All the decision
-// logic lives here in node rather than in batch, where it can actually be tested.
+// One-shot, self-deciding migration to WHATEVER width features.js currently builds (imported as
+// N_FEATURES below, never hardcoded here) -- this file has already carried one feature-set bump
+// (82->88) and now a second (88->94) unchanged, since every step just compares stored widths
+// against N_FEATURES rather than assuming a specific number. GO.bat runs this before anything
+// else; it works out for itself what still needs doing, so running it twice -- or on a machine
+// that already migrated -- is a fast no-op. All the decision logic lives here in node rather than
+// in batch, where it can actually be tested.
 //
 //   node nn/migrate88.js [--initialEpochs 30] [--hidden 96,64,48]
 //
 // Steps, each skipped when already done:
 //   1. data/*.jsonl rows at the wrong width  -> refeaturize.js (rebuilds from stored poses;
-//      originals go to data/backup-pre82/)
-//   2. models/*.json at the wrong input width -> moved to models/archive-preNN/ wholesale. They
-//      cannot be loaded by the new code on purpose (train.js exits loudly on a width mismatch),
-//      and anything left behind would poison tournaments silently: net.js's forward pass reads
-//      the first sizes[0] entries of whatever vector it's handed, so an 82-input checkpoint fed
-//      88-wide features "works" and plays garbage. The dotfiles (.ladder-window,
+//      originals go to data/backup-pre<oldWidth>/)
+//   2. models/*.json at the wrong input width -> moved to models/archive-pre<oldWidth>/ wholesale.
+//      They cannot be loaded by the new code on purpose (train.js exits loudly on a width
+//      mismatch), and anything left behind would poison tournaments silently: net.js's forward
+//      pass reads the first sizes[0] entries of whatever vector it's handed, so a narrower
+//      checkpoint fed wider features "works" and plays garbage. The dotfiles (.ladder-window,
 //      .ladder-regressed, .tournament-done) stay: the frontier was earned against the ladder, not
 //      against a feature set, and losing it would restart the sweep from L1. If the fresh net
 //      turns out weaker than the frontier assumes, the sweep just loses cells for a cycle and the
