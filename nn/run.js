@@ -65,9 +65,14 @@ const tournamentEvery = Math.max(1, +arg('tournamentEvery', 10));
 // forever, so an uncapped round robin is O(n^2) in how long the run has been going, not a fixed
 // cost. --tournamentRecent keeps the field to a fixed-size sliding window (see tournament.js).
 const tournamentRecent = arg('tournamentRecent', '12');
-// selfplay is embarrassingly parallel — use most of the machine's cores by default (capped: the
-// gain flattens and each worker holds its own engine sandbox). --workers 1 to go back to serial.
-const workers = arg('workers', String(Math.max(1, Math.min(os.cpus().length - 1, 8))));
+// selfplay is embarrassingly parallel — use most of the machine's cores by default (capped: each
+// worker holds its own engine sandbox, and Node.js counts hyperthreads as full cores in
+// os.cpus(), so this isn't literally "one worker per physical core"). --workers 1 for serial.
+// Was capped at a flat 8 regardless of core count -- measured idle on an 8-core/16-thread box
+// (only 11-25% overall CPU while "8 workers" ran) once selfplay.js switched to pull-based
+// dispatch (see there): a lane that finishes early now grabs the next game instead of sitting
+// idle, so there's real throughput to gain from more lanes on a bigger machine, not just heat.
+const workers = arg('workers', String(Math.max(1, Math.min(os.cpus().length - 1, 14))));
 // Every round robin, ALSO train a challenger from scratch on all accumulated data and enter it in
 // the field. Measured, and the reason this exists: an architecture bake-off at iteration 63 played
 // best.json against four fresh 30-epoch nets trained on the same accumulated data, and best.json

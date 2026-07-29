@@ -191,9 +191,14 @@ function main() {
   const workers = Math.max(1, Math.floor(+arg('workers', 1)));
   fs.mkdirSync(path.dirname(out), { recursive: true });
 
-  // Parallel mode: split the games across worker processes (each with its own engine sandbox),
-  // then stitch their part-files together. Games are independent, so this is a clean N-way split
-  // — the way to actually use a desktop's cores, since one game only ever busies one.
+  // Parallel mode: hand games out to a fixed number of concurrent LANES as small tasks, each lane
+  // pulling the next one the moment it's free, then stitch every part-file together at the end.
+  // NOT a static N/workers split: game length varies hugely (a 6-ply game next to a 274-ply
+  // marathon is routine), so a fixed upfront split means whichever lane draws the long ones keeps
+  // running alone while every other lane sits idle -- measured directly on a real run: one lane
+  // finished its batch in 160s while another was still going at 547s, so for a third of the
+  // iteration only 1 of 8 lanes was doing anything. A pull-based pool fixes that: a lane that
+  // finishes early immediately grabs the next unplayed game instead of idling.
   if (workers > 1) {
     const { fork } = require('child_process');
     const t0 = Date.now();
@@ -211,9 +216,42 @@ function main() {
         console.log(`seeding ~${Math.round(seedFrom*100)}% of games from ${pool.length} stored positions`);
       }
     }
-    const per = Math.floor(games/workers), extra = games % workers, parts = [];
-    let live = 0;
-    const finish = () => {
+    // Chunk size per forked task -- 1 by default (finest-grained load balancing, and fork overhead
+    // is nothing next to a game that takes tens of seconds to several minutes). Exposed in case a
+    // future workload is many very short games, where per-process overhead could actually matter.
+    const gamesPerTask = Math.max(1, Math.floor(+arg('gamesPerTask', 1)));
+    const childArgs = (n, part) => ['--games', String(n), '--out', part, '--model', modelPath,
+      '--levels', levels.join(','), '--deep', deep.join(','), '--deepEvery', String(deepEvery),
+      '--discount', String(discount), '--temperature', String(temperature),
+      '--mix', Object.entries(mix).map(([k, v]) => k + ':' + v).join(','),
+      '--openingPlies', String(openingPlies), '--maxPlies', String(maxPlies),
+      ...(seedFile ? ['--seedFrom', String(seedFrom), '--seedPool', seedFile] : ['--seedFrom', '0']),
+      '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(',')];
+    const parts = [];
+    let taskIdx = 0;
+    // Resolves once the CHILD EXITS, success or failure alike -- same as the old code's plain
+    // exit listener. A crashed task just leaves its part file missing/short, which the merge step
+    // below already tolerates (fs.existsSync guard); one bad game must never hang the whole pool.
+    const runTask = (n, laneNum) => new Promise(resolve => {
+      const part = out + '.w' + (taskIdx++);
+      parts.push(part);
+      try { fs.unlinkSync(part); } catch (e) {}
+      const ch = fork(__filename, childArgs(n, part),
+        { env: Object.assign({}, process.env, { TAU_WORKER: String(laneNum + 1) }) });
+      ch.on('error', () => resolve());
+      ch.on('exit', () => resolve());
+    });
+    const laneCount = Math.min(workers, Math.ceil(games/gamesPerTask));
+    async function lane(laneNum) {
+      while (remaining > 0) {
+        const n = Math.min(gamesPerTask, remaining);
+        remaining -= n;
+        await runTask(n, laneNum);
+      }
+    }
+    let remaining = games;
+    console.log(`running ${games} games across ${laneCount} lane(s), ${gamesPerTask} game(s)/task`);
+    Promise.all(Array.from({ length: laneCount }, (_, i) => lane(i))).then(() => {
       if (seedFile) { try { fs.unlinkSync(seedFile); } catch (e) {} }
       const ws = fs.createWriteStream(out, { flags: 'a' });
       let positions = 0;
@@ -222,33 +260,14 @@ function main() {
         const d = fs.readFileSync(part, 'utf8');
         ws.write(d); positions += d.split('\n').filter(Boolean).length;
         // a transient Windows file lock (antivirus/indexing) on a just-closed part file must never
-        // abort this loop -- that would orphan every LATER part unmerged (silent data loss) and,
-        // since this runs inside a child.on('exit') handler, crash the whole selfplay process.
+        // abort this loop -- that would orphan every LATER part unmerged (silent data loss).
         // The data is already safely appended to `out` above; a leftover .w<n> file is just clutter.
         try { fs.unlinkSync(part); }
         catch (e) { console.warn(`warning: couldn't remove temp file ${part} (${e.message}) -- safe to delete by hand`); }
       }
-      ws.end(() => console.log(`all ${parts.length} workers done: ${positions} positions -> ${out} ` +
+      ws.end(() => console.log(`all ${games} games done: ${positions} positions -> ${out} ` +
                                `(${((Date.now() - t0)/1000).toFixed(0)}s)`));
-    };
-    for (let w = 0; w < workers; w++) {
-      const n = per + (w < extra ? 1 : 0);
-      if (!n) continue;
-      const part = out + '.w' + w;
-      parts.push(part);
-      try { fs.unlinkSync(part); } catch (e) {}
-      live++;
-      const ch = fork(__filename, ['--games', String(n), '--out', part, '--model', modelPath,
-        '--levels', levels.join(','), '--deep', deep.join(','), '--deepEvery', String(deepEvery),
-        '--discount', String(discount), '--temperature', String(temperature),
-        '--mix', Object.entries(mix).map(([k, v]) => k + ':' + v).join(','),
-        '--openingPlies', String(openingPlies), '--maxPlies', String(maxPlies),
-        ...(seedFile ? ['--seedFrom', String(seedFrom), '--seedPool', seedFile] : ['--seedFrom', '0']),
-        '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(',')],
-        { env: Object.assign({}, process.env, { TAU_WORKER: String(w + 1) }) });
-      ch.on('exit', () => { if (--live === 0) finish(); });
-    }
-    console.log(`spawned ${parts.length} selfplay workers (${games} games total)`);
+    });
     return;
   }
 
