@@ -3,20 +3,23 @@ rem ============================================================================
 rem  GO.bat -- THE ONE FILE. Close the trainer, pull in GitHub Desktop, double-click this.
 rem  Everything below happens by itself, in order, and the window then trains until closed.
 rem
-rem  1. MIGRATE (first run only, ~10 min; later runs skip it in seconds)
-rem     The net's inputs grew 82 -> 88: it now gets the same terms L11's own eval leans on
-rem     hardest -- zone score, line freedom (boxing-in), and the triangle angle, for both sides --
-rem     plus the swing-angle inputs are now normalised by the real 170-degree cap instead of 180.
+rem  1. MIGRATE (runs in seconds once already migrated -- safe to leave in permanently)
+rem     Latest bump: the net's inputs grew 88 -> 94. Zone score was only given as a per-side SUM
+rem     of the 3 feet; now each foot's own zone value is also handed over individually, since two
+rem     tripods can share a sum (foot-back-two-middle vs. all-three-outer can both total 9) while
+rem     being different tactical situations the sum alone can't distinguish. (Earlier bump, still
+rem     in effect: 82 -> 88 added zone/line-freedom/triangle-angle -- L11's own heaviest eval
+rem     terms -- plus fixed the swing-angle inputs to normalise by the real 170-degree cap.)
 rem     migrate88.js rebuilds every stored position's features from the raw poses (nothing is
-rem     lost; originals are backed up in data\backup-pre82), archives the old incompatible models
-rem     into models\archive-pre82, and trains a fresh 96,64,48 best.json on ALL accumulated data
+rem     lost; originals are backed up in data\backup-preNN), archives the old incompatible models
+rem     into models\archive-preNN, and trains a fresh 96,64,48 best.json on ALL accumulated data
 rem     with the full current recipe -- the same 30-epoch budget the scratch challenger gets,
 rem     which beat the whole accumulated lineage in both of the last two round robins.
 rem
 rem  2. MEASURE (~20 min, results appended to probe-results.txt -- open it in Notepad, the
 rem     trainer's scroll can't bury a file)
-rem       - feature importance: which of the 88 inputs the fresh net actually leans on,
-rem         including whether the six new L11-parity inputs pull real weight
+rem       - feature importance: which inputs the fresh net actually leans on, including whether
+rem         the new per-foot zone inputs pull real weight
 rem       - throw probe: how often the net's top move hangs an immediate throw (this decides
 rem         whether the quiescence result below means anything -- a 50/50 arena with zero hangs
 rem         means "never fired", not "doesn't work")

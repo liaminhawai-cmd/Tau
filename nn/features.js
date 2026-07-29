@@ -17,6 +17,7 @@
 //   A. the 16 original piece-relative numbers          (rotation/mirror canonicalised)
 //   B. per foot, where it sits relative to the printed lines                          (30 numbers)
 //   C. per pinned foot and direction, how far the piece can swing before it pays      (36 numbers)
+//   D. L11's own eval terms, handed over directly: 2 summed + 6 per-foot zone + triMe (12 numbers)
 //
 // Block C is the one that encodes the actual decision. Pinning a foot does not free the other two,
 // it puts them on rails: they travel a circle centred on the pin whose radius is the inter-foot
@@ -29,8 +30,8 @@
 // spend rediscovering sqrt() and atan2() from raw coordinates.
 'use strict';
 
-// A. 16 original + B. 6 feet x 5 + C. 2 pieces x 3 pivots x 2 directions x 3 + D. 6 L11-parity
-const N_FEATURES = 16 + 30 + 36 + 6;
+// A. 16 original + B. 6 feet x 5 + C. 2 pieces x 3 pivots x 2 directions x 3 + D. 12 L11-parity
+const N_FEATURES = 16 + 30 + 36 + 12;
 
 const TWO_PI = Math.PI*2;
 // Block C's angles are clamped/normalised by the SWING CAP, not by 180: AI_SAFETY_CAP_RAD is 170
@@ -192,7 +193,7 @@ function features(eng) {
     }
   }
 
-  // ---- D. L11 parity: the hand-tuned ladder's own eval terms, precomputed (6 numbers) ----
+  // ---- D. L11 parity: the hand-tuned ladder's own eval terms, precomputed (12 numbers) ----
   // The top ladder rung scores positions as margin + 12*zone + 8*park + -1.1*oppFree + 0.2*triMe.
   // Auditing those against blocks A-C: margin is free (a linear difference of two inputs), park is
   // approximated by the exp() indicators -- but zone needs thresholding distances into bands,
@@ -203,6 +204,13 @@ function features(eng) {
   // gets handed directly -- while triMe is on record ("judo features" round) as the strongest
   // single predictor found. Each term is computed for BOTH sides, not just the mover, since a
   // value function needs to see the opponent owning these advantages too.
+  //
+  // zoneOf() is also given PER FOOT, not just summed: two tripods can share the same sum (a foot
+  // back + two in the middle vs. all three in the outer ring can both total 9) while being
+  // different tactical situations -- the sum alone throws that shape away. This isn't pure
+  // duplication of block A's sorted per-foot radius: zoneOf's "band" component IS mostly
+  // recoverable from radius, but its "lens" component is a full-disk membership test centred off
+  // the origin -- a different geometric predicate block B's span-clipped arc distance doesn't cover.
   //
   // These MUST stay arithmetically identical to zoneValue/ladderEval in index.html -- same rings,
   // same lens rule (inside a side arc's full circle, not just its span), same per-foot freedom cap.
@@ -228,9 +236,12 @@ function features(eng) {
     const la = Math.hypot(ax, ay) || 1e-9, lb = Math.hypot(bx, by) || 1e-9;
     return Math.acos(Math.max(-1, Math.min(1, (ax*bx + ay*by)/(la*lb))))*180/Math.PI;
   };
-  // zone sums run 3..12 (three feet, values 1..4); freedom runs 0..30 (cap 10 per foot); tri 0..180
+  // zone sums run 3..12 (three feet, values 1..4, so /12); per-foot zone values run 1..4 (so /4);
+  // freedom runs 0..30 (cap 10 per foot); tri 0..180
   out.push((zoneOf(mFeet[0]) + zoneOf(mFeet[1]) + zoneOf(mFeet[2]))/12);
   out.push((zoneOf(oFeet[0]) + zoneOf(oFeet[1]) + zoneOf(oFeet[2]))/12);
+  out.push(zoneOf(mFeet[0])/4, zoneOf(mFeet[1])/4, zoneOf(mFeet[2])/4);
+  out.push(zoneOf(oFeet[0])/4, zoneOf(oFeet[1])/4, zoneOf(oFeet[2])/4);
   out.push(freedomOf(mFeet)/30);
   out.push(freedomOf(oFeet)/30);
   out.push(triAt(me, op)/180);
