@@ -333,12 +333,18 @@ function writeStatus(stage, extraPaths) {
     const gitExe = found === 'git' ? 'git' : q(found);
     const git = (args) => execFileSync(gitExe, args.map(q), { cwd: repoRoot, shell: true, encoding: 'utf8' });
     git(['add', 'nn/status.md']);
-    // Each extra path is added separately and softly: a missing or ignored file must never take
-    // down the status push, which is the one thing that has to keep working for a 10-hour run to
-    // stay observable.
+    // Each extra path is added separately and softly: a missing file must never take down the
+    // status push, which is the one thing that has to keep working for a 10-hour run to stay
+    // observable.
+    // -f is REQUIRED, not belt-and-braces: nn/.gitignore excludes data/ and models/ wholesale, so
+    // a plain `git add` on these paths fails outright. It did -- the first overnight run pushed 35
+    // status commits and not one data file, and because each failure is only logged and stepped
+    // over, the feature looked healthy while doing nothing at all. The ignore rules are still
+    // right for everything else under those directories (checkpoints, log.txt, scratch models);
+    // -f names the specific exceptions worth keeping rather than punching holes in .gitignore.
     if (pushArtifacts && extraPaths) {
       for (const p of extraPaths) {
-        try { git(['add', p]); } catch (e) { log(`could not stage ${p} (${errText(e)})`); }
+        try { git(['add', '-f', p]); } catch (e) { log(`could not stage ${p} (${errText(e)})`); }
       }
     }
     try { git(['commit', '-m', 'nn: status update']); } catch (e) { /* nothing changed -- fine */ }
