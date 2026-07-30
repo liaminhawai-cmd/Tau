@@ -50,8 +50,12 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
     ? require('./policy.js').PolicyMLP.fromJSON(JSON.parse(fs.readFileSync(policyPath, 'utf8')))
     : null;
   const pTag = policy ? (abCut ? ',P-ab' : ',P') : '';
+  // Shown only when it differs from the default, same reasoning as the D1.5 label above: a
+  // keep-4-vs-keep-6 A/B is a same-net comparison, so without this both sides print an identical
+  // name and the score line silently compares two things that look like the same brain.
+  const kTag = keepForDepth !== 4 ? ',K' + keepForDepth : '';
   if (timeMs) {
-    return { name: 'nn(' + path.basename(mp) + ',T' + timeMs + 'ms' + pTag + ')',
+    return { name: 'nn(' + path.basename(mp) + ',T' + timeMs + 'ms' + kTag + pTag + ')',
              fn: idx => nnPlanForTimed(eng, net, idx, { temperature, keepForDepth, quiesce, policy, timeMs,
                                                         policyPrune: !!policy && !abCut, abCut: !!abCut }) };
   }
@@ -60,7 +64,7 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
   // instead of two "D1" entries that secretly differ.
   const depthLabel = quiesce ? depth + 0.5 : depth;
   return { name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + (depthLabel > 1 ? ',D' + depthLabel : '') +
-           pTag + ')',
+           kTag + pTag + ')',
            fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth, quiesce, policy,
                                                  policyPrune: !!policy && !abCut, abCut: !!abCut }) };
 }
@@ -72,6 +76,11 @@ function main() {
   // quiescence on top of depth 1 beat plain depth 1" is a same-net A/B, which a single --depth
   // applied to both sides can't express at all. --quiesce sets both sides at once, same as --depth.
   const depth = +arg('depth', 1);
+  // --keepA/--keepB override per side. This is the width dial: every waypoint across all six arms
+  // gets a cheap 1-ply score, but only the top keepForDepth of them get a real opponent search, so
+  // candidate #5 can be better than #2 and never be checked. Width is what a search saving can
+  // actually buy -- it scales smoothly (15% saved ~= 15% more width), whereas depth only comes in
+  // whole plies at 4-6x each, which is why the equal-think-time pruning test went nowhere.
   const keepForDepth = +arg('keepForDepth', 4);
   const quiesce = process.argv.includes('--quiesce');
   const depthA = +arg('depthA', depth), depthB = +arg('depthB', depth);
@@ -89,8 +98,9 @@ function main() {
   // which use of the policy is better, rather than whether having one helps at all.
   const ab = process.argv.includes('--ab');
   const abA = process.argv.includes('--abA') || ab, abB = process.argv.includes('--abB') || ab;
-  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepForDepth, quiesceA, arg('policyA', policy), timeMsA && +timeMsA, abA);
-  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepForDepth, quiesceB, arg('policyB', policy), timeMsB && +timeMsB, abB);
+  const keepA = +arg('keepA', keepForDepth), keepB = +arg('keepB', keepForDepth);
+  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepA, quiesceA, arg('policyA', policy), timeMsA && +timeMsA, abA);
+  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepB, quiesceB, arg('policyB', policy), timeMsB && +timeMsB, abB);
   const games = +arg('games', 24);
   // both brains are commonly fully deterministic (nn at temperature 0, or a noise-free ladder
   // level) from the same fixed start -- without a shuffled opening, every game with the same
