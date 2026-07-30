@@ -3,3 +3,6 @@ models/
 log.txt
 archtest-result.txt
 probe-results.txt
+frank-tournament.log
+frank-results.json
+frank-disagreements.json

@@ -131,7 +131,7 @@ __exports = {
   CFG, Piece, radU, norm,
   pinFoot, applySwing, clearTurn, endTurn, takeSnap, restoreSnap,
   directionToward, aiChoosePlan, simMoveToLimit, searchedPlanFor,
-  AI_LADDER, ladderPlanFor,
+  AI_LADDER, ladderPlanFor, ladderEval,
   angInSpan, nearLineIds, lineDistOf, lineSideOf, LINE_INTERSECTIONS,
   newGame: __newGame, applyPlan: __applyPlan,
   getG: () => G, setActive: a => { G.active = a; },
