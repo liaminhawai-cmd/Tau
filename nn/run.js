@@ -277,7 +277,17 @@ function findGit() {
   return gitCmd;
 }
 const statusState = {};
-function writeStatus(stage) {
+// Artefacts pushed alongside status.md, split by how git stores them. Data files are written once
+// and never touched again, so git keeps exactly one copy of each -- cheap, and it means the corpus
+// is recoverable and inspectable from anywhere rather than living only on this machine. Models are
+// OVERWRITTEN every iteration and are dense float JSON that does not delta-compress, so pushing
+// each one would add a fresh ~380KB blob to history forever; best.json therefore rides along only
+// when a round robin actually promotes something, and ckpt-*.json / best.pre-tournament-* stay
+// local entirely (the tournament ranking already records which checkpoint won).
+// --no-push-artifacts turns this off, e.g. if a second trainer is pushing to the same branch, where
+// two machines writing the same iterNNN.jsonl name would collide.
+const pushArtifacts = !process.argv.includes('--no-push-artifacts');
+function writeStatus(stage, extraPaths) {
   statusState.stage = stage;
   statusState.updatedAt = new Date().toISOString();
   const md = `# Tau NN training status\n_Last updated: ${statusState.updatedAt}_\n\n` +
@@ -323,6 +333,14 @@ function writeStatus(stage) {
     const gitExe = found === 'git' ? 'git' : q(found);
     const git = (args) => execFileSync(gitExe, args.map(q), { cwd: repoRoot, shell: true, encoding: 'utf8' });
     git(['add', 'nn/status.md']);
+    // Each extra path is added separately and softly: a missing or ignored file must never take
+    // down the status push, which is the one thing that has to keep working for a 10-hour run to
+    // stay observable.
+    if (pushArtifacts && extraPaths) {
+      for (const p of extraPaths) {
+        try { git(['add', p]); } catch (e) { log(`could not stage ${p} (${errText(e)})`); }
+      }
+    }
     try { git(['commit', '-m', 'nn: status update']); } catch (e) { /* nothing changed -- fine */ }
     try { git(['push']); }
     catch (e) {
@@ -386,7 +404,11 @@ for (let iter = startIter; ; iter++) {
   log(`iteration ${iter} — train ${epochs} epochs`);
   run('train.js', ['--epochs', epochs, '--out', fresh,
     ...(fs.existsSync(best) ? ['--resume', best] : [])]);
-  writeStatus(`training (${epochs} epochs)`);
+  // Selfplay has just finished writing this iteration's data file. It is never modified again, so
+  // git stores exactly one copy -- unlike the models, this is genuinely cheap to keep forever, and
+  // it makes the corpus recoverable and inspectable off this machine.
+  writeStatus(`training (${epochs} epochs)`,
+              [`nn/data/iter${String(iter).padStart(3, '0')}.jsonl`]);
   // Always promote. The per-iteration fresh-vs-best gate is gone, and this is not a regression to
   // the old fake gate -- it is deliberate, for three measured reasons:
   //   1. It could not resolve what it was asked to. 24 games at a 55% bar is cleared by two
@@ -426,6 +448,10 @@ for (let iter = startIter; ; iter++) {
     log(`iteration ${iter} — round robin across the most recent ${tournamentRecent} checkpoints (this is what picks best.json now)`);
     writeStatus(`round robin running (started ${new Date().toISOString()})`);
     runSoft('tournament.js', ['--promote', '--recent', tournamentRecent, '--workers', workers]);
+    // The one moment best.json is worth a permanent blob in history: the round robin just decided
+    // it. Not pushed every iteration because the file is overwritten each time and dense float
+    // JSON does not delta-compress -- see the note above pushArtifacts.
+    writeStatus(`round robin complete (iteration ${iter})`, ['nn/models/best.json']);
   }
   if (iter % benchEvery === 0) {
     const win = readWindows();
