@@ -24,7 +24,7 @@ echo.
 echo   7. Park weight A/B  (L11 park=8 vs park=0, 150 games, 4 workers)
 echo   8. Quick CPU headroom check (1 game, 1s/move -- run before 6 if trainer's busy)
 echo.
-echo   9. Policy HEAD-TO-HEAD: pointy vs flat  (same net, same depth -- needs 2 and 3 done)
+echo   9. Policy HEAD-TO-HEAD: pointy vs flat, ordering+cutoff  -- needs 2 and 3 done
 echo.
 echo  10. Check training data for duplicates (why did row count jump?)
 echo.
@@ -202,14 +202,30 @@ if not exist "nn\models\best.json" (
   pause
   goto menu
 )
-rem Fairer than policy-vs-plain: same value net, same depth, same top-3-arms budget on BOTH
-rem sides -- the only variable is which policy is choosing, so this one can genuinely be won
-rem or lost either way, not just tie-or-lose like the plain-search sanity checks.
-echo === pointy (80,44,32,18) vs flat (96,64) policy, same net, depth 3, 24 games ===
-node nn\arena.js --a nn:0:%CD%\nn\models\best.json --b nn:0:%CD%\nn\models\best.json --depth 3 --games 24 --policyA %CD%\nn\models\policy-pointy.json --policyB %CD%\nn\models\policy.json --quiesceA --quiesceB
+rem Fairer than policy-vs-plain: same value net, same depth, same budget on BOTH sides, so the
+rem only variable is which policy is choosing. This one can genuinely be won or lost either way,
+rem unlike the plain-search sanity checks which can only tie or lose by construction.
+rem
+rem --abA --abB is the point of the rerun. The policies used to be spent on hard PRUNING, where
+rem what matters is top-3 containment -- is the right arm anywhere in the kept set. They are now
+rem spent on ORDERING plus a cutoff, where what matters is top-1 -- is the right arm ranked FIRST,
+rem so the refutation lands before the remaining arm sweeps are paid for. A net can win one and
+rem lose the other: pointy has more layers to sharpen a ranking with, flat has more width to keep
+rem candidates in a set. Drop both flags to measure the old pruning framing instead.
+rem
+rem The previous attempt reached 5-2 at game 8 and never finished. 7 decided games is plus or
+rem minus 38 points -- a range from 33 to 100 -- so it was never a result. Hence the raised
+rem default: read the running score wherever it gets to.
+set "GAMES=200"
+set /p GAMES="Games to play, Enter for 200: "
+echo.
+echo Progress is written to nn\arena-logs\ after every game, so closing this window, killing the
+echo run, or hitting a key at the pause prompt cannot lose the score.
+echo.
+echo === pointy 80,44,32,18 vs flat 96,64 policy, ordering+cutoff, same net, depth 3, %GAMES% games ===
+node nn\arena.js --a nn:0:%CD%\nn\models\best.json --b nn:0:%CD%\nn\models\best.json --depth 3 --games %GAMES% --policyA %CD%\nn\models\policy-pointy.json --policyB %CD%\nn\models\policy.json --abA --abB --quiesceA --quiesceB
 pause
 goto menu
-
 :park
 if not exist "nn\parktest.js" (
   echo nn\parktest.js not found -- pull first - option 1.

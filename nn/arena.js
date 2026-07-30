@@ -49,7 +49,14 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
   const policy = policyPath
     ? require('./policy.js').PolicyMLP.fromJSON(JSON.parse(fs.readFileSync(policyPath, 'utf8')))
     : null;
-  const pTag = policy ? (abCut ? ',P-ab' : ',P') : '';
+  // The policy FILE is part of the brain's identity, not just the fact that it has one. A
+  // pointy-vs-flat duel is the same net at the same depth with the same budget on both sides and
+  // ONLY the policy differing, so a bare ',P' makes both sides print a byte-identical name and the
+  // score line becomes unreadable -- you cannot tell which number belongs to which policy. Same
+  // failure the K tag below exists to prevent.
+  const pTag = policy
+    ? (abCut ? ',P-ab:' : ',P:') + path.basename(policyPath).replace(/\.json$/i, '')
+    : '';
   // Shown only when it differs from the default, same reasoning as the D1.5 label above: a
   // keep-4-vs-keep-6 A/B is a same-net comparison, so without this both sides print an identical
   // name and the score line silently compares two things that look like the same brain.
@@ -131,6 +138,9 @@ function main() {
     if (!logPath) return;
     try { fs.writeFileSync(logPath, header + body); } catch (e) { logPath = null; }
   };
+  // Written immediately, not left until game 1 finishes: at depth 3 a single game can take 5-8
+  // minutes, and a log file that does not exist yet is indistinguishable from one that failed.
+  writeLog('STARTING -- no games finished yet\n');
   if (logPath) console.log(`logging to ${logPath}`);
 
   let aWins = 0, bWins = 0, draws = 0, pliesSum = 0;
