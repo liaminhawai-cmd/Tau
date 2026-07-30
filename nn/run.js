@@ -53,10 +53,13 @@ const benchEvery = Math.max(1, +arg('benchEvery', 10));
 // fall off?) is legible long before any one cell is significant.
 const benchLevels = Math.max(1, +arg('benchLevels', 3));      // ladder rungs per depth, per sweep
 const benchCellGames = arg('benchCellGames', '3');            // games per (level, depth) cell
-// Top-rung exposure, on both sides of the loop: selfplay games against L<top> folded into the ZPD
-// pool (zpdLevels), and a fixed benchmark cell against it every sweep (the ladder sweep below).
-// Both exist because the climbing window, left alone, never reaches the rung that actually matters.
-const topSprinkle = Math.max(0, +arg('topSprinkle', 3));
+// Shape of the self-play opponent distribution over ladder rungs (see zpdLevels). sigma is the
+// bell's width in rungs: 1.6 puts roughly two thirds of the weight within +-1.6 rungs of the
+// frontier while still leaving a usable trickle three or four rungs out. topFloor is the minimum
+// number of entries the TOP rung gets in the finished pool, which is what guarantees it is never
+// simply absent -- the bug this replaced.
+const zpdSigma = Math.max(0.1, +arg('zpdSigma', 1.6));
+const topFloor = Math.max(0, +arg('topFloor', 3));
 // Which depths to sweep. Cost grows ~3.6x PER PLY (measured: 5.6x at depth 2, 20x at depth 3), so
 // this is not a free dial -- depth 4 costs ~47x a depth-1 game and depth 5 ~168x, compounded by the
 // fact that the deeper rungs are themselves searching brains (L8 is a depth-3 search, ~2.5s/call).
@@ -209,34 +212,56 @@ const writeRegressed = r => { try { fs.writeFileSync(regressedFile, JSON.stringi
 
 // Zone-of-proximal-development sampling: instead of selfplay.js's flat default ladder-opponent pool
 // (2,3,4,5,6, the same range no matter how strong the net already is), build a pool centred on each
-// depth's CURRENT frontier -- win[d]..win[d]+2, the band the sweep says is still undecided for that
-// depth. selfplay.js's pick() is a uniform draw over the array it's given, so weighting is just
-// repetition: a level appearing 9 times is 9x as likely to be drawn as one appearing once, no change
-// needed in selfplay.js itself. Depths are weighted 9:3:1 (roughly the ~3.6x-per-ply decay
-// selfplay.js's own nnDepthMix already uses to match search COST, rounded to a plain 3x step) because
-// that same skew is how much of selfplay's game volume actually plays at each depth -- most games are
-// depth-1, so the depth-1 frontier should dominate the pool, not get diluted by deeper depths' bands
-// that most games never touch anyway. Regressed levels (any depth) are folded in at a flat 3x
-// weight -- deliberately not scaled by depth, since a rung the net USED to have solid is a more
-// urgent gap than a fresh rung it never mastered in the first place.
+// depth's CURRENT frontier. selfplay.js's pick() is a uniform draw over the array it's given, so
+// weighting is just repetition: a level appearing 9 times is 9x as likely to be drawn as one
+// appearing once, no change needed in selfplay.js itself. Depths are weighted 9:3:1 (roughly the
+// ~3.6x-per-ply decay selfplay.js's own nnDepthMix already uses to match search COST, rounded to a
+// plain 3x step) because that same skew is how much of selfplay's game volume actually plays at each
+// depth -- most games are depth-1, so the depth-1 frontier should dominate the pool, not get diluted
+// by deeper depths' bands that most games never touch anyway. Regressed levels (any depth) are
+// folded in at a flat 3x weight -- deliberately not scaled by depth, since a rung the net USED to
+// have solid is a more urgent gap than a fresh rung it never mastered in the first place.
+//
+// The shape over levels is a BELL centred half a rung above the frontier (so the peak straddles
+// win[d] and win[d]+1, the two rungs actually in contention), not the hard win[d]..win[d]+2 box it
+// used to be. A box has two failure modes a curve does not:
+//   - Nothing outside it is ever played, at any weight. That is how the net reached iteration 61
+//     having never once played L11: not a decision anyone made, just a rung that fell outside every
+//     window the run ever had.
+//   - Everything inside it is played EQUALLY, so the rung the net has already half-mastered gets as
+//     many games as the one it is losing to, and a retirement moves the whole box in one step.
+// A curve gives contested rungs most of the volume, nearby rungs a real share, and distant rungs a
+// thin but nonzero trickle -- and it slides smoothly as the frontier advances instead of jumping.
+//
+// The lower tail matters as much as the upper one: a retired rung currently drops to zero games and
+// stays there, which is the obvious suspect for the D1:L4 / D2:L6 regressions the spot-check keeps
+// flagging. Under the curve a just-retired rung still gets a healthy share, decaying as the frontier
+// moves further past it.
+// topFloor is the one guarantee bolted on afterwards: the TOP rung gets at least this many entries
+// in the finished pool, because it is the rung the net is ultimately judged against and the bell
+// alone puts it 4-5 sigma out while the frontier is down at L6 -- which would reproduce the exact
+// "never played L11" bug the curve is meant to fix. Deliberately the top rung ONLY, and a whole-pool
+// minimum rather than per-depth. An earlier attempt floored every rung at or above the frontier and
+// checking the output caught it: at an L2 frontier that put 31% of all games against L5-L11, i.e.
+// a third of the run spent losing to opponents nine rungs up. Everything between the frontier and
+// the top is left to the bell's own tail, which already gives those rungs a couple of games each.
+// --topFloor 0 restores pure bell weighting.
 function zpdLevels(win, regressed) {
   const pool = [];
   const depths = Object.keys(win).map(Number).sort((a, b) => a - b);
   depths.forEach((d, i) => {
     const repeat = Math.max(1, Math.round(9 / Math.pow(3, i)));
-    const bottom = Math.max(1, win[d]);
-    for (let l = bottom; l <= Math.min(bottom + 2, LADDER_N); l++)
-      for (let r = 0; r < repeat; r++) pool.push(l);
+    const mu = Math.max(1, win[d]) + 0.5;
+    for (let l = 1; l <= LADDER_N; l++) {
+      const n = Math.round(repeat*Math.exp(-Math.pow(l - mu, 2)/(2*zpdSigma*zpdSigma)));
+      for (let r = 0; r < n; r++) pool.push(l);
+    }
   });
   for (const d of Object.keys(regressed))
     for (const l of (regressed[d] || [])) for (let r = 0; r < 3; r++) pool.push(l);
-  // A few games against the TOP rung no matter where the window sits. The ZPD narrowing is right --
-  // games far above the frontier are mostly losses and teach less per game than a close matchup --
-  // but "narrow" had quietly become "never": with the windows around L6-L9, the net had not played
-  // a single training game against L11, the rung it is ultimately judged against. Three entries is
-  // roughly 7% of a typical pool, so the frontier still dominates; it just stops being the only
-  // thing the net has ever seen. --topSprinkle 0 restores the old pure-ZPD behaviour.
-  for (let r = 0; r < topSprinkle; r++) pool.push(LADDER_N);
+  // max, not add: once the frontier climbs high enough that the bell covers the top rung on its
+  // own, this must stop contributing rather than keep piling weight on the hardest opponent.
+  for (let have = pool.filter(l => l === LADDER_N).length; have < topFloor; have++) pool.push(LADDER_N);
   return pool.length ? pool : null;
 }
 
