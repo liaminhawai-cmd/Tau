@@ -7747,9 +7747,16 @@ function labUpdateBtn() {
                 try { j = JSON.parse(reader.result); }
                 catch (err) { nameEl.textContent = 'Could not parse that file as JSON.'; return; }
                 if (!j || !j.sizes || !j.W || !j.b) { nameEl.textContent = "Doesn't look like a Tau model."; return; }
-                // A checkpoint from a build with a different feature set would be fed the wrong
-                // number of inputs and read undefined off the end -- it would still "play", just
-                // badly and silently. Say so instead.
+                // A policy net (nn/policy.js) shares the same 94 inputs as a value net, so the size
+                // check below can't catch it -- but its output is 6 arm + 16 bin move-classifier
+                // logits, not a single win/loss score. nnForwardGame would tanh() those and return
+                // a[0] (an arbitrary arm logit) as if it were a position value, which "plays" but
+                // is meaningless -- hence the edge-seeking. #lab has no policy-search code path;
+                // only nn/arena.js's --policyA/--policyB does. Reject it here instead of misplaying.
+                if (j.policy) {
+                    nameEl.textContent = "That's a policy net (move predictor), not a value net -- #lab can't play with it. Use nn/arena.js --policyA/--policyB instead.";
+                    return;
+                }
                 if (j.sizes[0] !== NN_N_FEATURES) {
                     nameEl.textContent = `That model takes ${j.sizes[0]} inputs, this build makes ${NN_N_FEATURES} — retrain it.`;
                     return;
