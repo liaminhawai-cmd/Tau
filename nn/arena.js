@@ -28,7 +28,11 @@ function arg(name, dflt) {
 // payoff is that each depth costs less, which only shows up as "how far did it get in the same
 // clock time". Equal depth checks the policy isn't blind; equal time checks whether it's worth
 // having at all.
-function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs) {
+// abCut picks WHICH use of the policy is being tested: with it, the policy orders arms and a
+// recursive search stops once it has refuted the candidate (never blind -- no cutoff means every
+// arm is still swept); without it, the policy hard-prunes to its top arms, the original wiring.
+// Default stays pruning so the existing menu A/Bs keep testing what they say they test.
+function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, abCut) {
   const m = /^L(\d+)$/i.exec(spec);
   if (m) {
     const lvl = +m[1];
@@ -45,17 +49,20 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs) 
   const policy = policyPath
     ? require('./policy.js').PolicyMLP.fromJSON(JSON.parse(fs.readFileSync(policyPath, 'utf8')))
     : null;
+  const pTag = policy ? (abCut ? ',P-ab' : ',P') : '';
   if (timeMs) {
-    return { name: 'nn(' + path.basename(mp) + ',T' + timeMs + 'ms' + (policy ? ',P' : '') + ')',
-             fn: idx => nnPlanForTimed(eng, net, idx, { temperature, keepForDepth, quiesce, policy, timeMs }) };
+    return { name: 'nn(' + path.basename(mp) + ',T' + timeMs + 'ms' + pTag + ')',
+             fn: idx => nnPlanForTimed(eng, net, idx, { temperature, keepForDepth, quiesce, policy, timeMs,
+                                                        policyPrune: !!policy && !abCut, abCut: !!abCut }) };
   }
   // Depth is reported as e.g. "D1.5" when quiesce rides on top of a plain depth-1 pass -- matches
   // how the mix names it, and makes a quiesce-vs-plain A/B legible at a glance in the score line
   // instead of two "D1" entries that secretly differ.
   const depthLabel = quiesce ? depth + 0.5 : depth;
   return { name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + (depthLabel > 1 ? ',D' + depthLabel : '') +
-           (policy ? ',P' : '') + ')',
-           fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth, quiesce, policy }) };
+           pTag + ')',
+           fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth, quiesce, policy,
+                                                 policyPrune: !!policy && !abCut, abCut: !!abCut }) };
 }
 
 function main() {
@@ -77,8 +84,13 @@ function main() {
   // --timeMsA/--timeMsB override per side (same reason every other per-side flag exists here).
   const timeMs = arg('timeMs', null);
   const timeMsA = arg('timeMsA', timeMs), timeMsB = arg('timeMsB', timeMs);
-  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepForDepth, quiesceA, arg('policyA', policy), timeMsA && +timeMsA);
-  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepForDepth, quiesceB, arg('policyB', policy), timeMsB && +timeMsB);
+  // --ab switches a policy side from hard pruning to ordering+cutoff; --abA/--abB per side, so a
+  // policy can be pitted against ITSELF used the other way -- the only comparison that isolates
+  // which use of the policy is better, rather than whether having one helps at all.
+  const ab = process.argv.includes('--ab');
+  const abA = process.argv.includes('--abA') || ab, abB = process.argv.includes('--abB') || ab;
+  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepForDepth, quiesceA, arg('policyA', policy), timeMsA && +timeMsA, abA);
+  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepForDepth, quiesceB, arg('policyB', policy), timeMsB && +timeMsB, abB);
   const games = +arg('games', 24);
   // both brains are commonly fully deterministic (nn at temperature 0, or a noise-free ladder
   // level) from the same fixed start -- without a shuffled opening, every game with the same

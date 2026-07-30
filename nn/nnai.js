@@ -35,9 +35,23 @@
 // only ply with no lookahead whatsoever -- this is real information a plain 1-ply pass doesn't
 // have. At depth 2+ it's close to a no-op, since the recursive opponent search already discovers a
 // reply throw on its own; kept available at every depth anyway since it's nearly free.
-// `policy` (optional, a policy.js PolicyMLP) prunes ARMS -- whole (pivot x direction) sweeps --
-// in the RECURSIVE opponent searches, keeping only the policy's top `policyArms` (default 3).
-// Why arms and why only in recursion: profiling shows the physics stepping dominates move cost
+// `policy` (optional, a policy.js PolicyMLP) can be spent two ways, and they are not equivalent.
+//
+// `abCut` (preferred) uses it to ORDER arms and then cuts a recursive search off as soon as it
+// has refuted the candidate being tested. Ordering alone changes nothing -- the same arms get
+// swept -- and cutting alone helps little, since without ordering the refuting arm is usually
+// swept last. Together they are the version that can actually pay, and crucially the search is
+// never blind: if no cutoff fires, every arm is still examined, so a bad policy costs time
+// rather than strength. Measured before trusting: MEASURE THIS, see the A/B note below.
+//
+// `policyPrune` (the original wiring, kept for comparison) instead DELETES arms outright in the
+// RECURSIVE opponent searches, keeping only the policy's top `policyArms` (default 3).
+// Verdict so far: at equal depth it costs almost nothing (24-game A/B finished 8-9, i.e. the
+// top-3 arms nearly always contain what full search would pick) but at equal THINK TIME it does
+// not pay either (9-10), and that looks structural rather than unlucky: dropping 6 arms to 3 in
+// recursion saves ~30-40% overall, while one more ply costs 4-6x, so the saving never buys the
+// extra depth that iterative deepening only banks in whole plies. Prefer abCut.
+// Why arms (for both) and why only in recursion: profiling shows the physics stepping dominates move cost
 // (an 18k-param forward pass is microseconds), so skipping individual waypoints saves nothing --
 // only skipping a whole arm's sweep does. And the root is left full-width deliberately: it costs
 // one sweep regardless, and the root is where silently never considering a move hurts most. The
@@ -108,24 +122,33 @@ function nnPlanFor(eng, net, idx, opts) {
     g.turnDir = 0; g.crossings = 0; g.atLimit = false; g.netRad = 0; g.contact = null;
     g.pinned = null; g.pivot = null; g.active = idx; g.over = false; g.winner = null;
   };
-  // arm pruning (recursive levels only -- see header): canonical arm ranks map back to engine
-  // (pivot, direction) via the same frame the policy's training targets were expressed in
-  let allowedArms = null;
-  if (o.policy && o.policyPrune) {
+  // Arm ORDER (and, if policyPrune, arm pruning). Canonical arm ranks map back to engine
+  // (pivot, direction) via the same frame the policy's training targets were expressed in.
+  //
+  // Ordering is the safe way to spend a policy. Pruning deletes arms the search then cannot see;
+  // ordering only changes the sequence, so if no cutoff fires every arm is still swept and the
+  // answer is bit-identical to an unordered search. It pays off only in combination with
+  // `cutIfAbove` below -- a good arm first means the refutation is found before the remaining
+  // sweeps are paid for. On its own, ordering costs and saves exactly nothing.
+  let armList = [];
+  for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) armList.push({ pv, dir });
+  if (o.policy) {
     const frame = moveFrame(eng);
     const { arms } = o.policy.predict(features(eng));
-    const keepArms = Math.max(1, Math.min(6, o.policyArms || 3));
-    const ranked = [...arms.keys()].sort((a, b) => arms[b] - arms[a]).slice(0, keepArms);
-    allowedArms = new Set(ranked.map(ai => {
+    const armKey = a => a.pv*2 + (a.dir > 0 ? 1 : 0);
+    const score = new Map();
+    for (let ai = 0; ai < arms.length; ai++) {
       const slot = ai >> 1, canonDir = (ai & 1) === 0 ? 1 : -1;
-      return frame.order[slot]*2 + ((canonDir*frame.mirror) > 0 ? 1 : 0);
-    }));
+      score.set(frame.order[slot]*2 + ((canonDir*frame.mirror) > 0 ? 1 : 0), arms[ai]);
+    }
+    armList.sort((a, b) => (score.get(armKey(b)) || 0) - (score.get(armKey(a)) || 0));
+    if (o.policyPrune) armList = armList.slice(0, Math.max(1, Math.min(6, o.policyArms || 3)));
   }
   const cands = [];
   let roughSum = 0, roughN = 0;
-  for (let pv = 0; pv < 3; pv++) {
-    for (const dir of [1, -1]) {
-      if (allowedArms && !allowedArms.has(pv*2 + (dir > 0 ? 1 : 0))) continue;
+  let bestRaw = -Infinity;
+  {
+    for (const { pv, dir } of armList) {
       eng.pinFoot(pv);
       const arm = [];   // this arm's waypoints, in sweep order (smoothing needs adjacency)
       let guard = 0;
@@ -164,6 +187,20 @@ function nnPlanFor(eng, net, idx, opts) {
         roughSum += Math.abs(arm[i].v - (arm[i-1].v + arm[i+1].v)/2);
         roughN++;
       }
+      // Arm-level beta cutoff. The caller (the depth loop below) passes the score its best
+      // candidate so far already guarantees it; once THIS side has found a reply better than
+      // that, the candidate being tested is already refuted and the exact margin is worthless,
+      // so the remaining arm sweeps are pure waste. Arm granularity is the only granularity worth
+      // cutting at: the physics stepping dominates, so skipping waypoints saves nothing and only
+      // skipping a whole sweep does (same reasoning as the pruning note in the header).
+      //
+      // This is a bound, not an exact value -- the returned plan is "good enough to refute", not
+      // provably this side's best -- which is exactly what the caller needs, since it only asks
+      // whether the candidate can beat what it already holds. Never applied at the root: the root
+      // has no cutIfAbove passed to it, and needs its full candidate list for ranking, quiescence
+      // and temperature.
+      for (const w of arm) if (w.v > bestRaw) bestRaw = w.v;
+      if (o.cutIfAbove != null && bestRaw > o.cutIfAbove) break;
     }
   }
   if (!cands.length) return null;
@@ -199,6 +236,12 @@ function nnPlanFor(eng, net, idx, opts) {
     const keep = Math.min(cands.length, o.adaptive
       ? Math.max(2, Math.min(12, Math.round(base*(roughness/ROUGH_REF))))
       : base);
+    // bestDeep drives the cutoff: a candidate only matters if it can beat what we already hold, so
+    // the opponent search is told to stop as soon as it proves this one can't. The opponent scores
+    // from their own side, hence the negation. Off unless o.abCut, so the default search is
+    // bit-identical to before -- the cutoff returns a bound rather than an exact value, and that
+    // trade deserves to be measured before it becomes the default.
+    let bestDeep = -Infinity;
     for (let i = 0; i < keep; i++) {
       const c = cands[i];
       eng.applyPlan(c);
@@ -207,7 +250,9 @@ function nnPlanFor(eng, net, idx, opts) {
       if (g1.over) deep = g1.winner === idx ? 1e6 : -1e6;
       else {
         const oppPlan = nnPlanFor(eng, net, 1 - idx, { temperature: 0, depth: depth - 1, keepForDepth: o.keepForDepth,
-                                                      policy: o.policy, policyPrune: !!o.policy, policyArms: o.policyArms });
+                                                      policy: o.policy, policyPrune: !!o.policyPrune, policyArms: o.policyArms,
+                                                      abCut: o.abCut,
+                                                      cutIfAbove: (o.abCut && bestDeep > -Infinity) ? -bestDeep : null });
         if (!oppPlan) deep = net.value(features(eng));     // opponent wedged -- score as-is
         else {
           eng.applyPlan(oppPlan);
@@ -217,6 +262,7 @@ function nnPlanFor(eng, net, idx, opts) {
       }
       restore();
       c.deep = deep;
+      if (deep > bestDeep) bestDeep = deep;
     }
     cands.splice(0, keep, ...cands.slice(0, keep).sort((a, b) => b.deep - a.deep));
   }
@@ -275,7 +321,8 @@ function nnPlanForTimed(eng, net, idx, opts) {
     const t1 = Date.now();
     const plan = nnPlanFor(eng, net, idx, { temperature: o.temperature, depth, keepForDepth,
                                              quiesce: o.quiesce, policy: o.policy,
-                                             policyPrune: !!o.policy, policyArms: o.policyArms });
+                                             policyPrune: !!o.policyPrune, policyArms: o.policyArms,
+                                             abCut: o.abCut });
     if (!plan) return best;               // wedged -- nothing this depth found, keep whatever we had
     best = plan; best.searchDepth = depth;
     lastCost = Date.now() - t1;
