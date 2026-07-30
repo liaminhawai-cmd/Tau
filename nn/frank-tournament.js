@@ -56,15 +56,34 @@ function main() {
   for (let i = 0; i < players.length; i++)
     for (let j = i + 1; j < players.length; j++) pairs.push([i, j]);
 
+  const perPair = gamesPerSide*2;
   const wins = {}, decided = {}, gamesPlayed = {};
   for (const k of keys) { wins[k] = 0; decided[k] = 0; gamesPlayed[k] = 0; }
   const pairResults = [];
 
+  // Resume: a full round robin here runs for hours, and this box restarts. Every completed pair is
+  // already checkpointed to `out` after it finishes, so on startup we reload those results and skip
+  // replaying them -- a restart costs at most the one pair that was in flight, not the whole run.
+  const doneKeys = new Set();
+  if (process.argv.includes('--resume') && fs.existsSync(outPath)) {
+    try {
+      const prev = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+      for (const pr of prev.pairResults || []) {
+        if (!keys.includes(pr.a) || !keys.includes(pr.b)) continue;
+        doneKeys.add(pr.a + '|' + pr.b);
+        pairResults.push(pr);
+        wins[pr.a] += pr.aWins; decided[pr.a] += pr.aWins + pr.bWins; gamesPlayed[pr.a] += perPair;
+        wins[pr.b] += pr.bWins; decided[pr.b] += pr.aWins + pr.bWins; gamesPlayed[pr.b] += perPair;
+      }
+      if (doneKeys.size) console.log(`resuming: ${doneKeys.size} pairs already complete, ${pairs.length - doneKeys.size} to go`);
+    } catch (e) { console.warn(`could not resume from ${outPath}: ${e.message}`); }
+  }
+
   const t0 = Date.now();
   let totalGames = 0;
-  const perPair = gamesPerSide*2;
   for (const [i, j] of pairs) {
     const A = players[i], B = players[j], ka = keys[i], kb = keys[j];
+    if (doneKeys.has(ka + '|' + kb)) continue;
     let aw = 0, bw = 0, draws = 0, pliesSum = 0;
     const pairT0 = Date.now();
     for (let g = 0; g < perPair; g++) {
