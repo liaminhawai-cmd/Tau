@@ -107,6 +107,32 @@ function main() {
   // colour assignment would replay bit-for-bit identically, making "games" a repeat count, not a
   // sample size. See opening.js.
   const openingPlies = +arg('openingPlies', 2);
+
+  // Mirror the score to disk. Console output used to be the ONLY record a run left, and a console
+  // window is a terrible place to keep one: at the "Press any key to continue" prompt EVERY key
+  // counts, including the Ctrl+A someone presses to copy the result -- which dismisses the pause
+  // and clears the screen, destroying the thing they were reaching for. Two overnight runs were
+  // lost exactly that way.
+  // Rewritten in full after every game rather than appended once at the end, because the runs
+  // worth keeping are the long ones that get killed part-way: a summary that only lands on clean
+  // exit would miss precisely the case this exists for. One file per run, named by start time, so
+  // two arenas running at once (the trainer machine does this) cannot clobber each other.
+  const logDir = arg('logDir', path.join(__dirname, 'arena-logs'));
+  const started = new Date();
+  const safe = s => String(s).replace(/[^\w.\-]+/g, '_');
+  let logPath = null;
+  try {
+    fs.mkdirSync(logDir, { recursive: true });
+    logPath = path.join(logDir,
+      `${started.toISOString().slice(0, 19).replace(/[:]/g, '-')}_${safe(A.name)}_vs_${safe(B.name)}.txt`);
+  } catch (e) { /* logging must never take down a run */ }
+  const header = `started ${started.toISOString()}\ncommand: node ${process.argv.slice(1).join(' ')}\n`;
+  const writeLog = body => {
+    if (!logPath) return;
+    try { fs.writeFileSync(logPath, header + body); } catch (e) { logPath = null; }
+  };
+  if (logPath) console.log(`logging to ${logPath}`);
+
   let aWins = 0, bWins = 0, draws = 0, pliesSum = 0;
   const t0 = Date.now();
   for (let g = 0; g < games; g++) {
@@ -130,11 +156,23 @@ function main() {
     else bWins++;
     process.stdout.write(`\rgame ${g + 1}/${games}: ${A.name} ${aWins} — ${bWins} ${B.name}` +
                          (draws ? ` (${draws} draws)` : '') + '   ');
+    // 2 sigma on the decided games, so a partial run can be read honestly the moment it is read.
+    // Without it the standing score invites the exact mistake a 6-game 4-2 already caused once.
+    const dec = aWins + bWins;
+    const band = dec ? 100*Math.sqrt(0.25/dec)*2 : 0;
+    writeLog(`IN PROGRESS -- game ${g + 1} of ${games} (${((Date.now() - t0)/1000).toFixed(0)}s)\n` +
+             `${A.name} ${aWins} - ${bWins} ${B.name}${draws ? ` (${draws} draws)` : ''}\n` +
+             (dec ? `${(100*aWins/dec).toFixed(0)}% of ${dec} decided, 2-sigma +/- ${band.toFixed(0)} points\n` : ''));
   }
   const secs = (Date.now() - t0)/1000;
-  console.log(`\n${A.name} vs ${B.name}: ${aWins}-${bWins}` + (draws ? `-${draws}` : '') +
-              `  (${(100*aWins/Math.max(1, aWins + bWins)).toFixed(0)}% of decided, ` +
-              `avg ${(pliesSum/games).toFixed(0)} plies, ${secs.toFixed(0)}s)`);
+  const dec = Math.max(1, aWins + bWins);
+  const summary = `${A.name} vs ${B.name}: ${aWins}-${bWins}` + (draws ? `-${draws}` : '') +
+                  `  (${(100*aWins/dec).toFixed(0)}% of decided, ` +
+                  `avg ${(pliesSum/games).toFixed(0)} plies, ${secs.toFixed(0)}s)`;
+  console.log('\n' + summary);
+  writeLog(`FINISHED ${new Date().toISOString()}\n${summary}\n` +
+           `2-sigma +/- ${(100*Math.sqrt(0.25/dec)*2).toFixed(0)} points on ${aWins + bWins} decided games\n`);
+  if (logPath) console.log(`saved to ${logPath}`);
 }
 
 main();

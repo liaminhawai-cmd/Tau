@@ -9,6 +9,9 @@ cls
 echo ================================================
 echo   Tau NN toolkit
 echo ================================================
+echo   Arena results are also written to nn\arena-logs\ as they go, so a closed
+echo   window or a killed run never loses them.
+echo.
 echo   1. Pull latest from git
 echo.
 echo   2. Build policy net  (default shape 96,64)
