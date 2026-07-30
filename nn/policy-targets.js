@@ -34,7 +34,11 @@ function norm(a) { while (a > Math.PI) a -= 2*Math.PI; while (a < -Math.PI) a +=
 
 function main() {
   const dataDir = arg('data', path.join(__dirname, 'data'));
-  const outPath = arg('out', path.join(dataDir, 'policy-targets.jsonl'));
+  // NOT inside dataDir: train.js globs nn/data/*.jsonl, and these rows carry a real `f` and `z`,
+  // so they pass its validation and get trained on as VALUE data -- silently double-weighting
+  // every position the miner could reconstruct (and only those: a game's final, usually throwing,
+  // move has no successor row to diff, so finishes keep single weight while the rest count twice).
+  const outPath = arg('out', path.join(__dirname, 'policy-targets.jsonl'));
   const eng = createEngine();
   eng.newGame();
   const G = eng.getG(), footR = eng.CFG.footR;

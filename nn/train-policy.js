@@ -25,7 +25,7 @@ function arg(name, dflt) {
 }
 
 function main() {
-  const targetsPath = arg('targets', path.join(__dirname, 'data', 'policy-targets.jsonl'));
+  const targetsPath = arg('targets', path.join(__dirname, 'policy-targets.jsonl'));
   const epochs = +arg('epochs', 20);
   const hidden = arg('hidden', '96,64').split(',').map(Number);
   const outPath = arg('out', path.join(__dirname, 'models', 'policy.json'));

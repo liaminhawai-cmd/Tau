@@ -34,7 +34,7 @@ function loadData(pattern) {
   const rx = new RegExp('^' + base.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
   const rows = [];
   const stale = new Map();          // file -> rows whose feature vector is the wrong length
-  let tagged = 0, inferredGames = 0;
+  let tagged = 0, inferredGames = 0, policyRows = 0;
   for (const f of fs.readdirSync(dir)) {
     if (!rx.test(f)) continue;
     // Game-boundary inference, for rows written before selfplay.js started stamping `g`.
@@ -50,6 +50,14 @@ function loadData(pattern) {
       try {
         const j = JSON.parse(line);
         if (!j.f || j.f.length !== N_FEATURES) { stale.set(f, (stale.get(f) || 0) + 1); continue; }
+        // Policy-head targets (policy-targets.js) carry a real `f` and `z` alongside `arm`/`bin`,
+        // so they sail past the length check above and get trained on as ordinary value rows --
+        // but they are re-mined from data already in this directory, so every position they cover
+        // would count TWICE. Worse, the miner cannot reconstruct a game's final (usually throwing)
+        // move, so the double-weighting spares exactly the positions that show how games end.
+        // The miner now writes outside nn/data, but reject them here too so a stale or
+        // hand-placed copy can never quietly reweight the corpus again.
+        if (j.arm != null && j.bin != null) { policyRows++; continue; }
         let game;
         if (j.g != null) {
           game = j.g; tagged++; prevAbs = Infinity;   // reset: next untagged row starts fresh
@@ -77,6 +85,9 @@ function loadData(pattern) {
                   `nn/models aside (e.g. into nn/archive-old-features/) and start a fresh run.\n`);
     process.exit(1);
   }
+  if (policyRows)
+    console.log(`skipped ${policyRows} policy-head target rows found under ${dir} ` +
+                `(they re-cover positions already here -- see policy-targets.js)`);
   return { rows, tagged, inferredGames };
 }
 
