@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-07-30T00:56:20.217Z_
+_Last updated: 2026-07-30T01:27:35.162Z_
 
 **Iteration:** 40
-**Stage:** round robin running (started 2026-07-30T00:56:20.217Z)
+**Stage:** ladder sweep running (D1:L6-L8 D2:L6-L8 D3:L6-L8, started 2026-07-30T01:27:35.162Z)
 **mix:** nnnn:0.4,nnladder:0.3,ladder:0.3
 
 **Last gate result:** iteration 40 — promoted (gate retired; round robin every 10)
