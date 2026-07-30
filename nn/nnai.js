@@ -35,8 +35,18 @@
 // only ply with no lookahead whatsoever -- this is real information a plain 1-ply pass doesn't
 // have. At depth 2+ it's close to a no-op, since the recursive opponent search already discovers a
 // reply throw on its own; kept available at every depth anyway since it's nearly free.
+// `policy` (optional, a policy.js PolicyMLP) prunes ARMS -- whole (pivot x direction) sweeps --
+// in the RECURSIVE opponent searches, keeping only the policy's top `policyArms` (default 3).
+// Why arms and why only in recursion: profiling shows the physics stepping dominates move cost
+// (an 18k-param forward pass is microseconds), so skipping individual waypoints saves nothing --
+// only skipping a whole arm's sweep does. And the root is left full-width deliberately: it costs
+// one sweep regardless, and the root is where silently never considering a move hurts most. The
+// known blind spot is throws: policy targets are mined from pose deltas, and each game's final
+// (usually throwing) move has no successor row to mine, so the policy systematically under-rates
+// throw arms -- a pruned recursive search can miss an opponent throw a full-width depth-2 search
+// would have caught. `quiesce` covers exactly that hole cheaply; prefer them together.
 'use strict';
-const { features } = require('./features.js');
+const { features, moveFrame } = require('./features.js');
 
 const ROUGH_REF = 0.0225;            // measured median sweep roughness over 158 real positions
 const STEP_RAD = 3*Math.PI/180;      // the engine brains' own sampling step
@@ -98,10 +108,24 @@ function nnPlanFor(eng, net, idx, opts) {
     g.turnDir = 0; g.crossings = 0; g.atLimit = false; g.netRad = 0; g.contact = null;
     g.pinned = null; g.pivot = null; g.active = idx; g.over = false; g.winner = null;
   };
+  // arm pruning (recursive levels only -- see header): canonical arm ranks map back to engine
+  // (pivot, direction) via the same frame the policy's training targets were expressed in
+  let allowedArms = null;
+  if (o.policy && o.policyPrune) {
+    const frame = moveFrame(eng);
+    const { arms } = o.policy.predict(features(eng));
+    const keepArms = Math.max(1, Math.min(6, o.policyArms || 3));
+    const ranked = [...arms.keys()].sort((a, b) => arms[b] - arms[a]).slice(0, keepArms);
+    allowedArms = new Set(ranked.map(ai => {
+      const slot = ai >> 1, canonDir = (ai & 1) === 0 ? 1 : -1;
+      return frame.order[slot]*2 + ((canonDir*frame.mirror) > 0 ? 1 : 0);
+    }));
+  }
   const cands = [];
   let roughSum = 0, roughN = 0;
   for (let pv = 0; pv < 3; pv++) {
     for (const dir of [1, -1]) {
+      if (allowedArms && !allowedArms.has(pv*2 + (dir > 0 ? 1 : 0))) continue;
       eng.pinFoot(pv);
       const arm = [];   // this arm's waypoints, in sweep order (smoothing needs adjacency)
       let guard = 0;
@@ -182,7 +206,8 @@ function nnPlanFor(eng, net, idx, opts) {
       let deep;
       if (g1.over) deep = g1.winner === idx ? 1e6 : -1e6;
       else {
-        const oppPlan = nnPlanFor(eng, net, 1 - idx, { temperature: 0, depth: depth - 1, keepForDepth: o.keepForDepth });
+        const oppPlan = nnPlanFor(eng, net, 1 - idx, { temperature: 0, depth: depth - 1, keepForDepth: o.keepForDepth,
+                                                      policy: o.policy, policyPrune: !!o.policy, policyArms: o.policyArms });
         if (!oppPlan) deep = net.value(features(eng));     // opponent wedged -- score as-is
         else {
           eng.applyPlan(oppPlan);
