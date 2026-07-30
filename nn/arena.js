@@ -13,9 +13,20 @@
 const fs = require('fs');
 const path = require('path');
 const { createEngine } = require('./engine.js');
+const { features } = require('./features.js');
 const { MLP } = require('./net.js');
 const { nnPlanFor, nnPlanForTimed } = require('./nnai.js');
 const { playRandomOpening } = require('./opening.js');
+
+// --saveData turns an evaluation run into a data run as well. Every arena game is a real game with
+// a real outcome, so throwing away everything but the win/loss tally wastes the whole run: a
+// 200-game ladder benchmark is 200 games of training data that cost the same CPU either way.
+// It matters most for exactly the games self-play cannot produce -- run.js draws its ladder
+// opponents from the ZPD window (zpdLevels), so rungs above the frontier are never played at all
+// and the net has literally never trained on them.
+// Schema is selfplay.js's, byte for byte, so train.js needs no changes: f/z/p/m/g, z discounted
+// toward 0 the further a position sits from the finish, positions kept only from DECIDED games.
+const RUN_TAG = 'arena' + Math.random().toString(36).slice(2, 7) + process.pid.toString(36);
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
@@ -115,6 +126,18 @@ function main() {
   // sample size. See opening.js.
   const openingPlies = +arg('openingPlies', 2);
 
+  // --saveData <file>: append training rows as the games are played (see the header note).
+  // Appended per game rather than buffered to the end, for the same reason the score log is
+  // rewritten per game -- a run that gets killed part-way must keep the games it already played.
+  const saveData = arg('saveData', null);
+  const discount = +arg('discount', 0.995);
+  let dataStream = null, savedRows = 0;
+  if (saveData) {
+    fs.mkdirSync(path.dirname(saveData), { recursive: true });
+    dataStream = fs.createWriteStream(saveData, { flags: 'a' });
+    console.log(`saving training rows to ${saveData}`);
+  }
+
   // Mirror the score to disk. Console output used to be the ONLY record a run left, and a console
   // window is a terrible place to keep one: at the "Press any key to continue" prompt EVERY key
   // counts, including the Ctrl+A someone presses to copy the result -- which dismisses the pause
@@ -150,11 +173,22 @@ function main() {
     eng.newGame();
     playRandomOpening(eng, openingPlies);
     let plies = 0, nulls = 0;
+    const rows = [];
     while (!eng.getG().over && plies < 300) {
       const idx = eng.getG().active;
       const brain = (idx === 0) === aIsBlue ? A : B;
+      // Captured BEFORE the move, so the row describes the position the mover actually decided
+      // from. `p` is the raw pose: train.js ignores it, but it makes every row re-featurisable if
+      // the feature set ever changes again, instead of dying with it (selfplay.js:84).
+      if (dataStream) {
+        const ps = eng.getG().pieces;
+        rows.push({ f: features(eng), m: idx,
+                    p: [ps[0].x, ps[0].y, ps[0].rot, ps[1].x, ps[1].y, ps[1].rot] });
+      }
       const plan = brain.fn(idx);
-      if (!plan) { nulls++; if (nulls > 4) break; eng.clearTurn(); eng.setActive(1 - idx); continue; }
+      // rows.pop() matches selfplay.js: a null-planned ply never happened, so its row would
+      // describe a position nobody moved from.
+      if (!plan) { if (dataStream) rows.pop(); nulls++; if (nulls > 4) break; eng.clearTurn(); eng.setActive(1 - idx); continue; }
       nulls = 0;
       eng.applyPlan(plan);
       plies++;
@@ -164,6 +198,18 @@ function main() {
     if (!G.over) draws++;
     else if ((G.winner === 0) === aIsBlue) aWins++;
     else bWins++;
+    // Decided games only. A ply-capped shuffle has no outcome to label rows with, and a wedged
+    // abandon describes a degenerate stuck state -- selfplay.js excludes both and so does this.
+    if (dataStream && G.over) {
+      const gameId = RUN_TAG + '-' + g;
+      for (let i = 0; i < rows.length; i++) {
+        const z = (rows[i].m === G.winner ? 1 : -1)*Math.pow(discount, rows.length - i);
+        dataStream.write(JSON.stringify({ f: rows[i].f.map(v => +v.toFixed(5)), z: +z.toFixed(4),
+                                          p: rows[i].p.map(v => +v.toFixed(4)), m: rows[i].m,
+                                          g: gameId }) + '\n');
+        savedRows++;
+      }
+    }
     process.stdout.write(`\rgame ${g + 1}/${games}: ${A.name} ${aWins} — ${bWins} ${B.name}` +
                          (draws ? ` (${draws} draws)` : '') + '   ');
     // 2 sigma on the decided games, so a partial run can be read honestly the moment it is read.
@@ -181,8 +227,10 @@ function main() {
                   `avg ${(pliesSum/games).toFixed(0)} plies, ${secs.toFixed(0)}s)`;
   console.log('\n' + summary);
   writeLog(`FINISHED ${new Date().toISOString()}\n${summary}\n` +
-           `2-sigma +/- ${(100*Math.sqrt(0.25/dec)*2).toFixed(0)} points on ${aWins + bWins} decided games\n`);
+           `2-sigma +/- ${(100*Math.sqrt(0.25/dec)*2).toFixed(0)} points on ${aWins + bWins} decided games\n` +
+           (dataStream ? `${savedRows} training rows -> ${saveData}\n` : ''));
   if (logPath) console.log(`saved to ${logPath}`);
+  if (dataStream) { dataStream.end(); console.log(`${savedRows} training rows -> ${saveData}`); }
 }
 
 main();

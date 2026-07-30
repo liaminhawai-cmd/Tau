@@ -53,6 +53,10 @@ const benchEvery = Math.max(1, +arg('benchEvery', 10));
 // fall off?) is legible long before any one cell is significant.
 const benchLevels = Math.max(1, +arg('benchLevels', 3));      // ladder rungs per depth, per sweep
 const benchCellGames = arg('benchCellGames', '3');            // games per (level, depth) cell
+// Top-rung exposure, on both sides of the loop: selfplay games against L<top> folded into the ZPD
+// pool (zpdLevels), and a fixed benchmark cell against it every sweep (the ladder sweep below).
+// Both exist because the climbing window, left alone, never reaches the rung that actually matters.
+const topSprinkle = Math.max(0, +arg('topSprinkle', 3));
 // Which depths to sweep. Cost grows ~3.6x PER PLY (measured: 5.6x at depth 2, 20x at depth 3), so
 // this is not a free dial -- depth 4 costs ~47x a depth-1 game and depth 5 ~168x, compounded by the
 // fact that the deeper rungs are themselves searching brains (L8 is a depth-3 search, ~2.5s/call).
@@ -226,6 +230,13 @@ function zpdLevels(win, regressed) {
   });
   for (const d of Object.keys(regressed))
     for (const l of (regressed[d] || [])) for (let r = 0; r < 3; r++) pool.push(l);
+  // A few games against the TOP rung no matter where the window sits. The ZPD narrowing is right --
+  // games far above the frontier are mostly losses and teach less per game than a close matchup --
+  // but "narrow" had quietly become "never": with the windows around L6-L9, the net had not played
+  // a single training game against L11, the rung it is ultimately judged against. Three entries is
+  // roughly 7% of a typical pool, so the frontier still dominates; it just stops being the only
+  // thing the net has ever seen. --topSprinkle 0 restores the old pure-ZPD behaviour.
+  for (let r = 0; r < topSprinkle; r++) pool.push(LADDER_N);
   return pool.length ? pool : null;
 }
 
@@ -469,17 +480,38 @@ for (let iter = startIter; ; iter++) {
     const spanNote = benchDepths.map(d => `D${d}:L${spans[d][0]}-L${spans[d][1]}`).join(' ');
     log(`iteration ${iter} — ladder sweep, per-depth windows ${spanNote} x ${benchCellGames} games`);
     writeStatus(`ladder sweep running (${spanNote}, started ${new Date().toISOString()})`);
+    // The sweep's games are real games with real outcomes, so they are worth keeping rather than
+    // being reduced to a win-loss tally and thrown away -- they cost the same CPU either way, and
+    // arena.js writes selfplay.js's exact row schema. They land in the SAME per-iteration file the
+    // self-play stage wrote, which is already the unit everything downstream globs and pushes.
+    const iterData = path.join(dir, 'data', `iter${String(iter).padStart(3, '0')}.jsonl`);
+    const cell = (lvl, d) => arenaScore(runCapturedSoft('arena.js',
+      ['--a', 'nn:0:' + best, '--b', 'L' + lvl, '--games', benchCellGames, '--depth', String(d),
+       '--saveData', iterData]));
     const grid = {};
     for (const d of benchDepths)
       for (let lvl = spans[d][0]; lvl <= spans[d][1]; lvl++)
-        grid[lvl + ':' + d] = arenaScore(runCapturedSoft('arena.js',
-          ['--a', 'nn:0:' + best, '--b', 'L' + lvl, '--games', benchCellGames, '--depth', String(d)]));
+        grid[lvl + ':' + d] = cell(lvl, d);
+    // A FIXED cell against the top rung every sweep, wherever the window happens to be. The
+    // climbing window is the right way to find the frontier, but it means the rung the net is
+    // ultimately judged against goes unmeasured until the window crawls all the way up -- at one
+    // retirement per two clean sweeps, that is dozens of iterations away, and until then the only
+    // way to get an L11 number is a one-off arena run against whatever best.json happened to be
+    // current that morning. This makes it a continuous reading on the CURRENT model instead.
+    // Skipped when the window already covers the top rung, so it is never measured twice.
+    for (const d of benchDepths)
+      if (LADDER_N < spans[d][0] || LADDER_N > spans[d][1])
+        grid[LADDER_N + ':' + d] = cell(LADDER_N, d);
     const table = benchDepths.map(d => {
       const cells = [];
       for (let lvl = spans[d][0]; lvl <= spans[d][1]; lvl++) {
         const s = grid[lvl + ':' + d];
         cells.push(`L${lvl} ${s ? s.w + '-' + s.l : '-'}`.padStart(10));
       }
+      // Set apart with a | so the benchmark cell is never mistaken for part of the window -- it is
+      // a fixed reference point, not a rung the sweep is working through.
+      const top = grid[LADDER_N + ':' + d];
+      if (top) cells.push(`  | L${LADDER_N} ${top.w}-${top.l}`);
       return `    D${d}` + cells.join('');
     });
     log(`iteration ${iter} — ladder sweep (net's win-loss per cell):\n` + table.join('\n'));
