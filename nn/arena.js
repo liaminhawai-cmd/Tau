@@ -14,7 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const { createEngine } = require('./engine.js');
 const { MLP } = require('./net.js');
-const { nnPlanFor } = require('./nnai.js');
+const { nnPlanFor, nnPlanForTimed } = require('./nnai.js');
 const { playRandomOpening } = require('./opening.js');
 
 function arg(name, dflt) {
@@ -22,7 +22,13 @@ function arg(name, dflt) {
   return i >= 0 ? process.argv[i + 1] : dflt;
 }
 
-function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath) {
+// timeMs (if given) switches this brain to nnPlanForTimed's iterative deepening instead of a fixed
+// --depth -- THIS is the fair test for a policy head, not a fixed-depth A/B. Pruning can only see a
+// subset of what full search sees, so at equal depth it can tie or lose but never win; its entire
+// payoff is that each depth costs less, which only shows up as "how far did it get in the same
+// clock time". Equal depth checks the policy isn't blind; equal time checks whether it's worth
+// having at all.
+function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs) {
   const m = /^L(\d+)$/i.exec(spec);
   if (m) {
     const lvl = +m[1];
@@ -39,6 +45,10 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath) {
   const policy = policyPath
     ? require('./policy.js').PolicyMLP.fromJSON(JSON.parse(fs.readFileSync(policyPath, 'utf8')))
     : null;
+  if (timeMs) {
+    return { name: 'nn(' + path.basename(mp) + ',T' + timeMs + 'ms' + (policy ? ',P' : '') + ')',
+             fn: idx => nnPlanForTimed(eng, net, idx, { temperature, keepForDepth, quiesce, policy, timeMs }) };
+  }
   // Depth is reported as e.g. "D1.5" when quiesce rides on top of a plain depth-1 pass -- matches
   // how the mix names it, and makes a quiesce-vs-plain A/B legible at a glance in the score line
   // instead of two "D1" entries that secretly differ.
@@ -63,8 +73,12 @@ function main() {
   // --policy sets both sides; --policyA/--policyB override per side (an A/B of policy pruning vs
   // none on the same net needs per-side control, same reason --depthA/--depthB exist)
   const policy = arg('policy', null);
-  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepForDepth, quiesceA, arg('policyA', policy));
-  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepForDepth, quiesceB, arg('policyB', policy));
+  // --timeMs sets both sides to equal-clock-time iterative deepening instead of a fixed depth;
+  // --timeMsA/--timeMsB override per side (same reason every other per-side flag exists here).
+  const timeMs = arg('timeMs', null);
+  const timeMsA = arg('timeMsA', timeMs), timeMsB = arg('timeMsB', timeMs);
+  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepForDepth, quiesceA, arg('policyA', policy), timeMsA && +timeMsA);
+  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepForDepth, quiesceB, arg('policyB', policy), timeMsB && +timeMsB);
   const games = +arg('games', 24);
   // both brains are commonly fully deterministic (nn at temperature 0, or a noise-free ladder
   // level) from the same fixed start -- without a shuffled opening, every game with the same

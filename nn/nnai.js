@@ -273,7 +273,9 @@ function nnPlanForTimed(eng, net, idx, opts) {
   let best = null, lastCost = 0, depth = 1;
   for (;;) {
     const t1 = Date.now();
-    const plan = nnPlanFor(eng, net, idx, { temperature: o.temperature, depth, keepForDepth });
+    const plan = nnPlanFor(eng, net, idx, { temperature: o.temperature, depth, keepForDepth,
+                                             quiesce: o.quiesce, policy: o.policy,
+                                             policyPrune: !!o.policy, policyArms: o.policyArms });
     if (!plan) return best;               // wedged -- nothing this depth found, keep whatever we had
     best = plan; best.searchDepth = depth;
     lastCost = Date.now() - t1;
