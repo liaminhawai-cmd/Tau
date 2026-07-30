@@ -25,7 +25,10 @@ echo   9. Policy HEAD-TO-HEAD: pointy vs flat  (same net, same depth -- needs 2 
 echo.
 echo  10. Check training data for duplicates (why did row count jump?)
 echo.
-echo  11. Exit
+echo  11. STRENGTH: best vs L11 at depth 3  -- the open question, leave it running
+echo  12. WIDTH A/B: keep 6 + policy cutoff vs plain keep 4  -- leave it running
+echo.
+echo  13. Exit
 echo ================================================
 set /p choice="Pick a number: "
 
@@ -39,7 +42,67 @@ if "%choice%"=="7" goto park
 if "%choice%"=="8" goto headroom
 if "%choice%"=="9" goto policyduel
 if "%choice%"=="10" goto datacheck
-if "%choice%"=="11" goto :eof
+if "%choice%"=="11" goto vsl11
+if "%choice%"=="12" goto widthab
+if "%choice%"=="13" goto :eof
+goto menu
+
+:vsl11
+if not exist "nn\models\best.json" (
+  echo nn\models\best.json not found.
+  pause
+  goto menu
+)
+rem The headline strength question, and the only one still open. Measured over randomized
+rem openings at temperature 0: D1 vs L11 went 3-9 and D2 vs L11 went 1-7, so at those depths the
+rem net is beaten and not narrowly. D3 went 4-2 -- but that is 6 games, a 2-sigma band of plus or
+rem minus 41 points, i.e. consistent with anything from a quarter to every game. Only a real
+rem sample settles it.
+rem Worth rerunning after every promotion: those numbers describe the net the iteration-60 round
+rem robin then replaced, so they are about a champion that no longer exists.
+rem Not expected to finish, and it does not need to -- D3 costs several times D2 per move, and
+rem arena prints the running score after every single game. Read wherever it got to. 60 games is
+rem already plus or minus 13, enough to separate 67 from a coin flip.
+set "GAMES=200"
+set /p GAMES="Games to play, Enter for 200: "
+echo.
+echo Safe to run with the trainer going: fixed depth, so sharing cores changes how long this
+echo takes but not which moves either side picks, and neither side is on a clock.
+echo.
+echo === best.json at depth 3 vs L11, %GAMES% games ===
+node nn\arena.js --a nn:0:%CD%\nn\models\best.json --b L11 --depth 3 --games %GAMES%
+pause
+goto menu
+
+:widthab
+if not exist "nn\models\policy.json" (
+  echo nn\models\policy.json not found -- run option 2 first.
+  pause
+  goto menu
+)
+if not exist "nn\models\best.json" (
+  echo nn\models\best.json not found.
+  pause
+  goto menu
+)
+rem Same value net at the same depth on BOTH sides. The only difference is what the policy buys:
+rem A gives 6 candidates a real opponent search instead of 4 and pays for it with the arm-ordering
+rem cutoff, B searches the default 4 with no policy at all. Roughly compute-neutral -- the cutoff
+rem saves about 15 percent and the extra width costs about 9.
+rem This is the version of the policy question that can actually be WON. Hard pruning could only
+rem tie or lose at equal depth by construction, and at equal think time it went 9-10, which is
+rem structural: a fractional saving never buys a whole extra ply, since plies cost 4-6x each.
+rem Width is the one thing a fractional saving converts into directly.
+rem 24 games cannot answer this -- the effect is small, so the band has to be small too. 400 games
+rem is plus or minus 7. Same as option 11: read the running score wherever it gets to.
+set "GAMES=400"
+set /p GAMES="Games to play, Enter for 400: "
+echo.
+echo Safe to run with the trainer going, same reason as option 11 -- fixed depth, no clock.
+echo.
+echo === keep 6 + policy ordering/cutoff vs plain keep 4, same net, depth 2, %GAMES% games ===
+node nn\arena.js --a nn:0:%CD%\nn\models\best.json --b nn:0:%CD%\nn\models\best.json --depth 2 --games %GAMES% --keepA 6 --abA --policyA %CD%\nn\models\policy.json --keepB 4
+pause
 goto menu
 
 :datacheck
