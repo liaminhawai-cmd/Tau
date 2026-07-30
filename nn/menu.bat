@@ -21,7 +21,9 @@ echo.
 echo   7. Park weight A/B  (L11 park=8 vs park=0, 150 games, 4 workers)
 echo   8. Quick CPU headroom check (1 game, 1s/move -- run before 6 if trainer's busy)
 echo.
-echo   9. Exit
+echo   9. Policy HEAD-TO-HEAD: pointy vs flat  (same net, same depth -- needs 2 and 3 done)
+echo.
+echo  10. Exit
 echo ================================================
 set /p choice="Pick a number: "
 
@@ -33,7 +35,8 @@ if "%choice%"=="5" goto arenadepth
 if "%choice%"=="6" goto arenatimed
 if "%choice%"=="7" goto park
 if "%choice%"=="8" goto headroom
-if "%choice%"=="9" goto :eof
+if "%choice%"=="9" goto policyduel
+if "%choice%"=="10" goto :eof
 goto menu
 
 :pull
@@ -97,6 +100,30 @@ if not exist "nn\models\best.json" (
 )
 echo === policy-pruned vs plain, 2000ms per move each, same net, 24 games ===
 node nn\arena.js --a nn:0:%CD%\nn\models\best.json --b nn:0:%CD%\nn\models\best.json --games 24 --timeMs 2000 --policyA %CD%\nn\models\policy.json
+pause
+goto menu
+
+:policyduel
+if not exist "nn\models\policy.json" (
+  echo nn\models\policy.json not found -- run option 2 first.
+  pause
+  goto menu
+)
+if not exist "nn\models\policy-pointy.json" (
+  echo nn\models\policy-pointy.json not found -- run option 3 first.
+  pause
+  goto menu
+)
+if not exist "nn\models\best.json" (
+  echo nn\models\best.json not found.
+  pause
+  goto menu
+)
+rem Fairer than policy-vs-plain: same value net, same depth, same top-3-arms budget on BOTH
+rem sides -- the only variable is which policy is choosing, so this one can genuinely be won
+rem or lost either way, not just tie-or-lose like the plain-search sanity checks.
+echo === pointy (80,44,32,18) vs flat (96,64) policy, same net, depth 3, 24 games ===
+node nn\arena.js --a nn:0:%CD%\nn\models\best.json --b nn:0:%CD%\nn\models\best.json --depth 3 --games 24 --policyA %CD%\nn\models\policy-pointy.json --policyB %CD%\nn\models\policy.json --quiesceA --quiesceB
 pause
 goto menu
 
