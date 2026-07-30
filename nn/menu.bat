@@ -23,7 +23,9 @@ echo   8. Quick CPU headroom check (1 game, 1s/move -- run before 6 if trainer's
 echo.
 echo   9. Policy HEAD-TO-HEAD: pointy vs flat  (same net, same depth -- needs 2 and 3 done)
 echo.
-echo  10. Exit
+echo  10. Check training data for duplicates (why did row count jump?)
+echo.
+echo  11. Exit
 echo ================================================
 set /p choice="Pick a number: "
 
@@ -36,7 +38,22 @@ if "%choice%"=="6" goto arenatimed
 if "%choice%"=="7" goto park
 if "%choice%"=="8" goto headroom
 if "%choice%"=="9" goto policyduel
-if "%choice%"=="10" goto :eof
+if "%choice%"=="10" goto datacheck
+if "%choice%"=="11" goto :eof
+goto menu
+
+:datacheck
+if not exist "nn\\datacheck.js" (
+  echo nn\\datacheck.js not found -- pull first (option 1).
+  pause
+  goto menu
+)
+rem Reports per-file row counts and any rows that appear twice across files. A duplicated corpus
+rem is trained on twice, which silently double-weights those games -- suspect this whenever the
+rem row count jumps far more than the games count did.
+echo === what train.js is actually reading ===
+node nn\\datacheck.js
+pause
 goto menu
 
 :pull
