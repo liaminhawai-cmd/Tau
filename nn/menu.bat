@@ -43,8 +43,8 @@ if "%choice%"=="11" goto :eof
 goto menu
 
 :datacheck
-if not exist "nn\\datacheck.js" (
-  echo nn\\datacheck.js not found -- pull first (option 1).
+if not exist "nn\datacheck.js" (
+  echo nn\datacheck.js not found -- pull first - option 1.
   pause
   goto menu
 )
@@ -52,7 +52,7 @@ rem Reports per-file row counts and any rows that appear twice across files. A d
 rem is trained on twice, which silently double-weights those games -- suspect this whenever the
 rem row count jumps far more than the games count did.
 echo === what train.js is actually reading ===
-node nn\\datacheck.js
+node nn\datacheck.js
 pause
 goto menu
 
@@ -146,7 +146,7 @@ goto menu
 
 :park
 if not exist "nn\parktest.js" (
-  echo nn\parktest.js not found -- pull first (option 1).
+  echo nn\parktest.js not found -- pull first - option 1.
   pause
   goto menu
 )
