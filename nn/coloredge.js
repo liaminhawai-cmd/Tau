@@ -5,7 +5,12 @@
 //
 //   node nn/coloredge.js --model nn/models/best.json --games 24
 //   node nn/coloredge.js --model nn/models/best.json --depthBlue 3 --depthRed 1 --games 12
-//   node nn/coloredge.js --model nn/models/best.json --openingPlies 0 --temperature 0.05 --games 24
+//   node nn/coloredge.js --level 6 --games 20        (ladder brain both sides, no net involved)
+//
+// --level N runs ladder level N on BOTH sides instead of the net, which is how you tell "the game
+// favours moving second" apart from "this particular net favours moving second". A colour edge
+// that shows up only for the net is a training artefact; one that shows up for the hand-tuned
+// ladder too is a property of Tau itself.
 //
 // --openingPlies 0 plays the REAL fixed start (the position every actual game begins from). At
 // temperature 0 that is one deterministic game replayed N times, so pair it with a temperature to
@@ -27,8 +32,9 @@ function arg(name, dflt) {
 
 function main() {
   const eng = createEngine();
+  const level = arg('level', null);          // ladder level on both sides; no net loaded at all
   const mp = arg('model', path.join(__dirname, 'models', 'best.json'));
-  const net = MLP.fromJSON(JSON.parse(fs.readFileSync(mp, 'utf8')));
+  const net = level ? null : MLP.fromJSON(JSON.parse(fs.readFileSync(mp, 'utf8')));
   const depth = +arg('depth', 1);
   const depthBlue = +arg('depthBlue', depth), depthRed = +arg('depthRed', depth);
   const temperature = +arg('temperature', 0);
@@ -37,9 +43,19 @@ function main() {
   const keepForDepth = +arg('keepForDepth', 4);
   const quiesce = process.argv.includes('--quiesce');
 
-  if (!openingPlies && !temperature)
-    console.log('WARNING: openingPlies 0 with temperature 0 is ONE deterministic game replayed ' +
-                games + ' times -- add --temperature to get distinct games.\n');
+  // Ladder levels carry their own noise (L3's noise dial, L1/L2's random stop fraction), so a
+  // fixed start does NOT collapse to one replayed game for every level -- but the deep p3 rungs
+  // (L8-L11) are noise-free and would. Only warn when the chosen brain really is deterministic.
+  const deterministic = !temperature && (!level || +level >= 4);
+  if (!openingPlies && deterministic)
+    console.log('WARNING: openingPlies 0 with a deterministic brain is ONE game replayed ' +
+                games + ' times -- add --temperature (net) or use a noisy low level.\n');
+
+  const planFor = level
+    ? idx => eng.ladderPlanFor(+level - 1, idx)
+    : idx => nnPlanFor(eng, net, idx,
+        { temperature, depth: idx === 0 ? depthBlue : depthRed, keepForDepth, quiesce });
+  const label = level ? `L${level}` : `nn D%d`;
 
   let blue = 0, red = 0, draws = 0, pliesSum = 0;
   const t0 = Date.now();
@@ -49,8 +65,7 @@ function main() {
     let plies = 0, nulls = 0;
     while (!eng.getG().over && plies < 300) {
       const idx = eng.getG().active;                       // 0 = blue, 1 = red, never swapped
-      const plan = nnPlanFor(eng, net, idx,
-        { temperature, depth: idx === 0 ? depthBlue : depthRed, keepForDepth, quiesce });
+      const plan = planFor(idx);
       if (!plan) { nulls++; if (nulls > 4) break; eng.clearTurn(); eng.setActive(1 - idx); continue; }
       nulls = 0;
       eng.applyPlan(plan);
@@ -65,7 +80,8 @@ function main() {
                          (draws ? ` (${draws} draws)` : '') + '   ');
   }
   const dec = blue + red, secs = (Date.now() - t0)/1000;
-  console.log(`\n\nblue(D${depthBlue}) ${blue} — ${red} red(D${depthRed})` + (draws ? `, ${draws} draws` : ''));
+  const bl = level ? label : label.replace('%d', depthBlue), rl = level ? label : label.replace('%d', depthRed);
+  console.log(`\n\nblue(${bl}) ${blue} — ${red} red(${rl})` + (draws ? `, ${draws} draws` : ''));
   if (dec) {
     const pct = 100*red/dec;
     // Standard error on a proportion; 2 sigma is the rough "is this real" bar. Printed rather than
