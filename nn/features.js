@@ -50,10 +50,27 @@ function sortedFeet(p, CFG) {
   for (let i = 0; i < 3; i++) {
     const a = p.rot + i*TWO_PI/3;
     const x = p.x + Math.cos(a)*CFG.footR, y = p.y + Math.sin(a)*CFG.footR;
-    out.push({ x, y, r: Math.hypot(x, y) });
+    out.push({ x, y, r: Math.hypot(x, y), idx: i });
   }
   out.sort((u, v) => v.r - u.r);
   return out;
+}
+
+// The canonical MOVE frame for the side to move -- the bridge between engine moves (pivotIdx is a
+// raw foot index, dir is a world direction) and the frame the feature vector lives in. features()
+// canonicalises its inputs two ways: feet are radius-sorted (the piece's 3-fold symmetry makes raw
+// foot labels arbitrary) and the board is mirrored so the opponent always sits on the same side. A
+// policy head's outputs MUST live in that same frame or the net is asked to predict raw labels its
+// inputs cannot distinguish: `order[slot]` maps a sorted-slot back to the engine's foot index, and
+// `mirror` (+1/-1) converts a world swing direction to/from the canonical one (a mirrored board
+// flips what "clockwise" means). Arithmetic here must stay identical to features()' own
+// canonicalisation, so both derive from the same sortedFeet + mirror computation.
+function moveFrame(eng) {
+  const G = eng.getG(), CFG = eng.CFG;
+  const me = G.pieces[G.active], op = G.pieces[1 - G.active];
+  const b = Math.atan2(me.y, me.x) || 0;
+  const oyr = op.x*Math.sin(-b) + op.y*Math.cos(-b);
+  return { order: sortedFeet(me, CFG).map(f => f.idx), mirror: oyr < 0 ? -1 : 1 };
 }
 
 // Where a circle of radius R about (px,py) meets a circle of radius cr about (cx,cy), as ANGLES
@@ -249,4 +266,4 @@ function features(eng) {
   return out;
 }
 
-module.exports = { features, N_FEATURES };
+module.exports = { features, N_FEATURES, moveFrame };

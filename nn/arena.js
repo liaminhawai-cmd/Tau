@@ -22,7 +22,7 @@ function arg(name, dflt) {
   return i >= 0 ? process.argv[i + 1] : dflt;
 }
 
-function makeBrain(spec, eng, depth, keepForDepth, quiesce) {
+function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath) {
   const m = /^L(\d+)$/i.exec(spec);
   if (m) {
     const lvl = +m[1];
@@ -36,12 +36,16 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce) {
   // paths contain a colon themselves (nn:0:C:\Users\...\best.json)
   const mp = parts.length > 2 ? parts.slice(2).join(':') : path.join(__dirname, 'models', 'value.json');
   const net = MLP.fromJSON(JSON.parse(fs.readFileSync(mp, 'utf8')));
+  const policy = policyPath
+    ? require('./policy.js').PolicyMLP.fromJSON(JSON.parse(fs.readFileSync(policyPath, 'utf8')))
+    : null;
   // Depth is reported as e.g. "D1.5" when quiesce rides on top of a plain depth-1 pass -- matches
   // how the mix names it, and makes a quiesce-vs-plain A/B legible at a glance in the score line
   // instead of two "D1" entries that secretly differ.
   const depthLabel = quiesce ? depth + 0.5 : depth;
-  return { name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + (depthLabel > 1 ? ',D' + depthLabel : '') + ')',
-           fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth, quiesce }) };
+  return { name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + (depthLabel > 1 ? ',D' + depthLabel : '') +
+           (policy ? ',P' : '') + ')',
+           fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth, quiesce, policy }) };
 }
 
 function main() {
@@ -56,8 +60,11 @@ function main() {
   const depthA = +arg('depthA', depth), depthB = +arg('depthB', depth);
   const quiesceA = process.argv.includes('--quiesceA') || quiesce;
   const quiesceB = process.argv.includes('--quiesceB') || quiesce;
-  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepForDepth, quiesceA);
-  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepForDepth, quiesceB);
+  // --policy sets both sides; --policyA/--policyB override per side (an A/B of policy pruning vs
+  // none on the same net needs per-side control, same reason --depthA/--depthB exist)
+  const policy = arg('policy', null);
+  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepForDepth, quiesceA, arg('policyA', policy));
+  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepForDepth, quiesceB, arg('policyB', policy));
   const games = +arg('games', 24);
   // both brains are commonly fully deterministic (nn at temperature 0, or a noise-free ladder
   // level) from the same fixed start -- without a shuffled opening, every game with the same
