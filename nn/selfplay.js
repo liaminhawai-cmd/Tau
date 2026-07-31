@@ -227,19 +227,39 @@ function main() {
       '--openingPlies', String(openingPlies), '--maxPlies', String(maxPlies),
       ...(seedFile ? ['--seedFrom', String(seedFrom), '--seedPool', seedFile] : ['--seedFrom', '0']),
       '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(',')];
-    const parts = [];
     let taskIdx = 0;
+    // The output stream is opened ONCE, up front, and each task appends to it the moment its own
+    // part file lands -- not batched into one merge after every requested game has finished. That
+    // merge-at-the-end shape was fine at 30 games (a couple of minutes' difference); it breaks
+    // outright for a run.js that now hands this a batch in the hundreds or thousands, since it
+    // means NOTHING reaches disk -- no training data, nothing to push -- until the very last of
+    // however many thousand games finishes, hours after the first one did. Positions must be
+    // available as they're produced, or a big batch stops being "more data, sooner" and becomes
+    // "no data for a very long time, then all of it at once."
+    const ws = fs.createWriteStream(out, { flags: 'a' });
+    let positions = 0, gamesDone = 0;
     // Resolves once the CHILD EXITS, success or failure alike -- same as the old code's plain
-    // exit listener. A crashed task just leaves its part file missing/short, which the merge step
-    // below already tolerates (fs.existsSync guard); one bad game must never hang the whole pool.
+    // exit listener. A crashed task just leaves its part file missing/short, tolerated below same
+    // as before; one bad game must never hang the whole pool.
     const runTask = (n, laneNum) => new Promise(resolve => {
       const part = out + '.w' + (taskIdx++);
-      parts.push(part);
       try { fs.unlinkSync(part); } catch (e) {}
       const ch = fork(__filename, childArgs(n, part),
         { env: Object.assign({}, process.env, { TAU_WORKER: String(laneNum + 1) }) });
-      ch.on('error', () => resolve());
-      ch.on('exit', () => resolve());
+      const finish = () => {
+        if (fs.existsSync(part)) {
+          const d = fs.readFileSync(part, 'utf8');
+          ws.write(d); positions += d.split('\n').filter(Boolean).length; gamesDone += n;
+          // a transient Windows file lock (antivirus/indexing) on a just-closed part file must
+          // never abort this loop -- the data is already safely appended to `out` above, so a
+          // leftover .w<n> file is just clutter, not a correctness problem.
+          try { fs.unlinkSync(part); }
+          catch (e) { console.warn(`warning: couldn't remove temp file ${part} (${e.message}) -- safe to delete by hand`); }
+        }
+        resolve();
+      };
+      ch.on('error', finish);
+      ch.on('exit', finish);
     });
     const laneCount = Math.min(workers, Math.ceil(games/gamesPerTask));
     async function lane(laneNum) {
@@ -253,18 +273,6 @@ function main() {
     console.log(`running ${games} games across ${laneCount} lane(s), ${gamesPerTask} game(s)/task`);
     Promise.all(Array.from({ length: laneCount }, (_, i) => lane(i))).then(() => {
       if (seedFile) { try { fs.unlinkSync(seedFile); } catch (e) {} }
-      const ws = fs.createWriteStream(out, { flags: 'a' });
-      let positions = 0;
-      for (const part of parts) {
-        if (!fs.existsSync(part)) continue;
-        const d = fs.readFileSync(part, 'utf8');
-        ws.write(d); positions += d.split('\n').filter(Boolean).length;
-        // a transient Windows file lock (antivirus/indexing) on a just-closed part file must never
-        // abort this loop -- that would orphan every LATER part unmerged (silent data loss).
-        // The data is already safely appended to `out` above; a leftover .w<n> file is just clutter.
-        try { fs.unlinkSync(part); }
-        catch (e) { console.warn(`warning: couldn't remove temp file ${part} (${e.message}) -- safe to delete by hand`); }
-      }
       ws.end(() => console.log(`all ${games} games done: ${positions} positions -> ${out} ` +
                                `(${((Date.now() - t0)/1000).toFixed(0)}s)`));
     });
