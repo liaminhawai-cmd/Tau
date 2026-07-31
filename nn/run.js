@@ -1,28 +1,52 @@
-// The overnight loop: selfplay -> train -> arena, forever (Ctrl-C any time; every stage saves).
-//   node nn/run.js [--gamesPerIter 30] [--epochs 6] [--benchEvery 10] [--benchLevels 3]
-//                  [--benchCellGames 3] [--benchDepths 1,2,3] [--tournamentEvery 10]
+// The overnight loop, restructured: self-play runs CONTINUOUSLY in the background, chaining itself
+// into a fresh batch the instant one finishes, and never waits on anything else. A separate
+// housekeeping clock -- retrain-from-scratch, round robin, promote, ladder sweep -- runs on its own
+// schedule in parallel, sharing cores with self-play rather than pausing it.
+//   node nn/run.js [--gamesPerBatch 1000] [--checkEveryMin 5]
+//                  [--tournamentEveryMin 180] [--benchEveryMin 60]
+//                  [--benchLevels 3] [--benchCellGames 3] [--benchDepths 1,2,3]
 //                  [--tournamentRecent 12] [--spotCheckRecent 3] [--spotCheckGames 2]
-// Iteration 1 has no model, so selfplay is pure ladder sparring; from then on the freshest net
-// plays most of its own games. Every iteration's net is promoted to models/best.json (see the note
-// on the retired per-iteration gate below); a periodic round robin across the most recent
-// --tournamentRecent checkpoints (capped, not every checkpoint ever saved -- see tournament.js) is
-// what actually decides which one deserves to be best. Progress appends to nn/log.txt.
-// The benchmark is a ladder SWEEP -- a few games in each (ladder level x search depth) cell -- so
-// it reads as a placement rather than a single pass/fail. Each DEPTH keeps its own window and
-// retires its own rungs, so the cells tracked form a diagonal band across the grid rather than a
-// rectangle (see the windows below). --benchEvery N only runs it on every Nth iteration.
 //
-// The frontier the sweep finds now also feeds BACK into what selfplay.js trains on (see zpdLevels
-// below): each iteration's ladder-opponent pool is biased toward each depth's current frontier --
-// its zone of proximal development, the band just past what it can already beat cleanly -- instead
-// of a flat default range. A rung well below the frontier is easy money with nothing left to teach;
-// one well above it is close to random noise; the frontier itself is exactly where a loss is still
-// informative. The sweep also spot-checks a few already-retired rungs per depth (fewer games each --
-// a check, not a placement) specifically to catch the failure mode where the net gets sharper
-// against one rung at the cost of one it used to have solid; a rung that regresses gets fed back
-// into the training pool at extra weight until a later spot-check shows it's recovered.
+// TWO CHANGES FROM THE OLD LOOP, both driven by the same overnight logs.
+//
+// 1. best.json no longer gets a per-iteration 6-epoch resume-train. It used to: every iteration,
+//    train.js reloaded the full accumulated dataset and resumed from best.json for 6 more epochs,
+//    and the result was promoted unconditionally (the old per-iteration gate was already retired --
+//    see the round-robin note below for why). That looked like steady progress on val mse, but it
+//    wasn't steady progress at the only thing that matters, playing strength: three separate round
+//    robins in one day (iterations 60, 70, 80, plus a fourth run outside this loop) all measured the
+//    SAME shape -- a from-scratch retrain on the identical accumulated data beat the resumed lineage,
+//    and by a GROWING margin (58% then 65%, and the incumbent placed 12th of 15 models at iteration
+//    80, worse than a bare 6-epoch continuation with no lineage at all). This is the exact failure
+//    the from-scratch challenger was already built to catch once, at iteration 63 (the incumbent had
+//    taken ~370 cumulative epochs over the same rows against a challenger's 30, and lost 27% across
+//    158 games) -- it kept recurring because the per-iteration resume step that CAUSES it was still
+//    running, alongside the periodic check that only ever caught it after the fact.
+//    So best.json now changes ONLY when a from-scratch retrain earns it in a round robin -- the
+//    mechanism already existed below, it just used to run next to the thing it was supposed to be
+//    correcting for instead of replacing it.
+//
+// 2. Self-play no longer runs in small batches that run.js waits on before doing anything else.
+//    execFileSync blocks this whole process until the child exits -- including the straggler tail,
+//    since selfplay.js's pull-based dispatch (a lane grabs the next game the moment it's free)
+//    still has nothing left to hand out once fewer games remain than there are idle lanes, and a
+//    single L9-vs-L9 marathon can run 30-45 minutes alone. At 30 games per batch that tax gets paid
+//    every 20-60 minutes; measured directly in the logs, e.g. one iteration idled most of its 14
+//    lanes for a chunk of its 3970s total. A self-play process is now started ONCE with a large
+//    --gamesPerBatch and left running in the background (spawn, not execFileSync); the moment it
+//    exits -- games exhausted, or a crash -- an 'exit' listener relaunches the next batch within
+//    seconds, with a freshly recomputed ZPD pool. The straggler tax still exists (it's inherent to
+//    any finite batch) but now triggers once per ~1000 games instead of once per 30, and the gap
+//    between batches is fork overhead, not another 20-60 minute wait. selfplay.js's own merge step
+//    changed to match: it now appends each task's data to the output file as that task finishes,
+//    not once the whole batch is done, or a batch in the thousands would produce literally nothing
+//    on disk until hours after the first game finished.
+//    Housekeeping -- the retrain/tournament/sweep below -- runs on an independent wall-clock
+//    schedule instead of being gated on self-play "finishing" (it mostly never does anymore). While
+//    housekeeping's own child processes run, self-play keeps going in parallel, sharing cores rather
+//    than losing them for however long housekeeping takes.
 'use strict';
-const { execFileSync } = require('child_process');
+const { execFileSync, spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -31,8 +55,21 @@ function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
   return i >= 0 ? process.argv[i + 1] : dflt;
 }
-const gamesPerIter = arg('gamesPerIter', '200');
-const epochs = arg('epochs', '6');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Games per self-play batch before it's retired and replaced with a fresh one (see point 2 above).
+// 1000 is a deliberate jump from the old 30-per-iteration: the straggler tail costs roughly the
+// same in absolute minutes no matter the batch size (it's bounded by the single slowest game type,
+// not by how many games came before it), so a bigger batch doesn't shrink the tax, it just pays it
+// far less often relative to useful work done.
+const gamesPerBatch = Math.max(1, +arg('gamesPerBatch', 1000));
+// How often the housekeeping clock wakes up to check whether it's time for a round robin or a
+// ladder sweep, and to push whatever the current (possibly still-growing) data file has on it.
+// Short on purpose -- this tick is nearly free (a few file reads, maybe a git push), so there is
+// no real cost to checking often, and every check is a chance to get fresher data onto git sooner.
+const checkEveryMin = Math.max(0.5, +arg('checkEveryMin', 5));
+const tournamentEveryMin = Math.max(1, +arg('tournamentEveryMin', 180));
+const benchEveryMin = Math.max(1, +arg('benchEveryMin', 60));
 // selfplay.js's game-source mix, once a model exists (before that it's always pure ladder-vs-
 // ladder). This used to be a single "selfRatio" ramped 0.25->0.85 across the first 6 iterations
 // then left completely flat -- but nn-vs-nn scaled as selfRatio^2 while nn-vs-ladder only scaled
@@ -43,7 +80,6 @@ const epochs = arg('epochs', '6');
 // share of them is what keeps the training data from being graded by the same student whose
 // answers are being checked.
 const mix = arg('mix', 'nnnn:0.4,nnladder:0.3,ladder:0.3');
-const benchEvery = Math.max(1, +arg('benchEvery', 10));
 // The benchmark is a SWEEP, not a single score. "0-12 vs L8" says "weaker than L8" and nothing
 // else -- it cannot tell a net that plays like L2 from one that nearly beat L7, which is why four
 // consecutive readings of 0%, 9%, 0%, 17% carried no usable signal. Playing a small number of
@@ -67,58 +103,29 @@ const topFloor = Math.max(0, +arg('topFloor', 3));
 // measuring the contour at cheap depths tells you where it sits at expensive ones without paying.
 const benchDepths = arg('benchDepths', '1,2,3').split(',')
   .map(Number).filter(d => Number.isFinite(d) && d >= 1);
-const tournamentEvery = Math.max(1, +arg('tournamentEvery', 10));
-// Capped, or this grows every time it fires: ckpt-NNN.json accumulates one file per iteration
-// forever, so an uncapped round robin is O(n^2) in how long the run has been going, not a fixed
-// cost. --tournamentRecent keeps the field to a fixed-size sliding window (see tournament.js).
+// Capped, or this grows every time it fires: ckpt-NNN.json accumulates one file per round robin
+// forever, so an uncapped field is O(n^2) in how long the run has been going, not a fixed cost.
+// --tournamentRecent keeps the field to a fixed-size sliding window (see tournament.js).
 const tournamentRecent = arg('tournamentRecent', '12');
 // selfplay is embarrassingly parallel — use most of the machine's cores by default (capped: each
 // worker holds its own engine sandbox, and Node.js counts hyperthreads as full cores in
 // os.cpus(), so this isn't literally "one worker per physical core"). --workers 1 for serial.
-// Was capped at a flat 8 regardless of core count -- measured idle on an 8-core/16-thread box
-// (only 11-25% overall CPU while "8 workers" ran) once selfplay.js switched to pull-based
-// dispatch (see there): a lane that finishes early now grabs the next game instead of sitting
-// idle, so there's real throughput to gain from more lanes on a bigger machine, not just heat.
 const workers = arg('workers', String(Math.max(1, Math.min(os.cpus().length - 1, 14))));
 // Every round robin, ALSO train a challenger from scratch on all accumulated data and enter it in
-// the field. Measured, and the reason this exists: an architecture bake-off at iteration 63 played
-// best.json against four fresh 30-epoch nets trained on the same accumulated data, and best.json
-// lost to every single one of them -- 9-31, 11-28, 16-24, 7-32, i.e. 27% across 158 decided games.
-// It even lost 7-32 to the WORST-performing architecture in that field.
-//
-// The mechanism is that train.js reloads the FULL dataset every iteration and resumes from
-// best.json, so by iteration 63 the incumbent had taken ~370 epochs over the same rows against a
-// challenger's 30. That is not accumulated progress, it is accumulated overfitting -- and it was
-// invisible on validation mse, which kept looking healthy the whole time because the 10% holdout
-// is split by ROW while rows come from games (positions from one game land on both sides of the
-// split, so a net that memorises its training games scores well on the val set made of those same
-// games). The round robin below is the only instrument here that measures playing strength rather
-// than the training objective, so the fix is to put a clean retrain in front of it and let games
-// decide. If the incumbent is genuinely ahead, it stays; when it has drifted, the challenger wins
-// and tournament.js --promote adopts it automatically -- no manual intervention, and no way for
-// this failure to run 60 iterations unnoticed again.
-//
-// Cost is one train.js run every tournamentEvery iterations (~3 min against selfplay's ~7 min per
-// ITERATION), so this is close to free. --scratchEpochs 0 disables it.
+// the field. This is now the ONLY way best.json changes (see point 1 above) -- not an occasional
+// sanity check on a resumed lineage anymore, but the actual training step.
 const scratchEpochs = arg('scratchEpochs', '30');
 // Pin the from-scratch challenger's ARCHITECTURE instead of copying whatever best.json currently
 // is. Without this the shape choice is a one-way ratchet that can silently undo a measured result:
 // the challenger reads its shape off best.json, so the moment a round robin promotes an older
 // checkpoint of the previous shape, every later challenger is built that shape too, no new nets of
 // the adopted shape are ever generated again, and the adopted lineage ages out of the --recent
-// window within `tournamentRecent` iterations. Gone for good, from a single noisy round robin.
-//
-// That comparison is also confounded in a way the bake-off deliberately wasn't: a checkpoint with
-// 70+ iterations of accumulated training against a challenger with a handful is a test of training
-// history, not of shape. Pinning keeps a freshly-trained net of the chosen architecture in the
-// field at EVERY round robin regardless of what best.json happens to be, so the shape question
-// stays permanently live and reversible instead of being settled once by luck.
+// window within `tournamentRecent` cycles. Gone for good, from a single noisy round robin.
 // Unset (the default) keeps the old behaviour of following best.json.
 const scratchHidden = arg('scratchHidden', null);
 
 const dir = __dirname;
 const best = path.join(dir, 'models', 'best.json');
-const fresh = path.join(dir, 'models', 'value.json');
 const log = msg => {
   const line = `[${new Date().toISOString()}] ${msg}`;
   console.log('\n=== ' + line);
@@ -128,8 +135,8 @@ const run = (script, args) => {
   console.log(`\n$ node nn/${script} ${args.join(' ')}`);
   execFileSync('node', [path.join(dir, script), ...args], { stdio: 'inherit' });
 };
-// arenas are informational (the gate promotes on resumed-from-best anyway) — a benchmark crash
-// must never kill an overnight training loop
+// housekeeping's own steps are informational (the round robin is the only real gate) — a benchmark
+// crash must never kill an overnight training loop
 const runSoft = (script, args) => {
   try { run(script, args); }
   catch (e) { log(`WARNING: ${script} failed (${e.message}) — continuing`); }
@@ -203,7 +210,7 @@ const writeWindows = w => { try { fs.writeFileSync(windowFile, JSON.stringify(w)
 // BELOW each depth's current frontier that used to sweep clean and, on a later spot-check (see the
 // benchmark block below), didn't. Persisted for the same reason the window is -- it must survive a
 // restart, and it must not be recomputed from scratch every run (that would mean losing a whole
-// benchEvery cycle's worth of "still regressed" signal every time the console gets closed).
+// benchEveryMin cycle's worth of "still regressed" signal every time the console gets closed).
 const regressedFile = path.join(dir, 'models', '.ladder-regressed');
 const readRegressed = () => {
   try { return JSON.parse(fs.readFileSync(regressedFile, 'utf8')); } catch (e) { return {}; }
@@ -223,29 +230,10 @@ const writeRegressed = r => { try { fs.writeFileSync(regressedFile, JSON.stringi
 // have solid is a more urgent gap than a fresh rung it never mastered in the first place.
 //
 // The shape over levels is a BELL centred half a rung above the frontier (so the peak straddles
-// win[d] and win[d]+1, the two rungs actually in contention), not the hard win[d]..win[d]+2 box it
-// used to be. A box has two failure modes a curve does not:
-//   - Nothing outside it is ever played, at any weight. That is how the net reached iteration 61
-//     having never once played L11: not a decision anyone made, just a rung that fell outside every
-//     window the run ever had.
-//   - Everything inside it is played EQUALLY, so the rung the net has already half-mastered gets as
-//     many games as the one it is losing to, and a retirement moves the whole box in one step.
-// A curve gives contested rungs most of the volume, nearby rungs a real share, and distant rungs a
-// thin but nonzero trickle -- and it slides smoothly as the frontier advances instead of jumping.
-//
-// The lower tail matters as much as the upper one: a retired rung currently drops to zero games and
-// stays there, which is the obvious suspect for the D1:L4 / D2:L6 regressions the spot-check keeps
-// flagging. Under the curve a just-retired rung still gets a healthy share, decaying as the frontier
-// moves further past it.
-// topFloor is the one guarantee bolted on afterwards: the TOP rung gets at least this many entries
-// in the finished pool, because it is the rung the net is ultimately judged against and the bell
-// alone puts it 4-5 sigma out while the frontier is down at L6 -- which would reproduce the exact
-// "never played L11" bug the curve is meant to fix. Deliberately the top rung ONLY, and a whole-pool
-// minimum rather than per-depth. An earlier attempt floored every rung at or above the frontier and
-// checking the output caught it: at an L2 frontier that put 31% of all games against L5-L11, i.e.
-// a third of the run spent losing to opponents nine rungs up. Everything between the frontier and
-// the top is left to the bell's own tail, which already gives those rungs a couple of games each.
-// --topFloor 0 restores pure bell weighting.
+// win[d] and win[d]+1, the two rungs actually in contention), not a hard box. topFloor guarantees
+// the TOP rung a few entries even where the bell has decayed to nothing, since it is 4-5 sigma out
+// while the frontier is down at L6 and would otherwise reproduce the "never played L11" bug this
+// replaced. --topFloor 0 restores pure bell weighting.
 function zpdLevels(win, regressed) {
   const pool = [];
   const depths = Object.keys(win).map(Number).sort((a, b) => a - b);
@@ -314,20 +302,19 @@ function findGit() {
 }
 const statusState = {};
 // Artefacts pushed alongside status.md, split by how git stores them. Data files are written once
-// and never touched again, so git keeps exactly one copy of each -- cheap, and it means the corpus
-// is recoverable and inspectable from anywhere rather than living only on this machine. Models are
-// OVERWRITTEN every iteration and are dense float JSON that does not delta-compress, so pushing
-// each one would add a fresh ~380KB blob to history forever; best.json therefore rides along only
-// when a round robin actually promotes something, and ckpt-*.json / best.pre-tournament-* stay
-// local entirely (the tournament ranking already records which checkpoint won).
+// (well -- now GROW incrementally as the current self-play batch progresses, but a line already
+// written to disk is never rewritten, only appended past) so git keeps one delta-friendly history
+// per file. Models are dense float JSON that does not delta-compress, so pushing each one would
+// add a fresh blob to history forever; best.json therefore rides along only when a round robin
+// actually promotes something.
 // --no-push-artifacts turns this off, e.g. if a second trainer is pushing to the same branch, where
-// two machines writing the same iterNNN.jsonl name would collide.
+// two machines writing the same batch-NNN.jsonl name would collide.
 const pushArtifacts = !process.argv.includes('--no-push-artifacts');
 function writeStatus(stage, extraPaths) {
   statusState.stage = stage;
   statusState.updatedAt = new Date().toISOString();
   const md = `# Tau NN training status\n_Last updated: ${statusState.updatedAt}_\n\n` +
-    `**Iteration:** ${statusState.iter ?? '-'}\n` +
+    `**Self-play batch:** ${statusState.batch ?? '-'}\n` +
     `**Stage:** ${statusState.stage}\n` +
     `**mix:** ${statusState.mix ?? '-'}\n\n` +
     `**Last gate result:** ${statusState.lastGate ?? '(none yet)'}\n\n` +
@@ -370,14 +357,12 @@ function writeStatus(stage, extraPaths) {
     const git = (args) => execFileSync(gitExe, args.map(q), { cwd: repoRoot, shell: true, encoding: 'utf8' });
     git(['add', 'nn/status.md']);
     // Each extra path is added separately and softly: a missing file must never take down the
-    // status push, which is the one thing that has to keep working for a 10-hour run to stay
+    // status push, which is the one thing that has to keep working for a many-hour run to stay
     // observable.
     // -f is REQUIRED, not belt-and-braces: nn/.gitignore excludes data/ and models/ wholesale, so
-    // a plain `git add` on these paths fails outright. It did -- the first overnight run pushed 35
-    // status commits and not one data file, and because each failure is only logged and stepped
-    // over, the feature looked healthy while doing nothing at all. The ignore rules are still
-    // right for everything else under those directories (checkpoints, log.txt, scratch models);
-    // -f names the specific exceptions worth keeping rather than punching holes in .gitignore.
+    // a plain `git add` on these paths fails outright. -f names the specific exceptions worth
+    // keeping rather than punching holes in .gitignore, which is still right for everything else
+    // under those directories (checkpoints, log.txt, scratch models).
     if (pushArtifacts && extraPaths) {
       for (const p of extraPaths) {
         try { git(['add', '-f', p]); } catch (e) { log(`could not stage ${p} (${errText(e)})`); }
@@ -412,210 +397,214 @@ if (!fs.existsSync(tournamentDone)) {
   fs.writeFileSync(tournamentDone, new Date().toISOString() + '\n');
 }
 
-// Resume from the next iteration after the highest completed checkpoint, not always 1 -- a restart
-// (closing the window, a crash, a reboot) used to re-target iter001.jsonl, silently stacking a new
-// run's data onto the very first one's.
-// ckpt-NNN.json is only ever written as an iteration's last step, so the highest one found is the
-// last iteration that actually finished end to end.
-function nextIter() {
+// Two independent counters now, where there used to be one: a self-play BATCH used to be the same
+// thing as a training/checkpoint ITERATION, one-to-one. They're decoupled now -- batches are large
+// and chain themselves continuously, checkpoints only happen when a round robin actually runs -- so
+// each needs its own resume point, read from its own file family.
+function nextNum(pattern) {
   const modelsDir = path.join(dir, 'models');
   let max = 0;
-  if (fs.existsSync(modelsDir))
-    for (const f of fs.readdirSync(modelsDir)) {
-      const m = /^ckpt-(\d+)\.json$/.exec(f);
-      if (m) max = Math.max(max, +m[1]);
-    }
+  const scan = (d, rx) => { if (!fs.existsSync(d)) return;
+    for (const f of fs.readdirSync(d)) { const m = rx.exec(f); if (m) max = Math.max(max, +m[1]); } };
+  if (pattern === 'batch') scan(path.join(dir, 'data'), /^batch-(\d+)\.jsonl$/);
+  else scan(modelsDir, /^ckpt-(\d+)\.json$/);
   return max + 1;
 }
-const startIter = nextIter();
-if (startIter > 1) log(`resuming at iteration ${startIter} (found checkpoints up to ckpt-${String(startIter - 1).padStart(3, '0')}.json)`);
+let batchNum = nextNum('batch');
+let cycleNum = nextNum('cycle');
+if (batchNum > 1) log(`resuming self-play at batch ${batchNum} (found data up to batch-${String(batchNum - 1).padStart(3, '0')}.jsonl)`);
+if (cycleNum > 1) log(`resuming round-robin cycles at ${cycleNum} (found checkpoints up to ckpt-${String(cycleNum - 1).padStart(3, '0')}.json)`);
 
-for (let iter = startIter; ; iter++) {
-  // Only bias sampling once there's a model with a real frontier to bias toward -- pre-model, every
-  // game is ladder-vs-ladder anyway (see selfplay.js's own kind selection), so there is no "current
-  // strength" for a ZPD band to be centred on.
+// --- self-play: one long-running process, chaining itself into a fresh batch on exit ---------
+let selfplayChild = null, selfplayOut = null, selfplayStartedAt = null;
+function startSelfplayBatch() {
+  const num = batchNum++;
+  const out = path.join(dir, 'data', `batch-${String(num).padStart(3, '0')}.jsonl`);
+  selfplayOut = out;
+  selfplayStartedAt = Date.now();
+  // Only bias sampling once there's a model with a real frontier to bias toward -- pre-model,
+  // every game is ladder-vs-ladder anyway (see selfplay.js's own kind selection), so there is no
+  // "current strength" for a ZPD band to be centred on.
   const dataPool = fs.existsSync(best) ? zpdLevels(readWindows(), readRegressed()) : null;
-  // Print the actual counts, not just "ZPD-biased levels pool". The shape of this distribution is a
-  // real tuning decision (--zpdSigma, --topFloor) and it was invisible: the old line could not
-  // distinguish a healthy curve from the box that silently gave L11 zero games for 61 iterations.
-  // It doubles as the restart check -- run.js is loaded into memory once, so a pull alone changes
-  // nothing, and this line is the first place a restart actually shows.
+  // Print the actual counts, not just "ZPD-biased levels pool" -- the shape of this distribution
+  // is a real tuning decision (--zpdSigma, --topFloor) and was invisible before; a stale window
+  // silently giving a rung zero games is exactly how the net went 61 iterations without ever
+  // playing L11.
   const poolNote = dataPool
     ? ', pool ' + [...new Set(dataPool)].sort((a, b) => a - b)
         .map(l => `L${l}x${dataPool.filter(x => x === l).length}`).join(' ')
     : '';
-  log(`iteration ${iter} — selfplay ${gamesPerIter} games (mix ${mix}, ${workers} workers${poolNote})`);
-  statusState.iter = iter; statusState.mix = fs.existsSync(best) ? mix : '(no model yet — pure ladder)';
-  writeStatus(`selfplay running (${gamesPerIter} games, started ${new Date().toISOString()})`);
-  run('selfplay.js', ['--games', gamesPerIter,
-    '--out', path.join(dir, 'data', `iter${String(iter).padStart(3, '0')}.jsonl`),
-    '--model', best, '--mix', mix, '--workers', workers,
-    ...(dataPool ? ['--levels', dataPool.join(',')] : [])]);
-  log(`iteration ${iter} — train ${epochs} epochs`);
-  run('train.js', ['--epochs', epochs, '--out', fresh,
-    ...(fs.existsSync(best) ? ['--resume', best] : [])]);
-  // Selfplay has just finished writing this iteration's data file. It is never modified again, so
-  // git stores exactly one copy -- unlike the models, this is genuinely cheap to keep forever, and
-  // it makes the corpus recoverable and inspectable off this machine.
-  writeStatus(`training (${epochs} epochs)`,
-              [`nn/data/iter${String(iter).padStart(3, '0')}.jsonl`]);
-  // Always promote. The per-iteration fresh-vs-best gate is gone, and this is not a regression to
-  // the old fake gate -- it is deliberate, for three measured reasons:
-  //   1. It could not resolve what it was asked to. 24 games at a 55% bar is cleared by two
-  //      IDENTICAL nets 27% of the time; real per-iteration gains are a couple of percent. It was
-  //      reading noise. (AlphaGo Zero used 400 games for the same 55% threshold; AlphaZero then
-  //      dropped the gate entirely and was stronger for it.)
-  //   2. Worse, it ratcheted on that noise: best.json is a running maximum over noisy draws, so it
-  //      is upward-biased, and a genuinely-equal new net has to beat the luck as well as the
-  //      strength. Observed pass rate was 13.5% -- BELOW the 27% two identical nets would manage.
-  //   3. Because train.js resumes from best.json, a rejection threw the whole iteration's training
-  //      away. Twenty-three iterations without a promotion were twenty-three independent 6-epoch
-  //      attempts from the same frozen weights, not accumulated progress.
-  // The safety net moves to a periodic round robin over every saved checkpoint (below), which
-  // extracts far more signal per game than a 24-game A/B because every model meets every other.
-  fs.copyFileSync(fresh, best);
-  log(`iteration ${iter} — promoted (no per-iteration gate; round robin every ${tournamentEvery} iterations picks the real best)`);
-  statusState.lastGate = `iteration ${iter} — promoted (gate retired; round robin every ${tournamentEvery})`;
-  // checkpoint: every iteration's model is kept — play them, watch them, arena old vs new
-  const ckpt = path.join(dir, 'models', `ckpt-${String(iter).padStart(3, '0')}.json`);
-  fs.copyFileSync(best, ckpt);
-  log(`iteration ${iter} — checkpoint saved: ${path.basename(ckpt)}`);
-  statusState.lastCheckpoint = `${path.basename(ckpt)} at ${new Date().toISOString()}`;
-  if (iter % tournamentEvery === 0) {
-    // The from-scratch challenger (see --scratchEpochs above). Trained BEFORE the round robin so it
-    // is in the field when the round robin runs, and deliberately without --resume: resuming is the
-    // very thing being tested against. The shape is read off best.json rather than left to
-    // train.js's default, so that adopting a different architecture (by copying it over best.json)
-    // isn't silently undone by a challenger that reverts to 96,96 every tournament.
-    if (+scratchEpochs > 0) {
-      const scratch = path.join(dir, 'models', 'scratch.json');
-      const h = scratchHidden || hiddenOfBest();
-      log(`iteration ${iter} — training a from-scratch challenger (${scratchEpochs} epochs` +
-          (h ? `, --hidden ${h}` : '') + `) to enter in the round robin`);
-      writeStatus(`from-scratch challenger training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
-      runSoft('train.js', ['--epochs', scratchEpochs, '--out', scratch, ...(h ? ['--hidden', h] : [])]);
-    }
-    log(`iteration ${iter} — round robin across the most recent ${tournamentRecent} checkpoints (this is what picks best.json now)`);
-    writeStatus(`round robin running (started ${new Date().toISOString()})`);
-    runSoft('tournament.js', ['--promote', '--recent', tournamentRecent, '--workers', workers]);
-    // The one moment best.json is worth a permanent blob in history: the round robin just decided
-    // it. Not pushed every iteration because the file is overwritten each time and dense float
-    // JSON does not delta-compress -- see the note above pushArtifacts.
-    writeStatus(`round robin complete (iteration ${iter})`, ['nn/models/best.json']);
+  log(`self-play batch ${num} starting: ${gamesPerBatch} games (mix ${mix}, ${workers} workers${poolNote})`);
+  statusState.batch = num;
+  statusState.mix = fs.existsSync(best) ? mix : '(no model yet — pure ladder)';
+  const args = ['--games', String(gamesPerBatch), '--out', out, '--model', best, '--mix', mix,
+    '--workers', workers, ...(dataPool ? ['--levels', dataPool.join(',')] : [])];
+  const ch = spawn('node', [path.join(dir, 'selfplay.js'), ...args], { stdio: 'inherit' });
+  selfplayChild = ch;
+  ch.on('exit', (code) => {
+    log(`self-play batch ${num} ended (exit ${code}) — starting the next one`);
+    startSelfplayBatch();
+  });
+  ch.on('error', (e) => {
+    log(`WARNING: self-play batch ${num} failed to start (${e.message}) — retrying in ${checkEveryMin} min`);
+    selfplayChild = null;
+    setTimeout(startSelfplayBatch, checkEveryMin*60000);
+  });
+}
+
+// --- housekeeping: retrain-from-scratch + round robin + promote, and the ladder sweep ---------
+// Both run on their own wall-clock schedule, independent of self-play, which keeps generating
+// games in the background the whole time these run (sharing cores, not losing them).
+let lastTournamentAt = Date.now(), lastBenchAt = Date.now();
+
+function runTournamentCycle() {
+  const num = cycleNum++;
+  // The from-scratch challenger. Trained BEFORE the round robin so it is in the field when the
+  // round robin runs, and deliberately without --resume: resuming is the very thing this whole
+  // redesign exists to stop doing. The shape is read off best.json rather than left to train.js's
+  // default, so that adopting a different architecture (by copying it over best.json) isn't
+  // silently undone by a challenger that reverts to 96,96 every cycle.
+  if (+scratchEpochs > 0) {
+    const scratch = path.join(dir, 'models', 'scratch.json');
+    const h = scratchHidden || hiddenOfBest();
+    log(`round-robin cycle ${num} — training a from-scratch challenger (${scratchEpochs} epochs` +
+        (h ? `, --hidden ${h}` : '') + `)`);
+    writeStatus(`from-scratch challenger training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
+    runSoft('train.js', ['--epochs', scratchEpochs, '--out', scratch, ...(h ? ['--hidden', h] : [])]);
   }
-  if (iter % benchEvery === 0) {
-    const win = readWindows();
-    const spans = {};
-    for (const d of benchDepths) {
-      const bottom = Math.max(1, Math.min(win[d], LADDER_N - benchLevels + 1));
-      spans[d] = [bottom, Math.min(bottom + benchLevels - 1, LADDER_N)];
+  log(`round-robin cycle ${num} — across the most recent ${tournamentRecent} checkpoints (this is what picks best.json now)`);
+  writeStatus(`round robin running (started ${new Date().toISOString()})`);
+  runSoft('tournament.js', ['--promote', '--recent', tournamentRecent, '--workers', workers]);
+  statusState.lastGate = `cycle ${num} — round robin complete`;
+  // The one moment best.json is worth a permanent blob in history: the round robin just decided
+  // it. Not pushed on every self-play batch because the file is overwritten each cycle and dense
+  // float JSON does not delta-compress -- see the note above pushArtifacts.
+  writeStatus(`round robin complete (cycle ${num})`, ['nn/models/best.json']);
+  // Checkpoint: one numbered snapshot per CYCLE now, not per self-play batch -- a batch no longer
+  // produces a new trained model on its own, so there is nothing new to checkpoint until a round
+  // robin actually runs. tournament.js's --recent window reads these exactly as before.
+  if (fs.existsSync(best)) {
+    const ckpt = path.join(dir, 'models', `ckpt-${String(num).padStart(3, '0')}.json`);
+    fs.copyFileSync(best, ckpt);
+    log(`round-robin cycle ${num} — checkpoint saved: ${path.basename(ckpt)}`);
+    statusState.lastCheckpoint = `${path.basename(ckpt)} at ${new Date().toISOString()}`;
+  }
+}
+
+function runBenchCycle() {
+  const win = readWindows();
+  const spans = {};
+  for (const d of benchDepths) {
+    const bottom = Math.max(1, Math.min(win[d], LADDER_N - benchLevels + 1));
+    spans[d] = [bottom, Math.min(bottom + benchLevels - 1, LADDER_N)];
+  }
+  const spanNote = benchDepths.map(d => `D${d}:L${spans[d][0]}-L${spans[d][1]}`).join(' ');
+  log(`ladder sweep, per-depth windows ${spanNote} x ${benchCellGames} games`);
+  writeStatus(`ladder sweep running (${spanNote}, started ${new Date().toISOString()})`);
+  // The sweep's games are real games with real outcomes, so they are worth keeping rather than
+  // being reduced to a win-loss tally and thrown away -- they cost the same CPU either way, and
+  // arena.js writes selfplay.js's exact row schema. They land in whichever batch file self-play is
+  // CURRENTLY writing, the same file everything downstream already globs and pushes.
+  const cell = (lvl, d) => arenaScore(runCapturedSoft('arena.js',
+    ['--a', 'nn:0:' + best, '--b', 'L' + lvl, '--games', benchCellGames, '--depth', String(d),
+     '--saveData', selfplayOut || path.join(dir, 'data', 'bench-fallback.jsonl')]));
+  const grid = {};
+  for (const d of benchDepths)
+    for (let lvl = spans[d][0]; lvl <= spans[d][1]; lvl++)
+      grid[lvl + ':' + d] = cell(lvl, d);
+  // A FIXED cell against the top rung every sweep, wherever the window happens to be -- otherwise
+  // the rung the net is ultimately judged against goes unmeasured until the window crawls all the
+  // way up, which used to take dozens of iterations. Skipped when the window already covers it.
+  for (const d of benchDepths)
+    if (LADDER_N < spans[d][0] || LADDER_N > spans[d][1])
+      grid[LADDER_N + ':' + d] = cell(LADDER_N, d);
+  const table = benchDepths.map(d => {
+    const cells = [];
+    for (let lvl = spans[d][0]; lvl <= spans[d][1]; lvl++) {
+      const s = grid[lvl + ':' + d];
+      cells.push(`L${lvl} ${s ? s.w + '-' + s.l : '-'}`.padStart(10));
     }
-    const spanNote = benchDepths.map(d => `D${d}:L${spans[d][0]}-L${spans[d][1]}`).join(' ');
-    log(`iteration ${iter} — ladder sweep, per-depth windows ${spanNote} x ${benchCellGames} games`);
-    writeStatus(`ladder sweep running (${spanNote}, started ${new Date().toISOString()})`);
-    // The sweep's games are real games with real outcomes, so they are worth keeping rather than
-    // being reduced to a win-loss tally and thrown away -- they cost the same CPU either way, and
-    // arena.js writes selfplay.js's exact row schema. They land in the SAME per-iteration file the
-    // self-play stage wrote, which is already the unit everything downstream globs and pushes.
-    const iterData = path.join(dir, 'data', `iter${String(iter).padStart(3, '0')}.jsonl`);
-    const cell = (lvl, d) => arenaScore(runCapturedSoft('arena.js',
-      ['--a', 'nn:0:' + best, '--b', 'L' + lvl, '--games', benchCellGames, '--depth', String(d),
-       '--saveData', iterData]));
-    const grid = {};
-    for (const d of benchDepths)
-      for (let lvl = spans[d][0]; lvl <= spans[d][1]; lvl++)
-        grid[lvl + ':' + d] = cell(lvl, d);
-    // A FIXED cell against the top rung every sweep, wherever the window happens to be. The
-    // climbing window is the right way to find the frontier, but it means the rung the net is
-    // ultimately judged against goes unmeasured until the window crawls all the way up -- at one
-    // retirement per two clean sweeps, that is dozens of iterations away, and until then the only
-    // way to get an L11 number is a one-off arena run against whatever best.json happened to be
-    // current that morning. This makes it a continuous reading on the CURRENT model instead.
-    // Skipped when the window already covers the top rung, so it is never measured twice.
-    for (const d of benchDepths)
-      if (LADDER_N < spans[d][0] || LADDER_N > spans[d][1])
-        grid[LADDER_N + ':' + d] = cell(LADDER_N, d);
-    const table = benchDepths.map(d => {
-      const cells = [];
-      for (let lvl = spans[d][0]; lvl <= spans[d][1]; lvl++) {
-        const s = grid[lvl + ':' + d];
-        cells.push(`L${lvl} ${s ? s.w + '-' + s.l : '-'}`.padStart(10));
-      }
-      // Set apart with a | so the benchmark cell is never mistaken for part of the window -- it is
-      // a fixed reference point, not a rung the sweep is working through.
-      const top = grid[LADDER_N + ':' + d];
-      if (top) cells.push(`  | L${LADDER_N} ${top.w}-${top.l}`);
-      return `    D${d}` + cells.join('');
-    });
-    log(`iteration ${iter} — ladder sweep (net's win-loss per cell):\n` + table.join('\n'));
-    // Regression spot-check: the sweep above only ever looks at the CURRENT window, so once a rung
-    // retires nothing ever re-examines it -- a net that sharpens against, say, L5 at the cost of an
-    // L4 it used to have solid would never surface that here, maybe not for iterations, because L4
-    // is below the window and simply isn't being asked about. Cheaply re-test the most recently
-    // retired rungs per depth (spotCheckGames, far fewer than benchCellGames -- this is a check, not
-    // a placement, so one dropped game out of two is already worth a flag) instead of every rung ever
-    // retired, for the same reason tournament.js caps its own field with --recent: coverage that grew
-    // with the run's whole history would make this more expensive every time it runs, not a fixed
-    // cost. Wider (checks rungs the main sweep doesn't touch) but thinner (far fewer games each) --
-    // the two trade off, so total spot-check cost stays flat regardless of how far the window has
-    // already climbed.
-    const spotCheckRecent = Math.max(0, +arg('spotCheckRecent', 3));
-    const spotCheckGames = arg('spotCheckGames', '2');
-    if (spotCheckRecent > 0) {
-      const regressed = readRegressed();
-      const notes = [];
-      for (const d of benchDepths) {
-        const from = Math.max(1, win[d] - spotCheckRecent);
-        for (let lvl = from; lvl < win[d]; lvl++) {
-          const s = arenaScore(runCapturedSoft('arena.js',
-            ['--a', 'nn:0:' + best, '--b', 'L' + lvl, '--games', spotCheckGames, '--depth', String(d)]));
-          const ok = s && s.w > 0 && s.l === 0;
-          const was = (regressed[d] || []).includes(lvl);
-          if (!ok && !was) {
-            regressed[d] = [...(regressed[d] || []), lvl];
-            notes.push(`D${d} L${lvl} regressed (${s ? s.w + '-' + s.l : 'n/a'})`);
-          } else if (ok && was) {
-            regressed[d] = regressed[d].filter(x => x !== lvl);
-            notes.push(`D${d} L${lvl} recovered`);
-          }
+    const top = grid[LADDER_N + ':' + d];
+    if (top) cells.push(`  | L${LADDER_N} ${top.w}-${top.l}`);
+    return `    D${d}` + cells.join('');
+  });
+  log(`ladder sweep (net's win-loss per cell):\n` + table.join('\n'));
+  // Regression spot-check: the sweep above only ever looks at the CURRENT window, so once a rung
+  // retires nothing ever re-examines it. Cheaply re-test the most recently retired rungs per depth
+  // (spotCheckGames, far fewer than benchCellGames -- a check, not a placement).
+  const spotCheckRecent = Math.max(0, +arg('spotCheckRecent', 3));
+  const spotCheckGames = arg('spotCheckGames', '2');
+  if (spotCheckRecent > 0) {
+    const regressed = readRegressed();
+    const notes = [];
+    for (const d of benchDepths) {
+      const from = Math.max(1, win[d] - spotCheckRecent);
+      for (let lvl = from; lvl < win[d]; lvl++) {
+        const s = arenaScore(runCapturedSoft('arena.js',
+          ['--a', 'nn:0:' + best, '--b', 'L' + lvl, '--games', spotCheckGames, '--depth', String(d)]));
+        const ok = s && s.w > 0 && s.l === 0;
+        const was = (regressed[d] || []).includes(lvl);
+        if (!ok && !was) {
+          regressed[d] = [...(regressed[d] || []), lvl];
+          notes.push(`D${d} L${lvl} regressed (${s ? s.w + '-' + s.l : 'n/a'})`);
+        } else if (ok && was) {
+          regressed[d] = regressed[d].filter(x => x !== lvl);
+          notes.push(`D${d} L${lvl} recovered`);
         }
       }
-      if (notes.length) {
-        log(`iteration ${iter} — regression spot-check: ` + notes.join(', '));
-        writeRegressed(regressed);
-      }
     }
-    // Retire a rung for THIS DEPTH only -- L1 can be done with at 3-ply while 1-ply still has to
-    // fight it. Demanding 100% on two adjacent rungs is what makes a 3-game cell safe: two clean
-    // sweeps is ~1.6% by luck for an even matchup, and retiring slightly early costs almost
-    // nothing, because a level you always beat has stopped carrying information anyway.
-    const swept = (l, d) => { const s = grid[l + ':' + d]; return s && s.w > 0 && s.l === 0; };
-    for (const d of benchDepths) {
-      const [bottom, top] = spans[d];
-      if (bottom + 1 <= top && swept(bottom, d) && swept(bottom + 1, d) &&
-          bottom < LADDER_N - benchLevels + 1) {
-        win[d] = bottom + 1;
-        log(`iteration ${iter} — depth ${d}: L${bottom} retired (${d}-ply swept L${bottom} and ` +
-            `L${bottom + 1}); its window moves up to L${bottom + 1}-L${Math.min(bottom + benchLevels, LADDER_N)}`);
-      }
+    if (notes.length) {
+      log(`regression spot-check: ` + notes.join(', '));
+      writeRegressed(regressed);
     }
-    writeWindows(win);
-    // The frontier line is the headline: where each depth is currently fighting. Read across it and
-    // you are reading the diagonal.
-    const frontier = benchDepths.map(d => `${d}ply:L${win[d]}`).join(' ');
-    const regressedNow = readRegressed();
-    const regressedNote = benchDepths
-      .map(d => (regressedNow[d] || []).length ? `D${d}:L${regressedNow[d].join(',L')}` : null)
-      .filter(Boolean).join(' ');
-    log(`iteration ${iter} — frontier ${frontier}` + (regressedNote ? ` | regressed ${regressedNote}` : ''));
-    statusState.lastBenchmark = `iteration ${iter}: frontier ${frontier}` +
-      (regressedNote ? ` | regressed ${regressedNote}` : '') + ` — ` +
-      table.map(r => r.trim().replace(/\s+/g, ' ')).join(' | ');
-  } else {
-    const nextBench = Math.ceil((iter + 1) / benchEvery) * benchEvery;
-    log(`iteration ${iter} — ladder sweep skipped (next at iteration ${nextBench})`);
   }
-  const nextBenchNote = iter % benchEvery === 0 ? '' :
-    ` (next run at iteration ${Math.ceil((iter + 1) / benchEvery) * benchEvery})`;
-  writeStatus(`iteration ${iter} complete${nextBenchNote}`);
+  // Retire a rung for THIS DEPTH only. Demanding 100% on two adjacent rungs is what makes a
+  // 3-game cell safe: two clean sweeps is ~1.6% by luck for an even matchup.
+  const swept = (l, d) => { const s = grid[l + ':' + d]; return s && s.w > 0 && s.l === 0; };
+  for (const d of benchDepths) {
+    const [bottom, top] = spans[d];
+    if (bottom + 1 <= top && swept(bottom, d) && swept(bottom + 1, d) &&
+        bottom < LADDER_N - benchLevels + 1) {
+      win[d] = bottom + 1;
+      log(`depth ${d}: L${bottom} retired (${d}-ply swept L${bottom} and L${bottom + 1}); ` +
+          `its window moves up to L${bottom + 1}-L${Math.min(bottom + benchLevels, LADDER_N)}`);
+    }
+  }
+  writeWindows(win);
+  const frontier = benchDepths.map(d => `${d}ply:L${win[d]}`).join(' ');
+  const regressedNow = readRegressed();
+  const regressedNote = benchDepths
+    .map(d => (regressedNow[d] || []).length ? `D${d}:L${regressedNow[d].join(',L')}` : null)
+    .filter(Boolean).join(' ');
+  log(`frontier ${frontier}` + (regressedNote ? ` | regressed ${regressedNote}` : ''));
+  statusState.lastBenchmark = `frontier ${frontier}` +
+    (regressedNote ? ` | regressed ${regressedNote}` : '') + ` — ` +
+    table.map(r => r.trim().replace(/\s+/g, ' ')).join(' | ');
 }
+
+// --- the scheduler: wakes up on a short clock, does nothing most ticks -------------------------
+async function schedulerLoop() {
+  for (;;) {
+    await sleep(checkEveryMin*60000);
+    const now = Date.now();
+    // Push whatever the CURRENTLY-GROWING batch file has on it so far. Batches now take hours, not
+    // minutes, to complete -- without this, git only ever sees a finished batch, which would mean
+    // going many hours between updates instead of every checkEveryMin, exactly the opposite of
+    // what incremental writes in selfplay.js were for.
+    if (selfplayOut && fs.existsSync(selfplayOut))
+      writeStatus(`self-play batch ${statusState.batch} running (started ` +
+        `${new Date(selfplayStartedAt).toISOString()})`, [path.relative(repoRoot, selfplayOut).replace(/\\/g, '/')]);
+    if (now - lastTournamentAt >= tournamentEveryMin*60000) {
+      lastTournamentAt = now;
+      runTournamentCycle();
+    }
+    if (now - lastBenchAt >= benchEveryMin*60000) {
+      lastBenchAt = now;
+      runBenchCycle();
+    }
+    writeStatus(`self-play batch ${statusState.batch} running, next check in ${checkEveryMin} min`);
+  }
+}
+
+startSelfplayBatch();
+schedulerLoop();

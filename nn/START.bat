@@ -10,12 +10,14 @@ if errorlevel 1 (
   exit /b 1
 )
 git pull >nul 2>nul
-rem Games per iteration. Was 200, but under the thin-leg / no-grace rules a single game runs far
-rem longer (L2 ~53 plies, L4 ~120, vs ~15 before) and the depth mix costs ~4.3x per move on top,
-rem so 200 would make one iteration take hours. Nothing is lost by going small: train.js always
-rem re-reads every accumulated nn/data/*.jsonl file, so fewer games per iteration just means more
-rem frequent gate checks, not less training data. Raise it if iterations feel too quick.
-set GAMES=30
+rem Games per self-play BATCH. This used to gate a resume-train step that ran once per small batch
+rem (hence a small number, 30), but that step is gone -- self-play now just runs continuously,
+rem chaining itself into a fresh batch the moment one finishes, with retraining and the round
+rem robin on their own independent clock (see run.js's header). A bigger batch means the
+rem straggler tail (the one slow game that leaves every other core idle at the very end) gets
+rem paid far less often relative to useful work done, so there is no reason to keep this small
+rem anymore -- 1000 is the new default; raise it further if batches still finish quickly.
+set GAMES=1000
 rem Architecture for the from-scratch challenger that enters every round robin. 96,64,48 is the
 rem bake-off winner: it swept all four of its pairings at search depth 2 (63%) and leads across
 rem both depths combined (58% of 268 decided games), while the flat 96,96 this run has used all
@@ -30,5 +32,5 @@ set SHAPE=96,64,48
 set SHAPEFLAG=
 if not "%SHAPE%"=="" set SHAPEFLAG=--scratchHidden %SHAPE%
 echo Training started. Leave this window open. Close it any time to stop - progress is saved.
-node run.js --gamesPerIter %GAMES% %SHAPEFLAG%
+node run.js --gamesPerBatch %GAMES% %SHAPEFLAG%
 pause

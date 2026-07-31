@@ -25,8 +25,10 @@ rem         whether the quiescence result below means anything -- a 50/50 arena 
 rem         means "never fired", not "doesn't work")
 rem       - quiescence A/B: same net, depth 1 + throw-screen vs plain depth 1, 40 games
 rem
-rem  3. TRAIN until the window is closed. Same loop as START.bat: selfplay -> train -> promote,
-rem     round robin + pinned 96,64,48 scratch challenger every 10 iterations, ladder sweep,
+rem  3. TRAIN until the window is closed. Same loop as START.bat: self-play runs continuously in
+rem     the background, chaining itself into a fresh batch as soon as one finishes; retraining
+rem     (from scratch, every cycle -- see run.js's header for why) + round robin + pinned
+rem     96,64,48 scratch challenger + ladder sweep all run on their own independent clock,
 rem     seeded games, game-weighted loss -- all of it.
 rem ============================================================================================
 cd /d %~dp0
@@ -89,9 +91,9 @@ echo  Step 3 of 3: training - runs until you close this window.
 echo  Results of the measurements are in probe-results.txt
 echo ================================================================
 echo.
-set GAMES=30
+set GAMES=1000
 set SHAPE=96,64,48
 set SHAPEFLAG=
 if not "%SHAPE%"=="" set SHAPEFLAG=--scratchHidden %SHAPE%
-node run.js --gamesPerIter %GAMES% %SHAPEFLAG%
+node run.js --gamesPerBatch %GAMES% %SHAPEFLAG%
 pause
