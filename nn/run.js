@@ -435,8 +435,16 @@ for (let iter = startIter; ; iter++) {
   // game is ladder-vs-ladder anyway (see selfplay.js's own kind selection), so there is no "current
   // strength" for a ZPD band to be centred on.
   const dataPool = fs.existsSync(best) ? zpdLevels(readWindows(), readRegressed()) : null;
-  log(`iteration ${iter} — selfplay ${gamesPerIter} games (mix ${mix}, ${workers} workers` +
-      (dataPool ? `, ZPD-biased levels pool` : '') + ')');
+  // Print the actual counts, not just "ZPD-biased levels pool". The shape of this distribution is a
+  // real tuning decision (--zpdSigma, --topFloor) and it was invisible: the old line could not
+  // distinguish a healthy curve from the box that silently gave L11 zero games for 61 iterations.
+  // It doubles as the restart check -- run.js is loaded into memory once, so a pull alone changes
+  // nothing, and this line is the first place a restart actually shows.
+  const poolNote = dataPool
+    ? ', pool ' + [...new Set(dataPool)].sort((a, b) => a - b)
+        .map(l => `L${l}x${dataPool.filter(x => x === l).length}`).join(' ')
+    : '';
+  log(`iteration ${iter} — selfplay ${gamesPerIter} games (mix ${mix}, ${workers} workers${poolNote})`);
   statusState.iter = iter; statusState.mix = fs.existsSync(best) ? mix : '(no model yet — pure ladder)';
   writeStatus(`selfplay running (${gamesPerIter} games, started ${new Date().toISOString()})`);
   run('selfplay.js', ['--games', gamesPerIter,
