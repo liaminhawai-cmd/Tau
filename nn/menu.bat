@@ -28,7 +28,7 @@ echo   9. Policy HEAD-TO-HEAD: pointy vs flat, ordering+cutoff  -- needs 2 and 3
 echo.
 echo  10. Check training data for duplicates (why did row count jump?)
 echo.
-echo  11. STRENGTH: best vs L11 at depth 3  -- the open question, leave it running
+echo  11. STRENGTH: best vs L11 at depth 3, 2, 1  -- is the net already a rung above L11?
 echo  12. WIDTH A/B: keep 6 + policy cutoff vs plain keep 4  -- leave it running
 echo.
 echo  13. Exit
@@ -56,27 +56,40 @@ if not exist "nn\models\best.json" (
   pause
   goto menu
 )
-rem The headline strength question, and the only one still open. Measured over randomized
-rem openings at temperature 0: D1 vs L11 went 3-9 and D2 vs L11 went 1-7, so at those depths the
-rem net is beaten and not narrowly. D3 went 4-2 -- but that is 6 games, a 2-sigma band of plus or
-rem minus 41 points, i.e. consistent with anything from a quarter to every game. Only a real
-rem sample settles it.
-rem Worth rerunning after every promotion: those numbers describe the net the iteration-60 round
-rem robin then replaced, so they are about a champion that no longer exists.
-rem Not expected to finish, and it does not need to -- D3 costs several times D2 per move, and
-rem arena prints the running score after every single game. Read wherever it got to. 60 games is
-rem already plus or minus 13, enough to separate 67 from a coin flip.
-set "GAMES=200"
-set /p GAMES="Games to play, Enter for 200: "
+rem Is the net already stronger than the top ladder rung -- effectively an L12 -- and at which
+rem search depth? Everything measured so far says no at the cheap depths and unknown at 3:
+rem D1 vs L11 went 3-9 and D2 went 1-7 over randomized openings, while D3 went 4-2, which is
+rem 6 games and a 2-sigma band of plus or minus 41 points. That is the whole basis for the idea.
+rem
+rem DEPTH 3 RUNS FIRST, deliberately. It is the live hypothesis and by far the slowest cell, so
+rem running it last would mean a part-finished session answers only the questions already
+rem answered. D2 and D1 follow if there is time.
+rem
+rem Also worth rerunning after every promotion: the numbers above describe a champion the round
+rem robin has since replaced twice over.
+rem
+rem --saveData is the point of doing this here rather than waiting for the sweep to crawl up to
+rem L11: these are exactly the games self-play cannot make in quantity, and they now become
+rem training rows instead of a win-loss tally. They land in nn\data\ so train.js picks them up on
+rem its next pass; game ids are unique per run, so repeat sessions accumulate rather than collide.
+rem
+rem Not expected to finish. arena prints and logs the running score after every game, so read
+rem wherever it got to -- 60 games is plus or minus 13, enough to tell a real edge from a coin
+rem flip. Beating L11 needs more than 50 percent PLUS the band, so at 60 games that means 63.
+set "GAMES=60"
+set /p GAMES="Games per depth, Enter for 60: "
 echo.
 echo Safe to run with the trainer going: fixed depth, so sharing cores changes how long this
 echo takes but not which moves either side picks, and neither side is on a clock.
+echo Each depth logs separately to nn\arena-logs\ and appends training rows to nn\data\.
 echo.
-echo === best.json at depth 3 vs L11, %GAMES% games ===
-node nn\arena.js --a nn:0:%CD%\nn\models\best.json --b L11 --depth 3 --games %GAMES%
+for %%D in (3 2 1) do (
+  echo.
+  echo === best.json at depth %%D vs L11, %GAMES% games ===
+  node nn\arena.js --a nn:0:%CD%\nn\models\best.json --b L11 --depth %%D --games %GAMES% --saveData %CD%\nn\data\vs-l11.jsonl
+)
 pause
 goto menu
-
 :widthab
 if not exist "nn\models\policy.json" (
   echo nn\models\policy.json not found -- run option 2 first.
