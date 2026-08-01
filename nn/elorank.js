@@ -42,6 +42,13 @@ function arg(name, dflt) {
 const dir = __dirname;
 const modelsDir = path.join(dir, 'models');
 const gamesPerPair = Math.max(1, +arg('games', 4));
+// The ladder is the YARDSTICK -- every net's rank is an interpolation against it -- so it has to
+// be pinned harder than the things being measured, not the same or less. It was the same, and a
+// mid-run fit showed exactly what that costs: the rungs every net plays (the spread below) had
+// 30-56 games each while the rungs in between had 2-4 from their adjacent pair alone, and the
+// fitted ladder came out NON-MONOTONIC -- L9 and L10 below L8, L7 below L10. Interpolating a
+// fractional rank against an out-of-order yardstick produces confident nonsense.
+const ladderGames = Math.max(1, +arg('ladderGames', gamesPerPair*3));
 const depths = (arg('depths', '1,2,3') || '').split(',').map(Number).filter(d => d >= 1);
 const levels = (arg('levels', '') || '').split(',').map(Number).filter(n => n >= 1);
 // Each arena.js is single-threaded, so this IS the core count in use -- a fixed default would
@@ -158,6 +165,11 @@ function buildPairs() {
   const ladder = players.filter(p => p.kind === 'ladder');
   const nets = players.filter(p => p.kind === 'nn');
   for (let i = 0; i + 1 < ladder.length; i++) add(ladder[i], ladder[i + 1]);
+  // Skip-one pairs as well as adjacent ones. A pure chain is a single path: one badly-estimated
+  // rung in the middle distorts every rank on the far side of it, because there is no other
+  // route between the two halves. Cross-links make the yardstick's own spacing over-determined
+  // instead of just-determined.
+  for (let i = 0; i + 2 < ladder.length; i++) add(ladder[i], ladder[i + 2]);
   const rungSpread = ladder.length >= 4
     ? [ladder[0], ladder[Math.floor(ladder.length/3)], ladder[Math.floor(2*ladder.length/3)], ladder[ladder.length - 1]]
     : ladder;
@@ -198,14 +210,19 @@ const SIDE_COST = p => {
   if (p.kind === 'ladder') return p.level <= 5 ? 1 : p.level <= 7 ? 2 : p.level <= 9 ? 4 : 5;
   return p.depth >= 3 ? 4 : p.depth === 2 ? 2.5 : 1;
 };
-const pairWeight = (a, b) => (SIDE_COST(a) + SIDE_COST(b))*gamesPerPair;
+const pairWeight = (a, b) => (SIDE_COST(a) + SIDE_COST(b))*
+  ((a.kind === 'ladder' && b.kind === 'ladder') ? ladderGames : gamesPerPair);
 let doneWeight = 0, startedAt = 0;
 const fmtDur = s => s >= 3600 ? `${(s/3600).toFixed(1)}h` : `${Math.round(s/60)}m`;
 
 function playPair(a, b) {
   return new Promise(resolve => {
+    // ladder-vs-ladder pairs are the yardstick: more games each, and they are also among the
+    // cheapest games on the board at the low rungs, so this costs far less than it sounds
+    const bothLadder = a.kind === 'ladder' && b.kind === 'ladder';
+    const n = bothLadder ? ladderGames : gamesPerPair;
     const args = [path.join(dir, 'arena.js'), '--a', a.spec, '--b', b.spec,
-                  '--games', String(gamesPerPair), '--openingPlies', String(openingPlies)];
+                  '--games', String(n), '--openingPlies', String(openingPlies)];
     if (randomStartFrac > 0) args.push('--randomStartFrac', String(randomStartFrac));
     if (a.kind === 'nn') args.push('--depthA', String(a.depth));
     if (b.kind === 'nn') args.push('--depthB', String(b.depth));
@@ -280,6 +297,7 @@ function fitBT(ids, results) {
 // inventing precision that doesn't exist.
 function rankOf(eloVal, ladderElos) {
   const pts = ladderElos.slice().sort((a, b) => a.elo - b.elo);
+  if (pts.length < 2) return { rank: NaN, edge: 'noscale' };
   if (eloVal <= pts[0].elo) return { rank: pts[0].level, edge: 'below' };
   if (eloVal >= pts[pts.length - 1].elo) return { rank: pts[pts.length - 1].level, edge: 'above' };
   for (let i = 0; i + 1 < pts.length; i++) {
@@ -296,13 +314,28 @@ function report() {
   const ids = players.map(p => p.id);
   const elo = fitBT(ids, store.results);
   const byId = Object.fromEntries(players.map(p => [p.id, p]));
-  const ladderElos = players.filter(p => p.kind === 'ladder').map(p => ({ level: p.level, elo: elo[p.id] }));
   // played-game counts, so a rank resting on almost no evidence is visible as such
   const played = {};
   for (const [key, r] of Object.entries(store.results)) {
     const [a, b] = key.split('|'); const t = r.w + r.l + (r.d || 0);
     played[a] = (played[a] || 0) + t; played[b] = (played[b] || 0) + t;
   }
+  // Only rungs with real evidence behind them may serve as the yardstick, and only if they come out
+  // in the right ORDER. A rung with a handful of games sits near the prior, and a mid-run fit
+  // produced a ladder with L9 and L10 below L8 -- interpolating against that yields a precise-looking
+  // rank derived from an inverted scale. Rungs that break monotonicity are dropped from the yardstick
+  // (not from the report) and named, since a genuinely out-of-order ladder is itself worth knowing.
+  const MIN_RUNG_GAMES = 6;
+  const rungsAll = players.filter(p => p.kind === 'ladder')
+    .map(p => ({ level: p.level, elo: elo[p.id], games: played[p.id] || 0 }))
+    .sort((a, b) => a.level - b.level);
+  const wellPlayed = rungsAll.filter(r => r.games >= MIN_RUNG_GAMES);
+  const ladderElos = [], droppedRungs = [];
+  for (const r of wellPlayed) {
+    if (ladderElos.length && r.elo <= ladderElos[ladderElos.length - 1].elo) { droppedRungs.push(r); continue; }
+    ladderElos.push(r);
+  }
+  const thinRungs = rungsAll.filter(r => r.games < MIN_RUNG_GAMES);
   const rows = players.map(p => {
     const e = elo[p.id];
     const rk = p.kind === 'nn' ? rankOf(e, ladderElos) : { rank: p.level, edge: null };
@@ -322,12 +355,22 @@ function report() {
   for (const r of rows) {
     const thin = r.games < MIN_GAMES;
     const rankCell = r.p.kind !== 'nn' ? '  -  '
-      : thin ? '    ?'
+      : thin || r.edge === 'noscale' || !Number.isFinite(r.rank) ? '    ?'
       : r.edge ? (r.edge === 'above' ? '>' : '<') + String(r.rank).padStart(4)
       : r.rank.toFixed(2).padStart(5);
     console.log(`  ${String(Math.round(r.elo)).padStart(6)}  ${rankCell}  ` +
                 `${String(r.games).padStart(5)}  ${r.p.label}${thin ? '  (too few games)' : ''}`);
   }
+
+  if (thinRungs.length)
+    console.log(`\n(yardstick: L${thinRungs.map(r => r.level).join(', L')} have under ${MIN_RUNG_GAMES} ` +
+                `games and are not used for interpolation yet)`);
+  if (droppedRungs.length)
+    console.log(`(yardstick: L${droppedRungs.map(r => r.level).join(', L')} rated BELOW a lower rung -- ` +
+                `excluded from interpolation. Either they need more games, or the ladder really is ` +
+                `out of order there, which is worth knowing either way.)`);
+  if (ladderElos.length < 2)
+    console.log(`(too few usable rungs to interpolate any rank yet -- let the ladder pairs finish)`);
 
   const specs = rows.filter(r => r.p.kind === 'nn' && !r.edge && r.games >= MIN_GAMES)
     .map(r => `${r.p.model}@${r.rank.toFixed(2)}:${r.p.depth}`);
