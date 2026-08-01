@@ -347,7 +347,22 @@ function main() {
     }
   }
 
-  const ws = fs.createWriteStream(out, { flags: 'a' });
+  // SYNCHRONOUS appends, not createWriteStream. createWriteStream opens the file asynchronously and
+  // flushes on the event loop -- but the game loop below is fully synchronous CPU-bound search that
+  // never yields, so the open callback never runs, the file is never even CREATED, and every row
+  // sits in memory until the last requested game finishes. Invisible when a caller asks for one
+  // game per process (run.js's fork children exit after each game, which drains everything), fatal
+  // for worker.js's lanes, which ask for a whole chunk in one process: 11 lanes reported "no data
+  // on disk yet" for the entire chunk, and closing the window would have silently thrown away every
+  // game played -- while the console promised "finished games are already saved". Sync appends land
+  // DURING the loop, which is the only thing that makes incremental progress real here.
+  fs.writeFileSync(out, '', { flag: 'a' });     // exists from the start, even before game 1 ends
+  let pending = '';
+  const ws = {
+    write(s) { pending += s; },
+    flush() { if (pending) { fs.appendFileSync(out, pending); pending = ''; } },
+    end() { this.flush(); },
+  };
   let positions = 0, decided = 0;
   const t0 = Date.now();
   for (let g = 0; g < games; g++) {
@@ -438,7 +453,13 @@ function main() {
         positions++;
       }
     }
-    if ((g + 1) % 10 === 0 || g === games - 1)
+    // Flush THIS game's rows before starting the next one. A game at the deep end of the ladder can
+    // run for minutes, so batching disk writes buys nothing and costs the whole point of appending.
+    ws.flush();
+    // Always log the first game, not just every tenth: a lane asked for 18 games used to print
+    // nothing at all until game 10, which on slow deep-ladder games reads as a hung process for a
+    // very long time -- the exact "is this working or stuck?" ambiguity this output exists to settle.
+    if (g === 0 || (g + 1) % 10 === 0 || g === games - 1)
       console.log(`${TAG}game ${g + 1}/${games} (${tag}, ${plies} plies, winner ${winner}) — ` +
                   `${positions} positions, ${((Date.now() - t0)/1000).toFixed(0)}s`);
   }
