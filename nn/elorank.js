@@ -4,7 +4,7 @@
 // ready-to-paste --ensemble string.
 //
 //   node nn/elorank.js [--games 4] [--depths 1,2,3] [--levels 1,2,3,4,5,6,7,8,9,10,11]
-//                      [--models a.json,b.json] [--spread 6] [--workers 6]
+//                      [--models a.json,b.json] [--spread 6] [--workers N]
 //                      [--out nn/elo-results.json] [--saveData nn/data/elo.jsonl] [--refit]
 //
 // WHY ELO AND NOT A FULL ROUND ROBIN. A full matrix over ~20 brains is 190 pairs; at the depth-3
@@ -44,11 +44,28 @@ const modelsDir = path.join(dir, 'models');
 const gamesPerPair = Math.max(1, +arg('games', 4));
 const depths = (arg('depths', '1,2,3') || '').split(',').map(Number).filter(d => d >= 1);
 const levels = (arg('levels', '') || '').split(',').map(Number).filter(n => n >= 1);
-const workers = Math.max(1, +arg('workers', 6));
+// Each arena.js is single-threaded, so this IS the core count in use -- a fixed default would
+// leave most of a big machine idle. Auto-detect the same way run.js does (leave one core for
+// everything else; Node counts hyperthreads as cores so this is not literally one-per-physical).
+const os = require('os');
+const workers = Math.max(1, +arg('workers', Math.max(1, Math.min(os.cpus().length - 1, 14))));
 const outPath = arg('out', path.join(dir, 'elo-results.json'));
 const saveData = arg('saveData', null);
 const refitOnly = process.argv.includes('--refit');
 const spread = Math.max(0, +arg('spread', 6));
+// 4, matching selfplay.js rather than arena.js's evaluation default of 2. arena.js keeps 2 because
+// it is an evaluation tool, but these games are ALSO training data (--saveData), and selfplay.js
+// raised its own default to 4 for precisely that reason: at 2 plies the mostly-deterministic
+// brains still funnel into repeated trajectories, and duplicated lines quietly multiply the
+// effective epochs on them. Costs nothing for ranking -- both sides face the same scramble.
+const openingPlies = +arg('openingPlies', 4);
+// Fully random legal poses (opening.js's randomStartPose), OFF by default here on purpose. It
+// would deepen the data further, but it changes what the ranking MEASURES: the ladder rungs were
+// built and tuned for play from real positions, so rating them largely on arbitrary poses would
+// be scoring them at a job they were never designed for, and the resulting ranks would be a worse
+// yardstick for retromine.js than the ones we have now. Worth turning on (0.15-0.25) only if the
+// data matters more than the ranking on a given run.
+const randomStartFrac = +arg('randomStartFrac', 0);
 
 // --- who is in the field ----------------------------------------------------------------------
 function discoverModels() {
@@ -74,13 +91,42 @@ function discoverModels() {
   return pick;
 }
 
+// Snapshot every model before rating it. best.json, value.json and scratch.json are all REWRITTEN
+// while the trainer runs -- resume-train overwrites best/value on its own clock, a round robin
+// overwrites scratch and promotes over best -- so rating them by path would attribute games played
+// against several different nets to a single player id, which is not a noisy measurement but a
+// meaningless one. Copying first freezes the field for the whole run, which also makes it safe to
+// train and rank at the same time.
+// Taken ONCE and reused on resume (the directory's existence is the marker): re-snapshotting on a
+// resumed run would swap the nets underneath results already stored against them.
+function snapshotModels(paths) {
+  const snapDir = path.join(modelsDir, '.elo-snapshot');
+  const fresh = !fs.existsSync(snapDir);
+  try {
+    fs.mkdirSync(snapDir, { recursive: true });
+    const out = [];
+    for (const p of paths) {
+      const dest = path.join(snapDir, path.basename(p));
+      if (fresh || !fs.existsSync(dest)) fs.copyFileSync(p, dest);
+      out.push(dest);
+    }
+    if (fresh) console.log(`snapshotted ${out.length} models to ${snapDir} (field frozen for this run)`);
+    else console.log(`reusing existing snapshot in ${snapDir} (${out.length} models)`);
+    return out;
+  } catch (e) {
+    console.error(`WARNING: could not snapshot models (${e.message}) -- rating live files, so do ` +
+                  `NOT run the trainer at the same time`);
+    return paths;
+  }
+}
+
 const players = [];   // { id, kind:'ladder'|'nn', spec, depth, label }
 let LADDER_N = 11;
 try { LADDER_N = require('./engine.js').createEngine().AI_LADDER.length; } catch (e) {}
 const useLevels = levels.length ? levels.filter(l => l <= LADDER_N) : Array.from({ length: LADDER_N }, (_, i) => i + 1);
 for (const l of useLevels)
   players.push({ id: `L${l}`, kind: 'ladder', spec: `L${l}`, level: l, label: `L${l}` });
-for (const m of discoverModels())
+for (const m of snapshotModels(discoverModels()))
   for (const d of depths)
     players.push({ id: `${path.basename(m, '.json')}@D${d}`, kind: 'nn', spec: `nn:0:${m}`,
                    depth: d, model: m, label: `${path.basename(m, '.json')} D${d}` });
@@ -104,7 +150,12 @@ function buildPairs() {
   const rungSpread = ladder.length >= 4
     ? [ladder[0], ladder[Math.floor(ladder.length/3)], ladder[Math.floor(2*ladder.length/3)], ladder[ladder.length - 1]]
     : ladder;
-  for (const n of nets) for (const r of rungSpread) add(n, r);
+  // Rung-major, NOT net-major: every net gets its first ladder pairing before any net gets its
+  // second. Net-major would finish one net's whole spread before starting the next, so an early
+  // --refit (which is the intended way to use this -- a full run is many hours) would rank the
+  // first few nets well and leave the rest with no games at all. This way a partial fit covers
+  // the whole field at once and simply sharpens as more pairs land.
+  for (const r of rungSpread) for (const n of nets) add(n, r);
   // net-vs-net: each net linked to a couple of others, deterministically (index-offset rather than
   // random) so a resumed run rebuilds the identical pair list and its stored results still apply.
   for (let i = 0; i < nets.length; i++) {
@@ -130,7 +181,8 @@ const keyOf = (a, b) => `${a.id}|${b.id}`;
 function playPair(a, b) {
   return new Promise(resolve => {
     const args = [path.join(dir, 'arena.js'), '--a', a.spec, '--b', b.spec,
-                  '--games', String(gamesPerPair), '--openingPlies', '2'];
+                  '--games', String(gamesPerPair), '--openingPlies', String(openingPlies)];
+    if (randomStartFrac > 0) args.push('--randomStartFrac', String(randomStartFrac));
     if (a.kind === 'nn') args.push('--depthA', String(a.depth));
     if (b.kind === 'nn') args.push('--depthB', String(b.depth));
     if (saveData) args.push('--saveData', saveData);

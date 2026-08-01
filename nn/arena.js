@@ -16,7 +16,7 @@ const { createEngine } = require('./engine.js');
 const { features } = require('./features.js');
 const { MLP } = require('./net.js');
 const { nnPlanFor, nnPlanForTimed } = require('./nnai.js');
-const { playRandomOpening } = require('./opening.js');
+const { playRandomOpening, randomStartPose } = require('./opening.js');
 
 // --saveData turns an evaluation run into a data run as well. Every arena game is a real game with
 // a real outcome, so throwing away everything but the win/loss tally wastes the whole run: a
@@ -125,6 +125,7 @@ function main() {
   // colour assignment would replay bit-for-bit identically, making "games" a repeat count, not a
   // sample size. See opening.js.
   const openingPlies = +arg('openingPlies', 2);
+  const randomStartFrac = +arg('randomStartFrac', 0);
 
   // --saveData <file>: append training rows as the games are played (see the header note).
   // Appended per game rather than buffered to the end, for the same reason the score log is
@@ -171,7 +172,14 @@ function main() {
   for (let g = 0; g < games; g++) {
     const aIsBlue = g % 2 === 0;
     eng.newGame();
-    playRandomOpening(eng, openingPlies);
+    // --randomStartFrac: this fraction of games starts from a fully random LEGAL pose instead of
+    // the canonical start (see opening.js's randomStartPose). Off by default -- for evaluation a
+    // shared canonical start is what makes two brains comparable -- but available because arena
+    // games become training data whenever --saveData is on, and that data wants coverage of
+    // shapes no real trajectory reaches.
+    const randomStart = Math.random() < randomStartFrac;
+    if (randomStart) { randomStartPose(eng); eng.setActive(Math.random() < 0.5 ? 0 : 1); }
+    else playRandomOpening(eng, openingPlies);
     let plies = 0, nulls = 0;
     const rows = [];
     while (!eng.getG().over && plies < 300) {
@@ -206,7 +214,7 @@ function main() {
         const z = (rows[i].m === G.winner ? 1 : -1)*Math.pow(discount, rows.length - i);
         dataStream.write(JSON.stringify({ f: rows[i].f.map(v => +v.toFixed(5)), z: +z.toFixed(4),
                                           p: rows[i].p.map(v => +v.toFixed(4)), m: rows[i].m,
-                                          g: gameId }) + '\n');
+                                          g: gameId, ...(randomStart ? { src: 'random' } : {}) }) + '\n');
         savedRows++;
       }
     }

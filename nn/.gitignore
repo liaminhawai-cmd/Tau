@@ -8,3 +8,4 @@ frank-results.json
 frank-disagreements.json
 parktest-*.log
 arena-logs/
+.elo-snapshot/

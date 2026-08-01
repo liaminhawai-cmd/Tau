@@ -31,8 +31,10 @@ set GAMES=4
 rem How many lineage checkpoints to sample, evenly spaced oldest-to-newest, on top of the named
 rem architectures (best/wide/ultra/deep/l15_value/scratch, whichever exist).
 set SPREAD=6
-rem Concurrent arena processes. Lower this if the trainer is running and you want it to keep pace.
-set WORKERS=6
+rem Concurrent arena processes. Each one is single-threaded, so this IS how many cores get used.
+rem Blank means auto-detect (all cores but one). Set a low number only if you want the trainer,
+rem which wants ~14 itself, to keep pace alongside this.
+set WORKERS=
 
 echo.
 echo ================================================================
@@ -45,7 +47,9 @@ set /p GAMES="Games per pair, Enter for 4: "
 echo.
 rem --saveData: these are real games with real outcomes, so they become training rows too rather
 rem than being reduced to a win-loss tally and thrown away. Same schema selfplay.js writes.
-node nn\elorank.js --games %GAMES% --spread %SPREAD% --workers %WORKERS% --depths 1,2,3 --saveData nn\data\elo.jsonl
+set WORKERFLAG=
+if not "%WORKERS%"=="" set WORKERFLAG=--workers %WORKERS%
+node nn\elorank.js --games %GAMES% --spread %SPREAD% %WORKERFLAG% --depths 1,2,3 --saveData nn\data\elo.jsonl
 
 echo.
 echo ================================================================
