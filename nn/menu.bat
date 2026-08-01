@@ -30,8 +30,9 @@ echo  10. Check training data for duplicates (why did row count jump?)
 echo.
 echo  11. STRENGTH: best vs L11 at depth 3, 2, 1  -- is the net already a rung above L11?
 echo  12. WIDTH A/B: keep 6 + policy cutoff vs plain keep 4  -- leave it running
+echo  13. RANKS: current Elo chart of every rated brain (instant, no games played)
 echo.
-echo  13. Exit
+echo  14. Exit
 echo ================================================
 set /p choice="Pick a number: "
 
@@ -47,7 +48,8 @@ if "%choice%"=="9" goto policyduel
 if "%choice%"=="10" goto datacheck
 if "%choice%"=="11" goto vsl11
 if "%choice%"=="12" goto widthab
-if "%choice%"=="13" goto :eof
+if "%choice%"=="13" goto ranks
+if "%choice%"=="14" goto :eof
 goto menu
 
 :vsl11
@@ -90,6 +92,21 @@ for %%D in (3 2 1) do (
 )
 pause
 goto menu
+:ranks
+rem A pure REFIT of the stored results (nn\elo-results.json): fits every game ever recorded and
+rem prints the table -- Elo, ladder rank, 90 percent CI, games per brain. Plays NOTHING and writes
+rem nothing back, so it is safe to run while the trainer or RANK.bat is mid-run; it simply shows
+rem whatever the pool knows as of this second. The same numbers live machine-readably in
+rem nn\elo-summary.json if a script wants them instead of eyes.
+if not exist "nn\elo-results.json" (
+  echo No rating pool yet -- run RANK.bat or let the trainer's pool cycle fire first.
+  pause
+  goto menu
+)
+node nn\elorank.js --refit
+pause
+goto menu
+
 :widthab
 if not exist "nn\models\policy.json" (
   echo nn\models\policy.json not found -- run option 2 first.

@@ -1,7 +1,7 @@
 // Rank every brain we have -- ladder rungs AND neural nets at several search depths -- on ONE
 // scale, so retromine.js's interleaved strength ladder can be built from measurement instead of
 // guesswork. Output is a fractional rank per net ("wide.json at depth 2 plays like L4.6"), plus a
-// ready-to-paste --ensemble string.
+// live table; retromine.js reads the JSON summary directly for its strength axis.
 //
 //   node nn/elorank.js [--games 4] [--depths 1,2,3] [--levels 1,2,3,4,5,6,7,8,9,10,11]
 //                      [--models a.json,b.json] [--spread 6] [--workers N]
@@ -95,6 +95,15 @@ const summaryPath = arg('summary', null);
 // "granularity pass": run it now and then and the pool's older members keep slowly sharpening
 // instead of being frozen at whatever precision their placement run reached.
 const focusPairsOnly = arg('focusPairs', '1') !== '0';
+// --anchorShare: minimum fraction of each NET's games that should be against ladder rungs. A
+// QUOTA, deliberately, rather than a fixed boost: the pool gains nets forever while the ladder
+// stays 11 rungs, so any constant preference dilutes toward zero as the pool grows -- which is
+// exactly when it is needed most. Two rots are being prevented at once. In the saved training
+// data, nn-vs-nn games teach "how to beat nets like me" and self-play drifts into a style cycle;
+// the rungs are fixed, varied, non-learning opponents that keep style honest. And in the fit,
+// net ratings only mean anything because they are tethered to the anchor rungs -- an nn cloud that
+// mostly plays itself stays internally consistent while floating loose against the scale.
+const anchorShare = Math.min(0.9, Math.max(0, +arg('anchorShare', 0.3)));
 // Seconds of wall time per unit of pairWeight, from this project's measured game times. Only ever
 // used for the up-front estimate and budget trimming; the live ETA measures real pace instead, so
 // being wrong here costs a rough first guess and nothing more.
@@ -568,16 +577,15 @@ function report() {
     } catch (e) { console.error(`could not write ${summaryPath} (${e.message})`); }
   }
 
-  const specs = rows.filter(r => r.p.kind === 'nn' && !r.edge && r.games >= MIN_GAMES)
-    .map(r => `${r.p.model}@${r.rank.toFixed(2)}:${r.p.depth}`);
   const thinCount = rows.filter(r => r.p.kind === 'nn' && r.games < MIN_GAMES).length;
   if (thinCount) console.log(`\n(${thinCount} brains have fewer than ${MIN_GAMES} games and are left ` +
                              `unranked -- re-run --refit later, or let the run finish)`);
-  console.log(`\n=== paste into retromine.js ===\n--ensemble ${specs.join(',')}\n`);
+  // No more "paste into retromine" footer: retromine.js reads the summary written above directly
+  // and builds its strength axis from it, so there is nothing left to hand-carry between the two.
   const above = rows.filter(r => r.p.kind === 'nn' && r.edge === 'above');
   if (above.length)
-    console.log(`(${above.map(r => r.p.label).join(', ')} rated above L${LADDER_N} -- ` +
-                `no rung to interpolate against, so left out of the spec rather than given a made-up rank)`);
+    console.log(`\n(${above.map(r => r.p.label).join(', ')} rated above L${LADDER_N} -- ` +
+                `no rung to interpolate a ladder rank against, so rank shows ">"; their Elo is still exact)`);
   // Deliberately does NOT write outPath. playPair already checkpoints after every pair, so there is
   // nothing here to save -- and writing would be actively destructive in the --refit case, which is
   // meant to be run in a second window WHILE a ranking run is going: it loads the results file at
@@ -596,6 +604,16 @@ const gamesOf = () => {
   for (const [key, r] of Object.entries(store.results)) {
     const [a, b] = key.split('|'); const t = r.w + r.l + (r.d || 0);
     n[a] = (n[a] || 0) + t; n[b] = (n[b] || 0) + t;
+  }
+  return n;
+};
+// games each NET has played against ladder rungs (rungs' own ids all match L<n>)
+const ladderGamesOf = () => {
+  const isRung = id => /^L\d+$/.test(id);
+  const n = {};
+  for (const [key, r] of Object.entries(store.results)) {
+    const [a, b] = key.split('|'); const t = r.w + r.l + (r.d || 0);
+    if (isRung(a) !== isRung(b)) { const net = isRung(a) ? b : a; n[net] = (n[net] || 0) + t; }
   }
   return n;
 };
@@ -627,7 +645,7 @@ const pairGamesOf = () => {
 // interpolation against it -- an unpinned ladder makes every other measurement uninterpretable
 // (which is exactly what a mid-run fit showed: L9 and L10 rating below L8).
 function pickPair(elo, inFlight) {
-  const g = gamesOf(), pg = pairGamesOf();
+  const g = gamesOf(), pg = pairGamesOf(), lg = ladderGamesOf();
   let best = null, bestScore = -Infinity;
   for (let i = 0; i < players.length; i++) {
     for (let j = i + 1; j < players.length; j++) {
@@ -656,7 +674,18 @@ function pickPair(elo, inFlight) {
       const need = 1/Math.sqrt(1 + (g[a.id] || 0)) + 1/Math.sqrt(1 + (g[b.id] || 0));
       const novelty = 1/(1 + (pg[k] || 0)/gamesPerPair);
       const ladderBoost = bothLadder && Math.min(g[a.id] || 0, g[b.id] || 0) < ladderGames ? 3 : 1;
-      const score = (0.15 + closeness)*need*novelty*ladderBoost;
+      // net-vs-rung pairs jump the queue while the net is under its anchor quota (<= so a brand-new
+      // net starts with rung games rather than earning them later); once the share is banked the
+      // boost vanishes and pure information-seeking resumes. 4x outweighs the closeness gap even
+      // for a net a few hundred Elo past L11 -- by design, since those are the nets drifting
+      // furthest from the anchor.
+      const mixed = (a.kind === 'ladder') !== (b.kind === 'ladder');
+      let anchorBoost = 1;
+      if (mixed && anchorShare > 0) {
+        const net = a.kind === 'nn' ? a : b;
+        if ((lg[net.id] || 0) <= anchorShare*(g[net.id] || 0)) anchorBoost = 4;
+      }
+      const score = (0.15 + closeness)*need*novelty*ladderBoost*anchorBoost;
       if (score > bestScore) { bestScore = score; best = [a, b]; }
     }
   }
