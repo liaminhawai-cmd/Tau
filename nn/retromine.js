@@ -5,7 +5,7 @@
 // stronger version of the loser converts and it didn't.
 //
 //   node nn/retromine.js [--seeds 20] [--summary nn/elo-summary.json] [--maxDepth 2]
-//                        [--seedBottom 6] [--bigGuns 4] [--probesPerPos 10]
+//                        [--seedBottom 6] [--bigGuns 4] [--bigGunsDepth 3] [--probesPerPos 10]
 //                        [--randomStartFrac 0.3] [--maxReplaysPerSeed 60]
 //                        [--out nn/data/retro.jsonl]
 //
@@ -25,8 +25,14 @@
 //   - it still loses -> bisect above it: probe midway to the top of the pool, jump up on failure,
 //     narrow down on escape, until the gap closes on the lowest escaper
 //   - `--bigGuns` straight failures with no escape found -> stop bisecting hopeless territory and
-//     ask the top of the pool directly. If THAT fails, the position is dead as far as anything we
-//     have can tell: record it, step back one more ply, and let the same occupant try again there.
+//     ask the top of the pool directly. If THAT fails too, one last resort before calling it dead:
+//     the SAME weights, one ply deeper (--bigGunsDepth, one past --maxDepth by default). This is
+//     the only place a deeper search ever gets paid for -- routine placement stays D1/D2 (see
+//     --maxDepth's own note) because most positions never need it. It only fires at the exact
+//     moment the pool's own top has just lost, which by construction should be rare, so the ~20x
+//     cost of one more ply is spent on the hardest handful of positions instead of everywhere.
+//     If EVEN THAT fails, the position is dead as far as anything we have can tell: record it,
+//     step back one more ply, and let the same occupant try again there.
 // THE RATCHET (the design's actual name): each seat's strength only ever moves UP during a seed.
 // An escape puts the escaper in that seat for the rest of the walk backward -- a side that needed
 // a 1666-rated brain to get out of one position does not hand the seat back to the 500 it started
@@ -61,6 +67,9 @@ function main() {
   const maxDepth = Math.max(1, +arg('maxDepth', 2));
   const seedBottom = Math.max(2, +arg('seedBottom', 6));
   const bigGuns = Math.max(1, +arg('bigGuns', 4));
+  // One ply past maxDepth by default -- see the header note above. 0 disables the escape hatch
+  // entirely (routine dead verdicts only ever look as deep as maxDepth).
+  const bigGunsDepth = Math.max(0, +arg('bigGunsDepth', maxDepth + 1));
   const probesPerPos = Math.max(2, +arg('probesPerPos', 10));
   const randomStartFrac = +arg('randomStartFrac', 0.3);
   const maxReplaysPerSeed = Math.max(1, +arg('maxReplaysPerSeed', 60));
@@ -81,7 +90,7 @@ function main() {
   for (const [id, v] of Object.entries(summary.players || {})) {
     if (v.kind === 'ladder') {
       if ((v.games || 0) < 1) continue;   // an unplayed rung has a default 0 rating, not a place
-      pool.push({ id, elo: v.elo || 0, name: id,
+      pool.push({ id, elo: v.elo || 0, name: id, kind: 'ladder',
                   fn: idx => eng.ladderPlanFor(v.level - 1, idx) });
     } else if (v.kind === 'nn') {
       if ((v.games || 0) < 4 || (v.depth || 1) > maxDepth) continue;
@@ -92,7 +101,9 @@ function main() {
       if (!fs.existsSync(mp)) continue;
       let net;
       try { net = MLP.fromJSON(JSON.parse(fs.readFileSync(mp, 'utf8'))); } catch (e) { continue; }
-      pool.push({ id, elo: v.elo || 0, name: id,
+      // net and depth kept on the entry itself, not just closed over by fn -- the top-of-pool net
+      // needs to be rewrapped one ply deeper for the bigGunsDepth escape hatch below.
+      pool.push({ id, elo: v.elo || 0, name: id, kind: 'nn', net, depth: v.depth || 1,
                   fn: idx => nnPlanFor(eng, net, idx, { depth: v.depth || 1 }) });
     }
   }
@@ -102,6 +113,24 @@ function main() {
                   `search. Let the pool accumulate first.`);
     process.exit(1);
   }
+
+  // The escape hatch: the SAME weights currently on top of the axis, one ply deeper. Built once,
+  // from whatever is actually strongest right now -- this adapts automatically as the pool
+  // changes over weeks, no hardcoded model name. Only exists if the top is an nn (a ladder rung
+  // has no "depth" to deepen) and bigGunsDepth is genuinely past what the ordinary pool covers.
+  const topEntry = pool[pool.length - 1];
+  const ultimateGuns = (topEntry.kind === 'nn' && bigGunsDepth > topEntry.depth)
+    ? { id: `${topEntry.name.split('@')[0]}@D${bigGunsDepth}`, elo: topEntry.elo,
+        fn: idx => nnPlanFor(eng, topEntry.net, idx, { depth: bigGunsDepth }) }
+    : null;
+  // floor[] values are allowed to reach pool.length (one past the ordinary top) to mean "proven at
+  // the ultimateGuns tier" -- this resolves that sentinel to an actual playable brain everywhere a
+  // pool index gets turned into one, instead of every call site needing its own bounds check.
+  const brainAt = i => i < pool.length ? pool[i] : ultimateGuns;
+  const axisTop = ultimateGuns ? pool.length : pool.length - 1;
+  if (ultimateGuns)
+    console.log(`  escape hatch armed: ${topEntry.name} at D${bigGunsDepth} if D${topEntry.depth} ` +
+                `(the top of the ordinary axis) fails`);
 
   const ws = fs.createWriteStream(out, { flags: 'a' });
   let famCount = 0, gameCount = 0, positions = 0, deadFound = 0;
@@ -154,14 +183,14 @@ function main() {
     while (replays < maxReplaysPerSeed && rewind <= seed.rows.length) {
       // both seats at the top of the pool: nothing left for either side to climb, so the escape
       // question is out of moves -- the seed is mined out ("11 vs 11 -- no more rollbacks to do")
-      if (floor[0] >= pool.length - 1 && floor[1] >= pool.length - 1) break;
+      if (floor[0] >= axisTop && floor[1] >= axisTop) break;
       const point = seed.rows[seed.rows.length - rewind];
       const seedPose = { p: point.p, m: point.mover };
       const defender = 1 - climber;
       // the defender holds its own current strength throughout this search -- the question being
       // asked is "how weak a brain suffices to beat THIS defender from here", so moving both at
       // once would make the answer uninterpretable
-      const def = pool[floor[defender]];
+      const def = brainAt(floor[defender]);
 
       // --- find the lowest escaper -------------------------------------------------------------
       let lo = floor[climber];        // strongest index known (or assumed) to fail from here
@@ -181,7 +210,7 @@ function main() {
           if (found - lo <= 1) break;                           // converged on the boundary
           i = (lo + found) >> 1;
         }
-        const cand = pool[i];
+        const cand = brainAt(i);
         const brainA = climber === 0 ? cand.fn : def.fn;
         const idBlue = climber === 0 ? cand.id : def.id;
         const idRed = climber === 0 ? def.id : cand.id;
@@ -206,13 +235,41 @@ function main() {
         // nothing above it to try, and the top-vs-top guard above ends the seed if both are maxed
         break;
       } else {
-        // nothing in the pool escaped: this position is dead as far as we can measure. The seat
-        // KEEPS its earned strength -- the ratchet does not slip on a dead position -- and one
-        // ply earlier the same occupant gets the first try again.
-        deadAt.push({ rewind, side: climber });
-        deadFound++;
-        rewind++;
-        seatBeatenHere = false;     // fresh position: the occupant has not lost from HERE
+        // Nothing in the ordinary pool escaped. One more thing to try before calling this dead:
+        // the SAME top-of-axis weights, one ply deeper -- guarded by floor[climber] < pool.length
+        // so a seat that has already been proven (or disproven) at this tier here is not retried.
+        let escapedViaGuns = false;
+        if (ultimateGuns && floor[climber] < pool.length && replays < maxReplaysPerSeed) {
+          const brainA = climber === 0 ? ultimateGuns.fn : def.fn;
+          const idBlue = climber === 0 ? ultimateGuns.id : def.id;
+          const idRed = climber === 0 ? def.id : ultimateGuns.id;
+          const result = playGame(eng, brainA, climber === 0 ? def.fn : ultimateGuns.fn,
+                                  maxPlies, 0, seedPose, false);
+          replays++;
+          if (result.winner !== null) {
+            writeGame(result.rows, result.winner, fam, idBlue, idRed);
+            if (result.winner === climber) {
+              escapedViaGuns = true;
+              floor[climber] = pool.length;
+              console.log(`  seed ${fam}, ${rewind} plies from the end: ${ultimateGuns.id} escaped ` +
+                          `where D${topEntry.depth} (the top of the ordinary axis) couldn't`);
+            }
+          }
+        }
+        if (escapedViaGuns) {
+          // exactly the ordinary-escape path: the ratchet clicks at the deepest tier, and the
+          // other side gets the same upgrade path at this same position
+          climber = defender;
+          seatBeatenHere = true;
+        } else {
+          // nothing at any depth we're willing to pay for escaped: this position is dead as far
+          // as we can measure. The seat KEEPS its earned strength -- the ratchet does not slip on
+          // a dead position -- and one ply earlier the same occupant gets the first try again.
+          deadAt.push({ rewind, side: climber, triedGuns: !!ultimateGuns });
+          deadFound++;
+          rewind++;
+          seatBeatenHere = false;     // fresh position: the occupant has not lost from HERE
+        }
       }
     }
     if (deadAt.length) {
