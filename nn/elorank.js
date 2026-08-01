@@ -525,6 +525,13 @@ function report() {
   // than the prior does.
   const MIN_GAMES = 4;
   const boot = bootstrapRanks(+arg('bootstrap', 150));
+  // Ladder rungs render BOLD + UNDERLINED so the fixed yardstick is visually separable from the
+  // ever-growing crowd of nets at a glance. Only when stdout is a real console: piped or captured
+  // output (run.js's logs, redirects to a file) gets plain text, because the escape bytes would
+  // land in the log as literal garbage. Windows 10+ conhost renders both codes; on the one
+  // machine this project runs on, that's a given.
+  const tty = process.stdout.isTTY;
+  const rung = s => tty ? `\x1b[1m\x1b[4m${s}\x1b[0m` : s;
   console.log('  rating  rank    90% CI          games  brain');
   for (const r of rows) {
     const thin = r.games < MIN_GAMES;
@@ -536,8 +543,11 @@ function report() {
     const ciCell = r.p.kind !== 'nn' ? '              '
       : (c && Number.isFinite(c.lo)) ? `L${c.lo.toFixed(1)} - L${c.hi.toFixed(1)}`.padStart(14)
       : '(not yet)'.padStart(14);
-    console.log(`  ${String(Math.round(r.elo)).padStart(6)}  ${rankCell}  ${ciCell}  ` +
-                `${String(r.games).padStart(5)}  ${r.p.label}${thin ? '  (too few games)' : ''}`);
+    // the whole line is built and padded FIRST, then wrapped -- escape codes inside the padding
+    // arithmetic would throw every column off by the width of the invisible bytes
+    const line = `  ${String(Math.round(r.elo)).padStart(6)}  ${rankCell}  ${ciCell}  ` +
+                 `${String(r.games).padStart(5)}  ${r.p.label}${thin ? '  (too few games)' : ''}`;
+    console.log(r.p.kind === 'ladder' ? rung(line) : line);
   }
   if (boot.skipped)
     console.log(`\n(${boot.skipped}/${boot.B} bootstrap resamples had an unusable ladder and were ` +
