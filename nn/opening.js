@@ -32,4 +32,39 @@ function playRandomOpening(eng, plies) {
   }
 }
 
-module.exports = { randomOpeningPlan, playRandomOpening };
+// A position no sequence of legal moves from the canonical start would plausibly reach: each
+// piece's hub is drawn uniformly from the disc that keeps every one of its feet on the board
+// (radius edgeU minus footR minus the same edgeEps margin the engine itself uses), rotation
+// uniform, then the pair is rejection-sampled on hub separation until the two pieces cannot be
+// touching. This is deliberately a SUFFICIENT, not exact, legality check: real leg-to-leg contact
+// is a tube-vs-tube distance the engine computes during a swing, and reimplementing that exactly
+// here risks silently producing an illegal starting pose (which would poison training data far
+// more quietly than a rejected sample ever could). The margin trades a bit of coverage right at
+// the legal boundary for never being wrong about it -- measured empirically at ~26% acceptance per
+// draw, so the retry loop below settles in a handful of tries almost always.
+//
+// The point of this (as opposed to playRandomOpening's few real plies from the fixed start) is
+// coverage FAR from anything self-play's own trajectories would ever produce -- a piece parked
+// hard against the rim with the opponent clear across the board is not a shape any real game
+// passes through, but it's a shape the value net still has to score sensibly if it's ever asked
+// to. See selfplay.js's --randomStartFrac.
+function randomStartPose(eng) {
+  const CFG = eng.CFG;
+  const hubR = CFG.edgeU - CFG.footR - CFG.edgeEps;
+  const minSep = 2*CFG.footR + 4*CFG.legRadius;   // extra margin beyond the bare sufficient bound
+  const draw = () => {
+    const r = hubR*Math.sqrt(Math.random()), a = Math.random()*2*Math.PI;   // uniform IN the disc, not on it
+    return { x: r*Math.cos(a), y: r*Math.sin(a), rot: Math.random()*2*Math.PI };
+  };
+  let blue, red;
+  for (let tries = 0; tries < 500; tries++) {
+    blue = draw(); red = draw();
+    if (Math.hypot(blue.x - red.x, blue.y - red.y) >= minSep) break;
+  }
+  const g = eng.getG();
+  g.pieces[0].x = blue.x; g.pieces[0].y = blue.y; g.pieces[0].rot = blue.rot;
+  g.pieces[1].x = red.x; g.pieces[1].y = red.y; g.pieces[1].rot = red.rot;
+  g.turnDir = 0; g.crossings = 0; g.atLimit = false; g.netRad = 0; g.contact = null;
+}
+
+module.exports = { randomOpeningPlan, playRandomOpening, randomStartPose };

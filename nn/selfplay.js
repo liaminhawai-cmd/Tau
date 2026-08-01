@@ -18,7 +18,7 @@ const { createEngine } = require('./engine.js');
 const { features } = require('./features.js');
 const { MLP } = require('./net.js');
 const { nnPlanFor } = require('./nnai.js');
-const { playRandomOpening } = require('./opening.js');
+const { playRandomOpening, randomStartPose } = require('./opening.js');
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
@@ -57,7 +57,7 @@ function loadSeedPoses(dataDir, k) {
   return pool;
 }
 
-function playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose) {
+function playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomStart) {
   eng.newGame();
   if (seedPose) {
     // Start from a stored mid-game decision point instead of the standard opening (see --seedFrom
@@ -69,6 +69,12 @@ function playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose) {
     g.pieces[0].x = sp[0]; g.pieces[0].y = sp[1]; g.pieces[0].rot = sp[2];
     g.pieces[1].x = sp[3]; g.pieces[1].y = sp[4]; g.pieces[1].rot = sp[5];
     eng.setActive(seedPose.m);
+  } else if (randomStart) {
+    // See opening.js's randomStartPose: a legal but otherwise unconstrained pose, not a few real
+    // plies away from the canonical start -- for coverage of shapes self-play's own trajectories
+    // would never produce (see --randomStartFrac).
+    randomStartPose(eng);
+    eng.setActive(Math.random() < 0.5 ? 0 : 1);
   } else {
     // Without this, a deterministic-ish ladder pairing (L8-L11 have little to no built-in
     // randomness) replays close to the same line every time it recurs -- "heaps of games" would
@@ -127,6 +133,15 @@ function main() {
   // iteration-63 bake-off caught, fed from the data side. arena.js keeps its own default of 2;
   // this is a data-diversity dial, not an evaluation setting.
   const openingPlies = +arg('openingPlies', 4);
+  // This fraction of games starts from a fully random LEGAL pose (see opening.js's
+  // randomStartPose) instead of the canonical start -- coverage far outside anything a real
+  // trajectory reaches, e.g. a piece hard against the rim with the opponent clear across the
+  // board. Small by default: an unconstrained random pose is a much rougher training signal per
+  // game than a near-canonical one (it can hand either side an immediate tactical decision no
+  // real game would present), so this is a deliberate minority slice, not a replacement for
+  // openingPlies. Rows from these games carry src:'random' so the effect can be measured in
+  // isolation later rather than taken on faith.
+  const randomStartFrac = +arg('randomStartFrac', 0);
   // The in-game ply cap. Exposed as an arg mostly so tests can force cap-draws cheaply.
   const maxPlies = +arg('maxPlies', 300);
   // --seedFrom F: this fraction of games starts from a STORED mid-game position (drawn from the
@@ -225,6 +240,7 @@ function main() {
       '--discount', String(discount), '--temperature', String(temperature),
       '--mix', Object.entries(mix).map(([k, v]) => k + ':' + v).join(','),
       '--openingPlies', String(openingPlies), '--maxPlies', String(maxPlies),
+      '--randomStartFrac', String(randomStartFrac),
       ...(seedFile ? ['--seedFrom', String(seedFrom), '--seedPool', seedFile] : ['--seedFrom', '0']),
       '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(',')];
     let taskIdx = 0;
@@ -337,7 +353,11 @@ function main() {
     }
     const seedPose = seedPool.length && Math.random() < seedFrom ? pick(seedPool) : null;
     if (seedPose) tag = 'seeded ' + tag;
-    const { rows, winner, plies, capped } = playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose);
+    // seedPose wins if both roll -- a stored decision point already IS a real, reachable
+    // position, so there's no reason to override it with an unconstrained random one.
+    const randomStart = !seedPose && Math.random() < randomStartFrac;
+    if (randomStart) tag = 'random-start ' + tag;
+    const { rows, winner, plies, capped } = playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomStart);
     // `g` marks which game a position came from. Without it train.js can only hold out random
     // ROWS, and consecutive positions in one game are near-identical -- so the same game lands on
     // both sides of the split and the val set stops being held-out data at all. Measured
@@ -345,6 +365,10 @@ function main() {
     // (70.5%) than a throwaway 5-layer net it then lost to 7-32 in actual games. Validation had
     // been reporting on memorised training games for the whole run.
     const gameId = RUN_TAG + '-' + g;
+    // Present only on rows from a non-standard opening, so ordinary games' rows don't grow a
+    // field every consumer would otherwise have to ignore. Lets --randomStartFrac's effect be
+    // measured in isolation later: filter nn/data/*.jsonl by src before re-running train.js.
+    const src = randomStart ? { src: 'random' } : null;
     if (winner !== null) {
       decided++;
       for (let i = 0; i < rows.length; i++) {
@@ -352,7 +376,7 @@ function main() {
         const z = (rows[i].mover === winner ? 1 : -1)*Math.pow(discount, pliesToEnd);
         ws.write(JSON.stringify({ f: rows[i].f.map(v => +v.toFixed(5)), z: +z.toFixed(4),
                                   p: rows[i].p.map(v => +v.toFixed(4)), m: rows[i].mover,
-                                  g: gameId }) + '\n');
+                                  g: gameId, ...src }) + '\n');
         positions++;
       }
     } else if (capped) {
@@ -364,7 +388,7 @@ function main() {
       for (const r of rows) {
         ws.write(JSON.stringify({ f: r.f.map(v => +v.toFixed(5)), z: 0,
                                   p: r.p.map(v => +v.toFixed(4)), m: r.mover,
-                                  g: gameId }) + '\n');
+                                  g: gameId, ...src }) + '\n');
         positions++;
       }
     }
@@ -376,4 +400,9 @@ function main() {
   console.log(`${TAG}done: ${decided}/${games} decided games, ${positions} positions -> ${out}`);
 }
 
-main();
+// playGame is reused by retromine.js (its "replay forward for real from an arbitrary rewound
+// position" IS exactly the seedPose path below -- no separate implementation needed there). The
+// guard keeps `node nn/selfplay.js ...` behaving exactly as before: require() alone must not run
+// a self-play batch using retromine's own argv.
+module.exports = { playGame };
+if (require.main === module) main();
