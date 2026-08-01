@@ -490,6 +490,33 @@ function writeStatus(stage, extraPaths) {
   } catch (e) { log(`WARNING: status write failed (${errText(e)}) — continuing`); }
 }
 
+// Pull worker machines' pushed games onto disk on its OWN schedule. Before this, the only pull in
+// this file was writeStatus's fallback -- triggered when THIS machine's own push happens to lose a
+// race, which merges in whatever landed in the meantime as a side effect. That is usually soon
+// enough in practice (both sides push every few minutes), but it is incidental, not guaranteed --
+// nothing bounds how long a run could go without picking up a worker's games if the desktop's own
+// pushes simply don't happen to collide with one for a while. For an unattended overnight run with
+// a second machine now generating data, "usually" is the wrong word to be resting on: this makes
+// it deterministic instead. Every train.js call already scans the whole data/ directory, so a
+// worker's files start feeding training the moment they are ON DISK -- this is the only step that
+// was missing to make that promised, not lucky.
+function pullWorkers() {
+  const found = findGit();
+  if (!found) return;
+  const q = s => '"' + String(s).replace(/"/g, '\\"') + '"';
+  const errText = e => String((e && (e.stderr || e.stdout)) || (e && e.message) || e).trim().split('\n').slice(0, 3).join(' | ');
+  try {
+    const gitExe = found === 'git' ? 'git' : q(found);
+    const before = execFileSync(gitExe, ['rev-parse', 'HEAD'].map(q),
+                                { cwd: repoRoot, shell: true, encoding: 'utf8' }).trim();
+    execFileSync(gitExe, ['pull', '--no-edit', '--no-rebase'].map(q),
+                { cwd: repoRoot, shell: true, encoding: 'utf8' });
+    const after = execFileSync(gitExe, ['rev-parse', 'HEAD'].map(q),
+                               { cwd: repoRoot, shell: true, encoding: 'utf8' }).trim();
+    if (before !== after) log(`pulled new commits (worker games, most likely) from origin`);
+  } catch (e) { log(`WARNING: periodic pull failed (${errText(e)}) — continuing`); }
+}
+
 // One-time reseed: the fresh-vs-best gate used to always promote regardless of the arena result
 // (fixed above), so best.json was never a real ratchet -- it could easily be worse than an earlier
 // checkpoint. Before trusting it, run a full round robin across every saved model once and promote
@@ -887,6 +914,9 @@ async function schedulerLoop() {
   for (;;) {
     await sleep(checkEveryMin*60000);
     const now = Date.now();
+    // Pull first, every tick, before anything reads nn/data or decides what to train on -- see
+    // pullWorkers's own header for why this can no longer be left to a lucky push collision.
+    pullWorkers();
     // Push whatever the CURRENTLY-GROWING batch file has on it so far. Batches now take hours, not
     // minutes, to complete -- without this, git only ever sees a finished batch, which would mean
     // going many hours between updates instead of every checkEveryMin, exactly the opposite of
