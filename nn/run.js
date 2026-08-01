@@ -466,7 +466,8 @@ function nextNum(pattern) {
 let batchNum = nextNum('batch');
 let cycleNum = nextNum('cycle');
 if (batchNum > 1) log(`resuming self-play at batch ${batchNum} (found data up to batch-${String(batchNum - 1).padStart(3, '0')}.jsonl)`);
-if (cycleNum > 1) log(`resuming round-robin cycles at ${cycleNum} (found checkpoints up to ckpt-${String(cycleNum - 1).padStart(3, '0')}.json)`);
+if (cycleNum > 1) log(`resuming ${poolEveryMin > 0 ? 'pool' : 'round-robin'} cycles at ${cycleNum} ` +
+  `(found checkpoints up to ckpt-${String(cycleNum - 1).padStart(3, '0')}.json)`);
 
 // --- self-play: one long-running process, chaining itself into a fresh batch on exit ---------
 let selfplayChild = null, selfplayOut = null, selfplayStartedAt = null;
