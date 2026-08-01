@@ -40,6 +40,16 @@ const outPolicy = arg('out', path.join(dir, 'models', 'policy-fight.json'));
 const targetsPath = path.join(dir, 'policy-targets.jsonl');
 const gamesPerBatch = Math.max(1, +arg('gamesPerBatch', 6));
 const openingPlies = arg('openingPlies', '2');
+// Plain filename, no leading dot, and in nn/ rather than buried in nn/data: the first version of
+// this hid the only record of a run in a dotfile among hundreds of data files, and a closed console
+// window then meant the result was effectively unrecoverable. Written at EVERY stage, not just at
+// the end, so a run that dies during mining or training still says where it got to.
+const resultPath = path.join(dir, 'policy-fight-result.txt');
+let resultLines = [];
+function note(line) {
+  resultLines.push(`[${new Date().toISOString()}] ${line}`);
+  try { fs.writeFileSync(resultPath, resultLines.join('\n') + '\n'); } catch (e) {}
+}
 const statusPath = path.join(dir, 'data', '.policy-fight-status.json');
 
 function run(script, args) {
@@ -62,6 +72,8 @@ if (!fs.existsSync(model)) { console.error(`model not found: ${model}`); process
 try { fs.mkdirSync(path.dirname(outPolicy), { recursive: true }); } catch (e) {}
 
 log(`policy fight -- budget ${budgetHours}h, ${timeMs}ms/move, base net ${path.basename(model)}`);
+note(`policy fight started -- budget ${budgetHours}h, ${timeMs}ms/move, base net ${path.basename(model)}`);
+log(`results are written to ${path.relative(path.join(dir, '..'), resultPath)} as they happen, so a closed window loses nothing`);
 log('this window can be closed any time: the trained candidate below is saved after step 2, and ' +
     `the running score after every batch is saved to ${path.relative(path.join(dir, '..'), statusPath)}`);
 
@@ -70,10 +82,12 @@ run('policy-targets.js', ['--out', targetsPath]);
 if (!fs.existsSync(targetsPath)) { console.error('no targets minted -- not enough tagged data yet'); process.exit(1); }
 const targetRows = fs.readFileSync(targetsPath, 'utf8').split('\n').filter(Boolean).length;
 log(`mined ${targetRows} targets`);
+note(`step 1 done: mined ${targetRows} policy targets`);
 
 log(`step 2/3: training policy head (hidden ${hidden}, ${epochs} epochs)`);
 run('train-policy.js', ['--targets', targetsPath, '--epochs', epochs, '--hidden', hidden, '--out', outPolicy]);
-if (!fs.existsSync(outPolicy)) { console.error('training did not produce a model'); process.exit(1); }
+if (!fs.existsSync(outPolicy)) { note('step 2 FAILED: training produced no model'); console.error('training did not produce a model'); process.exit(1); }
+note(`step 2 done: trained ${path.basename(outPolicy)} (hidden ${hidden}, ${epochs} epochs)`);
 
 log(`step 3/3: equal-think-time fight vs the plain net, ${timeMs}ms/move, ` +
     `${gamesPerBatch}-game batches until ${budgetHours}h is spent`);
@@ -92,6 +106,8 @@ do {
   log(`running total after ${batches} batch(es), ${elapsedH.toFixed(2)}h: ` +
       `policy ${aWins} - ${bWins} plain` + (draws ? ` (${draws} draws)` : '') +
       (dec ? `, ${(100*aWins/dec).toFixed(0)}% of ${dec} decided` : ''));
+  note(`batch ${batches}: policy ${aWins} - ${bWins} plain` + (draws ? ` (${draws} draws)` : '') +
+       (dec ? `, ${(100*aWins/dec).toFixed(0)}% of ${dec} decided` : '') + `, ${elapsedH.toFixed(2)}h elapsed`);
   writeStatus({ startedAt: new Date(t0).toISOString(), updatedAt: new Date().toISOString(),
                 model, policy: outPolicy, timeMs: +timeMs, batches, aWins, bWins, draws,
                 elapsedHours: +elapsedH.toFixed(2), budgetHours });
@@ -117,5 +133,7 @@ const totalH = (Date.now() - t0)/3600000;
 log(`FINAL after ${batches} batch(es), ${totalH.toFixed(2)}h: ` +
     `policy ${aWins} - ${bWins} plain` + (draws ? ` (${draws} draws)` : ''));
 console.log(`\n${verdict}\n`);
+note(`FINAL: policy ${aWins} - ${bWins} plain` + (draws ? ` (${draws} draws)` : '') + ` over ${batches} batch(es), ${totalH.toFixed(2)}h`);
+note(`VERDICT: ${verdict}`);
 console.log(`Candidate saved at: ${outPolicy}`);
 console.log(`Trained on ${targetRows} targets mined from whatever self-play data existed when this started.`);
