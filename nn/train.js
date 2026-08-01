@@ -260,11 +260,20 @@ function main() {
                 `(lr ${lrE.toFixed(5)}, ${((Date.now() - t0)/1000).toFixed(0)}s)`);
   }
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  // Atomic: write to a temp file beside outPath, then rename over it. outPath is frequently
+  // best.json itself (run.js's resume-train cycle), and this console gets closed at the user's
+  // will at any moment -- a direct writeFileSync caught mid-flight would leave a truncated model
+  // with no automatic recovery, exactly when the epoch's worth of compute behind it is real.
+  const atomicSave = (destPath, data) => {
+    const tmp = `${destPath}.tmp-${process.pid}-${Date.now()}`;
+    fs.writeFileSync(tmp, data);
+    fs.renameSync(tmp, destPath);
+  };
   if (keepLast || !best) {
-    fs.writeFileSync(outPath, JSON.stringify(net.toJSON()));
+    atomicSave(outPath, JSON.stringify(net.toJSON()));
     console.log(`saved ${outPath} (last epoch)`);
   } else {
-    fs.writeFileSync(outPath, JSON.stringify(best));
+    atomicSave(outPath, JSON.stringify(best));
     console.log(`saved ${outPath} (best val mse ${bestMse.toFixed(4)}, from epoch ${bestEpoch}/${epochs})`);
   }
 }
