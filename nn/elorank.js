@@ -79,6 +79,16 @@ const budgetHours = +arg('budgetHours', 0);
 // Print the field, pair count and time estimate, then exit without playing anything -- for
 // choosing --games/--spread/--budgetHours before committing hours to a run.
 const dryRun = process.argv.includes('--dryrun');
+// --focus a.json,b.json: only play matchups involving these models. This is what makes a standing
+// rating POOL cheap. Placing one new checkpoint does not need the field replayed against itself --
+// every other brain's rating is already known and does not move -- it needs a handful of games
+// against opponents near its own strength. A round robin re-answers questions it answered last
+// time; this answers only the new one.
+const focusRaw = (arg('focus', '') || '').split(',').map(x => x.trim()).filter(Boolean);
+const focusPaths = focusRaw.map(x => path.basename(x, '.json'));
+// --summary: write the fitted ratings out as JSON so another process (run.js) can read them
+// without re-deriving anything or parsing console output.
+const summaryPath = arg('summary', null);
 // Seconds of wall time per unit of pairWeight, from this project's measured game times. Only ever
 // used for the up-front estimate and budget trimming; the live ETA measures real pace instead, so
 // being wrong here costs a rough first guess and nothing more.
@@ -105,6 +115,14 @@ function discoverModels() {
     for (let i = 0; i < ck.length && pick.length < 40; i += step) pick.push(path.join(modelsDir, ck[i]));
     const last = path.join(modelsDir, ck[ck.length - 1]);
     if (!pick.includes(last)) pick.push(last);
+  }
+  // Anything named by --focus joins the field unconditionally. Focus only restricts which PAIRS get
+  // played; a model that is focused but not discovered would be silently rated zero games, which is
+  // exactly the failure mode for the from-scratch challenger (scratch-091.json matches none of the
+  // patterns above) -- the run would look healthy and simply never measure the thing it was for.
+  for (const f of focusRaw) {
+    const abs = path.isAbsolute(f) ? f : path.resolve(f);
+    if (fs.existsSync(abs) && !pick.some(q => path.resolve(q) === abs)) pick.push(abs);
   }
   return pick;
 }
@@ -201,6 +219,43 @@ const store = (() => {
 store.results = store.results || {};
 const keyOf = (a, b) => `${a.id}|${b.id}`;
 
+// --- bounding the FIELD (which is not the same as bounding the POOL) -----------------------------
+// The pool is append-only and uncapped: once a model has a rating it keeps it forever, on the same
+// scale, at a cost of one line of JSON. Nothing is ever retired from it.
+// What has to be bounded is the field for ANY ONE RUN. The adaptive scheduler divides a fixed
+// budget among eligible players and its need term is 1/sqrt(1+games), so with 200 checkpoints
+// eligible it spends the budget re-measuring history instead of placing the new net. Trimming is
+// not a loss of information either: the information in a game peaks at an even matchup and falls to
+// ~0 for a foregone one, so a game against a brain 400 Elo away is close to free of content no
+// matter how many such brains are available to play.
+// --focusField N therefore keeps the N nn opponents nearest the focus models in rating. Ladder
+// rungs are NEVER trimmed -- they are the anchor that stops a self-referential pool inflating, they
+// are code rather than files so they cannot go stale, and the low rungs are the cheapest games on
+// the board.
+const focusField = Math.max(0, +arg('focusField', 8));
+if (focusPaths.length && focusField > 0) {
+  const nnPlayers = players.filter(p => p.kind === 'nn');
+  const isFocus = p => focusPaths.includes(path.basename(p.model, '.json'));
+  const others = nnPlayers.filter(p => !isFocus(p));
+  if (others.length > focusField) {
+    const prior = fitBT(players.map(p => p.id), store.results);
+    // A brand-new checkpoint has no prior rating -- it is a copy of best.json, so the strongest
+    // rated net in the pool is a far better guess for where it will land than 0 (which is the
+    // ladder's low end and would pick the weakest opponents in the field).
+    const rated = others.filter(p => (prior[p.id] || 0) !== 0);
+    const fallback = rated.length ? Math.max(...rated.map(p => prior[p.id])) : 0;
+    const anchors = nnPlayers.filter(isFocus).map(p => prior[p.id] || fallback);
+    const dist = p => Math.min(...anchors.map(a => Math.abs((prior[p.id] || 0) - a)));
+    const keep = new Set(others.sort((x, y) => dist(x) - dist(y)).slice(0, focusField).map(p => p.id));
+    for (let i = players.length - 1; i >= 0; i--)
+      if (players[i].kind === 'nn' && !isFocus(players[i]) && !keep.has(players[i].id))
+        players.splice(i, 1);
+    console.log(`focus mode: ${players.filter(p => p.kind === 'nn' && isFocus(p)).length} model(s) ` +
+                `being placed against the ${keep.size} nearest-rated of ${others.length} pool ` +
+                `members, plus all ${players.filter(p => p.kind === 'ladder').length} ladder rungs`);
+  }
+}
+
 // Rough relative cost of a pair, used for the ETA and for --budgetHours trimming. Calibrated from
 // this project's own measured game times rather than guessed: a depth-3 game against L11 ran
 // ~645s where depth-1 against L6 ran ~21s, a spread of ~30x, so treating pairs as equal-cost (as
@@ -213,6 +268,8 @@ const SIDE_COST = p => {
 const pairWeight = (a, b) => (SIDE_COST(a) + SIDE_COST(b))*
   ((a.kind === 'ladder' && b.kind === 'ladder') ? ladderGames : gamesPerPair);
 let doneWeight = 0, startedAt = 0;
+let consecutiveFailures = 0, stopAll = false;
+const FAIL_LIMIT = 8;
 const fmtDur = s => s >= 3600 ? `${(s/3600).toFixed(1)}h` : `${Math.round(s/60)}m`;
 
 function playPair(a, b) {
@@ -227,11 +284,26 @@ function playPair(a, b) {
     if (a.kind === 'nn') args.push('--depthA', String(a.depth));
     if (b.kind === 'nn') args.push('--depthB', String(b.depth));
     if (saveData) args.push('--saveData', saveData);
-    execFile('node', args, { encoding: 'utf8', maxBuffer: 1 << 24 }, (err, stdout) => {
+    execFile('node', args, { encoding: 'utf8', maxBuffer: 1 << 24 }, (err, stdout, stderr) => {
       // Same parse arena.js's own callers use: the LAST "N-M (" on the line, since the per-game
       // running tally has the identical shape.
       const m = [...String(stdout || '').matchAll(/:\s*(\d+)-(\d+)(?:-(\d+))?\s+\(/g)];
-      if (!m.length) { console.log(`  ! no result for ${a.label} vs ${b.label}`); return resolve(); }
+      if (!m.length) {
+        // Report WHY, once. A misconfigured setup and a slow one look identical without this, and
+        // the scheduler will happily re-pick the same broken pair until the whole budget is gone --
+        // which is exactly what a first end-to-end run did: 40 lines of "no result" and an empty
+        // ranking, with the actual ENOENT thrown away because `err` was never read.
+        const why = String(stderr || (err && err.message) || '').trim().split('\n')
+          .filter(Boolean).slice(-2).join(' | ');
+        console.log(`  ! no result for ${a.label} vs ${b.label}` + (why ? `: ${why}` : ''));
+        if (++consecutiveFailures >= FAIL_LIMIT) {
+          console.error(`\n${consecutiveFailures} games in a row produced no result -- arena.js is ` +
+                        `failing, not the brains. Stopping rather than burning the budget.`);
+          stopAll = true;
+        }
+        return resolve();
+      }
+      consecutiveFailures = 0;
       const last = m[m.length - 1];
       const w = +last[1], l = +last[2], d = +(last[3] || 0);
       record(a, b, w, l, d);
@@ -380,6 +452,9 @@ function worstRankHalfWidth(ci) {
   let worst = 0, anyMissing = false;
   for (const p of players) {
     if (p.kind !== 'nn') continue;
+    // when focusing, only the models being placed have to reach the tolerance -- the rest of the
+    // pool is not being measured this run and its intervals are whatever they already were
+    if (focusPaths.length && !focusPaths.includes(path.basename(p.model, '.json'))) continue;
     const c = ci[p.id];
     if (!c || !Number.isFinite(c.lo)) {
       // a brain with almost no games legitimately has no interval yet; one with plenty that still
@@ -461,6 +536,30 @@ function report() {
   if (ladderElos.length < 2)
     console.log(`(too few usable rungs to interpolate any rank yet -- let the ladder pairs finish)`);
 
+  // Machine-readable ratings for whatever else needs them (run.js's promotion gate reads this
+  // rather than parsing the table above, so a formatting change can never silently break it).
+  // Keyed by player id, which is basename+depth and therefore stable across snapshot copies and
+  // across runs -- that stability is what lets a pool accumulate over a whole training run.
+  if (summaryPath) {
+    const out = { updated: new Date().toISOString(), players: {} };
+    for (const r of rows) {
+      const c = boot.ci[r.p.id];
+      out.players[r.p.id] = {
+        kind: r.p.kind, elo: +r.elo.toFixed(1), games: r.games,
+        ...(r.p.kind === 'nn' ? {
+          model: r.p.model, depth: r.p.depth,
+          rank: Number.isFinite(r.rank) && !r.edge ? +r.rank.toFixed(2) : null,
+          rankLo: c && Number.isFinite(c.lo) ? +c.lo.toFixed(2) : null,
+          rankHi: c && Number.isFinite(c.hi) ? +c.hi.toFixed(2) : null,
+        } : { level: r.p.level }),
+      };
+    }
+    try {
+      fs.writeFileSync(summaryPath, JSON.stringify(out, null, 1));
+      console.log(`\nratings written to ${summaryPath}`);
+    } catch (e) { console.error(`could not write ${summaryPath} (${e.message})`); }
+  }
+
   const specs = rows.filter(r => r.p.kind === 'nn' && !r.edge && r.games >= MIN_GAMES)
     .map(r => `${r.p.model}@${r.rank.toFixed(2)}:${r.p.depth}`);
   const thinCount = rows.filter(r => r.p.kind === 'nn' && r.games < MIN_GAMES).length;
@@ -527,6 +626,20 @@ function pickPair(elo, inFlight) {
       const a = players[i], b = players[j];
       const k = a.id < b.id ? a.id + '|' + b.id : b.id + '|' + a.id;
       if (inFlight.has(k)) continue;
+      // In focus mode every matchup must involve a focus model -- the rest of the pool is being
+      // used as a measuring stick, not re-measured.
+      if (focusPaths.length) {
+        const inFocus = q => q.kind === 'nn' && focusPaths.includes(path.basename(q.model, '.json'));
+        // ...with one exception: an UNDER-MEASURED ladder pair still gets played. The rungs are the
+        // scale, and a rank is only as good as the yardstick it is read against -- on a fresh pool
+        // there is no chain yet, so pure focus pairing would place the new net against rungs whose
+        // own spacing is unknown and emit "?" for everything. Self-limiting: it stops as soon as
+        // both rungs have their games, so on an established pool this costs nothing and every
+        // subsequent game goes to the model being placed.
+        const thinLadder = a.kind === 'ladder' && b.kind === 'ladder' &&
+          Math.min(g[a.id] || 0, g[b.id] || 0) < ladderGames;
+        if (!inFocus(a) && !inFocus(b) && !thinLadder) continue;
+      }
       const bothLadder = a.kind === 'ladder' && b.kind === 'ladder';
       // only ADJACENT-ish ladder pairs are worth playing; L1 vs L11 is as foregone as it gets
       if (bothLadder && Math.abs(a.level - b.level) > 2) continue;
@@ -565,15 +678,18 @@ async function main() {
 
   const lane = async () => {
     for (;;) {
-      if (stop || outOfTime()) return;
+      if (stop || stopAll || outOfTime()) return;
       const g = gamesOf();
-      if (players.every(p => (g[p.id] || 0) >= targetGames)) { stop = true; return; }
+      const mustCover = focusPaths.length
+        ? players.filter(p => p.kind === 'nn' && focusPaths.includes(path.basename(p.model, '.json')))
+        : players;
+      if (mustCover.length && mustCover.every(p => (g[p.id] || 0) >= targetGames)) { stop = true; return; }
       // Confidence check, but only once there is enough data for the answer to be meaningful --
       // bootstrapping a nearly-empty store would report absurd precision on brains that have simply
       // never been separated. Checked on a cadence rather than every pair: it costs ~1s against
       // games that take minutes, but there is no reason to pay it on every single result.
       if (rankTolerance > 0 && checksSinceBoot++ >= workers &&
-          players.every(p => (g[p.id] || 0) >= 6)) {
+          mustCover.every(p => (g[p.id] || 0) >= 6)) {
         checksSinceBoot = 0;
         const { ci } = bootstrapRanks(80);
         const worst = worstRankHalfWidth(ci);

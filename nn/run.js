@@ -137,9 +137,32 @@ const scratchEpochs = arg('scratchEpochs', '30');
 // window within `tournamentRecent` cycles. Gone for good, from a single noisy round robin.
 // Unset (the default) keeps the old behaviour of following best.json.
 const scratchHidden = arg('scratchHidden', null);
+// Standing rating pool. Every new checkpoint is PLACED against opponents near its own strength
+// instead of a full round robin being replayed, and its rating persists so it never needs
+// measuring again. The round robin re-answers questions it already answered -- ckpt-069 vs
+// ckpt-070 got replayed at iteration 80, 90 and 100, each time reaching the same conclusion at a
+// cost of 1260 games. Placing one new model takes a couple of dozen.
+// What keeps the scale honest across a long run is that LADDER rungs are in the pool as ordinary
+// players: they are code, not files, so they cannot drift, retire or be overwritten. Without a
+// fixed anchor a self-referential pool inflates as a whole and the numbers stop meaning anything.
+// --poolEveryMin 0 disables it and falls back to the round robin alone.
+const poolEveryMin = Math.max(0, +arg('poolEveryMin', 45));
+const poolBudgetHours = +arg('poolBudgetHours', 0.25);
+// Placement plays at D1 and D2 only. D3 costs ~20x D1 per game and rank is a property of
+// (net x depth) rather than of the net, so a third depth triples the bill to answer a question the
+// promotion gate does not ask.
+const poolDepths = arg('poolDepths', '1,2');
+const poolGames = arg('poolGames', '4');
+const poolLevels = arg('poolLevels', '');
+// --poolOnce: run a single placement cycle and exit, instead of starting the trainer. This is how
+// the cycle gets exercised on demand -- every bug in this code path so far was found by running it,
+// not by reading it, and a 45-minute clock is a poor way to reach a code path.
+const poolOnce = process.argv.includes('--poolOnce');
 
 const dir = __dirname;
 const best = path.join(dir, 'models', 'best.json');
+const poolFile = path.join(dir, 'elo-results.json');
+const poolSummary = path.join(dir, 'elo-summary.json');
 const fresh = path.join(dir, 'models', 'value.json');
 const log = msg => {
   const line = `[${new Date().toISOString()}] ${msg}`;
@@ -471,7 +494,8 @@ function startSelfplayBatch() {
 // --- housekeeping: retrain-from-scratch + round robin + promote, and the ladder sweep ---------
 // Both run on their own wall-clock schedule, independent of self-play, which keeps generating
 // games in the background the whole time these run (sharing cores, not losing them).
-let lastTournamentAt = Date.now(), lastBenchAt = Date.now(), lastTrainAt = Date.now();
+let lastTournamentAt = Date.now(), lastBenchAt = Date.now(), lastTrainAt = Date.now(),
+    lastPoolAt = Date.now();
 
 // Resume-train from best.json and promote the result. Bounded, not unbounded: the round robin
 // below periodically retrains from scratch and promotes on merit, which is what stops this from
@@ -489,6 +513,88 @@ function runTrainCycle() {
   } catch (e) {
     log(`WARNING: resume-train failed (${e.message}) — continuing`);
   }
+}
+
+// Place the current best.json in the standing pool, then promote whichever rated model is
+// strongest. Replaces the round robin's job with far fewer games, and leaves behind a rating
+// history for every checkpoint on ONE scale -- which is the thing that was missing when three
+// round robins disagreed about whether resume-training helps and a fourth reversed the answer.
+// A curve would have shown it directly instead of it having to be inferred.
+function runPoolCycle() {
+  const num = cycleNum++;
+  // Snapshot the challenger under a stable name first. best.json is rewritten by the resume-train
+  // clock, so rating "best.json" would attribute games to a moving target -- the same bug that made
+  // elorank snapshot its whole field. A numbered copy is a fixed thing that can be rated once and
+  // referred to forever.
+  const ckpt = path.join(dir, 'models', `ckpt-${String(num).padStart(3, '0')}.json`);
+  if (!fs.existsSync(best)) { log(`pool cycle ${num} — no best.json yet, skipping`); return; }
+  fs.copyFileSync(best, ckpt);
+  log(`pool cycle ${num} — checkpoint saved: ${path.basename(ckpt)}`);
+  statusState.lastCheckpoint = `${path.basename(ckpt)} at ${new Date().toISOString()}`;
+
+  // The from-scratch challenger still enters, for the reason the header records: resume-training
+  // adds strength over a few iterations and degrades over dozens, and this is what catches the
+  // degradation. It just gets PLACED now rather than round-robinned.
+  const focus = [ckpt];
+  if (+scratchEpochs > 0) {
+    const scratch = path.join(dir, 'models', `scratch-${String(num).padStart(3, '0')}.json`);
+    const h = scratchHidden || hiddenOfBest();
+    log(`pool cycle ${num} — training a from-scratch challenger (${scratchEpochs} epochs` +
+        (h ? `, --hidden ${h}` : '') + `)`);
+    writeStatus(`from-scratch challenger training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
+    runSoft('train.js', ['--epochs', scratchEpochs, '--out', scratch, ...(h ? ['--hidden', h] : [])]);
+    if (fs.existsSync(scratch)) focus.push(scratch);
+  }
+
+  log(`pool cycle ${num} — placing ${focus.map(f => path.basename(f)).join(', ')} in the rating pool`);
+  writeStatus(`rating pool placement (started ${new Date().toISOString()})`);
+  runSoft('elorank.js', ['--focus', focus.join(','), '--out', poolFile, '--summary', poolSummary,
+                         '--budgetHours', String(poolBudgetHours), '--workers', workers,
+                         '--depths', poolDepths, '--games', poolGames,
+                         ...(poolLevels ? ['--levels', poolLevels] : []), '--saveData',
+                         path.join(dir, 'data', `pool-${String(num).padStart(3, '0')}.jsonl`)]);
+
+  // Promote on rating, with the interval respected: a challenger has to be clearly ahead, not
+  // merely ahead, or this becomes the noise-ratchet the old per-iteration gate was retired for
+  // (best.json is a running maximum over noisy draws, so it is upward-biased and an equal net has
+  // to beat the luck as well as the strength).
+  try {
+    const sum = JSON.parse(fs.readFileSync(poolSummary, 'utf8'));
+    const rated = Object.entries(sum.players || {})
+      .filter(([, v]) => v.kind === 'nn' && v.model && v.games >= 6)
+      .map(([id, v]) => ({ id, ...v }));
+    if (!rated.length) { log(`pool cycle ${num} — nothing rated yet, keeping best.json`); return; }
+    // one entry per MODEL (best depth), since depth is a search setting rather than a property of
+    // the weights being promoted
+    const byModel = {};
+    for (const r of rated) {
+      const k = path.basename(r.model, '.json');
+      if (!byModel[k] || r.elo > byModel[k].elo) byModel[k] = r;
+    }
+    const ranked = Object.values(byModel).sort((a, b) => b.elo - a.elo);
+    const top = ranked[0];
+    const incumbentName = path.basename(ckpt, '.json');
+    const incumbent = byModel[incumbentName];
+    const topName = path.basename(top.model, '.json');
+    const line = ranked.slice(0, 5)
+      .map(r => `${path.basename(r.model, '.json')} ${Math.round(r.elo)}`).join(', ');
+    log(`pool cycle ${num} — ratings: ${line}`);
+    if (topName === incumbentName) {
+      log(`pool cycle ${num} — current net is already the strongest rated; keeping best.json`);
+    } else if (incumbent && top.elo - incumbent.elo < 30) {
+      log(`pool cycle ${num} — ${topName} leads by only ${Math.round(top.elo - incumbent.elo)} Elo; ` +
+          `too close to justify swapping, keeping best.json`);
+    } else if (fs.existsSync(top.model)) {
+      fs.copyFileSync(best, path.join(dir, 'models', `best.pre-pool-${Date.now()}.json`));
+      fs.copyFileSync(top.model, best);
+      log(`pool cycle ${num} — promoted ${topName} (${Math.round(top.elo)} Elo` +
+          (incumbent ? `, +${Math.round(top.elo - incumbent.elo)} over the incumbent` : '') + `)`);
+    }
+    statusState.lastGate = `pool cycle ${num} — ${line}`;
+  } catch (e) {
+    log(`WARNING: pool promotion skipped (${e.message}) — keeping best.json`);
+  }
+  writeStatus(`pool cycle ${num} complete`, ['nn/models/best.json', 'nn/elo-summary.json']);
 }
 
 function runTournamentCycle() {
@@ -632,7 +738,14 @@ async function schedulerLoop() {
       lastTrainAt = now;
       runTrainCycle();
     }
-    if (now - lastTournamentAt >= tournamentEveryMin*60000) {
+    if (poolEveryMin > 0 && now - lastPoolAt >= poolEveryMin*60000) {
+      lastPoolAt = now;
+      runPoolCycle();
+    }
+    // The round robin is kept as an occasional full recalibration, not the routine gate. Placement
+    // above is cheap and incremental; this re-derives everything from scratch and would catch a
+    // pool that had drifted for some reason the ladder anchors did not prevent.
+    if (poolEveryMin === 0 && now - lastTournamentAt >= tournamentEveryMin*60000) {
       lastTournamentAt = now;
       runTournamentCycle();
     }
@@ -644,5 +757,11 @@ async function schedulerLoop() {
   }
 }
 
-startSelfplayBatch();
-schedulerLoop();
+if (poolOnce) {
+  log('--poolOnce: running a single rating-pool placement cycle, then exiting');
+  runPoolCycle();
+  log('--poolOnce: done');
+} else {
+  startSelfplayBatch();
+  schedulerLoop();
+}
