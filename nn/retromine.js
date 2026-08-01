@@ -19,15 +19,22 @@
 // THE SEARCH at each rewound position is a bisection over that axis, not a rung-by-rung climb.
 // A linear climb from the bottom pays one game per rung and the pool keeps growing rungs; the
 // bisection pays ~log2(pool) games for the same answer: the LOWEST-rated brain that can escape.
-//   - first probe: midway between the loser's current strength and the top of the pool
-//   - probe fails -> the answer lies above; probe midway up the remainder
-//   - probe escapes -> the answer lies below; narrow down until the gap closes
+//   - the seat's CURRENT occupant tries first (unless its loss at this exact position is what
+//     brought us here) -- rolling back a ply usually makes a position easier, and "does it STILL
+//     lose from here?" is the question the whole design asks before any climbing starts
+//   - it still loses -> bisect above it: probe midway to the top of the pool, jump up on failure,
+//     narrow down on escape, until the gap closes on the lowest escaper
 //   - `--bigGuns` straight failures with no escape found -> stop bisecting hopeless territory and
 //     ask the top of the pool directly. If THAT fails, the position is dead as far as anything we
-//     have can tell: record it, step back one more ply, start again there.
-// The side that escapes keeps its escaper as its new floor -- a side that needed a 1600-rated
-// brain to get out of one position does not restart from 500 at the next -- and the other side
-// then gets the same upgrade path at the same position, exactly as before.
+//     have can tell: record it, step back one more ply, and let the same occupant try again there.
+// THE RATCHET (the design's actual name): each seat's strength only ever moves UP during a seed.
+// An escape puts the escaper in that seat for the rest of the walk backward -- a side that needed
+// a 1666-rated brain to get out of one position does not hand the seat back to the 500 it started
+// as at the next -- and a dead position does NOT slip it back down either. The other side then
+// gets the same upgrade path (its seat just started losing, so IT bisects for a counter), and the
+// seed ends when both seats have ratcheted to the top of the pool: top-vs-top with nothing left
+// to climb means the escape question has no move left in it -- "11 vs 11, no more rollbacks".
+
 //
 // Every probe game is a real, decided, logged game (src:'retro', fam) in selfplay's row schema,
 // with `mv` stamped from the pool ids so eloweight.js can weight these rows like any others. The
@@ -134,13 +141,20 @@ function main() {
 
     const fam = famCount++;
     writeGame(seed.rows, seed.winner, fam, seedA.id, seedB.id);
-    // per-side floor: index into `pool` of this side's current strength (the upgrade path)
+    // per-side floor: index into `pool` of the brain currently occupying this side's seat. The
+    // ratchet: it moves up on escapes and never moves back down for the rest of the seed.
     const floor = [si, si + 1];
-    const seedFloor = floor.slice();
+    // whether the current climber's occupant already lost from the CURRENT position (the seed
+    // game itself for the very first search, or the escape that just flipped the roles) -- if so
+    // its seat test would replay a known loss, so the search starts above it instead
+    let seatBeatenHere = true;
     let rewind = 1, climber = 1 - seed.winner, replays = 0;
     const deadAt = [];
 
     while (replays < maxReplaysPerSeed && rewind <= seed.rows.length) {
+      // both seats at the top of the pool: nothing left for either side to climb, so the escape
+      // question is out of moves -- the seed is mined out ("11 vs 11 -- no more rollbacks to do")
+      if (floor[0] >= pool.length - 1 && floor[1] >= pool.length - 1) break;
       const point = seed.rows[seed.rows.length - rewind];
       const seedPose = { p: point.p, m: point.mover };
       const defender = 1 - climber;
@@ -149,13 +163,17 @@ function main() {
       // once would make the answer uninterpretable
       const def = pool[floor[defender]];
 
-      // --- bisect for the lowest escaper -------------------------------------------------------
+      // --- find the lowest escaper -------------------------------------------------------------
       let lo = floor[climber];        // strongest index known (or assumed) to fail from here
       let found = -1;                 // lowest index known to escape
-      let fails = 0, probes = 0;
+      let fails = 0, probes = 0, testedSeat = seatBeatenHere;
       while (probes < probesPerPos && replays < maxReplaysPerSeed) {
         let i;
-        if (found < 0) {
+        if (!testedSeat) {
+          // the seat's current occupant tries first: after a rewind the position just got easier,
+          // and if it escapes at its existing strength the ratchet correctly does not move
+          i = lo; testedSeat = true;
+        } else if (found < 0) {
           if (lo >= pool.length - 1) break;                     // even the top failed: dead
           i = fails >= bigGuns ? pool.length - 1               // big guns: settle it now
             : Math.max(lo + 1, Math.ceil((lo + pool.length - 1)/2));
@@ -177,20 +195,24 @@ function main() {
       }
 
       if (found >= 0) {
-        // not dead after all -- this side's strength steps up to its escaper, and the OTHER side
-        // now gets the same treatment at this same position
+        // not dead after all -- the ratchet clicks (or holds, if the seat escaped at its existing
+        // strength) and the OTHER side now gets the same upgrade path at this same position: its
+        // seat just started losing here, which is exactly the condition that starts a climb
         floor[climber] = Math.max(floor[climber], found);
         climber = defender;
+        seatBeatenHere = true;      // the new climber's occupant just lost this very game
       } else if (probes === 0) {
-        // the climber is already AT the top of the pool -- there is nothing above it to try, so
-        // "dead" here would be vacuous. Nothing more this seed can teach; move on.
+        // the climber is already AT the top of the pool with its loss here already on record --
+        // nothing above it to try, and the top-vs-top guard above ends the seed if both are maxed
         break;
       } else {
-        // nothing in the pool escaped: this position is dead as far as we can measure
+        // nothing in the pool escaped: this position is dead as far as we can measure. The seat
+        // KEEPS its earned strength -- the ratchet does not slip on a dead position -- and one
+        // ply earlier the same occupant gets the first try again.
         deadAt.push({ rewind, side: climber });
         deadFound++;
         rewind++;
-        floor[climber] = seedFloor[climber];   // fresh position, fresh climb for this side
+        seatBeatenHere = false;     // fresh position: the occupant has not lost from HERE
       }
     }
     if (deadAt.length) {
