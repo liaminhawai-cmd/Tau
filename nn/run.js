@@ -9,22 +9,25 @@
 //
 // TWO CHANGES FROM THE OLD LOOP, both driven by the same overnight logs.
 //
-// 1. best.json no longer gets a per-iteration 6-epoch resume-train. It used to: every iteration,
-//    train.js reloaded the full accumulated dataset and resumed from best.json for 6 more epochs,
-//    and the result was promoted unconditionally (the old per-iteration gate was already retired --
-//    see the round-robin note below for why). That looked like steady progress on val mse, but it
-//    wasn't steady progress at the only thing that matters, playing strength: three separate round
-//    robins in one day (iterations 60, 70, 80, plus a fourth run outside this loop) all measured the
-//    SAME shape -- a from-scratch retrain on the identical accumulated data beat the resumed lineage,
-//    and by a GROWING margin (58% then 65%, and the incumbent placed 12th of 15 models at iteration
-//    80, worse than a bare 6-epoch continuation with no lineage at all). This is the exact failure
-//    the from-scratch challenger was already built to catch once, at iteration 63 (the incumbent had
-//    taken ~370 cumulative epochs over the same rows against a challenger's 30, and lost 27% across
-//    158 games) -- it kept recurring because the per-iteration resume step that CAUSES it was still
-//    running, alongside the periodic check that only ever caught it after the fact.
-//    So best.json now changes ONLY when a from-scratch retrain earns it in a round robin -- the
-//    mechanism already existed below, it just used to run next to the thing it was supposed to be
-//    correcting for instead of replacing it.
+// 1. The resume-train runs on a CLOCK (--trainEveryMin) instead of once per self-play batch, and
+//    is deliberately kept rather than removed. Getting this right took two passes, so the evidence
+//    is worth recording:
+//      - Round robins at iterations 60, 70 and 80 all showed a from-scratch retrain beating the
+//        resumed lineage, by a growing margin (58%, then 65% with the incumbent placing 12th of 15
+//        -- worse than a bare 6-epoch continuation carrying no lineage at all). Same failure the
+//        iteration-63 bake-off caught: ~370 cumulative epochs over the same rows losing 27% across
+//        158 games to a challenger's 30. That reads as "resume-training is harmful", and the first
+//        version of this file removed it outright.
+//      - But a round robin run AFTER iteration 80's promotion measured the opposite: best.json --
+//        by then the promoted scratch net plus ~4 iterations of resume-training on top -- beat a
+//        freshly retrained scratch 18-6 head to head and won the field 58% to 45%, over 120 decided
+//        games per model, which is outside noise.
+//    Reconciled: resume-training ADDS strength over a handful of iterations and DEGRADES over
+//    dozens. It is not the resume step that fails, it is unbounded accumulation. The round robin
+//    below is the bound -- it retrains from scratch and promotes on merit, resetting the lineage
+//    whenever drift has actually cost something. Removing the resume step threw away real gains to
+//    avoid a failure the existing mechanism already contains.
+//    --trainEveryMin 0 restores the pure retrain-from-scratch behaviour if that judgement flips.
 //
 // 2. Self-play no longer runs in small batches that run.js waits on before doing anything else.
 //    execFileSync blocks this whole process until the child exits -- including the straggler tail,
@@ -70,6 +73,11 @@ const gamesPerBatch = Math.max(1, +arg('gamesPerBatch', 1000));
 const checkEveryMin = Math.max(0.5, +arg('checkEveryMin', 5));
 const tournamentEveryMin = Math.max(1, +arg('tournamentEveryMin', 180));
 const benchEveryMin = Math.max(1, +arg('benchEveryMin', 60));
+// Resume-train from best.json on its own clock, then promote. See the "WHAT CHANGED" note at the
+// top for why this exists and why it is bounded by the round robin rather than removed.
+// --trainEveryMin 0 disables it (pure retrain-from-scratch, decided only by round robins).
+const trainEveryMin = Math.max(0, +arg('trainEveryMin', 30));
+const epochs = arg('epochs', '6');
 // selfplay.js's game-source mix, once a model exists (before that it's always pure ladder-vs-
 // ladder). This used to be a single "selfRatio" ramped 0.25->0.85 across the first 6 iterations
 // then left completely flat -- but nn-vs-nn scaled as selfRatio^2 while nn-vs-ladder only scaled
@@ -80,6 +88,12 @@ const benchEveryMin = Math.max(1, +arg('benchEveryMin', 60));
 // share of them is what keeps the training data from being graded by the same student whose
 // answers are being checked.
 const mix = arg('mix', 'nnnn:0.4,nnladder:0.3,ladder:0.3');
+// Fraction of self-play games started from a fully random legal pose rather than the canonical
+// start (see opening.js's randomStartPose). Coverage of shapes no real trajectory reaches -- a
+// piece hard against the rim with the opponent clear across the board -- which the value net still
+// has to score sensibly. A minority slice on purpose: an unconstrained pose is a rougher signal
+// per game than a near-canonical one. Rows carry src:'random' so its effect stays measurable.
+const randomStartFrac = arg('randomStartFrac', '0');
 // The benchmark is a SWEEP, not a single score. "0-12 vs L8" says "weaker than L8" and nothing
 // else -- it cannot tell a net that plays like L2 from one that nearly beat L7, which is why four
 // consecutive readings of 0%, 9%, 0%, 17% carried no usable signal. Playing a small number of
@@ -126,6 +140,7 @@ const scratchHidden = arg('scratchHidden', null);
 
 const dir = __dirname;
 const best = path.join(dir, 'models', 'best.json');
+const fresh = path.join(dir, 'models', 'value.json');
 const log = msg => {
   const line = `[${new Date().toISOString()}] ${msg}`;
   console.log('\n=== ' + line);
@@ -438,7 +453,8 @@ function startSelfplayBatch() {
   statusState.batch = num;
   statusState.mix = fs.existsSync(best) ? mix : '(no model yet — pure ladder)';
   const args = ['--games', String(gamesPerBatch), '--out', out, '--model', best, '--mix', mix,
-    '--workers', workers, ...(dataPool ? ['--levels', dataPool.join(',')] : [])];
+    '--workers', workers, '--randomStartFrac', String(randomStartFrac),
+    ...(dataPool ? ['--levels', dataPool.join(',')] : [])];
   const ch = spawn('node', [path.join(dir, 'selfplay.js'), ...args], { stdio: 'inherit' });
   selfplayChild = ch;
   ch.on('exit', (code) => {
@@ -455,7 +471,25 @@ function startSelfplayBatch() {
 // --- housekeeping: retrain-from-scratch + round robin + promote, and the ladder sweep ---------
 // Both run on their own wall-clock schedule, independent of self-play, which keeps generating
 // games in the background the whole time these run (sharing cores, not losing them).
-let lastTournamentAt = Date.now(), lastBenchAt = Date.now();
+let lastTournamentAt = Date.now(), lastBenchAt = Date.now(), lastTrainAt = Date.now();
+
+// Resume-train from best.json and promote the result. Bounded, not unbounded: the round robin
+// below periodically retrains from scratch and promotes on merit, which is what stops this from
+// compounding into the iteration-63/80 failure (see the header). Runs on a clock now rather than
+// once per self-play batch, since batches are hours long and this should not be.
+function runTrainCycle() {
+  if (!fs.existsSync(best)) return;   // nothing to resume from yet
+  log(`resume-train ${epochs} epochs from best.json`);
+  writeStatus(`resume-train (${epochs} epochs, started ${new Date().toISOString()})`);
+  try {
+    run('train.js', ['--epochs', epochs, '--out', fresh, '--resume', best]);
+    fs.copyFileSync(fresh, best);
+    log(`resume-train complete — promoted (round robin every ${tournamentEveryMin} min decides the real best)`);
+    statusState.lastGate = `resume-train promoted at ${new Date().toISOString()}`;
+  } catch (e) {
+    log(`WARNING: resume-train failed (${e.message}) — continuing`);
+  }
+}
 
 function runTournamentCycle() {
   const num = cycleNum++;
@@ -594,6 +628,10 @@ async function schedulerLoop() {
     if (selfplayOut && fs.existsSync(selfplayOut))
       writeStatus(`self-play batch ${statusState.batch} running (started ` +
         `${new Date(selfplayStartedAt).toISOString()})`, [path.relative(repoRoot, selfplayOut).replace(/\\/g, '/')]);
+    if (trainEveryMin > 0 && now - lastTrainAt >= trainEveryMin*60000) {
+      lastTrainAt = now;
+      runTrainCycle();
+    }
     if (now - lastTournamentAt >= tournamentEveryMin*60000) {
       lastTournamentAt = now;
       runTournamentCycle();

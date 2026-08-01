@@ -104,7 +104,12 @@ function buildPairs() {
   const rungSpread = ladder.length >= 4
     ? [ladder[0], ladder[Math.floor(ladder.length/3)], ladder[Math.floor(2*ladder.length/3)], ladder[ladder.length - 1]]
     : ladder;
-  for (const n of nets) for (const r of rungSpread) add(n, r);
+  // Rung-major, NOT net-major: every net gets its first ladder pairing before any net gets its
+  // second. Net-major would finish one net's whole spread before starting the next, so an early
+  // --refit (which is the intended way to use this -- a full run is many hours) would rank the
+  // first few nets well and leave the rest with no games at all. This way a partial fit covers
+  // the whole field at once and simply sharpens as more pairs land.
+  for (const r of rungSpread) for (const n of nets) add(n, r);
   // net-vs-net: each net linked to a couple of others, deterministically (index-offset rather than
   // random) so a resumed run rebuilds the identical pair list and its stored results still apply.
   for (let i = 0; i < nets.length; i++) {
