@@ -104,7 +104,36 @@ function git(args) {
                       { cwd: repoRoot, shell: true, encoding: 'utf8' });
 }
 const gitSoft = (args, what) => {
-  try { git(args); return true; } catch (e) { log(`${what} failed (${errText(e)}) — continuing`); return false; }
+  try { git(args); return true; } catch (e) {
+    // A pull can fail specifically because a LOCAL untracked file sits exactly where an incoming
+    // tracked one wants to land -- e.g. someone manually copies nn/models/*.json onto a worker for
+    // instant variety, and later the desktop pushes a real wide.json/ultra.json for the first
+    // time. git refuses rather than guessing which copy to keep, which is correct of it -- but
+    // left alone this wedges EVERY future pull, not just this one (worker.js pulls before every
+    // chunk), silently stopping best.json/zpd-pool.json updates along with everything else. Move
+    // the conflicting file aside (never delete -- it might be the only copy) and retry once.
+    const raw = String((e && e.stderr) || (e && e.message) || e);
+    if (args[0] === 'pull' && /would be overwritten by merge/.test(raw)) {
+      const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+      const start = lines.findIndex(l => /would be overwritten by merge/.test(l));
+      const conflicts = [];
+      for (let i = start + 1; i < lines.length; i++) {
+        if (/^(please|aborting|error:)/i.test(lines[i])) break;
+        conflicts.push(lines[i]);
+      }
+      if (conflicts.length) {
+        log(`pull blocked by ${conflicts.length} local file(s) also present upstream -- moving ` +
+            `aside and retrying: ${conflicts.join(', ')}`);
+        let moved = 0;
+        for (const rel of conflicts) {
+          const abs = path.join(repoRoot, rel);
+          try { fs.renameSync(abs, `${abs}.local-${Date.now()}`); moved++; } catch (e2) {}
+        }
+        if (moved) { try { git(args); return true; } catch (e3) { log(`${what} still failed after moving conflicts aside (${errText(e3)}) — continuing`); return false; } }
+      }
+    }
+    log(`${what} failed (${errText(e)}) — continuing`); return false;
+  }
 };
 
 // --- what to play with --------------------------------------------------------------------------
