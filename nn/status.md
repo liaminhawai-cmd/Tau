@@ -1,12 +1,12 @@
 # Tau NN training status
-_Last updated: 2026-08-01T10:57:31.944Z_
+_Last updated: 2026-08-01T12:58:34.971Z_
 
-**Self-play batch:** 2
-**Stage:** from-scratch challenger training (30 epochs, started 2026-08-01T10:57:31.944Z)
+**Self-play batch:** 3
+**Stage:** self-play batch 3 running, next check in 5 min
 **mix:** nnnn:0.4,nnladder:0.3,ladder:0.3
 
-**Last gate result:** resume-train promoted at 2026-08-01T10:57:31.936Z
+**Last gate result:** (none yet)
 
-**Last checkpoint:** ckpt-093.json at 2026-08-01T10:57:31.942Z
+**Last checkpoint:** (none yet)
 
 **Last ladder sweep:** (none yet)
