@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-08-01T10:04:44.747Z_
+_Last updated: 2026-08-01T10:09:48.245Z_
 
 **Self-play batch:** 2
-**Stage:** self-play batch 2 running, next check in 5 min
+**Stage:** self-play batch 2 running (started 2026-08-01T06:50:33.961Z)
 **mix:** nnnn:0.4,nnladder:0.3,ladder:0.3
 
 **Last gate result:** pool cycle 92 — ultra 477, l15_value 404, ckpt-046 258, ckpt-092 181, wide 175
