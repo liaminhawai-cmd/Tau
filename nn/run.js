@@ -125,11 +125,16 @@ const tournamentRecent = arg('tournamentRecent', '12');
 // worker holds its own engine sandbox, and Node.js counts hyperthreads as full cores in
 // os.cpus(), so this isn't literally "one worker per physical core"). --workers 1 for serial.
 const workers = arg('workers', String(Math.max(1, Math.min(os.cpus().length - 1, 14))));
-// Placement and the round robin used to BLOCK self-play, so borrowing all of --workers cost
-// nothing: nothing else was running. They now run concurrently, so asking for the same count again
-// would put 2x --workers processes on one machine's cores. They get their own smaller share; the
-// continuous self-play stream keeps the full count because it is the thing producing the data.
-const poolWorkers = arg('poolWorkers', String(Math.max(2, Math.round(+workers * 0.3))));
+// Worker count for placement and the round robin. This was briefly set to 30% of --workers on the
+// theory that these had previously had the machine to themselves; that was simply wrong. self-play
+// is started with spawn() and has ALWAYS run as a concurrent background child (see
+// startSelfplayBatch), so placement was already sharing cores with it long before the scheduler
+// became non-blocking. Measured cost of the mistake on the real machine: pool cycle 94's placement
+// added only 10 new matchups in 40 minutes at 4 workers, leaving most brains on 4 games and the
+// ladder yardstick visibly out of order in the fitted table.
+// What genuinely IS new alongside placement is retro (1 process) and the ladder sweep's arena
+// (1 process), so the right reservation is a couple of cores, not two thirds of them.
+const poolWorkers = arg('poolWorkers', String(Math.max(2, +workers - 2)));
 // How many retromine processes to run at once. Each picks its own seed positions at random and
 // writes its own file, so they are independent investigations needing no coordination -- but
 // retrograde rows have never once been generated on this run, so the useful next step is finding
