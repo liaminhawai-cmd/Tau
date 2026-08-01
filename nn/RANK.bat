@@ -9,6 +9,11 @@ rem  L8 and lost to L7 in one sweep), so chasing tight intervals on any single p
 rem  compute. Bradley-Terry needs the comparison GRAPH connected, not every cell filled -- being
 rem  half a rung off costs almost nothing downstream, being unranked costs the whole design.
 rem
+rem  Pairings are chosen ADAPTIVELY: after every result it refits the ratings and picks the
+rem  matchup whose outcome is least predictable, among the brains measured least so far. A
+rem  50/50 game is worth about a bit; a foregone one is worth nearly nothing, and a fixed pair
+rem  list spent about a quarter of its budget on 2-0 blowouts against L1 and L4.
+rem
 rem  Safe to run alongside the trainer: fixed depths, no clocks, so sharing cores changes how
 rem  long this takes but not a single move either side picks.
 rem
@@ -29,10 +34,10 @@ rem Games per pair. Low on purpose: the fit pools evidence across every path bet
 rem not just their direct games, so 2-3 per pair over a connected graph places everyone about as
 rem well as 6 would.
 set GAMES=2
-rem Target wall-clock hours. The FIELD gets trimmed to fit (checkpoints dropped first, the named
-rem architectures kept), rather than the accuracy dialled down -- more players with fewer games
-rem each beats fewer players with more, and the field is what decides how much of the strength
-rem range gets covered at all. Set to 0 to play the whole field however long it takes.
+rem Target wall-clock hours -- a hard stop, not a field trim. Pairings are now chosen adaptively
+rem (closest-rated first, least-measured first), so whatever time you give it goes to the most
+rem informative matchups available and it degrades gracefully: stopping early costs precision,
+rem never coverage. Set to 0 to run until every brain has enough games.
 set BUDGET=2
 rem How many lineage checkpoints to sample, evenly spaced oldest-to-newest, on top of the named
 rem architectures (best/wide/ultra/deep/l15_value/scratch, whichever exist).

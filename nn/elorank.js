@@ -234,15 +234,17 @@ function playPair(a, b) {
       if (!m.length) { console.log(`  ! no result for ${a.label} vs ${b.label}`); return resolve(); }
       const last = m[m.length - 1];
       const w = +last[1], l = +last[2], d = +(last[3] || 0);
-      store.results[keyOf(a, b)] = { w, l, d };
+      record(a, b, w, l, d);
       fs.writeFileSync(outPath, JSON.stringify(store, null, 1));   // checkpoint every pair
-      doneWeight += pairWeight(a, b);
-      // Pace is measured from actual wall time, which already accounts for however many lanes are
-      // running -- so this self-corrects if the cost model above is wrong, which it will be.
-      const elapsed = (Date.now() - startedAt)/1000;
-      const eta = doneWeight > 0 ? (totalWeight - doneWeight)*(elapsed/doneWeight) : 0;
+      // No fixed pair list to measure progress against anymore, so report what actually matters:
+      // how well covered the least-measured brain is, and how much of the time budget is left.
+      const gs = gamesOf(), least = Math.min(...players.map(p => gs[p.id] || 0));
+      const elapsedMin = (Date.now() - startedAt)/60000;
+      const leftNote = budgetHours > 0
+        ? `~${fmtDur(Math.max(0, budgetHours*3600 - elapsedMin*60))} left`
+        : `${Math.round(elapsedMin)}m elapsed`;
       console.log(`  ${a.label} vs ${b.label}: ${w}-${l}${d ? '-' + d : ''}` +
-                  `   [${Math.round(100*doneWeight/totalWeight)}%, ~${fmtDur(eta)} left]`);
+                  `   [min games ${least}, ${leftNote}]`);
       resolve();
     });
   });
@@ -388,47 +390,106 @@ function report() {
   // startup, so writing its now-stale copy back would erase every pair that landed in between.
 }
 
+// Results can now accumulate across MANY pairings of the same two brains, so merge rather than
+// overwrite -- the adaptive scheduler below deliberately revisits an informative matchup.
+function record(a, b, w, l, d) {
+  const k = keyOf(a, b), prev = store.results[k] || { w: 0, l: 0, d: 0 };
+  store.results[k] = { w: prev.w + w, l: prev.l + l, d: (prev.d || 0) + d };
+}
+
+const gamesOf = () => {
+  const n = {};
+  for (const [key, r] of Object.entries(store.results)) {
+    const [a, b] = key.split('|'); const t = r.w + r.l + (r.d || 0);
+    n[a] = (n[a] || 0) + t; n[b] = (n[b] || 0) + t;
+  }
+  return n;
+};
+const pairGamesOf = () => {
+  const n = {};
+  for (const [key, r] of Object.entries(store.results)) {
+    const [a, b] = key.split('|'); const t = r.w + r.l + (r.d || 0);
+    const k = a < b ? a + '|' + b : b + '|' + a;
+    n[k] = (n[k] || 0) + t;
+  }
+  return n;
+};
+
+// Pick the most informative matchup available right now.
+//
+// A pairing's information content peaks when its outcome is genuinely uncertain. A 50/50 matchup
+// carries about a bit; a foregone one carries almost nothing -- and the fixed pair list this
+// replaces spent roughly a quarter of its budget on exactly that, ~40 pairs of 2-0 against L1 and
+// L4 which told us only what we already knew. Three terms, multiplied:
+//
+//   closeness  the BT win probability implied by the current ratings, folded to peak at 50/50.
+//              This is the whole point: play the games whose result we cannot predict.
+//   need       favours brains with few games. Uncertainty in a rating falls roughly as 1/sqrt(n),
+//              so the marginal value of a game is much higher for a brain with 2 than with 20.
+//   novelty    damps pairs already played a lot. Repeating one matchup narrows that edge's error
+//              bar while leaving the rest of the graph untouched, and BT needs the GRAPH.
+//
+// Ladder-vs-ladder pairs get a boost until the yardstick is pinned, because every net's rank is an
+// interpolation against it -- an unpinned ladder makes every other measurement uninterpretable
+// (which is exactly what a mid-run fit showed: L9 and L10 rating below L8).
+function pickPair(elo, inFlight) {
+  const g = gamesOf(), pg = pairGamesOf();
+  let best = null, bestScore = -Infinity;
+  for (let i = 0; i < players.length; i++) {
+    for (let j = i + 1; j < players.length; j++) {
+      const a = players[i], b = players[j];
+      const k = a.id < b.id ? a.id + '|' + b.id : b.id + '|' + a.id;
+      if (inFlight.has(k)) continue;
+      const bothLadder = a.kind === 'ladder' && b.kind === 'ladder';
+      // only ADJACENT-ish ladder pairs are worth playing; L1 vs L11 is as foregone as it gets
+      if (bothLadder && Math.abs(a.level - b.level) > 2) continue;
+      const pExp = 1/(1 + Math.pow(10, ((elo[b.id] || 0) - (elo[a.id] || 0))/400));
+      const closeness = 4*pExp*(1 - pExp);              // 1.0 at even, ->0 at foregone
+      const need = 1/Math.sqrt(1 + (g[a.id] || 0)) + 1/Math.sqrt(1 + (g[b.id] || 0));
+      const novelty = 1/(1 + (pg[k] || 0)/gamesPerPair);
+      const ladderBoost = bothLadder && Math.min(g[a.id] || 0, g[b.id] || 0) < ladderGames ? 3 : 1;
+      const score = (0.15 + closeness)*need*novelty*ladderBoost;
+      if (score > bestScore) { bestScore = score; best = [a, b]; }
+    }
+  }
+  return best;
+}
+
 async function main() {
   if (refitOnly) { report(); return; }
-  let allPairs = buildPairs();
-  // --budgetHours: drop the LOWEST-VALUE brains until the estimated run fits the time available.
-  // Checkpoints go first and the named architectures last, because the named ones are the whole
-  // reason for ranking (they are the candidates for retromine's interleaved rungs) while adjacent
-  // checkpoints are near-duplicates of each other -- dropping one costs almost no coverage of the
-  // strength space, which is what this is actually mapping.
-  // Trimming the FIELD rather than the games-per-pair is deliberate: Bradley-Terry pools evidence
-  // across the whole graph, so more players with fewer games each beats fewer players with more,
-  // and the field is what determines how much of the strength range gets covered at all.
-  if (budgetHours > 0) {
-    const isNamed = p => p.kind === 'ladder' ||
-      /^(best|wide|ultra|deep|l15_value|scratch)$/.test(path.basename(p.model || '', '.json'));
-    const est = () => buildPairs().reduce((t, [a, b]) => t + pairWeight(a, b), 0)*SEC_PER_WEIGHT/workers/3600;
-    let guard = 0;
-    while (est() > budgetHours && guard++ < 100) {
-      // drop the checkpoint whose depth-family is largest, newest-first among droppables
-      const droppable = players.filter(p => p.kind === 'nn' && !isNamed(p));
-      const victims = droppable.length ? droppable : players.filter(p => p.kind === 'nn' && p.depth === 3);
-      if (!victims.length) break;
-      const drop = victims[victims.length - 1].model;
-      for (let i = players.length - 1; i >= 0; i--) if (players[i].model === drop) players.splice(i, 1);
-      console.log(`  budget: dropped ${path.basename(drop)} (est ${est().toFixed(1)}h vs ${budgetHours}h budget)`);
-    }
-    allPairs = buildPairs();
-  }
-  const total = allPairs.length;
-  totalWeight = allPairs.reduce((t, [a, b]) => t + pairWeight(a, b), 0);
-  const pairs = allPairs.filter(([a, b]) => !store.results[keyOf(a, b)] && !store.results[keyOf(b, a)]);
-  doneWeight = totalWeight - pairs.reduce((t, [a, b]) => t + pairWeight(a, b), 0);
-  console.log(`elorank: ${players.length} brains, ${total} pairs, ${gamesPerPair} games/pair ` +
-              `(${total*gamesPerPair} games total), ${workers} at a time`);
-  console.log(`  rough estimate: ${fmtDur(totalWeight*SEC_PER_WEIGHT/workers)} ` +
-              `(refined from real pace once pairs start landing)`);
-  if (pairs.length < total) console.log(`resuming: ${total - pairs.length} pairs already stored`);
+  const targetGames = Math.max(1, +arg('targetGames', 12));
+  console.log(`elorank: ${players.length} brains, ${workers} lanes, ` +
+              `adaptive pairing (closest-rated first), ${gamesPerPair} games per matchup`);
+  console.log(`  stops at ${budgetHours > 0 ? budgetHours + 'h' : 'no time limit'} ` +
+              `or when every brain has ~${targetGames} games, whichever comes first`);
+  const already = Object.keys(store.results).length;
+  if (already) console.log(`resuming: ${already} matchups already stored`);
   if (dryRun) { console.log('(--dryrun: nothing played)'); return; }
+
   startedAt = Date.now();
-  let next = 0;
-  const lane = async () => { while (next < pairs.length) { const [a, b] = pairs[next++]; await playPair(a, b); } };
-  await Promise.all(Array.from({ length: Math.min(workers, pairs.length) }, lane));
+  const inFlight = new Set();
+  let stop = false;
+  const outOfTime = () => budgetHours > 0 && (Date.now() - startedAt)/3600000 >= budgetHours;
+
+  const lane = async () => {
+    for (;;) {
+      if (stop || outOfTime()) return;
+      const g = gamesOf();
+      if (players.every(p => (g[p.id] || 0) >= targetGames)) { stop = true; return; }
+      // refit before every pick: BT over this many players is milliseconds, and a stale rating is
+      // exactly what would send a lane off to play a foregone matchup.
+      const elo = fitBT(players.map(p => p.id), store.results);
+      const pick = pickPair(elo, inFlight);
+      if (!pick) return;
+      const [a, b] = pick;
+      const k = a.id < b.id ? a.id + '|' + b.id : b.id + '|' + a.id;
+      inFlight.add(k);
+      try { await playPair(a, b); } finally { inFlight.delete(k); }
+    }
+  };
+  await Promise.all(Array.from({ length: workers }, lane));
+  const mins = ((Date.now() - startedAt)/60000).toFixed(0);
+  console.log(`\nplayed for ${mins}m` + (outOfTime() ? ' (time budget reached)' : ' (coverage target reached)'));
   report();
 }
 
