@@ -125,6 +125,16 @@ const tournamentRecent = arg('tournamentRecent', '12');
 // worker holds its own engine sandbox, and Node.js counts hyperthreads as full cores in
 // os.cpus(), so this isn't literally "one worker per physical core"). --workers 1 for serial.
 const workers = arg('workers', String(Math.max(1, Math.min(os.cpus().length - 1, 14))));
+// Placement and the round robin used to BLOCK self-play, so borrowing all of --workers cost
+// nothing: nothing else was running. They now run concurrently, so asking for the same count again
+// would put 2x --workers processes on one machine's cores. They get their own smaller share; the
+// continuous self-play stream keeps the full count because it is the thing producing the data.
+const poolWorkers = arg('poolWorkers', String(Math.max(2, Math.round(+workers * 0.3))));
+// How many retromine processes to run at once. Each picks its own seed positions at random and
+// writes its own file, so they are independent investigations needing no coordination -- but
+// retrograde rows have never once been generated on this run, so the useful next step is finding
+// out what ONE produces, not scaling an unmeasured thing. Raise it when there is a reason to.
+const retroWorkers = Math.max(1, +arg('retroWorkers', 1));
 // Every round robin, ALSO train a challenger from scratch on all accumulated data and enter it in
 // the field. This is now the ONLY way best.json changes (see point 1 above) -- not an occasional
 // sanity check on a resumed lineage anymore, but the actual training step.
@@ -241,6 +251,41 @@ const runCapturedSoft = (script, args) => {
   try { return runCaptured(script, args); }
   catch (e) { log(`WARNING: ${script} failed (${e.message}) — continuing`); return ''; }
 };
+// Non-blocking equivalents. execFileSync freezes Node's ENTIRE single-threaded event loop for as
+// long as the child runs -- fine for a one-shot script, fatal for a scheduler that also has to
+// keep noticing retro's and bench's own clocks have elapsed. Measured directly tonight: a pool
+// cycle's training+placement steps ran 2.5+ hours end to end, and for that whole stretch nothing
+// else in this process could run AT ALL -- not a CPU contention problem, a "the orchestrator
+// cannot execute its own next line of JS" problem. spawn()+Promise fixes that: the child runs as
+// its own OS process regardless, and this process's event loop stays free to keep ticking.
+function runAsync(script, args) {
+  return new Promise((resolve, reject) => {
+    console.log(`\n$ node nn/${script} ${args.join(' ')}`);
+    const ch = spawn('node', [path.join(dir, script), ...args], { stdio: 'inherit' });
+    ch.on('exit', code => code === 0 ? resolve() : reject(new Error(`${script} exited ${code}`)));
+    ch.on('error', reject);
+  });
+}
+async function runSoftAsync(script, args) {
+  try { await runAsync(script, args); }
+  catch (e) { log(`WARNING: ${script} failed (${e.message}) — continuing`); }
+}
+function runCapturedAsync(script, args) {
+  return new Promise((resolve, reject) => {
+    console.log(`\n$ node nn/${script} ${args.join(' ')}`);
+    let out = '';
+    const ch = spawn('node', [path.join(dir, script), ...args]);
+    ch.stdout.on('data', d => { out += d; process.stdout.write(d); });
+    ch.stderr.on('data', d => process.stderr.write(d));
+    ch.on('exit', code => code === 0 ? resolve(out)
+      : reject(Object.assign(new Error(`${script} exited ${code}`), { partialOut: out })));
+    ch.on('error', reject);
+  });
+}
+async function runCapturedSoftAsync(script, args) {
+  try { return await runCapturedAsync(script, args); }
+  catch (e) { log(`WARNING: ${script} failed (${e.message}) — continuing`); return e.partialOut || ''; }
+}
 // arena.js's closing line reads "nn(best.json,D2) vs L3: 3-0  (100% of decided, ...)". Take the LAST
 // such pair -- the earlier ones are the live per-game running tally, which has the same "N-M" shape.
 const arenaScore = out => {
@@ -645,12 +690,12 @@ let lastTournamentAt = Date.now(), lastBenchAt = Date.now(), lastTrainAt = Date.
 // below periodically retrains from scratch and promotes on merit, which is what stops this from
 // compounding into the iteration-63/80 failure (see the header). Runs on a clock now rather than
 // once per self-play batch, since batches are hours long and this should not be.
-function runTrainCycle() {
+async function runTrainCycle() {
   if (!fs.existsSync(best)) return;   // nothing to resume from yet
   log(`resume-train ${epochs} epochs from best.json`);
   writeStatus(`resume-train (${epochs} epochs, started ${new Date().toISOString()})`);
   try {
-    run('train.js', ['--epochs', epochs, '--out', fresh, '--resume', best]);
+    await runAsync('train.js', ['--epochs', epochs, '--out', fresh, '--resume', best]);
     atomicCopy(fresh, best);
     log(`resume-train complete — promoted (round robin every ${tournamentEveryMin} min decides the real best)`);
     statusState.lastGate = `resume-train promoted at ${new Date().toISOString()}`;
@@ -704,7 +749,7 @@ function refreshModelSlots(ranked) {
   return pushed;
 }
 
-function runPoolCycle() {
+async function runPoolCycle() {
   const num = cycleNum++;
   // Snapshot the challenger under a stable name first. best.json is rewritten by the resume-train
   // clock, so rating "best.json" would attribute games to a moving target -- the same bug that made
@@ -729,7 +774,7 @@ function runPoolCycle() {
     log(`pool cycle ${num} — training a from-scratch challenger (${scratchEpochs} epochs` +
         (h ? `, --hidden ${h}` : '') + `)`);
     writeStatus(`from-scratch challenger training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
-    runSoft('train.js', ['--epochs', scratchEpochs, '--out', scratch, ...(h ? ['--hidden', h] : [])]);
+    await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--out', scratch, ...(h ? ['--hidden', h] : [])]);
     if (fs.existsSync(scratch)) focus.push(scratch);
     // The shape fight. Trained back-to-back with the control on the same corpus (self-play may
     // append a few games in between -- noise against tens of thousands of rows), same epochs, and
@@ -739,7 +784,7 @@ function runPoolCycle() {
       if (mut) {
         const mutPath = path.join(dir, 'models', `mut-${String(num).padStart(3, '0')}.json`);
         log(`pool cycle ${num} — shape fight: control ${h} vs mutant ${mut.shape} (${mut.op})`);
-        runSoft('train.js', ['--epochs', scratchEpochs, '--out', mutPath, '--hidden', mut.shape]);
+        await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--out', mutPath, '--hidden', mut.shape]);
         if (fs.existsSync(mutPath)) { focus.push(mutPath); mutInfo = { ...mut, control: h, mutPath, scratch }; }
       }
     }
@@ -755,7 +800,7 @@ function runPoolCycle() {
     const from = path.join(dir, 'models', lineage.length ? lineage[lineage.length - 1] : name + '.json');
     const outV = path.join(dir, 'models', `${name}-${String(num).padStart(3, '0')}.json`);
     log(`pool cycle ${num} — variant lineage: ${path.basename(from)} + ${variantEpochs} epochs -> ${path.basename(outV)}`);
-    runSoft('train.js', ['--epochs', String(variantEpochs), '--resume', from, '--out', outV]);
+    await runSoftAsync('train.js', ['--epochs', String(variantEpochs), '--resume', from, '--out', outV]);
     if (fs.existsSync(outV)) focus.push(outV);
   }
 
@@ -763,9 +808,9 @@ function runPoolCycle() {
   log(`pool cycle ${num} — placing ${focus.map(f => path.basename(f)).join(', ')} in the rating pool` +
       (wide ? ' (wide pass: budget goes wherever the pool is least certain)' : ''));
   writeStatus(`rating pool placement (started ${new Date().toISOString()})`);
-  runSoft('elorank.js', ['--focus', focus.join(','), ...(wide ? ['--focusPairs', '0'] : []),
+  await runSoftAsync('elorank.js', ['--focus', focus.join(','), ...(wide ? ['--focusPairs', '0'] : []),
                          '--out', poolFile, '--summary', poolSummary,
-                         '--budgetHours', String(poolBudgetHours), '--workers', workers,
+                         '--budgetHours', String(poolBudgetHours), '--workers', poolWorkers,
                          '--depths', poolDepths, '--games', poolGames,
                          ...(poolLevels ? ['--levels', poolLevels] : []), '--saveData',
                          path.join(dir, 'data', `pool-${String(num).padStart(3, '0')}.jsonl`)]);
@@ -845,7 +890,7 @@ function runPoolCycle() {
   writeStatus(`pool cycle ${num} complete`, ['nn/models/best.json', 'nn/elo-summary.json', ...slotPaths]);
 }
 
-function runTournamentCycle() {
+async function runTournamentCycle() {
   const num = cycleNum++;
   // The from-scratch challenger. Trained BEFORE the round robin so it is in the field when the
   // round robin runs, and deliberately without --resume: resuming is the very thing this whole
@@ -858,11 +903,11 @@ function runTournamentCycle() {
     log(`round-robin cycle ${num} — training a from-scratch challenger (${scratchEpochs} epochs` +
         (h ? `, --hidden ${h}` : '') + `)`);
     writeStatus(`from-scratch challenger training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
-    runSoft('train.js', ['--epochs', scratchEpochs, '--out', scratch, ...(h ? ['--hidden', h] : [])]);
+    await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--out', scratch, ...(h ? ['--hidden', h] : [])]);
   }
   log(`round-robin cycle ${num} — across the most recent ${tournamentRecent} checkpoints (this is what picks best.json now)`);
   writeStatus(`round robin running (started ${new Date().toISOString()})`);
-  runSoft('tournament.js', ['--promote', '--recent', tournamentRecent, '--workers', workers]);
+  await runSoftAsync('tournament.js', ['--promote', '--recent', tournamentRecent, '--workers', poolWorkers]);
   statusState.lastGate = `cycle ${num} — round robin complete`;
   // The one moment best.json is worth a permanent blob in history: the round robin just decided
   // it. Not pushed on every self-play batch because the file is overwritten each cycle and dense
@@ -879,7 +924,7 @@ function runTournamentCycle() {
   }
 }
 
-function runBenchCycle() {
+async function runBenchCycle() {
   const win = readWindows();
   const spans = {};
   for (const d of benchDepths) {
@@ -893,19 +938,19 @@ function runBenchCycle() {
   // being reduced to a win-loss tally and thrown away -- they cost the same CPU either way, and
   // arena.js writes selfplay.js's exact row schema. They land in whichever batch file self-play is
   // CURRENTLY writing, the same file everything downstream already globs and pushes.
-  const cell = (lvl, d) => arenaScore(runCapturedSoft('arena.js',
+  const cell = async (lvl, d) => arenaScore(await runCapturedSoftAsync('arena.js',
     ['--a', 'nn:0:' + best, '--b', 'L' + lvl, '--games', benchCellGames, '--depth', String(d),
      '--saveData', selfplayOut || path.join(dir, 'data', 'bench-fallback.jsonl')]));
   const grid = {};
   for (const d of benchDepths)
     for (let lvl = spans[d][0]; lvl <= spans[d][1]; lvl++)
-      grid[lvl + ':' + d] = cell(lvl, d);
+      grid[lvl + ':' + d] = await cell(lvl, d);
   // A FIXED cell against the top rung every sweep, wherever the window happens to be -- otherwise
   // the rung the net is ultimately judged against goes unmeasured until the window crawls all the
   // way up, which used to take dozens of iterations. Skipped when the window already covers it.
   for (const d of benchDepths)
     if (LADDER_N < spans[d][0] || LADDER_N > spans[d][1])
-      grid[LADDER_N + ':' + d] = cell(LADDER_N, d);
+      grid[LADDER_N + ':' + d] = await cell(LADDER_N, d);
   const table = benchDepths.map(d => {
     const cells = [];
     for (let lvl = spans[d][0]; lvl <= spans[d][1]; lvl++) {
@@ -928,7 +973,7 @@ function runBenchCycle() {
     for (const d of benchDepths) {
       const from = Math.max(1, win[d] - spotCheckRecent);
       for (let lvl = from; lvl < win[d]; lvl++) {
-        const s = arenaScore(runCapturedSoft('arena.js',
+        const s = arenaScore(await runCapturedSoftAsync('arena.js',
           ['--a', 'nn:0:' + best, '--b', 'L' + lvl, '--games', spotCheckGames, '--depth', String(d)]));
         const ok = s && s.w > 0 && s.l === 0;
         const was = (regressed[d] || []).includes(lvl);
@@ -972,16 +1017,45 @@ function runBenchCycle() {
 
 // Rewind endings and ask how strong an escape needs to be (retromine.js), with the pool as the
 // strength axis. Needs ratings to exist; quietly waits until they do.
-function runRetroCycle() {
+async function runRetroCycle() {
   if (!fs.existsSync(poolSummary)) { log('retro cycle skipped — no rating pool yet'); return; }
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-  const outR = path.join(dir, 'data', `retro-${stamp}.jsonl`);
-  log(`retro cycle — mining ${retroSeeds} seed games backward from their endings`);
+  // Each miner picks its seed positions at random from the same corpus, so N of them explore N
+  // independent lines with no coordination -- separate output files, no shared state at all.
+  const outs = Array.from({ length: retroWorkers }, (_, i) =>
+    path.join(dir, 'data', `retro-${stamp}` + (retroWorkers > 1 ? `-${i + 1}` : '') + '.jsonl'));
+  log(`retro cycle — ${retroWorkers > 1 ? `${retroWorkers} miners x ` : ''}${retroSeeds} seed ` +
+      `games mined backward from their endings`);
   writeStatus(`retrograde mining (started ${new Date().toISOString()})`);
-  runSoft('retromine.js', ['--summary', poolSummary, '--seeds', String(retroSeeds),
-                          '--maxReplaysPerSeed', '40', '--out', outR]);
-  writeStatus('retro cycle complete',
-              fs.existsSync(outR) ? [path.relative(repoRoot, outR).replace(/\\/g, '/')] : undefined);
+  await Promise.all(outs.map(o => runSoftAsync('retromine.js',
+    ['--summary', poolSummary, '--seeds', String(retroSeeds),
+     '--maxReplaysPerSeed', '40', '--out', o])));
+  const made = outs.filter(o => fs.existsSync(o)).map(o => path.relative(repoRoot, o).replace(/\\/g, '/'));
+  const rows = made.reduce((n, f) => {
+    try { return n + fs.readFileSync(path.join(repoRoot, f), 'utf8').split('\n').filter(Boolean).length; }
+    catch (e) { return n; }
+  }, 0);
+  log(`retro cycle complete — ${rows} row(s) across ${made.length} file(s)`);
+  writeStatus(`retro cycle complete (${rows} rows)`, made.length ? made : undefined);
+}
+
+// Cycles are started and NOT waited for, so the loop keeps ticking -- checking the other clocks,
+// pulling worker games, pushing status -- while a long one runs. Two guard rails on that:
+//   * one in-flight run per key. A pool cycle that overruns its own interval must not have a
+//     second one started on top of it.
+//   * train/pool/round-robin share ONE key because all three rewrite best.json. Two of those at
+//     once is a lost promotion, not just wasted CPU. Retro and bench only READ best.json (and
+//     atomicCopy renames into place, so a reader sees the old file or the new one, never a torn
+//     one), which is why they get their own keys and genuinely run in parallel with everything.
+// Git stays synchronous on purpose: execFileSync can't interleave on a single-threaded event
+// loop, so two cycles can never land half-built commits on top of each other.
+const busyCycles = new Set();
+function fire(key, name, fn) {
+  if (busyCycles.has(key)) return false;
+  busyCycles.add(key);
+  fn().catch(e => log(`WARNING: ${name} cycle failed (${(e && e.message) || e}) — continuing`))
+      .finally(() => busyCycles.delete(key));
+  return true;   // started; the caller advances its clock only when this is true
 }
 
 // --- the scheduler: wakes up on a short clock, does nothing most ticks -------------------------
@@ -1002,38 +1076,38 @@ async function schedulerLoop() {
         [path.relative(repoRoot, selfplayOut).replace(/\\/g, '/'),
          // worker machines read this for their opponent mix -- cheap to ride along every push
          ...(fs.existsSync(path.join(dir, 'zpd-pool.json')) ? ['nn/zpd-pool.json'] : [])]);
-    if (trainEveryMin > 0 && now - lastTrainAt >= trainEveryMin*60000) {
-      lastTrainAt = now;
-      runTrainCycle();
-    }
-    if (poolEveryMin > 0 && now - lastPoolAt >= poolEveryMin*60000) {
-      lastPoolAt = now;
-      runPoolCycle();
-    }
-    if (retroEveryMin > 0 && now - lastRetroAt >= retroEveryMin*60000) {
-      lastRetroAt = now;
-      runRetroCycle();
-    }
-    // The round robin is kept as an occasional full recalibration, not the routine gate. Placement
-    // above is cheap and incremental; this re-derives everything from scratch and would catch a
-    // pool that had drifted for some reason the ladder anchors did not prevent.
-    if (poolEveryMin === 0 && now - lastTournamentAt >= tournamentEveryMin*60000) {
-      lastTournamentAt = now;
-      runTournamentCycle();
-    }
-    if (now - lastBenchAt >= benchEveryMin*60000) {
-      lastBenchAt = now;
-      runBenchCycle();
-    }
+    // The three best.json-writing cycles contend for one lock, so the MOST OVERDUE one goes first
+    // rather than whichever happens to be listed first. With a fixed order a short-interval cycle
+    // can take the lock on every single tick and the others never run at all -- which is the exact
+    // shape of the bug this whole change exists to fix, and not worth reintroducing one lock down.
+    // A cycle that doesn't get the lock leaves its clock untouched, so it stays overdue, grows more
+    // overdue, and wins the next tick: waiting is bounded, never indefinite.
+    const overdueBy = (last, every) => every > 0 ? now - last - every*60000 : -Infinity;
+    const contenders = [
+      ['resume-train', overdueBy(lastTrainAt, trainEveryMin), runTrainCycle, () => { lastTrainAt = now; }],
+      ['pool', overdueBy(lastPoolAt, poolEveryMin), runPoolCycle, () => { lastPoolAt = now; }],
+      // The round robin is kept as an occasional full recalibration, not the routine gate. Placement
+      // is cheap and incremental; this re-derives everything from scratch and would catch a pool
+      // that had drifted for some reason the ladder anchors did not prevent.
+      ['round robin', poolEveryMin === 0 ? overdueBy(lastTournamentAt, tournamentEveryMin) : -Infinity,
+       runTournamentCycle, () => { lastTournamentAt = now; }],
+    ].filter(c => c[1] >= 0).sort((a, b) => b[1] - a[1]);
+    if (contenders.length && fire('model', contenders[0][0], contenders[0][2])) contenders[0][3]();
+    // Retro and bench take no lock against the above: they only read best.json, so they run
+    // genuinely in parallel with training and placement, which is the whole point.
+    if (retroEveryMin > 0 && now - lastRetroAt >= retroEveryMin*60000 &&
+        fire('retro', 'retro', runRetroCycle)) lastRetroAt = now;
+    if (now - lastBenchAt >= benchEveryMin*60000 &&
+        fire('bench', 'ladder sweep', runBenchCycle)) lastBenchAt = now;
     writeStatus(`self-play batch ${statusState.batch} running, next check in ${checkEveryMin} min`);
   }
 }
 
 if (poolOnce) {
   log('--poolOnce: running a single rating-pool placement cycle, then exiting');
-  runPoolCycle();
-  log('--poolOnce: done');
+  runPoolCycle().then(() => log('--poolOnce: done'),
+                      e => { log(`--poolOnce failed: ${(e && e.message) || e}`); process.exitCode = 1; });
 } else {
   startSelfplayBatch();
-  schedulerLoop();
+  schedulerLoop().catch(e => { log(`FATAL: scheduler stopped (${(e && e.message) || e})`); process.exitCode = 1; });
 }
