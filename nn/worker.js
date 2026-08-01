@@ -53,7 +53,17 @@ const gamesPerChunk = Math.max(1, +arg('games', 200));
 const pushEveryMin = Math.max(0.5, +arg('pushEveryMin', 4));
 // cores-1, capped: each lane is a whole node process holding its own engine sandbox
 const workers = Math.max(1, +arg('workers', Math.max(1, Math.min(os.cpus().length - 1, 14))));
-const randomStartFrac = arg('randomStartFrac', '0.15');
+// Deliberately far higher than the desktop's: this machine's job is COVERAGE, not the on-policy
+// stream. A random start (opening.js randomStartPose) is a legal, well-formed pose drawn uniformly
+// from the disc rather than a few plies off the canonical opening, so it reaches shapes self-play's
+// own trajectories never produce. That matters more than it sounds: minimax spends most of its
+// evaluations on hypothetical positions well off the played line, so a value net that has only ever
+// seen on-trajectory shapes is being asked to judge exactly what it was never trained on.
+// Note seedPose WINS over a random start when both roll (see selfplay.js), so the realised random
+// rate is (1 - seedFrom) x this -- 0.6 here with seedFrom 0.25 gives ~45% random starts, ~25%
+// stored real positions, ~30% canonical openings. Rows carry src:'random', so the share this
+// actually contributes to the corpus is measurable after the fact rather than assumed.
+const randomStartFrac = arg('randomStartFrac', '0.6');
 // Fraction of games that start from a STORED mid-game position instead of the standard opening --
 // selfplay.js's own --seedFrom. Left unset here until now, which meant each of the `workers`
 // separately-spawned selfplay.js LANES (--workers 1 apiece, see the header) fell back to
@@ -71,6 +81,23 @@ const seedFrac = Math.max(0, Math.min(1, +arg('seedFrom', '0.25')));
 // self-play occasionally does the same (see run.js's pickBatchModel). Minority slice on purpose:
 // the newest checkpoint is still the most relevant thing to generate data with.
 const modelVarietyFrac = Math.max(0, Math.min(1, +arg('modelVarietyFrac', 0.2)));
+// Retrograde miners running continuously alongside the game lanes. This does NOT break the
+// actor/learner rule the header sets out: retromine only READS the published rating pool
+// (nn/elo-summary.json, which the desktop pushes) and appends to its own data file. It never
+// rates, never trains, never promotes, never writes the pool -- so the desktop stays the single
+// writer for everything that matters.
+// DEFAULT 0, on measured evidence rather than caution. The ladder rungs retromine uses as anchors
+// are code (engine.ladderPlanFor), so a worker always has all 11 of them -- that part is fine. The
+// problem is the nn end of the axis: only an allowlist of models is ever pushed (best, wide, ultra,
+// deep, l15_value, pool-slot-NN), so against the live pool a worker could build an axis of just 14
+// brains where the desktop had 45, and every checkpoint/scratch model was missing -- including
+// scratch-095@D1 at 268 Elo, one of the strongest things rated. retromine's whole question is "how
+// strong does an escape need to be", so a missing ceiling makes it call positions dead that a
+// stronger brain might have escaped. Wrong answers, not just fewer of them.
+// Kept and wired up rather than deleted because the fix is small if it's ever wanted: push the
+// top-rated checkpoint alongside best.json, then --retroWorkers 1 here.
+const retroWorkers = Math.max(0, +arg('retroWorkers', 0));
+const retroSeeds = arg('retroSeeds', '4');
 // machine name from the hostname, sanitised to filename-safe -- zero config on a pile of
 // borrowed machines is the point ("run on any machines lying around")
 const name = (arg('name', os.hostname()) || 'worker').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 20) || 'worker';
@@ -262,10 +289,48 @@ function playChunk(chunk) {
   return { files, done };
 }
 
+// --- retrograde mining, on its own clock entirely --------------------------------------------
+// Deliberately NOT tied to the chunk loop: a single miner measured 6h40m on the desktop while a
+// chunk here runs ~1.5h, so binding the two would mean every chunk boundary either orphaned a
+// half-finished miner or blocked waiting on one. Instead each miner restarts itself when it
+// exits, and its output file rides along on the ordinary push timer like any lane file.
+// Every file this session is kept in the push list rather than just the current one: a miner that
+// finished between two pushes still has an unpushed tail, and dropping it would strand those rows.
+const retroFiles = [];
+function startRetroMiner(i) {
+  const summary = path.join(dir, 'elo-summary.json');
+  // The pool is the strength axis -- without it retromine exits immediately, so wait for the
+  // desktop to publish one rather than respawning in a tight loop against a missing file.
+  if (!fs.existsSync(summary)) {
+    log(`retro miner ${i + 1}: no nn/elo-summary.json yet (the desktop publishes it) — checking again in 10 min`);
+    setTimeout(() => startRetroMiner(i), 10*60000);
+    return;
+  }
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  // machine name in the filename for the same reason the lane files carry it: the desktop is
+  // mining too, and two machines writing retro-<stamp>.jsonl would collide in git.
+  const out = path.join(dir, 'data', `retro-${name}-${stamp}` +
+                        (retroWorkers > 1 ? `-${i + 1}` : '') + '.jsonl');
+  retroFiles.push(out);
+  const ch = spawn('node', [path.join(dir, 'retromine.js'), '--summary', summary,
+                            '--seeds', retroSeeds, '--maxReplaysPerSeed', '40', '--out', out],
+                   { stdio: ['ignore', 'inherit', 'inherit'] });
+  ch.on('exit', code => {
+    log(`retro miner ${i + 1} finished (exit ${code}) — starting a fresh one`);
+    startRetroMiner(i);
+  });
+  ch.on('error', e => {
+    log(`retro miner ${i + 1} failed to start (${e.message}) — retrying in 10 min`);
+    setTimeout(() => startRetroMiner(i), 10*60000);
+  });
+}
+
 async function main() {
-  log(`worker "${name}" up: ${workers} lanes, ${gamesPerChunk} games/chunk, pushing every ` +
+  log(`worker "${name}" up: ${workers} lanes, ${gamesPerChunk} games/chunk` +
+      (retroWorkers ? `, ${retroWorkers} retro miner(s)` : '') + `, pushing every ` +
       `~${pushEveryMin} min regardless of how long any single game takes. Close this window any ` +
       `time — everything already pushed is shared, everything on disk is safe for the next run.`);
+  for (let i = 0; i < retroWorkers; i++) startRetroMiner(i);
   for (let chunk = 1; ; chunk++) {
     // pull FIRST each cycle: newer checkpoints, newer zpd pool, whatever the trainer promoted
     gitSoft(['pull', '--no-edit', '--no-rebase'], 'pull');
