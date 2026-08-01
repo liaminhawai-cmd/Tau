@@ -154,6 +154,18 @@ const poolBudgetHours = +arg('poolBudgetHours', 0.25);
 const poolDepths = arg('poolDepths', '1,2');
 const poolGames = arg('poolGames', '4');
 const poolLevels = arg('poolLevels', '');
+// Capped model-variety slots. Fixed ladder-rank targets ("1.5, 2.5, 4.5...") break down once nets
+// exceed L11 -- ultra rates 509 against L11's 332, no ladder rank left to even express where it
+// sits -- so slots are spaced by ELO PERCENTILE across whatever is currently rated instead. That
+// self-calibrates as the whole population's range shifts and always includes the actual current
+// top, however far past the ladder it has gone. --poolSlots 0 disables the mechanism.
+const poolSlots = Math.max(0, +arg('poolSlots', 10));
+// Fraction of self-play BATCHES (this machine) that use a slot/architecture model instead of
+// best.json. A minority slice on purpose -- best.json's own self-play is the most relevant data,
+// since that is the net actually being strengthened; this exists so the value net sees more than
+// one architecture's blind spots over a long run, same "minority slice, not a replacement"
+// reasoning as --randomStartFrac.
+const modelVarietyFrac = Math.max(0, Math.min(1, +arg('modelVarietyFrac', 0.2)));
 // --poolOnce: run a single placement cycle and exit, instead of starting the trainer. This is how
 // the cycle gets exercised on demand -- every bug in this code path so far was found by running it,
 // not by reading it, and a 45-minute clock is a poor way to reach a code path.
@@ -558,6 +570,26 @@ if (cycleNum > 1) log(`resuming ${poolEveryMin > 0 ? 'pool' : 'round-robin'} cyc
 
 // --- self-play: one long-running process, chaining itself into a fresh batch on exit ---------
 let selfplayChild = null, selfplayOut = null, selfplayStartedAt = null;
+// Which model THIS batch's self-play plays as. Most batches use best.json -- that is the net
+// actually being strengthened, so its own self-play is the most relevant data -- but a minority
+// (--modelVarietyFrac) instead draws from the capped model-variety slots refreshModelSlots keeps
+// current, so the value net sees more than one architecture's blind spots over a long run.
+// Mover ids fall out of this for free: selfplay.js stamps them from the MODEL FILE's basename, so
+// a slot pick shows up in the data as "pool-slot-03@D1" rather than "best@D1" -- no separate src
+// tag needed, the existing mv field already carries which weights actually played each row.
+function pickBatchModel() {
+  if (Math.random() >= modelVarietyFrac) return best;
+  const candidates = [];
+  try {
+    for (const f of fs.readdirSync(path.join(dir, 'models'))) {
+      if (/^pool-slot-\d+\.json$/.test(f) ||
+          ['wide.json', 'ultra.json', 'deep.json', 'l15_value.json'].includes(f))
+        candidates.push(path.join(dir, 'models', f));
+    }
+  } catch (e) {}
+  return candidates.length ? candidates[Math.floor(Math.random()*candidates.length)] : best;
+}
+
 function startSelfplayBatch() {
   const num = batchNum++;
   const out = path.join(dir, 'data', `batch-${String(num).padStart(3, '0')}.jsonl`);
@@ -584,10 +616,12 @@ function startSelfplayBatch() {
                   JSON.stringify({ updated: new Date().toISOString(), levels: dataPool }));
     } catch (e) {}
   }
-  log(`self-play batch ${num} starting: ${gamesPerBatch} games (mix ${mix}, ${workers} workers${poolNote})`);
+  const batchModel = fs.existsSync(best) ? pickBatchModel() : best;
+  const varietyNote = batchModel !== best ? `, playing as ${path.basename(batchModel, '.json')}` : '';
+  log(`self-play batch ${num} starting: ${gamesPerBatch} games (mix ${mix}, ${workers} workers${poolNote}${varietyNote})`);
   statusState.batch = num;
   statusState.mix = fs.existsSync(best) ? mix : '(no model yet — pure ladder)';
-  const args = ['--games', String(gamesPerBatch), '--out', out, '--model', best, '--mix', mix,
+  const args = ['--games', String(gamesPerBatch), '--out', out, '--model', batchModel, '--mix', mix,
     '--workers', workers, '--randomStartFrac', String(randomStartFrac),
     ...(dataPool ? ['--levels', dataPool.join(',')] : [])];
   const ch = spawn('node', [path.join(dir, 'selfplay.js'), ...args], { stdio: 'inherit' });
@@ -632,6 +666,46 @@ function runTrainCycle() {
 // history for every checkpoint on ONE scale -- which is the thing that was missing when three
 // round robins disagreed about whether resume-training helps and a fourth reversed the answer.
 // A curve would have shown it directly instead of it having to be inferred.
+// Refresh the capped model-variety slots from the SAME ratings a pool cycle just computed --
+// costs nothing extra to determine, the Elo is already known. `ranked` is one entry per model at
+// its best rated depth (see the promotion block above), already sorted; this just re-sorts
+// ascending to pick evenly-spaced percentile positions across it. Slots get OVERWRITTEN in place
+// as the population shifts -- never accumulated -- which is what keeps the git footprint capped
+// regardless of how many models the pool has ever rated.
+function refreshModelSlots(ranked) {
+  if (poolSlots <= 0 || ranked.length < 2) return [];
+  const byElo = ranked.slice().sort((a, b) => a.elo - b.elo);
+  const picks = [];
+  const seen = new Set();
+  for (let i = 0; i < poolSlots; i++) {
+    const idx = byElo.length === 1 ? 0 : Math.round(i*(byElo.length - 1)/(poolSlots - 1));
+    const cand = byElo[idx];
+    if (seen.has(cand.model)) continue;   // small population: fewer real slots is honest, not padded
+    seen.add(cand.model);
+    picks.push(cand);
+  }
+  const pushed = [];
+  picks.forEach((cand, i) => {
+    // summaries written by elorank point at its .elo-snapshot copies; fall back to the live
+    // models dir if a snapshot has been cleaned up since (same fallback retromine.js uses)
+    let mp = cand.model;
+    if (!mp || !fs.existsSync(mp)) mp = path.join(dir, 'models', path.basename(cand.model || ''));
+    if (!fs.existsSync(mp)) return;
+    const slotPath = path.join(dir, 'models', `pool-slot-${String(i + 1).padStart(2, '0')}.json`);
+    atomicCopy(mp, slotPath);
+    pushed.push(path.relative(repoRoot, slotPath).replace(/\\/g, '/'));
+  });
+  // Fixed architecture references, pushed under their own names -- unconditional, not percentile-
+  // picked, because they represent different SHAPES worth having available regardless of where
+  // their current rating happens to fall (a shape briefly weak is still a shape worth the
+  // occasional game, the same reasoning the shape-fight itself runs on).
+  for (const name of ['wide', 'ultra', 'deep', 'l15_value']) {
+    const p2 = path.join(dir, 'models', name + '.json');
+    if (fs.existsSync(p2)) pushed.push(path.relative(repoRoot, p2).replace(/\\/g, '/'));
+  }
+  return pushed;
+}
+
 function runPoolCycle() {
   const num = cycleNum++;
   // Snapshot the challenger under a stable name first. best.json is rewritten by the resume-train
@@ -649,6 +723,7 @@ function runPoolCycle() {
   // degradation. It just gets PLACED now rather than round-robinned.
   const focus = [ckpt];
   let mutInfo = null;
+  let slotPaths = [];
   if (+scratchEpochs > 0) {
     const scratch = path.join(dir, 'models', `scratch-${String(num).padStart(3, '0')}.json`);
     // champion shape (won a fight) > pin (a pre-data guess) > incumbent's own shape
@@ -734,6 +809,8 @@ function runPoolCycle() {
           (incumbent ? `, +${Math.round(top.elo - incumbent.elo)} over the incumbent` : '') + `)`);
     }
     statusState.lastGate = `pool cycle ${num} — ${line}`;
+    slotPaths = refreshModelSlots(ranked);
+    if (slotPaths.length) log(`pool cycle ${num} — model-variety slots refreshed: ${slotPaths.length} files`);
     // Shape-fight verdict, decided by the same ratings. The mutant needs a clear lead to take the
     // shape (same reasoning as the promotion gate: a from-scratch pair is two noisy draws, and
     // "merely ahead" would let the shape random-walk on luck); a clear LOSS is recorded too, so
@@ -767,7 +844,7 @@ function runPoolCycle() {
   } catch (e) {
     log(`WARNING: pool promotion skipped (${e.message}) — keeping best.json`);
   }
-  writeStatus(`pool cycle ${num} complete`, ['nn/models/best.json', 'nn/elo-summary.json']);
+  writeStatus(`pool cycle ${num} complete`, ['nn/models/best.json', 'nn/elo-summary.json', ...slotPaths]);
 }
 
 function runTournamentCycle() {

@@ -53,6 +53,13 @@ const pushEveryMin = Math.max(0.5, +arg('pushEveryMin', 4));
 // cores-1, capped: each lane is a whole node process holding its own engine sandbox
 const workers = Math.max(1, +arg('workers', Math.max(1, Math.min(os.cpus().length - 1, 14))));
 const randomStartFrac = arg('randomStartFrac', '0.15');
+// Fraction of CHUNKS that play as a model-variety slot instead of the newest checkpoint/best.json.
+// These slot files (nn/models/pool-slot-*.json, plus wide/ultra/deep/l15_value) are refreshed and
+// pushed by the desktop's own pool cycle -- refreshModelSlots in run.js -- specifically so a
+// worker has more than one architecture's weights to draw on, the same reason the desktop's own
+// self-play occasionally does the same (see run.js's pickBatchModel). Minority slice on purpose:
+// the newest checkpoint is still the most relevant thing to generate data with.
+const modelVarietyFrac = Math.max(0, Math.min(1, +arg('modelVarietyFrac', 0.2)));
 // machine name from the hostname, sanitised to filename-safe -- zero config on a pile of
 // borrowed machines is the point ("run on any machines lying around")
 const name = (arg('name', os.hostname()) || 'worker').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 20) || 'worker';
@@ -101,7 +108,7 @@ const gitSoft = (args, what) => {
 };
 
 // --- what to play with --------------------------------------------------------------------------
-function pickModel() {
+function pickPrimaryModel() {
   try {
     const ck = fs.readdirSync(path.join(dir, 'models'))
       .filter(f => /^ckpt-\d+\.json$/.test(f))
@@ -112,6 +119,19 @@ function pickModel() {
   // a clone with no model at all still contributes: selfplay falls back to pure ladder-vs-ladder
   // games when its --model path doesn't exist, and that data is still real data
   return fs.existsSync(best) ? best : path.join(dir, 'models', 'nowhere.json');
+}
+function pickModel() {
+  const primary = pickPrimaryModel();
+  if (Math.random() >= modelVarietyFrac) return primary;
+  const candidates = [];
+  try {
+    for (const f of fs.readdirSync(path.join(dir, 'models'))) {
+      if (/^pool-slot-\d+\.json$/.test(f) ||
+          ['wide.json', 'ultra.json', 'deep.json', 'l15_value.json'].includes(f))
+        candidates.push(path.join(dir, 'models', f));
+    }
+  } catch (e) {}
+  return candidates.length ? candidates[Math.floor(Math.random()*candidates.length)] : primary;
 }
 function pickLevels() {
   try {
