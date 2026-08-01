@@ -39,9 +39,17 @@ const dir = __dirname;
 const repoRoot = path.join(dir, '..');
 const log = m => console.log(`\n=== [${new Date().toISOString()}] ${m}`);
 
-// chunk size per push cycle: small enough that data lands on git every handful of minutes on a
-// decent machine, big enough that the commit stream isn't spam
+// chunk size: how many games each lane plays before the worker re-pulls and re-picks its model/
+// opponent pool. Independent of how often it PUSHES now (see pushEveryMin) -- a chunk used to be
+// the push unit too, which meant total silence, no git activity, and no visible progress for
+// however long the single slowest lane's games took (a real ladder marathon has run 2500s+ on the
+// desktop; 11 lanes waiting on each other multiplies that risk).
 const gamesPerChunk = Math.max(1, +arg('games', 200));
+// How often to commit+push whatever has accumulated in the currently-growing lane files, on a
+// wall-clock timer independent of whether any lane has actually finished -- same shape as run.js's
+// own checkEveryMin push of the still-growing self-play batch file. This is what makes "close this
+// window any time, pushed games are shared" actually true, instead of only true once in a while.
+const pushEveryMin = Math.max(0.5, +arg('pushEveryMin', 4));
 // cores-1, capped: each lane is a whole node process holding its own engine sandbox
 const workers = Math.max(1, +arg('workers', Math.max(1, Math.min(os.cpus().length - 1, 14))));
 const randomStartFrac = arg('randomStartFrac', '0.15');
@@ -113,63 +121,86 @@ function pickLevels() {
   return '3,4,5,6,7,8';   // mid-ladder spread until the trainer's published pool arrives
 }
 
-// --- one chunk: N lanes -> N files -> one commit ------------------------------------------------
-function playChunk() {
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Commit+push whatever is CURRENTLY on disk in `files` -- called both mid-chunk (on the timer,
+// while lanes are still running) and once a chunk finishes. Safe to call on files a live process
+// is still appending to: these are append-only streams, never truncated, so a read mid-write just
+// sees whatever has been flushed so far and the next call picks up the rest as a new diff -- the
+// exact pattern run.js already uses to push its own still-growing self-play batch file.
+async function pushProgress(files, label) {
+  let rows = 0;
+  const present = files.filter(f => fs.existsSync(f));
+  for (const f of present) {
+    try { rows += fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).length; } catch (e) {}
+  }
+  if (!present.length) { log(`${label}: no data on disk yet`); return; }
+  let staged = false;
+  for (const f of present) staged = gitSoft(['add', '-f', path.relative(repoRoot, f).replace(/\\/g, '/')], 'add') || staged;
+  if (!staged) { log(`${label}: ${rows} rows on disk, nothing new to commit`); return; }
+  gitSoft(['commit', '-m', `nn: worker ${name} ${label} (${rows} rows so far)`], 'commit');
+  let pushed = false;
+  for (const wait of [0, 2000, 4000, 8000, 16000]) {
+    if (wait) await sleep(wait);
+    gitSoft(['pull', '--no-edit', '--no-rebase'], 'pre-push pull');
+    if (gitSoft(['push'], 'push')) { pushed = true; break; }
+  }
+  log(pushed ? `${label}: ${rows} rows pushed` :
+               `${label}: ${rows} rows committed locally — push kept failing, will ride along next time`);
+}
+
+// --- one chunk: N lanes running concurrently, pushed on a timer, not on completion --------------
+function playChunk(chunk) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const model = pickModel();
   const levels = pickLevels();
   const per = Math.max(1, Math.round(gamesPerChunk/workers));
   const files = [];
-  log(`chunk: ${workers} lanes x ${per} games, model ${path.basename(model)}, levels ${levels}`);
+  log(`chunk ${chunk}: ${workers} lanes x ${per} games, model ${path.basename(model)}, levels ${levels}`);
   const lanes = [];
   for (let i = 0; i < workers; i++) {
-    const out = path.join(dir, 'data', `w-${name}-${stamp}-w${i}.jsonl`);
+    // 1-indexed in the filename to match the [w1]/[w2]/... console tag below -- they used to
+    // differ by one (file "w0" printing as "[w1]"), which makes correlating a console line to its
+    // file needlessly confusing, exactly when that correlation is what debugging needs.
+    const out = path.join(dir, 'data', `w-${name}-${stamp}-w${i + 1}.jsonl`);
     files.push(out);
     lanes.push(new Promise(resolve => {
+      // stdout INHERITED, not ignored -- real per-game progress on the console is the whole point
+      // right now: it is how "this is genuinely working, just slow" gets told apart from "this is
+      // silently stuck," which is exactly the ambiguity a fully silent chunk produced once already.
+      // TAU_WORKER tags each lane's lines ([w1], [w2], ...) the same way the desktop's own
+      // multi-lane runs are tagged, so 11 interleaved lanes stay readable.
       const ch = spawn('node', [path.join(dir, 'selfplay.js'),
         '--games', String(per), '--workers', '1', '--out', out,
         '--model', model, '--levels', levels, '--randomStartFrac', randomStartFrac],
-        { stdio: ['ignore', 'ignore', 'inherit'] });
+        { stdio: ['ignore', 'inherit', 'inherit'],
+          env: Object.assign({}, process.env, { TAU_WORKER: String(i + 1) }) });
       ch.on('exit', () => resolve());
       ch.on('error', e => { log(`lane ${i} failed to start (${e.message})`); resolve(); });
     }));
   }
-  return Promise.all(lanes).then(() => files.filter(f => fs.existsSync(f)));
+  return { files, done: Promise.all(lanes) };
 }
 
 async function main() {
-  log(`worker "${name}" up: ${workers} lanes, ${gamesPerChunk} games/chunk, ` +
-      `pushing to git after every chunk. Close this window any time — finished games are safe.`);
+  log(`worker "${name}" up: ${workers} lanes, ${gamesPerChunk} games/chunk, pushing every ` +
+      `~${pushEveryMin} min regardless of how long any single game takes. Close this window any ` +
+      `time — everything already pushed is shared, everything on disk is safe for the next run.`);
   for (let chunk = 1; ; chunk++) {
     // pull FIRST each cycle: newer checkpoints, newer zpd pool, whatever the trainer promoted
     gitSoft(['pull', '--no-edit', '--no-rebase'], 'pull');
-    const files = await playChunk();
-    if (!files.length) {
-      log('chunk produced no files — engine or model problem, retrying in 5 min');
-      await new Promise(r => setTimeout(r, 5*60000));
-      continue;
+    const { files, done } = playChunk(chunk);
+    let finished = false;
+    done.then(() => { finished = true; });
+    // Push on the wall clock, not on chunk completion. A chunk with one long straggler used to
+    // mean total silence -- no console output, no git activity -- for however long that one game
+    // took; this bounds the silence to pushEveryMin regardless.
+    while (!finished) {
+      await Promise.race([sleep(pushEveryMin*60000), done]);
+      if (finished) break;
+      await pushProgress(files, `chunk ${chunk} (still running)`);
     }
-    let rows = 0;
-    for (const f of files) {
-      try { rows += fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).length; } catch (e) {}
-    }
-    // -f: nn/.gitignore excludes data/ wholesale; naming files explicitly is the sanctioned
-    // exception, same as run.js's artifact pushes
-    let staged = false;
-    for (const f of files) staged = gitSoft(['add', '-f', path.relative(repoRoot, f).replace(/\\/g, '/')], 'add') || staged;
-    if (staged) {
-      gitSoft(['commit', '-m', `nn: worker ${name} +${rows} rows (chunk ${chunk})`], 'commit');
-      // push with pull-merge retries and backoff -- two machines pushing to one branch WILL race,
-      // and losing a race must never lose data (the commit is local; only the push retries)
-      let pushed = false;
-      for (const wait of [0, 2000, 4000, 8000, 16000]) {
-        if (wait) await new Promise(r => setTimeout(r, wait));
-        gitSoft(['pull', '--no-edit', '--no-rebase'], 'pre-push pull');
-        if (gitSoft(['push'], 'push')) { pushed = true; break; }
-      }
-      log(pushed ? `chunk ${chunk}: ${rows} rows pushed` :
-                   `chunk ${chunk}: ${rows} rows committed locally — push kept failing, will ride along next time`);
-    }
+    await pushProgress(files, `chunk ${chunk} complete`);
   }
 }
 
