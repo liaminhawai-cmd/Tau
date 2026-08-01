@@ -80,14 +80,26 @@ function main() {
   const modelPath = arg('model', path.join(__dirname, 'models', 'best.json'));
   if (fs.existsSync(modelPath) && !specs.some(s => s.split('@')[0] === modelPath))
     specs.push(`${modelPath}@${ceiling}`);   // champion tried last unless explicitly ranked
+  // path@rank[:depth]. Depth is EXPLICIT when given, because rank and depth are independent facts
+  // once ranks come from measurement: elorank.js rates each (net, depth) pair separately, and the
+  // same net legitimately appears at several ranks with different depths (best.json plays around
+  // L5 at depth 1 and near the top of the ladder at depth 3). Deriving depth from rank, as this
+  // did before, would silently replace the measured brain with a different one at the same slot.
+  // Falls back to the rank-scaled default only when no depth is given.
   for (const spec of specs) {
     const at = spec.lastIndexOf('@');
     const p = at > 0 ? spec.slice(0, at) : spec;
-    const rank = at > 0 ? +spec.slice(at + 1) : ceiling;
+    const tail = at > 0 ? spec.slice(at + 1) : '';
+    const colon = tail.lastIndexOf(':');
+    const rank = at > 0 ? +(colon > 0 ? tail.slice(0, colon) : tail) : ceiling;
+    const explicitDepth = colon > 0 ? +tail.slice(colon + 1) : null;
     if (!fs.existsSync(p)) { console.error(`skipping --ensemble entry, not found: ${p}`); continue; }
     if (!Number.isFinite(rank)) { console.error(`skipping --ensemble entry, bad rank: ${spec}`); continue; }
+    if (explicitDepth !== null && !(Number.isFinite(explicitDepth) && explicitDepth >= 1)) {
+      console.error(`skipping --ensemble entry, bad depth: ${spec}`); continue;
+    }
     const net = MLP.fromJSON(JSON.parse(fs.readFileSync(p, 'utf8')));
-    const d = nnDepthFor(rank);
+    const d = explicitDepth !== null ? explicitDepth : nnDepthFor(rank);
     rungs.push({ rank, name: `${path.basename(p, '.json')}(D${d})`,
                  fn: idx => nnPlanFor(eng, net, idx, { depth: d }) });
   }
