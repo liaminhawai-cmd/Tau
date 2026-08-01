@@ -1,229 +1,229 @@
 {
- "updated": "2026-08-01T16:53:36.915Z",
+ "updated": "2026-08-01T22:11:57.316Z",
  "players": {
   "L1": {
    "kind": "ladder",
-   "elo": -619.7,
+   "elo": -649.8,
    "games": 65,
    "level": 1
   },
   "L3": {
    "kind": "ladder",
-   "elo": -524.3,
+   "elo": -549.4,
    "games": 6,
    "level": 3
   },
   "L4": {
    "kind": "ladder",
-   "elo": -444.8,
+   "elo": -446.1,
    "games": 68,
    "level": 4
   },
   "L5": {
    "kind": "ladder",
-   "elo": -276.8,
+   "elo": -260.7,
    "games": 8,
    "level": 5
   },
-  "L6": {
-   "kind": "ladder",
-   "elo": -199.1,
-   "games": 24,
-   "level": 6
-  },
   "L2": {
    "kind": "ladder",
-   "elo": -140,
-   "games": 28,
+   "elo": -224.3,
+   "games": 32,
    "level": 2
+  },
+  "L6": {
+   "kind": "ladder",
+   "elo": -166.2,
+   "games": 44,
+   "level": 6
   },
   "l15_value@D1": {
    "kind": "nn",
-   "elo": -67.6,
+   "elo": -61.5,
    "games": 12,
    "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\l15_value.json",
    "depth": 1,
-   "rank": 5.39,
-   "rankLo": 1.93,
-   "rankHi": 7.09
-  },
-  "L7": {
-   "kind": "ladder",
-   "elo": -33.2,
-   "games": 63,
-   "level": 7
-  },
-  "mut-094@D2": {
-   "kind": "nn",
-   "elo": -25.3,
-   "games": 4,
-   "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\mut-094.json",
-   "depth": 2,
-   "rank": 7.03,
-   "rankLo": 1.64,
-   "rankHi": 8.99
-  },
-  "deep-094@D1": {
-   "kind": "nn",
-   "elo": -25.3,
-   "games": 4,
-   "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\deep-094.json",
-   "depth": 1,
-   "rank": 7.03,
-   "rankLo": 1.65,
-   "rankHi": 7.83
+   "rank": 6.45,
+   "rankLo": 3.96,
+   "rankHi": 6.67
   },
   "ckpt-001@D1": {
    "kind": "nn",
-   "elo": -4.8,
+   "elo": -13,
    "games": 11,
    "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\ckpt-001.json",
    "depth": 1,
-   "rank": 7.09,
-   "rankLo": 2.86,
-   "rankHi": 7.25
+   "rank": 6.66,
+   "rankLo": 5.01,
+   "rankHi": 7.06
   },
-  "mut-094@D1": {
+  "mut-095@D2": {
    "kind": "nn",
-   "elo": -4,
-   "games": 4,
-   "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\mut-094.json",
+   "elo": 1.6,
+   "games": 0,
+   "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\mut-095.json",
+   "depth": 2,
+   "rank": 6.72,
+   "rankLo": 5.21,
+   "rankHi": 7.09
+  },
+  "l15_value-095@D1": {
+   "kind": "nn",
+   "elo": 1.6,
+   "games": 0,
+   "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\l15_value-095.json",
    "depth": 1,
-   "rank": 7.1,
-   "rankLo": 1.73,
-   "rankHi": 7.97
+   "rank": 6.72,
+   "rankLo": 5.21,
+   "rankHi": 7.09
+  },
+  "l15_value-095@D2": {
+   "kind": "nn",
+   "elo": 1.6,
+   "games": 0,
+   "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\l15_value-095.json",
+   "depth": 2,
+   "rank": 6.72,
+   "rankLo": 5.21,
+   "rankHi": 7.09
+  },
+  "ckpt-095@D2": {
+   "kind": "nn",
+   "elo": 21.4,
+   "games": 4,
+   "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\ckpt-095.json",
+   "depth": 2,
+   "rank": 6.81,
+   "rankLo": 1.97,
+   "rankHi": 8.37
+  },
+  "mut-095@D1": {
+   "kind": "nn",
+   "elo": 45.1,
+   "games": 8,
+   "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\mut-095.json",
+   "depth": 1,
+   "rank": 6.91,
+   "rankLo": 4.02,
+   "rankHi": 7.63
   },
   "ckpt-091@D2": {
    "kind": "nn",
-   "elo": -0.4,
+   "elo": 66.5,
    "games": 8,
    "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\ckpt-091.json",
    "depth": 2,
-   "rank": 7.11,
-   "rankLo": 1.91,
-   "rankHi": 7.65
+   "rank": 7,
+   "rankLo": 5.18,
+   "rankHi": 7.73
   },
-  "deep-094@D2": {
-   "kind": "nn",
-   "elo": 1.2,
-   "games": 0,
-   "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\deep-094.json",
-   "depth": 2,
-   "rank": 7.11,
-   "rankLo": 2.66,
-   "rankHi": 7.28
+  "L7": {
+   "kind": "ladder",
+   "elo": 66.7,
+   "games": 67,
+   "level": 7
   },
-  "scratch-094@D1": {
+  "ckpt-095@D1": {
    "kind": "nn",
-   "elo": 40.5,
-   "games": 4,
-   "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\scratch-094.json",
+   "elo": 71,
+   "games": 12,
+   "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\ckpt-095.json",
    "depth": 1,
-   "rank": 7.24,
-   "rankLo": 2.14,
-   "rankHi": 8.3
+   "rank": 7.02,
+   "rankLo": 6.02,
+   "rankHi": 8.03
   },
   "scratch@D1": {
    "kind": "nn",
-   "elo": 63.5,
+   "elo": 74.4,
    "games": 11,
    "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\scratch.json",
    "depth": 1,
-   "rank": 7.32,
-   "rankLo": 1.69,
-   "rankHi": 8.49
+   "rank": 7.03,
+   "rankLo": 1.86,
+   "rankHi": 7.95
   },
   "best@D1": {
    "kind": "nn",
-   "elo": 88.2,
+   "elo": 100.8,
    "games": 15,
    "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\best.json",
    "depth": 1,
-   "rank": 7.4,
-   "rankLo": 3.15,
-   "rankHi": 7.95
+   "rank": 7.15,
+   "rankLo": 5.76,
+   "rankHi": 7.73
+  },
+  "scratch-095@D2": {
+   "kind": "nn",
+   "elo": 107.1,
+   "games": 8,
+   "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\scratch-095.json",
+   "depth": 2,
+   "rank": 7.18,
+   "rankLo": 5.01,
+   "rankHi": 8.06
   },
   "best@D2": {
    "kind": "nn",
-   "elo": 116,
+   "elo": 129,
    "games": 16,
    "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\best.json",
    "depth": 2,
-   "rank": 7.49,
-   "rankLo": 3.14,
-   "rankHi": 8.58
+   "rank": 7.28,
+   "rankLo": 5.8,
+   "rankHi": 9.54
   },
   "scratch@D2": {
    "kind": "nn",
-   "elo": 117.4,
+   "elo": 130.8,
    "games": 11,
    "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\scratch.json",
    "depth": 2,
-   "rank": 7.49,
-   "rankLo": 3,
-   "rankHi": 9.62
-  },
-  "L9": {
-   "kind": "ladder",
-   "elo": 125.5,
-   "games": 11,
-   "level": 9
+   "rank": 7.28,
+   "rankLo": 6.12,
+   "rankHi": 9.89
   },
   "ckpt-061@D1": {
    "kind": "nn",
-   "elo": 141.5,
+   "elo": 145.1,
    "games": 12,
    "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\ckpt-061.json",
    "depth": 1,
-   "rank": 7.57,
-   "rankLo": 4.83,
+   "rank": 7.35,
+   "rankLo": 6.67,
    "rankHi": 8.01
   },
-  "ckpt-094@D2": {
+  "L9": {
+   "kind": "ladder",
+   "elo": 184.2,
+   "games": 19,
+   "level": 9
+  },
+  "scratch-095@D1": {
    "kind": "nn",
-   "elo": 147.7,
-   "games": 12,
-   "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\ckpt-094.json",
-   "depth": 2,
-   "rank": 7.59,
-   "rankLo": 3.61,
-   "rankHi": 10.25
+   "elo": 268.3,
+   "games": 4,
+   "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\scratch-095.json",
+   "depth": 1,
+   "rank": 7.9,
+   "rankLo": 7.29,
+   "rankHi": 10.03
   },
   "L10": {
    "kind": "ladder",
-   "elo": 233.6,
+   "elo": 275.7,
    "games": 28,
    "level": 10
   },
   "L8": {
    "kind": "ladder",
-   "elo": 271.7,
+   "elo": 291.6,
    "games": 63,
    "level": 8
   },
-  "scratch-094@D2": {
-   "kind": "nn",
-   "elo": 283.9,
-   "games": 4,
-   "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\scratch-094.json",
-   "depth": 2,
-   "rank": 8.37,
-   "rankLo": 7.31,
-   "rankHi": 10.21
-  },
-  "ckpt-094@D1": {
-   "kind": "nn",
-   "elo": 363.6,
-   "games": 8,
-   "model": "C:\\tau\\Tau\\nn\\models\\.elo-snapshot\\ckpt-094.json",
-   "depth": 1,
-   "rank": 10.78,
-   "rankLo": 7.62,
-   "rankHi": 10.72
-  },
   "L11": {
    "kind": "ladder",
-   "elo": 371,
+   "elo": 388.5,
    "games": 58,
    "level": 11
   }
