@@ -5,7 +5,7 @@
 // stronger version of the loser converts and it didn't.
 //
 //   node nn/retromine.js [--seeds 20] [--summary nn/elo-summary.json] [--maxDepth 2]
-//                        [--seedBottom 6] [--bigGuns 4] [--bigGunsDepth 3] [--probesPerPos 10]
+//                        [--seedBottom 6] [--bigGuns 4] [--ultimateGuns 1] [--probesPerPos 10]
 //                        [--randomStartFrac 0.3] [--maxReplaysPerSeed 60]
 //                        [--out nn/data/retro.jsonl]
 //
@@ -25,14 +25,20 @@
 //   - it still loses -> bisect above it: probe midway to the top of the pool, jump up on failure,
 //     narrow down on escape, until the gap closes on the lowest escaper
 //   - `--bigGuns` straight failures with no escape found -> stop bisecting hopeless territory and
-//     ask the top of the pool directly. If THAT fails too, one last resort before calling it dead:
-//     the SAME weights, one ply deeper (--bigGunsDepth, one past --maxDepth by default). This is
-//     the only place a deeper search ever gets paid for -- routine placement stays D1/D2 (see
-//     --maxDepth's own note) because most positions never need it. It only fires at the exact
-//     moment the pool's own top has just lost, which by construction should be rare, so the ~20x
-//     cost of one more ply is spent on the hardest handful of positions instead of everywhere.
-//     If EVEN THAT fails, the position is dead as far as anything we have can tell: record it,
-//     step back one more ply, and let the same occupant try again there.
+//     ask the top of the D1/D2 pool directly. If THAT fails too, one last resort before calling it
+//     dead: --ultimateGuns, whichever ALREADY-MEASURED brain at ANY depth is the single highest
+//     Elo in the whole summary. This used to mean "the same weights, one ply deeper" on the
+//     assumption that more search helps -- real data killed that assumption: a live refit showed
+//     ultra D2 at 509 and ultra D3 at 144, l15_value D2 at 397 and D3 at -46, and that D2-spike/
+//     D3-crash shape recurring across most of the pool, not the isolated case it first looked
+//     like. Reaching one ply deeper on the SAME net can hand back something WORSE than what just
+//     lost. Asking "what's genuinely strongest, at any cost tier" costs nothing extra to compute
+//     (the Elo is already measured -- no new games needed to know it) and can't make that mistake.
+//     It only fires at the exact moment the D1/D2 pool's own top has just lost, which by
+//     construction should be rare, so the cost of a possibly-expensive D3 brain lands on the
+//     hardest handful of positions instead of everywhere. If EVEN THAT fails, the position is
+//     dead as far as anything we have can tell: record it, step back one more ply, and let the
+//     same occupant try again there.
 // THE RATCHET (the design's actual name): each seat's strength only ever moves UP during a seed.
 // An escape puts the escaper in that seat for the rest of the walk backward -- a side that needed
 // a 1666-rated brain to get out of one position does not hand the seat back to the 500 it started
@@ -67,9 +73,9 @@ function main() {
   const maxDepth = Math.max(1, +arg('maxDepth', 2));
   const seedBottom = Math.max(2, +arg('seedBottom', 6));
   const bigGuns = Math.max(1, +arg('bigGuns', 4));
-  // One ply past maxDepth by default -- see the header note above. 0 disables the escape hatch
-  // entirely (routine dead verdicts only ever look as deep as maxDepth).
-  const bigGunsDepth = Math.max(0, +arg('bigGunsDepth', maxDepth + 1));
+  // See the header note above -- --ultimateGuns 0 disables the escape hatch entirely (routine
+  // dead verdicts only ever look as deep as maxDepth).
+  const useUltimateGuns = arg('ultimateGuns', '1') !== '0';
   const probesPerPos = Math.max(2, +arg('probesPerPos', 10));
   const randomStartFrac = +arg('randomStartFrac', 0.3);
   const maxReplaysPerSeed = Math.max(1, +arg('maxReplaysPerSeed', 60));
@@ -101,8 +107,9 @@ function main() {
       if (!fs.existsSync(mp)) continue;
       let net;
       try { net = MLP.fromJSON(JSON.parse(fs.readFileSync(mp, 'utf8'))); } catch (e) { continue; }
-      // net and depth kept on the entry itself, not just closed over by fn -- the top-of-pool net
-      // needs to be rewrapped one ply deeper for the bigGunsDepth escape hatch below.
+      // net and depth kept on the entry itself, not just closed over by fn -- keeping the raw
+      // net around (rather than only fn) is what lets the ultimate-guns escape hatch below load
+      // and reuse weights without a second, separate model-loading pass.
       pool.push({ id, elo: v.elo || 0, name: id, kind: 'nn', net, depth: v.depth || 1,
                   fn: idx => nnPlanFor(eng, net, idx, { depth: v.depth || 1 }) });
     }
@@ -114,14 +121,31 @@ function main() {
     process.exit(1);
   }
 
-  // The escape hatch: the SAME weights currently on top of the axis, one ply deeper. Built once,
-  // from whatever is actually strongest right now -- this adapts automatically as the pool
-  // changes over weeks, no hardcoded model name. Only exists if the top is an nn (a ladder rung
-  // has no "depth" to deepen) and bigGunsDepth is genuinely past what the ordinary pool covers.
   const topEntry = pool[pool.length - 1];
-  const ultimateGuns = (topEntry.kind === 'nn' && bigGunsDepth > topEntry.depth)
-    ? { id: `${topEntry.name.split('@')[0]}@D${bigGunsDepth}`, elo: topEntry.elo,
-        fn: idx => nnPlanFor(eng, topEntry.net, idx, { depth: bigGunsDepth }) }
+  // The escape hatch: whichever ALREADY-MEASURED brain, at ANY depth, is genuinely the single
+  // highest Elo in the whole summary -- not the D1/D2 pool's own top reached one ply deeper (see
+  // the header note for why that assumption doesn't hold here). Scanning the summary directly,
+  // not `pool`, is what lets this reach D3+ entries the ordinary pool excludes by --maxDepth.
+  // Costs nothing extra to determine: the Elo is already measured, no new games needed to know it.
+  let globalBest = null;
+  for (const [id, v] of Object.entries(summary.players || {})) {
+    if (v.kind !== 'nn' || (v.games || 0) < 4) continue;
+    if (!globalBest || (v.elo || 0) > globalBest.elo) globalBest = { id, ...v };
+  }
+  // Skip it if the global best turns out to just BE the pool's own top -- replaying the exact
+  // same weights at the exact same depth against a position they just lost is not a second
+  // opinion, it is the same opinion again.
+  const ultimateGuns = (useUltimateGuns && globalBest && globalBest.id !== topEntry.id)
+    ? (() => {
+        let mp = globalBest.model;
+        if (!mp || !fs.existsSync(mp))
+          mp = path.join(__dirname, 'models', path.basename(globalBest.model || (globalBest.id.split('@')[0] + '.json')));
+        if (!fs.existsSync(mp)) return null;
+        let gnet;
+        try { gnet = MLP.fromJSON(JSON.parse(fs.readFileSync(mp, 'utf8'))); } catch (e) { return null; }
+        return { id: globalBest.id, elo: globalBest.elo || 0,
+                fn: idx => nnPlanFor(eng, gnet, idx, { depth: globalBest.depth || 1 }) };
+      })()
     : null;
   // floor[] values are allowed to reach pool.length (one past the ordinary top) to mean "proven at
   // the ultimateGuns tier" -- this resolves that sentinel to an actual playable brain everywhere a
@@ -129,8 +153,8 @@ function main() {
   const brainAt = i => i < pool.length ? pool[i] : ultimateGuns;
   const axisTop = ultimateGuns ? pool.length : pool.length - 1;
   if (ultimateGuns)
-    console.log(`  escape hatch armed: ${topEntry.name} at D${bigGunsDepth} if D${topEntry.depth} ` +
-                `(the top of the ordinary axis) fails`);
+    console.log(`  escape hatch armed: ${ultimateGuns.id} (${Math.round(ultimateGuns.elo)} Elo) if ` +
+                `${topEntry.name} (the top of the ordinary D${maxDepth}-capped axis) fails`);
 
   const ws = fs.createWriteStream(out, { flags: 'a' });
   let famCount = 0, gameCount = 0, positions = 0, deadFound = 0;
@@ -252,7 +276,7 @@ function main() {
               escapedViaGuns = true;
               floor[climber] = pool.length;
               console.log(`  seed ${fam}, ${rewind} plies from the end: ${ultimateGuns.id} escaped ` +
-                          `where D${topEntry.depth} (the top of the ordinary axis) couldn't`);
+                          `where ${topEntry.name} (the top of the ordinary axis) couldn't`);
             }
           }
         }
