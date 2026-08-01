@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-08-01T15:11:20.458Z_
+_Last updated: 2026-08-01T15:11:24.027Z_
 
 **Self-play batch:** 4
-**Stage:** from-scratch challenger training (30 epochs, started 2026-08-01T15:11:20.457Z)
+**Stage:** self-play batch 4 running, next check in 5 min
 **mix:** nnnn:0.4,nnladder:0.3,ladder:0.3
 
 **Last gate result:** resume-train promoted at 2026-08-01T15:07:06.538Z
