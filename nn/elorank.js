@@ -311,19 +311,38 @@ function report() {
 
   console.log(`\n=== fitted ranking (${Object.keys(store.results).length} pairs, ` +
               `${Object.values(store.results).reduce((s, r) => s + r.w + r.l + (r.d || 0), 0)} games) ===`);
+  // A brain with no games has no measured rating -- it sits wherever the regularising prior put it,
+  // which is a real number that looks exactly like a measurement and is not one. This matters most
+  // for --refit part-way through a run, when most of the field legitimately has nothing yet: shown
+  // as "?" and kept out of the spec, so a ladder is never built on invented ranks. MIN_GAMES is
+  // above zero for the same reason at one remove -- a single 2-game pair pins a brain barely better
+  // than the prior does.
+  const MIN_GAMES = 4;
   console.log('  rating  rank    games  brain');
-  for (const r of rows)
-    console.log(`  ${String(Math.round(r.elo)).padStart(6)}  ${r.p.kind === 'nn' ? (r.edge ? (r.edge === 'above' ? '>' : '<') + String(r.rank).padStart(4) : r.rank.toFixed(2).padStart(5)) : '  -  '}  ` +
-                `${String(r.games).padStart(5)}  ${r.p.label}`);
+  for (const r of rows) {
+    const thin = r.games < MIN_GAMES;
+    const rankCell = r.p.kind !== 'nn' ? '  -  '
+      : thin ? '    ?'
+      : r.edge ? (r.edge === 'above' ? '>' : '<') + String(r.rank).padStart(4)
+      : r.rank.toFixed(2).padStart(5);
+    console.log(`  ${String(Math.round(r.elo)).padStart(6)}  ${rankCell}  ` +
+                `${String(r.games).padStart(5)}  ${r.p.label}${thin ? '  (too few games)' : ''}`);
+  }
 
-  const specs = rows.filter(r => r.p.kind === 'nn' && !r.edge)
+  const specs = rows.filter(r => r.p.kind === 'nn' && !r.edge && r.games >= MIN_GAMES)
     .map(r => `${r.p.model}@${r.rank.toFixed(2)}:${r.p.depth}`);
+  const thinCount = rows.filter(r => r.p.kind === 'nn' && r.games < MIN_GAMES).length;
+  if (thinCount) console.log(`\n(${thinCount} brains have fewer than ${MIN_GAMES} games and are left ` +
+                             `unranked -- re-run --refit later, or let the run finish)`);
   console.log(`\n=== paste into retromine.js ===\n--ensemble ${specs.join(',')}\n`);
   const above = rows.filter(r => r.p.kind === 'nn' && r.edge === 'above');
   if (above.length)
     console.log(`(${above.map(r => r.p.label).join(', ')} rated above L${LADDER_N} -- ` +
                 `no rung to interpolate against, so left out of the spec rather than given a made-up rank)`);
-  fs.writeFileSync(outPath, JSON.stringify(store, null, 1));
+  // Deliberately does NOT write outPath. playPair already checkpoints after every pair, so there is
+  // nothing here to save -- and writing would be actively destructive in the --refit case, which is
+  // meant to be run in a second window WHILE a ranking run is going: it loads the results file at
+  // startup, so writing its now-stale copy back would erase every pair that landed in between.
 }
 
 async function main() {
