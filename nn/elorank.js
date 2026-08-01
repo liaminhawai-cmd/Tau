@@ -243,8 +243,10 @@ function playPair(a, b) {
       const leftNote = budgetHours > 0
         ? `~${fmtDur(Math.max(0, budgetHours*3600 - elapsedMin*60))} left`
         : `${Math.round(elapsedMin)}m elapsed`;
+      const conf = Number.isFinite(globalThis.__lastWorst)
+        ? `, worst rank CI +-${globalThis.__lastWorst.toFixed(2)}` : '';
       console.log(`  ${a.label} vs ${b.label}: ${w}-${l}${d ? '-' + d : ''}` +
-                  `   [min games ${least}, ${leftNote}]`);
+                  `   [min games ${least}${conf}, ${leftNote}]`);
       resolve();
     });
   });
@@ -312,6 +314,83 @@ function rankOf(eloVal, ladderElos) {
   return { rank: pts[pts.length - 1].level, edge: 'above' };
 }
 
+// Confidence intervals by nonparametric bootstrap: for each matchup, resample its n games with
+// replacement from the outcomes actually observed, refit, and recompute every net's rank. The
+// spread across resamples IS the uncertainty -- no analytic variance to derive or get wrong, and it
+// propagates through the whole pipeline (fit, yardstick selection, interpolation) rather than just
+// the fit, which matters because a wobbling ladder moves every rank that interpolates against it.
+//
+// Reported on the RANK scale, not Elo, because that is the scale the answer is consumed on: "L4.6
+// give or take 0.3 rungs" is directly actionable for retromine's ensemble, where "±47 Elo" needs
+// converting before it means anything.
+//
+// Resamples where the bootstrapped ladder comes out non-monotonic are skipped for rank purposes
+// (the yardstick is unusable in those draws) and counted, since a high skip rate is itself the
+// signal that the ladder is not yet pinned.
+function bootstrapRanks(B) {
+  const ids = players.map(p => p.id);
+  const nets = players.filter(p => p.kind === 'nn');
+  const samples = Object.fromEntries(nets.map(p => [p.id, []]));
+  let skipped = 0;
+  const entries = Object.entries(store.results);
+  for (let b = 0; b < B; b++) {
+    const res = {};
+    for (const [key, r] of entries) {
+      const n = r.w + r.l + (r.d || 0);
+      if (!n) continue;
+      let w = 0, l = 0, d = 0;
+      for (let i = 0; i < n; i++) {
+        const u = Math.random()*n;
+        if (u < r.w) w++; else if (u < r.w + r.l) l++; else d++;
+      }
+      res[key] = { w, l, d };
+    }
+    const elo = fitBT(ids, res);
+    const g = {};
+    for (const [key, r] of entries) {
+      const [x, y] = key.split('|'); const t = r.w + r.l + (r.d || 0);
+      g[x] = (g[x] || 0) + t; g[y] = (g[y] || 0) + t;
+    }
+    const rungs = players.filter(p => p.kind === 'ladder')
+      .map(p => ({ level: p.level, elo: elo[p.id], games: g[p.id] || 0 }))
+      .sort((a, c) => a.level - c.level)
+      .filter(r => r.games >= 6);
+    const scale = [];
+    for (const r of rungs) if (!scale.length || r.elo > scale[scale.length - 1].elo) scale.push(r);
+    if (scale.length < 2) { skipped++; continue; }
+    for (const p of nets) {
+      const rk = rankOf(elo[p.id], scale);
+      if (Number.isFinite(rk.rank) && !rk.edge) samples[p.id].push(rk.rank);
+    }
+  }
+  const out = {};
+  for (const p of nets) {
+    const v = samples[p.id].sort((a, c) => a - c);
+    out[p.id] = v.length >= 10
+      ? { lo: v[Math.floor(0.05*v.length)], hi: v[Math.floor(0.95*v.length)], n: v.length }
+      : { lo: NaN, hi: NaN, n: v.length };
+  }
+  return { ci: out, skipped, B };
+}
+
+// Half-width of the widest rank interval among nets that have one -- the single number the
+// stopping rule watches. Infinity while any net still has no usable interval at all, so a run can
+// never stop early just because some brain has too little data to have an opinion about.
+function worstRankHalfWidth(ci) {
+  let worst = 0, anyMissing = false;
+  for (const p of players) {
+    if (p.kind !== 'nn') continue;
+    const c = ci[p.id];
+    if (!c || !Number.isFinite(c.lo)) {
+      // a brain with almost no games legitimately has no interval yet; one with plenty that still
+      // has none means the yardstick is the problem, and either way we are not done
+      anyMissing = true; continue;
+    }
+    worst = Math.max(worst, (c.hi - c.lo)/2);
+  }
+  return anyMissing ? Infinity : worst;
+}
+
 function report() {
   const ids = players.map(p => p.id);
   const elo = fitBT(ids, store.results);
@@ -353,16 +432,24 @@ function report() {
   // above zero for the same reason at one remove -- a single 2-game pair pins a brain barely better
   // than the prior does.
   const MIN_GAMES = 4;
-  console.log('  rating  rank    games  brain');
+  const boot = bootstrapRanks(+arg('bootstrap', 150));
+  console.log('  rating  rank    90% CI          games  brain');
   for (const r of rows) {
     const thin = r.games < MIN_GAMES;
     const rankCell = r.p.kind !== 'nn' ? '  -  '
       : thin || r.edge === 'noscale' || !Number.isFinite(r.rank) ? '    ?'
       : r.edge ? (r.edge === 'above' ? '>' : '<') + String(r.rank).padStart(4)
       : r.rank.toFixed(2).padStart(5);
-    console.log(`  ${String(Math.round(r.elo)).padStart(6)}  ${rankCell}  ` +
+    const c = boot.ci[r.p.id];
+    const ciCell = r.p.kind !== 'nn' ? '              '
+      : (c && Number.isFinite(c.lo)) ? `L${c.lo.toFixed(1)} - L${c.hi.toFixed(1)}`.padStart(14)
+      : '(not yet)'.padStart(14);
+    console.log(`  ${String(Math.round(r.elo)).padStart(6)}  ${rankCell}  ${ciCell}  ` +
                 `${String(r.games).padStart(5)}  ${r.p.label}${thin ? '  (too few games)' : ''}`);
   }
+  if (boot.skipped)
+    console.log(`\n(${boot.skipped}/${boot.B} bootstrap resamples had an unusable ladder and were ` +
+                `skipped -- a high share here means the yardstick still needs games, not the nets)`);
 
   if (thinRungs.length)
     console.log(`\n(yardstick: L${thinRungs.map(r => r.level).join(', L')} have under ${MIN_RUNG_GAMES} ` +
@@ -458,17 +545,22 @@ function pickPair(elo, inFlight) {
 async function main() {
   if (refitOnly) { report(); return; }
   const targetGames = Math.max(1, +arg('targetGames', 12));
+  // Stop when every net's rank is known to within this many rungs (90% interval half-width).
+  // A rank is used to slot a brain between ladder rungs, so +-0.5 rungs is the point past which
+  // extra precision buys nothing downstream -- it already identifies which gap the brain sits in.
+  // 0 disables, leaving time/coverage as the only stops.
+  const rankTolerance = +arg('rankTolerance', 0.5);
   console.log(`elorank: ${players.length} brains, ${workers} lanes, ` +
               `adaptive pairing (closest-rated first), ${gamesPerPair} games per matchup`);
-  console.log(`  stops at ${budgetHours > 0 ? budgetHours + 'h' : 'no time limit'} ` +
-              `or when every brain has ~${targetGames} games, whichever comes first`);
+  console.log(`  stops when every net's rank is known to +-${rankTolerance} rungs (90% CI)` +
+              (budgetHours > 0 ? `, or at ${budgetHours}h` : '') + `, whichever comes first`);
   const already = Object.keys(store.results).length;
   if (already) console.log(`resuming: ${already} matchups already stored`);
   if (dryRun) { console.log('(--dryrun: nothing played)'); return; }
 
   startedAt = Date.now();
   const inFlight = new Set();
-  let stop = false;
+  let stop = false, checksSinceBoot = 0;
   const outOfTime = () => budgetHours > 0 && (Date.now() - startedAt)/3600000 >= budgetHours;
 
   const lane = async () => {
@@ -476,6 +568,22 @@ async function main() {
       if (stop || outOfTime()) return;
       const g = gamesOf();
       if (players.every(p => (g[p.id] || 0) >= targetGames)) { stop = true; return; }
+      // Confidence check, but only once there is enough data for the answer to be meaningful --
+      // bootstrapping a nearly-empty store would report absurd precision on brains that have simply
+      // never been separated. Checked on a cadence rather than every pair: it costs ~1s against
+      // games that take minutes, but there is no reason to pay it on every single result.
+      if (rankTolerance > 0 && checksSinceBoot++ >= workers &&
+          players.every(p => (g[p.id] || 0) >= 6)) {
+        checksSinceBoot = 0;
+        const { ci } = bootstrapRanks(80);
+        const worst = worstRankHalfWidth(ci);
+        globalThis.__lastWorst = worst;
+        if (worst <= rankTolerance) {
+          console.log(`\nevery net's rank now known to +-${worst.toFixed(2)} rungs ` +
+                      `(target ${rankTolerance}) -- stopping`);
+          stop = true; return;
+        }
+      }
       // refit before every pick: BT over this many players is milliseconds, and a stale rating is
       // exactly what would send a lane off to play a foregone matchup.
       const elo = fitBT(players.map(p => p.id), store.results);
