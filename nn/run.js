@@ -570,15 +570,11 @@ if (cycleNum > 1) log(`resuming ${poolEveryMin > 0 ? 'pool' : 'round-robin'} cyc
 
 // --- self-play: one long-running process, chaining itself into a fresh batch on exit ---------
 let selfplayChild = null, selfplayOut = null, selfplayStartedAt = null;
-// Which model THIS batch's self-play plays as. Most batches use best.json -- that is the net
-// actually being strengthened, so its own self-play is the most relevant data -- but a minority
-// (--modelVarietyFrac) instead draws from the capped model-variety slots refreshModelSlots keeps
-// current, so the value net sees more than one architecture's blind spots over a long run.
-// Mover ids fall out of this for free: selfplay.js stamps them from the MODEL FILE's basename, so
-// a slot pick shows up in the data as "pool-slot-03@D1" rather than "best@D1" -- no separate src
-// tag needed, the existing mv field already carries which weights actually played each row.
-function pickBatchModel() {
-  if (Math.random() >= modelVarietyFrac) return best;
+// Every model-variety slot/architecture file currently on disk, handed to selfplay.js as a POOL
+// (see its own header note) so EACH SIDE of EACH nn-involving game rolls independently -- an nnnn
+// game can genuinely be two different architectures facing off, not one net occasionally facing
+// itself under an alias, which is what switching the WHOLE batch's primary model would have meant.
+function currentModelPool() {
   const candidates = [];
   try {
     for (const f of fs.readdirSync(path.join(dir, 'models'))) {
@@ -587,7 +583,7 @@ function pickBatchModel() {
         candidates.push(path.join(dir, 'models', f));
     }
   } catch (e) {}
-  return candidates.length ? candidates[Math.floor(Math.random()*candidates.length)] : best;
+  return candidates;
 }
 
 function startSelfplayBatch() {
@@ -616,13 +612,15 @@ function startSelfplayBatch() {
                   JSON.stringify({ updated: new Date().toISOString(), levels: dataPool }));
     } catch (e) {}
   }
-  const batchModel = fs.existsSync(best) ? pickBatchModel() : best;
-  const varietyNote = batchModel !== best ? `, playing as ${path.basename(batchModel, '.json')}` : '';
+  const modelPool = currentModelPool();
+  const varietyNote = modelPool.length ? `, ${modelPool.length}-model variety pool` : '';
   log(`self-play batch ${num} starting: ${gamesPerBatch} games (mix ${mix}, ${workers} workers${poolNote}${varietyNote})`);
   statusState.batch = num;
   statusState.mix = fs.existsSync(best) ? mix : '(no model yet — pure ladder)';
-  const args = ['--games', String(gamesPerBatch), '--out', out, '--model', batchModel, '--mix', mix,
+  const args = ['--games', String(gamesPerBatch), '--out', out, '--model', best, '--mix', mix,
     '--workers', workers, '--randomStartFrac', String(randomStartFrac),
+    '--modelVarietyFrac', String(modelVarietyFrac),
+    ...(modelPool.length ? ['--modelPool', modelPool.join(',')] : []),
     ...(dataPool ? ['--levels', dataPool.join(',')] : [])];
   const ch = spawn('node', [path.join(dir, 'selfplay.js'), ...args], { stdio: 'inherit' });
   selfplayChild = ch;

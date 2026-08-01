@@ -142,6 +142,14 @@ function main() {
   // openingPlies. Rows from these games carry src:'random' so the effect can be measured in
   // isolation later rather than taken on faith.
   const randomStartFrac = +arg('randomStartFrac', 0);
+  // Extra candidate nets besides --model (the "primary"). Point of this: an nnnn game with BOTH
+  // sides tied to the one loaded net is self-play in the narrow sense even when --model itself
+  // occasionally points somewhere other than best.json -- both sides still share the exact same
+  // weights, just not best.json's. --modelPool gives EACH SIDE of EACH nn-involving game its own
+  // independent roll into a wider set, so an nnnn game can genuinely be two DIFFERENT
+  // architectures facing off, not one architecture facing itself under an alias.
+  const modelPoolPaths = (arg('modelPool', '') || '').split(',').map(s => s.trim()).filter(Boolean);
+  const modelVarietyFrac = Math.max(0, Math.min(1, +arg('modelVarietyFrac', 0.2)));
   // The in-game ply cap. Exposed as an arg mostly so tests can force cap-draws cheaply.
   const maxPlies = +arg('maxPlies', 300);
   // --seedFrom F: this fraction of games starts from a STORED mid-game position (drawn from the
@@ -242,7 +250,9 @@ function main() {
       '--openingPlies', String(openingPlies), '--maxPlies', String(maxPlies),
       '--randomStartFrac', String(randomStartFrac),
       ...(seedFile ? ['--seedFrom', String(seedFrom), '--seedPool', seedFile] : ['--seedFrom', '0']),
-      '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(',')];
+      '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(','),
+      ...(modelPoolPaths.length ? ['--modelPool', modelPoolPaths.join(',')] : []),
+      '--modelVarietyFrac', String(modelVarietyFrac)];
     let taskIdx = 0;
     // The output stream is opened ONCE, up front, and each task appends to it the moment its own
     // part file lands -- not batched into one merge after every requested game has finished. That
@@ -305,6 +315,26 @@ function main() {
   const ladderBrain = lvl => idx => eng.ladderPlanFor(lvl - 1, idx);
   const pick = a => a[Math.floor(Math.random()*a.length)];
 
+  // Every candidate net, loaded ONCE up front -- these are ~350KB+ JSON files, and a batch plays
+  // thousands of games, so re-parsing one per game would be real, pointless overhead. Index 0 is
+  // always the primary (--model); the rest are --modelPool, each independently a candidate for
+  // EITHER side of a game.
+  const netPool = net ? [{ name: path.basename(modelPath, '.json'), net }] : [];
+  for (const p of modelPoolPaths) {
+    if (!fs.existsSync(p)) continue;
+    try {
+      const n = MLP.fromJSON(JSON.parse(fs.readFileSync(p, 'utf8')));
+      netPool.push({ name: path.basename(p, '.json'), net: n });
+    } catch (e) {}
+  }
+  // One independent roll per SIDE (not per game, not per batch): mostly the primary, since that
+  // is the net actually being strengthened and its own data is the most relevant, but a minority
+  // slice draws from the pool. Two sides rolling independently is what makes an nnnn game
+  // GENUINELY able to pit two different architectures against each other, not just occasionally
+  // swap which one net plays itself.
+  const pickNet = () => (netPool.length > 1 && Math.random() < modelVarietyFrac)
+    ? pick(netPool.slice(1)) : netPool[0];
+
   // Seed-pose pool: workers get a pre-sampled file from the parent; a direct single-process run
   // samples for itself. Same <50 floor as the parent, same reason.
   let seedPool = [];
@@ -332,23 +362,28 @@ function main() {
     // loses, and the label is right for the right reason. Depth is still fixed for a whole game so
     // one game means one consistent brain strength per player.
     const depthA = pickNnDepth(), depthB = pickNnDepth();
-    const nnBrainAt = d => idx => nnPlanFor(eng, net, idx, { temperature, depth: d });
+    // A fresh independent roll per side, per game -- see pickNet's own note. chosenA and chosenB
+    // can land on the same net (most likely, when neither rolls into the pool) or two genuinely
+    // different architectures.
+    const chosenA = pickNet(), chosenB = pickNet();
+    const nnBrainAt = (d, chosen) => idx => nnPlanFor(eng, chosen.net, idx, { temperature, depth: d });
     const nnTagAt = d => d > 1 ? 'nn(D' + d + ')' : 'nn';
     // The rating-pool id of each side, in the SAME namespace elorank.js uses (`best@D2`, `L7`), so
     // a row can be joined against the pool later. The id is stored rather than the rating itself:
     // ratings are estimates that keep improving, and a row that carries an id picks up every future
     // improvement to its mover's rating for free, where a row carrying a number is frozen at
-    // whatever we believed the day it was played.
-    const nnIdAt = d => `${path.basename(modelPath, '.json')}@D${d}`;
+    // whatever we believed the day it was played. Now carries WHICH net this side actually drew,
+    // not just the batch's primary -- a variety pick shows up as "wide@D2", never misattributed.
+    const nnIdAt = (d, chosen) => `${chosen.name}@D${d}`;
     const kind = net ? pickMix() : 'ladder';
     if (kind === 'nnnn') {
-      brainA = nnBrainAt(depthA); brainB = nnBrainAt(depthB);
+      brainA = nnBrainAt(depthA, chosenA); brainB = nnBrainAt(depthB, chosenB);
       tag = nnTagAt(depthA) + ' vs ' + nnTagAt(depthB);
-      idA = nnIdAt(depthA); idB = nnIdAt(depthB);
+      idA = nnIdAt(depthA, chosenA); idB = nnIdAt(depthB, chosenB);
     } else if (kind === 'nnladder') {
       const lvl = useDeep ? pick(deep) : pick(levels);
-      if (Math.random() < 0.5) { brainA = nnBrainAt(depthA); brainB = ladderBrain(lvl); tag = nnTagAt(depthA) + ' vs L' + lvl; idA = nnIdAt(depthA); idB = `L${lvl}`; }
-      else { brainA = ladderBrain(lvl); brainB = nnBrainAt(depthA); tag = 'L' + lvl + ' vs ' + nnTagAt(depthA); idA = `L${lvl}`; idB = nnIdAt(depthA); }
+      if (Math.random() < 0.5) { brainA = nnBrainAt(depthA, chosenA); brainB = ladderBrain(lvl); tag = nnTagAt(depthA) + ' vs L' + lvl; idA = nnIdAt(depthA, chosenA); idB = `L${lvl}`; }
+      else { brainA = ladderBrain(lvl); brainB = nnBrainAt(depthA, chosenA); tag = 'L' + lvl + ' vs ' + nnTagAt(depthA); idA = `L${lvl}`; idB = nnIdAt(depthA, chosenA); }
     } else {
       // Each SIDE independently rolls whether it draws from the deep pool during a garnish slot,
       // rather than both sides being forced into the same pool -- the old code could only ever

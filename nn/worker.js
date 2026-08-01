@@ -120,9 +120,11 @@ function pickPrimaryModel() {
   // games when its --model path doesn't exist, and that data is still real data
   return fs.existsSync(best) ? best : path.join(dir, 'models', 'nowhere.json');
 }
-function pickModel() {
-  const primary = pickPrimaryModel();
-  if (Math.random() >= modelVarietyFrac) return primary;
+// Every model-variety slot/architecture file currently on disk, handed to selfplay.js as a POOL
+// (see its own header note) so EACH SIDE of EACH nn-involving game rolls independently -- an nnnn
+// game can genuinely be two different architectures facing off, not this lane's whole chunk
+// switching to one alternate model and still playing it against itself.
+function currentModelPool() {
   const candidates = [];
   try {
     for (const f of fs.readdirSync(path.join(dir, 'models'))) {
@@ -131,7 +133,7 @@ function pickModel() {
         candidates.push(path.join(dir, 'models', f));
     }
   } catch (e) {}
-  return candidates.length ? candidates[Math.floor(Math.random()*candidates.length)] : primary;
+  return candidates;
 }
 function pickLevels() {
   try {
@@ -172,11 +174,13 @@ async function pushProgress(files, label) {
 // --- one chunk: N lanes running concurrently, pushed on a timer, not on completion --------------
 function playChunk(chunk) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const model = pickModel();
+  const model = pickPrimaryModel();
+  const modelPool = currentModelPool();
   const levels = pickLevels();
   const per = Math.max(1, Math.round(gamesPerChunk/workers));
   const files = [];
-  log(`chunk ${chunk}: ${workers} lanes x ${per} games, model ${path.basename(model)}, levels ${levels}`);
+  const varietyNote = modelPool.length ? `, ${modelPool.length}-model variety pool` : '';
+  log(`chunk ${chunk}: ${workers} lanes x ${per} games, model ${path.basename(model)}, levels ${levels}${varietyNote}`);
   const lanes = [];
   for (let i = 0; i < workers; i++) {
     // 1-indexed in the filename to match the [w1]/[w2]/... console tag below -- they used to
@@ -192,7 +196,9 @@ function playChunk(chunk) {
       // multi-lane runs are tagged, so 11 interleaved lanes stay readable.
       const ch = spawn('node', [path.join(dir, 'selfplay.js'),
         '--games', String(per), '--workers', '1', '--out', out,
-        '--model', model, '--levels', levels, '--randomStartFrac', randomStartFrac],
+        '--model', model, '--levels', levels, '--randomStartFrac', randomStartFrac,
+        '--modelVarietyFrac', String(modelVarietyFrac),
+        ...(modelPool.length ? ['--modelPool', modelPool.join(',')] : [])],
         { stdio: ['ignore', 'inherit', 'inherit'],
           env: Object.assign({}, process.env, { TAU_WORKER: String(i + 1) }) });
       ch.on('exit', () => resolve());
