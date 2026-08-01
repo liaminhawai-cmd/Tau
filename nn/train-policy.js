@@ -18,6 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const { PolicyMLP, N_ARMS, N_BINS } = require('./policy.js');
 const { N_FEATURES } = require('./features.js');
+const { makeEloWeighter } = require('./eloweight.js');
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
@@ -34,6 +35,17 @@ function main() {
   const batchSize = +arg('batch', 64);
   const lr0 = +arg('lr', 1e-3);
   const valFrac = +arg('valFrac', 0.1);
+  // The policy head is imitation: "copy this move". Who is being imitated matters as much as
+  // whether they went on to win -- a strong mover's choices teach, a weak mover's mislead even in
+  // games they won. The z-weight below cannot see this (L2 beating L1 counts as a winner), so rows
+  // are ALSO weighted by the mover's current pool rating, looked up fresh each run from
+  // elo-summary.json. Multiplicative with the z-weight: "winning move by a strong player" is the
+  // gold standard, either alone is partial credit. --noEloWeight restores flat imitation.
+  const eloW = process.argv.includes('--noEloWeight')
+    ? { enabled: false, note: 'disabled by --noEloWeight', weight: () => 1 }
+    : makeEloWeighter(arg('eloSummary', path.join(__dirname, 'elo-summary.json')),
+                      { scale: +arg('eloScale', 250), floor: +arg('eloFloor', 0.25) });
+  console.log(`elo weighting: ${eloW.note}`);
 
   const rows = [];
   for (const line of fs.readFileSync(targetsPath, 'utf8').split('\n')) {
@@ -42,7 +54,7 @@ function main() {
     try { j = JSON.parse(line); } catch (e) { continue; }
     if (!j.f || j.f.length !== N_FEATURES) continue;   // stale-feature rows: skip, don't crash
     rows.push({ x: j.f, arm: j.arm, bin: j.bin,
-                w: j.z > 0 ? 1 : j.z < 0 ? loserW : drawW, g: j.g });
+                w: (j.z > 0 ? 1 : j.z < 0 ? loserW : drawW)*eloW.weight(j.mv), g: j.g });
   }
   if (!rows.length) { console.error(`no usable rows in ${targetsPath}`); process.exit(1); }
 

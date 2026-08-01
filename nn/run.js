@@ -158,6 +158,21 @@ const poolLevels = arg('poolLevels', '');
 // the cycle gets exercised on demand -- every bug in this code path so far was found by running it,
 // not by reading it, and a 45-minute clock is a poor way to reach a code path.
 const poolOnce = process.argv.includes('--poolOnce');
+// The hand-built architectures (wide/ultra/deep/l15_value) stay ALIVE, not archived: each pool
+// cycle resume-trains ONE of them -- rotating, few epochs, so the main line keeps nearly all the
+// compute -- and places the result in the pool under a numbered name. The numbered name matters:
+// retraining "wide.json" in place would attribute one rating to many different nets (the exact
+// moving-target bug the pool exists to avoid), where wide-041, wide-042, ... is a lineage whose
+// slow rise (or failure to rise) through the ranks is readable straight off the pool.
+const variantEpochs = +arg('variantEpochs', 8);
+// Every Nth pool cycle runs the placement WITHOUT the pairing restriction (--focusPairs 0): same
+// budget, but the scheduler spends it wherever the pool's ratings are least certain. Over many
+// cycles this is what makes the pool slowly granular everywhere instead of sharp only at the
+// newest models. 0 disables.
+const poolWideEvery = Math.max(0, +arg('poolWideEvery', 4));
+// Retrograde mining on its own clock, using the pool as its strength axis (see retromine.js).
+const retroEveryMin = Math.max(0, +arg('retroEveryMin', 120));
+const retroSeeds = +arg('retroSeeds', 4);
 
 const dir = __dirname;
 const best = path.join(dir, 'models', 'best.json');
@@ -495,7 +510,7 @@ function startSelfplayBatch() {
 // Both run on their own wall-clock schedule, independent of self-play, which keeps generating
 // games in the background the whole time these run (sharing cores, not losing them).
 let lastTournamentAt = Date.now(), lastBenchAt = Date.now(), lastTrainAt = Date.now(),
-    lastPoolAt = Date.now();
+    lastPoolAt = Date.now(), lastRetroAt = Date.now();
 
 // Resume-train from best.json and promote the result. Bounded, not unbounded: the round robin
 // below periodically retrains from scratch and promotes on merit, which is what stops this from
@@ -546,9 +561,26 @@ function runPoolCycle() {
     if (fs.existsSync(scratch)) focus.push(scratch);
   }
 
-  log(`pool cycle ${num} — placing ${focus.map(f => path.basename(f)).join(', ')} in the rating pool`);
+  // one variant lineage gets a light touch of training, rotating through whichever exist
+  const variants = ['wide', 'ultra', 'deep', 'l15_value']
+    .filter(n => fs.existsSync(path.join(dir, 'models', n + '.json')));
+  if (variantEpochs > 0 && variants.length) {
+    const name = variants[num % variants.length];
+    const lineage = fs.readdirSync(path.join(dir, 'models'))
+      .filter(f => f.startsWith(name + '-') && /-\d+\.json$/.test(f)).sort();
+    const from = path.join(dir, 'models', lineage.length ? lineage[lineage.length - 1] : name + '.json');
+    const outV = path.join(dir, 'models', `${name}-${String(num).padStart(3, '0')}.json`);
+    log(`pool cycle ${num} — variant lineage: ${path.basename(from)} + ${variantEpochs} epochs -> ${path.basename(outV)}`);
+    runSoft('train.js', ['--epochs', String(variantEpochs), '--resume', from, '--out', outV]);
+    if (fs.existsSync(outV)) focus.push(outV);
+  }
+
+  const wide = poolWideEvery > 0 && num % poolWideEvery === 0;
+  log(`pool cycle ${num} — placing ${focus.map(f => path.basename(f)).join(', ')} in the rating pool` +
+      (wide ? ' (wide pass: budget goes wherever the pool is least certain)' : ''));
   writeStatus(`rating pool placement (started ${new Date().toISOString()})`);
-  runSoft('elorank.js', ['--focus', focus.join(','), '--out', poolFile, '--summary', poolSummary,
+  runSoft('elorank.js', ['--focus', focus.join(','), ...(wide ? ['--focusPairs', '0'] : []),
+                         '--out', poolFile, '--summary', poolSummary,
                          '--budgetHours', String(poolBudgetHours), '--workers', workers,
                          '--depths', poolDepths, '--games', poolGames,
                          ...(poolLevels ? ['--levels', poolLevels] : []), '--saveData',
@@ -722,6 +754,20 @@ function runBenchCycle() {
     table.map(r => r.trim().replace(/\s+/g, ' ')).join(' | ');
 }
 
+// Rewind endings and ask how strong an escape needs to be (retromine.js), with the pool as the
+// strength axis. Needs ratings to exist; quietly waits until they do.
+function runRetroCycle() {
+  if (!fs.existsSync(poolSummary)) { log('retro cycle skipped — no rating pool yet'); return; }
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+  const outR = path.join(dir, 'data', `retro-${stamp}.jsonl`);
+  log(`retro cycle — mining ${retroSeeds} seed games backward from their endings`);
+  writeStatus(`retrograde mining (started ${new Date().toISOString()})`);
+  runSoft('retromine.js', ['--summary', poolSummary, '--seeds', String(retroSeeds),
+                          '--maxReplaysPerSeed', '40', '--out', outR]);
+  writeStatus('retro cycle complete',
+              fs.existsSync(outR) ? [path.relative(repoRoot, outR).replace(/\\/g, '/')] : undefined);
+}
+
 // --- the scheduler: wakes up on a short clock, does nothing most ticks -------------------------
 async function schedulerLoop() {
   for (;;) {
@@ -741,6 +787,10 @@ async function schedulerLoop() {
     if (poolEveryMin > 0 && now - lastPoolAt >= poolEveryMin*60000) {
       lastPoolAt = now;
       runPoolCycle();
+    }
+    if (retroEveryMin > 0 && now - lastRetroAt >= retroEveryMin*60000) {
+      lastRetroAt = now;
+      runRetroCycle();
     }
     // The round robin is kept as an occasional full recalibration, not the routine gate. Placement
     // above is cheap and incremental; this re-derives everything from scratch and would catch a

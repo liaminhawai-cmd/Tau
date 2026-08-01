@@ -322,6 +322,7 @@ function main() {
   const t0 = Date.now();
   for (let g = 0; g < games; g++) {
     let brainA, brainB, tag;
+    let idA = null, idB = null;
     const useDeep = deepEvery > 0 && g % deepEvery === deepEvery - 1;
     // Each SIDE draws its own depth, rather than one depth for the whole game. With both sides at
     // the same depth they share the same blind spots, so neither ever plays the move that punishes
@@ -333,14 +334,21 @@ function main() {
     const depthA = pickNnDepth(), depthB = pickNnDepth();
     const nnBrainAt = d => idx => nnPlanFor(eng, net, idx, { temperature, depth: d });
     const nnTagAt = d => d > 1 ? 'nn(D' + d + ')' : 'nn';
+    // The rating-pool id of each side, in the SAME namespace elorank.js uses (`best@D2`, `L7`), so
+    // a row can be joined against the pool later. The id is stored rather than the rating itself:
+    // ratings are estimates that keep improving, and a row that carries an id picks up every future
+    // improvement to its mover's rating for free, where a row carrying a number is frozen at
+    // whatever we believed the day it was played.
+    const nnIdAt = d => `${path.basename(modelPath, '.json')}@D${d}`;
     const kind = net ? pickMix() : 'ladder';
     if (kind === 'nnnn') {
       brainA = nnBrainAt(depthA); brainB = nnBrainAt(depthB);
       tag = nnTagAt(depthA) + ' vs ' + nnTagAt(depthB);
+      idA = nnIdAt(depthA); idB = nnIdAt(depthB);
     } else if (kind === 'nnladder') {
       const lvl = useDeep ? pick(deep) : pick(levels);
-      if (Math.random() < 0.5) { brainA = nnBrainAt(depthA); brainB = ladderBrain(lvl); tag = nnTagAt(depthA) + ' vs L' + lvl; }
-      else { brainA = ladderBrain(lvl); brainB = nnBrainAt(depthA); tag = 'L' + lvl + ' vs ' + nnTagAt(depthA); }
+      if (Math.random() < 0.5) { brainA = nnBrainAt(depthA); brainB = ladderBrain(lvl); tag = nnTagAt(depthA) + ' vs L' + lvl; idA = nnIdAt(depthA); idB = `L${lvl}`; }
+      else { brainA = ladderBrain(lvl); brainB = nnBrainAt(depthA); tag = 'L' + lvl + ' vs ' + nnTagAt(depthA); idA = `L${lvl}`; idB = nnIdAt(depthA); }
     } else {
       // Each SIDE independently rolls whether it draws from the deep pool during a garnish slot,
       // rather than both sides being forced into the same pool -- the old code could only ever
@@ -350,6 +358,7 @@ function main() {
       const sidePool = () => useDeep && Math.random() < 0.5 ? deep : levels;
       const la = pick(sidePool()), lb = pick(sidePool());
       brainA = ladderBrain(la); brainB = ladderBrain(lb); tag = 'L' + la + ' vs L' + lb;
+      idA = `L${la}`; idB = `L${lb}`;
     }
     const seedPose = seedPool.length && Math.random() < seedFrom ? pick(seedPool) : null;
     if (seedPose) tag = 'seeded ' + tag;
@@ -376,7 +385,8 @@ function main() {
         const z = (rows[i].mover === winner ? 1 : -1)*Math.pow(discount, pliesToEnd);
         ws.write(JSON.stringify({ f: rows[i].f.map(v => +v.toFixed(5)), z: +z.toFixed(4),
                                   p: rows[i].p.map(v => +v.toFixed(4)), m: rows[i].mover,
-                                  g: gameId, ...src }) + '\n');
+                                  g: gameId, ...src,
+                                  ...(idA ? { mv: rows[i].mover === 0 ? idA : idB } : {}) }) + '\n');
         positions++;
       }
     } else if (capped) {
@@ -388,7 +398,8 @@ function main() {
       for (const r of rows) {
         ws.write(JSON.stringify({ f: r.f.map(v => +v.toFixed(5)), z: 0,
                                   p: r.p.map(v => +v.toFixed(4)), m: r.mover,
-                                  g: gameId, ...src }) + '\n');
+                                  g: gameId, ...src,
+                                  ...(idA ? { mv: r.mover === 0 ? idA : idB } : {}) }) + '\n');
         positions++;
       }
     }

@@ -4,39 +4,37 @@
 // trigger" is missing, since a finish it actually botched shows up here as a position where a
 // stronger version of the loser converts and it didn't.
 //
-//   node nn/retromine.js [--seeds 20] [--seedLevel 1] [--ceiling 11]
-//                        [--model nn/models/best.json] [--ensemble wide.json@4.5,ultra.json@6.5]
+//   node nn/retromine.js [--seeds 20] [--summary nn/elo-summary.json] [--maxDepth 2]
+//                        [--seedBottom 6] [--bigGuns 4] [--probesPerPos 10]
 //                        [--randomStartFrac 0.3] [--maxReplaysPerSeed 60]
 //                        [--out nn/data/retro.jsonl]
 //
-// THE CLIMBING RULE
+// THE STRENGTH AXIS is the standing rating pool (elo-summary.json), not a hand-assembled ladder.
+// Every rated brain -- ladder rungs and (net x depth) pairs alike -- is a candidate escaper, sorted
+// by measured Elo. This replaces the old --ensemble "path@rank" spec, which asked a human to paste
+// in ranks the pool already knows, and it gets granular for free: every model the trainer ever
+// places is another rung on this axis. D3+ entries are excluded by default (--maxDepth): a depth-3
+// game runs ~20x a depth-1 game, which is measurement-session territory, not mining-loop territory.
 //
-//   `rewind` = how many plies back from the game's end. At each position, the side that lost there
-//   climbs the WHOLE strength ladder from its current rung upward -- L2, then L3, then L4, ... to
-//   --ceiling -- replaying the position for real at each rung (both sides genuinely deciding every
-//   move, not replaying old choices) and logging each attempt as its own game. The climb stops the
-//   moment one of them wins.
-//     - Nobody escapes, even at the ceiling: this position is dead as far as anything we have can
-//       tell. Record the boundary, step back one more ply, and start climbing again there.
-//     - Someone escapes at rung T: the position was not dead after all. Hand the problem to the
-//       OTHER side at this same position -- they now climb from their own current rung to try to
-//       beat the escape. If they can't, step back a ply and continue.
+// THE SEARCH at each rewound position is a bisection over that axis, not a rung-by-rung climb.
+// A linear climb from the bottom pays one game per rung and the pool keeps growing rungs; the
+// bisection pays ~log2(pool) games for the same answer: the LOWEST-rated brain that can escape.
+//   - first probe: midway between the loser's current strength and the top of the pool
+//   - probe fails -> the answer lies above; probe midway up the remainder
+//   - probe escapes -> the answer lies below; narrow down until the gap closes
+//   - `--bigGuns` straight failures with no escape found -> stop bisecting hopeless territory and
+//     ask the top of the pool directly. If THAT fails, the position is dead as far as anything we
+//     have can tell: record it, step back one more ply, start again there.
+// The side that escapes keeps its escaper as its new floor -- a side that needed a 1600-rated
+// brain to get out of one position does not restart from 500 at the next -- and the other side
+// then gets the same upgrade path at the same position, exactly as before.
 //
-//   Exhausting the strength axis at each position before touching the rewind axis is what makes
-//   the output meaningful. The alternative (bump the loser one rung, then immediately step back)
-//   entangles the two axes: tiers carry forward as rewind grows, so by five plies back you are
-//   also five rungs up, and a boundary found there cannot be attributed to depth-in-game rather
-//   than to strength. Climbing fully at each position instead yields a well-defined scalar per
-//   position -- the minimum rung that escapes it -- and a monotone difficulty curve as you rewind.
-//   It costs more replays per position, but those replays ARE the data this exists to produce.
+// Every probe game is a real, decided, logged game (src:'retro', fam) in selfplay's row schema,
+// with `mv` stamped from the pool ids so eloweight.js can weight these rows like any others. The
+// "wasted" probes of an unlucky bisection are not waste: those games ARE the data.
 //
-// THE STRENGTH LADDER is ladder rungs L1..L<ceiling> with NN models interleaved at their measured
-// rank: --ensemble wide.json@4.5 slots that net between L4 and L5. This matters because the climb
-// treats the rung index as a real strength ordering -- an NN dropped in at the wrong rank would
-// make "the minimum rung that escapes" meaningless. --model (default best.json) is appended at the
-// ceiling if given no explicit rank, so the current champion is always the last thing tried.
 // A single deterministic brain can fail to find an escape that exists, so a mined "dead" verdict
-// means "nothing on this ladder found a way out", never a proof that none exists.
+// means "nothing in the pool found a way out", never a proof that none exists.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -52,8 +50,11 @@ function arg(name, dflt) {
 
 function main() {
   const seeds = +arg('seeds', 20);
-  const seedLevel = Math.max(1, +arg('seedLevel', 1));
-  const ceiling = Math.max(seedLevel, +arg('ceiling', 11));
+  const summaryPath = arg('summary', path.join(__dirname, 'elo-summary.json'));
+  const maxDepth = Math.max(1, +arg('maxDepth', 2));
+  const seedBottom = Math.max(2, +arg('seedBottom', 6));
+  const bigGuns = Math.max(1, +arg('bigGuns', 4));
+  const probesPerPos = Math.max(2, +arg('probesPerPos', 10));
   const randomStartFrac = +arg('randomStartFrac', 0.3);
   const maxReplaysPerSeed = Math.max(1, +arg('maxReplaysPerSeed', 60));
   const maxPlies = +arg('maxPlies', 300);
@@ -61,83 +62,81 @@ function main() {
   const out = arg('out', path.join(__dirname, 'data', 'retro.jsonl'));
 
   const eng = createEngine();
-  const LADDER_N = eng.AI_LADDER.length;
-  if (ceiling > LADDER_N) {
-    console.error(`--ceiling ${ceiling} exceeds the ladder's own top rung (L${LADDER_N})`);
+
+  // --- build the strength axis from the pool ----------------------------------------------------
+  let summary;
+  try { summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8')); } catch (e) {
+    console.error(`no rating pool at ${summaryPath} -- run the trainer's pool cycle or RANK.bat ` +
+                  `first (the pool IS the strength axis now; there is nothing to climb without it)`);
     process.exit(1);
   }
-
-  // Build the interleaved strength ladder. Ladder rungs sit at integer ranks; each --ensemble
-  // entry sits at whatever rank it was given (path@rank), so a net measured as "between L4 and L5"
-  // goes in at 4.5 and the climb reaches it in the right order. Depth for NN brains is scaled to
-  // rank and capped at 3 -- deeper is the multi-hour-per-game territory measured elsewhere in this
-  // project, not affordable inside a mining loop.
-  const nnDepthFor = rank => Math.min(3, Math.max(1, Math.ceil(rank/4)));
-  const rungs = [];
-  for (let l = 1; l <= ceiling; l++)
-    rungs.push({ rank: l, name: 'L' + l, fn: idx => eng.ladderPlanFor(l - 1, idx) });
-  const specs = (arg('ensemble', '') || '').split(',').map(s => s.trim()).filter(Boolean);
-  const modelPath = arg('model', path.join(__dirname, 'models', 'best.json'));
-  if (fs.existsSync(modelPath) && !specs.some(s => s.split('@')[0] === modelPath))
-    specs.push(`${modelPath}@${ceiling}`);   // champion tried last unless explicitly ranked
-  // path@rank[:depth]. Depth is EXPLICIT when given, because rank and depth are independent facts
-  // once ranks come from measurement: elorank.js rates each (net, depth) pair separately, and the
-  // same net legitimately appears at several ranks with different depths (best.json plays around
-  // L5 at depth 1 and near the top of the ladder at depth 3). Deriving depth from rank, as this
-  // did before, would silently replace the measured brain with a different one at the same slot.
-  // Falls back to the rank-scaled default only when no depth is given.
-  for (const spec of specs) {
-    const at = spec.lastIndexOf('@');
-    const p = at > 0 ? spec.slice(0, at) : spec;
-    const tail = at > 0 ? spec.slice(at + 1) : '';
-    const colon = tail.lastIndexOf(':');
-    const rank = at > 0 ? +(colon > 0 ? tail.slice(0, colon) : tail) : ceiling;
-    const explicitDepth = colon > 0 ? +tail.slice(colon + 1) : null;
-    if (!fs.existsSync(p)) { console.error(`skipping --ensemble entry, not found: ${p}`); continue; }
-    if (!Number.isFinite(rank)) { console.error(`skipping --ensemble entry, bad rank: ${spec}`); continue; }
-    if (explicitDepth !== null && !(Number.isFinite(explicitDepth) && explicitDepth >= 1)) {
-      console.error(`skipping --ensemble entry, bad depth: ${spec}`); continue;
+  const pool = [];
+  for (const [id, v] of Object.entries(summary.players || {})) {
+    if (v.kind === 'ladder') {
+      if ((v.games || 0) < 1) continue;   // an unplayed rung has a default 0 rating, not a place
+      pool.push({ id, elo: v.elo || 0, name: id,
+                  fn: idx => eng.ladderPlanFor(v.level - 1, idx) });
+    } else if (v.kind === 'nn') {
+      if ((v.games || 0) < 4 || (v.depth || 1) > maxDepth) continue;
+      // summaries written by elorank point at its .elo-snapshot copies; fall back to the live
+      // models dir if a snapshot has been cleaned up since
+      let mp = v.model;
+      if (!mp || !fs.existsSync(mp)) mp = path.join(__dirname, 'models', path.basename(v.model || (id.split('@')[0] + '.json')));
+      if (!fs.existsSync(mp)) continue;
+      let net;
+      try { net = MLP.fromJSON(JSON.parse(fs.readFileSync(mp, 'utf8'))); } catch (e) { continue; }
+      pool.push({ id, elo: v.elo || 0, name: id,
+                  fn: idx => nnPlanFor(eng, net, idx, { depth: v.depth || 1 }) });
     }
-    const net = MLP.fromJSON(JSON.parse(fs.readFileSync(p, 'utf8')));
-    const d = explicitDepth !== null ? explicitDepth : nnDepthFor(rank);
-    rungs.push({ rank, name: `${path.basename(p, '.json')}(D${d})`,
-                 fn: idx => nnPlanFor(eng, net, idx, { depth: d }) });
   }
-  rungs.sort((a, b) => a.rank - b.rank);
-  // Index of the first rung strictly above a given rank -- where a climb resumes from.
-  const firstAbove = rank => { const i = rungs.findIndex(r => r.rank > rank); return i < 0 ? rungs.length : i; };
+  pool.sort((a, b) => a.elo - b.elo);
+  if (pool.length < 4) {
+    console.error(`only ${pool.length} rated brains in ${summaryPath} -- not enough of an axis to ` +
+                  `search. Let the pool accumulate first.`);
+    process.exit(1);
+  }
 
   const ws = fs.createWriteStream(out, { flags: 'a' });
   let famCount = 0, gameCount = 0, positions = 0, deadFound = 0;
   const discount = 0.995;
   // Same row schema selfplay.js writes (f, z, p, m, g) so train.js and policy-targets.js consume
-  // this file with no changes, plus src:'retro' for later ablation and fam to trace every replay
-  // back to the seed game it descends from.
-  function writeGame(rows, winner, fam) {
+  // this file with no changes, plus src:'retro' for ablation, fam to trace every replay back to
+  // its seed game, and mv so these rows join the pool like any others.
+  function writeGame(rows, winner, fam, idBlue, idRed) {
     const gameId = `retro-${fam}-${gameCount++}`;
     for (let i = 0; i < rows.length; i++) {
       const z = (rows[i].mover === winner ? 1 : -1)*Math.pow(discount, rows.length - i);
       ws.write(JSON.stringify({ f: rows[i].f.map(v => +v.toFixed(5)), z: +z.toFixed(4),
                                 p: rows[i].p.map(v => +v.toFixed(4)), m: rows[i].mover,
-                                g: gameId, src: 'retro', fam }) + '\n');
+                                g: gameId, src: 'retro', fam,
+                                mv: rows[i].mover === 0 ? idBlue : idRed }) + '\n');
       positions++;
     }
   }
 
-  console.log(`retromine: ${seeds} seeds, L${seedLevel} start, ceiling L${ceiling}\n` +
-              `  strength ladder: ${rungs.map(r => `${r.name}@${r.rank}`).join(' -> ')}\n` +
+  console.log(`retromine: ${seeds} seeds over a ${pool.length}-brain axis ` +
+              `(${Math.round(pool[0].elo)}..${Math.round(pool[pool.length - 1].elo)} Elo)\n` +
+              `  ${pool.map(r => `${r.name}@${Math.round(r.elo)}`).join(' -> ')}\n` +
               `  -> ${out}`);
 
   for (let s = 0; s < seeds; s++) {
-    const seedBrain = idx => eng.ladderPlanFor(seedLevel - 1, idx);
-    const seed = playGame(eng, seedBrain, seedBrain, maxPlies, openingPlies, null,
+    // Two ADJACENT low-rated brains, so the seed game is even (someone genuinely outplays someone,
+    // rather than a foregone squash) and weak (the endings weak play produces are the ones the net
+    // actually reaches and botches).
+    // ...and strictly below the top: a seed side that starts AT the top of the pool has nothing
+    // above it to climb to, so every rewind would print a vacuous "dead" without playing a game
+    // (exactly what a 4-brain smoke-test pool produced).
+    const si = Math.floor(Math.random()*Math.max(1, Math.min(seedBottom, pool.length - 2)));
+    const seedA = pool[si], seedB = pool[si + 1];
+    const seed = playGame(eng, seedA.fn, seedB.fn, maxPlies, openingPlies, null,
                           Math.random() < randomStartFrac);
-    if (seed.winner === null) continue;   // capped/wedged seed -- nothing to climb
+    if (seed.winner === null) continue;   // capped/wedged seed -- nothing to search
 
     const fam = famCount++;
-    // Per-side rank on the interleaved ladder. Climbs monotonically: a side that needed L6 to
-    // escape one position doesn't go back to L2 at the next one.
-    const rank = [seedLevel, seedLevel];
+    writeGame(seed.rows, seed.winner, fam, seedA.id, seedB.id);
+    // per-side floor: index into `pool` of this side's current strength (the upgrade path)
+    const floor = [si, si + 1];
+    const seedFloor = floor.slice();
     let rewind = 1, climber = 1 - seed.winner, replays = 0;
     const deadAt = [];
 
@@ -145,40 +144,59 @@ function main() {
       const point = seed.rows[seed.rows.length - rewind];
       const seedPose = { p: point.p, m: point.mover };
       const defender = 1 - climber;
-      // the defender holds its own current rung throughout this climb -- the question being asked
-      // is "how strong must the climber be to beat THIS defender from here", so moving both at
-      // once would make the answer uninterpretable.
-      const defRung = rungs[Math.max(0, firstAbove(rank[defender]) - 1)];
-      let escaped = null;
+      // the defender holds its own current strength throughout this search -- the question being
+      // asked is "how weak a brain suffices to beat THIS defender from here", so moving both at
+      // once would make the answer uninterpretable
+      const def = pool[floor[defender]];
 
-      for (let i = firstAbove(rank[climber]); i < rungs.length; i++) {
-        if (replays >= maxReplaysPerSeed) break;
-        const cand = rungs[i];
-        const brainA = climber === 0 ? cand.fn : defRung.fn;
-        const brainB = climber === 0 ? defRung.fn : cand.fn;
-        const result = playGame(eng, brainA, brainB, maxPlies, seedPose ? 0 : openingPlies, seedPose, false);
-        replays++;
+      // --- bisect for the lowest escaper -------------------------------------------------------
+      let lo = floor[climber];        // strongest index known (or assumed) to fail from here
+      let found = -1;                 // lowest index known to escape
+      let fails = 0, probes = 0;
+      while (probes < probesPerPos && replays < maxReplaysPerSeed) {
+        let i;
+        if (found < 0) {
+          if (lo >= pool.length - 1) break;                     // even the top failed: dead
+          i = fails >= bigGuns ? pool.length - 1               // big guns: settle it now
+            : Math.max(lo + 1, Math.ceil((lo + pool.length - 1)/2));
+        } else {
+          if (found - lo <= 1) break;                           // converged on the boundary
+          i = (lo + found) >> 1;
+        }
+        const cand = pool[i];
+        const brainA = climber === 0 ? cand.fn : def.fn;
+        const idBlue = climber === 0 ? cand.id : def.id;
+        const idRed = climber === 0 ? def.id : cand.id;
+        const result = playGame(eng, brainA, climber === 0 ? def.fn : cand.fn,
+                                maxPlies, 0, seedPose, false);
+        replays++; probes++;
         if (result.winner === null) continue;   // capped/wedged -- tells us nothing either way
-        writeGame(result.rows, result.winner, fam);
-        rank[climber] = cand.rank;              // this side has now been tried at this strength
-        if (result.winner === climber) { escaped = cand; break; }
+        writeGame(result.rows, result.winner, fam, idBlue, idRed);
+        if (result.winner === climber) found = i;
+        else { lo = Math.max(lo, i); fails++; }
       }
 
-      if (escaped) {
-        // not dead after all -- hand the problem to the other side at this SAME position
+      if (found >= 0) {
+        // not dead after all -- this side's strength steps up to its escaper, and the OTHER side
+        // now gets the same treatment at this same position
+        floor[climber] = Math.max(floor[climber], found);
         climber = defender;
+      } else if (probes === 0) {
+        // the climber is already AT the top of the pool -- there is nothing above it to try, so
+        // "dead" here would be vacuous. Nothing more this seed can teach; move on.
+        break;
       } else {
-        // nothing on the ladder escaped: this position is dead as far as we can measure
-        deadAt.push({ rewind, rank: rank[climber], side: climber });
+        // nothing in the pool escaped: this position is dead as far as we can measure
+        deadAt.push({ rewind, side: climber });
         deadFound++;
         rewind++;
-        rank[climber] = seedLevel;   // fresh position, fresh climb for this side
+        floor[climber] = seedFloor[climber];   // fresh position, fresh climb for this side
       }
     }
     if (deadAt.length) {
       const d = deadAt[deadAt.length - 1];
       console.log(`seed ${fam}: dead at ${d.rewind} plies from the end for ` +
-                  `${d.side === 0 ? 'blue' : 'red'} (nothing up to L${ceiling} escaped), ` +
+                  `${d.side === 0 ? 'blue' : 'red'} (nothing in the pool escaped), ` +
                   `${replays} replays, ${gameCount} games logged so far`);
     }
   }

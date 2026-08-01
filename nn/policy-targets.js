@@ -96,7 +96,10 @@ function main() {
         const slot = frame.order.indexOf(pivotIdx);
         const arm = armIndex(slot, (dRot > 0 ? 1 : -1)*frame.mirror);
         const bin = binIndex(dRot);
-        ws.write(JSON.stringify({ f: prev.f, arm, bin, z: prev.z, g: prev.g }) + '\n');
+        // `mv` rides along when present so train-policy.js can weight by the mover's CURRENT pool
+        // rating at train time (see eloweight.js for why the id and not the rating is stored).
+        ws.write(JSON.stringify({ f: prev.f, arm, bin, z: prev.z, g: prev.g,
+                                  ...(prev.mv ? { mv: prev.mv } : {}) }) + '\n');
         targets++;
       }
       prev = j;

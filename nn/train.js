@@ -67,7 +67,7 @@ function loadData(pattern) {
           prevAbs = a;
           game = curInferred;
         }
-        rows.push({ x: j.f, y: j.z, game });
+        rows.push({ x: j.f, y: j.z, game, mv: j.mv });
       } catch (e) {}
     }
   }
@@ -163,6 +163,20 @@ function main() {
   // and mse numbers stay comparable across modes.
   const gwMode = arg('gameWeight', 'sqrt');
   const drawW = +arg('drawWeight', 0.25);
+  // --eloWeight 1: additionally weight each row by the mover's current pool rating (eloweight.js).
+  // OFF by default, unlike train-policy.js, and deliberately so: the policy head imitates the
+  // mover, so mover skill is label quality; the value head predicts the OUTCOME, and a weak
+  // mover's position still has a real outcome -- its label reliability depends on both players'
+  // downstream play, not on who chose this move. Plausibly still worth something (weak-mover
+  // games explore junk regions), which is why the flag exists for an A/B rather than the idea
+  // being dismissed. Flip it on and compare val mse + a ladder sweep before believing either way.
+  const eloWeightOn = arg('eloWeight', '0') === '1';
+  const eloW = eloWeightOn
+    ? require('./eloweight.js').makeEloWeighter(
+        arg('eloSummary', path.join(__dirname, 'elo-summary.json')),
+        { scale: +arg('eloScale', 250), floor: +arg('eloFloor', 0.25) })
+    : null;
+  if (eloW) console.log(`elo weighting: ${eloW.note}`);
   const lens = new Map();
   for (const r of train) lens.set(r.game, (lens.get(r.game) || 0) + 1);
   let wSum = 0;
@@ -170,6 +184,7 @@ function main() {
     const len = lens.get(r.game);
     r.w = gwMode === 'row' ? 1 : gwMode === 'game' ? 1/len : 1/Math.sqrt(len);
     if (r.y === 0) r.w *= drawW;
+    if (eloW) r.w *= eloW.weight(r.mv);
     wSum += r.w;
   }
   const wNorm = train.length/wSum;

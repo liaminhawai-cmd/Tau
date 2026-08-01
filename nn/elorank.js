@@ -89,6 +89,12 @@ const focusPaths = focusRaw.map(x => path.basename(x, '.json'));
 // --summary: write the fitted ratings out as JSON so another process (run.js) can read them
 // without re-deriving anything or parsing console output.
 const summaryPath = arg('summary', null);
+// --focusPairs 0 keeps everything else about focus mode (the named models join the field, the
+// stopping rules track them) but lifts the pairing restriction, so the adaptive scheduler spends
+// the budget wherever the ratings are least certain across the WHOLE pool. This is the
+// "granularity pass": run it now and then and the pool's older members keep slowly sharpening
+// instead of being frozen at whatever precision their placement run reached.
+const focusPairsOnly = arg('focusPairs', '1') !== '0';
 // Seconds of wall time per unit of pairWeight, from this project's measured game times. Only ever
 // used for the up-front estimate and budget trimming; the live ETA measures real pace instead, so
 // being wrong here costs a rough first guess and nothing more.
@@ -233,7 +239,7 @@ const keyOf = (a, b) => `${a.id}|${b.id}`;
 // are code rather than files so they cannot go stale, and the low rungs are the cheapest games on
 // the board.
 const focusField = Math.max(0, +arg('focusField', 8));
-if (focusPaths.length && focusField > 0) {
+if (focusPaths.length && focusPairsOnly && focusField > 0) {
   const nnPlayers = players.filter(p => p.kind === 'nn');
   const isFocus = p => focusPaths.includes(path.basename(p.model, '.json'));
   const others = nnPlayers.filter(p => !isFocus(p));
@@ -279,7 +285,9 @@ function playPair(a, b) {
     const bothLadder = a.kind === 'ladder' && b.kind === 'ladder';
     const n = bothLadder ? ladderGames : gamesPerPair;
     const args = [path.join(dir, 'arena.js'), '--a', a.spec, '--b', b.spec,
-                  '--games', String(n), '--openingPlies', String(openingPlies)];
+                  '--games', String(n), '--openingPlies', String(openingPlies),
+                  // so every row these games save knows which rated brain played it
+                  '--idA', a.id, '--idB', b.id];
     if (randomStartFrac > 0) args.push('--randomStartFrac', String(randomStartFrac));
     if (a.kind === 'nn') args.push('--depthA', String(a.depth));
     if (b.kind === 'nn') args.push('--depthB', String(b.depth));
@@ -454,7 +462,7 @@ function worstRankHalfWidth(ci) {
     if (p.kind !== 'nn') continue;
     // when focusing, only the models being placed have to reach the tolerance -- the rest of the
     // pool is not being measured this run and its intervals are whatever they already were
-    if (focusPaths.length && !focusPaths.includes(path.basename(p.model, '.json'))) continue;
+    if (focusPaths.length && focusPairsOnly && !focusPaths.includes(path.basename(p.model, '.json'))) continue;
     const c = ci[p.id];
     if (!c || !Number.isFinite(c.lo)) {
       // a brain with almost no games legitimately has no interval yet; one with plenty that still
@@ -628,7 +636,7 @@ function pickPair(elo, inFlight) {
       if (inFlight.has(k)) continue;
       // In focus mode every matchup must involve a focus model -- the rest of the pool is being
       // used as a measuring stick, not re-measured.
-      if (focusPaths.length) {
+      if (focusPaths.length && focusPairsOnly) {
         const inFocus = q => q.kind === 'nn' && focusPaths.includes(path.basename(q.model, '.json'));
         // ...with one exception: an UNDER-MEASURED ladder pair still gets played. The rungs are the
         // scale, and a rank is only as good as the yardstick it is read against -- on a fresh pool
@@ -680,7 +688,7 @@ async function main() {
     for (;;) {
       if (stop || stopAll || outOfTime()) return;
       const g = gamesOf();
-      const mustCover = focusPaths.length
+      const mustCover = focusPaths.length && focusPairsOnly
         ? players.filter(p => p.kind === 'nn' && focusPaths.includes(path.basename(p.model, '.json')))
         : players;
       if (mustCover.length && mustCover.every(p => (g[p.id] || 0) >= targetGames)) { stop = true; return; }

@@ -167,6 +167,10 @@ function main() {
   writeLog('STARTING -- no games finished yet\n');
   if (logPath) console.log(`logging to ${logPath}`);
 
+  // Rating-pool ids for the two sides, so saved rows can be joined against the pool at TRAIN time
+  // (see selfplay.js for why the id and not the rating is what gets stored). elorank.js passes its
+  // own ids; a hand-run arena falls back to the brain names, which are at least descriptive.
+  const idA = arg('idA', A.name), idB = arg('idB', B.name);
   let aWins = 0, bWins = 0, draws = 0, pliesSum = 0;
   const t0 = Date.now();
   for (let g = 0; g < games; g++) {
@@ -212,9 +216,12 @@ function main() {
       const gameId = RUN_TAG + '-' + g;
       for (let i = 0; i < rows.length; i++) {
         const z = (rows[i].m === G.winner ? 1 : -1)*Math.pow(discount, rows.length - i);
+        // `m` is the mover's SIDE; aIsBlue says which brain held side 0 this game.
+        const mv = (rows[i].m === 0) === aIsBlue ? idA : idB;
         dataStream.write(JSON.stringify({ f: rows[i].f.map(v => +v.toFixed(5)), z: +z.toFixed(4),
                                           p: rows[i].p.map(v => +v.toFixed(4)), m: rows[i].m,
-                                          g: gameId, ...(randomStart ? { src: 'random' } : {}) }) + '\n');
+                                          g: gameId, mv,
+                                          ...(randomStart ? { src: 'random' } : {}) }) + '\n');
         savedRows++;
       }
     }
