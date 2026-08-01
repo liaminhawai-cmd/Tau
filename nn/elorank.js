@@ -66,6 +66,17 @@ const openingPlies = +arg('openingPlies', 4);
 // yardstick for retromine.js than the ones we have now. Worth turning on (0.15-0.25) only if the
 // data matters more than the ranking on a given run.
 const randomStartFrac = +arg('randomStartFrac', 0);
+// Target wall-clock hours. The field is trimmed to fit rather than the accuracy dialled down --
+// see the note at the trimming site. 0 disables (play the whole field).
+const budgetHours = +arg('budgetHours', 0);
+// Print the field, pair count and time estimate, then exit without playing anything -- for
+// choosing --games/--spread/--budgetHours before committing hours to a run.
+const dryRun = process.argv.includes('--dryrun');
+// Seconds of wall time per unit of pairWeight, from this project's measured game times. Only ever
+// used for the up-front estimate and budget trimming; the live ETA measures real pace instead, so
+// being wrong here costs a rough first guess and nothing more.
+const SEC_PER_WEIGHT = 55;
+let totalWeight = 0;
 
 // --- who is in the field ----------------------------------------------------------------------
 function discoverModels() {
@@ -178,6 +189,19 @@ const store = (() => {
 store.results = store.results || {};
 const keyOf = (a, b) => `${a.id}|${b.id}`;
 
+// Rough relative cost of a pair, used for the ETA and for --budgetHours trimming. Calibrated from
+// this project's own measured game times rather than guessed: a depth-3 game against L11 ran
+// ~645s where depth-1 against L6 ran ~21s, a spread of ~30x, so treating pairs as equal-cost (as
+// a naive "N pairs remaining" progress bar would) is off by more than an order of magnitude and
+// would make any estimate useless. Both sides move every ply, so the per-side costs add.
+const SIDE_COST = p => {
+  if (p.kind === 'ladder') return p.level <= 5 ? 1 : p.level <= 7 ? 2 : p.level <= 9 ? 4 : 5;
+  return p.depth >= 3 ? 4 : p.depth === 2 ? 2.5 : 1;
+};
+const pairWeight = (a, b) => (SIDE_COST(a) + SIDE_COST(b))*gamesPerPair;
+let doneWeight = 0, startedAt = 0;
+const fmtDur = s => s >= 3600 ? `${(s/3600).toFixed(1)}h` : `${Math.round(s/60)}m`;
+
 function playPair(a, b) {
   return new Promise(resolve => {
     const args = [path.join(dir, 'arena.js'), '--a', a.spec, '--b', b.spec,
@@ -195,7 +219,13 @@ function playPair(a, b) {
       const w = +last[1], l = +last[2], d = +(last[3] || 0);
       store.results[keyOf(a, b)] = { w, l, d };
       fs.writeFileSync(outPath, JSON.stringify(store, null, 1));   // checkpoint every pair
-      console.log(`  ${a.label} vs ${b.label}: ${w}-${l}${d ? '-' + d : ''}`);
+      doneWeight += pairWeight(a, b);
+      // Pace is measured from actual wall time, which already accounts for however many lanes are
+      // running -- so this self-corrects if the cost model above is wrong, which it will be.
+      const elapsed = (Date.now() - startedAt)/1000;
+      const eta = doneWeight > 0 ? (totalWeight - doneWeight)*(elapsed/doneWeight) : 0;
+      console.log(`  ${a.label} vs ${b.label}: ${w}-${l}${d ? '-' + d : ''}` +
+                  `   [${Math.round(100*doneWeight/totalWeight)}%, ~${fmtDur(eta)} left]`);
       resolve();
     });
   });
@@ -298,11 +328,42 @@ function report() {
 
 async function main() {
   if (refitOnly) { report(); return; }
-  const pairs = buildPairs().filter(([a, b]) => !store.results[keyOf(a, b)] && !store.results[keyOf(b, a)]);
-  const total = buildPairs().length;
+  let allPairs = buildPairs();
+  // --budgetHours: drop the LOWEST-VALUE brains until the estimated run fits the time available.
+  // Checkpoints go first and the named architectures last, because the named ones are the whole
+  // reason for ranking (they are the candidates for retromine's interleaved rungs) while adjacent
+  // checkpoints are near-duplicates of each other -- dropping one costs almost no coverage of the
+  // strength space, which is what this is actually mapping.
+  // Trimming the FIELD rather than the games-per-pair is deliberate: Bradley-Terry pools evidence
+  // across the whole graph, so more players with fewer games each beats fewer players with more,
+  // and the field is what determines how much of the strength range gets covered at all.
+  if (budgetHours > 0) {
+    const isNamed = p => p.kind === 'ladder' ||
+      /^(best|wide|ultra|deep|l15_value|scratch)$/.test(path.basename(p.model || '', '.json'));
+    const est = () => buildPairs().reduce((t, [a, b]) => t + pairWeight(a, b), 0)*SEC_PER_WEIGHT/workers/3600;
+    let guard = 0;
+    while (est() > budgetHours && guard++ < 100) {
+      // drop the checkpoint whose depth-family is largest, newest-first among droppables
+      const droppable = players.filter(p => p.kind === 'nn' && !isNamed(p));
+      const victims = droppable.length ? droppable : players.filter(p => p.kind === 'nn' && p.depth === 3);
+      if (!victims.length) break;
+      const drop = victims[victims.length - 1].model;
+      for (let i = players.length - 1; i >= 0; i--) if (players[i].model === drop) players.splice(i, 1);
+      console.log(`  budget: dropped ${path.basename(drop)} (est ${est().toFixed(1)}h vs ${budgetHours}h budget)`);
+    }
+    allPairs = buildPairs();
+  }
+  const total = allPairs.length;
+  totalWeight = allPairs.reduce((t, [a, b]) => t + pairWeight(a, b), 0);
+  const pairs = allPairs.filter(([a, b]) => !store.results[keyOf(a, b)] && !store.results[keyOf(b, a)]);
+  doneWeight = totalWeight - pairs.reduce((t, [a, b]) => t + pairWeight(a, b), 0);
   console.log(`elorank: ${players.length} brains, ${total} pairs, ${gamesPerPair} games/pair ` +
               `(${total*gamesPerPair} games total), ${workers} at a time`);
+  console.log(`  rough estimate: ${fmtDur(totalWeight*SEC_PER_WEIGHT/workers)} ` +
+              `(refined from real pace once pairs start landing)`);
   if (pairs.length < total) console.log(`resuming: ${total - pairs.length} pairs already stored`);
+  if (dryRun) { console.log('(--dryrun: nothing played)'); return; }
+  startedAt = Date.now();
   let next = 0;
   const lane = async () => { while (next < pairs.length) { const [a, b] = pairs[next++]; await playPair(a, b); } };
   await Promise.all(Array.from({ length: Math.min(workers, pairs.length) }, lane));

@@ -25,9 +25,15 @@ if errorlevel 1 (
   exit /b 1
 )
 
-rem Games per pair. 4 is enough for a rough placement once the whole graph is fitted together --
-rem the fit pools evidence across every path between two brains, not just their direct games.
-set GAMES=4
+rem Games per pair. Low on purpose: the fit pools evidence across every path between two brains,
+rem not just their direct games, so 2-3 per pair over a connected graph places everyone about as
+rem well as 6 would.
+set GAMES=2
+rem Target wall-clock hours. The FIELD gets trimmed to fit (checkpoints dropped first, the named
+rem architectures kept), rather than the accuracy dialled down -- more players with fewer games
+rem each beats fewer players with more, and the field is what decides how much of the strength
+rem range gets covered at all. Set to 0 to play the whole field however long it takes.
+set BUDGET=2
 rem How many lineage checkpoints to sample, evenly spaced oldest-to-newest, on top of the named
 rem architectures (best/wide/ultra/deep/l15_value/scratch, whichever exist).
 set SPREAD=6
@@ -43,13 +49,14 @@ echo   Results stream to nn\elo-results.json as they land.
 echo   Close this window any time - re-running resumes.
 echo ================================================================
 echo.
-set /p GAMES="Games per pair, Enter for 4: "
+set /p GAMES="Games per pair, Enter for 2: "
+set /p BUDGET="Target hours, Enter for 2 (0 = no limit): "
 echo.
 rem --saveData: these are real games with real outcomes, so they become training rows too rather
 rem than being reduced to a win-loss tally and thrown away. Same schema selfplay.js writes.
 set WORKERFLAG=
 if not "%WORKERS%"=="" set WORKERFLAG=--workers %WORKERS%
-node nn\elorank.js --games %GAMES% --spread %SPREAD% %WORKERFLAG% --depths 1,2,3 --saveData nn\data\elo.jsonl
+node nn\elorank.js --games %GAMES% --spread %SPREAD% --budgetHours %BUDGET% %WORKERFLAG% --depths 1,2,3 --saveData nn\data\elo.jsonl
 
 echo.
 echo ================================================================
