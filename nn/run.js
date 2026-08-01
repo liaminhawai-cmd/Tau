@@ -548,6 +548,15 @@ function startSelfplayBatch() {
     ? ', pool ' + [...new Set(dataPool)].sort((a, b) => a - b)
         .map(l => `L${l}x${dataPool.filter(x => x === l).length}`).join(' ')
     : '';
+  // Published for worker machines (worker.js): they play the same frontier-centred opponent mix
+  // as this machine instead of selfplay's static default, and they get it through git like
+  // everything else. Rides along on the next status push.
+  if (dataPool) {
+    try {
+      atomicWrite(path.join(dir, 'zpd-pool.json'),
+                  JSON.stringify({ updated: new Date().toISOString(), levels: dataPool }));
+    } catch (e) {}
+  }
   log(`self-play batch ${num} starting: ${gamesPerBatch} games (mix ${mix}, ${workers} workers${poolNote})`);
   statusState.batch = num;
   statusState.mix = fs.existsSync(best) ? mix : '(no model yet — pure ladder)';
@@ -884,7 +893,10 @@ async function schedulerLoop() {
     // what incremental writes in selfplay.js were for.
     if (selfplayOut && fs.existsSync(selfplayOut))
       writeStatus(`self-play batch ${statusState.batch} running (started ` +
-        `${new Date(selfplayStartedAt).toISOString()})`, [path.relative(repoRoot, selfplayOut).replace(/\\/g, '/')]);
+        `${new Date(selfplayStartedAt).toISOString()})`,
+        [path.relative(repoRoot, selfplayOut).replace(/\\/g, '/'),
+         // worker machines read this for their opponent mix -- cheap to ride along every push
+         ...(fs.existsSync(path.join(dir, 'zpd-pool.json')) ? ['nn/zpd-pool.json'] : [])]);
     if (trainEveryMin > 0 && now - lastTrainAt >= trainEveryMin*60000) {
       lastTrainAt = now;
       runTrainCycle();
