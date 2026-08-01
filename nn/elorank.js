@@ -4,7 +4,7 @@
 // ready-to-paste --ensemble string.
 //
 //   node nn/elorank.js [--games 4] [--depths 1,2,3] [--levels 1,2,3,4,5,6,7,8,9,10,11]
-//                      [--models a.json,b.json] [--spread 6] [--workers 6]
+//                      [--models a.json,b.json] [--spread 6] [--workers N]
 //                      [--out nn/elo-results.json] [--saveData nn/data/elo.jsonl] [--refit]
 //
 // WHY ELO AND NOT A FULL ROUND ROBIN. A full matrix over ~20 brains is 190 pairs; at the depth-3
@@ -44,7 +44,11 @@ const modelsDir = path.join(dir, 'models');
 const gamesPerPair = Math.max(1, +arg('games', 4));
 const depths = (arg('depths', '1,2,3') || '').split(',').map(Number).filter(d => d >= 1);
 const levels = (arg('levels', '') || '').split(',').map(Number).filter(n => n >= 1);
-const workers = Math.max(1, +arg('workers', 6));
+// Each arena.js is single-threaded, so this IS the core count in use -- a fixed default would
+// leave most of a big machine idle. Auto-detect the same way run.js does (leave one core for
+// everything else; Node counts hyperthreads as cores so this is not literally one-per-physical).
+const os = require('os');
+const workers = Math.max(1, +arg('workers', Math.max(1, Math.min(os.cpus().length - 1, 14))));
 const outPath = arg('out', path.join(dir, 'elo-results.json'));
 const saveData = arg('saveData', null);
 const refitOnly = process.argv.includes('--refit');
@@ -87,13 +91,42 @@ function discoverModels() {
   return pick;
 }
 
+// Snapshot every model before rating it. best.json, value.json and scratch.json are all REWRITTEN
+// while the trainer runs -- resume-train overwrites best/value on its own clock, a round robin
+// overwrites scratch and promotes over best -- so rating them by path would attribute games played
+// against several different nets to a single player id, which is not a noisy measurement but a
+// meaningless one. Copying first freezes the field for the whole run, which also makes it safe to
+// train and rank at the same time.
+// Taken ONCE and reused on resume (the directory's existence is the marker): re-snapshotting on a
+// resumed run would swap the nets underneath results already stored against them.
+function snapshotModels(paths) {
+  const snapDir = path.join(modelsDir, '.elo-snapshot');
+  const fresh = !fs.existsSync(snapDir);
+  try {
+    fs.mkdirSync(snapDir, { recursive: true });
+    const out = [];
+    for (const p of paths) {
+      const dest = path.join(snapDir, path.basename(p));
+      if (fresh || !fs.existsSync(dest)) fs.copyFileSync(p, dest);
+      out.push(dest);
+    }
+    if (fresh) console.log(`snapshotted ${out.length} models to ${snapDir} (field frozen for this run)`);
+    else console.log(`reusing existing snapshot in ${snapDir} (${out.length} models)`);
+    return out;
+  } catch (e) {
+    console.error(`WARNING: could not snapshot models (${e.message}) -- rating live files, so do ` +
+                  `NOT run the trainer at the same time`);
+    return paths;
+  }
+}
+
 const players = [];   // { id, kind:'ladder'|'nn', spec, depth, label }
 let LADDER_N = 11;
 try { LADDER_N = require('./engine.js').createEngine().AI_LADDER.length; } catch (e) {}
 const useLevels = levels.length ? levels.filter(l => l <= LADDER_N) : Array.from({ length: LADDER_N }, (_, i) => i + 1);
 for (const l of useLevels)
   players.push({ id: `L${l}`, kind: 'ladder', spec: `L${l}`, level: l, label: `L${l}` });
-for (const m of discoverModels())
+for (const m of snapshotModels(discoverModels()))
   for (const d of depths)
     players.push({ id: `${path.basename(m, '.json')}@D${d}`, kind: 'nn', spec: `nn:0:${m}`,
                    depth: d, model: m, label: `${path.basename(m, '.json')} D${d}` });
