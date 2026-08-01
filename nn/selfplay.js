@@ -450,5 +450,5 @@ function main() {
 // position" IS exactly the seedPose path below -- no separate implementation needed there). The
 // guard keeps `node nn/selfplay.js ...` behaving exactly as before: require() alone must not run
 // a self-play batch using retromine's own argv.
-module.exports = { playGame };
+module.exports = { playGame, loadSeedPoses };
 if (require.main === module) main();

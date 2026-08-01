@@ -29,6 +29,7 @@ const { execFileSync, spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { loadSeedPoses } = require('./selfplay.js');
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
@@ -53,6 +54,16 @@ const pushEveryMin = Math.max(0.5, +arg('pushEveryMin', 4));
 // cores-1, capped: each lane is a whole node process holding its own engine sandbox
 const workers = Math.max(1, +arg('workers', Math.max(1, Math.min(os.cpus().length - 1, 14))));
 const randomStartFrac = arg('randomStartFrac', '0.15');
+// Fraction of games that start from a STORED mid-game position instead of the standard opening --
+// selfplay.js's own --seedFrom. Left unset here until now, which meant each of the `workers`
+// separately-spawned selfplay.js LANES (--workers 1 apiece, see the header) fell back to
+// selfplay.js's own default and independently re-scanned and re-parsed EVERY file in nn/data to
+// build its own 400-position sample -- the exact "every worker re-reading the whole accumulated
+// dataset" cost selfplay.js's own internal fork-parent already avoids for ITS children, just not
+// for these. nn/data only grows, so the redundant work got slower every day, worker count deep
+// (11 of these scans at once on one chunk start), and on a laptop already known to choke on
+// concurrent I/O (see the PARALLELISM note above). Sampled ONCE per chunk below instead.
+const seedFrac = Math.max(0, Math.min(1, +arg('seedFrom', '0.25')));
 // Fraction of CHUNKS that play as a model-variety slot instead of the newest checkpoint/best.json.
 // These slot files (nn/models/pool-slot-*.json, plus wide/ultra/deep/l15_value) are refreshed and
 // pushed by the desktop's own pool cycle -- refreshModelSlots in run.js -- specifically so a
@@ -209,7 +220,18 @@ function playChunk(chunk) {
   const per = Math.max(1, Math.round(gamesPerChunk/workers));
   const files = [];
   const varietyNote = modelPool.length ? `, ${modelPool.length}-model variety pool` : '';
-  log(`chunk ${chunk}: ${workers} lanes x ${per} games, model ${path.basename(model)}, levels ${levels}${varietyNote}`);
+  // Sample ONCE here rather than leaving each lane to scan nn/data for itself -- see seedFrac's
+  // own comment above for why that redundant per-lane scan existed and what it cost.
+  let seedFile = null, seedNote = '';
+  if (seedFrac > 0) {
+    const pool = loadSeedPoses(path.join(dir, 'data'), 400);
+    if (pool.length >= 50) {
+      seedFile = path.join(dir, 'data', `w-${name}-${stamp}.seeds`);
+      fs.writeFileSync(seedFile, JSON.stringify(pool));
+      seedNote = `, seeding ~${Math.round(seedFrac*100)}% from ${pool.length} stored positions`;
+    }
+  }
+  log(`chunk ${chunk}: ${workers} lanes x ${per} games, model ${path.basename(model)}, levels ${levels}${varietyNote}${seedNote}`);
   const lanes = [];
   for (let i = 0; i < workers; i++) {
     // 1-indexed in the filename to match the [w1]/[w2]/... console tag below -- they used to
@@ -227,6 +249,7 @@ function playChunk(chunk) {
         '--games', String(per), '--workers', '1', '--out', out,
         '--model', model, '--levels', levels, '--randomStartFrac', randomStartFrac,
         '--modelVarietyFrac', String(modelVarietyFrac),
+        ...(seedFile ? ['--seedFrom', String(seedFrac), '--seedPool', seedFile] : ['--seedFrom', '0']),
         ...(modelPool.length ? ['--modelPool', modelPool.join(',')] : [])],
         { stdio: ['ignore', 'inherit', 'inherit'],
           env: Object.assign({}, process.env, { TAU_WORKER: String(i + 1) }) });
@@ -234,7 +257,9 @@ function playChunk(chunk) {
       ch.on('error', e => { log(`lane ${i} failed to start (${e.message})`); resolve(); });
     }));
   }
-  return { files, done: Promise.all(lanes) };
+  const done = Promise.all(lanes);
+  if (seedFile) done.then(() => { try { fs.unlinkSync(seedFile); } catch (e) {} });
+  return { files, done };
 }
 
 async function main() {
