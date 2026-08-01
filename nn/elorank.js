@@ -611,9 +611,13 @@ function report() {
   // No more "paste into retromine" footer: retromine.js reads the summary written above directly
   // and builds its strength axis from it, so there is nothing left to hand-carry between the two.
   const above = rows.filter(r => r.p.kind === 'nn' && r.edge === 'above');
+  // named after the top rung ACTUALLY USABLE in this fit, not L<LADDER_N>: on a partial-ladder run
+  // (--levels 1,2,3) the old wording claimed "above L11" for nets that had merely cleared L3
+  const topUsable = ladderElos.length ? ladderElos[ladderElos.length - 1].level : LADDER_N;
   if (above.length)
-    console.log(`\n(${above.map(r => r.p.label).join(', ')} rated above L${LADDER_N} -- ` +
-                `no rung to interpolate a ladder rank against, so rank shows ">"; their Elo is still exact)`);
+    console.log(`\n(${above.map(r => r.p.label).join(', ')} rated above L${topUsable}, the top rung in ` +
+                `this fit -- no rung to interpolate a ladder rank against, so rank shows ">"; ` +
+                `their Elo is still exact)`);
   // Deliberately does NOT write outPath. playPair already checkpoints after every pair, so there is
   // nothing here to save -- and writing would be actively destructive in the --refit case, which is
   // meant to be run in a second window WHILE a ranking run is going: it loads the results file at

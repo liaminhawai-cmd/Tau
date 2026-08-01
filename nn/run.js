@@ -170,6 +170,13 @@ const variantEpochs = +arg('variantEpochs', 8);
 // cycles this is what makes the pool slowly granular everywhere instead of sharp only at the
 // newest models. 0 disables.
 const poolWideEvery = Math.max(0, +arg('poolWideEvery', 4));
+// Architecture hill-climb. Each pool cycle trains TWO from-scratch nets under identical
+// conditions -- same epochs, same data corpus, same placement run, same gate -- differing ONLY in
+// shape: the champion shape, and one random small edit of it (one layer widened, one narrowed, a
+// layer added, a layer dropped). Whichever ends up rated clearly higher owns the shape going
+// forward, so the shape random-walks uphill one measured fight at a time instead of being a
+// hand-picked constant revisited only when a human thinks of it. --mutateShape 0 disables.
+const mutateShape = arg('mutateShape', '1') !== '0';
 // Retrograde mining on its own clock, using the pool as its strength axis (see retromine.js).
 const retroEveryMin = Math.max(0, +arg('retroEveryMin', 120));
 const retroSeeds = +arg('retroSeeds', 4);
@@ -320,6 +327,43 @@ function zpdLevels(win, regressed) {
   // own, this must stop contributing rather than keep piling weight on the hardest opponent.
   for (let have = pool.filter(l => l === LADDER_N).length; have < topFloor; have++) pool.push(LADDER_N);
   return pool.length ? pool : null;
+}
+
+// --- architecture hill-climb helpers ------------------------------------------------------------
+// The champion shape lives in a file, not a variable: it has to survive restarts, and it has to
+// OUTRANK the --scratchHidden pin once fights have been won -- a pin is a guess made before the
+// data existed, the store is the running result of measured head-to-heads that started from that
+// guess. Delete the file to reset the climb to the pin.
+const shapeFile = path.join(dir, 'models', '.scratch-shape');
+const shapeHistFile = path.join(dir, 'models', '.shape-history');
+const championShape = () => {
+  try { return JSON.parse(fs.readFileSync(shapeFile, 'utf8')).shape || null; } catch (e) { return null; }
+};
+// One small random edit of a hidden spec ("96,64,48"). Sizes snap to multiples of 4 with a floor
+// of 8; depth changes insert the geometric mean of the neighbours (the size a smooth taper would
+// have put there anyway) or drop a random layer. Single edit per fight ON PURPOSE: change two
+// things and a win says nothing about either.
+function mutateHidden(spec) {
+  const shape = spec.split(',').map(Number).filter(n => n > 0);
+  if (!shape.length) return null;
+  const snap = n => Math.max(8, Math.round(n/4)*4);
+  const ops = ['widen', 'narrow', 'add'];
+  if (shape.length > 2) ops.push('drop');
+  for (let tries = 0; tries < 8; tries++) {
+    const op = ops[Math.floor(Math.random()*ops.length)];
+    const next = shape.slice();
+    const i = Math.floor(Math.random()*next.length);
+    if (op === 'widen') next[i] = snap(next[i]*(1.15 + Math.random()*0.2));
+    else if (op === 'narrow') next[i] = snap(next[i]*(0.7 + Math.random()*0.15));
+    else if (op === 'add') {
+      const j = Math.floor(Math.random()*(next.length + 1));
+      const a = next[j - 1] || next[0], b = next[j] || next[next.length - 1];
+      next.splice(j, 0, snap(Math.sqrt(a*b)));
+    } else next.splice(i, 1);
+    const out = next.join(',');
+    if (out !== spec) return { shape: out, op };
+  }
+  return null;
 }
 
 // A small status file, pushed to git at each major transition, so progress can be checked by
@@ -568,14 +612,28 @@ function runPoolCycle() {
   // adds strength over a few iterations and degrades over dozens, and this is what catches the
   // degradation. It just gets PLACED now rather than round-robinned.
   const focus = [ckpt];
+  let mutInfo = null;
   if (+scratchEpochs > 0) {
     const scratch = path.join(dir, 'models', `scratch-${String(num).padStart(3, '0')}.json`);
-    const h = scratchHidden || hiddenOfBest();
+    // champion shape (won a fight) > pin (a pre-data guess) > incumbent's own shape
+    const h = championShape() || scratchHidden || hiddenOfBest();
     log(`pool cycle ${num} — training a from-scratch challenger (${scratchEpochs} epochs` +
         (h ? `, --hidden ${h}` : '') + `)`);
     writeStatus(`from-scratch challenger training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
     runSoft('train.js', ['--epochs', scratchEpochs, '--out', scratch, ...(h ? ['--hidden', h] : [])]);
     if (fs.existsSync(scratch)) focus.push(scratch);
+    // The shape fight. Trained back-to-back with the control on the same corpus (self-play may
+    // append a few games in between -- noise against tens of thousands of rows), same epochs, and
+    // placed in the same pool run. The fight is fair because everything except the shape is shared.
+    if (mutateShape && h) {
+      const mut = mutateHidden(h);
+      if (mut) {
+        const mutPath = path.join(dir, 'models', `mut-${String(num).padStart(3, '0')}.json`);
+        log(`pool cycle ${num} — shape fight: control ${h} vs mutant ${mut.shape} (${mut.op})`);
+        runSoft('train.js', ['--epochs', scratchEpochs, '--out', mutPath, '--hidden', mut.shape]);
+        if (fs.existsSync(mutPath)) { focus.push(mutPath); mutInfo = { ...mut, control: h, mutPath, scratch }; }
+      }
+    }
   }
 
   // one variant lineage gets a light touch of training, rotating through whichever exist
@@ -640,6 +698,36 @@ function runPoolCycle() {
           (incumbent ? `, +${Math.round(top.elo - incumbent.elo)} over the incumbent` : '') + `)`);
     }
     statusState.lastGate = `pool cycle ${num} — ${line}`;
+    // Shape-fight verdict, decided by the same ratings. The mutant needs a clear lead to take the
+    // shape (same reasoning as the promotion gate: a from-scratch pair is two noisy draws, and
+    // "merely ahead" would let the shape random-walk on luck); a clear LOSS is recorded too, so
+    // .shape-history accumulates which kinds of edits helped and which hurt.
+    if (mutInfo) {
+      const ctl = byModel[path.basename(mutInfo.scratch, '.json')];
+      const mut = byModel[path.basename(mutInfo.mutPath, '.json')];
+      if (ctl && mut) {
+        const lead = mut.elo - ctl.elo;
+        const verdict = lead >= 25 ? 'adopted' : lead <= -25 ? 'rejected' : 'inconclusive';
+        if (verdict === 'adopted') {
+          atomicWrite(shapeFile, JSON.stringify({ shape: mutInfo.shape, cycle: num,
+                                                  adoptedAt: new Date().toISOString() }));
+          log(`pool cycle ${num} — shape fight: mutant ${mutInfo.shape} (${mutInfo.op}) beat ` +
+              `${mutInfo.control} by ${Math.round(lead)} Elo — new champion shape`);
+        } else {
+          log(`pool cycle ${num} — shape fight: ${mutInfo.shape} (${mutInfo.op}) vs ` +
+              `${mutInfo.control}: ${Math.round(lead)} Elo — ${verdict}, keeping ${mutInfo.control}`);
+        }
+        try {
+          fs.appendFileSync(shapeHistFile, JSON.stringify({ cycle: num, control: mutInfo.control,
+            mutant: mutInfo.shape, op: mutInfo.op, ctlElo: +ctl.elo.toFixed(1),
+            mutElo: +mut.elo.toFixed(1), verdict }) + '\n');
+        } catch (e) {}
+      } else {
+        log(`pool cycle ${num} — shape fight unresolved (` +
+            `${ctl ? '' : 'control unrated'}${!ctl && !mut ? ', ' : ''}${mut ? '' : 'mutant unrated'}` +
+            `) — no verdict, keeping ${mutInfo.control}`);
+      }
+    }
   } catch (e) {
     log(`WARNING: pool promotion skipped (${e.message}) — keeping best.json`);
   }
