@@ -49,6 +49,19 @@ const outPath = arg('out', path.join(dir, 'elo-results.json'));
 const saveData = arg('saveData', null);
 const refitOnly = process.argv.includes('--refit');
 const spread = Math.max(0, +arg('spread', 6));
+// 4, matching selfplay.js rather than arena.js's evaluation default of 2. arena.js keeps 2 because
+// it is an evaluation tool, but these games are ALSO training data (--saveData), and selfplay.js
+// raised its own default to 4 for precisely that reason: at 2 plies the mostly-deterministic
+// brains still funnel into repeated trajectories, and duplicated lines quietly multiply the
+// effective epochs on them. Costs nothing for ranking -- both sides face the same scramble.
+const openingPlies = +arg('openingPlies', 4);
+// Fully random legal poses (opening.js's randomStartPose), OFF by default here on purpose. It
+// would deepen the data further, but it changes what the ranking MEASURES: the ladder rungs were
+// built and tuned for play from real positions, so rating them largely on arbitrary poses would
+// be scoring them at a job they were never designed for, and the resulting ranks would be a worse
+// yardstick for retromine.js than the ones we have now. Worth turning on (0.15-0.25) only if the
+// data matters more than the ranking on a given run.
+const randomStartFrac = +arg('randomStartFrac', 0);
 
 // --- who is in the field ----------------------------------------------------------------------
 function discoverModels() {
@@ -135,7 +148,8 @@ const keyOf = (a, b) => `${a.id}|${b.id}`;
 function playPair(a, b) {
   return new Promise(resolve => {
     const args = [path.join(dir, 'arena.js'), '--a', a.spec, '--b', b.spec,
-                  '--games', String(gamesPerPair), '--openingPlies', '2'];
+                  '--games', String(gamesPerPair), '--openingPlies', String(openingPlies)];
+    if (randomStartFrac > 0) args.push('--randomStartFrac', String(randomStartFrac));
     if (a.kind === 'nn') args.push('--depthA', String(a.depth));
     if (b.kind === 'nn') args.push('--depthB', String(b.depth));
     if (saveData) args.push('--saveData', saveData);
