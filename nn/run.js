@@ -174,6 +174,22 @@ const poolWideEvery = Math.max(0, +arg('poolWideEvery', 4));
 const retroEveryMin = Math.max(0, +arg('retroEveryMin', 120));
 const retroSeeds = +arg('retroSeeds', 4);
 
+// Atomic save: write/copy to a temp file beside the target, then rename over it. A rename either
+// fully lands or doesn't happen at all, where a direct writeFileSync/copyFileSync can be caught
+// mid-flight -- and this window gets closed at the user's will at any moment (that's the whole
+// point of START.bat), including mid-write of best.json itself. Without this, an unlucky close
+// could hand the next self-play batch a truncated net with no automatic recovery.
+function atomicWrite(destPath, data) {
+  const tmp = `${destPath}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tmp, data);
+  fs.renameSync(tmp, destPath);
+}
+function atomicCopy(srcPath, destPath) {
+  const tmp = `${destPath}.tmp-${process.pid}-${Date.now()}`;
+  fs.copyFileSync(srcPath, tmp);
+  fs.renameSync(tmp, destPath);
+}
+
 const dir = __dirname;
 const best = path.join(dir, 'models', 'best.json');
 const poolFile = path.join(dir, 'elo-results.json');
@@ -523,7 +539,7 @@ function runTrainCycle() {
   writeStatus(`resume-train (${epochs} epochs, started ${new Date().toISOString()})`);
   try {
     run('train.js', ['--epochs', epochs, '--out', fresh, '--resume', best]);
-    fs.copyFileSync(fresh, best);
+    atomicCopy(fresh, best);
     log(`resume-train complete — promoted (round robin every ${tournamentEveryMin} min decides the real best)`);
     statusState.lastGate = `resume-train promoted at ${new Date().toISOString()}`;
   } catch (e) {
@@ -544,7 +560,7 @@ function runPoolCycle() {
   // referred to forever.
   const ckpt = path.join(dir, 'models', `ckpt-${String(num).padStart(3, '0')}.json`);
   if (!fs.existsSync(best)) { log(`pool cycle ${num} — no best.json yet, skipping`); return; }
-  fs.copyFileSync(best, ckpt);
+  atomicCopy(best, ckpt);
   log(`pool cycle ${num} — checkpoint saved: ${path.basename(ckpt)}`);
   statusState.lastCheckpoint = `${path.basename(ckpt)} at ${new Date().toISOString()}`;
 
@@ -618,8 +634,8 @@ function runPoolCycle() {
       log(`pool cycle ${num} — ${topName} leads by only ${Math.round(top.elo - incumbent.elo)} Elo; ` +
           `too close to justify swapping, keeping best.json`);
     } else if (fs.existsSync(top.model)) {
-      fs.copyFileSync(best, path.join(dir, 'models', `best.pre-pool-${Date.now()}.json`));
-      fs.copyFileSync(top.model, best);
+      atomicCopy(best, path.join(dir, 'models', `best.pre-pool-${Date.now()}.json`));
+      atomicCopy(top.model, best);
       log(`pool cycle ${num} — promoted ${topName} (${Math.round(top.elo)} Elo` +
           (incumbent ? `, +${Math.round(top.elo - incumbent.elo)} over the incumbent` : '') + `)`);
     }
@@ -658,7 +674,7 @@ function runTournamentCycle() {
   // robin actually runs. tournament.js's --recent window reads these exactly as before.
   if (fs.existsSync(best)) {
     const ckpt = path.join(dir, 'models', `ckpt-${String(num).padStart(3, '0')}.json`);
-    fs.copyFileSync(best, ckpt);
+    atomicCopy(best, ckpt);
     log(`round-robin cycle ${num} — checkpoint saved: ${path.basename(ckpt)}`);
     statusState.lastCheckpoint = `${path.basename(ckpt)} at ${new Date().toISOString()}`;
   }

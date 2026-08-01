@@ -39,6 +39,24 @@ function arg(name, dflt) {
   return i >= 0 ? process.argv[i + 1] : dflt;
 }
 
+// Atomic save: write to a temp file beside the target, then rename over it. A rename is a single
+// filesystem operation -- interrupted, it either fully lands or doesn't happen at all -- where a
+// direct writeFileSync/copyFileSync can be caught mid-flight and leave the target truncated. That
+// gap is real here: this console gets closed at will (START.bat's whole design), including mid-save
+// of the results file, and a truncated elo-results.json is worse than a merely-stale one -- the
+// load path below treats "corrupt" the same as "doesn't exist yet" and would silently discard the
+// entire rating history, not just the update in flight.
+function atomicWrite(destPath, data) {
+  const tmp = `${destPath}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tmp, data);
+  fs.renameSync(tmp, destPath);
+}
+function atomicCopy(srcPath, destPath) {
+  const tmp = `${destPath}.tmp-${process.pid}-${Date.now()}`;
+  fs.copyFileSync(srcPath, tmp);
+  fs.renameSync(tmp, destPath);
+}
+
 const dir = __dirname;
 const modelsDir = path.join(dir, 'models');
 const gamesPerPair = Math.max(1, +arg('games', 4));
@@ -158,7 +176,7 @@ function snapshotModels(paths) {
     const out = [];
     for (const p of paths) {
       const dest = path.join(snapDir, path.basename(p));
-      if (fresh || !fs.existsSync(dest)) fs.copyFileSync(p, dest);
+      if (fresh || !fs.existsSync(dest)) atomicCopy(p, dest);
       out.push(dest);
     }
     if (fresh) console.log(`snapshotted ${out.length} models to ${snapDir} (field frozen for this run)`);
@@ -324,7 +342,7 @@ function playPair(a, b) {
       const last = m[m.length - 1];
       const w = +last[1], l = +last[2], d = +(last[3] || 0);
       record(a, b, w, l, d);
-      fs.writeFileSync(outPath, JSON.stringify(store, null, 1));   // checkpoint every pair
+      atomicWrite(outPath, JSON.stringify(store, null, 1));   // checkpoint every pair
       // No fixed pair list to measure progress against anymore, so report what actually matters:
       // how well covered the least-measured brain is, and how much of the time budget is left.
       const gs = gamesOf(), least = Math.min(...players.map(p => gs[p.id] || 0));
@@ -582,7 +600,7 @@ function report() {
       };
     }
     try {
-      fs.writeFileSync(summaryPath, JSON.stringify(out, null, 1));
+      atomicWrite(summaryPath, JSON.stringify(out, null, 1));
       console.log(`\nratings written to ${summaryPath}`);
     } catch (e) { console.error(`could not write ${summaryPath} (${e.message})`); }
   }
