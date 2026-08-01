@@ -98,12 +98,19 @@ rem prints the table -- Elo, ladder rank, 90 percent CI, games per brain. Plays 
 rem nothing back, so it is safe to run while the trainer or RANK.bat is mid-run; it simply shows
 rem whatever the pool knows as of this second. The same numbers live machine-readably in
 rem nn\elo-summary.json if a script wants them instead of eyes.
-if not exist "nn\elo-results.json" (
-  echo No rating pool yet -- run RANK.bat or let the trainer's pool cycle fire first.
-  pause
-  goto menu
+if exist "nn\elo-results.json" (
+  node nn\elorank.js --refit
+) else if exist "nn\elo-summary.json" (
+  rem The raw per-pair store never gets pushed to git -- only the summary does, riding along
+  rem on every status push -- so a machine that has pulled but never run elorank locally, a
+  rem worker, or this store having gone missing some other way, still has the published
+  rem snapshot to fall back to.
+  echo No local elo-results.json -- showing the last published snapshot instead.
+  node nn\showranks.js
+) else (
+  echo No rating pool yet -- run RANK.bat, or let the trainer's pool cycle fire, or pull to
+  echo get whatever the trainer has already published.
 )
-node nn\elorank.js --refit
 pause
 goto menu
 
