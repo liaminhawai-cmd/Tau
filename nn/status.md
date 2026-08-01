@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-08-01T16:09:41.027Z_
+_Last updated: 2026-08-01T16:12:59.540Z_
 
 **Self-play batch:** 4
-**Stage:** self-play batch 4 running, next check in 5 min
+**Stage:** rating pool placement (started 2026-08-01T16:12:59.540Z)
 **mix:** nnnn:0.4,nnladder:0.3,ladder:0.3
 
 **Last gate result:** resume-train promoted at 2026-08-01T15:07:06.538Z
