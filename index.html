@@ -2370,7 +2370,47 @@ const CFG = {
     pushIters: 10,                 // contact-solver iterations per sub-step
     pushRelax: 1.0,
     maxPenPerIter: 0.8,            // cap on correction per iteration — prevents overshoot/sign-flip tunneling
-    minHorizFrac: 0.35             // steepest contact normal we fully separate against (pieces only move horizontally)
+    minHorizFrac: 0.35,            // steepest contact normal we fully separate against (pieces only move horizontally)
+
+    // ---------- ko: no repeating a position you didn't fight your way back to ----------
+    // Two players can lock into a sterile oscillation — each shuffling between the same two poses,
+    // never touching, forever. Measured on real games: one L11-vs-L9 game spent 5h52m replaying an
+    // exact 4-ply loop 73 times, reaching only 14 distinct positions in 300 plies. 14 of the 18
+    // capped games on record are that shape.
+    //
+    // The rule, as a rule: the board may not return to a position it has already been in, unless
+    // there was CONTACT in between. Contact wipes the history — revisiting a position after a push
+    // is a fight resuming, not a stall repeating, and Tau is a contact game (the opponent gets
+    // displaced on 66% of all recorded moves). The exclusion is progressive on its own: every
+    // shuffle adds another banned spot, so the loop narrows until a different foot has to move.
+    //
+    // Cost to real play, dry-run over all 6592 recorded games that ended in a win: 11 of them (0.17%)
+    // would have had to pick a different stopping angle at some point. Nothing else changes.
+    koRule: true,
+    koEps: 0.25,                   // hub distance under which two poses count as the same position
+    koDeg: 2,                      // ...and rotation. Same threshold as minMoveDeg: a position is
+                                     // "new" once it is at least one real move away from every old one.
+    koPushEps: 0.01,               // opponent hub displacement that counts as contact having happened
+
+    // ---------- komi: the grinding games that legitimately run long ----------
+    // Ko kills the stalls but not the grinds: two pieces genuinely shoving each other can fill 300
+    // plies with 300 distinct positions and a 98% push rate, and still not resolve. Those used to be
+    // scored as draws. Now the position is scored instead — whoever's outermost foot is nearer the
+    // rim loses, which is the same margin the Hard AI already evaluates with (marginFor).
+    //
+    // komi is the correction that makes that scoring fair. Being ON MOVE is worth real clearance
+    // that a still picture cannot see, so the side to move is spotted `komi` before the comparison.
+    // Calibrated against 6592 decided games by adjudicating them early and checking the call against
+    // who actually went on to win: the colour-unbiased offset is ~3u, and it flips sign exactly with
+    // the side to move (−2.7/−2.9/−3.6 at plies 20/30/40 with blue to move, +4.2/+3.6/+3.3 at plies
+    // 21/31/41 with red to move) — so it is tempo, not colour. At komi 3 the call agrees with the
+    // real winner 74–78% of the time.
+    //
+    // Which is why an adjudicated game is worth komiLoss, not a whole win: it is a real result, but
+    // three-quarters of one. (The measured accuracy would justify up to ~0.5; 0.3 is the cautious end.)
+    moveCap: 300,                  // plies — 150 turns each, so the cap always falls at equal turns
+    komi: 3.0,                     // rim clearance credited to the side on move at adjudication
+    komiLoss: 0.3                  // an adjudicated result counts this much of a win
 };
 // The six start dots are the feet of the two tripods at their start pose (hub on the
 // x-axis at ±startX, front foot pointing at the centre) — matching the printed board.
@@ -2779,7 +2819,12 @@ function reset() {
     red.x  =  CFG.startX; red.rot  = Math.PI;
     G = { pieces:[blue,red], active:0, pinned:null, pivot:null, handle:null, turnDir:0,
           crossings:0, atLimit:false, netRad:0, ptrAngle:null, over:false, winner:null,
-          snap:null, contact:null };   // contact: per-foot line-contact sets, lazily derived at the first substep
+          snap:null, contact:null,   // contact: per-foot line-contact sets, lazily derived at the first substep
+          // ko/komi bookkeeping. koHist holds every board position reached since the last contact;
+          // plies counts REAL committed turns only (AI search commits and rolls back candidate
+          // turns through endTurn, so anything per-game has to be advanced a layer up, in
+          // commitTurn). adjudicated marks a result that came from the move cap rather than a fall.
+          koHist:[], plies:0, adjudicated:false };
     fall.active=false; fallenIdx=-1;
     // A fresh board is never mid-coach: drop the guided/free-play rail state so a ladder level or
     // casual game started from the coach's game-over sheet doesn't inherit the dotted guides.
@@ -2862,6 +2907,94 @@ function endTurn() {
     clearTurn();
 }
 
+// ---------- ko (no repeats without contact) and komi (score the cap) ----------
+// See CFG.koRule / CFG.komi for what these rules are and the measurements behind them.
+//
+// Everything here is deliberately OUTSIDE endTurn(): the Master AI's depth search commits candidate
+// turns for real through endTurn() and rolls them back, so history that must only advance on turns
+// that actually happened lives in commitTurn(), which only the real move paths call.
+function koBoardPose(){ const b=G.pieces[0], r=G.pieces[1]; return [b.x,b.y,b.rot,r.x,r.y,r.rot]; }
+function koSamePiece(a, b, o){
+    let dr = Math.abs(a[o+2]-b[o+2]) % (2*Math.PI);
+    dr = Math.min(dr, 2*Math.PI-dr);
+    return dr < CFG.koDeg*Math.PI/180 && Math.hypot(a[o]-b[o], a[o+1]-b[o+1]) < CFG.koEps;
+}
+function koSameBoard(a, b){ return koSamePiece(a,b,0) && koSamePiece(a,b,3); }
+// Did THIS turn make contact? A turn pins one foot and swings that piece about it, so a clean swing
+// displaces only the mover — 2 of the 6 feet move. If the piece that wasn't moving also shifted, the
+// swing drove into it and the push solver shoved it: 5 of 6 feet moved. (G.contact can't answer
+// this; clearTurn() nulls it before the next ply. The displacement is right there in the pieces.)
+function koContactThisTurn(){
+    if (!G.snap) return false;
+    const o = 1-G.active;
+    return Math.hypot(G.pieces[o].x-G.snap[o].x, G.pieces[o].y-G.snap[o].y) > CFG.koPushEps;
+}
+// Would ending the turn here be a ko violation? Only meaningful mid-turn, before commitTurn().
+function koViolation(){
+    return !!(CFG.koRule && G.koHist && !koContactThisTurn() &&
+              G.koHist.some(q => koSameBoard(q, koBoardPose())));
+}
+function koNote(){
+    if (!CFG.koRule || !G.koHist) return;
+    if (koContactThisTurn()) G.koHist.length = 0;   // a push resets the history for both sides
+    G.koHist.push(koBoardPose());
+}
+// The move cap is scored, not drawn: after CFG.moveCap plies both sides have had exactly the same
+// number of turns, so compare how close each is to falling off and give the side on move its komi.
+// marginFor(0) is the Hard AI's own leaf score — outermost(red) − outermost(blue), + = blue ahead.
+function adjudicate(){
+    const m = outermostRadU(G.pieces[1]) - outermostRadU(G.pieces[0]);
+    const adj = m + (G.active === 0 ? CFG.komi : -CFG.komi);
+    G.over = true; G.adjudicated = true;
+    G.winner = Math.abs(adj) < 1e-9 ? null : (adj > 0 ? 0 : 1);   // dead level really is a draw
+}
+// The single commit point for a turn that REALLY happened — human release, online move, or an AI
+// actually taking its turn. Search paths keep calling endTurn() directly and stay unaffected.
+function commitTurn(){
+    koNote();          // must read G.snap, which endTurn()'s clearTurn() is about to wipe
+    endTurn();
+    if (!G.over && CFG.moveCap && ++G.plies >= CFG.moveCap) adjudicate();
+}
+// A ko-banned stopping pose does not make the SWING illegal, only the place it stopped: the arc is
+// continuous, so the fix is to stop somewhere else on it. Walk the target angle away from the banned
+// spot in koDeg steps until the endpoint is somewhere the board has not already been. This is the
+// rule's own escalation — each shuffle bans another spot, so the arc runs out of legal stopping
+// points and a different foot has to move. Returns a plan; if the whole arc is banned it returns the
+// original and the position is simply played (the cap still backstops it).
+function koLegalizePlan(plan){
+    if (!CFG.koRule || !plan || !G.koHist || !G.koHist.length) return plan;
+    // Cheap exact pre-filter, and it skips almost every move. A stop can only be banned on a swing
+    // that made NO contact (contact wipes the history), and a contact-free swing leaves the opponent
+    // exactly where it already stands. So if no remembered position has the opponent standing where
+    // it stands right now, nothing on this arc can be banned and the trial swings below are pure
+    // waste. Without this the rule cost ~23% of self-play wall time; with it, near nothing.
+    const here = koBoardPose(), oppOff = (1-G.active)*3;
+    if (!G.koHist.some(q => koSamePiece(q, here, oppOff))) return plan;
+    const step = CFG.koDeg*Math.PI/180, minMove = CFG.minMoveDeg*Math.PI/180;
+    const snap0 = takeSnap();
+    const restore = () => { G.pieces.forEach((p,i)=>{ p.x=snap0[i].x; p.y=snap0[i].y; p.rot=snap0[i].rot; });
+                            G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0;
+                            G.contact=null; G.justCrossed=[]; };
+    // null = not a real move at all (too small / no room), true = banned, false = legal
+    const tryStop = (targetRad) => {
+        if (targetRad < minMove) return null;
+        pinFoot(plan.pivotIdx);
+        let g = 0;
+        while (!G.atLimit && Math.abs(G.netRad) < targetRad && g++ < 5000)
+            applySwing(plan.dir*Math.min(AI_STEP_RAD, targetRad - Math.abs(G.netRad)));
+        const net = Math.abs(G.netRad), banned = koViolation();
+        restore();
+        return net < minMove ? null : banned;
+    };
+    const base = Math.abs(plan.targetRad);
+    if (tryStop(base) !== true) { restore(); return plan; }
+    for (let k = 1; k <= 24; k++)
+        for (const t of [base - k*step, base + k*step])
+            if (tryStop(t) === false) { restore(); return { ...plan, targetRad: t }; }
+    restore();
+    return plan;
+}
+
 // ---------- Simple heuristic AI ----------
 // "Dumb" on purpose — no lookahead, no evaluation, one fixed rule:
 //   - AI closer to the board centre than the human  → OFFENSE: pin the foot
@@ -2917,12 +3050,15 @@ function aiStopFrac(){ return aiDifficulty==='dumb' ? 0.6 + Math.random()*0.3 : 
 // runs one full AI move to completion synchronously — used by headless tests (one call = one full turn).
 function aiTakeTurnSync() {
     const aiIdx=G.active;
-    const sp = searchedPlanFor(aiDifficulty, aiIdx);
-    if (sp) {
+    const sp0 = searchedPlanFor(aiDifficulty, aiIdx);
+    if (sp0) {
+        // The search doesn't know about ko (keeping it out keeps the search exactly as fast as it
+        // was); the chosen move gets its stopping angle nudged to a legal one here instead.
+        const sp = koLegalizePlan(sp0);
         pinFoot(sp.pivotIdx);
         let guard=0;
         while (Math.abs(G.netRad) < sp.targetRad && !G.atLimit && guard++ < 500) applySwing(sp.dir*AI_STEP_RAD);
-        endTurn();
+        commitTurn();
         return;
     }
     // heuristic path (dumb/easy, or the rare empty zone/hard search): find the natural limit with a
@@ -2935,8 +3071,9 @@ function aiTakeTurnSync() {
                         G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null; };
     let net = simMoveToLimit(plan.pivotIdx, dir); restore();
     if (Math.abs(net) < 1e-9) { dir=-dir; net=simMoveToLimit(plan.pivotIdx, dir); restore(); }
+    const legal = koLegalizePlan({ pivotIdx:plan.pivotIdx, dir, targetRad:Math.abs(net)*aiStopFrac() });
     pinFoot(plan.pivotIdx);
-    const target = Math.abs(net) * aiStopFrac();
+    const target = Math.abs(legal.targetRad);
     let guard=0;
     while (Math.abs(G.netRad) < target && !G.atLimit && guard++ < 500) applySwing(dir*AI_STEP_RAD);
     if (Math.abs(G.netRad) < 1e-9) {                 // last resort: any legal pivot/foot/direction pairing
@@ -2948,7 +3085,7 @@ function aiTakeTurnSync() {
                 G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null; }
         }
     }
-    endTurn();
+    commitTurn();
 }
 
 // ---------- "Hard" AI: 2-ply minimax over (pivot foot × direction) ----------
@@ -3998,6 +4135,18 @@ function onUp() {
         // No rest-pose reset any more: the swing already stops itself just short of mounting a
         // second line (see applySwing), so wherever the player lets go is a position they were
         // allowed to reach -- it simply stays there.
+        // Ko: you may not put the board back where it has already been unless something touched in
+        // between. The swing itself was legal — only this stopping point is barred — so it undoes
+        // exactly like a too-small move: the pivot stays pinned and the player carries on to a
+        // different stop. (Checked here rather than inside finishTurn so it covers the online path
+        // too, and so the AI — whose plan was already legalised in startAiTurn — never hits it.)
+        if (koViolation()) {
+            restoreSnap(); render();
+            if (typeof showPassToast === 'function')
+                showPassToast(t("Ko — the board has been here before. Stop somewhere else."));
+            if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; }
+            return;
+        }
         if (onlineMatch) finishOnlineTurn(); else finishTurn();
     } else {
         restoreSnap(); render();   // too small to count — undo it (incl. any nudge), keep the pivot
@@ -4011,7 +4160,7 @@ function onUp() {
 function finishTurn() {
     if (coachGuided) { coachGuidedCommit(); return; }   // the coached counter commits its own way
     coachFreeArc = null;   // move committed — the cached rail is spent
-    endTurn();
+    commitTurn();
     progressCentering();   // each completed move creeps the camera a quarter back toward centre
     if (colorLab) {   // colour-lab AI-vs-AI: show the tumble on a loss, then reset and keep playing
         if (G.over) { triggerFall(); colorLabTimer = setTimeout(colorLabReset, 2600); }
@@ -4619,6 +4768,10 @@ function startAiTurn() {
         if (Math.abs(net) < 1e-9) { dir = -dir; net = simMoveToLimit(pivotIdx, dir); restore(); }
         target = Math.abs(net) * aiStopFrac();   // dumb (Easy) stops a random 60-90% short of the limit
     }
+    // One ko check for every brain above (ladder, nn, searched, heuristic): they all reduce to the
+    // same pivot/dir/target here, and none of them searches with the rule in mind — the chosen
+    // stopping angle is simply nudged to one the board hasn't already been at.
+    target = Math.abs(koLegalizePlan({ pivotIdx, dir, targetRad: target }).targetRad);
     // How far this pivot+dir COULD swing (crossing one line, stopping at the next). If the AI is
     // deliberately stopping well short of that, it isn't committing to the line — play the swing
     // "carefully": a gentler, longer settle, the way a person eases a piece into a considered spot
@@ -7630,9 +7783,10 @@ function labSimulateGame(brainBlue, brainRed) {
     let guard = 0;
     while (!G.over && guard++ < 300) {
         const idx = G.active;
-        const plan = (idx === 0 ? brainBlue : brainRed)(idx);
-        if (!plan) { G.active = 1 - G.active; continue; }     // wedged -- pass the turn, don't hang forever
-        labLastDepths[idx].push(plan.searchDepth);
+        const plan0 = (idx === 0 ? brainBlue : brainRed)(idx);
+        if (!plan0) { G.active = 1 - G.active; continue; }     // wedged -- pass the turn, don't hang forever
+        labLastDepths[idx].push(plan0.searchDepth);
+        const plan = koLegalizePlan(plan0);
         pinFoot(plan.pivotIdx);
         let g = 0;
         while (!G.atLimit && Math.abs(G.netRad) < plan.targetRad && g++ < 5000) {
@@ -7642,7 +7796,7 @@ function labSimulateGame(brainBlue, brainRed) {
             // the planted (pinned) foot visibly drifted along the interpolation
             snap();
         }
-        endTurn();
+        commitTurn();
         snap();
     }
     return frames;
@@ -8950,7 +9104,7 @@ function finishOnlineTurn() {
     pendingKeyframes = []; lastKeyframeT = 0;
     if (onlineMatch && onlineMatch.passStreak) onlineMatch.passStreak[onlineMatch.myColor] = 0;   // I moved -> reset my miss streak
     if (onlineMatch && onlineMatch.movesMade) onlineMatch.movesMade[onlineMatch.myColor]++;
-    endTurn();
+    commitTurn();
     progressCentering();
     const winnerColor = G.over ? (G.winner===0?'blue':'red') : null;
     const finalState = {

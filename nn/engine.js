@@ -10,6 +10,11 @@ const vm = require('vm');
 const SEEDS = [
   'CFG', 'Piece', 'norm', 'radU',
   'pinFoot', 'applySwing', 'clearTurn', 'endTurn', 'takeSnap', 'restoreSnap',
+  // ko/komi. commitTurn is the real-turn wrapper around endTurn (endTurn itself stays pure because
+  // the Master AI's search commits and rolls back candidate turns through it); koLegalizePlan nudges
+  // a chosen move's stopping angle off a position the board has already been at; adjudicate scores
+  // the move cap with komi. Seeded explicitly so the closure can't drop the rules from training.
+  'commitTurn', 'koLegalizePlan', 'koViolation', 'adjudicate', 'outermostRadU',
   'directionToward', 'aiChoosePlan', 'aiSwingDir', 'searchedPlanFor', 'simMoveToLimit',
   'AI_LADDER', 'ladderPlanFor',
   // board geometry, for features.js: the printed lines and where they meet. These already rode in
@@ -113,11 +118,31 @@ function __newGame() {
   red.x  =  CFG.startX; red.rot  = Math.PI;
   G = { pieces: [blue, red], active: 0, pinned: null, pivot: null, handle: null, turnDir: 0,
         crossings: 0, atLimit: false, netRad: 0, ptrAngle: null, over: false, winner: null,
-        snap: null, contact: null, justCrossed: [] };
+        snap: null, contact: null, justCrossed: [],
+        // must mirror reset()'s G in index.html -- this literal is the one piece of engine state
+        // that is duplicated rather than extracted, so new per-game fields have to be added twice
+        koHist: [], plies: 0, adjudicated: false };
   return G;
 }
 // play one full turn from a { pivotIdx, dir, targetRad } plan (the shape every brain returns)
 function __applyPlan(plan) {
+  if (!plan || Math.abs(plan.targetRad) < 1e-9) { clearTurn(); G.active = 1 - G.active; return; }
+  // Ko: the brains search without the rule (which keeps them exactly as fast as before), so the
+  // chosen move's stopping angle is moved off any position the board has already been at.
+  plan = koLegalizePlan(plan);
+  pinFoot(plan.pivotIdx);
+  let guard = 0;
+  while (!G.atLimit && Math.abs(G.netRad) < Math.abs(plan.targetRad) && guard++ < 5000) {
+    const rem = Math.abs(plan.targetRad) - Math.abs(G.netRad);
+    applySwing(plan.dir * Math.min(AI_STEP_RAD, rem));
+  }
+  commitTurn();
+}
+// The same turn played "in its head": no ko legalising, no ko history, no ply counter. Search that
+// walks candidate turns forward and rolls them back (nnai's depth-2/3 lookahead, throwprobe's
+// hanging-move check) MUST use this -- committing through __applyPlan would file positions that
+// never happened into G.koHist and tick the move cap several times per real move.
+function __applyPlanSearch(plan) {
   if (!plan || Math.abs(plan.targetRad) < 1e-9) { clearTurn(); G.active = 1 - G.active; return; }
   pinFoot(plan.pivotIdx);
   let guard = 0;
@@ -129,11 +154,12 @@ function __applyPlan(plan) {
 }
 __exports = {
   CFG, Piece, radU, norm,
-  pinFoot, applySwing, clearTurn, endTurn, takeSnap, restoreSnap,
+  pinFoot, applySwing, clearTurn, endTurn, commitTurn, takeSnap, restoreSnap,
+  koLegalizePlan, koViolation, adjudicate, outermostRadU,
   directionToward, aiChoosePlan, simMoveToLimit, searchedPlanFor,
   AI_LADDER, ladderPlanFor, ladderEval,
   angInSpan, nearLineIds, lineDistOf, lineSideOf, LINE_INTERSECTIONS,
-  newGame: __newGame, applyPlan: __applyPlan,
+  newGame: __newGame, applyPlan: __applyPlan, applyPlanSearch: __applyPlanSearch,
   getG: () => G, setActive: a => { G.active = a; },
 };`, sandbox, { filename: 'tau-engine-extract.js' });
   return sandbox.__exports;

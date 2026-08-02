@@ -94,10 +94,18 @@ function samePose(a, b) {
 
 function playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomStart, opts) {
   // repeatGuard: how many times a side may re-occupy a pose (with no contact since) before the
-  // game is abandoned. 0 disables entirely -- the default, so nothing changes until asked.
+  // game is abandoned. This is now a BACKSTOP, not the mechanism: ko lives in the engine (CFG.koRule)
+  // and makes the loop illegal in the first place. It still earns its keep for the one case the rule
+  // can't cover -- koLegalizePlan scans +-48 degrees of the chosen arc for a legal stopping point and
+  // gives up if the whole arc is banned, at which point the banned pose gets played anyway and the
+  // stall is back. 0 disables.
   const repeatGuard = Math.max(0, (opts && +opts.repeatGuard) || 0);
   const seenPose = [[], []];
   let lastPose = null, lastMover = -1;
+  // One cap, shared: the engine adjudicates at CFG.moveCap (see the komi rule in index.html), and
+  // this loop stops at maxPlies. Two different numbers would mean a game cut short by the loop with
+  // no result at all, so the caller's cap wins and the engine scores it.
+  eng.CFG.moveCap = maxPlies;
   eng.newGame();
   if (seedPose) {
     // Start from a stored mid-game decision point instead of the standard opening (see --seedFrom
@@ -171,8 +179,10 @@ function playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomS
   // `repeated` is a third outcome alongside a real cap and a wedge abandon: the position cycled with
   // no contact to break it. Reported separately so a run can tell "the brains stalled" apart from
   // "the game genuinely ran long", which the plies count alone cannot distinguish.
+  // `adjudicated` is a REAL winner, but one the komi rule scored off the position at the cap rather
+  // than one that pushed the other piece off the board -- worth CFG.komiLoss of a win, not all of it.
   return { rows, winner: G.over ? G.winner : null, plies,
-           capped: plies >= maxPlies, repeated };
+           capped: plies >= maxPlies, repeated, adjudicated: !!G.adjudicated };
 }
 
 function main() {
@@ -216,10 +226,10 @@ function main() {
   // The in-game ply cap. Exposed as an arg mostly so tests can force cap-draws cheaply.
   const maxPlies = +arg('maxPlies', 300);
   // --repeatGuard N: abandon a game once a side has re-occupied the same pose N+1 times with no
-  // contact in between (see the guard above playGame). 0 = off, and off is the default: it changes
-  // which games get collected, so it stays opt-in until a run explicitly asks. 2 is the sensible
-  // live value -- it lets a position recur twice, which real play does, and only cuts on the third.
-  const repeatGuard = +arg('repeatGuard', 0);
+  // contact in between. Now a backstop behind the engine's ko rule rather than the mechanism (see
+  // the guard above playGame) -- on by default at 2, which dry-ran over all 6592 recorded games that
+  // ended in a win without firing once, while still catching the stalls. 0 = off.
+  const repeatGuard = +arg('repeatGuard', 2);
   // --seedFrom F: this fraction of games starts from a STORED mid-game position (drawn from the
   // accumulated data's `p` poses) instead of the standard opening, with the normal brains playing
   // it out to a real result. Point: outcome labels are cleanest near the end of a game and
@@ -316,7 +326,7 @@ function main() {
       '--discount', String(discount), '--temperature', String(temperature),
       '--mix', Object.entries(mix).map(([k, v]) => k + ':' + v).join(','),
       '--openingPlies', String(openingPlies), '--maxPlies', String(maxPlies),
-      '--randomStartFrac', String(randomStartFrac),
+      '--randomStartFrac', String(randomStartFrac), '--repeatGuard', String(repeatGuard),
       ...(seedFile ? ['--seedFrom', String(seedFrom), '--seedPool', seedFile] : ['--seedFrom', '0']),
       '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(','),
       ...(modelPoolPaths.length ? ['--modelPool', modelPoolPaths.join(',')] : []),
@@ -431,7 +441,7 @@ function main() {
     flush() { if (pending) { fs.appendFileSync(out, pending); pending = ''; } },
     end() { this.flush(); },
   };
-  let positions = 0, decided = 0;
+  let positions = 0, decided = 0, adjudged = 0;
   const t0 = Date.now();
   for (let g = 0; g < games; g++) {
     let brainA, brainB, tag;
@@ -484,7 +494,7 @@ function main() {
     // position, so there's no reason to override it with an unconstrained random one.
     const randomStart = !seedPose && Math.random() < randomStartFrac;
     if (randomStart) tag = 'random-start ' + tag;
-    const { rows, winner, plies, capped, repeated } =
+    const { rows, winner, plies, capped, repeated, adjudicated } =
       playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomStart, { repeatGuard });
     // `g` marks which game a position came from. Without it train.js can only hold out random
     // ROWS, and consecutive positions in one game are near-identical -- so the same game lands on
@@ -499,12 +509,19 @@ function main() {
     const src = randomStart ? { src: 'random' } : null;
     if (winner !== null) {
       decided++;
+      // An adjudicated win (the komi rule scoring the position at the move cap) is a real result but
+      // not a whole one -- the call agrees with who would actually have won 74-78% of the time, so it
+      // is labelled at CFG.komiLoss of a win. Marked with adj so it stays separable from a piece
+      // genuinely going off the board, the same way src marks a non-standard opening.
+      const scale = adjudicated ? eng.CFG.komiLoss : 1;
+      const adj = adjudicated ? { adj: 1 } : null;
+      if (adjudicated) adjudged++;
       for (let i = 0; i < rows.length; i++) {
         const pliesToEnd = rows.length - i;
-        const z = (rows[i].mover === winner ? 1 : -1)*Math.pow(discount, pliesToEnd);
+        const z = scale*(rows[i].mover === winner ? 1 : -1)*Math.pow(discount, pliesToEnd);
         ws.write(JSON.stringify({ f: rows[i].f.map(v => +v.toFixed(5)), z: +z.toFixed(4),
                                   p: rows[i].p.map(v => +v.toFixed(4)), m: rows[i].mover,
-                                  g: gameId, ...src,
+                                  g: gameId, ...src, ...adj,
                                   ...(idA ? { mv: rows[i].mover === 0 ? idA : idB } : {}) }) + '\n');
         positions++;
       }
@@ -533,7 +550,9 @@ function main() {
                   `${positions} positions, ${((Date.now() - t0)/1000).toFixed(0)}s`);
   }
   ws.end();
-  console.log(`${TAG}done: ${decided}/${games} decided games, ${positions} positions -> ${out}`);
+  console.log(`${TAG}done: ${decided}/${games} decided games` +
+              (adjudged ? ` (${adjudged} of them adjudicated at the cap)` : '') +
+              `, ${positions} positions -> ${out}`);
 }
 
 // playGame is reused by retromine.js (its "replay forward for real from an arbitrary rewound

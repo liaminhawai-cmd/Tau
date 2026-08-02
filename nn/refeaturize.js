@@ -61,8 +61,15 @@ for (const f of files) {
     if (j.f && j.f.length === N_FEATURES) already++;
     restoreTo(j.p, j.m);
     const nf = features(eng);
+    // carry the row's metadata through: a re-featurise changes f, nothing else. These were being
+    // dropped, which silently cost every downstream filter that reads them -- mv (which brain played
+    // the move, used by the Elo/lineage work), src (non-standard opening) and adj (a result the komi
+    // rule scored at the move cap rather than a piece going off the board).
     outLines.push(JSON.stringify({ f: nf.map(v => +v.toFixed(5)), z: j.z,
-                                   p: j.p, m: j.m, ...(j.g != null ? { g: j.g } : {}) }));
+                                   p: j.p, m: j.m, ...(j.g != null ? { g: j.g } : {}),
+                                   ...(j.src != null ? { src: j.src } : {}),
+                                   ...(j.adj != null ? { adj: j.adj } : {}),
+                                   ...(j.mv != null ? { mv: j.mv } : {}) }));
     migrated++;
   }
   if (dry) {

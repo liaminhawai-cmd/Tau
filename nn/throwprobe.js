@@ -67,7 +67,7 @@ for (let g = 0; g < games; g++) {
       if (plain && netToMove) {
         moves++;
         // A move that wins on the spot is never "hanging" anything -- the game ends first.
-        eng.applyPlan(plain);
+        eng.applyPlanSearch(plain);   // hypothetical, rolled back below
         const wonNow = eng.getG().over;
         const unsafe = wonNow ? false : opponentHasThrow(eng, idx);
         restoreHere();

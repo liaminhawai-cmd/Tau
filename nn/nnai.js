@@ -244,7 +244,7 @@ function nnPlanFor(eng, net, idx, opts) {
     let bestDeep = -Infinity;
     for (let i = 0; i < keep; i++) {
       const c = cands[i];
-      eng.applyPlan(c);
+      eng.applyPlanSearch(c);   // hypothetical: must not file into koHist or tick the move cap
       const g1 = eng.getG();
       let deep;
       if (g1.over) deep = g1.winner === idx ? 1e6 : -1e6;
@@ -255,7 +255,7 @@ function nnPlanFor(eng, net, idx, opts) {
                                                       cutIfAbove: (o.abCut && bestDeep > -Infinity) ? -bestDeep : null });
         if (!oppPlan) deep = net.value(features(eng));     // opponent wedged -- score as-is
         else {
-          eng.applyPlan(oppPlan);
+          eng.applyPlanSearch(oppPlan);
           const g2 = eng.getG();
           deep = g2.over ? (g2.winner === idx ? 1e6 : -1e6) : net.value(features(eng));
         }
@@ -279,7 +279,7 @@ function nnPlanFor(eng, net, idx, opts) {
     const checkN = Math.min(cands.length, o.quiesceCands || o.keepForDepth || 4);
     for (let i = 0; i < checkN; i++) {
       const c = cands[i];
-      eng.applyPlan(c);
+      eng.applyPlanSearch(c);
       const unsafe = opponentHasThrow(eng, idx);
       restore();
       if (!unsafe) {

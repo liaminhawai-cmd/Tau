@@ -208,7 +208,10 @@ function main() {
     const seedA = pool[si], seedB = pool[si + 1];
     const seed = playGame(eng, seedA.fn, seedB.fn, maxPlies, openingPlies, null,
                           Math.random() < randomStartFrac);
-    if (seed.winner === null) continue;   // capped/wedged seed -- nothing to search
+    // capped/wedged seed -- nothing to search. An adjudicated seed counts as capped here: the komi
+    // rule's call agrees with who would really have won about three times in four, which is a fine
+    // training label but far too soft to hang a whole rewind search off ("who lost this, and where").
+    if (seed.winner === null || seed.adjudicated) continue;
 
     const fam = famCount++;
     writeGame(seed.rows, seed.winner, fam, seedA.id, seedB.id);
@@ -259,7 +262,8 @@ function main() {
         const result = playGame(eng, brainA, climber === 0 ? def.fn : cand.fn,
                                 maxPlies, 0, seedPose, false);
         replays++; probes++;
-        if (result.winner === null) continue;   // capped/wedged -- tells us nothing either way
+        // capped/wedged/adjudicated -- tells us nothing either way (see the seed check above)
+        if (result.winner === null || result.adjudicated) continue;
         writeGame(result.rows, result.winner, fam, idBlue, idRed);
         if (result.winner === climber) found = i;
         else { lo = Math.max(lo, i); fails++; }
@@ -288,7 +292,7 @@ function main() {
           const result = playGame(eng, brainA, climber === 0 ? def.fn : ultimateGuns.fn,
                                   maxPlies, 0, seedPose, false);
           replays++;
-          if (result.winner !== null) {
+          if (result.winner !== null && !result.adjudicated) {
             writeGame(result.rows, result.winner, fam, idBlue, idRed);
             if (result.winner === climber) {
               escapedViaGuns = true;
