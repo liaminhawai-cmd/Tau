@@ -2926,11 +2926,15 @@ function koSameBoard(a, b){ return koSamePiece(a,b,0) && koSamePiece(a,b,3); }
 // this; clearTurn() nulls it before the next ply. The displacement is right there in the pieces.)
 // Contact is judged by the SAME standard the rule uses for "the board has been here before": the
 // opponent made contact if its pose changed, where "changed" means what it means everywhere else in
-// this rule. One number, one meaning -- and it closes a hole a real game walked straight through.
-// That game had blue graze red by 0.1u, which a separate hair-trigger threshold counted as a fight,
-// wiped the whole history, and licensed a return to the exact opening position one turn later. A
-// displacement the rule itself calls "the same position" cannot be the fight that excuses a repeat,
-// or two players who want to stall need only brush each other every few turns.
+// this rule. One number, one meaning.
+//
+// This replaced a separate koPushEps of 0.01u, on principle rather than on evidence: at that
+// threshold a 0.02u nudge counts as the fight that wipes the whole history, so two players who
+// wanted to stall need only brush each other every few turns. No game on record actually does that
+// -- self-play pushes are bimodal and huge (median 5.9u; under 4% of contacts land between 0.01u and
+// 1u), and the dry run over all 6592 recorded wins is identical at either threshold. It is the
+// weaker of the two changes made here, and it is kept because one tolerance is easier to reason
+// about than two, not because anything was caught by it.
 function koContactThisTurn(){
     if (!G.snap) return false;
     const o = 1-G.active, p = G.pieces[o], s = G.snap[o];
@@ -2948,9 +2952,14 @@ function koNote(){
 }
 // Seed the history with where the board stands NOW, and it has to be called wherever a game's
 // position is established outside a turn: the opening, and any jump to a stored position.
+//
 // Without it the opening is the one position on the board that is not "a position the board has
-// been in", so the pieces may legally shuffle out and back to the exact start -- which is precisely
-// what a real game caught doing, oscillating back to the opening position eleven times.
+// been in", so the pieces may legally shuffle out and back to the exact start. A real game played
+// on the site did exactly that: eight turns of the two pieces stepping out and back, never once
+// touching, and turn 4 put the board 0.06u and 0.2 degrees from the opening -- inside the rule's own
+// tolerance, and missed only because the opening was not in the history to compare against. Nothing
+// else in that shuffle repeats closely enough to catch (the returns are hand-made and land 0.27u
+// out, just past koEps), so this seeding is the whole of what stops it.
 function koReset(){ if (G && G.koHist) { G.koHist.length = 0; if (CFG.koRule) G.koHist.push(koBoardPose()); } }
 // The move cap is scored, not drawn: after CFG.moveCap plies both sides have had exactly the same
 // number of turns, so compare how close each is to falling off and give the side on move its komi.
