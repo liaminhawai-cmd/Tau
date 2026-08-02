@@ -313,9 +313,18 @@ async function runCapturedSoftAsync(script, args) {
 }
 // arena.js's closing line reads "nn(best.json,D2) vs L3: 3-0  (100% of decided, ...)". Take the LAST
 // such pair -- the earlier ones are the live per-game running tally, which has the same "N-M" shape.
+// Games the komi rule scored at the move cap ride in their own "(komi A-B, ...)" field rather than
+// in the W-L triple, and are worth KOMI_LOSS of a win each -- so w and l come back FRACTIONAL. Every
+// caller here compares or ratios them, which is unaffected; nothing counts them as integers.
+const KOMI_LOSS = 0.3;                    // must track CFG.komiLoss in index.html
+const KOMI_W = 0.5 + KOMI_LOSS/2;         // a komi win on the 0..1 scale a win rate uses
 const arenaScore = out => {
   const m = [...out.matchAll(/:\s*(\d+)-(\d+)(?:-\d+)?\s+\(/g)];
-  return m.length ? { w: +m[m.length - 1][1], l: +m[m.length - 1][2] } : null;
+  if (!m.length) return null;
+  const k = [...out.matchAll(/\(komi (\d+)-(\d+)/g)];
+  const kA = k.length ? +k[k.length - 1][1] : 0, kB = k.length ? +k[k.length - 1][2] : 0;
+  return { w: +m[m.length - 1][1] + KOMI_W*kA + (1 - KOMI_W)*kB,
+           l: +m[m.length - 1][2] + KOMI_W*kB + (1 - KOMI_W)*kA };
 };
 
 // The hidden-layer spec of whatever is currently best.json, as train.js's --hidden wants it

@@ -94,6 +94,11 @@ const randomStartFrac = +arg('randomStartFrac', 0);
 // Target wall-clock hours. The field is trimmed to fit rather than the accuracy dialled down --
 // see the note at the trimming site. 0 disables (play the whole field).
 const budgetHours = +arg('budgetHours', 0);
+// What a game the komi rule scored at the move cap is worth, as a fraction of a win. Must track
+// CFG.komiLoss in index.html. Recorded as KOMI_LOSS of a win plus the remainder as a draw, so
+// fitBT's "wins + draws/2" lands on 0.5 + KOMI_LOSS/2 for the winner -- and w/l/d become
+// fractional, which every consumer here sums or ratios rather than counting.
+const KOMI_LOSS = 0.3;
 // Print the field, pair count and time estimate, then exit without playing anything -- for
 // choosing --games/--spread/--budgetHours before committing hours to a run.
 const dryRun = process.argv.includes('--dryrun');
@@ -378,12 +383,20 @@ function playPair(a, b) {
       }
       consecutiveFailures = 0;
       const last = m[m.length - 1];
-      const w = +last[1], l = +last[2], d = +(last[3] || 0);
+      // Games the komi rule scored at the move cap come back in their own "(komi A-B, ...)" field,
+      // not in the W-L-D triple. They are worth KOMI_LOSS of a win: the winner takes
+      // 0.5 + KOMI_LOSS/2 of the point and the loser the rest, which is what fitBT's "wins + draws/2"
+      // then works out to. Rating a cap-scored game as a whole win would let a 74%-accurate call move
+      // a brain as far as pushing a piece off the board does.
+      const kk = [...String(stdout || '').matchAll(/\(komi (\d+)-(\d+)/g)];
+      const kA = kk.length ? +kk[kk.length - 1][1] : 0, kB = kk.length ? +kk[kk.length - 1][2] : 0;
+      const w = +last[1] + KOMI_LOSS*kA, l = +last[2] + KOMI_LOSS*kB;
+      const d = +(last[3] || 0) + (1 - KOMI_LOSS)*(kA + kB);
       record(a, b, w, l, d);
       atomicWrite(outPath, JSON.stringify(store, null, 1));   // checkpoint every pair
       // No fixed pair list to measure progress against anymore, so report what actually matters:
       // how well covered the least-measured brain is, and how much of the time budget is left.
-      const gs = gamesOf(), least = Math.min(...players.map(p => gs[p.id] || 0));
+      const gs = gamesOf(), least = Math.round(Math.min(...players.map(p => gs[p.id] || 0)));
       const elapsedMin = (Date.now() - startedAt)/60000;
       const leftNote = budgetHours > 0
         ? `~${fmtDur(Math.max(0, budgetHours*3600 - elapsedMin*60))} left`
@@ -483,8 +496,11 @@ function bootstrapRanks(B) {
     for (const [key, r] of entries) {
       const n = r.w + r.l + (r.d || 0);
       if (!n) continue;
+      // n can be fractional now (a komi win is recorded as 0.3 of a win and 0.7 of a draw), so the
+      // resample draws a whole number of games while keeping the fractional weights as the odds.
+      const N = Math.max(1, Math.round(n));
       let w = 0, l = 0, d = 0;
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < N; i++) {
         const u = Math.random()*n;
         if (u < r.w) w++; else if (u < r.w + r.l) l++; else d++;
       }
@@ -568,11 +584,13 @@ function report() {
   const rows = players.map(p => {
     const e = elo[p.id];
     const rk = p.kind === 'nn' ? rankOf(e, ladderElos) : { rank: p.level, edge: null };
-    return { p, elo: e, rank: rk.rank, edge: rk.edge, games: played[p.id] || 0 };
+    // rounded for display only: a komi win is recorded as 0.3 of a win plus 0.7 of a draw, so these
+    // totals are fractional by construction even though each one still counts as exactly one game
+    return { p, elo: e, rank: rk.rank, edge: rk.edge, games: Math.round(played[p.id] || 0) };
   }).sort((a, b) => a.elo - b.elo);
 
   console.log(`\n=== fitted ranking (${Object.keys(store.results).length} pairs, ` +
-              `${Object.values(store.results).reduce((s, r) => s + r.w + r.l + (r.d || 0), 0)} games) ===`);
+              `${Math.round(Object.values(store.results).reduce((s, r) => s + r.w + r.l + (r.d || 0), 0))} games) ===`);
   // A brain with no games has no measured rating -- it sits wherever the regularising prior put it,
   // which is a real number that looks exactly like a measurement and is not one. This matters most
   // for --refit part-way through a run, when most of the field legitimately has nothing yet: shown

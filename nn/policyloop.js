@@ -156,9 +156,19 @@ function runArena(args) {
 }
 // arena.js's closing line: "nn(a) vs nn(b): 3-1  (75% of decided, ...)". Take the LAST such pair --
 // the earlier ones are the live running tally, which has the same "N-M" shape.
+// Komi wins (the move cap scored by the komi rule) arrive in their own "(komi A-B, ...)" field and
+// count as KOMI_LOSS of a win each, so w/l come back fractional -- fine for every ratio and
+// comparison here, and it stops a cap-scored game swinging a shape fight like a real one.
+const KOMI_LOSS = 0.3;                    // must track CFG.komiLoss in index.html
+const KOMI_W = 0.5 + KOMI_LOSS/2;
 const arenaScore = out => {
   const m = [...out.matchAll(/:\s*(\d+)-(\d+)(?:-(\d+))?\s+\(/g)];
-  return m.length ? { w: +m[m.length - 1][1], l: +m[m.length - 1][2], d: +(m[m.length - 1][3] || 0) } : null;
+  if (!m.length) return null;
+  const k = [...out.matchAll(/\(komi (\d+)-(\d+)/g)];
+  const kA = k.length ? +k[k.length - 1][1] : 0, kB = k.length ? +k[k.length - 1][2] : 0;
+  return { w: +m[m.length - 1][1] + KOMI_W*kA + (1 - KOMI_W)*kB,
+           l: +m[m.length - 1][2] + KOMI_W*kB + (1 - KOMI_W)*kA,
+           d: +(m[m.length - 1][3] || 0) };
 };
 
 // --- policy shape hill-climb -------------------------------------------------------------------

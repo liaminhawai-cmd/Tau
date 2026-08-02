@@ -132,6 +132,11 @@ function main() {
   // rewritten per game -- a run that gets killed part-way must keep the games it already played.
   const saveData = arg('saveData', null);
   const discount = +arg('discount', 0.995);
+  // The in-game ply cap, kept in step with the engine's own so a game that runs out of plies gets
+  // SCORED by the komi rule rather than silently abandoned by this loop. Exposed for the same reason
+  // selfplay.js exposes it: forcing a cap cheaply is the only way to test the scoring path.
+  const maxPlies = +arg('maxPlies', 300);
+  eng.CFG.moveCap = maxPlies;   // one cap: the engine scores it, this loop just stops looping
   let dataStream = null, savedRows = 0;
   if (saveData) {
     fs.mkdirSync(path.dirname(saveData), { recursive: true });
@@ -171,7 +176,20 @@ function main() {
   // (see selfplay.js for why the id and not the rating is what gets stored). elorank.js passes its
   // own ids; a hand-run arena falls back to the brain names, which are at least descriptive.
   const idA = arg('idA', A.name), idB = arg('idB', B.name);
-  let aWins = 0, bWins = 0, draws = 0, pliesSum = 0;
+  // Komi wins are tallied APART from outright ones. A game the komi rule scored at the move cap is
+  // a real result but worth CFG.komiLoss of a win, not all of it -- the call agrees with who would
+  // actually have won 74-78% of the time -- so it must not sit in the same bucket as pushing a piece
+  // off the board. Kept out of the W-L-D triple entirely rather than folded into draws: the three
+  // callers that scrape that triple (run.js, elorank.js, policyloop.js) each read the komi split
+  // separately and weight it, and any reader that does not simply ignores these games, which is the
+  // safest way to be wrong about 0.4% of games.
+  let aWins = 0, bWins = 0, draws = 0, aKomi = 0, bKomi = 0, pliesSum = 0;
+  // A komi win is worth komiLoss of a win, which on the 0..1 scale a rating fit uses means the
+  // winner takes 0.5 + komiLoss/2 and the loser the rest -- komiLoss of the way from a draw to a
+  // win, exactly the same mapping the training label uses (z = +-komiLoss on a -1..1 scale).
+  const kw = 0.5 + eng.CFG.komiLoss/2;
+  const scores = (aw, bw, ak, bk) => ({ a: aw + kw*ak + (1 - kw)*bk,
+                                        b: bw + kw*bk + (1 - kw)*ak });
   const t0 = Date.now();
   for (let g = 0; g < games; g++) {
     const aIsBlue = g % 2 === 0;
@@ -186,7 +204,7 @@ function main() {
     else playRandomOpening(eng, openingPlies);
     let plies = 0, nulls = 0;
     const rows = [];
-    while (!eng.getG().over && plies < 300) {
+    while (!eng.getG().over && plies < maxPlies) {
       const idx = eng.getG().active;
       const brain = (idx === 0) === aIsBlue ? A : B;
       // Captured BEFORE the move, so the row describes the position the mover actually decided
@@ -207,42 +225,55 @@ function main() {
     }
     const G = eng.getG();
     pliesSum += plies;
+    const aWon = (G.winner === 0) === aIsBlue;
     if (!G.over) draws++;
-    else if ((G.winner === 0) === aIsBlue) aWins++;
+    else if (G.winner === null) draws++;              // adjudicated dead level -- a true draw
+    else if (G.adjudicated) { if (aWon) aKomi++; else bKomi++; }
+    else if (aWon) aWins++;
     else bWins++;
     // Decided games only. A ply-capped shuffle has no outcome to label rows with, and a wedged
     // abandon describes a degenerate stuck state -- selfplay.js excludes both and so does this.
-    if (dataStream && G.over) {
+    if (dataStream && G.over && G.winner !== null) {
       const gameId = RUN_TAG + '-' + g;
+      // Same labelling as selfplay.js: a komi win is scaled to CFG.komiLoss of a win and marked
+      // with adj, so it stays separable from a piece genuinely going off the board.
+      const scale = G.adjudicated ? eng.CFG.komiLoss : 1;
+      const adj = G.adjudicated ? { adj: 1 } : null;
       for (let i = 0; i < rows.length; i++) {
-        const z = (rows[i].m === G.winner ? 1 : -1)*Math.pow(discount, rows.length - i);
+        const z = scale*(rows[i].m === G.winner ? 1 : -1)*Math.pow(discount, rows.length - i);
         // `m` is the mover's SIDE; aIsBlue says which brain held side 0 this game.
         const mv = (rows[i].m === 0) === aIsBlue ? idA : idB;
         dataStream.write(JSON.stringify({ f: rows[i].f.map(v => +v.toFixed(5)), z: +z.toFixed(4),
                                           p: rows[i].p.map(v => +v.toFixed(4)), m: rows[i].m,
-                                          g: gameId, mv,
+                                          g: gameId, mv, ...adj,
                                           ...(randomStart ? { src: 'random' } : {}) }) + '\n');
         savedRows++;
       }
     }
     process.stdout.write(`\rgame ${g + 1}/${games}: ${A.name} ${aWins} — ${bWins} ${B.name}` +
+                         (aKomi + bKomi ? ` (komi ${aKomi}-${bKomi})` : '') +
                          (draws ? ` (${draws} draws)` : '') + '   ');
     // 2 sigma on the decided games, so a partial run can be read honestly the moment it is read.
     // Without it the standing score invites the exact mistake a 6-game 4-2 already caused once.
-    const dec = aWins + bWins;
+    const s = scores(aWins, bWins, aKomi, bKomi), dec = s.a + s.b;
     const band = dec ? 100*Math.sqrt(0.25/dec)*2 : 0;
     writeLog(`IN PROGRESS -- game ${g + 1} of ${games} (${((Date.now() - t0)/1000).toFixed(0)}s)\n` +
-             `${A.name} ${aWins} - ${bWins} ${B.name}${draws ? ` (${draws} draws)` : ''}\n` +
-             (dec ? `${(100*aWins/dec).toFixed(0)}% of ${dec} decided, 2-sigma +/- ${band.toFixed(0)} points\n` : ''));
+             `${A.name} ${aWins} - ${bWins} ${B.name}` +
+             (aKomi + bKomi ? ` (komi ${aKomi}-${bKomi})` : '') + `${draws ? ` (${draws} draws)` : ''}\n` +
+             (dec ? `${(100*s.a/dec).toFixed(0)}% of ${dec.toFixed(1)} decided, 2-sigma +/- ${band.toFixed(0)} points\n` : ''));
   }
   const secs = (Date.now() - t0)/1000;
-  const dec = Math.max(1, aWins + bWins);
+  const s = scores(aWins, bWins, aKomi, bKomi), dec = Math.max(1, s.a + s.b);
+  // The W-L(-D) triple stays outright games only, and the komi split rides in its own field: the
+  // three scrapers of this line each fold it in at komiLoss, and anything else ignores it.
   const summary = `${A.name} vs ${B.name}: ${aWins}-${bWins}` + (draws ? `-${draws}` : '') +
-                  `  (${(100*aWins/dec).toFixed(0)}% of decided, ` +
+                  `  (${aKomi + bKomi ? `komi ${aKomi}-${bKomi}, ` : ''}` +
+                  `${(100*s.a/dec).toFixed(0)}% of decided, ` +
                   `avg ${(pliesSum/games).toFixed(0)} plies, ${secs.toFixed(0)}s)`;
   console.log('\n' + summary);
   writeLog(`FINISHED ${new Date().toISOString()}\n${summary}\n` +
-           `2-sigma +/- ${(100*Math.sqrt(0.25/dec)*2).toFixed(0)} points on ${aWins + bWins} decided games\n` +
+           `2-sigma +/- ${(100*Math.sqrt(0.25/dec)*2).toFixed(0)} points on ${dec.toFixed(1)} decided games` +
+           (aKomi + bKomi ? ` (${aKomi + bKomi} of them scored at the cap, worth ${eng.CFG.komiLoss} each)` : '') + `\n` +
            (dataStream ? `${savedRows} training rows -> ${saveData}\n` : ''));
   if (logPath) console.log(`saved to ${logPath}`);
   if (dataStream) { dataStream.end(); console.log(`${savedRows} training rows -> ${saveData}`); }
