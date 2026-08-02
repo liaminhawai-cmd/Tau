@@ -51,6 +51,36 @@ function note(line) {
   try { fs.writeFileSync(resultPath, resultLines.join('\n') + '\n'); } catch (e) {}
 }
 const statusPath = path.join(dir, 'data', '.policy-fight-status.json');
+// The fight's games are real games with real outcomes at a serious think-time, so throwing them
+// away after reading the score wastes the most expensive compute in this whole script -- exactly
+// the reasoning run.js's ladder sweep already applies to its own arena games. arena.js writes
+// selfplay.js's exact row schema, so these drop straight into the training corpus.
+// Machine name in the filename because two machines could otherwise collide on it in git.
+const machine = (process.env.COMPUTERNAME || require('os').hostname() || 'local')
+  .toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 20) || 'local';
+const dataOut = path.join(dir, 'data',
+  `policy-arena-${machine}-${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`);
+// Best-effort, data ONLY -- never the trained policy model, which stays a local candidate until a
+// person promotes it. Degrades to a printed instruction if git isn't reachable rather than failing.
+function pushData() {
+  if (!fs.existsSync(dataOut)) return;
+  const rel = path.relative(path.join(dir, '..'), dataOut).replace(/\\/g, '/');
+  const q = x => '"' + String(x).replace(/"/g, '\\"') + '"';
+  const git = a => execFileSync('git', a.map(q), { cwd: path.join(dir, '..'), shell: true,
+                                                  encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  try {
+    git(['add', '-f', rel]);
+    git(['commit', '-m', `nn: policy-fight arena games from ${machine}`]);
+    for (const wait of [0, 2000, 4000, 8000]) {
+      if (wait) execFileSync('node', ['-e', `setTimeout(()=>{},${wait})`]);
+      try { git(['pull', '--no-edit', '--no-rebase']); git(['push']); note(`arena games pushed: ${rel}`); return; }
+      catch (e) {}
+    }
+    note(`arena games committed locally but push failed -- they will ride along next push: ${rel}`);
+  } catch (e) {
+    note(`arena games saved to ${rel} but could not be committed (${String(e.message).split('\n')[0]}) -- push by hand`);
+  }
+}
 
 function run(script, args) {
   console.log(`\n$ node nn/${script} ${args.join(' ')}`);
@@ -97,7 +127,7 @@ let aWins = 0, bWins = 0, draws = 0, batches = 0;
 do {
   const out = runCaptured('arena.js', ['--a', 'nn:0:' + model, '--b', 'nn:0:' + model,
     '--policyA', outPolicy, '--timeMs', timeMs, '--games', String(gamesPerBatch),
-    '--openingPlies', openingPlies]);
+    '--openingPlies', openingPlies, '--saveData', dataOut]);
   const m = out.match(/:\s*(\d+)-(\d+)(?:-(\d+))?\s+\(/);
   if (m) { aWins += +m[1]; bWins += +m[2]; draws += +(m[3] || 0); }
   batches++;
@@ -135,5 +165,10 @@ log(`FINAL after ${batches} batch(es), ${totalH.toFixed(2)}h: ` +
 console.log(`\n${verdict}\n`);
 note(`FINAL: policy ${aWins} - ${bWins} plain` + (draws ? ` (${draws} draws)` : '') + ` over ${batches} batch(es), ${totalH.toFixed(2)}h`);
 note(`VERDICT: ${verdict}`);
+const savedRows = fs.existsSync(dataOut)
+  ? fs.readFileSync(dataOut, 'utf8').split('\n').filter(Boolean).length : 0;
+note(`${savedRows} training rows saved from the fight's own games`);
+log(`the fight's ${savedRows} training rows are real games at ${timeMs}ms/move -- pushing them`);
+pushData();
 console.log(`Candidate saved at: ${outPolicy}`);
 console.log(`Trained on ${targetRows} targets mined from whatever self-play data existed when this started.`);
