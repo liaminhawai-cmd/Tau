@@ -217,6 +217,16 @@ const mutateShape = arg('mutateShape', '1') !== '0';
 // Retrograde mining on its own clock, using the pool as its strength axis (see retromine.js).
 const retroEveryMin = Math.max(0, +arg('retroEveryMin', 120));
 const retroSeeds = +arg('retroSeeds', 4);
+// Replay cap per seed. The ratchet terminates WITHOUT a budget -- floors only rise (capped by the
+// top of the axis, the "11 vs 11" guard), rewind only grows (capped by the start of the game), and
+// wedged probes count against probesPerPos -- so this is not a correctness knob, just a wall-clock
+// guard against a pathological seed hogging the retro slot for a day. The old value of 40 was the
+// real reason no seed ever found an escape: at the observed ~6-13 games per rewind step, 40 replays
+// died of starvation 3-7 plies from the end, entirely inside the zone where the game is already
+// decided and NOTHING escapes -- so every seed returned "dead everywhere", which was a fact about
+// the budget, not the positions. 300 reaches ~25-50 plies: a typical seed now mines to its natural
+// end, and the cap only bites on 90-ply blowouts.
+const retroReplays = Math.max(1, +arg('retroReplays', 300));
 
 // Atomic save: write/copy to a temp file beside the target, then rename over it. A rename either
 // fully lands or doesn't happen at all, where a direct writeFileSync/copyFileSync can be caught
@@ -1277,7 +1287,7 @@ async function runRetroCycle() {
   writeStatus(`retrograde mining (started ${new Date().toISOString()})`);
   await Promise.all(outs.map(o => runSoftAsync('retromine.js',
     ['--summary', poolSummary, '--seeds', String(retroSeeds),
-     '--maxReplaysPerSeed', '40', '--out', o])));
+     '--maxReplaysPerSeed', String(retroReplays), '--out', o])));
   const made = outs.filter(o => fs.existsSync(o)).map(o => path.relative(repoRoot, o).replace(/\\/g, '/'));
   const rows = made.reduce((n, f) => {
     try { return n + fs.readFileSync(path.join(repoRoot, f), 'utf8').split('\n').filter(Boolean).length; }
