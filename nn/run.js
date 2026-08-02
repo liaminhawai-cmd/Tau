@@ -446,6 +446,36 @@ function mutateHidden(spec) {
   return null;
 }
 
+// --- variant lineage registry: an open, evolving population ------------------------------------
+// Started as four fixed names (wide/ultra/deep/l15_value), each hand-pinned to an architecture.
+// Now the population is open: a lineage whose champion clears the top of the pool can spawn a
+// mutant child (same single-edit mutateHidden the shape-fight uses), and a lineage that falls out
+// of the top can stop getting trained. Nothing on disk is ever deleted -- retiring a lineage only
+// drops its rotation slot; its checkpoints stay put as a reference point, the same way a retired
+// ladder rung stays in the pool as a yardstick instead of vanishing.
+const registryFile = path.join(dir, 'models', '.lineage-registry.json');
+const maxActiveLineages = Math.max(1, +arg('maxActiveLineages', 8));
+const minActiveLineages = Math.max(1, Math.min(+arg('minActiveLineages', 4), maxActiveLineages));
+const cullFloorPct = Math.max(0.01, Math.min(1, +arg('cullFloorPct', 0.10)));   // bottom slice retires
+const cullMinTurns = Math.max(1, +arg('cullMinTurns', 3));                      // grace period for new mutants
+
+function loadRegistry() {
+  try { return JSON.parse(fs.readFileSync(registryFile, 'utf8')); } catch (e) { /* bootstrap below */ }
+  const lineages = {};
+  for (const n of ['wide', 'ultra', 'deep', 'l15_value']) {
+    const p = path.join(dir, 'models', n + '.json');
+    const shape = hiddenOf(p);
+    if (!shape) continue;
+    lineages[n] = { shape, parent: null, status: 'active', born: new Date().toISOString(), turns: 0 };
+  }
+  return { lineages };
+}
+function saveRegistry(reg) { fs.writeFileSync(registryFile, JSON.stringify(reg, null, 1)); }
+function champOf(name) {
+  try { return JSON.parse(fs.readFileSync(path.join(dir, 'models', `.variant-champ-${name}.json`), 'utf8')); }
+  catch (e) { return null; }
+}
+
 // A small status file, pushed to git at each major transition, so progress can be checked by
 // reading the repo (GitHub's own UI, or `git fetch` anywhere) instead of reading this console --
 // this machine is the only thing that can see the console, but anyone with the repo can see git.
@@ -813,39 +843,66 @@ async function runPoolCycle() {
     }
   }
 
-  // one variant lineage gets a light touch of training, rotating through whichever exist
-  const variants = ['wide', 'ultra', 'deep', 'l15_value']
-    .filter(n => fs.existsSync(path.join(dir, 'models', n + '.json')));
-  if (variantEpochs > 0 && variants.length) {
-    const name = variants[num % variants.length];
+  // one variant lineage gets a light touch of training, rotating through the registry's OPEN
+  // population -- the original four named architectures, plus whatever mutant children the
+  // cull/reproduce pass at the end of this cycle has spawned from successful ones. A retired
+  // lineage keeps its files but drops out of this rotation entirely.
+  const registry = loadRegistry();
+  const activeNames = Object.entries(registry.lineages)
+    .filter(([, v]) => v.status === 'active').map(([n]) => n).sort();
+  let variantOutV = null, variantName = null;
+  if (variantEpochs > 0 && activeNames.length) {
+    const name = activeNames[num % activeNames.length];
+    variantName = name;
+    const info = registry.lineages[name];
     const lineage = fs.readdirSync(path.join(dir, 'models'))
       .filter(f => f.startsWith(name + '-') && /-\d+\.json$/.test(f)).sort();
     // A lineage used to resume from its own last link FOREVER -- wide-094 from wide-092 from
     // wide-090, with no reset ever. That is exactly the unbounded resume-training this file's own
     // header documents as the iteration-63/80 failure: it adds strength over a handful of
     // iterations and degrades over dozens. best.json is protected from it (the round robin and the
-    // pool re-derive it from scratch); these lineages were not. Suggestive rather than proof, but
-    // ultra was the top-rated brain in the pool at ~500 Elo and has since dropped out of the rated
-    // list entirely.
-    // So every variantFreshEvery-th time a given lineage comes up, it is retrained FROM SCRATCH at
-    // its own architecture instead of resumed. The shape -- which is the whole reason these
-    // lineages exist -- is preserved; only the accumulated resume-training is discarded. The pool
-    // then judges fresh against resumed on merit, as it does for everything else.
-    const turn = Math.floor(num/variants.length);       // how many times THIS lineage has come up
-    const fresh = variantFreshEvery > 0 && turn > 0 && turn % variantFreshEvery === 0;
-    const base = path.join(dir, 'models', name + '.json');
-    const from = path.join(dir, 'models', lineage.length ? lineage[lineage.length - 1] : name + '.json');
+    // pool re-derive it from scratch); these lineages were not.
+    // So every variantFreshEvery-th turn (tracked per-lineage now, not derived from the cycle number,
+    // since the population's size changes as it evolves) it is retrained FROM SCRATCH at its own
+    // architecture instead of resumed -- and a brand-new mutant with no checkpoint yet always starts
+    // this way, since there is nothing to resume from.
+    const canResume = lineage.length > 0;
+    const fresh = !canResume || (variantFreshEvery > 0 && info.turns > 0 && info.turns % variantFreshEvery === 0);
+    // Resume from the lineage's recorded CHAMPION, not just whichever link finished training most
+    // recently -- "most recent" and "best" were silently assumed to be the same file, so a resume
+    // step that made things worse (ultra-094 below ultra-093) kept compounding the damage forward
+    // forever: resuming from a degraded checkpoint doesn't recover, it just keeps building on the
+    // same bad basin. elo-summary.json can't answer "who's currently best" on its own -- a numbered
+    // checkpoint like ultra-093.json is only ever in ONE cycle's --focus, so by the time this lineage
+    // comes up again its rating has already fallen out of every later summary. So the champion is
+    // tracked separately in a small marker file, updated below once THIS cycle's own placement games
+    // come back -- the exact "running maximum over rated challengers" pattern that already protects
+    // best.json, applied to a lineage instead of the whole pool.
+    let from = canResume ? lineage[lineage.length - 1] : null;
+    if (from) from = path.join(dir, 'models', from);
+    try {
+      const champ = champOf(name);
+      if (champ && champ.model && fs.existsSync(champ.model)) {
+        if (champ.model !== from) log(`pool cycle ${num} — variant lineage: resuming from champion ` +
+            `${path.basename(champ.model)} (${Math.round(champ.elo)} Elo)` +
+            (from ? `, not newest ${path.basename(from)}` : ''));
+        from = champ.model;
+      }
+    } catch (e) { /* no champion recorded yet -- keep the newest-file fallback */ }
     const outV = path.join(dir, 'models', `${name}-${String(num).padStart(3, '0')}.json`);
-    const shape = hiddenOf(fresh ? base : from);
-    if (fresh && shape) {
-      log(`pool cycle ${num} — variant lineage: ${name} RESET, training from scratch at ${shape} ` +
-          `(${scratchEpochs} epochs) instead of resuming -- ${turn} resumes deep`);
-      await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--hidden', shape, '--out', outV]);
+    variantOutV = outV;
+    if (fresh) {
+      log(`pool cycle ${num} — variant lineage: ${name} ${canResume ? 'RESET,' : 'new mutant,'} ` +
+          `training from scratch at ${info.shape} (${scratchEpochs} epochs)` +
+          (canResume ? ` instead of resuming -- ${info.turns} resumes deep` : ''));
+      await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--hidden', info.shape, '--out', outV]);
     } else {
       log(`pool cycle ${num} — variant lineage: ${path.basename(from)} + ${variantEpochs} epochs -> ${path.basename(outV)}`);
       await runSoftAsync('train.js', ['--epochs', String(variantEpochs), '--resume', from, '--out', outV]);
     }
     if (fs.existsSync(outV)) focus.push(outV);
+    info.turns++;
+    saveRegistry(registry);
   }
 
   const wide = poolWideEvery > 0 && num % poolWideEvery === 0;
@@ -876,6 +933,29 @@ async function runPoolCycle() {
       const k = path.basename(r.model, '.json');
       if (!byModel[k] || r.elo > byModel[k].elo) byModel[k] = r;
     }
+    // The variant lineage's champion marker, updated with THIS cycle's own placement results (if a
+    // lineage step ran this cycle and its checkpoint got enough games to be in byModel already).
+    // Same clear-margin bar as the promotion gate just below, for the same reason: a coinflip-close
+    // "improvement" would make the champion pointer random-walk on noise instead of tracking real
+    // progress. First-ever reading for a lineage seeds unconditionally -- there's nothing to compare
+    // against yet.
+    if (variantOutV && byModel[path.basename(variantOutV, '.json')]) {
+      const cand = byModel[path.basename(variantOutV, '.json')];
+      const livePath = path.join(dir, 'models', path.basename(cand.model));
+      const champFile = path.join(dir, 'models', `.variant-champ-${variantName}.json`);
+      let prev = null;
+      try { prev = JSON.parse(fs.readFileSync(champFile, 'utf8')); } catch (e) {}
+      if (!prev || !prev.model || !fs.existsSync(prev.model) || cand.elo - prev.elo >= 30) {
+        fs.writeFileSync(champFile, JSON.stringify({
+          model: fs.existsSync(livePath) ? livePath : cand.model, elo: cand.elo, games: cand.games,
+          at: new Date().toISOString(),
+        }, null, 1));
+        log(`pool cycle ${num} — variant lineage: ${variantName} champion is now ` +
+            `${path.basename(cand.model)} (${Math.round(cand.elo)} Elo` +
+            (prev && prev.elo != null ? `, +${Math.round(cand.elo - prev.elo)} over the previous champion)` : ')'));
+      }
+    }
+
     const ranked = Object.values(byModel).sort((a, b) => b.elo - a.elo);
     const top = ranked[0];
     const incumbentName = path.basename(ckpt, '.json');
@@ -926,6 +1006,88 @@ async function runPoolCycle() {
         log(`pool cycle ${num} — shape fight unresolved (` +
             `${ctl ? '' : 'control unrated'}${!ctl && !mut ? ', ' : ''}${mut ? '' : 'mutant unrated'}` +
             `) — no verdict, keeping ${mutInfo.control}`);
+      }
+    }
+
+    // Evolve the lineage population: cull what is losing, breed from what is winning. Nothing on
+    // disk is ever deleted -- retiring only drops a lineage's training slot, and its checkpoints stay
+    // as a reference point, the same way a retired ladder rung stays in the pool as a yardstick.
+    //
+    // Both tests are made against the OTHER LINEAGES, not against the whole rated pool, and that is
+    // the load-bearing decision here. The pool is dominated by ckpt/scratch/mut, which are trained at
+    // --scratchEpochs (30) on the full corpus while a lineage gets --variantEpochs (8); ranking a
+    // lineage against them measures the training budget it was denied, not the architecture it is
+    // there to test. Measured on the real machine: the rated pool held FOUR entries (ckpt-098 283,
+    // mut-098 162, scratch-098 160, deep-098 68), so a "top 10% of the pool" test resolved to "be the
+    // single best brain on the machine" -- every lineage would have been retired, and since nothing
+    // could ever clear the bar, nothing would ever have bred either. All cull, no mutation, which is
+    // the exact opposite of the point. Against its peers the same 10% means "bottom of the pack goes",
+    // which is what it was meant to mean all along.
+    //
+    // The floor and the cap are what keep it a population rather than a collapse: never fewer than
+    // minActiveLineages alive (a monoculture cannot explore), never more than maxActiveLineages (each
+    // one costs a training slot in the rotation, so an unbounded population starves every member).
+    if (variantEpochs > 0) {
+      const reg = loadRegistry();
+      const champs = Object.entries(reg.lineages)
+        .filter(([, v]) => v.status === 'active')
+        .map(([n, v]) => ({ name: n, info: v, champ: champOf(n) }))
+        .filter(e => e.champ && e.champ.model && fs.existsSync(e.champ.model))
+        .sort((a, b) => b.champ.elo - a.champ.elo);           // best lineage first
+      if (champs.length >= 2) {
+        const countActive = () => Object.values(reg.lineages).filter(v => v.status === 'active').length;
+        let changed = false;
+
+        // 1. CULL, but only once the population is actually full. A percentile alone does not work at
+        // this scale in either direction -- read as "must be top 10%" nothing survives, read as
+        // "bottom 10% dies" nothing is ever culled (10% of 6 rounds to zero, so the population just
+        // sat there). Turnover has to be driven by CAPACITY: the roster is full, a slot is worth more
+        // to a new shape than to the worst incumbent, so the worst makes way. That is also what keeps
+        // the churn rate self-limiting -- no pressure at all until the population is full.
+        if (countActive() >= maxActiveLineages) {
+          const toCull = Math.max(1, Math.round(champs.length*cullFloorPct));
+          for (let n = 0; n < toCull; n++) {
+            const victim = champs[champs.length - 1 - n];
+            if (!victim || victim.info.status !== 'active') continue;
+            if (victim.info.turns < cullMinTurns) continue;     // still finding its feet
+            if (countActive() <= minActiveLineages) break;      // never collapse to a monoculture
+            victim.info.status = 'retired';
+            victim.info.retiredAt = new Date().toISOString();
+            victim.info.retiredElo = victim.champ.elo;
+            changed = true;
+            log(`pool cycle ${num} — variant lineage: ${victim.name} retired ` +
+                `(${Math.round(victim.champ.elo)} Elo, last of ${champs.length} lineages) -- ` +
+                `files kept as a reference point, no longer trained`);
+          }
+        }
+
+        // 2. BREED from the best parent that still has room. Strictly rank-1-only stalls: the leader
+        // caps at 2 living children, and then nothing reproduces at all while culling continues,
+        // draining the population to the floor. Walking down the ranking keeps the top of the table
+        // favoured without letting the whole mechanism seize up.
+        if (countActive() < maxActiveLineages) {
+          const parent = champs.find(c => c.info.status === 'active' &&
+            Object.values(reg.lineages).filter(v => v.parent === c.name && v.status === 'active').length < 2);
+          if (parent) {
+            const mut = mutateHidden(parent.info.shape);
+            if (mut) {
+              // Name off the ROOT ancestor with a flat counter, not off the immediate parent: these
+              // names become filenames (<name>-<cycle>.json), and nesting them would grow without
+              // bound over a multi-day run -- ultra-m1-m1-m3-m2-m1... The ancestry is not lost, it is
+              // in the parent field, which is where it can be read without a filesystem limit.
+              const root = parent.info.root || parent.name;
+              let k = 1;
+              while (reg.lineages[`${root}-m${k}`]) k++;
+              const childName = `${root}-m${k}`;
+              reg.lineages[childName] = { shape: mut.shape, parent: parent.name, root, status: 'active',
+                                           born: new Date().toISOString(), turns: 0 };
+              changed = true;
+              log(`pool cycle ${num} — variant lineage: ${parent.name} ` +
+                  `(${Math.round(parent.champ.elo)} Elo) spawns ${childName} at ${mut.shape} (${mut.op})`);
+            }
+          }
+        }
+        if (changed) saveRegistry(reg);
       }
     }
   } catch (e) {
