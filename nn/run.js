@@ -816,8 +816,10 @@ async function runPoolCycle() {
   // one variant lineage gets a light touch of training, rotating through whichever exist
   const variants = ['wide', 'ultra', 'deep', 'l15_value']
     .filter(n => fs.existsSync(path.join(dir, 'models', n + '.json')));
+  let variantOutV = null, variantName = null;
   if (variantEpochs > 0 && variants.length) {
     const name = variants[num % variants.length];
+    variantName = name;
     const lineage = fs.readdirSync(path.join(dir, 'models'))
       .filter(f => f.startsWith(name + '-') && /-\d+\.json$/.test(f)).sort();
     // A lineage used to resume from its own last link FOREVER -- wide-094 from wide-092 from
@@ -834,8 +836,28 @@ async function runPoolCycle() {
     const turn = Math.floor(num/variants.length);       // how many times THIS lineage has come up
     const fresh = variantFreshEvery > 0 && turn > 0 && turn % variantFreshEvery === 0;
     const base = path.join(dir, 'models', name + '.json');
-    const from = path.join(dir, 'models', lineage.length ? lineage[lineage.length - 1] : name + '.json');
+    // Resume from the lineage's recorded CHAMPION, not just whichever link finished training most
+    // recently -- "most recent" and "best" were silently assumed to be the same file, so a resume
+    // step that made things worse (ultra-094 below ultra-093) kept compounding the damage forward
+    // forever: resuming from a degraded checkpoint doesn't recover, it just keeps building on the
+    // same bad basin. elo-summary.json can't answer "who's currently best" on its own -- a numbered
+    // checkpoint like ultra-093.json is only ever in ONE cycle's --focus, so by the time this lineage
+    // comes up again (four cycles later) its rating has already fallen out of every later summary.
+    // So the champion is tracked separately in a small marker file, updated below once THIS cycle's
+    // own placement games come back -- the exact "running maximum over rated challengers" pattern
+    // that already protects best.json, applied to a lineage instead of the whole pool.
+    const champFile = path.join(dir, 'models', `.variant-champ-${name}.json`);
+    let from = path.join(dir, 'models', lineage.length ? lineage[lineage.length - 1] : name + '.json');
+    try {
+      const champ = JSON.parse(fs.readFileSync(champFile, 'utf8'));
+      if (champ.model && fs.existsSync(champ.model)) {
+        if (champ.model !== from) log(`pool cycle ${num} — variant lineage: resuming from champion ` +
+            `${path.basename(champ.model)} (${Math.round(champ.elo)} Elo), not newest ${path.basename(from)}`);
+        from = champ.model;
+      }
+    } catch (e) { /* no champion recorded yet -- keep the newest-file fallback */ }
     const outV = path.join(dir, 'models', `${name}-${String(num).padStart(3, '0')}.json`);
+    variantOutV = outV;
     const shape = hiddenOf(fresh ? base : from);
     if (fresh && shape) {
       log(`pool cycle ${num} — variant lineage: ${name} RESET, training from scratch at ${shape} ` +
@@ -876,6 +898,29 @@ async function runPoolCycle() {
       const k = path.basename(r.model, '.json');
       if (!byModel[k] || r.elo > byModel[k].elo) byModel[k] = r;
     }
+    // The variant lineage's champion marker, updated with THIS cycle's own placement results (if a
+    // lineage step ran this cycle and its checkpoint got enough games to be in byModel already).
+    // Same clear-margin bar as the promotion gate just below, for the same reason: a coinflip-close
+    // "improvement" would make the champion pointer random-walk on noise instead of tracking real
+    // progress. First-ever reading for a lineage seeds unconditionally -- there's nothing to compare
+    // against yet.
+    if (variantOutV && byModel[path.basename(variantOutV, '.json')]) {
+      const cand = byModel[path.basename(variantOutV, '.json')];
+      const livePath = path.join(dir, 'models', path.basename(cand.model));
+      const champFile = path.join(dir, 'models', `.variant-champ-${variantName}.json`);
+      let prev = null;
+      try { prev = JSON.parse(fs.readFileSync(champFile, 'utf8')); } catch (e) {}
+      if (!prev || !prev.model || !fs.existsSync(prev.model) || cand.elo - prev.elo >= 30) {
+        fs.writeFileSync(champFile, JSON.stringify({
+          model: fs.existsSync(livePath) ? livePath : cand.model, elo: cand.elo, games: cand.games,
+          at: new Date().toISOString(),
+        }, null, 1));
+        log(`pool cycle ${num} — variant lineage: ${variantName} champion is now ` +
+            `${path.basename(cand.model)} (${Math.round(cand.elo)} Elo` +
+            (prev && prev.elo != null ? `, +${Math.round(cand.elo - prev.elo)} over the previous champion)` : ')'));
+      }
+    }
+
     const ranked = Object.values(byModel).sort((a, b) => b.elo - a.elo);
     const top = ranked[0];
     const incumbentName = path.basename(ckpt, '.json');
