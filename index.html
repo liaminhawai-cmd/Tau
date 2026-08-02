@@ -2963,13 +2963,24 @@ function commitTurn(){
 // original and the position is simply played (the cap still backstops it).
 function koLegalizePlan(plan){
     if (!CFG.koRule || !plan || !G.koHist || !G.koHist.length) return plan;
-    // Cheap exact pre-filter, and it skips almost every move. A stop can only be banned on a swing
-    // that made NO contact (contact wipes the history), and a contact-free swing leaves the opponent
-    // exactly where it already stands. So if no remembered position has the opponent standing where
-    // it stands right now, nothing on this arc can be banned and the trial swings below are pure
-    // waste. Without this the rule cost ~23% of self-play wall time; with it, near nothing.
-    const here = koBoardPose(), oppOff = (1-G.active)*3;
-    if (!G.koHist.some(q => koSamePiece(q, here, oppOff))) return plan;
+    // Cheap pre-filter, exact in both directions -- it never skips a swing that could be banned, and
+    // it skips nearly every swing that can't, which is nearly all of them. Two necessary conditions
+    // for a banned stopping point, both testable without simulating anything:
+    //
+    //   1. The swing made NO contact (contact wipes the history), so the opponent is still standing
+    //      exactly where it stands right now -- a remembered position has to agree about it.
+    //   2. This turn pins a foot and rotates the piece about it, so the mover's hub travels a circle
+    //      of radius footR centred on that pinned foot. A remembered position whose hub is not ON
+    //      that circle is simply not reachable from here, whatever the swing does.
+    //
+    // Condition 1 alone is worthless, which is worth recording: the entry filed at the end of the
+    // opponent's last turn always has them where they still stand, so it matches every single time.
+    // Condition 2 is what actually does the work.
+    const here = koBoardPose(), oppOff = (1-G.active)*3, movOff = G.active*3;
+    const piv = G.pieces[G.active].feet()[plan.pivotIdx];
+    const couldReach = G.koHist.some(q => koSamePiece(q, here, oppOff) &&
+        Math.abs(Math.hypot(q[movOff]-piv.x, q[movOff+1]-piv.y) - CFG.footR) < CFG.koEps);
+    if (!couldReach) return plan;
     const step = CFG.koDeg*Math.PI/180, minMove = CFG.minMoveDeg*Math.PI/180;
     const snap0 = takeSnap();
     const restore = () => { G.pieces.forEach((p,i)=>{ p.x=snap0[i].x; p.y=snap0[i].y; p.rot=snap0[i].rot; });
