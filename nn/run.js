@@ -454,8 +454,9 @@ function mutateHidden(spec) {
 // drops its rotation slot; its checkpoints stay put as a reference point, the same way a retired
 // ladder rung stays in the pool as a yardstick instead of vanishing.
 const registryFile = path.join(dir, 'models', '.lineage-registry.json');
-const maxActiveLineages = Math.max(1, +arg('maxActiveLineages', 12));
-const cullFloorPct = Math.max(0.01, Math.min(1, +arg('cullFloorPct', 0.10)));   // "top 10%"
+const maxActiveLineages = Math.max(1, +arg('maxActiveLineages', 8));
+const minActiveLineages = Math.max(1, Math.min(+arg('minActiveLineages', 4), maxActiveLineages));
+const cullFloorPct = Math.max(0.01, Math.min(1, +arg('cullFloorPct', 0.10)));   // bottom slice retires
 const cullMinTurns = Math.max(1, +arg('cullMinTurns', 3));                      // grace period for new mutants
 
 function loadRegistry() {
@@ -1008,52 +1009,81 @@ async function runPoolCycle() {
       }
     }
 
-    // Evolve the lineage population. Cull whatever has fallen out of the top cullFloorPct of the
-    // pool -- stop training it, keep its files as a reference point, nothing is deleted -- and let
-    // whatever IS in the top spawn a mutant child, so a successful shape gets more ATTEMPTS at doing
-    // even better rather than just more resumes of itself. Runs over the whole registry every cycle,
-    // not just this cycle's own lineage, using each lineage's last recorded champion -- champions
-    // were measured at different moments, which is an approximation, but the same kind of
-    // approximation the rest of this pool already runs on (a rated brain's Elo is also always a
-    // measurement from whenever its games happened to be played, not "right now").
+    // Evolve the lineage population: cull what is losing, breed from what is winning. Nothing on
+    // disk is ever deleted -- retiring only drops a lineage's training slot, and its checkpoints stay
+    // as a reference point, the same way a retired ladder rung stays in the pool as a yardstick.
+    //
+    // Both tests are made against the OTHER LINEAGES, not against the whole rated pool, and that is
+    // the load-bearing decision here. The pool is dominated by ckpt/scratch/mut, which are trained at
+    // --scratchEpochs (30) on the full corpus while a lineage gets --variantEpochs (8); ranking a
+    // lineage against them measures the training budget it was denied, not the architecture it is
+    // there to test. Measured on the real machine: the rated pool held FOUR entries (ckpt-098 283,
+    // mut-098 162, scratch-098 160, deep-098 68), so a "top 10% of the pool" test resolved to "be the
+    // single best brain on the machine" -- every lineage would have been retired, and since nothing
+    // could ever clear the bar, nothing would ever have bred either. All cull, no mutation, which is
+    // the exact opposite of the point. Against its peers the same 10% means "bottom of the pack goes",
+    // which is what it was meant to mean all along.
+    //
+    // The floor and the cap are what keep it a population rather than a collapse: never fewer than
+    // minActiveLineages alive (a monoculture cannot explore), never more than maxActiveLineages (each
+    // one costs a training slot in the rotation, so an unbounded population starves every member).
     if (variantEpochs > 0) {
       const reg = loadRegistry();
       const champs = Object.entries(reg.lineages)
         .filter(([, v]) => v.status === 'active')
         .map(([n, v]) => ({ name: n, info: v, champ: champOf(n) }))
-        .filter(e => e.champ && e.champ.model && fs.existsSync(e.champ.model));
-      const pool = ranked.map(r => r.elo).concat(champs.map(c => c.champ.elo));
-      if (pool.length >= 4) {
-        pool.sort((a, b) => a - b);
-        const cutoff = pool[Math.min(pool.length - 1, Math.floor(pool.length*(1 - cullFloorPct)))];
+        .filter(e => e.champ && e.champ.model && fs.existsSync(e.champ.model))
+        .sort((a, b) => b.champ.elo - a.champ.elo);           // best lineage first
+      if (champs.length >= 2) {
+        const countActive = () => Object.values(reg.lineages).filter(v => v.status === 'active').length;
         let changed = false;
-        for (const { name, info, champ } of champs) {
-          if (info.turns < cullMinTurns) continue;   // grace period for a lineage still finding its feet
-          const activeNow = Object.values(reg.lineages).filter(v => v.status === 'active').length;
-          if (champ.elo < cutoff) {
-            if (activeNow <= 1) continue;   // never cull the last lineage standing
-            info.status = 'retired';
-            info.retiredAt = new Date().toISOString();
-            info.retiredElo = champ.elo;
+
+        // 1. CULL, but only once the population is actually full. A percentile alone does not work at
+        // this scale in either direction -- read as "must be top 10%" nothing survives, read as
+        // "bottom 10% dies" nothing is ever culled (10% of 6 rounds to zero, so the population just
+        // sat there). Turnover has to be driven by CAPACITY: the roster is full, a slot is worth more
+        // to a new shape than to the worst incumbent, so the worst makes way. That is also what keeps
+        // the churn rate self-limiting -- no pressure at all until the population is full.
+        if (countActive() >= maxActiveLineages) {
+          const toCull = Math.max(1, Math.round(champs.length*cullFloorPct));
+          for (let n = 0; n < toCull; n++) {
+            const victim = champs[champs.length - 1 - n];
+            if (!victim || victim.info.status !== 'active') continue;
+            if (victim.info.turns < cullMinTurns) continue;     // still finding its feet
+            if (countActive() <= minActiveLineages) break;      // never collapse to a monoculture
+            victim.info.status = 'retired';
+            victim.info.retiredAt = new Date().toISOString();
+            victim.info.retiredElo = victim.champ.elo;
             changed = true;
-            log(`pool cycle ${num} — variant lineage: ${name} retired (${Math.round(champ.elo)} Elo, ` +
-                `below the top-${Math.round(cullFloorPct*100)}% cutoff of ${Math.round(cutoff)}) -- ` +
-                `files kept, no longer trained`);
-          } else {
-            const livingChildren = Object.values(reg.lineages)
-              .filter(v => v.parent === name && v.status === 'active').length;
-            if (activeNow < maxActiveLineages && livingChildren < 2) {
-              const mut = mutateHidden(info.shape);
-              if (mut) {
-                let k = 1;
-                while (reg.lineages[`${name}-m${k}`]) k++;
-                const childName = `${name}-m${k}`;
-                reg.lineages[childName] = { shape: mut.shape, parent: name, status: 'active',
-                                             born: new Date().toISOString(), turns: 0 };
-                changed = true;
-                log(`pool cycle ${num} — variant lineage: ${name} (${Math.round(champ.elo)} Elo, top ` +
-                    `${Math.round(cullFloorPct*100)}%) spawns ${childName} at ${mut.shape} (${mut.op})`);
-              }
+            log(`pool cycle ${num} — variant lineage: ${victim.name} retired ` +
+                `(${Math.round(victim.champ.elo)} Elo, last of ${champs.length} lineages) -- ` +
+                `files kept as a reference point, no longer trained`);
+          }
+        }
+
+        // 2. BREED from the best parent that still has room. Strictly rank-1-only stalls: the leader
+        // caps at 2 living children, and then nothing reproduces at all while culling continues,
+        // draining the population to the floor. Walking down the ranking keeps the top of the table
+        // favoured without letting the whole mechanism seize up.
+        if (countActive() < maxActiveLineages) {
+          const parent = champs.find(c => c.info.status === 'active' &&
+            Object.values(reg.lineages).filter(v => v.parent === c.name && v.status === 'active').length < 2);
+          if (parent) {
+            const mut = mutateHidden(parent.info.shape);
+            if (mut) {
+              // Name off the ROOT ancestor with a flat counter, not off the immediate parent: these
+              // names become filenames (<name>-<cycle>.json), and nesting them would grow without
+              // bound over a multi-day run -- ultra-m1-m1-m3-m2-m1... The ancestry is not lost, it is
+              // in the parent field, which is where it can be read without a filesystem limit.
+              const root = parent.info.root || parent.name;
+              let k = 1;
+              while (reg.lineages[`${root}-m${k}`]) k++;
+              const childName = `${root}-m${k}`;
+              reg.lineages[childName] = { shape: mut.shape, parent: parent.name, root, status: 'active',
+                                           born: new Date().toISOString(), turns: 0 };
+              changed = true;
+              log(`pool cycle ${num} — variant lineage: ${parent.name} ` +
+                  `(${Math.round(parent.champ.elo)} Elo) spawns ${childName} at ${mut.shape} (${mut.op})`);
             }
           }
         }
