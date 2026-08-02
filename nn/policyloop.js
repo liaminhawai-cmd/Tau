@@ -59,6 +59,10 @@ const openingPlies = arg('openingPlies', '2');
 // aggressive speed play the whole test is about. --ab 1 switches to ordering + cutoff instead,
 // which is never blind but buys less. Both are legitimate; they are different questions.
 const useAb = arg('ab', '0') !== '0';
+// Floor on decided games before the head-to-head is allowed to move the champion at all. Not a
+// significance test (see the verdict below) -- just a guard against 0-0 or a single fluke game
+// deciding which shape the next cycle trains from.
+const minDecided = Math.max(1, +arg('minDecided', 4));
 
 const modelsDir = path.join(dir, 'models');
 const dataDir = path.join(dir, 'data');
@@ -290,25 +294,27 @@ async function runCycle(num) {
   // Same discipline as run.js's shape fight: a clear margin or no change. The margin here is the
   // 2-sigma band on the decided games, the same convention arena.js's own summary prints, so the
   // bar automatically tightens as more games accumulate instead of being a fixed guess.
+  // ADOPTION IS A CHEAP, REVERSIBLE HILL-CLIMB STEP, and is deliberately NOT a significance test.
+  // Requiring a 2-sigma margin here sounds rigorous and is actually fatal: at 6 games a mutant
+  // would need ~91% to clear the band, so the climb would essentially never move and every cycle
+  // would retrain the same shape forever. Simply being ahead is the right bar for "which shape do
+  // we train from next", because a mutant adopted on luck is beaten back by the next cycle's
+  // comparison at no cost. Ties keep the champion -- free incumbency, which is what stops a purely
+  // neutral edit from random-walking the shape.
+  // The statistical bar belongs on the CLAIM, not the climb: that is champ-vs-nopolicy below, plus
+  // the ladder rungs, which are absolute anchors that catch a drift the head-to-head cannot see.
   const hh = results['champ-vs-mutant'];
   let verdict = 'no head-to-head played', adopted = false;
   if (hh) {
     const dec = hh.w + hh.l;
-    if (dec < 4) verdict = `too few decided games (${dec}) to judge the mutant`;
-    else {
-      const mutRate = hh.l/dec;                       // side A is the champion, so B's wins are the mutant's
-      const band = Math.sqrt(0.25/dec)*2;
-      if (mutRate - band > 0.5) {
-        verdict = `mutant ${mut.shape} (${mut.op}) beat the champion ${(100*mutRate).toFixed(0)}% ` +
-                  `+/- ${(100*band).toFixed(0)} on ${dec} decided — ADOPTED`;
-        adopted = true;
-      } else if (mutRate + band < 0.5) {
-        verdict = `mutant ${mut.shape} (${mut.op}) lost, ${(100*mutRate).toFixed(0)}% ` +
-                  `+/- ${(100*band).toFixed(0)} on ${dec} decided — rejected`;
-      } else {
-        verdict = `mutant ${mut.shape} (${mut.op}) inconclusive, ${(100*mutRate).toFixed(0)}% ` +
-                  `+/- ${(100*band).toFixed(0)} on ${dec} decided — keeping the champion`;
-      }
+    const mutWins = hh.l;                 // side A is the champion, so B's wins are the mutant's
+    if (dec < minDecided) {
+      verdict = `only ${dec} decided game(s), under the ${minDecided} floor — keeping the champion`;
+    } else if (mutWins > hh.w) {
+      verdict = `mutant ${mut.shape} (${mut.op}) won ${mutWins}-${hh.w} — ADOPTED as the shape to train from`;
+      adopted = true;
+    } else {
+      verdict = `mutant ${mut.shape} (${mut.op}) did not win (${mutWins}-${hh.w}) — keeping the champion`;
     }
   }
   if (adopted) {
@@ -321,14 +327,29 @@ async function runCycle(num) {
 
   // Is the policy worth having at all? Reported every cycle, separately from the shape question,
   // because they are genuinely different questions and only this one can end the whole exercise.
+  // THE actual result. Beating a mutant only says which of two policies is less bad; beating a
+  // bare net at the same clock is the only thing that says a policy head is worth having at all.
+  // This one DOES carry a significance bar, and it accumulates across cycles rather than being
+  // re-judged from one cycle's handful of games -- a real effect should survive being pooled.
   const ctl = results['champ-vs-nopolicy'];
-  if (ctl) {
-    const dec = ctl.w + ctl.l;
-    const rate = dec ? ctl.w/dec : 0;
-    const band = dec ? Math.sqrt(0.25/dec)*2 : 1;
-    log(`policy cycle ${num}: champion vs NO policy at equal time — ` +
-        `${(100*rate).toFixed(0)}% +/- ${(100*band).toFixed(0)} on ${dec} decided` +
-        (dec >= 4 && rate + band < 0.5 ? '  <-- the policy is currently a net LOSS' : ''));
+  let realResult = null, poolW = 0, poolL = 0;
+  try {
+    for (const line of fs.readFileSync(historyFile, 'utf8').split('\n').filter(Boolean)) {
+      const h = JSON.parse(line);
+      const c = h.results && h.results['champ-vs-nopolicy'];
+      if (c) { poolW += c.w; poolL += c.l; }
+    }
+  } catch (e) {}
+  if (ctl) { poolW += ctl.w; poolL += ctl.l; }
+  const pdec = poolW + poolL;
+  if (pdec) {
+    const rate = poolW/pdec, band = Math.sqrt(0.25/pdec)*2;
+    realResult = rate - band > 0.5 ? 'policy beats no-policy'
+               : rate + band < 0.5 ? 'policy is a net LOSS'
+               : 'not yet distinguishable from no policy';
+    log(`policy cycle ${num}: champion vs NO policy, POOLED over every cycle so far — ` +
+        `${poolW}-${poolL}, ${(100*rate).toFixed(0)}% +/- ${(100*band).toFixed(0)} on ${pdec} decided ` +
+        `=> ${realResult}`);
   }
 
   const rows = fs.existsSync(saveData)
@@ -336,8 +357,12 @@ async function runCycle(num) {
   try {
     fs.appendFileSync(historyFile, JSON.stringify({
       cycle: num, at: new Date().toISOString(), machine, value: path.basename(value),
-      targets: targetRows, champShape: champShape(), mutant: mut ? mut.shape : null,
+      targets: targetRows,
+      // the shape that FOUGHT, captured before any adoption overwrote it -- reporting the
+      // post-adoption shape here made the log read as though a mutant had beaten itself
+      champShape: shape, newChampShape: champShape(), mutant: mut ? mut.shape : null,
       op: mut ? mut.op : null, adopted, verdict, results, rows,
+      realResult, pooledNoPolicy: { w: poolW, l: poolL },
       minutes: +((Date.now() - t0)/60000).toFixed(1),
     }) + '\n');
   } catch (e) {}
