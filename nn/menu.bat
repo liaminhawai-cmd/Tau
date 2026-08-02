@@ -219,7 +219,10 @@ if not exist "nn\models\best.json" (
   goto menu
 )
 echo === policy-pruned vs plain, 2000ms per move each, same net, 24 games ===
-node nn\arena.js --a nn:0:%CD%\nn\models\best.json --b nn:0:%CD%\nn\models\best.json --games 24 --timeMs 2000 --policyA %CD%\nn\models\policy.json
+rem --saveData: these are real games at a serious think-time, so they are worth keeping
+rem rather than reduced to a score and thrown away -- same reasoning run.js's ladder sweep
+rem uses for its own arena games. COMPUTERNAME keeps two machines from colliding on the name.
+node nn\arena.js --a nn:0:%CD%\nn\models\best.json --b nn:0:%CD%\nn\models\best.json --games 24 --timeMs 2000 --policyA %CD%\nn\models\policy.json --saveData %CD%\nn\data\policy-arena-%COMPUTERNAME%.jsonl
 pause
 goto menu
 
