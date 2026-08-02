@@ -55,6 +55,15 @@ const epochs = arg('epochs', '20');
 const baseHidden = arg('hidden', '96,64');
 const levels = arg('levels', '5,7,9').split(',').map(s => s.trim()).filter(Boolean);
 const openingPlies = arg('openingPlies', '2');
+// Fraction of tournament games starting from a random legal pose instead of the canonical opening.
+// Two reasons, and the second is the one that made this non-optional. First, it widens where the
+// policy is TESTED: a policy judged only on positions reachable from the standard opening says
+// nothing about the rest of the board, and search spends most of its time off the played line
+// anyway. Second, this machine's games are now the only ones it contributes to the corpus, and
+// without this they are all the same value net against itself from the same opening -- far
+// narrower than the self-play worker this replaces. Both sides of a game start from the same
+// pose, so this widens coverage without biasing the comparison either way.
+const randomStartFrac = arg('randomStartFrac', '0.35');
 // Policy pruning (hard-drop to the top arms) is the default because at equal TIME that is the
 // aggressive speed play the whole test is about. --ab 1 switches to ordering + cutoff instead,
 // which is never blind but buys less. Both are legitimate; they are different questions.
@@ -249,7 +258,7 @@ async function runCycle(num) {
     : [];
   const nn = 'nn:0:' + value;
   const base = ['--games', gamesPerMatch, '--timeMs', timeMs, '--openingPlies', openingPlies,
-                '--saveData', saveData];
+                '--randomStartFrac', randomStartFrac, '--saveData', saveData];
   const matches = [];
   const add = (tag, args) => matches.push({ tag, args });
 
