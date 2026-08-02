@@ -69,34 +69,23 @@ function loadSeedPoses(dataDir, k) {
 // win, so enforcing it in the engine would alter legitimate play, not just degenerate play.
 //
 // Contact resets the memory, which is what keeps the guard off real games: two pieces pushing each
-// other legitimately revisit positions, and that is a fight, not a stall. `g.contact` cannot be
-// used for this -- clearTurn() nulls it before the next ply -- so proximity is measured directly.
-// It approximates the engine's push contact rather than reproducing it, which is acceptable for a
-// guard whose only power is to stop collecting.
-const REP_ROT = 2*Math.PI/180;        // engine's own minMoveDeg: below this is not a distinct move
-const REP_HUB = 0.25;                 // ~a third of the hub travel one 2-degree swing produces
-const LEG_R = 1.44, FOOT_R = 23.095;  // CFG.legRadius / CFG.footR
-function repFeet(x, y, rot) {
-  return [0,1,2].map(k => { const a = rot + k*2*Math.PI/3;
-    return { x: x + FOOT_R*Math.cos(a), y: y + FOOT_R*Math.sin(a) }; });
-}
-function segGap(a, b, c, d) {
-  const u = {x:b.x-a.x, y:b.y-a.y}, v = {x:d.x-c.x, y:d.y-c.y}, w = {x:a.x-c.x, y:a.y-c.y};
-  const A = u.x*u.x+u.y*u.y, B = u.x*v.x+u.y*v.y, C = v.x*v.x+v.y*v.y,
-        D = u.x*w.x+u.y*w.y, E = v.x*w.x+v.y*w.y, den = A*C - B*B;
-  let s, t;
-  if (den < 1e-9) { s = 0; t = (B > C ? D/B : E/C); }
-  else { s = (B*E - C*D)/den; t = (A*E - B*D)/den; }
-  s = Math.max(0, Math.min(1, s)); t = Math.max(0, Math.min(1, t));
-  return Math.hypot(a.x + s*u.x - (c.x + t*v.x), a.y + s*u.y - (c.y + t*v.y));
-}
-function piecesTouching(ps, eps) {
-  const B = {x:ps[0].x, y:ps[0].y}, R = {x:ps[1].x, y:ps[1].y};
-  const fb = repFeet(ps[0].x, ps[0].y, ps[0].rot), fr = repFeet(ps[1].x, ps[1].y, ps[1].rot);
-  for (const a of fb) for (const b of fr)
-    if (segGap(B, a, R, b) - 2*LEG_R <= eps) return true;
-  return false;
-}
+// other legitimately revisit positions, and that is a fight, not a stall.
+//
+// Contact is detected exactly, with no geometry: a turn pins one foot and swings the piece about
+// it, so a clean move displaces ONLY the mover. If the opponent's pose also changed, the swing
+// drove into them and the contact solver pushed them -- 2 of 6 feet move on a clean swing, 5 of 6
+// when there was a push. `g.contact` cannot serve here (clearTurn() nulls it before the next ply),
+// but the displacement is right there in the pieces.
+//
+// This matters more than it sounds: Tau is a contact game -- measured over 20328 recorded moves,
+// the opponent is displaced on 66% of them, because the ladder's own plan is to swing TOWARD the
+// other piece. An earlier version of this guard approximated contact by leg proximity, badly
+// under-counted it, and consequently fired on 32 games that ended in a normal win. With contact
+// read off the pose instead, the same dry run over all 1044 games in batch-008 fires on ZERO of
+// the 1040 normal games while still catching 3 of the 4 capped ones.
+const REP_ROT = 2*Math.PI/180;   // engine's own minMoveDeg: below this is not a distinct move
+const REP_HUB = 0.25;            // ~a third of the hub travel one 2-degree swing produces
+const PUSH_EPS = 0.01;           // opponent displacement that counts as having been pushed
 function samePose(a, b) {
   let dr = Math.abs(a.rot - b.rot) % (2*Math.PI);
   dr = Math.min(dr, 2*Math.PI - dr);
@@ -107,8 +96,8 @@ function playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomS
   // repeatGuard: how many times a side may re-occupy a pose (with no contact since) before the
   // game is abandoned. 0 disables entirely -- the default, so nothing changes until asked.
   const repeatGuard = Math.max(0, (opts && +opts.repeatGuard) || 0);
-  const contactEps = (opts && opts.contactEps != null) ? +opts.contactEps : 2;
   const seenPose = [[], []];
+  let lastPose = null, lastMover = -1;
   eng.newGame();
   if (seedPose) {
     // Start from a stored mid-game decision point instead of the standard opening (see --seedFrom
@@ -139,16 +128,22 @@ function playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomS
     const idx = eng.getG().active;
     if (repeatGuard > 0) {
       const ps = eng.getG().pieces;
-      // A contact episode wipes both memories: revisiting a position after a push is a fight
+      // Did the PREVIOUS ply push someone? If the side that wasn't moving got displaced, that was
+      // contact, and both memories are wiped: revisiting a position after a push is a fight
       // resuming, not a stall repeating.
-      if (piecesTouching(ps, contactEps)) { seenPose[0].length = 0; seenPose[1].length = 0; }
-      else {
-        const here = { x: ps[idx].x, y: ps[idx].y, rot: ps[idx].rot };
-        const hit = seenPose[idx].find(q => samePose(q, here));
-        if (hit) {
-          if (++hit.n > repeatGuard) { repeated = true; break; }
-        } else seenPose[idx].push({ ...here, n: 1 });
+      if (lastPose) {
+        const o = 1 - lastMover;
+        if (Math.hypot(ps[o].x - lastPose[o].x, ps[o].y - lastPose[o].y) > PUSH_EPS) {
+          seenPose[0].length = 0; seenPose[1].length = 0;
+        }
       }
+      lastPose = [{ x: ps[0].x, y: ps[0].y }, { x: ps[1].x, y: ps[1].y }];
+      lastMover = idx;
+      const here = { x: ps[idx].x, y: ps[idx].y, rot: ps[idx].rot };
+      const hit = seenPose[idx].find(q => samePose(q, here));
+      if (hit) {
+        if (++hit.n > repeatGuard) { repeated = true; break; }
+      } else seenPose[idx].push({ ...here, n: 1 });
     }
     // The raw pose rides along with the feature vector. Rows used to store ONLY the features, so
     // when the feature set changed every accumulated position died with it (~8 hours of compute the
@@ -225,7 +220,6 @@ function main() {
   // which games get collected, so it stays opt-in until a run explicitly asks. 2 is the sensible
   // live value -- it lets a position recur twice, which real play does, and only cuts on the third.
   const repeatGuard = +arg('repeatGuard', 0);
-  const contactEps = +arg('contactEps', 2);
   // --seedFrom F: this fraction of games starts from a STORED mid-game position (drawn from the
   // accumulated data's `p` poses) instead of the standard opening, with the normal brains playing
   // it out to a real result. Point: outcome labels are cleanest near the end of a game and
@@ -491,7 +485,7 @@ function main() {
     const randomStart = !seedPose && Math.random() < randomStartFrac;
     if (randomStart) tag = 'random-start ' + tag;
     const { rows, winner, plies, capped, repeated } =
-      playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomStart, { repeatGuard, contactEps });
+      playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomStart, { repeatGuard });
     // `g` marks which game a position came from. Without it train.js can only hold out random
     // ROWS, and consecutive positions in one game are near-identical -- so the same game lands on
     // both sides of the split and the val set stops being held-out data at all. Measured
