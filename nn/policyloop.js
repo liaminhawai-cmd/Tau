@@ -190,10 +190,20 @@ const champShape = () => {
   try { return JSON.parse(fs.readFileSync(champShapeFile, 'utf8')).shape || baseHidden; }
   catch (e) { return baseHidden; }
 };
-const setChampShape = (shape, cycle) => {
+// The record carries the EPOCH COUNT the champion actually finished, and is written only after a
+// training run returns successfully. train-policy.js rewrites its output file on every epoch that
+// improves val CE, so a champion whose training was interrupted is still a complete-looking file on
+// disk -- just undertrained. Without this record the next cycle would fight that 3-epoch champion
+// against a full 20-epoch mutant and adopt the mutant on training budget rather than on shape,
+// which is not a shape result at all. Observed live after a window was closed mid-training.
+const setChampRecord = (shape, cycle, ep) => {
   try {
-    fs.writeFileSync(champShapeFile, JSON.stringify({ shape, cycle, at: new Date().toISOString() }));
+    fs.writeFileSync(champShapeFile,
+      JSON.stringify({ shape, cycle, epochs: +ep, at: new Date().toISOString() }));
   } catch (e) {}
+};
+const champRecord = () => {
+  try { return JSON.parse(fs.readFileSync(champShapeFile, 'utf8')); } catch (e) { return null; }
 };
 
 // The value net is PULLED, never trained here. Newest numbered checkpoint first, for the same
@@ -230,11 +240,19 @@ async function runCycle(num) {
 
   // The champion has to exist before it can be challenged. First cycle on a fresh machine trains it.
   const shape = champShape();
-  if (!fs.existsSync(champPath)) {
-    log(`policy cycle ${num}: no champion yet — training one at ${shape} (${targetRows} targets)`);
+  const rec = champRecord();
+  // Retrain the champion when it is missing, when it has no completion record (interrupted), or
+  // when it was trained for a different number of epochs than the mutant is about to get. All three
+  // are the same failure: a head-to-head that is not actually about the shape.
+  const why = !fs.existsSync(champPath) ? 'no champion yet'
+            : !rec ? 'champion has no completion record (training was interrupted)'
+            : +rec.epochs !== +epochs ? `champion was trained for ${rec.epochs} epochs, mutant gets ${epochs}`
+            : null;
+  if (why) {
+    log(`policy cycle ${num}: ${why} — training a champion at ${shape} (${targetRows} targets)`);
     if (!runSoft('train-policy.js', ['--targets', targetsPath, '--epochs', epochs,
                                      '--hidden', shape, '--out', champPath])) return;
-    setChampShape(shape, num);
+    setChampRecord(shape, num, epochs);
   }
 
   // The challenger: one edit away from the champion, trained on the same targets, same epochs.
@@ -329,7 +347,7 @@ async function runCycle(num) {
   if (adopted) {
     try {
       fs.copyFileSync(mutantPath, champPath);
-      setChampShape(mut.shape, num);
+      setChampRecord(mut.shape, num, epochs);
     } catch (e) { log(`WARNING: could not adopt the mutant (${e.message}) — keeping the champion`); }
   }
   log(`policy cycle ${num} verdict: ${verdict}`);
