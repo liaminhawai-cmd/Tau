@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-08-02T13:55:17.098Z_
+_Last updated: 2026-08-02T13:55:21.764Z_
 
 **Self-play batch:** 10
-**Stage:** self-play batch 10 running (started 2026-08-02T12:53:28.746Z)
+**Stage:** ladder sweep running (D1:L7-L9 D2:L7-L9 D3:L8-L10, started 2026-08-02T13:55:21.764Z)
 **mix:** nnnn:0.4,nnladder:0.3,ladder:0.3
 
 **Last gate result:** resume-train promoted at 2026-08-02T13:32:33.460Z
