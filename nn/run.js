@@ -216,7 +216,13 @@ const poolWideEvery = Math.max(0, +arg('poolWideEvery', 4));
 const mutateShape = arg('mutateShape', '1') !== '0';
 // Retrograde mining on its own clock, using the pool as its strength axis (see retromine.js).
 const retroEveryMin = Math.max(0, +arg('retroEveryMin', 120));
-const retroSeeds = +arg('retroSeeds', 4);
+// ONE seed, mined to exhaustion, beats four truncated ones. Retro's unique output is the boundary
+// ("from N plies out, nothing in the pool escapes") and that only exists if a seed runs to its
+// natural end -- the ROWS it produces along the way are near-terminal decision points, valuable but
+// not something self-play can't also make. Splitting the budget four ways guaranteed all four
+// truncated: at budget 40 every family logged exactly 41 games, so every "dead at N plies" retro
+// has ever printed was a fact about the budget rather than about the position.
+const retroSeeds = +arg('retroSeeds', 1);
 // Replay cap per seed. The ratchet terminates WITHOUT a budget -- floors only rise (capped by the
 // top of the axis, the "11 vs 11" guard), rewind only grows (capped by the start of the game), and
 // wedged probes count against probesPerPos -- so this is not a correctness knob, just a wall-clock
@@ -226,14 +232,20 @@ const retroSeeds = +arg('retroSeeds', 4);
 // decided and NOTHING escapes -- so every seed returned "dead everywhere", which was a fact about
 // the budget, not the positions.
 //
-// 300 was then too far the other way, and the wall-clock guard stopped guarding: a retro cycle at
-// budget 40 took ~4h (03:15Z -> 07:17Z on 08-02), and the first cycle at 300 ran 6h48m without
-// finishing and with no end in sight. That matters more than it sounds, because run.js only pushes
-// a retro file when the cycle COMPLETES -- an over-long cycle contributes literally nothing, however
-// much CPU it burned, and it burns that CPU against the 14 self-play workers the whole time. 100
-// keeps the fix (still 2.5x the starvation point, still reaching well past the decided-zone) while
-// landing a cycle inside its own 120-minute clock instead of several times over it.
-const retroReplays = Math.max(1, +arg('retroReplays', 100));
+// 300 was then too far the other way ACROSS FOUR SEEDS, and the wall-clock guard stopped guarding:
+// a cycle at budget 40 took ~4h (03:15Z -> 07:17Z on 08-02), and the first at 4x300 ran 6h48m
+// without finishing and with no end in sight. That matters more than it sounds, because run.js only
+// pushes a retro file when the cycle COMPLETES -- an over-long cycle contributes literally nothing,
+// however much CPU it burned, against the 14 self-play workers the whole time.
+//
+// With retroSeeds at 1 the budget is spent on one seed instead of split four ways, so it can be
+// generous enough to be non-binding on a typical seed and still fit the clock. Sizing it, measured:
+// a dead rewind step costs ~6 replays (seat probe + 4 bisect failures + the jump to the top, then
+// one ultimateGuns attempt), and dead steps dominate because most near-terminal positions ARE dead.
+// So a seed needs roughly 6L replays, L being the seed game's ply count -- ~96 for a median 16-ply
+// game, ~200 for the p90 33-ply one. 400 covers seeds out to ~65 plies (past p95 of observed game
+// lengths) and only bites on the pathological tail, which is exactly what a wall-clock guard is for.
+const retroReplays = Math.max(1, +arg('retroReplays', 400));
 
 // Atomic save: write/copy to a temp file beside the target, then rename over it. A rename either
 // fully lands or doesn't happen at all, where a direct writeFileSync/copyFileSync can be caught
