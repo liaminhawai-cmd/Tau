@@ -275,6 +275,17 @@ function main() {
   } else {
     atomicSave(outPath, JSON.stringify(best));
     console.log(`saved ${outPath} (best val mse ${bestMse.toFixed(4)}, from epoch ${bestEpoch}/${epochs})`);
+    // Was the epoch budget BINDING? A net whose best epoch lands in the last stretch of its budget
+    // was still improving when it ran out, so its saved weights are not that shape's best -- they
+    // are that shape's best WITHIN N epochs. That matters most for the shape fight: control and
+    // mutant get the same N, and bigger shapes generally need more epochs to converge, so a binding
+    // budget quietly biases the fight toward whichever shape learns fastest rather than whichever
+    // is better. Reported rather than silently corrected, because the fix is not simply "raise N":
+    // the learning-rate schedule is a cosine over the budget, so changing N changes the LR at every
+    // epoch. Tune it on the evidence this line collects, not on a guess.
+    if (epochs > 3 && bestEpoch >= Math.ceil(epochs*0.85))
+      console.log(`  NOTE: best epoch ${bestEpoch} is in the last 15% of a ${epochs}-epoch budget ` +
+                  `-- still improving at the end, so --epochs is likely binding for this shape`);
   }
 }
 

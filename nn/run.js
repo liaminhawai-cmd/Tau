@@ -181,6 +181,10 @@ const poolLevels = arg('poolLevels', '');
 // self-calibrates as the whole population's range shifts and always includes the actual current
 // top, however far past the ladder it has gone. --poolSlots 0 disables the mechanism.
 const poolSlots = Math.max(0, +arg('poolSlots', 10));
+// How many resumes a variant lineage may accumulate before it is rebuilt from scratch at its own
+// architecture. Bounds exactly the failure this file's header records for best.json -- see the
+// reset in runPoolCycle. 0 disables the reset and restores the old resume-forever behaviour.
+const variantFreshEvery = Math.max(0, +arg('variantFreshEvery', 5));
 // Fraction of self-play BATCHES (this machine) that use a slot/architecture model instead of
 // best.json. A minority slice on purpose -- best.json's own self-play is the most relevant data,
 // since that is the net actually being strengthened; this exists so the value net sees more than
@@ -308,6 +312,14 @@ const arenaScore = out => {
 // ("96,96"), so the from-scratch challenger is always the same ARCHITECTURE as the incumbent and
 // the round robin between them is a clean test of the training schedule alone. Returns null if
 // best.json doesn't exist yet or can't be read, in which case train.js's own default applies.
+// Shape of any saved model, read off its own weights. hiddenOfBest is this applied to best.json.
+const hiddenOf = p => {
+  try {
+    const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (Array.isArray(j.sizes) && j.sizes.length > 2) return j.sizes.slice(1, -1).join(',');
+  } catch (e) {}
+  return null;
+};
 const hiddenOfBest = () => {
   try {
     const j = JSON.parse(fs.readFileSync(best, 'utf8'));
@@ -808,10 +820,31 @@ async function runPoolCycle() {
     const name = variants[num % variants.length];
     const lineage = fs.readdirSync(path.join(dir, 'models'))
       .filter(f => f.startsWith(name + '-') && /-\d+\.json$/.test(f)).sort();
+    // A lineage used to resume from its own last link FOREVER -- wide-094 from wide-092 from
+    // wide-090, with no reset ever. That is exactly the unbounded resume-training this file's own
+    // header documents as the iteration-63/80 failure: it adds strength over a handful of
+    // iterations and degrades over dozens. best.json is protected from it (the round robin and the
+    // pool re-derive it from scratch); these lineages were not. Suggestive rather than proof, but
+    // ultra was the top-rated brain in the pool at ~500 Elo and has since dropped out of the rated
+    // list entirely.
+    // So every variantFreshEvery-th time a given lineage comes up, it is retrained FROM SCRATCH at
+    // its own architecture instead of resumed. The shape -- which is the whole reason these
+    // lineages exist -- is preserved; only the accumulated resume-training is discarded. The pool
+    // then judges fresh against resumed on merit, as it does for everything else.
+    const turn = Math.floor(num/variants.length);       // how many times THIS lineage has come up
+    const fresh = variantFreshEvery > 0 && turn > 0 && turn % variantFreshEvery === 0;
+    const base = path.join(dir, 'models', name + '.json');
     const from = path.join(dir, 'models', lineage.length ? lineage[lineage.length - 1] : name + '.json');
     const outV = path.join(dir, 'models', `${name}-${String(num).padStart(3, '0')}.json`);
-    log(`pool cycle ${num} — variant lineage: ${path.basename(from)} + ${variantEpochs} epochs -> ${path.basename(outV)}`);
-    await runSoftAsync('train.js', ['--epochs', String(variantEpochs), '--resume', from, '--out', outV]);
+    const shape = hiddenOf(fresh ? base : from);
+    if (fresh && shape) {
+      log(`pool cycle ${num} — variant lineage: ${name} RESET, training from scratch at ${shape} ` +
+          `(${scratchEpochs} epochs) instead of resuming -- ${turn} resumes deep`);
+      await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--hidden', shape, '--out', outV]);
+    } else {
+      log(`pool cycle ${num} — variant lineage: ${path.basename(from)} + ${variantEpochs} epochs -> ${path.basename(outV)}`);
+      await runSoftAsync('train.js', ['--epochs', String(variantEpochs), '--resume', from, '--out', outV]);
+    }
     if (fs.existsSync(outV)) focus.push(outV);
   }
 
