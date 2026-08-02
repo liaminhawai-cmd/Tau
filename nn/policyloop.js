@@ -33,6 +33,7 @@ const { execFileSync, spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { PolicyMLP } = require('./policy.js');
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
@@ -251,10 +252,24 @@ async function runCycle(num) {
   // The champion has to exist before it can be challenged. First cycle on a fresh machine trains it.
   const shape = champShape();
   const rec = champRecord();
-  // Retrain the champion when it is missing, when it has no completion record (interrupted), or
-  // when it was trained for a different number of epochs than the mutant is about to get. All three
-  // are the same failure: a head-to-head that is not actually about the shape.
+  // A champion that loads and matches the record can still be UNUSABLE: PolicyMLP.fromJSON throws
+  // if the net's input width doesn't match the live feature vector or its output width isn't
+  // N_ARMS+N_BINS, which happens if the file predates a features.js/policy.js change. Observed live:
+  // every champ-vs-* matchup silently returned "no result" for 12 straight cycles (~7h) while every
+  // mutant-/nopolicy-only matchup ran fine, because the stale champion crashed arena.js before it
+  // ever printed a score line -- and nothing here checked the champion itself, only its paperwork.
+  const loadable = (() => {
+    if (!fs.existsSync(champPath)) return true;   // the existsSync branch below already explains this
+    try {
+      PolicyMLP.fromJSON(JSON.parse(fs.readFileSync(champPath, 'utf8')));
+      return true;
+    } catch (e) { return e.message; }
+  })();
+  // Retrain the champion when it is missing, when it has no completion record (interrupted), when
+  // it was trained for a different number of epochs than the mutant is about to get, or when it no
+  // longer loads. All four are the same failure: a head-to-head that is not actually about the shape.
   const why = !fs.existsSync(champPath) ? 'no champion yet'
+            : loadable !== true ? `champion no longer loads (${loadable}) — schema drifted since it was trained`
             : !rec ? 'champion has no completion record (training was interrupted)'
             : +rec.epochs !== +epochs ? `champion was trained for ${rec.epochs} epochs, mutant gets ${epochs}`
             : null;
@@ -318,9 +333,19 @@ async function runCycle(num) {
       if (next >= matches.length) return;
       if (Date.now() - t0 >= budgetMs) { skipped += matches.length - next; next = matches.length; return; }
       const m = matches[next++];
-      const s = arenaScore(await runArena(m.args));
+      const raw = await runArena(m.args);
+      const s = arenaScore(raw);
       results[m.tag] = s;
-      log(`  ${m.tag}: ${s ? `${s.w}-${s.l}${s.d ? '-' + s.d : ''}` : 'no result'}` +
+      // A silent "no result" hid a real bug for 12 straight cycles once: every champ-vs-* matchup
+      // was crashing (a stale/incompatible policy-champ.json) while every other matchup ran fine,
+      // and there was nothing in the log to tell the two apart from a genuine engine hiccup. Same
+      // fix elorank.js already applies to its own "no result" case -- print the tail of whatever
+      // the child actually said, once, instead of nothing.
+      const why = s ? '' : (() => {
+        const line = String(raw || '').trim().split('\n').filter(Boolean).slice(-2).join(' | ');
+        return line ? `: ${line}` : ': (arena produced no output at all)';
+      })();
+      log(`  ${m.tag}: ${s ? `${s.w}-${s.l}${s.d ? '-' + s.d : ''}` : 'no result' + why}` +
           ` [${Object.keys(results).length}/${matches.length}, ${((Date.now() - t0)/60000).toFixed(0)}m]`);
     }
   }
