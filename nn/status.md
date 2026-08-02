@@ -1,12 +1,12 @@
 # Tau NN training status
-_Last updated: 2026-08-02T10:21:03.602Z_
+_Last updated: 2026-08-02T12:58:30.424Z_
 
-**Self-play batch:** 8
-**Stage:** pool cycle 99 complete
+**Self-play batch:** 10
+**Stage:** self-play batch 10 running (started 2026-08-02T12:53:28.746Z)
 **mix:** nnnn:0.4,nnladder:0.3,ladder:0.3
 
-**Last gate result:** pool cycle 99 — mut-099 314, scratch-099 228, ckpt-099 174
+**Last gate result:** (none yet)
 
-**Last checkpoint:** ckpt-099.json at 2026-08-02T05:33:54.383Z
+**Last checkpoint:** (none yet)
 
 **Last ladder sweep:** (none yet)
