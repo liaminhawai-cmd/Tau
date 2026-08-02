@@ -77,6 +77,12 @@ function main() {
   // dead verdicts only ever look as deep as maxDepth).
   const useUltimateGuns = arg('ultimateGuns', '1') !== '0';
   const probesPerPos = Math.max(2, +arg('probesPerPos', 10));
+  // "How close to the top do we call it?" A seat within this many Elo of the axis top counts as
+  // AT the top for the purposes of ending a seed. The last few entries of the axis are packed
+  // (~40-60 Elo apart -- 55/45 matchups), so forcing both seats to grind through them literally
+  // buys coinflip results, not information; the ratchet's answer is already known to within the
+  // margin. 0 restores the strict both-seats-at-the-literal-top behaviour.
+  const topMarginElo = Math.max(0, +arg('topMarginElo', 60));
   const randomStartFrac = +arg('randomStartFrac', 0.3);
   const maxReplaysPerSeed = Math.max(1, +arg('maxReplaysPerSeed', 60));
   const maxPlies = +arg('maxPlies', 300);
@@ -152,6 +158,18 @@ function main() {
   // pool index gets turned into one, instead of every call site needing its own bounds check.
   const brainAt = i => i < pool.length ? pool[i] : ultimateGuns;
   const axisTop = ultimateGuns ? pool.length : pool.length - 1;
+  // The index a seat must reach for its climb to be called over: the lowest axis entry within
+  // --topMarginElo of the top. Only the SEED-TERMINATION guard uses this -- the escape search
+  // itself still probes all the way up (and through the guns), so a genuinely stronger escaper is
+  // still found and recorded; the margin just stops the seed from re-litigating coinflips between
+  // near-equal top entries after both seats are already there.
+  let calledTop = axisTop;
+  for (let i = 0; i < pool.length; i++)
+    if (topEntry.elo - pool[i].elo <= topMarginElo) { calledTop = Math.min(calledTop, i); break; }
+  if (calledTop < pool.length - 1)
+    console.log(`  seats call it at ${pool[calledTop].name} (${Math.round(pool[calledTop].elo)} Elo, ` +
+                `within ${topMarginElo} of ${topEntry.name}) -- the last ` +
+                `${pool.length - 1 - calledTop} rung(s) are coinflip territory`);
   if (ultimateGuns)
     console.log(`  escape hatch armed: ${ultimateGuns.id} (${Math.round(ultimateGuns.elo)} Elo) if ` +
                 `${topEntry.name} (the top of the ordinary D${maxDepth}-capped axis) fails`);
@@ -207,7 +225,7 @@ function main() {
     while (replays < maxReplaysPerSeed && rewind <= seed.rows.length) {
       // both seats at the top of the pool: nothing left for either side to climb, so the escape
       // question is out of moves -- the seed is mined out ("11 vs 11 -- no more rollbacks to do")
-      if (floor[0] >= axisTop && floor[1] >= axisTop) break;
+      if (floor[0] >= calledTop && floor[1] >= calledTop) break;
       const point = seed.rows[seed.rows.length - rewind];
       const seedPose = { p: point.p, m: point.mover };
       const defender = 1 - climber;
