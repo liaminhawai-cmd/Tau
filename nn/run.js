@@ -224,9 +224,16 @@ const retroSeeds = +arg('retroSeeds', 4);
 // real reason no seed ever found an escape: at the observed ~6-13 games per rewind step, 40 replays
 // died of starvation 3-7 plies from the end, entirely inside the zone where the game is already
 // decided and NOTHING escapes -- so every seed returned "dead everywhere", which was a fact about
-// the budget, not the positions. 300 reaches ~25-50 plies: a typical seed now mines to its natural
-// end, and the cap only bites on 90-ply blowouts.
-const retroReplays = Math.max(1, +arg('retroReplays', 300));
+// the budget, not the positions.
+//
+// 300 was then too far the other way, and the wall-clock guard stopped guarding: a retro cycle at
+// budget 40 took ~4h (03:15Z -> 07:17Z on 08-02), and the first cycle at 300 ran 6h48m without
+// finishing and with no end in sight. That matters more than it sounds, because run.js only pushes
+// a retro file when the cycle COMPLETES -- an over-long cycle contributes literally nothing, however
+// much CPU it burned, and it burns that CPU against the 14 self-play workers the whole time. 100
+// keeps the fix (still 2.5x the starvation point, still reaching well past the decided-zone) while
+// landing a cycle inside its own 120-minute clock instead of several times over it.
+const retroReplays = Math.max(1, +arg('retroReplays', 100));
 
 // Atomic save: write/copy to a temp file beside the target, then rename over it. A rename either
 // fully lands or doesn't happen at all, where a direct writeFileSync/copyFileSync can be caught
