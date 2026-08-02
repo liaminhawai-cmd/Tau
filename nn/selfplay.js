@@ -130,6 +130,12 @@ function playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomS
     // tournament.js already do this for exactly this reason; selfplay.js had quietly skipped it.
     playRandomOpening(eng, openingPlies);
   }
+  // Every branch above establishes the position the game really starts from -- a stored decision
+  // point, an unconstrained legal pose, or a few random opening plies -- so the ko history is seeded
+  // from THAT, not from the canonical opening newGame() left behind. (The random-opening branch
+  // plays real turns, so its history is already right; re-seeding it deliberately drops the opening
+  // plies too, since a game seeded mid-opening is not being asked to avoid repeating them.)
+  eng.koReset();
   const rows = [];
   let plies = 0, nulls = 0, repeated = false;
   while (!eng.getG().over && plies < maxPlies) {

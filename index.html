@@ -2390,7 +2390,6 @@ const CFG = {
     koEps: 0.25,                   // hub distance under which two poses count as the same position
     koDeg: 2,                      // ...and rotation. Same threshold as minMoveDeg: a position is
                                      // "new" once it is at least one real move away from every old one.
-    koPushEps: 0.01,               // opponent hub displacement that counts as contact having happened
 
     // ---------- komi: the grinding games that legitimately run long ----------
     // Ko kills the stalls but not the grinds: two pieces genuinely shoving each other can fill 300
@@ -2825,6 +2824,7 @@ function reset() {
           // turns through endTurn, so anything per-game has to be advanced a layer up, in
           // commitTurn). adjudicated marks a result that came from the move cap rather than a fall.
           koHist:[], plies:0, adjudicated:false };
+    koReset();   // the opening counts as a position the board has been in — see koReset
     fall.active=false; fallenIdx=-1;
     // A fresh board is never mid-coach: drop the guided/free-play rail state so a ladder level or
     // casual game started from the coach's game-over sheet doesn't inherit the dotted guides.
@@ -2924,10 +2924,17 @@ function koSameBoard(a, b){ return koSamePiece(a,b,0) && koSamePiece(a,b,3); }
 // displaces only the mover — 2 of the 6 feet move. If the piece that wasn't moving also shifted, the
 // swing drove into it and the push solver shoved it: 5 of 6 feet moved. (G.contact can't answer
 // this; clearTurn() nulls it before the next ply. The displacement is right there in the pieces.)
+// Contact is judged by the SAME standard the rule uses for "the board has been here before": the
+// opponent made contact if its pose changed, where "changed" means what it means everywhere else in
+// this rule. One number, one meaning -- and it closes a hole a real game walked straight through.
+// That game had blue graze red by 0.1u, which a separate hair-trigger threshold counted as a fight,
+// wiped the whole history, and licensed a return to the exact opening position one turn later. A
+// displacement the rule itself calls "the same position" cannot be the fight that excuses a repeat,
+// or two players who want to stall need only brush each other every few turns.
 function koContactThisTurn(){
     if (!G.snap) return false;
-    const o = 1-G.active;
-    return Math.hypot(G.pieces[o].x-G.snap[o].x, G.pieces[o].y-G.snap[o].y) > CFG.koPushEps;
+    const o = 1-G.active, p = G.pieces[o], s = G.snap[o];
+    return !koSamePiece([s.x, s.y, s.rot], [p.x, p.y, p.rot], 0);
 }
 // Would ending the turn here be a ko violation? Only meaningful mid-turn, before commitTurn().
 function koViolation(){
@@ -2939,6 +2946,12 @@ function koNote(){
     if (koContactThisTurn()) G.koHist.length = 0;   // a push resets the history for both sides
     G.koHist.push(koBoardPose());
 }
+// Seed the history with where the board stands NOW, and it has to be called wherever a game's
+// position is established outside a turn: the opening, and any jump to a stored position.
+// Without it the opening is the one position on the board that is not "a position the board has
+// been in", so the pieces may legally shuffle out and back to the exact start -- which is precisely
+// what a real game caught doing, oscillating back to the opening position eleven times.
+function koReset(){ if (G && G.koHist) { G.koHist.length = 0; if (CFG.koRule) G.koHist.push(koBoardPose()); } }
 // The move cap is scored, not drawn: after CFG.moveCap plies both sides have had exactly the same
 // number of turns, so compare how close each is to falling off and give the side on move its komi.
 // marginFor(0) is the Hard AI's own leaf score — outermost(red) − outermost(blue), + = blue ahead.
@@ -2963,22 +2976,28 @@ function commitTurn(){
 // original and the position is simply played (the cap still backstops it).
 function koLegalizePlan(plan){
     if (!CFG.koRule || !plan || !G.koHist || !G.koHist.length) return plan;
-    // Cheap pre-filter, exact in both directions -- it never skips a swing that could be banned, and
-    // it skips nearly every swing that can't, which is nearly all of them. Two necessary conditions
-    // for a banned stopping point, both testable without simulating anything:
+    // Cheap pre-filter. Three necessary conditions for a banned stopping point, none of which needs
+    // anything simulated -- if no remembered position meets all three, no stop on this arc can be
+    // banned and the trial swings below are pure waste:
     //
-    //   1. The swing made NO contact (contact wipes the history), so the opponent is still standing
-    //      exactly where it stands right now -- a remembered position has to agree about it.
-    //   2. This turn pins a foot and rotates the piece about it, so the mover's hub travels a circle
-    //      of radius footR centred on that pinned foot. A remembered position whose hub is not ON
-    //      that circle is simply not reachable from here, whatever the swing does.
-    //
-    // Condition 1 alone is worthless, which is worth recording: the entry filed at the end of the
-    // opponent's last turn always has them where they still stand, so it matches every single time.
-    // Condition 2 is what actually does the work.
+    //   1. NOT where we already stand. A move has to move (minMoveDeg), and 2 degrees of swing
+    //      carries the hub ~0.8u, well past koEps -- so a remembered position that IS the current
+    //      one can never be stopped at. This clause is the one that matters, and it is the one two
+    //      earlier attempts at this filter both missed: the entry filed at the end of the opponent's
+    //      last turn describes exactly where the board stands right now, so it satisfies every
+    //      other test trivially and the filter skipped nothing at all. Cost of missing it, measured:
+    //      the rule ate 34-44% of self-play wall time instead of ~2%.
+    //   2. The opponent agrees. A banned stop implies no contact this turn (contact wipes the
+    //      history), and no contact means the opponent has not moved -- so a remembered position has
+    //      to have it standing where it still stands.
+    //   3. Reachable. This turn pins a foot and rotates the piece about it, so the mover's hub
+    //      travels a circle of radius footR centred on that pinned foot; a remembered hub that is
+    //      not ON that circle cannot be reached however the swing goes.
     const here = koBoardPose(), oppOff = (1-G.active)*3, movOff = G.active*3;
     const piv = G.pieces[G.active].feet()[plan.pivotIdx];
-    const couldReach = G.koHist.some(q => koSamePiece(q, here, oppOff) &&
+    const couldReach = G.koHist.some(q =>
+        !koSamePiece(q, here, movOff) &&
+        koSamePiece(q, here, oppOff) &&
         Math.abs(Math.hypot(q[movOff]-piv.x, q[movOff+1]-piv.y) - CFG.footR) < CFG.koEps);
     if (!couldReach) return plan;
     const step = CFG.koDeg*Math.PI/180, minMove = CFG.minMoveDeg*Math.PI/180;

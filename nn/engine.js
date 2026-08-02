@@ -14,7 +14,7 @@ const SEEDS = [
   // the Master AI's search commits and rolls back candidate turns through it); koLegalizePlan nudges
   // a chosen move's stopping angle off a position the board has already been at; adjudicate scores
   // the move cap with komi. Seeded explicitly so the closure can't drop the rules from training.
-  'commitTurn', 'koLegalizePlan', 'koViolation', 'adjudicate', 'outermostRadU',
+  'commitTurn', 'koLegalizePlan', 'koViolation', 'koReset', 'adjudicate', 'outermostRadU',
   'directionToward', 'aiChoosePlan', 'aiSwingDir', 'searchedPlanFor', 'simMoveToLimit',
   'AI_LADDER', 'ladderPlanFor',
   // board geometry, for features.js: the printed lines and where they meet. These already rode in
@@ -122,6 +122,7 @@ function __newGame() {
         // must mirror reset()'s G in index.html -- this literal is the one piece of engine state
         // that is duplicated rather than extracted, so new per-game fields have to be added twice
         koHist: [], plies: 0, adjudicated: false };
+  koReset();   // the opening counts as a position the board has been in -- see koReset
   return G;
 }
 // play one full turn from a { pivotIdx, dir, targetRad } plan (the shape every brain returns)
@@ -155,7 +156,7 @@ function __applyPlanSearch(plan) {
 __exports = {
   CFG, Piece, radU, norm,
   pinFoot, applySwing, clearTurn, endTurn, commitTurn, takeSnap, restoreSnap,
-  koLegalizePlan, koViolation, adjudicate, outermostRadU,
+  koLegalizePlan, koViolation, koReset, adjudicate, outermostRadU,
   directionToward, aiChoosePlan, simMoveToLimit, searchedPlanFor,
   AI_LADDER, ladderPlanFor, ladderEval,
   angInSpan, nearLineIds, lineDistOf, lineSideOf, LINE_INTERSECTIONS,
