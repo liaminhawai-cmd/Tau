@@ -252,6 +252,44 @@ const store = (() => {
 store.results = store.results || {};
 const keyOf = (a, b) => `${a.id}|${b.id}`;
 
+// --- the inbox: results played elsewhere, merged in here ------------------------------------------
+// run.js's ladder sweep plays real rated games (a checkpoint at a fixed depth against ladder rungs)
+// but used to throw the win/loss away, keeping only its frontier window -- so hours of arena games
+// contributed training rows and ZERO rating information, while the pool separately paid to answer
+// the same question. They belong on the same scale as everything else.
+// They arrive through an append-only JSONL inbox rather than being written straight into
+// elo-results.json, and that is not incidental: since the scheduler became non-blocking, the bench
+// cycle and the pool cycle deliberately run CONCURRENTLY (separate lock keys). Two writers on
+// elo-results.json would silently lose whichever update landed second -- elorank checkpoints the
+// whole store after every pair, so a stale in-memory copy written back would erase the other's
+// work. An append-only file has one writer per line and no read-modify-write, so it is safe under
+// exactly that concurrency. Drained and truncated here, at the single point that owns the store.
+const inboxPath = arg('inbox', path.join(dir, 'elo-inbox.jsonl'));
+(function drainInbox() {
+  let txt;
+  try { txt = fs.readFileSync(inboxPath, 'utf8'); } catch (e) { return; }   // no inbox is the normal case
+  let merged = 0, skipped = 0;
+  for (const line of txt.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const r = JSON.parse(line);
+      if (!r.a || !r.b) { skipped++; continue; }
+      const k = `${r.a}|${r.b}`, prev = store.results[k] || { w: 0, l: 0, d: 0 };
+      store.results[k] = { w: prev.w + (+r.w || 0), l: prev.l + (+r.l || 0), d: (prev.d || 0) + (+r.d || 0) };
+      merged++;
+    } catch (e) { skipped++; }
+  }
+  if (merged) {
+    // Truncate only AFTER the merged store is safely on disk, so a crash in between re-merges the
+    // inbox next run rather than losing it. Double-counting a few games is recoverable; silently
+    // dropping results is not.
+    atomicWrite(outPath, JSON.stringify(store, null, 1));
+    try { fs.unlinkSync(inboxPath); } catch (e) {}
+    console.log(`merged ${merged} result line(s) from ${path.basename(inboxPath)}` +
+                (skipped ? ` (${skipped} unreadable, left out)` : ''));
+  }
+})();
+
 // --- bounding the FIELD (which is not the same as bounding the POOL) -----------------------------
 // The pool is append-only and uncapped: once a model has a rating it keeps it forever, on the same
 // scale, at a cost of one line of JSON. Nothing is ever retired from it.

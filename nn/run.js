@@ -103,6 +103,12 @@ const randomStartFrac = arg('randomStartFrac', '0');
 // fall off?) is legible long before any one cell is significant.
 const benchLevels = Math.max(1, +arg('benchLevels', 3));      // ladder rungs per depth, per sweep
 const benchCellGames = arg('benchCellGames', '3');            // games per (level, depth) cell
+// Ladder rungs played EVERY sweep regardless of where the window sits, so results stay comparable
+// across sweeps and across models (see the union in runBenchCycle). Includes the top rung, which
+// used to be special-cased here for the same reason -- otherwise the rung the net is ultimately
+// judged against goes unmeasured until the window crawls all the way up. Costs a few extra cells
+// per sweep; --benchAnchors 11 restores the old behaviour of anchoring on the top rung alone.
+const benchAnchors = arg('benchAnchors', '3,7,11').split(',').map(Number).filter(n => n > 0);
 // Shape of the self-play opponent distribution over ladder rungs (see zpdLevels). sigma is the
 // bell's width in rungs: 1.6 puts roughly two thirds of the weight within +-1.6 rungs of the
 // frontier while still leaving a usable trickle three or four rungs out. topFloor is the minimum
@@ -943,19 +949,61 @@ async function runBenchCycle() {
   // being reduced to a win-loss tally and thrown away -- they cost the same CPU either way, and
   // arena.js writes selfplay.js's exact row schema. They land in whichever batch file self-play is
   // CURRENTLY writing, the same file everything downstream already globs and pushes.
-  const cell = async (lvl, d) => arenaScore(await runCapturedSoftAsync('arena.js',
-    ['--a', 'nn:0:' + best, '--b', 'L' + lvl, '--games', benchCellGames, '--depth', String(d),
-     '--saveData', selfplayOut || path.join(dir, 'data', 'bench-fallback.jsonl')]));
+  //
+  // The sweep plays the newest CHECKPOINT, not best.json, and that is a deliberate change: its
+  // win/loss now also feeds the Elo pool (see the inbox write below), and a result is only worth
+  // rating if it is attributable to fixed weights. best.json is rewritten by the resume-train clock
+  // and by promotion, so "best@D2" as a rated identity is a moving target -- the exact bug
+  // elorank's .elo-snapshot exists to prevent. A numbered checkpoint is frozen and is ALREADY a
+  // rated player in the pool, so these games sharpen an existing rating instead of inventing a
+  // fuzzy one. Cost: the frontier now tracks the last checkpoint rather than the live net, at most
+  // one pool cycle behind -- and those in-between resume-train edits are ungated increments the
+  // pool re-judges anyway.
+  const sweepNet = (() => {
+    try {
+      const ck = fs.readdirSync(path.join(dir, 'models'))
+        .filter(f => /^ckpt-\d+\.json$/.test(f)).sort();
+      if (ck.length) return { path: path.join(dir, 'models', ck[ck.length - 1]),
+                              id: path.basename(ck[ck.length - 1], '.json') };
+    } catch (e) {}
+    return { path: best, id: null };     // no checkpoint yet: play best.json, contribute no rating
+  })();
+  if (!sweepNet.id) log('ladder sweep: no checkpoint yet, sweeping best.json and not feeding Elo');
+  // Append-only, one line per cell, drained by elorank on its next run. NOT a direct write to
+  // elo-results.json: bench and pool cycles run concurrently now, and two read-modify-write writers
+  // on that file would silently lose one side's results.
+  const eloInbox = path.join(dir, 'elo-inbox.jsonl');
+  const cell = async (lvl, d) => {
+    const s = arenaScore(await runCapturedSoftAsync('arena.js',
+      ['--a', 'nn:0:' + sweepNet.path, '--b', 'L' + lvl, '--games', benchCellGames, '--depth', String(d),
+       '--idA', `${sweepNet.id || 'best'}@D${d}`, '--idB', 'L' + lvl,
+       '--saveData', selfplayOut || path.join(dir, 'data', 'bench-fallback.jsonl')]));
+    if (s && sweepNet.id) {
+      try {
+        fs.appendFileSync(eloInbox, JSON.stringify({
+          a: `${sweepNet.id}@D${d}`, b: `L${lvl}`, w: s.w, l: s.l, d: 0,
+          src: 'ladder-sweep', at: new Date().toISOString(),
+        }) + '\n');
+      } catch (e) {}
+    }
+    return s;
+  };
+  // Cells are the moving window UNION a fixed anchor set, deduped so nothing is played twice.
+  // The window is what advances the frontier; the anchors are what make results comparable.
+  // Why anchors matter more now: these games feed the Elo pool, and the ladder is NOT evenly spaced
+  // for a net -- the last fit flagged six rungs rating below a lower rung. If each sweep rates a
+  // model against whichever rungs its window happened to sit on, every model is anchored to a
+  // different slice of an uneven yardstick and cross-model comparison inherits that unevenness.
+  // Playing the SAME rungs every time makes the unevenness common-mode: it still distorts the
+  // absolute numbers, but it distorts every model identically, so comparisons between them survive.
+  // The dice are rolled once, not once per model.
+  const anchorSet = benchAnchors.filter(l => l >= 1 && l <= LADDER_N);
   const grid = {};
-  for (const d of benchDepths)
-    for (let lvl = spans[d][0]; lvl <= spans[d][1]; lvl++)
-      grid[lvl + ':' + d] = await cell(lvl, d);
-  // A FIXED cell against the top rung every sweep, wherever the window happens to be -- otherwise
-  // the rung the net is ultimately judged against goes unmeasured until the window crawls all the
-  // way up, which used to take dozens of iterations. Skipped when the window already covers it.
-  for (const d of benchDepths)
-    if (LADDER_N < spans[d][0] || LADDER_N > spans[d][1])
-      grid[LADDER_N + ':' + d] = await cell(LADDER_N, d);
+  for (const d of benchDepths) {
+    const lvls = new Set(anchorSet);
+    for (let lvl = spans[d][0]; lvl <= spans[d][1]; lvl++) lvls.add(lvl);
+    for (const lvl of [...lvls].sort((a, b) => a - b)) grid[lvl + ':' + d] = await cell(lvl, d);
+  }
   const table = benchDepths.map(d => {
     const cells = [];
     for (let lvl = spans[d][0]; lvl <= spans[d][1]; lvl++) {

@@ -32,6 +32,9 @@ echo  11. STRENGTH: best vs L11 at depth 3, 2, 1  -- is the net already a rung a
 echo  12. WIDTH A/B: keep 6 + policy cutoff vs plain keep 4  -- leave it running
 echo  13. RANKS: current Elo chart of every rated brain (instant, no games played)
 echo.
+echo  15. POLICY LOOP: evolve the policy head forever -- multi-core, saves and pushes
+echo      every game, hill-climbs the shape, never touches the value net
+echo.
 echo  14. Exit
 echo ================================================
 set /p choice="Pick a number: "
@@ -49,6 +52,7 @@ if "%choice%"=="10" goto datacheck
 if "%choice%"=="11" goto vsl11
 if "%choice%"=="12" goto widthab
 if "%choice%"=="13" goto ranks
+if "%choice%"=="15" goto policyloop
 if "%choice%"=="14" goto :eof
 goto menu
 
@@ -92,6 +96,16 @@ for %%D in (3 2 1) do (
 )
 pause
 goto menu
+:policyloop
+rem Runs until you close the window. Safe to stop any time: pushed games are shared and the
+rem champion policy on disk survives for the next run. Time budget per cycle, in hours.
+set "PLHOURS="
+set /p PLHOURS=Hours per cycle [1]: 
+if "%PLHOURS%"=="" set PLHOURS=1
+node nn\policyloop.js --budgetHours %PLHOURS%
+pause
+goto menu
+
 :ranks
 rem A pure REFIT of the stored results (nn\elo-results.json): fits every game ever recorded and
 rem prints the table -- Elo, ladder rank, 90 percent CI, games per brain. Plays NOTHING and writes
