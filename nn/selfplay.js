@@ -57,7 +57,58 @@ function loadSeedPoses(dataDir, k) {
   return pool;
 }
 
-function playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomStart) {
+// --- repetition guard -------------------------------------------------------------------------
+// Two brains can lock into a sterile oscillation: measured on batch-008, one L11-vs-L9 game spent
+// 5h52m of a worker replaying an exact 4-ply loop 73 times, having reached only 14 distinct
+// positions in 300 plies. It ended winner:null, so the entire cost bought no rating signal and no
+// usable label. Three of the four capped games in that batch were this shape.
+//
+// The guard is deliberately NOT a change to Tau's rules -- it is the same kind of data-collection
+// abandon the `nulls > 4` wedge check above already performs. A real rules change was considered
+// and rejected on evidence: a ban on repeating a pose fires on ~3% of games that ended in a normal
+// win, so enforcing it in the engine would alter legitimate play, not just degenerate play.
+//
+// Contact resets the memory, which is what keeps the guard off real games: two pieces pushing each
+// other legitimately revisit positions, and that is a fight, not a stall. `g.contact` cannot be
+// used for this -- clearTurn() nulls it before the next ply -- so proximity is measured directly.
+// It approximates the engine's push contact rather than reproducing it, which is acceptable for a
+// guard whose only power is to stop collecting.
+const REP_ROT = 2*Math.PI/180;        // engine's own minMoveDeg: below this is not a distinct move
+const REP_HUB = 0.25;                 // ~a third of the hub travel one 2-degree swing produces
+const LEG_R = 1.44, FOOT_R = 23.095;  // CFG.legRadius / CFG.footR
+function repFeet(x, y, rot) {
+  return [0,1,2].map(k => { const a = rot + k*2*Math.PI/3;
+    return { x: x + FOOT_R*Math.cos(a), y: y + FOOT_R*Math.sin(a) }; });
+}
+function segGap(a, b, c, d) {
+  const u = {x:b.x-a.x, y:b.y-a.y}, v = {x:d.x-c.x, y:d.y-c.y}, w = {x:a.x-c.x, y:a.y-c.y};
+  const A = u.x*u.x+u.y*u.y, B = u.x*v.x+u.y*v.y, C = v.x*v.x+v.y*v.y,
+        D = u.x*w.x+u.y*w.y, E = v.x*w.x+v.y*w.y, den = A*C - B*B;
+  let s, t;
+  if (den < 1e-9) { s = 0; t = (B > C ? D/B : E/C); }
+  else { s = (B*E - C*D)/den; t = (A*E - B*D)/den; }
+  s = Math.max(0, Math.min(1, s)); t = Math.max(0, Math.min(1, t));
+  return Math.hypot(a.x + s*u.x - (c.x + t*v.x), a.y + s*u.y - (c.y + t*v.y));
+}
+function piecesTouching(ps, eps) {
+  const B = {x:ps[0].x, y:ps[0].y}, R = {x:ps[1].x, y:ps[1].y};
+  const fb = repFeet(ps[0].x, ps[0].y, ps[0].rot), fr = repFeet(ps[1].x, ps[1].y, ps[1].rot);
+  for (const a of fb) for (const b of fr)
+    if (segGap(B, a, R, b) - 2*LEG_R <= eps) return true;
+  return false;
+}
+function samePose(a, b) {
+  let dr = Math.abs(a.rot - b.rot) % (2*Math.PI);
+  dr = Math.min(dr, 2*Math.PI - dr);
+  return dr < REP_ROT && Math.hypot(a.x - b.x, a.y - b.y) < REP_HUB;
+}
+
+function playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomStart, opts) {
+  // repeatGuard: how many times a side may re-occupy a pose (with no contact since) before the
+  // game is abandoned. 0 disables entirely -- the default, so nothing changes until asked.
+  const repeatGuard = Math.max(0, (opts && +opts.repeatGuard) || 0);
+  const contactEps = (opts && opts.contactEps != null) ? +opts.contactEps : 2;
+  const seenPose = [[], []];
   eng.newGame();
   if (seedPose) {
     // Start from a stored mid-game decision point instead of the standard opening (see --seedFrom
@@ -83,9 +134,22 @@ function playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomS
     playRandomOpening(eng, openingPlies);
   }
   const rows = [];
-  let plies = 0, nulls = 0;
+  let plies = 0, nulls = 0, repeated = false;
   while (!eng.getG().over && plies < maxPlies) {
     const idx = eng.getG().active;
+    if (repeatGuard > 0) {
+      const ps = eng.getG().pieces;
+      // A contact episode wipes both memories: revisiting a position after a push is a fight
+      // resuming, not a stall repeating.
+      if (piecesTouching(ps, contactEps)) { seenPose[0].length = 0; seenPose[1].length = 0; }
+      else {
+        const here = { x: ps[idx].x, y: ps[idx].y, rot: ps[idx].rot };
+        const hit = seenPose[idx].find(q => samePose(q, here));
+        if (hit) {
+          if (++hit.n > repeatGuard) { repeated = true; break; }
+        } else seenPose[idx].push({ ...here, n: 1 });
+      }
+    }
     // The raw pose rides along with the feature vector. Rows used to store ONLY the features, so
     // when the feature set changed every accumulated position died with it (~8 hours of compute the
     // first time). With the position kept, any future feature change is a re-featurise of existing
@@ -109,7 +173,11 @@ function playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomS
   // capped distinguishes a REAL draw (the ply limit ran out -- a fortress/shuffle stalemate) from
   // a wedged abandon (both sides null-planned; those rows describe a degenerate stuck state and
   // stay excluded from the data, as before).
-  return { rows, winner: G.over ? G.winner : null, plies, capped: plies >= maxPlies };
+  // `repeated` is a third outcome alongside a real cap and a wedge abandon: the position cycled with
+  // no contact to break it. Reported separately so a run can tell "the brains stalled" apart from
+  // "the game genuinely ran long", which the plies count alone cannot distinguish.
+  return { rows, winner: G.over ? G.winner : null, plies,
+           capped: plies >= maxPlies, repeated };
 }
 
 function main() {
@@ -152,6 +220,12 @@ function main() {
   const modelVarietyFrac = Math.max(0, Math.min(1, +arg('modelVarietyFrac', 0.2)));
   // The in-game ply cap. Exposed as an arg mostly so tests can force cap-draws cheaply.
   const maxPlies = +arg('maxPlies', 300);
+  // --repeatGuard N: abandon a game once a side has re-occupied the same pose N+1 times with no
+  // contact in between (see the guard above playGame). 0 = off, and off is the default: it changes
+  // which games get collected, so it stays opt-in until a run explicitly asks. 2 is the sensible
+  // live value -- it lets a position recur twice, which real play does, and only cuts on the third.
+  const repeatGuard = +arg('repeatGuard', 0);
+  const contactEps = +arg('contactEps', 2);
   // --seedFrom F: this fraction of games starts from a STORED mid-game position (drawn from the
   // accumulated data's `p` poses) instead of the standard opening, with the normal brains playing
   // it out to a real result. Point: outcome labels are cleanest near the end of a game and
@@ -416,7 +490,8 @@ function main() {
     // position, so there's no reason to override it with an unconstrained random one.
     const randomStart = !seedPose && Math.random() < randomStartFrac;
     if (randomStart) tag = 'random-start ' + tag;
-    const { rows, winner, plies, capped } = playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomStart);
+    const { rows, winner, plies, capped, repeated } =
+      playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomStart, { repeatGuard, contactEps });
     // `g` marks which game a position came from. Without it train.js can only hold out random
     // ROWS, and consecutive positions in one game are near-identical -- so the same game lands on
     // both sides of the split and the val set stops being held-out data at all. Measured
