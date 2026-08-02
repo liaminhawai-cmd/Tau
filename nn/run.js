@@ -446,6 +446,35 @@ function mutateHidden(spec) {
   return null;
 }
 
+// --- variant lineage registry: an open, evolving population ------------------------------------
+// Started as four fixed names (wide/ultra/deep/l15_value), each hand-pinned to an architecture.
+// Now the population is open: a lineage whose champion clears the top of the pool can spawn a
+// mutant child (same single-edit mutateHidden the shape-fight uses), and a lineage that falls out
+// of the top can stop getting trained. Nothing on disk is ever deleted -- retiring a lineage only
+// drops its rotation slot; its checkpoints stay put as a reference point, the same way a retired
+// ladder rung stays in the pool as a yardstick instead of vanishing.
+const registryFile = path.join(dir, 'models', '.lineage-registry.json');
+const maxActiveLineages = Math.max(1, +arg('maxActiveLineages', 12));
+const cullFloorPct = Math.max(0.01, Math.min(1, +arg('cullFloorPct', 0.10)));   // "top 10%"
+const cullMinTurns = Math.max(1, +arg('cullMinTurns', 3));                      // grace period for new mutants
+
+function loadRegistry() {
+  try { return JSON.parse(fs.readFileSync(registryFile, 'utf8')); } catch (e) { /* bootstrap below */ }
+  const lineages = {};
+  for (const n of ['wide', 'ultra', 'deep', 'l15_value']) {
+    const p = path.join(dir, 'models', n + '.json');
+    const shape = hiddenOf(p);
+    if (!shape) continue;
+    lineages[n] = { shape, parent: null, status: 'active', born: new Date().toISOString(), turns: 0 };
+  }
+  return { lineages };
+}
+function saveRegistry(reg) { fs.writeFileSync(registryFile, JSON.stringify(reg, null, 1)); }
+function champOf(name) {
+  try { return JSON.parse(fs.readFileSync(path.join(dir, 'models', `.variant-champ-${name}.json`), 'utf8')); }
+  catch (e) { return null; }
+}
+
 // A small status file, pushed to git at each major transition, so progress can be checked by
 // reading the repo (GitHub's own UI, or `git fetch` anywhere) instead of reading this console --
 // this machine is the only thing that can see the console, but anyone with the repo can see git.
@@ -813,61 +842,66 @@ async function runPoolCycle() {
     }
   }
 
-  // one variant lineage gets a light touch of training, rotating through whichever exist
-  const variants = ['wide', 'ultra', 'deep', 'l15_value']
-    .filter(n => fs.existsSync(path.join(dir, 'models', n + '.json')));
+  // one variant lineage gets a light touch of training, rotating through the registry's OPEN
+  // population -- the original four named architectures, plus whatever mutant children the
+  // cull/reproduce pass at the end of this cycle has spawned from successful ones. A retired
+  // lineage keeps its files but drops out of this rotation entirely.
+  const registry = loadRegistry();
+  const activeNames = Object.entries(registry.lineages)
+    .filter(([, v]) => v.status === 'active').map(([n]) => n).sort();
   let variantOutV = null, variantName = null;
-  if (variantEpochs > 0 && variants.length) {
-    const name = variants[num % variants.length];
+  if (variantEpochs > 0 && activeNames.length) {
+    const name = activeNames[num % activeNames.length];
     variantName = name;
+    const info = registry.lineages[name];
     const lineage = fs.readdirSync(path.join(dir, 'models'))
       .filter(f => f.startsWith(name + '-') && /-\d+\.json$/.test(f)).sort();
     // A lineage used to resume from its own last link FOREVER -- wide-094 from wide-092 from
     // wide-090, with no reset ever. That is exactly the unbounded resume-training this file's own
     // header documents as the iteration-63/80 failure: it adds strength over a handful of
     // iterations and degrades over dozens. best.json is protected from it (the round robin and the
-    // pool re-derive it from scratch); these lineages were not. Suggestive rather than proof, but
-    // ultra was the top-rated brain in the pool at ~500 Elo and has since dropped out of the rated
-    // list entirely.
-    // So every variantFreshEvery-th time a given lineage comes up, it is retrained FROM SCRATCH at
-    // its own architecture instead of resumed. The shape -- which is the whole reason these
-    // lineages exist -- is preserved; only the accumulated resume-training is discarded. The pool
-    // then judges fresh against resumed on merit, as it does for everything else.
-    const turn = Math.floor(num/variants.length);       // how many times THIS lineage has come up
-    const fresh = variantFreshEvery > 0 && turn > 0 && turn % variantFreshEvery === 0;
-    const base = path.join(dir, 'models', name + '.json');
+    // pool re-derive it from scratch); these lineages were not.
+    // So every variantFreshEvery-th turn (tracked per-lineage now, not derived from the cycle number,
+    // since the population's size changes as it evolves) it is retrained FROM SCRATCH at its own
+    // architecture instead of resumed -- and a brand-new mutant with no checkpoint yet always starts
+    // this way, since there is nothing to resume from.
+    const canResume = lineage.length > 0;
+    const fresh = !canResume || (variantFreshEvery > 0 && info.turns > 0 && info.turns % variantFreshEvery === 0);
     // Resume from the lineage's recorded CHAMPION, not just whichever link finished training most
     // recently -- "most recent" and "best" were silently assumed to be the same file, so a resume
     // step that made things worse (ultra-094 below ultra-093) kept compounding the damage forward
     // forever: resuming from a degraded checkpoint doesn't recover, it just keeps building on the
     // same bad basin. elo-summary.json can't answer "who's currently best" on its own -- a numbered
     // checkpoint like ultra-093.json is only ever in ONE cycle's --focus, so by the time this lineage
-    // comes up again (four cycles later) its rating has already fallen out of every later summary.
-    // So the champion is tracked separately in a small marker file, updated below once THIS cycle's
-    // own placement games come back -- the exact "running maximum over rated challengers" pattern
-    // that already protects best.json, applied to a lineage instead of the whole pool.
-    const champFile = path.join(dir, 'models', `.variant-champ-${name}.json`);
-    let from = path.join(dir, 'models', lineage.length ? lineage[lineage.length - 1] : name + '.json');
+    // comes up again its rating has already fallen out of every later summary. So the champion is
+    // tracked separately in a small marker file, updated below once THIS cycle's own placement games
+    // come back -- the exact "running maximum over rated challengers" pattern that already protects
+    // best.json, applied to a lineage instead of the whole pool.
+    let from = canResume ? lineage[lineage.length - 1] : null;
+    if (from) from = path.join(dir, 'models', from);
     try {
-      const champ = JSON.parse(fs.readFileSync(champFile, 'utf8'));
-      if (champ.model && fs.existsSync(champ.model)) {
+      const champ = champOf(name);
+      if (champ && champ.model && fs.existsSync(champ.model)) {
         if (champ.model !== from) log(`pool cycle ${num} — variant lineage: resuming from champion ` +
-            `${path.basename(champ.model)} (${Math.round(champ.elo)} Elo), not newest ${path.basename(from)}`);
+            `${path.basename(champ.model)} (${Math.round(champ.elo)} Elo)` +
+            (from ? `, not newest ${path.basename(from)}` : ''));
         from = champ.model;
       }
     } catch (e) { /* no champion recorded yet -- keep the newest-file fallback */ }
     const outV = path.join(dir, 'models', `${name}-${String(num).padStart(3, '0')}.json`);
     variantOutV = outV;
-    const shape = hiddenOf(fresh ? base : from);
-    if (fresh && shape) {
-      log(`pool cycle ${num} — variant lineage: ${name} RESET, training from scratch at ${shape} ` +
-          `(${scratchEpochs} epochs) instead of resuming -- ${turn} resumes deep`);
-      await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--hidden', shape, '--out', outV]);
+    if (fresh) {
+      log(`pool cycle ${num} — variant lineage: ${name} ${canResume ? 'RESET,' : 'new mutant,'} ` +
+          `training from scratch at ${info.shape} (${scratchEpochs} epochs)` +
+          (canResume ? ` instead of resuming -- ${info.turns} resumes deep` : ''));
+      await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--hidden', info.shape, '--out', outV]);
     } else {
       log(`pool cycle ${num} — variant lineage: ${path.basename(from)} + ${variantEpochs} epochs -> ${path.basename(outV)}`);
       await runSoftAsync('train.js', ['--epochs', String(variantEpochs), '--resume', from, '--out', outV]);
     }
     if (fs.existsSync(outV)) focus.push(outV);
+    info.turns++;
+    saveRegistry(registry);
   }
 
   const wide = poolWideEvery > 0 && num % poolWideEvery === 0;
@@ -971,6 +1005,59 @@ async function runPoolCycle() {
         log(`pool cycle ${num} — shape fight unresolved (` +
             `${ctl ? '' : 'control unrated'}${!ctl && !mut ? ', ' : ''}${mut ? '' : 'mutant unrated'}` +
             `) — no verdict, keeping ${mutInfo.control}`);
+      }
+    }
+
+    // Evolve the lineage population. Cull whatever has fallen out of the top cullFloorPct of the
+    // pool -- stop training it, keep its files as a reference point, nothing is deleted -- and let
+    // whatever IS in the top spawn a mutant child, so a successful shape gets more ATTEMPTS at doing
+    // even better rather than just more resumes of itself. Runs over the whole registry every cycle,
+    // not just this cycle's own lineage, using each lineage's last recorded champion -- champions
+    // were measured at different moments, which is an approximation, but the same kind of
+    // approximation the rest of this pool already runs on (a rated brain's Elo is also always a
+    // measurement from whenever its games happened to be played, not "right now").
+    if (variantEpochs > 0) {
+      const reg = loadRegistry();
+      const champs = Object.entries(reg.lineages)
+        .filter(([, v]) => v.status === 'active')
+        .map(([n, v]) => ({ name: n, info: v, champ: champOf(n) }))
+        .filter(e => e.champ && e.champ.model && fs.existsSync(e.champ.model));
+      const pool = ranked.map(r => r.elo).concat(champs.map(c => c.champ.elo));
+      if (pool.length >= 4) {
+        pool.sort((a, b) => a - b);
+        const cutoff = pool[Math.min(pool.length - 1, Math.floor(pool.length*(1 - cullFloorPct)))];
+        let changed = false;
+        for (const { name, info, champ } of champs) {
+          if (info.turns < cullMinTurns) continue;   // grace period for a lineage still finding its feet
+          const activeNow = Object.values(reg.lineages).filter(v => v.status === 'active').length;
+          if (champ.elo < cutoff) {
+            if (activeNow <= 1) continue;   // never cull the last lineage standing
+            info.status = 'retired';
+            info.retiredAt = new Date().toISOString();
+            info.retiredElo = champ.elo;
+            changed = true;
+            log(`pool cycle ${num} — variant lineage: ${name} retired (${Math.round(champ.elo)} Elo, ` +
+                `below the top-${Math.round(cullFloorPct*100)}% cutoff of ${Math.round(cutoff)}) -- ` +
+                `files kept, no longer trained`);
+          } else {
+            const livingChildren = Object.values(reg.lineages)
+              .filter(v => v.parent === name && v.status === 'active').length;
+            if (activeNow < maxActiveLineages && livingChildren < 2) {
+              const mut = mutateHidden(info.shape);
+              if (mut) {
+                let k = 1;
+                while (reg.lineages[`${name}-m${k}`]) k++;
+                const childName = `${name}-m${k}`;
+                reg.lineages[childName] = { shape: mut.shape, parent: name, status: 'active',
+                                             born: new Date().toISOString(), turns: 0 };
+                changed = true;
+                log(`pool cycle ${num} — variant lineage: ${name} (${Math.round(champ.elo)} Elo, top ` +
+                    `${Math.round(cullFloorPct*100)}%) spawns ${childName} at ${mut.shape} (${mut.op})`);
+              }
+            }
+          }
+        }
+        if (changed) saveRegistry(reg);
       }
     }
   } catch (e) {
