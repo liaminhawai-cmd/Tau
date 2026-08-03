@@ -35,6 +35,9 @@ echo.
 echo  15. POLICY LOOP: evolve the policy head forever -- multi-core, saves and pushes
 echo      every game, hill-climbs the shape, never touches the value net
 echo.
+echo  16. POLICY CLAIM: policy-champ vs no policy, SAME NET SAME CLOCK, real sample size
+echo      -- the question the loop's own control group cannot resolve at 6 games/cycle
+echo.
 echo  14. Exit
 echo ================================================
 set /p choice="Pick a number: "
@@ -53,6 +56,7 @@ if "%choice%"=="11" goto vsl11
 if "%choice%"=="12" goto widthab
 if "%choice%"=="13" goto ranks
 if "%choice%"=="15" goto policyloop
+if "%choice%"=="16" goto policyclaim
 if "%choice%"=="14" goto :eof
 goto menu
 
@@ -103,6 +107,35 @@ set "PLHOURS="
 set /p PLHOURS=Hours per cycle [1]: 
 if "%PLHOURS%"=="" set PLHOURS=1
 node nn\policyloop.js --budgetHours %PLHOURS%
+pause
+goto menu
+
+:policyclaim
+if not exist "nn\models\policy-champ.json" (
+  echo nn\models\policy-champ.json not found -- run option 15 first, or wait for a cycle to finish.
+  pause
+  goto menu
+)
+if not exist "nn\models\best.json" (
+  echo nn\models\best.json not found.
+  pause
+  goto menu
+)
+rem The loop's own shape fight runs champ-vs-mutant on 6 games, nowhere near enough to move the
+rem shape reliably -- but the same 6 games is ALSO champ-vs-nopolicy, its control group, the one
+rem that answers "does the policy help at all". Observed live: 9 cycles in, that control's POOLED
+rem total sat at 51%% +/- 9 on 114 games -- indistinguishable from the policy doing nothing -- and
+rem resolving a real 55%% edge at 6 games/cycle would take roughly 250 more cycles. This is the
+rem same comparison run properly: same net, same clock, only the policy differs, at a sample size
+rem that can actually tell 50 from 55.
+set "GAMES=300"
+set /p GAMES="Games to play, Enter for 300: "
+echo.
+echo Safe to run alongside the policy loop or the trainer -- same-clock arena games, no writes to
+echo the pool, best.json, or the champion policy. Progress is written to nn\arena-logs\ as it goes.
+echo.
+echo === policy-champ vs no policy, same net (best.json), 2000ms/move, %GAMES% games ===
+node nn\arena.js --a nn:0:%CD%\nn\models\best.json --policyA %CD%\nn\models\policy-champ.json --b nn:0:%CD%\nn\models\best.json --timeMs 2000 --games %GAMES% --saveData %CD%\nn\data\policy-claim-%COMPUTERNAME%.jsonl
 pause
 goto menu
 
