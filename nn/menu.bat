@@ -131,8 +131,12 @@ rem that can actually tell 50 from 55.
 set "GAMES=300"
 set /p GAMES="Games to play, Enter for 300: "
 echo.
-echo Safe to run alongside the policy loop or the trainer -- same-clock arena games, no writes to
-echo the pool, best.json, or the champion policy. Progress is written to nn\arena-logs\ as it goes.
+echo This is a TIMED test, so unlike options 11 and 12 it is NOT indifferent to a busy machine:
+echo both sides get the same 2000ms, but a contended box means fewer nodes inside it, and the
+echo policy's whole payoff is depth-per-second. The A/B stays internally fair -- both sides are
+echo starved equally -- but the number describes the policy at whatever node count this machine
+echo had spare. Run option 8 first if the trainer is going, same as for option 6.
+echo Writes nothing to the pool, best.json, or the champion policy; progress lands in nn\arena-logs\.
 echo.
 echo === policy-champ vs no policy, same net (best.json), 2000ms/move, %GAMES% games ===
 node nn\arena.js --a nn:0:%CD%\nn\models\best.json --policyA %CD%\nn\models\policy-champ.json --b nn:0:%CD%\nn\models\best.json --timeMs 2000 --games %GAMES% --saveData %CD%\nn\data\policy-claim-%COMPUTERNAME%.jsonl
