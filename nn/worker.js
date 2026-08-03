@@ -7,10 +7,12 @@
 //   node nn/worker.js [--games 200] [--workers N] [--name mymachine] [--randomStartFrac 0.15]
 //
 // The loop: pull -> play a chunk of games -> commit -> push -> repeat, forever.
-//   - MODEL: the newest ckpt-NNN.json, not best.json. The numbered checkpoint is a frozen
-//     snapshot, so the mover ids stamped on every row (`ckpt-091@D1`) stay exact even when this
-//     machine is a pull or two behind the trainer's latest promotion. best.json is only the
-//     fallback for a clone that has no checkpoints yet.
+//   - MODEL: whichever of {newest local ckpt-NNN.json, best.json} was actually touched more
+//     recently (by mtime, not filename). A checkpoint is preferred when it is genuinely fresh --
+//     a frozen numbered snapshot means the mover ids stamped on every row (`ckpt-091@D1`) stay
+//     exact even when this machine is a pull or two behind the trainer's latest promotion -- but
+//     checkpoints never travel over git, so a worker's local copy can otherwise sit stale for days
+//     while best.json keeps moving. See pickPrimaryModel() for the failure this fixes.
 //   - OPPONENTS: nn/zpd-pool.json, published by the trainer each batch, so a worker plays the
 //     same frontier-centred opponent mix as the main machine instead of selfplay's weak-heavy
 //     default. Falls back to a fixed mid-ladder spread if the file hasn't arrived yet.
@@ -176,13 +178,30 @@ const gitSoft = (args, what) => {
 
 // --- what to play with --------------------------------------------------------------------------
 function pickPrimaryModel() {
-  try {
-    const ck = fs.readdirSync(path.join(dir, 'models'))
-      .filter(f => /^ckpt-\d+\.json$/.test(f))
-      .sort((a, b) => +a.match(/\d+/)[0] - +b.match(/\d+/)[0]);
-    if (ck.length) return path.join(dir, 'models', ck[ck.length - 1]);
-  } catch (e) {}
   const best = path.join(dir, 'models', 'best.json');
+  let newestCkpt = null, newestCkptTime = -Infinity;
+  try {
+    for (const f of fs.readdirSync(path.join(dir, 'models'))) {
+      if (!/^ckpt-\d+\.json$/.test(f)) continue;
+      const p = path.join(dir, 'models', f);
+      const mtime = fs.statSync(p).mtimeMs;
+      if (mtime > newestCkptTime) { newestCkptTime = mtime; newestCkpt = p; }
+    }
+  } catch (e) {}
+  // Checkpoints never travel over git (nn/.gitignore excludes models/ wholesale -- pushing every
+  // one of a desktop's dense, non-delta-friendly checkpoints would bloat repo history forever).
+  // That is harmless on the machine actually PRODUCING them each cycle: the highest number is
+  // always the genuinely newest file. But a worker that never trains can carry a ckpt-NNN.json
+  // from a one-time manual copy that then sits frozen while every pull moves best.json on --
+  // "highest number" stops meaning "newest" the moment local and synced diverge. Observed live:
+  // a worker stuck playing ckpt-093 for its entire run while the trainer was many promotions past
+  // it, because nothing here ever compared the two. Trust mtimes, not the filename, so a stale
+  // local copy loses to a freshly-pulled best.json instead of always winning on number alone.
+  if (newestCkpt && fs.existsSync(best)) {
+    const bestTime = fs.statSync(best).mtimeMs;
+    return bestTime > newestCkptTime ? best : newestCkpt;
+  }
+  if (newestCkpt) return newestCkpt;
   // a clone with no model at all still contributes: selfplay falls back to pure ladder-vs-ladder
   // games when its --model path doesn't exist, and that data is still real data
   return fs.existsSync(best) ? best : path.join(dir, 'models', 'nowhere.json');
