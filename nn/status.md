@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-08-03T23:18:16.127Z_
+_Last updated: 2026-08-03T23:18:22.669Z_
 
 **Self-play batch:** 14
-**Stage:** self-play batch 14 running (started 2026-08-03T21:13:14.376Z)
+**Stage:** retrograde mining (started 2026-08-03T23:18:22.669Z)
 **mix:** nnnn:0.4,nnladder:0.3,ladder:0.3
 
 **Last gate result:** resume-train promoted at 2026-08-03T21:55:59.575Z
