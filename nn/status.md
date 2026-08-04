@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-08-04T08:44:04.368Z_
+_Last updated: 2026-08-04T08:44:26.446Z_
 
 **Self-play batch:** 15
-**Stage:** self-play batch 15 running (started 2026-08-04T06:34:05.578Z)
+**Stage:** resume-train (6 epochs, started 2026-08-04T08:44:26.446Z)
 **mix:** nnnn:0.4,nnladder:0.3,ladder:0.3
 
 **Last gate result:** pool cycle 106 — ckpt-106 316, scratch-106 37, mut-106 -19
