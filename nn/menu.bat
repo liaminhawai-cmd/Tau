@@ -38,6 +38,10 @@ echo.
 echo  16. POLICY CLAIM: policy-champ vs no policy, SAME NET SAME CLOCK, real sample size
 echo      -- the question the loop's own control group cannot resolve at 6 games/cycle
 echo.
+echo  17. L12 CHECK: push everything local first, then best.json depth 2 vs L11, real sample size
+echo      -- D1 is already resolved (loses), D3 is too slow to get a big n soon; D2 is cheap AND
+echo      the one that keeps looking promising -- this fills that gap, not the ones already answered
+echo.
 echo  14. Exit
 echo ================================================
 set /p choice="Pick a number: "
@@ -57,6 +61,7 @@ if "%choice%"=="12" goto widthab
 if "%choice%"=="13" goto ranks
 if "%choice%"=="15" goto policyloop
 if "%choice%"=="16" goto policyclaim
+if "%choice%"=="17" goto l12check
 if "%choice%"=="14" goto :eof
 goto menu
 
@@ -140,6 +145,37 @@ echo Writes nothing to the pool, best.json, or the champion policy; progress lan
 echo.
 echo === policy-champ vs no policy, same net (best.json), 2000ms/move, %GAMES% games ===
 node nn\arena.js --a nn:0:%CD%\nn\models\best.json --policyA %CD%\nn\models\policy-champ.json --b nn:0:%CD%\nn\models\best.json --timeMs 2000 --games %GAMES% --saveData %CD%\nn\data\policy-claim-%COMPUTERNAME%.jsonl
+pause
+goto menu
+
+:l12check
+if not exist "nn\models\best.json" (
+  echo nn\models\best.json not found.
+  pause
+  goto menu
+)
+rem Push whatever's sitting local-only BEFORE running anything new, so results from earlier
+rem sessions (option 11, 16, any manual arena.js run) actually reach the remote instead of only
+rem ever existing as a pasted log.
+call :pushlocal
+rem Then run the one cell that's still actually in question. D1 is resolved -- best.json has lost
+rem every D1 slice run this week (37.5% pooled, clearly on the losing side). D3 costs roughly 20x
+rem a depth-1 game (~316s/game measured earlier), so a decisive sample there eats the better part
+rem of a day solo. D2 costs roughly 5.6x and is the one that's looked promising on every slice run
+rem so far (68.8% on 16 games) -- cheap enough to actually push past the noise floor. This is the
+rem "one clean run, one depth, real n" test, not a repeat of what option 11 already answered.
+rem Run this on both machines -- 80 here + 80 there clears the ~150-game mark where the confidence
+rem interval finally narrows below what a single ladder rung is worth.
+set "GAMES=80"
+set /p GAMES="Games at depth 2 vs L11, Enter for 80 (roughly 90 min - 2 hrs): "
+echo.
+echo Safe to run with the trainer going: fixed depth, no clock, same reasoning as option 11.
+echo Results land in nn\arena-logs\ and nn\data\vs-l11-d2-%COMPUTERNAME%.jsonl -- both get pushed
+echo below the instant this finishes, so closing the window right after is fine.
+echo.
+echo === best.json depth 2 vs L11, %GAMES% games ===
+node nn\arena.js --a nn:0:%CD%\nn\models\best.json --b L11 --depth 2 --games %GAMES% --saveData %CD%\nn\data\vs-l11-d2-%COMPUTERNAME%.jsonl
+call :pushlocal
 pause
 goto menu
 
@@ -353,5 +389,27 @@ if defined GIT (
   "%GIT%" pull
 ) else (
   echo git not found on PATH or under GitHub Desktop -- skipping pull.
+)
+exit /b 0
+
+:pushlocal
+rem Everything under nn\arena-logs\, nn\archtest-result.txt, and nn\data\vs-l11*.jsonl /
+rem policy-claim-*.jsonl is real result data that arena.js and laddertest.js write, but none of
+rem it is on any owning script's auto-push path the way best.json or elo-summary.json are -- it
+rem sits gitignored (data/, arena-logs/, archtest-result.txt are all in .gitignore) until someone
+rem force-adds it. Without this, a whole test run only ever exists as whatever got pasted into
+rem chat, which is exactly the file-access gap this option exists to close.
+call :dogit
+if exist "nn\arena-logs" "%GIT%" add -f nn\arena-logs >nul 2>nul
+if exist "nn\archtest-result.txt" "%GIT%" add -f nn\archtest-result.txt >nul 2>nul
+for %%F in (nn\data\vs-l11*.jsonl) do "%GIT%" add -f "%%F" >nul 2>nul
+for %%F in (nn\data\policy-claim-*.jsonl) do "%GIT%" add -f "%%F" >nul 2>nul
+"%GIT%" diff --cached --quiet
+if errorlevel 1 (
+  echo === pushing local-only results ^(arena-logs, archtest-result.txt, vs-l11/policy-claim data^) ===
+  "%GIT%" commit -m "sync local test results from %COMPUTERNAME%" >nul
+  "%GIT%" push
+) else (
+  echo (nothing local-only to push right now)
 )
 exit /b 0
