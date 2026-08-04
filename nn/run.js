@@ -87,7 +87,14 @@ const epochs = arg('epochs', '6');
 // 11-13 and drifting through 14-20 -- ladder brains don't drift with the net, so a bigger, fixed
 // share of them is what keeps the training data from being graded by the same student whose
 // answers are being checked.
-const mix = arg('mix', 'nnnn:0.4,nnladder:0.3,ladder:0.3');
+// Ladder-involving games were 60% of the corpus (nnladder 0.3 + ladder 0.3), and a full THIRD had
+// no net in them at all -- ladder-vs-ladder is pure imitation fuel, games the net never played, in a
+// style it is being asked to predict. That caps the net near the best thing in its training mix,
+// which is the opposite of the goal. Pure ladder-vs-ladder drops to a garnish (it still covers
+// openings and rules corners self-play drifts away from), nn-vs-ladder is KEPT at 0.3 because
+// that is where loss weighting bites -- fewer ladder games, but aimed at the rungs actually
+// beating the net rather than spread across its comfort zone. --mix restores any other split.
+const mix = arg('mix', 'nnnn:0.6,nnladder:0.3,ladder:0.1');
 // Fraction of self-play games started from a fully random legal pose rather than the canonical
 // start (see opening.js's randomStartPose). Coverage of shapes no real trajectory reaches -- a
 // piece hard against the rim with the opponent clear across the board -- which the value net still
@@ -116,6 +123,12 @@ const benchAnchors = arg('benchAnchors', '3,7,11').split(',').map(Number).filter
 // simply absent -- the bug this replaced.
 const zpdSigma = Math.max(0.1, +arg('zpdSigma', 1.6));
 const topFloor = Math.max(0, +arg('topFloor', 3));
+// Scale each rung's bell weight by how badly the net loses to it (see lossScale/zpdLevels).
+// --lossWeight 0 restores pure bell weighting. lossFloor is the share of its bell weight a rung
+// keeps when it is being swept CLEAN -- not zero, because those games are still real data and
+// dropping them would blind the regression spot-check that catches a solid rung going bad.
+const lossWeightOn = arg('lossWeight', '1') !== '0';
+const lossFloor = Math.min(1, Math.max(0, +arg('lossFloor', 0.25)));
 // Which depths to sweep. Cost grows ~3.6x PER PLY (measured: 5.6x at depth 2, 20x at depth 3), so
 // this is not a free dial -- depth 4 costs ~47x a depth-1 game and depth 5 ~168x, compounded by the
 // fact that the deeper rungs are themselves searching brains (L8 is a depth-3 search, ~2.5s/call).
@@ -411,6 +424,19 @@ const readRegressed = () => {
 };
 const writeRegressed = r => { try { fs.writeFileSync(regressedFile, JSON.stringify(r) + '\n'); } catch (e) {} };
 
+// Per-rung sweep records, {depth: {level: {w, l}}}. The sweep has always computed these -- it logs
+// a win-loss per cell -- but nothing kept them anywhere zpdLevels could read, so opponent choice
+// could only ever be driven by WHERE THE FRONTIER IS, never by WHICH RUNGS ARE ACTUALLY BEATING US.
+// Those differ: the frontier is the highest rung swept clean, while the rungs doing the damage sit
+// above it and get sampled by a decaying bell tail precisely because they are far from the peak.
+// Measured on the real corpus: L11 held 4.8% of opponent slots and 1.9% of rows against L7/L8's 21%
+// each, so a full night of 11 lanes barely moved the two rungs the net is actually trying to beat.
+const scoresFile = path.join(dir, 'models', '.ladder-scores');
+const readScores = () => {
+  try { return JSON.parse(fs.readFileSync(scoresFile, 'utf8')); } catch (e) { return {}; }
+};
+const writeScores = s => { try { fs.writeFileSync(scoresFile, JSON.stringify(s) + '\n'); } catch (e) {} };
+
 // Zone-of-proximal-development sampling: instead of selfplay.js's flat default ladder-opponent pool
 // (2,3,4,5,6, the same range no matter how strong the net already is), build a pool centred on each
 // depth's CURRENT frontier. selfplay.js's pick() is a uniform draw over the array it's given, so
@@ -428,14 +454,34 @@ const writeRegressed = r => { try { fs.writeFileSync(regressedFile, JSON.stringi
 // the TOP rung a few entries even where the bell has decayed to nothing, since it is 4-5 sigma out
 // while the frontier is down at L6 and would otherwise reproduce the "never played L11" bug this
 // replaced. --topFloor 0 restores pure bell weighting.
-function zpdLevels(win, regressed) {
+// LOSS WEIGHTING (--lossWeight, default on): once real per-rung records exist, scale each rung's
+// bell weight by how badly the net is LOSING to it. The bell alone answers "what is near my
+// frontier"; this answers "what is beating me", and those are not the same question -- rungs above
+// the frontier are exactly the ones the bell's tail starves, which is why L11 sat at 1.9% of rows
+// while the net lost to it.
+//
+// weight = base bell x (lossFloor + (1 - lossFloor) x lossRate), lossRate = l/(w+l) over the stored
+// sweep cells for that rung at that depth. A rung swept clean keeps lossFloor of its bell weight
+// rather than zero -- dropping beaten rungs entirely would erase the regression signal that catches
+// a rung going bad again, and those clean games are still real training data. A rung losing outright
+// keeps its full bell weight. Cells with no record are treated as unknown, not as wins, so a rung
+// that has never been played is not silently starved on the strength of having no evidence.
+function lossScale(scores, d, l, lossFloor) {
+  const rec = scores && scores[d] && scores[d][l];
+  if (!rec) return 1;                                     // no evidence: leave the bell alone
+  const n = (rec.w || 0) + (rec.l || 0);
+  if (n <= 0) return 1;
+  return lossFloor + (1 - lossFloor)*((rec.l || 0)/n);
+}
+function zpdLevels(win, regressed, scores) {
   const pool = [];
   const depths = Object.keys(win).map(Number).sort((a, b) => a - b);
   depths.forEach((d, i) => {
     const repeat = Math.max(1, Math.round(9 / Math.pow(3, i)));
     const mu = Math.max(1, win[d]) + 0.5;
     for (let l = 1; l <= LADDER_N; l++) {
-      const n = Math.round(repeat*Math.exp(-Math.pow(l - mu, 2)/(2*zpdSigma*zpdSigma)));
+      const bell = repeat*Math.exp(-Math.pow(l - mu, 2)/(2*zpdSigma*zpdSigma));
+      const n = Math.round(lossWeightOn ? bell*lossScale(scores, d, l, lossFloor) : bell);
       for (let r = 0; r < n; r++) pool.push(l);
     }
   });
@@ -730,7 +776,7 @@ function startSelfplayBatch() {
   // Only bias sampling once there's a model with a real frontier to bias toward -- pre-model,
   // every game is ladder-vs-ladder anyway (see selfplay.js's own kind selection), so there is no
   // "current strength" for a ZPD band to be centred on.
-  const dataPool = fs.existsSync(best) ? zpdLevels(readWindows(), readRegressed()) : null;
+  const dataPool = fs.existsSync(best) ? zpdLevels(readWindows(), readRegressed(), readScores()) : null;
   // Print the actual counts, not just "ZPD-biased levels pool" -- the shape of this distribution
   // is a real tuning decision (--zpdSigma, --topFloor) and was invisible before; a stale window
   // silently giving a rung zero games is exactly how the net went 61 iterations without ever
@@ -1248,6 +1294,22 @@ async function runBenchCycle() {
     return `    D${d}` + cells.join('');
   });
   log(`ladder sweep (net's win-loss per cell):\n` + table.join('\n'));
+  // Persist what the sweep just measured so the NEXT batch's opponent pool can be weighted by it
+  // (see lossScale). Merged, not overwritten: a sweep only covers its own window plus the anchors,
+  // so a straight replace would keep forgetting every rung outside this cycle's span -- including
+  // the top rungs, which is exactly the evidence loss weighting needs most.
+  if (lossWeightOn) {
+    const scores = readScores();
+    for (const key of Object.keys(grid)) {
+      const s = grid[key];
+      if (!s) continue;
+      const [lvl, d] = key.split(':');
+      scores[d] = scores[d] || {};
+      const prev = scores[d][lvl] || { w: 0, l: 0 };
+      scores[d][lvl] = { w: prev.w + s.w, l: prev.l + s.l };
+    }
+    writeScores(scores);
+  }
   // Regression spot-check: the sweep above only ever looks at the CURRENT window, so once a rung
   // retires nothing ever re-examines it. Cheaply re-test the most recently retired rungs per depth
   // (spotCheckGames, far fewer than benchCellGames -- a check, not a placement).
