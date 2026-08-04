@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1020">
+<title>Tau NN Model Observatory</title>
+<style>
+:root{
+  --bg:#070b13;--panel:#101725;--panel2:#151f31;--line:#2b3952;
+  --text:#eef4ff;--muted:#95a4bc;--accent:#65dbc8;--gold:#e5bd70;
+  --danger:#ff858d;--shadow:0 18px 48px rgba(0,0,0,.36)
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:
+radial-gradient(circle at 12% 0,#162843 0,#080c15 42%,#050810 100%);
+color:var(--text);font:14px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+button,input,select{font:inherit}
+button{cursor:pointer}
+code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.app{max-width:1540px;margin:auto;padding:22px}
+.top{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:16px}
+.brand{display:flex;gap:14px;align-items:center}
+.logo{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;
+border:1px solid #526580;background:linear-gradient(145deg,#1a2942,#0b101d);
+font:700 23px Georgia,serif;box-shadow:var(--shadow)}
+h1{font-size:clamp(24px,3vw,38px);line-height:1.05;letter-spacing:-.04em;margin:0}
+.subtitle{color:var(--muted);margin-top:6px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.btn{border:1px solid #3a4964;background:#172238;color:var(--text);
+padding:10px 13px;border-radius:10px;font-weight:750}
+.btn:hover{border-color:#7184a1}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#061311}
+.btn.ghost{background:transparent}
+input[type=file]{display:none}
+.privacy{font-size:12px;color:var(--muted);text-align:right;margin-top:7px}
+.status{border:1px solid #30415d;background:rgba(15,22,36,.9);padding:11px 13px;
+border-radius:12px;margin-bottom:14px;color:#cbd6e8}
+.status.bad{border-color:#683d4a;color:#ffd4d8}
+.metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.metric{background:linear-gradient(150deg,#151f31,#0e1522);border:1px solid #29374f;
+border-radius:14px;padding:13px 15px;min-width:0}
+.metric .k{font-size:11px;text-transform:uppercase;letter-spacing:.11em;color:#8f9eb4}
+.metric .v{font-size:22px;font-weight:850;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.metric .n{font-size:11px;color:var(--muted);margin-top:2px}
+.layout{display:grid;grid-template-columns:310px minmax(0,1fr);gap:15px}
+.sidebar,.main{background:linear-gradient(160deg,rgba(21,31,49,.98),rgba(10,15,25,.98));
+border:1px solid #27364f;border-radius:16px;box-shadow:var(--shadow)}
+.sidebar{padding:15px;align-self:start;position:sticky;top:10px;max-height:calc(100vh - 20px);overflow:auto}
+.block{border-bottom:1px solid #28364e;padding-bottom:15px;margin-bottom:15px}
+.block:last-child{border:0;padding:0;margin:0}
+.block h2{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:#9baac0;margin:0 0 9px}
+.segment{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.segment button,.chip{border:1px solid #35445e;background:#101827;color:#adbad0;border-radius:9px;padding:8px}
+.segment button.on,.chip.on{background:#dce8ff;color:#111827;border-color:#dce8ff}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{padding:5px 9px;border-radius:999px;font-size:12px}
+.field{display:grid;gap:5px;margin:9px 0}
+.field label{font-size:12px;color:#aab7ca}
+.field input{width:100%;background:#0d1421;border:1px solid #33425d;color:var(--text);border-radius:9px;padding:8px}
+.list{display:grid;gap:6px;max-height:240px;overflow:auto}
+.check{display:flex;gap:8px;align-items:center;border:1px solid #293850;background:#0f1726;
+border-radius:9px;padding:7px 8px}
+.check span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.check small{color:var(--muted);margin-left:auto;white-space:nowrap}
+.main{padding:15px;min-height:670px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.tab{border:1px solid #33445e;background:#101827;color:#aab8cb;padding:8px 11px;border-radius:9px;font-weight:750}
+.tab.on{background:#253653;color:white;border-color:#6f84a4}
+.charthead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin:2px 3px 8px}
+.charthead h2{font-size:18px;margin:0}
+.charthead p{font-size:12px;color:var(--muted);margin:3px 0 0}
+.legend{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.legend span{display:flex;gap:5px;align-items:center;font-size:12px;color:#b8c5d8}
+.dot{width:10px;height:10px;border-radius:50%}
+.chartbox{position:relative;min-height:510px;border:1px solid #293850;border-radius:13px;
+background:linear-gradient(#0c1321,#080c15);overflow:hidden}
+svg{display:block;width:100%;height:510px}
+.empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#8291aa;padding:30px}
+.tooltip{position:fixed;z-index:20;display:none;pointer-events:none;background:#050911;color:white;
+border:1px solid #5d6e88;border-radius:9px;padding:9px 11px;font-size:12px;box-shadow:var(--shadow);max-width:300px}
+.note{font-size:11px;color:#8291a8;margin:9px 4px 0}
+.tablewrap{margin-top:11px;max-height:330px;overflow:auto;border:1px solid #293850;border-radius:12px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #25334a;white-space:nowrap}
+th{position:sticky;top:0;background:#172238;color:#ced9ea}
+td{color:#bac7da}
+.pill{border:1px solid #3b4b65;border-radius:999px;padding:2px 7px;display:inline-flex}
+.good{color:#7ee7d2}.warn{color:#ffd18b}.badtext{color:#ff9ba2}
+@media(max-width:1000px){.layout{grid-template-columns:1fr}.sidebar{position:static;max-height:none}.metrics{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:650px){.app{padding:13px}.top{display:block}.actions{justify-content:flex-start;margin-top:13px}.privacy{text-align:left}.metrics{grid-template-columns:1fr 1fr}.charthead{display:block}.legend{justify-content:flex-start;margin-top:8px}svg{height:430px}.chartbox{min-height:430px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <div class="logo">τ</div>
+      <div>
+        <h1>Tau NN Model Observatory</h1>
+        <div class="subtitle">Inspect local models, ladder strength, adoption history and training-data growth.</div>
+      </div>
+    </div>
+    <div>
+      <div class="actions">
+        <button class="btn primary" id="openFolder">Open nn folder</button>
+        <label class="btn" for="folderInput">Import nn folder</label>
+        <input id="folderInput" type="file" webkitdirectory multiple>
+        <label class="btn" for="fileInput">Import selected files</label>
+        <input id="fileInput" type="file" multiple>
+        <button class="btn ghost" id="demo">Demo</button>
+      </div>
+      <div class="privacy">Everything is processed locally. No model or game data is uploaded.</div>
+    </div>
+  </header>
+
+  <div class="status" id="status"><strong>No data loaded.</strong> Select your repository’s <code>nn</code> folder.</div>
+
+  <section class="metrics">
+    <div class="metric"><div class="k">Current best</div><div class="v" id="mBest">—</div><div class="n" id="mBestNote">model alias</div></div>
+    <div class="metric"><div class="k">Model files</div><div class="v" id="mModels">0</div><div class="n" id="mShapes">0 shapes</div></div>
+    <div class="metric"><div class="k">Latest frontier</div><div class="v" id="mFrontier">—</div><div class="n">ladder sweep</div></div>
+    <div class="metric"><div class="k">Training data</div><div class="v" id="mData">0 B</div><div class="n" id="mRows">0 estimated positions</div></div>
+    <div class="metric"><div class="k">Best ELO</div><div class="v" id="mElo">—</div><div class="n" id="mEloNote">estimated</div></div>
+  </section>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="block">
+        <h2>Trace mode</h2>
+        <div class="segment" id="modeSeg">
+          <button class="on" data-v="best">Current-best colour</button>
+          <button data-v="models">Individual models</button>
+        </div>
+        <div class="segment" id="axisSeg" style="margin-top:7px">
+          <button class="on" data-v="ladder">Ladder levels</button>
+          <button data-v="elo">ELO</button>
+        </div>
+      </div>
+
+      <div class="block">
+        <h2>Search depth</h2>
+        <div class="chips" id="depthChips"><span class="subtitle">Load logs first</span></div>
+      </div>
+
+      <div class="block">
+        <h2>Filter by shape</h2>
+        <div class="chips" id="shapeChips"><span class="subtitle">Load models first</span></div>
+      </div>
+
+      <div class="block">
+        <h2>Models</h2>
+        <div class="field"><input id="search" placeholder="Search model name"></div>
+        <div class="list" id="modelList"><span class="subtitle">No models loaded.</span></div>
+      </div>
+
+      <div class="block">
+        <h2>ELO fallback mapping</h2>
+        <div class="field"><label>Ladder level 1</label><input id="eloBase" type="number" value="800" step="25"></div>
+        <div class="field"><label>Points per level</label><input id="eloStep" type="number" value="120" step="10"></div>
+        <div class="subtitle">Used when no tournament ranking is available.</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="tabs" id="tabs">
+        <button class="tab on" data-tab="strength">Strength</button>
+        <button class="tab" data-tab="models">Models</button>
+        <button class="tab" data-tab="adoption">Adoption</button>
+        <button class="tab" data-tab="data">Data growth</button>
+      </div>
+
+      <div class="charthead">
+        <div><h2 id="title">Strength over training</h2><p id="desc">Frontier ladder level by search depth.</p></div>
+        <div class="legend" id="legend"></div>
+      </div>
+
+      <div class="chartbox">
+        <svg id="chart" aria-label="Tau neural-network chart"></svg>
+        <div class="empty" id="empty">Open the <b>nn</b> folder to begin.</div>
+      </div>
+      <div class="note" id="note">Large JSONL files are measured and sampled rather than retained in memory.</div>
+
+      <div class="tablewrap">
+        <table><thead><tr id="thead"></tr></thead><tbody id="tbody"></tbody></table>
+      </div>
+    </main>
+  </div>
+</div>
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+'use strict';
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const colours=['#65dbc8','#e5bd70','#8faeff','#df91ff','#f18e77','#93d77e','#70c7eb','#f1d969','#bea0ff','#ff96b7','#7bd8aa','#c4ccda'];
+const state={
+  entries:[],models:[],groups:[],frontiers:[],adoptions:[],dataFiles:[],rankings:[],
+  axis:'ladder',mode:'best',tab:'strength',depths:new Set(),shapes:new Set(),
+  selected:new Set(),elo:new Map()
+};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const iterOf=s=>{const m=String(s).match(/(?:ckpt-|iter(?:ation)?\s*)(\d+)/i);return m?+m[1]:null};
+const shapeOf=j=>Array.isArray(j?.sizes)?j.sizes.slice(1,-1).join('×'):'unknown';
+const paramsOf=j=>Array.isArray(j?.sizes)?j.sizes.slice(0,-1).reduce((n,x,i)=>n+x*j.sizes[i+1]+j.sizes[i+1],0):0;
+const fmtBytes=n=>{if(!n)return'0 B';const u=['B','KB','MB','GB'];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++}return`${n.toFixed(i?1:0)} ${u[i]}`};
+function setStatus(html,bad=false){const e=$('#status');e.innerHTML=html;e.classList.toggle('bad',bad)}
+function modelHash(j){
+  let h=2166136261>>>0;
+  const feed=x=>{for(const c of String(x)){h^=c.charCodeAt(0);h=Math.imul(h,16777619)}};
+  (j?.sizes||[]).forEach(feed);
+  const walk=(x,d=0)=>{
+    if(d>4)return;
+    if(Array.isArray(x)){const step=Math.max(1,Math.floor(x.length/23));for(let i=0;i<x.length;i+=step)walk(x[i],d+1)}
+    else if(typeof x==='number')feed(x.toFixed(6));
+  };
+  walk(j?.W);walk(j?.b);walk(j?.weights);walk(j?.biases);
+  return ('00000000'+(h>>>0).toString(16)).slice(-8);
+}
+async function walkDir(handle,path=''){
+  const out=[];
+  for await(const [name,h] of handle.entries()){
+    const p=path?path+'/'+name:name;
+    if(h.kind==='directory'){
+      if(p.split('/').length<=4)out.push(...await walkDir(h,p));
+    }else out.push({file:await h.getFile(),path:p});
+  }
+  return out;
+}
+async function openFolder(){
+  try{
+    if(!window.showDirectoryPicker)throw new Error('Use “Import nn folder” in this browser.');
+    const h=await showDirectoryPicker({mode:'read'});
+    await loadEntries(await walkDir(h));
+  }catch(e){if(e.name!=='AbortError')setStatus(esc(e.message),true)}
+}
+function fromInput(files){
+  return [...files].map(f=>({file:f,path:f.webkitRelativePath||f.name}));
+}
+async function loadEntries(entries){
+  reset();
+  state.entries=entries;
+  setStatus(`Reading ${entries.length} files…`);
+  const textEntries=[];
+  for(const e of entries){
+    const low=e.path.toLowerCase();
+    if((/\.(json|txt|log|md)$/i.test(low)||low.includes('.ladder-'))&&e.file.size<=25*1024*1024){
+      try{textEntries.push({...e,text:await e.file.text()})}catch(_){}
+    }
+  }
+  parseModels(textEntries);
+  parseLogs(textEntries);
+  parseRankings(textEntries);
+  parseData(entries);
+  calculateElo();
+  initialiseFilters();
+  render();
+  setStatus(`<strong>Loaded ${state.models.length} model files</strong>, ${state.frontiers.length} frontier readings, ${state.adoptions.length} adoption events and ${state.dataFiles.length} data files.`);
+}
+function reset(){
+  state.models=[];state.groups=[];state.frontiers=[];state.adoptions=[];
+  state.dataFiles=[];state.rankings=[];state.elo.clear();state.selected.clear();
+}
+function parseModels(es){
+  for(const e of es){
+    if(!/\.json$/i.test(e.path)||!/models[\\/]/i.test(e.path))continue;
+    try{
+      const j=JSON.parse(e.text);
+      if(!Array.isArray(j.sizes))continue;
+      state.models.push({
+        name:e.path.split(/[\\/]/).pop(),path:e.path,json:j,shape:shapeOf(j),
+        params:paramsOf(j),hash:modelHash(j),iter:iterOf(e.path),size:e.file.size,
+        modified:e.file.lastModified||0
+      });
+    }catch(_){}
+  }
+  const map=new Map();
+  for(const m of state.models){
+    if(!map.has(m.hash))map.set(m.hash,{hash:m.hash,shape:m.shape,params:m.params,models:[],iter:m.iter});
+    const g=map.get(m.hash);g.models.push(m);if(m.iter!=null&&(g.iter==null||m.iter<g.iter))g.iter=m.iter;
+  }
+  state.groups=[...map.values()].sort((a,b)=>(a.iter??1e9)-(b.iter??1e9)||a.models[0].name.localeCompare(b.models[0].name));
+}
+function parseLogs(es){
+  const logs=es.filter(e=>/(^|[\\/])(log\.txt|status\.md)$/i.test(e.path)||/\.log$/i.test(e.path));
+  let synthetic=0;
+  for(const e of logs){
+    for(const line of e.text.split(/\r?\n/)){
+      const iteration=iterOf(line)??(++synthetic);
+      let found=false;
+      for(const m of line.matchAll(/(\d+)\s*ply\s*:\s*L(\d+)/gi)){
+        state.frontiers.push({iter:iteration,depth:+m[1],level:+m[2],source:e.path,line});
+        found=true;
+      }
+      if(!found){
+        for(const m of line.matchAll(/D(\d+)\s*[:=]\s*L(\d+)/gi))
+          state.frontiers.push({iter:iteration,depth:+m[1],level:+m[2],source:e.path,line});
+      }
+      let a=line.match(/promoted\s+([^\s]+\.json)\s*(?:->|to)\s*best\.json/i);
+      if(a)state.adoptions.push({iter:iteration,name:a[1],kind:'promoted',line});
+      a=line.match(/strongest:\s*([^\s]+\.json)/i);
+      if(a)state.adoptions.push({iter:iteration,name:a[1],kind:'strongest',line});
+      a=line.match(/checkpoint saved:\s*([^\s]+\.json)/i);
+      if(a)state.adoptions.push({iter:iteration,name:a[1],kind:'checkpoint',line});
+    }
+  }
+  state.frontiers.sort((a,b)=>a.iter-b.iter||a.depth-b.depth);
+  state.adoptions.sort((a,b)=>a.iter-b.iter);
+  if(!state.adoptions.length){
+    for(const g of state.groups.filter(x=>x.iter!=null))
+      state.adoptions.push({iter:g.iter,name:g.models[0].name,kind:'checkpoint',line:''});
+  }
+}
+function parseRankings(es){
+  for(const e of es.filter(x=>/tournament|archtest|result/i.test(x.path))){
+    for(const line of e.text.split(/\r?\n/)){
+      const m=line.match(/^\s*\d+\.\s+(.+?\.json|[^:]+):\s*(\d+)\/(\d+)\s+decided\s+\((\d+(?:\.\d+)?)%\)/i);
+      if(m)state.rankings.push({name:m[1].trim(),wins:+m[2],games:+m[3],rate:+m[4]/100,source:e.path});
+    }
+  }
+}
+function parseData(entries){
+  for(const e of entries){
+    if(!/\.jsonl$/i.test(e.path)||!/data[\\/]/i.test(e.path))continue;
+    const iter=iterOf(e.path);
+    const estimatedRows=Math.max(1,Math.round(e.file.size/900));
+    state.dataFiles.push({name:e.path.split(/[\\/]/).pop(),path:e.path,size:e.file.size,iter,estimatedRows,modified:e.file.lastModified||0});
+  }
+  state.dataFiles.sort((a,b)=>(a.iter??1e9)-(b.iter??1e9)||a.name.localeCompare(b.name));
+}
+function calculateElo(){
+  state.elo.clear();
+  if(state.rankings.length){
+    const grouped=new Map();
+    for(const r of state.rankings){
+      if(!grouped.has(r.name))grouped.set(r.name,[]);
+      grouped.get(r.name).push(r.rate);
+    }
+    const vals=[...grouped].map(([name,a])=>({name,rate:a.reduce((x,y)=>x+y,0)/a.length}));
+    const avg=vals.reduce((x,y)=>x+y.rate,0)/(vals.length||1);
+    for(const r of vals){
+      const p=Math.min(.98,Math.max(.02,r.rate));
+      const centre=Math.min(.98,Math.max(.02,avg));
+      state.elo.set(r.name,Math.round(1200+400*Math.log10((p/(1-p))/(centre/(1-centre)))));
+    }
+  }
+}
+function initialiseFilters(){
+  const depths=[...new Set(state.frontiers.map(x=>x.depth))].sort((a,b)=>a-b);
+  state.depths=new Set(depths);
+  state.shapes=new Set(state.groups.map(g=>g.shape));
+  state.selected=new Set(state.groups.map(g=>g.hash));
+}
+function currentBestGroup(){
+  const exact=state.groups.find(g=>g.models.some(m=>m.name.toLowerCase()==='best.json'));
+  return exact||state.groups.at(-1)||null;
+}
+function modelGroupByName(name){
+  const base=String(name).split(/[\\/]/).pop().toLowerCase();
+  return state.groups.find(g=>g.models.some(m=>m.name.toLowerCase()===base))||null;
+}
+// FIX: `name` is undefined at every call site that has no model to attach (frontier readings,
+// the metric-bar "Best ELO" tile) -- and '' is a substring of every string in JS, so the old
+// unconditional loop below matched the FIRST entry of state.elo and returned that SAME constant
+// for every level, every time. That's what flattened the ELO chart and the table's ELO column to
+// one repeated number. Only attempt the name match when a name actually exists.
+function eloFor(level,name){
+  if(name){
+    for(const [n,v] of state.elo)if(String(name).toLowerCase().includes(n.toLowerCase())||n.toLowerCase().includes(String(name).toLowerCase()))return v;
+  }
+  return +$('#eloBase').value+(level-1)*+$('#eloStep').value;
+}
+function initialiseUI(){
+  $('#openFolder').onclick=openFolder;
+  $('#folderInput').onchange=e=>loadEntries(fromInput(e.target.files));
+  $('#fileInput').onchange=e=>loadEntries(fromInput(e.target.files));
+  $('#demo').onclick=loadDemo;
+  $('#search').oninput=renderFilters;
+  for(const id of ['eloBase','eloStep'])$('#'+id).oninput=render;
+  $('#modeSeg').onclick=e=>{if(!e.target.dataset.v)return;state.mode=e.target.dataset.v;setSegment('#modeSeg',state.mode);render()};
+  $('#axisSeg').onclick=e=>{if(!e.target.dataset.v)return;state.axis=e.target.dataset.v;setSegment('#axisSeg',state.axis);render()};
+  $('#tabs').onclick=e=>{if(!e.target.dataset.tab)return;state.tab=e.target.dataset.tab;$$('.tab').forEach(x=>x.classList.toggle('on',x.dataset.tab===state.tab));render()};
+  window.addEventListener('resize',()=>renderChart());
+}
+function setSegment(sel,val){$$(sel+' button').forEach(x=>x.classList.toggle('on',x.dataset.v===val))}
+function render(){
+  renderMetrics();renderFilters();renderChart();renderTable();
+}
+function renderMetrics(){
+  const best=currentBestGroup();
+  $('#mBest').textContent=best?best.models.find(m=>m.name==='best.json')?.name||best.models[0].name:'—';
+  $('#mBestNote').textContent=best?`${best.shape} · ${best.params.toLocaleString()} params`:'model alias';
+  $('#mModels').textContent=state.models.length;
+  $('#mShapes').textContent=`${new Set(state.groups.map(g=>g.shape)).size} shapes · ${state.groups.length} unique nets`;
+  const latestByDepth=new Map();
+  for(const f of state.frontiers)latestByDepth.set(f.depth,f.level);
+  $('#mFrontier').textContent=latestByDepth.size?[...latestByDepth].sort((a,b)=>a[0]-b[0]).map(([d,l])=>`D${d}:L${l}`).join(' '):'—';
+  const bytes=state.dataFiles.reduce((n,x)=>n+x.size,0),rows=state.dataFiles.reduce((n,x)=>n+x.estimatedRows,0);
+  $('#mData').textContent=fmtBytes(bytes);$('#mRows').textContent=`~${rows.toLocaleString()} positions`;
+  let bestElo=null;
+  if(state.elo.size)bestElo=Math.max(...state.elo.values());
+  else if(latestByDepth.size)bestElo=Math.max(...[...latestByDepth].map(([d,l])=>eloFor(l)));
+  $('#mElo').textContent=bestElo==null?'—':Math.round(bestElo);
+  $('#mEloNote').textContent=state.elo.size?'from imported tournament ranking':'ladder conversion';
+}
+function renderFilters(){
+  const depths=[...new Set(state.frontiers.map(x=>x.depth))].sort((a,b)=>a-b);
+  $('#depthChips').innerHTML=depths.length?depths.map(d=>`<button class="chip ${state.depths.has(d)?'on':''}" data-depth="${d}">D${d}</button>`).join(''):'<span class="subtitle">No frontier depths found</span>';
+  $$('#depthChips button').forEach(b=>b.onclick=()=>{const d=+b.dataset.depth;state.depths.has(d)?state.depths.delete(d):state.depths.add(d);render()});
+  const shapes=[...new Set(state.groups.map(g=>g.shape))].sort();
+  $('#shapeChips').innerHTML=shapes.length?shapes.map(s=>`<button class="chip ${state.shapes.has(s)?'on':''}" data-shape="${esc(s)}">${esc(s)}</button>`).join(''):'<span class="subtitle">No models loaded</span>';
+  $$('#shapeChips button').forEach(b=>b.onclick=()=>{const s=b.dataset.shape;state.shapes.has(s)?state.shapes.delete(s):state.shapes.add(s);render()});
+  const q=$('#search').value.toLowerCase();
+  const visible=state.groups.filter(g=>state.shapes.has(g.shape)&&g.models.some(m=>m.name.toLowerCase().includes(q)));
+  $('#modelList').innerHTML=visible.length?visible.map((g,i)=>{
+    const names=g.models.map(m=>m.name).join(', ');
+    return `<label class="check" title="${esc(names)}"><input type="checkbox" data-hash="${g.hash}" ${state.selected.has(g.hash)?'checked':''}><span>${esc(g.models[0].name)}</span><small>${esc(g.shape)}</small></label>`;
+  }).join(''):'<span class="subtitle">No matching models.</span>';
+  $$('#modelList input').forEach(x=>x.onchange=()=>{x.checked?state.selected.add(x.dataset.hash):state.selected.delete(x.dataset.hash);renderChart();renderTable()});
+}
+// FIX: a frontier reading ("D3: L8" from a log line) carries no model name of its own, so the
+// shape chips and the model checklist had nothing to filter it by -- unchecking a model or a
+// shape silently did nothing to this chart. Attribute each reading to whichever model was
+// actually adopted at/before that iteration (same lookup seriesForAdoption already uses below),
+// then the sidebar filters apply here too.
+function attributedGroup(iter){
+  const before=state.adoptions.filter(a=>a.iter!=null&&a.iter<=iter);
+  if(!before.length)return null;
+  return modelGroupByName(before.at(-1).name);
+}
+function seriesForStrength(){
+  const filtered=state.frontiers.filter(f=>{
+    if(!state.depths.has(f.depth))return false;
+    const g=attributedGroup(f.iter);
+    if(!g)return true;   // can't attribute it to a model -- don't drop it for a filter that can't apply
+    return state.shapes.has(g.shape)&&state.selected.has(g.hash);
+  });
+  const byDepth=new Map();
+  for(const f of filtered){if(!byDepth.has(f.depth))byDepth.set(f.depth,[]);byDepth.get(f.depth).push({x:f.iter,y:state.axis==='elo'?eloFor(f.level):f.level,raw:f})}
+  return [...byDepth].map(([d,points],i)=>({name:`Depth ${d}`,colour:state.mode==='best'?'#65dbc8':colours[i%colours.length],points}));
+}
+function seriesForModels(){
+  const groups=state.groups.filter(g=>state.selected.has(g.hash)&&state.shapes.has(g.shape));
+  return groups.map((g,i)=>{
+    let level=null;
+    if(g.iter!=null){
+      const before=state.frontiers.filter(f=>f.iter<=g.iter&&state.depths.has(f.depth));
+      if(before.length)level=before.at(-1).level;
+    }
+    if(level==null&&state.frontiers.length)level=state.frontiers.at(-1).level;
+    const y=state.axis==='elo'?eloFor(level||1,g.models[0].name):(level||0);
+    return {name:g.models[0].name,colour:state.mode==='best'?'#65dbc8':colours[i%colours.length],
+      points:[{x:g.iter??i+1,y,raw:{group:g}}]};
+  });
+}
+function seriesForAdoption(){
+  const pts=state.adoptions.map((a,i)=>{
+    const g=modelGroupByName(a.name);
+    const level=state.frontiers.filter(f=>f.iter<=a.iter&&state.depths.has(f.depth)).at(-1)?.level||0;
+    return {x:a.iter??i+1,y:state.axis==='elo'?eloFor(level||1,a.name):level,raw:{...a,group:g}};
+  });
+  if(state.mode==='best')return [{name:'Adopted best',colour:'#65dbc8',points:pts}];
+  const map=new Map();
+  for(const p of pts){
+    const key=p.raw.group?.hash||p.raw.name;
+    if(!map.has(key))map.set(key,{name:p.raw.name,colour:colours[map.size%colours.length],points:[]});
+    map.get(key).points.push(p);
+  }
+  return [...map.values()].filter(s=>!s.points[0].raw.group||state.selected.has(s.points[0].raw.group.hash));
+}
+function seriesForData(){
+  let total=0;
+  const points=state.dataFiles.map((d,i)=>{total+=d.size;return{x:d.iter??i+1,y:total/1024/1024,raw:d}});
+  return [{name:'Cumulative data',colour:'#e5bd70',points}];
+}
+function currentSeries(){
+  if(state.tab==='strength')return seriesForStrength();
+  if(state.tab==='models')return seriesForModels();
+  if(state.tab==='adoption')return seriesForAdoption();
+  return seriesForData();
+}
+function renderChart(){
+  const titles={
+    strength:['Strength over training','Frontier ladder level by search depth.'],
+    models:['Model comparison','Selected model checkpoints, filtered by neural-network shape.'],
+    adoption:['Best-model adoption','Which model was strongest, promoted, or checkpointed over time.'],
+    data:['Training-data growth','Cumulative size of local JSONL training files.']
+  };
+  $('#title').textContent=titles[state.tab][0];$('#desc').textContent=titles[state.tab][1];
+  const series=currentSeries().filter(s=>s.points.length);
+  $('#legend').innerHTML=series.slice(0,14).map(s=>`<span><i class="dot" style="background:${s.colour}"></i>${esc(s.name)}</span>`).join('');
+  const svg=$('#chart'),empty=$('#empty');
+  const box=svg.getBoundingClientRect(),W=Math.max(600,box.width||900),H=box.height||510;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.innerHTML='';
+  if(!series.length){empty.style.display='grid';empty.innerHTML='No matching data for this view.';return}
+  empty.style.display='none';
+  const all=series.flatMap(s=>s.points),xs=all.map(p=>p.x),ys=all.map(p=>p.y);
+  let xmin=Math.min(...xs),xmax=Math.max(...xs),ymin=Math.min(...ys),ymax=Math.max(...ys);
+  if(xmin===xmax){xmin-=1;xmax+=1}if(ymin===ymax){ymin-=1;ymax+=1}
+  const pad={l:65,r:24,t:24,b:48};
+  if(state.tab!=='data'){ymin=Math.min(0,ymin)}
+  const X=x=>pad.l+(x-xmin)/(xmax-xmin)*(W-pad.l-pad.r);
+  const Y=y=>H-pad.b-(y-ymin)/(ymax-ymin)*(H-pad.t-pad.b);
+  const NS='http://www.w3.org/2000/svg';
+  const add=(tag,a={})=>{const n=document.createElementNS(NS,tag);for(const[k,v]of Object.entries(a))n.setAttribute(k,v);svg.appendChild(n);return n};
+  for(let i=0;i<=5;i++){
+    const v=ymin+(ymax-ymin)*i/5,y=Y(v);
+    add('line',{x1:pad.l,y1:y,x2:W-pad.r,y2:y,stroke:'#233149','stroke-width':1});
+    const t=add('text',{x:pad.l-10,y:y+4,fill:'#8f9db2','font-size':11,'text-anchor':'end'});
+    t.textContent=state.tab==='data'?`${v.toFixed(1)} MB`:Math.round(v);
+  }
+  for(let i=0;i<=6;i++){
+    const v=xmin+(xmax-xmin)*i/6,x=X(v);
+    add('line',{x1:x,y1:pad.t,x2:x,y2:H-pad.b,stroke:'#192438','stroke-width':1});
+    const t=add('text',{x,y:H-pad.b+22,fill:'#8f9db2','font-size':11,'text-anchor':'middle'});t.textContent=Math.round(v);
+  }
+  const ylabel=add('text',{x:16,y:H/2,fill:'#aab8cb','font-size':12,transform:`rotate(-90 16 ${H/2})`,'text-anchor':'middle'});
+  ylabel.textContent=state.tab==='data'?'Cumulative MB':state.axis==='elo'?'ELO':'Ladder level';
+  const xlabel=add('text',{x:W/2,y:H-8,fill:'#aab8cb','font-size':12,'text-anchor':'middle'});xlabel.textContent='Training iteration';
+  // FIX (scatter, not line): these are independent noisy readings -- different checkpoints,
+  // different sample sizes, sometimes different depths -- and a connecting line implies a
+  // continuous trend between them that isn't there. Dots only, no polyline.
+  for(const s of series){
+    const pts=[...s.points].sort((a,b)=>a.x-b.x);
+    for(const p of pts){
+      const c=add('circle',{cx:X(p.x),cy:Y(p.y),r:4.6,fill:s.colour,stroke:'#07101b','stroke-width':1.5,opacity:.92});
+      c.style.cursor='crosshair';
+      c.onmouseenter=e=>showTip(e,p,s);
+      c.onmousemove=moveTip;c.onmouseleave=hideTip;
+    }
+  }
+}
+function showTip(e,p,s){
+  const raw=p.raw||{};let extra='';
+  if(raw.depth)extra=`<br>Depth ${raw.depth}, ladder L${raw.level}`;
+  if(raw.group)extra+=`<br>Shape ${esc(raw.group.shape)} · ${raw.group.params.toLocaleString()} params`;
+  if(raw.kind)extra+=`<br>${esc(raw.kind)}: ${esc(raw.name)}`;
+  if(raw.size)extra+=`<br>${fmtBytes(raw.size)} · ~${raw.estimatedRows.toLocaleString()} rows`;
+  $('#tooltip').innerHTML=`<strong>${esc(s.name)}</strong><br>Iteration ${p.x}<br>${state.tab==='data'?p.y.toFixed(2)+' MB':(state.axis==='elo'?'ELO ':'')+Math.round(p.y)}${extra}`;
+  $('#tooltip').style.display='block';moveTip(e);
+}
+function moveTip(e){const t=$('#tooltip');t.style.left=Math.min(innerWidth-310,e.clientX+14)+'px';t.style.top=Math.min(innerHeight-130,e.clientY+14)+'px'}
+function hideTip(){$('#tooltip').style.display='none'}
+function renderTable(){
+  let heads=[],rows=[];
+  if(state.tab==='strength'){
+    heads=['Iteration','Depth','Ladder','ELO','Source'];
+    rows=state.frontiers.filter(f=>state.depths.has(f.depth)).slice().reverse().map(f=>[f.iter,`D${f.depth}`,`L${f.level}`,Math.round(eloFor(f.level)),f.source]);
+  }else if(state.tab==='models'){
+    heads=['Model / aliases','Shape','Parameters','Iteration','Fingerprint'];
+    rows=state.groups.filter(g=>state.selected.has(g.hash)&&state.shapes.has(g.shape)).map(g=>[g.models.map(m=>m.name).join(', '),g.shape,g.params.toLocaleString(),g.iter??'—',g.hash]);
+  }else if(state.tab==='adoption'){
+    heads=['Iteration','Event','Model','Shape'];
+    rows=state.adoptions.slice().reverse().map(a=>[a.iter??'—',a.kind,a.name,modelGroupByName(a.name)?.shape||'—']);
+  }else{
+    heads=['Iteration','File','Size','Estimated rows'];
+    rows=state.dataFiles.map(d=>[d.iter??'—',d.name,fmtBytes(d.size),`~${d.estimatedRows.toLocaleString()}`]);
+  }
+  $('#thead').innerHTML=heads.map(h=>`<th>${esc(h)}</th>`).join('');
+  $('#tbody').innerHTML=rows.length?rows.slice(0,500).map(r=>`<tr>${r.map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join(''):'<tr><td colspan="5">No data for this view.</td></tr>';
+}
+function loadDemo(){
+  reset();
+  state.models=[
+    {name:'ckpt-010.json',shape:'96×96',params:17377,hash:'a1',iter:10,size:1000},
+    {name:'ckpt-020.json',shape:'96×96',params:17377,hash:'a2',iter:20,size:1000},
+    {name:'ckpt-030.json',shape:'64×64×64×64',params:17857,hash:'a3',iter:30,size:1000},
+    {name:'best.json',shape:'64×64×64×64',params:17857,hash:'a3',iter:null,size:1000}
+  ];
+  const map=new Map();
+  for(const m of state.models){if(!map.has(m.hash))map.set(m.hash,{hash:m.hash,shape:m.shape,params:m.params,models:[],iter:m.iter});map.get(m.hash).models.push(m)}
+  state.groups=[...map.values()];
+  for(let i=10;i<=70;i+=10)for(let d=1;d<=3;d++)state.frontiers.push({iter:i,depth:d,level:Math.min(11,1+Math.floor(i/18)+d),source:'demo/log.txt'});
+  state.adoptions=[{iter:10,name:'ckpt-010.json',kind:'promoted'},{iter:20,name:'ckpt-020.json',kind:'strongest'},{iter:30,name:'ckpt-030.json',kind:'promoted'}];
+  state.dataFiles=Array.from({length:7},(_,i)=>({name:`iter${String((i+1)*10).padStart(3,'0')}.jsonl`,iter:(i+1)*10,size:(i+1)*12e6,estimatedRows:(i+1)*13000}));
+  state.rankings=[{name:'ckpt-010.json',rate:.42},{name:'ckpt-020.json',rate:.51},{name:'ckpt-030.json',rate:.64}];
+  calculateElo();initialiseFilters();render();setStatus('<strong>Demo loaded.</strong> Use an import button to inspect your real local training files.');
+}
+initialiseUI();
+</script>
+</body>
+</html>
