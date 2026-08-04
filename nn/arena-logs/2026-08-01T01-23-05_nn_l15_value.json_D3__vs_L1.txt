@@ -1,0 +1,6 @@
+started 2026-08-01T01:23:05.782Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\.elo-snapshot\l15_value.json --b L1 --games 2 --openingPlies 4 --depthA 3 --saveData nn\data\elo.jsonl
+FINISHED 2026-08-01T01:26:58.796Z
+nn(l15_value.json,D3) vs L1: 2-0  (100% of decided, avg 14 plies, 233s)
+2-sigma +/- 71 points on 2 decided games
+27 training rows -> nn\data\elo.jsonl

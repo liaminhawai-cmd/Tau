@@ -1,0 +1,6 @@
+started 2026-08-03T08:11:19.432Z
+command: node C:\tau\Tau\nn\arena.js --a L10 --b nn:0:C:\tau\Tau\nn\models\.elo-snapshot\mut-103.json --games 4 --openingPlies 4 --idA L10 --idB mut-103@D1 --depthB 1 --saveData C:\tau\Tau\nn\data\pool-103.jsonl
+FINISHED 2026-08-03T09:20:05.907Z
+L10 vs nn(mut-103.json): 4-0  (100% of decided, avg 29 plies, 4126s)
+2-sigma +/- 50 points on 4.0 decided games
+114 training rows -> C:\tau\Tau\nn\data\pool-103.jsonl

@@ -1,0 +1,5 @@
+started 2026-07-31T04:46:04.145Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\best.json --b nn:0:C:\tau\Tau\nn\models\best.json --depth 3 --games 60 --policyA C:\tau\Tau\nn\models\policy-pointy.json --policyB C:\tau\Tau\nn\models\policy.json --abA --abB --quiesceA --quiesceB
+IN PROGRESS -- game 1 of 60 (395s)
+nn(best.json,D3.5,P-ab:policy-pointy) 0 - 1 nn(best.json,D3.5,P-ab:policy)
+0% of 1 decided, 2-sigma +/- 100 points

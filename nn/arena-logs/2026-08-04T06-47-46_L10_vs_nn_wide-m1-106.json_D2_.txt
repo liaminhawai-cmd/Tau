@@ -1,0 +1,6 @@
+started 2026-08-04T06:47:46.354Z
+command: node C:\tau\Tau\nn\arena.js --a L10 --b nn:0:C:\tau\Tau\nn\models\.elo-snapshot\wide-m1-106.json --games 4 --openingPlies 4 --idA L10 --idB wide-m1-106@D2 --depthB 2 --saveData C:\tau\Tau\nn\data\pool-106.jsonl
+FINISHED 2026-08-04T08:13:23.591Z
+L10 vs nn(wide-m1-106.json,D2): 0-4  (0% of decided, avg 31 plies, 5137s)
+2-sigma +/- 50 points on 4.0 decided games
+124 training rows -> C:\tau\Tau\nn\data\pool-106.jsonl

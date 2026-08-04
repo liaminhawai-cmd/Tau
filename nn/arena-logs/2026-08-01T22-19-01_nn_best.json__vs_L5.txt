@@ -1,0 +1,5 @@
+started 2026-08-01T22:19:01.074Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\best.json --b L5 --games 2 --depth 1
+FINISHED 2026-08-01T22:20:42.379Z
+nn(best.json) vs L5: 2-0  (100% of decided, avg 26 plies, 101s)
+2-sigma +/- 71 points on 2 decided games

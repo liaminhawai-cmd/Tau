@@ -1,0 +1,5 @@
+started 2026-08-01T00:29:55.841Z
+command: node C:\tau\Tau\nn\arena.js --a L7 --b L8 --games 3 --openingPlies 2 --saveData nn\data\elo.jsonl
+IN PROGRESS -- game 2 of 3 (2175s)
+L7 0 - 2 L8
+0% of 2 decided, 2-sigma +/- 71 points

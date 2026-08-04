@@ -1,0 +1,6 @@
+started 2026-08-02T22:19:28.255Z
+command: node C:\tau\Tau\nn\arena.js --a L9 --b nn:0:C:\tau\Tau\nn\models\.elo-snapshot\ckpt-101.json --games 4 --openingPlies 4 --idA L9 --idB ckpt-101@D1 --depthB 1 --saveData C:\tau\Tau\nn\data\pool-101.jsonl
+FINISHED 2026-08-02T23:12:37.117Z
+L9 vs nn(ckpt-101.json): 3-1  (75% of decided, avg 24 plies, 3189s)
+2-sigma +/- 50 points on 4.0 decided games
+97 training rows -> C:\tau\Tau\nn\data\pool-101.jsonl

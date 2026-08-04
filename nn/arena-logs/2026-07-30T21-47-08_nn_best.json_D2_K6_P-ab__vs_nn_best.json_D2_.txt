@@ -1,0 +1,5 @@
+started 2026-07-30T21:47:08.114Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\best.json --b nn:0:C:\tau\Tau\nn\models\best.json --depth 2 --games 128 --keepA 6 --abA --policyA C:\tau\Tau\nn\models\policy.json --keepB 4
+FINISHED 2026-07-31T01:39:05.253Z
+nn(best.json,D2,K6,P-ab) vs nn(best.json,D2): 73-55  (57% of decided, avg 24 plies, 13917s)
+2-sigma +/- 9 points on 128 decided games

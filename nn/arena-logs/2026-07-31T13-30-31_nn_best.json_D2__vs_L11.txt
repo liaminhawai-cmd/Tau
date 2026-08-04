@@ -1,0 +1,6 @@
+started 2026-07-31T13:30:31.231Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\best.json --b L11 --depth 2 --games 60 --saveData C:\tau\Tau\nn\data\vs-l11.jsonl
+FINISHED 2026-07-31T19:40:22.555Z
+nn(best.json,D2) vs L11: 15-45  (25% of decided, avg 22 plies, 22191s)
+2-sigma +/- 13 points on 60 decided games
+1325 training rows -> C:\tau\Tau\nn\data\vs-l11.jsonl

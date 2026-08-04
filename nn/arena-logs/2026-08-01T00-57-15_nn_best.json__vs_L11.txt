@@ -1,0 +1,5 @@
+started 2026-08-01T00:57:15.085Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\best.json --b L11 --games 3 --openingPlies 2 --depthA 1 --saveData nn\data\elo.jsonl
+IN PROGRESS -- game 1 of 3 (457s)
+nn(best.json) 0 - 1 L11
+0% of 1 decided, 2-sigma +/- 100 points

@@ -1,0 +1,6 @@
+started 2026-08-04T06:47:46.123Z
+command: node C:\tau\Tau\nn\arena.js --a L10 --b nn:0:C:\tau\Tau\nn\models\.elo-snapshot\scratch-106.json --games 4 --openingPlies 4 --idA L10 --idB scratch-106@D1 --depthB 1 --saveData C:\tau\Tau\nn\data\pool-106.jsonl
+FINISHED 2026-08-04T07:35:17.961Z
+L10 vs nn(scratch-106.json): 3-1  (75% of decided, avg 19 plies, 2852s)
+2-sigma +/- 50 points on 4.0 decided games
+77 training rows -> C:\tau\Tau\nn\data\pool-106.jsonl

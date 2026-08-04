@@ -1,0 +1,6 @@
+started 2026-08-01T03:40:29.988Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\.elo-snapshot\deep.json --b nn:0:C:\tau\Tau\nn\models\.elo-snapshot\deep.json --games 2 --openingPlies 4 --depthA 2 --depthB 3 --saveData nn\data\elo.jsonl
+FINISHED 2026-08-01T03:47:38.409Z
+nn(deep.json,D2) vs nn(deep.json,D3): 1-1  (50% of decided, avg 15 plies, 428s)
+2-sigma +/- 71 points on 2 decided games
+30 training rows -> nn\data\elo.jsonl
