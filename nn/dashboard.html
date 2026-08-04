@@ -208,9 +208,16 @@ function modelHash(j){
   let h=2166136261>>>0;
   const feed=x=>{for(const c of String(x)){h^=c.charCodeAt(0);h=Math.imul(h,16777619)}};
   (j?.sizes||[]).forEach(feed);
+  // FIX: this used to sample ~23 elements per layer via a length/23 stride, not the full array.
+  // These nets are a few tens of thousands of parameters at most -- cheap to hash exhaustively --
+  // and a stride sample can coincidentally collide for two genuinely DIFFERENT checkpoints whose
+  // sampled positions happen to read alike, especially between adjacent training rounds where
+  // per-step deltas are small and spread across the whole array rather than concentrated where
+  // the stride happens to look. That's what merged ckpt-002/003/004/005.json into one fake group
+  // in the Models tab. Exhaustive hashing removes the risk instead of just shrinking it.
   const walk=(x,d=0)=>{
-    if(d>4)return;
-    if(Array.isArray(x)){const step=Math.max(1,Math.floor(x.length/23));for(let i=0;i<x.length;i+=step)walk(x[i],d+1)}
+    if(d>6)return;
+    if(Array.isArray(x)){for(const v of x)walk(v,d+1)}
     else if(typeof x==='number')feed(x.toFixed(6));
   };
   walk(j?.W);walk(j?.b);walk(j?.weights);walk(j?.biases);
