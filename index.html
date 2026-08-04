@@ -4315,6 +4315,13 @@ const AI_LADDER = [
     // keeps it near 4x an L11 move; raising it buys accuracy linearly in wall time.
     { kind:'opp', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2},
       o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28, oppLevel:10, oppCands:4} },
+    // L13: L11's eval, L11's candidates, L11's pessimistic minimax -- but the opponent's replies
+    // come from ladderOppReplies (full swing + park stops + the max-shove stop) instead of six
+    // swing-to-the-jam endpoints. The sweep those replies come from was already being paid for, so
+    // unlike L12 this costs little more than L11. oppKeep caps how many of the ranked replies get
+    // the full follow-up ply.
+    { kind:'opp2', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2},
+      o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28, oppKeep:18} },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 
@@ -4520,6 +4527,125 @@ function ladderPlanOppModel(idx, w, o){
     }
     ladderRestore(snap0); G.active=origActive; return best;
 }
+// Opponent REPLY candidates, harvested from the same sweep the search already pays for.
+//
+// simMoveToLimit sweeps 3 degrees at a time to the jam and returns ONLY the endpoint, discarding
+// every intermediate position. So ladderPlan3's model of the opponent is exactly six moves: three
+// pivots x two directions, each swung until it stops. A reply that stops early -- at a chosen angle
+// -- is not in that set and cannot be considered at any depth. A replay of a human beating L11
+// showed both of that human's setup moves were early stops (7deg where the jam was 43deg, 67deg
+// where it was 83deg), while the two moves played to the limit were the ones L11 saw coming.
+//
+// The sweep is already happening, so keeping the interesting stops along the way is nearly free.
+// Three kinds are harvested here, and the third is the one that specifically makes a swing-to-limit
+// model blind:
+//   (a) the full swing            -- everything simMoveToLimit ever returned, kept for parity
+//   (b) park stops                -- a foot landing ON a printed line, armed to cut next turn. Same
+//                                    detector ladderRoots3 uses for the rung's OWN moves, which was
+//                                    added when losing it cost L8 20 points against L7.
+//   (c) the max-shove stop        -- where along this sweep does the opponent push MY outermost foot
+//                                    furthest toward the rim? Since my piece only moves via
+//                                    resolvePush, this can sit mid-sweep: continuing the swing can
+//                                    slide off the contact and give the shove back. A pure
+//                                    swing-to-limit model can never find it.
+function ladderOppReplies(oppIdx, meIdx, o, snap){
+    const out=[];
+    for (let pv=0; pv<3; pv++) for (const dir of [1,-1]){
+        ladderRestore(snap); G.active=oppIdx; pinFoot(pv);
+        let guard=0, parks=0; const seenPark={};
+        let shoveOutRad=-Infinity, shoveOut=null, shoveInRad=Infinity, shoveIn=null;
+        while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && guard++ < 500){
+            applySwing(dir*AI_STEP_RAD);
+            const a=Math.abs(G.netRad);
+            if (a < HARD_MIN_MOVE_RAD || G.pieces[oppIdx].anyFootOff()) continue;
+            // (c) BOTH extremes of what this sweep does to my rim clearance. Max is the obvious
+            // threat -- shove my outermost foot toward the edge. Min matters too: the stop that
+            // shoves me furthest INWARD is the opponent declining the push to reposition me, which
+            // can be the stronger positional reply and is equally invisible to a swing-to-limit
+            // model. Since my piece only moves via resolvePush, both extremes usually sit mid-arc.
+            const myOut = outermostRadU(G.pieces[meIdx]);
+            if (myOut > shoveOutRad){ shoveOutRad=myOut; shoveOut={pivotIdx:pv,dir,targetRad:a}; }
+            if (myOut < shoveInRad){ shoveInRad=myOut; shoveIn={pivotIdx:pv,dir,targetRad:a}; }
+            if (parks < 2){                                        // (b)
+                const feet = G.pieces[oppIdx].feet();
+                for (let fi=0; fi<3 && parks<2; fi++){
+                    if (fi === pv) continue;
+                    for (const id of nearLineIds(feet[fi], PARK_HI)){
+                        if (nearLineIds(feet[fi], PARK_LO).includes(id)) continue;
+                        const key = fi+':'+id;
+                        if (seenPark[key]) continue;
+                        seenPark[key] = true;
+                        out.push({pivotIdx:pv,dir,targetRad:a}); parks++; break;
+                    }
+                }
+            }
+        }
+        if (Math.abs(G.netRad) >= HARD_MIN_MOVE_RAD && !G.pieces[oppIdx].anyFootOff())
+            out.push({pivotIdx:pv,dir,targetRad:Math.abs(G.netRad)});   // (a)
+        if (shoveOut) out.push(shoveOut);
+        if (shoveIn && shoveIn.targetRad !== (shoveOut && shoveOut.targetRad)) out.push(shoveIn);
+    }
+    return out;
+}
+// L13: ladderPlan3's shape and eval exactly, with ONE change -- the opponent's replies come from
+// ladderOppReplies above instead of six swing-to-the-jam endpoints. Pessimistic minimax is kept
+// (score the WORST reply), unlike the L12 rung, which trades it for a single predicted reply.
+//
+// COST: the reply sweeps were already being paid for, so generating the richer set is close to
+// free. What does cost is that there are now more replies to play out, so they are pre-filtered by
+// a single cheap eval and only the oppKeep most dangerous get the full follow-up ply.
+function ladderPlan13(idx, w, o){
+    const origActive=G.active, snap0=takeSnap();
+    const roots = ladderRoots3(idx, w, o, snap0);
+    if (!roots.length){ ladderRestore(snap0); G.active=origActive; return null; }
+    let best=null;
+    for (const c of roots.slice(0, o.maxCands||10)){
+        ladderRestore(c.snap);
+        let score;
+        if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
+        else {
+            const s1=takeSnap();
+            // rank every candidate reply by how bad it leaves me after one cheap eval, then spend
+            // the follow-up ply only on the worst few
+            const replies=[];
+            for (const r of ladderOppReplies(1-idx, idx, o, s1)){
+                ladderRestore(s1); G.active=1-idx;
+                pinFoot(r.pivotIdx);
+                let g=0;
+                while (!G.atLimit && Math.abs(G.netRad) < Math.abs(r.targetRad) && g++ < 500)
+                    applySwing(r.dir*Math.min(AI_STEP_RAD, Math.abs(r.targetRad) - Math.abs(G.netRad)));
+                if (Math.abs(G.netRad) < HARD_MIN_MOVE_RAD) continue;
+                if (G.pieces[1-idx].anyFootOff()) continue;
+                replies.push({ r, snap: takeSnap(),
+                               v: G.pieces[idx].anyFootOff() ? -HARD_WIN_BONUS : ladderEval(idx,w) });
+            }
+            replies.sort((a,b)=>a.v-b.v);
+            let worst=Infinity;
+            reply: for (const rep of replies.slice(0, o.oppKeep||6)){
+                let rs;
+                if (rep.v <= -HARD_WIN_BONUS) rs = -HARD_WIN_BONUS;
+                else {
+                    ladderRestore(rep.snap);
+                    const s2=takeSnap(); let bf=-Infinity;
+                    for (let fp=0; fp<3 && bf<HARD_WIN_BONUS/2; fp++) for (const fd of [1,-1]){
+                        ladderRestore(s2); G.active=idx;
+                        const fnet=simMoveToLimit(fp,fd);
+                        if (Math.abs(fnet) < HARD_MIN_MOVE_RAD) continue;
+                        if (G.pieces[idx].anyFootOff()) continue;
+                        const fs = G.pieces[1-idx].anyFootOff() ? HARD_WIN_BONUS+ladderEval(idx,w) : ladderEval(idx,w);
+                        if (fs>bf) bf=fs;
+                    }
+                    rs = bf===-Infinity ? rep.v : bf;
+                }
+                if (rs<worst) worst=rs;
+                if (best && worst<=best.score) break reply;
+            }
+            score = worst===Infinity ? c.q : worst;
+        }
+        if (!best || score>best.score) best={pivotIdx:c.pivotIdx,dir:c.dir,targetRad:c.targetRad,score};
+    }
+    ladderRestore(snap0); G.active=origActive; return best;
+}
 // manual sweep returning the natural limit + where the first crossing gets billed (for L1/random)
 function ladderProbe(idx, pv, dir){
     const snap0=takeSnap(); pinFoot(pv);
@@ -4570,6 +4696,7 @@ function ladderPlanFor(levelIdx, idx){
     if (def.kind==='builtin') return def.brain==='master' ? aiChoosePlanMaster(idx, def.mw) : ladderDumbPlan(idx);
     if (def.kind==='p3') return ladderPlan3(idx, def.w, def.o);
     if (def.kind==='opp') return ladderPlanOppModel(idx, def.w, def.o);
+    if (def.kind==='opp2') return ladderPlan13(idx, def.w, def.o);
     return ladderSampledPlan(idx, def.w, def.o);
 }
 
