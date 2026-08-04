@@ -42,6 +42,10 @@ echo  17. L12 CHECK: push everything local first, then best.json depth 2 vs L11,
 echo      -- D1 is already resolved (loses), D3 is too slow to get a big n soon; D2 is cheap AND
 echo      the one that keeps looking promising -- this fills that gap, not the ones already answered
 echo.
+echo  18. DIGEST: crunch every local-only file into one summary and push it
+echo      -- elo-results.json's raw pairs, training-data composition, a fresh arena-log mine.
+echo      Read-only: plays nothing, trains nothing. Safe to run any time.
+echo.
 echo  14. Exit
 echo ================================================
 set /p choice="Pick a number: "
@@ -62,6 +66,7 @@ if "%choice%"=="13" goto ranks
 if "%choice%"=="15" goto policyloop
 if "%choice%"=="16" goto policyclaim
 if "%choice%"=="17" goto l12check
+if "%choice%"=="18" goto digest
 if "%choice%"=="14" goto :eof
 goto menu
 
@@ -176,6 +181,34 @@ echo.
 echo === best.json depth 2 vs L11, %GAMES% games ===
 node nn\arena.js --a nn:0:%CD%\nn\models\best.json --b L11 --depth 2 --games %GAMES% --saveData %CD%\nn\data\vs-l11-d2-%COMPUTERNAME%.jsonl
 call :pushlocal
+pause
+goto menu
+
+:digest
+rem The whole point: elo-results.json (the RAW per-pair W/L/D store underneath every fitted Elo),
+rem the training corpus's actual mover composition, and a fresh mine of arena-logs/ never reach a
+rem pushed branch -- .gitignore covers data/ and arena-logs/, and elo-results.json is written but
+rem never force-added by anything. So the numbers that answer "why can't it beat L11" have been
+rem living on this machine only, reachable via screenshots and hand-zipped folders.
+rem This crunches all of it into nn\claude-digest.md and pushes that one file.
+echo === crunching local-only data into nn\claude-digest.md ===
+node nn\digest.js
+if errorlevel 1 (
+  echo digest failed -- nothing pushed.
+  pause
+  goto menu
+)
+echo.
+call :dogit
+if exist "nn\claude-digest.md" "%GIT%" add -f nn\claude-digest.md >nul 2>nul
+"%GIT%" diff --cached --quiet
+if errorlevel 1 (
+  echo === pushing the digest ===
+  "%GIT%" commit -m "nn: local digest from %COMPUTERNAME%" >nul
+  "%GIT%" push
+) else (
+  echo (digest unchanged since last push)
+)
 pause
 goto menu
 
