@@ -4310,6 +4310,11 @@ const AI_LADDER = [
     // L11: L10 plus the triangle-angle term (keep my hub between the board centre and theirs).
     // Beat plain L10 24/36 (67%) head-to-head; same search cost, the extra term is arithmetic.
     { kind:'p3', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },
+    // L12: L11's eval and L11's candidates, but each candidate is scored after asking a real L11
+    // (oppLevel 10, 0-based) what it would actually reply -- see ladderPlanOppModel. oppCands 4
+    // keeps it near 4x an L11 move; raising it buys accuracy linearly in wall time.
+    { kind:'opp', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2},
+      o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28, oppLevel:10, oppCands:4} },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 
@@ -4386,8 +4391,10 @@ function ladderSampledPlan(idx, w, o){
     ladderRestore(snap0); G.active=origActive; return best;
 }
 // depth-3: my sampled move -> opponent's best reply -> my best follow-up (Expert's shape, +partial roots)
-function ladderPlan3(idx, w, o){
-    const origActive=G.active, snap0=takeSnap(); const roots=[];
+// Root candidate generation for the depth-3 rungs, lifted out of ladderPlan3 verbatim so the L12
+// rung below can build its candidate list identically and differ ONLY in how it models the reply.
+function ladderRoots3(idx, w, o, snap0){
+    const roots=[];
     for (let pv=0; pv<3; pv++) for (const dir of [1,-1]){
         ladderRestore(snap0); G.active=idx; pinFoot(pv);
         let guard=0, lastMark=0, parksHere=0; const local=[]; const seenPark={};
@@ -4422,8 +4429,14 @@ function ladderPlan3(idx, w, o){
         local.sort((a,b)=>b.q-a.q);
         roots.push(...local.filter(c=>!c.park).slice(0, o.keepStops||2), ...local.filter(c=>c.park));
     }
+    roots.sort((a,b)=>b.q-a.q);
+    return roots;
+}
+function ladderPlan3(idx, w, o){
+    const origActive=G.active, snap0=takeSnap();
+    const roots = ladderRoots3(idx, w, o, snap0);
     if (!roots.length){ ladderRestore(snap0); G.active=origActive; return null; }
-    roots.sort((a,b)=>b.q-a.q); let best=null;
+    let best=null;
     for (const c of roots.slice(0, o.maxCands||10)){
         ladderRestore(c.snap); let score;
         if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
@@ -4452,6 +4465,56 @@ function ladderPlan3(idx, w, o){
                 if (best && worst<=best.score) break reply;
             }
             score = worst===Infinity ? c.q : worst;
+        }
+        if (!best || score>best.score) best={pivotIdx:c.pivotIdx,dir:c.dir,targetRad:c.targetRad,score};
+    }
+    ladderRestore(snap0); G.active=origActive; return best;
+}
+// L12: same candidates as a p3 rung, but the REPLY comes from a real ladder brain instead of
+// simMoveToLimit's six swing-to-the-jam branches.
+//
+// WHY: ladderPlan3 models the opponent with simMoveToLimit -- 3 pivots x 2 directions, each swung
+// until it jams. That set cannot express a move that stops early at a chosen angle, even though the
+// rung's OWN root generator records exactly those (the keepStops/park recorder above, added when
+// coarse sampling was measured to cost L8 20 points against L7 by "silently taking the park/
+// double-cross play away"). A replay of a human beating L11 showed what the asymmetry costs: both
+// of the human's setup moves stopped short of the jam (7deg where the jam was 43deg, 67deg where it
+// was 83deg), so neither was ever a candidate reply at any depth, while the two moves played to the
+// limit were the ones L11 did see coming. Asking a real brain for the reply closes that hole,
+// because that brain generates early stops for itself.
+//
+// TRADE: this spends its budget on reply ACCURACY where ladderPlan3 spends it on depth -- one real
+// reply then evaluate, versus six crude replies plus an own follow-up. It also swaps pessimistic
+// minimax (score the WORST reply) for the reply the model actually predicts, which is an upgrade
+// only insofar as the model is right: sharp against a ladder opponent, weaker against a human or a
+// net that plays nothing like oppLevel.
+//
+// COST: oppCands full brain calls per move, so ~4x an L11 move at the default, with no cheap cutoff
+// to reclaim it since every candidate needs its reply played out before it can be scored.
+function ladderPlanOppModel(idx, w, o){
+    const origActive=G.active, snap0=takeSnap();
+    const roots = ladderRoots3(idx, w, o, snap0);
+    if (!roots.length){ ladderRestore(snap0); G.active=origActive; return null; }
+    let best=null;
+    for (const c of roots.slice(0, o.oppCands||4)){
+        ladderRestore(c.snap);
+        let score;
+        if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;   // already won; no reply to model
+        else {
+            G.active = 1-idx;
+            // oppLevel is a 0-based AI_LADDER index and must point at a NON-'opp' rung or this
+            // recurses; the L12 entry below pins it to L11.
+            const reply = ladderPlanFor(o.oppLevel, 1-idx);
+            if (!reply || Math.abs(reply.targetRad) < 1e-9) score = ladderEval(idx, w);
+            else {
+                pinFoot(reply.pivotIdx);
+                let guard=0;
+                while (!G.atLimit && Math.abs(G.netRad) < Math.abs(reply.targetRad) && guard++ < 5000)
+                    applySwing(reply.dir*Math.min(AI_STEP_RAD, Math.abs(reply.targetRad) - Math.abs(G.netRad)));
+                score = G.pieces[idx].anyFootOff()   ? -HARD_WIN_BONUS
+                      : G.pieces[1-idx].anyFootOff() ?  HARD_WIN_BONUS + ladderEval(idx, w)
+                      :                                 ladderEval(idx, w);
+            }
         }
         if (!best || score>best.score) best={pivotIdx:c.pivotIdx,dir:c.dir,targetRad:c.targetRad,score};
     }
@@ -4506,6 +4569,7 @@ function ladderPlanFor(levelIdx, idx){
     if (def.kind==='l1') return ladderL1Plan(idx);
     if (def.kind==='builtin') return def.brain==='master' ? aiChoosePlanMaster(idx, def.mw) : ladderDumbPlan(idx);
     if (def.kind==='p3') return ladderPlan3(idx, def.w, def.o);
+    if (def.kind==='opp') return ladderPlanOppModel(idx, def.w, def.o);
     return ladderSampledPlan(idx, def.w, def.o);
 }
 
