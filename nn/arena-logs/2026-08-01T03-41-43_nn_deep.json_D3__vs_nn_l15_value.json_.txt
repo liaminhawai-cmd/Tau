@@ -1,0 +1,5 @@
+started 2026-08-01T03:41:43.025Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\.elo-snapshot\deep.json --b nn:0:C:\tau\Tau\nn\models\.elo-snapshot\l15_value.json --games 2 --openingPlies 4 --depthA 3 --depthB 1 --saveData nn\data\elo.jsonl
+IN PROGRESS -- game 1 of 2 (184s)
+nn(deep.json,D3) 0 - 1 nn(l15_value.json)
+0% of 1 decided, 2-sigma +/- 100 points

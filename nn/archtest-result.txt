@@ -1,0 +1,111 @@
+Tau architecture bake-off
+2026-07-28T08:03:32.084Z
+
+settings: 30 epochs, seed 1, 40 games/pair, search depth 1, 8 workers
+data:     C:\tau\Tau\nn\data\*.jsonl
+
+head-to-head:
+  arch-96x96 vs arch-96x96x96: 20-20
+  arch-96x96 vs arch-64x64x64x64: 24-15
+  arch-96x96 vs arch-48x48x48x48x48: 20-20
+  arch-96x96 vs incumbent(best.json): 31-9
+  arch-96x96x96 vs arch-64x64x64x64: 26-14
+  arch-96x96x96 vs arch-48x48x48x48x48: 21-19
+  arch-96x96x96 vs incumbent(best.json): 28-11
+  arch-64x64x64x64 vs arch-48x48x48x48x48: 30-10
+  arch-64x64x64x64 vs incumbent(best.json): 24-16
+  arch-48x48x48x48x48 vs incumbent(best.json): 32-7
+
+ranking:
+  1. arch-96x96: 95/159 decided (60%)
+  2. arch-96x96x96: 95/159 decided (60%)
+  3. arch-64x64x64x64: 83/159 decided (52%)
+  4. arch-48x48x48x48x48: 81/159 decided (51%)
+  5. incumbent(best.json): 43/158 decided (27%)
+
+strongest: arch-96x96
+
+------------------------------------------------------------
+
+Tau architecture bake-off
+2026-07-28T10:16:42.249Z
+
+settings: 120 epochs, seed 1, 40 games/pair, search depth 1, 8 workers
+data:     C:\tau\Tau\nn\data\*.jsonl
+
+head-to-head:
+  arch-96x96 vs arch-96x64x48: 14-25
+  arch-96x96 vs arch-82x64x48x32: 13-26
+  arch-96x96 vs arch-64x64x64x64: 19-20
+  arch-96x96 vs incumbent(best.json): 14-25
+  arch-96x64x48 vs arch-82x64x48x32: 21-18
+  arch-96x64x48 vs arch-64x64x64x64: 22-16
+  arch-96x64x48 vs incumbent(best.json): 16-21
+  arch-82x64x48x32 vs arch-64x64x64x64: 27-10
+  arch-82x64x48x32 vs incumbent(best.json): 19-20
+  arch-64x64x64x64 vs incumbent(best.json): 19-20
+
+ranking:
+  1. arch-82x64x48x32: 90/154 decided (58%)
+  2. incumbent(best.json): 86/154 decided (56%)
+  3. arch-96x64x48: 84/153 decided (55%)
+  4. arch-64x64x64x64: 65/153 decided (42%)
+  5. arch-96x96: 60/156 decided (38%)
+
+strongest: arch-82x64x48x32
+
+------------------------------------------------------------
+
+Tau architecture bake-off
+2026-07-28T11:52:32.920Z
+
+settings: 120 epochs, seed 1, 30 games/pair, search depth 2, 8 workers
+data:     C:\tau\Tau\nn\data\*.jsonl
+
+head-to-head:
+  arch-96x96 vs arch-96x64x48: 12-16
+  arch-96x96 vs arch-82x64x48x32: 9-20
+  arch-96x96 vs arch-64x64x64x64: 13-16
+  arch-96x96 vs incumbent(best.json): 11-19
+  arch-96x64x48 vs arch-82x64x48x32: 20-9
+  arch-96x64x48 vs arch-64x64x64x64: 19-10
+  arch-96x64x48 vs incumbent(best.json): 17-12
+  arch-82x64x48x32 vs arch-64x64x64x64: 16-13
+  arch-82x64x48x32 vs incumbent(best.json): 11-18
+  arch-64x64x64x64 vs incumbent(best.json): 12-17
+
+ranking:
+  1. arch-96x64x48: 72/115 decided (63%)
+  2. incumbent(best.json): 66/117 decided (56%)
+  3. arch-82x64x48x32: 56/116 decided (48%)
+  4. arch-64x64x64x64: 51/116 decided (44%)
+  5. arch-96x96: 45/116 decided (39%)
+
+strongest: arch-96x64x48
+
+------------------------------------------------------------
+
+Tau ladder placement
+2026-07-28T13:22:55.112Z
+
+model: C:\tau\Tau\nn\models\arch-96x64x48.json
+settings: 6 games/cell, openingPlies 2, 8 workers
+
+              L9       L10       L11
+  D1       0-6       0-6       0-6
+  D2       1-5       0-6       2-4
+  D3       1-4       1-4       2-4
+
+------------------------------------------------------------
+
+Tau ladder placement
+2026-07-28T15:00:24.088Z
+
+model: models\arch-96x64x48.json
+settings: 6 games/cell, openingPlies 2, 8 workers
+
+             L11
+  D4       2-3
+
+------------------------------------------------------------
+

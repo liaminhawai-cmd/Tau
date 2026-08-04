@@ -1,0 +1,6 @@
+started 2026-08-03T20:07:06.776Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\ckpt-104.json --b L7 --policyA C:\tau\Tau\nn\models\policy-mutant.json --games 6 --timeMs 2000 --openingPlies 2 --randomStartFrac 0.35 --saveData C:\tau\Tau\nn\data\policy-loop-desktop-2b7iqhn-2026-08-03T20-07-06-123Z.jsonl
+FINISHED 2026-08-03T20:30:22.510Z
+nn(ckpt-104.json,T2000ms,P:policy-mutant) vs L7: 3-3  (50% of decided, avg 33 plies, 1396s)
+2-sigma +/- 41 points on 6.0 decided games
+195 training rows -> C:\tau\Tau\nn\data\policy-loop-desktop-2b7iqhn-2026-08-03T20-07-06-123Z.jsonl

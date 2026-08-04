@@ -1,0 +1,6 @@
+started 2026-08-01T00:29:19.458Z
+command: node C:\tau\Tau\nn\arena.js --a L5 --b L6 --games 3 --openingPlies 2 --saveData nn\data\elo.jsonl
+FINISHED 2026-08-01T00:35:12.254Z
+L5 vs L6: 0-3  (0% of decided, avg 21 plies, 353s)
+2-sigma +/- 58 points on 3 decided games
+63 training rows -> nn\data\elo.jsonl

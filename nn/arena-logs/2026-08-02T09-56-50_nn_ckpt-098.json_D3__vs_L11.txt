@@ -1,0 +1,5 @@
+started 2026-08-02T09:56:50.096Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\ckpt-098.json --b L11 --games 3 --depth 3 --idA ckpt-098@D3 --idB L11 --saveData C:\tau\Tau\nn\data\batch-008.jsonl
+IN PROGRESS -- game 2 of 3 (532s)
+nn(ckpt-098.json,D3) 0 - 2 L11
+0% of 2 decided, 2-sigma +/- 71 points

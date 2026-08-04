@@ -1,0 +1,3 @@
+started 2026-08-01T04:44:00.668Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\.elo-snapshot\scratch.json --b nn:0:C:\tau\Tau\nn\models\.elo-snapshot\ckpt-061.json --games 1 --openingPlies 4 --depthA 2 --depthB 3 --saveData nn\data\elo.jsonl
+STARTING -- no games finished yet

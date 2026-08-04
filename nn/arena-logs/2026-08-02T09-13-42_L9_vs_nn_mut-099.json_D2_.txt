@@ -1,0 +1,6 @@
+started 2026-08-02T09:13:42.205Z
+command: node C:\tau\Tau\nn\arena.js --a L9 --b nn:0:C:\tau\Tau\nn\models\.elo-snapshot\mut-099.json --games 4 --openingPlies 4 --idA L9 --idB mut-099@D2 --depthB 2 --saveData C:\tau\Tau\nn\data\pool-099.jsonl
+FINISHED 2026-08-02T09:55:22.734Z
+L9 vs nn(mut-099.json,D2): 0-4  (0% of decided, avg 16 plies, 2501s)
+2-sigma +/- 50 points on 4 decided games
+64 training rows -> C:\tau\Tau\nn\data\pool-099.jsonl

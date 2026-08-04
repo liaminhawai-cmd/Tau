@@ -1,0 +1,5 @@
+started 2026-08-01T03:28:20.654Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\.elo-snapshot\best.json --b nn:0:C:\tau\Tau\nn\models\.elo-snapshot\scratch.json --games 2 --openingPlies 4 --depthA 3 --depthB 3 --saveData nn\data\elo.jsonl
+IN PROGRESS -- game 1 of 2 (512s)
+nn(best.json,D3) 1 - 0 nn(scratch.json,D3)
+100% of 1 decided, 2-sigma +/- 100 points

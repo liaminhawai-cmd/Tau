@@ -1,0 +1,6 @@
+started 2026-07-31T18:40:45.748Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:nn\models\l15_value.json --b L11 --depth 3 --games 30 --saveData nn\data\l15-vs-l11.jsonl
+FINISHED 2026-07-31T23:34:04.257Z
+nn(l15_value.json,D3) vs L11: 8-22  (27% of decided, avg 24 plies, 17599s)
+2-sigma +/- 18 points on 30 decided games
+725 training rows -> nn\data\l15-vs-l11.jsonl

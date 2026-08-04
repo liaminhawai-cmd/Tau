@@ -1,0 +1,5 @@
+started 2026-07-30T21:56:55.086Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\best.json --b nn:0:C:\tau\Tau\nn\models\best.json --depth 3 --games 129 --policyA C:\tau\Tau\nn\models\policy-pointy.json --policyB C:\tau\Tau\nn\models\policy.json --abA --abB --quiesceA --quiesceB
+FINISHED 2026-07-31T12:17:48.610Z
+nn(best.json,D3.5,P-ab:policy-pointy) vs nn(best.json,D3.5,P-ab:policy): 65-64  (50% of decided, avg 26 plies, 51653s)
+2-sigma +/- 9 points on 129 decided games

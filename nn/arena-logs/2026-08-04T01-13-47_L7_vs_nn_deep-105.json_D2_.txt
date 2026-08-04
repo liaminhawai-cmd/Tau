@@ -1,0 +1,6 @@
+started 2026-08-04T01:13:47.042Z
+command: node C:\tau\Tau\nn\arena.js --a L7 --b nn:0:C:\tau\Tau\nn\models\.elo-snapshot\deep-105.json --games 4 --openingPlies 4 --idA L7 --idB deep-105@D2 --depthB 2 --saveData C:\tau\Tau\nn\data\pool-105.jsonl
+FINISHED 2026-08-04T01:59:50.283Z
+L7 vs nn(deep-105.json,D2): 3-1  (75% of decided, avg 26 plies, 2763s)
+2-sigma +/- 50 points on 4.0 decided games
+103 training rows -> C:\tau\Tau\nn\data\pool-105.jsonl
