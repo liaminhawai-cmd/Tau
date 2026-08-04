@@ -83,6 +83,20 @@ function main() {
   // buys coinflip results, not information; the ratchet's answer is already known to within the
   // margin. 0 restores the strict both-seats-at-the-literal-top behaviour.
   const topMarginElo = Math.max(0, +arg('topMarginElo', 60));
+  // WILDCARDS: brains tried before a position is written off as dead, REGARDLESS of where they sit
+  // on the Elo axis. The bisection above finds "the lowest-rated brain that can escape", which is
+  // only the right question if escape-ability rises monotonically with rating -- and it does not.
+  // index.html says so in its own words about the top of the ladder: "the ladder top is a STYLE
+  // cycle, not a strict ranking -- L10's territory style preys on L9 but has a hole a human's style
+  // walks through." A brute, aggressive brain finds escapes a subtle one never looks for.
+  // That matters here because of how the bisection narrows: every failed probe does
+  // `lo = Math.max(lo, i)`, permanently abandoning everything BELOW that index. So a low-rated
+  // stylistic escaper is never asked, and the position gets logged `dead` when an escape existed --
+  // the most expensive error this miner can make, since "unescapable" is exactly the training
+  // signal it exists to produce.
+  // Only fires when the position is otherwise about to be called dead, so the cost is bounded to
+  // the hard positions, same as the ultimateGuns hatch. Empty string disables.
+  const wildcardIds = arg('wildcards', 'L2,L1').split(',').map(s => s.trim()).filter(Boolean);
   const randomStartFrac = +arg('randomStartFrac', 0.3);
   const maxReplaysPerSeed = Math.max(1, +arg('maxReplaysPerSeed', 60));
   const maxPlies = +arg('maxPlies', 300);
@@ -173,6 +187,17 @@ function main() {
   if (ultimateGuns)
     console.log(`  escape hatch armed: ${ultimateGuns.id} (${Math.round(ultimateGuns.elo)} Elo) if ` +
                 `${topEntry.name} (the top of the ordinary D${maxDepth}-capped axis) fails`);
+  // Resolve wildcards against the pool the axis was actually built from, so a typo or a brain that
+  // isn't rated yet is reported now rather than silently never firing all night.
+  const wildcards = [];
+  for (const id of wildcardIds) {
+    const hit = pool.find(p => p.id === id);
+    if (hit) wildcards.push(hit);
+    else console.log(`  (wildcard "${id}" is not in the rated pool -- skipping it)`);
+  }
+  if (wildcards.length)
+    console.log(`  wildcards armed: ${wildcards.map(w => `${w.id}@${Math.round(w.elo)}`).join(', ')} ` +
+                `-- tried before any position is called dead, regardless of axis position`);
 
   const ws = fs.createWriteStream(out, { flags: 'a' });
   let famCount = 0, gameCount = 0, positions = 0, deadFound = 0;
@@ -308,13 +333,43 @@ function main() {
           climber = defender;
           seatBeatenHere = true;
         } else {
-          // nothing at any depth we're willing to pay for escaped: this position is dead as far
-          // as we can measure. The seat KEEPS its earned strength -- the ratchet does not slip on
-          // a dead position -- and one ply earlier the same occupant gets the first try again.
-          deadAt.push({ rewind, side: climber, triedGuns: !!ultimateGuns });
-          deadFound++;
-          rewind++;
-          seatBeatenHere = false;     // fresh position: the occupant has not lost from HERE
+          // Last chance before calling it dead: the wildcards, whatever their rating. The bisection
+          // abandoned everything below its last failed probe, so a brute/erratic brain that would
+          // have barged out of here has not actually been asked. Cheap (one game each) and only on
+          // positions already headed for a dead verdict.
+          let escapedViaWild = false;
+          for (const wc of wildcards) {
+            if (replays >= maxReplaysPerSeed) break;
+            const brainA = climber === 0 ? wc.fn : def.fn;
+            const idBlue = climber === 0 ? wc.id : def.id;
+            const idRed  = climber === 0 ? def.id : wc.id;
+            const result = playGame(eng, brainA, climber === 0 ? def.fn : wc.fn,
+                                    maxPlies, 0, seedPose, false);
+            replays++;
+            if (result.winner === null || result.adjudicated) continue;
+            writeGame(result.rows, result.winner, fam, idBlue, idRed);
+            if (result.winner === climber) {
+              escapedViaWild = true;
+              console.log(`  seed ${fam}, ${rewind} plies from the end: WILDCARD ${wc.id} ` +
+                          `(${Math.round(wc.elo)} Elo) escaped where the axis top failed`);
+              break;
+            }
+          }
+          if (escapedViaWild) {
+            // A wildcard escape says the position is alive, not that the seat is now only as strong
+            // as the wildcard -- floor[] must never slip down, so it is deliberately left untouched
+            // here (unlike the ordinary and guns escapes, which raise it).
+            climber = defender;
+            seatBeatenHere = true;
+          } else {
+            // nothing at any depth we're willing to pay for escaped: this position is dead as far
+            // as we can measure. The seat KEEPS its earned strength -- the ratchet does not slip on
+            // a dead position -- and one ply earlier the same occupant gets the first try again.
+            deadAt.push({ rewind, side: climber, triedGuns: !!ultimateGuns });
+            deadFound++;
+            rewind++;
+            seatBeatenHere = false;   // fresh position: the occupant has not lost from HERE
+          }
         }
       }
     }
