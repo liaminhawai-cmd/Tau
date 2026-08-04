@@ -1,0 +1,6 @@
+started 2026-08-02T14:39:47.366Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\ckpt-100.json --b L11 --games 3 --depth 1 --idA ckpt-100@D1 --idB L11 --saveData C:\tau\Tau\nn\data\batch-010.jsonl
+FINISHED 2026-08-02T15:02:32.638Z
+nn(ckpt-100.json) vs L11: 2-1  (67% of decided, avg 17 plies, 1365s)
+2-sigma +/- 58 points on 3.0 decided games
+51 training rows -> C:\tau\Tau\nn\data\batch-010.jsonl

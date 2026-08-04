@@ -1,0 +1,6 @@
+started 2026-08-02T15:30:32.412Z
+command: node C:\tau\Tau\nn\arena.js --a L2 --b nn:0:C:\tau\Tau\nn\models\.elo-snapshot\ckpt-049.json --games 4 --openingPlies 4 --idA L2 --idB ckpt-049@D2 --depthB 2 --saveData C:\tau\Tau\nn\data\pool-100.jsonl
+FINISHED 2026-08-02T15:41:31.133Z
+L2 vs nn(ckpt-049.json,D2): 0-4  (0% of decided, avg 30 plies, 659s)
+2-sigma +/- 50 points on 4.0 decided games
+120 training rows -> C:\tau\Tau\nn\data\pool-100.jsonl

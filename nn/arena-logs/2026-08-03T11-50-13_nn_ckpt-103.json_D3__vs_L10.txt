@@ -1,0 +1,3 @@
+started 2026-08-03T11:50:13.940Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\ckpt-103.json --b L10 --games 3 --depth 3 --idA ckpt-103@D3 --idB L10 --saveData C:\tau\Tau\nn\data\batch-013.jsonl
+STARTING -- no games finished yet

@@ -1,0 +1,6 @@
+started 2026-08-03T12:34:07.264Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\ckpt-104.json --b L9 --games 6 --timeMs 2000 --openingPlies 2 --randomStartFrac 0.35 --saveData C:\tau\Tau\nn\data\policy-loop-desktop-2b7iqhn-2026-08-03T12-34-06-238Z.jsonl
+FINISHED 2026-08-03T12:59:58.539Z
+nn(ckpt-104.json,T2000ms) vs L9: 2-4  (33% of decided, avg 19 plies, 1551s)
+2-sigma +/- 41 points on 6.0 decided games
+115 training rows -> C:\tau\Tau\nn\data\policy-loop-desktop-2b7iqhn-2026-08-03T12-34-06-238Z.jsonl

@@ -1,0 +1,5 @@
+started 2026-08-04T06:46:11.326Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\best.json --policyA C:\tau\Tau\nn\models\policy-champ.json --b nn:0:C:\tau\Tau\nn\models\best.json --timeMs 2000 --games 300 --saveData C:\tau\Tau\nn\data\policy-claim-DESKTOP-2B7IQHN.jsonl
+IN PROGRESS -- game 216 of 300 (9180s)
+nn(best.json,T2000ms,P:policy-champ) 118 - 98 nn(best.json,T2000ms)
+55% of 216.0 decided, 2-sigma +/- 7 points

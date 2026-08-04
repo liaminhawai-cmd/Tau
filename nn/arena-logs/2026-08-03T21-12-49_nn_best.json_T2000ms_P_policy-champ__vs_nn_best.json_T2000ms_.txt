@@ -1,0 +1,6 @@
+started 2026-08-03T21:12:49.200Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\best.json --policyA C:\tau\Tau\nn\models\policy-champ.json --b nn:0:C:\tau\Tau\nn\models\best.json --timeMs 2000 --games 300 --saveData C:\tau\Tau\nn\data\policy-claim-DESKTOP-2B7IQHN.jsonl
+FINISHED 2026-08-04T00:20:57.443Z
+nn(best.json,T2000ms,P:policy-champ) vs nn(best.json,T2000ms): 157-143  (52% of decided, avg 20 plies, 11288s)
+2-sigma +/- 6 points on 300.0 decided games
+5899 training rows -> C:\tau\Tau\nn\data\policy-claim-DESKTOP-2B7IQHN.jsonl

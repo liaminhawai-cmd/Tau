@@ -1,0 +1,6 @@
+started 2026-08-01T20:38:48.270Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\best.json --b L11 --games 3 --depth 2 --saveData C:\tau\Tau\nn\data\batch-004.jsonl
+FINISHED 2026-08-01T21:43:45.895Z
+nn(best.json,D2) vs L11: 1-2  (33% of decided, avg 37 plies, 3898s)
+2-sigma +/- 58 points on 3 decided games
+112 training rows -> C:\tau\Tau\nn\data\batch-004.jsonl

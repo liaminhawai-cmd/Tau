@@ -1,0 +1,3 @@
+started 2026-08-04T08:47:54.188Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\ckpt-106.json --b L9 --games 3 --depth 2 --idA ckpt-106@D2 --idB L9 --saveData C:\tau\Tau\nn\data\batch-015.jsonl
+IN PROGRESS -- game 1 of 3 (1887s)

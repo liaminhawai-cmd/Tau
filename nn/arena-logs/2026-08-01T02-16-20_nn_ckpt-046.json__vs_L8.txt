@@ -1,0 +1,6 @@
+started 2026-08-01T02:16:20.001Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\.elo-snapshot\ckpt-046.json --b L8 --games 2 --openingPlies 4 --depthA 1 --saveData nn\data\elo.jsonl
+FINISHED 2026-08-01T02:31:23.680Z
+nn(ckpt-046.json) vs L8: 1-1  (50% of decided, avg 23 plies, 904s)
+2-sigma +/- 71 points on 2 decided games
+46 training rows -> nn\data\elo.jsonl

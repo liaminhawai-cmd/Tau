@@ -1,0 +1,5 @@
+started 2026-08-03T21:01:59.130Z
+command: node c:\tau\Tau\nn\arena.js --a nn:0:nn/models/ckpt-104.json --policyA nn/models/policy-champ.json \
+FINISHED 2026-08-03T21:05:29.285Z
+nn(ckpt-104.json,P:policy-champ) vs L5: 24-0  (100% of decided, avg 16 plies, 210s)
+2-sigma +/- 20 points on 24.0 decided games

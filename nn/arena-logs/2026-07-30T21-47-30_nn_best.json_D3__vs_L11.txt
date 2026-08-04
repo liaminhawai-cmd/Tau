@@ -1,0 +1,5 @@
+started 2026-07-30T21:47:30.691Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\best.json --b L11 --depth 3 --games 37
+IN PROGRESS -- game 17 of 37 (10490s)
+nn(best.json,D3) 6 - 11 L11
+35% of 17 decided, 2-sigma +/- 24 points

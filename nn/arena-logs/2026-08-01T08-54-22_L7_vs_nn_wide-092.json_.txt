@@ -1,0 +1,6 @@
+started 2026-08-01T08:54:22.709Z
+command: node C:\tau\Tau\nn\arena.js --a L7 --b nn:0:C:\tau\Tau\nn\models\.elo-snapshot\wide-092.json --games 4 --openingPlies 4 --idA L7 --idB wide-092@D1 --depthB 1 --saveData C:\tau\Tau\nn\data\pool-092.jsonl
+FINISHED 2026-08-01T09:21:38.976Z
+L7 vs nn(wide-092.json): 3-1  (75% of decided, avg 22 plies, 1636s)
+2-sigma +/- 50 points on 4 decided games
+89 training rows -> C:\tau\Tau\nn\data\pool-092.jsonl

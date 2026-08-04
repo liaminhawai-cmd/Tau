@@ -1,0 +1,3 @@
+started 2026-08-01T01:07:01.792Z
+command: node C:\tau\Tau\nn\arena.js --a nn:0:C:\tau\Tau\nn\models\best.json --b L8 --games 3 --depth 1 --saveData C:\tau\Tau\nn\data\iter090.jsonl
+STARTING -- no games finished yet
