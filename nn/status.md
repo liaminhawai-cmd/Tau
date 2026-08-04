@@ -1,11 +1,11 @@
 # Tau NN training status
-_Last updated: 2026-08-04T02:13:31.897Z_
+_Last updated: 2026-08-04T02:18:27.464Z_
 
 **Self-play batch:** 14
-**Stage:** self-play batch 14 running, next check in 5 min
+**Stage:** pool cycle 105 complete
 **mix:** nnnn:0.4,nnladder:0.3,ladder:0.3
 
-**Last gate result:** resume-train promoted at 2026-08-03T21:55:59.575Z
+**Last gate result:** pool cycle 105 — ckpt-105 310, scratch-105 232, mut-105 149, deep-105 79
 
 **Last checkpoint:** ckpt-105.json at 2026-08-03T21:59:47.228Z
 
