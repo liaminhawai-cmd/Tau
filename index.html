@@ -3218,6 +3218,11 @@ const MASTER_PARK_KEEP = 4;     // deep-searched PARK candidates on top of the s
 // crossingSubstep), so a park only banks a free departure if the magnet genuinely finishes ON the
 // line. Parks beside the line (the old 0.5–0.72 pad-graze band) no longer bank anything.
 const PARK_LO = 0.05, PARK_HI = 0.34;
+// How much my outermost foot has to actually move during an opponent sweep before that sweep's
+// max/min-shove stops count as distinct replies (see ladderOppReplies). Below this the sweep never
+// touched me and both extremes are the same meaningless first step. In board units, same scale as
+// PARK_LO -- a shove smaller than this is not a shove.
+const SHOVE_EPS = 0.05;
 // mw (optional) overrides the eval weights -- the ladder's L7 passes a light dose of the
 // self-play-fitted weights (see AI_LADDER); the menu's Expert always uses the stock constants.
 function masterEval(aiIdx, mw){
@@ -4582,8 +4587,16 @@ function ladderOppReplies(oppIdx, meIdx, o, snap){
         }
         if (Math.abs(G.netRad) >= HARD_MIN_MOVE_RAD && !G.pieces[oppIdx].anyFootOff())
             out.push({pivotIdx:pv,dir,targetRad:Math.abs(G.netRad)});   // (a)
-        if (shoveOut) out.push(shoveOut);
-        if (shoveIn && shoveIn.targetRad !== (shoveOut && shoveOut.targetRad)) out.push(shoveIn);
+        // Only emit the shove stops when the shove is REAL. My piece moves solely via resolvePush,
+        // so with no contact anywhere in this sweep outermostRadU(me) is constant -- and then
+        // "max" and "min" both latch onto the first qualifying step and emit a degenerate
+        // AI_STEP_RAD stub. That produced six useless 3-degree candidates per position, which are
+        // never the minimax worst and so changed nothing while still costing a full simulation
+        // each. Require a measurable spread before either extreme counts as a distinct reply.
+        if (shoveOutRad - shoveInRad > SHOVE_EPS){
+            if (shoveOut) out.push(shoveOut);
+            if (shoveIn && shoveIn.targetRad !== shoveOut.targetRad) out.push(shoveIn);
+        }
     }
     return out;
 }
