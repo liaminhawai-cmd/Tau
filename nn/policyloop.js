@@ -25,8 +25,13 @@
 // The "no policy" entrant is not decoration: it is the control that keeps the whole exercise
 // honest. A champion that beats its mutant but loses to a bare net has not earned anything.
 //
+// The shape fight itself is gated on that control once it has enough pooled evidence (see
+// TARGET_SCHEME/gateFloor/poolStats below): no point paying for a shape hill-climb between two
+// classifiers neither of which has been shown to beat no policy at all.
+//
 //   node nn/policyloop.js [--cycles 0] [--budgetHours 1] [--workers N] [--timeMs 2000]
 //                         [--games 6] [--epochs 20] [--hidden 96,64] [--levels 5,7,9]
+//                         [--gateFloor 150] [--noGate]
 //   --cycles 0 (the default) means keep going forever.
 'use strict';
 const { execFileSync, spawn } = require('child_process');
@@ -73,6 +78,25 @@ const useAb = arg('ab', '0') !== '0';
 // significance test (see the verdict below) -- just a guard against 0-0 or a single fluke game
 // deciding which shape the next cycle trains from.
 const minDecided = Math.max(1, +arg('minDecided', 4));
+
+// SIGNIFICANCE GATE: mutateHidden's shape fight is a deliberately loose, non-significant hill-climb
+// (see the verdict comment below for why) -- fine when there is a true policy-vs-nopolicy effect to
+// climb, wasted compute when there isn't, because champion and mutant are then just two equally
+// uninformative classifiers and "which one won this cycle" is coinflip noise stacked on a null. The
+// pooled champ-vs-nopolicy counter already answers that question with a real significance band
+// (see realResult below) -- gateFloor wires it to skip the (expensive: a full retrain plus a
+// multi-matchup tournament) shape fight once enough pooled evidence says there is nothing there yet,
+// falling back to just the control match so the pooled counter keeps moving cheaply. Pass --noGate
+// to force every cycle to run the full shape fight regardless (e.g. right after a change to how
+// policy targets are mined, when old pooled evidence no longer describes the current system).
+const gateFloor = Math.max(0, +arg('gateFloor', 150));
+const noGate = process.argv.includes('--noGate');
+// Bumped whenever a change to policy-target mining would make OLD pooled evidence non-comparable to
+// new evidence (a different target distribution is a different experiment). Old history entries
+// don't carry this field, so they are naturally excluded from a fresh scheme's pool -- nothing is
+// deleted, the gate just starts counting again from zero for the new scheme. Current scheme: the
+// mv/depth source filter + throw-target reconstruction shipped together in policy-targets.js.
+const TARGET_SCHEME = 'search-filtered-v1';
 
 const modelsDir = path.join(dir, 'models');
 const dataDir = path.join(dir, 'data');
@@ -233,6 +257,29 @@ function pickValueNet() {
   return best;
 }
 
+// Sums champ-vs-nopolicy W/L across every history entry tagged with the CURRENT target scheme (see
+// TARGET_SCHEME above) -- entries from an old scheme are silently excluded, not deleted, so changing
+// how targets are mined starts the significance read over from zero instead of mixing two different
+// experiments into one number. Same 2-sigma-band convention as the per-cycle verdict already uses.
+// Shared by the pre-cycle gate check and the post-cycle log line so the two never drift apart.
+function poolStats(extra) {
+  let w = 0, l = 0;
+  try {
+    for (const line of fs.readFileSync(historyFile, 'utf8').split('\n').filter(Boolean)) {
+      const h = JSON.parse(line);
+      if (h.scheme !== TARGET_SCHEME) continue;
+      const c = h.results && h.results['champ-vs-nopolicy'];
+      if (c) { w += c.w; l += c.l; }
+    }
+  } catch (e) {}
+  if (extra) { w += extra.w; l += extra.l; }
+  const dec = w + l;
+  if (!dec) return { w, l, dec, rate: null, band: null, verdict: 'no data yet' };
+  const rate = w/dec, band = Math.sqrt(0.25/dec)*2;
+  const verdict = rate - band > 0.5 ? 'beats' : rate + band < 0.5 ? 'loses' : 'undecided';
+  return { w, l, dec, rate, band, verdict };
+}
+
 // --- one cycle -----------------------------------------------------------------------------------
 async function runCycle(num) {
   const t0 = Date.now();
@@ -281,14 +328,26 @@ async function runCycle(num) {
   }
 
   // The challenger: one edit away from the champion, trained on the same targets, same epochs.
-  // The fight is fair because everything except the shape is shared.
-  const mut = mutateHidden(shape);
-  let mutantOk = false;
-  if (mut) {
-    log(`policy cycle ${num}: shape fight — champion ${shape} vs mutant ${mut.shape} (${mut.op})`);
-    mutantOk = runSoft('train-policy.js', ['--targets', targetsPath, '--epochs', epochs,
-                                           '--hidden', mut.shape, '--out', mutantPath])
-               && fs.existsSync(mutantPath);
+  // The fight is fair because everything except the shape is shared. Skipped entirely once the
+  // pooled control (see poolStats/gateFloor above) says there is nothing yet to hill-climb: a shape
+  // fight between two equally-uninformative classifiers is coinflip noise, and it is not cheap --
+  // a full retrain plus its own tournament slots, every cycle, indefinitely.
+  const priorPool = poolStats();
+  const gated = !noGate && priorPool.dec >= gateFloor && priorPool.verdict !== 'beats';
+  let mut = null, mutantOk = false;
+  if (gated) {
+    log(`policy cycle ${num}: GATED — pooled control is ${priorPool.verdict} at ` +
+        `${(100*priorPool.rate).toFixed(0)}% +/- ${(100*priorPool.band).toFixed(0)} on ${priorPool.dec} ` +
+        `decided (scheme ${TARGET_SCHEME}) — skipping the mutant train + shape fight, ` +
+        `keeping the control and ladder-anchor matches`);
+  } else {
+    mut = mutateHidden(shape);
+    if (mut) {
+      log(`policy cycle ${num}: shape fight — champion ${shape} vs mutant ${mut.shape} (${mut.op})`);
+      mutantOk = runSoft('train-policy.js', ['--targets', targetsPath, '--epochs', epochs,
+                                             '--hidden', mut.shape, '--out', mutantPath])
+                 && fs.existsSync(mutantPath);
+    }
   }
 
   // --- the tournament ----------------------------------------------------------------------------
@@ -394,24 +453,16 @@ async function runCycle(num) {
   // This one DOES carry a significance bar, and it accumulates across cycles rather than being
   // re-judged from one cycle's handful of games -- a real effect should survive being pooled.
   const ctl = results['champ-vs-nopolicy'];
-  let realResult = null, poolW = 0, poolL = 0;
-  try {
-    for (const line of fs.readFileSync(historyFile, 'utf8').split('\n').filter(Boolean)) {
-      const h = JSON.parse(line);
-      const c = h.results && h.results['champ-vs-nopolicy'];
-      if (c) { poolW += c.w; poolL += c.l; }
-    }
-  } catch (e) {}
-  if (ctl) { poolW += ctl.w; poolL += ctl.l; }
-  const pdec = poolW + poolL;
-  if (pdec) {
-    const rate = poolW/pdec, band = Math.sqrt(0.25/pdec)*2;
-    realResult = rate - band > 0.5 ? 'policy beats no-policy'
-               : rate + band < 0.5 ? 'policy is a net LOSS'
-               : 'not yet distinguishable from no policy';
-    log(`policy cycle ${num}: champion vs NO policy, POOLED over every cycle so far — ` +
-        `${poolW}-${poolL}, ${(100*rate).toFixed(0)}% +/- ${(100*band).toFixed(0)} on ${pdec} decided ` +
-        `=> ${realResult}`);
+  // Same helper the pre-cycle gate check used, now folding THIS cycle's control result in -- pooled
+  // only over history entries tagged with the current TARGET_SCHEME, same reasoning as the gate.
+  const pool = poolStats(ctl);
+  const REAL_RESULT = { beats: 'policy beats no-policy', loses: 'policy is a net LOSS',
+                         undecided: 'not yet distinguishable from no policy' };
+  const realResult = pool.dec ? REAL_RESULT[pool.verdict] : null;
+  if (pool.dec) {
+    log(`policy cycle ${num}: champion vs NO policy, POOLED over scheme ${TARGET_SCHEME} so far — ` +
+        `${pool.w}-${pool.l}, ${(100*pool.rate).toFixed(0)}% +/- ${(100*pool.band).toFixed(0)} on ` +
+        `${pool.dec} decided => ${realResult}`);
   }
 
   const rows = fs.existsSync(saveData)
@@ -419,12 +470,12 @@ async function runCycle(num) {
   try {
     fs.appendFileSync(historyFile, JSON.stringify({
       cycle: num, at: new Date().toISOString(), machine, value: path.basename(value),
-      targets: targetRows,
+      targets: targetRows, scheme: TARGET_SCHEME, gated,
       // the shape that FOUGHT, captured before any adoption overwrote it -- reporting the
       // post-adoption shape here made the log read as though a mutant had beaten itself
       champShape: shape, newChampShape: champShape(), mutant: mut ? mut.shape : null,
       op: mut ? mut.op : null, adopted, verdict, results, rows,
-      realResult, pooledNoPolicy: { w: poolW, l: poolL },
+      realResult, pooledNoPolicy: { w: pool.w, l: pool.l },
       minutes: +((Date.now() - t0)/60000).toFixed(1),
     }) + '\n');
   } catch (e) {}
