@@ -9,3 +9,4 @@ frank-disagreements.json
 parktest-*.log
 arena-logs/
 .elo-snapshot/
+retro-loop-status.json

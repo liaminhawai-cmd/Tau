@@ -10,7 +10,7 @@
 // train.js would silently group unrelated games from different files as one game.
 'use strict';
 
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -20,8 +20,98 @@ function arg(name, dflt) {
   return i >= 0 ? process.argv[i + 1] : dflt;
 }
 
+// Same git plumbing worker.js uses, including its GitHub-Desktop fallback for machines with no git
+// on PATH, and its recovery from the "would be overwritten by merge" wedge -- which matters here for
+// exactly the reason it matters there: one untracked local file sitting where an incoming tracked
+// one wants to land silently kills EVERY subsequent pull, not just the one that hit it.
+const q = s => '"' + String(s).replace(/"/g, '\\"') + '"';
+let gitCmd;
+function findGit() {
+  if (gitCmd !== undefined) return gitCmd;
+  const works = c => {
+    try {
+      execFileSync(c === 'git' ? 'git' : q(c), ['--version'],
+                   { shell: true, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      return true;
+    } catch (e) { return false; }
+  };
+  const candidates = ['git'];
+  try {
+    const base = path.join(process.env.LOCALAPPDATA || '', 'GitHubDesktop');
+    const ver = f => f.slice(4).split('.').map(Number);
+    const apps = fs.readdirSync(base).filter(f => /^app-/.test(f))
+      .sort((a, b) => { const va = ver(a), vb = ver(b);
+        for (let i = 0; i < 3; i++) if ((vb[i] || 0) !== (va[i] || 0)) return (vb[i] || 0) - (va[i] || 0);
+        return 0; });
+    for (const a of apps) candidates.push(path.join(base, a, 'resources', 'app', 'git', 'cmd', 'git.exe'));
+  } catch (e) {}
+  gitCmd = candidates.find(works) || null;
+  return gitCmd;
+}
+const errText = e => String((e && (e.stderr || e.stdout)) || (e && e.message) || e).trim().split('\n').slice(0, 3).join(' | ');
+function git(args) {
+  const found = findGit();
+  if (!found) throw new Error('no git found');
+  return execFileSync(found === 'git' ? 'git' : q(found), args.map(q),
+                      { cwd: repoRoot, shell: true, encoding: 'utf8' });
+}
+function gitSoft(args, what) {
+  try { git(args); return true; } catch (e) {
+    const raw = String((e && e.stderr) || (e && e.message) || e);
+    if (args[0] === 'pull' && /would be overwritten by merge/.test(raw)) {
+      const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+      const start = lines.findIndex(l => /would be overwritten by merge/.test(l));
+      const conflicts = [];
+      for (let i = start + 1; i < lines.length; i++) {
+        if (/^(please|aborting|error:)/i.test(lines[i])) break;
+        conflicts.push(lines[i]);
+      }
+      let moved = 0;
+      for (const rel of conflicts) {
+        const abs = path.join(repoRoot, rel);
+        try { fs.renameSync(abs, `${abs}.local-${Date.now()}`); moved++; } catch (e2) {}
+      }
+      if (moved) {
+        console.log(`  pull blocked by ${moved} local file(s) also present upstream -- moved aside, retrying`);
+        try { git(args); return true; } catch (e3) {
+          console.log(`  ${what} still failed after moving conflicts aside (${errText(e3)}) -- continuing`);
+          return false;
+        }
+      }
+    }
+    console.log(`  ${what} failed (${errText(e)}) -- continuing`);
+    return false;
+  }
+}
+// Commit+push whatever the lanes have appended so far. Only nn/data is added: models, summaries and
+// status files belong to the trainer, and a mining loop racing it for those would just create
+// conflicts over files it never authored.
+function pushData(tag) {
+  if (!gitPushMin || !findGit()) return;
+  gitSoft(['pull', '--no-edit'], 'pull before push');
+  gitSoft(['add', '-A', 'nn/data'], 'git add');
+  try {
+    const staged = git(['diff', '--cached', '--stat']).trim();
+    if (!staged) return;                      // nothing new since last push
+  } catch (e) { return; }
+  if (!gitSoft(['commit', '-m', `retromine: ${tag}`], 'commit')) return;
+  if (gitSoft(['push'], 'push')) console.log(`  pushed mined rows (${tag})`);
+}
+
 const dir = __dirname;
+const repoRoot = path.join(dir, '..');
 const sourcePath = path.join(dir, 'retromine.js');
+// --- git, same shape worker.js uses -------------------------------------------------------------
+// WHY the loop needs git at all: retromine writes only to disk. Without this the mined rows never
+// leave the machine that made them -- not to the other box, not into anyone else's training run --
+// and the loop never picks up a newer elo-summary.json, so its whole strength axis stays frozen at
+// whatever the pool believed when the window was opened. A pull per job fixes the second (retromine
+// re-reads the summary at every job start, so a fresh pull is enough); a periodic push fixes the first.
+//
+// --gitPull 0 / --gitPush 0 disable either half. Failures are always soft: a loop that stops mining
+// because a push raced with the trainer would be worse than one that quietly retries next cycle.
+const gitPullOn = arg('gitPull', '1') !== '0';
+const gitPushMin = Math.max(0, +arg('gitPush', 4));
 const workers = Math.max(1, +arg('workers',
   String(Math.max(1, Math.min(os.cpus().length - 1, 14)))));
 const seedsPerJob = Math.max(1, +arg('seedsPerJob', 1));
@@ -150,6 +240,11 @@ function launch(lane) {
     '--out', lane.output,
   ];
 
+  // Pull before spawning, not after: retromine reads elo-summary.json once at startup, so the pull
+  // has to land before the child exists or the job runs the whole seed against a stale axis. Lane 1
+  // only -- 14 lanes each pulling on their own schedule would just be 14 racing pulls of the same
+  // commits, and every lane's next job picks the result up anyway.
+  if (gitPullOn && lane.id === 1 && findGit()) gitSoft(['pull', '--no-edit'], 'pull');
   console.log(`\n[w${lane.id}] starting ratchet job ${job} -> ${path.basename(lane.output)}`);
   const child = spawn(process.execPath, args, { cwd: dir, stdio: 'inherit', windowsHide: false });
   lane.child = child;
@@ -211,5 +306,17 @@ console.log(`Tau Retromine ratchet-only loop
   status: ${statusPath}
 
 Close this window or press Ctrl-C to stop. Retromine appends rows throughout each job.`);
+if (findGit()) {
+  console.log(`  git: ${gitPullOn ? 'pull before each lane-1 job' : 'pull OFF'}, ` +
+              `${gitPushMin ? `push nn/data every ${gitPushMin} min` : 'push OFF'}`);
+} else if (gitPullOn || gitPushMin) {
+  console.log(`  git: not found on PATH or under GitHub Desktop -- mining locally only`);
+}
 saveStatus();
+// Periodic push, from the supervisor rather than the lanes: one committer means no two processes
+// racing to stage the same growing files. Unref'd so it never holds the process open by itself.
+if (gitPushMin && findGit()) {
+  setInterval(() => pushData(`${lanes.reduce((n, l) => n + l.jobs, 0)} jobs done`),
+              gitPushMin * 60 * 1000).unref();
+}
 for (const lane of lanes) launch(lane);
