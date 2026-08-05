@@ -5,7 +5,9 @@
 //
 // Row weighting: winners' moves teach, losers' moves mislead half the time (they lost). --loserW
 // down-weights rows whose mover went on to lose (z<0); draws sit between. Not zero: losers still
-// play mostly reasonable moves, and the arm distribution needs to see them.
+// play mostly reasonable moves, and the arm distribution needs to see them. Multiplied together with
+// the mover's Elo weight (eloweight.js) and the row's source weight (policy-targets.js's `sw`, see
+// its header) -- three independent partial-credit signals, none of them a hard exclude.
 //
 // Reports: val cross-entropy, arm top-1/top-3 accuracy, bin top-1 and within-1 accuracy, and the
 // combined "arm right AND bin within 1" rate -- the number that decides whether policy pruning can
@@ -13,6 +15,7 @@
 //
 //   node nn/train-policy.js [--targets nn/data/policy-targets.jsonl] [--epochs 20]
 //                           [--hidden 96,64] [--out nn/models/policy.json] [--loserW 0.4]
+//                           [--noEloWeight] [--noSourceWeight]
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -46,6 +49,12 @@ function main() {
     : makeEloWeighter(arg('eloSummary', path.join(__dirname, 'elo-summary.json')),
                       { scale: +arg('eloScale', 250), floor: +arg('eloFloor', 0.25) });
   console.log(`elo weighting: ${eloW.note}`);
+  // policy-targets.js also stamps a per-row `sw` (source weight: how much to trust the MOVE itself,
+  // e.g. a ladder brain's play vs a real depth-2+ search pick) on rows where it isn't 1 -- same
+  // multiplicative-partial-credit pattern as eloW above, just keyed to the move's source rather than
+  // the mover's rating. --noSourceWeight restores flat trust in every row's source.
+  const noSourceWeight = process.argv.includes('--noSourceWeight');
+  const srcW = j => noSourceWeight ? 1 : (j.sw != null ? j.sw : 1);
 
   const rows = [];
   for (const line of fs.readFileSync(targetsPath, 'utf8').split('\n')) {
@@ -54,7 +63,7 @@ function main() {
     try { j = JSON.parse(line); } catch (e) { continue; }
     if (!j.f || j.f.length !== N_FEATURES) continue;   // stale-feature rows: skip, don't crash
     rows.push({ x: j.f, arm: j.arm, bin: j.bin,
-                w: (j.z > 0 ? 1 : j.z < 0 ? loserW : drawW)*eloW.weight(j.mv), g: j.g });
+                w: (j.z > 0 ? 1 : j.z < 0 ? loserW : drawW)*eloW.weight(j.mv)*srcW(j), g: j.g });
   }
   if (!rows.length) { console.error(`no usable rows in ${targetsPath}`); process.exit(1); }
 

@@ -95,8 +95,10 @@ const noGate = process.argv.includes('--noGate');
 // new evidence (a different target distribution is a different experiment). Old history entries
 // don't carry this field, so they are naturally excluded from a fresh scheme's pool -- nothing is
 // deleted, the gate just starts counting again from zero for the new scheme. Current scheme: the
-// mv/depth source filter + throw-target reconstruction shipped together in policy-targets.js.
-const TARGET_SCHEME = 'search-filtered-v1';
+// mv/depth SOURCE WEIGHT (not a hard filter -- see policy-targets.js's header for why the filter
+// version was reverted after a live A/B lost to both the unfiltered champion and no policy at all)
+// + throw-target reconstruction, both in policy-targets.js.
+const TARGET_SCHEME = 'search-weighted-v1';
 
 const modelsDir = path.join(dir, 'models');
 const dataDir = path.join(dir, 'data');

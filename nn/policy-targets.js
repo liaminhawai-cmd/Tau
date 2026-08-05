@@ -9,23 +9,32 @@
 // (features.moveFrame): pivot as a radius-sorted slot, direction flipped by the mirror. Rows
 // without pose/tag (the pre-tagging era) are skipped -- they only ever feed the value head.
 //
-// SOURCE FILTER (default on): a row's `mv` tag (selfplay.js) identifies the brain that chose the
-// move -- an "L7" ladder id, or "ckpt-105@D2"/"best@D1" for a net search. Only rows played by a net
-// at depth >= --minDepth (default 2) are kept by default. Two things are true at once here:
-//   - ladder-mover rows are the opponent's move, not ours -- imitating them caps the policy at
-//     whatever the fixed heuristic ladder does, the same ceiling the value net's own training mix
-//     was just rebalanced away from (see run.js's lossWeight commit). Over half the historical
-//     corpus is ladder-involving play by row count (see claude-digest.md's per-mover table).
-//   - depth-1 net moves have NO recursive opponent search behind them (nnai.js's lookahead starts
-//     at depth 2) -- they are closer to a single-shot eval pick than a policy-improvement target.
-// Pass --allSources to restore the old unfiltered behaviour (useful for an A/B against this filter).
-// Untagged rows (`mv` missing, pre-tagging era) are excluded by default for the same reason: their
-// source can't be verified, so they can't be trusted as "real search" targets either.
+// SOURCE WEIGHT (on by default): a row's `mv` tag (selfplay.js) identifies the brain that chose the
+// move -- an "L7" ladder id, or "ckpt-105@D2"/"best@D1" for a net search. Every row is still mined
+// (nothing is excluded), but tagged with a per-row `sw` in [0.25, 1] that train-policy.js multiplies
+// into its existing z/elo weight, same "multiply several honest, partial signals together" pattern
+// eloweight.js already uses for the mover's rating. This REPLACES an earlier version of this file
+// that hard-excluded ladder/shallow/untagged rows outright: measured live (same net, same clock,
+// A vs B), the hard-filtered champion LOST to both the unfiltered champion (8-16) and to no policy
+// at all (8-16), while unfiltered roughly matched no-policy (11-13) -- consistent with the filter
+// starving an 18k-param classifier of 90% of its rows (27.7k vs 308.8k) for a source-quality
+// argument that, on this evidence, did not pay for the volume it cost. Weighting keeps the same
+// diagnosis (a fixed ladder brain's move is a different, weaker thing to imitate than a real search
+// pick) without discarding the data outright:
+//   - ladder-mover rows: 0.25 -- same floor eloweight.js already uses for "untrusted but still real,
+//     still legal" rows, not zero, because they still describe the reachable position distribution.
+//   - net rows below --minDepth (default 2): 0.5 -- nnai.js's lookahead starts at depth 2, so a
+//     depth-1 net move has no recursive opponent search behind it, closer to a single-shot eval pick.
+//   - untagged rows (`mv` missing, pre-tagging era): 0.625 -- eloweight.js's own "unknown is
+//     ordinary, not weak" neutral value (floor + (1-floor)/2), reused verbatim for consistency.
+//   - net rows at/above --minDepth: 1 (full trust -- genuine full-width search output).
+// Pass --allSources for a flat weight of 1 everywhere (the pre-weighting comparison arm).
 //
 // KNOWN GAP (mitigated below, not eliminated): each game's FINAL move (the one that won it, usually
 // a throw) has no successor row, so the primary diff above can never reconstruct it -- confirmed
 // blind spot, see nnai.js's "policy systematically under-rates throw arms" comment. tryMineThrow()
-// recovers an APPROXIMATE target for it instead of leaving the gap: see that function's own header
+// recovers an APPROXIMATE target for it instead of leaving the gap, weighted by the same sourceWeight
+// (a ladder brain's throw is still the ladder's play, not the net's): see that function's own header
 // for exactly what is and isn't trustworthy about it. Pass --noThrows to disable just that half.
 //
 //   node nn/policy-targets.js [--data nn/data] [--out nn/data/policy-targets.jsonl]
@@ -78,15 +87,16 @@ function main() {
     return out;
   };
 
-  // Classifies a row's `mv` tag against --minDepth / --allSources. Returns null if the row passes
-  // (nothing to skip), else a reason string used to bump the right counter at the call site.
-  const sourceReject = mv => {
-    if (allSources) return null;
-    if (!mv) return 'untagged';
-    if (/^L\d+$/.test(mv)) return 'ladder';
+  // Per-row source weight (see header for the four tiers and why). Never a hard exclude -- every
+  // row still gets mined, just multiplied down at train time when its source is less trustworthy.
+  const FULL_TRUST = 1, SHALLOW_W = 0.5, LADDER_W = 0.25, UNTAGGED_W = 0.625;
+  const sourceWeight = mv => {
+    if (allSources) return FULL_TRUST;
+    if (!mv) return UNTAGGED_W;
+    if (/^L\d+$/.test(mv)) return LADDER_W;
     const dm = /@D(\d+)$/.exec(mv);
-    if (!dm) return 'untagged';           // unrecognised mv format -- don't guess, exclude
-    return +dm[1] < minDepth ? 'shallow' : null;
+    if (!dm) return UNTAGGED_W;            // unrecognised mv format -- treat like unknown, don't guess
+    return +dm[1] < minDepth ? SHALLOW_W : FULL_TRUST;
   };
 
   // THROW RECONSTRUCTION: a game's winning move (usually a throw) has no successor row, so the main
@@ -101,12 +111,11 @@ function main() {
   // tagged `thrown:1` so they stay distinguishable from the exact diff-reconstructed targets above,
   // and are subject to the same --minDepth/--allSources source filter (a ladder brain's throw is
   // still the ladder's play, not the net's).
-  let throwTargets = 0, throwMissed = 0, throwFiltered = 0;
+  let throwTargets = 0, throwMissed = 0;
   function tryMineThrow(finalRow, ws) {
     if (!finalRow || finalRow.adj || !(finalRow.z > 0)) return;  // draw, loss, or an adjudicated
                                                                    // (non-literal) win: no throw here
-    const reason = sourceReject(finalRow.mv);
-    if (reason) { throwFiltered++; return; }
+    const sw = sourceWeight(finalRow.mv);
     const mover = finalRow.m, victim = 1 - mover;
     setPose(finalRow.p, mover);
     const frame = moveFrame(eng);
@@ -129,7 +138,8 @@ function main() {
             const arm = armIndex(slot, dir*frame.mirror);
             const bin = binIndex(rad);
             ws.write(JSON.stringify({ f: finalRow.f, arm, bin, z: finalRow.z, g: finalRow.g,
-                                      thrown: 1, ...(finalRow.mv ? { mv: finalRow.mv } : {}) }) + '\n');
+                                      thrown: 1, ...(sw !== 1 ? { sw } : {}),
+                                      ...(finalRow.mv ? { mv: finalRow.mv } : {}) }) + '\n');
             throwTargets++;
             reset();
             return;
@@ -146,7 +156,7 @@ function main() {
     .filter(f => f.endsWith('.jsonl') && !f.startsWith('policy-targets')).sort();
   const ws = fs.createWriteStream(outPath);
   let games = 0, targets = 0, skippedRows = 0, passRows = 0, ambiguous = 0;
-  let ladderSkipped = 0, shallowSkipped = 0, untaggedSkipped = 0;
+  let fullTrustRows = 0, shallowRows = 0, ladderRows = 0, untaggedRows = 0;
 
   for (const file of files) {
     let txt;
@@ -164,13 +174,11 @@ function main() {
       }
       if (prev) {
         const mover = prev.m;
-        const reason = sourceReject(prev.mv);
-        if (reason) {
-          if (reason === 'ladder') ladderSkipped++;
-          else if (reason === 'shallow') shallowSkipped++;
-          else untaggedSkipped++;
-          prev = j; continue;
-        }
+        const sw = sourceWeight(prev.mv);
+        if (sw === LADDER_W) ladderRows++;
+        else if (sw === SHALLOW_W) shallowRows++;
+        else if (sw === UNTAGGED_W) untaggedRows++;
+        else fullTrustRows++;
         const dRot = norm(j.p[mover*3 + 2] - prev.p[mover*3 + 2]);
         if (Math.abs(dRot) < MIN_MOVE) { passRows++; prev = j; continue; }   // null-plan pass
         // pivot = the mover's foot that stayed put. With a rotation this size exactly one can.
@@ -191,8 +199,10 @@ function main() {
         const arm = armIndex(slot, (dRot > 0 ? 1 : -1)*frame.mirror);
         const bin = binIndex(dRot);
         // `mv` rides along when present so train-policy.js can weight by the mover's CURRENT pool
-        // rating at train time (see eloweight.js for why the id and not the rating is stored).
+        // rating at train time (see eloweight.js for why the id and not the rating is stored). `sw`
+        // rides along the same way for the source weight -- see header for the four tiers.
         ws.write(JSON.stringify({ f: prev.f, arm, bin, z: prev.z, g: prev.g,
+                                  ...(sw !== 1 ? { sw } : {}),
                                   ...(prev.mv ? { mv: prev.mv } : {}) }) + '\n');
         targets++;
       }
@@ -202,12 +212,13 @@ function main() {
   }
   ws.end(() => console.log(
     `policy targets: ${targets} moves reconstructed from ${games} games -> ${outPath}\n` +
-    (noThrows ? '' : `(+ ${throwTargets} throw targets recovered, ${throwMissed} misses, ${throwFiltered} filtered by source)\n`) +
+    (noThrows ? '' : `(+ ${throwTargets} throw targets recovered, ${throwMissed} misses)\n`) +
     `(skipped: ${skippedRows} rows without pose/tag, ${passRows} null-plan passes, ` +
     `${ambiguous} ambiguous-pivot rotations)\n` +
-    (allSources ? '(source filter: OFF, --allSources)'
-      : `(source filter: minDepth ${minDepth} -- excluded ${ladderSkipped} ladder-mover, ` +
-        `${shallowSkipped} shallow-depth, ${untaggedSkipped} untagged rows)`)));
+    (allSources ? '(source weighting: OFF, --allSources -- flat weight 1)'
+      : `(source weighting: minDepth ${minDepth} -- ${fullTrustRows} full-trust, ` +
+        `${shallowRows} shallow@${SHALLOW_W}, ${ladderRows} ladder@${LADDER_W}, ` +
+        `${untaggedRows} untagged@${UNTAGGED_W})`)));
 }
 
 main();
