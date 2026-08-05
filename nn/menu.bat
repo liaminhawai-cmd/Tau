@@ -46,6 +46,10 @@ echo  18. DIGEST: crunch every local-only file into one summary and push it
 echo      -- elo-results.json's raw pairs, training-data composition, a fresh arena-log mine.
 echo      Read-only: plays nothing, trains nothing. Safe to run any time.
 echo.
+echo  19. PROMOTE mutant: make policy-mutant.json the new policy-champ.json (backs up the old one)
+echo      -- run this right after a manual policy-mutant vs policy-champ arena test you liked.
+echo      The loop overwrites policy-mutant.json every cycle, so an untested win won't survive long.
+echo.
 echo  14. Exit
 echo ================================================
 set /p choice="Pick a number: "
@@ -67,6 +71,7 @@ if "%choice%"=="15" goto policyloop
 if "%choice%"=="16" goto policyclaim
 if "%choice%"=="17" goto l12check
 if "%choice%"=="18" goto digest
+if "%choice%"=="19" goto promotemutant
 if "%choice%"=="14" goto :eof
 goto menu
 
@@ -150,6 +155,21 @@ echo Writes nothing to the pool, best.json, or the champion policy; progress lan
 echo.
 echo === policy-champ vs no policy, same net (best.json), 2000ms/move, %GAMES% games ===
 node nn\arena.js --a nn:0:%CD%\nn\models\best.json --policyA %CD%\nn\models\policy-champ.json --b nn:0:%CD%\nn\models\best.json --timeMs 2000 --games %GAMES% --saveData %CD%\nn\data\policy-claim-%COMPUTERNAME%.jsonl
+pause
+goto menu
+
+:promotemutant
+if not exist "nn\models\policy-mutant.json" (
+  echo nn\models\policy-mutant.json not found -- nothing to promote. Run option 15 first, or
+  echo point --policyA/--policyB at it directly in a manual arena.js test.
+  pause
+  goto menu
+)
+rem Local files only -- policy models are never pushed to git (policyloop.js's own rule: "those
+rem stay local candidates until a person promotes one", which is exactly this step). Reversible:
+rem the outgoing policy-champ.json is backed up to policy-champ-backup-<timestamp>.json first, so
+rem promoting on a whim costs nothing to undo -- just copy the backup back over policy-champ.json.
+node nn\promote-mutant.js
 pause
 goto menu
 
