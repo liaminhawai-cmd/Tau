@@ -89,7 +89,13 @@ function gitSoft(args, what) {
 function pushData(tag) {
   if (!gitPushMin || !findGit()) return;
   gitSoft(['pull', '--no-edit'], 'pull before push');
-  gitSoft(['add', '-A', 'nn/data'], 'git add');
+  // -f is REQUIRED, not belt-and-braces: nn/.gitignore excludes data/ wholesale, so a plain
+  // `git add nn/data` matches only ignored paths, prints "The following paths are ignored by one of
+  // your .gitignore files", and exits non-zero having staged NOTHING. gitSoft swallows that as a
+  // warning and the loop keeps mining, so the failure is silent -- lanes run for hours writing rows
+  // that never leave the machine. Observed live: 14 workers, ~20 jobs done, zero retro-ratchet-*
+  // files on the remote. run.js's status push hit this same trap and already documents it.
+  gitSoft(['add', '-Af', 'nn/data'], 'git add');
   try {
     const staged = git(['diff', '--cached', '--stat']).trim();
     if (!staged) return;                      // nothing new since last push
