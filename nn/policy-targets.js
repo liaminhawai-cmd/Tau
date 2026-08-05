@@ -9,6 +9,20 @@
 // (features.moveFrame): pivot as a radius-sorted slot, direction flipped by the mirror. Rows
 // without pose/tag (the pre-tagging era) are skipped -- they only ever feed the value head.
 //
+// PER-FILE CACHE (on by default): mining re-walks the WHOLE accumulated corpus every single call,
+// and tryMineThrow below runs a real (bounded) physics sweep per game -- cheap for one file, but paid
+// in full for every game in history, every mint, against a corpus that only grows. Observed live:
+// ~2h09m per mint on a ~24k-game corpus, consistent cycle over cycle -- which is the entire reason a
+// 1-hour-budget policy loop completed zero arena games across four straight cycles (mint alone blew
+// the whole budget before the tournament phase ever started). Fix: since a game never spans files
+// (`prev`/`prevGame` reset at the top of the per-file loop below) and source files are append-only in
+// practice, a file's mined output is a pure function of that file's own bytes, cacheable per file
+// keyed on (mtimeMs, size). Any write to a file changes its signature, so a file caught mid-write is
+// never stuck serving a stale cached read -- it just falls back to a fresh mine, same as an unseen
+// file. Namespaced by the flags that change what mining PRODUCES (minDepth/allSources/noThrows) so
+// switching those can't silently replay results computed under a different scheme. --noCache bypasses
+// it entirely (e.g. to confirm the cache reproduces the uncached output byte-for-byte).
+//
 // SOURCE WEIGHT (on by default): a row's `mv` tag (selfplay.js) identifies the brain that chose the
 // move -- an "L7" ladder id, or "ckpt-105@D2"/"best@D1" for a net search. Every row is still mined
 // (nothing is excluded), but tagged with a per-row `sw` in [0.25, 1] that train-policy.js multiplies
@@ -38,7 +52,7 @@
 // for exactly what is and isn't trustworthy about it. Pass --noThrows to disable just that half.
 //
 //   node nn/policy-targets.js [--data nn/data] [--out nn/data/policy-targets.jsonl]
-//                             [--minDepth 2] [--allSources] [--noThrows]
+//                             [--minDepth 2] [--allSources] [--noThrows] [--noCache]
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -57,6 +71,13 @@ function arg(name, dflt) {
 
 function norm(a) { while (a > Math.PI) a -= 2*Math.PI; while (a < -Math.PI) a += 2*Math.PI; return a; }
 
+// One counter bucket per file, so a cache entry carries its own contribution to every summary line
+// without the reader having to re-derive it from the (possibly not re-read) source file.
+function freshCounts() {
+  return { games: 0, targets: 0, throwTargets: 0, throwMissed: 0, skippedRows: 0, passRows: 0,
+           ambiguous: 0, fullTrustRows: 0, shallowRows: 0, ladderRows: 0, untaggedRows: 0 };
+}
+
 function main() {
   const dataDir = arg('data', path.join(__dirname, 'data'));
   // NOT inside dataDir: train.js globs nn/data/*.jsonl, and these rows carry a real `f` and `z`,
@@ -67,6 +88,7 @@ function main() {
   const minDepth = +arg('minDepth', 2);
   const allSources = process.argv.includes('--allSources');
   const noThrows = process.argv.includes('--noThrows');
+  const noCache = process.argv.includes('--noCache');
   const eng = createEngine();
   eng.newGame();
   const G = eng.getG(), footR = eng.CFG.footR;
@@ -99,6 +121,18 @@ function main() {
     return +dm[1] < minDepth ? SHALLOW_W : FULL_TRUST;
   };
 
+  // Namespaced by exactly the flags that change mining OUTPUT, so a run under different flags can
+  // never be served a cached result computed under a different scheme.
+  const cacheKey = allSources ? 'allSources' : `minDepth${minDepth}${noThrows ? '-noThrows' : ''}`;
+  const cacheDir = path.join(__dirname, '.mine-cache', cacheKey);
+  const manifestPath = path.join(cacheDir, 'manifest.json');
+  let manifest = {};
+  if (!noCache) {
+    try { fs.mkdirSync(cacheDir, { recursive: true }); } catch (e) {}
+    try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch (e) { manifest = {}; }
+  }
+  const newManifest = {};   // rebuilt fresh each run -- entries for files no longer present just drop
+
   // THROW RECONSTRUCTION: a game's winning move (usually a throw) has no successor row, so the main
   // loop below never sees it. Recover an APPROXIMATE target instead of leaving the gap: from the
   // final recorded position, re-sweep the mover's own 6 arms with the exact contact-physics check
@@ -111,8 +145,7 @@ function main() {
   // tagged `thrown:1` so they stay distinguishable from the exact diff-reconstructed targets above,
   // and are subject to the same --minDepth/--allSources source filter (a ladder brain's throw is
   // still the ladder's play, not the net's).
-  let throwTargets = 0, throwMissed = 0;
-  function tryMineThrow(finalRow, ws) {
+  function tryMineThrow(finalRow, emit, c) {
     if (!finalRow || finalRow.adj || !(finalRow.z > 0)) return;  // draw, loss, or an adjudicated
                                                                    // (non-literal) win: no throw here
     const sw = sourceWeight(finalRow.mv);
@@ -137,10 +170,10 @@ function main() {
             const slot = frame.order.indexOf(pv);
             const arm = armIndex(slot, dir*frame.mirror);
             const bin = binIndex(rad);
-            ws.write(JSON.stringify({ f: finalRow.f, arm, bin, z: finalRow.z, g: finalRow.g,
-                                      thrown: 1, ...(sw !== 1 ? { sw } : {}),
-                                      ...(finalRow.mv ? { mv: finalRow.mv } : {}) }) + '\n');
-            throwTargets++;
+            emit({ f: finalRow.f, arm, bin, z: finalRow.z, g: finalRow.g,
+                   thrown: 1, ...(sw !== 1 ? { sw } : {}),
+                   ...(finalRow.mv ? { mv: finalRow.mv } : {}) });
+            c.throwTargets++;
             reset();
             return;
           }
@@ -148,39 +181,34 @@ function main() {
       }
     }
     reset();
-    throwMissed++;   // z>0, not adjudicated, yet no arm's sweep reproduces a throw -- worth knowing
-                      // the rate of, since a high count would mean this reconstruction is unreliable
+    c.throwMissed++;   // z>0, not adjudicated, yet no arm's sweep reproduces a throw -- worth knowing
+                        // the rate of, since a high count would mean this reconstruction is unreliable
   }
 
-  const files = fs.readdirSync(dataDir)
-    .filter(f => f.endsWith('.jsonl') && !f.startsWith('policy-targets')).sort();
-  const ws = fs.createWriteStream(outPath);
-  let games = 0, targets = 0, skippedRows = 0, passRows = 0, ambiguous = 0;
-  let fullTrustRows = 0, shallowRows = 0, ladderRows = 0, untaggedRows = 0;
-
-  for (const file of files) {
-    let txt;
-    try { txt = fs.readFileSync(path.join(dataDir, file), 'utf8'); } catch (e) { continue; }
+  // Mines one file's text fully from scratch, emitting each target line via `emit` and tallying into
+  // `c`. Identical logic to the pre-cache version of this file -- only pulled out so both the
+  // cache-miss path below and a bare --noCache run can share it.
+  function mineFile(txt, emit, c) {
     let prev = null;   // previous parsed row of the SAME game
     let prevGame = null;
     for (const line of txt.split('\n')) {
       if (!line) continue;
       let j;
       try { j = JSON.parse(line); } catch (e) { continue; }
-      if (!j.p || j.m === undefined || j.g == null) { skippedRows++; prev = null; prevGame = null; continue; }
+      if (!j.p || j.m === undefined || j.g == null) { c.skippedRows++; prev = null; prevGame = null; continue; }
       if (j.g !== prevGame) {
-        if (prevGame !== null) { games++; if (!noThrows) tryMineThrow(prev, ws); }
+        if (prevGame !== null) { c.games++; if (!noThrows) tryMineThrow(prev, emit, c); }
         prev = null; prevGame = j.g;
       }
       if (prev) {
         const mover = prev.m;
         const sw = sourceWeight(prev.mv);
-        if (sw === LADDER_W) ladderRows++;
-        else if (sw === SHALLOW_W) shallowRows++;
-        else if (sw === UNTAGGED_W) untaggedRows++;
-        else fullTrustRows++;
+        if (sw === LADDER_W) c.ladderRows++;
+        else if (sw === SHALLOW_W) c.shallowRows++;
+        else if (sw === UNTAGGED_W) c.untaggedRows++;
+        else c.fullTrustRows++;
         const dRot = norm(j.p[mover*3 + 2] - prev.p[mover*3 + 2]);
-        if (Math.abs(dRot) < MIN_MOVE) { passRows++; prev = j; continue; }   // null-plan pass
+        if (Math.abs(dRot) < MIN_MOVE) { c.passRows++; prev = j; continue; }   // null-plan pass
         // pivot = the mover's foot that stayed put. With a rotation this size exactly one can.
         const before = feetOf(prev.p, mover), after = feetOf(j.p, mover);
         let pivotIdx = -1, best = Infinity, second = Infinity;
@@ -191,7 +219,7 @@ function main() {
         }
         // sanity: the pivot must be genuinely stationary and clearly separated from the runner-up
         // (a tiny rotation moves all feet a similar hair -- those are not usable targets)
-        if (best > 0.05 || second < 0.5) { ambiguous++; prev = j; continue; }
+        if (best > 0.05 || second < 0.5) { c.ambiguous++; prev = j; continue; }
         // canonical frame AT THE DECISION POSITION (prev), for the mover
         setPose(prev.p, mover);
         const frame = moveFrame(eng);
@@ -201,15 +229,75 @@ function main() {
         // `mv` rides along when present so train-policy.js can weight by the mover's CURRENT pool
         // rating at train time (see eloweight.js for why the id and not the rating is stored). `sw`
         // rides along the same way for the source weight -- see header for the four tiers.
-        ws.write(JSON.stringify({ f: prev.f, arm, bin, z: prev.z, g: prev.g,
-                                  ...(sw !== 1 ? { sw } : {}),
-                                  ...(prev.mv ? { mv: prev.mv } : {}) }) + '\n');
-        targets++;
+        emit({ f: prev.f, arm, bin, z: prev.z, g: prev.g,
+               ...(sw !== 1 ? { sw } : {}), ...(prev.mv ? { mv: prev.mv } : {}) });
+        c.targets++;
       }
       prev = j;
     }
-    if (prevGame !== null) { games++; if (!noThrows) tryMineThrow(prev, ws); prevGame = null; prev = null; }
+    if (prevGame !== null) { c.games++; if (!noThrows) tryMineThrow(prev, emit, c); }
   }
+
+  const files = fs.readdirSync(dataDir)
+    .filter(f => f.endsWith('.jsonl') && !f.startsWith('policy-targets')).sort();
+  const ws = fs.createWriteStream(outPath);
+  let games = 0, targets = 0, skippedRows = 0, passRows = 0, ambiguous = 0;
+  let fullTrustRows = 0, shallowRows = 0, ladderRows = 0, untaggedRows = 0;
+  let cacheHits = 0, cacheMisses = 0;
+  const fold = c => {
+    games += c.games; targets += c.targets; skippedRows += c.skippedRows; passRows += c.passRows;
+    ambiguous += c.ambiguous; fullTrustRows += c.fullTrustRows; shallowRows += c.shallowRows;
+    ladderRows += c.ladderRows; untaggedRows += c.untaggedRows;
+    throwTargets += c.throwTargets; throwMissed += c.throwMissed;
+  };
+  let throwTargets = 0, throwMissed = 0;
+
+  for (const file of files) {
+    const filePath = path.join(dataDir, file);
+    let st;
+    try { st = fs.statSync(filePath); } catch (e) { continue; }
+    const cacheFile = path.join(cacheDir, file);
+    const cached = !noCache && manifest[file];
+
+    if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
+      // Fast path: this file's signature hasn't changed since the last mint, so its mined output
+      // can't have either -- replay the cached lines verbatim instead of re-parsing the source and
+      // re-running the throw-reconstruction physics sweep for every game in it.
+      let cachedTxt;
+      try { cachedTxt = fs.readFileSync(cacheFile, 'utf8'); } catch (e) { cachedTxt = null; }
+      if (cachedTxt !== null) {
+        if (cachedTxt) ws.write(cachedTxt);
+        fold(cached.c);
+        newManifest[file] = cached;
+        cacheHits++;
+        continue;
+      }
+      // cache entry in the manifest but the backing file vanished -- fall through to a fresh mine
+    }
+    cacheMisses++;
+
+    let txt;
+    try { txt = fs.readFileSync(filePath, 'utf8'); } catch (e) { continue; }
+    const c = freshCounts();
+    let buf = noCache ? null : '';
+    const emit = obj => {
+      const line = JSON.stringify(obj);
+      ws.write(line + '\n');
+      if (buf !== null) buf += line + '\n';
+    };
+    mineFile(txt, emit, c);
+    fold(c);
+    if (buf !== null) {
+      try {
+        fs.writeFileSync(cacheFile, buf);
+        newManifest[file] = { mtimeMs: st.mtimeMs, size: st.size, c };
+      } catch (e) {}   // cache write failing shouldn't fail the mint -- just costs the speedup next time
+    }
+  }
+  if (!noCache) {
+    try { fs.writeFileSync(manifestPath, JSON.stringify(newManifest)); } catch (e) {}
+  }
+
   ws.end(() => console.log(
     `policy targets: ${targets} moves reconstructed from ${games} games -> ${outPath}\n` +
     (noThrows ? '' : `(+ ${throwTargets} throw targets recovered, ${throwMissed} misses)\n`) +
@@ -218,7 +306,9 @@ function main() {
     (allSources ? '(source weighting: OFF, --allSources -- flat weight 1)'
       : `(source weighting: minDepth ${minDepth} -- ${fullTrustRows} full-trust, ` +
         `${shallowRows} shallow@${SHALLOW_W}, ${ladderRows} ladder@${LADDER_W}, ` +
-        `${untaggedRows} untagged@${UNTAGGED_W})`)));
+        `${untaggedRows} untagged@${UNTAGGED_W})`) + '\n' +
+    (noCache ? '(cache: OFF, --noCache)'
+      : `(cache: ${cacheHits} file(s) replayed, ${cacheMisses} freshly mined)`)));
 }
 
 main();

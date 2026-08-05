@@ -10,3 +10,4 @@ parktest-*.log
 arena-logs/
 .elo-snapshot/
 retro-loop-status.json
+.mine-cache/
