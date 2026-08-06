@@ -89,6 +89,10 @@ echo      -- a fixed clock sits in one regime forever; this samples across ply b
 echo      "never helps" and "helps only where it banks a ply" stop looking the same
 echo.
 echo  33. CLOCK SWEEP RESULTS: bin option 32's games by think time (instant, plays nothing)
+echo  37. FULL LOOP: champ + mutant + scratch policy heads, on BOTH best.json and the L11-style
+echo      evaluator, round-robin at random think times, forever. The one that tests everything
+echo      at once -- 19 matchups a cycle. Preview it before committing hours: it dry-runs first.
+echo.
 echo  36. VARIANT LOOP: trains a policy, then round-robins policy USE configurations against each
 echo      other, against no policy, and against L11 -- forever, recording every result.
 echo      Default a3s2 (3 arms, every 2nd stop) vs a2s1 (2 arms, every stop).
@@ -146,6 +150,7 @@ if "%choice%"=="33" goto clocksweepresults
 if "%choice%"=="34" goto clockloop
 if "%choice%"=="35" goto narrowdeep
 if "%choice%"=="36" goto variantloop
+if "%choice%"=="37" goto fullloop
 if "%choice%"=="1" goto pull
 if "%choice%"=="2" goto build96
 if "%choice%"=="3" goto buildpointy
@@ -320,6 +325,41 @@ echo.
 node nn\arena.js --a nn:0:%CD%\nn\models\best.json --policyA %CD%\nn\models\policy-champ.json %CSAB% --b nn:0:%CD%\nn\models\best.json --timeMsLo 1000 --timeMsHi 30000 --games %CSGAMES% --resultsJsonl %CD%\nn\data\clocksweep-%CSTAG%-%COMPUTERNAME%.jsonl --saveData %CD%\nn\data\clocksweep-%CSTAG%-%COMPUTERNAME%-rows.jsonl
 echo.
 echo === done. Bin the results by clock with option 33. ===
+pause
+goto menu
+
+:fullloop
+rem Everything on one clock. Per cycle: pull, mint, train a mutant AND a scratch head, then a round
+rem robin of champ/mutant/scratch/nopolicy under EACH evaluator, the two controls against each other
+rem across evaluators, and ladder anchors -- every game on its own log-uniform clock, both sides
+rem matched.
+rem
+rem Why these axes and not others, all measured this session:
+rem   - arms 2 not 3: 6->2 buys 1.95x where 6->3 buys 1.67x, and neither buys a ply (4-6x), so the
+rem     arms are for SAFETY and ordering quality, not speed.
+rem   - full stops, no stride: thinning stops saves ~11%% of a sweep because the physics stepping
+rem     cannot be skipped -- reaching any stop means stepping through every stop before it.
+rem   - sweepDeg 3 (the default) is already 3x finer than real L11's 9, and resolution is nearly
+rem     free (8.5x the stops for 35%% more time), so fidelity is taken rather than bought.
+rem   - scratch head: the champion is only retrained when its shape changes and keeps its seat on a
+rem     tie, so a same-shape fresh-init net is the only thing that can show it is coasting.
+rem   - le:L11 shares nnai's search exactly, so a cross-evaluator result isolates the EVAL rather
+rem     than confounding it with the real L11 rung's different fixed-depth search.
+call :dogit
+set "FLHOURS=" & set "FLARMS=" & set "FLLEVELS="
+set /p FLHOURS="Hours per cycle, Enter for 3: "
+if "%FLHOURS%"=="" set FLHOURS=3
+set /p FLARMS="Arms to keep, Enter for 2: "
+if "%FLARMS%"=="" set FLARMS=2
+set /p FLLEVELS="Ladder rungs to anchor against, Enter for 11: "
+if "%FLLEVELS%"=="" set FLLEVELS=11
+echo.
+echo Preview of what each cycle will play:
+node nn\policyloop.js --variants a%FLARMS%s1 --heads champ,mutant,scratch --evaluators nn,le:L11 --levels %FLLEVELS% --timeMsLo 1000 --timeMsHi 30000 --dryRun --cycles 1
+echo.
+echo Starting. Close this window any time. Read the clock breakdown with option 33.
+echo.
+node nn\policyloop.js --variants a%FLARMS%s1 --heads champ,mutant,scratch --evaluators nn,le:L11 --levels %FLLEVELS% --timeMsLo 1000 --timeMsHi 30000 --budgetHours %FLHOURS%
 pause
 goto menu
 

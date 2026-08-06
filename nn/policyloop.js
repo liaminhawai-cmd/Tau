@@ -104,6 +104,18 @@ function parseVariant(spec) {
   return { tag: spec, abcut: false, arms: +m[1], stride: m[2] ? +m[2] : 1 };
 }
 const variants = variantSpecs.map(parseVariant);
+// --evaluators: which LEAF EVALUATOR each entrant uses. "nn" is the trained value net (the value
+// net this machine pulled, never trains); "le:L11" is L11's hand-tuned eval inside the same search
+// (see laddereval.js -- L11 itself is untouched). Because nnai.js's evaluator is a pluggable seam,
+// both run byte-identical search machinery, so a cross-evaluator result isolates the EVAL rather
+// than confounding it with a different search the way comparing against the real L11 rung does.
+const evaluators = (arg('evaluators', 'nn') || 'nn').split(',').map(s => s.trim()).filter(Boolean);
+// --heads: which policy heads enter. champ = the standing champion; mutant = a shape mutation of it,
+// trained fresh this cycle; scratch = the champion's OWN shape retrained from a new random init.
+// scratch is the control for a question the champ-vs-mutant fight cannot ask: is the champion
+// actually better, or merely older? A champion that loses to a fresh net at its own shape has been
+// coasting on incumbency, which the adoption rule (ties keep the champion) would never surface.
+const headSpecs = (arg('heads', 'champ') || 'champ').split(',').map(s => s.trim()).filter(Boolean);
 // Floor on decided games before the head-to-head is allowed to move the champion at all. Not a
 // significance test (see the verdict below) -- just a guard against 0-0 or a single fluke game
 // deciding which shape the next cycle trains from.
@@ -139,6 +151,8 @@ const modelsDir = path.join(dir, 'models');
 const dataDir = path.join(dir, 'data');
 const champPath = path.join(modelsDir, 'policy-champ.json');
 const mutantPath = path.join(modelsDir, 'policy-mutant.json');
+// Declared with the other model paths, not up with --heads: modelsDir is defined below that point.
+const scratchPath = path.join(modelsDir, 'policy-scratch.json');
 // The champion's SHAPE lives in a file next to it, not in a variable: it has to survive restarts,
 // and it is the thing actually being hill-climbed. Delete it to restart the climb from --hidden.
 const champShapeFile = path.join(modelsDir, '.policy-champ-shape');
@@ -426,6 +440,20 @@ async function runCycle(num) {
     }
   }
 
+  // The scratch head: the champion's OWN shape, retrained from a fresh random init. Only trained
+  // when something actually asks for it, since it costs a full training run.
+  // What it answers that nothing else does: whether the champion is better or merely INCUMBENT.
+  // Adoption keeps the champion on a tie, and the champion is only retrained when its shape or
+  // epoch count changes, so a champion can hold its seat for many cycles on nothing but that tie
+  // rule. A same-shape, fresh-init net is the control for exactly that -- if it matches or beats
+  // the champion, the seat was never earned, and the difference between the two is init variance
+  // rather than anything the hill-climb discovered.
+  if (variantsMode && headSpecs.includes('scratch') && !dryRun) {
+    log(`policy cycle ${num}: training a scratch head at the champion's own shape ${shape}`);
+    runSoft('train-policy.js', ['--targets', targetsPath, '--epochs', epochs,
+                                '--hidden', shape, '--out', scratchPath]);
+  }
+
   // --- the tournament ----------------------------------------------------------------------------
   // Every entrant is the SAME value net; only the policy attached to it differs (or is absent).
   // That is what makes a result attributable to the policy rather than to the weights.
@@ -456,13 +484,29 @@ async function runCycle(num) {
     // Per-side flags, because a variants match is two different configurations of one policy: a
     // shared --policyArms/--stopStride would make both sides identical and silently compare a brain
     // against itself.
-    const vSide = (v, which) => v === null
+    // An entrant is (evaluator, policy head, use-config). The policy FILE varies with the head, the
+    // brain spec varies with the evaluator, and the flags vary with the config -- so every axis is
+    // addressable and any pair of entrants differs in exactly the ways their tags say.
+    const headFile = { champ: champPath, mutant: mutantPath, scratch: scratchPath };
+    const brainOf = ev => ev === 'nn' ? nn : ev;      // "le:L11" is already an arena brain spec
+    const vSide = (e, which) => e.head === null
       ? []                                             // the no-policy control: no flags at all
-      : ['--policy' + which, champPath,
-         ...(v.abcut ? ['--ab' + which]
-                     : ['--policyArms' + which, String(v.arms),
-                        ...(v.stride > 1 ? ['--stopStride' + which, String(v.stride)] : [])])];
-    const entrants = [...variants.map(v => ({ tag: v.tag, v })), { tag: 'nopolicy', v: null }];
+      : ['--policy' + which, headFile[e.head],
+         ...(e.v.abcut ? ['--ab' + which]
+                       : ['--policyArms' + which, String(e.v.arms),
+                          ...(e.v.stride > 1 ? ['--stopStride' + which, String(e.v.stride)] : [])])];
+    const entrants = [];
+    for (const ev of evaluators) {
+      const evTag = ev === 'nn' ? 'nn' : ev.replace(/[^\w]/g, '');
+      for (const h of headSpecs) {
+        // A head only enters if its file exists -- mutant and scratch are trained per cycle and
+        // either can fail (or be skipped by the gate), and an entrant pointing at a missing file
+        // would crash every arena it appears in rather than just being absent.
+        if (h !== 'champ' && !dryRun && !fs.existsSync(headFile[h])) continue;
+        for (const v of variants) entrants.push({ tag: `${evTag}-${h}-${v.tag}`, ev, head: h, v });
+      }
+      entrants.push({ tag: `${evTag}-nopolicy`, ev, head: null, v: null });
+    }
     // The SHAPE hill-climb still runs alongside the use comparison, but pinned to ONE configuration
     // (the first variant) on both sides. That is what keeps the two questions separable: the shape
     // fight varies the policy FILE at a fixed use, the round robin varies the USE at a fixed file,
@@ -480,17 +524,38 @@ async function runCycle(num) {
     // Full round robin among entrants: each configuration against every other, including the
     // no-policy control, so "beats the other variant" and "beats no policy at all" are separate
     // answers rather than one inferred from the other.
-    for (let i = 0; i < entrants.length; i++) {
-      for (let j = i + 1; j < entrants.length; j++) {
-        add(`${entrants[i].tag}-vs-${entrants[j].tag}`,
-            ['--a', nn, '--b', nn, ...vSide(entrants[i].v, 'A'), ...vSide(entrants[j].v, 'B'), ...base]);
+    // Round robin WITHIN each evaluator (the policy question), plus the no-policy pair ACROSS
+    // evaluators (the evaluator question). A full cross-evaluator round robin would grow
+    // quadratically in entrants and spend most of a cycle on pairs that differ in two axes at once,
+    // which no single result could untangle.
+    for (const ev of evaluators) {
+      const group = entrants.filter(e => e.ev === ev);
+      for (let i = 0; i < group.length; i++) {
+        for (let j = i + 1; j < group.length; j++) {
+          add(`${group[i].tag}-vs-${group[j].tag}`,
+              ['--a', brainOf(ev), '--b', brainOf(ev), ...vSide(group[i], 'A'), ...vSide(group[j], 'B'), ...base]);
+        }
+      }
+    }
+    for (let i = 0; i < evaluators.length; i++) {
+      for (let j = i + 1; j < evaluators.length; j++) {
+        const a = entrants.find(e => e.ev === evaluators[i] && e.head === null);
+        const b = entrants.find(e => e.ev === evaluators[j] && e.head === null);
+        if (a && b) add(`${a.tag}-vs-${b.tag}`,
+          ['--a', brainOf(a.ev), '--b', brainOf(b.ev), ...base]);
       }
     }
     // Ladder rungs for every entrant: an absolute anchor that cannot drift with the value net,
     // which the head-to-heads alone cannot provide (they only ever say which of two is ahead).
+    // Ladder anchors: absolute grounding that cannot drift with the value net. Only the first
+    // variant per evaluator, plus that evaluator's control -- anchoring every entrant against every
+    // rung would dominate the cycle without answering anything the head-to-heads do not.
     for (const L of levels) {
-      for (const e of entrants) {
-        add(`${e.tag}-vs-L${L}`, ['--a', nn, '--b', 'L' + L, ...vSide(e.v, 'A'), ...base]);
+      for (const ev of evaluators) {
+        const group = entrants.filter(e => e.ev === ev);
+        for (const e of [group[0], group.find(x => x.head === null)].filter(Boolean)) {
+          add(`${e.tag}-vs-L${L}`, ['--a', brainOf(ev), '--b', 'L' + L, ...vSide(e, 'A'), ...base]);
+        }
       }
     }
   } else {
