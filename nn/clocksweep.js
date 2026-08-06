@@ -59,26 +59,24 @@ for (const g of games) {
   if (g.outcome === 'A') bin.a++; else if (g.outcome === 'B') bin.b++; else bin.d++;
 }
 
+const { eloFromScore, fmtElo } = require('./elo.js');
 const pct = (w, dec) => dec ? (100*w/dec).toFixed(0).padStart(3) : '  -';
-// Same 2-sigma convention every other verdict in this project uses, so a bin can be read with the
-// same eye as an arena summary -- and so a bin that merely LOOKS like a peak is visibly not one.
-const band = dec => dec ? (100*Math.sqrt(0.25/dec)*2).toFixed(0) : '-';
 
 console.log(`${games.length} games across ${files.length} file(s), clock ${lo}-${hi}ms\n`);
-console.log('  clock range        A(policy)  B(none)  draws   A win%   2-sigma');
-console.log('  ' + '-'.repeat(62));
+console.log('  clock range        A(policy)  B(none)  draws   A win%        Elo (2-sigma)');
+console.log('  ' + '-'.repeat(74));
 let totA = 0, totB = 0, totD = 0;
 for (const bin of bins) {
   const dec = bin.a + bin.b;
   totA += bin.a; totB += bin.b; totD += bin.d;
   const range = bin.lo === Infinity ? '(empty)' : `${bin.lo}-${bin.hi}ms`;
   console.log(`  ${range.padEnd(18)} ${String(bin.a).padStart(6)} ${String(bin.b).padStart(8)} ` +
-              `${String(bin.d).padStart(6)}   ${pct(bin.a, dec)}%   +/- ${band(dec).padStart(3)}`);
+              `${String(bin.d).padStart(6)}   ${pct(bin.a, dec)}%   ${dec ? fmtElo(eloFromScore(bin.a, bin.b)) : '-'}`);
 }
-console.log('  ' + '-'.repeat(62));
+console.log('  ' + '-'.repeat(74));
 const dec = totA + totB;
 console.log(`  ${'POOLED'.padEnd(18)} ${String(totA).padStart(6)} ${String(totB).padStart(8)} ` +
-            `${String(totD).padStart(6)}   ${pct(totA, dec)}%   +/- ${band(dec).padStart(3)}`);
+            `${String(totD).padStart(6)}   ${pct(totA, dec)}%   ${dec ? fmtElo(eloFromScore(totA, totB)) : '-'}`);
 console.log();
 // State the shape of the answer rather than leaving it to the eye: the interesting outcome here is
 // "flat near 50 everywhere" vs "one band clearly above", and those look similar in a table.
@@ -86,21 +84,19 @@ const usable = bins.filter(b => b.a + b.b >= 8);
 if (usable.length < 2) {
   console.log('Not enough games per bin to compare bands yet (want 8+ decided in at least two bins).');
 } else {
-  const rate = b => b.a/(b.a + b.b);
-  const best = usable.reduce((m, b) => rate(b) > rate(m) ? b : m);
-  const worst = usable.reduce((m, b) => rate(b) < rate(m) ? b : m);
-  const bDec = best.a + best.b, wDec = worst.a + worst.b;
-  const bLo = 100*rate(best) - 100*Math.sqrt(0.25/bDec)*2;
-  const wHi = 100*rate(worst) + 100*Math.sqrt(0.25/wDec)*2;
-  console.log(`Best bin  ${best.lo}-${best.hi}ms: ${(100*rate(best)).toFixed(0)}% on ${bDec} decided`);
-  console.log(`Worst bin ${worst.lo}-${worst.hi}ms: ${(100*rate(worst)).toFixed(0)}% on ${wDec} decided`);
-  if (bLo > wHi) {
-    console.log(`\nThe best bin's 2-sigma floor (${bLo.toFixed(0)}%) clears the worst bin's ceiling ` +
-                `(${wHi.toFixed(0)}%) -- the effect genuinely depends on the clock, which is exactly ` +
-                `what a single fixed-clock run would have averaged away.`);
+  const eloOf = b => eloFromScore(b.a, b.b);
+  const best = usable.reduce((m, b) => eloOf(b).elo > eloOf(m).elo ? b : m);
+  const worst = usable.reduce((m, b) => eloOf(b).elo < eloOf(m).elo ? b : m);
+  const bE = eloOf(best), wE = eloOf(worst);
+  console.log(`Best bin  ${best.lo}-${best.hi}ms: ${fmtElo(bE)} on ${bE.n} decided`);
+  console.log(`Worst bin ${worst.lo}-${worst.hi}ms: ${fmtElo(wE)} on ${wE.n} decided`);
+  if (bE.lo > wE.hi) {
+    console.log(`\nThe best bin's 2-sigma floor (${bE.lo.toFixed(0)} Elo) clears the worst bin's ` +
+                `ceiling (${wE.hi.toFixed(0)} Elo) -- a gap of at least ${(bE.lo - wE.hi).toFixed(0)} ` +
+                `Elo between clock regimes, which is exactly what a single fixed-clock run averages away.`);
   } else {
-    console.log(`\nBands still overlap (best floor ${bLo.toFixed(0)}% vs worst ceiling ${wHi.toFixed(0)}%), ` +
-                `so this does not yet show a clock-dependent effect -- it is consistent with either ` +
-                `a flat null or a real band that needs more games per bin.`);
+    console.log(`\nIntervals still overlap (best floor ${bE.lo.toFixed(0)} vs worst ceiling ` +
+                `${wE.hi.toFixed(0)} Elo), so this does not yet show a clock-dependent effect -- ` +
+                `consistent with either a flat null or a real band that needs more games per bin.`);
   }
 }

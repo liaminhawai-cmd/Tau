@@ -17,6 +17,7 @@ const { features } = require('./features.js');
 const { MLP } = require('./net.js');
 const { nnPlanFor, nnPlanForTimed } = require('./nnai.js');
 const { playRandomOpening, randomStartPose } = require('./opening.js');
+const { eloFromScore, fmtElo } = require('./elo.js');
 
 // --saveData turns an evaluation run into a data run as well. Every arena game is a real game with
 // a real outcome, so throwing away everything but the win/loss tally wastes the whole run: a
@@ -329,11 +330,11 @@ function main() {
     // 2 sigma on the decided games, so a partial run can be read honestly the moment it is read.
     // Without it the standing score invites the exact mistake a 6-game 4-2 already caused once.
     const s = scores(aWins, bWins, aKomi, bKomi), dec = s.a + s.b;
-    const band = dec ? 100*Math.sqrt(0.25/dec)*2 : 0;
+    const e = eloFromScore(s.a, s.b);
     writeLog(`IN PROGRESS -- game ${g + 1} of ${games} (${((Date.now() - t0)/1000).toFixed(0)}s)\n` +
              `${A.name} ${aWins} - ${bWins} ${B.name}` +
              (aKomi + bKomi ? ` (komi ${aKomi}-${bKomi})` : '') + `${draws ? ` (${draws} draws)` : ''}\n` +
-             (dec ? `${(100*s.a/dec).toFixed(0)}% of ${dec.toFixed(1)} decided, 2-sigma +/- ${band.toFixed(0)} points\n` : ''));
+             (dec ? `${fmtElo(e)} on ${dec.toFixed(1)} decided (${e.verdict})\n` : ''));
   }
   const secs = (Date.now() - t0)/1000;
   const s = scores(aWins, bWins, aKomi, bKomi), dec = Math.max(1, s.a + s.b);
@@ -341,11 +342,11 @@ function main() {
   // three scrapers of this line each fold it in at komiLoss, and anything else ignores it.
   const summary = `${A.name} vs ${B.name}: ${aWins}-${bWins}` + (draws ? `-${draws}` : '') +
                   `  (${aKomi + bKomi ? `komi ${aKomi}-${bKomi}, ` : ''}` +
-                  `${(100*s.a/dec).toFixed(0)}% of decided, ` +
+                  `${(100*s.a/dec).toFixed(0)}% of decided, ${fmtElo(eloFromScore(s.a, s.b))}, ` +
                   `avg ${(pliesSum/games).toFixed(0)} plies, ${secs.toFixed(0)}s)`;
   console.log('\n' + summary);
   writeLog(`FINISHED ${new Date().toISOString()}\n${summary}\n` +
-           `2-sigma +/- ${(100*Math.sqrt(0.25/dec)*2).toFixed(0)} points on ${dec.toFixed(1)} decided games` +
+           `${fmtElo(eloFromScore(s.a, s.b))} on ${dec.toFixed(1)} decided games => ${eloFromScore(s.a, s.b).verdict}` +
            (aKomi + bKomi ? ` (${aKomi + bKomi} of them scored at the cap, worth ${eng.CFG.komiLoss} each)` : '') + `\n` +
            (dataStream ? `${savedRows} training rows -> ${saveData}\n` : ''));
   if (logPath) console.log(`saved to ${logPath}`);

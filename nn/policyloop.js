@@ -39,6 +39,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { PolicyMLP } = require('./policy.js');
+const { eloFromScore, fmtElo } = require('./elo.js');
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
@@ -336,10 +337,8 @@ function poolStats(extra) {
   } catch (e) {}
   if (extra) { w += extra.w; l += extra.l; }
   const dec = w + l;
-  if (!dec) return { w, l, dec, rate: null, band: null, verdict: 'no data yet' };
-  const rate = w/dec, band = Math.sqrt(0.25/dec)*2;
-  const verdict = rate - band > 0.5 ? 'beats' : rate + band < 0.5 ? 'loses' : 'undecided';
-  return { w, l, dec, rate, band, verdict };
+  const e = eloFromScore(w, l);
+  return { w, l, dec, elo: e.elo, sigma: e.sigma, lo: e.lo, hi: e.hi, verdict: e.verdict, fmt: fmtElo(e) };
 }
 
 // --- one cycle -----------------------------------------------------------------------------------
@@ -401,26 +400,29 @@ async function runCycle(num) {
   // fight between two equally-uninformative classifiers is coinflip noise, and it is not cheap --
   // a full retrain plus its own tournament slots, every cycle, indefinitely.
   const priorPool = poolStats();
-  // Variants mode holds the shape fixed and compares USES of one policy, so there is no mutant to
-  // train and no shape fight to gate -- training one anyway would spend ~20 minutes a cycle on a
-  // matchup that never gets played.
-  const gated = variantsMode || (!noGate && priorPool.dec >= gateFloor && priorPool.verdict !== 'beats');
+  const gated = !noGate && priorPool.dec >= gateFloor && priorPool.verdict !== 'beats';
   let mut = null, mutantOk = false;
   if (variantsMode) {
-    log(`policy cycle ${num}: VARIANTS mode — holding shape ${shape}, comparing ` +
-        `${variants.map(v => v.tag).join(' vs ')} vs nopolicy (no mutant, no shape fight)`);
-  } else if (gated) {
+    log(`policy cycle ${num}: VARIANTS mode — comparing ` +
+        `${variants.map(v => v.tag).join(' vs ')} vs nopolicy, ` +
+        `shape fight ${gated ? 'GATED off' : `on (${shape} vs a mutant, both at ${variants[0].tag})`}`);
+  }
+  if (gated && !variantsMode) {
     log(`policy cycle ${num}: GATED — pooled control is ${priorPool.verdict} at ` +
-        `${(100*priorPool.rate).toFixed(0)}% +/- ${(100*priorPool.band).toFixed(0)} on ${priorPool.dec} ` +
+        `${priorPool.fmt} on ${priorPool.dec} ` +
         `decided (${POOL_KEY}) — skipping the mutant train + shape fight, ` +
         `keeping the control and ladder-anchor matches`);
   } else {
     mut = mutateHidden(shape);
     if (mut) {
       log(`policy cycle ${num}: shape fight — champion ${shape} vs mutant ${mut.shape} (${mut.op})`);
-      mutantOk = runSoft('train-policy.js', ['--targets', targetsPath, '--epochs', epochs,
-                                             '--hidden', mut.shape, '--out', mutantPath])
-                 && fs.existsSync(mutantPath);
+      // A dry run skipped the mint, so there are no targets to train against -- but the preview is
+      // only useful if it lists the matchups a real cycle WOULD play, so assume the train succeeds
+      // rather than silently dropping the shape-fight rows from the list.
+      mutantOk = dryRun
+        || (runSoft('train-policy.js', ['--targets', targetsPath, '--epochs', epochs,
+                                        '--hidden', mut.shape, '--out', mutantPath])
+            && fs.existsSync(mutantPath));
     }
   }
 
@@ -461,6 +463,20 @@ async function runCycle(num) {
                      : ['--policyArms' + which, String(v.arms),
                         ...(v.stride > 1 ? ['--stopStride' + which, String(v.stride)] : [])])];
     const entrants = [...variants.map(v => ({ tag: v.tag, v })), { tag: 'nopolicy', v: null }];
+    // The SHAPE hill-climb still runs alongside the use comparison, but pinned to ONE configuration
+    // (the first variant) on both sides. That is what keeps the two questions separable: the shape
+    // fight varies the policy FILE at a fixed use, the round robin varies the USE at a fixed file,
+    // so neither result has to be untangled from the other afterwards.
+    if (mutantOk) {
+      const cfg = variants[0];
+      const cfgFlags = (p, which) => ['--policy' + which, p,
+        ...(cfg.abcut ? ['--ab' + which]
+                      : ['--policyArms' + which, String(cfg.arms),
+                         ...(cfg.stride > 1 ? ['--stopStride' + which, String(cfg.stride)] : [])])];
+      add('champ-vs-mutant',
+          ['--a', nn, '--b', nn, ...cfgFlags(champPath, 'A'), ...cfgFlags(mutantPath, 'B'), ...base]);
+      add('mutant-vs-nopolicy', ['--a', nn, '--b', nn, ...cfgFlags(mutantPath, 'A'), ...base]);
+    }
     // Full round robin among entrants: each configuration against every other, including the
     // no-policy control, so "beats the other variant" and "beats no policy at all" are separate
     // answers rather than one inferred from the other.
@@ -545,8 +561,8 @@ async function runCycle(num) {
   // neutral edit from random-walking the shape.
   // The statistical bar belongs on the CLAIM, not the climb: that is champ-vs-nopolicy below, plus
   // the ladder rungs, which are absolute anchors that catch a drift the head-to-head cannot see.
-  const hh = variantsMode ? null : results['champ-vs-mutant'];
-  let verdict = variantsMode ? 'variants mode — shape held, nothing adopted' : 'no head-to-head played';
+  const hh = results['champ-vs-mutant'];
+  let verdict = 'no head-to-head played';
   let adopted = false;
   if (hh) {
     const dec = hh.w + hh.l;
@@ -581,10 +597,9 @@ async function runCycle(num) {
     for (const v of variants) {
       const r = results[`${v.tag}-vs-nopolicy`];
       if (!r) continue;
-      const d = r.w + r.l;
-      const band = d ? 100*Math.sqrt(0.25/d)*2 : 0;
+      const e = eloFromScore(r.w, r.l);
       log(`policy cycle ${num}: ${v.tag} vs NO policy — ${r.w}-${r.l}` +
-          (d ? ` (${(100*r.w/d).toFixed(0)}% +/- ${band.toFixed(0)} on ${d} decided)` : ''));
+          (e.n ? ` (${fmtElo(e)} on ${e.n} decided => ${e.verdict})` : ''));
     }
   }
   const ctl = results['champ-vs-nopolicy'];
@@ -596,8 +611,7 @@ async function runCycle(num) {
   const realResult = pool.dec ? REAL_RESULT[pool.verdict] : null;
   if (pool.dec) {
     log(`policy cycle ${num}: champion vs NO policy, POOLED over ${POOL_KEY} so far — ` +
-        `${pool.w}-${pool.l}, ${(100*pool.rate).toFixed(0)}% +/- ${(100*pool.band).toFixed(0)} on ` +
-        `${pool.dec} decided => ${realResult}`);
+        `${pool.w}-${pool.l}, ${pool.fmt} on ${pool.dec} decided => ${realResult}`);
   }
 
   const rows = fs.existsSync(saveData)
