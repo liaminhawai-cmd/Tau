@@ -84,6 +84,12 @@ echo  19. PROMOTE mutant: make policy-mutant.json the new policy-champ.json (bac
 echo      -- run this right after a manual policy-mutant vs policy-champ arena test you liked.
 echo      The loop overwrites policy-mutant.json every cycle, so an untested win won't survive long.
 echo.
+echo  32. CLOCK SWEEP: policy vs no policy across RANDOM think times (1-30s), both sides matched
+echo      -- a fixed clock sits in one regime forever; this samples across ply boundaries, so
+echo      "never helps" and "helps only where it banks a ply" stop looking the same
+echo.
+echo  33. CLOCK SWEEP RESULTS: bin option 32's games by think time (instant, plays nothing)
+echo.
 echo   DIAGNOSTICS ^& MAINTENANCE
 echo  25. RANK, playing games: update the rating pool for real (13 only refits what exists)
 echo  26. ARCHTEST: architecture sweep vs best.json
@@ -121,6 +127,8 @@ if "%choice%"=="28" goto gitcheck
 if "%choice%"=="29" goto dashboard
 if "%choice%"=="30" goto migratemeasure
 if "%choice%"=="31" goto hybrid
+if "%choice%"=="32" goto clocksweep
+if "%choice%"=="33" goto clocksweepresults
 if "%choice%"=="1" goto pull
 if "%choice%"=="2" goto build96
 if "%choice%"=="3" goto buildpointy
@@ -263,6 +271,56 @@ echo Trainer launched. Starting the policy loop at normal priority in THIS windo
 echo Closing this window stops the policy loop only -- the trainer has its own window.
 echo.
 node nn\policyloop.js --budgetHours %HYHOURS%
+pause
+goto menu
+
+:clocksweep
+if not exist "nn\models\policy-champ.json" (
+  echo nn\models\policy-champ.json not found -- run option 15 first, or wait for a cycle to finish.
+  pause
+  goto menu
+)
+rem Same net, same clock, only the policy differs -- but the clock is redrawn per game instead of
+rem pinned. Whether a search saving becomes strength depends on where the budget lands relative to
+rem the next ply boundary: pruning buys ~1.5x effective time, a ply costs 4-6x, so it can only ever
+rem pay when the clock already sits just short of one. A single fixed clock is stuck in one regime
+rem and reports the average of a structure it never shows; this samples across several boundaries.
+rem PRUNE vs ABCUT picks how the policy is spent (see nnai.js's header -- prune deletes arms, abcut
+rem orders them and cuts once refuted and is never blind).
+call :dogit
+set "CSGAMES=" & set "CSMODE="
+set /p CSGAMES="Games, Enter for 120: "
+if "%CSGAMES%"=="" set CSGAMES=120
+set /p CSMODE="Mode: 1=prune (default), 2=abcut, Enter for 1: "
+set "CSAB="
+if "%CSMODE%"=="2" set "CSAB=--abA"
+set "CSTAG=prune"
+if "%CSMODE%"=="2" set "CSTAG=abcut"
+echo.
+echo === policy-champ (%CSTAG%) vs no policy, clock random 1000-30000ms per game, %CSGAMES% games ===
+echo Per-game results -> nn\data\clocksweep-%CSTAG%-%COMPUTERNAME%.jsonl
+echo.
+node nn\arena.js --a nn:0:%CD%\nn\models\best.json --policyA %CD%\nn\models\policy-champ.json %CSAB% --b nn:0:%CD%\nn\models\best.json --timeMsLo 1000 --timeMsHi 30000 --games %CSGAMES% --resultsJsonl %CD%\nn\data\clocksweep-%CSTAG%-%COMPUTERNAME%.jsonl --saveData %CD%\nn\data\clocksweep-%CSTAG%-%COMPUTERNAME%-rows.jsonl
+echo.
+echo === done. Bin the results by clock with option 33. ===
+pause
+goto menu
+
+:clocksweepresults
+rem Read-only: bins whatever option 32 has produced so far. Safe to run mid-sweep -- arena.js
+rem appends per game, so a partial run reads honestly rather than not at all.
+setlocal enabledelayedexpansion
+set "FOUND="
+for %%F in (nn\data\clocksweep-*.jsonl) do (
+  echo %%F | findstr /v "rows" >nul && (
+    echo.
+    echo === %%F ===
+    node nn\clocksweep.js "%%F"
+    set "FOUND=1"
+  )
+)
+if not defined FOUND echo No clocksweep results yet -- run option 32 first.
+endlocal
 pause
 goto menu
 

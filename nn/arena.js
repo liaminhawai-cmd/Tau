@@ -73,8 +73,14 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
   // name and the score line silently compares two things that look like the same brain.
   const kTag = keepForDepth !== 4 ? ',K' + keepForDepth : '';
   if (timeMs) {
-    return { name: 'nn(' + path.basename(mp) + ',T' + timeMs + 'ms' + kTag + pTag + ')',
-             fn: idx => nnPlanForTimed(eng, net, idx, { temperature, keepForDepth, quiesce, policy, timeMs,
+    // timeMs may be a number OR a live {ms} box shared by both sides -- the randomised-clock mode
+    // below rewrites that box between games, so the brain has to read it per move rather than
+    // close over a fixed number.
+    const tm = () => (typeof timeMs === 'object' ? timeMs.ms : timeMs);
+    const tTag = typeof timeMs === 'object' ? 'Trand' : 'T' + timeMs + 'ms';
+    return { name: 'nn(' + path.basename(mp) + ',' + tTag + kTag + pTag + ')',
+             fn: idx => nnPlanForTimed(eng, net, idx, { temperature, keepForDepth, quiesce, policy,
+                                                        timeMs: tm(),
                                                         policyPrune: !!policy && !abCut, abCut: !!abCut }) };
   }
   // Depth is reported as e.g. "D1.5" when quiesce rides on top of a plain depth-1 pass -- matches
@@ -110,15 +116,37 @@ function main() {
   // --timeMs sets both sides to equal-clock-time iterative deepening instead of a fixed depth;
   // --timeMsA/--timeMsB override per side (same reason every other per-side flag exists here).
   const timeMs = arg('timeMs', null);
-  const timeMsA = arg('timeMsA', timeMs), timeMsB = arg('timeMsB', timeMs);
+  // --timeMsLo/--timeMsHi: instead of one fixed clock, draw a fresh think time per GAME and give
+  // BOTH sides the same one. Point: iterative deepening only banks WHOLE plies, and one more ply
+  // costs 4-6x, so whether a search saving converts into strength depends entirely on where the
+  // budget happens to sit relative to the next ply boundary. A saving of ~35% (what policy pruning
+  // measures) is worth ~1.5x effective time -- never a whole ply on its own, but enough to tip the
+  // search over the edge when the clock already sits just short of one. At a single fixed clock a
+  // run is stuck in one regime forever and reports the average of a structure it never reveals;
+  // sampling across budgets separates "never helps" from "helps in the band where it banks a ply".
+  // Drawn LOG-uniformly because ply boundaries are multiplicative -- uniform-in-milliseconds would
+  // put most draws in the top octave and barely probe the short clocks at all.
+  const timeMsLo = arg('timeMsLo', null), timeMsHi = arg('timeMsHi', null);
+  const clock = (timeMsLo && timeMsHi)
+    ? { ms: +timeMsLo, lo: +timeMsLo, hi: +timeMsHi }
+    : null;
+  const drawClock = () => {
+    if (!clock) return null;
+    const l = Math.log(clock.lo), h = Math.log(clock.hi);
+    clock.ms = Math.round(Math.exp(l + Math.random()*(h - l)));
+    return clock.ms;
+  };
+  const timeMsA = clock || arg('timeMsA', timeMs), timeMsB = clock || arg('timeMsB', timeMs);
   // --ab switches a policy side from hard pruning to ordering+cutoff; --abA/--abB per side, so a
   // policy can be pitted against ITSELF used the other way -- the only comparison that isolates
   // which use of the policy is better, rather than whether having one helps at all.
   const ab = process.argv.includes('--ab');
   const abA = process.argv.includes('--abA') || ab, abB = process.argv.includes('--abB') || ab;
   const keepA = +arg('keepA', keepForDepth), keepB = +arg('keepB', keepForDepth);
-  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepA, quiesceA, arg('policyA', policy), timeMsA && +timeMsA, abA);
-  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepB, quiesceB, arg('policyB', policy), timeMsB && +timeMsB, abB);
+  // the clock box passes through as-is; a plain --timeMs string still becomes a number
+  const asClock = t => (t && typeof t === 'object' ? t : t && +t);
+  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepA, quiesceA, arg('policyA', policy), asClock(timeMsA), abA);
+  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepB, quiesceB, arg('policyB', policy), asClock(timeMsB), abB);
   const games = +arg('games', 24);
   // both brains are commonly fully deterministic (nn at temperature 0, or a noise-free ladder
   // level) from the same fixed start -- without a shuffled opening, every game with the same
@@ -137,6 +165,15 @@ function main() {
   // selfplay.js exposes it: forcing a cap cheaply is the only way to test the scoring path.
   const maxPlies = +arg('maxPlies', 300);
   eng.CFG.moveCap = maxPlies;   // one cap: the engine scores it, this loop just stops looping
+  // --resultsJsonl <file>: one line per game (clock, outcome, plies). Separate from --saveData,
+  // which writes POSITION rows for training; this writes GAME rows for analysis.
+  const resultsPath = arg('resultsJsonl', null);
+  let resultsStream = null;
+  if (resultsPath) {
+    fs.mkdirSync(path.dirname(resultsPath), { recursive: true });
+    resultsStream = fs.createWriteStream(resultsPath, { flags: 'a' });
+    console.log(`saving per-game results to ${resultsPath}`);
+  }
   let dataStream = null, savedRows = 0;
   if (saveData) {
     fs.mkdirSync(path.dirname(saveData), { recursive: true });
@@ -199,6 +236,8 @@ function main() {
     // shared canonical start is what makes two brains comparable -- but available because arena
     // games become training data whenever --saveData is on, and that data wants coverage of
     // shapes no real trajectory reaches.
+    // Fresh clock per game, both sides matched (see --timeMsLo/--timeMsHi above).
+    const gameMs = drawClock();
     const randomStart = Math.random() < randomStartFrac;
     if (randomStart) { randomStartPose(eng); eng.setActive(Math.random() < 0.5 ? 0 : 1); }
     else playRandomOpening(eng, openingPlies);
@@ -231,6 +270,17 @@ function main() {
     else if (G.adjudicated) { if (aWon) aKomi++; else bKomi++; }
     else if (aWon) aWins++;
     else bWins++;
+    // One machine-readable line per game. The point of a randomised clock is to BIN by it
+    // afterwards -- a pooled win rate over mixed budgets is exactly the average that hides the
+    // structure the randomisation exists to expose -- and that needs the per-game clock stored
+    // next to the per-game outcome, which no other output here carries.
+    if (resultsStream) {
+      const outcome = (!G.over || G.winner === null) ? 'draw' : (aWon ? 'A' : 'B');
+      resultsStream.write(JSON.stringify({
+        game: g, timeMs: gameMs, outcome, adjudicated: !!G.adjudicated,
+        plies, aIsBlue, randomStart,
+      }) + '\n');
+    }
     // Decided games only. A ply-capped shuffle has no outcome to label rows with, and a wedged
     // abandon describes a degenerate stuck state -- selfplay.js excludes both and so does this.
     if (dataStream && G.over && G.winner !== null) {
