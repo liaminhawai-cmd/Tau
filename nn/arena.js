@@ -18,6 +18,7 @@ const { MLP } = require('./net.js');
 const { nnPlanFor, nnPlanForTimed } = require('./nnai.js');
 const { playRandomOpening, randomStartPose } = require('./opening.js');
 const { eloFromScore, fmtElo } = require('./elo.js');
+const { makeLadderEval } = require('./laddereval.js');
 
 // --saveData turns an evaluation run into a data run as well. Every arena game is a real game with
 // a real outcome, so throwing away everything but the win/loss tally wastes the whole run: a
@@ -52,6 +53,35 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
     return { name: 'L' + lvl, fn: idx => eng.ladderPlanFor(lvl - 1, idx) };
   }
   const parts = spec.split(':');
+  // "le:L11[:temperature]" -- L11's hand-tuned EVAL inside nnai.js's search, so it gets a real
+  // clock, iterative deepening and policy pruning, none of which the fixed-depth ladder rung has.
+  // L11 itself is untouched; this is a separate brain that borrows its weights (see laddereval.js).
+  // Deliberately shares every other flag with the nn brain -- same --depth/--timeMs/--keepForDepth/
+  // --policyArms path -- because the entire point is to vary ONLY the evaluator and hold the search
+  // identical, which a second search implementation could not promise.
+  if (parts[0] === 'le') {
+    const which = (parts[1] || 'L11').toUpperCase();
+    const temperature = parts[2] ? +parts[2] : 0;
+    const evalFn = makeLadderEval(eng, which);
+    const policy = policyPath
+      ? require('./policy.js').PolicyMLP.fromJSON(JSON.parse(fs.readFileSync(policyPath, 'utf8')))
+      : null;
+    const pTag = policy ? (abCut ? ',P-ab:' : ',P:') + path.basename(policyPath).replace(/\.json$/i, '') : '';
+    const kTag = keepForDepth !== 4 ? ',K' + keepForDepth : '';
+    const aTag = (policy && !abCut && policyArms) ? ',A' + policyArms : '';
+    const sTag = stopStride > 1 ? ',S' + stopStride : '';
+    const common = { temperature, keepForDepth, quiesce, policy, policyArms, stopStride, evalFn,
+                     policyPrune: !!policy && !abCut, abCut: !!abCut };
+    if (timeMs) {
+      const tm = () => (typeof timeMs === 'object' ? timeMs.ms : timeMs);
+      const tTag = typeof timeMs === 'object' ? 'Trand' : 'T' + timeMs + 'ms';
+      return { name: `eval-${which}(${tTag}${kTag}${pTag}${aTag}${sTag})`,
+               fn: idx => nnPlanForTimed(eng, null, idx, { ...common, timeMs: tm() }) };
+    }
+    const depthLabel = quiesce ? depth + 0.5 : depth;
+    return { name: `eval-${which}(${depthLabel > 1 ? 'D' + depthLabel : 'D1'}${kTag}${pTag}${aTag}${sTag})`,
+             fn: idx => nnPlanFor(eng, null, idx, { ...common, depth }) };
+  }
   if (parts[0] !== 'nn') throw new Error('unknown brain: ' + spec);
   const temperature = parts[1] ? +parts[1] : 0;
   // everything after the second colon is the model path — REJOINED, because Windows absolute
