@@ -127,6 +127,14 @@ function opponentHasThrow(eng, victimIdx) {
 function nnPlanFor(eng, net, idx, opts) {
   const o = opts || {};
   const stopStride = Math.max(1, o.stopStride || 1);
+  // The LEAF EVALUATOR is pluggable: o.evalFn(eng, side) -> a score for `side`, higher better.
+  // Default is the trained value net, i.e. exactly the old behaviour. The point of the seam is that
+  // a different evaluator (engine.js exports ladderEval, so L11's own hand-tuned eval is one call
+  // away) can then be dropped into the SAME search -- same sweeps, same keepForDepth, same policy
+  // pruning, same iterative deepening. That is what makes "L11's judgement with a real clock and a
+  // policy trimming the arms" a one-argument change rather than a second search implementation
+  // that would have to be kept in step with this one to stay comparable.
+  const evalFn = o.evalFn || ((e, side) => net.value(features(e)));
   const G = eng.getG();
   if (G.active !== idx) throw new Error('nnPlanFor called for the wrong side');
   const snap = eng.takeSnap();
@@ -186,7 +194,7 @@ function nnPlanFor(eng, net, idx, opts) {
         if (oppOff) v = 1e6 - Math.abs(rad)*1e-3;   // a throw — engine-exact; shortest one wins
         else {
           g.active = 1 - idx;                       // value from the opponent-to-move view
-          v = -net.value(features(eng));
+          v = -evalFn(eng, 1 - idx);
           g.active = idx;
         }
         arm.push({ pivotIdx: pv, dir, targetRad: rad, v });
@@ -274,14 +282,14 @@ function nnPlanFor(eng, net, idx, opts) {
       if (g1.over) deep = g1.winner === idx ? 1e6 : -1e6;
       else {
         const oppPlan = nnPlanFor(eng, net, 1 - idx, { temperature: 0, depth: depth - 1, keepForDepth: o.keepForDepth,
-                                                      policy: o.policy, policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride,
+                                                      policy: o.policy, policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride, evalFn: o.evalFn,
                                                       abCut: o.abCut,
                                                       cutIfAbove: (o.abCut && bestDeep > -Infinity) ? -bestDeep : null });
         if (!oppPlan) deep = net.value(features(eng));     // opponent wedged -- score as-is
         else {
           eng.applyPlanSearch(oppPlan);
           const g2 = eng.getG();
-          deep = g2.over ? (g2.winner === idx ? 1e6 : -1e6) : net.value(features(eng));
+          deep = g2.over ? (g2.winner === idx ? 1e6 : -1e6) : evalFn(eng, idx);
         }
       }
       restore();
@@ -346,7 +354,7 @@ function nnPlanForTimed(eng, net, idx, opts) {
     const plan = nnPlanFor(eng, net, idx, { temperature: o.temperature, depth, keepForDepth,
                                              quiesce: o.quiesce, policy: o.policy,
                                              policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride,
-                                             abCut: o.abCut });
+                                             evalFn: o.evalFn, abCut: o.abCut });
     if (!plan) return best;               // wedged -- nothing this depth found, keep whatever we had
     best = plan; best.searchDepth = depth;
     lastCost = Date.now() - t1;
