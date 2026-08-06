@@ -89,6 +89,10 @@ echo      -- a fixed clock sits in one regime forever; this samples across ply b
 echo      "never helps" and "helps only where it banks a ply" stop looking the same
 echo.
 echo  33. CLOCK SWEEP RESULTS: bin option 32's games by think time (instant, plays nothing)
+echo  36. VARIANT LOOP: trains a policy, then round-robins policy USE configurations against each
+echo      other, against no policy, and against L11 -- forever, recording every result.
+echo      Default a3s2 (3 arms, every 2nd stop) vs a2s1 (2 arms, every stop).
+echo.
 echo  35. NARROW+DEEP: policy-narrowed search vs the current default, equal clock
 echo      -- the policy's real lever. Pruning ARMS saturates (~2.9x, never a ply); cutting
 echo      keepForDepth removes NODES and compounds (8x at keep 1). Measured: depth 4/keep 2/
@@ -141,6 +145,7 @@ if "%choice%"=="32" goto clocksweep
 if "%choice%"=="33" goto clocksweepresults
 if "%choice%"=="34" goto clockloop
 if "%choice%"=="35" goto narrowdeep
+if "%choice%"=="36" goto variantloop
 if "%choice%"=="1" goto pull
 if "%choice%"=="2" goto build96
 if "%choice%"=="3" goto buildpointy
@@ -315,6 +320,36 @@ echo.
 node nn\arena.js --a nn:0:%CD%\nn\models\best.json --policyA %CD%\nn\models\policy-champ.json %CSAB% --b nn:0:%CD%\nn\models\best.json --timeMsLo 1000 --timeMsHi 30000 --games %CSGAMES% --resultsJsonl %CD%\nn\data\clocksweep-%CSTAG%-%COMPUTERNAME%.jsonl --saveData %CD%\nn\data\clocksweep-%CSTAG%-%COMPUTERNAME%-rows.jsonl
 echo.
 echo === done. Bin the results by clock with option 33. ===
+pause
+goto menu
+
+:variantloop
+rem Same cycle as option 15 -- pull, mint, train, play, record, push, repeat -- but the tournament
+rem compares USES of one policy head instead of two SHAPES. Shape is held fixed for the cycle and no
+rem mutant is trained: shape and use are different questions, and moving both at once would leave
+rem neither attributable.
+rem
+rem Measured before building this, so the defaults are not guesses:
+rem   arms 3 -> 1.67x, arms 2 -> 1.95x, arms 1 -> 2.91x   (saturates -- never the 4-6x a ply costs)
+rem   halving the stops within an arm -> ~11%% of a sweep  (the physics stepping cannot be skipped;
+rem   reaching any stop means stepping through every stop before it)
+rem So a3s2 is the "narrow arms AND thin the stops" arm of the test and a2s1 is "narrow the arms
+rem harder, keep every stop". Throws are never thinned out at any stride.
+call :dogit
+set "VLHOURS=" & set "VLVARIANTS=" & set "VLLEVELS="
+set /p VLHOURS="Hours per cycle, Enter for 2: "
+if "%VLHOURS%"=="" set VLHOURS=2
+set /p VLVARIANTS="Variants, Enter for a3s2,a2s1 (add ,ab to include ordering+cutoff): "
+if "%VLVARIANTS%"=="" set VLVARIANTS=a3s2,a2s1
+set /p VLLEVELS="Ladder rungs to anchor against, Enter for 11: "
+if "%VLLEVELS%"=="" set VLLEVELS=11
+echo.
+echo Preview of what each cycle will play:
+node nn\policyloop.js --variants %VLVARIANTS% --levels %VLLEVELS% --dryRun --cycles 1
+echo.
+echo Starting the variant loop. Close this window any time.
+echo.
+node nn\policyloop.js --variants %VLVARIANTS% --levels %VLLEVELS% --budgetHours %VLHOURS%
 pause
 goto menu
 

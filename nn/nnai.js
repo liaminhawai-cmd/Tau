@@ -126,6 +126,7 @@ function opponentHasThrow(eng, victimIdx) {
 
 function nnPlanFor(eng, net, idx, opts) {
   const o = opts || {};
+  const stopStride = Math.max(1, o.stopStride || 1);
   const G = eng.getG();
   if (G.active !== idx) throw new Error('nnPlanFor called for the wrong side');
   const snap = eng.takeSnap();
@@ -170,8 +171,18 @@ function nnPlanFor(eng, net, idx, opts) {
         const g = eng.getG();
         const rad = g.netRad;                       // signed; applyPlan abs()es it, dir carries sign
         if (Math.abs(rad) < MIN_MOVE) { if (g.atLimit) break; continue; }
-        let v;
         const oppOff = g.pieces[1 - idx].feet().some(f => Math.hypot(f.x, f.y) > eng.CFG.edgeU + eng.CFG.edgeEps);
+        // o.stopStride > 1 keeps only every Nth waypoint of a sweep. The sweep itself is NOT
+        // shortened -- it cannot be, since reaching any stop means stepping the physics through
+        // every stop before it -- so this saves only the net evaluation, measured at ~11% of a
+        // sweep (13.98ms stepping vs 2.9ms for all 20 evals). Small by construction, and the
+        // reason the header says arms are the only granularity worth cutting at. Exposed anyway
+        // so "narrow the arms" and "thin the stops" can be compared rather than argued about.
+        // A THROW is never skipped whatever the stride: it is engine-exact, decisive, and the one
+        // thing the policy is already known to under-rate, so thinning it away would silently
+        // reintroduce the exact blind spot tryMineThrow exists to close.
+        if (!oppOff && stopStride > 1 && (guard % stopStride) !== 0) continue;
+        let v;
         if (oppOff) v = 1e6 - Math.abs(rad)*1e-3;   // a throw — engine-exact; shortest one wins
         else {
           g.active = 1 - idx;                       // value from the opponent-to-move view
@@ -263,7 +274,7 @@ function nnPlanFor(eng, net, idx, opts) {
       if (g1.over) deep = g1.winner === idx ? 1e6 : -1e6;
       else {
         const oppPlan = nnPlanFor(eng, net, 1 - idx, { temperature: 0, depth: depth - 1, keepForDepth: o.keepForDepth,
-                                                      policy: o.policy, policyPrune: !!o.policyPrune, policyArms: o.policyArms,
+                                                      policy: o.policy, policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride,
                                                       abCut: o.abCut,
                                                       cutIfAbove: (o.abCut && bestDeep > -Infinity) ? -bestDeep : null });
         if (!oppPlan) deep = net.value(features(eng));     // opponent wedged -- score as-is
@@ -334,7 +345,7 @@ function nnPlanForTimed(eng, net, idx, opts) {
     const t1 = Date.now();
     const plan = nnPlanFor(eng, net, idx, { temperature: o.temperature, depth, keepForDepth,
                                              quiesce: o.quiesce, policy: o.policy,
-                                             policyPrune: !!o.policyPrune, policyArms: o.policyArms,
+                                             policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride,
                                              abCut: o.abCut });
     if (!plan) return best;               // wedged -- nothing this depth found, keep whatever we had
     best = plan; best.searchDepth = depth;

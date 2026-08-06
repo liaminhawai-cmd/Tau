@@ -87,6 +87,22 @@ const randomClock = !!(timeMsLo && timeMsHi);
 // against a ~4-6x ply cost, so it does not rescue pruning -- but it is a real axis and a pool that
 // does not record it cannot be compared against one that used a different value.
 const policyArms = +arg('policyArms', 3);
+// --variants: switch the tournament from "one policy, champion vs mutant SHAPE" to "one policy,
+// several USE configurations against each other". A spec is aN[sM]: aN = keep N arms when pruning,
+// sM = evaluate every Mth waypoint (default 1, every stop). "ab" means ordering + cutoff instead of
+// pruning, where arms/stride do not apply. Example: --variants a3s2,a2s1,ab
+// Separate from the shape hill-climb on purpose -- shape and use are different questions, and a
+// cycle that moved both at once could not attribute either. In variants mode the mutant fight is
+// skipped and the champion shape is held fixed for the cycle.
+const variantSpecs = (arg('variants', '') || '').split(',').map(s => s.trim()).filter(Boolean);
+const variantsMode = variantSpecs.length > 0;
+function parseVariant(spec) {
+  if (spec === 'ab') return { tag: 'ab', abcut: true, arms: null, stride: 1 };
+  const m = /^a(\d+)(?:s(\d+))?$/.exec(spec);
+  if (!m) { console.error(`bad --variants spec "${spec}" -- want aN, aNsM, or ab`); process.exit(1); }
+  return { tag: spec, abcut: false, arms: +m[1], stride: m[2] ? +m[2] : 1 };
+}
+const variants = variantSpecs.map(parseVariant);
 // Floor on decided games before the head-to-head is allowed to move the champion at all. Not a
 // significance test (see the verdict below) -- just a guard against 0-0 or a single fluke game
 // deciding which shape the next cycle trains from.
@@ -104,6 +120,11 @@ const minDecided = Math.max(1, +arg('minDecided', 4));
 // policy targets are mined, when old pooled evidence no longer describes the current system).
 const gateFloor = Math.max(0, +arg('gateFloor', 150));
 const noGate = process.argv.includes('--noGate');
+// --dryRun: build the cycle's matchup list, print it, and stop before playing anything. A variants
+// tournament is a round robin whose size grows quadratically with entrants, so being able to see
+// exactly what a flag combination will play -- before committing hours of arena time to it -- is
+// worth more than the six lines it costs.
+const dryRun = process.argv.includes('--dryRun');
 // Bumped whenever a change to policy-target mining would make OLD pooled evidence non-comparable to
 // new evidence (a different target distribution is a different experiment). Old history entries
 // don't carry this field, so they are naturally excluded from a fresh scheme's pool -- nothing is
@@ -299,7 +320,9 @@ const armTag = useAb ? '' : `+a${policyArms}`;
 // instead of discarding them.
 const poolKey = h => `${h.scheme}+${h.use || 'prune'}+${h.clock || 't2000'}` +
                      ((h.use || 'prune') === 'abcut' ? '' : `+a${h.arms || 3}`);
-const POOL_KEY = `${TARGET_SCHEME}+${useMode}+${clockTag}${armTag}`;
+const POOL_KEY = variantsMode
+  ? `${TARGET_SCHEME}+variants:${variants.map(v => v.tag).join('/')}+${clockTag}`
+  : `${TARGET_SCHEME}+${useMode}+${clockTag}${armTag}`;
 
 function poolStats(extra) {
   let w = 0, l = 0;
@@ -329,11 +352,17 @@ async function runCycle(num) {
   const value = pickValueNet();
   if (!value) { log('no value net yet (need nn/models/best.json or a ckpt) — waiting 10 min'); await sleep(600000); return; }
 
-  log(`policy cycle ${num}: minting policy targets from accumulated self-play data`);
-  if (!runSoft('policy-targets.js', ['--out', targetsPath]) || !fs.existsSync(targetsPath)) {
-    log('no targets minted — waiting 10 min'); await sleep(600000); return;
+  // A dry run only needs to know WHAT would be played, and the matchup list depends on the value
+  // net and the champion file, not on freshly minted targets -- so skip the mint and the training
+  // rather than make a preview cost a full cycle's setup.
+  let targetRows = 0;
+  if (!dryRun) {
+    log(`policy cycle ${num}: minting policy targets from accumulated self-play data`);
+    if (!runSoft('policy-targets.js', ['--out', targetsPath]) || !fs.existsSync(targetsPath)) {
+      log('no targets minted — waiting 10 min'); await sleep(600000); return;
+    }
+    targetRows = fs.readFileSync(targetsPath, 'utf8').split('\n').filter(Boolean).length;
   }
-  const targetRows = fs.readFileSync(targetsPath, 'utf8').split('\n').filter(Boolean).length;
 
   // The champion has to exist before it can be challenged. First cycle on a fresh machine trains it.
   const shape = champShape();
@@ -359,7 +388,7 @@ async function runCycle(num) {
             : !rec ? 'champion has no completion record (training was interrupted)'
             : +rec.epochs !== +epochs ? `champion was trained for ${rec.epochs} epochs, mutant gets ${epochs}`
             : null;
-  if (why) {
+  if (why && !dryRun) {
     log(`policy cycle ${num}: ${why} — training a champion at ${shape} (${targetRows} targets)`);
     if (!runSoft('train-policy.js', ['--targets', targetsPath, '--epochs', epochs,
                                      '--hidden', shape, '--out', champPath])) return;
@@ -372,9 +401,15 @@ async function runCycle(num) {
   // fight between two equally-uninformative classifiers is coinflip noise, and it is not cheap --
   // a full retrain plus its own tournament slots, every cycle, indefinitely.
   const priorPool = poolStats();
-  const gated = !noGate && priorPool.dec >= gateFloor && priorPool.verdict !== 'beats';
+  // Variants mode holds the shape fixed and compares USES of one policy, so there is no mutant to
+  // train and no shape fight to gate -- training one anyway would spend ~20 minutes a cycle on a
+  // matchup that never gets played.
+  const gated = variantsMode || (!noGate && priorPool.dec >= gateFloor && priorPool.verdict !== 'beats');
   let mut = null, mutantOk = false;
-  if (gated) {
+  if (variantsMode) {
+    log(`policy cycle ${num}: VARIANTS mode — holding shape ${shape}, comparing ` +
+        `${variants.map(v => v.tag).join(' vs ')} vs nopolicy (no mutant, no shape fight)`);
+  } else if (gated) {
     log(`policy cycle ${num}: GATED — pooled control is ${priorPool.verdict} at ` +
         `${(100*priorPool.rate).toFixed(0)}% +/- ${(100*priorPool.band).toFixed(0)} on ${priorPool.dec} ` +
         `decided (${POOL_KEY}) — skipping the mutant train + shape fight, ` +
@@ -412,6 +447,37 @@ async function runCycle(num) {
   const matches = [];
   const add = (tag, args) => matches.push({ tag, args });
 
+  if (variantsMode) {
+    // Every entrant is the SAME value net AND the same policy file -- only HOW the policy is spent
+    // differs. That is what makes a result attributable to the configuration rather than to the
+    // weights or to which head happened to train better this cycle.
+    // Per-side flags, because a variants match is two different configurations of one policy: a
+    // shared --policyArms/--stopStride would make both sides identical and silently compare a brain
+    // against itself.
+    const vSide = (v, which) => v === null
+      ? []                                             // the no-policy control: no flags at all
+      : ['--policy' + which, champPath,
+         ...(v.abcut ? ['--ab' + which]
+                     : ['--policyArms' + which, String(v.arms),
+                        ...(v.stride > 1 ? ['--stopStride' + which, String(v.stride)] : [])])];
+    const entrants = [...variants.map(v => ({ tag: v.tag, v })), { tag: 'nopolicy', v: null }];
+    // Full round robin among entrants: each configuration against every other, including the
+    // no-policy control, so "beats the other variant" and "beats no policy at all" are separate
+    // answers rather than one inferred from the other.
+    for (let i = 0; i < entrants.length; i++) {
+      for (let j = i + 1; j < entrants.length; j++) {
+        add(`${entrants[i].tag}-vs-${entrants[j].tag}`,
+            ['--a', nn, '--b', nn, ...vSide(entrants[i].v, 'A'), ...vSide(entrants[j].v, 'B'), ...base]);
+      }
+    }
+    // Ladder rungs for every entrant: an absolute anchor that cannot drift with the value net,
+    // which the head-to-heads alone cannot provide (they only ever say which of two is ahead).
+    for (const L of levels) {
+      for (const e of entrants) {
+        add(`${e.tag}-vs-L${L}`, ['--a', nn, '--b', 'L' + L, ...vSide(e.v, 'A'), ...base]);
+      }
+    }
+  } else {
   // The decisive comparison: champion vs mutant, same net, same clock, only the policy differs.
   if (mutantOk) add('champ-vs-mutant',
     ['--a', nn, '--b', nn, ...side(champPath, useAb, 'A'), ...side(mutantPath, useAb, 'B'), ...base]);
@@ -425,7 +491,14 @@ async function runCycle(num) {
     if (mutantOk) add(`mutant-vs-L${L}`, ['--a', nn, '--b', 'L' + L, ...side(mutantPath, useAb, 'A'), ...base]);
     add(`nopolicy-vs-L${L}`, ['--a', nn, '--b', 'L' + L, ...base]);
   }
+  }
 
+  if (dryRun) {
+    log(`DRY RUN — cycle ${num} would play ${matches.length} matchup(s) at ${gamesPerMatch} games each:`);
+    for (const m of matches) console.log(`   ${m.tag}`);
+    console.log(`\n   pool key: ${POOL_KEY}`);
+    process.exit(0);
+  }
   log(`policy cycle ${num}: ${matches.length} matchups, ${workers} at a time, ${timeMs}ms/move, ` +
       `${gamesPerMatch} games each, budget ${budgetHours}h — all games saved to ` +
       path.relative(repoRoot, saveData).replace(/\\/g, '/'));
@@ -472,8 +545,9 @@ async function runCycle(num) {
   // neutral edit from random-walking the shape.
   // The statistical bar belongs on the CLAIM, not the climb: that is champ-vs-nopolicy below, plus
   // the ladder rungs, which are absolute anchors that catch a drift the head-to-head cannot see.
-  const hh = results['champ-vs-mutant'];
-  let verdict = 'no head-to-head played', adopted = false;
+  const hh = variantsMode ? null : results['champ-vs-mutant'];
+  let verdict = variantsMode ? 'variants mode — shape held, nothing adopted' : 'no head-to-head played';
+  let adopted = false;
   if (hh) {
     const dec = hh.w + hh.l;
     const mutWins = hh.l;                 // side A is the champion, so B's wins are the mutant's
@@ -500,6 +574,19 @@ async function runCycle(num) {
   // bare net at the same clock is the only thing that says a policy head is worth having at all.
   // This one DOES carry a significance bar, and it accumulates across cycles rather than being
   // re-judged from one cycle's handful of games -- a real effect should survive being pooled.
+  // In variants mode "does the policy help" has one answer per configuration, so a single pooled
+  // number would average configurations that are deliberately different. Report each separately and
+  // pool nothing -- the history keeps every result, so aggregation stays possible after the fact.
+  if (variantsMode) {
+    for (const v of variants) {
+      const r = results[`${v.tag}-vs-nopolicy`];
+      if (!r) continue;
+      const d = r.w + r.l;
+      const band = d ? 100*Math.sqrt(0.25/d)*2 : 0;
+      log(`policy cycle ${num}: ${v.tag} vs NO policy — ${r.w}-${r.l}` +
+          (d ? ` (${(100*r.w/d).toFixed(0)}% +/- ${band.toFixed(0)} on ${d} decided)` : ''));
+    }
+  }
   const ctl = results['champ-vs-nopolicy'];
   // Same helper the pre-cycle gate check used, now folding THIS cycle's control result in -- pooled
   // only over history entries tagged with the current TARGET_SCHEME, same reasoning as the gate.

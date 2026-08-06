@@ -43,7 +43,7 @@ function arg(name, dflt) {
 // recursive search stops once it has refuted the candidate (never blind -- no cutoff means every
 // arm is still swept); without it, the policy hard-prunes to its top arms, the original wiring.
 // Default stays pruning so the existing menu A/Bs keep testing what they say they test.
-function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, abCut, policyArms) {
+function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, abCut, policyArms, stopStride) {
   const m = /^L(\d+)$/i.exec(spec);
   if (m) {
     const lvl = +m[1];
@@ -81,9 +81,10 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
     // arm count rides in the name: every pooled result so far silently used the default of 3, and
     // a score line that doesn't say which is a score line that can't be compared to another run.
     const aTag = (policy && !abCut && policyArms) ? ',A' + policyArms : '';
-    return { name: 'nn(' + path.basename(mp) + ',' + tTag + kTag + pTag + aTag + ')',
+    const sTag = stopStride > 1 ? ',S' + stopStride : '';
+    return { name: 'nn(' + path.basename(mp) + ',' + tTag + kTag + pTag + aTag + sTag + ')',
              fn: idx => nnPlanForTimed(eng, net, idx, { temperature, keepForDepth, quiesce, policy,
-                                                        timeMs: tm(), policyArms,
+                                                        timeMs: tm(), policyArms, stopStride,
                                                         policyPrune: !!policy && !abCut, abCut: !!abCut }) };
   }
   // Depth is reported as e.g. "D1.5" when quiesce rides on top of a plain depth-1 pass -- matches
@@ -91,9 +92,10 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
   // instead of two "D1" entries that secretly differ.
   const depthLabel = quiesce ? depth + 0.5 : depth;
   const aTagD = (policy && !abCut && policyArms) ? ',A' + policyArms : '';
+  const sTagD = stopStride > 1 ? ',S' + stopStride : '';
   return { name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + (depthLabel > 1 ? ',D' + depthLabel : '') +
-           kTag + pTag + aTagD + ')',
-           fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth, quiesce, policy, policyArms,
+           kTag + pTag + aTagD + sTagD + ')',
+           fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth, quiesce, policy, policyArms, stopStride,
                                                  policyPrune: !!policy && !abCut, abCut: !!abCut }) };
 }
 
@@ -159,9 +161,15 @@ function main() {
   // than deletes.
   const policyArms = +arg('policyArms', 3);
   const policyArmsA = +arg('policyArmsA', policyArms), policyArmsB = +arg('policyArmsB', policyArms);
+  // --stopStride N: evaluate only every Nth waypoint of a sweep. Cannot shorten the sweep (reaching
+  // any stop means stepping through every stop before it), so it saves the net evaluation only --
+  // measured ~11% of a sweep. Here so "fewer arms" and "fewer stops per arm" are comparable head to
+  // head instead of a matter of opinion. Throws are never strided out; see nnai.js.
+  const stopStride = +arg('stopStride', 1);
+  const stopStrideA = +arg('stopStrideA', stopStride), stopStrideB = +arg('stopStrideB', stopStride);
   const asClock = t => (t && typeof t === 'object' ? t : t && +t);
-  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepA, quiesceA, arg('policyA', policy), asClock(timeMsA), abA, policyArmsA);
-  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepB, quiesceB, arg('policyB', policy), asClock(timeMsB), abB, policyArmsB);
+  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepA, quiesceA, arg('policyA', policy), asClock(timeMsA), abA, policyArmsA, stopStrideA);
+  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepB, quiesceB, arg('policyB', policy), asClock(timeMsB), abB, policyArmsB, stopStrideB);
   const games = +arg('games', 24);
   // both brains are commonly fully deterministic (nn at temperature 0, or a noise-free ladder
   // level) from the same fixed start -- without a shuffled opening, every game with the same
