@@ -83,13 +83,20 @@ echo      The loop overwrites policy-mutant.json every cycle, so an untested win
 echo.
 echo  14. Exit
 echo ================================================
-if not "%~1"=="" if not defined MENU_ARG_USED (
-  set "choice=%~1"
-  set "MENU_ARG_USED=1"
-  echo Pick a number: %choice%  ^(from command line^)
-) else (
-  set /p choice="Pick a number: "
-)
+rem NOT a chained "if A if B (...) else (...)" -- that construct's else binds to the INNER if, so
+rem when %~1 is empty (a plain double-click, no argument -- how this actually gets launched most of
+rem the time) the whole thing does nothing at all: choice never gets set, set /p never prompts, and
+rem execution falls straight to the bottom `goto menu`, redrawing the same screen forever with no
+rem way to type anything. Confirmed live. Uses plain goto below, not nested if/else -- no subtlety to get wrong.
+if defined MENU_ARG_USED goto askchoice
+if "%~1"=="" goto askchoice
+set "choice=%~1"
+set "MENU_ARG_USED=1"
+echo Pick a number: %choice%  ^(from command line^)
+goto gotchoice
+:askchoice
+set /p choice="Pick a number: "
+:gotchoice
 
 if "%choice%"=="20" goto fulltrainer
 if "%choice%"=="21" goto retromine
