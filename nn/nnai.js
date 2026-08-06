@@ -51,10 +51,21 @@
 // not pay either (9-10), and that looks structural rather than unlucky: dropping 6 arms to 3 in
 // recursion saves ~30-40% overall, while one more ply costs 4-6x, so the saving never buys the
 // extra depth that iterative deepening only banks in whole plies. Prefer abCut.
-// MEASURED SINCE (same net, one move, depth 3, keepForDepth 4) -- arm pruning is the wrong lever,
-// and this is why the equal-time result kept landing on ~50%:
-//     prune arms to 3 / 2 / 1  ->  1.67x / 1.95x / 2.91x   (saturates)
-//     cut keepForDepth 3/2/1   ->  1.74x / 3.24x / 8.04x   (compounds every ply)
+// MEASURED SINCE, and the reason matters more than the number. Counting ACTUAL arm sweeps at
+// depth 3 / keepForDepth 4, pruning is perfectly linear -- it is not the pruning that runs out:
+//     arms 6 -> 126 sweeps, 2323ms      arms 3 -> 63 sweeps (2.00x), 1404ms (1.65x)
+//     arms 2 ->  42 sweeps (3.00x), 1198ms (1.94x)
+//     arms 1 ->  21 sweeps (6.00x),  811ms (2.86x)
+// Sweeps divide exactly as expected. Wall time does not, because sweeping is only ~73% of the
+// search: the other ~27% (snapshot/restore per candidate, candidate sorting, the plateau smoothing
+// above, quiescence screening, feature extraction, recursion bookkeeping) does not scale with arm
+// count at all. Solving T = S*(sweeps ratio) + F gives S~1687ms, F~636ms, which predicts the arms-2
+// time as 1687/3 + 636 = 1198ms -- exactly what was measured.
+// THE CONSEQUENCE, and the cleanest statement of why pruning cannot buy depth: even pruning to zero
+// sweeps caps out at 1/0.27 = 3.7x, while one more ply costs 4-6x. Arm pruning can therefore never
+// bank a ply, at ANY arm count -- not because it saturates, but because the un-prunable remainder
+// sits just below the price of a ply.
+//     cut keepForDepth 3/2/1   ->  1.74x / 3.24x / 8.04x   (compounds every ply -- this CAN)
 // keepForDepth caps CHILDREN PER NODE at 4, and one arm's sweep already yields more than 4 candidate
 // waypoints -- so dropping 6 arms to 2 leaves the tree exactly the same SHAPE and only makes each
 // node cheaper to generate. That is a bounded constant, never the 4-6x a ply costs. Cutting
