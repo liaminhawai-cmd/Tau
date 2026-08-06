@@ -155,3 +155,11 @@ force-added) = the raw per-pair W/L/D store underneath those ratings.
   `nn/.gitignore` excludes `data/` wholesale, so the add matched only already-ignored paths and
   silently staged nothing new. Mined rows were generated for hours but never left the machine.
   Fixed to `git add -Af nn/data`.
+- **`--familyWeight`** (`train.js`, default `sqrt`) — weights retromine's replay families by
+  *outcome*, not just game length. Every replay of one seed that fails to escape gets its own
+  game id but is a near-duplicate of its siblings; confirmed live that every sampled family had a
+  real outcome split (e.g. 71 "still lost" replays vs 5 "escaped" from the same seed). Flat
+  per-game weighting let the common outcome outvote the rare one by exactly that ratio, even
+  though the rare outcome — an escape found from a position otherwise declared dead — is the one
+  exception that actually teaches the net something. Same `1/sqrt(n)` shape as `--gameWeight sqrt`,
+  one level up: a family's total say per outcome grows as sqrt of how many replays shared it.

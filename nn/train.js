@@ -1,7 +1,8 @@
 // Train the value net on selfplay data.
 //   node nn/train.js --data "nn/data/*.jsonl" --out nn/models/value.json
 //                    [--epochs 8] [--lr 0.001] [--batch 256] [--hidden 64,64] [--resume path]
-//                    [--seed N]
+//                    [--seed N] [--gameWeight sqrt|game|row] [--familyWeight sqrt|off]
+//                    [--drawWeight 0.25] [--eloWeight 0|1]
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -67,7 +68,7 @@ function loadData(pattern) {
           prevAbs = a;
           game = curInferred;
         }
-        rows.push({ x: j.f, y: j.z, game, mv: j.mv });
+        rows.push({ x: j.f, y: j.z, game, mv: j.mv, m: j.m });
       } catch (e) {}
     }
   }
@@ -177,19 +178,55 @@ function main() {
         { scale: +arg('eloScale', 250), floor: +arg('eloFloor', 0.25) })
     : null;
   if (eloW) console.log(`elo weighting: ${eloW.note}`);
+
+  // --familyWeight (default sqrt): the SAME cluster problem gameWeight solves, one level up. A
+  // "game" id is not always an independent game -- retromine replays one seed position against
+  // every brain on its strength axis, and every one of those replays that fails to escape is
+  // written under its own game id but is a near-duplicate of its siblings (confirmed live: several
+  // sampled families run 71-6 or 32-5 in favour of "still lost" vs "escaped" from the SAME seed).
+  // Flat per-game weighting -- which is what the game-length correction above already gives every
+  // game, treating each as independent -- lets the common "still lost" outcome outvote the rare
+  // "an escape was found here" outcome by exactly that ratio, and the escape is the one exception
+  // that actually teaches the net something (the majority just repeats "yes, still dead" as many
+  // times as there were opponents on the axis). A game whose id doesn't end in `-<n>` (regular
+  // self-play, not a replay family) is its own family of one and this is a no-op for it.
+  //   --familyWeight sqrt   default: a family's total say per OUTCOME grows as sqrt of how many
+  //                         replays shared that outcome -- same shape as --gameWeight sqrt, just
+  //                         grouping replays-of-one-seed instead of positions-of-one-game.
+  //   --familyWeight off    restore flat per-game weighting (the old, unaware-of-replay behaviour)
+  const fwMode = arg('familyWeight', 'sqrt');
+  const familyOf = g => { const m = /^(.*)-(\d+)$/.exec(g); return m ? m[1] : g; };
+  // One outcome per GAME (constant across all its rows, unlike y which flips sign with the mover),
+  // so every row of a game must resolve to the same absolute winner -- pick it from whichever row
+  // of that game is seen first while building `lens` below.
+  const gameOutcome = new Map();   // game -> absolute winner index, or 'draw'
   const lens = new Map();
-  for (const r of train) lens.set(r.game, (lens.get(r.game) || 0) + 1);
+  for (const r of train) {
+    lens.set(r.game, (lens.get(r.game) || 0) + 1);
+    if (!gameOutcome.has(r.game)) gameOutcome.set(r.game, r.y === 0 ? 'draw' : (r.y > 0 ? r.m : 1 - r.m));
+  }
+  const outcomeGroupSize = new Map();   // "family|outcome" -> how many games share it
+  if (fwMode !== 'off') {
+    for (const [game, outcome] of gameOutcome) {
+      const key = familyOf(game) + '|' + outcome;
+      outcomeGroupSize.set(key, (outcomeGroupSize.get(key) || 0) + 1);
+    }
+  }
   let wSum = 0;
   for (const r of train) {
     const len = lens.get(r.game);
     r.w = gwMode === 'row' ? 1 : gwMode === 'game' ? 1/len : 1/Math.sqrt(len);
+    if (fwMode !== 'off') {
+      const key = familyOf(r.game) + '|' + gameOutcome.get(r.game);
+      r.w /= Math.sqrt(outcomeGroupSize.get(key));
+    }
     if (r.y === 0) r.w *= drawW;
     if (eloW) r.w *= eloW.weight(r.mv);
     wSum += r.w;
   }
   const wNorm = train.length/wSum;
   for (const r of train) r.w *= wNorm;
-  console.log(`row weighting: --gameWeight ${gwMode}, --drawWeight ${drawW}`);
+  console.log(`row weighting: --gameWeight ${gwMode}, --familyWeight ${fwMode}, --drawWeight ${drawW}`);
 
   // Same trap as the stale-data check above, via the other door: resuming from a checkpoint built
   // for a different input width silently produces a net that can never read its own inputs.
