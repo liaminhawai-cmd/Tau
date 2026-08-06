@@ -135,6 +135,13 @@ function nnPlanFor(eng, net, idx, opts) {
   // policy trimming the arms" a one-argument change rather than a second search implementation
   // that would have to be kept in step with this one to stay comparable.
   const evalFn = o.evalFn || ((e, side) => net.value(features(e)));
+  // o.sweepDeg: the angular step the sweep samples stops at, default the module's 3 degrees.
+  // Worth a knob because resolution turns out to be nearly free: measured 7/20/40/60 waypoints at
+  // 9/3/1.5/1 degrees for 18.32/20.18/21.45/24.82ms -- 8.5x the stops for 35% more time, because
+  // the cost tracks the ARC SWEPT and the arc is identical either way. Finer sampling also improves
+  // the candidate set without making the recursion more expensive, since keepForDepth caps how many
+  // candidates get a deep search regardless of how many were generated. Real L11 samples at 9.
+  const stepRad = (o.sweepDeg ? +o.sweepDeg : 3)*Math.PI/180;
   const G = eng.getG();
   if (G.active !== idx) throw new Error('nnPlanFor called for the wrong side');
   const snap = eng.takeSnap();
@@ -175,7 +182,7 @@ function nnPlanFor(eng, net, idx, opts) {
       const arm = [];   // this arm's waypoints, in sweep order (smoothing needs adjacency)
       let guard = 0;
       while (!eng.getG().atLimit && Math.abs(eng.getG().netRad) < CAP_RAD && guard++ < 200) {
-        eng.applySwing(dir*STEP_RAD);
+        eng.applySwing(dir*stepRad);
         const g = eng.getG();
         const rad = g.netRad;                       // signed; applyPlan abs()es it, dir carries sign
         if (Math.abs(rad) < MIN_MOVE) { if (g.atLimit) break; continue; }
@@ -282,7 +289,7 @@ function nnPlanFor(eng, net, idx, opts) {
       if (g1.over) deep = g1.winner === idx ? 1e6 : -1e6;
       else {
         const oppPlan = nnPlanFor(eng, net, 1 - idx, { temperature: 0, depth: depth - 1, keepForDepth: o.keepForDepth,
-                                                      policy: o.policy, policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride, evalFn: o.evalFn,
+                                                      policy: o.policy, policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride, evalFn: o.evalFn, sweepDeg: o.sweepDeg,
                                                       abCut: o.abCut,
                                                       cutIfAbove: (o.abCut && bestDeep > -Infinity) ? -bestDeep : null });
         if (!oppPlan) deep = net.value(features(eng));     // opponent wedged -- score as-is
@@ -354,7 +361,7 @@ function nnPlanForTimed(eng, net, idx, opts) {
     const plan = nnPlanFor(eng, net, idx, { temperature: o.temperature, depth, keepForDepth,
                                              quiesce: o.quiesce, policy: o.policy,
                                              policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride,
-                                             evalFn: o.evalFn, abCut: o.abCut });
+                                             evalFn: o.evalFn, sweepDeg: o.sweepDeg, abCut: o.abCut });
     if (!plan) return best;               // wedged -- nothing this depth found, keep whatever we had
     best = plan; best.searchDepth = depth;
     lastCost = Date.now() - t1;
