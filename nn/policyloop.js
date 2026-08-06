@@ -264,12 +264,26 @@ function pickValueNet() {
 // how targets are mined starts the significance read over from zero instead of mixing two different
 // experiments into one number. Same 2-sigma-band convention as the per-cycle verdict already uses.
 // Shared by the pre-cycle gate check and the post-cycle log line so the two never drift apart.
+// How the policy is USED is a second, independent experiment axis alongside TARGET_SCHEME (how
+// targets are MINED), and pooling across it is just as wrong. policyPrune deletes arms outright;
+// abCut orders them and cuts off once refuted. nnai.js's header gives the structural reason they
+// cannot share a pool: pruning 6 arms to 3 saves ~30-40% while one more ply costs 4-6x, so at
+// equal think time prune can never bank the depth it paid accuracy for, whereas abCut is never
+// blind and its downside is wasted time rather than lost strength. Averaging the two answers a
+// question nobody asked.
+// Entries written before this field existed are treated as 'prune': it has been the default since
+// the --ab flag was added and menu.bat has never passed --ab, so every historical entry really is
+// a prune entry. That keeps the games already banked instead of discarding them.
+const useMode = useAb ? 'abcut' : 'prune';
+const poolKey = h => `${h.scheme}+${h.use || 'prune'}`;
+const POOL_KEY = `${TARGET_SCHEME}+${useMode}`;
+
 function poolStats(extra) {
   let w = 0, l = 0;
   try {
     for (const line of fs.readFileSync(historyFile, 'utf8').split('\n').filter(Boolean)) {
       const h = JSON.parse(line);
-      if (h.scheme !== TARGET_SCHEME) continue;
+      if (poolKey(h) !== POOL_KEY) continue;
       const c = h.results && h.results['champ-vs-nopolicy'];
       if (c) { w += c.w; l += c.l; }
     }
@@ -340,7 +354,7 @@ async function runCycle(num) {
   if (gated) {
     log(`policy cycle ${num}: GATED — pooled control is ${priorPool.verdict} at ` +
         `${(100*priorPool.rate).toFixed(0)}% +/- ${(100*priorPool.band).toFixed(0)} on ${priorPool.dec} ` +
-        `decided (scheme ${TARGET_SCHEME}) — skipping the mutant train + shape fight, ` +
+        `decided (${POOL_KEY}) — skipping the mutant train + shape fight, ` +
         `keeping the control and ladder-anchor matches`);
   } else {
     mut = mutateHidden(shape);
@@ -462,7 +476,7 @@ async function runCycle(num) {
                          undecided: 'not yet distinguishable from no policy' };
   const realResult = pool.dec ? REAL_RESULT[pool.verdict] : null;
   if (pool.dec) {
-    log(`policy cycle ${num}: champion vs NO policy, POOLED over scheme ${TARGET_SCHEME} so far — ` +
+    log(`policy cycle ${num}: champion vs NO policy, POOLED over ${POOL_KEY} so far — ` +
         `${pool.w}-${pool.l}, ${(100*pool.rate).toFixed(0)}% +/- ${(100*pool.band).toFixed(0)} on ` +
         `${pool.dec} decided => ${realResult}`);
   }
@@ -472,7 +486,7 @@ async function runCycle(num) {
   try {
     fs.appendFileSync(historyFile, JSON.stringify({
       cycle: num, at: new Date().toISOString(), machine, value: path.basename(value),
-      targets: targetRows, scheme: TARGET_SCHEME, gated,
+      targets: targetRows, scheme: TARGET_SCHEME, use: useMode, gated,
       // the shape that FOUGHT, captured before any adoption overwrote it -- reporting the
       // post-adoption shape here made the log read as though a mutant had beaten itself
       champShape: shape, newChampShape: champShape(), mutant: mut ? mut.shape : null,
@@ -506,6 +520,7 @@ async function runCycle(num) {
 
 async function main() {
   log(`policy loop up on "${machine}": ${workers} arena lanes, ${timeMs}ms/move, ` +
+      `policy used as ${useMode === 'abcut' ? 'ORDERING + cutoff (--ab 1)' : 'hard PRUNING (default)'}, ` +
       `${budgetHours}h per cycle, ${cycles || 'unlimited'} cycle(s). ` +
       `Close this window any time — everything already pushed is shared, and the champion policy ` +
       `on disk survives for the next run.`);
