@@ -81,6 +81,14 @@ echo  19. PROMOTE mutant: make policy-mutant.json the new policy-champ.json (bac
 echo      -- run this right after a manual policy-mutant vs policy-champ arena test you liked.
 echo      The loop overwrites policy-mutant.json every cycle, so an untested win won't survive long.
 echo.
+echo   DIAGNOSTICS ^& MAINTENANCE
+echo  25. RANK, playing games: update the rating pool for real (13 only refits what exists)
+echo  26. ARCHTEST: architecture sweep vs best.json
+echo  27. FULLTEST: full shape sweep + ladder test (long)
+echo  28. GIT CHECK: can this machine actually pull and push?
+echo  29. DASHBOARD: open dashboard.html
+echo  30. MIGRATE + MEASURE: feature migration check, then the probe suite
+echo.
 echo  14. Exit
 echo ================================================
 rem NOT a chained "if A if B (...) else (...)" -- that construct's else binds to the INNER if, so
@@ -103,6 +111,12 @@ if "%choice%"=="21" goto retromine
 if "%choice%"=="22" goto selfplayfactory
 if "%choice%"=="23" goto policyfight
 if "%choice%"=="24" goto valuetrain
+if "%choice%"=="25" goto rankplay
+if "%choice%"=="26" goto archtest
+if "%choice%"=="27" goto fulltest
+if "%choice%"=="28" goto gitcheck
+if "%choice%"=="29" goto dashboard
+if "%choice%"=="30" goto migratemeasure
 if "%choice%"=="1" goto pull
 if "%choice%"=="2" goto build96
 if "%choice%"=="3" goto buildpointy
@@ -208,6 +222,103 @@ node nn\train.js
 echo.
 echo === saved to nn\models\value.json -- compare it (e.g. option 11's STRENGTH check against a
 echo copy of best.json) before promoting it over best.json by hand ===
+pause
+goto menu
+
+:rankplay
+rem Was RANK.bat. Unlike option 13 (which only REFITS the ratings already on record), this plays
+rem fresh games to actually move the pool. --spread picks how far apart the paired brains are.
+call :dogit
+set "GAMES=" & set "BUDGET="
+set /p GAMES="Games per pair, Enter for 2: "
+if "%GAMES%"=="" set GAMES=2
+set /p BUDGET="Target hours, Enter for 2 (0 = no limit): "
+if "%BUDGET%"=="" set BUDGET=2
+node nn\elorank.js --games %GAMES% --spread 6 --budgetHours %BUDGET% --depths 1,2,3 --saveData nn\data\elo.jsonl
+pause
+goto menu
+
+:archtest
+rem Was ARCHTEST.bat. Trains nothing new (--skipTrain); fights the stored shapes against best.json.
+call :dogit
+set "DEPTH=" & set "GAMES="
+set /p DEPTH="Depth, Enter for 1: "
+if "%DEPTH%"=="" set DEPTH=1
+set /p GAMES="Games, Enter for 40: "
+if "%GAMES%"=="" set GAMES=40
+node nn\archtest.js --hidden 96,96 --hidden 96,96,96 --hidden 64,64,64,64 --hidden 48,48,48,48,48 --epochs 30 --seed 1 --games %GAMES% --depth %DEPTH% --vs nn\models\best.json --skipTrain
+pause
+goto menu
+
+:fulltest
+rem Was FULLTEST.bat. The long one: trains every shape from scratch at 120 epochs, fights them at
+rem D1 and D2, then runs a ladder sweep. Hours, not minutes.
+call :dogit
+set SHAPES=--hidden 96,96 --hidden 96,64,48 --hidden 82,64,48,32 --hidden 64,64,64,64
+echo.
+echo === shape sweep, depth 1, 40 games (trains each shape -- this is the long part) ===
+node nn\archtest.js %SHAPES% --epochs 120 --seed 1 --games 40 --depth 1 --vs nn\models\best.json
+echo.
+echo === same shapes, depth 2, 30 games (reuses what was just trained) ===
+node nn\archtest.js %SHAPES% --epochs 120 --seed 1 --games 30 --depth 2 --vs nn\models\best.json --skipTrain
+echo.
+echo === ladder sweep: L9/L10/L11 at depths 1,2,3 ===
+node nn\laddertest.js --levels 9,10,11 --depths 1,2,3 --games 6
+pause
+goto menu
+
+:gitcheck
+rem Was GITTEST.bat. Writes a scratch file, commits, pushes, so a new machine can prove it really
+rem has write access before a long run discovers otherwise.
+call :dogit
+node -e "require('fs').writeFileSync('nn/gittest.json', JSON.stringify({ test: 'test1234', machine: require('os').hostname(), at: new Date().toISOString() }, null, 1))"
+if defined GIT (
+  "%GIT%" add -f nn\gittest.json
+  "%GIT%" commit -m "git check from %COMPUTERNAME%"
+  "%GIT%" push
+  echo.
+  echo If the push above succeeded, this machine can share its work.
+) else (
+  echo git not found -- this machine cannot push.
+)
+pause
+goto menu
+
+:dashboard
+start "" "%~dp0dashboard.html"
+goto menu
+
+:migratemeasure
+rem Was GO.bat steps 1-2. The migration check is a no-op once already migrated (seconds), so it is
+rem safe to run any time; the probe suite appends to nn\probe-results.txt, which the trainer's own
+rem scroll cannot bury. GO.bat's step 3 was just the full trainer -- that is option 20 now.
+call :dogit
+echo.
+echo === migration check (first time ~10 min, otherwise seconds) ===
+node nn\migrate88.js
+if errorlevel 1 (
+  echo.
+  echo   Migration failed - nothing else was run. Old data and models are safe in
+  echo   nn\data\backup-pre82 and nn\models\archive-pre82.
+  echo.
+  pause
+  goto menu
+)
+echo. >> nn\probe-results.txt
+echo ============================================================ >> nn\probe-results.txt
+node -e "console.log('menu.bat option 30: ' + new Date().toISOString())" >> nn\probe-results.txt
+echo.
+echo   [a] which inputs does the net lean on?
+echo --- feature importance ------------------------------------------ >> nn\probe-results.txt
+node nn\feature-importance.js nn\models\best.json >> nn\probe-results.txt 2>&1
+echo   [b] how often does the top move hang a throw? (~5 min)
+echo --- throw probe ------------------------------------------------- >> nn\probe-results.txt
+node nn\throwprobe.js --model nn\models\best.json --games 20 --depth 1 --opponent self >> nn\probe-results.txt 2>&1
+echo   [c] quiescence head-to-head, 40 games (~15 min)
+echo --- quiescence A/B: depth 1.5 vs depth 1 ------------------------ >> nn\probe-results.txt
+node nn\arena.js --a nn:0:nn\models\best.json --b nn:0:nn\models\best.json --depthA 1 --quiesceA --depthB 1 --games 40 >> nn\probe-results.txt 2>&1
+echo.
+echo === done -- results in nn\probe-results.txt ===
 pause
 goto menu
 
