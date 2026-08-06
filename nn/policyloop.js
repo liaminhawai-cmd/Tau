@@ -74,6 +74,19 @@ const randomStartFrac = arg('randomStartFrac', '0.35');
 // aggressive speed play the whole test is about. --ab 1 switches to ordering + cutoff instead,
 // which is never blind but buys less. Both are legitimate; they are different questions.
 const useAb = arg('ab', '0') !== '0';
+// --timeMsLo/--timeMsHi: run every tournament match on a clock DRAWN PER GAME instead of a fixed
+// one, both sides matched (see arena.js's flag for the full reasoning). Worth having in the loop
+// rather than only as a one-off, because whether a search saving becomes strength depends on where
+// the clock sits relative to the next ply boundary, and a loop pinned at one clock re-measures that
+// single point forever -- 102 pooled games at 2000ms is a very precise answer to a narrow question.
+// With a range, every cycle adds games across the whole curve and clocksweep.js can bin them.
+const timeMsLo = arg('timeMsLo', null), timeMsHi = arg('timeMsHi', null);
+const randomClock = !!(timeMsLo && timeMsHi);
+// --policyArms: how many arms a PRUNING side keeps in recursion. Passed through because it was
+// silently fixed at nnai.js's default of 3 for every result ever pooled; measured, 2 buys ~1.8x
+// against a ~4-6x ply cost, so it does not rescue pruning -- but it is a real axis and a pool that
+// does not record it cannot be compared against one that used a different value.
+const policyArms = +arg('policyArms', 3);
 // Floor on decided games before the head-to-head is allowed to move the champion at all. Not a
 // significance test (see the verdict below) -- just a guard against 0-0 or a single fluke game
 // deciding which shape the next cycle trains from.
@@ -275,8 +288,18 @@ function pickValueNet() {
 // the --ab flag was added and menu.bat has never passed --ab, so every historical entry really is
 // a prune entry. That keeps the games already banked instead of discarding them.
 const useMode = useAb ? 'abcut' : 'prune';
-const poolKey = h => `${h.scheme}+${h.use || 'prune'}`;
-const POOL_KEY = `${TARGET_SCHEME}+${useMode}`;
+// The CLOCK is a third axis, and mixing a fixed-clock pool with a swept-clock one would average
+// exactly the structure a sweep exists to expose. The arm count is a fourth, but only for a
+// pruning side -- abcut orders rather than deletes, so arms do not apply and including it there
+// would fragment the pool for no reason.
+const clockTag = randomClock ? `t${timeMsLo}-${timeMsHi}` : `t${timeMs}`;
+const armTag = useAb ? '' : `+a${policyArms}`;
+// Entries predating these fields were all the defaults: fixed 2000ms (menu.bat never overrode it)
+// and 3 arms (unreachable without editing nnai.js). Reading them as such keeps the banked games
+// instead of discarding them.
+const poolKey = h => `${h.scheme}+${h.use || 'prune'}+${h.clock || 't2000'}` +
+                     ((h.use || 'prune') === 'abcut' ? '' : `+a${h.arms || 3}`);
+const POOL_KEY = `${TARGET_SCHEME}+${useMode}+${clockTag}${armTag}`;
 
 function poolStats(extra) {
   let w = 0, l = 0;
@@ -375,8 +398,17 @@ async function runCycle(num) {
     ? [`--policy${which}`, p, ...(ab ? [`--ab${which}`] : [])]
     : [];
   const nn = 'nn:0:' + value;
-  const base = ['--games', gamesPerMatch, '--timeMs', timeMs, '--openingPlies', openingPlies,
-                '--randomStartFrac', randomStartFrac, '--saveData', saveData];
+  // Per-game records accumulate in ONE file per machine across every cycle, so clocksweep.js can
+  // bin the whole run rather than a single cycle's handful of games -- which is the entire point of
+  // sweeping the clock from inside a loop.
+  const resultsPath = path.join(dataDir, `clocksweep-loop-${machine}.jsonl`);
+  const clockArgs = randomClock
+    ? ['--timeMsLo', timeMsLo, '--timeMsHi', timeMsHi]
+    : ['--timeMs', timeMs];
+  const base = ['--games', gamesPerMatch, ...clockArgs, '--openingPlies', openingPlies,
+                '--policyArms', policyArms,
+                '--randomStartFrac', randomStartFrac, '--saveData', saveData,
+                ...(randomClock ? ['--resultsJsonl', resultsPath] : [])];
   const matches = [];
   const add = (tag, args) => matches.push({ tag, args });
 
@@ -486,7 +518,8 @@ async function runCycle(num) {
   try {
     fs.appendFileSync(historyFile, JSON.stringify({
       cycle: num, at: new Date().toISOString(), machine, value: path.basename(value),
-      targets: targetRows, scheme: TARGET_SCHEME, use: useMode, gated,
+      targets: targetRows, scheme: TARGET_SCHEME, use: useMode,
+      clock: clockTag, arms: policyArms, gated,
       // the shape that FOUGHT, captured before any adoption overwrote it -- reporting the
       // post-adoption shape here made the log read as though a mutant had beaten itself
       champShape: shape, newChampShape: champShape(), mutant: mut ? mut.shape : null,
@@ -519,8 +552,10 @@ async function runCycle(num) {
 }
 
 async function main() {
-  log(`policy loop up on "${machine}": ${workers} arena lanes, ${timeMs}ms/move, ` +
-      `policy used as ${useMode === 'abcut' ? 'ORDERING + cutoff (--ab 1)' : 'hard PRUNING (default)'}, ` +
+  log(`policy loop up on "${machine}": ${workers} arena lanes, ` +
+      `policy used as ${useMode === 'abcut' ? 'ORDERING + cutoff (--ab 1)' : `hard PRUNING keeping ${policyArms} arms`}, ` +
+      `clock ${randomClock ? `RANDOM ${timeMsLo}-${timeMsHi}ms per game` : `${timeMs}ms/move fixed`}, ` +
+      `pooling under ${POOL_KEY}, ` +
       `${budgetHours}h per cycle, ${cycles || 'unlimited'} cycle(s). ` +
       `Close this window any time — everything already pushed is shared, and the champion policy ` +
       `on disk survives for the next run.`);

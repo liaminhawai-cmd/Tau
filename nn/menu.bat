@@ -89,6 +89,9 @@ echo      -- a fixed clock sits in one regime forever; this samples across ply b
 echo      "never helps" and "helps only where it banks a ply" stop looking the same
 echo.
 echo  33. CLOCK SWEEP RESULTS: bin option 32's games by think time (instant, plays nothing)
+echo  34. CLOCK POLICY LOOP: the full policy loop, but every match on a RANDOM clock per game
+echo      -- same evolve/tournament/adopt cycle as 15, sweeping the clock instead of pinning it,
+echo      so the binned answer accumulates over cycles. Read it with 33 any time.
 echo.
 echo   DIAGNOSTICS ^& MAINTENANCE
 echo  25. RANK, playing games: update the rating pool for real (13 only refits what exists)
@@ -129,6 +132,7 @@ if "%choice%"=="30" goto migratemeasure
 if "%choice%"=="31" goto hybrid
 if "%choice%"=="32" goto clocksweep
 if "%choice%"=="33" goto clocksweepresults
+if "%choice%"=="34" goto clockloop
 if "%choice%"=="1" goto pull
 if "%choice%"=="2" goto build96
 if "%choice%"=="3" goto buildpointy
@@ -303,6 +307,35 @@ echo.
 node nn\arena.js --a nn:0:%CD%\nn\models\best.json --policyA %CD%\nn\models\policy-champ.json %CSAB% --b nn:0:%CD%\nn\models\best.json --timeMsLo 1000 --timeMsHi 30000 --games %CSGAMES% --resultsJsonl %CD%\nn\data\clocksweep-%CSTAG%-%COMPUTERNAME%.jsonl --saveData %CD%\nn\data\clocksweep-%CSTAG%-%COMPUTERNAME%-rows.jsonl
 echo.
 echo === done. Bin the results by clock with option 33. ===
+pause
+goto menu
+
+:clockloop
+rem Option 15's loop with the clock swept instead of pinned. Everything else is identical --
+rem mint, train a mutant, tournament, adopt or keep, push -- but each tournament game draws its own
+rem think time and both sides get the same one, and every game is appended to
+rem nn\data\clocksweep-loop-<machine>.jsonl so option 33 can bin the whole run.
+rem
+rem This pools SEPARATELY from option 15's fixed-clock history: a swept pool and a pinned pool are
+rem different experiments, and averaging them would erase exactly the structure sweeping exists to
+rem find. The banked fixed-clock games are untouched and still readable under their own key.
+call :dogit
+set "CLHOURS=" & set "CLMODE=" & set "CLARMS="
+set /p CLHOURS="Hours per cycle, Enter for 2: "
+if "%CLHOURS%"=="" set CLHOURS=2
+set /p CLMODE="Mode: 1=prune, 2=abcut (recommended), Enter for 2: "
+if "%CLMODE%"=="" set CLMODE=2
+set "CLAB=--ab 1"
+if "%CLMODE%"=="1" set "CLAB="
+set "CLARMSFLAG="
+if "%CLMODE%"=="1" (
+  set /p CLARMS="Arms to keep when pruning, Enter for 3: "
+  if not "!CLARMS!"=="" set "CLARMSFLAG=--policyArms !CLARMS!"
+)
+echo.
+echo Starting the clock-swept policy loop. Close this window any time.
+echo.
+node nn\policyloop.js --budgetHours %CLHOURS% %CLAB% %CLARMSFLAG% --timeMsLo 1000 --timeMsHi 30000
 pause
 goto menu
 
