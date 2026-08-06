@@ -89,6 +89,13 @@ echo      -- a fixed clock sits in one regime forever; this samples across ply b
 echo      "never helps" and "helps only where it banks a ply" stop looking the same
 echo.
 echo  33. CLOCK SWEEP RESULTS: bin option 32's games by think time (instant, plays nothing)
+echo  35. NARROW+DEEP: policy-narrowed search vs the current default, equal clock
+echo      -- the policy's real lever. Pruning ARMS saturates (~2.9x, never a ply); cutting
+echo      keepForDepth removes NODES and compounds (8x at keep 1). Measured: depth 4/keep 2/
+echo      arms 2 runs in 1070ms where the depth 3/keep 4 default takes 1907ms -- a ply deeper
+echo      in half the time. Only safe if the kept candidates are the right ones, which is what
+echo      a policy is actually for. THIS is the configuration nothing has tested yet.
+echo.
 echo  34. CLOCK POLICY LOOP: the full policy loop, but every match on a RANDOM clock per game
 echo      -- same evolve/tournament/adopt cycle as 15, sweeping the clock instead of pinning it,
 echo      so the binned answer accumulates over cycles. Read it with 33 any time.
@@ -133,6 +140,7 @@ if "%choice%"=="31" goto hybrid
 if "%choice%"=="32" goto clocksweep
 if "%choice%"=="33" goto clocksweepresults
 if "%choice%"=="34" goto clockloop
+if "%choice%"=="35" goto narrowdeep
 if "%choice%"=="1" goto pull
 if "%choice%"=="2" goto build96
 if "%choice%"=="3" goto buildpointy
@@ -307,6 +315,34 @@ echo.
 node nn\arena.js --a nn:0:%CD%\nn\models\best.json --policyA %CD%\nn\models\policy-champ.json %CSAB% --b nn:0:%CD%\nn\models\best.json --timeMsLo 1000 --timeMsHi 30000 --games %CSGAMES% --resultsJsonl %CD%\nn\data\clocksweep-%CSTAG%-%COMPUTERNAME%.jsonl --saveData %CD%\nn\data\clocksweep-%CSTAG%-%COMPUTERNAME%-rows.jsonl
 echo.
 echo === done. Bin the results by clock with option 33. ===
+pause
+goto menu
+
+:narrowdeep
+if not exist "nn\models\policy-champ.json" (
+  echo nn\models\policy-champ.json not found -- run option 15 first, or wait for a cycle to finish.
+  pause
+  goto menu
+)
+rem Same net, same clock, both sides iterative-deepening -- only the SHAPE of the search differs.
+rem A: policy-ordered, narrowed to 2 candidates and 2 arms, so each ply is cheap enough to reach
+rem    one deeper inside the same budget.
+rem B: the current default -- keepForDepth 4, all 6 arms, no policy.
+rem If narrow+deep is worth anything, A wins here. If the width it gave up matters more than the
+rem ply it bought, B wins -- and that is a real answer either way, unlike arm-pruning at fixed
+rem width which measured 52%% over 108 games because it was never buying a ply at all.
+call :dogit
+set "NDGAMES=" & set "NDKEEP=" & set "NDARMS="
+set /p NDGAMES="Games, Enter for 60: "
+if "%NDGAMES%"=="" set NDGAMES=60
+set /p NDKEEP="Candidates to keep (narrow side), Enter for 2: "
+if "%NDKEEP%"=="" set NDKEEP=2
+set /p NDARMS="Arms to keep (narrow side), Enter for 2: "
+if "%NDARMS%"=="" set NDARMS=2
+echo.
+echo === narrow+deep (keep %NDKEEP%, arms %NDARMS%, policy) vs default (keep 4, no policy), 2000ms both, %NDGAMES% games ===
+echo.
+node nn\arena.js --a nn:0:%CD%\nn\models\best.json --policyA %CD%\nn\models\policy-champ.json --keepA %NDKEEP% --policyArmsA %NDARMS% --b nn:0:%CD%\nn\models\best.json --keepB 4 --timeMs 2000 --games %NDGAMES% --saveData %CD%\nn\data\narrowdeep-%COMPUTERNAME%.jsonl
 pause
 goto menu
 
