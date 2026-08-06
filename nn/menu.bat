@@ -42,6 +42,9 @@ echo      (bounded, a couple hours -- not the loop; see 15 for the evolving vers
 echo  24. VALUE TRAINER, single pass: one train.js run on whatever data exists now, then stops
 echo      (minutes, not the loop -- for catching up a value net without competing hard for cores
 echo      with something else already running, e.g. the policy loop on this same machine)
+echo  31. HYBRID: policy loop at normal priority + full trainer at BELOW-normal, one machine
+echo      -- the trainer soaks up the ~20min every policy cycle spends single-threaded, and the
+echo      tournament tail after fast matchups finish. Policy still wins any core it asks for.
 echo.
 echo   1. Pull latest from git
 echo.
@@ -117,6 +120,7 @@ if "%choice%"=="27" goto fulltest
 if "%choice%"=="28" goto gitcheck
 if "%choice%"=="29" goto dashboard
 if "%choice%"=="30" goto migratemeasure
+if "%choice%"=="31" goto hybrid
 if "%choice%"=="1" goto pull
 if "%choice%"=="2" goto build96
 if "%choice%"=="3" goto buildpointy
@@ -222,6 +226,43 @@ node nn\train.js
 echo.
 echo === saved to nn\models\value.json -- compare it (e.g. option 11's STRENGTH check against a
 echo copy of best.json) before promoting it over best.json by hand ===
+pause
+goto menu
+
+:hybrid
+rem Both loops on one machine without them fighting, via PRIORITY rather than a fixed core split.
+rem
+rem Why not "give the policy loop N cores": its appetite is spiky, not steady. Per cycle it wants
+rem 1 core for ~30s of minting, 1 core for ~20 MINUTES of single-threaded mutant training
+rem (train-policy.js has no worker_threads), then up to 12 for the tournament. Pin it to 2 and the
+rem tournament runs ~6x longer; give it 12 permanently and 15 threads idle through every training
+rem phase. A static split is wrong in both directions.
+rem
+rem Priority tracks that shape by itself. The policy loop stays at NORMAL and wins any core it
+rem asks for the moment it asks -- which matters because its matches are --timeMs (equal thinking
+rem TIME), so starving it doesn't just slow it down, it changes what each side gets to search.
+rem The trainer runs BELOWNORMAL and takes whatever is genuinely spare: the whole 20-minute
+rem training window every cycle, plus the tournament tail once the fast matchups (L5 finishes in
+rem ~2 min, L9 can take 20) have freed their lanes. Windows child processes inherit the parent's
+rem priority class, so run.js's own self-play workers are all BELOWNORMAL too -- no per-child work.
+rem
+rem The trainer gets fewer workers than it would solo (its default is min(cores-1,14)): priority
+rem settles who runs, but every extra process still costs RAM and scheduler churn, and this box has
+rem 16GB shared with 12 policy lanes.
+call :dogit
+set "HYHOURS=" & set "HYWORKERS="
+set /p HYHOURS="Policy hours per cycle, Enter for 2: "
+if "%HYHOURS%"=="" set HYHOURS=2
+set /p HYWORKERS="Background trainer workers, Enter for 6: "
+if "%HYWORKERS%"=="" set HYWORKERS=6
+echo.
+echo Starting the background trainer at BELOW-normal priority in its own window...
+start "Tau trainer (background priority)" /belownormal node nn\run.js --gamesPerBatch 1000 --randomStartFrac 0.15 --scratchHidden 96,64,48 --workers %HYWORKERS%
+echo.
+echo Trainer launched. Starting the policy loop at normal priority in THIS window.
+echo Closing this window stops the policy loop only -- the trainer has its own window.
+echo.
+node nn\policyloop.js --budgetHours %HYHOURS%
 pause
 goto menu
 
