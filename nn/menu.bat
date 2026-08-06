@@ -39,6 +39,9 @@ echo  21. RETROMINE: ratchet-only data generation, multicore
 echo  22. SELF-PLAY FACTORY: plain game generation for a spare machine (never trains/rates)
 echo  23. POLICY FIGHT: train a policy net on existing data, fight it at equal think-time
 echo      (bounded, a couple hours -- not the loop; see 15 for the evolving version)
+echo  24. VALUE TRAINER, single pass: one train.js run on whatever data exists now, then stops
+echo      (minutes, not the loop -- for catching up a value net without competing hard for cores
+echo      with something else already running, e.g. the policy loop on this same machine)
 echo.
 echo   1. Pull latest from git
 echo.
@@ -92,6 +95,7 @@ if "%choice%"=="20" goto fulltrainer
 if "%choice%"=="21" goto retromine
 if "%choice%"=="22" goto selfplayfactory
 if "%choice%"=="23" goto policyfight
+if "%choice%"=="24" goto valuetrain
 if "%choice%"=="1" goto pull
 if "%choice%"=="2" goto build96
 if "%choice%"=="3" goto buildpointy
@@ -179,6 +183,24 @@ set "PFHOURS="
 set /p PFHOURS="Hours budget, Enter for 2: "
 if "%PFHOURS%"=="" set PFHOURS=2
 node nn\policyfight.js --budgetHours %PFHOURS%
+pause
+goto menu
+
+:valuetrain
+rem One train.js pass on whatever's in nn\data right now, then stops -- not a loop, and not the
+rem same thing as option 20 (which ALSO runs self-play + round robin + ladder sweep forever on top
+rem of training, and competes much harder for cores). Exists for catching a value net up on a
+rem backlog of accumulated data without displacing something else already running on this machine.
+rem Saves to nn\models\value.json, NOT best.json -- this has no promotion gate of its own (option
+rem 20's loop does), so a person compares it before deciding whether it's worth promoting by hand.
+call :dogit
+echo.
+echo === training the value net on nn\data\*.jsonl (defaults: 8 epochs, family+game+draw weighting) ===
+echo.
+node nn\train.js
+echo.
+echo === saved to nn\models\value.json -- compare it (e.g. option 11's STRENGTH check against a
+echo copy of best.json) before promoting it over best.json by hand ===
 pause
 goto menu
 
