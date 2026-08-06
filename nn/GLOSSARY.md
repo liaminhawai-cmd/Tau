@@ -98,6 +98,57 @@ only in chat history and commit messages.
 - **realResult** — the loop's plain-English readout of the pooled control's verdict: "not yet
   distinguishable from no policy" / "policy beats no-policy" / "policy is a net LOSS".
 
+## Search cost, measured (`nnai.js`)
+
+Why pruning arms buys less wall-clock than it looks like it should — the answer turned out to be
+Amdahl's law, not diminishing returns, and naming the six things Amdahl's law was about is what
+made that legible.
+
+- **Amdahl's law / the Amdahl argument** — the general principle that speeding up one part of a
+  computation caps overall speedup at `1/(1 - that part's share of total time)`, no matter how much
+  faster that part gets, because everything else keeps costing what it always cost. Applied here as
+  `T = S*(sweep ratio) + F`: search time splits into sweep-proportional work `S` and a fixed
+  remainder `F` that six unrelated costs (below) contribute to but arm count doesn't touch. Solved
+  from real depth-3/keepForDepth-4 measurements at `S≈1687ms, F≈636ms` — which then *predicts* the
+  arms-2 time as `1687/3 + 636 = 1198ms`, exactly what was independently measured. Consequence: even
+  pruning every arm down to zero sweeps caps speedup at `(S+F)/F ≈ 3.7x`, below the 4-6x a single
+  extra ply costs, so arm pruning can never bank a ply — not because the pruning itself is somehow
+  imperfect (it's exactly linear, confirmed by counting real sweeps: 6→2 arms = exactly 3.00x fewer),
+  but because the un-prunable remainder sits just below the price of admission for going one ply
+  deeper. `keepForDepth`, by contrast, compounds every ply and clears that bar easily (8.04x at
+  keep-1) — see the header comment in `nnai.js` for the full arms-vs-keepForDepth numbers.
+- **engine snapshot/restore per candidate** — `eng.takeSnap()` / the `restore()` closure (`nnai.js`
+  lines 158-164, called again at 220, 313, 334), taken once before trying a candidate's swing and
+  used to roll the engine back to it afterward so trying move N+1 never sees move N's side effects.
+  Paid once per candidate regardless of how many arms survive pruning — part of `F`, not `S`.
+- **candidate sorting** — `cands.sort((a, b) => b.s - a.s)` (`nnai.js:257`), ordering the swept
+  waypoints by smoothed score before the depth-2+ loop spends a deep search only on the top `keep`
+  of them. One sort per node, whatever the arm count — flat cost, part of `F`.
+- **plateau smoothing** — averaging each non-throw waypoint's score with its immediate neighbours
+  before ranking (`nnai.js:221-230`) so an isolated spike or good-bad-good alternation doesn't get
+  mistaken for a real local optimum; throws are excluded from the average entirely
+  (`isThrow = w.v >= 1e5`) since a throw's value is an engine-exact sentinel, not a noisy sample. The
+  same per-waypoint pass also accumulates roughness (how jagged a sweep is, normalized against
+  `ROUGH_REF = 0.0225`, the measured median roughness over 158 real positions), which feeds the
+  (currently off-by-default, inconclusive) adaptive-`keepForDepth` budget. Cost scales with waypoints
+  swept, same as the sweep itself, but the neighbour-lookup and threshold checks are per-node
+  overhead layered on top of it either way.
+- **quiescence screening** — `opponentHasThrow(eng, victimIdx)` (`nnai.js:110`, `attacker = 1 -
+  victimIdx`, its own `takeSnap()`/restore) screens the top few ranked candidates for an immediate
+  opponent throw reply before trusting the ranking, promoting the first one that survives. Cheap
+  (physics-only, no recursive search) but still per-candidate, still indifferent to arm count — part
+  of `F`.
+- **feature extraction** — building the 94-number canonical feature vector (`features.js`'s
+  `moveFrame()`) so a value-net `evalFn` can score a position. Paid once per node the value net is
+  asked to judge; a hand-tuned `evalFn` like `laddereval.js`'s skips this entirely, which is part of
+  why `le:L11` and the trained net aren't apples-to-apples on raw speed either. Flat per-node cost,
+  part of `F`.
+- **recursion bookkeeping** — the overhead of the search's own recursive machinery: threading
+  `evalFn`/`sweepDeg`/`depth`/`keepForDepth`/`abCut`/`cutIfAbove` down through each `nnPlanFor` call,
+  building the option object for the opponent's reply, unwinding results back up. Independent of arm
+  count, so — like the other five — it doesn't shrink when arms are pruned, and it's what keeps `F`
+  above zero even in the limit of a single-arm search.
+
 ## Statistics convention (used throughout, not just the policy loop)
 
 - **2-sigma band** — `± sqrt(0.25/n) * 2` around the observed win rate: the width of the "could
