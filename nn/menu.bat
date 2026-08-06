@@ -2,7 +2,28 @@
 setlocal enabledelayedexpansion
 rem One-stop menu so nothing needs pasting into PowerShell/cmd again -- pick a number, hit Enter.
 rem Lives in nn\, so the repo root is one level up.
+rem
+rem THE SINGLE ENTRY POINT. Used to be split across this file plus START.bat's own separate
+rem 3-item menu, plus START-laptop.bat/START-policyloop.bat/START-policyfight.bat as one-file-per-
+rem loop launchers, each repeating its own node-check/git-pull boilerplate -- five files with
+rem overlapping menus and no single place a new option belonged. Options 20-23 below are exactly
+rem those four launchers' logic, folded in here; START.bat and friends are now three-line wrappers
+rem that just call this file with a number pre-filled, so double-click shortcuts still work
+rem unchanged, but there is exactly one copy of every loop's actual logic.
+rem
+rem Optional first argument pre-fills "Pick a number" for a zero-navigation double-click launch
+rem (e.g. `menu.bat 21` starts retromine immediately) -- consumed once, so if a loop ever exits
+rem and falls back to this menu, it prompts normally from then on rather than re-launching itself.
 cd /d "%~dp0.."
+
+where node >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo   Node.js is not installed on this computer - grab it from nodejs.org, or call Liam.
+  echo.
+  pause
+  exit /b 1
+)
 
 :menu
 cls
@@ -11,6 +32,13 @@ echo   Tau NN toolkit
 echo ================================================
 echo   Arena results are also written to nn\arena-logs\ as they go, so a closed
 echo   window or a killed run never loses them.
+echo.
+echo   LOOPS -- run until the window is closed, unless noted otherwise
+echo  20. FULL TRAINER: self-play + retrain + round robin + ladder sweep, forever
+echo  21. RETROMINE: ratchet-only data generation, multicore
+echo  22. SELF-PLAY FACTORY: plain game generation for a spare machine (never trains/rates)
+echo  23. POLICY FIGHT: train a policy net on existing data, fight it at equal think-time
+echo      (bounded, a couple hours -- not the loop; see 15 for the evolving version)
 echo.
 echo   1. Pull latest from git
 echo.
@@ -52,8 +80,18 @@ echo      The loop overwrites policy-mutant.json every cycle, so an untested win
 echo.
 echo  14. Exit
 echo ================================================
-set /p choice="Pick a number: "
+if not "%~1"=="" if not defined MENU_ARG_USED (
+  set "choice=%~1"
+  set "MENU_ARG_USED=1"
+  echo Pick a number: %choice%  ^(from command line^)
+) else (
+  set /p choice="Pick a number: "
+)
 
+if "%choice%"=="20" goto fulltrainer
+if "%choice%"=="21" goto retromine
+if "%choice%"=="22" goto selfplayfactory
+if "%choice%"=="23" goto policyfight
 if "%choice%"=="1" goto pull
 if "%choice%"=="2" goto build96
 if "%choice%"=="3" goto buildpointy
@@ -73,6 +111,75 @@ if "%choice%"=="17" goto l12check
 if "%choice%"=="18" goto digest
 if "%choice%"=="19" goto promotemutant
 if "%choice%"=="14" goto :eof
+goto menu
+
+:fulltrainer
+rem Was START.bat option 1. Games per self-play BATCH -- a bigger batch pays the straggler tail
+rem less often. SHAPE is the architecture for the from-scratch challenger; blank it to follow
+rem best.json instead. RANDSTART is the fraction of self-play games started from a fully random
+rem legal pose.
+call :dogit
+set GAMES=1000
+set SHAPE=96,64,48
+set SHAPEFLAG=
+if not "%SHAPE%"=="" set SHAPEFLAG=--scratchHidden %SHAPE%
+set RANDSTART=0.15
+echo.
+echo Full Tau NN training started.
+echo Leave this window open. Close it any time to stop - progress is saved.
+echo.
+node nn\run.js --gamesPerBatch %GAMES% --randomStartFrac %RANDSTART% %SHAPEFLAG%
+pause
+goto menu
+
+:retromine
+rem Was START.bat option 2. CPU-bound: use all logical cores except one, capped at 14 lanes so
+rem Windows and disk I/O still have breathing room. One seed per lane is intentional -- a complete
+rem ratchet walk is more valuable than many truncated seeds; each lane starts another seed the
+rem moment it finishes one.
+call :dogit
+set /a RETROWORKERS=%NUMBER_OF_PROCESSORS%-1
+if %RETROWORKERS% LSS 1 set RETROWORKERS=1
+if %RETROWORKERS% GTR 14 set RETROWORKERS=14
+set RETROSEEDS=1
+set RETROREPLAYS=400
+echo.
+echo Retromine ratchet-only loop started with %RETROWORKERS% workers.
+echo Every completed probe game is appended immediately.
+echo Close this window or press Ctrl-C to stop.
+echo.
+node nn\retroloop.js --workers %RETROWORKERS% --seedsPerJob %RETROSEEDS% --maxReplaysPerSeed %RETROREPLAYS%
+pause
+goto menu
+
+:selfplayfactory
+rem Was START-laptop.bat. This machine only GENERATES games: it never trains, never rates, never
+rem promotes. worker.js auto-detects cores, names its data files after the machine's own hostname,
+rem and pushes finished games to git after every chunk, so several machines can run this at once
+rem without stepping on each other or on the desktop's trainer.
+call :dogit
+set GAMES=200
+echo.
+echo Game factory starting: this window pulls, plays, pushes, forever.
+echo Close it any time - finished games are already saved, pushed ones are already shared.
+echo.
+node nn\worker.js --games %GAMES%
+pause
+goto menu
+
+:policyfight
+rem Was START-policyfight.bat. Trains a policy head on whatever self-play data already exists,
+rem then fights it against the plain net at equal think-time (the fair test -- same depth can only
+rem tie or lose it). Bounded, then reports a plain verdict. Safe alongside any of the loops above:
+rem never touches git, and the candidate it trains is invisible to self-play and the pool until a
+rem person promotes it on purpose. Not the same as option 15 -- this trains ONE candidate and stops
+rem inside a time box; option 15 evolves the shape forever.
+call :dogit
+set "PFHOURS="
+set /p PFHOURS="Hours budget, Enter for 2: "
+if "%PFHOURS%"=="" set PFHOURS=2
+node nn\policyfight.js --budgetHours %PFHOURS%
+pause
 goto menu
 
 :vsl11
