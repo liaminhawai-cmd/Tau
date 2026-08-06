@@ -43,7 +43,7 @@ function arg(name, dflt) {
 // recursive search stops once it has refuted the candidate (never blind -- no cutoff means every
 // arm is still swept); without it, the policy hard-prunes to its top arms, the original wiring.
 // Default stays pruning so the existing menu A/Bs keep testing what they say they test.
-function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, abCut) {
+function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, abCut, policyArms) {
   const m = /^L(\d+)$/i.exec(spec);
   if (m) {
     const lvl = +m[1];
@@ -78,18 +78,22 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
     // close over a fixed number.
     const tm = () => (typeof timeMs === 'object' ? timeMs.ms : timeMs);
     const tTag = typeof timeMs === 'object' ? 'Trand' : 'T' + timeMs + 'ms';
-    return { name: 'nn(' + path.basename(mp) + ',' + tTag + kTag + pTag + ')',
+    // arm count rides in the name: every pooled result so far silently used the default of 3, and
+    // a score line that doesn't say which is a score line that can't be compared to another run.
+    const aTag = (policy && !abCut && policyArms) ? ',A' + policyArms : '';
+    return { name: 'nn(' + path.basename(mp) + ',' + tTag + kTag + pTag + aTag + ')',
              fn: idx => nnPlanForTimed(eng, net, idx, { temperature, keepForDepth, quiesce, policy,
-                                                        timeMs: tm(),
+                                                        timeMs: tm(), policyArms,
                                                         policyPrune: !!policy && !abCut, abCut: !!abCut }) };
   }
   // Depth is reported as e.g. "D1.5" when quiesce rides on top of a plain depth-1 pass -- matches
   // how the mix names it, and makes a quiesce-vs-plain A/B legible at a glance in the score line
   // instead of two "D1" entries that secretly differ.
   const depthLabel = quiesce ? depth + 0.5 : depth;
+  const aTagD = (policy && !abCut && policyArms) ? ',A' + policyArms : '';
   return { name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + (depthLabel > 1 ? ',D' + depthLabel : '') +
-           kTag + pTag + ')',
-           fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth, quiesce, policy,
+           kTag + pTag + aTagD + ')',
+           fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth, quiesce, policy, policyArms,
                                                  policyPrune: !!policy && !abCut, abCut: !!abCut }) };
 }
 
@@ -144,9 +148,20 @@ function main() {
   const abA = process.argv.includes('--abA') || ab, abB = process.argv.includes('--abB') || ab;
   const keepA = +arg('keepA', keepForDepth), keepB = +arg('keepB', keepForDepth);
   // the clock box passes through as-is; a plain --timeMs string still becomes a number
+  // --policyArms: how many of the 6 arms a PRUNING side keeps in the recursive opponent search.
+  // Exposed because it is the single dial that decides whether pruning can buy a ply at all, and
+  // it was previously reachable only by editing nnai.js's default of 3. Pruning applies at every
+  // recursive level, so the saving compounds with depth: keeping 3 is 42% at depth 2 but 69% at
+  // depth 3, and keeping 2 is 83% at depth 3 and 94% at depth 4. One more ply costs 4-6x, so
+  // keeping 3 never reaches it below depth 4 while keeping 2 clears it at depth 3 -- which is why
+  // a fixed default of 3 could look like "pruning structurally cannot pay" when it was really
+  // "this arm count cannot pay at this depth". No effect on an --ab side, which orders rather
+  // than deletes.
+  const policyArms = +arg('policyArms', 3);
+  const policyArmsA = +arg('policyArmsA', policyArms), policyArmsB = +arg('policyArmsB', policyArms);
   const asClock = t => (t && typeof t === 'object' ? t : t && +t);
-  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepA, quiesceA, arg('policyA', policy), asClock(timeMsA), abA);
-  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepB, quiesceB, arg('policyB', policy), asClock(timeMsB), abB);
+  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepA, quiesceA, arg('policyA', policy), asClock(timeMsA), abA, policyArmsA);
+  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepB, quiesceB, arg('policyB', policy), asClock(timeMsB), abB, policyArmsB);
   const games = +arg('games', 24);
   // both brains are commonly fully deterministic (nn at temperature 0, or a noise-free ladder
   // level) from the same fixed start -- without a shuffled opening, every game with the same
