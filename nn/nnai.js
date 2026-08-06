@@ -51,6 +51,19 @@
 // not pay either (9-10), and that looks structural rather than unlucky: dropping 6 arms to 3 in
 // recursion saves ~30-40% overall, while one more ply costs 4-6x, so the saving never buys the
 // extra depth that iterative deepening only banks in whole plies. Prefer abCut.
+// MEASURED SINCE (same net, one move, depth 3, keepForDepth 4) -- arm pruning is the wrong lever,
+// and this is why the equal-time result kept landing on ~50%:
+//     prune arms to 3 / 2 / 1  ->  1.67x / 1.95x / 2.91x   (saturates)
+//     cut keepForDepth 3/2/1   ->  1.74x / 3.24x / 8.04x   (compounds every ply)
+// keepForDepth caps CHILDREN PER NODE at 4, and one arm's sweep already yields more than 4 candidate
+// waypoints -- so dropping 6 arms to 2 leaves the tree exactly the same SHAPE and only makes each
+// node cheaper to generate. That is a bounded constant, never the 4-6x a ply costs. Cutting
+// keepForDepth deletes nodes outright, so it compounds.
+// The consequence: a policy's real lever here is not pruning arms for speed, it is making a NARROW
+// keepForDepth safe enough to be worth the ply it buys. Measured: depth 4 at keep 2 / arms 2 runs
+// in 1070ms where the depth 3 / keep 4 default takes 1907ms -- a full ply deeper in half the time,
+// which only pays if the two kept candidates are usually the right ones. That is exactly what an
+// ~90%-arm-top-3 policy is for, and it is the configuration nothing has tested yet (menu 35).
 // Why arms (for both) and why only in recursion: profiling shows the physics stepping dominates move cost
 // (an 18k-param forward pass is microseconds), so skipping individual waypoints saves nothing --
 // only skipping a whole arm's sweep does. And the root is left full-width deliberately: it costs
