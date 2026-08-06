@@ -72,17 +72,13 @@ class PolicyMLP {
     const { z } = this.forward(x);
     return { arms: softmax(z, 0, N_ARMS), bins: softmax(z, N_ARMS, N_ARMS + N_BINS) };
   }
-  // One Adam step on a minibatch of { x, arm, bin [, w] }; returns mean cross-entropy.
-  trainBatch(batch, lr, opts) {
-    const wd = (opts && opts.wd) || 0;
-    if (!this._adam) {
-      this._adam = { t: 0, mW: this.W.map(w => new Float64Array(w.length)),
-                     vW: this.W.map(w => new Float64Array(w.length)),
-                     mB: this.b.map(b => new Float64Array(b.length)),
-                     vB: this.b.map(b => new Float64Array(b.length)) };
-    }
-    const gW = this.W.map(w => new Float64Array(w.length));
-    const gB = this.b.map(b => new Float64Array(b.length));
+  // Accumulate this batch's gradients INTO gW/gB and return the weighted cross-entropy SUM.
+  // Deliberately additive and un-normalised: the caller owns the buffers and the division, which
+  // is what lets train-policy.js's parallel path give each worker its own gradient slot, have
+  // every worker accumulate its shard of one batch, then sum the slots and divide once. Split out
+  // of trainBatch so the serial and parallel paths run byte-identical math instead of two copies
+  // that can drift.
+  accumGrads(batch, gW, gB) {
     let ce = 0;
     for (const { x, arm, bin, w } of batch) {
       const wt = w === undefined ? 1 : w;
@@ -111,7 +107,20 @@ class PolicyMLP {
         }
       }
     }
-    const n = batch.length, A = this._adam, b1 = 0.9, b2 = 0.999, eps = 1e-8;
+    return ce;
+  }
+  // One Adam step from already-accumulated gradients over `n` samples. Adam state lives here on
+  // whichever thread owns the net -- in the parallel path that is the main thread only, so the
+  // moment estimates are never split across workers.
+  applyAdam(gW, gB, n, lr, opts) {
+    const wd = (opts && opts.wd) || 0;
+    if (!this._adam) {
+      this._adam = { t: 0, mW: this.W.map(w => new Float64Array(w.length)),
+                     vW: this.W.map(w => new Float64Array(w.length)),
+                     mB: this.b.map(b => new Float64Array(b.length)),
+                     vB: this.b.map(b => new Float64Array(b.length)) };
+    }
+    const A = this._adam, b1 = 0.9, b2 = 0.999, eps = 1e-8;
     A.t++;
     const corr = Math.sqrt(1 - Math.pow(b2, A.t))/(1 - Math.pow(b1, A.t));
     const step = (P, Gd, M, V, decay) => {
@@ -126,7 +135,39 @@ class PolicyMLP {
       step(this.W[l], gW[l], A.mW[l], A.vW[l], wd > 0);
       step(this.b[l], gB[l], A.mB[l], A.vB[l], false);
     }
-    return ce/n;
+  }
+  // One Adam step on a minibatch of { x, arm, bin [, w] }; returns mean cross-entropy.
+  trainBatch(batch, lr, opts) {
+    const gW = this.W.map(w => new Float64Array(w.length));
+    const gB = this.b.map(b => new Float64Array(b.length));
+    const ce = this.accumGrads(batch, gW, gB);
+    this.applyAdam(gW, gB, batch.length, lr, opts);
+    return ce/batch.length;
+  }
+  // Point this net's parameters at an existing (typically Shared) ArrayBuffer instead of its own
+  // freshly-allocated ones, laid out as every W matrix in layer order followed by every bias
+  // vector. Lets a worker thread run forward/accumGrads against the SAME memory the main thread
+  // updates, so a training step costs one barrier rather than a full copy of the weights out and
+  // the gradients back. Returns the number of Float64 slots the layout needs, so a caller can size
+  // the buffer with paramCount() before allocating.
+  static paramCount(sizes) {
+    let n = 0;
+    for (let l = 0; l < sizes.length - 1; l++) n += sizes[l]*sizes[l+1] + sizes[l+1];
+    return n;
+  }
+  useSharedParams(buffer, byteOffset) {
+    let off = (byteOffset || 0)/8;
+    this.W = []; this.b = [];
+    for (let l = 0; l < this.sizes.length - 1; l++) {
+      const n = this.sizes[l]*this.sizes[l+1];
+      this.W.push(new Float64Array(buffer, off*8, n)); off += n;
+    }
+    for (let l = 0; l < this.sizes.length - 1; l++) {
+      const n = this.sizes[l+1];
+      this.b.push(new Float64Array(buffer, off*8, n)); off += n;
+    }
+    this._adam = null;   // moment estimates must not survive a parameter-storage swap
+    return this;
   }
   toJSON() {
     return { policy: true, sizes: this.sizes, W: this.W.map(w => [...w]), b: this.b.map(b => [...b]) };
