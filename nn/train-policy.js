@@ -113,6 +113,12 @@ function main() {
       X.set(train[i].x, i*N_FEATURES);
       ARM[i] = train[i].arm; BIN[i] = train[i].bin; WT[i] = train[i].w;
     }
+    // Every lane reads features out of shared memory from here on, and nothing on this path touches
+    // train[i].x again -- only train.length. The parsed rows are the single biggest allocation in
+    // the process (466k JS arrays of 94 numbers, several hundred MB with per-array overhead, on top
+    // of the ~350MB shared copy just written), so drop them rather than hold both until exit. Only
+    // in the parallel branch: the serial path below still indexes train[order[k]] for its batches.
+    for (let i = 0; i < train.length; i++) train[i].x = null;
     // Hand the net's parameters over to shared memory BEFORE spawning, so every lane maps the
     // same bytes. Copy the freshly-initialised random weights across first -- useSharedParams
     // repoints the views, it does not carry the old values over.
