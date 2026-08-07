@@ -163,6 +163,21 @@ made that legible.
   The lesson worth keeping: *a pluggable seam inherits every assumption the old inlined code made,
   including the ones nobody wrote down.*
 
+- **L11 clock match** (menu 38, `l11-clock.js`) — a `leL11-vs-L11` comparison that holds L11's own
+  THINK TIME constant instead of holding search width constant, the way the full loop's
+  `leL11-nopolicy vs L11` matchup does. The full loop's version isn't a fair fight even with the
+  antisymmetric-evaluator bug fixed: `keepForDepth` defaults to 4 everywhere `policyloop.js` never
+  overrides it, against L11's own `maxCands 28` — a 7x width disadvantage — on top of a random
+  1-30s clock that may not afford L11's guaranteed depth 3 at all. That's a real result (how much a
+  narrow, clock-gated search costs L11's judgement), just not the same question as "is L11's own
+  judgement better served by nnai's search machinery, given the time it already spends." `l11-clock.js`
+  measures the median of the local machine's own real per-move L11 times first (median, not mean —
+  a 6-move pass on one machine found 2.8-4.2s typical but two moves at 17-18s, and a mean built from
+  that would hand leL11 a budget dominated by rare expensive positions) and feeds that number to
+  `arena.js --a le:L11 --b L11 --timeMsA <measured>`. Measured per-machine, deliberately: a laptop
+  and a desktop don't take the same wall-clock time for the same fixed-depth search, so the number
+  can't be borrowed from a different run.
+
 ## Statistics convention (used throughout, not just the policy loop)
 
 - **2-sigma band** — `± sqrt(0.25/n) * 2` around the observed win rate: the width of the "could
@@ -193,6 +208,7 @@ made that legible.
 | `arena.js` | head-to-head match runner; reports W-L-D and the 2-sigma band |
 | `menu.bat` | the Windows console front-end wrapping all of the above |
 | `promote-mutant.js` | manually promotes `policy-mutant.json` → `policy-champ.json` |
+| `l11-clock.js` | measures L11's own median per-move think time on the local machine |
 | `digest.js` → `claude-digest.md` | crunches local-only files into one pushable summary |
 
 `elo-summary.json` (pushed) = fitted per-brain ratings. `elo-results.json` (local-only, never
