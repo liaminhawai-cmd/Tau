@@ -93,7 +93,8 @@ echo  38. L11 CLOCK MATCH: le:L11 given L11's OWN measured think time vs L11 nat
 echo      fixed depth) -- measures this machine's L11 first (median of N real moves), then hands
 echo      leL11 that exact budget. Same eval, time-matched instead of width-matched: does L11's
 echo      judgement do better with nnai's search machinery than its own, given what it normally
-echo      spends anyway?
+echo      spends anyway? Multi-core. Now also exempts PARK stops from nnai's plateau smoothing,
+echo      without which leL11 could not play L11's park game at all (see nn/GLOSSARY.md).
 echo  37. FULL LOOP: champ + mutant + scratch policy heads, on BOTH best.json and the L11-style
 echo      evaluator, round-robin at random think times, forever. The one that tests everything
 echo      at once -- 19 matchups a cycle. Preview it before committing hours: it dry-runs first.

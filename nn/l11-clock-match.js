@@ -23,6 +23,7 @@ function arg(name, def) {
 
 const totalGames = +arg('games', 60);
 const measureMoves = +arg('moves', 30);
+const noPark = process.argv.includes('--noPark');
 // Same cap as retroloop.js's lanes, same reasoning: cores-1 so the OS and everything else still
 // has a core, capped so a many-core box doesn't oversubscribe memory/disk for no further speedup.
 const lanes = Math.max(1, Math.min(+arg('lanes', Math.max(1, Math.min(os.cpus().length - 1, 14))), totalGames));
@@ -34,6 +35,9 @@ const clock = measureL11Clock(measureMoves);
 console.log(`L11 think time here: min ${clock.min}ms  p25 ${clock.p25}ms  median ${clock.median}ms  ` +
             `p75 ${clock.p75}ms  max ${clock.max}ms`);
 console.log(`giving leL11 exactly ${clock.median}ms -- L11 stays native and unclocked.`);
+console.log(noPark
+  ? 'park stops NOT exempted from smoothing (--noPark) -- the old, park-blind leL11.'
+  : 'park stops exempted from plateau smoothing on the leL11 side, as L11 native effectively has.');
 console.log(`${totalGames} games across ${lanes} lane(s)...\n`);
 
 // Split as evenly as possible; the first (totalGames % lanes) lanes take one extra game rather than
@@ -48,7 +52,15 @@ function runLane(i, n) {
   const resultsPath = path.join(laneDir, `lane${i}-results.jsonl`);
   const saveData = path.join(laneDir, `lane${i}-data.jsonl`);
   const logDir = path.join(dir, 'arena-logs', `l11clockmatch-${runTag}-lane${i}`);
+  // --parkStopsA: exempt park stops from plateau smoothing on the leL11 side. Without it this
+  // matchup is not a fair test of L11's judgement at all -- ladderEval's park term (weight 8, its
+  // second-heaviest) lands in a band narrower than one 3 degree step, so a park is ALWAYS an
+  // isolated spike whose neighbours are ALWAYS unparked, and the smoothing averages ~2/3 of it away
+  // every time. The ladder rungs hit this same bug once already (ladderRoots3's comment: L8 fell
+  // from ~63% to ~43% vs L7 until it grew a dedicated park recorder). L11 native keeps its parks;
+  // this lets leL11 keep its own. Off => --noPark, for measuring how much it is actually worth.
   const args = ['arena.js', '--a', 'le:L11', '--b', 'L11', '--timeMsA', clock.median,
+                ...(noPark ? [] : ['--parkStopsA']),
                 '--games', n, '--resultsJsonl', resultsPath, '--saveData', saveData, '--logDir', logDir];
   return new Promise(resolve => {
     const ch = spawn('node', args, { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] });

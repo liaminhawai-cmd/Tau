@@ -90,6 +90,26 @@ const ROUGH_REF = 0.0225;            // measured median sweep roughness over 158
 const STEP_RAD = 3*Math.PI/180;      // the engine brains' own sampling step
 const CAP_RAD = 170*Math.PI/180;     // same safety cap as every other brain
 const MIN_MOVE = 2*Math.PI/180;      // below this the engine would undo the turn as a non-move
+// Same park band the ladder rungs use (index.html's PARK_LO/PARK_HI): a foot within PARK_HI of a
+// printed line but NOT within PARK_LO of it -- parked just off the centreline, magnet still on the
+// ink. Duplicated rather than imported because these are plain numbers in the shipped game's script
+// body, not part of the engine's exported surface; if they move there, they must move here too.
+const PARK_LO = 0.05, PARK_HI = 0.34;
+
+// Is any NON-PIVOT foot of `idx` sitting in the park band? Mirrors ladderRoots3's own park test.
+// Only meaningful for evaluators that actually reward parks (ladderEval's park term); the value net
+// gets the same information through features.js's exp() park indicator instead, which is why this
+// is opt-in rather than always on.
+function isParkStop(eng, idx, pv) {
+  const feet = eng.getG().pieces[idx].feet();
+  for (let fi = 0; fi < 3; fi++) {
+    if (fi === pv) continue;
+    if (!eng.nearLineIds(feet[fi], PARK_HI).length) continue;
+    if (eng.nearLineIds(feet[fi], PARK_LO).length) continue;   // dead-centre stops skipped, same as L11
+    return true;
+  }
+  return false;
+}
 
 // Cheap throw-only lookahead, no network calls at all: from the CURRENT position (with `attacker`
 // = 1-victimIdx to move), does ANY of their 6 (pivot x direction) sweeps push a `victimIdx` foot
@@ -138,6 +158,13 @@ function opponentHasThrow(eng, victimIdx) {
 function nnPlanFor(eng, net, idx, opts) {
   const o = opts || {};
   const stopStride = Math.max(1, o.stopStride || 1);
+  // o.parkStops: mark park stops during the sweep and exempt them from plateau smoothing (see the
+  // smoothing block below for the measurement and the ladder's own precedent). OFF by default, so
+  // every value-net search stays bit-identical -- the value net reads parks through features.js's
+  // exp() indicator rather than a single heavy weight, and smoothing a learned evaluator's spikes
+  // is the behaviour that block was actually designed for. Intended for hand-tuned evaluators whose
+  // park term is a real engine fact rather than possible noise, i.e. laddereval.js's.
+  const parkStops = !!o.parkStops;
   // The LEAF EVALUATOR is pluggable: o.evalFn(eng, side) -> a score for `side`, higher better,
   // WHOEVER'S TURN IT IS. That last clause is the whole contract and it used to be implicit, which
   // cost a whole experiment. The old code scored a leaf as `-evalFn(eng, 1 - idx)` -- negate the
@@ -230,13 +257,24 @@ function nnPlanFor(eng, net, idx, opts) {
           v = evalFn(eng, idx);
           g.active = idx;
         }
-        arm.push({ pivotIdx: pv, dir, targetRad: rad, v });
+        arm.push({ pivotIdx: pv, dir, targetRad: rad, v,
+                   ...(parkStops && !oppOff && isParkStop(eng, idx, pv) ? { park: true } : {}) });
       }
       restore();
-      // plateau-vs-needle smoothing, throws and non-throws never blended across the boundary
+      // plateau-vs-needle smoothing, throws and non-throws never blended across the boundary.
+      // PARKS are exempt for the same reason throws are: the smoothing exists to pull down an
+      // isolated spike of "good" flanked by "bad", on the theory that a needle in a small net's
+      // output is more likely noise than signal. A park is the opposite -- an engine-verifiable
+      // fact about where a foot physically sits, in a band (PARK_LO..PARK_HI) narrower than one 3
+      // degree step, so it is ALWAYS an isolated spike and its neighbours are ALWAYS unparked.
+      // Averaging it with them destroys most of the term by construction: measured under L11's
+      // weights (park:8), a park stop scoring 23.24 raw smoothed down to 16.41, losing ~6.7 every
+      // time its neighbours were unparked. The ladder rungs hit this exact bug once already --
+      // ladderRoots3's own comment records L8 falling from ~63% to ~43% vs L7 when coarse sampling
+      // stopped landing real parks, which is why it grew a dedicated park recorder.
       for (let i = 0; i < arm.length; i++) {
         const w = arm[i], isThrow = w.v >= 1e5;
-        if (isThrow) { w.s = w.v; cands.push(w); continue; }
+        if (isThrow || w.park) { w.s = w.v; cands.push(w); continue; }
         let sum = w.v, n = 1;
         if (i > 0 && arm[i-1].v < 1e5) { sum += arm[i-1].v; n++; }
         if (i + 1 < arm.length && arm[i+1].v < 1e5) { sum += arm[i+1].v; n++; }
@@ -315,7 +353,7 @@ function nnPlanFor(eng, net, idx, opts) {
       if (g1.over) deep = g1.winner === idx ? 1e6 : -1e6;
       else {
         const oppPlan = nnPlanFor(eng, net, 1 - idx, { temperature: 0, depth: depth - 1, keepForDepth: o.keepForDepth,
-                                                      policy: o.policy, policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride, evalFn: o.evalFn, sweepDeg: o.sweepDeg,
+                                                      policy: o.policy, policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride, evalFn: o.evalFn, sweepDeg: o.sweepDeg, parkStops: o.parkStops,
                                                       abCut: o.abCut,
                                                       cutIfAbove: (o.abCut && bestDeep > -Infinity) ? -bestDeep : null });
         // Opponent wedged (no legal waypoint at all) -- score the position as it stands. This line
@@ -393,6 +431,7 @@ function nnPlanForTimed(eng, net, idx, opts) {
     const plan = nnPlanFor(eng, net, idx, { temperature: o.temperature, depth, keepForDepth,
                                              quiesce: o.quiesce, policy: o.policy,
                                              policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride,
+                                             parkStops: o.parkStops,
                                              evalFn: o.evalFn, sweepDeg: o.sweepDeg, abCut: o.abCut });
     if (!plan) return best;               // wedged -- nothing this depth found, keep whatever we had
     best = plan; best.searchDepth = depth;

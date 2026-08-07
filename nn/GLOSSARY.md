@@ -184,6 +184,27 @@ made that legible.
   lane's `--resultsJsonl` into one verdict — the same `komiLoss`-weighted scoring `arena.js`'s own
   summary line uses, so a merged run reads exactly like one long run would have.
 
+- **park stop / park exemption** (`--parkStops`, `nnai.js`) — a **park** is a foot resting within
+  `PARK_HI` (0.34) of a printed line but outside `PARK_LO` (0.05) — just off the centreline, magnet
+  still on the ink. `ladderEval` pays 8 per parked foot, its second-heaviest term after `zone`.
+  The band is *narrower than one 3° sweep step* (≈2.1 units of arc), so a park is **always** an
+  isolated spike whose immediate neighbours are always unparked — which means `nnai.js`'s plateau
+  smoothing, which exists to pull down exactly such spikes as probable evaluator noise, destroyed
+  most of the term by construction. Measured under L11's weights: a park stop scoring 23.24 raw
+  smoothed to 16.41, losing ~6.7 every time its neighbours were unparked. The ladder rungs hit this
+  identical bug once already — `ladderRoots3`'s own comment records **L8 falling from ~63% to ~43%
+  vs L7** when coarse sampling stopped landing real parks, which is why it grew a dedicated park
+  recorder whose candidates ride along *exempt* from the `keepStops` cap. `--parkStops` gives
+  `nnai.js` the same exemption (parks bypass smoothing exactly as throws do). **Off by default**, so
+  every value-net search stays bit-identical: the value net reads parks through `features.js`'s
+  `exp()` indicator rather than one heavy weight, and smoothing a *learned* evaluator's spikes is
+  the behaviour that block was designed for. Deliberately NOT auto-enabled for `le:` brains either —
+  `policyloop.js`'s running tournament pools `le:L11` results under a scheme tag, and silently
+  changing what that brain *is* mid-run would mix two different brains into one number.
+  Consequence worth keeping: `laddereval.js`'s premise that it "unwelds" L11's judgement from its
+  search is only *partly* achievable — ladderEval's park term is only meaningful if the search
+  generates park candidates, which is a property of the search, not the evaluator.
+
 ## Statistics convention (used throughout, not just the policy loop)
 
 - **2-sigma band** — `± sqrt(0.25/n) * 2` around the observed win rate: the width of the "could

@@ -45,7 +45,7 @@ function arg(name, dflt) {
 // recursive search stops once it has refuted the candidate (never blind -- no cutoff means every
 // arm is still swept); without it, the policy hard-prunes to its top arms, the original wiring.
 // Default stays pruning so the existing menu A/Bs keep testing what they say they test.
-function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, abCut, policyArms, stopStride, sweepDeg) {
+function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, abCut, policyArms, stopStride, sweepDeg, parkStops) {
   const m = /^L(\d+)$/i.exec(spec);
   if (m) {
     const lvl = +m[1];
@@ -69,8 +69,12 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
     const pTag = policy ? (abCut ? ',P-ab:' : ',P:') + path.basename(policyPath).replace(/\.json$/i, '') : '';
     const kTag = keepForDepth !== 4 ? ',K' + keepForDepth : '';
     const aTag = (policy && !abCut && policyArms) ? ',A' + policyArms : '';
-    const sTag = (stopStride > 1 ? ',S' + stopStride : '') + (sweepDeg !== 3 ? ',W' + sweepDeg : '');
+    // Park exemption rides in the name too: it changes which moves the brain can even pick, so two
+    // runs that differ only by it must not print the same name and pool as one brain.
+    const sTag = (stopStride > 1 ? ',S' + stopStride : '') + (sweepDeg !== 3 ? ',W' + sweepDeg : '') +
+                 (parkStops ? ',PARK' : '');
     const common = { temperature, keepForDepth, quiesce, policy, policyArms, stopStride, sweepDeg, evalFn,
+                     parkStops: !!parkStops,
                      policyPrune: !!policy && !abCut, abCut: !!abCut };
     if (timeMs) {
       const tm = () => (typeof timeMs === 'object' ? timeMs.ms : timeMs);
@@ -112,10 +116,12 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
     // arm count rides in the name: every pooled result so far silently used the default of 3, and
     // a score line that doesn't say which is a score line that can't be compared to another run.
     const aTag = (policy && !abCut && policyArms) ? ',A' + policyArms : '';
-    const sTag = (stopStride > 1 ? ',S' + stopStride : '') + (sweepDeg !== 3 ? ',W' + sweepDeg : '');
+    const sTag = (stopStride > 1 ? ',S' + stopStride : '') + (sweepDeg !== 3 ? ',W' + sweepDeg : '') +
+                 (parkStops ? ',PARK' : '');
     return { name: 'nn(' + path.basename(mp) + ',' + tTag + kTag + pTag + aTag + sTag + ')',
              fn: idx => nnPlanForTimed(eng, net, idx, { temperature, keepForDepth, quiesce, policy,
                                                         timeMs: tm(), policyArms, stopStride, sweepDeg,
+                                                        parkStops: !!parkStops,
                                                         policyPrune: !!policy && !abCut, abCut: !!abCut }) };
   }
   // Depth is reported as e.g. "D1.5" when quiesce rides on top of a plain depth-1 pass -- matches
@@ -123,10 +129,12 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
   // instead of two "D1" entries that secretly differ.
   const depthLabel = quiesce ? depth + 0.5 : depth;
   const aTagD = (policy && !abCut && policyArms) ? ',A' + policyArms : '';
-  const sTagD = (stopStride > 1 ? ',S' + stopStride : '') + (sweepDeg !== 3 ? ',W' + sweepDeg : '');
+  const sTagD = (stopStride > 1 ? ',S' + stopStride : '') + (sweepDeg !== 3 ? ',W' + sweepDeg : '') +
+                (parkStops ? ',PARK' : '');
   return { name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + (depthLabel > 1 ? ',D' + depthLabel : '') +
            kTag + pTag + aTagD + sTagD + ')',
            fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth, quiesce, policy, policyArms, stopStride, sweepDeg,
+                                                 parkStops: !!parkStops,
                                                  policyPrune: !!policy && !abCut, abCut: !!abCut }) };
 }
 
@@ -203,9 +211,17 @@ function main() {
   // candidate set without growing the recursion, which keepForDepth caps anyway. Real L11 uses 9.
   const sweepDeg = +arg('sweepDeg', 3);
   const sweepDegA = +arg('sweepDegA', sweepDeg), sweepDegB = +arg('sweepDegB', sweepDeg);
+  // --parkStops: exempt park stops from nnai's plateau smoothing (see nnai.js's smoothing block).
+  // Default OFF, deliberately, and NOT switched on for le: brains automatically: policyloop.js's
+  // running tournament already has le:L11 entrants pooling under a scheme tag, and silently
+  // changing what that brain is mid-run would mix two different brains into one pooled number --
+  // the exact failure TARGET_SCHEME exists to prevent. Turn it on explicitly (menu 38 does).
+  const parkStops = process.argv.includes('--parkStops');
+  const parkStopsA = parkStops || process.argv.includes('--parkStopsA');
+  const parkStopsB = parkStops || process.argv.includes('--parkStopsB');
   const asClock = t => (t && typeof t === 'object' ? t : t && +t);
-  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepA, quiesceA, arg('policyA', policy), asClock(timeMsA), abA, policyArmsA, stopStrideA, sweepDegA);
-  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepB, quiesceB, arg('policyB', policy), asClock(timeMsB), abB, policyArmsB, stopStrideB, sweepDegB);
+  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepA, quiesceA, arg('policyA', policy), asClock(timeMsA), abA, policyArmsA, stopStrideA, sweepDegA, parkStopsA);
+  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepB, quiesceB, arg('policyB', policy), asClock(timeMsB), abB, policyArmsB, stopStrideB, sweepDegB, parkStopsB);
   const games = +arg('games', 24);
   // both brains are commonly fully deterministic (nn at temperature 0, or a noise-free ladder
   // level) from the same fixed start -- without a shuffled opening, every game with the same
