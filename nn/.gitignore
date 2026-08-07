@@ -12,3 +12,4 @@ arena-logs/
 retro-loop-status.json
 .mine-cache/
 .engine-cache.json
+.l11-clock-ms

@@ -89,6 +89,11 @@ echo      -- a fixed clock sits in one regime forever; this samples across ply b
 echo      "never helps" and "helps only where it banks a ply" stop looking the same
 echo.
 echo  33. CLOCK SWEEP RESULTS: bin option 32's games by think time (instant, plays nothing)
+echo  38. L11 CLOCK MATCH: le:L11 given L11's OWN measured think time vs L11 native (unclocked,
+echo      fixed depth) -- measures this machine's L11 first (median of N real moves), then hands
+echo      leL11 that exact budget. Same eval, time-matched instead of width-matched: does L11's
+echo      judgement do better with nnai's search machinery than its own, given what it normally
+echo      spends anyway?
 echo  37. FULL LOOP: champ + mutant + scratch policy heads, on BOTH best.json and the L11-style
 echo      evaluator, round-robin at random think times, forever. The one that tests everything
 echo      at once -- 19 matchups a cycle. Preview it before committing hours: it dry-runs first.
@@ -151,6 +156,7 @@ if "%choice%"=="34" goto clockloop
 if "%choice%"=="35" goto narrowdeep
 if "%choice%"=="36" goto variantloop
 if "%choice%"=="37" goto fullloop
+if "%choice%"=="38" goto l11clockmatch
 if "%choice%"=="1" goto pull
 if "%choice%"=="2" goto build96
 if "%choice%"=="3" goto buildpointy
@@ -418,6 +424,31 @@ echo.
 echo === narrow+deep (keep %NDKEEP%, arms %NDARMS%, policy) vs default (keep 4, no policy), 2000ms both, %NDGAMES% games ===
 echo.
 node nn\arena.js --a nn:0:%CD%\nn\models\best.json --policyA %CD%\nn\models\policy-champ.json --keepA %NDKEEP% --policyArmsA %NDARMS% --b nn:0:%CD%\nn\models\best.json --keepB 4 --timeMs 2000 --games %NDGAMES% --saveData %CD%\nn\data\narrowdeep-%COMPUTERNAME%.jsonl
+pause
+goto menu
+
+:l11clockmatch
+rem le:L11 (L11's eval, nnai's search) vs the real L11 (its own fixed search), holding L11's own
+rem THINK TIME constant instead of holding search WIDTH constant. Different question from 35's:
+rem does L11's judgement do better with a real clock + iterative deepening than with its native
+rem fixed-depth-3/maxCands-28 search, given the same time it already spends? A plain "L11" brain
+rem spec ignores --timeMsB entirely (it always calls ladderPlanFor), so B is unaffected either way
+rem -- only A's clock is being set here.
+rem Both sides spend real per-move time (L11's own move cost is the whole point, and it is highly
+rem variable -- one machine measured a 20s MEDIAN with a 2-38s range), so arena.js's normal
+rem single-process/sequential-games behaviour makes a real sample size take many hours. This calls
+rem l11-clock-match.js instead of arena.js directly: it measures L11's clock once, splits the game
+rem count across cores-1 arena.js lanes running in parallel, and pools their results into one
+rem verdict when every lane is done -- same idea as the full loop's 12 arena lanes, applied to one
+rem matchup instead of many.
+call :dogit
+set "L11GAMES=" & set "L11MOVES="
+set /p L11GAMES="Games, Enter for 60: "
+if "%L11GAMES%"=="" set L11GAMES=60
+set /p L11MOVES="Moves to measure L11's clock over, Enter for 30: "
+if "%L11MOVES%"=="" set L11MOVES=30
+echo.
+node nn\l11-clock-match.js --games %L11GAMES% --moves %L11MOVES%
 pause
 goto menu
 
