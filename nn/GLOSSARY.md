@@ -172,11 +172,17 @@ made that legible.
   narrow, clock-gated search costs L11's judgement), just not the same question as "is L11's own
   judgement better served by nnai's search machinery, given the time it already spends." `l11-clock.js`
   measures the median of the local machine's own real per-move L11 times first (median, not mean —
-  a 6-move pass on one machine found 2.8-4.2s typical but two moves at 17-18s, and a mean built from
-  that would hand leL11 a budget dominated by rare expensive positions) and feeds that number to
-  `arena.js --a le:L11 --b L11 --timeMsA <measured>`. Measured per-machine, deliberately: a laptop
-  and a desktop don't take the same wall-clock time for the same fixed-depth search, so the number
-  can't be borrowed from a different run.
+  a small early pass found 2.8-4.2s typical but occasional moves in the 17-38s range, and a mean
+  built from that would hand leL11 a budget dominated by rare expensive positions), then feeds that
+  number to a matchup. Measured per-machine, deliberately: a laptop and a desktop don't take the
+  same wall-clock time for the same fixed-depth search, so the number can't be borrowed from a
+  different run. One real machine's median came back at ~20s -- meaning BOTH sides of this matchup
+  spend real per-move time, so `arena.js`'s normal one-process/sequential-games behaviour turns a
+  60-game sample into many hours. `l11-clock-match.js` (not `l11-clock.js` directly) is what menu 38
+  actually runs: it measures the clock once, splits the game count across `cores-1` parallel
+  `arena.js` lanes (same idea as the full loop's 12 lanes, applied to one matchup), and pools every
+  lane's `--resultsJsonl` into one verdict — the same `komiLoss`-weighted scoring `arena.js`'s own
+  summary line uses, so a merged run reads exactly like one long run would have.
 
 ## Statistics convention (used throughout, not just the policy loop)
 
@@ -209,6 +215,7 @@ made that legible.
 | `menu.bat` | the Windows console front-end wrapping all of the above |
 | `promote-mutant.js` | manually promotes `policy-mutant.json` → `policy-champ.json` |
 | `l11-clock.js` | measures L11's own median per-move think time on the local machine |
+| `l11-clock-match.js` | multi-lane `leL11 vs L11` run at that budget -- menu 38's actual entry point |
 | `digest.js` → `claude-digest.md` | crunches local-only files into one pushable summary |
 
 `elo-summary.json` (pushed) = fitted per-brain ratings. `elo-results.json` (local-only, never

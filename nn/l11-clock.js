@@ -19,28 +19,36 @@ function arg(name, def) {
   return i >= 0 ? process.argv[i + 1] : def;
 }
 
-const targetMoves = +arg('moves', 30);
-const outPath = arg('out', null);
-const eng = createEngine();
-const times = [];
-
-while (times.length < targetMoves) {
-  eng.newGame();
-  let guard = 0;
-  while (!eng.getG().over && times.length < targetMoves && guard++ < 200) {
-    const G = eng.getG();
-    const t0 = Date.now();
-    const plan = eng.ladderPlanFor(10, G.active);   // L11, same call the real ladder rung makes
-    times.push(Date.now() - t0);
-    if (!plan) break;
-    eng.applyPlan(plan);
+// Exported so l11-clock-match.js can measure once and reuse the number across every lane, rather
+// than each lane re-measuring (which would also hand different lanes different budgets -- a
+// labelling headache and not what "the same fixed budget" means).
+function measureL11Clock(targetMoves) {
+  const eng = createEngine();
+  const times = [];
+  while (times.length < targetMoves) {
+    eng.newGame();
+    let guard = 0;
+    while (!eng.getG().over && times.length < targetMoves && guard++ < 200) {
+      const G = eng.getG();
+      const t0 = Date.now();
+      const plan = eng.ladderPlanFor(10, G.active);   // L11, same call the real ladder rung makes
+      times.push(Date.now() - t0);
+      if (!plan) break;
+      eng.applyPlan(plan);
+    }
   }
+  times.sort((a, b) => a - b);
+  const pct = p => times[Math.min(times.length - 1, Math.floor(p * times.length))];
+  return { times, min: times[0], p25: pct(0.25), median: pct(0.5), p75: pct(0.75), max: times[times.length - 1] };
 }
 
-times.sort((a, b) => a - b);
-const pct = p => times[Math.min(times.length - 1, Math.floor(p * times.length))];
-const median = pct(0.5);
-console.log(`L11 think time on this machine, n=${times.length}: ` +
-            `min ${times[0]}ms  p25 ${pct(0.25)}ms  median ${median}ms  p75 ${pct(0.75)}ms  max ${times[times.length - 1]}ms`);
+if (require.main === module) {
+  const targetMoves = +arg('moves', 30);
+  const outPath = arg('out', null);
+  const r = measureL11Clock(targetMoves);
+  console.log(`L11 think time on this machine, n=${targetMoves}: ` +
+              `min ${r.min}ms  p25 ${r.p25}ms  median ${r.median}ms  p75 ${r.p75}ms  max ${r.max}ms`);
+  if (outPath) fs.writeFileSync(outPath, String(r.median));
+}
 
-if (outPath) fs.writeFileSync(outPath, String(median));
+module.exports = { measureL11Clock };

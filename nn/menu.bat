@@ -434,25 +434,21 @@ rem does L11's judgement do better with a real clock + iterative deepening than 
 rem fixed-depth-3/maxCands-28 search, given the same time it already spends? A plain "L11" brain
 rem spec ignores --timeMsB entirely (it always calls ladderPlanFor), so B is unaffected either way
 rem -- only A's clock is being set here.
+rem Both sides spend real per-move time (L11's own move cost is the whole point, and it is highly
+rem variable -- one machine measured a 20s MEDIAN with a 2-38s range), so arena.js's normal
+rem single-process/sequential-games behaviour makes a real sample size take many hours. This calls
+rem l11-clock-match.js instead of arena.js directly: it measures L11's clock once, splits the game
+rem count across cores-1 arena.js lanes running in parallel, and pools their results into one
+rem verdict when every lane is done -- same idea as the full loop's 12 arena lanes, applied to one
+rem matchup instead of many.
 call :dogit
-echo.
-echo Measuring L11's own median think time on THIS machine first (a laptop and a desktop do not
-echo take the same wall-clock time for the same fixed-depth search, so this can't be borrowed from
-echo a different run) -- default 30 real moves, may take a few minutes.
-echo.
-set "L11MOVES=" & set "L11GAMES="
-set /p L11MOVES="Moves to time, Enter for 30: "
-if "%L11MOVES%"=="" set L11MOVES=30
-node nn\l11-clock.js --moves %L11MOVES% --out %CD%\nn\.l11-clock-ms
-set /p L11MS=<%CD%\nn\.l11-clock-ms
-echo.
-echo L11's median think time here: %L11MS%ms -- giving leL11 exactly that budget.
+set "L11GAMES=" & set "L11MOVES="
 set /p L11GAMES="Games, Enter for 60: "
 if "%L11GAMES%"=="" set L11GAMES=60
+set /p L11MOVES="Moves to measure L11's clock over, Enter for 30: "
+if "%L11MOVES%"=="" set L11MOVES=30
 echo.
-echo === le:L11 (%L11MS%ms budget) vs L11 native (unclocked, fixed depth), %L11GAMES% games ===
-echo.
-node nn\arena.js --a le:L11 --b L11 --timeMsA %L11MS% --games %L11GAMES% --saveData %CD%\nn\data\l11clockmatch-%COMPUTERNAME%.jsonl
+node nn\l11-clock-match.js --games %L11GAMES% --moves %L11MOVES%
 pause
 goto menu
 
