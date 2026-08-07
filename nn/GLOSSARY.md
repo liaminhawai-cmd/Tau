@@ -192,6 +192,16 @@ force-added) = the raw per-pair W/L/D store underneath those ratings.
 - **mine-cache** (`nn/.mine-cache/<cacheKey>/`) — per-file cache keyed on `(mtimeMs, size)` that
   cut a ~2h09m mint down to seconds once warm. Safe because a game never spans files, so each
   file's mined output is a pure function of its own bytes.
+- **engine-cache** (`nn/.engine-cache.json`) — same pattern applied to `engine.js`'s
+  `buildEngineSource()`, which re-parses `index.html`'s top-level defs and re-walks their
+  dependency closure (a fresh `RegExp` built and tested per candidate name, every call) to derive
+  the sandboxed engine every `createEngine()` needs. Measured cost with no cache: 350-420ms, paid
+  in full by *every* process that calls it — every retromine/selfplay worker at startup, and every
+  `arena.js` matchup `policyloop.js` spawns fresh (19 per full-loop cycle) — none of it amortised
+  against real game-playing time, all of it a pure function of bytes that rarely change. Cached on
+  `(mtimeMs, size)` of `index.html`, same as mine-cache: 350-420ms cold, ~3ms warm, byte-identical
+  output either way. A miss or unreadable/corrupt cache falls straight back to the unchanged
+  rebuild path, so this can only make a run faster, never wrong.
 - **family-corrected split** — when comparing retromine-only vs non-retromine training data:
   rewriting each row's `g` (game id) to its true seed-family id before training, since retromine's
   "distinct games" are mostly near-duplicate replay siblings and a naive game-level split let them

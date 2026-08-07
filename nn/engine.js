@@ -79,8 +79,28 @@ function stripCommentsAndStrings(s) {
   return out;
 }
 
+// buildEngineSource() is a pure function of index.html's bytes, but the dependency-closure walk
+// below is O(defs picked x defs total) with a fresh RegExp built and run on every pair -- measured
+// at 350-420ms per call, every time, in every process that calls createEngine(). That is paid at
+// startup by EVERY worker: every retromine/selfplay lane, and every arena.js matchup policyloop.js
+// spawns fresh per pairing (19 of them per full-loop cycle). None of that work is amortised across
+// a run's actual game-playing time, and none of it changes unless index.html itself changes -- the
+// exact shape the mine-cache pattern elsewhere in nn/ already exists for. Same fix, same key shape
+// (mtimeMs + size): cache the built source string and skip straight past the closure walk when
+// index.html hasn't moved since the cache was written. A miss or a corrupt cache just falls through
+// to the unchanged rebuild path below, so this can only make a run faster, never wrong.
+const HTML_PATH = path.join(__dirname, '..', 'index.html');
+const ENGINE_CACHE_PATH = path.join(__dirname, '.engine-cache.json');
+
 function buildEngineSource() {
-  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const stat = fs.statSync(HTML_PATH);
+  const cacheKey = stat.mtimeMs + ':' + stat.size;
+  try {
+    const cached = JSON.parse(fs.readFileSync(ENGINE_CACHE_PATH, 'utf8'));
+    if (cached.key === cacheKey && typeof cached.source === 'string') return cached.source;
+  } catch (e) { /* no cache yet, or unreadable/corrupt -- fall through and rebuild */ }
+
+  const html = fs.readFileSync(HTML_PATH, 'utf8');
   const defs = topLevelDefs(html);
   for (const d of defs) d.bare = stripCommentsAndStrings(d.text);
   const byName = new Map();
@@ -105,7 +125,10 @@ function buildEngineSource() {
   if (/document\.|getElementById|localStorage/.test(bare))
     throw new Error('extracted engine pulled in DOM code — the closure reached too far');
   if (!/(^|\n)let G;/.test(code)) throw new Error("closure missed the game's `let G;` declaration");
-  return code + '\n';
+  const source = code + '\n';
+  try { fs.writeFileSync(ENGINE_CACHE_PATH, JSON.stringify({ key: cacheKey, source })); }
+  catch (e) { /* best-effort -- a write failure just costs the next process the rebuild, nothing more */ }
+  return source;
 }
 
 function createEngine() {
