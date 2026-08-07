@@ -38,9 +38,22 @@ const L9_WEIGHTS  = { margin: 1, zone: 2.2, park: 1.9, center: 0.12, oppFree: -0
 
 const WEIGHTS = { L9: L9_WEIGHTS, L10: L10_WEIGHTS, L11: L11_WEIGHTS };
 
-// nnai.js calls evalFn(eng, side) and wants "higher is better FOR side". ladderEval(idx, w) is
-// already exactly that, so this is a thin adapter rather than a reimplementation -- the scoring
-// stays the engine's, extracted live from the shipped game like everything else in engine.js.
+// nnai.js calls evalFn(eng, side) and wants "higher is better FOR side", WHOEVER'S TURN IT IS.
+// ladderEval(idx, w) is already exactly that, so this is a thin adapter rather than a
+// reimplementation -- the scoring stays the engine's, extracted live from the shipped game like
+// everything else in engine.js.
+//
+// THAT LAST CLAUSE WAS NOT ALWAYS TRUE, and the first version of this file shipped against the
+// wrong contract. nnai.js used to score a leaf as `-evalFn(eng, 1 - idx)`, which requires the
+// evaluator to be ANTISYMMETRIC (eval(me) == -eval(them)). The value net is trained on z so it
+// approximately is. ladderEval is NOT: `park` sums over pieces[idx] only, `oppFree` over
+// pieces[1-idx] only, `triMe` over me=idx only -- three one-sided terms, and park carries L11's
+// second-heaviest weight (8). Measured on real played positions, mean |ladderEval(0) -
+// (-ladderEval(1))| = 24.9 with the sign disagreeing outright at plies 0, 2 and 4. So this brain
+// was not "L11's judgement in a different search", it was a frequently sign-flipped number, and it
+// lost 0-42 to the real L11 across seven policy-loop cycles before anyone read the negation.
+// nnai.js now asks every call site for idx's score directly. If a future evaluator is added here,
+// it does NOT need to be antisymmetric -- just answer honestly about the side you are handed.
 function makeLadderEval(eng, which) {
   const w = WEIGHTS[which] || L11_WEIGHTS;
   return (e, side) => e.ladderEval(side, w);

@@ -145,7 +145,17 @@ const dryRun = process.argv.includes('--dryRun');
 // mv/depth SOURCE WEIGHT (not a hard filter -- see policy-targets.js's header for why the filter
 // version was reverted after a live A/B lost to both the unfiltered champion and no policy at all)
 // + throw-target reconstruction, both in policy-targets.js.
-const TARGET_SCHEME = 'search-weighted-v1';
+//
+// v2 (this bump is NOT about target mining -- it is about the SEARCH the games were played in):
+// nnai.js scored every swept leaf as `-evalFn(eng, 1 - idx)`, which silently assumed the evaluator
+// was antisymmetric. The value net approximately is; ladderEval is not (park/oppFree/triMe are
+// one-sided terms). Measured on real played positions: mean |ladderEval(0) - (-ladderEval(1))| =
+// 24.9 with the SIGN DISAGREEING at plies 0, 2 and 4 -- so every `le:L11` game played under v1 was
+// a frequently sign-flipped evaluator, not L11's judgement, and le:L11 duly lost 0-42 to the real
+// L11 across seven cycles. Value-net brains are unaffected (verified bit-identical), but the pool
+// key is shared, so v1 and v2 evidence must not mix: every le:L11 number under v1 is measuring the
+// bug. Nothing is deleted -- v1 entries simply stop counting toward v2's pool.
+const TARGET_SCHEME = 'search-weighted-v2';
 
 const modelsDir = path.join(dir, 'models');
 const dataDir = path.join(dir, 'data');

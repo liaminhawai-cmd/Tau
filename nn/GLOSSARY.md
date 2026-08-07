@@ -149,6 +149,20 @@ made that legible.
   count, so — like the other five — it doesn't shrink when arms are pruned, and it's what keeps `F`
   above zero even in the limit of a single-arm search.
 
+- **antisymmetric evaluator** — an evaluator where `eval(me) == -eval(them)`, i.e. one side's gain
+  is exactly the other's loss. `nnai.js` used to score every swept leaf as `-evalFn(eng, 1 - idx)`
+  (evaluate from the opponent's view, negate), which *silently requires* this property. The value
+  net, trained on `z`, approximately has it. `ladderEval` does not: `park` sums over `pieces[idx]`
+  only, `oppFree` over `pieces[1-idx]` only, `triMe` over `me=idx` only — three one-sided terms, and
+  `park` carries L11's second-heaviest weight (8). Measured on real played positions:
+  mean `|ladderEval(0) - (-ladderEval(1))|` = 24.9, **sign disagreeing outright** at plies 0, 2 and
+  4. That made `le:L11` a frequently sign-flipped number rather than L11's judgement, and it lost
+  **0-42** to the real L11 across seven policy-loop cycles before anyone read the negation. Fixed by
+  making the contract explicit — every call site now asks for `idx`'s score directly, and the
+  default value-net evaluator does the flip itself (verified bit-identical, 48/48 searches).
+  The lesson worth keeping: *a pluggable seam inherits every assumption the old inlined code made,
+  including the ones nobody wrote down.*
+
 ## Statistics convention (used throughout, not just the policy loop)
 
 - **2-sigma band** — `± sqrt(0.25/n) * 2` around the observed win rate: the width of the "could

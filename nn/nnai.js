@@ -138,14 +138,26 @@ function opponentHasThrow(eng, victimIdx) {
 function nnPlanFor(eng, net, idx, opts) {
   const o = opts || {};
   const stopStride = Math.max(1, o.stopStride || 1);
-  // The LEAF EVALUATOR is pluggable: o.evalFn(eng, side) -> a score for `side`, higher better.
-  // Default is the trained value net, i.e. exactly the old behaviour. The point of the seam is that
-  // a different evaluator (engine.js exports ladderEval, so L11's own hand-tuned eval is one call
-  // away) can then be dropped into the SAME search -- same sweeps, same keepForDepth, same policy
-  // pruning, same iterative deepening. That is what makes "L11's judgement with a real clock and a
-  // policy trimming the arms" a one-argument change rather than a second search implementation
-  // that would have to be kept in step with this one to stay comparable.
-  const evalFn = o.evalFn || ((e, side) => net.value(features(e)));
+  // The LEAF EVALUATOR is pluggable: o.evalFn(eng, side) -> a score for `side`, higher better,
+  // WHOEVER'S TURN IT IS. That last clause is the whole contract and it used to be implicit, which
+  // cost a whole experiment. The old code scored a leaf as `-evalFn(eng, 1 - idx)` -- negate the
+  // opponent's view -- which silently requires the evaluator to be ANTISYMMETRIC (eval(me) ==
+  // -eval(them)). The value net is trained on z so it approximately is. ladderEval is NOT: `park`
+  // reads only pieces[idx], `oppFree` only pieces[1-idx], `triMe` only me=idx, and with L11's
+  // weights (park:8 is its second-heaviest term) the asymmetry is large. Measured over 10 real
+  // positions: mean |ladderEval(0) - (-ladderEval(1))| = 37.7, and THE SIGN DISAGREED IN 9 OF 10.
+  // So `le:L11` was not "L11's judgement in a different search", it was a frequently sign-flipped
+  // number, which is why it lost 0-42 to the real L11 over seven policy-loop cycles.
+  //
+  // The fix is to make the contract explicit rather than assumed: every call site now asks for
+  // `idx`'s score directly, and an evaluator that needs to know whose turn it is reads G.active
+  // itself. The default value-net evaluator does exactly the flip the call sites used to do by
+  // hand, so every value-net search is bit-identical to before (see the wedged-node note at the
+  // depth loop for the one deliberate exception, which was a latent sign error for EVERY evaluator).
+  const evalFn = o.evalFn || ((e, side) => {
+    const v = net.value(features(e));
+    return e.getG().active === side ? v : -v;
+  });
   // o.sweepDeg: the angular step the sweep samples stops at, default the module's 3 degrees.
   // Worth a knob because resolution turns out to be nearly free: measured 7/20/40/60 waypoints at
   // 9/3/1.5/1 degrees for 18.32/20.18/21.45/24.82ms -- 8.5x the stops for 35% more time, because
@@ -211,8 +223,11 @@ function nnPlanFor(eng, net, idx, opts) {
         let v;
         if (oppOff) v = 1e6 - Math.abs(rad)*1e-3;   // a throw — engine-exact; shortest one wins
         else {
-          g.active = 1 - idx;                       // value from the opponent-to-move view
-          v = -evalFn(eng, 1 - idx);
+          // G.active is set to the REAL position (opponent to move after this swing) because
+          // features() reads it; the score asked for is still idx's. The default evaluator turns
+          // that into the same negated opponent-view value the old code computed inline.
+          g.active = 1 - idx;
+          v = evalFn(eng, idx);
           g.active = idx;
         }
         arm.push({ pivotIdx: pv, dir, targetRad: rad, v });
@@ -303,7 +318,13 @@ function nnPlanFor(eng, net, idx, opts) {
                                                       policy: o.policy, policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride, evalFn: o.evalFn, sweepDeg: o.sweepDeg,
                                                       abCut: o.abCut,
                                                       cutIfAbove: (o.abCut && bestDeep > -Infinity) ? -bestDeep : null });
-        if (!oppPlan) deep = net.value(features(eng));     // opponent wedged -- score as-is
+        // Opponent wedged (no legal waypoint at all) -- score the position as it stands. This line
+        // used to read `net.value(features(eng))`, which was wrong twice over: it ignored evalFn
+        // entirely (so a le:L11 search mixed [-1,1] value-net scores into a +-400 scale here), and
+        // G.active is 1-idx at this point, so the raw net.value was the OPPONENT's score assigned
+        // to a variable the caller reads as idx's -- a sign error for every evaluator including the
+        // value net. Rare (it needs a genuinely wedged side) but wrong whenever it fired.
+        if (!oppPlan) deep = evalFn(eng, idx);
         else {
           eng.applyPlanSearch(oppPlan);
           const g2 = eng.getG();
