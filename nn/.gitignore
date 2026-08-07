@@ -11,3 +11,4 @@ arena-logs/
 .elo-snapshot/
 retro-loop-status.json
 .mine-cache/
+.engine-cache.json
