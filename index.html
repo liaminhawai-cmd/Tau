@@ -2635,6 +2635,10 @@ function crossingSubstep(before, after, st) {
         st.startSide = before.map((f,i) => { const m={}; for (const id of st.contact[i]) m[id]=lineSideOf(f,id); return m; });
         st.entrySide = [{},{},{}];     // approach side of each line entered THIS turn
         st.pendingMerge = [{},{},{}];  // corner-merged lines awaiting centreline validation: id -> sponsor id
+        // Has the tripod's CURRENT stretch of line contact already cost a crossing? False here on
+        // purpose: lines a foot merely starts the turn sat on haven't cost anything yet -- the
+        // charge lands when something actually crosses (including that foot crossing off).
+        st.episodeCharged = false;
     }
     const stickEps = CFG.touchEps + CFG.lineStick;
     const next = [], nextEarned = []; let opened = 0;
@@ -2711,16 +2715,36 @@ function crossingSubstep(before, after, st) {
         next.push(kept);
         nextEarned.push(earned.filter(id => kept.includes(id)));
     }
-    // One SWEEP over a line is one crossing, however many feet and lines are involved at that
-    // instant: rounding a printed corner, or two different feet leaving two different lines in the
-    // same motion, is a single crossing of the piece -- not one per foot. Substeps are 0.4 degrees,
-    // so "the same instant" and "the same substep" are the same thing at this resolution.
-    if (opened) {
+    // The budget is a WHOLE-TRIPOD state, not a per-foot one:
+    //   a swing starts with the counter at 0; the moment a foot goes onto a line it goes to 1;
+    //   while any foot is still on a line, further feet going onto lines are part of that same
+    //   crossing and cost nothing; once every foot is off the lines the crossing is spent, and
+    //   touching another line after that would be a second one.
+    // Staying off the lines is free, so a swing may keep going after its crossing is spent -- it
+    // only stops at the point where a foot would touch a line again.
+    //
+    // This used to be billed per SUBSTEP, which merged only the openings landing in the same 0.4
+    // degrees. Two feet crossing different lines a hair apart -- visibly simultaneous, and legal --
+    // missed that window and were charged twice.
+    //
+    // "On a line" here is the true touching band (touchEps), NOT the sticky retention band the
+    // contact sets use: lineStick exists to stop contact flickering at the band edge, and letting
+    // it widen the merge window too would hold a crossing open for a quarter unit after the foot
+    // has visibly left the line, chaining crossings that are plainly separate.
+    // The pivot is excluded throughout -- it is the centre of rotation, never moves and crosses
+    // nothing, so a foot parked there neither costs a crossing nor keeps one open.
+    if (opened && !st.episodeCharged) {
         if (st.crossings + 1 > CFG.maxCrossingsPerTurn) return true;   // over the per-turn budget: roll back
         st.crossings += 1;                  // billed when it OPENS (parking on a line spends it too)
+        st.episodeCharged = true;
     }
     st.contact = next;
     st.earned = nextEarned;
+    // Crossing closes the instant the whole tripod is clear of every line (pivot excluded). It is
+    // spent at that point, so the next foot to touch a line opens a NEW one -- refused at a budget
+    // of 1. Measured on `after`, the pose this substep actually reached.
+    if (!after.some((f, i) => i !== st.pinned && nearLineIds(f, CFG.touchEps).length > 0))
+        st.episodeCharged = false;
     for (let i=0;i<3;i++) {
         for (const id in newSides[i]) st.entrySide[i][id] = newSides[i][id];
         for (const id in newPending[i]) st.pendingMerge[i][id] = newPending[i][id];
