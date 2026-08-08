@@ -515,7 +515,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 177</div>
+<div id="buildTag">build 176</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2635,15 +2635,9 @@ function crossingSubstep(before, after, st) {
         st.startSide = before.map((f,i) => { const m={}; for (const id of st.contact[i]) m[id]=lineSideOf(f,id); return m; });
         st.entrySide = [{},{},{}];     // approach side of each line entered THIS turn
         st.pendingMerge = [{},{},{}];  // corner-merged lines awaiting centreline validation: id -> sponsor id
-        // Is a BILLED crossing's contact chain currently live? Deliberately false here: the lines a
-        // foot merely starts the turn sat on do NOT open an episode, or starting on a line would buy
-        // the whole turn free (exactly the "free trip over the line you parked on" this rule set
-        // exists to prevent). Only a crossing that actually gets billed opens the chain.
-        st.episodeOpen = false;
     }
     const stickEps = CFG.touchEps + CFG.lineStick;
     const next = [], nextEarned = []; let opened = 0;
-    const openedBy = new Set();    // which feet opened something this substep
     const newSides = [{},{},{}];   // entrySide additions, committed only if the substep stands
     const newPending = [{},{},{}], resolvedPending = [[],[],[]];
     const justCrossed = [];   // every line id a foot's PAD newly touched this substep (billed or free)
@@ -2663,7 +2657,7 @@ function crossingSubstep(before, after, st) {
         for (const id of st.contact[i]) if (!near.includes(id)) {
             if (st.startSide && st.startSide[i] && st.startSide[i][id] !== undefined &&
                 lineSideOf(after[i], id) !== st.startSide[i][id]) {
-                opened++; openedBy.add(i);
+                opened++;
                 justCrossed.push(id);
             }
         }
@@ -2681,7 +2675,7 @@ function crossingSubstep(before, after, st) {
             if (sponsor === undefined) continue;
             const flipped = st.entrySide[i][id] !== undefined && lineSideOf(after[i], id) !== st.entrySide[i][id];
             if (flipped) {
-                if (lineDistOf(after[i], sponsor) > CFG.holdEps) { opened++; openedBy.add(i); }   // missed the corner: it's a real 2nd crossing
+                if (lineDistOf(after[i], sponsor) > CFG.holdEps) opened++;   // missed the corner: it's a real 2nd crossing
                 resolvedPending[i].push(id);   // validated once, at the first centreline flip
             } else if (lineDistOf(after[i], id) <= CFG.crossEps && lineDistOf(after[i], sponsor) > CFG.holdEps) {
                 // The sponsor is already lost and the foot is about to reach the merged line's
@@ -2689,7 +2683,7 @@ function crossingSubstep(before, after, st) {
                 // crossing NOW, while the foot is still outside grace reach. If the budget rejects,
                 // the swing stops here — resting beyond crossEps, so next turn can't grace-cross
                 // the line it never paid for (the three-step version of the corner slip).
-                opened++; openedBy.add(i);
+                opened++;
                 resolvedPending[i].push(id);
             }
         }
@@ -2713,45 +2707,20 @@ function crossingSubstep(before, after, st) {
                 justCrossed.push(id);
                 if (!atCorner) entered = true;
             }
-        if (entered) { opened++; openedBy.add(i); }   // this foot opened a fresh crossing (off→on, or a non-corner second line)
+        if (entered) opened++;   // this foot opened a fresh crossing (off→on, or a non-corner second line)
         next.push(kept);
         nextEarned.push(earned.filter(id => kept.includes(id)));
     }
-    // One SWEEP over a line is one crossing, however many feet and lines are involved -- "a crossing
-    // lasts as long as the piece stays on a line". That is a PIECE-level episode, so a hand-off
-    // counts once: if a second foot is already on a line before the first foot gets off its own,
-    // the two contacts overlap and it is one continuous crossing, not two. Billing used to be per
-    // SUBSTEP, which only merged openings landing in the same 0.4 degrees -- a hand-off two
-    // substeps apart was charged twice and refused a legal move.
-    //
-    // Three conditions, and all of them have to hold for the hand-off to ride free:
-    //   1. an episode is already OPEN -- i.e. a crossing was billed earlier this turn and its
-    //      contact chain has not lapsed. Lines merely sat on at turn start don't count (see
-    //      st.episodeOpen above), so parking on a line still costs you the crossing.
-    //   2. the foot holding that chain is NOT the pivot. The pivot is the centre of rotation: it
-    //      never moves and never crosses anything, so a foot parked there contributes nothing.
-    //      Excluding it is also what keeps the old exploit dead -- with the pivot counted, pinning
-    //      a foot on the inner ring would hold the chain open all turn and let the other two sweep
-    //      across every line free (the illegal AI/demo moves per-foot episodes were written to fix).
-    //   3. the holder is a DIFFERENT foot from the one opening. One foot picking up a second line
-    //      by itself is not a hand-off -- that's the corner case, and it keeps going through the
-    //      strict corner-merge machinery above (sponsor must be earned, validated at the
-    //      centreline) rather than being waved through here.
-    // st.contact still holds the PRE-substep sets at this point (it is replaced with `next` below),
-    // so this reads "was another foot already mid-crossing when this opening happened?".
-    const handedOff = st.episodeOpen &&
-        st.contact.some((ids, j) => j !== st.pinned && ids.length > 0 && !openedBy.has(j));
-    if (opened && !handedOff) {
+    // One SWEEP over a line is one crossing, however many feet and lines are involved at that
+    // instant: rounding a printed corner, or two different feet leaving two different lines in the
+    // same motion, is a single crossing of the piece -- not one per foot. Substeps are 0.4 degrees,
+    // so "the same instant" and "the same substep" are the same thing at this resolution.
+    if (opened) {
         if (st.crossings + 1 > CFG.maxCrossingsPerTurn) return true;   // over the per-turn budget: roll back
-        st.crossings += 1;                  // billed when the episode OPENS (parking on a line spends it too)
+        st.crossings += 1;                  // billed when it OPENS (parking on a line spends it too)
     }
-    if (opened) st.episodeOpen = true;
     st.contact = next;
     st.earned = nextEarned;
-    // Chain lapses the moment no moving foot is left on a line — the next opening starts a fresh
-    // episode and gets billed. (Pivot excluded for the same reason as above: a foot parked at the
-    // centre of rotation would otherwise hold the chain open for the whole turn.)
-    if (!next.some((ids, j) => j !== st.pinned && ids.length > 0)) st.episodeOpen = false;
     for (let i=0;i<3;i++) {
         for (const id in newSides[i]) st.entrySide[i][id] = newSides[i][id];
         for (const id in newPending[i]) st.pendingMerge[i][id] = newPending[i][id];
