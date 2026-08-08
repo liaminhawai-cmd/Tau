@@ -34,7 +34,8 @@ echo   Arena results are also written to nn\arena-logs\ as they go, so a closed
 echo   window or a killed run never loses them.
 echo.
 echo   LOOPS -- run until the window is closed, unless noted otherwise
-echo  20. FULL TRAINER: self-play + retrain + round robin + ladder sweep, forever
+echo  20. FULL TRAINER: continuous self-play + evolving Elo pool + CPU value/GPU dual training
+echo      -- no retromine; dual nets enter both bare and +policy on the same leaderboard
 echo  21. RETROMINE: ratchet-only data generation, multicore
 echo  22. SELF-PLAY FACTORY: plain game generation for a spare machine (never trains/rates)
 echo  23. POLICY FIGHT: train a policy net on existing data, fight it at equal think-time
@@ -97,7 +98,8 @@ echo      spends anyway? Multi-core. Now also exempts PARK stops from nnai's pla
 echo      without which leL11 could not play L11's park game at all (see nn/GLOSSARY.md).
 echo  39. TORCH TRAIN: train a value net in PyTorch on the same nn\data\*.jsonl train.js uses --
 echo      no export step, same game-level split + gameWeight/drawWeight, drops into arena.js/
-echo      elorank.js unchanged. Needs Python + `pip install torch`. Verifies itself before
+echo      elorank.js unchanged. Uses CUDA when available. Needs Python + `pip install torch`.
+echo      Verifies itself before
 echo      claiming success -- a transposed weight matrix loads and plays fine with no error,
 echo      just badly, so this always checks against reference outputs first.
 echo  40. PYTHON vs JS VALUE: torch-%COMPUTERNAME%.json vs value.json, same engine + same depth
@@ -200,21 +202,43 @@ if "%choice%"=="14" goto :eof
 goto menu
 
 :fulltrainer
-rem Was START.bat option 1. Games per self-play BATCH -- a bigger batch pays the straggler tail
-rem less often. SHAPE is the architecture for the from-scratch challenger; blank it to follow
-rem best.json instead. RANDSTART is the fraction of self-play games started from a fully random
-rem legal pose.
+rem The existing proven trainer, not a separate league loop: ordinary self-play stays continuous;
+rem CPU value controls/mutants/lineages keep evolving; elorank places frozen checkpoints on one
+rem persistent adaptive pool. Retromine has been removed from this loop. A dual control+mutant
+rem branch now trains on CUDA at the same time as the CPU branch and enters twice per depth -- bare
+rem and +policy -- without ever being copied over the one-output best.json.
 call :dogit
-set GAMES=1000
-set SHAPE=96,64,48
-set SHAPEFLAG=
-if not "%SHAPE%"=="" set SHAPEFLAG=--scratchHidden %SHAPE%
-set RANDSTART=0.15
+set "DUALFLAG="
+where python >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo   Python not found: the ordinary CPU value trainer will still run, but dual heads are off.
+  echo   Install Python + `pip install torch` to enable the GPU branch.
+  echo.
+  set "DUALFLAG=--noDual"
+)
+if not defined DUALFLAG (
+  python -c "import torch" >nul 2>nul
+  if errorlevel 1 (
+    echo.
+    echo   PyTorch is not installed: the ordinary trainer will run without dual heads.
+    echo   Run: pip install torch
+    echo.
+    set "DUALFLAG=--noDual"
+  )
+)
+set "DUEPOCHS="
+if not defined DUALFLAG set /p DUEPOCHS="Dual epoch budgets to rotate through, Enter for 20,40,60: "
+if not defined DUALFLAG if "!DUEPOCHS!"=="" set DUEPOCHS=20,40,60
 echo.
-echo Full Tau NN training started.
-echo Leave this window open. Close it any time to stop - progress is saved.
+echo Full Tau trainer started. Self-play keeps making data while CPU value and GPU dual branches train.
+echo Retromine is not part of this loop. Close the window any time; completed work is checkpointed.
 echo.
-node nn\run.js --gamesPerBatch %GAMES% --randomStartFrac %RANDSTART% %SHAPEFLAG%
+if defined DUALFLAG (
+  node nn\run.js --gamesPerBatch 1000 --randomStartFrac 0.15 --scratchHidden 96,64,48 %DUALFLAG%
+) else (
+  node nn\run.js --gamesPerBatch 1000 --randomStartFrac 0.15 --scratchHidden 96,64,48 --dualEpochs !DUEPOCHS!
+)
 pause
 goto menu
 

@@ -127,6 +127,9 @@ const focusPairsOnly = arg('focusPairs', '1') !== '0';
 // net ratings only mean anything because they are tethered to the anchor rungs -- an nn cloud that
 // mostly plays itself stays internally consistent while floating loose against the scale.
 const anchorShare = Math.min(0.9, Math.max(0, +arg('anchorShare', 0.3)));
+// Most compute should improve the competitive frontier, but never set weak models' probability to
+// zero: they still need enough evidence to be retired honestly. 0.15 = a 15% exploration floor.
+const strengthExplore = Math.min(0.9, Math.max(0.01, +arg('strengthExplore', 0.15)));
 // Seconds of wall time per unit of pairWeight, from this project's measured game times. Only ever
 // used for the up-front estimate and budget trimming; the live ETA measures real pace instead, so
 // being wrong here costs a rough first guess and nothing more.
@@ -154,6 +157,30 @@ function discoverModels() {
     const last = path.join(modelsDir, ck[ck.length - 1]);
     if (!pick.includes(last)) pick.push(last);
   }
+  // Frozen dual entrants are a separate lineage from best.json. Keep their stable numbered files
+  // discoverable on later placement runs so their old games remain part of the connected graph.
+  // Once the archive is large, reserve seats for the strongest measured files and the newest files,
+  // then fill the rest with history. Pure even sampling can accidentally evict the champion.
+  const dual = files.filter(f => /^dual-(?:control|mut)-\d+-e\d+\.json$/.test(f)).sort();
+  let keepDual = dual;
+  if (dual.length > 40) {
+    const rated = {};
+    try {
+      const old = JSON.parse(fs.readFileSync(summaryPath, 'utf8')).players || {};
+      for (const v of Object.values(old)) if (v.brain === 'dual' && v.model && Number.isFinite(v.elo)) {
+        const f = path.basename(v.model);
+        rated[f] = Math.max(rated[f] == null ? -Infinity : rated[f], v.elo);
+      }
+    } catch (e) {}
+    const keep = new Set(Object.entries(rated).filter(([f]) => dual.includes(f))
+      .sort((a,b)=>b[1]-a[1]).slice(0,12).map(([f])=>f));
+    for (const f of dual.slice(-12)) keep.add(f);
+    const history = dual.filter(f=>!keep.has(f));
+    const slots = 40-keep.size, step = Math.max(1, Math.ceil(history.length/Math.max(1,slots)));
+    for (let i=0;i<history.length && keep.size<40;i+=step) keep.add(history[i]);
+    keepDual = dual.filter(f=>keep.has(f));
+  }
+  for (const f of keepDual) pick.push(path.join(modelsDir, f));
   // Anything named by --focus joins the field unconditionally. Focus only restricts which PAIRS get
   // played; a model that is focused but not discovered would be silently rated zero games, which is
   // exactly the failure mode for the from-scratch challenger (scratch-091.json matches none of the
@@ -195,15 +222,30 @@ function snapshotModels(paths) {
 }
 
 const players = [];   // { id, kind:'ladder'|'nn', spec, depth, label }
+function isDualModel(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')).dual === true; }
+  catch (e) { return false; }
+}
 let LADDER_N = 11;
 try { LADDER_N = require('./engine.js').createEngine().AI_LADDER.length; } catch (e) {}
 const useLevels = levels.length ? levels.filter(l => l <= LADDER_N) : Array.from({ length: LADDER_N }, (_, i) => i + 1);
 for (const l of useLevels)
   players.push({ id: `L${l}`, kind: 'ladder', spec: `L${l}`, level: l, label: `L${l}` });
-for (const m of snapshotModels(discoverModels()))
-  for (const d of depths)
-    players.push({ id: `${path.basename(m, '.json')}@D${d}`, kind: 'nn', spec: `nn:0:${m}`,
-                   depth: d, model: m, label: `${path.basename(m, '.json')} D${d}` });
+for (const m of snapshotModels(discoverModels())) for (const d of depths) {
+  const name = path.basename(m, '.json');
+  if (!isDualModel(m)) {
+    players.push({ id: `${name}@D${d}`, kind: 'nn', spec: `nn:0:${m}`,
+                   depth: d, model: m, label: `${name} D${d}` });
+  } else {
+    // One frozen dual file is two rated search identities. Bare measures the jointly-trained value
+    // head; +P spends its own policy logits on ordering/cutoff. Same weights, same depth, one flag
+    // apart -- the clean fusion ablation the old nn-only pool could not represent.
+    players.push({ id: `${name}@D${d}`, kind: 'nn', brain: 'dual', spec: `dual:0:${m}`,
+                   depth: d, model: m, label: `${name} D${d}` });
+    players.push({ id: `${name}+P@D${d}`, kind: 'nn', brain: 'dual', spec: `dual:0:${m}`,
+                   depth: d, model: m, dualPolicy: true, ab: true, label: `${name}+policy D${d}` });
+  }
+}
 
 // --- which pairs to play ------------------------------------------------------------------------
 // Connectivity, not coverage. Three groups, each earning its cost:
@@ -361,6 +403,10 @@ function playPair(a, b) {
     if (randomStartFrac > 0) args.push('--randomStartFrac', String(randomStartFrac));
     if (a.kind === 'nn') args.push('--depthA', String(a.depth));
     if (b.kind === 'nn') args.push('--depthB', String(b.depth));
+    if (a.dualPolicy) args.push('--dualPolicyA');
+    if (b.dualPolicy) args.push('--dualPolicyB');
+    if (a.ab) args.push('--abA');
+    if (b.ab) args.push('--abB');
     if (saveData) args.push('--saveData', saveData);
     execFile('node', args, { encoding: 'utf8', maxBuffer: 1 << 24 }, (err, stdout, stderr) => {
       // Same parse arena.js's own callers use: the LAST "N-M (" on the line, since the per-game
@@ -648,7 +694,8 @@ function report() {
       out.players[r.p.id] = {
         kind: r.p.kind, elo: +r.elo.toFixed(1), games: r.games,
         ...(r.p.kind === 'nn' ? {
-          model: r.p.model, depth: r.p.depth,
+          model: r.p.model, depth: r.p.depth, brain: r.p.brain || 'nn',
+          dualPolicy: !!r.p.dualPolicy,
           rank: Number.isFinite(r.rank) && !r.edge ? +r.rank.toFixed(2) : null,
           rankLo: c && Number.isFinite(c.lo) ? +c.lo.toFixed(2) : null,
           rankHi: c && Number.isFinite(c.hi) ? +c.hi.toFixed(2) : null,
@@ -734,6 +781,12 @@ const pairGamesOf = () => {
 // (which is exactly what a mid-run fit showed: L9 and L10 rating below L8).
 function pickPair(elo, inFlight) {
   const g = gamesOf(), pg = pairGamesOf(), lg = ladderGamesOf();
+  const netElos = players.filter(p=>p.kind==='nn').map(p=>elo[p.id]).filter(Number.isFinite);
+  const minE = netElos.length ? Math.min(...netElos) : 0;
+  const maxE = netElos.length ? Math.max(...netElos) : 0;
+  const span = Math.max(1, maxE-minE);
+  const strength = p => p.kind !== 'nn' ? 1 :
+    strengthExplore + (1-strengthExplore)*Math.pow(((elo[p.id]||0)-minE)/span, 2);
   let best = null, bestScore = -Infinity;
   for (let i = 0; i < players.length; i++) {
     for (let j = i + 1; j < players.length; j++) {
@@ -773,7 +826,12 @@ function pickPair(elo, inFlight) {
         const net = a.kind === 'nn' ? a : b;
         if ((lg[net.id] || 0) <= anchorShare*(g[net.id] || 0)) anchorBoost = 4;
       }
-      const score = (0.15 + closeness)*need*novelty*ladderBoost*anchorBoost;
+      const strengthBias = a.kind==='nn'&&b.kind==='nn'
+        ? Math.sqrt(strength(a)*strength(b)) : strength(a.kind==='nn'?a:b);
+      // Optimise information per CPU minute, not merely per completed game. Uncertain D3 still gets
+      // scheduled, but it must justify the ~20x D1 cost instead of silently eating the whole box.
+      const cpuCost = Math.sqrt(SIDE_COST(a)+SIDE_COST(b));
+      const score = (0.15 + closeness)*need*novelty*ladderBoost*anchorBoost*strengthBias/cpuCost;
       if (score > bestScore) { bestScore = score; best = [a, b]; }
     }
   }
@@ -788,8 +846,8 @@ async function main() {
   // extra precision buys nothing downstream -- it already identifies which gap the brain sits in.
   // 0 disables, leaving time/coverage as the only stops.
   const rankTolerance = +arg('rankTolerance', 0.5);
-  console.log(`elorank: ${players.length} brains, ${workers} lanes, ` +
-              `adaptive pairing (closest-rated first), ${gamesPerPair} games per matchup`);
+  console.log(`elorank: ${players.length} brains, ${workers} lanes, adaptive pairing ` +
+              `(close rating + uncertainty + strength/exploration + CPU cost), ${gamesPerPair} games per matchup`);
   console.log(`  stops when every net's rank is known to +-${rankTolerance} rungs (90% CI)` +
               (budgetHours > 0 ? `, or at ${budgetHours}h` : '') + `, whichever comes first`);
   const already = Object.keys(store.results).length;
