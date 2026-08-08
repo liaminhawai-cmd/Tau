@@ -1,68 +1,68 @@
 TAU VALUE LEAGUE
-updated 2026-08-08T21:26:21.416Z
-712 games total | ladder 67 (9.4%, target 10%) | 14 lanes
+updated 2026-08-08T21:28:03.576Z
+720 games total | ladder 69 (9.6%, target 10%) | 14 lanes
 Elo is anchored at L11 = 0. CI is 90%.
 
 OVERALL
   #     Elo        90% CI    games  player
-  1     603       585..629      11  Torch 96,96 D3
-  2     172        86..266      49  Dual 128,128 D2
-  3     159       109..223      53  JS 96,96 D3
-  4     143        87..205      54  Torch 96,96 D2
-  5     113        52..174      57  Torch 208 D3
-  6     101        47..168      58  Dual 128,128+policy D3
-  7      98        28..155      55  JS 96,96 D2
-  8      89        16..155      59  Dual 96,96,96 D3
-  9      82        37..141      60  Dual 96,96,96+policy D2
- 10      58         4..129      62  Dual 128,128+policy D2
- 11      47        -7..114      64  Dual 96,96,96 D2
- 12      39       -31..102      61  Dual 96,96,96+policy D1
- 13      36        -29..99      62  Torch 96,96 D1
- 14      35       -22..100      62  JS 208 D2
- 15      22        -41..94      63  Dual 128,128 D3
- 16      22        -35..83      64  Torch 208 D2
- 17      16          4..25      16  L10
- 18      12        -55..76      64  JS 208 D3
- 19       6        -63..62      61  Dual 128,128 D1
- 20       1        -56..64      60  Dual 96,96,96+policy D3
+  1     602       588..632      11  Torch 96,96 D3
+  2     171        93..257      49  Dual 128,128 D2
+  3     157       107..228      53  JS 96,96 D3
+  4     146        90..207      55  Torch 96,96 D2
+  5     111        51..181      57  Torch 208 D3
+  6     100        48..157      58  Dual 128,128+policy D3
+  7      91        27..156      60  Dual 96,96,96 D3
+  8      81        31..145      60  Dual 96,96,96+policy D2
+  9      80        28..144      57  JS 96,96 D2
+ 10      57        -7..103      62  Dual 128,128+policy D2
+ 11      46       -12..101      64  Dual 96,96,96 D2
+ 12      41       -21..104      63  Torch 96,96 D1
+ 13      34        -20..83      62  JS 208 D2
+ 14      29        -40..97      65  Dual 128,128 D3
+ 15      21        -33..92      64  Dual 96,96,96+policy D1
+ 16      21        -31..83      64  Torch 208 D2
+ 17      15          6..25      16  L10
+ 18      10        -72..70      64  JS 208 D3
+ 19       7        -51..70      61  Dual 96,96,96+policy D3
+ 20       4        -55..62      61  Dual 128,128 D1
  21       0           0..0      16  L11
- 22     -26        -91..33      62  Dual 128,128+policy D1
- 23     -38       -119..23      57  Torch 208 D1
- 24     -50       -118..-1      57  JS 96,96 D1
- 25     -71      -136..-13      12  L9
- 26     -94      -102..-90      14  L7
- 27    -107      -155..-53      50  Dual 96,96,96 D1
- 28    -108      -180..-53      52  JS 208 D1
- 29    -310     -327..-299       9  L8
+ 22     -27        -96..33      62  Dual 128,128+policy D1
+ 23     -36       -100..11      59  Torch 208 D1
+ 24     -52       -103..-4      57  JS 96,96 D1
+ 25     -94      -102..-88      14  L7
+ 26     -97      -156..-56      51  Dual 96,96,96 D1
+ 27    -103      -163..-48      14  L9
+ 28    -109      -173..-31      52  JS 208 D1
+ 29    -310     -323..-296       9  L8
 
 DEPTH 1 MODELS
-  1. Dual 96,96,96+policy D1  Elo 39  games 61
-  2. Torch 96,96 D1  Elo 36  games 62
-  3. Dual 128,128 D1  Elo 6  games 61
-  4. Dual 128,128+policy D1  Elo -26  games 62
-  5. Torch 208 D1  Elo -38  games 57
-  6. JS 96,96 D1  Elo -50  games 57
-  7. Dual 96,96,96 D1  Elo -107  games 50
-  8. JS 208 D1  Elo -108  games 52
+  1. Torch 96,96 D1  Elo 41  games 63
+  2. Dual 96,96,96+policy D1  Elo 21  games 64
+  3. Dual 128,128 D1  Elo 4  games 61
+  4. Dual 128,128+policy D1  Elo -27  games 62
+  5. Torch 208 D1  Elo -36  games 59
+  6. JS 96,96 D1  Elo -52  games 57
+  7. Dual 96,96,96 D1  Elo -97  games 51
+  8. JS 208 D1  Elo -109  games 52
 
 DEPTH 2 MODELS
-  1. Dual 128,128 D2  Elo 172  games 49
-  2. Torch 96,96 D2  Elo 143  games 54
-  3. JS 96,96 D2  Elo 98  games 55
-  4. Dual 96,96,96+policy D2  Elo 82  games 60
-  5. Dual 128,128+policy D2  Elo 58  games 62
-  6. Dual 96,96,96 D2  Elo 47  games 64
-  7. JS 208 D2  Elo 35  games 62
-  8. Torch 208 D2  Elo 22  games 64
+  1. Dual 128,128 D2  Elo 171  games 49
+  2. Torch 96,96 D2  Elo 146  games 55
+  3. Dual 96,96,96+policy D2  Elo 81  games 60
+  4. JS 96,96 D2  Elo 80  games 57
+  5. Dual 128,128+policy D2  Elo 57  games 62
+  6. Dual 96,96,96 D2  Elo 46  games 64
+  7. JS 208 D2  Elo 34  games 62
+  8. Torch 208 D2  Elo 21  games 64
 
 DEPTH 3 MODELS
-  1. Torch 96,96 D3  Elo 603  games 11
-  2. JS 96,96 D3  Elo 159  games 53
-  3. Torch 208 D3  Elo 113  games 57
-  4. Dual 128,128+policy D3  Elo 101  games 58
-  5. Dual 96,96,96 D3  Elo 89  games 59
-  6. Dual 128,128 D3  Elo 22  games 63
-  7. JS 208 D3  Elo 12  games 64
-  8. Dual 96,96,96+policy D3  Elo 1  games 60
+  1. Torch 96,96 D3  Elo 602  games 11
+  2. JS 96,96 D3  Elo 157  games 53
+  3. Torch 208 D3  Elo 111  games 57
+  4. Dual 128,128+policy D3  Elo 100  games 58
+  5. Dual 96,96,96 D3  Elo 91  games 60
+  6. Dual 128,128 D3  Elo 29  games 65
+  7. JS 208 D3  Elo 10  games 64
+  8. Dual 96,96,96+policy D3  Elo 7  games 61
 
 Close/Ctrl-C any time; state is checkpointed after every completed game.
