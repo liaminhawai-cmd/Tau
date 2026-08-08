@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { spawn, spawnSync } = require('child_process');
+const { spawn, spawnSync, execFileSync } = require('child_process');
 const { createEngine } = require('./engine.js');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -19,6 +19,69 @@ const DIR = __dirname;
 const MODELS = path.join(DIR, 'models');
 const HOST = os.hostname();
 const SAFEHOST = HOST.replace(/[^\w.-]+/g, '_');
+
+// --- git: same plumbing retroloop.js/run.js use, including the GitHub-Desktop fallback and
+// "would be overwritten by merge" recovery -- copied rather than shared across files, matching how
+// this project's other standalone loop scripts each carry their own copy.
+const q = s => '"' + String(s).replace(/"/g, '\\"') + '"';
+let gitCmd;
+function findGit() {
+  if (gitCmd !== undefined) return gitCmd;
+  const works = c => {
+    try {
+      execFileSync(c === 'git' ? 'git' : q(c), ['--version'],
+                   { shell: true, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      return true;
+    } catch (e) { return false; }
+  };
+  const candidates = ['git'];
+  try {
+    const base = path.join(process.env.LOCALAPPDATA || '', 'GitHubDesktop');
+    const ver = f => f.slice(4).split('.').map(Number);
+    const apps = fs.readdirSync(base).filter(f => /^app-/.test(f))
+      .sort((a, b) => { const va = ver(a), vb = ver(b);
+        for (let i = 0; i < 3; i++) if ((vb[i] || 0) !== (va[i] || 0)) return (vb[i] || 0) - (va[i] || 0);
+        return 0; });
+    for (const a of apps) candidates.push(path.join(base, a, 'resources', 'app', 'git', 'cmd', 'git.exe'));
+  } catch (e) {}
+  gitCmd = candidates.find(works) || null;
+  return gitCmd;
+}
+const gitErrText = e => String((e && (e.stderr || e.stdout)) || (e && e.message) || e).trim().split('\n').slice(0, 3).join(' | ');
+function git(args) {
+  const found = findGit();
+  if (!found) throw new Error('no git found');
+  return execFileSync(found === 'git' ? 'git' : q(found), args.map(q),
+                      { cwd: ROOT, shell: true, encoding: 'utf8' });
+}
+function gitSoft(args, what) {
+  try { git(args); return true; } catch (e) {
+    const raw = String((e && e.stderr) || (e && e.message) || e);
+    if (args[0] === 'pull' && /would be overwritten by merge/.test(raw)) {
+      const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+      const start = lines.findIndex(l => /would be overwritten by merge/.test(l));
+      const conflicts = [];
+      for (let i = start + 1; i < lines.length; i++) {
+        if (/^(please|aborting|error:)/i.test(lines[i])) break;
+        conflicts.push(lines[i]);
+      }
+      let moved = 0;
+      for (const rel of conflicts) {
+        const abs = path.join(ROOT, rel);
+        try { fs.renameSync(abs, `${abs}.local-${Date.now()}`); moved++; } catch (e2) {}
+      }
+      if (moved) {
+        console.log(`  pull blocked by ${moved} local file(s) also present upstream -- moved aside, retrying`);
+        try { git(args); return true; } catch (e3) {
+          console.log(`  ${what} still failed after moving conflicts aside (${gitErrText(e3)}) -- continuing`);
+          return false;
+        }
+      }
+    }
+    console.log(`  ${what} failed (${gitErrText(e)}) -- continuing`);
+    return false;
+  }
+}
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
@@ -82,6 +145,30 @@ const dataPath = path.join(DIR, 'data', `value-league-${SAFEHOST}.jsonl`);
 fs.mkdirSync(MODELS, { recursive: true });
 fs.mkdirSync(tempDir, { recursive: true });
 fs.mkdirSync(path.dirname(dataPath), { recursive: true });
+
+// Pushes the FITTED results and the training rows, not the raw per-game log or the frozen model
+// files -- same split this project already draws between elo-summary.json (pushed: the fitted
+// ratings) and elo-results.json (local-only: the raw pairwise store underneath them). standings.txt
+// and standings.json ARE the answer to "what's the league saying"; games.jsonl is the audit trail
+// nobody but this machine needs; the frozen models are large, reproducible from the data already
+// being pushed, and every other loop here (ckpt-NNN.json, wide-NNN.json) keeps that same kind of
+// local-only-by-default file off git too. -f is required for all three: arena-logs/ and data/ are
+// wholesale gitignored, so a plain `git add` matches only already-ignored paths and stages nothing
+// -- the exact silent-no-op retroloop.js's own push function was already bitten by once.
+let lastPushGames = -1;
+function pushResults(tag) {
+  if (!findGit()) return;
+  gitSoft(['pull', '--no-edit', '--no-rebase'], 'pull before push');
+  const rel = p => path.relative(ROOT, p).replace(/\\/g, '/');
+  const targets = [standingsPath, summaryPath, dataPath].filter(fs.existsSync).map(rel);
+  if (!targets.length) return;
+  gitSoft(['add', '-f', ...targets], 'stage league results');
+  let staged;
+  try { staged = git(['diff', '--cached', '--stat']).trim(); } catch (e) { return; }
+  if (!staged) return;                       // nothing new since the last push
+  if (!gitSoft(['commit', '-m', `value-league: ${tag} (${HOST})`], 'commit')) return;
+  if (gitSoft(['push'], 'push')) console.log(`  pushed league results (${tag})`);
+}
 
 function sourceCandidates(kind, hidden) {
   const tag = shapeTag(hidden);
@@ -391,6 +478,7 @@ function launchGame(lane) {
         try{fs.rmSync(childLogDir,{recursive:true,force:true});}catch(_){}
         if(state.games!==lastReportGames && state.games%ciEvery===0) {
           writeReport(true); lastReportGames=state.games;
+          if (state.games !== lastPushGames) { pushResults(`${state.games} games`); lastPushGames = state.games; }
         } else writeReport(false);
         const pct=100*state.ladderGames/Math.max(1,state.games);
         process.stdout.write(`\r${state.games} games | ladder ${pct.toFixed(1)}% | running ${inFlight.size}/${lanes} | standings: ${path.relative(ROOT,standingsPath)}   `);
@@ -407,6 +495,7 @@ async function laneLoop(i){
 }
 async function finish(){
   writeReport(true);
+  pushResults(`${state.games} games, stopped`);      // flush final results even if games%ciEvery missed the last push
   console.log(`\n\nStopped cleanly. ${state.games} completed games are rated.`);
   console.log(`Standings: ${path.relative(ROOT,standingsPath)}`);
   console.log(`JSON:      ${path.relative(ROOT,summaryPath)}`);
