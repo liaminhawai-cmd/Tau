@@ -254,7 +254,13 @@ const wantDual = !process.argv.includes('--noDual');
 // silently rename the dual players mid-league and orphan every game they had already played.
 // Re-swept only on --fresh, on --reSweep, or when the cache is missing.
 const dualSweepShapes = arg('sweepShapes', '96,96;208;128,128;64,64;160;128,64;96,96,96;256');
-const dualSweepEpochs = Math.max(1, +arg('sweepEpochs', 15));
+// Default scales with --epochs rather than a fixed number: ranking candidates too early favours
+// FAST-converging shapes over HIGH-converging ones (a plain single wide layer settles faster under
+// a flat LR than a 3-hidden-layer trunk does, which is exactly backwards from "which one is
+// actually better once both are done training"). 60% of the full budget is not immune to that --
+// nothing short of the full budget is -- but it costs real GPU minutes, not the training-time
+// share of an unattended overnight run, so there is no reason to run it any leaner than this.
+const dualSweepEpochs = Math.max(1, +arg('sweepEpochs', Math.max(20, Math.round(baseEpochs*0.6))));
 const dualShapesPath = path.join(MODELS, `.dual-shapes-${SAFEHOST}.json`);
 const sweepResultPath = path.join(MODELS, `.dual-sweep-${SAFEHOST}.json`);
 let mintedTargets = false;
@@ -315,6 +321,19 @@ function chooseDualShapes() {
 const dualModels = [];
 if (wantDual) for (const hidden of chooseDualShapes()) {
   dualModels.push({ key: `dual-${shapeTag(hidden)}`, label: `Dual ${hidden}`, file: ensureModel('dual', hidden), hidden });
+}
+// Hard backstop: wantDual asked for the dual net to be rated at all, so it must not silently end up
+// with none. chooseDualShapes() already can't return an empty list on any path above (explicit,
+// cache, --noSweep, and a successful sweep all return exactly 2; a failed or short sweep falls back
+// to the value shapes rather than throwing) -- but "already can't happen" is exactly the kind of
+// claim worth a real assertion instead of trusting, since the whole point of adding this net was to
+// get it rated, and a future edit up there silently breaking that guarantee should be loud, not a
+// league that quietly runs all night without the one thing it was started to measure.
+if (wantDual && !dualModels.length) {
+  console.log('\nWARNING: dual shape selection returned nothing (should be unreachable) -- ' +
+              `forcing one dual model at ${shapes[0]} so the dual net still gets rated.`);
+  dualModels.push({ key: `dual-${shapeTag(shapes[0])}`, label: `Dual ${shapes[0]}`,
+                    file: ensureModel('dual', shapes[0]), hidden: shapes[0] });
 }
 if (prepareOnly) process.exit(0);
 
