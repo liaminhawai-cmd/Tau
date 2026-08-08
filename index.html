@@ -100,9 +100,6 @@
        old width-only media query applied, but now driven by the actual layout decision. */
     #views.stacked #view3d { order: -1; }
     #btns { display:flex; gap:10px; }
-    #btns .iconToggle { padding:5px 10px; font-size:15px; line-height:1; opacity:0.75; }
-    #btns .iconToggle:hover { opacity:1; }
-    #btns .iconToggle.off { opacity:0.3; }
     #status { font-size:18px; font-weight:bold; margin:6px 0 2px; height:22px; }
     #statusRow { display:flex; align-items:center; justify-content:center; gap:6px; }
     #turnTimer { width:18px; height:18px; }
@@ -587,7 +584,7 @@
                  aria-label="Balance the flat board against the 3D view" title="Drag to resize the boards (double-click to reset)"></div>
         </div>
         <p id="help"></p>
-        <div id="btns"><button id="reset">Surrender</button><button id="menuBtn">Menu</button><button id="crossFlashToggle" class="iconToggle" title="Highlight the line you cross (tap to turn off)" aria-label="Highlight the line you cross">💡</button></div>
+        <div id="btns"><button id="reset">Surrender</button><button id="menuBtn">Menu</button></div>
         <!-- replaces Surrender/Menu while a replay is playing: share the game or skip to the end -->
         <div id="replayBtns" style="display:none;gap:10px;"><button id="replayShare">Share this game</button><button id="replaySave">Save this game</button><button id="replaySpeed" title="Playback speed">1×</button><button id="replaySkip">Skip ⏭</button></div>
     </div>
@@ -6957,13 +6954,11 @@ function strokeArcU(acx, acy, r, a0, a1) {
         k===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y); }
     ctx.stroke();
 }
-// ---------- Line-cross highlight: flash the ring/arc a foot just touched (a teaching aid, on by
-// default for everyone -- new players especially -- toggle at #crossFlashToggle). Fed by
+// ---------- Line-cross highlight: flash the ring/arc a foot just touched (a teaching aid). Fed by
 // G.justCrossed (set in crossingSubstep), drawn as a fading glow on top of the ordinary line. Your
 // own crossings get the full glow; the opponent's are a quiet pulse -- you already have their move
-// to look at, this just needs to register that a line was touched, not compete for attention. ----------
-let crossHighlightOn = true;
-try { crossHighlightOn = localStorage.getItem('tauCrossFlash') !== '0'; } catch(e) {}
+// to look at, this just needs to register that a line was touched, not compete for attention.
+// Always on for everyone now -- the per-player off switch (#crossFlashToggle) was removed. ----------
 let crossFlashes = [];   // { id, t: performance.now() at the moment of contact, mine: bool }
 const CROSS_FLASH_MS = 850;
 // Is the piece currently moving (G.active) the local viewer's own, as opposed to an opponent's?
@@ -7007,13 +7002,6 @@ function drawCrossFlashes() {
     }
     ctx.restore();
 }
-document.getElementById('crossFlashToggle').classList.toggle('off', !crossHighlightOn);
-document.getElementById('crossFlashToggle').addEventListener('click', () => {
-    crossHighlightOn = !crossHighlightOn;
-    try { localStorage.setItem('tauCrossFlash', crossHighlightOn ? '1' : '0'); } catch(e) {}
-    if (!crossHighlightOn) crossFlashes = [];   // turning off clears any glow already mid-fade
-    document.getElementById('crossFlashToggle').classList.toggle('off', !crossHighlightOn);
-});
 // The reason the current swing stopped, appended to the crossings readout. Two limits share the
 // readout now: the one-crossing budget, and the new "can't swing yourself off the board" edge stop.
 function atLimitSuffix(){
@@ -7025,10 +7013,8 @@ function render() {
     // Pick up any lines a foot touched since the last render (crossingSubstep fills this in) and
     // turn them into fading flashes; drained here so a rollback never gets flashed twice.
     if (G.justCrossed && G.justCrossed.length) {
-        if (crossHighlightOn) {
-            const now = performance.now(), mine = crossingIsMine();
-            for (const id of G.justCrossed) crossFlashes.push({ id, t: now, mine });
-        }
+        const now = performance.now(), mine = crossingIsMine();
+        for (const id of G.justCrossed) crossFlashes.push({ id, t: now, mine });
         G.justCrossed = [];
     }
     syncCanvas();
