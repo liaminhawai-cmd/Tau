@@ -1,44 +1,44 @@
 TAU VALUE LEAGUE
-updated 2026-08-08T11:57:46.426Z
-488 games total | ladder 48 (9.8%, target 10%) | 14 lanes
+updated 2026-08-08T11:59:45.959Z
+496 games total | ladder 48 (9.7%, target 10%) | 14 lanes
 Elo is anchored at L11 = 0. CI is 90%.
 
 OVERALL
   #     Elo        90% CI    games  player
   1       0           0..0       4  L11
-  2    -342     -378..-310      74  Torch 208 D2
-  3    -349     -415..-279      75  JS 208 D2
-  4    -350     -384..-325      11  L10
-  5    -370     -436..-291      75  Torch 96,96 D2
-  6    -398     -457..-328      78  Torch 96,96 D3
-  7    -419     -485..-366      78  JS 208 D3
-  8    -422     -492..-372      81  JS 96,96 D2
-  9    -436     -472..-406      12  L9
- 10    -442     -514..-370      79  JS 96,96 D3
- 11    -473     -515..-439      11  L7
- 12    -479     -562..-406      79  JS 208 D1
- 13    -494     -592..-421      78  Torch 208 D1
- 14    -502     -563..-443      78  Torch 96,96 D1
- 15    -504     -585..-442      76  Torch 208 D3
- 16    -527     -590..-476      77  JS 96,96 D1
- 17    -587     -631..-556      10  L8
+  2    -343     -379..-307      75  Torch 208 D2
+  3    -346     -423..-287      77  JS 208 D2
+  4    -347     -376..-325      11  L10
+  5    -359     -436..-308      77  Torch 96,96 D2
+  6    -404     -472..-355      80  Torch 96,96 D3
+  7    -412     -488..-350      79  JS 208 D3
+  8    -415     -489..-349      82  JS 96,96 D2
+  9    -432     -466..-410      12  L9
+ 10    -439     -502..-378      79  JS 96,96 D3
+ 11    -469     -509..-444      11  L7
+ 12    -474     -539..-420      81  JS 208 D1
+ 13    -488     -569..-424      80  Torch 208 D1
+ 14    -496     -570..-445      80  Torch 96,96 D1
+ 15    -503     -572..-443      77  Torch 208 D3
+ 16    -523     -591..-463      77  JS 96,96 D1
+ 17    -583     -623..-556      10  L8
 
 DEPTH 1 MODELS
-  1. JS 208 D1  Elo -479  games 79
-  2. Torch 208 D1  Elo -494  games 78
-  3. Torch 96,96 D1  Elo -502  games 78
-  4. JS 96,96 D1  Elo -527  games 77
+  1. JS 208 D1  Elo -474  games 81
+  2. Torch 208 D1  Elo -488  games 80
+  3. Torch 96,96 D1  Elo -496  games 80
+  4. JS 96,96 D1  Elo -523  games 77
 
 DEPTH 2 MODELS
-  1. Torch 208 D2  Elo -342  games 74
-  2. JS 208 D2  Elo -349  games 75
-  3. Torch 96,96 D2  Elo -370  games 75
-  4. JS 96,96 D2  Elo -422  games 81
+  1. Torch 208 D2  Elo -343  games 75
+  2. JS 208 D2  Elo -346  games 77
+  3. Torch 96,96 D2  Elo -359  games 77
+  4. JS 96,96 D2  Elo -415  games 82
 
 DEPTH 3 MODELS
-  1. Torch 96,96 D3  Elo -398  games 78
-  2. JS 208 D3  Elo -419  games 78
-  3. JS 96,96 D3  Elo -442  games 79
-  4. Torch 208 D3  Elo -504  games 76
+  1. Torch 96,96 D3  Elo -404  games 80
+  2. JS 208 D3  Elo -412  games 79
+  3. JS 96,96 D3  Elo -439  games 79
+  4. Torch 208 D3  Elo -503  games 77
 
 Close/Ctrl-C any time; state is checkpointed after every completed game.
