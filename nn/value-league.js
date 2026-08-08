@@ -285,7 +285,8 @@ function writeReport(forceCI=false) {
   const elo=fitElo();
   let ci={};
   try {
-    if (forceCI || state.games===0 || state.games % ciEvery===0 || !fs.existsSync(summaryPath)) ci=bootstrapCI();
+    const enoughForCI = state.games >= 8;
+    if (enoughForCI && (forceCI || state.games % ciEvery===0)) ci=bootstrapCI();
     else if (fs.existsSync(summaryPath)) ci=JSON.parse(fs.readFileSync(summaryPath,'utf8')).ci || {};
   } catch (_) { ci={}; }
   const g=gamesOf();
@@ -375,7 +376,7 @@ function launchGame(lane) {
         try{fs.unlinkSync(resultFile);}catch(_){}
         try{fs.unlinkSync(dataFile);}catch(_){}
         try{fs.rmSync(childLogDir,{recursive:true,force:true});}catch(_){}
-        if(state.games!==lastReportGames && (state.games%ciEvery===0 || state.games<ciEvery)) {
+        if(state.games!==lastReportGames && state.games%ciEvery===0) {
           writeReport(true); lastReportGames=state.games;
         } else writeReport(false);
         const pct=100*state.ladderGames/Math.max(1,state.games);
@@ -416,6 +417,6 @@ console.log('NN matchmaking is adaptive: close Elo + underplayed players + under
 console.log('Cross-depth games are allowed; each model@depth remains a separate rated player.');
 console.log(`all completed games -> ${path.relative(ROOT,dataPath)}`);
 console.log(`live standings -> ${path.relative(ROOT,standingsPath)}\n`);
-writeReport(true);
+writeReport(false);
 
 Promise.all(Array.from({length:lanes},(_,i)=>laneLoop(i+1))).then(finish).catch(e=>{console.error(e);process.exitCode=1;});
