@@ -39,6 +39,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { PolicyMLP } = require('./policy.js');
+const { DualMLP } = require('./dualnet.js');
 const { eloFromScore, fmtElo } = require('./elo.js');
 
 function arg(name, dflt) {
@@ -121,6 +122,42 @@ const headSpecs = (arg('heads', 'champ') || 'champ').split(',').map(s => s.trim(
 // deciding which shape the next cycle trains from.
 const minDecided = Math.max(1, +arg('minDecided', 4));
 
+// --- the DUAL net (dualnet.js): a THIRD evaluator with its own shape hill-climb ------------------
+// --dual 1 adds the joint value+policy net to the loop as a first-class entrant, with its own
+// champion/mutant/scratch lineage exactly parallel to the policy head's -- same one-edit-per-cycle
+// mutation vocabulary, same "ties keep the champion" adoption rule, same scratch control for
+// incumbency. It enters the tournament as TWO entrants, and the pair is the whole point:
+//   dual        -- its value head alone, no policy spent, directly comparable to the plain nn brain
+//   dual+policy -- the same file with --dualPolicyA/--abA, i.e. the fused one-forward-pass version
+// The value league (value-league.js) already rates FROZEN dual nets against frozen baselines; what
+// it structurally cannot do is retrain, because a rated identity has to mean one fixed set of
+// weights for its whole rating history. That is exactly the gap this fills: the league answers
+// "is this net any good", the loop answers "does retraining it, at an evolving shape, on a corpus
+// that grows every cycle, make it better". Different questions, different tools, deliberately.
+//
+// Trains through torch-train-dual.py, so this needs Python + torch on the machine running it. A
+// missing/failing trainer degrades to skipping the dual entrants rather than killing the cycle
+// (dualOk below) -- same philosophy as a failed mutant train.
+const useDual = arg('dual', '0') !== '0';
+// Its own --hidden, defaulted to the league's own sweep winner rather than the policy head's shape:
+// these are different nets with different output widths solving different problems, and seeding the
+// dual climb from a policy shape would start it somewhere nothing measured.
+const dualHidden = arg('dualHidden', '128,128');
+// Epochs for the dual trainer. Separate from --epochs (the policy head's) because the two trainers
+// are different programs on different data with different convergence -- the value league measured
+// the dual net still improving at 40, so it gets its own knob rather than inheriting a policy
+// default tuned for a much smaller net.
+const dualEpochs = arg('dualEpochs', '40');
+// Which dual entrants play. Same vocabulary as --heads: champ is the standing dual champion, mutant
+// a one-edit shape mutation trained fresh, scratch the champion's own shape from a new random init
+// (the incumbency control -- see --heads above for why that is not optional).
+// Defaults to champ,mutant rather than --heads' bare champ: without a mutant there is no shape
+// climb at all, and evolving the dual net's shape across retrains is the entire reason it is in a
+// LOOP rather than sitting frozen in the value league. Add scratch (menu 37 does) for the
+// incumbency control too -- it costs a third full training run per cycle, which is why it is not
+// automatic here.
+const dualHeadSpecs = (arg('dualHeads', 'champ,mutant') || 'champ,mutant').split(',').map(s => s.trim()).filter(Boolean);
+
 // SIGNIFICANCE GATE: mutateHidden's shape fight is a deliberately loose, non-significant hill-climb
 // (see the verdict comment below for why) -- fine when there is a true policy-vs-nopolicy effect to
 // climb, wasted compute when there isn't, because champion and mutant are then just two equally
@@ -170,6 +207,16 @@ const historyFile = path.join(dir, 'policy-loop-history.jsonl');
 const targetsPath = path.join(dir, 'policy-targets.jsonl');
 const machine = (arg('name', os.hostname()) || 'local')
   .toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 20) || 'local';
+// The dual net's own lineage, deliberately parallel to the policy head's above (champ / mutant /
+// scratch / a shape record that survives restarts) rather than sharing any of it: they are separate
+// nets hill-climbing separate shapes, and one file serving both would make either result
+// unattributable. Declared after `machine` because they are namespaced by it -- unlike the policy
+// files, these come from a GPU trainer that may only exist on one box, so two machines sharing a
+// checkout must not fight over one filename.
+const dualChampPath = path.join(modelsDir, `dual-champ-${machine}.json`);
+const dualMutantPath = path.join(modelsDir, `dual-mutant-${machine}.json`);
+const dualScratchPath = path.join(modelsDir, `dual-scratch-${machine}.json`);
+const dualShapeFile = path.join(modelsDir, `.dual-champ-shape-${machine}`);
 
 fs.mkdirSync(modelsDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
@@ -301,6 +348,46 @@ const setChampRecord = (shape, cycle, ep) => {
 const champRecord = () => {
   try { return JSON.parse(fs.readFileSync(champShapeFile, 'utf8')); } catch (e) { return null; }
 };
+
+// --- the dual net's parallel lineage --------------------------------------------------------------
+// Same three helpers as the policy head's above, same reasoning for each -- see setChampRecord's
+// comment for why the epoch count is recorded alongside the shape (a champion trained for a
+// different budget than its challenger makes the fight a budget comparison wearing a shape's name).
+const dualShape = () => {
+  try { return JSON.parse(fs.readFileSync(dualShapeFile, 'utf8')).shape || dualHidden; }
+  catch (e) { return dualHidden; }
+};
+const dualRecord = () => {
+  try { return JSON.parse(fs.readFileSync(dualShapeFile, 'utf8')); } catch (e) { return null; }
+};
+const setDualRecord = (shape, cycle, ep) => {
+  try {
+    fs.writeFileSync(dualShapeFile,
+      JSON.stringify({ shape, cycle, epochs: +ep, at: new Date().toISOString() }));
+  } catch (e) {}
+};
+// Train one dual net at `shape` into `out`, then VERIFY it before letting it into a tournament.
+// The verify step is not optional and not a nicety: dualnet.js's export has two silent failure
+// modes (a transposed weight matrix, and the final layer's split activation going wrong) that both
+// produce a file which loads fine, plays a full game, and is merely BAD -- indistinguishable from a
+// net that trained badly. An unverified entrant would quietly poison every result it appears in.
+function trainDual(shape, out, label) {
+  const py = arg('python', 'python');
+  console.log(`\n$ ${py} nn/torch-train-dual.py --hidden ${shape} --epochs ${dualEpochs} (${label})`);
+  try {
+    execFileSync(py, [path.join(dir, 'torch-train-dual.py'), '--targets', targetsPath,
+                      '--hidden', shape, '--epochs', String(dualEpochs), '--out', out],
+                 { stdio: 'inherit' });
+  } catch (e) {
+    log(`WARNING: dual training failed for ${label} (${e.message}) — skipping this entrant`);
+    return false;
+  }
+  if (!runSoft('verify-dual-export.js', [out])) {
+    log(`WARNING: ${label} FAILED export verification — not entering it (see verify-dual-export.js)`);
+    return false;
+  }
+  return true;
+}
 
 // The value net is PULLED, never trained here. Newest numbered checkpoint first, for the same
 // reason worker.js prefers one: a numbered checkpoint is a frozen snapshot, so a result stays
@@ -464,6 +551,57 @@ async function runCycle(num) {
                                 '--hidden', shape, '--out', scratchPath]);
   }
 
+  // --- the dual net's own train + shape fight -----------------------------------------------------
+  // Deliberately mirrors the policy head's sequence above (retrain the champion only when its
+  // paperwork says the fight would not be about the shape; then one mutant one edit away; then the
+  // scratch incumbency control), because the whole value of running them in one loop is that they
+  // are the SAME experiment applied to two different nets -- any divergence in method would show up
+  // as a difference in result and be impossible to attribute.
+  const dShape = dualShape();
+  let dMut = null, dualOk = { champ: false, mutant: false, scratch: false };
+  if (useDual && !dryRun) {
+    const dRec = dualRecord();
+    const dLoadable = (() => {
+      if (!fs.existsSync(dualChampPath)) return true;
+      try { DualMLP.fromJSON(JSON.parse(fs.readFileSync(dualChampPath, 'utf8'))); return true; }
+      catch (e) { return e.message; }
+    })();
+    const dWhy = !fs.existsSync(dualChampPath) ? 'no dual champion yet'
+               : dLoadable !== true ? `dual champion no longer loads (${dLoadable})`
+               : !dRec ? 'dual champion has no completion record (training was interrupted)'
+               : +dRec.epochs !== +dualEpochs ? `dual champion was trained for ${dRec.epochs} epochs, mutant gets ${dualEpochs}`
+               : null;
+    if (dWhy) {
+      log(`policy cycle ${num}: ${dWhy} — training a dual champion at ${dShape}`);
+      if (trainDual(dShape, dualChampPath, `dual champion ${dShape}`)) {
+        setDualRecord(dShape, num, dualEpochs);
+        dualOk.champ = true;
+      }
+    } else dualOk.champ = true;
+
+    // The dual mutant rides the SAME significance gate as the policy mutant. If the pooled control
+    // says the policy question is not yet answerable, a shape hill-climb is coinflip noise on a
+    // null -- and that reasoning is about the cost of hill-climbing without signal, which applies
+    // to any net being climbed, not to policy heads specifically.
+    if (dualOk.champ && dualHeadSpecs.includes('mutant') && !gated) {
+      dMut = mutateHidden(dShape);
+      if (dMut) {
+        log(`policy cycle ${num}: dual shape fight — champion ${dShape} vs mutant ${dMut.shape} (${dMut.op})`);
+        dualOk.mutant = trainDual(dMut.shape, dualMutantPath, `dual mutant ${dMut.shape}`);
+      }
+    }
+    if (dualOk.champ && dualHeadSpecs.includes('scratch')) {
+      log(`policy cycle ${num}: training a dual scratch net at the champion's own shape ${dShape}`);
+      dualOk.scratch = trainDual(dShape, dualScratchPath, `dual scratch ${dShape}`);
+    }
+  } else if (useDual && dryRun) {
+    // A dry run lists what a real cycle WOULD play, so assume the trains succeed rather than
+    // silently dropping every dual row from the preview.
+    dMut = mutateHidden(dShape);
+    dualOk = { champ: true, mutant: dualHeadSpecs.includes('mutant') && !!dMut,
+               scratch: dualHeadSpecs.includes('scratch') };
+  }
+
   // --- the tournament ----------------------------------------------------------------------------
   // Every entrant is the SAME value net; only the policy attached to it differs (or is absent).
   // That is what makes a result attributable to the policy rather than to the weights.
@@ -523,6 +661,56 @@ async function runCycle(num) {
         for (const v of variants) entrants.push({ tag: `${evTag}-${h}-${v.tag}`, ev, head: h, v });
       }
       entrants.push({ tag: `${evTag}-nopolicy`, ev, head: null, v: null });
+    }
+    // The dual entrants join the SAME round robin rather than getting their own bracket, because a
+    // separate bracket would only ever say which dual net is best among dual nets -- the question
+    // worth games is how the fused net does against the policy heads and against no policy at all,
+    // on one clock, in one connected result set.
+    // Each dual net enters TWICE (see the --dual comment at the top): once bare, spending nothing on
+    // arm ordering, and once fused via --dualPolicyA/--abA. Those two rows differ in exactly one
+    // flag on one file, which is the cleanest single-variable ablation in the whole tournament --
+    // and the one the frozen value league cannot answer for a net that is being retrained.
+    const dualFile = { champ: dualChampPath, mutant: dualMutantPath, scratch: dualScratchPath };
+    const dualEntrants = [];
+    if (useDual) {
+      for (const h of dualHeadSpecs) {
+        if (!dualOk[h]) continue;                 // failed/skipped train, or verification rejected it
+        if (!dryRun && !fs.existsSync(dualFile[h])) continue;
+        dualEntrants.push({ tag: `dual-${h}`, dual: dualFile[h], fused: false });
+        dualEntrants.push({ tag: `dual-${h}+P`, dual: dualFile[h], fused: true });
+      }
+    }
+    // A dual entrant is its own brain spec (dualnet.js supplies the leaf evaluator), so unlike the
+    // policy entrants above it does not ride on `nn` -- the net IS the evaluator.
+    const dualBrain = e => `dual:0:${e.dual}`;
+    const dualSide = (e, which) => e.fused ? [`--dualPolicy${which}`, `--ab${which}`] : [];
+    for (let i = 0; i < dualEntrants.length; i++) {
+      for (let j = i + 1; j < dualEntrants.length; j++) {
+        const a = dualEntrants[i], b = dualEntrants[j];
+        add(`${a.tag}-vs-${b.tag}`,
+            ['--a', dualBrain(a), '--b', dualBrain(b), ...dualSide(a, 'A'), ...dualSide(b, 'B'), ...base]);
+      }
+    }
+    // Dual vs the policy world: every dual entrant against the FIRST variant and against the
+    // no-policy control of each evaluator. Not a full cross product -- that would grow
+    // quadratically and spend the cycle on pairs differing in several axes at once, the same reason
+    // the cross-evaluator round robin above is limited to the controls.
+    for (const de of dualEntrants) {
+      for (const ev of evaluators) {
+        const group = entrants.filter(e => e.ev === ev);
+        for (const e of [group[0], group.find(x => x.head === null)].filter(Boolean)) {
+          add(`${de.tag}-vs-${e.tag}`,
+              ['--a', dualBrain(de), '--b', brainOf(ev), ...dualSide(de, 'A'), ...vSide(e, 'B'), ...base]);
+        }
+      }
+    }
+    // Ladder anchors for the dual entrants too: absolute grounding that cannot drift with either
+    // the value net or the policy champion, which is the only thing that makes a dual result
+    // comparable across cycles as the corpus grows underneath it.
+    for (const L of levels) {
+      for (const de of dualEntrants) {
+        add(`${de.tag}-vs-L${L}`, ['--a', dualBrain(de), '--b', 'L' + L, ...dualSide(de, 'A'), ...base]);
+      }
     }
     // The SHAPE hill-climb still runs alongside the use comparison, but pinned to ONE configuration
     // (the first variant) on both sides. That is what keeps the two questions separable: the shape
@@ -591,8 +779,35 @@ async function runCycle(num) {
   }
   }
 
+  // ORDER IS BUDGET PRIORITY, not cosmetics. Lanes pull matchups in list order and stop pulling when
+  // the cycle's budget runs out, so whatever sits at the end of a long list is what silently never
+  // gets played. Adding the dual entrants roughly tripled the list (19 -> 64 matchups at the full
+  // loop's own settings), which is exactly the situation where an arbitrary order quietly starves
+  // something load-bearing -- and it would have, since the dual matchups are constructed first.
+  // What must not be starved, in each mode:
+  //   non-variants: champ-vs-nopolicy, the POOLED control feeding the significance gate. A cycle
+  //     that skips it contributes nothing to the one number that can end the whole exercise.
+  //   variants: that tag does not exist (variants mode deliberately pools nothing -- see the
+  //     per-variant reporting below for why), and the equivalent per-entrant controls are the
+  //     `*-vs-nopolicy` pairs, caught by the tier-1 rule.
+  // Everything else -- the many-way round robin, the ladder anchors -- is valuable but is one game
+  // among dozens, so it fills whatever budget is left rather than competing for the front.
+  // Stable sort (Array#sort is stable in Node), so within a tier the construction order above is
+  // preserved and a fixed flag set still produces a deterministic list.
+  const PRIORITY = t =>
+      t === 'champ-vs-nopolicy' ? 0                        // the pooled control (non-variants mode)
+    : t === 'champ-vs-mutant' ? 0                          // the policy shape climb
+    : /^dual-champ-vs-dual-champ\+P$/.test(t) ? 0          // does fusing help, on the champion
+    : /^dual-champ-vs-dual-mutant$/.test(t) ? 0            // the dual shape climb
+    : /-vs-dual-\w+\+P$/.test(t) ? 1                       // the other bare-vs-fused pairs
+    : /-vs-nopolicy$/.test(t) ? 1                          // "is it worth having at all", per entrant
+    : /-vs-L\d+$/.test(t) ? 3                              // absolute anchors: last, they cannot drift
+    : 2;
+  matches.sort((a, b) => PRIORITY(a.tag) - PRIORITY(b.tag));
+
   if (dryRun) {
-    log(`DRY RUN — cycle ${num} would play ${matches.length} matchup(s) at ${gamesPerMatch} games each:`);
+    log(`DRY RUN — cycle ${num} would play ${matches.length} matchup(s) at ${gamesPerMatch} games each,`);
+    console.log(`   in this order (budget runs out from the bottom):`);
     for (const m of matches) console.log(`   ${m.tag}`);
     console.log(`\n   pool key: ${POOL_KEY}`);
     process.exit(0);
@@ -666,6 +881,51 @@ async function runCycle(num) {
   }
   log(`policy cycle ${num} verdict: ${verdict}`);
 
+  // --- the dual net's verdict ----------------------------------------------------------------------
+  // Same rule as the policy shape fight above, for the same reason: simply being ahead is the right
+  // bar for "which shape do we train from next", and a mutant adopted on luck is beaten back by the
+  // next cycle at no cost. The statistical bar lives on the CLAIM (the dual-vs-nopolicy and ladder
+  // rows below), never on the climb.
+  // The bare champion is what fights: the fused (+P) rows differ by a search flag, not by weights,
+  // so adopting a shape on a fused result would be crediting the shape for what the flag did.
+  let dualVerdict = null, dualAdopted = false;
+  if (useDual && dMut && dualOk.mutant) {
+    const dhh = results['dual-champ-vs-dual-mutant'];
+    if (!dhh) dualVerdict = 'no dual head-to-head played';
+    else {
+      const dec = dhh.w + dhh.l, mutWins = dhh.l;
+      if (dec < minDecided) {
+        dualVerdict = `only ${dec} decided dual game(s), under the ${minDecided} floor — keeping the dual champion`;
+      } else if (mutWins > dhh.w) {
+        dualVerdict = `dual mutant ${dMut.shape} (${dMut.op}) won ${mutWins}-${dhh.w} — ADOPTED as the dual shape to train from`;
+        dualAdopted = true;
+      } else {
+        dualVerdict = `dual mutant ${dMut.shape} (${dMut.op}) did not win (${mutWins}-${dhh.w}) — keeping the dual champion`;
+      }
+    }
+    if (dualAdopted) {
+      try {
+        fs.copyFileSync(dualMutantPath, dualChampPath);
+        setDualRecord(dMut.shape, num, dualEpochs);
+      } catch (e) { log(`WARNING: could not adopt the dual mutant (${e.message}) — keeping the dual champion`); }
+    }
+    log(`policy cycle ${num} dual verdict: ${dualVerdict}`);
+  }
+  // Does FUSING help? The one comparison this loop exists to answer for a net that is being
+  // retrained, and the reason each dual net enters twice: same weights, same clock, one search flag
+  // apart. Reported per cycle rather than pooled, because the champion's weights change from cycle
+  // to cycle -- pooling across retrains would average results from nets that no longer exist.
+  if (useDual) {
+    for (const h of dualHeadSpecs) {
+      const r = results[`dual-${h}-vs-dual-${h}+P`];
+      if (!r) continue;
+      const e = eloFromScore(r.w, r.l);
+      log(`policy cycle ${num}: dual-${h} BARE vs FUSED (+policy) — ${r.w}-${r.l}` +
+          (e.n ? ` (${fmtElo(e)} on ${e.n} decided => ${e.verdict})` : '') +
+          '  [side A is bare, so B wins are the fused net\'s]');
+    }
+  }
+
   // Is the policy worth having at all? Reported every cycle, separately from the shape question,
   // because they are genuinely different questions and only this one can end the whole exercise.
   // THE actual result. Beating a mutant only says which of two policies is less bad; beating a
@@ -707,6 +967,15 @@ async function runCycle(num) {
       // post-adoption shape here made the log read as though a mutant had beaten itself
       champShape: shape, newChampShape: champShape(), mutant: mut ? mut.shape : null,
       op: mut ? mut.op : null, adopted, verdict, results, rows,
+      // The dual lineage's own record, kept in the same entry rather than a separate file so a
+      // cycle's policy result and dual result can never drift out of step with each other.
+      ...(useDual ? {
+        dual: {
+          champShape: dShape, newChampShape: dualShape(), mutant: dMut ? dMut.shape : null,
+          op: dMut ? dMut.op : null, adopted: dualAdopted, verdict: dualVerdict,
+          epochs: +dualEpochs, trained: dualOk,
+        },
+      } : {}),
       realResult, pooledNoPolicy: { w: pool.w, l: pool.l },
       minutes: +((Date.now() - t0)/60000).toFixed(1),
     }) + '\n');
@@ -744,6 +1013,17 @@ async function main() {
       `on disk survives for the next run.`);
   log(`this machine never trains a value net and never writes the rating pool: it pulls whatever ` +
       `the trainer promoted and only evolves the policy head against it.`);
+  if (useDual && !variantsMode) {
+    // Said loudly rather than silently ignored: the dual entrants are built inside the variants
+    // tournament's entrant machinery, so without --variants they would simply never be added and a
+    // run could spend hours looking like it was testing the dual net without ever playing it.
+    log(`WARNING: --dual needs --variants (the dual entrants join that round robin) — ` +
+        `no dual net will be played this run. Add e.g. --variants a2s1.`);
+  } else if (useDual) {
+    log(`dual net ENABLED: heads ${dualHeadSpecs.join(',')} at ${dualEpochs} epochs, ` +
+        `climbing from shape ${dualShape()} (its own lineage in ${path.basename(dualShapeFile)}). ` +
+        `Each enters twice -- bare and fused (+policy) -- so "does fusing help" is one flag apart.`);
+  }
   for (let n = 1; !cycles || n <= cycles; n++) {
     try { await runCycle(n); }
     catch (e) { log(`WARNING: policy cycle ${n} failed (${e && e.message}) — continuing`); await sleep(60000); }

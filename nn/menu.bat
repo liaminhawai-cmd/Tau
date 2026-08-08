@@ -372,21 +372,35 @@ rem   - scratch head: the champion is only retrained when its shape changes and 
 rem     tie, so a same-shape fresh-init net is the only thing that can show it is coasting.
 rem   - le:L11 shares nnai's search exactly, so a cross-evaluator result isolates the EVAL rather
 rem     than confounding it with the real L11 rung's different fixed-depth search.
+rem   - the DUAL net (dualnet.js) rides along with its own champ/mutant lineage, entering twice per
+rem     head: bare (value head only) and fused (+policy, one forward pass for both). The value
+rem     league rates FROZEN dual nets; it structurally cannot retrain them, because a rated identity
+rem     has to mean one fixed set of weights for its whole history. This is where the retraining and
+rem     the shape climb happen. Needs Python + torch on this machine; if either is missing the dual
+rem     entrants are skipped and the rest of the cycle runs unchanged.
 call :dogit
-set "FLHOURS=" & set "FLARMS=" & set "FLLEVELS="
+set "FLHOURS=" & set "FLARMS=" & set "FLLEVELS=" & set "FLDUAL=" & set "FLDUALEP="
 set /p FLHOURS="Hours per cycle, Enter for 3: "
 if "%FLHOURS%"=="" set FLHOURS=3
 set /p FLARMS="Arms to keep, Enter for 2: "
 if "%FLARMS%"=="" set FLARMS=2
 set /p FLLEVELS="Ladder rungs to anchor against, Enter for 11: "
 if "%FLLEVELS%"=="" set FLLEVELS=11
+choice /M "Include the dual value+policy net (needs Python + torch)"
+if errorlevel 2 (
+  set "FLDUAL="
+) else (
+  set /p FLDUALEP="  Dual training epochs, Enter for 40: "
+  if "!FLDUALEP!"=="" set FLDUALEP=40
+  set "FLDUAL=--dual 1 --dualHeads champ,mutant,scratch --dualEpochs !FLDUALEP!"
+)
 echo.
 echo Preview of what each cycle will play:
-node nn\policyloop.js --variants a%FLARMS%s1 --heads champ,mutant,scratch --evaluators nn,le:L11 --levels %FLLEVELS% --timeMsLo 1000 --timeMsHi 30000 --dryRun --cycles 1
+node nn\policyloop.js --variants a%FLARMS%s1 --heads champ,mutant,scratch --evaluators nn,le:L11 --levels %FLLEVELS% --timeMsLo 1000 --timeMsHi 30000 %FLDUAL% --dryRun --cycles 1
 echo.
 echo Starting. Close this window any time. Read the clock breakdown with option 33.
 echo.
-node nn\policyloop.js --variants a%FLARMS%s1 --heads champ,mutant,scratch --evaluators nn,le:L11 --levels %FLLEVELS% --timeMsLo 1000 --timeMsHi 30000 --budgetHours %FLHOURS%
+node nn\policyloop.js --variants a%FLARMS%s1 --heads champ,mutant,scratch --evaluators nn,le:L11 --levels %FLLEVELS% --timeMsLo 1000 --timeMsHi 30000 %FLDUAL% --budgetHours %FLHOURS%
 pause
 goto menu
 
