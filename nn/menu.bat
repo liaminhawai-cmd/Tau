@@ -95,6 +95,11 @@ echo      leL11 that exact budget. Same eval, time-matched instead of width-matc
 echo      judgement do better with nnai's search machinery than its own, given what it normally
 echo      spends anyway? Multi-core. Now also exempts PARK stops from nnai's plateau smoothing,
 echo      without which leL11 could not play L11's park game at all (see nn/GLOSSARY.md).
+echo  39. TORCH TRAIN: train a value net in PyTorch on the same nn\data\*.jsonl train.js uses --
+echo      no export step, same game-level split + gameWeight/drawWeight, drops into arena.js/
+echo      elorank.js unchanged. Needs Python + `pip install torch`. Verifies itself before
+echo      claiming success -- a transposed weight matrix loads and plays fine with no error,
+echo      just badly, so this always checks against reference outputs first.
 echo  37. FULL LOOP: champ + mutant + scratch policy heads, on BOTH best.json and the L11-style
 echo      evaluator, round-robin at random think times, forever. The one that tests everything
 echo      at once -- 19 matchups a cycle. Preview it before committing hours: it dry-runs first.
@@ -158,6 +163,7 @@ if "%choice%"=="35" goto narrowdeep
 if "%choice%"=="36" goto variantloop
 if "%choice%"=="37" goto fullloop
 if "%choice%"=="38" goto l11clockmatch
+if "%choice%"=="39" goto torchtrain
 if "%choice%"=="1" goto pull
 if "%choice%"=="2" goto build96
 if "%choice%"=="3" goto buildpointy
@@ -450,6 +456,58 @@ set /p L11MOVES="Moves to measure L11's clock over, Enter for 30: "
 if "%L11MOVES%"=="" set L11MOVES=30
 echo.
 node nn\l11-clock-match.js --games %L11GAMES% --moves %L11MOVES%
+pause
+goto menu
+
+:torchtrain
+rem Trains a value net in PyTorch on whatever's already in nn\data -- no export step, torch-train.py
+rem reads the same *.jsonl rows train.js does and replicates its game-level split + gameWeight/
+rem drawWeight so the comparison is fair. Needs Python + `pip install torch` on THIS machine; a
+rem missing python is caught below rather than left as a cryptic node-ism. Saves to nn\models\, not
+rem best.json -- like option 24, this has no promotion gate, a person compares it by hand.
+rem ALWAYS verify before trusting the output: a transposed weight matrix loads fine, runs fine, and
+rem just plays badly with no error anywhere -- that is what verify-torch-export.js's __probe check
+rem exists to catch, and shape checks alone cannot (see nn\GLOSSARY.md).
+call :dogit
+where python >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo   Python not found on this machine. Install it from python.org, then:
+  echo     pip install torch
+  echo.
+  pause
+  goto menu
+)
+set "TTHIDDEN=" & set "TTEPOCHS=" & set "TTOUT="
+set /p TTHIDDEN="Hidden layers, Enter for 96,96: "
+if "%TTHIDDEN%"=="" set TTHIDDEN=96,96
+set /p TTEPOCHS="Epochs, Enter for 40: "
+if "%TTEPOCHS%"=="" set TTEPOCHS=40
+set TTOUT=nn\models\torch-%COMPUTERNAME%.json
+echo.
+echo === training %TTHIDDEN% for %TTEPOCHS% epochs on nn\data\*.jsonl ===
+echo.
+python nn\torch-train.py --hidden %TTHIDDEN% --epochs %TTEPOCHS% --out %TTOUT%
+if errorlevel 1 (
+  echo.
+  echo Training failed -- see the error above. Nothing was saved.
+  pause
+  goto menu
+)
+echo.
+echo === verifying the export (catches a silent weight-layout bug -- always run this) ===
+echo.
+node nn\verify-torch-export.js %TTOUT%
+if errorlevel 1 (
+  echo.
+  echo DO NOT USE %TTOUT% -- it failed verification, see above.
+  pause
+  goto menu
+)
+echo.
+echo Saved and verified: %TTOUT%
+echo Compare it for real:
+echo   node nn\arena.js --a nn:0:%CD%\%TTOUT% --b L11 --games 60 --depth 2
 pause
 goto menu
 
