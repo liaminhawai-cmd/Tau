@@ -2,6 +2,26 @@
 setlocal
 cd /d "%~dp0.."
 
+rem Standalone file, so it can't call menu.bat's :dogit -- same pull logic inlined instead, same
+rem reason every other loop in this project pulls before launching: this machine's local models/
+rem code could be stale after a restart, and the league's own fix history (equal epoch budgets)
+rem is exactly the kind of change worth actually having before another cycle trains anything.
+set "GIT=git"
+where git >nul 2>nul
+if errorlevel 1 (
+  set "GIT="
+  for /f "delims=" %%d in ('dir /b /ad /o-n "%LOCALAPPDATA%\GitHubDesktop\app-*" 2^>nul') do (
+    if not defined GIT if exist "%LOCALAPPDATA%\GitHubDesktop\%%d\resources\app\git\cmd\git.exe" set "GIT=%LOCALAPPDATA%\GitHubDesktop\%%d\resources\app\git\cmd\git.exe"
+  )
+)
+if defined GIT (
+  echo === pulling latest ===
+  "%GIT%" pull
+) else (
+  echo git not found on PATH or under GitHub Desktop -- skipping pull.
+)
+echo.
+
 echo ================================================
 echo   Tau adaptive value league
 echo ================================================
