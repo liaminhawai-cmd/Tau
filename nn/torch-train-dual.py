@@ -19,6 +19,23 @@ nn/policy-targets.jsonl directly.
     node nn/policy-targets.js                                    # mint/refresh targets (if stale)
     python3 nn/torch-train-dual.py --epochs 40 --hidden 96,96 --out nn/models/dual-v1.json
     node nn/verify-dual-export.js nn/models/dual-v1.json          # ALWAYS run this
+
+SHAPE SWEEP (--sweep)
+Nobody knows the right trunk for a net doing two jobs a priori, and the league's games are far too
+expensive to search shapes with: at ~800 games most pairs have 5-7 games and CIs run 100-140 Elo,
+far wider than the difference between two reasonable shapes. So --sweep ranks candidates on the
+cheap signal instead -- val loss, no games at all, seconds per shape on a GPU -- and the league
+then spends its games only on the winners:
+
+    python3 nn/torch-train-dual.py --sweep "96,96;208;128,128;64,64" --sweepEpochs 15 \
+                                    --sweepOut nn/models/.dual-sweep.json
+
+It trains nothing to keep: every candidate is trained by the same train_one() on the same split
+with the same seed, ranked by the same combined objective training itself optimises, and then the
+winners are retrained properly at full --epochs through the normal path above. The one bias worth
+knowing: ranking happens at --sweepEpochs rather than the full --epochs, which favours shapes that
+converge FAST over shapes that converge HIGH. That makes this a filter for eliminating bad trunks,
+not a verdict -- which is why the winners still have to earn their rating in real games.
     node nn/arena.js --a dual:0:nn/models/dual-v1.json --b nn:0:nn/models/value.json --games 60 --depth 2
     node nn/arena.js --a dual:0:nn/models/dual-v1.json --dualPolicyA --b nn:0:nn/models/value.json \\
                       --policyB nn/models/policy.json --games 60 --depth 2   # fused vs separate
@@ -167,6 +184,92 @@ def export_for_netjs(linears, probe_inputs=None, probe_fn=None):
     return doc
 
 
+def param_count(sizes):
+    return sum(sizes[i] * sizes[i + 1] + sizes[i + 1] for i in range(len(sizes) - 1))
+
+
+def train_one(torch, nn, device, hidden, data, args, epochs, verbose=True):
+    """Train one dual net. Returns (metrics, linears). Shared by the single-shape path and --sweep
+    so a swept shape is trained by EXACTLY the same code, on the same split, with the same seed --
+    anything else would make the ranking a comparison of training conditions, not of shapes."""
+    import time
+    xtr, ztr, armtr, bintr, vwtr, pwtr, xva, zva, armva, binva = data
+    torch.manual_seed(args.seed)          # re-seeded per shape: same init stream for every candidate
+    sizes = [N_FEATURES] + hidden + [OUT]
+    linears = [nn.Linear(sizes[i], sizes[i + 1]) for i in range(len(sizes) - 1)]
+
+    class DualNet(nn.Module):
+        # Trunk: Linear+Tanh for every layer but the last. Last layer is a bare Linear producing
+        # the full 23-wide raw vector; the split (tanh slot 0, leave 1..22 raw) happens in forward,
+        # matching dualnet.js's own forward() exactly -- see that file's header.
+        def __init__(self, linears):
+            super().__init__()
+            self.linears = nn.ModuleList(linears)
+
+        def forward(self, x):
+            a = x
+            for l in self.linears[:-1]:
+                a = torch.tanh(l(a))
+            raw = self.linears[-1](a)
+            value = torch.tanh(raw[:, :1])
+            logits = raw[:, 1:]
+            return torch.cat([value, logits], dim=1)   # [B, 23]: col 0 = value, 1..6 arm, 7..22 bin
+
+    model = DualNet(linears).to(device)
+    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
+    n = xtr.shape[0]
+    best = {'score': float('inf')}
+    best_state = None
+    t0 = time.time()
+    for ep in range(1, epochs + 1):
+        model.train()
+        perm = torch.randperm(n, device=device)
+        vtot = ptot = 0.0
+        for i in range(0, n, args.batch):
+            idx = perm[i:i + args.batch]
+            xb, zb, armb, binb = xtr[idx], ztr[idx], armtr[idx], bintr[idx]
+            vwb, pwb = vwtr[idx], pwtr[idx]
+            opt.zero_grad()
+            out = model(xb)
+            value_pred, arm_logits, bin_logits = out[:, :1], out[:, 1:1 + N_ARMS], out[:, 1 + N_ARMS:]
+            value_loss = (vwb * (value_pred - zb) ** 2).mean()
+            arm_ce = torch.nn.functional.cross_entropy(arm_logits, armb, reduction='none')
+            bin_ce = torch.nn.functional.cross_entropy(bin_logits, binb, reduction='none')
+            policy_loss = (pwb * (arm_ce + bin_ce)).mean()
+            loss = value_loss + args.policyWeight * policy_loss
+            loss.backward()
+            opt.step()
+            vtot += float(value_loss) * len(idx)
+            ptot += float(policy_loss) * len(idx)
+        model.eval()
+        with torch.no_grad():
+            out = model(xva)
+            value_pred, arm_logits, bin_logits = out[:, :1], out[:, 1:1 + N_ARMS], out[:, 1 + N_ARMS:]
+            vmse = float(((value_pred - zva) ** 2).mean())
+            a1 = float((arm_logits.argmax(dim=1) == armva).float().mean())
+            b1 = float((bin_logits.argmax(dim=1) == binva).float().mean())
+            vce = torch.nn.functional.cross_entropy(arm_logits, armva).item() + \
+                  torch.nn.functional.cross_entropy(bin_logits, binva).item()
+        score = vmse + args.policyWeight * vce   # same combined objective the training loop optimises
+        flag = ''
+        if score < best['score']:
+            best = {'score': score, 'vmse': vmse, 'vce': vce, 'a1': a1, 'b1': b1, 'epoch': ep}
+            flag = '  *'
+            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+        if verbose:
+            print(f"epoch {ep}/{epochs}: train value mse {vtot/n:.5f} policy ce {ptot/n:.4f} | "
+                  f"val value mse {vmse:.5f} arm top1 {100*a1:.1f}% bin top1 {100*b1:.1f}%{flag}")
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+    model.eval()
+    best['secs'] = time.time() - t0
+    best['params'] = param_count(sizes)
+    best['sizes'] = sizes
+    best['hidden'] = ','.join(str(h) for h in hidden)
+    return best, linears, model
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--targets', default=os.path.join(os.path.dirname(__file__), 'policy-targets.jsonl'))
@@ -189,6 +292,13 @@ def main():
     ap.add_argument('--noEloWeight', action='store_true')
     ap.add_argument('--noSourceWeight', action='store_true')
     ap.add_argument('--device', default=None, help='cuda | cpu, default: cuda if available')
+    # --sweep: rank several trunk shapes cheaply instead of training one. Trains nothing to keep --
+    # it writes a ranked table (and --sweepOut json) and exits, so the winner can then be trained
+    # properly at full --epochs through the normal path. See the SHAPE SWEEP note in the header.
+    ap.add_argument('--sweep', default=None,
+                     help='semicolon-separated hidden shapes to rank, e.g. "96,96;208;128,128"')
+    ap.add_argument('--sweepEpochs', type=int, default=15)
+    ap.add_argument('--sweepOut', default=None, help='write the ranked sweep result as JSON here')
     args = ap.parse_args()
 
     try:
@@ -230,72 +340,56 @@ def main():
 
     xtr, ztr, armtr, bintr, vwtr, pwtr = tens(train)
     xva, zva, armva, binva, _, _ = tens(val)
+    data = (xtr, ztr, armtr, bintr, vwtr, pwtr, xva, zva, armva, binva)
+
+    # --- SHAPE SWEEP: rank candidate trunks cheaply, train nothing to keep -----------------------
+    # The data above is loaded and split ONCE and reused for every candidate, so the sweep's cost is
+    # almost entirely GPU training time -- the expensive JSON parse is paid once.
+    if args.sweep:
+        cands = [[int(h) for h in s.split(',') if h.strip()]
+                 for s in args.sweep.split(';') if s.strip()]
+        cands = [c for c in cands if c]
+        if not cands:
+            print('--sweep given no usable shapes', file=sys.stderr)
+            sys.exit(1)
+        print(f"\n=== SHAPE SWEEP: {len(cands)} candidates x {args.sweepEpochs} epochs ===")
+        print("Ranking on the same combined val objective training optimises "
+              f"(value mse + {args.policyWeight} x policy ce).")
+        results = []
+        for i, hid in enumerate(cands, 1):
+            label = ','.join(str(h) for h in hid)
+            print(f"\n[{i}/{len(cands)}] {label}", flush=True)
+            m, _, _ = train_one(torch, nn, device, hid, data, args, args.sweepEpochs, verbose=False)
+            print(f"    score {m['score']:.5f} | value mse {m['vmse']:.5f} | "
+                  f"arm top1 {100*m['a1']:.1f}% | bin top1 {100*m['b1']:.1f}% | "
+                  f"{m['params']:,} params | {m['secs']:.0f}s (best epoch {m['epoch']})")
+            results.append(m)
+        results.sort(key=lambda r: r['score'])
+        print(f"\n{'rank':>4}  {'shape':<14} {'score':>9} {'val mse':>9} {'arm@1':>7} {'bin@1':>7} {'params':>9}")
+        for i, r in enumerate(results, 1):
+            print(f"{i:>4}  {r['hidden']:<14} {r['score']:>9.5f} {r['vmse']:>9.5f} "
+                  f"{100*r['a1']:>6.1f}% {100*r['b1']:>6.1f}% {r['params']:>9,}")
+        # The caveat that decides how much to trust this: candidates are ranked at --sweepEpochs,
+        # not the full --epochs they will actually be trained at, which systematically favours
+        # shapes that converge FAST over shapes that converge HIGH. It is a filter for eliminating
+        # clearly-bad trunks cheaply, not a substitute for the league's own games -- which is
+        # exactly why the winners still get rated against real opponents afterwards.
+        print(f"\nRanked at {args.sweepEpochs} epochs (not the full {args.epochs}), so this favours")
+        print("fast-converging shapes. Treat it as a filter, not a verdict -- the league still")
+        print("rates the winners against real opponents.")
+        if args.sweepOut:
+            os.makedirs(os.path.dirname(os.path.abspath(args.sweepOut)), exist_ok=True)
+            with open(args.sweepOut, 'w') as fh:
+                json.dump({'sweepEpochs': args.sweepEpochs, 'policyWeight': args.policyWeight,
+                           'ranked': [{k: r[k] for k in ('hidden', 'score', 'vmse', 'vce', 'a1', 'b1',
+                                                          'params', 'epoch', 'secs')} for r in results]},
+                          fh, indent=1)
+            print(f"\nwrote {args.sweepOut}")
+        return
 
     hidden = [int(h) for h in args.hidden.split(',') if h.strip()]
-    sizes = [N_FEATURES] + hidden + [OUT]
-    linears = [nn.Linear(sizes[i], sizes[i + 1]) for i in range(len(sizes) - 1)]
-
-    class DualNet(nn.Module):
-        # Trunk: Linear+Tanh for every layer but the last. Last layer is a bare Linear producing
-        # the full 23-wide raw vector; the split (tanh slot 0, leave 1..22 raw) happens in forward,
-        # matching dualnet.js's own forward() exactly -- see that file's header.
-        def __init__(self, linears):
-            super().__init__()
-            self.linears = nn.ModuleList(linears)
-
-        def forward(self, x):
-            a = x
-            for l in self.linears[:-1]:
-                a = torch.tanh(l(a))
-            raw = self.linears[-1](a)
-            value = torch.tanh(raw[:, :1])
-            logits = raw[:, 1:]
-            return torch.cat([value, logits], dim=1)   # [B, 23]: col 0 = value, 1..6 arm, 7..22 bin
-
-    model = DualNet(linears).to(device)
-    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
-    n = xtr.shape[0]
-    best_val, best_state = float('inf'), None
-    for ep in range(1, args.epochs + 1):
-        model.train()
-        perm = torch.randperm(n, device=device)
-        vtot = ptot = 0.0
-        for i in range(0, n, args.batch):
-            idx = perm[i:i + args.batch]
-            xb, zb, armb, binb = xtr[idx], ztr[idx], armtr[idx], bintr[idx]
-            vwb, pwb = vwtr[idx], pwtr[idx]
-            opt.zero_grad()
-            out = model(xb)
-            value_pred, arm_logits, bin_logits = out[:, :1], out[:, 1:1 + N_ARMS], out[:, 1 + N_ARMS:]
-            value_loss = (vwb * (value_pred - zb) ** 2).mean()
-            arm_ce = torch.nn.functional.cross_entropy(arm_logits, armb, reduction='none')
-            bin_ce = torch.nn.functional.cross_entropy(bin_logits, binb, reduction='none')
-            policy_loss = (pwb * (arm_ce + bin_ce)).mean()
-            loss = value_loss + args.policyWeight * policy_loss
-            loss.backward()
-            opt.step()
-            vtot += float(value_loss) * len(idx)
-            ptot += float(policy_loss) * len(idx)
-        model.eval()
-        with torch.no_grad():
-            out = model(xva)
-            value_pred, arm_logits, bin_logits = out[:, :1], out[:, 1:1 + N_ARMS], out[:, 1 + N_ARMS:]
-            vmse = float(((value_pred - zva) ** 2).mean())
-            a1 = float((arm_logits.argmax(dim=1) == armva).float().mean())
-            b1 = float((bin_logits.argmax(dim=1) == binva).float().mean())
-            vce = torch.nn.functional.cross_entropy(arm_logits, armva).item() + \
-                  torch.nn.functional.cross_entropy(bin_logits, binva).item()
-        score = vmse + args.policyWeight * vce   # same combined objective the training loop optimises
-        flag = ''
-        if score < best_val:
-            best_val, flag = score, '  *'
-            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
-        print(f"epoch {ep}/{args.epochs}: train value mse {vtot/n:.5f} policy ce {ptot/n:.4f} | "
-              f"val value mse {vmse:.5f} arm top1 {100*a1:.1f}% bin top1 {100*b1:.1f}%{flag}")
-
-    if best_state is not None:
-        model.load_state_dict(best_state)
-    model.eval()
+    best, linears, model = train_one(torch, nn, device, hidden, data, args, args.epochs, verbose=True)
+    best_val = best['score']
 
     with torch.no_grad():
         probe_x = [xva[i].tolist() for i in range(min(8, xva.shape[0]))]

@@ -214,7 +214,7 @@ function ensureModel(kind, hidden) {
     // nn/data directly -- mint/refresh it first (cheap once warm, policy-targets.js caches per
     // source file) so this always trains on the latest self-play without a separate manual step.
     // Same baseEpochs as every other kind here -- see the comment above baseEpochs's declaration.
-    runSync('node', [path.join('nn', 'policy-targets.js')], 'MINT POLICY TARGETS');
+    mintTargets();
     runSync('python', [path.join('nn', 'torch-train-dual.py'), '--hidden', hidden, '--epochs', String(baseEpochs), '--out', dest],
       `TRAIN DUAL ${hidden}`);
     runSync('node', [path.join('nn', 'verify-dual-export.js'), dest], `VERIFY DUAL ${hidden}`);
@@ -240,8 +240,80 @@ for (const hidden of shapes) {
 // PyTorch at all) that still wants the plain value-net league. On by default: the whole point of
 // this net is a head-to-head against the single-task baselines above, on the SAME rating graph.
 const wantDual = !process.argv.includes('--noDual');
+
+// Which trunk shapes the dual nets use. Unlike the value nets -- whose two shapes are a deliberate
+// param-matched depth-vs-width pair (96,96 = 18.5k params, 208 = 20.0k) -- nobody knows a priori
+// what a trunk serving TWO tasks wants, so this picks them by measurement instead of by guess:
+// torch-train-dual.py --sweep trains every candidate briefly and ranks them on val loss, costing
+// seconds per shape against the many hours the league would need to resolve the same question in
+// games (at 800 games most pairs have 5-7 games and CIs run 100-140 Elo -- far wider than the gap
+// between two sane shapes, so the league literally cannot see it).
+//
+// The chosen pair is CACHED and reused on resume. That is not just a speed saving: a rated identity
+// must mean one fixed net for its whole rating history, so re-sweeping on every restart could
+// silently rename the dual players mid-league and orphan every game they had already played.
+// Re-swept only on --fresh, on --reSweep, or when the cache is missing.
+const dualSweepShapes = arg('sweepShapes', '96,96;208;128,128;64,64;160;128,64;96,96,96;256');
+const dualSweepEpochs = Math.max(1, +arg('sweepEpochs', 15));
+const dualShapesPath = path.join(MODELS, `.dual-shapes-${SAFEHOST}.json`);
+const sweepResultPath = path.join(MODELS, `.dual-sweep-${SAFEHOST}.json`);
+let mintedTargets = false;
+function mintTargets() {
+  if (mintedTargets) return;                 // policy-targets.js caches per source file, but the
+  mintedTargets = true;                      // process spawn + manifest walk is still worth skipping
+  runSync('node', [path.join('nn', 'policy-targets.js')], 'MINT POLICY TARGETS');
+}
+function chooseDualShapes() {
+  const explicit = arg('dualShapes', null);
+  if (explicit) {
+    const list = explicit.split(';').map(normShape).filter(Boolean).slice(0, 2);
+    if (list.length) { console.log(`dual shapes (--dualShapes): ${list.join(' and ')}`); return list; }
+  }
+  if (!fresh && !process.argv.includes('--reSweep')) {
+    try {
+      const cached = JSON.parse(fs.readFileSync(dualShapesPath, 'utf8'));
+      const list = (cached.shapes || []).map(normShape).filter(Boolean).slice(0, 2);
+      if (list.length) {
+        console.log(`dual shapes (cached from ${cached.at || 'an earlier sweep'}): ${list.join(' and ')}`);
+        return list;
+      }
+    } catch (_) {}
+  }
+  if (process.argv.includes('--noSweep')) {
+    console.log(`dual shapes (--noSweep, following the value shapes): ${shapes.join(' and ')}`);
+    return shapes.slice();
+  }
+  // A sweep failure must not take the whole overnight run down with it -- fall back to the value
+  // nets' own shapes, which also happen to be the pair that keeps `Dual X` directly comparable to
+  // `Torch X`/`JS X` at the same depth (identical trunk, so only the extra head differs).
+  try {
+    mintTargets();
+    runSync('python', [path.join('nn', 'torch-train-dual.py'), '--sweep', dualSweepShapes,
+                       '--sweepEpochs', String(dualSweepEpochs), '--epochs', String(baseEpochs),
+                       '--sweepOut', sweepResultPath], 'SWEEP DUAL SHAPES');
+    const ranked = JSON.parse(fs.readFileSync(sweepResultPath, 'utf8')).ranked || [];
+    const list = ranked.map(r => normShape(r.hidden)).filter(Boolean).slice(0, 2);
+    if (list.length < 2) throw new Error('sweep returned fewer than 2 usable shapes');
+    atomicWrite(dualShapesPath, JSON.stringify({ shapes: list, at: new Date().toISOString(),
+                                                 sweepEpochs: dualSweepEpochs, from: dualSweepShapes }, null, 1));
+    console.log(`\ndual shapes chosen by sweep: ${list.join(' and ')}`);
+    // Worth saying out loud rather than leaving to be noticed: the `Dual X` vs `Torch X`/`JS X`
+    // rows are a clean same-trunk control ONLY when the shapes coincide. If the sweep picks
+    // something else, those rows still compare best-dual against best-single-task, but the
+    // difference then confounds "two heads" with "different trunk" -- pass --dualShapes to pin.
+    const overlap = list.filter(s => shapes.includes(s));
+    if (!overlap.length)
+      console.log(`note: neither dual shape matches a value shape (${shapes.join(', ')}), so the dual-vs-` +
+                  `value rows compare different trunks, not just different heads.`);
+    return list;
+  } catch (e) {
+    console.log(`\nshape sweep failed (${e.message}) -- falling back to the value shapes ${shapes.join(', ')}`);
+    return shapes.slice();
+  }
+}
+
 const dualModels = [];
-if (wantDual) for (const hidden of shapes) {
+if (wantDual) for (const hidden of chooseDualShapes()) {
   dualModels.push({ key: `dual-${shapeTag(hidden)}`, label: `Dual ${hidden}`, file: ensureModel('dual', hidden), hidden });
 }
 if (prepareOnly) process.exit(0);
