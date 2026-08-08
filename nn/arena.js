@@ -45,7 +45,7 @@ function arg(name, dflt) {
 // recursive search stops once it has refuted the candidate (never blind -- no cutoff means every
 // arm is still swept); without it, the policy hard-prunes to its top arms, the original wiring.
 // Default stays pruning so the existing menu A/Bs keep testing what they say they test.
-function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, abCut, policyArms, stopStride, sweepDeg, parkStops) {
+function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, abCut, policyArms, stopStride, sweepDeg, parkStops, dualPolicy) {
   const m = /^L(\d+)$/i.exec(spec);
   if (m) {
     const lvl = +m[1];
@@ -84,6 +84,36 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
     }
     const depthLabel = quiesce ? depth + 0.5 : depth;
     return { name: `eval-${which}(${depthLabel > 1 ? 'D' + depthLabel : 'D1'}${kTag}${pTag}${aTag}${sTag})`,
+             fn: idx => nnPlanFor(eng, null, idx, { ...common, depth }) };
+  }
+  // "dual:[temperature]:[modelPath]" -- a dualnet.js DualMLP, one shared trunk supplying BOTH the
+  // leaf evaluator (always, like `nn:`'s net) and, only when `dualPolicy` opts in, the arm-ordering
+  // policy too (see nnai.js's `dual`/`dualPolicy` header note for why those are separate switches).
+  // A bare `dual:` with no --dualPolicyA/B is therefore the fair, directly-comparable-to-`nn:` test
+  // ("is the jointly-trained value head alone better/worse"); adding --dualPolicyA/B is the fusion
+  // test ("does one forward pass beat a separate net + policy at equal search settings").
+  if (parts[0] === 'dual') {
+    const temperature = parts[1] ? +parts[1] : 0;
+    const mp = parts.length > 2 ? parts.slice(2).join(':') : path.join(__dirname, 'models', 'dual.json');
+    const dual = require('./dualnet.js').DualMLP.fromJSON(JSON.parse(fs.readFileSync(mp, 'utf8')));
+    const kTag = keepForDepth !== 4 ? ',K' + keepForDepth : '';
+    // Policy tag only when dualPolicy is actually spending it -- a bare dual: brain isn't using its
+    // policy head at all, and printing an A/ab tag it doesn't act on would be misleading.
+    const pTag = dualPolicy ? (abCut ? ',ab' : '') + ((!abCut && policyArms) ? ',A' + policyArms : '') : '';
+    const sTag = (stopStride > 1 ? ',S' + stopStride : '') + (sweepDeg !== 3 ? ',W' + sweepDeg : '') +
+                 (parkStops ? ',PARK' : '');
+    const common = { temperature, keepForDepth, quiesce, dual, dualPolicy: !!dualPolicy, policyArms,
+                     stopStride, sweepDeg, parkStops: !!parkStops,
+                     policyPrune: !!dualPolicy && !abCut, abCut: !!abCut };
+    if (timeMs) {
+      const tm = () => (typeof timeMs === 'object' ? timeMs.ms : timeMs);
+      const tTag = typeof timeMs === 'object' ? 'Trand' : 'T' + timeMs + 'ms';
+      return { name: `dual(${path.basename(mp)},${tTag}${kTag}${pTag}${sTag})`,
+               fn: idx => nnPlanForTimed(eng, null, idx, { ...common, timeMs: tm() }) };
+    }
+    const depthLabel = quiesce ? depth + 0.5 : depth;
+    return { name: `dual(${path.basename(mp)}${temperature ? ',T' + temperature : ''}` +
+                   `${depthLabel > 1 ? ',D' + depthLabel : ''}${kTag}${pTag}${sTag})`,
              fn: idx => nnPlanFor(eng, null, idx, { ...common, depth }) };
   }
   if (parts[0] !== 'nn') throw new Error('unknown brain: ' + spec);
@@ -219,9 +249,16 @@ function main() {
   const parkStops = process.argv.includes('--parkStops');
   const parkStopsA = parkStops || process.argv.includes('--parkStopsA');
   const parkStopsB = parkStops || process.argv.includes('--parkStopsB');
+  // --dualPolicy: only meaningful for a `dual:` brain -- opts it into spending its OWN policy head
+  // on arm ordering/pruning (see nnai.js's `dual`/`dualPolicy` header note and makeBrain's `dual:`
+  // branch). Off by default so `dual:` alone is a clean value-head-only comparison against `nn:`,
+  // same reason --policyA/--policyB are opt-in rather than automatic whenever a policy exists.
+  const dualPolicy = process.argv.includes('--dualPolicy');
+  const dualPolicyA = dualPolicy || process.argv.includes('--dualPolicyA');
+  const dualPolicyB = dualPolicy || process.argv.includes('--dualPolicyB');
   const asClock = t => (t && typeof t === 'object' ? t : t && +t);
-  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepA, quiesceA, arg('policyA', policy), asClock(timeMsA), abA, policyArmsA, stopStrideA, sweepDegA, parkStopsA);
-  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepB, quiesceB, arg('policyB', policy), asClock(timeMsB), abB, policyArmsB, stopStrideB, sweepDegB, parkStopsB);
+  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepA, quiesceA, arg('policyA', policy), asClock(timeMsA), abA, policyArmsA, stopStrideA, sweepDegA, parkStopsA, dualPolicyA);
+  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepB, quiesceB, arg('policyB', policy), asClock(timeMsB), abB, policyArmsB, stopStrideB, sweepDegB, parkStopsB, dualPolicyB);
   const games = +arg('games', 24);
   // both brains are commonly fully deterministic (nn at temperature 0, or a noise-free ladder
   // level) from the same fixed start -- without a shuffled opening, every game with the same

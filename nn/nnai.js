@@ -75,6 +75,18 @@
 // in 1070ms where the depth 3 / keep 4 default takes 1907ms -- a full ply deeper in half the time,
 // which only pays if the two kept candidates are usually the right ones. That is exactly what an
 // ~90%-arm-top-3 policy is for, and it is the configuration nothing has tested yet (menu 35).
+//
+// `dual` (optional, a dualnet.js DualMLP) is a THIRD way to spend a policy, orthogonal to the
+// abCut/policyPrune choice above: a single net with a shared trunk that outputs a value AND a
+// policy from one forward pass, instead of paying for a separate net.js MLP and policy.js
+// PolicyMLP. It always supplies the default leaf evaluator (same role `net` plays for a plain
+// value-net search) -- that part is free, it's just "which net", not an extra decision. Whether it
+// ALSO supplies arm ordering/pruning is a separate opt-in, `dualPolicy`: off by default so a bare
+// `dual:` brain is directly comparable to a bare `nn:` brain (value only, no policy spend), on to
+// run the actual fusion experiment (does one forward pass beat two, at equal search settings).
+// See dualnet.js's header and torch-train-dual.py for how the net is trained and why
+// policy-targets.jsonl -- which already carries a value target `z` alongside every `arm`/`bin` --
+// is exactly the data a joint objective needs with no new mining required.
 // Why arms (for both) and why only in recursion: profiling shows the physics stepping dominates move cost
 // (an 18k-param forward pass is microseconds), so skipping individual waypoints saves nothing --
 // only skipping a whole arm's sweep does. And the root is left full-width deliberately: it costs
@@ -181,10 +193,15 @@ function nnPlanFor(eng, net, idx, opts) {
   // itself. The default value-net evaluator does exactly the flip the call sites used to do by
   // hand, so every value-net search is bit-identical to before (see the wedged-node note at the
   // depth loop for the one deliberate exception, which was a latent sign error for EVERY evaluator).
-  const evalFn = o.evalFn || ((e, side) => {
-    const v = net.value(features(e));
-    return e.getG().active === side ? v : -v;
-  });
+  const evalFn = o.evalFn || (o.dual
+    ? ((e, side) => {
+        const v = o.dual.value(features(e));
+        return e.getG().active === side ? v : -v;
+      })
+    : ((e, side) => {
+        const v = net.value(features(e));
+        return e.getG().active === side ? v : -v;
+      }));
   // o.sweepDeg: the angular step the sweep samples stops at, default the module's 3 degrees.
   // Worth a knob because resolution turns out to be nearly free: measured 7/20/40/60 waypoints at
   // 9/3/1.5/1 degrees for 18.32/20.18/21.45/24.82ms -- 8.5x the stops for 35% more time, because
@@ -211,9 +228,12 @@ function nnPlanFor(eng, net, idx, opts) {
   // sweeps are paid for. On its own, ordering costs and saves exactly nothing.
   let armList = [];
   for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) armList.push({ pv, dir });
-  if (o.policy) {
+  // A dual net only doubles as an arm-ordering source when `dualPolicy` opts in (see the header
+  // note above) -- an explicit `o.policy` always wins if both are somehow given.
+  const policySrc = o.policy || (o.dualPolicy && o.dual);
+  if (policySrc) {
     const frame = moveFrame(eng);
-    const { arms } = o.policy.predict(features(eng));
+    const { arms } = policySrc.predict(features(eng));
     const armKey = a => a.pv*2 + (a.dir > 0 ? 1 : 0);
     const score = new Map();
     for (let ai = 0; ai < arms.length; ai++) {
@@ -354,6 +374,7 @@ function nnPlanFor(eng, net, idx, opts) {
       else {
         const oppPlan = nnPlanFor(eng, net, 1 - idx, { temperature: 0, depth: depth - 1, keepForDepth: o.keepForDepth,
                                                       policy: o.policy, policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride, evalFn: o.evalFn, sweepDeg: o.sweepDeg, parkStops: o.parkStops,
+                                                      dual: o.dual, dualPolicy: o.dualPolicy,
                                                       abCut: o.abCut,
                                                       cutIfAbove: (o.abCut && bestDeep > -Infinity) ? -bestDeep : null });
         // Opponent wedged (no legal waypoint at all) -- score the position as it stands. This line
@@ -431,7 +452,7 @@ function nnPlanForTimed(eng, net, idx, opts) {
     const plan = nnPlanFor(eng, net, idx, { temperature: o.temperature, depth, keepForDepth,
                                              quiesce: o.quiesce, policy: o.policy,
                                              policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride,
-                                             parkStops: o.parkStops,
+                                             parkStops: o.parkStops, dual: o.dual, dualPolicy: o.dualPolicy,
                                              evalFn: o.evalFn, sweepDeg: o.sweepDeg, abCut: o.abCut });
     if (!plan) return best;               // wedged -- nothing this depth found, keep whatever we had
     best = plan; best.searchDepth = depth;

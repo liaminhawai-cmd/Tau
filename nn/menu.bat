@@ -102,6 +102,15 @@ echo      claiming success -- a transposed weight matrix loads and plays fine wi
 echo      just badly, so this always checks against reference outputs first.
 echo  40. PYTHON vs JS VALUE: torch-%COMPUTERNAME%.json vs value.json, same engine + same depth
 echo      -- run 39 and 24 first. Pure head-to-head: asks games/depth, promotes nothing, trains nothing.
+echo  41. DUAL TRAIN: train ONE shared-trunk net with a value head AND a policy head jointly, in
+echo      PyTorch (GPU if this machine has one, else CPU), from nn\policy-targets.jsonl -- which
+echo      already carries a value target on every policy-target row, so no new data is mined.
+echo      Verifies itself: same transposed-weight risk as 39, PLUS a second failure mode shape
+echo      checks can't catch either -- the final layer's split activation (value tanh'd, policy
+echo      logits left raw).
+echo  42. DUAL vs SEPARATE: does one fused forward pass (dual's own policy head) beat a separate
+echo      value net + policy net at equal search settings? Run 41 first (and 39/24 + a policy loop
+echo      for the separate side). Pure head-to-head: promotes nothing, trains nothing.
 echo  37. FULL LOOP: champ + mutant + scratch policy heads, on BOTH best.json and the L11-style
 echo      evaluator, round-robin at random think times, forever. The one that tests everything
 echo      at once -- 19 matchups a cycle. Preview it before committing hours: it dry-runs first.
@@ -167,6 +176,8 @@ if "%choice%"=="37" goto fullloop
 if "%choice%"=="38" goto l11clockmatch
 if "%choice%"=="39" goto torchtrain
 if "%choice%"=="40" goto torchvsjs
+if "%choice%"=="41" goto dualtrain
+if "%choice%"=="42" goto dualvsseparate
 if "%choice%"=="1" goto pull
 if "%choice%"=="2" goto build96
 if "%choice%"=="3" goto buildpointy
@@ -544,6 +555,114 @@ echo B = %TVJJS%
 echo Arena logs the running score after every game. This promotes nothing and trains nothing.
 echo.
 node nn\arena.js --a nn:0:%CD%\%TVJTORCH% --b nn:0:%CD%\%TVJJS% --games %TVJGAMES% --depth %TVJDEPTH%
+pause
+goto menu
+
+:dualtrain
+rem Trains the JOINT value+policy net (dualnet.js/torch-train-dual.py): one shared trunk, a value
+rem head and a policy head off the same last hidden layer, so a search node that wants both pays
+rem for one forward pass instead of two. Mints/refreshes policy-targets.jsonl first -- cheap even on
+rem a big corpus, policy-targets.js caches per source file -- so this always trains on the latest
+rem self-play data with no separate manual step. GPU-accelerated automatically if this machine has
+rem one PyTorch can see (torch.cuda.is_available()); falls back to CPU otherwise, same as option 39.
+rem Saves to nn\models\, not best.json -- no promotion gate, a person compares it by hand (option 42).
+rem ALWAYS verify before trusting the output: same silent-transpose risk as option 39, PLUS a second
+rem way to go wrong that shape checks cannot catch either -- the final layer's SPLIT activation
+rem (value tanh'd, policy logits left raw). verify-dual-export.js's __probe check catches both.
+call :dogit
+where python >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo   Python not found on this machine. Install it from python.org, then:
+  echo     pip install torch
+  echo.
+  pause
+  goto menu
+)
+echo.
+echo === minting/refreshing policy-targets.jsonl from nn\data (cached per source file) ===
+echo.
+node nn\policy-targets.js
+if errorlevel 1 (
+  echo.
+  echo Minting failed -- see the error above.
+  pause
+  goto menu
+)
+set "DTHIDDEN=" & set "DTEPOCHS=" & set "DTOUT="
+set /p DTHIDDEN="Hidden layers, Enter for 96,96: "
+if "%DTHIDDEN%"=="" set DTHIDDEN=96,96
+set /p DTEPOCHS="Epochs, Enter for 40: "
+if "%DTEPOCHS%"=="" set DTEPOCHS=40
+set DTOUT=nn\models\dual-%COMPUTERNAME%.json
+echo.
+echo === training dual %DTHIDDEN% for %DTEPOCHS% epochs on nn\policy-targets.jsonl ===
+echo.
+python nn\torch-train-dual.py --hidden %DTHIDDEN% --epochs %DTEPOCHS% --out %DTOUT%
+if errorlevel 1 (
+  echo.
+  echo Training failed -- see the error above. Nothing was saved.
+  pause
+  goto menu
+)
+echo.
+echo === verifying the export (catches a silent weight-layout OR split-activation bug) ===
+echo.
+node nn\verify-dual-export.js %DTOUT%
+if errorlevel 1 (
+  echo.
+  echo DO NOT USE %DTOUT% -- it failed verification, see above.
+  pause
+  goto menu
+)
+echo.
+echo Saved and verified: %DTOUT%
+echo Compare the value head ALONE first (fair vs a plain net -- no policy spent on either side):
+echo   node nn\arena.js --a dual:0:%CD%\%DTOUT% --b nn:0:nn\models\value.json --games 60 --depth 2
+echo Then the fusion question itself -- option 42, or by hand:
+echo   node nn\arena.js --a dual:0:%CD%\%DTOUT% --dualPolicyA --b nn:0:nn\models\value.json --policyB nn\models\policy.json --games 60 --depth 2 --ab
+pause
+goto menu
+
+:dualvsseparate
+rem Fused (one dual net, its own policy head spent via --dualPolicyA) vs separate (an independently
+rem trained value net + policy net, spent the identical way via --policyB) -- same search settings
+rem on both sides, so the only intended difference is one forward pass per node vs two. --ab on both
+rem (ordering + cutoff, never blind) rather than hard pruning, so a loss can only mean the fused net's
+rem judgement was worse, not that it saw fewer arms.
+set "DVSDUAL=nn\models\dual-%COMPUTERNAME%.json"
+set "DVSVALUE=nn\models\value.json"
+set "DVSPOLICY=nn\models\policy.json"
+if not exist "%DVSDUAL%" (
+  echo.
+  echo %DVSDUAL% not found -- run option 41 on this machine first.
+  pause
+  goto menu
+)
+if not exist "%DVSVALUE%" (
+  echo.
+  echo %DVSVALUE% not found -- run option 24 first.
+  pause
+  goto menu
+)
+if not exist "%DVSPOLICY%" (
+  echo.
+  echo %DVSPOLICY% not found -- train one first (option 15's policy loop, or train-policy.js by hand).
+  pause
+  goto menu
+)
+set "DVSGAMES=" & set "DVSDEPTH="
+set /p DVSGAMES="Games, Enter for 60: "
+if "%DVSGAMES%"=="" set DVSGAMES=60
+set /p DVSDEPTH="Depth, Enter for 2: "
+if "%DVSDEPTH%"=="" set DVSDEPTH=2
+echo.
+echo === FUSED (dual, own policy) vs SEPARATE (value net + policy net): depth %DVSDEPTH%, %DVSGAMES% games ===
+echo A = %DVSDUAL% (dualPolicy, ab-cut)
+echo B = %DVSVALUE% + %DVSPOLICY% (ab-cut)
+echo Arena logs the running score after every game. This promotes nothing and trains nothing.
+echo.
+node nn\arena.js --a dual:0:%CD%\%DVSDUAL% --dualPolicyA --b nn:0:%CD%\%DVSVALUE% --policyB %CD%\%DVSPOLICY% --games %DVSGAMES% --depth %DVSDEPTH% --ab
 pause
 goto menu
 

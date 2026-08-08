@@ -15,6 +15,18 @@ only in chat history and commit messages.
   would play from a position, not how good the position is. Same MLP shape as the value net, but
   the final layer is linear (not tanh) and feeds two softmax groups: **arm** and **bin**. Trained
   by `train-policy.js` on targets `policy-targets.js` mines.
+- **dual net / dual-head net** (`dualnet.js`'s `DualMLP`) — one shared tanh trunk with BOTH heads
+  wired off its last hidden layer: a value scalar (tanh, same convention as the value net) and
+  policy logits (linear, same convention as the policy net), so a search node that wants a score
+  AND a move prior pays for one forward pass instead of two. Trained jointly on the GPU (if
+  available) by `torch-train-dual.py`, straight from `policy-targets.jsonl` — every row there
+  already carries a value target `z` alongside its `arm`/`bin` policy target, so no new data has
+  to be mined. `nnai.js`'s `dual` option always supplies the leaf evaluator (like `net` does for a
+  plain value-net search, at no extra cost); `dualPolicy` is a separate opt-in for also spending
+  its policy head on arm ordering/pruning, so a bare `dual:` arena brain is a clean, directly
+  comparable value-head-only test against a plain `nn:` brain, and `--dualPolicyA` is the actual
+  fusion question (one forward pass vs a separate value net + policy net). Whether the joint
+  objective helps, hurts, or is a wash for either head is an open, measured question, not assumed.
 - **z** — the discounted terminal-outcome label every self-play row carries: sign = who wins,
   magnitude = `discount ^ (plies to end)`, so it rises toward ±1 as a game nears its finish.
 
