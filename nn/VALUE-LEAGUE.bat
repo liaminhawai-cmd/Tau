@@ -22,11 +22,26 @@ if defined GIT (
 )
 echo.
 
+rem Dual net training needs Python + PyTorch (torch-train-dual.py), same requirement as menu.bat's
+rem option 41/39. Checked here rather than left to fail mid-league: without this, a machine with no
+rem Python would die on the FIRST ensureModel('dual', ...) call, hours into an unattended overnight
+rem run, instead of degrading gracefully to the value-net-only league it could already run fine.
+set "DUALFLAG="
+where python >nul 2>nul
+if errorlevel 1 (
+  echo Python not found on this machine -- running WITHOUT the dual value+policy net ^(--noDual^).
+  echo Install Python + `pip install torch` and rerun to add it to the rated pool.
+  echo.
+  set "DUALFLAG=--noDual"
+)
+
 echo ================================================
 echo   Tau adaptive value league
 echo ================================================
 echo.
 echo 4 frozen value nets x depths 1,2,3 = 12 rated NN players
+if not defined DUALFLAG echo plus the joint value+policy dual net, rated bare AND fused with its own
+if not defined DUALFLAG echo policy head, x depths 1,2,3 = 12 more rated NN players (see nn\GLOSSARY.md).
 echo plus L7-L11 as about 10%% of games.
 echo.
 echo Matchmaking follows the live Elo table, cross-depth games are allowed,
@@ -44,10 +59,10 @@ echo was in got decided by an undertrained model.
 choice /M "Retrain both baselines fresh and reset standings"
 if errorlevel 2 (
   echo.
-  node nn\value-league.js
+  node nn\value-league.js %DUALFLAG%
 ) else (
   echo.
-  node nn\value-league.js --fresh
+  node nn\value-league.js --fresh %DUALFLAG%
 )
 
 echo.

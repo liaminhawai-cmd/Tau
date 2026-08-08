@@ -1,12 +1,17 @@
 'use strict';
 
-// Adaptive, multicore league for the four value-net training/shape variants.
+// Adaptive, multicore league for the value-net training/shape variants, PLUS (by default) the
+// joint value+policy dual net rated twice over on the SAME graph (bare value head, and fused with
+// its own policy head spent via --dualPolicyA/--abA) -- see the players loop below for exactly why
+// two rows per dual model isolate two different questions instead of conflating them.
 // One connected rating graph:
-//   4 frozen models x depths 1/2/3 = 12 NN players
+//   4 frozen value models x depths 1/2/3 = 12 NN players
+//   + (default) 2 dual models x depths 1/2/3 x {bare, +policy} = 12 more NN players
 //   L7..L11 = 5 occasional ladder anchors
-// About 10% of scheduled games are NN-vs-ladder; the rest are NN-vs-NN, including cross-depth.
-// Every completed game is added to nn/data and to an append-only league history. Ratings and
-// 90% Elo CIs are refreshed continuously. Close/Ctrl-C whenever you like; the state resumes.
+// About 10% of scheduled games are NN-vs-ladder; the rest are NN-vs-NN, including cross-depth and
+// cross-family (dual vs Torch/JS). Every completed game is added to nn/data and to an append-only
+// league history. Ratings and 90% Elo CIs are refreshed continuously. Close/Ctrl-C whenever you
+// like; the state resumes. --noDual drops the dual rows (e.g. no GPU/PyTorch on this machine).
 
 const fs = require('fs');
 const path = require('path');
@@ -172,9 +177,11 @@ function pushResults(tag) {
 
 function sourceCandidates(kind, hidden) {
   const tag = shapeTag(hidden);
-  const generic = kind === 'torch' ? `torch-${HOST}.json` : 'value.json';
+  const generic = kind === 'torch' ? `torch-${HOST}.json` : kind === 'dual' ? `dual-${HOST}.json` : 'value.json';
   const base = kind === 'torch'
     ? [`torch-${tag}-${HOST}.json`, `shootout-torch-${tag}-${HOST}.json`, generic]
+    : kind === 'dual'
+    ? [`dual-${tag}-${HOST}.json`, generic]     // matches menu.bat option 41's own output naming
     : [`shootout-js-${tag}-${HOST}.json`, generic];
   return base.map(n => path.join(MODELS, n));
 }
@@ -202,6 +209,15 @@ function ensureModel(kind, hidden) {
     runSync('python', [path.join('nn', 'torch-train.py'), '--hidden', hidden, '--epochs', String(baseEpochs), '--out', dest],
       `TRAIN TORCH ${hidden}`);
     runSync('node', [path.join('nn', 'verify-torch-export.js'), dest], `VERIFY TORCH ${hidden}`);
+  } else if (kind === 'dual') {
+    // The joint value+policy net (dualnet.js). Its training data is policy-targets.jsonl, not
+    // nn/data directly -- mint/refresh it first (cheap once warm, policy-targets.js caches per
+    // source file) so this always trains on the latest self-play without a separate manual step.
+    // Same baseEpochs as every other kind here -- see the comment above baseEpochs's declaration.
+    runSync('node', [path.join('nn', 'policy-targets.js')], 'MINT POLICY TARGETS');
+    runSync('python', [path.join('nn', 'torch-train-dual.py'), '--hidden', hidden, '--epochs', String(baseEpochs), '--out', dest],
+      `TRAIN DUAL ${hidden}`);
+    runSync('node', [path.join('nn', 'verify-dual-export.js'), dest], `VERIFY DUAL ${hidden}`);
   } else {
     // Same epoch count, same default batch (256 on both sides -- see torch-train-core.py), same
     // data, same weighting: --epochs used to be left unset here, which meant train.js's OWN
@@ -220,6 +236,14 @@ for (const hidden of shapes) {
   baseModels.push({ key: `torch-${shapeTag(hidden)}`, label: `Torch ${hidden}`, file: ensureModel('torch', hidden), hidden });
   baseModels.push({ key: `js-${shapeTag(hidden)}`, label: `JS ${hidden}`, file: ensureModel('js', hidden), hidden });
 }
+// --noDual skips freezing/rating the joint value+policy net -- e.g. a machine with no GPU (or no
+// PyTorch at all) that still wants the plain value-net league. On by default: the whole point of
+// this net is a head-to-head against the single-task baselines above, on the SAME rating graph.
+const wantDual = !process.argv.includes('--noDual');
+const dualModels = [];
+if (wantDual) for (const hidden of shapes) {
+  dualModels.push({ key: `dual-${shapeTag(hidden)}`, label: `Dual ${hidden}`, file: ensureModel('dual', hidden), hidden });
+}
 if (prepareOnly) process.exit(0);
 
 if (fresh) {
@@ -236,6 +260,28 @@ for (const m of baseModels) for (const d of depths) {
     id: `${m.key}@D${d}`, kind: 'nn', depth: d,
     spec: `nn:0:${m.file}`, model: m.file,
     label: `${m.label} D${d}`,
+  });
+}
+// Each dual model rates TWICE per depth, same file, two different search-time questions:
+//   bare      -- dual: with no --dualPolicyA, i.e. its value head alone, spending nothing on
+//                arm ordering. Directly comparable to the Torch/JS rows above (same depth, same
+//                "no policy spent" search) -- does joint training help/hurt the value head itself?
+//   +policy   -- --dualPolicyA --abA (ordering + cutoff, never blind -- see nnai.js's header on why
+//                abCut is preferred over hard pruning). The actual fusion question: does spending
+//                the policy half of ONE forward pass beat spending none at all, at equal depth?
+// abCut is a legitimate equal-DEPTH comparison (every arm is still examined unless a cutoff
+// fires, so it can only ever match or improve on the bare search, never see less) -- unlike a
+// timeMs-budgeted test, nothing here can look worse merely for costing more wall-clock.
+for (const m of dualModels) for (const d of depths) {
+  players.push({
+    id: `${m.key}@D${d}`, kind: 'nn', depth: d,
+    spec: `dual:0:${m.file}`, model: m.file,
+    label: `${m.label} D${d}`,
+  });
+  players.push({
+    id: `${m.key}+P@D${d}`, kind: 'nn', depth: d,
+    spec: `dual:0:${m.file}`, model: m.file,
+    label: `${m.label}+policy D${d}`, dualPolicy: true, ab: true,
   });
 }
 for (const level of ladderLevels)
@@ -456,6 +502,12 @@ function launchGame(lane) {
     '--idA',a.id,'--idB',b.id,'--resultsJsonl',resultFile,'--saveData',dataFile,'--logDir',childLogDir];
   if(a.kind==='nn')args.push('--depthA',String(a.depth));
   if(b.kind==='nn')args.push('--depthB',String(b.depth));
+  // +policy dual identities only -- see the players loop above for why bare dual identities leave
+  // these unset (a clean value-head-only comparison against the Torch/JS rows).
+  if(a.dualPolicy)args.push('--dualPolicyA');
+  if(b.dualPolicy)args.push('--dualPolicyB');
+  if(a.ab)args.push('--abA');
+  if(b.ab)args.push('--abB');
   inFlight.set(k,{lane,ladder:a.kind==='ladder'||b.kind==='ladder',a:a.id,b:b.id});
   return new Promise(resolve=>{
     const ch=spawn('node',args,{cwd:ROOT,stdio:['ignore','ignore','pipe']});
@@ -512,7 +564,8 @@ process.on('SIGINT',()=>{
 console.log('\n============================================================');
 console.log('TAU VALUE LEAGUE');
 console.log('============================================================');
-console.log(`12 NN identities: 4 frozen models x D${depths.join('/D')}`);
+console.log(`${nnPlayers.length} NN identities: ${baseModels.length} value model(s) x D${depths.join('/D')}` +
+  (dualModels.length ? ` + ${dualModels.length} dual model(s) x D${depths.join('/D')} x {bare,+policy}` : ''));
 console.log(`ladder anchors: ${ladderPlayers.map(p=>p.label).join(', ')} at ~${Math.round(100*ladderShare)}% of games`);
 console.log(`${lanes} arena lanes (arena.js itself is single-core; the league runs lanes in parallel)`);
 console.log('NN matchmaking is adaptive: close Elo + underplayed players + underplayed pairings.');
