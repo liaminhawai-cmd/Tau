@@ -1,8 +1,8 @@
 {
- "updated": "2026-08-08T12:56:19.179Z",
- "games": 640,
- "ladderGames": 64,
- "ladderShare": 0.1,
+ "updated": "2026-08-08T12:59:21.438Z",
+ "games": 648,
+ "ladderGames": 65,
+ "ladderShare": 0.10030864197530864,
  "targetLadderShare": 0.1,
  "anchor": "L11=0",
  "rows": [
@@ -13,10 +13,10 @@
    "depth": 1,
    "level": null,
    "model": "C:\\tau\\Tau\\nn\\models\\value-league-torch-96x96-DESKTOP-2B7IQHN.json",
-   "elo": -562.5,
-   "games": 103,
-   "eloLo": -629.4,
-   "eloHi": -520.7
+   "elo": -563.4,
+   "games": 104,
+   "eloLo": -626.5,
+   "eloHi": -512.2
   },
   {
    "id": "torch-96x96@D2",
@@ -25,10 +25,10 @@
    "depth": 2,
    "level": null,
    "model": "C:\\tau\\Tau\\nn\\models\\value-league-torch-96x96-DESKTOP-2B7IQHN.json",
-   "elo": -460.6,
-   "games": 101,
-   "eloLo": -522.6,
-   "eloHi": -418.3
+   "elo": -454,
+   "games": 105,
+   "eloLo": -504,
+   "eloHi": -411.8
   },
   {
    "id": "torch-96x96@D3",
@@ -37,10 +37,10 @@
    "depth": 3,
    "level": null,
    "model": "C:\\tau\\Tau\\nn\\models\\value-league-torch-96x96-DESKTOP-2B7IQHN.json",
-   "elo": -475.1,
-   "games": 103,
-   "eloLo": -535.5,
-   "eloHi": -421.7
+   "elo": -477.8,
+   "games": 104,
+   "eloLo": -532.7,
+   "eloHi": -415.3
   },
   {
    "id": "js-96x96@D1",
@@ -49,10 +49,10 @@
    "depth": 1,
    "level": null,
    "model": "C:\\tau\\Tau\\nn\\models\\value-league-js-96x96-DESKTOP-2B7IQHN.json",
-   "elo": -587.9,
-   "games": 100,
-   "eloLo": -648.5,
-   "eloHi": -532.8
+   "elo": -583.1,
+   "games": 101,
+   "eloLo": -645.8,
+   "eloHi": -534.9
   },
   {
    "id": "js-96x96@D2",
@@ -61,10 +61,10 @@
    "depth": 2,
    "level": null,
    "model": "C:\\tau\\Tau\\nn\\models\\value-league-js-96x96-DESKTOP-2B7IQHN.json",
-   "elo": -490.1,
+   "elo": -488.8,
    "games": 105,
-   "eloLo": -540.5,
-   "eloHi": -443
+   "eloLo": -543.9,
+   "eloHi": -442
   },
   {
    "id": "js-96x96@D3",
@@ -73,10 +73,10 @@
    "depth": 3,
    "level": null,
    "model": "C:\\tau\\Tau\\nn\\models\\value-league-js-96x96-DESKTOP-2B7IQHN.json",
-   "elo": -493.5,
-   "games": 103,
-   "eloLo": -563.6,
-   "eloHi": -434.4
+   "elo": -494.8,
+   "games": 104,
+   "eloLo": -558.9,
+   "eloHi": -443.5
   },
   {
    "id": "torch-208@D1",
@@ -85,10 +85,10 @@
    "depth": 1,
    "level": null,
    "model": "C:\\tau\\Tau\\nn\\models\\value-league-torch-208-DESKTOP-2B7IQHN.json",
-   "elo": -546.8,
-   "games": 103,
-   "eloLo": -603.9,
-   "eloHi": -476.3
+   "elo": -541.4,
+   "games": 104,
+   "eloLo": -603,
+   "eloHi": -488.1
   },
   {
    "id": "torch-208@D2",
@@ -97,10 +97,10 @@
    "depth": 2,
    "level": null,
    "model": "C:\\tau\\Tau\\nn\\models\\value-league-torch-208-DESKTOP-2B7IQHN.json",
-   "elo": -402.1,
-   "games": 97,
-   "eloLo": -444.6,
-   "eloHi": -370
+   "elo": -404.9,
+   "games": 98,
+   "eloLo": -446.1,
+   "eloHi": -370.2
   },
   {
    "id": "torch-208@D3",
@@ -109,10 +109,10 @@
    "depth": 3,
    "level": null,
    "model": "C:\\tau\\Tau\\nn\\models\\value-league-torch-208-DESKTOP-2B7IQHN.json",
-   "elo": -571.5,
-   "games": 97,
-   "eloLo": -623.2,
-   "eloHi": -521.1
+   "elo": -567.3,
+   "games": 100,
+   "eloLo": -625.7,
+   "eloHi": -508.9
   },
   {
    "id": "js-208@D1",
@@ -121,10 +121,10 @@
    "depth": 1,
    "level": null,
    "model": "C:\\tau\\Tau\\nn\\models\\value-league-js-208-DESKTOP-2B7IQHN.json",
-   "elo": -552.6,
+   "elo": -551.1,
    "games": 103,
-   "eloLo": -628.1,
-   "eloHi": -486.2
+   "eloLo": -617.6,
+   "eloHi": -480.5
   },
   {
    "id": "js-208@D2",
@@ -133,10 +133,10 @@
    "depth": 2,
    "level": null,
    "model": "C:\\tau\\Tau\\nn\\models\\value-league-js-208-DESKTOP-2B7IQHN.json",
-   "elo": -422.9,
+   "elo": -421.7,
    "games": 99,
-   "eloLo": -481.8,
-   "eloHi": -370.5
+   "eloLo": -473.2,
+   "eloHi": -370.9
   },
   {
    "id": "js-208@D3",
@@ -145,10 +145,10 @@
    "depth": 3,
    "level": null,
    "model": "C:\\tau\\Tau\\nn\\models\\value-league-js-208-DESKTOP-2B7IQHN.json",
-   "elo": -443.2,
-   "games": 102,
-   "eloLo": -517.1,
-   "eloHi": -393.1
+   "elo": -442.5,
+   "games": 104,
+   "eloLo": -502.9,
+   "eloHi": -384.1
   },
   {
    "id": "L7",
@@ -157,10 +157,10 @@
    "depth": null,
    "level": 7,
    "model": null,
-   "elo": -447.4,
+   "elo": -446,
    "games": 14,
-   "eloLo": -535.5,
-   "eloHi": -354.5
+   "eloLo": -526.1,
+   "eloHi": -380.1
   },
   {
    "id": "L8",
@@ -169,10 +169,10 @@
    "depth": null,
    "level": 8,
    "model": null,
-   "elo": -701.1,
-   "games": 12,
-   "eloLo": -735.8,
-   "eloHi": -678.3
+   "elo": -720,
+   "games": 13,
+   "eloLo": -755.1,
+   "eloHi": -691.7
   },
   {
    "id": "L9",
@@ -181,10 +181,10 @@
    "depth": null,
    "level": 9,
    "model": null,
-   "elo": -527,
+   "elo": -525.4,
    "games": 17,
-   "eloLo": -603.2,
-   "eloHi": -458.3
+   "eloLo": -613,
+   "eloHi": -444.6
   },
   {
    "id": "L10",
@@ -193,10 +193,10 @@
    "depth": null,
    "level": 10,
    "model": null,
-   "elo": -512.8,
+   "elo": -511.4,
    "games": 15,
-   "eloLo": -603.4,
-   "eloHi": -430.3
+   "eloLo": -588.4,
+   "eloHi": -452.2
   },
   {
    "id": "L11",
@@ -213,68 +213,68 @@
  ],
  "ci": {
   "torch-96x96@D1": {
-   "lo": -629.3711320820194,
-   "hi": -520.7166740292575
+   "lo": -626.5262860544573,
+   "hi": -512.2443907843999
   },
   "torch-96x96@D2": {
-   "lo": -522.6349842706709,
-   "hi": -418.3304455090891
+   "lo": -503.96013085324716,
+   "hi": -411.78966687943057
   },
   "torch-96x96@D3": {
-   "lo": -535.5135237490723,
-   "hi": -421.65264480398434
+   "lo": -532.6537832650056,
+   "hi": -415.25238935878554
   },
   "js-96x96@D1": {
-   "lo": -648.4766369236646,
-   "hi": -532.7713632436979
+   "lo": -645.8498020973018,
+   "hi": -534.945693652822
   },
   "js-96x96@D2": {
-   "lo": -540.5468511338478,
-   "hi": -443.04967743961987
+   "lo": -543.9318710708055,
+   "hi": -441.97302581360736
   },
   "js-96x96@D3": {
-   "lo": -563.644997814127,
-   "hi": -434.4182140115188
+   "lo": -558.9110147469175,
+   "hi": -443.5145308235003
   },
   "torch-208@D1": {
-   "lo": -603.8787177318148,
-   "hi": -476.2813555247649
+   "lo": -603.0109435904584,
+   "hi": -488.13178056062975
   },
   "torch-208@D2": {
-   "lo": -444.6235281189644,
-   "hi": -369.97726408173173
+   "lo": -446.1067330851947,
+   "hi": -370.15169594334145
   },
   "torch-208@D3": {
-   "lo": -623.2465096358899,
-   "hi": -521.070299089086
+   "lo": -625.6508372562892,
+   "hi": -508.9438815419351
   },
   "js-208@D1": {
-   "lo": -628.1230992904339,
-   "hi": -486.1573103785705
+   "lo": -617.6074383114677,
+   "hi": -480.4920093362696
   },
   "js-208@D2": {
-   "lo": -481.78869012921865,
-   "hi": -370.451457043141
+   "lo": -473.22489066990465,
+   "hi": -370.931791471985
   },
   "js-208@D3": {
-   "lo": -517.1159198159979,
-   "hi": -393.10351034067116
+   "lo": -502.9232452106014,
+   "hi": -384.0699501601252
   },
   "L7": {
-   "lo": -535.5329448168512,
-   "hi": -354.5297018019817
+   "lo": -526.136368677341,
+   "hi": -380.12780225573795
   },
   "L8": {
-   "lo": -735.8170408085002,
-   "hi": -678.3481482815644
+   "lo": -755.1100244548104,
+   "hi": -691.6534585338013
   },
   "L9": {
-   "lo": -603.1709763620491,
-   "hi": -458.29087724787183
+   "lo": -612.971709258836,
+   "hi": -444.63495550656455
   },
   "L10": {
-   "lo": -603.3882642171926,
-   "hi": -430.33597044214923
+   "lo": -588.394219199997,
+   "hi": -452.20768289214027
   },
   "L11": {
    "lo": 0,
