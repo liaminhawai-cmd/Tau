@@ -100,6 +100,8 @@ echo      no export step, same game-level split + gameWeight/drawWeight, drops i
 echo      elorank.js unchanged. Needs Python + `pip install torch`. Verifies itself before
 echo      claiming success -- a transposed weight matrix loads and plays fine with no error,
 echo      just badly, so this always checks against reference outputs first.
+echo  40. PYTHON vs JS VALUE: torch-%COMPUTERNAME%.json vs value.json, same engine + same depth
+echo      -- run 39 and 24 first. Pure head-to-head: asks games/depth, promotes nothing, trains nothing.
 echo  37. FULL LOOP: champ + mutant + scratch policy heads, on BOTH best.json and the L11-style
 echo      evaluator, round-robin at random think times, forever. The one that tests everything
 echo      at once -- 19 matchups a cycle. Preview it before committing hours: it dry-runs first.
@@ -164,6 +166,7 @@ if "%choice%"=="36" goto variantloop
 if "%choice%"=="37" goto fullloop
 if "%choice%"=="38" goto l11clockmatch
 if "%choice%"=="39" goto torchtrain
+if "%choice%"=="40" goto torchvsjs
 if "%choice%"=="1" goto pull
 if "%choice%"=="2" goto build96
 if "%choice%"=="3" goto buildpointy
@@ -508,6 +511,39 @@ echo.
 echo Saved and verified: %TTOUT%
 echo Compare it for real:
 echo   node nn\arena.js --a nn:0:%CD%\%TTOUT% --b L11 --games 60 --depth 2
+pause
+goto menu
+
+:torchvsjs
+rem Clean trainer A/B. Both entrants use arena.js + nnai.js at the SAME fixed depth; the only
+rem intended difference is the training implementation that produced the weights. Do not save
+rem these games back into nn\data: this is an experiment, not a new source of training examples.
+set "TVJTORCH=nn\models\torch-%COMPUTERNAME%.json"
+set "TVJJS=nn\models\value.json"
+if not exist "%TVJTORCH%" (
+  echo.
+  echo %TVJTORCH% not found -- run option 39 on this machine first.
+  pause
+  goto menu
+)
+if not exist "%TVJJS%" (
+  echo.
+  echo %TVJJS% not found -- run option 24 first.
+  pause
+  goto menu
+)
+set "TVJGAMES=" & set "TVJDEPTH="
+set /p TVJGAMES="Games, Enter for 60: "
+if "%TVJGAMES%"=="" set TVJGAMES=60
+set /p TVJDEPTH="Depth, Enter for 2: "
+if "%TVJDEPTH%"=="" set TVJDEPTH=2
+echo.
+echo === PYTHON/TORCH vs FRESH JS: same arena engine, depth %TVJDEPTH%, %TVJGAMES% games ===
+echo A = %TVJTORCH%
+echo B = %TVJJS%
+echo Arena logs the running score after every game. This promotes nothing and trains nothing.
+echo.
+node nn\arena.js --a nn:0:%CD%\%TVJTORCH% --b nn:0:%CD%\%TVJJS% --games %TVJGAMES% --depth %TVJDEPTH%
 pause
 goto menu
 
