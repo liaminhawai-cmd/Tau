@@ -327,9 +327,9 @@ set "CSTAG=prune"
 if "%CSMODE%"=="2" set "CSTAG=abcut"
 echo.
 echo === policy-champ (%CSTAG%) vs no policy, clock random 1000-30000ms per game, %CSGAMES% games ===
-echo Per-game results -> nn\data\clocksweep-%CSTAG%-%COMPUTERNAME%.jsonl
+echo Per-game results -> nn\clocksweep\clocksweep-%CSTAG%-%COMPUTERNAME%.jsonl
 echo.
-node nn\arena.js --a nn:0:%CD%\nn\models\best.json --policyA %CD%\nn\models\policy-champ.json %CSAB% --b nn:0:%CD%\nn\models\best.json --timeMsLo 1000 --timeMsHi 30000 --games %CSGAMES% --resultsJsonl %CD%\nn\data\clocksweep-%CSTAG%-%COMPUTERNAME%.jsonl --saveData %CD%\nn\data\clocksweep-%CSTAG%-%COMPUTERNAME%-rows.jsonl
+node nn\arena.js --a nn:0:%CD%\nn\models\best.json --policyA %CD%\nn\models\policy-champ.json %CSAB% --b nn:0:%CD%\nn\models\best.json --timeMsLo 1000 --timeMsHi 30000 --games %CSGAMES% --resultsJsonl %CD%\nn\clocksweep\clocksweep-%CSTAG%-%COMPUTERNAME%.jsonl --saveData %CD%\nn\data\clocksweep-%CSTAG%-%COMPUTERNAME%-rows.jsonl
 echo.
 echo === done. Bin the results by clock with option 33. ===
 pause
@@ -457,7 +457,7 @@ goto menu
 rem Option 15's loop with the clock swept instead of pinned. Everything else is identical --
 rem mint, train a mutant, tournament, adopt or keep, push -- but each tournament game draws its own
 rem think time and both sides get the same one, and every game is appended to
-rem nn\data\clocksweep-loop-<machine>.jsonl so option 33 can bin the whole run.
+rem nn\clocksweep\clocksweep-loop-<machine>.jsonl so option 33 can bin the whole run.
 rem
 rem This pools SEPARATELY from option 15's fixed-clock history: a swept pool and a pinned pool are
 rem different experiments, and averaging them would erase exactly the structure sweeping exists to
@@ -487,7 +487,7 @@ rem Read-only: bins whatever option 32 has produced so far. Safe to run mid-swee
 rem appends per game, so a partial run reads honestly rather than not at all.
 setlocal enabledelayedexpansion
 set "FOUND="
-for %%F in (nn\data\clocksweep-*.jsonl) do (
+for %%F in (nn\clocksweep\clocksweep-*.jsonl) do (
   echo %%F | findstr /v "rows" >nul && (
     echo.
     echo === %%F ===
