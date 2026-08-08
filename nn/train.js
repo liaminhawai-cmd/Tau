@@ -34,7 +34,17 @@ function loadData(pattern) {
   const dir = path.dirname(pattern), base = path.basename(pattern);
   const rx = new RegExp('^' + base.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
   const rows = [];
-  const stale = new Map();          // file -> rows whose feature vector is the wrong length
+  const stale = new Map();          // file -> rows whose feature vector is the wrong LENGTH
+  // file -> rows with no `f` at all. Distinct from `stale` on purpose, because they mean opposite
+  // things and deserve opposite responses. A wrong-LENGTH f is a real training row from an older
+  // feature set: the corpus is genuinely unusable and the run must stop (see the hard fail below).
+  // A row with NO f was never a training row -- it is some other kind of record that landed in this
+  // directory, e.g. arena.js's --resultsJsonl per-GAME records ({game, timeMs, outcome, plies}).
+  // Treating those as a feature-set migration halts training on a corpus that is perfectly fine,
+  // which is exactly what happened once: policyloop.js wrote its clocksweep results into nn/data
+  // and every train.js call in the full trainer died on it -- self-play, rating and ladder sweeps
+  // all kept running, so the loop looked healthy while the value net silently never trained.
+  const notTraining = new Map();
   let tagged = 0, inferredGames = 0, policyRows = 0;
   for (const f of fs.readdirSync(dir)) {
     if (!rx.test(f)) continue;
@@ -50,7 +60,8 @@ function loadData(pattern) {
       if (!line) continue;
       try {
         const j = JSON.parse(line);
-        if (!j.f || j.f.length !== N_FEATURES) { stale.set(f, (stale.get(f) || 0) + 1); continue; }
+        if (!j.f) { notTraining.set(f, (notTraining.get(f) || 0) + 1); continue; }
+        if (j.f.length !== N_FEATURES) { stale.set(f, (stale.get(f) || 0) + 1); continue; }
         // Policy-head targets (policy-targets.js) carry a real `f` and `z` alongside `arm`/`bin`,
         // so they sail past the length check above and get trained on as ordinary value rows --
         // but they are re-mined from data already in this directory, so every position they cover
@@ -85,6 +96,15 @@ function loadData(pattern) {
     console.error(`\nThe feature set changed, so that data cannot be reused. Move nn/data and\n` +
                   `nn/models aside (e.g. into nn/archive-old-features/) and start a fresh run.\n`);
     process.exit(1);
+  }
+  // Skipped, not fatal: these carry no feature vector, so they cannot silently corrupt a fit the
+  // way a wrong-length one could. Named loudly anyway -- a file landing here is usually a bug in
+  // whatever wrote it, and the whole point is that it stops being invisible.
+  if (notTraining.size) {
+    const total = [...notTraining.values()].reduce((a, b) => a + b, 0);
+    console.log(`skipped ${total} row(s) with no feature vector under ${dir} ` +
+                `(not training data -- per-game records, or another tool's output):`);
+    for (const [f, n] of notTraining) console.log(`   ${f}: ${n} rows`);
   }
   if (policyRows)
     console.log(`skipped ${policyRows} policy-head target rows found under ${dir} ` +

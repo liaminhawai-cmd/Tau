@@ -476,7 +476,14 @@ async function runCycle(num) {
   // Per-game records accumulate in ONE file per machine across every cycle, so clocksweep.js can
   // bin the whole run rather than a single cycle's handful of games -- which is the entire point of
   // sweeping the clock from inside a loop.
-  const resultsPath = path.join(dataDir, `clocksweep-loop-${machine}.jsonl`);
+  // NOT under dataDir: these are per-GAME records (clock, outcome, plies), not position rows with
+  // a feature vector, and nn/data is the directory train.js trains from. Writing them there once
+  // killed every train.js call in the full trainer for hours while self-play and rating kept
+  // running, so the loop looked healthy with a value net that never moved. Same reasoning as
+  // policy-targets.js writing its output outside nn/data.
+  const resultsDir = path.join(dir, 'clocksweep');
+  fs.mkdirSync(resultsDir, { recursive: true });
+  const resultsPath = path.join(resultsDir, `clocksweep-loop-${machine}.jsonl`);
   const clockArgs = randomClock
     ? ['--timeMsLo', timeMsLo, '--timeMsHi', timeMsHi]
     : ['--timeMs', timeMs];
