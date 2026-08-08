@@ -17,7 +17,18 @@ choice /M "Start/resume league"
 if errorlevel 2 exit /b 0
 
 echo.
-node nn\value-league.js
+echo Both JS and Torch baselines now train at the SAME epoch budget (used to be 8 vs 40 --
+echo an unfair fight, not a framework comparison). If your frozen JS models predate that
+echo fix, retrain them fresh -- this also resets standings, since every game a JS player
+echo was in got decided by an undertrained model.
+choice /M "Retrain both baselines fresh and reset standings"
+if errorlevel 2 (
+  echo.
+  node nn\value-league.js
+) else (
+  echo.
+  node nn\value-league.js --fresh
+)
 
 echo.
 pause

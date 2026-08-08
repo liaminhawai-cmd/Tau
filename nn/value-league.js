@@ -61,6 +61,10 @@ const lanes = Math.max(1, Math.min(+arg('lanes', Math.max(1, Math.min(os.cpus().
 const openingPlies = Math.max(0, +arg('openingPlies', 4));
 const ciEvery = Math.max(1, +arg('ciEvery', 8));
 const bootstrapN = Math.max(20, +arg('bootstrap', 120));
+// Same budget for BOTH kinds -- see ensureModel. 40, not train.js's own default of 8, because that
+// default exists for run.js's frequent incremental resume-train cadence, not for a one-shot
+// from-scratch fit like this; 40 was already the number Torch was getting.
+const baseEpochs = Math.max(1, +arg('epochs', 40));
 const fresh = process.argv.includes('--fresh');
 const prepareOnly = process.argv.includes('--prepareOnly');
 const eng = createEngine();
@@ -96,7 +100,11 @@ function ensureModel(kind, hidden) {
     console.log(`league model ready: ${path.basename(dest)}`);
     return dest;
   }
-  for (const src of sourceCandidates(kind, hidden)) {
+  // --fresh means retrain, full stop -- so this fallback is skipped too, not just the frozen-dest
+  // check above. Without that, --fresh could silently adopt e.g. value.json (option 24's own
+  // output, itself just train.js with no --epochs set) and quietly reuse whatever budget trained
+  // IT, which is exactly the "epochs nobody chose on purpose" bug this whole fix exists for.
+  if (!fresh) for (const src of sourceCandidates(kind, hidden)) {
     if (fs.existsSync(src) && hiddenFromModel(src) === hidden) {
       fs.copyFileSync(src, dest);
       console.log(`froze ${kind} ${hidden}: ${path.basename(src)} -> ${path.basename(dest)}`);
@@ -104,11 +112,16 @@ function ensureModel(kind, hidden) {
     }
   }
   if (kind === 'torch') {
-    runSync('python', [path.join('nn', 'torch-train.py'), '--hidden', hidden, '--epochs', '40', '--out', dest],
+    runSync('python', [path.join('nn', 'torch-train.py'), '--hidden', hidden, '--epochs', String(baseEpochs), '--out', dest],
       `TRAIN TORCH ${hidden}`);
     runSync('node', [path.join('nn', 'verify-torch-export.js'), dest], `VERIFY TORCH ${hidden}`);
   } else {
-    runSync('node', [path.join('nn', 'train.js'), '--hidden', hidden, '--epochs', '8', '--out', dest],
+    // Same epoch count, same default batch (256 on both sides -- see torch-train-core.py), same
+    // data, same weighting: --epochs used to be left unset here, which meant train.js's OWN
+    // default of 8 rather than a deliberate choice, against Torch's explicit 40. That is not a
+    // framework comparison, it is a training-budget comparison wearing a framework's name -- fixed
+    // by passing baseEpochs to both sides instead of specifying it on only one.
+    runSync('node', [path.join('nn', 'train.js'), '--hidden', hidden, '--epochs', String(baseEpochs), '--out', dest],
       `TRAIN JS ${hidden}`);
   }
   if (hiddenFromModel(dest) !== hidden) throw new Error(`trained ${kind} model has wrong shape: ${dest}`);
