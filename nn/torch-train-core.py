@@ -148,6 +148,7 @@ def main():
     ap.add_argument('--seed', type=int, default=12345)
     ap.add_argument('--gameWeight', default='sqrt', choices=['sqrt', 'game', 'row'])
     ap.add_argument('--drawWeight', type=float, default=0.25)
+    ap.add_argument('--device', default=None, help='cuda | cpu, default: cuda if available')
     args = ap.parse_args()
 
     try:
@@ -156,6 +157,11 @@ def main():
     except ImportError:
         print("PyTorch not installed:  pip install torch", file=sys.stderr)
         sys.exit(1)
+
+    device = torch.device(args.device) if args.device else torch.device(
+        'cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"device: {device}" +
+          (f" ({torch.cuda.get_device_name(0)})" if device.type == 'cuda' else ''))
 
     torch.manual_seed(args.seed)
     by_game = load_rows(args.data)
@@ -168,9 +174,9 @@ def main():
           f"game-level split)")
 
     def tens(rows):
-        x = torch.tensor([r[0] for r in rows], dtype=torch.float32)
-        y = torch.tensor([[r[1]] for r in rows], dtype=torch.float32)
-        w = torch.tensor([[r[2]] for r in rows], dtype=torch.float32)
+        x = torch.tensor([r[0] for r in rows], dtype=torch.float32, device=device)
+        y = torch.tensor([[r[1]] for r in rows], dtype=torch.float32, device=device)
+        w = torch.tensor([[r[2]] for r in rows], dtype=torch.float32, device=device)
         return x, y, w
 
     xtr, ytr, wtr = tens(train)
@@ -183,14 +189,14 @@ def main():
     seq, model = [], None
     for l in linears:
         seq += [l, nn.Tanh()]
-    model = nn.Sequential(*seq)
+    model = nn.Sequential(*seq).to(device)
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
     n = xtr.shape[0]
     best_val, best_state = float('inf'), None
     for ep in range(1, args.epochs + 1):
         model.train()
-        perm = torch.randperm(n)
+        perm = torch.randperm(n, device=device)
         tot = 0.0
         for i in range(0, n, args.batch):
             idx = perm[i:i + args.batch]
@@ -217,7 +223,7 @@ def main():
     with torch.no_grad():
         probe_x = [xva[i].tolist() for i in range(min(8, xva.shape[0]))]
         def probe_fn(x):
-            return float(model(torch.tensor([x], dtype=torch.float32))[0][0])
+            return float(model(torch.tensor([x], dtype=torch.float32, device=device))[0][0])
         doc = export_for_netjs(linears, probe_x, probe_fn)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
