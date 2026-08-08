@@ -151,14 +151,9 @@ const workers = arg('workers', String(Math.max(1, Math.min(os.cpus().length - 1,
 // became non-blocking. Measured cost of the mistake on the real machine: pool cycle 94's placement
 // added only 10 new matchups in 40 minutes at 4 workers, leaving most brains on 4 games and the
 // ladder yardstick visibly out of order in the fitted table.
-// What genuinely IS new alongside placement is retro (1 process) and the ladder sweep's arena
-// (1 process), so the right reservation is a couple of cores, not two thirds of them.
+// The ladder sweep also runs one arena process alongside placement, so reserve a couple of cores
+// rather than two thirds of the machine.
 const poolWorkers = arg('poolWorkers', String(Math.max(2, +workers - 2)));
-// How many retromine processes to run at once. Each picks its own seed positions at random and
-// writes its own file, so they are independent investigations needing no coordination -- but
-// retrograde rows have never once been generated on this run, so the useful next step is finding
-// out what ONE produces, not scaling an unmeasured thing. Raise it when there is a reason to.
-const retroWorkers = Math.max(1, +arg('retroWorkers', 1));
 // Every round robin, ALSO train a challenger from scratch on all accumulated data and enter it in
 // the field. This is now the ONLY way best.json changes (see point 1 above) -- not an occasional
 // sanity check on a resumed lineage anymore, but the actual training step.
@@ -227,38 +222,14 @@ const poolWideEvery = Math.max(0, +arg('poolWideEvery', 4));
 // forward, so the shape random-walks uphill one measured fight at a time instead of being a
 // hand-picked constant revisited only when a human thinks of it. --mutateShape 0 disables.
 const mutateShape = arg('mutateShape', '1') !== '0';
-// Retrograde mining on its own clock, using the pool as its strength axis (see retromine.js).
-const retroEveryMin = Math.max(0, +arg('retroEveryMin', 120));
-// ONE seed, mined to exhaustion, beats four truncated ones. Retro's unique output is the boundary
-// ("from N plies out, nothing in the pool escapes") and that only exists if a seed runs to its
-// natural end -- the ROWS it produces along the way are near-terminal decision points, valuable but
-// not something self-play can't also make. Splitting the budget four ways guaranteed all four
-// truncated: at budget 40 every family logged exactly 41 games, so every "dead at N plies" retro
-// has ever printed was a fact about the budget rather than about the position.
-const retroSeeds = +arg('retroSeeds', 1);
-// Replay cap per seed. The ratchet terminates WITHOUT a budget -- floors only rise (capped by the
-// top of the axis, the "11 vs 11" guard), rewind only grows (capped by the start of the game), and
-// wedged probes count against probesPerPos -- so this is not a correctness knob, just a wall-clock
-// guard against a pathological seed hogging the retro slot for a day. The old value of 40 was the
-// real reason no seed ever found an escape: at the observed ~6-13 games per rewind step, 40 replays
-// died of starvation 3-7 plies from the end, entirely inside the zone where the game is already
-// decided and NOTHING escapes -- so every seed returned "dead everywhere", which was a fact about
-// the budget, not the positions.
-//
-// 300 was then too far the other way ACROSS FOUR SEEDS, and the wall-clock guard stopped guarding:
-// a cycle at budget 40 took ~4h (03:15Z -> 07:17Z on 08-02), and the first at 4x300 ran 6h48m
-// without finishing and with no end in sight. That matters more than it sounds, because run.js only
-// pushes a retro file when the cycle COMPLETES -- an over-long cycle contributes literally nothing,
-// however much CPU it burned, against the 14 self-play workers the whole time.
-//
-// With retroSeeds at 1 the budget is spent on one seed instead of split four ways, so it can be
-// generous enough to be non-binding on a typical seed and still fit the clock. Sizing it, measured:
-// a dead rewind step costs ~6 replays (seat probe + 4 bisect failures + the jump to the top, then
-// one ultimateGuns attempt), and dead steps dominate because most near-terminal positions ARE dead.
-// So a seed needs roughly 6L replays, L being the seed game's ply count -- ~96 for a median 16-ply
-// game, ~200 for the p90 33-ply one. 400 covers seeds out to ~65 plies (past p95 of observed game
-// lengths) and only bites on the pathological tail, which is exactly what a wall-clock guard is for.
-const retroReplays = Math.max(1, +arg('retroReplays', 400));
+// The CPU side already has an open population of value-net lineages. The dual head is the GPU
+// counterpart: every pool cycle trains a control at the current champion trunk plus one small
+// trunk mutant, then elorank rates each file twice (bare value and fused +policy) on the SAME graph.
+// Ordinary self-play never pauses while CUDA trains. --noDual disables cleanly on a CPU-only box.
+const dualEnabled = !process.argv.includes('--noDual');
+const dualEpochChoices = String(arg('dualEpochs', '20,40,60')).split(',').map(Number).filter(n => n > 0);
+const dualBatch = Math.max(64, +arg('dualBatch', 4096));
+const dualInitialShape = arg('dualHidden', '128,128');
 
 // Atomic save: write/copy to a temp file beside the target, then rename over it. A rename either
 // fully lands or doesn't happen at all, where a direct writeFileSync/copyFileSync can be caught
@@ -281,6 +252,8 @@ const best = path.join(dir, 'models', 'best.json');
 const poolFile = path.join(dir, 'elo-results.json');
 const poolSummary = path.join(dir, 'elo-summary.json');
 const fresh = path.join(dir, 'models', 'value.json');
+const dualShapeFile = path.join(dir, 'models', '.dual-trainer-shape.json');
+const dualShapeHistory = path.join(dir, 'models', '.dual-trainer-shape-history.jsonl');
 const log = msg => {
   const line = `[${new Date().toISOString()}] ${msg}`;
   console.log('\n=== ' + line);
@@ -310,7 +283,7 @@ const runCapturedSoft = (script, args) => {
 };
 // Non-blocking equivalents. execFileSync freezes Node's ENTIRE single-threaded event loop for as
 // long as the child runs -- fine for a one-shot script, fatal for a scheduler that also has to
-// keep noticing retro's and bench's own clocks have elapsed. Measured directly tonight: a pool
+// keep noticing the benchmark's own clock has elapsed. Measured directly tonight: a pool
 // cycle's training+placement steps ran 2.5+ hours end to end, and for that whole stretch nothing
 // else in this process could run AT ALL -- not a CPU contention problem, a "the orchestrator
 // cannot execute its own next line of JS" problem. spawn()+Promise fixes that: the child runs as
@@ -326,6 +299,14 @@ function runAsync(script, args) {
 async function runSoftAsync(script, args) {
   try { await runAsync(script, args); }
   catch (e) { log(`WARNING: ${script} failed (${e.message}) — continuing`); }
+}
+function runProcessAsync(cmd, args, label) {
+  return new Promise((resolve, reject) => {
+    console.log(`\n$ ${cmd} ${args.join(' ')}`);
+    const ch = spawn(cmd, args, { cwd: path.join(dir, '..'), stdio: 'inherit' });
+    ch.on('exit', code => code === 0 ? resolve() : reject(new Error(`${label} exited ${code}`)));
+    ch.on('error', reject);
+  });
 }
 function runCapturedAsync(script, args) {
   return new Promise((resolve, reject) => {
@@ -530,6 +511,48 @@ function mutateHidden(spec) {
   return null;
 }
 
+const currentDualShape = () => {
+  try { return JSON.parse(fs.readFileSync(dualShapeFile, 'utf8')).shape || dualInitialShape; }
+  catch (e) { return dualInitialShape; }
+};
+
+async function trainDualOne(out, shape, epochs, seed, label) {
+  const partial = out.replace(/\.json$/, '.partial.json');
+  try {
+    await runProcessAsync('python', [path.join('nn', 'torch-train-dual.py'), '--hidden', shape,
+      '--epochs', String(epochs), '--batch', String(dualBatch), '--seed', String(seed), '--out', partial], label);
+    await runAsync('verify-dual-export.js', [partial]);
+    fs.renameSync(partial, out);
+    return true;
+  } catch (e) {
+    try { fs.unlinkSync(partial); } catch (_) {}
+    log(`WARNING: ${label} failed (${e.message}) — dual entrant skipped, CPU trainer continues`);
+    return false;
+  }
+}
+
+async function trainDualCandidates(num) {
+  if (!dualEnabled || !dualEpochChoices.length) return { focus: [], info: null };
+  const shape = currentDualShape();
+  const mut = mutateHidden(shape);
+  const epochs = dualEpochChoices[(Math.max(1, num) - 1) % dualEpochChoices.length];
+  const tag = String(num).padStart(3, '0');
+  const control = path.join(dir, 'models', `dual-control-${tag}-e${epochs}.json`);
+  const mutant = mut ? path.join(dir, 'models', `dual-mut-${tag}-e${epochs}.json`) : null;
+  log(`pool cycle ${num} — GPU dual branch: ${shape} control` +
+      (mut ? ` vs ${mut.shape} mutant (${mut.op})` : '') + `, ${epochs} epochs each`);
+  // Mints once, then both candidates see the identical target file. This short CPU preprocessing
+  // overlaps the ordinary trainer; the long part is CUDA while run.js's self-play lanes stay busy.
+  await runAsync('policy-targets.js', []);
+  const focus = [];
+  if (await trainDualOne(control, shape, epochs, num*1009 + 1,
+      `dual control ${shape} e${epochs}`)) focus.push(control);
+  if (mutant && await trainDualOne(mutant, mut.shape, epochs, num*1009 + 2,
+      `dual mutant ${mut.shape} e${epochs}`)) focus.push(mutant);
+  return { focus, info:mutant&&focus.includes(control)&&focus.includes(mutant)
+    ? { control, mutant, controlShape:shape, mutantShape:mut.shape, op:mut.op, epochs } : null };
+}
+
 // --- variant lineage registry: an open, evolving population ------------------------------------
 // Started as four fixed names (wide/ultra/deep/l15_value), each hand-pinned to an architecture.
 // Now the population is open: a lineage whose champion clears the top of the pool can spawn a
@@ -542,6 +565,7 @@ const maxActiveLineages = Math.max(1, +arg('maxActiveLineages', 8));
 const minActiveLineages = Math.max(1, Math.min(+arg('minActiveLineages', 4), maxActiveLineages));
 const cullFloorPct = Math.max(0.01, Math.min(1, +arg('cullFloorPct', 0.10)));   // bottom slice retires
 const cullMinTurns = Math.max(1, +arg('cullMinTurns', 3));                      // grace period for new mutants
+const lineageExplore = Math.max(0.01, Math.min(0.9, +arg('lineageExplore', 0.15)));
 
 function loadRegistry() {
   try { return JSON.parse(fs.readFileSync(registryFile, 'utf8')); } catch (e) { /* bootstrap below */ }
@@ -821,7 +845,7 @@ function startSelfplayBatch() {
 // Both run on their own wall-clock schedule, independent of self-play, which keeps generating
 // games in the background the whole time these run (sharing cores, not losing them).
 let lastTournamentAt = Date.now(), lastBenchAt = Date.now(), lastTrainAt = Date.now(),
-    lastPoolAt = Date.now(), lastRetroAt = Date.now();
+    lastPoolAt = Date.now();
 
 // Resume-train from best.json and promote the result. Bounded, not unbounded: the round robin
 // below periodically retrains from scratch and promotes on merit, which is what stops this from
@@ -867,7 +891,7 @@ function refreshModelSlots(ranked) {
   const pushed = [];
   picks.forEach((cand, i) => {
     // summaries written by elorank point at its .elo-snapshot copies; fall back to the live
-    // models dir if a snapshot has been cleaned up since (same fallback retromine.js uses)
+    // models dir if a snapshot has been cleaned up since
     let mp = cand.model;
     if (!mp || !fs.existsSync(mp)) mp = path.join(dir, 'models', path.basename(cand.model || ''));
     if (!fs.existsSync(mp)) return;
@@ -897,6 +921,13 @@ async function runPoolCycle() {
   atomicCopy(best, ckpt);
   log(`pool cycle ${num} — checkpoint saved: ${path.basename(ckpt)}`);
   statusState.lastCheckpoint = `${path.basename(ckpt)} at ${new Date().toISOString()}`;
+
+  // Start the GPU branch immediately. The CPU branch below (train.js control/mutant/lineage) and
+  // continuous self-play run at the same time; only the final Elo placement waits for both.
+  const dualPromise = trainDualCandidates(num).catch(e => {
+    log(`WARNING: dual branch failed (${e.message}) — placing CPU candidates only`);
+    return { focus: [], info: null };
+  });
 
   // The from-scratch challenger still enters, for the reason the header records: resume-training
   // adds strength over a few iterations and degrades over dozens, and this is what catches the
@@ -989,6 +1020,9 @@ async function runPoolCycle() {
     saveRegistry(registry);
   }
 
+  const dualRun = await dualPromise;
+  for (const p of dualRun.focus) if (!focus.includes(p)) focus.push(p);
+
   const wide = poolWideEvery > 0 && num % poolWideEvery === 0;
   log(`pool cycle ${num} — placing ${focus.map(f => path.basename(f)).join(', ')} in the rating pool` +
       (wide ? ' (wide pass: budget goes wherever the pool is least certain)' : ''));
@@ -1006,9 +1040,13 @@ async function runPoolCycle() {
   // to beat the luck as well as the strength).
   try {
     const sum = JSON.parse(fs.readFileSync(poolSummary, 'utf8'));
-    const rated = Object.entries(sum.players || {})
+    const allRated = Object.entries(sum.players || {})
       .filter(([, v]) => v.kind === 'nn' && v.model && v.games >= 6)
       .map(([id, v]) => ({ id, ...v }));
+    // A dual JSON is not a drop-in replacement for best.json: best uses the one-output nn loader,
+    // while dual has 23 outputs and its own loader. Keep both families on one Elo graph, but only
+    // ordinary value nets compete for the ordinary best.json seat.
+    const rated = allRated.filter(r => r.brain !== 'dual');
     if (!rated.length) { log(`pool cycle ${num} — nothing rated yet, keeping best.json`); return; }
     // one entry per MODEL (best depth), since depth is a search setting rather than a property of
     // the weights being promoted
@@ -1032,6 +1070,7 @@ async function runPoolCycle() {
       if (!prev || !prev.model || !fs.existsSync(prev.model) || cand.elo - prev.elo >= 30) {
         fs.writeFileSync(champFile, JSON.stringify({
           model: fs.existsSync(livePath) ? livePath : cand.model, elo: cand.elo, games: cand.games,
+          rank: cand.rank, rankLo: cand.rankLo, rankHi: cand.rankHi,
           at: new Date().toISOString(),
         }, null, 1));
         log(`pool cycle ${num} — variant lineage: ${variantName} champion is now ` +
@@ -1093,6 +1132,47 @@ async function runPoolCycle() {
       }
     }
 
+    // Dual shape verdict, separately from best.json promotion. Average all measured depths and
+    // both bare/+policy identities so a one-off D3 outlier cannot crown a trunk by itself. The same
+    // summary also gives the clean fusion readout: identical file/depth, only dualPolicy differs.
+    if (dualRun.info) {
+      const dualGroups = {};
+      for (const r of allRated.filter(x => x.brain === 'dual')) {
+        const k = path.basename(r.model, '.json');
+        (dualGroups[k] || (dualGroups[k] = [])).push(r);
+      }
+      const average = rows => rows && rows.length ? rows.reduce((s,r)=>s+r.elo,0)/rows.length : NaN;
+      const ctlRows = dualGroups[path.basename(dualRun.info.control, '.json')] || [];
+      const mutRows = dualGroups[path.basename(dualRun.info.mutant, '.json')] || [];
+      const key = r => `${r.dualPolicy?'P':'B'}@D${r.depth}`;
+      const ctlBy = Object.fromEntries(ctlRows.map(r=>[key(r),r]));
+      const mutBy = Object.fromEntries(mutRows.map(r=>[key(r),r]));
+      const matched = Object.keys(ctlBy).filter(k=>mutBy[k]);
+      const ctlElo = average(matched.map(k=>ctlBy[k]));
+      const mutElo = average(matched.map(k=>mutBy[k]));
+      if (Number.isFinite(ctlElo) && Number.isFinite(mutElo) && matched.length) {
+        const lead = matched.reduce((s,k)=>s+mutBy[k].elo-ctlBy[k].elo,0)/matched.length;
+        const verdict = lead >= 25 ? 'adopted' : lead <= -25 ? 'rejected' : 'inconclusive';
+        if (verdict === 'adopted') atomicWrite(dualShapeFile, JSON.stringify({
+          shape:dualRun.info.mutantShape, cycle:num, epochs:dualRun.info.epochs,
+          adoptedAt:new Date().toISOString(),
+        }, null, 1));
+        log(`pool cycle ${num} — dual shape: ${dualRun.info.mutantShape} (${dualRun.info.op}) vs ` +
+            `${dualRun.info.controlShape}: ${Math.round(lead)} mean Elo — ${verdict}`);
+        const bareByDepth = Object.fromEntries(ctlRows.filter(r=>!r.dualPolicy).map(r=>[r.depth,r]));
+        const fusedByDepth = Object.fromEntries(ctlRows.filter(r=>r.dualPolicy).map(r=>[r.depth,r]));
+        const fusionDepths = Object.keys(bareByDepth).filter(d=>fusedByDepth[d]);
+        const fusionLead = fusionDepths.length ? fusionDepths.reduce((s,d)=>
+          s+fusedByDepth[d].elo-bareByDepth[d].elo,0)/fusionDepths.length : NaN;
+        if (Number.isFinite(fusionLead))
+          log(`pool cycle ${num} — dual fusion at ${dualRun.info.controlShape}: ` +
+              `${Math.round(fusionLead)} mean Elo (+policy minus bare, matched depths)`);
+        try { fs.appendFileSync(dualShapeHistory, JSON.stringify({ cycle:num, ...dualRun.info,
+          controlElo:+ctlElo.toFixed(1), mutantElo:+mutElo.toFixed(1), lead:+lead.toFixed(1), verdict })+'\n'); }
+        catch (e) {}
+      } else log(`pool cycle ${num} — dual shape unresolved (control or mutant still under 6 games)`);
+    }
+
     // Evolve the lineage population: cull what is losing, breed from what is winning. Nothing on
     // disk is ever deleted -- retiring only drops a lineage's training slot, and its checkpoints stay
     // as a reference point, the same way a retired ladder rung stays in the pool as a yardstick.
@@ -1124,14 +1204,17 @@ async function runPoolCycle() {
 
         // 1. CULL, but only once the population is actually full. A percentile alone does not work at
         // this scale in either direction -- read as "must be top 10%" nothing survives, read as
-        // "bottom 10% dies" nothing is ever culled (10% of 6 rounds to zero, so the population just
-        // sat there). Turnover has to be driven by CAPACITY: the roster is full, a slot is worth more
-        // to a new shape than to the worst incumbent, so the worst makes way. That is also what keeps
-        // the churn rate self-limiting -- no pressure at all until the population is full.
+        // "bottom 10% dies" nothing is ever culled. Capacity creates the pressure, but uncertainty
+        // decides whether it is safe to act: a model retires only when its 90% rank upper bound is
+        // below the active median. A noisy newcomer is measured, not killed for four unlucky games.
         if (countActive() >= maxActiveLineages) {
           const toCull = Math.max(1, Math.round(champs.length*cullFloorPct));
-          for (let n = 0; n < toCull; n++) {
-            const victim = champs[champs.length - 1 - n];
+          const rankedMids = champs.map(c=>c.champ.rank).filter(Number.isFinite).sort((a,b)=>a-b);
+          const medianRank = rankedMids.length ? rankedMids[Math.floor(rankedMids.length/2)] : NaN;
+          const confidentWeak = champs.slice().reverse().filter(c => Number.isFinite(medianRank) &&
+            Number.isFinite(c.champ.rankHi) && c.champ.rankHi < medianRank);
+          for (let n = 0; n < Math.min(toCull, confidentWeak.length); n++) {
+            const victim = confidentWeak[n];
             if (!victim || victim.info.status !== 'active') continue;
             if (victim.info.turns < cullMinTurns) continue;     // still finding its feet
             if (countActive() <= minActiveLineages) break;      // never collapse to a monoculture
@@ -1143,6 +1226,9 @@ async function runPoolCycle() {
                 `(${Math.round(victim.champ.elo)} Elo, last of ${champs.length} lineages) -- ` +
                 `files kept as a reference point, no longer trained`);
           }
+          if (!confidentWeak.length)
+            log(`pool cycle ${num} — lineage roster full, but no low model has a 90% rank-CI ` +
+                `entirely below the median yet; nobody retired on noise`);
         }
 
         // 2. BREED from the best parent that still has room. Strictly rank-1-only stalls: the leader
@@ -1150,8 +1236,21 @@ async function runPoolCycle() {
         // draining the population to the floor. Walking down the ranking keeps the top of the table
         // favoured without letting the whole mechanism seize up.
         if (countActive() < maxActiveLineages) {
-          const parent = champs.find(c => c.info.status === 'active' &&
+          const breeders = champs.filter(c => c.info.status === 'active' &&
             Object.values(reg.lineages).filter(v => v.parent === c.name && v.status === 'active').length < 2);
+          // Elo-weighted dice roll: the leaders breed most often, but a 15% exploration floor lets
+          // a weaker architecture occasionally branch instead of turning the population into one
+          // champion's monoculture.
+          const breederWeight = (c, i) => {
+            const x = breeders.length <= 1 ? 1 : 1 - i/(breeders.length-1);
+            return lineageExplore + (1-lineageExplore)*x*x;
+          };
+          const totalWeight = breeders.reduce((s,c,i)=>s+breederWeight(c,i),0);
+          let needle = Math.random()*totalWeight, parent = null;
+          for (let i=0;i<breeders.length;i++) if ((needle-=breederWeight(breeders[i],i))<=0) {
+            parent=breeders[i]; break;
+          }
+          if (!parent) parent=breeders[breeders.length-1];
           if (parent) {
             const mut = mutateHidden(parent.info.shape);
             if (mut) {
@@ -1363,38 +1462,14 @@ async function runBenchCycle() {
     table.map(r => r.trim().replace(/\s+/g, ' ')).join(' | ');
 }
 
-// Rewind endings and ask how strong an escape needs to be (retromine.js), with the pool as the
-// strength axis. Needs ratings to exist; quietly waits until they do.
-async function runRetroCycle() {
-  if (!fs.existsSync(poolSummary)) { log('retro cycle skipped — no rating pool yet'); return; }
-  const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-  // Each miner picks its seed positions at random from the same corpus, so N of them explore N
-  // independent lines with no coordination -- separate output files, no shared state at all.
-  const outs = Array.from({ length: retroWorkers }, (_, i) =>
-    path.join(dir, 'data', `retro-${stamp}` + (retroWorkers > 1 ? `-${i + 1}` : '') + '.jsonl'));
-  log(`retro cycle — ${retroWorkers > 1 ? `${retroWorkers} miners x ` : ''}${retroSeeds} seed ` +
-      `games mined backward from their endings`);
-  writeStatus(`retrograde mining (started ${new Date().toISOString()})`);
-  await Promise.all(outs.map(o => runSoftAsync('retromine.js',
-    ['--summary', poolSummary, '--seeds', String(retroSeeds),
-     '--maxReplaysPerSeed', String(retroReplays), '--out', o])));
-  const made = outs.filter(o => fs.existsSync(o)).map(o => path.relative(repoRoot, o).replace(/\\/g, '/'));
-  const rows = made.reduce((n, f) => {
-    try { return n + fs.readFileSync(path.join(repoRoot, f), 'utf8').split('\n').filter(Boolean).length; }
-    catch (e) { return n; }
-  }, 0);
-  log(`retro cycle complete — ${rows} row(s) across ${made.length} file(s)`);
-  writeStatus(`retro cycle complete (${rows} rows)`, made.length ? made : undefined);
-}
-
 // Cycles are started and NOT waited for, so the loop keeps ticking -- checking the other clocks,
 // pulling worker games, pushing status -- while a long one runs. Two guard rails on that:
 //   * one in-flight run per key. A pool cycle that overruns its own interval must not have a
 //     second one started on top of it.
 //   * train/pool/round-robin share ONE key because all three rewrite best.json. Two of those at
-//     once is a lost promotion, not just wasted CPU. Retro and bench only READ best.json (and
-//     atomicCopy renames into place, so a reader sees the old file or the new one, never a torn
-//     one), which is why they get their own keys and genuinely run in parallel with everything.
+//     once is a lost promotion, not just wasted CPU. Bench only READS best.json (and atomicCopy
+//     renames into place, so it sees the old file or the new one, never a torn one), which is why
+//     it gets its own key and genuinely runs in parallel with everything.
 // Git stays synchronous on purpose: execFileSync can't interleave on a single-threaded event
 // loop, so two cycles can never land half-built commits on top of each other.
 const busyCycles = new Set();
@@ -1441,10 +1516,7 @@ async function schedulerLoop() {
        runTournamentCycle, () => { lastTournamentAt = now; }],
     ].filter(c => c[1] >= 0).sort((a, b) => b[1] - a[1]);
     if (contenders.length && fire('model', contenders[0][0], contenders[0][2])) contenders[0][3]();
-    // Retro and bench take no lock against the above: they only read best.json, so they run
-    // genuinely in parallel with training and placement, which is the whole point.
-    if (retroEveryMin > 0 && now - lastRetroAt >= retroEveryMin*60000 &&
-        fire('retro', 'retro', runRetroCycle)) lastRetroAt = now;
+    // The benchmark only reads best.json, so it needs no lock against training/placement.
     if (now - lastBenchAt >= benchEveryMin*60000 &&
         fire('bench', 'ladder sweep', runBenchCycle)) lastBenchAt = now;
     writeStatus(`self-play batch ${statusState.batch} running, next check in ${checkEveryMin} min`);
