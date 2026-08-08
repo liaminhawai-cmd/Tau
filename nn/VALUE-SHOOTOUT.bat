@@ -7,7 +7,7 @@ echo   Tau value-net four-combo shootout
 echo ================================================
 echo.
 echo This preserves any current option-24/value.json and option-39/torch-PC.json
- echo it can identify by shape, trains only missing variants, then plays:
+echo it can identify by shape, trains only missing variants, then plays:
 echo.
 echo   Torch shape A  vs  JS shape A
 echo   Torch shape A  vs  JS shape B
