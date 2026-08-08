@@ -69,8 +69,27 @@
     .srOnly { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
               clip:rect(0,0,0,0); white-space:nowrap; border:0; }
     canvas { background:#0c0e11; touch-action:none; display:block; }
-    #views { display:flex; gap:10px; align-items:flex-start; justify-content:center; flex-wrap:wrap; }
+    /* align-items:center (was flex-start): the two tiles are no longer the same height — the split
+       handle lets one take most of the axis — so the shorter one is centred against the taller
+       rather than pinned to the top with a gap under it. position:relative anchors the handle. */
+    #views { display:flex; gap:10px; align-items:center; justify-content:center; flex-wrap:wrap; position:relative; }
     #view3d { border:1px solid #2c3138; border-radius:4px; }
+    /* The 2D/3D split handle: a grip sitting ON the seam between the two views, so it reads as
+       "drag this to move the divide" without adding a control bar that would itself eat the space
+       we're trying to give back to the boards. Nearly invisible until you approach it. */
+    #splitHandle { position:absolute; z-index:4; display:flex; align-items:center; justify-content:center;
+                   opacity:0.22; transition:opacity .15s; touch-action:none; }
+    #splitHandle:hover, #splitHandle:focus-visible, #splitHandle.dragging { opacity:0.95; }
+    #splitHandle:focus { outline:none; }
+    #splitHandle::before { content:''; background:#9aa4ad; border-radius:2px; display:block; }
+    /* Landscape: a vertical grip on a vertical seam, dragged left/right. */
+    #splitHandle.vert { width:18px; cursor:col-resize; }
+    #splitHandle.vert::before { width:3px; height:42px; }
+    /* Portrait: the seam is horizontal, so the grip and its drag axis turn with it. */
+    #splitHandle.horz { height:18px; cursor:row-resize; }
+    #splitHandle.horz::before { width:42px; height:3px; }
+    /* Auto-sized while watching a replay/spectating — nothing to drag, so it steps out of the way. */
+    #splitHandle.auto { display:none; }
     /* Coach only: ease the board-size change when swapping between watching and playing, instead of
        an instant jump. Scoped to a class that's added for ~230ms around the coach's resize() so
        ordinary window resizes never lag behind the drag. */
@@ -141,7 +160,9 @@
                        white-space:nowrap; border-radius:20px; color:#9aa4ad; border-color:#2c3138; }
     #menu .pbtnQuiet:hover { color:#e6e6e6; border-color:#3a4048; }
     #game { display:none; flex-direction:column; align-items:center; width:100%; }
-    #demoViews { display:flex; gap:8px; margin-bottom:4px; }
+    /* centred: the 3D preview is shaped to the board (see DISH_ASPECT) so it's shorter than the
+       square flat-board preview beside it, and should sit level with it rather than ride the top. */
+    #demoViews { display:flex; gap:8px; margin-bottom:4px; align-items:center; }
     #demoCanvas, #demoViews #view3d { background:#0c0e11; border:1px solid #2c3138; border-radius:8px; }
     /* Short desktop windows: shrink the menu so everything — incl. sign-in — fits without scrolling */
     @media (max-height: 800px) {
@@ -562,6 +583,8 @@
         <div id="views">
             <canvas id="canvas"></canvas>
             <canvas id="view3d"></canvas>
+            <div id="splitHandle" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"
+                 aria-label="Balance the flat board against the 3D view" title="Drag to resize the boards (double-click to reset)"></div>
         </div>
         <p id="help"></p>
         <div id="btns"><button id="reset">Surrender</button><button id="menuBtn">Menu</button><button id="crossFlashToggle" class="iconToggle" title="Highlight the line you cross (tap to turn off)" aria-label="Highlight the line you cross">💡</button></div>
@@ -3374,6 +3397,7 @@ const ctx = canvas.getContext('2d');
 let cx = 0, cy = 0, scale = 1;   // recomputed every frame by syncCanvas (px)
 let renderer=null, scene, camera, controls, tripods=[];   // 3D side view — always shown once THREE loads
 let pivotGlowMesh=null, boardTop=null, boardRim=null, camProbe=null, coachArcs=null;   // pivot glow + board surface + rim + fit-probe camera (built in init3D)
+let hoverDisc=null;   // the "this foot is grabbable" disc under the 3D cursor (built in init3D)
 let glowTexGold=null, glowTexHot=null;   // the pivot glow's two tints: gold for dark boards, white-hot for pale ones
 // Board SKIN: null = the default theme look (pure passthrough — normal players never touch this).
 // When set (colour lab / #colorlab), it overrides board zone colours, lines and piece colours
@@ -4115,10 +4139,27 @@ function onDown(e) {
         e.preventDefault(); clearTimeout(coachHoldTimer); coachSegmentEnd(); return;
     }
     if (G.over || aiAnim || inputBlocked()) return; e.preventDefault();
-    const p=pointerPos(e), feet=G.pieces[G.active].feet();
+    boardDown(view2D(e));
+}
+// The two boards are now BOTH playable, so the step-1/step-2 logic below can't read pointer
+// coordinates directly any more — each view hands it a small "picker" instead:
+//   nearest(exclude) -> the foot this gesture is grabbing (-1 for none), in that view's own metric
+//   dist(i)          -> distance to foot i in the same metric, for the pivot-vs-swing-foot tiebreak
+//   hitR             -> that metric's hit tolerance
+//   angle()          -> the pointer's angle around the pivot, in board coords (null = unusable)
+// Everything downstream — the coach rails, the crossing budget, online keyframes — is untouched
+// and shared, so the flat board and the 3D view can never drift out of step.
+function view2D(e) {
+    const p = pointerPos(e), feet = G.pieces[G.active].feet();
+    return { nearest: ex => nearestFoot(p, feet, ex),
+             dist: i => Math.hypot(feet[i].x-p.x, feet[i].y-p.y),
+             hitR: hitRadius(),
+             angle: () => G.pivot ? Math.atan2(p.y-G.pivot.y, p.x-G.pivot.x) : null };
+}
+function boardDown(v) {
     if (G.pinned===null) {
         // Step 1 — lock a foot as the pivot
-        const i=nearestFoot(p, feet, -1);
+        const i=v.nearest(-1);
         if (coachGuided && i>=0 && i!==coachGuided.pivot) {   // coached counter: only the shown foot
             document.getElementById('help').innerHTML = 'The <b style="color:#ffd23f">glowing</b> foot.';
             return;
@@ -4133,11 +4174,13 @@ function onDown(e) {
         // Step 2 — grab a DIFFERENT foot to swing, or re-tap the pivot to re-pick.
         // The pivot only "wins" the tap if it is the closest foot — a sloppy tap near a
         // swing foot must grab that foot, not silently unpin.
-        const dPin=Math.hypot(feet[G.pinned].x-p.x, feet[G.pinned].y-p.y);
-        const i=nearestFoot(p, feet, G.pinned);
-        if (i>=0 && (dPin>=hitRadius() || Math.hypot(feet[i].x-p.x,feet[i].y-p.y)<=dPin)){
-            G.handle=i; G.ptrAngle=Math.atan2(p.y-G.pivot.y, p.x-G.pivot.x); playMoveBass();   // grabbing a foot to swing = move begins
-        } else if (dPin<hitRadius() && Math.abs(G.netRad) < CFG.minMoveDeg*Math.PI/180){
+        const dPin=v.dist(G.pinned);
+        const i=v.nearest(G.pinned);
+        if (i>=0 && (dPin>=v.hitR || v.dist(i)<=dPin)){
+            // A null angle (3D press inside the pivot dead zone) is fine: boardMove adopts the
+            // first usable sample as the reference instead, exactly as it does mid-swing.
+            G.handle=i; G.ptrAngle=v.angle(); playMoveBass();   // grabbing a foot to swing = move begins
+        } else if (dPin<v.hitR && Math.abs(G.netRad) < CFG.minMoveDeg*Math.PI/180){
             restoreSnap(); G.pinned=null; G.pivot=null; coachFreeArc=null;   // unpinned — drop the cached rail
         }
     }
@@ -4145,8 +4188,10 @@ function onDown(e) {
 }
 function onMove(e) {
     if (G.handle===null || G.over || aiAnim || inputBlocked()) return; e.preventDefault();
-    const p=pointerPos(e);
-    const a=Math.atan2(p.y-G.pivot.y, p.x-G.pivot.x);
+    boardMove(view2D(e).angle());
+}
+function boardMove(a) {
+    if (a===null) return;                    // pointer in the pivot's dead zone — no usable angle
     if (G.ptrAngle===null){ G.ptrAngle=a; return; }
     const prevPtr = G.ptrAngle;
     let dA=norm(a-G.ptrAngle); G.ptrAngle=a;
@@ -5154,9 +5199,12 @@ function demoResize() {
     if (cv2.width !== bw) { cv2.width = bw; cv2.height = bw; }
     const cv3 = document.getElementById('view3d');
     if (!renderer || cv3.parentElement.id !== 'demoViews') return;
-    cv3.style.width = size+'px'; cv3.style.height = size+'px'; cv3.style.display = 'block';
-    renderer.setSize(size, size, false);
-    camera.aspect = 1; camera.updateProjectionMatrix();
+    // Same shaping as the in-game tile (see DISH_ASPECT): a square preview can only ever be a bit
+    // over half full of board, and the menu is where people form their first impression of it.
+    const h3 = Math.max(90, Math.round(size / DISH_ASPECT));
+    cv3.style.width = size+'px'; cv3.style.height = h3+'px'; cv3.style.display = 'block';
+    renderer.setSize(size, h3, false);
+    camera.aspect = size/h3; camera.updateProjectionMatrix();
 }
 function demoStart() {
     if (demoOn) return;
@@ -6725,6 +6773,119 @@ window.addEventListener('touchend', onUp);
 { const v3 = document.getElementById('view3d');
   if (v3) v3.addEventListener('pointerdown', closeTopPopouts, { passive: true }); }
 window.addEventListener('touchcancel', onUp);
+
+// ---------- Playing on the 3D view ----------
+// Grab the piece where you can actually see it standing: pin a foot and swing another directly in
+// the 3D scene, exactly as on the flat board. Both go through the same boardDown/boardMove, so the
+// pin rules, crossing budget, direction lock, coach rails and online keyframes are shared code.
+//
+// The feet sit at y=0, so a ray-vs-ground-plane hit gives an exact board coordinate for the SWING
+// (which only needs an angle around the pivot). PICKING a foot uses distance from the ray to the
+// foot instead — a screen-space-ish measure that stays fair when the camera is low and a foot's
+// projected size shrinks, and forgiving enough to catch a tap on the leg just above it.
+const V3_FOOT_HIT = 6.5;     // board units from the ray to a foot centre
+const V3_DEAD_ZONE = 8;      // too close to the pivot for the angle to mean anything
+let v3Ray = null, v3Ndc = null, v3Plane = null, v3Pt = null, v3Tmp = null;
+let v3Grabbing = false;      // this gesture belongs to the piece, not the camera
+let v3HoverIdx = -1;         // foot under the cursor, drawn as a disc by animate() (-1 = none)
+function v3Init() {
+    if (v3Ray || typeof THREE === 'undefined') return;
+    v3Ray = new THREE.Raycaster(); v3Ndc = new THREE.Vector2();
+    v3Plane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+    v3Pt = new THREE.Vector3(); v3Tmp = new THREE.Vector3();
+}
+function v3Ready() {
+    v3Init();
+    return !!(v3Ray && camera && renderer && G.pieces && G.pieces.length === 2);
+}
+function v3SetRay(ev) {
+    const cv = document.getElementById('view3d'), r = cv.getBoundingClientRect();
+    if (!r.width || !r.height) return false;
+    v3Ndc.set(((ev.clientX-r.left)/r.width)*2 - 1, -((ev.clientY-r.top)/r.height)*2 + 1);
+    v3Ray.setFromCamera(v3Ndc, camera);
+    return true;
+}
+// Same picker shape view2D() returns — see boardDown().
+function view3D(ev) {
+    const feet = G.pieces[G.active].feet();
+    const ok = v3SetRay(ev);
+    const dist = i => ok ? v3Ray.ray.distanceToPoint(v3Tmp.set(feet[i].x, 0.8, feet[i].y)) : Infinity;
+    return {
+        hitR: V3_FOOT_HIT,
+        dist,
+        nearest: ex => { let best=-1, bd=V3_FOOT_HIT;
+            for (let i=0;i<3;i++){ if (i===ex) continue; const d=dist(i); if (d<bd){ bd=d; best=i; } }
+            return best; },
+        angle: () => {
+            if (!ok || !G.pivot || !v3Ray.ray.intersectPlane(v3Plane, v3Pt)) return null;
+            const dx = v3Pt.x - G.pivot.x, dy = v3Pt.z - G.pivot.y;
+            return Math.hypot(dx, dy) < V3_DEAD_ZONE ? null : Math.atan2(dy, dx);
+        },
+    };
+}
+// Would a press here act on the piece (pin / grab / unpin) rather than the camera? Mirrors the
+// branches in boardDown so the two can't disagree about who owns the gesture.
+function v3WouldGrab(ev) {
+    const v = view3D(ev);
+    if (G.pinned === null) return v.nearest(-1) >= 0;
+    return v.nearest(G.pinned) >= 0 || v.dist(G.pinned) < v.hitR;
+}
+function v3InputOpen() {
+    return v3Ready() && !G.over && !aiAnim && !inputBlocked()
+        && !(typeof replayActive !== 'undefined' && replayActive)
+        && !(typeof demoAnim !== 'undefined' && demoAnim)
+        && !htp3DActive
+        && document.getElementById('game').style.display === 'flex';
+}
+{
+    const v3 = document.getElementById('view3d'), views = document.getElementById('views');
+    if (v3 && views) {
+        // CAPTURE on the parent, so this runs before OrbitControls' own pointerdown on the canvas.
+        // Only a press that actually lands on a foot is claimed (stopPropagation); anything else
+        // falls through untouched and still orbits the camera, which is the whole point of keeping
+        // both — you can still spin the board, you just get to play on it too.
+        views.addEventListener('pointerdown', ev => {
+            if (ev.target !== v3 || ev.button > 0) return;
+            if (!v3InputOpen() || !v3WouldGrab(ev)) return;
+            ev.preventDefault(); ev.stopPropagation();
+            v3Grabbing = true;
+            controls.enabled = false;                  // belt and braces: it never saw the down anyway
+            try { v3.setPointerCapture(ev.pointerId); } catch (e) {}
+            closeTopPopouts();
+            boardDown(view3D(ev));
+        }, true);
+        v3.addEventListener('pointermove', ev => {
+            if (v3Grabbing && G.handle !== null) {
+                if (!v3InputOpen()) return;
+                ev.preventDefault();
+                boardMove(view3D(ev).angle());
+                return;
+            }
+            if (v3Grabbing) return;
+            // Hover: nothing about a 3D board says "grab me" until it reacts to the cursor, so the
+            // foot under the pointer lights up (animate() draws it) and the cursor turns.
+            let idx = -1;
+            if (v3InputOpen()) {
+                const v = view3D(ev);
+                idx = v.nearest(G.pinned === null ? -1 : G.pinned);
+                if (idx < 0 && G.pinned !== null && v.dist(G.pinned) < v.hitR) idx = G.pinned;
+            }
+            v3HoverIdx = idx;
+            v3.style.cursor = idx >= 0 ? 'pointer' : '';
+        });
+        v3.addEventListener('pointerleave', () => { v3HoverIdx = -1; v3.style.cursor = ''; });
+        const release = () => {
+            if (!v3Grabbing) return;
+            v3Grabbing = false; controls.enabled = true;
+            onUp();
+        };
+        v3.addEventListener('pointerup', release);
+        v3.addEventListener('pointercancel', release);
+        // A pointer released outside the canvas (capture lost, or the cursor left mid-swing) still
+        // has to commit the move — otherwise the piece stays stuck to a pointer that isn't there.
+        window.addEventListener('pointerup', () => { if (v3Grabbing) release(); });
+    }
+}
 // Mobile browsers throw away a 2D canvas's backing store while the tab is backgrounded (e.g. you
 // switch to Messenger and come back) -- the 3D view redraws every animation frame DURING A MATCH so
 // it recovers on its own there, but the 2D board is only painted on demand and would come back BLANK.
@@ -7254,6 +7415,13 @@ function init3D() {
     camera=new THREE.PerspectiveCamera(42,1,1,3000);
     camera.position.set(0,88,115); camera.lookAt(0,6,0);
     camProbe=new THREE.PerspectiveCamera(42,1,1,3000);   // off-screen: tests whether a candidate view fits all 6 feet
+    // Hover affordance for playing in 3D: a soft additive disc on the foot under the cursor.
+    // Additive so it reads as a highlight on both the dark and the pale board skins, depth-write
+    // off and lifted a hair above the surface so it never z-fights the printed board texture.
+    hoverDisc=new THREE.Mesh(new THREE.CircleGeometry(3.2,28),
+        new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.42,
+                                     blending:THREE.AdditiveBlending, depthWrite:false}));
+    hoverDisc.rotation.x=-Math.PI/2; hoverDisc.position.y=0.12; hoverDisc.visible=false; scene.add(hoverDisc);
     controls=new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping=true; controls.dampingFactor=0.08; controls.enablePan=false;
     controls.minDistance=62; controls.maxDistance=420; controls.maxPolarAngle=Math.PI*0.49;   // 420: headroom for auto-cam's worst-case zoom-out
@@ -7471,7 +7639,11 @@ const acTgt = new THREE.Vector3(), acPos = new THREE.Vector3();
 // negligible next to a WebGL frame) so the whole board rim just fits the view: tight when
 // the pieces are near centre, backing off automatically if they drift toward an edge
 // together, rather than a fixed worst-case zoom that would be needlessly distant normally.
-const AUTOCAM_BASE_DIST = 145, AUTOCAM_MARGIN = 0.87, AUTOCAM_TARGET_Y = 6, AUTOCAM_SMOOTH = 3.2;
+// MIN_DIST is a hard "never closer than this" guard, not a resting distance: the fit solves for the
+// real distance every frame. 108 is a touch under the distance at which the dish's VERTICAL extent
+// alone fills the frame, so a wide tile can zoom all the way in to fill it; controls.minDistance
+// (62) is still the floor for manual zoom.
+const AUTOCAM_MIN_DIST = 108, AUTOCAM_MARGIN = 0.87, AUTOCAM_TARGET_Y = 6, AUTOCAM_SMOOTH = 3.2;
 const AUTOCAM_RATIO_D = 115, AUTOCAM_RATIO_H = 82;   // offset "shape" (azimuth/elevation), from the original hand-tuned view
 const AUTOCAM_RATIO_L = Math.hypot(AUTOCAM_RATIO_D, AUTOCAM_RATIO_H);
 const acRimPts = []; for (let k=0;k<48;k++){ const t=k/48*2*Math.PI; acRimPts.push([Math.cos(t)*CFG.edgeU, Math.sin(t)*CFG.edgeU, 0]); }
@@ -7479,36 +7651,120 @@ const acRimPts = []; for (let k=0;k<48;k++){ const t=k/48*2*Math.PI; acRimPts.pu
 // points — used during the loss fall, to also keep the tumbling piece in frame), for a
 // candidate eye distance `dist` along the fixed azimuth (px,pz) + elevation ratio from
 // midpoint (mx,mz).
-function autoCamNdcAt(dist, mx, mz, px, pz, targetY, extraPts) {
+// The tile is hardly ever square any more (the split handle can hand it most of a landscape
+// window), so the fit has to know its shape. Vertical half-tan is fixed by the 42° FOV;
+// horizontal is that times the aspect. Assuming a square viewport here — as this did — framed
+// the rim to whichever axis was SHORTER and left the long axis as dead margin: exactly the
+// "3D board floating in an empty box" the wide layout produced.
+function camFitAspect() { return (camera && camera.aspect > 0.05) ? camera.aspect : 1; }
+const AC_T = Math.tan(21*Math.PI/180);   // half of the 42° vertical FOV
+// Camera eye + basis for a candidate distance along the fixed azimuth/elevation. Reused by both
+// scans below, written into one shared object so the per-frame search allocates nothing.
+const _acB = {};
+function autoCamBasis(dist, mx, mz, px, pz, targetY) {
     const ex=mx+px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), ey=targetY+dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), ez=mz+pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L);
     let zx=ex-mx, zy=ey-targetY, zz=ez-mz; const zl=Math.hypot(zx,zy,zz)||1; zx/=zl; zy/=zl; zz/=zl;
     let xx=-zy, xy=zx, xz=0;                          // cross(worldUp=(0,1,0), zAxis)
     const xl=Math.hypot(xx,xy,xz)||1; xx/=xl; xy/=xl; xz/=xl;
-    const yx=zy*xz-zz*xy, yy=zz*xx-zx*xz, yz=zx*xy-zy*xx;
-    const t=Math.tan(21*Math.PI/180);                 // half of the 42° vertical FOV, square aspect
-    let maxAbs=0;
-    for (const rp of acRimPts){
-        const relx=rp[0]-ex, rely=(rp[2]||0)-ey, relz=rp[1]-ez;
-        const vx=relx*xx+rely*xy+relz*xz, vy=relx*yx+rely*yy+relz*yz, vz=relx*zx+rely*zy+relz*zz;
-        if (vz>=0) return Infinity;                    // rim point behind the camera
-        const a=Math.abs(vx/(-vz*t)), b=Math.abs(vy/(-vz*t));
-        if (a>maxAbs) maxAbs=a; if (b>maxAbs) maxAbs=b;
-    }
-    if (extraPts) for (const rp of extraPts){
-        const relx=rp[0]-ex, rely=(rp[2]||0)-ey, relz=rp[1]-ez;
-        const vx=relx*xx+rely*xy+relz*xz, vy=relx*yx+rely*yy+relz*yz, vz=relx*zx+rely*zy+relz*zz;
-        if (vz>=0) return Infinity;
-        const a=Math.abs(vx/(-vz*t)), b=Math.abs(vy/(-vz*t));
-        if (a>maxAbs) maxAbs=a; if (b>maxAbs) maxAbs=b;
-    }
-    return maxAbs;
+    const B=_acB;
+    B.ex=ex; B.ey=ey; B.ez=ez;
+    B.xx=xx; B.xy=xy; B.xz=xz;
+    B.yx=zy*xz-zz*xy; B.yy=zz*xx-zx*xz; B.yz=zx*xy-zy*xx;
+    B.zx=zx; B.zy=zy; B.zz=zz;
+    return B;
 }
-function autoCamDistance(mx, mz, px, pz, targetY, extraPts) {
-    let lo=AUTOCAM_BASE_DIST, hi=AUTOCAM_BASE_DIST, iter=0;
-    while (autoCamNdcAt(hi,mx,mz,px,pz,targetY,extraPts) > AUTOCAM_MARGIN && iter++<20) hi*=1.3;
-    for (let i=0;i<20;i++){ const mid=(lo+hi)/2;
-        if (autoCamNdcAt(mid,mx,mz,px,pz,targetY,extraPts) > AUTOCAM_MARGIN) lo=mid; else hi=mid; }
-    return Math.max(hi, AUTOCAM_BASE_DIST);
+// `bias` is the lens shift the frame will be rendered with (see camViewBias) — the fit has to
+// measure against the SHIFTED frame or the two fight each other.
+function autoCamNdcAt(dist, mx, mz, px, pz, targetY, extraPts, bias) {
+    const B = autoCamBasis(dist, mx, mz, px, pz, targetY);
+    const th = AC_T*camFitAspect(), vb = bias || 0;
+    let maxAbs = 0, behind = false;
+    const scan = pts => {
+        for (const rp of pts) {
+            const relx=rp[0]-B.ex, rely=(rp[2]||0)-B.ey, relz=rp[1]-B.ez;
+            const vx=relx*B.xx+rely*B.xy+relz*B.xz, vy=relx*B.yx+rely*B.yy+relz*B.yz, vz=relx*B.zx+rely*B.zy+relz*B.zz;
+            if (vz>=0) { behind = true; return; }      // point behind the camera
+            const a=Math.abs(vx/(-vz*th)), b=Math.abs(vy/(-vz*AC_T) - vb);
+            if (a>maxAbs) maxAbs=a; if (b>maxAbs) maxAbs=b;
+        }
+    };
+    scan(acRimPts);
+    if (!behind && extraPts) scan(extraPts);
+    return behind ? Infinity : maxAbs;
+}
+// Where the board's vertical NDC span is CENTRED at this distance. Looking across a table from a
+// raised camera, the near rim splays a long way down the frame while the far rim barely rises, so
+// a straight-ahead aim parks the dish low with the top third of the tile as empty backdrop — and,
+// worse, that lopsided span is what stops the fit from coming any closer. This is the number that
+// has to be cancelled out.
+function autoCamVCentre(dist, mx, mz, px, pz, targetY, extraPts) {
+    const B = autoCamBasis(dist, mx, mz, px, pz, targetY);
+    let lo=Infinity, hi=-Infinity, behind=false;
+    const scan = pts => {
+        for (const rp of pts) {
+            const relx=rp[0]-B.ex, rely=(rp[2]||0)-B.ey, relz=rp[1]-B.ez;
+            const vy=relx*B.yx+rely*B.yy+relz*B.yz, vz=relx*B.zx+rely*B.zy+relz*B.zz;
+            if (vz>=0) { behind = true; return; }
+            const y=vy/(-vz*AC_T);
+            if (y<lo) lo=y; if (y>hi) hi=y;
+        }
+    };
+    scan(acRimPts);
+    if (!behind && extraPts) scan(extraPts);
+    return behind ? 0 : (lo+hi)/2;
+}
+// Distance AND lens shift together: solve the distance, measure how far off-centre the board still
+// sits, re-solve against that shift, and repeat — they converge fast, the shift barely moving the
+// distance after the first pass. Cancelling the offset is worth real screen area: it both fills the
+// empty band and lets the fit zoom in, since the binding constraint was the low edge.
+const _acSolve = { dist: AUTOCAM_MIN_DIST, bias: 0 };
+function autoCamSolve(mx, mz, px, pz, targetY, extraPts) {
+    let dist = autoCamDistance(mx, mz, px, pz, targetY, extraPts, 0), bias = 0;
+    for (let i=0;i<3;i++) {
+        const c = autoCamVCentre(dist, mx, mz, px, pz, targetY, extraPts);
+        bias = Math.max(-CAM_BIAS_MAX, Math.min(CAM_BIAS_MAX, c));
+        dist = autoCamDistance(mx, mz, px, pz, targetY, extraPts, bias);
+    }
+    _acSolve.dist = dist; _acSolve.bias = bias;
+    return _acSolve;
+}
+// The solved shift, applied as an off-axis (tilt-shift lens) offset rather than a downward tilt:
+// a tilt would keystone the board and swing the horizon, a lens shift just slides the frame, so
+// the composition the rest of the camera code was tuned around is preserved exactly.
+// Only the RATIOS in the view offset matter here (offsetX and the width/height scaling are left
+// neutral), so the "full image" is a nominal 1000-tall frame — but it has to carry the camera's
+// real aspect, because PerspectiveCamera.setViewOffset assigns this.aspect = fullWidth/fullHeight.
+// Passing a 1x1 frame therefore silently resets the camera to square and undoes the aspect-aware
+// fit above; deriving fullWidth from cam.aspect leaves the aspect exactly where it was.
+const CAM_BIAS_MAX = 0.42;
+let camViewBias = 0, camViewBiasApplied = null, camProbeBias = null;
+let camWantBias = 0, camWatchBias = 0;   // solved shift for the playing / watching compositions
+function applyViewBias(cam, v) {
+    if (Math.abs(v) < 0.004) { cam.clearViewOffset(); return; }
+    // Positive offsetY slides the frustum down, which lifts the board up the frame. The fit's basis
+    // has +y pointing DOWN the screen (autoCamBasis builds it from cross(z, x)), so a positive bias
+    // means "the board hangs too low" and wants exactly that lift.
+    const H = 1000, W = H * cam.aspect;
+    cam.setViewOffset(W, H, 0, v/2*H, W, H);
+}
+function easeCamBias(target, dt) {
+    camViewBias += (target - camViewBias) * (1 - Math.exp(-AUTOCAM_SMOOTH*dt));
+    const v = Math.abs(camViewBias) < 0.004 ? 0 : camViewBias;
+    if (camViewBiasApplied !== null && Math.abs(v - camViewBiasApplied) < 0.002) return;
+    camViewBiasApplied = v; applyViewBias(camera, v);
+}
+// Smallest eye distance (never closer than AUTOCAM_MIN_DIST) at which the whole rim still fits.
+// NDC extent shrinks monotonically with distance, so a plain grow-then-bisect finds it exactly.
+// This used to seed the search AT the old 145-unit floor and only ever grow, which was fine while
+// the tile was square (the fit always wanted more than 145) but capped the zoom the moment a wide
+// tile let the camera come closer — the dead margin would have survived the aspect fix above.
+function autoCamDistance(mx, mz, px, pz, targetY, extraPts, bias) {
+    const fits = d => autoCamNdcAt(d, mx, mz, px, pz, targetY, extraPts, bias) <= AUTOCAM_MARGIN;
+    let lo = AUTOCAM_MIN_DIST, hi = AUTOCAM_MIN_DIST, iter = 0;
+    if (fits(lo)) return lo;
+    while (!fits(hi) && iter++ < 24) { lo = hi; hi *= 1.3; }
+    for (let i=0;i<22;i++){ const mid=(lo+hi)/2; if (fits(mid)) hi=mid; else lo=mid; }
+    return hi;
 }
 // Fills outPos/outTgt with the fully-centred, whole-board-framed view (the 100%-centred end
 // of the blend). No easing here — just the target.
@@ -7528,7 +7784,9 @@ function computeWatchFrame(outPos, outTgt) {
     const HB = 0.7;                                  // heading: 70% toward fixed north (+z), so it barely swings
     hx *= (1 - HB); hz = hz * (1 - HB) + HB;
     const hl = Math.hypot(hx, hz) || 1; const px = hx / hl, pz = hz / hl;
-    const dist = autoCamDistance(mx, mz, px, pz, AUTOCAM_TARGET_Y) * 1.08;
+    const sol = autoCamSolve(mx, mz, px, pz, AUTOCAM_TARGET_Y);
+    const dist = sol.dist * 1.08;
+    camWatchBias = sol.bias;
     outTgt.set(mx, AUTOCAM_TARGET_Y, mz);
     outPos.set(mx + px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), AUTOCAM_TARGET_Y + dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), mz + pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L));
 }
@@ -7552,7 +7810,9 @@ function computeFullFrame(outPos, outTgt) {
         px *= (1-ORIENT_K); pz = pz*(1-ORIENT_K) + ORIENT_K;
         const pl = Math.hypot(px, pz) || 1; px /= pl; pz /= pl;
     }
-    const dist = autoCamDistance(mx, mz, px, pz, AUTOCAM_TARGET_Y);
+    const sol = autoCamSolve(mx, mz, px, pz, AUTOCAM_TARGET_Y);
+    const dist = sol.dist;
+    camWantBias = sol.bias;
     outTgt.set(mx, AUTOCAM_TARGET_Y, mz);
     outPos.set(mx+px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), AUTOCAM_TARGET_Y+dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), mz+pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L));
     // Crossfade toward the watching composition by the eased mode mix (see camWatchMix): the
@@ -7561,6 +7821,7 @@ function computeFullFrame(outPos, outTgt) {
         computeWatchFrame(_wfPos, _wfTgt);
         outPos.lerpVectors(outPos, _wfPos, camWatchMix);
         outTgt.lerpVectors(outTgt, _wfTgt, camWatchMix);
+        camWantBias += (camWatchBias - camWantBias) * camWatchMix;   // ...and so does the lens shift
     }
 }
 // Called once per completed move: creep a quarter of the remaining gap back toward centre, and
@@ -7580,6 +7841,12 @@ function progressCentering() {
 }
 // Would a camera at (pos looking at tgt) keep all 6 feet on screen?
 function feetFitAt(pos, tgt) {
+    // Track the real viewport shape AND the live lens shift — a square, unshifted probe rejects
+    // views that actually fit, shoving the camera further out than it needs to be.
+    if (camProbe.aspect !== camFitAspect()) { camProbe.aspect = camFitAspect(); camProbe.updateProjectionMatrix(); }
+    if (camProbeBias === null || Math.abs(camProbeBias - camViewBias) > 0.002) {
+        camProbeBias = camViewBias; applyViewBias(camProbe, camViewBias);
+    }
     camProbe.position.copy(pos); camProbe.up.set(0,1,0); camProbe.lookAt(tgt); camProbe.updateMatrixWorld(true);
     for (const p of G.pieces) for (const f of p.feet()) {
         _fitP.set(f.x, 0, f.y).project(camProbe);
@@ -7588,7 +7855,9 @@ function feetFitAt(pos, tgt) {
     return true;
 }
 function updateGentleCam(dt) {
-    if (camDragging) return;                       // never fight active manual control
+    // While the player is steering by hand the composition is theirs — unwind the lens shift so the
+    // board sits where they aimed it, and let it return as the auto frame takes back over.
+    if (camDragging) { easeCamBias(0, dt); return; }
     // Tween the watching<->playing mode mix (see camWatchMix). A mode flip mid-tween simply
     // retargets from the current value, so reversals stay continuous too.
     const mixWant = camWatchingNow() ? 1 : 0;
@@ -7615,7 +7884,11 @@ function updateGentleCam(dt) {
             camWantPos.lerpVectors(baseP, camFullPos, mid); camWantTgt.lerpVectors(baseT, camFullTgt, mid);
             if (feetFitAt(camWantPos, camWantTgt)) hi=mid; else lo=mid; }
         camWantPos.lerpVectors(baseP, camFullPos, hi); camWantTgt.lerpVectors(baseT, camFullTgt, hi);
+        frac = hi;
     }
+    // The shift belongs to the auto frame, so it fades in with it: at frac 0 the camera is exactly
+    // where the player left it and gets no shift at all.
+    easeCamBias(camWantBias * (camManualSet ? frac : 1), dt);
     const k = 1 - Math.exp(-AUTOCAM_SMOOTH*dt);    // frame-rate-independent easing
     camera.position.lerp(camWantPos, k);
     controls.target.lerp(camWantTgt, k);
@@ -7633,9 +7906,11 @@ function updateFallCam(dt) {
     if (len < 1e-6) { dx=1; dz=0; } else { dx/=len; dz/=len; }
     const px=-dz, pz=dx;
     const extra = [[fallT.x, fallT.z, fallT.y]];
-    const dist = autoCamDistance(mx, mz, px, pz, AUTOCAM_TARGET_Y, extra);
+    const sol = autoCamSolve(mx, mz, px, pz, AUTOCAM_TARGET_Y, extra);
+    const dist = sol.dist;
     acTgt.set(mx, AUTOCAM_TARGET_Y, mz);
     acPos.set(mx+px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), AUTOCAM_TARGET_Y+dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), mz+pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L));
+    easeCamBias(sol.bias, dt);
     const k = 1 - Math.exp(-AUTOCAM_SMOOTH*dt);
     camera.position.lerp(acPos, k);
     controls.target.lerp(acTgt, k);
@@ -7678,7 +7953,9 @@ function animate() {
                           // landing demo keeps animating behind the modal
         htp3DTick(dt);
         controls.update();
+        easeCamBias(0, dt);   // the slide frames itself; the game's lens shift doesn't belong here
         pivotGlowMesh.visible = false;
+        if (hoverDisc) hoverDisc.visible = false;
         renderer.render(scene,camera);
         return;
     }
@@ -7713,16 +7990,136 @@ function animate() {
     } else {
         pivotGlowMesh.visible = false;
     }
+    // Hover disc: only while the foot is genuinely grabbable right now (v3HoverIdx is cleared by
+    // the move/leave handlers, but the turn can end under a resting cursor).
+    if (hoverDisc) {
+        const showHover = v3HoverIdx >= 0 && !G.over && !fall.active && G.handle === null
+                          && typeof v3InputOpen === 'function' && v3InputOpen();
+        hoverDisc.visible = showHover;
+        if (showHover) {
+            const f = G.pieces[G.active].feet()[v3HoverIdx];
+            hoverDisc.position.set(f.x, 0.12, f.y);
+            hoverDisc.material.opacity = 0.30 + Math.sin(performance.now()*0.005)*0.12;
+        }
+    }
     coachArc3DUpdate();
     renderer.render(scene,camera);
 }
+
+// ---------- The 2D/3D split ----------
+// One stored number, 0..1, for how the two views divide the long axis of the play area: 0 hands
+// almost everything to the 3D view, 1 to the flat board, and the 0.5 default reproduces the old
+// fixed split. It drives the grip that sits on the seam between them (#splitHandle) — a divider you
+// drag, rather than a mode you toggle, so there's no layout the player can't reach and no leftover
+// margin at either end.
+//
+// The ends are deliberately lopsided rather than a true 0/100: a view squeezed to nothing is just a
+// broken layout, and at the far end of each range the other view already fills the screen for any
+// practical purpose. Landscape and portrait get their own ranges because the axis being divided is
+// a different one (width vs height) with a different natural balance.
+const SPLIT_W_LO = 0.16, SPLIT_W_HI = 0.86;   // landscape: the flat board's share of the WIDTH
+const SPLIT_H_LO = 0.22, SPLIT_H_HI = 0.90;   // portrait:  ...of the HEIGHT
+// Seen from the game's raised camera the round board projects to a wide ellipse, about this much
+// wider than tall once the auto-fit has framed it (measured off the live projection). The 3D tile is
+// shaped to match, because a tile the board CAN'T fill is exactly the empty box we're removing:
+// there's no camera distance that fills a square tile with a 1.55:1 shape. Space the tile declines
+// goes back to the flat board.
+const DISH_ASPECT = 1.55;
+const SPLIT_KEY = 'tauViewSplit';
+let viewSplit = 0.5;
+try { const s = parseFloat(localStorage.getItem(SPLIT_KEY)); if (s >= 0 && s <= 1) viewSplit = s; } catch (e) {}
+function saveViewSplit() { try { localStorage.setItem(SPLIT_KEY, viewSplit.toFixed(3)); } catch (e) {} }
+// Watching rather than playing (replay, a shared link, spectating): you never touch the flat board,
+// so the 3D view takes the room automatically and the grip hides — the same "3D while it isn't your
+// move" idea, applied where it can't yank the layout around mid-swing.
+function passiveView() {
+    return (typeof replayActive !== 'undefined' && replayActive)
+        || (typeof sharedReplay !== 'undefined' && sharedReplay)
+        || (typeof onlineMatch !== 'undefined' && onlineMatch && onlineMatch.spectator)
+        || (typeof coachActive !== 'undefined' && coachActive && coachStage === 'watch');
+}
+// Never grow the flat board past the watching cap, but honour a player who has already dragged the
+// divide further toward 3D than that.
+function effectiveSplit() { return passiveView() ? Math.min(viewSplit, 0.18) : viewSplit; }
+function setViewSplit(v, persist) {
+    const nv = Math.max(0, Math.min(1, v));
+    if (nv === viewSplit) return;
+    viewSplit = nv;
+    if (persist) saveViewSplit();
+    const h = document.getElementById('splitHandle');
+    if (h) h.setAttribute('aria-valuenow', Math.round(viewSplit*100));
+    resize();
+}
+// Park the grip on the seam. Measured from the laid-out canvases rather than recomputed from the
+// sizing maths, so it stays glued to the join whichever clamp ended up deciding the split.
+function layoutSplitHandle() {
+    const h = document.getElementById('splitHandle'), vw = document.getElementById('views'),
+          cv3 = document.getElementById('view3d');
+    if (!h) return;
+    const hidden = !renderer || cv3.style.display === 'none' || passiveView()
+                 || document.body.classList.contains('dirUnlocked');   // director mode drags the boards itself
+    h.classList.toggle('auto', hidden);
+    if (hidden) return;
+    const stacked = vw.classList.contains('stacked');
+    h.classList.toggle('vert', !stacked); h.classList.toggle('horz', stacked);
+    const rv = vw.getBoundingClientRect(), r2 = canvas.getBoundingClientRect(), r3 = cv3.getBoundingClientRect();
+    if (!stacked) {                                   // 2D left, 3D right
+        h.style.left = ((r2.right + r3.left)/2 - rv.left - 9) + 'px';
+        h.style.top = '0px'; h.style.height = rv.height + 'px'; h.style.width = '';
+    } else {                                          // 3D on top (#views.stacked reorders it), 2D below
+        h.style.top = ((r3.bottom + r2.top)/2 - rv.top - 9) + 'px';
+        h.style.left = '0px'; h.style.width = rv.width + 'px'; h.style.height = '';
+    }
+}
+// Drag the grip -> the pointer position IS the new seam. The two tiles plus their gap always span
+// the whole available axis (see resize), so the pointer's fraction along #views is exactly the flat
+// board's share, and inverting the LO..HI range above turns that straight back into viewSplit.
+(function initSplitHandle() {
+    const h = document.getElementById('splitHandle');
+    if (!h) return;
+    const shareToSplit = (share, stacked) => {
+        const lo = stacked ? SPLIT_H_LO : SPLIT_W_LO, hi = stacked ? SPLIT_H_HI : SPLIT_W_HI;
+        return (share - lo) / (hi - lo);
+    };
+    let dragging = false;
+    const apply = ev => {
+        const vw = document.getElementById('views'), r = vw.getBoundingClientRect();
+        const stacked = vw.classList.contains('stacked');
+        // Portrait stacks 3D above the flat board, so the board's share grows UPWARD from the bottom.
+        const share = stacked ? (r.bottom - ev.clientY) / Math.max(1, r.height)
+                              : (ev.clientX - r.left) / Math.max(1, r.width);
+        setViewSplit(shareToSplit(share, stacked), false);
+    };
+    h.addEventListener('pointerdown', ev => {
+        ev.preventDefault(); ev.stopPropagation();
+        dragging = true; h.classList.add('dragging');
+        try { h.setPointerCapture(ev.pointerId); } catch (e) {}
+        apply(ev);
+    });
+    h.addEventListener('pointermove', ev => { if (dragging) { ev.preventDefault(); apply(ev); } });
+    const end = () => { if (!dragging) return; dragging = false; h.classList.remove('dragging'); saveViewSplit(); };
+    h.addEventListener('pointerup', end);
+    h.addEventListener('pointercancel', end);
+    h.addEventListener('dblclick', ev => { ev.preventDefault(); setViewSplit(0.5, true); });
+    h.addEventListener('keydown', ev => {
+        const stacked = document.getElementById('views').classList.contains('stacked');
+        // Whichever pair of arrows moves along the seam's axis; Home re-centres.
+        const grow = stacked ? ['ArrowDown'] : ['ArrowRight'], shrink = stacked ? ['ArrowUp'] : ['ArrowLeft'];
+        if (grow.includes(ev.key))        setViewSplit(viewSplit + 0.05, true);
+        else if (shrink.includes(ev.key)) setViewSplit(viewSplit - 0.05, true);
+        else if (ev.key === 'Home')       setViewSplit(0.5, true);
+        else return;
+        ev.preventDefault();
+    });
+    h.setAttribute('aria-valuenow', Math.round(viewSplit*100));
+})();
 
 // ---------- Responsive sizing ----------
 function resize() {
     // Director mode's "unlock layout" hands board sizing over to manual drag/resize (see
     // dirWrapCanvas) -- the auto-layout math below would immediately stomp that on the next window
     // resize/orientation event, so just repaint at whatever size is already set.
-    if (document.body.classList.contains('dirUnlocked')) { render(); return; }
+    if (document.body.classList.contains('dirUnlocked')) { layoutSplitHandle(); render(); return; }
     const cv3=document.getElementById('view3d');
     const used = document.querySelector('h1').offsetHeight   // 0 in-game (body.ingame hides it)
                + document.getElementById('status').offsetHeight
@@ -7741,52 +8138,35 @@ function resize() {
     const availH = window.innerHeight - used - safeTop;
     const gap = 8, show = !!renderer;
 
-    // Side-by-side keeps two squares. Stacked (portrait) gives the 3D view a SHORT, WIDE tile —
-    // from the low camera angle the dish is much wider than tall, so a square tile is mostly
-    // empty backdrop — and hands the saved height to the 2D board, the one you actually touch.
-    // The fit probe stays aspect-1, which is conservative for a wider-than-square viewport
-    // (same vertical FOV, more real width than it assumes), so nothing gets cropped.
-    const sideSize  = Math.max(200, Math.min((availW-gap)/2, availH));
-    let stackH3     = show ? Math.min(0.58*availW, Math.max(150, 0.40*(availH-gap))) : 0;
-    const stackSize = Math.max(170, Math.min(availW, availH - gap - stackH3));
-    // a width-capped 2D board leaves vertical slack — give it to the 3D tile (still wide, not square)
-    if (show) stackH3 = Math.min(Math.max(stackH3, availH - gap - stackSize), 0.75*availW);
-    const wide = sideSize >= stackSize;
+    // Which way the two views sit is decided from a NEUTRAL split, not the player's: dragging the
+    // divide should move the seam, never flip the whole layout out from under them mid-drag.
+    const sideProbe  = Math.max(200, Math.min((availW-gap)/2, availH));
+    const stackProbe = Math.max(170, Math.min(availW, (availH-gap)*0.6));
+    const wide = !show || sideProbe >= stackProbe;
     document.getElementById('views').classList.toggle('stacked', show && !wide);
-    let size, w3, h3;
-    if (!show)      { size = Math.max(220, Math.min(availW, availH)); }
-    else if (wide)  {
-        // Landscape: the 2D board is a height-limited square, and two squares leave the rest of a
-        // wide screen as dead margin — so the 3D tile absorbs the leftover width instead (capped so
-        // an ultrawide doesn't stretch it silly). The aspect-1 fit probe is conservative for a
-        // wider viewport, so the camera never crops a foot.
-        size = sideSize; h3 = size;
-        w3 = Math.max(size, Math.min(size*1.8, availW - size - gap));
-    }
-    else            { size = stackSize; w3 = availW; h3 = stackH3; }
 
-    // Watching, not playing (replay, shared link, or spectating): you never touch the 2D board, so
-    // give the 3D view the bulk of the room instead of the touch-priority split above.
-    const passive = show && ((typeof replayActive !== 'undefined' && replayActive) ||
-                              (typeof sharedReplay !== 'undefined' && sharedReplay) ||
-                              (typeof onlineMatch !== 'undefined' && onlineMatch && onlineMatch.spectator) ||
-                              // coach watch beat: shrink to the watching layout BEFORE the replay begins
-                              (typeof coachActive !== 'undefined' && coachActive && coachStage === 'watch'));
-    if (passive) {
-        if (wide) {
-            // Desktop/landscape: shrink the 2D board (a watcher never touches it) and give the freed
-            // WIDTH to the 3D view — but keep the row's HEIGHT the same as the interactive layout, so
-            // the button row below doesn't jump when a replay starts (the reported "after sharing, the
-            // lower menu shifts and is hard to click" on PC). Bigger 3D, smaller 2D, no vertical reflow.
-            const rowH = size;                                   // interactive views-row height (== square side)
-            size = Math.max(150, size * 0.72);
-            h3 = rowH;
-            w3 = Math.min(availW - size - gap, Math.max(w3, rowH * 1.7));
-        } else {
-            const newH3 = Math.min(availH - gap - 120, h3 * 1.9);
-            size = Math.max(120, Math.min(size, availH - gap - newH3, availW));
-            h3 = newH3;
-        }
+    // Both tiles together always span the WHOLE available axis — the 3D tile takes the full height
+    // in landscape and the full width in portrait, and whatever the flat board doesn't use goes to
+    // it rather than being left as margin. (The camera fit is aspect-aware now, so a wide tile is
+    // filled by the dish instead of framing it in dead space — see autoCamNdcAt.) The split handle
+    // then just moves where the join sits; nothing here leaves a gap at either extreme.
+    let size, w3, h3;
+    if (!show) { size = Math.max(220, Math.min(availW, availH)); }
+    else if (wide) {
+        const totalW = availW - gap;
+        const share = SPLIT_W_LO + (SPLIT_W_HI - SPLIT_W_LO) * effectiveSplit();
+        const want2D = Math.max(140, Math.min(availH, totalW * share));   // square board: height caps it too
+        w3 = Math.max(130, totalW - want2D);
+        h3 = Math.min(availH, w3 / DISH_ASPECT);
+        w3 = Math.min(w3, h3 * DISH_ASPECT);                     // bites only once h3 hit the height cap
+        size = Math.max(140, Math.min(availH, totalW - w3));     // take back whatever the 3D tile didn't need
+    } else {
+        const totalH = availH - gap;
+        const share = SPLIT_H_LO + (SPLIT_H_HI - SPLIT_H_LO) * effectiveSplit();
+        const want2D = Math.max(140, Math.min(availW, totalH * share));
+        w3 = availW;
+        h3 = Math.min(Math.max(110, totalH - want2D), w3 / DISH_ASPECT);
+        size = Math.max(140, Math.min(availW, totalH - h3));
     }
 
     canvas.style.width = size+'px'; canvas.style.height = size+'px';
@@ -7809,7 +8189,7 @@ function resize() {
                 // Coach beats swap watch<->play layouts constantly; flipping the buffer ratio 3<->2 with
                 // them adds a visible resolution pop at each swap, so the coach stays at a steady 2.
                 const inCoach = typeof coachActive !== 'undefined' && coachActive;
-                const wantRatio = Math.min(window.devicePixelRatio||1, (passive && !inCoach) ? 3 : 2);
+                const wantRatio = Math.min(window.devicePixelRatio||1, (passiveView() && !inCoach) ? 3 : 2);
                 // Touch the buffer ONLY when something really changed: assigning canvas.width even
                 // to its current value CLEARS the canvas (a blank frame until the next rAF render),
                 // and setPixelRatio internally re-applies setSize with stale dims. A same-size
@@ -7823,6 +8203,7 @@ function resize() {
         }
         else cv3.style.display='none';
     }
+    layoutSplitHandle();   // after the tiles have their final CSS size — it measures the real seam
     render();
 }
 // resize() assumes the #game layout (it measures #status/#meta/#help/#btns, which are all
