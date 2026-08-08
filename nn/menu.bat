@@ -384,7 +384,9 @@ set /p FLHOURS="Hours per cycle, Enter for 3: "
 if "%FLHOURS%"=="" set FLHOURS=3
 set /p FLARMS="Arms to keep, Enter for 2: "
 if "%FLARMS%"=="" set FLARMS=2
-set /p FLLEVELS="Ladder rungs to anchor against, Enter for 11: "
+rem WHICH rungs, not how many -- this is a comma-separated list passed straight through to
+rem --levels, so "11" means L11 alone and "5" would mean L5 alone, not "the top 5".
+set /p FLLEVELS="Which ladder rungs to anchor against (comma-separated, e.g. 10,11), Enter for 11: "
 if "%FLLEVELS%"=="" set FLLEVELS=11
 choice /M "Include the dual value+policy net (needs Python + torch)"
 if errorlevel 2 (
