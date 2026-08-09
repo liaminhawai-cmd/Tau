@@ -446,11 +446,10 @@ function main() {
       else netPool.push({ name: path.basename(p, '.json'), net: MLP.fromJSON(raw) });
     } catch (e) {}
   }
-  // One independent roll per SIDE (not per game, not per batch): mostly the primary, since that
-  // is the net actually being strengthened and its own data is the most relevant, but a minority
-  // slice draws from the pool. Two sides rolling independently is what makes an nnnn game
-  // GENUINELY able to pit two different architectures against each other, not just occasionally
-  // swap which one net plays itself.
+  // One independent roll per SIDE (not per game, not per batch).  A complete weight map means
+  // run.js has supplied the ONE shared Elo pool: primary best.json and every extra candidate are
+  // peers, so every seat is drawn from all of them.  With no map (standalone selfplay and the
+  // spare-machine factory), retain the older primary-plus-minority-variety behaviour.
   const pickWeighted = choices => {
     const weights = choices.map(m => {
       const w = +modelPoolWeights[m.name];
@@ -460,8 +459,14 @@ function main() {
     for (let i = 0; i < choices.length; i++) { r -= weights[i]; if (r <= 0) return choices[i]; }
     return choices[choices.length - 1];
   };
-  const pickNet = () => (netPool.length > 1 && Math.random() < modelVarietyFrac)
-    ? pickWeighted(netPool.slice(1)) : netPool[0];
+  const haveSharedWeights = netPool.length > 0 && netPool.every(m => {
+    const w = +modelPoolWeights[m.name];
+    return Number.isFinite(w) && w > 0;
+  });
+  const pickNet = haveSharedWeights
+    ? () => pickWeighted(netPool)
+    : () => (netPool.length > 1 && Math.random() < modelVarietyFrac)
+      ? pickWeighted(netPool.slice(1)) : netPool[0];
 
   // Seed-pose pool: workers get a pre-sampled file from the parent; a direct single-process run
   // samples for itself. Same <50 floor as the parent, same reason.
