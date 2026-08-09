@@ -1628,10 +1628,13 @@ async function runPoolCycle() {
                          ...(poolLevels ? ['--levels', poolLevels] : []), '--saveData',
                          path.join(dir, 'data', `pool-${String(num).padStart(3, '0')}.jsonl`)]);
 
-  // Promote on rating, with the interval respected: a challenger has to be clearly ahead, not
-  // merely ahead, or this becomes the noise-ratchet the old per-iteration gate was retired for
-  // (best.json is a running maximum over noisy draws, so it is upward-biased and an equal net has
-  // to beat the luck as well as the strength).
+  // Promote on a CONFIDENT separation of rank intervals, not a fixed Elo margin: the challenger's
+  // pessimistic bound (rankLo) has to sit entirely above the incumbent's optimistic bound (rankHi).
+  // A fixed margin (the old +30 Elo gate) treats a wide-CI lucky streak the same as a well-measured
+  // real lead -- exactly the noise-ratchet the old per-iteration gate was retired for (best.json is
+  // a running maximum over noisy draws, so it is upward-biased and an equal net has to beat the luck
+  // as well as the strength). This is the same "confident, not merely ahead" standard already used
+  // to retire a dual population member (rankHi <= bottomCutoff there), applied symmetrically here.
   try {
     const sum = JSON.parse(fs.readFileSync(poolSummary, 'utf8'));
     const allRated = Object.entries(sum.players || {})
@@ -1681,16 +1684,37 @@ async function runPoolCycle() {
     const line = ranked.slice(0, 5)
       .map(r => `${path.basename(r.model, '.json')} ${Math.round(r.elo)}`).join(', ');
     log(`pool cycle ${num} — ratings: ${line}`);
+    const hasCI = r => r && Number.isFinite(r.rankLo) && Number.isFinite(r.rankHi);
     if (topName === incumbentName) {
       log(`pool cycle ${num} — current net is already the strongest rated; keeping best.json`);
-    } else if (incumbent && top.elo - incumbent.elo < 30) {
-      log(`pool cycle ${num} — ${topName} leads by only ${Math.round(top.elo - incumbent.elo)} Elo; ` +
-          `too close to justify swapping, keeping best.json`);
-    } else if (fs.existsSync(top.model)) {
-      atomicCopy(best, path.join(dir, 'models', `best.pre-pool-${Date.now()}.json`));
-      atomicCopy(top.model, best);
-      log(`pool cycle ${num} — promoted ${topName} (${Math.round(top.elo)} Elo` +
-          (incumbent ? `, +${Math.round(top.elo - incumbent.elo)} over the incumbent` : '') + `)`);
+    } else if (!hasCI(incumbent)) {
+      // Unrated/edge-flagged incumbent (e.g. rated off the top of the ladder, or too few games):
+      // there is no interval to clear yet, so there is nothing to be confident ABOUT. Wait rather
+      // than fall back to the point estimate -- that fallback is exactly the noise-ratchet this
+      // gate exists to close off.
+      log(`pool cycle ${num} — ${incumbentName} has no usable rank interval yet; ` +
+          `too little evidence to judge a promotion, keeping best.json`);
+    } else {
+      // Search every rated candidate, not just the Elo point-estimate leader: a model with a
+      // slightly lower mean but a narrower, higher-floor interval can legitimately be the more
+      // confident case even when it isn't "top" by raw Elo. Among everyone who clears the bar,
+      // the highest rankLo is the most decisively ahead -- that ordering, not Elo, breaks the tie.
+      const challengers = Object.values(byModel)
+        .filter(r => path.basename(r.model, '.json') !== incumbentName && hasCI(r) &&
+                     r.rankLo > incumbent.rankHi)
+        .sort((a, b) => b.rankLo - a.rankLo);
+      const winner = challengers[0];
+      if (!winner) {
+        log(`pool cycle ${num} — no candidate's rank CI clears ${incumbentName}'s ` +
+            `(${incumbent.rankLo.toFixed(2)}-${incumbent.rankHi.toFixed(2)}) yet; keeping best.json`);
+      } else if (fs.existsSync(winner.model)) {
+        const winnerName = path.basename(winner.model, '.json');
+        atomicCopy(best, path.join(dir, 'models', `best.pre-pool-${Date.now()}.json`));
+        atomicCopy(winner.model, best);
+        log(`pool cycle ${num} — promoted ${winnerName} (rank ${winner.rankLo.toFixed(2)}-` +
+            `${winner.rankHi.toFixed(2)} clears incumbent ${incumbentName}'s ` +
+            `${incumbent.rankLo.toFixed(2)}-${incumbent.rankHi.toFixed(2)})`);
+      }
     }
     statusState.lastGate = `pool cycle ${num} — ${line}`;
     slotPaths = refreshModelSlots(ranked);
