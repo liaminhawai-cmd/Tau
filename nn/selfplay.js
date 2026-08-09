@@ -254,6 +254,14 @@ function main() {
     const parsed = JSON.parse(arg('modelPoolWeights', '{}'));
     if (parsed && typeof parsed === 'object') modelPoolWeights = parsed;
   } catch (e) {}
+  let coverageQueue = [];
+  try {
+    const parsed = JSON.parse(arg('coverageQueue', '[]'));
+    if (Array.isArray(parsed)) coverageQueue = parsed;
+  } catch (e) {}
+  let coverageA = null, coverageB = null;
+  try { coverageA = JSON.parse(arg('coverageA', 'null')); } catch (e) {}
+  try { coverageB = JSON.parse(arg('coverageB', 'null')); } catch (e) {}
   const modelVarietyFrac = Math.max(0, Math.min(1, +arg('modelVarietyFrac', 0.2)));
   // The in-game ply cap. Exposed as an arg mostly so tests can force cap-draws cheaply.
   const maxPlies = +arg('maxPlies', 300);
@@ -353,7 +361,7 @@ function main() {
     // is nothing next to a game that takes tens of seconds to several minutes). Exposed in case a
     // future workload is many very short games, where per-process overhead could actually matter.
     const gamesPerTask = Math.max(1, Math.floor(+arg('gamesPerTask', 1)));
-    const childArgs = (n, part) => ['--games', String(n), '--out', part, '--model', modelPath,
+    const childArgs = (n, part, coverA, coverB) => ['--games', String(n), '--out', part, '--model', modelPath,
       '--levels', levels.join(','), '--deep', deep.join(','), '--deepEvery', String(deepEvery),
       '--discount', String(discount), '--temperature', String(temperature),
       '--mix', Object.entries(mix).map(([k, v]) => k + ':' + v).join(','),
@@ -363,6 +371,8 @@ function main() {
       '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(','),
       ...(modelPoolPaths.length ? ['--modelPool', modelPoolPaths.join(',')] : []),
       '--modelPoolWeights', JSON.stringify(modelPoolWeights),
+      ...(coverA ? ['--coverageA', JSON.stringify(coverA)] : []),
+      ...(coverB ? ['--coverageB', JSON.stringify(coverB)] : []),
       // Every worker appends to the SAME inbox file. Safe for the reason elorank's own inbox
       // comment gives: one whole line per append, never a read-modify-write.
       ...(eloInbox ? ['--eloInbox', eloInbox] : []),
@@ -383,8 +393,12 @@ function main() {
     // as before; one bad game must never hang the whole pool.
     const runTask = (n, laneNum) => new Promise(resolve => {
       const part = out + '.w' + (taskIdx++);
+      // Reserve coverage entries when DISPATCHING, not when a game finishes. That makes the first
+      // wave cover everyone even with 14 concurrent lanes; two entries share one clean game.
+      const coverA = coverageQueue.shift() || null;
+      const coverB = coverageQueue.shift() || null;
       try { fs.unlinkSync(part); } catch (e) {}
-      const ch = fork(__filename, childArgs(n, part),
+      const ch = fork(__filename, childArgs(n, part, coverA, coverB),
         { env: Object.assign({}, process.env, { TAU_WORKER: String(laneNum + 1) }) });
       const finish = () => {
         if (fs.existsSync(part)) {
@@ -410,7 +424,8 @@ function main() {
       }
     }
     let remaining = games;
-    console.log(`running ${games} games across ${laneCount} lane(s), ${gamesPerTask} game(s)/task`);
+    console.log(`running ${games} games across ${laneCount} lane(s), ${gamesPerTask} game(s)/task` +
+                (coverageQueue.length ? `; ${coverageQueue.length} first-coverage face(s) queued` : ''));
     Promise.all(Array.from({ length: laneCount }, (_, i) => lane(i))).then(() => {
       if (seedFile) { try { fs.unlinkSync(seedFile); } catch (e) {} }
       ws.end(() => console.log(`all ${games} games done: ${positions} positions -> ${out} ` +
@@ -513,15 +528,17 @@ function main() {
     // A fresh independent roll per side, per game -- see pickNet's own note. chosenA and chosenB
     // can land on the same net (most likely, when neither rolls into the pool) or two genuinely
     // different architectures.
-    const chosenA = pickNet(), chosenB = pickNet();
+    const forcedA = g === 0 && coverageA && netPool.find(m => m.name === coverageA.name);
+    const forcedB = g === 0 && coverageB && netPool.find(m => m.name === coverageB.name);
+    const chosenA = forcedA || pickNet(), chosenB = forcedB || pickNet();
     // A dual entrant plays as one of the SAME TWO brains elorank.js rates it as: bare (the jointly
     // trained value head alone, directly comparable to an `nn:` net) and +P (also spending its own
     // policy logits on arm ordering under the ab cutoff -- elorank's `ab: true` face). Rolled per
     // side per game so both faces accumulate real games, and the id records which one played:
     // pooling them under one id would destroy the fusion ablation, which is the entire reason a
     // dual file carries two identities instead of one.
-    const usePA = !!chosenA.dual && Math.random() < 0.5;
-    const usePB = !!chosenB.dual && Math.random() < 0.5;
+    const usePA = !!chosenA.dual && (forcedA ? coverageA.face === 'policy' : Math.random() < 0.5);
+    const usePB = !!chosenB.dual && (forcedB ? coverageB.face === 'policy' : Math.random() < 0.5);
     const nnBrainAt = (d, chosen, useP) => chosen.dual
       ? idx => nnPlanFor(eng, null, idx, { temperature, depth: d, dual: chosen.dual,
                                            dualPolicy: !!useP, abCut: !!useP, policyPrune: false })
@@ -535,7 +552,8 @@ function main() {
     // whatever we believed the day it was played. Now carries WHICH net this side actually drew,
     // not just the batch's primary -- a variety pick shows up as "wide@D2", never misattributed.
     const nnIdAt = (d, chosen, useP) => `${chosen.name}${chosen.dual && useP ? '+P' : ''}@D${d}`;
-    const kind = net ? pickMix() : 'ladder';
+    const coverageGame = !!(forcedA || forcedB);
+    const kind = coverageGame ? 'nnnn' : net ? pickMix() : 'ladder';
     if (kind === 'nnnn') {
       brainA = nnBrainAt(depthA, chosenA, usePA); brainB = nnBrainAt(depthB, chosenB, usePB);
       tag = nnTagAt(depthA, chosenA, usePA) + ' vs ' + nnTagAt(depthB, chosenB, usePB);
@@ -555,11 +573,11 @@ function main() {
       brainA = ladderBrain(la); brainB = ladderBrain(lb); tag = 'L' + la + ' vs L' + lb;
       idA = `L${la}`; idB = `L${lb}`;
     }
-    const seedPose = seedPool.length && Math.random() < seedFrom ? pick(seedPool) : null;
+    const seedPose = !coverageGame && seedPool.length && Math.random() < seedFrom ? pick(seedPool) : null;
     if (seedPose) tag = 'seeded ' + tag;
     // seedPose wins if both roll -- a stored decision point already IS a real, reachable
     // position, so there's no reason to override it with an unconstrained random one.
-    const randomStart = !seedPose && Math.random() < randomStartFrac;
+    const randomStart = !coverageGame && !seedPose && Math.random() < randomStartFrac;
     if (randomStart) tag = 'random-start ' + tag;
     const { rows, winner, plies, capped, repeated, adjudicated } =
       playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomStart, { repeatGuard });
