@@ -774,15 +774,72 @@ const pairGamesOf = () => {
 // Ladder-vs-ladder pairs get a boost until the yardstick is pinned, because every net's rank is an
 // interpolation against it -- an unpinned ladder makes every other measurement uninterpretable
 // (which is exactly what a mid-run fit showed: L9 and L10 rating below L8).
+let lastCI = null;      // most recent bootstrapped rank intervals, refreshed on a cadence in lane()
+
+// How little is known about this brain, 0..1, where 1 is "no usable opinion at all". The measured
+// 90% rank interval is the real quantity; game COUNT is only a proxy for it, and a biased one --
+// twelve games against a hopeless opponent are twelve foregone results that barely move the
+// interval, yet 1/sqrt(n) would call that brain well measured and stop scheduling it.
+// A missing interval (NaN) is the normal reading rather than an error, and covers two cases that
+// both genuinely deserve maximum uncertainty: a brain with no games at all, and one rated clean off
+// the top of the ladder -- bootstrapRanks only keeps resamples where a net interpolates INSIDE the
+// rung scale, so a net stronger than the last rung collects too few samples to have an interval
+// (which is why the chart prints ">" for those). Those are exactly the nets most worth more games,
+// and a product that propagated NaN would instead drop them silently: NaN fails every comparison,
+// so such a pair could never win the argmax below.
+const UNC_REF = 1.0;         // rank half-width in rungs that already counts as fully uncertain
+const UNC_FLOOR = 0.05;      // a settled brain is still pickable when it is the only legal partner
+function uncertaintyOf(p, g) {
+  if (p.kind !== 'nn') return 1;                     // rungs are the scale itself, never "done"
+  if (!(g[p.id] > 0)) return 1;
+  const c = lastCI && lastCI[p.id];
+  if (!c || !Number.isFinite(c.lo) || !Number.isFinite(c.hi)) return 1;
+  return Math.max(UNC_FLOOR, Math.min(1, ((c.hi - c.lo)/2)/UNC_REF));
+}
+
 function pickPair(elo, inFlight) {
   const g = gamesOf(), pg = pairGamesOf(), lg = ladderGamesOf();
   const netElos = players.filter(p=>p.kind==='nn').map(p=>elo[p.id]).filter(Number.isFinite);
   const minE = netElos.length ? Math.min(...netElos) : 0;
   const maxE = netElos.length ? Math.max(...netElos) : 0;
   const span = Math.max(1, maxE-minE);
-  const strength = p => p.kind !== 'nn' ? 1 :
-    strengthExplore + (1-strengthExplore)*Math.pow(((elo[p.id]||0)-minE)/span, 2);
+  // Where this brain sits in the field, 0..1. Elo, NOT the interpolated rank: rankOf clamps and
+  // flags anything past the last rung, so rank is undefined for exactly the brains at the top of
+  // the field and a rank-based term would go blind right where the interesting nets are.
+  // An unrated brain needs no special case: fitBT's regularising prior already leaves it at elo ~0,
+  // which on this pool measures out at position 0.448 of the net range against a median of 0.47 --
+  // the middle, as it should be. What was wrong was SQUARING it. The square turned that honest
+  // middle into 0.32, i.e. it ranked every brand-new entrant near the bottom of a field it had not
+  // yet played a single game against, and then used that invented weakness to deprioritise it.
+  const standing = p => p.kind !== 'nn' ? 1 :
+    strengthExplore + (1-strengthExplore)*Math.max(0, Math.min(1, ((elo[p.id]||0)-minE)/span));
+  // One priority function, multiplicative in the two things that matter:
+  //   uncertain + strong  -> could be the next champion and nobody knows yet: play these most
+  //   confident + strong  }  one half of the question is already settled: worth some games
+  //   uncertain + weak    }
+  //   confident + weak    -> a known-weak brain with a tight interval: almost never
+  // A sum would order those four tiers identically but would never let the last one fall away, since
+  // a confidently weak brain would keep banking its uncertainty points forever. The PRODUCT is what
+  // makes "almost never" actually rare (~130x between the top and bottom tiers here).
+  // Uncertainty adds across the pair -- one game informs both endpoints, so the value is the sum of
+  // what each side stands to learn -- while standing is a geometric mean, because a game is only
+  // worth watching if BOTH brains are worth watching.
+  // The geometric mean is for net-vs-net only. A rung scores standing 1 by definition, so folding it
+  // into a sqrt would read as sqrt(standing(net)) and quietly halve the rank signal on exactly the
+  // pairs that carry it -- every net-vs-rung anchor game. Measured on the tier simulation: with the
+  // sqrt applied throughout, a confidently-strong net drew fewer games than an uncertain weak one;
+  // taking the net's own standing on mixed pairs puts the tiers back in the intended order.
+  const priority = (a, b) => (uncertaintyOf(a, g) + uncertaintyOf(b, g))*
+    (a.kind === 'nn' && b.kind === 'nn' ? Math.sqrt(standing(a)*standing(b))
+                                        : standing(a.kind === 'nn' ? a : b));
+  // Hard floor, not a preference: while any brain in the field has never played, every pick must
+  // involve one. 1/sqrt(1+n) made a first game only ~40% more attractive than a second, which a
+  // cheap well-matched pair between two established brains could and did outbid -- so a new entrant
+  // could sit at zero games while the pool re-measured what it already knew. Tracked as a separate
+  // argmax rather than a filter so it can never deadlock: if no legal pair touches an unplayed
+  // brain (a lone rung with no partner within two levels, say), the ordinary best still stands.
   let best = null, bestScore = -Infinity;
+  let bestNew = null, bestNewScore = -Infinity;
   for (let i = 0; i < players.length; i++) {
     for (let j = i + 1; j < players.length; j++) {
       const a = players[i], b = players[j];
@@ -807,7 +864,6 @@ function pickPair(elo, inFlight) {
       if (bothLadder && Math.abs(a.level - b.level) > 2) continue;
       const pExp = 1/(1 + Math.pow(10, ((elo[b.id] || 0) - (elo[a.id] || 0))/400));
       const closeness = 4*pExp*(1 - pExp);              // 1.0 at even, ->0 at foregone
-      const need = 1/Math.sqrt(1 + (g[a.id] || 0)) + 1/Math.sqrt(1 + (g[b.id] || 0));
       const novelty = 1/(1 + (pg[k] || 0)/gamesPerPair);
       const ladderBoost = bothLadder && Math.min(g[a.id] || 0, g[b.id] || 0) < ladderGames ? 3 : 1;
       // net-vs-rung pairs jump the queue while the net is under its anchor quota (<= so a brand-new
@@ -821,16 +877,17 @@ function pickPair(elo, inFlight) {
         const net = a.kind === 'nn' ? a : b;
         if ((lg[net.id] || 0) <= anchorShare*(g[net.id] || 0)) anchorBoost = 4;
       }
-      const strengthBias = a.kind==='nn'&&b.kind==='nn'
-        ? Math.sqrt(strength(a)*strength(b)) : strength(a.kind==='nn'?a:b);
       // Optimise information per CPU minute, not merely per completed game. Uncertain D3 still gets
       // scheduled, but it must justify the ~20x D1 cost instead of silently eating the whole box.
       const cpuCost = Math.sqrt(SIDE_COST(a)+SIDE_COST(b));
-      const score = (0.15 + closeness)*need*novelty*ladderBoost*anchorBoost*strengthBias/cpuCost;
+      const score = (0.15 + closeness)*priority(a, b)*novelty*ladderBoost*anchorBoost/cpuCost;
       if (score > bestScore) { bestScore = score; best = [a, b]; }
+      if ((!(g[a.id] > 0) || !(g[b.id] > 0)) && score > bestNewScore) {
+        bestNewScore = score; bestNew = [a, b];
+      }
     }
   }
-  return best;
+  return bestNew || best;
 }
 
 async function main() {
@@ -866,16 +923,23 @@ async function main() {
       // bootstrapping a nearly-empty store would report absurd precision on brains that have simply
       // never been separated. Checked on a cadence rather than every pair: it costs ~1s against
       // games that take minutes, but there is no reason to pay it on every single result.
-      if (rankTolerance > 0 && checksSinceBoot++ >= workers &&
-          mustCover.every(p => (g[p.id] || 0) >= 6)) {
+      // The intervals now drive BOTH the stopping rule and the pairing priority, so refresh them
+      // whenever ANY brain has real data rather than only once every brain does -- otherwise the
+      // scheduler runs on flat maximum uncertainty for the whole early phase, which is precisely
+      // when the new entrants it is supposed to be placing are arriving. The stop check keeps its
+      // stricter gate: an early stop must not be trusted to a bootstrap over a nearly-empty store.
+      if (checksSinceBoot++ >= workers && players.some(p => (g[p.id] || 0) >= 6)) {
         checksSinceBoot = 0;
         const { ci } = bootstrapRanks(80);
-        const worst = worstRankHalfWidth(ci);
-        globalThis.__lastWorst = worst;
-        if (worst <= rankTolerance) {
-          console.log(`\nevery net's rank now known to +-${worst.toFixed(2)} rungs ` +
-                      `(target ${rankTolerance}) -- stopping`);
-          stop = true; return;
+        lastCI = ci;
+        if (rankTolerance > 0 && mustCover.every(p => (g[p.id] || 0) >= 6)) {
+          const worst = worstRankHalfWidth(ci);
+          globalThis.__lastWorst = worst;
+          if (worst <= rankTolerance) {
+            console.log(`\nevery net's rank now known to +-${worst.toFixed(2)} rungs ` +
+                        `(target ${rankTolerance}) -- stopping`);
+            stop = true; return;
+          }
         }
       }
       // refit before every pick: BT over this many players is milliseconds, and a stale rating is
