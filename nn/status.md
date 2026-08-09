@@ -1,5 +1,5 @@
 # Tau NN training status
-_Last updated: 2026-08-09T23:01:03.518Z_
+_Last updated: 2026-08-09T23:06:21.232Z_
 
 **Self-play batch:** 36
 **Stage:** self-play batch 36 running, next check in 5 min
@@ -7,8 +7,8 @@ _Last updated: 2026-08-09T23:01:03.518Z_
 
 **Dual pool:** 4/4 active (dual-mut-111-e60, dual-control-111-e60, dual-control-110-e40, dual-pop-001-e20)
 
-**Last gate result:** (none yet)
+**Last gate result:** resume-train promoted at 2026-08-09T23:03:59.444Z
 
-**Last checkpoint:** (none yet)
+**Last checkpoint:** ckpt-114.json at 2026-08-09T23:06:13.726Z
 
 **Last ladder sweep:** (none yet)
