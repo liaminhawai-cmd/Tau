@@ -53,6 +53,7 @@ const { execFileSync, spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
@@ -1230,16 +1231,35 @@ function currentModelPool() {
 // matcher has enough evidence to retire it.  Grouping by filename folds a dual's bare/+policy
 // faces and all depths back into its one shared trunk weight.
 function selfplayPoolWeights(paths) {
-  const names = new Set(paths.map(p => path.basename(p, '.json')));
-  const groups = {};
+  const entries = paths.map(p => ({ path: p, name: path.basename(p, '.json') }));
+  const names = new Set(entries.map(x => x.name));
+  const groups = Object.fromEntries(entries.map(x => [x.name, []]));
+  const hashedRatings = {};
+  const hashFile = file => {
+    try { return crypto.createHash('sha1').update(fs.readFileSync(file)).digest('hex'); }
+    catch (e) { return null; }
+  };
   try {
     const players = JSON.parse(fs.readFileSync(poolSummary, 'utf8')).players || {};
-    for (const v of Object.values(players)) {
+    for (const [id, v] of Object.entries(players)) {
       const name = v && v.model ? path.basename(v.model, '.json') : null;
-      if (!name || !names.has(name) || !Number.isFinite(v.elo)) continue;
-      (groups[name] || (groups[name] = [])).push(v);
+      if (!name || !Number.isFinite(v.elo)) continue;
+      const row = { ...v, _id: id };
+      if (names.has(name)) groups[name].push(row);
+      // Slots deliberately have generic, rotating filenames (pool-slot-01 etc.) even though their
+      // contents are exact copies of a frozen Elo snapshot.  Match the bytes as well as the name,
+      // so a slot inherits its source model's rating immediately instead of falling back to a
+      // uniform draw just because its convenient on-disk label changed.
+      const fp = hashFile(v.model);
+      if (fp) (hashedRatings[fp] || (hashedRatings[fp] = [])).push(row);
     }
   } catch (e) {}
+  for (const { path: p, name } of entries) {
+    const fp = hashFile(p);
+    if (!fp || !hashedRatings[fp]) continue;
+    const have = new Set(groups[name].map(r => r._id));
+    for (const row of hashedRatings[fp]) if (!have.has(row._id)) groups[name].push(row);
+  }
   const mean = xs => xs.length ? xs.reduce((s, x) => s + x, 0)/xs.length : null;
   const stats = Object.fromEntries([...names].map(name => {
     const rows = groups[name] || [];
