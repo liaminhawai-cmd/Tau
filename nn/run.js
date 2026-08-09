@@ -250,13 +250,22 @@ const mutantsPerCycle = Math.max(1, +arg('mutantsPerCycle', 2));
 // A mutant may not be retired before it has had a real chance to be measured, whatever its rating.
 const mutantRetireGames = Math.max(6, +arg('mutantRetireGames', 15));
 // The CPU side already has an open population of value-net lineages. The dual head is the GPU
-// counterpart: every pool cycle trains a control at the current champion trunk plus one small
-// trunk mutant, then elorank rates each file twice (bare value and fused +policy) on the SAME graph.
-// Ordinary self-play never pauses while CUDA trains. --noDual disables cleanly on a CPU-only box.
+// counterpart, but it is deliberately a SMALL standing population rather than a fresh two-model
+// shootout every cycle. Every active file is rated twice (bare value and fused +policy) on the SAME
+// Elo graph. Once the population is full, most cycles train no dual at all: rate a few games, then
+// probabilistically retire at most one bottom-quartile member and train one from-scratch replacement
+// on the next cycle. That interleaving spends compute narrowing the evidence instead of minting
+// hundreds of disposable candidates. --noDual disables cleanly on a CPU-only box.
 const dualEnabled = !process.argv.includes('--noDual');
 const dualEpochChoices = String(arg('dualEpochs', '20,40,60')).split(',').map(Number).filter(n => n > 0);
 const dualBatch = Math.max(64, +arg('dualBatch', 4096));
 const dualInitialShape = arg('dualHidden', '128,128');
+// Four is both the default and the floor. A replacement is prepared while its victim remains active,
+// then swapped atomically after verification, so even a killed training process never drops below it.
+const dualPopulationCap = Math.max(4, +arg('dualPopulationCap', 4));
+const dualRetireChance = Math.max(0, Math.min(1, +arg('dualRetireChance', 0.60)));
+const dualRetireGames = Math.max(6, +arg('dualRetireGames', 6));
+const dualBottomFrac = Math.max(0.01, Math.min(0.5, +arg('dualBottomFrac', 0.25)));
 
 // Atomic save: write/copy to a temp file beside the target, then rename over it. A rename either
 // fully lands or doesn't happen at all, where a direct writeFileSync/copyFileSync can be caught
@@ -280,7 +289,8 @@ const poolFile = path.join(dir, 'elo-results.json');
 const poolSummary = path.join(dir, 'elo-summary.json');
 const fresh = path.join(dir, 'models', 'value.json');
 const dualShapeFile = path.join(dir, 'models', '.dual-trainer-shape.json');
-const dualShapeHistory = path.join(dir, 'models', '.dual-trainer-shape-history.jsonl');
+const dualPopFile = path.join(dir, 'models', '.dual-pop.json');
+const dualPopHistory = path.join(dir, 'models', '.dual-pop-history.jsonl');
 const log = msg => {
   const line = `[${new Date().toISOString()}] ${msg}`;
   console.log('\n=== ' + line);
@@ -622,6 +632,144 @@ const currentDualShape = () => {
   catch (e) { return dualInitialShape; }
 };
 
+// --- the dual population ----------------------------------------------------------------------
+// Stable identities are the important part: the Elo pool can only narrow a confidence interval if
+// tomorrow's games are credited to the same frozen file as today's. Retired files are NEVER deleted;
+// they simply leave `active`, so all their historical games remain in elo-results.json.
+function loadDualPop() {
+  let pop = null, migrated = false;
+  try { pop = JSON.parse(fs.readFileSync(dualPopFile, 'utf8')); } catch (e) {}
+  if (!pop || !Array.isArray(pop.active)) {
+    pop = { version: 1, next: 1, active: [], pending: null };
+    // Upgrade an existing run without throwing away the expensive old control/mutant games. Start
+    // with the best measured legacy files (falling back to newest when they are unrated), but give
+    // every imported net its own root: the migration begins diverse instead of inventing a common
+    // ancestor that never really existed.
+    let files = [];
+    try { files = fs.readdirSync(path.join(dir, 'models')); } catch (e) {}
+    const legacy = files.filter(f => /^dual-(?:control|mut)-\d+-e\d+\.json$/.test(f));
+    const scores = {};
+    try {
+      const players = JSON.parse(fs.readFileSync(poolSummary, 'utf8')).players || {};
+      for (const r of Object.values(players)) if (r.brain === 'dual' && r.model && Number.isFinite(r.elo)) {
+        const f = path.basename(r.model);
+        (scores[f] || (scores[f] = [])).push(r.elo);
+      }
+    } catch (e) {}
+    const score = f => scores[f] && scores[f].length
+      ? scores[f].reduce((s, n) => s + n, 0)/scores[f].length : -Infinity;
+    legacy.sort((a, b) => score(b) - score(a) || b.localeCompare(a, undefined, { numeric: true }));
+    for (const file of legacy.slice(0, dualPopulationCap)) {
+      const shape = hiddenOf(path.join(dir, 'models', file));
+      if (shape) pop.active.push({ file, shape, op: 'legacy-import', parent: null,
+                                  root: file, born: 0, epochs: null });
+    }
+    migrated = pop.active.length > 0;
+  }
+  pop.version = 1;
+  pop.next = Math.max(1, +pop.next || 1);
+  const seen = new Set();
+  pop.active = pop.active.filter(m => {
+    if (!m || !m.file || seen.has(m.file) || !fs.existsSync(path.join(dir, 'models', m.file))) return false;
+    seen.add(m.file);
+    m.shape = m.shape || hiddenOf(path.join(dir, 'models', m.file));
+    m.root = m.root || m.file;
+    return !!m.shape;
+  });
+  // Also advance past orphaned files from a close between training and the registry swap.
+  try {
+    for (const f of fs.readdirSync(path.join(dir, 'models'))) {
+      const m = f.match(/^dual-pop-(\d+)-e\d+\.json$/);
+      if (m) pop.next = Math.max(pop.next, +m[1] + 1);
+    }
+  } catch (e) {}
+  // A pending swap is valid only while its victim still holds a seat. Missing bootstrap parents are
+  // harmless (the shape is already frozen in the plan), but a missing victim cannot be swapped.
+  if (pop.pending && pop.pending.victim && !pop.active.some(m => m.file === pop.pending.victim))
+    pop.pending = null;
+  pop._migrated = migrated;
+  return pop;
+}
+function saveDualPop(pop) {
+  const clean = { version: 1, next: pop.next, active: pop.active, pending: pop.pending || null };
+  atomicWrite(dualPopFile, JSON.stringify(clean, null, 1));
+  pop._migrated = false;
+}
+const dualStatus = pop => !pop ? 'disabled' :
+  `${pop.active.length}/${dualPopulationCap} active` +
+  (pop.active.length ? ` (${pop.active.map(m => path.basename(m.file, '.json')).join(', ')})` : '') +
+  (pop.pending ? `; pending ${pop.pending.victim ? `${pop.pending.victim} -> ` : ''}${pop.pending.file}` : '');
+
+const meanFinite = values => {
+  const a = values.filter(Number.isFinite);
+  return a.length ? a.reduce((s, n) => s + n, 0)/a.length : null;
+};
+// Fold bare/+policy and all search depths into ONE architecture reading. Retirement is about the
+// shared trunk, not whichever one of its six search identities got a lucky pairing. `games` is the
+// minimum across usable identities: every included face has had at least that much evidence.
+function dualAggregates(rows, pop) {
+  const groups = {};
+  for (const r of rows || []) if (r && r.brain === 'dual' && r.model) {
+    const file = path.basename(r.model);
+    (groups[file] || (groups[file] = [])).push(r);
+  }
+  const out = {};
+  for (const m of (pop && pop.active) || []) {
+    const all = groups[m.file] || [];
+    const ranked = all.filter(r => Number.isFinite(r.rank) && Number.isFinite(r.rankLo) &&
+                                   Number.isFinite(r.rankHi));
+    out[m.file] = {
+      rows: all, identities: all.length, rankedIdentities: ranked.length,
+      elo: meanFinite(all.map(r => r.elo)), rank: meanFinite(ranked.map(r => r.rank)),
+      rankLo: meanFinite(ranked.map(r => r.rankLo)), rankHi: meanFinite(ranked.map(r => r.rankHi)),
+      ciWidth: meanFinite(ranked.map(r => r.rankHi - r.rankLo)),
+      games: ranked.length ? Math.min(...ranked.map(r => r.games || 0)) : 0,
+      totalGames: all.reduce((s, r) => s + (r.games || 0), 0),
+    };
+  }
+  return out;
+}
+
+function readPreviousDualRatings(pop) {
+  try {
+    const players = JSON.parse(fs.readFileSync(poolSummary, 'utf8')).players || {};
+    return dualAggregates(Object.entries(players).map(([id, r]) => ({ id, ...r })), pop);
+  } catch (e) { return {}; }
+}
+
+function planDualBirth(pop, num, victim, parent, root, reason, stats) {
+  const serialN = pop.next++;
+  const serial = String(serialN).padStart(3, '0');
+  const epochs = dualEpochChoices[(serialN - 1) % dualEpochChoices.length];
+  const baseShape = parent ? parent.shape : currentDualShape();
+  const mutation = parent ? mutateHidden(baseShape) : { shape: baseShape, op: 'seed' };
+  if (!mutation) return null;
+  return {
+    file: `dual-pop-${serial}-e${epochs}.json`, victim: victim ? victim.file : null,
+    parent: parent ? parent.file : null, root, baseShape, shape: mutation.shape, op: mutation.op,
+    epochs, seed: num*1009 + serialN, selectedCycle: num, reason, stats: stats || null,
+  };
+}
+
+// Pure state transition kept separate from the trainer process so its invariant is obvious and
+// testable: a replacement removes exactly one and adds exactly one; bootstrap only fills an empty
+// seat. It never mutates the registry if the saved plan no longer matches the live population.
+function completeDualBirth(pop, plan, num) {
+  const member = { file: plan.file, shape: plan.shape, op: plan.op, parent: plan.parent,
+                   root: plan.root || plan.file, born: num, epochs: plan.epochs };
+  let next = pop.active.slice();
+  if (plan.victim) {
+    if (!next.some(m => m.file === plan.victim)) return null;
+    next = next.filter(m => m.file !== plan.victim);
+  } else if (next.length >= dualPopulationCap) return null;
+  if (!next.some(m => m.file === member.file)) next.push(member);
+  if (plan.victim && next.length !== pop.active.length) return null;
+  if (next.length > dualPopulationCap) return null;
+  pop.active = next;
+  pop.pending = null;
+  return member;
+}
+
 async function trainDualOne(out, shape, epochs, seed, label) {
   const partial = out.replace(/\.json$/, '.partial.json');
   try {
@@ -637,26 +785,143 @@ async function trainDualOne(out, shape, epochs, seed, label) {
   }
 }
 
-async function trainDualCandidates(num) {
-  if (!dualEnabled || !dualEpochChoices.length) return { focus: [], info: null };
-  const shape = currentDualShape();
-  const mut = mutateHidden(shape);
-  const epochs = dualEpochChoices[(Math.max(1, num) - 1) % dualEpochChoices.length];
-  const tag = String(num).padStart(3, '0');
-  const control = path.join(dir, 'models', `dual-control-${tag}-e${epochs}.json`);
-  const mutant = mut ? path.join(dir, 'models', `dual-mut-${tag}-e${epochs}.json`) : null;
-  log(`pool cycle ${num} — GPU dual branch: ${shape} control` +
-      (mut ? ` vs ${mut.shape} mutant (${mut.op})` : '') + `, ${epochs} epochs each`);
-  // Mints once, then both candidates see the identical target file. This short CPU preprocessing
-  // overlaps the ordinary trainer; the long part is CUDA while run.js's self-play lanes stay busy.
-  await runAsync('policy-targets.js', []);
-  const focus = [];
-  if (await trainDualOne(control, shape, epochs, num*1009 + 1,
-      `dual control ${shape} e${epochs}`)) focus.push(control);
-  if (mutant && await trainDualOne(mutant, mut.shape, epochs, num*1009 + 2,
-      `dual mutant ${mut.shape} e${epochs}`)) focus.push(mutant);
-  return { focus, info:mutant&&focus.includes(control)&&focus.includes(mutant)
-    ? { control, mutant, controlShape:shape, mutantShape:mut.shape, op:mut.op, epochs } : null };
+async function trainDualPopulation(num) {
+  if (!dualEnabled || !dualEpochChoices.length) {
+    statusState.dual = 'disabled';
+    return { focus: [], pop: null, trained: null };
+  }
+  const pop = loadDualPop();
+  if (pop._migrated) {
+    log(`pool cycle ${num} — dual population: imported ${pop.active.length} frozen legacy entrant(s)`);
+    saveDualPop(pop);
+  }
+
+  // Bootstrap ONE seat per cycle. Existing members keep being rated while the pool fills; a new
+  // bootstrap shape is a one-edit child but starts a new root family, preserving early diversity.
+  if (!pop.pending && pop.active.length < dualPopulationCap) {
+    const ratings = readPreviousDualRatings(pop);
+    const rated = pop.active.filter(m => ratings[m.file] && Number.isFinite(ratings[m.file].rankLo));
+    const parent = pop.active.length
+      ? (rated.length ? pickParent(pop.active, m => ratings[m.file])
+                      : pop.active[Math.floor(Math.random()*pop.active.length)]) : null;
+    const plan = planDualBirth(pop, num, null, parent, null, 'bootstrap', null);
+    if (plan) {
+      plan.root = plan.file;
+      pop.pending = plan;
+      saveDualPop(pop);              // checkpoint BEFORE the expensive train
+    }
+  }
+
+  let trained = null;
+  const plan = pop.pending;
+  if (plan) {
+    const out = path.join(dir, 'models', plan.file);
+    log(`pool cycle ${num} — GPU dual ${plan.reason}: ${plan.baseShape} -> ${plan.shape} (${plan.op}), ` +
+        `${plan.epochs} epochs, one replacement only; active ${pop.active.length}/${dualPopulationCap}`);
+    // A verified final file may already exist when the window was closed after rename but before
+    // the registry swap. In that case finish the swap instead of paying for the same train twice.
+    let ok = fs.existsSync(out);
+    if (!ok) {
+      await runAsync('policy-targets.js', []);
+      ok = await trainDualOne(out, plan.shape, plan.epochs, plan.seed,
+                              `dual population ${plan.file} ${plan.shape} e${plan.epochs}`);
+    }
+    if (ok) {
+      const member = completeDualBirth(pop, plan, num);
+      if (member) {
+        saveDualPop(pop);            // victim leaves only in the same atomic save that adds child
+        trained = member.file;
+        try {
+          fs.appendFileSync(dualPopHistory, JSON.stringify({ at: new Date().toISOString(), cycle: num,
+            event: plan.victim ? 'replace' : 'bootstrap', added: member, retired: plan.victim,
+            reason: plan.reason, stats: plan.stats }) + '\n');
+        } catch (e) {}
+        log(`pool cycle ${num} — dual population: ${plan.victim ? `replaced ${plan.victim} with` : 'added'} ` +
+            `${member.file}; active ${pop.active.length}/${dualPopulationCap}`);
+      } else {
+        log(`pool cycle ${num} — dual replacement file verified, but its saved plan no longer matches ` +
+            `the active registry; leaving the old population intact`);
+      }
+    } else {
+      // Keep the victim and the pending plan. The next cycle retries the exact same birth.
+      log(`pool cycle ${num} — dual replacement did not finish; old population remains intact and the plan is checkpointed`);
+    }
+  } else {
+    log(`pool cycle ${num} — dual population full (${pop.active.length}/${dualPopulationCap}); ` +
+        `training none, rating the standing entrants`);
+  }
+
+  const focus = pop.active.map(m => path.join(dir, 'models', m.file))
+    .filter(p => fs.existsSync(p));
+  statusState.dual = dualStatus(pop);
+  return { focus, pop, trained };
+}
+
+// Schedule, but do not execute, at most one replacement. The victim remains active until the next
+// cycle successfully trains and verifies its child. A last surviving family is protected unless
+// EVERY member of that family is confidently inside the bottom quartile; otherwise its
+// replacement inherits the same root, so a wide-CI unlucky result cannot erase a whole lineage.
+function scheduleDualRetirement(pop, ratings, num) {
+  if (!pop || pop.pending || pop.active.length !== dualPopulationCap) return null;
+  const measured = pop.active.map(m => ({ m, r: ratings[m.file] }))
+    .filter(x => x.r && Number.isFinite(x.r.rank) && Number.isFinite(x.r.rankHi) &&
+                 x.r.rankedIdentities >= 2 && x.r.games >= dualRetireGames);
+  if (measured.length !== pop.active.length) {
+    log(`pool cycle ${num} — dual retirement waits: ${measured.length}/${pop.active.length} entrants ` +
+        `have ${dualRetireGames}+ games on at least a bare and +policy face`);
+    return null;
+  }
+  const rankValues = measured.map(x => x.r.rank).sort((a, b) => a - b);
+  const mid = Math.floor(rankValues.length/2);
+  const median = rankValues.length % 2 ? rankValues[mid] : (rankValues[mid - 1] + rankValues[mid])/2;
+  const bottomN = Math.max(1, Math.ceil(measured.length*dualBottomFrac));
+  const bottomCutoff = rankValues[bottomN - 1];
+  const bottom = measured.slice().sort((a, b) => a.r.rank - b.r.rank).slice(0, bottomN);
+  // "CI in the bottom 25%" means even the OPTIMISTIC endpoint does not clear the quartile cutoff.
+  // Merely overlapping the bottom quartile would punish wide intervals for being under-measured.
+  const confident = bottom.filter(x => x.r.rankHi <= bottomCutoff);
+  if (!confident.length && Math.random() >= dualRetireChance) {
+    log(`pool cycle ${num} — dual population: no retirement this cycle (exploration draw)`);
+    return null;
+  }
+  // Within the bottom quartile, prefer the widest CI. This is intentionally exploratory: uncertain
+  // weak-looking nets turn over fairly often, while deterministically weak nets always turn over.
+  const choices = confident.length ? confident : bottom;
+  const victimEntry = choices.slice().sort((a, b) =>
+    (b.r.ciWidth || 0) - (a.r.ciWidth || 0) || a.r.rank - b.r.rank)[0];
+  const victim = victimEntry.m;
+  const family = pop.active.filter(m => m.root === victim.root);
+  const familyConfidentlyWeak = family.every(m => {
+    const r = ratings[m.file];
+    return r && r.rankedIdentities >= 2 && r.games >= dualRetireGames &&
+           Number.isFinite(r.rankHi) && r.rankHi <= bottomCutoff;
+  });
+  const preserveFamily = family.length === 1 && !familyConfidentlyWeak;
+  const survivors = pop.active.filter(m => m.file !== victim.file);
+  // Breed from genuinely strong evidence, not just anyone who survived. rankLo is the pessimistic CI
+  // endpoint; take the top half on that measure, then retain a little weighted diversity inside it.
+  const strong = survivors.slice().sort((a, b) =>
+    (ratings[b.file].rankLo ?? -Infinity) - (ratings[a.file].rankLo ?? -Infinity))
+    .slice(0, Math.max(1, Math.ceil(survivors.length/2)));
+  const parent = preserveFamily ? victim : (pickParent(strong, m => ratings[m.file]) || victim);
+  const reason = confident.length ? 'confidently-weak' : 'bottom-quartile-exploration';
+  const plan = planDualBirth(pop, num, victim, parent,
+    preserveFamily ? victim.root : parent.root, reason, {
+      victim: { rank: victimEntry.r.rank, rankLo: victimEntry.r.rankLo,
+                rankHi: victimEntry.r.rankHi, games: victimEntry.r.games,
+                ciWidth: victimEntry.r.ciWidth },
+      medianRank: median, bottomCutoff, preserveFamily, familyConfidentlyWeak,
+    });
+  if (!plan) return null;
+  pop.pending = plan;
+  saveDualPop(pop);
+  statusState.dual = dualStatus(pop);
+  log(`pool cycle ${num} — dual retirement scheduled: ${victim.file} (rank ${victimEntry.r.rank.toFixed(2)}, ` +
+      `CI ${victimEntry.r.rankLo.toFixed(2)}..${victimEntry.r.rankHi.toFixed(2)}, bottom-quartile ` +
+      `cutoff ${bottomCutoff.toFixed(2)}, median ${median.toFixed(2)}) ` +
+      `-> scratch child of ${parent.file}${preserveFamily ? `, preserving root ${victim.root}` :
+        familyConfidentlyWeak && family.length === 1 ? ', family allowed to go extinct' : ''}`);
+  return plan;
 }
 
 // --- variant lineage registry: an open, evolving population ------------------------------------
@@ -754,6 +1019,7 @@ function writeStatus(stage, extraPaths) {
     `**Self-play batch:** ${statusState.batch ?? '-'}\n` +
     `**Stage:** ${statusState.stage}\n` +
     `**mix:** ${statusState.mix ?? '-'}\n\n` +
+    `**Dual pool:** ${statusState.dual ?? '(not initialized yet)'}\n\n` +
     `**Last gate result:** ${statusState.lastGate ?? '(none yet)'}\n\n` +
     `**Last checkpoint:** ${statusState.lastCheckpoint ?? '(none yet)'}\n\n` +
     `**Last ladder sweep:** ${statusState.lastBenchmark ?? '(none yet)'}\n`;
@@ -1037,9 +1303,9 @@ async function runPoolCycle() {
 
   // Start the GPU branch immediately. The CPU branch below (train.js control/mutant/lineage) and
   // continuous self-play run at the same time; only the final Elo placement waits for both.
-  const dualPromise = trainDualCandidates(num).catch(e => {
+  const dualPromise = trainDualPopulation(num).catch(e => {
     log(`WARNING: dual branch failed (${e.message}) — placing CPU candidates only`);
-    return { focus: [], info: null };
+    return { focus: [], pop: null, trained: null };
   });
 
   // The from-scratch challenger still enters, for the reason the header records: resume-training
@@ -1362,45 +1628,37 @@ async function runPoolCycle() {
       }
     }
 
-    // Dual shape verdict, separately from best.json promotion. Average all measured depths and
-    // both bare/+policy identities so a one-off D3 outlier cannot crown a trunk by itself. The same
-    // summary also gives the clean fusion readout: identical file/depth, only dualPolicy differs.
-    if (dualRun.info) {
-      const dualGroups = {};
-      for (const r of allRated.filter(x => x.brain === 'dual')) {
-        const k = path.basename(r.model, '.json');
-        (dualGroups[k] || (dualGroups[k] = [])).push(r);
+    // Dual population verdict. Each stable file contributes all of its bare/+policy depth identities
+    // to one trunk reading; then at most one retirement is SCHEDULED. Training that replacement is
+    // next cycle's only dual train, so the loop alternates evidence and exploration instead of doing
+    // a thousand games followed by a batch of throwaway nets.
+    if (dualRun.pop && dualRun.pop.active.length) {
+      const dualRatings = dualAggregates(allRated, dualRun.pop);
+      const standing = dualRun.pop.active.map(m => ({ m, r: dualRatings[m.file] }))
+        .filter(x => x.r && Number.isFinite(x.r.rank))
+        .sort((a, b) => b.r.rank - a.r.rank);
+      if (standing.length) {
+        log(`pool cycle ${num} — dual standings: ` + standing.map(({ m, r }) =>
+          `${path.basename(m.file, '.json')} R${r.rank.toFixed(2)} ` +
+          `[${r.rankLo.toFixed(2)},${r.rankHi.toFixed(2)}]`).join(', '));
+      } else {
+        log(`pool cycle ${num} — dual standings unresolved (active entrants still under the rating floor)`);
       }
-      const average = rows => rows && rows.length ? rows.reduce((s,r)=>s+r.elo,0)/rows.length : NaN;
-      const ctlRows = dualGroups[path.basename(dualRun.info.control, '.json')] || [];
-      const mutRows = dualGroups[path.basename(dualRun.info.mutant, '.json')] || [];
-      const key = r => `${r.dualPolicy?'P':'B'}@D${r.depth}`;
-      const ctlBy = Object.fromEntries(ctlRows.map(r=>[key(r),r]));
-      const mutBy = Object.fromEntries(mutRows.map(r=>[key(r),r]));
-      const matched = Object.keys(ctlBy).filter(k=>mutBy[k]);
-      const ctlElo = average(matched.map(k=>ctlBy[k]));
-      const mutElo = average(matched.map(k=>mutBy[k]));
-      if (Number.isFinite(ctlElo) && Number.isFinite(mutElo) && matched.length) {
-        const lead = matched.reduce((s,k)=>s+mutBy[k].elo-ctlBy[k].elo,0)/matched.length;
-        const verdict = lead >= 25 ? 'adopted' : lead <= -25 ? 'rejected' : 'inconclusive';
-        if (verdict === 'adopted') atomicWrite(dualShapeFile, JSON.stringify({
-          shape:dualRun.info.mutantShape, cycle:num, epochs:dualRun.info.epochs,
-          adoptedAt:new Date().toISOString(),
-        }, null, 1));
-        log(`pool cycle ${num} — dual shape: ${dualRun.info.mutantShape} (${dualRun.info.op}) vs ` +
-            `${dualRun.info.controlShape}: ${Math.round(lead)} mean Elo — ${verdict}`);
-        const bareByDepth = Object.fromEntries(ctlRows.filter(r=>!r.dualPolicy).map(r=>[r.depth,r]));
-        const fusedByDepth = Object.fromEntries(ctlRows.filter(r=>r.dualPolicy).map(r=>[r.depth,r]));
-        const fusionDepths = Object.keys(bareByDepth).filter(d=>fusedByDepth[d]);
-        const fusionLead = fusionDepths.length ? fusionDepths.reduce((s,d)=>
-          s+fusedByDepth[d].elo-bareByDepth[d].elo,0)/fusionDepths.length : NaN;
-        if (Number.isFinite(fusionLead))
-          log(`pool cycle ${num} — dual fusion at ${dualRun.info.controlShape}: ` +
-              `${Math.round(fusionLead)} mean Elo (+policy minus bare, matched depths)`);
-        try { fs.appendFileSync(dualShapeHistory, JSON.stringify({ cycle:num, ...dualRun.info,
-          controlElo:+ctlElo.toFixed(1), mutantElo:+mutElo.toFixed(1), lead:+lead.toFixed(1), verdict })+'\n'); }
-        catch (e) {}
-      } else log(`pool cycle ${num} — dual shape unresolved (control or mutant still under 6 games)`);
+      // The clean fusion ablation survives the population change: identical frozen weights and
+      // depth, only the use of the policy head differs.
+      for (const m of dualRun.pop.active) {
+        const rows = (dualRatings[m.file] && dualRatings[m.file].rows) || [];
+        const bare = Object.fromEntries(rows.filter(r => !r.dualPolicy).map(r => [r.depth, r]));
+        const fused = Object.fromEntries(rows.filter(r => r.dualPolicy).map(r => [r.depth, r]));
+        const matched = Object.keys(bare).filter(d => fused[d] && Number.isFinite(bare[d].elo) &&
+                                                       Number.isFinite(fused[d].elo));
+        if (matched.length) {
+          const lead = matched.reduce((s, d) => s + fused[d].elo - bare[d].elo, 0)/matched.length;
+          log(`pool cycle ${num} — dual fusion ${path.basename(m.file, '.json')} (${m.shape}): ` +
+              `${Math.round(lead)} mean Elo (+policy minus bare, ${matched.length} matched depth(s))`);
+        }
+      }
+      scheduleDualRetirement(dualRun.pop, dualRatings, num);
     }
 
     // Evolve the lineage population: cull what is losing, breed from what is winning. Nothing on

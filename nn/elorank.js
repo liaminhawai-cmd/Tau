@@ -157,29 +157,24 @@ function discoverModels() {
     const last = path.join(modelsDir, ck[ck.length - 1]);
     if (!pick.includes(last)) pick.push(last);
   }
-  // Frozen dual entrants are a separate lineage from best.json. Keep their stable numbered files
-  // discoverable on later placement runs so their old games remain part of the connected graph.
-  // Once the archive is large, reserve seats for the strongest measured files and the newest files,
-  // then fill the rest with history. Pure even sampling can accidentally evict the champion.
-  const dual = files.filter(f => /^dual-(?:control|mut)-\d+-e\d+\.json$/.test(f)).sort();
-  let keepDual = dual;
-  if (dual.length > 40) {
-    const rated = {};
-    try {
-      const old = JSON.parse(fs.readFileSync(summaryPath, 'utf8')).players || {};
-      for (const v of Object.values(old)) if (v.brain === 'dual' && v.model && Number.isFinite(v.elo)) {
-        const f = path.basename(v.model);
-        rated[f] = Math.max(rated[f] == null ? -Infinity : rated[f], v.elo);
-      }
-    } catch (e) {}
-    const keep = new Set(Object.entries(rated).filter(([f]) => dual.includes(f))
-      .sort((a,b)=>b[1]-a[1]).slice(0,12).map(([f])=>f));
-    for (const f of dual.slice(-12)) keep.add(f);
-    const history = dual.filter(f=>!keep.has(f));
-    const slots = 40-keep.size, step = Math.max(1, Math.ceil(history.length/Math.max(1,slots)));
-    for (let i=0;i<history.length && keep.size<40;i+=step) keep.add(history[i]);
-    keepDual = dual.filter(f=>keep.has(f));
-  }
+  // Frozen dual entrants are a separate lineage from best.json. The registry is the authoritative
+  // SMALL active field: retired files remain in elo-results.json as historical evidence, but do not
+  // consume fresh games forever. This is also what makes a restarted manual rank discover the same
+  // four dual trunks even when run.js did not provide --focus.
+  let keepDual = [], haveDualRegistry = false;
+  try {
+    const pop = JSON.parse(fs.readFileSync(path.join(modelsDir, '.dual-pop.json'), 'utf8'));
+    if (Array.isArray(pop.active)) {
+      haveDualRegistry = true;
+      keepDual = pop.active.map(m => m && m.file).filter(f => f && files.includes(f));
+    }
+  } catch (e) {}
+  // Upgrade compatibility: before the first new trainer cycle writes a registry, keep a tiny sample
+  // of the legacy control/mutant field. run.js imports the best measured four into the registry; a
+  // standalone elorank run uses newest four as a bounded fallback rather than resurrecting all 40.
+  if (!haveDualRegistry) keepDual = files
+    .filter(f => /^dual-(?:(?:control|mut)-\d+-e\d+|pop-\d+-e\d+)\.json$/.test(f))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).slice(-4);
   for (const f of keepDual) pick.push(path.join(modelsDir, f));
   // Anything named by --focus joins the field unconditionally. Focus only restricts which PAIRS get
   // played; a model that is focused but not discovered would be silently rated zero games, which is
