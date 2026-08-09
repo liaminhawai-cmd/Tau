@@ -35,7 +35,8 @@ echo   window or a killed run never loses them.
 echo.
 echo   LOOPS -- run until the window is closed, unless noted otherwise
 echo  20. FULL TRAINER: continuous self-play + evolving Elo pool + CPU value/GPU dual training
-echo      -- no retromine; 4 standing dual nets enter bare and +policy, one replacement at a time
+echo      -- no retromine; one Elo pool weights strong, well-measured models in self-play
+echo      -- 4 standing dual nets enter bare and +policy; weak ones are replaced one at a time
 echo  21. RETROMINE: ratchet-only data generation, multicore
 echo  22. SELF-PLAY FACTORY: plain game generation for a spare machine (never trains/rates)
 echo  23. POLICY FIGHT: train a policy net on existing data, fight it at equal think-time
