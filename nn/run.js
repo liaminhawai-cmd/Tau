@@ -129,6 +129,19 @@ const topFloor = Math.max(0, +arg('topFloor', 3));
 // dropping them would blind the regression spot-check that catches a solid rung going bad.
 const lossWeightOn = arg('lossWeight', '1') !== '0';
 const lossFloor = Math.min(1, Math.max(0, +arg('lossFloor', 0.25)));
+// Concentrate ladder opponents at the STRONG end. The ZPD bell centres on the current frontier, so
+// while the frontier sits around L5-6 most ladder games are played against rungs the net already
+// beats comfortably -- games that cost full arena time and teach very little, and (now that
+// self-play feeds the rating pool) contribute rating evidence about rungs nobody is deciding
+// anything on. This reshapes the finished pool so most of it lands in [lo, hi] while keeping a
+// deliberate minority outside: the low rungs are not worthless, they are what keeps the ladder
+// anchored end-to-end and catches a regression that only shows up against weak play. Set
+// --ladderBandShare 0 to restore the pure ZPD distribution.
+const ladderBandLo = Math.max(1, +arg('ladderBandLo', 7));
+// 0 means "to the top of whatever ladder this build has" -- the ladder has grown before (L13 exists
+// now) and a hardcoded 11 would silently stop skewing toward the hardest rungs the day it grows again.
+const ladderBandHiArg = +arg('ladderBandHi', 0);
+const ladderBandShare = Math.min(1, Math.max(0, +arg('ladderBandShare', 0.85)));
 // Which depths to sweep. Cost grows ~3.6x PER PLY (measured: 5.6x at depth 2, 20x at depth 3), so
 // this is not a free dial -- depth 4 costs ~47x a depth-1 game and depth 5 ~168x, compounded by the
 // fact that the deeper rungs are themselves searching brains (L8 is a depth-3 search, ~2.5s/call).
@@ -222,6 +235,20 @@ const poolWideEvery = Math.max(0, +arg('poolWideEvery', 4));
 // forward, so the shape random-walks uphill one measured fight at a time instead of being a
 // hand-picked constant revisited only when a human thinks of it. --mutateShape 0 disables.
 const mutateShape = arg('mutateShape', '1') !== '0';
+// The mutant POPULATION. The old shape fight trained one mutant against one control, read the
+// verdict off a single placement, and then never rated either file again -- elorank's discoverModels
+// has no pattern matching `mut-NNN.json`, so their Elo was a one-shot measurement at the 6-game
+// floor that could never refine. A ~25 Elo lead decided by 6 games is noise choosing an
+// architecture. Now mutants are stable rated identities that accumulate games across cycles, and
+// the population is what is bounded: spawn only while under --mutantCap, at most
+// --mutantsPerCycle at a time, and free a slot by retiring one that is CONFIDENTLY weak rather
+// than one that is merely behind. Retirement reads the CI's upper bound, not the point estimate:
+// culling on a wide interval would kill under-measured mutants for being uncertain, and since a
+// culled mutant stops getting games, that mistake is self-reinforcing.
+const mutantCap = Math.max(0, +arg('mutantCap', 6));
+const mutantsPerCycle = Math.max(1, +arg('mutantsPerCycle', 2));
+// A mutant may not be retired before it has had a real chance to be measured, whatever its rating.
+const mutantRetireGames = Math.max(6, +arg('mutantRetireGames', 15));
 // The CPU side already has an open population of value-net lineages. The dual head is the GPU
 // counterpart: every pool cycle trains a control at the current champion trunk plus one small
 // trunk mutant, then elorank rates each file twice (bare value and fused +policy) on the SAME graph.
@@ -471,7 +498,44 @@ function zpdLevels(win, regressed, scores) {
   // max, not add: once the frontier climbs high enough that the bell covers the top rung on its
   // own, this must stop contributing rather than keep piling weight on the hardest opponent.
   for (let have = pool.filter(l => l === LADDER_N).length; have < topFloor; have++) pool.push(LADDER_N);
-  return pool.length ? pool : null;
+  return pool.length ? skewToBand(pool) : null;
+}
+
+// Reshape a level pool so ladderBandShare of it sits in [ladderBandLo, ladderBandHi]. Works on the
+// multiset, not the order, because selfplay.js consumes this with a uniform pick() -- so the
+// composition IS the probability distribution.
+// Within the band the ZPD bell's own relative weighting is preserved, so this decides HOW MUCH goes
+// to the strong rungs without overriding the bell's judgement about WHICH of them are most
+// contested.
+// If the bell puts NOTHING in the band, the skew is skipped entirely rather than seeding the band
+// by hand. An empty in-band slice means the frontier is nowhere near these rungs, and forcing a net
+// that loses to L4 into 85% L7+ games buys a pile of one-sided games that teach nothing -- the exact
+// failure the ZPD window exists to prevent. Concentrating on the strong end is worth doing once the
+// net has business there, which for any net this loop has trained for a while it does.
+function skewToBand(pool) {
+  const hi = Math.min(LADDER_N, ladderBandHiArg > 0 ? ladderBandHiArg : LADDER_N);
+  const lo = Math.min(ladderBandLo, hi);
+  if (!ladderBandShare || !pool.length) return pool;
+  const inBand = pool.filter(l => l >= lo && l <= hi);
+  const outBand = pool.filter(l => l < lo || l > hi);
+  if (!inBand.length) return pool;
+  const band = inBand;
+  const total = pool.length;
+  const wantBand = Math.round(total*ladderBandShare);
+  const wantOut = Math.max(0, total - wantBand);
+  // Resample by EVEN STRIDE across the sorted multiset, not by cycling it. Cycling takes a prefix
+  // whenever the target size is not a whole multiple of the source, which silently over-weights
+  // whichever rungs sort first: measured on the live pool, cycling turned L7x8/L8x9 into L7x16/L8x13
+  // while leaving L9/L10 untouched, and dropped the L6 frontier peak from the minority share
+  // entirely. A stride keeps each rung's share proportional, which is the whole claim this function
+  // makes -- decide how much goes to the strong end, don't second-guess the bell about which rungs.
+  const spread = (arr, want) => Array.from({ length: want },
+    (_, i) => arr[Math.min(arr.length - 1, Math.floor(i*arr.length/Math.max(1, want)))]);
+  const out = spread(band, wantBand);
+  // The minority keeps the bell's own low-rung mix rather than a flat spread -- if the ZPD says a
+  // regression is showing up at L4, that is exactly the low rung this share should spend on.
+  if (outBand.length) out.push(...spread(outBand, wantOut));
+  return out.length ? out : pool;
 }
 
 // --- architecture hill-climb helpers ------------------------------------------------------------
@@ -484,6 +548,48 @@ const shapeHistFile = path.join(dir, 'models', '.shape-history');
 const championShape = () => {
   try { return JSON.parse(fs.readFileSync(shapeFile, 'utf8')).shape || null; } catch (e) { return null; }
 };
+
+// --- the mutant population --------------------------------------------------------------------
+// Registry of the mutants currently holding a slot. Deliberately small and boring: the RATINGS live
+// in the pool (that is the whole point of giving mutants stable filenames), so this only has to
+// remember which files are active and where each came from. A retired mutant's file is left on disk
+// untouched -- retiring frees a training slot, it does not delete evidence, the same rule the
+// lineage registry and the ladder rungs already follow.
+const mutantPopFile = path.join(dir, 'models', '.mutant-pop.json');
+const mutantHistFile = path.join(dir, 'models', '.mutant-history.jsonl');
+function loadMutantPop() {
+  let pop;
+  try { pop = JSON.parse(fs.readFileSync(mutantPopFile, 'utf8')); } catch (e) { pop = null; }
+  if (!pop || !Array.isArray(pop.active)) pop = { next: 1, active: [] };
+  // A file can vanish (hand-deleted, a half-written train that never landed). An active entry
+  // pointing at nothing would be focused into every placement and rated zero games forever, quietly
+  // holding a slot the population can never reclaim.
+  pop.active = pop.active.filter(m => m && m.file && fs.existsSync(path.join(dir, 'models', m.file)));
+  return pop;
+}
+const saveMutantPop = pop => atomicWrite(mutantPopFile, JSON.stringify(pop, null, 1));
+
+// Which mutant to breed from. Rank-weighted rather than proportional-to-Elo, because Elo here comes
+// from small samples and one lucky 11-game outlier at +600 would otherwise dominate every draw (the
+// value league produced exactly that artifact). Ranked on the CI's LOWER bound so "strong" means
+// confidently strong; exponential decay by rank favours the top without ever zeroing the tail, so a
+// weak-looking shape retains a real chance of being explored -- an architecture that looks bad at 8
+// games is not yet known to be bad.
+function pickParent(actives, ratingOf) {
+  if (!actives.length) return null;
+  // rankLo is the PESSIMISTIC end of elorank's bootstrap interval on the ladder-level scale, so
+  // ordering by it means "confidently strong" rather than "got a lucky draw" -- which matters
+  // because these ratings come from small samples and a single 11-game outlier would otherwise win
+  // every draw (the value league produced exactly that: a +604 Elo artifact on 11 games).
+  // Unrated actives sort last: a mutant that has not been measured yet is not yet proven breeding
+  // stock, and it will become eligible as soon as it has a rank.
+  const score = m => { const r = ratingOf(m); return r && r.rankLo != null ? r.rankLo : -Infinity; };
+  const ranked = actives.slice().sort((a, b) => score(b) - score(a));
+  const weights = ranked.map((_, i) => Math.exp(-i/2) + 0.08);   // +floor: never a zero-probability tail
+  let r = Math.random()*weights.reduce((s, w) => s + w, 0);
+  for (let i = 0; i < ranked.length; i++) { r -= weights[i]; if (r <= 0) return ranked[i]; }
+  return ranked[ranked.length - 1];
+}
 // One small random edit of a hidden spec ("96,64,48"). Sizes snap to multiples of 4 with a floor
 // of 8; depth changes insert the geometric mean of the neighbours (the size a smooth taper would
 // have put there anyway) or drop a random layer. Single edit per fight ON PURPOSE: change two
@@ -940,7 +1046,7 @@ async function runPoolCycle() {
   // adds strength over a few iterations and degrades over dozens, and this is what catches the
   // degradation. It just gets PLACED now rather than round-robinned.
   const focus = [ckpt];
-  let mutInfo = null;
+  let mutInfo = null, mutantPop = null;
   let slotPaths = [];
   if (+scratchEpochs > 0) {
     const scratch = path.join(dir, 'models', `scratch-${String(num).padStart(3, '0')}.json`);
@@ -951,17 +1057,62 @@ async function runPoolCycle() {
     writeStatus(`from-scratch challenger training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
     await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--out', scratch, ...(h ? ['--hidden', h] : [])]);
     if (fs.existsSync(scratch)) focus.push(scratch);
-    // The shape fight. Trained back-to-back with the control on the same corpus (self-play may
-    // append a few games in between -- noise against tens of thousands of rows), same epochs, and
-    // placed in the same pool run. The fight is fair because everything except the shape is shared.
-    if (mutateShape && h) {
-      const mut = mutateHidden(h);
-      if (mut) {
-        const mutPath = path.join(dir, 'models', `mut-${String(num).padStart(3, '0')}.json`);
-        log(`pool cycle ${num} — shape fight: control ${h} vs mutant ${mut.shape} (${mut.op})`);
-        await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--out', mutPath, '--hidden', mut.shape]);
-        if (fs.existsSync(mutPath)) { focus.push(mutPath); mutInfo = { ...mut, control: h, mutPath, scratch }; }
+    // The mutant population. Every ACTIVE mutant is focused every cycle whether or not it was
+    // trained this cycle -- that is what turns them from one-shot measurements into identities whose
+    // rating tightens over time, and it is the half the old shape fight was missing.
+    if (mutateShape && h && mutantCap > 0) {
+      mutantPop = loadMutantPop();
+      // Ratings from the PREVIOUS placement: this cycle's elorank has not run yet, so parent
+      // selection reads the most recent thing actually measured.
+      let prevRatings = {};
+      try {
+        const sum = JSON.parse(fs.readFileSync(poolSummary, 'utf8'));
+        for (const v of Object.values(sum.players || {})) {
+          if (!v.model) continue;
+          const k = path.basename(v.model, '.json');
+          if (!prevRatings[k] || v.elo > prevRatings[k].elo) prevRatings[k] = v;
+        }
+      } catch (e) {}
+      const ratingOf = m => prevRatings[path.basename(m.file, '.json')] || null;
+
+      const room = mutantCap - mutantPop.active.length;
+      const spawn = Math.max(0, Math.min(mutantsPerCycle, room));
+      if (!spawn) {
+        log(`pool cycle ${num} — mutant population full (${mutantPop.active.length}/${mutantCap}); ` +
+            `training none, a slot opens when one is retired as confidently weak`);
       }
+      for (let s = 0; s < spawn; s++) {
+        // Breed from a rated active when there is one, else from the champion shape -- which is
+        // also how the very first mutant gets created on an empty population.
+        const parent = pickParent(mutantPop.active, ratingOf);
+        const baseShape = parent ? parent.shape : h;
+        const mut = mutateHidden(baseShape);
+        if (!mut) continue;
+        const serial = String(mutantPop.next++).padStart(3, '0');
+        const file = `mutant-${serial}.json`;
+        const mutPath = path.join(dir, 'models', file);
+        log(`pool cycle ${num} — mutant ${serial}: ${baseShape} -> ${mut.shape} (${mut.op})` +
+            (parent ? ` from ${path.basename(parent.file, '.json')}` : ` from the champion shape`) +
+            `, population ${mutantPop.active.length + 1}/${mutantCap}`);
+        await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--out', mutPath, '--hidden', mut.shape]);
+        // Only a mutant that actually trained joins the population -- a failed run must not consume
+        // a slot that nothing can ever retire, since retirement needs a rating and an unrated
+        // phantom would never earn one.
+        if (fs.existsSync(mutPath)) {
+          mutantPop.active.push({ file, shape: mut.shape, op: mut.op,
+                                  parent: parent ? parent.file : null, born: num });
+        } else {
+          log(`pool cycle ${num} — mutant ${serial} failed to train; slot left open`);
+        }
+      }
+      saveMutantPop(mutantPop);
+      for (const m of mutantPop.active) {
+        const p = path.join(dir, 'models', m.file);
+        if (fs.existsSync(p) && !focus.includes(p)) focus.push(p);
+      }
+      if (mutantPop.active.length)
+        log(`pool cycle ${num} — mutant population: ` +
+            mutantPop.active.map(m => `${path.basename(m.file, '.json')}(${m.shape})`).join(', '));
     }
   }
 
@@ -1108,34 +1259,77 @@ async function runPoolCycle() {
     statusState.lastGate = `pool cycle ${num} — ${line}`;
     slotPaths = refreshModelSlots(ranked);
     if (slotPaths.length) log(`pool cycle ${num} — model-variety slots refreshed: ${slotPaths.length} files`);
-    // Shape-fight verdict, decided by the same ratings. The mutant needs a clear lead to take the
-    // shape (same reasoning as the promotion gate: a from-scratch pair is two noisy draws, and
-    // "merely ahead" would let the shape random-walk on luck); a clear LOSS is recorded too, so
-    // .shape-history accumulates which kinds of edits helped and which hurt.
-    if (mutInfo) {
-      const ctl = byModel[path.basename(mutInfo.scratch, '.json')];
-      const mut = byModel[path.basename(mutInfo.mutPath, '.json')];
-      if (ctl && mut) {
-        const lead = mut.elo - ctl.elo;
+    // Champion shape, decided across the whole population rather than by one pairwise fight. The
+    // best mutant has to clear the standing champion shape's own control by a clear margin, same bar
+    // and same reasoning as the promotion gate above -- "merely ahead" would let the shape
+    // random-walk on luck. Unchanged in spirit; what changed is that the challenger is now the best
+    // of several rated identities instead of the single mutant that happened to be trained today.
+    if (mutantPop && mutantPop.active.length) {
+      const ctlName = mutInfo ? path.basename(mutInfo.scratch, '.json') : null;
+      const ctl = ctlName ? byModel[ctlName] : null;
+      const rated = mutantPop.active
+        .map(m => ({ m, r: byModel[path.basename(m.file, '.json')] }))
+        .filter(x => x.r);
+      if (ctl && rated.length) {
+        const bestMut = rated.slice().sort((a, b) => b.r.elo - a.r.elo)[0];
+        const lead = bestMut.r.elo - ctl.elo;
         const verdict = lead >= 25 ? 'adopted' : lead <= -25 ? 'rejected' : 'inconclusive';
         if (verdict === 'adopted') {
-          atomicWrite(shapeFile, JSON.stringify({ shape: mutInfo.shape, cycle: num,
+          atomicWrite(shapeFile, JSON.stringify({ shape: bestMut.m.shape, cycle: num,
                                                   adoptedAt: new Date().toISOString() }));
-          log(`pool cycle ${num} — shape fight: mutant ${mutInfo.shape} (${mutInfo.op}) beat ` +
-              `${mutInfo.control} by ${Math.round(lead)} Elo — new champion shape`);
+          log(`pool cycle ${num} — champion shape: ${bestMut.m.shape} (${bestMut.m.op}) beat the ` +
+              `${mutInfo.control} control by ${Math.round(lead)} Elo — adopted`);
         } else {
-          log(`pool cycle ${num} — shape fight: ${mutInfo.shape} (${mutInfo.op}) vs ` +
-              `${mutInfo.control}: ${Math.round(lead)} Elo — ${verdict}, keeping ${mutInfo.control}`);
+          log(`pool cycle ${num} — champion shape: best mutant ${bestMut.m.shape} vs ` +
+              `${mutInfo.control} control: ${Math.round(lead)} Elo — ${verdict}, keeping ${mutInfo.control}`);
         }
         try {
           fs.appendFileSync(shapeHistFile, JSON.stringify({ cycle: num, control: mutInfo.control,
-            mutant: mutInfo.shape, op: mutInfo.op, ctlElo: +ctl.elo.toFixed(1),
-            mutElo: +mut.elo.toFixed(1), verdict }) + '\n');
+            mutant: bestMut.m.shape, op: bestMut.m.op, ctlElo: +ctl.elo.toFixed(1),
+            mutElo: +bestMut.r.elo.toFixed(1), verdict }) + '\n');
         } catch (e) {}
-      } else {
-        log(`pool cycle ${num} — shape fight unresolved (` +
-            `${ctl ? '' : 'control unrated'}${!ctl && !mut ? ', ' : ''}${mut ? '' : 'mutant unrated'}` +
-            `) — no verdict, keeping ${mutInfo.control}`);
+      }
+
+      // RETIREMENT frees the slot that lets the next mutant be born. The test is deliberately
+      // asymmetric: a mutant goes only when its CI's UPPER bound sits below the population's median
+      // rating -- "even read optimistically, this is not competitive" -- and only once it has had
+      // mutantRetireGames to prove otherwise. Retiring on the point estimate, or on a wide interval,
+      // would cull whichever mutant happened to be measured least; and because a retired mutant
+      // stops being focused, it would never get the games that could have exonerated it. Nothing is
+      // deleted from disk: the file stays rated in the pool as a reference point, exactly like a
+      // retired ladder rung.
+      // Judged on elorank's RANK scale, not Elo, because that is the only scale it publishes a
+      // confidence interval on (bootstrapRanks -> rankLo/rankHi; there is no eloLo/eloHi). Rank is
+      // interpolated ladder level, so higher is stronger exactly like Elo, and rankHi is the
+      // optimistic end. A mutant with no rankHi at all -- unrated, or pinned off the end of the
+      // ladder scale -- is never retired: no interval means no evidence, not bad evidence.
+      const ranked = rated.filter(x => x.r.rankHi != null && x.r.rank != null);
+      if (ranked.length >= 2) {
+        const ranks = ranked.map(x => x.r.rank).sort((a, b) => a - b);
+        const median = ranks[Math.floor(ranks.length/2)];
+        const survivors = [], retired = [];
+        for (const { m, r } of ranked) {
+          if ((r.games || 0) >= mutantRetireGames && r.rankHi < median) retired.push({ m, r });
+          else survivors.push(m);
+        }
+        // Keep every unrated active too -- absence of a rating is not evidence of weakness.
+        const ratedFiles = new Set(ranked.map(x => x.m.file));
+        for (const m of mutantPop.active) if (!ratedFiles.has(m.file)) survivors.push(m);
+        if (retired.length) {
+          mutantPop.active = survivors;
+          saveMutantPop(mutantPop);
+          for (const { m, r } of retired) {
+            log(`pool cycle ${num} — retired ${path.basename(m.file, '.json')} (${m.shape}): ` +
+                `rank ${r.rank.toFixed(1)}, best-case ${r.rankHi.toFixed(1)} still below the ` +
+                `population median ${median.toFixed(1)} on ${r.games} games — slot freed`);
+            try {
+              fs.appendFileSync(mutantHistFile, JSON.stringify({ cycle: num, retired: m.file,
+                shape: m.shape, op: m.op, parent: m.parent, born: m.born,
+                elo: +r.elo.toFixed(1), rank: r.rank, rankHi: r.rankHi,
+                games: r.games, medianRank: +median.toFixed(2) }) + '\n');
+            } catch (e) {}
+          }
+        }
       }
     }
 
