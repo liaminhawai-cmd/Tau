@@ -248,6 +248,10 @@ const mutateShape = arg('mutateShape', '1') !== '0';
 // culled mutant stops getting games, that mistake is self-reinforcing.
 const mutantCap = Math.max(0, +arg('mutantCap', 6));
 const mutantsPerCycle = Math.max(1, +arg('mutantsPerCycle', 2));
+// Temperature for pickParent's softmax over rankLo (rungs). Lower = sharper: a real standout gets
+// most of the draws; a near-tie stays close to flat. See pickParent's own comment for why this
+// replaced a fixed positional decay.
+const parentPickTemp = Math.max(0.05, +arg('parentPickTemp', 0.5));
 // A mutant may not be retired before it has had a real chance to be measured, whatever its rating.
 const mutantRetireGames = Math.max(6, +arg('mutantRetireGames', 15));
 // The CPU side already has an open population of value-net lineages. The dual head is the GPU
@@ -588,23 +592,37 @@ const saveMutantPop = pop => atomicWrite(mutantPopFile, JSON.stringify(pop, null
 // Which mutant to breed from. Rank-weighted rather than proportional-to-Elo, because Elo here comes
 // from small samples and one lucky 11-game outlier at +600 would otherwise dominate every draw (the
 // value league produced exactly that artifact). Ranked on the CI's LOWER bound so "strong" means
-// confidently strong; exponential decay by rank favours the top without ever zeroing the tail, so a
-// weak-looking shape retains a real chance of being explored -- an architecture that looks bad at 8
-// games is not yet known to be bad.
+// confidently strong, not merely lucky.
+//
+// Softmax over rankLo, not a fixed positional decay (exp(-i/2) by SORT INDEX, the earlier version
+// of this function): a positional decay hands #1 the same 37%/#2 24%/... split whether the field is
+// a near-tie (rankLo spread of 0.03 rungs -- a fake hierarchy the data doesn't support) or a real
+// standout (spread of 3+ rungs -- where 37% badly underweights it). Softmax self-corrects: a
+// near-tie stays close to flat, a genuine standout concentrates on it. Measured on both shapes
+// before shipping (see the fitted-population test below).
+//
+// The +FLOOR term (not folded into the softmax) is what keeps a weak-looking shape explorable: an
+// architecture that looks bad at 8 games is not yet known to be bad, so no combination of scores can
+// drive its draw probability to exactly zero.
 function pickParent(actives, ratingOf) {
   if (!actives.length) return null;
   // rankLo is the PESSIMISTIC end of elorank's bootstrap interval on the ladder-level scale, so
   // ordering by it means "confidently strong" rather than "got a lucky draw" -- which matters
   // because these ratings come from small samples and a single 11-game outlier would otherwise win
   // every draw (the value league produced exactly that: a +604 Elo artifact on 11 games).
-  // Unrated actives sort last: a mutant that has not been measured yet is not yet proven breeding
-  // stock, and it will become eligible as soon as it has a rank.
   const score = m => { const r = ratingOf(m); return r && r.rankLo != null ? r.rankLo : -Infinity; };
-  const ranked = actives.slice().sort((a, b) => score(b) - score(a));
-  const weights = ranked.map((_, i) => Math.exp(-i/2) + 0.08);   // +floor: never a zero-probability tail
+  const scores = actives.map(score);
+  const finite = scores.filter(Number.isFinite);
+  // Nobody rated yet: every draw is equally uninformed. Softmax needs a finite max to subtract
+  // (all -Infinity would divide out to NaN), so this is a real branch, not an optimisation.
+  if (!finite.length) return actives[Math.floor(Math.random()*actives.length)];
+  const maxScore = Math.max(...finite);
+  const FLOOR = 0.08;   // never a zero-probability tail, same floor the positional version used
+  const weights = scores.map(s =>
+    (Number.isFinite(s) ? Math.exp((s - maxScore)/parentPickTemp) : 0) + FLOOR);
   let r = Math.random()*weights.reduce((s, w) => s + w, 0);
-  for (let i = 0; i < ranked.length; i++) { r -= weights[i]; if (r <= 0) return ranked[i]; }
-  return ranked[ranked.length - 1];
+  for (let i = 0; i < actives.length; i++) { r -= weights[i]; if (r <= 0) return actives[i]; }
+  return actives[actives.length - 1];
 }
 // One small random edit of a hidden spec ("96,64,48"). Sizes snap to multiples of 4 with a floor
 // of 8; depth changes insert the geometric mean of the neighbours (the size a smooth taper would
