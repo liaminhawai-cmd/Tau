@@ -1205,6 +1205,21 @@ function currentModelPool() {
         candidates.push(path.join(dir, 'models', f));
     }
   } catch (e) {}
+  // The standing dual entrants play self-play too. Leaving them out made the dual population
+  // depend on ONE source of games -- elorank's own placement pass, once per pool cycle behind the
+  // whole CPU training queue -- so a dual net could sit at zero games for hours while thousands of
+  // self-play games ran past it. They are the same kind of thing as every other pool member: a
+  // frozen set of weights with a stable rating id, so they belong in the same opponent pool and on
+  // the same Elo graph, and the games they play are training data like any other.
+  // Read from the registry rather than by filename glob so retired files stop drawing games the
+  // moment they leave `active`, exactly as they stop being rated.
+  try {
+    const pop = JSON.parse(fs.readFileSync(dualPopFile, 'utf8'));
+    for (const m of (pop && pop.active) || []) {
+      const p = m && m.file && path.join(dir, 'models', m.file);
+      if (p && fs.existsSync(p)) candidates.push(p);
+    }
+  } catch (e) {}
   return candidates;
 }
 

@@ -17,6 +17,7 @@ const path = require('path');
 const { createEngine } = require('./engine.js');
 const { features } = require('./features.js');
 const { MLP } = require('./net.js');
+const { DualMLP } = require('./dualnet.js');
 const { nnPlanFor } = require('./nnai.js');
 const { playRandomOpening, randomStartPose } = require('./opening.js');
 
@@ -426,8 +427,13 @@ function main() {
   for (const p of modelPoolPaths) {
     if (!fs.existsSync(p)) continue;
     try {
-      const n = MLP.fromJSON(JSON.parse(fs.readFileSync(p, 'utf8')));
-      netPool.push({ name: path.basename(p, '.json'), net: n });
+      const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+      // A dual export is a different object needing a different loader: one shared trunk with 23
+      // outputs (value + policy logits) where a value net has one. MLP.fromJSON would accept the
+      // weights and quietly play nonsense rather than throw, so the flag the exporter writes is
+      // what decides -- the same test elorank.js uses, for the same reason.
+      if (raw.dual === true) netPool.push({ name: path.basename(p, '.json'), dual: DualMLP.fromJSON(raw) });
+      else netPool.push({ name: path.basename(p, '.json'), net: MLP.fromJSON(raw) });
     } catch (e) {}
   }
   // One independent roll per SIDE (not per game, not per batch): mostly the primary, since that
@@ -484,24 +490,36 @@ function main() {
     // can land on the same net (most likely, when neither rolls into the pool) or two genuinely
     // different architectures.
     const chosenA = pickNet(), chosenB = pickNet();
-    const nnBrainAt = (d, chosen) => idx => nnPlanFor(eng, chosen.net, idx, { temperature, depth: d });
-    const nnTagAt = d => d > 1 ? 'nn(D' + d + ')' : 'nn';
+    // A dual entrant plays as one of the SAME TWO brains elorank.js rates it as: bare (the jointly
+    // trained value head alone, directly comparable to an `nn:` net) and +P (also spending its own
+    // policy logits on arm ordering under the ab cutoff -- elorank's `ab: true` face). Rolled per
+    // side per game so both faces accumulate real games, and the id records which one played:
+    // pooling them under one id would destroy the fusion ablation, which is the entire reason a
+    // dual file carries two identities instead of one.
+    const usePA = !!chosenA.dual && Math.random() < 0.5;
+    const usePB = !!chosenB.dual && Math.random() < 0.5;
+    const nnBrainAt = (d, chosen, useP) => chosen.dual
+      ? idx => nnPlanFor(eng, null, idx, { temperature, depth: d, dual: chosen.dual,
+                                           dualPolicy: !!useP, abCut: !!useP, policyPrune: false })
+      : idx => nnPlanFor(eng, chosen.net, idx, { temperature, depth: d });
+    const nnTagAt = (d, chosen, useP) =>
+      (chosen && chosen.dual ? 'dual' + (useP ? '+P' : '') : 'nn') + (d > 1 ? '(D' + d + ')' : '');
     // The rating-pool id of each side, in the SAME namespace elorank.js uses (`best@D2`, `L7`), so
     // a row can be joined against the pool later. The id is stored rather than the rating itself:
     // ratings are estimates that keep improving, and a row that carries an id picks up every future
     // improvement to its mover's rating for free, where a row carrying a number is frozen at
     // whatever we believed the day it was played. Now carries WHICH net this side actually drew,
     // not just the batch's primary -- a variety pick shows up as "wide@D2", never misattributed.
-    const nnIdAt = (d, chosen) => `${chosen.name}@D${d}`;
+    const nnIdAt = (d, chosen, useP) => `${chosen.name}${chosen.dual && useP ? '+P' : ''}@D${d}`;
     const kind = net ? pickMix() : 'ladder';
     if (kind === 'nnnn') {
-      brainA = nnBrainAt(depthA, chosenA); brainB = nnBrainAt(depthB, chosenB);
-      tag = nnTagAt(depthA) + ' vs ' + nnTagAt(depthB);
-      idA = nnIdAt(depthA, chosenA); idB = nnIdAt(depthB, chosenB);
+      brainA = nnBrainAt(depthA, chosenA, usePA); brainB = nnBrainAt(depthB, chosenB, usePB);
+      tag = nnTagAt(depthA, chosenA, usePA) + ' vs ' + nnTagAt(depthB, chosenB, usePB);
+      idA = nnIdAt(depthA, chosenA, usePA); idB = nnIdAt(depthB, chosenB, usePB);
     } else if (kind === 'nnladder') {
       const lvl = useDeep ? pick(deep) : pick(levels);
-      if (Math.random() < 0.5) { brainA = nnBrainAt(depthA, chosenA); brainB = ladderBrain(lvl); tag = nnTagAt(depthA) + ' vs L' + lvl; idA = nnIdAt(depthA, chosenA); idB = `L${lvl}`; }
-      else { brainA = ladderBrain(lvl); brainB = nnBrainAt(depthA, chosenA); tag = 'L' + lvl + ' vs ' + nnTagAt(depthA); idA = `L${lvl}`; idB = nnIdAt(depthA, chosenA); }
+      if (Math.random() < 0.5) { brainA = nnBrainAt(depthA, chosenA, usePA); brainB = ladderBrain(lvl); tag = nnTagAt(depthA, chosenA, usePA) + ' vs L' + lvl; idA = nnIdAt(depthA, chosenA, usePA); idB = `L${lvl}`; }
+      else { brainA = ladderBrain(lvl); brainB = nnBrainAt(depthA, chosenA, usePA); tag = 'L' + lvl + ' vs ' + nnTagAt(depthA, chosenA, usePA); idA = `L${lvl}`; idB = nnIdAt(depthA, chosenA, usePA); }
     } else {
       // Each SIDE independently rolls whether it draws from the deep pool during a garnish slot,
       // rather than both sides being forced into the same pool -- the old code could only ever
