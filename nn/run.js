@@ -1046,20 +1046,23 @@ async function runPoolCycle() {
   // adds strength over a few iterations and degrades over dozens, and this is what catches the
   // degradation. It just gets PLACED now rather than round-robinned.
   const focus = [ckpt];
-  let mutInfo = null, mutantPop = null;
+  let mutantPop = null;
   let slotPaths = [];
   if (+scratchEpochs > 0) {
-    const scratch = path.join(dir, 'models', `scratch-${String(num).padStart(3, '0')}.json`);
     // champion shape (won a fight) > pin (a pre-data guess) > incumbent's own shape
     const h = championShape() || scratchHidden || hiddenOfBest();
-    log(`pool cycle ${num} — training a from-scratch challenger (${scratchEpochs} epochs` +
-        (h ? `, --hidden ${h}` : '') + `)`);
-    writeStatus(`from-scratch challenger training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
-    await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--out', scratch, ...(h ? ['--hidden', h] : [])]);
-    if (fs.existsSync(scratch)) focus.push(scratch);
-    // The mutant population. Every ACTIVE mutant is focused every cycle whether or not it was
-    // trained this cycle -- that is what turns them from one-shot measurements into identities whose
-    // rating tightens over time, and it is the half the old shape fight was missing.
+    // ONE population, holding both kinds. Every active member is focused every cycle whether or not
+    // it was trained this cycle -- that is what turns them from one-shot measurements into
+    // identities whose rating tightens over time, and it is the half the old shape fight was
+    // missing. A scratch is simply a member with zero edits: the champion shape, fresh init.
+    //
+    // Scratch nets used to be retrained from zero EVERY cycle and, like the old mutants, rated once
+    // and never rediscovered (scratch-NNN.json matches no discoverModels pattern). Same waste, same
+    // fix. They keep their original job -- the header's reason for having them at all is that
+    // resume-training gains for a few iterations then degrades over dozens, and a fresh net at the
+    // same shape is what catches that -- but they now do it as standing members with real game
+    // counts behind them rather than a 6-game sample thrown away each cycle. A degraded best.json
+    // now loses to a well-measured scratch instead of to a noisy one.
     if (mutateShape && h && mutantCap > 0) {
       mutantPop = loadMutantPop();
       // Ratings from the PREVIOUS placement: this cycle's elorank has not run yet, so parent
@@ -1078,31 +1081,41 @@ async function runPoolCycle() {
       const room = mutantCap - mutantPop.active.length;
       const spawn = Math.max(0, Math.min(mutantsPerCycle, room));
       if (!spawn) {
-        log(`pool cycle ${num} — mutant population full (${mutantPop.active.length}/${mutantCap}); ` +
-            `training none, a slot opens when one is retired as confidently weak`);
+        log(`pool cycle ${num} — population full (${mutantPop.active.length}/${mutantCap}); ` +
+            `training none, a slot opens when a member is retired as confidently weak`);
       }
       for (let s = 0; s < spawn; s++) {
+        // A scratch is spawned when the population has none at the CURRENT champion shape. That is
+        // the control the shape verdict measures against, so it has to exist and it has to be at the
+        // shape actually being defended -- once a mutant is adopted, yesterday's scratch is a
+        // control for a shape nobody is running any more. Otherwise spawn a mutant.
+        const haveScratch = mutantPop.active.some(m => m.kind === 'scratch' && m.shape === h);
+        const kind = haveScratch ? 'mutant' : 'scratch';
         // Breed from a rated active when there is one, else from the champion shape -- which is
         // also how the very first mutant gets created on an empty population.
-        const parent = pickParent(mutantPop.active, ratingOf);
+        const parent = kind === 'mutant' ? pickParent(mutantPop.active, ratingOf) : null;
         const baseShape = parent ? parent.shape : h;
-        const mut = mutateHidden(baseShape);
+        const mut = kind === 'scratch' ? { shape: h, op: 'scratch' } : mutateHidden(baseShape);
         if (!mut) continue;
         const serial = String(mutantPop.next++).padStart(3, '0');
-        const file = `mutant-${serial}.json`;
-        const mutPath = path.join(dir, 'models', file);
-        log(`pool cycle ${num} — mutant ${serial}: ${baseShape} -> ${mut.shape} (${mut.op})` +
-            (parent ? ` from ${path.basename(parent.file, '.json')}` : ` from the champion shape`) +
+        const file = `${kind}-${serial}.json`;
+        const outPath = path.join(dir, 'models', file);
+        log(`pool cycle ${num} — ${kind} ${serial}: ` +
+            (kind === 'scratch' ? `fresh init at the champion shape ${h}`
+                                : `${baseShape} -> ${mut.shape} (${mut.op})` +
+                                  (parent ? ` from ${path.basename(parent.file, '.json')}`
+                                          : ` from the champion shape`)) +
             `, population ${mutantPop.active.length + 1}/${mutantCap}`);
-        await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--out', mutPath, '--hidden', mut.shape]);
-        // Only a mutant that actually trained joins the population -- a failed run must not consume
+        writeStatus(`${kind} ${serial} training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
+        await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--out', outPath, '--hidden', mut.shape]);
+        // Only a member that actually trained joins the population -- a failed run must not consume
         // a slot that nothing can ever retire, since retirement needs a rating and an unrated
         // phantom would never earn one.
-        if (fs.existsSync(mutPath)) {
-          mutantPop.active.push({ file, shape: mut.shape, op: mut.op,
+        if (fs.existsSync(outPath)) {
+          mutantPop.active.push({ file, kind, shape: mut.shape, op: mut.op,
                                   parent: parent ? parent.file : null, born: num });
         } else {
-          log(`pool cycle ${num} — mutant ${serial} failed to train; slot left open`);
+          log(`pool cycle ${num} — ${kind} ${serial} failed to train; slot left open`);
         }
       }
       saveMutantPop(mutantPop);
@@ -1111,7 +1124,7 @@ async function runPoolCycle() {
         if (fs.existsSync(p) && !focus.includes(p)) focus.push(p);
       }
       if (mutantPop.active.length)
-        log(`pool cycle ${num} — mutant population: ` +
+        log(`pool cycle ${num} — population (${mutantPop.active.length}/${mutantCap}): ` +
             mutantPop.active.map(m => `${path.basename(m.file, '.json')}(${m.shape})`).join(', '));
     }
   }
@@ -1265,26 +1278,42 @@ async function runPoolCycle() {
     // random-walk on luck. Unchanged in spirit; what changed is that the challenger is now the best
     // of several rated identities instead of the single mutant that happened to be trained today.
     if (mutantPop && mutantPop.active.length) {
-      const ctlName = mutInfo ? path.basename(mutInfo.scratch, '.json') : null;
-      const ctl = ctlName ? byModel[ctlName] : null;
       const rated = mutantPop.active
         .map(m => ({ m, r: byModel[path.basename(m.file, '.json')] }))
         .filter(x => x.r);
-      if (ctl && rated.length) {
-        const bestMut = rated.slice().sort((a, b) => b.r.elo - a.r.elo)[0];
+      // The control is the best rated SCRATCH still standing at the champion shape -- a fresh net at
+      // the shape being defended. Both sides of this comparison are now standing members with games
+      // accumulated over cycles, so the verdict rests on far more than the old one-cycle pair did.
+      // The control is the best rated member AT the champion shape, whatever it is labelled. Every
+      // member is from-scratch trained at its own shape (train.js with --hidden and no --resume), so
+      // a mutant that happens to sit at the champion shape is the same object as a scratch there --
+      // the kind tag only records why it was spawned. Selecting on shape rather than on the label
+      // also closes a real gap: adopting a mutant makes ITS shape the champion, leaving zero
+      // scratches at the new shape, and a label-based lookup then had no control and could produce
+      // no verdict until a slot happened to free up (6 of 40 cycles in a lifecycle simulation).
+      const champShapeNow = championShape() || scratchHidden || hiddenOfBest();
+      const atChamp = rated.filter(x => x.m.shape === champShapeNow);
+      // Challengers are the members at some OTHER shape -- comparing the champion shape against
+      // itself would just measure init variance and could never resolve.
+      const challengers = rated.filter(x => x.m.shape !== champShapeNow);
+      const ctlEntry = atChamp.slice().sort((a, b) => b.r.elo - a.r.elo)[0];
+      const ctl = ctlEntry ? ctlEntry.r : null;
+      if (ctl && challengers.length) {
+        const bestMut = challengers.slice().sort((a, b) => b.r.elo - a.r.elo)[0];
         const lead = bestMut.r.elo - ctl.elo;
         const verdict = lead >= 25 ? 'adopted' : lead <= -25 ? 'rejected' : 'inconclusive';
         if (verdict === 'adopted') {
           atomicWrite(shapeFile, JSON.stringify({ shape: bestMut.m.shape, cycle: num,
                                                   adoptedAt: new Date().toISOString() }));
           log(`pool cycle ${num} — champion shape: ${bestMut.m.shape} (${bestMut.m.op}) beat the ` +
-              `${mutInfo.control} control by ${Math.round(lead)} Elo — adopted`);
+              `${champShapeNow} control (${path.basename(ctlEntry.m.file, '.json')}, ${ctl.games} games) ` +
+              `by ${Math.round(lead)} Elo — adopted`);
         } else {
           log(`pool cycle ${num} — champion shape: best mutant ${bestMut.m.shape} vs ` +
-              `${mutInfo.control} control: ${Math.round(lead)} Elo — ${verdict}, keeping ${mutInfo.control}`);
+              `${champShapeNow} control: ${Math.round(lead)} Elo — ${verdict}, keeping ${champShapeNow}`);
         }
         try {
-          fs.appendFileSync(shapeHistFile, JSON.stringify({ cycle: num, control: mutInfo.control,
+          fs.appendFileSync(shapeHistFile, JSON.stringify({ cycle: num, control: champShapeNow,
             mutant: bestMut.m.shape, op: bestMut.m.op, ctlElo: +ctl.elo.toFixed(1),
             mutElo: +bestMut.r.elo.toFixed(1), verdict }) + '\n');
         } catch (e) {}
