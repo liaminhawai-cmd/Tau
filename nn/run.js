@@ -1230,7 +1230,7 @@ function currentModelPool() {
 // contribute more training games, while every candidate keeps a floor until the adaptive Elo
 // matcher has enough evidence to retire it.  Grouping by filename folds a dual's bare/+policy
 // faces and all depths back into its one shared trunk weight.
-function selfplayPoolWeights(paths) {
+function selfplayPoolProfile(paths) {
   const entries = paths.map(p => ({ path: p, name: path.basename(p, '.json') }));
   const names = new Set(entries.map(x => x.name));
   const groups = Object.fromEntries(entries.map(x => [x.name, []]));
@@ -1266,15 +1266,16 @@ function selfplayPoolWeights(paths) {
     const elo = mean(rows.map(r => r.elo).filter(Number.isFinite));
     const widths = rows.map(r => Number.isFinite(r.rankLo) && Number.isFinite(r.rankHi)
       ? r.rankHi - r.rankLo : null).filter(Number.isFinite);
-    return [name, { elo, ci: mean(widths) }];
+    return [name, { rows, elo, ci: mean(widths),
+                    games: rows.reduce((s, r) => s + (+r.games || 0), 0) }];
   }));
   const elos = Object.values(stats).map(s => s.elo).filter(Number.isFinite);
   const cis = Object.values(stats).map(s => s.ci).filter(Number.isFinite);
-  if (!elos.length) return Object.fromEntries([...names].map(name => [name, 1]));
-  const eloLo = Math.min(...elos), eloSpan = Math.max(1, Math.max(...elos) - eloLo);
+  const weights = {};
+  const eloLo = elos.length ? Math.min(...elos) : 0;
+  const eloSpan = elos.length ? Math.max(1, Math.max(...elos) - eloLo) : 1;
   const ciLo = cis.length ? Math.min(...cis) : 0;
   const ciSpan = cis.length ? Math.max(0.01, Math.max(...cis) - ciLo) : 1;
-  const weights = {};
   for (const [name, s] of Object.entries(stats)) {
     // Missing measurements are allowed a middle score, not a zero: zero would make a newcomer
     // permanently invisible and turn the shared pool into a winner-only feedback loop.
@@ -1283,9 +1284,26 @@ function selfplayPoolWeights(paths) {
     // 0.25 floor; strongest and most certain candidates draw up to 4x as often as the weakest,
     // least certain candidate.  Strength is deliberately the larger term: it improves the data;
     // certainty keeps the data anchored in things the league has actually measured.
-    weights[name] = +(.25 + .55*strength + .20*Math.max(0, Math.min(1, certainty))).toFixed(3);
+    weights[name] = elos.length
+      ? +(.25 + .55*strength + .20*Math.max(0, Math.min(1, certainty))).toFixed(3)
+      : 1;
   }
-  return weights;
+  // Hard first coverage. A dual has two genuinely different rated uses, so both its bare value
+  // head and +policy face get one clean game before ordinary weighted sampling begins. Depths are
+  // deliberately not separate coverage seats: they share weights and will spread naturally.
+  const coverage = [];
+  for (const { path: p, name } of entries) {
+    let dual = false;
+    try { dual = JSON.parse(fs.readFileSync(p, 'utf8')).dual === true; } catch (e) {}
+    const rows = stats[name].rows;
+    if (!dual) {
+      if (!rows.some(r => (+r.games || 0) > 0)) coverage.push({ name, face: 'bare' });
+    } else {
+      if (!rows.some(r => !r.dualPolicy && (+r.games || 0) > 0)) coverage.push({ name, face: 'bare' });
+      if (!rows.some(r => !!r.dualPolicy && (+r.games || 0) > 0)) coverage.push({ name, face: 'policy' });
+    }
+  }
+  return { weights, coverage };
 }
 
 function startSelfplayBatch() {
@@ -1320,11 +1338,13 @@ function startSelfplayBatch() {
   // worker.  The presence of that complete weight map tells selfplay to draw BOTH seats from the
   // whole shared population on every game.
   const sharedPool = fs.existsSync(best) ? [best, ...modelPool] : modelPool;
-  const modelWeights = selfplayPoolWeights(sharedPool);
+  const profile = selfplayPoolProfile(sharedPool);
+  const modelWeights = profile.weights;
   const weightedCount = Object.values(modelWeights).filter(w => w !== 1).length;
   const sharedNote = sharedPool.length ? `, ${sharedPool.length}-model shared pool` : '';
   const weightNote = weightedCount ? `, Elo/CI-weighted ${weightedCount}/${sharedPool.length}` : '';
-  log(`self-play batch ${num} starting: ${gamesPerBatch} games (mix ${mix}, ${workers} workers${poolNote}${sharedNote}${weightNote})`);
+  const coverageNote = profile.coverage.length ? `, first-coverage ${profile.coverage.length} face(s)` : '';
+  log(`self-play batch ${num} starting: ${gamesPerBatch} games (mix ${mix}, ${workers} workers${poolNote}${sharedNote}${weightNote}${coverageNote})`);
   statusState.batch = num;
   statusState.mix = fs.existsSync(best) ? mix : '(no model yet — pure ladder)';
   // Self-play games now feed the rating pool as well as the training corpus. They always knew both
@@ -1339,6 +1359,7 @@ function startSelfplayBatch() {
     '--eloInbox', path.join(dir, 'elo-inbox.jsonl'),
     ...(modelPool.length ? ['--modelPool', modelPool.join(',')] : []),
     '--modelPoolWeights', JSON.stringify(modelWeights),
+    '--coverageQueue', JSON.stringify(profile.coverage),
     ...(dataPool ? ['--levels', dataPool.join(',')] : [])];
   const ch = spawn('node', [path.join(dir, 'selfplay.js'), ...args], { stdio: 'inherit' });
   selfplayChild = ch;
