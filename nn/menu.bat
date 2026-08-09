@@ -232,13 +232,13 @@ if not defined DUALFLAG set /p DUEPOCHS="Dual epoch budgets to rotate through, E
 if not defined DUALFLAG if "!DUEPOCHS!"=="" set DUEPOCHS=20,40,60
 echo.
 echo Full Tau trainer started. Self-play keeps making data while CPU value and GPU dual branches train.
-echo Dual uses a 4-model Elo population with one scratch-mutant replacement at a time.
+echo Dual runs a verified GPU check immediately, then uses a 4-model Elo population with one replacement at a time.
 echo Retromine is not part of this loop. Close the window any time; completed work is checkpointed.
 echo.
 if defined DUALFLAG (
   node nn\run.js --gamesPerBatch 1000 --randomStartFrac 0.15 --scratchHidden 96,64,48 %DUALFLAG%
 ) else (
-  node nn\run.js --gamesPerBatch 1000 --randomStartFrac 0.15 --scratchHidden 96,64,48 --dualEpochs !DUEPOCHS!
+  node nn\run.js --gamesPerBatch 1000 --randomStartFrac 0.15 --scratchHidden 96,64,48 --dualEpochs !DUEPOCHS! --dualStartNow
 )
 pause
 goto menu

@@ -260,6 +260,11 @@ const dualEnabled = !process.argv.includes('--noDual');
 const dualEpochChoices = String(arg('dualEpochs', '20,40,60')).split(',').map(Number).filter(n => n > 0);
 const dualBatch = Math.max(64, +arg('dualBatch', 4096));
 const dualInitialShape = arg('dualHidden', '128,128');
+// Option 20 passes this explicitly: launch a real dual GPU probe immediately so CUDA/PyTorch is
+// exercised at startup rather than hiding a missing-GPU problem behind the 45-minute pool clock.
+// It is deliberately NOT the default for arbitrary run.js invocations or --poolOnce diagnostics.
+const dualStartNow = process.argv.includes('--dualStartNow');
+let startupDualPromise = null;
 // Four is both the default and the floor. A replacement is prepared while its victim remains active,
 // then swapped atomically after verification, so even a killed training process never drops below it.
 const dualPopulationCap = Math.max(4, +arg('dualPopulationCap', 4));
@@ -770,11 +775,12 @@ function completeDualBirth(pop, plan, num) {
   return member;
 }
 
-async function trainDualOne(out, shape, epochs, seed, label) {
+async function trainDualOne(out, shape, epochs, seed, label, device = null) {
   const partial = out.replace(/\.json$/, '.partial.json');
   try {
     await runProcessAsync('python', [path.join('nn', 'torch-train-dual.py'), '--hidden', shape,
-      '--epochs', String(epochs), '--batch', String(dualBatch), '--seed', String(seed), '--out', partial], label);
+      '--epochs', String(epochs), '--batch', String(dualBatch), '--seed', String(seed), '--out', partial,
+      ...(device ? ['--device', device] : [])], label);
     await runAsync('verify-dual-export.js', [partial]);
     fs.renameSync(partial, out);
     return true;
@@ -855,6 +861,44 @@ async function trainDualPopulation(num) {
     .filter(p => fs.existsSync(p));
   statusState.dual = dualStatus(pop);
   return { focus, pop, trained };
+}
+
+// A full imported population normally has no reason to train before it has played new Elo games.
+// Startup is the one intentional exception: make a small, verified throwaway dual export so the
+// person who launched option 20 sees whether CUDA actually works NOW. It never enters the Elo
+// registry, so this diagnostic cannot evict a well-measured incumbent or distort the four-model
+// evolution. If the population is below four, startDualNow instead delegates to the real bootstrap.
+async function runDualStartupProbe(pop, num) {
+  const ratings = readPreviousDualRatings(pop);
+  const rated = pop.active.filter(m => ratings[m.file] && Number.isFinite(ratings[m.file].rankLo));
+  const parent = pop.active.length
+    ? (rated.length ? pickParent(pop.active, m => ratings[m.file])
+                    : pop.active[Math.floor(Math.random()*pop.active.length)]) : null;
+  const baseShape = parent ? parent.shape : currentDualShape();
+  const mutation = parent ? (mutateHidden(baseShape) || { shape: baseShape, op: 'same-shape' })
+                          : { shape: baseShape, op: 'seed' };
+  const epochs = dualEpochChoices[0]; // shortest selected budget: a prompt CUDA proof, not a contender
+  const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+  const out = path.join(dir, 'models', `dual-startup-probe-${stamp}-e${epochs}.json`);
+  log(`startup — GPU dual probe: ${baseShape} -> ${mutation.shape} (${mutation.op}), ${epochs} epochs; ` +
+      `verified export only, not an Elo entrant`);
+  await runAsync('policy-targets.js', []);
+  const ok = await trainDualOne(out, mutation.shape, epochs, num*1009 + 7,
+                                `startup CUDA dual probe ${mutation.shape} e${epochs}`, 'cuda');
+  if (ok) log(`startup — CUDA dual probe VERIFIED: ${path.basename(out)}`);
+  return { focus: [], pop, trained: ok ? out : null };
+}
+
+async function startDualNow() {
+  const pop = loadDualPop();
+  if (pop._migrated) {
+    log(`startup — dual population: imported ${pop.active.length} frozen legacy entrant(s)`);
+    saveDualPop(pop);
+  }
+  statusState.dual = dualStatus(pop);
+  // No standing full field yet: the immediate GPU work is useful production work, not a probe.
+  if (pop.active.length < dualPopulationCap) return trainDualPopulation(0);
+  return runDualStartupProbe(pop, 0);
 }
 
 // Schedule, but do not execute, at most one replacement. The victim remains active until the next
@@ -1303,7 +1347,10 @@ async function runPoolCycle() {
 
   // Start the GPU branch immediately. The CPU branch below (train.js control/mutant/lineage) and
   // continuous self-play run at the same time; only the final Elo placement waits for both.
-  const dualPromise = trainDualPopulation(num).catch(e => {
+  // A launch-time GPU check may still be running when the first scheduled pool cycle becomes
+  // due. Serialize it with this cycle: the registry must have one writer, and a verified startup
+  // entrant should be placed, not immediately replaced by a second concurrent train.
+  const dualPromise = (startupDualPromise || Promise.resolve()).then(() => trainDualPopulation(num)).catch(e => {
     log(`WARNING: dual branch failed (${e.message}) — placing CPU candidates only`);
     return { focus: [], pop: null, trained: null };
   });
@@ -2016,6 +2063,13 @@ if (poolOnce) {
   runPoolCycle().then(() => log('--poolOnce: done'),
                       e => { log(`--poolOnce failed: ${(e && e.message) || e}`); process.exitCode = 1; });
 } else {
+  if (dualStartNow && dualEnabled) {
+    log(`startup — launching the GPU dual check now (before the first ${poolEveryMin}-minute pool clock)`);
+    startupDualPromise = startDualNow().catch(e => {
+      log(`WARNING: startup dual check failed (${e.message}) — the scheduled pool will retry normal dual work`);
+      return { focus: [], pop: null, trained: null };
+    });
+  }
   startSelfplayBatch();
   schedulerLoop().catch(e => { log(`FATAL: scheduler stopped (${(e && e.message) || e})`); process.exitCode = 1; });
 }
