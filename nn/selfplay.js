@@ -245,6 +245,15 @@ function main() {
   // independent roll into a wider set, so an nnnn game can genuinely be two DIFFERENT
   // architectures facing off, not one architecture facing itself under an alias.
   const modelPoolPaths = (arg('modelPool', '') || '').split(',').map(s => s.trim()).filter(Boolean);
+  // run.js derives one positive sampling weight per frozen candidate from the SAME fitted Elo
+  // summary that decides promotion and retirement.  It is intentionally only a bias, not a hard
+  // gate: high-ranked, tightly-measured models should shape more of the corpus, while an uncertain
+  // entrant must still draw enough ordinary games for the Elo scheduler to resolve it.
+  let modelPoolWeights = {};
+  try {
+    const parsed = JSON.parse(arg('modelPoolWeights', '{}'));
+    if (parsed && typeof parsed === 'object') modelPoolWeights = parsed;
+  } catch (e) {}
   const modelVarietyFrac = Math.max(0, Math.min(1, +arg('modelVarietyFrac', 0.2)));
   // The in-game ply cap. Exposed as an arg mostly so tests can force cap-draws cheaply.
   const maxPlies = +arg('maxPlies', 300);
@@ -353,6 +362,7 @@ function main() {
       ...(seedFile ? ['--seedFrom', String(seedFrom), '--seedPool', seedFile] : ['--seedFrom', '0']),
       '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(','),
       ...(modelPoolPaths.length ? ['--modelPool', modelPoolPaths.join(',')] : []),
+      '--modelPoolWeights', JSON.stringify(modelPoolWeights),
       // Every worker appends to the SAME inbox file. Safe for the reason elorank's own inbox
       // comment gives: one whole line per append, never a read-modify-write.
       ...(eloInbox ? ['--eloInbox', eloInbox] : []),
@@ -441,8 +451,17 @@ function main() {
   // slice draws from the pool. Two sides rolling independently is what makes an nnnn game
   // GENUINELY able to pit two different architectures against each other, not just occasionally
   // swap which one net plays itself.
+  const pickWeighted = choices => {
+    const weights = choices.map(m => {
+      const w = +modelPoolWeights[m.name];
+      return Number.isFinite(w) && w > 0 ? w : 1;
+    });
+    let r = Math.random()*weights.reduce((s, w) => s + w, 0);
+    for (let i = 0; i < choices.length; i++) { r -= weights[i]; if (r <= 0) return choices[i]; }
+    return choices[choices.length - 1];
+  };
   const pickNet = () => (netPool.length > 1 && Math.random() < modelVarietyFrac)
-    ? pick(netPool.slice(1)) : netPool[0];
+    ? pickWeighted(netPool.slice(1)) : netPool[0];
 
   // Seed-pose pool: workers get a pre-sampled file from the parent; a direct single-process run
   // samples for itself. Same <50 floor as the parent, same reason.
