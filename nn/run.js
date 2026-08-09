@@ -1315,11 +1315,16 @@ function startSelfplayBatch() {
     } catch (e) {}
   }
   const modelPool = currentModelPool();
-  const modelWeights = selfplayPoolWeights(modelPool);
+  // `best` is a member of the same league, not a privileged 80% default.  Keep it as --model so
+  // selfplay still has a primary/fallback file, but include it in the weights handed to every
+  // worker.  The presence of that complete weight map tells selfplay to draw BOTH seats from the
+  // whole shared population on every game.
+  const sharedPool = fs.existsSync(best) ? [best, ...modelPool] : modelPool;
+  const modelWeights = selfplayPoolWeights(sharedPool);
   const weightedCount = Object.values(modelWeights).filter(w => w !== 1).length;
-  const varietyNote = modelPool.length ? `, ${modelPool.length}-model variety pool` : '';
-  const weightNote = weightedCount ? `, Elo/CI-weighted ${weightedCount}/${modelPool.length}` : '';
-  log(`self-play batch ${num} starting: ${gamesPerBatch} games (mix ${mix}, ${workers} workers${poolNote}${varietyNote}${weightNote})`);
+  const sharedNote = sharedPool.length ? `, ${sharedPool.length}-model shared pool` : '';
+  const weightNote = weightedCount ? `, Elo/CI-weighted ${weightedCount}/${sharedPool.length}` : '';
+  log(`self-play batch ${num} starting: ${gamesPerBatch} games (mix ${mix}, ${workers} workers${poolNote}${sharedNote}${weightNote})`);
   statusState.batch = num;
   statusState.mix = fs.existsSync(best) ? mix : '(no model yet — pure ladder)';
   // Self-play games now feed the rating pool as well as the training corpus. They always knew both
