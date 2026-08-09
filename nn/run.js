@@ -1200,11 +1200,18 @@ function nextNum(pattern) {
   const scan = (d, rx) => { if (!fs.existsSync(d)) return;
     for (const f of fs.readdirSync(d)) { const m = rx.exec(f); if (m) max = Math.max(max, +m[1]); } };
   if (pattern === 'batch') scan(path.join(dir, 'data'), /^batch-(\d+)\.jsonl$/);
+  else if (pattern === 'resume') scan(modelsDir, /^resume-(\d+)\.json$/);
   else scan(modelsDir, /^ckpt-(\d+)\.json$/);
   return max + 1;
 }
 let batchNum = nextNum('batch');
 let cycleNum = nextNum('cycle');
+let resumeNum = nextNum('resume');
+// Resume-train candidates queued since the last pool cycle rated anything -- folded into that
+// cycle's --focus and cleared there. In-memory only (unlike the dual/mutant populations' pending
+// state, which persists across a restart): the worst a crash costs here is one candidate's trained
+// weights sitting on disk un-refocused, not a whole population's bookkeeping.
+let pendingResumeCandidates = [];
 if (batchNum > 1) log(`resuming self-play at batch ${batchNum} (found data up to batch-${String(batchNum - 1).padStart(3, '0')}.jsonl)`);
 if (cycleNum > 1) log(`resuming ${poolEveryMin > 0 ? 'pool' : 'round-robin'} cycles at ${cycleNum} ` +
   `(found checkpoints up to ckpt-${String(cycleNum - 1).padStart(3, '0')}.json)`);
@@ -1398,19 +1405,37 @@ function startSelfplayBatch() {
 let lastTournamentAt = Date.now(), lastBenchAt = Date.now(), lastTrainAt = Date.now(),
     lastPoolAt = Date.now();
 
-// Resume-train from best.json and promote the result. Bounded, not unbounded: the round robin
-// below periodically retrains from scratch and promotes on merit, which is what stops this from
-// compounding into the iteration-63/80 failure (see the header). Runs on a clock now rather than
-// once per self-play batch, since batches are hours long and this should not be.
+// Resume-train from best.json, but no longer promote it directly. It used to: an unconditional
+// atomicCopy(fresh, best) every trainEveryMin, with nothing between one tick and the next checking
+// whether that resume actually helped. The comment here used to say the round robin bounded it --
+// but tournamentEveryMin's round robin only runs when poolEveryMin is 0, which it isn't by default,
+// so in the normal configuration NOTHING was gating this. That is exactly the shape of the
+// iteration-63/80 failure this file's own header documents (a resumed lineage losing 27% across 158
+// games to a from-scratch challenger) -- just with no check at all, rather than a slow one.
+// Now this trains to its OWN numbered file (never touching best.json directly) and queues it; the
+// next pool cycle folds it into --focus like any other candidate, so it only becomes best.json by
+// clearing the same confident rank-CI bar a scratch or mutant challenger has to clear. The frequent
+// LIGHT TOUCH this clock exists for is preserved -- training still happens every trainEveryMin --
+// only the "incorporate it into the main line unconditionally" step is gone.
 async function runTrainCycle() {
   if (!fs.existsSync(best)) return;   // nothing to resume from yet
-  log(`resume-train ${epochs} epochs from best.json`);
+  const num = resumeNum++;
+  const out = path.join(dir, 'models', `resume-${String(num).padStart(3, '0')}.json`);
+  log(`resume-train ${epochs} epochs from best.json -> resume-${String(num).padStart(3, '0')} ` +
+      `(queued for the next pool cycle's rank-CI check, not promoted automatically)`);
   writeStatus(`resume-train (${epochs} epochs, started ${new Date().toISOString()})`);
   try {
-    await runAsync('train.js', ['--epochs', epochs, '--out', fresh, '--resume', best]);
-    atomicCopy(fresh, best);
-    log(`resume-train complete — promoted (round robin every ${tournamentEveryMin} min decides the real best)`);
-    statusState.lastGate = `resume-train promoted at ${new Date().toISOString()}`;
+    await runAsync('train.js', ['--epochs', epochs, '--out', out, '--resume', best]);
+    if (fs.existsSync(out)) {
+      // models/value.json is a fixed name several other tools read by that path (option 24's
+      // single-pass trainer, option 40's Python-vs-JS check, VALUE-SHOOTOUT) -- keep it current as
+      // a courtesy copy so nothing outside this loop breaks, but it is no longer what decides
+      // anything here; the numbered file is the one that gets rated.
+      atomicCopy(out, fresh);
+      pendingResumeCandidates.push(out);
+    } else {
+      log(`WARNING: resume-train produced no output file — skipping this tick`);
+    }
   } catch (e) {
     log(`WARNING: resume-train failed (${e.message}) — continuing`);
   }
@@ -1487,6 +1512,11 @@ async function runPoolCycle() {
   // adds strength over a few iterations and degrades over dozens, and this is what catches the
   // degradation. It just gets PLACED now rather than round-robinned.
   const focus = [ckpt];
+  // Whatever runTrainCycle queued since the last time this ran. Consumed here, not left to
+  // accumulate: each candidate gets exactly one cycle in the spotlight, the same lifecycle a ckpt
+  // snapshot already has -- after that it is just history in elo-results.json, not re-focused.
+  for (const p of pendingResumeCandidates) if (fs.existsSync(p) && !focus.includes(p)) focus.push(p);
+  pendingResumeCandidates = [];
   let mutantPop = null;
   let slotPaths = [];
   if (+scratchEpochs > 0) {
