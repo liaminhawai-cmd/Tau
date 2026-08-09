@@ -823,9 +823,16 @@ function startSelfplayBatch() {
   log(`self-play batch ${num} starting: ${gamesPerBatch} games (mix ${mix}, ${workers} workers${poolNote}${varietyNote})`);
   statusState.batch = num;
   statusState.mix = fs.existsSync(best) ? mix : '(no model yet — pure ladder)';
+  // Self-play games now feed the rating pool as well as the training corpus. They always knew both
+  // sides' pool ids; they just had nowhere to report the outcome. Same append-only inbox the ladder
+  // sweep already writes to, drained by whichever elorank run comes next -- so a batch's ~1000 real
+  // games stop being rating evidence the pool separately pays arena time to re-derive. Only clean
+  // standard-opening games are recorded; see selfplay.js's --eloInbox note for why seeded and
+  // random-start games must not be (their outcome is largely decided by the position drawn).
   const args = ['--games', String(gamesPerBatch), '--out', out, '--model', best, '--mix', mix,
     '--workers', workers, '--randomStartFrac', String(randomStartFrac),
     '--modelVarietyFrac', String(modelVarietyFrac),
+    '--eloInbox', path.join(dir, 'elo-inbox.jsonl'),
     ...(modelPool.length ? ['--modelPool', modelPool.join(',')] : []),
     ...(dataPool ? ['--levels', dataPool.join(',')] : [])];
   const ch = spawn('node', [path.join(dir, 'selfplay.js'), ...args], { stdio: 'inherit' });

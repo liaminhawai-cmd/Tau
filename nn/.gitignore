@@ -15,3 +15,7 @@ retro-loop-status.json
 .l11-clock-ms
 clocksweep/
 policy-targets.jsonl
+# Transient by design: written by self-play and the ladder sweep, then drained and deleted by the
+# next elorank run. Never meaningful to share, and a committed copy would be re-merged as duplicate
+# games on whatever machine pulled it.
+elo-inbox.jsonl

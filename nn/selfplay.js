@@ -221,6 +221,22 @@ function main() {
   // openingPlies. Rows from these games carry src:'random' so the effect can be measured in
   // isolation later rather than taken on faith.
   const randomStartFrac = +arg('randomStartFrac', 0);
+  // --eloInbox: append one rating record per CLEAN game to elorank.js's append-only inbox, so a
+  // self-play batch contributes to the rating pool instead of only to training data. Every game
+  // here already knows both sides' pool ids (see nnIdAt/idA/idB below -- deliberately in elorank's
+  // own `wide@D2`/`L7` namespace), and elorank already drains this exact file for the ladder
+  // sweep's results, so this is wiring up evidence that was being computed and thrown away: ~1000
+  // real games a batch, with real outcomes, that the pool was separately paying arena time to
+  // re-answer. Append-only, one line per game, no read-modify-write -- which is precisely the
+  // concurrency elorank's own inbox comment says the format is safe under, and it has to be here
+  // because N worker processes write it at once.
+  //
+  // CLEAN means standard opening only. Seeded and random-start games are excluded on purpose and
+  // this is the load-bearing filter: a stored decision point can already be won or lost before
+  // either side moves, so its outcome measures which side drew the good position, not which brain
+  // is stronger -- feeding those in would bias every rating by seat luck. Their training rows are
+  // unaffected; only their rating evidence is dropped.
+  const eloInbox = arg('eloInbox', null);
   // Extra candidate nets besides --model (the "primary"). Point of this: an nnnn game with BOTH
   // sides tied to the one loaded net is self-play in the narrow sense even when --model itself
   // occasionally points somewhere other than best.json -- both sides still share the exact same
@@ -336,6 +352,9 @@ function main() {
       ...(seedFile ? ['--seedFrom', String(seedFrom), '--seedPool', seedFile] : ['--seedFrom', '0']),
       '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(','),
       ...(modelPoolPaths.length ? ['--modelPool', modelPoolPaths.join(',')] : []),
+      // Every worker appends to the SAME inbox file. Safe for the reason elorank's own inbox
+      // comment gives: one whole line per append, never a read-modify-write.
+      ...(eloInbox ? ['--eloInbox', eloInbox] : []),
       '--modelVarietyFrac', String(modelVarietyFrac)];
     let taskIdx = 0;
     // The output stream is opened ONCE, up front, and each task appends to it the moment its own
@@ -544,6 +563,45 @@ function main() {
                                   ...(idA ? { mv: r.mover === 0 ? idA : idB } : {}) }) + '\n');
         positions++;
       }
+    }
+    // Rating evidence for this game, on elorank's own scale. Only standard-opening games (see
+    // --eloInbox above for why seeded/random-start are excluded) and only games that actually
+    // resolved -- a wedge abandon has no result to report.
+    // The komi convention is elorank's, not a new one: a cap-scored win is KOMI_LOSS of a win plus
+    // the remainder as a draw, so fitBT's "wins + draws/2" lands on 0.5 + KOMI_LOSS/2 for the
+    // winner. Copied rather than imported because elorank is a CLI, not a module, and the constant
+    // must track CFG.komiLoss in index.html either way -- read it from the engine so it cannot
+    // silently drift from the rule the games were actually scored under.
+    // idA !== idB matters and is easy to miss: an nnnn game usually draws the SAME net at the SAME
+    // depth for both sides, and "best@D1 vs best@D1" is a coinflip by construction -- zero rating
+    // information, and in a Bradley-Terry fit it lands as a self-loop (both score and games credited
+    // to one index), which is weight pulling a rating toward itself rather than evidence. The
+    // informative nnnn games are the mismatched ones -- different depth, or different architecture
+    // out of the variety pool -- and those still record normally.
+    // MIXED nn-vs-ladder games are excluded, and this is the subtle one. Self-play runs its nets at
+    // --temperature (0.08 by default) so the corpus sees varied play; elorank rates the same nets as
+    // `nn:0:` -- temperature ZERO -- and ladder brains are deterministic in both. So a self-play
+    // "nn vs L6" pits a deliberately-noised net against an un-noised opponent and files the result
+    // under the SAME pool id elorank uses for that net's best play. Because a batch contributes far
+    // more games than an elorank placement does, that id would converge on "this net at temp 0.08"
+    // while the promotion gate, the ZPD window and the ladder sweep all read it as temp-0 strength.
+    // nn-vs-nn (both noised) and ladder-vs-ladder (neither) are internally consistent, so their
+    // relative information is sound and they still record. To include the mixed games too, self-play
+    // would have to play that slice at temperature 0.
+    const sameNoiseClass = kind === 'nnnn' || kind === 'ladder';
+    if (eloInbox && idA && idB && idA !== idB && sameNoiseClass &&
+        !seedPose && !randomStart && (winner !== null || capped)) {
+      const KL = eng.CFG.komiLoss;
+      let rec = null;
+      if (winner === null) rec = { w: 0, l: 0, d: 1 };                     // cap draw
+      else if (adjudicated) rec = winner === 0 ? { w: KL, l: 0, d: 1 - KL }
+                                               : { w: 0, l: KL, d: 1 - KL };
+      else rec = winner === 0 ? { w: 1, l: 0, d: 0 } : { w: 0, l: 1, d: 0 };
+      // A failed append must never take a self-play batch down with it: the games and their
+      // training rows are the expensive part and are already safely written by this point.
+      try {
+        fs.appendFileSync(eloInbox, JSON.stringify({ a: idA, b: idB, ...rec }) + '\n');
+      } catch (e) { /* rating evidence is best-effort; training data is not */ }
     }
     // Flush THIS game's rows before starting the next one. A game at the deep end of the ladder can
     // run for minutes, so batching disk writes buys nothing and costs the whole point of appending.
