@@ -1223,6 +1223,51 @@ function currentModelPool() {
   return candidates;
 }
 
+// Self-play is random by design -- it needs diverse positions, not a deterministic champion-vs-
+// champion treadmill -- but random need not mean blind.  Give every frozen candidate a positive
+// draw weight from the shared Elo fit: stronger models and models whose rank CI is already tight
+// contribute more training games, while every candidate keeps a floor until the adaptive Elo
+// matcher has enough evidence to retire it.  Grouping by filename folds a dual's bare/+policy
+// faces and all depths back into its one shared trunk weight.
+function selfplayPoolWeights(paths) {
+  const names = new Set(paths.map(p => path.basename(p, '.json')));
+  const groups = {};
+  try {
+    const players = JSON.parse(fs.readFileSync(poolSummary, 'utf8')).players || {};
+    for (const v of Object.values(players)) {
+      const name = v && v.model ? path.basename(v.model, '.json') : null;
+      if (!name || !names.has(name) || !Number.isFinite(v.elo)) continue;
+      (groups[name] || (groups[name] = [])).push(v);
+    }
+  } catch (e) {}
+  const mean = xs => xs.length ? xs.reduce((s, x) => s + x, 0)/xs.length : null;
+  const stats = Object.fromEntries([...names].map(name => {
+    const rows = groups[name] || [];
+    const elo = mean(rows.map(r => r.elo).filter(Number.isFinite));
+    const widths = rows.map(r => Number.isFinite(r.rankLo) && Number.isFinite(r.rankHi)
+      ? r.rankHi - r.rankLo : null).filter(Number.isFinite);
+    return [name, { elo, ci: mean(widths) }];
+  }));
+  const elos = Object.values(stats).map(s => s.elo).filter(Number.isFinite);
+  const cis = Object.values(stats).map(s => s.ci).filter(Number.isFinite);
+  if (!elos.length) return Object.fromEntries([...names].map(name => [name, 1]));
+  const eloLo = Math.min(...elos), eloSpan = Math.max(1, Math.max(...elos) - eloLo);
+  const ciLo = cis.length ? Math.min(...cis) : 0;
+  const ciSpan = cis.length ? Math.max(0.01, Math.max(...cis) - ciLo) : 1;
+  const weights = {};
+  for (const [name, s] of Object.entries(stats)) {
+    // Missing measurements are allowed a middle score, not a zero: zero would make a newcomer
+    // permanently invisible and turn the shared pool into a winner-only feedback loop.
+    const strength = Number.isFinite(s.elo) ? (s.elo - eloLo)/eloSpan : 0.5;
+    const certainty = Number.isFinite(s.ci) ? 1 - (s.ci - ciLo)/ciSpan : 0.5;
+    // 0.25 floor; strongest and most certain candidates draw up to 4x as often as the weakest,
+    // least certain candidate.  Strength is deliberately the larger term: it improves the data;
+    // certainty keeps the data anchored in things the league has actually measured.
+    weights[name] = +(.25 + .55*strength + .20*Math.max(0, Math.min(1, certainty))).toFixed(3);
+  }
+  return weights;
+}
+
 function startSelfplayBatch() {
   const num = batchNum++;
   const out = path.join(dir, 'data', `batch-${String(num).padStart(3, '0')}.jsonl`);
@@ -1250,8 +1295,11 @@ function startSelfplayBatch() {
     } catch (e) {}
   }
   const modelPool = currentModelPool();
+  const modelWeights = selfplayPoolWeights(modelPool);
+  const weightedCount = Object.values(modelWeights).filter(w => w !== 1).length;
   const varietyNote = modelPool.length ? `, ${modelPool.length}-model variety pool` : '';
-  log(`self-play batch ${num} starting: ${gamesPerBatch} games (mix ${mix}, ${workers} workers${poolNote}${varietyNote})`);
+  const weightNote = weightedCount ? `, Elo/CI-weighted ${weightedCount}/${modelPool.length}` : '';
+  log(`self-play batch ${num} starting: ${gamesPerBatch} games (mix ${mix}, ${workers} workers${poolNote}${varietyNote}${weightNote})`);
   statusState.batch = num;
   statusState.mix = fs.existsSync(best) ? mix : '(no model yet — pure ladder)';
   // Self-play games now feed the rating pool as well as the training corpus. They always knew both
@@ -1265,6 +1313,7 @@ function startSelfplayBatch() {
     '--modelVarietyFrac', String(modelVarietyFrac),
     '--eloInbox', path.join(dir, 'elo-inbox.jsonl'),
     ...(modelPool.length ? ['--modelPool', modelPool.join(',')] : []),
+    '--modelPoolWeights', JSON.stringify(modelWeights),
     ...(dataPool ? ['--levels', dataPool.join(',')] : [])];
   const ch = spawn('node', [path.join(dir, 'selfplay.js'), ...args], { stdio: 'inherit' });
   selfplayChild = ch;
