@@ -4862,10 +4862,49 @@ function nnSortedFeet(p) {
     for (let i = 0; i < 3; i++) {
         const a = p.rot + i*NN_TWO_PI/3;
         const x = p.x + Math.cos(a)*CFG.footR, y = p.y + Math.sin(a)*CFG.footR;
-        out.push({ x, y, r: Math.hypot(x, y) });
+        out.push({ x, y, r: Math.hypot(x, y), idx: i });
     }
     out.sort((u, v) => v.r - u.r);
     return out;
+}
+// Mirrors nn/features.js's moveFrame exactly: the bridge between a raw (pivotIdx, dir) move and the
+// canonicalised frame a policy head's outputs live in. `order[slot]` maps a radius-sorted slot back
+// to the engine's real foot index; `mirror` flips a canonical direction back to a world direction.
+// Only needed for a dropped dual (value+policy) net -- a bare value net never reads this.
+function nnMoveFrame() {
+    const me = G.pieces[G.active], op = G.pieces[1 - G.active];
+    const b = Math.atan2(me.y, me.x) || 0;
+    const oyr = op.x*Math.sin(-b) + op.y*Math.cos(-b);
+    return { order: nnSortedFeet(me).map(f => f.idx), mirror: oyr < 0 ? -1 : 1 };
+}
+// Mirrors nn/dualnet.js's DualMLP.forward + .predict exactly: same shared tanh trunk, but the FINAL
+// layer is a split activation -- slot 0 (value) is tanh'd, slots 1..22 (policy logits) stay raw so
+// softmax gets real logits. NN_ARMS/NN_BINS mirror nn/policy.js's N_ARMS/N_BINS (6 pivot+direction
+// arms, 16 stop bins); only the arms are used here (#lab has no bin-level search, same as nnai.js's
+// arm-only ordering).
+const NN_ARMS = 6, NN_BINS = 16;
+function nnSoftmaxSlice(z, from, to) {
+    let mx = -Infinity;
+    for (let i = from; i < to; i++) if (z[i] > mx) mx = z[i];
+    const p = [];
+    let s = 0;
+    for (let i = from; i < to; i++) { const e = Math.exp(z[i] - mx); p.push(e); s += e; }
+    for (let i = 0; i < p.length; i++) p[i] /= s;
+    return p;
+}
+function nnDualPredictGame(x, model) {
+    const { sizes, W, b } = model;
+    let a = x;
+    for (let l = 0; l < W.length; l++) {
+        const nIn = sizes[l], nOut = sizes[l + 1], z = new Array(nOut), last = l === W.length - 1;
+        for (let j = 0; j < nOut; j++) {
+            let s = b[l][j];
+            for (let i = 0; i < nIn; i++) s += W[l][j*nIn + i]*a[i];
+            z[j] = (!last || j === 0) ? Math.tanh(s) : s;
+        }
+        a = z;
+    }
+    return { value: a[0], arms: nnSoftmaxSlice(a, 1, 1 + NN_ARMS), bins: nnSoftmaxSlice(a, 1 + NN_ARMS, 1 + NN_ARMS + NN_BINS) };
 }
 // where a circle of radius R about (px,py) meets a circle of radius cr about (cx,cy), as angles
 // measured from (px,py) -- pinning a foot puts each other foot on exactly such a circle
@@ -5013,7 +5052,23 @@ function nnPlanForGame(idx, temperature, depth, keepForDepth, model) {
                           G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null;
                           G.pinned=null; G.pivot=null; G.active=idx; G.over=false; G.winner=null; };
     const cands = [];
-    for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
+    // Ordering only changes the SEQUENCE the six arms are swept in, not which ones get swept -- same
+    // reasoning as nn/nnai.js's own armList: cheap, and the total candidate set stays identical
+    // whether or not a dual net's policy head is available to order by.
+    let armList = [];
+    for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) armList.push({ pv, dir });
+    if (model && model.dual) {
+        const frame = nnMoveFrame();
+        const { arms } = nnDualPredictGame(nnFeaturesGame(), model);
+        const armKey = a => a.pv*2 + (a.dir > 0 ? 1 : 0);
+        const score = new Map();
+        for (let ai = 0; ai < arms.length; ai++) {
+            const slot = ai >> 1, canonDir = (ai & 1) === 0 ? 1 : -1;
+            score.set(frame.order[slot]*2 + ((canonDir*frame.mirror) > 0 ? 1 : 0), arms[ai]);
+        }
+        armList.sort((a, b) => (score.get(armKey(b)) || 0) - (score.get(armKey(a)) || 0));
+    }
+    for (const { pv, dir } of armList) {
         pinFoot(pv);
         const arm = [];
         let guard = 0;
@@ -8670,8 +8725,19 @@ function labUpdateBtn() {
                     nameEl.textContent = `That model takes ${j.sizes[0]} inputs, this build makes ${NN_N_FEATURES} — retrain it.`;
                     return;
                 }
+                // A dual (value+policy) net's value head plays fine through the plain forward pass
+                // (nnForwardGame already tanh's slot 0 exactly like dualnet.js does), and
+                // nnPlanForGame uses its policy head to order arms when `model.dual` is set -- so
+                // this is accepted, not routed through the policy-net rejection above.
+                if (j.dual) {
+                    const DUAL_OUT = 1 + NN_ARMS + NN_BINS;
+                    if (j.sizes[j.sizes.length - 1] !== DUAL_OUT) {
+                        nameEl.textContent = `Dual net's output layer is ${j.sizes[j.sizes.length - 1]}, this build expects ${DUAL_OUT} — retrain it.`;
+                        return;
+                    }
+                }
                 labBrains[side].model = j; labBrains[side].name = file.name;
-                nameEl.textContent = file.name + ' ✓';
+                nameEl.textContent = file.name + (j.dual ? ' (dual value+policy) ✓' : ' ✓');
             };
             reader.readAsText(file);
         });
