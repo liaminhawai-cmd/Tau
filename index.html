@@ -515,7 +515,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 180</div>
+<div id="buildTag">build 181</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2396,41 +2396,12 @@ const CFG = {
     crossEps: 0.81,
     holdEps: 0.81,          // same magnet-surface band (see crossEps)
     touchEps: 0.81,         // same magnet-surface band (see crossEps)
-    // No release grace: contact is exactly the magnet face (touchEps) both ways, on and off. This
-    // used to retain contact out to touchEps+0.25 past release, specifically to stop a shallow-graze
-    // path flickering in and out of contact at the band edge. Swept ~5200 placements across the
-    // board comparing this (0) against the old 0.25: real geometric flicker (>=4 contact toggles in
-    // one swing where the grace value saw only 1) shows up in exactly 1 case, and even there the
-    // billed crossing count and stop point come out identical either way. Zero cases where the CW
-    // and CCW mirror of the same swing billed a different crossing count -- the specific symptom
-    // this existed to prevent. Not exhaustive (a discrete placement grid, not every real angle, and
-    // it doesn't specifically target the corner-merge path), so real play may still turn up a case
-    // this sweep didn't.
+    // No grace, no tolerances beyond the magnet face itself: contact is exactly the magnet's
+    // surface touching the printed stroke (touchEps), on and off, and that is the only band in the
+    // rule. lineStick (a 0.25u = 0.5mm release stickiness) and cornerEps (a corner-merge allowance)
+    // both used to live here and are both gone -- the first was non-physical, the second redundant
+    // against the whole-piece crossing episode. See crossingSubstep.
     lineStick: 0,
-    // "Jumping the crossing" tolerance: a second line may join a foot's open contact episode for
-    // free only within this distance of the printed intersection point of the two lines. Without
-    // this cap the merge was allowed anywhere the two contact bands overlap, which at the shallow
-    // ring-arc corners stretched ~1.7 from the corner point: the foot visibly passed BESIDE the
-    // corner, crossed ring then arc separately, and still paid one crossing.
-    //
-    // Now the SAME magnet-surface band as crossEps/holdEps/touchEps, for the same reason they were
-    // unified: the question "is the magnet on the printed corner" should have one answer, measured
-    // the one way. 0.55 magnet radius + 0.26 half line-width = 0.81 — the magnet's surface has to
-    // actually reach the corner blob, not merely come within a foot-width of it.
-    //
-    // This was 1.1 (above even its own ~1.05 rationale), and 1.1 was still loose enough to leave
-    // the cap doing exactly what it exists to prevent. Measured on the CW/anti-CW two-step opening
-    // reported from real play: the foot rounds the r0/a0 corner at (-33.33, +-22.11) passing 0.89
-    // from it -- clearly beside the corner, cleared 1.1 by 0.21 (0.42mm), took the free merge, and
-    // the swing ran on to 74.8deg where the physical board refuses it. At 0.81 that merge is
-    // correctly billed as a second crossing. The unbounded centre-spin is untouched (feet riding
-    // dead on the inner ring meet each arc at distance ~0): still 1200deg for 0 crossings.
-    //
-    // Costs 40% of corner merges that currently fire (16 of 40 over 960 swept swings, i.e. 1.67% of
-    // swings). The merge-distance distribution is CONTINUOUS from 0.52 to 1.07 with no gap, so this
-    // is a physical argument rather than a natural seam -- if real play turns up a corner roll that
-    // should have merged, this number is why.
-    cornerEps: 0.81,
     substepDeg: 0.4,
     minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
     lockDeg: 2,                    // net rotation before the one-direction-per-turn lock engages
@@ -2717,22 +2688,21 @@ function crossingSubstep(before, after, st) {
         let entered = false;
         for (const id of nearLineIds(after[i], CFG.touchEps))
             if (!kept.includes(id)) {
-                // A new line joins an open episode free ONLY at the corner: it must actually meet a
-                // line this foot is still on, at a printed intersection within cornerEps of the foot.
-                // Anywhere else, touching a second line is a second crossing, contact or no contact.
-                // The sponsoring line must be EARNED (magnet-on at turn start, billed, or itself
-                // merged at a corner) — a parked-beside line can't carry a free corner ride. The
-                // merge is provisional: see the centreline validation above.
-                let sponsorId;
-                const atCorner = hadContact && kept.some(h => earned.includes(h) && LINE_INTERSECTIONS.some(P =>
-                    P.lines.includes(id) && P.lines.includes(h) &&
-                    Math.hypot(after[i].x-P.x, after[i].y-P.y) <= CFG.cornerEps) && (sponsorId = h, true));
+                // No special corner case. There used to be one: a second line could join free if the
+                // foot was within cornerEps of the printed intersection. It was REDUNDANT -- the
+                // crossing budget is a whole-piece episode, so once any foot is on a line the episode
+                // is already charged and the second line rides in free regardless of where it is.
+                // The corner test only ever fired where the episode already covered it.
+                // Measured over 648 two-step openings at every move-1 stopping angle: removing it
+                // changes which moves are reachable not at all (28/648 either way). Its ONLY effect
+                // was that the centre-spin (feet riding dead on the inner ring, meeting each arc at
+                // distance ~0) cost 0 crossings instead of 1 -- and at a budget of 1 that spin is
+                // legal either way, still 1200deg+ unbounded.
                 kept.push(id);
-                if (!earned.includes(id)) earned.push(id);   // fresh billed entry or corner merge: genuine contact
+                if (!earned.includes(id)) earned.push(id);   // fresh billed entry: genuine contact
                 newSides[i][id] = lineSideOf(after[i], id);  // approach side, for the centreline-flip check
-                if (atCorner) newPending[i][id] = sponsorId;
                 justCrossed.push(id);
-                if (!atCorner) entered = true;
+                entered = true;
             }
         if (entered) opened++;   // this foot opened a fresh crossing (off→on, or a non-corner second line)
         next.push(kept);
