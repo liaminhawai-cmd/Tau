@@ -515,7 +515,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 179</div>
+<div id="buildTag">build 180</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2408,12 +2408,29 @@ const CFG = {
     // this sweep didn't.
     lineStick: 0,
     // "Jumping the crossing" tolerance: a second line may join a foot's open contact episode for
-    // free only within this distance of the printed intersection point of the two lines. Foot dot
-    // ~0.55 + the corner's ink blob ~0.5 ≈ 1.05 — i.e. the drawn foot has to visually touch the
-    // drawn corner. Without this cap the merge was allowed anywhere the two contact bands overlap,
-    // which at the shallow ring-arc corners stretched ~1.7 from the corner point: the foot visibly
-    // passed BESIDE the corner, crossed ring then arc separately, and still paid one crossing.
-    cornerEps: 1.1,
+    // free only within this distance of the printed intersection point of the two lines. Without
+    // this cap the merge was allowed anywhere the two contact bands overlap, which at the shallow
+    // ring-arc corners stretched ~1.7 from the corner point: the foot visibly passed BESIDE the
+    // corner, crossed ring then arc separately, and still paid one crossing.
+    //
+    // Now the SAME magnet-surface band as crossEps/holdEps/touchEps, for the same reason they were
+    // unified: the question "is the magnet on the printed corner" should have one answer, measured
+    // the one way. 0.55 magnet radius + 0.26 half line-width = 0.81 — the magnet's surface has to
+    // actually reach the corner blob, not merely come within a foot-width of it.
+    //
+    // This was 1.1 (above even its own ~1.05 rationale), and 1.1 was still loose enough to leave
+    // the cap doing exactly what it exists to prevent. Measured on the CW/anti-CW two-step opening
+    // reported from real play: the foot rounds the r0/a0 corner at (-33.33, +-22.11) passing 0.89
+    // from it -- clearly beside the corner, cleared 1.1 by 0.21 (0.42mm), took the free merge, and
+    // the swing ran on to 74.8deg where the physical board refuses it. At 0.81 that merge is
+    // correctly billed as a second crossing. The unbounded centre-spin is untouched (feet riding
+    // dead on the inner ring meet each arc at distance ~0): still 1200deg for 0 crossings.
+    //
+    // Costs 40% of corner merges that currently fire (16 of 40 over 960 swept swings, i.e. 1.67% of
+    // swings). The merge-distance distribution is CONTINUOUS from 0.52 to 1.07 with no gap, so this
+    // is a physical argument rather than a natural seam -- if real play turns up a corner roll that
+    // should have merged, this number is why.
+    cornerEps: 0.81,
     substepDeg: 0.4,
     minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
     lockDeg: 2,                    // net rotation before the one-direction-per-turn lock engages
