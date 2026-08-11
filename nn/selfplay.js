@@ -2,11 +2,13 @@
 const path=require('path');
 const {spawn}=require('child_process');
 const evo=require('./evolution-roster.js');
+const {loadSeedPoses}=require('./selfplay-legacy.js');
 const dir=__dirname;
+module.exports={loadSeedPoses};
 function getArg(a,n,d=null){const i=a.indexOf('--'+n);return i>=0?a[i+1]:d;}
 function setArg(a,n,v){const k='--'+n,i=a.indexOf(k);if(i>=0)a.splice(i,2,k,String(v));else a.push(k,String(v));}
 function run(args){return new Promise((ok,bad)=>{const ch=spawn(process.execPath,[path.join(dir,'selfplay-legacy.js'),...args],{stdio:'inherit'});['SIGINT','SIGTERM'].forEach(s=>process.once(s,()=>{try{ch.kill(s);}catch(_){}}));ch.on('error',bad);ch.on('exit',c=>c===0?ok():bad(new Error('legacy selfplay exited '+c)));});}
-(async()=>{
+async function main(){
   const original=process.argv.slice(2), games=Math.max(1,+getArg(original,'games',100));
   evo.sync(dir); evo.ingestSummary(dir,path.join(dir,'elo-summary.json'));
   const slice=evo.selfplaySlice(dir), levels=evo.activeLadderLevels(dir), profile=evo.selfplayProfile(slice,{dir});
@@ -51,4 +53,5 @@ function run(args){return new Promise((ok,bad)=>{const ch=spawn(process.execPath
     console.log(`[evolution] earned-D3 phase ${d3Games}/${games} games across ${d3Pool.length} nets`);
     await run(d3);
   }
-})().catch(e=>{console.error('[evolution] selfplay wrapper failed:',e.message);process.exitCode=1;});
+}
+if(require.main===module) main().catch(e=>{console.error('[evolution] selfplay wrapper failed:',e.message);process.exitCode=1;});
