@@ -515,7 +515,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 182</div>
+<div id="buildTag">build 183</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2634,6 +2634,12 @@ function crossingSubstep(before, after, st) {
         st.startSide = before.map((f,i) => { const m={}; for (const id of st.contact[i]) m[id]=lineSideOf(f,id); return m; });
         st.entrySide = [{},{},{}];     // approach side of each line entered THIS turn
         st.pendingMerge = [{},{},{}];  // corner-merged lines awaiting centreline validation: id -> sponsor id
+        // Snapshot of what each foot was ALREADY resting on when the turn began -- a park position
+        // paid for last turn, not this one. The one-line-per-foot rule below must count only lines
+        // FRESHLY entered this turn against that budget; a foot that starts parked on a line and
+        // then freshly touches one new line has still only spent ONE crossing this turn, even though
+        // it is technically in contact with two lines at once.
+        st.turnStartContact = st.contact.map(a => a.slice());
         // Has the tripod's CURRENT stretch of line contact already cost a crossing? False here on
         // purpose: lines a foot merely starts the turn sat on haven't cost anything yet -- the
         // charge lands when something actually crosses (including that foot crossing off).
@@ -2711,8 +2717,19 @@ function crossingSubstep(before, after, st) {
                 // their printed corner -- beside it, not on it. Now billed as the second crossing
                 // it is, so move 2 stops at 12.0deg instead of running to 74.4deg. Genuine corner
                 // rounds (measured at 1.48mm, inside the band) still merge free.
-                if (kept.length > 0) {
-                    const roundingCorner = kept.some(h => LINE_INTERSECTIONS.some(P =>
+                //
+                // Only a line FRESHLY entered THIS turn spends the budget -- a line the foot was
+                // already resting on at turn start (a park position paid for last turn) does not.
+                // Without this, a piece parked with a foot on one line could never move that foot
+                // again in the direction of any nearby second line, even on a brand new turn with a
+                // fresh budget: reported from real play as "forever blocked" continuing a swing from
+                // a parked position, reproduced as pivot1 CCW, pivot2 CW, pivot2 CW again -- the
+                // third move died at 0.0deg because move 2 legitimately parks foot1 on r0, and move
+                // 3's first substep found that foot already "on a line" and refused to let it touch
+                // a0 at all, though this turn had spent nothing yet.
+                const freshKept = kept.filter(h => !st.turnStartContact[i].includes(h));
+                if (freshKept.length > 0) {
+                    const roundingCorner = freshKept.some(h => LINE_INTERSECTIONS.some(P =>
                         P.lines.includes(id) && P.lines.includes(h) &&
                         Math.hypot(after[i].x-P.x, after[i].y-P.y) <= CFG.cornerEps));
                     if (!roundingCorner) { blockedSecond = true; break; }
