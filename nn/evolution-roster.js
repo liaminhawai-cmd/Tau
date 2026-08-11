@@ -32,8 +32,8 @@ function loadState(dir) {
   let s = null;
   try { s = JSON.parse(fs.readFileSync(statePath(dir), 'utf8')); } catch (_) {}
   if (!s || s.version !== 1) s = { version:1, active:{}, retired:{}, latest:{}, ladderActive:null,
-    ladderGames:{}, evidenceSeen:{}, gamesSinceCull:0, cursor:0, birthSerial:1, lastEvent:null };
-  s.active ||= {}; s.retired ||= {}; s.latest ||= {}; s.ladderGames ||= {}; s.evidenceSeen ||= {};
+    ladderGames:{}, ladderRatings:{}, evidenceSeen:{}, gamesSinceCull:0, cursor:0, birthSerial:1, lastEvent:null };
+  s.active ||= {}; s.retired ||= {}; s.latest ||= {}; s.ladderGames ||= {}; s.ladderRatings ||= {}; s.evidenceSeen ||= {};
   s.gamesSinceCull = +s.gamesSinceCull || 0; s.cursor = +s.cursor || 0; s.birthSerial = +s.birthSerial || 1;
   return s;
 }
@@ -82,7 +82,10 @@ function ingestSummary(dir, summaryFile) {
   const sum = readSummary(summaryFile);
   const groups = {}, ladder = {};
   for (const [id,r] of Object.entries(sum.players || {})) {
-    if (r.kind === 'ladder') { ladder[r.level] = +r.games || 0; continue; }
+    if (r.kind === 'ladder') {
+      ladder[r.level] = { games:+r.games || 0, elo:Number.isFinite(+r.elo) ? +r.elo : null };
+      continue;
+    }
     if (r.kind !== 'nn' || !r.model) continue;
     const name = path.basename(r.model,'.json');
     (groups[name] ||= []).push({...r,id});
@@ -107,10 +110,17 @@ function ingestSummary(dir, summaryFile) {
     if (games > prev) evidenceDelta += games - prev;
     s.evidenceSeen[name] = Math.max(prev, games);
   }
-  for (const [lvl,g] of Object.entries(ladder)) {
+  for (const [lvl, lr] of Object.entries(ladder)) {
+    const g = +lr.games || 0;
     const prev = +s.ladderGames[lvl] || 0;
     if (g > prev) evidenceDelta += g - prev;
     s.ladderGames[lvl] = Math.max(prev,g);
+    const old = s.ladderRatings[lvl] || {};
+    s.ladderRatings[lvl] = {
+      elo: Number.isFinite(lr.elo) ? lr.elo : (Number.isFinite(old.elo) ? old.elo : null),
+      games: Math.max(+old.games || 0, g),
+      updated: sum.updated || new Date().toISOString()
+    };
   }
   // Every real game increments two player game-counts, so convert player-games back to games.
   s.gamesSinceCull += evidenceDelta/2;
@@ -205,13 +215,26 @@ function removeFromLegacyRegistries(dir,file) {
   }
 }
 
+// Ladder labels are historical names, not a strength ordering. Protect the six strongest measured
+// ladder brains by fitted Elo. Until six active rungs have usable Elo, protect all of them rather
+// than guessing from labels and accidentally making an unmeasured cull irreversible.
+function protectedLadderLevels(s) {
+  const active = s.ladderActive.slice();
+  const need = Math.min(PROTECTED_LADDER_COUNT, active.length);
+  const rated = active.map(level => ({ level, elo:s.ladderRatings[level]?.elo }))
+    .filter(x => Number.isFinite(x.elo))
+    .sort((a,b) => b.elo - a.elo);
+  if (rated.length < need) return new Set(active);
+  return new Set(rated.slice(0, need).map(x => x.level));
+}
+
 function cull(dir) {
   const s=sync(dir);
   if(s.gamesSinceCull < CULL_EVERY_GAMES) return {culled:[],birth:null,state:s};
   s.gamesSinceCull = Math.max(0, s.gamesSinceCull - CULL_EVERY_GAMES);
   const names=activeNames(s), modelCount=names.length;
-  const ladderN=Math.max(11,...s.ladderActive,0), protectFrom=Math.max(1,ladderN-PROTECTED_LADDER_COUNT+1);
-  const cullableLadders=s.ladderActive.filter(l=>l<protectFrom && (s.ladderGames[l]||0)>=4);
+  const protectedLadders=protectedLadderLevels(s);
+  const cullableLadders=s.ladderActive.filter(l=>!protectedLadders.has(l) && (s.ladderGames[l]||0)>=4);
   const measured=names.map(name=>({type:'model',name,...(s.latest[name]||{})}))
     .filter(x=>Number.isFinite(x.rank)&&Number.isFinite(x.rankHi)&&x.games>=4);
   const ladderEntries=cullableLadders.map(level=>({type:'ladder',name:`L${level}`,level,rank:level,rankHi:level,games:s.ladderGames[level]||0}));
@@ -221,7 +244,8 @@ function cull(dir) {
     const eligible=[...measured,...ladderEntries].sort((a,b)=>a.rankHi-b.rankHi || a.rank-b.rank);
     let want=Math.max(1,Math.ceil(eligible.length*BULK_CULL_FRAC));
     // Do not take more learned models than needed to reach ~50 in the final bulk pass. Ladder culls
-    // are allowed on top because the lower rungs are being deliberately retired as obsolete anchors.
+    // are allowed on top because obsolete rungs can leave once the six strongest measured anchors
+    // are known and protected.
     let modelRoom=Math.max(0,modelCount-TARGET_MODELS);
     for(const x of eligible){
       if(culled.length>=want) break;
