@@ -1249,12 +1249,12 @@ function currentModelPool() {
   return candidates;
 }
 
-// Self-play is random by design -- it needs diverse positions, not a deterministic champion-vs-
-// champion treadmill -- but random need not mean blind.  Give every frozen candidate a positive
-// draw weight from the shared Elo fit: stronger models and models whose rank CI is already tight
-// contribute more training games, while every candidate keeps a floor until the adaptive Elo
-// matcher has enough evidence to retire it.  Grouping by filename folds a dual's bare/+policy
-// faces and all depths back into its one shared trunk weight.
+// Self-play has two jobs at once: generate useful training positions and feed the shared rating
+// pool. Strong models are useful opponents, but a wide rank interval is an explicit request for
+// more evidence. Uncertainty therefore gets the larger share of the draw weight; a settled narrow-CI
+// model still plays if it is strong, while an under-measured model is sampled aggressively until
+// its location is known. Grouping by filename folds a dual's bare/+policy faces and all depths back
+// into its one shared trunk weight.
 function selfplayPoolProfile(paths) {
   const entries = paths.map(p => ({ path: p, name: path.basename(p, '.json') }));
   const names = new Set(entries.map(x => x.name));
@@ -1302,15 +1302,15 @@ function selfplayPoolProfile(paths) {
   const ciLo = cis.length ? Math.min(...cis) : 0;
   const ciSpan = cis.length ? Math.max(0.01, Math.max(...cis) - ciLo) : 1;
   for (const [name, s] of Object.entries(stats)) {
-    // Missing measurements are allowed a middle score, not a zero: zero would make a newcomer
-    // permanently invisible and turn the shared pool into a winner-only feedback loop.
     const strength = Number.isFinite(s.elo) ? (s.elo - eloLo)/eloSpan : 0.5;
-    const certainty = Number.isFinite(s.ci) ? 1 - (s.ci - ciLo)/ciSpan : 0.5;
-    // 0.25 floor; strongest and most certain candidates draw up to 4x as often as the weakest,
-    // least certain candidate.  Strength is deliberately the larger term: it improves the data;
-    // certainty keeps the data anchored in things the league has actually measured.
+    // Missing CI is maximum uncertainty, matching elorank's scheduler: no interval means we do not
+    // know where this model belongs yet, not that it should receive an average amount of evidence.
+    const uncertainty = Number.isFinite(s.ci) ? (s.ci - ciLo)/ciSpan : 1;
+    // 0.25 floor, then twice as much budget for uncertainty as for strength. This yields the intended
+    // ordering: uncertain+strong most; uncertain+weak next; settled+strong still useful; settled+weak
+    // least. A model's probability automatically falls as its CI tightens.
     weights[name] = elos.length
-      ? +(.25 + .55*strength + .20*Math.max(0, Math.min(1, certainty))).toFixed(3)
+      ? +(.25 + .25*strength + .50*Math.max(0, Math.min(1, uncertainty))).toFixed(3)
       : 1;
   }
   // Hard first coverage. A dual has two genuinely different rated uses, so both its bare value
