@@ -10,16 +10,38 @@ function run(args){return new Promise((ok,bad)=>{const ch=spawn(process.execPath
   const original=process.argv.slice(2), games=Math.max(1,+getArg(original,'games',100));
   evo.sync(dir); evo.ingestSummary(dir,path.join(dir,'elo-summary.json'));
   const slice=evo.selfplaySlice(dir), levels=evo.activeLadderLevels(dir), profile=evo.selfplayProfile(slice,{dir});
-  const d3Pool=evo.d3Slice(dir), d3Games=d3Pool.length?Math.floor(games*evo.D3_SHARE):0, baseGames=Math.max(1,games-d3Games);
+  const d3Pool=evo.d3Slice(dir), d3Games=d3Pool.length?Math.floor(games*evo.D3_SHARE):0, baseGames=Math.max(0,games-d3Games);
   const st=evo.status(dir);
   console.log(`[evolution] self-play roster ${st.models} nets + ${st.ladders} ladder; rotating ${slice.length}; `+
               `D3 earned ${d3Pool.length} (rankLo above population median${Number.isFinite(st.median)?' '+st.median.toFixed(2):''})`);
-  const base=original.slice();
-  if(slice.length){setArg(base,'model',slice[0]);setArg(base,'modelPool',slice.slice(1).join(','));}
-  setArg(base,'games',baseGames); setArg(base,'levels',levels.join(',')); setArg(base,'deep',levels.slice(-Math.min(5,levels.length)).join(','));
-  setArg(base,'nnDepthMix','1:1,2:0.278'); setArg(base,'modelPoolWeights',JSON.stringify(profile.weights));
-  setArg(base,'coverageQueue',JSON.stringify(profile.coverage.filter(x=>!x.depth||x.depth<=2))); setArg(base,'modelVarietyFrac','1');
-  await run(base);
+
+  const baseArgs=()=>{
+    const a=original.slice();
+    if(slice.length){setArg(a,'model',slice[0]);setArg(a,'modelPool',slice.slice(1).join(','));}
+    setArg(a,'levels',levels.join(',')); setArg(a,'deep',levels.slice(-Math.min(5,levels.length)).join(','));
+    setArg(a,'modelPoolWeights',JSON.stringify(profile.weights)); setArg(a,'modelVarietyFrac','1');
+    return a;
+  };
+
+  // First coverage is depth-specific. The old worker knew which MODEL/FACE was forced but still
+  // rolled D1/D2 randomly, so a queued "cover D2" game could come back as yet another D1 and leave
+  // the zero untouched. Run the missing D1 and D2 seats in tiny forced-depth phases first; two
+  // coverage entries share one game, exactly as the worker already reserves A/B entries.
+  let remaining=baseGames;
+  for(const depth of [1,2]){
+    const queue=profile.coverage.filter(x=>x.depth===depth);
+    if(!queue.length||remaining<=0) continue;
+    const n=Math.min(remaining,Math.ceil(queue.length/2));
+    const a=baseArgs(); setArg(a,'games',n); setArg(a,'nnDepthMix',`${depth}:1`);
+    setArg(a,'coverageQueue',JSON.stringify(queue.slice(0,n*2)));
+    console.log(`[evolution] first coverage D${depth}: ${Math.min(queue.length,n*2)} face(s) in ${n} forced-depth game(s)`);
+    await run(a); remaining-=n;
+  }
+  if(remaining>0){
+    const a=baseArgs(); setArg(a,'games',remaining); setArg(a,'nnDepthMix','1:1,2:0.278');
+    setArg(a,'coverageQueue','[]'); await run(a);
+  }
+
   if(d3Games>0){
     const d3=original.slice(), p=evo.selfplayProfile(d3Pool,{dir});
     setArg(d3,'games',d3Games); setArg(d3,'model',d3Pool[0]); setArg(d3,'modelPool',d3Pool.slice(1).join(','));

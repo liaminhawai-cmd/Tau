@@ -22,6 +22,7 @@ async function birth(plan){if(!plan)return null;const args=plan.kind==='extra'?[
   if(!refit){setArg(base,'focus',slice.join(','));setArg(base,'focusPairs','0');}
   await run('elorank-legacy.js',base);
   evo.ingestSummary(dir,summary);
+
   if(!refit){
     // Catch up at most three ~100-game pruning beats per placement; any larger backlog remains for
     // the next cycle rather than deleting half the historical field against one frozen fit.
@@ -30,14 +31,23 @@ async function birth(plan){if(!plan)return null;const args=plan.kind==='extra'?[
       console.log(`[evolution] culled ${c.culled.map(x=>x.name).join(', ')}`);
       if(c.birth){const b=await birth(c.birth);if(b)console.log(`[evolution] replacement born ${b}`);}
     }
-    const d3=evo.d3Slice(dir);
-    if(d3.length){
-      const a=original.slice(); setArg(a,'models',d3.join(',')); setArg(a,'levels',evo.activeLadderLevels(dir).join(','));
-      setArg(a,'depths','3'); setArg(a,'focus',d3.join(',')); setArg(a,'focusPairs','0');
+  }
+
+  // D3 is a separate earned measurement tier. Keep its summary separate: run.js reads the normal
+  // summary immediately after this wrapper exits for promotion/retirement decisions. Overwriting
+  // that file with a D3-only field made the fresh D1/D2 checkpoint disappear from the caller's view.
+  // D3 outcomes still land in the SAME elo-results.json store, so no rating evidence is lost.
+  const d3=evo.d3Slice(dir);
+  if(d3.length){
+    const a=original.slice(), d3Summary=evo.d3SummaryPath(dir);
+    setArg(a,'models',d3.join(',')); setArg(a,'levels',evo.activeLadderLevels(dir).join(','));
+    setArg(a,'depths','3'); setArg(a,'summary',d3Summary);
+    if(!refit){
+      setArg(a,'focus',d3.join(',')); setArg(a,'focusPairs','0');
       const bh=+getArg(original,'budgetHours',0);if(bh>0)setArg(a,'budgetHours',Math.max(.03,bh*.25));
-      console.log(`[evolution] D3 earned by ${d3.length}: lower CI is above the active-model median`);
-      await run('elorank-legacy.js',a); evo.ingestSummary(dir,summary);
     }
+    console.log(`[evolution] D3 earned by ${d3.length}: lower CI is above the active-model median`);
+    await run('elorank-legacy.js',a);
   }
   const end=evo.status(dir);console.log(`[evolution] roster now ${end.models} nets + ${end.ladders} ladder; cull bank ${end.gamesSinceCull.toFixed(0)}`);
 })().catch(e=>{console.error('[evolution] elorank wrapper failed:',e.message);process.exitCode=1;});
