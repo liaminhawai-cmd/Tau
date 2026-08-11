@@ -515,7 +515,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 181</div>
+<div id="buildTag">build 182</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2402,6 +2402,11 @@ const CFG = {
     // both used to live here and are both gone -- the first was non-physical, the second redundant
     // against the whole-piece crossing episode. See crossingSubstep.
     lineStick: 0,
+    // Rounding a PRINTED corner -- where two lines actually meet -- is one crossing, not two.
+    // Same magnet-surface band as crossEps/holdEps/touchEps: the magnet must actually reach the
+    // crossing point. Valid range measured at 0.70-0.93 (below 0.70 the centre-spin dies, at 1.00
+    // the opening slips through again); 0.81 sits mid-window and is the physical value.
+    cornerEps: 0.81,
     substepDeg: 0.4,
     minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
     lockDeg: 2,                    // net rotation before the one-direction-per-turn lock engages
@@ -2685,26 +2690,41 @@ function crossingSubstep(before, after, st) {
                 resolvedPending[i].push(id);
             }
         }
-        let entered = false;
+        let entered = false, blockedSecond = false;
         for (const id of nearLineIds(after[i], CFG.touchEps))
             if (!kept.includes(id)) {
-                // No special corner case. There used to be one: a second line could join free if the
-                // foot was within cornerEps of the printed intersection. It was REDUNDANT -- the
-                // crossing budget is a whole-piece episode, so once any foot is on a line the episode
-                // is already charged and the second line rides in free regardless of where it is.
-                // The corner test only ever fired where the episode already covered it.
-                // Measured over 648 two-step openings at every move-1 stopping angle: removing it
-                // changes which moves are reachable not at all (28/648 either way). Its ONLY effect
-                // was that the centre-spin (feet riding dead on the inner ring, meeting each arc at
-                // distance ~0) cost 0 crossings instead of 1 -- and at a budget of 1 that spin is
-                // legal either way, still 1200deg+ unbounded.
+                // ONE LINE PER FOOT PER TURN. A foot already touching a line must STOP SHORT of a
+                // different one -- it is not carried across by an overlap where two lines happen to
+                // run close together. The budget is still a whole-piece episode (two DIFFERENT feet
+                // taking two lines in one motion is one crossing, unchanged); this bounds what a
+                // SINGLE foot may do inside that episode.
+                //
+                // The exception is a genuine printed corner, where the two lines actually meet:
+                // rounding that is one continuous crossing, and it is what keeps the unbounded
+                // centre-spin legal (feet riding dead on the inner ring meet each arc AT its
+                // intersection). cornerEps is the same magnet-surface band as everything else --
+                // the magnet has to actually reach the crossing point.
+                //
+                // Reported from real play: a max-CW-then-max-anti-CW opening took a corner the
+                // board refuses. Measured, foot1 crossed r0 and then a0 in one turn, bridged by a
+                // 1.2deg window (12.4-13.2deg) where it touched both at once, 1.9mm to the SIDE of
+                // their printed corner -- beside it, not on it. Now billed as the second crossing
+                // it is, so move 2 stops at 12.0deg instead of running to 74.4deg. Genuine corner
+                // rounds (measured at 1.48mm, inside the band) still merge free.
+                if (kept.length > 0) {
+                    const roundingCorner = kept.some(h => LINE_INTERSECTIONS.some(P =>
+                        P.lines.includes(id) && P.lines.includes(h) &&
+                        Math.hypot(after[i].x-P.x, after[i].y-P.y) <= CFG.cornerEps));
+                    if (!roundingCorner) { blockedSecond = true; break; }
+                }
                 kept.push(id);
                 if (!earned.includes(id)) earned.push(id);   // fresh billed entry: genuine contact
                 newSides[i][id] = lineSideOf(after[i], id);  // approach side, for the centreline-flip check
                 justCrossed.push(id);
                 entered = true;
             }
-        if (entered) opened++;   // this foot opened a fresh crossing (off→on, or a non-corner second line)
+        if (blockedSecond) return true;   // roll back: this foot must stop short of the second line
+        if (entered) opened++;   // this foot opened a fresh crossing
         next.push(kept);
         nextEarned.push(earned.filter(id => kept.includes(id)));
     }
