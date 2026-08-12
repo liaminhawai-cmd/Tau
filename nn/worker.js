@@ -1,16 +1,16 @@
 'use strict';
 // Spare-machine worker: complementary compute, not a second copy of the desktop stream.
 //
-// The desktop already publishes pool-slot-NN.json in ascending fitted-Elo percentile order after
-// every placement cycle.  This worker therefore treats the highest three slots as its rolling
-// bronze/silver/gold set, alongside best.json, and spends most of its clock on D2 with a small D3
-// garnish.  After each chunk it runs one deliberately tiny rescue mine: at most TWO replay games.
-// If the losing position was already doomed earlier than that, too bad -- this worker is for late
-// conversion mistakes, not an all-night archaeological dig through the whole game.
+// The desktop publishes explicit nn/medals/gold.json, silver.json and bronze.json from the latest
+// confidently-rated D1/D2 pool (rankLo ordering). This worker plays best + those medals, spends
+// most of its clock on D2 with a small D3 garnish, and after each chunk runs one deliberately tiny
+// rescue mine: at most TWO replay games. If the losing position was already doomed earlier than
+// that, too bad -- this worker is for late conversion mistakes, not an all-night archaeological dig.
 const {execFileSync, spawn}=require('child_process');
 const fs=require('fs');
 const os=require('os');
 const path=require('path');
+const crypto=require('crypto');
 const {loadSeedPoses}=require('./selfplay.js');
 
 function arg(name,dflt){const i=process.argv.indexOf('--'+name);return i>=0?process.argv[i+1]:dflt;}
@@ -47,18 +47,26 @@ function gitSoft(args,what){try{git(args);return true;}catch(e){log(`${what} fai
 function validModel(p){
   try{const j=JSON.parse(fs.readFileSync(p,'utf8'));return !!(j&&(j.dual===true||Array.isArray(j.sizes)));}catch(_){return false;}
 }
-function championPool(){
+function uniqueModels(files){
+  const seen=new Set(), out=[];
+  for(const p of files){
+    if(!validModel(p))continue;
+    let h;try{h=crypto.createHash('sha1').update(fs.readFileSync(p)).digest('hex');}catch(_){continue;}
+    if(seen.has(h))continue;seen.add(h);out.push(p);
+  }
+  return out;
+}
+function slotFallback(){
   const md=path.join(dir,'models'), slots=[];
-  try{
-    for(const f of fs.readdirSync(md)){
-      const m=f.match(/^pool-slot-(\d+)\.json$/); if(!m)continue;
-      const p=path.join(md,f); if(validModel(p))slots.push({n:+m[1],p});
-    }
-  }catch(_){}
-  slots.sort((a,b)=>b.n-a.n);
-  const out=slots.slice(0,3).map(x=>x.p);
-  const best=path.join(md,'best.json'); if(validModel(best))out.unshift(best);
-  return [...new Set(out)];
+  try{for(const f of fs.readdirSync(md)){const m=f.match(/^pool-slot-(\d+)\.json$/);if(m){const p=path.join(md,f);if(validModel(p))slots.push({n:+m[1],p});}}}catch(_){}
+  return slots.sort((a,b)=>b.n-a.n).slice(0,3).map(x=>x.p);
+}
+function championPool(){
+  const best=path.join(dir,'models','best.json'), medalDir=path.join(dir,'medals');
+  const medalFiles=['gold','silver','bronze'].map(n=>path.join(medalDir,n+'.json')).filter(validModel);
+  // First desktop cycle after this code lands will mint medals. Until then, retain the old top-slot
+  // fallback so option 22 is never dead just because the aliases have not been published once yet.
+  return uniqueModels([best,...(medalFiles.length?medalFiles:slotFallback())]);
 }
 function strongLevels(){
   try{
@@ -97,7 +105,7 @@ function playChunk(chunk){
     const poses=loadSeedPoses(path.join(dir,'data'),400);
     if(poses.length>=20){seedFile=path.join(dir,'data',`w-${name}-${stamp}.seeds`);fs.writeFileSync(seedFile,JSON.stringify(poses));}
   }
-  log(`chunk ${chunk}: ${workers} lanes x ${per}; champions ${champs.map(p=>path.basename(p)).join(', ')||'none'}; levels ${levels}; depth mix ${depthMix}`);
+  log(`chunk ${chunk}: ${workers} lanes x ${per}; champions ${champs.map(p=>path.relative(dir,p)).join(', ')||'none'}; levels ${levels}; depth mix ${depthMix}`);
   const files=[], lanes=[];
   for(let i=0;i<workers;i++){
     const out=path.join(dir,'data',`w-${name}-${stamp}-w${i+1}.jsonl`); files.push(out);
@@ -118,11 +126,14 @@ function playChunk(chunk){
 }
 
 function runTinyRescue(stamp){
-  if(!rescue||!fs.existsSync(path.join(dir,'elo-summary.json')))return null;
+  if(!rescue)return null;
+  const medalSummary=path.join(dir,'medals','elo-summary.json');
+  const summary=fs.existsSync(medalSummary)?medalSummary:path.join(dir,'elo-summary.json');
+  if(!fs.existsSync(summary))return null;
   const out=path.join(dir,'data',`retro-${name}-${stamp}.jsonl`);
-  log('two-step rescue: one seed, at most TWO replay games; D1/D2 axis with strongest measured escape hatch');
+  log(`two-step rescue: one seed, at most TWO replay games; medal-aware D1/D2 axis (${path.relative(dir,summary)})`);
   return new Promise(resolve=>{
-    const ch=spawn('node',[path.join(dir,'retromine.js'),'--summary',path.join(dir,'elo-summary.json'),
+    const ch=spawn('node',[path.join(dir,'retromine.js'),'--summary',summary,
       '--seeds','1','--maxDepth','2','--seedBottom','6','--bigGuns','1','--probesPerPos','2',
       '--maxReplaysPerSeed','2','--ultimateGuns','1','--randomStartFrac','0.2','--out',out],
       {stdio:['ignore','inherit','inherit']});
@@ -132,7 +143,7 @@ function runTinyRescue(stamp){
 }
 
 async function main(){
-  log(`strong worker "${name}" up: ${workers} lanes; top-3 published slots + best; mostly D2, small D3; rescue ${rescue?'on':'off'}`);
+  log(`strong worker "${name}" up: ${workers} lanes; best + gold/silver/bronze; mostly D2, small D3; rescue ${rescue?'on':'off'}`);
   for(let chunk=1;;chunk++){
     gitSoft(['pull','--no-edit','--no-rebase'],'pull');
     const {files,done,stamp}=playChunk(chunk); let finished=false; done.then(()=>finished=true);
