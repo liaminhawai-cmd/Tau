@@ -9,6 +9,7 @@ const STEADY_CUTOFF_Q = 0.25;
 const SELFPLAY_SLICE = 50;
 const RATING_SLICE = 50;
 const D3_SLICE = 8;
+const D4_SLICE = 3;
 const ELO_TEMP = 400;
 const PROTECTED_LADDER_COUNT = 6;
 const D3_SHARE = 0.04;
@@ -16,6 +17,7 @@ const ALIASES = new Set(['best.json','value.json','scratch.json','wide.json','ul
 
 const statePath = dir => path.join(dir, 'models', '.evolution-roster.json');
 const d3SummaryPath = dir => path.join(dir, '.evolution-d3-summary.json');
+const d4SummaryPath = dir => path.join(dir, '.evolution-d4-summary.json');
 const mean = xs => { const a = xs.filter(Number.isFinite); return a.length ? a.reduce((s,x)=>s+x,0)/a.length : null; };
 const q = (xs, p) => {
   const a = xs.filter(Number.isFinite).sort((x,y)=>x-y);
@@ -32,8 +34,10 @@ function loadState(dir) {
   let s = null;
   try { s = JSON.parse(fs.readFileSync(statePath(dir), 'utf8')); } catch (_) {}
   if (!s || s.version !== 1) s = { version:1, active:{}, retired:{}, latest:{}, ladderActive:null,
-    ladderGames:{}, ladderRatings:{}, evidenceSeen:{}, gamesSinceCull:0, cursor:0, birthSerial:1, lastEvent:null };
+    ladderGames:{}, ladderRatings:{}, evidenceSeen:{}, gamesSinceCull:0, cursor:0, birthSerial:1, lastEvent:null,
+    d4Retired:{} };
   s.active ||= {}; s.retired ||= {}; s.latest ||= {}; s.ladderGames ||= {}; s.ladderRatings ||= {}; s.evidenceSeen ||= {};
+  s.d4Retired ||= {};
   s.gamesSinceCull = +s.gamesSinceCull || 0; s.cursor = +s.cursor || 0; s.birthSerial = +s.birthSerial || 1;
   return s;
 }
@@ -97,13 +101,18 @@ function ingestSummary(dir, summaryFile) {
     const ranks = use.filter(r=>Number.isFinite(r.rank));
     const rec = s.latest[name] || {};
     const depthGames = {...(rec.depthGames||{})};
-    for (const d of [1,2,3]) depthGames[d] = Math.max(depthGames[d]||0,
+    for (const d of [1,2,3,4]) depthGames[d] = Math.max(depthGames[d]||0,
       rows.filter(r=>r.depth===d).reduce((a,r)=>a+(+r.games||0),0));
+    const depthElo = {...(rec.depthElo||{})};
+    for (const d of [1,2,3,4]) {
+      const vals=rows.filter(r=>r.depth===d&&Number.isFinite(+r.elo)).map(r=>+r.elo);
+      if(vals.length) depthElo[d]=mean(vals);
+    }
     const games = use.reduce((a,r)=>a+(+r.games||0),0);
     s.latest[name] = {
       elo: mean(use.map(r=>r.elo)), rank: mean(ranks.map(r=>r.rank)),
       rankLo: mean(ranks.map(r=>r.rankLo)), rankHi: mean(ranks.map(r=>r.rankHi)),
-      games: Math.max(rec.games||0, games), depthGames,
+      games: Math.max(rec.games||0, games), depthGames, depthElo,
       updated: sum.updated || new Date().toISOString()
     };
     const prev = +s.evidenceSeen[name] || 0;
@@ -122,7 +131,6 @@ function ingestSummary(dir, summaryFile) {
       updated: sum.updated || new Date().toISOString()
     };
   }
-  // Every real game increments two player game-counts, so convert player-games back to games.
   s.gamesSinceCull += evidenceDelta/2;
   saveState(dir,s);
   return s;
@@ -149,9 +157,7 @@ function chooseSlice(dir, maxN, advance=false) {
 function selfplaySlice(dir) { return chooseSlice(dir,SELFPLAY_SLICE,true); }
 function ratingSlice(dir) { return chooseSlice(dir,RATING_SLICE,false); }
 
-function rosterMedian(s) {
-  return q(activeNames(s).map(n=>s.latest[n]&&s.latest[n].rank),0.5);
-}
+function rosterMedian(s) { return q(activeNames(s).map(n=>s.latest[n]&&s.latest[n].rank),0.5); }
 function earnedD3(s,name) {
   const r=s.latest[name]; if(!r) return false;
   const med=rosterMedian(s), d=r.depthGames||{};
@@ -165,6 +171,25 @@ function d3Slice(dir) {
                   ((s.latest[a].depthGames?.[3]||0)-(s.latest[b].depthGames?.[3]||0)))
     .slice(0,D3_SLICE).map(n=>path.join(dir,'models',s.active[n].file));
 }
+function d4Slice(dir) {
+  const s=sync(dir);
+  return activeNames(s).filter(n=>earnedD3(s,n) && (s.latest[n]?.depthGames?.[3]||0)>0 && !s.d4Retired[n])
+    .sort((a,b)=>(s.latest[b].rankLo||-Infinity)-(s.latest[a].rankLo||-Infinity))
+    .slice(0,D4_SLICE).map(n=>path.join(dir,'models',s.active[n].file));
+}
+function retireBadD4(dir) {
+  const s=sync(dir), retired=[];
+  for(const name of activeNames(s)) {
+    const r=s.latest[name]||{}, dg=r.depthGames||{}, de=r.depthElo||{};
+    if((dg[4]||0)<2 || !Number.isFinite(de[3]) || !Number.isFinite(de[4])) continue;
+    if(de[4] < de[3]) {
+      s.d4Retired[name]={at:new Date().toISOString(),d3Elo:de[3],d4Elo:de[4],d4Games:dg[4]};
+      retired.push(name);
+    }
+  }
+  if(retired.length) saveState(dir,s);
+  return retired;
+}
 function activeLadderLevels(dir, ladderN=11) { return sync(dir,ladderN).ladderActive.slice(); }
 function filterFocus(dir, paths) {
   const s=sync(dir), active=new Set(activeNames(s));
@@ -177,11 +202,7 @@ function selfplayProfile(paths, {dir}) {
   const elos=entries.map(e=>s.latest[e.name]?.elo).filter(Number.isFinite);
   const maxE=elos.length?Math.max(...elos):0;
   const rawR={}; let sumR=0;
-  for(const e of entries){
-    const elo=s.latest[e.name]?.elo;
-    const rr=Number.isFinite(elo)?Math.exp((elo-maxE)/ELO_TEMP):1;
-    rawR[e.name]=rr; sumR+=rr;
-  }
+  for(const e of entries){ const elo=s.latest[e.name]?.elo; const rr=Number.isFinite(elo)?Math.exp((elo-maxE)/ELO_TEMP):1; rawR[e.name]=rr; sumR+=rr; }
   const totalGames=Math.max(1,entries.reduce((a,e)=>a+(s.latest[e.name]?.games||0),0));
   const weights={}, coverage=[], depthCaps={};
   for(const e of entries){
@@ -191,10 +212,7 @@ function selfplayProfile(paths, {dir}) {
     const rec=s.latest[e.name]||{}, dg=rec.depthGames||{};
     const d3=earnedD3(s,e.name); depthCaps[e.name]=d3?3:2;
     if(e.meta.dual){
-      for(const depth of [1,2]){
-        const rowsMissing=(dg[depth]||0)<=0;
-        if(rowsMissing){ coverage.push({name:e.name,face:'bare',depth}); coverage.push({name:e.name,face:'policy',depth}); }
-      }
+      for(const depth of [1,2]) if((dg[depth]||0)<=0){ coverage.push({name:e.name,face:'bare',depth}); coverage.push({name:e.name,face:'policy',depth}); }
       if(d3 && (dg[3]||0)<=0){ coverage.push({name:e.name,face:'bare',depth:3}); coverage.push({name:e.name,face:'policy',depth:3}); }
     } else {
       for(const depth of [1,2]) if((dg[depth]||0)<=0) coverage.push({name:e.name,face:'bare',depth});
@@ -205,29 +223,16 @@ function selfplayProfile(paths, {dir}) {
 }
 
 function removeFromLegacyRegistries(dir,file) {
-  const specs=[
-    ['.dual-pop.json', j=>{ if(Array.isArray(j.active)) j.active=j.active.filter(x=>x&&x.file!==file); if(j.pending&&j.pending.victim===file) j.pending=null; return j; }],
-    ['.mutant-pop.json', j=>{ if(Array.isArray(j.active)) j.active=j.active.filter(x=>x&&x.file!==file); return j; }],
-  ];
-  for(const [name,edit] of specs){
-    const p=path.join(dir,'models',name);
-    try{ const j=edit(JSON.parse(fs.readFileSync(p,'utf8'))); atomicWrite(p,JSON.stringify(j,null,1)); }catch(_){}
-  }
+  const specs=[['.dual-pop.json', j=>{ if(Array.isArray(j.active)) j.active=j.active.filter(x=>x&&x.file!==file); if(j.pending&&j.pending.victim===file) j.pending=null; return j; }],['.mutant-pop.json', j=>{ if(Array.isArray(j.active)) j.active=j.active.filter(x=>x&&x.file!==file); return j; }]];
+  for(const [name,edit] of specs){ const p=path.join(dir,'models',name); try{ const j=edit(JSON.parse(fs.readFileSync(p,'utf8'))); atomicWrite(p,JSON.stringify(j,null,1)); }catch(_){} }
 }
-
-// Ladder labels are historical names, not a strength ordering. Protect the six strongest measured
-// ladder brains by fitted Elo. Until six active rungs have usable Elo, protect all of them rather
-// than guessing from labels and accidentally making an unmeasured cull irreversible.
 function protectedLadderLevels(s) {
   const active = s.ladderActive.slice();
   const need = Math.min(PROTECTED_LADDER_COUNT, active.length);
-  const rated = active.map(level => ({ level, elo:s.ladderRatings[level]?.elo }))
-    .filter(x => Number.isFinite(x.elo))
-    .sort((a,b) => b.elo - a.elo);
+  const rated = active.map(level => ({ level, elo:s.ladderRatings[level]?.elo })).filter(x => Number.isFinite(x.elo)).sort((a,b) => b.elo - a.elo);
   if (rated.length < need) return new Set(active);
   return new Set(rated.slice(0, need).map(x => x.level));
 }
-
 function cull(dir) {
   const s=sync(dir);
   if(s.gamesSinceCull < CULL_EVERY_GAMES) return {culled:[],birth:null,state:s};
@@ -235,67 +240,38 @@ function cull(dir) {
   const names=activeNames(s), modelCount=names.length;
   const protectedLadders=protectedLadderLevels(s);
   const cullableLadders=s.ladderActive.filter(l=>!protectedLadders.has(l) && (s.ladderGames[l]||0)>=4);
-  const measured=names.map(name=>({type:'model',name,...(s.latest[name]||{})}))
-    .filter(x=>Number.isFinite(x.rank)&&Number.isFinite(x.rankHi)&&x.games>=4);
+  const measured=names.map(name=>({type:'model',name,...(s.latest[name]||{})})).filter(x=>Number.isFinite(x.rank)&&Number.isFinite(x.rankHi)&&x.games>=4);
   const ladderEntries=cullableLadders.map(level=>({type:'ladder',name:`L${level}`,level,rank:level,rankHi:level,games:s.ladderGames[level]||0}));
   const culled=[];
   if(modelCount>TARGET_MODELS){
-    // rankHi is the optimistic endpoint: a wide-CI newcomer is not killed merely for being uncertain.
     const eligible=[...measured,...ladderEntries].sort((a,b)=>a.rankHi-b.rankHi || a.rank-b.rank);
     let want=Math.max(1,Math.ceil(eligible.length*BULK_CULL_FRAC));
-    // Do not take more learned models than needed to reach ~50 in the final bulk pass. Ladder culls
-    // are allowed on top because obsolete rungs can leave once the six strongest measured anchors
-    // are known and protected.
     let modelRoom=Math.max(0,modelCount-TARGET_MODELS);
-    for(const x of eligible){
-      if(culled.length>=want) break;
-      if(x.type==='model' && modelRoom<=0) continue;
-      culled.push(x); if(x.type==='model') modelRoom--;
-    }
+    for(const x of eligible){ if(culled.length>=want) break; if(x.type==='model' && modelRoom<=0) continue; culled.push(x); if(x.type==='model') modelRoom--; }
   } else {
     const strengths=[...measured.map(x=>x.rank),...s.ladderActive.map(Number)];
     const cut=q(strengths,STEADY_CUTOFF_Q);
     if(Number.isFinite(cut)){
-      const eligible=[...measured.filter(x=>x.rankHi<cut),...ladderEntries.filter(x=>x.level<cut)]
-        .sort((a,b)=>a.rankHi-b.rankHi);
+      const eligible=[...measured.filter(x=>x.rankHi<cut),...ladderEntries.filter(x=>x.level<cut)].sort((a,b)=>a.rankHi-b.rankHi);
       if(eligible.length) culled.push(eligible[0]);
     }
   }
   let birth=null;
   for(const x of culled){
     if(x.type==='ladder') s.ladderActive=s.ladderActive.filter(l=>l!==x.level);
-    else {
-      const old=s.active[x.name]||{};
-      s.retired[x.name]={...old,retiredAt:new Date().toISOString(),rank:x.rank,rankHi:x.rankHi};
-      delete s.active[x.name];
-      if(old.file) removeFromLegacyRegistries(dir,old.file);
-    }
+    else { const old=s.active[x.name]||{}; s.retired[x.name]={...old,retiredAt:new Date().toISOString(),rank:x.rank,rankHi:x.rankHi}; delete s.active[x.name]; delete s.d4Retired[x.name]; if(old.file) removeFromLegacyRegistries(dir,old.file); }
   }
   if(modelCount<=TARGET_MODELS){
     const deadModel=culled.find(x=>x.type==='model');
     if(deadModel){
-      const parents=activeNames(s).map(name=>({name,info:s.active[name],r:s.latest[name]}))
-        .filter(x=>x.info&&!x.info.dual&&x.r&&Number.isFinite(x.r.rankLo)&&x.info.shape)
-        .sort((a,b)=>b.r.rankLo-a.r.rankLo);
-      if(parents.length){
-        const parent=parents[0], serial=String(s.birthSerial++).padStart(4,'0');
-        const kinds=['scratch','mutant','extra']; const kind=kinds[(s.birthSerial-2)%kinds.length];
-        birth={kind,serial,parent:parent.name,parentFile:parent.info.file,parentPath:path.join(dir,'models',parent.info.file),shape:parent.info.shape,
-               outPath:path.join(dir,'models',`evo-${serial}-${kind}.json`)};
-      }
+      const parents=activeNames(s).map(name=>({name,info:s.active[name],r:s.latest[name]})).filter(x=>x.info&&!x.info.dual&&x.r&&Number.isFinite(x.r.rankLo)&&x.info.shape).sort((a,b)=>b.r.rankLo-a.r.rankLo);
+      if(parents.length){ const parent=parents[0], serial=String(s.birthSerial++).padStart(4,'0'); const kinds=['scratch','mutant','extra']; const kind=kinds[(s.birthSerial-2)%kinds.length]; birth={kind,serial,parent:parent.name,parentFile:parent.info.file,parentPath:path.join(dir,'models',parent.info.file),shape:parent.info.shape,outPath:path.join(dir,'models',`evo-${serial}-${kind}.json`)}; }
     }
   }
   s.lastEvent={at:new Date().toISOString(),culled:culled.map(x=>x.name),birth};
   saveState(dir,s);
   return {culled,birth,state:s};
 }
-function noteBirth(dir,birth){
-  if(!birth||!birth.outPath||!fs.existsSync(birth.outPath)) return;
-  const s=sync(dir), name=path.basename(birth.outPath,'.json'), meta=modelMeta(birth.outPath);
-  if(meta.usable&&!s.retired[name]) s.active[name]={file:path.basename(birth.outPath),dual:meta.dual,shape:meta.shape};
-  saveState(dir,s);
-}
-function status(dir){
-  const s=sync(dir); return {models:activeNames(s).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,median:rosterMedian(s)};
-}
-module.exports={D3_SHARE,sync,ingestSummary,selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,filterFocus,d3Slice,d3SummaryPath,cull,noteBirth,status};
+function noteBirth(dir,birth){ if(!birth||!birth.outPath||!fs.existsSync(birth.outPath)) return; const s=sync(dir), name=path.basename(birth.outPath,'.json'), meta=modelMeta(birth.outPath); if(meta.usable&&!s.retired[name]) s.active[name]={file:path.basename(birth.outPath),dual:meta.dual,shape:meta.shape}; saveState(dir,s); }
+function status(dir){ const s=sync(dir); return {models:activeNames(s).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,median:rosterMedian(s)}; }
+module.exports={D3_SHARE,sync,ingestSummary,selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,filterFocus,d3Slice,d4Slice,retireBadD4,d3SummaryPath,d4SummaryPath,cull,noteBirth,status};
