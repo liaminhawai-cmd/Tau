@@ -1,11 +1,11 @@
 # Tau NN training status
-_Last updated: 2026-08-12T04:01:39.206Z_
+_Last updated: 2026-08-12T04:03:55.978Z_
 
 **Self-play batch:** 48
-**Stage:** self-play batch 48 running, next check in 5 min
+**Stage:** rating pool placement (started 2026-08-12T04:03:55.978Z)
 **mix:** nnnn:0.6,nnladder:0.3,ladder:0.1
 
-**Dual pool:** 4/4 active (dual-mut-111-e60, dual-control-111-e60, dual-control-110-e40, dual-pop-001-e20); pending dual-mut-111-e60.json -> dual-pop-002-e40.json
+**Dual pool:** 4/4 active (dual-control-111-e60, dual-control-110-e40, dual-pop-001-e20, dual-pop-002-e40)
 
 **Last gate result:** pool cycle 116 — ckpt-116 489, ckpt-098 474, ckpt-102 290, ckpt-099 252, ckpt-101 233
 
