@@ -24,8 +24,6 @@ async function birth(plan){if(!plan)return null;const args=plan.kind==='extra'?[
   evo.ingestSummary(dir,summary);
 
   if(!refit){
-    // Catch up at most three ~100-game pruning beats per placement; any larger backlog remains for
-    // the next cycle rather than deleting half the historical field against one frozen fit.
     for(let i=0;i<3;i++){
       const c=evo.cull(dir); if(!c.culled.length) break;
       console.log(`[evolution] culled ${c.culled.map(x=>x.name).join(', ')}`);
@@ -33,10 +31,6 @@ async function birth(plan){if(!plan)return null;const args=plan.kind==='extra'?[
     }
   }
 
-  // D3 is a separate earned measurement tier. Keep its summary separate: run.js reads the normal
-  // summary immediately after this wrapper exits for promotion/retirement decisions. Overwriting
-  // that file with a D3-only field made the fresh D1/D2 checkpoint disappear from the caller's view.
-  // D3 outcomes still land in the SAME elo-results.json store, so no rating evidence is lost.
   const d3=evo.d3Slice(dir);
   if(d3.length){
     const a=original.slice(), d3Summary=evo.d3SummaryPath(dir);
@@ -48,6 +42,25 @@ async function birth(plan){if(!plan)return null;const args=plan.kind==='extra'?[
     }
     console.log(`[evolution] D3 earned by ${d3.length}: lower CI is above the active-model median`);
     await run('elorank-legacy.js',a);
+    evo.ingestSummary(dir,d3Summary);
+  }
+
+  const d4=evo.d4Slice(dir);
+  if(d4.length){
+    const a=original.slice(), d4Summary=evo.d4SummaryPath(dir);
+    setArg(a,'models',d4.join(',')); setArg(a,'levels',evo.activeLadderLevels(dir).join(','));
+    setArg(a,'depths','4'); setArg(a,'summary',d4Summary);
+    setArg(a,'games','1'); setArg(a,'workers','1');
+    if(!refit){
+      setArg(a,'focus',d4.join(',')); setArg(a,'focusPairs','0');
+      const bh=+getArg(original,'budgetHours',0);
+      if(bh>0)setArg(a,'budgetHours',Math.max(.02,Math.min(.08,bh*.10)));
+    }
+    console.log(`[evolution] D4 probe for top ${d4.length} D3 model(s); 1 worker, 1 game per pairing, no D5`);
+    await run('elorank-legacy.js',a);
+    evo.ingestSummary(dir,d4Summary);
+    const dropped=evo.retireBadD4(dir);
+    if(dropped.length)console.log(`[evolution] D4 privilege retired for ${dropped.join(', ')}: D4 Elo below own D3 after >=2 D4 games`);
   }
   const end=evo.status(dir);console.log(`[evolution] roster now ${end.models} nets + ${end.ladders} ladder; cull bank ${end.gamesSinceCull.toFixed(0)}`);
 })().catch(e=>{console.error('[evolution] elorank wrapper failed:',e.message);process.exitCode=1;});
