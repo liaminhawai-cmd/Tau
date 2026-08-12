@@ -48,6 +48,10 @@ echo  31. HYBRID: policy loop at normal priority + full trainer at BELOW-normal,
 echo      -- the trainer soaks up the ~20min every policy cycle spends single-threaded, and the
 echo      tournament tail after fast matchups finish. Policy still wins any core it asks for.
 echo.
+echo  43. WILD MINT + FULL TRAINER
+echo      -- 8 experimental value-net shapes, adaptive peak finding, resumable
+echo      -- then starts the normal trainer automatically; no second restart or prompt
+echo.
 echo   1. Pull latest from git
 echo.
 echo   2. Build policy net  (default shape 96,64)
@@ -181,6 +185,7 @@ if "%choice%"=="39" goto torchtrain
 if "%choice%"=="40" goto torchvsjs
 if "%choice%"=="41" goto dualtrain
 if "%choice%"=="42" goto dualvsseparate
+if "%choice%"=="43" goto wildmint
 if "%choice%"=="1" goto pull
 if "%choice%"=="2" goto build96
 if "%choice%"=="3" goto buildpointy
@@ -200,6 +205,31 @@ if "%choice%"=="17" goto l12check
 if "%choice%"=="18" goto digest
 if "%choice%"=="19" goto promotemutant
 if "%choice%"=="14" goto :eof
+goto menu
+
+:wildmint
+rem Long, resumable architecture expedition followed by the established option-20 trainer.
+rem State is checkpointed after every 10-epoch chunk, so closing the window loses no completed chunk.
+call :dogit
+echo.
+echo === refreshing gold / silver / bronze from the latest confident Elo table ===
+node nn\publish-medals.js
+echo.
+echo === one-off wild architecture expedition ===
+echo Eight deliberately different shapes train in chunks, keep their best validation checkpoint,
+echo stop when the peak is clearly behind them, and can resume after an interrupted run.
+echo.
+node nn\wild-mint.js
+if errorlevel 1 (
+  echo.
+  echo Wild mint hit a fatal error. The completed checkpoints/state are safe; normal trainer was NOT started.
+  pause
+  goto menu
+)
+echo.
+echo === wild mint complete -- starting normal trainer automatically ===
+echo.
+call nn\fulltrainer-auto.bat
 goto menu
 
 :fulltrainer
