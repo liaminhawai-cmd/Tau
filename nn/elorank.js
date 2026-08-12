@@ -3,6 +3,7 @@ const fs=require('fs');
 const path=require('path');
 const {spawn}=require('child_process');
 const evo=require('./evolution-roster.js');
+const medals=require('./publish-medals.js');
 const dir=__dirname;
 function getArg(a,n,d=null){const i=a.indexOf('--'+n);return i>=0?a[i+1]:d;}
 function setArg(a,n,v){const k='--'+n,i=a.indexOf(k);if(i>=0)a.splice(i,2,k,String(v));else a.push(k,String(v));}
@@ -62,5 +63,6 @@ async function birth(plan){if(!plan)return null;const args=plan.kind==='extra'?[
     const dropped=evo.retireBadD4(dir);
     if(dropped.length)console.log(`[evolution] D4 privilege retired for ${dropped.join(', ')}: D4 Elo below own D3 after >=2 D4 games`);
   }
+  if(!refit){try{medals.main();}catch(e){console.error('[medals] refresh failed:',e.message);}}
   const end=evo.status(dir);console.log(`[evolution] roster now ${end.models} nets + ${end.ladders} ladder; cull bank ${end.gamesSinceCull.toFixed(0)}`);
 })().catch(e=>{console.error('[evolution] elorank wrapper failed:',e.message);process.exitCode=1;});
