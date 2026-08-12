@@ -16,10 +16,10 @@ if not "%~1"=="" (
 cls
 echo ================================================
 echo   Tau NN toolkit
- echo ================================================
+echo ================================================
 echo   43. WILD MINT + FULL TRAINER
 echo       -- 8 experimental value-net shapes, adaptive peak finding, resumable
-echo       -- then hands straight into normal option 20; no second restart needed
+echo       -- then starts the normal trainer automatically; no second restart or prompt
 echo.
 echo   Type any existing option number to launch it directly,
 echo   or press Enter to open the full original toolkit menu.
@@ -52,9 +52,9 @@ if errorlevel 1 (
   goto front
 )
 echo.
-echo === wild mint complete -- handing straight into normal option 20 ===
+echo === wild mint complete -- starting normal trainer automatically ===
 echo.
-call nn\menu-legacy.bat 20
+call nn\fulltrainer-auto.bat
 exit /b %errorlevel%
 
 :dogit
