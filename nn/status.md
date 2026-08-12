@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-08-12T05:31:13.484Z_
+_Last updated: 2026-08-12T05:31:21.248Z_
 
 **Self-play batch:** 48
-**Stage:** ladder sweep running (D1:L7-L9 D2:L8-L10 D3:L9-L11, started 2026-08-12T05:31:13.484Z)
+**Stage:** self-play batch 48 running, next check in 5 min
 **mix:** nnnn:0.6,nnladder:0.3,ladder:0.1
 
 **Dual pool:** 4/4 active (dual-control-111-e60, dual-pop-001-e20, dual-pop-002-e40, dual-pop-003-e60)
