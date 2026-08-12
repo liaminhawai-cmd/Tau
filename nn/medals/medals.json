@@ -1,0 +1,36 @@
+{
+  "updated": "2026-08-12T21:34:01.986Z",
+  "basis": "rankLo",
+  "medals": {
+    "gold": {
+      "source": "ckpt-063.json",
+      "sourceId": "ckpt-063@D2",
+      "depth": 2,
+      "games": 5,
+      "elo": 77.6,
+      "rank": 0,
+      "rankLo": 8.65,
+      "rankHi": 9.69
+    },
+    "silver": {
+      "source": "ckpt-089.json",
+      "sourceId": "ckpt-089@D1",
+      "depth": 1,
+      "games": 13,
+      "elo": 182.2,
+      "rank": 0,
+      "rankLo": 8.6,
+      "rankHi": 9.68
+    },
+    "bronze": {
+      "source": "ckpt-080.json",
+      "sourceId": "ckpt-080@D2",
+      "depth": 2,
+      "games": 6,
+      "elo": 63.9,
+      "rank": 8.93,
+      "rankLo": 8.6,
+      "rankHi": 9.6
+    }
+  }
+}
