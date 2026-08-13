@@ -197,6 +197,22 @@ def train_one(torch, nn, device, hidden, data, args, epochs, verbose=True):
     torch.manual_seed(args.seed)          # re-seeded per shape: same init stream for every candidate
     sizes = [N_FEATURES] + hidden + [OUT]
     linears = [nn.Linear(sizes[i], sizes[i + 1]) for i in range(len(sizes) - 1)]
+    if args.resume:
+        with open(args.resume, 'r', encoding='utf-8') as fh:
+            checkpoint = json.load(fh)
+        if checkpoint.get('sizes') != sizes or checkpoint.get('dual') is not True:
+            print(f"resume model is not a matching dual net: {checkpoint.get('sizes')} vs {sizes}",
+                  file=sys.stderr)
+            sys.exit(1)
+        with torch.no_grad():
+            for layer, weights, bias in zip(linears, checkpoint['W'], checkpoint['b']):
+                layer.weight.copy_(torch.tensor(weights, dtype=torch.float32).reshape(
+                    layer.out_features, layer.in_features))
+                layer.bias.copy_(torch.tensor(bias, dtype=torch.float32))
+        print(f"resumed weights from {args.resume}")
+    # Keep the validation split fixed on args.seed, but do not replay the identical minibatch order
+    # at the start of every resumed chunk.
+    torch.manual_seed(args.seed + args.epochOffset)
 
     class DualNet(nn.Module):
         # Trunk: Linear+Tanh for every layer but the last. Last layer is a bare Linear producing
@@ -258,7 +274,8 @@ def train_one(torch, nn, device, hidden, data, args, epochs, verbose=True):
             best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
         if verbose:
             print(f"epoch {ep}/{epochs}: train value mse {vtot/n:.5f} policy ce {ptot/n:.4f} | "
-                  f"val value mse {vmse:.5f} arm top1 {100*a1:.1f}% bin top1 {100*b1:.1f}%{flag}")
+                  f"val value mse {vmse:.5f} policy ce {vce:.5f} combined {score:.5f} "
+                  f"arm top1 {100*a1:.1f}% bin top1 {100*b1:.1f}%{flag}", flush=True)
 
     if best_state is not None:
         model.load_state_dict(best_state)
@@ -292,6 +309,10 @@ def main():
     ap.add_argument('--noEloWeight', action='store_true')
     ap.add_argument('--noSourceWeight', action='store_true')
     ap.add_argument('--device', default=None, help='cuda | cpu, default: cuda if available')
+    ap.add_argument('--resume', default=None,
+                    help='continue from an existing verified dualnet.js JSON checkpoint')
+    ap.add_argument('--epochOffset', type=int, default=0,
+                    help='completed epochs before this resumed chunk; varies training shuffle only')
     # --sweep: rank several trunk shapes cheaply instead of training one. Trains nothing to keep --
     # it writes a ranked table (and --sweepOut json) and exits, so the winner can then be trained
     # properly at full --epochs through the normal path. See the SHAPE SWEEP note in the header.
@@ -346,6 +367,9 @@ def main():
     # The data above is loaded and split ONCE and reused for every candidate, so the sweep's cost is
     # almost entirely GPU training time -- the expensive JSON parse is paid once.
     if args.sweep:
+        if args.resume:
+            print('--resume cannot be combined with --sweep', file=sys.stderr)
+            sys.exit(1)
         cands = [[int(h) for h in s.split(',') if h.strip()]
                  for s in args.sweep.split(';') if s.strip()]
         cands = [c for c in cands if c]
@@ -398,8 +422,10 @@ def main():
         doc = export_for_netjs(linears, probe_x, probe_fn)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    with open(args.out, 'w') as fh:
+    tmp_out = f"{args.out}.tmp-{os.getpid()}"
+    with open(tmp_out, 'w') as fh:
         json.dump(doc, fh)
+    os.replace(tmp_out, args.out)
     print(f"\nsaved {args.out} (sizes {doc['sizes']}, best combined val score {best_val:.5f})")
     print(f"NOW VERIFY:  node nn/verify-dual-export.js {args.out}")
 
