@@ -49,8 +49,8 @@ echo      -- the trainer soaks up the ~20min every policy cycle spends single-th
 echo      tournament tail after fast matchups finish. Policy still wins any core it asks for.
 echo.
 echo  43. WILD MINT + FULL TRAINER
-echo      -- 8 experimental value-net shapes, CUDA/PyTorch accelerated, resumable
-echo      -- verified JS exports; then normal trainer automatically, no second restart
+echo      -- 8 experimental value nets + 5 joint value/policy nets, CUDA accelerated, resumable
+echo      -- verified exports enter their pools; then normal trainer automatically, no restart
 echo.
 echo   1. Pull latest from git
 echo.
@@ -227,7 +227,27 @@ if errorlevel 1 (
   goto menu
 )
 echo.
-echo === wild mint complete -- starting normal trainer automatically ===
+echo === refreshing policy targets for the joint value/policy expedition ===
+echo.
+node nn\policy-targets.js
+if errorlevel 1 (
+  echo.
+  echo Policy-target refresh failed. Value checkpoints are safe; normal trainer will still start.
+  goto wildnormal
+)
+echo.
+echo === wild joint value/policy expedition ===
+echo Five deliberately different shared trunks train in chunks, keep their best combined
+echo value+policy validation checkpoint, verify every export, and resume after interruption.
+echo.
+node nn\wild-dual-mint.js
+if errorlevel 1 (
+  echo.
+  echo Dual wild mint stopped early. Completed checkpoints/state are safe; normal trainer will still start.
+)
+:wildnormal
+echo.
+echo === wild expeditions complete -- starting normal trainer automatically ===
 echo.
 call nn\fulltrainer-auto.bat
 goto menu
