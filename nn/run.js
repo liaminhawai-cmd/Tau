@@ -270,9 +270,11 @@ const dualInitialShape = arg('dualHidden', '128,128');
 // It is deliberately NOT the default for arbitrary run.js invocations or --poolOnce diagnostics.
 const dualStartNow = process.argv.includes('--dualStartNow');
 let startupDualPromise = null;
-// Four is both the default and the floor. A replacement is prepared while its victim remains active,
-// then swapped atomically after verification, so even a killed training process never drops below it.
-const dualPopulationCap = Math.max(4, +arg('dualPopulationCap', 4));
+// Four is a FLOOR, not a cap. Expeditions may inject a larger field; the league measures it and
+// retires at most one weak entrant per cycle until this floor is reached. At the floor, retirement
+// becomes an atomic one-for-one replacement so a killed training process can never drop below it.
+// Keep the old --dualPopulationCap spelling as a compatibility alias, but it now means minimum.
+const dualPopulationMin = Math.max(4, +arg('dualPopulationMin', arg('dualPopulationCap', 4)));
 const dualRetireChance = Math.max(0, Math.min(1, +arg('dualRetireChance', 0.60)));
 const dualRetireGames = Math.max(6, +arg('dualRetireGames', 6));
 const dualBottomFrac = Math.max(0.01, Math.min(0.5, +arg('dualBottomFrac', 0.25)));
@@ -683,7 +685,7 @@ function loadDualPop() {
     const score = f => scores[f] && scores[f].length
       ? scores[f].reduce((s, n) => s + n, 0)/scores[f].length : -Infinity;
     legacy.sort((a, b) => score(b) - score(a) || b.localeCompare(a, undefined, { numeric: true }));
-    for (const file of legacy.slice(0, dualPopulationCap)) {
+    for (const file of legacy.slice(0, dualPopulationMin)) {
       const shape = hiddenOf(path.join(dir, 'models', file));
       if (shape) pop.active.push({ file, shape, op: 'legacy-import', parent: null,
                                   root: file, born: 0, epochs: null });
@@ -720,7 +722,7 @@ function saveDualPop(pop) {
   pop._migrated = false;
 }
 const dualStatus = pop => !pop ? 'disabled' :
-  `${pop.active.length}/${dualPopulationCap} active` +
+  `${pop.active.length} active (minimum ${dualPopulationMin})` +
   (pop.active.length ? ` (${pop.active.map(m => path.basename(m.file, '.json')).join(', ')})` : '') +
   (pop.pending ? `; pending ${pop.pending.victim ? `${pop.pending.victim} -> ` : ''}${pop.pending.file}` : '');
 
@@ -785,10 +787,9 @@ function completeDualBirth(pop, plan, num) {
   if (plan.victim) {
     if (!next.some(m => m.file === plan.victim)) return null;
     next = next.filter(m => m.file !== plan.victim);
-  } else if (next.length >= dualPopulationCap) return null;
+  } else if (next.length >= dualPopulationMin) return null;
   if (!next.some(m => m.file === member.file)) next.push(member);
   if (plan.victim && next.length !== pop.active.length) return null;
-  if (next.length > dualPopulationCap) return null;
   pop.active = next;
   pop.pending = null;
   return member;
@@ -823,7 +824,7 @@ async function trainDualPopulation(num) {
 
   // Bootstrap ONE seat per cycle. Existing members keep being rated while the pool fills; a new
   // bootstrap shape is a one-edit child but starts a new root family, preserving early diversity.
-  if (!pop.pending && pop.active.length < dualPopulationCap) {
+  if (!pop.pending && pop.active.length < dualPopulationMin) {
     const ratings = readPreviousDualRatings(pop);
     const rated = pop.active.filter(m => ratings[m.file] && Number.isFinite(ratings[m.file].rankLo));
     const parent = pop.active.length
@@ -842,7 +843,7 @@ async function trainDualPopulation(num) {
   if (plan) {
     const out = path.join(dir, 'models', plan.file);
     log(`pool cycle ${num} — GPU dual ${plan.reason}: ${plan.baseShape} -> ${plan.shape} (${plan.op}), ` +
-        `${plan.epochs} epochs, one replacement only; active ${pop.active.length}/${dualPopulationCap}`);
+        `${plan.epochs} epochs, one replacement only; active ${pop.active.length} (minimum ${dualPopulationMin})`);
     // A verified final file may already exist when the window was closed after rename but before
     // the registry swap. In that case finish the swap instead of paying for the same train twice.
     let ok = fs.existsSync(out);
@@ -862,7 +863,7 @@ async function trainDualPopulation(num) {
             reason: plan.reason, stats: plan.stats }) + '\n');
         } catch (e) {}
         log(`pool cycle ${num} — dual population: ${plan.victim ? `replaced ${plan.victim} with` : 'added'} ` +
-            `${member.file}; active ${pop.active.length}/${dualPopulationCap}`);
+            `${member.file}; active ${pop.active.length} (minimum ${dualPopulationMin})`);
       } else {
         log(`pool cycle ${num} — dual replacement file verified, but its saved plan no longer matches ` +
             `the active registry; leaving the old population intact`);
@@ -872,8 +873,8 @@ async function trainDualPopulation(num) {
       log(`pool cycle ${num} — dual replacement did not finish; old population remains intact and the plan is checkpointed`);
     }
   } else {
-    log(`pool cycle ${num} — dual population full (${pop.active.length}/${dualPopulationCap}); ` +
-        `training none, rating the standing entrants`);
+    log(`pool cycle ${num} — dual population standing at ${pop.active.length} ` +
+        `(minimum ${dualPopulationMin}); training none, rating the entrants`);
   }
 
   const focus = pop.active.map(m => path.join(dir, 'models', m.file))
@@ -916,7 +917,7 @@ async function startDualNow() {
   }
   statusState.dual = dualStatus(pop);
   // No standing full field yet: the immediate GPU work is useful production work, not a probe.
-  if (pop.active.length < dualPopulationCap) return trainDualPopulation(0);
+  if (pop.active.length < dualPopulationMin) return trainDualPopulation(0);
   return runDualStartupProbe(pop, 0);
 }
 
@@ -925,7 +926,7 @@ async function startDualNow() {
 // EVERY member of that family is confidently inside the bottom quartile; otherwise its
 // replacement inherits the same root, so a wide-CI unlucky result cannot erase a whole lineage.
 function scheduleDualRetirement(pop, ratings, num) {
-  if (!pop || pop.pending || pop.active.length !== dualPopulationCap) return null;
+  if (!pop || pop.pending || pop.active.length < dualPopulationMin) return null;
   const measured = pop.active.map(m => ({ m, r: ratings[m.file] }))
     .filter(x => x.r && Number.isFinite(x.r.rank) && Number.isFinite(x.r.rankHi) &&
                  x.r.rankedIdentities >= 2 && x.r.games >= dualRetireGames);
@@ -961,13 +962,32 @@ function scheduleDualRetirement(pop, ratings, num) {
   });
   const preserveFamily = family.length === 1 && !familyConfidentlyWeak;
   const survivors = pop.active.filter(m => m.file !== victim.file);
+  const reason = confident.length ? 'confidently-weak' : 'bottom-quartile-exploration';
+  // Above the floor, the experiment is deliberately being whittled: retire one weak entrant and
+  // do not mint a replacement. Its file and historical Elo remain untouched. Once the floor is
+  // reached, the existing one-for-one replacement path below takes over.
+  if (pop.active.length > dualPopulationMin) {
+    pop.active = survivors;
+    saveDualPop(pop);
+    statusState.dual = dualStatus(pop);
+    try {
+      fs.appendFileSync(dualPopHistory, JSON.stringify({ at: new Date().toISOString(), cycle: num,
+        event: 'retire-to-floor', retired: victim.file, reason,
+        stats: { rank: victimEntry.r.rank, rankLo: victimEntry.r.rankLo,
+                 rankHi: victimEntry.r.rankHi, games: victimEntry.r.games,
+                 ciWidth: victimEntry.r.ciWidth, medianRank: median, bottomCutoff } }) + '\n');
+    } catch (e) {}
+    log(`pool cycle ${num} — dual entrant retired: ${victim.file} (rank ${victimEntry.r.rank.toFixed(2)}, ` +
+        `CI ${victimEntry.r.rankLo.toFixed(2)}..${victimEntry.r.rankHi.toFixed(2)}); ` +
+        `${pop.active.length} remain, protected floor ${dualPopulationMin}`);
+    return { retired: victim.file, replacement: null };
+  }
   // Breed from genuinely strong evidence, not just anyone who survived. rankLo is the pessimistic CI
   // endpoint; take the top half on that measure, then retain a little weighted diversity inside it.
   const strong = survivors.slice().sort((a, b) =>
     (ratings[b.file].rankLo ?? -Infinity) - (ratings[a.file].rankLo ?? -Infinity))
     .slice(0, Math.max(1, Math.ceil(survivors.length/2)));
   const parent = preserveFamily ? victim : (pickParent(strong, m => ratings[m.file]) || victim);
-  const reason = confident.length ? 'confidently-weak' : 'bottom-quartile-exploration';
   const plan = planDualBirth(pop, num, victim, parent,
     preserveFamily ? victim.root : parent.root, reason, {
       victim: { rank: victimEntry.r.rank, rankLo: victimEntry.r.rankLo,
