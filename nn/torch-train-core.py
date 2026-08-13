@@ -35,8 +35,11 @@ WHAT train.js DOES THAT THIS REPLICATES (dropping any of these makes an unfair c
   * --drawWeight 0.25: z == 0 exactly means a drawn/adjudicated position (a discounted decided
     label can never be exactly 0). Worth teaching, shouldn't rival decided outcomes.
   * weights normalised to mean 1, so the effective step size is comparable to train.js's.
-NOT replicated: --familyWeight (retromine replay families) and --eloWeight. Add them before
-believing any comparison that leans on retromine-heavy data.
+  * --familyWeight sqrt: replay siblings from one retromine seed/outcome are down-weighted as a
+    family, matching train.js. Without this, large failed-rescue families dominate the corpus.
+  * --resume: imports an existing net.js JSON checkpoint exactly, allowing GPU continuation of a
+    JS-trained model. Adam moments reset, just as train.js resets them on every 10-epoch process.
+NOT replicated: --eloWeight (off by default in train.js and Wild Mint).
 """
 import argparse, glob, json, math, os, random, sys
 from collections import defaultdict
@@ -79,7 +82,7 @@ def load_rows(data_glob):
                     g = cur
                 else:
                     prev_abs = float('inf')
-                by_game[g].append((f, float(j.get('z', 0.0))))
+                by_game[g].append((f, float(j.get('z', 0.0)), j.get('m')))
     if stale:
         total = sum(stale.values())
         print(f"ERROR: {total} rows use a different feature set (expected {N_FEATURES}/position):",
@@ -94,32 +97,64 @@ def load_rows(data_glob):
     return by_game
 
 
-def split_and_weight(by_game, seed, gw_mode, draw_w):
-    """Game-level split + train.js's row weighting. Returns (train, val) of (x, y, w)."""
-    ids = sorted(by_game.keys())
-    random.Random(seed).shuffle(ids)
-    n_val = max(1, len(ids) // 10)
-    out = {}
-    for part, subset in (('val', ids[:n_val]), ('train', ids[n_val:])):
+def _mulberry32(seed):
+    """The exact PRNG train.js uses for fixed architecture-comparison splits."""
+    a = seed & 0xffffffff
+    while True:
+        a = (a + 0x6D2B79F5) & 0xffffffff
+        t = a
+        t = ((t ^ (t >> 15)) * (1 | t)) & 0xffffffff
+        t = (t + (((t ^ (t >> 7)) * (61 | t)) & 0xffffffff)) ^ t
+        yield ((t ^ (t >> 14)) & 0xffffffff) / 4294967296.0
+
+
+def _js_shuffle(items, seed):
+    rng = _mulberry32(seed)
+    for i in range(len(items) - 1, 0, -1):
+        j = int(next(rng) * (i + 1))
+        items[i], items[j] = items[j], items[i]
+
+
+def split_and_weight(by_game, seed, gw_mode, fw_mode, draw_w):
+    """Game split and row/family weights matching train.js. Returns (x, y, w) rows."""
+    ids = list(by_game.keys())
+    _js_shuffle(ids, seed)
+    n_val = max(1, int(len(ids) * 0.1))
+    val_ids, train_ids = ids[:n_val], ids[n_val:]
+
+    def base_rows(subset):
         rows = []
         for gid in subset:
-            g = by_game[gid]
-            n = len(g)
-            if gw_mode == 'sqrt':
-                base = 1.0 / math.sqrt(n)
-            elif gw_mode == 'game':
-                base = 1.0 / n
-            else:
-                base = 1.0
-            for f, z in g:
-                rows.append((f, z, base * (draw_w if z == 0.0 else 1.0)))
-        out[part] = rows
-    # normalise TRAIN weights to mean 1 so step size matches train.js
-    if out['train']:
-        m = sum(r[2] for r in out['train']) / len(out['train'])
-        if m > 0:
-            out['train'] = [(f, z, w / m) for f, z, w in out['train']]
-    return out['train'], out['val']
+            game = by_game[gid]
+            n = len(game)
+            base = 1.0 / math.sqrt(n) if gw_mode == 'sqrt' else 1.0 / n if gw_mode == 'game' else 1.0
+            for f, z, mover in game:
+                rows.append([f, z, base * (draw_w if z == 0.0 else 1.0), gid, mover])
+        return rows
+
+    train, val = base_rows(train_ids), base_rows(val_ids)
+    if fw_mode != 'off':
+        outcomes, group_sizes = {}, defaultdict(int)
+        for gid in train_ids:
+            first = by_game[gid][0]
+            z, mover = first[1], first[2]
+            outcome = 'draw' if z == 0.0 else (mover if z > 0 else (1 - mover if mover in (0, 1) else 'unknown'))
+            outcomes[gid] = outcome
+            import re
+            family = re.sub(r'-[0-9]+$', '', str(gid))
+            group_sizes[(family, outcome)] += 1
+        for row in train:
+            gid = row[3]
+            import re
+            family = re.sub(r'-[0-9]+$', '', str(gid))
+            row[2] /= math.sqrt(group_sizes[(family, outcomes[gid])])
+
+    if train:
+        mean_w = sum(r[2] for r in train) / len(train)
+        if mean_w > 0:
+            for row in train:
+                row[2] /= mean_w
+    return [(f, z, w) for f, z, w, _, _ in train], [(f, z, w) for f, z, w, _, _ in val]
 
 
 def export_for_netjs(layers, probe_inputs=None, probe_fn=None):
@@ -148,6 +183,8 @@ def main():
     ap.add_argument('--seed', type=int, default=12345)
     ap.add_argument('--gameWeight', default='sqrt', choices=['sqrt', 'game', 'row'])
     ap.add_argument('--drawWeight', type=float, default=0.25)
+    ap.add_argument('--familyWeight', default='sqrt', choices=['sqrt', 'off'])
+    ap.add_argument('--resume', default=None, help='net.js JSON checkpoint to continue')
     ap.add_argument('--device', default=None, help='cuda | cpu, default: cuda if available')
     args = ap.parse_args()
 
@@ -168,7 +205,7 @@ def main():
     if not by_game:
         print(f"no training rows matched {args.data}", file=sys.stderr)
         sys.exit(1)
-    train, val = split_and_weight(by_game, args.seed, args.gameWeight, args.drawWeight)
+    train, val = split_and_weight(by_game, args.seed, args.gameWeight, args.familyWeight, args.drawWeight)
     print(f"data: {len(train)} train / {len(val)} val positions "
           f"({len(by_game) - max(1, len(by_game)//10)} / {max(1, len(by_game)//10)} games, "
           f"game-level split)")
@@ -185,6 +222,19 @@ def main():
     hidden = [int(h) for h in args.hidden.split(',') if h.strip()]
     sizes = [N_FEATURES] + hidden + [1]
     linears = [nn.Linear(sizes[i], sizes[i + 1]) for i in range(len(sizes) - 1)]
+    if args.resume:
+        with open(args.resume, 'r', encoding='utf-8') as fh:
+            checkpoint = json.load(fh)
+        if checkpoint.get('sizes') != sizes:
+            print(f"resume shape {checkpoint.get('sizes')} does not match requested {sizes}", file=sys.stderr)
+            sys.exit(1)
+        import torch
+        with torch.no_grad():
+            for layer, weights, bias in zip(linears, checkpoint['W'], checkpoint['b']):
+                layer.weight.copy_(torch.tensor(weights, dtype=torch.float32).reshape(
+                    layer.out_features, layer.in_features))
+                layer.bias.copy_(torch.tensor(bias, dtype=torch.float32))
+        print(f"resumed weights from {args.resume}")
     # tanh after EVERY layer, output included -- net.js does exactly this and reads acts[-1][0].
     seq, model = [], None
     for l in linears:
@@ -209,12 +259,15 @@ def main():
             tot += float(loss) * len(idx)
         model.eval()
         with torch.no_grad():
-            vmse = float(((model(xva) - yva) ** 2).mean())
+            vpred = model(xva)
+            vmse = float(((vpred - yva) ** 2).mean())
+            decided = (yva != 0)
+            sign_acc = float((torch.sign(vpred[decided]) == torch.sign(yva[decided])).float().mean()) if bool(decided.any()) else 0.0
         flag = ''
         if vmse < best_val:
             best_val, flag = vmse, '  *'
             best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
-        print(f"epoch {ep}/{args.epochs}: train mse {tot/n:.5f}, val mse {vmse:.5f}{flag}")
+        print(f"epoch {ep}/{args.epochs}: train mse {tot/n:.5f}, val mse {vmse:.5f}, val sign-acc {sign_acc*100:.1f}%{flag}", flush=True)
 
     if best_state is not None:
         model.load_state_dict(best_state)
@@ -227,8 +280,10 @@ def main():
         doc = export_for_netjs(linears, probe_x, probe_fn)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    with open(args.out, 'w') as fh:
+    tmp_out = f"{args.out}.tmp-{os.getpid()}"
+    with open(tmp_out, 'w') as fh:
         json.dump(doc, fh)
+    os.replace(tmp_out, args.out)
     print(f"\nsaved {args.out} (sizes {doc['sizes']}, best val mse {best_val:.5f})")
     print(f"NOW VERIFY:  node nn/verify-torch-export.js {args.out}")
 
