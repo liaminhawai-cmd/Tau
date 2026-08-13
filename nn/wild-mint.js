@@ -106,6 +106,6 @@ async function main(){
   for(let i=0;i<shapes.length;i++){
     try{await trainShape(shapes[i],i,state);}catch(e){console.error(`[wild] ${slug(shapes[i],i)} failed: ${e.message} — recording failure and continuing`);const id=slug(shapes[i],i);state.shapes[id]={...(state.shapes[id]||{}),shape:shapes[i],failedAt:new Date().toISOString(),error:e.message};saveState(state);}
   }
-  console.log('\n[wild] expedition complete. Peak checkpoints are in nn/models; normal option 20 can now absorb/rate them.');
+  console.log('\n[wild] value expedition complete. Peak checkpoints are in nn/models; the dual-policy expedition is next.');
 }
 main().catch(e=>{console.error('[wild] fatal:',e);process.exitCode=1;});
