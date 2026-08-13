@@ -104,7 +104,7 @@ def _mulberry32(seed):
         a = (a + 0x6D2B79F5) & 0xffffffff
         t = a
         t = ((t ^ (t >> 15)) * (1 | t)) & 0xffffffff
-        t = (t + (((t ^ (t >> 7)) * (61 | t)) & 0xffffffff)) ^ t
+        t = (((t + (((t ^ (t >> 7)) * (61 | t)) & 0xffffffff)) & 0xffffffff) ^ t) & 0xffffffff
         yield ((t ^ (t >> 14)) & 0xffffffff) / 4294967296.0
 
 
