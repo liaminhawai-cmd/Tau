@@ -49,8 +49,8 @@ echo      -- the trainer soaks up the ~20min every policy cycle spends single-th
 echo      tournament tail after fast matchups finish. Policy still wins any core it asks for.
 echo.
 echo  43. WILD MINT + FULL TRAINER
-echo      -- 8 experimental value-net shapes, adaptive peak finding, resumable
-echo      -- then starts the normal trainer automatically; no second restart or prompt
+echo      -- 8 experimental value-net shapes, CUDA/PyTorch accelerated, resumable
+echo      -- verified JS exports; then normal trainer automatically, no second restart
 echo.
 echo   1. Pull latest from git
 echo.
