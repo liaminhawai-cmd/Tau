@@ -36,7 +36,7 @@ echo.
 echo   LOOPS -- run until the window is closed, unless noted otherwise
 echo  20. FULL TRAINER: continuous self-play + evolving Elo pool + CPU value/GPU dual training
 echo      -- no retromine; first-cover unplayed faces, then Elo/CI-weight the shared pool
-echo      -- 4 standing dual nets enter bare and +policy; weak ones are replaced one at a time
+echo      -- minimum 4 standing dual nets enter bare and +policy; larger fields whittle to that floor
 echo  21. RETROMINE: ratchet-only data generation, multicore
 echo  22. SELF-PLAY FACTORY: plain game generation for a spare machine (never trains/rates)
 echo  23. POLICY FIGHT: train a policy net on existing data, fight it at equal think-time
@@ -50,7 +50,7 @@ echo      tournament tail after fast matchups finish. Policy still wins any core
 echo.
 echo  43. WILD MINT + FULL TRAINER
 echo      -- 8 experimental value nets + 5 joint value/policy nets, CUDA accelerated, resumable
-echo      -- verified exports enter their pools; then normal trainer automatically, no restart
+echo      -- dual entrants expand the pool, then weak ones whittle to the floor; no restart
 echo.
 echo   1. Pull latest from git
 echo.
