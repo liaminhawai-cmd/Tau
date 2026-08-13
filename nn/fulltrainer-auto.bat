@@ -21,6 +21,6 @@ echo.
 if defined DUALFLAG (
   node nn\run.js --gamesPerBatch 1000 --randomStartFrac 0.15 --scratchHidden 96,64,48 %DUALFLAG%
 ) else (
-  node nn\run.js --gamesPerBatch 1000 --randomStartFrac 0.15 --scratchHidden 96,64,48 --dualEpochs 20,40,60 --dualStartNow
+  node nn\run.js --gamesPerBatch 1000 --randomStartFrac 0.15 --scratchHidden 96,64,48 --dualEpochs 20,40,60 --dualPopulationCap 5 --dualStartNow
 )
 exit /b %errorlevel%
