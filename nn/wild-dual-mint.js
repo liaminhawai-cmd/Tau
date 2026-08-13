@@ -2,7 +2,7 @@
 // Resumable GPU expedition for joint value+policy nets. Each deliberately different shared trunk
 // trains in short chunks on one fixed game-level validation split. The best combined validation
 // checkpoint survives, training stops only after that peak is clearly behind it, and the finished
-// entrants replace the active dual roster so the normal Elo trainer rates every one of them.
+// entrants join the active dual roster so the normal Elo trainer rates every one of them.
 const fs=require('fs');
 const path=require('path');
 const {spawn,spawnSync}=require('child_process');
@@ -79,11 +79,11 @@ function registerRoster(state){
   if(!entrants.length)throw new Error('no verified dual-wild entrants exist to register');
   const old=loadJson(popPath,{version:1,next:1,active:[],pending:null});
   const oldActive=Array.isArray(old.active)?old.active:[];
-  const keepOld=oldActive.filter(m=>m&&m.file&&!entrants.some(w=>w.file===m.file)).slice(0,Math.max(0,5-entrants.length));
-  const pop={version:1,next:Math.max(1,+old.next||1),active:[...entrants,...keepOld].slice(0,5),pending:null};
+  const keepOld=oldActive.filter(m=>m&&m.file&&!entrants.some(w=>w.file===m.file));
+  const pop={version:1,next:Math.max(1,+old.next||1),active:[...keepOld,...entrants],pending:old.pending||null};
   atomicJson(popPath,pop);
-  console.log(`[dual-wild] registered ${entrants.length} verified wild entrant(s) in the active dual Elo roster (${pop.active.length}/5 seats).`);
-  if(oldActive.length)console.log(`[dual-wild] previous active files remain on disk and keep their historical Elo evidence; only their training seats changed.`);
+  console.log(`[dual-wild] added ${entrants.length} verified wild entrant(s) to the active dual Elo roster (${pop.active.length} active; four is the protected minimum, not a cap).`);
+  if(oldActive.length)console.log(`[dual-wild] previous active entrants remain active; the league will rate the expanded field and retire weak ones one at a time.`);
 }
 async function main(){
   if(!cudaReady())throw new Error('CUDA PyTorch is required for the dual-wild phase');
