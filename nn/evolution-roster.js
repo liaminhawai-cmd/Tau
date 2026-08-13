@@ -109,10 +109,27 @@ function ingestSummary(dir, summaryFile) {
       if(vals.length) depthElo[d]=mean(vals);
     }
     const games = use.reduce((a,r)=>a+(+r.games||0),0);
+    // Keep the actual rated faces as well as the convenience average above.  D1 and D2
+    // are different jobs: averaging them made a clearly weak D1 survive behind an
+    // unresolved D2, then spend more games indefinitely.  A face keeps its own CI and
+    // is compared only with the same depth / policy face in cull().
+    const faces = {...(rec.faces||{})};
+    for (const r of rows) {
+      if (!Number.isFinite(r.depth) || !Number.isFinite(r.rank) ||
+          !Number.isFinite(r.rankLo) || !Number.isFinite(r.rankHi)) continue;
+      const face = `D${r.depth}${r.dualPolicy ? '+P' : ''}`;
+      const old = faces[face] || {};
+      faces[face] = {
+        rank:+r.rank, rankLo:+r.rankLo, rankHi:+r.rankHi,
+        elo:Number.isFinite(+r.elo) ? +r.elo : old.elo,
+        games:Math.max(+old.games||0, +r.games||0),
+        updated:sum.updated || new Date().toISOString()
+      };
+    }
     s.latest[name] = {
       elo: mean(use.map(r=>r.elo)), rank: mean(ranks.map(r=>r.rank)),
       rankLo: mean(ranks.map(r=>r.rankLo)), rankHi: mean(ranks.map(r=>r.rankHi)),
-      games: Math.max(rec.games||0, games), depthGames, depthElo,
+      games: Math.max(rec.games||0, games), depthGames, depthElo, faces,
       updated: sum.updated || new Date().toISOString()
     };
     const prev = +s.evidenceSeen[name] || 0;
@@ -240,7 +257,32 @@ function cull(dir) {
   const names=activeNames(s), modelCount=names.length;
   const protectedLadders=protectedLadderLevels(s);
   const cullableLadders=s.ladderActive.filter(l=>!protectedLadders.has(l) && (s.ladderGames[l]||0)>=4);
-  const measured=names.map(name=>({type:'model',name,...(s.latest[name]||{})})).filter(x=>Number.isFinite(x.rank)&&Number.isFinite(x.rankHi)&&x.games>=4);
+  // Cull a MODEL from active duty on face-level evidence.  D1/D2 ratings must not be
+  // averaged: an old checkpoint that is definitely bad at D1 has no reason to keep
+  // consuming D1/self-play/rating budget because its D2 interval is merely unfinished.
+  // Compare like with like, and retain a model only if another face is positively strong
+  // (not simply unknown).  Files and all Elo history remain in retired.
+  const FACE_CULL_MIN_GAMES = 12;
+  const faceRows=[];
+  for(const name of names) for(const [face,r] of Object.entries(s.latest[name]?.faces||{})) {
+    if(Number.isFinite(r.rank)&&Number.isFinite(r.rankLo)&&Number.isFinite(r.rankHi)&&(+r.games||0)>=FACE_CULL_MIN_GAMES)
+      faceRows.push({name,face,...r});
+  }
+  const faceMedian={};
+  for(const face of new Set(faceRows.map(x=>x.face))) {
+    const med=q(faceRows.filter(x=>x.face===face).map(x=>x.rank),0.5);
+    if(Number.isFinite(med)) faceMedian[face]=med;
+  }
+  const measured=names.map(name=>{
+    const rec=s.latest[name]||{};
+    const faces=faceRows.filter(x=>x.name===name&&Number.isFinite(faceMedian[x.face]));
+    const weak=faces.filter(x=>x.rankHi<faceMedian[x.face]).sort((a,b)=>a.rankHi-b.rankHi)[0];
+    const strong=faces.some(x=>x.rankLo>faceMedian[x.face]);
+    if(!weak||strong) return null;
+    // rank/rankHi become the vulnerable face for the existing percentile and sort code.
+    return {type:'model',name,...rec,rank:weak.rank,rankLo:weak.rankLo,rankHi:weak.rankHi,
+            games:weak.games,weakFace:weak.face,faceMedian:faceMedian[weak.face]};
+  }).filter(Boolean);
   const ladderEntries=cullableLadders.map(level=>({type:'ladder',name:`L${level}`,level,rank:level,rankHi:level,games:s.ladderGames[level]||0}));
   const culled=[];
   if(modelCount>TARGET_MODELS){
@@ -259,7 +301,13 @@ function cull(dir) {
   let birth=null;
   for(const x of culled){
     if(x.type==='ladder') s.ladderActive=s.ladderActive.filter(l=>l!==x.level);
-    else { const old=s.active[x.name]||{}; s.retired[x.name]={...old,retiredAt:new Date().toISOString(),rank:x.rank,rankHi:x.rankHi}; delete s.active[x.name]; delete s.d4Retired[x.name]; if(old.file) removeFromLegacyRegistries(dir,old.file); }
+    else {
+      const old=s.active[x.name]||{};
+      s.retired[x.name]={...old,retiredAt:new Date().toISOString(),rank:x.rank,rankHi:x.rankHi,
+        weakFace:x.weakFace||null,faceMedian:x.faceMedian||null};
+      delete s.active[x.name]; delete s.d4Retired[x.name];
+      if(old.file) removeFromLegacyRegistries(dir,old.file);
+    }
   }
   if(modelCount<=TARGET_MODELS){
     const deadModel=culled.find(x=>x.type==='model');
@@ -268,7 +316,8 @@ function cull(dir) {
       if(parents.length){ const parent=parents[0], serial=String(s.birthSerial++).padStart(4,'0'); const kinds=['scratch','mutant','extra']; const kind=kinds[(s.birthSerial-2)%kinds.length]; birth={kind,serial,parent:parent.name,parentFile:parent.info.file,parentPath:path.join(dir,'models',parent.info.file),shape:parent.info.shape,outPath:path.join(dir,'models',`evo-${serial}-${kind}.json`)}; }
     }
   }
-  s.lastEvent={at:new Date().toISOString(),culled:culled.map(x=>x.name),birth};
+  s.lastEvent={at:new Date().toISOString(),
+    culled:culled.map(x=>x.weakFace?`${x.name}@${x.weakFace}`:x.name),birth};
   saveState(dir,s);
   return {culled,birth,state:s};
 }
