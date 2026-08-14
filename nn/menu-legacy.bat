@@ -51,6 +51,9 @@ echo.
 echo  43. WILD MINT + FULL TRAINER
 echo      -- 8 experimental value nets + 5 joint value/policy nets, CUDA accelerated, resumable
 echo      -- dual entrants expand the pool, then weak ones whittle to the floor; no restart
+echo  44. L14 LEVERAGE vs L11
+echo      -- multicore, balanced colours/openings; same search, tests centre-side hub attack
+echo      -- against mirrored counter-exposure; saves every arena result and training position
 echo.
 echo   1. Pull latest from git
 echo.
@@ -186,6 +189,7 @@ if "%choice%"=="40" goto torchvsjs
 if "%choice%"=="41" goto dualtrain
 if "%choice%"=="42" goto dualvsseparate
 if "%choice%"=="43" goto wildmint
+if "%choice%"=="44" goto leveragetest
 if "%choice%"=="1" goto pull
 if "%choice%"=="2" goto build96
 if "%choice%"=="3" goto buildpointy
@@ -205,6 +209,24 @@ if "%choice%"=="17" goto l12check
 if "%choice%"=="18" goto digest
 if "%choice%"=="19" goto promotemutant
 if "%choice%"=="14" goto :eof
+goto menu
+
+:leveragetest
+call :dogit
+set "LEV_GAMES="
+set "LEV_WORKERS="
+set /p LEV_GAMES=Games [60]: 
+if "%LEV_GAMES%"=="" set "LEV_GAMES=60"
+set /p LEV_WORKERS=Workers [8]: 
+if "%LEV_WORKERS%"=="" set "LEV_WORKERS=8"
+echo.
+echo === L14 centre-side leverage vs L11 ===
+echo Same search and candidates. Only the new attack-minus-exposure geometry differs.
+echo Games alternate colours and use four random opening plies.
+echo.
+node nn\leverage-test.js --games %LEV_GAMES% --workers %LEV_WORKERS%
+echo.
+pause
 goto menu
 
 :wildmint
