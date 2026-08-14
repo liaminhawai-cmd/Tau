@@ -15,7 +15,7 @@ if not defined DUALFLAG (
 
 echo.
 echo Full Tau trainer starting automatically after wild mint.
-echo Dual epoch rotation: 20,40,60 when Python+PyTorch are available; otherwise ordinary CPU value training only.
+echo CUDA trains ordinary value nets and dual nets when available; JavaScript CPU is the value fallback.
 echo Close the window any time; completed work is checkpointed.
 echo.
 if defined DUALFLAG (

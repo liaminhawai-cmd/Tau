@@ -1445,7 +1445,7 @@ async function runTrainCycle() {
       `(queued for the next pool cycle's rank-CI check, not promoted automatically)`);
   writeStatus(`resume-train (${epochs} epochs, started ${new Date().toISOString()})`);
   try {
-    await runAsync('train.js', ['--epochs', epochs, '--out', out, '--resume', best]);
+    await runAsync('train-value.js', ['--epochs', epochs, '--out', out, '--resume', best]);
     if (fs.existsSync(out)) {
       // models/value.json is a fixed name several other tools read by that path (option 24's
       // single-pass trainer, option 40's Python-vs-JS check, VALUE-SHOOTOUT) -- keep it current as
@@ -1508,6 +1508,13 @@ function refreshModelSlots(ranked) {
 
 async function runPoolCycle() {
   const num = cycleNum++;
+
+  // Spend already-earned cull evidence BEFORE any new model training. A 30-epoch birth used to
+  // stand in front of elorank for hours, so a four-thousand-game cull bank could grow while not one
+  // weak model retired. This pass plays no games and trains nothing: it only applies the last
+  // completed rank/CI table down toward the 50-model target. The normal placement later in this
+  // cycle still ingests every newly arrived result and can cull again.
+  await runSoftAsync('elorank.js', ['--cullOnly']);
   // Snapshot the challenger under a stable name first. best.json is rewritten by the resume-train
   // clock, so rating "best.json" would attribute games to a moving target -- the same bug that made
   // elorank snapshot its whole field. A numbered copy is a fixed thing that can be rated once and
@@ -1598,7 +1605,7 @@ async function runPoolCycle() {
                                           : ` from the champion shape`)) +
             `, population ${mutantPop.active.length + 1}/${mutantCap}`);
         writeStatus(`${kind} ${serial} training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
-        await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--out', outPath, '--hidden', mut.shape]);
+        await runSoftAsync('train-value.js', ['--epochs', scratchEpochs, '--out', outPath, '--hidden', mut.shape]);
         // Only a member that actually trained joins the population -- a failed run must not consume
         // a slot that nothing can ever retire, since retirement needs a rating and an unrated
         // phantom would never earn one.
@@ -1672,10 +1679,10 @@ async function runPoolCycle() {
       log(`pool cycle ${num} — variant lineage: ${name} ${canResume ? 'RESET,' : 'new mutant,'} ` +
           `training from scratch at ${info.shape} (${scratchEpochs} epochs)` +
           (canResume ? ` instead of resuming -- ${info.turns} resumes deep` : ''));
-      await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--hidden', info.shape, '--out', outV]);
+      await runSoftAsync('train-value.js', ['--epochs', scratchEpochs, '--hidden', info.shape, '--out', outV]);
     } else {
       log(`pool cycle ${num} — variant lineage: ${path.basename(from)} + ${variantEpochs} epochs -> ${path.basename(outV)}`);
-      await runSoftAsync('train.js', ['--epochs', String(variantEpochs), '--resume', from, '--out', outV]);
+      await runSoftAsync('train-value.js', ['--epochs', String(variantEpochs), '--resume', from, '--out', outV]);
     }
     if (fs.existsSync(outV)) focus.push(outV);
     info.turns++;
@@ -2029,7 +2036,7 @@ async function runTournamentCycle() {
     log(`round-robin cycle ${num} — training a from-scratch challenger (${scratchEpochs} epochs` +
         (h ? `, --hidden ${h}` : '') + `)`);
     writeStatus(`from-scratch challenger training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
-    await runSoftAsync('train.js', ['--epochs', scratchEpochs, '--out', scratch, ...(h ? ['--hidden', h] : [])]);
+    await runSoftAsync('train-value.js', ['--epochs', scratchEpochs, '--out', scratch, ...(h ? ['--hidden', h] : [])]);
   }
   log(`round-robin cycle ${num} — across the most recent ${tournamentRecent} checkpoints (this is what picks best.json now)`);
   writeStatus(`round robin running (started ${new Date().toISOString()})`);
@@ -2272,6 +2279,10 @@ if (poolOnce) {
       return { focus: [], pop: null, trained: null };
     });
   }
-  startSelfplayBatch();
-  schedulerLoop().catch(e => { log(`FATAL: scheduler stopped (${(e && e.message) || e})`); process.exitCode = 1; });
+  // Apply any banked, already-confident retirements immediately on restart, before the
+  // first 1000-game batch takes its roster snapshot. This is a no-game/no-training pass.
+  runSoftAsync('elorank.js', ['--cullOnly']).then(() => {
+    startSelfplayBatch();
+    return schedulerLoop();
+  }).catch(e => { log(`FATAL: scheduler stopped (${(e && e.message) || e})`); process.exitCode = 1; });
 }

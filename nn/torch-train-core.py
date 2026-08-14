@@ -180,6 +180,7 @@ def main():
     ap.add_argument('--batch', type=int, default=256)
     ap.add_argument('--lr', type=float, default=1e-3)
     ap.add_argument('--wd', type=float, default=0.0)
+    ap.add_argument('--lrDecay', default='cosine', choices=['cosine', 'flat'])
     ap.add_argument('--seed', type=int, default=12345)
     ap.add_argument('--gameWeight', default='sqrt', choices=['sqrt', 'game', 'row'])
     ap.add_argument('--drawWeight', type=float, default=0.25)
@@ -245,6 +246,10 @@ def main():
     n = xtr.shape[0]
     best_val, best_state = float('inf'), None
     for ep in range(1, args.epochs + 1):
+        t = (ep - 1) / (args.epochs - 1) if args.epochs > 1 else 0.0
+        lr_ep = args.lr if args.lrDecay == 'flat' else args.lr * (0.1 + 0.9 * 0.5 * (1.0 + math.cos(math.pi * t)))
+        for group in opt.param_groups:
+            group['lr'] = lr_ep
         model.train()
         perm = torch.randperm(n, device=device)
         tot = 0.0
@@ -267,7 +272,8 @@ def main():
         if vmse < best_val:
             best_val, flag = vmse, '  *'
             best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
-        print(f"epoch {ep}/{args.epochs}: train mse {tot/n:.5f}, val mse {vmse:.5f}, val sign-acc {sign_acc*100:.1f}%{flag}", flush=True)
+        print(f"epoch {ep}/{args.epochs}: train mse {tot/n:.5f}, val mse {vmse:.5f}, "
+              f"val sign-acc {sign_acc*100:.1f}% (lr {lr_ep:.6f}){flag}", flush=True)
 
     if best_state is not None:
         model.load_state_dict(best_state)

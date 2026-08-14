@@ -10,10 +10,26 @@ function setArg(a,n,v){const k='--'+n,i=a.indexOf(k);if(i>=0)a.splice(i,2,k,Stri
 function has(a,n){return a.includes('--'+n);}
 function run(file,args){return new Promise((ok,bad)=>{const ch=spawn(process.execPath,[path.join(dir,file),...args],{stdio:'inherit'});ch.on('error',bad);ch.on('exit',c=>c===0?ok():bad(new Error(file+' exited '+c)));});}
 function mutateShape(spec){const a=String(spec||'').split(',').map(Number).filter(n=>n>0);if(!a.length)return spec;const snap=n=>Math.max(8,Math.round(n/4)*4),ops=['widen','narrow','add',...(a.length>2?['drop']:[])];for(let z=0;z<10;z++){const b=a.slice(),op=ops[Math.floor(Math.random()*ops.length)],i=Math.floor(Math.random()*b.length);if(op==='widen')b[i]=snap(b[i]*1.25);else if(op==='narrow')b[i]=snap(b[i]*.78);else if(op==='add'){const j=Math.floor(Math.random()*(b.length+1)),x=b[j-1]||b[0],y=b[j]||b[b.length-1];b.splice(j,0,snap(Math.sqrt(x*y)));}else b.splice(i,1);if(b.join(',')!==spec)return b.join(',');}return spec;}
-async function birth(plan){if(!plan)return null;const args=plan.kind==='extra'?['--epochs','8','--resume',plan.parentPath,'--out',plan.outPath]:['--epochs','30','--hidden',plan.kind==='mutant'?mutateShape(plan.shape):plan.shape,'--out',plan.outPath];console.log(`[evolution] replacement ${plan.kind} from ${plan.parent} -> ${path.basename(plan.outPath)}`);await run('train.js',args);if(fs.existsSync(plan.outPath)){evo.noteBirth(dir,plan);return path.basename(plan.outPath,'.json');}return null;}
+async function birth(plan){if(!plan)return null;const args=plan.kind==='extra'?['--epochs','8','--resume',plan.parentPath,'--out',plan.outPath]:['--epochs','30','--hidden',plan.kind==='mutant'?mutateShape(plan.shape):plan.shape,'--out',plan.outPath];console.log(`[evolution] replacement ${plan.kind} from ${plan.parent} -> ${path.basename(plan.outPath)}`);await run('train-value.js',args);if(fs.existsSync(plan.outPath)){evo.noteBirth(dir,plan);return path.basename(plan.outPath,'.json');}return null;}
 (async()=>{
   const original=process.argv.slice(2), refit=has(original,'refit'), summary=getArg(original,'summary',path.join(dir,'elo-summary.json'));
   evo.sync(dir); evo.ingestSummary(dir,summary);
+  if(has(original,'cullOnly')){
+    const all=[];
+    // This is deliberately bounded by the target, not by a small arbitrary number of passes:
+    // above 50, the roster is supposed to whittle. Each cull() still requires its normal CI gate
+    // and 100-game bank debit, so this spends accumulated evidence; it does not lower the bar.
+    while(evo.status(dir).models > evo.TARGET_MODELS){
+      const c=evo.cull(dir);
+      if(!c.culled.length) break;
+      all.push(...c.culled);
+      console.log(`[evolution] maintenance culled ${c.culled.map(x=>x.name).join(', ')}`);
+    }
+    const end=evo.status(dir);
+    console.log(`[evolution] cull-only complete: ${all.length} retired; roster ${end.models} nets + ` +
+                `${end.ladders} ladder; cull bank ${end.gamesSinceCull.toFixed(0)}`);
+    return;
+  }
   const requested=String(getArg(original,'focus','')).split(',').filter(Boolean);
   const focus=evo.filterFocus(dir,requested), rotating=evo.ratingSlice(dir), seen=new Set(), slice=[];
   for(const p of [...focus,...rotating]){const k=path.resolve(p);if(!seen.has(k)){seen.add(k);slice.push(p);}}
