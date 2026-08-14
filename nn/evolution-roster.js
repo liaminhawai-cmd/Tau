@@ -273,15 +273,28 @@ function cull(dir) {
     const med=q(faceRows.filter(x=>x.face===face).map(x=>x.rank),0.5);
     if(Number.isFinite(med)) faceMedian[face]=med;
   }
+  const legacyMedian=rosterMedian(s);
   const measured=names.map(name=>{
     const rec=s.latest[name]||{};
     const faces=faceRows.filter(x=>x.name===name&&Number.isFinite(faceMedian[x.face]));
     const weak=faces.filter(x=>x.rankHi<faceMedian[x.face]).sort((a,b)=>a.rankHi-b.rankHi)[0];
     const strong=faces.some(x=>x.rankLo>faceMedian[x.face]);
-    if(!weak||strong) return null;
-    // rank/rankHi become the vulnerable face for the existing percentile and sort code.
-    return {type:'model',name,...rec,rank:weak.rank,rankLo:weak.rankLo,rankHi:weak.rankHi,
-            games:weak.games,weakFace:weak.face,faceMedian:faceMedian[weak.face]};
+    if(weak && !strong) {
+      // rank/rankHi become the vulnerable face for the existing percentile and sort code.
+      return {type:'model',name,...rec,rank:weak.rank,rankLo:weak.rankLo,rankHi:weak.rankHi,
+              games:weak.games,weakFace:weak.face,faceMedian:faceMedian[weak.face]};
+    }
+    // A pool pass only writes its rotating slice into elo-summary.  Older models therefore
+    // have real accumulated CI evidence in the roster state but no freshly reconstructed
+    // face map yet.  Keep the old aggregate gate as a migration fallback; otherwise those
+    // old, clearly weak entries become permanently uncullable just because they were not
+    // drawn in this particular 50-model summary.
+    if(!faces.length && Number.isFinite(legacyMedian) && Number.isFinite(rec.rank) &&
+       Number.isFinite(rec.rankLo) && Number.isFinite(rec.rankHi) &&
+       (rec.games||0)>=FACE_CULL_MIN_GAMES && rec.rankHi<legacyMedian) {
+      return {type:'model',name,...rec,weakFace:'legacy CI',faceMedian:legacyMedian};
+    }
+    return null;
   }).filter(Boolean);
   const ladderEntries=cullableLadders.map(level=>({type:'ladder',name:`L${level}`,level,rank:level,rankHi:level,games:s.ladderGames[level]||0}));
   const culled=[];
