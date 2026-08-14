@@ -34,7 +34,7 @@ echo   Arena results are also written to nn\arena-logs\ as they go, so a closed
 echo   window or a killed run never loses them.
 echo.
 echo   LOOPS -- run until the window is closed, unless noted otherwise
-echo  20. FULL TRAINER: continuous self-play + evolving Elo pool + CPU value/GPU dual training
+echo  20. FULL TRAINER: continuous self-play + evolving Elo pool + GPU value/dual training
 echo      -- no retromine; first-cover unplayed faces, then Elo/CI-weight the shared pool
 echo      -- minimum 4 standing dual nets enter bare and +policy; larger fields whittle to that floor
 echo  21. RETROMINE: ratchet-only data generation, multicore
@@ -276,7 +276,7 @@ goto menu
 
 :fulltrainer
 rem The existing proven trainer, not a separate league loop: ordinary self-play stays continuous;
-rem CPU value controls/mutants/lineages keep evolving; elorank places frozen checkpoints on one
+rem CUDA value controls/mutants/lineages keep evolving (JS-CPU fallback); elorank places checkpoints on one
 rem persistent adaptive pool. Retromine has been removed from this loop. A small standing dual
 rem population trains replacements on CUDA at the same time as the CPU branch. Every active file
 rem enters twice per depth -- bare and +policy -- without ever replacing one-output best.json.
@@ -285,7 +285,7 @@ set "DUALFLAG="
 where python >nul 2>nul
 if errorlevel 1 (
   echo.
-  echo   Python not found: the ordinary CPU value trainer will still run, but dual heads are off.
+  echo   Python not found: value training falls back to JavaScript CPU; dual heads are off.
   echo   Install Python + `pip install torch` to enable the GPU branch.
   echo.
   set "DUALFLAG=--noDual"
@@ -304,7 +304,7 @@ set "DUEPOCHS="
 if not defined DUALFLAG set /p DUEPOCHS="Dual epoch budgets to rotate through, Enter for 20,40,60: "
 if not defined DUALFLAG if "!DUEPOCHS!"=="" set DUEPOCHS=20,40,60
 echo.
-echo Full Tau trainer started. Self-play keeps making data while CPU value and GPU dual branches train.
+echo Full Tau trainer started. Self-play continues while verified CUDA value and dual branches train.
 echo Dual runs a verified GPU check immediately, then uses a 4-model Elo population with one replacement at a time.
 echo Retromine is not part of this loop. Close the window any time; completed work is checkpointed.
 echo.
