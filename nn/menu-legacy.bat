@@ -1266,7 +1266,17 @@ if errorlevel 1 (
 )
 if defined GIT (
   echo === pulling latest ===
-  "%GIT%" pull
+  rem The trainer and a second machine both commit incremental data/status. Plain git pull
+  rem now refuses their normal divergent histories and the caller kept running stale code.
+  rem Rebase preserves the local commits, autostash preserves any in-progress generated files.
+  "%GIT%" pull --rebase --autostash
+  if errorlevel 1 (
+    echo.
+    echo Git could not safely reconcile this working copy. Nothing has been trained or overwritten.
+    echo Close any other Tau window using this folder, resolve the Git message, then launch again.
+    pause
+    goto menu
+  )
 ) else (
   echo git not found on PATH or under GitHub Desktop -- skipping pull.
 )
