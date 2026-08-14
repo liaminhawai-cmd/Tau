@@ -121,6 +121,7 @@ function ingestSummary(dir, summaryFile) {
       const old = faces[face] || {};
       faces[face] = {
         rank:+r.rank, rankLo:+r.rankLo, rankHi:+r.rankHi,
+        rankLoEdge:r.rankLoEdge || null, rankHiEdge:r.rankHiEdge || null,
         elo:Number.isFinite(+r.elo) ? +r.elo : old.elo,
         games:Math.max(+old.games||0, +r.games||0),
         updated:sum.updated || new Date().toISOString()
@@ -277,8 +278,8 @@ function cull(dir) {
   const measured=names.map(name=>{
     const rec=s.latest[name]||{};
     const faces=faceRows.filter(x=>x.name===name&&Number.isFinite(faceMedian[x.face]));
-    const weak=faces.filter(x=>x.rankHi<faceMedian[x.face]).sort((a,b)=>a.rankHi-b.rankHi)[0];
-    const strong=faces.some(x=>x.rankLo>faceMedian[x.face]);
+    const weak=faces.filter(x=>!x.rankHiEdge && x.rankHi<faceMedian[x.face]).sort((a,b)=>a.rankHi-b.rankHi)[0];
+    const strong=faces.some(x=>x.rankLoEdge === 'above' || x.rankLo>faceMedian[x.face]);
     if(weak && !strong) {
       // rank/rankHi become the vulnerable face for the existing percentile and sort code.
       return {type:'model',name,...rec,rank:weak.rank,rankLo:weak.rankLo,rankHi:weak.rankHi,
@@ -291,7 +292,7 @@ function cull(dir) {
     // drawn in this particular 50-model summary.
     if(!faces.length && Number.isFinite(legacyMedian) && Number.isFinite(rec.rank) &&
        Number.isFinite(rec.rankLo) && Number.isFinite(rec.rankHi) &&
-       (rec.games||0)>=FACE_CULL_MIN_GAMES && rec.rankHi<legacyMedian) {
+       (rec.games||0)>=FACE_CULL_MIN_GAMES && !rec.rankHiEdge && rec.rankHi<legacyMedian) {
       return {type:'model',name,...rec,weakFace:'legacy CI',faceMedian:legacyMedian};
     }
     return null;

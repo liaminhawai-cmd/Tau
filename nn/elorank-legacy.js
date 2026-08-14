@@ -562,15 +562,20 @@ function bootstrapRanks(B) {
     if (scale.length < 2) { skipped++; continue; }
     for (const p of nets) {
       const rk = rankOf(elo[p.id], scale);
-      if (Number.isFinite(rk.rank) && !rk.edge) samples[p.id].push(rk.rank);
+      // A draw above/below the measured ladder is still evidence.  It is censored,
+      // not invalid: retaining the edge lets the CI say ">L10" rather than
+      // silently conditioning on only the draws that happened to land inside.
+      if (Number.isFinite(rk.rank)) samples[p.id].push(rk);
     }
   }
   const out = {};
   for (const p of nets) {
-    const v = samples[p.id].sort((a, c) => a - c);
-    out[p.id] = v.length >= 10
-      ? { lo: v[Math.floor(0.05*v.length)], hi: v[Math.floor(0.95*v.length)], n: v.length }
-      : { lo: NaN, hi: NaN, n: v.length };
+    const order = r => r.rank + (r.edge === 'above' ? 0.5 : r.edge === 'below' ? -0.5 : 0);
+    const v = samples[p.id].sort((a, c) => order(a) - order(c));
+    if (v.length >= 10) {
+      const lo = v[Math.floor(0.05*v.length)], hi = v[Math.floor(0.95*v.length)];
+      out[p.id] = { lo:lo.rank, hi:hi.rank, loEdge:lo.edge || null, hiEdge:hi.edge || null, n:v.length };
+    } else out[p.id] = { lo:NaN, hi:NaN, loEdge:null, hiEdge:null, n:v.length };
   }
   return { ci: out, skipped, B };
 }
@@ -586,7 +591,7 @@ function worstRankHalfWidth(ci) {
     // pool is not being measured this run and its intervals are whatever they already were
     if (focusPaths.length && focusPairsOnly && !focusPaths.includes(path.basename(p.model, '.json'))) continue;
     const c = ci[p.id];
-    if (!c || !Number.isFinite(c.lo)) {
+    if (!c || !Number.isFinite(c.lo) || c.loEdge || c.hiEdge) {
       // a brain with almost no games legitimately has no interval yet; one with plenty that still
       // has none means the yardstick is the problem, and either way we are not done
       anyMissing = true; continue;
@@ -655,8 +660,10 @@ function report() {
       : r.edge ? (r.edge === 'above' ? '>' : '<') + String(r.rank).padStart(4)
       : r.rank.toFixed(2).padStart(5);
     const c = boot.ci[r.p.id];
+    const ciBound = (v, edge) => edge === 'above' ? `>L${v.toFixed(1)}`
+      : edge === 'below' ? `<L${v.toFixed(1)}` : `L${v.toFixed(1)}`;
     const ciCell = r.p.kind !== 'nn' ? '              '
-      : (c && Number.isFinite(c.lo)) ? `L${c.lo.toFixed(1)} - L${c.hi.toFixed(1)}`.padStart(14)
+      : (c && Number.isFinite(c.lo)) ? `${ciBound(c.lo,c.loEdge)} - ${ciBound(c.hi,c.hiEdge)}`.padStart(14)
       : '(not yet)'.padStart(14);
     // the whole line is built and padded FIRST, then wrapped -- escape codes inside the padding
     // arithmetic would throw every column off by the width of the invisible bytes
@@ -694,6 +701,8 @@ function report() {
           rank: Number.isFinite(r.rank) && !r.edge ? +r.rank.toFixed(2) : null,
           rankLo: c && Number.isFinite(c.lo) ? +c.lo.toFixed(2) : null,
           rankHi: c && Number.isFinite(c.hi) ? +c.hi.toFixed(2) : null,
+          rankLoEdge: c && c.loEdge ? c.loEdge : null,
+          rankHiEdge: c && c.hiEdge ? c.hiEdge : null,
         } : { level: r.p.level }),
       };
     }
