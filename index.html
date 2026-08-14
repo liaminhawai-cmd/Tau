@@ -3256,6 +3256,28 @@ const HARD_MIN_MOVE_RAD = CFG.minMoveDeg * Math.PI/180;   // a swing under this 
 function outermostRadU(piece){ let m=0; for (const f of piece.feet()){ const r=radU(f); if (r>m) m=r; } return m; }
 // position value from idx's point of view: bigger = the OTHER piece is nearer the rim than idx is
 function marginFor(idx){ return outermostRadU(G.pieces[1-idx]) - outermostRadU(G.pieces[idx]); }
+// Cheap positional proxy for "an arm up against their hub on the CENTRE side".  The target is
+// not the hub generally: it is the physical contact point on the victim hub's surface facing the
+// board centre.  That is the geometry that lets a swing drive them outward; a leg equally close
+// on the rim side earns nothing.  Useful near-alignments fade over 12 board units and a mid-leg
+// working surface beats merely pointing our hub or foot at the target.  Pure geometry, no G mutation,
+// so L14 pays effectively the same search cost as L11.
+function hubLeverageFor(attackerIdx){
+    const a=G.pieces[attackerIdx], v=G.pieces[1-attackerIdx];
+    const contact=CFG.legRadius*2.9; // victim hub ball radius (1.9r) + attacking leg tube (1r)
+    const vc=Math.hypot(v.x,v.y)||1e-9, ux=-v.x/vc, uy=-v.y/vc;
+    const tx=v.x+ux*contact, ty=v.y+uy*contact; // leg-centre target on centre-facing hub surface
+    let best=0;
+    for(const f of a.feet()){
+        const dx=f.x-a.x, dy=f.y-a.y, l2=dx*dx+dy*dy||1e-9;
+        const t=Math.max(0,Math.min(1,((tx-a.x)*dx+(ty-a.y)*dy)/l2));
+        const qx=a.x+t*dx, qy=a.y+t*dy, d=Math.hypot(tx-qx,ty-qy);
+        const near=Math.max(0,1-d/12);
+        const working=.65+.35*Math.sin(Math.PI*t);
+        best=Math.max(best,near*working);
+    }
+    return 10*best;
+}
 // swing the CURRENTLY-ACTIVE piece (G.active) around foot `pivot` in `dir` to its natural limit
 // (the 1-crossing rule or the safety cap); returns the net radians actually applied.
 function simMoveToLimit(pivot, dir){
@@ -4459,6 +4481,13 @@ const AI_LADDER = [
     // the full follow-up ply.
     { kind:'opp2', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2},
       o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28, oppKeep:18} },
+    // L14 EXPERIMENT: L11 at identical search cost, plus Liam's two-sided leverage idea.
+    // hubAttack rewards one of my physical leg arcs lining up beside their hub; hubExpose charges
+    // the mirror-image danger. Equal magnitudes make this attack-minus-exposure, not a blanket
+    // aggression bonus. Keep it isolated as a rung until its balanced L14-v-L11 trial has evidence.
+    { kind:'p3', experimental:'hub-leverage', label:'Leverage',
+      w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2,hubAttack:2,hubExpose:-2},
+      o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 
@@ -4491,6 +4520,8 @@ function ladderEval(idx, w){
         const ax=-me.x, ay=-me.y, bx=op.x-me.x, by=op.y-me.y;
         const la=Math.hypot(ax,ay)||1e-9, lb=Math.hypot(bx,by)||1e-9;
         s += w.triMe * (Math.acos(Math.max(-1,Math.min(1,(ax*bx+ay*by)/(la*lb))))*180/Math.PI); }
+    if (w.hubAttack) s += w.hubAttack * hubLeverageFor(idx);
+    if (w.hubExpose) s += w.hubExpose * hubLeverageFor(1-idx);
     return s;
 }
 // depth 1/2 planner over sampled STOP POINTS along each sweep (the visible partial rotations)
