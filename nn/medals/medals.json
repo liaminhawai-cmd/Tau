@@ -1,33 +1,33 @@
 {
-  "updated": "2026-08-14T18:35:21.604Z",
+  "updated": "2026-08-14T20:30:50.350Z",
   "basis": "rankLo",
   "medals": {
     "gold": {
-      "source": "ckpt-082.json",
-      "sourceId": "ckpt-082@D2",
+      "source": "deep-094.json",
+      "sourceId": "deep-094@D2",
       "depth": 2,
-      "games": 12,
-      "elo": 384.6,
+      "games": 10,
+      "elo": 363,
       "rank": 0,
       "rankLo": 9,
       "rankHi": 10
     },
     "silver": {
-      "source": "mutant-003.json",
-      "sourceId": "mutant-003@D2",
+      "source": "ckpt-116.json",
+      "sourceId": "ckpt-116@D2",
       "depth": 2,
-      "games": 13,
-      "elo": 339.1,
+      "games": 15,
+      "elo": 332.3,
       "rank": 0,
       "rankLo": 9,
       "rankHi": 10
     },
     "bronze": {
-      "source": "ckpt-123.json",
-      "sourceId": "ckpt-123@D2",
-      "depth": 2,
+      "source": "resume-010.json",
+      "sourceId": "resume-010@D1",
+      "depth": 1,
       "games": 4,
-      "elo": 317.6,
+      "elo": 301.2,
       "rank": 0,
       "rankLo": 9,
       "rankHi": 10
