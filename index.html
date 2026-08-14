@@ -3256,20 +3256,23 @@ const HARD_MIN_MOVE_RAD = CFG.minMoveDeg * Math.PI/180;   // a swing under this 
 function outermostRadU(piece){ let m=0; for (const f of piece.feet()){ const r=radU(f); if (r>m) m=r; } return m; }
 // position value from idx's point of view: bigger = the OTHER piece is nearer the rim than idx is
 function marginFor(idx){ return outermostRadU(G.pieces[1-idx]) - outermostRadU(G.pieces[idx]); }
-// Cheap positional proxy for "an arm up against their hub".  For each physical leg chord, find
-// the closest point to the victim's hub.  A leg already touching the hub scores 10; useful nearby
-// alignments fade smoothly over the next 12 board units.  The mid-leg bonus prefers a real working
-// surface over merely pointing a foot or our own hub at them.  This evaluates geometry only and
-// never mutates G, so L14 pays effectively the same search cost as L11.
+// Cheap positional proxy for "an arm up against their hub on the CENTRE side".  The target is
+// not the hub generally: it is the physical contact point on the victim hub's surface facing the
+// board centre.  That is the geometry that lets a swing drive them outward; a leg equally close
+// on the rim side earns nothing.  Useful near-alignments fade over 12 board units and a mid-leg
+// working surface beats merely pointing our hub or foot at the target.  Pure geometry, no G mutation,
+// so L14 pays effectively the same search cost as L11.
 function hubLeverageFor(attackerIdx){
     const a=G.pieces[attackerIdx], v=G.pieces[1-attackerIdx];
     const contact=CFG.legRadius*2.9; // victim hub ball radius (1.9r) + attacking leg tube (1r)
+    const vc=Math.hypot(v.x,v.y)||1e-9, ux=-v.x/vc, uy=-v.y/vc;
+    const tx=v.x+ux*contact, ty=v.y+uy*contact; // leg-centre target on centre-facing hub surface
     let best=0;
     for(const f of a.feet()){
         const dx=f.x-a.x, dy=f.y-a.y, l2=dx*dx+dy*dy||1e-9;
-        const t=Math.max(0,Math.min(1,((v.x-a.x)*dx+(v.y-a.y)*dy)/l2));
-        const qx=a.x+t*dx, qy=a.y+t*dy, d=Math.hypot(v.x-qx,v.y-qy);
-        const near=Math.max(0,1-Math.max(0,d-contact)/12);
+        const t=Math.max(0,Math.min(1,((tx-a.x)*dx+(ty-a.y)*dy)/l2));
+        const qx=a.x+t*dx, qy=a.y+t*dy, d=Math.hypot(tx-qx,ty-qy);
+        const near=Math.max(0,1-d/12);
         const working=.65+.35*Math.sin(Math.PI*t);
         best=Math.max(best,near*working);
     }
