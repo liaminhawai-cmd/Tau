@@ -4475,14 +4475,16 @@ const AI_LADDER = [
     // L12: L11's eval and L11's candidates, but each candidate is scored after asking a real L11
     // (oppLevel 10, 0-based) what it would actually reply -- see ladderPlanOppModel. oppCands 4
     // keeps it near 4x an L11 move; raising it buys accuracy linearly in wall time.
-    { kind:'opp', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2},
+    { kind:'opp', experimental:'retired-search', label:'Retired L12',
+      w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2},
       o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28, oppLevel:10, oppCands:4} },
     // L13: L11's eval, L11's candidates, L11's pessimistic minimax -- but the opponent's replies
     // come from ladderOppReplies (full swing + park stops + the max-shove stop) instead of six
     // swing-to-the-jam endpoints. The sweep those replies come from was already being paid for, so
     // unlike L12 this costs little more than L11. oppKeep caps how many of the ranked replies get
     // the full follow-up ply.
-    { kind:'opp2', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2},
+    { kind:'opp2', experimental:'retired-search', label:'Retired L13',
+      w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2},
       o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28, oppKeep:18} },
     // L14 EXPERIMENT: L11 at identical search cost, plus Liam's two-sided leverage idea.
     // hubAttack rewards one of my physical leg arcs lining up beside their hub; hubExpose charges
@@ -5974,7 +5976,9 @@ function chooseAiColour(difficulty) {
 // ===================== AI Ladder UI (vs Computer) =====================
 // Progress is per level AND per colour: beating a rung as Blue and as Red are separate clears.
 // The tripods carry the state (faint = not yet, lit = beaten) — no status text, per the design.
-const LADDER_N = AI_LADDER.length;
+// The shipped player ladder ends at proven L11. L12/L13 are retained internally only so old
+// arena logs remain reproducible; L14 is an explicit experiment reached through the NN toolkit.
+const LADDER_N = 11;
 function ladderProgress(){ try { return JSON.parse(localStorage.getItem('tauLadder')||'{"b":{},"r":{}}'); } catch(e){ return {b:{},r:{}}; } }
 function saveLadderProgress(p){ try { localStorage.setItem('tauLadder', JSON.stringify(p)); } catch(e){} }
 function ladderCleared(n, color){ const p=ladderProgress(); return !!(color===0?p.b:p.r)[n]; }
@@ -8748,7 +8752,7 @@ function labUpdateBtn() {
         const sel = el.querySelector('.labLevelSel');
         const humanOpt = document.createElement('option'); humanOpt.value = 'human'; humanOpt.textContent = 'Human (you)';
         sel.appendChild(humanOpt);
-        for (let i = 0; i < AI_LADDER.length; i++) {
+        for (let i = 0; i < LADDER_N; i++) {
             const opt = document.createElement('option'); opt.value = i; opt.textContent = 'Level ' + (i + 1);
             sel.appendChild(opt);
         }
