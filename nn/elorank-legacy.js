@@ -221,9 +221,14 @@ function isDualModel(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')).dual === true; }
   catch (e) { return false; }
 }
-let LADDER_N = 11;
-try { LADDER_N = require('./engine.js').createEngine().AI_LADDER.length; } catch (e) {}
-const useLevels = levels.length ? levels.filter(l => l <= LADDER_N) : Array.from({ length: LADDER_N }, (_, i) => i + 1);
+let LADDER_N = 11, LADDER_DEFS = [];
+try { LADDER_DEFS = require('./engine.js').createEngine().AI_LADDER; LADDER_N = LADDER_DEFS.length; } catch (e) {}
+// Experimental rungs are arena-addressable (e.g. L14) but do not become rating anchors merely
+// because they exist in the engine. Pass --levels explicitly after a trial earns promotion.
+const productionLevels = LADDER_DEFS.length
+  ? LADDER_DEFS.map((d,i)=>d && !d.experimental ? i+1 : null).filter(Boolean)
+  : Array.from({ length:LADDER_N },(_,i)=>i+1);
+const useLevels = levels.length ? levels.filter(l => l <= LADDER_N) : productionLevels;
 for (const l of useLevels)
   players.push({ id: `L${l}`, kind: 'ladder', spec: `L${l}`, level: l, label: `L${l}` });
 for (const m of snapshotModels(discoverModels())) for (const d of depths) {

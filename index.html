@@ -3273,8 +3273,11 @@ function hubLeverageFor(attackerIdx){
         const t=Math.max(0,Math.min(1,((tx-a.x)*dx+(ty-a.y)*dy)/l2));
         const qx=a.x+t*dx, qy=a.y+t*dy, d=Math.hypot(tx-qx,ty-qy);
         const near=Math.max(0,1-d/12);
+        // Hard directional gate: a close leg on the rim-facing half of the hub is not attack
+        // leverage.  Full credit arrives only as the working point reaches the centre-side surface.
+        const centreSide=Math.max(0,Math.min(1,((qx-v.x)*ux+(qy-v.y)*uy)/contact));
         const working=.65+.35*Math.sin(Math.PI*t);
-        best=Math.max(best,near*working);
+        best=Math.max(best,near*centreSide*working);
     }
     return 10*best;
 }

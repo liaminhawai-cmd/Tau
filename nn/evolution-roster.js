@@ -66,7 +66,17 @@ function stableModelEntries(dir) {
   }
   return out;
 }
-function sync(dir, ladderN=11) {
+function productionLadderLevels(ladderN=null) {
+  try {
+    const defs=require('./engine.js').createEngine().AI_LADDER;
+    const n=ladderN==null ? defs.length : Math.min(ladderN,defs.length);
+    return defs.slice(0,n).map((d,i)=>d&&!d.experimental?i+1:null).filter(Boolean);
+  } catch (_) {
+    const n=ladderN==null ? 11 : ladderN;
+    return Array.from({length:n},(_,i)=>i+1);
+  }
+}
+function sync(dir, ladderN=null) {
   const s = loadState(dir);
   const entries = stableModelEntries(dir);
   for (const e of entries) if (!s.retired[e.name]) s.active[e.name] = { file:e.file, dual:e.dual, shape:e.shape };
@@ -74,8 +84,11 @@ function sync(dir, ladderN=11) {
     const p = path.join(dir,'models',s.active[name].file || `${name}.json`);
     if (!fs.existsSync(p)) delete s.active[name];
   }
-  if (!Array.isArray(s.ladderActive)) s.ladderActive = Array.from({length:ladderN},(_,i)=>i+1);
-  s.ladderActive = [...new Set(s.ladderActive.filter(x=>x>=1&&x<=ladderN))].sort((a,b)=>a-b);
+  const production=productionLadderLevels(ladderN), allowed=new Set(production);
+  if (!Array.isArray(s.ladderActive)) s.ladderActive = production;
+  // Existing state is filtered too, so merely pulling code containing L14 cannot admit the
+  // experimental brain to overnight self-play/rating before its explicit L14-v-L11 trial.
+  s.ladderActive = [...new Set(s.ladderActive.filter(x=>allowed.has(x)))].sort((a,b)=>a-b);
   saveState(dir,s);
   return s;
 }
@@ -208,7 +221,7 @@ function retireBadD4(dir) {
   if(retired.length) saveState(dir,s);
   return retired;
 }
-function activeLadderLevels(dir, ladderN=11) { return sync(dir,ladderN).ladderActive.slice(); }
+function activeLadderLevels(dir, ladderN=null) { return sync(dir,ladderN).ladderActive.slice(); }
 function filterFocus(dir, paths) {
   const s=sync(dir), active=new Set(activeNames(s));
   return paths.filter(p=>active.has(path.basename(p,'.json')));
