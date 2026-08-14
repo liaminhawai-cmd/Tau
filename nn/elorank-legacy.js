@@ -494,10 +494,10 @@ function fitBT(ids, results) {
   return elo;
 }
 
-// Where does this net's Elo fall among the fitted LADDER Elos? Linear interpolation between the
-// two rungs it sits between; clamped (and flagged) outside the ladder's own range, since a net
-// stronger than L11 has no rung to interpolate against and extrapolating a rank there would be
-// inventing precision that doesn't exist.
+// Where does this net's Elo fall among the fitted LADDER Elos? The official rank interpolates
+// between measured rungs and remains censored outside them.  A separate, explicitly labelled
+// extrapolation extends the local end-of-ladder Elo spacing for curiosity/display only; promotion,
+// scheduling and culling continue to consume the measured rank and CI.
 function rankOf(eloVal, ladderElos) {
   const pts = ladderElos.slice().sort((a, b) => a.elo - b.elo);
   if (pts.length < 2) return { rank: NaN, edge: 'noscale' };
@@ -511,6 +511,28 @@ function rankOf(eloVal, ladderElos) {
     }
   }
   return { rank: pts[pts.length - 1].level, edge: 'above' };
+}
+function extrapolatedRankOf(eloVal, ladderElos) {
+  const pts = ladderElos.slice().sort((a, b) => a.elo - b.elo);
+  if (pts.length < 2 || !Number.isFinite(eloVal)) return NaN;
+  const measured = rankOf(eloVal, pts);
+  if (!measured.edge) return measured.rank;
+  // Median Elo-per-level across the nearest four usable anchors is much less hostage to one
+  // noisy terminal rung than simply extending the final gap.  This is still an extrapolation:
+  // it deliberately has no authority over training decisions.
+  const high = measured.edge === 'above';
+  const local = high ? pts.slice(-Math.min(4, pts.length)) : pts.slice(0, Math.min(4, pts.length));
+  const gaps = [];
+  for (let i = 1; i < local.length; i++) {
+    const dl = local[i].level - local[i-1].level, de = local[i].elo - local[i-1].elo;
+    if (dl > 0 && de > 0) gaps.push(de/dl);
+  }
+  if (!gaps.length) return NaN;
+  gaps.sort((a,b)=>a-b);
+  const mid = Math.floor(gaps.length/2);
+  const eloPerLevel = gaps.length%2 ? gaps[mid] : (gaps[mid-1]+gaps[mid])/2;
+  const anchor = high ? pts[pts.length-1] : pts[0];
+  return anchor.level + (eloVal-anchor.elo)/Math.max(eloPerLevel,1e-9);
 }
 
 // Confidence intervals by nonparametric bootstrap: for each matchup, resample its n games with
@@ -565,6 +587,7 @@ function bootstrapRanks(B) {
       // A draw above/below the measured ladder is still evidence.  It is censored,
       // not invalid: retaining the edge lets the CI say ">L10" rather than
       // silently conditioning on only the draws that happened to land inside.
+      rk.extrapRank = extrapolatedRankOf(elo[p.id], scale);
       if (Number.isFinite(rk.rank)) samples[p.id].push(rk);
     }
   }
@@ -574,8 +597,12 @@ function bootstrapRanks(B) {
     const v = samples[p.id].sort((a, c) => order(a) - order(c));
     if (v.length >= 10) {
       const lo = v[Math.floor(0.05*v.length)], hi = v[Math.floor(0.95*v.length)];
-      out[p.id] = { lo:lo.rank, hi:hi.rank, loEdge:lo.edge || null, hiEdge:hi.edge || null, n:v.length };
-    } else out[p.id] = { lo:NaN, hi:NaN, loEdge:null, hiEdge:null, n:v.length };
+      const xv = v.filter(r=>Number.isFinite(r.extrapRank)).slice().sort((a,b)=>a.extrapRank-b.extrapRank);
+      const xlo = xv.length >= 10 ? xv[Math.floor(0.05*xv.length)].extrapRank : NaN;
+      const xhi = xv.length >= 10 ? xv[Math.floor(0.95*xv.length)].extrapRank : NaN;
+      out[p.id] = { lo:lo.rank, hi:hi.rank, loEdge:lo.edge || null, hiEdge:hi.edge || null,
+        xLo:xlo, xHi:xhi, n:v.length };
+    } else out[p.id] = { lo:NaN, hi:NaN, loEdge:null, hiEdge:null, xLo:NaN, xHi:NaN, n:v.length };
   }
   return { ci: out, skipped, B };
 }
@@ -632,7 +659,9 @@ function report() {
     const rk = p.kind === 'nn' ? rankOf(e, ladderElos) : { rank: p.level, edge: null };
     // rounded for display only: a komi win is recorded as 0.3 of a win plus 0.7 of a draw, so these
     // totals are fractional by construction even though each one still counts as exactly one game
-    return { p, elo: e, rank: rk.rank, edge: rk.edge, games: Math.round(played[p.id] || 0) };
+    const extrapRank = p.kind === 'nn' && rk.edge ? extrapolatedRankOf(e, ladderElos) : null;
+    return { p, elo: e, rank: rk.rank, edge: rk.edge, extrapRank,
+      games: Math.round(played[p.id] || 0) };
   }).sort((a, b) => a.elo - b.elo);
 
   console.log(`\n=== fitted ranking (${Object.keys(store.results).length} pairs, ` +
@@ -652,7 +681,7 @@ function report() {
   // machine this project runs on, that's a given.
   const tty = process.stdout.isTTY;
   const rung = s => tty ? `\x1b[1m\x1b[4m${s}\x1b[0m` : s;
-  console.log('  rating  rank    90% CI          games  brain');
+  console.log('  rating  rank    measured 90% CI      extrapolated rank / 90% CI       games  brain');
   for (const r of rows) {
     const thin = r.games < MIN_GAMES;
     const rankCell = r.p.kind !== 'nn' ? '  -  '
@@ -662,12 +691,16 @@ function report() {
     const c = boot.ci[r.p.id];
     const ciBound = (v, edge) => edge === 'above' ? `>L${v.toFixed(1)}`
       : edge === 'below' ? `<L${v.toFixed(1)}` : `L${v.toFixed(1)}`;
-    const ciCell = r.p.kind !== 'nn' ? '              '
-      : (c && Number.isFinite(c.lo)) ? `${ciBound(c.lo,c.loEdge)} - ${ciBound(c.hi,c.hiEdge)}`.padStart(14)
-      : '(not yet)'.padStart(14);
+    const ciCell = r.p.kind !== 'nn' ? '                  '
+      : (c && Number.isFinite(c.lo)) ? `${ciBound(c.lo,c.loEdge)} - ${ciBound(c.hi,c.hiEdge)}`.padStart(18)
+      : '(not yet)'.padStart(18);
+    const xCell = r.p.kind === 'nn' && Number.isFinite(r.extrapRank)
+      ? (`xL${r.extrapRank.toFixed(1)}` +
+         (c && Number.isFinite(c.xLo) ? ` [xL${c.xLo.toFixed(1)} - xL${c.xHi.toFixed(1)}]` : '')).padStart(32)
+      : ''.padStart(32);
     // the whole line is built and padded FIRST, then wrapped -- escape codes inside the padding
     // arithmetic would throw every column off by the width of the invisible bytes
-    const line = `  ${String(Math.round(r.elo)).padStart(6)}  ${rankCell}  ${ciCell}  ` +
+    const line = `  ${String(Math.round(r.elo)).padStart(6)}  ${rankCell}  ${ciCell}  ${xCell}  ` +
                  `${String(r.games).padStart(5)}  ${r.p.label}${thin ? '  (too few games)' : ''}`;
     console.log(r.p.kind === 'ladder' ? rung(line) : line);
   }
@@ -703,6 +736,9 @@ function report() {
           rankHi: c && Number.isFinite(c.hi) ? +c.hi.toFixed(2) : null,
           rankLoEdge: c && c.loEdge ? c.loEdge : null,
           rankHiEdge: c && c.hiEdge ? c.hiEdge : null,
+          extrapRank: Number.isFinite(r.extrapRank) ? +r.extrapRank.toFixed(2) : null,
+          extrapRankLo: c && Number.isFinite(c.xLo) ? +c.xLo.toFixed(2) : null,
+          extrapRankHi: c && Number.isFinite(c.xHi) ? +c.xHi.toFixed(2) : null,
         } : { level: r.p.level }),
       };
     }
