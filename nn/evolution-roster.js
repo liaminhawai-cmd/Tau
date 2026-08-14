@@ -350,4 +350,4 @@ function cull(dir) {
 }
 function noteBirth(dir,birth){ if(!birth||!birth.outPath||!fs.existsSync(birth.outPath)) return; const s=sync(dir), name=path.basename(birth.outPath,'.json'), meta=modelMeta(birth.outPath); if(meta.usable&&!s.retired[name]) s.active[name]={file:path.basename(birth.outPath),dual:meta.dual,shape:meta.shape}; saveState(dir,s); }
 function status(dir){ const s=sync(dir); return {models:activeNames(s).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,median:rosterMedian(s)}; }
-module.exports={D3_SHARE,sync,ingestSummary,selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,filterFocus,d3Slice,d4Slice,retireBadD4,d3SummaryPath,d4SummaryPath,cull,noteBirth,status};
+module.exports={TARGET_MODELS,D3_SHARE,sync,ingestSummary,selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,filterFocus,d3Slice,d4Slice,retireBadD4,d3SummaryPath,d4SummaryPath,cull,noteBirth,status};
