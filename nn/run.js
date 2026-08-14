@@ -2279,6 +2279,10 @@ if (poolOnce) {
       return { focus: [], pop: null, trained: null };
     });
   }
-  startSelfplayBatch();
-  schedulerLoop().catch(e => { log(`FATAL: scheduler stopped (${(e && e.message) || e})`); process.exitCode = 1; });
+  // Apply any banked, already-confident retirements immediately on restart, before the
+  // first 1000-game batch takes its roster snapshot. This is a no-game/no-training pass.
+  runSoftAsync('elorank.js', ['--cullOnly']).then(() => {
+    startSelfplayBatch();
+    return schedulerLoop();
+  }).catch(e => { log(`FATAL: scheduler stopped (${(e && e.message) || e})`); process.exitCode = 1; });
 }
