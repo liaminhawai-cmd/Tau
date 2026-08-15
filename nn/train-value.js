@@ -30,6 +30,11 @@ function hiddenOf(file) {
     return Array.isArray(j.sizes) && j.sizes.length > 2 ? j.sizes.slice(1, -1).join(',') : null;
   } catch (_) { return null; }
 }
+function topologyOf(file) {
+  if (!file) return null;
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')).topology || null; }
+  catch (_) { return null; }
+}
 function run(cmd, args, label) {
   return new Promise((resolve, reject) => {
     console.log('\n$ ' + cmd + ' ' + args.join(' '));
@@ -59,8 +64,9 @@ async function main() {
   fs.mkdirSync(path.dirname(out), { recursive: true });
 
   let trained = false;
+  const resume = arg('resume');
+  const structured = topologyOf(resume);
   if (cudaAvailable()) {
-    const resume = arg('resume');
     const hidden = arg('hidden') || hiddenOf(resume) || '96,96';
     const torchArgs = [
       path.join('nn', 'torch-train.py'),
@@ -93,6 +99,8 @@ async function main() {
   }
 
   if (!trained) {
+    if (structured)
+      throw new Error(`checkpoint topology ${structured.kind} requires the verified PyTorch path; refusing an incompatible CPU fallback`);
     console.log('[value-train] backend js-cpu');
     await run('node', [path.join('nn', 'train.js'), ...withOut(original, partial)],
               'JavaScript value trainer');

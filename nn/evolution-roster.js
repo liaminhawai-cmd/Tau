@@ -13,6 +13,8 @@ const D4_SLICE = 3;
 const ELO_TEMP = 400;
 const PROTECTED_LADDER_COUNT = 6;
 const D3_SHARE = 0.04;
+const STRONG_FACE_MIN_GAMES = 4;   // a pessimistic CI may protect a promising depth specialist
+const WEAK_FACE_MIN_GAMES = 12;    // retirement still needs substantially more evidence
 const ALIASES = new Set(['best.json','value.json','scratch.json','wide.json','ultra.json','deep.json','l15_value.json']);
 
 const statePath = dir => path.join(dir, 'models', '.evolution-roster.json');
@@ -168,6 +170,42 @@ function ingestSummary(dir, summaryFile) {
 }
 
 function activeNames(s) { return Object.keys(s.active); }
+function activeModelNames(dir) { return activeNames(sync(dir)); }
+function depthFaceMedians(s) {
+  const out={};
+  for(const face of ['D1','D2']) {
+    const rows=activeNames(s).map(n=>s.latest[n]?.faces?.[face])
+      .filter(r=>r&&(+r.games||0)>=STRONG_FACE_MIN_GAMES&&Number.isFinite(r.rank));
+    const med=q(rows.map(r=>r.rank),0.5); if(Number.isFinite(med))out[face]=med;
+  }
+  return out;
+}
+function depthSpecialist(s,name,medians=depthFaceMedians(s)) {
+  const faces=s.latest[name]?.faces||{}, readings=[];
+  for(const face of ['D1','D2']) {
+    const r=faces[face], med=medians[face];
+    if(!r||!Number.isFinite(med)||!Number.isFinite(r.rankLo)||!Number.isFinite(r.rankHi))continue;
+    readings.push({face,...r,median:med});
+  }
+  const strong=readings.filter(r=>(+r.games||0)>=STRONG_FACE_MIN_GAMES&&
+    (r.rankLoEdge==='above'||r.rankLo>r.median)).sort((a,b)=>b.rankLo-a.rankLo)[0];
+  const weak=readings.filter(r=>(+r.games||0)>=WEAK_FACE_MIN_GAMES&&!r.rankHiEdge&&
+    r.rankHi<r.median&&(!strong||r.face!==strong.face)).sort((a,b)=>a.rankHi-b.rankHi)[0];
+  return strong&&weak?{strong,weak}:null;
+}
+function restoreDepthSpecialists(dir) {
+  const s=loadState(dir), entries=new Map(stableModelEntries(dir).map(e=>[e.name,e]));
+  const medians=depthFaceMedians(s), restored=[];
+  for(const name of Object.keys(s.retired)) {
+    const e=entries.get(name), spec=depthSpecialist(s,name,medians);
+    if(!e||!spec)continue;
+    s.active[name]={file:e.file,dual:e.dual,shape:e.shape,restoredAt:new Date().toISOString(),
+      depthSpecialist:`${spec.strong.face}>median; ${spec.weak.face}<median`};
+    delete s.retired[name]; restored.push({name,strong:spec.strong.face,weak:spec.weak.face});
+  }
+  if(restored.length){s.lastEvent={at:new Date().toISOString(),restored};saveState(dir,s);}
+  return restored;
+}
 function ratingPriority(s, name) {
   const r=s.latest[name]||{}, d=r.depthGames||{};
   const missing=(d[1]>0?0:2)+(d[2]>0?0:1);
@@ -276,10 +314,10 @@ function cull(dir) {
   // consuming D1/self-play/rating budget because its D2 interval is merely unfinished.
   // Compare like with like, and retain a model only if another face is positively strong
   // (not simply unknown).  Files and all Elo history remain in retired.
-  const FACE_CULL_MIN_GAMES = 12;
+  const FACE_CULL_MIN_GAMES = WEAK_FACE_MIN_GAMES;
   const faceRows=[];
   for(const name of names) for(const [face,r] of Object.entries(s.latest[name]?.faces||{})) {
-    if(Number.isFinite(r.rank)&&Number.isFinite(r.rankLo)&&Number.isFinite(r.rankHi)&&(+r.games||0)>=FACE_CULL_MIN_GAMES)
+    if(Number.isFinite(r.rank)&&Number.isFinite(r.rankLo)&&Number.isFinite(r.rankHi)&&(+r.games||0)>=STRONG_FACE_MIN_GAMES)
       faceRows.push({name,face,...r});
   }
   const faceMedian={};
@@ -291,8 +329,13 @@ function cull(dir) {
   const measured=names.map(name=>{
     const rec=s.latest[name]||{};
     const faces=faceRows.filter(x=>x.name===name&&Number.isFinite(faceMedian[x.face]));
-    const weak=faces.filter(x=>!x.rankHiEdge && x.rankHi<faceMedian[x.face]).sort((a,b)=>a.rankHi-b.rankHi)[0];
-    const strong=faces.some(x=>x.rankLoEdge === 'above' || x.rankLo>faceMedian[x.face]);
+    const weak=faces.filter(x=>(+x.games||0)>=FACE_CULL_MIN_GAMES&&!x.rankHiEdge&&x.rankHi<faceMedian[x.face]).sort((a,b)=>a.rankHi-b.rankHi)[0];
+    // A model with a confident advantage at one depth is a useful specialist even when another
+    // depth is weak. Preserve it and spend games tightening the strong face instead of deleting the
+    // whole file. This is deliberately asymmetric: weakness needs 12 games, protection can begin
+    // at 4 because rankLo is already the pessimistic bootstrap edge.
+    const strong=faces.some(x=>(+x.games||0)>=STRONG_FACE_MIN_GAMES&&
+      (x.rankLoEdge === 'above' || x.rankLo>faceMedian[x.face]));
     if(weak && !strong) {
       // rank/rankHi become the vulnerable face for the existing percentile and sort code.
       return {type:'model',name,...rec,rank:weak.rank,rankLo:weak.rankLo,rankHi:weak.rankHi,
@@ -350,4 +393,6 @@ function cull(dir) {
 }
 function noteBirth(dir,birth){ if(!birth||!birth.outPath||!fs.existsSync(birth.outPath)) return; const s=sync(dir), name=path.basename(birth.outPath,'.json'), meta=modelMeta(birth.outPath); if(meta.usable&&!s.retired[name]) s.active[name]={file:path.basename(birth.outPath),dual:meta.dual,shape:meta.shape}; saveState(dir,s); }
 function status(dir){ const s=sync(dir); return {models:activeNames(s).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,median:rosterMedian(s)}; }
-module.exports={TARGET_MODELS,D3_SHARE,sync,ingestSummary,selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,filterFocus,d3Slice,d4Slice,retireBadD4,d3SummaryPath,d4SummaryPath,cull,noteBirth,status};
+module.exports={TARGET_MODELS,D3_SHARE,sync,ingestSummary,activeModelNames,restoreDepthSpecialists,
+  selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,filterFocus,d3Slice,d4Slice,
+  retireBadD4,d3SummaryPath,d4SummaryPath,cull,noteBirth,status};

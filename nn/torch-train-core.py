@@ -157,13 +157,17 @@ def split_and_weight(by_game, seed, gw_mode, fw_mode, draw_w):
     return [(f, z, w) for f, z, w, _, _ in train], [(f, z, w) for f, z, w, _, _ in val]
 
 
-def export_for_netjs(layers, probe_inputs=None, probe_fn=None):
+def export_for_netjs(layers, probe_inputs=None, probe_fn=None, topology=None):
     """torch Linear layers -> net.js {sizes, W, b}. W is flat OUTPUT-MAJOR, matching net.js's
     W[j*nIn + i]; torch's weight is already [out, in] so .flatten() is correct with no transpose."""
     sizes = [layers[0].in_features] + [l.out_features for l in layers]
     W = [l.weight.detach().cpu().numpy().flatten().tolist() for l in layers]
     b = [l.bias.detach().cpu().numpy().flatten().tolist() for l in layers]
     doc = {'sizes': sizes, 'W': W, 'b': b}
+    fan_ins = [l.in_features for l in layers]
+    if topology:
+        doc['topology'] = topology
+        doc['fanIns'] = fan_ins
     if probe_inputs is not None and probe_fn is not None:
         # Reference outputs computed on THIS side, for verify-torch-export.js to check net.js
         # reproduces. Extra keys are ignored by net.js's fromJSON, so this is free to carry.
@@ -187,6 +191,9 @@ def main():
     ap.add_argument('--familyWeight', default='sqrt', choices=['sqrt', 'off'])
     ap.add_argument('--resume', default=None, help='net.js JSON checkpoint to continue')
     ap.add_argument('--device', default=None, help='cuda | cpu, default: cuda if available')
+    ap.add_argument('--topology', default='auto', choices=['auto', 'plain', 'dense-memory'])
+    ap.add_argument('--memoryWidth', type=int, default=40)
+    ap.add_argument('--residualScale', type=float, default=0.2)
     args = ap.parse_args()
 
     try:
@@ -220,14 +227,45 @@ def main():
     xtr, ytr, wtr = tens(train)
     xva, yva, _ = tens(val)
 
-    hidden = [int(h) for h in args.hidden.split(',') if h.strip()]
-    sizes = [N_FEATURES] + hidden + [1]
-    linears = [nn.Linear(sizes[i], sizes[i + 1]) for i in range(len(sizes) - 1)]
+    checkpoint = None
     if args.resume:
         with open(args.resume, 'r', encoding='utf-8') as fh:
             checkpoint = json.load(fh)
+
+    hidden = [int(h) for h in args.hidden.split(',') if h.strip()]
+    sizes = [N_FEATURES] + hidden + [1]
+    checkpoint_topology = (checkpoint or {}).get('topology') or None
+    topology_kind = args.topology
+    if topology_kind == 'auto':
+        topology_kind = 'dense-memory' if checkpoint_topology and checkpoint_topology.get('kind') == 'dense-memory-v1' else 'plain'
+    topology = None
+    if topology_kind == 'dense-memory':
+        if len(hidden) < 2 or len(set(hidden)) != 1:
+            print('dense-memory requires at least two equal-width hidden layers', file=sys.stderr)
+            sys.exit(1)
+        memory_width = int((checkpoint_topology or {}).get('memoryWidth', args.memoryWidth))
+        residual_scale = float((checkpoint_topology or {}).get('residualScale', args.residualScale))
+        if memory_width < 1 or memory_width > hidden[0]:
+            print(f'memoryWidth must be between 1 and {hidden[0]}', file=sys.stderr)
+            sys.exit(1)
+        topology = {'kind': 'dense-memory-v1', 'memoryWidth': memory_width,
+                    'residualScale': residual_scale}
+        # First hidden layer sees the feature vector. Each later hidden layer sees the complete
+        # previous layer plus one memory packet from every layer before that. The value head sees
+        # the final layer plus packets from all nine predecessors.
+        fan_ins = [N_FEATURES]
+        for i in range(1, len(hidden)):
+            fan_ins.append(hidden[i - 1] + memory_width * (i - 1))
+        fan_ins.append(hidden[-1] + memory_width * (len(hidden) - 1))
+    else:
+        fan_ins = sizes[:-1]
+    linears = [nn.Linear(fan_ins[i], sizes[i + 1]) for i in range(len(sizes) - 1)]
+    if checkpoint:
         if checkpoint.get('sizes') != sizes:
             print(f"resume shape {checkpoint.get('sizes')} does not match requested {sizes}", file=sys.stderr)
+            sys.exit(1)
+        if checkpoint.get('fanIns', sizes[:-1]) != fan_ins:
+            print(f"resume fan-ins {checkpoint.get('fanIns')} do not match requested {fan_ins}", file=sys.stderr)
             sys.exit(1)
         import torch
         with torch.no_grad():
@@ -236,11 +274,30 @@ def main():
                     layer.out_features, layer.in_features))
                 layer.bias.copy_(torch.tensor(bias, dtype=torch.float32))
         print(f"resumed weights from {args.resume}")
-    # tanh after EVERY layer, output included -- net.js does exactly this and reads acts[-1][0].
-    seq, model = [], None
-    for l in linears:
-        seq += [l, nn.Tanh()]
-    model = nn.Sequential(*seq).to(device)
+    # Plain exports tanh every layer. Dense-memory keeps a constant-width residual trunk and sends
+    # the first k learned activations of every hidden layer to every layer in front.
+    if topology:
+        class DenseMemoryNet(nn.Module):
+            def __init__(self, layers, memory_width, residual_scale):
+                super().__init__()
+                self.layers = nn.ModuleList(layers)
+                self.memory_width = memory_width
+                self.residual_scale = residual_scale
+            def forward(self, x):
+                a, memories = x, []
+                for li, layer in enumerate(self.layers):
+                    a_in = a if li == 0 else torch.cat([a] + memories[:-1], dim=1)
+                    branch = torch.tanh(layer(a_in))
+                    a = a + self.residual_scale * branch if 0 < li < len(self.layers) - 1 else branch
+                    if li < len(self.layers) - 1:
+                        memories.append(a[:, :self.memory_width])
+                return a
+        model = DenseMemoryNet(linears, topology['memoryWidth'], topology['residualScale']).to(device)
+    else:
+        seq = []
+        for l in linears:
+            seq += [l, nn.Tanh()]
+        model = nn.Sequential(*seq).to(device)
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
     n = xtr.shape[0]
@@ -283,14 +340,15 @@ def main():
         probe_x = [xva[i].tolist() for i in range(min(8, xva.shape[0]))]
         def probe_fn(x):
             return float(model(torch.tensor([x], dtype=torch.float32, device=device))[0][0])
-        doc = export_for_netjs(linears, probe_x, probe_fn)
+        doc = export_for_netjs(linears, probe_x, probe_fn, topology)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     tmp_out = f"{args.out}.tmp-{os.getpid()}"
     with open(tmp_out, 'w') as fh:
         json.dump(doc, fh)
     os.replace(tmp_out, args.out)
-    print(f"\nsaved {args.out} (sizes {doc['sizes']}, best val mse {best_val:.5f})")
+    topo_label = f", topology {topology['kind']} k={topology['memoryWidth']}" if topology else ''
+    print(f"\nsaved {args.out} (sizes {doc['sizes']}{topo_label}, best val mse {best_val:.5f})")
     print(f"NOW VERIFY:  node nn/verify-torch-export.js {args.out}")
 
 

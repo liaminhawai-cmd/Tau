@@ -37,16 +37,24 @@ const fail = m => { console.error('FAIL: ' + m); bad++; };
 // --- shape checks: catch a malformed export before the numbers are even compared ---------------
 if (!Array.isArray(doc.sizes) || doc.sizes.length < 2) fail('missing or malformed `sizes`');
 if (!Array.isArray(doc.W) || !Array.isArray(doc.b)) fail('missing `W` or `b`');
+const fanIns = doc.fanIns || (Array.isArray(doc.sizes) ? doc.sizes.slice(0, -1) : []);
 if (!bad) {
   if (doc.sizes[0] !== N_FEATURES)
     fail(`input width is ${doc.sizes[0]}, but this build's feature vector is ${N_FEATURES}`);
   if (doc.sizes[doc.sizes.length - 1] !== 1)
     fail(`output width is ${doc.sizes[doc.sizes.length - 1]}, must be 1 (net.js reads acts[-1][0])`);
+  if (!Array.isArray(fanIns) || fanIns.length !== doc.sizes.length - 1)
+    fail('missing or malformed `fanIns`');
+  if (doc.topology) {
+    if (doc.topology.kind !== 'dense-memory-v1') fail(`unknown topology ${doc.topology.kind}`);
+    if (!(doc.topology.memoryWidth > 0) || !(doc.topology.residualScale > 0))
+      fail('dense-memory topology needs positive memoryWidth and residualScale');
+  }
   if (doc.W.length !== doc.sizes.length - 1) fail(`${doc.W.length} weight matrices for ${doc.sizes.length - 1} layers`);
   for (let l = 0; l < doc.W.length && !bad; l++) {
-    const want = doc.sizes[l] * doc.sizes[l + 1];
+    const want = fanIns[l] * doc.sizes[l + 1];
     if (doc.W[l].length !== want)
-      fail(`layer ${l}: ${doc.W[l].length} weights, expected ${want} (= ${doc.sizes[l]} in x ${doc.sizes[l + 1]} out)`);
+      fail(`layer ${l}: ${doc.W[l].length} weights, expected ${want} (= ${fanIns[l]} in x ${doc.sizes[l + 1]} out)`);
     if (doc.b[l].length !== doc.sizes[l + 1])
       fail(`layer ${l}: ${doc.b[l].length} biases, expected ${doc.sizes[l + 1]}`);
   }
@@ -55,11 +63,12 @@ if (bad) process.exit(1);
 
 // A square layer hides a transpose from the shape check entirely -- 96x96 is the same element
 // count either way -- which is exactly why the numeric probe below is the real test, not a nicety.
-const square = doc.sizes.slice(0, -1).some((s, i) => s === doc.sizes[i + 1]);
+const square = fanIns.some((s, i) => s === doc.sizes[i + 1]);
 
 const net = MLP.fromJSON(doc);
 console.log(`${path.basename(file)}: sizes ${doc.sizes.join(' -> ')}, ` +
-            `${doc.W.reduce((n, w) => n + w.length, 0)} weights — shape OK`);
+            `${doc.W.reduce((n, w) => n + w.length, 0)} weights` +
+            `${doc.topology ? `, ${doc.topology.kind} k=${doc.topology.memoryWidth}` : ''} — shape OK`);
 
 // --- the real test: does net.js reproduce the exporter's own outputs? --------------------------
 if (!Array.isArray(doc.__probe) || !doc.__probe.length) {
