@@ -36,7 +36,7 @@ echo.
 echo   LOOPS -- run until the window is closed, unless noted otherwise
 echo  20. FULL TRAINER: continuous self-play + evolving Elo pool + GPU value/dual training
 echo      -- no retromine; first-cover unplayed faces, then Elo/CI-weight the shared pool
-echo      -- minimum 4 standing dual nets enter bare and +policy; larger fields whittle to that floor
+echo      -- face seats: D1 50 / D2 14 / D3 4 / D4 1; one face out, one waiting face in
 echo  21. RETROMINE: ratchet-only data generation, multicore
 echo  22. SELF-PLAY FACTORY: plain game generation for a spare machine (never trains/rates)
 echo  23. POLICY FIGHT: train a policy net on existing data, fight it at equal think-time
@@ -49,8 +49,8 @@ echo      -- the trainer soaks up the ~20min every policy cycle spends single-th
 echo      tournament tail after fast matchups finish. Policy still wins any core it asks for.
 echo.
 echo  43. WILD MINT + FULL TRAINER
-echo      -- 8 value + 5 dual + value behemoth + 3 joint-action policy nets, resumable
-echo      -- verified entrants expand the pool, then weak ones whittle to the floor; no restart
+echo      -- 8 value + 5 dual + value behemoth + 4 joint-action policy nets, resumable
+echo      -- entrants queue per depth; a weak face leaves without deleting its other depths
 echo  44. L14 LEVERAGE vs L11
 echo      -- multicore, balanced colours/openings; same search, tests centre-side hub attack
 echo      -- against mirrored counter-exposure; saves every arena result and training position
@@ -279,10 +279,10 @@ if errorlevel 1 (
 )
 echo.
 echo === joint-action policy expedition ===
-echo Normal 96x64, large 4x512, and 10x400 dense-memory behemoth.
+echo Normal 96x64, large 4x512, shared-40 behemoth, and pairwise-4 behemoth.
 echo Each predicts centre/left/right pivot plus signed swing distance as one 96-way action.
 echo Rare actions are class-balanced; quick wins and winning throws get modest extra weight.
-echo Swing size itself is never rewarded. All three share one frozen value net in the Elo pool.
+echo Swing size itself is never rewarded. All four share one frozen value net in the Elo pool.
 echo.
 node nn\joint-policy-mint.js
 if errorlevel 1 (

@@ -115,12 +115,14 @@ def split_rows(rows, args, elo_weight):
 def build_model(torch, nn, hidden, args, checkpoint):
     sizes = [N_FEATURES] + hidden + [N_ACTIONS]
     topology = None
-    if args.topology == 'dense-memory':
+    structured = args.topology in ('dense-memory', 'pairwise-memory')
+    if structured:
         if len(hidden) < 2 or len(set(hidden)) != 1:
-            raise ValueError('dense-memory needs at least two equal-width hidden layers')
+            raise ValueError(f'{args.topology} needs at least two equal-width hidden layers')
         if not 1 <= args.memoryWidth <= hidden[0]:
             raise ValueError(f'memoryWidth must be 1..{hidden[0]}')
-        topology = {'kind':'dense-memory-v1', 'memoryWidth':args.memoryWidth,
+        topology = {'kind':'pairwise-memory-v1' if args.topology == 'pairwise-memory' else 'dense-memory-v1',
+                    'memoryWidth':args.memoryWidth,
                     'residualScale':args.residualScale}
         fan_ins = [N_FEATURES]
         for i in range(1, len(hidden)):
@@ -129,15 +131,26 @@ def build_model(torch, nn, hidden, args, checkpoint):
     else:
         fan_ins = sizes[:-1]
     layers = [nn.Linear(fan_ins[i], sizes[i+1]) for i in range(len(sizes)-1)]
+    # Dedicated low-rank messages for every non-adjacent forward layer pair. The ordinary full
+    # matrix already connects adjacent layers, so only genuine skips get a four-neuron projection.
+    skip_layers = nn.ModuleDict()
+    if args.topology == 'pairwise-memory':
+        for target in range(2, len(layers)):
+            for source in range(target-1):
+                skip_layers[f'{source}_to_{target}'] = nn.Linear(sizes[source+1], args.memoryWidth)
 
     class JointPolicy(nn.Module):
         def __init__(self):
-            super().__init__(); self.layers = nn.ModuleList(layers)
+            super().__init__(); self.layers = nn.ModuleList(layers); self.skips = skip_layers
         def forward(self, x):
-            a, memories = x, []
+            a, memories, history = x, [], []
             for li, layer in enumerate(self.layers):
-                if topology and li > 0:
+                if args.topology == 'dense-memory' and li > 0:
                     a_in = torch.cat([a] + memories[:-1], dim=1)
+                elif args.topology == 'pairwise-memory' and li > 1:
+                    messages = [torch.tanh(self.skips[f'{source}_to_{li}'](history[source]))
+                                for source in range(li-1)]
+                    a_in = torch.cat([a] + messages, dim=1)
                 else:
                     a_in = a
                 raw = layer(a_in)
@@ -145,9 +158,11 @@ def build_model(torch, nn, hidden, args, checkpoint):
                     a = raw
                 else:
                     branch = torch.tanh(raw)
-                    a = a + args.residualScale*branch if topology and li > 0 else branch
-                    if topology:
+                    a = a + args.residualScale*branch if structured and li > 0 else branch
+                    if args.topology == 'dense-memory':
                         memories.append(a[:, :args.memoryWidth])
+                    elif args.topology == 'pairwise-memory':
+                        history.append(a)
             return a
 
     model = JointPolicy()
@@ -155,20 +170,35 @@ def build_model(torch, nn, hidden, args, checkpoint):
     if checkpoint:
         if checkpoint.get('sizes') != sizes or checkpoint.get('policyEncoding') != ENCODING:
             raise ValueError(f"resume model does not match joint policy {sizes}")
+        if (checkpoint.get('topology') or {}).get('kind') != (topology or {}).get('kind'):
+            raise ValueError('resume topology does not match requested topology')
         if checkpoint.get('fanIns', sizes[:-1]) != fan_ins:
             raise ValueError('resume fanIns do not match requested topology')
         with torch.no_grad():
             for layer, w, b in zip(layers, checkpoint['W'], checkpoint['b']):
                 layer.weight.copy_(torch.tensor(w, dtype=torch.float32).reshape(layer.out_features, layer.in_features))
                 layer.bias.copy_(torch.tensor(b, dtype=torch.float32))
+            if args.topology == 'pairwise-memory':
+                sw, sb = checkpoint.get('skipW'), checkpoint.get('skipB')
+                if not isinstance(sw, list) or not isinstance(sb, list):
+                    raise ValueError('resume pairwise checkpoint is missing skip weights')
+                for target in range(2, len(layers)):
+                    for source in range(target-1):
+                        proj = skip_layers[f'{source}_to_{target}']
+                        try:
+                            proj.weight.copy_(torch.tensor(sw[target][source], dtype=torch.float32)
+                                              .reshape(proj.out_features, proj.in_features))
+                            proj.bias.copy_(torch.tensor(sb[target][source], dtype=torch.float32))
+                        except Exception as e:
+                            raise ValueError(f'resume pairwise skip {source}->{target} is invalid') from e
         # The expedition rolls back to each chunk's best checkpoint, but its curve epoch remains
         # the attempted global epoch. The explicit offset is therefore authoritative on resume.
         base_epochs = args.epochOffset
         print(f'resumed weights from {args.resume}')
-    return model, layers, sizes, fan_ins, topology, base_epochs
+    return model, layers, skip_layers, sizes, fan_ins, topology, base_epochs
 
 
-def export(layers, sizes, fan_ins, topology, trained_epochs, probes):
+def export(layers, skip_layers, sizes, fan_ins, topology, trained_epochs, probes):
     doc = {
         'policy': True, 'policyEncoding': ENCODING, 'trainedEpochs': trained_epochs,
         'sizes': sizes,
@@ -178,6 +208,15 @@ def export(layers, sizes, fan_ins, topology, trained_epochs, probes):
     }
     if topology:
         doc['topology'], doc['fanIns'] = topology, fan_ins
+    if topology and topology.get('kind') == 'pairwise-memory-v1':
+        doc['skipW'], doc['skipB'] = [], []
+        for target in range(len(layers)):
+            wr, br = [], []
+            for source in range(max(0, target-1)):
+                proj = skip_layers[f'{source}_to_{target}']
+                wr.append(proj.weight.detach().cpu().numpy().flatten().tolist())
+                br.append(proj.bias.detach().cpu().numpy().flatten().tolist())
+            doc['skipW'].append(wr); doc['skipB'].append(br)
     return doc
 
 
@@ -205,7 +244,7 @@ def main():
     ap.add_argument('--noEloWeight', action='store_true')
     ap.add_argument('--noSourceWeight', action='store_true')
     ap.add_argument('--device', default=None)
-    ap.add_argument('--topology', choices=['plain','dense-memory'], default='plain')
+    ap.add_argument('--topology', choices=['plain','dense-memory','pairwise-memory'], default='plain')
     ap.add_argument('--memoryWidth', type=int, default=40)
     ap.add_argument('--residualScale', type=float, default=.2)
     ap.add_argument('--resume', default=None)
@@ -239,7 +278,7 @@ def main():
     if args.resume:
         with open(args.resume, encoding='utf-8') as fh: checkpoint = json.load(fh)
     torch.manual_seed(args.seed + args.epochOffset)
-    model, layers, sizes, fan_ins, topology, base_epochs = build_model(torch, nn, hidden, args, checkpoint)
+    model, layers, skip_layers, sizes, fan_ins, topology, base_epochs = build_model(torch, nn, hidden, args, checkpoint)
     model.to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
     best_ce, best_state, best_epoch, t0 = float('inf'), None, 0, time.time()
@@ -270,14 +309,14 @@ def main():
             y = model(x[None,:])[0]
             probes.append({'x':[float(v) for v in x.tolist()], 'y':[float(v) for v in y.tolist()]})
     trained_epochs = base_epochs + best_epoch
-    doc = export(layers, sizes, fan_ins, topology, trained_epochs, probes)
+    doc = export(layers, skip_layers, sizes, fan_ins, topology, trained_epochs, probes)
     doc['training'] = {'bestValCe':best_ce, 'bestChunkEpoch':best_epoch,
                        'seconds':time.time()-t0, 'targets':len(rows)}
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     tmp = f'{args.out}.tmp-{os.getpid()}'
     with open(tmp, 'w') as fh: json.dump(doc, fh)
     os.replace(tmp, args.out)
-    params = sum(fan_ins[i]*sizes[i+1]+sizes[i+1] for i in range(len(fan_ins)))
+    params = sum(p.numel() for p in model.parameters())
     print(f'saved {args.out}: {params:,} params, lifetime peak epoch {trained_epochs}, val ce {best_ce:.5f}')
     print(f'NOW VERIFY: node nn/verify-joint-policy-export.js {args.out}')
 

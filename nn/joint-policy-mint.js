@@ -1,6 +1,6 @@
 'use strict';
-// Three resumable 96-action policy experiments. They share one frozen value evaluator so Elo
-// measures only policy geometry/scale, not three different value nets at the same time.
+// Four resumable 96-action policy experiments. They share one frozen value evaluator so Elo
+// measures only policy geometry/scale, not four different value nets at the same time.
 const fs=require('fs');
 const path=require('path');
 const {spawn,spawnSync}=require('child_process');
@@ -12,6 +12,8 @@ const configs=[
   {id:'policy-joint-large-4x512', hidden:'512,512,512,512', topology:'plain', batch:2048, lr:0.00055},
   {id:'policy-joint-behemoth-10x400-dense40', hidden:Array(10).fill(400).join(','),
    topology:'dense-memory', memoryWidth:40, residualScale:0.2, batch:2048, lr:0.0005},
+  {id:'policy-joint-behemoth-10x400-pair4', hidden:Array(10).fill(400).join(','),
+   topology:'pairwise-memory', memoryWidth:4, residualScale:0.2, batch:2048, lr:0.0005},
 ];
 function arg(n,d){const i=process.argv.indexOf('--'+n);return i>=0?process.argv[i+1]:d;}
 const chunkEpochs=Math.max(5,+arg('chunkEpochs',10));
@@ -90,10 +92,10 @@ async function main(){
   if(!cudaReady())throw new Error('CUDA PyTorch is required for the joint-policy expedition');
   ensureFrozenBase();fs.mkdirSync(curves,{recursive:true});const state=loadState();state.models||={};
   console.log(`[joint-policy] 96 actions: centre/left/right x signed direction x 16 distances`);
-  console.log(`[joint-policy] 3 shapes; chunks ${chunkEpochs}; min ${minEpochs}; patience ${patienceEpochs}; max ${maxEpochs}`);
+  console.log(`[joint-policy] ${configs.length} shapes; chunks ${chunkEpochs}; min ${minEpochs}; patience ${patienceEpochs}; max ${maxEpochs}`);
   let failed=0;
   for(const c of configs)try{await trainOne(c,state);}catch(e){failed++;console.error(`[joint-policy] ${c.id} failed: ${e.message}`);}
   if(failed)process.exitCode=1;
-  else console.log('[joint-policy] all three verified descriptors will enter the ordinary Elo roster on trainer startup');
+  else console.log(`[joint-policy] all ${configs.length} verified descriptors will enter the ordinary Elo roster on trainer startup`);
 }
 main().catch(e=>{console.error('[joint-policy] fatal:',e.message);process.exitCode=1;});

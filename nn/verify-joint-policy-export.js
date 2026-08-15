@@ -1,7 +1,7 @@
 'use strict';
 // A shape check cannot catch transposed matrices, a tanh accidentally applied to logits, or a
-// dense-memory packet wired to the wrong layer. Compare JS raw logits with probes produced by the
-// exact PyTorch model before any checkpoint is allowed into an arena.
+// dense/pairwise memory packet wired to the wrong layer. Compare JS raw logits with probes produced
+// by the exact PyTorch model before any checkpoint is allowed into an arena.
 const fs = require('fs');
 const path = require('path');
 const { PolicyMLP, N_ACTIONS, JOINT_ENCODING, actionIndex, decodeAction } = require('./policy.js');
@@ -19,6 +19,15 @@ for (let l = 0; l < fanIns.length; l++) {
   const want = fanIns[l]*j.sizes[l+1];
   if (!j.W[l] || j.W[l].length !== want || !j.b[l] || j.b[l].length !== j.sizes[l+1])
     throw new Error(`layer ${l} shape mismatch`);
+}
+if (j.topology && j.topology.kind === 'pairwise-memory-v1') {
+  const k=+j.topology.memoryWidth;
+  if(!Array.isArray(j.skipW)||!Array.isArray(j.skipB)||k<1)throw new Error('invalid pairwise skip graph');
+  for(let target=2;target<j.sizes.length-1;target++)for(let source=0;source<target-1;source++){
+    const w=j.skipW[target]&&j.skipW[target][source], b=j.skipB[target]&&j.skipB[target][source];
+    if(!w||w.length!==k*j.sizes[source+1]||!b||b.length!==k)
+      throw new Error(`pairwise skip ${source}->${target} shape mismatch`);
+  }
 }
 const net = PolicyMLP.fromJSON(j);
 const probes = j.__probe || [];
@@ -44,4 +53,4 @@ if (Math.abs(sum - 1) > 1e-9 || pred.arms.length !== 6)
   throw new Error('joint softmax/marginal prediction invalid');
 console.log(`${path.basename(file)}: ${j.sizes.join(' -> ')}, ${j.policyEncoding}`);
 console.log(`probe: ${probes.length} reference input(s), worst |JS - torch| = ${worst.toExponential(2)}`);
-console.log('OK — export, dense-memory wiring, raw logits, softmax and action codec verified.');
+console.log('OK — export, skip wiring, raw logits, softmax and action codec verified.');

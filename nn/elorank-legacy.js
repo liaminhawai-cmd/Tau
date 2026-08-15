@@ -109,6 +109,11 @@ const dryRun = process.argv.includes('--dryrun');
 // time; this answers only the new one.
 const focusRaw = (arg('focus', '') || '').split(',').map(x => x.trim()).filter(Boolean);
 const focusPaths = focusRaw.map(x => path.basename(x, '.json'));
+// Optional exact face filter supplied by evolution-roster.js.  A model file can represent bare
+// and +policy identities at four depths; keeping the file in the catalogue must not silently put
+// every one of those faces back into the expensive live field.
+const allowPlayers = new Set((arg('allowPlayers', '') || '').split(',').map(x => x.trim()).filter(Boolean));
+const faceAllowed = id => !allowPlayers.size || allowPlayers.has(id);
 // --summary: write the fitted ratings out as JSON so another process (run.js) can read them
 // without re-deriving anything or parsing console output.
 const summaryPath = arg('summary', null);
@@ -248,20 +253,24 @@ for (const m of snapshotModels(discoverModels())) for (const d of depths) {
     if(d<2)continue; // joint distance priors choose the recursively-searched frontier; D1 is identical to bare value
     const desc=JSON.parse(fs.readFileSync(m,'utf8'));
     const valuePath=path.resolve(path.dirname(m),desc.valueFile), policyPath=path.resolve(path.dirname(m),desc.policyFile);
-    players.push({ id:`${name}@D${d}`, kind:'nn', brain:'policy', spec:`nn:0:${valuePath}`,
-                   depth:d, model:m, policyPath, ab:true,
-                   label:`${desc.label||name} D${d}` });
+    const id=`${name}@D${d}`;
+    if(faceAllowed(id))players.push({ id, kind:'nn', brain:'policy', spec:`nn:0:${valuePath}`,
+                                     depth:d, model:m, policyPath, ab:true,
+                                     label:`${desc.label||name} D${d}` });
   } else if (kind !== 'dual') {
-    players.push({ id: `${name}@D${d}`, kind: 'nn', spec: `nn:0:${m}`,
-                   depth: d, model: m, label: `${name} D${d}` });
+    const id=`${name}@D${d}`;
+    if(faceAllowed(id))players.push({ id, kind: 'nn', spec: `nn:0:${m}`,
+                                     depth: d, model: m, label: `${name} D${d}` });
   } else {
     // One frozen dual file is two rated search identities. Bare measures the jointly-trained value
     // head; +P spends its own policy logits on ordering/cutoff. Same weights, same depth, one flag
     // apart -- the clean fusion ablation the old nn-only pool could not represent.
-    players.push({ id: `${name}@D${d}`, kind: 'nn', brain: 'dual', spec: `dual:0:${m}`,
-                   depth: d, model: m, label: `${name} D${d}` });
-    players.push({ id: `${name}+P@D${d}`, kind: 'nn', brain: 'dual', spec: `dual:0:${m}`,
-                   depth: d, model: m, dualPolicy: true, ab: true, label: `${name}+policy D${d}` });
+    const bareId=`${name}@D${d}`,policyId=`${name}+P@D${d}`;
+    if(faceAllowed(bareId))players.push({ id:bareId, kind:'nn', brain:'dual', spec:`dual:0:${m}`,
+                                         depth:d, model:m, label:`${name} D${d}` });
+    if(faceAllowed(policyId))players.push({ id:policyId, kind:'nn', brain:'dual', spec:`dual:0:${m}`,
+                                           depth:d, model:m, dualPolicy:true, ab:true,
+                                           label:`${name}+policy D${d}` });
   }
 }
 

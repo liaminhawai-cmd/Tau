@@ -14,23 +14,21 @@ async function birth(plan){if(!plan)return null;const args=plan.kind==='extra'?[
 (async()=>{
   const original=process.argv.slice(2), refit=has(original,'refit'), summary=getArg(original,'summary',path.join(dir,'elo-summary.json'));
   evo.sync(dir); evo.ingestSummary(dir,summary);
-  const restoredAtStart=evo.restoreDepthSpecialists(dir);
-  if(restoredAtStart.length)console.log(`[evolution] restored depth specialists: `+
-    restoredAtStart.map(x=>`${x.name} (${x.strong} strong / ${x.weak} weak)`).join(', '));
   if(has(original,'cullOnly')){
     const all=[];
-    // This is deliberately bounded by the target, not by a small arbitrary number of passes:
-    // above 50, the roster is supposed to whittle. Each cull() still requires its normal CI gate
-    // and 100-game bank debit, so this spends accumulated evidence; it does not lower the bar.
-    while(evo.status(dir).models > evo.TARGET_MODELS){
+    // Spend accumulated evidence one face decision at a time. Each decision removes exactly one
+    // D1/D2/D3/D4 identity and advances one waiting identity at that same depth.
+    while(evo.status(dir).gamesSinceCull>=100){
       const c=evo.cull(dir);
       if(!c.culled.length) break;
       all.push(...c.culled);
-      console.log(`[evolution] maintenance culled ${c.culled.map(x=>x.name).join(', ')}`);
+      console.log(`[evolution] maintenance ${c.culled.map(x=>`${x.name} ${x.result}`).join(', ')}`);
     }
     const end=evo.status(dir);
-    console.log(`[evolution] cull-only complete: ${all.length} retired; roster ${end.models} nets + ` +
-                `${end.ladders} ladder; cull bank ${end.gamesSinceCull.toFixed(0)}`);
+    console.log(`[evolution] cull-only complete: ${all.length} face decision(s); `+
+      `D1 ${end.faces.D1.seats}+${end.faces.D1.trial} trial, D2 ${end.faces.D2.seats}+${end.faces.D2.trial}, `+
+      `D3 ${end.faces.D3.seats}+${end.faces.D3.trial}, D4 ${end.faces.D4.seats}+${end.faces.D4.trial}; `+
+      `cull bank ${end.gamesSinceCull.toFixed(0)}`);
     // A cull can invalidate an alias immediately. Refresh now instead of letting the laptop spend
     // the next 45-minute rating cycle on a medal whose source just retired.
     try{medals.main();}catch(e){console.error('[medals] refresh failed:',e.message);}
@@ -39,20 +37,19 @@ async function birth(plan){if(!plan)return null;const args=plan.kind==='extra'?[
   const requested=String(getArg(original,'focus','')).split(',').filter(Boolean);
   const focus=evo.filterFocus(dir,requested), rotating=evo.ratingSlice(dir), seen=new Set(), slice=[];
   for(const p of [...focus,...rotating]){const k=path.resolve(p);if(!seen.has(k)){seen.add(k);slice.push(p);}}
-  const levels=evo.activeLadderLevels(dir), st=evo.status(dir);
-  console.log(`[evolution] rating roster ${st.models} nets + ${st.ladders} ladder; rotating ${slice.length}; cull bank ${st.gamesSinceCull.toFixed(0)} games`);
+  const levels=evo.activeLadderLevels(dir), st=evo.status(dir), baseFaces=evo.activeFaceIds(dir,[1,2]);
+  console.log(`[evolution] rating ${baseFaces.length} live D1/D2 faces from ${slice.length} model files + ${st.ladders} ladder; cull bank ${st.gamesSinceCull.toFixed(0)} games`);
   const base=original.slice(); setArg(base,'models',slice.join(',')); setArg(base,'levels',levels.join(',')); setArg(base,'depths','1,2');
+  setArg(base,'allowPlayers',baseFaces.join(','));
   if(!refit){setArg(base,'focus',slice.join(','));setArg(base,'focusPairs','0');}
   await run('elorank-legacy.js',base);
   evo.ingestSummary(dir,summary);
-  const restored=evo.restoreDepthSpecialists(dir);
-  if(restored.length)console.log(`[evolution] restored depth specialists: `+
-    restored.map(x=>`${x.name} (${x.strong} strong / ${x.weak} weak)`).join(', '));
 
   if(!refit){
     for(let i=0;i<3;i++){
       const c=evo.cull(dir); if(!c.culled.length) break;
-      console.log(`[evolution] culled ${c.culled.map(x=>x.name).join(', ')}`);
+      console.log(`[evolution] face decision: ${c.culled.map(x=>`${x.name} ${x.result}`+
+        (x.replacedBy?`; next ${x.replacedBy}`:'')).join(', ')}`);
       if(c.birth){const b=await birth(c.birth);if(b)console.log(`[evolution] replacement born ${b}`);}
     }
   }
@@ -62,11 +59,12 @@ async function birth(plan){if(!plan)return null;const args=plan.kind==='extra'?[
     const a=original.slice(), d3Summary=evo.d3SummaryPath(dir);
     setArg(a,'models',d3.join(',')); setArg(a,'levels',evo.activeLadderLevels(dir).join(','));
     setArg(a,'depths','3'); setArg(a,'summary',d3Summary);
+    setArg(a,'allowPlayers',evo.activeFaceIds(dir,[3]).join(','));
     if(!refit){
       setArg(a,'focus',d3.join(',')); setArg(a,'focusPairs','0');
       const bh=+getArg(original,'budgetHours',0);if(bh>0)setArg(a,'budgetHours',Math.max(.03,bh*.25));
     }
-    console.log(`[evolution] D3 earned by ${d3.length}: lower CI is above the active-model median`);
+    console.log(`[evolution] D3 face pool: ${evo.activeFaceIds(dir,[3]).length} incumbents/trial from ${d3.length} model files`);
     await run('elorank-legacy.js',a);
     evo.ingestSummary(dir,d3Summary);
   }
@@ -76,18 +74,19 @@ async function birth(plan){if(!plan)return null;const args=plan.kind==='extra'?[
     const a=original.slice(), d4Summary=evo.d4SummaryPath(dir);
     setArg(a,'models',d4.join(',')); setArg(a,'levels',evo.activeLadderLevels(dir).join(','));
     setArg(a,'depths','4'); setArg(a,'summary',d4Summary);
+    setArg(a,'allowPlayers',evo.activeFaceIds(dir,[4]).join(','));
     setArg(a,'games','1'); setArg(a,'workers','1');
     if(!refit){
       setArg(a,'focus',d4.join(',')); setArg(a,'focusPairs','0');
       const bh=+getArg(original,'budgetHours',0);
       if(bh>0)setArg(a,'budgetHours',Math.max(.02,Math.min(.08,bh*.10)));
     }
-    console.log(`[evolution] D4 probe for top ${d4.length} D3 model(s); 1 worker, 1 game per pairing, no D5`);
+    console.log(`[evolution] D4 face pool: ${evo.activeFaceIds(dir,[4]).length} incumbent/trial; 1 worker, 1 game per pairing, no D5`);
     await run('elorank-legacy.js',a);
     evo.ingestSummary(dir,d4Summary);
-    const dropped=evo.retireBadD4(dir);
-    if(dropped.length)console.log(`[evolution] D4 privilege retired for ${dropped.join(', ')}: D4 Elo below own D3 after >=2 D4 games`);
   }
   if(!refit){try{medals.main();}catch(e){console.error('[medals] refresh failed:',e.message);}}
-  const end=evo.status(dir);console.log(`[evolution] roster now ${end.models} nets + ${end.ladders} ladder; cull bank ${end.gamesSinceCull.toFixed(0)}`);
+  const end=evo.status(dir);console.log(`[evolution] faces now D1 ${end.faces.D1.seats}+${end.faces.D1.trial} trial, `+
+    `D2 ${end.faces.D2.seats}+${end.faces.D2.trial}, D3 ${end.faces.D3.seats}+${end.faces.D3.trial}, `+
+    `D4 ${end.faces.D4.seats}+${end.faces.D4.trial}; cull bank ${end.gamesSinceCull.toFixed(0)}`);
 })().catch(e=>{console.error('[evolution] elorank wrapper failed:',e.message);process.exitCode=1;});

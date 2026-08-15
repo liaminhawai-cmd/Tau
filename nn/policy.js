@@ -59,6 +59,11 @@ class PolicyMLP {
     this.sizes = sizes;
     this.policyEncoding = policyEncoding || (out === N_ACTIONS ? JOINT_ENCODING : 'factored-arm-bin-v1');
     this.topology = topology || null;
+    const structured = this.topology && ['dense-memory-v1','pairwise-memory-v1'].includes(this.topology.kind);
+    if (!fanIns && structured) {
+      const k=+this.topology.memoryWidth||0;
+      fanIns=sizes.slice(0,-1).map((n,l)=>n+k*Math.max(0,l-1));
+    }
     this.fanIns = fanIns || sizes.slice(0, -1);
     if (this.fanIns.length !== sizes.length - 1)
       throw new Error(`fanIns has ${this.fanIns.length} entries for ${sizes.length - 1} layers`);
@@ -71,6 +76,25 @@ class PolicyMLP {
       this.W.push(w);
       this.b.push(new Float64Array(n));
     }
+    // Pairwise-memory is a low-rank skip graph: every non-adjacent hidden source gets its own
+    // tiny learned message for every later destination. Adjacent layers already have the full
+    // ordinary matrix, so duplicating them as four-neuron skips would add parameters but no new
+    // route. Arrays are indexed [targetLayer][sourceHiddenLayer].
+    this.skipW = []; this.skipB = [];
+    if (this.topology && this.topology.kind === 'pairwise-memory-v1') {
+      const k = +this.topology.memoryWidth || 0;
+      if (k < 1) throw new Error('pairwise policy memoryWidth must be positive');
+      for (let l = 0; l < sizes.length - 1; l++) {
+        const sw = [], sb = [];
+        for (let s = 0; s < l - 1; s++) {
+          const nIn = sizes[s+1], w = new Float64Array(k*nIn);
+          const scale = Math.sqrt(2/(nIn + k));
+          for (let i = 0; i < w.length; i++) w[i] = (Math.random()*2 - 1)*scale*1.7;
+          sw.push(w); sb.push(new Float64Array(k));
+        }
+        this.skipW.push(sw); this.skipB.push(sb);
+      }
+    }
     this._adam = null;
   }
   forward(x) {                         // returns { z (raw logits), acts }
@@ -78,9 +102,11 @@ class PolicyMLP {
     let a = acts[0];
     const L = this.W.length;
     const dense = this.topology && this.topology.kind === 'dense-memory-v1';
-    const memoryWidth = dense ? (+this.topology.memoryWidth || 0) : 0;
-    const residualScale = dense ? (+this.topology.residualScale || 0) : 0;
+    const pairwise = this.topology && this.topology.kind === 'pairwise-memory-v1';
+    const memoryWidth = (dense || pairwise) ? (+this.topology.memoryWidth || 0) : 0;
+    const residualScale = (dense || pairwise) ? (+this.topology.residualScale || 0) : 0;
     const memories = [];
+    const history = [];
     for (let l = 0; l < L; l++) {
       let aIn = a;
       if (dense && l > 0) {
@@ -88,6 +114,21 @@ class PolicyMLP {
         aIn = new Float64Array(a.length + earlier.length*memoryWidth);
         aIn.set(a); let off = a.length;
         for (const m of earlier) { aIn.set(m, off); off += memoryWidth; }
+      } else if (pairwise && l > 1) {
+        const earlier = history.slice(0, -1), messages = [];
+        for (let s = 0; s < earlier.length; s++) {
+          const src = earlier[s], P = this.skipW[l][s], pb = this.skipB[l][s];
+          const m = new Float64Array(memoryWidth);
+          for (let j = 0; j < memoryWidth; j++) {
+            let sum = pb[j];
+            for (let i = 0; i < src.length; i++) sum += P[j*src.length+i]*src[i];
+            m[j] = Math.tanh(sum);
+          }
+          messages.push(m);
+        }
+        aIn = new Float64Array(a.length + messages.length*memoryWidth);
+        aIn.set(a); let off = a.length;
+        for (const m of messages) { aIn.set(m, off); off += memoryWidth; }
       }
       const nIn = this.fanIns[l], nOut = this.sizes[l+1];
       if (aIn.length !== nIn) throw new Error(`policy layer ${l} input ${aIn.length}, expected ${nIn}`);
@@ -98,10 +139,11 @@ class PolicyMLP {
         if (l === L - 1) z[j] = s;                // raw logits
         else {
           const branch = Math.tanh(s);
-          z[j] = dense && l > 0 ? a[j] + residualScale*branch : branch;
+          z[j] = (dense || pairwise) && l > 0 ? a[j] + residualScale*branch : branch;
         }
       }
       if (dense && l < L - 1) memories.push(z.slice(0, memoryWidth));
+      if (pairwise && l < L - 1) history.push(z);
       acts.push(z); a = z;
     }
     return { z: a, acts };
@@ -223,12 +265,26 @@ class PolicyMLP {
     const j = { policy: true, policyEncoding: this.policyEncoding, sizes: this.sizes,
                 W: this.W.map(w => [...w]), b: this.b.map(b => [...b]) };
     if (this.topology) { j.topology = this.topology; j.fanIns = this.fanIns; }
+    if (this.topology && this.topology.kind === 'pairwise-memory-v1') {
+      j.skipW = this.skipW.map(row => row.map(w => [...w]));
+      j.skipB = this.skipB.map(row => row.map(b => [...b]));
+    }
     return j;
   }
   static fromJSON(j) {
     const m = new PolicyMLP(j.sizes, j.topology || null, j.fanIns || null, j.policyEncoding || null);
     j.W.forEach((w, l) => m.W[l].set(w));
     j.b.forEach((b, l) => m.b[l].set(b));
+    if (j.topology && j.topology.kind === 'pairwise-memory-v1') {
+      if (!Array.isArray(j.skipW) || !Array.isArray(j.skipB))
+        throw new Error('pairwise policy checkpoint is missing skip weights');
+      for (let l = 0; l < m.skipW.length; l++) for (let s = 0; s < m.skipW[l].length; s++) {
+        const w = j.skipW[l] && j.skipW[l][s], b = j.skipB[l] && j.skipB[l][s];
+        if (!w || w.length !== m.skipW[l][s].length || !b || b.length !== m.skipB[l][s].length)
+          throw new Error(`pairwise policy skip ${s}->${l} shape mismatch`);
+        m.skipW[l][s].set(w); m.skipB[l][s].set(b);
+      }
+    }
     return m;
   }
 }
