@@ -204,6 +204,16 @@ function snapshotModels(paths) {
     for (const p of paths) {
       const dest = path.join(snapDir, path.basename(p));
       if (fresh || !fs.existsSync(dest)) atomicCopy(p, dest);
+      // A policy entrant is a tiny stable descriptor plus two frozen dependencies. Snapshot all
+      // three together so a long/resumed rating run can never mix a new policy or value base into
+      // games already attributed to the old identity.
+      try {
+        const j=JSON.parse(fs.readFileSync(p,'utf8'));
+        if(j.policyEntrant===true)for(const key of ['valueFile','policyFile']){
+          const src=path.resolve(path.dirname(p),j[key]), dep=path.join(snapDir,path.basename(j[key]));
+          if(fresh||!fs.existsSync(dep))atomicCopy(src,dep);
+        }
+      } catch (_) {}
       out.push(dest);
     }
     if (fresh) console.log(`snapshotted ${out.length} models to ${snapDir} (field frozen for this run)`);
@@ -217,9 +227,9 @@ function snapshotModels(paths) {
 }
 
 const players = [];   // { id, kind:'ladder'|'nn', spec, depth, label }
-function isDualModel(file) {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')).dual === true; }
-  catch (e) { return false; }
+function modelKind(file) {
+  try { const j=JSON.parse(fs.readFileSync(file,'utf8')); return j.policyEntrant===true?'policy':j.dual===true?'dual':'value'; }
+  catch (e) { return 'value'; }
 }
 let LADDER_N = 11, LADDER_DEFS = [];
 try { LADDER_DEFS = require('./engine.js').createEngine().AI_LADDER; LADDER_N = LADDER_DEFS.length; } catch (e) {}
@@ -233,7 +243,15 @@ for (const l of useLevels)
   players.push({ id: `L${l}`, kind: 'ladder', spec: `L${l}`, level: l, label: `L${l}` });
 for (const m of snapshotModels(discoverModels())) for (const d of depths) {
   const name = path.basename(m, '.json');
-  if (!isDualModel(m)) {
+  const kind=modelKind(m);
+  if (kind === 'policy') {
+    if(d<2)continue; // joint distance priors choose the recursively-searched frontier; D1 is identical to bare value
+    const desc=JSON.parse(fs.readFileSync(m,'utf8'));
+    const valuePath=path.resolve(path.dirname(m),desc.valueFile), policyPath=path.resolve(path.dirname(m),desc.policyFile);
+    players.push({ id:`${name}@D${d}`, kind:'nn', brain:'policy', spec:`nn:0:${valuePath}`,
+                   depth:d, model:m, policyPath, ab:true,
+                   label:`${desc.label||name} D${d}` });
+  } else if (kind !== 'dual') {
     players.push({ id: `${name}@D${d}`, kind: 'nn', spec: `nn:0:${m}`,
                    depth: d, model: m, label: `${name} D${d}` });
   } else {
@@ -405,6 +423,8 @@ function playPair(a, b) {
     if (b.kind === 'nn') args.push('--depthB', String(b.depth));
     if (a.dualPolicy) args.push('--dualPolicyA');
     if (b.dualPolicy) args.push('--dualPolicyB');
+    if (a.policyPath) args.push('--policyA', a.policyPath);
+    if (b.policyPath) args.push('--policyB', b.policyPath);
     if (a.ab) args.push('--abA');
     if (b.ab) args.push('--abB');
     if (saveData) args.push('--saveData', saveData);

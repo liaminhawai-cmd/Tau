@@ -1,12 +1,15 @@
-// The policy head: same 94 canonical input features as the value net (features.js), but instead of
-// scoring the position it predicts the MOVE a strong mover plays from it -- two softmax groups over
-// one shared tanh trunk:
+// Policy heads over the same 94 canonical inputs as the value net. Two encodings remain readable:
+//
+// LEGACY FACTORED (22 outputs): two independent softmax groups over one shared tanh trunk:
 //   arms:  6 logits, sorted-slot pivot (0..2, outermost first) x canonical direction (see
 //          features.moveFrame -- raw foot labels and world directions are exactly the symmetries
 //          the input features already quotient away, so outputs must live in the same frame)
 //   bins:  N_BINS logits over |swing angle|, uniform up to the 170-degree safety cap
-// Factored rather than joint (6+N outputs, not 6*N): the arm choice and how far to swing are
-// nearly independent decisions, and 6*N joint cells would spread the same data 6x thinner.
+// JOINT SIGNED (96 outputs): one softmax over
+//   centre/left/right pivot x clockwise/anticlockwise x 16 swing-distance bins.
+// This is the new experiment. Distance is conditional on the exact pivot and direction instead of
+// pretending that the same global distance distribution applies to all six ways to move. Existing
+// 22-output policy and dual checkpoints keep their original behaviour and remain loadable.
 //
 // Structurally a sibling of net.js's MLP (same layout, same Adam, same JSON shape) with two
 // differences that make it a classifier instead of a regressor: the FINAL layer is linear (softmax
@@ -17,6 +20,10 @@
 const N_BINS = 16;
 const CAP_RAD = 170*Math.PI/180;
 const N_ARMS = 6;
+const N_LEGS = 3;
+const SIGNED_BINS = N_BINS*2;
+const N_ACTIONS = N_LEGS*SIGNED_BINS;
+const JOINT_ENCODING = 'centre-left-right-signed32-v1';
 
 function armIndex(slot, canonDir) { return slot*2 + (canonDir > 0 ? 0 : 1); }
 function binIndex(rad) {
@@ -24,6 +31,15 @@ function binIndex(rad) {
   return Math.floor(a/CAP_RAD*N_BINS);
 }
 function binCenter(bin) { return (bin + 0.5)*CAP_RAD/N_BINS; }
+function actionIndex(leg, canonDir, rad) {
+  if (leg < 0 || leg >= N_LEGS) throw new Error(`joint-policy leg out of range: ${leg}`);
+  return leg*SIGNED_BINS + (canonDir > 0 ? 0 : N_BINS) + binIndex(rad);
+}
+function decodeAction(action) {
+  if (action < 0 || action >= N_ACTIONS) throw new Error(`joint-policy action out of range: ${action}`);
+  const leg = Math.floor(action/SIGNED_BINS), within = action%SIGNED_BINS;
+  return { leg, canonDir: within < N_BINS ? 1 : -1, bin: within%N_BINS };
+}
 
 function softmax(z, from, to) {
   let mx = -Infinity;
@@ -36,13 +52,19 @@ function softmax(z, from, to) {
 }
 
 class PolicyMLP {
-  constructor(sizes) {                 // e.g. [94, 96, 64, 22] -- last MUST be N_ARMS + N_BINS
-    if (sizes[sizes.length - 1] !== N_ARMS + N_BINS)
-      throw new Error(`policy output layer must be ${N_ARMS + N_BINS} (${N_ARMS} arms + ${N_BINS} bins)`);
+  constructor(sizes, topology=null, fanIns=null, policyEncoding=null) {
+    const out = sizes[sizes.length - 1];
+    if (out !== N_ARMS + N_BINS && out !== N_ACTIONS)
+      throw new Error(`policy output layer must be ${N_ARMS + N_BINS} (legacy) or ${N_ACTIONS} (joint)`);
     this.sizes = sizes;
+    this.policyEncoding = policyEncoding || (out === N_ACTIONS ? JOINT_ENCODING : 'factored-arm-bin-v1');
+    this.topology = topology || null;
+    this.fanIns = fanIns || sizes.slice(0, -1);
+    if (this.fanIns.length !== sizes.length - 1)
+      throw new Error(`fanIns has ${this.fanIns.length} entries for ${sizes.length - 1} layers`);
     this.W = []; this.b = [];
     for (let l = 0; l < sizes.length - 1; l++) {
-      const fanIn = sizes[l], n = sizes[l+1];
+      const fanIn = this.fanIns[l], n = sizes[l+1];
       const w = new Float64Array(fanIn*n);
       const s = Math.sqrt(2/(fanIn + n));
       for (let i = 0; i < w.length; i++) w[i] = (Math.random()*2 - 1)*s*1.7;
@@ -55,21 +77,47 @@ class PolicyMLP {
     const acts = [Float64Array.from(x)];
     let a = acts[0];
     const L = this.W.length;
+    const dense = this.topology && this.topology.kind === 'dense-memory-v1';
+    const memoryWidth = dense ? (+this.topology.memoryWidth || 0) : 0;
+    const residualScale = dense ? (+this.topology.residualScale || 0) : 0;
+    const memories = [];
     for (let l = 0; l < L; l++) {
-      const nIn = this.sizes[l], nOut = this.sizes[l+1];
+      let aIn = a;
+      if (dense && l > 0) {
+        const earlier = memories.slice(0, -1);
+        aIn = new Float64Array(a.length + earlier.length*memoryWidth);
+        aIn.set(a); let off = a.length;
+        for (const m of earlier) { aIn.set(m, off); off += memoryWidth; }
+      }
+      const nIn = this.fanIns[l], nOut = this.sizes[l+1];
+      if (aIn.length !== nIn) throw new Error(`policy layer ${l} input ${aIn.length}, expected ${nIn}`);
       const z = new Float64Array(nOut), W = this.W[l], b = this.b[l];
       for (let j = 0; j < nOut; j++) {
         let s = b[j];
-        for (let i = 0; i < nIn; i++) s += W[j*nIn + i]*a[i];
-        z[j] = l < L - 1 ? Math.tanh(s) : s;      // linear output layer -- these are logits
+        for (let i = 0; i < nIn; i++) s += W[j*nIn + i]*aIn[i];
+        if (l === L - 1) z[j] = s;                // raw logits
+        else {
+          const branch = Math.tanh(s);
+          z[j] = dense && l > 0 ? a[j] + residualScale*branch : branch;
+        }
       }
+      if (dense && l < L - 1) memories.push(z.slice(0, memoryWidth));
       acts.push(z); a = z;
     }
     return { z: a, acts };
   }
-  // Move distribution for a position: { arms: p(6), bins: p(N_BINS) }
+  // Legacy -> {arms, bins}. Joint -> {actions, arms}; the six arm values are marginals retained
+  // for safe arm ordering, while `actions` scores the actual signed-distance candidates.
   predict(x) {
     const { z } = this.forward(x);
+    if (z.length === N_ACTIONS) {
+      const actions = softmax(z, 0, N_ACTIONS), arms = new Float64Array(N_ARMS);
+      for (let a = 0; a < N_ACTIONS; a++) {
+        const { leg, canonDir } = decodeAction(a);
+        arms[armIndex(leg, canonDir)] += actions[a];
+      }
+      return { actions, arms, encoding: JOINT_ENCODING };
+    }
     return { arms: softmax(z, 0, N_ARMS), bins: softmax(z, N_ARMS, N_ARMS + N_BINS) };
   }
   // Accumulate this batch's gradients INTO gW/gB and return the weighted cross-entropy SUM.
@@ -79,6 +127,8 @@ class PolicyMLP {
   // of trainBatch so the serial and parallel paths run byte-identical math instead of two copies
   // that can drift.
   accumGrads(batch, gW, gB) {
+    if (this.sizes[this.sizes.length - 1] === N_ACTIONS)
+      throw new Error('joint/dense policy training is PyTorch-only; use torch-train-joint-policy.py');
     let ce = 0;
     for (const { x, arm, bin, w } of batch) {
       const wt = w === undefined ? 1 : w;
@@ -170,14 +220,18 @@ class PolicyMLP {
     return this;
   }
   toJSON() {
-    return { policy: true, sizes: this.sizes, W: this.W.map(w => [...w]), b: this.b.map(b => [...b]) };
+    const j = { policy: true, policyEncoding: this.policyEncoding, sizes: this.sizes,
+                W: this.W.map(w => [...w]), b: this.b.map(b => [...b]) };
+    if (this.topology) { j.topology = this.topology; j.fanIns = this.fanIns; }
+    return j;
   }
   static fromJSON(j) {
-    const m = new PolicyMLP(j.sizes);
+    const m = new PolicyMLP(j.sizes, j.topology || null, j.fanIns || null, j.policyEncoding || null);
     j.W.forEach((w, l) => m.W[l].set(w));
     j.b.forEach((b, l) => m.b[l].set(b));
     return m;
   }
 }
 
-module.exports = { PolicyMLP, N_ARMS, N_BINS, CAP_RAD, armIndex, binIndex, binCenter };
+module.exports = { PolicyMLP, N_ARMS, N_BINS, CAP_RAD, N_LEGS, SIGNED_BINS, N_ACTIONS,
+                   JOINT_ENCODING, armIndex, binIndex, binCenter, actionIndex, decodeAction };

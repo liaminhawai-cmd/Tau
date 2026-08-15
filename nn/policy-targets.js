@@ -57,8 +57,8 @@
 const fs = require('fs');
 const path = require('path');
 const { createEngine } = require('./engine.js');
-const { moveFrame } = require('./features.js');
-const { armIndex, binIndex, CAP_RAD } = require('./policy.js');
+const { moveFrame, jointMoveFrame } = require('./features.js');
+const { armIndex, binIndex, actionIndex, CAP_RAD, JOINT_ENCODING } = require('./policy.js');
 
 const MIN_MOVE = 2*Math.PI/180;    // below this the engine treats it as a non-move; also skips
                                    // the null-plan "pass" rows (pose unchanged, active swapped)
@@ -123,7 +123,9 @@ function main() {
 
   // Namespaced by exactly the flags that change mining OUTPUT, so a run under different flags can
   // never be served a cached result computed under a different scheme.
-  const cacheKey = allSources ? 'allSources' : `minDepth${minDepth}${noThrows ? '-noThrows' : ''}`;
+  // v2 rows carry the new 96-way joint action as well as the legacy arm/bin pair. Keep them in a
+  // new namespace so an old per-file cache can never replay rows without `action`.
+  const cacheKey = 'joint-v2-' + (allSources ? 'allSources' : `minDepth${minDepth}${noThrows ? '-noThrows' : ''}`);
   const cacheDir = path.join(__dirname, '.mine-cache', cacheKey);
   const manifestPath = path.join(cacheDir, 'manifest.json');
   let manifest = {};
@@ -151,7 +153,7 @@ function main() {
     const sw = sourceWeight(finalRow.mv);
     const mover = finalRow.m, victim = 1 - mover;
     setPose(finalRow.p, mover);
-    const frame = moveFrame(eng);
+    const frame = moveFrame(eng), jointFrame = jointMoveFrame(eng);
     const snap = eng.takeSnap();
     const reset = () => {
       const g = eng.getG();
@@ -170,7 +172,10 @@ function main() {
             const slot = frame.order.indexOf(pv);
             const arm = armIndex(slot, dir*frame.mirror);
             const bin = binIndex(rad);
-            emit({ f: finalRow.f, arm, bin, z: finalRow.z, g: finalRow.g,
+            const jointLeg = jointFrame.order.indexOf(pv);
+            const action = actionIndex(jointLeg, dir*jointFrame.mirror, rad);
+            emit({ f: finalRow.f, arm, bin, action, policyEncoding: JOINT_ENCODING,
+                   z: finalRow.z, g: finalRow.g,
                    thrown: 1, ...(sw !== 1 ? { sw } : {}),
                    ...(finalRow.mv ? { mv: finalRow.mv } : {}) });
             c.throwTargets++;
@@ -222,14 +227,17 @@ function main() {
         if (best > 0.05 || second < 0.5) { c.ambiguous++; prev = j; continue; }
         // canonical frame AT THE DECISION POSITION (prev), for the mover
         setPose(prev.p, mover);
-        const frame = moveFrame(eng);
+        const frame = moveFrame(eng), jointFrame = jointMoveFrame(eng);
         const slot = frame.order.indexOf(pivotIdx);
         const arm = armIndex(slot, (dRot > 0 ? 1 : -1)*frame.mirror);
         const bin = binIndex(dRot);
+        const jointLeg = jointFrame.order.indexOf(pivotIdx);
+        const action = actionIndex(jointLeg, (dRot > 0 ? 1 : -1)*jointFrame.mirror, dRot);
         // `mv` rides along when present so train-policy.js can weight by the mover's CURRENT pool
         // rating at train time (see eloweight.js for why the id and not the rating is stored). `sw`
         // rides along the same way for the source weight -- see header for the four tiers.
-        emit({ f: prev.f, arm, bin, z: prev.z, g: prev.g,
+        emit({ f: prev.f, arm, bin, action, policyEncoding: JOINT_ENCODING,
+               z: prev.z, g: prev.g,
                ...(sw !== 1 ? { sw } : {}), ...(prev.mv ? { mv: prev.mv } : {}) });
         c.targets++;
       }

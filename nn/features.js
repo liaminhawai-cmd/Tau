@@ -73,6 +73,38 @@ function moveFrame(eng) {
   return { order: sortedFeet(me, CFG).map(f => f.idx), mirror: oyr < 0 ? -1 : 1 };
 }
 
+// Canonical action frame for the joint policy. Raw foot numbers rotate with the tripod and are
+// therefore not learnable identities. Give each pivot a geometric role instead:
+//   0 centre -- the foot nearest the board centre
+//   1 left   -- the counter-clockwise flank in the mirrored mover-relative frame
+//   2 right  -- the clockwise flank in that frame
+// `mirror` is deliberately identical to moveFrame(): after reflecting the board so the opponent
+// always occupies the same side, a positive/negative swing means the same thing for both colours.
+// The only discontinuities are the unavoidable 60-degree sector boundaries where which tripod
+// foot is most centre-facing genuinely changes.
+function jointMoveFrame(eng) {
+  const G = eng.getG(), CFG = eng.CFG;
+  const me = G.pieces[G.active], op = G.pieces[1 - G.active];
+  const b = Math.atan2(me.y, me.x) || 0;
+  const oyr = op.x*Math.sin(-b) + op.y*Math.cos(-b);
+  const mirror = oyr < 0 ? -1 : 1;
+  const feet = [];
+  for (let i = 0; i < 3; i++) {
+    const a = me.rot + i*TWO_PI/3;
+    const x = me.x + Math.cos(a)*CFG.footR, y = me.y + Math.sin(a)*CFG.footR;
+    feet.push({ idx: i, x, y, r: Math.hypot(x, y) });
+  }
+  feet.sort((u, v) => u.r - v.r || u.idx - v.idx);
+  const centre = feet[0];
+  const ix = -me.x, iy = -me.y;              // hub -> board centre
+  const flank = feet.slice(1).map(f => ({
+    ...f,
+    // cross(inward, hub->foot), reflected into the canonical player frame
+    side: mirror*(ix*(f.y - me.y) - iy*(f.x - me.x)),
+  })).sort((u, v) => v.side - u.side || u.idx - v.idx);
+  return { order: [centre.idx, flank[0].idx, flank[1].idx], mirror };
+}
+
 // Where a circle of radius R about (px,py) meets a circle of radius cr about (cx,cy), as ANGLES
 // measured from (px,py) -- which is the form a sweep needs, since a pinned foot turns each other
 // foot into a point travelling around exactly this circle. Pushes {ang, x, y} onto `out`.
@@ -266,4 +298,4 @@ function features(eng) {
   return out;
 }
 
-module.exports = { features, N_FEATURES, moveFrame };
+module.exports = { features, N_FEATURES, moveFrame, jointMoveFrame };

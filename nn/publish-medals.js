@@ -50,7 +50,9 @@ function main(){
     const bestByModel={};
     for(const [id,r0] of Object.entries(summary.players||{})){
       const r={id,...r0};
-      if(r.kind!=='nn'||r.brain==='dual'||!r.model||+r.depth!==depth||
+      // Medal aliases must remain standalone one-output value JSONs. Dual and policy-descriptor
+      // entrants share the Elo graph but cannot be copied into a worker's plain-value slot.
+      if(r.kind!=='nn'||(r.brain&&r.brain!=='nn')||!r.model||+r.depth!==depth||
          (r.games||0)<12||!Number.isFinite(+r.rankLo))continue;
       const key=path.basename(r.model,'.json');
       if(!active.has(key))continue;

@@ -96,7 +96,8 @@
 // throw arms -- a pruned recursive search can miss an opponent throw a full-width depth-2 search
 // would have caught. `quiesce` covers exactly that hole cheaply; prefer them together.
 'use strict';
-const { features, moveFrame } = require('./features.js');
+const { features, moveFrame, jointMoveFrame } = require('./features.js');
+const { actionIndex } = require('./policy.js');
 
 const ROUGH_REF = 0.0225;            // measured median sweep roughness over 158 real positions
 const STEP_RAD = 3*Math.PI/180;      // the engine brains' own sampling step
@@ -231,9 +232,12 @@ function nnPlanFor(eng, net, idx, opts) {
   // A dual net only doubles as an arm-ordering source when `dualPolicy` opts in (see the header
   // note above) -- an explicit `o.policy` always wins if both are somehow given.
   const policySrc = o.policy || (o.dualPolicy && o.dual);
+  let jointActions = null, jointFrame = null;
   if (policySrc) {
-    const frame = moveFrame(eng);
-    const { arms } = policySrc.predict(features(eng));
+    const pred = policySrc.predict(features(eng));
+    const frame = pred.actions ? jointMoveFrame(eng) : moveFrame(eng);
+    const { arms } = pred;
+    if (pred.actions) { jointActions = pred.actions; jointFrame = frame; }
     const armKey = a => a.pv*2 + (a.dir > 0 ? 1 : 0);
     const score = new Map();
     for (let ai = 0; ai < arms.length; ai++) {
@@ -277,7 +281,13 @@ function nnPlanFor(eng, net, idx, opts) {
           v = evalFn(eng, idx);
           g.active = idx;
         }
+        let prior;
+        if (jointActions) {
+          const leg = jointFrame.order.indexOf(pv);
+          prior = jointActions[actionIndex(leg, dir*jointFrame.mirror, rad)];
+        }
         arm.push({ pivotIdx: pv, dir, targetRad: rad, v,
+                   ...(prior !== undefined ? { prior } : {}),
                    ...(parkStops && !oppOff && isParkStop(eng, idx, pv) ? { park: true } : {}) });
       }
       restore();
@@ -364,9 +374,16 @@ function nnPlanFor(eng, net, idx, opts) {
     // from their own side, hence the negation. Off unless o.abCut, so the default search is
     // bit-identical to before -- the cutoff returns a bound rather than an exact value, and that
     // trade deserves to be measured before it becomes the default.
+    // A joint policy ranks actual signed-distance candidates, not merely six broad arms. Let it
+    // choose which `keep` candidates earn recursive search -- the compounding lever arm pruning
+    // could never reach. Every legal waypoint was still generated and every throw is protected;
+    // this changes the narrow deep-search frontier only. Legacy policies retain the old shallow-
+    // value shortlist exactly.
+    const deepCands = jointActions
+      ? cands.slice().sort((a, b) => (b.prior || 0) - (a.prior || 0)).slice(0, keep)
+      : cands.slice(0, keep);
     let bestDeep = -Infinity;
-    for (let i = 0; i < keep; i++) {
-      const c = cands[i];
+    for (const c of deepCands) {
       eng.applyPlanSearch(c);   // hypothetical: must not file into koHist or tick the move cap
       const g1 = eng.getG();
       let deep;
@@ -394,7 +411,9 @@ function nnPlanFor(eng, net, idx, opts) {
       c.deep = deep;
       if (deep > bestDeep) bestDeep = deep;
     }
-    cands.splice(0, keep, ...cands.slice(0, keep).sort((a, b) => b.deep - a.deep));
+    deepCands.sort((a, b) => b.deep - a.deep);
+    const chosenForDepth = new Set(deepCands);
+    cands.splice(0, cands.length, ...deepCands, ...cands.filter(c => !chosenForDepth.has(c)));
   }
 
   // Quiescence (`o.quiesce`): screen the top few candidates for an immediate opponent throw reply

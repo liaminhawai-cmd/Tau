@@ -15,7 +15,8 @@ const PROTECTED_LADDER_COUNT = 6;
 const D3_SHARE = 0.04;
 const STRONG_FACE_MIN_GAMES = 4;   // a pessimistic CI may protect a promising depth specialist
 const WEAK_FACE_MIN_GAMES = 12;    // retirement still needs substantially more evidence
-const ALIASES = new Set(['best.json','value.json','scratch.json','wide.json','ultra.json','deep.json','l15_value.json']);
+const ALIASES = new Set(['best.json','value.json','scratch.json','wide.json','ultra.json','deep.json','l15_value.json',
+  'policy-joint-base.json']);
 
 const statePath = dir => path.join(dir, 'models', '.evolution-roster.json');
 const d3SummaryPath = dir => path.join(dir, '.evolution-d3-summary.json');
@@ -48,11 +49,15 @@ function saveState(dir, s) { atomicWrite(statePath(dir), JSON.stringify(s, null,
 function modelMeta(p) {
   try {
     const j = JSON.parse(fs.readFileSync(p, 'utf8'));
-    if (j && j.dual === true) return { usable:true, dual:true, shape:Array.isArray(j.sizes)?j.sizes.slice(1,-1).join(','):null };
+    if (j && j.policyEntrant === true) {
+      const base=path.join(path.dirname(p),j.valueFile||''), policy=path.join(path.dirname(p),j.policyFile||'');
+      if(fs.existsSync(base)&&fs.existsSync(policy))return {usable:true,dual:false,policy:true,shape:j.shape||null};
+    }
+    if (j && j.dual === true) return { usable:true, dual:true, policy:false, shape:Array.isArray(j.sizes)?j.sizes.slice(1,-1).join(','):null };
     if (j && Array.isArray(j.sizes) && j.sizes.length >= 3 && +j.sizes[j.sizes.length-1] === 1)
-      return { usable:true, dual:false, shape:j.sizes.slice(1,-1).join(',') };
+      return { usable:true, dual:false, policy:false, shape:j.sizes.slice(1,-1).join(',') };
   } catch (_) {}
-  return { usable:false, dual:false, shape:null };
+  return { usable:false, dual:false, policy:false, shape:null };
 }
 function stableModelEntries(dir) {
   const md = path.join(dir, 'models');
@@ -64,7 +69,7 @@ function stableModelEntries(dir) {
         /^best\.pre-pool-/.test(f) || /^dual-startup-probe-/.test(f) || /\.partial\.json$/.test(f)) continue;
     const p = path.join(md, f), m = modelMeta(p);
     if (!m.usable) continue;
-    out.push({ name:path.basename(f,'.json'), file:f, path:p, dual:m.dual, shape:m.shape });
+    out.push({ name:path.basename(f,'.json'), file:f, path:p, dual:m.dual, policy:m.policy, shape:m.shape });
   }
   return out;
 }
@@ -81,7 +86,7 @@ function productionLadderLevels(ladderN=null) {
 function sync(dir, ladderN=null) {
   const s = loadState(dir);
   const entries = stableModelEntries(dir);
-  for (const e of entries) if (!s.retired[e.name]) s.active[e.name] = { file:e.file, dual:e.dual, shape:e.shape };
+  for (const e of entries) if (!s.retired[e.name]) s.active[e.name] = { file:e.file, dual:e.dual, policy:e.policy, shape:e.shape };
   for (const name of Object.keys(s.active)) {
     const p = path.join(dir,'models',s.active[name].file || `${name}.json`);
     if (!fs.existsSync(p)) delete s.active[name];
@@ -199,7 +204,7 @@ function restoreDepthSpecialists(dir) {
   for(const name of Object.keys(s.retired)) {
     const e=entries.get(name), spec=depthSpecialist(s,name,medians);
     if(!e||!spec)continue;
-    s.active[name]={file:e.file,dual:e.dual,shape:e.shape,restoredAt:new Date().toISOString(),
+    s.active[name]={file:e.file,dual:e.dual,policy:e.policy,shape:e.shape,restoredAt:new Date().toISOString(),
       depthSpecialist:`${spec.strong.face}>median; ${spec.weak.face}<median`};
     delete s.retired[name]; restored.push({name,strong:spec.strong.face,weak:spec.weak.face});
   }
@@ -208,7 +213,8 @@ function restoreDepthSpecialists(dir) {
 }
 function ratingPriority(s, name) {
   const r=s.latest[name]||{}, d=r.depthGames||{};
-  const missing=(d[1]>0?0:2)+(d[2]>0?0:1);
+  const policy=!!s.active[name]?.policy;
+  const missing=(policy?0:(d[1]>0?0:2))+(d[2]>0?0:1);
   return missing*1e9 + (Number.isFinite(r.rankHi)&&Number.isFinite(r.rankLo)?(r.rankHi-r.rankLo)*1e6:5e8) - (r.games||0);
 }
 function chooseSlice(dir, maxN, advance=false) {
@@ -230,7 +236,8 @@ function rosterMedian(s) { return q(activeNames(s).map(n=>s.latest[n]&&s.latest[
 function earnedD3(s,name) {
   const r=s.latest[name]; if(!r) return false;
   const med=rosterMedian(s), d=r.depthGames||{};
-  return Number.isFinite(med)&&Number.isFinite(r.rankLo)&&d[1]>0&&d[2]>0&&r.rankLo>med;
+  const covered=!!s.active[name]?.policy ? d[2]>0 : d[1]>0&&d[2]>0;
+  return Number.isFinite(med)&&Number.isFinite(r.rankLo)&&covered&&r.rankLo>med;
 }
 function d3Slice(dir) {
   const s=sync(dir), med=rosterMedian(s);
@@ -280,7 +287,10 @@ function selfplayProfile(paths, {dir}) {
     weights[e.name]=+(r*r/(g+0.01)+Math.sqrt(r)).toFixed(6);
     const rec=s.latest[e.name]||{}, dg=rec.depthGames||{};
     const d3=earnedD3(s,e.name); depthCaps[e.name]=d3?3:2;
-    if(e.meta.dual){
+    if(e.meta.policy){
+      if((dg[2]||0)<=0)coverage.push({name:e.name,face:'policy',depth:2});
+      if(d3&&(dg[3]||0)<=0)coverage.push({name:e.name,face:'policy',depth:3});
+    } else if(e.meta.dual){
       for(const depth of [1,2]) if((dg[depth]||0)<=0){ coverage.push({name:e.name,face:'bare',depth}); coverage.push({name:e.name,face:'policy',depth}); }
       if(d3 && (dg[3]||0)<=0){ coverage.push({name:e.name,face:'bare',depth:3}); coverage.push({name:e.name,face:'policy',depth:3}); }
     } else {
@@ -382,7 +392,7 @@ function cull(dir) {
   if(modelCount<=TARGET_MODELS){
     const deadModel=culled.find(x=>x.type==='model');
     if(deadModel){
-      const parents=activeNames(s).map(name=>({name,info:s.active[name],r:s.latest[name]})).filter(x=>x.info&&!x.info.dual&&x.r&&Number.isFinite(x.r.rankLo)&&x.info.shape).sort((a,b)=>b.r.rankLo-a.r.rankLo);
+      const parents=activeNames(s).map(name=>({name,info:s.active[name],r:s.latest[name]})).filter(x=>x.info&&!x.info.dual&&!x.info.policy&&x.r&&Number.isFinite(x.r.rankLo)&&x.info.shape).sort((a,b)=>b.r.rankLo-a.r.rankLo);
       if(parents.length){ const parent=parents[0], serial=String(s.birthSerial++).padStart(4,'0'); const kinds=['scratch','mutant','extra']; const kind=kinds[(s.birthSerial-2)%kinds.length]; birth={kind,serial,parent:parent.name,parentFile:parent.info.file,parentPath:path.join(dir,'models',parent.info.file),shape:parent.info.shape,outPath:path.join(dir,'models',`evo-${serial}-${kind}.json`)}; }
     }
   }
@@ -391,7 +401,7 @@ function cull(dir) {
   saveState(dir,s);
   return {culled,birth,state:s};
 }
-function noteBirth(dir,birth){ if(!birth||!birth.outPath||!fs.existsSync(birth.outPath)) return; const s=sync(dir), name=path.basename(birth.outPath,'.json'), meta=modelMeta(birth.outPath); if(meta.usable&&!s.retired[name]) s.active[name]={file:path.basename(birth.outPath),dual:meta.dual,shape:meta.shape}; saveState(dir,s); }
+function noteBirth(dir,birth){ if(!birth||!birth.outPath||!fs.existsSync(birth.outPath)) return; const s=sync(dir), name=path.basename(birth.outPath,'.json'), meta=modelMeta(birth.outPath); if(meta.usable&&!s.retired[name]) s.active[name]={file:path.basename(birth.outPath),dual:meta.dual,policy:meta.policy,shape:meta.shape}; saveState(dir,s); }
 function status(dir){ const s=sync(dir); return {models:activeNames(s).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,median:rosterMedian(s)}; }
 module.exports={TARGET_MODELS,D3_SHARE,sync,ingestSummary,activeModelNames,restoreDepthSpecialists,
   selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,filterFocus,d3Slice,d4Slice,

@@ -49,7 +49,7 @@ echo      -- the trainer soaks up the ~20min every policy cycle spends single-th
 echo      tournament tail after fast matchups finish. Policy still wins any core it asks for.
 echo.
 echo  43. WILD MINT + FULL TRAINER
-echo      -- 8 value nets + 5 joint nets + one 10x400 dense-memory behemoth, resumable
+echo      -- 8 value + 5 dual + value behemoth + 3 joint-action policy nets, resumable
 echo      -- verified entrants expand the pool, then weak ones whittle to the floor; no restart
 echo  44. L14 LEVERAGE vs L11
 echo      -- multicore, balanced colours/openings; same search, tests centre-side hub attack
@@ -276,6 +276,18 @@ node nn\behemoth-mint.js
 if errorlevel 1 (
   echo.
   echo Behemoth mint stopped early. Completed chunks/state are safe; normal trainer will still start.
+)
+echo.
+echo === joint-action policy expedition ===
+echo Normal 96x64, large 4x512, and 10x400 dense-memory behemoth.
+echo Each predicts centre/left/right pivot plus signed swing distance as one 96-way action.
+echo Rare actions are class-balanced; quick wins and winning throws get modest extra weight.
+echo Swing size itself is never rewarded. All three share one frozen value net in the Elo pool.
+echo.
+node nn\joint-policy-mint.js
+if errorlevel 1 (
+  echo.
+  echo Joint-policy mint stopped early. Completed chunks/entrants are safe; normal trainer will still start.
 )
 :wildnormal
 echo.
