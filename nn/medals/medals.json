@@ -1,19 +1,9 @@
 {
-  "updated": "2026-08-15T16:31:02.206Z",
+  "updated": "2026-08-15T16:34:33.274Z",
   "basis": "per-depth rankLo; active source; >=12 games",
   "depths": {
     "D1": {
       "gold": {
-        "source": "wide-m1-126.json",
-        "sourceId": "wide-m1-126@D1",
-        "depth": 1,
-        "games": 12,
-        "elo": 300.4,
-        "rank": 0,
-        "rankLo": 9,
-        "rankHi": 11
-      },
-      "silver": {
         "source": "ckpt-054.json",
         "sourceId": "ckpt-054@D1",
         "depth": 1,
@@ -23,15 +13,25 @@
         "rankLo": 9,
         "rankHi": 11
       },
-      "bronze": {
-        "source": "l15_value-099.json",
-        "sourceId": "l15_value-099@D1",
+      "silver": {
+        "source": "scratch-102.json",
+        "sourceId": "scratch-102@D1",
         "depth": 1,
-        "games": 52,
-        "elo": 167,
+        "games": 50,
+        "elo": 126.6,
         "rank": 0,
         "rankLo": 9,
         "rankHi": 11
+      },
+      "bronze": {
+        "source": "scratch-001.json",
+        "sourceId": "scratch-001@D1",
+        "depth": 1,
+        "games": 54,
+        "elo": 71.5,
+        "rank": 0,
+        "rankLo": 8.86,
+        "rankHi": 10
       }
     },
     "D2": {
@@ -46,16 +46,6 @@
         "rankHi": 11
       },
       "silver": {
-        "source": "mutant-003.json",
-        "sourceId": "mutant-003@D2",
-        "depth": 2,
-        "games": 15,
-        "elo": 237,
-        "rank": 0,
-        "rankLo": 9,
-        "rankHi": 10
-      },
-      "bronze": {
         "source": "mutant-005.json",
         "sourceId": "mutant-005@D2",
         "depth": 2,
@@ -63,6 +53,16 @@
         "elo": 179.2,
         "rank": 0,
         "rankLo": 9,
+        "rankHi": 11
+      },
+      "bronze": {
+        "source": "mutant-002.json",
+        "sourceId": "mutant-002@D2",
+        "depth": 2,
+        "games": 18,
+        "elo": 126.3,
+        "rank": 0,
+        "rankLo": 8.85,
         "rankHi": 11
       }
     }
@@ -79,16 +79,6 @@
       "rankHi": 11
     },
     "silver": {
-      "source": "mutant-003.json",
-      "sourceId": "mutant-003@D2",
-      "depth": 2,
-      "games": 15,
-      "elo": 237,
-      "rank": 0,
-      "rankLo": 9,
-      "rankHi": 10
-    },
-    "bronze": {
       "source": "mutant-005.json",
       "sourceId": "mutant-005@D2",
       "depth": 2,
@@ -96,6 +86,16 @@
       "elo": 179.2,
       "rank": 0,
       "rankLo": 9,
+      "rankHi": 11
+    },
+    "bronze": {
+      "source": "mutant-002.json",
+      "sourceId": "mutant-002@D2",
+      "depth": 2,
+      "games": 18,
+      "elo": 126.3,
+      "rank": 0,
+      "rankLo": 8.85,
       "rankHi": 11
     }
   }
