@@ -14,6 +14,9 @@ async function birth(plan){if(!plan)return null;const args=plan.kind==='extra'?[
 (async()=>{
   const original=process.argv.slice(2), refit=has(original,'refit'), summary=getArg(original,'summary',path.join(dir,'elo-summary.json'));
   evo.sync(dir); evo.ingestSummary(dir,summary);
+  const restoredAtStart=evo.restoreDepthSpecialists(dir);
+  if(restoredAtStart.length)console.log(`[evolution] restored depth specialists: `+
+    restoredAtStart.map(x=>`${x.name} (${x.strong} strong / ${x.weak} weak)`).join(', '));
   if(has(original,'cullOnly')){
     const all=[];
     // This is deliberately bounded by the target, not by a small arbitrary number of passes:
@@ -28,6 +31,9 @@ async function birth(plan){if(!plan)return null;const args=plan.kind==='extra'?[
     const end=evo.status(dir);
     console.log(`[evolution] cull-only complete: ${all.length} retired; roster ${end.models} nets + ` +
                 `${end.ladders} ladder; cull bank ${end.gamesSinceCull.toFixed(0)}`);
+    // A cull can invalidate an alias immediately. Refresh now instead of letting the laptop spend
+    // the next 45-minute rating cycle on a medal whose source just retired.
+    try{medals.main();}catch(e){console.error('[medals] refresh failed:',e.message);}
     return;
   }
   const requested=String(getArg(original,'focus','')).split(',').filter(Boolean);
@@ -39,6 +45,9 @@ async function birth(plan){if(!plan)return null;const args=plan.kind==='extra'?[
   if(!refit){setArg(base,'focus',slice.join(','));setArg(base,'focusPairs','0');}
   await run('elorank-legacy.js',base);
   evo.ingestSummary(dir,summary);
+  const restored=evo.restoreDepthSpecialists(dir);
+  if(restored.length)console.log(`[evolution] restored depth specialists: `+
+    restored.map(x=>`${x.name} (${x.strong} strong / ${x.weak} weak)`).join(', '));
 
   if(!refit){
     for(let i=0;i<3;i++){
