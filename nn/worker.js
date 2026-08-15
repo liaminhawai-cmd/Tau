@@ -1,8 +1,8 @@
 'use strict';
 // Spare-machine worker: complementary compute, not a second copy of the desktop stream.
 //
-// The desktop publishes explicit nn/medals/gold.json, silver.json and bronze.json from the latest
-// confidently-rated D1/D2 pool (rankLo ordering). This worker plays best + those medals, spends
+// The desktop publishes separate gold/silver/bronze aliases for D1 and D2 from the latest
+// confidently-rated pool (rankLo ordering). Each lane plays best + medals for ITS OWN depth, spends
 // most of its clock on D2 with a small D3 garnish, and after each chunk runs one deliberately tiny
 // rescue mine: at most TWO replay games. If the losing position was already doomed earlier than
 // that, too bad -- this worker is for late conversion mistakes, not an all-night archaeological dig.
@@ -61,12 +61,27 @@ function slotFallback(){
   try{for(const f of fs.readdirSync(md)){const m=f.match(/^pool-slot-(\d+)\.json$/);if(m){const p=path.join(md,f);if(validModel(p))slots.push({n:+m[1],p});}}}catch(_){}
   return slots.sort((a,b)=>b.n-a.n).slice(0,3).map(x=>x.p);
 }
-function championPool(){
+function championPool(depth=2){
   const best=path.join(dir,'models','best.json'), medalDir=path.join(dir,'medals');
-  const medalFiles=['gold','silver','bronze'].map(n=>path.join(medalDir,n+'.json')).filter(validModel);
+  const medalDepth=depth===1?1:2; // scarce D3 games use the proven D2 set until D3 has its own field
+  const depthFiles=['gold','silver','bronze'].map(n=>path.join(medalDir,`${n}-d${medalDepth}.json`)).filter(validModel);
+  const legacyFiles=['gold','silver','bronze'].map(n=>path.join(medalDir,n+'.json')).filter(validModel);
+  const medalFiles=depthFiles.length===3?depthFiles:legacyFiles;
   // First desktop cycle after this code lands will mint medals. Until then, retain the old top-slot
   // fallback so option 22 is never dead just because the aliases have not been published once yet.
   return uniqueModels([best,...(medalFiles.length?medalFiles:slotFallback())]);
+}
+function laneDepths(n){
+  const weights={};
+  for(const part of depthMix.split(',')){const [d,w]=part.split(':').map(Number);if([1,2,3].includes(d)&&w>0)weights[d]=w;}
+  const ds=Object.keys(weights).map(Number),sum=ds.reduce((s,d)=>s+weights[d],0)||1;
+  if(!ds.length)return Array(n).fill(2);
+  const exact=ds.map(d=>({d,x:n*weights[d]/sum})),counts={};let used=0;
+  for(const e of exact){counts[e.d]=Math.floor(e.x);used+=counts[e.d];}
+  exact.sort((a,b)=>(b.x-Math.floor(b.x))-(a.x-Math.floor(a.x)));
+  for(let i=0;i<n-used;i++)counts[exact[i%exact.length].d]++;
+  const out=[];for(const d of ds.sort((a,b)=>a-b))for(let i=0;i<counts[d];i++)out.push(d);
+  return out.length?out:Array(n).fill(2);
 }
 function strongLevels(){
   try{
@@ -96,24 +111,27 @@ async function pushProgress(files,label){
 
 function playChunk(chunk){
   const stamp=new Date().toISOString().replace(/[:.]/g,'-');
-  const champs=championPool(), levels=strongLevels();
-  const best=champs[0]||path.join(dir,'models','best.json');
-  const pool=champs.slice(1);
+  const depths=laneDepths(workers), levels=strongLevels();
+  const pools={1:championPool(1),2:championPool(2),3:championPool(3)};
   const per=Math.max(1,Math.round(gamesPerChunk/workers));
   let seedFile=null;
   if(seedFrac>0){
     const poses=loadSeedPoses(path.join(dir,'data'),400);
     if(poses.length>=20){seedFile=path.join(dir,'data',`w-${name}-${stamp}.seeds`);fs.writeFileSync(seedFile,JSON.stringify(poses));}
   }
-  log(`chunk ${chunk}: ${workers} lanes x ${per}; champions ${champs.map(p=>path.relative(dir,p)).join(', ')||'none'}; levels ${levels}; depth mix ${depthMix}`);
+  const depthCounts=depths.reduce((o,d)=>(o[d]=(o[d]||0)+1,o),{});
+  log(`chunk ${chunk}: ${workers} lanes x ${per}; lane depths ${Object.entries(depthCounts).map(([d,n])=>`D${d}x${n}`).join(' ')}; levels ${levels}`);
+  for(const depth of [1,2])log(`D${depth} champions: ${pools[depth].map(p=>path.relative(dir,p)).join(', ')||'none'}`);
   const files=[], lanes=[];
   for(let i=0;i<workers;i++){
+    const depth=depths[i]||2, champs=pools[depth]||pools[2];
+    const best=champs[0]||path.join(dir,'models','best.json'), pool=champs.slice(1);
     const out=path.join(dir,'data',`w-${name}-${stamp}-w${i+1}.jsonl`); files.push(out);
     lanes.push(new Promise(resolve=>{
       // Use legacy directly so this spare machine keeps the explicit champion set instead of the
       // desktop evolutionary wrapper replacing it with whatever local historical files happen to exist.
       const args=[path.join(dir,'selfplay-legacy.js'),'--games',String(per),'--workers','1','--out',out,
-        '--model',best,'--levels',levels,'--deep',levels,'--nnDepthMix',depthMix,
+        '--model',best,'--levels',levels,'--deep',levels,'--nnDepthMix',`${depth}:1`,
         '--randomStartFrac',randomStartFrac,'--modelVarietyFrac','1',
         ...(pool.length?['--modelPool',pool.join(',')]:[]),
         ...(seedFile?['--seedFrom',String(seedFrac),'--seedPool',seedFile]:['--seedFrom','0'])];
@@ -143,7 +161,7 @@ function runTinyRescue(stamp){
 }
 
 async function main(){
-  log(`strong worker "${name}" up: ${workers} lanes; best + gold/silver/bronze; mostly D2, small D3; rescue ${rescue?'on':'off'}`);
+  log(`strong worker "${name}" up: ${workers} lanes; depth-separated medal pools; mostly D2, small D3; rescue ${rescue?'on':'off'}`);
   for(let chunk=1;;chunk++){
     gitSoft(['pull','--no-edit','--no-rebase'],'pull');
     const {files,done,stamp}=playChunk(chunk); let finished=false; done.then(()=>finished=true);
