@@ -231,6 +231,14 @@ def main():
     if args.resume:
         with open(args.resume, 'r', encoding='utf-8') as fh:
             checkpoint = json.load(fh)
+    # A missing field means the old checkpoint's ancestry is genuinely unknown. Keep it unknown
+    # instead of presenting the current chunk as a fake lifetime epoch count on the live ladder.
+    base_trained_epochs = 0 if checkpoint is None else checkpoint.get('trainedEpochs')
+    if base_trained_epochs is not None:
+        try:
+            base_trained_epochs = int(base_trained_epochs)
+        except (TypeError, ValueError):
+            base_trained_epochs = None
 
     hidden = [int(h) for h in args.hidden.split(',') if h.strip()]
     sizes = [N_FEATURES] + hidden + [1]
@@ -301,7 +309,7 @@ def main():
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
     n = xtr.shape[0]
-    best_val, best_state = float('inf'), None
+    best_val, best_state, best_epoch = float('inf'), None, 0
     for ep in range(1, args.epochs + 1):
         t = (ep - 1) / (args.epochs - 1) if args.epochs > 1 else 0.0
         lr_ep = args.lr if args.lrDecay == 'flat' else args.lr * (0.1 + 0.9 * 0.5 * (1.0 + math.cos(math.pi * t)))
@@ -328,6 +336,7 @@ def main():
         flag = ''
         if vmse < best_val:
             best_val, flag = vmse, '  *'
+            best_epoch = ep
             best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
         print(f"epoch {ep}/{args.epochs}: train mse {tot/n:.5f}, val mse {vmse:.5f}, "
               f"val sign-acc {sign_acc*100:.1f}% (lr {lr_ep:.6f}){flag}", flush=True)
@@ -341,6 +350,10 @@ def main():
         def probe_fn(x):
             return float(model(torch.tensor([x], dtype=torch.float32, device=device))[0][0])
         doc = export_for_netjs(linears, probe_x, probe_fn, topology)
+        if base_trained_epochs is not None:
+            # Insert last so live-ladder.js can read the exact count from the small tail of a very
+            # large JSON model without parsing all of its weights on every inbox update.
+            doc['trainedEpochs'] = base_trained_epochs + best_epoch
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     tmp_out = f"{args.out}.tmp-{os.getpid()}"
