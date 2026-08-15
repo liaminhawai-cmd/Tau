@@ -49,8 +49,8 @@ echo      -- the trainer soaks up the ~20min every policy cycle spends single-th
 echo      tournament tail after fast matchups finish. Policy still wins any core it asks for.
 echo.
 echo  43. WILD MINT + FULL TRAINER
-echo      -- 8 experimental value nets + 5 joint value/policy nets, CUDA accelerated, resumable
-echo      -- dual entrants expand the pool, then weak ones whittle to the floor; no restart
+echo      -- 8 value nets + 5 joint nets + one 10x400 dense-memory behemoth, resumable
+echo      -- verified entrants expand the pool, then weak ones whittle to the floor; no restart
 echo  44. L14 LEVERAGE vs L11
 echo      -- multicore, balanced colours/openings; same search, tests centre-side hub attack
 echo      -- against mirrored counter-exposure; saves every arena result and training position
@@ -266,6 +266,16 @@ node nn\wild-dual-mint.js
 if errorlevel 1 (
   echo.
   echo Dual wild mint stopped early. Completed checkpoints/state are safe; normal trainer will still start.
+)
+echo.
+echo === single dense-memory behemoth expedition ===
+echo Ten 400-wide residual layers; each layer sends a 40-neuron memory packet to every layer ahead.
+echo Same adaptive peak finding as Wild Mint, CUDA-only, resumable and export-verified.
+echo.
+node nn\behemoth-mint.js
+if errorlevel 1 (
+  echo.
+  echo Behemoth mint stopped early. Completed chunks/state are safe; normal trainer will still start.
 )
 :wildnormal
 echo.
