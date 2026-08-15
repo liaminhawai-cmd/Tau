@@ -197,6 +197,7 @@ def train_one(torch, nn, device, hidden, data, args, epochs, verbose=True):
     torch.manual_seed(args.seed)          # re-seeded per shape: same init stream for every candidate
     sizes = [N_FEATURES] + hidden + [OUT]
     linears = [nn.Linear(sizes[i], sizes[i + 1]) for i in range(len(sizes) - 1)]
+    base_trained_epochs = 0
     if args.resume:
         with open(args.resume, 'r', encoding='utf-8') as fh:
             checkpoint = json.load(fh)
@@ -209,6 +210,17 @@ def train_one(torch, nn, device, hidden, data, args, epochs, verbose=True):
                 layer.weight.copy_(torch.tensor(weights, dtype=torch.float32).reshape(
                     layer.out_features, layer.in_features))
                 layer.bias.copy_(torch.tensor(bias, dtype=torch.float32))
+        stamped = checkpoint.get('trainedEpochs')
+        if stamped is not None:
+            try:
+                base_trained_epochs = int(stamped)
+            except (TypeError, ValueError):
+                base_trained_epochs = None
+        elif args.epochOffset > 0:
+            # Wild-dual chunks already pass their exact completed-epoch offset.
+            base_trained_epochs = args.epochOffset
+        else:
+            base_trained_epochs = None
         print(f"resumed weights from {args.resume}")
     # Keep the validation split fixed on args.seed, but do not replay the identical minibatch order
     # at the start of every resumed chunk.
@@ -284,6 +296,8 @@ def train_one(torch, nn, device, hidden, data, args, epochs, verbose=True):
     best['params'] = param_count(sizes)
     best['sizes'] = sizes
     best['hidden'] = ','.join(str(h) for h in hidden)
+    best['trainedEpochs'] = (base_trained_epochs + best['epoch']) \
+        if base_trained_epochs is not None else None
     return best, linears, model
 
 
@@ -420,6 +434,8 @@ def main():
         def probe_fn(x):
             return model(torch.tensor([x], dtype=torch.float32, device=device))[0].tolist()
         doc = export_for_netjs(linears, probe_x, probe_fn)
+        if best.get('trainedEpochs') is not None:
+            doc['trainedEpochs'] = best['trainedEpochs']
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     tmp_out = f"{args.out}.tmp-{os.getpid()}"
