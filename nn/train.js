@@ -250,7 +250,7 @@ function main() {
 
   // Same trap as the stale-data check above, via the other door: resuming from a checkpoint built
   // for a different input width silently produces a net that can never read its own inputs.
-  let net;
+  let net, baseTrainedEpochs = 0;
   if (resume && fs.existsSync(resume)) {
     const j = JSON.parse(fs.readFileSync(resume, 'utf8'));
     if (!j.sizes || j.sizes[0] !== N_FEATURES) {
@@ -258,6 +258,9 @@ function main() {
                     `set now produces ${N_FEATURES}.\nMove nn/models aside and start a fresh run.\n`);
       process.exit(1);
     }
+    // Old checkpoints predate epoch provenance. Do not manufacture a cumulative total for them;
+    // once a fresh stamped lineage wins, every later resume remains exact.
+    baseTrainedEpochs = Number.isFinite(+j.trainedEpochs) ? +j.trainedEpochs : null;
     net = MLP.fromJSON(j);
   } else net = new MLP([N_FEATURES, ...hidden, 1]);
 
@@ -326,11 +329,15 @@ function main() {
     fs.writeFileSync(tmp, data);
     fs.renameSync(tmp, destPath);
   };
+  const stampEpochs = (doc, localEpoch) => {
+    if (baseTrainedEpochs != null) doc.trainedEpochs = Math.round(baseTrainedEpochs + localEpoch);
+    return doc;
+  };
   if (keepLast || !best) {
-    atomicSave(outPath, JSON.stringify(net.toJSON()));
+    atomicSave(outPath, JSON.stringify(stampEpochs(net.toJSON(), epochs)));
     console.log(`saved ${outPath} (last epoch)`);
   } else {
-    atomicSave(outPath, JSON.stringify(best));
+    atomicSave(outPath, JSON.stringify(stampEpochs(best, bestEpoch)));
     console.log(`saved ${outPath} (best val mse ${bestMse.toFixed(4)}, from epoch ${bestEpoch}/${epochs})`);
     // Was the epoch budget BINDING? A net whose best epoch lands in the last stretch of its budget
     // was still improving when it ran out, so its saved weights are not that shape's best -- they
