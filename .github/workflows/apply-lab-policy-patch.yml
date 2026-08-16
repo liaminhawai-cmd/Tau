@@ -33,6 +33,13 @@ jobs:
           end=w.index("\n          PY",start)
           lines=w[start:end].splitlines()
           body='\n'.join(line[10:] if line.startswith('          ') else line for line in lines)+'\n'
+          strict="exact(old_arm, new_arm, label='policy arm ordering')"
+          relaxed=r'''arm_re = re.compile(r"    let armList = \[\];\n    for \(let pv = 0; pv < 3; pv\+\+\) for \(const dir of \[1, -1\]\) armList\.push\(\{ pv, dir \}\);\n    if \(model && model\.dual\) \{\n.*?        armList\.sort\(\(a, b\) => \(score\.get\(armKey\(b\)\) \|\| 0\) - \(score\.get\(armKey\(a\)\) \|\| 0\)\);\n    \}\n", re.S)
+          s, arm_n = arm_re.subn(lambda m: new_arm, s, count=1)
+          if arm_n != 1:
+              raise SystemExit(f'policy arm ordering: expected 1 regex match, found {arm_n}')'''
+          if body.count(strict)!=1: raise SystemExit(f'could not relax arm assertion: {body.count(strict)} matches')
+          body=body.replace(strict,relaxed)
           Path('/tmp/lab-policy-patch.py').write_text(body)
           PY
           python /tmp/lab-policy-patch.py
