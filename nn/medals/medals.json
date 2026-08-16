@@ -1,36 +1,36 @@
 {
-  "updated": "2026-08-15T22:29:27.838Z",
+  "updated": "2026-08-16T00:24:03.117Z",
   "basis": "per-depth rankLo; active source; >=12 games",
   "depths": {
     "D1": {
       "gold": {
-        "source": "deep-100.json",
-        "sourceId": "deep-100@D1",
-        "depth": 1,
-        "games": 39,
-        "elo": 150.9,
-        "rank": 0,
-        "rankLo": 8.86,
-        "rankHi": 10
-      },
-      "silver": {
         "source": "wide-103.json",
         "sourceId": "wide-103@D1",
         "depth": 1,
-        "games": 85,
-        "elo": 110.7,
+        "games": 93,
+        "elo": 102.8,
         "rank": 0,
-        "rankLo": 8.78,
+        "rankLo": 8.82,
+        "rankHi": 10
+      },
+      "silver": {
+        "source": "l15_value-m2-123.json",
+        "sourceId": "l15_value-m2-123@D1",
+        "depth": 1,
+        "games": 44,
+        "elo": 138.3,
+        "rank": 0,
+        "rankLo": 8.76,
         "rankHi": 10
       },
       "bronze": {
-        "source": "ckpt-109.json",
-        "sourceId": "ckpt-109@D1",
+        "source": "ckpt-054.json",
+        "sourceId": "ckpt-054@D1",
         "depth": 1,
-        "games": 73,
-        "elo": 94,
-        "rank": 0,
-        "rankLo": 8.73,
+        "games": 27,
+        "elo": 66.2,
+        "rank": 8.93,
+        "rankLo": 8.71,
         "rankHi": 10
       }
     },
@@ -39,31 +39,31 @@
         "source": "ckpt-104.json",
         "sourceId": "ckpt-104@D2",
         "depth": 2,
-        "games": 14,
-        "elo": 106.6,
-        "rank": 0,
-        "rankLo": 8.95,
+        "games": 17,
+        "elo": 80.7,
+        "rank": 9.1,
+        "rankLo": 8.83,
         "rankHi": 10
       },
       "silver": {
-        "source": "ckpt-107.json",
-        "sourceId": "ckpt-107@D2",
+        "source": "wild-06-64x64x64x64x64x64.json",
+        "sourceId": "wild-06-64x64x64x64x64x64@D2",
         "depth": 2,
-        "games": 21,
-        "elo": 59,
-        "rank": 8.87,
-        "rankLo": 8.55,
+        "games": 35,
+        "elo": 125.1,
+        "rank": 0,
+        "rankLo": 8.8,
         "rankHi": 10
       },
       "bronze": {
-        "source": "ckpt-082.json",
-        "sourceId": "ckpt-082@D2",
+        "source": "ckpt-107.json",
+        "sourceId": "ckpt-107@D2",
         "depth": 2,
-        "games": 14,
-        "elo": 46.4,
-        "rank": 8.8,
-        "rankLo": 8.44,
-        "rankHi": 9.65
+        "games": 23,
+        "elo": 26,
+        "rank": 8.68,
+        "rankLo": 8.42,
+        "rankHi": 8.94
       }
     }
   },
@@ -72,31 +72,31 @@
       "source": "ckpt-104.json",
       "sourceId": "ckpt-104@D2",
       "depth": 2,
-      "games": 14,
-      "elo": 106.6,
-      "rank": 0,
-      "rankLo": 8.95,
+      "games": 17,
+      "elo": 80.7,
+      "rank": 9.1,
+      "rankLo": 8.83,
       "rankHi": 10
     },
     "silver": {
-      "source": "ckpt-107.json",
-      "sourceId": "ckpt-107@D2",
+      "source": "wild-06-64x64x64x64x64x64.json",
+      "sourceId": "wild-06-64x64x64x64x64x64@D2",
       "depth": 2,
-      "games": 21,
-      "elo": 59,
-      "rank": 8.87,
-      "rankLo": 8.55,
+      "games": 35,
+      "elo": 125.1,
+      "rank": 0,
+      "rankLo": 8.8,
       "rankHi": 10
     },
     "bronze": {
-      "source": "ckpt-082.json",
-      "sourceId": "ckpt-082@D2",
+      "source": "ckpt-107.json",
+      "sourceId": "ckpt-107@D2",
       "depth": 2,
-      "games": 14,
-      "elo": 46.4,
-      "rank": 8.8,
-      "rankLo": 8.44,
-      "rankHi": 9.65
+      "games": 23,
+      "elo": 26,
+      "rank": 8.68,
+      "rankLo": 8.42,
+      "rankHi": 8.94
     }
   }
 }
