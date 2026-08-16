@@ -254,6 +254,15 @@ function main() {
     const parsed = JSON.parse(arg('modelPoolWeights', '{}'));
     if (parsed && typeof parsed === 'object') modelPoolWeights = parsed;
   } catch (e) {}
+  // Optional per-model depths.  The medal worker uses this because gold/silver/bronze can earn their
+  // overall places at DIFFERENT depths.  Without a map, the normal nnDepthMix behavior is unchanged.
+  // With one, a sampled model keeps the depth of the rated face that earned its selection instead of
+  // borrowing whichever lane happened to pick it.
+  let modelPoolDepths = {};
+  try {
+    const parsed = JSON.parse(arg('modelPoolDepths', '{}'));
+    if (parsed && typeof parsed === 'object') modelPoolDepths = parsed;
+  } catch (e) {}
   let coverageQueue = [];
   try {
     const parsed = JSON.parse(arg('coverageQueue', '[]'));
@@ -371,6 +380,7 @@ function main() {
       '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(','),
       ...(modelPoolPaths.length ? ['--modelPool', modelPoolPaths.join(',')] : []),
       '--modelPoolWeights', JSON.stringify(modelPoolWeights),
+      '--modelPoolDepths', JSON.stringify(modelPoolDepths),
       ...(coverA ? ['--coverageA', JSON.stringify(coverA)] : []),
       ...(coverB ? ['--coverageB', JSON.stringify(coverB)] : []),
       // Every worker appends to the SAME inbox file. Safe for the reason elorank's own inbox
@@ -517,20 +527,22 @@ function main() {
     let brainA, brainB, tag;
     let idA = null, idB = null;
     const useDeep = deepEvery > 0 && g % deepEvery === deepEvery - 1;
-    // Each SIDE draws its own depth, rather than one depth for the whole game. With both sides at
-    // the same depth they share the same blind spots, so neither ever plays the move that punishes
-    // the other's mistake and the blunder never appears in the data labelled as a blunder -- the
-    // problem this file's own comment names but the old code still had. Mismatched depths make the
-    // deeper side the examiner: it finds the refutation, the shallower side's position genuinely
-    // loses, and the label is right for the right reason. Depth is still fixed for a whole game so
-    // one game means one consistent brain strength per player.
-    const depthA = pickNnDepth(), depthB = pickNnDepth();
     // A fresh independent roll per side, per game -- see pickNet's own note. chosenA and chosenB
     // can land on the same net (most likely, when neither rolls into the pool) or two genuinely
     // different architectures.
     const forcedA = g === 0 && coverageA && netPool.find(m => m.name === coverageA.name);
     const forcedB = g === 0 && coverageB && netPool.find(m => m.name === coverageB.name);
     const chosenA = forcedA || pickNet(), chosenB = forcedB || pickNet();
+    // Each side normally draws its own depth from nnDepthMix.  A caller may instead pin a model to
+    // the depth of its measured face (medal worker), and first-coverage metadata wins over both so a
+    // queued D2 face cannot accidentally come back as yet another D1 game.
+    const depthFor = (chosen, cover) => {
+      const cd=cover&&+cover.depth;if(Number.isFinite(cd)&&cd>=1)return Math.floor(cd);
+      const md=chosen&&+modelPoolDepths[chosen.name];
+      return Number.isFinite(md)&&md>=1?Math.floor(md):pickNnDepth();
+    };
+    const depthA = depthFor(chosenA, forcedA ? coverageA : null);
+    const depthB = depthFor(chosenB, forcedB ? coverageB : null);
     // A dual entrant plays as one of the SAME TWO brains elorank.js rates it as: bare (the jointly
     // trained value head alone, directly comparable to an `nn:` net) and +P (also spending its own
     // policy logits on arm ordering under the ab cutoff -- elorank's `ab: true` face). Rolled per
