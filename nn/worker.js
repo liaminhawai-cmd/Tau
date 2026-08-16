@@ -2,14 +2,15 @@
 // Spare-machine worker: complementary compute, not a second copy of the desktop stream.
 //
 // The desktop publishes ONE gold/silver/bronze set -- the top 3 DISTINCT models on the whole live
-// ladder, ranked across every depth, not three per depth. Each medal carries whatever depth it was
-// actually measured at in medals.json, and plays at exactly that depth here: gold might be a D3
-// face, silver a D1 face -- quality over uniform lane depth, so this worker may run some D3 games
-// and some D1 games in the same chunk. best.json gets its own lane too, spread across the classic
-// D1/D2/D3 mix (laneDepths) since it has no single "measured" depth of its own. After each chunk
-// this also runs one deliberately tiny rescue mine: at most TWO replay games. If the losing
-// position was already doomed earlier than that, too bad -- this worker is for late conversion
-// mistakes, not an all-night archaeological dig.
+// ladder, ranked across every depth, not three per depth. Option 22 is a DATA factory, so its job is
+// not to re-measure the whole population: when medals exist, every lane is driven by those top
+// models at the depth each actually earned. Gold gets about half the lanes, silver about three
+// tenths and bronze the rest. Most games are top-NN vs top-NN; a small fixed slice uses the top
+// production ladder rungs as non-learning opponents. No ordinary ladder-vs-ladder games are spent
+// here. If medals have not been published yet, best.json/pool-slot fallback keeps the worker alive.
+// After each chunk this also runs one deliberately tiny rescue mine: at most TWO replay games. If
+// the losing position was already doomed earlier than that, too bad -- this worker is for late
+// conversion mistakes, not an all-night archaeological dig.
 const {execFileSync, spawn}=require('child_process');
 const fs=require('fs');
 const os=require('os');
@@ -26,8 +27,11 @@ const pushEveryMin=Math.max(.5,+arg('pushEveryMin',4));
 const workers=Math.max(1,+arg('workers',Math.max(1,Math.min(os.cpus().length-1,12))));
 const randomStartFrac=String(arg('randomStartFrac','0.35'));
 const seedFrac=Math.max(0,Math.min(1,+arg('seedFrom','0.25')));
-// Cost-weighted: roughly 82% D2, 12% D1, 6% D3 by draw weight before game-length effects.
+// Cost-weighted fallback depths for best.json only, before medals exist.
 const depthMix=String(arg('nnDepthMix','1:0.15,2:1,3:0.07'));
+// Strong-data default: 85% top NN vs top NN, 15% top NN vs a top fixed ladder rung, 0% rung-only.
+// Exposed so a one-off worker can deliberately change the corpus without editing this file.
+const sparMix=String(arg('mix','nnnn:0.85,nnladder:0.15,ladder:0'));
 const rescue=arg('rescue','1')!=='0';
 const name=(arg('name',os.hostname())||'worker').toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,20)||'worker';
 
@@ -92,15 +96,16 @@ function laneDepths(n){
   const out=[];for(const d of ds.sort((a,b)=>a-b))for(let i=0;i<counts[d];i++)out.push(d);
   return out.length?out:Array(n).fill(2);
 }
+// A training garnish should use the strongest stable rule-based opponents, not whatever happened
+// to appear often in the latest ZPD sample. Read the production ladder itself and take its top 3;
+// experimental rungs stay out until they are promoted into production.
 function strongLevels(){
   try{
-    const z=JSON.parse(fs.readFileSync(path.join(dir,'zpd-pool.json'),'utf8'));
-    if(Array.isArray(z.levels)&&z.levels.length){
-      const u=[...new Set(z.levels.map(Number).filter(Number.isFinite))].sort((a,b)=>a-b);
-      return u.slice(-Math.min(4,u.length)).join(',');
-    }
+    const ladder=require('./engine.js').createEngine().AI_LADDER;
+    const levels=ladder.map((d,i)=>d&&!d.experimental?i+1:null).filter(Boolean);
+    if(levels.length)return levels.slice(-Math.min(3,levels.length)).join(',');
   }catch(_){}
-  return '8,9,10,11';
+  return '9,10,11';
 }
 
 async function pushProgress(files,label){
@@ -123,25 +128,25 @@ function championPool(){
   return {best,slotFallback:slotFallback()};
 }
 
-// One lane per medal, at that medal's own measured depth, up to however many workers there are;
-// everything else plays best.json across the classic weighted depth mix. If nothing has been
-// published yet (first desktop cycle after this code lands, or a fresh checkout), every lane
-// falls back to the old all-best.json behaviour so this worker is never dead in the meantime.
+// With medals present, ALL lanes come from the top three distinct rated models. Expanding the
+// medal list 5:3:2 gives gold the most data without collapsing the corpus to one self-playing net.
+// Each lane's opponent pool is the other medals; selfplay-legacy independently draws the two NN
+// sides, so the 85% NN-vs-NN share naturally mixes these strong architectures. best.json is only a
+// fallback before medals exist -- it is not assumed to be top merely because of its filename.
 function buildLanes(){
-  const {best,slotFallback:fb}=championPool(), medals=readMedals(), medalPaths=medals.map(m=>m.path);
+  const {best,slotFallback:fb}=championPool(), medals=readMedals();
   if(!medals.length){
     const depths=laneDepths(workers);
-    return Array.from({length:workers},(_,i)=>({model:best,pool:fb,depth:depths[i]||2,label:'best'}));
+    return Array.from({length:workers},(_,i)=>({model:best,pool:fb,depth:depths[i]||2,label:'best-fallback'}));
   }
-  const medalLaneCount=Math.min(medals.length,workers), bestLaneCount=workers-medalLaneCount;
-  const bestDepths=laneDepths(bestLaneCount);
-  const lanes=[];
-  for(let i=0;i<medalLaneCount;i++){
-    const m=medals[i], pool=uniqueModels([best,...medalPaths.filter(p=>p!==m.path)]);
+  const weight={gold:5,silver:3,bronze:2};
+  const expanded=[];
+  for(const m of medals)for(let i=0;i<(weight[m.name]||1);i++)expanded.push(m);
+  const medalPaths=medals.map(m=>m.path), lanes=[];
+  for(let i=0;i<workers;i++){
+    const m=expanded[i%expanded.length], pool=uniqueModels(medalPaths.filter(p=>p!==m.path));
     lanes.push({model:m.path,pool,depth:m.depth,label:`medal-${m.name}`});
   }
-  for(let i=0;i<bestLaneCount;i++)
-    lanes.push({model:best,pool:uniqueModels(medalPaths.length?medalPaths:fb),depth:bestDepths[i]||2,label:'best'});
   return lanes;
 }
 
@@ -155,7 +160,7 @@ function playChunk(chunk){
     const poses=loadSeedPoses(path.join(dir,'data'),400);
     if(poses.length>=20){seedFile=path.join(dir,'data',`w-${name}-${stamp}.seeds`);fs.writeFileSync(seedFile,JSON.stringify(poses));}
   }
-  log(`chunk ${chunk}: ${workers} lanes x ${per}; ${lanes0.map(l=>`${l.label}@D${l.depth}`).join(', ')}; levels ${levels}`);
+  log(`chunk ${chunk}: ${workers} lanes x ${per}; ${lanes0.map(l=>`${l.label}@D${l.depth}`).join(', ')}; mix ${sparMix}; ladder ${levels}`);
   const files=[], lanes=[];
   lanes0.forEach((lane,i)=>{
     const out=path.join(dir,'data',`w-${name}-${stamp}-w${i+1}.jsonl`); files.push(out);
@@ -164,7 +169,7 @@ function playChunk(chunk){
       // desktop evolutionary wrapper replacing it with whatever local historical files happen to exist.
       const args=[path.join(dir,'selfplay-legacy.js'),'--games',String(per),'--workers','1','--out',out,
         '--model',lane.model,'--levels',levels,'--deep',levels,'--nnDepthMix',`${lane.depth}:1`,
-        '--randomStartFrac',randomStartFrac,'--modelVarietyFrac','1',
+        '--mix',sparMix,'--randomStartFrac',randomStartFrac,'--modelVarietyFrac','1',
         ...(lane.pool.length?['--modelPool',lane.pool.join(',')]:[]),
         ...(seedFile?['--seedFrom',String(seedFrac),'--seedPool',seedFile]:['--seedFrom','0'])];
       const ch=spawn('node',args,{stdio:['ignore','inherit','inherit'],env:{...process.env,TAU_WORKER:String(i+1)}});
@@ -193,7 +198,7 @@ function runTinyRescue(stamp){
 }
 
 async function main(){
-  log(`strong worker "${name}" up: ${workers} lanes; each medal at its own measured depth, rest on best.json; rescue ${rescue?'on':'off'}`);
+  log(`strong worker "${name}" up: ${workers} lanes; medal-weighted top NNs; mix ${sparMix}; top production ladder ${strongLevels()}; rescue ${rescue?'on':'off'}`);
   for(let chunk=1;;chunk++){
     gitSoft(['pull','--no-edit','--no-rebase'],'pull');
     const {files,done,stamp}=playChunk(chunk); let finished=false; done.then(()=>finished=true);
