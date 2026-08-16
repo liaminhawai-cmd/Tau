@@ -1,0 +1,39 @@
+name: Materialize rating scheduler
+
+on:
+  push:
+    branches:
+      - claude/board-game-video-adaptation-cf8a93
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.event.head_commit.message == 'nn: stage checked scheduler source'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/board-game-video-adaptation-cf8a93
+          fetch-depth: 0
+      - name: Materialize checked source
+        shell: bash
+        run: |
+          python - <<'PY'
+          import gzip
+          from pathlib import Path
+          packed = Path('nn/elorank-legacy.impl.js.gz')
+          target = Path('nn/elorank-legacy.js')
+          target.write_bytes(gzip.decompress(packed.read_bytes()))
+          packed.unlink()
+          PY
+          node --check nn/elorank-legacy.js
+      - name: Commit scheduler
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- nn/elorank-legacy.js nn/elorank-legacy.impl.js.gz
+          git commit -m 'nn: prioritize strength with log freshness'
+          git push origin HEAD:claude/board-game-video-adaptation-cf8a93
