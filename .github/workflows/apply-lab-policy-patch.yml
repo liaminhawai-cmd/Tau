@@ -40,6 +40,13 @@ jobs:
               raise SystemExit(f'policy arm ordering: expected 1 regex match, found {arm_n}')'''
           if body.count(strict)!=1: raise SystemExit(f'could not relax arm assertion: {body.count(strict)} matches')
           body=body.replace(strict,relaxed)
+          strict_lab="exact(old_lab_make, new_lab_make, label='lab brain policy execution')"
+          relaxed_lab=r'''lab_make_re = re.compile(r"function labMakeBrainFn\(side\) \{\n    const b = labBrains\[side\];\n.*?    return idx => ladderPlanFor\(b\.level, idx\);\n\}", re.S)
+          s, lab_make_n = lab_make_re.subn(lambda m: new_lab_make, s, count=1)
+          if lab_make_n != 1:
+              raise SystemExit(f'lab brain policy execution: expected 1 regex match, found {lab_make_n}')'''
+          if body.count(strict_lab)!=1: raise SystemExit(f'could not relax labMakeBrain assertion: {body.count(strict_lab)} matches')
+          body=body.replace(strict_lab,relaxed_lab)
           Path('/tmp/lab-policy-patch.py').write_text(body)
           PY
           python /tmp/lab-policy-patch.py
