@@ -1,0 +1,256 @@
+name: Queue compaction one-shot
+
+on:
+  push:
+    branches:
+      - claude/board-game-video-adaptation-cf8a93
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'queue-compaction-stage'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/board-game-video-adaptation-cf8a93
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            nn/evolution-roster.js
+            nn/elorank-legacy.js
+      - name: Patch roster and scheduler
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          # ---------- evolution-roster.js ----------
+          p=Path('nn/evolution-roster.js')
+          s=p.read_text(encoding='utf-8')
+
+          block_re=re.compile(r"function initialiseFacePools\(s,entries\)\{.*?\n\}\nfunction reconcileFacePools\(s,entries\)\{.*?\n\}\n(?=function sync)",re.S)
+          if len(block_re.findall(s)) != 1:
+              raise SystemExit(f'roster pool block: expected 1 match, found {len(block_re.findall(s))}')
+
+          new_block=r'''function initialiseFacePools(s,entries){
+  s.facePools={};
+  for(let d=1;d<=4;d++){
+    const key=depthKey(d),all=entries.flatMap(e=>candidateFaces(e,d)),ranked=sortFaces(s,all),cap=FACE_CAPS[key];
+    s.facePools[key]={active:ranked.slice(0,cap),trial:ranked[cap]||null,waiting:ranked.slice(cap+1),retired:{},deferred:{}};
+  }
+  s.faceRosterMigratedAt=new Date().toISOString();
+}
+
+// The catalogue can contain hundreds of historical checkpoints. They remain durable files and all
+// of their rated games remain durable evidence, but that does not mean every old checkpoint deserves
+// four fresh search-depth auditions forever. Ordinary sequential lineages keep two catalogue
+// representatives outside the live field: the strongest measured member and the newest member.
+// Wild/dual/policy/architecture experiments do not collapse into a lineage because their geometry
+// is itself the hypothesis being tested.
+function ordinaryLineage(name){
+  let m;
+  if(/^ckpt-\d+$/.test(name))return'ckpt';
+  if(/^resume-\d+$/.test(name))return'resume';
+  if(/^scratch-\d+$/.test(name))return'scratch';
+  if(/^mut-\d+$/.test(name))return'mut';
+  if(/^mutant-\d+$/.test(name))return'mutant';
+  if((m=name.match(/^wide-m(\d+)-\d+$/)))return`wide-m${m[1]}`;
+  if(/^wide-\d+$/.test(name))return'wide';
+  if(/^deep-\d+$/.test(name))return'deep';
+  if(/^ultra-\d+$/.test(name))return'ultra';
+  if((m=name.match(/^l15_value-m(\d+)-\d+$/)))return`l15_value-m${m[1]}`;
+  if(/^l15_value-\d+$/.test(name))return'l15_value';
+  if(/^best\.pre-tournament-\d+$/.test(name))return'best.pre-tournament';
+  return null;
+}
+function modelSerial(name){const m=String(name).match(/(\d+)(?!.*\d)/);return m?+m[1]:-1;}
+function modelBestScore(s,name){
+  const r=s.latest[name]||{},v=[];
+  if(Number.isFinite(+r.rankLo))v.push(+r.rankLo);
+  for(const f of Object.values(r.faces||{}))if(Number.isFinite(+f.rankLo))v.push(+f.rankLo);
+  if(v.length)return Math.max(...v);
+  const q=[];if(Number.isFinite(+r.rank))q.push(+r.rank);
+  for(const f of Object.values(r.faces||{}))if(Number.isFinite(+f.rank))q.push(+f.rank);
+  return q.length?Math.max(...q):-Infinity;
+}
+function faceEstablished(s,id,d){
+  const r=faceReading(s,id),need=FACE_MIN_GAMES[depthKey(d)];
+  return !!(r&&(+r.games||0)>=need&&(Number.isFinite(+r.rankLo)||Number.isFinite(+r.rank)));
+}
+function modelLiveDepth(s,e){
+  let hi=0;
+  for(let d=1;d<=4;d++){
+    const ids=new Set(candidateFaces(e,d)),p=s.facePools[depthKey(d)];
+    if((p.active||[]).some(id=>ids.has(id))||(p.trial&&ids.has(p.trial)))hi=d;
+  }
+  return hi;
+}
+function frontierFaces(s,e){
+  const start=Math.max(1,modelLiveDepth(s,e));
+  for(let d=start;d<=4;d++){
+    const ids=candidateFaces(e,d);if(!ids.length)continue;
+    const pending=ids.filter(id=>!faceEstablished(s,id,d));
+    if(pending.length)return pending;
+  }
+  return[];
+}
+function queueRepresentativeModels(s,entries){
+  const keep=new Set(),byName=Object.fromEntries(entries.map(e=>[e.name,e]));
+  // Anything already holding a real seat remains a live model even if it is an old lineage member.
+  for(const key of Object.keys(FACE_CAPS))for(const id of s.facePools[key].active||[]){const x=splitFaceId(id);if(x&&byName[x.name])keep.add(x.name);}
+  const groups={};
+  for(const e of entries){
+    const fam=ordinaryLineage(e.name);
+    if(!fam){keep.add(e.name);continue;}
+    (groups[fam]||=[]).push(e);
+  }
+  for(const a of Object.values(groups)){
+    const newest=a.slice().sort((x,y)=>modelSerial(y.name)-modelSerial(x.name)||y.name.localeCompare(x.name))[0];
+    if(newest)keep.add(newest.name);
+    const measured=a.filter(e=>Number.isFinite(modelBestScore(s,e.name)))
+      .sort((x,y)=>modelBestScore(s,y.name)-modelBestScore(s,x.name)||modelSerial(y.name)-modelSerial(x.name));
+    if(measured[0])keep.add(measured[0].name);
+  }
+  return keep;
+}
+function queueSort(s,ids){
+  return ids.slice().sort((a,b)=>{
+    const A=splitFaceId(a),B=splitFaceId(b),ga=+(s.latest[A&&A.name]?.games||0),gb=+(s.latest[B&&B.name]?.games||0);
+    // Truly new models first; after that, strongest established model first, then newest serial.
+    if((ga===0)!==(gb===0))return ga===0?-1:1;
+    const sa=A?modelBestScore(s,A.name):-Infinity,sb=B?modelBestScore(s,B.name):-Infinity;
+    if(sa!==sb)return sb-sa;
+    const na=A?modelSerial(A.name):-1,nb=B?modelSerial(B.name):-1;if(na!==nb)return nb-na;
+    return a.localeCompare(b,undefined,{numeric:true});
+  });
+}
+function reconcileFacePools(s,entries){
+  const availableByDepth={};
+  for(let d=1;d<=4;d++)availableByDepth[depthKey(d)]=new Set(entries.flatMap(e=>candidateFaces(e,d)));
+  for(let d=1;d<=4;d++){
+    const key=depthKey(d),avail=availableByDepth[key],p=s.facePools[key]||{active:[],trial:null,waiting:[],retired:{},deferred:{}};
+    p.active=[...new Set(p.active||[])].filter(x=>avail.has(x));
+    p.trial=avail.has(p.trial)&&!p.active.includes(p.trial)?p.trial:null;
+    p.waiting=[...new Set(p.waiting||[])].filter(x=>avail.has(x)&&!p.active.includes(x)&&x!==p.trial);
+    p.retired=p.retired&&typeof p.retired==='object'?p.retired:{};
+    p.deferred=p.deferred&&typeof p.deferred==='object'?p.deferred:{};
+    for(const id of Object.keys(p.retired))if(!avail.has(id))delete p.retired[id];
+    for(const id of Object.keys(p.deferred))if(!avail.has(id))delete p.deferred[id];
+    const known=new Set([...p.active,...p.waiting,...(p.trial?[p.trial]:[]),...Object.keys(p.retired),...Object.keys(p.deferred)]);
+    for(const id of avail)if(!known.has(id))p.waiting.push(id);
+    s.facePools[key]=p;
+  }
+}
+function compactFacePools(s,entries){
+  const keep=queueRepresentativeModels(s,entries),desired={};
+  for(let d=1;d<=4;d++)desired[depthKey(d)]=new Set();
+  for(const e of entries)if(keep.has(e.name))for(const id of frontierFaces(s,e)){
+    const x=splitFaceId(id);if(x)desired[depthKey(x.depth)].add(id);
+  }
+  let deferredTotal=0;
+  for(let d=1;d<=4;d++){
+    const key=depthKey(d),p=s.facePools[key],want=desired[key],now=new Date().toISOString();
+    p.deferred=p.deferred&&typeof p.deferred==='object'?p.deferred:{};
+    const defer=id=>{p.deferred[id]={at:now,reason:'queue compacted; historical evidence retained'};};
+    if(p.trial&&!want.has(p.trial)){defer(p.trial);p.trial=null;}
+    const kept=[];for(const id of p.waiting){if(want.has(id))kept.push(id);else defer(id);}p.waiting=kept;
+    for(const id of want){
+      if(p.retired[id]||p.active.includes(id)||p.trial===id||p.waiting.includes(id))continue;
+      if(p.deferred[id])delete p.deferred[id];p.waiting.push(id);
+    }
+    p.waiting=queueSort(s,[...new Set(p.waiting)]);
+    // A real vacancy is filled only from the compact frontier, never by excavating an old queue.
+    while(p.active.length<FACE_CAPS[key]&&p.waiting.length)p.active.push(p.waiting.shift());
+    advanceTrial(s,key);
+    deferredTotal+=Object.keys(p.deferred).length;
+  }
+  s.queueCompaction={version:1,updated:new Date().toISOString(),catalogueModels:entries.length,queueModels:keep.size,deferredFaces:deferredTotal};
+}
+'''
+          s=block_re.sub(new_block,s,count=1)
+          old="  if(!s.facePools)initialiseFacePools(s,entries);else reconcileFacePools(s,entries);"
+          new="  if(!s.facePools)initialiseFacePools(s,entries);else reconcileFacePools(s,entries);\n  compactFacePools(s,entries);"
+          if s.count(old)!=1: raise SystemExit(f'sync compaction hook: expected 1, found {s.count(old)}')
+          s=s.replace(old,new)
+          old="function status(dir){const s=sync(dir),faces={};for(const key of Object.keys(FACE_CAPS)){const p=s.facePools[key];faces[key]={seats:p.active.length,trial:p.trial?1:0,waiting:p.waiting.length,retired:Object.keys(p.retired).length,capacity:FACE_CAPS[key]};}"
+          new="function status(dir){const s=sync(dir),faces={};for(const key of Object.keys(FACE_CAPS)){const p=s.facePools[key];faces[key]={seats:p.active.length,trial:p.trial?1:0,waiting:p.waiting.length,deferred:Object.keys(p.deferred||{}).length,retired:Object.keys(p.retired).length,capacity:FACE_CAPS[key]};}"
+          if s.count(old)!=1: raise SystemExit(f'status deferred field: expected 1, found {s.count(old)}')
+          s=s.replace(old,new)
+          p.write_text(s,encoding='utf-8')
+
+          # ---------- elorank-legacy.js ----------
+          p=Path('nn/elorank-legacy.js')
+          s=p.read_text(encoding='utf-8')
+          old="const CLOSE_FLOOR = Math.min(0.9, Math.max(0, +arg('closeFloor', 0.25)));"
+          new=old+"\n// A new search-depth face inherits a small amount of evidence from the SAME underlying model.\n// This stops an old checkpoint's untouched D4 face looking as novel as a genuinely new network.\nconst MODEL_EVIDENCE_SHARE = Math.min(1, Math.max(0, +arg('modelEvidenceShare', 0.15)));"
+          if s.count(old)!=1: raise SystemExit(f'model evidence constant: expected 1, found {s.count(old)}')
+          s=s.replace(old,new)
+
+          marker="const pairGamesOf = () => {"
+          if s.count(marker)!=1: raise SystemExit(f'pair games marker: expected 1, found {s.count(marker)}')
+          insert=r'''const modelNameFromFaceId = id => {
+  const m=String(id).match(/^(.*?)(?:\+P)?@D\d+$/);return m?m[1]:null;
+};
+const modelGamesOf = () => {
+  // Side-games across every historical face of the same checkpoint. Retired depth evidence counts:
+  // the weights learned by ckpt-104 do not become mysterious again merely because D3 is new.
+  const n={};
+  for(const [key,r] of Object.entries(store.results)){
+    const [a,b]=key.split('|'),t=r.w+r.l+(r.d||0);
+    for(const id of [a,b]){const m=modelNameFromFaceId(id);if(m)n[m]=(n[m]||0)+t;}
+  }
+  return n;
+};
+'''
+          s=s.replace(marker,insert+marker)
+
+          old="  const g = gamesOf(), pg = pairGamesOf();"
+          new="  const g = gamesOf(), pg = pairGamesOf(), mg = modelGamesOf();"
+          if s.count(old)!=1: raise SystemExit(f'pickPair evidence maps: expected 1, found {s.count(old)}')
+          s=s.replace(old,new)
+
+          old=r'''      // max(), not mean(): one genuinely fresh participant should be enough to make an old champion
+      // or ladder anchor useful again. 0->1.00 raw, 10->.28, 200->.13, 500->.11.
+      const freshRaw = Math.max(inverseLog(g[a.id] || 0), inverseLog(g[b.id] || 0));
+      const freshnessWeight = FRESHNESS_FLOOR + (1-FRESHNESS_FLOOR)*freshRaw;'''
+          new=r'''      // max(), not mean(): one genuinely fresh participant is enough to pull an old champion back in.
+      // For NN faces only, 15% of OTHER-depth evidence from the same checkpoint carries across.
+      // A truly new model is still 1.00 fresh; an old 0-game D4 face no longer masquerades as one.
+      const effectiveFreshGames = p => {
+        const face=+g[p.id]||0;if(p.kind!=='nn')return face;
+        const name=path.basename(p.model,'.json'),total=+mg[name]||face;
+        return face + MODEL_EVIDENCE_SHARE*Math.max(0,total-face);
+      };
+      const freshRaw = Math.max(inverseLog(effectiveFreshGames(a)), inverseLog(effectiveFreshGames(b)));
+      const freshnessWeight = FRESHNESS_FLOOR + (1-FRESHNESS_FLOOR)*freshRaw;'''
+          if s.count(old)!=1: raise SystemExit(f'freshness block: expected 1, found {s.count(old)}')
+          s=s.replace(old,new)
+
+          old="              `freshness floor ${FRESHNESS_FLOOR}, pair floor ${PAIR_NOVELTY_FLOOR}, CI share ${CI_SHARE}`);"
+          new="              `freshness floor ${FRESHNESS_FLOOR}, model carry ${MODEL_EVIDENCE_SHARE}, ` +\n              `pair floor ${PAIR_NOVELTY_FLOOR}, CI share ${CI_SHARE}`);"
+          if s.count(old)!=1: raise SystemExit(f'scheduler log: expected 1, found {s.count(old)}')
+          s=s.replace(old,new)
+          p.write_text(s,encoding='utf-8')
+          PY
+
+          node --check nn/evolution-roster.js
+          node --check nn/elorank-legacy.js
+          node - <<'NODE'
+          const evo=require('./nn/evolution-roster.js');
+          if(!evo || !evo.FACE_CAPS || !evo.status) throw new Error('evolution-roster exports broken');
+          console.log('roster module loads; caps',JSON.stringify(evo.FACE_CAPS));
+          NODE
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- nn/evolution-roster.js nn/elorank-legacy.js
+          git commit -m 'nn: compact stale face queue and share model evidence'
+          git pull --rebase origin claude/board-game-video-adaptation-cf8a93
+          git push origin HEAD:claude/board-game-video-adaptation-cf8a93
