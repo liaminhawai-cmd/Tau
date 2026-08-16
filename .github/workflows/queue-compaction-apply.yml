@@ -44,5 +44,6 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- nn/evolution-roster.js nn/elorank-legacy.js
           git commit -m 'nn: compact stale face queue and share model evidence'
+          git checkout -- nn/.queue-compaction-patch.py
           git pull --rebase origin claude/board-game-video-adaptation-cf8a93
           git push origin HEAD:claude/board-game-video-adaptation-cf8a93
