@@ -671,7 +671,7 @@
                 <select class="labLevelSel"></select>
                 <div class="labModelRow">
                     <button class="labBrowse">Choose file…</button>
-                    <input class="labFile" type="file" accept="application/json,.json" style="display:none;">
+                    <input class="labFile" type="file" accept="application/json,.json" multiple style="display:none;">
                     <span class="labModelName">No file loaded</span>
                     <div class="searchModeRow">
                         <label><input type="radio" name="labSearchMode0" value="fixed" checked> Fixed depth</label>
@@ -687,7 +687,7 @@
                 <select class="labLevelSel"></select>
                 <div class="labModelRow">
                     <button class="labBrowse">Choose file…</button>
-                    <input class="labFile" type="file" accept="application/json,.json" style="display:none;">
+                    <input class="labFile" type="file" accept="application/json,.json" multiple style="display:none;">
                     <span class="labModelName">No file loaded</span>
                     <div class="searchModeRow">
                         <label><input type="radio" name="labSearchMode1" value="fixed" checked> Fixed depth</label>
@@ -4889,7 +4889,7 @@ function ladderPlanFor(levelIdx, idx){
 // (pivot, direction), roll back to the pre-turn snapshot each time, score the stop with the net,
 // keep the best. Only used when a game was actually started via the #nn drop screen (aiDifficulty
 // 'nn') -- loading a model must never hijack an ordinary ladder/difficulty game.
-let nnModel = null, nnModelName = '';
+let nnModel = null, nnPolicyModel = null, nnModelName = '';
 // depth 2 (roughly 5x the compute per NN move for a real strength gain -- see nn/nnai.js): fine for
 // a human-paced game, not something worth defaulting on for bulk training. #nn's URL can override,
 // e.g. #nn?depth=3 or #nn?depth=1 for the old 1-ply behaviour. nnDynamic switches to iterative
@@ -5102,11 +5102,84 @@ function nnForwardGame(x, model) {
     }
     return a[0];
 }
+// Browser mirror of nn/policy.js prediction. A separate policy checkpoint is NOT a value
+// evaluator: it only orders the six canonical pivot/direction arms while the paired value model
+// still scores positions. Supports both legacy 22-output policy nets and the 96-action joint nets,
+// including the dense-memory and pairwise-memory topologies used by the wild policy expedition.
+function nnPolicyPredictGame(x, model) {
+    if (!model || !model.policy || !Array.isArray(model.sizes) || !Array.isArray(model.W) || !Array.isArray(model.b))
+        throw new Error('invalid Tau policy model');
+    const sizes = model.sizes, W = model.W, b = model.b;
+    const fanIns = Array.isArray(model.fanIns) ? model.fanIns : sizes.slice(0, -1);
+    const topology = model.topology || null, kind = topology && topology.kind;
+    const dense = kind === 'dense-memory-v1', pairwise = kind === 'pairwise-memory-v1';
+    if (kind && !dense && !pairwise) throw new Error('unsupported policy topology: ' + kind);
+    const memoryWidth = (dense || pairwise) ? (+topology.memoryWidth || 0) : 0;
+    const residualScale = (dense || pairwise) ? (+topology.residualScale || 0) : 0;
+    let a = Array.from(x), memories = [], history = [];
+    for (let l = 0; l < W.length; l++) {
+        let aIn = a;
+        if (dense && l > 0) {
+  const earlier = memories.slice(0, -1);
+  aIn = new Array(a.length + earlier.length*memoryWidth);
+  for (let i = 0; i < a.length; i++) aIn[i] = a[i];
+  let off = a.length;
+  for (const m of earlier) { for (let i = 0; i < m.length; i++) aIn[off+i] = m[i]; off += m.length; }
+        } else if (pairwise && l > 1) {
+  const earlier = history.slice(0, -1), messages = [];
+  for (let srcNo = 0; srcNo < earlier.length; srcNo++) {
+      const src = earlier[srcNo], P = model.skipW && model.skipW[l] && model.skipW[l][srcNo];
+      const pb = model.skipB && model.skipB[l] && model.skipB[l][srcNo];
+      if (!P || !pb) throw new Error(`pairwise policy missing skip ${srcNo}->${l}`);
+      const m = new Array(memoryWidth);
+      for (let j = 0; j < memoryWidth; j++) {
+          let sum = pb[j];
+          for (let i = 0; i < src.length; i++) sum += P[j*src.length+i]*src[i];
+          m[j] = Math.tanh(sum);
+      }
+      messages.push(m);
+  }
+  aIn = new Array(a.length + messages.length*memoryWidth);
+  for (let i = 0; i < a.length; i++) aIn[i] = a[i];
+  let off = a.length;
+  for (const m of messages) { for (let i = 0; i < m.length; i++) aIn[off+i] = m[i]; off += m.length; }
+        }
+        const nIn = fanIns[l], nOut = sizes[l+1], z = new Array(nOut), last = l === W.length - 1;
+        if (aIn.length !== nIn) throw new Error(`policy layer ${l} input ${aIn.length}, expected ${nIn}`);
+        for (let j = 0; j < nOut; j++) {
+  let sum = b[l][j];
+  for (let i = 0; i < nIn; i++) sum += W[l][j*nIn+i]*aIn[i];
+  if (last) z[j] = sum;
+  else {
+      const branch = Math.tanh(sum);
+      z[j] = (dense || pairwise) && l > 0 ? a[j] + residualScale*branch : branch;
+  }
+        }
+        if (dense && l < W.length - 1) memories.push(z.slice(0, memoryWidth));
+        if (pairwise && l < W.length - 1) history.push(z);
+        a = z;
+    }
+    if (a.length === NN_ARMS + NN_BINS)
+        return { arms: nnSoftmaxSlice(a, 0, NN_ARMS), bins: nnSoftmaxSlice(a, NN_ARMS, NN_ARMS + NN_BINS) };
+    const jointActions = 3*NN_BINS*2;
+    if (a.length === jointActions) {
+        const actions = nnSoftmaxSlice(a, 0, jointActions), arms = new Array(NN_ARMS).fill(0);
+        for (let action = 0; action < actions.length; action++) {
+  const leg = Math.floor(action/(NN_BINS*2)), within = action%(NN_BINS*2);
+  const canonDir = within < NN_BINS ? 1 : -1;
+  arms[leg*2 + (canonDir > 0 ? 0 : 1)] += actions[action];
+        }
+        return { actions, arms };
+    }
+    throw new Error(`policy output layer is ${a.length}; expected ${NN_ARMS + NN_BINS} or ${jointActions}`);
+}
+
 // Mirrors nn/nnai.js exactly (dense ~3deg waypoint sweep, plateau-vs-needle smoothing, optional
 // minimax `depth` on top of the same trained net) so a #nn game is testing the SAME search the
 // net is actually trained and gated with -- not a separate, silently-stale implementation.
-function nnPlanForGame(idx, temperature, depth, keepForDepth, model) {
+function nnPlanForGame(idx, temperature, depth, keepForDepth, model, policyModel) {
     model = model || nnModel;
+    if (policyModel === undefined) policyModel = (model === nnModel ? nnPolicyModel : null);
     const snap = takeSnap();
     const roll = () => { G.pieces.forEach((p,i)=>{p.x=snap[i].x;p.y=snap[i].y;p.rot=snap[i].rot;});
                           G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null;
@@ -5117,14 +5190,18 @@ function nnPlanForGame(idx, temperature, depth, keepForDepth, model) {
     // whether or not a dual net's policy head is available to order by.
     let armList = [];
     for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) armList.push({ pv, dir });
-    if (model && model.dual) {
-        const frame = nnMoveFrame();
-        const { arms } = nnDualPredictGame(nnFeaturesGame(), model);
+    // A dual net carries its policy in the same checkpoint. A policy entrant carries a separate
+    // policy checkpoint beside an ordinary value evaluator. Both produce the same canonical arm
+    // probabilities here, so the search below stays one implementation for every brain type.
+    const policyPrediction = (model && model.dual) ? nnDualPredictGame(nnFeaturesGame(), model)
+                 : policyModel ? nnPolicyPredictGame(nnFeaturesGame(), policyModel) : null;
+    if (policyPrediction) {
+        const frame = nnMoveFrame(), arms = policyPrediction.arms;
         const armKey = a => a.pv*2 + (a.dir > 0 ? 1 : 0);
         const score = new Map();
         for (let ai = 0; ai < arms.length; ai++) {
-            const slot = ai >> 1, canonDir = (ai & 1) === 0 ? 1 : -1;
-            score.set(frame.order[slot]*2 + ((canonDir*frame.mirror) > 0 ? 1 : 0), arms[ai]);
+  const slot = ai >> 1, canonDir = (ai & 1) === 0 ? 1 : -1;
+  score.set(frame.order[slot]*2 + ((canonDir*frame.mirror) > 0 ? 1 : 0), arms[ai]);
         }
         armList.sort((a, b) => (score.get(armKey(b)) || 0) - (score.get(armKey(a)) || 0));
     }
@@ -5172,7 +5249,7 @@ function nnPlanForGame(idx, temperature, depth, keepForDepth, model) {
             let deep;
             if (G.over) deep = G.winner === idx ? 1e6 : -1e6;
             else {
-                const oppPlan = nnPlanForGame(1 - idx, 0, depth - 1, keepForDepth, model);
+                const oppPlan = nnPlanForGame(1 - idx, 0, depth - 1, keepForDepth, model, policyModel);
                 if (!oppPlan) deep = nnForwardGame(nnFeaturesGame(), model);
                 else {
                     commit(oppPlan);
@@ -5197,13 +5274,13 @@ function nnPlanForGame(idx, temperature, depth, keepForDepth, model) {
 // FULLY completed depth's answer, until timeMs runs out -- "think as long as you're given" instead
 // of a fixed ply count. Each depth estimates whether the next one can plausibly finish (roughly
 // keepForDepth x the previous depth's own cost) before starting it.
-function nnPlanForGameTimed(idx, temperature, timeMs, model, keepForDepth) {
+function nnPlanForGameTimed(idx, temperature, timeMs, model, keepForDepth, policyModel) {
     keepForDepth = keepForDepth || 4;
     const t0 = performance.now();
     let best = null, depth = 1;
     for (;;) {
         const t1 = performance.now();
-        const plan = nnPlanForGame(idx, temperature, depth, keepForDepth, model);
+        const plan = nnPlanForGame(idx, temperature, depth, keepForDepth, model, policyModel);
         if (!plan) return best;
         best = plan; best.searchDepth = depth;
         const lastCost = performance.now() - t1, elapsed = performance.now() - t0;
@@ -8570,7 +8647,7 @@ function nnLoadModelFile(file) {
         try { j = JSON.parse(reader.result); }
         catch (e) { msg.textContent = 'Could not parse that file as JSON.'; msg.className = ''; return; }
         if (!j || !j.sizes || !j.W || !j.b) { msg.textContent = "That JSON doesn't look like a Tau model (missing sizes/W/b)."; msg.className = ''; return; }
-        nnModel = j; nnModelName = file.name;
+        nnModel = j; nnPolicyModel = null; nnModelName = file.name;
         msg.textContent = `Loaded ${file.name} ✓`; msg.className = 'ok';
         // No auto-advance: the search settings below (fixed depth vs dynamic time limit) are worth
         // a second to actually look at and adjust, not skip past 350ms after the drop.
@@ -8614,8 +8691,8 @@ function nnLoadModelFile(file) {
 // what a downsampled shared-replay link already looks like, and the pacing/interpolation system
 // already smooths that into a normal-looking animation, so there's no need to animate the AI-vs-AI
 // game turn-by-turn in real time; it's simulated instantly and then watched at normal speed.
-const labBrains = [{ level: 10, model: null, name: '', depth: 2, temperature: 0, dynamic: false, timeMs: 2000, human: false },
-                    { level: 10, model: null, name: '', depth: 2, temperature: 0, dynamic: false, timeMs: 2000, human: false }];
+const labBrains = [{ level: 10, model: null, policy: null, name: '', depth: 2, temperature: 0, dynamic: false, timeMs: 2000, human: false },
+                    { level: 10, model: null, policy: null, name: '', depth: 2, temperature: 0, dynamic: false, timeMs: 2000, human: false }];
 // A #lab game is neither vsAI nor a local/online match -- both G.pieces are AI, no one is ever
 // dragging. Without this flag, renderGameOverSheet()'s fallback branch offers a "Rematch" that
 // calls startGame(false) (a genuine two-human local game) and nothing ever moves again. Cleared by
@@ -8630,8 +8707,8 @@ function labSideLabel(side) {
 }
 function labMakeBrainFn(side) {
     const b = labBrains[side];
-    if (b.model) return idx => b.dynamic ? nnPlanForGameTimed(idx, b.temperature, b.timeMs, b.model)
-                                          : nnPlanForGame(idx, b.temperature, b.depth, 4, b.model);
+    if (b.model) return idx => b.dynamic ? nnPlanForGameTimed(idx, b.temperature, b.timeMs, b.model, 4, b.policy)
+                                : nnPlanForGame(idx, b.temperature, b.depth, 4, b.model, b.policy);
     return idx => ladderPlanFor(b.level, idx);
 }
 // Fast-forward a full game between two brains using the same primitives as every real turn (pin,
@@ -8691,7 +8768,7 @@ function labWatchGame() {
         if (h0 && h1) { startGame(false); return; }              // human vs human = plain local 1v1
         const ai = h0 ? 1 : 0, b = labBrains[ai];
         if (b.model) {
-            nnModel = b.model; nnModelName = b.name;
+            nnModel = b.model; nnPolicyModel = b.policy || null; nnModelName = b.name;
             nnDepth = b.depth; nnDynamic = b.dynamic; nnTimeMs = b.timeMs;
             nnTemperature = b.temperature || 0.05;
             startGame(true, h0 ? 0 : 1, 'nn');
@@ -8737,7 +8814,7 @@ function labSetSide(side, val) {
     const row = el.querySelector('.labModelRow');
     labBrains[side].human = val === 'human';
     if (val === 'custom') row.classList.add('on');
-    else { row.classList.remove('on'); labBrains[side].model = null; if (val !== 'human') labBrains[side].level = +val; }
+    else { row.classList.remove('on'); labBrains[side].model = null; labBrains[side].policy = null; if (val !== 'human') labBrains[side].level = +val; }
     labUpdateBtn();
 }
 function labUpdateBtn() {
@@ -8765,43 +8842,86 @@ function labUpdateBtn() {
         });
         const nameEl = el.querySelector('.labModelName');
         el.querySelector('.labBrowse').addEventListener('click', () => el.querySelector('.labFile').click());
-        el.querySelector('.labFile').addEventListener('change', e => {
-            const file = e.target.files[0]; if (!file) return;
-            const reader = new FileReader();
-            reader.onload = () => {
-                let j;
-                try { j = JSON.parse(reader.result); }
-                catch (err) { nameEl.textContent = 'Could not parse that file as JSON.'; return; }
-                if (!j || !j.sizes || !j.W || !j.b) { nameEl.textContent = "Doesn't look like a Tau model."; return; }
-                // A policy net (nn/policy.js) shares the same 94 inputs as a value net, so the size
-                // check below can't catch it -- but its output is 6 arm + 16 bin move-classifier
-                // logits, not a single win/loss score. nnForwardGame would tanh() those and return
-                // a[0] (an arbitrary arm logit) as if it were a position value, which "plays" but
-                // is meaningless -- hence the edge-seeking. #lab has no policy-search code path;
-                // only nn/arena.js's --policyA/--policyB does. Reject it here instead of misplaying.
-                if (j.policy) {
-                    nameEl.textContent = "That's a policy net (move predictor), not a value net -- #lab can't play with it. Use nn/arena.js --policyA/--policyB instead.";
-                    return;
-                }
-                if (j.sizes[0] !== NN_N_FEATURES) {
-                    nameEl.textContent = `That model takes ${j.sizes[0]} inputs, this build makes ${NN_N_FEATURES} — retrain it.`;
-                    return;
-                }
-                // A dual (value+policy) net's value head plays fine through the plain forward pass
-                // (nnForwardGame already tanh's slot 0 exactly like dualnet.js does), and
-                // nnPlanForGame uses its policy head to order arms when `model.dual` is set -- so
-                // this is accepted, not routed through the policy-net rejection above.
-                if (j.dual) {
-                    const DUAL_OUT = 1 + NN_ARMS + NN_BINS;
-                    if (j.sizes[j.sizes.length - 1] !== DUAL_OUT) {
-                        nameEl.textContent = `Dual net's output layer is ${j.sizes[j.sizes.length - 1]}, this build expects ${DUAL_OUT} — retrain it.`;
-                        return;
-                    }
-                }
-                labBrains[side].model = j; labBrains[side].name = file.name;
-                nameEl.textContent = file.name + (j.dual ? ' (dual value+policy) ✓' : ' ✓');
-            };
-            reader.readAsText(file);
+        el.querySelector('.labFile').addEventListener('change', async e => {
+  const files = Array.from(e.target.files || []); if (!files.length) return;
+  nameEl.textContent = 'Loading…';
+  const leaf = q => String(q || '').replace(/\\/g, '/').split('/').pop();
+  const parsed = [], byName = new Map(files.map(f => [f.name, f]));
+  try {
+      for (const file of files) parsed.push({ file, json: JSON.parse(await file.text()) });
+  } catch (err) {
+      nameEl.textContent = 'Could not parse one of those files as JSON.'; return;
+  }
+  const parsedByName = new Map(parsed.map(x => [x.file.name, x.json]));
+  const loadNamed = async q => {
+      const name = leaf(q);
+      if (parsedByName.has(name)) return parsedByName.get(name);
+      const url = new URL('nn/models/' + encodeURIComponent(name), location.href);
+      const r = await fetch(url, { cache:'no-store' });
+      if (!r.ok) throw new Error(`${name} is not on the live site (${r.status})`);
+      return await r.json();
+  };
+  const dualOut = 1 + NN_ARMS + NN_BINS, jointOut = 3*NN_BINS*2;
+  const usableValue = m => !!(m && Array.isArray(m.sizes) && Array.isArray(m.W) && Array.isArray(m.b) &&
+      !m.policy && m.sizes[0] === NN_N_FEATURES && (m.dual ? m.sizes[m.sizes.length-1] === dualOut
+                                                          : m.sizes[m.sizes.length-1] === 1));
+  const usablePolicy = m => {
+      if (!(m && m.policy && Array.isArray(m.sizes) && Array.isArray(m.W) && Array.isArray(m.b) &&
+            m.sizes[0] === NN_N_FEATURES)) return false;
+      const out = m.sizes[m.sizes.length-1];
+      if (out !== NN_ARMS + NN_BINS && out !== jointOut) return false;
+      const kind = m.topology && m.topology.kind;
+      return !kind || kind === 'dense-memory-v1' || kind === 'pairwise-memory-v1';
+  };
+
+  // If a bundle was selected, a descriptor wins; otherwise a policy wins over a value file
+  // so selecting policy+value together does the useful thing regardless of file-ordering.
+  const primary = parsed.find(x => x.json && x.json.policyEntrant) ||
+                  parsed.find(x => x.json && x.json.policy) || parsed[0];
+  let valueModel = null, policyModel = null, label = primary.file.name, valueLabel = '';
+  try {
+      const j = primary.json;
+      if (j && j.policyEntrant) {
+          if (!j.valueFile || !j.policyFile) throw new Error('policy entrant is missing valueFile/policyFile');
+          valueModel = await loadNamed(j.valueFile);
+          policyModel = await loadNamed(j.policyFile);
+          label = j.label || primary.file.name.replace(/\.json$/i, '');
+          valueLabel = leaf(j.valueFile);
+      } else if (j && j.policy) {
+          policyModel = j;
+          const localValue = parsed.find(x => x !== primary && usableValue(x.json));
+          if (localValue) { valueModel = localValue.json; valueLabel = localValue.file.name; }
+          else {
+              // Joint policy experiments have one explicit frozen evaluator by design.
+              // Legacy 22-output policies predate that descriptor convention, so use the
+              // current best value net unless the user selected a value file beside it.
+              const out = j.sizes && j.sizes[j.sizes.length-1];
+              const base = out === jointOut ? 'policy-joint-base.json' : 'best.json';
+              valueModel = await loadNamed(base); valueLabel = base;
+          }
+      } else valueModel = j;
+  } catch (err) {
+      nameEl.textContent = `Could not load policy dependencies: ${err.message}. Select the descriptor/value/policy JSONs together if they are not committed yet.`;
+      return;
+  }
+
+  if (!usableValue(valueModel)) {
+      const got = valueModel && valueModel.sizes ? valueModel.sizes[valueModel.sizes.length-1] : '?';
+      nameEl.textContent = `That value model is not playable here (output ${got}; expected 1, or ${dualOut} for a dual net).`;
+      return;
+  }
+  if (policyModel && !usablePolicy(policyModel)) {
+      const got = policyModel && policyModel.sizes ? policyModel.sizes[policyModel.sizes.length-1] : '?';
+      nameEl.textContent = `That policy model is not a supported Tau policy (output ${got}; expected ${NN_ARMS + NN_BINS} or ${jointOut}).`;
+      return;
+  }
+
+  labBrains[side].model = valueModel;
+  labBrains[side].policy = policyModel;
+  labBrains[side].name = label;
+  if (policyModel) nameEl.textContent = `${label} (value ${valueLabel} + policy) ✓`;
+  else nameEl.textContent = primary.file.name + (valueModel.dual ? ' (dual value+policy) ✓' : ' ✓');
+  e.target.value = '';
         });
         el.querySelector('.labDepth').addEventListener('input', e => { labBrains[side].depth = Math.max(1, +e.target.value || 1); });
         el.querySelector('.labTemp').addEventListener('input', e => { labBrains[side].temperature = Math.max(0, +e.target.value || 0); });
