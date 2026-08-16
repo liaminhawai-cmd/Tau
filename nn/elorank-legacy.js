@@ -89,6 +89,9 @@ const FRESHNESS_FLOOR = Math.min(0.9, Math.max(0, +arg('freshnessFloor', 0.10)))
 const PAIR_NOVELTY_FLOOR = Math.min(0.9, Math.max(0, +arg('pairNoveltyFloor', 0.20)));
 const CI_SHARE = Math.min(0.5, Math.max(0, +arg('ciShare', 0.15)));
 const CLOSE_FLOOR = Math.min(0.9, Math.max(0, +arg('closeFloor', 0.25)));
+// A new search-depth face inherits a small amount of evidence from the SAME underlying model.
+// This stops an old checkpoint's untouched D4 face looking as novel as a genuinely new network.
+const MODEL_EVIDENCE_SHARE = Math.min(1, Math.max(0, +arg('modelEvidenceShare', 0.15)));
 const SEC_PER_WEIGHT = 55;
 let totalWeight = 0;
 void anchorShare; void ladderNeedGames;
@@ -588,6 +591,19 @@ const gamesOf = () => {
   }
   return n;
 };
+const modelNameFromFaceId = id => {
+  const m=String(id).match(/^(.*?)(?:\+P)?@D\d+$/);return m?m[1]:null;
+};
+const modelGamesOf = () => {
+  // Side-games across every historical face of the same checkpoint. Retired depth evidence counts:
+  // the weights learned by ckpt-104 do not become mysterious again merely because D3 is new.
+  const n={};
+  for(const [key,r] of Object.entries(store.results)){
+    const [a,b]=key.split('|'),t=r.w+r.l+(r.d||0);
+    for(const id of [a,b]){const m=modelNameFromFaceId(id);if(m)n[m]=(n[m]||0)+t;}
+  }
+  return n;
+};
 const pairGamesOf = () => {
   // Scheduler novelty only needs active faces. Historical results remain in store forever for Elo,
   // but retired-v-retired cells do not inflate the live pair-count cache.
@@ -624,7 +640,7 @@ function uncertaintyOf(p, g) {
 }
 
 function pickPair(elo, inFlight) {
-  const g = gamesOf(), pg = pairGamesOf();
+  const g = gamesOf(), pg = pairGamesOf(), mg = modelGamesOf();
   const allElos = players.map(p=>elo[p.id]).filter(Number.isFinite);
   const maxE = allElos.length ? Math.max(...allElos) : 0;
   const strength = p => {
@@ -655,9 +671,15 @@ function pickPair(elo, inFlight) {
       // mandatory first-coverage rule below still guarantees every new face gets onto the graph.
       const strengthWeight = strength(a)*strength(b);
 
-      // max(), not mean(): one genuinely fresh participant should be enough to make an old champion
-      // or ladder anchor useful again. 0->1.00 raw, 10->.28, 200->.13, 500->.11.
-      const freshRaw = Math.max(inverseLog(g[a.id] || 0), inverseLog(g[b.id] || 0));
+      // max(), not mean(): one genuinely fresh participant is enough to pull an old champion back in.
+      // For NN faces only, 15% of OTHER-depth evidence from the same checkpoint carries across.
+      // A truly new model is still 1.00 fresh; an old 0-game D4 face no longer masquerades as one.
+      const effectiveFreshGames = p => {
+        const face=+g[p.id]||0;if(p.kind!=='nn')return face;
+        const name=path.basename(p.model,'.json'),total=+mg[name]||face;
+        return face + MODEL_EVIDENCE_SHARE*Math.max(0,total-face);
+      };
+      const freshRaw = Math.max(inverseLog(effectiveFreshGames(a)), inverseLog(effectiveFreshGames(b)));
       const freshnessWeight = FRESHNESS_FLOOR + (1-FRESHNESS_FLOOR)*freshRaw;
 
       // CI is intentionally secondary. Wide intervals help, but they cannot make a mediocre old
@@ -689,7 +711,8 @@ async function main() {
               `(heavy strength + inverse-log freshness + pair novelty + small CI bonus), ` +
               `${gamesPerPair} games per matchup`);
   console.log(`  universal scheduler: strength temp ${STRENGTH_TEMP} Elo, strength floor ${strengthExplore}, ` +
-              `freshness floor ${FRESHNESS_FLOOR}, pair floor ${PAIR_NOVELTY_FLOOR}, CI share ${CI_SHARE}`);
+              `freshness floor ${FRESHNESS_FLOOR}, model carry ${MODEL_EVIDENCE_SHARE}, ` +
+              `pair floor ${PAIR_NOVELTY_FLOOR}, CI share ${CI_SHARE}`);
   console.log(`  stops when every net's rank is known to +-${rankTolerance} rungs (90% CI)` +
               (budgetHours > 0 ? `, or at ${budgetHours}h` : '') + `, whichever comes first`);
   const already = Object.keys(store.results).length;
