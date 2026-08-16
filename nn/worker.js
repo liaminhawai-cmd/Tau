@@ -2,20 +2,18 @@
 // Spare-machine worker: complementary compute, not a second copy of the desktop stream.
 //
 // The desktop publishes ONE gold/silver/bronze set -- the top 3 DISTINCT models on the whole live
-// ladder, ranked across every depth, not three per depth. Option 22 is a DATA factory, so its job is
-// not to re-measure the whole population: when medals exist, every lane is driven by those top
-// models at the depth each actually earned. Gold gets about half the lanes, silver about three
-// tenths and bronze the rest. Most games are top-NN vs top-NN; a small fixed slice uses the top
-// production ladder rungs as non-learning opponents. No ordinary ladder-vs-ladder games are spent
-// here. If medals have not been published yet, best.json/pool-slot fallback keeps the worker alive.
-// After each chunk this also runs one deliberately tiny rescue mine: at most TWO replay games. If
-// the losing position was already doomed earlier than that, too bad -- this worker is for late
-// conversion mistakes, not an all-night archaeological dig.
+// ladder, ranked across every depth, not three per depth. Option 22 is a DATA factory, so it does
+// not load uncertainty or try to re-measure the field.  Each NN seat is drawn from those medals by
+// shared Elo strength, and each medal plays at the depth of the face that actually earned it.  A
+// small slice plays a top fixed production rung, also strength-weighted.  No ladder-vs-ladder games.
+// If medals do not exist yet, best.json/pool-slot fallback keeps the worker alive.
+// After each chunk this also runs one deliberately tiny rescue mine: at most TWO replay games.
 const {execFileSync, spawn}=require('child_process');
 const fs=require('fs');
 const os=require('os');
 const path=require('path');
 const crypto=require('crypto');
+const ladderSampling=require('./ladder-sampling.js');
 const {loadSeedPoses}=require('./selfplay.js');
 
 function arg(name,dflt){const i=process.argv.indexOf('--'+name);return i>=0?process.argv[i+1]:dflt;}
@@ -27,11 +25,9 @@ const pushEveryMin=Math.max(.5,+arg('pushEveryMin',4));
 const workers=Math.max(1,+arg('workers',Math.max(1,Math.min(os.cpus().length-1,12))));
 const randomStartFrac=String(arg('randomStartFrac','0.35'));
 const seedFrac=Math.max(0,Math.min(1,+arg('seedFrom','0.25')));
+const ladderShare=Math.max(0,Math.min(.35,+arg('ladderShare',.10)));
 // Cost-weighted fallback depths for best.json only, before medals exist.
 const depthMix=String(arg('nnDepthMix','1:0.15,2:1,3:0.07'));
-// Strong-data default: 85% top NN vs top NN, 15% top NN vs a top fixed ladder rung, 0% rung-only.
-// Exposed so a one-off worker can deliberately change the corpus without editing this file.
-const sparMix=String(arg('mix','nnnn:0.85,nnladder:0.15,ladder:0'));
 const rescue=arg('rescue','1')!=='0';
 const name=(arg('name',os.hostname())||'worker').toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,20)||'worker';
 
@@ -69,18 +65,18 @@ function slotFallback(){
   try{for(const f of fs.readdirSync(md)){const m=f.match(/^pool-slot-(\d+)\.json$/);if(m){const p=path.join(md,f);if(validModel(p))slots.push({n:+m[1],p});}}}catch(_){}
   return slots.sort((a,b)=>b.n-a.n).slice(0,3).map(x=>x.p);
 }
-// medals.json's `depth` field is exactly what publish-medals.js measured that model's rank at --
-// play it there, not at whatever depth this lane would otherwise have been assigned. If a medal's
-// own file is missing or unvalidatable, it just does not get a lane this chunk.
+// medals.json carries the face depth and fitted Elo that earned each alias.  Both matter: strength
+// decides how often the medal is sampled; depth decides how that exact rated face plays.
 function readMedals(){
   const medalDir=path.join(dir,'medals');
   let meta=null; try{meta=JSON.parse(fs.readFileSync(path.join(medalDir,'medals.json'),'utf8'));}catch(_){}
   const out=[];
   for(const name of ['gold','silver','bronze']){
-    const p=path.join(medalDir,`${name}.json`);
+    const p=path.join(medalDir,`${name}.json`), r=meta&&meta.medals&&meta.medals[name];
     if(!validModel(p))continue;
-    const d=meta&&meta.medals&&meta.medals[name]&&meta.medals[name].depth;
-    out.push({name,path:p,depth:[1,2,3,4].includes(+d)?+d:2});
+    const d=r&&r.depth;
+    out.push({name,path:p,depth:[1,2,3,4].includes(+d)?+d:2,
+      elo:r&&Number.isFinite(+r.elo)?+r.elo:null,rankLo:r&&Number.isFinite(+r.rankLo)?+r.rankLo:null});
   }
   return out;
 }
@@ -95,17 +91,6 @@ function laneDepths(n){
   for(let i=0;i<n-used;i++)counts[exact[i%exact.length].d]++;
   const out=[];for(const d of ds.sort((a,b)=>a-b))for(let i=0;i<counts[d];i++)out.push(d);
   return out.length?out:Array(n).fill(2);
-}
-// A training garnish should use the strongest stable rule-based opponents, not whatever happened
-// to appear often in the latest ZPD sample. Read the production ladder itself and take its top 3;
-// experimental rungs stay out until they are promoted into production.
-function strongLevels(){
-  try{
-    const ladder=require('./engine.js').createEngine().AI_LADDER;
-    const levels=ladder.map((d,i)=>d&&!d.experimental?i+1:null).filter(Boolean);
-    if(levels.length)return levels.slice(-Math.min(3,levels.length)).join(',');
-  }catch(_){}
-  return '9,10,11';
 }
 
 async function pushProgress(files,label){
@@ -128,49 +113,51 @@ function championPool(){
   return {best,slotFallback:slotFallback()};
 }
 
-// With medals present, ALL lanes come from the top three distinct rated models. Expanding the
-// medal list 5:3:2 gives gold the most data without collapsing the corpus to one self-playing net.
-// Each lane's opponent pool is the other medals; selfplay-legacy independently draws the two NN
-// sides, so the 85% NN-vs-NN share naturally mixes these strong architectures. best.json is only a
-// fallback before medals exist -- it is not assumed to be top merely because of its filename.
 function buildLanes(){
   const {best,slotFallback:fb}=championPool(), medals=readMedals();
   if(!medals.length){
-    const depths=laneDepths(workers);
-    return Array.from({length:workers},(_,i)=>({model:best,pool:fb,depth:depths[i]||2,label:'best-fallback'}));
+    const depths=laneDepths(workers), levels=ladderSampling.productionTop(3).join(',');
+    return {medals:[],profile:null,lanes:Array.from({length:workers},(_,i)=>({model:best,pool:fb,depth:depths[i]||2,label:'best-fallback'})),levels};
   }
-  const weight={gold:5,silver:3,bronze:2};
-  const expanded=[];
-  for(const m of medals)for(let i=0;i<(weight[m.name]||1);i++)expanded.push(m);
-  const medalPaths=medals.map(m=>m.path), lanes=[];
+  const profile=ladderSampling.factoryProfile(dir,medals,{top:3,ladderGameShare:ladderShare});
+  const paths=medals.map(m=>m.path), lanes=[];
+  // Primary choice only spreads file loading across aliases.  Once the complete weight map is
+  // passed, selfplay-legacy draws BOTH seats independently from all three medals by Elo strength.
   for(let i=0;i<workers;i++){
-    const m=expanded[i%expanded.length], pool=uniqueModels(medalPaths.filter(p=>p!==m.path));
-    lanes.push({model:m.path,pool,depth:m.depth,label:`medal-${m.name}`});
+    const m=medals[i%medals.length],pool=uniqueModels(paths.filter(p=>p!==m.path));
+    lanes.push({model:m.path,pool,depth:m.depth,label:`medals/${m.name}`});
   }
-  return lanes;
+  return{medals,profile,lanes,levels:profile.levels.join(',')};
 }
 
 function playChunk(chunk){
   const stamp=new Date().toISOString().replace(/[:.]/g,'-');
-  const levels=strongLevels();
-  const lanes0=buildLanes();
+  const built=buildLanes(), lanes0=built.lanes, levels=built.levels;
   const per=Math.max(1,Math.round(gamesPerChunk/workers));
   let seedFile=null;
   if(seedFrac>0){
     const poses=loadSeedPoses(path.join(dir,'data'),400);
     if(poses.length>=20){seedFile=path.join(dir,'data',`w-${name}-${stamp}.seeds`);fs.writeFileSync(seedFile,JSON.stringify(poses));}
   }
-  log(`chunk ${chunk}: ${workers} lanes x ${per}; ${lanes0.map(l=>`${l.label}@D${l.depth}`).join(', ')}; mix ${sparMix}; ladder ${levels}`);
+  const medalNote=built.medals.length
+    ? built.medals.map(m=>`${m.name}@D${m.depth}${Number.isFinite(m.elo)?` E${m.elo.toFixed(0)}`:''}`).join(', ')
+    : lanes0.map(l=>`${l.label}@D${l.depth}`).join(', ');
+  const mix=built.profile?built.profile.mixString:'nnnn:0.85,nnladder:0.15,ladder:0';
+  const modelWeights=built.profile?built.profile.modelWeights:{};
+  const depthMap=Object.fromEntries((built.medals||[]).map(m=>[m.name,m.depth]));
+  log(`chunk ${chunk}: ${workers} lanes x ${per}; ${medalNote}; strength-only weights `+
+      `${Object.entries(modelWeights).map(([k,v])=>`${k}=${v}`).join(' ')||'fallback'}; mix ${mix}; ladder ${levels}`);
   const files=[], lanes=[];
   lanes0.forEach((lane,i)=>{
     const out=path.join(dir,'data',`w-${name}-${stamp}-w${i+1}.jsonl`); files.push(out);
     lanes.push(new Promise(resolve=>{
-      // Use legacy directly so this spare machine keeps the explicit champion set instead of the
-      // desktop evolutionary wrapper replacing it with whatever local historical files happen to exist.
+      // Use legacy directly so this spare machine keeps the explicit medal set instead of the
+      // desktop evolutionary wrapper replacing it with the broad live roster.
       const args=[path.join(dir,'selfplay-legacy.js'),'--games',String(per),'--workers','1','--out',out,
         '--model',lane.model,'--levels',levels,'--deep',levels,'--nnDepthMix',`${lane.depth}:1`,
-        '--mix',sparMix,'--randomStartFrac',randomStartFrac,'--modelVarietyFrac','1',
+        '--mix',mix,'--randomStartFrac',randomStartFrac,'--modelVarietyFrac','1',
         ...(lane.pool.length?['--modelPool',lane.pool.join(',')]:[]),
+        ...(built.medals.length?['--modelPoolWeights',JSON.stringify(modelWeights),'--modelPoolDepths',JSON.stringify(depthMap)]:[]),
         ...(seedFile?['--seedFrom',String(seedFrac),'--seedPool',seedFile]:['--seedFrom','0'])];
       const ch=spawn('node',args,{stdio:['ignore','inherit','inherit'],env:{...process.env,TAU_WORKER:String(i+1)}});
       ch.on('exit',()=>resolve()); ch.on('error',e=>{log(`lane ${i+1} (${lane.label}) failed (${e.message})`);resolve();});
@@ -198,7 +185,8 @@ function runTinyRescue(stamp){
 }
 
 async function main(){
-  log(`strong worker "${name}" up: ${workers} lanes; medal-weighted top NNs; mix ${sparMix}; top production ladder ${strongLevels()}; rescue ${rescue?'on':'off'}`);
+  log(`strong worker "${name}" up: ${workers} lanes; strength-only gold/silver/bronze at earned depths; `+
+      `${Math.round(ladderShare*100)}% top-rung reference games; no ladder-v-ladder; rescue ${rescue?'on':'off'}`);
   for(let chunk=1;;chunk++){
     gitSoft(['pull','--no-edit','--no-rebase'],'pull');
     const {files,done,stamp}=playChunk(chunk); let finished=false; done.then(()=>finished=true);
