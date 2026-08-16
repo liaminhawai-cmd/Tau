@@ -27,12 +27,12 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import textwrap
           w=Path('.github/workflows/patch-lab-policy.yml').read_text()
           needle="          python - <<'PY'\n"
           start=w.index(needle)+len(needle)
           end=w.index("\n          PY",start)
-          body=textwrap.dedent(w[start:end])
+          lines=w[start:end].splitlines()
+          body='\n'.join(line[10:] if line.startswith('          ') else line for line in lines)+'\n'
           Path('/tmp/lab-policy-patch.py').write_text(body)
           PY
           python /tmp/lab-policy-patch.py
