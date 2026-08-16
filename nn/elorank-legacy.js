@@ -23,8 +23,9 @@
 // LADDER RUNGS ARE THE ANCHOR. Fitting nets alone would give a self-consistent scale with no
 // meaning ("net A is 120 Elo above net B" -- above WHAT?). Including L1..L11 as ordinary players
 // makes the fitted ladder Elos a measured yardstick and every net's rank an interpolation against
-// it.  Permanent does NOT mean privileged scheduling: once a rung is well measured its need falls
-// to the same tiny floor as any settled player and it stops consuming ordinary rating compute.
+// it. Permanent does NOT mean privileged scheduling: ladders and nets now use the same strength,
+// freshness, uncertainty and pair-novelty score. Ladder identity is special only because rungs are
+// never retired and continue to define the fixed yardstick.
 //
 // Raw per-pair results are checkpointed to --out after every pair, so a run that is interrupted
 // (or a machine that gets closed) resumes where it stopped instead of replaying. --refit skips
@@ -53,8 +54,8 @@ function atomicCopy(srcPath, destPath) {
 const dir = __dirname;
 const modelsDir = path.join(dir, 'models');
 const gamesPerPair = Math.max(1, +arg('games', 4));
-// Compatibility knob only.  Ladder pairs no longer receive a larger default batch than anything
-// else; the adaptive need score below decides whether they deserve to be picked at all.
+// Compatibility knob only. Ladder pairs no longer receive a larger default batch than anything
+// else; the adaptive score below decides whether they deserve to be picked at all.
 const ladderGames = Math.max(1, +arg('ladderGames', gamesPerPair));
 const depths = (arg('depths', '1,2,3') || '').split(',').map(Number).filter(d => d >= 1);
 const levels = (arg('levels', '') || '').split(',').map(Number).filter(n => n >= 1);
@@ -75,18 +76,22 @@ const allowPlayers = new Set((arg('allowPlayers', '') || '').split(',').map(x =>
 const faceAllowed = id => !allowPlayers.size || allowPlayers.has(id);
 const summaryPath = arg('summary', null);
 const focusPairsOnly = arg('focusPairs', '1') !== '0';
-// Kept as a parsed compatibility argument because older launchers pass it, but there is no longer
-// an anchor quota/boost.  A rung competes for a game on the same strength/information score.
+// Kept as parsed compatibility arguments because older launchers may pass them. There is no anchor
+// quota and no ladder-only need function anymore.
 const anchorShare = Math.min(0.9, Math.max(0, +arg('anchorShare', 0)));
-const strengthExplore = Math.min(0.9, Math.max(0.01, +arg('strengthExplore', 0.15)));
-// Rungs do not have their own bootstrap rank CI (they define that rank scale), so game count is the
-// one honest need proxy for them.  At 12 games a rung is still worth half-need; at the current
-// 500+ games it lands on the ordinary uncertainty floor.  A newly-added rung starts at 1 and gets
-// first coverage automatically.
 const ladderNeedGames = Math.max(1, +arg('ladderNeedGames', 12));
+// Strength is intentionally the dominant term. Exponential Elo weighting avoids the field's weakest
+// outlier changing everybody else's scale; the small floor still permits exploration and mandatory
+// first coverage guarantees a brand-new face cannot be starved before it has a rating.
+const strengthExplore = Math.min(0.5, Math.max(0.001, +arg('strengthExplore', 0.03)));
+const STRENGTH_TEMP = Math.max(50, +arg('strengthTemp', 300));
+const FRESHNESS_FLOOR = Math.min(0.9, Math.max(0, +arg('freshnessFloor', 0.10)));
+const PAIR_NOVELTY_FLOOR = Math.min(0.9, Math.max(0, +arg('pairNoveltyFloor', 0.20)));
+const CI_SHARE = Math.min(0.5, Math.max(0, +arg('ciShare', 0.15)));
+const CLOSE_FLOOR = Math.min(0.9, Math.max(0, +arg('closeFloor', 0.25)));
 const SEC_PER_WEIGHT = 55;
 let totalWeight = 0;
-void anchorShare;
+void anchorShare; void ladderNeedGames;
 
 // --- who is in the field ----------------------------------------------------------------------
 function discoverModels() {
@@ -584,44 +589,49 @@ const gamesOf = () => {
   return n;
 };
 const pairGamesOf = () => {
+  // Scheduler novelty only needs active faces. Historical results remain in store forever for Elo,
+  // but retired-v-retired cells do not inflate the live pair-count cache.
+  const active = new Set(players.map(p => p.id));
   const n = {};
   for (const [key, r] of Object.entries(store.results)) {
-    const [a, b] = key.split('|'); const t = r.w + r.l + (r.d || 0);
+    const [a, b] = key.split('|');
+    if (!active.has(a) || !active.has(b)) continue;
+    const t = r.w + r.l + (r.d || 0);
     const k = a < b ? a + '|' + b : b + '|' + a;
     n[k] = (n[k] || 0) + t;
   }
   return n;
 };
 
-// Pick the most informative matchup available right now.  Every player now uses the same basic
-// competition: close expected result x remaining need x strength/exploration x pair novelty / CPU.
-// NN need comes from its bootstrapped rank CI.  A rung has no rank CI of its own because it defines
-// the scale, so its permanent game count supplies the need term instead.  There is deliberately no
-// rung boost, anchor quota, mixed-pair privilege or "ladder is never done" exception anymore.
+// Scheduler policy:
+//   strength       -- dominant; exponential distance from the current strongest fitted Elo
+//   freshness      -- inverse-log(total games), huge for new faces then deliberately flattens
+//   CI evidence    -- small bonus only; prevents uncertainty from overpowering actual strength
+//   pair novelty   -- inverse-log(head-to-head games), so fresh graph edges matter without forcing
+//                     an ever-growing round robin
+//   closeness/cost -- useful games and cheap games still win ties
+// The same score applies to ladders and NNs. Ladders simply lack a bootstrap CI, so that small term
+// sits at its floor while their ordinary inverse-log freshness comes from the same total-game count.
 let lastCI = null;
 const UNC_REF = 1.0;
 const UNC_FLOOR = 0.05;
+const inverseLog = games => 1/Math.log2(Math.max(0, +games || 0) + 2);
 function uncertaintyOf(p, g) {
   if (!(g[p.id] > 0)) return 1;
-  if (p.kind === 'ladder')
-    return Math.max(UNC_FLOOR, Math.min(1, ladderNeedGames/(ladderNeedGames + (g[p.id] || 0))));
   const c = lastCI && lastCI[p.id];
-  if (!c || !Number.isFinite(c.lo) || !Number.isFinite(c.hi)) return 1;
+  if (!c || !Number.isFinite(c.lo) || !Number.isFinite(c.hi)) return UNC_FLOOR;
   return Math.max(UNC_FLOOR, Math.min(1, ((c.hi - c.lo)/2)/UNC_REF));
 }
 
 function pickPair(elo, inFlight) {
   const g = gamesOf(), pg = pairGamesOf();
   const allElos = players.map(p=>elo[p.id]).filter(Number.isFinite);
-  const minE = allElos.length ? Math.min(...allElos) : 0;
   const maxE = allElos.length ? Math.max(...allElos) : 0;
-  const span = Math.max(1, maxE-minE);
-  // Same standing scale for EVERY player.  Ladder identity remains special only for reporting and
-  // retirement immunity; its fitted strength no longer gets silently hard-coded to 1.
-  const standing = p => strengthExplore + (1-strengthExplore)*
-    Math.max(0, Math.min(1, ((elo[p.id]||0)-minE)/span));
-  const priority = (a, b) => (uncertaintyOf(a, g) + uncertaintyOf(b, g))*
-    Math.sqrt(standing(a)*standing(b));
+  const strength = p => {
+    if (!(g[p.id] > 0)) return 1; // unknown face: do not assume weak before its mandatory first game
+    const e = Number.isFinite(elo[p.id]) ? elo[p.id] : maxE;
+    return strengthExplore + (1-strengthExplore)*Math.exp((e-maxE)/STRENGTH_TEMP);
+  };
 
   let best = null, bestScore = -Infinity;
   let bestNew = null, bestNewScore = -Infinity;
@@ -636,11 +646,32 @@ function pickPair(elo, inFlight) {
       }
       const bothLadder = a.kind === 'ladder' && b.kind === 'ladder';
       if (bothLadder && Math.abs(a.level - b.level) > 2) continue;
+
       const pExp = 1/(1 + Math.pow(10, ((elo[b.id] || 0) - (elo[a.id] || 0))/400));
-      const closeness = 4*pExp*(1 - pExp);
-      const novelty = 1/(1 + (pg[k] || 0)/gamesPerPair);
+      const closeness = 4*pExp*(1-pExp);
+      const closeWeight = CLOSE_FLOOR + (1-CLOSE_FLOOR)*closeness;
+
+      // Product is deliberate: a matchup is most valuable when BOTH participants are strong. The
+      // mandatory first-coverage rule below still guarantees every new face gets onto the graph.
+      const strengthWeight = strength(a)*strength(b);
+
+      // max(), not mean(): one genuinely fresh participant should be enough to make an old champion
+      // or ladder anchor useful again. 0->1.00 raw, 10->.28, 200->.13, 500->.11.
+      const freshRaw = Math.max(inverseLog(g[a.id] || 0), inverseLog(g[b.id] || 0));
+      const freshnessWeight = FRESHNESS_FLOOR + (1-FRESHNESS_FLOOR)*freshRaw;
+
+      // CI is intentionally secondary. Wide intervals help, but they cannot make a mediocre old
+      // brain consume more compute than a clearly stronger fresh contender.
+      const uncertainty = Math.max(uncertaintyOf(a, g), uncertaintyOf(b, g));
+      const evidenceWeight = (1-CI_SHARE) + CI_SHARE*uncertainty;
+
+      // Sparse pair freshness derived from the permanent result log. It has the same inverse-log
+      // shape and a floor, so 200-vs-500 prior games barely differs while an unseen edge gets a push.
+      const pairFresh = inverseLog(pg[k] || 0);
+      const noveltyWeight = PAIR_NOVELTY_FLOOR + (1-PAIR_NOVELTY_FLOOR)*pairFresh;
+
       const cpuCost = Math.sqrt(SIDE_COST(a)+SIDE_COST(b));
-      const score = (0.15 + closeness)*priority(a, b)*novelty/cpuCost;
+      const score = strengthWeight*freshnessWeight*evidenceWeight*noveltyWeight*closeWeight/cpuCost;
       if (score > bestScore) { bestScore = score; best = [a, b]; }
       if ((!(g[a.id] > 0) || !(g[b.id] > 0)) && score > bestNewScore) {
         bestNewScore = score; bestNew = [a, b];
@@ -655,9 +686,10 @@ async function main() {
   const targetGames = Math.max(1, +arg('targetGames', 12));
   const rankTolerance = +arg('rankTolerance', 0.5);
   console.log(`elorank: ${players.length} brains, ${workers} lanes, adaptive pairing ` +
-              `(close rating + need + shared strength/exploration + CPU cost), ${gamesPerPair} games per matchup`);
-  console.log(`  ladder rungs are permanent but ordinary: count-need reference ${ladderNeedGames} games, `+
-              `settled floor ${UNC_FLOOR}`);
+              `(heavy strength + inverse-log freshness + pair novelty + small CI bonus), ` +
+              `${gamesPerPair} games per matchup`);
+  console.log(`  universal scheduler: strength temp ${STRENGTH_TEMP} Elo, strength floor ${strengthExplore}, ` +
+              `freshness floor ${FRESHNESS_FLOOR}, pair floor ${PAIR_NOVELTY_FLOOR}, CI share ${CI_SHARE}`);
   console.log(`  stops when every net's rank is known to +-${rankTolerance} rungs (90% CI)` +
               (budgetHours > 0 ? `, or at ${budgetHours}h` : '') + `, whichever comes first`);
   const already = Object.keys(store.results).length;
