@@ -1317,8 +1317,8 @@
   },
   "medal-bronze@D2": {
    "kind": "nn",
-   "elo": 125.9,
-   "games": 24,
+   "elo": 119.1,
+   "games": 20,
    "model": "nn\\medals\\bronze.json",
    "depth": 2,
    "brain": "nn",
@@ -1328,11 +1328,11 @@
    "rankHi": 10,
    "rankLoEdge": "above",
    "rankHiEdge": "above",
-   "extrapRank": 11.02,
-   "extrapRankLo": 9.05,
-   "extrapRankHi": 12.98,
+   "extrapRank": 10.75,
+   "extrapRankLo": 9.04,
+   "extrapRankHi": 13.08,
    "medal": "bronze",
-   "sourceId": "ckpt-052@D2"
+   "sourceId": "ckpt-104@D2"
   }
  }
 }
