@@ -1,0 +1,37 @@
+name: Fix Lab policy patch trigger
+
+on:
+  push:
+    branches:
+      - claude/board-game-video-adaptation-cf8a93
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/board-game-video-adaptation-cf8a93
+          fetch-depth: 0
+      - name: Fix trigger
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/patch-lab-policy.yml')
+          s=p.read_text()
+          old="    if: github.event.head_commit.message == 'lab: stage policy model support'"
+          new="    if: github.event.head_commit.message == 'lab-policy-stage'"
+          if s.count(old)!=1: raise SystemExit(f'expected one trigger, found {s.count(old)}')
+          p.write_text(s.replace(old,new))
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- .github/workflows/patch-lab-policy.yml
+          git commit -m 'lab-policy-stage'
+          git pull --rebase origin claude/board-game-video-adaptation-cf8a93
+          git push origin HEAD:claude/board-game-video-adaptation-cf8a93
