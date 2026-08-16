@@ -2,6 +2,7 @@
 const path=require('path');
 const {spawn}=require('child_process');
 const evo=require('./evolution-roster.js');
+const ladderSampling=require('./ladder-sampling.js');
 const {loadSeedPoses}=require('./selfplay-legacy.js');
 const dir=__dirname;
 module.exports={loadSeedPoses};
@@ -11,16 +12,26 @@ function run(args){return new Promise((ok,bad)=>{const ch=spawn(process.execPath
 async function main(){
   const original=process.argv.slice(2), games=Math.max(1,+getArg(original,'games',100));
   evo.sync(dir); evo.ingestSummary(dir,path.join(dir,'elo-summary.json'));
-  const slice=evo.selfplaySlice(dir), levels=evo.activeLadderLevels(dir), profile=evo.selfplayProfile(slice,{dir});
+  const slice=evo.selfplaySlice(dir), profile=evo.selfplayProfile(slice,{dir});
+  // The model draw keeps evolution-roster's existing strength+need equation.  Ladder rungs are a
+  // separate permanent reference class: same Elo strength axis, but their need decays from their
+  // accumulated game count.  With the current 500+ games/rung that makes them a trickle, not a
+  // fixed quota; a genuinely new rung automatically gets more until it is measured.
+  const ladder=ladderSampling.trainerProfile(dir,profile.weights,{top:3});
   const d3Pool=evo.d3Slice(dir), d3Games=d3Pool.length?Math.floor(games*evo.D3_SHARE):0, baseGames=Math.max(0,games-d3Games);
   const st=evo.status(dir);
   console.log(`[evolution] self-play roster ${st.models} nets + ${st.ladders} ladder; rotating ${slice.length}; `+
               `D3 earned ${d3Pool.length} (rankLo above population median${Number.isFinite(st.median)?' '+st.median.toFixed(2):''})`);
+  console.log(`[evolution] fixed-rung reference: top ${[...new Set(ladder.levels)].map(x=>'L'+x).join(', ')}; `+
+              `seat share ${(100*ladder.seatShare).toFixed(1)}%; game mix ${ladder.mixString}`);
 
   const baseArgs=()=>{
     const a=original.slice();
     if(slice.length){setArg(a,'model',slice[0]);setArg(a,'modelPool',slice.slice(1).join(','));}
-    setArg(a,'levels',levels.join(',')); setArg(a,'deep',levels.slice(-Math.min(5,levels.length)).join(','));
+    setArg(a,'levels',ladder.levels.join(',')); setArg(a,'deep',ladder.levels.join(','));
+    // Deliberately overrides run.js's old fixed 60/30/10 split.  The wrapper now derives the ladder
+    // share from live evidence; the NN-vs-NN model weighting itself is unchanged.
+    setArg(a,'mix',ladder.mixString);
     setArg(a,'modelPoolWeights',JSON.stringify(profile.weights)); setArg(a,'modelVarietyFrac','1');
     return a;
   };
@@ -45,12 +56,13 @@ async function main(){
   }
 
   if(d3Games>0){
-    const d3=original.slice(), p=evo.selfplayProfile(d3Pool,{dir});
+    const d3=original.slice(), p=evo.selfplayProfile(d3Pool,{dir}), dl=ladderSampling.trainerProfile(dir,p.weights,{top:3});
     setArg(d3,'games',d3Games); setArg(d3,'model',d3Pool[0]); setArg(d3,'modelPool',d3Pool.slice(1).join(','));
-    setArg(d3,'levels',levels.join(',')); setArg(d3,'deep',levels.slice(-Math.min(5,levels.length)).join(','));
+    setArg(d3,'levels',dl.levels.join(',')); setArg(d3,'deep',dl.levels.join(',')); setArg(d3,'mix',dl.mixString);
     setArg(d3,'nnDepthMix','3:1'); setArg(d3,'modelPoolWeights',JSON.stringify(p.weights));
     setArg(d3,'coverageQueue',JSON.stringify(p.coverage.filter(x=>x.depth===3))); setArg(d3,'modelVarietyFrac','1');
-    console.log(`[evolution] earned-D3 phase ${d3Games}/${games} games across ${d3Pool.length} nets`);
+    console.log(`[evolution] earned-D3 phase ${d3Games}/${games} games across ${d3Pool.length} nets; `+
+                `fixed-rung seat share ${(100*dl.seatShare).toFixed(1)}%`);
     await run(d3);
   }
 }
