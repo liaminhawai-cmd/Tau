@@ -1,5 +1,5 @@
 {
-  "updated": "2026-08-16T06:24:47.368Z",
+  "updated": "2026-08-16T07:26:45.599Z",
   "basis": "ONE overall rankLo ranking across every depth (D1-D4); each medal keeps its own measured depth",
   "medals": {
     "gold": {
@@ -7,29 +7,29 @@
       "sourceId": "behemoth-10x400-dense40@D3",
       "depth": 3,
       "games": 30,
-      "elo": 285.3,
+      "elo": 285.5,
       "rank": 0,
       "rankLo": 9,
       "rankHi": 10
     },
     "silver": {
-      "source": "l15_value-m2-123.json",
-      "sourceId": "l15_value-m2-123@D1",
-      "depth": 1,
-      "games": 53,
-      "elo": 154.4,
+      "source": "ckpt-055.json",
+      "sourceId": "ckpt-055@D2",
+      "depth": 2,
+      "games": 11,
+      "elo": 142.6,
       "rank": 0,
-      "rankLo": 8.85,
+      "rankLo": 9,
       "rankHi": 10
     },
     "bronze": {
       "source": "ckpt-104.json",
       "sourceId": "ckpt-104@D2",
       "depth": 2,
-      "games": 18,
-      "elo": 92.5,
-      "rank": 9.1,
-      "rankLo": 8.78,
+      "games": 19,
+      "elo": 98.8,
+      "rank": 9.47,
+      "rankLo": 8.87,
       "rankHi": 10
     }
   }
