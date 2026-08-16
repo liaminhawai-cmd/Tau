@@ -79,6 +79,16 @@ async function trainOne(c,state){
       console.log(`[joint-policy] NEW peak val CE ${rec.bestVal.toFixed(5)} at epoch ${rec.peakEpoch}`);
     }
     saveState(state);
+    // Entry descriptor after every VERIFIED chunk, not just at rec.done. This was the actual gap
+    // that could leave a config -- reported for policy-joint-behemoth-10x400-pair4 -- invisible to
+    // the Elo pool indefinitely: writeEntrant used to fire only once, at full patience-exhaustion,
+    // so a mint closed or interrupted anywhere before that point left NO entrant file at all, not
+    // a queued-but-waiting one. There was nothing partial for evolution-roster.js's stableModelEntries
+    // to find. The sibling plain-value behemoth never had this problem -- its checkpoint file IS the
+    // usable model, visible from its first written chunk -- only the policyEntrant wrapper withheld
+    // visibility. Written after verify-joint-policy-export.js, so only checkpoints already confirmed
+    // loadable ever become a live candidate.
+    writeEntrant(c);
     const stale=rec.totalEpochs-(rec.lastImproveEpoch||0);
     if(rec.totalEpochs>=minEpochs&&stale>=patienceEpochs){rec.stopReason=`no >${minDelta} val-CE improvement for ${stale} epochs`;break;}
   }
