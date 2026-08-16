@@ -59,7 +59,12 @@ const fs = require('fs');
 const path = require('path');
 const { createEngine } = require('./engine.js');
 const { MLP } = require('./net.js');
-const { playGame } = require('./selfplay.js');
+// selfplay.js is now an "evolution" CLI wrapper (spawns selfplay-legacy.js as a subprocess and
+// exports nothing) -- it stopped exporting playGame when it took on that role, which broke this
+// require silently (destructuring undefined gives undefined, not a load error) until retromine
+// actually tried to CALL it and crashed with "playGame is not a function" on the first game of
+// every job. playGame itself still lives, unchanged, in selfplay-legacy.js -- go straight there.
+const { playGame } = require('./selfplay-legacy.js');
 const { nnPlanFor } = require('./nnai.js');
 
 function arg(name, dflt) {
