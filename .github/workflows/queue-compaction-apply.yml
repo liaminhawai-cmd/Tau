@@ -37,3 +37,4 @@ jobs:
           git commit -m 'nn: compact stale face queue and share model evidence'
           git pull --rebase origin claude/board-game-video-adaptation-cf8a93
           git push origin HEAD:claude/board-game-video-adaptation-cf8a93
+# trigger
