@@ -1,74 +1,28 @@
 {
-  "updated": "2026-08-16T00:35:51.571Z",
-  "basis": "per-depth rankLo; active source; >=12 games",
-  "depths": {
-    "D1": {
-      "gold": {
-        "source": "wide-103.json",
-        "sourceId": "wide-103@D1",
-        "depth": 1,
-        "games": 93,
-        "elo": 102.8,
-        "rank": 0,
-        "rankLo": 8.82,
-        "rankHi": 10
-      },
-      "silver": {
-        "source": "l15_value-m2-123.json",
-        "sourceId": "l15_value-m2-123@D1",
-        "depth": 1,
-        "games": 44,
-        "elo": 138.3,
-        "rank": 0,
-        "rankLo": 8.76,
-        "rankHi": 10
-      },
-      "bronze": {
-        "source": "ckpt-054.json",
-        "sourceId": "ckpt-054@D1",
-        "depth": 1,
-        "games": 27,
-        "elo": 66.2,
-        "rank": 8.93,
-        "rankLo": 8.71,
-        "rankHi": 10
-      }
-    },
-    "D2": {
-      "gold": {
-        "source": "ckpt-104.json",
-        "sourceId": "ckpt-104@D2",
-        "depth": 2,
-        "games": 17,
-        "elo": 80.7,
-        "rank": 9.1,
-        "rankLo": 8.83,
-        "rankHi": 10
-      },
-      "silver": {
-        "source": "wild-06-64x64x64x64x64x64.json",
-        "sourceId": "wild-06-64x64x64x64x64x64@D2",
-        "depth": 2,
-        "games": 35,
-        "elo": 125.1,
-        "rank": 0,
-        "rankLo": 8.8,
-        "rankHi": 10
-      },
-      "bronze": {
-        "source": "ckpt-107.json",
-        "sourceId": "ckpt-107@D2",
-        "depth": 2,
-        "games": 23,
-        "elo": 26,
-        "rank": 8.68,
-        "rankLo": 8.42,
-        "rankHi": 8.94
-      }
-    }
-  },
+  "updated": "2026-08-16T02:28:36.602Z",
+  "basis": "ONE overall rankLo ranking across every depth (D1-D4); each medal keeps its own measured depth",
   "medals": {
     "gold": {
+      "source": "behemoth-10x400-dense40.json",
+      "sourceId": "behemoth-10x400-dense40@D3",
+      "depth": 3,
+      "games": 30,
+      "elo": 284.5,
+      "rank": 0,
+      "rankLo": 9,
+      "rankHi": 10
+    },
+    "silver": {
+      "source": "ckpt-117.json",
+      "sourceId": "ckpt-117@D2",
+      "depth": 2,
+      "games": 10,
+      "elo": 174.9,
+      "rank": 0,
+      "rankLo": 8.89,
+      "rankHi": 10
+    },
+    "bronze": {
       "source": "ckpt-104.json",
       "sourceId": "ckpt-104@D2",
       "depth": 2,
@@ -77,26 +31,6 @@
       "rank": 9.1,
       "rankLo": 8.83,
       "rankHi": 10
-    },
-    "silver": {
-      "source": "wild-06-64x64x64x64x64x64.json",
-      "sourceId": "wild-06-64x64x64x64x64x64@D2",
-      "depth": 2,
-      "games": 35,
-      "elo": 125.1,
-      "rank": 0,
-      "rankLo": 8.8,
-      "rankHi": 10
-    },
-    "bronze": {
-      "source": "ckpt-107.json",
-      "sourceId": "ckpt-107@D2",
-      "depth": 2,
-      "games": 23,
-      "elo": 26,
-      "rank": 8.68,
-      "rankLo": 8.42,
-      "rankHi": 8.94
     }
   }
 }
