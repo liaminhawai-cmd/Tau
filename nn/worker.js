@@ -1,11 +1,15 @@
 'use strict';
 // Spare-machine worker: complementary compute, not a second copy of the desktop stream.
 //
-// The desktop publishes separate gold/silver/bronze aliases for D1 and D2 from the latest
-// confidently-rated pool (rankLo ordering). Each lane plays best + medals for ITS OWN depth, spends
-// most of its clock on D2 with a small D3 garnish, and after each chunk runs one deliberately tiny
-// rescue mine: at most TWO replay games. If the losing position was already doomed earlier than
-// that, too bad -- this worker is for late conversion mistakes, not an all-night archaeological dig.
+// The desktop publishes ONE gold/silver/bronze set -- the top 3 DISTINCT models on the whole live
+// ladder, ranked across every depth, not three per depth. Each medal carries whatever depth it was
+// actually measured at in medals.json, and plays at exactly that depth here: gold might be a D3
+// face, silver a D1 face -- quality over uniform lane depth, so this worker may run some D3 games
+// and some D1 games in the same chunk. best.json gets its own lane too, spread across the classic
+// D1/D2/D3 mix (laneDepths) since it has no single "measured" depth of its own. After each chunk
+// this also runs one deliberately tiny rescue mine: at most TWO replay games. If the losing
+// position was already doomed earlier than that, too bad -- this worker is for late conversion
+// mistakes, not an all-night archaeological dig.
 const {execFileSync, spawn}=require('child_process');
 const fs=require('fs');
 const os=require('os');
@@ -61,15 +65,20 @@ function slotFallback(){
   try{for(const f of fs.readdirSync(md)){const m=f.match(/^pool-slot-(\d+)\.json$/);if(m){const p=path.join(md,f);if(validModel(p))slots.push({n:+m[1],p});}}}catch(_){}
   return slots.sort((a,b)=>b.n-a.n).slice(0,3).map(x=>x.p);
 }
-function championPool(depth=2){
-  const best=path.join(dir,'models','best.json'), medalDir=path.join(dir,'medals');
-  const medalDepth=depth===1?1:2; // scarce D3 games use the proven D2 set until D3 has its own field
-  const depthFiles=['gold','silver','bronze'].map(n=>path.join(medalDir,`${n}-d${medalDepth}.json`)).filter(validModel);
-  const legacyFiles=['gold','silver','bronze'].map(n=>path.join(medalDir,n+'.json')).filter(validModel);
-  const medalFiles=depthFiles.length===3?depthFiles:legacyFiles;
-  // First desktop cycle after this code lands will mint medals. Until then, retain the old top-slot
-  // fallback so option 22 is never dead just because the aliases have not been published once yet.
-  return uniqueModels([best,...(medalFiles.length?medalFiles:slotFallback())]);
+// medals.json's `depth` field is exactly what publish-medals.js measured that model's rank at --
+// play it there, not at whatever depth this lane would otherwise have been assigned. If a medal's
+// own file is missing or unvalidatable, it just does not get a lane this chunk.
+function readMedals(){
+  const medalDir=path.join(dir,'medals');
+  let meta=null; try{meta=JSON.parse(fs.readFileSync(path.join(medalDir,'medals.json'),'utf8'));}catch(_){}
+  const out=[];
+  for(const name of ['gold','silver','bronze']){
+    const p=path.join(medalDir,`${name}.json`);
+    if(!validModel(p))continue;
+    const d=meta&&meta.medals&&meta.medals[name]&&meta.medals[name].depth;
+    out.push({name,path:p,depth:[1,2,3,4].includes(+d)?+d:2});
+  }
+  return out;
 }
 function laneDepths(n){
   const weights={};
@@ -109,36 +118,59 @@ async function pushProgress(files,label){
   log(`${label}: ${rows} rows committed locally; push will retry next pass`);
 }
 
+function championPool(){
+  const best=path.join(dir,'models','best.json');
+  return {best,slotFallback:slotFallback()};
+}
+
+// One lane per medal, at that medal's own measured depth, up to however many workers there are;
+// everything else plays best.json across the classic weighted depth mix. If nothing has been
+// published yet (first desktop cycle after this code lands, or a fresh checkout), every lane
+// falls back to the old all-best.json behaviour so this worker is never dead in the meantime.
+function buildLanes(){
+  const {best,slotFallback:fb}=championPool(), medals=readMedals(), medalPaths=medals.map(m=>m.path);
+  if(!medals.length){
+    const depths=laneDepths(workers);
+    return Array.from({length:workers},(_,i)=>({model:best,pool:fb,depth:depths[i]||2,label:'best'}));
+  }
+  const medalLaneCount=Math.min(medals.length,workers), bestLaneCount=workers-medalLaneCount;
+  const bestDepths=laneDepths(bestLaneCount);
+  const lanes=[];
+  for(let i=0;i<medalLaneCount;i++){
+    const m=medals[i], pool=uniqueModels([best,...medalPaths.filter(p=>p!==m.path)]);
+    lanes.push({model:m.path,pool,depth:m.depth,label:`medal-${m.name}`});
+  }
+  for(let i=0;i<bestLaneCount;i++)
+    lanes.push({model:best,pool:uniqueModels(medalPaths.length?medalPaths:fb),depth:bestDepths[i]||2,label:'best'});
+  return lanes;
+}
+
 function playChunk(chunk){
   const stamp=new Date().toISOString().replace(/[:.]/g,'-');
-  const depths=laneDepths(workers), levels=strongLevels();
-  const pools={1:championPool(1),2:championPool(2),3:championPool(3)};
+  const levels=strongLevels();
+  const lanes0=buildLanes();
   const per=Math.max(1,Math.round(gamesPerChunk/workers));
   let seedFile=null;
   if(seedFrac>0){
     const poses=loadSeedPoses(path.join(dir,'data'),400);
     if(poses.length>=20){seedFile=path.join(dir,'data',`w-${name}-${stamp}.seeds`);fs.writeFileSync(seedFile,JSON.stringify(poses));}
   }
-  const depthCounts=depths.reduce((o,d)=>(o[d]=(o[d]||0)+1,o),{});
-  log(`chunk ${chunk}: ${workers} lanes x ${per}; lane depths ${Object.entries(depthCounts).map(([d,n])=>`D${d}x${n}`).join(' ')}; levels ${levels}`);
-  for(const depth of [1,2])log(`D${depth} champions: ${pools[depth].map(p=>path.relative(dir,p)).join(', ')||'none'}`);
+  log(`chunk ${chunk}: ${workers} lanes x ${per}; ${lanes0.map(l=>`${l.label}@D${l.depth}`).join(', ')}; levels ${levels}`);
   const files=[], lanes=[];
-  for(let i=0;i<workers;i++){
-    const depth=depths[i]||2, champs=pools[depth]||pools[2];
-    const best=champs[0]||path.join(dir,'models','best.json'), pool=champs.slice(1);
+  lanes0.forEach((lane,i)=>{
     const out=path.join(dir,'data',`w-${name}-${stamp}-w${i+1}.jsonl`); files.push(out);
     lanes.push(new Promise(resolve=>{
       // Use legacy directly so this spare machine keeps the explicit champion set instead of the
       // desktop evolutionary wrapper replacing it with whatever local historical files happen to exist.
       const args=[path.join(dir,'selfplay-legacy.js'),'--games',String(per),'--workers','1','--out',out,
-        '--model',best,'--levels',levels,'--deep',levels,'--nnDepthMix',`${depth}:1`,
+        '--model',lane.model,'--levels',levels,'--deep',levels,'--nnDepthMix',`${lane.depth}:1`,
         '--randomStartFrac',randomStartFrac,'--modelVarietyFrac','1',
-        ...(pool.length?['--modelPool',pool.join(',')]:[]),
+        ...(lane.pool.length?['--modelPool',lane.pool.join(',')]:[]),
         ...(seedFile?['--seedFrom',String(seedFrac),'--seedPool',seedFile]:['--seedFrom','0'])];
       const ch=spawn('node',args,{stdio:['ignore','inherit','inherit'],env:{...process.env,TAU_WORKER:String(i+1)}});
-      ch.on('exit',()=>resolve()); ch.on('error',e=>{log(`lane ${i+1} failed (${e.message})`);resolve();});
+      ch.on('exit',()=>resolve()); ch.on('error',e=>{log(`lane ${i+1} (${lane.label}) failed (${e.message})`);resolve();});
     }));
-  }
+  });
   const done=Promise.all(lanes); if(seedFile)done.then(()=>{try{fs.unlinkSync(seedFile);}catch(_){}});
   return {files,done,stamp};
 }
@@ -161,7 +193,7 @@ function runTinyRescue(stamp){
 }
 
 async function main(){
-  log(`strong worker "${name}" up: ${workers} lanes; depth-separated medal pools; mostly D2, small D3; rescue ${rescue?'on':'off'}`);
+  log(`strong worker "${name}" up: ${workers} lanes; each medal at its own measured depth, rest on best.json; rescue ${rescue?'on':'off'}`);
   for(let chunk=1;;chunk++){
     gitSoft(['pull','--no-edit','--no-rebase'],'pull');
     const {files,done,stamp}=playChunk(chunk); let finished=false; done.then(()=>finished=true);

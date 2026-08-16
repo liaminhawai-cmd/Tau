@@ -54,6 +54,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
+const evo = require('./evolution-roster.js');
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
@@ -1711,8 +1712,20 @@ async function runPoolCycle() {
   // as well as the strength). This is the same "confident, not merely ahead" standard already used
   // to retire a dual population member (rankHi <= bottomCutoff there), applied symmetrically here.
   try {
-    const sum = JSON.parse(fs.readFileSync(poolSummary, 'utf8'));
-    const allRated = Object.entries(sum.players || {})
+    // best.json used to see only D1/D2 evidence: elorank.js's evolution wrapper rates D3 and D4
+    // faces in SEPARATE passes and writes their results to their own summary files
+    // (.evolution-d3-summary.json, .evolution-d4-summary.json), never into elo-summary.json. A
+    // face that is only strong at D3+ -- like behemoth-10x400-dense40, which measured above the
+    // whole D1/D2 field -- was therefore structurally invisible to this gate and could never take
+    // the seat no matter how much evidence piled up. Merge all four depths' summaries, same as
+    // live-ladder.js's own dashboard already does, so the gate can see the ladder's actual best.
+    const readSummary = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return { players: {} }; } };
+    const mergedPlayers = {
+      ...readSummary(poolSummary).players,
+      ...readSummary(evo.d3SummaryPath(dir)).players,
+      ...readSummary(evo.d4SummaryPath(dir)).players,
+    };
+    const allRated = Object.entries(mergedPlayers)
       .filter(([, v]) => v.kind === 'nn' && v.model && v.games >= 6)
       .map(([id, v]) => ({ id, ...v }));
     // A dual JSON is not a drop-in replacement for best.json: best uses the one-output nn loader,

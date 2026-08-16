@@ -206,6 +206,6 @@ function noteBirth(dir,birth){if(!birth||!birth.outPath||!fs.existsSync(birth.ou
 function status(dir){const s=sync(dir),faces={};for(const key of Object.keys(FACE_CAPS)){const p=s.facePools[key];faces[key]={seats:p.active.length,trial:p.trial?1:0,waiting:p.waiting.length,retired:Object.keys(p.retired).length,capacity:FACE_CAPS[key]};}
   return{models:activeModelNames(dir).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,faces};}
 
-module.exports={TARGET_MODELS,FACE_CAPS,D3_SHARE,sync,ingestSummary,activeModelNames,activeFaceIds,
+module.exports={TARGET_MODELS,FACE_CAPS,FACE_MIN_GAMES,D3_SHARE,sync,ingestSummary,activeModelNames,activeFaceIds,
   restoreDepthSpecialists,selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,filterFocus,d3Slice,d4Slice,
   retireBadD4,d3SummaryPath,d4SummaryPath,cull,noteBirth,status};
