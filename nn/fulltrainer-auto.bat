@@ -16,11 +16,12 @@ if not defined DUALFLAG (
 echo.
 echo Full Tau trainer starting automatically after wild mint.
 echo CUDA trains ordinary value nets and dual nets when available; JavaScript CPU is the value fallback.
+echo Restart mode does not force the one-off GPU dual probe; scheduled dual evolution still runs normally.
 echo Close the window any time; completed work is checkpointed.
 echo.
 if defined DUALFLAG (
   node nn\run.js --gamesPerBatch 1000 --randomStartFrac 0.15 --scratchHidden 96,64,48 %DUALFLAG%
 ) else (
-  node nn\run.js --gamesPerBatch 1000 --randomStartFrac 0.15 --scratchHidden 96,64,48 --dualEpochs 20,40,60 --dualPopulationMin 4 --dualStartNow
+  node nn\run.js --gamesPerBatch 1000 --randomStartFrac 0.15 --scratchHidden 96,64,48 --dualEpochs 20,40,60 --dualPopulationMin 4
 )
 exit /b %errorlevel%
