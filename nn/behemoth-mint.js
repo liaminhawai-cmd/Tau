@@ -20,6 +20,7 @@ const maxEpochs=Math.max(minEpochs,+arg('maxEpochs',200));
 const minDelta=Math.max(0,+arg('minDelta',0.00012));
 const seed=+arg('seed',43143);
 const torchBatch=Math.max(256,+arg('torchBatch',2048));
+const continueExisting=process.argv.includes('--continue-expedition')||process.argv.includes('--force');
 function cudaReady(){const p=spawnSync('python',['-c','import torch; print("yes" if torch.cuda.is_available() else "no")'],{encoding:'utf8',windowsHide:true});return p.status===0&&String(p.stdout).trim()==='yes';}
 function loadState(){try{return JSON.parse(fs.readFileSync(statePath,'utf8'));}catch(_){return {version:1};}}
 function saveState(s){fs.mkdirSync(models,{recursive:true});const t=`${statePath}.tmp-${process.pid}-${Date.now()}`;fs.writeFileSync(t,JSON.stringify(s,null,2));fs.renameSync(t,statePath);}
@@ -39,8 +40,13 @@ async function trainChunk(start,lr,onMetric){
   await runChild(process.execPath,[path.join(dir,'verify-torch-export.js'),out],()=>{});
 }
 async function main(){
-  if(!cudaReady())throw new Error('CUDA PyTorch is required for the behemoth expedition');
   const rec=loadState();
+  if(fs.existsSync(statePath)&&!continueExisting){
+    console.log(`[behemoth] prior expedition state found (${rec.totalEpochs||0} epochs, peak ${rec.peakEpoch||'?'}). Restart mode skips one-off search.`);
+    console.log('[behemoth] use --continue-expedition only when you deliberately want to continue it.');
+    return;
+  }
+  if(!cudaReady())throw new Error('CUDA PyTorch is required for the behemoth expedition');
   if(rec.done&&fs.existsSync(out)){console.log(`[behemoth] already complete at epoch ${rec.peakEpoch}, skipping`);return;}
   if((rec.totalEpochs||0)>0&&!fs.existsSync(out)){console.log('[behemoth] checkpoint missing; restarting');Object.assign(rec,{totalEpochs:0,bestVal:null,peakEpoch:0,lastImproveEpoch:0,done:false});}
   fs.mkdirSync(curves,{recursive:true});
