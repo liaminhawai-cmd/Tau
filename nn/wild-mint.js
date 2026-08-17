@@ -17,6 +17,7 @@ const minDelta=Math.max(0,+arg('minDelta',0.00015));
 const seed=+arg('seed',43043);
 const torchBatch=Math.max(256,+arg('torchBatch',4096));
 const requestedBackend=String(arg('backend','auto')).toLowerCase();
+const continueExisting=process.argv.includes('--continue-expedition')||process.argv.includes('--force');
 function cudaReady(){
   if(requestedBackend==='js')return false;
   const p=spawnSync('python',['-c','import torch; print("yes" if torch.cuda.is_available() else "no")'],
@@ -26,14 +27,14 @@ function cudaReady(){
 const useTorch=cudaReady();
 const backend=useTorch?'torch-cuda':'js-cpu';
 const shapes=[
-  '256',             // very wide, one hidden layer
-  '256,128',         // wide shallow taper
-  '256,128,64,32',   // large smooth funnel
-  '192,48,192',      // hard bottleneck / bow-tie
-  '48,96,192',       // expanding pyramid
-  '64,64,64,64,64,64', // deep and narrow
-  '192,96,32',       // aggressive taper
-  '128,32,128,32',   // alternating bottlenecks
+  '256',
+  '256,128',
+  '256,128,64,32',
+  '192,48,192',
+  '48,96,192',
+  '64,64,64,64,64,64',
+  '192,96,32',
+  '128,32,128,32',
 ];
 function arg(n,d){const i=process.argv.indexOf('--'+n);return i>=0?process.argv[i+1]:d;}
 function loadState(){try{return JSON.parse(fs.readFileSync(statePath,'utf8'));}catch(_){return {version:1,shapes:{}};}}
@@ -100,6 +101,12 @@ async function trainShape(shape,i,state){
 }
 async function main(){
   const state=loadState();
+  if(fs.existsSync(statePath)&&!continueExisting){
+    const touched=Object.keys(state.shapes||{}).length,done=Object.values(state.shapes||{}).filter(x=>x&&x.done).length;
+    console.log(`[wild] prior expedition state found (${done}/${shapes.length} complete; ${touched} touched). Restart mode skips one-off search.`);
+    console.log('[wild] use --continue-expedition only when you deliberately want to continue it.');
+    return;
+  }
   console.log(`[wild] adaptive expedition: ${shapes.length} shapes; chunks ${chunkEpochs}; min ${minEpochs}; patience ${patienceEpochs}; emergency max ${maxEpochs}`);
   console.log(`[wild] backend: ${backend}${useTorch?` (batch ${torchBatch}, verified export every chunk)`:' (install CUDA PyTorch to accelerate)'}`);
   console.log(`[wild] fixed validation split seed ${seed}; curves -> ${path.relative(process.cwd(),curves)}`);
