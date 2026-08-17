@@ -131,26 +131,19 @@ function reconcileOpenLeague(s,entries,dir){
     for(const [id,meta] of Object.entries(p.retired))if(avail.has(id)&&meta&&meta.reason==='elastic cull')keepRetired[id]=meta;
 
     const live=new Set((p.active||[]).filter(id=>avail.has(id)&&!keepRetired[id]));
-    // One-time migration: old waiting/deferred/seat-retired faces were bookkeeping artefacts, not
-    // competitive deaths. Bring them back so the new league can select from the whole measured past.
     if(migrating){
       const oldLiveish=new Set([...(p.active||[]),...(p.waiting||[]),...(p.trial?[p.trial]:[])]);
       for(const id of oldKnown)if(avail.has(id)&&!keepRetired[id]&&(oldLiveish.has(id)||!!faceReading(s,id)))live.add(id);
-      // Pre-roster ratings live only in elo-results.json. They are real historical evidence, so every
-      // valid D1-D4 face with a surviving model file gets one fair return to the open league. D5+
-      // never parses here, and an exact face previously killed by the elastic controller stays dead.
+      // Pre-roster ratings live only in elo-results.json. Every valid D1-D4 identity whose model file
+      // still exists gets one fair return to the all-time league. D5+ never parses here, and an exact
+      // face previously killed by the elastic controller stays dead.
       for(const id of durable){const x=splitFaceId(id);if(x&&x.depth===d&&avail.has(id)&&!keepRetired[id])live.add(id);}
     }
-    // Any face with durable roster rating evidence belongs in the all-time audition pool unless the
-    // elastic controller itself has already retired it.
     for(const id of avail)if(!keepRetired[id]&&faceReading(s,id))live.add(id);
 
     p.active=[...live];p.trial=null;p.waiting=[];p.deferred={};p.retired=keepRetired;
   }
 
-  // Every model gets at least one cheap live audition immediately, including a model dropped into a
-  // huge field. We do not manufacture all four depths at once; deeper auditions are introduced at
-  // the steady checkpoint cadence below.
   const live=activeFaceSet(s);
   for(const e of entries){
     const all=[];for(let d=1;d<=4;d++)all.push(...candidateFaces(e,d));
