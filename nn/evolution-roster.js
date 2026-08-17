@@ -2,15 +2,19 @@
 const fs = require('fs');
 const path = require('path');
 
-// A seat belongs to a search FACE, not to a checkpoint file. One checkpoint may therefore keep
-// (say) its excellent D3 face after its weak D1 face has left the field. Capacities follow the
-// measured ~3.6x cost of each extra ply: 50, 50/3.6, 50/3.6^2, 50/3.6^3.
-const FACE_CAPS = Object.freeze({ D1:50, D2:14, D3:4, D4:1 });
+// One open evolutionary league across search faces. 50 is a soft equilibrium, not a hard cap:
+// new models may enter at any time, historical measured faces are eligible again, and population
+// pressure rises smoothly when the field balloons. Search depth affects the chance of facing a
+// cull (rough compute ratio 1:3:9:27), never the strength number itself.
+const TARGET_FACES = 50;
+const TARGET_MODELS = TARGET_FACES; // compatibility for older callers/menu readouts
+const FACE_CAPS = Object.freeze({ D1:50, D2:14, D3:4, D4:1 }); // legacy/export compatibility only; not enforced
 const FACE_MIN_GAMES = Object.freeze({ D1:12, D2:8, D3:5, D4:2 });
-const TARGET_MODELS = FACE_CAPS.D1; // compatibility for older callers/menu readouts
+const DEPTH_CULL_WEIGHT = Object.freeze({ D1:1, D2:3, D3:9, D4:27 });
 const CULL_EVERY_GAMES = 100;
 const ELO_TEMP = 400;
-const D3_SHARE = 0.04;
+const D3_SHARE = 0.04; // compatibility with older callers
+const ELASTIC_ROSTER_VERSION = 2;
 const ALIASES = new Set(['best.json','value.json','scratch.json','wide.json','ultra.json','deep.json','l15_value.json',
   'policy-joint-base.json']);
 
@@ -69,48 +73,12 @@ function candidateFaces(entry,depth){
   const a=[faceId(entry.name,depth,false)]; if(entry.dual)a.push(faceId(entry.name,depth,true)); return a;
 }
 function faceReading(s,id){const x=splitFaceId(id);return x?s.latest[x.name]?.faces?.[x.key]||null:null;}
-function faceScore(s,id){const r=faceReading(s,id);return r&&Number.isFinite(+r.rankLo)?+r.rankLo:
-  r&&Number.isFinite(+r.rank)?+r.rank:-Infinity;}
-function sortFaces(s,ids){return ids.slice().sort((a,b)=>faceScore(s,b)-faceScore(s,a)||a.localeCompare(b,undefined,{numeric:true}));}
-function poolIds(p){return [...p.active,...(p.trial?[p.trial]:[])];}
-function advanceTrial(s,key){const p=s.facePools[key];if(!p.trial&&p.waiting.length)p.trial=p.waiting.shift();}
-
-function initialiseFacePools(s,entries){
-  s.facePools={};
-  for(let d=1;d<=4;d++){
-    const key=depthKey(d),all=entries.flatMap(e=>candidateFaces(e,d)),ranked=sortFaces(s,all),cap=FACE_CAPS[key];
-    s.facePools[key]={active:ranked.slice(0,cap),trial:ranked[cap]||null,waiting:ranked.slice(cap+1),retired:{},deferred:{}};
-  }
-  s.faceRosterMigratedAt=new Date().toISOString();
-}
-
-// The catalogue can contain hundreds of historical checkpoints. They remain durable files and all
-// of their rated games remain durable evidence, but that does not mean every old checkpoint deserves
-// four fresh search-depth auditions forever. Ordinary sequential lineages keep two catalogue
-// representatives outside the live field: the strongest measured member and the newest member.
-// Wild/dual/policy/architecture experiments do not collapse into a lineage because their geometry
-// is itself the hypothesis being tested.
-function ordinaryLineage(name){
-  let m;
-  if(/^ckpt-\d+$/.test(name))return'ckpt';
-  if(/^resume-\d+$/.test(name))return'resume';
-  if(/^scratch-\d+$/.test(name))return'scratch';
-  if(/^mut-\d+$/.test(name))return'mut';
-  if(/^mutant-\d+$/.test(name))return'mutant';
-  if((m=name.match(/^wide-m(\d+)-\d+$/)))return`wide-m${m[1]}`;
-  if(/^wide-\d+$/.test(name))return'wide';
-  if(/^deep-\d+$/.test(name))return'deep';
-  if(/^ultra-\d+$/.test(name))return'ultra';
-  if((m=name.match(/^l15_value-m(\d+)-\d+$/)))return`l15_value-m${m[1]}`;
-  if(/^l15_value-\d+$/.test(name))return'l15_value';
-  if(/^best\.pre-tournament-\d+$/.test(name))return'best.pre-tournament';
-  return null;
-}
+function poolIds(p){return [...(p.active||[]),...(p.trial?[p.trial]:[])];}
 function modelSerial(name){const m=String(name).match(/(\d+)(?!.*\d)/);return m?+m[1]:-1;}
 function modelBestScore(s,name){
   const r=s.latest[name]||{},v=[];
-  if(Number.isFinite(+r.rankLo))v.push(+r.rankLo);
-  for(const f of Object.values(r.faces||{}))if(Number.isFinite(+f.rankLo))v.push(+f.rankLo);
+  if(Number.isFinite(+r.rankHi))v.push(+r.rankHi);
+  for(const f of Object.values(r.faces||{}))if(Number.isFinite(+f.rankHi))v.push(+f.rankHi);
   if(v.length)return Math.max(...v);
   const q=[];if(Number.isFinite(+r.rank))q.push(+r.rank);
   for(const f of Object.values(r.faces||{}))if(Number.isFinite(+f.rank))q.push(+f.rank);
@@ -118,105 +86,94 @@ function modelBestScore(s,name){
 }
 function faceEstablished(s,id,d){
   const r=faceReading(s,id),need=FACE_MIN_GAMES[depthKey(d)];
-  return !!(r&&(+r.games||0)>=need&&(Number.isFinite(+r.rankLo)||Number.isFinite(+r.rank)));
+  return !!(r&&(+r.games||0)>=need&&Number.isFinite(+r.rankHi));
 }
-function modelLiveDepth(s,e){
-  let hi=0;
+function emptyPool(){return{active:[],trial:null,waiting:[],retired:{},deferred:{}};}
+function ensurePools(s){
+  s.facePools||={};
+  for(let d=1;d<=4;d++){const k=depthKey(d);s.facePools[k]||=emptyPool();}
+}
+function activeFaceSet(s){const out=new Set();for(let d=1;d<=4;d++)for(const id of poolIds(s.facePools[depthKey(d)]))out.add(id);return out;}
+function elasticRetired(p,id){return !!(p.retired&&p.retired[id]&&p.retired[id].reason==='elastic cull');}
+
+function reconcileOpenLeague(s,entries){
+  ensurePools(s);
+  const available={};
+  for(let d=1;d<=4;d++)available[depthKey(d)]=new Set(entries.flatMap(e=>candidateFaces(e,d)));
+  const migrating=s.elasticRosterVersion!==ELASTIC_ROSTER_VERSION;
+
   for(let d=1;d<=4;d++){
-    const ids=new Set(candidateFaces(e,d)),p=s.facePools[depthKey(d)];
-    if((p.active||[]).some(id=>ids.has(id))||(p.trial&&ids.has(p.trial)))hi=d;
-  }
-  return hi;
-}
-function frontierFaces(s,e){
-  const start=Math.max(1,modelLiveDepth(s,e));
-  for(let d=start;d<=4;d++){
-    const ids=candidateFaces(e,d);if(!ids.length)continue;
-    const pending=ids.filter(id=>!faceEstablished(s,id,d));
-    if(pending.length)return pending;
-  }
-  return[];
-}
-function queueRepresentativeModels(s,entries){
-  const keep=new Set(),byName=Object.fromEntries(entries.map(e=>[e.name,e]));
-  // Anything already holding a real seat remains a live model even if it is an old lineage member.
-  for(const key of Object.keys(FACE_CAPS))for(const id of s.facePools[key].active||[]){const x=splitFaceId(id);if(x&&byName[x.name])keep.add(x.name);}
-  const groups={};
-  for(const e of entries){
-    const fam=ordinaryLineage(e.name);
-    if(!fam){keep.add(e.name);continue;}
-    (groups[fam]||=[]).push(e);
-  }
-  for(const a of Object.values(groups)){
-    const newest=a.slice().sort((x,y)=>modelSerial(y.name)-modelSerial(x.name)||y.name.localeCompare(x.name))[0];
-    if(newest)keep.add(newest.name);
-    const measured=a.filter(e=>Number.isFinite(modelBestScore(s,e.name)))
-      .sort((x,y)=>modelBestScore(s,y.name)-modelBestScore(s,x.name)||modelSerial(y.name)-modelSerial(x.name));
-    if(measured[0])keep.add(measured[0].name);
-  }
-  return keep;
-}
-function queueSort(s,ids){
-  return ids.slice().sort((a,b)=>{
-    const A=splitFaceId(a),B=splitFaceId(b),ga=+(s.latest[A&&A.name]?.games||0),gb=+(s.latest[B&&B.name]?.games||0);
-    // Truly new models first; after that, strongest established model first, then newest serial.
-    if((ga===0)!==(gb===0))return ga===0?-1:1;
-    const sa=A?modelBestScore(s,A.name):-Infinity,sb=B?modelBestScore(s,B.name):-Infinity;
-    if(sa!==sb)return sb-sa;
-    const na=A?modelSerial(A.name):-1,nb=B?modelSerial(B.name):-1;if(na!==nb)return nb-na;
-    return a.localeCompare(b,undefined,{numeric:true});
-  });
-}
-function reconcileFacePools(s,entries){
-  const availableByDepth={};
-  for(let d=1;d<=4;d++)availableByDepth[depthKey(d)]=new Set(entries.flatMap(e=>candidateFaces(e,d)));
-  for(let d=1;d<=4;d++){
-    const key=depthKey(d),avail=availableByDepth[key],p=s.facePools[key]||{active:[],trial:null,waiting:[],retired:{},deferred:{}};
-    p.active=[...new Set(p.active||[])].filter(x=>avail.has(x));
-    p.trial=avail.has(p.trial)&&!p.active.includes(p.trial)?p.trial:null;
-    p.waiting=[...new Set(p.waiting||[])].filter(x=>avail.has(x)&&!p.active.includes(x)&&x!==p.trial);
+    const key=depthKey(d),p=s.facePools[key],avail=available[key];
     p.retired=p.retired&&typeof p.retired==='object'?p.retired:{};
     p.deferred=p.deferred&&typeof p.deferred==='object'?p.deferred:{};
-    for(const id of Object.keys(p.retired))if(!avail.has(id))delete p.retired[id];
-    for(const id of Object.keys(p.deferred))if(!avail.has(id))delete p.deferred[id];
-    const known=new Set([...p.active,...p.waiting,...(p.trial?[p.trial]:[]),...Object.keys(p.retired),...Object.keys(p.deferred)]);
-    for(const id of avail)if(!known.has(id))p.waiting.push(id);
-    s.facePools[key]=p;
-  }
-}
-function compactFacePools(s,entries){
-  const keep=queueRepresentativeModels(s,entries),desired={};
-  for(let d=1;d<=4;d++)desired[depthKey(d)]=new Set();
-  for(const e of entries)if(keep.has(e.name))for(const id of frontierFaces(s,e)){
-    const x=splitFaceId(id);if(x)desired[depthKey(x.depth)].add(id);
-  }
-  let deferredTotal=0;
-  for(let d=1;d<=4;d++){
-    const key=depthKey(d),p=s.facePools[key],want=desired[key],now=new Date().toISOString();
-    p.deferred=p.deferred&&typeof p.deferred==='object'?p.deferred:{};
-    const defer=id=>{p.deferred[id]={at:now,reason:'queue compacted; historical evidence retained'};};
-    if(p.trial&&!want.has(p.trial)){defer(p.trial);p.trial=null;}
-    const kept=[];for(const id of p.waiting){if(want.has(id))kept.push(id);else defer(id);}p.waiting=kept;
-    for(const id of want){
-      if(p.retired[id]||p.active.includes(id)||p.trial===id||p.waiting.includes(id))continue;
-      if(p.deferred[id])delete p.deferred[id];p.waiting.push(id);
+    const oldKnown=new Set([...(p.active||[]),...(p.waiting||[]),...(p.trial?[p.trial]:[]),
+      ...Object.keys(p.deferred),...Object.keys(p.retired)]);
+    const keepRetired={};
+    for(const [id,meta] of Object.entries(p.retired))if(avail.has(id)&&meta&&meta.reason==='elastic cull')keepRetired[id]=meta;
+
+    const live=new Set((p.active||[]).filter(id=>avail.has(id)&&!keepRetired[id]));
+    // One-time migration: old waiting/deferred/seat-retired faces were bookkeeping artefacts, not
+    // competitive deaths. Bring them back so the new league can select from the whole measured past.
+    if(migrating){
+      const oldLiveish=new Set([...(p.active||[]),...(p.waiting||[]),...(p.trial?[p.trial]:[])]);
+      for(const id of oldKnown)if(avail.has(id)&&!keepRetired[id]&&(oldLiveish.has(id)||!!faceReading(s,id)))live.add(id);
     }
-    p.waiting=queueSort(s,[...new Set(p.waiting)]);
-    // A real vacancy is filled only from the compact frontier, never by excavating an old queue.
-    while(p.active.length<FACE_CAPS[key]&&p.waiting.length)p.active.push(p.waiting.shift());
-    advanceTrial(s,key);
-    deferredTotal+=Object.keys(p.deferred).length;
+    // Any face with durable rating evidence belongs in the all-time audition pool unless the new
+    // elastic controller itself has already retired it.
+    for(const id of avail)if(!keepRetired[id]&&faceReading(s,id))live.add(id);
+
+    p.active=[...live];p.trial=null;p.waiting=[];p.deferred={};p.retired=keepRetired;
   }
-  s.queueCompaction={version:1,updated:new Date().toISOString(),catalogueModels:entries.length,queueModels:keep.size,deferredFaces:deferredTotal};
+
+  // Every model gets at least one cheap live audition immediately, including a model dropped into a
+  // huge field. We do not manufacture all four depths at once; deeper auditions are introduced at
+  // the steady checkpoint cadence below.
+  const live=activeFaceSet(s);
+  for(const e of entries){
+    const all=[];for(let d=1;d<=4;d++)all.push(...candidateFaces(e,d));
+    const known=all.some(id=>live.has(id)||elasticRetired(s.facePools[depthKey(splitFaceId(id).depth)],id));
+    if(known)continue;
+    for(let d=1;d<=4;d++){
+      const ids=candidateFaces(e,d);if(!ids.length)continue;
+      for(const id of ids){s.facePools[depthKey(d)].active.push(id);live.add(id);}break;
+    }
+  }
+  s.elasticRosterVersion=ELASTIC_ROSTER_VERSION;
+  s.queueCompaction={version:2,updated:new Date().toISOString(),catalogueModels:entries.length,
+    queueModels:entries.length,deferredFaces:0,mode:'open elastic league'};
 }
+
+function nextFrontierAudition(s,entries){
+  const candidates=[];
+  for(const e of entries){
+    let highest=0;
+    for(let d=1;d<=4;d++){
+      const p=s.facePools[depthKey(d)],ids=candidateFaces(e,d);
+      if(ids.some(id=>(p.active||[]).includes(id)||elasticRetired(p,id)||!!faceReading(s,id)))highest=d;
+    }
+    if(highest>=4)continue;
+    const prevDepth=Math.max(1,highest),prevIds=candidateFaces(e,prevDepth);
+    if(prevIds.length&&!prevIds.some(id=>faceEstablished(s,id,prevDepth)))continue;
+    for(let d=highest+1;d<=4;d++){
+      const ids=candidateFaces(e,d);if(!ids.length)continue;
+      const fresh=ids.filter(id=>!s.facePools[depthKey(d)].active.includes(id)&&!elasticRetired(s.facePools[depthKey(d)],id));
+      if(fresh.length)candidates.push({e,depth:d,ids:fresh,score:modelBestScore(s,e.name),serial:modelSerial(e.name)});
+      break;
+    }
+  }
+  candidates.sort((a,b)=>b.score-a.score||b.serial-a.serial||a.e.name.localeCompare(b.e.name));
+  return candidates[0]||null;
+}
+function admitFrontier(s,entries){
+  const q=nextFrontierAudition(s,entries);if(!q)return[];
+  const admitted=[];for(const id of q.ids){s.facePools[depthKey(q.depth)].active.push(id);admitted.push(id);}return admitted;
+}
+
 function sync(dir,ladderN=null){
   const s=loadState(dir),entries=stableModelEntries(dir),present=new Set(entries.map(e=>e.name));
-  // Model files are now a durable catalogue. Face pools decide which identities consume games;
-  // old whole-model retirement is deliberately undone so a surviving depth can re-enter.
   for(const e of entries){s.active[e.name]={file:e.file,dual:e.dual,policy:e.policy,shape:e.shape};delete s.retired[e.name];}
   for(const n of Object.keys(s.active))if(!present.has(n))delete s.active[n];
-  if(!s.facePools)initialiseFacePools(s,entries);else reconcileFacePools(s,entries);
-  compactFacePools(s,entries);
+  reconcileOpenLeague(s,entries);
   const production=productionLadderLevels(ladderN),allowed=new Set(production);
   if(!Array.isArray(s.ladderActive))s.ladderActive=production;
   s.ladderActive=[...new Set(s.ladderActive.filter(x=>allowed.has(x)))].sort((a,b)=>a-b);
@@ -262,15 +219,15 @@ function ingestSummary(dir,summaryFile){
 function activeFaceIds(dir,depths=[1,2,3,4]){const s=sync(dir);return depths.flatMap(d=>poolIds(s.facePools[depthKey(d)]));}
 function modelPathsForFaces(dir,ids){const s=sync(dir),seen=new Set(),out=[];for(const id of ids){const x=splitFaceId(id),m=x&&s.active[x.name];
   if(m&&!seen.has(x.name)){seen.add(x.name);out.push(path.join(dir,'models',m.file));}}return out;}
-function activeModelNames(dir){const s=sync(dir),set=new Set();for(const key of Object.keys(FACE_CAPS))for(const id of poolIds(s.facePools[key])){const x=splitFaceId(id);if(x)set.add(x.name);}return[...set];}
+function activeModelNames(dir){const s=sync(dir),set=new Set();for(let d=1;d<=4;d++)for(const id of poolIds(s.facePools[depthKey(d)])){const x=splitFaceId(id);if(x)set.add(x.name);}return[...set];}
 function ratingSlice(dir){return modelPathsForFaces(dir,activeFaceIds(dir,[1,2]));}
 function selfplaySlice(dir){return ratingSlice(dir);}
 function d3Slice(dir){return modelPathsForFaces(dir,activeFaceIds(dir,[3]));}
 function d4Slice(dir){return modelPathsForFaces(dir,activeFaceIds(dir,[4]));}
 function activeLadderLevels(dir,ladderN=null){return sync(dir,ladderN).ladderActive.slice();}
-function filterFocus(dir,paths){const s=sync(dir);return paths.filter(p=>!!s.active[path.basename(p,'.json')]);}
-function restoreDepthSpecialists(){return[];} // face pools make whole-model restoration obsolete
-function retireBadD4(){return[];}             // D4 uses the same CI swap rule as every other depth
+function filterFocus(dir,paths){const live=new Set(activeModelNames(dir));return paths.filter(p=>live.has(path.basename(p,'.json')));}
+function restoreDepthSpecialists(){return[];}
+function retireBadD4(){return[];}
 
 function selfplayProfile(paths,{dir}){
   const s=sync(dir),entries=paths.map(p=>({path:p,name:path.basename(p,'.json'),meta:modelMeta(p)}));
@@ -281,42 +238,66 @@ function selfplayProfile(paths,{dir}){
   for(const e of entries){const r=Math.max(1e-9,raw[e.name]/Math.max(sum,1e-9)),g=(s.latest[e.name]?.games||0)/total;
     weights[e.name]=+(r*r/(g+.01)+Math.sqrt(r)).toFixed(6);let cap=1;
     for(let d=1;d<=4;d++)if(candidateFaces(e,d).some(id=>poolIds(s.facePools[depthKey(d)]).includes(id)))cap=d;
-    depthCaps[e.name]=cap;for(let d=1;d<=cap;d++)for(const id of candidateFaces(e,d))if(!faceReading(s,id))coverage.push({name:e.name,face:id.includes('+P@')?'policy':'bare',depth:d});
+    depthCaps[e.name]=cap;for(let d=1;d<=cap;d++)for(const id of candidateFaces(e,d))if(poolIds(s.facePools[depthKey(d)]).includes(id)&&!faceReading(s,id))
+      coverage.push({name:e.name,face:id.includes('+P@')?'policy':'bare',depth:d});
   }
   return{weights,coverage,depthCaps};
 }
 
+function expectedCulls(n){
+  if(n>=TARGET_FACES)return Math.min(10,1+9*Math.min(950,n-TARGET_FACES)/950);
+  return Math.max(0,(n-30)/20);
+}
+function stochasticCount(x){const whole=Math.floor(x),frac=x-whole;return whole+(Math.random()<frac?1:0);}
+function eligibleByDepth(s){
+  const out={D1:[],D2:[],D3:[],D4:[]};
+  for(let d=1;d<=4;d++){
+    const key=depthKey(d),need=FACE_MIN_GAMES[key];
+    for(const id of s.facePools[key].active||[]){
+      const r=faceReading(s,id);if(!r||(+r.games||0)<need||!Number.isFinite(+r.rankHi))continue;
+      out[key].push({id,r,depth:d,key});
+    }
+    out[key].sort((a,b)=>a.r.rankHi-b.r.rankHi||(+a.r.rank||0)-(+b.r.rank||0));
+  }
+  return out;
+}
+function chooseDepth(rows){
+  const available=Object.keys(rows).filter(k=>rows[k].length);
+  if(!available.length)return null;
+  const total=available.reduce((a,k)=>a+DEPTH_CULL_WEIGHT[k],0);let x=Math.random()*total;
+  for(const k of available){x-=DEPTH_CULL_WEIGHT[k];if(x<=0)return k;}return available[available.length-1];
+}
 function cull(dir){
   const s=sync(dir);if(s.gamesSinceCull<CULL_EVERY_GAMES)return{culled:[],birth:null,state:s};
-  // Resolve at most one head-to-head seat decision per bank debit. There is always at most one
-  // extra trial face at a depth, so a decision is literally one face out and the next face in.
-  const options=[];
-  for(let d=1;d<=4;d++){
-    const key=depthKey(d),p=s.facePools[key],challenger=p.trial,cr=challenger&&faceReading(s,challenger);
-    if(!challenger||!cr||(+cr.games||0)<FACE_MIN_GAMES[key]||!Number.isFinite(cr.rankLo)||!Number.isFinite(cr.rankHi))continue;
-    const measured=p.active.map(id=>({id,r:faceReading(s,id)})).filter(x=>x.r&&(+x.r.games||0)>=FACE_MIN_GAMES[key]&&Number.isFinite(x.r.rankLo)&&Number.isFinite(x.r.rankHi));
-    if(!measured.length)continue;
-    // The incumbent with the lowest pessimistic estimate is the seat the challenger must beat.
-    const weakest=measured.sort((a,b)=>a.r.rankLo-b.r.rankLo||a.r.rankHi-b.r.rankHi)[0];
-    if(cr.rankLo>weakest.r.rankHi)options.push({depth:d,key,p,challenger,cr,weakest,out:weakest.id,in:challenger,result:'promoted',margin:cr.rankLo-weakest.r.rankHi});
-    else if(cr.rankHi<weakest.r.rankLo)options.push({depth:d,key,p,challenger,cr,weakest,out:challenger,in:null,result:'rejected',margin:weakest.r.rankLo-cr.rankHi});
+  const entries=stableModelEntries(dir),population=activeFaceSet(s).size,expected=expectedCulls(population),want=stochasticCount(expected),culled=[];
+  const now=new Date().toISOString();
+  for(let i=0;i<want;i++){
+    const rows=eligibleByDepth(s),key=chooseDepth(rows);if(!key)break;
+    // Within the compute-selected depth, kill the face with the weakest optimistic reading. A wide
+    // CI is protection: L3.3-L7.5 survives ahead of a tightly known L6.6-L6.7 because 7.5 > 6.7.
+    const victim=rows[key][0];if(!victim)break;
+    const p=s.facePools[key];p.active=p.active.filter(id=>id!==victim.id);
+    p.retired[victim.id]={at:now,reason:'elastic cull',rank:+victim.r.rank||null,rankLo:+victim.r.rankLo||null,
+      rankHi:+victim.r.rankHi,games:+victim.r.games||0,populationBefore:population,expectedCulls:expected};
+    culled.push({type:'face',name:victim.id,face:victim.id,depth:victim.depth,result:'elastic-cull',rankHi:+victim.r.rankHi});
   }
-  if(!options.length)return{culled:[],birth:null,state:s};
-  options.sort((a,b)=>b.margin-a.margin||b.depth-a.depth);const x=options[0],now=new Date().toISOString();
+  // One fresh depth audition per 100-game checkpoint keeps exploration alive even in a large field.
+  // Brand-new model files do not wait for this: reconcileOpenLeague gives them their first face now.
+  const admitted=admitFrontier(s,entries);
   s.gamesSinceCull=Math.max(0,s.gamesSinceCull-CULL_EVERY_GAMES);
-  if(x.result==='promoted'){
-    x.p.active=x.p.active.filter(id=>id!==x.out);x.p.active.push(x.challenger);
-    x.p.retired[x.out]={at:now,reason:'lost seat',to:x.challenger,rankHi:x.weakest.r.rankHi,challengerRankLo:x.cr.rankLo};
-  }else x.p.retired[x.out]={at:now,reason:'failed trial',against:x.weakest.id,rankHi:x.cr.rankHi,incumbentRankLo:x.weakest.r.rankLo};
-  x.p.trial=null;advanceTrial(s,x.key);
-  const culled=[{type:'face',name:x.out,face:x.out,depth:x.depth,replacedBy:x.result==='promoted'?x.in:x.p.trial,result:x.result}];
-  s.lastEvent={at:now,culled:[x.out],admitted:x.result==='promoted'?x.in:x.p.trial,depth:x.depth,result:x.result};
-  saveState(dir,s);return{culled,birth:null,state:s};
+  s.lastEvent={at:now,culled:culled.map(x=>x.face),admitted,populationBefore:population,
+    populationAfter:activeFaceSet(s).size,expectedCulls:expected,targetFaces:TARGET_FACES};
+  saveState(dir,s);return{culled,birth:null,state:s,admitted};
 }
 function noteBirth(dir,birth){if(!birth||!birth.outPath||!fs.existsSync(birth.outPath))return;sync(dir);}
-function status(dir){const s=sync(dir),faces={};for(const key of Object.keys(FACE_CAPS)){const p=s.facePools[key];faces[key]={seats:p.active.length,trial:p.trial?1:0,waiting:p.waiting.length,deferred:Object.keys(p.deferred||{}).length,retired:Object.keys(p.retired).length,capacity:FACE_CAPS[key]};}
-  return{models:activeModelNames(dir).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,faces};}
+function status(dir){
+  const s=sync(dir),faces={};for(let d=1;d<=4;d++){const key=depthKey(d),p=s.facePools[key];faces[key]={seats:p.active.length,trial:0,
+    waiting:0,deferred:0,retired:Object.keys(p.retired||{}).length,capacity:null};}
+  const population=activeFaceSet(s).size;
+  return{models:activeModelNames(dir).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,faces,
+    population,targetFaces:TARGET_FACES,expectedCulls:expectedCulls(population)};
+}
 
-module.exports={TARGET_MODELS,FACE_CAPS,FACE_MIN_GAMES,D3_SHARE,sync,ingestSummary,activeModelNames,activeFaceIds,
-  restoreDepthSpecialists,selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,filterFocus,d3Slice,d4Slice,
-  retireBadD4,d3SummaryPath,d4SummaryPath,cull,noteBirth,status};
+module.exports={TARGET_MODELS,TARGET_FACES,FACE_CAPS,FACE_MIN_GAMES,DEPTH_CULL_WEIGHT,D3_SHARE,sync,ingestSummary,
+  activeModelNames,activeFaceIds,restoreDepthSpecialists,selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,
+  filterFocus,d3Slice,d4Slice,retireBadD4,d3SummaryPath,d4SummaryPath,cull,noteBirth,status,expectedCulls};
