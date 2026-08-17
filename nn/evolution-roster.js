@@ -14,11 +14,12 @@ const DEPTH_CULL_WEIGHT = Object.freeze({ D1:1, D2:3, D3:9, D4:27 });
 const CULL_EVERY_GAMES = 100;
 const ELO_TEMP = 400;
 const D3_SHARE = 0.04; // compatibility with older callers
-const ELASTIC_ROSTER_VERSION = 2;
+const ELASTIC_ROSTER_VERSION = 3;
 const ALIASES = new Set(['best.json','value.json','scratch.json','wide.json','ultra.json','deep.json','l15_value.json',
   'policy-joint-base.json']);
 
 const statePath = dir => path.join(dir, 'models', '.evolution-roster.json');
+const eloResultsPath = dir => path.join(dir, 'elo-results.json');
 const d3SummaryPath = dir => path.join(dir, '.evolution-d3-summary.json');
 const d4SummaryPath = dir => path.join(dir, '.evolution-d4-summary.json');
 const mean = xs => { const a=xs.filter(Number.isFinite); return a.length?a.reduce((s,x)=>s+x,0)/a.length:null; };
@@ -73,6 +74,9 @@ function candidateFaces(entry,depth){
   const a=[faceId(entry.name,depth,false)]; if(entry.dual)a.push(faceId(entry.name,depth,true)); return a;
 }
 function faceReading(s,id){const x=splitFaceId(id);return x?s.latest[x.name]?.faces?.[x.key]||null:null;}
+function faceScore(s,id){const r=faceReading(s,id);return r&&Number.isFinite(+r.rankHi)?+r.rankHi:
+  r&&Number.isFinite(+r.rank)?+r.rank:-Infinity;}
+function sortFaces(s,ids){return ids.slice().sort((a,b)=>faceScore(s,b)-faceScore(s,a)||a.localeCompare(b,undefined,{numeric:true}));}
 function poolIds(p){return [...(p.active||[]),...(p.trial?[p.trial]:[])];}
 function modelSerial(name){const m=String(name).match(/(\d+)(?!.*\d)/);return m?+m[1]:-1;}
 function modelBestScore(s,name){
@@ -95,12 +99,27 @@ function ensurePools(s){
 }
 function activeFaceSet(s){const out=new Set();for(let d=1;d<=4;d++)for(const id of poolIds(s.facePools[depthKey(d)]))out.add(id);return out;}
 function elasticRetired(p,id){return !!(p.retired&&p.retired[id]&&p.retired[id].reason==='elastic cull');}
+function durableEloFaces(dir,entries){
+  const byName=new Map(entries.map(e=>[e.name,e])),out=new Set();
+  let results={};try{results=JSON.parse(fs.readFileSync(eloResultsPath(dir),'utf8')).results||{};}catch(_){}
+  for(const pair of Object.keys(results)){
+    const z=pair.indexOf('|');if(z<1)continue;
+    for(const id of [pair.slice(0,z),pair.slice(z+1)]){
+      const x=splitFaceId(id);if(!x)continue;
+      const e=byName.get(x.name);if(!e)continue;
+      if(!candidateFaces(e,x.depth).includes(id))continue;
+      out.add(id);
+    }
+  }
+  return out;
+}
 
-function reconcileOpenLeague(s,entries){
+function reconcileOpenLeague(s,entries,dir){
   ensurePools(s);
   const available={};
   for(let d=1;d<=4;d++)available[depthKey(d)]=new Set(entries.flatMap(e=>candidateFaces(e,d)));
   const migrating=s.elasticRosterVersion!==ELASTIC_ROSTER_VERSION;
+  const durable=migrating?durableEloFaces(dir,entries):new Set();
 
   for(let d=1;d<=4;d++){
     const key=depthKey(d),p=s.facePools[key],avail=available[key];
@@ -117,8 +136,12 @@ function reconcileOpenLeague(s,entries){
     if(migrating){
       const oldLiveish=new Set([...(p.active||[]),...(p.waiting||[]),...(p.trial?[p.trial]:[])]);
       for(const id of oldKnown)if(avail.has(id)&&!keepRetired[id]&&(oldLiveish.has(id)||!!faceReading(s,id)))live.add(id);
+      // Pre-roster ratings live only in elo-results.json. They are real historical evidence, so every
+      // valid D1-D4 face with a surviving model file gets one fair return to the open league. D5+
+      // never parses here, and an exact face previously killed by the elastic controller stays dead.
+      for(const id of durable){const x=splitFaceId(id);if(x&&x.depth===d&&avail.has(id)&&!keepRetired[id])live.add(id);}
     }
-    // Any face with durable rating evidence belongs in the all-time audition pool unless the new
+    // Any face with durable roster rating evidence belongs in the all-time audition pool unless the
     // elastic controller itself has already retired it.
     for(const id of avail)if(!keepRetired[id]&&faceReading(s,id))live.add(id);
 
@@ -139,8 +162,8 @@ function reconcileOpenLeague(s,entries){
     }
   }
   s.elasticRosterVersion=ELASTIC_ROSTER_VERSION;
-  s.queueCompaction={version:2,updated:new Date().toISOString(),catalogueModels:entries.length,
-    queueModels:entries.length,deferredFaces:0,mode:'open elastic league'};
+  s.queueCompaction={version:3,updated:new Date().toISOString(),catalogueModels:entries.length,
+    queueModels:entries.length,deferredFaces:0,durableHistoricalFaces:migrating?durable.size:undefined,mode:'open elastic league'};
 }
 
 function nextFrontierAudition(s,entries){
@@ -173,7 +196,7 @@ function sync(dir,ladderN=null){
   const s=loadState(dir),entries=stableModelEntries(dir),present=new Set(entries.map(e=>e.name));
   for(const e of entries){s.active[e.name]={file:e.file,dual:e.dual,policy:e.policy,shape:e.shape};delete s.retired[e.name];}
   for(const n of Object.keys(s.active))if(!present.has(n))delete s.active[n];
-  reconcileOpenLeague(s,entries);
+  reconcileOpenLeague(s,entries,dir);
   const production=productionLadderLevels(ladderN),allowed=new Set(production);
   if(!Array.isArray(s.ladderActive))s.ladderActive=production;
   s.ladderActive=[...new Set(s.ladderActive.filter(x=>allowed.has(x)))].sort((a,b)=>a-b);
@@ -184,7 +207,7 @@ function readSummary(file){try{return JSON.parse(fs.readFileSync(file,'utf8'));}
 function ingestSummary(dir,summaryFile){
   const s=sync(dir),sum=readSummary(summaryFile),groups={},ladder={};
   for(const [id,r] of Object.entries(sum.players||{})){
-    if(r.kind==='ladder'){ladder[r.level]={games:+r.games||0,elo:Number.isFinite(+r.elo)?+r.elo:null};continue;}
+    if(r.kind==='ladder'){ladder[r.level]={games:+r.games||0,elo:Number.isFinite(+r.elo)?+r.elo:null};continue;
     if(r.kind!=='nn'||!r.model)continue; const name=path.basename(r.model,'.json');(groups[name]||=[]).push({...r,id});
   }
   let evidenceDelta=0;
@@ -261,43 +284,36 @@ function eligibleByDepth(s){
   }
   return out;
 }
-function chooseDepth(rows){
-  const available=Object.keys(rows).filter(k=>rows[k].length);
-  if(!available.length)return null;
-  const total=available.reduce((a,k)=>a+DEPTH_CULL_WEIGHT[k],0);let x=Math.random()*total;
-  for(const k of available){x-=DEPTH_CULL_WEIGHT[k];if(x<=0)return k;}return available[available.length-1];
+function chooseDepth(eligible){
+  const keys=Object.keys(DEPTH_CULL_WEIGHT).filter(k=>eligible[k]&&eligible[k].length);
+  if(!keys.length)return null;
+  const total=keys.reduce((a,k)=>a+DEPTH_CULL_WEIGHT[k],0),x=Math.random()*total;let acc=0;
+  for(const k of keys){acc+=DEPTH_CULL_WEIGHT[k];if(x<acc)return k;}return keys.at(-1);
 }
 function cull(dir){
   const s=sync(dir);if(s.gamesSinceCull<CULL_EVERY_GAMES)return{culled:[],birth:null,state:s};
-  const entries=stableModelEntries(dir),population=activeFaceSet(s).size,expected=expectedCulls(population),want=stochasticCount(expected),culled=[];
-  const now=new Date().toISOString();
-  for(let i=0;i<want;i++){
-    const rows=eligibleByDepth(s),key=chooseDepth(rows);if(!key)break;
-    // Within the compute-selected depth, kill the face with the weakest optimistic reading. A wide
-    // CI is protection: L3.3-L7.5 survives ahead of a tightly known L6.6-L6.7 because 7.5 > 6.7.
-    const victim=rows[key][0];if(!victim)break;
-    const p=s.facePools[key];p.active=p.active.filter(id=>id!==victim.id);
-    p.retired[victim.id]={at:now,reason:'elastic cull',rank:+victim.r.rank||null,rankLo:+victim.r.rankLo||null,
-      rankHi:+victim.r.rankHi,games:+victim.r.games||0,populationBefore:population,expectedCulls:expected};
-    culled.push({type:'face',name:victim.id,face:victim.id,depth:victim.depth,result:'elastic-cull',rankHi:+victim.r.rankHi});
+  const checkpoints=Math.floor(s.gamesSinceCull/CULL_EVERY_GAMES),culled=[],admitted=[];
+  for(let q=0;q<checkpoints;q++){
+    const n=activeFaceSet(s).size,want=stochasticCount(expectedCulls(n));
+    for(let i=0;i<want;i++){
+      const eligible=eligibleByDepth(s),key=chooseDepth(eligible);if(!key)break;
+      const victim=eligible[key][0],p=s.facePools[key],now=new Date().toISOString();
+      p.active=p.active.filter(id=>id!==victim.id);
+      p.retired[victim.id]={at:now,reason:'elastic cull',rankHi:victim.r.rankHi,rank:victim.r.rank,games:+victim.r.games||0,population:n};
+      culled.push({type:'face',name:victim.id,face:victim.id,depth:victim.depth,replacedBy:null,result:'elastic-cull'});
+    }
+    admitted.push(...admitFrontier(s,stableModelEntries(dir)));
+    s.gamesSinceCull=Math.max(0,s.gamesSinceCull-CULL_EVERY_GAMES);
   }
-  // One fresh depth audition per 100-game checkpoint keeps exploration alive even in a large field.
-  // Brand-new model files do not wait for this: reconcileOpenLeague gives them their first face now.
-  const admitted=admitFrontier(s,entries);
-  s.gamesSinceCull=Math.max(0,s.gamesSinceCull-CULL_EVERY_GAMES);
-  s.lastEvent={at:now,culled:culled.map(x=>x.face),admitted,populationBefore:population,
-    populationAfter:activeFaceSet(s).size,expectedCulls:expected,targetFaces:TARGET_FACES};
-  saveState(dir,s);return{culled,birth:null,state:s,admitted};
+  if(culled.length||admitted.length)s.lastEvent={at:new Date().toISOString(),culled:culled.map(x=>x.face),admitted,result:'elastic-checkpoint'};
+  saveState(dir,s);return{culled,birth:null,admitted,state:s};
 }
 function noteBirth(dir,birth){if(!birth||!birth.outPath||!fs.existsSync(birth.outPath))return;sync(dir);}
 function status(dir){
-  const s=sync(dir),faces={};for(let d=1;d<=4;d++){const key=depthKey(d),p=s.facePools[key];faces[key]={seats:p.active.length,trial:0,
-    waiting:0,deferred:0,retired:Object.keys(p.retired||{}).length,capacity:null};}
-  const population=activeFaceSet(s).size;
-  return{models:activeModelNames(dir).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,faces,
-    population,targetFaces:TARGET_FACES,expectedCulls:expectedCulls(population)};
+  const s=sync(dir),faces={};for(let d=1;d<=4;d++){const key=depthKey(d),p=s.facePools[key];faces[key]={seats:(p.active||[]).length,trial:p.trial?1:0,waiting:(p.waiting||[]).length,deferred:Object.keys(p.deferred||{}).length,retired:Object.keys(p.retired||{}).length,capacity:null};}
+  return{models:activeModelNames(dir).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,faces,targetFaces:TARGET_FACES};
 }
 
-module.exports={TARGET_MODELS,TARGET_FACES,FACE_CAPS,FACE_MIN_GAMES,DEPTH_CULL_WEIGHT,D3_SHARE,sync,ingestSummary,
-  activeModelNames,activeFaceIds,restoreDepthSpecialists,selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,
-  filterFocus,d3Slice,d4Slice,retireBadD4,d3SummaryPath,d4SummaryPath,cull,noteBirth,status,expectedCulls};
+module.exports={TARGET_MODELS,TARGET_FACES,FACE_CAPS,FACE_MIN_GAMES,DEPTH_CULL_WEIGHT,D3_SHARE,sync,ingestSummary,activeModelNames,activeFaceIds,
+  restoreDepthSpecialists,selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,filterFocus,d3Slice,d4Slice,
+  retireBadD4,d3SummaryPath,d4SummaryPath,cull,noteBirth,status};
