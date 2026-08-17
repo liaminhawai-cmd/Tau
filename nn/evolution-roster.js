@@ -207,7 +207,7 @@ function readSummary(file){try{return JSON.parse(fs.readFileSync(file,'utf8'));}
 function ingestSummary(dir,summaryFile){
   const s=sync(dir),sum=readSummary(summaryFile),groups={},ladder={};
   for(const [id,r] of Object.entries(sum.players||{})){
-    if(r.kind==='ladder'){ladder[r.level]={games:+r.games||0,elo:Number.isFinite(+r.elo)?+r.elo:null};continue;
+    if(r.kind==='ladder'){ladder[r.level]={games:+r.games||0,elo:Number.isFinite(+r.elo)?+r.elo:null};continue;}
     if(r.kind!=='nn'||!r.model)continue; const name=path.basename(r.model,'.json');(groups[name]||=[]).push({...r,id});
   }
   let evidenceDelta=0;
