@@ -3,8 +3,8 @@
   "policyEntrant": true,
   "policyEncoding": "centre-left-right-signed32-v1",
   "valueFile": "policy-joint-base.json",
-  "policyFile": "policy-joint-behemoth-10x400-dense40.json",
-  "label": "policy-joint-behemoth-10x400-dense40",
+  "policyFile": "policy-joint-behemoth-10x400-pair4.json",
+  "label": "policy-joint-behemoth-10x400-pair4",
   "shape": "400,400,400,400,400,400,400,400,400,400",
-  "topology": "dense-memory"
+  "topology": "pairwise-memory"
 }
