@@ -1,5 +1,5 @@
 {
-  "updated": "2026-08-17T00:53:30.924Z",
+  "updated": "2026-08-17T01:17:00.348Z",
   "basis": "ONE overall rankLo ranking across every depth (D1-D4); each medal keeps its own measured depth",
   "medals": {
     "gold": {
@@ -23,13 +23,13 @@
       "rankHi": 10
     },
     "bronze": {
-      "source": "l15_value-m1-138.json",
-      "sourceId": "l15_value-m1-138@D1",
-      "depth": 1,
-      "games": 40,
-      "elo": 189.1,
+      "source": "ckpt-117.json",
+      "sourceId": "ckpt-117@D2",
+      "depth": 2,
+      "games": 72,
+      "elo": 116.8,
       "rank": 0,
-      "rankLo": 9,
+      "rankLo": 8.93,
       "rankHi": 10
     }
   }
