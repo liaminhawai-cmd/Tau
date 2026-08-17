@@ -10,10 +10,8 @@ const ENCODING='centre-left-right-signed32-v1';
 const configs=[
   {id:'policy-joint-normal-96x64', hidden:'96,64', topology:'plain', batch:4096, lr:0.00085},
   {id:'policy-joint-large-4x512', hidden:'512,512,512,512', topology:'plain', batch:2048, lr:0.00055},
-  {id:'policy-joint-behemoth-10x400-dense40', hidden:Array(10).fill(400).join(','),
-   topology:'dense-memory', memoryWidth:40, residualScale:0.2, batch:2048, lr:0.0005},
-  {id:'policy-joint-behemoth-10x400-pair4', hidden:Array(10).fill(400).join(','),
-   topology:'pairwise-memory', memoryWidth:4, residualScale:0.2, batch:2048, lr:0.0005},
+  {id:'policy-joint-behemoth-10x400-dense40', hidden:Array(10).fill(400).join(','), topology:'dense-memory', memoryWidth:40, residualScale:0.2, batch:2048, lr:0.0005},
+  {id:'policy-joint-behemoth-10x400-pair4', hidden:Array(10).fill(400).join(','), topology:'pairwise-memory', memoryWidth:4, residualScale:0.2, batch:2048, lr:0.0005},
 ];
 function arg(n,d){const i=process.argv.indexOf('--'+n);return i>=0?process.argv[i+1]:d;}
 const chunkEpochs=Math.max(5,+arg('chunkEpochs',10));
@@ -22,6 +20,7 @@ const patienceEpochs=Math.max(chunkEpochs,+arg('patienceEpochs',30));
 const maxEpochs=Math.max(minEpochs,+arg('maxEpochs',200));
 const minDelta=Math.max(0,+arg('minDelta',0.001));
 const seed=+arg('seed',43243);
+const continueExisting=process.argv.includes('--continue-expedition')||process.argv.includes('--force');
 function cudaReady(){const p=spawnSync('python',['-c','import torch; print("yes" if torch.cuda.is_available() else "no")'],{encoding:'utf8',windowsHide:true});return p.status===0&&String(p.stdout).trim()==='yes';}
 function loadState(){try{return JSON.parse(fs.readFileSync(statePath,'utf8'));}catch(_){return {version:1,models:{}};}}
 function atomicWrite(p,s){fs.mkdirSync(path.dirname(p),{recursive:true});const t=`${p}.tmp-${process.pid}-${Date.now()}`;fs.writeFileSync(t,s);fs.renameSync(t,p);}
@@ -45,11 +44,7 @@ function ensureFrozenBase(){
 }
 function writeEntrant(c){
   const policyFile=`${c.id}.json`, entry=`${c.id}-entry.json`;
-  atomicWrite(path.join(models,entry),JSON.stringify({
-    version:1,policyEntrant:true,policyEncoding:ENCODING,
-    valueFile:'policy-joint-base.json',policyFile,
-    label:c.id,shape:c.hidden,topology:c.topology,
-  },null,2));
+  atomicWrite(path.join(models,entry),JSON.stringify({version:1,policyEntrant:true,policyEncoding:ENCODING,valueFile:'policy-joint-base.json',policyFile,label:c.id,shape:c.hidden,topology:c.topology},null,2));
   console.log(`[joint-policy] Elo entrant ready: ${entry} (common value + ${policyFile})`);
 }
 async function trainOne(c,state){
@@ -63,31 +58,14 @@ async function trainOne(c,state){
   while(rec.totalEpochs<maxEpochs){
     const start=rec.totalEpochs, lr=Math.max(0.000035,c.lr*Math.pow(0.85,Math.floor(start/chunkEpochs)));
     const metrics=[];
-    const args=['-u',path.join(dir,'torch-train-joint-policy.py'),'--targets',path.join(dir,'policy-targets.jsonl'),
-      '--out',out,'--hidden',c.hidden,'--topology',c.topology,'--epochs',String(chunkEpochs),
-      '--epochOffset',String(start),'--seed',String(seed),'--batch',String(c.batch),'--lr',String(lr),
-      '--wd','0.0001','--device','cuda','--throwWeight','1.5','--quickWinBonus','0.2',
-      ...(c.memoryWidth?['--memoryWidth',String(c.memoryWidth),'--residualScale',String(c.residualScale)]:[]),
-      ...(start>0&&fs.existsSync(out)?['--resume',out]:[])];
+    const args=['-u',path.join(dir,'torch-train-joint-policy.py'),'--targets',path.join(dir,'policy-targets.jsonl'),'--out',out,'--hidden',c.hidden,'--topology',c.topology,'--epochs',String(chunkEpochs),'--epochOffset',String(start),'--seed',String(seed),'--batch',String(c.batch),'--lr',String(lr),'--wd','0.0001','--device','cuda','--throwWeight','1.5','--quickWinBonus','0.2',...(c.memoryWidth?['--memoryWidth',String(c.memoryWidth),'--residualScale',String(c.residualScale)]:[]),...(start>0&&fs.existsSync(out)?['--resume',out]:[])];
     console.log(`[joint-policy] epochs ${start+1}-${start+chunkEpochs}, lr ${lr.toFixed(6)}, CUDA batch ${c.batch}`);
     await runChild('python',args,line=>{const m=line.match(/epoch\s+(\d+)\/\d+: train ce ([0-9.eE+-]+), val ce ([0-9.eE+-]+), action@1 ([0-9.]+)%, @3 ([0-9.]+)%, leg ([0-9.]+)%, dir ([0-9.]+)%/);if(m){const row={epoch:start+(+m[1]),trainCe:+m[2],valCe:+m[3],action1:+m[4]/100,action3:+m[5]/100,legAcc:+m[6]/100,dirAcc:+m[7]/100,at:new Date().toISOString()};metrics.push(row);fs.mkdirSync(curves,{recursive:true});fs.appendFileSync(curve,JSON.stringify(row)+'\n');}});
     await runChild(process.execPath,[path.join(dir,'verify-joint-policy-export.js'),out],()=>{});
     rec.totalEpochs=start+chunkEpochs;
     const best=metrics.reduce((a,b)=>!a||b.valCe<a.valCe?b:a,null);
-    if(best&&(rec.bestVal==null||best.valCe<rec.bestVal-minDelta)){
-      rec.bestVal=best.valCe;rec.peakEpoch=best.epoch;rec.lastImproveEpoch=best.epoch;fs.copyFileSync(out,peak);
-      console.log(`[joint-policy] NEW peak val CE ${rec.bestVal.toFixed(5)} at epoch ${rec.peakEpoch}`);
-    }
+    if(best&&(rec.bestVal==null||best.valCe<rec.bestVal-minDelta)){rec.bestVal=best.valCe;rec.peakEpoch=best.epoch;rec.lastImproveEpoch=best.epoch;fs.copyFileSync(out,peak);console.log(`[joint-policy] NEW peak val CE ${rec.bestVal.toFixed(5)} at epoch ${rec.peakEpoch}`);}
     saveState(state);
-    // Entry descriptor after every VERIFIED chunk, not just at rec.done. This was the actual gap
-    // that could leave a config -- reported for policy-joint-behemoth-10x400-pair4 -- invisible to
-    // the Elo pool indefinitely: writeEntrant used to fire only once, at full patience-exhaustion,
-    // so a mint closed or interrupted anywhere before that point left NO entrant file at all, not
-    // a queued-but-waiting one. There was nothing partial for evolution-roster.js's stableModelEntries
-    // to find. The sibling plain-value behemoth never had this problem -- its checkpoint file IS the
-    // usable model, visible from its first written chunk -- only the policyEntrant wrapper withheld
-    // visibility. Written after verify-joint-policy-export.js, so only checkpoints already confirmed
-    // loadable ever become a live candidate.
     writeEntrant(c);
     const stale=rec.totalEpochs-(rec.lastImproveEpoch||0);
     if(rec.totalEpochs>=minEpochs&&stale>=patienceEpochs){rec.stopReason=`no >${minDelta} val-CE improvement for ${stale} epochs`;break;}
@@ -99,8 +77,15 @@ async function trainOne(c,state){
   console.log(`[joint-policy] DONE ${c.id} — peak epoch ${rec.peakEpoch}, val CE ${rec.bestVal?.toFixed(5)}; ${rec.stopReason}`);
 }
 async function main(){
+  const state=loadState();state.models||={};
+  if(fs.existsSync(statePath)&&!continueExisting){
+    const touched=Object.keys(state.models).length,done=Object.values(state.models).filter(x=>x&&x.done).length;
+    console.log(`[joint-policy] prior expedition state found (${done}/${configs.length} complete; ${touched} touched). Restart mode skips one-off policy search.`);
+    console.log('[joint-policy] existing verified entrant descriptors remain in the Elo pool. Use --continue-expedition only when you deliberately want to continue training them.');
+    return;
+  }
   if(!cudaReady())throw new Error('CUDA PyTorch is required for the joint-policy expedition');
-  ensureFrozenBase();fs.mkdirSync(curves,{recursive:true});const state=loadState();state.models||={};
+  ensureFrozenBase();fs.mkdirSync(curves,{recursive:true});
   console.log(`[joint-policy] 96 actions: centre/left/right x signed direction x 16 distances`);
   console.log(`[joint-policy] ${configs.length} shapes; chunks ${chunkEpochs}; min ${minEpochs}; patience ${patienceEpochs}; max ${maxEpochs}`);
   let failed=0;
