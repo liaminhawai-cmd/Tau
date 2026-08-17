@@ -30,6 +30,8 @@ async function birth(plan){if(!plan)return null;const args=plan.kind==='extra'?[
 const rosterPath=path.join(dir,'models','.evolution-roster.json');
 const CULL_DEBIT=100;
 const PROBE_GAMES={1:8,2:8,3:4,4:2};
+const MAX_PROBES_PER_PASS=12;
+const MAX_CHUNKS_PER_CANDIDATE=3;
 function readRoster(){try{return JSON.parse(fs.readFileSync(rosterPath,'utf8'));}catch(_){return null;}}
 function splitFace(id){const m=String(id).match(/^(.*?)(\+P)?@D([1-4])$/);return m?{name:m[1],policy:!!m[2],depth:+m[3],key:`D${m[3]}${m[2]?'+P':''}`}:null;}
 function faceReading(s,id){const x=splitFace(id);return x&&s.latest&&s.latest[x.name]&&s.latest[x.name].faces?s.latest[x.name].faces[x.key]||null:null;}
@@ -130,26 +132,32 @@ async function refitDepth(depth,original,baseSummary){
   const original=process.argv.slice(2), refit=has(original,'refit'), summary=getArg(original,'summary',path.join(dir,'elo-summary.json'));
   evo.sync(dir); evo.ingestSummary(dir,summary);
   if(has(original,'cullOnly')){
-    const all=[],excluded=new Set();let probes=0;
+    const all=[],blocked=new Set(),chunksByCandidate=new Map();let probes=0;
+    const funded=Math.floor(evo.status(dir).gamesSinceCull/CULL_DEBIT),maxProbes=Math.min(MAX_PROBES_PER_PASS,funded);
     // First cash any decisions the existing evidence already supports. If that stalls while the
-    // bank is still full, spend a small targeted chunk, refit, and ask again. Alternate queue-seat
-    // pressure with population-retirement pressure so neither can monopolise maintenance.
+    // bank is still full, spend targeted chunks and refit immediately. Retirement pressure gets
+    // two of every three chunks because a full lineage roster is the mutation bottleneck; the
+    // third chunk keeps queue-seat turnover moving. A weak candidate may receive several chunks in
+    // the same maintenance pass instead of being abandoned after one inconclusive sample.
     for(;;){
-      let decided=false;
       while(evo.status(dir).gamesSinceCull>=CULL_DEBIT){
         const c=evo.cull(dir);if(!c.culled.length)break;
-        decided=true;all.push(...c.culled);
+        all.push(...c.culled);
         console.log(`[evolution] maintenance ${c.culled.map(x=>`${x.name} ${x.result}`).join(', ')}`);
       }
-      const st=evo.status(dir);if(st.gamesSinceCull<CULL_DEBIT||probes>=4)break;
-      const plan=chooseProbe(probes%2===0?'seat':'retirement',excluded);if(!plan)break;
-      console.log(`[evolution] cull probe ${probes+1}/4: ${plan.a} vs ${plan.b}, ${plan.games} games — ${plan.reason}`);
+      const st=evo.status(dir);if(st.gamesSinceCull<CULL_DEBIT||probes>=maxProbes)break;
+      const mode=probes%3===2?'seat':'retirement';
+      const plan=chooseProbe(mode,blocked);if(!plan)break;
+      const used=chunksByCandidate.get(plan.candidate)||0;
+      console.log(`[evolution] cull probe ${probes+1}/${maxProbes}: ${plan.a} vs ${plan.b}, ${plan.games} games — ${plan.reason}`+
+        (used?` (chunk ${used+1}/${MAX_CHUNKS_PER_CANDIDATE})`:''));
       try{
         await runCullProbe(plan);
         await refitDepth(plan.depth,original,summary);
-        debitCullBank(CULL_DEBIT);excluded.add(plan.candidate);probes++;
+        debitCullBank(CULL_DEBIT);probes++;
+        const next=used+1;chunksByCandidate.set(plan.candidate,next);
+        if(next>=MAX_CHUNKS_PER_CANDIDATE)blocked.add(plan.candidate);
       }catch(e){console.error(`[evolution] cull probe stopped: ${e.message}`);break;}
-      if(!decided)continue;
     }
     const end=evo.status(dir);
     console.log(`[evolution] cull-only complete: ${all.length} face decision(s), ${probes} targeted probe(s); `+
