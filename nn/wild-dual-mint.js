@@ -16,12 +16,13 @@ const maxEpochs=Math.max(minEpochs,+arg('maxEpochs',160));
 const minDelta=Math.max(0,+arg('minDelta',0.001));
 const seed=+arg('seed',43143);
 const batch=Math.max(256,+arg('batch',4096));
+const continueExisting=process.argv.includes('--continue-expedition')||process.argv.includes('--force');
 const shapes=[
-  '256,128',          // wide shared representation, then a taper into both heads
-  '128,128,128,128',  // deep uniform trunk: repeated refinement without a bottleneck
-  '192,48,192',       // bow-tie: force value and policy through a severe shared bottleneck
-  '48,96,192',        // expanding trunk: compress first, then fan out before the heads
-  '128,32,128,32',    // alternating bottlenecks: repeatedly discard and rebuild features
+  '256,128',
+  '128,128,128,128',
+  '192,48,192',
+  '48,96,192',
+  '128,32,128,32',
 ];
 function arg(n,d){const i=process.argv.indexOf('--'+n);return i>=0?process.argv[i+1]:d;}
 function loadJson(p,d){try{return JSON.parse(fs.readFileSync(p,'utf8'));}catch(_){return d;}}
@@ -86,9 +87,15 @@ function registerRoster(state){
   if(oldActive.length)console.log(`[dual-wild] previous active entrants remain active; the league will rate the expanded field and retire weak ones one at a time.`);
 }
 async function main(){
+  const state=loadJson(statePath,{version:1,shapes:{}});
+  if(fs.existsSync(statePath)&&!continueExisting){
+    const touched=Object.keys(state.shapes||{}).length,done=Object.values(state.shapes||{}).filter(x=>x&&x.done).length;
+    console.log(`[dual-wild] prior expedition state found (${done}/${shapes.length} complete; ${touched} touched). Restart mode skips one-off search.`);
+    console.log('[dual-wild] use --continue-expedition only when you deliberately want to continue it.');
+    return;
+  }
   if(!cudaReady())throw new Error('CUDA PyTorch is required for the dual-wild phase');
   if(!fs.existsSync(path.join(dir,'policy-targets.jsonl')))throw new Error('policy-targets.jsonl missing; run policy-targets.js first');
-  const state=loadJson(statePath,{version:1,shapes:{}});
   console.log(`[dual-wild] adaptive expedition: ${shapes.length} joint value+policy trunks; chunks ${chunkEpochs}; min ${minEpochs}; patience ${patienceEpochs}; emergency max ${maxEpochs}`);
   console.log(`[dual-wild] backend: torch-cuda (batch ${batch}, verified dual export every chunk)`);
   console.log(`[dual-wild] fixed game split seed ${seed}; curves -> ${path.relative(process.cwd(),curves)}`);
