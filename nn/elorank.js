@@ -4,6 +4,7 @@ const path=require('path');
 const {spawn,execFile}=require('child_process');
 const evo=require('./evolution-roster.js');
 const medals=require('./publish-medals.js');
+const calibration=require('./rating-calibration.js');
 const dir=__dirname;
 function getArg(a,n,d=null){const i=a.indexOf('--'+n);return i>=0?a[i+1]:d;}
 function setArg(a,n,v){const k='--'+n,i=a.indexOf(k);if(i>=0)a.splice(i,2,k,String(v));else a.push(k,String(v));}
@@ -130,8 +131,14 @@ async function refitDepth(depth,original,baseSummary){
 
 (async()=>{
   const original=process.argv.slice(2), refit=has(original,'refit'), summary=getArg(original,'summary',path.join(dir,'elo-summary.json'));
+  calibration.ensure(dir);
   evo.sync(dir); evo.ingestSummary(dir,summary);
   if(has(original,'cullOnly')){
+    const cal=calibration.status(dir);
+    if(!cal.ready){
+      console.log(`[rating] calibration hold: ${calibration.describe(cal)}; culling and medals paused until L9/L10/L11 are well-measured and ordered`);
+      return;
+    }
     const all=[],blocked=new Set(),chunksByCandidate=new Map();let probes=0;
     const funded=Math.floor(evo.status(dir).gamesSinceCull/CULL_DEBIT),maxProbes=Math.min(MAX_PROBES_PER_PASS,funded);
     // First cash any decisions the existing evidence already supports. If that stalls while the
@@ -172,19 +179,28 @@ async function refitDepth(depth,original,baseSummary){
   for(const p of [...focus,...rotating]){const k=path.resolve(p);if(!seen.has(k)){seen.add(k);slice.push(p);}}
   const levels=evo.activeLadderLevels(dir), st=evo.status(dir), baseFaces=evo.activeFaceIds(dir,[1,2]);
   console.log(`[evolution] rating ${baseFaces.length} live D1/D2 faces from ${slice.length} model files + ${st.ladders} ladder; cull bank ${st.gamesSinceCull.toFixed(0)} games`);
+  const before=calibration.status(dir);
+  if(!refit&&!before.ready){
+    console.log(`[rating] yardstick repair before placement: ${calibration.describe(before)}`);
+    try{await run('calibration-probe.js',[]);}catch(e){console.error('[rating] anchor repair failed:',e.message);}
+  }
   const base=original.slice(); setArg(base,'models',slice.join(',')); setArg(base,'levels',levels.join(',')); setArg(base,'depths','1,2');
   setArg(base,'allowPlayers',baseFaces.join(',')); ordinaryLadderScheduling(base);
   if(!refit){setArg(base,'focus',slice.join(','));setArg(base,'focusPairs','1');}
   await run('elorank-legacy.js',base);
   evo.ingestSummary(dir,summary);
 
-  if(!refit){
+  const calibrated=calibration.status(dir);
+  if(!refit&&calibrated.ready){
     for(let i=0;i<3;i++){
       const c=evo.cull(dir); if(!c.culled.length) break;
       console.log(`[evolution] face decision: ${c.culled.map(x=>`${x.name} ${x.result}`+
         (x.replacedBy?`; next ${x.replacedBy}`:'')).join(', ')}`);
       if(c.birth){const b=await birth(c.birth);if(b)console.log(`[evolution] replacement born ${b}`);}
     }
+  }else if(!calibrated.ready){
+    console.log(`[rating] calibration hold after base placement: ${calibration.describe(calibrated)}; no culls, medals, D3 or D4 yet`);
+    return;
   }
 
   const d3=evo.d3Slice(dir);
