@@ -10,7 +10,7 @@ echo temp-0 standard-opening arena evidence only, reopens
 echo elastic-culled faces whose model files still exist,
 echo and clears the stale cull bank / summaries.
 echo.
-node nn\rating-calibration.js --force
+node nn\rating-calibration.js
 if errorlevel 1 (
   echo.
   echo Rating reset failed.
