@@ -2,3 +2,7 @@
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Local archive created by the Elo calibration reset. Keep the evidence locally,
+# but do not push the old mixed-semantics rating state back into the live branch.
+nn/elo-archive/
