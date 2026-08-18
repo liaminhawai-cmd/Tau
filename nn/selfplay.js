@@ -14,60 +14,52 @@ async function main(){
   const original=process.argv.slice(2), hadEloInbox=getArg(original,'eloInbox',null)!==null;
   // Self-play uses exploration temperature for TRAINING diversity. That is a different brain from
   // the temp-0 face the official ladder claims to rate, so none of these games may enter Elo.
-  // Official rating evidence now comes only from temp-0 arena / calibration games.
+  // Official rating evidence and first coverage now come only from temp-0 arena/calibration games.
   if(hadEloInbox){delArg(original,'eloInbox');console.log('[rating] self-play Elo feed disabled: noisy training games are training-only; official Elo is temp-0 arena play');}
   const games=Math.max(1,+getArg(original,'games',100));
   evo.sync(dir); evo.ingestSummary(dir,path.join(dir,'elo-summary.json'));
   const slice=evo.selfplaySlice(dir), profile=evo.selfplayProfile(slice,{dir});
-  // The model draw keeps evolution-roster's existing strength+need equation.  Ladder rungs are a
-  // separate permanent reference class: same Elo strength axis, but their need decays from their
-  // accumulated game count.  With the current 500+ games/rung that makes them a trickle, not a
-  // fixed quota; a genuinely new rung automatically gets more until it is measured.
+  // The model draw keeps evolution-roster's existing strength+need equation. Ladder rungs are a
+  // separate permanent reference class used to keep the training distribution from becoming wholly
+  // self-referential. Their training share is independent of official Elo evidence now.
   const ladder=ladderSampling.trainerProfile(dir,profile.weights,{top:3});
   const d3Pool=evo.d3Slice(dir), d3Games=d3Pool.length?Math.floor(games*evo.D3_SHARE):0, baseGames=Math.max(0,games-d3Games);
   const st=evo.status(dir);
   console.log(`[evolution] self-play roster ${st.models} nets + ${st.ladders} ladder; rotating ${slice.length}; `+
               `D3 earned ${d3Pool.length} (rankLo above population median${Number.isFinite(st.median)?' '+st.median.toFixed(2):''})`);
-  console.log(`[evolution] fixed-rung reference: top ${[...new Set(ladder.levels)].map(x=>'L'+x).join(', ')}; `+
+  console.log(`[evolution] fixed-rung training reference: top ${[...new Set(ladder.levels)].map(x=>'L'+x).join(', ')}; `+
               `seat share ${(100*ladder.seatShare).toFixed(1)}%; game mix ${ladder.mixString}`);
+  if(profile.coverage.length)console.log(`[rating] ${profile.coverage.length} Elo-zero face(s) left to the official temp-0 arena scheduler; self-play will not fake coverage`);
 
   const baseArgs=()=>{
     const a=original.slice();
     if(slice.length){setArg(a,'model',slice[0]);setArg(a,'modelPool',slice.slice(1).join(','));}
     setArg(a,'levels',ladder.levels.join(',')); setArg(a,'deep',ladder.levels.join(','));
-    // Deliberately overrides run.js's old fixed 60/30/10 split.  The wrapper now derives the ladder
-    // share from live evidence; the NN-vs-NN model weighting itself is unchanged.
+    // Deliberately overrides run.js's old fixed 60/30/10 split. The wrapper derives the ladder
+    // share from live evidence; these games train the network but do not alter official Elo.
     setArg(a,'mix',ladder.mixString);
     setArg(a,'modelPoolWeights',JSON.stringify(profile.weights)); setArg(a,'modelVarietyFrac','1');
+    setArg(a,'coverageQueue','[]');
     return a;
   };
 
-  // First coverage is depth-specific. The old worker knew which MODEL/FACE was forced but still
-  // rolled D1/D2 randomly, so a queued "cover D2" game could come back as yet another D1 and leave
-  // the zero untouched. Run the missing D1 and D2 seats in tiny forced-depth phases first; two
-  // coverage entries share one game, exactly as the worker already reserves A/B entries.
-  let remaining=baseGames;
-  for(const depth of [1,2]){
-    const queue=profile.coverage.filter(x=>x.depth===depth);
-    if(!queue.length||remaining<=0) continue;
-    const n=Math.min(remaining,Math.ceil(queue.length/2));
-    const a=baseArgs(); setArg(a,'games',n); setArg(a,'nnDepthMix',`${depth}:1`);
-    setArg(a,'coverageQueue',JSON.stringify(queue.slice(0,n*2)));
-    console.log(`[evolution] first coverage D${depth}: ${Math.min(queue.length,n*2)} face(s) in ${n} forced-depth game(s)`);
-    await run(a); remaining-=n;
-  }
-  if(remaining>0){
-    const a=baseArgs(); setArg(a,'games',remaining); setArg(a,'nnDepthMix','1:1,2:0.278');
-    setArg(a,'coverageQueue','[]'); await run(a);
+  // Rating-specific first coverage used to run here. That made sense only while self-play results
+  // were allowed into Elo. With clean semantics, forcing a D1/D2 face here would spend training
+  // compute without reducing its official zero, so all base games stay ordinary training games and
+  // elorank-legacy owns first coverage at temperature 0.
+  if(baseGames>0){
+    const a=baseArgs(); setArg(a,'games',baseGames); setArg(a,'nnDepthMix','1:1,2:0.278');
+    await run(a);
   }
 
   if(d3Games>0){
     const d3=original.slice(), p=evo.selfplayProfile(d3Pool,{dir}), dl=ladderSampling.trainerProfile(dir,p.weights,{top:3});
+    delArg(d3,'eloInbox');
     setArg(d3,'games',d3Games); setArg(d3,'model',d3Pool[0]); setArg(d3,'modelPool',d3Pool.slice(1).join(','));
     setArg(d3,'levels',dl.levels.join(',')); setArg(d3,'deep',dl.levels.join(',')); setArg(d3,'mix',dl.mixString);
     setArg(d3,'nnDepthMix','3:1'); setArg(d3,'modelPoolWeights',JSON.stringify(p.weights));
-    setArg(d3,'coverageQueue',JSON.stringify(p.coverage.filter(x=>x.depth===3))); setArg(d3,'modelVarietyFrac','1');
-    console.log(`[evolution] earned-D3 phase ${d3Games}/${games} games across ${d3Pool.length} nets; `+
+    setArg(d3,'coverageQueue','[]'); setArg(d3,'modelVarietyFrac','1');
+    console.log(`[evolution] earned-D3 training phase ${d3Games}/${games} games across ${d3Pool.length} nets; `+
                 `fixed-rung seat share ${(100*dl.seatShare).toFixed(1)}%`);
     await run(d3);
   }
