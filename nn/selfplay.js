@@ -8,9 +8,15 @@ const dir=__dirname;
 module.exports={loadSeedPoses};
 function getArg(a,n,d=null){const i=a.indexOf('--'+n);return i>=0?a[i+1]:d;}
 function setArg(a,n,v){const k='--'+n,i=a.indexOf(k);if(i>=0)a.splice(i,2,k,String(v));else a.push(k,String(v));}
+function delArg(a,n){const k='--'+n;for(let i=a.indexOf(k);i>=0;i=a.indexOf(k)){a.splice(i,Math.min(2,a.length-i));}}
 function run(args){return new Promise((ok,bad)=>{const ch=spawn(process.execPath,[path.join(dir,'selfplay-legacy.js'),...args],{stdio:'inherit'});['SIGINT','SIGTERM'].forEach(s=>process.once(s,()=>{try{ch.kill(s);}catch(_){}}));ch.on('error',bad);ch.on('exit',c=>c===0?ok():bad(new Error('legacy selfplay exited '+c)));});}
 async function main(){
-  const original=process.argv.slice(2), games=Math.max(1,+getArg(original,'games',100));
+  const original=process.argv.slice(2), hadEloInbox=getArg(original,'eloInbox',null)!==null;
+  // Self-play uses exploration temperature for TRAINING diversity. That is a different brain from
+  // the temp-0 face the official ladder claims to rate, so none of these games may enter Elo.
+  // Official rating evidence now comes only from temp-0 arena / calibration games.
+  if(hadEloInbox){delArg(original,'eloInbox');console.log('[rating] self-play Elo feed disabled: noisy training games are training-only; official Elo is temp-0 arena play');}
+  const games=Math.max(1,+getArg(original,'games',100));
   evo.sync(dir); evo.ingestSummary(dir,path.join(dir,'elo-summary.json'));
   const slice=evo.selfplaySlice(dir), profile=evo.selfplayProfile(slice,{dir});
   // The model draw keeps evolution-roster's existing strength+need equation.  Ladder rungs are a
