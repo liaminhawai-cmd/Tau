@@ -12,8 +12,17 @@ function run(file,args){return new Promise((ok,bad)=>{const ch=spawn(process.exe
 function forward(src,dst,name){const v=get(src,name,null);if(v!=null)dst.push('--'+name,String(v));}
 const lockPath=path.join(dir,'.elo-writer.lock');
 function takeLock(){
-  try{const fd=fs.openSync(lockPath,'wx');fs.writeFileSync(fd,JSON.stringify({pid:process.pid,at:new Date().toISOString()}));return fd;}
-  catch(e){if(e&&e.code==='EEXIST')return null;throw e;}
+  for(let attempt=0;attempt<2;attempt++){
+    try{const fd=fs.openSync(lockPath,'wx');fs.writeFileSync(fd,JSON.stringify({pid:process.pid,at:new Date().toISOString()}));return fd;}
+    catch(e){
+      if(!(e&&e.code==='EEXIST'))throw e;
+      // A killed console must not brick ratings forever. League windows are 15 minutes, so a lock
+      // older than two hours cannot be a healthy owner and is safe to reap before one retry.
+      try{if(Date.now()-fs.statSync(lockPath).mtimeMs>2*3600000){fs.unlinkSync(lockPath);continue;}}catch(_){}
+      return null;
+    }
+  }
+  return null;
 }
 function releaseLock(fd){try{if(fd!=null)fs.closeSync(fd);}catch(_){}try{fs.unlinkSync(lockPath);}catch(_){} }
 
@@ -29,14 +38,9 @@ function releaseLock(fd){try{if(fd!=null)fs.closeSync(fd);}catch(_){}try{fs.unli
     try{medals.main();}catch(e){console.error('[medals] refresh failed:',e.message);}return;
   }
 
-  // Exactly one process may write the official Elo store at a time. The continuous league is the
-  // normal owner; a housekeeping placement that arrives while it is running simply uses the latest
-  // completed table rather than racing a second read-modify-write process against it.
   const lock=takeLock();
   if(lock==null){console.log('[rating] official Elo writer already active; skipping this overlapping pass');return;}
   try{
-    // One field, one scheduler. Depth only changes compute cost and the brain itself; ladders enter
-    // the same player list and receive no matchmaking privilege, only protection from retirement.
     const faces=evo.activeFaceIds(dir,[1,2,3,4]),levels=evo.activeLadderLevels(dir);
     const a=['--faces',faces.join(','),'--levels',levels.join(','),'--summary',summary,
       '--out',get(original,'out',path.join(dir,'elo-results.json')),
