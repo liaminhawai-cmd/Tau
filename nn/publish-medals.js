@@ -14,6 +14,7 @@ const fs=require('fs');
 const path=require('path');
 const {execFileSync}=require('child_process');
 const evo=require('./evolution-roster.js');
+const calibration=require('./rating-calibration.js');
 const dir=__dirname, repoRoot=path.join(dir,'..'), medalDir=path.join(dir,'medals');
 const summaryPath=path.join(dir,'elo-summary.json');
 const names=['gold','silver','bronze'];
@@ -52,6 +53,8 @@ function publishGit(paths){
 }
 
 function main(){
+  const cal=calibration.status(dir);
+  if(!cal.ready){log(`calibration hold: ${calibration.describe(cal)}; keeping existing medal files untouched until the fixed ladder is trustworthy`);return;}
   // Merge all four depths' summaries -- elorank.js's evolution wrapper rates D3 and D4 in SEPARATE
   // passes and writes them to their own files, never into elo-summary.json. Reading only the base
   // file (as this used to) makes any D3/D4-only face invisible here, exactly the gap that let

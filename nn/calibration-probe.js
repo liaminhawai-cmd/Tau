@@ -14,6 +14,10 @@ function directGames(results,a,b){
   const one=results[`${a}|${b}`]||{},two=results[`${b}|${a}`]||{};
   return(+one.w||0)+(+one.l||0)+(+one.d||0)+(+two.w||0)+(+two.l||0)+(+two.d||0);
 }
+function playerGames(results,id){
+  let n=0;for(const [k,r] of Object.entries(results||{})){const z=k.indexOf('|');if(z<1)continue;if(k.slice(0,z)!==id&&k.slice(z+1)!==id)continue;n+=(+r.w||0)+(+r.l||0)+(+r.d||0);}return n;
+}
+function topupGames(need){return Math.max(2,Math.min(6,Math.ceil(Math.max(0,need))));}
 function splitFace(id){const m=String(id).match(/^(.*?)(\+P)?@D([12])$/);return m?{name:m[1],policy:!!m[2],depth:+m[3]}:null;}
 function ordinaryFace(id,row){
   const f=splitFace(id);if(!f||f.policy||!row||row.kind!=='nn'||(row.brain&&row.brain!=='nn'))return null;
@@ -41,9 +45,14 @@ async function main(){
   const st=calibration.status(dir);if(st.version!==calibration.VERSION){console.log('[rating] calibration probe skipped: clean rating reset has not happened yet');return;}
   const store=readJson(resultsPath,{results:{}}),results=store.results||{},summary=readJson(summaryPath,{players:{}});
   const L=n=>({id:`L${n}`,spec:`L${n}`});
-  const bridgeGames=directGames(results,'L10','L11')<24?4:2;
-  await runArena(L(9),L(10),2);
-  await runArena(L(10),L(11),bridgeGames);
+  // Repair the fixed yardstick aggressively while it is thin. Six games is still tiny beside a
+  // placement pass, but gets L9/L10/L11 to the 24-game trust floor in a few cycles rather than
+  // waiting half a day while the much larger NN graph floats around them.
+  const g9=playerGames(results,'L9'),g10=playerGames(results,'L10'),g11=playerGames(results,'L11');
+  const n910=topupGames(Math.max(calibration.MIN_ANCHOR_GAMES-g9,calibration.MIN_ANCHOR_GAMES-g10));
+  const n1011=topupGames(Math.max(calibration.MIN_ANCHOR_GAMES-g10,calibration.MIN_ANCHOR_GAMES-g11));
+  await runArena(L(9),L(10),n910);
+  await runArena(L(10),L(11),n1011);
 
   const faces=[];
   for(const [id,row] of Object.entries(summary.players||{})){const f=ordinaryFace(id,row);if(f&&Number.isFinite(f.elo))faces.push(f);}
