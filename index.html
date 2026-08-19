@@ -487,7 +487,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 175</div>
+<div id="buildTag">build 176</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -5862,8 +5862,8 @@ function applyTheme() {
         boardTop.material.map = tex; boardTop.material.needsUpdate = true;
         if (old) old.dispose();
     }
-    if (boardRim) boardRim.material.color.set(sk ? sk.rim : 0x8b9199);
-    if (tripods && tripods.length === 2){ tripods[0].userData.mat.color.set(pieceHex(0)); tripods[1].userData.mat.color.set(pieceHex(1)); }
+    if (boardRim) premiumColor(boardRim.material.color.set(sk ? sk.rim : 0x8b9199));
+    if (tripods && tripods.length === 2){ premiumColor(tripods[0].userData.mat.color.set(pieceHex(0))); premiumColor(tripods[1].userData.mat.color.set(pieceHex(1))); }
     if (scene) scene.background = new THREE.Color(sk ? sk.bg : 0x0c0e11);
     if (G && G.pieces){ G.pieces[0].color = pieceHex(0); G.pieces[1].color = pieceHex(1); }
 }
@@ -6782,6 +6782,34 @@ function glowTexture(hot) {
 // Light theme = the pale physical-board look; dark theme = same dark palette as the flat 2D
 // board (disc #171c22, lines #414b56), so in dark mode the two views match instead of the 3D
 // board being a bright pale disc next to a dark 2D one.
+// ===== Premium desktop mode (the Steam build) =====
+// The Electron wrapper launches index.html with ?premium=1: same game, same rules, but the 3D
+// view spends real GPU on looking good — soft shadows, ACES tone mapping, a PMREM studio
+// environment for reflections, lacquered piece materials and uncapped render resolution.
+// The web/mobile builds never set the flag, so their render path is byte-for-byte unchanged.
+const TAU_PREMIUM = (() => { try { return new URLSearchParams(location.search).has('premium'); } catch (e) { return false; } })();
+// r128 has no colour management: hex colours here are authored in sRGB, but the premium
+// renderer's sRGB output stage assumes LINEAR material colours — convert on every set or the
+// pieces wash out to pastel. Chain it around .set(...) (which returns the Color). No-op on web.
+function premiumColor(colorObj) { if (TAU_PREMIUM) colorObj.convertSRGBToLinear(); return colorObj; }
+// A tiny stand-in for a studio HDRI: a dark room with three HDR-bright "softbox" panels that
+// PMREMGenerator turns into an environment map — this is what the clearcoat and metal pick up
+// as reflections. Only ever built once, and only in premium mode.
+function premiumEnvScene() {
+    const s = new THREE.Scene();
+    const room = new THREE.Mesh(new THREE.BoxGeometry(600,300,600),
+        new THREE.MeshBasicMaterial({color:0x14171c, side:THREE.BackSide}));
+    room.position.y = 120; s.add(room);
+    const panel = (w,h,color,intensity,x,y,z) => {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(w,h),
+            new THREE.MeshBasicMaterial({color:new THREE.Color(color).multiplyScalar(intensity), side:THREE.DoubleSide}));
+        m.position.set(x,y,z); m.lookAt(0,0,0); s.add(m);
+    };
+    panel(220,140, 0xfff3e0, 7,    60,140,  40);   // big warm overhead key
+    panel(140, 90, 0xcfe0ff, 3,  -180, 80, -60);   // cool side fill
+    panel(120, 70, 0xffe6c4, 2.5, 140, 60,-140);   // warm rear kicker
+    return s;
+}
 function boardTexture(dark) {
     const S=1024, cv=document.createElement('canvas'); cv.width=cv.height=S;
     // sc must match the mesh's own UV mapping (the full canvas -> the full CFG.edgeU-radius
@@ -6818,7 +6846,11 @@ function boardTexture(dark) {
         c.fillRect(0, 0, S, S);
         c.restore();
     }
-    return new THREE.CanvasTexture(cv);
+    const tex = new THREE.CanvasTexture(cv);
+    // Premium renders with sRGB output; the canvas is authored in sRGB, so tag it as such or
+    // the board comes out washed out after the renderer's linear->sRGB conversion.
+    if (TAU_PREMIUM) tex.encoding = THREE.sRGBEncoding;
+    return tex;
 }
 // The whole piece is ONE watertight mesh, polygonized from a signed-distance field: three
 // quarter-circle leg tubes, a small weld bead at the apex and squashed foot pads, all
@@ -6934,18 +6966,27 @@ const TRIPOD_FOOT_LEN = 2.6;           // tapered vertical foot between the arc 
 let tripodPinMat = null;               // the magnet slug: dark steel, shared by every piece
 function buildTripod(hex) {
     const g=new THREE.Group();
-    const mat=new THREE.MeshStandardMaterial({color:hex, roughness:0.45, metalness:0.15});
+    // Premium: lacquered playing pieces — a clearcoat over the base colour, with the studio
+    // environment map to reflect. The .color API stays the same, so live recolouring works.
+    const mat = TAU_PREMIUM
+        ? new THREE.MeshPhysicalMaterial({color:hex, roughness:0.34, metalness:0.1,
+                                          clearcoat:0.65, clearcoatRoughness:0.22, envMapIntensity:0.9})
+        : new THREE.MeshStandardMaterial({color:hex, roughness:0.45, metalness:0.15});
+    premiumColor(mat.color);
     // Visual legs render a hair wider (1.05x) than the true tube: tangent tubes read on screen as
     // a sliver of daylight between pieces that are "touching", so a nudge of overlap helps.
     if (!fusedTripodGeo) fusedTripodGeo = fusedTripodGeometry(CFG.legRadius*1.05);
-    g.add(new THREE.Mesh(fusedTripodGeo, mat));
+    const body = new THREE.Mesh(fusedTripodGeo, mat);
+    if (TAU_PREMIUM) { body.castShadow = true; body.receiveShadow = true; }
+    g.add(body);
     // The three magnet pins the piece actually stands on -- separate crisp cylinders (they're too
     // thin for the SDF grid), tucked up into the pad so no seam shows. Tips land exactly at y=0.
     if (!tripodPinGeo) tripodPinGeo = new THREE.CylinderGeometry(TRIPOD_PIN_RAD, TRIPOD_PIN_RAD, TRIPOD_PIN_LIFT + 0.6, 16);
-    if (!tripodPinMat) tripodPinMat = new THREE.MeshStandardMaterial({color:0x15151a, roughness:0.35, metalness:0.65});
+    if (!tripodPinMat) { tripodPinMat = new THREE.MeshStandardMaterial({color:0x15151a, roughness:0.35, metalness:0.65}); premiumColor(tripodPinMat.color); }
     for (let i = 0; i < 3; i++) {
         const pin = new THREE.Mesh(tripodPinGeo, tripodPinMat);
         pin.position.set(Math.cos(i*2*Math.PI/3)*CFG.footR, (TRIPOD_PIN_LIFT + 0.6)/2, Math.sin(i*2*Math.PI/3)*CFG.footR);
+        if (TAU_PREMIUM) pin.castShadow = true;
         g.add(pin);
     }
     g.userData.mat = mat;   // one shared material per piece — exposed so the menu logo can recolour it live
@@ -6956,8 +6997,16 @@ function init3D() {
     // preserveDrawingBuffer lets the Cinematic Studio (studio.html, same-origin parent) read this
     // canvas with drawImage on ITS animation frame, not just inside our own render tick — needed to
     // composite the 3D view into an exported video. Negligible cost for a scene this small.
-    renderer=new THREE.WebGLRenderer({canvas:document.getElementById('view3d'), antialias:true, preserveDrawingBuffer:true});
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    renderer=new THREE.WebGLRenderer({canvas:document.getElementById('view3d'), antialias:true, preserveDrawingBuffer:true,
+                                      powerPreference: TAU_PREMIUM ? 'high-performance' : 'default'});
+    renderer.setPixelRatio(TAU_PREMIUM ? (window.devicePixelRatio||1) : Math.min(window.devicePixelRatio||1,2));
+    if (TAU_PREMIUM) {
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.12;
+    }
     // Some phones (seen on Android) actually discard the GPU context under memory pressure while the
     // tab is backgrounded, not just leave a stale frame -- a plain repaint on return can't fix that,
     // the browser has to be told we'll handle recovery (preventDefault on the loss event) and the
@@ -6988,8 +7037,29 @@ function init3D() {
     controls.addEventListener('end',   () => { camDragging = false;
         camManualPos.copy(camera.position); camManualTgt.copy(controls.target);
         camManualSet = true; camCenterFrac = 0; });
-    scene.add(new THREE.HemisphereLight(0xffffff,0x2a2e33,0.95));
-    const dl=new THREE.DirectionalLight(0xffffff,0.55); dl.position.set(45,90,55); scene.add(dl);
+    if (TAU_PREMIUM) {
+        // Cinematic rig, values lifted from steam.html's "tabletop" spike and scaled to this
+        // scene: a warm shadow-casting key, a cool rim from behind, a soft hemisphere fill, and
+        // a PMREM studio environment so the clearcoat pieces have something real to reflect.
+        scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x1c1f24, 0.5));
+        const key = new THREE.DirectionalLight(0xfff1dc, 1.15);
+        key.position.set(70,130,45);
+        key.castShadow = true;
+        key.shadow.mapSize.set(2048,2048);
+        key.shadow.camera.left = key.shadow.camera.bottom = -95;
+        key.shadow.camera.right = key.shadow.camera.top = 95;
+        key.shadow.camera.far = 400;
+        key.shadow.bias = -0.0004;
+        key.shadow.normalBias = 0.5;
+        scene.add(key);
+        const rim = new THREE.DirectionalLight(0x9db8ff, 0.4); rim.position.set(-60,45,-85); scene.add(rim);
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmrem.fromScene(premiumEnvScene(), 0.04).texture;
+        pmrem.dispose();
+    } else {
+        scene.add(new THREE.HemisphereLight(0xffffff,0x2a2e33,0.95));
+        const dl=new THREE.DirectionalLight(0xffffff,0.55); dl.position.set(45,90,55); scene.add(dl);
+    }
     boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU,96),
         new THREE.MeshStandardMaterial({map:boardTexture(currentTheme==='dark'), roughness:0.95}));
     // Board surface sits just BELOW y=0 (where the feet's flat pads end): with it at +0.15 the
@@ -7000,12 +7070,13 @@ function init3D() {
     // drop-off radius, or there's a visible ring of solid grey base showing PAST edgeU before the
     // lip actually slopes away -- a foot crossing edgeU would look like it's still over solid board.
     boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU*1.04,5,96),
-        new THREE.MeshStandardMaterial({color:0x8b9199, roughness:0.6, metalness:0.2}));
+        new THREE.MeshStandardMaterial({color:premiumColor(new THREE.Color(0x8b9199)), roughness:0.6, metalness:0.2}));
     // Top of this grey base band must stay just BELOW the board surface, else it occludes the dark
     // textured top from above and the whole disc reads as blank pale grey (regression when the board
     // was lowered to -0.05 to un-bury the feet: the old rim top at +0.1 then poked through). Height
     // is 5, so centre -2.7 -> top -0.2, safely under boardTop's -0.05.
     boardRim.position.y=-2.7; scene.add(boardRim);
+    if (TAU_PREMIUM) { boardTop.receiveShadow = true; boardRim.receiveShadow = true; }
     tripods=[buildTripod(0x6b9eff), buildTripod(0xff6b6b)];   // [blue, red] = pieces order
     tripods.forEach(t=>scene.add(t));
     htpTripods=[buildTripod(0x6b9eff), buildTripod(0xff6b6b)];   // how-to-play's own pair, hidden until slide 5 is open
@@ -7743,7 +7814,8 @@ function resize() {
                 // Coach beats swap watch<->play layouts constantly; flipping the buffer ratio 3<->2 with
                 // them adds a visible resolution pop at each swap, so the coach stays at a steady 2.
                 const inCoach = typeof coachActive !== 'undefined' && coachActive;
-                const wantRatio = Math.min(window.devicePixelRatio||1, (passiveView() && !inCoach) ? 3 : 2);
+                const wantRatio = TAU_PREMIUM ? (window.devicePixelRatio||1)
+                                              : Math.min(window.devicePixelRatio||1, (passiveView() && !inCoach) ? 3 : 2);
                 // Touch the buffer ONLY when something really changed: assigning canvas.width even
                 // to its current value CLEARS the canvas (a blank frame until the next rAF render),
                 // and setPixelRatio internally re-applies setSize with stale dims. A same-size

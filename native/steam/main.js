@@ -10,6 +10,16 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 }
 
+// Spend real GPU on the premium renderer: never fall back to software because a driver is on
+// Chromium's blocklist, rasterize on the GPU, and on dual-GPU MacBooks prefer the discrete
+// chip. The game itself opts into the heavy render path via the ?premium=1 query below.
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+if (process.platform === 'darwin') {
+  app.commandLine.appendSwitch('force_high_performance_gpu');
+}
+
 let steamworks = null;
 try {
   // Optional: only present in Steam builds (`npm i steamworks.js`).
@@ -55,7 +65,9 @@ function createWindow() {
     }
   });
 
-  win.loadFile(path.join(__dirname, 'www', 'index.html'));
+  // ?premium=1 switches the game's 3D view onto its premium desktop render path
+  // (shadows, ACES tone mapping, environment reflections, uncapped resolution).
+  win.loadFile(path.join(__dirname, 'www', 'index.html'), { query: { premium: '1' } });
 }
 
 app.whenReady().then(() => {
