@@ -8,7 +8,8 @@ const evo=require('./evolution-roster.js');
 const dir=__dirname,root=path.join(dir,'..'),medalDir=path.join(dir,'medals'),summaryPath=path.join(dir,'elo-summary.json');
 const names=['gold','silver','bronze'],log=s=>console.log(`[medals] ${s}`);
 const read=(p,d)=>{try{return JSON.parse(fs.readFileSync(p,'utf8'));}catch(_){return d;}};
-const atomic=(p,s)=>{fs.mkdirSync(path.dirname(p),{recursive:true});const t=`${p}.tmp-${process.pid}-${Date.now()}`;fs.writeFileSync(t,s);fs.renameSync(t,p);};
+const {atomicWrite}=require('./atomic-write.js');
+const atomic=(p,s)=>atomicWrite(p,s,{mkdir:true});
 const copy=(a,b)=>{fs.mkdirSync(path.dirname(b),{recursive:true});const t=`${b}.tmp-${process.pid}-${Date.now()}`;fs.copyFileSync(a,t);fs.renameSync(t,b);};
 function findGit(){const q=['git'];try{const b=path.join(process.env.LOCALAPPDATA||'','GitHubDesktop');for(const a of fs.readdirSync(b).filter(x=>/^app-/.test(x)).sort().reverse())q.push(path.join(b,a,'resources','app','git','cmd','git.exe'));}catch(_){}q.push('C:\\Program Files\\Git\\cmd\\git.exe','C:\\Program Files (x86)\\Git\\cmd\\git.exe');for(const g of q)try{execFileSync(g,['--version'],{stdio:'ignore'});return g;}catch(_){}return null;}
 function publish(paths){const g=findGit();if(!g){log('git not found; aliases refreshed locally only');return;}const run=a=>execFileSync(g,a,{cwd:root,stdio:'inherit'});try{for(const p of paths)run(['add','-f',p]);try{execFileSync(g,['diff','--cached','--quiet','--',...paths],{cwd:root});return;}catch(_){}run(['commit','-m','nn: refresh gold silver bronze','--',...paths]);try{run(['pull','--no-edit','--no-rebase']);}catch(_){}run(['push']);log('aliases pushed');}catch(e){log(`git publish deferred: ${e.message}`);}}

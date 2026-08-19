@@ -18,7 +18,8 @@ const statePath=dir=>path.join(dir,'models','.evolution-roster.json');
 const d3SummaryPath=dir=>path.join(dir,'.evolution-d3-summary.json');
 const d4SummaryPath=dir=>path.join(dir,'.evolution-d4-summary.json');
 const mean=xs=>{const a=xs.filter(Number.isFinite);return a.length?a.reduce((s,x)=>s+x,0)/a.length:null;};
-const atomic=(p,s)=>{const t=`${p}.tmp-${process.pid}-${Date.now()}`;fs.writeFileSync(t,s);fs.renameSync(t,p);};
+const {atomicWrite}=require('./atomic-write.js');
+const atomic=(p,s)=>atomicWrite(p,s);
 const depthKey=d=>`D${d}`;
 const emptyPool=()=>({active:[],trial:null,waiting:[],retired:{},deferred:{}});
 
