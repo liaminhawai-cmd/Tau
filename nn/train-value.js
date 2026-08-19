@@ -83,6 +83,17 @@ async function main() {
       '--lrDecay', arg('lrDecay', 'cosine'),
       '--device', 'cuda',
       ...(resume ? ['--resume', resume] : []),
+      // torch-train-core.py has always accepted --data; this wrapper just never forwarded it, so
+      // every CUDA birth silently trained on the full nn/data corpus even when a caller asked for
+      // a slice. The CPU fallback below forwards it already (withOut passes original args through).
+      ...(arg('data') ? ['--data', arg('data')] : []),
+      // Elo-weighted games are the production default: label reliability tracks who played the
+      // game, and every row already records that. --eloWeight off restores the flat corpus for
+      // A/B runs. --poseInput is experiment-only and forwarded verbatim.
+      '--eloWeight', arg('eloWeight', 'logistic'),
+      ...(arg('eloWeightFloor') ? ['--eloWeightFloor', arg('eloWeightFloor')] : []),
+      ...(arg('eloWeightTemp') ? ['--eloWeightTemp', arg('eloWeightTemp')] : []),
+      ...(original.includes('--poseInput') ? ['--poseInput'] : []),
     ];
     console.log('[value-train] backend torch-cuda (batch ' + arg('batch', '4096') +
                 '), export must verify before it enters the pool');
@@ -101,6 +112,10 @@ async function main() {
   if (!trained) {
     if (structured)
       throw new Error(`checkpoint topology ${structured.kind} requires the verified PyTorch path; refusing an incompatible CPU fallback`);
+    if (original.includes('--poseInput'))
+      throw new Error('--poseInput exists only in the PyTorch trainer; a silent pose-less CPU run would fake the experiment');
+    if (arg('eloWeight', 'logistic') !== 'off')
+      console.warn('[value-train] note: the JS CPU trainer has no --eloWeight; this run trains on the flat corpus');
     console.log('[value-train] backend js-cpu');
     await run('node', [path.join('nn', 'train.js'), ...withOut(original, partial)],
               'JavaScript value trainer');

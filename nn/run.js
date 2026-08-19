@@ -1038,6 +1038,52 @@ function champOf(name) {
   try { return JSON.parse(fs.readFileSync(path.join(dir, 'models', `.variant-champ-${name}.json`), 'utf8')); }
   catch (e) { return null; }
 }
+// Under the league-first trainer the pool cycle's own placement pass is normally skipped (the
+// continuous league owns the Elo writer lock), so the marker update that runs right after
+// placement almost never sees this cycle's freshly trained link -- it has zero official games at
+// that moment; the league only rates it over the FOLLOWING windows. Left alone, the marker
+// freezes and every lineage step resumes from the same old champion, discarding the previous
+// step's training instead of building on it. So before choosing what to resume from, re-judge the
+// championship on the live summary, where those later windows' evidence has actually landed.
+function refreshVariantChampFromSummary(name) {
+  let players;
+  try { players = JSON.parse(fs.readFileSync(poolSummary, 'utf8')).players || {}; } catch (e) { return; }
+  const member = new RegExp('^' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '-\\d+$');
+  const byName = {};
+  for (const v of Object.values(players)) {
+    if (!v || v.kind !== 'nn' || !v.model || v.brain === 'dual') continue;
+    if ((+v.games || 0) < 6 || !Number.isFinite(+v.elo)) continue;
+    const k = path.basename(v.model, '.json');
+    if (!member.test(k) || !fs.existsSync(path.join(dir, 'models', `${k}.json`))) continue;
+    if (!byName[k] || +v.elo > +byName[k].elo) byName[k] = v;   // one entry per model: best depth
+  }
+  const ranked = Object.values(byName).sort((a, b) => +b.elo - +a.elo);
+  if (!ranked.length) return;
+  const champFile = path.join(dir, 'models', `.variant-champ-${name}.json`);
+  const prev = champOf(name);
+  const prevName = prev && prev.model && fs.existsSync(prev.model)
+    ? path.basename(prev.model, '.json') : null;
+  const prevNow = prevName ? byName[prevName] : null;
+  // Same clear-margin bar as the placement-time update: a champion that still has a current
+  // rating defends its seat unless a member beats it by 30+ Elo ON THE SAME SUMMARY, so both
+  // sides of the margin are on one scale. A champion with no current rating (culled, or never
+  // measured since the Elo reset) cannot defend at all -- its stored elo is from another scale --
+  // so the best currently measured member takes over. When the champion keeps the seat its marker
+  // still gets rewritten, moving the stored elo onto the live scale for future comparisons.
+  const winner = prevNow && +ranked[0].elo - +prevNow.elo < 30 ? prevNow : ranked[0];
+  const winnerName = path.basename(winner.model, '.json');
+  fs.writeFileSync(champFile, JSON.stringify({
+    model: path.join(dir, 'models', `${winnerName}.json`),
+    elo: winner.elo, games: winner.games,
+    rank: winner.rank, rankLo: winner.rankLo, rankHi: winner.rankHi,
+    at: new Date().toISOString(),
+  }, null, 1));
+  if (winnerName !== prevName)
+    log(`variant lineage: ${name} champion is now ${winnerName} ` +
+        `(${Math.round(winner.elo)} Elo over ${winner.games} clean games` +
+        (prevNow ? `, +${Math.round(winner.elo - prevNow.elo)} over ${prevName}`
+                 : prevName ? `; previous champion ${prevName} has no current rating` : '') + ')');
+}
 
 // A small status file, pushed to git at each major transition, so progress can be checked by
 // reading the repo (GitHub's own UI, or `git fetch` anywhere) instead of reading this console --
@@ -1583,6 +1629,26 @@ async function runPoolCycle() {
         log(`pool cycle ${num} — population full (${mutantPop.active.length}/${mutantCap}); ` +
             `training none, a slot opens when a member is retired as confidently weak`);
       }
+      // Mutants breed from the CURRENT TOP THREE of the whole league, not from each other. The
+      // medal files already are "best three distinct models by pessimistic Elo bound", so gold's
+      // shape gets half the litters, silver a third, bronze the rest -- probabilistic, no
+      // thresholds, and the mutation budget always chases whatever is actually winning instead
+      // of drifting around inside the mutant population's own gene pool.
+      const medalShapes = (() => {
+        try {
+          const med = JSON.parse(fs.readFileSync(path.join(dir, 'medals', 'medals.json'), 'utf8'));
+          return ['gold', 'silver', 'bronze']
+            .map(n => med.medals && med.medals[n] && med.medals[n].source)
+            .filter(Boolean)
+            .map(src => ({ src, shape: hiddenOf(path.join(dir, 'models', src + '.json')) }))
+            .filter(x => x.shape);
+        } catch (e) { return []; }
+      })();
+      const drawMedal = () => {
+        if (!medalShapes.length) return null;
+        const r = Math.random();
+        return medalShapes[Math.min(medalShapes.length - 1, r < 0.5 ? 0 : r < 0.83 ? 1 : 2)];
+      };
       for (let s = 0; s < spawn; s++) {
         // A scratch is spawned when the population has none at the CURRENT champion shape. That is
         // the control the shape verdict measures against, so it has to exist and it has to be at the
@@ -1590,10 +1656,11 @@ async function runPoolCycle() {
         // control for a shape nobody is running any more. Otherwise spawn a mutant.
         const haveScratch = mutantPop.active.some(m => m.kind === 'scratch' && m.shape === h);
         const kind = haveScratch ? 'mutant' : 'scratch';
-        // Breed from a rated active when there is one, else from the champion shape -- which is
-        // also how the very first mutant gets created on an empty population.
-        const parent = kind === 'mutant' ? pickParent(mutantPop.active, ratingOf) : null;
-        const baseShape = parent ? parent.shape : h;
+        // Breed from a medal holder when medals exist; fall back to a rated active member, then
+        // to the champion shape -- which is also how the very first mutant gets created.
+        const medal = kind === 'mutant' ? drawMedal() : null;
+        const parent = kind === 'mutant' && !medal ? pickParent(mutantPop.active, ratingOf) : null;
+        const baseShape = medal ? medal.shape : parent ? parent.shape : h;
         const mut = kind === 'scratch' ? { shape: h, op: 'scratch' } : mutateHidden(baseShape);
         if (!mut) continue;
         const serial = String(mutantPop.next++).padStart(3, '0');
@@ -1602,8 +1669,9 @@ async function runPoolCycle() {
         log(`pool cycle ${num} — ${kind} ${serial}: ` +
             (kind === 'scratch' ? `fresh init at the champion shape ${h}`
                                 : `${baseShape} -> ${mut.shape} (${mut.op})` +
-                                  (parent ? ` from ${path.basename(parent.file, '.json')}`
-                                          : ` from the champion shape`)) +
+                                  (medal ? ` from medal holder ${medal.src}`
+                                         : parent ? ` from ${path.basename(parent.file, '.json')}`
+                                                  : ` from the champion shape`)) +
             `, population ${mutantPop.active.length + 1}/${mutantCap}`);
         writeStatus(`${kind} ${serial} training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
         await runSoftAsync('train-value.js', ['--epochs', scratchEpochs, '--out', outPath, '--hidden', mut.shape]);
@@ -1612,7 +1680,8 @@ async function runPoolCycle() {
         // phantom would never earn one.
         if (fs.existsSync(outPath)) {
           mutantPop.active.push({ file, kind, shape: mut.shape, op: mut.op,
-                                  parent: parent ? parent.file : null, born: num });
+                                  parent: medal ? medal.src + '.json' : parent ? parent.file : null,
+                                  born: num });
         } else {
           log(`pool cycle ${num} — ${kind} ${serial} failed to train; slot left open`);
         }
@@ -1666,6 +1735,7 @@ async function runPoolCycle() {
     let from = canResume ? lineage[lineage.length - 1] : null;
     if (from) from = path.join(dir, 'models', from);
     try {
+      refreshVariantChampFromSummary(name);
       const champ = champOf(name);
       if (champ && champ.model && fs.existsSync(champ.model)) {
         if (champ.model !== from) log(`pool cycle ${num} — variant lineage: resuming from champion ` +
@@ -1712,19 +1782,12 @@ async function runPoolCycle() {
   // as well as the strength). This is the same "confident, not merely ahead" standard already used
   // to retire a dual population member (rankHi <= bottomCutoff there), applied symmetrically here.
   try {
-    // best.json used to see only D1/D2 evidence: elorank.js's evolution wrapper rates D3 and D4
-    // faces in SEPARATE passes and writes their results to their own summary files
-    // (.evolution-d3-summary.json, .evolution-d4-summary.json), never into elo-summary.json. A
-    // face that is only strong at D3+ -- like behemoth-10x400-dense40, which measured above the
-    // whole D1/D2 field -- was therefore structurally invisible to this gate and could never take
-    // the seat no matter how much evidence piled up. Merge all four depths' summaries, same as
-    // live-ladder.js's own dashboard already does, so the gate can see the ladder's actual best.
+    // The unified v4 league rates every depth into elo-summary.json directly, so the old merge of
+    // .evolution-d3-summary.json / .evolution-d4-summary.json is gone: nothing writes those files
+    // any more, and a stale pre-reset copy left on disk would OVERRIDE fresh clean entries with
+    // ratings from the contaminated old scale -- exactly the evidence this gate must never act on.
     const readSummary = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return { players: {} }; } };
-    const mergedPlayers = {
-      ...readSummary(poolSummary).players,
-      ...readSummary(evo.d3SummaryPath(dir)).players,
-      ...readSummary(evo.d4SummaryPath(dir)).players,
-    };
+    const mergedPlayers = readSummary(poolSummary).players;
     const allRated = Object.entries(mergedPlayers)
       .filter(([, v]) => v.kind === 'nn' && v.model && v.games >= 6)
       .map(([id, v]) => ({ id, ...v }));
@@ -1767,19 +1830,49 @@ async function runPoolCycle() {
     const ranked = Object.values(byModel).sort((a, b) => b.elo - a.elo);
     const top = ranked[0];
     const incumbentName = path.basename(ckpt, '.json');
-    const incumbent = byModel[incumbentName];
     const topName = path.basename(top.model, '.json');
     const line = ranked.slice(0, 5)
       .map(r => `${path.basename(r.model, '.json')} ${Math.round(r.elo)}`).join(', ');
     log(`pool cycle ${num} — ratings: ${line}`);
     const hasCI = r => r && Number.isFinite(r.rankLo) && Number.isFinite(r.rankHi);
-    if (topName === incumbentName) {
+    let incumbent = byModel[incumbentName];
+    let incumbentAs = incumbentName;
+    if (!hasCI(incumbent)) {
+      // Under the league-first trainer the placement pass above is normally lock-skipped (the
+      // continuous league owns the Elo writer), so the checkpoint saved THIS cycle has no official
+      // games yet when this gate runs -- the league only starts covering it in the next window.
+      // Judged only on today's copy, the gate said "no usable rank interval" every single cycle
+      // and best.json could never be promoted again. But every ckpt-* is a byte copy of best.json,
+      // so any earlier checkpoint whose bytes still equal best.json is the SAME weights under an
+      // already-rated identity. Judge the incumbent through the most optimistic such twin (highest
+      // rankHi): that keeps the "confident, not merely ahead" bar fully intact.
+      let bestStat = null, bestBytes = null;
+      try { bestStat = fs.statSync(best); } catch (e) {}
+      const twins = !bestStat ? [] : Object.values(byModel).filter(r => {
+        const n = path.basename(r.model, '.json');
+        if (n === incumbentName || !/^ckpt-\d+$/.test(n) || !hasCI(r)) return false;
+        const p = path.join(dir, 'models', `${n}.json`);
+        try {
+          if (fs.statSync(p).size !== bestStat.size) return false;
+          bestBytes ||= fs.readFileSync(best);
+          return fs.readFileSync(p).equals(bestBytes);
+        } catch (e) { return false; }
+      });
+      const twin = twins.sort((a, b) => b.rankHi - a.rankHi)[0];
+      if (twin) {
+        incumbent = twin;
+        incumbentAs = path.basename(twin.model, '.json');
+        log(`pool cycle ${num} — ${incumbentName} is unrated so far; judging the incumbent ` +
+            `through ${incumbentAs}, a byte-identical rated snapshot of best.json`);
+      }
+    }
+    if (topName === incumbentName || topName === incumbentAs) {
       log(`pool cycle ${num} — current net is already the strongest rated; keeping best.json`);
     } else if (!hasCI(incumbent)) {
-      // Unrated/edge-flagged incumbent (e.g. rated off the top of the ladder, or too few games):
-      // there is no interval to clear yet, so there is nothing to be confident ABOUT. Wait rather
-      // than fall back to the point estimate -- that fallback is exactly the noise-ratchet this
-      // gate exists to close off.
+      // Unrated/edge-flagged incumbent (e.g. rated off the top of the ladder, or too few games)
+      // with no rated byte-identical twin either: there is no interval to clear yet, so there is
+      // nothing to be confident ABOUT. Wait rather than fall back to the point estimate -- that
+      // fallback is exactly the noise-ratchet this gate exists to close off.
       log(`pool cycle ${num} — ${incumbentName} has no usable rank interval yet; ` +
           `too little evidence to judge a promotion, keeping best.json`);
     } else {
@@ -1788,19 +1881,19 @@ async function runPoolCycle() {
       // confident case even when it isn't "top" by raw Elo. Among everyone who clears the bar,
       // the highest rankLo is the most decisively ahead -- that ordering, not Elo, breaks the tie.
       const challengers = Object.values(byModel)
-        .filter(r => path.basename(r.model, '.json') !== incumbentName && hasCI(r) &&
-                     r.rankLo > incumbent.rankHi)
+        .filter(r => ![incumbentName, incumbentAs].includes(path.basename(r.model, '.json')) &&
+                     hasCI(r) && r.rankLo > incumbent.rankHi)
         .sort((a, b) => b.rankLo - a.rankLo);
       const winner = challengers[0];
       if (!winner) {
-        log(`pool cycle ${num} — no candidate's rank CI clears ${incumbentName}'s ` +
+        log(`pool cycle ${num} — no candidate's rank CI clears ${incumbentAs}'s ` +
             `(${incumbent.rankLo.toFixed(2)}-${incumbent.rankHi.toFixed(2)}) yet; keeping best.json`);
       } else if (fs.existsSync(winner.model)) {
         const winnerName = path.basename(winner.model, '.json');
         atomicCopy(best, path.join(dir, 'models', `best.pre-pool-${Date.now()}.json`));
         atomicCopy(winner.model, best);
         log(`pool cycle ${num} — promoted ${winnerName} (rank ${winner.rankLo.toFixed(2)}-` +
-            `${winner.rankHi.toFixed(2)} clears incumbent ${incumbentName}'s ` +
+            `${winner.rankHi.toFixed(2)} clears incumbent ${incumbentAs}'s ` +
             `${incumbent.rankLo.toFixed(2)}-${incumbent.rankHi.toFixed(2)})`);
       }
     }

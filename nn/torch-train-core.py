@@ -47,9 +47,23 @@ from collections import defaultdict
 N_FEATURES = 94
 
 
+MOVER_FACE = None  # compiled lazily; strips "(+P)@D<n>" so mv face ids collapse to model names
+
+
+def mover_name(mv):
+    global MOVER_FACE
+    if MOVER_FACE is None:
+        import re
+        MOVER_FACE = re.compile(r'(\+P)?@D[1-4]$')
+    return MOVER_FACE.sub('', str(mv))
+
+
 def load_rows(data_glob):
-    """Read training rows. Mirrors train.js's filtering exactly."""
+    """Read training rows. Mirrors train.js's filtering exactly. Also collects, per game, the
+    set of mover identities (for --eloWeight) and, per row, the raw pose (for --poseInput) --
+    both fields have been stamped on rows by arena.js/selfplay-legacy.js all along."""
     by_game, skipped_nof, stale, policy_rows = defaultdict(list), 0, defaultdict(int), 0
+    game_movers = defaultdict(set)
     for path in sorted(glob.glob(data_glob)):
         name = os.path.basename(path)
         inferred, prev_abs, cur = 0, float('inf'), None
@@ -82,7 +96,9 @@ def load_rows(data_glob):
                     g = cur
                 else:
                     prev_abs = float('inf')
-                by_game[g].append((f, float(j.get('z', 0.0)), j.get('m')))
+                by_game[g].append((f, float(j.get('z', 0.0)), j.get('m'), j.get('p')))
+                if j.get('mv') is not None:
+                    game_movers[g].add(mover_name(j.get('mv')))
     if stale:
         total = sum(stale.values())
         print(f"ERROR: {total} rows use a different feature set (expected {N_FEATURES}/position):",
@@ -94,7 +110,56 @@ def load_rows(data_glob):
         print(f"skipped {skipped_nof} row(s) with no feature vector (not training data)")
     if policy_rows:
         print(f"skipped {policy_rows} policy-target row(s)")
-    return by_game
+    return by_game, game_movers
+
+
+def elo_lookup(summary_path):
+    """Model/ladder name -> current point Elo, clean-league summary only. Under-measured models
+    (<6 games) are excluded so the weighting never chases a two-game fluke rating."""
+    try:
+        with open(summary_path, 'r', encoding='utf-8') as fh:
+            players = json.load(fh).get('players') or {}
+    except Exception:
+        return {}
+    best = {}
+    for pid, r in players.items():
+        elo = r.get('elo')
+        if elo is None:
+            continue
+        if r.get('kind') == 'ladder':
+            name = pid
+        elif r.get('model'):
+            base = str(r.get('model')).replace('\\', '/').split('/')[-1]
+            name = base[:-5] if base.endswith('.json') else base
+            if (r.get('games') or 0) < 6:
+                continue
+        else:
+            continue
+        if name not in best or float(elo) > best[name]:
+            best[name] = float(elo)
+    return best
+
+
+def elo_game_weights(game_movers, lookup, floor, temp):
+    """Per-game multiplier: floor + (1-floor) * sigmoid((game Elo - corpus median) / temp).
+    Game Elo is the mean of its movers' current Elo; the reference is the corpus's own median,
+    so the weighting is scale-free and survives Elo resets. Games with no resolvable mover
+    (legacy rows, culled models) sit at the midpoint rather than the floor -- unknown is not
+    the same as known-weak."""
+    elos = {}
+    for gid, movers in game_movers.items():
+        vals = [lookup[m] for m in movers if m in lookup]
+        if vals:
+            elos[gid] = sum(vals) / len(vals)
+    if not elos:
+        return {}, None
+    ref = sorted(elos.values())[len(elos) // 2]
+    midpoint = floor + (1.0 - floor) * 0.5
+    out = defaultdict(lambda: midpoint)     # unknown provenance = midpoint, for every gid asked
+    for gid, e in elos.items():
+        x = 1.0 / (1.0 + math.exp(-(e - ref) / max(1e-6, temp)))
+        out[gid] = floor + (1.0 - floor) * x
+    return out, ref, len(elos)
 
 
 def _mulberry32(seed):
@@ -115,8 +180,11 @@ def _js_shuffle(items, seed):
         items[i], items[j] = items[j], items[i]
 
 
-def split_and_weight(by_game, seed, gw_mode, fw_mode, draw_w):
-    """Game split and row/family weights matching train.js. Returns (x, y, w) rows."""
+def split_and_weight(by_game, seed, gw_mode, fw_mode, draw_w, game_w=None):
+    """Game split and row/family weights matching train.js. Returns (x, y, w) rows. game_w is an
+    optional per-game multiplier (e.g. --eloWeight); it composes with, never replaces, the
+    existing game-size/draw/family weights, and the final mean-normalisation keeps the loss
+    scale unchanged either way."""
     ids = list(by_game.keys())
     _js_shuffle(ids, seed)
     n_val = max(1, int(len(ids) * 0.1))
@@ -128,7 +196,9 @@ def split_and_weight(by_game, seed, gw_mode, fw_mode, draw_w):
             game = by_game[gid]
             n = len(game)
             base = 1.0 / math.sqrt(n) if gw_mode == 'sqrt' else 1.0 / n if gw_mode == 'game' else 1.0
-            for f, z, mover in game:
+            if game_w:
+                base *= game_w.get(gid, 1.0)
+            for f, z, mover, _pose in game:
                 rows.append([f, z, base * (draw_w if z == 0.0 else 1.0), gid, mover])
         return rows
 
@@ -194,6 +264,15 @@ def main():
     ap.add_argument('--topology', default='auto', choices=['auto', 'plain', 'dense-memory'])
     ap.add_argument('--memoryWidth', type=int, default=40)
     ap.add_argument('--residualScale', type=float, default=0.2)
+    ap.add_argument('--eloWeight', default='off', choices=['off', 'logistic'],
+                    help='weight each game by its players\' current league Elo (see elo_game_weights)')
+    ap.add_argument('--eloWeightFloor', type=float, default=0.15)
+    ap.add_argument('--eloWeightTemp', type=float, default=150.0)
+    ap.add_argument('--eloSummary', default=os.path.join(os.path.dirname(__file__), 'elo-summary.json'))
+    ap.add_argument('--poseInput', action='store_true',
+                    help='EXPERIMENT: append the z-scored raw pose (6 values) to the feature vector. '
+                         'Offline ablation only -- live play feeds nets the plain features, so a '
+                         'pose-input model must never be placed in nn/models.')
     args = ap.parse_args()
 
     try:
@@ -209,11 +288,46 @@ def main():
           (f" ({torch.cuda.get_device_name(0)})" if device.type == 'cuda' else ''))
 
     torch.manual_seed(args.seed)
-    by_game = load_rows(args.data)
+    by_game, game_movers = load_rows(args.data)
     if not by_game:
         print(f"no training rows matched {args.data}", file=sys.stderr)
         sys.exit(1)
-    train, val = split_and_weight(by_game, args.seed, args.gameWeight, args.familyWeight, args.drawWeight)
+    pose_norm = None
+    if args.poseInput:
+        # Keep only rows that carry a raw pose, z-score it over the corpus, append it to the
+        # features. The norm constants ride in the export so a later play-time integration can
+        # reproduce the exact transform; until then this is a ceiling probe, not a league player.
+        dropped, kept = 0, defaultdict(list)
+        for gid, rows in by_game.items():
+            for f, z, m, p in rows:
+                if isinstance(p, list) and len(p) == 6:
+                    kept[gid].append((f, z, m, p))
+                else:
+                    dropped += 1
+        by_game = {gid: rows for gid, rows in kept.items() if rows}
+        allp = [p for rows in by_game.values() for (_f, _z, _m, p) in rows]
+        if not allp:
+            print('no rows carry a raw pose; cannot train with --poseInput', file=sys.stderr)
+            sys.exit(1)
+        mean = [sum(p[i] for p in allp) / len(allp) for i in range(6)]
+        std = [max(1e-6, math.sqrt(sum((p[i] - mean[i]) ** 2 for p in allp) / len(allp))) for i in range(6)]
+        pose_norm = {'mean': [round(x, 6) for x in mean], 'std': [round(x, 6) for x in std]}
+        for gid in list(by_game.keys()):
+            by_game[gid] = [(f + [(p[i] - mean[i]) / std[i] for i in range(6)], z, m, p)
+                            for f, z, m, p in by_game[gid]]
+        print(f"poseInput: appended 6 z-scored pose values; {dropped} row(s) without a pose dropped")
+    game_w = None
+    if args.eloWeight != 'off':
+        game_w, ref, rated = elo_game_weights(game_movers, elo_lookup(args.eloSummary),
+                                              args.eloWeightFloor, args.eloWeightTemp)
+        if ref is None:
+            print('eloWeight: no game had a rateable player in the summary; weighting off this run')
+            game_w = None
+        else:
+            print(f"eloWeight: {rated}/{len(by_game)} games carry a current-Elo weight "
+                  f"(median ref {ref:.0f}, floor {args.eloWeightFloor}, temp {args.eloWeightTemp:.0f})")
+    train, val = split_and_weight(by_game, args.seed, args.gameWeight, args.familyWeight,
+                                  args.drawWeight, game_w)
     print(f"data: {len(train)} train / {len(val)} val positions "
           f"({len(by_game) - max(1, len(by_game)//10)} / {max(1, len(by_game)//10)} games, "
           f"game-level split)")
@@ -241,7 +355,8 @@ def main():
             base_trained_epochs = None
 
     hidden = [int(h) for h in args.hidden.split(',') if h.strip()]
-    sizes = [N_FEATURES] + hidden + [1]
+    in_dim = len(next(iter(by_game.values()))[0][0])   # N_FEATURES, +6 under --poseInput
+    sizes = [in_dim] + hidden + [1]
     checkpoint_topology = (checkpoint or {}).get('topology') or None
     topology_kind = args.topology
     if topology_kind == 'auto':
@@ -261,7 +376,7 @@ def main():
         # First hidden layer sees the feature vector. Each later hidden layer sees the complete
         # previous layer plus one memory packet from every layer before that. The value head sees
         # the final layer plus packets from all nine predecessors.
-        fan_ins = [N_FEATURES]
+        fan_ins = [in_dim]
         for i in range(1, len(hidden)):
             fan_ins.append(hidden[i - 1] + memory_width * (i - 1))
         fan_ins.append(hidden[-1] + memory_width * (len(hidden) - 1))
@@ -350,6 +465,9 @@ def main():
         def probe_fn(x):
             return float(model(torch.tensor([x], dtype=torch.float32, device=device))[0][0])
         doc = export_for_netjs(linears, probe_x, probe_fn, topology)
+        if pose_norm:
+            doc['poseInput'] = True
+            doc['poseNorm'] = pose_norm
         if base_trained_epochs is not None:
             # Insert last so live-ladder.js can read the exact count from the small tail of a very
             # large JSON model without parsing all of its weights on every inbox update.
