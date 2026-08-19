@@ -1,7 +1,8 @@
 // Tau — Steam desktop wrapper.
-// Loads the bundled game (www/index.html) in a frameless-friendly window and,
-// when the Steamworks native module is present, initialises the Steam API so
-// the overlay, playtime tracking and (later) achievements work.
+// Opens on the bundled premium showcase (www/steam.html — the GPU-heavy art-directed boards
+// with a playable takeover vs-AI game) with the full client (www/index.html, premium mode) one
+// keypress/link away. When the Steamworks native module is present, initialises the Steam API
+// so the overlay, playtime tracking and (later) achievements work.
 const { app, BrowserWindow, shell } = require('electron');
 const path = require('path');
 
@@ -53,7 +54,8 @@ function createWindow() {
     return { action: 'deny' };
   });
 
-  // F11 toggles fullscreen, Esc leaves it — the usual desktop-game feel.
+  // F11 toggles fullscreen, Esc leaves it; F2 flips between the premium showcase
+  // (steam.html) and the full game client — the usual desktop-game feel.
   win.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return;
     if (input.key === 'F11') {
@@ -62,12 +64,25 @@ function createWindow() {
     } else if (input.key === 'Escape' && win.isFullScreen()) {
       win.setFullScreen(false);
       event.preventDefault();
+    } else if (input.key === 'F2') {
+      loadPage(win, !win.webContents.getURL().includes('steam.html'));
+      event.preventDefault();
     }
   });
 
-  // ?premium=1 switches the game's 3D view onto its premium desktop render path
-  // (shadows, ACES tone mapping, environment reflections, uncapped resolution).
-  win.loadFile(path.join(__dirname, 'www', 'index.html'), { query: { premium: '1' } });
+  loadPage(win, true);
+}
+
+// The Steam build opens on the premium showcase (steam.html): the six art-directed boards with
+// mirror reflections, MSAA and the takeover vs-AI game — ?steam=1 tells it to show the
+// "full game" link. The full client (menus, online) runs with ?premium=1, which switches its
+// 3D view onto the premium desktop render path (shadows, ACES, reflections, full resolution).
+function loadPage(win, showcase) {
+  if (showcase) {
+    win.loadFile(path.join(__dirname, 'www', 'steam.html'), { query: { steam: '1' } });
+  } else {
+    win.loadFile(path.join(__dirname, 'www', 'index.html'), { query: { premium: '1' } });
+  }
 }
 
 app.whenReady().then(() => {

@@ -6,7 +6,7 @@
   "private": true,
   "main": "main.js",
   "scripts": {
-    "sync-www": "node ../scripts/sync-www.mjs www",
+    "sync-www": "node ../scripts/sync-www.mjs www --steam",
     "start": "npm run sync-www && electron .",
     "dist:win": "npm run sync-www && electron-builder --win --x64",
     "dist:linux": "npm run sync-www && electron-builder --linux --x64",

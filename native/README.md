@@ -68,19 +68,23 @@ npm run dist:win         # dist/win-unpacked/    (cross-builds from Linux too)
 npm run dist:mac         # dist/mac*/Tau.app     (needs macOS)
 ```
 
-The Steam build is the *pretty* one: the wrapper launches the game with
-`?premium=1`, which switches the 3D view onto a premium desktop render path —
-PCF soft shadows, ACES filmic tone mapping, a PMREM studio environment for
-reflections, lacquered clearcoat piece materials and uncapped render
-resolution (the web/mobile builds are untouched; try it in a browser via
-`index.html?premium=1`). The wrapper also passes Chromium GPU flags
-(`ignore-gpu-blocklist`, GPU rasterization, discrete-GPU preference on macOS)
-so that path actually lands on the GPU. The look is tuned from the
-`steam.html` render spike's "tabletop" theme; deeper art directions from that
-spike (marble/onyx, bioluminescent, colossus) can layer on top later.
+The Steam build is the *pretty* one, and it opens on the **premium showcase**
+(`steam.html`, bundled together with `vendor/three`): six art-directed boards
+(noir, math, sumo, cosy, alien, colossus) with exact mirror reflections,
+MSAA, physically-driven sound — and it's playable: grab one of blue's glowing
+feet to take over from the AI. From there, "full game →" (or **F2**) flips to
+the full client (menus, online, coach), which the wrapper runs with
+`?premium=1`: a premium render path in the game's own 3D view — PCF soft
+shadows, ACES filmic tone mapping, a PMREM studio environment for
+reflections, lacquered clearcoat pieces and uncapped resolution. The
+web/mobile builds are untouched by both (try them in a browser:
+`steam.html`, `index.html?premium=1`). The wrapper also passes Chromium GPU
+flags (`ignore-gpu-blocklist`, GPU rasterization, discrete-GPU preference on
+macOS) so all of it lands on real hardware.
 
 The wrapper (`steam/main.js`) also adds desktop niceties: single-instance,
-F11/Esc fullscreen, external links open in the system browser. It also
+F11/Esc fullscreen, F2 showcase/full-game toggle, external links open in the
+system browser. It also
 initialises Steamworks **if** `steamworks.js` is installed
 (`npm i steamworks.js`) — optional, for overlay/achievements; the game runs
 fine without it. `steam_appid.txt` holds 480 (Valve's test app) — replace
