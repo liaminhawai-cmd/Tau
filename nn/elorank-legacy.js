@@ -89,6 +89,23 @@ function pairScore(a,b,elo,g,pair,fr){
   const novelty=1/Math.log2((pair[canonical(a.id,b.id)]||0)+2);
   return(.20+close)*Math.sqrt(standing(a,elo,fr)*standing(b,elo,fr))*(.30+.70*need)*(.35+.65*novelty)/Math.sqrt(costMs(a)+costMs(b));
 }
+// ANCHOR MATCHES: a small stochastic slice of pairings forces one seat to a ladder brain.
+// Without this the compute rent (an L10 game runs minutes, not seconds) prices the ladders out
+// of the draw entirely, and the league becomes self-referential -- nets rated only against each
+// other can escalate a shared style without getting objectively stronger. Ladder brains are the
+// fixed external yardstick, so anchor picks deliberately WAIVE the rent: paying full price for
+// these games is the product, not the waste. Which ladder gets the seat is still a weighted draw
+// by evidence need (uncertain and stale ladders surface first, freshly-played ones fade), and the
+// opponent is drawn by the normal pair equation minus its cost term -- no seat lists, no
+// thresholds, just a reserved slice of probability.
+const ANCHOR_MATCH_P=0.10;
+function pickAnchor(elo,g,pair,fr,free){
+  const ladders=free.filter(p=>p.kind==='ladder');if(!ladders.length)return null;
+  const l=weightedDraw(ladders.map(x=>[.30+.70*(.55*uncertainty(x,g)+.45*freshness(x,g)),x]));if(!l)return null;
+  const pool=free.filter(p=>p.kind==='nn');if(!pool.length)return null;
+  const scored=pool.map(o=>[pairScore(l,o,elo,g,pair,fr)*Math.sqrt(costMs(l)+costMs(o)),o]).filter(x=>x[0]>0);
+  const o=weightedDraw(scored);return o?[l,o]:null;
+}
 // Selection is a WEIGHTED DRAW over pair scores, not an argmax. Sampling keeps the environment
 // probabilistic (every legal pairing has some chance, in proportion to its usefulness) and it
 // stops all the worker lanes from converging on the identical best pair. Players already in a
@@ -96,6 +113,7 @@ function pairScore(a,b,elo,g,pair,fr){
 // faces instead of twelve lanes bursting one face at a time.
 function pickPair(elo,busy){
   const{g,pair}=totals(),free=players.filter(p=>!busy.has(p.id)),fr=fieldRange(elo);
+  if(Math.random()<ANCHOR_MATCH_P){const an=pickAnchor(elo,g,pair,fr,free);if(an)return an;}
   const unknown=free.filter(p=>(g[p.id]||0)===0);
   if(unknown.length){
     const u=unknown.slice().sort((a,b)=>costMs(a)-costMs(b)||a.id.localeCompare(b.id,undefined,{numeric:true}))[0];
