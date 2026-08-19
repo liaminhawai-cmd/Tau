@@ -1,0 +1,58 @@
+{
+  "name": "tau-steam",
+  "productName": "Tau",
+  "version": "1.0.0",
+  "description": "Tau — physics-based abstract strategy board game (Steam desktop build)",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "sync-www": "node ../scripts/sync-www.mjs www --steam",
+    "start": "npm run sync-www && electron .",
+    "dist:win": "npm run sync-www && electron-builder --win --x64",
+    "dist:linux": "npm run sync-www && electron-builder --linux --x64",
+    "dist:mac": "npm run sync-www && electron-builder --mac",
+    "dist": "npm run sync-www && electron-builder --win --linux --x64"
+  },
+  "devDependencies": {
+    "electron": "^38.4.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.taugame.steam",
+    "productName": "Tau",
+    "files": [
+      "main.js",
+      "preload.js",
+      "www/**/*",
+      "steam_appid.txt"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "steam_appid.txt",
+      "node_modules/steamworks.js/**"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "dir",
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "target": "dir",
+      "icon": "build/icon.png",
+      "category": "Game",
+      "executableName": "Tau"
+    },
+    "mac": {
+      "target": "dir",
+      "icon": "build/icon.png",
+      "category": "public.app-category.board-games"
+    },
+    "publish": null
+  },
+  "author": "Tau (tau-game.com)",
+  "dependencies": {
+    "steamworks.js": "^0.4.0"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "appId": "com.taugame.app",
+  "appName": "Tau",
+  "webDir": "www",
+  "backgroundColor": "#15181c",
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#15181c"
+  }
+}

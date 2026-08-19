@@ -1,0 +1,24 @@
+{
+  "name": "tau-app",
+  "version": "1.0.0",
+  "description": "Native Android/iOS wrapper for Tau (Capacitor)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync-www": "node ../scripts/sync-www.mjs www",
+    "sync": "npm run sync-www && npx cap sync",
+    "android:apk": "npm run sync && cd android && ./gradlew assembleDebug",
+    "android:aab": "npm run sync && cd android && ./gradlew bundleRelease",
+    "ios:open": "npm run sync && npx cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.0",
+    "sharp": "^0.35.3"
+  }
+}
