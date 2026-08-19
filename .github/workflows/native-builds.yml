@@ -1,0 +1,101 @@
+name: Native builds (Android / iOS / Steam)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'native/**'
+      - 'index.html'
+      - '.github/workflows/native-builds.yml'
+
+jobs:
+  android:
+    name: Android (APK + AAB)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Build
+        working-directory: native/app
+        run: |
+          npm ci
+          npm run sync-www
+          npx cap sync android
+          cd android
+          ./gradlew assembleDebug bundleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tau-android-debug-apk
+          path: native/app/android/app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tau-android-release-aab-unsigned
+          path: native/app/android/app/build/outputs/bundle/release/app-release.aab
+
+  ios:
+    name: iOS (unsigned .app)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build
+        working-directory: native/app
+        run: |
+          npm ci
+          npm run sync-www
+          npx cap sync ios
+          cd ios/App
+          xcodebuild -project App.xcodeproj -scheme App \
+            -configuration Release -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO build
+          ditto -c -k --keepParent \
+            build/Build/Products/Release-iphoneos/App.app \
+            Tau-ios-unsigned.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tau-ios-unsigned-app
+          path: native/app/ios/App/Tau-ios-unsigned.zip
+
+  steam:
+    name: Steam (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows
+            script: dist:win
+            out: native/steam/dist/win-unpacked
+          - os: ubuntu-latest
+            label: linux
+            script: dist:linux
+            out: native/steam/dist/linux-unpacked
+          - os: macos-latest
+            label: macos
+            script: dist:mac
+            out: native/steam/dist/mac*/Tau.app
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build
+        working-directory: native/steam
+        run: |
+          npm ci
+          npm run ${{ matrix.script }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tau-steam-${{ matrix.label }}
+          path: ${{ matrix.out }}
