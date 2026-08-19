@@ -3,7 +3,7 @@ name: Native builds (Android / iOS / Steam)
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, 'claude/**']
     paths:
       - 'native/**'
       - 'index.html'
