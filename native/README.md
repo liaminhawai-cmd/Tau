@@ -84,11 +84,34 @@ macOS) so all of it lands on real hardware.
 
 The wrapper (`steam/main.js`) also adds desktop niceties: single-instance,
 F11/Esc fullscreen, F2 showcase/full-game toggle, external links open in the
-system browser. It also
-initialises Steamworks **if** `steamworks.js` is installed
-(`npm i steamworks.js`) — optional, for overlay/achievements; the game runs
-fine without it. `steam_appid.txt` holds 480 (Valve's test app) — replace
-with the real app id.
+system browser.
+
+**Steam features** (via `steamworks.js`, a production dependency shipped in
+the build): the wrapper initialises the Steam API on launch — overlay
+(Shift+Tab, wired for Electron), playtime tracking, and a bridge the game
+pages use through `window.tauSteam` (see `steam/preload.js`):
+
+- **Achievements** — a human win (vs the AI, ladder/ranked, online, or a
+  showcase takeover; never pass-and-play or AI-vs-AI) unlocks
+  `ACH_WIN_ONE_GAME`. That name is real on test app 480, so unlocks work
+  end-to-end today; define the same API name (plus any new ones) under
+  Achievements on partner.steamgames.com for the real app.
+- **Rich presence** — the friends list shows what you're doing ("Watching
+  the noir board", "In a match vs the AI", "In the menus"). Uses the
+  `status` key with `steam_display` → `#Status`; add that key in the app's
+  Rich Presence localisation on the partner site to make it visible.
+- **Graceful degradation** — no Steam client running (or a non-Steam build):
+  `steam` stays null, `window.tauSteam.status()` reports
+  `{available:false}`, and the game plays identically. On the web,
+  `window.tauSteam` simply doesn't exist; every game-side hook is guarded.
+- **Launch discipline** — a packaged build with a real app id relaunches
+  through Steam when started from outside it (`restartAppIfNecessary`);
+  disabled on test id 480 and in dev so it never bounces you into Spacewar.
+
+`steam_appid.txt` holds 480 (Valve's test app) — replace it with the real
+app id; `main.js` reads it, so it's the only place to change. Steam Cloud
+needs no code: configure Auto-Cloud on the partner site if wanted (game
+progress currently lives in localStorage/Supabase).
 
 **Shipping**: create the app + one depot per OS on
 [partner.steamgames.com](https://partner.steamgames.com), fill the ids into

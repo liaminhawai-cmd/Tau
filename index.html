@@ -4927,6 +4927,15 @@ let gameOverTimer = null;
 // slide-to-the-rim-then-tip-and-fall (the vertical fall alone, under stepFall's constant
 // "gravity", takes ~2.5s regardless of how far it slides first).
 function showGameOverModal() {
+    // Steam build only (window.tauSteam comes from the wrapper's preload; absent on web/mobile):
+    // a genuine human win — vs the AI (classic/ladder/ranked/coach) or an online match, never
+    // local pass-and-play or the lab's AI-vs-AI — unlocks the first-win achievement.
+    if (window.tauSteam) {
+        const humanWon = onlineMatch ? (!onlineMatch.spectator && (G.winner===0?'blue':'red') === onlineMatch.myColor)
+                                     : (vsAI && !labActive && G.winner === humanIdx);
+        if (humanWon) window.tauSteam.unlock('ACH_WIN_ONE_GAME');
+        window.tauSteam.setStatus('Between games');
+    }
     clearTimeout(gameOverTimer);
     gameOverTimer = setTimeout(renderGameOverSheet, 2800);
 }
@@ -5045,6 +5054,7 @@ function startGame(aiMode, humanColorIdx, difficulty) {
     exitOnlineMatch();
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
     vsAI = aiMode;
+    if (window.tauSteam) window.tauSteam.setStatus(aiMode ? 'In a match vs the AI' : 'In a match');   // Steam friends-list presence
     aiDifficulty = difficulty || 'normal';
     if (difficulty !== 'ladder') ladderLevel = null;   // classic AI / online / local game — not a ladder rung
     humanIdx = humanColorIdx===undefined ? 0 : humanColorIdx;
@@ -5294,6 +5304,7 @@ function coachArc3DUpdate() {
 }
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
+    if (window.tauSteam) window.tauSteam.setStatus('In the menus');   // Steam friends-list presence
     labActive = false;
     clearTimeout(aiTimer); clearTimeout(aiGapTimer); clearTimeout(coachHoldTimer); aiAnim = null;
     clearTimeout(coachAnimTimer); document.getElementById('views').classList.remove('animSize');

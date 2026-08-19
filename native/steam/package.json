@@ -22,6 +22,7 @@
     "productName": "Tau",
     "files": [
       "main.js",
+      "preload.js",
       "www/**/*",
       "steam_appid.txt"
     ],
@@ -50,5 +51,8 @@
     },
     "publish": null
   },
-  "author": "Tau (tau-game.com)"
+  "author": "Tau (tau-game.com)",
+  "dependencies": {
+    "steamworks.js": "^0.4.0"
+  }
 }

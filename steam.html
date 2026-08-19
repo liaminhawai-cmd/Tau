@@ -1287,6 +1287,10 @@ function endTurn() {
   if (active.anyFootOff()) { G.over = true; G.winner = 1 - G.active; }
   else if (opp.anyFootOff()) { G.over = true; G.winner = G.active; }
   else G.active = 1 - G.active;
+  // Steam build only (window.tauSteam from the wrapper's preload): a human takeover win —
+  // blue while a player owns it — counts for the first-win achievement, AI-vs-AI never does.
+  if (G.over && playerMode && G.winner === 0 && window.tauSteam)
+    window.tauSteam.unlock('ACH_WIN_ONE_GAME');
   clearTurn();
 }
 
@@ -1827,7 +1831,10 @@ function buildGuides() {
 
 // the shared operations both boards (and the gamepad) drive
 function uiPin(f) {
-  if (canBlueMove()) { sim.state = 'human'; playerMode = true; player.idleCount = 0; }
+  if (canBlueMove()) {
+    if (!playerMode && window.tauSteam) window.tauSteam.setStatus('Playing on the premium board');   // Steam presence
+    sim.state = 'human'; playerMode = true; player.idleCount = 0;
+  }
   else if (sim.state !== 'human') return;
   pinFoot(f);
   buildGuides();
@@ -2097,6 +2104,8 @@ let envGroup = null;   // optional per-theme world around the board (colossus' s
 function applyTheme(name) {
   if (!THEMES[name]) name = 'noir';
   THEME = name; T = THEMES[name];
+  // Steam presence: only while spectating — a takeover game keeps its "playing" line
+  if (window.tauSteam && !playerMode) window.tauSteam.setStatus('Watching the ' + name + ' board');
   renderer.toneMappingExposure = T.exposure;
   scene.background.set(T.bg);
   key.color.set(T.key.color); key.intensity = T.key.intensity; key.position.set(...T.key.pos);
