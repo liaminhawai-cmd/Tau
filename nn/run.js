@@ -1629,6 +1629,26 @@ async function runPoolCycle() {
         log(`pool cycle ${num} — population full (${mutantPop.active.length}/${mutantCap}); ` +
             `training none, a slot opens when a member is retired as confidently weak`);
       }
+      // Mutants breed from the CURRENT TOP THREE of the whole league, not from each other. The
+      // medal files already are "best three distinct models by pessimistic Elo bound", so gold's
+      // shape gets half the litters, silver a third, bronze the rest -- probabilistic, no
+      // thresholds, and the mutation budget always chases whatever is actually winning instead
+      // of drifting around inside the mutant population's own gene pool.
+      const medalShapes = (() => {
+        try {
+          const med = JSON.parse(fs.readFileSync(path.join(dir, 'medals', 'medals.json'), 'utf8'));
+          return ['gold', 'silver', 'bronze']
+            .map(n => med.medals && med.medals[n] && med.medals[n].source)
+            .filter(Boolean)
+            .map(src => ({ src, shape: hiddenOf(path.join(dir, 'models', src + '.json')) }))
+            .filter(x => x.shape);
+        } catch (e) { return []; }
+      })();
+      const drawMedal = () => {
+        if (!medalShapes.length) return null;
+        const r = Math.random();
+        return medalShapes[Math.min(medalShapes.length - 1, r < 0.5 ? 0 : r < 0.83 ? 1 : 2)];
+      };
       for (let s = 0; s < spawn; s++) {
         // A scratch is spawned when the population has none at the CURRENT champion shape. That is
         // the control the shape verdict measures against, so it has to exist and it has to be at the
@@ -1636,10 +1656,11 @@ async function runPoolCycle() {
         // control for a shape nobody is running any more. Otherwise spawn a mutant.
         const haveScratch = mutantPop.active.some(m => m.kind === 'scratch' && m.shape === h);
         const kind = haveScratch ? 'mutant' : 'scratch';
-        // Breed from a rated active when there is one, else from the champion shape -- which is
-        // also how the very first mutant gets created on an empty population.
-        const parent = kind === 'mutant' ? pickParent(mutantPop.active, ratingOf) : null;
-        const baseShape = parent ? parent.shape : h;
+        // Breed from a medal holder when medals exist; fall back to a rated active member, then
+        // to the champion shape -- which is also how the very first mutant gets created.
+        const medal = kind === 'mutant' ? drawMedal() : null;
+        const parent = kind === 'mutant' && !medal ? pickParent(mutantPop.active, ratingOf) : null;
+        const baseShape = medal ? medal.shape : parent ? parent.shape : h;
         const mut = kind === 'scratch' ? { shape: h, op: 'scratch' } : mutateHidden(baseShape);
         if (!mut) continue;
         const serial = String(mutantPop.next++).padStart(3, '0');
@@ -1648,8 +1669,9 @@ async function runPoolCycle() {
         log(`pool cycle ${num} — ${kind} ${serial}: ` +
             (kind === 'scratch' ? `fresh init at the champion shape ${h}`
                                 : `${baseShape} -> ${mut.shape} (${mut.op})` +
-                                  (parent ? ` from ${path.basename(parent.file, '.json')}`
-                                          : ` from the champion shape`)) +
+                                  (medal ? ` from medal holder ${medal.src}`
+                                         : parent ? ` from ${path.basename(parent.file, '.json')}`
+                                                  : ` from the champion shape`)) +
             `, population ${mutantPop.active.length + 1}/${mutantCap}`);
         writeStatus(`${kind} ${serial} training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
         await runSoftAsync('train-value.js', ['--epochs', scratchEpochs, '--out', outPath, '--hidden', mut.shape]);
@@ -1658,7 +1680,8 @@ async function runPoolCycle() {
         // phantom would never earn one.
         if (fs.existsSync(outPath)) {
           mutantPop.active.push({ file, kind, shape: mut.shape, op: mut.op,
-                                  parent: parent ? parent.file : null, born: num });
+                                  parent: medal ? medal.src + '.json' : parent ? parent.file : null,
+                                  born: num });
         } else {
           log(`pool cycle ${num} — ${kind} ${serial} failed to train; slot left open`);
         }
