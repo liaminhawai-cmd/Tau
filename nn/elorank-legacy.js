@@ -20,7 +20,8 @@ const outPath=arg('out',path.join(dir,'elo-results.json'));
 const summaryPath=arg('summary',path.join(dir,'elo-summary.json'));
 const saveData=arg('saveData',null);
 const refit=process.argv.includes('--refit'),dryrun=process.argv.includes('--dryrun');
-const atomic=(p,s)=>{const t=`${p}.tmp-${process.pid}-${Date.now()}`;fs.writeFileSync(t,s);fs.renameSync(t,p);};
+const {atomicWrite}=require('./atomic-write.js');
+const atomic=(p,s)=>atomicWrite(p,s);
 const read=(p,d)=>{try{return JSON.parse(fs.readFileSync(p,'utf8'));}catch(_){return d;}};
 ratingState.ensure(dir);
 // Legacy self-play/benchmark writers may still append this during a rolling upgrade. It is never

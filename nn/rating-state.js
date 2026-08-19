@@ -10,7 +10,8 @@ const SEMANTICS='unified-temp0-two-colour-match-league';
 const resultsPath=dir=>path.join(dir,'elo-results.json');
 const rosterPath=dir=>path.join(dir,'models','.evolution-roster.json');
 const summaries=dir=>[path.join(dir,'elo-summary.json'),path.join(dir,'.evolution-d3-summary.json'),path.join(dir,'.evolution-d4-summary.json')];
-const atomic=(p,s)=>{fs.mkdirSync(path.dirname(p),{recursive:true});const t=`${p}.tmp-${process.pid}-${Date.now()}`;fs.writeFileSync(t,s);fs.renameSync(t,p);};
+const {atomicWrite}=require('./atomic-write.js');
+const atomic=(p,s)=>atomicWrite(p,s,{mkdir:true});
 const read=(p,d=null)=>{try{return JSON.parse(fs.readFileSync(p,'utf8'));}catch(_){return d;}};
 const stamp=()=>new Date().toISOString().replace(/[:.]/g,'-');
 
