@@ -6115,32 +6115,35 @@ function markOnboarded(how) {
     const b = document.getElementById('newbieBanner');
     if (b) b.remove();
 }
-(function initOnboarding() {
+// The banner is re-entrant (the #newbie demo route re-runs it); the nudge listeners are attached
+// once at load and self-disable via onboardState(), so re-running can never double-fire them.
+function initOnboarding() {
     if (onboardState() !== null) return;
+    if (document.getElementById('newbieBanner')) return;
     const row = document.querySelector('#playArea .playRow');
-    if (row) {
-        const b = document.createElement('button');
-        b.id = 'newbieBanner'; b.className = 'pbtn';
-        b.textContent = '🥋 ' + t('New here? Learn Tau in 60 seconds');
-        b.addEventListener('click', startCoach);
-        row.parentNode.insertBefore(b, row);
-    }
-    // One nudge per visit, at the moment it's most useful: a never-played player starting a match.
-    let asked = false;
-    for (const id of ['modeAI', 'modeOnline']) {
-        document.getElementById(id).addEventListener('click', ev => {
-            if (asked || onboardState() !== null) return;
-            asked = true;
-            ev.stopImmediatePropagation(); ev.preventDefault();
-            const btn = ev.currentTarget;
-            showModal(t('First game of Tau?'),
-                `<p style="text-align:center;margin:0 0 4px">${t('It takes one guided opening to get it — pin a foot, swing, shove. 60 seconds.')}</p>`,
-                [ { label: t('Learn in 60 seconds'), onClick: startCoach },
-                  { label: t('Just play'), cls: 'modalBtnQuiet', onClick: () => { markOnboarded('skipped'); btn.click(); } } ],
-                true, { dismiss: true });
-        }, true);   // capture phase: runs before the buttons' own handlers
-    }
-})();
+    if (!row) return;
+    const b = document.createElement('button');
+    b.id = 'newbieBanner'; b.className = 'pbtn';
+    b.textContent = '\u{1F94B} ' + t('New here? Learn Tau in 60 seconds');
+    b.addEventListener('click', startCoach);
+    row.parentNode.insertBefore(b, row);
+}
+// One nudge per visit, at the moment it's most useful: a never-played player starting a match.
+let onboardAsked = false;
+for (const id of ['modeAI', 'modeOnline']) {
+    document.getElementById(id).addEventListener('click', ev => {
+        if (onboardAsked || onboardState() !== null) return;
+        onboardAsked = true;
+        ev.stopImmediatePropagation(); ev.preventDefault();
+        const btn = ev.currentTarget;
+        showModal(t('First game of Tau?'),
+            `<p style="text-align:center;margin:0 0 4px">${t('It takes one guided opening to get it \u2014 pin a foot, swing, shove. 60 seconds.')}</p>`,
+            [ { label: t('Learn in 60 seconds'), onClick: startCoach },
+              { label: t('Just play'), cls: 'modalBtnQuiet', onClick: () => { markOnboarded('skipped'); btn.click(); } } ],
+            true, { dismiss: true });
+    }, true);   // capture phase: runs before the buttons' own handlers
+}
+initOnboarding();
 // ---------- Settings: board theme (dark/light) ----------
 // Apply the CURRENT look (active skin = colour-lab override, else Slate in light mode, else the flat
 // dark default) to every 3D material and the 2D piece colours. Rebuilds the board texture (disposing
@@ -8219,6 +8222,22 @@ if (isShareHash(location.hash)) {
 if (/^#coach\b/i.test(location.hash)) {
     const bootCoach = () => { try { startCoach(); } catch (e) { console.error('coach boot failed', e); } };
     if (document.readyState === 'complete') bootCoach(); else addEventListener('load', bootCoach, { once: true });
+}
+// #howto — open the full-screen interactive walkthrough straight away (same forgiving match as
+// #coach). #newbie does the same but first CLEARS the onboarding flag, so the first-visit banner
+// and the "First game of Tau?" nudge are back exactly as a brand-new player sees them.
+if (/^#(howto|tutorial|newbie)\b/i.test(location.hash)) {
+    const fresh = /^#newbie\b/i.test(location.hash);
+    const bootHtp = () => {
+        try {
+            // No reload here: strip the hash and re-run the banner in place. A reload would
+            // re-enter this same branch and could loop if the hash didn't actually clear.
+            history.replaceState(null, '', location.pathname + location.search);
+            if (fresh) { try { localStorage.removeItem('tauOnboard'); } catch(e) {} initOnboarding(); return; }
+            openHowToPlay();
+        } catch (e) { console.error('how-to-play boot failed', e); }
+    };
+    if (document.readyState === 'complete') bootHtp(); else addEventListener('load', bootHtp, { once: true });
 }
 // ---------- Hidden mode (#nn) wiring: drag-and-drop a model, pick a colour, play ----------
 function nnOpenDrop() {
