@@ -83,6 +83,10 @@ async function main() {
       '--lrDecay', arg('lrDecay', 'cosine'),
       '--device', 'cuda',
       ...(resume ? ['--resume', resume] : []),
+      // torch-train-core.py has always accepted --data; this wrapper just never forwarded it, so
+      // every CUDA birth silently trained on the full nn/data corpus even when a caller asked for
+      // a slice. The CPU fallback below forwards it already (withOut passes original args through).
+      ...(arg('data') ? ['--data', arg('data')] : []),
     ];
     console.log('[value-train] backend torch-cuda (batch ' + arg('batch', '4096') +
                 '), export must verify before it enters the pool');
