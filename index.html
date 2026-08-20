@@ -494,28 +494,20 @@
     #htpHead h2 { margin:0 0 4px; font-size:clamp(18px, 3.4vh, 26px); color:#e6e6e6; }
     #htpHead p { margin:0; font-size:clamp(12px, 2.1vh, 15px); color:#c7ccd1; }
     #htpHead p b { color:#e6e6e6; }
-    #htpStage { position:relative; flex:1; min-height:0; width:100%; margin:8px 0;
-        display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
+    #htpStage { flex:1; min-height:0; width:100%; display:flex; align-items:center;
+        justify-content:center; gap:14px; margin:8px 0 6px; }
     #htpBigCanvas { background:#0c0e11; border-radius:14px; touch-action:none; cursor:pointer; display:block; }
-    #htpFallSlot { background:#0c0e11; border-radius:14px; overflow:hidden; }
-    #htpFallSlot canvas { width:100% !important; height:100% !important; }
-    .htpGoal { padding:7px 14px; border-radius:16px; width:max-content; max-width:92%;
-        font-size:clamp(12px, 2vh, 15px); font-weight:600; color:#ffd23f; background:rgba(15,18,22,0.82);
-        border:1px solid rgba(255,210,63,0.45); text-align:center; }
-    .htpGoal.pulse { animation:htpGoalPulse 1.6s ease-in-out infinite; }
-    .htpGoal.done { color:#78dc8c; border-color:rgba(120,220,140,0.5); animation:none; }
-    @keyframes htpGoalPulse { 0%,100% { box-shadow:0 0 0 0 rgba(255,210,63,0); } 50% { box-shadow:0 0 14px 2px rgba(255,210,63,0.3); } }
-    #htpGoalChip { pointer-events:none; }   /* in-flow, right under the board */
-    #newbieBanner { width:100%; margin-bottom:8px; border-color:rgba(255,210,63,0.5); color:#ffd23f;
-        animation:htpGoalPulse 2.2s ease-in-out infinite; }
+    /* the live 3D view sits beside the flat board, showing the same position from the side */
+    #htp3DPane { background:#0c0e11; border-radius:14px; overflow:hidden; flex:none; }
+    #htp3DPane canvas { width:100% !important; height:100% !important; display:block; }
+    #htpHint { flex:none; margin:0 0 6px; font-size:12px; color:#69727b; text-align:center; }
     #htpFoot { flex:none; display:flex; align-items:center; justify-content:center; gap:12px; width:100%; max-width:620px; }
     #htpFoot .pbtn { margin:0; padding:9px 16px; font-size:14px; width:auto; }
     #htpFoot .pbtn:disabled { opacity:0.35; cursor:default; }
     #htpDots { display:flex; gap:7px; }
     .htpDot { width:9px; height:9px; border-radius:50%; background:#3a4048; padding:0; border:none; cursor:pointer; }
     .htpDot.active { background:#ffd23f; transform:scale(1.25); }
-    .htpDot.goalDone { background:#78dc8c; }
-    .htpDot.goalDone.active { background:#78dc8c; box-shadow:0 0 0 2px rgba(120,220,140,0.35); }
+    .htpDot.tried { background:#5a6470; }
 </style>
 </head>
 <body>
@@ -533,7 +525,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 184</div>
+<div id="buildTag">build 185</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -6324,15 +6316,15 @@ function htpCrossLimit(base,pivotIdx,dir){
 // throughout — the same Piece/rotateAround/resolvePush/countCrossings a match runs — with one
 // small goal per rule and a confetti pop when it lands. Goals persist for the session.
 const HTP_TRY = {
-    pivot: { make: () => ({ p: mkP(0,2,3,-0.5) }),
-             goal: 'Try it — tap a foot to hold it', praise: 'Held! That foot is your pivot.' },
-    swing: { make: () => ({ p: mkP(0,6,6,-0.4) }),
-             goal: 'Try it — hold a foot, then drag to swing around it', praise: 'A real swing — that’s a whole move.' },
-    push:  { make: () => ({ p: mkP(0,-20,0,0.3), red: mkP(1,20,0,Math.PI), red0:{x:20,y:0} }),
-             goal: 'Try it — swing into Red and shove them', praise: 'Shoved! Contact is real physics.' },
-    cross: { make: () => ({ p: mkP(0,-24,12,0.5) }),
-             goal: 'Try it — swing until the one-line rule stops you', praise: 'Blocked — one line per turn.' },
+    pivot: { make: () => ({ p: mkP(0,2,3,-0.5) }) },
+    swing: { make: () => ({ p: mkP(0,6,6,-0.4) }) },
+    push:  { make: () => ({ p: mkP(0,-20,0,0.3), red: mkP(1,20,0,Math.PI), red0:{x:20,y:0} }) },
+    cross: { make: () => ({ p: mkP(0,-24,12,0.5) }) },
 };
+// The piece(s) the current slide is showing this frame — the 3D pane mirrors these, so the side
+// view is always the same position as the flat board, whether it's animating or being dragged.
+let htpNow = null;
+function htpMark(blue, red) { htpNow = { blue, red: red || null }; }
 function htpState(key) {
     if (!htpCache['try_'+key]) htpCache['try_'+key] = Object.assign(
         { key, touched:false, pinned:null, dragging:false, armFrom:null, lastAng:0, turnDir:0,
@@ -6340,13 +6332,12 @@ function htpState(key) {
           lockFlashT:-9, blockFlashT:-9, blockId:null }, HTP_TRY[key].make());
     return htpCache['try_'+key];
 }
-function htpGoalDone(key, st, at, extraText) {
+function htpGoalDone(key, st, at) {
     st.done = true;
     st.burst = { x: at.x, y: at.y, t: st.lastT };
     st.parts = Array.from({length:26}, () => ({ a: Math.random()*Math.PI*2, v: 22+Math.random()*46,
         life: 0.8+Math.random()*0.5, col: ['#ffd23f','#6b9eff','#ff6b6b','#78dc8c'][Math.floor(Math.random()*4)] }));
-    st.praiseText = '✓ ' + (extraText || t(HTP_TRY[key].praise));
-    if (typeof htpChipSync === 'function') htpChipSync();
+    if (typeof htpHintSync === 'function') htpHintSync();
     if (navigator.vibrate) { try { navigator.vibrate(18); } catch(e) {} }
 }
 // One drag delta, run through the rules in engine-sized substeps. Own feet never leave the board
@@ -6382,8 +6373,7 @@ function htpTrySwing(st, key, dA) {
         const moved = Math.hypot(st.red.x - st.red0.x, st.red.y - st.red0.y);
         const offBoard = st.red.feet().some(f => Math.hypot(f.x,f.y) > CFG.edgeU + CFG.edgeEps);
         if (moved >= 5 || offBoard)
-            htpGoalDone(key, st, { x: st.red.x, y: st.red.y },
-                        offBoard ? t('Off the board — that’s the win!') : null);
+            htpGoalDone(key, st, { x: st.red.x, y: st.red.y });
     }
 }
 function htpAttachTry(canvas, key, currentKey) {
@@ -6404,7 +6394,7 @@ function htpAttachTry(canvas, key, currentKey) {
     canvas.addEventListener('pointerdown', ev => {
         if (!active()) return;
         const st = htpState(key), m = toBoard(ev);
-        if (!st.touched) { st.touched = true; if (typeof htpChipSync === 'function') htpChipSync(); }
+        if (!st.touched) { st.touched = true; if (typeof htpHintSync === 'function') htpHintSync(); }
         let best = -1, bd = 100;   // 10u grab radius (squared)
         st.p.feet().forEach((f,i) => { const d = (f.x-m.x)**2 + (f.y-m.y)**2; if (d < bd) { bd = d; best = i; } });
         const pin = i => { st.pinned = i; if (key === 'pivot' && !st.done) htpGoalDone(key, st, st.p.feet()[i]); };
@@ -6444,6 +6434,7 @@ function htpAttachTry(canvas, key, currentKey) {
 // The live (post-touch) frame for a try-it slide: real pieces, rule feedback, confetti.
 function htpDrawTry(c,w,h,t,key) {
     const st = htpState(key); st.lastT = t;
+    htpMark(st.p, st.red);
     const m = htpMap(w,h); htpBoard(c,m.b,m.sc);
     if (st.red) htpPiece(c, st.red, m.b, -1, t);
     htpPiece(c, st.p, m.b, st.pinned === null ? -1 : st.pinned, t);
@@ -6487,14 +6478,15 @@ function htpDrawTry(c,w,h,t,key) {
 function htpSlidePivot(c,w,h,t){
     if (htpState('pivot').touched) return htpDrawTry(c,w,h,t,'pivot');
     const {b}=htpMap(w,h); htpBoard(c,b,htpMap(w,h).sc);
-    htpPiece(c, mkP(0,2,3,-0.5), b, 0, t);   // one piece, resting; the pinned foot glows
+    const rest = mkP(0,2,3,-0.5); htpMark(rest);
+    htpPiece(c, rest, b, 0, t);   // one piece, resting; the pinned foot glows
 }
 function htpSlideSwing(c,w,h,t){
     if (htpState('swing').touched) return htpDrawTry(c,w,h,t,'swing');
     const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
     const base=mkP(0,6,6,-0.4), pv=base.feet()[0];
     const ang=(30*Math.PI/180)*Math.sin(t*3.0);            // ping-pong ~1s each way around the pinned foot
-    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,ang);
+    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,ang); htpMark(p);
     htpPiece(c,p,m.b,0,t);
 }
 function htpSlidePush(c,w,h,t){
@@ -6505,6 +6497,7 @@ function htpSlidePush(c,w,h,t){
     const pivotIdx=2, pv=blue.feet()[pivotIdx];             // (pivot/dir found by search to give a clear shove)
     const steps=16, step=(prog*(-55*Math.PI/180))/steps || 0;
     for(let s=0;s<steps;s++){ blue.rotateAround(pv.x,pv.y,step); resolvePush(blue,red); }   // real push physics
+    htpMark(blue,red);
     htpPiece(c,red,m.b,-1,t);
     htpPiece(c,blue,m.b,pivotIdx,t);
 }
@@ -6515,7 +6508,7 @@ function htpSlideCross(c,w,h,t){
     const base=htpCache.crossBase, pivotIdx=2, dir=1;
     if(htpCache.crossLim===undefined) htpCache.crossLim=htpCrossLimit(base,pivotIdx,dir);
     const prog=htpEaseHold((t%2.4)/2.4), pv=base.feet()[pivotIdx];
-    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*htpCache.crossLim);
+    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*htpCache.crossLim); htpMark(p);
     if(prog>0.8){ const O=m.b(0,0), flash=0.35+0.4*Math.abs(Math.sin(t*8));   // the next ring flashes "blocked"
         c.strokeStyle=`rgba(255,107,107,${flash})`; c.lineWidth=3*htpScale;
         c.beginPath(); c.arc(O.x,O.y,CFG.rings[1]*m.sc,0,7); c.stroke(); }
@@ -6529,7 +6522,7 @@ function htpSlideDouble(c,w,h,t){
     const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
     const base=mkP(0,-CFG.startX,0,0), pivotIdx=1, dir=1, lim=14*Math.PI/180;   // the verified in-game limit (holdEps band)
     const prog=htpEaseHold((t%2.8)/2.8), pv=base.feet()[pivotIdx];
-    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*lim);
+    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*lim); htpMark(p);
     const f=p.feet()[2];
     if (nearLineIds(f, CFG.holdEps).length){
         const g=m.b(f.x,f.y), flash=0.4+0.35*Math.abs(Math.sin(t*6));
@@ -6547,7 +6540,7 @@ function htpSlideTwoFeet(c,w,h,t){
     const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
     const base=mkP(0,18,-20,48*Math.PI/180), pivotIdx=1, dir=-1, lim=23*Math.PI/180;
     const prog=htpEaseHold((t%2.8)/2.8), pv=base.feet()[pivotIdx];
-    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*lim);
+    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*lim); htpMark(p);
     for (const i of [0,2]){                                  // the two moving feet (pivot is foot 1)
         const f=p.feet()[i];
         if (nearLineIds(f, CFG.holdEps).length){
@@ -6566,6 +6559,9 @@ function htpSlideTwoFeet(c,w,h,t){
 // the same physics, not a re-drawn approximation of it.
 let htp3DActive=false, htpBlueP=null, htpRedP=null, htpFallState=null, htpPhase='push', htpPhaseT=0, htpDropT=0;
 function htp3DReset() {
+    // Rule slides with a single piece leave tripod 1 hidden (and a completed fall hides it too),
+    // so restore both here — this is the only entry point into the push-off.
+    if (typeof htpTripods !== 'undefined' && htpTripods) htpTripods.forEach(t => t.visible = true);
     htpBlueP = mkP(0,-2,0,0.3); htpRedP = mkP(1,38,0,Math.PI);
     htpFallState = null; htpPhase='push'; htpPhaseT=0; htpDropT=0;
 }
@@ -6612,19 +6608,12 @@ function htp3DStep(dt) {
     }
 }
 function htp3DUpdateCam(dt) {
-    const blue=htpTripods[0].position, red=htpTripods[1].position;
-    const mx=(blue.x+red.x)/2, mz=(blue.z+red.z)/2;
-    let dx=red.x-blue.x, dz=red.z-blue.z; const len=Math.hypot(dx,dz)||1; dx/=len; dz/=len;
-    const px=-dz, pz=dx;
-    const extra = htpPhase==='fall' ? [[red.x, red.z, red.y]] : null;
-    const dist = autoCamDistance(mx, mz, px, pz, AUTOCAM_TARGET_Y, extra);
-    acTgt.set(mx, AUTOCAM_TARGET_Y, mz);
-    acPos.set(mx+px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), AUTOCAM_TARGET_Y+dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), mz+pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L));
-    const k = 1 - Math.exp(-AUTOCAM_SMOOTH*dt);
-    camera.position.lerp(acPos, k);
-    controls.target.lerp(acTgt, k);
+    const k = 1 - Math.exp(-6*dt);
+    camera.position.lerp(HTP_FALL_CAM_POS, k);
+    controls.target.lerp(HTP_CAM_TGT, k);
 }
 function htp3DTick(dt) {
+    if (!htpFallMode) return htp3DMirror(dt);   // rule slides: the side view echoes the flat board
     htp3DStep(dt);
     htpTripods[0].position.set(htpBlueP.x, 0, htpBlueP.y);
     htpTripods[0].rotation.set(0, -htpBlueP.rot, 0);
@@ -6634,9 +6623,31 @@ function htp3DTick(dt) {
     }
     htp3DUpdateCam(dt);
 }
-function htp3DEnter(size) {
+// Rule slides: put the 3D pieces exactly where the 2D slide has them (htpMark records that each
+// frame) and hold a steady wide framing. A follow-cam would swim about while the player drags,
+// which is the opposite of what a reference view beside the board is for.
+let htpFallMode = false;
+const HTP_CAM_POS = new THREE.Vector3(0, 128, 165), HTP_CAM_TGT = new THREE.Vector3(0, 6, 0);
+// the push-off pulls back a little so there's room under the rim for the loser to tumble through
+const HTP_FALL_CAM_POS = new THREE.Vector3(0, 150, 192);
+function htp3DMirror(dt) {
+    if (htpNow) {
+        htpTripods[0].position.set(htpNow.blue.x, 0, htpNow.blue.y);
+        htpTripods[0].rotation.set(0, -htpNow.blue.rot, 0);
+        htpTripods[0].visible = true;
+        if (htpNow.red) {
+            htpTripods[1].position.set(htpNow.red.x, 0, htpNow.red.y);
+            htpTripods[1].rotation.set(0, -htpNow.red.rot, 0);
+        }
+        htpTripods[1].visible = !!htpNow.red;
+    }
+    const k = 1 - Math.exp(-6*dt);
+    camera.position.lerp(HTP_CAM_POS, k);
+    controls.target.lerp(HTP_CAM_TGT, k);
+}
+function htp3DEnter(w, h) {
     if (!renderer) return;
-    const slot = document.getElementById('htpFallSlot');
+    const slot = document.getElementById('htp3DPane');
     if (!slot) return;
     // The ambient menu demo restarts itself on its own setTimeout loop (demoTimer), independent of
     // whatever's open on top of it. Left running, that timer's own reset() call re-shows `tripods`
@@ -6644,13 +6655,16 @@ function htp3DEnter(size) {
     // pieces in the same scene ("multiple reds and blues"). Stop it for the duration of this demo.
     if (typeof demoStop === 'function') demoStop();
     slot.appendChild(document.getElementById('view3d'));
-    size = size || 220;
+    w = w || 220; h = h || w;
     const cv3 = document.getElementById('view3d');
-    cv3.style.width = size+'px'; cv3.style.height = size+'px'; cv3.style.display = 'block';
-    renderer.setSize(size, size, false); camera.aspect = 1; camera.updateProjectionMatrix();
+    cv3.style.width = w+'px'; cv3.style.height = h+'px'; cv3.style.display = 'block';
+    renderer.setSize(w, h, false); camera.aspect = w/h; camera.updateProjectionMatrix();
     tripods.forEach(t => t.visible = false);
     htpTripods.forEach(t => t.visible = true);
     htp3DReset();
+    // Start the framing already wide instead of easing in from wherever the menu demo left the
+    // camera — otherwise the first slide opens on a swooping shot nobody asked for.
+    camera.position.copy(HTP_CAM_POS); controls.target.copy(HTP_CAM_TGT);
     htp3DActive = true;
 }
 function htp3DExit() {
@@ -6685,37 +6699,42 @@ function stopHowToPlayAnim() {
 }
 // The shared goal chip reflects the CURRENT step's try-state; called on step change and whenever
 // a goal completes. Dots double as a progress tracker: earned goals stay green for the session.
-function htpChipSync() {
-    const chip = document.getElementById('htpGoalChip');
-    if (!chip) return;
-    const s = HTP_STEPS[htpFullIdx];
-    if (!s || !s.tryKey) { chip.style.display='none'; }
-    else {
-        const st = htpState(s.tryKey);
-        chip.style.display='block';
-        chip.classList.toggle('done', st.done);
-        chip.classList.toggle('pulse', !st.touched && !st.done);
-        chip.textContent = st.done ? st.praiseText : '\u{1F446} ' + t(HTP_TRY[s.tryKey].goal);
+function htpHintSync() {
+    const hint = document.getElementById('htpHint');
+    if (hint) {
+        const s = HTP_STEPS[htpFullIdx], st = s && s.tryKey && htpCache['try_'+s.tryKey];
+        // One quiet line, and only until they touch it — the rule text does the talking.
+        hint.style.visibility = (s && s.tryKey && !(st && st.touched)) ? 'visible' : 'hidden';
     }
     document.querySelectorAll('#htpFull .htpDot').forEach((d,i) => {
         const k = HTP_STEPS[i].tryKey;
-        d.classList.toggle('goalDone', !!(k && htpCache['try_'+k] && htpCache['try_'+k].done));
+        d.classList.toggle('tried', !!(k && htpCache['try_'+k] && htpCache['try_'+k].done));
         d.classList.toggle('active', i === htpFullIdx);
     });
 }
-// Size the stage: one big square board filling whatever the head/foot rows leave free.
+// Two panes: the flat board and the 3D view beside it. Landscape puts them side by side;
+// portrait stacks them, so on a phone you still get both without either going postage-stamp.
 function htpLayout() {
     const stage = document.getElementById('htpStage');
     const cv = document.getElementById('htpBigCanvas');
     if (!stage || !cv) return 0;
-    const r = stage.getBoundingClientRect();
-    // reserve a row for the goal chip below the board so it never squeezes the canvas
-    const size = Math.max(200, Math.floor(Math.min(r.width, r.height - 48)));
+    const r = stage.getBoundingClientRect(), GAP = 14;
+    const row = r.width > r.height * 1.1;
+    stage.style.flexDirection = row ? 'row' : 'column';
+    // On the push-off slide the flat board is hidden, so the 3D view gets the whole stage.
+    const size = Math.max(150, Math.floor(htpFallMode ? Math.min(r.width, r.height)
+                                        : row ? Math.min((r.width - GAP)/2, r.height)
+                                              : Math.min(r.width, (r.height - GAP)/2)));
     const ratio = Math.min(window.devicePixelRatio || 1, 2);
     cv.style.width = size+'px'; cv.style.height = size+'px';
     cv.width = Math.round(size*ratio); cv.height = Math.round(size*ratio);
-    const slot = document.getElementById('htpFallSlot');
-    if (slot) { slot.style.width = size+'px'; slot.style.height = size+'px'; }
+    const pane = document.getElementById('htp3DPane');
+    if (pane) { pane.style.width = size+'px'; pane.style.height = size+'px'; }
+    if (htp3DActive && renderer) {
+        const cv3 = document.getElementById('view3d');
+        cv3.style.width = size+'px'; cv3.style.height = size+'px';
+        renderer.setSize(size, size, false); camera.aspect = 1; camera.updateProjectionMatrix();
+    }
     return size;
 }
 function htpShowStep(idx) {
@@ -6723,19 +6742,19 @@ function htpShowStep(idx) {
     const s = HTP_STEPS[htpFullIdx];
     document.getElementById('htpTitle').textContent = s.title;
     document.getElementById('htpText').innerHTML = s.text;
-    const cv = document.getElementById('htpBigCanvas'), slot = document.getElementById('htpFallSlot');
-    cv.style.display = s.is3D ? 'none' : 'block';
-    slot.style.display = s.is3D ? 'block' : 'none';
+    // The flat board is hidden on the finale, where the 3D push-off IS the slide.
+    document.getElementById('htpBigCanvas').style.display = s.is3D ? 'none' : 'block';
+    htpFallMode = !!s.is3D;
+    if (htpFallMode) htp3DReset();
     // Measure AFTER the head/foot have their real content (an empty head measures ~0 tall and
     // the stage then claims rows the footer needs — the canvas ends up under the buttons).
     const size = htpLayout();
-    if (s.is3D && !htp3DActive) htp3DEnter(size);
-    else if (!s.is3D && htp3DActive) htp3DExit();
+    if (!htp3DActive) htp3DEnter(size, size);
     document.getElementById('htpPrev').disabled = htpFullIdx === 0;
     const last = htpFullIdx === HTP_STEPS.length-1;
     document.getElementById('htpNext').style.display = last ? 'none' : '';
-    document.getElementById('htpCoachBtn').style.display = last ? '' : 'none';
-    htpChipSync();
+    document.getElementById('htpDoneBtn').style.display = last ? '' : 'none';
+    htpHintSync();
 }
 function openHowToPlay() {
     stopHowToPlayAnim();
@@ -6746,14 +6765,14 @@ function openHowToPlay() {
         <div id="htpHead"><h2 id="htpTitle"></h2><p id="htpText"></p></div>
         <div id="htpStage">
             <canvas id="htpBigCanvas"></canvas>
-            <div id="htpFallSlot" style="display:none"></div>
-            <div class="htpGoal" id="htpGoalChip" style="display:none"></div>
+            <div id="htp3DPane"></div>
         </div>
+        <p id="htpHint">${t('drag the board to try it')}</p>
         <div id="htpFoot">
             <button id="htpPrev" class="pbtn pbtnQuiet">\u2039 ${t('Back')}</button>
             <span id="htpDots">${HTP_STEPS.map((_,i)=>`<button class="htpDot" data-idx="${i}"></button>`).join('')}</span>
             <button id="htpNext" class="pbtn">${t('Next')} \u203A</button>
-            <button id="htpCoachBtn" class="pbtn" style="display:none">${t('Play a coached game')} \u2192</button>
+            <button id="htpDoneBtn" class="pbtn" style="display:none">${t('Done')}</button>
         </div>`;
     document.body.appendChild(wrap);
     htpLayout();
@@ -6768,17 +6787,14 @@ function openHowToPlay() {
     document.getElementById('htpNext').addEventListener('click', () => htpShowStep(htpFullIdx+1));
     document.querySelectorAll('#htpFull .htpDot').forEach(d =>
         d.addEventListener('click', () => htpShowStep(+d.dataset.idx)));
-    // The rules read best right before doing: the last step hands over to the coached opening.
-    document.getElementById('htpCoachBtn').addEventListener('click', () => {
-        stopHowToPlayAnim(); startCoach();
-    });
+    document.getElementById('htpDoneBtn').addEventListener('click', stopHowToPlayAnim);
     htpKeyHandler = e => {
         if (e.key === 'Escape') stopHowToPlayAnim();
         else if (e.key === 'ArrowRight') htpShowStep(htpFullIdx+1);
         else if (e.key === 'ArrowLeft') htpShowStep(htpFullIdx-1);
     };
     addEventListener('keydown', htpKeyHandler);
-    htpResizeHandler = () => { const size = htpLayout(); if (htp3DActive) htp3DEnter(size); };
+    htpResizeHandler = () => htpLayout();
     addEventListener('resize', htpResizeHandler);
 
     const ctx = cv.getContext('2d');
@@ -6804,38 +6820,22 @@ document.getElementById('howToPlayBtn').addEventListener('click', openHowToPlay)
 function onboardState() { try { return localStorage.getItem('tauOnboard'); } catch(e) { return 'na'; } }
 function markOnboarded(how) {
     try { if (localStorage.getItem('tauOnboard') === null) localStorage.setItem('tauOnboard', how); } catch(e) {}
-    const b = document.getElementById('newbieBanner');
-    if (b) b.remove();
 }
-// The banner is re-entrant (the #newbie demo route re-runs it); the nudge listeners are attached
-// once at load and self-disable via onboardState(), so re-running can never double-fire them.
+// First visit opens the rules, once. No banner, no interstitial: the how-to IS the welcome, and
+// closing it puts you on the menu. Anything that proves you already know the game (finishing one,
+// or the coached opening) sets the flag too, so it never shows up again.
 function initOnboarding() {
     if (onboardState() !== null) return;
-    if (document.getElementById('newbieBanner')) return;
-    const row = document.querySelector('#playArea .playRow');
-    if (!row) return;
-    const b = document.createElement('button');
-    b.id = 'newbieBanner'; b.className = 'pbtn';
-    b.textContent = '\u{1F94B} ' + t('New here? Learn Tau in 60 seconds');
-    b.addEventListener('click', startCoach);
-    row.parentNode.insertBefore(b, row);
+    if (document.getElementById('htpFull')) return;
+    markOnboarded('howto');
+    openHowToPlay();
 }
-// One nudge per visit, at the moment it's most useful: a never-played player starting a match.
-let onboardAsked = false;
-for (const id of ['modeAI', 'modeOnline']) {
-    document.getElementById(id).addEventListener('click', ev => {
-        if (onboardAsked || onboardState() !== null) return;
-        onboardAsked = true;
-        ev.stopImmediatePropagation(); ev.preventDefault();
-        const btn = ev.currentTarget;
-        showModal(t('First game of Tau?'),
-            `<p style="text-align:center;margin:0 0 4px">${t('It takes one guided opening to get it \u2014 pin a foot, swing, shove. 60 seconds.')}</p>`,
-            [ { label: t('Learn in 60 seconds'), onClick: startCoach },
-              { label: t('Just play'), cls: 'modalBtnQuiet', onClick: () => { markOnboarded('skipped'); btn.click(); } } ],
-            true, { dismiss: true });
-    }, true);   // capture phase: runs before the buttons' own handlers
-}
-initOnboarding();
+addEventListener('load', () => {
+    // Not while a share link, the coach, or the how-to routes are already driving the page.
+    if (location.hash && /^#(coach|howto|tutorial|newbie|nn|director|lab)\b/i.test(location.hash)) return;
+    if (typeof isShareHash === 'function' && isShareHash(location.hash)) return;
+    initOnboarding();
+}, { once: true });
 // ---------- Settings: board theme (dark/light) ----------
 // Apply the CURRENT look (active skin = colour-lab override, else Slate in light mode, else the flat
 // dark default) to every 3D material and the 2D piece colours. Rebuilds the board texture (disposing
