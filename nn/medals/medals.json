@@ -1,33 +1,33 @@
 {
-  "updated": "2026-08-20T08:50:10.311Z",
+  "updated": "2026-08-20T09:03:19.887Z",
   "basis": "global 90% Elo lower bound across D1-D4",
   "medals": {
     "gold": {
+      "source": "ckpt-114",
+      "sourceId": "ckpt-114@D3",
+      "depth": 3,
+      "games": 10,
+      "elo": 330.9,
+      "eloLo": 51.3,
+      "eloHi": 508.4
+    },
+    "silver": {
       "source": "ckpt-142",
       "sourceId": "ckpt-142@D2",
       "depth": 2,
       "games": 20,
-      "elo": 326.6,
-      "eloLo": 62,
-      "eloHi": 358
-    },
-    "silver": {
-      "source": "ckpt-146",
-      "sourceId": "ckpt-146@D2",
-      "depth": 2,
-      "games": 32,
-      "elo": 181,
-      "eloLo": 9.7,
-      "eloHi": 231.1
+      "elo": 307.9,
+      "eloLo": 33.1,
+      "eloHi": 340.5
     },
     "bronze": {
-      "source": "ckpt-143",
-      "sourceId": "ckpt-143@D2",
-      "depth": 2,
-      "games": 30,
-      "elo": 239.3,
-      "eloLo": 7.5,
-      "eloHi": 261.6
+      "source": "wide-m1-118",
+      "sourceId": "wide-m1-118@D3",
+      "depth": 3,
+      "games": 6,
+      "elo": 388.9,
+      "eloLo": 20.5,
+      "eloHi": 644.2
     }
   }
 }
