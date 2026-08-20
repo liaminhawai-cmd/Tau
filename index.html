@@ -233,6 +233,9 @@
                 pointer-events:none; z-index:200; box-shadow:0 6px 20px rgba(0,0,0,.5); display:none; }
     /* Always-visible but understated: sits in the corner on every screen (menu and in-game),
        low-contrast until hovered so it never competes with the board. */
+    /* Inline line-art icons: stroked, no fill, inheriting the button's own colour. */
+    button svg { width:1em; height:1em; display:block; fill:none; stroke:currentColor;
+                 stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
     #themeToggle { position:fixed; top:calc(9px + env(safe-area-inset-top)); right:12px; z-index:60; background:none; border:none;
                    color:#9aa4ad; font-size:19px; line-height:1; padding:6px 7px; margin:0;
                    opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
@@ -511,13 +514,13 @@
 </style>
 </head>
 <body>
-<button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
-<button id="soundToggle" title="Sound volume" aria-label="Sound volume">🔊</button>
+<button id="themeToggle" title="Switch board theme" aria-label="Switch board theme"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.4"/><path d="M12 2.6v2.6M12 18.8v2.6M2.6 12h2.6M18.8 12h2.6M5.4 5.4l1.8 1.8M16.8 16.8l1.8 1.8M18.6 5.4l-1.8 1.8M7.2 16.8l-1.8 1.8"/></svg></button>
+<button id="soundToggle" title="Sound volume" aria-label="Sound volume"></button>
 <div id="volPopover">
     <canvas id="volDial" width="112" height="100" title="Drag to set volume"></canvas>
-    <div id="volRow"><button id="volMuteBtn" aria-label="Mute">🔊</button><span id="volPct">70%</span></div>
+    <div id="volRow"><button id="volMuteBtn" aria-label="Mute"></button><span id="volPct">70%</span></div>
 </div>
-<button id="langToggle" title="Language" aria-label="Language">🌐</button>
+<button id="langToggle" title="Language" aria-label="Language"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.9 5.7 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.7-3.9-9S9.4 5.6 12 3z"/></svg></button>
 <div id="langMenu"></div>
 <!-- Traditional-Chinese-only: shown by applyI18nStatic() once LANG is known. Ruby (bopomofo)
      annotations on by default; tap to turn off. -->
@@ -525,19 +528,19 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 185</div>
+<div id="buildTag">build 186</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
 <div id="dirSafeMask"><div id="dirSafeBox" class="land"></div></div>
-<button id="dirFab" title="Director mode">🎬</button>
+<button id="dirFab" title="Director mode"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.6" y="7" width="13" height="10" rx="2"/><path d="M15.6 11l5.8-3v8l-5.8-3z"/></svg></button>
 <div id="dirPanel">
     <div class="dRow"><label for="dirLogo">Logo</label><input id="dirLogo" type="range" min="0" max="0.9" step="0.02" value="0"></div>
     <div class="dRow"><label>Safe area</label><div class="seg">
         <button id="dirSafeOff" class="on">Off</button><button id="dirSafeLand">16:9</button><button id="dirSafePort">9:16</button>
     </div></div>
     <div class="dRow"><label for="dirHide">Hide UI</label><input id="dirHide" type="checkbox"></div>
-    <div class="dRow"><label for="dirUnlock">🔓 Move/resize boards</label><input id="dirUnlock" type="checkbox"></div>
+    <div class="dRow"><label for="dirUnlock">Move/resize boards</label><input id="dirUnlock" type="checkbox"></div>
 </div>
 <div id="wrap" role="main">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
@@ -572,7 +575,7 @@
              install banner/prompt, so a visitor with zero UI cue may simply never see one at all. An
              explicit button that calls the SAME browser-native prompt is the reliable cross-browser
              path; it just no-ops (stays hidden) on browsers with no install support, e.g. iOS Safari. -->
-        <p id="installLine" style="display:none;margin:6px 0 0;"><button class="link" id="installBtn" style="font-size:11px;color:#5a6570;">📲 Install app →</button></p>
+        <p id="installLine" style="display:none;margin:6px 0 0;"><button class="link" id="installBtn" style="font-size:11px;color:#5a6570;">Install app →</button></p>
 
         <div id="acctPanel" style="display:none;">
             <div id="acctSignedOut">
@@ -1792,7 +1795,7 @@
 // as the inner ring and are centred ON the rim, running rim-to-rim.
 
 // ---------- i18n ----------
-// Device language is detected once and can be overridden from the 🌐 corner menu (stored in
+// Device language is detected once and can be overridden from the language corner menu (stored in
 // localStorage; switching reloads). Chinese splits on script: zh-TW/HK/MO and zh-Hant* get
 // Traditional (Taiwan-flavoured vocabulary), other zh* gets Simplified — mismatching script reads
 // as "the other side's" localisation to both audiences, so the split matters more than the words.
@@ -3527,7 +3530,7 @@ let glowTexGold=null, glowTexHot=null;   // the pivot glow's two tints: gold for
 // sandbox dump so a dumped JSON pastes straight in.
 let SKIN = null, colorLab = false, colorLabTimer = null;
 // Default boards are the GRADED colourways: Dojo (warm wood) on a light device, Slate (graphite) on
-// a dark one. The flat Dark and Yellow boards remain in the ☀ cycle for anyone who prefers them. The
+// a dark one. The flat Dark and Yellow boards remain in the theme cycle for anyone who prefers them. The
 // active board skin is an explicit override (colour lab) if set, else the cycle's current entry.
 const SLATE_SKIN  = { shadeByZoneValue:true, v4:'#5a636c', v3:'#4b535b', v2:'#3c434a', v1:'#2f353b',
     flat:'#454d55', lines:'#12161a', rim:'#8f979e', bg:'#0c0e11', pb:'#5487c4', pr:'#d05a48' };
@@ -3535,7 +3538,7 @@ const DOJO_SKIN   = { shadeByZoneValue:true, v4:'#e9d9b3', v3:'#ddc99b', v2:'#cb
     flat:'#d9c9a3', lines:'#3a2f22', rim:'#3c434a', bg:'#0c0e11', pb:'#243f78', pr:'#cf3b26' };
 const YELLOW_SKIN = { shadeByZoneValue:false, v4:'#efe4a6', v3:'#efe4a6', v2:'#efe4a6', v1:'#efe4a6',
     flat:'#efe4a6', lines:'#26251f', rim:'#3c434a', bg:'#0c0e11', pb:'#6b9eff', pr:'#ff6b6b' };
-// Board looks, ordered DARKEST -> LIGHTEST; the ☀ button steps through and loops. null = the flat
+// Board looks, ordered DARKEST -> LIGHTEST; the theme button steps through and loops. null = the flat
 // dark board. Dark and Yellow are the two originals; Slate and Dojo are the graded colourways.
 const BOARD_SKINS = [
     { id:'dark',   name:'Dark',   skin:null },
@@ -3584,7 +3587,7 @@ let htpTripods=[];   // throwaway pieces for the how-to-play "push them off" 3D 
 let currentTheme = 'dark';   // 'dark' for the dark/flat board (skin 0), 'light' otherwise — only used for
                              // the board's default (unskinned) colours.
 // First visit follows the device preference and lands on a GRADED board (not a flat one): light ->
-// Dojo (warm wood, easier on some eyes), dark -> Slate (graphite). An explicit choice (the ☀ cycle)
+// Dojo (warm wood, easier on some eyes), dark -> Slate (graphite). An explicit choice (the theme cycle)
 // is remembered and wins from then on, so returning players keep whatever board they already picked.
 try {
     const saved = localStorage.getItem('tauSkin');
@@ -6868,7 +6871,7 @@ function cycleBoardSkin() { skinIdx = (skinIdx + 1) % BOARD_SKINS.length; applyB
 // names the board you'll switch TO.
 function updateThemeToggleIcon() {
     const btn = document.getElementById('themeToggle');
-    if (btn) { btn.textContent = '☀'; btn.title = 'Board: ' + BOARD_SKINS[(skinIdx + 1) % BOARD_SKINS.length].name; }
+    if (btn) btn.title = 'Board: ' + BOARD_SKINS[(skinIdx + 1) % BOARD_SKINS.length].name;
 }
 document.getElementById('themeToggle').addEventListener('click', cycleBoardSkin);
 updateThemeToggleIcon();
@@ -7111,10 +7114,13 @@ function applySfx() {
     scrapeHP.frequency.setTargetAtTime(SFX.scrapeHz, t0, 0.03);
     if (!G || !G.over) { bandpass.Q.setTargetAtTime(SFX.q, t0, 0.03); wetGain.gain.setTargetAtTime(SFX.reverb, t0, 0.03); }
 }
+const ICON_SPEAKER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.2h3.4L12 5.2v13.6l-4.6-4H4z"/>';
+const ICON_WAVES = '<path d="M15.6 9.4a3.6 3.6 0 010 5.2M18.2 6.8a7.2 7.2 0 010 10.4"/></svg>';
+const ICON_CROSS = '<path d="M15.8 10.2l4 3.6M19.8 10.2l-4 3.6"/></svg>';
 function updateSoundToggleIcon() {
-    const icon = soundOn ? '🔊' : '🔇';
-    const btn = document.getElementById('soundToggle'); if (btn) btn.textContent = icon;
-    const muteBtn = document.getElementById('volMuteBtn'); if (muteBtn) muteBtn.textContent = icon;
+    const icon = ICON_SPEAKER + (soundOn ? ICON_WAVES : ICON_CROSS);
+    const btn = document.getElementById('soundToggle'); if (btn) btn.innerHTML = icon;
+    const muteBtn = document.getElementById('volMuteBtn'); if (muteBtn) muteBtn.innerHTML = icon;
 }
 function setSoundOn(on) {
     soundOn = on;
@@ -8954,7 +8960,7 @@ demoStart();
         });
     }
     // Language picker lives in the top-right corner cluster (next to sound/theme), not the menu:
-    // it's a set-once control, so it stays out of the way behind a small 🌐 button.
+    // it's a set-once control, so it stays out of the way behind a small globe button.
     document.documentElement.lang = LANG === 'zht' ? 'zh-Hant' : LANG === 'zh' ? 'zh-Hans' : LANG;
     const langMenu = document.getElementById('langMenu'), langBtn = document.getElementById('langToggle');
     if (langMenu && langBtn) {
@@ -10752,7 +10758,8 @@ function openLeaderboard() {
                 const tied = data.filter(x => x.elo === p.elo).length > 1;
                 const fs = rank===1 ? '18px' : rank<=3 ? '15px' : '13px';
                 const fw = rank===1 ? '800' : rank<=3 ? '650' : '400';
-                const rankCell = rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':(tied?'=':'')+rank;
+                const medal = rank===1 ? '#d9b45a' : rank===2 ? '#b8bec6' : rank===3 ? '#b07d4e' : null;
+                const rankCell = medal ? `<span style="color:${medal}">${rank}</span>` : (tied?'=':'')+rank;
                 // your own row gets a highlight — people scan for their name first
                 const mine = p.username === (document.getElementById('acctName').textContent || null);
                 const hl = mine ? ' background:rgba(61,90,254,0.16); box-shadow:inset 3px 0 0 #3d5afe;' : '';
@@ -11067,7 +11074,7 @@ function wsRenderSaved() {
                 // The whole game embedded in the URL (#r=) instead of a database code (#s=). It never
                 // expires, works offline, and — unlike a short link — can be decoded by anyone without
                 // the server, which is what makes it the link to send when reporting a bad move.
-                { txt:'🔗', title:t('Copy full link (offline)'), onClick: async () => {
+                { txt:'<svg viewBox="0 0 24 24" aria-hidden="true" style="width:15px;height:15px;vertical-align:-2px"><path d="M10 13.6a3.6 3.6 0 005.2 0l3-3a3.7 3.7 0 00-5.2-5.2l-1.3 1.3M14 10.4a3.6 3.6 0 00-5.2 0l-3 3a3.7 3.7 0 005.2 5.2l1.3-1.3"/></svg>', title:t('Copy full link (offline)'), onClick: async () => {
                     const url = location.origin + location.pathname + '#r=' + r.p;
                     try { await navigator.clipboard.writeText(url); showPassToast(t('Full link copied!')); }
                     catch(e) { showPassToast(t('Could not create the link.')); }

@@ -1,0 +1,289 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Tau — desktop menu prototypes</title>
+<link rel="icon" href="favicon-32.png">
+<style>
+:root{
+  --bg:#0c0e11; --panel:#12161b; --line:#232a32; --disc:#171c22; --print:#414b56;
+  --ink:#e6e6e6; --dim:#9aa4ad; --faint:#69727b; --blue:#6b9eff; --red:#ff6b6b; --gold:#ffd23f;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+     font:400 15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+canvas{display:block}
+.wordmark{font-weight:300;letter-spacing:.42em;text-indent:.42em}
+.hidden{display:none!important}
+
+/* ---- shared button language (matches the game's pill buttons, sized up for a mouse) ---- */
+.btn{border:1px solid var(--line);border-radius:10px;padding:14px 20px;color:var(--ink);
+     background:#141920;transition:border-color .15s,background .15s,transform .15s;text-align:left}
+.btn:hover{border-color:#3d4753;background:#171d25}
+.btn:active{transform:translateY(1px)}
+.btn.primary{border-color:#2f3a47;background:linear-gradient(#1a2029,#141a21)}
+.btn.primary:hover{border-color:var(--gold)}
+.btn .k{display:block;font-size:17px;font-weight:600}
+.btn .s{display:block;font-size:12.5px;color:var(--faint);margin-top:3px}
+.quiet{border:1px solid #202730;border-radius:999px;padding:9px 16px;font-size:13px;color:var(--dim)}
+.quiet:hover{color:var(--ink);border-color:#39424e}
+
+/* ---- switcher ---- */
+#pick{position:fixed;right:14px;bottom:12px;z-index:40;display:flex;gap:6px;align-items:center;
+      background:rgba(10,12,16,.82);border:1px solid var(--line);border-radius:999px;padding:5px 7px}
+#pick a{font-size:12.5px;color:var(--dim);text-decoration:none;padding:6px 12px;border-radius:999px}
+#pick a.on{background:var(--gold);color:#15181c;font-weight:650}
+#pick span{font-size:11px;color:#4a525c;padding:0 6px}
+#note{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:40;font-size:11px;color:#3f4650}
+
+/* ================= A · SPLIT ================= */
+#A{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(430px,.85fr);height:100%}
+#A .stage{position:relative;background:radial-gradient(120% 100% at 40% 45%,#12171d 0%,#0a0c0f 70%)}
+#A .stage canvas{width:100%;height:100%}
+#A .tag{position:absolute;left:26px;bottom:22px;font-size:11.5px;color:#3f4650;letter-spacing:.08em}
+#A .side{padding:52px 56px;display:flex;flex-direction:column;justify-content:center;gap:26px;
+         border-left:1px solid var(--line);background:linear-gradient(180deg,#101419,#0d1115)}
+#A h1{margin:0;font-size:40px}
+#A .sub{margin:10px 0 0;font-size:13.5px;color:var(--faint)}
+#A .prim{display:grid;gap:12px}
+#A .row{display:flex;gap:10px;flex-wrap:wrap}
+#A .acct{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--dim);
+         border-top:1px solid var(--line);padding-top:18px}
+#A .acct b{color:var(--ink);font-weight:600}
+#A .elo{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--gold)}
+
+/* ================= B · RAIL ================= */
+#B{display:grid;grid-template-columns:232px minmax(0,1fr) 360px;height:100%}
+#B .rail{border-right:1px solid var(--line);background:#0e1216;padding:26px 18px;display:flex;flex-direction:column;gap:4px}
+#B .rail h1{margin:0 0 26px;font-size:21px;padding-left:12px}
+#B .nav{display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:9px;color:var(--dim);font-size:14.5px}
+#B .nav:hover{background:#141a21;color:var(--ink)}
+#B .nav.on{background:#161d26;color:var(--ink);box-shadow:inset 2px 0 0 var(--gold)}
+#B .nav svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+#B .me{margin-top:auto;border-top:1px solid var(--line);padding:14px 12px 0;font-size:12.5px;color:var(--faint)}
+#B .main{padding:40px 44px;overflow:auto}
+#B .main h2{margin:0 0 4px;font-size:23px;font-weight:600}
+#B .main .lede{margin:0 0 26px;font-size:13.5px;color:var(--faint)}
+#B .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:12px}
+#B .rh{margin:34px 0 10px;font-size:13px;font-weight:600;color:var(--dim);letter-spacing:.06em;text-transform:uppercase}
+#B .recent{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+#B .rr{display:grid;grid-template-columns:64px 1fr auto auto;gap:14px;align-items:center;
+       padding:12px 16px;font-size:13.5px;color:var(--dim);border-bottom:1px solid #171d24}
+#B .rr:last-child{border-bottom:none}
+#B .rr .w{color:#78dc8c;font-weight:600}
+#B .rr .l{color:var(--red);font-weight:600}
+#B .rr .ago{color:var(--faint);font-size:12.5px}
+#B .rb{padding:5px 13px;font-size:12px}
+#B .aside{border-left:1px solid var(--line);background:#0e1216;padding:26px 24px;display:flex;flex-direction:column;gap:20px}
+#B .aside canvas{width:100%;aspect-ratio:1;border-radius:12px;background:#0a0c0f;border:1px solid var(--line)}
+#B .stat{display:flex;justify-content:space-between;font-size:13px;color:var(--dim);padding:7px 0;border-bottom:1px solid #1a2027}
+#B .stat b{color:var(--ink);font-variant-numeric:tabular-nums}
+#B .lad{display:flex;gap:4px;margin-top:2px}
+#B .lad i{flex:1;height:6px;border-radius:2px;background:#1c232b}
+#B .lad i.done{background:var(--gold)}
+
+/* ================= C · CINEMA ================= */
+#C{position:relative;height:100%;overflow:hidden}
+#C canvas{position:absolute;inset:0;width:100%;height:100%}
+#C .scrim{position:absolute;inset:0;
+  background:linear-gradient(90deg,rgba(8,10,13,.94) 0%,rgba(8,10,13,.72) 38%,rgba(8,10,13,0) 66%)}
+#C .body{position:absolute;left:76px;top:50%;transform:translateY(-50%);max-width:430px}
+#C h1{margin:0 0 6px;font-size:52px}
+#C .kick{margin:0 0 32px;font-size:13px;color:var(--faint);letter-spacing:.14em;text-transform:uppercase}
+#C .menu{display:flex;flex-direction:column;gap:2px;margin-bottom:30px}
+#C .item{font-size:25px;font-weight:600;color:var(--dim);padding:7px 0 7px 22px;position:relative;text-align:left}
+#C .item:before{content:'';position:absolute;left:0;top:50%;width:9px;height:1.5px;background:var(--gold);
+                transform:translateY(-50%) scaleX(0);transform-origin:left;transition:transform .16s}
+#C .item:hover{color:var(--ink)}
+#C .item:hover:before{transform:translateY(-50%) scaleX(1)}
+#C .item small{display:block;font-size:12px;font-weight:400;color:#525b65;letter-spacing:0}
+#C .foot{display:flex;gap:18px;font-size:12.5px;color:var(--faint)}
+#C .foot button:hover{color:var(--ink)}
+#C .hud{position:absolute;right:30px;top:26px;text-align:right;font-size:12.5px;color:var(--faint)}
+#C .hud b{display:block;color:var(--ink);font-size:14px;font-weight:600}
+#C .hud .pill{display:inline-block;margin-top:8px;border:1px solid #2b333d;border-radius:999px;
+              padding:4px 12px;color:var(--gold);font-variant-numeric:tabular-nums}
+@media (max-width:1100px){ #A{grid-template-columns:1fr} #A .stage{display:none} #B{grid-template-columns:200px 1fr} #B .aside{display:none} }
+</style>
+<body>
+
+<!-- ============ A · SPLIT ============ -->
+<section id="A" class="hidden">
+  <div class="stage"><canvas data-board="a"></canvas><div class="tag">LOCAL 1V1 · VS AI · ONLINE</div></div>
+  <div class="side">
+    <div>
+      <h1 class="wordmark">TAU</h1>
+      <p class="sub">Pin a foot. Swing. Push them off the board.</p>
+    </div>
+    <div class="prim">
+      <button class="btn primary"><span class="k">Play the computer</span><span class="s">Nine levels — Level 3 is your next rung</span></button>
+      <button class="btn primary"><span class="k">Play online</span><span class="s">Ranked, private, or pass-and-play</span></button>
+    </div>
+    <div class="row">
+      <button class="quiet">How to play</button>
+      <button class="quiet">Watch</button>
+      <button class="quiet">Leaderboard</button>
+      <button class="quiet">Get a physical set</button>
+    </div>
+    <div class="acct"><span>Playing as <b>Guest</b></span><button class="quiet" style="padding:5px 12px">Sign in</button><span class="elo">unranked</span></div>
+  </div>
+</section>
+
+<!-- ============ B · RAIL ============ -->
+<section id="B" class="hidden">
+  <nav class="rail">
+    <h1 class="wordmark">TAU</h1>
+    <button class="nav on"><svg viewBox="0 0 24 24"><path d="M6 4.6l13 7.4-13 7.4z"/></svg>Play</button>
+    <button class="nav"><svg viewBox="0 0 24 24"><path d="M4 5.5h16v13H4z"/><path d="M8 9.5h8M8 13.5h5"/></svg>Learn</button>
+    <button class="nav"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M2.6 12S6 5.8 12 5.8 21.4 12 21.4 12 18 18.2 12 18.2 2.6 12 2.6 12z"/></svg>Watch</button>
+    <button class="nav"><svg viewBox="0 0 24 24"><path d="M5 19h4V9H5zM10 19h4V4h-4zM15 19h4v-7h-4z"/></svg>Ranks</button>
+    <button class="nav"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><circle cx="12" cy="12" r="3.4"/></svg>The set</button>
+    <div class="me">Guest · not signed in<br><button class="quiet" style="margin-top:8px;padding:6px 13px">Sign in</button></div>
+  </nav>
+  <div class="main">
+    <h2>Play</h2>
+    <p class="lede">Every mode, one screen — no menus behind menus.</p>
+    <div class="cards">
+      <button class="btn primary"><span class="k">Level 3</span><span class="s">Next rung · you cleared Level 2 as Blue</span></button>
+      <button class="btn"><span class="k">Ranked online</span><span class="s">Matched near your rating</span></button>
+      <button class="btn"><span class="k">Private online</span><span class="s">Share a code with a friend</span></button>
+      <button class="btn"><span class="k">Local 1v1</span><span class="s">Pass and play on this screen</span></button>
+      <button class="btn"><span class="k">Free play vs AI</span><span class="s">Pick any level, nothing at stake</span></button>
+      <button class="btn"><span class="k">Coached opening</span><span class="s">Play a real game move by move</span></button>
+    </div>
+    <h3 class="rh">Recent games</h3>
+    <div class="recent">
+      <div class="rr"><span class="w">Won</span><span>Level 2 · Blue</span><span class="ago">yesterday</span><button class="quiet rb">Watch</button></div>
+      <div class="rr"><span class="l">Lost</span><span>Level 3 · Blue</span><span class="ago">yesterday</span><button class="quiet rb">Watch</button></div>
+      <div class="rr"><span class="w">Won</span><span>Local 1v1</span><span class="ago">2 days ago</span><button class="quiet rb">Watch</button></div>
+    </div>
+  </div>
+  <aside class="aside">
+    <canvas data-board="b"></canvas>
+    <div>
+      <div class="stat"><span>Levels cleared</span><b>2 / 9</b></div>
+      <div class="lad"><i class="done"></i><i class="done"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+    <div>
+      <div class="stat"><span>Games played</span><b>14</b></div>
+      <div class="stat"><span>Won</span><b>6</b></div>
+      <div class="stat" style="border:none"><span>Rating</span><b>—</b></div>
+    </div>
+  </aside>
+</section>
+
+<!-- ============ C · CINEMA ============ -->
+<section id="C" class="hidden">
+  <canvas data-board="c"></canvas>
+  <div class="scrim"></div>
+  <div class="body">
+    <h1 class="wordmark">TAU</h1>
+    <p class="kick">Physics-based abstract strategy</p>
+    <div class="menu">
+      <button class="item">Continue<small>Level 3 · playing Blue</small></button>
+      <button class="item">Play online<small>Ranked or private</small></button>
+      <button class="item">Local 1v1<small>Two players, one screen</small></button>
+      <button class="item">How to play<small>Six rules, two minutes</small></button>
+    </div>
+    <div class="foot"><button>Watch</button><button>Leaderboard</button><button>The physical set</button><button>Settings</button></div>
+  </div>
+  <div class="hud">Playing as <b>Guest</b><span class="pill">unranked</span></div>
+</section>
+
+<div id="pick"><span>PROTOTYPE</span></div>
+<div id="note">mock data · layout study only</div>
+
+<script>
+// ---- the real board, drawn small: same radii, rings and lens arcs as the game (CFG) ----
+const CFG = { edgeU:66.667, rings:[40,53.3], footR:23.095, startX:30.597,
+  sideArcs:[{cx:-66.667,cy:0,r:40,a0:-72.542,a1:72.542},{cx:66.667,cy:0,r:40,a0:107.458,a1:252.542}] };
+const COL = { disc:'#171c22', line:'#414b56', blue:'#6b9eff', red:'#ff6b6b' };
+
+function feet(p){ const o=[]; for(let i=0;i<3;i++){ const a=p.rot+i*(2*Math.PI/3);
+  o.push({x:p.x+Math.cos(a)*CFG.footR, y:p.y+Math.sin(a)*CFG.footR}); } return o; }
+
+function drawBoard(cv, t, opts){
+  const dpr = Math.min(devicePixelRatio||1, 2);
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (!w || !h) return;
+  if (cv.width !== Math.round(w*dpr) || cv.height !== Math.round(h*dpr)){
+    cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  }
+  const c = cv.getContext('2d');
+  c.setTransform(dpr,0,0,dpr,0,0);
+  c.clearRect(0,0,w,h);
+  const zoom = opts.zoom || 0.86;
+  const sc = Math.min(w,h)*zoom/(2*CFG.edgeU);
+  const ox = w*(opts.cx ?? 0.5), oy = h*(opts.cy ?? 0.5);
+  const B = (x,y) => [ox + x*sc, oy + y*sc];
+
+  c.save();
+  c.beginPath(); c.arc(ox,oy,CFG.edgeU*sc,0,7);
+  const g = c.createRadialGradient(ox-CFG.edgeU*sc*.3, oy-CFG.edgeU*sc*.35, 4, ox, oy, CFG.edgeU*sc*1.1);
+  g.addColorStop(0,'#1d242c'); g.addColorStop(1,COL.disc);
+  c.fillStyle = g; c.fill();
+  c.strokeStyle='#252d36'; c.lineWidth=Math.max(1,sc*1.1); c.stroke();
+  c.clip();
+  c.strokeStyle = COL.line; c.lineWidth = Math.max(1, CFG.edgeU*0.0079*sc*2);
+  for (const r of CFG.rings){ c.beginPath(); c.arc(ox,oy,r*sc,0,7); c.stroke(); }
+  for (const a of CFG.sideArcs){ c.beginPath();
+    for (let k=0;k<=60;k++){ const ang=(a.a0+(a.a1-a.a0)*k/60)*Math.PI/180;
+      const [px,py]=B(a.cx+Math.cos(ang)*a.r, a.cy+Math.sin(ang)*a.r); k?c.lineTo(px,py):c.moveTo(px,py); }
+    c.stroke(); }
+  c.restore();
+
+  // two pieces drifting slowly around each other — alive, but never distracting
+  const sw = Math.sin(t*0.22), sw2 = Math.sin(t*0.19 + 1.1);
+  const pieces = [
+    { x:-CFG.startX + sw*5, y: sw2*4,      rot: 0.30 + sw*0.16,  col:COL.blue },
+    { x: CFG.startX - sw2*5, y:-sw*4,      rot: Math.PI + sw2*0.16, col:COL.red },
+  ];
+  for (const p of pieces){
+    const F = feet(p), [hx,hy] = B(p.x,p.y);
+    c.strokeStyle = p.col; c.lineWidth = Math.max(2, sc*1.9); c.lineCap='round';
+    for (const f of F){ const [fx,fy]=B(f.x,f.y); c.beginPath(); c.moveTo(hx,hy); c.lineTo(fx,fy); c.stroke(); }
+    c.fillStyle = p.col;
+    c.beginPath(); c.arc(hx,hy,Math.max(2,sc*1.5),0,7); c.fill();
+    for (const f of F){ const [fx,fy]=B(f.x,f.y); c.beginPath(); c.arc(fx,fy,Math.max(3,sc*2.4),0,7); c.fill(); }
+  }
+}
+
+const LAYOUTS = { split:'A', rail:'B', cinema:'C' };
+const OPTS = { a:{zoom:0.80}, b:{zoom:0.92}, c:{zoom:0.62, cx:0.66, cy:0.52} };
+let current = 'split';
+
+function show(name){
+  current = LAYOUTS[name] ? name : 'split';
+  for (const [k,id] of Object.entries(LAYOUTS))
+    document.getElementById(id).classList.toggle('hidden', k !== current);
+  for (const a of document.querySelectorAll('#pick a')) a.classList.toggle('on', a.dataset.k === current);
+  history.replaceState(null,'','?p='+current);
+  document.title = 'Tau — ' + current + ' menu prototype';
+}
+const pick = document.getElementById('pick');
+for (const k of Object.keys(LAYOUTS)){
+  const a = document.createElement('a');
+  a.href = '?p='+k; a.textContent = k; a.dataset.k = k;
+  a.addEventListener('click', e => { e.preventDefault(); show(k); });
+  pick.appendChild(a);
+}
+addEventListener('keydown', e => {
+  const ks = Object.keys(LAYOUTS);
+  if (e.key >= '1' && e.key <= String(ks.length)) show(ks[+e.key - 1]);
+  if (e.key === 'ArrowRight') show(ks[(ks.indexOf(current)+1) % ks.length]);
+  if (e.key === 'ArrowLeft')  show(ks[(ks.indexOf(current)+ks.length-1) % ks.length]);
+});
+show(new URLSearchParams(location.search).get('p') || 'split');
+
+const t0 = performance.now();
+(function loop(){
+  const t = (performance.now()-t0)/1000;
+  for (const cv of document.querySelectorAll('canvas')){
+    if (cv.closest('.hidden')) continue;
+    drawBoard(cv, t, OPTS[cv.dataset.board] || {});
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
