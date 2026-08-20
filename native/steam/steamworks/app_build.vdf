@@ -1,0 +1,36 @@
+// SteamPipe app build script for Tau.
+// Fill in the real app/depot ids from partner.steamgames.com, then upload with:
+//   steamcmd +login <builder_account> +run_app_build ../steamworks/app_build.vdf +quit
+// (run from the SteamPipe "builder" directory, or adjust the relative paths)
+"AppBuild"
+{
+	"AppID" "YOUR_APP_ID"
+	"Desc" "Tau desktop build"
+	"BuildOutput" "./steampipe_output/"
+	"ContentRoot" "../dist/"
+
+	"Depots"
+	{
+		// Windows depot — contents of dist/win-unpacked
+		"YOUR_WIN_DEPOT_ID"
+		{
+			"FileMapping"
+			{
+				"LocalPath" "./win-unpacked/*"
+				"DepotPath" "."
+				"Recursive" "1"
+			}
+		}
+
+		// Linux depot — contents of dist/linux-unpacked
+		"YOUR_LINUX_DEPOT_ID"
+		{
+			"FileMapping"
+			{
+				"LocalPath" "./linux-unpacked/*"
+				"DepotPath" "."
+				"Recursive" "1"
+			}
+		}
+	}
+}

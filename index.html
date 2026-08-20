@@ -481,23 +481,41 @@
     .seg { display:inline-flex; border:1px solid #3a4048; border-radius:6px; overflow:hidden; }
     .seg button { margin:0; border:none; border-radius:0; padding:6px 16px; font-size:13px; background:#1a1e24; color:#c7ccd1; }
     .seg button.active { background:#ffd23f; color:#15181c; font-weight:bold; }
-    .htpSlide { padding:12px 0; border-bottom:1px solid #2c3138; scroll-margin-top:4px; }
-    .htpSlide:first-child { padding-top:2px; }
-    .htpSlide:last-child { border-bottom:none; }
-    .htpSlide canvas { display:block; margin:0 auto 8px; background:#0c0e11; border-radius:6px; max-width:100%; height:auto; }
-    #htpFallSlot { width:220px; height:220px; max-width:100%; aspect-ratio:1/1; margin:0 auto 8px;
-                   background:#0c0e11; border-radius:6px; overflow:hidden; }
+    /* How to play: a full-screen, one-rule-at-a-time interactive walkthrough — the whole
+       viewport is the classroom, one big playable board per rule (no scrolling modal). */
+    #htpFull { position:fixed; inset:0; z-index:150; display:flex; flex-direction:column; align-items:center;
+        background:#0f1216; padding:calc(10px + env(safe-area-inset-top)) 14px calc(12px + env(safe-area-inset-bottom));
+        animation:htpFadeIn 0.25s ease; }
+    @keyframes htpFadeIn { from { opacity:0; } to { opacity:1; } }
+    #htpClose { position:absolute; top:calc(8px + env(safe-area-inset-top)); right:10px; z-index:2;
+        background:none; border:none; color:#69727b; font-size:22px; padding:8px 10px; cursor:pointer; }
+    #htpClose:hover { color:#e6e6e6; }
+    #htpHead { text-align:center; max-width:600px; flex:none; padding:0 34px; }
+    #htpHead h2 { margin:0 0 4px; font-size:clamp(18px, 3.4vh, 26px); color:#e6e6e6; }
+    #htpHead p { margin:0; font-size:clamp(12px, 2.1vh, 15px); color:#c7ccd1; }
+    #htpHead p b { color:#e6e6e6; }
+    #htpStage { position:relative; flex:1; min-height:0; width:100%; margin:8px 0;
+        display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
+    #htpBigCanvas { background:#0c0e11; border-radius:14px; touch-action:none; cursor:pointer; display:block; }
+    #htpFallSlot { background:#0c0e11; border-radius:14px; overflow:hidden; }
     #htpFallSlot canvas { width:100% !important; height:100% !important; }
-    .htpSlide p { text-align:left; margin:0; font-size:13px; color:#c7ccd1; }
-    .htpSlide p b { color:#e6e6e6; }
-    #htpNav { display:flex; align-items:center; justify-content:space-between; gap:10px;
-              margin:4px 0 12px; position:sticky; top:0; background:#1a1e24; padding-bottom:6px; }
-    #htpNav button { margin:0; padding:6px 12px; font-size:13px; }
-    #htpNav button:disabled { opacity:0.35; cursor:default; }
-    #htpDots { display:flex; gap:6px; }
-    .htpDot { width:7px; height:7px; border-radius:50%; background:#3a4048; padding:0; border:none;
-              cursor:pointer; }
-    .htpDot.active { background:#ffd23f; }
+    .htpGoal { padding:7px 14px; border-radius:16px; width:max-content; max-width:92%;
+        font-size:clamp(12px, 2vh, 15px); font-weight:600; color:#ffd23f; background:rgba(15,18,22,0.82);
+        border:1px solid rgba(255,210,63,0.45); text-align:center; }
+    .htpGoal.pulse { animation:htpGoalPulse 1.6s ease-in-out infinite; }
+    .htpGoal.done { color:#78dc8c; border-color:rgba(120,220,140,0.5); animation:none; }
+    @keyframes htpGoalPulse { 0%,100% { box-shadow:0 0 0 0 rgba(255,210,63,0); } 50% { box-shadow:0 0 14px 2px rgba(255,210,63,0.3); } }
+    #htpGoalChip { pointer-events:none; }   /* in-flow, right under the board */
+    #newbieBanner { width:100%; margin-bottom:8px; border-color:rgba(255,210,63,0.5); color:#ffd23f;
+        animation:htpGoalPulse 2.2s ease-in-out infinite; }
+    #htpFoot { flex:none; display:flex; align-items:center; justify-content:center; gap:12px; width:100%; max-width:620px; }
+    #htpFoot .pbtn { margin:0; padding:9px 16px; font-size:14px; width:auto; }
+    #htpFoot .pbtn:disabled { opacity:0.35; cursor:default; }
+    #htpDots { display:flex; gap:7px; }
+    .htpDot { width:9px; height:9px; border-radius:50%; background:#3a4048; padding:0; border:none; cursor:pointer; }
+    .htpDot.active { background:#ffd23f; transform:scale(1.25); }
+    .htpDot.goalDone { background:#78dc8c; }
+    .htpDot.goalDone.active { background:#78dc8c; box-shadow:0 0 0 2px rgba(120,220,140,0.35); }
 </style>
 </head>
 <body>
@@ -515,7 +533,7 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 183</div>
+<div id="buildTag">build 184</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -5617,6 +5635,16 @@ let gameOverTimer = null;
 // slide-to-the-rim-then-tip-and-fall (the vertical fall alone, under stepFall's constant
 // "gravity", takes ~2.5s regardless of how far it slides first).
 function showGameOverModal() {
+    // Steam build only (window.tauSteam comes from the wrapper's preload; absent on web/mobile):
+    // a genuine human win — vs the AI (classic/ladder/ranked/coach) or an online match, never
+    // local pass-and-play or the lab's AI-vs-AI — unlocks the first-win achievement.
+    if (window.tauSteam) {
+        const humanWon = onlineMatch ? (!onlineMatch.spectator && (G.winner===0?'blue':'red') === onlineMatch.myColor)
+                                     : (vsAI && !labActive && G.winner === humanIdx);
+        if (humanWon) window.tauSteam.unlock('ACH_WIN_ONE_GAME');
+        window.tauSteam.setStatus('Between games');
+    }
+    if (typeof markOnboarded === 'function' && !labActive) markOnboarded('played');   // finished a real game = onboarded
     clearTimeout(gameOverTimer);
     gameOverTimer = setTimeout(renderGameOverSheet, 2800);
 }
@@ -5735,6 +5763,7 @@ function startGame(aiMode, humanColorIdx, difficulty) {
     exitOnlineMatch();
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
     vsAI = aiMode;
+    if (window.tauSteam) window.tauSteam.setStatus(aiMode ? 'In a match vs the AI' : 'In a match');   // Steam friends-list presence
     aiDifficulty = difficulty || 'normal';
     if (difficulty !== 'ladder') ladderLevel = null;   // classic AI / online / local game — not a ladder rung
     humanIdx = humanColorIdx===undefined ? 0 : humanColorIdx;
@@ -5905,6 +5934,7 @@ function coachGuidedCommit() {
 }
 // Natural end OR tap-to-skip of the last watched segment: hand the position to the player.
 function coachHandoff() {
+    if (typeof markOnboarded === 'function') markOnboarded('coach');   // guided beats done = onboarded
     coachActive = false; coachStage = 'off'; coachGuided = null;
     clearTurn(); G.over = false; G.winner = null; G.active = 0;
     fall.active = false; fallenIdx = -1;
@@ -5984,6 +6014,7 @@ function coachArc3DUpdate() {
 }
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
+    if (window.tauSteam) window.tauSteam.setStatus('In the menus');   // Steam friends-list presence
     labActive = false;
     clearTimeout(aiTimer); clearTimeout(aiGapTimer); clearTimeout(coachHoldTimer); aiAnim = null;
     clearTimeout(coachAnimTimer); document.getElementById('views').classList.remove('animSize');
@@ -6255,17 +6286,21 @@ function htpBoard(c,b,sc){
         for(let k=0;k<=seg;k++){ const tt=(a.a0+(a.a1-a.a0)*k/seg)*Math.PI/180; const p=b(a.cx+Math.cos(tt)*a.r,a.cy+Math.sin(tt)*a.r); k?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y); }
         c.stroke(); }
 }
+// htpScale: draw-size multiplier — 1 at the original 230px-tall canvas, proportionally larger on
+// the full-screen walkthrough's big board so pieces/effects keep their visual weight at any size.
+let htpScale = 1;
 function htpPiece(c,piece,b,pin,t){
+    const k=htpScale;
     const feet=piece.feet().map(f=>b(f.x,f.y)), hub=b(piece.x,piece.y);
-    c.strokeStyle=piece.color; c.lineWidth=3; c.lineCap='round';
+    c.strokeStyle=piece.color; c.lineWidth=3*k; c.lineCap='round';
     feet.forEach(f=>{ c.beginPath(); c.moveTo(hub.x,hub.y); c.lineTo(f.x,f.y); c.stroke(); });
-    c.fillStyle=piece.color; c.beginPath(); c.arc(hub.x,hub.y,3.5,0,7); c.fill();
+    c.fillStyle=piece.color; c.beginPath(); c.arc(hub.x,hub.y,3.5*k,0,7); c.fill();
     feet.forEach((f,i)=>{
         if(i===pin){ const pulse=0.55+Math.sin(t*6)*0.25;
-            const g=c.createRadialGradient(f.x,f.y,0,f.x,f.y,13);
+            const g=c.createRadialGradient(f.x,f.y,0,f.x,f.y,13*k);
             g.addColorStop(0,`rgba(255,225,140,${pulse})`); g.addColorStop(0.5,`rgba(255,210,63,${pulse*0.55})`); g.addColorStop(1,'rgba(255,210,63,0)');
-            c.fillStyle=g; c.beginPath(); c.arc(f.x,f.y,13,0,7); c.fill(); }
-        c.beginPath(); c.arc(f.x,f.y,5,0,7); c.fillStyle=(i===pin)?'#ffd23f':piece.color; c.fill();
+            c.fillStyle=g; c.beginPath(); c.arc(f.x,f.y,13*k,0,7); c.fill(); }
+        c.beginPath(); c.arc(f.x,f.y,5*k,0,7); c.fillStyle=(i===pin)?'#ffd23f':piece.color; c.fill();
     });
 }
 const htpCache = {};
@@ -6283,11 +6318,179 @@ function htpCrossLimit(base,pivotIdx,dir){
     }
     return ang;
 }
+// ---------- Try-it layer: the first four rules are PLAYABLE, not just watched ----------
+// Each of those slides runs its attract loop until the first touch, then hands the piece to the
+// player: tap a foot to hold it (that's the pivot), drag to swing. It's the REAL engine
+// throughout — the same Piece/rotateAround/resolvePush/countCrossings a match runs — with one
+// small goal per rule and a confetti pop when it lands. Goals persist for the session.
+const HTP_TRY = {
+    pivot: { make: () => ({ p: mkP(0,2,3,-0.5) }),
+             goal: 'Try it — tap a foot to hold it', praise: 'Held! That foot is your pivot.' },
+    swing: { make: () => ({ p: mkP(0,6,6,-0.4) }),
+             goal: 'Try it — hold a foot, then drag to swing around it', praise: 'A real swing — that’s a whole move.' },
+    push:  { make: () => ({ p: mkP(0,-20,0,0.3), red: mkP(1,20,0,Math.PI), red0:{x:20,y:0} }),
+             goal: 'Try it — swing into Red and shove them', praise: 'Shoved! Contact is real physics.' },
+    cross: { make: () => ({ p: mkP(0,-24,12,0.5) }),
+             goal: 'Try it — swing until the one-line rule stops you', praise: 'Blocked — one line per turn.' },
+};
+function htpState(key) {
+    if (!htpCache['try_'+key]) htpCache['try_'+key] = Object.assign(
+        { key, touched:false, pinned:null, dragging:false, armFrom:null, lastAng:0, turnDir:0,
+          netAng:0, crossings:0, done:false, burst:null, parts:[], lastT:0,
+          lockFlashT:-9, blockFlashT:-9, blockId:null }, HTP_TRY[key].make());
+    return htpCache['try_'+key];
+}
+function htpGoalDone(key, st, at, extraText) {
+    st.done = true;
+    st.burst = { x: at.x, y: at.y, t: st.lastT };
+    st.parts = Array.from({length:26}, () => ({ a: Math.random()*Math.PI*2, v: 22+Math.random()*46,
+        life: 0.8+Math.random()*0.5, col: ['#ffd23f','#6b9eff','#ff6b6b','#78dc8c'][Math.floor(Math.random()*4)] }));
+    st.praiseText = '✓ ' + (extraText || t(HTP_TRY[key].praise));
+    if (typeof htpChipSync === 'function') htpChipSync();
+    if (navigator.vibrate) { try { navigator.vibrate(18); } catch(e) {} }
+}
+// One drag delta, run through the rules in engine-sized substeps. Own feet never leave the board
+// here (that rule gets its own 3D slide); the cross slide also enforces the one-crossing budget.
+function htpTrySwing(st, key, dA) {
+    if (st.turnDir !== 0 && Math.sign(dA) !== st.turnDir) { st.lockFlashT = st.lastT; return; }
+    const pv = st.p.feet()[st.pinned], stepMax = 1.5*Math.PI/180;
+    const steps = Math.max(1, Math.ceil(Math.abs(dA)/stepMax)), step = dA/steps;
+    for (let s = 0; s < steps; s++) {
+        const before = st.p.feet();
+        st.p.rotateAround(pv.x, pv.y, step);
+        let blockId = st.p.feet().some(f => Math.hypot(f.x,f.y) > CFG.edgeU) ? 'edge' : null;
+        if (!blockId && key === 'cross') {
+            const evs = countCrossings(before, st.p.feet());
+            const added = evs.reduce((a,v) => a + Math.min(v.length,1), 0);
+            if (st.crossings + added > 1) blockId = (evs.find(v => v.length) || [])[0] || 'r0';
+            else st.crossings += added;
+        }
+        if (blockId) {
+            st.p.rotateAround(pv.x, pv.y, -step);
+            st.blockFlashT = st.lastT; st.blockId = blockId;
+            if (key === 'cross' && blockId !== 'edge' && !st.done)
+                htpGoalDone(key, st, st.p.feet()[(st.pinned+1)%3]);
+            break;
+        }
+        st.netAng += step;
+        if (key === 'push') resolvePush(st.p, st.red);
+    }
+    if (st.turnDir === 0 && Math.abs(st.netAng) > 4*Math.PI/180) st.turnDir = Math.sign(st.netAng);
+    if (key === 'swing' && !st.done && Math.abs(st.netAng) >= 55*Math.PI/180)
+        htpGoalDone(key, st, st.p.feet()[(st.pinned+1)%3]);
+    if (key === 'push' && !st.done) {
+        const moved = Math.hypot(st.red.x - st.red0.x, st.red.y - st.red0.y);
+        const offBoard = st.red.feet().some(f => Math.hypot(f.x,f.y) > CFG.edgeU + CFG.edgeEps);
+        if (moved >= 5 || offBoard)
+            htpGoalDone(key, st, { x: st.red.x, y: st.red.y },
+                        offBoard ? t('Off the board — that’s the win!') : null);
+    }
+}
+function htpAttachTry(canvas, key, currentKey) {
+    const active = () => !currentKey || currentKey() === key;   // shared canvas: act only on your step
+    const toBoard = ev => {
+        const w = canvas.width, h = canvas.height;   // live: the fullscreen canvas resizes
+        const r = canvas.getBoundingClientRect(), sc = htpMap(w,h).sc;
+        const px = (ev.clientX-r.left)*(w/r.width), py = (ev.clientY-r.top)*(h/r.height);
+        return { x: (px-w/2)/sc, y: (py-h/2)/sc };
+    };
+    const startDrag = (st, m, pv) => {
+        st.lastAng = Math.atan2(m.y-pv.y, m.x-pv.x);
+        st.dragging = true; st.turnDir = 0; st.crossings = 0; st.netAng = 0; st.blockId = null;
+    };
+    // Gestures mirror the real game: tap a foot to hold it (the pivot), then drag a DIFFERENT
+    // foot — or open space — around it to swing. A motionless tap on another foot re-pins to it
+    // instead; a pull-away from the just-pinned foot also swings, so pin+swing works one-handed.
+    canvas.addEventListener('pointerdown', ev => {
+        if (!active()) return;
+        const st = htpState(key), m = toBoard(ev);
+        if (!st.touched) { st.touched = true; if (typeof htpChipSync === 'function') htpChipSync(); }
+        let best = -1, bd = 100;   // 10u grab radius (squared)
+        st.p.feet().forEach((f,i) => { const d = (f.x-m.x)**2 + (f.y-m.y)**2; if (d < bd) { bd = d; best = i; } });
+        const pin = i => { st.pinned = i; if (key === 'pivot' && !st.done) htpGoalDone(key, st, st.p.feet()[i]); };
+        st.armFrom = m; st.pendingPin = null;
+        if (st.pinned === null) { if (best >= 0) pin(best); }
+        else if (best === st.pinned || best < 0) { /* pull-away (or open-space drag) swings — see move */ }
+        else st.pendingPin = best;   // another foot: drag = swing around the pivot, plain tap = re-pin
+        try { canvas.setPointerCapture(ev.pointerId); } catch(e) {}
+        ev.preventDefault();
+    });
+    canvas.addEventListener('pointermove', ev => {
+        if (!active()) return;
+        const st = htpState(key);
+        if (st.pinned === null) return;
+        const m = toBoard(ev), pv = st.p.feet()[st.pinned];
+        if (!st.dragging) {   // movement past the tap threshold turns the gesture into a swing
+            if (st.armFrom && Math.hypot(m.x-st.armFrom.x, m.y-st.armFrom.y) > 3
+                           && Math.hypot(m.x-pv.x, m.y-pv.y) > 6) { st.pendingPin = null; startDrag(st, m, pv); }
+            return;
+        }
+        const a = Math.atan2(m.y-pv.y, m.x-pv.x);
+        let dA = norm(a - st.lastAng); st.lastAng = a;
+        if (!dA) return;
+        dA = Math.max(-0.45, Math.min(0.45, dA));   // a wild pointer jump can't tunnel through the rules
+        htpTrySwing(st, key, dA);
+    });
+    const endTurnUp = () => { const st = htpState(key);
+        if (!st.dragging && st.pendingPin !== null && st.pendingPin !== undefined) {
+            st.pinned = st.pendingPin;
+            if (key === 'pivot' && !st.done) htpGoalDone(key, st, st.p.feet()[st.pinned]);
+        }
+        st.pendingPin = null; st.dragging = false; st.armFrom = null;
+        st.turnDir = 0; st.crossings = 0; st.netAng = 0; };
+    canvas.addEventListener('pointerup', endTurnUp);
+    canvas.addEventListener('pointercancel', endTurnUp);
+}
+// The live (post-touch) frame for a try-it slide: real pieces, rule feedback, confetti.
+function htpDrawTry(c,w,h,t,key) {
+    const st = htpState(key); st.lastT = t;
+    const m = htpMap(w,h); htpBoard(c,m.b,m.sc);
+    if (st.red) htpPiece(c, st.red, m.b, -1, t);
+    htpPiece(c, st.p, m.b, st.pinned === null ? -1 : st.pinned, t);
+    if (st.pinned === null) {   // touched but nothing held yet: every foot invites the tap
+        const pulse = 0.35 + 0.3*Math.abs(Math.sin(t*3));
+        for (const f of st.p.feet()) { const g = m.b(f.x,f.y);
+            c.strokeStyle = `rgba(255,210,63,${pulse})`; c.lineWidth = 2*htpScale;
+            c.beginPath(); c.arc(g.x,g.y,11*htpScale,0,7); c.stroke(); }
+    }
+    if (t - st.lockFlashT < 0.5 && st.pinned !== null) {   // fought the one-direction lock
+        const pv = m.b(st.p.feet()[st.pinned].x, st.p.feet()[st.pinned].y), k = 1-(t-st.lockFlashT)/0.5;
+        c.strokeStyle = `rgba(255,107,107,${0.7*k})`; c.lineWidth = 3*htpScale;
+        c.beginPath(); c.arc(pv.x,pv.y,(15+9*(1-k))*htpScale,0,7); c.stroke();
+    }
+    if (t - st.blockFlashT < 0.9 && st.blockId) {   // the line (or rim) that refused the move
+        const k = 1-(t-st.blockFlashT)/0.9, O = m.b(0,0);
+        c.strokeStyle = `rgba(255,107,107,${(0.25+0.5*k)*Math.abs(Math.sin(t*8))})`; c.lineWidth = 3*htpScale;
+        c.beginPath();
+        if (st.blockId === 'edge') c.arc(O.x,O.y,CFG.edgeU*m.sc,0,7);
+        else if (st.blockId[0] === 'r') c.arc(O.x,O.y,CFG.rings[+st.blockId[1]]*m.sc,0,7);
+        else { const a = CFG.sideArcs[+st.blockId[1]], seg = 48;
+            for (let i=0;i<=seg;i++){ const tt=(a.a0+(a.a1-a.a0)*i/seg)*Math.PI/180;
+                const p=m.b(a.cx+Math.cos(tt)*a.r, a.cy+Math.sin(tt)*a.r); i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y); } }
+        c.stroke();
+    }
+    if (st.burst) {   // confetti pop where the goal landed
+        const age = t - st.burst.t, o = m.b(st.burst.x, st.burst.y);
+        let alive = false;
+        for (const p of st.parts) {
+            const a2 = Math.min(age, p.life); if (age < p.life) alive = true;
+            const fade = Math.max(0, 1 - age/p.life);
+            c.fillStyle = p.col; c.globalAlpha = fade;
+            c.beginPath();
+            c.arc(o.x + Math.cos(p.a)*p.v*a2*htpScale, o.y + Math.sin(p.a)*p.v*a2*htpScale + 26*a2*a2*htpScale, 2.4*htpScale, 0, 7);
+            c.fill();
+        }
+        c.globalAlpha = 1;
+        if (!alive && age > 2) st.burst = null;
+    }
+}
 function htpSlidePivot(c,w,h,t){
+    if (htpState('pivot').touched) return htpDrawTry(c,w,h,t,'pivot');
     const {b}=htpMap(w,h); htpBoard(c,b,htpMap(w,h).sc);
     htpPiece(c, mkP(0,2,3,-0.5), b, 0, t);   // one piece, resting; the pinned foot glows
 }
 function htpSlideSwing(c,w,h,t){
+    if (htpState('swing').touched) return htpDrawTry(c,w,h,t,'swing');
     const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
     const base=mkP(0,6,6,-0.4), pv=base.feet()[0];
     const ang=(30*Math.PI/180)*Math.sin(t*3.0);            // ping-pong ~1s each way around the pinned foot
@@ -6295,6 +6498,7 @@ function htpSlideSwing(c,w,h,t){
     htpPiece(c,p,m.b,0,t);
 }
 function htpSlidePush(c,w,h,t){
+    if (htpState('push').touched) return htpDrawTry(c,w,h,t,'push');
     const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
     const period=2.0, prog=htpEaseHold((t%period)/period);
     const blue=mkP(0,-20,0,0.3), red=mkP(1,20,0,Math.PI);   // face each other; blue swings a leg into red
@@ -6305,6 +6509,7 @@ function htpSlidePush(c,w,h,t){
     htpPiece(c,blue,m.b,pivotIdx,t);
 }
 function htpSlideCross(c,w,h,t){
+    if (htpState('cross').touched) return htpDrawTry(c,w,h,t,'cross');
     const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
     if(!htpCache.crossBase) htpCache.crossBase=mkP(0,-24,12,0.5);
     const base=htpCache.crossBase, pivotIdx=2, dir=1;
@@ -6312,7 +6517,7 @@ function htpSlideCross(c,w,h,t){
     const prog=htpEaseHold((t%2.4)/2.4), pv=base.feet()[pivotIdx];
     const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*htpCache.crossLim);
     if(prog>0.8){ const O=m.b(0,0), flash=0.35+0.4*Math.abs(Math.sin(t*8));   // the next ring flashes "blocked"
-        c.strokeStyle=`rgba(255,107,107,${flash})`; c.lineWidth=3;
+        c.strokeStyle=`rgba(255,107,107,${flash})`; c.lineWidth=3*htpScale;
         c.beginPath(); c.arc(O.x,O.y,CFG.rings[1]*m.sc,0,7); c.stroke(); }
     htpPiece(c,p,m.b,pivotIdx,t);
 }
@@ -6328,8 +6533,8 @@ function htpSlideDouble(c,w,h,t){
     const f=p.feet()[2];
     if (nearLineIds(f, CFG.holdEps).length){
         const g=m.b(f.x,f.y), flash=0.4+0.35*Math.abs(Math.sin(t*6));
-        c.strokeStyle=`rgba(120,220,140,${flash})`; c.lineWidth=3;
-        c.beginPath(); c.arc(g.x,g.y,11,0,7); c.stroke();
+        c.strokeStyle=`rgba(120,220,140,${flash})`; c.lineWidth=3*htpScale;
+        c.beginPath(); c.arc(g.x,g.y,11*htpScale,0,7); c.stroke();
     }
     htpPiece(c,p,m.b,pivotIdx,t);
 }
@@ -6347,8 +6552,8 @@ function htpSlideTwoFeet(c,w,h,t){
         const f=p.feet()[i];
         if (nearLineIds(f, CFG.holdEps).length){
             const g=m.b(f.x,f.y), flash=0.4+0.35*Math.abs(Math.sin(t*6));
-            c.strokeStyle=`rgba(120,220,140,${flash})`; c.lineWidth=3;
-            c.beginPath(); c.arc(g.x,g.y,11,0,7); c.stroke();
+            c.strokeStyle=`rgba(120,220,140,${flash})`; c.lineWidth=3*htpScale;
+            c.beginPath(); c.arc(g.x,g.y,11*htpScale,0,7); c.stroke();
         }
     }
     htpPiece(c,p,m.b,pivotIdx,t);
@@ -6429,7 +6634,7 @@ function htp3DTick(dt) {
     }
     htp3DUpdateCam(dt);
 }
-function htp3DEnter() {
+function htp3DEnter(size) {
     if (!renderer) return;
     const slot = document.getElementById('htpFallSlot');
     if (!slot) return;
@@ -6439,7 +6644,7 @@ function htp3DEnter() {
     // pieces in the same scene ("multiple reds and blues"). Stop it for the duration of this demo.
     if (typeof demoStop === 'function') demoStop();
     slot.appendChild(document.getElementById('view3d'));
-    const size = 220;
+    size = size || 220;
     const cv3 = document.getElementById('view3d');
     cv3.style.width = size+'px'; cv3.style.height = size+'px'; cv3.style.display = 'block';
     renderer.setSize(size, size, false); camera.aspect = 1; camera.updateProjectionMatrix();
@@ -6461,87 +6666,176 @@ function htp3DExit() {
 }
 // Wording taken from the designer's own rules (Written elements.docx).
 const HTP_STEPS = [
-    { title:t('Hold one foot'), text:t('Hold one foot still and rotate the other two.'), draw:htpSlidePivot },
-    { title:t('Move in circles'), text:t('The moving feet trace an arc. You may only move in one direction per turn.'), draw:htpSlideSwing },
-    { title:t('Push your opponent'), text:t('Push your opponent by moving into their legs.'), draw:htpSlidePush },
-    { title:t('One line per turn'), text:t('You may cross only one line per turn. A foot that starts on a line leaves it for free.'), draw:htpSlideCross },
+    { title:t('Hold one foot'), text:t('Hold one foot still and rotate the other two.'), draw:htpSlidePivot, tryKey:'pivot' },
+    { title:t('Move in circles'), text:t('The moving feet trace an arc. You may only move in one direction per turn.'), draw:htpSlideSwing, tryKey:'swing' },
+    { title:t('Push your opponent'), text:t('Push your opponent by moving into their legs.'), draw:htpSlidePush, tryKey:'push' },
+    { title:t('One line per turn'), text:t('You may cross only one line per turn. A foot that starts on a line leaves it for free.'), draw:htpSlideCross, tryKey:'cross' },
     { title:t('Corners count once'), text:t('A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.'), draw:htpSlideDouble },
     { title:t('Two feet at once'), text:t('Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.'), draw:htpSlideTwoFeet },
     { title:t('Push them off'), text:t('Push your opponent off the edge. When one of their feet leaves the board, you win.'), is3D:true },
 ];
-let htpRaf=null, htpScrollBox=null, htpScrollHandler=null;
+let htpRaf=null, htpFullIdx=0, htpKeyHandler=null, htpResizeHandler=null;
 function stopHowToPlayAnim() {
     if (htpRaf) cancelAnimationFrame(htpRaf); htpRaf=null;
-    if (htpScrollBox && htpScrollHandler) htpScrollBox.removeEventListener('scroll', htpScrollHandler);
-    htpScrollBox=null; htpScrollHandler=null;
+    if (htpKeyHandler) { removeEventListener('keydown', htpKeyHandler); htpKeyHandler=null; }
+    if (htpResizeHandler) { removeEventListener('resize', htpResizeHandler); htpResizeHandler=null; }
     if (htp3DActive) htp3DExit();
+    const el = document.getElementById('htpFull');
+    if (el) el.remove();
+}
+// The shared goal chip reflects the CURRENT step's try-state; called on step change and whenever
+// a goal completes. Dots double as a progress tracker: earned goals stay green for the session.
+function htpChipSync() {
+    const chip = document.getElementById('htpGoalChip');
+    if (!chip) return;
+    const s = HTP_STEPS[htpFullIdx];
+    if (!s || !s.tryKey) { chip.style.display='none'; }
+    else {
+        const st = htpState(s.tryKey);
+        chip.style.display='block';
+        chip.classList.toggle('done', st.done);
+        chip.classList.toggle('pulse', !st.touched && !st.done);
+        chip.textContent = st.done ? st.praiseText : '\u{1F446} ' + t(HTP_TRY[s.tryKey].goal);
+    }
+    document.querySelectorAll('#htpFull .htpDot').forEach((d,i) => {
+        const k = HTP_STEPS[i].tryKey;
+        d.classList.toggle('goalDone', !!(k && htpCache['try_'+k] && htpCache['try_'+k].done));
+        d.classList.toggle('active', i === htpFullIdx);
+    });
+}
+// Size the stage: one big square board filling whatever the head/foot rows leave free.
+function htpLayout() {
+    const stage = document.getElementById('htpStage');
+    const cv = document.getElementById('htpBigCanvas');
+    if (!stage || !cv) return 0;
+    const r = stage.getBoundingClientRect();
+    // reserve a row for the goal chip below the board so it never squeezes the canvas
+    const size = Math.max(200, Math.floor(Math.min(r.width, r.height - 48)));
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    cv.style.width = size+'px'; cv.style.height = size+'px';
+    cv.width = Math.round(size*ratio); cv.height = Math.round(size*ratio);
+    const slot = document.getElementById('htpFallSlot');
+    if (slot) { slot.style.width = size+'px'; slot.style.height = size+'px'; }
+    return size;
+}
+function htpShowStep(idx) {
+    htpFullIdx = Math.max(0, Math.min(HTP_STEPS.length-1, idx));
+    const s = HTP_STEPS[htpFullIdx];
+    document.getElementById('htpTitle').textContent = s.title;
+    document.getElementById('htpText').innerHTML = s.text;
+    const cv = document.getElementById('htpBigCanvas'), slot = document.getElementById('htpFallSlot');
+    cv.style.display = s.is3D ? 'none' : 'block';
+    slot.style.display = s.is3D ? 'block' : 'none';
+    // Measure AFTER the head/foot have their real content (an empty head measures ~0 tall and
+    // the stage then claims rows the footer needs — the canvas ends up under the buttons).
+    const size = htpLayout();
+    if (s.is3D && !htp3DActive) htp3DEnter(size);
+    else if (!s.is3D && htp3DActive) htp3DExit();
+    document.getElementById('htpPrev').disabled = htpFullIdx === 0;
+    const last = htpFullIdx === HTP_STEPS.length-1;
+    document.getElementById('htpNext').style.display = last ? 'none' : '';
+    document.getElementById('htpCoachBtn').style.display = last ? '' : 'none';
+    htpChipSync();
 }
 function openHowToPlay() {
     stopHowToPlayAnim();
-    const slidesHtml = `
-        <div id="htpNav">
-            <button id="htpPrev">&lsaquo; ${t('Prev')}</button>
+    const wrap = document.createElement('div');
+    wrap.id = 'htpFull';
+    wrap.innerHTML = `
+        <button id="htpClose" aria-label="${t('Close')}">\u2715</button>
+        <div id="htpHead"><h2 id="htpTitle"></h2><p id="htpText"></p></div>
+        <div id="htpStage">
+            <canvas id="htpBigCanvas"></canvas>
+            <div id="htpFallSlot" style="display:none"></div>
+            <div class="htpGoal" id="htpGoalChip" style="display:none"></div>
+        </div>
+        <div id="htpFoot">
+            <button id="htpPrev" class="pbtn pbtnQuiet">\u2039 ${t('Back')}</button>
             <span id="htpDots">${HTP_STEPS.map((_,i)=>`<button class="htpDot" data-idx="${i}"></button>`).join('')}</span>
-            <button id="htpNext">${t('Next')} &rsaquo;</button>
-        </div>` + HTP_STEPS.map((s,i) => `
-        <div class="htpSlide" data-idx="${i}">
-            ${s.is3D ? `<div id="htpFallSlot"></div>` : `<canvas id="htpCanvas${i}" width="340" height="230"></canvas>`}
-            <p><b>${s.title}</b><br>${s.text}</p>
-        </div>`).join('');
-    showModal(t('How to play'), slidesHtml, [ { label: t('Got it'), onClick: stopHowToPlayAnim } ], true);
-    document.getElementById('modalBox').classList.add('wide');
-    htp3DEnter();
+            <button id="htpNext" class="pbtn">${t('Next')} \u203A</button>
+            <button id="htpCoachBtn" class="pbtn" style="display:none">${t('Play a coached game')} \u2192</button>
+        </div>`;
+    document.body.appendChild(wrap);
+    htpLayout();
 
-    const ctxs = HTP_STEPS.map((s,i) => s.is3D ? null : document.getElementById('htpCanvas'+i).getContext('2d'));
+    // One shared canvas hosts every try-it step: the handlers route to the current step's state.
+    const cv = document.getElementById('htpBigCanvas');
+    for (const key of Object.keys(HTP_TRY))
+        htpAttachTry(cv, key, () => HTP_STEPS[htpFullIdx].tryKey);
+
+    document.getElementById('htpClose').addEventListener('click', stopHowToPlayAnim);
+    document.getElementById('htpPrev').addEventListener('click', () => htpShowStep(htpFullIdx-1));
+    document.getElementById('htpNext').addEventListener('click', () => htpShowStep(htpFullIdx+1));
+    document.querySelectorAll('#htpFull .htpDot').forEach(d =>
+        d.addEventListener('click', () => htpShowStep(+d.dataset.idx)));
+    // The rules read best right before doing: the last step hands over to the coached opening.
+    document.getElementById('htpCoachBtn').addEventListener('click', () => {
+        stopHowToPlayAnim(); startCoach();
+    });
+    htpKeyHandler = e => {
+        if (e.key === 'Escape') stopHowToPlayAnim();
+        else if (e.key === 'ArrowRight') htpShowStep(htpFullIdx+1);
+        else if (e.key === 'ArrowLeft') htpShowStep(htpFullIdx-1);
+    };
+    addEventListener('keydown', htpKeyHandler);
+    htpResizeHandler = () => { const size = htpLayout(); if (htp3DActive) htp3DEnter(size); };
+    addEventListener('resize', htpResizeHandler);
+
+    const ctx = cv.getContext('2d');
     const t0 = performance.now();
     const loop = () => {
-        const t = (performance.now()-t0)/1000;
-        HTP_STEPS.forEach((s,i) => { if (!s.is3D) s.draw(ctxs[i], 340, 230, t); });
+        const s = HTP_STEPS[htpFullIdx];
+        if (!s.is3D && cv.width > 0) {
+            htpScale = cv.height / 230;   // the draw code's visual weights are tuned at 230px
+            s.draw(ctx, cv.width, cv.height, (performance.now()-t0)/1000);
+            htpScale = 1;
+        }
         htpRaf = requestAnimationFrame(loop);
     };
+    htpShowStep(0);
     loop();
-
-    const dots = Array.from(document.querySelectorAll('.htpDot'));
-    const prevBtn = document.getElementById('htpPrev'), nextBtn = document.getElementById('htpNext');
-    let current = 0;
-    const setActive = idx => {
-        current = idx;
-        dots.forEach((d,i) => d.classList.toggle('active', i===idx));
-        prevBtn.disabled = idx===0; nextBtn.disabled = idx===HTP_STEPS.length-1;
-    };
-    const goTo = idx => document.querySelector(`.htpSlide[data-idx="${idx}"]`).scrollIntoView({behavior:'smooth', block:'start'});
-    prevBtn.addEventListener('click', () => { if (current>0) goTo(current-1); });
-    nextBtn.addEventListener('click', () => { if (current<HTP_STEPS.length-1) goTo(current+1); });
-    dots.forEach(d => d.addEventListener('click', () => goTo(+d.dataset.idx)));
-
-    // Drives the active dot/Prev/Next state from wherever the box actually is scrolled to —
-    // one plain scroll listener covers both the button-driven scrollIntoView calls above AND
-    // the player just scrolling by hand, so "click through" and "scroll through" always agree
-    // (an IntersectionObserver here was flaky: a big jump can cross several slides' thresholds
-    // in one batch, and whichever entry happened to come last in that batch "won" arbitrarily).
-    const slideEls = Array.from(document.querySelectorAll('.htpSlide'));
-    htpScrollBox = document.getElementById('modalBox');
-    htpScrollHandler = () => {
-        // scrollIntoView({block:'start'}) can't fully align the LAST slide's top with the
-        // container's top if there isn't enough trailing content to scroll that far — it
-        // clamps to the max scroll instead, which the "closest slide top" match below would
-        // then mis-read as an earlier slide. Handle the two ends explicitly; everything else
-        // still falls out of "which slide's top is nearest the container's top".
-        const maxScroll = htpScrollBox.scrollHeight - htpScrollBox.clientHeight;
-        if (htpScrollBox.scrollTop <= 1) { setActive(0); return; }
-        if (htpScrollBox.scrollTop >= maxScroll - 1) { setActive(slideEls.length-1); return; }
-        const boxTop = htpScrollBox.getBoundingClientRect().top;
-        let best=0, bestDist=Infinity;
-        slideEls.forEach((el,i) => {
-            const d = Math.abs(el.getBoundingClientRect().top - boxTop);
-            if (d < bestDist) { bestDist=d; best=i; }
-        });
-        setActive(best);
-    };
-    htpScrollBox.addEventListener('scroll', htpScrollHandler);
-    setActive(0);
 }
 document.getElementById('howToPlayBtn').addEventListener('click', openHowToPlay);
+// ---------- First-visit onboarding: soft-funnel new players into the coached opening ----------
+// "Soft" means the tutorial is always the DEFAULT path, never the only one: a highlighted banner
+// on the menu, plus a one-time nudge when a brand-new player heads straight for a match. The flag
+// is set by finishing the coached beats, finishing any real game, or explicitly skipping — after
+// that the banner and nudge never appear again.
+function onboardState() { try { return localStorage.getItem('tauOnboard'); } catch(e) { return 'na'; } }
+function markOnboarded(how) {
+    try { if (localStorage.getItem('tauOnboard') === null) localStorage.setItem('tauOnboard', how); } catch(e) {}
+    const b = document.getElementById('newbieBanner');
+    if (b) b.remove();
+}
+// The banner is re-entrant (the #newbie demo route re-runs it); the nudge listeners are attached
+// once at load and self-disable via onboardState(), so re-running can never double-fire them.
+function initOnboarding() {
+    if (onboardState() !== null) return;
+    if (document.getElementById('newbieBanner')) return;
+    const row = document.querySelector('#playArea .playRow');
+    if (!row) return;
+    const b = document.createElement('button');
+    b.id = 'newbieBanner'; b.className = 'pbtn';
+    b.textContent = '\u{1F94B} ' + t('New here? Learn Tau in 60 seconds');
+    b.addEventListener('click', startCoach);
+    row.parentNode.insertBefore(b, row);
+}
+// One nudge per visit, at the moment it's most useful: a never-played player starting a match.
+let onboardAsked = false;
+for (const id of ['modeAI', 'modeOnline']) {
+    document.getElementById(id).addEventListener('click', ev => {
+        if (onboardAsked || onboardState() !== null) return;
+        onboardAsked = true;
+        ev.stopImmediatePropagation(); ev.preventDefault();
+        const btn = ev.currentTarget;
+        showModal(t('First game of Tau?'),
+            `<p style="text-align:center;margin:0 0 4px">${t('It takes one guided opening to get it \u2014 pin a foot, swing, shove. 60 seconds.')}</p>`,
+            [ { label: t('Learn in 60 seconds'), onClick: startCoach },
+              { label: t('Just play'), cls: 'modalBtnQuiet', onClick: () => { markOnboarded('skipped'); btn.click(); } } ],
+            true, { dismiss: true });
+    }, true);   // capture phase: runs before the buttons' own handlers
+}
+initOnboarding();
 // ---------- Settings: board theme (dark/light) ----------
 // Apply the CURRENT look (active skin = colour-lab override, else Slate in light mode, else the flat
 // dark default) to every 3D material and the 2D piece colours. Rebuilds the board texture (disposing
@@ -6554,8 +6848,8 @@ function applyTheme() {
         boardTop.material.map = tex; boardTop.material.needsUpdate = true;
         if (old) old.dispose();
     }
-    if (boardRim) boardRim.material.color.set(sk ? sk.rim : 0x8b9199);
-    if (tripods && tripods.length === 2){ tripods[0].userData.mat.color.set(pieceHex(0)); tripods[1].userData.mat.color.set(pieceHex(1)); }
+    if (boardRim) premiumColor(boardRim.material.color.set(sk ? sk.rim : 0x8b9199));
+    if (tripods && tripods.length === 2){ premiumColor(tripods[0].userData.mat.color.set(pieceHex(0))); premiumColor(tripods[1].userData.mat.color.set(pieceHex(1))); }
     if (scene) scene.background = new THREE.Color(sk ? sk.bg : 0x0c0e11);
     if (G && G.pieces){ G.pieces[0].color = pieceHex(0); G.pieces[1].color = pieceHex(1); }
 }
@@ -7533,6 +7827,34 @@ function glowTexture(hot) {
 // Light theme = the pale physical-board look; dark theme = same dark palette as the flat 2D
 // board (disc #171c22, lines #414b56), so in dark mode the two views match instead of the 3D
 // board being a bright pale disc next to a dark 2D one.
+// ===== Premium desktop mode (the Steam build) =====
+// The Electron wrapper launches index.html with ?premium=1: same game, same rules, but the 3D
+// view spends real GPU on looking good — soft shadows, ACES tone mapping, a PMREM studio
+// environment for reflections, lacquered piece materials and uncapped render resolution.
+// The web/mobile builds never set the flag, so their render path is byte-for-byte unchanged.
+const TAU_PREMIUM = (() => { try { return new URLSearchParams(location.search).has('premium'); } catch (e) { return false; } })();
+// r128 has no colour management: hex colours here are authored in sRGB, but the premium
+// renderer's sRGB output stage assumes LINEAR material colours — convert on every set or the
+// pieces wash out to pastel. Chain it around .set(...) (which returns the Color). No-op on web.
+function premiumColor(colorObj) { if (TAU_PREMIUM) colorObj.convertSRGBToLinear(); return colorObj; }
+// A tiny stand-in for a studio HDRI: a dark room with three HDR-bright "softbox" panels that
+// PMREMGenerator turns into an environment map — this is what the clearcoat and metal pick up
+// as reflections. Only ever built once, and only in premium mode.
+function premiumEnvScene() {
+    const s = new THREE.Scene();
+    const room = new THREE.Mesh(new THREE.BoxGeometry(600,300,600),
+        new THREE.MeshBasicMaterial({color:0x14171c, side:THREE.BackSide}));
+    room.position.y = 120; s.add(room);
+    const panel = (w,h,color,intensity,x,y,z) => {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(w,h),
+            new THREE.MeshBasicMaterial({color:new THREE.Color(color).multiplyScalar(intensity), side:THREE.DoubleSide}));
+        m.position.set(x,y,z); m.lookAt(0,0,0); s.add(m);
+    };
+    panel(220,140, 0xfff3e0, 7,    60,140,  40);   // big warm overhead key
+    panel(140, 90, 0xcfe0ff, 3,  -180, 80, -60);   // cool side fill
+    panel(120, 70, 0xffe6c4, 2.5, 140, 60,-140);   // warm rear kicker
+    return s;
+}
 function boardTexture(dark) {
     const S=1024, cv=document.createElement('canvas'); cv.width=cv.height=S;
     // sc must match the mesh's own UV mapping (the full canvas -> the full CFG.edgeU-radius
@@ -7569,7 +7891,11 @@ function boardTexture(dark) {
         c.fillRect(0, 0, S, S);
         c.restore();
     }
-    return new THREE.CanvasTexture(cv);
+    const tex = new THREE.CanvasTexture(cv);
+    // Premium renders with sRGB output; the canvas is authored in sRGB, so tag it as such or
+    // the board comes out washed out after the renderer's linear->sRGB conversion.
+    if (TAU_PREMIUM) tex.encoding = THREE.sRGBEncoding;
+    return tex;
 }
 // The whole piece is ONE watertight mesh, polygonized from a signed-distance field: three
 // quarter-circle leg tubes, a small weld bead at the apex and squashed foot pads, all
@@ -7685,18 +8011,27 @@ const TRIPOD_FOOT_LEN = 2.6;           // tapered vertical foot between the arc 
 let tripodPinMat = null;               // the magnet slug: dark steel, shared by every piece
 function buildTripod(hex) {
     const g=new THREE.Group();
-    const mat=new THREE.MeshStandardMaterial({color:hex, roughness:0.45, metalness:0.15});
+    // Premium: lacquered playing pieces — a clearcoat over the base colour, with the studio
+    // environment map to reflect. The .color API stays the same, so live recolouring works.
+    const mat = TAU_PREMIUM
+        ? new THREE.MeshPhysicalMaterial({color:hex, roughness:0.34, metalness:0.1,
+                                          clearcoat:0.65, clearcoatRoughness:0.22, envMapIntensity:0.9})
+        : new THREE.MeshStandardMaterial({color:hex, roughness:0.45, metalness:0.15});
+    premiumColor(mat.color);
     // Visual legs render a hair wider (1.05x) than the true tube: tangent tubes read on screen as
     // a sliver of daylight between pieces that are "touching", so a nudge of overlap helps.
     if (!fusedTripodGeo) fusedTripodGeo = fusedTripodGeometry(CFG.legRadius*1.05);
-    g.add(new THREE.Mesh(fusedTripodGeo, mat));
+    const body = new THREE.Mesh(fusedTripodGeo, mat);
+    if (TAU_PREMIUM) { body.castShadow = true; body.receiveShadow = true; }
+    g.add(body);
     // The three magnet pins the piece actually stands on -- separate crisp cylinders (they're too
     // thin for the SDF grid), tucked up into the pad so no seam shows. Tips land exactly at y=0.
     if (!tripodPinGeo) tripodPinGeo = new THREE.CylinderGeometry(TRIPOD_PIN_RAD, TRIPOD_PIN_RAD, TRIPOD_PIN_LIFT + 0.6, 16);
-    if (!tripodPinMat) tripodPinMat = new THREE.MeshStandardMaterial({color:0x15151a, roughness:0.35, metalness:0.65});
+    if (!tripodPinMat) { tripodPinMat = new THREE.MeshStandardMaterial({color:0x15151a, roughness:0.35, metalness:0.65}); premiumColor(tripodPinMat.color); }
     for (let i = 0; i < 3; i++) {
         const pin = new THREE.Mesh(tripodPinGeo, tripodPinMat);
         pin.position.set(Math.cos(i*2*Math.PI/3)*CFG.footR, (TRIPOD_PIN_LIFT + 0.6)/2, Math.sin(i*2*Math.PI/3)*CFG.footR);
+        if (TAU_PREMIUM) pin.castShadow = true;
         g.add(pin);
     }
     g.userData.mat = mat;   // one shared material per piece — exposed so the menu logo can recolour it live
@@ -7707,8 +8042,16 @@ function init3D() {
     // preserveDrawingBuffer lets the Cinematic Studio (studio.html, same-origin parent) read this
     // canvas with drawImage on ITS animation frame, not just inside our own render tick — needed to
     // composite the 3D view into an exported video. Negligible cost for a scene this small.
-    renderer=new THREE.WebGLRenderer({canvas:document.getElementById('view3d'), antialias:true, preserveDrawingBuffer:true});
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    renderer=new THREE.WebGLRenderer({canvas:document.getElementById('view3d'), antialias:true, preserveDrawingBuffer:true,
+                                      powerPreference: TAU_PREMIUM ? 'high-performance' : 'default'});
+    renderer.setPixelRatio(TAU_PREMIUM ? (window.devicePixelRatio||1) : Math.min(window.devicePixelRatio||1,2));
+    if (TAU_PREMIUM) {
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.12;
+    }
     // Some phones (seen on Android) actually discard the GPU context under memory pressure while the
     // tab is backgrounded, not just leave a stale frame -- a plain repaint on return can't fix that,
     // the browser has to be told we'll handle recovery (preventDefault on the loss event) and the
@@ -7739,8 +8082,29 @@ function init3D() {
     controls.addEventListener('end',   () => { camDragging = false;
         camManualPos.copy(camera.position); camManualTgt.copy(controls.target);
         camManualSet = true; camCenterFrac = 0; });
-    scene.add(new THREE.HemisphereLight(0xffffff,0x2a2e33,0.95));
-    const dl=new THREE.DirectionalLight(0xffffff,0.55); dl.position.set(45,90,55); scene.add(dl);
+    if (TAU_PREMIUM) {
+        // Cinematic rig, values lifted from steam.html's "tabletop" spike and scaled to this
+        // scene: a warm shadow-casting key, a cool rim from behind, a soft hemisphere fill, and
+        // a PMREM studio environment so the clearcoat pieces have something real to reflect.
+        scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x1c1f24, 0.5));
+        const key = new THREE.DirectionalLight(0xfff1dc, 1.15);
+        key.position.set(70,130,45);
+        key.castShadow = true;
+        key.shadow.mapSize.set(2048,2048);
+        key.shadow.camera.left = key.shadow.camera.bottom = -95;
+        key.shadow.camera.right = key.shadow.camera.top = 95;
+        key.shadow.camera.far = 400;
+        key.shadow.bias = -0.0004;
+        key.shadow.normalBias = 0.5;
+        scene.add(key);
+        const rim = new THREE.DirectionalLight(0x9db8ff, 0.4); rim.position.set(-60,45,-85); scene.add(rim);
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmrem.fromScene(premiumEnvScene(), 0.04).texture;
+        pmrem.dispose();
+    } else {
+        scene.add(new THREE.HemisphereLight(0xffffff,0x2a2e33,0.95));
+        const dl=new THREE.DirectionalLight(0xffffff,0.55); dl.position.set(45,90,55); scene.add(dl);
+    }
     boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU,96),
         new THREE.MeshStandardMaterial({map:boardTexture(currentTheme==='dark'), roughness:0.95}));
     // Board surface sits just BELOW y=0 (where the feet's flat pads end): with it at +0.15 the
@@ -7751,12 +8115,13 @@ function init3D() {
     // drop-off radius, or there's a visible ring of solid grey base showing PAST edgeU before the
     // lip actually slopes away -- a foot crossing edgeU would look like it's still over solid board.
     boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU*1.04,5,96),
-        new THREE.MeshStandardMaterial({color:0x8b9199, roughness:0.6, metalness:0.2}));
+        new THREE.MeshStandardMaterial({color:premiumColor(new THREE.Color(0x8b9199)), roughness:0.6, metalness:0.2}));
     // Top of this grey base band must stay just BELOW the board surface, else it occludes the dark
     // textured top from above and the whole disc reads as blank pale grey (regression when the board
     // was lowered to -0.05 to un-bury the feet: the old rim top at +0.1 then poked through). Height
     // is 5, so centre -2.7 -> top -0.2, safely under boardTop's -0.05.
     boardRim.position.y=-2.7; scene.add(boardRim);
+    if (TAU_PREMIUM) { boardTop.receiveShadow = true; boardRim.receiveShadow = true; }
     tripods=[buildTripod(0x6b9eff), buildTripod(0xff6b6b)];   // [blue, red] = pieces order
     tripods.forEach(t=>scene.add(t));
     htpTripods=[buildTripod(0x6b9eff), buildTripod(0xff6b6b)];   // how-to-play's own pair, hidden until slide 5 is open
@@ -8514,7 +8879,8 @@ function resize() {
                 // Coach beats swap watch<->play layouts constantly; flipping the buffer ratio 3<->2 with
                 // them adds a visible resolution pop at each swap, so the coach stays at a steady 2.
                 const inCoach = typeof coachActive !== 'undefined' && coachActive;
-                const wantRatio = Math.min(window.devicePixelRatio||1, (passiveView() && !inCoach) ? 3 : 2);
+                const wantRatio = TAU_PREMIUM ? (window.devicePixelRatio||1)
+                                              : Math.min(window.devicePixelRatio||1, (passiveView() && !inCoach) ? 3 : 2);
                 // Touch the buffer ONLY when something really changed: assigning canvas.width even
                 // to its current value CLEARS the canvas (a blank frame until the next rAF render),
                 // and setPixelRatio internally re-applies setSize with stale dims. A same-size
@@ -8627,6 +8993,22 @@ if (isShareHash(location.hash)) {
 if (/^#coach\b/i.test(location.hash)) {
     const bootCoach = () => { try { startCoach(); } catch (e) { console.error('coach boot failed', e); } };
     if (document.readyState === 'complete') bootCoach(); else addEventListener('load', bootCoach, { once: true });
+}
+// #howto — open the full-screen interactive walkthrough straight away (same forgiving match as
+// #coach). #newbie does the same but first CLEARS the onboarding flag, so the first-visit banner
+// and the "First game of Tau?" nudge are back exactly as a brand-new player sees them.
+if (/^#(howto|tutorial|newbie)\b/i.test(location.hash)) {
+    const fresh = /^#newbie\b/i.test(location.hash);
+    const bootHtp = () => {
+        try {
+            // No reload here: strip the hash and re-run the banner in place. A reload would
+            // re-enter this same branch and could loop if the hash didn't actually clear.
+            history.replaceState(null, '', location.pathname + location.search);
+            if (fresh) { try { localStorage.removeItem('tauOnboard'); } catch(e) {} initOnboarding(); return; }
+            openHowToPlay();
+        } catch (e) { console.error('how-to-play boot failed', e); }
+    };
+    if (document.readyState === 'complete') bootHtp(); else addEventListener('load', bootHtp, { once: true });
 }
 // ---------- Hidden mode (#nn) wiring: drag-and-drop a model, pick a colour, play ----------
 function nnOpenDrop() {

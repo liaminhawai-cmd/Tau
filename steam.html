@@ -701,6 +701,15 @@ let T = THEMES.noir;   // set for real by applyTheme(THEME) once the scene exist
     a.addEventListener('click', ev => { ev.preventDefault(); applyTheme(k); });
     el.appendChild(a);
   }
+  // Inside the Steam/desktop wrapper (?steam=1) this page is the opener, so give it a way into
+  // the full client (menus, online, coach) — which runs its own premium mode there. F2 in the
+  // wrapper toggles the same two pages from either side.
+  if (new URLSearchParams(location.search).has('steam')) {
+    const sep2 = document.createElement('span'); sep2.className = 'sep'; el.appendChild(sep2);
+    const full = document.createElement('a');
+    full.href = 'index.html?premium=1'; full.textContent = 'full game →';
+    el.appendChild(full);
+  }
 }
 
 // ---- renderer / scene ------------------------------------------------------------------------
@@ -1278,6 +1287,10 @@ function endTurn() {
   if (active.anyFootOff()) { G.over = true; G.winner = 1 - G.active; }
   else if (opp.anyFootOff()) { G.over = true; G.winner = G.active; }
   else G.active = 1 - G.active;
+  // Steam build only (window.tauSteam from the wrapper's preload): a human takeover win —
+  // blue while a player owns it — counts for the first-win achievement, AI-vs-AI never does.
+  if (G.over && playerMode && G.winner === 0 && window.tauSteam)
+    window.tauSteam.unlock('ACH_WIN_ONE_GAME');
   clearTurn();
 }
 
@@ -1818,7 +1831,10 @@ function buildGuides() {
 
 // the shared operations both boards (and the gamepad) drive
 function uiPin(f) {
-  if (canBlueMove()) { sim.state = 'human'; playerMode = true; player.idleCount = 0; }
+  if (canBlueMove()) {
+    if (!playerMode && window.tauSteam) window.tauSteam.setStatus('Playing on the premium board');   // Steam presence
+    sim.state = 'human'; playerMode = true; player.idleCount = 0;
+  }
   else if (sim.state !== 'human') return;
   pinFoot(f);
   buildGuides();
@@ -2088,6 +2104,8 @@ let envGroup = null;   // optional per-theme world around the board (colossus' s
 function applyTheme(name) {
   if (!THEMES[name]) name = 'noir';
   THEME = name; T = THEMES[name];
+  // Steam presence: only while spectating — a takeover game keeps its "playing" line
+  if (window.tauSteam && !playerMode) window.tauSteam.setStatus('Watching the ' + name + ' board');
   renderer.toneMappingExposure = T.exposure;
   scene.background.set(T.bg);
   key.color.set(T.key.color); key.intensity = T.key.intensity; key.position.set(...T.key.pos);
