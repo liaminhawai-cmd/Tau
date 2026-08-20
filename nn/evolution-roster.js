@@ -69,12 +69,19 @@ function d4Slice(dir){return modelPathsForFaces(dir,activeFaceIds(dir,[4]));}
 function activeLadderLevels(dir,ladderN=null){return sync(dir,ladderN).ladderActive.slice();}
 function filterFocus(dir,paths){const live=new Set(activeModelNames(dir));return paths.filter(p=>live.has(path.basename(p,'.json')));}
 function selfplayProfile(paths,{dir}){const s=sync(dir),entries=paths.map(p=>({path:p,name:path.basename(p,'.json'),meta:modelMeta(p)})),elos=entries.map(e=>s.latest[e.name]?.elo).filter(Number.isFinite),maxE=elos.length?Math.max(...elos):0,raw={},weights={},coverage=[],depthCaps={};let sum=0;for(const e of entries){const elo=s.latest[e.name]?.elo,w=Number.isFinite(elo)?Math.exp((elo-maxE)/ELO_TEMP):1;raw[e.name]=w;sum+=w;}const total=Math.max(1,entries.reduce((a,e)=>a+(s.latest[e.name]?.games||0),0));for(const e of entries){const r=Math.max(1e-9,raw[e.name]/Math.max(sum,1e-9)),g=(s.latest[e.name]?.games||0)/total;weights[e.name]=+(r*r/(g+.01)+Math.sqrt(r)).toFixed(6);let cap=1;for(let d=1;d<=4;d++)if(candidateFaces(e,d).some(id=>poolIds(s.facePools[depthKey(d)]).includes(id)))cap=d;depthCaps[e.name]=cap;for(let d=1;d<=cap;d++)for(const id of candidateFaces(e,d))if(poolIds(s.facePools[depthKey(d)]).includes(id)&&!faceReading(s,id))coverage.push({name:e.name,face:id.includes('+P@')?'policy':'bare',depth:d});}return{weights,coverage,depthCaps};}
-// Steepened: the old curve topped out at 10 culls per checkpoint, which meant a 500-face field
-// took days to digest. Density-dependent death should bite hardest when the field is most
-// bloated -- so ~38 above target -> ~4 culls, ~170 above -> ~15, capped at 25 -- and still taper
-// to the same ~1-per-checkpoint equilibrium at the target. Only confidently-measured faces are
-// ever eligible, so a big wipe can only execute the well-measured weak, never the unknown.
-function expectedCulls(n){if(n>=TARGET_FACES)return Math.min(25,1+(n-TARGET_FACES)/12);return Math.max(0,(n-30)/20);}
+// Steepened twice, and both times the shape was absolute where it should have been relative.
+// Measured on a 406-face field: the 25 cap was fully saturated (the curve wanted ~31), so the
+// drain had degenerated into a flat constant no matter how bloated the field got; and because a
+// checkpoint only has to out-drain the ~8 faces per 100 matches that training spawns, the /12
+// slope put the RESTING population near 140 rather than near the target. Fixed by making both
+// terms scale with the field: a slope steep enough that the drain still beats the spawn rate
+// close to target (resting population ~80 at the current spawn rate), and a ceiling proportional
+// to the population it is draining instead of a magic number -- so ~38 above target -> ~10 culls,
+// ~350 above -> ~49, and a huge field is digested in hours instead of days while a near-target
+// field still tapers to the same ~1-per-checkpoint trickle. Eligibility is untouched: only
+// confidently-measured faces are ever candidates, so a big wipe can only execute the
+// well-measured weak, never the unknown.
+function expectedCulls(n){if(n>=TARGET_FACES)return Math.min(Math.max(25,n*.12),1+(n-TARGET_FACES)/4);return Math.max(0,(n-30)/20);}
 function stochasticCount(x){const n=Math.floor(x);return n+(Math.random()<x-n?1:0);}
 function eligibleByDepth(s){const out={D1:[],D2:[],D3:[],D4:[]};for(let d=1;d<=4;d++){const k=depthKey(d),need=FACE_MIN_GAMES[k];for(const id of s.facePools[k].active||[]){const r=faceReading(s,id);if(!r||(+r.games||0)<need||!Number.isFinite(+r.eloHi))continue;out[k].push({id,r,depth:d,key:k});}out[k].sort((a,b)=>+a.r.eloHi-+b.r.eloHi||+a.r.elo-+b.r.elo);}return out;}
 // Cull pressure follows MEASURED compute, not assumed depth cost. The rating store keeps an
