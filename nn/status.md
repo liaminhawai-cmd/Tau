@@ -1,13 +1,13 @@
 # Tau NN training status
-_Last updated: 2026-08-20T03:21:47.030Z_
+_Last updated: 2026-08-20T03:22:06.070Z_
 
 **Self-play batch:** 100
-**Stage:** rating pool placement (started 2026-08-20T03:21:47.030Z)
+**Stage:** pool cycle 192 complete
 **mix:** nnnn:0.6,nnladder:0.3,ladder:0.1
 
 **Dual pool:** 6 active (minimum 4) (dual-pop-002-e40, dual-wild-01-256x128, dual-wild-02-128x128x128x128, dual-wild-03-192x48x192, dual-wild-04-48x96x192, dual-wild-05-128x32x128x32)
 
-**Last gate result:** pool cycle 191 — ckpt-114 402, ultra-148 386, ckpt-142 377, wild-04-192x48x192 355, resume-035 314
+**Last gate result:** pool cycle 192 — ckpt-114 391, ckpt-142 378, wild-04-192x48x192 355, resume-035 312, deep-176 298
 
 **Last checkpoint:** ckpt-192.json at 2026-08-20T03:18:30.603Z
 
