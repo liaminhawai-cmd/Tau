@@ -424,6 +424,14 @@
     .searchModeRow { display:flex; gap:14px; margin:6px 0 4px; font-size:12px; }
     .searchModeRow label { display:flex; align-items:center; gap:5px; cursor:pointer; }
     #labWatchBtn { margin-top:16px; width:100%; }
+    #labPos { margin:16px 0 0; padding:14px 0 0; border-top:1px solid #2c3138; text-align:left; }
+    #labPos h3 { margin:0 0 4px; font-size:13px; color:#e6e6e6; }
+    .labPosHint { margin:0 0 10px; font-size:11.5px; color:#7d858d; }
+    .labPosRow { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+    .labPosRow label { font-size:12px; color:#9aa4ad; display:flex; gap:6px; align-items:center; }
+    #labPosCode { flex:1; min-width:200px; background:#0f1319; border:1px solid #2c3138; border-radius:6px;
+                  color:#c7ccd1; font:12px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; padding:8px 10px; }
+    #labPos button { margin:0; padding:7px 12px; font-size:12px; }
     #labMsg { min-height:16px; font-size:12px; color:#e07a5f; margin:10px 0 0; }
     #labDepthBadge { font-size:12px; color:#9aa4ad; text-align:center; margin:2px 0 4px;
                      font-variant-numeric:tabular-nums; }
@@ -537,7 +545,7 @@
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 187</div>
+<div id="buildTag">build 188</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -643,7 +651,7 @@
             <p id="help"></p>
             <div id="btns"><button id="reset">Surrender</button><button id="menuBtn">Menu</button></div>
             <!-- replaces Surrender/Menu while a replay is playing: share the game or skip to the end -->
-            <div id="replayBtns" style="display:none;gap:10px;"><button id="replayShare">Share this game</button><button id="replaySave">Save this game</button><button id="replaySpeed" title="Playback speed">1×</button><button id="replaySkip">Skip ⏭</button></div>
+            <div id="replayBtns" style="display:none;gap:10px;"><button id="replayShare">Share this game</button><button id="replaySave">Save this game</button><button id="replayPlayOn" title="Take over this position">Play on from here</button><button id="replaySpeed" title="Playback speed">1×</button><button id="replaySkip">Skip ⏭</button></div>
         </div>
     </div>
 </div>
@@ -719,6 +727,21 @@
                     <label class="searchNumRow labTimeRow" style="display:none;">Seconds <input class="labTimeMs" type="number" min="0.2" max="30" step="0.5" value="2"></label>
                     <label class="searchNumRow">Temp <input class="labTemp" type="number" min="0" max="1" step="0.05" value="0"></label>
                 </div>
+            </div>
+        </div>
+        <div id="labPos">
+            <h3>Position</h3>
+            <p class="labPosHint">Play on from any spot instead of the opening. Paste a position, or copy the one on the board.</p>
+            <div class="labPosRow">
+                <input id="labPosCode" type="text" spellcheck="false" placeholder="bx,by,brot,rx,ry,rrot,turn">
+                <button id="labPosCopy" title="Copy the position currently on the board">Copy board</button>
+            </div>
+            <div class="labPosRow">
+                <label>To move
+                    <select id="labPosTurn"><option value="0">Blue</option><option value="1">Red</option></select>
+                </label>
+                <button id="labPosPlay">Play from here</button>
+                <button id="labPosStart" title="Restore the opening position">Opening</button>
             </div>
         </div>
         <button id="labWatchBtn">Watch ▶</button>
@@ -3898,6 +3921,7 @@ function endReplay() {
 document.getElementById('replayShare').addEventListener('click', () => shareReplay());
 document.getElementById('replaySave').addEventListener('click', () => saveReplayToCollection());
 document.getElementById('replaySkip').addEventListener('click', () => { if (replayActive) endReplay(); });
+document.getElementById('replayPlayOn').addEventListener('click', playOnFromHere);
 document.getElementById('replaySpeed').addEventListener('click', () => {   // 1x -> 1.5x -> 2x -> 1x
     replaySpeedMult = replaySpeedMult >= 2 ? 1 : replaySpeedMult === 1 ? 1.5 : 2;
     document.getElementById('replaySpeed').textContent = replaySpeedMult + '×';
@@ -5737,18 +5761,30 @@ function renderGameOverSheet() {
                 { label: t('Levels'), onClick: () => { hideModal(); openLadderMenu(); } } ]
             : [ { label: t('Watch the moves again'), onClick: () => startCoach() },
                 { label: t('Level 1 (gentler)'), onClick: () => startLadderLevel(0, 0) } ];
+    } else if (tutorJustPlayed) {
+        // The coached first game. The generic vsAI sheet below still offers the old easy/medium
+        // difficulty chip, which nothing in the menu has used since the ladder replaced it.
+        const won = G.winner === humanIdx;
+        title = won ? t('You win!') : t('Red got you');
+        buttons = won
+            ? [ { label: t('Take on Level 1'), onClick: () => startLadderLevel(0, 0) },
+                { label: t('Another coached game'), onClick: tutorStart, cls: 'modalBtnQuiet' } ]
+            : [ { label: t('Try again'), onClick: tutorStart },
+                { label: t('Take on Level 1'), onClick: () => startLadderLevel(0, 0), cls: 'modalBtnQuiet' } ];
     } else if (vsAI) {
         title = G.winner===humanIdx ? t('You win!') : t('You lose');
-        // tap the chip to change difficulty (reopens the picker); the two buttons replay at the current one
-        bodyHtml = `<button id="goDiffChip" style="margin:0 auto 8px;font-size:13px;">${t('Difficulty')}: <b>${escapeHtml(t(AI_DIFF_LABEL[aiDifficulty]||aiDifficulty))}</b> &#9662;</button>`;
+        bodyHtml = `<p style="text-align:center;margin:0 0 6px;font-size:12.5px;color:#9aa4ad;">`
+                 + escapeHtml(t(AI_DIFF_LABEL[aiDifficulty]||aiDifficulty)) + `</p>`;
         buttons = [
-            { label: t('Play as Blue'), onClick: () => startGame(true, 0, aiDifficulty) },   // keep the same difficulty on replay
+            { label: t('Play as Blue'), onClick: () => startGame(true, 0, aiDifficulty) },   // same opponent on replay
             { label: t('Play as Red'),  onClick: () => startGame(true, 1, aiDifficulty) },
+            { label: t('Levels'), onClick: () => { hideModal(); openLadderMenu(); }, cls: 'modalBtnQuiet' },
         ];
     } else {
         title = tf('{name} wins!', { name: t(G.winner===0?'Blue':'Red') });
         buttons = [ { label: t('Rematch'), onClick: () => startGame(false) } ];
     }
+    if (!tutorJustPlayed) buttons.push({ label: t('Play on from here'), onClick: playOnFromHere, cls: 'modalBtnQuiet' });
     if (replayFrames.length > 15) { buttons.push({ label: t('Watch replay'), onClick: startReplay });
                                     buttons.push({ label: t('Share replay'), onClick: () => { shareReplay(); renderGameOverSheet(); } });
                                     buttons.push({ label: t('Save replay'), onClick: () => { saveReplayToCollection(); renderGameOverSheet(); } }); }
@@ -5767,8 +5803,6 @@ function renderGameOverSheet() {
         bodyHtml += `<div style="margin:8px auto 0;font-size:12px;color:#9aa4ad;text-align:center;">${t('Playing as a guest.')} <button class="link" id="goClaim" style="font-size:12px;">${t('Sign in to keep your progress')}</button></div>`;
     }
     showModal(title, bodyHtml, buttons, !!bodyHtml);
-    const chip = document.getElementById('goDiffChip');
-    if (chip) chip.addEventListener('click', () => { hideModal(); openAiDifficultyMenu(); });
     const goClaim = document.getElementById('goClaim');
     if (goClaim) goClaim.addEventListener('click', () => { hideModal(); openAcctPanel(); });
 }
@@ -6034,6 +6068,7 @@ function coachArc3DUpdate() {
 }
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
+    tutorJustPlayed = false; if (typeof tutorEnd === 'function') tutorEnd();
     if (window.tauSteam) window.tauSteam.setStatus('In the menus');   // Steam friends-list presence
     labActive = false;
     clearTimeout(aiTimer); clearTimeout(aiGapTimer); clearTimeout(coachHoldTimer); aiAnim = null;
@@ -6875,6 +6910,53 @@ function openHowToPlay() {
     loop();
 }
 document.getElementById('howToPlayBtn').addEventListener('click', openHowToPlay);
+// ---------- Play on from a position ----------
+// The whole board state is two poses and whose turn it is, so any position — a replay you are
+// watching, a game that just finished, a code someone sent you — can become a live game. Pose is
+// [bx,by,brot,rx,ry,rrot] exactly as replay frames store it.
+function poseNow() {
+    const b = G.pieces[0], r = G.pieces[1];
+    return [b.x, b.y, b.rot, r.x, r.y, r.rot];
+}
+function poseCode(pose, active) {
+    return pose.map(n => (+n).toFixed(2)).join(',') + ',' + (active ? 1 : 0);
+}
+function parsePoseCode(str) {
+    const n = String(str||'').trim().split(/[\s,]+/).map(Number);
+    if (n.length < 6 || n.some(v => !Number.isFinite(v))) return null;
+    const pose = n.slice(0,6), active = n.length > 6 ? (n[6] ? 1 : 0) : 0;
+    // a position is only playable if both pieces are actually on the board
+    for (const p of [{x:pose[0],y:pose[1],rot:pose[2]}, {x:pose[3],y:pose[4],rot:pose[5]}]) {
+        for (let i = 0; i < 3; i++) {
+            const a = p.rot + i*(2*Math.PI/3);
+            if (Math.hypot(p.x + Math.cos(a)*CFG.footR, p.y + Math.sin(a)*CFG.footR) > CFG.edgeU) return null;
+        }
+    }
+    return { pose, active };
+}
+// Start a real game from `pose` with `active` to move. Everything downstream (rules, AI, replay
+// recording, game-over) is the ordinary machinery — only the opening position differs.
+function playFromPose(pose, active, humanColorIdx, difficulty) {
+    startGame(true, humanColorIdx, difficulty || 'zone');
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
+    replayApplyPose(pose);
+    G.active = active;
+    clearTurn();
+    if (typeof koReset === 'function') koReset();
+    replayFrames = []; replayTurns = [];   // this is a new game, not a continuation of the recording
+    resize(); render();
+    if (vsAI && G.active === aiIdx) aiTimer = setTimeout(startAiTurn, 500);
+}
+// Offered from a replay: take the position on screen and play it out yourself.
+function playOnFromHere() {
+    const pose = poseNow(), active = G.active;
+    if (replayActive) endReplay();
+    hideModal(); clearTimeout(gameOverTimer);
+    showModal(t('Play on from here'), t('Take this position and play it out against the computer.'), [
+        { label: t('Play as Blue'), onClick: () => playFromPose(pose, active, 0) },
+        { label: t('Play as Red'),  onClick: () => playFromPose(pose, active, 1) },
+    ], false, { dismiss: true });
+}
 // ---------- Coached first game: the rules arrive as you hit them ----------
 // Nothing here scripts the opponent or fakes a position — it watches the REAL game state and
 // speaks up the first time each rule actually bites. Every lesson is triggered by something the
@@ -6910,12 +6992,14 @@ function tutorPump() {
     tutorShownAt = now;
 }
 function tutorStart() {
-    tutorOn = true; tutorSaid = {}; tutorPrev = null; tutorQueue = []; tutorShownAt = 0;
+    tutorOn = true; tutorJustPlayed = false; tutorSaid = {}; tutorPrev = null; tutorQueue = []; tutorShownAt = 0;
     document.getElementById('tutorBar').style.display = 'none';
     startGame(true, 0, 'dumb');
     tutorSay('goal');
 }
+let tutorJustPlayed = false;
 function tutorEnd() {
+    if (tutorOn) tutorJustPlayed = true;   // renderGameOverSheet needs to know whose game just ended
     tutorOn = false;
     const bar = document.getElementById('tutorBar');
     if (bar) bar.style.display = 'none';
@@ -9059,6 +9143,7 @@ demoStart();
         applyMenuBopomofo();   // the 6 mode buttons + Get a physical set (ruby-annotated on zht)
         setTxt('reset','Surrender'); setTxt('menuBtn','Menu');
         setTxt('replayShare','Share this game'); setTxt('replaySave','Save this game'); setTxt('replaySkip','Skip ⏭');
+        setTxt('replayPlayOn','Play on from here');
         setTxt('acctGoogle','Continue with Google'); setTxt('acctMoreOptions','or use a username & password');
         setTxt('acctLogIn','Log in'); setTxt('acctSignUp','Sign up'); setTxt('acctSendLink','Send link');
         setTxt('acctPanelClose','Close'); setTxt('acctSignOut','Sign out');
@@ -9211,7 +9296,42 @@ const labBrains = [{ level: 10, model: null, policy: null, name: '', depth: 2, t
 // calls startGame(false) (a genuine two-human local game) and nothing ever moves again. Cleared by
 // startGame()/backToMenu() -- anything that leaves lab mode for a real game.
 let labActive = false;
-function labOpenDrop() { document.getElementById('labOverlay').classList.add('open'); }
+// Position tools: the board is only two poses and a side to move, so any of them can be played on.
+let labPosReady = false;
+function labPosInit() {
+    if (labPosReady) return; labPosReady = true;
+    const code = document.getElementById('labPosCode'), turn = document.getElementById('labPosTurn');
+    const msg = () => document.getElementById('labMsg');
+    document.getElementById('labPosCopy').addEventListener('click', () => {
+        if (!G) return;
+        code.value = poseCode(poseNow(), G.active);
+        turn.value = String(G.active);
+        msg().textContent = 'Copied the board into the box.'; msg().style.color = '#7d858d';
+    });
+    document.getElementById('labPosStart').addEventListener('click', () => {
+        code.value = poseCode([-CFG.startX, 0, 0, CFG.startX, 0, Math.PI], 0);
+        turn.value = '0';
+    });
+    document.getElementById('labPosPlay').addEventListener('click', () => {
+        const parsed = parsePoseCode(code.value);
+        if (!parsed) { msg().textContent = 'That position is not on the board — six numbers, both pieces inside the rim.';
+                       msg().style.color = '#e07a5f'; return; }
+        const h0 = labBrains[0].human, h1 = labBrains[1].human;
+        const human = h0 ? 0 : h1 ? 1 : 0;          // no Human side picked = you take Blue
+        const b = labBrains[1 - human];
+        labCloseDrop();
+        if (b.model) {
+            nnModel = b.model; nnPolicyModel = b.policy || null; nnModelName = b.name;
+            nnDepth = b.depth; nnDynamic = b.dynamic; nnTimeMs = b.timeMs;
+            nnTemperature = b.temperature || 0.05;
+            playFromPose(parsed.pose, +turn.value, human, 'nn');
+        } else {
+            playFromPose(parsed.pose, +turn.value, human, 'ladder');
+            ladderLevel = b.level;                   // the chosen rung's brain, without banking a clear
+        }
+    });
+}
+function labOpenDrop() { document.getElementById('labOverlay').classList.add('open'); labPosInit(); }
 function labCloseDrop() { document.getElementById('labOverlay').classList.remove('open'); }
 function labSideLabel(side) {
     const b = labBrains[side];
