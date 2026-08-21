@@ -424,6 +424,24 @@
     .searchModeRow { display:flex; gap:14px; margin:6px 0 4px; font-size:12px; }
     .searchModeRow label { display:flex; align-items:center; gap:5px; cursor:pointer; }
     #labWatchBtn { margin-top:16px; width:100%; }
+    /* the in-game lab bench */
+    #labBench { position:fixed; left:10px; bottom:calc(10px + env(safe-area-inset-bottom)); z-index:66;
+        width:232px; background:rgba(14,17,21,.94); border:1px solid #2c3138; border-radius:10px;
+        padding:10px 11px; font-size:12px; color:#c7ccd1; }
+    #labBench.lbMin > *:not(.lbHead) { display:none; }
+    #labBench.lbMin { width:auto; cursor:pointer; }
+    #labBench .lbHead { display:flex; justify-content:space-between; align-items:center;
+        font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#7d858d; margin-bottom:8px; }
+    #labBench .lbHead button { margin:0; padding:0 4px; background:none; border:none; color:#69727b; font-size:13px; }
+    #labBench .lbRow { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+    #labBench .lbRow label { width:38px; color:#9aa4ad; }
+    #labBench select, #labBench input { flex:1; min-width:0; background:#0f1319; border:1px solid #2c3138;
+        border-radius:5px; color:#c7ccd1; font-size:12px; padding:5px 6px; margin:0; }
+    #labBench input[type=number] { max-width:56px; flex:none; }
+    #labBench .lbBtns { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+    #labBench .lbBtns button { margin:0; flex:1 1 auto; padding:6px 8px; font-size:11.5px; }
+    #labBench .lbBtns button:disabled { opacity:.4; }
+    #labBench #lbMsg { margin:7px 0 0; min-height:14px; font-size:11px; color:#7d858d; }
     #labPos { margin:16px 0 0; padding:14px 0 0; border-top:1px solid #2c3138; text-align:left; }
     #labPos h3 { margin:0 0 4px; font-size:13px; color:#e6e6e6; }
     .labPosHint { margin:0 0 10px; font-size:11.5px; color:#7d858d; }
@@ -545,7 +563,7 @@
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 188</div>
+<div id="buildTag">build 189</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -4423,8 +4441,18 @@ function onUp() {
 function finishTurn() {
     if (coachGuided) { coachGuidedCommit(); return; }   // the coached counter commits its own way
     coachFreeArc = null;   // move committed — the cached rail is spent
+    // G.snap is the position as it stood when this turn's pivot was pinned — exactly what
+    // "take that move back" needs to restore.
+    if (labMode && G.snap) labHist.push({ pose: [G.snap[0].x, G.snap[0].y, G.snap[0].rot,
+                                                 G.snap[1].x, G.snap[1].y, G.snap[1].rot], active: G.active });
     commitTurn();
     progressCentering();   // each completed move creeps the camera a quarter back toward centre
+    if (labMode) labBenchRender();   // the bench's take-back state changes with every committed move
+    if (labAuto) {    // lab bench, both sides AI: keep it running until someone goes off
+        if (G.over) { triggerFall(); showGameOverModal(); }
+        else setTimeout(labAutoTurn, 420);
+        labBenchRender(); render(); return;
+    }
     if (colorLab) {   // colour-lab AI-vs-AI: show the tumble on a loss, then reset and keep playing
         if (G.over) { triggerFall(); colorLabTimer = setTimeout(colorLabReset, 2600); }
         else colorLabTimer = setTimeout(colorLabTurn, 550);
@@ -5353,6 +5381,7 @@ function nnPlanForGameTimed(idx, temperature, timeMs, model, keepForDepth, polic
 
 function startAiTurn() {
     if (G.over || G.active!==aiIdx) return;
+    if (labMode) labApplyBrainFor(aiIdx);   // each side keeps its own brain in a lab game
     let pivotIdx, dir, target = 0;
     // Ladder games route through the tuned per-level brain, an #nn game routes through the loaded
     // checkpoint, everything else uses the classic difficulty planner. All return the same
@@ -6068,6 +6097,7 @@ function coachArc3DUpdate() {
 }
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
+    labMode = false; labAuto = false; labHist = []; labBenchRender();
     tutorJustPlayed = false; if (typeof tutorEnd === 'function') tutorEnd();
     if (window.tauSteam) window.tauSteam.setStatus('In the menus');   // Steam friends-list presence
     labActive = false;
@@ -6910,6 +6940,136 @@ function openHowToPlay() {
     loop();
 }
 document.getElementById('howToPlayBtn').addEventListener('click', openHowToPlay);
+// ---------- Lab bench: reconfigure a game while it is running ----------
+// The point of the lab is comparison — play a checkpoint, hand your side to it, re-run the same
+// spot a depth deeper. All of that is the same live game with different brains behind the sides,
+// so nothing here restarts: it swaps who is driving and carries on from the position on the board.
+let labMode = false;                 // the bench is available for this game
+let labAuto = false;                 // neither side is human: drive both live
+let labHist = [];                    // pre-move positions, for taking a move back
+const labSideCfg = [{ type:'human' }, { type:'level', level: 7 }];
+// The AI reads its brain from globals, so the side about to move sets them.
+function labApplyBrainFor(side) {
+    const c = labSideCfg[side];
+    if (!c || c.type === 'human') return;
+    if (c.type === 'nn' && labBrains[side].model) {
+        const b = labBrains[side];
+        nnModel = b.model; nnPolicyModel = b.policy || null; nnModelName = b.name;
+        nnDepth = b.depth; nnDynamic = b.dynamic; nnTimeMs = b.timeMs;
+        nnTemperature = b.temperature || 0.05;
+        ladderLevel = null; aiDifficulty = 'nn';
+    } else {
+        aiDifficulty = 'ladder'; ladderLevel = c.level;
+    }
+}
+function labAutoTurn() {
+    if (!labAuto || !G || G.over) return;
+    aiIdx = G.active;                // startAiTurn animates whichever side is up
+    labApplyBrainFor(G.active);
+    startAiTurn();
+}
+// Apply the bench's current sides to the game in progress, from the position on the board.
+function labBenchApply() {
+    if (!G) return;
+    const hb = labSideCfg[0].type === 'human', hr = labSideCfg[1].type === 'human';
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
+    clearTurn();
+    labAuto = !hb && !hr;
+    if (hb && hr) { vsAI = false; }                       // both human: pass and play from here
+    else if (labAuto) { vsAI = false; }                   // both AI: the bench drives
+    else { vsAI = true; humanIdx = hb ? 0 : 1; aiIdx = 1 - humanIdx; }
+    labBenchRender(); render();
+    if (labAuto) setTimeout(labAutoTurn, 320);
+    else if (vsAI && G.active === aiIdx) aiTimer = setTimeout(startAiTurn, 420);
+}
+function labTakeBack() {
+    const h = labHist.pop();
+    if (!h || !G) return;
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); clearTimeout(gameOverTimer);
+    aiAnim = null; labAuto = false;
+    hideModal();
+    replayApplyPose(h.pose); G.active = h.active;
+    G.over = false; G.winner = null; fall.active = false; fallenIdx = -1;
+    if (typeof tripods !== 'undefined' && tripods) tripods.forEach(t => { t.visible = true; t.position.y = 0; });
+    clearTurn(); labBenchRender(); render();
+}
+// The bench panel itself: built on demand, sits over the board, and only exists in a lab game.
+function labBenchRender() {
+    let el = document.getElementById('labBench');
+    if (!labMode) { if (el) el.remove(); return; }
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'labBench';
+        el.innerHTML = `
+            <div class="lbHead"><span>Bench</span><button id="lbHide" title="Hide (L)">\u2715</button></div>
+            <div class="lbRow"><label>Blue</label><select id="lbBlue"></select></div>
+            <div class="lbRow"><label>Red</label><select id="lbRed"></select></div>
+            <div class="lbRow lbNN"><label>Depth</label><input id="lbDepth" type="number" min="1" max="4" step="1">
+                 <label>Temp</label><input id="lbTemp" type="number" min="0" max="1" step="0.05"></div>
+            <div class="lbBtns">
+                <button id="lbApply">Apply from here</button>
+                <button id="lbBack">Take back</button>
+                <button id="lbCopy">Copy position</button>
+            </div>
+            <p id="lbMsg"></p>`;
+        document.body.appendChild(el);
+        const opts = side => {
+            const o = ['<option value="human">You</option>'];
+            for (let i = 0; i < LADDER_N; i++) o.push(`<option value="level:${i}">Level ${i+1}</option>`);
+            if (labBrains[side].model) o.push(`<option value="nn">${escapeHtml(labBrains[side].name || 'checkpoint')}</option>`);
+            return o.join('');
+        };
+        document.getElementById('lbBlue').innerHTML = opts(0);
+        document.getElementById('lbRed').innerHTML = opts(1);
+        const readSel = (side, sel) => {
+            const v = sel.value;
+            labSideCfg[side] = v === 'human' ? { type:'human' }
+                             : v === 'nn'    ? { type:'nn' }
+                             : { type:'level', level: +v.split(':')[1] };
+            labBenchRender();
+        };
+        const bs = document.getElementById('lbBlue'), rs = document.getElementById('lbRed');
+        bs.addEventListener('change', () => readSel(0, bs));
+        rs.addEventListener('change', () => readSel(1, rs));
+        // Depth and temperature edit whichever side is running a checkpoint, so "same spot, one
+        // depth deeper" is: change the number, Apply.
+        const nnSide = () => labSideCfg.findIndex(c => c.type === 'nn');
+        document.getElementById('lbDepth').addEventListener('change', e => {
+            const i = nnSide(); if (i >= 0) labBrains[i].depth = Math.max(1, Math.min(4, +e.target.value || 1)); });
+        document.getElementById('lbTemp').addEventListener('change', e => {
+            const i = nnSide(); if (i >= 0) labBrains[i].temperature = Math.max(0, Math.min(1, +e.target.value || 0)); });
+        document.getElementById('lbApply').addEventListener('click', () => {
+            labBenchApply();
+            document.getElementById('lbMsg').textContent = labAuto ? 'Both sides on the computer.' : 'Playing on from here.';
+        });
+        document.getElementById('lbBack').addEventListener('click', labTakeBack);
+        document.getElementById('lbCopy').addEventListener('click', async () => {
+            const code = poseCode(poseNow(), G.active);
+            try { await navigator.clipboard.writeText(code); document.getElementById('lbMsg').textContent = 'Position copied.'; }
+            catch (e) { document.getElementById('lbMsg').textContent = code; }
+        });
+        document.getElementById('lbHide').addEventListener('click', () => el.classList.add('lbMin'));
+        el.addEventListener('click', e => { if (el.classList.contains('lbMin')) el.classList.remove('lbMin'); });
+    }
+    // reflect current state
+    const sel = (id, side) => {
+        const c = labSideCfg[side];
+        document.getElementById(id).value = c.type === 'human' ? 'human' : c.type === 'nn' ? 'nn' : 'level:' + c.level;
+    };
+    sel('lbBlue', 0); sel('lbRed', 1);
+    const i = labSideCfg.findIndex(c => c.type === 'nn');
+    el.querySelector('.lbNN').style.display = i >= 0 ? '' : 'none';
+    if (i >= 0) {
+        document.getElementById('lbDepth').value = labBrains[i].depth;
+        document.getElementById('lbTemp').value = labBrains[i].temperature || 0;
+    }
+    document.getElementById('lbBack').disabled = !labHist.length;
+}
+addEventListener('keydown', e => {
+    if (e.key === 'l' && labMode && !/input|select|textarea/i.test((e.target.tagName||''))) {
+        const el = document.getElementById('labBench'); if (el) el.classList.toggle('lbMin');
+    }
+});
 // ---------- Play on from a position ----------
 // The whole board state is two poses and whose turn it is, so any position — a replay you are
 // watching, a game that just finished, a code someone sent you — can become a live game. Pose is
@@ -9320,6 +9480,8 @@ function labPosInit() {
         const human = h0 ? 0 : h1 ? 1 : 0;          // no Human side picked = you take Blue
         const b = labBrains[1 - human];
         labCloseDrop();
+        labSideCfg[human] = { type:'human' };
+        labSideCfg[1-human] = b.model ? { type:'nn' } : { type:'level', level: b.level };
         if (b.model) {
             nnModel = b.model; nnPolicyModel = b.policy || null; nnModelName = b.name;
             nnDepth = b.depth; nnDynamic = b.dynamic; nnTimeMs = b.timeMs;
@@ -9329,6 +9491,7 @@ function labPosInit() {
             playFromPose(parsed.pose, +turn.value, human, 'ladder');
             ladderLevel = b.level;                   // the chosen rung's brain, without banking a clear
         }
+        labMode = true; labHist = []; labBenchRender();
     });
 }
 function labOpenDrop() { document.getElementById('labOverlay').classList.add('open'); labPosInit(); }
@@ -9400,6 +9563,10 @@ function labWatchGame() {
         labCloseDrop();
         if (h0 && h1) { startGame(false); return; }              // human vs human = plain local 1v1
         const ai = h0 ? 1 : 0, b = labBrains[ai];
+        labSideCfg[1-ai] = { type:'human' };
+        labSideCfg[ai] = b.model ? { type:'nn' } : { type:'level', level: b.level };
+        labMode = true; labHist = [];
+        setTimeout(labBenchRender, 0);              // after startGame has built the game screen
         if (b.model) {
             nnModel = b.model; nnPolicyModel = b.policy || null; nnModelName = b.name;
             nnDepth = b.depth; nnDynamic = b.dynamic; nnTimeMs = b.timeMs;
