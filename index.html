@@ -424,6 +424,17 @@
     .searchModeRow { display:flex; gap:14px; margin:6px 0 4px; font-size:12px; }
     .searchModeRow label { display:flex; align-items:center; gap:5px; cursor:pointer; }
     #labWatchBtn { margin-top:16px; width:100%; }
+    /* fullscreen nudge: quiet, dismissible, one time */
+    /* top-centre: the bottom of a game already carries the help line and the buttons */
+    #fsHint { position:fixed; left:50%; top:calc(12px + env(safe-area-inset-top));
+        transform:translate(-50%, -10px); z-index:62; display:flex; align-items:center; gap:10px;
+        background:rgba(16,20,25,.94); border:1px solid #2c3138; border-radius:999px;
+        padding:8px 10px 8px 16px; font-size:12.5px; color:#9aa4ad;
+        opacity:0; transition:opacity .26s ease, transform .26s ease; pointer-events:none; }
+    #fsHint.show { opacity:1; transform:translate(-50%, 0); pointer-events:auto; }
+    #fsHint button { margin:0; padding:5px 12px; font-size:12px; border-radius:999px; }
+    #fsHint #fsNo { padding:5px 9px; border:none; background:none; color:#69727b; }
+    #fsHint #fsNo:hover { color:#e6e6e6; }
     /* custom-opening bar */
     #labSetupBar { position:fixed; left:50%; transform:translateX(-50%); z-index:66;
         top:calc(10px + env(safe-area-inset-top)); display:flex; align-items:center; gap:10px;
@@ -575,7 +586,7 @@
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 191</div>
+<div id="buildTag">build 192</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -5834,7 +5845,6 @@ function renderGameOverSheet() {
         title = tf('{name} wins!', { name: t(G.winner===0?'Blue':'Red') });
         buttons = [ { label: t('Rematch'), onClick: () => startGame(false) } ];
     }
-    if (!tutorJustPlayed) buttons.push({ label: t('Play on from here'), onClick: playOnFromHere, cls: 'modalBtnQuiet' });
     if (replayFrames.length > 15) { buttons.push({ label: t('Watch replay'), onClick: startReplay });
                                     buttons.push({ label: t('Share replay'), onClick: () => { shareReplay(); renderGameOverSheet(); } });
                                     buttons.push({ label: t('Save replay'), onClick: () => { saveReplayToCollection(); renderGameOverSheet(); } }); }
@@ -5883,6 +5893,7 @@ function startGame(aiMode, humanColorIdx, difficulty) {
     if (!aiMode) startOnlineTurnClock(); else onlineTurnDeadline = null;
     if (vsAI && G.active===aiIdx) aiTimer = setTimeout(startAiTurn, 450);
     if (typeof updateWaitBanner === 'function') updateWaitBanner();   // keep the "still searching" pill across repeated AI games
+    if (typeof maybeFullscreenHint === 'function') maybeFullscreenHint();
 }
 // Start a ladder rung (0-based). humanColorIdx 0 = play Blue (the usual first climb), 1 = Red (the
 // harder second clear). Routes through startGame with the 'ladder' tag so the tuned brain is used.
@@ -6961,6 +6972,49 @@ function openHowToPlay() {
     loop();
 }
 document.getElementById('howToPlayBtn').addEventListener('click', openHowToPlay);
+// ---------- Fullscreen nudge ----------
+// The board is the whole point, and on a desktop browser it spends a chunk of the screen on
+// chrome. One small, dismissible pill the first time someone starts a game — never a modal, never
+// twice, and never on a phone (where the page is already full-bleed and the API is a nuisance).
+let fsHintTimer = null;
+function fsHintSeen() { try { return !!localStorage.getItem('tauFsHint'); } catch (e) { return true; } }
+function fsHintDone() {
+    try { localStorage.setItem('tauFsHint', '1'); } catch (e) {}
+    const el = document.getElementById('fsHint');
+    if (el) { el.classList.remove('show'); setTimeout(() => el.remove(), 260); }
+    clearTimeout(fsHintTimer);
+}
+function maybeFullscreenHint() {
+    if (fsHintSeen()) return;
+    if (tutorOn || labSetup || labMode || onlineMatch) return;      // never on top of something else
+    if (!document.fullscreenEnabled || document.fullscreenElement) return;
+    if (!matchMedia('(pointer: fine)').matches || innerWidth < 900) return;
+    clearTimeout(fsHintTimer);
+    fsHintTimer = setTimeout(() => {
+        if (document.getElementById('fsHint') || document.fullscreenElement) return;
+        if (document.getElementById('game').style.display !== 'flex') return;
+        const el = document.createElement('div');
+        el.id = 'fsHint';
+        // The desktop build has its own F11 handler in the wrapper, so name that instead.
+        const key = window.tauSteam ? 'F11' : null;
+        el.innerHTML = `<span>${t('The board has more room in fullscreen.')}</span>`
+            + `<button id="fsGo">${key ? key : t('Go fullscreen')}</button>`
+            + `<button id="fsNo" aria-label="${t('Close')}">\u2715</button>`;
+        document.body.appendChild(el);
+        requestAnimationFrame(() => el.classList.add('show'));
+        document.getElementById('fsGo').addEventListener('click', () => {
+            const r = document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+            if (r && r.catch) r.catch(() => {});
+            fsHintDone();
+        });
+        document.getElementById('fsNo').addEventListener('click', fsHintDone);
+        fsHintTimer = setTimeout(() => {                 // it fades out on its own; only a tap counts as "seen"
+            const e2 = document.getElementById('fsHint');
+            if (e2) { e2.classList.remove('show'); setTimeout(() => e2.remove(), 260); }
+        }, 9000);
+    }, 1400);
+}
+addEventListener('fullscreenchange', () => { if (document.fullscreenElement) fsHintDone(); });
 // ---------- Custom opening: build a position by playing it ----------
 // Rather than typing coordinates, set the board by moving the pieces with the ordinary controls —
 // pin a foot, swing it, either colour, as many moves as you like. Every move goes through the real
