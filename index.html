@@ -429,7 +429,7 @@
     #fsHint { position:fixed; left:50%; top:calc(12px + env(safe-area-inset-top));
         transform:translate(-50%, -10px); z-index:62; display:flex; align-items:center; gap:10px;
         background:rgba(16,20,25,.94); border:1px solid #2c3138; border-radius:999px;
-        padding:8px 10px 8px 16px; font-size:12.5px; color:#9aa4ad;
+        padding:7px 8px; font-size:12.5px; color:#9aa4ad;
         opacity:0; transition:opacity .26s ease, transform .26s ease; pointer-events:none; }
     #fsHint.show { opacity:1; transform:translate(-50%, 0); pointer-events:auto; }
     #fsHint button { margin:0; padding:5px 12px; font-size:12px; border-radius:999px; }
@@ -586,7 +586,7 @@
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 192</div>
+<div id="buildTag">build 193</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -6997,8 +6997,7 @@ function maybeFullscreenHint() {
         el.id = 'fsHint';
         // The desktop build has its own F11 handler in the wrapper, so name that instead.
         const key = window.tauSteam ? 'F11' : null;
-        el.innerHTML = `<span>${t('The board has more room in fullscreen.')}</span>`
-            + `<button id="fsGo">${key ? key : t('Go fullscreen')}</button>`
+        el.innerHTML = `<button id="fsGo">${key ? key : t('Fullscreen')}</button>`
             + `<button id="fsNo" aria-label="${t('Close')}">\u2715</button>`;
         document.body.appendChild(el);
         requestAnimationFrame(() => el.classList.add('show'));
