@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Tau · dvlpr</title>
+<link rel="icon" href="favicon-32.png">
+<style>
+:root{ --bg:#0c0e11; --panel:#12161b; --line:#232a32; --ink:#e6e6e6; --dim:#9aa4ad;
+       --faint:#69727b; --gold:#ffd23f; --blue:#6b9eff; }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);padding:38px 22px 60px;
+     font:400 15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:900px;margin:0 auto}
+h1{margin:0;font-size:26px;font-weight:300;letter-spacing:.4em;text-indent:.4em}
+.sub{margin:8px 0 30px;font-size:12.5px;color:var(--faint)}
+h2{margin:32px 0 10px;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);font-weight:650}
+.grid{display:grid;gap:8px}
+a.item{display:grid;grid-template-columns:minmax(150px,190px) 1fr;gap:14px;align-items:baseline;
+       padding:11px 14px;border:1px solid var(--line);border-radius:9px;background:var(--panel);
+       text-decoration:none;color:inherit;transition:border-color .14s,background .14s}
+a.item:hover{border-color:#3d4753;background:#151b22}
+a.item code{font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--blue)}
+a.item span{font-size:13px;color:var(--dim)}
+.note{margin-top:34px;padding:14px 16px;border:1px solid var(--line);border-left:2px solid var(--gold);
+      border-radius:0 8px 8px 0;background:#101419;font-size:12.5px;color:var(--dim)}
+.note b{color:var(--ink)}
+footer{margin-top:26px;font-size:11.5px;color:#3f4650}
+</style>
+<div class="wrap">
+  <h1>DVLPR</h1>
+  <p class="sub">Internal Tau routes and tools. Not linked from the game.</p>
+
+  <h2>In the game</h2>
+  <div class="grid">
+    <a class="item" href="./#lab"><code>/#lab</code><span>Bench: pick brains per side, custom opening, play on from a position, take back</span></a>
+    <a class="item" href="./#nn"><code>/#nn</code><span>Drop a checkpoint <code>.json</code> in and play it</span></a>
+    <a class="item" href="./#coach"><code>/#coach</code><span>Coached opening — the recorded game, move by move</span></a>
+    <a class="item" href="./#howto"><code>/#howto</code><span>Rules walkthrough (demo + cards)</span></a>
+    <a class="item" href="./#newbie"><code>/#newbie</code><span>Same, but clears the onboarding flag first — the true first-run path</span></a>
+    <a class="item" href="./#director"><code>/#director</code><span>Capture prep for an external recorder: safe-area guide, hide UI, watermark</span></a>
+    <a class="item" href="./#debug"><code>/#debug</code><span>Crossing-rule overlay (also <code>tauDebug=1</code> in localStorage)</span></a>
+  </div>
+
+  <h2>Pages</h2>
+  <div class="grid">
+    <a class="item" href="./menus.html"><code>/menus.html</code><span>Desktop menu studies — <code>?p=split|rail|cinema</code></span></a>
+    <a class="item" href="./steam.html"><code>/steam.html</code><span>Premium render spike: six art directions, playable</span></a>
+    <a class="item" href="./studio.html"><code>/studio.html</code><span>Cinematic studio — camera/export rig</span></a>
+    <a class="item" href="./depth.html"><code>/depth.html</code><span>Strategic depth write-up</span></a>
+    <a class="item" href="./compare.html"><code>/compare.html</code><span>Clip compare</span></a>
+    <a class="item" href="./try.html"><code>/try.html</code><span>Redirect test</span></a>
+    <a class="item" href="./tau_cost_model_v5.html"><code>/tau_cost_model_v5.html</code><span>Unit economics explorer</span></a>
+    <a class="item" href="./nn/dashboard.html"><code>/nn/dashboard.html</code><span>NN model observatory</span></a>
+  </div>
+
+  <h2>Public, for reference</h2>
+  <div class="grid">
+    <a class="item" href="./"><code>/</code><span>The game</span></a>
+    <a class="item" href="./set.html"><code>/set.html</code><span>The physical set</span></a>
+    <a class="item" href="./about.html"><code>/about.html</code><span>About</span></a>
+  </div>
+
+  <p class="note"><b>This hides, it does not lock.</b> Every link here is a static file or a hash on
+  the public site, reachable by anyone who types it. The page carries <code>noindex</code> and is
+  deliberately absent from <code>robots.txt</code> and the sitemap, since listing it there would
+  advertise it. If any of it needs to be genuinely private, it has to move off the public host.</p>
+
+  <footer>tau-game.com/dvlpr.html</footer>
+</div>

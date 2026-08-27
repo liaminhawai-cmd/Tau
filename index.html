@@ -233,6 +233,9 @@
                 pointer-events:none; z-index:200; box-shadow:0 6px 20px rgba(0,0,0,.5); display:none; }
     /* Always-visible but understated: sits in the corner on every screen (menu and in-game),
        low-contrast until hovered so it never competes with the board. */
+    /* Inline line-art icons: stroked, no fill, inheriting the button's own colour. */
+    button svg { width:1em; height:1em; display:block; fill:none; stroke:currentColor;
+                 stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
     #themeToggle { position:fixed; top:calc(9px + env(safe-area-inset-top)); right:12px; z-index:60; background:none; border:none;
                    color:#9aa4ad; font-size:19px; line-height:1; padding:6px 7px; margin:0;
                    opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
@@ -421,6 +424,55 @@
     .searchModeRow { display:flex; gap:14px; margin:6px 0 4px; font-size:12px; }
     .searchModeRow label { display:flex; align-items:center; gap:5px; cursor:pointer; }
     #labWatchBtn { margin-top:16px; width:100%; }
+    /* fullscreen nudge: quiet, dismissible, one time */
+    /* top-centre: the bottom of a game already carries the help line and the buttons */
+    #fsHint { position:fixed; left:50%; top:calc(12px + env(safe-area-inset-top));
+        transform:translate(-50%, -10px); z-index:62; display:flex; align-items:center; gap:10px;
+        background:rgba(16,20,25,.94); border:1px solid #2c3138; border-radius:999px;
+        padding:7px 8px; font-size:12.5px; color:#9aa4ad;
+        opacity:0; transition:opacity .26s ease, transform .26s ease; pointer-events:none; }
+    #fsHint.show { opacity:1; transform:translate(-50%, 0); pointer-events:auto; }
+    #fsHint button { margin:0; padding:5px 12px; font-size:12px; border-radius:999px; }
+    #fsHint #fsNo { padding:5px 9px; border:none; background:none; color:#69727b; }
+    #fsHint #fsNo:hover { color:#e6e6e6; }
+    /* custom-opening bar */
+    #labSetupBar { position:fixed; left:50%; transform:translateX(-50%); z-index:66;
+        top:calc(10px + env(safe-area-inset-top)); display:flex; align-items:center; gap:10px;
+        flex-wrap:wrap; justify-content:center; max-width:min(94vw,860px);
+        background:rgba(14,17,21,.95); border:1px solid #2c3138; border-radius:10px; padding:8px 12px; }
+    #labSetupBar .lsTitle { font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#ffd23f; }
+    #labSetupBar .lsHint { font-size:11.5px; color:#7d858d; }
+    #labSetupBar .lsTurn { font-size:12px; font-weight:600; }
+    #labSetupBar button { margin:0; padding:6px 12px; font-size:12px; }
+    #labSetupBar button.lsGo { border-color:#ffd23f; color:#ffd23f; }
+    #labSetupBar #lsMsg { font-size:11.5px; color:#e07a5f; }
+    /* the in-game lab bench */
+    #labBench { position:fixed; left:10px; bottom:calc(10px + env(safe-area-inset-bottom)); z-index:66;
+        width:232px; background:rgba(14,17,21,.94); border:1px solid #2c3138; border-radius:10px;
+        padding:10px 11px; font-size:12px; color:#c7ccd1; }
+    #labBench.lbMin > *:not(.lbHead) { display:none; }
+    #labBench.lbMin { width:auto; cursor:pointer; }
+    #labBench .lbHead { display:flex; justify-content:space-between; align-items:center;
+        font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#7d858d; margin-bottom:8px; }
+    #labBench .lbHead button { margin:0; padding:0 4px; background:none; border:none; color:#69727b; font-size:13px; }
+    #labBench .lbRow { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+    #labBench .lbRow label { width:38px; color:#9aa4ad; }
+    #labBench select, #labBench input { flex:1; min-width:0; background:#0f1319; border:1px solid #2c3138;
+        border-radius:5px; color:#c7ccd1; font-size:12px; padding:5px 6px; margin:0; }
+    #labBench input[type=number] { max-width:56px; flex:none; }
+    #labBench .lbBtns { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+    #labBench .lbBtns button { margin:0; flex:1 1 auto; padding:6px 8px; font-size:11.5px; }
+    #labBench .lbBtns button:disabled { opacity:.4; }
+    #labBench #lbMsg { margin:7px 0 0; min-height:14px; font-size:11px; color:#7d858d; }
+    #labPos { margin:16px 0 0; padding:14px 0 0; border-top:1px solid #2c3138; text-align:left; }
+    #labPos h3 { margin:0 0 4px; font-size:13px; color:#e6e6e6; }
+    .labPosHint { margin:0 0 10px; font-size:11.5px; color:#7d858d; }
+    .labPosRow { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+    .labPosRow label { font-size:12px; color:#9aa4ad; display:flex; gap:6px; align-items:center; }
+    #labPosCode { flex:1; min-width:200px; background:#0f1319; border:1px solid #2c3138; border-radius:6px;
+                  color:#c7ccd1; font:12px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; padding:8px 10px; }
+    #labPos button { margin:0; padding:7px 12px; font-size:12px; }
+    #labPos .labPosPrimary { width:100%; border-color:#3d4753; color:#e6e6e6; padding:9px 12px; }
     #labMsg { min-height:16px; font-size:12px; color:#e07a5f; margin:10px 0 0; }
     #labDepthBadge { font-size:12px; color:#9aa4ad; text-align:center; margin:2px 0 4px;
                      font-variant-numeric:tabular-nums; }
@@ -483,6 +535,14 @@
     .seg button.active { background:#ffd23f; color:#15181c; font-weight:bold; }
     /* How to play: a full-screen, one-rule-at-a-time interactive walkthrough — the whole
        viewport is the classroom, one big playable board per rule (no scrolling modal). */
+    /* the coached game's one line of guidance, above the boards and out of the way of them */
+    #tutorBar { display:none; position:fixed; left:50%; transform:translateX(-50%);
+        top:calc(10px + env(safe-area-inset-top)); z-index:64; max-width:min(560px,90vw);
+        padding:9px 18px; border-radius:999px; font-size:13.5px; font-weight:600; text-align:center;
+        color:#15181c; background:#ffd23f; box-shadow:0 6px 22px rgba(0,0,0,.45); pointer-events:none; }
+    #tutorBar.flash { animation:tutorIn .32s ease; }
+    @keyframes tutorIn { from { opacity:0; transform:translateX(-50%) translateY(-7px); }
+                         to { opacity:1; transform:translateX(-50%) translateY(0); } }
     #htpFull { position:fixed; inset:0; z-index:150; display:flex; flex-direction:column; align-items:center;
         background:#0f1216; padding:calc(10px + env(safe-area-inset-top)) 14px calc(12px + env(safe-area-inset-bottom));
         animation:htpFadeIn 0.25s ease; }
@@ -494,38 +554,30 @@
     #htpHead h2 { margin:0 0 4px; font-size:clamp(18px, 3.4vh, 26px); color:#e6e6e6; }
     #htpHead p { margin:0; font-size:clamp(12px, 2.1vh, 15px); color:#c7ccd1; }
     #htpHead p b { color:#e6e6e6; }
-    #htpStage { position:relative; flex:1; min-height:0; width:100%; margin:8px 0;
-        display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
+    #htpStage { flex:1; min-height:0; width:100%; display:flex; align-items:center;
+        justify-content:center; gap:14px; margin:8px 0 6px; }
     #htpBigCanvas { background:#0c0e11; border-radius:14px; touch-action:none; cursor:pointer; display:block; }
-    #htpFallSlot { background:#0c0e11; border-radius:14px; overflow:hidden; }
-    #htpFallSlot canvas { width:100% !important; height:100% !important; }
-    .htpGoal { padding:7px 14px; border-radius:16px; width:max-content; max-width:92%;
-        font-size:clamp(12px, 2vh, 15px); font-weight:600; color:#ffd23f; background:rgba(15,18,22,0.82);
-        border:1px solid rgba(255,210,63,0.45); text-align:center; }
-    .htpGoal.pulse { animation:htpGoalPulse 1.6s ease-in-out infinite; }
-    .htpGoal.done { color:#78dc8c; border-color:rgba(120,220,140,0.5); animation:none; }
-    @keyframes htpGoalPulse { 0%,100% { box-shadow:0 0 0 0 rgba(255,210,63,0); } 50% { box-shadow:0 0 14px 2px rgba(255,210,63,0.3); } }
-    #htpGoalChip { pointer-events:none; }   /* in-flow, right under the board */
-    #newbieBanner { width:100%; margin-bottom:8px; border-color:rgba(255,210,63,0.5); color:#ffd23f;
-        animation:htpGoalPulse 2.2s ease-in-out infinite; }
+    /* the live 3D view sits beside the flat board, showing the same position from the side */
+    #htp3DPane { background:#0c0e11; border-radius:14px; overflow:hidden; flex:none; }
+    #htp3DPane canvas { width:100% !important; height:100% !important; display:block; }
+    #htpHint { flex:none; margin:0 0 6px; font-size:12px; color:#69727b; text-align:center; }
     #htpFoot { flex:none; display:flex; align-items:center; justify-content:center; gap:12px; width:100%; max-width:620px; }
     #htpFoot .pbtn { margin:0; padding:9px 16px; font-size:14px; width:auto; }
     #htpFoot .pbtn:disabled { opacity:0.35; cursor:default; }
     #htpDots { display:flex; gap:7px; }
     .htpDot { width:9px; height:9px; border-radius:50%; background:#3a4048; padding:0; border:none; cursor:pointer; }
     .htpDot.active { background:#ffd23f; transform:scale(1.25); }
-    .htpDot.goalDone { background:#78dc8c; }
-    .htpDot.goalDone.active { background:#78dc8c; box-shadow:0 0 0 2px rgba(120,220,140,0.35); }
+    .htpDot.tried { background:#5a6470; }
 </style>
 </head>
 <body>
-<button id="themeToggle" title="Switch board theme" aria-label="Switch board theme">☀</button>
-<button id="soundToggle" title="Sound volume" aria-label="Sound volume">🔊</button>
+<button id="themeToggle" title="Switch board theme" aria-label="Switch board theme"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.4"/><path d="M12 2.6v2.6M12 18.8v2.6M2.6 12h2.6M18.8 12h2.6M5.4 5.4l1.8 1.8M16.8 16.8l1.8 1.8M18.6 5.4l-1.8 1.8M7.2 16.8l-1.8 1.8"/></svg></button>
+<button id="soundToggle" title="Sound volume" aria-label="Sound volume"></button>
 <div id="volPopover">
     <canvas id="volDial" width="112" height="100" title="Drag to set volume"></canvas>
-    <div id="volRow"><button id="volMuteBtn" aria-label="Mute">🔊</button><span id="volPct">70%</span></div>
+    <div id="volRow"><button id="volMuteBtn" aria-label="Mute"></button><span id="volPct">70%</span></div>
 </div>
-<button id="langToggle" title="Language" aria-label="Language">🌐</button>
+<button id="langToggle" title="Language" aria-label="Language"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.9 5.7 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.7-3.9-9S9.4 5.6 12 3z"/></svg></button>
 <div id="langMenu"></div>
 <!-- Traditional-Chinese-only: shown by applyI18nStatic() once LANG is known. Ruby (bopomofo)
      annotations on by default; tap to turn off. -->
@@ -533,19 +585,20 @@
 <!-- Persistent "still queued" pill: shown across every AI-while-you-wait game so it's always clear
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
-<div id="buildTag">build 184</div>
+<div id="tutorBar"></div>
+<div id="buildTag">build 193</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
 <div id="dirSafeMask"><div id="dirSafeBox" class="land"></div></div>
-<button id="dirFab" title="Director mode">🎬</button>
+<button id="dirFab" title="Director mode"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.6" y="7" width="13" height="10" rx="2"/><path d="M15.6 11l5.8-3v8l-5.8-3z"/></svg></button>
 <div id="dirPanel">
     <div class="dRow"><label for="dirLogo">Logo</label><input id="dirLogo" type="range" min="0" max="0.9" step="0.02" value="0"></div>
     <div class="dRow"><label>Safe area</label><div class="seg">
         <button id="dirSafeOff" class="on">Off</button><button id="dirSafeLand">16:9</button><button id="dirSafePort">9:16</button>
     </div></div>
     <div class="dRow"><label for="dirHide">Hide UI</label><input id="dirHide" type="checkbox"></div>
-    <div class="dRow"><label for="dirUnlock">🔓 Move/resize boards</label><input id="dirUnlock" type="checkbox"></div>
+    <div class="dRow"><label for="dirUnlock">Move/resize boards</label><input id="dirUnlock" type="checkbox"></div>
 </div>
 <div id="wrap" role="main">
     <h1><canvas id="logoCanvas" width="240" height="68"></canvas><span id="logoFallback">TAU</span></h1>
@@ -580,7 +633,7 @@
              install banner/prompt, so a visitor with zero UI cue may simply never see one at all. An
              explicit button that calls the SAME browser-native prompt is the reliable cross-browser
              path; it just no-ops (stays hidden) on browsers with no install support, e.g. iOS Safari. -->
-        <p id="installLine" style="display:none;margin:6px 0 0;"><button class="link" id="installBtn" style="font-size:11px;color:#5a6570;">📲 Install app →</button></p>
+        <p id="installLine" style="display:none;margin:6px 0 0;"><button class="link" id="installBtn" style="font-size:11px;color:#5a6570;">Install app →</button></p>
 
         <div id="acctPanel" style="display:none;">
             <div id="acctSignedOut">
@@ -639,7 +692,7 @@
             <p id="help"></p>
             <div id="btns"><button id="reset">Surrender</button><button id="menuBtn">Menu</button></div>
             <!-- replaces Surrender/Menu while a replay is playing: share the game or skip to the end -->
-            <div id="replayBtns" style="display:none;gap:10px;"><button id="replayShare">Share this game</button><button id="replaySave">Save this game</button><button id="replaySpeed" title="Playback speed">1×</button><button id="replaySkip">Skip ⏭</button></div>
+            <div id="replayBtns" style="display:none;gap:10px;"><button id="replayShare">Share this game</button><button id="replaySave">Save this game</button><button id="replayPlayOn" title="Take over this position">Play on from here</button><button id="replaySpeed" title="Playback speed">1×</button><button id="replaySkip">Skip ⏭</button></div>
         </div>
     </div>
 </div>
@@ -715,6 +768,25 @@
                     <label class="searchNumRow labTimeRow" style="display:none;">Seconds <input class="labTimeMs" type="number" min="0.2" max="30" step="0.5" value="2"></label>
                     <label class="searchNumRow">Temp <input class="labTemp" type="number" min="0" max="1" step="0.05" value="0"></label>
                 </div>
+            </div>
+        </div>
+        <div id="labPos">
+            <h3>Position</h3>
+            <p class="labPosHint">Start from a spot of your choosing instead of the opening.</p>
+            <div class="labPosRow">
+                <button id="labPosCustom" class="labPosPrimary">Custom opening — set it up on the board</button>
+            </div>
+            <p class="labPosHint">Or work with a position code:</p>
+            <div class="labPosRow">
+                <input id="labPosCode" type="text" spellcheck="false" placeholder="bx,by,brot,rx,ry,rrot,turn">
+                <button id="labPosCopy" title="Copy the position currently on the board">Copy board</button>
+            </div>
+            <div class="labPosRow">
+                <label>To move
+                    <select id="labPosTurn"><option value="0">Blue</option><option value="1">Red</option></select>
+                </label>
+                <button id="labPosPlay">Play from here</button>
+                <button id="labPosStart" title="Restore the opening position">Opening</button>
             </div>
         </div>
         <button id="labWatchBtn">Watch ▶</button>
@@ -1800,7 +1872,7 @@
 // as the inner ring and are centred ON the rim, running rim-to-rim.
 
 // ---------- i18n ----------
-// Device language is detected once and can be overridden from the 🌐 corner menu (stored in
+// Device language is detected once and can be overridden from the language corner menu (stored in
 // localStorage; switching reloads). Chinese splits on script: zh-TW/HK/MO and zh-Hant* get
 // Traditional (Taiwan-flavoured vocabulary), other zh* gets Simplified — mismatching script reads
 // as "the other side's" localisation to both audiences, so the split matters more than the words.
@@ -3535,7 +3607,7 @@ let glowTexGold=null, glowTexHot=null;   // the pivot glow's two tints: gold for
 // sandbox dump so a dumped JSON pastes straight in.
 let SKIN = null, colorLab = false, colorLabTimer = null;
 // Default boards are the GRADED colourways: Dojo (warm wood) on a light device, Slate (graphite) on
-// a dark one. The flat Dark and Yellow boards remain in the ☀ cycle for anyone who prefers them. The
+// a dark one. The flat Dark and Yellow boards remain in the theme cycle for anyone who prefers them. The
 // active board skin is an explicit override (colour lab) if set, else the cycle's current entry.
 const SLATE_SKIN  = { shadeByZoneValue:true, v4:'#5a636c', v3:'#4b535b', v2:'#3c434a', v1:'#2f353b',
     flat:'#454d55', lines:'#12161a', rim:'#8f979e', bg:'#0c0e11', pb:'#5487c4', pr:'#d05a48' };
@@ -3543,7 +3615,7 @@ const DOJO_SKIN   = { shadeByZoneValue:true, v4:'#e9d9b3', v3:'#ddc99b', v2:'#cb
     flat:'#d9c9a3', lines:'#3a2f22', rim:'#3c434a', bg:'#0c0e11', pb:'#243f78', pr:'#cf3b26' };
 const YELLOW_SKIN = { shadeByZoneValue:false, v4:'#efe4a6', v3:'#efe4a6', v2:'#efe4a6', v1:'#efe4a6',
     flat:'#efe4a6', lines:'#26251f', rim:'#3c434a', bg:'#0c0e11', pb:'#6b9eff', pr:'#ff6b6b' };
-// Board looks, ordered DARKEST -> LIGHTEST; the ☀ button steps through and loops. null = the flat
+// Board looks, ordered DARKEST -> LIGHTEST; the theme button steps through and loops. null = the flat
 // dark board. Dark and Yellow are the two originals; Slate and Dojo are the graded colourways.
 const BOARD_SKINS = [
     { id:'dark',   name:'Dark',   skin:null },
@@ -3592,7 +3664,7 @@ let htpTripods=[];   // throwaway pieces for the how-to-play "push them off" 3D 
 let currentTheme = 'dark';   // 'dark' for the dark/flat board (skin 0), 'light' otherwise — only used for
                              // the board's default (unskinned) colours.
 // First visit follows the device preference and lands on a GRADED board (not a flat one): light ->
-// Dojo (warm wood, easier on some eyes), dark -> Slate (graphite). An explicit choice (the ☀ cycle)
+// Dojo (warm wood, easier on some eyes), dark -> Slate (graphite). An explicit choice (the theme cycle)
 // is remembered and wins from then on, so returning players keep whatever board they already picked.
 try {
     const saved = localStorage.getItem('tauSkin');
@@ -3894,6 +3966,7 @@ function endReplay() {
 document.getElementById('replayShare').addEventListener('click', () => shareReplay());
 document.getElementById('replaySave').addEventListener('click', () => saveReplayToCollection());
 document.getElementById('replaySkip').addEventListener('click', () => { if (replayActive) endReplay(); });
+document.getElementById('replayPlayOn').addEventListener('click', playOnFromHere);
 document.getElementById('replaySpeed').addEventListener('click', () => {   // 1x -> 1.5x -> 2x -> 1x
     replaySpeedMult = replaySpeedMult >= 2 ? 1 : replaySpeedMult === 1 ? 1.5 : 2;
     document.getElementById('replaySpeed').textContent = replaySpeedMult + '×';
@@ -4215,9 +4288,25 @@ Piece.prototype.draw = function(activeIdx) {
     // engine's release band is a whisker wider (lineStick) — the feet act a tiny bit stickier than
     // they look, by design. Floored in px so they stay visible/tappable-looking on small boards.
     const fr = Math.max(3.5, CFG.padRadius*scale);
+    // While the coached game is waiting for a pin, this piece's feet breathe and sit a little
+    // washed out — an invitation, not a selection. The moment one is held it goes full colour.
+    const inviting = typeof tutorOn !== 'undefined' && tutorOn && G && !G.over
+                     && G.pinned === null && this.id === G.active && this.id === humanIdx;
+    if (inviting) {
+        const pulse = 0.55 + 0.35*Math.abs(Math.sin(performance.now()*0.0042));
+        for (const f of feet) {
+            const R = fr*5.2;
+            const g = ctx.createRadialGradient(f.x,f.y,fr*0.6,f.x,f.y,R);
+            g.addColorStop(0, hexA(col, pulse)); g.addColorStop(0.45, hexA(col, pulse*0.32));
+            g.addColorStop(1, hexA(col, 0));
+            ctx.fillStyle = g; ctx.beginPath(); ctx.arc(f.x,f.y,R,0,7); ctx.fill();
+            ctx.strokeStyle = hexA(col, pulse*0.75); ctx.lineWidth = 1.4;
+            ctx.beginPath(); ctx.arc(f.x,f.y,fr*2.1,0,7); ctx.stroke();
+        }
+    }
     for (let i=0;i<3;i++){ const f=feet[i];
         ctx.beginPath(); ctx.arc(f.x,f.y, activeIdx===i ? fr+1.5 : fr, 0, 2*Math.PI);
-        ctx.fillStyle=(activeIdx===i)?'#ffd23f':col; ctx.fill();
+        ctx.fillStyle=(activeIdx===i)?'#ffd23f':(inviting ? hexA(col,0.55) : col); ctx.fill();
         // The yellow pivot pad is tonally flat against the pale boards (Dojo/Yellow), so there it
         // gets a real ink ring — a highlighter mark with a pen circle. Everything else keeps the
         // ordinary hairline.
@@ -4269,6 +4358,7 @@ function onDown(e) {
         e.preventDefault(); clearTimeout(coachHoldTimer); coachSegmentEnd(); return;
     }
     if (G.over || aiAnim || inputBlocked()) return; e.preventDefault();
+    labSetupPickSide(e);          // setup mode: whichever colour you reach for is the one that moves
     boardDown(view2D(e));
 }
 // The two boards are now BOTH playable, so the step-1/step-2 logic below can't read pointer
@@ -4379,8 +4469,22 @@ function onUp() {
 function finishTurn() {
     if (coachGuided) { coachGuidedCommit(); return; }   // the coached counter commits its own way
     coachFreeArc = null;   // move committed — the cached rail is spent
+    // G.snap is the position as it stood when this turn's pivot was pinned — exactly what
+    // "take that move back" needs to restore.
+    if (labMode && G.snap) labHist.push({ pose: [G.snap[0].x, G.snap[0].y, G.snap[0].rot,
+                                                 G.snap[1].x, G.snap[1].y, G.snap[1].rot], active: G.active });
     commitTurn();
     progressCentering();   // each completed move creeps the camera a quarter back toward centre
+    if (labMode) labBenchRender();   // the bench's take-back state changes with every committed move
+    if (labSetup) {   // building a position: no winner, no AI reply, just the board as you left it
+        G.over = false; G.winner = null; fall.active = false;
+        labSetupRender(); render(); return;
+    }
+    if (labAuto) {    // lab bench, both sides AI: keep it running until someone goes off
+        if (G.over) { triggerFall(); showGameOverModal(); }
+        else setTimeout(labAutoTurn, 420);
+        labBenchRender(); render(); return;
+    }
     if (colorLab) {   // colour-lab AI-vs-AI: show the tumble on a loss, then reset and keep playing
         if (G.over) { triggerFall(); colorLabTimer = setTimeout(colorLabReset, 2600); }
         else colorLabTimer = setTimeout(colorLabTurn, 550);
@@ -5309,6 +5413,7 @@ function nnPlanForGameTimed(idx, temperature, timeMs, model, keepForDepth, polic
 
 function startAiTurn() {
     if (G.over || G.active!==aiIdx) return;
+    if (labMode) labApplyBrainFor(aiIdx);   // each side keeps its own brain in a lab game
     let pivotIdx, dir, target = 0;
     // Ladder games route through the tuned per-level brain, an #nn game routes through the loaded
     // checkpoint, everything else uses the classic difficulty planner. All return the same
@@ -5717,13 +5822,24 @@ function renderGameOverSheet() {
                 { label: t('Levels'), onClick: () => { hideModal(); openLadderMenu(); } } ]
             : [ { label: t('Watch the moves again'), onClick: () => startCoach() },
                 { label: t('Level 1 (gentler)'), onClick: () => startLadderLevel(0, 0) } ];
+    } else if (tutorJustPlayed) {
+        // The coached first game. The generic vsAI sheet below still offers the old easy/medium
+        // difficulty chip, which nothing in the menu has used since the ladder replaced it.
+        const won = G.winner === humanIdx;
+        title = won ? t('You win!') : t('Red got you');
+        buttons = won
+            ? [ { label: t('Take on Level 1'), onClick: () => startLadderLevel(0, 0) },
+                { label: t('Another coached game'), onClick: tutorStart, cls: 'modalBtnQuiet' } ]
+            : [ { label: t('Try again'), onClick: tutorStart },
+                { label: t('Take on Level 1'), onClick: () => startLadderLevel(0, 0), cls: 'modalBtnQuiet' } ];
     } else if (vsAI) {
         title = G.winner===humanIdx ? t('You win!') : t('You lose');
-        // tap the chip to change difficulty (reopens the picker); the two buttons replay at the current one
-        bodyHtml = `<button id="goDiffChip" style="margin:0 auto 8px;font-size:13px;">${t('Difficulty')}: <b>${escapeHtml(t(AI_DIFF_LABEL[aiDifficulty]||aiDifficulty))}</b> &#9662;</button>`;
+        bodyHtml = `<p style="text-align:center;margin:0 0 6px;font-size:12.5px;color:#9aa4ad;">`
+                 + escapeHtml(t(AI_DIFF_LABEL[aiDifficulty]||aiDifficulty)) + `</p>`;
         buttons = [
-            { label: t('Play as Blue'), onClick: () => startGame(true, 0, aiDifficulty) },   // keep the same difficulty on replay
+            { label: t('Play as Blue'), onClick: () => startGame(true, 0, aiDifficulty) },   // same opponent on replay
             { label: t('Play as Red'),  onClick: () => startGame(true, 1, aiDifficulty) },
+            { label: t('Levels'), onClick: () => { hideModal(); openLadderMenu(); }, cls: 'modalBtnQuiet' },
         ];
     } else {
         title = tf('{name} wins!', { name: t(G.winner===0?'Blue':'Red') });
@@ -5747,8 +5863,6 @@ function renderGameOverSheet() {
         bodyHtml += `<div style="margin:8px auto 0;font-size:12px;color:#9aa4ad;text-align:center;">${t('Playing as a guest.')} <button class="link" id="goClaim" style="font-size:12px;">${t('Sign in to keep your progress')}</button></div>`;
     }
     showModal(title, bodyHtml, buttons, !!bodyHtml);
-    const chip = document.getElementById('goDiffChip');
-    if (chip) chip.addEventListener('click', () => { hideModal(); openAiDifficultyMenu(); });
     const goClaim = document.getElementById('goClaim');
     if (goClaim) goClaim.addEventListener('click', () => { hideModal(); openAcctPanel(); });
 }
@@ -5779,6 +5893,7 @@ function startGame(aiMode, humanColorIdx, difficulty) {
     if (!aiMode) startOnlineTurnClock(); else onlineTurnDeadline = null;
     if (vsAI && G.active===aiIdx) aiTimer = setTimeout(startAiTurn, 450);
     if (typeof updateWaitBanner === 'function') updateWaitBanner();   // keep the "still searching" pill across repeated AI games
+    if (typeof maybeFullscreenHint === 'function') maybeFullscreenHint();
 }
 // Start a ladder rung (0-based). humanColorIdx 0 = play Blue (the usual first climb), 1 = Red (the
 // harder second clear). Routes through startGame with the 'ladder' tag so the tuned brain is used.
@@ -6014,6 +6129,8 @@ function coachArc3DUpdate() {
 }
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
+    labMode = false; labAuto = false; labHist = []; labBenchRender();
+    tutorJustPlayed = false; if (typeof tutorEnd === 'function') tutorEnd();
     if (window.tauSteam) window.tauSteam.setStatus('In the menus');   // Steam friends-list presence
     labActive = false;
     clearTimeout(aiTimer); clearTimeout(aiGapTimer); clearTimeout(coachHoldTimer); aiAnim = null;
@@ -6318,21 +6435,49 @@ function htpCrossLimit(base,pivotIdx,dir){
     }
     return ang;
 }
+// ---------- The goal, shown as a whole game ----------
+// A real game recorded from the menu demo's own brain (same capture as COACH_R): every substep of
+// 15 turns, ending with Red pushed over the rim. Played back sped up it answers "what am I trying
+// to do?" in a few seconds, which no amount of rule text does.
+const TUTOR_GAME = {"turnMeta":[{"s":1,"e":5,"mover":0},{"s":6,"e":10,"mover":1},{"s":11,"e":14,"mover":0},{"s":15,"e":28,"mover":1},{"s":29,"e":47,"mover":0},{"s":48,"e":55,"mover":1},{"s":56,"e":112,"mover":0},{"s":113,"e":132,"mover":1},{"s":133,"e":156,"mover":0},{"s":157,"e":173,"mover":1},{"s":174,"e":184,"mover":0},{"s":185,"e":203,"mover":1},{"s":204,"e":218,"mover":0},{"s":219,"e":227,"mover":1},{"s":228,"e":242,"mover":0}],"frames":[[-30.6,0,0,30.6,0,3.142],[-29.57,0.63,0.052,30.6,0,3.142],[-28.57,1.32,0.105,30.6,0,3.142],[-27.61,2.05,0.157,30.6,0,3.142],[-26.69,2.84,0.209,30.6,0,3.142],[-26.03,3.46,0.249,30.6,0,3.142],[-26.03,3.46,0.249,29.57,-0.63,3.194],[-26.03,3.46,0.249,28.57,-1.32,3.246],[-26.03,3.46,0.249,27.61,-2.05,3.299],[-26.03,3.46,0.249,26.69,-2.84,3.351],[-26.03,3.46,0.249,26.03,-3.46,3.39],[-24.87,3.1,0.196,26.03,-3.46,3.39],[-23.74,2.68,0.144,26.03,-3.46,3.39],[-22.63,2.2,0.092,26.03,-3.46,3.39],[-21.54,1.67,0.039,26.03,-3.46,3.39],[-21.54,1.67,0.039,25.7,-2.29,3.443],[-21.54,1.67,0.039,25.31,-1.15,3.495],[-21.54,1.67,0.039,24.86,-0.03,3.547],[-21.54,1.67,0.039,24.36,1.07,3.6],[-21.54,1.67,0.039,23.79,2.14,3.652],[-21.54,1.67,0.039,23.18,3.18,3.704],[-21.54,1.67,0.039,22.5,4.19,3.757],[-21.54,1.67,0.039,21.78,5.16,3.809],[-21.54,1.67,0.039,21.01,6.08,3.862],[-21.54,1.67,0.039,20.19,6.97,3.914],[-21.54,1.67,0.039,19.32,7.82,3.966],[-21.54,1.67,0.039,18.41,8.61,4.019],[-21.54,1.67,0.039,17.46,9.36,4.071],[-21.54,1.67,0.039,17.22,9.54,4.084],[-20.54,2.34,0.092,17.22,9.54,4.084],[-19.57,3.06,0.144,17.22,9.54,4.084],[-18.64,3.84,0.196,17.22,9.54,4.084],[-17.75,4.66,0.249,17.22,9.54,4.084],[-16.91,5.52,0.301,17.22,9.54,4.084],[-16.11,6.43,0.353,17.22,9.54,4.084],[-15.36,7.38,0.406,17.22,9.54,4.084],[-14.67,8.37,0.458,17.22,9.54,4.084],[-14.02,9.39,0.511,17.22,9.54,4.084],[-13.43,10.45,0.563,17.22,9.54,4.084],[-12.89,11.53,0.615,17.22,9.54,4.084],[-12.42,12.64,0.668,17.22,9.54,4.084],[-12,13.78,0.72,17.22,9.54,4.084],[-11.64,14.93,0.772,17.27,9.56,4.081],[-11.34,16.1,0.825,17.27,9.56,4.081],[-11.11,17.29,0.877,17.27,9.56,4.081],[-10.93,18.49,0.929,17.27,9.56,4.081],[-10.82,19.69,0.982,17.27,9.56,4.081],[-10.81,19.84,0.988,17.27,9.56,4.081],[-10.81,19.84,0.988,16.15,9.1,4.028],[-10.81,19.84,0.988,15.01,8.7,3.976],[-10.81,19.84,0.988,13.85,8.36,3.924],[-10.81,19.84,0.988,12.67,8.09,3.871],[-10.81,19.84,0.988,11.48,7.87,3.819],[-10.81,19.84,0.988,10.29,7.72,3.766],[-10.81,19.84,0.988,9.08,7.62,3.714],[-10.81,19.84,0.988,7.87,7.6,3.662],[-9.72,20.35,0.936,7.87,7.6,3.662],[-8.6,20.81,0.884,7.87,7.6,3.662],[-7.46,21.21,0.831,7.87,7.6,3.662],[-6.29,21.54,0.779,7.87,7.6,3.662],[-5.12,21.82,0.726,7.87,7.6,3.662],[-3.93,22.03,0.674,7.87,7.6,3.662],[-2.73,22.18,0.622,7.87,7.6,3.662],[-1.52,22.27,0.569,7.87,7.6,3.662],[-0.31,22.29,0.517,7.87,7.6,3.662],[0.9,22.25,0.465,7.87,7.6,3.662],[2.1,22.15,0.412,7.87,7.6,3.662],[3.3,21.98,0.36,7.87,7.6,3.662],[4.49,21.75,0.308,7.87,7.6,3.662],[5.66,21.46,0.255,7.87,7.6,3.662],[6.82,21.11,0.203,8.17,7.18,3.652],[7.95,20.7,0.151,8.54,6.44,3.64],[9.07,20.23,0.098,9.12,5.83,3.625],[10.16,19.7,0.046,9.77,5.27,3.607],[11.21,19.12,-0.007,10.4,4.69,3.591],[12.24,18.48,-0.059,11.01,4.07,3.574],[13.23,17.79,-0.111,11.59,3.43,3.557],[14.19,17.05,-0.164,12.15,2.75,3.541],[15.1,16.26,-0.216,12.68,2.04,3.525],[15.97,15.42,-0.268,13.19,1.3,3.51],[16.8,14.54,-0.321,13.66,0.54,3.495],[17.58,13.61,-0.373,14.1,-0.26,3.48],[18.31,12.65,-0.425,14.51,-1.09,3.466],[18.99,11.65,-0.478,14.88,-1.94,3.452],[19.61,10.61,-0.53,15.21,-2.82,3.438],[20.18,9.55,-0.583,15.51,-3.73,3.425],[20.7,8.45,-0.635,15.76,-4.66,3.413],[21.15,7.33,-0.687,15.97,-5.6,3.402],[21.55,6.19,-0.74,16.14,-6.57,3.391],[21.88,5.03,-0.792,16.27,-7.55,3.38],[22.16,3.85,-0.844,16.35,-8.55,3.371],[22.37,2.66,-0.897,16.39,-9.55,3.362],[22.52,1.46,-0.949,16.39,-10.57,3.355],[22.61,0.25,-1.001,16.34,-11.59,3.348],[22.63,-0.96,-1.054,16.25,-12.62,3.342],[22.59,-2.16,-1.106,16.12,-13.65,3.337],[22.49,-3.37,-1.158,15.93,-14.67,3.333],[22.32,-4.57,-1.211,15.71,-15.7,3.33],[22.09,-5.75,-1.263,15.43,-16.72,3.328],[21.81,-6.93,-1.316,15.11,-17.73,3.327],[21.45,-8.09,-1.368,14.75,-18.73,3.328],[21.04,-9.22,-1.42,14.34,-19.71,3.33],[20.57,-10.34,-1.473,13.88,-20.67,3.333],[20.05,-11.42,-1.525,13.38,-21.61,3.337],[19.46,-12.48,-1.577,12.84,-22.53,3.343],[18.82,-13.51,-1.63,12.26,-23.41,3.351],[18.13,-14.5,-1.682,11.64,-24.26,3.359],[17.39,-15.46,-1.734,10.98,-25.07,3.37],[16.6,-16.37,-1.787,10.29,-25.83,3.381],[15.76,-17.24,-1.839,9.54,-26.58,3.394],[14.88,-18.07,-1.892,8.23,-27.24,3.39],[13.95,-18.85,-1.944,6.83,-27.83,3.384],[12.99,-19.58,-1.996,5.39,-28.34,3.379],[13.39,-18.53,-1.998,5.08,-27.17,3.431],[13.76,-17.41,-2.002,4.7,-26.02,3.483],[14.13,-16.3,-2.006,4.26,-24.89,3.536],[14.33,-15.08,-2.017,3.77,-23.79,3.588],[14.43,-13.82,-2.031,3.22,-22.71,3.641],[14.48,-12.56,-2.048,2.61,-21.67,3.693],[14.48,-11.32,-2.067,1.95,-20.65,3.745],[14.43,-10.09,-2.088,1.24,-19.68,3.798],[14.35,-8.89,-2.11,0.48,-18.74,3.85],[14.22,-7.71,-2.134,-0.33,-17.84,3.902],[14.02,-6.57,-2.161,-1.19,-16.99,3.955],[13.7,-5.47,-2.191,-2.09,-16.18,4.007],[13.36,-4.39,-2.222,-3.03,-15.42,4.059],[13.02,-3.35,-2.253,-4.01,-14.71,4.112],[12.66,-2.33,-2.285,-5.02,-14.06,4.164],[12.29,-1.34,-2.317,-6.07,-13.45,4.217],[11.91,-0.38,-2.35,-7.15,-12.9,4.269],[11.52,0.56,-2.384,-8.25,-12.41,4.321],[11.1,1.47,-2.418,-9.38,-11.98,4.374],[10.77,2.14,-2.444,-10.24,-11.7,4.413],[10.38,1,-2.391,-9.73,-12.71,4.378],[10.06,-0.17,-2.339,-9.22,-13.78,4.343],[9.8,-1.35,-2.287,-8.7,-14.9,4.308],[9.6,-2.54,-2.234,-8.17,-16.06,4.273],[9.46,-3.74,-2.182,-7.62,-17.25,4.238],[9.39,-4.95,-2.13,-7.06,-18.45,4.204],[9.38,-6.16,-2.077,-6.49,-19.68,4.17],[9.43,-7.37,-2.025,-5.92,-20.92,4.136],[9.54,-8.57,-1.973,-5.34,-22.17,4.102],[9.72,-9.77,-1.92,-4.75,-23.43,4.069],[9.96,-10.95,-1.868,-4.19,-24.67,4.035],[10.26,-12.12,-1.816,-3.75,-25.88,4.002],[10.63,-13.27,-1.763,-3.18,-27.09,3.967],[11.05,-14.41,-1.711,-2.62,-28.28,3.933],[11.53,-15.52,-1.658,-2.07,-29.45,3.898],[12.07,-16.6,-1.606,-1.5,-30.58,3.863],[12.67,-17.65,-1.554,-1,-31.67,3.828],[13.32,-18.67,-1.501,-0.37,-32.75,3.793],[14.02,-19.66,-1.449,0.3,-33.93,3.757],[14.77,-20.6,-1.397,0.94,-35.33,3.73],[15.57,-21.51,-1.344,1.7,-36.54,3.696],[16.42,-22.37,-1.292,2.43,-37.85,3.663],[17.31,-23.19,-1.24,3.14,-39.12,3.629],[18,-23.77,-1.2,3.68,-40.04,3.604],[17.93,-23.64,-1.205,2.48,-39.93,3.551],[17.86,-23.52,-1.209,1.28,-39.76,3.499],[17.8,-23.39,-1.214,0.09,-39.53,3.446],[17.73,-23.26,-1.219,-1.08,-39.24,3.394],[17.67,-23.13,-1.224,-2.24,-38.89,3.342],[17.61,-23,-1.229,-3.37,-38.47,3.289],[17.56,-22.86,-1.234,-4.48,-38,3.237],[17.51,-22.73,-1.239,-5.57,-37.47,3.185],[17.45,-22.59,-1.245,-6.63,-36.88,3.132],[17.39,-22.44,-1.251,-7.65,-36.24,3.08],[17.33,-22.3,-1.256,-8.64,-35.55,3.028],[17.28,-22.16,-1.262,-9.6,-34.8,2.975],[17.23,-22.01,-1.268,-10.51,-34.01,2.923],[17.19,-21.87,-1.274,-11.38,-33.17,2.871],[17.15,-21.73,-1.28,-12.2,-32.28,2.818],[17.12,-21.58,-1.286,-12.98,-31.36,2.766],[17.1,-21.51,-1.289,-13.35,-30.88,2.74],[15.95,-21.88,-1.237,-13.24,-31.42,2.716],[14.82,-22.3,-1.184,-13.13,-32.03,2.691],[13.71,-22.79,-1.132,-12.99,-32.6,2.668],[12.63,-23.33,-1.08,-12.85,-33.23,2.643],[11.58,-23.93,-1.027,-12.69,-33.88,2.618],[10.56,-24.58,-0.975,-12.51,-34.52,2.595],[9.58,-25.28,-0.922,-12.31,-35.19,2.571],[8.63,-26.04,-0.87,-12.1,-35.9,2.547],[7.73,-26.84,-0.818,-11.86,-36.64,2.523],[6.87,-27.69,-0.765,-11.6,-37.38,2.5],[6.26,-28.36,-0.726,-11.39,-37.97,2.482],[6.08,-27.85,-0.74,-11.81,-36.84,2.43],[5.91,-27.32,-0.755,-12.18,-35.68,2.378],[5.77,-26.79,-0.77,-12.49,-34.52,2.325],[5.64,-26.25,-0.784,-12.74,-33.33,2.273],[5.52,-25.7,-0.8,-12.92,-32.14,2.221],[5.43,-25.13,-0.815,-13.04,-30.93,2.168],[5.35,-24.56,-0.83,-13.1,-29.73,2.116],[5.3,-23.97,-0.846,-13.09,-28.52,2.064],[5.27,-23.37,-0.862,-13.02,-27.31,2.011],[5.27,-22.77,-0.879,-12.89,-26.11,1.959],[5.29,-22.15,-0.896,-12.7,-24.91,1.906],[5.33,-21.52,-0.913,-12.44,-23.73,1.854],[5.4,-20.89,-0.93,-12.12,-22.57,1.802],[5.5,-20.24,-0.947,-11.74,-21.42,1.749],[5.62,-19.59,-0.965,-11.3,-20.29,1.697],[5.77,-18.93,-0.982,-10.81,-19.19,1.645],[5.95,-18.27,-1,-10.25,-18.11,1.592],[6.2,-17.59,-1.018,-9.64,-17.07,1.54],[6.24,-17.5,-1.021,-9.56,-16.94,1.533],[5.23,-18.16,-0.968,-10.1,-18.23,1.514],[4.25,-18.87,-0.916,-10.64,-19.54,1.496],[3.31,-19.63,-0.864,-11.2,-20.89,1.479],[2.41,-20.44,-0.811,-11.77,-22.26,1.463],[1.56,-21.3,-0.759,-12.33,-23.64,1.447],[0.75,-22.2,-0.706,-12.91,-25.04,1.432],[-0.01,-23.14,-0.654,-13.48,-26.44,1.417],[-0.72,-24.11,-0.602,-14.05,-27.84,1.402],[-1.38,-25.13,-0.549,-14.62,-29.23,1.387],[-1.99,-26.18,-0.497,-15.18,-30.61,1.371],[-2.53,-27.25,-0.445,-15.75,-31.97,1.354],[-3.03,-28.36,-0.392,-16.3,-33.3,1.337],[-3.46,-29.49,-0.34,-16.85,-34.58,1.318],[-3.83,-30.64,-0.288,-17.33,-35.82,1.299],[-4.11,-31.66,-0.242,-17.71,-36.94,1.28],[-3.86,-30.98,-0.251,-16.81,-36.13,1.228],[-3.45,-30.28,-0.257,-15.87,-35.38,1.175],[-2.95,-29.56,-0.262,-14.89,-34.67,1.123],[-2.45,-28.84,-0.267,-13.87,-34.01,1.07],[-1.91,-28.13,-0.271,-12.83,-33.41,1.018],[-1.33,-27.42,-0.274,-11.75,-32.86,0.966],[-0.44,-26.95,-0.266,-10.64,-32.38,0.913],[0.53,-26.61,-0.254,-9.51,-31.95,0.861],[1.26,-26.39,-0.245,-8.65,-31.66,0.822],[1,-27.57,-0.192,-9.45,-32.37,0.821],[0.8,-28.76,-0.14,-10.32,-33.15,0.824],[0.66,-29.96,-0.088,-11.11,-34.14,0.821],[0.59,-31.17,-0.035,-11.85,-35.25,0.814],[0.58,-32.38,0.017,-12.53,-36.41,0.804],[0.63,-33.58,0.069,-13.16,-37.59,0.792],[0.75,-34.79,0.122,-13.74,-38.79,0.777],[0.93,-35.98,0.174,-14.26,-40,0.76],[1.17,-37.17,0.227,-14.73,-41.21,0.741],[1.47,-38.34,0.279,-14.99,-42.45,0.715],[1.83,-39.49,0.331,-15.17,-43.66,0.688],[2.25,-40.63,0.384,-15.33,-44.87,0.659],[2.74,-41.73,0.436,-15.45,-46.05,0.629],[3.28,-42.82,0.488,-15.55,-47.2,0.599],[3.87,-43.87,0.541,-15.63,-48.33,0.568]]};
+const TUTOR_SPEED = 2.4;        // frames consumed per rendered frame
+const TUTOR_HOLD  = 1.1;        // seconds held on the finish before it loops
+let tutorPlayT = 0;
+function htpSlideGoal(c,w,h,t){
+    const m = htpMap(w,h); htpBoard(c,m.b,m.sc);
+    const F = TUTOR_GAME.frames, last = F.length - 1;
+    const span = last / TUTOR_SPEED / 60;                 // seconds of playback at 60fps
+    const cyc = (t - tutorPlayT) % (span + TUTOR_HOLD);
+    const done = cyc > span;
+    const f = F[Math.min(last, Math.floor(cyc * 60 * TUTOR_SPEED))];
+    const blue = mkP(0, f[0], f[1], f[2]), red = mkP(1, f[3], f[4], f[5]);
+    htpMark(blue, red);
+    // once the last frame lands, walk the loser the rest of the way out and fade it
+    let alpha = 1;
+    if (done) {
+        const k = Math.min(1, (cyc - span) / TUTOR_HOLD);
+        const d = Math.hypot(red.x, red.y) || 1;
+        red.x += (red.x/d) * 26 * k; red.y += (red.y/d) * 26 * k;
+        alpha = 1 - k*0.85;
+    }
+    htpPiece(c, blue, m.b, -1, t);
+    c.globalAlpha = alpha; htpPiece(c, red, m.b, -1, t); c.globalAlpha = 1;
+}
 // ---------- Try-it layer: the first four rules are PLAYABLE, not just watched ----------
 // Each of those slides runs its attract loop until the first touch, then hands the piece to the
 // player: tap a foot to hold it (that's the pivot), drag to swing. It's the REAL engine
 // throughout — the same Piece/rotateAround/resolvePush/countCrossings a match runs — with one
 // small goal per rule and a confetti pop when it lands. Goals persist for the session.
 const HTP_TRY = {
-    pivot: { make: () => ({ p: mkP(0,2,3,-0.5) }),
-             goal: 'Try it — tap a foot to hold it', praise: 'Held! That foot is your pivot.' },
-    swing: { make: () => ({ p: mkP(0,6,6,-0.4) }),
-             goal: 'Try it — hold a foot, then drag to swing around it', praise: 'A real swing — that’s a whole move.' },
-    push:  { make: () => ({ p: mkP(0,-20,0,0.3), red: mkP(1,20,0,Math.PI), red0:{x:20,y:0} }),
-             goal: 'Try it — swing into Red and shove them', praise: 'Shoved! Contact is real physics.' },
-    cross: { make: () => ({ p: mkP(0,-24,12,0.5) }),
-             goal: 'Try it — swing until the one-line rule stops you', praise: 'Blocked — one line per turn.' },
+    pivot: { make: () => ({ p: mkP(0,2,3,-0.5) }) },
+    swing: { make: () => ({ p: mkP(0,6,6,-0.4) }) },
+    push:  { make: () => ({ p: mkP(0,-20,0,0.3), red: mkP(1,20,0,Math.PI), red0:{x:20,y:0} }) },
+    cross: { make: () => ({ p: mkP(0,-24,12,0.5) }) },
 };
+// The piece(s) the current slide is showing this frame — the 3D pane mirrors these, so the side
+// view is always the same position as the flat board, whether it's animating or being dragged.
+let htpNow = null;
+function htpMark(blue, red) { htpNow = { blue, red: red || null }; }
 function htpState(key) {
     if (!htpCache['try_'+key]) htpCache['try_'+key] = Object.assign(
         { key, touched:false, pinned:null, dragging:false, armFrom:null, lastAng:0, turnDir:0,
@@ -6340,13 +6485,12 @@ function htpState(key) {
           lockFlashT:-9, blockFlashT:-9, blockId:null }, HTP_TRY[key].make());
     return htpCache['try_'+key];
 }
-function htpGoalDone(key, st, at, extraText) {
+function htpGoalDone(key, st, at) {
     st.done = true;
     st.burst = { x: at.x, y: at.y, t: st.lastT };
     st.parts = Array.from({length:26}, () => ({ a: Math.random()*Math.PI*2, v: 22+Math.random()*46,
         life: 0.8+Math.random()*0.5, col: ['#ffd23f','#6b9eff','#ff6b6b','#78dc8c'][Math.floor(Math.random()*4)] }));
-    st.praiseText = '✓ ' + (extraText || t(HTP_TRY[key].praise));
-    if (typeof htpChipSync === 'function') htpChipSync();
+    if (typeof htpHintSync === 'function') htpHintSync();
     if (navigator.vibrate) { try { navigator.vibrate(18); } catch(e) {} }
 }
 // One drag delta, run through the rules in engine-sized substeps. Own feet never leave the board
@@ -6382,8 +6526,7 @@ function htpTrySwing(st, key, dA) {
         const moved = Math.hypot(st.red.x - st.red0.x, st.red.y - st.red0.y);
         const offBoard = st.red.feet().some(f => Math.hypot(f.x,f.y) > CFG.edgeU + CFG.edgeEps);
         if (moved >= 5 || offBoard)
-            htpGoalDone(key, st, { x: st.red.x, y: st.red.y },
-                        offBoard ? t('Off the board — that’s the win!') : null);
+            htpGoalDone(key, st, { x: st.red.x, y: st.red.y });
     }
 }
 function htpAttachTry(canvas, key, currentKey) {
@@ -6404,7 +6547,7 @@ function htpAttachTry(canvas, key, currentKey) {
     canvas.addEventListener('pointerdown', ev => {
         if (!active()) return;
         const st = htpState(key), m = toBoard(ev);
-        if (!st.touched) { st.touched = true; if (typeof htpChipSync === 'function') htpChipSync(); }
+        if (!st.touched) { st.touched = true; if (typeof htpHintSync === 'function') htpHintSync(); }
         let best = -1, bd = 100;   // 10u grab radius (squared)
         st.p.feet().forEach((f,i) => { const d = (f.x-m.x)**2 + (f.y-m.y)**2; if (d < bd) { bd = d; best = i; } });
         const pin = i => { st.pinned = i; if (key === 'pivot' && !st.done) htpGoalDone(key, st, st.p.feet()[i]); };
@@ -6444,6 +6587,7 @@ function htpAttachTry(canvas, key, currentKey) {
 // The live (post-touch) frame for a try-it slide: real pieces, rule feedback, confetti.
 function htpDrawTry(c,w,h,t,key) {
     const st = htpState(key); st.lastT = t;
+    htpMark(st.p, st.red);
     const m = htpMap(w,h); htpBoard(c,m.b,m.sc);
     if (st.red) htpPiece(c, st.red, m.b, -1, t);
     htpPiece(c, st.p, m.b, st.pinned === null ? -1 : st.pinned, t);
@@ -6487,14 +6631,15 @@ function htpDrawTry(c,w,h,t,key) {
 function htpSlidePivot(c,w,h,t){
     if (htpState('pivot').touched) return htpDrawTry(c,w,h,t,'pivot');
     const {b}=htpMap(w,h); htpBoard(c,b,htpMap(w,h).sc);
-    htpPiece(c, mkP(0,2,3,-0.5), b, 0, t);   // one piece, resting; the pinned foot glows
+    const rest = mkP(0,2,3,-0.5); htpMark(rest);
+    htpPiece(c, rest, b, 0, t);   // one piece, resting; the pinned foot glows
 }
 function htpSlideSwing(c,w,h,t){
     if (htpState('swing').touched) return htpDrawTry(c,w,h,t,'swing');
     const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
     const base=mkP(0,6,6,-0.4), pv=base.feet()[0];
     const ang=(30*Math.PI/180)*Math.sin(t*3.0);            // ping-pong ~1s each way around the pinned foot
-    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,ang);
+    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,ang); htpMark(p);
     htpPiece(c,p,m.b,0,t);
 }
 function htpSlidePush(c,w,h,t){
@@ -6505,6 +6650,7 @@ function htpSlidePush(c,w,h,t){
     const pivotIdx=2, pv=blue.feet()[pivotIdx];             // (pivot/dir found by search to give a clear shove)
     const steps=16, step=(prog*(-55*Math.PI/180))/steps || 0;
     for(let s=0;s<steps;s++){ blue.rotateAround(pv.x,pv.y,step); resolvePush(blue,red); }   // real push physics
+    htpMark(blue,red);
     htpPiece(c,red,m.b,-1,t);
     htpPiece(c,blue,m.b,pivotIdx,t);
 }
@@ -6515,7 +6661,7 @@ function htpSlideCross(c,w,h,t){
     const base=htpCache.crossBase, pivotIdx=2, dir=1;
     if(htpCache.crossLim===undefined) htpCache.crossLim=htpCrossLimit(base,pivotIdx,dir);
     const prog=htpEaseHold((t%2.4)/2.4), pv=base.feet()[pivotIdx];
-    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*htpCache.crossLim);
+    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*htpCache.crossLim); htpMark(p);
     if(prog>0.8){ const O=m.b(0,0), flash=0.35+0.4*Math.abs(Math.sin(t*8));   // the next ring flashes "blocked"
         c.strokeStyle=`rgba(255,107,107,${flash})`; c.lineWidth=3*htpScale;
         c.beginPath(); c.arc(O.x,O.y,CFG.rings[1]*m.sc,0,7); c.stroke(); }
@@ -6529,7 +6675,7 @@ function htpSlideDouble(c,w,h,t){
     const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
     const base=mkP(0,-CFG.startX,0,0), pivotIdx=1, dir=1, lim=14*Math.PI/180;   // the verified in-game limit (holdEps band)
     const prog=htpEaseHold((t%2.8)/2.8), pv=base.feet()[pivotIdx];
-    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*lim);
+    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*lim); htpMark(p);
     const f=p.feet()[2];
     if (nearLineIds(f, CFG.holdEps).length){
         const g=m.b(f.x,f.y), flash=0.4+0.35*Math.abs(Math.sin(t*6));
@@ -6547,7 +6693,7 @@ function htpSlideTwoFeet(c,w,h,t){
     const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
     const base=mkP(0,18,-20,48*Math.PI/180), pivotIdx=1, dir=-1, lim=23*Math.PI/180;
     const prog=htpEaseHold((t%2.8)/2.8), pv=base.feet()[pivotIdx];
-    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*lim);
+    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*lim); htpMark(p);
     for (const i of [0,2]){                                  // the two moving feet (pivot is foot 1)
         const f=p.feet()[i];
         if (nearLineIds(f, CFG.holdEps).length){
@@ -6566,6 +6712,9 @@ function htpSlideTwoFeet(c,w,h,t){
 // the same physics, not a re-drawn approximation of it.
 let htp3DActive=false, htpBlueP=null, htpRedP=null, htpFallState=null, htpPhase='push', htpPhaseT=0, htpDropT=0;
 function htp3DReset() {
+    // Rule slides with a single piece leave tripod 1 hidden (and a completed fall hides it too),
+    // so restore both here — this is the only entry point into the push-off.
+    if (typeof htpTripods !== 'undefined' && htpTripods) htpTripods.forEach(t => t.visible = true);
     htpBlueP = mkP(0,-2,0,0.3); htpRedP = mkP(1,38,0,Math.PI);
     htpFallState = null; htpPhase='push'; htpPhaseT=0; htpDropT=0;
 }
@@ -6612,19 +6761,12 @@ function htp3DStep(dt) {
     }
 }
 function htp3DUpdateCam(dt) {
-    const blue=htpTripods[0].position, red=htpTripods[1].position;
-    const mx=(blue.x+red.x)/2, mz=(blue.z+red.z)/2;
-    let dx=red.x-blue.x, dz=red.z-blue.z; const len=Math.hypot(dx,dz)||1; dx/=len; dz/=len;
-    const px=-dz, pz=dx;
-    const extra = htpPhase==='fall' ? [[red.x, red.z, red.y]] : null;
-    const dist = autoCamDistance(mx, mz, px, pz, AUTOCAM_TARGET_Y, extra);
-    acTgt.set(mx, AUTOCAM_TARGET_Y, mz);
-    acPos.set(mx+px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), AUTOCAM_TARGET_Y+dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), mz+pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L));
-    const k = 1 - Math.exp(-AUTOCAM_SMOOTH*dt);
-    camera.position.lerp(acPos, k);
-    controls.target.lerp(acTgt, k);
+    const k = 1 - Math.exp(-6*dt);
+    camera.position.lerp(HTP_FALL_CAM_POS, k);
+    controls.target.lerp(HTP_CAM_TGT, k);
 }
 function htp3DTick(dt) {
+    if (!htpFallMode) return htp3DMirror(dt);   // rule slides: the side view echoes the flat board
     htp3DStep(dt);
     htpTripods[0].position.set(htpBlueP.x, 0, htpBlueP.y);
     htpTripods[0].rotation.set(0, -htpBlueP.rot, 0);
@@ -6634,9 +6776,31 @@ function htp3DTick(dt) {
     }
     htp3DUpdateCam(dt);
 }
-function htp3DEnter(size) {
+// Rule slides: put the 3D pieces exactly where the 2D slide has them (htpMark records that each
+// frame) and hold a steady wide framing. A follow-cam would swim about while the player drags,
+// which is the opposite of what a reference view beside the board is for.
+let htpFallMode = false;
+const HTP_CAM_POS = new THREE.Vector3(0, 128, 165), HTP_CAM_TGT = new THREE.Vector3(0, 6, 0);
+// the push-off pulls back a little so there's room under the rim for the loser to tumble through
+const HTP_FALL_CAM_POS = new THREE.Vector3(0, 150, 192);
+function htp3DMirror(dt) {
+    if (htpNow) {
+        htpTripods[0].position.set(htpNow.blue.x, 0, htpNow.blue.y);
+        htpTripods[0].rotation.set(0, -htpNow.blue.rot, 0);
+        htpTripods[0].visible = true;
+        if (htpNow.red) {
+            htpTripods[1].position.set(htpNow.red.x, 0, htpNow.red.y);
+            htpTripods[1].rotation.set(0, -htpNow.red.rot, 0);
+        }
+        htpTripods[1].visible = !!htpNow.red;
+    }
+    const k = 1 - Math.exp(-6*dt);
+    camera.position.lerp(HTP_CAM_POS, k);
+    controls.target.lerp(HTP_CAM_TGT, k);
+}
+function htp3DEnter(w, h) {
     if (!renderer) return;
-    const slot = document.getElementById('htpFallSlot');
+    const slot = document.getElementById('htp3DPane');
     if (!slot) return;
     // The ambient menu demo restarts itself on its own setTimeout loop (demoTimer), independent of
     // whatever's open on top of it. Left running, that timer's own reset() call re-shows `tripods`
@@ -6644,13 +6808,16 @@ function htp3DEnter(size) {
     // pieces in the same scene ("multiple reds and blues"). Stop it for the duration of this demo.
     if (typeof demoStop === 'function') demoStop();
     slot.appendChild(document.getElementById('view3d'));
-    size = size || 220;
+    w = w || 220; h = h || w;
     const cv3 = document.getElementById('view3d');
-    cv3.style.width = size+'px'; cv3.style.height = size+'px'; cv3.style.display = 'block';
-    renderer.setSize(size, size, false); camera.aspect = 1; camera.updateProjectionMatrix();
+    cv3.style.width = w+'px'; cv3.style.height = h+'px'; cv3.style.display = 'block';
+    renderer.setSize(w, h, false); camera.aspect = w/h; camera.updateProjectionMatrix();
     tripods.forEach(t => t.visible = false);
     htpTripods.forEach(t => t.visible = true);
     htp3DReset();
+    // Start the framing already wide instead of easing in from wherever the menu demo left the
+    // camera — otherwise the first slide opens on a swooping shot nobody asked for.
+    camera.position.copy(HTP_CAM_POS); controls.target.copy(HTP_CAM_TGT);
     htp3DActive = true;
 }
 function htp3DExit() {
@@ -6666,6 +6833,7 @@ function htp3DExit() {
 }
 // Wording taken from the designer's own rules (Written elements.docx).
 const HTP_STEPS = [
+    { title:t('The goal'), text:t('Push your opponent off the board. Here is a whole game, sped up.'), draw:htpSlideGoal },
     { title:t('Hold one foot'), text:t('Hold one foot still and rotate the other two.'), draw:htpSlidePivot, tryKey:'pivot' },
     { title:t('Move in circles'), text:t('The moving feet trace an arc. You may only move in one direction per turn.'), draw:htpSlideSwing, tryKey:'swing' },
     { title:t('Push your opponent'), text:t('Push your opponent by moving into their legs.'), draw:htpSlidePush, tryKey:'push' },
@@ -6674,7 +6842,7 @@ const HTP_STEPS = [
     { title:t('Two feet at once'), text:t('Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.'), draw:htpSlideTwoFeet },
     { title:t('Push them off'), text:t('Push your opponent off the edge. When one of their feet leaves the board, you win.'), is3D:true },
 ];
-let htpRaf=null, htpFullIdx=0, htpKeyHandler=null, htpResizeHandler=null;
+let htpRaf=null, htpFullIdx=0, htpKeyHandler=null, htpResizeHandler=null, htpT0=0;
 function stopHowToPlayAnim() {
     if (htpRaf) cancelAnimationFrame(htpRaf); htpRaf=null;
     if (htpKeyHandler) { removeEventListener('keydown', htpKeyHandler); htpKeyHandler=null; }
@@ -6685,37 +6853,42 @@ function stopHowToPlayAnim() {
 }
 // The shared goal chip reflects the CURRENT step's try-state; called on step change and whenever
 // a goal completes. Dots double as a progress tracker: earned goals stay green for the session.
-function htpChipSync() {
-    const chip = document.getElementById('htpGoalChip');
-    if (!chip) return;
-    const s = HTP_STEPS[htpFullIdx];
-    if (!s || !s.tryKey) { chip.style.display='none'; }
-    else {
-        const st = htpState(s.tryKey);
-        chip.style.display='block';
-        chip.classList.toggle('done', st.done);
-        chip.classList.toggle('pulse', !st.touched && !st.done);
-        chip.textContent = st.done ? st.praiseText : '\u{1F446} ' + t(HTP_TRY[s.tryKey].goal);
+function htpHintSync() {
+    const hint = document.getElementById('htpHint');
+    if (hint) {
+        const s = HTP_STEPS[htpFullIdx], st = s && s.tryKey && htpCache['try_'+s.tryKey];
+        // One quiet line, and only until they touch it — the rule text does the talking.
+        hint.style.visibility = (s && s.tryKey && !(st && st.touched)) ? 'visible' : 'hidden';
     }
     document.querySelectorAll('#htpFull .htpDot').forEach((d,i) => {
         const k = HTP_STEPS[i].tryKey;
-        d.classList.toggle('goalDone', !!(k && htpCache['try_'+k] && htpCache['try_'+k].done));
+        d.classList.toggle('tried', !!(k && htpCache['try_'+k] && htpCache['try_'+k].done));
         d.classList.toggle('active', i === htpFullIdx);
     });
 }
-// Size the stage: one big square board filling whatever the head/foot rows leave free.
+// Two panes: the flat board and the 3D view beside it. Landscape puts them side by side;
+// portrait stacks them, so on a phone you still get both without either going postage-stamp.
 function htpLayout() {
     const stage = document.getElementById('htpStage');
     const cv = document.getElementById('htpBigCanvas');
     if (!stage || !cv) return 0;
-    const r = stage.getBoundingClientRect();
-    // reserve a row for the goal chip below the board so it never squeezes the canvas
-    const size = Math.max(200, Math.floor(Math.min(r.width, r.height - 48)));
+    const r = stage.getBoundingClientRect(), GAP = 14;
+    const row = r.width > r.height * 1.1;
+    stage.style.flexDirection = row ? 'row' : 'column';
+    // On the push-off slide the flat board is hidden, so the 3D view gets the whole stage.
+    const size = Math.max(150, Math.floor(htpFallMode ? Math.min(r.width, r.height)
+                                        : row ? Math.min((r.width - GAP)/2, r.height)
+                                              : Math.min(r.width, (r.height - GAP)/2)));
     const ratio = Math.min(window.devicePixelRatio || 1, 2);
     cv.style.width = size+'px'; cv.style.height = size+'px';
     cv.width = Math.round(size*ratio); cv.height = Math.round(size*ratio);
-    const slot = document.getElementById('htpFallSlot');
-    if (slot) { slot.style.width = size+'px'; slot.style.height = size+'px'; }
+    const pane = document.getElementById('htp3DPane');
+    if (pane) { pane.style.width = size+'px'; pane.style.height = size+'px'; }
+    if (htp3DActive && renderer) {
+        const cv3 = document.getElementById('view3d');
+        cv3.style.width = size+'px'; cv3.style.height = size+'px';
+        renderer.setSize(size, size, false); camera.aspect = 1; camera.updateProjectionMatrix();
+    }
     return size;
 }
 function htpShowStep(idx) {
@@ -6723,19 +6896,20 @@ function htpShowStep(idx) {
     const s = HTP_STEPS[htpFullIdx];
     document.getElementById('htpTitle').textContent = s.title;
     document.getElementById('htpText').innerHTML = s.text;
-    const cv = document.getElementById('htpBigCanvas'), slot = document.getElementById('htpFallSlot');
-    cv.style.display = s.is3D ? 'none' : 'block';
-    slot.style.display = s.is3D ? 'block' : 'none';
+    // The flat board is hidden on the finale, where the 3D push-off IS the slide.
+    document.getElementById('htpBigCanvas').style.display = s.is3D ? 'none' : 'block';
+    if (s.draw === htpSlideGoal) tutorPlayT = (performance.now() - htpT0) / 1000;
+    htpFallMode = !!s.is3D;
+    if (htpFallMode) htp3DReset();
     // Measure AFTER the head/foot have their real content (an empty head measures ~0 tall and
     // the stage then claims rows the footer needs — the canvas ends up under the buttons).
     const size = htpLayout();
-    if (s.is3D && !htp3DActive) htp3DEnter(size);
-    else if (!s.is3D && htp3DActive) htp3DExit();
+    if (!htp3DActive) htp3DEnter(size, size);
     document.getElementById('htpPrev').disabled = htpFullIdx === 0;
     const last = htpFullIdx === HTP_STEPS.length-1;
     document.getElementById('htpNext').style.display = last ? 'none' : '';
-    document.getElementById('htpCoachBtn').style.display = last ? '' : 'none';
-    htpChipSync();
+    document.getElementById('htpDoneBtn').style.display = last ? '' : 'none';
+    htpHintSync();
 }
 function openHowToPlay() {
     stopHowToPlayAnim();
@@ -6746,14 +6920,15 @@ function openHowToPlay() {
         <div id="htpHead"><h2 id="htpTitle"></h2><p id="htpText"></p></div>
         <div id="htpStage">
             <canvas id="htpBigCanvas"></canvas>
-            <div id="htpFallSlot" style="display:none"></div>
-            <div class="htpGoal" id="htpGoalChip" style="display:none"></div>
+            <div id="htp3DPane"></div>
         </div>
+        <p id="htpHint">${t('drag the board to try it')}</p>
         <div id="htpFoot">
             <button id="htpPrev" class="pbtn pbtnQuiet">\u2039 ${t('Back')}</button>
             <span id="htpDots">${HTP_STEPS.map((_,i)=>`<button class="htpDot" data-idx="${i}"></button>`).join('')}</span>
             <button id="htpNext" class="pbtn">${t('Next')} \u203A</button>
-            <button id="htpCoachBtn" class="pbtn" style="display:none">${t('Play a coached game')} \u2192</button>
+            <button id="htpDoneBtn" class="pbtn" style="display:none">${t('Done')}</button>
+            <button id="htpPlayBtn" class="pbtn">${t('Play with coaching')}</button>
         </div>`;
     document.body.appendChild(wrap);
     htpLayout();
@@ -6768,9 +6943,10 @@ function openHowToPlay() {
     document.getElementById('htpNext').addEventListener('click', () => htpShowStep(htpFullIdx+1));
     document.querySelectorAll('#htpFull .htpDot').forEach(d =>
         d.addEventListener('click', () => htpShowStep(+d.dataset.idx)));
-    // The rules read best right before doing: the last step hands over to the coached opening.
-    document.getElementById('htpCoachBtn').addEventListener('click', () => {
-        stopHowToPlayAnim(); startCoach();
+    document.getElementById('htpDoneBtn').addEventListener('click', stopHowToPlayAnim);
+    // The rules land better while playing them: this is the way out of the cards at any point.
+    document.getElementById('htpPlayBtn').addEventListener('click', () => {
+        stopHowToPlayAnim(); markOnboarded('howto'); tutorStart();
     });
     htpKeyHandler = e => {
         if (e.key === 'Escape') stopHowToPlayAnim();
@@ -6778,11 +6954,11 @@ function openHowToPlay() {
         else if (e.key === 'ArrowLeft') htpShowStep(htpFullIdx-1);
     };
     addEventListener('keydown', htpKeyHandler);
-    htpResizeHandler = () => { const size = htpLayout(); if (htp3DActive) htp3DEnter(size); };
+    htpResizeHandler = () => htpLayout();
     addEventListener('resize', htpResizeHandler);
 
     const ctx = cv.getContext('2d');
-    const t0 = performance.now();
+    const t0 = performance.now(); htpT0 = t0;
     const loop = () => {
         const s = HTP_STEPS[htpFullIdx];
         if (!s.is3D && cv.width > 0) {
@@ -6796,6 +6972,356 @@ function openHowToPlay() {
     loop();
 }
 document.getElementById('howToPlayBtn').addEventListener('click', openHowToPlay);
+// ---------- Fullscreen nudge ----------
+// The board is the whole point, and on a desktop browser it spends a chunk of the screen on
+// chrome. One small, dismissible pill the first time someone starts a game — never a modal, never
+// twice, and never on a phone (where the page is already full-bleed and the API is a nuisance).
+let fsHintTimer = null;
+function fsHintSeen() { try { return !!localStorage.getItem('tauFsHint'); } catch (e) { return true; } }
+function fsHintDone() {
+    try { localStorage.setItem('tauFsHint', '1'); } catch (e) {}
+    const el = document.getElementById('fsHint');
+    if (el) { el.classList.remove('show'); setTimeout(() => el.remove(), 260); }
+    clearTimeout(fsHintTimer);
+}
+function maybeFullscreenHint() {
+    if (fsHintSeen()) return;
+    if (tutorOn || labSetup || labMode || onlineMatch) return;      // never on top of something else
+    if (!document.fullscreenEnabled || document.fullscreenElement) return;
+    if (!matchMedia('(pointer: fine)').matches || innerWidth < 900) return;
+    clearTimeout(fsHintTimer);
+    fsHintTimer = setTimeout(() => {
+        if (document.getElementById('fsHint') || document.fullscreenElement) return;
+        if (document.getElementById('game').style.display !== 'flex') return;
+        const el = document.createElement('div');
+        el.id = 'fsHint';
+        // The desktop build has its own F11 handler in the wrapper, so name that instead.
+        const key = window.tauSteam ? 'F11' : null;
+        el.innerHTML = `<button id="fsGo">${key ? key : t('Fullscreen')}</button>`
+            + `<button id="fsNo" aria-label="${t('Close')}">\u2715</button>`;
+        document.body.appendChild(el);
+        requestAnimationFrame(() => el.classList.add('show'));
+        document.getElementById('fsGo').addEventListener('click', () => {
+            const r = document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+            if (r && r.catch) r.catch(() => {});
+            fsHintDone();
+        });
+        document.getElementById('fsNo').addEventListener('click', fsHintDone);
+        fsHintTimer = setTimeout(() => {                 // it fades out on its own; only a tap counts as "seen"
+            const e2 = document.getElementById('fsHint');
+            if (e2) { e2.classList.remove('show'); setTimeout(() => e2.remove(), 260); }
+        }, 9000);
+    }, 1400);
+}
+addEventListener('fullscreenchange', () => { if (document.fullscreenElement) fsHintDone(); });
+// ---------- Custom opening: build a position by playing it ----------
+// Rather than typing coordinates, set the board by moving the pieces with the ordinary controls —
+// pin a foot, swing it, either colour, as many moves as you like. Every move goes through the real
+// engine, so a position built here is always one the rules can actually produce. 'Play on' then
+// hands it to the bench's sides.
+let labSetup = false;
+function labStartSetup(fromCurrent) {
+    const keep = fromCurrent && G ? poseNow() : null;
+    startGame(false, 0);                  // local 1v1: both pieces answer to the mouse, no AI moves
+    if (keep) { replayApplyPose(keep); clearTurn(); }
+    labSetup = true; labMode = true; labHist = [];
+    onlineTurnDeadline = null;        // startGame(false) armed the pass-and-play clock; not here
+    G.over = false; G.winner = null;
+    labBenchRender(); labSetupRender(); render();
+}
+// In setup either piece is yours: a tap nearer the other colour's feet simply moves the turn there.
+function labSetupPickSide(e) {
+    if (!labSetup || G.pinned !== null || G.over) return;
+    const p = pointerPos(e), R = hitRadius();
+    let best = -1, bestD = R;
+    for (let side = 0; side < 2; side++)
+        for (const f of G.pieces[side].feet()) {
+            const d = Math.hypot(f.x - p.x, f.y - p.y);
+            if (d < bestD) { bestD = d; best = side; }
+        }
+    if (best >= 0 && best !== G.active) { G.active = best; clearTurn(); }
+}
+function labSetupPlayOn() {
+    if (!G) return;
+    const off = G.pieces.some(p => p.feet().some(f => Math.hypot(f.x, f.y) > CFG.edgeU));
+    const bar = document.getElementById('lsMsg');
+    if (off) { if (bar) bar.textContent = 'A foot is over the edge — that position is already won.'; return; }
+    labSetup = false;
+    labSetupRender();
+    labBenchApply();                      // the bench's sides take over from here
+}
+function labSetupCancel() { labSetup = false; labSetupRender(); backToMenu(); }
+function labSetupRender() {
+    let el = document.getElementById('labSetupBar');
+    if (!labSetup) { if (el) el.remove(); return; }
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'labSetupBar';
+        el.innerHTML = `<span class="lsTitle">Custom opening</span>
+            <span class="lsHint">Move either piece with the normal controls. Legal moves only.</span>
+            <span class="lsTurn" id="lsTurn"></span>
+            <button id="lsSwap" title="Give the move to the other colour">Other side</button>
+            <button id="lsReset">Opening</button>
+            <button id="lsPlay" class="lsGo">Play on</button>
+            <button id="lsCancel">Cancel</button>
+            <span id="lsMsg"></span>`;
+        document.body.appendChild(el);
+        document.getElementById('lsSwap').addEventListener('click', () => {
+            G.active = 1 - G.active; clearTurn(); labSetupRender(); render(); });
+        document.getElementById('lsReset').addEventListener('click', () => {
+            replayApplyPose([-CFG.startX, 0, 0, CFG.startX, 0, Math.PI]);
+            G.active = 0; G.over = false; G.winner = null; clearTurn(); labSetupRender(); render(); });
+        document.getElementById('lsPlay').addEventListener('click', labSetupPlayOn);
+        document.getElementById('lsCancel').addEventListener('click', labSetupCancel);
+    }
+    const turn = document.getElementById('lsTurn');
+    if (turn) { turn.textContent = (G && G.active === 1 ? 'Red' : 'Blue') + ' to move';
+                turn.style.color = (G && G.active === 1) ? '#ff6b6b' : '#6b9eff'; }
+}
+// ---------- Lab bench: reconfigure a game while it is running ----------
+// The point of the lab is comparison — play a checkpoint, hand your side to it, re-run the same
+// spot a depth deeper. All of that is the same live game with different brains behind the sides,
+// so nothing here restarts: it swaps who is driving and carries on from the position on the board.
+let labMode = false;                 // the bench is available for this game
+let labAuto = false;                 // neither side is human: drive both live
+let labHist = [];                    // pre-move positions, for taking a move back
+const labSideCfg = [{ type:'human' }, { type:'level', level: 7 }];
+// The AI reads its brain from globals, so the side about to move sets them.
+function labApplyBrainFor(side) {
+    const c = labSideCfg[side];
+    if (!c || c.type === 'human') return;
+    if (c.type === 'nn' && labBrains[side].model) {
+        const b = labBrains[side];
+        nnModel = b.model; nnPolicyModel = b.policy || null; nnModelName = b.name;
+        nnDepth = b.depth; nnDynamic = b.dynamic; nnTimeMs = b.timeMs;
+        nnTemperature = b.temperature || 0.05;
+        ladderLevel = null; aiDifficulty = 'nn';
+    } else {
+        aiDifficulty = 'ladder'; ladderLevel = c.level;
+    }
+}
+function labAutoTurn() {
+    if (!labAuto || !G || G.over) return;
+    aiIdx = G.active;                // startAiTurn animates whichever side is up
+    labApplyBrainFor(G.active);
+    startAiTurn();
+}
+// Apply the bench's current sides to the game in progress, from the position on the board.
+function labBenchApply() {
+    if (!G) return;
+    const hb = labSideCfg[0].type === 'human', hr = labSideCfg[1].type === 'human';
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
+    clearTurn();
+    onlineTurnDeadline = null;        // switching sides must not leave an old deadline armed
+    labAuto = !hb && !hr;
+    if (hb && hr) { vsAI = false; }                       // both human: pass and play from here
+    else if (labAuto) { vsAI = false; }                   // both AI: the bench drives
+    else { vsAI = true; humanIdx = hb ? 0 : 1; aiIdx = 1 - humanIdx; }
+    labBenchRender(); render();
+    if (labAuto) setTimeout(labAutoTurn, 320);
+    else if (vsAI && G.active === aiIdx) aiTimer = setTimeout(startAiTurn, 420);
+}
+function labTakeBack() {
+    const h = labHist.pop();
+    if (!h || !G) return;
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); clearTimeout(gameOverTimer);
+    aiAnim = null; labAuto = false;
+    hideModal();
+    replayApplyPose(h.pose); G.active = h.active;
+    G.over = false; G.winner = null; fall.active = false; fallenIdx = -1;
+    if (typeof tripods !== 'undefined' && tripods) tripods.forEach(t => { t.visible = true; t.position.y = 0; });
+    clearTurn(); labBenchRender(); render();
+}
+// The bench panel itself: built on demand, sits over the board, and only exists in a lab game.
+function labBenchRender() {
+    let el = document.getElementById('labBench');
+    if (!labMode) { if (el) el.remove(); return; }
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'labBench';
+        el.innerHTML = `
+            <div class="lbHead"><span>Bench</span><button id="lbHide" title="Hide (L)">\u2715</button></div>
+            <div class="lbRow"><label>Blue</label><select id="lbBlue"></select></div>
+            <div class="lbRow"><label>Red</label><select id="lbRed"></select></div>
+            <div class="lbRow lbNN"><label>Depth</label><input id="lbDepth" type="number" min="1" max="4" step="1">
+                 <label>Temp</label><input id="lbTemp" type="number" min="0" max="1" step="0.05"></div>
+            <div class="lbBtns">
+                <button id="lbApply">Apply from here</button>
+                <button id="lbBack">Take back</button>
+                <button id="lbCopy">Copy position</button>
+            </div>
+            <p id="lbMsg"></p>`;
+        document.body.appendChild(el);
+        const opts = side => {
+            const o = ['<option value="human">You</option>'];
+            for (let i = 0; i < LADDER_N; i++) o.push(`<option value="level:${i}">Level ${i+1}</option>`);
+            if (labBrains[side].model) o.push(`<option value="nn">${escapeHtml(labBrains[side].name || 'checkpoint')}</option>`);
+            return o.join('');
+        };
+        document.getElementById('lbBlue').innerHTML = opts(0);
+        document.getElementById('lbRed').innerHTML = opts(1);
+        const readSel = (side, sel) => {
+            const v = sel.value;
+            labSideCfg[side] = v === 'human' ? { type:'human' }
+                             : v === 'nn'    ? { type:'nn' }
+                             : { type:'level', level: +v.split(':')[1] };
+            labBenchRender();
+        };
+        const bs = document.getElementById('lbBlue'), rs = document.getElementById('lbRed');
+        bs.addEventListener('change', () => readSel(0, bs));
+        rs.addEventListener('change', () => readSel(1, rs));
+        // Depth and temperature edit whichever side is running a checkpoint, so "same spot, one
+        // depth deeper" is: change the number, Apply.
+        const nnSide = () => labSideCfg.findIndex(c => c.type === 'nn');
+        document.getElementById('lbDepth').addEventListener('change', e => {
+            const i = nnSide(); if (i >= 0) labBrains[i].depth = Math.max(1, Math.min(4, +e.target.value || 1)); });
+        document.getElementById('lbTemp').addEventListener('change', e => {
+            const i = nnSide(); if (i >= 0) labBrains[i].temperature = Math.max(0, Math.min(1, +e.target.value || 0)); });
+        document.getElementById('lbApply').addEventListener('click', () => {
+            labBenchApply();
+            document.getElementById('lbMsg').textContent = labAuto ? 'Both sides on the computer.' : 'Playing on from here.';
+        });
+        document.getElementById('lbBack').addEventListener('click', labTakeBack);
+        document.getElementById('lbCopy').addEventListener('click', async () => {
+            const code = poseCode(poseNow(), G.active);
+            try { await navigator.clipboard.writeText(code); document.getElementById('lbMsg').textContent = 'Position copied.'; }
+            catch (e) { document.getElementById('lbMsg').textContent = code; }
+        });
+        document.getElementById('lbHide').addEventListener('click', () => el.classList.add('lbMin'));
+        el.addEventListener('click', e => { if (el.classList.contains('lbMin')) el.classList.remove('lbMin'); });
+    }
+    // reflect current state
+    const sel = (id, side) => {
+        const c = labSideCfg[side];
+        document.getElementById(id).value = c.type === 'human' ? 'human' : c.type === 'nn' ? 'nn' : 'level:' + c.level;
+    };
+    sel('lbBlue', 0); sel('lbRed', 1);
+    const i = labSideCfg.findIndex(c => c.type === 'nn');
+    el.querySelector('.lbNN').style.display = i >= 0 ? '' : 'none';
+    if (i >= 0) {
+        document.getElementById('lbDepth').value = labBrains[i].depth;
+        document.getElementById('lbTemp').value = labBrains[i].temperature || 0;
+    }
+    document.getElementById('lbBack').disabled = !labHist.length;
+}
+addEventListener('keydown', e => {
+    if (e.key === 'l' && labMode && !/input|select|textarea/i.test((e.target.tagName||''))) {
+        const el = document.getElementById('labBench'); if (el) el.classList.toggle('lbMin');
+    }
+});
+// ---------- Play on from a position ----------
+// The whole board state is two poses and whose turn it is, so any position — a replay you are
+// watching, a game that just finished, a code someone sent you — can become a live game. Pose is
+// [bx,by,brot,rx,ry,rrot] exactly as replay frames store it.
+function poseNow() {
+    const b = G.pieces[0], r = G.pieces[1];
+    return [b.x, b.y, b.rot, r.x, r.y, r.rot];
+}
+function poseCode(pose, active) {
+    return pose.map(n => (+n).toFixed(2)).join(',') + ',' + (active ? 1 : 0);
+}
+function parsePoseCode(str) {
+    const n = String(str||'').trim().split(/[\s,]+/).map(Number);
+    if (n.length < 6 || n.some(v => !Number.isFinite(v))) return null;
+    const pose = n.slice(0,6), active = n.length > 6 ? (n[6] ? 1 : 0) : 0;
+    // a position is only playable if both pieces are actually on the board
+    for (const p of [{x:pose[0],y:pose[1],rot:pose[2]}, {x:pose[3],y:pose[4],rot:pose[5]}]) {
+        for (let i = 0; i < 3; i++) {
+            const a = p.rot + i*(2*Math.PI/3);
+            if (Math.hypot(p.x + Math.cos(a)*CFG.footR, p.y + Math.sin(a)*CFG.footR) > CFG.edgeU) return null;
+        }
+    }
+    return { pose, active };
+}
+// Start a real game from `pose` with `active` to move. Everything downstream (rules, AI, replay
+// recording, game-over) is the ordinary machinery — only the opening position differs.
+function playFromPose(pose, active, humanColorIdx, difficulty) {
+    startGame(true, humanColorIdx, difficulty || 'zone');
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
+    replayApplyPose(pose);
+    G.active = active;
+    clearTurn();
+    if (typeof koReset === 'function') koReset();
+    replayFrames = []; replayTurns = [];   // this is a new game, not a continuation of the recording
+    resize(); render();
+    if (vsAI && G.active === aiIdx) aiTimer = setTimeout(startAiTurn, 500);
+}
+// Offered from a replay: take the position on screen and play it out yourself.
+function playOnFromHere() {
+    const pose = poseNow(), active = G.active;
+    if (replayActive) endReplay();
+    hideModal(); clearTimeout(gameOverTimer);
+    showModal(t('Play on from here'), t('Take this position and play it out against the computer.'), [
+        { label: t('Play as Blue'), onClick: () => playFromPose(pose, active, 0) },
+        { label: t('Play as Red'),  onClick: () => playFromPose(pose, active, 1) },
+    ], false, { dismiss: true });
+}
+// ---------- Coached first game: the rules arrive as you hit them ----------
+// Nothing here scripts the opponent or fakes a position — it watches the REAL game state and
+// speaks up the first time each rule actually bites. Every lesson is triggered by something the
+// player just did, so it can never explain a rule that didn't happen.
+let tutorOn = false, tutorSaid = {}, tutorPrev = null, tutorQueue = [], tutorShownAt = 0;
+const TUTOR_MIN_MS = 2600;      // a lesson holds the bar this long before the next one can replace it
+const TUTOR_LINES = {
+    goal:    'Push Red off the board to win.',
+    crossed: 'You crossed a line. That is your one crossing this turn.',
+    blocked: 'A second line would need a new turn — let go and Red moves.',
+    corner:  'Both lines in one slide, without leaving them: still one crossing.',
+    push:    'Swinging into Red\u2019s legs shoves them. That is how you win.',
+};
+// Lessons queue rather than overwrite: hitting the crossing limit fires two of them a frame apart,
+// and a line nobody can read has not taught anything.
+function tutorSay(key) {
+    if (!tutorOn || tutorSaid[key]) return;
+    tutorSaid[key] = true;
+    tutorQueue.push(key);
+}
+function tutorPump() {
+    const bar = document.getElementById('tutorBar');
+    if (!bar) return;
+    const now = performance.now();
+    if (now - tutorShownAt < TUTOR_MIN_MS) return;
+    if (!tutorQueue.length) {
+        if (bar.style.display === 'block' && now - tutorShownAt > TUTOR_MIN_MS + 2600) bar.style.display = 'none';
+        return;
+    }
+    bar.textContent = TUTOR_LINES[tutorQueue.shift()];
+    bar.style.display = 'block';
+    bar.classList.remove('flash'); void bar.offsetWidth; bar.classList.add('flash');
+    tutorShownAt = now;
+}
+function tutorStart() {
+    tutorOn = true; tutorJustPlayed = false; tutorSaid = {}; tutorPrev = null; tutorQueue = []; tutorShownAt = 0;
+    document.getElementById('tutorBar').style.display = 'none';
+    startGame(true, 0, 'dumb');
+    tutorSay('goal');
+}
+let tutorJustPlayed = false;
+function tutorEnd() {
+    if (tutorOn) tutorJustPlayed = true;   // renderGameOverSheet needs to know whose game just ended
+    tutorOn = false;
+    const bar = document.getElementById('tutorBar');
+    if (bar) bar.style.display = 'none';
+}
+// Called from render(), so it sees every committed substep of the live game.
+function tutorTick() {
+    if (!tutorOn || !G) return;
+    if (G.over) { tutorEnd(); return; }
+    const mine = G.active === humanIdx;
+    const opp = G.pieces[1 - humanIdx];
+    const now = { pinned: G.pinned, net: Math.abs(G.netRad), crossings: G.crossings,
+                  atLimit: G.atLimit, active: G.active,
+                  oppX: +opp.x.toFixed(2), oppY: +opp.y.toFixed(2) };
+    const was = tutorPrev; tutorPrev = now;
+    tutorPump();
+    if (!was || !mine) return;
+    if (now.crossings > was.crossings) tutorSay('crossed');
+    // a foot resting on two printed lines at once is the ring/arc corner
+    if (!tutorSaid.corner && G.pieces[humanIdx].feet().some(f => nearLineIds(f, CFG.touchEps).length >= 2))
+        tutorSay('corner');
+    if (now.atLimit && !was.atLimit && G.limitReason !== 'selfoff') tutorSay('blocked');
+    if (Math.hypot(now.oppX - was.oppX, now.oppY - was.oppY) > 0.4) tutorSay('push');
+}
 // ---------- First-visit onboarding: soft-funnel new players into the coached opening ----------
 // "Soft" means the tutorial is always the DEFAULT path, never the only one: a highlighted banner
 // on the menu, plus a one-time nudge when a brand-new player heads straight for a match. The flag
@@ -6804,38 +7330,22 @@ document.getElementById('howToPlayBtn').addEventListener('click', openHowToPlay)
 function onboardState() { try { return localStorage.getItem('tauOnboard'); } catch(e) { return 'na'; } }
 function markOnboarded(how) {
     try { if (localStorage.getItem('tauOnboard') === null) localStorage.setItem('tauOnboard', how); } catch(e) {}
-    const b = document.getElementById('newbieBanner');
-    if (b) b.remove();
 }
-// The banner is re-entrant (the #newbie demo route re-runs it); the nudge listeners are attached
-// once at load and self-disable via onboardState(), so re-running can never double-fire them.
+// First visit opens the rules, once. No banner, no interstitial: the how-to IS the welcome, and
+// closing it puts you on the menu. Anything that proves you already know the game (finishing one,
+// or the coached opening) sets the flag too, so it never shows up again.
 function initOnboarding() {
     if (onboardState() !== null) return;
-    if (document.getElementById('newbieBanner')) return;
-    const row = document.querySelector('#playArea .playRow');
-    if (!row) return;
-    const b = document.createElement('button');
-    b.id = 'newbieBanner'; b.className = 'pbtn';
-    b.textContent = '\u{1F94B} ' + t('New here? Learn Tau in 60 seconds');
-    b.addEventListener('click', startCoach);
-    row.parentNode.insertBefore(b, row);
+    if (document.getElementById('htpFull')) return;
+    markOnboarded('howto');
+    openHowToPlay();
 }
-// One nudge per visit, at the moment it's most useful: a never-played player starting a match.
-let onboardAsked = false;
-for (const id of ['modeAI', 'modeOnline']) {
-    document.getElementById(id).addEventListener('click', ev => {
-        if (onboardAsked || onboardState() !== null) return;
-        onboardAsked = true;
-        ev.stopImmediatePropagation(); ev.preventDefault();
-        const btn = ev.currentTarget;
-        showModal(t('First game of Tau?'),
-            `<p style="text-align:center;margin:0 0 4px">${t('It takes one guided opening to get it \u2014 pin a foot, swing, shove. 60 seconds.')}</p>`,
-            [ { label: t('Learn in 60 seconds'), onClick: startCoach },
-              { label: t('Just play'), cls: 'modalBtnQuiet', onClick: () => { markOnboarded('skipped'); btn.click(); } } ],
-            true, { dismiss: true });
-    }, true);   // capture phase: runs before the buttons' own handlers
-}
-initOnboarding();
+addEventListener('load', () => {
+    // Not while a share link, the coach, or the how-to routes are already driving the page.
+    if (location.hash && /^#(coach|howto|tutorial|newbie|nn|director|lab)\b/i.test(location.hash)) return;
+    if (typeof isShareHash === 'function' && isShareHash(location.hash)) return;
+    initOnboarding();
+}, { once: true });
 // ---------- Settings: board theme (dark/light) ----------
 // Apply the CURRENT look (active skin = colour-lab override, else Slate in light mode, else the flat
 // dark default) to every 3D material and the 2D piece colours. Rebuilds the board texture (disposing
@@ -6868,7 +7378,7 @@ function cycleBoardSkin() { skinIdx = (skinIdx + 1) % BOARD_SKINS.length; applyB
 // names the board you'll switch TO.
 function updateThemeToggleIcon() {
     const btn = document.getElementById('themeToggle');
-    if (btn) { btn.textContent = '☀'; btn.title = 'Board: ' + BOARD_SKINS[(skinIdx + 1) % BOARD_SKINS.length].name; }
+    if (btn) btn.title = 'Board: ' + BOARD_SKINS[(skinIdx + 1) % BOARD_SKINS.length].name;
 }
 document.getElementById('themeToggle').addEventListener('click', cycleBoardSkin);
 updateThemeToggleIcon();
@@ -7111,10 +7621,13 @@ function applySfx() {
     scrapeHP.frequency.setTargetAtTime(SFX.scrapeHz, t0, 0.03);
     if (!G || !G.over) { bandpass.Q.setTargetAtTime(SFX.q, t0, 0.03); wetGain.gain.setTargetAtTime(SFX.reverb, t0, 0.03); }
 }
+const ICON_SPEAKER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.2h3.4L12 5.2v13.6l-4.6-4H4z"/>';
+const ICON_WAVES = '<path d="M15.6 9.4a3.6 3.6 0 010 5.2M18.2 6.8a7.2 7.2 0 010 10.4"/></svg>';
+const ICON_CROSS = '<path d="M15.8 10.2l4 3.6M19.8 10.2l-4 3.6"/></svg>';
 function updateSoundToggleIcon() {
-    const icon = soundOn ? '🔊' : '🔇';
-    const btn = document.getElementById('soundToggle'); if (btn) btn.textContent = icon;
-    const muteBtn = document.getElementById('volMuteBtn'); if (muteBtn) muteBtn.textContent = icon;
+    const icon = ICON_SPEAKER + (soundOn ? ICON_WAVES : ICON_CROSS);
+    const btn = document.getElementById('soundToggle'); if (btn) btn.innerHTML = icon;
+    const muteBtn = document.getElementById('volMuteBtn'); if (muteBtn) muteBtn.innerHTML = icon;
 }
 function setSoundOn(on) {
     soundOn = on;
@@ -7623,6 +8136,7 @@ function atLimitSuffix(){
 }
 function render() {
     if (!G) return;
+    if (tutorOn) tutorTick();
     // Pick up any lines a foot touched since the last render (crossingSubstep fills this in) and
     // turn them into fading flashes; drained here so a rollback never gets flashed twice.
     if (G.justCrossed && G.justCrossed.length) {
@@ -8928,6 +9442,7 @@ demoStart();
         applyMenuBopomofo();   // the 6 mode buttons + Get a physical set (ruby-annotated on zht)
         setTxt('reset','Surrender'); setTxt('menuBtn','Menu');
         setTxt('replayShare','Share this game'); setTxt('replaySave','Save this game'); setTxt('replaySkip','Skip ⏭');
+        setTxt('replayPlayOn','Play on from here');
         setTxt('acctGoogle','Continue with Google'); setTxt('acctMoreOptions','or use a username & password');
         setTxt('acctLogIn','Log in'); setTxt('acctSignUp','Sign up'); setTxt('acctSendLink','Send link');
         setTxt('acctPanelClose','Close'); setTxt('acctSignOut','Sign out');
@@ -8954,7 +9469,7 @@ demoStart();
         });
     }
     // Language picker lives in the top-right corner cluster (next to sound/theme), not the menu:
-    // it's a set-once control, so it stays out of the way behind a small 🌐 button.
+    // it's a set-once control, so it stays out of the way behind a small globe button.
     document.documentElement.lang = LANG === 'zht' ? 'zh-Hant' : LANG === 'zh' ? 'zh-Hans' : LANG;
     const langMenu = document.getElementById('langMenu'), langBtn = document.getElementById('langToggle');
     if (langMenu && langBtn) {
@@ -9080,7 +9595,49 @@ const labBrains = [{ level: 10, model: null, policy: null, name: '', depth: 2, t
 // calls startGame(false) (a genuine two-human local game) and nothing ever moves again. Cleared by
 // startGame()/backToMenu() -- anything that leaves lab mode for a real game.
 let labActive = false;
-function labOpenDrop() { document.getElementById('labOverlay').classList.add('open'); }
+// Position tools: the board is only two poses and a side to move, so any of them can be played on.
+let labPosReady = false;
+function labPosInit() {
+    if (labPosReady) return; labPosReady = true;
+    const code = document.getElementById('labPosCode'), turn = document.getElementById('labPosTurn');
+    const msg = () => document.getElementById('labMsg');
+    document.getElementById('labPosCopy').addEventListener('click', () => {
+        if (!G) return;
+        code.value = poseCode(poseNow(), G.active);
+        turn.value = String(G.active);
+        msg().textContent = 'Copied the board into the box.'; msg().style.color = '#7d858d';
+    });
+    document.getElementById('labPosCustom').addEventListener('click', () => {
+        labCloseDrop();
+        labStartSetup(false);
+    });
+    document.getElementById('labPosStart').addEventListener('click', () => {
+        code.value = poseCode([-CFG.startX, 0, 0, CFG.startX, 0, Math.PI], 0);
+        turn.value = '0';
+    });
+    document.getElementById('labPosPlay').addEventListener('click', () => {
+        const parsed = parsePoseCode(code.value);
+        if (!parsed) { msg().textContent = 'That position is not on the board — six numbers, both pieces inside the rim.';
+                       msg().style.color = '#e07a5f'; return; }
+        const h0 = labBrains[0].human, h1 = labBrains[1].human;
+        const human = h0 ? 0 : h1 ? 1 : 0;          // no Human side picked = you take Blue
+        const b = labBrains[1 - human];
+        labCloseDrop();
+        labSideCfg[human] = { type:'human' };
+        labSideCfg[1-human] = b.model ? { type:'nn' } : { type:'level', level: b.level };
+        if (b.model) {
+            nnModel = b.model; nnPolicyModel = b.policy || null; nnModelName = b.name;
+            nnDepth = b.depth; nnDynamic = b.dynamic; nnTimeMs = b.timeMs;
+            nnTemperature = b.temperature || 0.05;
+            playFromPose(parsed.pose, +turn.value, human, 'nn');
+        } else {
+            playFromPose(parsed.pose, +turn.value, human, 'ladder');
+            ladderLevel = b.level;                   // the chosen rung's brain, without banking a clear
+        }
+        labMode = true; labHist = []; labBenchRender();
+    });
+}
+function labOpenDrop() { document.getElementById('labOverlay').classList.add('open'); labPosInit(); }
 function labCloseDrop() { document.getElementById('labOverlay').classList.remove('open'); }
 function labSideLabel(side) {
     const b = labBrains[side];
@@ -9149,6 +9706,10 @@ function labWatchGame() {
         labCloseDrop();
         if (h0 && h1) { startGame(false); return; }              // human vs human = plain local 1v1
         const ai = h0 ? 1 : 0, b = labBrains[ai];
+        labSideCfg[1-ai] = { type:'human' };
+        labSideCfg[ai] = b.model ? { type:'nn' } : { type:'level', level: b.level };
+        labMode = true; labHist = [];
+        setTimeout(labBenchRender, 0);              // after startGame has built the game screen
         if (b.model) {
             nnModel = b.model; nnPolicyModel = b.policy || null; nnModelName = b.name;
             nnDepth = b.depth; nnDynamic = b.dynamic; nnTimeMs = b.timeMs;
@@ -10169,7 +10730,8 @@ const TURN_CLOCK_MS = 30000;
 // Returns 'online' / 'local' / null (no clock this mode -- vs AI, or no game showing at all).
 function turnClockMode() {
     if (document.getElementById('game').style.display !== 'flex') return null;
-    if (onlineMatch) return 'online';
+    if (onlineMatch) return 'online';                               // a real opponent is waiting: always clocked
+    if (labMode || labSetup || labAuto || labActive) return null;   // bench/setup/watch: analysis, not a timed match
     if (!vsAI) return 'local';
     return null;
 }
@@ -10752,7 +11314,8 @@ function openLeaderboard() {
                 const tied = data.filter(x => x.elo === p.elo).length > 1;
                 const fs = rank===1 ? '18px' : rank<=3 ? '15px' : '13px';
                 const fw = rank===1 ? '800' : rank<=3 ? '650' : '400';
-                const rankCell = rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':(tied?'=':'')+rank;
+                const medal = rank===1 ? '#d9b45a' : rank===2 ? '#b8bec6' : rank===3 ? '#b07d4e' : null;
+                const rankCell = medal ? `<span style="color:${medal}">${rank}</span>` : (tied?'=':'')+rank;
                 // your own row gets a highlight — people scan for their name first
                 const mine = p.username === (document.getElementById('acctName').textContent || null);
                 const hl = mine ? ' background:rgba(61,90,254,0.16); box-shadow:inset 3px 0 0 #3d5afe;' : '';
@@ -11067,7 +11630,7 @@ function wsRenderSaved() {
                 // The whole game embedded in the URL (#r=) instead of a database code (#s=). It never
                 // expires, works offline, and — unlike a short link — can be decoded by anyone without
                 // the server, which is what makes it the link to send when reporting a bad move.
-                { txt:'🔗', title:t('Copy full link (offline)'), onClick: async () => {
+                { txt:'<svg viewBox="0 0 24 24" aria-hidden="true" style="width:15px;height:15px;vertical-align:-2px"><path d="M10 13.6a3.6 3.6 0 005.2 0l3-3a3.7 3.7 0 00-5.2-5.2l-1.3 1.3M14 10.4a3.6 3.6 0 00-5.2 0l-3 3a3.7 3.7 0 005.2 5.2l1.3-1.3"/></svg>', title:t('Copy full link (offline)'), onClick: async () => {
                     const url = location.origin + location.pathname + '#r=' + r.p;
                     try { await navigator.clipboard.writeText(url); showPassToast(t('Full link copied!')); }
                     catch(e) { showPassToast(t('Could not create the link.')); }
