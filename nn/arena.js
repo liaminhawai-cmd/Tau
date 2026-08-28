@@ -300,8 +300,11 @@ function main() {
   // lost exactly that way.
   // Rewritten in full after every game rather than appended once at the end, because the runs
   // worth keeping are the long ones that get killed part-way: a summary that only lands on clean
-  // exit would miss precisely the case this exists for. One file per run, named by start time, so
-  // two arenas running at once (the trainer machine does this) cannot clobber each other.
+  // exit would miss precisely the case this exists for. One file per run, named by start time AND
+  // pid, so two arenas running at once (the trainer machine does this) cannot clobber each other.
+  // The pid is not belt-and-braces: the name resolves to the second, and gauntlet.js --shards
+  // launches every shard of a pairing simultaneously with identical brain names, so the timestamp
+  // alone collides every time and left one shared log with four writers racing on it.
   const logDir = arg('logDir', path.join(__dirname, 'arena-logs'));
   const started = new Date();
   const safe = s => String(s).replace(/[^\w.\-]+/g, '_');
@@ -309,7 +312,7 @@ function main() {
   try {
     fs.mkdirSync(logDir, { recursive: true });
     logPath = path.join(logDir,
-      `${started.toISOString().slice(0, 19).replace(/[:]/g, '-')}_${safe(A.name)}_vs_${safe(B.name)}.txt`);
+      `${started.toISOString().slice(0, 19).replace(/[:]/g, '-')}_${safe(A.name)}_vs_${safe(B.name)}_${process.pid}.txt`);
   } catch (e) { /* logging must never take down a run */ }
   const header = `started ${started.toISOString()}\ncommand: node ${process.argv.slice(1).join(' ')}\n`;
   const writeLog = body => {

@@ -6,3 +6,16 @@ __pycache__/
 # Local archive created by the Elo calibration reset. Keep the evidence locally,
 # but do not push the old mixed-semantics rating state back into the live branch.
 nn/elo-archive/
+
+# Gauntlet runs: a frozen copy of the candidate plus that run's results. Freezing is the point --
+# nn/medals/*.json are aliases publish-medals.js overwrites and re-pushes every cycle, so a long
+# run has to play a copy or it can finish against a different model than it started with -- but
+# that copy is a ~900KB weight blob per run, and the results are local evidence about one decision,
+# not source. Kept out of the branch the trainer pushes to on its own.
+nn/gauntlet-runs/
+
+# This machine's name, used to file its medals under nn/medals/<machine>/ so several trainers on one
+# branch accumulate instead of overwriting each other's three fixed filenames. It is the one file
+# that MUST differ between clones -- committing it would hand every machine the same identity and
+# rebuild the collision it exists to remove.
+nn/.machine-id

@@ -1142,6 +1142,11 @@ const statusState = {};
 // --no-push-artifacts turns this off, e.g. if a second trainer is pushing to the same branch, where
 // two machines writing the same batch-NNN.jsonl name would collide.
 const pushArtifacts = !process.argv.includes('--no-push-artifacts');
+// The status file is per-machine. It used to be one nn/status.md that every trainer on the branch
+// wrote and pushed, so with two machines it was not a status report, it was a race -- and the
+// losing side's pull hit a conflict on it, which is a bad way for a progress note to take out the
+// data sync. Nothing reads this file programmatically; it exists to be looked at.
+const statusFile = `status-${require('./machine-id.js').machineId(dir)}.md`;
 function writeStatus(stage, extraPaths) {
   statusState.stage = stage;
   statusState.updatedAt = new Date().toISOString();
@@ -1158,7 +1163,7 @@ function writeStatus(stage, extraPaths) {
   // not just the inner catches around push/pull.
   const errText = e => String((e && (e.stderr || e.stdout)) || (e && e.message) || e).trim().split('\n').slice(0, 3).join(' | ');
   try {
-    fs.writeFileSync(path.join(dir, 'status.md'), md);
+    fs.writeFileSync(path.join(dir, statusFile), md);
     // shell:true so Windows resolves `git` the same way a typed command would (PATH + PATHEXT) --
     // a plain execFileSync bypasses that and fails outright (ENOENT) on setups where git is only
     // reachable through the shell's own resolution, e.g. a GitHub-Desktop-managed git not
@@ -1182,13 +1187,13 @@ function writeStatus(stage, extraPaths) {
     if (!found) {
       if (!warnedNoGit) {
         warnedNoGit = true;
-        log('status.md stays local-only: no git found (PATH, GitHub Desktop bundle, Program Files all probed)');
+        log(`${statusFile} stays local-only: no git found (PATH, GitHub Desktop bundle, Program Files all probed)`);
       }
       return;
     }
     const gitExe = found === 'git' ? 'git' : q(found);
     const git = (args) => execFileSync(gitExe, args.map(q), { cwd: repoRoot, shell: true, encoding: 'utf8' });
-    git(['add', 'nn/status.md']);
+    git(['add', `nn/${statusFile}`]);
     // Each extra path is added separately and softly: a missing file must never take down the
     // status push, which is the one thing that has to keep working for a many-hour run to stay
     // observable.
@@ -1636,7 +1641,7 @@ async function runPoolCycle() {
       // of drifting around inside the mutant population's own gene pool.
       const medalShapes = (() => {
         try {
-          const med = JSON.parse(fs.readFileSync(path.join(dir, 'medals', 'medals.json'), 'utf8'));
+          const med = JSON.parse(fs.readFileSync(require('./machine-id.js').medalsMetaPath(dir), 'utf8'));
           return ['gold', 'silver', 'bronze']
             .map(n => med.medals && med.medals[n] && med.medals[n].source)
             .filter(Boolean)
