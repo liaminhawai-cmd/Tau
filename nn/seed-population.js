@@ -59,8 +59,18 @@ function main() {
   // reading -92 on 58 games.
   const sources = [], medalSources = [];
   for (const m of mach.medalDirs(dir)) {
-    let meta = {};
-    try { meta = JSON.parse(fs.readFileSync(path.join(m.dir, 'medals.json'), 'utf8')).medals || {}; } catch (_) {}
+    let meta = {}, published = '';
+    try {
+      const mj = JSON.parse(fs.readFileSync(path.join(m.dir, 'medals.json'), 'utf8'));
+      meta = mj.medals || {};
+      // The publish date, folded into the seed name (aug25) so the population reads as a history:
+      // seed-laptop-gold-ckpt500-aug25 next to seed-laptop-gold-ckpt541-aug28 says at a glance that
+      // laptop's gold moved on, and to what. The date is a LABEL, not identity -- identity is the
+      // content hash, which is what lets a net demoted from gold to silver keep its original name
+      // instead of re-entering as a "new" model every time its medal changes.
+      const d = new Date(mj.updated || 0);
+      if (+d > 0) published = '-' + d.toLocaleString('en', { month: 'short' }).toLowerCase() + d.getUTCDate();
+    } catch (_) {}
     for (const f of ls(m.dir).sort()) {
       if (!f.endsWith('.json') || f === 'medals.json' || f === 'elo-summary.json') continue;   // metadata, not weights
       const p = path.join(m.dir, f);
@@ -74,7 +84,7 @@ function main() {
       const src = meta[path.basename(f, '.json')];
       const lineage = src && src.source ? '-' + String(src.source).replace(/^seed-/, '') : '';
       medalSources.push({ file: p, label: `${m.id}/${f}`, rank: medalRank(m, f),
-                          name: `seed-${m.id}-${path.basename(f, '.json')}${lineage}` });
+                          name: `seed-${m.id}-${path.basename(f, '.json')}${lineage}${published}` });
     }
   }
   // Best claim first. The dedup below keeps whichever copy of a network it meets FIRST and skips
