@@ -34,6 +34,16 @@ const faceEntries = () => evo.stableModelEntries(dir);
 // .evolution-roster.json right there, and copying that as a network is exactly the kind of silent
 // nonsense a name-only filter waves through. modelMeta is the roster's own usability test.
 const isModel = p => { try { return evo.modelMeta(p).usable; } catch (_) { return false; } };
+// [tier, variant, provenance]. Tier: gold beats silver beats bronze, and anything unrecognised
+// sorts last. Variant: a global medal outranks a per-depth one (gold.json over gold-d2.json) --
+// the global bound is the one the medal ranking is actually made on. Provenance: a named machine
+// outranks the legacy flat layout, whose medals predate machines having names at all.
+const TIERS = ['gold', 'silver', 'bronze'];
+function medalRank(m, file) {
+  const base = path.basename(file, '.json');
+  const tier = TIERS.findIndex(t => base === t || base.startsWith(t + '-'));
+  return [tier < 0 ? TIERS.length : tier, /-d\d+$/.test(base) ? 1 : 0, m.id === 'legacy' ? 1 : 0];
+}
 
 const sha = p => crypto.createHash('sha1').update(fs.readFileSync(p)).digest('hex');
 const log = s => console.log(`[seed] ${s}`);
@@ -47,7 +57,7 @@ function main() {
   // against the local field rather than inheriting the claim that made it a medallist. That is the
   // valuable half: it is independent replication, and it is how a 6-game 400-Elo gold was caught
   // reading -92 on 58 games.
-  const sources = [];
+  const sources = [], medalSources = [];
   for (const m of mach.medalDirs(dir)) {
     let meta = {};
     try { meta = JSON.parse(fs.readFileSync(path.join(m.dir, 'medals.json'), 'utf8')).medals || {}; } catch (_) {}
@@ -63,10 +73,19 @@ function main() {
       // between machines.
       const src = meta[path.basename(f, '.json')];
       const lineage = src && src.source ? '-' + String(src.source).replace(/^seed-/, '') : '';
-      sources.push({ file: p, label: `${m.id}/${f}`,
-                     name: `seed-${m.id}-${path.basename(f, '.json')}${lineage}` });
+      medalSources.push({ file: p, label: `${m.id}/${f}`, rank: medalRank(m, f),
+                          name: `seed-${m.id}-${path.basename(f, '.json')}${lineage}` });
     }
   }
+  // Best claim first. The dedup below keeps whichever copy of a network it meets FIRST and skips
+  // the rest, so this ordering decides the name the surviving face carries -- and unsorted, that
+  // was alphabetical: a machine whose gold and bronze were the same net seeded it as "bronze",
+  // and a net one machine called silver beat another machine's gold purely on the machine name
+  // sorting earlier. Ranking by medal tier means the one face that survives is labelled with the
+  // strongest claim anyone made for it, which is the only label worth keeping.
+  medalSources.sort((a, b) => a.rank[0] - b.rank[0] || a.rank[1] - b.rank[1] ||
+                              a.rank[2] - b.rank[2] || a.label.localeCompare(b.label));
+  sources.push(...medalSources);
   const alreadyFace = new Set(faceEntries().map(e => e.file));
   for (const f of ls(modelDir).sort()) {
     if (!f.endsWith('.json') || alreadyFace.has(f)) continue;   // already a face: nothing to seed
