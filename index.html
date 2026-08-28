@@ -588,7 +588,7 @@
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 194</div>
+<div id="buildTag">build 195</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -654,10 +654,14 @@
                         <button id="acctLogIn">Log in</button>
                         <button id="acctSignUp">Sign up</button>
                     </div>
-                    <p class="msg" style="margin-top:6px;">or a one-time email link</p>
-                    <div class="row">
-                        <input id="acctEmail" type="email" placeholder="you@example.com" autocomplete="email">
-                        <button id="acctSendLink">Send link</button>
+                    <!-- Hidden in the native app: the link opens in the phone's browser and would
+                         sign THAT in, not the app -->
+                    <div id="acctMagic">
+                        <p class="msg" style="margin-top:6px;">or a one-time email link</p>
+                        <div class="row">
+                            <input id="acctEmail" type="email" placeholder="you@example.com" autocomplete="email">
+                            <button id="acctSendLink">Send link</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -5668,8 +5672,21 @@ function openAcctPanel() {
     acctPanelOpenedAt = Date.now();
     document.getElementById('acctPanel').style.display = 'flex';
     document.getElementById('menu').classList.add('acctOpen');   // demo tiles give way: sign-in fits unscrolled
-    // In an in-app browser, Google can't work -- lead with username/password and say why up front.
-    if (typeof isInAppBrowser==='function' && isInAppBrowser()) {
+    if (typeof isNativeApp==='function' && isNativeApp()) {
+        // The installed app: Google OAuth can't run in the WebView at all, and a magic link would
+        // open in the phone's browser and sign THAT in, not the app. So username/password is the
+        // ONLY working path here — hide the dead ends rather than explaining them.
+        document.getElementById('acctGoogle').style.display = 'none';
+        const magic = document.getElementById('acctMagic');
+        if (magic) magic.style.display = 'none';
+        const more = document.getElementById('acctMoreOptions');
+        if (more) more.style.display = 'none';
+        const msg = document.getElementById('acctMsg');
+        if (msg && !msg.textContent) msg.textContent = t('Sign in with a username & password. Signed up with Google? Set a password at tau-game.com first (account → Set a password), then log in here with your email + that password.');
+        if (typeof showAcctEmailOptions==='function') showAcctEmailOptions(true);
+    } else if (typeof isInAppBrowser==='function' && isInAppBrowser()) {
+        // A social app's in-app browser: Google can't work -- lead with username/password and say
+        // why up front (here "open in a real browser" IS the fix, unlike in the installed app).
         const msg = document.getElementById('acctMsg');
         if (msg && !msg.textContent) msg.textContent = t('Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.');
         if (typeof showAcctEmailOptions==='function') showAcctEmailOptions(true);
@@ -10475,6 +10492,11 @@ document.getElementById('acctSendLink').addEventListener('click', async () => {
 });
 document.getElementById('acctGoogle').addEventListener('click', async () => {
     const msg = document.getElementById('acctMsg');
+    if (isNativeApp()) {   // belt-and-braces: the button is hidden in the app, but never let it 403
+        msg.textContent = t('Sign in with a username & password. Signed up with Google? Set a password at tau-game.com first (account → Set a password), then log in here with your email + that password.');
+        showAcctEmailOptions(true);
+        return;
+    }
     if (isInAppBrowser()) {   // Google would just 403 here -- guide out instead of failing silently
         msg.textContent = t('Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.');
         showAcctEmailOptions(true);
@@ -10523,6 +10545,13 @@ function isInAppBrowser() {
     const ua = navigator.userAgent || '';
     return /(FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|Twitter|TikTok|musical_ly|BytedanceWebview|Snapchat|Pinterest|WhatsApp|GSA\/)/i.test(ua)
         || (/Android/.test(ua) && /\bwv\b/.test(ua));
+}
+// The INSTALLED Capacitor app (Android/iOS wrapper), as opposed to a social app's in-app browser:
+// same Google-OAuth-is-blocked reality, but "open this page in Safari/Chrome" is NOT the fix here
+// (that would sign the browser in, not the app) — username/password is the only working path.
+function isNativeApp() {
+    try { return !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()); }
+    catch (e) { return false; }
 }
 // Since iPadOS 13, Safari's default UA reports as desktop Mac (no "iPad" substring at all) unless the
 // user has switched on "Request Mobile Website" -- the classic tell instead is a "Mac" platform that
