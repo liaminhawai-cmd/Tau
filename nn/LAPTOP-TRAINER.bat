@@ -62,8 +62,46 @@ if errorlevel 1 (
   exit /b 1
 )
 
-rem Dual training needs python + torch; without them the trainer runs value-only on CPU, which is
-rem the normal case on a laptop.
+rem Free disk, checked rather than assumed. Self-play appends to nn\data all day and git keeps
+rem every pushed batch forever, so a run that starts with a nearly-full drive does not fail
+rem cleanly -- it wedges, usually hours in and usually overnight.
+for /f "delims=" %%D in ('node -e "try{const s=require(`fs`).statfsSync(process.cwd());console.log(Math.round(s.bavail*s.bsize/1e9));}catch(e){console.log(-1);}"') do set "FREEGB=%%D"
+if not "!FREEGB!"=="-1" (
+  echo.
+  echo   free disk: !FREEGB! GB
+  if !FREEGB! LSS 20 (
+    echo.
+    echo   WARNING: under 20 GB free. This run appends training data continuously and git
+    echo   keeps every pushed batch. Clear space before leaving it unattended overnight.
+    echo.
+    pause
+  )
+)
+
+rem Worker sizing, which is the whole difference between this and RESTART-TRAINER.bat on a thin
+rem machine. league-trainer's own defaults are tuned for the desktop: leagueWorkers defaults to
+rem cores-4, plus 2 exploration and 1 retromine, so a 12-thread laptop gets 11 permanently-busy
+rem node processes -- 92%% of its threads, sustained, with nothing left for Windows. On a 15W
+rem part that thermally throttles under all-core load, and with each process holding its own
+rem engine in a shared 16 GB, that is a freeze rather than a slow run. Confirmed on this laptop.
+rem Target ~60%% of threads instead: slower per hour, but it finishes the night.
+set "CORES=%NUMBER_OF_PROCESSORS%"
+if not defined CORES set "CORES=4"
+set /a CORES=CORES
+if !CORES! LSS 2 set /a CORES=2
+set /a LEAGUEW=CORES/2-1
+if !LEAGUEW! LSS 2 set /a LEAGUEW=2
+set /a TOTALW=LEAGUEW+2
+
+echo.
+echo   !CORES! threads -^> !LEAGUEW! league + 1 exploration + 1 retromine = !TOTALW! processes
+echo   (its own default here would be !CORES! processes' worth, which froze this box)
+set "OVERRIDE="
+set /p OVERRIDE="Enter to accept, or type a different league-worker count: "
+if not "!OVERRIDE!"=="" set /a LEAGUEW=!OVERRIDE!
+
+rem Dual training needs python + torch AND an NVIDIA GPU; without them the trainer runs value-only
+rem on CPU, which is the normal case on a laptop.
 set "DUALFLAG="
 where python >nul 2>nul
 if errorlevel 1 set "DUALFLAG=--noDual"
@@ -73,8 +111,12 @@ if not defined DUALFLAG (
 )
 if defined DUALFLAG (
   echo.
-  echo   No python+torch here: running value-only on CPU. That is fine -- the league still
-  echo   rates, mutates and culls; only the GPU dual branch is off.
+  echo   No python+torch here: running value-only on CPU. The league still rates, mutates and
+  echo   culls, and scratch/mutant births still train. What CANNOT run without a verified
+  echo   PyTorch path is resume-training from a structured-topology checkpoint -- best.json is
+  echo   dense-memory-v1, so expect a recurring "resume-train failed" warning. It is soft:
+  echo   nothing else stops. See train-value.js, which refuses that shape on the CPU fallback
+  echo   rather than silently producing a wrong net.
 )
 
 echo.
@@ -84,9 +126,11 @@ echo   side   : seeded/random exploration + retromine
 echo   this machine keeps its OWN nn\elo-results.json; the desktop's ratings are not inherited
 echo.
 if defined DUALFLAG (
-  node nn\league-trainer.js --gamesPerBatch 1000 --scratchHidden 96,64,48 %DUALFLAG%
+  node nn\league-trainer.js --gamesPerBatch 1000 --scratchHidden 96,64,48 ^
+    --leagueWorkers !LEAGUEW! --exploreWorkers 1 --retroWorkers 1 %DUALFLAG%
 ) else (
-  node nn\league-trainer.js --gamesPerBatch 1000 --scratchHidden 96,64,48 --dualEpochs 20,40,60 --dualPopulationMin 4
+  node nn\league-trainer.js --gamesPerBatch 1000 --scratchHidden 96,64,48 ^
+    --leagueWorkers !LEAGUEW! --exploreWorkers 1 --retroWorkers 1 --dualEpochs 20,40,60 --dualPopulationMin 4
 )
 echo.
 echo Trainer stopped. Close this window, or run this file again to restart.
