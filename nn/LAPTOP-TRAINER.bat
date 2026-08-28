@@ -52,8 +52,28 @@ if defined GIT (
   echo   no git found -- skipping the pull. Pull in GitHub Desktop first, then run this again.
 )
 
+
+rem Name this machine once, on first run. Medals are published per machine
+rem (nn\medals\<machine>\gold.json), so each trainer keeps its own top three instead of
+rem overwriting the shared three filenames every other trainer also writes -- and seeding below
+rem then imports EVERY machine's medals, so the best few from any training run anywhere end up in
+rem this box's population. The id lives in nn\.machine-id, which is gitignored: it is the one file
+rem that has to differ between clones.
+if not exist "nn\.machine-id" (
+  echo.
+  echo   This machine has no name yet. It is used to file its medals separately from the
+  echo   other trainers', so nothing overwrites anything.
+  set "MNAME="
+  set /p MNAME="Name this machine, Enter for %COMPUTERNAME%: "
+  if "!MNAME!"=="" set "MNAME=%COMPUTERNAME%"
+  node nn\machine-id.js --set "!MNAME!"
+)
+for /f "delims=" %%M in ('node nn\machine-id.js') do set "MACHINE=%%M"
 echo.
-echo === seeding the starting population ===
+echo   machine: !MACHINE!
+
+echo.
+echo === seeding the starting population (every machine's medals) ===
 node nn\seed-population.js
 if errorlevel 1 (
   echo.

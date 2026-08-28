@@ -19,9 +19,9 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const evo = require('./evolution-roster.js');
+const mach = require('./machine-id.js');
 const dir = __dirname;
 const modelDir = path.join(dir, 'models');
-const medalDir = path.join(dir, 'medals');
 const dry = process.argv.includes('--dry');
 
 // The roster's OWN directory scan, exported rather than reimplemented here. A copy of that filter
@@ -40,19 +40,32 @@ const log = s => console.log(`[seed] ${s}`);
 const ls = d => { try { return fs.readdirSync(d); } catch (_) { return []; } };
 
 function main() {
-  let meta = {};
-  try { meta = JSON.parse(fs.readFileSync(path.join(medalDir, 'medals.json'), 'utf8')).medals || {}; } catch (_) {}
-
-  // Sources, best-named first: a network reachable by several names should be seeded under the one
-  // that says the most about it. A medal names the checkpoint it was copied from (gold ->
-  // wide-m1-118), which survives the alias rotating away from it; a pool slot names nothing.
+  // EVERY machine's medals, not just this one's. That is what makes a second trainer worth running:
+  // each box publishes its own gold/silver/bronze under its own name, and each box imports all of
+  // them, so the top few from any training run anywhere end up in every population. A model that
+  // crosses arrives UNRATED -- the rating store is local and untracked -- so it gets measured afresh
+  // against the local field rather than inheriting the claim that made it a medallist. That is the
+  // valuable half: it is independent replication, and it is how a 6-game 400-Elo gold was caught
+  // reading -92 on 58 games.
   const sources = [];
-  for (const f of ls(medalDir).sort()) {
-    if (!f.endsWith('.json') || f === 'medals.json' || f === 'elo-summary.json') continue;   // metadata, not weights
-    if (!isModel(path.join(medalDir, f))) continue;
-    const m = meta[path.basename(f, '.json')];
-    sources.push({ file: path.join(medalDir, f), label: f,
-                   name: `seed-${path.basename(f, '.json')}${m && m.source ? '-' + m.source : ''}` });
+  for (const m of mach.medalDirs(dir)) {
+    let meta = {};
+    try { meta = JSON.parse(fs.readFileSync(path.join(m.dir, 'medals.json'), 'utf8')).medals || {}; } catch (_) {}
+    for (const f of ls(m.dir).sort()) {
+      if (!f.endsWith('.json') || f === 'medals.json' || f === 'elo-summary.json') continue;   // metadata, not weights
+      const p = path.join(m.dir, f);
+      if (!isModel(p)) continue;
+      // Named for where it came from AND what it was: a medal names the checkpoint it was copied
+      // from (gold -> wide-m1-118), which outlives the alias rotating away from it, and the machine
+      // prefix keeps two boxes' golds apart even when neither knows about the other.
+      // The source is stripped of its own `seed-` prefix: a medal won by a previously-seeded model
+      // would otherwise compound into seed-legacy-gold-seed-pool-slot-08 and get worse on every hop
+      // between machines.
+      const src = meta[path.basename(f, '.json')];
+      const lineage = src && src.source ? '-' + String(src.source).replace(/^seed-/, '') : '';
+      sources.push({ file: p, label: `${m.id}/${f}`,
+                     name: `seed-${m.id}-${path.basename(f, '.json')}${lineage}` });
+    }
   }
   const alreadyFace = new Set(faceEntries().map(e => e.file));
   for (const f of ls(modelDir).sort()) {
@@ -78,12 +91,19 @@ function main() {
 
   let added = 0, dup = 0, present = 0;
   const seeded = new Map();
+  const taken = new Set(ls(modelDir));
   for (const s of sources) {
     let h; try { h = sha(s.file); } catch (_) { log(`unreadable: ${s.label}`); continue; }
     if (faces.has(h))  { present++; log(`${s.label} is already in the population as ${faces.get(h)}`); continue; }
     if (seeded.has(h)) { dup++;     log(`${s.label} is byte-identical to ${seeded.get(h)} -- skipped`); continue; }
     // Always `seed-`-prefixed, so it can never collide with an alias or the pool-slot pattern.
-    const name = `${s.name}.json`;
+    // A name already taken by DIFFERENT content gets a content suffix rather than overwriting it:
+    // one machine's gold-d1 can be a different net from one publish to the next, and quietly
+    // swapping the weights under a name the league has already rated would make that face a moving
+    // target -- the exact bug elorank snapshots its whole field to avoid.
+    let name = `${s.name}.json`;
+    if (taken.has(name)) name = `${s.name}-${h.slice(0, 6)}.json`;
+    taken.add(name);
     if (!dry) fs.copyFileSync(s.file, path.join(modelDir, name));
     seeded.set(h, name);
     added++;
@@ -93,7 +113,8 @@ function main() {
   // Counted, not assumed: --dry copies nothing, so reading the directory back would report the
   // population as unchanged and imply the seeding had failed.
   const now = faceEntries().length + (dry ? added : 0);
-  log(`${added} seeded, ${dup} duplicate(s) skipped, ${present} already present`);
+  log(`${added} seeded, ${dup} duplicate(s) skipped, ${present} already present ` +
+      `(this machine is "${mach.machineId(dir)}")`);
   log(`population the roster ${dry ? 'would see' : 'sees'}: ${now} model(s)`);
   if (!now) log('WARNING: still zero -- the trainer would have to breed from nothing');
 }

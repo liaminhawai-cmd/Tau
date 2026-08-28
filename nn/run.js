@@ -1636,7 +1636,7 @@ async function runPoolCycle() {
       // of drifting around inside the mutant population's own gene pool.
       const medalShapes = (() => {
         try {
-          const med = JSON.parse(fs.readFileSync(path.join(dir, 'medals', 'medals.json'), 'utf8'));
+          const med = JSON.parse(fs.readFileSync(require('./machine-id.js').medalsMetaPath(dir), 'utf8'));
           return ['gold', 'silver', 'bronze']
             .map(n => med.medals && med.medals[n] && med.medals[n].source)
             .filter(Boolean)

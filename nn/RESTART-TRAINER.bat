@@ -37,6 +37,35 @@ if defined GIT (
   echo   Pull in GitHub Desktop first, then run this again.
 )
 
+
+rem Name this machine once, on first run. Medals are published per machine
+rem (nn\medals\<machine>\gold.json), so each trainer keeps its own top three instead of
+rem overwriting the shared three filenames every other trainer also writes -- and seeding below
+rem then imports EVERY machine's medals, so the best few from any training run anywhere end up in
+rem this box's population. The id lives in nn\.machine-id, which is gitignored: it is the one file
+rem that has to differ between clones.
+if not exist "nn\.machine-id" (
+  echo.
+  echo   This machine has no name yet. It is used to file its medals separately from the
+  echo   other trainers', so nothing overwrites anything.
+  set "MNAME="
+  set /p MNAME="Name this machine, Enter for %COMPUTERNAME%: "
+  if "!MNAME!"=="" set "MNAME=%COMPUTERNAME%"
+  node nn\machine-id.js --set "!MNAME!"
+)
+for /f "delims=" %%M in ('node nn\machine-id.js') do set "MACHINE=%%M"
+echo.
+echo   machine: !MACHINE!
+
+rem Import every machine's published medals before training. Without this the roster never sees
+rem them: it scans nn\models only, and nn\medals is a different directory it has no idea exists.
+rem Idempotent -- anything already in the population is left alone -- so it is safe every launch,
+rem and it is how a second trainer's findings actually reach this box rather than just sitting in
+rem the working tree after a pull.
+echo.
+echo === importing medals from every machine ===
+node nn\seed-population.js
+
 rem Dual training needs python + torch; without them the trainer runs value-only.
 set "DUALFLAG="
 where python >nul 2>nul

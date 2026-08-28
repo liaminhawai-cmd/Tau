@@ -43,17 +43,26 @@ if defined GIT (
 )
 
 rem The medal aliases are committed by publish-medals.js, so a fresh pull is all this machine needs:
-rem no local checkpoint from the desktop is required to test gold, silver or bronze.
-if exist "nn\medals\medals.json" (
+rem no local checkpoint is required to test any machine's gold, silver or bronze. Medals are filed
+rem per machine (nn\medals\<machine>\), so a pull brings in every trainer's findings, not just
+rem whichever one pushed last -- and any of them can be the candidate here.
+echo.
+echo   === medal sets on this branch ===
+dir /b /ad "nn\medals" 2>nul
+for /f "delims=" %%M in ('node nn\machine-id.js --medaldir') do set "MYMEDALS=%%M"
+set "DEFCAND=!MYMEDALS!\gold.json"
+if not exist "!DEFCAND!" set "DEFCAND=nn\medals\gold.json"
+if exist "!MYMEDALS!\medals.json" (
   echo.
-  echo   === what the medals point at right now ===
-  type "nn\medals\medals.json"
+  echo   === what THIS machine's medals point at ===
+  type "!MYMEDALS!\medals.json"
 )
 
 echo.
+echo   Any machine's medal works: nn\medals\^<machine^>\gold.json
 set "CAND="
-set /p CAND="Candidate model, Enter for nn\medals\gold.json: "
-if "!CAND!"=="" set "CAND=nn\medals\gold.json"
+set /p CAND="Candidate model, Enter for !DEFCAND!: "
+if "!CAND!"=="" set "CAND=!DEFCAND!"
 if not exist "!CAND!" (
   echo.
   echo   Not found: !CAND!

@@ -13,3 +13,9 @@ nn/elo-archive/
 # that copy is a ~900KB weight blob per run, and the results are local evidence about one decision,
 # not source. Kept out of the branch the trainer pushes to on its own.
 nn/gauntlet-runs/
+
+# This machine's name, used to file its medals under nn/medals/<machine>/ so several trainers on one
+# branch accumulate instead of overwriting each other's three fixed filenames. It is the one file
+# that MUST differ between clones -- committing it would hand every machine the same identity and
+# rebuild the collision it exists to remove.
+nn/.machine-id

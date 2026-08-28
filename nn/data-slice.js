@@ -46,7 +46,7 @@ function medalistSet() {
   if (explicit.length) return new Set(explicit);
   const set = new Set();
   try {
-    const med = JSON.parse(fs.readFileSync(path.join(dir, 'medals', 'medals.json'), 'utf8'));
+    const med = JSON.parse(fs.readFileSync(require('./machine-id.js').medalsMetaPath(dir), 'utf8'));
     for (const m of Object.values(med.medals || {})) if (m.source) set.add(m.source);
   } catch (e) {}
   // Same ranking publish-medals.js uses: one entry per model at its best pessimistic bound.
