@@ -560,14 +560,16 @@
     /* the live 3D view sits beside the flat board, showing the same position from the side */
     #htp3DPane { background:#0c0e11; border-radius:14px; overflow:hidden; flex:none; }
     #htp3DPane canvas { width:100% !important; height:100% !important; display:block; }
-    #htpHint { flex:none; margin:0 0 6px; font-size:12px; color:#69727b; text-align:center; }
+    #htpHint { flex:none; margin:0 0 6px; font-size:12px; color:#c9a53a; text-align:center; }
+    #htpHint.done { color:#78dc8c; }
     #htpFoot { flex:none; display:flex; align-items:center; justify-content:center; gap:12px; width:100%; max-width:620px; }
     #htpFoot .pbtn { margin:0; padding:9px 16px; font-size:14px; width:auto; }
     #htpFoot .pbtn:disabled { opacity:0.35; cursor:default; }
     #htpDots { display:flex; gap:7px; }
     .htpDot { width:9px; height:9px; border-radius:50%; background:#3a4048; padding:0; border:none; cursor:pointer; }
     .htpDot.active { background:#ffd23f; transform:scale(1.25); }
-    .htpDot.tried { background:#5a6470; }
+    .htpDot.tried { background:#78dc8c; }
+    .htpDot:disabled { opacity:0.35; cursor:default; }
 </style>
 </head>
 <body>
@@ -586,7 +588,7 @@
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 193</div>
+<div id="buildTag">build 194</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -6392,7 +6394,6 @@ function refreshLevelTip(){ const el=document.getElementById('levelTip');
 // and can't drift out of sync with it, instead of the hand-faked shapes they replaced.
 function htpMap(w,h){ const sc=(h*0.92)/(2*CFG.edgeU); const O={x:w/2,y:h/2}; return { sc, b:(mx,my)=>({x:O.x+mx*sc, y:O.y+my*sc}) }; }
 function mkP(id,x,y,rot){ const p=new Piece(id); p.x=x; p.y=y; p.rot=rot; return p; }
-function htpEaseHold(cyc){ const p=Math.min(1,cyc/0.72); return p*p*(3-2*p); }   // ease to the end by 72%, then hold
 function htpBoard(c,b,sc){
     const col=boardColors(), O=b(0,0);
     c.fillStyle=col.bg; c.fillRect(0,0,c.canvas.width,c.canvas.height);
@@ -6421,27 +6422,13 @@ function htpPiece(c,piece,b,pin,t){
     });
 }
 const htpCache = {};
-// Largest swing (radians) around pivotIdx, in direction dir, that stays within the 1-crossing
-// rule — used by the "one line per turn" slide so it stops itself exactly where the game would.
-function htpCrossLimit(base,pivotIdx,dir){
-    const pv=base.feet()[pivotIdx], p=mkP(base.id,base.x,base.y,base.rot);
-    const step=dir*1.5*Math.PI/180; let crossings=0, ang=0;
-    for(let s=0;s<260;s++){
-        const before=p.feet(); p.rotateAround(pv.x,pv.y,step);
-        const added=countCrossings(before,p.feet()).reduce((a,v)=>a+Math.min(v.length,1),0);
-        if(crossings+added>1) break;
-        crossings+=added; ang+=Math.abs(step);
-        if(crossings>=1 && ang>22*Math.PI/180) break;   // enough travel past the crossing to read it
-    }
-    return ang;
-}
 // ---------- The goal, shown as a whole game ----------
 // A real game recorded from the menu demo's own brain (same capture as COACH_R): every substep of
 // 15 turns, ending with Red pushed over the rim. Played back sped up it answers "what am I trying
 // to do?" in a few seconds, which no amount of rule text does.
 const TUTOR_GAME = {"turnMeta":[{"s":1,"e":5,"mover":0},{"s":6,"e":10,"mover":1},{"s":11,"e":14,"mover":0},{"s":15,"e":28,"mover":1},{"s":29,"e":47,"mover":0},{"s":48,"e":55,"mover":1},{"s":56,"e":112,"mover":0},{"s":113,"e":132,"mover":1},{"s":133,"e":156,"mover":0},{"s":157,"e":173,"mover":1},{"s":174,"e":184,"mover":0},{"s":185,"e":203,"mover":1},{"s":204,"e":218,"mover":0},{"s":219,"e":227,"mover":1},{"s":228,"e":242,"mover":0}],"frames":[[-30.6,0,0,30.6,0,3.142],[-29.57,0.63,0.052,30.6,0,3.142],[-28.57,1.32,0.105,30.6,0,3.142],[-27.61,2.05,0.157,30.6,0,3.142],[-26.69,2.84,0.209,30.6,0,3.142],[-26.03,3.46,0.249,30.6,0,3.142],[-26.03,3.46,0.249,29.57,-0.63,3.194],[-26.03,3.46,0.249,28.57,-1.32,3.246],[-26.03,3.46,0.249,27.61,-2.05,3.299],[-26.03,3.46,0.249,26.69,-2.84,3.351],[-26.03,3.46,0.249,26.03,-3.46,3.39],[-24.87,3.1,0.196,26.03,-3.46,3.39],[-23.74,2.68,0.144,26.03,-3.46,3.39],[-22.63,2.2,0.092,26.03,-3.46,3.39],[-21.54,1.67,0.039,26.03,-3.46,3.39],[-21.54,1.67,0.039,25.7,-2.29,3.443],[-21.54,1.67,0.039,25.31,-1.15,3.495],[-21.54,1.67,0.039,24.86,-0.03,3.547],[-21.54,1.67,0.039,24.36,1.07,3.6],[-21.54,1.67,0.039,23.79,2.14,3.652],[-21.54,1.67,0.039,23.18,3.18,3.704],[-21.54,1.67,0.039,22.5,4.19,3.757],[-21.54,1.67,0.039,21.78,5.16,3.809],[-21.54,1.67,0.039,21.01,6.08,3.862],[-21.54,1.67,0.039,20.19,6.97,3.914],[-21.54,1.67,0.039,19.32,7.82,3.966],[-21.54,1.67,0.039,18.41,8.61,4.019],[-21.54,1.67,0.039,17.46,9.36,4.071],[-21.54,1.67,0.039,17.22,9.54,4.084],[-20.54,2.34,0.092,17.22,9.54,4.084],[-19.57,3.06,0.144,17.22,9.54,4.084],[-18.64,3.84,0.196,17.22,9.54,4.084],[-17.75,4.66,0.249,17.22,9.54,4.084],[-16.91,5.52,0.301,17.22,9.54,4.084],[-16.11,6.43,0.353,17.22,9.54,4.084],[-15.36,7.38,0.406,17.22,9.54,4.084],[-14.67,8.37,0.458,17.22,9.54,4.084],[-14.02,9.39,0.511,17.22,9.54,4.084],[-13.43,10.45,0.563,17.22,9.54,4.084],[-12.89,11.53,0.615,17.22,9.54,4.084],[-12.42,12.64,0.668,17.22,9.54,4.084],[-12,13.78,0.72,17.22,9.54,4.084],[-11.64,14.93,0.772,17.27,9.56,4.081],[-11.34,16.1,0.825,17.27,9.56,4.081],[-11.11,17.29,0.877,17.27,9.56,4.081],[-10.93,18.49,0.929,17.27,9.56,4.081],[-10.82,19.69,0.982,17.27,9.56,4.081],[-10.81,19.84,0.988,17.27,9.56,4.081],[-10.81,19.84,0.988,16.15,9.1,4.028],[-10.81,19.84,0.988,15.01,8.7,3.976],[-10.81,19.84,0.988,13.85,8.36,3.924],[-10.81,19.84,0.988,12.67,8.09,3.871],[-10.81,19.84,0.988,11.48,7.87,3.819],[-10.81,19.84,0.988,10.29,7.72,3.766],[-10.81,19.84,0.988,9.08,7.62,3.714],[-10.81,19.84,0.988,7.87,7.6,3.662],[-9.72,20.35,0.936,7.87,7.6,3.662],[-8.6,20.81,0.884,7.87,7.6,3.662],[-7.46,21.21,0.831,7.87,7.6,3.662],[-6.29,21.54,0.779,7.87,7.6,3.662],[-5.12,21.82,0.726,7.87,7.6,3.662],[-3.93,22.03,0.674,7.87,7.6,3.662],[-2.73,22.18,0.622,7.87,7.6,3.662],[-1.52,22.27,0.569,7.87,7.6,3.662],[-0.31,22.29,0.517,7.87,7.6,3.662],[0.9,22.25,0.465,7.87,7.6,3.662],[2.1,22.15,0.412,7.87,7.6,3.662],[3.3,21.98,0.36,7.87,7.6,3.662],[4.49,21.75,0.308,7.87,7.6,3.662],[5.66,21.46,0.255,7.87,7.6,3.662],[6.82,21.11,0.203,8.17,7.18,3.652],[7.95,20.7,0.151,8.54,6.44,3.64],[9.07,20.23,0.098,9.12,5.83,3.625],[10.16,19.7,0.046,9.77,5.27,3.607],[11.21,19.12,-0.007,10.4,4.69,3.591],[12.24,18.48,-0.059,11.01,4.07,3.574],[13.23,17.79,-0.111,11.59,3.43,3.557],[14.19,17.05,-0.164,12.15,2.75,3.541],[15.1,16.26,-0.216,12.68,2.04,3.525],[15.97,15.42,-0.268,13.19,1.3,3.51],[16.8,14.54,-0.321,13.66,0.54,3.495],[17.58,13.61,-0.373,14.1,-0.26,3.48],[18.31,12.65,-0.425,14.51,-1.09,3.466],[18.99,11.65,-0.478,14.88,-1.94,3.452],[19.61,10.61,-0.53,15.21,-2.82,3.438],[20.18,9.55,-0.583,15.51,-3.73,3.425],[20.7,8.45,-0.635,15.76,-4.66,3.413],[21.15,7.33,-0.687,15.97,-5.6,3.402],[21.55,6.19,-0.74,16.14,-6.57,3.391],[21.88,5.03,-0.792,16.27,-7.55,3.38],[22.16,3.85,-0.844,16.35,-8.55,3.371],[22.37,2.66,-0.897,16.39,-9.55,3.362],[22.52,1.46,-0.949,16.39,-10.57,3.355],[22.61,0.25,-1.001,16.34,-11.59,3.348],[22.63,-0.96,-1.054,16.25,-12.62,3.342],[22.59,-2.16,-1.106,16.12,-13.65,3.337],[22.49,-3.37,-1.158,15.93,-14.67,3.333],[22.32,-4.57,-1.211,15.71,-15.7,3.33],[22.09,-5.75,-1.263,15.43,-16.72,3.328],[21.81,-6.93,-1.316,15.11,-17.73,3.327],[21.45,-8.09,-1.368,14.75,-18.73,3.328],[21.04,-9.22,-1.42,14.34,-19.71,3.33],[20.57,-10.34,-1.473,13.88,-20.67,3.333],[20.05,-11.42,-1.525,13.38,-21.61,3.337],[19.46,-12.48,-1.577,12.84,-22.53,3.343],[18.82,-13.51,-1.63,12.26,-23.41,3.351],[18.13,-14.5,-1.682,11.64,-24.26,3.359],[17.39,-15.46,-1.734,10.98,-25.07,3.37],[16.6,-16.37,-1.787,10.29,-25.83,3.381],[15.76,-17.24,-1.839,9.54,-26.58,3.394],[14.88,-18.07,-1.892,8.23,-27.24,3.39],[13.95,-18.85,-1.944,6.83,-27.83,3.384],[12.99,-19.58,-1.996,5.39,-28.34,3.379],[13.39,-18.53,-1.998,5.08,-27.17,3.431],[13.76,-17.41,-2.002,4.7,-26.02,3.483],[14.13,-16.3,-2.006,4.26,-24.89,3.536],[14.33,-15.08,-2.017,3.77,-23.79,3.588],[14.43,-13.82,-2.031,3.22,-22.71,3.641],[14.48,-12.56,-2.048,2.61,-21.67,3.693],[14.48,-11.32,-2.067,1.95,-20.65,3.745],[14.43,-10.09,-2.088,1.24,-19.68,3.798],[14.35,-8.89,-2.11,0.48,-18.74,3.85],[14.22,-7.71,-2.134,-0.33,-17.84,3.902],[14.02,-6.57,-2.161,-1.19,-16.99,3.955],[13.7,-5.47,-2.191,-2.09,-16.18,4.007],[13.36,-4.39,-2.222,-3.03,-15.42,4.059],[13.02,-3.35,-2.253,-4.01,-14.71,4.112],[12.66,-2.33,-2.285,-5.02,-14.06,4.164],[12.29,-1.34,-2.317,-6.07,-13.45,4.217],[11.91,-0.38,-2.35,-7.15,-12.9,4.269],[11.52,0.56,-2.384,-8.25,-12.41,4.321],[11.1,1.47,-2.418,-9.38,-11.98,4.374],[10.77,2.14,-2.444,-10.24,-11.7,4.413],[10.38,1,-2.391,-9.73,-12.71,4.378],[10.06,-0.17,-2.339,-9.22,-13.78,4.343],[9.8,-1.35,-2.287,-8.7,-14.9,4.308],[9.6,-2.54,-2.234,-8.17,-16.06,4.273],[9.46,-3.74,-2.182,-7.62,-17.25,4.238],[9.39,-4.95,-2.13,-7.06,-18.45,4.204],[9.38,-6.16,-2.077,-6.49,-19.68,4.17],[9.43,-7.37,-2.025,-5.92,-20.92,4.136],[9.54,-8.57,-1.973,-5.34,-22.17,4.102],[9.72,-9.77,-1.92,-4.75,-23.43,4.069],[9.96,-10.95,-1.868,-4.19,-24.67,4.035],[10.26,-12.12,-1.816,-3.75,-25.88,4.002],[10.63,-13.27,-1.763,-3.18,-27.09,3.967],[11.05,-14.41,-1.711,-2.62,-28.28,3.933],[11.53,-15.52,-1.658,-2.07,-29.45,3.898],[12.07,-16.6,-1.606,-1.5,-30.58,3.863],[12.67,-17.65,-1.554,-1,-31.67,3.828],[13.32,-18.67,-1.501,-0.37,-32.75,3.793],[14.02,-19.66,-1.449,0.3,-33.93,3.757],[14.77,-20.6,-1.397,0.94,-35.33,3.73],[15.57,-21.51,-1.344,1.7,-36.54,3.696],[16.42,-22.37,-1.292,2.43,-37.85,3.663],[17.31,-23.19,-1.24,3.14,-39.12,3.629],[18,-23.77,-1.2,3.68,-40.04,3.604],[17.93,-23.64,-1.205,2.48,-39.93,3.551],[17.86,-23.52,-1.209,1.28,-39.76,3.499],[17.8,-23.39,-1.214,0.09,-39.53,3.446],[17.73,-23.26,-1.219,-1.08,-39.24,3.394],[17.67,-23.13,-1.224,-2.24,-38.89,3.342],[17.61,-23,-1.229,-3.37,-38.47,3.289],[17.56,-22.86,-1.234,-4.48,-38,3.237],[17.51,-22.73,-1.239,-5.57,-37.47,3.185],[17.45,-22.59,-1.245,-6.63,-36.88,3.132],[17.39,-22.44,-1.251,-7.65,-36.24,3.08],[17.33,-22.3,-1.256,-8.64,-35.55,3.028],[17.28,-22.16,-1.262,-9.6,-34.8,2.975],[17.23,-22.01,-1.268,-10.51,-34.01,2.923],[17.19,-21.87,-1.274,-11.38,-33.17,2.871],[17.15,-21.73,-1.28,-12.2,-32.28,2.818],[17.12,-21.58,-1.286,-12.98,-31.36,2.766],[17.1,-21.51,-1.289,-13.35,-30.88,2.74],[15.95,-21.88,-1.237,-13.24,-31.42,2.716],[14.82,-22.3,-1.184,-13.13,-32.03,2.691],[13.71,-22.79,-1.132,-12.99,-32.6,2.668],[12.63,-23.33,-1.08,-12.85,-33.23,2.643],[11.58,-23.93,-1.027,-12.69,-33.88,2.618],[10.56,-24.58,-0.975,-12.51,-34.52,2.595],[9.58,-25.28,-0.922,-12.31,-35.19,2.571],[8.63,-26.04,-0.87,-12.1,-35.9,2.547],[7.73,-26.84,-0.818,-11.86,-36.64,2.523],[6.87,-27.69,-0.765,-11.6,-37.38,2.5],[6.26,-28.36,-0.726,-11.39,-37.97,2.482],[6.08,-27.85,-0.74,-11.81,-36.84,2.43],[5.91,-27.32,-0.755,-12.18,-35.68,2.378],[5.77,-26.79,-0.77,-12.49,-34.52,2.325],[5.64,-26.25,-0.784,-12.74,-33.33,2.273],[5.52,-25.7,-0.8,-12.92,-32.14,2.221],[5.43,-25.13,-0.815,-13.04,-30.93,2.168],[5.35,-24.56,-0.83,-13.1,-29.73,2.116],[5.3,-23.97,-0.846,-13.09,-28.52,2.064],[5.27,-23.37,-0.862,-13.02,-27.31,2.011],[5.27,-22.77,-0.879,-12.89,-26.11,1.959],[5.29,-22.15,-0.896,-12.7,-24.91,1.906],[5.33,-21.52,-0.913,-12.44,-23.73,1.854],[5.4,-20.89,-0.93,-12.12,-22.57,1.802],[5.5,-20.24,-0.947,-11.74,-21.42,1.749],[5.62,-19.59,-0.965,-11.3,-20.29,1.697],[5.77,-18.93,-0.982,-10.81,-19.19,1.645],[5.95,-18.27,-1,-10.25,-18.11,1.592],[6.2,-17.59,-1.018,-9.64,-17.07,1.54],[6.24,-17.5,-1.021,-9.56,-16.94,1.533],[5.23,-18.16,-0.968,-10.1,-18.23,1.514],[4.25,-18.87,-0.916,-10.64,-19.54,1.496],[3.31,-19.63,-0.864,-11.2,-20.89,1.479],[2.41,-20.44,-0.811,-11.77,-22.26,1.463],[1.56,-21.3,-0.759,-12.33,-23.64,1.447],[0.75,-22.2,-0.706,-12.91,-25.04,1.432],[-0.01,-23.14,-0.654,-13.48,-26.44,1.417],[-0.72,-24.11,-0.602,-14.05,-27.84,1.402],[-1.38,-25.13,-0.549,-14.62,-29.23,1.387],[-1.99,-26.18,-0.497,-15.18,-30.61,1.371],[-2.53,-27.25,-0.445,-15.75,-31.97,1.354],[-3.03,-28.36,-0.392,-16.3,-33.3,1.337],[-3.46,-29.49,-0.34,-16.85,-34.58,1.318],[-3.83,-30.64,-0.288,-17.33,-35.82,1.299],[-4.11,-31.66,-0.242,-17.71,-36.94,1.28],[-3.86,-30.98,-0.251,-16.81,-36.13,1.228],[-3.45,-30.28,-0.257,-15.87,-35.38,1.175],[-2.95,-29.56,-0.262,-14.89,-34.67,1.123],[-2.45,-28.84,-0.267,-13.87,-34.01,1.07],[-1.91,-28.13,-0.271,-12.83,-33.41,1.018],[-1.33,-27.42,-0.274,-11.75,-32.86,0.966],[-0.44,-26.95,-0.266,-10.64,-32.38,0.913],[0.53,-26.61,-0.254,-9.51,-31.95,0.861],[1.26,-26.39,-0.245,-8.65,-31.66,0.822],[1,-27.57,-0.192,-9.45,-32.37,0.821],[0.8,-28.76,-0.14,-10.32,-33.15,0.824],[0.66,-29.96,-0.088,-11.11,-34.14,0.821],[0.59,-31.17,-0.035,-11.85,-35.25,0.814],[0.58,-32.38,0.017,-12.53,-36.41,0.804],[0.63,-33.58,0.069,-13.16,-37.59,0.792],[0.75,-34.79,0.122,-13.74,-38.79,0.777],[0.93,-35.98,0.174,-14.26,-40,0.76],[1.17,-37.17,0.227,-14.73,-41.21,0.741],[1.47,-38.34,0.279,-14.99,-42.45,0.715],[1.83,-39.49,0.331,-15.17,-43.66,0.688],[2.25,-40.63,0.384,-15.33,-44.87,0.659],[2.74,-41.73,0.436,-15.45,-46.05,0.629],[3.28,-42.82,0.488,-15.55,-47.2,0.599],[3.87,-43.87,0.541,-15.63,-48.33,0.568]]};
-const TUTOR_SPEED = 2.4;        // frames consumed per rendered frame
-const TUTOR_HOLD  = 1.1;        // seconds held on the finish before it loops
+const TUTOR_SPEED = 0.5;        // frames consumed per rendered frame — the whole game in ~8s (2.4 was a blur)
+const TUTOR_HOLD  = 1.6;        // seconds held on the finish before it loops
 let tutorPlayT = 0;
 function htpSlideGoal(c,w,h,t){
     const m = htpMap(w,h); htpBoard(c,m.b,m.sc);
@@ -6451,37 +6438,52 @@ function htpSlideGoal(c,w,h,t){
     const done = cyc > span;
     const f = F[Math.min(last, Math.floor(cyc * 60 * TUTOR_SPEED))];
     const blue = mkP(0, f[0], f[1], f[2]), red = mkP(1, f[3], f[4], f[5]);
-    htpMark(blue, red);
-    // once the last frame lands, walk the loser the rest of the way out and fade it
-    let alpha = 1;
+    // once the last frame lands, walk the loser the rest of the way out, tumbling as it goes —
+    // the 3D pane mirrors the same k as a drop + tumble (see htp3DMirror), so red visibly falls
+    let alpha = 1, k = 0;
     if (done) {
-        const k = Math.min(1, (cyc - span) / TUTOR_HOLD);
+        k = Math.min(1, (cyc - span) / TUTOR_HOLD);
         const d = Math.hypot(red.x, red.y) || 1;
         red.x += (red.x/d) * 26 * k; red.y += (red.y/d) * 26 * k;
+        red.rot += k * 2.6;                                // 2D stand-in for the tumble
         alpha = 1 - k*0.85;
     }
+    htpMark(blue, red, k);
     htpPiece(c, blue, m.b, -1, t);
     c.globalAlpha = alpha; htpPiece(c, red, m.b, -1, t); c.globalAlpha = 1;
 }
-// ---------- Try-it layer: the first four rules are PLAYABLE, not just watched ----------
-// Each of those slides runs its attract loop until the first touch, then hands the piece to the
-// player: tap a foot to hold it (that's the pivot), drag to swing. It's the REAL engine
-// throughout — the same Piece/rotateAround/resolvePush/countCrossings a match runs — with one
-// small goal per rule and a confetti pop when it lands. Goals persist for the session.
+// ---------- Try-it layer: EVERY rule slide is played, not watched ----------
+// No attract-loop "answers": each slide states the rule, and the board is live from the first
+// frame — tap a foot to hold it (that's the pivot), drag to swing. It's the REAL engine
+// throughout: the same Piece/rotateAround/resolvePush a match runs, and the same crossingSubstep
+// that referees a match, so every rule (one line per turn, corners count once, two-feet episodes,
+// start-line departures) is enforced on every slide identically to a real game. Each drag is one
+// turn: releasing ends it, exactly like releasing a swing in a match. One small goal per rule
+// gates the Next button; a confetti pop when it lands. Goals persist for the session.
 const HTP_TRY = {
-    pivot: { make: () => ({ p: mkP(0,2,3,-0.5) }) },
-    swing: { make: () => ({ p: mkP(0,6,6,-0.4) }) },
-    push:  { make: () => ({ p: mkP(0,-20,0,0.3), red: mkP(1,20,0,Math.PI), red0:{x:20,y:0} }) },
-    cross: { make: () => ({ p: mkP(0,-24,12,0.5) }) },
+    pivot:   { make: () => ({ p: mkP(0,2,3,-0.5) }) },
+    swing:   { make: () => ({ p: mkP(0,16,10,-0.4) }) },                 // close enough to a ring to meet it mid-trace
+    push:    { make: () => ({ p: mkP(0,-20,0,0.3), red: mkP(1,20,0,Math.PI), red0:{x:20,y:0} }) },
+    cross:   { make: () => ({ p: mkP(0,-24,12,0.5) }) },
+    // The rulebook's own corner example, the centre-spin: one foot dead on the board centre puts
+    // the other two EXACTLY on the inner ring (footR·√3 = r0), so holding the centre foot sweeps
+    // them through every printed ring∩arc corner — each one a free merge, one crossing total.
+    // (rotated 30° about the centre so the first corner is a real ~25° sweep away, not a graze)
+    double:  { make: () => ({ p: mkP(0,CFG.footR*Math.cos(Math.PI/6),CFG.footR*Math.sin(Math.PI/6),Math.PI+Math.PI/6) }) },
+    twofeet: { make: () => ({ p: mkP(0,18,-20,48*Math.PI/180) }) },      // the searched two-feet-two-lines pose
+    // (pose searched so a clean pin-and-swing shoves Red's outer foot past the rim in one turn,
+    // with the crossing rules still live — sloppier lines get there in a couple of shoves instead)
+    off:     { make: () => ({ p: mkP(0,2,0,0.3), red: mkP(1,40,0,Math.PI), red0:{x:40,y:0} }) },
 };
 // The piece(s) the current slide is showing this frame — the 3D pane mirrors these, so the side
-// view is always the same position as the flat board, whether it's animating or being dragged.
+// view is always the same position as the flat board, whether it's resting or being dragged.
+// fallK (0..1) is the goal-slide's end-of-game progress: the 3D mirror turns it into a drop+tumble.
 let htpNow = null;
-function htpMark(blue, red) { htpNow = { blue, red: red || null }; }
+function htpMark(blue, red, fallK) { htpNow = { blue, red: red || null, fallK: fallK || 0 }; }
 function htpState(key) {
     if (!htpCache['try_'+key]) htpCache['try_'+key] = Object.assign(
         { key, touched:false, pinned:null, dragging:false, armFrom:null, lastAng:0, turnDir:0,
-          netAng:0, crossings:0, done:false, burst:null, parts:[], lastT:0,
+          netAng:0, crossings:0, contact:null, done:false, burst:null, parts:[], lastT:0,
           lockFlashT:-9, blockFlashT:-9, blockId:null }, HTP_TRY[key].make());
     return htpCache['try_'+key];
 }
@@ -6493,34 +6495,52 @@ function htpGoalDone(key, st, at) {
     if (typeof htpHintSync === 'function') htpHintSync();
     if (navigator.vibrate) { try { navigator.vibrate(18); } catch(e) {} }
 }
-// One drag delta, run through the rules in engine-sized substeps. Own feet never leave the board
-// here (that rule gets its own 3D slide); the cross slide also enforces the one-crossing budget.
+// One drag delta, run through the rules in engine-sized substeps. The referee is the SAME
+// crossingSubstep a live match runs (the try-state doubles as its `st`), so the one-line budget,
+// the corner merge, the two-feet episode and the start-line departure calls are all enforced on
+// every slide, byte-identically to a real game. Own feet never leave the board (the push-OFF
+// slide's red piece is the only thing that ever goes over the rim).
 function htpTrySwing(st, key, dA) {
+    if (key === 'off' && htpPhase !== 'push') return;          // hands off while the fall plays out
     if (st.turnDir !== 0 && Math.sign(dA) !== st.turnDir) { st.lockFlashT = st.lastT; return; }
     const pv = st.p.feet()[st.pinned], stepMax = 1.5*Math.PI/180;
     const steps = Math.max(1, Math.ceil(Math.abs(dA)/stepMax)), step = dA/steps;
     for (let s = 0; s < steps; s++) {
         const before = st.p.feet();
         st.p.rotateAround(pv.x, pv.y, step);
-        let blockId = st.p.feet().some(f => Math.hypot(f.x,f.y) > CFG.edgeU) ? 'edge' : null;
-        if (!blockId && key === 'cross') {
-            const evs = countCrossings(before, st.p.feet());
-            const added = evs.reduce((a,v) => a + Math.min(v.length,1), 0);
-            if (st.crossings + added > 1) blockId = (evs.find(v => v.length) || [])[0] || 'r0';
-            else st.crossings += added;
+        const after = st.p.feet();
+        let blockId = after.some(f => Math.hypot(f.x,f.y) > CFG.edgeU) ? 'edge' : null;
+        if (!blockId && crossingSubstep(before, after, st)) {   // the real rule said no: find which line, to flash it
+            const evs = countCrossings(before, after);
+            blockId = (evs.find(v => v.length) || [])[0] || null;
+            if (!blockId) for (let i = 0; i < 3; i++) { if (i === st.pinned) continue;
+                const fresh = nearLineIds(after[i], CFG.touchEps)
+                    .find(id => !(st.contact && st.contact[i] && st.contact[i].includes(id)));
+                if (fresh) { blockId = fresh; break; } }
+            blockId = blockId || 'r0';
         }
         if (blockId) {
             st.p.rotateAround(pv.x, pv.y, -step);
             st.blockFlashT = st.lastT; st.blockId = blockId;
-            if (key === 'cross' && blockId !== 'edge' && !st.done)
+            // Being refused by a printed line IS these slides' lesson landing:
+            if ((key === 'cross' || key === 'swing') && blockId !== 'edge' && !st.done)
                 htpGoalDone(key, st, st.p.feet()[(st.pinned+1)%3]);
             break;
         }
         st.netAng += step;
-        if (key === 'push') resolvePush(st.p, st.red);
+        if (st.red) resolvePush(st.p, st.red);
+        // The corner / two-feet goals read the engine's own contact sets, which crossingSubstep
+        // just updated: a foot on TWO lines at once is rounding a printed corner (only legal at
+        // one), and two moving feet on lines together is the shared two-feet episode.
+        if (key === 'double' && !st.done && st.contact
+            && st.contact.some((ids,i) => i !== st.pinned && ids.length >= 2))
+            htpGoalDone(key, st, st.p.feet()[(st.pinned+1)%3]);
+        if (key === 'twofeet' && !st.done && st.contact
+            && st.contact.filter((ids,i) => i !== st.pinned && ids.length > 0).length >= 2)
+            htpGoalDone(key, st, st.p.feet()[(st.pinned+1)%3]);
     }
     if (st.turnDir === 0 && Math.abs(st.netAng) > 4*Math.PI/180) st.turnDir = Math.sign(st.netAng);
-    if (key === 'swing' && !st.done && Math.abs(st.netAng) >= 55*Math.PI/180)
+    if (key === 'swing' && !st.done && Math.abs(st.netAng) >= 40*Math.PI/180)
         htpGoalDone(key, st, st.p.feet()[(st.pinned+1)%3]);
     if (key === 'push' && !st.done) {
         const moved = Math.hypot(st.red.x - st.red0.x, st.red.y - st.red0.y);
@@ -6528,24 +6548,28 @@ function htpTrySwing(st, key, dA) {
         if (moved >= 5 || offBoard)
             htpGoalDone(key, st, { x: st.red.x, y: st.red.y });
     }
+    // 'double'/'twofeet' complete inside the substep loop (they read live contact sets);
+    // 'off' completes in htp3DStep, the moment a red foot leaves the board
 }
-function htpAttachTry(canvas, key, currentKey) {
+function htpAttachTry(canvas, key, currentKey, toBoardIn) {
     const active = () => !currentKey || currentKey() === key;   // shared canvas: act only on your step
-    const toBoard = ev => {
+    const toBoard = toBoardIn || (ev => {
         const w = canvas.width, h = canvas.height;   // live: the fullscreen canvas resizes
         const r = canvas.getBoundingClientRect(), sc = htpMap(w,h).sc;
         const px = (ev.clientX-r.left)*(w/r.width), py = (ev.clientY-r.top)*(h/r.height);
         return { x: (px-w/2)/sc, y: (py-h/2)/sc };
-    };
+    });
     const startDrag = (st, m, pv) => {
         st.lastAng = Math.atan2(m.y-pv.y, m.x-pv.x);
-        st.dragging = true; st.turnDir = 0; st.crossings = 0; st.netAng = 0; st.blockId = null;
+        st.dragging = true; st.turnDir = 0; st.netAng = 0; st.blockId = null;
+        st.crossings = 0; st.contact = null; st.justCrossed = [];   // a drag is a fresh turn
     };
     // Gestures mirror the real game: tap a foot to hold it (the pivot), then drag a DIFFERENT
     // foot — or open space — around it to swing. A motionless tap on another foot re-pins to it
     // instead; a pull-away from the just-pinned foot also swings, so pin+swing works one-handed.
     canvas.addEventListener('pointerdown', ev => {
         if (!active()) return;
+        if (key === 'off' && htpPhase !== 'push') return;      // the fall owns the finale until it resets
         const st = htpState(key), m = toBoard(ev);
         if (!st.touched) { st.touched = true; if (typeof htpHintSync === 'function') htpHintSync(); }
         let best = -1, bd = 100;   // 10u grab radius (squared)
@@ -6580,7 +6604,8 @@ function htpAttachTry(canvas, key, currentKey) {
             if (key === 'pivot' && !st.done) htpGoalDone(key, st, st.p.feet()[st.pinned]);
         }
         st.pendingPin = null; st.dragging = false; st.armFrom = null;
-        st.turnDir = 0; st.crossings = 0; st.netAng = 0; };
+        st.turnDir = 0; st.netAng = 0;
+        st.crossings = 0; st.contact = null; st.justCrossed = []; };   // release = turn over
     canvas.addEventListener('pointerup', endTurnUp);
     canvas.addEventListener('pointercancel', endTurnUp);
 }
@@ -6591,11 +6616,19 @@ function htpDrawTry(c,w,h,t,key) {
     const m = htpMap(w,h); htpBoard(c,m.b,m.sc);
     if (st.red) htpPiece(c, st.red, m.b, -1, t);
     htpPiece(c, st.p, m.b, st.pinned === null ? -1 : st.pinned, t);
-    if (st.pinned === null) {   // touched but nothing held yet: every foot invites the tap
+    if (st.pinned === null) {   // nothing held yet: every foot invites the tap
         const pulse = 0.35 + 0.3*Math.abs(Math.sin(t*3));
         for (const f of st.p.feet()) { const g = m.b(f.x,f.y);
             c.strokeStyle = `rgba(255,210,63,${pulse})`; c.lineWidth = 2*htpScale;
             c.beginPath(); c.arc(g.x,g.y,11*htpScale,0,7); c.stroke(); }
+    } else {   // moving feet glow green while their magnet is on a line (the crossing is "open")
+        const flash = 0.4 + 0.35*Math.abs(Math.sin(t*6));
+        st.p.feet().forEach((f,i) => {
+            if (i === st.pinned || !nearLineIds(f, CFG.holdEps).length) return;
+            const g = m.b(f.x,f.y);
+            c.strokeStyle = `rgba(120,220,140,${flash})`; c.lineWidth = 3*htpScale;
+            c.beginPath(); c.arc(g.x,g.y,11*htpScale,0,7); c.stroke();
+        });
     }
     if (t - st.lockFlashT < 0.5 && st.pinned !== null) {   // fought the one-direction lock
         const pv = m.b(st.p.feet()[st.pinned].x, st.p.feet()[st.pinned].y), k = 1-(t-st.lockFlashT)/0.5;
@@ -6628,107 +6661,43 @@ function htpDrawTry(c,w,h,t,key) {
         if (!alive && age > 2) st.burst = null;
     }
 }
-function htpSlidePivot(c,w,h,t){
-    if (htpState('pivot').touched) return htpDrawTry(c,w,h,t,'pivot');
-    const {b}=htpMap(w,h); htpBoard(c,b,htpMap(w,h).sc);
-    const rest = mkP(0,2,3,-0.5); htpMark(rest);
-    htpPiece(c, rest, b, 0, t);   // one piece, resting; the pinned foot glows
-}
-function htpSlideSwing(c,w,h,t){
-    if (htpState('swing').touched) return htpDrawTry(c,w,h,t,'swing');
-    const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
-    const base=mkP(0,6,6,-0.4), pv=base.feet()[0];
-    const ang=(30*Math.PI/180)*Math.sin(t*3.0);            // ping-pong ~1s each way around the pinned foot
-    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,ang); htpMark(p);
-    htpPiece(c,p,m.b,0,t);
-}
-function htpSlidePush(c,w,h,t){
-    if (htpState('push').touched) return htpDrawTry(c,w,h,t,'push');
-    const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
-    const period=2.0, prog=htpEaseHold((t%period)/period);
-    const blue=mkP(0,-20,0,0.3), red=mkP(1,20,0,Math.PI);   // face each other; blue swings a leg into red
-    const pivotIdx=2, pv=blue.feet()[pivotIdx];             // (pivot/dir found by search to give a clear shove)
-    const steps=16, step=(prog*(-55*Math.PI/180))/steps || 0;
-    for(let s=0;s<steps;s++){ blue.rotateAround(pv.x,pv.y,step); resolvePush(blue,red); }   // real push physics
-    htpMark(blue,red);
-    htpPiece(c,red,m.b,-1,t);
-    htpPiece(c,blue,m.b,pivotIdx,t);
-}
-function htpSlideCross(c,w,h,t){
-    if (htpState('cross').touched) return htpDrawTry(c,w,h,t,'cross');
-    const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
-    if(!htpCache.crossBase) htpCache.crossBase=mkP(0,-24,12,0.5);
-    const base=htpCache.crossBase, pivotIdx=2, dir=1;
-    if(htpCache.crossLim===undefined) htpCache.crossLim=htpCrossLimit(base,pivotIdx,dir);
-    const prog=htpEaseHold((t%2.4)/2.4), pv=base.feet()[pivotIdx];
-    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*htpCache.crossLim); htpMark(p);
-    if(prog>0.8){ const O=m.b(0,0), flash=0.35+0.4*Math.abs(Math.sin(t*8));   // the next ring flashes "blocked"
-        c.strokeStyle=`rgba(255,107,107,${flash})`; c.lineWidth=3*htpScale;
-        c.beginPath(); c.arc(O.x,O.y,CFG.rings[1]*m.sc,0,7); c.stroke(); }
-    htpPiece(c,p,m.b,pivotIdx,t);
-}
-// The continuous-crossing rule: the REAL opening from the start pose (pin a rear foot, swing the
-// other rear foot through the ring∩arc corner). While the foot's pad stays on a line the crossing
-// hasn't finished, so rounding the corner -- or two feet crossing in one continuous slide -- counts
-// as ONE crossing. The moving foot glows green whenever its magnet is on a line.
-function htpSlideDouble(c,w,h,t){
-    const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
-    const base=mkP(0,-CFG.startX,0,0), pivotIdx=1, dir=1, lim=14*Math.PI/180;   // the verified in-game limit (holdEps band)
-    const prog=htpEaseHold((t%2.8)/2.8), pv=base.feet()[pivotIdx];
-    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*lim); htpMark(p);
-    const f=p.feet()[2];
-    if (nearLineIds(f, CFG.holdEps).length){
-        const g=m.b(f.x,f.y), flash=0.4+0.35*Math.abs(Math.sin(t*6));
-        c.strokeStyle=`rgba(120,220,140,${flash})`; c.lineWidth=3*htpScale;
-        c.beginPath(); c.arc(g.x,g.y,11*htpScale,0,7); c.stroke();
-    }
-    htpPiece(c,p,m.b,pivotIdx,t);
-}
-// Two DIFFERENT feet crossing two DIFFERENT lines in one continuous slide. Pose/pivot/swing found
-// by search (find2.mjs): pinning foot 1 and swinging back, foot 0 slides across the inner ring at
-// the same time foot 2 slides across the outer ring — both magnets on a line together, mid-swing.
-// While a magnet stays on a line the crossing episode hasn't ended, so this whole move is ONE
-// crossing. Both moving feet glow green whenever their magnet is on a line.
-function htpSlideTwoFeet(c,w,h,t){
-    const m=htpMap(w,h); htpBoard(c,m.b,m.sc);
-    const base=mkP(0,18,-20,48*Math.PI/180), pivotIdx=1, dir=-1, lim=23*Math.PI/180;
-    const prog=htpEaseHold((t%2.8)/2.8), pv=base.feet()[pivotIdx];
-    const p=mkP(0,base.x,base.y,base.rot); p.rotateAround(pv.x,pv.y,dir*prog*lim); htpMark(p);
-    for (const i of [0,2]){                                  // the two moving feet (pivot is foot 1)
-        const f=p.feet()[i];
-        if (nearLineIds(f, CFG.holdEps).length){
-            const g=m.b(f.x,f.y), flash=0.4+0.35*Math.abs(Math.sin(t*6));
-            c.strokeStyle=`rgba(120,220,140,${flash})`; c.lineWidth=3*htpScale;
-            c.beginPath(); c.arc(g.x,g.y,11*htpScale,0,7); c.stroke();
-        }
-    }
-    htpPiece(c,p,m.b,pivotIdx,t);
-}
-// Slide 5 is the real 3D view (the #view3d WebGL canvas, reparented in while the modal is
-// open — see htp3DEnter/Exit), not a 2D drawing: two throwaway pieces (never G.pieces, which
-// the ambient landing demo keeps animating behind the modal) get pushed with the real
-// resolvePush physics, then the loser falls using the exact same formulas as a real match's
-// triggerFall/stepFall (slide out, gravity accel, tumble) — "falls off naturally" because it's
+// Every rule slide draws the same live try view — the rule text tells you what to do, the board
+// lets you do it, and the Next button opens when you have. No pre-animated answers.
+const htpTryDraw = key => (c,w,h,t) => htpDrawTry(c,w,h,t,key);
+// The finale is the real 3D view (the #view3d WebGL canvas, reparented in while the modal is
+// open — see htp3DEnter/Exit), not a 2D drawing — and it's YOURS to play: pin a foot on the 3D
+// board and swing into Red with the same input layer as every other slide (htpAttachTry routes
+// the 3D canvas through the same try-state). Two throwaway pieces (never G.pieces, which the
+// ambient landing demo keeps animating behind the modal) get pushed with the real resolvePush
+// physics, then the loser falls using the exact same formulas as a real match's
+// triggerFall/stepFall (slide out, gravity accel, tumble) — it falls off naturally because it's
 // the same physics, not a re-drawn approximation of it.
-let htp3DActive=false, htpBlueP=null, htpRedP=null, htpFallState=null, htpPhase='push', htpPhaseT=0, htpDropT=0;
+let htp3DActive=false, htpFallState=null, htpPhase='push', htpPhaseT=0, htpDropT=0;
 function htp3DReset() {
     // Rule slides with a single piece leave tripod 1 hidden (and a completed fall hides it too),
-    // so restore both here — this is the only entry point into the push-off.
-    if (typeof htpTripods !== 'undefined' && htpTripods) htpTripods.forEach(t => t.visible = true);
-    htpBlueP = mkP(0,-2,0,0.3); htpRedP = mkP(1,38,0,Math.PI);
+    // so restore both here — this is the only entry point into the push-off. Fresh pieces at the
+    // start pose, but the goal stays earned (the Done gate shouldn't re-lock on the loop reset).
+    if (typeof htpTripods !== 'undefined' && htpTripods)
+        htpTripods.forEach(t => { t.visible = true; t.position.y = 0; t.rotation.set(0,0,0); });
+    const prev = htpCache.try_off;
+    delete htpCache.try_off;
+    const st = htpState('off');
+    if (prev) { st.done = prev.done; st.touched = prev.touched; }
     htpFallState = null; htpPhase='push'; htpPhaseT=0; htpDropT=0;
 }
 function htp3DStep(dt) {
     htpPhaseT += dt;
-    if (htpPhase==='push') {
-        const pv = htpBlueP.feet()[2];
-        const angVel = (-70*Math.PI/180) / 0.9;             // matches the same swing used in the earlier 2D version
-        htpBlueP.rotateAround(pv.x, pv.y, angVel*dt);
-        resolvePush(htpBlueP, htpRedP);
-        if (htpPhaseT >= 0.9 || htpRedP.feet().some(f=>radU(f)>CFG.edgeU)) {
+    const st = htpState('off');
+    if (htpPhase==='push') {   // player-driven: the tripods just mirror the try-state's pieces
+        htpTripods[0].position.set(st.p.x, 0, st.p.y);
+        htpTripods[0].rotation.set(0, -st.p.rot, 0);
+        htpTripods[1].position.set(st.red.x, 0, st.red.y);
+        htpTripods[1].rotation.set(0, -st.red.rot, 0);
+        if (st.red.feet().some(f=>radU(f)>CFG.edgeU)) {
+            if (!st.done) htpGoalDone('off', st, { x: st.red.x, y: st.red.y });
             htpPhase='fall'; htpPhaseT=0;
             let fx=0, fz=0, fr=-1;
-            for (const f of htpRedP.feet()){ const r=Math.hypot(f.x,f.y); if (r>fr){ fr=r; fx=f.x; fz=f.y; } }
+            for (const f of st.red.feet()){ const r=Math.hypot(f.x,f.y); if (r>fr){ fr=r; fx=f.x; fz=f.y; } }
             const d = Math.hypot(fx,fz)||1;
             htpFallState = { vx:fx/d*50, vz:fz/d*50, vy:0, tipRate:0,
                 wx:(Math.random()-0.5)*7, wy:(Math.random()-0.5)*3, wz:(Math.random()-0.5)*7 };
@@ -6767,13 +6736,7 @@ function htp3DUpdateCam(dt) {
 }
 function htp3DTick(dt) {
     if (!htpFallMode) return htp3DMirror(dt);   // rule slides: the side view echoes the flat board
-    htp3DStep(dt);
-    htpTripods[0].position.set(htpBlueP.x, 0, htpBlueP.y);
-    htpTripods[0].rotation.set(0, -htpBlueP.rot, 0);
-    if (htpPhase==='push') {   // during 'fall'/'done' the fall physics above drives tripod 1 directly
-        htpTripods[1].position.set(htpRedP.x, 0, htpRedP.y);
-        htpTripods[1].rotation.set(0, -htpRedP.rot, 0);
-    }
+    htp3DStep(dt);                              // finale: the try-state drives 'push', physics drives 'fall'
     htp3DUpdateCam(dt);
 }
 // Rule slides: put the 3D pieces exactly where the 2D slide has them (htpMark records that each
@@ -6789,8 +6752,9 @@ function htp3DMirror(dt) {
         htpTripods[0].rotation.set(0, -htpNow.blue.rot, 0);
         htpTripods[0].visible = true;
         if (htpNow.red) {
-            htpTripods[1].position.set(htpNow.red.x, 0, htpNow.red.y);
-            htpTripods[1].rotation.set(0, -htpNow.red.rot, 0);
+            const k = htpNow.fallK || 0;   // goal-slide ending: the loser drops off the rim and tumbles
+            htpTripods[1].position.set(htpNow.red.x, -150*k*k, htpNow.red.y);
+            htpTripods[1].rotation.set(2.4*k, -htpNow.red.rot, 1.6*k);
         }
         htpTripods[1].visible = !!htpNow.red;
     }
@@ -6798,10 +6762,33 @@ function htp3DMirror(dt) {
     camera.position.lerp(HTP_CAM_POS, k);
     controls.target.lerp(HTP_CAM_TGT, k);
 }
+// The 3D pane is a full input surface too: the same pin/swing gestures as the flat board, with
+// the pointer mapped through the camera onto the board plane — so every slide (and the 3D-only
+// finale) plays in either view. Attached once per session, lazily from htp3DEnter, because the
+// renderer may not exist yet when the first-visit auto-open fires (the view3d canvas is
+// persistent, unlike #htpBigCanvas, so once is enough).
+function htpEnsure3DInput() {
+    if (htpCache.did3DAttach || !renderer) return;
+    htpCache.did3DAttach = true;
+    const toBoard3D = ev => {
+        const r = renderer.domElement.getBoundingClientRect();
+        const nx = ((ev.clientX - r.left) / r.width) * 2 - 1;
+        const ny = -(((ev.clientY - r.top) / r.height) * 2 - 1);
+        const v = new THREE.Vector3(nx, ny, 0.5).unproject(camera);
+        const d = v.sub(camera.position).normalize();
+        const k = -camera.position.y / (d.y || -1e-9);
+        return { x: camera.position.x + d.x * k, y: camera.position.z + d.z * k };
+    };
+    for (const key of Object.keys(HTP_TRY))
+        htpAttachTry(renderer.domElement, key,
+            () => (htp3DActive && document.getElementById('htpFull')) ? HTP_STEPS[htpFullIdx].tryKey : null,
+            toBoard3D);
+}
 function htp3DEnter(w, h) {
     if (!renderer) return;
     const slot = document.getElementById('htp3DPane');
     if (!slot) return;
+    htpEnsure3DInput();
     // The ambient menu demo restarts itself on its own setTimeout loop (demoTimer), independent of
     // whatever's open on top of it. Left running, that timer's own reset() call re-shows `tripods`
     // mid-how-to-play -- landing right on top of htpTripods, which are still visible: two pairs of
@@ -6818,10 +6805,14 @@ function htp3DEnter(w, h) {
     // Start the framing already wide instead of easing in from wherever the menu demo left the
     // camera — otherwise the first slide opens on a swooping shot nobody asked for.
     camera.position.copy(HTP_CAM_POS); controls.target.copy(HTP_CAM_TGT);
+    // The 3D pane is an input surface here (pin/swing work in it too) — orbiting would fight
+    // both that and the per-frame camera lerp, so park the controls for the duration.
+    if (typeof controls !== 'undefined' && controls) controls.enabled = false;
     htp3DActive = true;
 }
 function htp3DExit() {
     htp3DActive = false;
+    if (typeof controls !== 'undefined' && controls) controls.enabled = true;
     tripods.forEach(t => t.visible = true);
     htpTripods.forEach(t => t.visible = false);
     // how-to-play only ever opens from the menu, so the ambient demo is always the right home
@@ -6831,16 +6822,25 @@ function htp3DExit() {
     }
     if (typeof demoStart === 'function') demoStart();   // resume the ambient loop we paused on entry
 }
-// Wording taken from the designer's own rules (Written elements.docx).
+// Wording taken from the designer's own rules (Written elements.docx). Every rule slide is a
+// do-it slide: the text states the rule, the hint states the goal, and Next stays greyed until
+// the goal is done — the board never plays the answer for you.
 const HTP_STEPS = [
-    { title:t('The goal'), text:t('Push your opponent off the board. Here is a whole game, sped up.'), draw:htpSlideGoal },
-    { title:t('Hold one foot'), text:t('Hold one foot still and rotate the other two.'), draw:htpSlidePivot, tryKey:'pivot' },
-    { title:t('Move in circles'), text:t('The moving feet trace an arc. You may only move in one direction per turn.'), draw:htpSlideSwing, tryKey:'swing' },
-    { title:t('Push your opponent'), text:t('Push your opponent by moving into their legs.'), draw:htpSlidePush, tryKey:'push' },
-    { title:t('One line per turn'), text:t('You may cross only one line per turn. A foot that starts on a line leaves it for free.'), draw:htpSlideCross, tryKey:'cross' },
-    { title:t('Corners count once'), text:t('A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.'), draw:htpSlideDouble },
-    { title:t('Two feet at once'), text:t('Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.'), draw:htpSlideTwoFeet },
-    { title:t('Push them off'), text:t('Push your opponent off the edge. When one of their feet leaves the board, you win.'), is3D:true },
+    { title:t('The goal'), text:t('Push your opponent off the board. Here is a whole game.'), draw:htpSlideGoal },
+    { title:t('Hold one foot'), text:t('Hold one foot still and rotate the other two.'), draw:htpTryDraw('pivot'), tryKey:'pivot',
+      hint:t('tap a foot to hold it') },
+    { title:t('Move in circles'), text:t('The moving feet trace an arc. You may only move in one direction per turn — and the printed lines are live from your very first move.'), draw:htpTryDraw('swing'), tryKey:'swing',
+      hint:t('hold a foot, then drag to trace an arc') },
+    { title:t('Push your opponent'), text:t('Push your opponent by moving into their legs.'), draw:htpTryDraw('push'), tryKey:'push',
+      hint:t('swing into Red and shove them') },
+    { title:t('One line per turn'), text:t('You may cross only one line per turn. A foot that starts on a line leaves it for free.'), draw:htpTryDraw('cross'), tryKey:'cross',
+      hint:t('keep swinging until a line refuses you') },
+    { title:t('Corners count once'), text:t('A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.'), draw:htpTryDraw('double'), tryKey:'double',
+      hint:t('hold the centre foot and sweep the others through a corner') },
+    { title:t('Two feet at once'), text:t('Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.'), draw:htpTryDraw('twofeet'), tryKey:'twofeet',
+      hint:t('one swing that takes two feet across two lines') },
+    { title:t('Push them off'), text:t('Push your opponent off the edge. When one of their feet leaves the board, you win.'), is3D:true, tryKey:'off',
+      hint:t('pin a foot and shove Red over the edge') },
 ];
 let htpRaf=null, htpFullIdx=0, htpKeyHandler=null, htpResizeHandler=null, htpT0=0;
 function stopHowToPlayAnim() {
@@ -6851,19 +6851,38 @@ function stopHowToPlayAnim() {
     const el = document.getElementById('htpFull');
     if (el) el.remove();
 }
+// Furthest slide the player has unlocked: the first slide whose goal is still outstanding (or the
+// last slide if every goal is done). Next, the arrow key and the dots are all clamped to this.
+function htpReach() {
+    for (let i = 0; i < HTP_STEPS.length; i++) {
+        const k = HTP_STEPS[i].tryKey;
+        if (k && !(htpCache['try_'+k] && htpCache['try_'+k].done)) return i;
+    }
+    return HTP_STEPS.length - 1;
+}
 // The shared goal chip reflects the CURRENT step's try-state; called on step change and whenever
-// a goal completes. Dots double as a progress tracker: earned goals stay green for the session.
+// a goal completes. The hint IS the goal line, so it stays up until the goal is done, and Next
+// greys out until then. Dots double as a progress tracker: earned goals stay green for the
+// session, and dots past the first outstanding goal are locked.
 function htpHintSync() {
+    const s = HTP_STEPS[htpFullIdx], st = s && s.tryKey && htpCache['try_'+s.tryKey];
+    const done = !s || !s.tryKey || !!(st && st.done);
     const hint = document.getElementById('htpHint');
     if (hint) {
-        const s = HTP_STEPS[htpFullIdx], st = s && s.tryKey && htpCache['try_'+s.tryKey];
-        // One quiet line, and only until they touch it — the rule text does the talking.
-        hint.style.visibility = (s && s.tryKey && !(st && st.touched)) ? 'visible' : 'hidden';
+        hint.textContent = done ? '✓ ' + t('got it') : (s && s.hint) || t('drag the board to try it');
+        hint.style.visibility = (s && s.tryKey) ? 'visible' : 'hidden';
+        hint.classList.toggle('done', done);
     }
+    const nextBtn = document.getElementById('htpNext');
+    if (nextBtn) nextBtn.disabled = !done;
+    const doneBtn = document.getElementById('htpDoneBtn');
+    if (doneBtn) doneBtn.disabled = !done;
+    const reach = htpReach();
     document.querySelectorAll('#htpFull .htpDot').forEach((d,i) => {
         const k = HTP_STEPS[i].tryKey;
         d.classList.toggle('tried', !!(k && htpCache['try_'+k] && htpCache['try_'+k].done));
         d.classList.toggle('active', i === htpFullIdx);
+        d.disabled = i > reach;
     });
 }
 // Two panes: the flat board and the 3D view beside it. Landscape puts them side by side;
@@ -6892,7 +6911,7 @@ function htpLayout() {
     return size;
 }
 function htpShowStep(idx) {
-    htpFullIdx = Math.max(0, Math.min(HTP_STEPS.length-1, idx));
+    htpFullIdx = Math.max(0, Math.min(htpReach(), idx));   // can't skip past an unfinished goal
     const s = HTP_STEPS[htpFullIdx];
     document.getElementById('htpTitle').textContent = s.title;
     document.getElementById('htpText').innerHTML = s.text;
@@ -6928,7 +6947,6 @@ function openHowToPlay() {
             <span id="htpDots">${HTP_STEPS.map((_,i)=>`<button class="htpDot" data-idx="${i}"></button>`).join('')}</span>
             <button id="htpNext" class="pbtn">${t('Next')} \u203A</button>
             <button id="htpDoneBtn" class="pbtn" style="display:none">${t('Done')}</button>
-            <button id="htpPlayBtn" class="pbtn">${t('Play with coaching')}</button>
         </div>`;
     document.body.appendChild(wrap);
     htpLayout();
@@ -6943,10 +6961,8 @@ function openHowToPlay() {
     document.getElementById('htpNext').addEventListener('click', () => htpShowStep(htpFullIdx+1));
     document.querySelectorAll('#htpFull .htpDot').forEach(d =>
         d.addEventListener('click', () => htpShowStep(+d.dataset.idx)));
-    document.getElementById('htpDoneBtn').addEventListener('click', stopHowToPlayAnim);
-    // The rules land better while playing them: this is the way out of the cards at any point.
-    document.getElementById('htpPlayBtn').addEventListener('click', () => {
-        stopHowToPlayAnim(); markOnboarded('howto'); tutorStart();
+    document.getElementById('htpDoneBtn').addEventListener('click', () => {
+        markOnboarded('howto'); stopHowToPlayAnim();
     });
     htpKeyHandler = e => {
         if (e.key === 'Escape') stopHowToPlayAnim();
