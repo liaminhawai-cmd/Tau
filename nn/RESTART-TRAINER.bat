@@ -3,6 +3,19 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0.."
 title Tau trainer (league-first)
 
+rem Everything below is node. Checked up front so a machine that does not have it gets one clear
+rem sentence and a URL, not a screenful of "'node' is not recognized" from every later step --
+rem which is exactly what the first fresh machine got.
+where node >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo   Node.js is not installed on this machine ^(or not on PATH^).
+  echo   Install the LTS from https://nodejs.org ^(defaults are fine^), then run this again.
+  echo.
+  pause
+  exit /b 1
+)
+
 echo ================================================
 echo   Tau: pull latest, then restart the trainer
 echo ================================================

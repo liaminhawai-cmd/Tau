@@ -3,6 +3,19 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0.."
 title Tau trainer (second machine)
 
+rem Everything below is node. Checked up front so a machine that does not have it gets one clear
+rem sentence and a URL, not a screenful of "'node' is not recognized" from every later step --
+rem which is exactly what the first fresh machine got.
+where node >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo   Node.js is not installed on this machine ^(or not on PATH^).
+  echo   Install the LTS from https://nodejs.org ^(defaults are fine^), then run this again.
+  echo.
+  pause
+  exit /b 1
+)
+
 rem The full league-first trainer on a machine that has never run it -- a laptop, a fresh clone, or
 rem the desktop rebuilt. Same trainer RESTART-TRAINER.bat launches; the difference is one step
 rem before it, without which this machine would train from nothing.

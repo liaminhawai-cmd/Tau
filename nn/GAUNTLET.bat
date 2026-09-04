@@ -3,6 +3,19 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0.."
 title Tau gauntlet -- is this candidate really stronger than the ladder?
 
+rem Everything below is node. Checked up front so a machine that does not have it gets one clear
+rem sentence and a URL, not a screenful of "'node' is not recognized" from every later step --
+rem which is exactly what the first fresh machine got.
+where node >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo   Node.js is not installed on this machine ^(or not on PATH^).
+  echo   Install the LTS from https://nodejs.org ^(defaults are fine^), then run this again.
+  echo.
+  pause
+  exit /b 1
+)
+
 rem Answers one question the live league structurally cannot: is a specific model actually stronger
 rem than L10/L11, by enough to ship as a ladder rung? The league is a sparse round robin over ~400
 rem faces where the median face has 8 games and the median 90%% interval is ~400 Elo wide, so its
