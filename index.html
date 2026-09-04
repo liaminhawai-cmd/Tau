@@ -588,7 +588,7 @@
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 194</div>
+<div id="buildTag">build 196</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -654,10 +654,14 @@
                         <button id="acctLogIn">Log in</button>
                         <button id="acctSignUp">Sign up</button>
                     </div>
-                    <p class="msg" style="margin-top:6px;">or a one-time email link</p>
-                    <div class="row">
-                        <input id="acctEmail" type="email" placeholder="you@example.com" autocomplete="email">
-                        <button id="acctSendLink">Send link</button>
+                    <!-- Hidden in the native app: the link opens in the phone's browser and would
+                         sign THAT in, not the app -->
+                    <div id="acctMagic">
+                        <p class="msg" style="margin-top:6px;">or a one-time email link</p>
+                        <div class="row">
+                            <input id="acctEmail" type="email" placeholder="you@example.com" autocomplete="email">
+                            <button id="acctSendLink">Send link</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -5473,8 +5477,8 @@ function stepAi(dt) {
 // look identical every time — a direct rotateAround, not a new applySwing call, since it's
 // purely cosmetic and re-running the crossing-limit check on the way back would just
 // re-trigger the same limit it's backing off from.
-const DEMO_STEP_RAD = 3*Math.PI/180;
-let demoOn=false, demoAnim=null, demoTimer=null, demoCtx=null;
+const DEMO_STEP_RAD = 3*Math.PI/180;   // still used by demoComputePlan's own lookahead sim, not by playback
+let demoOn=false, demoAnim=null, demoTimer=null, demoCtx=null, demoQueue=null;
 function demoDraw() {
     if (!demoCtx || !G) return;
     const cv=document.getElementById('demoCanvas'), w=cv.width, sc=(w*0.86)/(2*CFG.edgeU), o=w/2;
@@ -5509,9 +5513,19 @@ function demoDraw() {
 // (2-ply minimax), or 'master' (3-ply) — so the two demo tripods lurch between clueless and
 // genuinely sharp play.
 const DEMO_MODES = ['dumb','easy','zone','hard','master'];
-function demoComputePlan() {
+// The silent endgame simulation (demoSimulateEndgame) calls this dozens of times back-to-back with
+// no yielding, so 'master' -- a 3-ply search averaging ~600ms and up to 1070ms per call, measured --
+// is dropped from its pool there: rolling it even a couple of times in one simulated game was enough
+// to freeze the page for several seconds. 'hard' (~104ms, a single 2-ply search) stays, so the AI
+// variety this was written for still shows up. This applies to the recorded TAIL moves too, not just
+// the invisible bulk of the game: those moves are what actually get replayed, so recomputing them
+// with a different (possibly stronger) mode after the fact could pick a different move that doesn't
+// lead to the same recorded finish -- cheapOnly has to cover the whole simulated game, tail included.
+const DEMO_MODES_CHEAP = ['dumb','easy','zone','hard'];
+function demoComputePlan(cheapOnly) {
     const idx = G.active;
-    const mode = DEMO_MODES[Math.floor(Math.random()*DEMO_MODES.length)];
+    const pool = cheapOnly ? DEMO_MODES_CHEAP : DEMO_MODES;
+    const mode = pool[Math.floor(Math.random()*pool.length)];
     if (mode === 'zone' || mode === 'hard' || mode === 'master') {
         const sp = searchedPlanFor(mode, idx);   // {pivotIdx,dir,targetRad}; restores G internally
         if (sp) { pinFoot(sp.pivotIdx); return { dir: sp.dir, targetRad: sp.targetRad }; }
@@ -5538,30 +5552,142 @@ function demoComputePlan() {
     const keepFrac = mode === 'easy' ? 1 : (0.6 + Math.random()*0.3);   // 'easy' swings to the limit; 'dumb' stops randomly short
     return { dir, targetRad: fullRad*keepFrac };
 }
+// A swing now plays at the SAME pace real gameplay does: an eased duration (slow start, fastest at
+// the midpoint, firm stop) sized from the real angle at the real average speed, instead of the old
+// fixed-rate 3°-every-35ms stepping (≈86°/s, no easing) -- nearly 2x the ~46°/s real swings average,
+// and mechanical rather than eased, which is exactly what reads as "sped up". Mirrors stepAi's own
+// math (smoothstep, AI_SWING_AVG_SPEED) but stays a fully separate timer loop -- stepAi's completion
+// path runs finishTurn(), which pops the real game-over modal, mints guest sessions, starts online
+// turn clocks -- none of which the ambient menu demo may ever trigger.
 function demoStepLoop() {
     if (!demoOn || !demoAnim) return;
-    if (!G.atLimit && Math.abs(G.netRad) < Math.abs(demoAnim.targetRad)) {
-        applySwing(demoAnim.dir*DEMO_STEP_RAD);
-        demoDraw();
-        demoTimer = setTimeout(demoStepLoop, 35);
-    } else {
-        demoAnim = null; endTurn(); progressCentering(); demoDraw();
-        if (G.over) {
-            // Let the loser actually tumble off the 3D board (same triggerFall/stepFall as a real
-            // game -- playLossSound is gameVisible-guarded, so the menu demo falls silently), THEN
-            // reset for the next demo game.
-            triggerFall();
-            demoTimer = setTimeout(() => { if (demoOn) { reset(); demoDraw(); demoPlayTurn(); } }, 3000);
-        } else demoTimer = setTimeout(demoPlayTurn, 320);
-    }
+    const now = performance.now();
+    if (demoAnim.t0 === undefined) demoAnim.t0 = now;
+    const s = Math.min(1, (now - demoAnim.t0) / 1000 / demoAnim.dur);
+    const eased = s*s*(3-2*s);   // smoothstep -- same curve stepAi uses for a committed move
+    const want = demoAnim.targetRad * eased;
+    const delta = want - Math.abs(G.netRad);
+    if (delta > 1e-6 && !G.atLimit) applySwing(demoAnim.dir*delta);
+    demoDraw();
+    if (s < 1 && !G.atLimit) { demoTimer = setTimeout(demoStepLoop, 16); return; }
+    demoAnim = null; endTurn(); progressCentering(); demoDraw();
+    if (G.over) {
+        // Let the loser actually tumble off the 3D board (same triggerFall/stepFall as a real
+        // game -- playLossSound is gameVisible-guarded, so the menu demo falls silently), THEN
+        // simulate a fresh endgame for the next loop.
+        triggerFall();
+        demoTimer = setTimeout(() => { if (demoOn) demoStartTail(); }, 3000);
+    } else demoAdvanceQueue();
 }
-function demoPlayTurn() {
+// Pulls the next PRE-RECORDED move off demoQueue (see demoSimulateEndgame) and starts it animating.
+// Never computes a fresh plan live -- that would risk replaying a different move than the one the
+// silent simulation actually reached this position with, which is what determines whether the
+// board is genuinely a move or two from the recorded finish.
+function demoAdvanceQueue() {
     if (!demoOn) return;
-    if (G.over) { demoTimer = setTimeout(()=>{ reset(); demoDraw(); demoPlayTurn(); }, 1400); return; }
-    const plan = demoComputePlan();
-    if (!plan) { clearTurn(); demoTimer = setTimeout(demoPlayTurn, 320); return; }
-    demoAnim = { dir: plan.dir, targetRad: plan.targetRad };
-    demoTimer = setTimeout(demoStepLoop, 500);   // half-second pause "to think" before the swing starts
+    if (!demoQueue || !demoQueue.length) { demoTimer = setTimeout(demoStartTail, 320); return; }   // shouldn't happen; safety net
+    const move = demoQueue.shift();
+    pinFoot(move.pivotIdx);
+    const dur = Math.max(0.55, Math.abs(move.targetRad) / AI_SWING_AVG_SPEED);   // same model as a real AI turn
+    demoTimer = setTimeout(() => {
+        demoAnim = { dir: move.dir, targetRad: move.targetRad, dur };
+        demoStepLoop();
+    }, 500);   // half-second pause "to think" before the swing starts -- same beat as real play
+}
+// ---------- Endgame-only playback: simulate a whole game silently, show only the tail ----------
+// The old demo played every game from the opening, which meant a new visitor usually watched two
+// tripods shuffle near the centre for a long stretch before anything decisive happened. Simulate a
+// full game with NO drawing and NO delay (same demoComputePlan + applySwing + endTurn a real turn
+// uses, just driven straight to each move's target instead of animated), THEN restore the board to
+// a few moves before the finish and only animate that tail -- so a new visitor's first impression is
+// always close to the interesting part, at a pace they can actually follow.
+const DEMO_TAIL_MOVES = 2;      // real turns to show before the finish, not counting the finish itself
+const DEMO_SIM_TURN_CAP = 60;   // give up and reroll if a simulated game runs this long without a fall
+function demoCloneG() {
+    return { pieces: G.pieces.map(p => { const q=new Piece(p.id); q.x=p.x; q.y=p.y; q.rot=p.rot; return q; }),
+             active: G.active, over: G.over, winner: G.winner,
+             koHist: G.koHist.map(q => Array.isArray(q) ? q.slice() : {...q}),
+             plies: G.plies, adjudicated: G.adjudicated };
+}
+function demoRestoreClone(snap) {
+    G = { pieces: snap.pieces.map(p => { const q=new Piece(p.id); q.x=p.x; q.y=p.y; q.rot=p.rot; return q; }),
+          active: snap.active, pinned:null, pivot:null, handle:null, turnDir:0,
+          crossings:0, atLimit:false, netRad:0, ptrAngle:null, over: snap.over, winner: snap.winner,
+          snap:null, contact:null,
+          koHist: snap.koHist.map(q => Array.isArray(q) ? q.slice() : {...q}), plies: snap.plies, adjudicated: snap.adjudicated };
+    fall.active=false; fallenIdx=-1;
+}
+// Drives ONE turn to completion instantly (no animation, no delay) -- the exact same plan/pin/swing/
+// endTurn path a real or visible-demo turn uses, just without the timers between the steps.
+function demoCommitTurnInstant() {
+    const plan = demoComputePlan(true);   // cheapOnly -- see DEMO_MODES_CHEAP
+    if (!plan) { clearTurn(); return null; }
+    const pivotIdx = G.pinned;                          // demoComputePlan already pinned it
+    while (!G.atLimit && Math.abs(G.netRad) < Math.abs(plan.targetRad)) applySwing(plan.dir*4*Math.PI/180);
+    // commitTurn(), not endTurn() -- endTurn() alone is the internal rollback path AI search uses to
+    // explore candidates; a turn that actually happens has to go through commitTurn() for the ko
+    // history and move-cap bookkeeping to advance, or the simulated game can replay a ko-banned
+    // position that real play never would.
+    commitTurn();
+    return { pivotIdx, dir: plan.dir, targetRad: plan.targetRad };
+}
+// Runs full games until one ends in an actual fall (never an adjudicated move-cap draw -- nothing to
+// show for that), recording {preClone, pivotIdx, dir, targetRad} for every turn, then returns just
+// the last DEMO_TAIL_MOVES of it: the snapshot to restore to, plus the moves to replay visibly.
+//
+// ASYNC and yields every couple of turns -- measured first, before adding this: run synchronously
+// with DEMO_MODES_CHEAP still averaged ~1.5s and peaked near 5s of SOLID main-thread blocking (an
+// unlucky run of 'hard' calls, or several failed attempts before one reaches a real fall), which
+// froze the whole page -- clicks, scrolling, everything -- for that long, every time a demo game
+// finished. The actual problem was blocking, not the total time: a one-off second or two of prep
+// before an idle menu's screensaver starts is a fine wait; a frozen tab is not. Yielding to the
+// event loop periodically fixes the freeze regardless of how long the prep ends up taking.
+const DEMO_SIM_MAX_ATTEMPTS = 20;   // hard cap so a pathological run can't retry forever, however unlikely
+function demoSimulateEndgame(gen) {
+    return new Promise(resolve => {
+        let attemptsLeft = DEMO_SIM_MAX_ATTEMPTS;
+        const attempt = () => {
+            if (gen !== demoGen) { resolve(null); return; }   // demoStop/demoStart raced us -- abandon
+            if (attemptsLeft-- <= 0) {
+                // Every attempt got stuck or ran long -- vanishingly rare (never seen in testing), but
+                // fall back to a plain fresh game rather than leave the demo showing nothing.
+                reset(); resolve({ startClone: demoCloneG(), queue: [] }); return;
+            }
+            reset();
+            const log = [];
+            let turns = 0;
+            const step = () => {
+                if (gen !== demoGen) { resolve(null); return; }
+                if (G.over || turns >= DEMO_SIM_TURN_CAP) {
+                    if (G.over && log.length) {
+                        const tail = log.slice(-DEMO_TAIL_MOVES);
+                        resolve({ startClone: tail[0].preClone,
+                                  queue: tail.map(({pivotIdx,dir,targetRad}) => ({pivotIdx,dir,targetRad})) });
+                    } else attempt();   // hit the cap without a fall, or ended turn 0 -- reroll
+                    return;
+                }
+                const preClone = demoCloneG();
+                const move = demoCommitTurnInstant();
+                if (!move) { attempt(); return; }   // both directions blocked (rare) -- reroll
+                log.push({ preClone, ...move });
+                turns++;
+                if (turns % 2 === 0) setTimeout(step, 0); else step();   // yield every couple of turns
+            };
+            step();
+        };
+        attempt();
+    });
+}
+let demoGen = 0;   // bumped on every demoStart/demoStop -- lets a still-running simulation notice it's stale
+async function demoStartTail() {
+    if (!demoOn) return;
+    const gen = demoGen;
+    const sim = await demoSimulateEndgame(gen);
+    if (!demoOn || gen !== demoGen || !sim) return;   // stopped, or superseded, while we were simulating
+    demoRestoreClone(sim.startClone);
+    demoQueue = sim.queue;
+    demoDraw();
+    demoAdvanceQueue();
 }
 // While the demo runs, the SAME #view3d canvas/renderer normally used for real play is
 // reparented into the menu (WebGL context survives a DOM move) so the idle screen shows the
@@ -5590,9 +5716,9 @@ function demoStart() {
     if (demoOn) return;
     if (!demoCtx) demoCtx = document.getElementById('demoCanvas').getContext('2d');
     if (renderer) { document.getElementById('demoViews').appendChild(document.getElementById('view3d')); demoResize(); }
-    demoOn = true; reset(); demoDraw(); demoPlayTurn();
+    demoOn = true; demoGen++; demoStartTail();
 }
-function demoStop() { demoOn=false; demoAnim=null; clearTimeout(demoTimer); }
+function demoStop() { demoOn=false; demoAnim=null; demoQueue=null; demoGen++; clearTimeout(demoTimer); }
 
 // ---------- Menu: mode buttons are always visible; sign-in is opt-in, not a gate ----------
 // Built via DOM methods (not innerHTML) since the displayed name can be an arbitrary
@@ -5668,8 +5794,21 @@ function openAcctPanel() {
     acctPanelOpenedAt = Date.now();
     document.getElementById('acctPanel').style.display = 'flex';
     document.getElementById('menu').classList.add('acctOpen');   // demo tiles give way: sign-in fits unscrolled
-    // In an in-app browser, Google can't work -- lead with username/password and say why up front.
-    if (typeof isInAppBrowser==='function' && isInAppBrowser()) {
+    if (typeof isNativeApp==='function' && isNativeApp()) {
+        // The installed app: Google OAuth can't run in the WebView at all, and a magic link would
+        // open in the phone's browser and sign THAT in, not the app. So username/password is the
+        // ONLY working path here — hide the dead ends rather than explaining them.
+        document.getElementById('acctGoogle').style.display = 'none';
+        const magic = document.getElementById('acctMagic');
+        if (magic) magic.style.display = 'none';
+        const more = document.getElementById('acctMoreOptions');
+        if (more) more.style.display = 'none';
+        const msg = document.getElementById('acctMsg');
+        if (msg && !msg.textContent) msg.textContent = t('Sign in with a username & password. Signed up with Google? Set a password at tau-game.com first (account → Set a password), then log in here with your email + that password.');
+        if (typeof showAcctEmailOptions==='function') showAcctEmailOptions(true);
+    } else if (typeof isInAppBrowser==='function' && isInAppBrowser()) {
+        // A social app's in-app browser: Google can't work -- lead with username/password and say
+        // why up front (here "open in a real browser" IS the fix, unlike in the installed app).
         const msg = document.getElementById('acctMsg');
         if (msg && !msg.textContent) msg.textContent = t('Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.');
         if (typeof showAcctEmailOptions==='function') showAcctEmailOptions(true);
@@ -10475,6 +10614,11 @@ document.getElementById('acctSendLink').addEventListener('click', async () => {
 });
 document.getElementById('acctGoogle').addEventListener('click', async () => {
     const msg = document.getElementById('acctMsg');
+    if (isNativeApp()) {   // belt-and-braces: the button is hidden in the app, but never let it 403
+        msg.textContent = t('Sign in with a username & password. Signed up with Google? Set a password at tau-game.com first (account → Set a password), then log in here with your email + that password.');
+        showAcctEmailOptions(true);
+        return;
+    }
     if (isInAppBrowser()) {   // Google would just 403 here -- guide out instead of failing silently
         msg.textContent = t('Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.');
         showAcctEmailOptions(true);
@@ -10523,6 +10667,13 @@ function isInAppBrowser() {
     const ua = navigator.userAgent || '';
     return /(FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|Twitter|TikTok|musical_ly|BytedanceWebview|Snapchat|Pinterest|WhatsApp|GSA\/)/i.test(ua)
         || (/Android/.test(ua) && /\bwv\b/.test(ua));
+}
+// The INSTALLED Capacitor app (Android/iOS wrapper), as opposed to a social app's in-app browser:
+// same Google-OAuth-is-blocked reality, but "open this page in Safari/Chrome" is NOT the fix here
+// (that would sign the browser in, not the app) — username/password is the only working path.
+function isNativeApp() {
+    try { return !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()); }
+    catch (e) { return false; }
 }
 // Since iPadOS 13, Safari's default UA reports as desktop Mac (no "iPad" substring at all) unless the
 // user has switched on "Request Mobile Website" -- the classic tell instead is a "Mac" platform that
