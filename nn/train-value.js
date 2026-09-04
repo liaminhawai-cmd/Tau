@@ -99,6 +99,7 @@ async function main() {
       // A/B runs. --poseInput is experiment-only and forwarded verbatim.
       '--eloWeight', arg('eloWeight', 'logistic'),
       ...(arg('eloWeightFloor') ? ['--eloWeightFloor', arg('eloWeightFloor')] : []),
+      ...(arg('dataBudgetMB') ? ['--dataBudgetMB', arg('dataBudgetMB')] : []),
       ...(arg('eloWeightTemp') ? ['--eloWeightTemp', arg('eloWeightTemp')] : []),
       ...(original.includes('--poseInput') ? ['--poseInput'] : []),
     ];

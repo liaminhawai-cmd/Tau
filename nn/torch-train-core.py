@@ -50,6 +50,61 @@ N_FEATURES = 94
 MOVER_FACE = None  # compiled lazily; strips "(+P)@D<n>" so mv face ids collapse to model names
 
 
+def total_ram_bytes():
+    """Stdlib-only, cross-platform. A wrong answer here only moves a soft default, so the
+    fallback is a conservative 8 GB rather than a crash."""
+    try:
+        if os.name == 'nt':
+            import ctypes
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [('dwLength', ctypes.c_ulong), ('dwMemoryLoad', ctypes.c_ulong),
+                            ('ullTotalPhys', ctypes.c_ulonglong), ('ullAvailPhys', ctypes.c_ulonglong),
+                            ('ullTotalPageFile', ctypes.c_ulonglong), ('ullAvailPageFile', ctypes.c_ulonglong),
+                            ('ullTotalVirtual', ctypes.c_ulonglong), ('ullAvailVirtual', ctypes.c_ulonglong),
+                            ('ullAvailExtendedVirtual', ctypes.c_ulonglong)]
+            st = MEMORYSTATUSEX(); st.dwLength = ctypes.sizeof(st)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st))
+            return int(st.ullTotalPhys)
+        return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+    except Exception:
+        return 8 << 30
+
+
+def cap_files(paths, budget_mb):
+    """Same corpus cap as train.js, same reasons, same shape of answer. There was no cap on
+    either trainer, and the committed corpus quietly outgrew every machine that pulls it (~1.9 GB
+    of JSONL by the time it froze two laptops); parsed into per-row Python lists that is several
+    times larger again, in one process, alongside the league's other workers. Newest files first
+    (mtime, then name descending -- a fresh clone stamps every file the same checkout mtime, so
+    the name tiebreak does the work there), budget ~1/20 of RAM as raw text, floored at 256 MB
+    and capped at 2 GB; an explicit --dataBudgetMB is honoured as given. The newest file is always
+    kept, even alone over budget: a cap that can select zero data fails worse than the memory
+    problem it solves."""
+    budget = float(budget_mb) if budget_mb and budget_mb > 0 else \
+        min(2048.0, max(256.0, total_ram_bytes() / (1 << 20) / 20.0))
+    budget_bytes = int(budget * (1 << 20))
+    listed = []
+    for pth in paths:
+        try:
+            st = os.stat(pth)
+            listed.append((st.st_mtime, os.path.basename(pth), pth, st.st_size))
+        except OSError:
+            pass
+    listed.sort(key=lambda t: (t[0], t[1]), reverse=True)
+    keep, kept_bytes, dropped_bytes = [], 0, 0
+    for _, _, pth, size in listed:
+        if not keep or kept_bytes + size <= budget_bytes:
+            keep.append(pth); kept_bytes += size
+        else:
+            dropped_bytes += size
+    if len(keep) < len(listed):
+        print('data cap: training on %d of %d files (%.1f MB kept, %.1f MB of oldest data left out; '
+              'budget %.1f MB from %.1f GB RAM -- --dataBudgetMB overrides)'
+              % (len(keep), len(listed), kept_bytes / (1 << 20), dropped_bytes / (1 << 20),
+                 budget, total_ram_bytes() / (1 << 30)))
+    return sorted(keep)
+
+
 def mover_name(mv):
     global MOVER_FACE
     if MOVER_FACE is None:
@@ -58,13 +113,13 @@ def mover_name(mv):
     return MOVER_FACE.sub('', str(mv))
 
 
-def load_rows(data_glob):
+def load_rows(data_glob, budget_mb=0.0):
     """Read training rows. Mirrors train.js's filtering exactly. Also collects, per game, the
     set of mover identities (for --eloWeight) and, per row, the raw pose (for --poseInput) --
     both fields have been stamped on rows by arena.js/selfplay-legacy.js all along."""
     by_game, skipped_nof, stale, policy_rows = defaultdict(list), 0, defaultdict(int), 0
     game_movers = defaultdict(set)
-    for path in sorted(glob.glob(data_glob)):
+    for path in cap_files(glob.glob(data_glob), budget_mb):
         name = os.path.basename(path)
         inferred, prev_abs, cur = 0, float('inf'), None
         with open(path, 'r', encoding='utf-8', errors='replace') as fh:
@@ -266,6 +321,8 @@ def main():
     ap.add_argument('--residualScale', type=float, default=0.2)
     ap.add_argument('--eloWeight', default='off', choices=['off', 'logistic'],
                     help='weight each game by its players\' current league Elo (see elo_game_weights)')
+    ap.add_argument('--dataBudgetMB', type=float, default=0.0,
+                    help='cap on raw JSONL read into memory; 0 = scale to this machine\'s RAM')
     ap.add_argument('--eloWeightFloor', type=float, default=0.15)
     ap.add_argument('--eloWeightTemp', type=float, default=150.0)
     ap.add_argument('--eloSummary', default=os.path.join(os.path.dirname(__file__), 'elo-summary.json'))
@@ -288,7 +345,7 @@ def main():
           (f" ({torch.cuda.get_device_name(0)})" if device.type == 'cuda' else ''))
 
     torch.manual_seed(args.seed)
-    by_game, game_movers = load_rows(args.data)
+    by_game, game_movers = load_rows(args.data, args.dataBudgetMB)
     if not by_game:
         print(f"no training rows matched {args.data}", file=sys.stderr)
         sys.exit(1)

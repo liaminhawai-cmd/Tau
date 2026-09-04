@@ -5,6 +5,7 @@
 //                    [--drawWeight 0.25] [--eloWeight 0|1]
 'use strict';
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { MLP } = require('./net.js');
 const { N_FEATURES } = require('./features.js');
@@ -46,8 +47,47 @@ function loadData(pattern) {
   // all kept running, so the loop looked healthy while the value net silently never trained.
   const notTraining = new Map();
   let tagged = 0, inferredGames = 0, policyRows = 0;
+  // Cap what one training run may hold in memory, scaled to the machine. There was no cap, and the
+  // corpus quietly outgrew every machine that pulls it: 2000+ committed data files, ~1.9 GB of
+  // JSONL, all parsed into one rows[] array -- which in V8 is roughly 3-5x the text, so 6-9 GB of
+  // heap in ONE process while the league's other workers hold their engines. On a 12-16 GB Windows
+  // box that is not an error, it is swap-death: the whole machine stops answering. It froze two
+  // different laptops on two different days before the size, not the hardware, was recognised as
+  // the common factor.
+  //
+  // The budget is ~1/20 of RAM as raw JSONL (~a quarter of RAM once parsed), floored at 256 MB so
+  // a small machine still trains on something, capped at 2 GB because beyond that the corpus fits
+  // anyway. Newest files first: game data ages -- eloweight already discounts old rows, and the
+  // oldest batches are from nets long since culled -- so when something must go, oldest-first is
+  // the order the training design itself already believes in. On a fresh clone every file carries
+  // the same checkout mtime, so the name-descending tiebreak does the work there (batch-102 over
+  // batch-101, later league stamps over earlier). --dataBudgetMB overrides in either direction.
+  // An explicit --dataBudgetMB is honoured as given (guarded only against nonsense); the RAM
+  // scaling and its floor/cap apply to the DEFAULT, where there is no human judgement to defer to.
+  const budgetArg = +arg('dataBudgetMB', NaN);
+  const budgetBytes = (Number.isFinite(budgetArg) && budgetArg > 0 ? budgetArg
+      : Math.min(2048, Math.max(256, Math.round(os.totalmem() / (1 << 20) / 20)))) * (1 << 20);
+  const listed = [];
   for (const f of fs.readdirSync(dir)) {
     if (!rx.test(f)) continue;
+    try { const st = fs.statSync(path.join(dir, f)); listed.push({ f, size: st.size, mtime: +st.mtimeMs }); }
+    catch (_) {}
+  }
+  listed.sort((a, b) => b.mtime - a.mtime || (a.f < b.f ? 1 : a.f > b.f ? -1 : 0));
+  const keep = []; let keptBytes = 0, dropped = 0, droppedBytes = 0;
+  for (const e of listed) {
+    // The newest file is always in, even alone over budget -- a cap that can select zero data
+    // would fail worse than the memory problem it solves.
+    if (!keep.length || keptBytes + e.size <= budgetBytes) { keep.push(e.f); keptBytes += e.size; }
+    else { dropped++; droppedBytes += e.size; }
+  }
+  keep.sort();   // read order stays name-ascending as before; boundary inference resets per file
+  if (dropped)
+    console.log(`data cap: training on ${keep.length} of ${listed.length} files ` +
+                `(${(keptBytes / (1 << 20)).toFixed(1)} MB kept, ${(droppedBytes / (1 << 20)).toFixed(1)} MB ` +
+                `of oldest data left out; budget ${(budgetBytes / (1 << 20)).toFixed(1)} MB from ` +
+                `${(os.totalmem() / (1 << 30)).toFixed(1)} GB RAM -- --dataBudgetMB overrides)`);
+  for (const f of keep) {
     // Game-boundary inference, for rows written before selfplay.js started stamping `g`.
     // selfplay labels a game's positions with z = ±discount^(plies to end), and plies-to-end
     // COUNTS DOWN through the game, so |z| rises monotonically from the game's first row to its
