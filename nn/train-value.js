@@ -44,9 +44,16 @@ function run(cmd, args, label) {
   });
 }
 function cudaAvailable() {
+  // Runs a real kernel, not just torch.cuda.is_available(). On a GPU older than the wheel's
+  // compiled arch list (a Kepler GTX 770M, say -- compute capability 3.0, dropped by PyTorch
+  // years ago) is_available() still answers True: the driver is there and the device enumerates.
+  // Every actual operation then dies with "no kernel image is available", so the old probe sent
+  // each birth down the torch path just to fail and fall back -- a slow detour on exactly the
+  // machines least able to afford one. One tiny add on the device answers the question the caller
+  // is really asking: can this box RUN torch-cuda, not merely see a GPU.
   try {
     return spawnSync('python', ['-c',
-      'import torch; raise SystemExit(0 if torch.cuda.is_available() else 1)'],
+      'import torch; assert torch.cuda.is_available(); x = torch.zeros(1, device="cuda") + 1; raise SystemExit(0)'],
       { cwd: ROOT, stdio: 'ignore' }).status === 0;
   } catch (_) { return false; }
 }
