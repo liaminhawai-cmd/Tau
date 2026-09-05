@@ -11,11 +11,13 @@
     "dist:win": "npm run sync-www && electron-builder --win --x64",
     "dist:linux": "npm run sync-www && electron-builder --linux --x64",
     "dist:mac": "npm run sync-www && electron-builder --mac",
-    "dist": "npm run sync-www && electron-builder --win --linux --x64"
+    "dist": "npm run sync-www && electron-builder --win --linux --x64",
+    "test": "node --test test/*.test.cjs"
   },
   "devDependencies": {
     "electron": "^38.4.0",
-    "electron-builder": "^26.0.12"
+    "electron-builder": "^26.0.12",
+    "jsdom": "^26.1.0"
   },
   "build": {
     "appId": "com.taugame.steam",

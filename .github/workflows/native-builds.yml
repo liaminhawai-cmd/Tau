@@ -3,14 +3,17 @@ name: Native builds (Android / iOS / Steam)
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'claude/**']
+    branches: [main, 'claude/**', 'feature/steam-*']
     paths:
       - 'native/**'
       - 'index.html'
+      - 'steam.html'
+      - 'desktop/**'
       - '.github/workflows/native-builds.yml'
 
 jobs:
   android:
+    if: ${{ !startsWith(github.ref, 'refs/heads/feature/steam-') }}
     name: Android (APK + AAB)
     runs-on: ubuntu-latest
     steps:
@@ -40,6 +43,7 @@ jobs:
           path: native/app/android/app/build/outputs/bundle/release/app-release.aab
 
   ios:
+    if: ${{ !startsWith(github.ref, 'refs/heads/feature/steam-') }}
     name: iOS (unsigned .app)
     runs-on: macos-latest
     steps:
@@ -87,6 +91,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            native
+            desktop
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -94,6 +102,7 @@ jobs:
         working-directory: native/steam
         run: |
           npm ci
+          npm test
           npm run ${{ matrix.script }}
       - uses: actions/upload-artifact@v4
         with:

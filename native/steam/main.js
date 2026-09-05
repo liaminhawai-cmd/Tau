@@ -1,7 +1,6 @@
 // Tau — Steam desktop wrapper.
-// Opens on the bundled premium showcase (www/steam.html — the GPU-heavy art-directed boards
-// with a playable takeover vs-AI game) with the full client (www/index.html, premium mode) one
-// keypress/link away. Initialises the Steamworks API (overlay, achievements, rich presence,
+// Opens the production game with the desktop presentation: one menu, simulation and match flow.
+// Initialises the Steamworks API (overlay, achievements, rich presence,
 // playtime tracking) and bridges it to the game pages via preload.js -> window.tauSteam.
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
@@ -94,7 +93,7 @@ function createWindow() {
     height: 800,
     minWidth: 640,
     minHeight: 480,
-    backgroundColor: '#15181c',
+    backgroundColor: '#101410',
     autoHideMenuBar: true,
     fullscreenable: true,
     webPreferences: {
@@ -112,36 +111,30 @@ function createWindow() {
     return { action: 'deny' };
   });
 
-  // F11 toggles fullscreen, Esc leaves it; F2 flips between the premium showcase
-  // (steam.html) and the full game client — the usual desktop-game feel.
+  // F11 owns fullscreen. Escape belongs to the game's pause/settings/back controls.
   win.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return;
     if (input.key === 'F11') {
       win.setFullScreen(!win.isFullScreen());
       event.preventDefault();
-    } else if (input.key === 'Escape' && win.isFullScreen()) {
-      win.setFullScreen(false);
-      event.preventDefault();
-    } else if (input.key === 'F2') {
-      loadPage(win, !win.webContents.getURL().includes('steam.html'));
-      event.preventDefault();
     }
   });
 
-  loadPage(win, true);
+  loadPage(win);
 }
 
-// The Steam build opens on the premium showcase (steam.html): the six art-directed boards with
-// mirror reflections, MSAA and the takeover vs-AI game — ?steam=1 tells it to show the
-// "full game" link. The full client (menus, online) runs with ?premium=1, which switches its
-// 3D view onto the premium desktop render path (shadows, ACES, reflections, full resolution).
-function loadPage(win, showcase) {
-  if (showcase) {
-    win.loadFile(path.join(__dirname, 'www', 'steam.html'), { query: { steam: '1' } });
-  } else {
-    win.loadFile(path.join(__dirname, 'www', 'index.html'), { query: { premium: '1' } });
-  }
+// Both Steam and steam.html route into this same game. No second rules implementation.
+function loadPage(win) {
+  win.loadFile(path.join(__dirname, 'www', 'index.html'), { query: { steam: '1', premium: '1' } });
 }
+
+ipcMain.handle('desktop:fullscreen', (event, value) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return false;
+  if (typeof value === 'boolean') win.setFullScreen(value);
+  return win.isFullScreen();
+});
+ipcMain.handle('desktop:quit', () => { app.quit(); });
 
 app.whenReady().then(() => {
   createWindow();

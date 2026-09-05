@@ -1,0 +1,12 @@
+{
+  "name": "tau-development",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix native/steam run sync-www && vite --config native/steam/vite.config.mjs",
+    "preview:steam": "npm run dev",
+    "test:steam": "npm --prefix native/steam test"
+  },
+  "devDependencies": {
+    "vite": "^7.1.3"
+  }
+}

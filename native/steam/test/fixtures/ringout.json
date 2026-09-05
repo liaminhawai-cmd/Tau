@@ -1,0 +1,33 @@
+{
+  "description": "Position immediately before a legal ring-out in a seeded Level 4 self-play game. Generated from production rules at 60a9c118; includes the real ko history.",
+  "winner": 0,
+  "active": 0,
+  "koHist": [
+    [
+      -4.538215996617163,
+      13.844384525166431,
+      6.276292926217501,
+      17.937698715268173,
+      3.4880620358191337,
+      -2.1834051303140933
+    ]
+  ],
+  "plan": {
+    "dir": -1,
+    "pivotIdx": 2,
+    "targetRad": 2.3889194136672485
+  },
+  "plies": 32,
+  "pose": [
+    {
+      "rot": 6.276292926217501,
+      "x": -4.538215996617163,
+      "y": 13.844384525166431
+    },
+    {
+      "rot": -2.1834051303140933,
+      "x": 17.937698715268173,
+      "y": 3.4880620358191337
+    }
+  ]
+}

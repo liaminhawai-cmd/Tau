@@ -68,36 +68,61 @@ npm run dist:win         # dist/win-unpacked/    (cross-builds from Linux too)
 npm run dist:mac         # dist/mac*/Tau.app     (needs macOS)
 ```
 
-The Steam build is the *pretty* one, and it opens on the **premium showcase**
-(`steam.html`, bundled together with `vendor/three`): six art-directed boards
-(noir, math, sumo, cosy, alien, colossus) with exact mirror reflections,
-MSAA, physically-driven sound — and it's playable: grab one of blue's glowing
-feet to take over from the AI. From there, "full game →" (or **F2**) flips to
-the full client (menus, online, coach), which the wrapper runs with
-`?premium=1`: a premium render path in the game's own 3D view — PCF soft
-shadows, ACES filmic tone mapping, a PMREM studio environment for
-reflections, lacquered clearcoat pieces and uncapped resolution. The
-web/mobile builds are untouched by both (try them in a browser:
-`steam.html`, `index.html?premium=1`). The wrapper also passes Chromium GPU
-flags (`ignore-gpu-blocklist`, GPU rasterization, discrete-GPU preference on
-macOS) so all of it lands on real hardware.
+Steam now opens `index.html?steam=1&premium=1`: the production rules, AI,
+online play and replays with a desktop presentation in `desktop/`. The old
+`steam.html` entry redirects here, preserving query parameters and replay links.
+There is one game simulation.
 
-The wrapper (`steam/main.js`) also adds desktop niceties: single-instance,
-F11/Esc fullscreen, F2 showcase/full-game toggle, external links open in the
-system browser.
+The first desktop board uses walnut grain, brass markings and blue/copper metal
+pieces, with soft shadows and the game's studio reflections. The menu, match and
+rematch use the same scene. Balanced graphics cap resolution at 1.5× and shadow
+maps at 1024; High allows 2× and 2048. Both respect lower device resolution.
+If WebGL cannot initialize, an overhead board remains playable.
+
+Play starts the selected AI level and side. Same-screen play is untimed. Esc
+opens the match menu and pauses offline matches, including an AI turn; an online
+opponent's clock continues. Settings persist locally. The result screen offers
+Rematch, the next level after a win, a replay when recorded, and Main menu.
+Ranked, online and tutorial screens still use their existing game flows.
+
+| Input | Controls |
+| --- | --- |
+| Mouse | Click a foot to pin; drag another to swing; right-drag the camera |
+| Keyboard | 1–3 pin/re-pick; arrows swing; Enter ends turn; Backspace cancels; Esc menu |
+| Standard controller | LB/RB choose foot; A pins/ends turn; left stick swings; B cancels; Start menu |
+| Controller menus | D-pad moves focus; A activates; left/right changes selectors and sliders |
+| Window | F11 toggles fullscreen; Settings also offers fullscreen in Electron |
+
+```bash
+# From the repository root: browser development preview
+npm ci
+npm run preview:steam
+# Desktop regression tests (install native/steam dependencies first)
+npm run test:steam
+```
+
+The tests execute the shipped game and desktop presentation offline in JSDOM,
+with simulated input, timers and a CPU canvas. They cover fallback launch,
+keyboard/controller turns, pause/AI resume, settings, results and rematch. They
+do not certify rendering, audio, real controller hardware or the Steam overlay.
+Before a release, play a complete match in the packaged application on the target
+GPU, check a physical controller, and test the overlay with the real Steam app ID.
+
+The wrapper also provides single-instance launch and external links in the system
+browser. Ordinary web/mobile entry points do not enable the desktop presentation.
 
 **Steam features** (via `steamworks.js`, a production dependency shipped in
 the build): the wrapper initialises the Steam API on launch — overlay
 (Shift+Tab, wired for Electron), playtime tracking, and a bridge the game
 pages use through `window.tauSteam` (see `steam/preload.js`):
 
-- **Achievements** — a human win (vs the AI, ladder/ranked, online, or a
-  showcase takeover; never pass-and-play or AI-vs-AI) unlocks
-  `ACH_WIN_ONE_GAME`. That name is real on test app 480, so unlocks work
-  end-to-end today; define the same API name (plus any new ones) under
+- **Achievements** — a human win (vs the AI, ladder/ranked or online;
+  never pass-and-play or AI-vs-AI) unlocks
+  `ACH_WIN_ONE_GAME`. The existing test integration uses that API name on app 480;
+  define it (plus any new ones) under
   Achievements on partner.steamgames.com for the real app.
-- **Rich presence** — the friends list shows what you're doing ("Watching
-  the noir board", "In a match vs the AI", "In the menus"). Uses the
+- **Rich presence** — the friends list shows what you're doing ("In a match vs the AI",
+  "In the menus"). Uses the
   `status` key with `steam_display` → `#Status`; add that key in the app's
   Rich Presence localisation on the partner site to make it visible.
 - **Graceful degradation** — no Steam client running (or a non-Steam build):

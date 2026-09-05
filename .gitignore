@@ -1,5 +1,7 @@
 
 # Python bytecode
+node_modules/
+nn/.engine-cache.json
 __pycache__/
 *.pyc
 
