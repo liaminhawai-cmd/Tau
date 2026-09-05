@@ -48,6 +48,15 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Tau">
 <meta name="mobile-web-app-capable" content="yes">
+<script>
+window.TAU_DESKTOP = new URLSearchParams(location.search).has('steam');
+if (window.TAU_DESKTOP) {
+    document.documentElement.classList.add('tau-desktop');
+    const desktopCSS = document.createElement('link');
+    desktopCSS.rel = 'stylesheet'; desktopCSS.href = 'desktop/presentation.css';
+    document.head.appendChild(desktopCSS);
+}
+</script>
 <style>
     html,body { margin:0; padding:0; height:100%; background:#15181c;
                 font-family:Arial, sans-serif; color:#e6e6e6; overflow:hidden; }
@@ -3630,7 +3639,7 @@ const BOARD_SKINS = [
     { id:'yellow', name:'Yellow', skin:YELLOW_SKIN },
 ];
 let skinIdx = 0;
-function activeSkin(){ return SKIN || BOARD_SKINS[skinIdx].skin; }
+function activeSkin(){ return (window.tauDesktop && window.tauDesktop.skin) || SKIN || BOARD_SKINS[skinIdx].skin; }
 // Is the active board a PALE surface (Dojo/Yellow)? Gold highlight cues wash out there, so they
 // shift to a dark slate ink — the value-inverse of gold-on-dark. Decided by the disc's real
 // luminance, not by which skin: Slate is a skin too but a dark one, and gold reads great on it.
@@ -4343,6 +4352,7 @@ function nearestFoot(p, feet, exclude) {
 // the device); vs AI blocks input on the AI's colour; online blocks input unless the active
 // colour is the one this client was assigned.
 function inputBlocked() {
+    if (window.tauDesktop && window.tauDesktop.paused) return true;
     return (vsAI && G.active===aiIdx) || (onlineMatch && !myOnlineTurnNow());
 }
 // Tapping the board dismisses the volume / language popouts. Their own document-level "click
@@ -5418,6 +5428,7 @@ function nnPlanForGameTimed(idx, temperature, timeMs, model, keepForDepth, polic
 }
 
 function startAiTurn() {
+    if (window.tauDesktop && window.tauDesktop.paused) return;
     if (G.over || G.active!==aiIdx) return;
     if (labMode) labApplyBrainFor(aiIdx);   // each side keeps its own brain in a lab game
     let pivotIdx, dir, target = 0;
@@ -5694,6 +5705,7 @@ async function demoStartTail() {
 // 3D view too, side by side with the flat 2D one — more fun to watch than either alone.
 // It moves back into #game the moment a real match starts.
 function demoResize() {
+    if (window.tauDesktop && window.tauDesktop.resize()) return;
     const cv2 = document.getElementById('demoCanvas');
     const gap = 8, dpr = window.devicePixelRatio || 1;
     // Fills a comfortable chunk of the window instead of a fixed 240px, same idea as the
@@ -5864,6 +5876,7 @@ function showModal(title, body, buttons, isHtml, opts) {
                  : () => { hideModal(); if (typeof dis === 'function') dis(); };
     document.getElementById('modalX').style.display = modalDismiss ? '' : 'none';
     document.getElementById('modalBackdrop').style.display = 'flex';
+    if (window.tauDesktop) window.tauDesktop.onModalShown();
 }
 let modalDismiss = null;
 document.getElementById('modalX').addEventListener('click', () => { if (modalDismiss) modalDismiss(); });
@@ -5874,7 +5887,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && modalDismiss
         && document.getElementById('modalBackdrop').style.display !== 'none') modalDismiss();
 });
-function hideModal() { modalDismiss = null; document.getElementById('modalBackdrop').style.display = 'none'; document.getElementById('modalBox').classList.remove('wide'); }
+function hideModal() { modalDismiss = null; document.getElementById('modalBackdrop').style.display = 'none'; document.getElementById('modalBox').classList.remove('wide'); if (window.tauDesktop) window.tauDesktop.onModalHidden(); }
 let gameOverTimer = null;
 // Shown after a short pause so the losing piece's fall animation gets to play out first,
 // rather than slamming a popup over it the instant the game ends. ~2.8s covers a typical
@@ -6003,7 +6016,8 @@ function renderGameOverSheet() {
         claimNudgedThisSession = true;
         bodyHtml += `<div style="margin:8px auto 0;font-size:12px;color:#9aa4ad;text-align:center;">${t('Playing as a guest.')} <button class="link" id="goClaim" style="font-size:12px;">${t('Sign in to keep your progress')}</button></div>`;
     }
-    showModal(title, bodyHtml, buttons, !!bodyHtml);
+    if (!(window.tauDesktop && window.tauDesktop.showResult({title, bodyHtml})))
+        showModal(title, bodyHtml, buttons, !!bodyHtml);
     const goClaim = document.getElementById('goClaim');
     if (goClaim) goClaim.addEventListener('click', () => { hideModal(); openAcctPanel(); });
 }
@@ -6034,7 +6048,8 @@ function startGame(aiMode, humanColorIdx, difficulty) {
     if (!aiMode) startOnlineTurnClock(); else onlineTurnDeadline = null;
     if (vsAI && G.active===aiIdx) aiTimer = setTimeout(startAiTurn, 450);
     if (typeof updateWaitBanner === 'function') updateWaitBanner();   // keep the "still searching" pill across repeated AI games
-    if (typeof maybeFullscreenHint === 'function') maybeFullscreenHint();
+    if (typeof maybeFullscreenHint === 'function' && !window.TAU_DESKTOP) maybeFullscreenHint();
+    if (window.tauDesktop) window.tauDesktop.onMatchStart();
 }
 // Start a ladder rung (0-based). humanColorIdx 0 = play Blue (the usual first climb), 1 = Red (the
 // harder second clear). Routes through startGame with the 'ladder' tag so the tuned brain is used.
@@ -6288,6 +6303,7 @@ function backToMenu() {
     document.getElementById('menu').style.display = 'flex';
     document.body.classList.remove('ingame');
     demoStart();
+    if (window.tauDesktop) window.tauDesktop.onMenu();
 }
 // Menu labels for the internal difficulty ids, used by the picker and the game-over difficulty chip.
 const AI_DIFF_LABEL = { dumb:'Easy', easy:'Medium', zone:'Hard', hard:'Very hard', master:'Expert', nn:'Neural net' };
@@ -7490,6 +7506,7 @@ function markOnboarded(how) {
 // closing it puts you on the menu. Anything that proves you already know the game (finishing one,
 // or the coached opening) sets the flag too, so it never shows up again.
 function initOnboarding() {
+    if (window.TAU_DESKTOP) return;
     if (onboardState() !== null) return;
     if (document.getElementById('htpFull')) return;
     markOnboarded('howto');
@@ -7507,7 +7524,7 @@ addEventListener('load', () => {
 // the old one), and recolours the rim, both piece materials, the scene backdrop and the 2D pieces.
 function applyTheme() {
     const sk = activeSkin();
-    if (boardTop) {
+    if (boardTop && !window.tauDesktop) {
         const tex = boardTexture(currentTheme === 'dark');
         const old = boardTop.material.map;
         boardTop.material.map = tex; boardTop.material.needsUpdate = true;
@@ -7517,6 +7534,7 @@ function applyTheme() {
     if (tripods && tripods.length === 2){ premiumColor(tripods[0].userData.mat.color.set(pieceHex(0))); premiumColor(tripods[1].userData.mat.color.set(pieceHex(1))); }
     if (scene) scene.background = new THREE.Color(sk ? sk.bg : 0x0c0e11);
     if (G && G.pieces){ G.pieces[0].color = pieceHex(0); G.pieces[1].color = pieceHex(1); }
+    if (window.tauDesktop) window.tauDesktop.applyMaterials();
 }
 function applyBoardSkin() {
     currentTheme = skinIdx === 0 ? 'dark' : 'light';
@@ -8501,7 +8519,7 @@ function glowTexture(hot) {
 // view spends real GPU on looking good — soft shadows, ACES tone mapping, a PMREM studio
 // environment for reflections, lacquered piece materials and uncapped render resolution.
 // The web/mobile builds never set the flag, so their render path is byte-for-byte unchanged.
-const TAU_PREMIUM = (() => { try { return new URLSearchParams(location.search).has('premium'); } catch (e) { return false; } })();
+const TAU_PREMIUM = (() => { try { return window.TAU_DESKTOP || new URLSearchParams(location.search).has('premium'); } catch (e) { return false; } })();
 // r128 has no colour management: hex colours here are authored in sRGB, but the premium
 // renderer's sRGB output stage assumes LINEAR material colours — convert on every set or the
 // pieces wash out to pastel. Chain it around .set(...) (which returns the Color). No-op on web.
@@ -8711,8 +8729,14 @@ function init3D() {
     // preserveDrawingBuffer lets the Cinematic Studio (studio.html, same-origin parent) read this
     // canvas with drawImage on ITS animation frame, not just inside our own render tick — needed to
     // composite the 3D view into an exported video. Negligible cost for a scene this small.
-    renderer=new THREE.WebGLRenderer({canvas:document.getElementById('view3d'), antialias:true, preserveDrawingBuffer:true,
-                                      powerPreference: TAU_PREMIUM ? 'high-performance' : 'default'});
+    try {
+        renderer=new THREE.WebGLRenderer({canvas:document.getElementById('view3d'), antialias:true, preserveDrawingBuffer:true,
+                                          powerPreference: TAU_PREMIUM ? 'high-performance' : 'default'});
+    } catch (error) {
+        renderer = null;
+        console.warn('3D is unavailable; using the overhead board.', error.message);
+        return;
+    }
     renderer.setPixelRatio(TAU_PREMIUM ? (window.devicePixelRatio||1) : Math.min(window.devicePixelRatio||1,2));
     if (TAU_PREMIUM) {
         renderer.shadowMap.enabled = true;
@@ -9204,6 +9228,7 @@ function feetFitAt(pos, tgt) {
     return true;
 }
 function updateGentleCam(dt) {
+    if (window.tauDesktop && window.tauDesktop.updateCamera(dt)) return;
     // While the player is steering by hand the composition is theirs — unwind the lens shift so the
     // board sits where they aimed it, and let it return as the auto frame takes back over.
     if (camDragging) { easeCamBias(0, dt); return; }
@@ -9248,6 +9273,7 @@ function updateGentleCam(dt) {
 // zooming out as needed (same rim-fit search as computeFullFrame, plus the falling piece as an
 // extra must-stay-in-frame point) so it's never lost off-screen as it slides and drops.
 function updateFallCam(dt) {
+    if (window.tauDesktop && window.tauDesktop.updateCamera(dt, true)) return;
     const winnerPiece = G.pieces[G.winner], fallT = tripods[fall.idx].position;
     if (!winnerPiece) { fall.active = false; return; }
     const mx=(winnerPiece.x+fallT.x)/2, mz=(winnerPiece.y+fallT.z)/2;
@@ -9267,6 +9293,7 @@ function updateFallCam(dt) {
 function animate() {
     requestAnimationFrame(animate);
     const dt = Math.min(clock ? clock.getDelta() : 0.016, 0.05);
+    if (window.tauDesktop) { window.tauDesktop.tick(dt); if (window.tauDesktop.paused) return; }
     // The 2D board only redraws on discrete input events, so a lingering line-cross flash needs its
     // own tick to fade out smoothly; self-terminating the moment the last flash ages past CROSS_FLASH_MS.
     if (crossFlashes.length) render();
@@ -9470,6 +9497,7 @@ function layoutSplitHandle() {
 // isn't touching the readouts, far less than the ~120px the two solid bars used to cost.
 const HUD_GUTTER = 16;
 function resize() {
+    if (window.tauDesktop && window.tauDesktop.resize()) return;
     // Director mode's "unlock layout" hands board sizing over to manual drag/resize (see
     // dirWrapCanvas) -- the auto-layout math below would immediately stomp that on the next window
     // resize/orientation event, so just repaint at whatever size is already set.
@@ -10896,6 +10924,7 @@ function myOnlineTurnNow() {
 const TURN_CLOCK_MS = 30000;
 // Returns 'online' / 'local' / null (no clock this mode -- vs AI, or no game showing at all).
 function turnClockMode() {
+    if (window.tauDesktop && window.tauDesktop.untimedLocal()) return false;
     if (document.getElementById('game').style.display !== 'flex') return null;
     if (onlineMatch) return 'online';                               // a real opponent is waiting: always clocked
     if (labMode || labSetup || labAuto || labActive) return null;   // bench/setup/watch: analysis, not a timed match
@@ -12232,6 +12261,17 @@ window.addEventListener('load', () => {
         setTimeout(() => bar.remove(), 9000);   // fade out on its own; the flag is only set on explicit dismiss
     } catch(e) {}
 });
+</script>
+<script>
+if (window.TAU_DESKTOP) {
+    const desktopScript = document.createElement('script');
+    desktopScript.src = 'desktop/presentation.js';
+    desktopScript.onerror = () => {
+        document.documentElement.classList.remove('tau-desktop');
+        document.getElementById('modeMsg').textContent = 'The desktop presentation could not load. The game is still available.';
+    };
+    document.body.appendChild(desktopScript);
+}
 </script>
 </body>
 </html>
