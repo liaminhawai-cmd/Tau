@@ -67,6 +67,16 @@ test('result offers same-mode rematch and returns to the desktop menu',async t=>
   assert.deepEqual(g.errors,[]);
 });
 
+test('the home menu reaches the showcase and the analysis lab',async t=>{
+  const g=await game();t.after(g.close);
+  // Showcase boards: navigates to the attract-mode page, keeping the wrapper flag.
+  assert.equal(g.$('desktopShowcase').textContent,'Showcase boards');
+  // The Lab button opens the #lab overlay in place — no URL bar needed in a packaged build.
+  g.$('desktopLab').click();g.tick();
+  assert.ok(g.$('labOverlay').classList.contains('open'),'lab overlay opened');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('ordinary web entry keeps its original presentation',async t=>{
   const g=await game('');t.after(g.close);
   assert.equal(g.w.TAU_DESKTOP,false);

@@ -118,6 +118,14 @@ function createWindow() {
       win.setFullScreen(!win.isFullScreen());
       event.preventDefault();
     }
+    // F2 flips between the desktop game and the six-board premium showcase (steam.html),
+    // from either side — the showcase's own "full game →" link comes back here too.
+    if (input.key === 'F2') {
+      const url = (win.webContents.getURL && win.webContents.getURL()) || '';
+      if (url.includes('steam.html')) loadPage(win);
+      else win.loadFile(path.join(__dirname, 'www', 'steam.html'), { query: { steam: '1' } });
+      event.preventDefault();
+    }
   });
 
   loadPage(win);

@@ -92,9 +92,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # Cone mode always includes root-level files (index.html, steam.html…);
+          # vendor/ holds the showcase's Three.js modules.
           sparse-checkout: |
             native
             desktop
+            vendor
       - uses: actions/setup-node@v4
         with:
           node-version: 22

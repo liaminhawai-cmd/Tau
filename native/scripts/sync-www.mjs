@@ -4,8 +4,8 @@
 // inlined in index.html), so only these files are needed.
 //
 // Usage: node sync-www.mjs <dest-dir> [--steam]   (dest is wiped and recreated)
-// --steam additionally bundles the desktop presentation and Steam entry route,
-// which only the desktop/Steam wrapper ships.
+// --steam additionally bundles the desktop presentation plus the six-board premium
+// showcase (steam.html + vendor/three), which only the desktop/Steam wrapper ships.
 import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,5 +38,6 @@ for (const f of FILES) {
 if (steam) {
   cpSync(join(repoRoot, 'steam.html'), join(www, 'steam.html'));
   cpSync(join(repoRoot, 'desktop'), join(www, 'desktop'), { recursive: true });
+  cpSync(join(repoRoot, 'vendor'), join(www, 'vendor'), { recursive: true });
 }
-console.log(`Synced ${FILES.length}${steam ? ' + steam.html + desktop/' : ''} files into ${www}`);
+console.log(`Synced ${FILES.length}${steam ? ' + steam.html + desktop/ + vendor/' : ''} files into ${www}`);

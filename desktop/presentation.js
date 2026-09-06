@@ -48,8 +48,9 @@
       <button id="desktopOnline">Play online</button>
       <button id="desktopLearn">Learn to play</button>
       <button id="desktopLevels">Ranked &amp; levels</button>
+      <button id="desktopShowcase">Showcase boards</button>
     </nav>
-    <div class="desktop-home-bottom"><button id="desktopSettings">Settings</button><button id="desktopWatch">Replays</button><button id="desktopQuit" hidden>Quit</button></div>`;
+    <div class="desktop-home-bottom"><button id="desktopSettings">Settings</button><button id="desktopWatch">Replays</button><button id="desktopLab">Lab</button><button id="desktopQuit" hidden>Quit</button></div>`;
   $('menu').appendChild(home);
   const materialLabel = document.createElement('div');
   materialLabel.className = 'desktop-material'; materialLabel.textContent = 'Walnut · metal · brass';
@@ -87,6 +88,12 @@
   $('desktopLearn').onclick = () => $('howToPlayBtn').click();
   $('desktopLevels').onclick = () => $('modeAI').click();
   $('desktopWatch').onclick = () => $('watchBtn').click();
+  // The six art-directed premium boards (noir/math/sumo/cosy/alien/colossus) — the attract-mode
+  // page the wrapper also reaches with F2; its "full game →" link returns here.
+  $('desktopShowcase').onclick = () => { location.href = 'steam.html?steam=1'; };
+  // The analysis lab: brains on the bench, custom openings, position tools (the #lab dev route,
+  // which has no other way in from a packaged desktop build with no URL bar).
+  $('desktopLab').onclick = () => { if (typeof labOpenDrop === 'function') labOpenDrop(); };
   $('desktopSettings').onclick = openSettings;
   $('desktopPause').onclick = openPause;
   $('desktopHome').onclick = openPause;
@@ -144,7 +151,7 @@
       <label class="desktop-setting">Reduce camera motion<input id="desktopMotion" type="checkbox" ${settings.reducedMotion?'checked':''}></label>
       <label class="desktop-setting">Controller vibration<input id="desktopHaptics" type="checkbox" ${settings.haptics?'checked':''}></label>
       ${fullscreen ? '<label class="desktop-setting">Fullscreen<input id="desktopFullscreen" type="checkbox"></label>' : ''}
-      <p class="desktop-result-detail">Keyboard: 1–3 choose a foot; ← → swing; Enter ends your turn. Controller: shoulders choose a foot; A pins or ends the turn; left stick swings; B cancels.</p>`,
+      <p class="desktop-result-detail">Keyboard: 1–3 choose a foot; ← → swing; Enter ends your turn. Controller: shoulders choose a foot; A pins or ends the turn; left stick swings; B cancels.${window.tauSteam ? ' F2 flips between the game and the showcase boards.' : ''}</p>`,
       [{label:'Done',onClick:() => { if(inMatch()) focusBoard(); }}], true, {dismiss:true});
     $('desktopQuality').value = settings.quality;
     $('desktopVolume').oninput = e => {

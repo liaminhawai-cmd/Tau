@@ -68,10 +68,14 @@ npm run dist:win         # dist/win-unpacked/    (cross-builds from Linux too)
 npm run dist:mac         # dist/mac*/Tau.app     (needs macOS)
 ```
 
-Steam now opens `index.html?steam=1&premium=1`: the production rules, AI,
-online play and replays with a desktop presentation in `desktop/`. The old
-`steam.html` entry redirects here, preserving query parameters and replay links.
-There is one game simulation.
+Steam opens `index.html?steam=1&premium=1`: the production rules, AI,
+online play and replays with a desktop presentation in `desktop/`. There is one
+game simulation behind every match. `steam.html` is the six-board premium
+showcase (noir, math, sumo, cosy, alien, colossus — mirror reflections, MSAA,
+physically-driven sound, a playable takeover): the desktop menu's **Showcase
+boards** button opens it, **F2** in the wrapper flips between the two pages from
+either side, and its "full game →" link returns to the desktop client. The
+showcase is attract-mode only — real matches all run in the one simulation.
 
 The first desktop board uses walnut grain, brass markings and blue/copper metal
 pieces, with soft shadows and the game's studio reflections. The menu, match and
@@ -83,7 +87,10 @@ Play starts the selected AI level and side. Same-screen play is untimed. Esc
 opens the match menu and pauses offline matches, including an AI turn; an online
 opponent's clock continues. Settings persist locally. The result screen offers
 Rematch, the next level after a win, a replay when recorded, and Main menu.
-Ranked, online and tutorial screens still use their existing game flows.
+Ranked, online and tutorial screens still use their existing game flows. The
+menu's **Lab** button opens the analysis lab (the `#lab` dev route — bench any
+two brains, build custom openings, position tools), which a packaged build with
+no URL bar could not otherwise reach.
 
 | Input | Controls |
 | --- | --- |
@@ -91,7 +98,7 @@ Ranked, online and tutorial screens still use their existing game flows.
 | Keyboard | 1–3 pin/re-pick; arrows swing; Enter ends turn; Backspace cancels; Esc menu |
 | Standard controller | LB/RB choose foot; A pins/ends turn; left stick swings; B cancels; Start menu |
 | Controller menus | D-pad moves focus; A activates; left/right changes selectors and sliders |
-| Window | F11 toggles fullscreen; Settings also offers fullscreen in Electron |
+| Window | F11 toggles fullscreen; F2 flips game ↔ showcase; Settings also offers fullscreen in Electron |
 
 ```bash
 # From the repository root: browser development preview

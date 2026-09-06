@@ -36,6 +36,11 @@ test('Electron loads the unified game and reserves Escape for its menu',async()=
   const send=key=>win.events['before-input-event']({preventDefault:()=>prevented++},{type:'keyDown',key});
   send('F11');assert.equal(win.isFullScreen(),true);assert.equal(prevented,1);
   send('Escape');assert.equal(win.isFullScreen(),true);assert.equal(prevented,1);
+  // F2 flips to the showcase page and back to the desktop game.
+  send('F2');assert.equal(path.basename(win.file),'steam.html');assert.equal(win.loadOptions.query.steam,'1');
+  win.webContents.getURL=()=>'file:///www/steam.html?steam=1';
+  send('F2');assert.equal(path.basename(win.file),'index.html');assert.equal(win.loadOptions.query.premium,'1');
+  delete win.webContents.getURL;
   const event={sender:win.webContents};
   assert.equal(handlers.get('desktop:fullscreen')(event,false),false);
   assert.equal(handlers.get('desktop:fullscreen')(event),false);
