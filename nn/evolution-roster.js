@@ -103,7 +103,26 @@ function selfplayProfile(paths,{dir}){const s=sync(dir),entries=paths.map(p=>({p
 // well-measured weak, never the unknown.
 function expectedCulls(n){if(n>=TARGET_FACES)return Math.min(Math.max(25,n*.12),1+(n-TARGET_FACES)/4);return Math.max(0,(n-30)/20);}
 function stochasticCount(x){const n=Math.floor(x);return n+(Math.random()<x-n?1:0);}
-function eligibleByDepth(s){const out={D1:[],D2:[],D3:[],D4:[]};for(let d=1;d<=4;d++){const k=depthKey(d),need=FACE_MIN_GAMES[k];for(const id of s.facePools[k].active||[]){const r=faceReading(s,id);if(!r||(+r.games||0)<need||!Number.isFinite(+r.eloHi))continue;out[k].push({id,r,depth:d,key:k});}out[k].sort((a,b)=>+a.r.eloHi-+b.r.eloHi||+a.r.elo-+b.r.elo);}return out;}
+// How many games a face must have before the CULL may judge it -- deliberately NOT the same bar as
+// faceEstablished, which still demands the full FACE_MIN_GAMES before a model may promote to a more
+// expensive depth. The two questions differ: promotion spends compute on a claim, culling only
+// declines to keep spending it.
+//
+// A fixed bar of 12 games deadlocks a large field. At 1067 faces the arena could not put 12 games on
+// anything, so nothing was ever eligible, so nothing was culled, so the field never shrank -- and
+// every one of those faces went on diluting every future game. The bar therefore scales with pool
+// pressure: judge on 2 games when the field is 20x target, demand the full 12 as it approaches it.
+// That is self-correcting, because each cull gives the survivors a larger share of the next games,
+// which narrows their intervals, which makes the next (stricter) judgement better informed.
+//
+// The floor is 2 because writeSummary only computes a CI at games>=2 (elorank-legacy.js), and the
+// bootstrap over two identical observations collapses to zero width -- so eloHi at 2 games is the
+// point estimate with no margin. That is a usable sort key but a noisy one: roughly a quarter of
+// genuinely average faces lose their first match and are retired for it. Accepted deliberately.
+// A crowded field wastes far more measurement on dead weight than a noisy filter costs, the model
+// FILE survives on disk either way, and survivors are re-measured properly as the field thins.
+function cullMinGames(k,population){const full=FACE_MIN_GAMES[k];if(!(population>TARGET_FACES))return full;return Math.max(2,Math.min(full,Math.round(full*TARGET_FACES/population)));}
+function eligibleByDepth(s,population){const pop=Number.isFinite(population)?population:activeFaceSet(s).size;const out={D1:[],D2:[],D3:[],D4:[]};for(let d=1;d<=4;d++){const k=depthKey(d),need=cullMinGames(k,pop);for(const id of s.facePools[k].active||[]){const r=faceReading(s,id);if(!r||(+r.games||0)<need||!Number.isFinite(+r.eloHi))continue;out[k].push({id,r,depth:d,key:k});}out[k].sort((a,b)=>+a.r.eloHi-+b.r.eloHi||+a.r.elo-+b.r.elo);}return out;}
 // Cull pressure follows MEASURED compute, not assumed depth cost. The rating store keeps an
 // EWMA of ms-per-game for every face it has actually run (elorank-legacy.js); a depth bucket's
 // cull weight is the mean measured cost of its eligible faces, so the old 1:3:9:27 becomes the
@@ -113,8 +132,14 @@ function measuredCosts(dir){try{const s=JSON.parse(fs.readFileSync(path.join(dir
 function chooseDepth(e,mc){const keys=Object.keys(DEPTH_CULL_WEIGHT).filter(k=>e[k]&&e[k].length);if(!keys.length)return null;
   const w={};for(const k of keys){const ms=e[k].map(v=>+((mc&&mc.cost||{})[v.id])).filter(x=>Number.isFinite(x)&&x>0);w[k]=ms.length?ms.reduce((s,x)=>s+x,0)/ms.length:DEPTH_CULL_WEIGHT[k]*((mc&&mc.unit)||1500);}
   const total=keys.reduce((s,k)=>s+w[k],0),x=Math.random()*total;let a=0;for(const k of keys){a+=w[k];if(x<a)return k;}return keys.at(-1);}
-function cull(dir){const s=sync(dir);if(s.gamesSinceCull<CULL_EVERY_GAMES)return{culled:[],birth:null,admitted:[],state:s};const mc=measuredCosts(dir);const checkpoints=Math.floor(s.gamesSinceCull/CULL_EVERY_GAMES),culled=[],admitted=[];for(let q=0;q<checkpoints;q++){const population=activeFaceSet(s).size,want=stochasticCount(expectedCulls(population));for(let i=0;i<want;i++){const e=eligibleByDepth(s),k=chooseDepth(e,mc);if(!k)break;const v=e[k][0],p=s.facePools[k],now=new Date().toISOString();p.active=p.active.filter(id=>id!==v.id);p.retired[v.id]={at:now,reason:'elastic cull',eloHi:v.r.eloHi,elo:v.r.elo,games:+v.r.games||0,population};culled.push({type:'face',name:v.id,face:v.id,depth:v.depth,replacedBy:null,result:'elastic-cull'});}admitted.push(...admitFrontier(s,stableModelEntries(dir)));s.gamesSinceCull=Math.max(0,s.gamesSinceCull-CULL_EVERY_GAMES);}if(culled.length||admitted.length)s.lastEvent={at:new Date().toISOString(),culled:culled.map(x=>x.face),admitted,result:'elastic-checkpoint'};saveState(dir,s);return{culled,birth:null,admitted,state:s};}
+// The cull may take at most HALF of the faces it can currently see. The list it culls from is
+// sorted by rating, but when fewer faces clear the bar than the population asks to lose, the sort
+// stops mattering: every measured face goes, whatever its rating -- and since the pair equation
+// feeds strong faces more games, "measured" skews strong. Capping at half keeps the retirement a
+// choice between measured faces rather than a purge of them; the rest of the quota simply waits
+// for the next checkpoint, when more faces have cleared the bar.
+function cull(dir){const s=sync(dir);if(s.gamesSinceCull<CULL_EVERY_GAMES)return{culled:[],birth:null,admitted:[],state:s};const mc=measuredCosts(dir);const checkpoints=Math.floor(s.gamesSinceCull/CULL_EVERY_GAMES),culled=[],admitted=[];for(let q=0;q<checkpoints;q++){const population=activeFaceSet(s).size,e0=eligibleByDepth(s,population),seen=e0.D1.length+e0.D2.length+e0.D3.length+e0.D4.length,want=Math.min(stochasticCount(expectedCulls(population)),Math.floor(seen/2));for(let i=0;i<want;i++){const e=eligibleByDepth(s,population),k=chooseDepth(e,mc);if(!k)break;const v=e[k][0],p=s.facePools[k],now=new Date().toISOString();p.active=p.active.filter(id=>id!==v.id);p.retired[v.id]={at:now,reason:'elastic cull',eloHi:v.r.eloHi,elo:v.r.elo,games:+v.r.games||0,population};culled.push({type:'face',name:v.id,face:v.id,depth:v.depth,replacedBy:null,result:'elastic-cull'});}admitted.push(...admitFrontier(s,stableModelEntries(dir)));s.gamesSinceCull=Math.max(0,s.gamesSinceCull-CULL_EVERY_GAMES);}if(culled.length||admitted.length)s.lastEvent={at:new Date().toISOString(),culled:culled.map(x=>x.face),admitted,result:'elastic-checkpoint'};saveState(dir,s);return{culled,birth:null,admitted,state:s};}
 function noteBirth(dir,birth){if(birth&&birth.outPath&&fs.existsSync(birth.outPath))sync(dir);}
-function status(dir){const s=sync(dir),faces={};for(let d=1;d<=4;d++){const k=depthKey(d),p=s.facePools[k];faces[k]={seats:(p.active||[]).length,trial:p.trial?1:0,waiting:(p.waiting||[]).length,deferred:0,retired:Object.keys(p.retired||{}).length,capacity:null};}return{models:activeModelNames(dir).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,faces,targetFaces:TARGET_FACES,population:activeFaceSet(s).size,admitCeiling:ADMIT_CEILING,heldModels:+(s.queueCompaction&&s.queueCompaction.heldModels)||0};}
+function status(dir){const s=sync(dir),pop=activeFaceSet(s).size,faces={};for(let d=1;d<=4;d++){const k=depthKey(d),p=s.facePools[k];faces[k]={seats:(p.active||[]).length,trial:p.trial?1:0,waiting:(p.waiting||[]).length,deferred:0,retired:Object.keys(p.retired||{}).length,capacity:null};}return{models:activeModelNames(dir).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,faces,targetFaces:TARGET_FACES,population:pop,admitCeiling:ADMIT_CEILING,cullMinGames:Object.fromEntries([1,2,3,4].map(d=>[depthKey(d),cullMinGames(depthKey(d),pop)])),heldModels:+(s.queueCompaction&&s.queueCompaction.heldModels)||0};}
 function restoreDepthSpecialists(){return[];}function retireBadD4(){return[];}
-module.exports={TARGET_MODELS,TARGET_FACES,FACE_CAPS,FACE_MIN_GAMES,DEPTH_CULL_WEIGHT,D3_SHARE,sync,ingestSummary,modelMeta,stableModelEntries,activeModelNames,activeFaceIds,restoreDepthSpecialists,selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,filterFocus,d3Slice,d4Slice,retireBadD4,d3SummaryPath,d4SummaryPath,cull,noteBirth,status};
+module.exports={TARGET_MODELS,TARGET_FACES,ADMIT_CEILING,FACE_CAPS,FACE_MIN_GAMES,cullMinGames,DEPTH_CULL_WEIGHT,D3_SHARE,sync,ingestSummary,modelMeta,stableModelEntries,activeModelNames,activeFaceIds,restoreDepthSpecialists,selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,filterFocus,d3Slice,d4Slice,retireBadD4,d3SummaryPath,d4SummaryPath,cull,noteBirth,status};
