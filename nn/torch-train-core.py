@@ -207,7 +207,12 @@ def elo_game_weights(game_movers, lookup, floor, temp):
         if vals:
             elos[gid] = sum(vals) / len(vals)
     if not elos:
-        return {}, None
+        # Three values, like the normal return: the caller unpacks three and already handles a None
+        # ref by switching weighting off for the run. Returning two crashed it instead -- dormant
+        # for as long as SOME game had a rateable mover, then fatal the moment an Elo reset zeroed
+        # every game count and left the lookup empty, which is exactly when the trainer most needs
+        # to keep running.
+        return {}, None, 0
     ref = sorted(elos.values())[len(elos) // 2]
     midpoint = floor + (1.0 - floor) * 0.5
     out = defaultdict(lambda: midpoint)     # unknown provenance = midpoint, for every gid asked

@@ -133,6 +133,24 @@ set "OVERRIDE="
 set /p OVERRIDE="Enter to accept, or type a different league-worker count: "
 if not "!OVERRIDE!"=="" set /a LEAGUEW=!OVERRIDE!
 
+rem Running alongside another trainer is fine now for everything EXCEPT the shared-name artefacts.
+rem Medals go to nn\medals\<machine>\ and status to nn\status-<machine>.md, so those accumulate
+rem rather than clobber -- but nn\models\best.json, the ten pool slots, nn\elo-summary.json and
+rem run.js's own nn\data\batch-NNN.jsonl are still one name per repo, and two machines both at
+rem batch-105 is the collision run.js's --no-push-artifacts comment was written for.
+rem
+rem Answering y costs this machine almost nothing: its findings still reach the others as medals
+rem (its gold IS its best model by pessimistic bound), retromine rows still push under
+rem session-unique names, and its own league is untouched. What it gives up is publishing a
+rem best.json and a batch stream the other machine is already producing.
+set "SECOND="
+set /p SECOND="Is a trainer already running on ANOTHER machine? y/N: "
+set "SHAREFLAG="
+if /i "!SECOND!"=="y" (
+  set "SHAREFLAG=--no-push-artifacts"
+  echo   -^> not publishing best.json / pool slots / elo-summary / batch data; medals still publish
+)
+
 rem Dual training needs python + torch AND an NVIDIA GPU; without them the trainer runs value-only
 rem on CPU, which is the normal case on a laptop.
 set "DUALFLAG="
@@ -160,10 +178,10 @@ echo   this machine keeps its OWN nn\elo-results.json; the desktop's ratings are
 echo.
 if defined DUALFLAG (
   node nn\league-trainer.js --gamesPerBatch 1000 --scratchHidden 96,64,48 ^
-    --leagueWorkers !LEAGUEW! --exploreWorkers 1 --retroWorkers 1 %DUALFLAG%
+    --leagueWorkers !LEAGUEW! --exploreWorkers 1 --retroWorkers 1 !SHAREFLAG! %DUALFLAG%
 ) else (
   node nn\league-trainer.js --gamesPerBatch 1000 --scratchHidden 96,64,48 ^
-    --leagueWorkers !LEAGUEW! --exploreWorkers 1 --retroWorkers 1 --dualEpochs 20,40,60 --dualPopulationMin 4
+    --leagueWorkers !LEAGUEW! --exploreWorkers 1 --retroWorkers 1 !SHAREFLAG! --dualEpochs 20,40,60 --dualPopulationMin 4
 )
 echo.
 echo Trainer stopped. Close this window, or run this file again to restart.

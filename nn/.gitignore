@@ -19,3 +19,23 @@ policy-targets.jsonl
 # next elorank run. Never meaningful to share, and a committed copy would be re-merged as duplicate
 # games on whatever machine pulled it.
 elo-inbox.jsonl
+# Scratch, one per running trainer: the model pool handed to self-play workers as a file when the
+# list is too long for a command-line argument. Deleted on exit; never meaningful to share.
+.selfplay-pool-*.txt
+# The official Elo writer's lock. It names a PID and is reclaimed by liveness check, so a copy
+# pulled from another machine is at best noise and at worst a foreign PID that happens to be alive
+# here, blocking this machine's own writer.
+.elo-writer.lock
+# The rating store itself: this machine's own league, deliberately NOT shared. Every machine rates
+# the models it has against the field it has, and a pulled copy would overwrite that with another
+# machine's results -- the independent re-measurement that catches an over-claimed medal is exactly
+# what makes a second trainer worth running. Only the derived elo-summary.json is published.
+elo-results.json
+# One per retromine job: the worker snapshots the script so a mid-run pull cannot change it
+# underneath itself. Deleted when the job ends.
+.retromine-worker-*.js
+# Per-worker self-play shards, merged into their batch file and unlinked immediately after.
+data/*.jsonl.w[0-9]*
+# The pre-machine-naming shared copy. Superseded by zpd-pool-<machine>.json; ignored so the stale
+# local file cannot be re-added and start the same conflict over again.
+zpd-pool.json

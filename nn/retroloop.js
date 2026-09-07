@@ -95,7 +95,16 @@ function pushData(tag) {
   // warning and the loop keeps mining, so the failure is silent -- lanes run for hours writing rows
   // that never leave the machine. Observed live: 14 workers, ~20 jobs done, zero retro-ratchet-*
   // files on the remote. run.js's status push hit this same trap and already documents it.
-  gitSoft(['add', '-Af', 'nn/data'], 'git add');
+  // Scoped to THIS loop's own output, not the whole directory. `nn/data` swept up everything any
+  // other process happened to have written there -- run.js's batch-NNN.jsonl above all, which is a
+  // shared filename every trainer produces, so two machines pushed conflicting batch-106 files
+  // while the operator had explicitly answered "another machine is running" to avoid exactly that.
+  // --no-push-artifacts turns run.js's own artefact push off; it cannot turn off a second process
+  // pushing the same files on run.js's behalf. The -Af also forced past .gitignore, which meant the
+  // per-worker .jsonl.wNN shards -- untracked on purpose, 307 of them removed from history -- were
+  // silently re-added on the next tick. Observed live: shards reappearing in a pull minutes after
+  // being deleted.
+  gitSoft(['add', '-Af', 'nn/data/retro-*.jsonl'], 'git add');
   try {
     const staged = git(['diff', '--cached', '--stat']).trim();
     if (!staged) return;                      // nothing new since last push
@@ -149,7 +158,7 @@ const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
 const session = `ratchet-${stamp}-${process.pid.toString(36)}`;
 const statusPath = path.join(dir, 'retro-loop-status.json');
 const lanes = Array.from({ length: workers }, (_, i) => ({
-  id: i + 1, jobs: 0, failures: 0, child: null, startedAt: null, output: null, script: null,
+  id: i + 1, jobs: 0, failures: 0, consecutiveFailures: 0, child: null, startedAt: null, output: null, script: null,
 }));
 let stopping = false;
 const startedAt = new Date().toISOString();
@@ -272,13 +281,40 @@ function launch(lane) {
     cleanup(lane);
     if (code === 0) {
       lane.jobs++;
+      lane.consecutiveFailures = 0;
       console.log(`[w${lane.id}] job complete (${lane.jobs} total); relaunching`);
     } else {
       lane.failures++;
-      console.error(`[w${lane.id}] exited ${signal || code}; saved rows remain in ${path.basename(lane.output)}`);
+      lane.consecutiveFailures = (lane.consecutiveFailures || 0) + 1;
+      // A job that wrote nothing leaves a 0-byte file behind, and this loop pushes nn/data to git
+      // every few minutes. Retrying every 5s, that is ~720 empty files an hour committed forever --
+      // real corpus bloat, in the directory whose size already froze three machines. Only remove a
+      // file with nothing in it: a job that mined rows and then died still has data worth keeping,
+      // which is what the message below promises.
+      // Three distinct outcomes, and the old message claimed the third for all of them -- it
+      // pointed at "saved rows" in a file that, on the commonest failure by far, retromine never
+      // got as far as creating: it exits over an empty rating pool well before it opens the write
+      // stream. Say which actually happened.
+      let note;
+      try {
+        if (fs.statSync(lane.output).size === 0) { fs.unlinkSync(lane.output); note = ' (wrote nothing; empty file removed)'; }
+        else note = `; saved rows remain in ${path.basename(lane.output)}`;
+      } catch (_) { note = ' (no rows written)'; }
+      console.error(`[w${lane.id}] exited ${signal || code}${note}`);
     }
     saveStatus();
-    if (!stopping) setTimeout(() => launch(lane), code === 0 ? 100 : retrySeconds * 1000);
+    // Back off on repeated failure instead of hammering. The usual cause is structural rather than
+    // transient -- retromine needs 4+ RATED brains and the league has not banked enough matches yet,
+    // which after a rating-semantics reset takes hours -- so a fixed 5s retry burns a worker and
+    // spams the log for the entire time it cannot possibly succeed. Doubles to a 5 minute ceiling
+    // and resets the moment a job completes, so a genuinely transient failure still recovers fast.
+    const backoff = code === 0 ? 100
+      : Math.min(retrySeconds * 1000 * Math.pow(2, Math.min(6, (lane.consecutiveFailures || 1) - 1)),
+                 300000);
+    if (code !== 0 && backoff >= 60000 && (lane.consecutiveFailures % 5) === 1)
+      console.error(`[w${lane.id}] ${lane.consecutiveFailures} failures in a row; retrying every ` +
+                    `${Math.round(backoff / 1000)}s until the rating pool has an axis to search`);
+    if (!stopping) setTimeout(() => launch(lane), backoff);
   });
 }
 

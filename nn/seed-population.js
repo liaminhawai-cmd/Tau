@@ -34,6 +34,19 @@ const faceEntries = () => evo.stableModelEntries(dir);
 // .evolution-roster.json right there, and copying that as a network is exactly the kind of silent
 // nonsense a name-only filter waves through. modelMeta is the roster's own usability test.
 const isModel = p => { try { return evo.modelMeta(p).usable; } catch (_) { return false; } };
+// The roster excludes files for two different reasons, and seeding may only undo one of them.
+//   RESERVED NAMES -- the aliases (best, wide, ultra, deep, l15_value...) and pool-slot-NN. These
+//   are rotating pointers whose CONTENT is a real trained net, so copying that content out under a
+//   stable name is the whole point of this file.
+//   NOT A CONTENDER -- these are excluded because of what they ARE, and seeding one overrides a
+//   judgement the trainer already made. run.js writes dual-startup-probe-* as "verified export
+//   only, not an Elo entrant" -- a GPU smoke test, not a candidate; best.pre-pool-* is a rollback
+//   snapshot taken every pool cycle; *.partial.json is an interrupted write. Seeding these put 25
+//   startup probes into a live population as rated faces on the first machine to run the seeder
+//   against a real trainer's models directory, each then costing D1-D4 measurement the field could
+//   not afford.
+const NOT_A_CONTENDER = [/^dual-startup-probe-/, /^best\.pre-pool-/, /\.partial\.json$/];
+const isContender = f => !NOT_A_CONTENDER.some(rx => rx.test(f));
 // [tier, variant, provenance]. Tier: gold beats silver beats bronze, and anything unrecognised
 // sorts last. Variant: a global medal outranks a per-depth one (gold.json over gold-d2.json) --
 // the global bound is the one the medal ranking is actually made on. Provenance: a named machine
@@ -99,7 +112,7 @@ function main() {
   const alreadyFace = new Set(faceEntries().map(e => e.file));
   for (const f of ls(modelDir).sort()) {
     if (!f.endsWith('.json') || alreadyFace.has(f)) continue;   // already a face: nothing to seed
-    if (!isModel(path.join(modelDir, f))) continue;
+    if (!isContender(f) || !isModel(path.join(modelDir, f))) continue;
     sources.push({ file: path.join(modelDir, f), label: f, name: `seed-${path.basename(f, '.json')}` });
   }
   if (!sources.length) { log('nothing to seed from -- pull first'); return; }
@@ -116,6 +129,21 @@ function main() {
   const faces = new Map();
   for (const e of faceEntries()) {
     try { faces.set(sha(e.path), e.file); } catch (_) {}
+  }
+
+  // Remove seeds that a previous version of this script should never have made. The
+  // NOT_A_CONTENDER exclusions were added after a run had already copied 25 dual-startup-probe
+  // files into a live population, and telling a person to go and delete them by hand is not a fix:
+  // the next launch simply reports the same polluted field as healthy. Only names that ONLY this
+  // script's own bug could have produced are touched -- a real model that happens to be called
+  // seed-something is never matched, because the prefix and the excluded pattern must both be
+  // present.
+  let pruned = 0;
+  for (const f of ls(modelDir)) {
+    if (!f.startsWith('seed-') || isContender(f.slice(5))) continue;
+    if (dry) { log(`would prune ${f} (never a contender; seeded in error)`); pruned++; continue; }
+    try { fs.unlinkSync(path.join(modelDir, f)); pruned++; log(`pruned ${f} (never a contender; seeded in error)`); }
+    catch (e) { log(`could not prune ${f}: ${e.message}`); }
   }
 
   let added = 0, dup = 0, present = 0;
@@ -142,8 +170,8 @@ function main() {
   // Counted, not assumed: --dry copies nothing, so reading the directory back would report the
   // population as unchanged and imply the seeding had failed.
   const now = faceEntries().length + (dry ? added : 0);
-  log(`${added} seeded, ${dup} duplicate(s) skipped, ${present} already present ` +
-      `(this machine is "${mach.machineId(dir)}")`);
+  log(`${added} seeded, ${dup} duplicate(s) skipped, ${present} already present` +
+      (pruned ? `, ${pruned} pruned` : '') + ` (this machine is "${mach.machineId(dir)}")`);
   log(`population the roster ${dry ? 'would see' : 'sees'}: ${now} model(s)`);
   if (!now) log('WARNING: still zero -- the trainer would have to breed from nothing');
 }
