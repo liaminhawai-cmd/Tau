@@ -149,7 +149,7 @@ const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
 const session = `ratchet-${stamp}-${process.pid.toString(36)}`;
 const statusPath = path.join(dir, 'retro-loop-status.json');
 const lanes = Array.from({ length: workers }, (_, i) => ({
-  id: i + 1, jobs: 0, failures: 0, child: null, startedAt: null, output: null, script: null,
+  id: i + 1, jobs: 0, failures: 0, consecutiveFailures: 0, child: null, startedAt: null, output: null, script: null,
 }));
 let stopping = false;
 const startedAt = new Date().toISOString();
@@ -272,13 +272,35 @@ function launch(lane) {
     cleanup(lane);
     if (code === 0) {
       lane.jobs++;
+      lane.consecutiveFailures = 0;
       console.log(`[w${lane.id}] job complete (${lane.jobs} total); relaunching`);
     } else {
       lane.failures++;
-      console.error(`[w${lane.id}] exited ${signal || code}; saved rows remain in ${path.basename(lane.output)}`);
+      lane.consecutiveFailures = (lane.consecutiveFailures || 0) + 1;
+      // A job that wrote nothing leaves a 0-byte file behind, and this loop pushes nn/data to git
+      // every few minutes. Retrying every 5s, that is ~720 empty files an hour committed forever --
+      // real corpus bloat, in the directory whose size already froze three machines. Only remove a
+      // file with nothing in it: a job that mined rows and then died still has data worth keeping,
+      // which is what the message below promises.
+      let emptied = false;
+      try { if (fs.statSync(lane.output).size === 0) { fs.unlinkSync(lane.output); emptied = true; } } catch (_) {}
+      console.error(`[w${lane.id}] exited ${signal || code}` +
+        (emptied ? ' (wrote nothing; empty file removed)'
+                 : `; saved rows remain in ${path.basename(lane.output)}`));
     }
     saveStatus();
-    if (!stopping) setTimeout(() => launch(lane), code === 0 ? 100 : retrySeconds * 1000);
+    // Back off on repeated failure instead of hammering. The usual cause is structural rather than
+    // transient -- retromine needs 4+ RATED brains and the league has not banked enough matches yet,
+    // which after a rating-semantics reset takes hours -- so a fixed 5s retry burns a worker and
+    // spams the log for the entire time it cannot possibly succeed. Doubles to a 5 minute ceiling
+    // and resets the moment a job completes, so a genuinely transient failure still recovers fast.
+    const backoff = code === 0 ? 100
+      : Math.min(retrySeconds * 1000 * Math.pow(2, Math.min(6, (lane.consecutiveFailures || 1) - 1)),
+                 300000);
+    if (code !== 0 && backoff >= 60000 && (lane.consecutiveFailures % 5) === 1)
+      console.error(`[w${lane.id}] ${lane.consecutiveFailures} failures in a row; retrying every ` +
+                    `${Math.round(backoff / 1000)}s until the rating pool has an axis to search`);
+    if (!stopping) setTimeout(() => launch(lane), backoff);
   });
 }
 
