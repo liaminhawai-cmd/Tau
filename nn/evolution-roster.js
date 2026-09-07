@@ -7,6 +7,12 @@ const path=require('path');
 // by construction and receive no other privilege.
 const TARGET_FACES=50;
 const TARGET_MODELS=TARGET_FACES;
+// Admission ceiling. The cull can only retire a face it has MEASURED (FACE_MIN_GAMES below), so a
+// population far past this point starves every face at once: games spread too thin for anything to
+// become eligible, nothing eligible means nothing culled, and the field ratchets up forever. Four
+// times target leaves plenty of room for an open league to breathe while keeping every face inside
+// reach of a real interval.
+const ADMIT_CEILING=TARGET_FACES*4;
 const FACE_CAPS=Object.freeze({D1:50,D2:14,D3:4,D4:1}); // compatibility export only; never enforced
 const FACE_MIN_GAMES=Object.freeze({D1:12,D2:8,D3:5,D4:2});
 const DEPTH_CULL_WEIGHT=Object.freeze({D1:1,D2:3,D3:9,D4:27});
@@ -42,8 +48,22 @@ function modelSerial(name){const m=String(name).match(/(\d+)(?!.*\d)/);return m?
 
 function reconcile(s,entries){ensurePools(s);const available={};for(let d=1;d<=4;d++)available[depthKey(d)]=new Set(entries.flatMap(e=>candidateFaces(e,d)));
   for(let d=1;d<=4;d++){const k=depthKey(d),p=s.facePools[k],avail=available[k];p.retired=p.retired||{};p.active=[...new Set((p.active||[]).filter(id=>avail.has(id)&&!elasticRetired(p,id)))];p.trial=null;p.waiting=[];p.deferred={};for(const id of Object.keys(p.retired))if(!avail.has(id))delete p.retired[id];}
-  const live=activeFaceSet(s);for(const e of entries){let known=false;for(let d=1;d<=4&&!known;d++)for(const id of candidateFaces(e,d))if(live.has(id)||elasticRetired(s.facePools[depthKey(d)],id)){known=true;break;}if(known)continue;for(let d=1;d<=4;d++){const ids=candidateFaces(e,d);if(!ids.length)continue;for(const id of ids){s.facePools[depthKey(d)].active.push(id);live.add(id);}break;}}
-  s.queueCompaction={version:4,updated:new Date().toISOString(),catalogueModels:entries.length,queueModels:entries.length,deferredFaces:0,mode:'open Elo league'};
+  // The mint. Every usable model file no pool has seen becomes a D1 face here -- that is how a fresh
+  // clone bootstraps a population, and it is also how the desktop field reached 1067 faces on 2170
+  // games. A pool cycle writes roughly three new model files an hour; each was admitted on the very
+  // next sync and each then owed FACE_MIN_GAMES before it could ever be cullable. Arena throughput
+  // could not keep up, so no face became eligible, so the cull retired 0-3 where expectedCulls asked
+  // for 128, so the population only climbed -- and with games spread over 1067 faces no medal, no
+  // best.json promotion and no ladder rung could be measured either. Admission now stops dead at
+  // ADMIT_CEILING and resumes a seat at a time as culls make room, so the league drains toward
+  // TARGET_FACES by itself rather than starving every face at once. Held-back files are not lost:
+  // they sit on disk and take the next free seat. Order is strongest first, then newest, so when a
+  // seat opens the freshest checkpoint claims it instead of whichever name readdir reached first.
+  const live=activeFaceSet(s),rank=n=>{const v=modelScore(s,n);return Number.isFinite(v)?v:-1e9;},pending=[];
+  for(const e of entries){let known=false;for(let d=1;d<=4&&!known;d++)for(const id of candidateFaces(e,d))if(live.has(id)||elasticRetired(s.facePools[depthKey(d)],id)){known=true;break;}if(!known)pending.push(e);}
+  pending.sort((a,b)=>rank(b.name)-rank(a.name)||modelSerial(b.name)-modelSerial(a.name)||a.name.localeCompare(b.name));
+  let admitted=0;for(const e of pending){if(live.size>=ADMIT_CEILING)break;for(let d=1;d<=4;d++){const ids=candidateFaces(e,d);if(!ids.length)continue;for(const id of ids){s.facePools[depthKey(d)].active.push(id);live.add(id);}admitted++;break;}}
+  s.queueCompaction={version:4,updated:new Date().toISOString(),catalogueModels:entries.length,queueModels:entries.length,deferredFaces:0,heldModels:pending.length-admitted,admitCeiling:ADMIT_CEILING,population:live.size,mode:'open Elo league'};
 }
 function nextFrontier(s,entries){const q=[];for(const e of entries){let highest=0;for(let d=1;d<=4;d++){const p=s.facePools[depthKey(d)],ids=candidateFaces(e,d);if(ids.some(id=>(p.active||[]).includes(id)||elasticRetired(p,id)||!!faceReading(s,id)))highest=d;}if(highest>=4)continue;const prev=Math.max(1,highest),prevIds=candidateFaces(e,prev);if(prevIds.length&&!prevIds.some(id=>faceEstablished(s,id,prev)))continue;for(let d=highest+1;d<=4;d++){const ids=candidateFaces(e,d);if(!ids.length)continue;const fresh=ids.filter(id=>!s.facePools[depthKey(d)].active.includes(id)&&!elasticRetired(s.facePools[depthKey(d)],id));if(fresh.length)q.push({e,depth:d,ids:fresh,score:modelScore(s,e.name),serial:modelSerial(e.name)});break;}}
   q.sort((a,b)=>b.score-a.score||b.serial-a.serial||a.e.name.localeCompare(b.e.name));return q[0]||null;}
@@ -95,6 +115,6 @@ function chooseDepth(e,mc){const keys=Object.keys(DEPTH_CULL_WEIGHT).filter(k=>e
   const total=keys.reduce((s,k)=>s+w[k],0),x=Math.random()*total;let a=0;for(const k of keys){a+=w[k];if(x<a)return k;}return keys.at(-1);}
 function cull(dir){const s=sync(dir);if(s.gamesSinceCull<CULL_EVERY_GAMES)return{culled:[],birth:null,admitted:[],state:s};const mc=measuredCosts(dir);const checkpoints=Math.floor(s.gamesSinceCull/CULL_EVERY_GAMES),culled=[],admitted=[];for(let q=0;q<checkpoints;q++){const population=activeFaceSet(s).size,want=stochasticCount(expectedCulls(population));for(let i=0;i<want;i++){const e=eligibleByDepth(s),k=chooseDepth(e,mc);if(!k)break;const v=e[k][0],p=s.facePools[k],now=new Date().toISOString();p.active=p.active.filter(id=>id!==v.id);p.retired[v.id]={at:now,reason:'elastic cull',eloHi:v.r.eloHi,elo:v.r.elo,games:+v.r.games||0,population};culled.push({type:'face',name:v.id,face:v.id,depth:v.depth,replacedBy:null,result:'elastic-cull'});}admitted.push(...admitFrontier(s,stableModelEntries(dir)));s.gamesSinceCull=Math.max(0,s.gamesSinceCull-CULL_EVERY_GAMES);}if(culled.length||admitted.length)s.lastEvent={at:new Date().toISOString(),culled:culled.map(x=>x.face),admitted,result:'elastic-checkpoint'};saveState(dir,s);return{culled,birth:null,admitted,state:s};}
 function noteBirth(dir,birth){if(birth&&birth.outPath&&fs.existsSync(birth.outPath))sync(dir);}
-function status(dir){const s=sync(dir),faces={};for(let d=1;d<=4;d++){const k=depthKey(d),p=s.facePools[k];faces[k]={seats:(p.active||[]).length,trial:p.trial?1:0,waiting:(p.waiting||[]).length,deferred:0,retired:Object.keys(p.retired||{}).length,capacity:null};}return{models:activeModelNames(dir).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,faces,targetFaces:TARGET_FACES};}
+function status(dir){const s=sync(dir),faces={};for(let d=1;d<=4;d++){const k=depthKey(d),p=s.facePools[k];faces[k]={seats:(p.active||[]).length,trial:p.trial?1:0,waiting:(p.waiting||[]).length,deferred:0,retired:Object.keys(p.retired||{}).length,capacity:null};}return{models:activeModelNames(dir).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,faces,targetFaces:TARGET_FACES,population:activeFaceSet(s).size,admitCeiling:ADMIT_CEILING,heldModels:+(s.queueCompaction&&s.queueCompaction.heldModels)||0};}
 function restoreDepthSpecialists(){return[];}function retireBadD4(){return[];}
 module.exports={TARGET_MODELS,TARGET_FACES,FACE_CAPS,FACE_MIN_GAMES,DEPTH_CULL_WEIGHT,D3_SHARE,sync,ingestSummary,modelMeta,stableModelEntries,activeModelNames,activeFaceIds,restoreDepthSpecialists,selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,filterFocus,d3Slice,d4Slice,retireBadD4,d3SummaryPath,d4SummaryPath,cull,noteBirth,status};

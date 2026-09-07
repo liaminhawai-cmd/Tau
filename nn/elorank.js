@@ -54,8 +54,12 @@ for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])
   if(has(original,'cullOnly')){
     evo.sync(dir);evo.ingestSummary(dir,summary);
     const before=evo.status(dir),c=evo.cull(dir),after=evo.status(dir);
+    // Population line every checkpoint, not just on a cull: while the field is over the admission
+    // ceiling it is the only number that says whether the league is draining or still stuck.
+    const held=after.heldModels?`, ${after.heldModels} model(s) held out of the league`:'';
     if(c.culled.length||c.admitted.length)console.log(`[evolution] checkpoint: ${c.culled.length} culled, ${c.admitted.length} frontier face(s) admitted; bank ${after.gamesSinceCull.toFixed(0)}`);
     else console.log(`[evolution] no rating checkpoint due; bank ${before.gamesSinceCull.toFixed(0)}`);
+    console.log(`[evolution] population ${after.population} face(s), ceiling ${after.admitCeiling}, target ${after.targetFaces}${held}`);
     try{medals.main();}catch(e){console.error('[medals] refresh failed:',e.message);}return;
   }
 
