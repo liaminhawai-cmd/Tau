@@ -36,3 +36,6 @@ elo-results.json
 .retromine-worker-*.js
 # Per-worker self-play shards, merged into their batch file and unlinked immediately after.
 data/*.jsonl.w[0-9]*
+# The pre-machine-naming shared copy. Superseded by zpd-pool-<machine>.json; ignored so the stale
+# local file cannot be re-added and start the same conflict over again.
+zpd-pool.json

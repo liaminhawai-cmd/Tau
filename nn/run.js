@@ -1147,6 +1147,7 @@ const pushArtifacts = !process.argv.includes('--no-push-artifacts');
 // losing side's pull hit a conflict on it, which is a bad way for a progress note to take out the
 // data sync. Nothing reads this file programmatically; it exists to be looked at.
 const statusFile = `status-${require('./machine-id.js').machineId(dir)}.md`;
+const zpdPoolFile = `zpd-pool-${require('./machine-id.js').machineId(dir)}.json`;
 function writeStatus(stage, extraPaths) {
   statusState.stage = stage;
   statusState.updatedAt = new Date().toISOString();
@@ -1420,13 +1421,18 @@ function startSelfplayBatch() {
     ? ', pool ' + [...new Set(dataPool)].sort((a, b) => a - b)
         .map(l => `L${l}x${dataPool.filter(x => x === l).length}`).join(' ')
     : '';
-  // Published for worker machines (worker.js): they play the same frontier-centred opponent mix
-  // as this machine instead of selfplay's static default, and they get it through git like
-  // everything else. Rides along on the next status push.
+  // Published for worker machines: they can play the same frontier-centred opponent mix as this
+  // machine instead of selfplay's static default, and they get it through git like everything else.
+  // Per-machine, because it is derived from THIS machine's own ratings and every trainer writes it:
+  // under one shared name two machines produce different content for the same path on every push,
+  // which is a merge conflict on a generated file -- and a conflict on the branch every trainer
+  // pulls from blocks all of them, over a file that is currently write-only. (Nothing reads it yet:
+  // worker.js does not, despite what this comment used to claim. Keeping it published, correctly
+  // named, so the feature is there to pick up rather than silently rotting.)
   if (dataPool) {
     try {
-      atomicWrite(path.join(dir, 'zpd-pool.json'),
-                  JSON.stringify({ updated: new Date().toISOString(), levels: dataPool }));
+      atomicWrite(path.join(dir, zpdPoolFile),
+                  JSON.stringify({ updated: new Date().toISOString(), machine: require('./machine-id.js').machineId(dir), levels: dataPool }));
     } catch (e) {}
   }
   const modelPool = currentModelPool();
@@ -2353,7 +2359,7 @@ async function schedulerLoop() {
         `${new Date(selfplayStartedAt).toISOString()})`,
         [path.relative(repoRoot, selfplayOut).replace(/\\/g, '/'),
          // worker machines read this for their opponent mix -- cheap to ride along every push
-         ...(fs.existsSync(path.join(dir, 'zpd-pool.json')) ? ['nn/zpd-pool.json'] : [])]);
+         ...(fs.existsSync(path.join(dir, zpdPoolFile)) ? [`nn/${zpdPoolFile}`] : [])]);
     // The three best.json-writing cycles contend for one lock, so the MOST OVERDUE one goes first
     // rather than whichever happens to be listed first. With a fixed order a short-interval cycle
     // can take the lock on every single tick and the others never run at all -- which is the exact
