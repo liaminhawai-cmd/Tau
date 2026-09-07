@@ -131,6 +131,21 @@ function main() {
     try { faces.set(sha(e.path), e.file); } catch (_) {}
   }
 
+  // Remove seeds that a previous version of this script should never have made. The
+  // NOT_A_CONTENDER exclusions were added after a run had already copied 25 dual-startup-probe
+  // files into a live population, and telling a person to go and delete them by hand is not a fix:
+  // the next launch simply reports the same polluted field as healthy. Only names that ONLY this
+  // script's own bug could have produced are touched -- a real model that happens to be called
+  // seed-something is never matched, because the prefix and the excluded pattern must both be
+  // present.
+  let pruned = 0;
+  for (const f of ls(modelDir)) {
+    if (!f.startsWith('seed-') || isContender(f.slice(5))) continue;
+    if (dry) { log(`would prune ${f} (never a contender; seeded in error)`); pruned++; continue; }
+    try { fs.unlinkSync(path.join(modelDir, f)); pruned++; log(`pruned ${f} (never a contender; seeded in error)`); }
+    catch (e) { log(`could not prune ${f}: ${e.message}`); }
+  }
+
   let added = 0, dup = 0, present = 0;
   const seeded = new Map();
   const taken = new Set(ls(modelDir));
@@ -155,8 +170,8 @@ function main() {
   // Counted, not assumed: --dry copies nothing, so reading the directory back would report the
   // population as unchanged and imply the seeding had failed.
   const now = faceEntries().length + (dry ? added : 0);
-  log(`${added} seeded, ${dup} duplicate(s) skipped, ${present} already present ` +
-      `(this machine is "${mach.machineId(dir)}")`);
+  log(`${added} seeded, ${dup} duplicate(s) skipped, ${present} already present` +
+      (pruned ? `, ${pruned} pruned` : '') + ` (this machine is "${mach.machineId(dir)}")`);
   log(`population the roster ${dry ? 'would see' : 'sees'}: ${now} model(s)`);
   if (!now) log('WARNING: still zero -- the trainer would have to breed from nothing');
 }

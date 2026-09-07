@@ -282,11 +282,16 @@ function launch(lane) {
       // real corpus bloat, in the directory whose size already froze three machines. Only remove a
       // file with nothing in it: a job that mined rows and then died still has data worth keeping,
       // which is what the message below promises.
-      let emptied = false;
-      try { if (fs.statSync(lane.output).size === 0) { fs.unlinkSync(lane.output); emptied = true; } } catch (_) {}
-      console.error(`[w${lane.id}] exited ${signal || code}` +
-        (emptied ? ' (wrote nothing; empty file removed)'
-                 : `; saved rows remain in ${path.basename(lane.output)}`));
+      // Three distinct outcomes, and the old message claimed the third for all of them -- it
+      // pointed at "saved rows" in a file that, on the commonest failure by far, retromine never
+      // got as far as creating: it exits over an empty rating pool well before it opens the write
+      // stream. Say which actually happened.
+      let note;
+      try {
+        if (fs.statSync(lane.output).size === 0) { fs.unlinkSync(lane.output); note = ' (wrote nothing; empty file removed)'; }
+        else note = `; saved rows remain in ${path.basename(lane.output)}`;
+      } catch (_) { note = ' (no rows written)'; }
+      console.error(`[w${lane.id}] exited ${signal || code}${note}`);
     }
     saveStatus();
     // Back off on repeated failure instead of hammering. The usual cause is structural rather than
