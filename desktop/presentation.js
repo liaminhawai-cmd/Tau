@@ -6,20 +6,18 @@
   const root = document.documentElement;
   const $ = id => document.getElementById(id);
   const SETTINGS_KEY = 'tauDesktopSettingsV1';
-  const settings = { level:4, colour:0, quality:'balanced', map:false,
+  const settings = { level:4, colour:0, quality:'balanced',
     reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches, haptics:true };
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     if (Number.isInteger(saved.level) && saved.level >= 1 && saved.level <= LADDER_N) settings.level = saved.level;
     if (saved.colour === 0 || saved.colour === 1) settings.colour = saved.colour;
     if (['balanced','high'].includes(saved.quality)) settings.quality = saved.quality;
-    for (const k of ['map','reducedMotion','haptics']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
+    for (const k of ['reducedMotion','haptics']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
   } catch (_) {}
   function saveSettings() {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
-    root.classList.toggle('desktop-map', settings.map);
     root.classList.toggle('desktop-reduced-motion', settings.reducedMotion);
-    $('desktopMap')?.setAttribute('aria-pressed', String(settings.map));
   }
 
   let paused = false, pauseAt = 0, ownMatch = false, previousFocus = null;
@@ -63,8 +61,7 @@
   toolbar.className = 'desktop-toolbar';
   toolbar.innerHTML = `<button class="desktop-brand" id="desktopHome" aria-label="Open pause menu">TAU</button>
     <button class="desktop-menu" id="desktopPause">Menu <kbd>Esc</kbd></button>
-    <button class="desktop-map-button" id="desktopMap" aria-pressed="false">Overhead view</button>
-    <div class="desktop-input-hint" id="desktopInputHint">Drag a foot to swing<br>Right-drag to look around</div>`;
+    <div class="desktop-input-hint" id="desktopInputHint">Drag a foot to swing<br>Right-drag the 3D view to look around</div>`;
   document.body.appendChild(toolbar);
   for (let n=1;n<=LADDER_N;n++) {
     const opt = document.createElement('option'); opt.value = String(n); opt.textContent = 'Level ' + n;
@@ -97,8 +94,6 @@
   $('desktopSettings').onclick = openSettings;
   $('desktopPause').onclick = openPause;
   $('desktopHome').onclick = openPause;
-  $('desktopMap').onclick = () => { settings.map = !settings.map; saveSettings(); layout(); };
-  $('desktopMap').hidden = !renderer;
   if (window.tauSteam?.quit) {
     $('desktopQuit').hidden = false; $('desktopQuit').onclick = () => window.tauSteam.quit();
   }
@@ -159,7 +154,7 @@
       if(paused && masterGain && audioCtx) masterGain.gain.setTargetAtTime(0,audioCtx.currentTime,.03);
     };
     $('desktopMute').onchange = e => { setSoundOn(!e.target.checked); if(paused && masterGain && audioCtx) masterGain.gain.setTargetAtTime(0,audioCtx.currentTime,.03); };
-    $('desktopQuality').onchange = e => { settings.quality=e.target.value; saveSettings(); configureQuality(); layout(); };
+    $('desktopQuality').onchange = e => { settings.quality=e.target.value; saveSettings(); configureQuality(); resize(); };
     $('desktopMotion').onchange = e => { settings.reducedMotion=e.target.checked; saveSettings(); };
     $('desktopHaptics').onchange = e => { settings.haptics=e.target.checked; saveSettings(); };
     if (fullscreen) {
@@ -252,24 +247,29 @@
     scene.background=new THREE.Color('#101410');
     configureQuality();
   }
+  // This is the MENU's own ambient layout only. A real match is never sized here: it returns
+  // false, and the game's own resize() (the same split-view math and #splitHandle the web build
+  // uses) lays out #canvas and #view3d side by side. Desktop never gets a cut-down board layout —
+  // same full flat-board-plus-3D view as web, just with the walnut chrome floated over it.
   function layout() {
     if(htp3DActive || $('htpFull')) return false;
-    if(!renderer) {
+    if(!renderer) {   // no WebGL: overhead-only, in the menu or a match
       const size=Math.max(160,Math.floor(Math.min(innerHeight-160,innerWidth-60)));
       canvas.style.width=canvas.style.height=size+'px';
-      const demoSize=Math.max(180,Math.floor(Math.min(innerHeight*.73,innerWidth*.57)));
-      $('demoCanvas').style.width=$('demoCanvas').style.height=demoSize+'px';
+      if(!inMatch()){
+        const demoSize=Math.max(180,Math.floor(Math.min(innerHeight*.73,innerWidth*.57)));
+        $('demoCanvas').style.width=$('demoCanvas').style.height=demoSize+'px';
+      }
       render(); return true;
     }
-    const cv=$('view3d'), menu=!inMatch();
-    const w=Math.max(1,Math.round(menu && innerWidth>600?innerWidth*.76:innerWidth));
-    const h=Math.max(1,Math.round(menu && innerWidth<=600?innerHeight*.53:innerHeight));
+    if(inMatch()) return false;   // hand off to the real 2D/3D split
+    const cv=$('view3d');
+    const w=Math.max(1,Math.round(innerWidth>600?innerWidth*.76:innerWidth));
+    const h=Math.max(1,Math.round(innerWidth<=600?innerHeight*.53:innerHeight));
     cv.style.width=w+'px'; cv.style.height=h+'px'; cv.style.display='block';
     const dpr=renderer.getPixelRatio();
     if(cv.width!==Math.floor(w*dpr)||cv.height!==Math.floor(h*dpr)) renderer.setSize(w,h,false);
     camera.aspect=w/h; camera.updateProjectionMatrix();
-    const size=Math.round(Math.min(224,innerWidth*.24,innerHeight*.3));
-    canvas.style.width=size+'px'; canvas.style.height=size+'px';
     render();
     return true;
   }
@@ -394,8 +394,8 @@
     get skin(){return palette;},
     resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult,
     untimedLocal:()=>ownMatch&&!vsAI&&!onlineMatch,
-    onMatchStart(){ ownMatch=false; paused=false; heldLeft=heldRight=false; lastActive=-1; focusBoard(); layout(); },
-    onMenu(){ ownMatch=false; paused=false; heldLeft=heldRight=false; camManualSet=false; layout(); $('desktopPlay').focus({preventScroll:true}); },
+    onMatchStart(){ ownMatch=false; paused=false; heldLeft=heldRight=false; lastActive=-1; focusBoard(); resize(); },
+    onMenu(){ ownMatch=false; paused=false; heldLeft=heldRight=false; camManualSet=false; resize(); $('desktopPlay').focus({preventScroll:true}); },
     onModalShown(){
       delete $('modalBox').dataset.desktopResult;
       previousFocus=document.activeElement;
@@ -404,6 +404,6 @@
     },
     onModalHidden(){setPaused(false);if(previousFocus?.isConnected)previousFocus.focus({preventScroll:true});previousFocus=null;},
   };
-  saveSettings(); applyTheme(); layout();
+  saveSettings(); applyTheme(); resize();
   if(!inMatch())$('desktopPlay').focus({preventScroll:true});
 })();

@@ -77,6 +77,26 @@ test('the home menu reaches the showcase and the analysis lab',async t=>{
   assert.deepEqual(g.errors,[]);
 });
 
+test('a real match hands board sizing to the web split view, not a cut-down desktop layout',async t=>{
+  const g=await game();t.after(g.close);
+  // The old "Overhead view" corner-minimap toggle is gone -- the flat board is no longer hidden
+  // behind a mode switch, it's just always there beside the 3D view (see native/README.md).
+  assert.equal(g.$('desktopMap'),null,'the old overhead-toggle button is removed');
+  assert.equal(Object.prototype.hasOwnProperty.call(
+    JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')||'{}'), 'map'), false);
+  g.$('desktopLocal').click();g.tick();
+  // Simulate WebGL being available (this harness has no real GPU) and confirm window.tauDesktop's
+  // resize hook backs OFF while a match is on screen, instead of doing its own board sizing --
+  // that hand-off is what lets index.html's own resize()/#splitHandle math run, the same one the
+  // browser build uses. Regression guard for the bug this fixed: the desktop CSS gap for #views
+  // must never diverge from the split math's own gap budget (see presentation.css), or the two
+  // boards silently wrap onto separate rows instead of sitting side by side.
+  g.read("renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}}");
+  assert.equal(g.read('tauDesktop.resize()'), false,
+    'a real match must not be laid out by the desktop-only path');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('ordinary web entry keeps its original presentation',async t=>{
   const g=await game('');t.after(g.close);
   assert.equal(g.w.TAU_DESKTOP,false);

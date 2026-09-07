@@ -81,7 +81,10 @@ The first desktop board uses walnut grain, brass markings and blue/copper metal
 pieces, with soft shadows and the game's studio reflections. The menu, match and
 rematch use the same scene. Balanced graphics cap resolution at 1.5× and shadow
 maps at 1024; High allows 2× and 2048. Both respect lower device resolution.
-If WebGL cannot initialize, an overhead board remains playable.
+In a match the flat 2D board sits beside the 3D view with a draggable divider
+between them — the same split (and #splitHandle) the browser build uses, just
+themed to the walnut chrome; desktop is never missing a view the web build has.
+If WebGL cannot initialize, the flat board alone remains playable.
 
 Play starts the selected AI level and side. Same-screen play is untimed. Esc
 opens the match menu and pauses offline matches, including an AI turn; an online

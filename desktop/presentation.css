@@ -4,13 +4,13 @@ html.tau-desktop body { background:#101410; color:var(--paper); font-family:"Seg
 .tau-desktop button { cursor:pointer; }
 .tau-desktop button:focus-visible,.tau-desktop select:focus-visible,.tau-desktop input:focus-visible,.tau-desktop canvas:focus-visible { outline:2px solid var(--gold); outline-offset:5px; }
 .tau-desktop #wrap { padding:0; }
-.tau-desktop #wrap>h1,.tau-desktop #themeToggle,.tau-desktop #soundToggle,.tau-desktop #langToggle,.tau-desktop #buildTag,.tau-desktop #bopomofoToggle,.tau-desktop #splitHandle { display:none!important; }
+.tau-desktop #wrap>h1,.tau-desktop #themeToggle,.tau-desktop #soundToggle,.tau-desktop #langToggle,.tau-desktop #buildTag,.tau-desktop #bopomofoToggle { display:none!important; }
 .tau-desktop #menu { position:fixed; inset:0; width:auto; max-width:none; padding:0; margin:0; align-items:stretch; justify-content:center; }
 .tau-desktop #menu>#playArea,.tau-desktop #menu>#modeMsg,.tau-desktop #menu>#presenceLine,.tau-desktop #menu>#rankLine,.tau-desktop #menu>#installLine { display:none!important; }
 .tau-desktop #demoViews { position:absolute; inset:0; display:block; width:auto; margin:0; pointer-events:none; }
 .tau-desktop #demoCanvas { display:none; }
-.tau-desktop #view3d { border:0; border-radius:0; background:transparent; touch-action:none; }
-.tau-desktop #menu #view3d { position:absolute; right:0; top:0; }
+.tau-desktop #view3d { touch-action:none; }
+.tau-desktop #menu #view3d { position:absolute; right:0; top:0; border:0; border-radius:0; background:transparent; }
 .tau-desktop #menu::after { content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(90deg,#101410 0%,rgba(16,20,16,.94) 17%,rgba(16,20,16,.55) 31%,transparent 52%); }
 .desktop-home { z-index:2; position:absolute; left:clamp(28px,5vw,90px); top:50%; transform:translateY(-50%); width:clamp(270px,27vw,350px); }
 .desktop-home { max-height:calc(100dvh - 100px); overflow-y:auto; overflow-x:hidden; scrollbar-width:thin; padding:6px; margin-left:-6px; }
@@ -32,10 +32,20 @@ html.tau-desktop body { background:#101410; color:var(--paper); font-family:"Seg
 .tau-desktop #acctStatus { z-index:3; position:absolute; left:clamp(28px,5vw,90px); bottom:22px; margin:0; color:#b4ab99; font-size:12px; max-width:320px; text-align:left; }
 .tau-desktop #acctStatus button { color:var(--gold); font-size:12px; }
 .tau-desktop #game { width:100%; height:100%; padding:0; margin:0; }
-.tau-desktop #views { position:fixed; inset:0; display:block; width:100%; height:100%; }
-.tau-desktop #views>#view3d { position:absolute; inset:0; }
-.tau-desktop #views>#canvas { position:absolute; bottom:84px; left:24px; z-index:8; border:1px solid var(--edge); border-radius:50%; background:#111710; box-shadow:0 12px 32px #0005; visibility:hidden; pointer-events:none; }
-.tau-desktop.desktop-map #views>#canvas { visibility:visible; pointer-events:auto; }
+/* In a match the flat board and the 3D view sit side by side (stacked in portrait) with a
+   draggable divide between them — the SAME split view the web build uses (#splitHandle/resize()
+   in index.html), just with the walnut chrome floated over it. Desktop never gets a smaller
+   feature set than the browser: both boards are always there, always resizable. */
+/* box-sizing:border-box: resize() (index.html) computes these two elements' pixel widths against
+   its own gap budget (a hard-coded 8px, matched to the base CSS's #views{gap:10px} — NOT the
+   desktop chrome, so it's left alone here); a border added content-box would silently inflate
+   past that budget and wrap the two tiles onto separate rows instead of sitting side by side. */
+.tau-desktop #views #view3d, .tau-desktop #views #canvas { box-sizing:border-box; border-radius:14px; }
+.tau-desktop #views #view3d { border:1px solid var(--edge); }
+.tau-desktop #views #canvas { background:#111710; }
+.tau-desktop #splitHandle { opacity:0.4; }
+.tau-desktop #splitHandle::before { background:var(--gold); }
+.tau-desktop #splitHandle:hover, .tau-desktop #splitHandle:focus-visible, .tau-desktop #splitHandle.dragging { opacity:0.9; }
 .tau-desktop #topHud { z-index:11!important; position:fixed!important; top:26px!important; left:50%!important; right:auto!important; width:auto!important; max-width:50%; transform:translateX(-50%); text-align:center; pointer-events:none; }
 .tau-desktop #status { font:400 22px/1.3 Georgia,serif!important; color:var(--paper)!important; text-shadow:0 2px 12px #000; }
 .tau-desktop #meta { margin-top:7px; font-size:13px; color:var(--muted); text-shadow:0 2px 12px #000; }
@@ -45,12 +55,10 @@ html.tau-desktop body { background:#101410; color:var(--paper); font-family:"Seg
 .tau-desktop #btns { display:none!important; }
 .desktop-toolbar { position:fixed; inset:0; pointer-events:none; z-index:12; display:none; }
 .tau-desktop body.ingame .desktop-toolbar { display:block; }
-.desktop-brand,.desktop-menu,.desktop-map-button { position:absolute; pointer-events:auto; border:1px solid var(--edge); background:rgba(17,23,17,.8); color:var(--paper); min-height:42px; padding:10px 16px; border-radius:3px; font-size:14px; backdrop-filter:blur(12px); }
+.desktop-brand,.desktop-menu { position:absolute; pointer-events:auto; border:1px solid var(--edge); background:rgba(17,23,17,.8); color:var(--paper); min-height:42px; padding:10px 16px; border-radius:3px; font-size:14px; backdrop-filter:blur(12px); }
 .desktop-brand { top:24px; left:24px; border:0; background:transparent; font:400 25px Georgia,serif; letter-spacing:5px; }
 .desktop-menu { top:24px; right:24px; }
 .desktop-menu kbd { font:11px inherit; color:var(--muted); margin-left:13px; border:1px solid var(--edge); border-radius:3px; padding:2px 5px; }
-.desktop-map-button { bottom:24px; left:24px; }
-.desktop-map-button[aria-pressed="true"] { border-color:var(--gold); color:var(--gold); }
 .desktop-input-hint { position:absolute; right:26px; bottom:27px; max-width:190px; color:var(--muted); font-size:12px; line-height:1.6; text-align:right; }
 .desktop-input-hint kbd { font:inherit; color:var(--paper); }
 .tau-desktop #replayBtns { pointer-events:auto; justify-content:center; flex-wrap:wrap; }
@@ -74,7 +82,6 @@ html.tau-desktop body { background:#101410; color:var(--paper); font-family:"Seg
 .tau-desktop [hidden] { display:none!important; }
 .tau-desktop.desktop-overhead #view3d { display:none!important; }
 .tau-desktop.desktop-overhead #demoCanvas { display:block; position:absolute; right:5%; top:50%; transform:translateY(-50%); border:0; border-radius:50%; }
-.tau-desktop.desktop-overhead #views>#canvas { visibility:visible; pointer-events:auto; left:50%; top:50%; bottom:auto; transform:translate(-50%,-50%); border:0; }
 .tau-desktop.desktop-overhead .desktop-input-hint { display:none; }
 .desktop-result-mark { display:block; width:44px; height:3px; background:var(--gold); margin:0 0 20px; }
 .desktop-result-detail { margin:0; color:var(--muted); }
@@ -86,4 +93,4 @@ html.tau-desktop body { background:#101410; color:var(--paper); font-family:"Seg
 @media(max-height:700px) { .desktop-logo { width:175px; margin-bottom:20px; } .desktop-home h2 { font-size:31px; } .desktop-intro { margin-bottom:18px; } .desktop-choices { margin-bottom:15px; } .desktop-links button { padding:8px 0; } .desktop-home-bottom { margin-top:14px; padding-top:12px; } .tau-desktop #acctStatus { bottom:12px; } }
 @media(max-height:580px) { .desktop-logo { width:125px; margin-bottom:13px; } .desktop-home h2 { display:none; } .desktop-intro { font-size:13px; margin-bottom:13px; } .desktop-primary { min-height:42px; padding:10px 18px; } .desktop-choices { margin:10px 0; } .desktop-links { grid-template-columns:1fr 1fr; gap:0 12px; } .desktop-links button { font-size:13px; padding:7px 0; } .desktop-home-bottom { margin-top:10px; padding-top:7px; } }
 @media(max-width:800px) { .desktop-home { left:26px; width:260px; } .desktop-material { bottom:17px; right:20px; font-size:11px; } .desktop-input-hint { display:none; } .tau-desktop #bottomHud { left:26%!important; right:6%!important; bottom:22px!important; } .tau-desktop #topHud { max-width:52%; top:24px!important; } .tau-desktop #status { font-size:19px!important; } .desktop-brand { left:12px; padding-left:8px; } .desktop-menu { right:14px; } .desktop-menu kbd { display:none; } }
-@media(max-width:600px) { .desktop-home { width:calc(100% - 48px); left:24px; top:auto; bottom:60px; transform:none; } .desktop-logo { width:140px; margin-bottom:16px; } .desktop-home h2 { display:none; } .desktop-intro { max-width:none; font-size:14px; margin-bottom:14px; } .desktop-choices { margin:10px 0; } .desktop-links { grid-template-columns:1fr 1fr; gap:0 12px; } .desktop-links button { font-size:14px; } .desktop-material { display:none; } .tau-desktop #menu::after { background:linear-gradient(0deg,#101410 0%,rgba(16,20,16,.92) 44%,transparent 76%); } .tau-desktop #modalBox { padding:27px; } .tau-desktop #modalTitle { font-size:28px; } .tau-desktop #bottomHud { inset:auto 15px 78px!important; } .desktop-map-button { bottom:22px; left:18px; } }
+@media(max-width:600px) { .desktop-home { width:calc(100% - 48px); left:24px; top:auto; bottom:60px; transform:none; } .desktop-logo { width:140px; margin-bottom:16px; } .desktop-home h2 { display:none; } .desktop-intro { max-width:none; font-size:14px; margin-bottom:14px; } .desktop-choices { margin:10px 0; } .desktop-links { grid-template-columns:1fr 1fr; gap:0 12px; } .desktop-links button { font-size:14px; } .desktop-material { display:none; } .tau-desktop #menu::after { background:linear-gradient(0deg,#101410 0%,rgba(16,20,16,.92) 44%,transparent 76%); } .tau-desktop #modalBox { padding:27px; } .tau-desktop #modalTitle { font-size:28px; } .tau-desktop #bottomHud { inset:auto 15px 78px!important; } }
