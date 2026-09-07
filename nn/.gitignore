@@ -19,3 +19,6 @@ policy-targets.jsonl
 # next elorank run. Never meaningful to share, and a committed copy would be re-merged as duplicate
 # games on whatever machine pulled it.
 elo-inbox.jsonl
+# Scratch, one per running trainer: the model pool handed to self-play workers as a file when the
+# list is too long for a command-line argument. Deleted on exit; never meaningful to share.
+.selfplay-pool-*.txt

@@ -1,4 +1,5 @@
 'use strict';
+const fs=require('fs');
 const path=require('path');
 const {spawn}=require('child_process');
 const evo=require('./evolution-roster.js');
@@ -8,6 +9,37 @@ const dir=__dirname;
 module.exports={loadSeedPoses};
 function getArg(a,n,d=null){const i=a.indexOf('--'+n);return i>=0?a[i+1]:d;}
 function setArg(a,n,v){const k='--'+n,i=a.indexOf(k);if(i>=0)a.splice(i,2,k,String(v));else a.push(k,String(v));}
+function dropArg(a,n){const i=a.indexOf('--'+n);if(i>=0)a.splice(i,2);}
+// Hand the pool over as a FILE once it is big enough to threaten the command line. Windows caps a
+// whole command line at 32,767 characters and the pool is one comma-joined argument, so a few
+// hundred model paths reach it: measured on the real machine, 522 models died with `spawn
+// ENAMETOOLONG` and took the whole self-play batch with them, while 496 squeaked through -- this
+// had been running just under the edge, on a population that only grows. selfplay-legacy re-spawns
+// its workers with the same list, so the limit was being paid twice over. 8000 characters is a
+// deliberately early switch: well clear of the ceiling, and small enough that the common case (a
+// handful of paths) still reads as a plain argument in the logs.
+const POOL_ARG_MAX = 8000;
+function setPool(a, paths){
+  const joined = paths.join(',');
+  if (joined.length <= POOL_ARG_MAX) { dropArg(a,'modelPoolFile'); setArg(a,'modelPool',joined); return; }
+  // Named for the process, not the batch: it must outlive this call (the workers read it) but never
+  // outlive the run, and two trainers on one clone must not share one.
+  const f = path.join(dir, `.selfplay-pool-${process.pid}.txt`);
+  fs.writeFileSync(f, paths.join('\n') + '\n');
+  dropArg(a,'modelPool'); setArg(a,'modelPoolFile',f);
+  poolFiles.add(f);
+  console.log(`[evolution] model pool passed as a file (${paths.length} paths, ${joined.length} chars ` +
+              `would exceed the ${POOL_ARG_MAX}-char argv budget) -> ${path.basename(f)}`);
+}
+// The pool file is scratch, not state: it exists only so the workers can read what argv could not
+// carry. Removed on the way out, including on Ctrl-C, so nn/ does not silently collect one per run.
+const poolFiles = new Set();
+function dropPoolFiles(){ for (const f of poolFiles) { try { fs.unlinkSync(f); } catch (_) {} } poolFiles.clear(); }
+process.on('exit', dropPoolFiles);
+// Cleanup only -- deliberately no process.exit here. run() registers its own SIGINT/SIGTERM
+// handlers to kill the worker, and since this one is registered at module load it fires FIRST;
+// exiting from it would pre-empt that kill and orphan the child.
+for (const sig of ['SIGINT','SIGTERM']) process.once(sig, dropPoolFiles);
 function delArg(a,n){const k='--'+n;for(let i=a.indexOf(k);i>=0;i=a.indexOf(k)){a.splice(i,Math.min(2,a.length-i));}}
 function run(args){return new Promise((ok,bad)=>{const ch=spawn(process.execPath,[path.join(dir,'selfplay-legacy.js'),...args],{stdio:'inherit'});['SIGINT','SIGTERM'].forEach(s=>process.once(s,()=>{try{ch.kill(s);}catch(_){}}));ch.on('error',bad);ch.on('exit',c=>c===0?ok():bad(new Error('legacy selfplay exited '+c)));});}
 async function main(){
@@ -33,7 +65,7 @@ async function main(){
 
   const baseArgs=()=>{
     const a=original.slice();
-    if(slice.length){setArg(a,'model',slice[0]);setArg(a,'modelPool',slice.slice(1).join(','));}
+    if(slice.length){setArg(a,'model',slice[0]);setPool(a,slice.slice(1));}
     setArg(a,'levels',ladder.levels.join(',')); setArg(a,'deep',ladder.levels.join(','));
     // Deliberately overrides run.js's old fixed 60/30/10 split. The wrapper derives the ladder
     // share from live evidence; these games train the network but do not alter official Elo.

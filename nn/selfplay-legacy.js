@@ -244,7 +244,19 @@ function main() {
   // weights, just not best.json's. --modelPool gives EACH SIDE of EACH nn-involving game its own
   // independent roll into a wider set, so an nnnn game can genuinely be two DIFFERENT
   // architectures facing off, not one architecture facing itself under an alias.
-  const modelPoolPaths = (arg('modelPool', '') || '').split(',').map(s => s.trim()).filter(Boolean);
+  // --modelPoolFile is the same list, one path per line, read from disk instead of argv. The pool
+  // is one comma-joined argument, and Windows caps a whole command line at 32,767 characters, so a
+  // roster of a few hundred models silently walks into `spawn ENAMETOOLONG` -- which is not a
+  // graceful degradation, it kills the self-play batch outright. Measured on the real machine: 522
+  // models failed, 496 survived, so this had been sitting just under the edge and the population
+  // only grows. Worse, this process re-spawns its own workers with the same list, paying the limit
+  // twice. The file has no such ceiling; --modelPool still works and stays the default for callers
+  // that pass a handful of paths.
+  const modelPoolFile = arg('modelPoolFile', null);
+  const modelPoolPaths = modelPoolFile
+    ? (() => { try { return fs.readFileSync(modelPoolFile, 'utf8').split(/\r?\n/).map(s => s.trim()).filter(Boolean); }
+               catch (e) { console.error(`[selfplay] could not read --modelPoolFile ${modelPoolFile}: ${e.message}`); return []; } })()
+    : (arg('modelPool', '') || '').split(',').map(s => s.trim()).filter(Boolean);
   // run.js derives one positive sampling weight per frozen candidate from the SAME fitted Elo
   // summary that decides promotion and retirement.  It is intentionally only a bias, not a hard
   // gate: high-ranked, tightly-measured models should shape more of the corpus, while an uncertain
@@ -378,7 +390,8 @@ function main() {
       '--randomStartFrac', String(randomStartFrac), '--repeatGuard', String(repeatGuard),
       ...(seedFile ? ['--seedFrom', String(seedFrom), '--seedPool', seedFile] : ['--seedFrom', '0']),
       '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(','),
-      ...(modelPoolPaths.length ? ['--modelPool', modelPoolPaths.join(',')] : []),
+      ...(modelPoolFile ? ['--modelPoolFile', modelPoolFile]
+          : modelPoolPaths.length ? ['--modelPool', modelPoolPaths.join(',')] : []),
       '--modelPoolWeights', JSON.stringify(modelPoolWeights),
       '--modelPoolDepths', JSON.stringify(modelPoolDepths),
       ...(coverA ? ['--coverageA', JSON.stringify(coverA)] : []),
