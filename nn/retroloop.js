@@ -95,7 +95,16 @@ function pushData(tag) {
   // warning and the loop keeps mining, so the failure is silent -- lanes run for hours writing rows
   // that never leave the machine. Observed live: 14 workers, ~20 jobs done, zero retro-ratchet-*
   // files on the remote. run.js's status push hit this same trap and already documents it.
-  gitSoft(['add', '-Af', 'nn/data'], 'git add');
+  // Scoped to THIS loop's own output, not the whole directory. `nn/data` swept up everything any
+  // other process happened to have written there -- run.js's batch-NNN.jsonl above all, which is a
+  // shared filename every trainer produces, so two machines pushed conflicting batch-106 files
+  // while the operator had explicitly answered "another machine is running" to avoid exactly that.
+  // --no-push-artifacts turns run.js's own artefact push off; it cannot turn off a second process
+  // pushing the same files on run.js's behalf. The -Af also forced past .gitignore, which meant the
+  // per-worker .jsonl.wNN shards -- untracked on purpose, 307 of them removed from history -- were
+  // silently re-added on the next tick. Observed live: shards reappearing in a pull minutes after
+  // being deleted.
+  gitSoft(['add', '-Af', 'nn/data/retro-*.jsonl'], 'git add');
   try {
     const staged = git(['diff', '--cached', '--stat']).trim();
     if (!staged) return;                      // nothing new since last push
