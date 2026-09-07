@@ -1,0 +1,34 @@
+{
+  "updated": "2026-09-07T09:20:42.497Z",
+  "machine": "desktop-2b7iqhn",
+  "basis": "global 90% Elo lower bound across D1-D4",
+  "medals": {
+    "gold": {
+      "source": "ckpt-112",
+      "sourceId": "ckpt-112@D1",
+      "depth": 1,
+      "games": 12,
+      "elo": -7.5,
+      "eloLo": -209.4,
+      "eloHi": 153.8
+    },
+    "silver": {
+      "source": "best.pre-tournament-1785374855145",
+      "sourceId": "best.pre-tournament-1785374855145@D1",
+      "depth": 1,
+      "games": 12,
+      "elo": -74.6,
+      "eloLo": -242,
+      "eloHi": 121
+    },
+    "bronze": {
+      "source": "best.pre-tournament-1785410737772",
+      "sourceId": "best.pre-tournament-1785410737772@D1",
+      "depth": 1,
+      "games": 12,
+      "elo": -132,
+      "eloLo": -277,
+      "eloHi": 109.9
+    }
+  }
+}
