@@ -77,14 +77,26 @@ boards** button opens it, **F2** in the wrapper flips between the two pages from
 either side, and its "full game →" link returns to the desktop client. The
 showcase is attract-mode only — real matches all run in the one simulation.
 
-The first desktop board uses walnut grain, brass markings and blue/copper metal
-pieces, with soft shadows and the game's studio reflections. The menu, match and
-rematch use the same scene. Balanced graphics cap resolution at 1.5× and shadow
-maps at 1024; High allows 2× and 2048. Both respect lower device resolution.
-In a match the flat 2D board sits beside the 3D view with a draggable divider
-between them — the same split (and #splitHandle) the browser build uses, just
-themed to the walnut chrome; desktop is never missing a view the web build has.
-If WebGL cannot initialize, the flat board alone remains playable.
+The desktop board uses wood grain, brass markings and blue/copper metal pieces,
+with soft shadows and the game's studio reflections. The menu, match and rematch
+use the same scene. Balanced graphics cap resolution at 1.5× and shadow maps at
+1024; High allows 2× and 2048. Both respect lower device resolution.
+
+Settings offers four board finishes (Walnut, Ebony, Maple, Slate). Each is a
+single entry defining both the flat board's palette and the 3D surface, markings,
+rim and backdrop, so one choice repaints both views and they cannot drift apart.
+Changing it re-bakes the 1536² wood texture, which is why it only happens on an
+actual change and not on every theme refresh.
+
+In a match the 3D view takes the whole window and the flat 2D board floats over
+its bottom-left corner, clipped to a circle — the board it draws is a disc, and a
+square tile spends a third of its area on empty corners. Drag the grip on its
+outer edge along the diagonal to resize it, from a glanceable dial up to a
+genuine second board. Both builds go through the one sizing function in
+index.html (`resize()`): the browser gets the side-by-side split, the desktop
+gets the corner layout, and neither has a second copy of the maths. Desktop is
+never missing a view the web build has. If WebGL cannot initialize, the flat
+board alone remains playable.
 
 Play starts the selected AI level and side. Same-screen play is untimed. Esc
 opens the match menu and pauses offline matches, including an AI turn; an online
@@ -99,9 +111,21 @@ no URL bar could not otherwise reach.
 | --- | --- |
 | Mouse | Click a foot to pin; drag another to swing; right-drag the camera |
 | Keyboard | 1–3 pin/re-pick; arrows swing; Enter ends turn; Backspace cancels; Esc menu |
-| Standard controller | LB/RB choose foot; A pins/ends turn; left stick swings; B cancels; Start menu |
+| Controller (both schemes) | D-pad ←/→ choose foot; A pins/ends turn; B cancels; Start menu |
+| …**Sticks** scheme | Push the right stick out to any direction, then turn it: the piece follows degree for degree. Left stick moves the camera |
+| …**Triggers** scheme | RT turns clockwise, LT anticlockwise; how hard you pull sets the speed |
 | Controller menus | D-pad moves focus; A activates; left/right changes selectors and sliders |
 | Window | F11 toggles fullscreen; F2 flips game ↔ showcase; Settings also offers fullscreen in Electron |
+
+The controller scheme is a Settings choice. The D-pad picks the foot in both, so
+that never moves when you switch. In **Sticks** the right stick is a dial rather
+than a direction you hold: reaching a direction takes the grip without turning
+anything, and only rotation from there drives the piece — releasing to the centre
+and re-gripping starts a fresh delta instead of jumping. In **Triggers** the pull
+is analog, so a feather press is a slow controllable creep. The pad pulses each
+time a foot crosses a printed line, the rule that decides the turn. Note the
+game itself allows one swing direction per turn, so turning the dial back does
+not unwind a swing — that is the rulebook, not the input.
 
 ```bash
 # From the repository root: browser development preview

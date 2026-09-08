@@ -4305,9 +4305,15 @@ Piece.prototype.draw = function(activeIdx) {
     // pad drew the foot ~5× wider than its magnet, so a corner the fat pad "covered" was often well
     // short of the true contact point and read as an unfair block. A small px floor keeps it visible
     // and the separate (larger) hitRadius keeps it easy to tap on a phone.
-    ctx.strokeStyle=col; ctx.lineWidth=3; ctx.lineCap='round';
+    // Leg and hub are sized from the board's scale, not in fixed pixels. A fixed width is a
+    // different piece at every board size — fat and stubby on a small board, spindly on a large one
+    // — so the flat board and the 3D view stopped agreeing about how thick a tripod is, and the
+    // desktop's corner board showed it worst. Tied to the foot pad (the one measurement both views
+    // already share), the drawn piece keeps the real tripod's proportions at any size.
+    const legW = Math.max(2, CFG.padRadius*scale*1.35);
+    ctx.strokeStyle=col; ctx.lineWidth=legW; ctx.lineCap='round';
     for (const f of feet){ ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.lineTo(f.x,f.y); ctx.stroke(); }
-    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(c.x,c.y,4,0,2*Math.PI); ctx.fill();
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(c.x,c.y,legW*0.85,0,2*Math.PI); ctx.fill();
     // Pointy magnet feet: drawn at the MAGNET/dot size (padRadius ≈ 0.55u), which makes the visual
     // honest against the crossing rule — the drawn dot touches the drawn line stroke at almost
     // exactly the distance the engine registers contact (0.55 + half line width ≈ touchEps). The
@@ -9471,6 +9477,10 @@ function animate() {
 // a different one (width vs height) with a different natural balance.
 const SPLIT_W_LO = 0.16, SPLIT_W_HI = 0.86;   // landscape: the flat board's share of the WIDTH
 const SPLIT_H_LO = 0.22, SPLIT_H_HI = 0.90;   // portrait:  ...of the HEIGHT
+// Desktop corner layout: the inset must match #canvas's bottom/left in desktop/presentation.css,
+// since the drag maths measures the board's growth from that same window corner.
+const CORNER_INSET = 26, CORNER_MIN = 130, CORNER_MAX = 520;
+let cornerSize = 0;   // the flat board's last corner-layout side, in CSS px (set by resize)
 // Seen from the game's raised camera the round board projects to a wide ellipse, about this much
 // wider than tall once the auto-fit has framed it (measured off the live projection). The 3D tile is
 // shaped to match, because a tile the board CAN'T fill is exactly the empty box we're removing:
@@ -9504,15 +9514,34 @@ function setViewSplit(v, persist) {
 }
 // Park the grip on the seam. Measured from the laid-out canvases rather than recomputed from the
 // sizing maths, so it stays glued to the join whichever clamp ended up deciding the split.
+// The desktop build floats the flat board in a corner over a full-window 3D view instead of
+// splitting the window between two tiles (see desktop/presentation.css). Everything that reasons
+// about the seam has to know which of the two layouts is on screen.
+function cornerLayoutActive() {
+    return !!(window.TAU_DESKTOP && renderer
+              && document.getElementById('game')?.style.display === 'flex'
+              && !passiveView() && !document.body.classList.contains('dirUnlocked'));
+}
 function layoutSplitHandle() {
     const h = document.getElementById('splitHandle'), vw = document.getElementById('views'),
           cv3 = document.getElementById('view3d');
     if (!h) return;
-    const isCornerLayout = window.TAU_DESKTOP && document.getElementById('game')?.style.display === 'flex' && renderer;
     const hidden = !renderer || cv3.style.display === 'none' || passiveView()
-                 || document.body.classList.contains('dirUnlocked') || isCornerLayout;   // hide handle for corner layout
+                 || document.body.classList.contains('dirUnlocked');   // director mode drags the boards itself
     h.classList.toggle('auto', hidden);
     if (hidden) return;
+    if (cornerLayoutActive()) {
+        // The grip rides the round board's outer corner, on the diagonal it grows along: drag away
+        // from the window corner for a bigger board, back towards it for a smaller one. Placed from
+        // the size resize() just decided rather than from a measured rect: the board's box is not
+        // reliably laid out at its new size yet on the frame that changes it, and measuring it there
+        // strands the grip at the previous layout's seam until something else forces a re-layout.
+        h.classList.remove('horz'); h.classList.add('vert');
+        h.style.left = (CORNER_INSET + cornerSize - 22) + 'px';
+        h.style.top = (window.innerHeight - CORNER_INSET - cornerSize - 4) + 'px';
+        h.style.height = '30px'; h.style.width = '';
+        return;
+    }
     const stacked = vw.classList.contains('stacked');
     h.classList.toggle('vert', !stacked); h.classList.toggle('horz', stacked);
     const rv = vw.getBoundingClientRect(), r2 = canvas.getBoundingClientRect(), r3 = cv3.getBoundingClientRect();
@@ -9537,6 +9566,15 @@ function layoutSplitHandle() {
     let dragging = false;
     const apply = ev => {
         const vw = document.getElementById('views'), r = vw.getBoundingClientRect();
+        if (cornerLayoutActive()) {
+            // Corner layout: the board grows out of the bottom-left corner, so how far the pointer
+            // has travelled along that diagonal IS its size. Mapped through the same 0..1 split the
+            // side-by-side layout stores, so one saved preference serves both.
+            const reach = Math.max(1, Math.min(r.width, r.height) - CORNER_INSET*2);
+            const dx = ev.clientX - (r.left + CORNER_INSET), dy = (r.bottom - CORNER_INSET) - ev.clientY;
+            setViewSplit(Math.max(0, Math.min(1, Math.max(dx, dy) / reach)), false);
+            return;
+        }
         const stacked = vw.classList.contains('stacked');
         // Portrait stacks 3D above the flat board, so the board's share grows UPWARD from the bottom.
         const share = stacked ? (r.bottom - ev.clientY) / Math.max(1, r.height)
@@ -9602,7 +9640,7 @@ function resize() {
 
     // Which way the two views sit is decided from a NEUTRAL split, not the player's: dragging the
     // divide should move the seam, never flip the whole layout out from under them mid-drag.
-    const isDesktopMatch = window.TAU_DESKTOP && show && document.getElementById('game')?.style.display === 'flex';
+    const isDesktopMatch = show && cornerLayoutActive();
     const sideProbe  = Math.max(200, Math.min((availW-gap)/2, availH));
     const stackProbe = Math.max(170, Math.min(availW, (availH-gap)*0.6));
     const wide = !show || (isDesktopMatch ? true : sideProbe >= stackProbe);  // corner layout always goes "wide"
@@ -9617,10 +9655,12 @@ function resize() {
     let size, w3, h3;
     if (!show) { size = Math.max(220, Math.min(availW, availH)); }
     else if (isDesktopMatch) {
-        // Corner layout: 2D board in bottom-left, 3D fills the space. Use split ratio to control 2D size.
-        const cornerShare = SPLIT_W_LO + (SPLIT_W_HI - SPLIT_W_LO) * effectiveSplit();
-        size = Math.max(140, Math.min(280, Math.min(availW - 60, availH - 60) * cornerShare));
-        w3 = availW; h3 = availH;
+        // Corner layout: the 3D view takes the whole window and the flat board floats over its
+        // bottom-left corner, sized anywhere from a glanceable dial to a genuine second board.
+        const room = Math.min(window.innerWidth, window.innerHeight) - CORNER_INSET*2;
+        size = Math.round(Math.max(CORNER_MIN, Math.min(CORNER_MAX, room * (0.16 + 0.42*effectiveSplit()))));
+        cornerSize = size;
+        w3 = window.innerWidth; h3 = window.innerHeight;
     } else if (wide) {
         const totalW = availW - gap;
         const share = SPLIT_W_LO + (SPLIT_W_HI - SPLIT_W_LO) * effectiveSplit();

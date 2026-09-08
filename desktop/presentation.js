@@ -6,15 +6,36 @@
   const root = document.documentElement;
   const $ = id => document.getElementById(id);
   const SETTINGS_KEY = 'tauDesktopSettingsV1';
-  const settings = { level:4, colour:0, quality:'balanced',
+  // Board finishes. Each one drives BOTH views from a single entry: `skin` is the flat board's
+  // palette (the shape index.html's activeSkin() expects) and `wood` re-tints the 3D surface,
+  // markings and rim. One choice, both boards — they can never drift apart.
+  const BOARD_FINISHES = [
+    { id:'walnut', name:'Walnut',
+      skin:{ shadeByZoneValue:false, flat:'#65432b', lines:'#ead5a4', rim:'#574b32', bg:'#101410', pb:'#639eb8', pr:'#dc8864' },
+      wood:{ base:[105,72,46], line:'#e1ca91', rim:'#57472e', trim:'#aa8751', bg:'#101410' } },
+    { id:'ebony', name:'Ebony',
+      skin:{ shadeByZoneValue:false, flat:'#2b2724', lines:'#c8bda6', rim:'#241f1c', bg:'#0b0d0e', pb:'#6fa8c4', pr:'#e08a63' },
+      wood:{ base:[58,52,48], line:'#cdc0a6', rim:'#2b2622', trim:'#8d8878', bg:'#0b0d0e' } },
+    { id:'maple', name:'Maple',
+      skin:{ shadeByZoneValue:false, flat:'#c8a877', lines:'#5b4526', rim:'#9b7f52', bg:'#171512', pb:'#2f6f8c', pr:'#b1502c' },
+      wood:{ base:[201,171,122], line:'#6b5024', rim:'#9d8153', trim:'#d8bd8a', bg:'#171512' } },
+    { id:'slate', name:'Slate',
+      skin:{ shadeByZoneValue:false, flat:'#3d454d', lines:'#d7e0e8', rim:'#2c333a', bg:'#0e1114', pb:'#7cb6d8', pr:'#e3906a' },
+      wood:{ base:[72,82,92], line:'#dde5ec', rim:'#2f363d', trim:'#8fa1b0', bg:'#0e1114' } },
+  ];
+  const PAD_SCHEMES = ['sticks','triggers'];
+  const settings = { level:4, colour:0, quality:'balanced', board:'walnut', padScheme:'sticks',
     reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches, haptics:true };
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     if (Number.isInteger(saved.level) && saved.level >= 1 && saved.level <= LADDER_N) settings.level = saved.level;
     if (saved.colour === 0 || saved.colour === 1) settings.colour = saved.colour;
     if (['balanced','high'].includes(saved.quality)) settings.quality = saved.quality;
+    if (BOARD_FINISHES.some(b => b.id === saved.board)) settings.board = saved.board;
+    if (PAD_SCHEMES.includes(saved.padScheme)) settings.padScheme = saved.padScheme;
     for (const k of ['reducedMotion','haptics']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
   } catch (_) {}
+  const finish = () => BOARD_FINISHES.find(b => b.id === settings.board) || BOARD_FINISHES[0];
   function saveSettings() {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
     root.classList.toggle('desktop-reduced-motion', settings.reducedMotion);
@@ -23,10 +44,10 @@
   let paused = false, pauseAt = 0, ownMatch = false, previousFocus = null;
   let currentPad = null, padButtons = [], padAxisLatch = false, padFocus = 0;
   let chosenFoot = 0, heldLeft = false, heldRight = false, lastActive = -1;
-  let textures = null, artInstalled = false, lastRumble = -Infinity;
+  let textures = null, texturesFor = null, artInstalled = false, lastRumble = -Infinity;
+  let lastCrossings = 0, stickAngle = null;
   const cameraGoal = new THREE.Vector3(), targetGoal = new THREE.Vector3();
-  const palette = { shadeByZoneValue:false, flat:'#65432b', lines:'#ead5a4',
-    rim:'#574b32', bg:'#101410', pb:'#639eb8', pr:'#dc8864' };
+  const camOffset = new THREE.Vector3(), camSpherical = new THREE.Spherical();
   const boardElement = () => renderer ? $('view3d') : canvas;
   const focusBoard = () => boardElement().focus({preventScroll:true});
 
@@ -142,13 +163,24 @@
     const fullscreen = window.tauSteam?.setFullscreen;
     showModal('Settings', `<label class="desktop-setting desktop-volume">Sound <output id="desktopVolumeValue">${userVol}%</output><input id="desktopVolume" aria-label="Sound volume" type="range" min="0" max="200" step="5" value="${userVol}"></label>
       <label class="desktop-setting">Mute<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
+      <label class="desktop-setting">Board<select id="desktopBoard">${BOARD_FINISHES.map(b=>`<option value="${b.id}">${b.name}</option>`).join('')}</select></label>
       <label class="desktop-setting">Graphics<select id="desktopQuality"><option value="balanced">Balanced</option><option value="high">High</option></select></label>
+      <label class="desktop-setting">Controller<select id="desktopPadScheme"><option value="sticks">Sticks · turn the right stick</option><option value="triggers">Triggers · pull to swing</option></select></label>
       <label class="desktop-setting">Reduce camera motion<input id="desktopMotion" type="checkbox" ${settings.reducedMotion?'checked':''}></label>
       <label class="desktop-setting">Controller vibration<input id="desktopHaptics" type="checkbox" ${settings.haptics?'checked':''}></label>
       ${fullscreen ? '<label class="desktop-setting">Fullscreen<input id="desktopFullscreen" type="checkbox"></label>' : ''}
-      <p class="desktop-result-detail">Keyboard: 1–3 choose a foot; ← → swing; Enter ends your turn. Controller: shoulders choose a foot; A pins or ends the turn; left stick swings; B cancels.${window.tauSteam ? ' F2 flips between the game and the showcase boards.' : ''}</p>`,
+      <p class="desktop-result-detail">Keyboard: 1–3 choose a foot; ← → swing; Enter ends your turn.<br>Controller: the D-pad always chooses the foot; A pins or ends the turn; B cancels. <b>Sticks</b> — push the right stick out to any direction, then turn it: the piece follows the stick degree for degree, and the left stick moves the camera. <b>Triggers</b> — RT turns clockwise, LT anticlockwise, and the harder you pull the faster it turns.${window.tauSteam ? ' F2 flips between the game and the showcase boards.' : ''}</p>`,
       [{label:'Done',onClick:() => { if(inMatch()) focusBoard(); }}], true, {dismiss:true});
     $('desktopQuality').value = settings.quality;
+    $('desktopBoard').value = settings.board;
+    $('desktopPadScheme').value = settings.padScheme;
+    $('desktopBoard').onchange = e => {
+      settings.board=e.target.value; saveSettings();
+      applyMaterials();   // rebakes the 3D surface for the new finish
+      applyTheme();       // repaints the flat board from the same entry's palette
+      render();
+    };
+    $('desktopPadScheme').onchange = e => { settings.padScheme=e.target.value; saveSettings(); };
     $('desktopVolume').oninput = e => {
       setUserVol(Number(e.target.value)); $('desktopVolumeValue').textContent = userVol+'%'; $('desktopMute').checked = !soundOn;
       if(paused && masterGain && audioCtx) masterGain.gain.setTargetAtTime(0,audioCtx.currentTime,.03);
@@ -182,7 +214,8 @@
 
   // A fixed seed makes the material stable across starts. Noise is visual only and never
   // consumes the random stream used by the opponents. The printed geometry comes from CFG.
-  function woodMaps() {
+  function woodMaps(wood) {
+    const [br,bg,bb]=wood.base;
     const S=1536, cv=document.createElement('canvas'); cv.width=cv.height=S;
     const c=cv.getContext('2d'), pixels=c.createImageData(S,S), d=pixels.data;
     for(let y=0;y<S;y++) for(let x=0;x<S;x++) {
@@ -194,13 +227,13 @@
       const noise=(hash%255)/255-.5;
       const value=broad*9+fine*2.6-pore*6+noise*3;
       const i=(y*S+x)*4;
-      d[i]=105+value; d[i+1]=72+value*.78; d[i+2]=46+value*.52; d[i+3]=255;
+      d[i]=br+value; d[i+1]=bg+value*.78; d[i+2]=bb+value*.52; d[i+3]=255;
     }
     c.putImageData(pixels,0,0);
     const bumpCv=document.createElement('canvas'); bumpCv.width=bumpCv.height=768;
     bumpCv.getContext('2d').drawImage(cv,0,0,768,768);
     const sc=S/(CFG.edgeU*2), O=S/2;
-    c.lineWidth=CFG.edgeU*CFG.lineWidthFrac*sc; c.strokeStyle='#e1ca91';
+    c.lineWidth=CFG.edgeU*CFG.lineWidthFrac*sc; c.strokeStyle=wood.line;
     for(const r of CFG.rings){ c.beginPath(); c.arc(O,O,r*sc,0,Math.PI*2); c.stroke(); }
     for(const a of CFG.sideArcs){ c.beginPath(); c.arc(O+a.cx*sc,O+a.cy*sc,a.r*sc,a.a0*Math.PI/180,a.a1*Math.PI/180); c.stroke(); }
     CFG.startDots.forEach((p,i)=>{ c.beginPath(); c.arc(O+p[0]*sc,O+p[1]*sc,CFG.padRadius*sc,0,Math.PI*2); c.fillStyle=i<3?'#82b4bd':'#df9b78'; c.fill(); });
@@ -221,13 +254,21 @@
     });
     renderer.shadowMap.needsUpdate=true;
   }
+  let boardTrim = null;
   function applyMaterials() {
     if(!renderer || !boardTop) return;
-    if(!textures) textures=woodMaps();
+    const fin=finish();
+    // Rebuild the surface only when the chosen finish actually changed — the texture is a 1536²
+    // procedural bake, far too expensive to redo on every theme refresh.
+    if(!textures || texturesFor!==fin.id){
+      const old=textures;
+      textures=woodMaps(fin.wood); texturesFor=fin.id;
+      if(old){ old.map.dispose(); old.bump.dispose(); }
+    }
     if(boardTop.material.map && boardTop.material.map!==textures.map) boardTop.material.map.dispose();
     boardTop.material.map=textures.map; boardTop.material.bumpMap=textures.bump;
     boardTop.material.bumpScale=.12; boardTop.material.roughness=.47; boardTop.material.metalness=.03; boardTop.material.needsUpdate=true;
-    boardRim.material.color.set('#57472e').convertSRGBToLinear();
+    boardRim.material.color.set(fin.wood.rim).convertSRGBToLinear();
     boardRim.material.metalness=.68; boardRim.material.roughness=.34;
     for(const pair of [tripods,htpTripods]) pair.forEach((piece,i)=>{
       const mat=piece.userData.mat;
@@ -237,14 +278,16 @@
     });
     if(!artInstalled){
       // This trim sits below the playing surface: it is never a new boundary or a support.
-      const trim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.027,CFG.edgeU*1.032,.5,128),
-        new THREE.MeshStandardMaterial({color:new THREE.Color('#aa8751').convertSRGBToLinear(),metalness:.85,roughness:.32}));
-      trim.position.y=-3.8; trim.castShadow=true; scene.add(trim);
+      boardTrim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.027,CFG.edgeU*1.032,.5,128),
+        new THREE.MeshStandardMaterial({metalness:.85,roughness:.32}));
+      boardTrim.position.y=-3.8; boardTrim.castShadow=true; scene.add(boardTrim);
       controls.mouseButtons.LEFT=null; controls.mouseButtons.RIGHT=THREE.MOUSE.ROTATE;
       camera.fov=38; camera.clearViewOffset(); camera.updateProjectionMatrix();
       artInstalled=true;
     }
-    scene.background=new THREE.Color('#101410');
+    if(boardTrim) boardTrim.material.color.set(fin.wood.trim).convertSRGBToLinear();
+    scene.background=new THREE.Color(fin.wood.bg);
+    root.style.setProperty('--desk-bg', fin.wood.bg);
     configureQuality();
   }
   // This is the MENU's own ambient layout only. A real match is never sized here: it returns
@@ -312,24 +355,72 @@
   }
   function cancelSwing() {
     if(!canPlay() || G.pinned===null) return;
-    restoreSnap(); G.pinned=null; G.pivot=null; G.handle=null; G.ptrAngle=null;
+    restoreSnap(); G.pinned=null; G.pivot=null; G.handle=null; G.ptrAngle=null; lastCrossings=0; stickAngle=null;
     if(onlineMatch){pendingKeyframes=[];lastKeyframeT=0;}
     render();
   }
-  function swing(axis,dt) {
-    if(!canPlay() || G.pinned===null || Math.abs(axis)<.16) return;
-    if(G.handle===null){
-      G.handle=(G.pinned+1)%3;
-      const f=G.pieces[G.active].feet()[G.handle];
-      G.ptrAngle=Math.atan2(f.y-G.pivot.y,f.x-G.pivot.x); playMoveBass();
-    }
+  // Analog trigger pull, 0..1 each, as one signed axis: + is clockwise (RT), - anticlockwise (LT).
+  // buttons[].value is the analog reading on a standard pad; a digital-only pad has no value, so
+  // fall back to pressed = fully pulled rather than reading a trigger as permanently released.
+  function triggerPull(i) {
+    const b=currentPad?.buttons[i]; if(!b) return 0;
+    const v=typeof b.value==='number' ? b.value : (b.pressed?1:0);
+    return v>.04 ? (v-.04)/.96 : 0;
+  }
+  function triggerAxis() { return triggerPull(7)-triggerPull(6); }
+  // Left stick orbits the camera around whatever the controls are already looking at. Setting
+  // camManualSet stops updateCamera's auto-frame from hauling the view back the next frame — the
+  // same latch a mouse drag sets, so a pad and a mouse hand off to each other cleanly.
+  function orbitCamera(lx,ly,dt) {
+    if(!renderer || !canPlay() || (Math.abs(lx)<.18 && Math.abs(ly)<.18)) return;
+    camOffset.copy(camera.position).sub(controls.target);
+    camSpherical.setFromVector3(camOffset);
+    camSpherical.theta -= lx*1.7*dt;
+    camSpherical.phi = Math.max(.2, Math.min(Math.PI/2-.05, camSpherical.phi + ly*1.2*dt));
+    camOffset.setFromSpherical(camSpherical);
+    camera.position.copy(controls.target).add(camOffset);
+    camera.lookAt(controls.target);
+    camManualSet=true;
+  }
+  // Both input styles need the same preamble: the first movement of a turn adopts a foot as the
+  // handle and takes its current bearing as the starting angle.
+  function beginSwing() {
+    if(G.handle!==null) return true;
+    G.handle=(G.pinned+1)%3;
+    const f=G.pieces[G.active].feet()[G.handle];
+    G.ptrAngle=Math.atan2(f.y-G.pivot.y,f.x-G.pivot.x); playMoveBass();
+    return true;
+  }
+  function swing(axis,dt,dead=.16) {
+    if(!canPlay() || G.pinned===null || Math.abs(axis)<dead) return;
+    beginSwing();
     boardMove(G.ptrAngle+axis*.72*dt);
+    if(G.atLimit) rumble(.08);
+  }
+  // Direct angular steering: the stick's own bearing drives the piece one-to-one, so turning the
+  // stick 30° clockwise turns the piece 30° clockwise. The stick is a dial you rotate, not a
+  // direction you hold — which is why this tracks the CHANGE in its angle rather than its position.
+  // Below the deflection floor the angle is meaningless (a centred stick has no bearing), so the
+  // reference is dropped; re-gripping then starts a fresh delta instead of teleporting the piece by
+  // however far the stick was rotated while it sat in the middle.
+  function stickRotate(rx,ry) {
+    const mag=Math.hypot(rx,ry);
+    if(!canPlay() || G.pinned===null || mag<.45){ stickAngle=null; return; }
+    const angle=Math.atan2(ry,rx);
+    if(stickAngle===null){ stickAngle=angle; return; }
+    let delta=angle-stickAngle;
+    while(delta>Math.PI) delta-=2*Math.PI;      // shortest way round, so crossing the ±180° seam
+    while(delta<-Math.PI) delta+=2*Math.PI;     // never reads as a full turn the other way
+    stickAngle=angle;
+    if(!delta) return;
+    beginSwing();
+    boardMove(G.ptrAngle+delta);
     if(G.atLimit) rumble(.08);
   }
   function pollInput(dt) {
     const pads=navigator.getGamepads?.() || [];
     currentPad=Array.from(pads).find(p=>p?.connected && p.mapping==='standard') || null;
-    if(lastActive!==G.active){lastActive=G.active;chosenFoot=0;heldLeft=heldRight=false;}
+    if(lastActive!==G.active){lastActive=G.active;chosenFoot=0;heldLeft=heldRight=false;lastCrossings=0;stickAngle=null;}
     if(currentPad){
       const down=i=>!!currentPad.buttons[i]?.pressed, pressed=i=>down(i)&&!padButtons[i];
       const context=$('htpFull') || (dialogOpen()?$('modalBox'):(!inMatch()?home:null));
@@ -346,32 +437,33 @@
         if(pressed(1)&&$('htpFull'))$('htpClose')?.click();
       } else if(inMatch()) {
         if(pressed(9))openPause();
-        // Left stick selects foot: divide left stick X-axis into 3 sectors (120° each)
-        const lx = currentPad.axes[0] || 0, ly = currentPad.axes[1] || 0;
-        const lAngle = Math.atan2(ly, lx) * 180 / Math.PI;  // -180 to 180
-        const footFromAngle = Math.round(((lAngle + 180 + 60) / 120)) % 3;  // 0-2
-        if (Math.abs(lx) > 0.5 || Math.abs(ly) > 0.5) {
-          if (footFromAngle !== chosenFoot) chooseFoot(footFromAngle);
+        // The D-pad picks the foot in EVERY scheme — one thing that never moves, so the sticks and
+        // triggers are free to mean different things per scheme without the choice of foot moving too.
+        if(pressed(14))chooseFoot(chosenFoot-1);
+        if(pressed(15))chooseFoot(chosenFoot+1);
+        if(pressed(0))pinOrCommit();
+        if(pressed(1))cancelSwing();
+        if(settings.padScheme==='triggers'){
+          // Analog triggers: right clockwise, left anticlockwise, and how far you pull IS the speed.
+          // Triggers rest at a true zero (no stick drift), so the dead zone can be tiny and a feather
+          // press still gives a slow, controllable creep.
+          swing(triggerAxis(),dt,.02);
+        } else {
+          stickRotate(currentPad.axes[2]||0, currentPad.axes[3]||0);       // right stick IS the dial
+          orbitCamera(currentPad.axes[0]||0, currentPad.axes[1]||0, dt);   // left stick moves the camera
         }
-        // Right stick swings (X-axis: left=-1, right=+1)
-        const rx = currentPad.axes[2] || 0;
-        if (G.pinned !== null && Math.abs(rx) > 0.16) {
-          if (G.handle === null) {
-            G.handle = (G.pinned + 1) % 3;
-            const f = G.pieces[G.active].feet()[G.handle];
-            G.ptrAngle = Math.atan2(f.y - G.pivot.y, f.x - G.pivot.x);
-            playMoveBass();
-          }
-          boardMove(G.ptrAngle + rx * .72 * dt);
-          if (G.atLimit) rumble(.08);
+        // A short pulse each time a foot actually crosses a printed line: the rule that decides the
+        // turn, felt rather than read off the crossings counter.
+        if(typeof G.crossings==='number'){
+          if(G.crossings>lastCrossings) rumble(.34);
+          lastCrossings=G.crossings;
         }
-        // Trigger or A button confirms foot selection
-        if (pressed(0)) pinOrCommit();
-        if (pressed(1)) cancelSwing();
         if(canPlay())v3HoverIdx=G.pinned===null?chosenFoot:G.pinned;
       }
       padButtons=currentPad.buttons.map(b=>b.pressed);
-      $('desktopInputHint').innerHTML='<kbd>Left stick</kbd> select foot · <kbd>A</kbd> pin / end<br><kbd>Right stick</kbd> swing · <kbd>B</kbd> cancel';
+      $('desktopInputHint').innerHTML = settings.padScheme==='triggers'
+        ? '<kbd>D-pad ← →</kbd> choose foot · <kbd>A</kbd> pin / end<br><kbd>LT / RT</kbd> swing — press harder to go faster'
+        : '<kbd>D-pad ← →</kbd> choose foot · <kbd>A</kbd> pin / end<br>Turn the <kbd>right stick</kbd> like a dial · <kbd>Left stick</kbd> camera';
     } else { padButtons=[]; padAxisLatch=false; }
     if(heldLeft||heldRight)swing((heldRight?1:0)-(heldLeft?1:0),dt);
   }
@@ -408,10 +500,19 @@
 
   window.tauDesktop={
     get paused(){return paused;},
-    get skin(){return palette;},
+    get skin(){return finish().skin;},
+    get padScheme(){return settings.padScheme;},
+    set padScheme(v){ if(PAD_SCHEMES.includes(v)){ settings.padScheme=v; saveSettings(); } },
+    get board(){return settings.board;},
+    set board(v){ if(BOARD_FINISHES.some(b=>b.id===v)){ settings.board=v; saveSettings(); applyMaterials(); applyTheme(); render(); } },
+    get boards(){return BOARD_FINISHES.map(b=>({id:b.id,name:b.name}));},
     resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult,
     untimedLocal:()=>ownMatch&&!vsAI&&!onlineMatch,
-    onMatchStart(){ ownMatch=false; paused=false; heldLeft=heldRight=false; lastActive=-1; focusBoard(); resize(); },
+    // The corner layout keys off flags (#game's display, body.ingame) that the start sequence sets
+    // across several steps, so the first resize can still be reading the menu's world. Settle it on
+    // the next frame, once every flag for this match is actually in place.
+    onMatchStart(){ ownMatch=false; paused=false; heldLeft=heldRight=false; lastActive=-1; lastCrossings=0;
+      focusBoard(); resize(); requestAnimationFrame(()=>resize()); },
     onMenu(){ ownMatch=false; paused=false; heldLeft=heldRight=false; camManualSet=false; resize(); $('desktopPlay').focus({preventScroll:true}); },
     onModalShown(){
       delete $('modalBox').dataset.desktopResult;

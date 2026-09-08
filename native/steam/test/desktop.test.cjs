@@ -77,7 +77,7 @@ test('the home menu reaches the showcase and the analysis lab',async t=>{
   assert.deepEqual(g.errors,[]);
 });
 
-test('a real match hands board sizing to the web split view, not a cut-down desktop layout',async t=>{
+test('a real match hands board sizing to the shared layout, not a cut-down desktop one',async t=>{
   const g=await game();t.after(g.close);
   // The old "Overhead view" corner-minimap toggle is gone -- the flat board is no longer hidden
   // behind a mode switch, it's just always there beside the 3D view (see native/README.md).
@@ -86,14 +86,14 @@ test('a real match hands board sizing to the web split view, not a cut-down desk
     JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')||'{}'), 'map'), false);
   g.$('desktopLocal').click();g.tick();
   // Simulate WebGL being available (this harness has no real GPU) and confirm window.tauDesktop's
-  // resize hook backs OFF while a match is on screen, instead of doing its own board sizing --
-  // that hand-off is what lets index.html's own resize()/#splitHandle math run, the same one the
-  // browser build uses. Regression guard for the bug this fixed: the desktop CSS gap for #views
-  // must never diverge from the split math's own gap budget (see presentation.css), or the two
-  // boards silently wrap onto separate rows instead of sitting side by side.
+  // resize hook backs OFF while a match is on screen, instead of doing its own board sizing. That
+  // hand-off is what puts BOTH builds through the one sizing function in index.html: the browser
+  // gets the side-by-side split, the desktop gets the corner layout, and neither has a second,
+  // quietly diverging copy of the maths. The flat board is never hidden behind a mode switch.
   g.read("renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}}");
   assert.equal(g.read('tauDesktop.resize()'), false,
     'a real match must not be laid out by the desktop-only path');
+  assert.equal(g.read('cornerLayoutActive()'), true, 'the desktop match uses the corner layout');
   assert.deepEqual(g.errors,[]);
 });
 
@@ -111,20 +111,126 @@ test('standard controller pins, swings, commits, cancels and opens the menu',asy
     vibrationActuator:{playEffect:()=>Promise.resolve()}};
   g.w.navigator.getGamepads=()=>[pad];
   const press=i=>{pad.buttons[i].pressed=true;g.tick();pad.buttons[i].pressed=false;g.tick();};
+  // The right stick is a dial: sweep it through an arc and the piece follows the same arc.
+  const sweep=(fromDeg,toDeg)=>{
+    const step=toDeg>fromDeg?4:-4;
+    for(let a=fromDeg;step>0?a<=toDeg:a>=toDeg;a+=step){
+      pad.axes[2]=Math.cos(a*Math.PI/180); pad.axes[3]=Math.sin(a*Math.PI/180); g.tick();
+    }
+    pad.axes[2]=pad.axes[3]=0; g.tick();
+  };
   g.$('desktopLocal').click();g.tick();
-  // Left stick selects foot: rotate it to select foot 1 (lx=-1, ly=0 maps to foot 1)
-  pad.axes[0]=-1;pad.axes[1]=0;g.tick(300);pad.axes[0]=0;
-  press(0);assert.equal(g.read('G.pinned'),1);
-  // Right stick swings: move it right to start swing and end turn
-  pad.axes[2]=1;g.tick(300);pad.axes[2]=0;press(0);
+  // The D-pad chooses the foot in every scheme; the right stick swings in the default one.
+  press(15);press(0);assert.equal(g.read('G.pinned'),1);
+  sweep(0,40);press(0);
   assert.equal(g.read('G.active'),1);
   const before=g.read('JSON.stringify(takeSnap())');
-  // Select a foot and swing again
-  press(0);pad.axes[2]=1;g.tick(300);pad.axes[2]=0;press(1);
+  press(0);sweep(0,40);press(1);
   assert.equal(g.read('JSON.stringify(takeSnap())'),before);
   assert.equal(g.read('G.pinned'),null);
   press(9);assert.equal(g.w.tauDesktop.paused,true);
   press(0);assert.equal(g.w.tauDesktop.paused,false);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the right stick is a dial: the piece turns through the same angle the stick does',async t=>{
+  const g=await game();t.after(g.close);
+  const pad={connected:true,mapping:'standard',axes:[0,0,0,0],
+    buttons:Array.from({length:17},()=>({pressed:false,value:0})),
+    vibrationActuator:{playEffect:()=>Promise.resolve()}};
+  g.w.navigator.getGamepads=()=>[pad];
+  const press=i=>{pad.buttons[i].pressed=true;g.tick();pad.buttons[i].pressed=false;g.tick();};
+  const point=deg=>{pad.axes[2]=Math.cos(deg*Math.PI/180);pad.axes[3]=Math.sin(deg*Math.PI/180);g.tick();};
+  g.$('desktopLocal').click();g.tick();
+  press(15);press(0);assert.equal(g.read('G.pinned'),1);
+  // Pushing the stick OUT to a direction must not move the piece: you have to reach some direction
+  // before you can rotate from it, and that reach is not itself a rotation. Without this the piece
+  // would jump by the bearing of wherever you happened to shove the stick first.
+  point(0); point(0); point(0);
+  assert.equal(g.read('G.netRad'),0,'reaching a direction takes the grip, it does not turn the piece');
+  // Now rotate the stick 10° clockwise from there: the piece turns 10°, degree for degree. Kept
+  // inside the turn's crossing allowance on purpose — past that the RULES cap the arc, so a larger
+  // sweep would be measuring the rulebook rather than the input mapping. atLimit is asserted so
+  // this test fails loudly if it ever drifts into that region instead of quietly measuring a cap.
+  for(let a=0;a<=10;a+=5) point(a);
+  const turned=g.read('G.netRad')*180/Math.PI;
+  assert.equal(g.read('G.atLimit'),false,'the sweep stays inside the legal arc');
+  assert.ok(Math.abs(turned-10)<0.5, `expected 10 degrees of turn, got ${turned.toFixed(2)}`);
+  // Holding the stick still adds nothing further — a dial that is not being turned is not an input.
+  for(let i=0;i<12;i++) g.tick();
+  assert.ok(Math.abs(g.read('G.netRad')*180/Math.PI-turned)<0.01,'a stationary stick does not keep turning it');
+  // Turning the stick back does NOT unwind the swing, and that is the rulebook, not the input:
+  // applySwing allows one direction per turn (index.html), so the reverse delta is delivered and
+  // then declined. Asserted rather than assumed, so a future change to that rule is noticed here.
+  for(let a=10;a>=0;a-=5) point(a);
+  assert.ok(Math.abs(g.read('G.netRad')*180/Math.PI-turned)<0.01,
+    'one direction per turn: reversing the dial does not unwind the swing');
+  // Letting go and re-gripping elsewhere does not teleport it by the angle travelled while centred.
+  pad.axes[2]=pad.axes[3]=0;g.tick();
+  point(180);point(180);
+  assert.ok(Math.abs(g.read('G.netRad')*180/Math.PI-turned)<0.01,'re-gripping starts a fresh delta');
+  // A fresh turn is free to go the other way: the same dial, rotated anticlockwise, turns the piece
+  // anticlockwise. This is what proves the sign mapping works in both directions.
+  g.read('restoreSnap();G.pinned=null;G.pivot=null;G.handle=null;G.ptrAngle=null');
+  pad.axes[2]=pad.axes[3]=0;g.tick();
+  press(15);press(0);
+  point(0);point(0);
+  for(let a=0;a>=-10;a-=5) point(a);
+  const anti=g.read('G.netRad')*180/Math.PI;
+  assert.ok(Math.abs(anti+10)<0.5, `anticlockwise should turn it -10 degrees, got ${anti.toFixed(2)}`);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the trigger scheme swings by how far the trigger is pulled, and the left stick never does',async t=>{
+  const g=await game();t.after(g.close);
+  // Analog triggers: buttons carry a 0..1 value, which IS the swing speed.
+  const trig=(i,v)=>{pad.buttons[i].value=v;pad.buttons[i].pressed=v>.5;};
+  const pad={connected:true,mapping:'standard',axes:[0,0,0,0],
+    buttons:Array.from({length:17},()=>({pressed:false,value:0})),
+    vibrationActuator:{playEffect:()=>Promise.resolve()}};
+  g.w.navigator.getGamepads=()=>[pad];
+  const press=i=>{pad.buttons[i].pressed=true;g.tick();pad.buttons[i].pressed=false;g.tick();};
+  g.$('desktopLocal').click();g.tick();
+  g.w.tauDesktop.padScheme='triggers';
+  assert.equal(g.w.tauDesktop.padScheme,'triggers');
+  press(15);press(0);assert.equal(g.read('G.pinned'),1,'D-pad still picks the foot here');
+  // A feather pull moves the piece — the old .16 stick dead zone would have swallowed it entirely.
+  trig(7,.10);g.tick(300);trig(7,0);
+  const light=Math.abs(g.read('G.netRad'));
+  assert.ok(light>0,'a light pull still turns the piece');
+  g.read('restoreSnap();G.pinned=null;G.pivot=null;G.handle=null;G.ptrAngle=null');
+  press(15);press(0);
+  trig(7,1);g.tick(300);trig(7,0);
+  assert.ok(Math.abs(g.read('G.netRad'))>light*2,'pulling harder turns it faster');
+  // In this scheme the left stick is inert: it must not swing the piece.
+  g.read('restoreSnap();G.pinned=null;G.pivot=null;G.handle=null;G.ptrAngle=null');
+  press(15);press(0);
+  pad.axes[0]=1;g.tick(300);pad.axes[0]=0;
+  assert.equal(g.read('G.netRad'),0,'the left stick does not swing in the trigger scheme');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('choosing a board finish repaints the flat board and the 3D one from the same entry',async t=>{
+  const g=await game();t.after(g.close);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    tauDesktop.applyMaterials();`);
+  const ids=g.w.tauDesktop.boards.map(b=>b.id);
+  assert.ok(ids.includes('walnut') && ids.length>1,'more than one finish is offered');
+  const other=ids.find(id=>id!=='walnut');
+  const before={ flat:g.read('activeSkin().flat'), bg:g.read("'#'+scene.background.getHexString()") };
+  g.w.tauDesktop.board=other;
+  // One choice drives BOTH views: the flat board's palette and the 3D scene move together, so the
+  // two boards can never end up showing different materials for the same game.
+  assert.notEqual(g.read('activeSkin().flat'),before.flat,'the flat board repainted');
+  assert.notEqual(g.read("'#'+scene.background.getHexString()"),before.bg,'the 3D scene repainted');
+  assert.equal(g.read('activeSkin().flat'),
+    g.w.tauDesktop.boards.length && g.w.tauDesktop.skin.flat,'both read the same finish entry');
+  assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).board,other,'the choice persists');
   assert.deepEqual(g.errors,[]);
 });
 
