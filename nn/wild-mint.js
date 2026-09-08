@@ -24,8 +24,12 @@ function cudaReady(){
     {encoding:'utf8',windowsHide:true});
   return p.status===0 && String(p.stdout).trim()==='yes';
 }
+const TRUNK10x400=Array(10).fill(400).join(',');
 const useTorch=cudaReady();
 const backend=useTorch?'torch-cuda':'js-cpu';
+// A plain string is a plain net, and stays one -- the first eight keep their slugs and their
+// entries in .wild-mint-state.json, so a resumed expedition still recognises them as done.
+// An object may also carry a memory topology and its own id.
 const shapes=[
   '256',
   '256,128',
@@ -35,11 +39,32 @@ const shapes=[
   '64,64,64,64,64,64',
   '192,96,32',
   '128,32,128,32',
+  // Bulge twins: identical shape, identical seed, and the only difference is whether the two
+  // 40-wide pinches have a route around them. Every bottleneck above is UNBYPASSED, so none of
+  // them separates "narrow layers lose information" from "narrow layers lose information they
+  // have no way around". These two do.
+  {id:'peak-bulge-plain-200x40',   shape:'200,40,200,40,200', eloWeight:'logistic'},
+  {id:'peak-bulge-dense40-200x40', shape:'200,40,200,40,200', eloWeight:'logistic',
+   topology:'dense-memory', memoryWidth:40, residualScale:0.2},
+  // Ablations of the production recipe (10x400, k=40, scale 0.2 -- best.json and half the pool).
+  // k004/016/040/120 move only the packet width; noresid keeps the packets and drops the residual
+  // trunk. k040 is the shared control for both questions.
+  {id:'peak-mem-k004-10x400', shape:TRUNK10x400, eloWeight:'logistic',
+   topology:'dense-memory', memoryWidth:4,   residualScale:0.2},
+  {id:'peak-mem-k016-10x400', shape:TRUNK10x400, eloWeight:'logistic',
+   topology:'dense-memory', memoryWidth:16,  residualScale:0.2},
+  {id:'peak-mem-k040-10x400', shape:TRUNK10x400, eloWeight:'logistic',
+   topology:'dense-memory', memoryWidth:40,  residualScale:0.2},
+  {id:'peak-mem-k120-10x400', shape:TRUNK10x400, eloWeight:'logistic',
+   topology:'dense-memory', memoryWidth:120, residualScale:0.2},
+  {id:'peak-mem-k040-noresid-10x400', shape:TRUNK10x400, eloWeight:'logistic',
+   topology:'dense-memory', memoryWidth:40,  residualScale:0},
 ];
 function arg(n,d){const i=process.argv.indexOf('--'+n);return i>=0?process.argv[i+1]:d;}
 function loadState(){try{return JSON.parse(fs.readFileSync(statePath,'utf8'));}catch(_){return {version:1,shapes:{}};}}
 function saveState(s){fs.mkdirSync(models,{recursive:true});const t=`${statePath}.tmp-${process.pid}-${Date.now()}`;fs.writeFileSync(t,JSON.stringify(s,null,2));fs.renameSync(t,statePath);}
-function slug(shape,i){return `wild-${String(i+1).padStart(2,'0')}-${shape.replace(/,/g,'x')}`;}
+const spec=x=>typeof x==='string'?{shape:x}:x;
+function slug(x,i){const s=spec(x);return s.id||`wild-${String(i+1).padStart(2,'0')}-${s.shape.replace(/,/g,'x')}`;}
 function runChild(command,args,onLine){return new Promise((resolve,reject)=>{
   const ch=spawn(command,args,{stdio:['ignore','pipe','pipe'],windowsHide:true});
   let buf='';
@@ -47,11 +72,16 @@ function runChild(command,args,onLine){return new Promise((resolve,reject)=>{
   ch.stdout.on('data',eat);ch.stderr.on('data',d=>process.stderr.write(d));
   ch.on('error',reject);ch.on('exit',c=>c===0?resolve():reject(new Error(`${command} exited ${c}`)));
 });}
-async function runTrain(shape,start,out,lr,onMetric){
+async function runTrain(x,start,out,lr,onMetric){
+  const sp=spec(x),shape=sp.shape;
   if(useTorch){
     const args=['-u',path.join(dir,'torch-train-core.py'),'--epochs',String(chunkEpochs),
       '--seed',String(seed),'--lr',String(lr),'--wd','0.0001','--batch',String(torchBatch),
       '--gameWeight','sqrt','--familyWeight','sqrt','--drawWeight','0.25','--device','cuda',
+      ...(sp.eloWeight?['--eloWeight',sp.eloWeight]:[]),
+      ...(sp.topology?['--topology',sp.topology]:[]),
+      ...(sp.memoryWidth!=null?['--memoryWidth',String(sp.memoryWidth)]:[]),
+      ...(sp.residualScale!=null?['--residualScale',String(sp.residualScale)]:[]),
       '--hidden',shape,'--out',out,...(start>0&&fs.existsSync(out)?['--resume',out]:[])];
     await runChild('python',args,line=>{
       const m=line.match(/epoch\s+(\d+)\/(\d+): train mse ([0-9.eE+-]+), val mse ([0-9.eE+-]+), val sign-acc ([0-9.]+)%/);
@@ -59,6 +89,11 @@ async function runTrain(shape,start,out,lr,onMetric){
     });
     await runChild(process.execPath,[path.join(dir,'verify-torch-export.js'),out],()=>{});
   }else{
+    // net.js cannot train a structured topology at all, and a plain net wearing an ablation's
+    // name would silently answer the question wrong. Fail the shape instead; the loop records
+    // the failure and carries on with the rest of the expedition.
+    if(sp.topology&&sp.topology!=='plain')
+      throw new Error(`${sp.topology} needs CUDA PyTorch; refusing to mint a plain net as this shape`);
     const args=[path.join(dir,'train.js'),'--epochs',String(chunkEpochs),'--seed',String(seed),
       '--lr',String(lr),'--lrDecay','flat','--out',out,
       ...(start>0&&fs.existsSync(out)?['--resume',out]:['--hidden',shape])];
@@ -68,13 +103,14 @@ async function runTrain(shape,start,out,lr,onMetric){
     });
   }
 }
-async function trainShape(shape,i,state){
-  const id=slug(shape,i), out=path.join(models,id+'.json'), peak=path.join(models,'.'+id+'.peak'), curve=path.join(curves,id+'.jsonl');
+async function trainShape(x,i,state){
+  const sp=spec(x),shape=sp.shape;
+  const id=slug(x,i), out=path.join(models,id+'.json'), peak=path.join(models,'.'+id+'.peak'), curve=path.join(curves,id+'.jsonl');
   const rec=state.shapes[id]||{shape,totalEpochs:0,bestVal:null,peakEpoch:0,lastImproveEpoch:0,done:false};
   if(rec.done&&fs.existsSync(out)){console.log(`\n[wild] ${id}: already complete at epoch ${rec.peakEpoch}, skipping`);return;}
   if(rec.totalEpochs>0&&!fs.existsSync(out)){console.log(`\n[wild] ${id}: checkpoint missing, restarting this shape`);Object.assign(rec,{totalEpochs:0,bestVal:null,peakEpoch:0,lastImproveEpoch:0});}
   fs.mkdirSync(curves,{recursive:true});
-  console.log(`\n================ ${id}  shape ${shape} ================`);
+  console.log(`\n================ ${id}  shape ${shape}${sp.topology?`  ${sp.topology} k=${sp.memoryWidth} scale=${sp.residualScale}`:''} ================`);
   while(rec.totalEpochs<maxEpochs){
     const start=rec.totalEpochs;
     const lr=Math.max(0.00008,0.001*Math.pow(0.85,Math.floor(start/chunkEpochs)));
@@ -82,7 +118,7 @@ async function trainShape(shape,i,state){
     if(rec.backend&&rec.backend!==backend)console.log(`[wild] ${id}: continuing checkpoint via ${backend} (was ${rec.backend})`);
     rec.backend=backend;
     console.log(`[wild] ${id}: epochs ${start+1}-${start+chunkEpochs}, lr ${lr.toFixed(6)}, backend ${backend}`);
-    await runTrain(shape,start,out,lr,m=>{const row={...m,epoch:start+m.localEpoch,shape,id,backend,at:new Date().toISOString()};metrics.push(row);fs.appendFileSync(curve,JSON.stringify(row)+'\n');});
+    await runTrain(x,start,out,lr,m=>{const row={...m,epoch:start+m.localEpoch,shape,id,backend,at:new Date().toISOString()};metrics.push(row);fs.appendFileSync(curve,JSON.stringify(row)+'\n');});
     rec.totalEpochs=start+chunkEpochs;
     const chunkBest=metrics.reduce((a,b)=>!a||b.valMse<a.valMse?b:a,null);
     if(chunkBest&&(rec.bestVal==null||chunkBest.valMse<rec.bestVal-minDelta)){
@@ -111,7 +147,7 @@ async function main(){
   console.log(`[wild] backend: ${backend}${useTorch?` (batch ${torchBatch}, verified export every chunk)`:' (install CUDA PyTorch to accelerate)'}`);
   console.log(`[wild] fixed validation split seed ${seed}; curves -> ${path.relative(process.cwd(),curves)}`);
   for(let i=0;i<shapes.length;i++){
-    try{await trainShape(shapes[i],i,state);}catch(e){console.error(`[wild] ${slug(shapes[i],i)} failed: ${e.message} — recording failure and continuing`);const id=slug(shapes[i],i);state.shapes[id]={...(state.shapes[id]||{}),shape:shapes[i],failedAt:new Date().toISOString(),error:e.message};saveState(state);}
+    try{await trainShape(shapes[i],i,state);}catch(e){console.error(`[wild] ${slug(shapes[i],i)} failed: ${e.message} — recording failure and continuing`);const id=slug(shapes[i],i);state.shapes[id]={...(state.shapes[id]||{}),shape:spec(shapes[i]).shape,failedAt:new Date().toISOString(),error:e.message};saveState(state);}
   }
   console.log('\n[wild] value expedition complete. Peak checkpoints are in nn/models; the dual-policy expedition is next.');
 }
