@@ -478,7 +478,8 @@ def main():
                 for li, layer in enumerate(self.layers):
                     a_in = a if li == 0 else torch.cat([a] + memories[:-1], dim=1)
                     branch = torch.tanh(layer(a_in))
-                    residual = 0 < li < len(self.layers) - 1 and branch.shape[-1] == a.shape[-1]
+                    residual = (self.residual_scale != 0 and 0 < li < len(self.layers) - 1
+                                and branch.shape[-1] == a.shape[-1])
                     a = a + self.residual_scale * branch if residual else branch
                     if li < len(self.layers) - 1:
                         memories.append(a[:, :self.memory_width])

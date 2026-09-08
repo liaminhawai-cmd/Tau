@@ -42,7 +42,10 @@ class MLP {
       // The residual is elementwise, so it only exists where the layer keeps its predecessor's
       // width. A shape-changing layer (a bulge trunk like 200-40-200) simply has no skip there;
       // the memory packets still cross it, which is the whole point of that geometry.
-      const residual = dense && l > 0 && l < this.W.length - 1 && a.length === nOut;
+      // residualScale 0 means NO residual path at all -- the layer behaves like a plain tanh layer
+      // and still emits and reads packets. It cannot mean a + 0*branch, which would make the layer
+      // output its own input and delete the network.
+      const residual = dense && residualScale !== 0 && l > 0 && l < this.W.length - 1 && a.length === nOut;
       const z = new Float64Array(nOut), W = this.W[l], b = this.b[l];
       for (let j = 0; j < nOut; j++) {
         let s = b[j];
@@ -67,7 +70,7 @@ class MLP {
     for(let l=0;l<this.W.length;l++){
       const z=this._valueScratch[l],W=this.W[l],b=this.b[l],nOut=this.sizes[l+1];
       const earlier=memories.length>0?memories.length-1:0;
-      const residual=l>0&&l<this.W.length-1&&a.length===nOut;
+      const residual=scale!==0&&l>0&&l<this.W.length-1&&a.length===nOut;
       for(let j=0;j<nOut;j++){
         const row=j*this.fanIns[l];let s=b[j],off=0;
         for(let i=0;i<a.length;i++)s+=W[row+off++]*a[i];

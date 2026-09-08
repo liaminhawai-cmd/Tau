@@ -162,7 +162,8 @@ def build_model(torch, nn, hidden, args, checkpoint):
                     a = raw
                 else:
                     branch = torch.tanh(raw)
-                    residual = structured and li > 0 and branch.shape[-1] == a.shape[-1]
+                    residual = (structured and args.residualScale != 0 and li > 0
+                                and branch.shape[-1] == a.shape[-1])
                     a = a + args.residualScale*branch if residual else branch
                     if args.topology == 'dense-memory':
                         memories.append(a[:, :args.memoryWidth])

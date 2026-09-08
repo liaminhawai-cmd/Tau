@@ -21,13 +21,29 @@
 //                  separate them: if the plain one sinks and the dense one does not, the pinch was
 //                  never the problem, the dead end was.
 //
-//   node nn/mint-oddballs.js [--epochs 10] [--only pancake,tower,ab,bulge]
+//   mem-k04 / k16 / k40 / k120 / k40-noresid  (--only memory, NOT in the default set)
+//                  Five ablations of the production dense-memory recipe, which is 10x400 with
+//                  k=40 and residualScale 0.2 -- best.json and half the pool are exactly this.
+//                  Two questions it has never been possible to answer:
+//                    how WIDE should the packet be? We have two dense-memory models and they
+//                      differ in k AND in message type, so neither says anything about k alone.
+//                      k04/k16/k40/k120 hold everything else fixed and sweep only the width.
+//                    is it the packets at all? Every dense-memory net bundles packets with a
+//                      residual trunk. k40-noresid keeps the packets and drops the trunk, so if
+//                      it holds up the packets were doing the work, and if it collapses they
+//                      never were. k40 is the shared control for both questions.
+//
+//   node nn/mint-oddballs.js [--epochs 10] [--only pancake,tower,ab,bulge] [--only memory]
 const path = require('path');
 const { spawn } = require('child_process');
 const dir = __dirname;
 const arg = (n, d = null) => { const i = process.argv.indexOf('--' + n); return i >= 0 ? process.argv[i + 1] : d; };
 const epochs = String(+arg('epochs', 10));
 const only = String(arg('only', 'pancake,tower,ab,bulge')).split(',').map(s => s.trim());
+
+// The production dense-memory shape: best.json and half the live pool are this exact trunk, which
+// is what makes an ablation of it worth anything -- the answer transfers to models already racing.
+const TRUNK = Array(10).fill(400).join(',');
 
 const MINTS = [
   { key: 'pancake', out: 'pancake-1024.json',  extra: ['--hidden', '1024'] },
@@ -40,6 +56,17 @@ const MINTS = [
   { key: 'bulge',   out: 'bulge-dense40-200x40.json',
     extra: ['--hidden', '200,40,200,40,200', '--topology', 'dense-memory',
             '--memoryWidth', '40', '--residualScale', '0.2'] },
+  // Ablations of the production recipe. Same trunk, same seed, same epochs as each other; the
+  // only moving part is named in the filename. k40 IS the production recipe, so it is the control
+  // for the k sweep and for the residual question at once.
+  ...[4, 16, 40, 120].map(k => ({
+    key: 'memory', out: `mem-k${String(k).padStart(3, '0')}-10x400.json`,
+    extra: ['--hidden', TRUNK, '--topology', 'dense-memory',
+            '--memoryWidth', String(k), '--residualScale', '0.2'],
+  })),
+  { key: 'memory',  out: 'mem-k040-noresid-10x400.json',
+    extra: ['--hidden', TRUNK, '--topology', 'dense-memory',
+            '--memoryWidth', '40', '--residualScale', '0'] },
 ];
 
 function run(args) {

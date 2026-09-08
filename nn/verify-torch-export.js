@@ -47,8 +47,12 @@ if (!bad) {
     fail('missing or malformed `fanIns`');
   if (doc.topology) {
     if (doc.topology.kind !== 'dense-memory-v1') fail(`unknown topology ${doc.topology.kind}`);
-    if (!(doc.topology.memoryWidth > 0) || !(doc.topology.residualScale > 0))
-      fail('dense-memory topology needs positive memoryWidth and residualScale');
+    if (!(doc.topology.memoryWidth > 0))
+      fail('dense-memory topology needs a positive memoryWidth');
+    // residualScale 0 is legal and means "packets only, no residual trunk" -- the ablation that
+    // separates the two mechanisms dense-memory has always shipped welded together.
+    if (!Number.isFinite(+doc.topology.residualScale) || +doc.topology.residualScale < 0)
+      fail('dense-memory residualScale must be a finite number >= 0');
   }
   if (doc.W.length !== doc.sizes.length - 1) fail(`${doc.W.length} weight matrices for ${doc.sizes.length - 1} layers`);
   for (let l = 0; l < doc.W.length && !bad; l++) {
