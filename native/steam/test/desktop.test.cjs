@@ -107,16 +107,20 @@ test('ordinary web entry keeps its original presentation',async t=>{
 
 test('standard controller pins, swings, commits, cancels and opens the menu',async t=>{
   const g=await game();t.after(g.close);
-  const pad={connected:true,mapping:'standard',axes:[0,0],buttons:Array.from({length:17},()=>({pressed:false})),
+  const pad={connected:true,mapping:'standard',axes:[0,0,0,0],buttons:Array.from({length:17},()=>({pressed:false})),
     vibrationActuator:{playEffect:()=>Promise.resolve()}};
   g.w.navigator.getGamepads=()=>[pad];
   const press=i=>{pad.buttons[i].pressed=true;g.tick();pad.buttons[i].pressed=false;g.tick();};
   g.$('desktopLocal').click();g.tick();
-  press(5);press(0);assert.equal(g.read('G.pinned'),1);
-  pad.axes[0]=1;g.tick(300);pad.axes[0]=0;press(0);
+  // Left stick selects foot: rotate it to select foot 1 (lx=-1, ly=0 maps to foot 1)
+  pad.axes[0]=-1;pad.axes[1]=0;g.tick(300);pad.axes[0]=0;
+  press(0);assert.equal(g.read('G.pinned'),1);
+  // Right stick swings: move it right to start swing and end turn
+  pad.axes[2]=1;g.tick(300);pad.axes[2]=0;press(0);
   assert.equal(g.read('G.active'),1);
   const before=g.read('JSON.stringify(takeSnap())');
-  press(0);pad.axes[0]=1;g.tick(300);pad.axes[0]=0;press(1);
+  // Select a foot and swing again
+  press(0);pad.axes[2]=1;g.tick(300);pad.axes[2]=0;press(1);
   assert.equal(g.read('JSON.stringify(takeSnap())'),before);
   assert.equal(g.read('G.pinned'),null);
   press(9);assert.equal(g.w.tauDesktop.paused,true);

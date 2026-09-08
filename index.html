@@ -9508,7 +9508,7 @@ function layoutSplitHandle() {
     const h = document.getElementById('splitHandle'), vw = document.getElementById('views'),
           cv3 = document.getElementById('view3d');
     if (!h) return;
-    const isCornerLayout = window.TAU_DESKTOP && inMatch() && renderer;
+    const isCornerLayout = window.TAU_DESKTOP && document.getElementById('game')?.style.display === 'flex' && renderer;
     const hidden = !renderer || cv3.style.display === 'none' || passiveView()
                  || document.body.classList.contains('dirUnlocked') || isCornerLayout;   // hide handle for corner layout
     h.classList.toggle('auto', hidden);
@@ -9602,7 +9602,7 @@ function resize() {
 
     // Which way the two views sit is decided from a NEUTRAL split, not the player's: dragging the
     // divide should move the seam, never flip the whole layout out from under them mid-drag.
-    const isDesktopMatch = window.TAU_DESKTOP && show && inMatch();
+    const isDesktopMatch = window.TAU_DESKTOP && show && document.getElementById('game')?.style.display === 'flex';
     const sideProbe  = Math.max(200, Math.min((availW-gap)/2, availH));
     const stackProbe = Math.max(170, Math.min(availW, (availH-gap)*0.6));
     const wide = !show || (isDesktopMatch ? true : sideProbe >= stackProbe);  // corner layout always goes "wide"
