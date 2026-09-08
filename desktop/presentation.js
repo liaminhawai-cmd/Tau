@@ -158,7 +158,7 @@
   toolbar.className = 'desktop-toolbar';
   toolbar.innerHTML = `<button class="desktop-brand" id="desktopHome" aria-label="Open pause menu">TAU</button>
     <button class="desktop-menu" id="desktopPause">Menu <kbd>Esc</kbd></button>
-    <div class="desktop-input-hint" id="desktopInputHint">Drag a foot to swing<br>Right-drag the 3D view to look around</div>`;
+    <div class="desktop-input-hint" id="desktopInputHint">Drag a foot to swing<br>Right-drag the 3D view to look around<br>Scroll over the flat board to resize it</div>`;
   document.body.appendChild(toolbar);
   for (let n=1;n<=LADDER_N;n++) {
     const opt = document.createElement('option'); opt.value = String(n); opt.textContent = 'Level ' + n;
@@ -576,7 +576,7 @@
         + (settings.padScheme==='triggers'
             ? '<kbd>LT / RT</kbd> swing — press harder to go faster'
             : '<kbd>Right stick ← →</kbd> swing')
-        + ' · <kbd>Left stick</kbd> camera';
+        + ' · <kbd>Left stick</kbd> camera<br>Scroll over the flat board to resize it';
     } else { padButtons=[]; padAxisLatch=false; }
     if(heldLeft||heldRight)swing((heldRight?1:0)-(heldLeft?1:0),dt);
   }

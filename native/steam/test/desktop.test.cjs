@@ -252,6 +252,31 @@ test('choosing a board finish repaints the flat board and the 3D one from the sa
   assert.deepEqual(g.errors,[]);
 });
 
+test('the corner board is resizable by a knob on its rim and by scrolling over it',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopLocal').click();g.tick();
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio:()=>{},getPixelRatio:()=>1,
+    setSize(){},shadowMap:{}};
+    camera=new THREE.PerspectiveCamera(); controls={mouseButtons:{},target:new THREE.Vector3()};
+    setViewSplit(0.5,true); resize();`);
+  // The grip has to LOOK like a control here. In the side-by-side split a hairline is enough
+  // because the seam between two tiles is itself the affordance; a board floating on a backdrop
+  // has no seam, and the 3px version of this was reported as simply not being there.
+  assert.equal(g.$('splitHandle').classList.contains('corner'),true,'the corner knob is on');
+  assert.ok(parseInt(g.$('splitHandle').style.width) >= 24,'and is a real target, not a hairline');
+  const flat = () => Number(String(canvasWidth()).replace('px','')) || 0;
+  const canvasWidth = () => g.read('canvas.style.width');
+  const wheel = dy => { g.$('canvas').dispatchEvent(Object.assign(
+    new g.w.Event('wheel',{bubbles:true,cancelable:true}), {deltaY:dy})); };
+  const mid = flat();
+  for(let i=0;i<4;i++) wheel(-120);
+  const bigger = flat();
+  assert.ok(bigger > mid, `scrolling up grows the board (${mid} -> ${bigger})`);
+  for(let i=0;i<8;i++) wheel(120);
+  assert.ok(flat() < bigger, `scrolling down shrinks it (${bigger} -> ${flat()})`);
+  assert.deepEqual(g.errors,[]);
+});
+
 test('every board in the catalogue paints the flat board, the 3D board and the pieces',async t=>{
   const g=await game();t.after(g.close);
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};

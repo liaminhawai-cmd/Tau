@@ -97,6 +97,14 @@ if (window.TAU_DESKTOP) {
     /* Portrait: the seam is horizontal, so the grip and its drag axis turn with it. */
     #splitHandle.horz { height:18px; cursor:row-resize; }
     #splitHandle.horz::before { width:42px; height:3px; }
+    /* Corner layout (desktop): a knob on the board's rim, dragged along the diagonal. It carries a
+       real disc rather than a bar because there is no seam here to hint that anything is draggable —
+       the handle IS the whole affordance, so it has to look like one at rest, not only on hover. */
+    #splitHandle.corner { opacity:0.75; cursor:nwse-resize; border-radius:50%; }
+    #splitHandle.corner::before { width:14px; height:14px; border-radius:50%;
+        box-shadow:0 0 0 3px rgba(0,0,0,.42), 0 2px 8px rgba(0,0,0,.5); }
+    #splitHandle.corner:hover, #splitHandle.corner:focus-visible, #splitHandle.corner.dragging { opacity:1; }
+    #splitHandle.corner:hover::before, #splitHandle.corner.dragging::before { width:18px; height:18px; }
     /* Auto-sized while watching a replay/spectating — nothing to drag, so it steps out of the way. */
     #splitHandle.auto { display:none; }
     /* Coach only: ease the board-size change when swapping between watching and playing, instead of
@@ -9547,13 +9555,21 @@ function layoutSplitHandle() {
         // the size resize() just decided rather than from a measured rect: the board's box is not
         // reliably laid out at its new size yet on the frame that changes it, and measuring it there
         // strands the grip at the previous layout's seam until something else forces a re-layout.
-        h.classList.remove('horz'); h.classList.add('vert');
-        h.style.left = (CORNER_INSET + cornerSize - 22) + 'px';
-        h.style.top = (window.innerHeight - CORNER_INSET - cornerSize - 4) + 'px';
-        h.style.height = '30px'; h.style.width = '';
+        // A knob, not a hairline. The side-by-side layout can afford a nearly invisible grip because
+        // the seam it sits on is itself an obvious affordance — two tiles meeting. A round board
+        // floating on a backdrop has no seam, so the only thing telling you the size is adjustable
+        // is the handle, and at 3px it was reported as simply missing.
+        h.classList.remove('horz','vert'); h.classList.add('corner');
+        // 0.7071 = cos45°: the knob sits where the diagonal leaves the circle, which is the direction
+        // the drag actually runs, rather than on the corner of an invisible bounding box.
+        const r = cornerSize/2, d = r*0.7071;
+        h.style.left = Math.round(CORNER_INSET + r + d - 15) + 'px';
+        h.style.top  = Math.round(window.innerHeight - CORNER_INSET - r - d - 15) + 'px';
+        h.style.width = h.style.height = '30px';
         return;
     }
     const stacked = vw.classList.contains('stacked');
+    h.classList.remove('corner');
     h.classList.toggle('vert', !stacked); h.classList.toggle('horz', stacked);
     const rv = vw.getBoundingClientRect(), r2 = canvas.getBoundingClientRect(), r3 = cv3.getBoundingClientRect();
     if (!stacked) {                                   // 2D left, 3D right
@@ -9567,6 +9583,7 @@ function layoutSplitHandle() {
 // Drag the grip -> the pointer position IS the new seam. The two tiles plus their gap always span
 // the whole available axis (see resize), so the pointer's fraction along #views is exactly the flat
 // board's share, and inverting the LO..HI range above turns that straight back into viewSplit.
+let wheelSave = 0;   // debounces persisting the split while a wheel gesture is still running
 (function initSplitHandle() {
     const h = document.getElementById('splitHandle');
     if (!h) return;
@@ -9614,6 +9631,18 @@ function layoutSplitHandle() {
         ev.preventDefault();
     });
     h.setAttribute('aria-valuenow', Math.round(viewSplit*100));
+    // Scroll anywhere over the flat board to resize it. The knob is the precise control and the
+    // discoverable one is this: people try the wheel on a thing they want bigger, and until now it
+    // did nothing at all here. Corner layout only — in the side-by-side split the wheel would fight
+    // the page/board scroll behaviour, and there the seam already advertises itself.
+    canvas.addEventListener('wheel', ev => {
+        if (!cornerLayoutActive()) return;
+        ev.preventDefault();
+        // Trackpads deliver many small deltas and a mouse a few large ones, so step by direction
+        // rather than by magnitude: the same flick of either travels about the same distance.
+        setViewSplit(viewSplit + (ev.deltaY < 0 ? 0.04 : -0.04), true);
+        clearTimeout(wheelSave); wheelSave = setTimeout(saveViewSplit, 220);
+    }, { passive: false });
 })();
 
 // ---------- Responsive sizing ----------
