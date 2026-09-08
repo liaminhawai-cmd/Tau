@@ -346,15 +346,32 @@
         if(pressed(1)&&$('htpFull'))$('htpClose')?.click();
       } else if(inMatch()) {
         if(pressed(9))openPause();
-        if(pressed(4))chooseFoot(chosenFoot-1);
-        if(pressed(5))chooseFoot(chosenFoot+1);
-        if(pressed(0))pinOrCommit();
-        if(pressed(1))cancelSwing();
-        swing(currentPad.axes[0]||0,dt);
+        // Left stick selects foot: divide left stick X-axis into 3 sectors (120° each)
+        const lx = currentPad.axes[0] || 0, ly = currentPad.axes[1] || 0;
+        const lAngle = Math.atan2(ly, lx) * 180 / Math.PI;  // -180 to 180
+        const footFromAngle = Math.round(((lAngle + 180 + 60) / 120)) % 3;  // 0-2
+        if (Math.abs(lx) > 0.5 || Math.abs(ly) > 0.5) {
+          if (footFromAngle !== chosenFoot) chooseFoot(footFromAngle);
+        }
+        // Right stick swings (X-axis: left=-1, right=+1)
+        const rx = currentPad.axes[2] || 0;
+        if (G.pinned !== null && Math.abs(rx) > 0.16) {
+          if (G.handle === null) {
+            G.handle = (G.pinned + 1) % 3;
+            const f = G.pieces[G.active].feet()[G.handle];
+            G.ptrAngle = Math.atan2(f.y - G.pivot.y, f.x - G.pivot.x);
+            playMoveBass();
+          }
+          boardMove(G.ptrAngle + rx * .72 * dt);
+          if (G.atLimit) rumble(.08);
+        }
+        // Trigger or A button confirms foot selection
+        if (pressed(0)) pinOrCommit();
+        if (pressed(1)) cancelSwing();
         if(canPlay())v3HoverIdx=G.pinned===null?chosenFoot:G.pinned;
       }
       padButtons=currentPad.buttons.map(b=>b.pressed);
-      $('desktopInputHint').innerHTML='<kbd>LB / RB</kbd> choose foot · <kbd>A</kbd> pin / end turn<br>Left stick swings · <kbd>B</kbd> cancels';
+      $('desktopInputHint').innerHTML='<kbd>Left stick</kbd> select foot · <kbd>A</kbd> pin / end<br><kbd>Right stick</kbd> swing · <kbd>B</kbd> cancel';
     } else { padButtons=[]; padAxisLatch=false; }
     if(heldLeft||heldRight)swing((heldRight?1:0)-(heldLeft?1:0),dt);
   }

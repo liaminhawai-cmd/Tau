@@ -9508,8 +9508,9 @@ function layoutSplitHandle() {
     const h = document.getElementById('splitHandle'), vw = document.getElementById('views'),
           cv3 = document.getElementById('view3d');
     if (!h) return;
+    const isCornerLayout = window.TAU_DESKTOP && inMatch() && renderer;
     const hidden = !renderer || cv3.style.display === 'none' || passiveView()
-                 || document.body.classList.contains('dirUnlocked');   // director mode drags the boards itself
+                 || document.body.classList.contains('dirUnlocked') || isCornerLayout;   // hide handle for corner layout
     h.classList.toggle('auto', hidden);
     if (hidden) return;
     const stacked = vw.classList.contains('stacked');
@@ -9601,9 +9602,10 @@ function resize() {
 
     // Which way the two views sit is decided from a NEUTRAL split, not the player's: dragging the
     // divide should move the seam, never flip the whole layout out from under them mid-drag.
+    const isDesktopMatch = window.TAU_DESKTOP && show && inMatch();
     const sideProbe  = Math.max(200, Math.min((availW-gap)/2, availH));
     const stackProbe = Math.max(170, Math.min(availW, (availH-gap)*0.6));
-    const wide = !show || sideProbe >= stackProbe;
+    const wide = !show || (isDesktopMatch ? true : sideProbe >= stackProbe);  // corner layout always goes "wide"
     document.getElementById('views').classList.toggle('stacked', show && !wide);
 
     // Both tiles together always span the WHOLE available axis — the 3D tile takes the full height
@@ -9611,9 +9613,15 @@ function resize() {
     // it rather than being left as margin. (The camera fit is aspect-aware now, so a wide tile is
     // filled by the dish instead of framing it in dead space — see autoCamNdcAt.) The split handle
     // then just moves where the join sits; nothing here leaves a gap at either extreme.
+    // For desktop Steam, the 2D board is a corner overlay: smaller, resizable via split handle.
     let size, w3, h3;
     if (!show) { size = Math.max(220, Math.min(availW, availH)); }
-    else if (wide) {
+    else if (isDesktopMatch) {
+        // Corner layout: 2D board in bottom-left, 3D fills the space. Use split ratio to control 2D size.
+        const cornerShare = SPLIT_W_LO + (SPLIT_W_HI - SPLIT_W_LO) * effectiveSplit();
+        size = Math.max(140, Math.min(280, Math.min(availW - 60, availH - 60) * cornerShare));
+        w3 = availW; h3 = availH;
+    } else if (wide) {
         const totalW = availW - gap;
         const share = SPLIT_W_LO + (SPLIT_W_HI - SPLIT_W_LO) * effectiveSplit();
         const want2D = Math.max(140, Math.min(availH, totalW * share));   // square board: height caps it too
