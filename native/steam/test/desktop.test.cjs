@@ -97,6 +97,41 @@ test('a real match hands board sizing to the shared layout, not a cut-down deskt
   assert.deepEqual(g.errors,[]);
 });
 
+test('dragged out, the flat board takes over and the 3D view becomes the inset',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopLocal').click();g.tick();
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio:()=>{},getPixelRatio:()=>1,
+    setSize(){},shadowMap:{}};
+    camera=new THREE.PerspectiveCamera(); controls={mouseButtons:{},target:new THREE.Vector3()};`);
+  const px = s => Number(String(s).replace('px','')) || 0;
+  const at = v => { g.read(`setViewSplit(${v},true); resize();`);
+    return { flat: px(g.read('canvas.style.width')),
+             v3:   px(g.read("document.getElementById('view3d').style.width")),
+             inset: g.read("document.getElementById('views').classList.contains('view3dInset')") }; };
+  const win = g.read('innerWidth');
+  const small = at(0), big = at(1);
+  // Dialled down, the flat board is a corner glance over a 3D view that still owns the window.
+  assert.ok(small.flat < win*0.25, `dialled down the flat board is small, got ${small.flat}`);
+  assert.equal(small.v3, win, 'and the 3D view still fills the window');
+  assert.equal(small.inset, false, 'nothing is inset at that end');
+  // Dragged out, the roles swap: the flat board is the board you play on and the 3D view retreats
+  // to the opposite corner. Growing the flat board while the 3D view stayed full-window would just
+  // bury the pieces underneath it — the whole point of "the 2D board can dominate" is that the
+  // other view gets OUT OF THE WAY, so the 3D tile shrinking is the assertion that matters here.
+  assert.ok(big.flat > small.flat*3, `dragged out the flat board dominates, got ${big.flat}`);
+  assert.ok(big.v3 < win*0.5, `and the 3D view has pulled back to an inset, got ${big.v3}`);
+  assert.equal(big.inset, true, 'the inset framing is on');
+  // The handover is continuous: no step in either tile as the drag crosses the swap point.
+  let prevFlat = 0, prevV3 = win + 1;
+  for (let v=0; v<=1.0001; v+=0.05) {
+    const s = at(Math.min(1,v));
+    assert.ok(s.flat >= prevFlat, `flat board never shrinks as the drag grows it (at ${v.toFixed(2)})`);
+    assert.ok(s.v3 <= prevV3, `3D view never grows back as the drag grows the board (at ${v.toFixed(2)})`);
+    prevFlat = s.flat; prevV3 = s.v3;
+  }
+  assert.deepEqual(g.errors,[]);
+});
+
 test('ordinary web entry keeps its original presentation',async t=>{
   const g=await game('');t.after(g.close);
   assert.equal(g.w.TAU_DESKTOP,false);
@@ -107,25 +142,21 @@ test('ordinary web entry keeps its original presentation',async t=>{
 
 test('standard controller pins, swings, commits, cancels and opens the menu',async t=>{
   const g=await game();t.after(g.close);
-  const pad={connected:true,mapping:'standard',axes:[0,0,0,0],buttons:Array.from({length:17},()=>({pressed:false})),
+  const pad={connected:true,mapping:'standard',axes:[0,0,0,0],
+    buttons:Array.from({length:17},()=>({pressed:false,value:0})),
     vibrationActuator:{playEffect:()=>Promise.resolve()}};
   g.w.navigator.getGamepads=()=>[pad];
   const press=i=>{pad.buttons[i].pressed=true;g.tick();pad.buttons[i].pressed=false;g.tick();};
-  // The right stick is a dial: sweep it through an arc and the piece follows the same arc.
-  const sweep=(fromDeg,toDeg)=>{
-    const step=toDeg>fromDeg?4:-4;
-    for(let a=fromDeg;step>0?a<=toDeg:a>=toDeg;a+=step){
-      pad.axes[2]=Math.cos(a*Math.PI/180); pad.axes[3]=Math.sin(a*Math.PI/180); g.tick();
-    }
-    pad.axes[2]=pad.axes[3]=0; g.tick();
-  };
+  // Triggers are the default scheme: hold RT to swing, let go to stop.
+  const pull=(i,v,ms)=>{pad.buttons[i].value=v;pad.buttons[i].pressed=v>.5;g.tick(ms);
+    pad.buttons[i].value=0;pad.buttons[i].pressed=false;g.tick();};
   g.$('desktopLocal').click();g.tick();
-  // The D-pad chooses the foot in every scheme; the right stick swings in the default one.
+  // The D-pad chooses the foot in every scheme.
   press(15);press(0);assert.equal(g.read('G.pinned'),1);
-  sweep(0,40);press(0);
+  pull(7,1,300);press(0);
   assert.equal(g.read('G.active'),1);
   const before=g.read('JSON.stringify(takeSnap())');
-  press(0);sweep(0,40);press(1);
+  press(0);pull(7,1,300);press(1);
   assert.equal(g.read('JSON.stringify(takeSnap())'),before);
   assert.equal(g.read('G.pinned'),null);
   press(9);assert.equal(g.w.tauDesktop.paused,true);
@@ -133,51 +164,38 @@ test('standard controller pins, swings, commits, cancels and opens the menu',asy
   assert.deepEqual(g.errors,[]);
 });
 
-test('the right stick is a dial: the piece turns through the same angle the stick does',async t=>{
+test('the stick scheme turns at a speed set by how far the right stick is pushed',async t=>{
   const g=await game();t.after(g.close);
   const pad={connected:true,mapping:'standard',axes:[0,0,0,0],
     buttons:Array.from({length:17},()=>({pressed:false,value:0})),
     vibrationActuator:{playEffect:()=>Promise.resolve()}};
   g.w.navigator.getGamepads=()=>[pad];
   const press=i=>{pad.buttons[i].pressed=true;g.tick();pad.buttons[i].pressed=false;g.tick();};
-  const point=deg=>{pad.axes[2]=Math.cos(deg*Math.PI/180);pad.axes[3]=Math.sin(deg*Math.PI/180);g.tick();};
+  const hold=(x,ms)=>{pad.axes[2]=x;g.tick(ms);pad.axes[2]=0;g.tick();};
+  g.w.tauDesktop.padScheme='stick';
   g.$('desktopLocal').click();g.tick();
   press(15);press(0);assert.equal(g.read('G.pinned'),1);
-  // Pushing the stick OUT to a direction must not move the piece: you have to reach some direction
-  // before you can rotate from it, and that reach is not itself a rotation. Without this the piece
-  // would jump by the bearing of wherever you happened to shove the stick first.
-  point(0); point(0); point(0);
-  assert.equal(g.read('G.netRad'),0,'reaching a direction takes the grip, it does not turn the piece');
-  // Now rotate the stick 10° clockwise from there: the piece turns 10°, degree for degree. Kept
-  // inside the turn's crossing allowance on purpose — past that the RULES cap the arc, so a larger
-  // sweep would be measuring the rulebook rather than the input mapping. atLimit is asserted so
-  // this test fails loudly if it ever drifts into that region instead of quietly measuring a cap.
-  for(let a=0;a<=10;a+=5) point(a);
-  const turned=g.read('G.netRad')*180/Math.PI;
-  assert.equal(g.read('G.atLimit'),false,'the sweep stays inside the legal arc');
-  assert.ok(Math.abs(turned-10)<0.5, `expected 10 degrees of turn, got ${turned.toFixed(2)}`);
-  // Holding the stick still adds nothing further — a dial that is not being turned is not an input.
-  for(let i=0;i<12;i++) g.tick();
-  assert.ok(Math.abs(g.read('G.netRad')*180/Math.PI-turned)<0.01,'a stationary stick does not keep turning it');
-  // Turning the stick back does NOT unwind the swing, and that is the rulebook, not the input:
-  // applySwing allows one direction per turn (index.html), so the reverse delta is delivered and
-  // then declined. Asserted rather than assumed, so a future change to that rule is noticed here.
-  for(let a=10;a>=0;a-=5) point(a);
-  assert.ok(Math.abs(g.read('G.netRad')*180/Math.PI-turned)<0.01,
-    'one direction per turn: reversing the dial does not unwind the swing');
-  // Letting go and re-gripping elsewhere does not teleport it by the angle travelled while centred.
-  pad.axes[2]=pad.axes[3]=0;g.tick();
-  point(180);point(180);
-  assert.ok(Math.abs(g.read('G.netRad')*180/Math.PI-turned)<0.01,'re-gripping starts a fresh delta');
-  // A fresh turn is free to go the other way: the same dial, rotated anticlockwise, turns the piece
-  // anticlockwise. This is what proves the sign mapping works in both directions.
+  // Half deflection for a fixed time, then the same time at full: further pushed turns further. The
+  // window is kept short so the whole comparison stays inside the turn's crossing allowance —
+  // past that the RULES cap the arc and we would be measuring the rulebook, not the input.
+  hold(.5,200);
+  const half=Math.abs(g.read('G.netRad'));
+  assert.equal(g.read('G.atLimit'),false,'the sample stays inside the legal arc');
+  assert.ok(half>0,'a pushed stick turns the piece');
   g.read('restoreSnap();G.pinned=null;G.pivot=null;G.handle=null;G.ptrAngle=null');
-  pad.axes[2]=pad.axes[3]=0;g.tick();
-  press(15);press(0);
-  point(0);point(0);
-  for(let a=0;a>=-10;a-=5) point(a);
-  const anti=g.read('G.netRad')*180/Math.PI;
-  assert.ok(Math.abs(anti+10)<0.5, `anticlockwise should turn it -10 degrees, got ${anti.toFixed(2)}`);
+  g.tick();press(15);press(0);
+  hold(1,200);
+  const full=Math.abs(g.read('G.netRad'));
+  assert.ok(full>half*1.6, `full deflection should turn much further than half (half ${half.toFixed(3)}, full ${full.toFixed(3)})`);
+  // A centred stick is not an input: nothing keeps turning once it is let go.
+  const settled=g.read('G.netRad');
+  for(let i=0;i<12;i++) g.tick();
+  assert.equal(g.read('G.netRad'),settled,'a centred stick does not keep turning it');
+  // The other direction turns the other way — the sign mapping works both ways.
+  g.read('restoreSnap();G.pinned=null;G.pivot=null;G.handle=null;G.ptrAngle=null');
+  g.tick();press(15);press(0);
+  hold(-1,200);
+  assert.ok(g.read('G.netRad')<0,'pushing the stick the other way turns the piece the other way');
   assert.deepEqual(g.errors,[]);
 });
 
@@ -231,6 +249,83 @@ test('choosing a board finish repaints the flat board and the 3D one from the sa
   assert.equal(g.read('activeSkin().flat'),
     g.w.tauDesktop.boards.length && g.w.tauDesktop.skin.flat,'both read the same finish entry');
   assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).board,other,'the choice persists');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('every board in the catalogue paints the flat board, the 3D board and the pieces',async t=>{
+  const g=await game();t.after(g.close);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    tauDesktop.applyMaterials();`);
+  const ids=g.w.tauDesktop.boards.map(b=>b.id);
+  // The catalogue is the WHOLE set, not a desktop-only sub-set: the browser build's original skins
+  // and the looks that used to be locked in the showcase are all here, selectable in a real match.
+  for(const id of ['dark','slate','dojo','yellow','walnut','ebony','maple',
+                   'noir','math','sumo','cosy','alien','colossus'])
+    assert.ok(ids.includes(id), `${id} is offered in-game`);
+  const seen=new Set();
+  for(const id of ids){
+    g.w.tauDesktop.board=id;
+    const look={
+      flat:g.read('activeSkin().flat'),
+      bg:g.read("'#'+scene.background.getHexString()"),
+      piece:g.read("'#'+tripods[0].userData.mat.color.getHexString()"),
+    };
+    for(const [what,v] of Object.entries(look))
+      assert.ok(/^#[0-9a-f]{6}$/.test(v), `${id} sets a real ${what} colour, got ${v}`);
+    // Each entry is a distinct look, so a board cannot silently fall back to another's palette.
+    const key=JSON.stringify(look);
+    assert.ok(!seen.has(key), `${id} is a look of its own, not a duplicate`);
+    seen.add(key);
+  }
+  // Exotic materials must not leak into the next board: glass and thin film are switched ON by the
+  // finishes that ask for them and back OFF by the ones that do not, or leaving Noir would hand the
+  // next set see-through legs.
+  g.w.tauDesktop.board='noir';
+  assert.ok(g.read('tripods[0].userData.mat.transmission')>0,'Noir pieces are glass');
+  g.w.tauDesktop.board='alien';
+  assert.equal(g.read('tripods[0].userData.mat.transmission'),0,'leaving Noir clears the glass');
+  assert.ok(g.read('tripods[0].userData.mat.iridescence')>0,'Alien pieces keep their thin film');
+  g.w.tauDesktop.board='walnut';
+  assert.equal(g.read('tripods[0].userData.mat.iridescence'),0,'leaving Alien clears the thin film');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the camera stick looks where it is pushed, and Y can be inverted',async t=>{
+  const g=await game();t.after(g.close);
+  const pad={connected:true,mapping:'standard',axes:[0,0,0,0],
+    buttons:Array.from({length:17},()=>({pressed:false,value:0})),
+    vibrationActuator:{playEffect:()=>Promise.resolve()}};
+  g.w.navigator.getGamepads=()=>[pad];
+  g.$('desktopLocal').click();g.tick();
+  // Stand a camera up where a match holds it, with the GPU device stubbed (no GL here), then drive
+  // the pad poll directly: this is about where the stick sends the camera, not about the draw call.
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3(0,4,0)};`);
+  const start=()=>g.read('camera.position.set(0,145,148)');
+  const poll=(axis,v)=>{pad.axes=[0,0,0,0];pad.axes[axis]=v;g.w.tauDesktop.tick(0.3);pad.axes=[0,0,0,0];};
+  const camX=()=>g.read('camera.position.x'), camY=()=>g.read('camera.position.y');
+  // A stick is a LOOK control: pushing right turns the view right, which carries the camera round
+  // to its own right (+X here) and swings the board leftward across the screen. The mouse is the
+  // opposite gesture — there you have hold of the board — so the two are not expected to agree.
+  start(); const x0=camX();
+  poll(0,1);
+  assert.ok(camX()>x0,`push right should orbit the camera right (was ${x0.toFixed(1)}, now ${camX().toFixed(1)})`);
+  // Pushing down tips the view down onto the board, so the camera climbs.
+  start(); const y0=camY();
+  poll(1,1);
+  assert.ok(camY()>y0,`push down should raise the camera (was ${y0.toFixed(1)}, now ${camY().toFixed(1)})`);
+  // Inverting Y flips only that axis — the setting exists because this is the one people disagree on.
+  g.w.tauDesktop.invertCamY=true;
+  start();
+  poll(1,1);
+  assert.ok(camY()<y0,'inverted, push down lowers the camera instead');
+  assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).invertCamY,true,'the choice persists');
   assert.deepEqual(g.errors,[]);
 });
 

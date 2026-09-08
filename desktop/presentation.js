@@ -6,25 +6,98 @@
   const root = document.documentElement;
   const $ = id => document.getElementById(id);
   const SETTINGS_KEY = 'tauDesktopSettingsV1';
-  // Board finishes. Each one drives BOTH views from a single entry: `skin` is the flat board's
-  // palette (the shape index.html's activeSkin() expects) and `wood` re-tints the 3D surface,
-  // markings and rim. One choice, both boards — they can never drift apart.
+  // Board finishes. Each one drives ALL THREE surfaces from a single entry: `skin` is the flat
+  // board's palette (the shape index.html's activeSkin() expects), `wood` re-tints the 3D surface,
+  // markings, rim and backdrop, and `piece` is the tripod material. One choice, one look — the two
+  // views and the pieces can never drift apart.
+  //
+  // The list is deliberately the WHOLE catalogue, not a desktop-only sub-set: the four original web
+  // board skins, the four wood finishes, and the six looks that used to be locked inside the
+  // separate showcase page. The showcase's own scene (bloom, custom shaders, its colosseum stands)
+  // stays over there; what comes across is each look's colourway and piece character, driven through
+  // the one material path every board already uses — so they are playable, not just watchable.
+  //
+  // wood.grain scales the procedural timber grain: 1 is real wood, low values give the smooth
+  // stone/paper/membrane surfaces their own character instead of printing oak on them.
   const BOARD_FINISHES = [
+    // ---- the wood finishes ----
     { id:'walnut', name:'Walnut',
       skin:{ shadeByZoneValue:false, flat:'#65432b', lines:'#ead5a4', rim:'#574b32', bg:'#101410', pb:'#639eb8', pr:'#dc8864' },
-      wood:{ base:[105,72,46], line:'#e1ca91', rim:'#57472e', trim:'#aa8751', bg:'#101410' } },
+      wood:{ base:[105,72,46], line:'#e1ca91', rim:'#57472e', trim:'#aa8751', bg:'#101410', grain:1, dots:['#82b4bd','#df9b78'] },
+      piece:{ blue:'#427d91', red:'#b46744', metalness:.72, roughness:.3, clearcoat:.25, clearcoatRoughness:.35, envMapIntensity:.85 } },
     { id:'ebony', name:'Ebony',
       skin:{ shadeByZoneValue:false, flat:'#2b2724', lines:'#c8bda6', rim:'#241f1c', bg:'#0b0d0e', pb:'#6fa8c4', pr:'#e08a63' },
-      wood:{ base:[58,52,48], line:'#cdc0a6', rim:'#2b2622', trim:'#8d8878', bg:'#0b0d0e' } },
+      wood:{ base:[58,52,48], line:'#cdc0a6', rim:'#2b2622', trim:'#8d8878', bg:'#0b0d0e', grain:.85, dots:['#8fbecb','#e2a184'] },
+      piece:{ blue:'#4f93aa', red:'#c4744c', metalness:.78, roughness:.26, clearcoat:.3, clearcoatRoughness:.3, envMapIntensity:.9 } },
     { id:'maple', name:'Maple',
       skin:{ shadeByZoneValue:false, flat:'#c8a877', lines:'#5b4526', rim:'#9b7f52', bg:'#171512', pb:'#2f6f8c', pr:'#b1502c' },
-      wood:{ base:[201,171,122], line:'#6b5024', rim:'#9d8153', trim:'#d8bd8a', bg:'#171512' } },
+      wood:{ base:[201,171,122], line:'#6b5024', rim:'#9d8153', trim:'#d8bd8a', bg:'#171512', grain:1, dots:['#2f6f8c','#b1502c'] },
+      piece:{ blue:'#2f6f8c', red:'#b1502c', metalness:.6, roughness:.34, clearcoat:.3, clearcoatRoughness:.3, envMapIntensity:.7 } },
+    // ---- the four original board skins from the browser build ----
+    { id:'dark', name:'Dark',
+      skin:{ shadeByZoneValue:false, flat:'#171c22', lines:'#5d6b7a', rim:'#2c3138', bg:'#0c0e11', pb:'#6b9eff', pr:'#ff6b6b' },
+      wood:{ base:[30,36,43], line:'#6d7c8c', rim:'#2c3138', trim:'#495563', bg:'#0c0e11', grain:.3, dots:['#6b9eff','#ff6b6b'] },
+      piece:{ blue:'#6b9eff', red:'#ff6b6b', metalness:.45, roughness:.38, clearcoat:.35, clearcoatRoughness:.3, envMapIntensity:.7 } },
     { id:'slate', name:'Slate',
-      skin:{ shadeByZoneValue:false, flat:'#3d454d', lines:'#d7e0e8', rim:'#2c333a', bg:'#0e1114', pb:'#7cb6d8', pr:'#e3906a' },
-      wood:{ base:[72,82,92], line:'#dde5ec', rim:'#2f363d', trim:'#8fa1b0', bg:'#0e1114' } },
+      skin:{ shadeByZoneValue:true, v4:'#5a636c', v3:'#4b535b', v2:'#3c434a', v1:'#2f353b',
+             flat:'#454d55', lines:'#12161a', rim:'#8f979e', bg:'#0c0e11', pb:'#5487c4', pr:'#d05a48' },
+      wood:{ base:[69,77,85], line:'#12161a', rim:'#8f979e', trim:'#6d777f', bg:'#0c0e11', grain:.35, dots:['#5487c4','#d05a48'] },
+      piece:{ blue:'#5487c4', red:'#d05a48', metalness:.5, roughness:.36, clearcoat:.3, clearcoatRoughness:.32, envMapIntensity:.65 } },
+    { id:'dojo', name:'Dojo',
+      skin:{ shadeByZoneValue:true, v4:'#e9d9b3', v3:'#ddc99b', v2:'#cbb47e', v1:'#b89a62',
+             flat:'#d9c9a3', lines:'#3a2f22', rim:'#3c434a', bg:'#0c0e11', pb:'#243f78', pr:'#cf3b26' },
+      wood:{ base:[217,201,163], line:'#3a2f22', rim:'#3c434a', trim:'#b89a62', bg:'#0c0e11', grain:.5, dots:['#243f78','#cf3b26'] },
+      piece:{ blue:'#243f78', red:'#cf3b26', metalness:.15, roughness:.5, clearcoat:.4, clearcoatRoughness:.3, envMapIntensity:.4 } },
+    { id:'yellow', name:'Yellow',
+      skin:{ shadeByZoneValue:false, flat:'#efe4a6', lines:'#26251f', rim:'#3c434a', bg:'#0c0e11', pb:'#6b9eff', pr:'#ff6b6b' },
+      wood:{ base:[239,228,166], line:'#26251f', rim:'#3c434a', trim:'#c9bf85', bg:'#0c0e11', grain:.2, dots:['#6b9eff','#ff6b6b'] },
+      piece:{ blue:'#6b9eff', red:'#ff6b6b', metalness:.2, roughness:.45, clearcoat:.45, clearcoatRoughness:.25, envMapIntensity:.45 } },
+    // ---- the six showcase looks, brought into the game ----
+    { id:'noir', name:'Noir',
+      skin:{ shadeByZoneValue:false, flat:'#23262c', lines:'#d6b567', rim:'#17191d', bg:'#0a0c10', pb:'#7aa4ee', pr:'#ee7a6f' },
+      wood:{ base:[35,38,44], line:'#d6b567', rim:'#17191d', trim:'#a8843c', bg:'#0a0c10', grain:.25, dots:['#d6b567','#d6b567'] },
+      // Glass, but a piece you can still find on a dark board. The showcase ran transmission at 1.0
+      // and got away with it because it also had a bloom pass and a much harder key light; dropped
+      // into the game's lighting that reads as a barely-there smear on near-black slate — measured,
+      // not guessed. Held at a third, over a tint that carries its own colour, it still refracts and
+      // still reads as glass, and you can see which piece is yours.
+      piece:{ blue:'#8fb4f4', red:'#f4907f', metalness:0, roughness:.1, clearcoat:1, clearcoatRoughness:.06,
+              envMapIntensity:.9, transmission:.34, ior:1.5, thickness:4,
+              attenuation:{ blue:'#3b74e8', red:'#e8483b' }, attenuationDistance:5,
+              emissive:true, emissiveIntensity:.1 } },
+    { id:'math', name:'Math',
+      skin:{ shadeByZoneValue:false, flat:'#111826', lines:'#dcecff', rim:'#14171d', bg:'#0d1017', pb:'#2f6fd8', pr:'#d8442f' },
+      wood:{ base:[17,24,38], line:'#dcecff', rim:'#14171d', trim:'#20242c', bg:'#0d1017', grain:.12, dots:['#2f6fd8','#d8442f'] },
+      piece:{ blue:'#2f6fd8', red:'#d8442f', metalness:0, roughness:.45, clearcoat:.35, clearcoatRoughness:.3, envMapIntensity:.45 } },
+    { id:'sumo', name:'Sumo',
+      skin:{ shadeByZoneValue:false, flat:'#6e4a2c', lines:'#c89a54', rim:'#46351f', bg:'#17120d', pb:'#31488f', pr:'#b03220' },
+      wood:{ base:[110,74,44], line:'#c89a54', rim:'#46351f', trim:'#8a6a3c', bg:'#17120d', grain:.75, dots:['#d9ae62','#d9ae62'] },
+      piece:{ blue:'#31488f', red:'#b03220', metalness:0, roughness:.3, clearcoat:.55, clearcoatRoughness:.18, envMapIntensity:.5 } },
+    { id:'cosy', name:'Cosy',
+      skin:{ shadeByZoneValue:false, flat:'#4a3220', lines:'#e8c778', rim:'#2e1f12', bg:'#1a120c', pb:'#3a4a66', pr:'#5e2a22' },
+      wood:{ base:[74,50,32], line:'#e8c778', rim:'#2e1f12', trim:'#9a7638', bg:'#1a120c', grain:1, dots:['#b78a44','#b78a44'] },
+      piece:{ blue:'#4a5f80', red:'#7a3a2e', metalness:.3, roughness:.44, clearcoat:.35, clearcoatRoughness:.25, envMapIntensity:.4 } },
+    { id:'alien', name:'Alien',
+      skin:{ shadeByZoneValue:false, flat:'#171226', lines:'#8dffe8', rim:'#110d1a', bg:'#04060b', pb:'#3f7ec8', pr:'#b04057' },
+      wood:{ base:[23,18,38], line:'#0e3c36', rim:'#110d1a', trim:'#191324', bg:'#04060b', grain:.45, dots:['#8dffe8','#8dffe8'] },
+      // thin-film chitin: the iridescence that gave the showcase set its shimmer, kept intact.
+      piece:{ blue:'#24558c', red:'#7c2030', metalness:0, roughness:.18, clearcoat:1, clearcoatRoughness:.1,
+              envMapIntensity:.7, iridescence:1, iridescenceIOR:1.8,
+              iridescenceThickness:{ blue:[140,520], red:[240,700] },
+              emissive:true, emissiveIntensity:.22 } },
+    { id:'colossus', name:'Colossus',
+      skin:{ shadeByZoneValue:false, flat:'#b49b6d', lines:'#4a4038', rim:'#7e6f54', bg:'#b9a888', pb:'#6c7787', pr:'#8a7060' },
+      wood:{ base:[180,155,109], line:'#4a4038', rim:'#7e6f54', trim:'#8a7a5e', bg:'#b9a888', grain:.6, dots:['#4a4038','#4a4038'] },
+      // carved stone, not bronze: matte, flat-shaded, barely touched by the environment.
+      piece:{ blue:'#8f97a0', red:'#a8907e', metalness:0, roughness:.95, clearcoat:0, clearcoatRoughness:1,
+              envMapIntensity:.12, flatShading:true } },
   ];
-  const PAD_SCHEMES = ['sticks','triggers'];
-  const settings = { level:4, colour:0, quality:'balanced', board:'walnut', padScheme:'sticks',
+  // Right stick turns the piece at a speed set by how far it is pushed; the triggers do the same
+  // from RT/LT with the analog pull as the speed. Both keep the D-pad on the foot and the left
+  // stick on the camera.
+  const PAD_SCHEMES = ['triggers','stick'];
+  const settings = { level:4, colour:0, quality:'balanced', board:'walnut', padScheme:'triggers',
+    invertCamY:false,
     reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches, haptics:true };
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
@@ -33,9 +106,12 @@
     if (['balanced','high'].includes(saved.quality)) settings.quality = saved.quality;
     if (BOARD_FINISHES.some(b => b.id === saved.board)) settings.board = saved.board;
     if (PAD_SCHEMES.includes(saved.padScheme)) settings.padScheme = saved.padScheme;
-    for (const k of ['reducedMotion','haptics']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
+    for (const k of ['reducedMotion','haptics','invertCamY']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
   } catch (_) {}
   const finish = () => BOARD_FINISHES.find(b => b.id === settings.board) || BOARD_FINISHES[0];
+  // Relative luminance of a #rrggbb, against the same 0.5 threshold index.html's boardIsPale uses.
+  const isPale = hex => { const n = parseInt(hex.slice(1), 16);
+    return (0.2126*((n>>16)&255) + 0.7152*((n>>8)&255) + 0.0722*(n&255)) / 255 > 0.5; };
   function saveSettings() {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
     root.classList.toggle('desktop-reduced-motion', settings.reducedMotion);
@@ -45,7 +121,7 @@
   let currentPad = null, padButtons = [], padAxisLatch = false, padFocus = 0;
   let chosenFoot = 0, heldLeft = false, heldRight = false, lastActive = -1;
   let textures = null, texturesFor = null, artInstalled = false, lastRumble = -Infinity;
-  let lastCrossings = 0, stickAngle = null;
+  let lastCrossings = 0;
   const cameraGoal = new THREE.Vector3(), targetGoal = new THREE.Vector3();
   const camOffset = new THREE.Vector3(), camSpherical = new THREE.Spherical();
   const boardElement = () => renderer ? $('view3d') : canvas;
@@ -165,7 +241,8 @@
       <label class="desktop-setting">Mute<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
       <label class="desktop-setting">Board<select id="desktopBoard">${BOARD_FINISHES.map(b=>`<option value="${b.id}">${b.name}</option>`).join('')}</select></label>
       <label class="desktop-setting">Graphics<select id="desktopQuality"><option value="balanced">Balanced</option><option value="high">High</option></select></label>
-      <label class="desktop-setting">Controller<select id="desktopPadScheme"><option value="sticks">Sticks · turn the right stick</option><option value="triggers">Triggers · pull to swing</option></select></label>
+      <label class="desktop-setting">Controller<select id="desktopPadScheme"><option value="triggers">Triggers · pull to swing</option><option value="stick">Right stick · push to swing</option></select></label>
+      <label class="desktop-setting">Invert camera Y<input id="desktopInvertY" type="checkbox" ${settings.invertCamY?'checked':''}></label>
       <label class="desktop-setting">Reduce camera motion<input id="desktopMotion" type="checkbox" ${settings.reducedMotion?'checked':''}></label>
       <label class="desktop-setting">Controller vibration<input id="desktopHaptics" type="checkbox" ${settings.haptics?'checked':''}></label>
       ${fullscreen ? '<label class="desktop-setting">Fullscreen<input id="desktopFullscreen" type="checkbox"></label>' : ''}
@@ -181,6 +258,7 @@
       render();
     };
     $('desktopPadScheme').onchange = e => { settings.padScheme=e.target.value; saveSettings(); };
+    $('desktopInvertY').onchange = e => { settings.invertCamY=e.target.checked; saveSettings(); };
     $('desktopVolume').oninput = e => {
       setUserVol(Number(e.target.value)); $('desktopVolumeValue').textContent = userVol+'%'; $('desktopMute').checked = !soundOn;
       if(paused && masterGain && audioCtx) masterGain.gain.setTargetAtTime(0,audioCtx.currentTime,.03);
@@ -216,6 +294,10 @@
   // consumes the random stream used by the opponents. The printed geometry comes from CFG.
   function woodMaps(wood) {
     const [br,bg,bb]=wood.base;
+    // How much of the timber figure to print. A slate slab, a sheet of drafting paper and a living
+    // membrane are not wood: at low strength the directional grain and pores fade out and only the
+    // fine speckle survives, which is what those surfaces actually have.
+    const grainAmt = wood.grain==null ? 1 : wood.grain;
     const S=1536, cv=document.createElement('canvas'); cv.width=cv.height=S;
     const c=cv.getContext('2d'), pixels=c.createImageData(S,S), d=pixels.data;
     for(let y=0;y<S;y++) for(let x=0;x<S;x++) {
@@ -225,7 +307,7 @@
       const pore=Math.pow(Math.max(0,fine),14);
       let hash=Math.imul(x+17,374761393)^Math.imul(y+41,668265263); hash=(hash^(hash>>>13))>>>0;
       const noise=(hash%255)/255-.5;
-      const value=broad*9+fine*2.6-pore*6+noise*3;
+      const value=(broad*9+fine*2.6-pore*6)*grainAmt+noise*3;
       const i=(y*S+x)*4;
       d[i]=br+value; d[i+1]=bg+value*.78; d[i+2]=bb+value*.52; d[i+3]=255;
     }
@@ -236,7 +318,8 @@
     c.lineWidth=CFG.edgeU*CFG.lineWidthFrac*sc; c.strokeStyle=wood.line;
     for(const r of CFG.rings){ c.beginPath(); c.arc(O,O,r*sc,0,Math.PI*2); c.stroke(); }
     for(const a of CFG.sideArcs){ c.beginPath(); c.arc(O+a.cx*sc,O+a.cy*sc,a.r*sc,a.a0*Math.PI/180,a.a1*Math.PI/180); c.stroke(); }
-    CFG.startDots.forEach((p,i)=>{ c.beginPath(); c.arc(O+p[0]*sc,O+p[1]*sc,CFG.padRadius*sc,0,Math.PI*2); c.fillStyle=i<3?'#82b4bd':'#df9b78'; c.fill(); });
+    const dots=wood.dots||['#82b4bd','#df9b78'];
+    CFG.startDots.forEach((p,i)=>{ c.beginPath(); c.arc(O+p[0]*sc,O+p[1]*sc,CFG.padRadius*sc,0,Math.PI*2); c.fillStyle=i<3?dots[0]:dots[1]; c.fill(); });
     const map=new THREE.CanvasTexture(cv); map.encoding=THREE.sRGBEncoding;
     map.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
     const bump=new THREE.CanvasTexture(bumpCv); bump.anisotropy=map.anisotropy;
@@ -255,6 +338,43 @@
     renderer.shadowMap.needsUpdate=true;
   }
   let boardTrim = null;
+  // The tripod material for the chosen board. Every finish sets the ordinary standard-material
+  // terms; the exotic ones (noir's glass, alien's thin film, colossus' flat-shaded stone) add
+  // theirs on top. Terms a finish does not ask for are reset to their neutral value rather than
+  // left behind, or switching away from glass would leave the next board's pieces see-through.
+  function applyPieceMaterials(fin) {
+    const p=fin.piece;
+    for(const pair of [tripods,htpTripods]) pair.forEach((piece,i)=>{
+      const mat=piece.userData.mat, side=i===0?'blue':'red';
+      mat.color.set(i===0?p.blue:p.red).convertSRGBToLinear();
+      mat.metalness=p.metalness; mat.roughness=p.roughness;
+      mat.clearcoat=p.clearcoat; mat.clearcoatRoughness=p.clearcoatRoughness;
+      mat.envMapIntensity=p.envMapIntensity;
+      mat.flatShading=!!p.flatShading;
+      // Glass and thin film live on MeshPhysicalMaterial only. Where the build fell back to a plain
+      // standard material (no WebGL2 premium path, and the how-to-play set), those boards still get
+      // their colourway and simply render as solid pieces rather than throwing.
+      if('transmission' in mat){
+        mat.transmission=p.transmission||0;
+        mat.ior=p.ior||1.5;
+        mat.thickness=p.thickness||0;
+        mat.transparent=!!p.transmission;
+        // attenuationColor is absent on a material that has never carried transmission, so it is
+        // created rather than assumed — .set() on undefined is what a missing guard costs here.
+        if(p.attenuation){
+          const col=new THREE.Color(p.attenuation[side]).convertSRGBToLinear();
+          if(mat.attenuationColor) mat.attenuationColor.copy(col); else mat.attenuationColor=col;
+          mat.attenuationDistance=p.attenuationDistance||Infinity;
+        }
+      }
+      mat.iridescence=p.iridescence||0;
+      mat.iridescenceIOR=p.iridescenceIOR||1.3;
+      if(p.iridescenceThickness) mat.iridescenceThicknessRange=p.iridescenceThickness[side];
+      mat.emissive.set(p.emissive?(i===0?p.blue:p.red):'#000000').convertSRGBToLinear();
+      mat.emissiveIntensity=p.emissive?(p.emissiveIntensity||.2):0;
+      mat.needsUpdate=true;
+    });
+  }
   function applyMaterials() {
     if(!renderer || !boardTop) return;
     const fin=finish();
@@ -270,12 +390,7 @@
     boardTop.material.bumpScale=.12; boardTop.material.roughness=.47; boardTop.material.metalness=.03; boardTop.material.needsUpdate=true;
     boardRim.material.color.set(fin.wood.rim).convertSRGBToLinear();
     boardRim.material.metalness=.68; boardRim.material.roughness=.34;
-    for(const pair of [tripods,htpTripods]) pair.forEach((piece,i)=>{
-      const mat=piece.userData.mat;
-      mat.color.set(i===0?'#427d91':'#b46744').convertSRGBToLinear();
-      mat.metalness=.72; mat.roughness=.3; mat.clearcoat=.25; mat.clearcoatRoughness=.35;
-      mat.envMapIntensity=.85; mat.needsUpdate=true;
-    });
+    applyPieceMaterials(fin);
     if(!artInstalled){
       // This trim sits below the playing surface: it is never a new boundary or a support.
       boardTrim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.027,CFG.edgeU*1.032,.5,128),
@@ -288,6 +403,11 @@
     if(boardTrim) boardTrim.material.color.set(fin.wood.trim).convertSRGBToLinear();
     scene.background=new THREE.Color(fin.wood.bg);
     root.style.setProperty('--desk-bg', fin.wood.bg);
+    // Colossus plays in daylight: its backdrop is pale sand, and the HUD's light-on-dark text
+    // disappeared into it. The flat board already flips its highlight cues by the surface's real
+    // luminance (boardIsPale in index.html) rather than by which board it is; the chrome floating
+    // over the 3D view now answers the same question about the ROOM behind it.
+    root.classList.toggle('desktop-pale-room', isPale(fin.wood.bg));
     configureQuality();
   }
   // This is the MENU's own ambient layout only. A real match is never sized here: it returns
@@ -355,7 +475,7 @@
   }
   function cancelSwing() {
     if(!canPlay() || G.pinned===null) return;
-    restoreSnap(); G.pinned=null; G.pivot=null; G.handle=null; G.ptrAngle=null; lastCrossings=0; stickAngle=null;
+    restoreSnap(); G.pinned=null; G.pivot=null; G.handle=null; G.ptrAngle=null; lastCrossings=0;
     if(onlineMatch){pendingKeyframes=[];lastKeyframeT=0;}
     render();
   }
@@ -375,8 +495,14 @@
     if(!renderer || !canPlay() || (Math.abs(lx)<.18 && Math.abs(ly)<.18)) return;
     camOffset.copy(camera.position).sub(controls.target);
     camSpherical.setFromVector3(camOffset);
-    camSpherical.theta -= lx*1.7*dt;
-    camSpherical.phi = Math.max(.2, Math.min(Math.PI/2-.05, camSpherical.phi + ly*1.2*dt));
+    // A stick is a LOOK control, not a grab: pushing right turns the view right, so the board
+    // swings left across the screen, and pushing down tips the view down onto the board. (A mouse
+    // drag is the opposite gesture — there you have hold of the board itself and it follows the
+    // cursor — which is why the two read differently and both feel right.) Y is the axis people
+    // disagree about, so it has a switch; X does not, because "push right, look right" is settled.
+    camSpherical.theta += lx*1.7*dt;
+    const pitch = settings.invertCamY ? -ly : ly;
+    camSpherical.phi = Math.max(.2, Math.min(Math.PI/2-.05, camSpherical.phi - pitch*1.2*dt));
     camOffset.setFromSpherical(camSpherical);
     camera.position.copy(controls.target).add(camOffset);
     camera.lookAt(controls.target);
@@ -397,30 +523,15 @@
     boardMove(G.ptrAngle+axis*.72*dt);
     if(G.atLimit) rumble(.08);
   }
-  // Direct angular steering: the stick's own bearing drives the piece one-to-one, so turning the
-  // stick 30° clockwise turns the piece 30° clockwise. The stick is a dial you rotate, not a
-  // direction you hold — which is why this tracks the CHANGE in its angle rather than its position.
-  // Below the deflection floor the angle is meaningless (a centred stick has no bearing), so the
-  // reference is dropped; re-gripping then starts a fresh delta instead of teleporting the piece by
-  // however far the stick was rotated while it sat in the middle.
-  function stickRotate(rx,ry) {
-    const mag=Math.hypot(rx,ry);
-    if(!canPlay() || G.pinned===null || mag<.45){ stickAngle=null; return; }
-    const angle=Math.atan2(ry,rx);
-    if(stickAngle===null){ stickAngle=angle; return; }
-    let delta=angle-stickAngle;
-    while(delta>Math.PI) delta-=2*Math.PI;      // shortest way round, so crossing the ±180° seam
-    while(delta<-Math.PI) delta+=2*Math.PI;     // never reads as a full turn the other way
-    stickAngle=angle;
-    if(!delta) return;
-    beginSwing();
-    boardMove(G.ptrAngle+delta);
-    if(G.atLimit) rumble(.08);
-  }
+  // Push the right stick left or right and the piece turns that way, faster the further it goes.
+  // This replaced a dial that mapped the stick's BEARING onto the piece one-to-one: turning your
+  // thumb in a circle to wind the piece round was accurate on paper and genuinely awkward in the
+  // hand, and it is the one thing playtesting rejected outright. Speed on an axis is the same
+  // control the triggers give, so the two schemes now differ only in which fingers hold it.
   function pollInput(dt) {
     const pads=navigator.getGamepads?.() || [];
     currentPad=Array.from(pads).find(p=>p?.connected && p.mapping==='standard') || null;
-    if(lastActive!==G.active){lastActive=G.active;chosenFoot=0;heldLeft=heldRight=false;lastCrossings=0;stickAngle=null;}
+    if(lastActive!==G.active){lastActive=G.active;chosenFoot=0;heldLeft=heldRight=false;lastCrossings=0;}
     if(currentPad){
       const down=i=>!!currentPad.buttons[i]?.pressed, pressed=i=>down(i)&&!padButtons[i];
       const context=$('htpFull') || (dialogOpen()?$('modalBox'):(!inMatch()?home:null));
@@ -449,9 +560,9 @@
           // press still gives a slow, controllable creep.
           swing(triggerAxis(),dt,.02);
         } else {
-          stickRotate(currentPad.axes[2]||0, currentPad.axes[3]||0);       // right stick IS the dial
-          orbitCamera(currentPad.axes[0]||0, currentPad.axes[1]||0, dt);   // left stick moves the camera
+          swing(currentPad.axes[2]||0, dt);                                // right stick left/right turns
         }
+        orbitCamera(currentPad.axes[0]||0, currentPad.axes[1]||0, dt);     // left stick moves the camera, always
         // A short pulse each time a foot actually crosses a printed line: the rule that decides the
         // turn, felt rather than read off the crossings counter.
         if(typeof G.crossings==='number'){
@@ -461,9 +572,11 @@
         if(canPlay())v3HoverIdx=G.pinned===null?chosenFoot:G.pinned;
       }
       padButtons=currentPad.buttons.map(b=>b.pressed);
-      $('desktopInputHint').innerHTML = settings.padScheme==='triggers'
-        ? '<kbd>D-pad ← →</kbd> choose foot · <kbd>A</kbd> pin / end<br><kbd>LT / RT</kbd> swing — press harder to go faster'
-        : '<kbd>D-pad ← →</kbd> choose foot · <kbd>A</kbd> pin / end<br>Turn the <kbd>right stick</kbd> like a dial · <kbd>Left stick</kbd> camera';
+      $('desktopInputHint').innerHTML = '<kbd>D-pad ← →</kbd> choose foot · <kbd>A</kbd> pin / end<br>'
+        + (settings.padScheme==='triggers'
+            ? '<kbd>LT / RT</kbd> swing — press harder to go faster'
+            : '<kbd>Right stick ← →</kbd> swing')
+        + ' · <kbd>Left stick</kbd> camera';
     } else { padButtons=[]; padAxisLatch=false; }
     if(heldLeft||heldRight)swing((heldRight?1:0)-(heldLeft?1:0),dt);
   }
@@ -503,6 +616,8 @@
     get skin(){return finish().skin;},
     get padScheme(){return settings.padScheme;},
     set padScheme(v){ if(PAD_SCHEMES.includes(v)){ settings.padScheme=v; saveSettings(); } },
+    get invertCamY(){return settings.invertCamY;},
+    set invertCamY(v){ settings.invertCamY=!!v; saveSettings(); },
     get board(){return settings.board;},
     set board(v){ if(BOARD_FINISHES.some(b=>b.id===v)){ settings.board=v; saveSettings(); applyMaterials(); applyTheme(); render(); } },
     get boards(){return BOARD_FINISHES.map(b=>({id:b.id,name:b.name}));},

@@ -9479,7 +9479,18 @@ const SPLIT_W_LO = 0.16, SPLIT_W_HI = 0.86;   // landscape: the flat board's sha
 const SPLIT_H_LO = 0.22, SPLIT_H_HI = 0.90;   // portrait:  ...of the HEIGHT
 // Desktop corner layout: the inset must match #canvas's bottom/left in desktop/presentation.css,
 // since the drag maths measures the board's growth from that same window corner.
-const CORNER_INSET = 26, CORNER_MIN = 130, CORNER_MAX = 520;
+// The top of the range is deliberately most of the window's short side: dragged all the way out the
+// flat board is the board you are playing on and the 3D view is the backdrop behind it, which is the
+// opposite end of the same control that shrinks it to a dial. A corner board that could only ever be
+// a minimap would just be the old cut-down layout wearing a handle.
+const CORNER_INSET = 26, CORNER_MIN = 130;
+// The flat board's share of the short axis at which the 3D view starts easing back into the
+// opposite corner, so the two trade places rather than one burying the other.
+const CORNER_SWAP_AT = 0.5;
+// Headroom the inset 3D tile leaves for the desktop Menu button, which owns the same top-right
+// corner (.desktop-menu in desktop/presentation.css: 24px down, ~42px tall).
+const CORNER_MENU_CLEAR = 52;
+let cornerView3d = null;   // where the corner layout wants the 3D tile (set by resize, applied below)
 let cornerSize = 0;   // the flat board's last corner-layout side, in CSS px (set by resize)
 // Seen from the game's raised camera the round board projects to a wide ellipse, about this much
 // wider than tall once the auto-fit has framed it (measured off the live projection). The 3D tile is
@@ -9658,9 +9669,22 @@ function resize() {
         // Corner layout: the 3D view takes the whole window and the flat board floats over its
         // bottom-left corner, sized anywhere from a glanceable dial to a genuine second board.
         const room = Math.min(window.innerWidth, window.innerHeight) - CORNER_INSET*2;
-        size = Math.round(Math.max(CORNER_MIN, Math.min(CORNER_MAX, room * (0.16 + 0.42*effectiveSplit()))));
+        size = Math.round(Math.max(CORNER_MIN, Math.min(room, room * (0.16 + 0.84*effectiveSplit()))));
         cornerSize = size;
-        w3 = window.innerWidth; h3 = window.innerHeight;
+        // Past half the short axis the flat board would start covering the pieces in the 3D view —
+        // so from there the two trade places, the 3D view easing back into the OPPOSITE corner as
+        // the inset. Dominating has to mean the other view gets out of the way; a flat board that
+        // grew until it simply hid what it was drawn from would be winning the space and losing the
+        // picture. The swap runs continuously with the same drag, so there is no snap at the join.
+        const swap = Math.max(0, Math.min(1, (size/room - CORNER_SWAP_AT) / (0.95 - CORNER_SWAP_AT)));
+        const insetW = Math.max(240, Math.round(window.innerWidth * 0.3));
+        w3 = Math.round(window.innerWidth  + (insetW - window.innerWidth) * swap);
+        h3 = Math.round(window.innerHeight + (insetW/DISH_ASPECT - window.innerHeight) * swap);
+        // Both ends fall out of the same two lines: at swap 0 this is 0,0 at full size; at swap 1 it
+        // is the top-right corner, inset to match the flat board's own margin. The top clears the
+        // Menu button rather than sliding under it — that corner is already spoken for.
+        cornerView3d = { left: window.innerWidth - w3 - CORNER_INSET*swap,
+                         top: (CORNER_INSET + CORNER_MENU_CLEAR)*swap, swap };
     } else if (wide) {
         const totalW = availW - gap;
         const share = SPLIT_W_LO + (SPLIT_W_HI - SPLIT_W_LO) * effectiveSplit();
@@ -9679,6 +9703,16 @@ function resize() {
     }
 
     canvas.style.width = size+'px'; canvas.style.height = size+'px';
+    // The corner layout drives the 3D tile's position too (see the swap above); every other layout
+    // leaves it to the flex row, so the inline offsets are cleared rather than left behind.
+    if (isDesktopMatch && cornerView3d) {
+        cv3.style.left = cornerView3d.left+'px'; cv3.style.top = cornerView3d.top+'px';
+        cv3.style.right = 'auto'; cv3.style.bottom = 'auto';
+        document.getElementById('views').classList.toggle('view3dInset', cornerView3d.swap > 0.02);
+    } else {
+        cv3.style.left = cv3.style.top = cv3.style.right = cv3.style.bottom = '';
+        document.getElementById('views').classList.remove('view3dInset');
+    }
 
     if (renderer){
         if (show){ cv3.style.display='block'; cv3.style.width=w3+'px'; cv3.style.height=h3+'px';

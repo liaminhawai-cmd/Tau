@@ -77,26 +77,47 @@ boards** button opens it, **F2** in the wrapper flips between the two pages from
 either side, and its "full game →" link returns to the desktop client. The
 showcase is attract-mode only — real matches all run in the one simulation.
 
-The desktop board uses wood grain, brass markings and blue/copper metal pieces,
-with soft shadows and the game's studio reflections. The menu, match and rematch
+The desktop board opens on Walnut — wood grain, brass markings and blue/copper
+metal pieces — with soft shadows and the game's studio reflections; the rest of
+the catalogue is below. The menu, match and rematch
 use the same scene. Balanced graphics cap resolution at 1.5× and shadow maps at
 1024; High allows 2× and 2048. Both respect lower device resolution.
 
-Settings offers four board finishes (Walnut, Ebony, Maple, Slate). Each is a
-single entry defining both the flat board's palette and the 3D surface, markings,
-rim and backdrop, so one choice repaints both views and they cannot drift apart.
-Changing it re-bakes the 1536² wood texture, which is why it only happens on an
-actual change and not on every theme refresh.
+Settings offers thirteen boards, and the list is the whole catalogue rather than
+a desktop-only sub-set: the browser build's original skins (Dark, Slate, Dojo,
+Yellow), the wood finishes (Walnut, Ebony, Maple), and the six looks that used to
+be locked inside the showcase page (Noir, Math, Sumo, Cosy, Alien, Colossus).
+Each is a single entry defining the flat board's palette, the 3D surface,
+markings, rim and backdrop, **and** the piece material, so one choice repaints
+both views and the pieces together and they cannot drift apart. Changing it
+re-bakes the 1536² surface texture, which is why it only happens on an actual
+change and not on every theme refresh. `wood.grain` scales the timber figure, so
+slate, drafting paper and Alien's membrane are not printed with oak.
+
+What crosses over from the showcase is each look's colourway and piece character
+— Noir's glass, Sumo's lacquer, Alien's thin-film chitin, Colossus' carved stone
+— driven through the one material path every board already uses. The showcase's
+own scene (its bloom pass, custom shaders and colosseum stands) stays on that
+page; these are the same looks rendered by the game, which is what makes them
+playable rather than only watchable. Two consequences worth knowing: Noir runs
+transmission at about a third of the showcase's, because full glass under the
+game's lighting is a smear you cannot find on a near-black board; and Colossus
+plays in daylight, so the floating HUD flips to ink over it, decided by the
+backdrop's real luminance rather than by which board it is.
 
 In a match the 3D view takes the whole window and the flat 2D board floats over
 its bottom-left corner, clipped to a circle — the board it draws is a disc, and a
 square tile spends a third of its area on empty corners. Drag the grip on its
-outer edge along the diagonal to resize it, from a glanceable dial up to a
-genuine second board. Both builds go through the one sizing function in
-index.html (`resize()`): the browser gets the side-by-side split, the desktop
-gets the corner layout, and neither has a second copy of the maths. Desktop is
-never missing a view the web build has. If WebGL cannot initialize, the flat
-board alone remains playable.
+outer edge along the diagonal to resize it. Past half the window's short side the
+two **trade places**: the 3D view eases back into the opposite corner as the
+inset, so the flat board becomes the board you are playing on rather than a
+minimap that has grown until it covers the pieces it was drawn from. The handover
+is continuous across the drag, and the inset clears the Menu button rather than
+sliding under it. Both builds go through the one sizing function in index.html
+(`resize()`): the browser gets the side-by-side split, the desktop gets the
+corner layout, and neither has a second copy of the maths. Desktop is never
+missing a view the web build has. If WebGL cannot initialize, the flat board
+alone remains playable.
 
 Play starts the selected AI level and side. Same-screen play is untimed. Esc
 opens the match menu and pauses offline matches, including an AI turn; an online
@@ -111,21 +132,32 @@ no URL bar could not otherwise reach.
 | --- | --- |
 | Mouse | Click a foot to pin; drag another to swing; right-drag the camera |
 | Keyboard | 1–3 pin/re-pick; arrows swing; Enter ends turn; Backspace cancels; Esc menu |
-| Controller (both schemes) | D-pad ←/→ choose foot; A pins/ends turn; B cancels; Start menu |
-| …**Sticks** scheme | Push the right stick out to any direction, then turn it: the piece follows degree for degree. Left stick moves the camera |
-| …**Triggers** scheme | RT turns clockwise, LT anticlockwise; how hard you pull sets the speed |
+| Controller (both schemes) | D-pad ←/→ choose foot; A pins/ends turn; B cancels; Start menu; left stick moves the camera |
+| …**Triggers** scheme (default) | RT turns clockwise, LT anticlockwise; how hard you pull sets the speed |
+| …**Right stick** scheme | Push the right stick left or right; how far you push sets the speed |
 | Controller menus | D-pad moves focus; A activates; left/right changes selectors and sliders |
 | Window | F11 toggles fullscreen; F2 flips game ↔ showcase; Settings also offers fullscreen in Electron |
 
-The controller scheme is a Settings choice. The D-pad picks the foot in both, so
-that never moves when you switch. In **Sticks** the right stick is a dial rather
-than a direction you hold: reaching a direction takes the grip without turning
-anything, and only rotation from there drives the piece — releasing to the centre
-and re-gripping starts a fresh delta instead of jumping. In **Triggers** the pull
-is analog, so a feather press is a slow controllable creep. The pad pulses each
-time a foot crosses a printed line, the rule that decides the turn. Note the
-game itself allows one swing direction per turn, so turning the dial back does
-not unwind a swing — that is the rulebook, not the input.
+The controller scheme is a Settings choice, and the two differ only in which
+fingers hold the turn: the D-pad picks the foot and the left stick moves the
+camera in both, so neither moves when you switch. **Triggers** is the default and
+the pull is analog, so a feather press is a slow controllable creep. The pad
+pulses each time a foot crosses a printed line, the rule that decides the turn.
+Note the game itself allows one swing direction per turn, so reversing does not
+unwind a swing — that is the rulebook, not the input.
+
+An earlier build made the right stick a true dial: its bearing drove the piece
+one to one, so you wound your thumb in a circle to turn it. Accurate on paper and
+awkward in the hand — playtesting rejected it outright, and it is gone. Speed on
+an axis is what both schemes give now.
+
+The left stick is a **look** control: push right and the view turns right, so the
+board swings left across the screen; push down and the view tips down onto the
+board. That is the opposite of a mouse drag, where you have hold of the board
+itself and it follows the cursor — both are right for their own modality, and
+they are not expected to agree. Y is the axis people genuinely disagree about, so
+Settings has **Invert camera Y**; X does not, because "push right, look right" is
+settled.
 
 ```bash
 # From the repository root: browser development preview
