@@ -39,6 +39,71 @@ const usable = new Set(evo.stableModelEntries(dir).map(e => e.name));
 const needle = pattern.toLowerCase();
 const freed = [];
 
+// Freeing a face only helps if reconcile() can still SEE its model. A policy entrant needs both
+// its valueFile and its policyFile on disk; when either is gone the entry stops being a candidate
+// face at all, and reconcile's own housekeeping then drops the retired record on the next sync --
+// so the face vanishes from the retired list and parole reports "nothing matches" for a reason
+// that has nothing to do with the pattern. Say which of those actually happened, every run.
+function inspectModels() {
+  const md = path.join(dir, 'models');
+  let files = [];
+  try { files = fs.readdirSync(md); } catch (_) { return []; }
+  const out = [];
+  for (const f of files) {
+    if (!f.endsWith('.json') || !f.toLowerCase().includes(needle)) continue;
+    const name = path.basename(f, '.json'), meta = evo.modelMeta(path.join(md, f));
+    let why = null;
+    if (!meta.usable) {
+      let j = null;
+      try { j = JSON.parse(fs.readFileSync(path.join(md, f), 'utf8')); } catch (_) {}
+      if (!j) why = 'unreadable or not JSON';
+      else if (j.policyEntrant === true) {
+        const gone = ['valueFile', 'policyFile']
+          .filter(k => !j[k] || !fs.existsSync(path.join(md, j[k])));
+        why = gone.length ? `policy entrant, but ${gone.map(k => `${k} (${j[k] || 'unset'})`).join(' and ')} not on disk`
+                          : 'policy entrant the roster still rejects';
+      } else why = 'not a usable value net (needs sizes ending in 1, or dual/policyEntrant)';
+    }
+    out.push({ file: f, name, usable: meta.usable, why });
+  }
+  return out;
+}
+
+function readings() {
+  const out = [];
+  for (const [name, r] of Object.entries(s.latest || {})) {
+    if (!name.toLowerCase().includes(needle)) continue;
+    out.push({ name, faces: Object.keys((r && r.faces) || {}) });
+  }
+  return out;
+}
+
+function diagnose() {
+  const models = inspectModels(), seen = readings();
+  const live = [];
+  for (const depth of Object.keys(s.facePools))
+    for (const id of (s.facePools[depth].active || []))
+      if (id.toLowerCase().includes(needle)) live.push({ id, depth });
+
+  console.log(`\n[parole] what the league currently knows about "${pattern}":`);
+  if (live.length) for (const l of live) console.log(`  SEATED     ${l.id}  (${l.depth}, playing now)`);
+  if (!models.length) console.log(`  no file in nn/models matches -- the model itself is gone, so there is nothing to re-admit`);
+  for (const m of models)
+    console.log(`  ${m.usable ? 'LOADABLE  ' : 'UNLOADABLE'} models/${m.file}${m.usable ? '' : `  <- ${m.why}`}`);
+  if (seen.length) for (const r of seen)
+    console.log(`  RATED      ${r.name} has past readings at ${r.faces.join(', ') || '(model level only)'}`);
+
+  const broken = models.filter(m => !m.usable);
+  if (broken.length && !live.length) {
+    console.log(`\n[parole] THIS is why nothing came back: an unloadable model is not a candidate face,`);
+    console.log(`[parole] so reconcile() also deletes its retirement record and parole has nothing to free.`);
+    console.log(`[parole] Restore the missing file(s) above, then run parole again.`);
+  } else if (!models.length && seen.length) {
+    console.log(`\n[parole] The face was real -- it has ratings -- but its model file is no longer in`);
+    console.log(`[parole] nn/models, so it cannot be re-minted. Retrain it to bring it back.`);
+  }
+}
+
 for (const depth of Object.keys(s.facePools)) {
   const pool = s.facePools[depth];
   if (!pool || !pool.retired) continue;
@@ -52,11 +117,7 @@ for (const depth of Object.keys(s.facePools)) {
 
 if (!freed.length) {
   console.log(`[parole] nothing retired matches "${pattern}"`);
-  const live = [];
-  for (const depth of Object.keys(s.facePools))
-    for (const id of (s.facePools[depth].active || []))
-      if (id.toLowerCase().includes(needle)) live.push(`${id} (${depth}, already seated)`);
-  if (live.length) console.log('[parole] but these are already in the league:\n  ' + live.join('\n  '));
+  diagnose();
   process.exit(0);
 }
 
@@ -73,6 +134,8 @@ if (missing.length) {
   for (const n of names) console.log(`  models/${n}.json`);
   console.log('  (a policy entrant also needs both its valueFile and policyFile present to load)');
 }
+
+diagnose();
 
 if (dry) { console.log('\n[parole] --dry: roster not written'); process.exit(0); }
 
