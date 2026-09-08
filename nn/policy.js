@@ -134,7 +134,8 @@ class PolicyMLP {
       if (aIn.length !== nIn) throw new Error(`policy layer ${l} input ${aIn.length}, expected ${nIn}`);
       // Elementwise residual, so it exists only where this layer keeps its predecessor's width.
       // Shape-changing layers in a bulge trunk carry no skip; the memory packets still cross them.
-      const residual = (dense || pairwise) && l > 0 && a.length === nOut;
+      // Scale 0 removes the residual path entirely rather than making the layer echo its input.
+      const residual = (dense || pairwise) && residualScale !== 0 && l > 0 && a.length === nOut;
       const z = new Float64Array(nOut), W = this.W[l], b = this.b[l];
       for (let j = 0; j < nOut; j++) {
         let s = b[j];
