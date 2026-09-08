@@ -20,11 +20,10 @@ echo ================================================
 echo   Tau: pull latest, then restart the trainer
 echo ================================================
 echo.
-echo   CLOSE THE OLD TRAINER WINDOW FIRST if one is still running --
-echo   two trainers on one machine fight over cores and the Elo writer.
+echo   Leftovers from an earlier trainer (league loop, rating pass, retromine)
+echo   are found and closed automatically when the new one starts.
 echo   (The Live Ladder window can stay open; it is a separate process.)
 echo.
-pause
 
 rem Find a git this machine can actually run. This box pulls with GitHub Desktop,
 rem which bundles its own git and may leave nothing on PATH, so probe like run.js does:

@@ -5,10 +5,18 @@ const {spawn}=require('child_process');
 const evo=require('./evolution-roster.js');
 const medals=require('./publish-medals.js');
 const ratingState=require('./rating-state.js');
+const proc=require('./proc-tree.js');
 const dir=__dirname;
 const get=(a,n,d=null)=>{const i=a.indexOf('--'+n);return i>=0?a[i+1]:d;};
 const has=(a,n)=>a.includes('--'+n);
-function run(file,args){return new Promise((ok,bad)=>{const ch=spawn(process.execPath,[path.join(dir,file),...args],{stdio:'inherit'});ch.on('error',bad);ch.on('exit',c=>c===0?ok():bad(new Error(`${file} exited ${c}`)));});}
+let current=null;
+function run(file,args){return new Promise((ok,bad)=>{const ch=current=spawn(process.execPath,[path.join(dir,file),...args],{stdio:'inherit'});ch.on('error',bad);ch.on('exit',c=>{current=null;c===0?ok():bad(new Error(`${file} exited ${c}`));});});}
+// The rating pass and its arena workers must go down with this process, or a closed console leaves
+// them running as the very orphans the lock check above exists to see through.
+function dropChild(){if(current){const ch=current;current=null;proc.killTree(ch.pid);}}
+// Exit status for a pass that stood down because another writer holds the lock: the league loop
+// backs off on it instead of retrying every second.
+const WRITER_BUSY=3;
 function forward(src,dst,name){const v=get(src,name,null);if(v!=null)dst.push('--'+name,String(v));}
 const lockPath=path.join(dir,'.elo-writer.lock');
 // Is the process named in the lock file still running? Signal 0 delivers nothing -- it only asks
@@ -22,7 +30,14 @@ function lockOwnerAlive(){
   let pid;
   try{pid=+JSON.parse(fs.readFileSync(lockPath,'utf8')).pid;}catch(_){return false;}
   if(!Number.isFinite(pid)||pid<=0||pid===process.pid)return false;
-  try{process.kill(pid,0);return true;}catch(e){return !!(e&&e.code==='EPERM');}
+  try{process.kill(pid,0);}catch(e){return !!(e&&e.code==='EPERM');}
+  // The pid exists -- but Windows hands a dead process's number to the next one within seconds, and
+  // a restarting trainer spawns a dozen node processes at once. So "exists" alone can point at an
+  // arena worker that inherited a dead writer's pid, and the lock then looks owned for the two-hour
+  // age backstop. Only a process still running elorank owns this lock. An UNREADABLE command line
+  // stays alive: one skipped pass costs less than two writers.
+  const cmd=proc.commandLine(pid);
+  return cmd==null||/elorank/i.test(cmd);
 }
 function takeLock(){
   for(let attempt=0;attempt<3;attempt++){
@@ -45,7 +60,7 @@ let heldLock=null;
 const dropHeldLock=()=>{if(heldLock!=null){const fd=heldLock;heldLock=null;releaseLock(fd);}};
 process.on('exit',dropHeldLock);
 for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])
-  try{process.on(sig,()=>{dropHeldLock();process.exit(130);});}catch(_){}
+  try{process.on(sig,()=>{dropChild();dropHeldLock();process.exit(130);});}catch(_){}
 
 (async()=>{
   const original=process.argv.slice(2),summary=get(original,'summary',path.join(dir,'elo-summary.json'));
@@ -68,7 +83,7 @@ for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])
   // Doing that before the lock meant each skipped window burned a minute discovering it had
   // nothing to do; now a stood-down pass costs milliseconds.
   const lock=takeLock();
-  if(lock==null){console.log('[rating] official Elo writer already active; skipping this overlapping pass');return;}
+  if(lock==null){console.log('[rating] official Elo writer already active; skipping this overlapping pass');process.exitCode=WRITER_BUSY;return;}
   heldLock=lock;
   try{
     evo.sync(dir);evo.ingestSummary(dir,summary);
@@ -78,7 +93,8 @@ for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])
       '--games',get(original,'ratingGames','2')];
     for(const n of ['budgetHours','workers','saveData','bootstrap','targetGames','openingPlies'])forward(original,a,n);
     if(has(original,'refit'))a.push('--refit');if(has(original,'dryrun'))a.push('--dryrun');
-    console.log(`[rating] unified field: ${faces.length} live model faces + ${levels.length} immortal ladder brains`);
+    const sd=get(original,'saveData',null);
+    console.log(`[rating] unified field: ${faces.length} live model faces + ${levels.length} immortal ladder brains${sd?` -> ${path.basename(sd)}`:''}`);
     await run('elorank-legacy.js',a);
     evo.ingestSummary(dir,summary);
 
