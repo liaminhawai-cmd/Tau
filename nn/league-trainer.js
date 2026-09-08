@@ -8,6 +8,7 @@
 const {spawn}=require('child_process');
 const os=require('os');
 const path=require('path');
+const proc=require('./proc-tree.js');
 const dir=__dirname;
 const arg=(n,d)=>{const i=process.argv.indexOf('--'+n);return i>=0?process.argv[i+1]:d;};
 const cores=Math.max(2,os.cpus().length);
@@ -23,9 +24,19 @@ function start(label,script,args){
   ch.on('error',e=>console.error(`[trainer] ${label} failed to launch:`,e.message));
   return ch;
 }
-function stopAll(){if(stopping)return;stopping=true;for(const ch of children)try{ch.kill();}catch(_){} }
-process.on('SIGINT',()=>{stopAll();process.exit(0);});
-process.on('SIGTERM',()=>{stopAll();process.exit(0);});
+// Whole trees, not just the three direct children: ch.kill() reached league-loop but never its
+// elorank pass or that pass's arena workers, which is how every restart left a ghost league behind.
+// SIGHUP is what a closed console window sends on Windows.
+function stopAll(){if(stopping)return;stopping=true;for(const ch of children)proc.killTree(ch.pid);}
+for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])try{process.on(sig,()=>{stopAll();process.exit(0);});}catch(_){}
+process.on('exit',stopAll);
+
+// Leftovers from an earlier trainer (its loops, its rating pass, its retromine lanes) hold the Elo
+// writer lock and half the cores; the new trainer would spend hours standing down behind them.
+const ORPHAN_SCRIPTS=['league-trainer.js','league-loop.js','run.js','retroloop.js','policyloop.js','elorank.js','elorank-legacy.js'];
+const reaped=proc.reapOrphans(ORPHAN_SCRIPTS);
+if(reaped==null)console.log('[trainer] could not list processes; if an older trainer is still running, close it by hand');
+else if(reaped.length)console.log(`[trainer] closed ${reaped.length} leftover process tree(s) from an earlier trainer: ${reaped.map(r=>`${r.script} (pid ${r.pid})`).join(', ')}`);
 
 console.log(`[trainer] league-first allocation: ${leagueWorkers} league + ${exploreWorkers} exploration`+
             (retroWorkers?` + ${retroWorkers} retromine`:'')+` worker(s)`);

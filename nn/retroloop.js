@@ -337,6 +337,8 @@ function stop(signal) {
 
 process.on('SIGINT', () => stop('Ctrl-C'));
 process.on('SIGTERM', () => stop('SIGTERM'));
+// A closed console window arrives as SIGHUP on Windows; without this the lanes outlived the window.
+for (const sig of ['SIGHUP', 'SIGBREAK']) try { process.on(sig, () => stop(sig)); } catch (_) {}
 process.on('exit', () => { for (const lane of lanes) cleanup(lane); });
 
 console.log(`Tau Retromine ratchet-only loop
