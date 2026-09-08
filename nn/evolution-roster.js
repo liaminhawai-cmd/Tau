@@ -124,13 +124,25 @@ function stochasticCount(x){const n=Math.floor(x);return n+(Math.random()<x-n?1:
 function cullMinGames(k,population){const full=FACE_MIN_GAMES[k];if(!(population>TARGET_FACES))return full;return Math.max(2,Math.min(full,Math.round(full*TARGET_FACES/population)));}
 function eligibleByDepth(s,population){const pop=Number.isFinite(population)?population:activeFaceSet(s).size;const out={D1:[],D2:[],D3:[],D4:[]};for(let d=1;d<=4;d++){const k=depthKey(d),need=cullMinGames(k,pop);for(const id of s.facePools[k].active||[]){const r=faceReading(s,id);if(!r||(+r.games||0)<need||!Number.isFinite(+r.eloHi))continue;out[k].push({id,r,depth:d,key:k});}out[k].sort((a,b)=>+a.r.eloHi-+b.r.eloHi||+a.r.elo-+b.r.elo);}return out;}
 // Cull pressure follows MEASURED compute, not assumed depth cost. The rating store keeps an
-// EWMA of ms-per-game for every face it has actually run (elorank-legacy.js); a depth bucket's
-// cull weight is the mean measured cost of its eligible faces, so the old 1:3:9:27 becomes the
-// emergent default rather than a constant -- and a policy face that genuinely saves time drags
-// its bucket's rent down instead of paying full depth price for savings it never got credit for.
+// EWMA of ms-per-game for every face it has actually run (elorank-legacy.js), so the old 1:3:9:27
+// becomes an emergent default rather than a constant -- and a policy face that genuinely saves
+// time drags its bucket's rent down instead of paying full depth price for savings it never got
+// credit for.
+//
+// A bucket's weight is its TOTAL rent, not its mean. One pick retires one face, so a face's own
+// odds of retirement are P(bucket) / (faces in that bucket); weighting by the mean cancels the
+// population term and leaves per-face hazard proportional to cost/count, which only matches
+// compute when every bucket is the same size. They never are. On the desktop field -- 300 D1
+// against a single D2 -- the mean gave that lone D2 face 1080x the per-face hazard of a D1 face,
+// D3 3900x and D4 14100x, where an extra ply only costs about 3.6x. Deep faces were being retired
+// for being RARE rather than for being expensive, so each promotion was swept back out within a
+// checkpoint or two of clearing its games bar and the pools collapsed to D1 alone. Summing over
+// the bucket restores the intended shape: per-face hazard is exactly the cost ratio, and the
+// spread settles near the old FACE_CAPS by itself instead of needing them enforced.
 function measuredCosts(dir){try{const s=JSON.parse(fs.readFileSync(path.join(dir,'elo-results.json'),'utf8'));return{cost:s.cost||{},unit:+s.costUnitMs>0?+s.costUnitMs:1500};}catch(_){return{cost:{},unit:1500};}}
 function chooseDepth(e,mc){const keys=Object.keys(DEPTH_CULL_WEIGHT).filter(k=>e[k]&&e[k].length);if(!keys.length)return null;
-  const w={};for(const k of keys){const ms=e[k].map(v=>+((mc&&mc.cost||{})[v.id])).filter(x=>Number.isFinite(x)&&x>0);w[k]=ms.length?ms.reduce((s,x)=>s+x,0)/ms.length:DEPTH_CULL_WEIGHT[k]*((mc&&mc.unit)||1500);}
+  const unit=(mc&&mc.unit)||1500,cost=(mc&&mc.cost)||{};
+  const w={};for(const k of keys){let rent=0;for(const v of e[k]){const ms=+cost[v.id];rent+=Number.isFinite(ms)&&ms>0?ms:DEPTH_CULL_WEIGHT[k]*unit;}w[k]=rent;}
   const total=keys.reduce((s,k)=>s+w[k],0),x=Math.random()*total;let a=0;for(const k of keys){a+=w[k];if(x<a)return k;}return keys.at(-1);}
 // The cull may take at most HALF of the faces it can currently see. The list it culls from is
 // sorted by rating, but when fewer faces clear the bar than the population asks to lose, the sort
