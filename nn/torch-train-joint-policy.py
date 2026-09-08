@@ -117,10 +117,14 @@ def build_model(torch, nn, hidden, args, checkpoint):
     topology = None
     structured = args.topology in ('dense-memory', 'pairwise-memory')
     if structured:
-        if len(hidden) < 2 or len(set(hidden)) != 1:
-            raise ValueError(f'{args.topology} needs at least two equal-width hidden layers')
-        if not 1 <= args.memoryWidth <= hidden[0]:
-            raise ValueError(f'memoryWidth must be 1..{hidden[0]}')
+        # Widths may vary. The residual is elementwise, so it only exists between two hidden layers
+        # of equal width; a shape change (a 200-40-200 bulge) simply has no skip at that step. The
+        # memory messages are width-independent and cross every layer regardless, which is what
+        # makes a bottleneck bypassable rather than a hard ceiling on what reaches the head.
+        if len(hidden) < 2:
+            raise ValueError(f'{args.topology} needs at least two hidden layers')
+        if not 1 <= args.memoryWidth <= min(hidden):
+            raise ValueError(f'memoryWidth must be 1..{min(hidden)}, the narrowest hidden layer')
         topology = {'kind':'pairwise-memory-v1' if args.topology == 'pairwise-memory' else 'dense-memory-v1',
                     'memoryWidth':args.memoryWidth,
                     'residualScale':args.residualScale}
@@ -158,7 +162,8 @@ def build_model(torch, nn, hidden, args, checkpoint):
                     a = raw
                 else:
                     branch = torch.tanh(raw)
-                    a = a + args.residualScale*branch if structured and li > 0 else branch
+                    residual = structured and li > 0 and branch.shape[-1] == a.shape[-1]
+                    a = a + args.residualScale*branch if residual else branch
                     if args.topology == 'dense-memory':
                         memories.append(a[:, :args.memoryWidth])
                     elif args.topology == 'pairwise-memory':

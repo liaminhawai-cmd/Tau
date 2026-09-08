@@ -12,19 +12,34 @@
 //                  Elo-weighted corpus, judged by the league itself rather than by val MSE.
 //                  Whichever twin ends higher is direct evidence about the weighting.
 //
-//   node nn/mint-oddballs.js [--epochs 10] [--only pancake,tower,ab]
+//   bulge-plain-200x40 / bulge-dense40-200x40
+//                  200-40-200-40-200: two hard pinches in an otherwise wide trunk. Same shape
+//                  twice, once plain and once with dense-memory packets that route around the
+//                  pinches. Every bottleneck we have measured so far was UNBYPASSED, so the two
+//                  hypotheses -- "narrow layers lose information" and "narrow layers lose
+//                  information they have no way around" -- have never been separated. These twins
+//                  separate them: if the plain one sinks and the dense one does not, the pinch was
+//                  never the problem, the dead end was.
+//
+//   node nn/mint-oddballs.js [--epochs 10] [--only pancake,tower,ab,bulge]
 const path = require('path');
 const { spawn } = require('child_process');
 const dir = __dirname;
 const arg = (n, d = null) => { const i = process.argv.indexOf('--' + n); return i >= 0 ? process.argv[i + 1] : d; };
 const epochs = String(+arg('epochs', 10));
-const only = String(arg('only', 'pancake,tower,ab')).split(',').map(s => s.trim());
+const only = String(arg('only', 'pancake,tower,ab,bulge')).split(',').map(s => s.trim());
 
 const MINTS = [
   { key: 'pancake', out: 'pancake-1024.json',  extra: ['--hidden', '1024'] },
   { key: 'tower',   out: 'tower-8x24.json',    extra: ['--hidden', '24,24,24,24,24,24,24,24'] },
   { key: 'ab',      out: 'ab-flat-96x96.json', extra: ['--hidden', '96,96', '--eloWeight', 'off'] },
   { key: 'ab',      out: 'ab-elo-96x96.json',  extra: ['--hidden', '96,96', '--eloWeight', 'logistic'] },
+  // Identical geometry, identical seed; the ONLY difference is whether the pinches have a bypass.
+  { key: 'bulge',   out: 'bulge-plain-200x40.json',
+    extra: ['--hidden', '200,40,200,40,200', '--topology', 'plain'] },
+  { key: 'bulge',   out: 'bulge-dense40-200x40.json',
+    extra: ['--hidden', '200,40,200,40,200', '--topology', 'dense-memory',
+            '--memoryWidth', '40', '--residualScale', '0.2'] },
 ];
 
 function run(args) {

@@ -132,6 +132,9 @@ class PolicyMLP {
       }
       const nIn = this.fanIns[l], nOut = this.sizes[l+1];
       if (aIn.length !== nIn) throw new Error(`policy layer ${l} input ${aIn.length}, expected ${nIn}`);
+      // Elementwise residual, so it exists only where this layer keeps its predecessor's width.
+      // Shape-changing layers in a bulge trunk carry no skip; the memory packets still cross them.
+      const residual = (dense || pairwise) && l > 0 && a.length === nOut;
       const z = new Float64Array(nOut), W = this.W[l], b = this.b[l];
       for (let j = 0; j < nOut; j++) {
         let s = b[j];
@@ -139,7 +142,7 @@ class PolicyMLP {
         if (l === L - 1) z[j] = s;                // raw logits
         else {
           const branch = Math.tanh(s);
-          z[j] = (dense || pairwise) && l > 0 ? a[j] + residualScale*branch : branch;
+          z[j] = residual ? a[j] + residualScale*branch : branch;
         }
       }
       if (dense && l < L - 1) memories.push(z.slice(0, memoryWidth));

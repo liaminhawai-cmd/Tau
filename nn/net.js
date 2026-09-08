@@ -39,13 +39,16 @@ class MLP {
       }
       const nIn = this.fanIns[l], nOut = this.sizes[l+1];
       if (aIn.length !== nIn) throw new Error(`layer ${l} input ${aIn.length}, expected ${nIn}`);
+      // The residual is elementwise, so it only exists where the layer keeps its predecessor's
+      // width. A shape-changing layer (a bulge trunk like 200-40-200) simply has no skip there;
+      // the memory packets still cross it, which is the whole point of that geometry.
+      const residual = dense && l > 0 && l < this.W.length - 1 && a.length === nOut;
       const z = new Float64Array(nOut), W = this.W[l], b = this.b[l];
       for (let j = 0; j < nOut; j++) {
         let s = b[j];
         for (let i = 0; i < nIn; i++) s += W[j*nIn + i]*aIn[i];
         const branch = Math.tanh(s);
-        z[j] = dense && l > 0 && l < this.W.length - 1
-          ? a[j] + residualScale*branch : branch;
+        z[j] = residual ? a[j] + residualScale*branch : branch;
       }
       if (dense && l < this.W.length - 1)
         memories.push(z.slice(0, memoryWidth));
@@ -64,12 +67,13 @@ class MLP {
     for(let l=0;l<this.W.length;l++){
       const z=this._valueScratch[l],W=this.W[l],b=this.b[l],nOut=this.sizes[l+1];
       const earlier=memories.length>0?memories.length-1:0;
+      const residual=l>0&&l<this.W.length-1&&a.length===nOut;
       for(let j=0;j<nOut;j++){
         const row=j*this.fanIns[l];let s=b[j],off=0;
         for(let i=0;i<a.length;i++)s+=W[row+off++]*a[i];
         for(let m=0;m<earlier;m++)for(let i=0;i<k;i++)s+=W[row+off++]*memories[m][i];
         const branch=Math.tanh(s);
-        z[j]=l>0&&l<this.W.length-1?a[j]+scale*branch:branch;
+        z[j]=residual?a[j]+scale*branch:branch;
       }
       if(l<this.W.length-1)memories.push(z);a=z;
     }

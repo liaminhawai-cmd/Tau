@@ -12,6 +12,13 @@ const configs=[
   {id:'policy-joint-large-4x512', hidden:'512,512,512,512', topology:'plain', batch:2048, lr:0.00055},
   {id:'policy-joint-behemoth-10x400-dense40', hidden:Array(10).fill(400).join(','), topology:'dense-memory', memoryWidth:40, residualScale:0.2, batch:2048, lr:0.0005},
   {id:'policy-joint-behemoth-10x400-pair4', hidden:Array(10).fill(400).join(','), topology:'pairwise-memory', memoryWidth:4, residualScale:0.2, batch:2048, lr:0.0005},
+  // Bulge trunk: wide-narrow-wide-narrow-wide. Same shape twice, so the only variable is whether
+  // the two pinches have a bypass. In the pairwise twin each wide layer sends its own learned
+  // 8-neuron message straight to every later layer, so a 200 reaches the next 200 without being
+  // squeezed through a 40 on the way; the plain twin has no such route. Every bottleneck result
+  // we have so far comes from unbypassed pinches, which is exactly what these two separate.
+  {id:'policy-joint-bulge-200x40-plain', hidden:'200,40,200,40,200', topology:'plain', batch:2048, lr:0.0006},
+  {id:'policy-joint-bulge-200x40-pair8', hidden:'200,40,200,40,200', topology:'pairwise-memory', memoryWidth:8, residualScale:0.2, batch:2048, lr:0.0006},
 ];
 function arg(n,d){const i=process.argv.indexOf('--'+n);return i>=0?process.argv[i+1]:d;}
 const chunkEpochs=Math.max(5,+arg('chunkEpochs',10));

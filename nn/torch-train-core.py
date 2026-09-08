@@ -425,13 +425,18 @@ def main():
         topology_kind = 'dense-memory' if checkpoint_topology and checkpoint_topology.get('kind') == 'dense-memory-v1' else 'plain'
     topology = None
     if topology_kind == 'dense-memory':
-        if len(hidden) < 2 or len(set(hidden)) != 1:
-            print('dense-memory requires at least two equal-width hidden layers', file=sys.stderr)
+        # Widths may vary. The residual is elementwise and so only exists between two hidden layers
+        # of the same width; a shape change (a 200-40-200 bulge, say) just has no skip at that step.
+        # The memory packets are width-independent and cross every layer either way, which is what
+        # lets a bottleneck be bypassed instead of being a hard information ceiling.
+        if len(hidden) < 2:
+            print('dense-memory requires at least two hidden layers', file=sys.stderr)
             sys.exit(1)
         memory_width = int((checkpoint_topology or {}).get('memoryWidth', args.memoryWidth))
         residual_scale = float((checkpoint_topology or {}).get('residualScale', args.residualScale))
-        if memory_width < 1 or memory_width > hidden[0]:
-            print(f'memoryWidth must be between 1 and {hidden[0]}', file=sys.stderr)
+        if memory_width < 1 or memory_width > min(hidden):
+            print(f'memoryWidth must be between 1 and {min(hidden)} '
+                  f'(the narrowest hidden layer, which every packet is sliced from)', file=sys.stderr)
             sys.exit(1)
         topology = {'kind': 'dense-memory-v1', 'memoryWidth': memory_width,
                     'residualScale': residual_scale}
@@ -473,7 +478,8 @@ def main():
                 for li, layer in enumerate(self.layers):
                     a_in = a if li == 0 else torch.cat([a] + memories[:-1], dim=1)
                     branch = torch.tanh(layer(a_in))
-                    a = a + self.residual_scale * branch if 0 < li < len(self.layers) - 1 else branch
+                    residual = 0 < li < len(self.layers) - 1 and branch.shape[-1] == a.shape[-1]
+                    a = a + self.residual_scale * branch if residual else branch
                     if li < len(self.layers) - 1:
                         memories.append(a[:, :self.memory_width])
                 return a

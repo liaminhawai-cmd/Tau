@@ -102,6 +102,12 @@ async function main() {
       ...(arg('dataBudgetMB') ? ['--dataBudgetMB', arg('dataBudgetMB')] : []),
       ...(arg('eloWeightTemp') ? ['--eloWeightTemp', arg('eloWeightTemp')] : []),
       ...(original.includes('--poseInput') ? ['--poseInput'] : []),
+      // A structured birth is only a structured birth if these actually reach the core trainer.
+      // Without them --topology dense-memory used to be dropped here and quietly produce a plain
+      // net under the experiment's name, which is worse than failing.
+      ...(arg('topology') ? ['--topology', arg('topology')] : []),
+      ...(arg('memoryWidth') ? ['--memoryWidth', arg('memoryWidth')] : []),
+      ...(arg('residualScale') ? ['--residualScale', arg('residualScale')] : []),
     ];
     console.log('[value-train] backend torch-cuda (batch ' + arg('batch', '4096') +
                 '), export must verify before it enters the pool');
@@ -120,6 +126,10 @@ async function main() {
   if (!trained) {
     if (structured)
       throw new Error(`checkpoint topology ${structured.kind} requires the verified PyTorch path; refusing an incompatible CPU fallback`);
+    // Same reasoning for a FRESH structured birth: the JS trainer cannot build one, and a plain
+    // net wearing the experiment's filename would poison the comparison it exists to settle.
+    if (arg('topology') && arg('topology') !== 'plain')
+      throw new Error(`--topology ${arg('topology')} exists only in the PyTorch trainer; a silent plain CPU run would fake the experiment`);
     if (original.includes('--poseInput'))
       throw new Error('--poseInput exists only in the PyTorch trainer; a silent pose-less CPU run would fake the experiment');
     if (arg('eloWeight', 'logistic') !== 'off')
