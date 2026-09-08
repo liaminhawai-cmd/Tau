@@ -85,8 +85,39 @@ const PROMOTE_RENT_ELO=50;
 function pruneEfficiency(e,prev,mc){const ids=candidateFaces(e,prev),unit=(mc&&mc.unit)||1500,cost=(mc&&mc.cost)||{};const ms=ids.map(id=>+cost[id]).filter(x=>Number.isFinite(x)&&x>0);if(!ms.length)return 1;const implied=DEPTH_CULL_WEIGHT[depthKey(prev)]*unit;return Math.max(1e-6,(ms.reduce((a,x)=>a+x,0)/ms.length)/Math.max(1e-9,implied));}
 function promoteScore(s,e,prev,mc){const v=modelScore(s,e.name);return Number.isFinite(v)?v-PROMOTE_RENT_ELO*Math.log2(pruneEfficiency(e,prev,mc)):v;}
 function nextFrontier(s,entries,mc){const q=[];for(const e of entries){let highest=0;for(let d=1;d<=4;d++){const p=s.facePools[depthKey(d)],ids=candidateFaces(e,d);if(ids.some(id=>(p.active||[]).includes(id)||elasticRetired(p,id)||!!faceReading(s,id)))highest=d;}if(highest>=4)continue;const prev=Math.max(1,highest),prevIds=candidateFaces(e,prev);if(prevIds.length&&!prevIds.some(id=>faceEstablished(s,id,prev)))continue;for(let d=highest+1;d<=4;d++){const ids=candidateFaces(e,d);if(!ids.length)continue;const fresh=ids.filter(id=>!s.facePools[depthKey(d)].active.includes(id)&&!elasticRetired(s.facePools[depthKey(d)],id));if(fresh.length)q.push({e,depth:d,ids:fresh,score:promoteScore(s,e,prev,mc),serial:modelSerial(e.name)});break;}}
-  q.sort((a,b)=>b.score-a.score||b.serial-a.serial||a.e.name.localeCompare(b.e.name));return q[0]||null;}
-function admitFrontier(s,entries,mc){const q=nextFrontier(s,entries,mc);if(!q)return[];for(const id of q.ids)s.facePools[depthKey(q.depth)].active.push(id);return q.ids;}
+  return q;}
+// Climbing a rung is a per-face ROLL, not a quota. The old frontier sorted every candidate and
+// advanced exactly q[0] -- one face per checkpoint for the whole field, winner-takes-all. That is
+// the only seat list left in the league, and it is what emptied D3/D4: holding the compute-
+// proportional spread needs about 11 promotions a checkpoint (5.9 into D2, 3.7 into D3, 1.8 into
+// D4) and the quota allowed one, shared across every rung and every model.
+//
+// So each established candidate now rolls independently, weighted against the best candidate in
+// the field on the same softmax the self-play profile uses. Strength still decides -- a face 400
+// Elo off the lead climbs at ~37% of the leader's rate, 800 off at ~14% -- but it decides as
+// pressure rather than as a cutoff, so a good face no longer has to be THE best in the entire
+// league on the exact checkpoint it happens to be eligible.
+//
+// Rung selectivity is deliberately NOT graded steeper for deeper rungs. That was the obvious way
+// to read "only the top slice earns D3", but simulated it comes out backwards: the cull already
+// thins the top (per-face hazard runs 3.7% at D1, 13.5% at D2, 48.7% at D3), so tightening
+// promotion on top of that just starves rungs the cull is draining anyway -- graded temps measured
+// 1.8 D3 seats against 2.3 for a flat one. The thinning is the cull's job; promotion only has to
+// pick well.
+//
+// 0.15 is the rate the spread falls out of: measured 59 / 17 / 2.3 / 0.1 against the 50 / 14 / 4 / 1
+// the never-enforced FACE_CAPS always described, at about 154 D1-games of rent per checkpoint --
+// cheaper than the 214 the nominal spread would cost, because the cull prices the deep seats.
+const PROMOTE_P=.15;
+function admitFrontier(s,entries,mc){const q=nextFrontier(s,entries,mc);if(!q.length)return[];
+  let best=-Infinity;for(const c of q)if(Number.isFinite(c.score)&&c.score>best)best=c.score;
+  if(!Number.isFinite(best))return[];
+  const out=[];
+  for(const c of q){if(!Number.isFinite(c.score))continue;
+    if(Math.random()>=PROMOTE_P*Math.exp((c.score-best)/ELO_TEMP))continue;
+    for(const id of c.ids)s.facePools[depthKey(c.depth)].active.push(id);
+    out.push(...c.ids);}
+  return out;}
 function sync(dir,ladderN=null){const s=loadState(dir),entries=stableModelEntries(dir),present=new Set(entries.map(e=>e.name));for(const e of entries){s.active[e.name]={file:e.file,dual:e.dual,policy:e.policy,shape:e.shape};delete s.retired[e.name];}for(const n of Object.keys(s.active))if(!present.has(n))delete s.active[n];reconcile(s,entries);const prod=productionLadderLevels(ladderN),allowed=new Set(prod);if(!Array.isArray(s.ladderActive))s.ladderActive=prod;s.ladderActive=[...new Set(s.ladderActive.filter(x=>allowed.has(x)))].sort((a,b)=>a-b);saveState(dir,s);return s;}
 function readSummary(file){try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch(_){return{players:{}};}}
 function ingestSummary(dir,file){const s=sync(dir),sum=readSummary(file),groups={},ladder={};for(const [id,r] of Object.entries(sum.players||{})){if(r.kind==='ladder'){ladder[r.level]={games:+r.games||0,elo:Number.isFinite(+r.elo)?+r.elo:null};continue;}if(r.kind!=='nn'||!r.model)continue;const name=path.basename(r.model,'.json');(groups[name]||=[]).push({...r,id});}
