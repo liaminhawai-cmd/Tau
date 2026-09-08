@@ -44,27 +44,50 @@ const freed = [];
 // face at all, and reconcile's own housekeeping then drops the retired record on the next sync --
 // so the face vanishes from the retired list and parole reports "nothing matches" for a reason
 // that has nothing to do with the pattern. Say which of those actually happened, every run.
+// A policy entrant is three files: the entry, plus the value net and the policy head it names.
+// Only the ENTRY is supposed to load on its own -- a bare policy head has no value output and is
+// correctly not a model. So a component of a working entry is healthy, not broken, and must never
+// be reported as the reason a parole failed.
+function componentFiles() {
+  const md = path.join(dir, 'models');
+  const refs = new Set();
+  let files = [];
+  try { files = fs.readdirSync(md); } catch (_) { return refs; }
+  for (const f of files) {
+    if (!f.endsWith('.json')) continue;
+    if (!evo.modelMeta(path.join(md, f)).usable) continue;
+    let j = null;
+    try { j = JSON.parse(fs.readFileSync(path.join(md, f), 'utf8')); } catch (_) { continue; }
+    if (j && j.policyEntrant === true) for (const k of ['valueFile', 'policyFile']) if (j[k]) refs.add(j[k]);
+  }
+  return refs;
+}
+
 function inspectModels() {
   const md = path.join(dir, 'models');
   let files = [];
   try { files = fs.readdirSync(md); } catch (_) { return []; }
+  const parts = componentFiles();
   const out = [];
   for (const f of files) {
     if (!f.endsWith('.json') || !f.toLowerCase().includes(needle)) continue;
     const name = path.basename(f, '.json'), meta = evo.modelMeta(path.join(md, f));
-    let why = null;
+    let why = null, component = false;
     if (!meta.usable) {
-      let j = null;
-      try { j = JSON.parse(fs.readFileSync(path.join(md, f), 'utf8')); } catch (_) {}
-      if (!j) why = 'unreadable or not JSON';
-      else if (j.policyEntrant === true) {
-        const gone = ['valueFile', 'policyFile']
-          .filter(k => !j[k] || !fs.existsSync(path.join(md, j[k])));
-        why = gone.length ? `policy entrant, but ${gone.map(k => `${k} (${j[k] || 'unset'})`).join(' and ')} not on disk`
-                          : 'policy entrant the roster still rejects';
-      } else why = 'not a usable value net (needs sizes ending in 1, or dual/policyEntrant)';
+      if (parts.has(f)) component = true;
+      else {
+        let j = null;
+        try { j = JSON.parse(fs.readFileSync(path.join(md, f), 'utf8')); } catch (_) {}
+        if (!j) why = 'unreadable or not JSON';
+        else if (j.policyEntrant === true) {
+          const gone = ['valueFile', 'policyFile']
+            .filter(k => !j[k] || !fs.existsSync(path.join(md, j[k])));
+          why = gone.length ? `policy entrant, but ${gone.map(k => `${k} (${j[k] || 'unset'})`).join(' and ')} not on disk`
+                            : 'policy entrant the roster still rejects';
+        } else why = 'not a usable value net (needs sizes ending in 1, or dual/policyEntrant)';
+      }
     }
-    out.push({ file: f, name, usable: meta.usable, why });
+    out.push({ file: f, name, usable: meta.usable, component, why });
   }
   return out;
 }
@@ -78,7 +101,7 @@ function readings() {
   return out;
 }
 
-function diagnose() {
+function diagnose(worked) {
   const models = inspectModels(), seen = readings();
   const live = [];
   for (const depth of Object.keys(s.facePools))
@@ -88,19 +111,32 @@ function diagnose() {
   console.log(`\n[parole] what the league currently knows about "${pattern}":`);
   if (live.length) for (const l of live) console.log(`  SEATED     ${l.id}  (${l.depth}, playing now)`);
   if (!models.length) console.log(`  no file in nn/models matches -- the model itself is gone, so there is nothing to re-admit`);
-  for (const m of models)
-    console.log(`  ${m.usable ? 'LOADABLE  ' : 'UNLOADABLE'} models/${m.file}${m.usable ? '' : `  <- ${m.why}`}`);
+  for (const m of models) {
+    const tag = m.usable ? 'LOADABLE  ' : m.component ? 'COMPONENT ' : 'UNLOADABLE';
+    const note = m.usable ? '' : m.component ? '  (part of the entry above; not a model on its own, which is correct)'
+                                             : `  <- ${m.why}`;
+    console.log(`  ${tag} models/${m.file}${note}`);
+  }
   if (seen.length) for (const r of seen)
     console.log(`  RATED      ${r.name} has past readings at ${r.faces.join(', ') || '(model level only)'}`);
 
-  const broken = models.filter(m => !m.usable);
-  if (broken.length && !live.length) {
+  // Only a model that is genuinely broken explains a failed parole. A healthy component never does.
+  const broken = models.filter(m => !m.usable && !m.component);
+  const loadable = models.filter(m => m.usable);
+  if (worked) {
+    console.log(`\n[parole] The entry above loads, so reconcile() will seat it again on the next sync.`);
+    console.log(`[parole] A policy entrant has no D1 face, so it re-enters at D2 and has to earn D3 back:`);
+    console.log(`[parole] its old readings still mark D3 as a rung it held, so it is not handed that seat.`);
+  } else if (broken.length && !loadable.length && !live.length) {
     console.log(`\n[parole] THIS is why nothing came back: an unloadable model is not a candidate face,`);
     console.log(`[parole] so reconcile() also deletes its retirement record and parole has nothing to free.`);
     console.log(`[parole] Restore the missing file(s) above, then run parole again.`);
   } else if (!models.length && seen.length) {
     console.log(`\n[parole] The face was real -- it has ratings -- but its model file is no longer in`);
     console.log(`[parole] nn/models, so it cannot be re-minted. Retrain it to bring it back.`);
+  } else if (loadable.length && !live.length && !worked) {
+    console.log(`\n[parole] The model loads and nothing of its is retired, so the league already counts it`);
+    console.log(`[parole] as known. If it is not seated it is waiting on a free seat, not on a parole.`);
   }
 }
 
@@ -117,7 +153,7 @@ for (const depth of Object.keys(s.facePools)) {
 
 if (!freed.length) {
   console.log(`[parole] nothing retired matches "${pattern}"`);
-  diagnose();
+  diagnose(false);
   process.exit(0);
 }
 
@@ -135,7 +171,7 @@ if (missing.length) {
   console.log('  (a policy entrant also needs both its valueFile and policyFile present to load)');
 }
 
-diagnose();
+diagnose(freed.some(f => f.present));
 
 if (dry) { console.log('\n[parole] --dry: roster not written'); process.exit(0); }
 
