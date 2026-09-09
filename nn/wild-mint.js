@@ -24,6 +24,16 @@ function cudaReady(){
     {encoding:'utf8',windowsHide:true});
   return p.status===0 && String(p.stdout).trim()==='yes';
 }
+// The expedition's fixed corpus. torch-train-core keeps the newest files up to a byte budget and
+// the league writes new ones continuously, so pointed at nn/data a long run silently changes which
+// games it trains on -- and, because split_and_weight shuffles list(by_game.keys()) with the seed
+// and takes 10%, changing the file set reshuffles the VALIDATION SET too. The seed pins the RNG,
+// not the list. Every shape must sit the same paper or the numbers below cannot be compared, so we
+// train against a frozen copy instead. nn/freeze-arch-data.js makes it.
+const FROZEN=path.join(dir,'data-arch-frozen');
+const FROZEN_GLOB=path.join(FROZEN,'*.jsonl');
+// Larger than the snapshot, so cap_files keeps all of it and never drops a file mid-expedition.
+const FROZEN_BUDGET_MB='4096';
 const TRUNK10x400=Array(10).fill(400).join(',');
 const useTorch=cudaReady();
 const backend=useTorch?'torch-cuda':'js-cpu';
@@ -78,6 +88,7 @@ async function runTrain(x,start,out,lr,onMetric){
     const args=['-u',path.join(dir,'torch-train-core.py'),'--epochs',String(chunkEpochs),
       '--seed',String(seed),'--lr',String(lr),'--wd','0.0001','--batch',String(torchBatch),
       '--gameWeight','sqrt','--familyWeight','sqrt','--drawWeight','0.25','--device','cuda',
+      '--data',FROZEN_GLOB,'--dataBudgetMB',FROZEN_BUDGET_MB,
       ...(sp.eloWeight?['--eloWeight',sp.eloWeight]:[]),
       ...(sp.topology?['--topology',sp.topology]:[]),
       ...(sp.memoryWidth!=null?['--memoryWidth',String(sp.memoryWidth)]:[]),
@@ -143,7 +154,17 @@ async function main(){
     console.log('[wild] use --continue-expedition only when you deliberately want to continue it.');
     return;
   }
+  const pending=shapes.filter((x,i)=>{const r=state.shapes[slug(x,i)];return !(r&&r.done&&fs.existsSync(path.join(models,slug(x,i)+'.json')));});
+  if(pending.length&&!fs.existsSync(FROZEN)){
+    console.error('[wild] no frozen corpus at '+path.relative(process.cwd(),FROZEN));
+    console.error('[wild] Without it every chunk re-reads the live nn/data, the file set drifts as');
+    console.error('[wild] the league writes, and the seed then shuffles a DIFFERENT list into a');
+    console.error('[wild] different validation split -- so the shapes cannot be compared at all.');
+    console.error('[wild] Run:  node nn/freeze-arch-data.js');
+    process.exitCode=1;return;
+  }
   console.log(`[wild] adaptive expedition: ${shapes.length} shapes; chunks ${chunkEpochs}; min ${minEpochs}; patience ${patienceEpochs}; emergency max ${maxEpochs}`);
+  if(pending.length)console.log(`[wild] frozen corpus: ${path.relative(process.cwd(),FROZEN)} (identical rows and split for every chunk of every shape)`);
   console.log(`[wild] backend: ${backend}${useTorch?` (batch ${torchBatch}, verified export every chunk)`:' (install CUDA PyTorch to accelerate)'}`);
   console.log(`[wild] fixed validation split seed ${seed}; curves -> ${path.relative(process.cwd(),curves)}`);
   for(let i=0;i<shapes.length;i++){

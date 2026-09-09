@@ -39,3 +39,8 @@ data/*.jsonl.w[0-9]*
 # The pre-machine-naming shared copy. Superseded by zpd-pool-<machine>.json; ignored so the stale
 # local file cannot be re-added and start the same conflict over again.
 zpd-pool.json
+
+# The architecture expedition's frozen corpus: a one-off copy of the newest ~815 MB of nn/data, so
+# every shape trains and validates on an identical, non-moving set. Duplicated rows that already
+# live in nn/data -- never worth committing, and re-made by nn/freeze-arch-data.js when needed.
+data-arch-frozen/

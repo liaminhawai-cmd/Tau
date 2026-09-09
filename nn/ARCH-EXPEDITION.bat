@@ -32,10 +32,21 @@ echo   Needs CUDA. A memory topology cannot be trained on the CPU at all,
 echo   so those shapes fail loudly rather than minting a plain net under
 echo   an ablation's name.
 echo.
+echo   Every shape trains and validates on ONE frozen copy of the corpus,
+echo   made once by the step below. That matters: the trainer keeps the
+echo   newest files up to a budget, the league writes new ones constantly,
+echo   and the seed shuffles whatever list it is given -- so on the live
+echo   corpus the held-out 10%% silently changes between chunks and the
+echo   shapes end up sitting different exams. Frozen, they all sit one.
+echo.
 echo   This is a LONG run -- up to 200 epochs per shape. Pass --maxEpochs 60
 echo   to cap it, or --patienceEpochs 20 to stop sooner.
 echo.
 pause
+node nn\freeze-arch-data.js
+if errorlevel 1 goto done
+echo.
 node nn\wild-mint.js --continue-expedition %*
+:done
 echo.
 pause
