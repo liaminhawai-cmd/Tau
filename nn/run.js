@@ -55,6 +55,8 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const evo = require('./evolution-roster.js');
+const gate = require('./promotion-gate.js');
+const { fmtElo } = require('./elo.js');
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
@@ -197,6 +199,14 @@ const poolBudgetHours = +arg('poolBudgetHours', 0.25);
 // promotion gate does not ask.
 const poolDepths = arg('poolDepths', '1,2');
 const poolGames = arg('poolGames', '4');
+// The promotion gate is a direct match against the incumbent (see promotion-gate.js for why the
+// pool cannot make this call). --gateGames per candidate at D1, colour-balanced; --gateCandidates
+// caps how many standing league members join whatever was trained this cycle; a candidate is
+// promoted when its Elo LOWER bound over best.json exceeds --gateMargin.
+const gateGames = Math.max(2, +arg('gateGames', 80) & ~1);
+const gateMargin = Number.isFinite(+arg('gateMargin', 0)) ? +arg('gateMargin', 0) : 0;
+const gateCandidates = Math.max(1, +arg('gateCandidates', 4));
+const gateLanes = Math.max(1, +arg('gateLanes', 4));
 const poolLevels = arg('poolLevels', '');
 // Capped model-variety slots. Fixed ladder-rank targets ("1.5, 2.5, 4.5...") break down once nets
 // exceed L11 -- ultra rates 509 against L11's 332, no ladder rank left to even express where it
@@ -298,6 +308,29 @@ function atomicCopy(srcPath, destPath) {
 
 const dir = __dirname;
 const best = path.join(dir, 'models', 'best.json');
+// The newest ckpt-*.json whose bytes still equal best.json, or null. Size first, bytes only on a
+// size match, newest first -- so the common case (the last checkpoint IS best.json) costs one read.
+function latestCheckpointTwin() {
+  let bestStat;
+  try { bestStat = fs.statSync(best); } catch (e) { return null; }
+  const md = path.join(dir, 'models');
+  let names = [];
+  try { names = fs.readdirSync(md).filter(f => /^ckpt-\d+\.json$/.test(f)); } catch (e) { return null; }
+  names.sort((a, b) => +b.match(/\d+/)[0] - +a.match(/\d+/)[0]);
+  let bestBytes = null;
+  for (const f of names) {
+    const p = path.join(md, f);
+    try {
+      if (fs.statSync(p).size !== bestStat.size) continue;
+      bestBytes ||= fs.readFileSync(best);
+      if (fs.readFileSync(p).equals(bestBytes)) return p;
+    } catch (e) {}
+  }
+  return null;
+}
+// Pool cycle counter. It used to be inferred from the highest ckpt-N on disk, which only worked
+// because every cycle minted one; now a checkpoint is minted only when best.json changes.
+const cycleFile = path.join(dir, 'models', '.pool-cycle.json');
 const poolFile = path.join(dir, 'elo-results.json');
 const poolSummary = path.join(dir, 'elo-summary.json');
 const fresh = path.join(dir, 'models', 'value.json');
@@ -580,6 +613,7 @@ const championShape = () => {
 // lineage registry and the ladder rungs already follow.
 const mutantPopFile = path.join(dir, 'models', '.mutant-pop.json');
 const mutantHistFile = path.join(dir, 'models', '.mutant-history.jsonl');
+const gateHistFile = path.join(dir, 'models', '.gate-history.jsonl');
 function loadMutantPop() {
   let pop;
   try { pop = JSON.parse(fs.readFileSync(mutantPopFile, 'utf8')); } catch (e) { pop = null; }
@@ -1274,7 +1308,10 @@ function nextNum(pattern) {
     for (const f of fs.readdirSync(d)) { const m = rx.exec(f); if (m) max = Math.max(max, +m[1]); } };
   if (pattern === 'batch') scan(path.join(dir, 'data'), /^batch-(\d+)\.jsonl$/);
   else if (pattern === 'resume') scan(modelsDir, /^resume-(\d+)\.json$/);
-  else scan(modelsDir, /^ckpt-(\d+)\.json$/);
+  else {
+    scan(modelsDir, /^ckpt-(\d+)\.json$/);
+    try { max = Math.max(max, +JSON.parse(fs.readFileSync(cycleFile, 'utf8')).last || 0); } catch (e) {}
+  }
   return max + 1;
 }
 let batchNum = nextNum('batch');
@@ -1566,6 +1603,7 @@ function refreshModelSlots(ranked) {
 
 async function runPoolCycle() {
   const num = cycleNum++;
+  try { atomicWrite(cycleFile, JSON.stringify({ last: num, at: new Date().toISOString() })); } catch (e) {}
 
   // Spend already-earned cull evidence BEFORE any new model training. A 30-epoch birth used to
   // stand in front of elorank for hours, so a four-thousand-game cull bank could grow while not one
@@ -1577,10 +1615,21 @@ async function runPoolCycle() {
   // clock, so rating "best.json" would attribute games to a moving target -- the same bug that made
   // elorank snapshot its whole field. A numbered copy is a fixed thing that can be rated once and
   // referred to forever.
-  const ckpt = path.join(dir, 'models', `ckpt-${String(num).padStart(3, '0')}.json`);
+  let ckpt = path.join(dir, 'models', `ckpt-${String(num).padStart(3, '0')}.json`);
   if (!fs.existsSync(best)) { log(`pool cycle ${num} — no best.json yet, skipping`); return; }
-  atomicCopy(best, ckpt);
-  log(`pool cycle ${num} — checkpoint saved: ${path.basename(ckpt)}`);
+  // ...but best.json only changes on promotion, and minting a byte copy EVERY cycle put fifteen
+  // identical faces of it in the pool (ckpt-168 through ckpt-281 were all the same weights), each
+  // eating rating games and each a fresh noisy draw for the old gate to pick the luckiest of. One
+  // identity per set of weights: while best.json still equals a checkpoint on disk, keep rating
+  // that one and mint nothing.
+  const twin = latestCheckpointTwin();
+  if (twin) {
+    ckpt = twin;
+    log(`pool cycle ${num} — best.json unchanged since ${path.basename(twin)}; no new checkpoint minted`);
+  } else {
+    atomicCopy(best, ckpt);
+    log(`pool cycle ${num} — checkpoint saved: ${path.basename(ckpt)}`);
+  }
   statusState.lastCheckpoint = `${path.basename(ckpt)} at ${new Date().toISOString()}`;
 
   // Start the GPU branch immediately. The CPU branch below (train.js control/mutant/lineage) and
@@ -1839,76 +1888,77 @@ async function runPoolCycle() {
     }
 
     const ranked = Object.values(byModel).sort((a, b) => b.elo - a.elo);
-    const top = ranked[0];
     const incumbentName = path.basename(ckpt, '.json');
-    const topName = path.basename(top.model, '.json');
     const line = ranked.slice(0, 5)
       .map(r => `${path.basename(r.model, '.json')} ${Math.round(r.elo)}`).join(', ');
     log(`pool cycle ${num} — ratings: ${line}`);
-    const hasCI = r => r && Number.isFinite(r.rankLo) && Number.isFinite(r.rankHi);
-    let incumbent = byModel[incumbentName];
-    let incumbentAs = incumbentName;
-    if (!hasCI(incumbent)) {
-      // Under the league-first trainer the placement pass above is normally lock-skipped (the
-      // continuous league owns the Elo writer), so the checkpoint saved THIS cycle has no official
-      // games yet when this gate runs -- the league only starts covering it in the next window.
-      // Judged only on today's copy, the gate said "no usable rank interval" every single cycle
-      // and best.json could never be promoted again. But every ckpt-* is a byte copy of best.json,
-      // so any earlier checkpoint whose bytes still equal best.json is the SAME weights under an
-      // already-rated identity. Judge the incumbent through the most optimistic such twin (highest
-      // rankHi): that keeps the "confident, not merely ahead" bar fully intact.
-      let bestStat = null, bestBytes = null;
-      try { bestStat = fs.statSync(best); } catch (e) {}
-      const twins = !bestStat ? [] : Object.values(byModel).filter(r => {
-        const n = path.basename(r.model, '.json');
-        if (n === incumbentName || !/^ckpt-\d+$/.test(n) || !hasCI(r)) return false;
-        const p = path.join(dir, 'models', `${n}.json`);
-        try {
-          if (fs.statSync(p).size !== bestStat.size) return false;
-          bestBytes ||= fs.readFileSync(best);
-          return fs.readFileSync(p).equals(bestBytes);
-        } catch (e) { return false; }
-      });
-      const twin = twins.sort((a, b) => b.rankHi - a.rankHi)[0];
-      if (twin) {
-        incumbent = twin;
-        incumbentAs = path.basename(twin.model, '.json');
-        log(`pool cycle ${num} — ${incumbentName} is unrated so far; judging the incumbent ` +
-            `through ${incumbentAs}, a byte-identical rated snapshot of best.json`);
-      }
+    // Promotion is a DIRECT match against the incumbent, played right here (promotion-gate.js has
+    // the full argument). Short version: ckpt-168..281 were byte copies of best.json and the pool
+    // rated them from -301 to +64 Elo, so no pool interval can separate a 6-epoch resume from the
+    // net it was resumed from, and best.json stopped moving at cycle 168. Who gets the match:
+    // whatever was trained this cycle that could take the seat (resume-N, the lineage step) plus the
+    // strongest standing league members by pessimistic bound -- a mutant, a scratch or a lineage
+    // champion earns its shot by rising in the pool, which is the ecosystem doing its job -- minus
+    // anything whose bytes already ARE best.json. Only ordinary value nets, as before.
+    const livePath = r => path.join(dir, 'models', path.basename(r.model));
+    let bestBytes = null, bestSize = -1;
+    try { bestSize = fs.statSync(best).size; } catch (e) {}
+    const isBestTwin = p => {
+      try {
+        if (fs.statSync(p).size !== bestSize) return false;
+        bestBytes ||= fs.readFileSync(best);
+        return fs.readFileSync(p).equals(bestBytes);
+      } catch (e) { return false; }
+    };
+    const mutantFiles = new Set(((mutantPop && mutantPop.active) || []).map(m => path.join(dir, 'models', m.file)));
+    const dualFiles = new Set(dualRun.focus);
+    const fresh = focus.filter(p => p !== ckpt && !dualFiles.has(p) && !mutantFiles.has(p) &&
+                                    fs.existsSync(p) && !isBestTwin(p));
+    const standing = [];
+    for (const r of ranked.slice().sort((a, b) => (b.rankLo ?? -Infinity) - (a.rankLo ?? -Infinity))) {
+      if (fresh.length + standing.length >= gateCandidates) break;
+      if (!Number.isFinite(r.rankLo) || (r.games || 0) < 12) continue;
+      const p = livePath(r);
+      if (!fs.existsSync(p) || fresh.includes(p) || standing.includes(p) || isBestTwin(p)) continue;
+      standing.push(p);
     }
-    if (topName === incumbentName || topName === incumbentAs) {
-      log(`pool cycle ${num} — current net is already the strongest rated; keeping best.json`);
-    } else if (!hasCI(incumbent)) {
-      // Unrated/edge-flagged incumbent (e.g. rated off the top of the ladder, or too few games)
-      // with no rated byte-identical twin either: there is no interval to clear yet, so there is
-      // nothing to be confident ABOUT. Wait rather than fall back to the point estimate -- that
-      // fallback is exactly the noise-ratchet this gate exists to close off.
-      log(`pool cycle ${num} — ${incumbentName} has no usable rank interval yet; ` +
-          `too little evidence to judge a promotion, keeping best.json`);
+    const candidates = [...fresh, ...standing];
+    let gateLine;
+    if (!candidates.length) {
+      gateLine = 'nothing to gate this cycle; keeping best.json';
+      log(`pool cycle ${num} — ${gateLine}`);
     } else {
-      // Search every rated candidate, not just the Elo point-estimate leader: a model with a
-      // slightly lower mean but a narrower, higher-floor interval can legitimately be the more
-      // confident case even when it isn't "top" by raw Elo. Among everyone who clears the bar,
-      // the highest rankLo is the most decisively ahead -- that ordering, not Elo, breaks the tie.
-      const challengers = Object.values(byModel)
-        .filter(r => ![incumbentName, incumbentAs].includes(path.basename(r.model, '.json')) &&
-                     hasCI(r) && r.rankLo > incumbent.rankHi)
-        .sort((a, b) => b.rankLo - a.rankLo);
-      const winner = challengers[0];
-      if (!winner) {
-        log(`pool cycle ${num} — no candidate's rank CI clears ${incumbentAs}'s ` +
-            `(${incumbent.rankLo.toFixed(2)}-${incumbent.rankHi.toFixed(2)}) yet; keeping best.json`);
-      } else if (fs.existsSync(winner.model)) {
-        const winnerName = path.basename(winner.model, '.json');
+      writeStatus(`promotion gate: ${candidates.length} candidate(s) x ${gateGames} games vs ${incumbentName} ` +
+                  `(started ${new Date().toISOString()})`);
+      const verdict = await gate.runGate({
+        incumbent: ckpt, candidates, games: gateGames, lanes: gateLanes, depth: 1, openingPlies: 4,
+        dataPrefix: path.join(dir, 'data', `gate-${String(num).padStart(3, '0')}`),
+        log: m => log(`pool cycle ${num} — ${m}`),
+      });
+      for (const r of verdict.results) log(`pool cycle ${num} — gate ${gate.describe(r, gateMargin)}`);
+      try {
+        fs.appendFileSync(gateHistFile, JSON.stringify({
+          cycle: num, incumbent: incumbentName, games: gateGames, margin: gateMargin, at: new Date().toISOString(),
+          results: verdict.results.map(r => ({ name: r.name, w: r.w, l: r.l, d: r.d, komiW: r.komiW, komiL: r.komiL,
+                                               elo: r.rating.elo, lo: r.rating.lo, hi: r.rating.hi })),
+        }) + '\n');
+      } catch (e) {}
+      // Results come back sorted by lower bound, so the first that clears is the most decisively ahead.
+      const winner = verdict.results.find(r => gate.clears(r, gateMargin));
+      if (winner && fs.existsSync(winner.path)) {
         atomicCopy(best, path.join(dir, 'models', `best.pre-pool-${Date.now()}.json`));
-        atomicCopy(winner.model, best);
-        log(`pool cycle ${num} — promoted ${winnerName} (rank ${winner.rankLo.toFixed(2)}-` +
-            `${winner.rankHi.toFixed(2)} clears incumbent ${incumbentAs}'s ` +
-            `${incumbent.rankLo.toFixed(2)}-${incumbent.rankHi.toFixed(2)})`);
+        atomicCopy(winner.path, best);
+        gateLine = `promoted ${winner.name}: ${winner.w}-${winner.l}-${winner.d} vs ${incumbentName}, ` +
+                   `${fmtElo(winner.rating)} (lower bound clears +${gateMargin})`;
+      } else {
+        const top = verdict.results[0];
+        gateLine = `no candidate provably beats ${incumbentName}` +
+          (top && top.rating.elo != null ? ` (closest ${top.name}: ${top.w}-${top.l}-${top.d}, ${fmtElo(top.rating)})` : '') +
+          '; keeping best.json';
       }
+      log(`pool cycle ${num} — ${gateLine}`);
     }
-    statusState.lastGate = `pool cycle ${num} — ${line}`;
+    statusState.lastGate = `pool cycle ${num} — ${gateLine}`;
     slotPaths = refreshModelSlots(ranked);
     if (slotPaths.length) log(`pool cycle ${num} — model-variety slots refreshed: ${slotPaths.length} files`);
     // Champion shape, decided across the whole population rather than by one pairwise fight. The
