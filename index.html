@@ -5237,16 +5237,37 @@ function nnFeaturesGame() {
     out.push(nnTriAt(op, me)/180);
     return out;
 }
+// Browser mirror of nn/net.js's MLP.value(). The memory topologies are NOT optional here: a
+// dense-memory-v1 value net's layer l reads fanIns[l] = hidden[l-1] + k*(l-1) inputs, not
+// sizes[l], so a plain-MLP walk strides the flat weight rows at the wrong pitch from layer 2 on
+// and returns scrambled numbers rather than a bad evaluation. nnPolicyPredictGame was taught the
+// topologies when they landed and this was not, so every dense-memory value net -- which is what
+// best.json and the whole resume-* lineage now are -- played nonsense in #lab while the loader
+// happily accepted it. usableValue() below now also refuses a topology this cannot run.
 function nnForwardGame(x, model) {
-    const { sizes, W, b } = model || nnModel;
+    const m = model || nnModel;
+    const { sizes, W, b } = m;
+    const fanIns = Array.isArray(m.fanIns) ? m.fanIns : sizes.slice(0, -1);
+    const dense = !!(m.topology && m.topology.kind === 'dense-memory-v1');
+    const k = dense ? (+m.topology.memoryWidth || 0) : 0;
+    const scale = dense ? (+m.topology.residualScale || 0) : 0;
     let a = x;
+    const memories = [];
     for (let l = 0; l < W.length; l++) {
-        const nIn = sizes[l], nOut = sizes[l + 1], z = new Array(nOut);
+        const nIn = fanIns[l], nOut = sizes[l + 1], z = new Array(nOut);
+        // every memory but the immediately preceding layer's -- that one is `a` already
+        const earlier = memories.length > 0 ? memories.length - 1 : 0;
+        const residual = dense && scale !== 0 && l > 0 && l < W.length - 1 && a.length === nOut;
         for (let j = 0; j < nOut; j++) {
-            let s = b[l][j];
-            for (let i = 0; i < nIn; i++) s += W[l][j*nIn + i]*a[i];
-            z[j] = Math.tanh(s);
+            const row = j*nIn;
+            let s = b[l][j], off = 0;
+            for (let i = 0; i < a.length; i++) s += W[l][row + off++]*a[i];
+            for (let mi = 0; mi < earlier; mi++)
+                for (let i = 0; i < k; i++) s += W[l][row + off++]*memories[mi][i];
+            const branch = Math.tanh(s);
+            z[j] = residual ? a[j] + scale*branch : branch;
         }
+        if (dense && l < W.length - 1) memories.push(z);
         a = z;
     }
     return a[0];
@@ -10062,9 +10083,14 @@ function labUpdateBtn() {
       return await r.json();
   };
   const dualOut = 1 + NN_ARMS + NN_BINS, jointOut = 3*NN_BINS*2;
-  const usableValue = m => !!(m && Array.isArray(m.sizes) && Array.isArray(m.W) && Array.isArray(m.b) &&
-      !m.policy && m.sizes[0] === NN_N_FEATURES && (m.dual ? m.sizes[m.sizes.length-1] === dualOut
-                                                          : m.sizes[m.sizes.length-1] === 1));
+  const usableValue = m => {
+      if (!(m && Array.isArray(m.sizes) && Array.isArray(m.W) && Array.isArray(m.b) && !m.policy &&
+            m.sizes[0] === NN_N_FEATURES && (m.dual ? m.sizes[m.sizes.length-1] === dualOut
+                                                    : m.sizes[m.sizes.length-1] === 1))) return false;
+      // A topology nnForwardGame cannot walk must be REFUSED, not silently mis-evaluated.
+      const kind = m.topology && m.topology.kind;
+      return !kind || kind === 'dense-memory-v1';
+  };
   const usablePolicy = m => {
       if (!(m && m.policy && Array.isArray(m.sizes) && Array.isArray(m.W) && Array.isArray(m.b) &&
             m.sizes[0] === NN_N_FEATURES)) return false;
