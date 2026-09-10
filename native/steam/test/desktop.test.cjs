@@ -277,6 +277,46 @@ test('the corner board is resizable by a knob on its rim and by scrolling over i
   assert.deepEqual(g.errors,[]);
 });
 
+test('the controls sheet lists the live bindings and the pad can resize the board',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopLocal').click();g.tick();
+  // F1 from anywhere. Rendered as real markup, not printed as literal tags: showModal writes a
+  // plain-text body with textContent unless told otherwise, so this is the guard for that argument.
+  g.key('F1');g.tick();
+  assert.equal(g.$('modalTitle').textContent,'Controls');
+  const rows=[...g.$('modalBody').querySelectorAll('.desktop-controls-row')];
+  assert.ok(rows.length>12, `the sheet lists the bindings, got ${rows.length} rows`);
+  assert.equal(g.$('modalBody').textContent.includes('<kbd>'),false,'rendered, not printed as markup');
+  const say=()=>rows.map(r=>r.textContent).join(' | ');
+  // It reads the live scheme rather than a second hard-coded copy, so it cannot contradict the pad.
+  assert.ok(/LT \/ RT/.test(say()),'the trigger scheme is described by default');
+  g.$('modalBtns').firstElementChild.click();g.tick();
+  g.w.tauDesktop.padScheme='stick';
+  g.key('F1');g.tick();
+  const after=[...g.$('modalBody').querySelectorAll('.desktop-controls-row')].map(r=>r.textContent).join(' | ');
+  assert.ok(/Right stick/.test(after),'switching scheme changes what the sheet says');
+  g.$('modalBtns').firstElementChild.click();g.tick();
+  // The bumpers resize the flat board, held to repeat. The GPU device is stubbed only from here:
+  // with a renderer present the harness's animation loop wants a whole scene, and this section
+  // drives the input poll directly instead, which is the part under test.
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio:()=>{},getPixelRatio:()=>1,
+    setSize(){},shadowMap:{}};
+    camera=new THREE.PerspectiveCamera(); controls={mouseButtons:{},target:new THREE.Vector3()};
+    setViewSplit(0.5,true); resize();`);
+  const pad={connected:true,mapping:'standard',axes:[0,0,0,0],
+    buttons:Array.from({length:17},()=>({pressed:false,value:0})),
+    vibrationActuator:{playEffect:()=>Promise.resolve()}};
+  g.w.navigator.getGamepads=()=>[pad];
+  const width=()=>Number(String(g.read('canvas.style.width')).replace('px',''))||0;
+  const start=width();
+  pad.buttons[5].pressed=true; for(let i=0;i<10;i++) g.w.tauDesktop.tick(0.1); pad.buttons[5].pressed=false;
+  const grown=width();
+  assert.ok(grown>start, `RB grows the board (${start} -> ${grown})`);
+  pad.buttons[4].pressed=true; for(let i=0;i<20;i++) g.w.tauDesktop.tick(0.1); pad.buttons[4].pressed=false;
+  assert.ok(width()<grown, `LB shrinks it (${grown} -> ${width()})`);
+  assert.deepEqual(g.errors,[]);
+});
+
 test('every board in the catalogue paints the flat board, the 3D board and the pieces',async t=>{
   const g=await game();t.after(g.close);
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};

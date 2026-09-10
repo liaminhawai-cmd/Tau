@@ -224,10 +224,63 @@
     const body = onlineMatch ? 'Your online match continues while this menu is open.' : '';
     showModal(onlineMatch ? 'Match menu' : 'Paused', body, [
       { label:'Continue', onClick:() => focusBoard() },
+      { label:'Controls', onClick:openControls },
       { label:'Settings', onClick:openSettings },
       { label:'How to play', onClick:() => $('howToPlayBtn').click() },
       { label:'Leave match', onClick:confirmLeave },
     ], false, {dismiss:true});
+  }
+  // One place that answers "what do the buttons do". Built from the live settings rather than
+  // written out twice, so switching controller scheme changes what this says — a reference sheet
+  // that can disagree with the actual bindings is worse than none.
+  function controlsRows() {
+    const swing = settings.padScheme === 'triggers'
+      ? ['LT / RT', 'Swing — pull harder to turn faster']
+      : ['Right stick ← →', 'Swing — push further to turn faster'];
+    return [
+      ['h', 'Controller'],
+      ['D-pad ← →', 'Choose which foot to pin'],
+      ['A', 'Pin that foot · end your turn'],
+      swing,
+      ['B', 'Cancel the swing'],
+      ['LB / RB', 'Shrink · grow the flat board'],
+      ['Left stick', 'Move the camera'],
+      ['Y', 'These controls'],
+      ['Start', 'Match menu'],
+      ['h', 'Mouse'],
+      ['Click a foot', 'Pin it'],
+      ['Drag another', 'Swing around the pinned foot'],
+      ['Right-drag', 'Look around the 3D view'],
+      ['Scroll the flat board', 'Resize it'],
+      ['Drag the rim knob', 'Resize it precisely'],
+      ['h', 'Keyboard'],
+      ['1 – 3', 'Pin a foot · re-pick'],
+      ['← →', 'Swing'],
+      ['Enter', 'End your turn'],
+      ['Backspace', 'Cancel the swing'],
+      ['[ ]', 'Shrink · grow the flat board'],
+      ['Esc', 'Match menu'],
+      ['F1', 'These controls'],
+      ['F11 · F2', 'Fullscreen · showcase boards'],
+    ];
+  }
+  function openControls() {
+    const html = controlsRows().map(([k, v]) => k === 'h'
+      ? `<h3 class="desktop-controls-head">${v}</h3>`
+      : `<div class="desktop-controls-row"><kbd>${k}</kbd><span>${v}</span></div>`).join('');
+    // isHtml (4th) must be true: showModal writes a plain-text body with textContent, which would
+    // print this markup as literal angle brackets rather than rendering it.
+    showModal('Controls', `<div class="desktop-controls">${html}</div>`, [
+      { label:'Done', onClick:() => focusBoard() },
+    ], true, {dismiss:true});
+  }
+  // Grow or shrink the flat board. The corner layout is the only one with a board to resize, so
+  // outside it this is a no-op rather than quietly moving a split nothing is showing.
+  function resizeBoard(delta) {
+    if (!cornerLayoutActive()) return;
+    markSplitUsed();
+    setViewSplit(Math.max(0, Math.min(1, viewSplit + delta)), true);
+    saveViewSplit();
   }
   function confirmLeave() {
     showModal('Leave this match?', 'The current game will end.', [
@@ -442,6 +495,11 @@
     if(camDragging) return true;
     if(inMatch() && camManualSet && !falling) return true;
     const menu=!inMatch(), ratio=Math.max(.5,camera.aspect);
+    // KNOWN GAP: this distance is not fitted to the tile, so a full-width 3D view leaves noticeable
+    // dead headroom above the board and a narrow column crops it. Fitting it here does NOT work on
+    // its own — measured, a forced distance of 400 settles at ~320, because a second system is
+    // lerping the same camera every frame and the two split the difference. Fixing the framing means
+    // resolving that ownership first, not adding a third opinion.
     let distance=Math.max(menu?222:205,148/ratio), tx=0,ty=4,tz=0;
     const yaw=menu && !settings.reducedMotion ? .18+Math.sin(performance.now()*.000055)*.045 : 0;
     if(falling && !settings.reducedMotion && G.winner!=null){
@@ -554,6 +612,12 @@
         if(pressed(15))chooseFoot(chosenFoot+1);
         if(pressed(0))pinOrCommit();
         if(pressed(1))cancelSwing();
+        if(pressed(3))openControls();
+        // The bumpers resize the flat board. They sit under the fingers already holding the
+        // triggers that swing, and they were the one obvious pair still doing nothing in a match.
+        // Held down they repeat, so you can sweep the size rather than clicking twenty times.
+        if(down(4))resizeBoard(-1.6*dt);
+        if(down(5))resizeBoard(+1.6*dt);
         if(settings.padScheme==='triggers'){
           // Analog triggers: right clockwise, left anticlockwise, and how far you pull IS the speed.
           // Triggers rest at a true zero (no stick drift), so the dead zone can be tiny and a feather
@@ -582,6 +646,9 @@
   }
   document.addEventListener('keydown',e=>{
     if($('htpFull'))return;
+    // F1 is the one key people already try when they want to know what the buttons do, so it works
+    // from anywhere -- in a match, in the menus, and on top of another dialog.
+    if(e.key==='F1'){e.preventDefault();e.stopImmediatePropagation();openControls();return;}
     if(e.key==='Escape'){
       if(dialogOpen()){if(modalDismiss){e.preventDefault();e.stopImmediatePropagation();modalDismiss();}return;}
       if(inMatch()){e.preventDefault();e.stopImmediatePropagation();openPause();}return;
@@ -600,6 +667,8 @@
     }
     if(e.key==='Enter'&&!e.repeat){e.preventDefault();pinOrCommit();}
     if(e.key==='Backspace'){e.preventDefault();cancelSwing();}
+    if(e.key==='['){e.preventDefault();resizeBoard(-0.06);}
+    if(e.key===']'){e.preventDefault();resizeBoard(+0.06);}
   },true);
   addEventListener('keyup',e=>{if(e.key==='ArrowLeft')heldLeft=false;if(e.key==='ArrowRight')heldRight=false;});
   addEventListener('blur',()=>{heldLeft=heldRight=false;if(inMatch()&&!G.over&&!dialogOpen()&&!onlineMatch&&!$('htpFull'))openPause();});

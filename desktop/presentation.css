@@ -125,3 +125,14 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .tau-desktop.desktop-pale-room .desktop-input-hint { color:#3a3f47; }
 .tau-desktop.desktop-pale-room .desktop-input-hint kbd { color:#1d2026; }
 .tau-desktop.desktop-pale-room .desktop-material { color:#4a4a42; }
+/* The controls sheet: two columns of key-then-meaning, so the eye runs down the bindings rather
+   than reading sentences. Scrolls inside the modal, which already caps its own height. */
+.desktop-controls { display:grid; grid-template-columns:auto 1fr; gap:7px 14px; align-items:baseline;
+  text-align:left; }
+.desktop-controls-head { grid-column:1/-1; margin:14px 0 2px; font:600 12px/1 "Segoe UI",system-ui,sans-serif;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--gold); }
+.desktop-controls-head:first-child { margin-top:0; }
+.desktop-controls-row { display:contents; }
+.desktop-controls-row kbd { justify-self:start; font:12px/1.5 "Segoe UI",system-ui,sans-serif; color:var(--paper);
+  border:1px solid var(--edge); border-radius:4px; padding:3px 7px; white-space:nowrap; background:#0000003d; }
+.desktop-controls-row span { color:var(--muted); font-size:14px; }

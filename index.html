@@ -100,11 +100,25 @@ if (window.TAU_DESKTOP) {
     /* Corner layout (desktop): a knob on the board's rim, dragged along the diagonal. It carries a
        real disc rather than a bar because there is no seam here to hint that anything is draggable —
        the handle IS the whole affordance, so it has to look like one at rest, not only on hover. */
-    #splitHandle.corner { opacity:0.75; cursor:nwse-resize; border-radius:50%; }
-    #splitHandle.corner::before { width:14px; height:14px; border-radius:50%;
-        box-shadow:0 0 0 3px rgba(0,0,0,.42), 0 2px 8px rgba(0,0,0,.5); }
-    #splitHandle.corner:hover, #splitHandle.corner:focus-visible, #splitHandle.corner.dragging { opacity:1; }
-    #splitHandle.corner:hover::before, #splitHandle.corner.dragging::before { width:18px; height:18px; }
+    #splitHandle.corner { opacity:1; cursor:nwse-resize; border-radius:50%; }
+    /* A disc big enough to read as a control at a glance, on a dark collar so it separates from
+       whatever board colour is behind it — pale Dojo and near-black Noir both. Two arrowheads point
+       along the drag axis, which is the part that says "resize" rather than "button". */
+    #splitHandle.corner::before { width:22px; height:22px; border-radius:50%;
+        box-shadow:0 0 0 3px rgba(10,12,14,.85), 0 0 0 4px rgba(255,255,255,.22), 0 3px 12px rgba(0,0,0,.65); }
+    #splitHandle.corner::after { content:'⤡'; position:absolute; font-size:13px; line-height:1;
+        color:#12161a; font-weight:700; pointer-events:none; }
+    #splitHandle.corner:hover::before, #splitHandle.corner.dragging::before,
+    #splitHandle.corner:focus-visible::before { width:26px; height:26px; }
+    /* Until the player has actually resized once, the knob breathes. It stops for good on first use
+       (and for anyone who asked for reduced motion), so it is an introduction rather than a fixture
+       that pulses at you for the life of the game. */
+    #splitHandle.corner.unused::before { animation:splitKnobHint 2.1s ease-in-out infinite; }
+    @keyframes splitKnobHint {
+        0%,100% { box-shadow:0 0 0 3px rgba(10,12,14,.85), 0 0 0 4px rgba(255,255,255,.22), 0 3px 12px rgba(0,0,0,.65); }
+        50%     { box-shadow:0 0 0 3px rgba(10,12,14,.85), 0 0 0 10px rgba(217,183,123,.30), 0 3px 12px rgba(0,0,0,.65); }
+    }
+    @media (prefers-reduced-motion: reduce) { #splitHandle.corner.unused::before { animation:none; } }
     /* Auto-sized while watching a replay/spectating — nothing to drag, so it steps out of the way. */
     #splitHandle.auto { display:none; }
     /* Coach only: ease the board-size change when swapping between watching and playing, instead of
@@ -9558,6 +9572,7 @@ function layoutSplitHandle() {
         // floating on a backdrop has no seam, so the only thing telling you the size is adjustable
         // is the handle, and at 3px it was reported as simply missing.
         h.classList.remove('horz','vert'); h.classList.add('corner');
+        h.classList.toggle('unused', !splitUsed);
         // 0.7071 = cos45°: the knob sits where the diagonal leaves the circle, which is the direction
         // the drag actually runs, rather than on the corner of an invisible bounding box.
         const r = cornerSize/2, d = r*0.7071;
@@ -9582,6 +9597,16 @@ function layoutSplitHandle() {
 // the whole available axis (see resize), so the pointer's fraction along #views is exactly the flat
 // board's share, and inverting the LO..HI range above turns that straight back into viewSplit.
 let wheelSave = 0;   // debounces persisting the split while a wheel gesture is still running
+// The knob breathes until it has been used once, then stops for good. Remembered across sessions:
+// an introduction that reintroduced itself every launch would just be a fixture that pulses at you.
+let splitUsed = false;
+try { splitUsed = localStorage.getItem('tauSplitUsed') === '1'; } catch (e) {}
+function markSplitUsed() {
+    if (splitUsed) return;
+    splitUsed = true;
+    try { localStorage.setItem('tauSplitUsed', '1'); } catch (e) {}
+    const h = document.getElementById('splitHandle'); if (h) h.classList.remove('unused');
+}
 (function initSplitHandle() {
     const h = document.getElementById('splitHandle');
     if (!h) return;
@@ -9611,7 +9636,7 @@ let wheelSave = 0;   // debounces persisting the split while a wheel gesture is 
     };
     h.addEventListener('pointerdown', ev => {
         ev.preventDefault(); ev.stopPropagation();
-        dragging = true; h.classList.add('dragging');
+        dragging = true; h.classList.add('dragging'); markSplitUsed();
         try { h.setPointerCapture(ev.pointerId); } catch (e) {}
         apply(ev);
     });
@@ -9628,7 +9653,7 @@ let wheelSave = 0;   // debounces persisting the split while a wheel gesture is 
         else if (shrink.includes(ev.key)) setViewSplit(viewSplit - 0.05, true);
         else if (ev.key === 'Home')       setViewSplit(0.5, true);
         else return;
-        ev.preventDefault();
+        markSplitUsed(); ev.preventDefault();
     });
     h.setAttribute('aria-valuenow', Math.round(viewSplit*100));
     // Scroll anywhere over the flat board to resize it. The knob is the precise control and the
@@ -9637,7 +9662,7 @@ let wheelSave = 0;   // debounces persisting the split while a wheel gesture is 
     // the page/board scroll behaviour, and there the seam already advertises itself.
     canvas.addEventListener('wheel', ev => {
         if (!cornerLayoutActive()) return;
-        ev.preventDefault();
+        ev.preventDefault(); markSplitUsed();
         // Trackpads deliver many small deltas and a mouse a few large ones, so step by direction
         // rather than by magnitude: the same flick of either travels about the same distance.
         setViewSplit(viewSplit + (ev.deltaY < 0 ? 0.04 : -0.04), true);
