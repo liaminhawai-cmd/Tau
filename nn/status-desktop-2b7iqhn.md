@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-09-10T14:26:04.204Z_
+_Last updated: 2026-09-10T14:26:47.297Z_
 
 **Self-play batch:** 112
-**Stage:** promotion gate: 4 candidate(s) x 80 games vs ckpt-288 (started 2026-09-10T14:26:04.204Z)
+**Stage:** self-play batch 112 running (started 2026-09-10T13:29:21.620Z)
 **mix:** nnnn:0.6,nnladder:0.3,ladder:0.1
 
 **Dual pool:** 6 active (minimum 4) (dual-pop-002-e40, dual-wild-01-256x128, dual-wild-02-128x128x128x128, dual-wild-03-192x48x192, dual-wild-04-48x96x192, dual-wild-05-128x32x128x32)
