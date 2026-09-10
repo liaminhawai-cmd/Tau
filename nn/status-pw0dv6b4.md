@@ -1,14 +1,14 @@
 # Tau NN training status
-_Last updated: 2026-09-07T21:19:41.579Z_
+_Last updated: 2026-09-10T07:39:39.702Z_
 
-**Self-play batch:** 106
-**Stage:** rating pool placement (started 2026-09-07T21:19:41.579Z)
+**Self-play batch:** 107
+**Stage:** self-play batch 107 running (started 2026-09-10T07:34:36.415Z)
 **mix:** nnnn:0.6,nnladder:0.3,ladder:0.1
 
-**Dual pool:** disabled
+**Dual pool:** (not initialized yet)
 
 **Last gate result:** (none yet)
 
-**Last checkpoint:** ckpt-002.json at 2026-09-07T11:20:36.297Z
+**Last checkpoint:** (none yet)
 
 **Last ladder sweep:** (none yet)
