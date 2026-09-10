@@ -64,6 +64,7 @@ THE TWO THINGS THAT SILENTLY GO WRONG (see torch-train-core.py's header -- same 
    error, exactly the failure verify-dual-export.js's __probe exists to catch.
 """
 import argparse, json, math, os, random, socket, sys
+import tau_paths
 
 N_FEATURES = 94
 N_ARMS = 6
@@ -317,7 +318,7 @@ def main():
     ap.add_argument('--policyDrawWeight', type=float, default=0.7)
     ap.add_argument('--policyWeight', type=float, default=1.0,
                      help='lambda balancing the policy CE loss against the value MSE loss')
-    ap.add_argument('--eloSummary', default=os.path.join(os.path.dirname(__file__), 'elo-summary.json'))
+    ap.add_argument('--eloSummary', default=tau_paths.elo_summary_path(os.path.dirname(__file__)))
     ap.add_argument('--eloScale', type=float, default=250.0)
     ap.add_argument('--eloFloor', type=float, default=0.25)
     ap.add_argument('--noEloWeight', action='store_true')

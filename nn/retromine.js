@@ -74,7 +74,7 @@ function arg(name, dflt) {
 
 function main() {
   const seeds = +arg('seeds', 20);
-  const summaryPath = arg('summary', path.join(__dirname, 'elo-summary.json'));
+  const summaryPath = arg('summary', require('./machine-id.js').summaryPath(__dirname));
   const maxDepth = Math.max(1, +arg('maxDepth', 2));
   const seedBottom = Math.max(2, +arg('seedBottom', 6));
   const bigGuns = Math.max(1, +arg('bigGuns', 4));

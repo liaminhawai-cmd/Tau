@@ -6,6 +6,7 @@ legacy 6+16 head, the distance distribution is conditional on the exact pivot an
 Exports policy.js-compatible JSON and embeds reference logits for the mandatory JS verifier.
 """
 import argparse, json, math, os, random, re, sys, time
+import tau_paths
 
 N_FEATURES = 94
 N_BINS = 16
@@ -244,7 +245,7 @@ def main():
                     help='modest extra imitation weight for recovered winning throws')
     ap.add_argument('--quickWinBonus', type=float, default=.2,
                     help='max +/- policy weight for winners based on game length vs corpus median')
-    ap.add_argument('--eloSummary', default=os.path.join(here, 'elo-summary.json'))
+    ap.add_argument('--eloSummary', default=tau_paths.elo_summary_path(here))
     ap.add_argument('--eloScale', type=float, default=250)
     ap.add_argument('--eloFloor', type=float, default=.25)
     ap.add_argument('--noEloWeight', action='store_true')

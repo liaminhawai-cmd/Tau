@@ -48,7 +48,7 @@ function main() {
   // gold standard, either alone is partial credit. --noEloWeight restores flat imitation.
   const eloW = process.argv.includes('--noEloWeight')
     ? { enabled: false, note: 'disabled by --noEloWeight', weight: () => 1 }
-    : makeEloWeighter(arg('eloSummary', path.join(__dirname, 'elo-summary.json')),
+    : makeEloWeighter(arg('eloSummary', require('./machine-id.js').summaryPath(__dirname)),
                       { scale: +arg('eloScale', 250), floor: +arg('eloFloor', 0.25) });
   console.log(`elo weighting: ${eloW.note}`);
   // policy-targets.js also stamps a per-row `sw` (source weight: how much to trust the MOVE itself,

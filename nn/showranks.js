@@ -16,7 +16,7 @@ function arg(name, dflt) {
   return i >= 0 ? process.argv[i + 1] : dflt;
 }
 
-const summaryPath = arg('summary', path.join(__dirname, 'elo-summary.json'));
+const summaryPath = arg('summary', require('./machine-id.js').summaryPath(__dirname));
 let summary;
 try { summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8')); }
 catch (e) {

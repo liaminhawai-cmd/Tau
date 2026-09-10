@@ -42,6 +42,7 @@ WHAT train.js DOES THAT THIS REPLICATES (dropping any of these makes an unfair c
 NOT replicated: --eloWeight (off by default in train.js and Wild Mint).
 """
 import argparse, glob, json, math, os, random, sys
+import tau_paths
 from collections import defaultdict
 
 N_FEATURES = 94
@@ -330,7 +331,7 @@ def main():
                     help='cap on raw JSONL read into memory; 0 = scale to this machine\'s RAM')
     ap.add_argument('--eloWeightFloor', type=float, default=0.15)
     ap.add_argument('--eloWeightTemp', type=float, default=150.0)
-    ap.add_argument('--eloSummary', default=os.path.join(os.path.dirname(__file__), 'elo-summary.json'))
+    ap.add_argument('--eloSummary', default=tau_paths.elo_summary_path(os.path.dirname(__file__)))
     ap.add_argument('--poseInput', action='store_true',
                     help='EXPERIMENT: append the z-scored raw pose (6 values) to the feature vector. '
                          'Offline ablation only -- live play feeds nets the plain features, so a '

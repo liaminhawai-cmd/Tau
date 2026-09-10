@@ -170,7 +170,7 @@ function playChunk(chunk){
 function runTinyRescue(stamp){
   if(!rescue)return null;
   const medalSummary=path.join(dir,'medals','elo-summary.json');
-  const summary=fs.existsSync(medalSummary)?medalSummary:path.join(dir,'elo-summary.json');
+  const summary=fs.existsSync(medalSummary)?medalSummary:require('./machine-id.js').summaryPath(dir);
   if(!fs.existsSync(summary))return null;
   const out=path.join(dir,'data',`retro-${name}-${stamp}.jsonl`);
   log(`two-step rescue: one seed, at most TWO replay games; medal-aware D1/D2 axis (${path.relative(dir,summary)})`);
