@@ -97,6 +97,24 @@ test('a real match hands board sizing to the web split view, not a cut-down desk
   assert.deepEqual(g.errors,[]);
 });
 
+test('the saved-games list draws its icons instead of printing their source',async t=>{
+  const g=await game('');t.after(g.close);
+  // A saved replay is just an entry in localStorage, so the list can be stood up without playing
+  // a game out. The payload only has to be a string — nothing here decodes it.
+  g.read(`storeSavedReplays([{t:'Local 1v1', d:Date.now(), p:'x'}]); openWatchScreen();`);
+  const icons=[...g.w.document.querySelectorAll('#wsSaved .wsIcon')];
+  assert.ok(icons.length>=3,`the row offers its actions, got ${icons.length}`);
+  // The row's icons are a mix of plain glyphs and one inline SVG. Every one of them used to go in
+  // through textContent, so the SVG was rendered as its own source code down the side of the row.
+  for(const b of icons){
+    assert.ok(!b.textContent.includes('<svg'),`an icon printed its markup: ${b.textContent.slice(0,40)}`);
+    assert.ok(!b.textContent.includes('<path'),'an icon printed a path');
+    assert.ok(b.querySelector('svg') || b.textContent.trim(),'every icon shows something');
+  }
+  assert.equal(icons.filter(b=>b.querySelector('svg')).length,1,'the drawn icon is a real SVG element');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('ordinary web entry keeps its original presentation',async t=>{
   const g=await game('');t.after(g.close);
   assert.equal(g.w.TAU_DESKTOP,false);
