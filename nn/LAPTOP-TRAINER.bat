@@ -35,9 +35,9 @@ echo ================================================
 echo   Tau: second-machine trainer (seed, then train)
 echo ================================================
 echo.
-echo   Run this only when the desktop's trainer is NOT running. Both machines push to the
-echo   same branch and each keeps its own local rating store, so two live trainers means
-echo   two disagreeing leagues writing one nn\elo-summary.json.
+echo   Both machines push to the same branch and each keeps its own local rating store.
+echo   The shared-name artefacts they used to fight over are now per-machine, so running
+echo   alongside the desktop no longer wedges either side's pull.
 echo.
 pause
 
@@ -135,9 +135,10 @@ if not "!OVERRIDE!"=="" set /a LEAGUEW=!OVERRIDE!
 
 rem Running alongside another trainer is fine now for everything EXCEPT the shared-name artefacts.
 rem Medals go to nn\medals\<machine>\ and status to nn\status-<machine>.md, so those accumulate
-rem rather than clobber -- but nn\models\best.json, the ten pool slots, nn\elo-summary.json and
-rem run.js's own nn\data\batch-NNN.jsonl are still one name per repo, and two machines both at
-rem batch-105 is the collision run.js's --no-push-artifacts comment was written for.
+rem rather than clobber. The rating summary and the self-play batch stream are per-machine too
+rem now (nn\elo-summary-<machine>.json, nn\data\batch-<machine>-NNN.jsonl) -- they were the two
+rem tracked files both trainers rewrote under one name, and every aborted pull on this box named
+rem one of them. What is STILL one name per repo is nn\models\best.json and the ten pool slots.
 rem
 rem Answering y costs this machine almost nothing: its findings still reach the others as medals
 rem (its gold IS its best model by pessimistic bound), retromine rows still push under
@@ -148,7 +149,8 @@ set /p SECOND="Is a trainer already running on ANOTHER machine? y/N: "
 set "SHAREFLAG="
 if /i "!SECOND!"=="y" (
   set "SHAREFLAG=--no-push-artifacts"
-  echo   -^> not publishing best.json / pool slots / elo-summary / batch data; medals still publish
+  echo   -^> not publishing best.json / pool slots; medals, summary and batch data are
+  echo      per-machine and still publish
 )
 
 rem Dual training needs python + torch AND an NVIDIA GPU; without them the trainer runs value-only

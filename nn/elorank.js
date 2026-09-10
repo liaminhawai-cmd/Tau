@@ -63,7 +63,7 @@ for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])
   try{process.on(sig,()=>{dropChild();dropHeldLock();process.exit(130);});}catch(_){}
 
 (async()=>{
-  const original=process.argv.slice(2),summary=get(original,'summary',path.join(dir,'elo-summary.json'));
+  const original=process.argv.slice(2),summary=get(original,'summary',require('./machine-id.js').summaryFile(dir));
   ratingState.ensure(dir);
 
   if(has(original,'cullOnly')){

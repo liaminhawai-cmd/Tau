@@ -49,7 +49,7 @@ async function main(){
   // Official rating evidence and first coverage now come only from temp-0 arena/calibration games.
   if(hadEloInbox){delArg(original,'eloInbox');console.log('[rating] self-play Elo feed disabled: noisy training games are training-only; official Elo is temp-0 arena play');}
   const games=Math.max(1,+getArg(original,'games',100));
-  evo.sync(dir); evo.ingestSummary(dir,path.join(dir,'elo-summary.json'));
+  evo.sync(dir); evo.ingestSummary(dir,require('./machine-id.js').summaryPath(dir));
   const slice=evo.selfplaySlice(dir), profile=evo.selfplayProfile(slice,{dir});
   // The model draw keeps evolution-roster's existing strength+need equation. Ladder rungs are a
   // separate permanent reference class used to keep the training distribution from becoming wholly

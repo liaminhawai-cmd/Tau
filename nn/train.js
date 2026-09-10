@@ -234,7 +234,7 @@ function main() {
   const eloWeightOn = arg('eloWeight', '0') === '1';
   const eloW = eloWeightOn
     ? require('./eloweight.js').makeEloWeighter(
-        arg('eloSummary', path.join(__dirname, 'elo-summary.json')),
+        arg('eloSummary', require('./machine-id.js').summaryPath(__dirname)),
         { scale: +arg('eloScale', 250), floor: +arg('eloFloor', 0.25) })
     : null;
   if (eloW) console.log(`elo weighting: ${eloW.note}`);

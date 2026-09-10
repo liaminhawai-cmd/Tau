@@ -17,7 +17,7 @@ const targetGames=Math.max(2,+arg('targetGames',8)); // physical games, always e
 const openingPlies=Math.max(0,+arg('openingPlies',4));
 const bootstrapN=Math.max(40,+arg('bootstrap',100));
 const outPath=arg('out',path.join(dir,'elo-results.json'));
-const summaryPath=arg('summary',path.join(dir,'elo-summary.json'));
+const summaryPath=arg('summary',require('./machine-id.js').summaryFile(dir));
 const saveData=arg('saveData',null);
 const refit=process.argv.includes('--refit'),dryrun=process.argv.includes('--dryrun');
 const {atomicWrite}=require('./atomic-write.js');

@@ -3,7 +3,7 @@
 // ladder-rank interpolation: current Elo is fit from clean colour-balanced matches plus the weak
 // one-match seed prior. Ladder brains are ordinary opponents whose state is simply "immortal".
 const fs=require('fs'),path=require('path'),http=require('http'),{spawn}=require('child_process');
-const D=__dirname,F=n=>path.join(D,n),M=F('models'),R=F('elo-results.json'),S=F('elo-summary.json'),RP=F('models/.evolution-roster.json'),WM=F('models/.wild-mint-state.json'),WDM=F('models/.wild-dual-mint-state.json'),BM=F('models/.behemoth-mint-state.json'),DP=F('models/.dual-pop.json'),MP=F('models/.mutant-pop.json');
+const D=__dirname,F=n=>path.join(D,n),M=F('models'),R=F('elo-results.json'),S=require('./machine-id.js').summaryPath(D),RP=F('models/.evolution-roster.json'),WM=F('models/.wild-mint-state.json'),WDM=F('models/.wild-dual-mint-state.json'),BM=F('models/.behemoth-mint-state.json'),DP=F('models/.dual-pop.json'),MP=F('models/.mutant-pop.json');
 const host='127.0.0.1',port0=+(process.argv.find(x=>x.startsWith('--port='))||'--port=8765').split('=')[1];
 const json=(f,d)=>{try{return JSON.parse(fs.readFileSync(f,'utf8'))}catch{return d}},sig=f=>{try{let s=fs.statSync(f);return s.size+':'+s.mtimeMs}catch{return'-'}};
 const parse=id=>{let m=String(id).match(/^(.*?)(\+P)?@D(\d+)$/);return m?{trunk:m[1],policy:!!m[2],depth:+m[3]}:{trunk:id,policy:false,depth:null}};

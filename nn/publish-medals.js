@@ -11,7 +11,7 @@ const mach=require('./machine-id.js');
 // machine pushed last, silently overwriting what the others found. Per-machine directories turn
 // that clobber into an accumulation, which is the whole point: seed-population.js then imports
 // EVERY machine's medals, so each box breeds from the top few of every training run anywhere.
-const dir=__dirname,root=path.join(dir,'..'),machine=mach.machineId(dir),medalDir=mach.myMedalDir(dir),summaryPath=path.join(dir,'elo-summary.json');
+const dir=__dirname,root=path.join(dir,'..'),machine=mach.machineId(dir),medalDir=mach.myMedalDir(dir),summaryPath=mach.summaryPath(dir);
 const names=['gold','silver','bronze'],log=s=>console.log(`[medals] ${s}`);
 const read=(p,d)=>{try{return JSON.parse(fs.readFileSync(p,'utf8'));}catch(_){return d;}};
 const {atomicWrite}=require('./atomic-write.js');

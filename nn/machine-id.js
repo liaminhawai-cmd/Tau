@@ -77,7 +77,36 @@ function medalsMetaPath(dir) {
   return path.join(medalRoot(dir), 'medals.json');
 }
 
-module.exports = { machineId, setMachineId, medalRoot, myMedalDir, medalDirs, medalsMetaPath, sanitize };
+// The published rating summary. The medals' collision one level up, and worse: every machine
+// derives its own elo-summary.json from its own elo-results.json (which .gitignore keeps local on
+// purpose, for the independent re-measurement a second trainer exists to provide), then writes and
+// pushes that derivation under the one shared name. So on a two-machine branch the file is not a
+// summary, it is a race -- and unlike the medals it is a TRACKED file both sides rewrite every
+// rating checkpoint, so the losing machine's next pull aborts with "Your local changes to the
+// following files would be overwritten by merge" and takes the whole data sync down with it.
+// Observed live on pw0dv6b4: six aborted pulls, five skipped status pushes and one refused
+// fast-forward in a single session, every one of them naming this file. Naming it per machine is
+// what turns that race back into an accumulation.
+const summaryFile = dir => path.join(dir, `elo-summary-${machineId(dir)}.json`);
+// Where a READER should look: this machine's summary, falling back to the pre-naming shared file so
+// a clone that has not rated anything yet still resolves to something real (and so the summaries
+// already in git history stay readable).
+function summaryPath(dir) {
+  const mine = summaryFile(dir);
+  if (fs.existsSync(mine)) return mine;
+  return path.join(dir, 'elo-summary.json');
+}
+
+// Self-play batch files are the same shared-name problem in the data directory: run.js numbers them
+// from the highest batch-NNN.jsonl on disk, so two machines independently produce a batch-107 and
+// git is handed two different files claiming one path. New batches carry the machine id. The
+// counter's pattern still matches the un-prefixed legacy names, so numbering continues from the
+// existing history instead of restarting at 1 and colliding with all of it.
+const batchName = (dir, num) => `batch-${machineId(dir)}-${String(num).padStart(3, '0')}.jsonl`;
+const BATCH_RX = /^batch-(?:[a-z0-9._-]+-)?(\d+)\.jsonl$/;
+
+module.exports = { machineId, setMachineId, medalRoot, myMedalDir, medalDirs, medalsMetaPath, sanitize,
+  summaryFile, summaryPath, batchName, BATCH_RX };
 
 if (require.main === module) {
   const dir = __dirname, a = process.argv.slice(2);

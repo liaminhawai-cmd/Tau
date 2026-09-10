@@ -332,7 +332,9 @@ function latestCheckpointTwin() {
 // because every cycle minted one; now a checkpoint is minted only when best.json changes.
 const cycleFile = path.join(dir, 'models', '.pool-cycle.json');
 const poolFile = path.join(dir, 'elo-results.json');
-const poolSummary = path.join(dir, 'elo-summary.json');
+// Per machine (see machine-id.js): both trainers used to derive their own ratings into this one
+// tracked filename and push it, so every pull on the other machine aborted on it.
+const poolSummary = require('./machine-id.js').summaryFile(dir);
 const fresh = path.join(dir, 'models', 'value.json');
 const dualShapeFile = path.join(dir, 'models', '.dual-trainer-shape.json');
 const dualPopFile = path.join(dir, 'models', '.dual-pop.json');
@@ -1173,8 +1175,12 @@ const statusState = {};
 // per file. Models are dense float JSON that does not delta-compress, so pushing each one would
 // add a fresh blob to history forever; best.json therefore rides along only when a round robin
 // actually promotes something.
-// --no-push-artifacts turns this off, e.g. if a second trainer is pushing to the same branch, where
-// two machines writing the same batch-NNN.jsonl name would collide.
+// --no-push-artifacts turns this off for a second trainer sharing the branch. It used to be the
+// only defence against the shared-name collision, and it was the wrong shape of defence: it stops
+// this machine PUBLISHING, but both machines still WROTE nn/elo-summary.json and batch-NNN.jsonl
+// locally, so the other machine's pushes still landed on files this one had dirtied and every pull
+// here aborted on them. Those two are named per machine now (machine-id.js), which fixes the write
+// side; the flag remains for best.json and the pool slots, which are still one name per repo.
 const pushArtifacts = !process.argv.includes('--no-push-artifacts');
 // The status file is per-machine. It used to be one nn/status.md that every trainer on the branch
 // wrote and pushed, so with two machines it was not a status report, it was a race -- and the
@@ -1306,7 +1312,7 @@ function nextNum(pattern) {
   let max = 0;
   const scan = (d, rx) => { if (!fs.existsSync(d)) return;
     for (const f of fs.readdirSync(d)) { const m = rx.exec(f); if (m) max = Math.max(max, +m[1]); } };
-  if (pattern === 'batch') scan(path.join(dir, 'data'), /^batch-(\d+)\.jsonl$/);
+  if (pattern === 'batch') scan(path.join(dir, 'data'), require('./machine-id.js').BATCH_RX);
   else if (pattern === 'resume') scan(modelsDir, /^resume-(\d+)\.json$/);
   else {
     scan(modelsDir, /^ckpt-(\d+)\.json$/);
@@ -1322,7 +1328,7 @@ let resumeNum = nextNum('resume');
 // state, which persists across a restart): the worst a crash costs here is one candidate's trained
 // weights sitting on disk un-refocused, not a whole population's bookkeeping.
 let pendingResumeCandidates = [];
-if (batchNum > 1) log(`resuming self-play at batch ${batchNum} (found data up to batch-${String(batchNum - 1).padStart(3, '0')}.jsonl)`);
+if (batchNum > 1) log(`resuming self-play at batch ${batchNum} (found data up to batch ${batchNum - 1})`);
 if (cycleNum > 1) log(`resuming ${poolEveryMin > 0 ? 'pool' : 'round-robin'} cycles at ${cycleNum} ` +
   `(found checkpoints up to ckpt-${String(cycleNum - 1).padStart(3, '0')}.json)`);
 
@@ -1443,7 +1449,7 @@ function selfplayPoolProfile(paths) {
 
 function startSelfplayBatch() {
   const num = batchNum++;
-  const out = path.join(dir, 'data', `batch-${String(num).padStart(3, '0')}.jsonl`);
+  const out = path.join(dir, 'data', require('./machine-id.js').batchName(dir, num));
   selfplayOut = out;
   selfplayStartedAt = Date.now();
   // Only bias sampling once there's a model with a real frontier to bias toward -- pre-model,
@@ -2187,7 +2193,8 @@ async function runPoolCycle() {
   } catch (e) {
     log(`WARNING: pool promotion skipped (${e.message}) — keeping best.json`);
   }
-  writeStatus(`pool cycle ${num} complete`, ['nn/models/best.json', 'nn/elo-summary.json', ...slotPaths]);
+  writeStatus(`pool cycle ${num} complete`, ['nn/models/best.json',
+    path.posix.join('nn', path.basename(poolSummary)), ...slotPaths]);
 }
 
 async function runTournamentCycle() {

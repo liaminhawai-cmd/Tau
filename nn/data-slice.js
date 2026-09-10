@@ -51,7 +51,7 @@ function medalistSet() {
   } catch (e) {}
   // Same ranking publish-medals.js uses: one entry per model at its best pessimistic bound.
   try {
-    const sum = JSON.parse(fs.readFileSync(path.join(dir, 'elo-summary.json'), 'utf8'));
+    const sum = JSON.parse(fs.readFileSync(require('./machine-id.js').summaryPath(dir), 'utf8'));
     const best = {};
     for (const r of Object.values(sum.players || {})) {
       if (!r || r.kind !== 'nn' || !r.model || !Number.isFinite(+r.eloLo) || (+r.games || 0) < 6) continue;

@@ -130,7 +130,7 @@ const gitPushMin = Math.max(0, +arg('gitPush', 4));
 const workers = Math.max(1, +arg('workers',
   String(Math.max(1, Math.min(os.cpus().length - 1, 14)))));
 const seedsPerJob = Math.max(1, +arg('seedsPerJob', 1));
-const summary = path.resolve(arg('summary', path.join(dir, 'elo-summary.json')));
+const summary = path.resolve(arg('summary', require('./machine-id.js').summaryPath(dir)));
 const maxDepth = Math.max(1, +arg('maxDepth', 2));
 const seedBottom = Math.max(2, +arg('seedBottom', 6));
 const bigGuns = Math.max(1, +arg('bigGuns', 4));
