@@ -1490,9 +1490,14 @@ function startSelfplayBatch() {
   const sharedNote = sharedPool.length ? `, ${sharedPool.length}-model shared pool` : '';
   const weightNote = weightedCount ? `, Elo/CI-weighted ${weightedCount}/${sharedPool.length}` : '';
   const coverageNote = profile.coverage.length ? `, first-coverage ${profile.coverage.length} face(s)` : '';
-  log(`self-play batch ${num} starting: ${gamesPerBatch} games (mix ${mix}, ${workers} workers${poolNote}${sharedNote}${weightNote}${coverageNote})`);
+  // `mix` here is only the --mix DEFAULT this process was started with (or a caller override) --
+  // selfplay.js unconditionally recomputes and overrides it from live evidence (see its own
+  // "[evolution] fixed-rung training reference" line), so printing it as THE mix used to mislead
+  // once that override existed. Labelled a starting point now; read the follow-up line for the real
+  // split actually played.
+  log(`self-play batch ${num} starting: ${gamesPerBatch} games (mix ${mix} default, ${workers} workers${poolNote}${sharedNote}${weightNote}${coverageNote})`);
   statusState.batch = num;
-  statusState.mix = fs.existsSync(best) ? mix : '(no model yet — pure ladder)';
+  statusState.mix = fs.existsSync(best) ? '(see selfplay log: fixed-rung training reference)' : '(no model yet — pure ladder)';
   // Self-play games now feed the rating pool as well as the training corpus. They always knew both
   // sides' pool ids; they just had nowhere to report the outcome. Same append-only inbox the ladder
   // sweep already writes to, drained by whichever elorank run comes next -- so a batch's ~1000 real
