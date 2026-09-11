@@ -35,19 +35,25 @@ function strokeLines(c, style, width, dash) {          // the printed geometry: 
 // Zone values are: centre 4, mid band 3, outer band 2, minus one inside a lens circle.
 function shadeZones(c, amt) {
   if (!amt) return;
-  const lift = 0.10*amt, drop = [0, 0.24*amt, 0.12*amt, 0, 0];   // by value: [_, v1, v2, v3, v4]
-  const bandPath = b => { c.beginPath(); c.arc(ox, oy, px(b === 0 ? CFG.edgeU : CFG.rings[b === 1 ? 1 : 0]), 0, 7);
-                          if (b < 2) c.arc(ox, oy, px(b === 0 ? CFG.rings[1] : CFG.rings[0]), 0, 7); };
-  const lensPath = () => { c.beginPath(); for (const a of CFG.sideArcs) { c.moveTo(ox + px(a.cx + a.r), oy + px(a.cy)); c.arc(ox + px(a.cx), oy + px(a.cy), px(a.r), 0, 7); } };
+  const lift = 0.07*amt, drop = [0, 0.20*amt, 0.10*amt, 0, 0];   // by value: [_, v1, v2, v3, v4]
+  // Every circle starts with a moveTo: arc() otherwise joins from the path's current point with a
+  // straight segment, and under even-odd clipping that stray chord becomes a hard seam across the
+  // board (a diagonal line that once cut Sumo in two).
+  const circle = (cx, cy, r) => { c.moveTo(cx + r, cy); c.arc(cx, cy, r, 0, 7); };
+  const bandPath = b => { c.beginPath(); circle(ox, oy, px(b === 0 ? CFG.edgeU : CFG.rings[b === 1 ? 1 : 0]));
+                          if (b < 2) circle(ox, oy, px(b === 0 ? CFG.rings[1] : CFG.rings[0])); };
+  const lenses = () => { for (const a of CFG.sideArcs) circle(ox + px(a.cx), oy + px(a.cy), px(a.r)); };
   for (let b = 0; b < 3; b++) for (const lens of [false, true]) {
     const v = (b === 2 ? 4 : b === 1 ? 3 : 2) - (lens ? 1 : 0);
+    if (v === 3) continue;
     c.save();
     bandPath(b); c.clip('evenodd');                       // the band: a disc, or a disc with a hole
-    if (lens) { lensPath(); c.clip(); }
-    else { c.beginPath(); c.rect(0, 0, S, S); for (const a of CFG.sideArcs) a && c.arc(ox + px(a.cx), oy + px(a.cy), px(a.r), 0, 7); c.clip('evenodd'); }
+    c.beginPath();
+    if (lens) lenses(); else { c.rect(0, 0, S, S); lenses(); }
+    c.clip('evenodd');                                    // inside the lens circles, or everything but
     if (v === 4) { c.globalCompositeOperation = 'screen'; c.fillStyle = `rgba(255,255,255,${lift})`; }
     else { c.globalCompositeOperation = 'multiply'; c.fillStyle = `rgba(0,0,0,${drop[v]})`; }
-    if (v !== 3) c.fillRect(0, 0, S, S);
+    c.fillRect(0, 0, S, S);
     c.restore();
   }
 }

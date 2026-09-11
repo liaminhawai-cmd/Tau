@@ -650,7 +650,10 @@ test('the flat board and the 3D bake shade the same zones, and the woods are joi
   const sk=g.read('activeSkin()');
   // presentation.js keeps the catalogue private; read the colours back through the flat skin,
   // which is what both views draw from.
-  assert.equal(sk.v4,'#60422a'); assert.equal(sk.v1,'#3e2c22');
+  assert.equal(sk.v4,'#704e32'); assert.equal(sk.v1,'#483020');
+  // ...and they step in value only, centre lightest to outer lens darkest: the zones are the message.
+  const lum=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)).reduce((a,b)=>a+b);
+  assert.ok(lum(sk.v4)>lum(sk.v3) && lum(sk.v3)>lum(sk.v2) && lum(sk.v2)>lum(sk.v1), 'a monotone ramp of one timber');
   // The flat piece is drawn at the real tube's width, not a stick.
   const legW=g.read('Math.max(2, 2*CFG.legRadius*scale)'), stick=g.read('Math.max(2, CFG.padRadius*scale*1.35)');
   assert.ok(legW>stick*2.5, `flat legs are tube-width (${legW.toFixed(1)}px vs the old ${stick.toFixed(1)}px)`);

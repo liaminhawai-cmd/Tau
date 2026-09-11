@@ -22,25 +22,25 @@
   const BOARD_FINISHES = [
     // ---- the wood finishes ----
     // Joined boards, not slabs: `zones` is the timber for each of the flat board's four zone values
-    // (v1 outer lens .. v4 centre), the same colours the 2D skin shades with, so both views show the
-    // same marquetry. The 3D bake and the detail shader cut each zone into its own pieces with the
+    // (v1 outer lens .. v4 centre); the 2D skin's zone colours are derived from the same table below,
+    // so both views show the same marquetry. The zones are the board's message -- how close to the
+    // edge you are, the way the sound design says it with distance -- so the four timbers are one
+    // family stepping in VALUE only, centre lightest to outer lens darkest, exactly as the printed
+    // board grades its greys. Not four species: a colour chart says nothing about danger. The 3D bake and the detail shader cut each zone into its own pieces with the
     // grain running its own way (woodFrame, mirrored in boards.js).
     { id:'walnut', name:'Walnut', detail:'wood',
-      skin:{ shadeByZoneValue:true, v4:'#60422a', v3:'#965c3a', v2:'#b28e60', v1:'#3e2c22',
-             flat:'#60422a', lines:'#ead5a4', rim:'#574b32', bg:'#101410', pb:'#639eb8', pr:'#dc8864' },
-      wood:{ base:[96,66,42], zones:[[62,44,34],[178,142,96],[150,92,58],[96,66,42]], joinery:true,
+      skin:{ shadeByZoneValue:true, flat:'#60422a', lines:'#ead5a4', rim:'#574b32', bg:'#101410', pb:'#639eb8', pr:'#dc8864' },
+      wood:{ base:[96,66,42], zones:[[72,48,32],[86,58,38],[98,68,44],[112,78,50]], joinery:true,
              line:'#e1ca91', rim:'#57472e', trim:'#aa8751', bg:'#101410', grain:1, dots:['#82b4bd','#df9b78'] },
       piece:{ blue:'#427d91', red:'#b46744', metalness:.72, roughness:.3, clearcoat:.25, clearcoatRoughness:.35, envMapIntensity:.85 } },
     { id:'ebony', name:'Ebony', detail:'wood',
-      skin:{ shadeByZoneValue:true, v4:'#322c28', v3:'#4e3c30', v2:'#6e5842', v1:'#262220',
-             flat:'#322c28', lines:'#c8bda6', rim:'#241f1c', bg:'#0b0d0e', pb:'#6fa8c4', pr:'#e08a63' },
-      wood:{ base:[50,44,40], zones:[[38,34,32],[110,88,66],[78,60,48],[50,44,40]], joinery:true,
+      skin:{ shadeByZoneValue:true, flat:'#322c28', lines:'#c8bda6', rim:'#241f1c', bg:'#0b0d0e', pb:'#6fa8c4', pr:'#e08a63' },
+      wood:{ base:[50,44,40], zones:[[36,32,30],[44,39,36],[52,46,42],[60,53,48]], joinery:true,
              line:'#cdc0a6', rim:'#2b2622', trim:'#8d8878', bg:'#0b0d0e', grain:.85, dots:['#8fbecb','#e2a184'] },
       piece:{ blue:'#4f93aa', red:'#c4744c', metalness:.78, roughness:.26, clearcoat:.3, clearcoatRoughness:.3, envMapIntensity:.9 } },
     { id:'maple', name:'Maple', detail:'wood',
-      skin:{ shadeByZoneValue:true, v4:'#d4b684', v3:'#e4cca0', v2:'#b07650', v1:'#6e4c32',
-             flat:'#d4b684', lines:'#5b4526', rim:'#9b7f52', bg:'#171512', pb:'#2f6f8c', pr:'#b1502c' },
-      wood:{ base:[212,182,132], zones:[[110,76,50],[176,118,80],[228,204,160],[212,182,132]], joinery:true,
+      skin:{ shadeByZoneValue:true, flat:'#d4b684', lines:'#5b4526', rim:'#9b7f52', bg:'#171512', pb:'#2f6f8c', pr:'#b1502c' },
+      wood:{ base:[212,182,132], zones:[[168,136,94],[190,158,112],[208,178,130],[222,194,146]], joinery:true,
              line:'#6b5024', rim:'#9d8153', trim:'#d8bd8a', bg:'#171512', grain:1, dots:['#2f6f8c','#b1502c'] },
       piece:{ blue:'#2f6f8c', red:'#b1502c', metalness:.6, roughness:.34, clearcoat:.3, clearcoatRoughness:.3, envMapIntensity:.7 } },
     // ---- the four original board skins from the browser build ----
@@ -89,12 +89,15 @@
   // their flat colour with the same lift and drops boards.js's shadeZones paints into the bake.
   // Exceptions stay flat on purpose: Yellow (the plain classic), Math (a drafting sheet whose live
   // construction is its reading aid) and Alien (its membrane already blotches).
-  function gradeSkin(flat) {
+  const hexOf = rgb => '#' + rgb.map(v => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2,'0')).join('');
+  function gradeSkin(flat) {   // the same lift and drops boards.js's shadeZones paints
     const c = [1,3,5].map(i => parseInt(flat.slice(i,i+2),16));
-    const hex = rgb => '#' + rgb.map(v => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2,'0')).join('');
-    return { v4: hex(c.map(v => v + (255-v)*0.10)), v3: flat, v2: hex(c.map(v => v*0.88)), v1: hex(c.map(v => v*0.76)) };
+    return { v4: hexOf(c.map(v => v + (255-v)*0.07)), v3: flat, v2: hexOf(c.map(v => v*0.90)), v1: hexOf(c.map(v => v*0.80)) };
   }
-  for (const b of BOARD_FINISHES) if (b.grade) Object.assign(b.skin, gradeSkin(b.skin.flat), { shadeByZoneValue:true });
+  for (const b of BOARD_FINISHES) {
+    if (b.grade) Object.assign(b.skin, gradeSkin(b.skin.flat), { shadeByZoneValue:true });
+    if (b.wood && b.wood.zones) Object.assign(b.skin, { v1:hexOf(b.wood.zones[0]), v2:hexOf(b.wood.zones[1]), v3:hexOf(b.wood.zones[2]), v4:hexOf(b.wood.zones[3]), shadeByZoneValue:true });
+  }
   // ---- unlocks (the desktop build's progression) ----
   // You start on Walnut. The rest of the catalogue opens with play: wins and games played for the
   // everyday boards, high ladder rungs for the deluxe looks, a hundred games for the marble table.
