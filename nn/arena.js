@@ -46,11 +46,18 @@ function arg(name, dflt) {
 // arm is still swept); without it, the policy hard-prunes to its top arms, the original wiring.
 // Default stays pruning so the existing menu A/Bs keep testing what they say they test.
 function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, abCut, policyArms, stopStride, sweepDeg, parkStops, dualPolicy) {
-  const m = /^L(\d+)$/i.exec(spec);
+  // "L9" is the rung as itself; "L9+corner" is the rung opening with the corner cross (index.html's
+  // ladderPlanCorner, then itself). Both are pinned explicitly: the app flips a coin per game for
+  // L7 and up, but a rated face has to be one thing or the other, or its Elo is a blend of two
+  // brains. Retromine and the league rate the two as separate immortals.
+  const m = /^L(\d+)(\+corner)?$/i.exec(spec);
   if (m) {
-    const lvl = +m[1];
+    const lvl = +m[1], corner = !!m[2];
     if (lvl < 1 || lvl > eng.AI_LADDER.length) throw new Error('no such ladder level: ' + spec);
-    return { name: 'L' + lvl, fn: idx => eng.ladderPlanFor(lvl - 1, idx) };
+    return { name: 'L' + lvl + (corner ? '+corner' : ''), fn: idx => {
+      const G = eng.getG(); (G.cornerOpening || (G.cornerOpening = [null, null]))[idx] = corner;
+      return eng.ladderPlanFor(lvl - 1, idx);
+    } };
   }
   const parts = spec.split(':');
   // "le:L11[:temperature]" -- L11's hand-tuned EVAL inside nnai.js's search, so it gets a real

@@ -121,8 +121,11 @@ function main() {
   for (const [id, v] of Object.entries(summary.players || {})) {
     if (v.kind === 'ladder') {
       if ((v.games || 0) < 1) continue;   // an unplayed rung has a default 0 rating, not a place
+      // pin the corner opening on or off per face (see arena.js): "L9" and "L9+corner" are two
+      // rated brains, and an unpinned rung would coin-flip between them
+      const corner = !!v.corner;
       pool.push({ id, elo: v.elo || 0, name: id, kind: 'ladder',
-                  fn: idx => eng.ladderPlanFor(v.level - 1, idx) });
+                  fn: idx => { const G = eng.getG(); (G.cornerOpening || (G.cornerOpening = [null, null]))[idx] = corner; return eng.ladderPlanFor(v.level - 1, idx); } });
     } else if (v.kind === 'nn') {
       if ((v.games || 0) < 4 || (v.depth || 1) > maxDepth) continue;
       // summaries written by elorank point at its .elo-snapshot copies; fall back to the live
