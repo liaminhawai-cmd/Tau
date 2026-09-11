@@ -832,11 +832,17 @@ function completeDualBirth(pop, plan, num) {
   return member;
 }
 
+// --dualPolicyTopFrac F: the dual net's policy head imitates only movers in the top F of rated
+// brains (torch-train-dual.py --policyTopFrac). Measured over 46 dual models, the +P face that
+// imitated the whole field with a soft Elo weight averaged -24 Elo against its own plain face; the
+// head was learning the field's mistakes. 0 turns the gate off.
+const dualPolicyTopFrac = Math.max(0, Math.min(0.99, +arg('dualPolicyTopFrac', 0.25)));
 async function trainDualOne(out, shape, epochs, seed, label, device = null) {
   const partial = out.replace(/\.json$/, '.partial.json');
   try {
     await runProcessAsync('python', [path.join('nn', 'torch-train-dual.py'), '--hidden', shape,
       '--epochs', String(epochs), '--batch', String(dualBatch), '--seed', String(seed), '--out', partial,
+      '--policyTopFrac', String(dualPolicyTopFrac),
       ...(device ? ['--device', device] : [])], label);
     await runAsync('verify-dual-export.js', [partial]);
     fs.renameSync(partial, out);

@@ -99,22 +99,18 @@ def load_rows(targets_path):
     return rows
 
 
-def make_elo_weighter(summary_path, scale=250.0, floor=0.25):
-    """Python port of eloweight.js's makeEloWeighter -- see that file's header for the formula and
-    why it's a logistic centred at the pool median rather than a raw rating lookup."""
-    neutral = floor + (1 - floor) / 2
+def load_ratings(summary_path):
+    """The standing rating pool as {pool id: elo} (4+ games only) plus a resolver that maps a row's
+    `mv` to a rated id -- `best@Dk` resolves to the newest rated ckpt at that depth, the same rule
+    eloweight.js uses, because best.json is a moving target the pool deliberately never rates."""
+    import re
     try:
         with open(summary_path, 'r', encoding='utf-8') as fh:
             players = json.load(fh).get('players') or {}
     except Exception:
         players = {}
     elo = {pid: v.get('elo', 0) for pid, v in players.items() if (v.get('games') or 0) >= 4}
-    if not elo:
-        return lambda mv: 1.0, f"no ratings at {summary_path} -- all rows weighted 1"
-    rated = sorted(elo.values())
-    mid = rated[len(rated) // 2]
-    newest_ckpt = {}   # depth -> (n, id), same "best@Dk resolves to the newest rated ckpt" rule
-    import re
+    newest_ckpt = {}   # depth -> (n, id)
     for pid in elo:
         m = re.match(r'^ckpt-(\d+)@D(\d+)$', pid)
         if m:
@@ -130,6 +126,19 @@ def make_elo_weighter(summary_path, scale=250.0, floor=0.25):
             return newest_ckpt[m.group(1)][1]
         return None
 
+    return elo, resolve
+
+
+def make_elo_weighter(summary_path, scale=250.0, floor=0.25):
+    """Python port of eloweight.js's makeEloWeighter -- see that file's header for the formula and
+    why it's a logistic centred at the pool median rather than a raw rating lookup."""
+    neutral = floor + (1 - floor) / 2
+    elo, resolve = load_ratings(summary_path)
+    if not elo:
+        return lambda mv: 1.0, f"no ratings at {summary_path} -- all rows weighted 1"
+    rated = sorted(elo.values())
+    mid = rated[len(rated) // 2]
+
     def weight(mv):
         r = resolve(mv) if mv else None
         if not r:
@@ -139,7 +148,30 @@ def make_elo_weighter(summary_path, scale=250.0, floor=0.25):
     return weight, f"{len(rated)} rated brains, median {mid:.0f} Elo, weights {floor:.2f}..1.00 (scale {scale})"
 
 
-def split_and_weight(rows, seed, gw_mode, value_draw_w, loser_w, policy_draw_w, elo_weight_fn, no_source_weight):
+def make_elo_gate(summary_path, top_frac):
+    """A HARD gate on who the policy head imitates: only movers in the top `top_frac` of rated brains
+    keep a policy weight; everyone else -- and every unrated or unstamped mover -- contributes to the
+    value head only. Measured 2026-09-11 over 46 dual models: the +P face averaged -24 Elo against
+    its own plain face with the logistic weighting alone, i.e. the head was imitating too much of
+    the field. The value side is untouched: a weak mover's position is still a real position."""
+    if not top_frac or top_frac <= 0 or top_frac >= 1:
+        return lambda mv: 1.0, "policy gate off (all rated movers imitated)"
+    elo, resolve = load_ratings(summary_path)
+    if not elo:
+        return lambda mv: 1.0, f"policy gate off: no ratings at {summary_path}"
+    rated = sorted(elo.values(), reverse=True)
+    k = max(1, int(round(len(rated) * top_frac)))
+    cut = rated[k - 1]
+    keep = {pid for pid, e in elo.items() if e >= cut}
+
+    def gate(mv):
+        r = resolve(mv) if mv else None
+        return 1.0 if (r and r in keep) else 0.0
+
+    return gate, f"policy gate: top {top_frac:.0%} of {len(rated)} rated brains = {len(keep)} movers at >= {cut:.0f} Elo; other movers train the value head only"
+
+
+def split_and_weight(rows, seed, gw_mode, value_draw_w, loser_w, policy_draw_w, elo_weight_fn, no_source_weight, elo_gate_fn=None):
     by_game = {}
     for j in rows:
         by_game.setdefault(j['g'], []).append(j)
@@ -157,6 +189,8 @@ def split_and_weight(rows, seed, gw_mode, value_draw_w, loser_w, policy_draw_w, 
                 z = float(j.get('z', 0.0))
                 vw = gbase * (value_draw_w if z == 0.0 else 1.0)
                 pw = (1.0 if z > 0 else (loser_w if z < 0 else policy_draw_w)) * elo_weight_fn(j.get('mv'))
+                if elo_gate_fn is not None:
+                    pw *= elo_gate_fn(j.get('mv'))
                 if not no_source_weight:
                     pw *= float(j.get('sw', 1.0))
                 part_rows.append({'f': j['f'], 'z': z, 'arm': int(j['arm']), 'bin': int(j['bin']),
@@ -322,6 +356,9 @@ def main():
     ap.add_argument('--eloScale', type=float, default=250.0)
     ap.add_argument('--eloFloor', type=float, default=0.25)
     ap.add_argument('--noEloWeight', action='store_true')
+    ap.add_argument('--policyTopFrac', type=float, default=0.0,
+                    help='hard gate: only movers in this top fraction of rated brains are imitated by the '
+                         'policy head (0 = off, imitate every rated mover with the logistic weight)')
     ap.add_argument('--noSourceWeight', action='store_true')
     ap.add_argument('--device', default=None, help='cuda | cpu, default: cuda if available')
     ap.add_argument('--resume', default=None,
@@ -358,9 +395,15 @@ def main():
     else:
         elo_weight_fn, elo_note = make_elo_weighter(args.eloSummary, args.eloScale, args.eloFloor)
     print(f"elo weighting: {elo_note}")
+    elo_gate_fn, gate_note = make_elo_gate(args.eloSummary, args.policyTopFrac)
+    print(gate_note)
 
     train, val = split_and_weight(rows, args.seed, args.gameWeight, args.valueDrawWeight,
-                                   args.loserW, args.policyDrawWeight, elo_weight_fn, args.noSourceWeight)
+                                   args.loserW, args.policyDrawWeight, elo_weight_fn, args.noSourceWeight,
+                                   elo_gate_fn)
+    if args.policyTopFrac:
+        kept = sum(1 for r in train if r['pw'] > 0)
+        print(f"policy gate: {kept} of {len(train)} training moves keep a policy weight ({kept / max(1, len(train)):.1%})")
     n_games = len({j['g'] for j in rows})
     print(f"data: {len(train)} train / {len(val)} val moves "
           f"({n_games - max(1, n_games // 10)} / {max(1, n_games // 10)} games, game-level split)")
