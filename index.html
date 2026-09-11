@@ -4622,9 +4622,12 @@ const AI_LADDER = [
     // Beat plain L10 24/36 (67%) head-to-head; same search cost, the extra term is arithmetic.
     { kind:'p3', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },
     // L12: L11 that opens with the corner cross. Same eval, same search, same cost once the opening
-    // is over; while the game is young it hunts the "swing, swing, swing back through the corner"
-    // line -- two same-direction setup swings, then the opposite swing that rounds a printed corner
-    // and takes two lines for one crossing (crossingSubstep's corner merge) -- or its mirror. See
+    // is over; while the game is young it plays Liam's line -- pin a back foot and turn the same
+    // way twice (the other back foot crosses the inner ring, then the side arc, stopping just past
+    // it), then pin that crossed foot and turn back the other way so the pinned foot rounds the
+    // inner-ring corner: two lines for one crossing (crossingSubstep's corner merge) and the whole
+    // tripod inside the inner ring by move three -- or its mirror. Every stop is solved from the
+    // rules engine at the board, and the line is remembered and re-verified turn by turn. See
     // ladderPlanCorner. L11 takes that line only when its eval happens to favour it; the nets were
     // measured soft against it precisely because nothing in training plays it on purpose, so this
     // rung exists to play it every game. trainerRung: a sparring/rating opponent, not a player
@@ -4768,6 +4771,57 @@ function ladderRoots3(idx, w, o, snap0){
     roots.sort((a,b)=>b.q-a.q);
     return roots;
 }
+// The depth-3 look from a position where my move has just been played (`snap`): the worst the
+// opponent's six swing-to-the-jam replies can leave me, each answered by the best of my own six,
+// scored by the rung's eval. Infinity when the opponent has no legal reply. Stops early once the
+// answer can't beat `alpha`. Restores nothing -- callers restore.
+function ladderScore3(idx, w, snap, alpha){
+    let worst=Infinity;
+    reply: for (let op=0; op<3; op++) for (const od of [1,-1]){
+        ladderRestore(snap); G.active=1-idx;
+        const onet=simMoveToLimit(op,od);
+        if (Math.abs(onet) < HARD_MIN_MOVE_RAD) continue;
+        if (G.pieces[1-idx].anyFootOff()) continue;
+        let rs;
+        if (G.pieces[idx].anyFootOff()) rs = -HARD_WIN_BONUS;
+        else {
+            const s2=takeSnap(); let bf=-Infinity;
+            for (let fp=0; fp<3 && bf<HARD_WIN_BONUS/2; fp++) for (const fd of [1,-1]){
+                ladderRestore(s2); G.active=idx;
+                const fnet=simMoveToLimit(fp,fd);
+                if (Math.abs(fnet) < HARD_MIN_MOVE_RAD) continue;
+                if (G.pieces[idx].anyFootOff()) continue;
+                const fs = G.pieces[1-idx].anyFootOff() ? HARD_WIN_BONUS+ladderEval(idx,w) : ladderEval(idx,w);
+                if (fs>bf) bf=fs;
+            }
+            rs = bf===-Infinity ? ladderEval(idx,w) : bf;
+        }
+        if (rs<worst) worst=rs;
+        if (alpha!==undefined && worst<=alpha) break reply;
+    }
+    return worst;
+}
+// A deeper look for one-off decisions: minimax over swing-to-the-jam moves from position `snap`
+// with `mover` to play, `plies` more plies deep, scored by idx's eval at the leaves (a move that
+// swings the mover off is no move; one that throws the other off is decided). Corner L12 asks it
+// for the choice between its line and its mirror (4 plies including the book swing) and then is
+// ordinary depth-3 L11 again. Restores nothing -- callers restore.
+function ladderLook(idx, w, snap, plies, mover){
+    if (plies<=0){ ladderRestore(snap); return ladderEval(idx,w); }
+    const mine = mover===idx; let best = mine ? -Infinity : Infinity;
+    for (let p=0; p<3; p++) for (const d of [1,-1]){
+        ladderRestore(snap); G.active=mover;
+        const net=simMoveToLimit(p,d);
+        if (Math.abs(net) < HARD_MIN_MOVE_RAD) continue;
+        if (G.pieces[mover].anyFootOff()) continue;
+        let v;
+        if (G.pieces[1-mover].anyFootOff()) v = mine ? HARD_WIN_BONUS+ladderEval(idx,w) : -HARD_WIN_BONUS;
+        else v = ladderLook(idx, w, takeSnap(), plies-1, 1-mover);
+        if (mine ? v>best : v<best) best=v;
+    }
+    if (best===-Infinity || best===Infinity){ ladderRestore(snap); return ladderEval(idx,w); }
+    return best;
+}
 function ladderPlan3(idx, w, o){
     const origActive=G.active, snap0=takeSnap();
     const roots = ladderRoots3(idx, w, o, snap0);
@@ -4777,29 +4831,7 @@ function ladderPlan3(idx, w, o){
         ladderRestore(c.snap); let score;
         if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
         else {
-            const s1=takeSnap(); let worst=Infinity;
-            reply: for (let op=0; op<3; op++) for (const od of [1,-1]){
-                ladderRestore(s1); G.active=1-idx;
-                const onet=simMoveToLimit(op,od);
-                if (Math.abs(onet) < HARD_MIN_MOVE_RAD) continue;
-                if (G.pieces[1-idx].anyFootOff()) continue;
-                let rs;
-                if (G.pieces[idx].anyFootOff()) rs = -HARD_WIN_BONUS;
-                else {
-                    const s2=takeSnap(); let bf=-Infinity;
-                    for (let fp=0; fp<3 && bf<HARD_WIN_BONUS/2; fp++) for (const fd of [1,-1]){
-                        ladderRestore(s2); G.active=idx;
-                        const fnet=simMoveToLimit(fp,fd);
-                        if (Math.abs(fnet) < HARD_MIN_MOVE_RAD) continue;
-                        if (G.pieces[idx].anyFootOff()) continue;
-                        const fs = G.pieces[1-idx].anyFootOff() ? HARD_WIN_BONUS+ladderEval(idx,w) : ladderEval(idx,w);
-                        if (fs>bf) bf=fs;
-                    }
-                    rs = bf===-Infinity ? ladderEval(idx,w) : bf;
-                }
-                if (rs<worst) worst=rs;
-                if (best && worst<=best.score) break reply;
-            }
+            const worst = ladderScore3(idx, w, c.snap, best ? best.score : undefined);
             score = worst===Infinity ? c.q : worst;
         }
         if (!best || score>best.score) best={pivotIdx:c.pivotIdx,dir:c.dir,targetRad:c.targetRad,score};
@@ -4987,43 +5019,55 @@ function ladderPlan13(idx, w, o){
 // ---------- L12: the corner-cross opening ----------
 // A printed corner is where a ring meets a side arc, and rounding one is a single crossing over two
 // lines (crossingSubstep's corner merge), so a swing that rounds a corner gets past two lines on a
-// one-crossing budget. Humans play it as an opening: swing, swing, then swing back the other way
-// through the corner. L11 only meets it through its eval, so it plays the line when the numbers
-// happen to favour it and otherwise never; the nets, trained on nothing that plays it on purpose,
-// were measured soft against it. This rung plays it every game it can, once, then is L11.
+// one-crossing budget. Humans play it as an opening. THE line, as Liam plays it and demonstrated
+// (replay decoded 2026-09-11), pins one back foot and turns the same way twice, then pins the foot
+// that just crossed and turns back the other way:
+//   1. pin back foot A, turn toward the centre: the other back foot B crosses the inner ring and
+//      stops in the sliver before the side arc would refuse the swing (~13 deg from the start);
+//   2. pin A again, same way: B crosses the side arc and stops a little past it, at the one angle
+//      where B sits exactly a foot-to-foot length from the inner ring's OTHER corner (~20 deg);
+//   3. pin B, turn back the other way: A, which never moved, rounds that corner in one crossing and
+//      the whole tripod is inside the inner ring with the front foot at the board's centre.
+// The setup has to be split over two turns because one swing about A would cross the ring and the
+// arc 3u apart -- not at their corner, so two crossings, refused. L11 only meets this line through
+// its eval, so it plays it when the numbers happen to favour it and otherwise never; the nets,
+// trained on nothing that plays it on purpose, were measured soft against it. This rung plays it
+// every game it can, once, then is L11.
 //
-// The opening book is searched at the board, not stored. On each of its own turns inside the first
-// openPlies plies, until it has rounded a corner, the rung searches its OWN moves only -- the
-// opponent is assumed to stand still, which the first few swings of a game mostly justify and a
-// re-search every turn corrects -- for the shortest sequence of up to three swings that ends in a
-// corner round, with the direction pattern (d), (d,-d) or (d,d,-d) for either d: the "cl cl acl"
-// line and its mirror. It plays that sequence's first swing.
+// Nothing about the line is stored as angles: every stop is solved at the board from the rules
+// engine, so both colours and both mirrors (turn left about the right foot, or right about the
+// left) come out of the same code, and the line still works from a start position the opponent has
+// already disturbed. Step 1's stop is the middle of the sliver between the crossing and the
+// refusal (ladderCornerFirstStops). Step 2's stop is solved, not sampled: a foot rounds corner P on
+// a swing about pivot Q exactly when |Q-P| equals the foot-to-foot distance (footR*sqrt(3)), so the
+// swing is swept for the angles at which a moving foot passes through that distance from any corner
+// (ladderCornerSetupStops), and each is verified by actually swinging the corner round from it.
+// Step 3 is that verified swing, stopped past the corner where L11's eval likes it best.
 //
-// The setup swing before the corner is solved, not sampled. A foot rounds corner P on a swing
-// about pivot foot Q exactly when |Q-P| equals the foot-to-foot distance (footR*sqrt(3)), so the
-// setup swing is swept substep by substep for the angles at which a moving foot passes through
-// that distance from any corner, and each such stop is verified by actually swinging the corner
-// round from it. L11's own candidate stops (every sampleDeg, plus parks and the jam) are far too
-// coarse for this: the human line's setup swings were measured at 7 and 67 degrees, angles no rung
-// ever generates. The first swing of a three-swing line does come from L11's root generator
-// (setupKeep best per direction), since the solve above only constrains the swing right before the
-// corner. Cost on the first turn or two is a few hundred sweeps, on the order of one L11 move, and
-// nothing after the corner is rounded or openPlies has passed.
+// The line is planned once, when the rung first moves, and remembered per piece (G.cornerBook):
+// on each later turn the rung checks its piece still stands where the book expects (the opponent
+// may have shoved it), re-verifies the remaining swings from the live pose, and plays the next one.
+// If the book is broken it re-plans from scratch. Planning order: round a corner NOW if one is on
+// (one swing); else the book shape above (same pivot twice, then the crossed foot back the other
+// way); else any two-swing (d,-d) line; else three swings whose first comes from L11's own root
+// candidates. Within a class an inner-ring corner beats an outer one, then L11's eval past the
+// corner decides. Cost is a few hundred sweeps on the first turn, nothing after the corner is
+// rounded or openPlies has passed.
 const CORNER_L = () => CFG.footR*Math.sqrt(3);   // hub-to-foot 23.095 -> feet 40.0 apart
-// Is the active piece rounding a printed corner RIGHT NOW: some moving foot is touching both of an
-// intersection's lines within cornerEps of the point, having freshly crossed onto at least one of
-// them this turn (a foot merely parked on a corner since turn start is not crossing anything).
+// The printed corner the active piece is rounding RIGHT NOW ({P, foot}), or null: a moving foot is touching
+// both of an intersection's lines within cornerEps of the point, having freshly crossed onto at
+// least one of them this turn (a foot merely parked on a corner since turn start is not crossing).
 function ladderAtCorner(idx){
-    if (!G.contact || !G.turnStartContact) return false;
+    if (!G.contact || !G.turnStartContact) return null;
     const feet=G.pieces[idx].feet();
     for (let i=0;i<3;i++){
         if (i===G.pinned) continue;
         const ids=G.contact[i]; if (!ids || ids.length<2) continue;
         if (!ids.some(id=>!G.turnStartContact[i].includes(id))) continue;
         for (const P of LINE_INTERSECTIONS)
-            if (P.lines.every(id=>ids.includes(id)) && Math.hypot(feet[i].x-P.x, feet[i].y-P.y) <= CFG.cornerEps) return true;
+            if (P.lines.every(id=>ids.includes(id)) && Math.hypot(feet[i].x-P.x, feet[i].y-P.y) <= CFG.cornerEps) return {P, foot:i};
     }
-    return false;
+    return null;
 }
 // Swing (pv,dir) to `rad` the way __applyPlan will, so a verified stop is the stop the game plays.
 function ladderSwingTo(idx, pv, dir, rad){
@@ -5040,13 +5084,13 @@ function ladderCornerSweep(idx, pv, dir, w, o){
     const snap0=takeSnap(); G.active=idx; pinFoot(pv);
     const clearRad=(o.cornerClearDeg||6)*Math.PI/180, stepRad=(o.sampleDeg||9)*Math.PI/180;
     const q=()=>ladderEval(idx,w)+(G.pieces[1-idx].anyFootOff()?HARD_WIN_BONUS:0);
-    let guard=0, cornerAt=null, best=null, lastMark=-Infinity;
-    const stop=()=>{ const a=Math.abs(G.netRad), v=q(); if (!best || v>best.q) best={pivotIdx:pv,dir,targetRad:a,snap:takeSnap(),q:v,cornerAt}; };
+    let guard=0, cornerAt=null, corner=null, cornerFoot=null, best=null, lastMark=-Infinity;
+    const stop=()=>{ const a=Math.abs(G.netRad), v=q(); if (!best || v>best.q) best={pivotIdx:pv,dir,targetRad:a,snap:takeSnap(),q:v,cornerAt,corner,cornerFoot}; };
     while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && guard++ < 500){
         applySwing(dir*AI_STEP_RAD);
         if (G.pieces[idx].anyFootOff()) break;
         const a=Math.abs(G.netRad);
-        if (cornerAt===null){ if (ladderAtCorner(idx)) cornerAt=a; continue; }
+        if (cornerAt===null){ const c=ladderAtCorner(idx); if (c){ cornerAt=a; corner=c.P; cornerFoot=c.foot; } continue; }
         if (a-cornerAt < clearRad || a-lastMark < stepRad) continue;
         lastMark=a; stop();
     }
@@ -5089,44 +5133,129 @@ function ladderCornerSetupStops(idx, pv, d){
     ladderRestore(snap0);
     return stops;
 }
+// The book's first swing: (pv,d) crosses one line and stops in the sliver before the next line
+// would refuse the swing (Liam's move 1 parks 0.15 deg short of that refusal). Returns up to three
+// stops across the sliver -- just past the crossing, its middle, just short of the refusal -- for
+// the same-pivot setup solve to continue from; when the swing isn't refused by a second line at
+// all, just past the crossing and one sampleDeg further. Restores the pose it was given.
+function ladderCornerFirstStops(idx, pv, d, o){
+    const snap0=takeSnap(); G.active=idx; pinFoot(pv);
+    let guard=0, radAtCross=null;
+    while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && guard++ < 500){
+        applySwing(d*AI_STEP_RAD);
+        if (G.pieces[idx].anyFootOff()) break;
+        if (radAtCross===null && G.crossings>0) radAtCross=Math.abs(G.netRad);
+    }
+    const lim=Math.abs(G.netRad), refused=G.atLimit && G.limitReason==='cross';
+    ladderRestore(snap0);
+    if (radAtCross===null) return [];
+    const m=1.5*Math.PI/180, stops=[];
+    const push=a=>{ if (a>=HARD_MIN_MOVE_RAD && a<=lim-1e-6 && !stops.some(b=>Math.abs(b-a)<Math.PI/180)) stops.push(a); };
+    if (refused){ push((radAtCross+lim)/2); push(radAtCross+m); push(lim-m); }
+    else { push(radAtCross+m); push(radAtCross+(o.sampleDeg||9)*Math.PI/180); }
+    return stops.map(a=>({pivotIdx:pv, dir:d, targetRad:a}));
+}
 function ladderPlanCorner(idx, w, o){
     const openPlies = o.openPlies==null ? 10 : o.openPlies;
-    if (G.cornerDone || (G.plies||0) >= openPlies){ G.cornerBook=null; return ladderPlan3(idx, w, o); }
-    const origActive=G.active, snap0=takeSnap(), keep=o.setupKeep||6;
-    let best=null;   // { first: the swing to play now, len: swings to the corner, q: eval past it, fin: the corner swing }
-    const consider=(first,len,fin)=>{ if (fin && (!best || len<best.len || (len===best.len && fin.q>best.q))) best={first,len,q:fin.q,fin}; };
+    if (!G.cornerBook) G.cornerBook=[null,null];
+    if (!G.cornerDone) G.cornerDone=[false,false];
+    if (G.cornerDone[idx] || (G.plies||0) >= openPlies){ G.cornerBook[idx]=null; return ladderPlan3(idx, w, o); }
+    const origActive=G.active, snap0=takeSnap(), keep=o.setupKeep||6, me=G.pieces[idx];
     const plan=c=>({pivotIdx:c.pivotIdx, dir:c.dir, targetRad:c.targetRad});
-    const cornerNow=d=>{ let b=null; for (let pv=0;pv<3;pv++){ const r=ladderCornerSweep(idx,pv,d,w,o); if (r && (!b || r.q>b.q)) b=r; } return b; };
-    // (d,-d) from the pose G is in now: solve the setup swing, verify each stop by rounding the corner
-    const twoSwing=(d, from)=>{
+    const poseOf=()=>({x:me.x, y:me.y, rot:me.rot});
+    const poseMatch=(a,b)=>Math.hypot(a.x-b.x, a.y-b.y) < 1.5 && Math.abs(norm(a.rot-b.rot)) < 3*Math.PI/180;
+    // Follow the remembered line if my piece is still where it expects me and the rest still works
+    // from here (the corner swing is re-swept so its stop tracks the eval, not a stale snapshot).
+    const bk=G.cornerBook[idx];
+    if (bk && bk.at < bk.steps.length && poseMatch(bk.expect, poseOf())){
+        const rest=bk.steps.slice(bk.at); let ok=true;
+        ladderRestore(snap0);
+        for (let i=0;i<rest.length-1 && ok;i++) ok=ladderSwingTo(idx, rest[i].pivotIdx, rest[i].dir, rest[i].targetRad);
+        const last=rest[rest.length-1];
+        const fin=ok ? ladderCornerSweep(idx, last.pivotIdx, last.dir, w, o) : null;
+        ladderRestore(snap0);
+        if (fin){
+            bk.steps[bk.steps.length-1]=plan(fin); bk.q=fin.q;
+            bk.corner={ pivotIdx:fin.pivotIdx, dir:fin.dir, foot:fin.cornerFoot, lines:fin.corner.lines, atDeg:fin.cornerAt*180/Math.PI, stopDeg:fin.targetRad*180/Math.PI };
+            const step=bk.steps[bk.at++];
+            ladderSwingTo(idx, step.pivotIdx, step.dir, step.targetRad); bk.expect=poseOf(); ladderRestore(snap0);
+            if (bk.at===bk.steps.length) G.cornerDone[idx]=true;
+            G.active=origActive; return step;
+        }
+        G.cornerBook[idx]=null;   // the opponent broke the line: plan afresh
+    }
+    // Plan afresh. A line = the swings to the corner (steps) plus the verified corner sweep (fin).
+    const lines=[];
+    const better=(a,b)=>{ if (!b) return true; const ia=a.fin.corner.lines.includes('r0'), ib=b.fin.corner.lines.includes('r0'); return ia!==ib ? ia : a.fin.q>b.fin.q; };
+    const pick=()=>lines.reduce((b,l)=>better(l,b)?l:b, null);
+    const cornerNow=d=>{ let b=null; for (let pv=0;pv<3;pv++){ ladderRestore(snap0); const r=ladderCornerSweep(idx,pv,d,w,o); if (r && (!b || r.q>b.q)) b=r; } return b; };
+    // (d,-d) from pose `from`: solve the setup swing (about `onlyPv` if given, else any pivot),
+    // verify each stop by rounding the corner from it (rounded by foot `cornerFoot`, if given)
+    const twoSwing=(d, from, onlyPv, cornerFoot)=>{
         let b=null;
         for (let pv=0;pv<3;pv++){
+            if (onlyPv!=null && pv!==onlyPv) continue;
             ladderRestore(from);
             for (const st of ladderCornerSetupStops(idx, pv, d)){
                 ladderRestore(from);
                 if (!ladderSwingTo(idx, st.pivotIdx, st.dir, st.targetRad)) continue;
                 const fin=ladderCornerSweep(idx, st.nextPivot, -d, w, o);
+                if (fin && cornerFoot!=null && fin.cornerFoot!==cornerFoot) continue;
                 if (fin && (!b || fin.q>b.q)) b={first:plan(st), fin};
             }
         }
         return b;
     };
     // one swing: a corner round is on right now, either way round
-    for (const d of [1,-1]){ ladderRestore(snap0); const c=cornerNow(d); if (c) consider(plan(c),1,c); }
-    // two swings: (d,-d)
-    if (!best) for (const d of [1,-1]){ const t=twoSwing(d, snap0); if (t) consider(t.first,2,t.fin); }
+    for (const d of [1,-1]){ const c=cornerNow(d); if (c) lines.push({steps:[plan(c)], fin:c, shape:'now'}); }
+    // the book: (A,d) into the sliver, (A,d) to the solved setup, (B,-d) carries A round the corner
+    if (!lines.length) for (const d of [1,-1]) for (let pv=0;pv<3;pv++){
+        ladderRestore(snap0);
+        for (const s1 of ladderCornerFirstStops(idx, pv, d, o)){
+            ladderRestore(snap0);
+            if (!ladderSwingTo(idx, s1.pivotIdx, s1.dir, s1.targetRad)) continue;
+            const t=twoSwing(d, takeSnap(), pv, pv);
+            if (t) lines.push({steps:[s1, t.first, plan(t.fin)], fin:t.fin, shape:'book'});
+        }
+    }
+    // two swings: (d,-d), any pivot
+    if (!lines.length) for (const d of [1,-1]){ const t=twoSwing(d, snap0); if (t) lines.push({steps:[t.first, plan(t.fin)], fin:t.fin, shape:'two'}); }
     // three swings: (d,d,-d), the first from L11's own candidates
-    if (!best) for (const d of [1,-1]){
+    if (!lines.length) for (const d of [1,-1]){
         ladderRestore(snap0); G.active=idx;
         const roots1=ladderRoots3(idx,w,o,snap0).filter(c=>c.dir===d).slice(0,keep);
-        for (const c1 of roots1){ const t=twoSwing(d, c1.snap); if (t) consider(plan(c1),3,t.fin); }
+        for (const c1 of roots1){ const t=twoSwing(d, c1.snap); if (t) lines.push({steps:[plan(c1), t.first, plan(t.fin)], fin:t.fin, shape:'roots'}); }
     }
+    // When the book has both the line and its mirror: for blue, moving first, they are the same
+    // position reflected, so a coin decides -- not the eval's rounding noise, which would make the
+    // rung play the same side every game and teach the nets only half of it. For red the board is
+    // no longer symmetric (blue has moved), so each side's first swing gets a depth-4 look (one
+    // ply deeper than L11 searches, affordable once a game for two candidates) and the better
+    // outcome plays. After that the rung is ordinary depth-3 L11 again.
+    if (lines.length && lines[0].shape==='book' && new Set(lines.map(l=>l.steps[0].dir)).size===2){
+        let d;
+        if (idx===0) d=Math.random()<0.5?1:-1;
+        else {
+            const sc={};
+            for (const dd of [1,-1]){
+                const l=lines.filter(x=>x.steps[0].dir===dd).reduce((b,x)=>better(x,b)?x:b, null);
+                ladderRestore(snap0); ladderSwingTo(idx, l.steps[0].pivotIdx, l.steps[0].dir, l.steps[0].targetRad);
+                sc[dd] = ladderLook(idx, w, takeSnap(), 3, 1-idx);
+            }
+            d = sc[1]>=sc[-1] ? 1 : -1;
+        }
+        lines.splice(0, lines.length, ...lines.filter(l=>l.steps[0].dir===d));
+    }
+    const best=pick();
     ladderRestore(snap0); G.active=origActive;
-    if (best && best.len===1) G.cornerDone=true;   // this swing rounds it; from here on the rung is L11
+    if (!best){ G.cornerBook[idx]=null; return ladderPlan3(idx, w, o); }
+    const step=best.steps[0];
+    ladderSwingTo(idx, step.pivotIdx, step.dir, step.targetRad); const expect=poseOf(); ladderRestore(snap0); G.active=origActive;
     // Readable by whoever is driving the game (arena logs, the trainer's tests): what the book found.
-    G.cornerBook = best ? { len:best.len, q:best.q, first:best.first,
-        corner:{ pivotIdx:best.fin.pivotIdx, dir:best.fin.dir, atDeg:best.fin.cornerAt*180/Math.PI, stopDeg:best.fin.targetRad*180/Math.PI } } : null;
-    return best ? best.first : ladderPlan3(idx, w, o);
+    G.cornerBook[idx]={ shape:best.shape, len:best.steps.length, steps:best.steps, at:1, expect, q:best.fin.q,
+        corner:{ pivotIdx:best.fin.pivotIdx, dir:best.fin.dir, foot:best.fin.cornerFoot, lines:best.fin.corner.lines, atDeg:best.fin.cornerAt*180/Math.PI, stopDeg:best.fin.targetRad*180/Math.PI } };
+    if (best.steps.length===1) G.cornerDone[idx]=true;   // this swing rounds it; from here on the rung is L11
+    return step;
 }
 function ladderProbe(idx, pv, dir){
     const snap0=takeSnap(); pinFoot(pv);
