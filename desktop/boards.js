@@ -745,6 +745,7 @@ function installLegGradient(material, tint) {
 // near ring A and near curve B simultaneously = near their crossing.
 const MATH_GLSL = `
 uniform float uMath; uniform vec2 uFeet[6]; uniform float uRingR;
+uniform vec4 uBoardGeom;   // inner ring, outer ring, board edge (= lens-circle centre), lens-circle radius
 float mcurve(vec2 p, vec2 c, float r) { return abs(distance(p, c) - r); }
 float mboard(vec2 p) {   // nearest printed line (full circles, as the math board draws them)
   float d = mcurve(p, vec2(0.0), uBoardGeom.x);
@@ -851,6 +852,8 @@ function installDetailShader(material) {
     shader.uniforms.uMath = { value: 0 };
     shader.uniforms.uRingR = { value: CFG.footR*Math.sqrt(3) };
     shader.uniforms.uFeet = { value: Array.from({ length: 6 }, () => new THREE.Vector2(1e4, 1e4)) };
+    const rings = CFG.rings || [40, 53.3], arc = (CFG.sideArcs && CFG.sideArcs[0]) || { cx: -CFG.edgeU, r: 40 };
+    shader.uniforms.uBoardGeom = { value: new THREE.Vector4(rings[0], rings[1], Math.abs(arc.cx), arc.r) };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
       .replace('#include <fog_vertex>', '#include <fog_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');

@@ -774,3 +774,34 @@ test('the flat board and the 3D bake shade the same zones of one timber',async t
   const legW=g.read('Math.max(2, 2*CFG.legRadius*scale)'), stick=g.read('Math.max(2, CFG.padRadius*scale*1.35)');
   assert.ok(legW>stick*2.5, `flat legs are tube-width (${legW.toFixed(1)}px vs the old ${stick.toFixed(1)}px)`);
 });
+
+test('the board shader links: every uniform the detail, Math and leg passes read is declared',async t=>{
+  // GLSL only compiles on a GPU, which these tests do not have. What broke once was simpler than
+  // that: a pass read a uniform another edit had removed. So build the real fragment and vertex
+  // sources the way three does (the physical shader with every #include resolved), run our
+  // onBeforeCompile hooks over them, and check that each u-prefixed identifier the source uses is
+  // declared as a uniform and has a value in the uniforms table.
+  const g=await game();t.after(g.close);
+  const report=JSON.parse(g.read(`(()=>{
+    const SH=makeShowcaseBoards(THREE,CFG,{size:64});
+    const resolve=src=>src.replace(/#include <([\\w_]+)>/g,(m,k)=>THREE.ShaderChunk[k]?resolve(THREE.ShaderChunk[k]):m);
+    const check=(material)=>{
+      const lib=THREE.ShaderLib.physical;
+      const shader={uniforms:{},vertexShader:lib.vertexShader,fragmentShader:lib.fragmentShader};
+      material.onBeforeCompile(shader);
+      const out=[];
+      for(const src of [shader.vertexShader,shader.fragmentShader]){
+        const full=resolve(src);
+        const declared=new Set([...full.matchAll(/uniform\\s+\\w+\\s+(\\w+)/g)].map(m=>m[1]));
+        const used=new Set([...full.replace(/\\/\\/.*$/gm,'').matchAll(/\\b(u[A-Z]\\w*)\\b/g)].map(m=>m[1]));
+        for(const u of used){ if(!declared.has(u)) out.push('undeclared '+u); else if(!(u in shader.uniforms)) out.push('no value for '+u); }
+      }
+      return out;
+    };
+    const board=new THREE.MeshStandardMaterial(); SH.installDetailShader(board);
+    const leg=new THREE.MeshPhysicalMaterial({transmission:1}); SH.installLegGradient(leg,0x3b74e8);
+    return JSON.stringify({board:check(board), leg:check(leg)});
+  })()`));
+  assert.deepEqual(report.board,[],'board surface shader');
+  assert.deepEqual(report.leg,[],'glass leg shader');
+});
