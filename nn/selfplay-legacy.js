@@ -222,10 +222,12 @@ function main() {
   // comes from brain combinations (see --temperature above); a repeated combination is a repeated
   // game, which the league's scheduler refuses to draw and self-play's rotating pool makes rare.
   const openingPlies = +arg('openingPlies', 0);
-  // --cornerOpening F: this fraction of net-vs-ladder games has the ladder rung open with the
-  // corner cross (index.html's ladderPlanCorner: two set moves, then the rung is itself) -- the line
-  // the nets were measured soft against, taught from every rung rather than a rung of its own.
+  // --cornerOpening F: this fraction of net-vs-ladder games against L7 and up has the ladder rung
+  // open with the corner cross (index.html's ladderPlanCorner: two set moves, then the rung is
+  // itself) -- the line the nets were measured soft against, taught from every rung that knows it
+  // rather than a rung of its own. L1-L6 never play it, in the app or here. Default matches the app.
   const cornerOpeningFrac = Math.max(0, Math.min(1, +arg('cornerOpening', 0.5)));
+  const CORNER_OPENING_MIN_LEVEL = 7;
   // This fraction of games starts from a fully random LEGAL pose (see opening.js's
   // randomStartPose) instead of the canonical start -- coverage far outside anything a real
   // trajectory reaches, e.g. a piece hard against the rim with the opponent clear across the
@@ -480,7 +482,7 @@ function main() {
     if (!TAG) console.log('sparring with model:', modelPath);
   }
   const ladderBrain = (lvl, corner) => idx => {
-    if (corner) { const G = eng.getG(); (G.cornerOpening || (G.cornerOpening = [false, false]))[idx] = true; }
+    const G = eng.getG(); (G.cornerOpening || (G.cornerOpening = [null, null]))[idx] = !!corner;   // our coin, not the engine's
     return eng.ladderPlanFor(lvl - 1, idx);
   };
   const pick = a => a[Math.floor(Math.random()*a.length)];
@@ -602,7 +604,7 @@ function main() {
       tag = nnTagAt(depthA, chosenA, usePA) + ' vs ' + nnTagAt(depthB, chosenB, usePB);
       idA = nnIdAt(depthA, chosenA, usePA); idB = nnIdAt(depthB, chosenB, usePB);
     } else if (kind === 'nnladder') {
-      const lvl = useDeep ? pick(deep) : pick(levels), corner = Math.random() < cornerOpeningFrac, ltag = 'L' + lvl + (corner ? '+corner' : '');
+      const lvl = useDeep ? pick(deep) : pick(levels), corner = lvl >= CORNER_OPENING_MIN_LEVEL && Math.random() < cornerOpeningFrac, ltag = 'L' + lvl + (corner ? '+corner' : '');
       if (Math.random() < 0.5) { brainA = nnBrainAt(depthA, chosenA, usePA); brainB = ladderBrain(lvl, corner); tag = nnTagAt(depthA, chosenA, usePA) + ' vs ' + ltag; idA = nnIdAt(depthA, chosenA, usePA); idB = `L${lvl}`; }
       else { brainA = ladderBrain(lvl, corner); brainB = nnBrainAt(depthA, chosenA, usePA); tag = ltag + ' vs ' + nnTagAt(depthA, chosenA, usePA); idA = `L${lvl}`; idB = nnIdAt(depthA, chosenA, usePA); }
     } else {

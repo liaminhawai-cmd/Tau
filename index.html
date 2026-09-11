@@ -4988,10 +4988,10 @@ function ladderPlan13(idx, w, o){
 // ---------- The corner-cross opening (a wrapper any ladder rung can wear) ----------
 // A printed corner is where a ring meets a side arc, and rounding one is a single crossing over two
 // lines (crossingSubstep's corner merge). Humans open with it, as Liam plays and demonstrated
-// (replay decoded 2026-09-11). The trainer sets G.cornerOpening[idx] for half of its ladder games
-// and the rung then plays the opening's two moves before being itself (ladderPlanFor); the nets
-// were measured soft against the line because nothing in training played it on purpose, and this
-// way they meet it from every rung, in half of every rung's games. Only two moves are set in stone:
+// (replay decoded 2026-09-11). From L7 up a rung opens with it in half its games (ladderPlanFor
+// flips the coin; the trainer can force it with --cornerOpening) and then is itself; the nets were
+// measured soft against the line because nothing in training played it on purpose, and this way
+// they meet it from every rung that knows it. L1-L6 never play it. Only two moves are set in stone:
 //   1. pin a back foot and swing the other back foot forward as far as the rules allow -- it
 //      crosses the inner ring and the swing is refused just short of the side arc;
 //   2. pin the same back foot again, same way: that foot crosses the side arc and stops a few
@@ -5169,11 +5169,16 @@ function ladderRandomPlan(idx){
     return ladderDumbPlan(idx);
 }
 // returns { pivotIdx, dir, targetRad } for the ladder brain at `levelIdx`, whoever is active (idx)
+// The corner opening: from L7 up, a rung opens with it in half its games -- in the app, in the
+// lab and in the trainer alike. The coin is flipped here, once per side per game, on that side's
+// first move (G is rebuilt every game); a caller that has already set G.cornerOpening[idx] (the
+// trainer's --cornerOpening dial) keeps its choice. L1-L6 never know the line.
+const CORNER_OPENING_MIN_LEVEL = 7, CORNER_OPENING_P = 0.5;
 function ladderPlanFor(levelIdx, idx){
     const def=AI_LADDER[levelIdx]; if (!def) return null;
-    // The corner opening, when this game asked for it (G.cornerOpening[idx], set by the trainer
-    // for half its ladder games): the rung's first two moves are the set opening, then it is itself.
-    if (G.cornerOpening && G.cornerOpening[idx] && !(G.cornerDone && G.cornerDone[idx]))
+    if (!G.cornerOpening) G.cornerOpening=[null,null];
+    if (G.cornerOpening[idx]==null) G.cornerOpening[idx] = levelIdx+1 >= CORNER_OPENING_MIN_LEVEL && Math.random() < CORNER_OPENING_P;
+    if (G.cornerOpening[idx] && !(G.cornerDone && G.cornerDone[idx]))
         return ladderPlanCorner(idx, def.w && def.w.zone ? def.w : CORNER_CHOICE_W, def.o||{}, () => ladderPlanRung(def, idx));
     return ladderPlanRung(def, idx);
 }
