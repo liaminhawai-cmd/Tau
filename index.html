@@ -4771,6 +4771,57 @@ function ladderRoots3(idx, w, o, snap0){
     roots.sort((a,b)=>b.q-a.q);
     return roots;
 }
+// The depth-3 look from a position where my move has just been played (`snap`): the worst the
+// opponent's six swing-to-the-jam replies can leave me, each answered by the best of my own six,
+// scored by the rung's eval. Infinity when the opponent has no legal reply. Stops early once the
+// answer can't beat `alpha`. Restores nothing -- callers restore.
+function ladderScore3(idx, w, snap, alpha){
+    let worst=Infinity;
+    reply: for (let op=0; op<3; op++) for (const od of [1,-1]){
+        ladderRestore(snap); G.active=1-idx;
+        const onet=simMoveToLimit(op,od);
+        if (Math.abs(onet) < HARD_MIN_MOVE_RAD) continue;
+        if (G.pieces[1-idx].anyFootOff()) continue;
+        let rs;
+        if (G.pieces[idx].anyFootOff()) rs = -HARD_WIN_BONUS;
+        else {
+            const s2=takeSnap(); let bf=-Infinity;
+            for (let fp=0; fp<3 && bf<HARD_WIN_BONUS/2; fp++) for (const fd of [1,-1]){
+                ladderRestore(s2); G.active=idx;
+                const fnet=simMoveToLimit(fp,fd);
+                if (Math.abs(fnet) < HARD_MIN_MOVE_RAD) continue;
+                if (G.pieces[idx].anyFootOff()) continue;
+                const fs = G.pieces[1-idx].anyFootOff() ? HARD_WIN_BONUS+ladderEval(idx,w) : ladderEval(idx,w);
+                if (fs>bf) bf=fs;
+            }
+            rs = bf===-Infinity ? ladderEval(idx,w) : bf;
+        }
+        if (rs<worst) worst=rs;
+        if (alpha!==undefined && worst<=alpha) break reply;
+    }
+    return worst;
+}
+// A deeper look for one-off decisions: minimax over swing-to-the-jam moves from position `snap`
+// with `mover` to play, `plies` more plies deep, scored by idx's eval at the leaves (a move that
+// swings the mover off is no move; one that throws the other off is decided). Corner L12 asks it
+// for the choice between its line and its mirror (4 plies including the book swing) and then is
+// ordinary depth-3 L11 again. Restores nothing -- callers restore.
+function ladderLook(idx, w, snap, plies, mover){
+    if (plies<=0){ ladderRestore(snap); return ladderEval(idx,w); }
+    const mine = mover===idx; let best = mine ? -Infinity : Infinity;
+    for (let p=0; p<3; p++) for (const d of [1,-1]){
+        ladderRestore(snap); G.active=mover;
+        const net=simMoveToLimit(p,d);
+        if (Math.abs(net) < HARD_MIN_MOVE_RAD) continue;
+        if (G.pieces[mover].anyFootOff()) continue;
+        let v;
+        if (G.pieces[1-mover].anyFootOff()) v = mine ? HARD_WIN_BONUS+ladderEval(idx,w) : -HARD_WIN_BONUS;
+        else v = ladderLook(idx, w, takeSnap(), plies-1, 1-mover);
+        if (mine ? v>best : v<best) best=v;
+    }
+    if (best===-Infinity || best===Infinity){ ladderRestore(snap); return ladderEval(idx,w); }
+    return best;
+}
 function ladderPlan3(idx, w, o){
     const origActive=G.active, snap0=takeSnap();
     const roots = ladderRoots3(idx, w, o, snap0);
@@ -4780,29 +4831,7 @@ function ladderPlan3(idx, w, o){
         ladderRestore(c.snap); let score;
         if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
         else {
-            const s1=takeSnap(); let worst=Infinity;
-            reply: for (let op=0; op<3; op++) for (const od of [1,-1]){
-                ladderRestore(s1); G.active=1-idx;
-                const onet=simMoveToLimit(op,od);
-                if (Math.abs(onet) < HARD_MIN_MOVE_RAD) continue;
-                if (G.pieces[1-idx].anyFootOff()) continue;
-                let rs;
-                if (G.pieces[idx].anyFootOff()) rs = -HARD_WIN_BONUS;
-                else {
-                    const s2=takeSnap(); let bf=-Infinity;
-                    for (let fp=0; fp<3 && bf<HARD_WIN_BONUS/2; fp++) for (const fd of [1,-1]){
-                        ladderRestore(s2); G.active=idx;
-                        const fnet=simMoveToLimit(fp,fd);
-                        if (Math.abs(fnet) < HARD_MIN_MOVE_RAD) continue;
-                        if (G.pieces[idx].anyFootOff()) continue;
-                        const fs = G.pieces[1-idx].anyFootOff() ? HARD_WIN_BONUS+ladderEval(idx,w) : ladderEval(idx,w);
-                        if (fs>bf) bf=fs;
-                    }
-                    rs = bf===-Infinity ? ladderEval(idx,w) : bf;
-                }
-                if (rs<worst) worst=rs;
-                if (best && worst<=best.score) break reply;
-            }
+            const worst = ladderScore3(idx, w, c.snap, best ? best.score : undefined);
             score = worst===Infinity ? c.q : worst;
         }
         if (!best || score>best.score) best={pivotIdx:c.pivotIdx,dir:c.dir,targetRad:c.targetRad,score};
@@ -5196,6 +5225,26 @@ function ladderPlanCorner(idx, w, o){
         ladderRestore(snap0); G.active=idx;
         const roots1=ladderRoots3(idx,w,o,snap0).filter(c=>c.dir===d).slice(0,keep);
         for (const c1 of roots1){ const t=twoSwing(d, c1.snap); if (t) lines.push({steps:[plan(c1), t.first, plan(t.fin)], fin:t.fin, shape:'roots'}); }
+    }
+    // When the book has both the line and its mirror: for blue, moving first, they are the same
+    // position reflected, so a coin decides -- not the eval's rounding noise, which would make the
+    // rung play the same side every game and teach the nets only half of it. For red the board is
+    // no longer symmetric (blue has moved), so each side's first swing gets a depth-4 look (one
+    // ply deeper than L11 searches, affordable once a game for two candidates) and the better
+    // outcome plays. After that the rung is ordinary depth-3 L11 again.
+    if (lines.length && lines[0].shape==='book' && new Set(lines.map(l=>l.steps[0].dir)).size===2){
+        let d;
+        if (idx===0) d=Math.random()<0.5?1:-1;
+        else {
+            const sc={};
+            for (const dd of [1,-1]){
+                const l=lines.filter(x=>x.steps[0].dir===dd).reduce((b,x)=>better(x,b)?x:b, null);
+                ladderRestore(snap0); ladderSwingTo(idx, l.steps[0].pivotIdx, l.steps[0].dir, l.steps[0].targetRad);
+                sc[dd] = ladderLook(idx, w, takeSnap(), 3, 1-idx);
+            }
+            d = sc[1]>=sc[-1] ? 1 : -1;
+        }
+        lines.splice(0, lines.length, ...lines.filter(l=>l.steps[0].dir===d));
     }
     const best=pick();
     ladderRestore(snap0); G.active=origActive;
