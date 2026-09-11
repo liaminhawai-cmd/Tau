@@ -4634,10 +4634,12 @@ const AI_LADDER = [
     // level -- LADDER_N keeps it out of the shipped ladder and Ranked. (This slot was the retired
     // opponent-model search experiment, kept only so old arena logs would replay; that replay was
     // never wired up, and the name was wanted.)
-    // trainerFocus: the trainer's ladder-sampling gives this rung 60% of all ladder-game tickets
-    // and lifts the ladder class to 15% of self-play seats (see nn/ladder-sampling.js), so the
-    // nets meet the corner cross a lot rather than as one rung among three.
-    { kind:'corner', label:'Corner L12', trainerRung:true, trainerFocus:{share:.6, seatShare:.15},
+    // trainerFocus: the trainer's ladder-sampling gives this rung 75% of all ladder-game tickets
+    // and lifts the ladder class to 25% of self-play seats (see nn/ladder-sampling.js), and the
+    // league's anchor slice leans on it too, so the nets meet the corner cross a lot -- for as
+    // long as this stays here -- rather than as one rung among three. Dial it back to
+    // {share:.6, seatShare:.15} or drop it once the nets stop losing to the line.
+    { kind:'corner', label:'Corner L12', trainerRung:true, trainerFocus:{share:.75, seatShare:.25},
       w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2},
       o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28, openPlies:10, setupKeep:6, cornerClearDeg:6} },
     // L13: L11's eval, L11's candidates, L11's pessimistic minimax -- but the opponent's replies
@@ -5187,7 +5189,13 @@ function ladderPlanCorner(idx, w, o){
         }
         G.cornerBook[idx]=null;   // the opponent broke the line: plan afresh
     }
-    // Plan afresh. A line = the swings to the corner (steps) plus the verified corner sweep (fin).
+    // Plan afresh -- at most twice a game. The first plan is the line from the start; one re-plan
+    // after a shove is worth its few hundred sweeps; a third means the opponent is wrecking the
+    // opening every turn, and paying L11's price several times over per move for it is what made
+    // this rung's games run to twenty minutes. From here the rung is L11.
+    if (!G.cornerPlans) G.cornerPlans=[0,0];
+    if (G.cornerPlans[idx] >= 2){ G.cornerDone[idx]=true; G.cornerBook[idx]=null; return ladderPlan3(idx, w, o); }
+    G.cornerPlans[idx]++;
     const lines=[];
     const better=(a,b)=>{ if (!b) return true; const ia=a.fin.corner.lines.includes('r0'), ib=b.fin.corner.lines.includes('r0'); return ia!==ib ? ia : a.fin.q>b.fin.q; };
     const pick=()=>lines.reduce((b,l)=>better(l,b)?l:b, null);

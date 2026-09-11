@@ -57,6 +57,6 @@ const forwarded=process.argv.slice(2).filter((x,i,a)=>{
   return true;
 });
 const runArgs=['--workers',String(exploreWorkers),'--poolWorkers',String(exploreWorkers),
-  '--poolBudgetHours','0.01','--benchEveryMin','100000','--randomStartFrac','0.25',...forwarded];
+  '--poolBudgetHours','0.01','--benchEveryMin','100000','--randomStartFrac','0',...forwarded];
 const core=start('EVOLUTION + EXPLORATION','run.js',runArgs);
 core.on('exit',code=>{console.log(`[trainer] evolution process exited ${code}; stopping companion streams`);stopAll();process.exitCode=code||0;});

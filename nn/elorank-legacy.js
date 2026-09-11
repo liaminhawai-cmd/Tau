@@ -14,7 +14,11 @@ const PHYSICAL_GAMES_PER_MATCH=2;
 const workers=Math.max(1,+arg('workers',Math.max(1,Math.min(os.cpus().length-1,14))));
 const budgetHours=Math.max(0,+arg('budgetHours',0));
 const targetGames=Math.max(2,+arg('targetGames',8)); // physical games, always even in practice
-const openingPlies=Math.max(0,+arg('openingPlies',4));
+const openingPlies=Math.max(0,+arg('openingPlies',0));   // true start: see pairScore's played-pair rule
+// Focus rungs (AI_LADDER trainerFocus): the anchor slice is larger while one exists and the draw
+// inside it leans on the focus rung, so the nets meet it a lot in the rated stream too.
+const focusLevels=new Set((()=>{try{return require('./ladder-sampling.js').focusRungs().map(f=>f.level);}catch(_){return[];}})());
+const isFocus=p=>p.kind==='ladder'&&focusLevels.has(+p.level);
 const bootstrapN=Math.max(40,+arg('bootstrap',100));
 const outPath=arg('out',path.join(dir,'elo-results.json'));
 const summaryPath=arg('summary',require('./machine-id.js').summaryFile(dir));
@@ -84,6 +88,12 @@ function standing(p,elo,fr){const e=Number.isFinite(elo[p.id])?elo[p.id]:(fr.lo+
 function uncertainty(p,g){const matches=(g[p.id]||0)/PHYSICAL_GAMES_PER_MATCH;if(!matches)return 1;const hw=prevCI[p.id];const u=Number.isFinite(hw)?hw/100:12/(12+matches);return Math.max(.05,Math.min(1,u));}
 function freshness(p,g){return 1/(Math.log2((g[p.id]||0)+2));}
 function pairScore(a,b,elo,g,pair,fr){
+  // Two ladder brains never meet: both deterministic, the same two games every time, and neither
+  // side learns. And a pair that has already played its two true-start games (one per colour) is
+  // done for good -- every brain here is deterministic from a fixed start, so a re-match would
+  // replay the same games and add nothing to the rating or the data. Breadth is the evidence.
+  if(a.kind==='ladder'&&b.kind==='ladder')return 0;
+  if(((store.tsPairs||{})[canonical(a.id,b.id)]||0)>=PHYSICAL_GAMES_PER_MATCH)return 0;
   const ea=Number.isFinite(elo[a.id])?elo[a.id]:0,eb=Number.isFinite(elo[b.id])?elo[b.id]:0,p=1/(1+Math.pow(10,(eb-ea)/400)),close=4*p*(1-p);
   const need=.55*((uncertainty(a,g)+uncertainty(b,g))/2)+.45*Math.max(freshness(a,g),freshness(b,g));
   const novelty=1/Math.log2((pair[canonical(a.id,b.id)]||0)+2);
@@ -98,10 +108,10 @@ function pairScore(a,b,elo,g,pair,fr){
 // by evidence need (uncertain and stale ladders surface first, freshly-played ones fade), and the
 // opponent is drawn by the normal pair equation minus its cost term -- no seat lists, no
 // thresholds, just a reserved slice of probability.
-const ANCHOR_MATCH_P=0.10;
+const ANCHOR_MATCH_P=focusLevels.size?0.35:0.10;
 function pickAnchor(elo,g,pair,fr,free){
   const ladders=free.filter(p=>p.kind==='ladder');if(!ladders.length)return null;
-  const l=weightedDraw(ladders.map(x=>[.30+.70*(.55*uncertainty(x,g)+.45*freshness(x,g)),x]));if(!l)return null;
+  const l=weightedDraw(ladders.map(x=>[(isFocus(x)?4:1)*(.30+.70*(.55*uncertainty(x,g)+.45*freshness(x,g))),x]));if(!l)return null;
   const pool=free.filter(p=>p.kind==='nn');if(!pool.length)return null;
   const scored=pool.map(o=>[pairScore(l,o,elo,g,pair,fr)*Math.sqrt(costMs(l)+costMs(o)),o]).filter(x=>x[0]>0);
   const o=weightedDraw(scored);return o?[l,o]:null;
@@ -137,7 +147,7 @@ function arenaArgs(a,b){const args=[path.join(dir,'arena.js'),'--a',a.spec,'--b'
 // max() below is almost never one -- execFile's own validator then throws RangeError before a
 // single match plays, which is worse than the hang this guard exists to prevent.
 function matchLimitMs(a,b){return Math.round(Math.max(15*60e3,12*(costMs(a)+costMs(b))));}
-function play(a,b){const t0=Date.now();return new Promise(resolve=>execFile(process.execPath,arenaArgs(a,b),{encoding:'utf8',maxBuffer:1<<24,timeout:matchLimitMs(a,b),killSignal:'SIGKILL'},(err,stdout,stderr)=>{if(stdout)process.stdout.write(stdout);if(stderr)process.stderr.write(stderr);const m=[...String(stdout||'').matchAll(/:\s*(\d+)-(\d+)(?:-(\d+))?\s+\(/g)];if(err||!m.length){console.error(`[rating] no result: ${a.id} vs ${b.id}${err&&err.killed?' (match timed out and was killed)':''}`);return resolve();}const q=m.at(-1),aw=+q[1],bw=+q[2],draws=+(q[3]||0);const rec=aw>bw?{w:1,l:0,d:0}:bw>aw?{w:0,l:1,d:0}:{w:0,l:0,d:1};const key=`${a.id}|${b.id}`,old=store.results[key]||{w:0,l:0,d:0,physical:0};store.results[key]={w:(+old.w||0)+rec.w,l:(+old.l||0)+rec.l,d:(+old.d||0)+rec.d,physical:(+old.physical||0)+PHYSICAL_GAMES_PER_MATCH};store.recent.push({at:new Date().toISOString(),a:a.id,b:b.id,...rec,physical:2,raw:`${aw}-${bw}${draws?'-'+draws:''}`});store.recent=store.recent.slice(-24);noteCost(a,b,Date.now()-t0);saveStore();resolve();}));}
+function play(a,b){const t0=Date.now();return new Promise(resolve=>execFile(process.execPath,arenaArgs(a,b),{encoding:'utf8',maxBuffer:1<<24,timeout:matchLimitMs(a,b),killSignal:'SIGKILL'},(err,stdout,stderr)=>{if(stdout)process.stdout.write(stdout);if(stderr)process.stderr.write(stderr);const m=[...String(stdout||'').matchAll(/:\s*(\d+)-(\d+)(?:-(\d+))?\s+\(/g)];if(err||!m.length){console.error(`[rating] no result: ${a.id} vs ${b.id}${err&&err.killed?' (match timed out and was killed)':''}`);return resolve();}const q=m.at(-1),aw=+q[1],bw=+q[2],draws=+(q[3]||0);const rec=aw>bw?{w:1,l:0,d:0}:bw>aw?{w:0,l:1,d:0}:{w:0,l:0,d:1};const key=`${a.id}|${b.id}`,old=store.results[key]||{w:0,l:0,d:0,physical:0};store.results[key]={w:(+old.w||0)+rec.w,l:(+old.l||0)+rec.l,d:(+old.d||0)+rec.d,physical:(+old.physical||0)+PHYSICAL_GAMES_PER_MATCH};store.recent.push({at:new Date().toISOString(),a:a.id,b:b.id,...rec,physical:2,raw:`${aw}-${bw}${draws?'-'+draws:''}`});store.recent=store.recent.slice(-24);store.tsPairs||={};const ck=canonical(a.id,b.id);store.tsPairs[ck]=(+store.tsPairs[ck]||0)+PHYSICAL_GAMES_PER_MATCH;noteCost(a,b,Date.now()-t0);saveStore();resolve();}));}
 function writeSummary(){const ids=players.map(p=>p.id),elo=fitBT(ids,store.results),ci=bootstrap(ids,bootstrapN),{g}=totals(),out={updated:new Date().toISOString(),ratingSemanticsVersion:ratingState.VERSION,semantics:ratingState.SEMANTICS,seedWeightMatches:store.seedWeightMatches,compatStrengthUnit:'elo/100 (legacy consumers only; not a ladder rank)',players:{}};for(const p of players){const games=Math.round(g[p.id]||0),e=elo[p.id],c=games>=2?ci[p.id]:{lo:null,hi:null},lo=Number.isFinite(c&&c.lo)?c.lo:null,hi=Number.isFinite(c&&c.hi)?c.hi:null;out.players[p.id]={kind:p.kind,elo:Number.isFinite(e)?+e.toFixed(1):null,eloLo:lo==null?null:+lo.toFixed(1),eloHi:hi==null?null:+hi.toFixed(1),games,...(p.kind==='ladder'?{level:p.level}:{model:p.model,depth:p.depth,brain:p.brain||'nn',dualPolicy:!!p.dualPolicy,rank:Number.isFinite(e)?+(e/100).toFixed(3):null,rankLo:lo==null?null:+(lo/100).toFixed(3),rankHi:hi==null?null:+(hi/100).toFixed(3),rankLoEdge:null,rankHiEdge:null,extrapRank:null,extrapRankLo:null,extrapRankHi:null})};}atomic(summaryPath,JSON.stringify(out,null,1));const rows=players.map(p=>({p,elo:elo[p.id],games:Math.round(g[p.id]||0),ci:ci[p.id]})).sort((a,b)=>(b.elo||0)-(a.elo||0));console.log(`\n=== unified Elo (${Object.values(store.results).reduce((s,r)=>s+matchN(r),0)} colour-balanced matches / ${Object.values(store.results).reduce((s,r)=>s+physicalN(r),0)} physical games) ===`);console.log('  Elo       90% CI       games  brain');for(const r of rows){const c=r.games>=2&&r.ci&&Number.isFinite(r.ci.lo)?`${Math.round(r.ci.lo)}..${Math.round(r.ci.hi)}`:'—';console.log(`${String(Math.round(r.elo||0)).padStart(5)}  ${c.padStart(13)}  ${String(r.games).padStart(5)}  ${r.p.label}${r.p.kind==='ladder'?'  [immortal]':''}`);}}
 async function main(){console.log(`[rating] ${players.length} players; one scheduler; temp 0; every pairing = two games, colours reversed; pairs drawn by score, rent by measured compute`);if(refit){writeSummary();return;}if(dryrun)return;const start=Date.now(),busy=new Set();let stop=false;const timedOut=()=>budgetHours>0&&(Date.now()-start)/3600000>=budgetHours;const lane=async()=>{while(!stop&&!timedOut()){const{g}=totals();if(!budgetHours&&players.length&&players.every(p=>(g[p.id]||0)>=targetGames)){stop=true;break;}const elo=fitBT(players.map(p=>p.id),store.results),pair=pickPair(elo,busy);if(!pair)break;const[a,b]=pair;busy.add(a.id);busy.add(b.id);try{await play(a,b);}finally{busy.delete(a.id);busy.delete(b.id);}}};await Promise.all(Array.from({length:workers},lane));writeSummary();}
 main().catch(e=>{console.error('[rating] unified league failed:',e.stack||e.message);process.exitCode=1;});

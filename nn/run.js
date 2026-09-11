@@ -1934,10 +1934,25 @@ async function runPoolCycle() {
       gateLine = 'nothing to gate this cycle; keeping best.json';
       log(`pool cycle ${num} — ${gateLine}`);
     } else {
-      writeStatus(`promotion gate: ${candidates.length} candidate(s) x ${gateGames} games vs ${incumbentName} ` +
+      // The panel (promotion-gate.js has the argument): games start from the true start and every
+      // brain is deterministic, so candidate-vs-incumbent is two games, not eighty. Candidate and
+      // incumbent each play the same gateGames/2 panel members both colours: the production ladder
+      // rungs, then the strongest live faces by Elo that are neither a candidate nor the incumbent.
+      const panelN = Math.max(2, Math.floor(gateGames/2));
+      const rungs = require('./ladder-sampling.js').productionTop(6);
+      const panel = rungs.map(l => ({ id: `L${l}`, spec: `L${l}` }));
+      const excluded = new Set([ckpt, best, ...candidates]);
+      for (const r of ranked) {
+        if (panel.length >= panelN) break;
+        const p = livePath(r);
+        if (!fs.existsSync(p) || excluded.has(p) || isBestTwin(p)) continue;
+        if (panel.some(m => m.spec === `nn:0:${p}`)) continue;
+        panel.push({ id: `${path.basename(p, '.json')}@D1`, spec: `nn:0:${p}`, depth: 1 });
+      }
+      writeStatus(`promotion gate: ${candidates.length} candidate(s) vs ${incumbentName} over a ${panel.length}-member panel ` +
                   `(started ${new Date().toISOString()})`);
-      const verdict = await gate.runGate({
-        incumbent: ckpt, candidates, games: gateGames, lanes: gateLanes, depth: 1, openingPlies: 4,
+      const verdict = await gate.runPanelGate({
+        incumbent: ckpt, candidates, panel, lanes: gateLanes, depth: 1,
         dataPrefix: path.join(dir, 'data', `gate-${String(num).padStart(3, '0')}`),
         log: m => log(`pool cycle ${num} — ${m}`),
       });

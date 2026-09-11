@@ -264,7 +264,10 @@ function main() {
   // level) from the same fixed start -- without a shuffled opening, every game with the same
   // colour assignment would replay bit-for-bit identically, making "games" a repeat count, not a
   // sample size. See opening.js.
-  const openingPlies = +arg('openingPlies', 2);
+  // 0 now: every rated and training game starts from the true start. A repeated pairing IS a
+  // repeated game, so the callers stop repeating pairings (elorank refuses to redraw a played
+  // pair; the promotion gate spreads over a panel) instead of scrambling the opening.
+  const openingPlies = +arg('openingPlies', 0);
   const randomStartFrac = +arg('randomStartFrac', 0);
 
   // --saveData <file>: append training rows as the games are played (see the header note).

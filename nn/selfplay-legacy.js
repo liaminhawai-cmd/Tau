@@ -204,7 +204,11 @@ function main() {
   const deep = arg('deep', '7,8,9,10,11').split(',').map(Number);
   const deepEvery = +arg('deepEvery', 12);
   const discount = +arg('discount', 0.995);
-  const temperature = +arg('temperature', 0.08);
+  // 0: the game is deterministic and so are the brains. Variety comes from WHICH brains meet --
+  // the rotating pool, the depth mix, the ladder rungs, both colours -- not from dice. A noised net
+  // is a different player from the temp-0 net the league rates, and its games taught the corpus a
+  // style nothing is measured at. --temperature restores the old noise if a study wants it.
+  const temperature = +arg('temperature', 0);
   // 4, up from 2: these are RANDOM legal plies both sides play before the brains take over, purely
   // so games start from different positions -- not lookahead, and unlike temperature (which noises
   // EVERY move) the play after the scramble stays clean, so labels stay clean. At 2 plies the
@@ -212,7 +216,12 @@ function main() {
   // in the data quietly multiply the effective epochs on them -- the same overfitting the
   // iteration-63 bake-off caught, fed from the data side. arena.js keeps its own default of 2;
   // this is a data-diversity dial, not an evaluation setting.
-  const openingPlies = +arg('openingPlies', 4);
+  // 0: every game starts from the TRUE start. The random-ply scramble that used to sit here was
+  // the only way two deterministic brains could produce different games, and it also meant no
+  // training game ever contained the real opening -- Corner L12's whole line, for one. Variety now
+  // comes from brain combinations (see --temperature above); a repeated combination is a repeated
+  // game, which the league's scheduler refuses to draw and self-play's rotating pool makes rare.
+  const openingPlies = +arg('openingPlies', 0);
   // Focus rungs (AI_LADDER trainerFocus, see ladder-sampling.js) exist to teach the nets a specific
   // opening -- Corner L12's corner cross from the start position. A game against one therefore
   // starts from the TRUE start: no random opening plies, no seeded or random pose, or the line the
@@ -305,7 +314,9 @@ function main() {
   // where the data is weakest. Stored poses rather than uniform-random ones: they came through the
   // real rules (state bookkeeping consistent), they follow the distribution the net is actually
   // asked about, and they're already on disk. 0 disables; ignored until enough tagged data exists.
-  const seedFrom = Math.max(0, Math.min(1, +arg('seedFrom', 0.25)));
+  // 0: seeded starts are retromine's job now, in its own stream; the training and rating streams
+  // play from the true start (see --openingPlies).
+  const seedFrom = Math.max(0, Math.min(1, +arg('seedFrom', 0)));
   const seedPoolFile = arg('seedPool', null);
   // Real lookahead (nnai.js's `depth`) measurably strengthens play (a same-net depth-2 vs depth-1
   // A/B went 19-5) but costs roughly keepForDepth x per extra ply (measured ~5.6x for depth 2, ~20x
