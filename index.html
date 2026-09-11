@@ -5222,12 +5222,17 @@ function ladderPlanCorner(idx, w, o){
     };
     // one swing: a corner round is on right now, either way round
     for (const d of [1,-1]){ const c=cornerNow(d); if (c) lines.push({steps:[plan(c)], fin:c, shape:'now'}); }
-    // the book: (A,d) into the sliver, (A,d) to the solved setup, (B,-d) carries A round the corner
+    // the book: (A,d) into the sliver, (A,d) to the solved setup, (B,-d) carries A round the corner.
+    // FORWARD only: the first swing must carry the hub toward the board's centre. The outward
+    // version -- cross the outer ring first, then swing back in through the inner corner -- is a
+    // corner line too and the eval can like it, but it steps backward and it is not the opening.
+    const hubR0=Math.hypot(me.x, me.y);
     if (!lines.length) for (const d of [1,-1]) for (let pv=0;pv<3;pv++){
         ladderRestore(snap0);
         for (const s1 of ladderCornerFirstStops(idx, pv, d, o)){
             ladderRestore(snap0);
             if (!ladderSwingTo(idx, s1.pivotIdx, s1.dir, s1.targetRad)) continue;
+            if (Math.hypot(me.x, me.y) >= hubR0) continue;   // stepped back or sideways: not the line
             const t=twoSwing(d, takeSnap(), pv, pv);
             if (t) lines.push({steps:[s1, t.first, plan(t.fin)], fin:t.fin, shape:'book'});
         }
