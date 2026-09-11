@@ -41,10 +41,7 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
    !important, which would then have to be fought again by anything layered on later. */
 .tau-desktop body.ingame #views { position:fixed; inset:0; width:100%; height:100%; }
 .tau-desktop body.ingame #views #view3d { position:absolute; inset:0; border-radius:0; border:0; }
-/* Once the flat board has grown past the swap point the 3D view stands beside it as a full-height
-   column rather than floating over it, so all it needs is the one edge that divides them — a corner
-   radius and a drop shadow would be drawing a card that no longer has free sides. */
-.tau-desktop body.ingame #views.view3dInset #view3d { border-left:1px solid var(--edge); }
+/* The room stays continuous when the views move apart; no straight divider across its backdrop. */
 /* No width/height transition here: the grip has to sit exactly on the board's edge, and an
    animating box would leave it lagging behind the drag it is itself driving. */
 .tau-desktop body.ingame #views #canvas { position:fixed; bottom:26px; left:26px; z-index:5;
@@ -59,7 +56,7 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
    desktop chrome, so it's left alone here); a border added content-box would silently inflate
    past that budget and wrap the two tiles onto separate rows instead of sitting side by side. */
 .tau-desktop #views #view3d, .tau-desktop #views #canvas { box-sizing:border-box; border-radius:14px; }
-.tau-desktop #views #view3d { border:1px solid var(--edge); }
+.tau-desktop #views #view3d { border:0; }
 .tau-desktop #views #canvas { background:#111710; }
 .tau-desktop #splitHandle { opacity:0.4; }
 .tau-desktop #splitHandle::before { background:var(--gold); }
@@ -136,9 +133,25 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .desktop-controls-row kbd { justify-self:start; font:12px/1.5 "Segoe UI",system-ui,sans-serif; color:var(--paper);
   border:1px solid var(--edge); border-radius:4px; padding:3px 7px; white-space:nowrap; background:#0000003d; }
 .desktop-controls-row span { color:var(--muted); font-size:14px; }
-/* Stacked orientation (a window taller than it is wide): the 3D view stands ABOVE the flat board,
-   so the one dividing edge is along its bottom, not its left. */
-.tau-desktop body.ingame #views.view3dAbove #view3d { border-bottom:1px solid var(--edge); }
+/* Replay captions and controls follow the 3D view's centre. The flat board sits above the controls,
+   with its normal size preference held for the return to play. */
+.tau-desktop.desktop-watching #topHud { left:var(--desktop-view-center,50%)!important; }
+.tau-desktop.desktop-watching #bottomHud { inset:auto auto 25px!important;
+  left:var(--desktop-view-center,50%)!important; width:calc(var(--desktop-view-width,100vw) - 40px);
+  transform:translateX(-50%); }
+.tau-desktop.desktop-watching .desktop-input-hint { display:none; }
+
+/* Soft, rounded controls and open spacing carry the chrome without ruled separators. */
+.desktop-primary,.desktop-brand,.desktop-menu,.desktop-menu kbd,
+.tau-desktop #replayBtns button,.tau-desktop #modalBtns>button,
+.desktop-setting select,.desktop-controls-row kbd { border:0; border-radius:999px; }
+.desktop-choices select { border:0; border-radius:18px; padding:10px 12px; }
+.desktop-home-bottom { border:0; }
+.tau-desktop #modalBox { border:0; border-radius:28px; }
+.desktop-result-mark { width:34px; height:14px; background:transparent;
+  border-top:2px solid var(--gold); border-radius:50%; }
+.tau-desktop #modalBtns>button { background:rgba(217,183,123,.07); }
+.tau-desktop #modalBtns>button:first-child { background:var(--gold); }
 
 /* Board unlocks: the result sheet's line, and a toast for the results the game's own sheet shows. */
 .desktop-unlock { margin:14px 0 0; color:var(--gold); font-size:14px; }
@@ -149,3 +162,4 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
   transition:opacity .35s ease, transform .35s ease; }
 .desktop-unlock-toast.show { opacity:1; transform:translate(-50%, 0); }
 .desktop-unlock-toast .desktop-unlock { margin:0; }
+.desktop-unlock-toast { border:0; border-radius:24px; max-width:calc(100vw - 72px); }

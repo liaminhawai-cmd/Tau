@@ -21,26 +21,22 @@
   // stone/paper/membrane surfaces their own character instead of printing oak on them.
   const BOARD_FINISHES = [
     // ---- the wood finishes ----
-    // Joined boards, not slabs: `zones` is the timber for each of the flat board's four zone values
-    // (v1 outer lens .. v4 centre); the 2D skin's zone colours are derived from the same table below,
-    // so both views show the same marquetry. The zones are the board's message -- how close to the
-    // edge you are, the way the sound design says it with distance -- so the four timbers are one
-    // family stepping in VALUE only, centre lightest to outer lens darkest, exactly as the printed
-    // board grades its greys. Not four species: a colour chart says nothing about danger. The 3D bake and the detail shader cut each zone into its own pieces with the
-    // grain running its own way (woodFrame, mirrored in boards.js).
+    // One continuous piece of figured timber, shaded by zone value (v1 outer lens .. v4 centre).
+    // The grain flows across the curved inlays without straight stave joins or sector boundaries.
+    // Both views read their zone colours from this table; woodFrame is mirrored in boards.js.
     { id:'walnut', name:'Walnut', detail:'wood',
       skin:{ shadeByZoneValue:true, flat:'#60422a', lines:'#ead5a4', rim:'#574b32', bg:'#101410', pb:'#639eb8', pr:'#dc8864' },
-      wood:{ base:[96,66,42], zones:[[72,48,32],[86,58,38],[98,68,44],[112,78,50]], joinery:true,
+      wood:{ base:[96,66,42], zones:[[72,48,32],[86,58,38],[98,68,44],[112,78,50]],
              line:'#e1ca91', rim:'#57472e', trim:'#aa8751', bg:'#101410', grain:1, dots:['#82b4bd','#df9b78'] },
       piece:{ blue:'#427d91', red:'#b46744', metalness:.72, roughness:.3, clearcoat:.25, clearcoatRoughness:.35, envMapIntensity:.85 } },
     { id:'ebony', name:'Ebony', detail:'wood',
       skin:{ shadeByZoneValue:true, flat:'#322c28', lines:'#c8bda6', rim:'#241f1c', bg:'#0b0d0e', pb:'#6fa8c4', pr:'#e08a63' },
-      wood:{ base:[50,44,40], zones:[[36,32,30],[44,39,36],[52,46,42],[60,53,48]], joinery:true,
+      wood:{ base:[50,44,40], zones:[[36,32,30],[44,39,36],[52,46,42],[60,53,48]],
              line:'#cdc0a6', rim:'#2b2622', trim:'#8d8878', bg:'#0b0d0e', grain:.85, dots:['#8fbecb','#e2a184'] },
       piece:{ blue:'#4f93aa', red:'#c4744c', metalness:.78, roughness:.26, clearcoat:.3, clearcoatRoughness:.3, envMapIntensity:.9 } },
     { id:'maple', name:'Maple', detail:'wood',
       skin:{ shadeByZoneValue:true, flat:'#d4b684', lines:'#5b4526', rim:'#9b7f52', bg:'#171512', pb:'#2f6f8c', pr:'#b1502c' },
-      wood:{ base:[212,182,132], zones:[[168,136,94],[190,158,112],[208,178,130],[222,194,146]], joinery:true,
+      wood:{ base:[212,182,132], zones:[[168,136,94],[190,158,112],[208,178,130],[222,194,146]],
              line:'#6b5024', rim:'#9d8153', trim:'#d8bd8a', bg:'#171512', grain:1, dots:['#2f6f8c','#b1502c'] },
       piece:{ blue:'#2f6f8c', red:'#b1502c', metalness:.6, roughness:.34, clearcoat:.3, clearcoatRoughness:.3, envMapIntensity:.7 } },
     // ---- the four original board skins from the browser build ----
@@ -85,7 +81,7 @@
   ];
   // Most boards grade their zones -- the centre a touch lighter, each band out a touch darker, the
   // lens segments darker again -- so the flat board reads at a glance and the 3D disc matches it.
-  // The joined woods and the graded skins name their own zone colours; the rest derive them from
+  // The woods and the graded skins name their own zone colours; the rest derive them from
   // their flat colour with the same lift and drops boards.js's shadeZones paints into the bake.
   // Exceptions stay flat on purpose: Yellow (the plain classic), Math (a drafting sheet whose live
   // construction is its reading aid) and Alien (its membrane already blotches).
@@ -110,15 +106,19 @@
     noir:    { level: 9 },  math:  { level: 10 },  marble: { played: 100 }, alien: { level: LADDER_N },
   };
   const PROGRESS_KEY = 'tauDesktopProgress';
+  const TEST_BOARDS_KEY = 'tauDesktopTestBoards';
+  let testBoards = false;
+  try { testBoards = localStorage.getItem(TEST_BOARDS_KEY) === '1'; } catch (_) {}
   const progress = { played: 0, wins: 0, topLevel: 0 };   // topLevel: highest ladder rung beaten (1-based)
   try { const p = JSON.parse(localStorage.getItem(PROGRESS_KEY) || '{}');
         for (const k in progress) if (Number.isInteger(p[k]) && p[k] >= 0) progress[k] = p[k]; } catch (_) {}
   function unlockNeed(id) { return UNLOCKS[id] === undefined ? null : UNLOCKS[id]; }
-  function isUnlocked(id) {
+  function isEarned(id) {
     const n = unlockNeed(id); if (!n) return true;
     return (n.wins ? progress.wins >= n.wins : true) && (n.played ? progress.played >= n.played : true)
         && (n.level ? progress.topLevel >= n.level : true);
   }
+  function isUnlocked(id) { return testBoards || isEarned(id); }
   function unlockText(id) {
     const n = unlockNeed(id); if (!n) return '';
     if (n.wins) return `win ${n.wins} game${n.wins>1?'s':''}`;
@@ -130,12 +130,12 @@
   // opened so the result sheet can say so.
   function recordResult({ humanWon, vsAI, online, lab, level }) {
     if (lab) return;
-    const before = BOARD_FINISHES.filter(b => isUnlocked(b.id)).map(b => b.id);
+    const before = BOARD_FINISHES.filter(b => isEarned(b.id)).map(b => b.id);
     progress.played += 1;
     if (humanWon && (vsAI || online)) progress.wins += 1;
     if (humanWon && vsAI && Number.isInteger(level)) progress.topLevel = Math.max(progress.topLevel, level + 1);
     try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress)); } catch (_) {}
-    pendingUnlocks = BOARD_FINISHES.filter(b => isUnlocked(b.id) && !before.includes(b.id));
+    pendingUnlocks = BOARD_FINISHES.filter(b => isEarned(b.id) && !before.includes(b.id));
     if (pendingUnlocks.length && !showResultSoon()) toastUnlocks();
   }
   // showResult (the desktop's own sheet) runs for offline matches; online and ranked results use the
@@ -147,10 +147,37 @@
     pendingUnlocks = []; return html;
   }
   function toastUnlocks() {
+    showUnlockToast(takeUnlockHtml());
+  }
+  function showUnlockToast(html) {
     let el = $('desktopUnlockToast');
     if (!el) { el = document.createElement('div'); el.id = 'desktopUnlockToast'; el.className = 'desktop-unlock-toast'; document.body.appendChild(el); }
-    el.innerHTML = takeUnlockHtml(); el.classList.add('show');
+    el.innerHTML = html; el.setAttribute('role','status'); el.classList.add('show');
     clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 5200);
+  }
+  // A reversible testing override, separate from earned progress and native achievements.
+  // Enter ALLBOARDS on the main menu; repeat it to restore the normal unlock requirements.
+  let cheatBuffer = '', cheatAt = 0;
+  function boardCheat(e) {
+    if (inMatch() || dialogOpen() || e.ctrlKey || e.metaKey || e.altKey || e.isComposing
+        || e.target.closest?.('input,select,textarea,[contenteditable]:not([contenteditable="false"])')) {
+      cheatBuffer = ''; return;
+    }
+    if (e.repeat) return;
+    if (!/^[a-z]$/i.test(e.key)) { cheatBuffer = ''; return; }
+    const now = performance.now();
+    if (now - cheatAt > 2000) cheatBuffer = '';
+    cheatAt = now; cheatBuffer = (cheatBuffer + e.key.toUpperCase()).slice(-9);
+    if (cheatBuffer !== 'ALLBOARDS') return;
+    cheatBuffer = ''; testBoards = !testBoards;
+    try { if (testBoards) localStorage.setItem(TEST_BOARDS_KEY,'1'); else localStorage.removeItem(TEST_BOARDS_KEY); } catch (_) {}
+    if (!isUnlocked(settings.board)) {
+      settings.board = 'walnut'; saveSettings(); applyMaterials(); applyTheme(); render();
+    }
+    showUnlockToast(`<p class="desktop-unlock">${testBoards
+      ? 'All boards unlocked for testing. Type ALLBOARDS again to restore locks.'
+      : 'Normal board locks restored. Your earned boards are still available.'}</p>`);
+    e.preventDefault();
   }
   // Right stick turns the piece at a speed set by how far it is pushed; the triggers do the same
   // from RT/LT with the analog pull as the speed. Both keep the D-pad on the foot and the left
@@ -344,7 +371,7 @@
   // Grow or shrink the flat board. The corner layout is the only one with a board to resize, so
   // outside it this is a no-op rather than quietly moving a split nothing is showing.
   function resizeBoard(delta) {
-    if (!cornerLayoutActive()) return;
+    if (!cornerLayoutActive() || passiveView()) return;
     markSplitUsed();
     setViewSplit(Math.max(0, Math.min(1, viewSplit + delta)), true);
     saveViewSplit();
@@ -360,6 +387,7 @@
     showModal('Settings', `<label class="desktop-setting desktop-volume">Sound <output id="desktopVolumeValue">${userVol}%</output><input id="desktopVolume" aria-label="Sound volume" type="range" min="0" max="200" step="5" value="${userVol}"></label>
       <label class="desktop-setting">Mute<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
       <label class="desktop-setting">Board<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${b.name}</option>`:`<option value="${b.id}" disabled>${b.name} · ${unlockText(b.id)}</option>`).join('')}</select></label>
+      ${testBoards ? '<p class="desktop-result-detail">All boards are open for testing. Type <b>ALLBOARDS</b> on the main menu to restore locks.</p>' : ''}
       <label class="desktop-setting">Graphics<select id="desktopQuality"><option value="balanced">Balanced</option><option value="high">High</option></select></label>
       <label class="desktop-setting">Controller<select id="desktopPadScheme"><option value="triggers">Triggers · pull to swing</option><option value="stick">Right stick · push to swing</option></select></label>
       <label class="desktop-setting">Invert camera Y<input id="desktopInvertY" type="checkbox" ${settings.invertCamY?'checked':''}></label>
@@ -413,28 +441,15 @@
 
   // A fixed seed makes the material stable across starts. Noise is visual only and never
   // consumes the random stream used by the opponents. The printed geometry comes from CFG.
-  // Mirror of boards.js woodFrame: which piece of timber a board point lies in, and that piece's
-  // grain frame. The bake and the per-pixel shader must agree or the printed figure and the live
-  // one would run in different directions on the same stave.
-  const WF_TAU = Math.PI*2;
-  function whash(n){ const x=Math.sin(n*12.9898)*43758.5453; return x-Math.floor(x); }
-  function woodFrame(x, y, out) {   // board units in, {x,y,joint,tone,zone} out
+  // Smooth grain coordinates shared with boards.js's detail shader. No polar angle or segmented
+  // frame: those create radial joins (including a seam where atan wraps around the negative axis).
+  function woodFrame(x, y, out) {
     const r = Math.hypot(x,y), r0=CFG.rings[0], r1=CFG.rings[1];
     const band = r < r0 ? 2 : r < r1 ? 1 : 0;
     const lens = CFG.sideArcs.some(a => Math.hypot(x-a.cx, y-a.cy) < a.r);
-    let ang, id, joint = 1e3;
-    if (lens) { ang = Math.PI/2; id = 100 + band*2 + (x >= 0 ? 1 : 0); }
-    else if (band === 2) { ang = 0; id = 1; }
-    else {
-      const n = band === 1 ? 12 : 16, a = Math.atan2(y, x);
-      const k = Math.floor((a + Math.PI) * n / WF_TAU), ka = -Math.PI + (k + 0.5) * WF_TAU / n;
-      ang = ka + Math.PI/2; id = 10 + band*20 + k; joint = r * (Math.PI/n - Math.abs(a - ka));
-    }
     out.zone = band + 2 - (lens ? 1 : 0);   // the flat board's zone value: 4 centre .. 1 outer lens
-    out.tone = 1 + (whash(id*3.1) - 0.5) * 0.12;
-    out.joint = joint;
-    const c = Math.cos(Math.PI/2 - ang), sn = Math.sin(Math.PI/2 - ang);
-    out.x = c*x - sn*y + whash(id)*97; out.y = sn*x + c*y + whash(id*1.7)*61;
+    out.x = x + 3.4*Math.sin(y*0.065) + 1.6*Math.sin((x+y)*0.035);
+    out.y = y + 1.8*Math.sin(x*0.05);
     return out;
   }
   function woodMaps(fin) {
@@ -443,24 +458,21 @@
     // membrane are not wood: at low strength the directional grain and pores fade out and only the
     // fine speckle survives, which is what those surfaces actually have.
     const grainAmt = wood.grain==null ? 1 : wood.grain;
-    // The base colour per zone: the joined woods name a timber for each; the graded skins (Slate,
+    // The base colour per zone: the woods name a shade for each; the graded skins (Slate,
     // Dojo) use the flat board's own zone colours, so the 3D disc shades exactly as the 2D one.
     const hex = h => [1,3,5].map(i => parseInt(h.slice(i,i+2),16));
     const zones = wood.zones ? wood.zones
                 : skin && skin.shadeByZoneValue ? [skin.v1, skin.v2, skin.v3, skin.v4].map(hex) : null;
-    const joinery = !!wood.joinery;
-    const S=1536, cv=document.createElement('canvas'); cv.width=cv.height=S;
+    const S=window.TAU_TEST_BAKE_SIZE || 1536, cv=document.createElement('canvas'); cv.width=cv.height=S;
     const c=cv.getContext('2d'), pixels=c.createImageData(S,S), d=pixels.data;
-    const sc=S/(CFG.edgeU*2), O=S/2, fr={x:0,y:0,joint:1e3,tone:1,zone:4};
+    const sc=S/(CFG.edgeU*2), O=S/2, fr={x:0,y:0,zone:4};
     for(let y=0;y<S;y++) for(let x=0;x<S;x++) {
-      let gx=x, gy=y, br=wood.base[0], bg=wood.base[1], bb=wood.base[2], tone=1;
+      let gx=x, gy=y, br=wood.base[0], bg=wood.base[1], bb=wood.base[2];
       if (zones) {
         woodFrame((x-O)/sc, (y-O)/sc, fr);
         const z = zones[fr.zone-1]; br=z[0]; bg=z[1]; bb=z[2];
-        if (joinery) {
+        if (fin.detail === 'wood') {
           gx = fr.x*sc; gy = fr.y*sc;
-          const t = Math.min(1, Math.max(0, (fr.joint-0.10)/0.20)), j = 1 - t*t*(3-2*t);
-          tone = fr.tone * (1 - 0.45*j);
         }
       }
       const grain=gx+18*Math.sin(gy*.004)+7*Math.sin(gy*.012+gx*.003);
@@ -471,7 +483,7 @@
       const noise=(hash%255)/255-.5;
       const value=(broad*9+fine*2.6-pore*6)*grainAmt+noise*3;
       const i=(y*S+x)*4;
-      d[i]=(br+value)*tone; d[i+1]=(bg+value*.78)*tone; d[i+2]=(bb+value*.52)*tone; d[i+3]=255;
+      d[i]=br+value; d[i+1]=bg+value*.78; d[i+2]=bb+value*.52; d[i+3]=255;
     }
     c.putImageData(pixels,0,0);
     const bumpCv=document.createElement('canvas'); bumpCv.width=bumpCv.height=768;
@@ -651,6 +663,7 @@
   // uses) lays out #canvas and #view3d side by side. Desktop never gets a cut-down board layout —
   // same full flat-board-plus-3D view as web, just with the walnut chrome floated over it.
   function layout() {
+    root.classList.toggle('desktop-watching', inMatch() && passiveView());
     if(htp3DActive || $('htpFull')) return false;
     if(!renderer) {   // no WebGL: overhead-only, in the menu or a match
       const size=Math.max(160,Math.floor(Math.min(innerHeight-160,innerWidth-60)));
@@ -880,6 +893,7 @@
   }
   document.addEventListener('keydown',e=>{
     if($('htpFull'))return;
+    boardCheat(e);
     // F1 is the one key people already try when they want to know what the buttons do, so it works
     // from anywhere -- in a match, in the menus, and on top of another dialog.
     if(e.key==='F1'){e.preventDefault();e.stopImmediatePropagation();openControls();return;}

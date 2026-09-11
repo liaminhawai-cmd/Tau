@@ -630,7 +630,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 208</div>
+<div id="buildTag">build 209</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2944,6 +2944,7 @@ function endReplay() {
     if (coachActive) { coachSegmentEnd(); return; }
     document.getElementById('replayBtns').style.display = 'none';
     document.getElementById('btns').style.display = 'flex';
+    if (window.TAU_DESKTOP) resize();   // restore the player's board size and clear watching chrome
     if (replayFinalPose) { G.pieces.forEach((p,i)=>{ p.x=replayFinalPose[i].x; p.y=replayFinalPose[i].y; p.rot=replayFinalPose[i].rot; }); }
     render();
     // Studio embed (studio.html): play the closing tumble, then loop back to the start so the preview
@@ -8697,7 +8698,7 @@ function setViewSplit(v, persist) {
 function cornerLayoutActive() {
     return !!(window.TAU_DESKTOP && renderer
               && document.getElementById('game')?.style.display === 'flex'
-              && !passiveView() && !document.body.classList.contains('dirUnlocked'));
+              && !document.body.classList.contains('dirUnlocked'));
 }
 function layoutSplitHandle() {
     const h = document.getElementById('splitHandle'), vw = document.getElementById('views'),
@@ -8807,7 +8808,7 @@ function markSplitUsed() {
     // did nothing at all here. Corner layout only — in the side-by-side split the wheel would fight
     // the page/board scroll behaviour, and there the seam already advertises itself.
     canvas.addEventListener('wheel', ev => {
-        if (!cornerLayoutActive()) return;
+        if (!cornerLayoutActive() || passiveView()) return;
         ev.preventDefault(); markSplitUsed();
         // Trackpads deliver many small deltas and a mouse a few large ones, so step by direction
         // rather than by magnitude: the same flick of either travels about the same distance.
@@ -8868,7 +8869,12 @@ function resize() {
     else if (isDesktopMatch) {
         // Corner layout: the 3D view takes the whole window and the flat board floats over its
         // bottom-left corner, sized anywhere from a glanceable dial to a genuine second board.
-        const room = Math.min(window.innerWidth, window.innerHeight) - CORNER_INSET*2;
+        // Replays retain the corner layout that desktop CSS positions. Falling back to the web
+        // split here sized two flex tiles, then painted them on top of each other at the left edge.
+        // Leave a separate bottom lane for replay controls, including when they wrap in portrait.
+        const floor = passiveView() ? Math.max(90, measure('replayBtns') + 50) : CORNER_INSET;
+        const room = Math.max(CORNER_MIN, Math.min(window.innerWidth - CORNER_INSET*2,
+          window.innerHeight - CORNER_INSET - floor));
         size = Math.round(Math.max(CORNER_MIN, Math.min(room, room * (0.16 + 0.84*effectiveSplit()))));
         cornerSize = size;
         // Past half the short axis the flat board would start covering the pieces in the 3D view, so
@@ -8907,7 +8913,7 @@ function resize() {
         // middle of its column only in the side-by-side case; stacked, it stays on the floor.
         const minTileW = Math.max(240, Math.round(W * 0.30));
         const minTileH = Math.max(200, Math.round(H * 0.30));
-        let left = 0, up = 0, bottom = CORNER_INSET;
+        let left = 0, up = 0, bottom = floor;
         if (camera) {
             // Project through the pose the camera is heading for, not where it is this frame: the
             // live camera is mid-ease after every tile change, and a solve that read it fed its own
@@ -8957,11 +8963,11 @@ function resize() {
             // and worse -- the answer flipped mid-drag and the whole layout jumped with it. One rule,
             // one candidate, so the offset can only ever move one way as the board grows.
             if (W < H) {
-                const cyFloor = H - CORNER_INSET - r;    // stacked: board stays on the floor
+                const cyFloor = H - floor - r;    // stacked: board stays above the control lane
                 up = solve(Math.max(0, H - minTileH), y => touches(0, W, H - y, cyFloor));
-                bottom = CORNER_INSET;
+                bottom = floor;
             } else {
-                const liftedBottom = CORNER_INSET + ((H - size)/2 - CORNER_INSET) * lift;   // side: board lifts
+                const liftedBottom = floor + ((H - size)/2 - floor) * lift;   // side: board lifts
                 const cyLifted = H - liftedBottom - r;
                 left = solve(Math.max(0, W - minTileW), x => touches(x, W - x, H, cyLifted));
                 bottom = liftedBottom;
@@ -9008,6 +9014,8 @@ function resize() {
         cv3.style.left = cornerView3d.left+'px'; cv3.style.top = cornerView3d.top+'px';
         cv3.style.right = 'auto'; cv3.style.bottom = 'auto';
         canvas.style.bottom = cornerBottom+'px';
+        document.documentElement.style.setProperty('--desktop-view-center', (cornerView3d.left + w3/2)+'px');
+        document.documentElement.style.setProperty('--desktop-view-width', w3+'px');
         document.getElementById('views').classList.toggle('view3dInset', cornerView3d.apart && !cornerView3d.above);
         document.getElementById('views').classList.toggle('view3dAbove', cornerView3d.above);
     } else {

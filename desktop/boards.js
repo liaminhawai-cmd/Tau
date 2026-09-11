@@ -367,7 +367,10 @@ const THEMES = {
         const th = rnd()*Math.PI*2, r0 = S*(0.02 + rnd()*0.12), r1 = r0 + S*(0.08 + rnd()*0.4);
         a.strokeStyle = `rgba(176,132,74,${0.04 + rnd()*0.06})`; a.lineWidth = 1 + rnd()*2;
         a.beginPath(); a.moveTo(hx + Math.cos(th)*r0, hy + Math.sin(th)*r0);
-        a.lineTo(hx + Math.cos(th)*r1, hy + Math.sin(th)*r1); a.stroke();
+        const mid = (r0+r1)*0.5, bend = (r1-r0)*0.12;
+        a.quadraticCurveTo(hx + Math.cos(th)*mid - Math.sin(th)*bend,
+          hy + Math.sin(th)*mid + Math.cos(th)*bend,
+          hx + Math.cos(th)*r1, hy + Math.sin(th)*r1); a.stroke();
       }
       a.globalCompositeOperation = 'soft-light'; a.globalAlpha = 0.45;
       a.drawImage(noiseCanvas(0.07, 202), 0, 0);
@@ -785,51 +788,26 @@ float afbm(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<6;i++){ s+=a*anoise(p); p=p
 // that makes the light actually break over them. Mode 3 is the alien membrane, verbatim.
 const DETAIL_GLSL = `
 uniform float uDetail; uniform float uDetailTime; uniform vec3 uDetailTint;
-uniform vec4 uBoardGeom;   // inner ring, outer ring, board edge (= lens-circle centre), lens-circle radius
 float dfbm4(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<4;i++){ s+=a*anoise(p); p=p*2.11+vec2(3.1,7.7); a*=0.5; } return s; }
-float whash(float n){ return fract(sin(n*12.9898)*43758.5453); }
-// Joinery. The wooden boards are not one slab: the centre is a disc, each ring band is a segmented
-// ring of staves (12 inner, 16 outer) with the grain running round the ring, and the lens segments
-// are separate boards with the grain along their long axis. Returns p in that piece's own grain
-// frame (grain along +y) with a per-piece offset so figure never continues across a joint; 'joint'
-// is the distance to the nearest stave joint (the ring and lens boundaries are the printed lines),
-// 'tone' the small tonal difference between boards cut from one log. Mirrored in presentation.js.
-vec2 woodFrame(vec2 p, out float joint, out float tone){
-  float r = length(p);
-  float band = r < uBoardGeom.x ? 2.0 : (r < uBoardGeom.y ? 1.0 : 0.0);
-  bool lens = distance(p, vec2(-uBoardGeom.z, 0.0)) < uBoardGeom.w || distance(p, vec2(uBoardGeom.z, 0.0)) < uBoardGeom.w;
-  float ang, id; joint = 1.0e3;
-  if (lens) { ang = 1.5707963; id = 100.0 + band*2.0 + step(0.0, p.x); }
-  else if (band > 1.5) { ang = 0.0; id = 1.0; }
-  else {
-    float n = band > 0.5 ? 12.0 : 16.0;
-    float a = atan(p.y, p.x);
-    float k = floor((a + 3.1415927) * n / 6.2831853);
-    float ka = -3.1415927 + (k + 0.5) * 6.2831853 / n;   // the stave's centre bearing
-    ang = ka + 1.5707963;                                  // grain along the tangent
-    id = 10.0 + band*20.0 + k;
-    joint = r * (3.1415927 / n - abs(a - ka));             // arc distance to the nearer joint
-  }
-  tone = 1.0 + (whash(id*3.1) - 0.5) * 0.12;
-  float c = cos(1.5707963 - ang), sn = sin(1.5707963 - ang);
-  vec2 q = vec2(c*p.x - sn*p.y, sn*p.x + c*p.y);
-  return q + vec2(whash(id)*97.0, whash(id*1.7)*61.0);
+// Continuous, gently curved fibres across one slab. Mirrored in presentation.js's texture bake.
+// Keep this Cartesian: angular sectors introduce straight seams and discontinuous normals.
+vec2 woodFrame(vec2 p){
+  return vec2(p.x + 3.4*sin(p.y*0.065) + 1.6*sin((p.x+p.y)*0.035),
+              p.y + 1.8*sin(p.x*0.05));
 }
-// Wood: growth bands along a warped axis, early/late wood, and pores that pit the late wood, all in
-// the piece's own grain frame; the stave joints are a hair of dark glue line and a dip in the relief.
+// Wood: growth bands along a warped axis, early/late wood, and pores that pit the late wood.
 // Returns (tint multiplier, roughness, height).
 vec3 woodDetail(vec2 p0, out float rough){
-  float joint, tone; vec2 p = woodFrame(p0, joint, tone);
+  vec2 p = woodFrame(p0);
   vec2 w = p * vec2(0.09, 0.011);                        // grain runs along y; bands across x
   float warp = dfbm4(w * 2.0) * 1.6;
   float ring = sin((w.x + warp) * 9.0 + afbm(w * 1.3) * 3.0);
   float band = smoothstep(-0.35, 0.75, ring);            // 0 = early wood (paler), 1 = late wood
   float pore = pow(anoise(p * vec2(6.5, 0.9) + vec2(0.0, warp)), 9.0);   // elongated pores
   float fine = afbm(p * 2.8) - 0.5;                      // fibre flecks
-  float j = 1.0 - smoothstep(0.10, 0.26, joint);         // the glue line
-  float tint = (1.0 - 0.20*band - 0.30*pore + 0.05*fine) * tone * (1.0 - 0.45*j);
-  rough = 0.44 + 0.20*band + 0.22*pore - 0.06*fine + 0.15*j;
-  float h = 0.45*band + 0.30*pore + 0.10*fine - 0.5*j;   // pores dip the relief a little, not a crater
+  float tint = 1.0 - 0.20*band - 0.30*pore + 0.05*fine;
+  rough = 0.44 + 0.20*band + 0.22*pore - 0.06*fine;
+  float h = 0.45*band + 0.30*pore + 0.10*fine;
   return vec3(tint, 0.0, h);
 }
 // Marble: domain-warped ridged veins with a second, finer generation branching off them, plus the
@@ -873,8 +851,6 @@ function installDetailShader(material) {
     shader.uniforms.uMath = { value: 0 };
     shader.uniforms.uRingR = { value: CFG.footR*Math.sqrt(3) };
     shader.uniforms.uFeet = { value: Array.from({ length: 6 }, () => new THREE.Vector2(1e4, 1e4)) };
-    const rings = CFG.rings || [40, 53.3], arc = (CFG.sideArcs && CFG.sideArcs[0]) || { cx: -CFG.edgeU, r: 40 };
-    shader.uniforms.uBoardGeom = { value: new THREE.Vector4(rings[0], rings[1], Math.abs(arc.cx), arc.r) };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
       .replace('#include <fog_vertex>', '#include <fog_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');

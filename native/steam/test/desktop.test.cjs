@@ -566,6 +566,7 @@ test('online match menu leaves the server turn clock running',async t=>{
 
 test('desktop materials use the production meshes and survive theme refresh',async t=>{
   const g=await game();t.after(g.close);
+  delete g.w.TAU_TEST_BAKE_SIZE;   // this test checks the production texture resolution
   // Real Three.js geometry/materials; only the GPU device is stubbed.
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
     scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
@@ -582,6 +583,121 @@ test('desktop materials use the production meshes and survive theme refresh',asy
   g.read('applyTheme()');
   assert.equal(g.read('boardTop.material.map.uuid'),mapId);
   assert.equal(g.read('scene.children.length'),count);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('ALLBOARDS opens every finish, survives restart and restores earned locks without changing progress',async t=>{
+  const earned=JSON.stringify({played:3,wins:1,topLevel:1});
+  const g=await game(undefined,{tauDesktopProgress:earned});t.after(g.close);
+  const type=word=>{for(const key of word)g.key(key);};
+  const D=g.w.tauDesktop;
+  assert.ok(D.boards.some(b=>!b.unlocked));
+  // Typing in a menu field or with a shortcut modifier must never activate the cheat.
+  g.$('desktopLevel').focus();type('ALLBOARDS');
+  assert.ok(D.boards.some(b=>!b.unlocked));
+  g.$('desktopPlay').focus();
+  for(const key of 'ALLBOARDS')g.$('desktopPlay').dispatchEvent(new g.w.KeyboardEvent('keydown',{key,bubbles:true,ctrlKey:true}));
+  assert.ok(D.boards.some(b=>!b.unlocked));
+  type('ALL');g.tick(2100);type('BOARDS');
+  assert.ok(D.boards.some(b=>!b.unlocked),'the code has a time limit between keys');
+  type('allboards');
+  assert.ok(D.boards.every(b=>b.unlocked));
+  assert.match(g.$('desktopUnlockToast').textContent,/unlocked for testing/);
+  g.$('desktopSettings').click();
+  const sel=g.$('desktopBoard');
+  assert.ok([...sel.options].every(o=>!o.disabled),'all finishes can actually be selected');
+  sel.value='alien';sel.dispatchEvent(new g.w.Event('change'));
+  assert.equal(D.board,'alien');
+  assert.equal(g.w.localStorage.getItem('tauDesktopProgress'),earned);
+  const storage=Object.fromEntries(Object.keys(g.w.localStorage).map(k=>[k,g.w.localStorage.getItem(k)]));
+  const restored=await game(undefined,storage);t.after(restored.close);
+  assert.equal(restored.w.tauDesktop.board,'alien','the testing choice survives a relaunch');
+  assert.ok(restored.w.tauDesktop.boards.every(b=>b.unlocked));
+  for(const key of 'ALLBOARDS')restored.key(key);
+  const boards=restored.w.tauDesktop.boards;
+  assert.ok(boards.find(b=>b.id==='dojo').unlocked && boards.find(b=>b.id==='slate').unlocked,'earned boards stay open');
+  assert.ok(!boards.find(b=>b.id==='alien').unlocked);
+  assert.equal(restored.w.tauDesktop.board,'walnut','a testing-only selection returns to an available board');
+  assert.equal(restored.w.localStorage.getItem('tauDesktopProgress'),earned);
+  assert.equal(restored.w.localStorage.getItem('tauDesktopTestBoards'),null);
+  assert.deepEqual([...g.errors,...restored.errors],[]);
+});
+
+test('replay keeps both boards clear, aligns its chrome, and preserves live resizing',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopLocal').click();g.tick();
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},getPixelRatio:()=>1,setSize(){},shadowMap:{}};
+    camera=new THREE.PerspectiveCamera(38,1.6,1,2000);camera.position.set(0,145,148);
+    controls={mouseButtons:{},target:new THREE.Vector3(0,4,0)};
+    setViewSplit(0.85,true);
+    replayFrames=[takeSnap().flatMap(p=>[p.x,p.y,p.rot])];
+    replayFrames.push(replayFrames[0].map((v,i)=>i===2?v+0.1:v));
+    startReplay();`);
+  const saved=g.w.localStorage.getItem('tauViewSplit');
+  for(const [W,H] of [[2048,1094],[1280,800],[900,1200],[720,540]]){
+    g.w.innerWidth=W;g.w.innerHeight=H;
+    // DOM measurement models a wrapped replay toolbar in the narrow window.
+    Object.defineProperty(g.$('replayBtns'),'offsetHeight',{configurable:true,value:W<800?88:44});
+    g.read('resize();tauDesktop.updateCamera(10);camera.lookAt(controls.target);camera.updateMatrixWorld(true);');
+    const px=v=>parseFloat(v)||0, flat=px(g.$('canvas').style.width), bottom=px(g.$('canvas').style.bottom);
+    const cv=g.$('view3d'),left=px(cv.style.left),width=px(cv.style.width),height=px(cv.style.height);
+    assert.ok(flat<=Math.min(W,H)*0.34,'replay keeps the overhead view small');
+    assert.ok(bottom>=g.$('replayBtns').offsetHeight+50,'the overhead view clears the replay controls');
+    assert.equal(left+width,W,'3D fills the available room to the right edge');
+    assert.ok(g.$('splitHandle').classList.contains('auto'),'watching hides the resize grip');
+    assert.ok(g.w.document.documentElement.classList.contains('desktop-watching'));
+    assert.equal(px(g.w.document.documentElement.style.getPropertyValue('--desktop-view-center')),left+width/2);
+    const points=g.read(`(()=>{const p=new THREE.Vector3(),out=[];
+      for(let x=-CFG.edgeU;x<=CFG.edgeU;x+=4)for(let y=-CFG.edgeU;y<=CFG.edgeU;y+=4){
+        if(x*x+y*y>CFG.edgeU*CFG.edgeU)continue;
+        p.set(x,0,y).project(camera);out.push([p.x,p.y]);
+      }return out;})()`);
+    const cx=26+flat/2,cy=H-bottom-flat/2;
+    for(const [x,y] of points){
+      const sx=left+(x+1)*width/2,sy=(1-y)*height/2;
+      assert.ok(sx>=0 && sx<=W && sy>=0 && sy<=H,`3D board stays in frame at ${W}×${H}`);
+      assert.ok(Math.hypot(sx-cx,sy-cy)>flat/2,`the overhead board cannot cover the 3D surface at ${W}×${H}`);
+    }
+    g.$('canvas').dispatchEvent(new g.w.WheelEvent('wheel',{deltaY:-120,bubbles:true,cancelable:true}));
+    assert.equal(g.w.localStorage.getItem('tauViewSplit'),saved,'watching does not overwrite the player’s size');
+  }
+  g.read('endReplay();');
+  assert.ok(!g.w.document.documentElement.classList.contains('desktop-watching'));
+  assert.equal(g.read('viewSplit'),0.85);
+  assert.ok(!g.$('splitHandle').classList.contains('auto'),'the resize grip returns after replay');
+  g.$('canvas').dispatchEvent(new g.w.WheelEvent('wheel',{deltaY:-120,bubbles:true,cancelable:true}));
+  assert.ok(g.read('viewSplit')>0.85,'live wheel resizing still works');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the wood texture has continuous grain across the former radial joins',async t=>{
+  const g=await game();t.after(g.close);
+  delete g.w.TAU_TEST_BAKE_SIZE;
+  const getContext=g.w.HTMLCanvasElement.prototype.getContext;
+  g.w.HTMLCanvasElement.prototype.getContext=function(type){
+    const ctx=getContext.call(this,type);
+    if(type==='2d')ctx.putImageData=data=>{this.bakedPixels=data.data;};
+    return ctx;
+  };
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];tauDesktop.applyMaterials();`);
+  const cv=g.read('boardTop.material.map.image'),data=cv.bakedPixels,S=cv.width;
+  const edge=g.read('CFG.edgeU'),r=g.read('(CFG.rings[0]+CFG.rings[1])/2'),sc=S/(2*edge);
+  // Cross the old 12-stave cuts away from the actual circular rule boundaries and lens arcs.
+  for(const ang of [Math.PI/6,Math.PI/2,5*Math.PI/6,7*Math.PI/6,3*Math.PI/2,11*Math.PI/6]){
+    let previous;
+    for(let offset=-5;offset<=5;offset++){
+      const x=Math.round(S/2+Math.cos(ang)*r*sc-Math.sin(ang)*offset);
+      const y=Math.round(S/2+Math.sin(ang)*r*sc+Math.cos(ang)*offset);
+      const red=data[(y*S+x)*4];
+      if(previous!==undefined)assert.ok(Math.abs(red-previous)<16,'no dark glue groove or abrupt timber change');
+      previous=red;
+    }
+  }
   assert.deepEqual(g.errors,[]);
 });
 
@@ -634,7 +750,7 @@ test('boards unlock with play: a nice wood to start, the deluxe looks behind the
   assert.equal(D.board,'walnut','a locked pick is refused'); assert.equal(sel.value,'walnut');
 });
 
-test('the flat board and the 3D bake shade the same zones, and the woods are joined',async t=>{
+test('the flat board and the 3D bake shade the same zones of one timber',async t=>{
   const g=await game();t.after(g.close);
   const D=g.w.tauDesktop;
   // Every board but the three flat exceptions grades its four zone values on the flat board too,
@@ -645,7 +761,7 @@ test('the flat board and the 3D bake shade the same zones, and the woods are joi
     assert.notEqual(sk.v4, sk.v1, `${id}'s centre and outer lens differ`);
   }
   for(const id of ['yellow','math','alien']){ D.board=id; assert.ok(!g.read('activeSkin().shadeByZoneValue'), `${id} stays flat`); }
-  // The joined woods name a timber per zone; the flat board uses those same colours.
+  // The woods name a shade per zone; the flat board uses those same colours.
   D.board='walnut';
   const sk=g.read('activeSkin()');
   // presentation.js keeps the catalogue private; read the colours back through the flat skin,

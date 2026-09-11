@@ -101,6 +101,13 @@ online count, pass-and-play counts as played, the lab never counts. Settings
 lists a locked board with what opens it, the result sheet announces an unlock,
 and progress is kept locally. A saved board you have not unlocked falls back to
 Walnut.
+
+For testing, type **ALLBOARDS** on the main menu (outside text fields). Every
+board becomes selectable in Settings. Type it again to restore the normal locks;
+earned boards remain available, and a selected testing-only board returns to
+Walnut. The override survives a restart and does not alter wins, ladder progress
+or Steam achievements.
+
 Each is a single entry defining the flat board's palette, the 3D surface,
 markings, rim and backdrop, **and** the piece material, so one choice repaints
 both views and the pieces together and they cannot drift apart. Changing it
@@ -121,14 +128,10 @@ backdrop's real luminance rather than by which board it is.
 Most boards grade their zones the way the flat board always has — the centre a
 touch lighter, each band out a touch darker, the lens segments darker again — so
 the two views agree about which band a foot is on. Yellow, Math and Alien stay
-flat on purpose. The wooden boards go further: they are **joined**, not slabs. The
-centre is one disc, each ring band is a segmented ring of staves (12 inner, 16
-outer) with the grain running round the ring and a glue line at every joint, and
-the lens segments are separate boards with the grain along their long axis, each
-zone cut from a different timber (walnut, cherry, oak and wenge on the Walnut
-board). The bake and the per-pixel shader classify every point with the same
-`woodFrame`, so the printed figure and the live grain run the same way on every
-stave.
+flat on purpose. The wooden boards have continuous, gently curved grain across
+one slab, with each zone a different shade of the same timber. There are no
+radial stave joins or glue grooves. The bake and per-pixel shader use matching
+`woodFrame` coordinates so the printed figure and live grain flow together.
 
 Wood and marble boards carry per-pixel surface detail on top of the baked
 texture: a fragment-shader pass (`installDetailShader`) adds grain, pores, veins
@@ -167,6 +170,11 @@ sliding under it. Both builds go through the one sizing function in index.html
 corner layout, and neither has a second copy of the maths. Desktop is never
 missing a view the web build has. If WebGL cannot initialize, the flat board
 alone remains playable.
+
+Replays, shared recordings and spectating use the same desktop corner layout,
+with a smaller overhead board and room beneath it for replay controls. Captions
+and controls align with the 3D view. Watching temporarily caps the overhead size;
+returning to play restores the saved size and the resize grip.
 
 Play starts the selected AI level and side. Same-screen play is untimed. Esc
 opens the match menu and pauses offline matches, including an AI turn; an online
