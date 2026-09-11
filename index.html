@@ -4641,7 +4641,7 @@ const AI_LADDER = [
     // {share:.6, seatShare:.15} or drop it once the nets stop losing to the line.
     { kind:'corner', label:'Corner L12', trainerRung:true, trainerFocus:{share:.75, seatShare:.25},
       w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2},
-      o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28, openPlies:10, setupKeep:6, cornerClearDeg:6} },
+      o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28, openPlies:10, setupKeep:6, cornerClearDeg:15} },
     // L13: L11's eval, L11's candidates, L11's pessimistic minimax -- but the opponent's replies
     // come from ladderOppReplies (full swing + park stops + the max-shove stop) instead of six
     // swing-to-the-jam endpoints. The sweep those replies come from was already being paid for, so
@@ -5082,9 +5082,11 @@ function ladderSwingTo(idx, pv, dir, rad){
         applySwing(dir*Math.min(AI_STEP_RAD, rad-Math.abs(G.netRad)));
     return !G.pieces[idx].anyFootOff() && Math.abs(G.netRad) >= rad-1e-6;
 }
-// Sweep (pv,dir) from the current pose. If the swing rounds a corner, return the best stop PAST it
-// (cornerClearDeg beyond the merge, then sampleDeg apart, plus the jam) by the rung's eval; null if
-// it never rounds one. Restores the pose it was given.
+// Sweep (pv,dir) from the current pose. If the swing rounds a corner, return the stop cornerClearDeg
+// PAST it -- the line ends just clear of the corner, front foot at the board's centre, as it is
+// played; letting the eval pick among later stops ran the swing on to 60-80 degrees and left the
+// tripod turned the wrong way (o.cornerScan:true restores that eval scan). Null if the swing never
+// rounds a corner. Restores the pose it was given.
 function ladderCornerSweep(idx, pv, dir, w, o){
     const snap0=takeSnap(); G.active=idx; pinFoot(pv);
     const clearRad=(o.cornerClearDeg||6)*Math.PI/180, stepRad=(o.sampleDeg||9)*Math.PI/180;
@@ -5098,6 +5100,7 @@ function ladderCornerSweep(idx, pv, dir, w, o){
         if (cornerAt===null){ const c=ladderAtCorner(idx); if (c){ cornerAt=a; corner=c.P; cornerFoot=c.foot; } continue; }
         if (a-cornerAt < clearRad || a-lastMark < stepRad) continue;
         lastMark=a; stop();
+        if (!o.cornerScan) break;
     }
     if (cornerAt!==null && !G.pieces[idx].anyFootOff() && Math.abs(G.netRad)-cornerAt >= clearRad && Math.abs(G.netRad)-lastMark > 1e-9) stop();
     ladderRestore(snap0);
