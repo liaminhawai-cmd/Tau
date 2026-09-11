@@ -213,6 +213,11 @@ function main() {
   // iteration-63 bake-off caught, fed from the data side. arena.js keeps its own default of 2;
   // this is a data-diversity dial, not an evaluation setting.
   const openingPlies = +arg('openingPlies', 4);
+  // Focus rungs (AI_LADDER trainerFocus, see ladder-sampling.js) exist to teach the nets a specific
+  // opening -- Corner L12's corner cross from the start position. A game against one therefore
+  // starts from the TRUE start: no random opening plies, no seeded or random pose, or the line the
+  // rung is there to play would never appear. The net's own noise keeps those games from repeating.
+  const focusLevels = new Set(require('./ladder-sampling.js').focusRungs().map(f => f.level));
   // This fraction of games starts from a fully random LEGAL pose (see opening.js's
   // randomStartPose) instead of the canonical start -- coverage far outside anything a real
   // trajectory reaches, e.g. a piece hard against the rim with the opponent clear across the
@@ -598,14 +603,16 @@ function main() {
       brainA = ladderBrain(la); brainB = ladderBrain(lb); tag = 'L' + la + ' vs L' + lb;
       idA = `L${la}`; idB = `L${lb}`;
     }
-    const seedPose = !coverageGame && seedPool.length && Math.random() < seedFrom ? pick(seedPool) : null;
+    const focusGame = kind === 'nnladder' && (focusLevels.has(+String(idA).slice(1)) || focusLevels.has(+String(idB).slice(1)));
+    const seedPose = !coverageGame && !focusGame && seedPool.length && Math.random() < seedFrom ? pick(seedPool) : null;
     if (seedPose) tag = 'seeded ' + tag;
     // seedPose wins if both roll -- a stored decision point already IS a real, reachable
     // position, so there's no reason to override it with an unconstrained random one.
-    const randomStart = !coverageGame && !seedPose && Math.random() < randomStartFrac;
+    const randomStart = !coverageGame && !focusGame && !seedPose && Math.random() < randomStartFrac;
     if (randomStart) tag = 'random-start ' + tag;
+    if (focusGame) tag = 'true-start ' + tag;
     const { rows, winner, plies, capped, repeated, adjudicated } =
-      playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomStart, { repeatGuard });
+      playGame(eng, brainA, brainB, maxPlies, focusGame ? 0 : openingPlies, seedPose, randomStart, { repeatGuard });
     // `g` marks which game a position came from. Without it train.js can only hold out random
     // ROWS, and consecutive positions in one game are near-identical -- so the same game lands on
     // both sides of the split and the val set stops being held-out data at all. Measured

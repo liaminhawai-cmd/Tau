@@ -86,7 +86,10 @@ function trainerProfile(dir,modelWeights={},opts={}){
   const raw=ladderMass/(modelMass+ladderMass);
   // a focus rung pins the ladder class at its lifted cap: the point is more games against it
   const seatShare=focus.length?maxSeatShare:Math.min(maxSeatShare,Math.max(0,raw));
-  const n=1-seatShare,mix={nnnn:n*n,nnladder:2*n*seatShare,ladder:seatShare*seatShare};
+  // No ladder-vs-ladder training games: two deterministic brains replay the same game, so those
+  // rows are duplicates (and a focus rung plays from the true start, where they would be exact).
+  // The seats that draw would have taken go to net-vs-ladder instead.
+  const n=1-seatShare,mix={nnnn:n*n,nnladder:1-n*n,ladder:0};
   return{levels:tickets(rungRows,30),rows:rungRows,seatShare,mix,mixString:mixString(mix)};
 }
 
