@@ -383,7 +383,13 @@ function runAsync(script, args) {
 }
 async function runSoftAsync(script, args) {
   try { await runAsync(script, args); }
-  catch (e) { log(`WARNING: ${script} failed (${e.message}) — continuing`); }
+  catch (e) {
+    // elorank exits 3 when league-loop already holds the Elo writer lock. Under league-trainer that
+    // is the normal outcome of every placement call (the league IS the rating pass), not a failure.
+    if (script === 'elorank.js' && /exited 3$/.test(e.message))
+      log(`${script} stood down: the official league already holds the Elo writer, it rates this cycle's models`);
+    else log(`WARNING: ${script} failed (${e.message}) — continuing`);
+  }
 }
 function runProcessAsync(cmd, args, label) {
   return new Promise((resolve, reject) => {
