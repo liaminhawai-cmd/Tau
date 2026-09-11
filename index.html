@@ -630,7 +630,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 199 &middot; 2026-09-11</div>
+<div id="buildTag">build 200 &middot; 2026-09-11</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -9936,14 +9936,18 @@ function resize() {
             // Project through the pose the camera is heading for, not where it is this frame: the
             // live camera is mid-ease after every tile change, and a solve that read it fed its own
             // result back into itself. The goal is a function of the window only (desktop/presentation.js).
-            const probe = camera.clone();
-            const goal = window.tauDesktop && window.tauDesktop.cornerCameraPose && window.tauDesktop.cornerCameraPose();
-            if (goal) { probe.position.copy(goal.position); probe.up.set(0,1,0); probe.lookAt(goal.target); }
-            probe.updateMatrixWorld(true);
+            const probe = camera.clone(); probe.up.set(0,1,0);
+            const poseFor = window.tauDesktop && window.tauDesktop.cornerCameraPose;
             const RIM = 120, pad = 6;                 // a breath of clearance past the board's own rim stroke
             const rimPt = new THREE.Vector3();
             // Does any rim point land inside the board, for a tile of w3 x h3 placed at (L, 0)?
             const touches = (L, w3Try, h3Try, cyAt) => {
+                // The camera will stand where the tile's size says (desktop/presentation.js
+                // cornerDistance), so project through THAT pose for this candidate -- the dish the
+                // player would actually see in it, shrunk to fit if the tile is narrow.
+                const pose = poseFor && poseFor(w3Try, h3Try);
+                if (pose) { probe.position.copy(pose.position); probe.lookAt(pose.target); }
+                probe.updateMatrixWorld(true);
                 probe.aspect = w3Try / h3Try; probe.updateProjectionMatrix();
                 // Two ways to collide, and the first alone is not enough: a board can sit wholly
                 // INSIDE the dish's outline with no rim point anywhere near its edge -- 100% covered,
@@ -10003,7 +10007,7 @@ function resize() {
         // then is a dividing edge drawn, and on the side that actually divides them.
         const apartSide  = left >= CORNER_INSET + size;
         const apartAbove = up > 0 && (H - up) <= (H - bottom - size);
-        cornerView3d = { left, top: 0, apart: apartSide || apartAbove, above: apartAbove };
+        cornerView3d = { left, top: 0, w3, h3, apart: apartSide || apartAbove, above: apartAbove };
     } else if (wide) {
         const totalW = availW - gap;
         const share = SPLIT_W_LO + (SPLIT_W_HI - SPLIT_W_LO) * effectiveSplit();

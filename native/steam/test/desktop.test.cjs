@@ -121,7 +121,9 @@ test('dragged out, the flat board takes over and the 3D view becomes the inset',
   // other view gets OUT OF THE WAY, so the 3D tile shrinking is the assertion that matters here.
   assert.ok(big.flat > small.flat*3, `dragged out the flat board dominates, got ${big.flat}`);
   assert.ok(big.v3 < win*0.5, `and the 3D view has pulled back to an inset, got ${big.v3}`);
-  assert.equal(big.inset, true, 'the inset framing is on');
+  // (No assertion on the divider here: with the camera fitting the dish to its tile, the tile may
+  // legitimately start inside the board's square BOX while clearing its round DISC, and the divider
+  // is only drawn once the two share no column at all -- see resize().)
   // The handover is continuous: no step in either tile as the drag crosses the swap point.
   let prevFlat = 0, prevV3 = win + 1;
   for (let v=0; v<=1.0001; v+=0.05) {

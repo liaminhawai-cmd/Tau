@@ -497,11 +497,32 @@
   // WINDOW alone -- never the tile -- so the only thing a narrower tile does is crop. That is what
   // makes the solve exact: for a vertical-fov camera the dish's pixel size depends on tile height
   // and distance only, and neither now depends on what the solve decides.
-  function desiredPose(falling, outPos, outTarget) {
+  // In the corner layout the camera stands back far enough for the dish to fit the tile it has --
+  // a narrow column beside a big flat board, or a short band above it -- rather than being drawn
+  // at the size the whole window would call for and spilling off the column's edges. The fit is
+  // a plain function of the tile's size, no measuring, no easing: that is what lets the layout
+  // solve ask "what would the dish look like in THIS candidate tile" for every candidate without
+  // ever reading the live camera, so the two never chase each other.
+  function cornerDistance(w3, h3) {
+    const tanHalf = Math.tan(camera.fov * Math.PI / 360);
+    // For a vertical-fov camera the dish's projected half-width is edgeU*h3/(2*d*tanHalf); ask for
+    // it to sit within 92% of the tile's width, and its height within 80% of the tile's height.
+    const fitWide = CFG.edgeU * h3 / (0.92 * w3 * tanHalf);
+    const fitTall = CFG.edgeU / (DISH_ASPECT * 0.80 * tanHalf);
+    return Math.max(205, fitWide, fitTall);   // 205: the established look on an open window
+  }
+  function desiredPose(falling, outPos, outTarget, w3, h3) {
     const menu=!inMatch();
     const corner = typeof cornerLayoutActive === 'function' && cornerLayoutActive();
-    const ratio = Math.max(.5, corner ? innerWidth/innerHeight : camera.aspect);
-    let distance=Math.max(menu?222:205,148/ratio), tx=0,ty=4,tz=0;
+    let distance, tx=0,ty=4,tz=0;
+    if (corner) {
+      // The tile the layout chose (index.html's resize sets cornerView3d), or an explicit candidate.
+      const cv = (typeof cornerView3d !== 'undefined' && cornerView3d) || null;
+      distance = cornerDistance(w3 || (cv && cv.w3) || innerWidth, h3 || (cv && cv.h3) || innerHeight);
+    } else {
+      const ratio = Math.max(.5, camera.aspect);
+      distance = Math.max(menu?222:205, 148/ratio);
+    }
     const yaw=menu && !settings.reducedMotion ? .18+Math.sin(performance.now()*.000055)*.045 : 0;
     if(falling && !settings.reducedMotion && G.winner!=null){
       const p=tripods[fall.idx].position;
@@ -516,7 +537,11 @@
     if(camDragging) return true;
     if(inMatch() && camManualSet && !falling) return true;
     desiredPose(falling, cameraGoal, targetGoal);
-    const blend=settings.reducedMotion?1:1-Math.exp(-dt*3.2);
+    // In the corner layout the pose tracks the tile, and the tile moves under the player's drag:
+    // ease briskly there so the dish is not still zooming into place a second after they let go.
+    // The menu and the ordinary match keep the slower, calmer settle.
+    const corner = typeof cornerLayoutActive === 'function' && cornerLayoutActive();
+    const blend=settings.reducedMotion?1:1-Math.exp(-dt*(corner?6.5:3.2));
     camera.position.lerp(cameraGoal,blend); controls.target.lerp(targetGoal,blend);
     return true;
   }
@@ -700,8 +725,8 @@
     get boards(){return BOARD_FINISHES.map(b=>({id:b.id,name:b.name}));},
     resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult,
     // The corner layout's camera goal for the current window (see desiredPose).
-    cornerCameraPose(){ if(!renderer||!camera) return null;
-      const pos=new THREE.Vector3(), tgt=new THREE.Vector3(); desiredPose(false,pos,tgt); return {position:pos,target:tgt}; },
+    cornerCameraPose(w3, h3){ if(!renderer||!camera) return null;
+      const pos=new THREE.Vector3(), tgt=new THREE.Vector3(); desiredPose(false,pos,tgt,w3,h3); return {position:pos,target:tgt}; },
     untimedLocal:()=>ownMatch&&!vsAI&&!onlineMatch,
     // The corner layout keys off flags (#game's display, body.ingame) that the start sequence sets
     // across several steps, so the first resize can still be reading the menu's world. Settle it on
