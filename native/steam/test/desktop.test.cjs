@@ -488,7 +488,9 @@ test('the showcase looks bring their own bakes and per-part piece materials into
   assert.notEqual(hub.material, bodyMat(), 'the ball and the legs are different materials');
   // Both are glass, and the legs are the clearer of the two -- on either THREE (the game's r128
   // has no refraction pass, so the shared module keeps a little body in its glass there).
-  assert.ok(hub.material.transmission > 0.5 && bodyMat().transmission > hub.material.transmission, 'both are glass, legs clearer than the ball');
+  assert.equal(hub.material.transmission, 0, 'the ball is solid colour');
+  assert.ok(bodyMat().transmission > 0.5, 'the legs are glass');
+  assert.ok(Math.abs(hub.scale.x - g.read('CFG.legRadius')*2.0) < 1e-6, 'the ball is a small one, not a bauble');
   // The ball is the coloured one, the legs stay clear: measured as saturation of the base colour,
   // which is where the tint lives on the game's THREE (no volume attenuation in r128).
   const sat = c => { const m=Math.max(c.r,c.g,c.b), n=Math.min(c.r,c.g,c.b); return m ? (m-n)/m : 0; };
@@ -602,4 +604,54 @@ test('a legal ring-out reaches the result and rematch through keyboard controls'
   g.$('modalBtns').firstElementChild.click();g.tick();
   assert.equal(g.read('G.over'),false);
   assert.deepEqual(g.errors,[]);
+});
+
+test('boards unlock with play: a nice wood to start, the deluxe looks behind the ladder',async t=>{
+  const g=await game();t.after(g.close);
+  const D=g.w.tauDesktop;
+  assert.equal(D.board,'walnut','you start on Walnut');
+  const by=id=>D.boards.find(b=>b.id===id);
+  assert.ok(by('walnut').unlocked && !by('dojo').unlocked && !by('marble').unlocked && !by('alien').unlocked,'the rest waits');
+  assert.match(by('dojo').unlock,/win 1 game/); assert.match(by('marble').unlock,/100 games/); assert.match(by('alien').unlock,/top ladder/);
+  // One win against the AI opens Dojo; the first result also counts as a game played.
+  D.recordResult({humanWon:true,vsAI:true,online:false,lab:false,level:0});
+  assert.ok(by('dojo').unlocked,'a win opens Dojo'); assert.equal(D.progress.played,1); assert.equal(D.progress.wins,1);
+  // The lab never counts; pass-and-play counts as played but not won; a high rung opens its look.
+  D.recordResult({humanWon:true,vsAI:true,online:false,lab:true,level:10});
+  assert.equal(D.progress.played,1,'the lab is not a game');
+  D.recordResult({humanWon:true,vsAI:false,online:false,lab:false,level:null});
+  assert.equal(D.progress.wins,1,'same-screen play is nobody\'s win'); assert.equal(D.progress.played,2);
+  D.recordResult({humanWon:true,vsAI:true,online:false,lab:false,level:8});
+  assert.ok(by('noir').unlocked && !by('math').unlocked,'beating rung 9 opens Noir, not the rung-10 look');
+  assert.equal(g.read("JSON.parse(localStorage.getItem('tauDesktopProgress')).topLevel"),9,'progress persists');
+  // Settings lists a locked board disabled, with what opens it, and refuses to select it.
+  D.openSettings ? D.openSettings() : g.w.document.getElementById('desktopSettings').click();
+  const sel=g.w.document.getElementById('desktopBoard');
+  const opt=id=>[...sel.options].find(o=>o.value===id);
+  assert.ok(opt('walnut') && !opt('walnut').disabled,'Walnut is selectable');
+  assert.ok(opt('marble').disabled && /100 games/.test(opt('marble').textContent),'Marble is listed but locked');
+  sel.value='marble'; sel.onchange({target:sel});
+  assert.equal(D.board,'walnut','a locked pick is refused'); assert.equal(sel.value,'walnut');
+});
+
+test('the flat board and the 3D bake shade the same zones, and the woods are joined',async t=>{
+  const g=await game();t.after(g.close);
+  const D=g.w.tauDesktop;
+  // Every board but the three flat exceptions grades its four zone values on the flat board too,
+  // so the 2D minimap and the 3D disc always agree about which band a foot is on.
+  for(const id of ['walnut','ebony','maple','dark','slate','dojo','noir','sumo','cosy','colossus','marble']){
+    D.board=id; const sk=g.read('activeSkin()');
+    assert.ok(sk.shadeByZoneValue && sk.v1 && sk.v2 && sk.v3 && sk.v4, `${id} shades by zone on the flat board`);
+    assert.notEqual(sk.v4, sk.v1, `${id}'s centre and outer lens differ`);
+  }
+  for(const id of ['yellow','math','alien']){ D.board=id; assert.ok(!g.read('activeSkin().shadeByZoneValue'), `${id} stays flat`); }
+  // The joined woods name a timber per zone; the flat board uses those same colours.
+  D.board='walnut';
+  const sk=g.read('activeSkin()');
+  // presentation.js keeps the catalogue private; read the colours back through the flat skin,
+  // which is what both views draw from.
+  assert.equal(sk.v4,'#60422a'); assert.equal(sk.v1,'#3e2c22');
+  // The flat piece is drawn at the real tube's width, not a stick.
+  const legW=g.read('Math.max(2, 2*CFG.legRadius*scale)'), stick=g.read('Math.max(2, CFG.padRadius*scale*1.35)');
+  assert.ok(legW>stick*2.5, `flat legs are tube-width (${legW.toFixed(1)}px vs the old ${stick.toFixed(1)}px)`);
 });

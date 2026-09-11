@@ -139,3 +139,13 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 /* Stacked orientation (a window taller than it is wide): the 3D view stands ABOVE the flat board,
    so the one dividing edge is along its bottom, not its left. */
 .tau-desktop body.ingame #views.view3dAbove #view3d { border-bottom:1px solid var(--edge); }
+
+/* Board unlocks: the result sheet's line, and a toast for the results the game's own sheet shows. */
+.desktop-unlock { margin:14px 0 0; color:var(--gold); font-size:14px; }
+.desktop-unlock b { color:var(--paper); }
+.desktop-setting option:disabled { color:#6d6a5e; }
+.desktop-unlock-toast { position:fixed; left:50%; bottom:64px; transform:translate(-50%, 24px); opacity:0; pointer-events:none;
+  background:rgba(16,24,16,.94); border:1px solid var(--edge); border-radius:4px; padding:12px 20px; z-index:80;
+  transition:opacity .35s ease, transform .35s ease; }
+.desktop-unlock-toast.show { opacity:1; transform:translate(-50%, 0); }
+.desktop-unlock-toast .desktop-unlock { margin:0; }

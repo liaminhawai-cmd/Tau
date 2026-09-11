@@ -21,20 +21,30 @@
   // stone/paper/membrane surfaces their own character instead of printing oak on them.
   const BOARD_FINISHES = [
     // ---- the wood finishes ----
+    // Joined boards, not slabs: `zones` is the timber for each of the flat board's four zone values
+    // (v1 outer lens .. v4 centre), the same colours the 2D skin shades with, so both views show the
+    // same marquetry. The 3D bake and the detail shader cut each zone into its own pieces with the
+    // grain running its own way (woodFrame, mirrored in boards.js).
     { id:'walnut', name:'Walnut', detail:'wood',
-      skin:{ shadeByZoneValue:false, flat:'#65432b', lines:'#ead5a4', rim:'#574b32', bg:'#101410', pb:'#639eb8', pr:'#dc8864' },
-      wood:{ base:[105,72,46], line:'#e1ca91', rim:'#57472e', trim:'#aa8751', bg:'#101410', grain:1, dots:['#82b4bd','#df9b78'] },
+      skin:{ shadeByZoneValue:true, v4:'#60422a', v3:'#965c3a', v2:'#b28e60', v1:'#3e2c22',
+             flat:'#60422a', lines:'#ead5a4', rim:'#574b32', bg:'#101410', pb:'#639eb8', pr:'#dc8864' },
+      wood:{ base:[96,66,42], zones:[[62,44,34],[178,142,96],[150,92,58],[96,66,42]], joinery:true,
+             line:'#e1ca91', rim:'#57472e', trim:'#aa8751', bg:'#101410', grain:1, dots:['#82b4bd','#df9b78'] },
       piece:{ blue:'#427d91', red:'#b46744', metalness:.72, roughness:.3, clearcoat:.25, clearcoatRoughness:.35, envMapIntensity:.85 } },
     { id:'ebony', name:'Ebony', detail:'wood',
-      skin:{ shadeByZoneValue:false, flat:'#2b2724', lines:'#c8bda6', rim:'#241f1c', bg:'#0b0d0e', pb:'#6fa8c4', pr:'#e08a63' },
-      wood:{ base:[58,52,48], line:'#cdc0a6', rim:'#2b2622', trim:'#8d8878', bg:'#0b0d0e', grain:.85, dots:['#8fbecb','#e2a184'] },
+      skin:{ shadeByZoneValue:true, v4:'#322c28', v3:'#4e3c30', v2:'#6e5842', v1:'#262220',
+             flat:'#322c28', lines:'#c8bda6', rim:'#241f1c', bg:'#0b0d0e', pb:'#6fa8c4', pr:'#e08a63' },
+      wood:{ base:[50,44,40], zones:[[38,34,32],[110,88,66],[78,60,48],[50,44,40]], joinery:true,
+             line:'#cdc0a6', rim:'#2b2622', trim:'#8d8878', bg:'#0b0d0e', grain:.85, dots:['#8fbecb','#e2a184'] },
       piece:{ blue:'#4f93aa', red:'#c4744c', metalness:.78, roughness:.26, clearcoat:.3, clearcoatRoughness:.3, envMapIntensity:.9 } },
     { id:'maple', name:'Maple', detail:'wood',
-      skin:{ shadeByZoneValue:false, flat:'#c8a877', lines:'#5b4526', rim:'#9b7f52', bg:'#171512', pb:'#2f6f8c', pr:'#b1502c' },
-      wood:{ base:[201,171,122], line:'#6b5024', rim:'#9d8153', trim:'#d8bd8a', bg:'#171512', grain:1, dots:['#2f6f8c','#b1502c'] },
+      skin:{ shadeByZoneValue:true, v4:'#d4b684', v3:'#e4cca0', v2:'#b07650', v1:'#6e4c32',
+             flat:'#d4b684', lines:'#5b4526', rim:'#9b7f52', bg:'#171512', pb:'#2f6f8c', pr:'#b1502c' },
+      wood:{ base:[212,182,132], zones:[[110,76,50],[176,118,80],[228,204,160],[212,182,132]], joinery:true,
+             line:'#6b5024', rim:'#9d8153', trim:'#d8bd8a', bg:'#171512', grain:1, dots:['#2f6f8c','#b1502c'] },
       piece:{ blue:'#2f6f8c', red:'#b1502c', metalness:.6, roughness:.34, clearcoat:.3, clearcoatRoughness:.3, envMapIntensity:.7 } },
     // ---- the four original board skins from the browser build ----
-    { id:'dark', name:'Dark',
+    { id:'dark', name:'Dark', grade:true,
       skin:{ shadeByZoneValue:false, flat:'#171c22', lines:'#5d6b7a', rim:'#2c3138', bg:'#0c0e11', pb:'#6b9eff', pr:'#ff6b6b' },
       wood:{ base:[30,36,43], line:'#6d7c8c', rim:'#2c3138', trim:'#495563', bg:'#0c0e11', grain:.3, dots:['#6b9eff','#ff6b6b'] },
       piece:{ blue:'#6b9eff', red:'#ff6b6b', metalness:.45, roughness:.38, clearcoat:.35, clearcoatRoughness:.3, envMapIntensity:.7 } },
@@ -58,21 +68,87 @@
     // of the same id -- the procedural bake, the per-part piece materials (legs and hub can differ),
     // and for Alien the membrane shader. `detail` picks the per-pixel surface pass: wood grain,
     // marble veining, or the alien membrane; those keep resolving however far a 4K display leans in.
-    { id:'noir', name:'Noir', showcase:'noir',
+    { id:'noir', grade:true, name:'Noir', showcase:'noir',
       skin:{ shadeByZoneValue:false, flat:'#23262c', lines:'#d6b567', rim:'#17191d', bg:'#0a0c10', pb:'#7aa4ee', pr:'#ee7a6f' } },
     { id:'math', name:'Math', showcase:'math',
       skin:{ shadeByZoneValue:false, flat:'#111826', lines:'#dcecff', rim:'#14171d', bg:'#0d1017', pb:'#2f6fd8', pr:'#d8442f' } },
-    { id:'sumo', name:'Sumo', showcase:'sumo',
+    { id:'sumo', grade:true, name:'Sumo', showcase:'sumo',
       skin:{ shadeByZoneValue:false, flat:'#6e4a2c', lines:'#c89a54', rim:'#46351f', bg:'#17120d', pb:'#31488f', pr:'#b03220' } },
-    { id:'cosy', name:'Cosy', showcase:'cosy', detail:'wood',
+    { id:'cosy', grade:true, name:'Cosy', showcase:'cosy', detail:'wood',
       skin:{ shadeByZoneValue:false, flat:'#4a3220', lines:'#e8c778', rim:'#2e1f12', bg:'#1a120c', pb:'#3a4a66', pr:'#5e2a22' } },
     { id:'alien', name:'Alien', showcase:'alien', detail:'alien',
       skin:{ shadeByZoneValue:false, flat:'#171226', lines:'#8dffe8', rim:'#110d1a', bg:'#04060b', pb:'#3f7ec8', pr:'#b04057' } },
-    { id:'colossus', name:'Colossus', showcase:'colossus',
+    { id:'colossus', grade:true, name:'Colossus', showcase:'colossus',
       skin:{ shadeByZoneValue:false, flat:'#b49b6d', lines:'#4a4038', rim:'#7e6f54', bg:'#b9a888', pb:'#6c7787', pr:'#8a7060' } },
-    { id:'marble', name:'Marble', showcase:'marble', detail:'marble',
+    { id:'marble', grade:true, name:'Marble', showcase:'marble', detail:'marble',
       skin:{ shadeByZoneValue:false, flat:'#e9e6df', lines:'#17171c', rim:'#1a1a1f', bg:'#0d0e12', pb:'#3b74e8', pr:'#e8483b' } },
   ];
+  // Most boards grade their zones -- the centre a touch lighter, each band out a touch darker, the
+  // lens segments darker again -- so the flat board reads at a glance and the 3D disc matches it.
+  // The joined woods and the graded skins name their own zone colours; the rest derive them from
+  // their flat colour with the same lift and drops boards.js's shadeZones paints into the bake.
+  // Exceptions stay flat on purpose: Yellow (the plain classic), Math (a drafting sheet whose live
+  // construction is its reading aid) and Alien (its membrane already blotches).
+  function gradeSkin(flat) {
+    const c = [1,3,5].map(i => parseInt(flat.slice(i,i+2),16));
+    const hex = rgb => '#' + rgb.map(v => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2,'0')).join('');
+    return { v4: hex(c.map(v => v + (255-v)*0.10)), v3: flat, v2: hex(c.map(v => v*0.88)), v1: hex(c.map(v => v*0.76)) };
+  }
+  for (const b of BOARD_FINISHES) if (b.grade) Object.assign(b.skin, gradeSkin(b.skin.flat), { shadeByZoneValue:true });
+  // ---- unlocks (the desktop build's progression) ----
+  // You start on Walnut. The rest of the catalogue opens with play: wins and games played for the
+  // everyday boards, high ladder rungs for the deluxe looks, a hundred games for the marble table.
+  // Progress counts finished matches against the AI or online (never the lab), persisted locally.
+  const UNLOCKS = {
+    walnut:  null,
+    dojo:    { wins: 1 },   slate: { played: 3 },  maple: { wins: 3 },   dark: { played: 10 },
+    ebony:   { wins: 5 },   yellow: { played: 20 },
+    cosy:    { level: 5 },  sumo:  { level: 7 },   colossus: { played: 50 },
+    noir:    { level: 9 },  math:  { level: 10 },  marble: { played: 100 }, alien: { level: LADDER_N },
+  };
+  const PROGRESS_KEY = 'tauDesktopProgress';
+  const progress = { played: 0, wins: 0, topLevel: 0 };   // topLevel: highest ladder rung beaten (1-based)
+  try { const p = JSON.parse(localStorage.getItem(PROGRESS_KEY) || '{}');
+        for (const k in progress) if (Number.isInteger(p[k]) && p[k] >= 0) progress[k] = p[k]; } catch (_) {}
+  function unlockNeed(id) { return UNLOCKS[id] === undefined ? null : UNLOCKS[id]; }
+  function isUnlocked(id) {
+    const n = unlockNeed(id); if (!n) return true;
+    return (n.wins ? progress.wins >= n.wins : true) && (n.played ? progress.played >= n.played : true)
+        && (n.level ? progress.topLevel >= n.level : true);
+  }
+  function unlockText(id) {
+    const n = unlockNeed(id); if (!n) return '';
+    if (n.wins) return `win ${n.wins} game${n.wins>1?'s':''}`;
+    if (n.played) return `play ${n.played} games`;
+    return n.level >= LADDER_N ? `beat the top ladder level` : `beat ladder level ${n.level}`;
+  }
+  let pendingUnlocks = [];
+  // Called by the game when a match ends (showGameOverModal). Counts it, and remembers what it
+  // opened so the result sheet can say so.
+  function recordResult({ humanWon, vsAI, online, lab, level }) {
+    if (lab) return;
+    const before = BOARD_FINISHES.filter(b => isUnlocked(b.id)).map(b => b.id);
+    progress.played += 1;
+    if (humanWon && (vsAI || online)) progress.wins += 1;
+    if (humanWon && vsAI && Number.isInteger(level)) progress.topLevel = Math.max(progress.topLevel, level + 1);
+    try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress)); } catch (_) {}
+    pendingUnlocks = BOARD_FINISHES.filter(b => isUnlocked(b.id) && !before.includes(b.id));
+    if (pendingUnlocks.length && !showResultSoon()) toastUnlocks();
+  }
+  // showResult (the desktop's own sheet) runs for offline matches; online and ranked results use the
+  // game's sheet, so the unlock goes on a toast there instead.
+  function showResultSoon() { return ownMatch && !onlineMatch && !labActive && !rankedMode; }
+  function takeUnlockHtml() {
+    if (!pendingUnlocks.length) return '';
+    const html = `<p class="desktop-unlock">New board${pendingUnlocks.length>1?'s':''} unlocked: <b>${pendingUnlocks.map(b=>b.name).join(', ')}</b></p>`;
+    pendingUnlocks = []; return html;
+  }
+  function toastUnlocks() {
+    let el = $('desktopUnlockToast');
+    if (!el) { el = document.createElement('div'); el.id = 'desktopUnlockToast'; el.className = 'desktop-unlock-toast'; document.body.appendChild(el); }
+    el.innerHTML = takeUnlockHtml(); el.classList.add('show');
+    clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 5200);
+  }
   // Right stick turns the piece at a speed set by how far it is pushed; the triggers do the same
   // from RT/LT with the analog pull as the speed. Both keep the D-pad on the foot and the left
   // stick on the camera.
@@ -85,7 +161,7 @@
     if (Number.isInteger(saved.level) && saved.level >= 1 && saved.level <= LADDER_N) settings.level = saved.level;
     if (saved.colour === 0 || saved.colour === 1) settings.colour = saved.colour;
     if (['balanced','high'].includes(saved.quality)) settings.quality = saved.quality;
-    if (BOARD_FINISHES.some(b => b.id === saved.board)) settings.board = saved.board;
+    if (BOARD_FINISHES.some(b => b.id === saved.board) && isUnlocked(saved.board)) settings.board = saved.board;
     if (PAD_SCHEMES.includes(saved.padScheme)) settings.padScheme = saved.padScheme;
     for (const k of ['reducedMotion','haptics','invertCamY']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
   } catch (_) {}
@@ -104,6 +180,7 @@
   let textures = null, texturesFor = null, artInstalled = false, lastRumble = -Infinity;
   // The shared board art (desktop/boards.js), made on first use so the menu opens without baking.
   let SHOW = null, showMaps = null, showMapsFor = null, detail = null, detailMode = 0;
+  let mathLive = false; const footTmp = new THREE.Vector3();
   const showcase = () => {
     if (!SHOW && typeof makeShowcaseBoards === 'function') SHOW = makeShowcaseBoards(THREE, CFG, { size: window.TAU_TEST_BAKE_SIZE });
     return SHOW;
@@ -279,7 +356,7 @@
     const fullscreen = window.tauSteam?.setFullscreen;
     showModal('Settings', `<label class="desktop-setting desktop-volume">Sound <output id="desktopVolumeValue">${userVol}%</output><input id="desktopVolume" aria-label="Sound volume" type="range" min="0" max="200" step="5" value="${userVol}"></label>
       <label class="desktop-setting">Mute<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
-      <label class="desktop-setting">Board<select id="desktopBoard">${BOARD_FINISHES.map(b=>`<option value="${b.id}">${b.name}</option>`).join('')}</select></label>
+      <label class="desktop-setting">Board<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${b.name}</option>`:`<option value="${b.id}" disabled>${b.name} · ${unlockText(b.id)}</option>`).join('')}</select></label>
       <label class="desktop-setting">Graphics<select id="desktopQuality"><option value="balanced">Balanced</option><option value="high">High</option></select></label>
       <label class="desktop-setting">Controller<select id="desktopPadScheme"><option value="triggers">Triggers · pull to swing</option><option value="stick">Right stick · push to swing</option></select></label>
       <label class="desktop-setting">Invert camera Y<input id="desktopInvertY" type="checkbox" ${settings.invertCamY?'checked':''}></label>
@@ -292,6 +369,7 @@
     $('desktopBoard').value = settings.board;
     $('desktopPadScheme').value = settings.padScheme;
     $('desktopBoard').onchange = e => {
+      if (!isUnlocked(e.target.value)) { e.target.value = settings.board; return; }
       settings.board=e.target.value; saveSettings();
       applyMaterials();   // rebakes the 3D surface for the new finish
       applyTheme();       // repaints the flat board from the same entry's palette
@@ -325,36 +403,76 @@
     if(replayFrames.length>15) buttons.push({label:'Watch replay',onClick:startReplay});
     buttons.push({label:'Main menu',onClick:backToMenu});
     const detail = local ? 'Two players · same screen' : `Level ${level+1} · You played ${colour===0?'Blue':'Red'}`;
-    showModal(title, `<span class="desktop-result-mark" aria-hidden="true"></span><p class="desktop-result-detail">${detail}</p>${bodyHtml||''}`, buttons, true, {dismiss:false});
+    showModal(title, `<span class="desktop-result-mark" aria-hidden="true"></span><p class="desktop-result-detail">${detail}</p>${bodyHtml||''}${takeUnlockHtml()}`, buttons, true, {dismiss:false});
     $('modalBox').dataset.desktopResult='true';
     return true;
   }
 
   // A fixed seed makes the material stable across starts. Noise is visual only and never
   // consumes the random stream used by the opponents. The printed geometry comes from CFG.
-  function woodMaps(wood) {
-    const [br,bg,bb]=wood.base;
+  // Mirror of boards.js woodFrame: which piece of timber a board point lies in, and that piece's
+  // grain frame. The bake and the per-pixel shader must agree or the printed figure and the live
+  // one would run in different directions on the same stave.
+  const WF_TAU = Math.PI*2;
+  function whash(n){ const x=Math.sin(n*12.9898)*43758.5453; return x-Math.floor(x); }
+  function woodFrame(x, y, out) {   // board units in, {x,y,joint,tone,zone} out
+    const r = Math.hypot(x,y), r0=CFG.rings[0], r1=CFG.rings[1];
+    const band = r < r0 ? 2 : r < r1 ? 1 : 0;
+    const lens = CFG.sideArcs.some(a => Math.hypot(x-a.cx, y-a.cy) < a.r);
+    let ang, id, joint = 1e3;
+    if (lens) { ang = Math.PI/2; id = 100 + band*2 + (x >= 0 ? 1 : 0); }
+    else if (band === 2) { ang = 0; id = 1; }
+    else {
+      const n = band === 1 ? 12 : 16, a = Math.atan2(y, x);
+      const k = Math.floor((a + Math.PI) * n / WF_TAU), ka = -Math.PI + (k + 0.5) * WF_TAU / n;
+      ang = ka + Math.PI/2; id = 10 + band*20 + k; joint = r * (Math.PI/n - Math.abs(a - ka));
+    }
+    out.zone = band + 2 - (lens ? 1 : 0);   // the flat board's zone value: 4 centre .. 1 outer lens
+    out.tone = 1 + (whash(id*3.1) - 0.5) * 0.12;
+    out.joint = joint;
+    const c = Math.cos(Math.PI/2 - ang), sn = Math.sin(Math.PI/2 - ang);
+    out.x = c*x - sn*y + whash(id)*97; out.y = sn*x + c*y + whash(id*1.7)*61;
+    return out;
+  }
+  function woodMaps(fin) {
+    const wood = fin.wood, skin = fin.skin;
     // How much of the timber figure to print. A slate slab, a sheet of drafting paper and a living
     // membrane are not wood: at low strength the directional grain and pores fade out and only the
     // fine speckle survives, which is what those surfaces actually have.
     const grainAmt = wood.grain==null ? 1 : wood.grain;
+    // The base colour per zone: the joined woods name a timber for each; the graded skins (Slate,
+    // Dojo) use the flat board's own zone colours, so the 3D disc shades exactly as the 2D one.
+    const hex = h => [1,3,5].map(i => parseInt(h.slice(i,i+2),16));
+    const zones = wood.zones ? wood.zones
+                : skin && skin.shadeByZoneValue ? [skin.v1, skin.v2, skin.v3, skin.v4].map(hex) : null;
+    const joinery = !!wood.joinery;
     const S=1536, cv=document.createElement('canvas'); cv.width=cv.height=S;
     const c=cv.getContext('2d'), pixels=c.createImageData(S,S), d=pixels.data;
+    const sc=S/(CFG.edgeU*2), O=S/2, fr={x:0,y:0,joint:1e3,tone:1,zone:4};
     for(let y=0;y<S;y++) for(let x=0;x<S;x++) {
-      const grain=x+18*Math.sin(y*.004)+7*Math.sin(y*.012+x*.003);
-      const fine=Math.sin(grain*.26+Math.sin(y*.013)*1.7);
-      const broad=Math.sin(grain*.019+Math.sin(y*.0018)*2.5);
+      let gx=x, gy=y, br=wood.base[0], bg=wood.base[1], bb=wood.base[2], tone=1;
+      if (zones) {
+        woodFrame((x-O)/sc, (y-O)/sc, fr);
+        const z = zones[fr.zone-1]; br=z[0]; bg=z[1]; bb=z[2];
+        if (joinery) {
+          gx = fr.x*sc; gy = fr.y*sc;
+          const t = Math.min(1, Math.max(0, (fr.joint-0.10)/0.20)), j = 1 - t*t*(3-2*t);
+          tone = fr.tone * (1 - 0.45*j);
+        }
+      }
+      const grain=gx+18*Math.sin(gy*.004)+7*Math.sin(gy*.012+gx*.003);
+      const fine=Math.sin(grain*.26+Math.sin(gy*.013)*1.7);
+      const broad=Math.sin(grain*.019+Math.sin(gy*.0018)*2.5);
       const pore=Math.pow(Math.max(0,fine),14);
       let hash=Math.imul(x+17,374761393)^Math.imul(y+41,668265263); hash=(hash^(hash>>>13))>>>0;
       const noise=(hash%255)/255-.5;
       const value=(broad*9+fine*2.6-pore*6)*grainAmt+noise*3;
       const i=(y*S+x)*4;
-      d[i]=br+value; d[i+1]=bg+value*.78; d[i+2]=bb+value*.52; d[i+3]=255;
+      d[i]=(br+value)*tone; d[i+1]=(bg+value*.78)*tone; d[i+2]=(bb+value*.52)*tone; d[i+3]=255;
     }
     c.putImageData(pixels,0,0);
     const bumpCv=document.createElement('canvas'); bumpCv.width=bumpCv.height=768;
     bumpCv.getContext('2d').drawImage(cv,0,0,768,768);
-    const sc=S/(CFG.edgeU*2), O=S/2;
     c.lineWidth=CFG.edgeU*CFG.lineWidthFrac*sc; c.strokeStyle=wood.line;
     for(const r of CFG.rings){ c.beginPath(); c.arc(O,O,r*sc,0,Math.PI*2); c.stroke(); }
     for(const a of CFG.sideArcs){ c.beginPath(); c.arc(O+a.cx*sc,O+a.cy*sc,a.r*sc,a.a0*Math.PI/180,a.a1*Math.PI/180); c.stroke(); }
@@ -461,10 +579,11 @@
     if(!renderer || !boardTop) return;
     const fin=finish();
     const bm = boardTop.material;
-    const SH = fin.showcase ? showcase() : null;
-    const T = SH && SH.THEMES[fin.showcase];
+    const SH = showcase();
+    const T = SH && fin.showcase ? SH.THEMES[fin.showcase] : null;
     // The per-pixel surface pass lives on the board material once, whichever look is showing; its
-    // mode uniform selects grain / marble / membrane / nothing per frame (see pollInput).
+    // mode uniform selects grain / marble / membrane / nothing per frame (see pollInput), and the
+    // Math board's live construction rides on the same program.
     if (SH && !detail) detail = SH.installDetailShader(bm);
     if (T) {
       // A showcase look: its own bake, three or four maps, as the showcase page applies them. Baked
@@ -472,6 +591,7 @@
       if (showMapsFor !== fin.id) {
         if (showMaps) for (const k in showMaps) showMaps[k] && showMaps[k].dispose();
         const maps = T.paint();
+        SH.shadeZones(maps.albedo.getContext('2d'), T.zoneGrade == null ? 1 : T.zoneGrade);
         showMaps = { map: SH.tex(maps.albedo), roughnessMap: SH.texL(maps.rough), bumpMap: SH.texL(maps.bump),
                      emissiveMap: maps.emissive ? SH.tex(maps.emissive) : null };
         showMapsFor = fin.id;
@@ -489,7 +609,7 @@
       // procedural bake, far too expensive to redo on every theme refresh.
       if(!textures || texturesFor!==fin.id){
         const old=textures;
-        textures=woodMaps(fin.wood); texturesFor=fin.id;
+        textures=woodMaps(fin); texturesFor=fin.id;
         if(old){ old.map.dispose(); old.bump.dispose(); }
       }
       if(bm.map && bm.map!==textures.map && (!showMaps || bm.map!==showMaps.map)) bm.map.dispose();
@@ -501,6 +621,7 @@
       applyPieceMaterials(fin);
     }
     detailMode = fin.detail==='wood' ? 1 : fin.detail==='marble' ? 2 : fin.detail==='alien' ? 3 : 0;
+    mathLive = fin.id === 'math';
     const bg = T ? '#' + new THREE.Color(T.bg).getHexString() : fin.wood.bg;
     const trim = T ? T.slabColor : fin.wood.trim;
     if(!artInstalled){
@@ -684,6 +805,18 @@
       u.uDetail.value = detailMode === 3 ? 0 : detailMode;   // the membrane is its own pass below
       u.uDetailTime.value = now;
       u.uAlien.value = detailMode === 3 ? 1 : 0; u.uAlienTime.value = now;
+      // Math: every foot's pivot-sweep circle, read off the RENDERED pieces (local foot positions
+      // through the mesh's own transform), so the construction glides with the eased swing rather
+      // than jumping to the rule engine's end pose.
+      u.uMath.value = mathLive ? 1 : 0;
+      if (mathLive && typeof tripods !== 'undefined') tripods.forEach((t, pi) => {
+        t.updateMatrixWorld();
+        for (let k = 0; k < 3; k++) {
+          footTmp.set(Math.cos(k*2*Math.PI/3)*CFG.footR, 0, Math.sin(k*2*Math.PI/3)*CFG.footR);
+          t.localToWorld(footTmp);
+          u.uFeet.value[pi*3+k].set(t.visible ? footTmp.x : 1e4, t.visible ? footTmp.z : 1e4);
+        }
+      });
     }
     const pads=navigator.getGamepads?.() || [];
     currentPad=Array.from(pads).find(p=>p?.connected && p.mapping==='standard') || null;
@@ -787,7 +920,9 @@
     set invertCamY(v){ settings.invertCamY=!!v; saveSettings(); },
     get board(){return settings.board;},
     set board(v){ if(BOARD_FINISHES.some(b=>b.id===v)){ settings.board=v; saveSettings(); applyMaterials(); applyTheme(); render(); } },
-    get boards(){return BOARD_FINISHES.map(b=>({id:b.id,name:b.name}));},
+    get boards(){return BOARD_FINISHES.map(b=>({id:b.id,name:b.name,unlocked:isUnlocked(b.id),unlock:unlockText(b.id)}));},
+    get progress(){return {...progress};},
+    recordResult,
     debugDetailMode(){ return detailMode; },
     resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult,
     // The corner layout's camera goal for the current window (see desiredPose).

@@ -88,8 +88,19 @@ Settings offers fourteen boards, and the list is the whole catalogue rather than
 a desktop-only sub-set: the browser build's original skins (Dark, Slate, Dojo,
 Yellow), the wood finishes (Walnut, Ebony, Maple), the six looks that used to be
 locked inside the showcase page (Noir, Math, Sumo, Cosy, Alien, Colossus), and
-Marble — a white stone table with black-marble rings and glass pieces, clear
-legs and feet around a coloured ball.
+Marble — a white stone table with black-marble rings and glass pieces: a small
+solid coloured ball on legs that leave it clear and take on its colour as they
+come down to solid coloured feet.
+
+You start on Walnut and **unlock** the rest by playing. The everyday boards open
+with wins and games played (Dojo after a win, Slate after three games, Maple,
+Dark, Ebony, Yellow along the way); the deluxe looks wait for the high rungs of
+the ladder (Cosy 5, Sumo 7, Noir 9, Math 10, Alien the top) or a hundred games
+(Colossus at fifty, Marble at a hundred). Finished matches against the AI or
+online count, pass-and-play counts as played, the lab never counts. Settings
+lists a locked board with what opens it, the result sheet announces an unlock,
+and progress is kept locally. A saved board you have not unlocked falls back to
+Walnut.
 Each is a single entry defining the flat board's palette, the 3D surface,
 markings, rim and backdrop, **and** the piece material, so one choice repaints
 both views and the pieces together and they cannot drift apart. Changing it
@@ -107,12 +118,31 @@ the game, which is what makes them playable rather than only watchable. Colossus
 plays in daylight, so the floating HUD flips to ink over it, decided by the
 backdrop's real luminance rather than by which board it is.
 
+Most boards grade their zones the way the flat board always has — the centre a
+touch lighter, each band out a touch darker, the lens segments darker again — so
+the two views agree about which band a foot is on. Yellow, Math and Alien stay
+flat on purpose. The wooden boards go further: they are **joined**, not slabs. The
+centre is one disc, each ring band is a segmented ring of staves (12 inner, 16
+outer) with the grain running round the ring and a glue line at every joint, and
+the lens segments are separate boards with the grain along their long axis, each
+zone cut from a different timber (walnut, cherry, oak and wenge on the Walnut
+board). The bake and the per-pixel shader classify every point with the same
+`woodFrame`, so the printed figure and the live grain run the same way on every
+stave.
+
 Wood and marble boards carry per-pixel surface detail on top of the baked
 texture: a fragment-shader pass (`installDetailShader`) adds grain, pores, veins
 and glints from world position, so the closer the camera leans in the more there
 is to see instead of a texture going soft at 4K. Alien gets its membrane the same
 way. The glass looks deliberately get less of it: detail on a refracting surface
-reads as dirt.
+reads as dirt. Math runs the showcase's live construction in the game: every foot
+projects its pivot-sweep circle onto the board, faint along empty stretches and
+bold where it approaches a crossing with an opposite-colour ring or a printed
+line, read off the rendered pieces so it glides with the swing.
+
+The flat board draws the pieces at the real tube's width, with the crown and the
+foot pads of the 3D piece in plan, so the two views agree about how fat a tripod
+is at any board size.
 
 The game runs three.js r169 from `vendor/three/three.global.js`, a classic-script
 bundle of the same ES modules the showcase imports (rebuild it with

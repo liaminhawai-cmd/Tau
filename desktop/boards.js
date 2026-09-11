@@ -28,6 +28,29 @@ function strokeLines(c, style, width, dash) {          // the printed geometry: 
   }
   c.setLineDash([]);
 }
+// Grade a painted board by the flat board's four zone values: the centre a touch lighter, each
+// step outward a touch darker, and the lens segments one step darker again -- the reading aid the
+// 2D board has always had (fillBoardDisc), on the finished albedo so every look keeps its own
+// colour and figure. Screen for the lift, multiply for the drops; `amt` scales it (0 = flat).
+// Zone values are: centre 4, mid band 3, outer band 2, minus one inside a lens circle.
+function shadeZones(c, amt) {
+  if (!amt) return;
+  const lift = 0.10*amt, drop = [0, 0.24*amt, 0.12*amt, 0, 0];   // by value: [_, v1, v2, v3, v4]
+  const bandPath = b => { c.beginPath(); c.arc(ox, oy, px(b === 0 ? CFG.edgeU : CFG.rings[b === 1 ? 1 : 0]), 0, 7);
+                          if (b < 2) c.arc(ox, oy, px(b === 0 ? CFG.rings[1] : CFG.rings[0]), 0, 7); };
+  const lensPath = () => { c.beginPath(); for (const a of CFG.sideArcs) { c.moveTo(ox + px(a.cx + a.r), oy + px(a.cy)); c.arc(ox + px(a.cx), oy + px(a.cy), px(a.r), 0, 7); } };
+  for (let b = 0; b < 3; b++) for (const lens of [false, true]) {
+    const v = (b === 2 ? 4 : b === 1 ? 3 : 2) - (lens ? 1 : 0);
+    c.save();
+    bandPath(b); c.clip('evenodd');                       // the band: a disc, or a disc with a hole
+    if (lens) { lensPath(); c.clip(); }
+    else { c.beginPath(); c.rect(0, 0, S, S); for (const a of CFG.sideArcs) a && c.arc(ox + px(a.cx), oy + px(a.cy), px(a.r), 0, 7); c.clip('evenodd'); }
+    if (v === 4) { c.globalCompositeOperation = 'screen'; c.fillStyle = `rgba(255,255,255,${lift})`; }
+    else { c.globalCompositeOperation = 'multiply'; c.fillStyle = `rgba(0,0,0,${drop[v]})`; }
+    if (v !== 3) c.fillRect(0, 0, S, S);
+    c.restore();
+  }
+}
 function noiseCanvas(amp, seed) {
   // always generated at 2048 (the per-pixel grain loop is the slow part) and upscaled to S —
   // the noise is low-frequency mood, the crispness lives in the vector linework drawn at S
@@ -145,6 +168,7 @@ const THEMES = {
 
   // ============ MATH — graphite precision: the geometry speaks for itself, nothing is written ============
   math: {
+    zoneGrade: 0,   // a drafting sheet is one sheet: the live construction is its reading aid
     bg: 0x0d1017, exposure: 1.0, bloom: [0.16, 0.45, 0.88],
     key: { color: 0xffffff, intensity: 2.2, pos: [40,140,70], shadow: 0.5 },
     fill:{ color: 0xa8c8ff, intensity: 0.65 },
@@ -387,6 +411,7 @@ const THEMES = {
   // that silver ordinary materials. Lighting is deliberately unnatural: a dim violet key from
   // the wrong side, an acid-teal counter light, and murk instead of air.
   alien: {
+    zoneGrade: 0,   // the membrane's blotches already grade it; banding would fight them
     bg: 0x04060b, exposure: 1.05, bloom: [0.45, 0.7, 0.72],
     key: { color: 0x9d8ce8, intensity: 1.0, pos: [-70,110,-50], shadow: 0.35 },
     fill:{ color: 0x35e8c8, intensity: 0.55 },
@@ -631,7 +656,7 @@ const THEMES = {
     fill:{ color: 0xa9b8d6, intensity: 0.5 },
     band: { color: 0x17171c, rough: 0.28, metal: 0.05 }, slabColor: 0x1a1a1f, tableColor: 0x0f1013,
     boardEnv: 0.9, bumpScale: 0.5, boardReflect: 0.22, guide: 0x3a3f4a,
-    detail: 'marble', hubBall: 2.9,
+    detail: 'marble', hubBall: 2.0,
     paint() {
       const [al, a] = canvas2d();
       a.fillStyle = '#e9e6df'; a.fillRect(0, 0, S, S);                       // warm white stone
@@ -659,20 +684,84 @@ const THEMES = {
       strokeLines(bb, '#6c6c6c', LW*1.9);                                     // inlay sits a hair below the field
       return { albedo: al, rough: ro, bump: bu };
     },
-    pieces(which) {   // glass: a coloured ball on legs that are all but invisible, and bend what is behind them
+    pieces(which) {   // glass legs under a solid coloured ball, standing on solid coloured feet
       const tint = which === 'blue' ? 0x3b74e8 : 0xe8483b;
-      const hub = PHYS({ color: which === 'blue' ? 0x7aa4ee : 0xee7a6f,
-        metalness: 0, roughness: 0.06, transmission: 0.92, ior: 1.5, thickness: 4.5,
-        attenuationColor: new THREE.Color(tint), attenuationDistance: 2.2,
-        clearcoat: 1, clearcoatRoughness: 0.05, specularIntensity: 1, envMapIntensity: 1 });
+      // The ball and the feet: solid colour, polished. Not glass -- they are the two things that read
+      // as "the piece"; everything between them is what you look through.
+      const solid = PHYS({ color: tint, metalness: 0, roughness: 0.08,
+        clearcoat: 1, clearcoatRoughness: 0.04, specularIntensity: 1, envMapIntensity: 1 });
       const leg = PHYS({ color: 0xf6f9ff,
         metalness: 0, roughness: 0.03, transmission: 1.0, ior: 1.52, thickness: 2.6,
         attenuationColor: new THREE.Color(0xe4ecff), attenuationDistance: 40,
         clearcoat: 1, clearcoatRoughness: 0.03, specularIntensity: 1, envMapIntensity: 1 });
-      return { leg, hub, foot: leg };
+      installLegGradient(leg, tint);
+      return { leg, hub: solid, foot: solid };
     },
   },
 };
+// Marble's legs are clear where they leave the ball and gain the ball's colour on the way down to
+// the foot -- one glass pour with the pigment settled at the bottom. Position along the leg comes
+// from the fused geometry itself: the arc's bearing from the crown (0 at the apex, 1 where the
+// vertical foot begins), so the ramp follows the leg rather than the height. The tint arrives late
+// (clear for the first quarter) and does three things at the foot end: the glass tints, absorbs
+// more, and transmits less, so the last stretch reads as solid colour that the pin then continues.
+const LEG_FOOT_TOP = 3.6;   // TRIPOD_PIN_LIFT + TRIPOD_FOOT_LEN in the game's fused tripod
+function installLegGradient(material, tint) {
+  material.onBeforeCompile = shader => {
+    shader.uniforms.uLegTint = { value: new THREE.Color(tint) };
+    shader.uniforms.uFootTop = { value: LEG_FOOT_TOP };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying float vLegT; uniform float uFootTop;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n' +
+        '{ float u = length(position.xz); float yy = position.y - uFootTop;\n' +
+        '  float a = yy > 0.0 ? atan(u, yy) : 1.5707963;\n' +
+        '  vLegT = clamp(a / 1.5707963, 0.0, 1.0); }');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vLegT; uniform vec3 uLegTint;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' +
+        'float legG = smoothstep(0.25, 1.0, vLegT);\n' +
+        'diffuseColor.rgb = mix(diffuseColor.rgb, uLegTint, legG);')
+      .replace('material.transmission = transmission;', 'material.transmission = transmission * (1.0 - 0.7*legG*legG);')
+      .replace('material.attenuationColor = attenuationColor;', 'material.attenuationColor = mix(attenuationColor, uLegTint, legG);')
+      .replace('material.attenuationDistance = attenuationDistance;', 'material.attenuationDistance = mix(attenuationDistance, 2.5, legG);');
+  };
+  material.customProgramCacheKey = () => 'tau-leg-gradient';
+  return material;
+}
+// Math theme's LIVE construction: every foot projects its pivot-sweep circle (radius footR*sqrt3
+// -- where that piece's other feet could land if this foot were pinned) onto the board. A ring is
+// invisible along empty stretches and darkens where it approaches a crossing with an OPPOSITE-
+// colour ring or a printed board line -- computed per-pixel, so the whole construction glides
+// live with every swing. closeness(other curves) does the intersection detection implicitly:
+// near ring A and near curve B simultaneously = near their crossing.
+const MATH_GLSL = `
+uniform float uMath; uniform vec2 uFeet[6]; uniform float uRingR;
+float mcurve(vec2 p, vec2 c, float r) { return abs(distance(p, c) - r); }
+float mboard(vec2 p) {   // nearest printed line (full circles, as the math board draws them)
+  float d = mcurve(p, vec2(0.0), uBoardGeom.x);
+  d = min(d, mcurve(p, vec2(0.0), uBoardGeom.y));
+  d = min(d, mcurve(p, vec2(-uBoardGeom.z, 0.0), uBoardGeom.w));
+  d = min(d, mcurve(p, vec2(uBoardGeom.z, 0.0), uBoardGeom.w));
+  return d;
+}
+`;
+const MATH_PASS =
+  'if (uMath > 0.5) {\n' +
+  '  vec2 p = vWPos.xz;\n' +
+  '  float bd = mboard(p);\n' +
+  '  for (int i = 0; i < 6; i++) {\n' +
+  '    float stroke = smoothstep(0.55, 0.1, mcurve(p, uFeet[i], uRingR));\n' +
+  '    if (stroke < 0.004) continue;\n' +
+  '    float close = smoothstep(9.0, 1.0, bd);\n' +                // near a printed line?
+  '    for (int j = 0; j < 6; j++) {\n' +                          // near an opposite-colour ring?
+  '      if ((i < 3) == (j < 3)) continue;\n' +
+  '      close = max(close, smoothstep(9.0, 1.0, mcurve(p, uFeet[j], uRingR)));\n' +
+  '    }\n' +
+  '    float alpha = stroke * (0.022 + 0.9*close*close);\n' +      // invisible -> faint -> bold
+  '    vec3 tint = i < 3 ? vec3(0.42, 0.64, 1.0) : vec3(1.0, 0.5, 0.42);\n' +
+  '    outgoingLight += tint * alpha * 0.55;\n' +
+  '  }\n' +
+  '}\n';
 const ALIEN_GLSL = `
 uniform float uAlien; uniform float uAlienTime; varying vec3 vWPos;
 float ahash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453123); }
@@ -690,19 +779,51 @@ float afbm(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<6;i++){ s+=a*anoise(p); p=p
 // that makes the light actually break over them. Mode 3 is the alien membrane, verbatim.
 const DETAIL_GLSL = `
 uniform float uDetail; uniform float uDetailTime; uniform vec3 uDetailTint;
+uniform vec4 uBoardGeom;   // inner ring, outer ring, board edge (= lens-circle centre), lens-circle radius
 float dfbm4(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<4;i++){ s+=a*anoise(p); p=p*2.11+vec2(3.1,7.7); a*=0.5; } return s; }
-// Wood: growth bands along a warped axis, early/late wood, and pores that pit the late wood.
+float whash(float n){ return fract(sin(n*12.9898)*43758.5453); }
+// Joinery. The wooden boards are not one slab: the centre is a disc, each ring band is a segmented
+// ring of staves (12 inner, 16 outer) with the grain running round the ring, and the lens segments
+// are separate boards with the grain along their long axis. Returns p in that piece's own grain
+// frame (grain along +y) with a per-piece offset so figure never continues across a joint; 'joint'
+// is the distance to the nearest stave joint (the ring and lens boundaries are the printed lines),
+// 'tone' the small tonal difference between boards cut from one log. Mirrored in presentation.js.
+vec2 woodFrame(vec2 p, out float joint, out float tone){
+  float r = length(p);
+  float band = r < uBoardGeom.x ? 2.0 : (r < uBoardGeom.y ? 1.0 : 0.0);
+  bool lens = distance(p, vec2(-uBoardGeom.z, 0.0)) < uBoardGeom.w || distance(p, vec2(uBoardGeom.z, 0.0)) < uBoardGeom.w;
+  float ang, id; joint = 1.0e3;
+  if (lens) { ang = 1.5707963; id = 100.0 + band*2.0 + step(0.0, p.x); }
+  else if (band > 1.5) { ang = 0.0; id = 1.0; }
+  else {
+    float n = band > 0.5 ? 12.0 : 16.0;
+    float a = atan(p.y, p.x);
+    float k = floor((a + 3.1415927) * n / 6.2831853);
+    float ka = -3.1415927 + (k + 0.5) * 6.2831853 / n;   // the stave's centre bearing
+    ang = ka + 1.5707963;                                  // grain along the tangent
+    id = 10.0 + band*20.0 + k;
+    joint = r * (3.1415927 / n - abs(a - ka));             // arc distance to the nearer joint
+  }
+  tone = 1.0 + (whash(id*3.1) - 0.5) * 0.12;
+  float c = cos(1.5707963 - ang), sn = sin(1.5707963 - ang);
+  vec2 q = vec2(c*p.x - sn*p.y, sn*p.x + c*p.y);
+  return q + vec2(whash(id)*97.0, whash(id*1.7)*61.0);
+}
+// Wood: growth bands along a warped axis, early/late wood, and pores that pit the late wood, all in
+// the piece's own grain frame; the stave joints are a hair of dark glue line and a dip in the relief.
 // Returns (tint multiplier, roughness, height).
-vec3 woodDetail(vec2 p, out float rough){
-  vec2 w = p * vec2(0.09, 0.011);                        // grain runs along z; bands across x
+vec3 woodDetail(vec2 p0, out float rough){
+  float joint, tone; vec2 p = woodFrame(p0, joint, tone);
+  vec2 w = p * vec2(0.09, 0.011);                        // grain runs along y; bands across x
   float warp = dfbm4(w * 2.0) * 1.6;
   float ring = sin((w.x + warp) * 9.0 + afbm(w * 1.3) * 3.0);
   float band = smoothstep(-0.35, 0.75, ring);            // 0 = early wood (paler), 1 = late wood
   float pore = pow(anoise(p * vec2(6.5, 0.9) + vec2(0.0, warp)), 9.0);   // elongated pores
   float fine = afbm(p * 2.8) - 0.5;                      // fibre flecks
-  float tint = 1.0 - 0.20*band - 0.30*pore + 0.05*fine;
-  rough = 0.44 + 0.20*band + 0.22*pore - 0.06*fine;
-  float h = 0.45*band + 0.30*pore + 0.10*fine;      // pores dip the relief a little, not a crater
+  float j = 1.0 - smoothstep(0.10, 0.26, joint);         // the glue line
+  float tint = (1.0 - 0.20*band - 0.30*pore + 0.05*fine) * tone * (1.0 - 0.45*j);
+  rough = 0.44 + 0.20*band + 0.22*pore - 0.06*fine + 0.15*j;
+  float h = 0.45*band + 0.30*pore + 0.10*fine - 0.5*j;   // pores dip the relief a little, not a crater
   return vec3(tint, 0.0, h);
 }
 // Marble: domain-warped ridged veins with a second, finer generation branching off them, plus the
@@ -743,6 +864,11 @@ function installDetailShader(material) {
     shader.uniforms.uDetailTint = { value: new THREE.Vector3(1,1,1) };
     shader.uniforms.uAlien = { value: 0 };
     shader.uniforms.uAlienTime = { value: 0 };
+    shader.uniforms.uMath = { value: 0 };
+    shader.uniforms.uRingR = { value: CFG.footR*Math.sqrt(3) };
+    shader.uniforms.uFeet = { value: Array.from({ length: 6 }, () => new THREE.Vector2(1e4, 1e4)) };
+    const rings = CFG.rings || [40, 53.3], arc = (CFG.sideArcs && CFG.sideArcs[0]) || { cx: -CFG.edgeU, r: 40 };
+    shader.uniforms.uBoardGeom = { value: new THREE.Vector4(rings[0], rings[1], Math.abs(arc.cx), arc.r) };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
       .replace('#include <fog_vertex>', '#include <fog_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
@@ -751,7 +877,7 @@ function installDetailShader(material) {
     const finalHook = ['#include <opaque_fragment>', '#include <output_fragment>', 'gl_FragColor = vec4( outgoingLight, diffuseColor.a );']
       .find(h => shader.fragmentShader.includes(h)) || '#include <opaque_fragment>';
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\n' + ALIEN_GLSL + DETAIL_GLSL)
+      .replace('#include <common>', '#include <common>\n' + ALIEN_GLSL + DETAIL_GLSL + MATH_GLSL)
       // colour + roughness: right after the maps have had their say
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' +
         'float dH = 0.0; float dRough = roughnessFactor;\n' +
@@ -763,6 +889,7 @@ function installDetailShader(material) {
         'if (uDetail > 0.5) { vec2 dHdxy = vec2(dFdx(dH), dFdy(dH)) * (uDetail < 1.5 ? 0.45 : 0.4); normal = perturbDetail(-vViewPosition, normal, dHdxy, gl_FrontFacing ? 1.0 : -1.0); }\n')
       // the alien membrane, as the showcase draws it
       .replace(finalHook,
+        MATH_PASS +
         'if (uAlien > 0.5) {\n' +
         '  vec2 p = vWPos.xz * 0.06;\n' +
         '  vec2 q = vec2(afbm(p), afbm(p + vec2(5.2, 1.3)));\n' +
@@ -783,7 +910,7 @@ function installDetailShader(material) {
 }
 
   return { S, sc, ox, oy, px, LW, DOTS, canvas2d, strokeLines, noiseCanvas, vignette, tex, texL,
-           THEMES, ALIEN_GLSL, DETAIL_GLSL, installDetailShader };
+           THEMES, ALIEN_GLSL, DETAIL_GLSL, MATH_GLSL, installDetailShader, installLegGradient, shadeZones };
 }
 if (typeof window !== 'undefined') window.makeShowcaseBoards = makeShowcaseBoards;
 if (typeof module !== 'undefined') module.exports = makeShowcaseBoards;

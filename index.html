@@ -630,7 +630,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 206</div>
+<div id="buildTag">build 207</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3280,10 +3280,14 @@ Piece.prototype.draw = function(activeIdx) {
     // — so the flat board and the 3D view stopped agreeing about how thick a tripod is, and the
     // desktop's corner board showed it worst. Tied to the foot pad (the one measurement both views
     // already share), the drawn piece keeps the real tripod's proportions at any size.
-    const legW = Math.max(2, CFG.padRadius*scale*1.35);
+    // The legs are the real tube's diameter (2 x legRadius through the board's scale), the crown
+    // is the tubes meeting plus the weld bead, and each foot is the tube's rounded end seen from
+    // above with the magnet pin at its centre. That is the 3D piece in plan, so the flat board and
+    // the 3D view agree about how fat a tripod is -- the old stick figure was a quarter of it.
+    const legW = Math.max(2, 2*CFG.legRadius*scale);
     ctx.strokeStyle=col; ctx.lineWidth=legW; ctx.lineCap='round';
     for (const f of feet){ ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.lineTo(f.x,f.y); ctx.stroke(); }
-    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(c.x,c.y,legW*0.85,0,2*Math.PI); ctx.fill();
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(c.x,c.y,Math.max(legW*0.6, CFG.legRadius*1.2*scale),0,2*Math.PI); ctx.fill();
     // Pointy magnet feet: drawn at the MAGNET/dot size (padRadius ≈ 0.55u), which makes the visual
     // honest against the crossing rule — the drawn dot touches the drawn line stroke at almost
     // exactly the distance the engine registers contact (0.55 + half line width ≈ touchEps). The
@@ -3307,6 +3311,11 @@ Piece.prototype.draw = function(activeIdx) {
         }
     }
     for (let i=0;i<3;i++){ const f=feet[i];
+        // The foot pad: the tube end's edge, so a foot reads as a foot and not a stroke's cap; the
+        // pinned one is the whole pad in highlighter yellow, not just the pin.
+        ctx.beginPath(); ctx.arc(f.x,f.y, legW/2, 0, 2*Math.PI);
+        if (activeIdx===i) { ctx.fillStyle='#ffd23f'; ctx.fill(); }
+        ctx.lineWidth=1; ctx.strokeStyle='rgba(12,14,17,0.35)'; ctx.stroke();
         ctx.beginPath(); ctx.arc(f.x,f.y, activeIdx===i ? fr+1.5 : fr, 0, 2*Math.PI);
         ctx.fillStyle=(activeIdx===i)?'#ffd23f':(inviting ? hexA(col,0.55) : col); ctx.fill();
         // The yellow pivot pad is tonally flat against the pale boards (Dojo/Yellow), so there it
@@ -5067,12 +5076,16 @@ function showGameOverModal() {
     // Steam build only (window.tauSteam comes from the wrapper's preload; absent on web/mobile):
     // a genuine human win — vs the AI (classic/ladder/ranked/coach) or an online match, never
     // local pass-and-play or the lab's AI-vs-AI — unlocks the first-win achievement.
+    const humanWon = onlineMatch ? (!onlineMatch.spectator && (G.winner===0?'blue':'red') === onlineMatch.myColor)
+                                 : (vsAI && !labActive && G.winner === humanIdx);
     if (window.tauSteam) {
-        const humanWon = onlineMatch ? (!onlineMatch.spectator && (G.winner===0?'blue':'red') === onlineMatch.myColor)
-                                     : (vsAI && !labActive && G.winner === humanIdx);
         if (humanWon) window.tauSteam.unlock('ACH_WIN_ONE_GAME');
         window.tauSteam.setStatus('Between games');
     }
+    // The desktop build's progression (board unlocks) counts finished matches here, the one place
+    // every kind of game ends -- ladder, classic AI, online, pass-and-play; the lab excluded.
+    if (window.tauDesktop && window.tauDesktop.recordResult)
+        window.tauDesktop.recordResult({ humanWon, vsAI, online: !!onlineMatch, lab: labActive, level: ladderLevel });
     if (typeof markOnboarded === 'function' && !labActive) markOnboarded('played');   // finished a real game = onboarded
     clearTimeout(gameOverTimer);
     gameOverTimer = setTimeout(renderGameOverSheet, 2800);
