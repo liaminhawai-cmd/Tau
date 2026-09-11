@@ -21,15 +21,15 @@
   // stone/paper/membrane surfaces their own character instead of printing oak on them.
   const BOARD_FINISHES = [
     // ---- the wood finishes ----
-    { id:'walnut', name:'Walnut',
+    { id:'walnut', name:'Walnut', detail:'wood',
       skin:{ shadeByZoneValue:false, flat:'#65432b', lines:'#ead5a4', rim:'#574b32', bg:'#101410', pb:'#639eb8', pr:'#dc8864' },
       wood:{ base:[105,72,46], line:'#e1ca91', rim:'#57472e', trim:'#aa8751', bg:'#101410', grain:1, dots:['#82b4bd','#df9b78'] },
       piece:{ blue:'#427d91', red:'#b46744', metalness:.72, roughness:.3, clearcoat:.25, clearcoatRoughness:.35, envMapIntensity:.85 } },
-    { id:'ebony', name:'Ebony',
+    { id:'ebony', name:'Ebony', detail:'wood',
       skin:{ shadeByZoneValue:false, flat:'#2b2724', lines:'#c8bda6', rim:'#241f1c', bg:'#0b0d0e', pb:'#6fa8c4', pr:'#e08a63' },
       wood:{ base:[58,52,48], line:'#cdc0a6', rim:'#2b2622', trim:'#8d8878', bg:'#0b0d0e', grain:.85, dots:['#8fbecb','#e2a184'] },
       piece:{ blue:'#4f93aa', red:'#c4744c', metalness:.78, roughness:.26, clearcoat:.3, clearcoatRoughness:.3, envMapIntensity:.9 } },
-    { id:'maple', name:'Maple',
+    { id:'maple', name:'Maple', detail:'wood',
       skin:{ shadeByZoneValue:false, flat:'#c8a877', lines:'#5b4526', rim:'#9b7f52', bg:'#171512', pb:'#2f6f8c', pr:'#b1502c' },
       wood:{ base:[201,171,122], line:'#6b5024', rim:'#9d8153', trim:'#d8bd8a', bg:'#171512', grain:1, dots:['#2f6f8c','#b1502c'] },
       piece:{ blue:'#2f6f8c', red:'#b1502c', metalness:.6, roughness:.34, clearcoat:.3, clearcoatRoughness:.3, envMapIntensity:.7 } },
@@ -53,44 +53,25 @@
       wood:{ base:[239,228,166], line:'#26251f', rim:'#3c434a', trim:'#c9bf85', bg:'#0c0e11', grain:.2, dots:['#6b9eff','#ff6b6b'] },
       piece:{ blue:'#6b9eff', red:'#ff6b6b', metalness:.2, roughness:.45, clearcoat:.45, clearcoatRoughness:.25, envMapIntensity:.45 } },
     // ---- the six showcase looks, brought into the game ----
-    { id:'noir', name:'Noir',
-      skin:{ shadeByZoneValue:false, flat:'#23262c', lines:'#d6b567', rim:'#17191d', bg:'#0a0c10', pb:'#7aa4ee', pr:'#ee7a6f' },
-      wood:{ base:[35,38,44], line:'#d6b567', rim:'#17191d', trim:'#a8843c', bg:'#0a0c10', grain:.25, dots:['#d6b567','#d6b567'] },
-      // Glass, but a piece you can still find on a dark board. The showcase ran transmission at 1.0
-      // and got away with it because it also had a bloom pass and a much harder key light; dropped
-      // into the game's lighting that reads as a barely-there smear on near-black slate — measured,
-      // not guessed. Held at a third, over a tint that carries its own colour, it still refracts and
-      // still reads as glass, and you can see which piece is yours.
-      piece:{ blue:'#8fb4f4', red:'#f4907f', metalness:0, roughness:.1, clearcoat:1, clearcoatRoughness:.06,
-              envMapIntensity:.9, transmission:.34, ior:1.5, thickness:4,
-              attenuation:{ blue:'#3b74e8', red:'#e8483b' }, attenuationDistance:5,
-              emissive:true, emissiveIntensity:.1 } },
-    { id:'math', name:'Math',
-      skin:{ shadeByZoneValue:false, flat:'#111826', lines:'#dcecff', rim:'#14171d', bg:'#0d1017', pb:'#2f6fd8', pr:'#d8442f' },
-      wood:{ base:[17,24,38], line:'#dcecff', rim:'#14171d', trim:'#20242c', bg:'#0d1017', grain:.12, dots:['#2f6fd8','#d8442f'] },
-      piece:{ blue:'#2f6fd8', red:'#d8442f', metalness:0, roughness:.45, clearcoat:.35, clearcoatRoughness:.3, envMapIntensity:.45 } },
-    { id:'sumo', name:'Sumo',
-      skin:{ shadeByZoneValue:false, flat:'#6e4a2c', lines:'#c89a54', rim:'#46351f', bg:'#17120d', pb:'#31488f', pr:'#b03220' },
-      wood:{ base:[110,74,44], line:'#c89a54', rim:'#46351f', trim:'#8a6a3c', bg:'#17120d', grain:.75, dots:['#d9ae62','#d9ae62'] },
-      piece:{ blue:'#31488f', red:'#b03220', metalness:0, roughness:.3, clearcoat:.55, clearcoatRoughness:.18, envMapIntensity:.5 } },
-    { id:'cosy', name:'Cosy',
-      skin:{ shadeByZoneValue:false, flat:'#4a3220', lines:'#e8c778', rim:'#2e1f12', bg:'#1a120c', pb:'#3a4a66', pr:'#5e2a22' },
-      wood:{ base:[74,50,32], line:'#e8c778', rim:'#2e1f12', trim:'#9a7638', bg:'#1a120c', grain:1, dots:['#b78a44','#b78a44'] },
-      piece:{ blue:'#4a5f80', red:'#7a3a2e', metalness:.3, roughness:.44, clearcoat:.35, clearcoatRoughness:.25, envMapIntensity:.4 } },
-    { id:'alien', name:'Alien',
-      skin:{ shadeByZoneValue:false, flat:'#171226', lines:'#8dffe8', rim:'#110d1a', bg:'#04060b', pb:'#3f7ec8', pr:'#b04057' },
-      wood:{ base:[23,18,38], line:'#0e3c36', rim:'#110d1a', trim:'#191324', bg:'#04060b', grain:.45, dots:['#8dffe8','#8dffe8'] },
-      // thin-film chitin: the iridescence that gave the showcase set its shimmer, kept intact.
-      piece:{ blue:'#24558c', red:'#7c2030', metalness:0, roughness:.18, clearcoat:1, clearcoatRoughness:.1,
-              envMapIntensity:.7, iridescence:1, iridescenceIOR:1.8,
-              iridescenceThickness:{ blue:[140,520], red:[240,700] },
-              emissive:true, emissiveIntensity:.22 } },
-    { id:'colossus', name:'Colossus',
-      skin:{ shadeByZoneValue:false, flat:'#b49b6d', lines:'#4a4038', rim:'#7e6f54', bg:'#b9a888', pb:'#6c7787', pr:'#8a7060' },
-      wood:{ base:[180,155,109], line:'#4a4038', rim:'#7e6f54', trim:'#8a7a5e', bg:'#b9a888', grain:.6, dots:['#4a4038','#4a4038'] },
-      // carved stone, not bronze: matte, flat-shaded, barely touched by the environment.
-      piece:{ blue:'#8f97a0', red:'#a8907e', metalness:0, roughness:.95, clearcoat:0, clearcoatRoughness:1,
-              envMapIntensity:.12, flatShading:true } },
+    // ---- the showcase looks, with their own bakes, materials and shaders (desktop/boards.js) ----
+    // `skin` is still the flat board's palette; everything in 3D comes from the shared THEMES entry
+    // of the same id -- the procedural bake, the per-part piece materials (legs and hub can differ),
+    // and for Alien the membrane shader. `detail` picks the per-pixel surface pass: wood grain,
+    // marble veining, or the alien membrane; those keep resolving however far a 4K display leans in.
+    { id:'noir', name:'Noir', showcase:'noir',
+      skin:{ shadeByZoneValue:false, flat:'#23262c', lines:'#d6b567', rim:'#17191d', bg:'#0a0c10', pb:'#7aa4ee', pr:'#ee7a6f' } },
+    { id:'math', name:'Math', showcase:'math',
+      skin:{ shadeByZoneValue:false, flat:'#111826', lines:'#dcecff', rim:'#14171d', bg:'#0d1017', pb:'#2f6fd8', pr:'#d8442f' } },
+    { id:'sumo', name:'Sumo', showcase:'sumo',
+      skin:{ shadeByZoneValue:false, flat:'#6e4a2c', lines:'#c89a54', rim:'#46351f', bg:'#17120d', pb:'#31488f', pr:'#b03220' } },
+    { id:'cosy', name:'Cosy', showcase:'cosy', detail:'wood',
+      skin:{ shadeByZoneValue:false, flat:'#4a3220', lines:'#e8c778', rim:'#2e1f12', bg:'#1a120c', pb:'#3a4a66', pr:'#5e2a22' } },
+    { id:'alien', name:'Alien', showcase:'alien', detail:'alien',
+      skin:{ shadeByZoneValue:false, flat:'#171226', lines:'#8dffe8', rim:'#110d1a', bg:'#04060b', pb:'#3f7ec8', pr:'#b04057' } },
+    { id:'colossus', name:'Colossus', showcase:'colossus',
+      skin:{ shadeByZoneValue:false, flat:'#b49b6d', lines:'#4a4038', rim:'#7e6f54', bg:'#b9a888', pb:'#6c7787', pr:'#8a7060' } },
+    { id:'marble', name:'Marble', showcase:'marble', detail:'marble',
+      skin:{ shadeByZoneValue:false, flat:'#e9e6df', lines:'#17171c', rim:'#1a1a1f', bg:'#0d0e12', pb:'#3b74e8', pr:'#e8483b' } },
   ];
   // Right stick turns the piece at a speed set by how far it is pushed; the triggers do the same
   // from RT/LT with the analog pull as the speed. Both keep the D-pad on the foot and the left
@@ -121,6 +102,12 @@
   let currentPad = null, padButtons = [], padAxisLatch = false, padFocus = 0;
   let chosenFoot = 0, heldLeft = false, heldRight = false, lastActive = -1;
   let textures = null, texturesFor = null, artInstalled = false, lastRumble = -Infinity;
+  // The shared board art (desktop/boards.js), made on first use so the menu opens without baking.
+  let SHOW = null, showMaps = null, showMapsFor = null, detail = null, detailMode = 0;
+  const showcase = () => {
+    if (!SHOW && typeof makeShowcaseBoards === 'function') SHOW = makeShowcaseBoards(THREE, CFG, { size: window.TAU_TEST_BAKE_SIZE });
+    return SHOW;
+  };
   let lastCrossings = 0;
   const cameraGoal = new THREE.Vector3(), targetGoal = new THREE.Vector3();
   const camOffset = new THREE.Vector3(), camSpherical = new THREE.Spherical();
@@ -395,7 +382,49 @@
   // terms; the exotic ones (noir's glass, alien's thin film, colossus' flat-shaded stone) add
   // theirs on top. Terms a finish does not ask for are reset to their neutral value rather than
   // left behind, or switching away from glass would leave the next board's pieces see-through.
+  // The game's piece is one fused mesh (legs and hub bead polygonised together) plus three pins,
+  // sharing one material. The showcase looks want two: Noir's glass bead over glass legs, Marble's
+  // coloured ball over legs that are all but invisible. So a sphere is laid over the apex to carry
+  // the hub's material, while the body keeps the legs'. It is hidden again for the single-material
+  // looks, and the body's original material is restored -- not re-tinted -- so no glass, thin film
+  // or emissive term from a showcase look survives into the next board.
+  function ensureHub(piece, scale) {
+    let hub = piece.userData.hub;
+    if (!hub) {
+      const body = piece.children[0];
+      if (!body.geometry.boundingBox) body.geometry.computeBoundingBox();
+      hub = new THREE.Mesh(new THREE.SphereGeometry(1, 40, 28), body.material);
+      hub.position.y = body.geometry.boundingBox.max.y - CFG.legRadius*1.05;   // the bead's centre
+      hub.castShadow = true; hub.receiveShadow = true;
+      piece.add(hub); piece.userData.hub = hub;
+    }
+    hub.scale.setScalar(CFG.legRadius * scale);
+    return hub;
+  }
+  function applyShowcasePieces(T) {
+    for (const pair of [tripods, htpTripods]) pair.forEach((piece, i) => {
+      const body = piece.children[0], side = i===0 ? 'blue' : 'red';
+      if (!piece.userData.origMat) piece.userData.origMat = body.material;
+      (piece.userData.showMats || []).forEach(m => m.dispose());
+      const mats = T.pieces(side);
+      const hub = ensureHub(piece, T.hubBall || 1.9);
+      body.material = mats.leg; hub.material = mats.hub; hub.visible = true;
+      piece.children.forEach(c => { if (c !== body && c !== hub) c.material = mats.foot || mats.leg; });
+      piece.userData.showMats = [...new Set([mats.leg, mats.hub, mats.foot].filter(Boolean))];
+      piece.userData.mat = mats.leg;
+    });
+  }
+  function restorePieces() {
+    for (const pair of [tripods, htpTripods]) pair.forEach(piece => {
+      const body = piece.children[0];
+      if (piece.userData.origMat) { body.material = piece.userData.origMat; piece.userData.mat = piece.userData.origMat; }
+      if (piece.userData.hub) piece.userData.hub.visible = false;
+      piece.children.forEach(c => { if (c !== body && c !== piece.userData.hub && typeof tripodPinMat !== 'undefined' && tripodPinMat) c.material = tripodPinMat; });
+      (piece.userData.showMats || []).forEach(m => m.dispose()); piece.userData.showMats = null;
+    });
+  }
   function applyPieceMaterials(fin) {
+    restorePieces();
     const p=fin.piece;
     for(const pair of [tripods,htpTripods]) pair.forEach((piece,i)=>{
       const mat=piece.userData.mat, side=i===0?'blue':'red';
@@ -431,19 +460,49 @@
   function applyMaterials() {
     if(!renderer || !boardTop) return;
     const fin=finish();
-    // Rebuild the surface only when the chosen finish actually changed — the texture is a 1536²
-    // procedural bake, far too expensive to redo on every theme refresh.
-    if(!textures || texturesFor!==fin.id){
-      const old=textures;
-      textures=woodMaps(fin.wood); texturesFor=fin.id;
-      if(old){ old.map.dispose(); old.bump.dispose(); }
+    const bm = boardTop.material;
+    const SH = fin.showcase ? showcase() : null;
+    const T = SH && SH.THEMES[fin.showcase];
+    // The per-pixel surface pass lives on the board material once, whichever look is showing; its
+    // mode uniform selects grain / marble / membrane / nothing per frame (see pollInput).
+    if (SH && !detail) detail = SH.installDetailShader(bm);
+    if (T) {
+      // A showcase look: its own bake, three or four maps, as the showcase page applies them. Baked
+      // once per look and disposed on the way out -- each is a full-size canvas set.
+      if (showMapsFor !== fin.id) {
+        if (showMaps) for (const k in showMaps) showMaps[k] && showMaps[k].dispose();
+        const maps = T.paint();
+        showMaps = { map: SH.tex(maps.albedo), roughnessMap: SH.texL(maps.rough), bumpMap: SH.texL(maps.bump),
+                     emissiveMap: maps.emissive ? SH.tex(maps.emissive) : null };
+        showMapsFor = fin.id;
+      }
+      if (bm.map && bm.map !== showMaps.map && (!textures || bm.map !== textures.map)) bm.map.dispose();
+      bm.map = showMaps.map; bm.roughnessMap = showMaps.roughnessMap; bm.bumpMap = showMaps.bumpMap;
+      bm.emissiveMap = showMaps.emissiveMap;
+      if (showMaps.emissiveMap) { bm.emissive.set(0xffffff); bm.emissiveIntensity = (T.emissiveIntensity || 1) * (T.gameEmissive || 1); }
+      else { bm.emissive.set(0x000000); bm.emissiveIntensity = 1; }
+      bm.roughness = 1; bm.metalness = 0.03; bm.bumpScale = T.bumpScale; bm.envMapIntensity = T.boardEnv; bm.needsUpdate = true;
+      boardRim.material.color.set(T.band.color); boardRim.material.metalness = T.band.metal; boardRim.material.roughness = T.band.rough;
+      applyShowcasePieces(T);
+    } else {
+      // Rebuild the surface only when the chosen finish actually changed — the texture is a 1536²
+      // procedural bake, far too expensive to redo on every theme refresh.
+      if(!textures || texturesFor!==fin.id){
+        const old=textures;
+        textures=woodMaps(fin.wood); texturesFor=fin.id;
+        if(old){ old.map.dispose(); old.bump.dispose(); }
+      }
+      if(bm.map && bm.map!==textures.map && (!showMaps || bm.map!==showMaps.map)) bm.map.dispose();
+      bm.map=textures.map; bm.bumpMap=textures.bump; bm.roughnessMap=null; bm.emissiveMap=null;
+      bm.emissive.set(0x000000); bm.emissiveIntensity=1;
+      bm.bumpScale=.12; bm.roughness=.47; bm.metalness=.03; bm.envMapIntensity=1; bm.needsUpdate=true;
+      boardRim.material.color.set(fin.wood.rim).convertSRGBToLinear();
+      boardRim.material.metalness=.68; boardRim.material.roughness=.34;
+      applyPieceMaterials(fin);
     }
-    if(boardTop.material.map && boardTop.material.map!==textures.map) boardTop.material.map.dispose();
-    boardTop.material.map=textures.map; boardTop.material.bumpMap=textures.bump;
-    boardTop.material.bumpScale=.12; boardTop.material.roughness=.47; boardTop.material.metalness=.03; boardTop.material.needsUpdate=true;
-    boardRim.material.color.set(fin.wood.rim).convertSRGBToLinear();
-    boardRim.material.metalness=.68; boardRim.material.roughness=.34;
-    applyPieceMaterials(fin);
+    detailMode = fin.detail==='wood' ? 1 : fin.detail==='marble' ? 2 : fin.detail==='alien' ? 3 : 0;
+    const bg = T ? '#' + new THREE.Color(T.bg).getHexString() : fin.wood.bg;
+    const trim = T ? T.slabColor : fin.wood.trim;
     if(!artInstalled){
       // This trim sits below the playing surface: it is never a new boundary or a support.
       boardTrim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.027,CFG.edgeU*1.032,.5,128),
@@ -453,14 +512,14 @@
       camera.fov=38; camera.clearViewOffset(); camera.updateProjectionMatrix();
       artInstalled=true;
     }
-    if(boardTrim) boardTrim.material.color.set(fin.wood.trim).convertSRGBToLinear();
-    scene.background=new THREE.Color(fin.wood.bg);
-    root.style.setProperty('--desk-bg', fin.wood.bg);
+    if(boardTrim) { boardTrim.material.color.set(trim); if (!T) boardTrim.material.color.convertSRGBToLinear(); }
+    scene.background=new THREE.Color(bg);
+    root.style.setProperty('--desk-bg', bg);
     // Colossus plays in daylight: its backdrop is pale sand, and the HUD's light-on-dark text
     // disappeared into it. The flat board already flips its highlight cues by the surface's real
     // luminance (boardIsPale in index.html) rather than by which board it is; the chrome floating
     // over the 3D view now answers the same question about the ROOM behind it.
-    root.classList.toggle('desktop-pale-room', isPale(fin.wood.bg));
+    root.classList.toggle('desktop-pale-room', isPale(bg));
     configureQuality();
   }
   // This is the MENU's own ambient layout only. A real match is never sized here: it returns
@@ -620,6 +679,12 @@
   // hand, and it is the one thing playtesting rejected outright. Speed on an axis is the same
   // control the triggers give, so the two schemes now differ only in which fingers hold it.
   function pollInput(dt) {
+    if (detail && detail.uniforms) {
+      const u = detail.uniforms, now = performance.now()/1000;
+      u.uDetail.value = detailMode === 3 ? 0 : detailMode;   // the membrane is its own pass below
+      u.uDetailTime.value = now;
+      u.uAlien.value = detailMode === 3 ? 1 : 0; u.uAlienTime.value = now;
+    }
     const pads=navigator.getGamepads?.() || [];
     currentPad=Array.from(pads).find(p=>p?.connected && p.mapping==='standard') || null;
     if(lastActive!==G.active){lastActive=G.active;chosenFoot=0;heldLeft=heldRight=false;lastCrossings=0;}
@@ -723,6 +788,7 @@
     get board(){return settings.board;},
     set board(v){ if(BOARD_FINISHES.some(b=>b.id===v)){ settings.board=v; saveSettings(); applyMaterials(); applyTheme(); render(); } },
     get boards(){return BOARD_FINISHES.map(b=>({id:b.id,name:b.name}));},
+    debugDetailMode(){ return detailMode; },
     resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult,
     // The corner layout's camera goal for the current window (see desiredPose).
     cornerCameraPose(w3, h3){ if(!renderer||!camera) return null;

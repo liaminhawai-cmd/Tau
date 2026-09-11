@@ -24,6 +24,9 @@ async function game(query = '?steam=1&premium=1') {
     pretendToBeVisual:true,
     beforeParse(w) {
       w.innerWidth=1280; w.innerHeight=800;
+      // The showcase boards bake 2048^2 procedural maps; on the CPU canvas stub that is pure cost
+      // with nothing to look at, so the desktop asks for tiny bakes when this flag is present.
+      w.TAU_TEST_BAKE_SIZE=128;
       w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
       w.fetch=async()=>{throw new Error('Offline test');};
       w.TextEncoder=TextEncoder; w.TextDecoder=TextDecoder;
