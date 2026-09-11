@@ -630,7 +630,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 202</div>
+<div id="buildTag">build 203</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -5132,7 +5132,7 @@ function ladderPlanCorner(idx, w, o){
             }
         }
         // the crossed foot: the moving foot that came in toward the centre (the other is the front)
-        const f0=me.feet(); ladderRestore(pick.snap); const f1=me.feet();
+        ladderRestore(snap0); const f0=me.feet(); ladderRestore(pick.snap); const f1=me.feet();
         const crossFoot=[0,1,2].filter(i=>i!==pick.pivotIdx).sort((a,b)=>(Math.hypot(f1[a].x,f1[a].y)-Math.hypot(f0[a].x,f0[a].y))-(Math.hypot(f1[b].x,f1[b].y)-Math.hypot(f0[b].x,f0[b].y)))[0];
         ladderRestore(snap0); G.active=origActive;
         G.cornerBook[idx]={ at:1, pivotIdx:pick.pivotIdx, dir:pick.dir, crossFoot, firstDeg:pick.targetRad*180/Math.PI };
