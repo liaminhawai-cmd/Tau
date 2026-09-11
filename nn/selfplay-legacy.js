@@ -222,11 +222,10 @@ function main() {
   // comes from brain combinations (see --temperature above); a repeated combination is a repeated
   // game, which the league's scheduler refuses to draw and self-play's rotating pool makes rare.
   const openingPlies = +arg('openingPlies', 0);
-  // Focus rungs (AI_LADDER trainerFocus, see ladder-sampling.js) exist to teach the nets a specific
-  // opening -- Corner L12's corner cross from the start position. A game against one therefore
-  // starts from the TRUE start: no random opening plies, no seeded or random pose, or the line the
-  // rung is there to play would never appear. The net's own noise keeps those games from repeating.
-  const focusLevels = new Set(require('./ladder-sampling.js').focusRungs().map(f => f.level));
+  // --cornerOpening F: this fraction of net-vs-ladder games has the ladder rung open with the
+  // corner cross (index.html's ladderPlanCorner: two set moves, then the rung is itself) -- the line
+  // the nets were measured soft against, taught from every rung rather than a rung of its own.
+  const cornerOpeningFrac = Math.max(0, Math.min(1, +arg('cornerOpening', 0.5)));
   // This fraction of games starts from a fully random LEGAL pose (see opening.js's
   // randomStartPose) instead of the canonical start -- coverage far outside anything a real
   // trajectory reaches, e.g. a piece hard against the rim with the opponent clear across the
@@ -480,7 +479,10 @@ function main() {
     net = MLP.fromJSON(JSON.parse(fs.readFileSync(modelPath, 'utf8')));
     if (!TAG) console.log('sparring with model:', modelPath);
   }
-  const ladderBrain = lvl => idx => eng.ladderPlanFor(lvl - 1, idx);
+  const ladderBrain = (lvl, corner) => idx => {
+    if (corner) { const G = eng.getG(); (G.cornerOpening || (G.cornerOpening = [false, false]))[idx] = true; }
+    return eng.ladderPlanFor(lvl - 1, idx);
+  };
   const pick = a => a[Math.floor(Math.random()*a.length)];
 
   // Every candidate net, loaded ONCE up front -- these are ~350KB+ JSON files, and a batch plays
@@ -600,9 +602,9 @@ function main() {
       tag = nnTagAt(depthA, chosenA, usePA) + ' vs ' + nnTagAt(depthB, chosenB, usePB);
       idA = nnIdAt(depthA, chosenA, usePA); idB = nnIdAt(depthB, chosenB, usePB);
     } else if (kind === 'nnladder') {
-      const lvl = useDeep ? pick(deep) : pick(levels);
-      if (Math.random() < 0.5) { brainA = nnBrainAt(depthA, chosenA, usePA); brainB = ladderBrain(lvl); tag = nnTagAt(depthA, chosenA, usePA) + ' vs L' + lvl; idA = nnIdAt(depthA, chosenA, usePA); idB = `L${lvl}`; }
-      else { brainA = ladderBrain(lvl); brainB = nnBrainAt(depthA, chosenA, usePA); tag = 'L' + lvl + ' vs ' + nnTagAt(depthA, chosenA, usePA); idA = `L${lvl}`; idB = nnIdAt(depthA, chosenA, usePA); }
+      const lvl = useDeep ? pick(deep) : pick(levels), corner = Math.random() < cornerOpeningFrac, ltag = 'L' + lvl + (corner ? '+corner' : '');
+      if (Math.random() < 0.5) { brainA = nnBrainAt(depthA, chosenA, usePA); brainB = ladderBrain(lvl, corner); tag = nnTagAt(depthA, chosenA, usePA) + ' vs ' + ltag; idA = nnIdAt(depthA, chosenA, usePA); idB = `L${lvl}`; }
+      else { brainA = ladderBrain(lvl, corner); brainB = nnBrainAt(depthA, chosenA, usePA); tag = ltag + ' vs ' + nnTagAt(depthA, chosenA, usePA); idA = `L${lvl}`; idB = nnIdAt(depthA, chosenA, usePA); }
     } else {
       // Each SIDE independently rolls whether it draws from the deep pool during a garnish slot,
       // rather than both sides being forced into the same pool -- the old code could only ever
@@ -614,16 +616,14 @@ function main() {
       brainA = ladderBrain(la); brainB = ladderBrain(lb); tag = 'L' + la + ' vs L' + lb;
       idA = `L${la}`; idB = `L${lb}`;
     }
-    const focusGame = kind === 'nnladder' && (focusLevels.has(+String(idA).slice(1)) || focusLevels.has(+String(idB).slice(1)));
-    const seedPose = !coverageGame && !focusGame && seedPool.length && Math.random() < seedFrom ? pick(seedPool) : null;
+    const seedPose = !coverageGame && seedPool.length && Math.random() < seedFrom ? pick(seedPool) : null;
     if (seedPose) tag = 'seeded ' + tag;
     // seedPose wins if both roll -- a stored decision point already IS a real, reachable
     // position, so there's no reason to override it with an unconstrained random one.
-    const randomStart = !coverageGame && !focusGame && !seedPose && Math.random() < randomStartFrac;
+    const randomStart = !coverageGame && !seedPose && Math.random() < randomStartFrac;
     if (randomStart) tag = 'random-start ' + tag;
-    if (focusGame) tag = 'true-start ' + tag;
     const { rows, winner, plies, capped, repeated, adjudicated } =
-      playGame(eng, brainA, brainB, maxPlies, focusGame ? 0 : openingPlies, seedPose, randomStart, { repeatGuard });
+      playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomStart, { repeatGuard });
     // `g` marks which game a position came from. Without it train.js can only hold out random
     // ROWS, and consecutive positions in one game are near-identical -- so the same game lands on
     // both sides of the split and the val set stops being held-out data at all. Measured

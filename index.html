@@ -4621,27 +4621,12 @@ const AI_LADDER = [
     // L11: L10 plus the triangle-angle term (keep my hub between the board centre and theirs).
     // Beat plain L10 24/36 (67%) head-to-head; same search cost, the extra term is arithmetic.
     { kind:'p3', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },
-    // L12: L11 that opens with the corner cross. Same eval, same search, same cost once the opening
-    // is over; its first two moves are Liam's opening -- pin a back foot and swing the other forward
-    // as far as the rules allow (it crosses the inner ring), then pin the same foot and swing again
-    // so that foot crosses the side arc and stops a few degrees past it -- after which it is L11,
-    // which then most likely pins the crossed foot and swings back so the pinned foot rounds the
-    // inner-ring corner: two lines for one crossing (crossingSubstep's corner merge). Either back
-    // foot: blue by coin, red by L11's look at both. Both stops are solved from the rules engine at
-    // the board. See ladderPlanCorner. L11 takes that line only when its eval happens to favour it; the nets were
-    // measured soft against it precisely because nothing in training plays it on purpose, so this
-    // rung exists to play it every game. trainerRung: a sparring/rating opponent, not a player
-    // level -- LADDER_N keeps it out of the shipped ladder and Ranked. (This slot was the retired
-    // opponent-model search experiment, kept only so old arena logs would replay; that replay was
-    // never wired up, and the name was wanted.)
-    // trainerFocus: the trainer's ladder-sampling gives this rung 75% of all ladder-game tickets
-    // and lifts the ladder class to 25% of self-play seats (see nn/ladder-sampling.js), and the
-    // league's anchor slice leans on it too, so the nets meet the corner cross a lot -- for as
-    // long as this stays here -- rather than as one rung among three. Dial it back to
-    // {share:.6, seatShare:.15} or drop it once the nets stop losing to the line.
-    { kind:'corner', label:'Corner L12', trainerRung:true, trainerFocus:{share:.75, seatShare:.25},
-      w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2},
-      o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28, openPlies:10} },
+    // L12 slot: retired. It was the opponent-model search experiment, then for a day the "Corner
+    // L12" rung that opened with the corner cross; that opening is now a per-game wrapper any rung
+    // can wear (G.cornerOpening, see ladderPlanFor / ladderPlanCorner), so the trainer teaches the
+    // nets the line from every rung rather than one. Kept as a slot so old arena logs still replay.
+    { kind:'p3', experimental:'retired-corner', label:'Retired L12',
+      w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },
     // L13: L11's eval, L11's candidates, L11's pessimistic minimax -- but the opponent's replies
     // come from ladderOppReplies (full swing + park stops + the max-shove stop) instead of six
     // swing-to-the-jam endpoints. The sweep those replies come from was already being paid for, so
@@ -5000,25 +4985,28 @@ function ladderPlan13(idx, w, o){
     ladderRestore(snap0); G.active=origActive; return best;
 }
 // manual sweep returning the natural limit + where the first crossing gets billed (for L1/random)
-// ---------- L12: the corner-cross opening ----------
+// ---------- The corner-cross opening (a wrapper any ladder rung can wear) ----------
 // A printed corner is where a ring meets a side arc, and rounding one is a single crossing over two
 // lines (crossingSubstep's corner merge). Humans open with it, as Liam plays and demonstrated
-// (replay decoded 2026-09-11). Only the first two moves are set in stone:
+// (replay decoded 2026-09-11). The trainer sets G.cornerOpening[idx] for half of its ladder games
+// and the rung then plays the opening's two moves before being itself (ladderPlanFor); the nets
+// were measured soft against the line because nothing in training played it on purpose, and this
+// way they meet it from every rung, in half of every rung's games. Only two moves are set in stone:
 //   1. pin a back foot and swing the other back foot forward as far as the rules allow -- it
 //      crosses the inner ring and the swing is refused just short of the side arc;
 //   2. pin the same back foot again, same way: that foot crosses the side arc and stops a few
 //      degrees past it -- at the angle where it sits exactly a foot-to-foot length from the ring's
 //      other corner, so that the swing back about it carries the pinned foot round that corner.
 // The third move is the situation's: most likely pin the crossed foot and swing back through the
-// corner, stopping where L11's eval likes -- so from here the rung simply IS L11, which finds that
-// swing on its own merits. Which back foot: blue flips a coin (the board is symmetric); red gets
-// L11's depth-3 look at both and takes the better, given what blue just did.
+// corner, stopping where the rung's own eval likes -- from here the rung is simply itself. Which
+// back foot: blue flips a coin (the board is symmetric); red gets a depth-3 look at both with the
+// rung's eval (L11's for rungs without one) and takes the better, given what blue just did.
 //
 // No angles are stored: both stops are solved at the board from the rules engine (the refusal
 // point, then ladderCornerSetupStops' |Q-P| = L angle), so both colours and both sides come out
 // of the same code and the second move still fits a start the opponent has disturbed. The rung
-// remembers only the pinned foot and the direction (G.cornerBook[idx]); if its piece is not where
-// move 1 left it, or move 2 no longer works from there, it is L11 from that turn on.
+// remembers only the pinned foot and the direction (G.cornerBook[idx]); if move 2 no longer works
+// from where the opponent left it, the rung is itself from that turn on.
 const CORNER_L = () => CFG.footR*Math.sqrt(3);   // hub-to-foot 23.095 -> feet 40.0 apart
 // Swing (pv,dir) to `rad` the way __applyPlan will, so a verified stop is the stop the game plays.
 function ladderSwingTo(idx, pv, dir, rad){
@@ -5063,14 +5051,17 @@ function ladderCornerSetupStops(idx, pv, d){
     ladderRestore(snap0);
     return stops;
 }
-function ladderPlanCorner(idx, w, o){
+// L11's eval, used for the red-side choice between the two back feet when the rung wearing the
+// opening has no positional eval of its own (L1, L2, the noise rungs).
+const CORNER_CHOICE_W = {margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2};
+function ladderPlanCorner(idx, w, o, fallback){
     const openPlies = o.openPlies==null ? 10 : o.openPlies;
     if (!G.cornerBook) G.cornerBook=[null,null];
     if (!G.cornerDone) G.cornerDone=[false,false];
-    if (G.cornerDone[idx] || (G.plies||0) >= openPlies){ G.cornerBook[idx]=null; return ladderPlan3(idx, w, o); }
+    if (G.cornerDone[idx] || (G.plies||0) >= openPlies){ G.cornerBook[idx]=null; return fallback(); }
     const origActive=G.active, snap0=takeSnap(), me=G.pieces[idx];
     const hubR=()=>Math.hypot(me.x, me.y), hubR0=hubR();
-    const done=()=>{ G.cornerDone[idx]=true; G.cornerBook[idx]=null; ladderRestore(snap0); G.active=origActive; return ladderPlan3(idx, w, o); };
+    const done=()=>{ G.cornerDone[idx]=true; G.cornerBook[idx]=null; ladderRestore(snap0); G.active=origActive; return fallback(); };
     // Sweep (pv,d) as far as the rules allow. Returns the stop, whether the hub moved toward the
     // centre, and the pose there; null if the swing is nothing or throws the piece off.
     const sweepMax=(pv,d)=>{
@@ -5180,13 +5171,19 @@ function ladderRandomPlan(idx){
 // returns { pivotIdx, dir, targetRad } for the ladder brain at `levelIdx`, whoever is active (idx)
 function ladderPlanFor(levelIdx, idx){
     const def=AI_LADDER[levelIdx]; if (!def) return null;
+    // The corner opening, when this game asked for it (G.cornerOpening[idx], set by the trainer
+    // for half its ladder games): the rung's first two moves are the set opening, then it is itself.
+    if (G.cornerOpening && G.cornerOpening[idx] && !(G.cornerDone && G.cornerDone[idx]))
+        return ladderPlanCorner(idx, def.w && def.w.zone ? def.w : CORNER_CHOICE_W, def.o||{}, () => ladderPlanRung(def, idx));
+    return ladderPlanRung(def, idx);
+}
+function ladderPlanRung(def, idx){
     if (def.noise && Math.random()<def.noise) return ladderRandomPlan(idx);
     if (def.kind==='l1') return ladderL1Plan(idx);
     if (def.kind==='builtin') return def.brain==='master' ? aiChoosePlanMaster(idx, def.mw) : ladderDumbPlan(idx);
     if (def.kind==='p3') return ladderPlan3(idx, def.w, def.o);
     if (def.kind==='opp') return ladderPlanOppModel(idx, def.w, def.o);
     if (def.kind==='opp2') return ladderPlan13(idx, def.w, def.o);
-    if (def.kind==='corner') return ladderPlanCorner(idx, def.w, def.o);
     return ladderSampledPlan(idx, def.w, def.o);
 }
 
@@ -10214,12 +10211,6 @@ function labUpdateBtn() {
             const opt = document.createElement('option'); opt.value = i; opt.textContent = 'Level ' + (i + 1);
             sel.appendChild(opt);
         }
-        // Trainer-only rungs (sparring opponents the player ladder never shows) are watchable here.
-        AI_LADDER.forEach((def, i) => {
-            if (!def || !def.trainerRung || i < LADDER_N) return;
-            const opt = document.createElement('option'); opt.value = i; opt.textContent = (def.label || 'Level ' + (i + 1)) + ' (trainer)';
-            sel.appendChild(opt);
-        });
         const customOpt = document.createElement('option'); customOpt.value = 'custom'; customOpt.textContent = 'Custom model…';
         sel.appendChild(customOpt);
         sel.value = labBrains[side].level;

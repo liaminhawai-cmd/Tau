@@ -15,10 +15,6 @@ const workers=Math.max(1,+arg('workers',Math.max(1,Math.min(os.cpus().length-1,1
 const budgetHours=Math.max(0,+arg('budgetHours',0));
 const targetGames=Math.max(2,+arg('targetGames',8)); // physical games, always even in practice
 const openingPlies=Math.max(0,+arg('openingPlies',0));   // true start: see pairScore's played-pair rule
-// Focus rungs (AI_LADDER trainerFocus): the anchor slice is larger while one exists and the draw
-// inside it leans on the focus rung, so the nets meet it a lot in the rated stream too.
-const focusLevels=new Set((()=>{try{return require('./ladder-sampling.js').focusRungs().map(f=>f.level);}catch(_){return[];}})());
-const isFocus=p=>p.kind==='ladder'&&focusLevels.has(+p.level);
 const bootstrapN=Math.max(40,+arg('bootstrap',100));
 const outPath=arg('out',path.join(dir,'elo-results.json'));
 const summaryPath=arg('summary',require('./machine-id.js').summaryFile(dir));
@@ -108,10 +104,10 @@ function pairScore(a,b,elo,g,pair,fr){
 // by evidence need (uncertain and stale ladders surface first, freshly-played ones fade), and the
 // opponent is drawn by the normal pair equation minus its cost term -- no seat lists, no
 // thresholds, just a reserved slice of probability.
-const ANCHOR_MATCH_P=focusLevels.size?0.35:0.10;
+const ANCHOR_MATCH_P=0.10;
 function pickAnchor(elo,g,pair,fr,free){
   const ladders=free.filter(p=>p.kind==='ladder');if(!ladders.length)return null;
-  const l=weightedDraw(ladders.map(x=>[(isFocus(x)?4:1)*(.30+.70*(.55*uncertainty(x,g)+.45*freshness(x,g))),x]));if(!l)return null;
+  const l=weightedDraw(ladders.map(x=>[.30+.70*(.55*uncertainty(x,g)+.45*freshness(x,g)),x]));if(!l)return null;
   const pool=free.filter(p=>p.kind==='nn');if(!pool.length)return null;
   const scored=pool.map(o=>[pairScore(l,o,elo,g,pair,fr)*Math.sqrt(costMs(l)+costMs(o)),o]).filter(x=>x[0]>0);
   const o=weightedDraw(scored);return o?[l,o]:null;

@@ -15,36 +15,11 @@ function state(dir){
   try{return JSON.parse(fs.readFileSync(path.join(dir,'models','.evolution-roster.json'),'utf8'));}
   catch(_){return{latest:{},ladderRatings:{}};}
 }
-function ladderDefs(){
-  try{return require('./engine.js').createEngine().AI_LADDER;}catch(_){return null;}
-}
 function productionTop(top=3){
-  const defs=ladderDefs();
-  if(!defs)return [9,10,11].slice(-Math.max(1,top));
-  const prod=defs.map((d,i)=>d&&!d.experimental?i+1:null).filter(Boolean).slice(-Math.max(1,top));
-  // a focus rung (below) is always in the reference set, whatever `top` says
-  for(const f of focusRungs(defs))if(!prod.includes(f.level))prod.push(f.level);
-  return prod.sort((a,b)=>a-b);
-}
-// Rungs the trainer is told to concentrate on: AI_LADDER entries carrying trainerFocus
-// {share, seatShare}. `share` is the fraction of all ladder-game tickets that rung takes (the
-// other rungs split the rest by their strength*need weights as before); `seatShare` lifts the cap
-// on how many self-play seats the ladder class gets at all, so the focus is extra games against
-// that rung, not the same few ladder games re-cut. Corner L12 carries one: the nets were measured
-// soft against the corner-cross opening because nothing in training played it on purpose, and a
-// rung that plays it every game only fills that gap if the nets actually meet it a lot.
-function focusRungs(defs){
-  defs=defs||ladderDefs(); if(!defs)return[];
-  return defs.map((d,i)=>d&&d.trainerFocus?{level:i+1,share:Math.max(0,Math.min(.9,+d.trainerFocus.share||0)),
-    seatShare:Math.max(0,Math.min(.5,+d.trainerFocus.seatShare||0))}:null).filter(Boolean);
-}
-// Re-weight rows so each focus rung holds its share of the total; the rest keep their proportions.
-function applyFocus(rows,focus){
-  const fset=new Map(focus.map(f=>[f.level,f]));
-  const restMass=rows.filter(r=>!fset.has(r.level)).reduce((s,r)=>s+(r.weight>0?r.weight:0),0)||1;
-  const focusShare=Math.min(.95,focus.filter(f=>rows.some(r=>r.level===f.level)).reduce((s,f)=>s+f.share,0));
-  for(const r of rows){const f=fset.get(r.level);if(f)r.weight=restMass*f.share/Math.max(.05,1-focusShare);r.focus=!!f;}
-  return rows;
+  try{
+    const defs=require('./engine.js').createEngine().AI_LADDER;
+    return defs.map((d,i)=>d&&!d.experimental?i+1:null).filter(Boolean).slice(-Math.max(1,top));
+  }catch(_){return [9,10,11].slice(-Math.max(1,top));}
 }
 function tickets(rows,count=30){
   if(!rows.length)return[];
@@ -63,8 +38,10 @@ function tickets(rows,count=30){
 function mixString(m){return `nnnn:${m.nnnn.toFixed(6)},nnladder:${m.nnladder.toFixed(6)},ladder:${m.ladder.toFixed(6)}`;}
 
 function trainerProfile(dir,modelWeights={},opts={}){
-  const focus=focusRungs();
-  const top=Math.max(1,+opts.top||3), maxSeatShare=Math.max(0,Math.min(.5,Math.max(+opts.maxSeatShare||.04,...focus.map(f=>f.seatShare))));
+  // The ladder class holds 15% of self-play seats (it was 4%): half of every ladder game now opens
+  // with the corner cross (selfplay --cornerOpening), which is the line the nets were measured
+  // soft against, so ladder games are teaching material, not just a reference slice.
+  const top=Math.max(1,+opts.top||3), maxSeatShare=Math.max(0,Math.min(.5,+opts.maxSeatShare||.15));
   const refGames=Math.max(1,+opts.refGames||24), floor=Math.max(0,Math.min(.2,+opts.needFloor||.015));
   const s=state(dir),levels=productionTop(top);
   const modelElos=Object.values(s.latest||{}).map(r=>+r.elo).filter(Number.isFinite);
@@ -80,12 +57,10 @@ function trainerProfile(dir,modelWeights={},opts={}){
     const need=r.games>0?Math.max(floor,Math.sqrt(refGames/(refGames+r.games))):1;
     r.strength=strength;r.need=need;r.weight=strength*need;
   }
-  applyFocus(rungRows,focus);
   const modelMass=Object.values(modelWeights||{}).map(Number).filter(x=>Number.isFinite(x)&&x>0).reduce((a,b)=>a+b,0)||1;
   const ladderMass=rungRows.reduce((s,r)=>s+r.weight,0);
   const raw=ladderMass/(modelMass+ladderMass);
-  // a focus rung pins the ladder class at its lifted cap: the point is more games against it
-  const seatShare=focus.length?maxSeatShare:Math.min(maxSeatShare,Math.max(0,raw));
+  const seatShare=Math.min(maxSeatShare,Math.max(0,raw));
   // No ladder-vs-ladder training games: two deterministic brains replay the same game, so those
   // rows are duplicates (and a focus rung plays from the true start, where they would be exact).
   // The seats that draw would have taken go to net-vs-ladder instead.
@@ -94,8 +69,7 @@ function trainerProfile(dir,modelWeights={},opts={}){
 }
 
 function factoryProfile(dir,medals,opts={}){
-  const focus=focusRungs();
-  const top=Math.max(1,+opts.top||3), ladderGameShare=Math.max(0,Math.min(.5,Math.max(+opts.ladderGameShare||.10,...focus.map(f=>f.seatShare))));
+  const top=Math.max(1,+opts.top||3), ladderGameShare=Math.max(0,Math.min(.35,+opts.ladderGameShare||.10));
   const s=state(dir),levels=productionTop(top);
   const medalRows=(medals||[]).map(m=>({...m,elo:Number.isFinite(+m.elo)?+m.elo:null}));
   const rungRows=levels.map(level=>{
@@ -106,11 +80,10 @@ function factoryProfile(dir,medals,opts={}){
   const weightOf=e=>Number.isFinite(e)?Math.exp((e-maxE)/ELO_TEMP):.15;
   const modelWeights={};for(const m of medalRows)modelWeights[m.name]=+weightOf(m.elo).toFixed(6);
   for(const r of rungRows)r.weight=weightOf(r.elo);
-  applyFocus(rungRows,focus);
   // Factory deliberately has NO uncertainty/need loading.  It is exploitation data: strong medals
   // most of the time, a small fixed reference slice whose top rungs are chosen by shared Elo.
   const mix={nnnn:1-ladderGameShare,nnladder:ladderGameShare,ladder:0};
   return{modelWeights,levels:tickets(rungRows,30),rows:rungRows,mix,mixString:mixString(mix)};
 }
 
-module.exports={productionTop,trainerProfile,factoryProfile,focusRungs};
+module.exports={productionTop,trainerProfile,factoryProfile};
