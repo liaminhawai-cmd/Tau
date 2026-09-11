@@ -61,7 +61,7 @@ function faceEstablished(s,id,d){const r=faceReading(s,id);return !!(r&&(+r.game
 function modelScore(s,name){const r=s.latest[name]||{},v=[];if(Number.isFinite(+r.eloHi))v.push(+r.eloHi);for(const f of Object.values(r.faces||{}))if(Number.isFinite(+f.eloHi))v.push(+f.eloHi);if(v.length)return Math.max(...v);const q=[];if(Number.isFinite(+r.elo))q.push(+r.elo);for(const f of Object.values(r.faces||{}))if(Number.isFinite(+f.elo))q.push(+f.elo);return q.length?Math.max(...q):-Infinity;}
 function modelSerial(name){const m=String(name).match(/(\d+)(?!.*\d)/);return m?+m[1]:-1;}
 
-function reconcile(s,entries){ensurePools(s);const available={};for(let d=1;d<=4;d++)available[depthKey(d)]=new Set(entries.flatMap(e=>candidateFaces(e,d)));
+function reconcile(s,entries,protect=new Set()){ensurePools(s);const available={};for(let d=1;d<=4;d++)available[depthKey(d)]=new Set(entries.flatMap(e=>candidateFaces(e,d)));
   for(let d=1;d<=4;d++){const k=depthKey(d),p=s.facePools[k],avail=available[k];p.retired=p.retired||{};p.active=[...new Set((p.active||[]).filter(id=>avail.has(id)&&!elasticRetired(p,id)))];p.trial=null;p.waiting=[];p.deferred={};for(const id of Object.keys(p.retired))if(!avail.has(id))delete p.retired[id];}
   // The mint. Every usable model file no pool has seen becomes a D1 face here -- that is how a fresh
   // clone bootstraps a population, and it is also how the desktop field reached 1067 faces on 2170
@@ -75,6 +75,15 @@ function reconcile(s,entries){ensurePools(s);const available={};for(let d=1;d<=4
   // they sit on disk and take the next free seat. Order is strongest first, then newest, so when a
   // seat opens the freshest checkpoint claims it instead of whichever name readdir reached first.
   const live=activeFaceSet(s),rank=n=>{const v=modelScore(s,n);return Number.isFinite(v)?v:-1e9;},pending=[];
+  // Population members (the mutant and dual rosters run.js is waiting to rate) always hold a seat.
+  // The cull now spares them until PROTECT_GAMES, but every member culled BEFORE that protection
+  // landed stayed culled for good: an elastic-retired face counted as "known", so the model was
+  // never pending again, and the population loop sat on "training none, a slot opens when a member
+  // is retired as confidently weak" for weeks with not one member in the rated field. Reinstate
+  // their retired faces and give each member its D1 seat, ceiling or not -- these six-and-six are
+  // the whole point of the league, and the elastic cull drains the rest toward TARGET_FACES anyway.
+  for(const e of entries){if(!protect.has(e.name))continue;let seated=false;for(let d=1;d<=4;d++){const p=s.facePools[depthKey(d)];for(const id of candidateFaces(e,d)){if(elasticRetired(p,id))delete p.retired[id];if((p.active||[]).includes(id))seated=true;}}
+    if(!seated)for(let d=1;d<=4;d++){const ids=candidateFaces(e,d);if(!ids.length)continue;for(const id of ids){s.facePools[depthKey(d)].active.push(id);live.add(id);}break;}}
   for(const e of entries){let known=false;for(let d=1;d<=4&&!known;d++)for(const id of candidateFaces(e,d))if(live.has(id)||elasticRetired(s.facePools[depthKey(d)],id)){known=true;break;}if(!known)pending.push(e);}
   pending.sort((a,b)=>rank(b.name)-rank(a.name)||modelSerial(b.name)-modelSerial(a.name)||a.name.localeCompare(b.name));
   let admitted=0;for(const e of pending){if(live.size>=ADMIT_CEILING)break;for(let d=1;d<=4;d++){const ids=candidateFaces(e,d);if(!ids.length)continue;for(const id of ids){s.facePools[depthKey(d)].active.push(id);live.add(id);}admitted++;break;}}
@@ -133,7 +142,7 @@ function admitFrontier(s,entries,mc){const q=nextFrontier(s,entries,mc);if(!q.le
     for(const id of c.ids)s.facePools[depthKey(c.depth)].active.push(id);
     out.push(...c.ids);}
   return out;}
-function sync(dir,ladderN=null){const s=loadState(dir),entries=stableModelEntries(dir),present=new Set(entries.map(e=>e.name));for(const e of entries){s.active[e.name]={file:e.file,dual:e.dual,policy:e.policy,shape:e.shape};delete s.retired[e.name];}for(const n of Object.keys(s.active))if(!present.has(n))delete s.active[n];reconcile(s,entries);const prod=productionLadderLevels(ladderN).filter(l=>l>=LEAGUE_MIN_LEVEL),allowed=new Set(prod);if(!Array.isArray(s.ladderActive))s.ladderActive=prod;// Union, not just filter: a rung added to the game (Corner L12) has to enter an EXISTING state's league, or it is never rated -- the filter alone only ever let rungs leave.
+function sync(dir,ladderN=null){const s=loadState(dir),entries=stableModelEntries(dir),present=new Set(entries.map(e=>e.name));for(const e of entries){s.active[e.name]={file:e.file,dual:e.dual,policy:e.policy,shape:e.shape};delete s.retired[e.name];}for(const n of Object.keys(s.active))if(!present.has(n))delete s.active[n];reconcile(s,entries,protectedModels(dir));const prod=productionLadderLevels(ladderN).filter(l=>l>=LEAGUE_MIN_LEVEL),allowed=new Set(prod);if(!Array.isArray(s.ladderActive))s.ladderActive=prod;// Union, not just filter: a rung added to the game (Corner L12) has to enter an EXISTING state's league, or it is never rated -- the filter alone only ever let rungs leave.
 s.ladderActive=[...new Set([...s.ladderActive.filter(x=>allowed.has(x)),...prod])].sort((a,b)=>a-b);saveState(dir,s);return s;}
 function readSummary(file){try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch(_){return{players:{}};}}
 function ingestSummary(dir,file){const s=sync(dir),sum=readSummary(file),groups={},ladder={};for(const [id,r] of Object.entries(sum.players||{})){if(r.kind==='ladder'){if(r.corner)continue;/* the rung's own rating keys the ladder tables; its corner-opening face is rated separately and must not clobber it */ladder[r.level]={games:+r.games||0,elo:Number.isFinite(+r.elo)?+r.elo:null};continue;}if(r.kind!=='nn'||!r.model)continue;const name=path.basename(r.model,'.json');(groups[name]||=[]).push({...r,id});}
@@ -188,7 +197,7 @@ function stochasticCount(x){const n=Math.floor(x);return n+(Math.random()<x-n?1:
 // A crowded field wastes far more measurement on dead weight than a noisy filter costs, the model
 // FILE survives on disk either way, and survivors are re-measured properly as the field thins.
 function cullMinGames(k,population){const full=FACE_MIN_GAMES[k];if(!(population>TARGET_FACES))return full;return Math.max(2,Math.min(full,Math.round(full*TARGET_FACES/population)));}
-function eligibleByDepth(s,population,protect=new Set()){const pop=Number.isFinite(population)?population:activeFaceSet(s).size;const out={D1:[],D2:[],D3:[],D4:[]};for(let d=1;d<=4;d++){const k=depthKey(d),need=cullMinGames(k,pop);for(const id of s.facePools[k].active||[]){const r=faceReading(s,id);if(!r||(+r.games||0)<need||!Number.isFinite(+r.eloHi))continue;const x=splitFaceId(id);if(x&&protect.has(x.name)&&(+r.games||0)<PROTECT_GAMES)continue;out[k].push({id,r,depth:d,key:k});}out[k].sort((a,b)=>+a.r.eloHi-+b.r.eloHi||+a.r.elo-+b.r.elo);}return out;}
+function eligibleByDepth(s,population,protect=new Set()){const pop=Number.isFinite(population)?population:activeFaceSet(s).size;const out={D1:[],D2:[],D3:[],D4:[]};for(let d=1;d<=4;d++){const k=depthKey(d),need=cullMinGames(k,pop);for(const id of s.facePools[k].active||[]){const r=faceReading(s,id);if(!r||(+r.games||0)<need||!Number.isFinite(+r.eloHi))continue;const x=splitFaceId(id);if(x&&protect.has(x.name))continue;/* population members leave through run.js's own retirement, never the elastic cull (a cull would be undone by the next sync anyway) */out[k].push({id,r,depth:d,key:k});}out[k].sort((a,b)=>+a.r.eloHi-+b.r.eloHi||+a.r.elo-+b.r.elo);}return out;}
 // Cull pressure follows MEASURED compute, not assumed depth cost. The rating store keeps an
 // EWMA of ms-per-game for every face it has actually run (elorank-legacy.js), so the old 1:3:9:27
 // becomes an emergent default rather than a constant -- and a policy face that genuinely saves
