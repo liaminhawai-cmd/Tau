@@ -9679,9 +9679,6 @@ const SPLIT_H_LO = 0.22, SPLIT_H_HI = 0.90;   // portrait:  ...of the HEIGHT
 // opposite end of the same control that shrinks it to a dial. A corner board that could only ever be
 // a minimap would just be the old cut-down layout wearing a handle.
 const CORNER_INSET = 26, CORNER_MIN = 130;
-// The flat board's share of the short axis at which the 3D view starts easing back into the
-// opposite corner, so the two trade places rather than one burying the other.
-const CORNER_SWAP_AT = 0.5;
 let cornerView3d = null;   // where the corner layout wants the 3D tile (set by resize, applied below)
 let cornerBottom = CORNER_INSET;   // the flat board's distance from the window's bottom, in that layout
 let cornerSize = 0;   // the flat board's last corner-layout side, in CSS px (set by resize)
@@ -9904,20 +9901,109 @@ function resize() {
         // them the two always cover the whole window: at every point on the drag the screen is one
         // board plus one room, never a small tile marooned in a field of background. (An earlier
         // pass parked it as a 30%-wide corner inset, which left most of a 2000px window empty.)
-        const swap = Math.max(0, Math.min(1, (size/room - CORNER_SWAP_AT) / (0.95 - CORNER_SWAP_AT)));
+        // Where the 3D tile starts is solved from what is actually on screen, not stepped at a
+        // threshold: it moves right by exactly as much as it takes for the dish to clear the flat
+        // board, and not a pixel before. A dial in the corner sits under the dish's empty lower-left
+        // and shifts nothing; a board that would touch the dish pushes it aside by the amount of the
+        // touch. The earlier fixed 50% hand-off had both failure modes -- boards under it
+        // overlapping, boards over it shoving the view further than needed.
+        //
+        // "What is on screen" is measured, not modelled. The dish's projected shape depends on the
+        // camera, and the camera in a match is contested between the desktop's fixed distance and
+        // the game's own aspect-aware fit, settling somewhere that varies with the window (measured:
+        // 193 to 240 units across three sizes). Any closed form built on one rule was wrong by the
+        // other. So: the rim is projected through the live camera, at the aspect the candidate tile
+        // would have, and the offset is bisected on "does any rim point fall inside the board".
+        // That predicate can only go from touching to clear as the tile moves right, so bisection
+        // is sound and the result is monotonic in board size for a settled camera.
+        const W = window.innerWidth, H = window.innerHeight;
+        const r = size/2, cx = CORNER_INSET + r;
+        // The board lifts off the corner as it grows (see cornerBottom below); its centre is needed
+        // here, so the lift is a function of size alone rather than of the offset it feeds into.
+        const lift = Math.max(0, Math.min(1, (size/room - 0.35) / 0.6));
         const clear = CORNER_INSET + size + gap;      // where the board's box ends
-        const left = Math.round(clear * swap);        // 0 while it is a dial, beside the board once grown
-        w3 = Math.max(200, window.innerWidth - left);
-        h3 = window.innerHeight;
+        // Smallest width the 3D tile is allowed to shrink to. Past this the dish would be smaller
+        // than the board it is meant to show off, so overlap is accepted -- "where possible".
+        const minTile = Math.max(240, Math.round(W * 0.30));
+        // Two ways for the 3D view to get out of the way: step RIGHT (tile keeps the full height,
+        // starts beside the board) or step UP (tile keeps the full width, ends above the board).
+        // Landscape windows get the first, portrait ones the second. The board lifts toward the
+        // middle of its column only in the side-by-side case; stacked, it stays on the floor.
+        const minTileW = Math.max(240, Math.round(W * 0.30));
+        const minTileH = Math.max(200, Math.round(H * 0.30));
+        let left = 0, up = 0, bottom = CORNER_INSET;
+        if (camera) {
+            // Project through the pose the camera is heading for, not where it is this frame: the
+            // live camera is mid-ease after every tile change, and a solve that read it fed its own
+            // result back into itself. The goal is a function of the window only (desktop/presentation.js).
+            const probe = camera.clone();
+            const goal = window.tauDesktop && window.tauDesktop.cornerCameraPose && window.tauDesktop.cornerCameraPose();
+            if (goal) { probe.position.copy(goal.position); probe.up.set(0,1,0); probe.lookAt(goal.target); }
+            probe.updateMatrixWorld(true);
+            const RIM = 120, pad = 6;                 // a breath of clearance past the board's own rim stroke
+            const rimPt = new THREE.Vector3();
+            // Does any rim point land inside the board, for a tile of w3 x h3 placed at (L, 0)?
+            const touches = (L, w3Try, h3Try, cyAt) => {
+                probe.aspect = w3Try / h3Try; probe.updateProjectionMatrix();
+                // Two ways to collide, and the first alone is not enough: a board can sit wholly
+                // INSIDE the dish's outline with no rim point anywhere near its edge -- 100% covered,
+                // 0 crossings. So besides "does the rim cross the board", also "is the board's centre
+                // inside the rim" (even-odd crossing count over the projected rim polygon).
+                let crossings = 0, px = 0, py = 0, fx = 0, fy = 0;
+                for (let i = 0; i < RIM; i++) {
+                    const ang = i / RIM * Math.PI * 2;
+                    rimPt.set(Math.cos(ang)*CFG.edgeU, 0, Math.sin(ang)*CFG.edgeU).project(probe);
+                    if (!(rimPt.z < 1)) return false;  // behind the camera / degenerate: not on screen
+                    const sx = L + (rimPt.x*0.5 + 0.5)*w3Try, sy = (-rimPt.y*0.5 + 0.5)*h3Try;
+                    if ((sx-cx)*(sx-cx) + (sy-cyAt)*(sy-cyAt) < (r+pad)*(r+pad)) return true;
+                    if (i === 0) { fx = sx; fy = sy; }
+                    else if ((py > cyAt) !== (sy > cyAt) && cx < px + (cyAt - py) * (sx - px) / (sy - py)) crossings++;
+                    px = sx; py = sy;
+                }
+                if ((py > cyAt) !== (fy > cyAt) && cx < px + (cyAt - py) * (fx - px) / (fy - py)) crossings++;
+                return (crossings & 1) === 1;         // odd = the board's centre is inside the dish
+            };
+            // Bisect the smallest offset that clears; `hi` is the most the tile may give up.
+            const solve = (hi, f) => {
+                if (!f(0)) return 0;
+                if (f(hi)) return hi;                 // cannot clear without shrinking past the floor
+                let lo = 0, hiC = hi;
+                for (let n = 0; n < 14; n++) { const mid = (lo+hiC)/2; if (f(mid)) lo = mid; else hiC = mid; }
+                return Math.round(hiC);
+            };
+            // Which way the view steps is the WINDOW's call, made once: a window taller than it is
+            // wide stacks (view above, board on the floor); anything else goes side by side. An
+            // earlier version chose per size by whichever left the dish more room, which was cleverer
+            // and worse -- the answer flipped mid-drag and the whole layout jumped with it. One rule,
+            // one candidate, so the offset can only ever move one way as the board grows.
+            if (W < H) {
+                const cyFloor = H - CORNER_INSET - r;    // stacked: board stays on the floor
+                up = solve(Math.max(0, H - minTileH), y => touches(0, W, H - y, cyFloor));
+                bottom = CORNER_INSET;
+            } else {
+                const liftedBottom = CORNER_INSET + ((H - size)/2 - CORNER_INSET) * lift;   // side: board lifts
+                const cyLifted = H - liftedBottom - r;
+                left = solve(Math.max(0, W - minTileW), x => touches(x, W - x, H, cyLifted));
+                bottom = liftedBottom;
+            }
+        }
+        const swap = up ? (clear > 0 ? Math.min(1, up / (size + CORNER_INSET + gap)) : 0)
+                        : (clear > 0 ? Math.min(1, left / clear) : 0);
+        w3 = Math.max(200, W - left);
+        h3 = Math.max(200, H - up);
         // As it stops being a corner dial it also stops sitting in the corner: the board rises to the
         // middle of its own column, so the layout reads as two columns rather than a board that has
         // fallen into one corner with a void over it. At the far end the two agree anyway (a board
         // that fills the height is centred and inset at once), so this only bites through the middle.
-        cornerBottom = Math.round(CORNER_INSET + ((window.innerHeight - size)/2 - CORNER_INSET) * swap);
+        cornerBottom = Math.round(bottom);
         // The dividing edge is drawn only once the two really are side by side. Part-way through the
         // hand-off the board still overhangs the 3D tile, and an edge there is a line through open
         // backdrop that lines up with nothing.
-        cornerView3d = { left, top: 0, apart: left >= CORNER_INSET + size };
+        // "Apart" = the two no longer share any column (side by side) or any row (stacked); only
+        // then is a dividing edge drawn, and on the side that actually divides them.
+        const apartSide  = left >= CORNER_INSET + size;
+        const apartAbove = up > 0 && (H - up) <= (H - bottom - size);
+        cornerView3d = { left, top: 0, apart: apartSide || apartAbove, above: apartAbove };
     } else if (wide) {
         const totalW = availW - gap;
         const share = SPLIT_W_LO + (SPLIT_W_HI - SPLIT_W_LO) * effectiveSplit();
@@ -9942,11 +10028,12 @@ function resize() {
         cv3.style.left = cornerView3d.left+'px'; cv3.style.top = cornerView3d.top+'px';
         cv3.style.right = 'auto'; cv3.style.bottom = 'auto';
         canvas.style.bottom = cornerBottom+'px';
-        document.getElementById('views').classList.toggle('view3dInset', cornerView3d.apart);
+        document.getElementById('views').classList.toggle('view3dInset', cornerView3d.apart && !cornerView3d.above);
+        document.getElementById('views').classList.toggle('view3dAbove', cornerView3d.above);
     } else {
         cv3.style.left = cv3.style.top = cv3.style.right = cv3.style.bottom = '';
         canvas.style.bottom = '';
-        document.getElementById('views').classList.remove('view3dInset');
+        document.getElementById('views').classList.remove('view3dInset', 'view3dAbove');
     }
 
     if (renderer){

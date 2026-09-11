@@ -489,25 +489,33 @@
     render();
     return true;
   }
-  function updateCamera(dt, falling=false) {
-    if(!renderer || htp3DActive) return false;
-    camera.clearViewOffset();
-    if(camDragging) return true;
-    if(inMatch() && camManualSet && !falling) return true;
-    const menu=!inMatch(), ratio=Math.max(.5,camera.aspect);
-    // KNOWN GAP: this distance is not fitted to the tile, so a full-width 3D view leaves noticeable
-    // dead headroom above the board and a narrow column crops it. Fitting it here does NOT work on
-    // its own — measured, a forced distance of 400 settles at ~320, because a second system is
-    // lerping the same camera every frame and the two split the difference. Fixing the framing means
-    // resolving that ownership first, not adding a third opinion.
+  // The pose the camera is easing toward. Split out of updateCamera so the corner layout can ask
+  // for it directly: the overlap solve there projects the dish through THIS pose, not the live
+  // camera, because the live one is mid-ease for a few hundred ms after every tile change and a
+  // solve that read it re-triggered itself (measured: the view flip-flopping between stepping up
+  // and stepping right as the board grew). In the corner layout the pose is a function of the
+  // WINDOW alone -- never the tile -- so the only thing a narrower tile does is crop. That is what
+  // makes the solve exact: for a vertical-fov camera the dish's pixel size depends on tile height
+  // and distance only, and neither now depends on what the solve decides.
+  function desiredPose(falling, outPos, outTarget) {
+    const menu=!inMatch();
+    const corner = typeof cornerLayoutActive === 'function' && cornerLayoutActive();
+    const ratio = Math.max(.5, corner ? innerWidth/innerHeight : camera.aspect);
     let distance=Math.max(menu?222:205,148/ratio), tx=0,ty=4,tz=0;
     const yaw=menu && !settings.reducedMotion ? .18+Math.sin(performance.now()*.000055)*.045 : 0;
     if(falling && !settings.reducedMotion && G.winner!=null){
       const p=tripods[fall.idx].position;
       tx=Math.max(-24,Math.min(24,p.x*.25)); tz=Math.max(-24,Math.min(24,p.z*.25)); distance+=18;
     }
-    targetGoal.set(tx,ty,tz);
-    cameraGoal.set(tx+Math.sin(yaw)*distance*.72,ty+distance*.69,tz+Math.cos(yaw)*distance*.72);
+    outTarget.set(tx,ty,tz);
+    outPos.set(tx+Math.sin(yaw)*distance*.72,ty+distance*.69,tz+Math.cos(yaw)*distance*.72);
+  }
+  function updateCamera(dt, falling=false) {
+    if(!renderer || htp3DActive) return false;
+    camera.clearViewOffset();
+    if(camDragging) return true;
+    if(inMatch() && camManualSet && !falling) return true;
+    desiredPose(falling, cameraGoal, targetGoal);
     const blend=settings.reducedMotion?1:1-Math.exp(-dt*3.2);
     camera.position.lerp(cameraGoal,blend); controls.target.lerp(targetGoal,blend);
     return true;
@@ -691,6 +699,9 @@
     set board(v){ if(BOARD_FINISHES.some(b=>b.id===v)){ settings.board=v; saveSettings(); applyMaterials(); applyTheme(); render(); } },
     get boards(){return BOARD_FINISHES.map(b=>({id:b.id,name:b.name}));},
     resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult,
+    // The corner layout's camera goal for the current window (see desiredPose).
+    cornerCameraPose(){ if(!renderer||!camera) return null;
+      const pos=new THREE.Vector3(), tgt=new THREE.Vector3(); desiredPose(false,pos,tgt); return {position:pos,target:tgt}; },
     untimedLocal:()=>ownMatch&&!vsAI&&!onlineMatch,
     // The corner layout keys off flags (#game's display, body.ingame) that the start sequence sets
     // across several steps, so the first resize can still be reading the menu's world. Settle it on

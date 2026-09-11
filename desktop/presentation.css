@@ -136,3 +136,6 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .desktop-controls-row kbd { justify-self:start; font:12px/1.5 "Segoe UI",system-ui,sans-serif; color:var(--paper);
   border:1px solid var(--edge); border-radius:4px; padding:3px 7px; white-space:nowrap; background:#0000003d; }
 .desktop-controls-row span { color:var(--muted); font-size:14px; }
+/* Stacked orientation (a window taller than it is wide): the 3D view stands ABOVE the flat board,
+   so the one dividing edge is along its bottom, not its left. */
+.tau-desktop body.ingame #views.view3dAbove #view3d { border-bottom:1px solid var(--edge); }

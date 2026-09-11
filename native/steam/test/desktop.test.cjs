@@ -102,7 +102,8 @@ test('dragged out, the flat board takes over and the 3D view becomes the inset',
   g.$('desktopLocal').click();g.tick();
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio:()=>{},getPixelRatio:()=>1,
     setSize(){},shadowMap:{}};
-    camera=new THREE.PerspectiveCamera(); controls={mouseButtons:{},target:new THREE.Vector3()};`);
+    camera=new THREE.PerspectiveCamera(38,1.6,1,2000); camera.position.set(0,145,148); camera.lookAt(0,4,0);
+    controls={mouseButtons:{},target:new THREE.Vector3(0,4,0)};`);
   const px = s => Number(String(s).replace('px','')) || 0;
   const at = v => { g.read(`setViewSplit(${v},true); resize();`);
     return { flat: px(g.read('canvas.style.width')),
@@ -285,6 +286,73 @@ test('choosing a board finish repaints the flat board and the 3D one from the sa
   assert.equal(g.read('activeSkin().flat'),
     g.w.tauDesktop.boards.length && g.w.tauDesktop.skin.flat,'both read the same finish entry');
   assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).board,other,'the choice persists');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the 3D view steps aside by exactly what the flat board needs, and not before',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopLocal').click();g.tick();
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio:()=>{},getPixelRatio:()=>1,
+    setSize(){},shadowMap:{}};
+    camera=new THREE.PerspectiveCamera(38,1.6,1,2000); camera.position.set(0,145,148); camera.lookAt(0,4,0);
+    controls={mouseButtons:{},target:new THREE.Vector3(0,4,0)};`);
+  const px = s => Number(String(s).replace('px','')) || 0;
+  const at = v => { g.read(`setViewSplit(${v},true); resize();`);
+    return { flat: px(g.read('canvas.style.width')),
+             left: px(g.read("document.getElementById('view3d').style.left")) }; };
+  // A dial in the corner sits under the dish's empty lower-left corner. It must not push the 3D
+  // view around: an offset here would be the old threshold logic moving things for no reason.
+  const dial = at(0);
+  assert.equal(dial.left, 0, `a corner dial leaves the 3D view alone, got left=${dial.left}`);
+  // The offset is a continuous function of size -- it can only grow as the board does -- and by
+  // the time the board is large it has gone positive. No step at any threshold.
+  let prev = 0, moved = false;
+  for (let v = 0; v <= 1.0001; v += 0.05) {
+    const s = at(Math.min(1, v));
+    assert.ok(s.left >= prev, `the 3D view never comes back toward the board as it grows (at ${v.toFixed(2)})`);
+    if (s.left > 0) moved = true;
+    prev = s.left;
+  }
+  assert.ok(moved, 'a big board does move the 3D view aside');
+  // "Where possible": the tile never shrinks below the floor to satisfy clearance -- past that the
+  // overlap is accepted rather than the dish becoming smaller than the board it is showing.
+  const W = g.read('innerWidth');
+  assert.ok(W - at(1).left >= Math.max(240, Math.round(W*0.30)) - 1, 'the 3D tile keeps its minimum width');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('on a window taller than it is wide, the 3D view steps up rather than sideways',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopLocal').click();g.tick();
+  // The harness fixes a landscape window; turn it portrait before laying out.
+  g.w.innerWidth=900; g.w.innerHeight=1200;
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio:()=>{},getPixelRatio:()=>1,
+    setSize(){},shadowMap:{}};
+    camera=new THREE.PerspectiveCamera(38,0.75,1,2000); camera.position.set(0,145,148); camera.lookAt(0,4,0);
+    controls={mouseButtons:{},target:new THREE.Vector3(0,4,0)};`);
+  const px = s => Number(String(s).replace('px','')) || 0;
+  const at = v => { g.read(`setViewSplit(${v},true); resize();`);
+    const el = g.$('view3d'), vw = g.$('views').classList;
+    return { left: px(el.style.left), h3: px(el.style.height), w3: px(el.style.width),
+             above: vw.contains('view3dAbove'), side: vw.contains('view3dInset') }; };
+  // A dial still costs the view almost nothing. (Not "nothing": on a portrait window the dish is
+  // large relative to the width and its lower-left can graze even a small board, so the honest
+  // assertion is a bound, not zero.)
+  const dial = at(0);
+  assert.equal(dial.left, 0, 'a dial never pushes the view sideways');
+  assert.ok(dial.h3 >= 1200*0.95, `a corner dial leaves the 3D view nearly full-size, got ${dial.h3}`);
+  // Grown, the view gives up HEIGHT (it stands above the board), keeps the full width, and never
+  // slides sideways -- on a portrait window a side-by-side split would starve the dish of width.
+  const big = at(0.7);
+  assert.equal(big.left, 0, 'no sideways offset on a portrait window');
+  assert.equal(big.w3, 900, 'the 3D view keeps the full width');
+  assert.ok(big.h3 < 1200, `and gives up height instead, got ${big.h3}`);
+  // Only the edge that actually divides them is drawn.
+  assert.equal(big.side, false, 'no left-hand divider when stacked');
+  // The vertical offset is monotonic in board size, as the horizontal one is when side by side.
+  let prevUp = 0;
+  for (let v=0; v<=1.0001; v+=0.1) { const up = 1200 - at(Math.min(1,v)).h3;
+    assert.ok(up >= prevUp, `the view never grows back down as the board grows (at ${v.toFixed(1)})`); prevUp = up; }
   assert.deepEqual(g.errors,[]);
 });
 
