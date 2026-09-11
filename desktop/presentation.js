@@ -360,7 +360,7 @@
     for(const a of CFG.sideArcs){ c.beginPath(); c.arc(O+a.cx*sc,O+a.cy*sc,a.r*sc,a.a0*Math.PI/180,a.a1*Math.PI/180); c.stroke(); }
     const dots=wood.dots||['#82b4bd','#df9b78'];
     CFG.startDots.forEach((p,i)=>{ c.beginPath(); c.arc(O+p[0]*sc,O+p[1]*sc,CFG.padRadius*sc,0,Math.PI*2); c.fillStyle=i<3?dots[0]:dots[1]; c.fill(); });
-    const map=new THREE.CanvasTexture(cv); map.encoding=THREE.sRGBEncoding;
+    const map=new THREE.CanvasTexture(cv); map.colorSpace=THREE.SRGBColorSpace;
     map.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
     const bump=new THREE.CanvasTexture(bumpCv); bump.anisotropy=map.anisotropy;
     return {map,bump};
@@ -428,7 +428,7 @@
     const p=fin.piece;
     for(const pair of [tripods,htpTripods]) pair.forEach((piece,i)=>{
       const mat=piece.userData.mat, side=i===0?'blue':'red';
-      mat.color.set(i===0?p.blue:p.red).convertSRGBToLinear();
+      mat.color.set(i===0?p.blue:p.red);
       mat.metalness=p.metalness; mat.roughness=p.roughness;
       mat.clearcoat=p.clearcoat; mat.clearcoatRoughness=p.clearcoatRoughness;
       mat.envMapIntensity=p.envMapIntensity;
@@ -444,7 +444,7 @@
         // attenuationColor is absent on a material that has never carried transmission, so it is
         // created rather than assumed — .set() on undefined is what a missing guard costs here.
         if(p.attenuation){
-          const col=new THREE.Color(p.attenuation[side]).convertSRGBToLinear();
+          const col=new THREE.Color(p.attenuation[side]);
           if(mat.attenuationColor) mat.attenuationColor.copy(col); else mat.attenuationColor=col;
           mat.attenuationDistance=p.attenuationDistance||Infinity;
         }
@@ -452,7 +452,7 @@
       mat.iridescence=p.iridescence||0;
       mat.iridescenceIOR=p.iridescenceIOR||1.3;
       if(p.iridescenceThickness) mat.iridescenceThicknessRange=p.iridescenceThickness[side];
-      mat.emissive.set(p.emissive?(i===0?p.blue:p.red):'#000000').convertSRGBToLinear();
+      mat.emissive.set(p.emissive?(i===0?p.blue:p.red):'#000000');
       mat.emissiveIntensity=p.emissive?(p.emissiveIntensity||.2):0;
       mat.needsUpdate=true;
     });
@@ -496,7 +496,7 @@
       bm.map=textures.map; bm.bumpMap=textures.bump; bm.roughnessMap=null; bm.emissiveMap=null;
       bm.emissive.set(0x000000); bm.emissiveIntensity=1;
       bm.bumpScale=.12; bm.roughness=.47; bm.metalness=.03; bm.envMapIntensity=1; bm.needsUpdate=true;
-      boardRim.material.color.set(fin.wood.rim).convertSRGBToLinear();
+      boardRim.material.color.set(fin.wood.rim);
       boardRim.material.metalness=.68; boardRim.material.roughness=.34;
       applyPieceMaterials(fin);
     }
@@ -512,7 +512,7 @@
       camera.fov=38; camera.clearViewOffset(); camera.updateProjectionMatrix();
       artInstalled=true;
     }
-    if(boardTrim) { boardTrim.material.color.set(trim); if (!T) boardTrim.material.color.convertSRGBToLinear(); }
+    if(boardTrim) boardTrim.material.color.set(trim);
     scene.background=new THREE.Color(bg);
     root.style.setProperty('--desk-bg', bg);
     // Colossus plays in daylight: its backdrop is pale sand, and the HUD's light-on-dark text

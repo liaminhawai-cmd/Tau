@@ -1,7 +1,8 @@
 # Tau — native builds (Android · Apple · Steam)
 
-The web game (`../index.html`) is fully self-contained, so every native
-version is the same game bundled offline in a thin platform shell:
+The web game (`../index.html` plus its three.js bundle in `../vendor/three/`)
+needs no server, so every native version is the same game bundled offline in a
+thin platform shell:
 
 | Target | Directory | Shell | Output |
 |---|---|---|---|
@@ -83,10 +84,12 @@ the catalogue is below. The menu, match and rematch
 use the same scene. Balanced graphics cap resolution at 1.5× and shadow maps at
 1024; High allows 2× and 2048. Both respect lower device resolution.
 
-Settings offers thirteen boards, and the list is the whole catalogue rather than
+Settings offers fourteen boards, and the list is the whole catalogue rather than
 a desktop-only sub-set: the browser build's original skins (Dark, Slate, Dojo,
-Yellow), the wood finishes (Walnut, Ebony, Maple), and the six looks that used to
-be locked inside the showcase page (Noir, Math, Sumo, Cosy, Alien, Colossus).
+Yellow), the wood finishes (Walnut, Ebony, Maple), the six looks that used to be
+locked inside the showcase page (Noir, Math, Sumo, Cosy, Alien, Colossus), and
+Marble — a white stone table with black-marble rings and glass pieces, clear
+legs and feet around a coloured ball.
 Each is a single entry defining the flat board's palette, the 3D surface,
 markings, rim and backdrop, **and** the piece material, so one choice repaints
 both views and the pieces together and they cannot drift apart. Changing it
@@ -94,16 +97,32 @@ re-bakes the 1536² surface texture, which is why it only happens on an actual
 change and not on every theme refresh. `wood.grain` scales the timber figure, so
 slate, drafting paper and Alien's membrane are not printed with oak.
 
-What crosses over from the showcase is each look's colourway and piece character
-— Noir's glass, Sumo's lacquer, Alien's thin-film chitin, Colossus' carved stone
-— driven through the one material path every board already uses. The showcase's
-own scene (its bloom pass, custom shaders and colosseum stands) stays on that
-page; these are the same looks rendered by the game, which is what makes them
-playable rather than only watchable. Two consequences worth knowing: Noir runs
-transmission at about a third of the showcase's, because full glass under the
-game's lighting is a smear you cannot find on a near-black board; and Colossus
+The showcase looks are not re-creations: `desktop/boards.js` is the art module
+both pages share, so the game bakes each surface with the very code the showcase
+uses (its themes, canvas painters, noise and the Alien membrane shader) and gives
+every piece the showcase's per-part materials — Noir's glass, Sumo's lacquer,
+Alien's thin-film chitin, Colossus' carved stone. The showcase's own scene (bloom
+pass, colosseum stands) stays on that page; these are the same looks rendered by
+the game, which is what makes them playable rather than only watchable. Colossus
 plays in daylight, so the floating HUD flips to ink over it, decided by the
 backdrop's real luminance rather than by which board it is.
+
+Wood and marble boards carry per-pixel surface detail on top of the baked
+texture: a fragment-shader pass (`installDetailShader`) adds grain, pores, veins
+and glints from world position, so the closer the camera leans in the more there
+is to see instead of a texture going soft at 4K. Alien gets its membrane the same
+way. The glass looks deliberately get less of it: detail on a refracting surface
+reads as dirt.
+
+The game runs three.js r169 from `vendor/three/three.global.js`, a classic-script
+bundle of the same ES modules the showcase imports (rebuild it with
+`node scripts/build-three-global.mjs` after touching `vendor/three/`). The
+long-embedded r128 copy in `index.html` could neither refract — its transmission
+was an alpha blend, so glass was a tinted ghost — nor do thin-film iridescence;
+now the Marble pieces bend the table behind them and Alien's chitin shifts colour
+with the angle. Colour management is three's own (hex colours are sRGB, textures
+are flagged, the renderer encodes); light intensities carry the ×π that r155
+stopped folding in, so the exposure is unchanged.
 
 In a match the 3D view takes the whole window and the flat 2D board floats over
 its bottom-left corner, clipped to a circle — the board it draws is a disc, and a

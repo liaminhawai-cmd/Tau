@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Copies the playable game from the repo root into a wrapper app's www/ dir
-// so it can be bundled offline. The game is self-contained (Three.js is
-// inlined in index.html), so only these files are needed.
+// so it can be bundled offline. The game is self-contained apart from its
+// three.js bundle (vendor/three/three.global.js), so only these files are needed.
 //
 // Usage: node sync-www.mjs <dest-dir> [--steam]   (dest is wiped and recreated)
 // --steam additionally bundles the desktop presentation plus the six-board premium
@@ -27,12 +27,14 @@ const FILES = [
   'icon-192.png',
   'icon-512.png',
   'tau-logo.png',
+  'vendor/three/three.global.js',   // the game's three.js (classic-script bundle); every shell needs it
 ];
 
 const steam = process.argv.includes('--steam');
 rmSync(www, { recursive: true, force: true });
 mkdirSync(www, { recursive: true });
 for (const f of FILES) {
+  mkdirSync(dirname(join(www, f)), { recursive: true });
   cpSync(join(repoRoot, f), join(www, f));
 }
 if (steam) {
