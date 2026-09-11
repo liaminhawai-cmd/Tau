@@ -5104,7 +5104,7 @@ function ladderPlanCorner(idx, w, o){
             }
         }
         // the crossed foot: the moving foot that came in toward the centre (the other is the front)
-        const f0=me.feet(); ladderRestore(pick.snap); const f1=me.feet();
+        ladderRestore(snap0); const f0=me.feet(); ladderRestore(pick.snap); const f1=me.feet();
         const crossFoot=[0,1,2].filter(i=>i!==pick.pivotIdx).sort((a,b)=>(Math.hypot(f1[a].x,f1[a].y)-Math.hypot(f0[a].x,f0[a].y))-(Math.hypot(f1[b].x,f1[b].y)-Math.hypot(f0[b].x,f0[b].y)))[0];
         ladderRestore(snap0); G.active=origActive;
         G.cornerBook[idx]={ at:1, pivotIdx:pick.pivotIdx, dir:pick.dir, crossFoot, firstDeg:pick.targetRad*180/Math.PI };
