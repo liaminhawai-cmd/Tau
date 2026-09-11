@@ -6,15 +6,112 @@
   const root = document.documentElement;
   const $ = id => document.getElementById(id);
   const SETTINGS_KEY = 'tauDesktopSettingsV1';
-  const settings = { level:4, colour:0, quality:'balanced',
+  // Board finishes. Each one drives ALL THREE surfaces from a single entry: `skin` is the flat
+  // board's palette (the shape index.html's activeSkin() expects), `wood` re-tints the 3D surface,
+  // markings, rim and backdrop, and `piece` is the tripod material. One choice, one look — the two
+  // views and the pieces can never drift apart.
+  //
+  // The list is deliberately the WHOLE catalogue, not a desktop-only sub-set: the four original web
+  // board skins, the four wood finishes, and the six looks that used to be locked inside the
+  // separate showcase page. The showcase's own scene (bloom, custom shaders, its colosseum stands)
+  // stays over there; what comes across is each look's colourway and piece character, driven through
+  // the one material path every board already uses — so they are playable, not just watchable.
+  //
+  // wood.grain scales the procedural timber grain: 1 is real wood, low values give the smooth
+  // stone/paper/membrane surfaces their own character instead of printing oak on them.
+  const BOARD_FINISHES = [
+    // ---- the wood finishes ----
+    { id:'walnut', name:'Walnut',
+      skin:{ shadeByZoneValue:false, flat:'#65432b', lines:'#ead5a4', rim:'#574b32', bg:'#101410', pb:'#639eb8', pr:'#dc8864' },
+      wood:{ base:[105,72,46], line:'#e1ca91', rim:'#57472e', trim:'#aa8751', bg:'#101410', grain:1, dots:['#82b4bd','#df9b78'] },
+      piece:{ blue:'#427d91', red:'#b46744', metalness:.72, roughness:.3, clearcoat:.25, clearcoatRoughness:.35, envMapIntensity:.85 } },
+    { id:'ebony', name:'Ebony',
+      skin:{ shadeByZoneValue:false, flat:'#2b2724', lines:'#c8bda6', rim:'#241f1c', bg:'#0b0d0e', pb:'#6fa8c4', pr:'#e08a63' },
+      wood:{ base:[58,52,48], line:'#cdc0a6', rim:'#2b2622', trim:'#8d8878', bg:'#0b0d0e', grain:.85, dots:['#8fbecb','#e2a184'] },
+      piece:{ blue:'#4f93aa', red:'#c4744c', metalness:.78, roughness:.26, clearcoat:.3, clearcoatRoughness:.3, envMapIntensity:.9 } },
+    { id:'maple', name:'Maple',
+      skin:{ shadeByZoneValue:false, flat:'#c8a877', lines:'#5b4526', rim:'#9b7f52', bg:'#171512', pb:'#2f6f8c', pr:'#b1502c' },
+      wood:{ base:[201,171,122], line:'#6b5024', rim:'#9d8153', trim:'#d8bd8a', bg:'#171512', grain:1, dots:['#2f6f8c','#b1502c'] },
+      piece:{ blue:'#2f6f8c', red:'#b1502c', metalness:.6, roughness:.34, clearcoat:.3, clearcoatRoughness:.3, envMapIntensity:.7 } },
+    // ---- the four original board skins from the browser build ----
+    { id:'dark', name:'Dark',
+      skin:{ shadeByZoneValue:false, flat:'#171c22', lines:'#5d6b7a', rim:'#2c3138', bg:'#0c0e11', pb:'#6b9eff', pr:'#ff6b6b' },
+      wood:{ base:[30,36,43], line:'#6d7c8c', rim:'#2c3138', trim:'#495563', bg:'#0c0e11', grain:.3, dots:['#6b9eff','#ff6b6b'] },
+      piece:{ blue:'#6b9eff', red:'#ff6b6b', metalness:.45, roughness:.38, clearcoat:.35, clearcoatRoughness:.3, envMapIntensity:.7 } },
+    { id:'slate', name:'Slate',
+      skin:{ shadeByZoneValue:true, v4:'#5a636c', v3:'#4b535b', v2:'#3c434a', v1:'#2f353b',
+             flat:'#454d55', lines:'#12161a', rim:'#8f979e', bg:'#0c0e11', pb:'#5487c4', pr:'#d05a48' },
+      wood:{ base:[69,77,85], line:'#12161a', rim:'#8f979e', trim:'#6d777f', bg:'#0c0e11', grain:.35, dots:['#5487c4','#d05a48'] },
+      piece:{ blue:'#5487c4', red:'#d05a48', metalness:.5, roughness:.36, clearcoat:.3, clearcoatRoughness:.32, envMapIntensity:.65 } },
+    { id:'dojo', name:'Dojo',
+      skin:{ shadeByZoneValue:true, v4:'#e9d9b3', v3:'#ddc99b', v2:'#cbb47e', v1:'#b89a62',
+             flat:'#d9c9a3', lines:'#3a2f22', rim:'#3c434a', bg:'#0c0e11', pb:'#243f78', pr:'#cf3b26' },
+      wood:{ base:[217,201,163], line:'#3a2f22', rim:'#3c434a', trim:'#b89a62', bg:'#0c0e11', grain:.5, dots:['#243f78','#cf3b26'] },
+      piece:{ blue:'#243f78', red:'#cf3b26', metalness:.15, roughness:.5, clearcoat:.4, clearcoatRoughness:.3, envMapIntensity:.4 } },
+    { id:'yellow', name:'Yellow',
+      skin:{ shadeByZoneValue:false, flat:'#efe4a6', lines:'#26251f', rim:'#3c434a', bg:'#0c0e11', pb:'#6b9eff', pr:'#ff6b6b' },
+      wood:{ base:[239,228,166], line:'#26251f', rim:'#3c434a', trim:'#c9bf85', bg:'#0c0e11', grain:.2, dots:['#6b9eff','#ff6b6b'] },
+      piece:{ blue:'#6b9eff', red:'#ff6b6b', metalness:.2, roughness:.45, clearcoat:.45, clearcoatRoughness:.25, envMapIntensity:.45 } },
+    // ---- the six showcase looks, brought into the game ----
+    { id:'noir', name:'Noir',
+      skin:{ shadeByZoneValue:false, flat:'#23262c', lines:'#d6b567', rim:'#17191d', bg:'#0a0c10', pb:'#7aa4ee', pr:'#ee7a6f' },
+      wood:{ base:[35,38,44], line:'#d6b567', rim:'#17191d', trim:'#a8843c', bg:'#0a0c10', grain:.25, dots:['#d6b567','#d6b567'] },
+      // Glass, but a piece you can still find on a dark board. The showcase ran transmission at 1.0
+      // and got away with it because it also had a bloom pass and a much harder key light; dropped
+      // into the game's lighting that reads as a barely-there smear on near-black slate — measured,
+      // not guessed. Held at a third, over a tint that carries its own colour, it still refracts and
+      // still reads as glass, and you can see which piece is yours.
+      piece:{ blue:'#8fb4f4', red:'#f4907f', metalness:0, roughness:.1, clearcoat:1, clearcoatRoughness:.06,
+              envMapIntensity:.9, transmission:.34, ior:1.5, thickness:4,
+              attenuation:{ blue:'#3b74e8', red:'#e8483b' }, attenuationDistance:5,
+              emissive:true, emissiveIntensity:.1 } },
+    { id:'math', name:'Math',
+      skin:{ shadeByZoneValue:false, flat:'#111826', lines:'#dcecff', rim:'#14171d', bg:'#0d1017', pb:'#2f6fd8', pr:'#d8442f' },
+      wood:{ base:[17,24,38], line:'#dcecff', rim:'#14171d', trim:'#20242c', bg:'#0d1017', grain:.12, dots:['#2f6fd8','#d8442f'] },
+      piece:{ blue:'#2f6fd8', red:'#d8442f', metalness:0, roughness:.45, clearcoat:.35, clearcoatRoughness:.3, envMapIntensity:.45 } },
+    { id:'sumo', name:'Sumo',
+      skin:{ shadeByZoneValue:false, flat:'#6e4a2c', lines:'#c89a54', rim:'#46351f', bg:'#17120d', pb:'#31488f', pr:'#b03220' },
+      wood:{ base:[110,74,44], line:'#c89a54', rim:'#46351f', trim:'#8a6a3c', bg:'#17120d', grain:.75, dots:['#d9ae62','#d9ae62'] },
+      piece:{ blue:'#31488f', red:'#b03220', metalness:0, roughness:.3, clearcoat:.55, clearcoatRoughness:.18, envMapIntensity:.5 } },
+    { id:'cosy', name:'Cosy',
+      skin:{ shadeByZoneValue:false, flat:'#4a3220', lines:'#e8c778', rim:'#2e1f12', bg:'#1a120c', pb:'#3a4a66', pr:'#5e2a22' },
+      wood:{ base:[74,50,32], line:'#e8c778', rim:'#2e1f12', trim:'#9a7638', bg:'#1a120c', grain:1, dots:['#b78a44','#b78a44'] },
+      piece:{ blue:'#4a5f80', red:'#7a3a2e', metalness:.3, roughness:.44, clearcoat:.35, clearcoatRoughness:.25, envMapIntensity:.4 } },
+    { id:'alien', name:'Alien',
+      skin:{ shadeByZoneValue:false, flat:'#171226', lines:'#8dffe8', rim:'#110d1a', bg:'#04060b', pb:'#3f7ec8', pr:'#b04057' },
+      wood:{ base:[23,18,38], line:'#0e3c36', rim:'#110d1a', trim:'#191324', bg:'#04060b', grain:.45, dots:['#8dffe8','#8dffe8'] },
+      // thin-film chitin: the iridescence that gave the showcase set its shimmer, kept intact.
+      piece:{ blue:'#24558c', red:'#7c2030', metalness:0, roughness:.18, clearcoat:1, clearcoatRoughness:.1,
+              envMapIntensity:.7, iridescence:1, iridescenceIOR:1.8,
+              iridescenceThickness:{ blue:[140,520], red:[240,700] },
+              emissive:true, emissiveIntensity:.22 } },
+    { id:'colossus', name:'Colossus',
+      skin:{ shadeByZoneValue:false, flat:'#b49b6d', lines:'#4a4038', rim:'#7e6f54', bg:'#b9a888', pb:'#6c7787', pr:'#8a7060' },
+      wood:{ base:[180,155,109], line:'#4a4038', rim:'#7e6f54', trim:'#8a7a5e', bg:'#b9a888', grain:.6, dots:['#4a4038','#4a4038'] },
+      // carved stone, not bronze: matte, flat-shaded, barely touched by the environment.
+      piece:{ blue:'#8f97a0', red:'#a8907e', metalness:0, roughness:.95, clearcoat:0, clearcoatRoughness:1,
+              envMapIntensity:.12, flatShading:true } },
+  ];
+  // Right stick turns the piece at a speed set by how far it is pushed; the triggers do the same
+  // from RT/LT with the analog pull as the speed. Both keep the D-pad on the foot and the left
+  // stick on the camera.
+  const PAD_SCHEMES = ['triggers','stick'];
+  const settings = { level:4, colour:0, quality:'balanced', board:'walnut', padScheme:'triggers',
+    invertCamY:false,
     reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches, haptics:true };
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     if (Number.isInteger(saved.level) && saved.level >= 1 && saved.level <= LADDER_N) settings.level = saved.level;
     if (saved.colour === 0 || saved.colour === 1) settings.colour = saved.colour;
     if (['balanced','high'].includes(saved.quality)) settings.quality = saved.quality;
-    for (const k of ['reducedMotion','haptics']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
+    if (BOARD_FINISHES.some(b => b.id === saved.board)) settings.board = saved.board;
+    if (PAD_SCHEMES.includes(saved.padScheme)) settings.padScheme = saved.padScheme;
+    for (const k of ['reducedMotion','haptics','invertCamY']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
   } catch (_) {}
+  const finish = () => BOARD_FINISHES.find(b => b.id === settings.board) || BOARD_FINISHES[0];
+  // Relative luminance of a #rrggbb, against the same 0.5 threshold index.html's boardIsPale uses.
+  const isPale = hex => { const n = parseInt(hex.slice(1), 16);
+    return (0.2126*((n>>16)&255) + 0.7152*((n>>8)&255) + 0.0722*(n&255)) / 255 > 0.5; };
   function saveSettings() {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
     root.classList.toggle('desktop-reduced-motion', settings.reducedMotion);
@@ -23,10 +120,10 @@
   let paused = false, pauseAt = 0, ownMatch = false, previousFocus = null;
   let currentPad = null, padButtons = [], padAxisLatch = false, padFocus = 0;
   let chosenFoot = 0, heldLeft = false, heldRight = false, lastActive = -1;
-  let textures = null, artInstalled = false, lastRumble = -Infinity;
+  let textures = null, texturesFor = null, artInstalled = false, lastRumble = -Infinity;
+  let lastCrossings = 0;
   const cameraGoal = new THREE.Vector3(), targetGoal = new THREE.Vector3();
-  const palette = { shadeByZoneValue:false, flat:'#65432b', lines:'#ead5a4',
-    rim:'#574b32', bg:'#101410', pb:'#639eb8', pr:'#dc8864' };
+  const camOffset = new THREE.Vector3(), camSpherical = new THREE.Spherical();
   const boardElement = () => renderer ? $('view3d') : canvas;
   const focusBoard = () => boardElement().focus({preventScroll:true});
 
@@ -61,7 +158,7 @@
   toolbar.className = 'desktop-toolbar';
   toolbar.innerHTML = `<button class="desktop-brand" id="desktopHome" aria-label="Open pause menu">TAU</button>
     <button class="desktop-menu" id="desktopPause">Menu <kbd>Esc</kbd></button>
-    <div class="desktop-input-hint" id="desktopInputHint">Drag a foot to swing<br>Right-drag the 3D view to look around</div>`;
+    <div class="desktop-input-hint" id="desktopInputHint">Drag a foot to swing<br>Right-drag the 3D view to look around<br>Scroll over the flat board to resize it</div>`;
   document.body.appendChild(toolbar);
   for (let n=1;n<=LADDER_N;n++) {
     const opt = document.createElement('option'); opt.value = String(n); opt.textContent = 'Level ' + n;
@@ -127,10 +224,63 @@
     const body = onlineMatch ? 'Your online match continues while this menu is open.' : '';
     showModal(onlineMatch ? 'Match menu' : 'Paused', body, [
       { label:'Continue', onClick:() => focusBoard() },
+      { label:'Controls', onClick:openControls },
       { label:'Settings', onClick:openSettings },
       { label:'How to play', onClick:() => $('howToPlayBtn').click() },
       { label:'Leave match', onClick:confirmLeave },
     ], false, {dismiss:true});
+  }
+  // One place that answers "what do the buttons do". Built from the live settings rather than
+  // written out twice, so switching controller scheme changes what this says — a reference sheet
+  // that can disagree with the actual bindings is worse than none.
+  function controlsRows() {
+    const swing = settings.padScheme === 'triggers'
+      ? ['LT / RT', 'Swing — pull harder to turn faster']
+      : ['Right stick ← →', 'Swing — push further to turn faster'];
+    return [
+      ['h', 'Controller'],
+      ['D-pad ← →', 'Choose which foot to pin'],
+      ['A', 'Pin that foot · end your turn'],
+      swing,
+      ['B', 'Cancel the swing'],
+      ['LB / RB', 'Shrink · grow the flat board'],
+      ['Left stick', 'Move the camera'],
+      ['Y', 'These controls'],
+      ['Start', 'Match menu'],
+      ['h', 'Mouse'],
+      ['Click a foot', 'Pin it'],
+      ['Drag another', 'Swing around the pinned foot'],
+      ['Right-drag', 'Look around the 3D view'],
+      ['Scroll the flat board', 'Resize it'],
+      ['Drag the rim knob', 'Resize it precisely'],
+      ['h', 'Keyboard'],
+      ['1 – 3', 'Pin a foot · re-pick'],
+      ['← →', 'Swing'],
+      ['Enter', 'End your turn'],
+      ['Backspace', 'Cancel the swing'],
+      ['[ ]', 'Shrink · grow the flat board'],
+      ['Esc', 'Match menu'],
+      ['F1', 'These controls'],
+      ['F11 · F2', 'Fullscreen · showcase boards'],
+    ];
+  }
+  function openControls() {
+    const html = controlsRows().map(([k, v]) => k === 'h'
+      ? `<h3 class="desktop-controls-head">${v}</h3>`
+      : `<div class="desktop-controls-row"><kbd>${k}</kbd><span>${v}</span></div>`).join('');
+    // isHtml (4th) must be true: showModal writes a plain-text body with textContent, which would
+    // print this markup as literal angle brackets rather than rendering it.
+    showModal('Controls', `<div class="desktop-controls">${html}</div>`, [
+      { label:'Done', onClick:() => focusBoard() },
+    ], true, {dismiss:true});
+  }
+  // Grow or shrink the flat board. The corner layout is the only one with a board to resize, so
+  // outside it this is a no-op rather than quietly moving a split nothing is showing.
+  function resizeBoard(delta) {
+    if (!cornerLayoutActive()) return;
+    markSplitUsed();
+    setViewSplit(Math.max(0, Math.min(1, viewSplit + delta)), true);
+    saveViewSplit();
   }
   function confirmLeave() {
     showModal('Leave this match?', 'The current game will end.', [
@@ -142,13 +292,26 @@
     const fullscreen = window.tauSteam?.setFullscreen;
     showModal('Settings', `<label class="desktop-setting desktop-volume">Sound <output id="desktopVolumeValue">${userVol}%</output><input id="desktopVolume" aria-label="Sound volume" type="range" min="0" max="200" step="5" value="${userVol}"></label>
       <label class="desktop-setting">Mute<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
+      <label class="desktop-setting">Board<select id="desktopBoard">${BOARD_FINISHES.map(b=>`<option value="${b.id}">${b.name}</option>`).join('')}</select></label>
       <label class="desktop-setting">Graphics<select id="desktopQuality"><option value="balanced">Balanced</option><option value="high">High</option></select></label>
+      <label class="desktop-setting">Controller<select id="desktopPadScheme"><option value="triggers">Triggers · pull to swing</option><option value="stick">Right stick · push to swing</option></select></label>
+      <label class="desktop-setting">Invert camera Y<input id="desktopInvertY" type="checkbox" ${settings.invertCamY?'checked':''}></label>
       <label class="desktop-setting">Reduce camera motion<input id="desktopMotion" type="checkbox" ${settings.reducedMotion?'checked':''}></label>
       <label class="desktop-setting">Controller vibration<input id="desktopHaptics" type="checkbox" ${settings.haptics?'checked':''}></label>
       ${fullscreen ? '<label class="desktop-setting">Fullscreen<input id="desktopFullscreen" type="checkbox"></label>' : ''}
-      <p class="desktop-result-detail">Keyboard: 1–3 choose a foot; ← → swing; Enter ends your turn. Controller: shoulders choose a foot; A pins or ends the turn; left stick swings; B cancels.${window.tauSteam ? ' F2 flips between the game and the showcase boards.' : ''}</p>`,
+      <p class="desktop-result-detail">Keyboard: 1–3 choose a foot; ← → swing; Enter ends your turn.<br>Controller: the D-pad always chooses the foot; A pins or ends the turn; B cancels. <b>Sticks</b> — push the right stick out to any direction, then turn it: the piece follows the stick degree for degree, and the left stick moves the camera. <b>Triggers</b> — RT turns clockwise, LT anticlockwise, and the harder you pull the faster it turns.${window.tauSteam ? ' F2 flips between the game and the showcase boards.' : ''}</p>`,
       [{label:'Done',onClick:() => { if(inMatch()) focusBoard(); }}], true, {dismiss:true});
     $('desktopQuality').value = settings.quality;
+    $('desktopBoard').value = settings.board;
+    $('desktopPadScheme').value = settings.padScheme;
+    $('desktopBoard').onchange = e => {
+      settings.board=e.target.value; saveSettings();
+      applyMaterials();   // rebakes the 3D surface for the new finish
+      applyTheme();       // repaints the flat board from the same entry's palette
+      render();
+    };
+    $('desktopPadScheme').onchange = e => { settings.padScheme=e.target.value; saveSettings(); };
+    $('desktopInvertY').onchange = e => { settings.invertCamY=e.target.checked; saveSettings(); };
     $('desktopVolume').oninput = e => {
       setUserVol(Number(e.target.value)); $('desktopVolumeValue').textContent = userVol+'%'; $('desktopMute').checked = !soundOn;
       if(paused && masterGain && audioCtx) masterGain.gain.setTargetAtTime(0,audioCtx.currentTime,.03);
@@ -182,7 +345,12 @@
 
   // A fixed seed makes the material stable across starts. Noise is visual only and never
   // consumes the random stream used by the opponents. The printed geometry comes from CFG.
-  function woodMaps() {
+  function woodMaps(wood) {
+    const [br,bg,bb]=wood.base;
+    // How much of the timber figure to print. A slate slab, a sheet of drafting paper and a living
+    // membrane are not wood: at low strength the directional grain and pores fade out and only the
+    // fine speckle survives, which is what those surfaces actually have.
+    const grainAmt = wood.grain==null ? 1 : wood.grain;
     const S=1536, cv=document.createElement('canvas'); cv.width=cv.height=S;
     const c=cv.getContext('2d'), pixels=c.createImageData(S,S), d=pixels.data;
     for(let y=0;y<S;y++) for(let x=0;x<S;x++) {
@@ -192,18 +360,19 @@
       const pore=Math.pow(Math.max(0,fine),14);
       let hash=Math.imul(x+17,374761393)^Math.imul(y+41,668265263); hash=(hash^(hash>>>13))>>>0;
       const noise=(hash%255)/255-.5;
-      const value=broad*9+fine*2.6-pore*6+noise*3;
+      const value=(broad*9+fine*2.6-pore*6)*grainAmt+noise*3;
       const i=(y*S+x)*4;
-      d[i]=105+value; d[i+1]=72+value*.78; d[i+2]=46+value*.52; d[i+3]=255;
+      d[i]=br+value; d[i+1]=bg+value*.78; d[i+2]=bb+value*.52; d[i+3]=255;
     }
     c.putImageData(pixels,0,0);
     const bumpCv=document.createElement('canvas'); bumpCv.width=bumpCv.height=768;
     bumpCv.getContext('2d').drawImage(cv,0,0,768,768);
     const sc=S/(CFG.edgeU*2), O=S/2;
-    c.lineWidth=CFG.edgeU*CFG.lineWidthFrac*sc; c.strokeStyle='#e1ca91';
+    c.lineWidth=CFG.edgeU*CFG.lineWidthFrac*sc; c.strokeStyle=wood.line;
     for(const r of CFG.rings){ c.beginPath(); c.arc(O,O,r*sc,0,Math.PI*2); c.stroke(); }
     for(const a of CFG.sideArcs){ c.beginPath(); c.arc(O+a.cx*sc,O+a.cy*sc,a.r*sc,a.a0*Math.PI/180,a.a1*Math.PI/180); c.stroke(); }
-    CFG.startDots.forEach((p,i)=>{ c.beginPath(); c.arc(O+p[0]*sc,O+p[1]*sc,CFG.padRadius*sc,0,Math.PI*2); c.fillStyle=i<3?'#82b4bd':'#df9b78'; c.fill(); });
+    const dots=wood.dots||['#82b4bd','#df9b78'];
+    CFG.startDots.forEach((p,i)=>{ c.beginPath(); c.arc(O+p[0]*sc,O+p[1]*sc,CFG.padRadius*sc,0,Math.PI*2); c.fillStyle=i<3?dots[0]:dots[1]; c.fill(); });
     const map=new THREE.CanvasTexture(cv); map.encoding=THREE.sRGBEncoding;
     map.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
     const bump=new THREE.CanvasTexture(bumpCv); bump.anisotropy=map.anisotropy;
@@ -221,30 +390,77 @@
     });
     renderer.shadowMap.needsUpdate=true;
   }
+  let boardTrim = null;
+  // The tripod material for the chosen board. Every finish sets the ordinary standard-material
+  // terms; the exotic ones (noir's glass, alien's thin film, colossus' flat-shaded stone) add
+  // theirs on top. Terms a finish does not ask for are reset to their neutral value rather than
+  // left behind, or switching away from glass would leave the next board's pieces see-through.
+  function applyPieceMaterials(fin) {
+    const p=fin.piece;
+    for(const pair of [tripods,htpTripods]) pair.forEach((piece,i)=>{
+      const mat=piece.userData.mat, side=i===0?'blue':'red';
+      mat.color.set(i===0?p.blue:p.red).convertSRGBToLinear();
+      mat.metalness=p.metalness; mat.roughness=p.roughness;
+      mat.clearcoat=p.clearcoat; mat.clearcoatRoughness=p.clearcoatRoughness;
+      mat.envMapIntensity=p.envMapIntensity;
+      mat.flatShading=!!p.flatShading;
+      // Glass and thin film live on MeshPhysicalMaterial only. Where the build fell back to a plain
+      // standard material (no WebGL2 premium path, and the how-to-play set), those boards still get
+      // their colourway and simply render as solid pieces rather than throwing.
+      if('transmission' in mat){
+        mat.transmission=p.transmission||0;
+        mat.ior=p.ior||1.5;
+        mat.thickness=p.thickness||0;
+        mat.transparent=!!p.transmission;
+        // attenuationColor is absent on a material that has never carried transmission, so it is
+        // created rather than assumed — .set() on undefined is what a missing guard costs here.
+        if(p.attenuation){
+          const col=new THREE.Color(p.attenuation[side]).convertSRGBToLinear();
+          if(mat.attenuationColor) mat.attenuationColor.copy(col); else mat.attenuationColor=col;
+          mat.attenuationDistance=p.attenuationDistance||Infinity;
+        }
+      }
+      mat.iridescence=p.iridescence||0;
+      mat.iridescenceIOR=p.iridescenceIOR||1.3;
+      if(p.iridescenceThickness) mat.iridescenceThicknessRange=p.iridescenceThickness[side];
+      mat.emissive.set(p.emissive?(i===0?p.blue:p.red):'#000000').convertSRGBToLinear();
+      mat.emissiveIntensity=p.emissive?(p.emissiveIntensity||.2):0;
+      mat.needsUpdate=true;
+    });
+  }
   function applyMaterials() {
     if(!renderer || !boardTop) return;
-    if(!textures) textures=woodMaps();
+    const fin=finish();
+    // Rebuild the surface only when the chosen finish actually changed — the texture is a 1536²
+    // procedural bake, far too expensive to redo on every theme refresh.
+    if(!textures || texturesFor!==fin.id){
+      const old=textures;
+      textures=woodMaps(fin.wood); texturesFor=fin.id;
+      if(old){ old.map.dispose(); old.bump.dispose(); }
+    }
     if(boardTop.material.map && boardTop.material.map!==textures.map) boardTop.material.map.dispose();
     boardTop.material.map=textures.map; boardTop.material.bumpMap=textures.bump;
     boardTop.material.bumpScale=.12; boardTop.material.roughness=.47; boardTop.material.metalness=.03; boardTop.material.needsUpdate=true;
-    boardRim.material.color.set('#57472e').convertSRGBToLinear();
+    boardRim.material.color.set(fin.wood.rim).convertSRGBToLinear();
     boardRim.material.metalness=.68; boardRim.material.roughness=.34;
-    for(const pair of [tripods,htpTripods]) pair.forEach((piece,i)=>{
-      const mat=piece.userData.mat;
-      mat.color.set(i===0?'#427d91':'#b46744').convertSRGBToLinear();
-      mat.metalness=.72; mat.roughness=.3; mat.clearcoat=.25; mat.clearcoatRoughness=.35;
-      mat.envMapIntensity=.85; mat.needsUpdate=true;
-    });
+    applyPieceMaterials(fin);
     if(!artInstalled){
       // This trim sits below the playing surface: it is never a new boundary or a support.
-      const trim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.027,CFG.edgeU*1.032,.5,128),
-        new THREE.MeshStandardMaterial({color:new THREE.Color('#aa8751').convertSRGBToLinear(),metalness:.85,roughness:.32}));
-      trim.position.y=-3.8; trim.castShadow=true; scene.add(trim);
+      boardTrim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.027,CFG.edgeU*1.032,.5,128),
+        new THREE.MeshStandardMaterial({metalness:.85,roughness:.32}));
+      boardTrim.position.y=-3.8; boardTrim.castShadow=true; scene.add(boardTrim);
       controls.mouseButtons.LEFT=null; controls.mouseButtons.RIGHT=THREE.MOUSE.ROTATE;
       camera.fov=38; camera.clearViewOffset(); camera.updateProjectionMatrix();
       artInstalled=true;
     }
-    scene.background=new THREE.Color('#101410');
+    if(boardTrim) boardTrim.material.color.set(fin.wood.trim).convertSRGBToLinear();
+    scene.background=new THREE.Color(fin.wood.bg);
+    root.style.setProperty('--desk-bg', fin.wood.bg);
+    // Colossus plays in daylight: its backdrop is pale sand, and the HUD's light-on-dark text
+    // disappeared into it. The flat board already flips its highlight cues by the surface's real
+    // luminance (boardIsPale in index.html) rather than by which board it is; the chrome floating
+    // over the 3D view now answers the same question about the ROOM behind it.
+    root.classList.toggle('desktop-pale-room', isPale(fin.wood.bg));
     configureQuality();
   }
   // This is the MENU's own ambient layout only. A real match is never sized here: it returns
@@ -279,6 +495,11 @@
     if(camDragging) return true;
     if(inMatch() && camManualSet && !falling) return true;
     const menu=!inMatch(), ratio=Math.max(.5,camera.aspect);
+    // KNOWN GAP: this distance is not fitted to the tile, so a full-width 3D view leaves noticeable
+    // dead headroom above the board and a narrow column crops it. Fitting it here does NOT work on
+    // its own — measured, a forced distance of 400 settles at ~320, because a second system is
+    // lerping the same camera every frame and the two split the difference. Fixing the framing means
+    // resolving that ownership first, not adding a third opinion.
     let distance=Math.max(menu?222:205,148/ratio), tx=0,ty=4,tz=0;
     const yaw=menu && !settings.reducedMotion ? .18+Math.sin(performance.now()*.000055)*.045 : 0;
     if(falling && !settings.reducedMotion && G.winner!=null){
@@ -312,24 +533,63 @@
   }
   function cancelSwing() {
     if(!canPlay() || G.pinned===null) return;
-    restoreSnap(); G.pinned=null; G.pivot=null; G.handle=null; G.ptrAngle=null;
+    restoreSnap(); G.pinned=null; G.pivot=null; G.handle=null; G.ptrAngle=null; lastCrossings=0;
     if(onlineMatch){pendingKeyframes=[];lastKeyframeT=0;}
     render();
   }
-  function swing(axis,dt) {
-    if(!canPlay() || G.pinned===null || Math.abs(axis)<.16) return;
-    if(G.handle===null){
-      G.handle=(G.pinned+1)%3;
-      const f=G.pieces[G.active].feet()[G.handle];
-      G.ptrAngle=Math.atan2(f.y-G.pivot.y,f.x-G.pivot.x); playMoveBass();
-    }
+  // Analog trigger pull, 0..1 each, as one signed axis: + is clockwise (RT), - anticlockwise (LT).
+  // buttons[].value is the analog reading on a standard pad; a digital-only pad has no value, so
+  // fall back to pressed = fully pulled rather than reading a trigger as permanently released.
+  function triggerPull(i) {
+    const b=currentPad?.buttons[i]; if(!b) return 0;
+    const v=typeof b.value==='number' ? b.value : (b.pressed?1:0);
+    return v>.04 ? (v-.04)/.96 : 0;
+  }
+  function triggerAxis() { return triggerPull(7)-triggerPull(6); }
+  // Left stick orbits the camera around whatever the controls are already looking at. Setting
+  // camManualSet stops updateCamera's auto-frame from hauling the view back the next frame — the
+  // same latch a mouse drag sets, so a pad and a mouse hand off to each other cleanly.
+  function orbitCamera(lx,ly,dt) {
+    if(!renderer || !canPlay() || (Math.abs(lx)<.18 && Math.abs(ly)<.18)) return;
+    camOffset.copy(camera.position).sub(controls.target);
+    camSpherical.setFromVector3(camOffset);
+    // A stick is a LOOK control, not a grab: pushing right turns the view right, so the board
+    // swings left across the screen, and pushing down tips the view down onto the board. (A mouse
+    // drag is the opposite gesture — there you have hold of the board itself and it follows the
+    // cursor — which is why the two read differently and both feel right.) Y is the axis people
+    // disagree about, so it has a switch; X does not, because "push right, look right" is settled.
+    camSpherical.theta += lx*1.7*dt;
+    const pitch = settings.invertCamY ? -ly : ly;
+    camSpherical.phi = Math.max(.2, Math.min(Math.PI/2-.05, camSpherical.phi - pitch*1.2*dt));
+    camOffset.setFromSpherical(camSpherical);
+    camera.position.copy(controls.target).add(camOffset);
+    camera.lookAt(controls.target);
+    camManualSet=true;
+  }
+  // Both input styles need the same preamble: the first movement of a turn adopts a foot as the
+  // handle and takes its current bearing as the starting angle.
+  function beginSwing() {
+    if(G.handle!==null) return true;
+    G.handle=(G.pinned+1)%3;
+    const f=G.pieces[G.active].feet()[G.handle];
+    G.ptrAngle=Math.atan2(f.y-G.pivot.y,f.x-G.pivot.x); playMoveBass();
+    return true;
+  }
+  function swing(axis,dt,dead=.16) {
+    if(!canPlay() || G.pinned===null || Math.abs(axis)<dead) return;
+    beginSwing();
     boardMove(G.ptrAngle+axis*.72*dt);
     if(G.atLimit) rumble(.08);
   }
+  // Push the right stick left or right and the piece turns that way, faster the further it goes.
+  // This replaced a dial that mapped the stick's BEARING onto the piece one-to-one: turning your
+  // thumb in a circle to wind the piece round was accurate on paper and genuinely awkward in the
+  // hand, and it is the one thing playtesting rejected outright. Speed on an axis is the same
+  // control the triggers give, so the two schemes now differ only in which fingers hold it.
   function pollInput(dt) {
     const pads=navigator.getGamepads?.() || [];
     currentPad=Array.from(pads).find(p=>p?.connected && p.mapping==='standard') || null;
-    if(lastActive!==G.active){lastActive=G.active;chosenFoot=0;heldLeft=heldRight=false;}
+    if(lastActive!==G.active){lastActive=G.active;chosenFoot=0;heldLeft=heldRight=false;lastCrossings=0;}
     if(currentPad){
       const down=i=>!!currentPad.buttons[i]?.pressed, pressed=i=>down(i)&&!padButtons[i];
       const context=$('htpFull') || (dialogOpen()?$('modalBox'):(!inMatch()?home:null));
@@ -346,20 +606,49 @@
         if(pressed(1)&&$('htpFull'))$('htpClose')?.click();
       } else if(inMatch()) {
         if(pressed(9))openPause();
-        if(pressed(4))chooseFoot(chosenFoot-1);
-        if(pressed(5))chooseFoot(chosenFoot+1);
+        // The D-pad picks the foot in EVERY scheme — one thing that never moves, so the sticks and
+        // triggers are free to mean different things per scheme without the choice of foot moving too.
+        if(pressed(14))chooseFoot(chosenFoot-1);
+        if(pressed(15))chooseFoot(chosenFoot+1);
         if(pressed(0))pinOrCommit();
         if(pressed(1))cancelSwing();
-        swing(currentPad.axes[0]||0,dt);
+        if(pressed(3))openControls();
+        // The bumpers resize the flat board. They sit under the fingers already holding the
+        // triggers that swing, and they were the one obvious pair still doing nothing in a match.
+        // Held down they repeat, so you can sweep the size rather than clicking twenty times.
+        if(down(4))resizeBoard(-1.6*dt);
+        if(down(5))resizeBoard(+1.6*dt);
+        if(settings.padScheme==='triggers'){
+          // Analog triggers: right clockwise, left anticlockwise, and how far you pull IS the speed.
+          // Triggers rest at a true zero (no stick drift), so the dead zone can be tiny and a feather
+          // press still gives a slow, controllable creep.
+          swing(triggerAxis(),dt,.02);
+        } else {
+          swing(currentPad.axes[2]||0, dt);                                // right stick left/right turns
+        }
+        orbitCamera(currentPad.axes[0]||0, currentPad.axes[1]||0, dt);     // left stick moves the camera, always
+        // A short pulse each time a foot actually crosses a printed line: the rule that decides the
+        // turn, felt rather than read off the crossings counter.
+        if(typeof G.crossings==='number'){
+          if(G.crossings>lastCrossings) rumble(.34);
+          lastCrossings=G.crossings;
+        }
         if(canPlay())v3HoverIdx=G.pinned===null?chosenFoot:G.pinned;
       }
       padButtons=currentPad.buttons.map(b=>b.pressed);
-      $('desktopInputHint').innerHTML='<kbd>LB / RB</kbd> choose foot · <kbd>A</kbd> pin / end turn<br>Left stick swings · <kbd>B</kbd> cancels';
+      $('desktopInputHint').innerHTML = '<kbd>D-pad ← →</kbd> choose foot · <kbd>A</kbd> pin / end<br>'
+        + (settings.padScheme==='triggers'
+            ? '<kbd>LT / RT</kbd> swing — press harder to go faster'
+            : '<kbd>Right stick ← →</kbd> swing')
+        + ' · <kbd>Left stick</kbd> camera<br>Scroll over the flat board to resize it';
     } else { padButtons=[]; padAxisLatch=false; }
     if(heldLeft||heldRight)swing((heldRight?1:0)-(heldLeft?1:0),dt);
   }
   document.addEventListener('keydown',e=>{
     if($('htpFull'))return;
+    // F1 is the one key people already try when they want to know what the buttons do, so it works
+    // from anywhere -- in a match, in the menus, and on top of another dialog.
+    if(e.key==='F1'){e.preventDefault();e.stopImmediatePropagation();openControls();return;}
     if(e.key==='Escape'){
       if(dialogOpen()){if(modalDismiss){e.preventDefault();e.stopImmediatePropagation();modalDismiss();}return;}
       if(inMatch()){e.preventDefault();e.stopImmediatePropagation();openPause();}return;
@@ -378,6 +667,8 @@
     }
     if(e.key==='Enter'&&!e.repeat){e.preventDefault();pinOrCommit();}
     if(e.key==='Backspace'){e.preventDefault();cancelSwing();}
+    if(e.key==='['){e.preventDefault();resizeBoard(-0.06);}
+    if(e.key===']'){e.preventDefault();resizeBoard(+0.06);}
   },true);
   addEventListener('keyup',e=>{if(e.key==='ArrowLeft')heldLeft=false;if(e.key==='ArrowRight')heldRight=false;});
   addEventListener('blur',()=>{heldLeft=heldRight=false;if(inMatch()&&!G.over&&!dialogOpen()&&!onlineMatch&&!$('htpFull'))openPause();});
@@ -391,10 +682,21 @@
 
   window.tauDesktop={
     get paused(){return paused;},
-    get skin(){return palette;},
+    get skin(){return finish().skin;},
+    get padScheme(){return settings.padScheme;},
+    set padScheme(v){ if(PAD_SCHEMES.includes(v)){ settings.padScheme=v; saveSettings(); } },
+    get invertCamY(){return settings.invertCamY;},
+    set invertCamY(v){ settings.invertCamY=!!v; saveSettings(); },
+    get board(){return settings.board;},
+    set board(v){ if(BOARD_FINISHES.some(b=>b.id===v)){ settings.board=v; saveSettings(); applyMaterials(); applyTheme(); render(); } },
+    get boards(){return BOARD_FINISHES.map(b=>({id:b.id,name:b.name}));},
     resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult,
     untimedLocal:()=>ownMatch&&!vsAI&&!onlineMatch,
-    onMatchStart(){ ownMatch=false; paused=false; heldLeft=heldRight=false; lastActive=-1; focusBoard(); resize(); },
+    // The corner layout keys off flags (#game's display, body.ingame) that the start sequence sets
+    // across several steps, so the first resize can still be reading the menu's world. Settle it on
+    // the next frame, once every flag for this match is actually in place.
+    onMatchStart(){ ownMatch=false; paused=false; heldLeft=heldRight=false; lastActive=-1; lastCrossings=0;
+      focusBoard(); resize(); requestAnimationFrame(()=>resize()); },
     onMenu(){ ownMatch=false; paused=false; heldLeft=heldRight=false; camManualSet=false; resize(); $('desktopPlay').focus({preventScroll:true}); },
     onModalShown(){
       delete $('modalBox').dataset.desktopResult;

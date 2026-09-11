@@ -77,7 +77,7 @@ test('the home menu reaches the showcase and the analysis lab',async t=>{
   assert.deepEqual(g.errors,[]);
 });
 
-test('a real match hands board sizing to the web split view, not a cut-down desktop layout',async t=>{
+test('a real match hands board sizing to the shared layout, not a cut-down desktop one',async t=>{
   const g=await game();t.after(g.close);
   // The old "Overhead view" corner-minimap toggle is gone -- the flat board is no longer hidden
   // behind a mode switch, it's just always there beside the 3D view (see native/README.md).
@@ -86,14 +86,67 @@ test('a real match hands board sizing to the web split view, not a cut-down desk
     JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')||'{}'), 'map'), false);
   g.$('desktopLocal').click();g.tick();
   // Simulate WebGL being available (this harness has no real GPU) and confirm window.tauDesktop's
-  // resize hook backs OFF while a match is on screen, instead of doing its own board sizing --
-  // that hand-off is what lets index.html's own resize()/#splitHandle math run, the same one the
-  // browser build uses. Regression guard for the bug this fixed: the desktop CSS gap for #views
-  // must never diverge from the split math's own gap budget (see presentation.css), or the two
-  // boards silently wrap onto separate rows instead of sitting side by side.
+  // resize hook backs OFF while a match is on screen, instead of doing its own board sizing. That
+  // hand-off is what puts BOTH builds through the one sizing function in index.html: the browser
+  // gets the side-by-side split, the desktop gets the corner layout, and neither has a second,
+  // quietly diverging copy of the maths. The flat board is never hidden behind a mode switch.
   g.read("renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}}");
   assert.equal(g.read('tauDesktop.resize()'), false,
     'a real match must not be laid out by the desktop-only path');
+  assert.equal(g.read('cornerLayoutActive()'), true, 'the desktop match uses the corner layout');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('dragged out, the flat board takes over and the 3D view becomes the inset',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopLocal').click();g.tick();
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio:()=>{},getPixelRatio:()=>1,
+    setSize(){},shadowMap:{}};
+    camera=new THREE.PerspectiveCamera(); controls={mouseButtons:{},target:new THREE.Vector3()};`);
+  const px = s => Number(String(s).replace('px','')) || 0;
+  const at = v => { g.read(`setViewSplit(${v},true); resize();`);
+    return { flat: px(g.read('canvas.style.width')),
+             v3:   px(g.read("document.getElementById('view3d').style.width")),
+             inset: g.read("document.getElementById('views').classList.contains('view3dInset')") }; };
+  const win = g.read('innerWidth');
+  const small = at(0), big = at(1);
+  // Dialled down, the flat board is a corner glance over a 3D view that still owns the window.
+  assert.ok(small.flat < win*0.25, `dialled down the flat board is small, got ${small.flat}`);
+  assert.equal(small.v3, win, 'and the 3D view still fills the window');
+  assert.equal(small.inset, false, 'nothing is inset at that end');
+  // Dragged out, the roles swap: the flat board is the board you play on and the 3D view retreats
+  // to the opposite corner. Growing the flat board while the 3D view stayed full-window would just
+  // bury the pieces underneath it — the whole point of "the 2D board can dominate" is that the
+  // other view gets OUT OF THE WAY, so the 3D tile shrinking is the assertion that matters here.
+  assert.ok(big.flat > small.flat*3, `dragged out the flat board dominates, got ${big.flat}`);
+  assert.ok(big.v3 < win*0.5, `and the 3D view has pulled back to an inset, got ${big.v3}`);
+  assert.equal(big.inset, true, 'the inset framing is on');
+  // The handover is continuous: no step in either tile as the drag crosses the swap point.
+  let prevFlat = 0, prevV3 = win + 1;
+  for (let v=0; v<=1.0001; v+=0.05) {
+    const s = at(Math.min(1,v));
+    assert.ok(s.flat >= prevFlat, `flat board never shrinks as the drag grows it (at ${v.toFixed(2)})`);
+    assert.ok(s.v3 <= prevV3, `3D view never grows back as the drag grows the board (at ${v.toFixed(2)})`);
+    prevFlat = s.flat; prevV3 = s.v3;
+  }
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the saved-games list draws its icons instead of printing their source',async t=>{
+  const g=await game('');t.after(g.close);
+  // A saved replay is just an entry in localStorage, so the list can be stood up without playing
+  // a game out. The payload only has to be a string — nothing here decodes it.
+  g.read(`storeSavedReplays([{t:'Local 1v1', d:Date.now(), p:'x'}]); openWatchScreen();`);
+  const icons=[...g.w.document.querySelectorAll('#wsSaved .wsIcon')];
+  assert.ok(icons.length>=3,`the row offers its actions, got ${icons.length}`);
+  // The row's icons are a mix of plain glyphs and one inline SVG. Every one of them used to go in
+  // through textContent, so the SVG was rendered as its own source code down the side of the row.
+  for(const b of icons){
+    assert.ok(!b.textContent.includes('<svg'),`an icon printed its markup: ${b.textContent.slice(0,40)}`);
+    assert.ok(!b.textContent.includes('<path'),'an icon printed a path');
+    assert.ok(b.querySelector('svg') || b.textContent.trim(),'every icon shows something');
+  }
+  assert.equal(icons.filter(b=>b.querySelector('svg')).length,1,'the drawn icon is a real SVG element');
   assert.deepEqual(g.errors,[]);
 });
 
@@ -125,20 +178,255 @@ test('ordinary web entry keeps its original presentation',async t=>{
 
 test('standard controller pins, swings, commits, cancels and opens the menu',async t=>{
   const g=await game();t.after(g.close);
-  const pad={connected:true,mapping:'standard',axes:[0,0],buttons:Array.from({length:17},()=>({pressed:false})),
+  const pad={connected:true,mapping:'standard',axes:[0,0,0,0],
+    buttons:Array.from({length:17},()=>({pressed:false,value:0})),
     vibrationActuator:{playEffect:()=>Promise.resolve()}};
   g.w.navigator.getGamepads=()=>[pad];
   const press=i=>{pad.buttons[i].pressed=true;g.tick();pad.buttons[i].pressed=false;g.tick();};
+  // Triggers are the default scheme: hold RT to swing, let go to stop.
+  const pull=(i,v,ms)=>{pad.buttons[i].value=v;pad.buttons[i].pressed=v>.5;g.tick(ms);
+    pad.buttons[i].value=0;pad.buttons[i].pressed=false;g.tick();};
   g.$('desktopLocal').click();g.tick();
-  press(5);press(0);assert.equal(g.read('G.pinned'),1);
-  pad.axes[0]=1;g.tick(300);pad.axes[0]=0;press(0);
+  // The D-pad chooses the foot in every scheme.
+  press(15);press(0);assert.equal(g.read('G.pinned'),1);
+  pull(7,1,300);press(0);
   assert.equal(g.read('G.active'),1);
   const before=g.read('JSON.stringify(takeSnap())');
-  press(0);pad.axes[0]=1;g.tick(300);pad.axes[0]=0;press(1);
+  press(0);pull(7,1,300);press(1);
   assert.equal(g.read('JSON.stringify(takeSnap())'),before);
   assert.equal(g.read('G.pinned'),null);
   press(9);assert.equal(g.w.tauDesktop.paused,true);
   press(0);assert.equal(g.w.tauDesktop.paused,false);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the stick scheme turns at a speed set by how far the right stick is pushed',async t=>{
+  const g=await game();t.after(g.close);
+  const pad={connected:true,mapping:'standard',axes:[0,0,0,0],
+    buttons:Array.from({length:17},()=>({pressed:false,value:0})),
+    vibrationActuator:{playEffect:()=>Promise.resolve()}};
+  g.w.navigator.getGamepads=()=>[pad];
+  const press=i=>{pad.buttons[i].pressed=true;g.tick();pad.buttons[i].pressed=false;g.tick();};
+  const hold=(x,ms)=>{pad.axes[2]=x;g.tick(ms);pad.axes[2]=0;g.tick();};
+  g.w.tauDesktop.padScheme='stick';
+  g.$('desktopLocal').click();g.tick();
+  press(15);press(0);assert.equal(g.read('G.pinned'),1);
+  // Half deflection for a fixed time, then the same time at full: further pushed turns further. The
+  // window is kept short so the whole comparison stays inside the turn's crossing allowance —
+  // past that the RULES cap the arc and we would be measuring the rulebook, not the input.
+  hold(.5,200);
+  const half=Math.abs(g.read('G.netRad'));
+  assert.equal(g.read('G.atLimit'),false,'the sample stays inside the legal arc');
+  assert.ok(half>0,'a pushed stick turns the piece');
+  g.read('restoreSnap();G.pinned=null;G.pivot=null;G.handle=null;G.ptrAngle=null');
+  g.tick();press(15);press(0);
+  hold(1,200);
+  const full=Math.abs(g.read('G.netRad'));
+  assert.ok(full>half*1.6, `full deflection should turn much further than half (half ${half.toFixed(3)}, full ${full.toFixed(3)})`);
+  // A centred stick is not an input: nothing keeps turning once it is let go.
+  const settled=g.read('G.netRad');
+  for(let i=0;i<12;i++) g.tick();
+  assert.equal(g.read('G.netRad'),settled,'a centred stick does not keep turning it');
+  // The other direction turns the other way — the sign mapping works both ways.
+  g.read('restoreSnap();G.pinned=null;G.pivot=null;G.handle=null;G.ptrAngle=null');
+  g.tick();press(15);press(0);
+  hold(-1,200);
+  assert.ok(g.read('G.netRad')<0,'pushing the stick the other way turns the piece the other way');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the trigger scheme swings by how far the trigger is pulled, and the left stick never does',async t=>{
+  const g=await game();t.after(g.close);
+  // Analog triggers: buttons carry a 0..1 value, which IS the swing speed.
+  const trig=(i,v)=>{pad.buttons[i].value=v;pad.buttons[i].pressed=v>.5;};
+  const pad={connected:true,mapping:'standard',axes:[0,0,0,0],
+    buttons:Array.from({length:17},()=>({pressed:false,value:0})),
+    vibrationActuator:{playEffect:()=>Promise.resolve()}};
+  g.w.navigator.getGamepads=()=>[pad];
+  const press=i=>{pad.buttons[i].pressed=true;g.tick();pad.buttons[i].pressed=false;g.tick();};
+  g.$('desktopLocal').click();g.tick();
+  g.w.tauDesktop.padScheme='triggers';
+  assert.equal(g.w.tauDesktop.padScheme,'triggers');
+  press(15);press(0);assert.equal(g.read('G.pinned'),1,'D-pad still picks the foot here');
+  // A feather pull moves the piece — the old .16 stick dead zone would have swallowed it entirely.
+  trig(7,.10);g.tick(300);trig(7,0);
+  const light=Math.abs(g.read('G.netRad'));
+  assert.ok(light>0,'a light pull still turns the piece');
+  g.read('restoreSnap();G.pinned=null;G.pivot=null;G.handle=null;G.ptrAngle=null');
+  press(15);press(0);
+  trig(7,1);g.tick(300);trig(7,0);
+  assert.ok(Math.abs(g.read('G.netRad'))>light*2,'pulling harder turns it faster');
+  // In this scheme the left stick is inert: it must not swing the piece.
+  g.read('restoreSnap();G.pinned=null;G.pivot=null;G.handle=null;G.ptrAngle=null');
+  press(15);press(0);
+  pad.axes[0]=1;g.tick(300);pad.axes[0]=0;
+  assert.equal(g.read('G.netRad'),0,'the left stick does not swing in the trigger scheme');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('choosing a board finish repaints the flat board and the 3D one from the same entry',async t=>{
+  const g=await game();t.after(g.close);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    tauDesktop.applyMaterials();`);
+  const ids=g.w.tauDesktop.boards.map(b=>b.id);
+  assert.ok(ids.includes('walnut') && ids.length>1,'more than one finish is offered');
+  const other=ids.find(id=>id!=='walnut');
+  const before={ flat:g.read('activeSkin().flat'), bg:g.read("'#'+scene.background.getHexString()") };
+  g.w.tauDesktop.board=other;
+  // One choice drives BOTH views: the flat board's palette and the 3D scene move together, so the
+  // two boards can never end up showing different materials for the same game.
+  assert.notEqual(g.read('activeSkin().flat'),before.flat,'the flat board repainted');
+  assert.notEqual(g.read("'#'+scene.background.getHexString()"),before.bg,'the 3D scene repainted');
+  assert.equal(g.read('activeSkin().flat'),
+    g.w.tauDesktop.boards.length && g.w.tauDesktop.skin.flat,'both read the same finish entry');
+  assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).board,other,'the choice persists');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the corner board is resizable by a knob on its rim and by scrolling over it',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopLocal').click();g.tick();
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio:()=>{},getPixelRatio:()=>1,
+    setSize(){},shadowMap:{}};
+    camera=new THREE.PerspectiveCamera(); controls={mouseButtons:{},target:new THREE.Vector3()};
+    setViewSplit(0.5,true); resize();`);
+  // The grip has to LOOK like a control here. In the side-by-side split a hairline is enough
+  // because the seam between two tiles is itself the affordance; a board floating on a backdrop
+  // has no seam, and the 3px version of this was reported as simply not being there.
+  assert.equal(g.$('splitHandle').classList.contains('corner'),true,'the corner knob is on');
+  assert.ok(parseInt(g.$('splitHandle').style.width) >= 24,'and is a real target, not a hairline');
+  const flat = () => Number(String(canvasWidth()).replace('px','')) || 0;
+  const canvasWidth = () => g.read('canvas.style.width');
+  const wheel = dy => { g.$('canvas').dispatchEvent(Object.assign(
+    new g.w.Event('wheel',{bubbles:true,cancelable:true}), {deltaY:dy})); };
+  const mid = flat();
+  for(let i=0;i<4;i++) wheel(-120);
+  const bigger = flat();
+  assert.ok(bigger > mid, `scrolling up grows the board (${mid} -> ${bigger})`);
+  for(let i=0;i<8;i++) wheel(120);
+  assert.ok(flat() < bigger, `scrolling down shrinks it (${bigger} -> ${flat()})`);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the controls sheet lists the live bindings and the pad can resize the board',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopLocal').click();g.tick();
+  // F1 from anywhere. Rendered as real markup, not printed as literal tags: showModal writes a
+  // plain-text body with textContent unless told otherwise, so this is the guard for that argument.
+  g.key('F1');g.tick();
+  assert.equal(g.$('modalTitle').textContent,'Controls');
+  const rows=[...g.$('modalBody').querySelectorAll('.desktop-controls-row')];
+  assert.ok(rows.length>12, `the sheet lists the bindings, got ${rows.length} rows`);
+  assert.equal(g.$('modalBody').textContent.includes('<kbd>'),false,'rendered, not printed as markup');
+  const say=()=>rows.map(r=>r.textContent).join(' | ');
+  // It reads the live scheme rather than a second hard-coded copy, so it cannot contradict the pad.
+  assert.ok(/LT \/ RT/.test(say()),'the trigger scheme is described by default');
+  g.$('modalBtns').firstElementChild.click();g.tick();
+  g.w.tauDesktop.padScheme='stick';
+  g.key('F1');g.tick();
+  const after=[...g.$('modalBody').querySelectorAll('.desktop-controls-row')].map(r=>r.textContent).join(' | ');
+  assert.ok(/Right stick/.test(after),'switching scheme changes what the sheet says');
+  g.$('modalBtns').firstElementChild.click();g.tick();
+  // The bumpers resize the flat board, held to repeat. The GPU device is stubbed only from here:
+  // with a renderer present the harness's animation loop wants a whole scene, and this section
+  // drives the input poll directly instead, which is the part under test.
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio:()=>{},getPixelRatio:()=>1,
+    setSize(){},shadowMap:{}};
+    camera=new THREE.PerspectiveCamera(); controls={mouseButtons:{},target:new THREE.Vector3()};
+    setViewSplit(0.5,true); resize();`);
+  const pad={connected:true,mapping:'standard',axes:[0,0,0,0],
+    buttons:Array.from({length:17},()=>({pressed:false,value:0})),
+    vibrationActuator:{playEffect:()=>Promise.resolve()}};
+  g.w.navigator.getGamepads=()=>[pad];
+  const width=()=>Number(String(g.read('canvas.style.width')).replace('px',''))||0;
+  const start=width();
+  pad.buttons[5].pressed=true; for(let i=0;i<10;i++) g.w.tauDesktop.tick(0.1); pad.buttons[5].pressed=false;
+  const grown=width();
+  assert.ok(grown>start, `RB grows the board (${start} -> ${grown})`);
+  pad.buttons[4].pressed=true; for(let i=0;i<20;i++) g.w.tauDesktop.tick(0.1); pad.buttons[4].pressed=false;
+  assert.ok(width()<grown, `LB shrinks it (${grown} -> ${width()})`);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('every board in the catalogue paints the flat board, the 3D board and the pieces',async t=>{
+  const g=await game();t.after(g.close);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    tauDesktop.applyMaterials();`);
+  const ids=g.w.tauDesktop.boards.map(b=>b.id);
+  // The catalogue is the WHOLE set, not a desktop-only sub-set: the browser build's original skins
+  // and the looks that used to be locked in the showcase are all here, selectable in a real match.
+  for(const id of ['dark','slate','dojo','yellow','walnut','ebony','maple',
+                   'noir','math','sumo','cosy','alien','colossus'])
+    assert.ok(ids.includes(id), `${id} is offered in-game`);
+  const seen=new Set();
+  for(const id of ids){
+    g.w.tauDesktop.board=id;
+    const look={
+      flat:g.read('activeSkin().flat'),
+      bg:g.read("'#'+scene.background.getHexString()"),
+      piece:g.read("'#'+tripods[0].userData.mat.color.getHexString()"),
+    };
+    for(const [what,v] of Object.entries(look))
+      assert.ok(/^#[0-9a-f]{6}$/.test(v), `${id} sets a real ${what} colour, got ${v}`);
+    // Each entry is a distinct look, so a board cannot silently fall back to another's palette.
+    const key=JSON.stringify(look);
+    assert.ok(!seen.has(key), `${id} is a look of its own, not a duplicate`);
+    seen.add(key);
+  }
+  // Exotic materials must not leak into the next board: glass and thin film are switched ON by the
+  // finishes that ask for them and back OFF by the ones that do not, or leaving Noir would hand the
+  // next set see-through legs.
+  g.w.tauDesktop.board='noir';
+  assert.ok(g.read('tripods[0].userData.mat.transmission')>0,'Noir pieces are glass');
+  g.w.tauDesktop.board='alien';
+  assert.equal(g.read('tripods[0].userData.mat.transmission'),0,'leaving Noir clears the glass');
+  assert.ok(g.read('tripods[0].userData.mat.iridescence')>0,'Alien pieces keep their thin film');
+  g.w.tauDesktop.board='walnut';
+  assert.equal(g.read('tripods[0].userData.mat.iridescence'),0,'leaving Alien clears the thin film');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the camera stick looks where it is pushed, and Y can be inverted',async t=>{
+  const g=await game();t.after(g.close);
+  const pad={connected:true,mapping:'standard',axes:[0,0,0,0],
+    buttons:Array.from({length:17},()=>({pressed:false,value:0})),
+    vibrationActuator:{playEffect:()=>Promise.resolve()}};
+  g.w.navigator.getGamepads=()=>[pad];
+  g.$('desktopLocal').click();g.tick();
+  // Stand a camera up where a match holds it, with the GPU device stubbed (no GL here), then drive
+  // the pad poll directly: this is about where the stick sends the camera, not about the draw call.
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3(0,4,0)};`);
+  const start=()=>g.read('camera.position.set(0,145,148)');
+  const poll=(axis,v)=>{pad.axes=[0,0,0,0];pad.axes[axis]=v;g.w.tauDesktop.tick(0.3);pad.axes=[0,0,0,0];};
+  const camX=()=>g.read('camera.position.x'), camY=()=>g.read('camera.position.y');
+  // A stick is a LOOK control: pushing right turns the view right, which carries the camera round
+  // to its own right (+X here) and swings the board leftward across the screen. The mouse is the
+  // opposite gesture — there you have hold of the board — so the two are not expected to agree.
+  start(); const x0=camX();
+  poll(0,1);
+  assert.ok(camX()>x0,`push right should orbit the camera right (was ${x0.toFixed(1)}, now ${camX().toFixed(1)})`);
+  // Pushing down tips the view down onto the board, so the camera climbs.
+  start(); const y0=camY();
+  poll(1,1);
+  assert.ok(camY()>y0,`push down should raise the camera (was ${y0.toFixed(1)}, now ${camY().toFixed(1)})`);
+  // Inverting Y flips only that axis — the setting exists because this is the one people disagree on.
+  g.w.tauDesktop.invertCamY=true;
+  start();
+  poll(1,1);
+  assert.ok(camY()<y0,'inverted, push down lowers the camera instead');
+  assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).invertCamY,true,'the choice persists');
   assert.deepEqual(g.errors,[]);
 });
 

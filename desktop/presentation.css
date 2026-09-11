@@ -1,5 +1,5 @@
 html.tau-desktop { color-scheme: dark; --paper:#f2e8d7; --muted:#b4ab99; --gold:#d9b77b; --edge:rgba(218,188,137,.24); }
-html.tau-desktop body { background:#101410; color:var(--paper); font-family:"Segoe UI",system-ui,sans-serif; }
+html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); font-family:"Segoe UI",system-ui,sans-serif; }
 .tau-desktop button,.tau-desktop select,.tau-desktop input { font:inherit; }
 .tau-desktop button { cursor:pointer; }
 .tau-desktop button:focus-visible,.tau-desktop select:focus-visible,.tau-desktop input:focus-visible,.tau-desktop canvas:focus-visible { outline:2px solid var(--gold); outline-offset:5px; }
@@ -32,6 +32,24 @@ html.tau-desktop body { background:#101410; color:var(--paper); font-family:"Seg
 .tau-desktop #acctStatus { z-index:3; position:absolute; left:clamp(28px,5vw,90px); bottom:22px; margin:0; color:#b4ab99; font-size:12px; max-width:320px; text-align:left; }
 .tau-desktop #acctStatus button { color:var(--gold); font-size:12px; }
 .tau-desktop #game { width:100%; height:100%; padding:0; margin:0; }
+/* In a match the 3D view takes the whole window and the flat board floats in the bottom-left
+   corner. The board it draws is a disc, so the tile is clipped to a circle: a square tile in a
+   corner spends a third of its area on empty corners, and this is exactly the space the 3D view
+   wanted back. resize() still sizes it, so the split control keeps working. */
+/* These sit BELOW the generic #views tile rules further down and must win over them, so they carry
+   the same #views ancestor plus body.ingame — raising specificity rather than reaching for
+   !important, which would then have to be fought again by anything layered on later. */
+.tau-desktop body.ingame #views { position:fixed; inset:0; width:100%; height:100%; }
+.tau-desktop body.ingame #views #view3d { position:absolute; inset:0; border-radius:0; border:0; }
+/* Once the flat board has grown past the swap point the 3D view stands beside it as a full-height
+   column rather than floating over it, so all it needs is the one edge that divides them — a corner
+   radius and a drop shadow would be drawing a card that no longer has free sides. */
+.tau-desktop body.ingame #views.view3dInset #view3d { border-left:1px solid var(--edge); }
+/* No width/height transition here: the grip has to sit exactly on the board's edge, and an
+   animating box would leave it lagging behind the drag it is itself driving. */
+.tau-desktop body.ingame #views #canvas { position:fixed; bottom:26px; left:26px; z-index:5;
+  border-radius:50%; border:1px solid var(--edge); background:transparent;
+  box-shadow:0 18px 60px #000a; }
 /* In a match the flat board and the 3D view sit side by side (stacked in portrait) with a
    draggable divide between them — the SAME split view the web build uses (#splitHandle/resize()
    in index.html), just with the walnut chrome floated over it. Desktop never gets a smaller
@@ -94,3 +112,27 @@ html.tau-desktop body { background:#101410; color:var(--paper); font-family:"Seg
 @media(max-height:580px) { .desktop-logo { width:125px; margin-bottom:13px; } .desktop-home h2 { display:none; } .desktop-intro { font-size:13px; margin-bottom:13px; } .desktop-primary { min-height:42px; padding:10px 18px; } .desktop-choices { margin:10px 0; } .desktop-links { grid-template-columns:1fr 1fr; gap:0 12px; } .desktop-links button { font-size:13px; padding:7px 0; } .desktop-home-bottom { margin-top:10px; padding-top:7px; } }
 @media(max-width:800px) { .desktop-home { left:26px; width:260px; } .desktop-material { bottom:17px; right:20px; font-size:11px; } .desktop-input-hint { display:none; } .tau-desktop #bottomHud { left:26%!important; right:6%!important; bottom:22px!important; } .tau-desktop #topHud { max-width:52%; top:24px!important; } .tau-desktop #status { font-size:19px!important; } .desktop-brand { left:12px; padding-left:8px; } .desktop-menu { right:14px; } .desktop-menu kbd { display:none; } }
 @media(max-width:600px) { .desktop-home { width:calc(100% - 48px); left:24px; top:auto; bottom:60px; transform:none; } .desktop-logo { width:140px; margin-bottom:16px; } .desktop-home h2 { display:none; } .desktop-intro { max-width:none; font-size:14px; margin-bottom:14px; } .desktop-choices { margin:10px 0; } .desktop-links { grid-template-columns:1fr 1fr; gap:0 12px; } .desktop-links button { font-size:14px; } .desktop-material { display:none; } .tau-desktop #menu::after { background:linear-gradient(0deg,#101410 0%,rgba(16,20,16,.92) 44%,transparent 76%); } .tau-desktop #modalBox { padding:27px; } .tau-desktop #modalTitle { font-size:28px; } .tau-desktop #bottomHud { inset:auto 15px 78px!important; } }
+/* A pale room (Colossus' daylit arena) turns the floating HUD's light-on-dark text into nothing at
+   all. Only the chrome that sits DIRECTLY over the 3D backdrop flips to ink here — the modal, the
+   menu chip and the settings panel carry their own dark surfaces and are already readable.
+   The halo is kept tight and weak on purpose: a wide white glow is what lifts light text off a dark
+   board, and the same glow around DARK text on a light one eats its edges instead — it is here only
+   to carry the line where it crosses the board's own drop shadow. */
+.tau-desktop.desktop-pale-room #status { color:#1d2026!important; text-shadow:0 1px 2px #ffffffb0; }
+.tau-desktop.desktop-pale-room #meta,
+.tau-desktop.desktop-pale-room #help { color:#23272e!important; text-shadow:0 1px 2px #ffffffb0; }
+.tau-desktop.desktop-pale-room .desktop-brand { color:#1d2026; }
+.tau-desktop.desktop-pale-room .desktop-input-hint { color:#3a3f47; }
+.tau-desktop.desktop-pale-room .desktop-input-hint kbd { color:#1d2026; }
+.tau-desktop.desktop-pale-room .desktop-material { color:#4a4a42; }
+/* The controls sheet: two columns of key-then-meaning, so the eye runs down the bindings rather
+   than reading sentences. Scrolls inside the modal, which already caps its own height. */
+.desktop-controls { display:grid; grid-template-columns:auto 1fr; gap:7px 14px; align-items:baseline;
+  text-align:left; }
+.desktop-controls-head { grid-column:1/-1; margin:14px 0 2px; font:600 12px/1 "Segoe UI",system-ui,sans-serif;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--gold); }
+.desktop-controls-head:first-child { margin-top:0; }
+.desktop-controls-row { display:contents; }
+.desktop-controls-row kbd { justify-self:start; font:12px/1.5 "Segoe UI",system-ui,sans-serif; color:var(--paper);
+  border:1px solid var(--edge); border-radius:4px; padding:3px 7px; white-space:nowrap; background:#0000003d; }
+.desktop-controls-row span { color:var(--muted); font-size:14px; }
