@@ -38,7 +38,14 @@ const faceIds=(String(arg('faces',arg('allowPlayers',''))).match(/(?:\[[^\]]*\]|
 // Each rung from L7 up is rated twice: as itself, and opening with the corner cross ("L9+corner",
 // arena.js pins the opening on). Two immortals, so the line's worth shows as the gap between them
 // and the nets' progress against it as that gap closing. Below L7 the rungs never play the line.
-const CORNER_FACE_MIN_LEVEL=7;
+// OFF by default now (--cornerFaces 1 restores them). Measured over 8-26 games each, four of the
+// five corner faces rated BELOW their plain twin -- the opposite of the line's reputation. The
+// likely reason is not that the opening is weak but that it is the line the nets have seen most:
+// selfplay --cornerOpening puts half of every net-vs-ladder training game on it, so the field is
+// heavily trained to punish exactly this opening. That makes a corner face a measure of the nets'
+// own training diet rather than an independent yardstick, and it was costing five immortal seats
+// and a large share of lane time (a single L10+corner match ran 918s) to say it.
+const CORNER_FACE_MIN_LEVEL=+arg('cornerFaces',0)?7:Infinity;
 const players=(levels.length?levels:productionLevels()).flatMap(level=>{const base={id:`L${level}`,kind:'ladder',level,spec:`L${level}`,label:`L${level}`};return level>=CORNER_FACE_MIN_LEVEL?[base,{...base,id:`L${level}+corner`,spec:`L${level}+corner`,label:`L${level}+corner`,corner:true}]:[base];});for(const id of(faceIds.length?faceIds:fallbackFaces())){const p=facePlayer(id);if(p)players.push(p);}
 // The committee seat (committee.js): one voting brain of several, immortal while it sweeps the field.
 const committees=process.argv.includes('--committee')?require('./committee.js').activeLeagueCommittees(dir):[];for(const c of committees)players.push({id:c.id,kind:'committee',brain:'committee',sweeping:true,spec:c.spec,label:c.name||c.id,depth:1,searchDepth:c.depth||3,model:c.file,members:c.members});
@@ -112,7 +119,13 @@ function pairScore(a,b,elo,g,pair,fr){
 // by evidence need (uncertain and stale ladders surface first, freshly-played ones fade), and the
 // opponent is drawn by the normal pair equation minus its cost term -- no seat lists, no
 // thresholds, just a reserved slice of probability.
-const ANCHOR_MATCH_P=0.10;
+// 0 by default now: the rungs pay the SAME measured compute rent as every other player. The
+// waiver was there because rent prices an L10 (minutes per match) out of a draw that an nn-vs-nn
+// D1 match wins in 40 seconds -- but it was buying that reference at 44% of all lane time for 19%
+// of matches. Rent is /sqrt(cost), not /cost, so a 27x-cost rung is only ~5x discouraged, and a
+// rarely-played rung's uncertainty+freshness term pushes back: they self-regulate to occasional
+// matches instead of a reserved tenth. --anchorP 0.1 restores the old reserved slice.
+const ANCHOR_MATCH_P=Math.max(0,Math.min(1,+arg('anchorP',0)));
 function pickAnchor(elo,g,pair,fr,free){
   const ladders=free.filter(p=>p.kind==='ladder');if(!ladders.length)return null;
   const l=weightedDraw(ladders.map(x=>[.30+.70*(.55*uncertainty(x,g)+.45*freshness(x,g)),x]));if(!l)return null;

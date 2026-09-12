@@ -48,6 +48,12 @@ function stableModelEntries(dir){const md=path.join(dir,'models');let files=[];t
 // their games are foregone conclusions that cost seats and anchor nothing (Liam, 2026-09-11).
 // They stay in the game and in self-play's low rungs; they just are not rated players.
 const LEAGUE_MIN_LEVEL=6;
+// Only the TOP few rungs hold an immortal league seat. The ladder is the external yardstick that
+// stops the nets from escalating a shared style, and for that job the rungs the field is actually
+// near are the whole value: every net now beats L6-L8 comfortably, so those matches are foregone
+// conclusions that cost a seat each and anchor nothing. The lower rungs stay in the GAME and in
+// self-play's training mix -- they simply stop being rated players.
+const LEAGUE_TOP_RUNGS=Math.max(1,+(process.env.TAU_LEAGUE_RUNGS||5));
 function productionLadderLevels(ladderN=null){try{const d=require('./engine.js').createEngine().AI_LADDER,n=ladderN==null?d.length:Math.min(ladderN,d.length);return d.slice(0,n).map((x,i)=>x&&!x.experimental?i+1:null).filter(Boolean);}catch(_){const n=ladderN==null?11:ladderN;return Array.from({length:n},(_,i)=>i+1);}}
 function faceId(name,depth,policy=false){return`${name}${policy?'+P':''}@D${depth}`;}
 function splitFaceId(id){const m=String(id).match(/^(.*?)(\+P)?@D([1-4])$/);return m?{name:m[1],policy:!!m[2],depth:+m[3],key:`D${m[3]}${m[2]?'+P':''}`}:null;}
@@ -142,7 +148,7 @@ function admitFrontier(s,entries,mc){const q=nextFrontier(s,entries,mc);if(!q.le
     for(const id of c.ids)s.facePools[depthKey(c.depth)].active.push(id);
     out.push(...c.ids);}
   return out;}
-function sync(dir,ladderN=null){const s=loadState(dir),entries=stableModelEntries(dir),present=new Set(entries.map(e=>e.name));for(const e of entries){s.active[e.name]={file:e.file,dual:e.dual,policy:e.policy,...(e.committee?{committee:true}:{}),shape:e.shape};delete s.retired[e.name];}for(const n of Object.keys(s.active))if(!present.has(n))delete s.active[n];reconcile(s,entries,protectedModels(dir));const prod=productionLadderLevels(ladderN).filter(l=>l>=LEAGUE_MIN_LEVEL),allowed=new Set(prod);if(!Array.isArray(s.ladderActive))s.ladderActive=prod;// Union, not just filter: a rung added to the game (Corner L12) has to enter an EXISTING state's league, or it is never rated -- the filter alone only ever let rungs leave.
+function sync(dir,ladderN=null){const s=loadState(dir),entries=stableModelEntries(dir),present=new Set(entries.map(e=>e.name));for(const e of entries){s.active[e.name]={file:e.file,dual:e.dual,policy:e.policy,...(e.committee?{committee:true}:{}),shape:e.shape};delete s.retired[e.name];}for(const n of Object.keys(s.active))if(!present.has(n))delete s.active[n];reconcile(s,entries,protectedModels(dir));const prod=productionLadderLevels(ladderN).filter(l=>l>=LEAGUE_MIN_LEVEL).slice(-LEAGUE_TOP_RUNGS),allowed=new Set(prod);if(!Array.isArray(s.ladderActive))s.ladderActive=prod;// Union, not just filter: a rung added to the game (Corner L12) has to enter an EXISTING state's league, or it is never rated -- the filter alone only ever let rungs leave.
 s.ladderActive=[...new Set([...s.ladderActive.filter(x=>allowed.has(x)),...prod])].sort((a,b)=>a-b);saveState(dir,s);return s;}
 function readSummary(file){try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch(_){return{players:{}};}}
 function ingestSummary(dir,file){const s=sync(dir),sum=readSummary(file),groups={},ladder={};for(const [id,r] of Object.entries(sum.players||{})){if(r.kind==='ladder'){if(r.corner)continue;/* the rung's own rating keys the ladder tables; its corner-opening face is rated separately and must not clobber it */ladder[r.level]={games:+r.games||0,elo:Number.isFinite(+r.elo)?+r.elo:null};continue;}if((r.kind!=='nn'&&r.kind!=='committee')||!r.model)continue;const name=path.basename(r.model,'.json');(groups[name]||=[]).push({...r,id});}
