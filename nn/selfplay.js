@@ -50,7 +50,17 @@ async function main(){
   if(hadEloInbox){delArg(original,'eloInbox');console.log('[rating] self-play Elo feed disabled: noisy training games are training-only; official Elo is temp-0 arena play');}
   const games=Math.max(1,+getArg(original,'games',100));
   evo.sync(dir); evo.ingestSummary(dir,require('./machine-id.js').summaryPath(dir));
-  const slice=evo.selfplaySlice(dir), profile=evo.selfplayProfile(slice,{dir});
+  // --topN: exploration is a small side stream now, so its seats go to the strongest MEASURED nets
+  // rather than the whole roster -- the league is where everyone else gets their games. Unrated
+  // faces (no games yet) cannot be "top" and are left to the league to place.
+  const topN=Math.max(0,+getArg(original,'topN',10));
+  const roster=evo.selfplaySlice(dir), st0=evo.sync(dir);
+  const eloOf=p=>{const r=st0.latest[path.basename(p,'.json')];return r&&(+r.games||0)>0&&Number.isFinite(+r.elo)?+r.elo:null;};
+  const measured=roster.filter(p=>eloOf(p)!==null).sort((a,b)=>eloOf(b)-eloOf(a));
+  const slice=topN&&measured.length>=2?measured.slice(0,topN):roster;
+  const profile=evo.selfplayProfile(slice,{dir});
+  if(slice!==roster)console.log(`[evolution] self-play seats: top ${slice.length} of ${measured.length} measured nets by Elo `+
+    `(${slice.map(p=>path.basename(p,'.json')+'@'+Math.round(eloOf(p))).join(', ')})`);
   // The model draw keeps evolution-roster's existing strength+need equation. Ladder rungs are a
   // separate permanent reference class used to keep the training distribution from becoming wholly
   // self-referential. Their training share is independent of official Elo evidence now.

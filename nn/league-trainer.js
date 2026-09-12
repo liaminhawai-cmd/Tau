@@ -1,7 +1,11 @@
 'use strict';
 // One trainer, three deliberately unequal streams:
-//   1) official league: ~80% of CPU, and its rated games are ALSO the main training corpus;
-//   2) exploratory self-play: a small stream for seeded/random starts and opponent diversity;
+//   1) official league: every core but two. Its rated games are ALSO the main training corpus,
+//      every pairing is a face the model has never met (the scheduler refuses re-matches), and
+//      culling plus fresh mints keep the field turning over, so it never runs out of new games;
+//   2) exploration self-play: ONE lane, small batches, the strongest measured nets and the top
+//      ladder rungs only, every game started from a position the data has never seen
+//      (novel-start.js) -- a side project on the scale of retromine, not a second factory;
 //   3) retromine: one worker hunting adversarial/ratchet positions for training only.
 // run.js still owns mutation, GPU training, promotion and compute-aware culling. This file changes
 // where game-generation compute goes, not the evolutionary rules.
@@ -12,9 +16,13 @@ const proc=require('./proc-tree.js');
 const dir=__dirname;
 const arg=(n,d)=>{const i=process.argv.indexOf('--'+n);return i>=0?process.argv[i+1]:d;};
 const cores=Math.max(2,os.cpus().length);
-const leagueWorkers=Math.max(1,+arg('leagueWorkers',Math.max(4,cores-4)));
-const exploreWorkers=Math.max(1,+arg('exploreWorkers',2));
+const leagueWorkers=Math.max(1,+arg('leagueWorkers',Math.max(4,cores-2)));
+const exploreWorkers=Math.max(1,+arg('exploreWorkers',1));
 const retroWorkers=Math.max(0,+arg('retroWorkers',1));
+// Exploration batch size and start policy. 60 games on one lane is a trickle next to the league,
+// which is the point; novelStartFrac 1 means every one of them opens where the data is thinnest.
+const exploreGames=Math.max(1,+arg('exploreGames',60));
+const novelStartFrac=arg('novelStartFrac','1');
 const children=[];
 let stopping=false;
 function start(label,script,args){
@@ -41,6 +49,7 @@ else if(reaped.length)console.log(`[trainer] closed ${reaped.length} leftover pr
 console.log(`[trainer] league-first allocation: ${leagueWorkers} league + ${exploreWorkers} exploration`+
             (retroWorkers?` + ${retroWorkers} retromine`:'')+` worker(s)`);
 console.log('[trainer] official league games are both Elo evidence and training data; exploration never contaminates Elo');
+console.log(`[trainer] exploration: ${exploreGames}-game batches, top-rated nets only, ${Math.round(100*+novelStartFrac)}% of games from positions the data has never seen`);
 
 start('PRIMARY OFFICIAL LEAGUE','league-loop.js',['--workers',String(leagueWorkers),'--budgetHours','.25']);
 if(retroWorkers) start('SMALL RETROMINE STREAM','retroloop.js',
@@ -51,12 +60,14 @@ if(retroWorkers) start('SMALL RETROMINE STREAM','retroloop.js',
 // the Elo writer lock and exits immediately because league-loop is already the sole rating writer.
 // Bench sweeps are effectively disabled here: fixed ladder brains already live in the universal
 // league, so a separate expensive sweep is diagnostic duplication rather than useful game supply.
+const OWN_ARGS=['--leagueWorkers','--exploreWorkers','--retroWorkers','--exploreGames','--novelStartFrac'];
 const forwarded=process.argv.slice(2).filter((x,i,a)=>{
-  if(['--leagueWorkers','--exploreWorkers','--retroWorkers'].includes(x))return false;
-  if(i>0&&['--leagueWorkers','--exploreWorkers','--retroWorkers'].includes(a[i-1]))return false;
+  if(OWN_ARGS.includes(x))return false;
+  if(i>0&&OWN_ARGS.includes(a[i-1]))return false;
   return true;
 });
 const runArgs=['--workers',String(exploreWorkers),'--poolWorkers',String(exploreWorkers),
-  '--poolBudgetHours','0.01','--benchEveryMin','100000','--randomStartFrac','0',...forwarded];
+  '--poolBudgetHours','0.01','--benchEveryMin','100000','--randomStartFrac','0',
+  '--gamesPerBatch',String(exploreGames),'--novelStartFrac',String(novelStartFrac),...forwarded];
 const core=start('EVOLUTION + EXPLORATION','run.js',runArgs);
 core.on('exit',code=>{console.log(`[trainer] evolution process exited ${code}; stopping companion streams`);stopAll();process.exitCode=code||0;});
