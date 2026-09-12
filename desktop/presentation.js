@@ -1006,7 +1006,9 @@
   }
   function updateCamera(dt, falling=false) {
     if(!renderer || htp3DActive) return false;
-    camera.clearViewOffset();
+    // The corner layout renders the whole window and aims the camera at its solved tile with a
+    // view offset (index.html's applyCornerViewOffset); anywhere else this clears a stale one.
+    if (typeof applyCornerViewOffset === 'function') applyCornerViewOffset(camera); else camera.clearViewOffset();
     if(camDragging) return true;
     if(inMatch() && camManualSet && !falling) return true;
     desiredPose(falling, cameraGoal, targetGoal);

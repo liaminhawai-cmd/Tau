@@ -163,7 +163,10 @@ const THEMES = {
         // legs at grazing angles are all Fresnel: with full clearcoat/env they washed to colourless
         // chrome (phone photo) — so the legs run the attenuation much harder and the reflective
         // terms much softer, and you see INTO the glass the way you do on the face-on bead.
-        leg: mk({ thickness: 11.0, attenuationDistance: 2.4, roughness: 0.12, emissiveIntensity: 0.24,
+        // Thickness 11 through a 2.4-unit attenuation distance absorbed nearly everything -- the legs
+        // read as opaque coloured plastic. Thinner glass, gentler absorption: still deeply tinted at
+        // the grazing angles, but you see the board and the other piece through them.
+        leg: mk({ thickness: 6.0, attenuationDistance: 6.0, roughness: 0.12, emissiveIntensity: 0.18,
                   clearcoat: 0.45, clearcoatRoughness: 0.14, specularIntensity: 0.4, envMapIntensity: 0.3 }),
         // the bead — untouched, it reads as real glass
         hub: mk({ thickness: 5.0, attenuationDistance: 6.5, roughness: 0.12, emissiveIntensity: 0.06,
@@ -508,18 +511,22 @@ const THEMES = {
     pieces(which) {   // thin-film iridescent chitin with a faint internal glow
       const base = which === 'blue' ? 0x24558c : 0x7c2030;      // petrol / haem — bright enough to read
       const film = which === 'blue' ? [140, 520] : [240, 700];  // nm range picks each side's shimmer
+      // Self-luminous, like the membrane's channels: the glow is a BRIGHT bioluminescent tint of
+      // each side, not the dark body colour turned up (a dark emissive at any intensity only
+      // reads as a slightly less dark surface). Hot enough for the bloom pass to pick up.
+      const glow = which === 'blue' ? 0x3fd2ff : 0xff5c7a;
       const mk = o => PHYS(Object.assign({
         color: base, metalness: 0, iridescence: 1.0, iridescenceIOR: 1.8,
-        iridescenceThicknessRange: film, emissive: new THREE.Color(base),
+        iridescenceThicknessRange: film, emissive: new THREE.Color(glow),
       }, o));
       return {
-        hub: mk({ roughness: 0.18, clearcoat: 1.0, clearcoatRoughness: 0.1, emissiveIntensity: 0.22,
+        hub: mk({ roughness: 0.18, clearcoat: 1.0, clearcoatRoughness: 0.1, emissiveIntensity: 0.9,
                   envMapIntensity: 0.7, specularIntensity: 0.8 }),
         // legs: PARTIAL thin-film only — at true grazing angles full iridescence goes white in
         // every wavelength (it replaces Fresnel entirely), so the legs run half-strength shimmer
-        // over waxy chitin, rough enough to diffuse the sheath, with a stronger internal glow
+        // over waxy chitin, rough enough to diffuse the sheath, lit from inside
         leg: mk({ iridescence: 0.45, roughness: 0.44, clearcoat: 0.2, clearcoatRoughness: 0.35,
-                  emissiveIntensity: 0.3, envMapIntensity: 0.15, specularIntensity: 0.35 }),
+                  emissiveIntensity: 1.1, envMapIntensity: 0.15, specularIntensity: 0.35 }),
       };
     },
   },
@@ -653,11 +660,16 @@ const THEMES = {
       // they leap when a titan goes over the rim.
       const UP = new THREE.Vector3(0, 1, 0), H = 2.4, F = 1.0;
       const partsOf = [];
+      // Legs arched like the pieces they are cheering: the same quarter-circle from the hub down to
+      // the foot that the real tripod's legArcs() walks, as a short tube. Straight cones read as
+      // three-legged stools, not as little Taus.
+      class LegArc extends THREE.Curve {
+        getPoint(t, out = new THREE.Vector3()) { const ph = t*Math.PI/2; return out.set(Math.sin(ph)*F, Math.cos(ph)*H, 0); }
+      }
       for (let k = 0; k < 3; k++) {
-        const a = k*2*Math.PI/3, leg = new THREE.CylinderGeometry(0.24, 0.3, Math.hypot(F, H), 5, 1, true);
-        const dir = new THREE.Vector3(-F*Math.cos(a), H, -F*Math.sin(a)).normalize();   // foot to head
-        leg.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, dir));
-        leg.translate(F*Math.cos(a)/2, H/2, F*Math.sin(a)/2);
+        const a = k*2*Math.PI/3;
+        const leg = new THREE.TubeGeometry(new LegArc(), 6, 0.26, 4, false);
+        leg.rotateY(-a);   // foot lands at (F cos a, 0, F sin a), where the straight legs' feet were
         partsOf.push(leg);
       }
       const head = new THREE.SphereGeometry(0.62, 7, 6); head.translate(0, H, 0); partsOf.push(head);

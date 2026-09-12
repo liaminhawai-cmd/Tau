@@ -355,6 +355,52 @@ those defaults) and reject with "You CANNOT use scopes without modifying the
 main activity." `nativeGoogleSignIn()` in index.html calls
 `plugin.login({ provider: 'google', options: {} })` for exactly this reason.
 
+**Steam has no Google sign-in yet**, and the button is hidden there on
+purpose (`isSteamApp()` in index.html, gated like the app's `isNativeApp()`).
+The web's redirect flow is the wrong tool in Electron: Google can refuse its
+user-agent the way it refuses a WebView, and even when it lets it through
+the redirect lands back on a URL with no `?steam=1` (deliberately, so it
+matches Supabase's allowed list) -- which drops the whole premium
+presentation and leaves the plain web layout in the game window, exactly
+what tapping the button did. The right desktop flow is Google's loopback
+redirect through the system browser (open the consent URL with
+`shell.openExternal`, catch the callback on a temporary `127.0.0.1` server
+in the main process, PKCE, exchange for an ID token, hand it to Supabase's
+`signInWithIdToken` like the app does). Not built; username/password works.
+
+The contact click is played by the per-frame audio driver
+(`updateAudioMovement`), on the rising edge of `G.pushContact` between
+rendered frames -- not from inside `applySwing`. The AI's planner runs
+`applySwing` in tight loops over the live state while it thinks (snapshot,
+sweep, restore, hundreds of times per turn), and a click fired from there
+played every simulated shove: a crackle of stone knocks through the whole
+think on Colossus with nothing on screen. A frame only ever sees the real
+state, and the click also requires the piece to have moved that frame.
+
+Colossus's crowd figures have arched legs now -- the same quarter-circle
+from hub to foot the real pieces' `legArcs()` walks, as a short tube -- in
+place of straight cones, which read as three-legged stools rather than
+little Taus.
+
+In a match the 3D view now fills the whole window and the flat board floats
+over it; the room, stands and dust carry on under the flat board instead of
+stopping at its column, which used to leave the left third of the window a
+blank strip. The corner layout's solved tile (`cornerView3d`) is unchanged
+and is still where the dish is framed: the camera treats that tile as its
+full image and draws the window as an oversized sub-rectangle of it
+(`setViewOffset(w3, h3, -left, -top, W, H)` -- `applyCornerViewOffset` in
+index.html, re-applied every frame by the desktop's `updateCamera`), so the
+dish keeps exactly its old pixel size and the tile's aspect. The layout
+solver's probe camera clears that offset before projecting (a clone carries
+it), and the coach-ease aspect tracker stands down in this layout.
+
+Noir's legs are thinner glass with gentler absorption (thickness 6 /
+attenuation distance 6, was 11 / 2.4) so they read as tinted glass you see
+through rather than opaque coloured plastic. Alien's pieces are
+self-luminous: a bright bioluminescent tint per side as the emissive colour
+(the dark body colour turned up only ever read as a slightly less dark
+surface) at emissive intensity 0.9 (hub) / 1.1 (legs), hot enough for bloom.
+
 **Controls** is its own section (home menu, match menu, F1, Y on a pad): a
 drawn keyboard cluster and a drawn controller, each key and button carrying
 the name of what it does, with the controller scheme switch. On desktop the

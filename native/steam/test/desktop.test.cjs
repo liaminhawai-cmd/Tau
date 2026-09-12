@@ -129,9 +129,11 @@ test('dragged out, the flat board takes over and the 3D view becomes the inset',
     camera=new THREE.PerspectiveCamera(38,1.6,1,2000); camera.position.set(0,145,148); camera.lookAt(0,4,0);
     controls={mouseButtons:{},target:new THREE.Vector3(0,4,0)};`);
   const px = s => Number(String(s).replace('px','')) || 0;
+  // The 3D CANVAS always spans the window now (the scene continues under the flat board); the tile
+  // the dish is framed in -- what "steps aside" -- is cornerView3d, applied as a camera view offset.
   const at = v => { g.read(`setViewSplit(${v},true); resize();`);
     return { flat: px(g.read('canvas.style.width')),
-             v3:   px(g.read("document.getElementById('view3d').style.width")),
+             v3:   g.read('cornerView3d.w3'),
              inset: g.read("document.getElementById('views').classList.contains('view3dInset')") }; };
   const win = g.read('innerWidth');
   const small = at(0), big = at(1);
@@ -325,7 +327,7 @@ test('the 3D view steps aside by exactly what the flat board needs, and not befo
   const px = s => Number(String(s).replace('px','')) || 0;
   const at = v => { g.read(`setViewSplit(${v},true); resize();`);
     return { flat: px(g.read('canvas.style.width')),
-             left: px(g.read("document.getElementById('view3d').style.left")) }; };
+             left: g.read('cornerView3d.left') }; };   // the framed tile; the canvas itself spans the window
   // A dial in the corner sits under the dish's empty lower-left corner. It must not push the 3D
   // view around: an offset here would be the old threshold logic moving things for no reason.
   const dial = at(0);
@@ -358,9 +360,9 @@ test('on a window taller than it is wide, the 3D view steps up rather than sidew
     controls={mouseButtons:{},target:new THREE.Vector3(0,4,0)};`);
   const px = s => Number(String(s).replace('px','')) || 0;
   const at = v => { g.read(`setViewSplit(${v},true); resize();`);
-    const el = g.$('view3d'), vw = g.$('views').classList;
-    return { left: px(el.style.left), h3: px(el.style.height), w3: px(el.style.width),
-             above: vw.contains('view3dAbove'), side: vw.contains('view3dInset') }; };
+    const tile = g.read('JSON.stringify({left:cornerView3d.left,w3:cornerView3d.w3,h3:cornerView3d.h3})'), vw = g.$('views').classList;
+    const { left, w3, h3 } = JSON.parse(tile);   // the framed tile; the canvas itself spans the window
+    return { left, h3, w3, above: vw.contains('view3dAbove'), side: vw.contains('view3dInset') }; };
   // A dial still costs the view almost nothing. (Not "nothing": on a portrait window the dish is
   // large relative to the width and its lower-left can graze even a small board, so the honest
   // assertion is a bound, not zero.)
@@ -668,7 +670,9 @@ test('replay keeps both boards clear, aligns its chrome, and preserves live resi
     assert.equal(left+width,W,'3D fills the available room to the right edge');
     assert.ok(g.$('splitHandle').classList.contains('auto'),'watching hides the resize grip');
     assert.ok(g.w.document.documentElement.classList.contains('desktop-watching'));
-    assert.equal(px(g.w.document.documentElement.style.getPropertyValue('--desktop-view-center')),left+width/2);
+    // The chrome centres on the FRAMED tile (cornerView3d), which the full-window canvas shows
+    // through a view offset -- not on the canvas box, which is now always the whole window.
+    assert.equal(px(g.w.document.documentElement.style.getPropertyValue('--desktop-view-center')),g.read('cornerView3d.left+cornerView3d.w3/2'));
     const points=g.read(`(()=>{const p=new THREE.Vector3(),out=[];
       for(let x=-CFG.edgeU;x<=CFG.edgeU;x+=4)for(let y=-CFG.edgeU;y<=CFG.edgeU;y+=4){
         if(x*x+y*y>CFG.edgeU*CFG.edgeU)continue;
@@ -1103,17 +1107,34 @@ test('web/PWA quality: the desktop build always gets the top tier regardless of 
 test('legs meeting legs get a short contact tick, once per squeeze not once per substep',async t=>{
   const g=await game();t.after(g.close);
   g.read('tauDesktop.startMatch(true)');g.tick();
+  // The click is played by the per-frame audio driver, never from inside applySwing itself: stand-in
+  // nodes let updateAudioMovement run, and a "frame" is one call to it with the piece having moved.
   g.read(`window.__pushes=0; playPushContact=()=>window.__pushes++;
+    const node=()=>({gain:{setTargetAtTime(){}},frequency:{setTargetAtTime(){}}});
+    voiceGain=node(); scrapeGain=node(); bandpass=node(); rubGain=node(); rubBP=node();
+    audioReady=true; soundOn=true; audioCtx={currentTime:0};
+    window.__frame=()=>{ audioPrevFeet=G.pieces[G.active].feet().map(f=>({x:f.x-40,y:f.y})); updateAudioMovement(0.016); };
     // Face the pieces at each other close enough that swinging one shoves the other on contact.
     G.pieces[0].x=-30; G.pieces[0].y=0; G.pieces[0].rot=0;
     G.pieces[1].x=-6; G.pieces[1].y=0; G.pieces[1].rot=Math.PI;
     G.active=0; pinFoot(0);`);
   g.read(`applySwing(50*Math.PI/180)`);   // one continuous swing, many substeps -- should shove and stay pressed in
-  assert.equal(g.read('window.__pushes'),1,'contact fires once for one continuous shove, not per substep');
-  g.read(`applySwing(1*Math.PI/180)`);   // still pressed in, same turn: no second trigger
+  assert.equal(g.read('window.__pushes'),0,'nothing plays from inside the swing itself');
+  g.read('window.__frame()');
+  assert.equal(g.read('window.__pushes'),1,'the frame that shows the contact plays it once');
+  g.read(`applySwing(1*Math.PI/180); window.__frame(); window.__frame();`);   // still pressed in, same turn
   assert.equal(g.read('window.__pushes'),1,'and not again while the same squeeze just continues');
-  g.read(`clearTurn(); pinFoot(0); applySwing(50*Math.PI/180)`);   // a fresh turn's own genuine contact
-  assert.equal(g.read('window.__pushes'),2,'but a new turn making contact again fires its own tick');
+  // A fresh turn's own genuine contact. The frame between ending one turn and starting the next
+  // is what real play always has (the hand-off, the opponent's think); it is where contact drops.
+  g.read(`clearTurn(); window.__frame(); pinFoot(0); applySwing(50*Math.PI/180); window.__frame();`);
+  assert.equal(g.read('window.__pushes'),2,'but a new turn making contact again plays its own click');
+  // The AI's planner: applySwing swept in a loop over the live state and restored, with no frame
+  // rendered in between -- exactly what a "think" does. It must make no sound at all: this was the
+  // crackle of knocks through every AI turn on Colossus.
+  g.read(`const snap=takeSnap();
+    for (let i=0;i<40;i++){ clearTurn(); pinFoot(i%3); applySwing((i%2?1:-1)*50*Math.PI/180); }
+    ladderRestore(snap);`);
+  assert.equal(g.read('window.__pushes'),2,'a silent search sweep plays nothing');
   assert.deepEqual(g.errors,[]);
 });
 
@@ -1224,8 +1245,8 @@ test('legs rubbing along legs: one click on contact, then a drag pitched by wher
     G.pieces[0].x=-30; G.pieces[0].y=0; G.pieces[0].rot=0;
     G.pieces[1].x=-6; G.pieces[1].y=0; G.pieces[1].rot=Math.PI;
     G.active=0; pinFoot(0); applySwing(50*Math.PI/180);`);
-  assert.equal(g.read('window.__pushes'),1,'the click plays once, on first contact');
-  assert.equal(g.read('G.pushContact'),true,'and the legs are still pressed together');
+  assert.equal(g.read('window.__pushes'),0,'the click waits for a frame -- nothing plays from inside the swing');
+  assert.equal(g.read('G.pushContact'),true,'the legs are pressed together');
   const foot=g.read('pushContactFoot');
   assert.ok(foot>0&&foot<=1,`the contact sits somewhere along the leg, 0 hub .. 1 foot (${foot})`);
   // Drive the per-frame audio with stand-in nodes: pressed together AND moving opens the rub at a
@@ -1237,6 +1258,7 @@ test('legs rubbing along legs: one click on contact, then a drag pitched by wher
     audioReady=true; soundOn=true; audioCtx={currentTime:0};
     audioPrevFeet=G.pieces[0].feet().map(f=>({x:f.x-40,y:f.y}));
     updateAudioMovement(0.016);`);
+  assert.equal(g.read('window.__pushes'),1,'the click plays once, on the frame that shows the contact');
   assert.ok(g.read('window.__rub.at(-1)')>0,'moving while pressed together: the rub sounds');
   const hz=g.read('window.__hz.at(-1)');
   assert.ok(hz>320&&hz<=2220,`pitched between the hub (low) and the foot (high): ${hz} Hz`);
