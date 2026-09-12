@@ -1254,6 +1254,53 @@ test('the sign-in panel is a centred sheet on the premium presentation, and a cl
   assert.deepEqual(g.errors,[]);
 });
 
+test('the leaderboard players\' latest games are a Watch section, not just a small link in a row',async t=>{
+  const g=await game();t.after(g.close);
+  // A backend with three rated players and two finished public games between them.
+  g.read(`(()=>{
+    const profiles=[{id:'p1',username:'Ada',elo:1420,wins:12,losses:3},
+                    {id:'p2',username:'Bo',elo:1310,wins:9,losses:5},
+                    {id:'p3',username:'Cleo',elo:1220,wins:4,losses:6}];
+    const matches=[{id:'m1',blue_id:'p1',red_id:'p2',blue_elo:1420,red_elo:1310,winner_color:'blue',finished_at:'2026-09-12T10:00:00Z'},
+                   {id:'m2',blue_id:'p3',red_id:'p1',blue_elo:1220,red_elo:1420,winner_color:'red',finished_at:'2026-09-12T09:00:00Z'}];
+    const q=data=>{const o={data,error:null};
+      const self={select:()=>self,or:()=>self,eq:()=>self,is:()=>self,not:()=>self,in:()=>self,
+        order:()=>self,limit:()=>self,single:()=>Promise.resolve(o),
+        then:(f,r)=>Promise.resolve(o).then(f,r),catch:f=>Promise.resolve(o).catch(f)};
+      return self;};
+    sb={from:t=>q(t==='profiles'?profiles:matches),rpc:()=>Promise.resolve({data:null}),
+        auth:{getSession:()=>Promise.resolve({data:{session:null}})},removeChannel(){},
+        channel(){return{on(){return this;},subscribe(){return this;}};}};
+    window.__watched=null; watchFinishedGame=(row,names)=>{window.__watched=[row.id,names.join(' vs ')];};
+  })()`);
+  g.read('openWatchScreen()');
+  await new Promise(r=>setTimeout(r,150));
+  const sec=g.$('wsTopPlayers');
+  assert.ok(sec,'the Watch screen has a section for it');
+  assert.equal(sec.querySelector('h3').textContent,'Top players\u2019 latest games');
+  const rows=[...sec.querySelectorAll('.wsRow')];
+  assert.equal(rows.length,3,'one row per rated player with a replayable last game');
+  assert.match(rows[0].textContent,/Ada vs Bo/,'the matchup is the label');
+  assert.match(rows[0].textContent,/^1/,'ranked by their leaderboard position, not by row order');
+  rows[0].querySelector('.wsPlay').dispatchEvent(new g.w.MouseEvent('click',{bubbles:true}));
+  assert.equal(g.read("(window.__watched||[]).join(' / ')"),'m1 / Ada vs Bo','and playing one replays that game');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the leaderboard\'s watch link is styled by the presentation, not hard-coded in the row',async t=>{
+  const g=await game();t.after(g.close);
+  const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+  // It used to carry its web blue and 12px inline, which beats any stylesheet -- so on the premium
+  // presentation it was a small blue link lost among gold standings.
+  const btns=html.match(/<button class="lbWatch"[^>]*>/g)||[];
+  assert.equal(btns.length,2,'the inline row link and the stacked one below it');
+  for (const b of btns) assert.equal(/style=/.test(b),false,'no inline styling to fight');
+  const css=fs.readFileSync(path.join(root,'desktop/presentation.css'),'utf8');
+  assert.match(css,/\.tau-desktop \.lbWatch \{[^}]*var\(--gold\)/,'the premium sheet draws it in gold');
+  assert.match(css,/\.tau-desktop #modalBox\.wide \{[^}]*width:min\(720px/,'and gives the table room for the column');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('a plain web/PWA load (no ?steam, no Capacitor) stays off the desktop presentation',async t=>{
   const g=await game('');t.after(g.close);
   assert.equal(g.read('window.TAU_DESKTOP'),false);

@@ -77,6 +77,12 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 /* The match goes on under a menu, so the backdrop stays clear enough to watch the opponent's swing;
    only the sheet itself frosts what is directly behind it. */
 .tau-desktop #modalBox { backdrop-filter:blur(10px); }
+/* The leaderboard asks for a wide box so its "watch their latest game" column has somewhere to
+   live. Without this the premium sheet's own fixed width wins and the column is squeezed out. */
+.tau-desktop #modalBox.wide { width:min(720px,100%); max-width:min(720px,92vw); }
+.tau-desktop .lbWatch { color:var(--gold); font-size:13px; }
+.tau-desktop .lbWatchRow .lbWatch { font-size:12px; }
+.tau-desktop .lbWatch:hover { filter:brightness(1.2); text-decoration:underline; }
 .tau-desktop #modalBox { position:relative; box-sizing:border-box; width:min(460px,100%); max-width:600px; max-height:calc(100dvh - 48px); overflow:auto; background:linear-gradient(150deg,#22291f,#141b15); border:1px solid var(--edge); border-radius:7px; padding:38px; color:var(--paper); box-shadow:0 28px 100px #0007; }
 .tau-desktop #modalTitle { font:400 32px/1.2 Georgia,serif; color:var(--paper); letter-spacing:-.02em; margin:0 0 20px; text-align:left; }
 .tau-desktop #modalBody { color:var(--muted); font-size:15px; line-height:1.65; margin-bottom:24px; }

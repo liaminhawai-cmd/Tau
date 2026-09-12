@@ -546,3 +546,15 @@ fixed-position descendants, which shrinks the `::before` dimmer to the size of
 the sheet sitting in front of it. The dimmer takes no pointer events, so the
 document-level click-outside handler that closes the panel still sees the room
 behind it.
+
+Watching a leaderboard player's last game works on Steam and in the app the same
+way it does on the web, and now looks like it: the row's link carried its web
+blue and 12px INLINE, which no stylesheet can override, so on the premium sheet
+it was a small blue link lost among gold standings -- and `.wide`, which the
+leaderboard sets to make room for that column, lost to the premium modal's own
+fixed width. The link's look now lives in CSS (gold on the premium
+presentation), the wide box is honoured, and the column carries a "Last game"
+heading. The same pairing is also a section of the Watch screen ("Top players'
+latest games", `wsRenderTopPlayers`), ranked by leaderboard position -- the
+dead `appendTopPlayersRecentGames` helper it replaces was never called from
+anywhere.

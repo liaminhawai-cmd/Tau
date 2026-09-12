@@ -542,6 +542,8 @@ if (window.TAU_DESKTOP) {
     /* Leaderboard "watch their latest game": a quiet line under the row on narrow/portrait screens
        (the row stays lean), the same info as small inline text on the side once there's room. */
     .lbWatchInline { display:none; }
+    .lbWatch { background:none; border:none; color:#6b9eff; font-size:12px; cursor:pointer; padding:2px 4px; margin:0; }
+    .lbWatchRow .lbWatch { font-size:11px; padding:0; }
     @media (orientation: landscape) {
         #modalBox.wide { max-width: min(720px, 92vw); }
         .lbWatchInline { display:table-cell; }
@@ -635,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 227</div>
+<div id="buildTag">build 228</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -854,6 +856,7 @@ if (window.TAU_DESKTOP) {
     <div id="wsBody">
         <div class="wsSec" id="wsSaved"><h3></h3><div class="wsList"></div></div>
         <div class="wsSec" id="wsRanked"><h3></h3><div class="wsList"></div></div>
+        <div class="wsSec" id="wsTopPlayers"><h3></h3><div class="wsList"></div></div>
         <div class="wsSec" id="wsWatched"><h3></h3><div class="wsList"></div></div>
         <div class="wsSec" id="wsLive"><h3></h3><div class="wsList"></div></div>
     </div>
@@ -11644,7 +11647,7 @@ function openLeaderboard() {
         // #1 is bold and noticeably bigger; #2 and #3 a touch bigger; the rest at the base size.
         // Top three get a medal in the rank column instead of a plain number.
         body.innerHTML = `<table style="width:100%; border-collapse:collapse; font-size:13px;">
-            <tr style="color:#9aa4ad; text-align:left;"><th style="padding:4px 6px;">#</th><th style="padding:4px 6px;">${t('Player')}</th><th style="padding:4px 6px; text-align:right;">${t('Elo')}</th><th style="padding:4px 6px; text-align:right;">${t('W-L')}</th><th class="lbWatchInline" style="padding:4px 6px;"></th></tr>
+            <tr style="color:#9aa4ad; text-align:left;"><th style="padding:4px 6px;">#</th><th style="padding:4px 6px;">${t('Player')}</th><th style="padding:4px 6px; text-align:right;">${t('Elo')}</th><th style="padding:4px 6px; text-align:right;">${t('W-L')}</th><th class="lbWatchInline" style="padding:4px 6px; text-align:right;">${t('Last game')}</th></tr>
             ${data.map((p,i)=>{
                 // Competition ranking (1 + how many rank ABOVE you), same formula updateRankLine() uses
                 // for the menu's "Ranked #r of n" line -- NOT the row's position. Row position (i+1)
@@ -11676,10 +11679,10 @@ function openLeaderboard() {
                     const title = escapeHtml(t('Watch {name}’s latest game').replace('{name}', p.username) + ': ' + w.names[0] + ' vs ' + w.names[1]);
                     const label = '▶ ' + t('vs {name}').replace('{name}', escapeHtml(opp));
                     inlineCell = `<td class="lbWatchInline" style="padding:5px 6px; text-align:right; white-space:nowrap;">
-                        <button class="lbWatch" data-pid="${p.id}" title="${title}" style="background:none;border:none;color:#6b9eff;font-size:12px;cursor:pointer;padding:2px 4px;margin:0;">${label}</button>
+                        <button class="lbWatch" data-pid="${p.id}" title="${title}">${label}</button>
                     </td>`;
                     subRow = `<tr class="lbWatchRow"${hl?` style="${hl}"`:''}><td colspan="5" style="padding:0 6px 6px 26px; text-align:left; border-top:none;">
-                        <button class="lbWatch" data-pid="${p.id}" title="${title}" style="background:none;border:none;color:#6b9eff;font-size:11px;cursor:pointer;padding:0;margin:0;">${label}</button>
+                        <button class="lbWatch" data-pid="${p.id}" title="${title}">${label}</button>
                     </td></tr>`;
                 }
                 return `<tr style="border-top:1px solid #2c3138; font-size:${fs}; font-weight:${fw}; line-height:1.35;${hl}">
@@ -11952,6 +11955,7 @@ function openWatchScreen() {
     document.getElementById('wsTitle').textContent = t('Watch');
     wsSectionEls('wsSaved').head.textContent = t('My saved games');
     wsSectionEls('wsRanked').head.textContent = t('Top ranked games');
+    wsSectionEls('wsTopPlayers').head.textContent = t('Top players’ latest games');
     wsSectionEls('wsWatched').head.textContent = t('Most watched games');
     wsSectionEls('wsLive').head.textContent = t('Live now');
     document.getElementById('watchScreen').classList.add('open');
@@ -12001,14 +12005,14 @@ function wsRenderSaved() {
 function wsLoadServerSections() {
     if (!sb || !navigator.onLine) {
         const off = navigator.onLine ? t('Sign in to browse games.') : t('You are offline.');
-        ['wsRanked','wsWatched','wsLive'].forEach(id => {
+        ['wsRanked','wsTopPlayers','wsWatched','wsLive'].forEach(id => {
             const { list } = wsSectionEls(id); if (!list.querySelector('.wsRow')) wsEmpty(list, off);
         });
         return;
     }
     sbFire(sb.rpc('gc_stale_matches'));            // best-effort housekeeping, never awaited
     sbFire(sb.rpc('gc_expired_shared_replays'));
-    wsRenderRanked(); wsRenderWatched(); wsRenderLive();
+    wsRenderRanked(); wsRenderTopPlayers(); wsRenderWatched(); wsRenderLive();
 }
 // Fetch usernames for a set of profile ids -> { id: username }. Tolerates failure (returns {}).
 async function wsNames(ids) {
@@ -12181,26 +12185,28 @@ async function computeTopPlayersRecentGames(top) {
     }
     return out;
 }
-// Watch sheet: a collapsible group, same shape as the Top ranked/Most saved groups next to it.
-async function appendTopPlayersRecentGames(body) {
-    const watchable = await computeTopPlayersRecentGames();
-    const rows = Object.keys(watchable);
-    if (!rows.length) return;
-    const det = document.createElement('details');
-    det.style.cssText = 'margin:4px 0;';
-    const sum = document.createElement('summary');
-    sum.style.cssText = 'cursor:pointer;color:#9aa4ad;font-size:13px;padding:4px 0;';
-    sum.textContent = t('Top players’ latest games') + ' (' + rows.length + ')';
-    det.appendChild(sum);
-    for (const pid of rows) {
-        const { row, names } = watchable[pid];
-        const btn = document.createElement('button');
-        btn.style.cssText = 'display:block;width:100%;margin:4px 0;';
-        btn.textContent = names[0] + ' vs ' + names[1];
-        btn.addEventListener('click', () => watchFinishedGame(row, names));
-        det.appendChild(btn);
+// The leaderboard's players, each with their most recent finished public game. The same pairing the
+// leaderboard offers in its rows, as a section of its own -- the row link is small and easy to miss,
+// and on the premium presentation it is one line of text among the standings.
+async function wsRenderTopPlayers() {
+    const { list } = wsSectionEls('wsTopPlayers'); wsLoading(list);
+    let top;
+    try {
+        ({ data: top } = await wsTimeout(sb.from('profiles').select('id, username, elo')
+            .or('wins.gt.0,losses.gt.0').order('elo', { ascending:false }).limit(10), 8000));
+    } catch(e) { wsEmpty(list, t('Could not load.')); return; }
+    const watchable = await computeTopPlayersRecentGames(top || []);
+    const rows = (top || []).filter(p => watchable[p.id]);
+    if (!rows.length) { wsEmpty(list, t('No games from the top players yet.')); return; }
+    list.innerHTML = '';
+    for (const p of rows) {
+        const w = watchable[p.id];
+        // Their leaderboard rank, by the same competition ranking the standings use -- not this
+        // list's position, which skips anyone whose last game isn't replayable.
+        const rank = 1 + top.filter(x => x.elo > p.elo).length;
+        wsRow(list, { rank, label: w.names[0] + ' vs ' + w.names[1], tag: p.username,
+            onPlay: () => { closeWatchScreen(); watchFinishedGame(w.row, w.names); } });
     }
-    body.appendChild(det);
 }
 // Replay a FINISHED public game: stitch its match_moves keyframes into a replayFrames recording
 // and hand it to the shared-replay viewer (same pacing/skip/end-modal as a #r= link — no timing
