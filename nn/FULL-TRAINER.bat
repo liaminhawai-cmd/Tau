@@ -77,12 +77,12 @@ if not defined DUALFLAG if "%DUEPOCHS%"=="" set "DUEPOCHS=20,40,60"
 echo.
 echo Tau league-first trainer
 echo   main: official temp-0 red/blue league -- rating + training data
-echo   side: 2-worker randomized/seeded exploration + 1-worker retromine
+echo   side: 1 exploration lane (top nets, unseen starts) + 1 retromine lane; every other core is league
 echo   evolution: existing GPU training, mutations and compute-aware culling unchanged
 echo.
 if defined DUALFLAG (
-  node nn\league-trainer.js --gamesPerBatch 1000 --scratchHidden 96,64,48 %DUALFLAG%
+  node nn\league-trainer.js --scratchHidden 96,64,48 %DUALFLAG%
 ) else (
-  node nn\league-trainer.js --gamesPerBatch 1000 --scratchHidden 96,64,48 --dualEpochs %DUEPOCHS% --dualPopulationMin 4
+  node nn\league-trainer.js --scratchHidden 96,64,48 --dualEpochs %DUEPOCHS% --dualPopulationMin 4
 )
 pause

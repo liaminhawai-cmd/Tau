@@ -175,14 +175,14 @@ if defined DUALFLAG (
 echo.
 echo === starting the league-first trainer ===
 echo   main   : official temp-0 red/blue league -- rating AND training data
-echo   side   : seeded/random exploration + retromine
+echo   side   : 1 exploration lane (top nets, unseen starts) + 1 retromine lane; every other core is league
 echo   this machine keeps its OWN nn\elo-results.json; the desktop's ratings are not inherited
 echo.
 if defined DUALFLAG (
-  node nn\league-trainer.js --gamesPerBatch 1000 --scratchHidden 96,64,48 ^
+  node nn\league-trainer.js --scratchHidden 96,64,48 ^
     --leagueWorkers !LEAGUEW! --exploreWorkers 1 --retroWorkers 1 !SHAREFLAG! %DUALFLAG%
 ) else (
-  node nn\league-trainer.js --gamesPerBatch 1000 --scratchHidden 96,64,48 ^
+  node nn\league-trainer.js --scratchHidden 96,64,48 ^
     --leagueWorkers !LEAGUEW! --exploreWorkers 1 --retroWorkers 1 !SHAREFLAG! --dualEpochs 20,40,60 --dualPopulationMin 4
 )
 echo.
