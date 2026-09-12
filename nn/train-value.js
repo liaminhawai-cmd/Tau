@@ -101,6 +101,7 @@ async function main() {
       ...(arg('eloWeightFloor') ? ['--eloWeightFloor', arg('eloWeightFloor')] : []),
       ...(arg('dataBudgetMB') ? ['--dataBudgetMB', arg('dataBudgetMB')] : []),
       ...(arg('dataSinceDays') ? ['--dataSinceDays', arg('dataSinceDays')] : []),
+      ...(arg('dataRecentRows') ? ['--dataRecentRows', arg('dataRecentRows')] : []),
       ...(arg('eloWeightTemp') ? ['--eloWeightTemp', arg('eloWeightTemp')] : []),
       ...(original.includes('--poseInput') ? ['--poseInput'] : []),
       // A structured birth is only a structured birth if these actually reach the core trainer.

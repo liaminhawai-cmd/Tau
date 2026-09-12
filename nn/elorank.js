@@ -88,15 +88,18 @@ for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])
   try{
     evo.sync(dir);evo.ingestSummary(dir,summary);
     const faces=evo.activeFaceIds(dir,[1,2,3,4]),levels=evo.activeLadderLevels(dir);
+    // The committee seat (committee.js): formed from the current field, immortal until it has met
+    // every face once, then released. --noCommittee leaves the seat empty for this pass.
+    const cm=has(original,'noCommittee')?null:require('./committee.js').resolveLeagueCommittee(dir);
     const a=['--faces',faces.join(','),'--levels',levels.join(','),'--summary',summary,
       '--out',get(original,'out',path.join(dir,'elo-results.json')),
       '--games',get(original,'ratingGames','2')];
     for(const n of ['budgetHours','workers','saveData','bootstrap','targetGames','openingPlies'])forward(original,a,n);
-    if(has(original,'refit'))a.push('--refit');if(has(original,'dryrun'))a.push('--dryrun');
+    if(has(original,'refit'))a.push('--refit');if(has(original,'dryrun'))a.push('--dryrun');if(cm)a.push('--committee');
     const sd=get(original,'saveData',null);
     // L7 and up are rated twice (as themselves and opening with the corner cross, see elorank-legacy)
     const ladderFaces=levels.length+levels.filter(l=>l>=7).length;
-    console.log(`[rating] unified field: ${faces.length} live model faces + ${ladderFaces} immortal ladder brains (${levels.length} rungs)${sd?` -> ${path.basename(sd)}`:''}`);
+    console.log(`[rating] unified field: ${faces.length} live model faces + ${ladderFaces} immortal ladder brains (${levels.length} rungs)${cm?` + ${cm.id}`:''}${sd?` -> ${path.basename(sd)}`:''}`);
     await run('elorank-legacy.js',a);
     evo.ingestSummary(dir,summary);
 

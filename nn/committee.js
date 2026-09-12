@@ -139,4 +139,55 @@ function makeBrain(eng, spec, opts) {
   return { name, fn, close: fn.close, stats };
 }
 
-module.exports = { makeBrain, pickAuto, parseSpec };
+// ---- the league's committee face -------------------------------------------------------------
+// One committee at a time holds a seat in the official league (elorank-legacy.js). It is formed
+// ADAPTIVELY -- the strongest live rung, the best-rated net, and the next-best net of a different
+// hidden shape, as of the pass that forms it -- and then PINNED for the life of its sweep, because a
+// rating has to belong to one thing. While sweeping it is immortal: never culled, and the scheduler
+// serves it an unplayed opponent ahead of any other pairing until it has met every face once
+// (two games, colours reversed, the league's usual match). Once it has played every face it stops
+// being immortal: the sweep is marked done, the seat is released at the next pass, and the next
+// pass forms a fresh committee from whatever is strongest THEN. Its games stay in elo-results.json
+// for the "All history" view, and its final rating is kept in this state file.
+const STATE = dir => path.join(dir, 'models', '.committee-state.json');
+const readState = dir => { try { return JSON.parse(fs.readFileSync(STATE(dir), 'utf8')); } catch (_) { return null; } };
+const writeState = (dir, st) => { const { atomicWrite } = require('./atomic-write.js'); atomicWrite(STATE(dir), JSON.stringify(st, null, 1)); };
+const shortName = spec => /^L\d+/.test(spec) ? spec : path.basename(spec.split(':').slice(2).join(':'), '.json');
+const memberFile = spec => /^L\d+/.test(spec) ? null : spec.split(':').slice(2).join(':');
+// Called by the wrapper (elorank.js) once per pass, before the pass starts: keep the active sweep,
+// retire it if a member's model file has gone, and form a new one when there is none.
+function resolveLeagueCommittee(dir, { log = console.log } = {}) {
+  const st = readState(dir) || { history: [] };
+  st.history = st.history || [];
+  const cur = st.active;
+  if (cur && !cur.swept) {
+    const gone = cur.members.map(memberFile).filter(f => f && !fs.existsSync(f));
+    if (!gone.length) return cur;
+    log(`[committee] ${cur.id} retired: member file(s) gone (${gone.map(f => path.basename(f)).join(', ')})`);
+    st.history.push({ ...cur, swept: true, endedAt: new Date().toISOString(), reason: 'member gone' });
+    st.active = null;
+  } else if (cur && cur.swept) {
+    st.history.push({ ...cur, endedAt: cur.endedAt || new Date().toISOString() });
+    st.active = null;
+  }
+  let members;
+  try { members = pickAuto(dir); } catch (e) { log('[committee] not fielded: ' + e.message); writeState(dir, st); return null; }
+  const next = { id: 'committee[' + members.map(shortName).join(',') + ']', spec: 'committee:' + members.join(';'), members,
+                 depth: 3, startedAt: new Date().toISOString(), swept: false };
+  // The same three brains again would have nothing left to play (every pair is a played pair), so
+  // the seat stays empty until the field's top changes.
+  if (st.history.some(h => h.id === next.id)) { if (!st.waitingLogged || st.waitingLogged !== next.id) { log(`[committee] ${next.id} already swept the field; seat empty until the best rung/net/next-shape changes`); st.waitingLogged = next.id; } writeState(dir, st); return null; }
+  st.active = next;
+  writeState(dir, st);
+  log(`[committee] formed ${next.id}: best rung + best net + next-best net of a different shape; immortal until it has played every face`);
+  return next;
+}
+// Read-only view for the pass itself.
+function activeLeagueCommittee(dir) { const st = readState(dir); return st && st.active && !st.active.swept ? st.active : null; }
+function markSwept(dir, id, elo) {
+  const st = readState(dir); if (!st || !st.active || st.active.id !== id) return;
+  st.active.swept = true; st.active.endedAt = new Date().toISOString(); if (Number.isFinite(elo)) st.active.finalElo = +elo.toFixed(1);
+  writeState(dir, st);
+}
+
+module.exports = { makeBrain, pickAuto, parseSpec, resolveLeagueCommittee, activeLeagueCommittee, markSwept };
