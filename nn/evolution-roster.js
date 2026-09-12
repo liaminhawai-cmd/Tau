@@ -260,11 +260,14 @@ function chooseDepth(e,mc){const keys=Object.keys(DEPTH_CULL_WEIGHT).filter(k=>e
 // feeds strong faces more games, "measured" skews strong. Capping at half keeps the retirement a
 // choice between measured faces rather than a purge of them; the rest of the quota simply waits
 // for the next checkpoint, when more faces have cleared the bar.
-function cull(dir){const s=sync(dir);if(s.gamesSinceCull<CULL_EVERY_GAMES)return{culled:[],birth:null,admitted:[],state:s};const mc=measuredCosts(dir),protect=protectedModels(dir),recs=faceRecords(dir);
+function cull(dir){const s=sync(dir),recs=faceRecords(dir);
   // Put back anything the elastic cull retired that has never been beaten and whose file is still
   // on disk. reconcile() drops an id from active while its retired entry stands, so the entry has to
   // go, not just the membership. Files that are gone are not here at all: reconcile already purges
   // their retired entries, so this can only reinstate a face the league can actually play.
+  // Deliberately ABOVE the bank gate: putting back a face that was never beaten is a correction, not
+  // a cull, and must not wait on the 100 games that pay for the next cull checkpoint. It did wait,
+  // once -- the bank sat at 53 and the correction silently never ran.
   const reinstated=[];
   for(let d=1;d<=4;d++){const k=depthKey(d),p=s.facePools[k];
     for(const id of Object.keys(p.retired||{})){
@@ -273,6 +276,8 @@ function cull(dir){const s=sync(dir);if(s.gamesSinceCull<CULL_EVERY_GAMES)return
       reinstated.push(id);
     }}
   if(reinstated.length)saveState(dir,s);
+  if(s.gamesSinceCull<CULL_EVERY_GAMES)return{culled:[],birth:null,admitted:[],reinstated,state:s};
+  const mc=measuredCosts(dir),protect=protectedModels(dir);
   const checkpoints=Math.floor(s.gamesSinceCull/CULL_EVERY_GAMES),culled=[],admitted=[];for(let q=0;q<checkpoints;q++){const population=activeFaceSet(s).size,e0=eligibleByDepth(s,population,protect,recs),seen=e0.D1.length+e0.D2.length+e0.D3.length+e0.D4.length,want=Math.min(stochasticCount(expectedCulls(population)),Math.floor(seen/2));for(let i=0;i<want;i++){const e=eligibleByDepth(s,population,protect,recs),k=chooseDepth(e,mc);if(!k)break;const v=e[k][0],p=s.facePools[k],now=new Date().toISOString();p.active=p.active.filter(id=>id!==v.id);p.retired[v.id]={at:now,reason:'elastic cull',eloHi:v.r.eloHi,elo:v.r.elo,games:+v.r.games||0,population};culled.push({type:'face',name:v.id,face:v.id,depth:v.depth,replacedBy:null,result:'elastic-cull'});}admitted.push(...admitFrontier(s,stableModelEntries(dir),mc));s.gamesSinceCull=Math.max(0,s.gamesSinceCull-CULL_EVERY_GAMES);}if(culled.length||admitted.length||reinstated.length)s.lastEvent={at:new Date().toISOString(),culled:culled.map(x=>x.face),admitted,reinstated,result:'elastic-checkpoint'};saveState(dir,s);return{culled,birth:null,admitted,reinstated,state:s};}
 function noteBirth(dir,birth){if(birth&&birth.outPath&&fs.existsSync(birth.outPath))sync(dir);}
 function status(dir){const s=sync(dir),pop=activeFaceSet(s).size,faces={};for(let d=1;d<=4;d++){const k=depthKey(d),p=s.facePools[k];faces[k]={seats:(p.active||[]).length,trial:p.trial?1:0,waiting:(p.waiting||[]).length,deferred:0,retired:Object.keys(p.retired||{}).length,capacity:null};}return{models:activeModelNames(dir).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,faces,targetFaces:TARGET_FACES,population:pop,admitCeiling:ADMIT_CEILING,cullMinGames:Object.fromEntries([1,2,3,4].map(d=>[depthKey(d),cullMinGames(depthKey(d),pop)])),heldModels:+(s.queueCompaction&&s.queueCompaction.heldModels)||0};}
