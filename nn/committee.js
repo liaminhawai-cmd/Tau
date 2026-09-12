@@ -172,7 +172,11 @@ function resolveLeagueCommittee(dir, { log = console.log } = {}) {
   }
   let members;
   try { members = pickAuto(dir); } catch (e) { log('[committee] not fielded: ' + e.message); writeState(dir, st); return null; }
-  const next = { id: 'committee[' + members.map(shortName).join(',') + ']', spec: 'committee:' + members.join(';'), members,
+  // The id is a FACE id (name@D1) from day one, so the record it builds during the sweep is the
+  // same record it keeps afterwards as an ordinary roster face (see markSwept): every pair it
+  // played stays a played pair, and only faces that arrive later are new games for it.
+  const name = 'committee[' + members.map(shortName).join(',') + ']';
+  const next = { id: name + '@D1', name, file: path.join(dir, 'models', name + '.json'), spec: 'committee:' + members.join(';'), members,
                  depth: 3, startedAt: new Date().toISOString(), swept: false };
   // The same three brains again would have nothing left to play (every pair is a played pair), so
   // the seat stays empty until the field's top changes.
@@ -184,9 +188,17 @@ function resolveLeagueCommittee(dir, { log = console.log } = {}) {
 }
 // Read-only view for the pass itself.
 function activeLeagueCommittee(dir) { const st = readState(dir); return st && st.active && !st.active.swept ? st.active : null; }
+// Sweep done: the committee stops being immortal and becomes an ordinary model. Concretely, a
+// pseudo-model file is written under its own name; evolution-roster admits it like any other model
+// (modelMeta -> committee:true), elorank-legacy builds the same voting brain from the file
+// (facePlayer), and from then on the elastic cull, the admission ceiling and the played-pair rule
+// apply to it exactly as to a net. selfplay never loads it (selfplaySlice filters committee files).
 function markSwept(dir, id, elo) {
   const st = readState(dir); if (!st || !st.active || st.active.id !== id) return;
   st.active.swept = true; st.active.endedAt = new Date().toISOString(); if (Number.isFinite(elo)) st.active.finalElo = +elo.toFixed(1);
+  const { atomicWrite } = require('./atomic-write.js');
+  atomicWrite(st.active.file, JSON.stringify({ committee: true, id, spec: st.active.spec, members: st.active.members, depth: st.active.depth || 3,
+                                               startedAt: st.active.startedAt, sweptAt: st.active.endedAt, finalElo: st.active.finalElo }, null, 1));
   writeState(dir, st);
 }
 
