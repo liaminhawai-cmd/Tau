@@ -16,7 +16,24 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // A debug keystore checked in on purpose: every CI runner is a fresh machine, so without it each
+    // debug APK is signed with a new throwaway key and its SHA-1 changes every build -- and Google
+    // Sign-In trusts the app by that SHA-1. Pinning one key makes the fingerprint stable
+    // (see native/README.md for it), so the Android OAuth client registered once keeps working for
+    // every CI debug build. Debug builds are never distributed, so the key protects nothing; the
+    // release keystore stays out of the repo.
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

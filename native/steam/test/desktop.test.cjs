@@ -1194,8 +1194,8 @@ test('the app signs in with Google natively once a client ID is configured',asyn
 
 test('with no client ID configured the app keeps exactly its username & password panel',async t=>{
   const g=await game('',{},{capacitor:true});t.after(g.close);
-  g.read(`Capacitor.Plugins={SocialLogin:{initialize:()=>Promise.resolve(),login:()=>Promise.resolve({})}};`);
-  assert.equal(g.read('TAU_GOOGLE_NATIVE_CLIENT_ID'),'','ships unset until the Google Cloud client exists');
+  g.read(`Capacitor.Plugins={SocialLogin:{initialize:()=>Promise.resolve(),login:()=>Promise.resolve({})}};
+    TAU_GOOGLE_NATIVE_CLIENT_ID='';`);   // a build with the ID cleared, e.g. a fork without its own Google client
   assert.equal(g.read('nativeGoogleAvailable()'),false,'so nothing offers a Google button that cannot work');
   g.read('openAcctPanel()');
   assert.equal(g.read("document.getElementById('acctGoogle').style.display"),'none');
@@ -1274,7 +1274,7 @@ test('Controls is its own section: a drawn keyboard and pad, the scheme switch, 
 test('the premium home menu uses the web app\'s words and shape, with no subtitles anywhere',async t=>{
   const g=await game();t.after(g.close);
   const labels=[...g.w.document.querySelectorAll('.desktop-links button')].map(b=>b.textContent);
-  assert.deepEqual(labels,['vs AI','1v1','Watch','How to play','Leaderboard','Get a physical set']);
+  assert.deepEqual(labels,['1v1','Watch','How to play','Leaderboard'],'the web\'s vs AI is the gold Play here; no shop link inside a paid build');
   const bottom=[...g.w.document.querySelectorAll('.desktop-home-bottom button')].filter(b=>!b.hidden).map(b=>b.textContent);
   assert.deepEqual(bottom,['Settings','Controls','Lab']);
   assert.equal(g.$('desktopPlay').textContent,'Play','the gold Play stays');

@@ -249,12 +249,10 @@
       <label>You play<select id="desktopColour" aria-label="Your colour"><option value="0">Blue · first</option><option value="1">Red · second</option></select></label>
     </div>
     <nav class="desktop-links" aria-label="Other ways to play">
-      <button id="desktopLevels">vs AI</button>
       <button id="desktopOnline">1v1</button>
       <button id="desktopWatch">Watch</button>
       <button id="desktopLearn">How to play</button>
       <button id="desktopLeaderboard">Leaderboard</button>
-      <button id="desktopSteel">Get a physical set</button>
     </nav>
     <div class="desktop-home-bottom"><button id="desktopSettings">Settings</button><button id="desktopControls">Controls</button><button id="desktopLab">Lab</button><button id="desktopQuit" hidden>Quit</button></div>`;
   $('menu').appendChild(home);
@@ -282,13 +280,13 @@
   }
   $('desktopPlay').onclick = () => startMatch();
   // Every entry routes to the web app's own handler for that button, so the two menus can never
-  // drift apart in what they do -- only in how they look.
-  $('desktopLevels').onclick = () => $('modeAI').click();
+  // drift apart in what they do -- only in how they look. The web's "vs AI" is the gold Play here
+  // (the opponent and colour sit right under it), and its physical-set shop link doesn't belong
+  // inside a paid build.
   $('desktopOnline').onclick = () => $('modeOnline').click();
   $('desktopWatch').onclick = () => $('watchBtn').click();
   $('desktopLearn').onclick = () => $('howToPlayBtn').click();
   $('desktopLeaderboard').onclick = () => $('leaderboardBtn').click();
-  $('desktopSteel').onclick = () => $('steelBtn').click();
   $('desktopControls').onclick = openControls;
   // The six art-directed premium boards (noir/math/sumo/cosy/alien/colossus) — the attract-mode
   // page the wrapper also reaches with F2; its "full game →" link returns here.

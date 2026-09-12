@@ -320,14 +320,31 @@ the same floor with the same thump instead of running to their own distance
 cutoffs.
 
 The premium home menu (Steam and the app) now uses the web app's own words
-and shape -- Play (gold, with opponent and colour), then vs AI · 1v1 · Watch ·
-How to play · Leaderboard · Get a physical set, and Settings · Controls · Lab
-underneath -- every entry routing to the web's own handler for that button.
-Local 1v1 lives inside 1v1 as it does there. The tagline, the "A delicate
-balance" heading, the material caption, the corner input hint, the subtitles
-under the match menu and the leave confirm, and the in-match "Step 1 / Step
-2" coaching lines are all gone from the premium presentation; the web build
-keeps its coaching lines.
+and shape -- Play (gold, with opponent and colour; this IS the web's "vs
+AI"), then 1v1 · Watch · How to play · Leaderboard, and Settings · Controls ·
+Lab underneath -- every entry routing to the web's own handler for that
+button. Local 1v1 lives inside 1v1 as it does there; the web's physical-set
+shop link stays out of a paid build. The tagline, the "A delicate balance"
+heading, the material caption, the corner input hint, and the subtitles under
+the match menu, the leave confirm and the 1v1 hub are gone. The in-match
+"Step 1 / Step 2" coaching lines are gone on EVERY build, web included -- the
+line under the board now carries state only (waiting on the opponent, AI
+thinking).
+
+Google sign-in in the app is switched on: `TAU_GOOGLE_NATIVE_CLIENT_ID` holds
+the web client ID from the Supabase Google provider. For Google to trust the
+app, an Android OAuth client (package `com.taugame.app` + a signing SHA-1)
+must exist in the same Google Cloud project. CI debug builds are signed with
+the pinned key at `app/android/app/debug.keystore` (checked in on purpose:
+a fresh runner would otherwise mint a new throwaway key per build and the
+SHA-1 would never be stable), whose fingerprint is
+
+    SHA-1  DE:14:23:FC:7E:51:6B:4E:B9:F7:33:23:A5:E3:C0:C4:D9:20:71:19
+
+Register that for CI debug APKs. A locally-built debug APK uses the same key
+once this repo is checked out. The Play Store release is signed by a
+different key (Play App Signing's, or your upload key) and needs its own
+Android OAuth client with that SHA-1.
 
 **Controls** is its own section (home menu, match menu, F1, Y on a pad): a
 drawn keyboard cluster and a drawn controller, each key and button carrying

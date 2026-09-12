@@ -635,7 +635,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 222</div>
+<div id="buildTag">build 223</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -7663,7 +7663,7 @@ document.getElementById('modeOnline').addEventListener('click', () => {
 // Local needs no account at all, so it skips ensureOnlineIdentity entirely -- only the two online
 // choices need a real or guest identity before they can do anything.
 function choose1v1Mode() {
-    showModal(t('1v1'), t('Play a random ranked opponent, invite someone specific, or pass-and-play on this device?'), [
+    showModal(t('1v1'), '', [
         { label: t('Online Ranked'),  onClick: () => ensureOnlineIdentity(startOnlineMatchmaking) },
         { label: t('Online Private'), onClick: () => ensureOnlineIdentity(openPrivateMatchMenu) },
         { label: t('Local 1v1'),      onClick: () => startGame(false) },
@@ -8119,23 +8119,15 @@ function render() {
             s.innerHTML=tf('{color} to move',{color:`<span class="${c}">${label}</span>`});
             m.textContent = G.pinned!==null ? tf('crossings {c}/{m}',{c:G.crossings,m:CFG.maxCrossingsPerTurn}) + atLimitSuffix() : '';
         }
-        // The step-by-step lines teach the mechanics; the premium presentation (Steam and the app)
-        // keeps its controls in their own menu section instead and shows only STATE here (whose
-        // move it is, the AI thinking), so the line under the board isn't a permanent subtitle.
-        const coach = s => window.TAU_DESKTOP ? '' : t(s);
+        // The line under the board carries STATE only -- waiting on the opponent, the AI thinking or
+        // swinging. The old step-by-step coaching ("Step 1. Tap one of your feet…") repeated every
+        // turn for the life of every match; How to play teaches the mechanics, Controls names the
+        // inputs, and the board itself rings the foot you can swing.
         h.textContent = onlineMatch
-            ? (myOnlineTurnNow()
-                ? (G.pinned===null ? coach('Step 1. Tap one of your feet to lock it as the pivot.')
-                    : (G.handle===null ? coach('Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.')
-                        : coach('Swinging… release to end your turn.')))
-                : t('Waiting for your opponent…'))
+            ? (myOnlineTurnNow() ? '' : t('Waiting for your opponent…'))
             : aiTurn
             ? (aiAnim ? t('AI is swinging…') : t('AI is thinking…'))
-            : (G.pinned===null
-                ? coach('Step 1. Tap one of your feet to lock it as the pivot.')
-                : (G.handle===null
-                    ? coach('Step 2. Drag another foot (ringed) around the pivot. Tap the yellow foot again to re-pick.')
-                    : coach('Swinging… release to end your turn.')));
+            : '';
     }
     // Coached opening: one terse line per beat, minimal help below. Kept deliberately spare.
     if (coachActive) {
@@ -10444,7 +10436,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_qo7O-7f6Wa69SV4f66aLXw_V67tpjNp';
 // Left empty the app simply keeps today's behaviour: username & password, no dead Google button.
 // `let`, not const, so a client ID can also be tried from the console on a real device (the panel
 // reads it at open/tap time) before it is committed here.
-let TAU_GOOGLE_NATIVE_CLIENT_ID = '';
+let TAU_GOOGLE_NATIVE_CLIENT_ID = '591175538874-f1hknhjvhcb3c1sj26o7lrcu2nr67ucc.apps.googleusercontent.com';
 // iOS additionally needs its own iOS OAuth client (and that client's reversed ID as a URL scheme in
 // the Xcode project). Android ignores this; leave it empty until the iOS app is actually shipped.
 let TAU_GOOGLE_IOS_CLIENT_ID = '';
