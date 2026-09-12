@@ -130,6 +130,12 @@ let cmActive=0;
 // committees -- three of them in flight must not mean three times the threads.
 const cmMembers=committees.length?Math.max(...committees.map(c=>(c.members||[]).length)):1;
 const cmCap=committees.length?Math.max(1,Math.floor(workers/Math.max(1,cmMembers))):0;
+// How many lanes a sweep may hold at once. ONE by default: a committee match runs 10-50 minutes
+// against a minute or two for an ordinary pair, so even three lanes on the sweep were most of the
+// box's rating throughput (measured: 10 rated games in 3 hours, all of them committee matches,
+// while new faces piled up unrated). The sweep still finishes -- one lane, always busy, is ~2
+// matches an hour -- and everything else gets measured meanwhile. --committeeLanes raises it.
+const cmLanes=committees.length?Math.max(1,Math.min(cmCap,+arg('committeeLanes',1)||1)):0;
 const {SWEEP_FACES}=committees.length?require('./committee.js'):{SWEEP_FACES:20};
 const metWith=cm=>players.filter(o=>o.id!==cm.id&&((store.tsPairs||{})[canonical(cm.id,o.id)]||0)>=PHYSICAL_GAMES_PER_MATCH).length;
 const unmetFor=cm=>players.filter(o=>o.id!==cm.id&&((store.tsPairs||{})[canonical(cm.id,o.id)]||0)<PHYSICAL_GAMES_PER_MATCH);
@@ -139,28 +145,27 @@ const sweepDone=cm=>metWith(cm)>=SWEEP_FACES||!unmetFor(cm).length;
 const inflight=new Set();
 function pickPair(elo,busy){
   const{g,pair}=totals(),free=players.filter(p=>!busy.has(p.id)),fr=fieldRange(elo);
-  // A SWEEPING committee is the whole league until it has met every face: every lane serves it an
-  // opponent it has not played (it is never marked busy itself, so all lanes run it at once), and
-  // no other pair is drawn while any face is still unmet. A lane that finds every unmet face already
-  // in flight waits rather than falling back to a normal pair. Its Elo is the point of fielding it.
-  // Concurrency is CAPPED, not "every free lane": each committee match already spawns one worker
-  // thread per member doing its own search, so letting all `workers` lanes grab one at once
-  // oversubscribes the box by a factor of memberCount (measured: 4 lanes x 3 members = 12+ search
-  // threads fighting over 8-12 cores, turning a ~700s match into 5000s+). cmCap lanes run the sweep
-  // in parallel; the rest sit out with 'wait' rather than playing an unrelated pair, because 100%
-  // pressure means no other face plays any other face while a sweep is short of games -- it means
-  // the compute goes to the sweep, not that every lane must be crammed into one committee match.
-  // The committee with the fewest faces met goes first, so D1/D2/D3 finish together rather than the
-  // cheapest one racing ahead.
+  // A SWEEPING committee holds cmLanes lane(s) until it has met every face: those lanes serve it an
+  // opponent it has not played (it is never marked busy itself), and the committee with the fewest
+  // faces met goes first so D1/D2/D3 finish together. Every OTHER lane draws an ordinary pair --
+  // the sweep is a reserved slice of the league, not the whole league. (It used to be the whole
+  // league: every lane on the sweep, the rest waiting. With a committee match running 10-50
+  // minutes that starved every other face of measurement, which is the thing the league is for.)
+  // cmCap still bounds the slice: each committee match spawns one search thread per member, so
+  // more lanes than workers/members oversubscribes the box (measured: 4 lanes x 3 members = 12+
+  // threads on 8-12 cores, a ~700s match becoming 5000s+).
   const sweeping=players.filter(p=>p.kind==='committee'&&p.sweeping&&!sweepDone(p)).sort((a,b)=>metWith(a)-metWith(b));
-  if(sweeping.length){
-    if(cmActive>=cmCap)return'wait';
+  if(sweeping.length&&cmActive<cmLanes){
     for(const cm of sweeping){
       const scored=unmetFor(cm).filter(o=>!busy.has(o.id)&&!inflight.has(canonical(cm.id,o.id))).map(o=>[pairScore(cm,o,elo,g,pair,fr),o]).filter(x=>x[0]>0);
       const o=weightedDraw(scored);if(o)return[cm,o];
     }
-    return'wait';
   }
+  // A sweeping committee only ever plays through the reserved lane(s) above, never the open draw.
+  const open=free.filter(p=>!(p.kind==='committee'&&p.sweeping&&!sweepDone(p)));
+  return pickOpen(elo,g,pair,fr,open);
+}
+function pickOpen(elo,g,pair,fr,free){
   if(Math.random()<ANCHOR_MATCH_P){const an=pickAnchor(elo,g,pair,fr,free);if(an)return an;}
   const unknown=free.filter(p=>(g[p.id]||0)===0);
   if(unknown.length){
