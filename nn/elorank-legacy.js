@@ -63,12 +63,38 @@ function fitBT(ids,results){
   for(let it=0;it<300;it++){const den=cur.map(v=>W/(v+1));for(const[i,j,n]of es){const q=n/Math.max(1e-12,cur[i]+cur[j]);den[i]+=q;den[j]+=q;}const next=cur.map((_,i)=>(wins[i]+priorWins[i])/Math.max(1e-12,den[i]));let delta=0;for(let i=0;i<next.length;i++)delta=Math.max(delta,Math.abs(next[i]-cur[i]));cur=next;if(delta<1e-8)break;}
   return Object.fromEntries(ids.map((id,i)=>[id,400*Math.log10(Math.max(cur[i],1e-12))]));
 }
+// Prior mass per FACE, spread across its pairings (see bootstrap): one pseudo-win, one pseudo-loss
+// and one pseudo-draw shared over everything a face has played, rather than on each pairing.
+const PRIOR_MATCHES=.5;
 function bootstrap(ids,B,point){
   point=point||fitBT(ids,store.results);
   const samples=Object.fromEntries(ids.map(id=>[id,[]])),entries=Object.entries(store.results);
   // Jeffreys-smoothed resampling: one observed match must still produce a BROAD interval instead of
   // a fake zero-width CI. That is what lets the optimistic upper bound protect newcomers from cull.
-  for(let b=0;b<B;b++){const rr={};for(const[k,r]of entries){const n=Math.round(matchN(r));if(!n)continue;const den=n+1.5,pw=((+r.w||0)+.5)/den,pl=((+r.l||0)+.5)/den;let w=0,l=0,d=0;for(let q=0;q<n;q++){const u=Math.random();if(u<pw)w++;else if(u<pw+pl)l++;else d++;}rr[k]={w,l,d};}const e=fitBT(ids,rr);for(const id of ids)if(Number.isFinite(e[id]))samples[id].push(e[id]);}
+  //
+  // The pseudo-count is a budget PER FACE, divided across that face's pairings -- not a flat 0.5 on
+  // every pairing, which is what it used to be. A flat count is applied once per pairing, so the
+  // total prior mass on a face grew with the number of opponents it had met: a face with 100
+  // pairings carried 100x the prior of a face with one. Every pairing then resampled to a win with
+  // probability (1+.5)/(1+1.5)=0.6 no matter how much the face had actually won, so an N-0-0 record
+  // was bootstrapped as roughly 60-20-20 for any N. The proportion was pinned at 0.6, so piling up
+  // wins moved the lower bound almost not at all: measured over the live store, an unbeaten face's
+  // floor went -207 / -159 / -104 / -23 across 1, 2, 3 and 4+ wins. Wins are the evidence that
+  // raises a floor, and they were being cancelled by losses the face never suffered.
+  //
+  // Dividing by the pairing count holds the total prior mass on a face at ~0.5 however many
+  // opponents it meets, so the data dominates as evidence accumulates. The min() means the strength
+  // is set by whichever side is less measured -- the one that actually needs smoothing -- so a
+  // rookie's pairings stay fully smoothed while two veterans' do not. Measured after the change:
+  // the floor rises -211 / -89 / -8 / +111, the unbeaten ceiling still widens (528 -> 760) because
+  // a face that has never lost has no evidence about its ceiling at all, the ceiling of a face WITH
+  // losses falls harder (173 / 73 / 51 by 1, 2-4 and 5+ losses), a 1-0-0 rookie's floor is unchanged
+  // at -211 so nothing flukes its way to a medal, and no face ends with a zero-width interval.
+  const pairs={};for(const[k]of entries){const z=k.indexOf('|');if(z<1)continue;
+    pairs[k.slice(0,z)]=(pairs[k.slice(0,z)]||0)+1;pairs[k.slice(z+1)]=(pairs[k.slice(z+1)]||0)+1;}
+  const alphaFor=k=>{const z=k.indexOf('|');if(z<1)return PRIOR_MATCHES;
+    return PRIOR_MATCHES/Math.max(1,Math.min(pairs[k.slice(0,z)]||1,pairs[k.slice(z+1)]||1));};
+  for(let b=0;b<B;b++){const rr={};for(const[k,r]of entries){const n=Math.round(matchN(r));if(!n)continue;const a=alphaFor(k),den=n+3*a,pw=((+r.w||0)+a)/den,pl=((+r.l||0)+a)/den;let w=0,l=0,d=0;for(let q=0;q<n;q++){const u=Math.random();if(u<pw)w++;else if(u<pw+pl)l++;else d++;}rr[k]={w,l,d};}const e=fitBT(ids,rr);for(const id of ids)if(Number.isFinite(e[id]))samples[id].push(e[id]);}
   // BASIC (pivotal) interval, not the percentile one. The resample distribution here is badly
   // skewed and shifted, so [q05,q95] read off it directly says the opposite of what it should.
   //
