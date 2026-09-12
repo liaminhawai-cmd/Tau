@@ -558,3 +558,15 @@ heading. The same pairing is also a section of the Watch screen ("Top players'
 latest games", `wsRenderTopPlayers`), ranked by leaderboard position -- the
 dead `appendTopPlayersRecentGames` helper it replaces was never called from
 anywhere.
+
+A fallen piece now rests ON the ground instead of sinking into it. The landing
+test clamped `t.position.y`, the piece's ORIGIN -- the plane its three pins
+stand on -- but a piece arrives mid-tumble, rotated, so its origin is almost
+never its lowest point: one that landed on its side or its crown buried
+everything hanging below that plane, up to about 20 units of it. stepFallOn now
+measures the lowest point of a small hull (the three pads, each leg's ankle and
+arc midpoint, the crown bead, each inflated by the tube radius so the SURFACE
+rests, not the centreline) under the piece's current rotation, and clamps that.
+The clamp runs after the frame's rotation, which is what decides where "lowest"
+is, and it re-runs each frame, so the piece keeps sitting on whichever part
+touches down as the last of the spin bleeds off.

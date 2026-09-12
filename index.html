@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 228</div>
+<div id="buildTag">build 229</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -8663,6 +8663,34 @@ const fallQ = new THREE.Quaternion(), fallP = new THREE.Vector3(), fallAxisV2 = 
 // scratch for their world positions -- used to keep feet from scything through the board mid-tip.
 const FALL_FEET_LOCAL = [0,1,2].map(i => new THREE.Vector3(Math.cos(i*2*Math.PI/3)*CFG.footR, 0, Math.sin(i*2*Math.PI/3)*CFG.footR));
 const fallFootW = new THREE.Vector3();
+// The points that can touch the ground first when a piece lands mid-tumble: the three foot pads,
+// the midpoint of each leg arc, and the crown. A falling piece is rotating, so its ORIGIN (the
+// plane its pins stand on) is almost never its lowest point -- clamping that origin to the floor,
+// as this used to, let a piece landing on its side or its head bury half of itself in the ground.
+// Each point carries the radius of the tube around it, so the tube's SURFACE rests on the floor
+// rather than its centreline; the pads already sit on their own bottom face, so they carry none.
+const FALL_HULL_LOCAL = (() => {
+    const FOOT_TOP = TRIPOD_PIN_LIFT + TRIPOD_FOOT_LEN, R = CFG.footR, M = Math.SQRT1_2, out = [];
+    for (let i = 0; i < 3; i++) {
+        const a = i*2*Math.PI/3, ca = Math.cos(a), sa = Math.sin(a);
+        out.push({ p: new THREE.Vector3(ca*R, 0, sa*R), r: 0 });                                  // foot pad
+        out.push({ p: new THREE.Vector3(ca*R*M, FOOT_TOP + R*M, sa*R*M), r: CFG.legRadius });     // arc midpoint
+        out.push({ p: new THREE.Vector3(ca*R, FOOT_TOP, sa*R), r: CFG.legRadius });               // ankle
+    }
+    out.push({ p: new THREE.Vector3(0, FOOT_TOP + R, 0), r: CFG.legRadius*1.15 });                // crown bead
+    return out;
+})();
+const fallHullW = new THREE.Vector3();
+// How far the piece's lowest surface point sits BELOW its origin, at its current orientation.
+// Negative while it stands upright (nothing is below the pads), growing as it tips onto its side.
+function fallLowestBelowOrigin(t) {
+    let lowest = 0;
+    for (const h of FALL_HULL_LOCAL) {
+        const y = fallHullW.copy(h.p).applyQuaternion(t.quaternion).y - h.r;
+        if (y < lowest) lowest = y;
+    }
+    return lowest;
+}
 function stepFall(dt) {
     stepFallOn(tripods[fall.idx], fall, dt);
     // Done falling: stop the animation AND remember which piece fell, so the render loop keeps it
@@ -8701,17 +8729,20 @@ function stepFallOn(t, fall, dt) {
     } else {
         fall.vy -= 260*dt;
         t.position.x += fall.vx*dt; t.position.y += fall.vy*dt; t.position.z += fall.vz*dt;
-        const floorY = fallFloorY();
-        if (t.position.y <= floorY) {
+        const r = Math.hypot(t.position.x, t.position.z);
+        applyFallRotation(t, fall, dt, Math.max(0, Math.min(1, (r - CFG.edgeU) / 25)));
+        // Rest ON the ground, not through it. The piece stops when whichever part of it is lowest
+        // reaches the floor, and keeps sitting on that part as the last of the spin bleeds off --
+        // so this comes AFTER the frame's rotation, which is what decides where "lowest" is.
+        const floorY = fallFloorY(), below = fallLowestBelowOrigin(t);
+        if (t.position.y + below <= floorY) {
             // Hit the floor: stop the drop dead and bleed off the tumble into a quick settle, instead
             // of ploughing on through it. One-shot the thump on the rising edge of contact.
-            t.position.y = floorY;
+            t.position.y = floorY - below;
             if (!fall.landed) { fall.landed = true; playLandingSound(); }
             fall.vy = 0; fall.vx *= 1 - Math.min(1, 6*dt); fall.vz *= 1 - Math.min(1, 6*dt);
             fall.wx *= 1 - Math.min(1, 5*dt); fall.wy *= 1 - Math.min(1, 5*dt); fall.wz *= 1 - Math.min(1, 5*dt);
         }
-        const r = Math.hypot(t.position.x, t.position.z);
-        applyFallRotation(t, fall, dt, Math.max(0, Math.min(1, (r - CFG.edgeU) / 25)));
     }
     // Board rest. During the flat SLIDE the trailing feet genuinely rest on the surface, so any foot
     // still horizontally over the board is lifted back onto it. During the PIVOT the piece rotates

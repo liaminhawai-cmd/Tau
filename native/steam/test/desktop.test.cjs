@@ -1170,7 +1170,12 @@ test('the losing piece lands on the floor below the board with a thump, then is 
     fall=Object.assign(mkFallState(G.pieces[1]), {idx:1, phase:'free', vy:-40, vx:5, vz:0});
     tripods[1].position.set(80,-85,0);`);
   g.read(`for(let i=0;i<50;i++) stepFall(0.05);`);   // 2.5s of real time: plenty to land and settle
-  assert.equal(g.read('tripods[1].position.y'),-100,'clamps at the floor 20cm (100u) below the board, not falling forever');
+  // It rests ON the floor: its lowest surface point touches -100, not its origin. A tumbling piece
+  // is rotated, so clamping the origin (the plane its pins stand on) buried whatever hung below it.
+  const lowest=g.read('tripods[1].position.y + fallLowestBelowOrigin(tripods[1])');
+  assert.ok(Math.abs(lowest+100)<0.01,'its lowest point rests on the floor 20cm (100u) below the board, not falling forever');
+  assert.ok(g.read('tripods[1].position.y')>-100,'and the piece sits above that floor rather than half through it');
+  assert.ok(g.read('fallLowestBelowOrigin(tripods[1])')<-1,'this one landed on its side, so parts of it hang well below its origin');
   assert.equal(g.read('window.__thumps'),1,'one landing thump on touchdown, not one per frame of resting on the floor');
   assert.equal(g.read('fall.active'),false,'after a beat resting on the floor it is tucked away, same as the old cutoff');
   assert.equal(g.read('fallenIdx'),1);
