@@ -74,10 +74,11 @@ test('result offers same-mode rematch and returns to the desktop menu',async t=>
   assert.deepEqual(g.errors,[]);
 });
 
-test('the home menu reaches the showcase and the analysis lab',async t=>{
+test('the home menu reaches the analysis lab, and no longer offers the standalone showcase',async t=>{
   const g=await game();t.after(g.close);
-  // Showcase boards: navigates to the attract-mode page, keeping the wrapper flag.
-  assert.equal(g.$('desktopShowcase').textContent,'Showcase boards');
+  // Every board is selectable and unlockable directly in a real match now, so the separate
+  // attract-mode showcase page is gone from the menu.
+  assert.equal(g.$('desktopShowcase'),null);
   // The Lab button opens the #lab overlay in place — no URL bar needed in a packaged build.
   g.$('desktopLab').click();g.tick();
   assert.ok(g.$('labOverlay').classList.contains('open'),'lab overlay opened');
@@ -1009,5 +1010,89 @@ test('the web build\'s skins name their materials too',async t=>{
   assert.equal(at('dojo'),is('metal','wood'));
   assert.equal(at('yellow'),is('metal','paper'));
   assert.equal(at('slate'),is('metal','slate'));
+  assert.deepEqual(g.errors,[]);
+});
+
+test('web/PWA render quality: an auto tier, capped shadow size and DPR, desktop untouched',async t=>{
+  const g=await game('');t.after(g.close);   // plain web entry, no ?steam
+  // Default harness stub (2 cores): stays on the pre-existing 'basic' behaviour untouched.
+  assert.equal(g.read('TAU_QUALITY_TIER'),'basic');
+  assert.equal(g.read('TAU_PREMIUM'),false);
+  assert.equal(g.read('TAU_SHADOW_SIZE'),1024);
+  assert.equal(g.read('TAU_DPR_UNCAPPED'),false);
+  // The heuristic itself, exercised directly with the DOM's own (configurable) navigator props --
+  // detectQualityTier() is pure and side-effect-free on its inputs beyond localStorage/its own cache.
+  const at=(cores,mem)=>g.read(`(()=>{
+    Object.defineProperty(navigator,'hardwareConcurrency',{value:${cores},configurable:true});
+    Object.defineProperty(navigator,'deviceMemory',{value:${mem===undefined?'undefined':mem},configurable:true});
+    localStorage.removeItem('tauQualityTier');
+    return detectQualityTier();
+  })()`);
+  assert.equal(at(8,8),'high','plenty of cores and memory -> high');
+  assert.equal(at(4,undefined),'balanced','4 cores, no memory signal (Safari/Firefox) -> balanced, not penalised');
+  assert.equal(at(4,2),'basic','4 cores but a low memory signal -> basic');
+  assert.equal(at(2,8),'basic','too few cores, however much memory -> basic');
+  assert.equal(at(0,undefined),'basic','no signal at all (e.g. an odd browser) -> basic, never guessed upward');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('web/PWA quality: a URL override wins over the heuristic and persists',async t=>{
+  const g=await game('?quality=high');t.after(g.close);   // the 2-core stub would otherwise say 'basic'
+  assert.equal(g.read('TAU_QUALITY_TIER'),'high');
+  assert.equal(g.read('TAU_PREMIUM'),true);
+  assert.equal(g.read('TAU_SHADOW_SIZE'),2048);
+  assert.equal(g.read('TAU_DPR_UNCAPPED'),true);
+  assert.equal(g.w.localStorage.getItem('tauQualityTier'),'high','persisted, so it survives a plain reload too');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('web/PWA quality: an invalid override is ignored, a saved one is honoured next load',async t=>{
+  const g=await game('?quality=ultra');t.after(g.close);   // not a real tier
+  assert.equal(g.read('TAU_QUALITY_TIER'),'basic','nonsense query value falls through to the heuristic');
+  assert.equal(g.w.localStorage.getItem('tauQualityTier'),'basic','the heuristic\'s real result is cached -- not the invalid value itself');
+  const g2=await game('', {tauQualityTier:'balanced'});t.after(g2.close);
+  assert.equal(g2.read('TAU_QUALITY_TIER'),'balanced','a previously-saved tier is honoured without re-guessing');
+  assert.equal(g2.read('TAU_PREMIUM'),true);
+  assert.deepEqual(g2.errors,[]);
+});
+
+test('web/PWA quality: the desktop build always gets the top tier regardless of hardware',async t=>{
+  const g=await game('?steam=1&premium=1');t.after(g.close);   // the 2-core stub would say 'basic' on the web path
+  assert.equal(g.read('TAU_QUALITY_TIER'),'high');
+  assert.equal(g.read('TAU_SHADOW_SIZE'),2048);
+  assert.equal(g.read('TAU_DPR_UNCAPPED'),true);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('legs meeting legs get a short contact tick, once per squeeze not once per substep',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopLocal').click();g.tick();
+  g.read(`window.__pushes=0; playPushContact=()=>window.__pushes++;
+    // Face the pieces at each other close enough that swinging one shoves the other on contact.
+    G.pieces[0].x=-30; G.pieces[0].y=0; G.pieces[0].rot=0;
+    G.pieces[1].x=-6; G.pieces[1].y=0; G.pieces[1].rot=Math.PI;
+    G.active=0; pinFoot(0);`);
+  g.read(`applySwing(50*Math.PI/180)`);   // one continuous swing, many substeps -- should shove and stay pressed in
+  assert.equal(g.read('window.__pushes'),1,'contact fires once for one continuous shove, not per substep');
+  g.read(`applySwing(1*Math.PI/180)`);   // still pressed in, same turn: no second trigger
+  assert.equal(g.read('window.__pushes'),1,'and not again while the same squeeze just continues');
+  g.read(`clearTurn(); pinFoot(0); applySwing(50*Math.PI/180)`);   // a fresh turn's own genuine contact
+  assert.equal(g.read('window.__pushes'),2,'but a new turn making contact again fires its own tick');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a stuck walkthrough slide can be reset without losing earned progress',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopLearn').click();g.tick();
+  g.read(`for (const k of Object.keys(HTP_TRY)) { const st=htpState(k); st.done=true; st.touched=true; } htpShowStep(1)`);   // 'pivot' slide, already earned
+  g.read(`const st=htpState('pivot'); st.pinned=0; st.p.rot=1.4;`);   // messed-up live pose
+  assert.equal(g.read("document.getElementById('htpReset').style.display"),'','Reset shows on a try-it slide');
+  g.$('htpReset').click();g.tick();
+  const st=JSON.parse(g.read(`JSON.stringify({pinned:htpState('pivot').pinned, rot:+htpState('pivot').p.rot.toFixed(3), done:htpState('pivot').done})`));
+  assert.equal(st.pinned,null,'the live pose is back to the start');
+  assert.equal(st.done,true,'but the earned goal is not lost');
+  // the goal slide (no tryKey) never shows Reset
+  g.read('htpShowStep(0)');
+  assert.equal(g.read("document.getElementById('htpReset').style.display"),'none');
   assert.deepEqual(g.errors,[]);
 });

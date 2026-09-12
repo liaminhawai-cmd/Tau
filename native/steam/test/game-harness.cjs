@@ -29,6 +29,11 @@ async function game(query = '?steam=1&premium=1', storage = {}) {
       // with nothing to look at, so the desktop asks for tiny bakes when this flag is present.
       w.TAU_TEST_BAKE_SIZE=128;
       w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
+      // Pin the web/PWA render-quality heuristic (index.html's detectQualityTier) to its 'basic'
+      // branch by default: JSDOM's real hardwareConcurrency (4) would otherwise silently promote
+      // every plain web-mode test to 'balanced' and turn TAU_PREMIUM on where tests assume it off.
+      // A test exercising the heuristic itself overrides this with its own defineProperty first.
+      try { Object.defineProperty(w.navigator, 'hardwareConcurrency', { value: 2, configurable: true }); } catch(e) {}
       w.fetch=async()=>{throw new Error('Offline test');};
       w.TextEncoder=TextEncoder; w.TextDecoder=TextDecoder;
       w.performance.now=()=>now;

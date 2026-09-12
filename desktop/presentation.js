@@ -237,7 +237,6 @@
       <button id="desktopOnline">Play online</button>
       <button id="desktopLearn">Learn to play</button>
       <button id="desktopLevels">Ranked &amp; levels</button>
-      <button id="desktopShowcase">Showcase boards</button>
     </nav>
     <div class="desktop-home-bottom"><button id="desktopSettings">Settings</button><button id="desktopWatch">Replays</button><button id="desktopLab">Lab</button><button id="desktopQuit" hidden>Quit</button></div>`;
   $('menu').appendChild(home);
@@ -278,7 +277,6 @@
   $('desktopWatch').onclick = () => $('watchBtn').click();
   // The six art-directed premium boards (noir/math/sumo/cosy/alien/colossus) — the attract-mode
   // page the wrapper also reaches with F2; its "full game →" link returns here.
-  $('desktopShowcase').onclick = () => { location.href = 'steam.html?steam=1'; };
   // The analysis lab: brains on the bench, custom openings, position tools (the #lab dev route,
   // which has no other way in from a packaged desktop build with no URL bar).
   $('desktopLab').onclick = () => { if (typeof labOpenDrop === 'function') labOpenDrop(); };

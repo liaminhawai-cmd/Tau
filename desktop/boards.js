@@ -334,6 +334,8 @@ const THEMES = {
   // turned rosewood pieces capped in aged brass.
   cosy: {
     bg: 0x1a120c, exposure: 1.04, bloom: [0.14, 0.5, 0.9],
+    hubBall: 1.55,   // the brass bead read oversized at the default 1.9 -- its shine sells size on
+                      // its own; legs/feet are untouched, only the ball shrinks
     key: { color: 0xffcf96, intensity: 2.5, pos: [95,80,30], shadow: 0.6 },
     fill:{ color: 0x8a94b0, intensity: 0.28 },
     band: { color: 0x3a2716, rough: 0.4, metal: 0.15 }, slabColor: 0x2e1f12, tableColor: 0x241811,
@@ -640,19 +642,25 @@ const THEMES = {
       const dustNear = mkDust(320, 200, 90, 3.2, 0.28, 313);
       g.add(dustFar, dustNear);
       // The crowd: little tripods on every step, each a stone figure of the pieces below, in the
-      // two sides' muted colours and facing the arena. Two thousand of them cost one draw call
-      // (an instanced figure: three leaning legs and a head, merged once), and they leap when a
-      // titan goes over the rim.
-      const UP = new THREE.Vector3(0, 1, 0), H = 2.2, F = 1.1;
+      // two sides' muted colours and facing the arena. A flat PER-STEP count (the first pass) meant
+      // every tier held the same 150 figures however wide its ring was -- the outer rings are 2-3x
+      // the inner ring's circumference, so the crowd went from loosely-spaced to barely-there band
+      // by band, and read as scattered dots rather than a packed stand. Density is now a spacing
+      // target (~2.6 units of arc per figure) applied PER STEP, so every ring reads equally full.
+      // A bit thicker and bigger-headed than the first pass too -- thin legs at this scale just
+      // aliased into flicker at a distance; a stockier, big-headed little figure holds its shape.
+      // Several thousand of them still cost one draw call (one instanced figure, merged once), and
+      // they leap when a titan goes over the rim.
+      const UP = new THREE.Vector3(0, 1, 0), H = 2.4, F = 1.0;
       const partsOf = [];
       for (let k = 0; k < 3; k++) {
-        const a = k*2*Math.PI/3, leg = new THREE.CylinderGeometry(0.16, 0.2, Math.hypot(F, H), 5, 1, true);
+        const a = k*2*Math.PI/3, leg = new THREE.CylinderGeometry(0.24, 0.3, Math.hypot(F, H), 5, 1, true);
         const dir = new THREE.Vector3(-F*Math.cos(a), H, -F*Math.sin(a)).normalize();   // foot to head
         leg.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, dir));
         leg.translate(F*Math.cos(a)/2, H/2, F*Math.sin(a)/2);
         partsOf.push(leg);
       }
-      const head = new THREE.SphereGeometry(0.42, 6, 5); head.translate(0, H, 0); partsOf.push(head);
+      const head = new THREE.SphereGeometry(0.62, 7, 6); head.translate(0, H, 0); partsOf.push(head);
       const P = [], N = [];
       for (const part of partsOf) {
         const flat = part.toNonIndexed();
@@ -662,17 +670,27 @@ const THEMES = {
       const figure = new THREE.BufferGeometry();
       figure.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
       figure.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
-      const PER = 150;   // per step: 2100 in the stands
+      const SPACING = 2.6;   // target arc-units per figure -- the knob that actually controls how packed it looks
+      const perStep = [];
+      let crowdTotal = 0;
+      for (let i = 0; i < STEPS; i++) {
+        const rMid = R0 + i*TREAD + TREAD/2, count = Math.max(40, Math.round(2*Math.PI*rMid / SPACING));
+        perStep.push(count); crowdTotal += count;
+      }
       const crowd = new THREE.InstancedMesh(figure,
-        new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0, flatShading: true }), STEPS*PER);
+        new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0, flatShading: true }), crowdTotal);
       const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Pv = new THREE.Vector3(), Sv = new THREE.Vector3(), col = new THREE.Color();
       let cr = 4242; const crn = () => (cr = (cr*16807)%2147483647)/2147483647;
       const shades = [0x5f7189, 0x4e5c6a, 0x6b7f99, 0x8a5b36, 0x7a4438, 0x9a6a4a, 0x96826a, 0x6d5347];
       let n = 0;
       for (let i = 0; i < STEPS; i++) {
-        const r0 = R0 + i*TREAD, yTop = 2 + (i+1)*RISE;   // standing on the step's tread
+        const r0 = R0 + i*TREAD, yTop = 2 + (i+1)*RISE, PER = perStep[i];
+        // Evenly spaced around the ring (not purely random -- pure random placement at this density
+        // clumps and gaps just as badly as too few figures did) with small jitter so it doesn't read
+        // as a mechanical grid, each a step or two back/forward on the tread for the same reason.
         for (let j = 0; j < PER; j++) {
-          const th = crn()*Math.PI*2, rr = r0 + 5 + crn()*(TREAD-10), sc = 0.85 + crn()*0.45;
+          const th = (j/PER)*Math.PI*2 + (crn()-0.5)*(Math.PI*2/PER)*0.7;
+          const rr = r0 + 5 + crn()*(TREAD-10), sc = 0.85 + crn()*0.45;
           Pv.set(Math.cos(th)*rr, yTop, Math.sin(th)*rr);
           Q.setFromAxisAngle(UP, -th + (crn()-0.5)*0.8);
           Sv.set(sc, sc, sc);

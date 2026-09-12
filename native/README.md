@@ -232,6 +232,37 @@ back. The piece sets the impacts: metal ticks, glass pings, stone knocks, wood
 toks, and the thump and the rim impact scale with its weight. The Sound panel's
 tuning still applies; every material term is a factor on it.
 
+The web build and the PWA now scale up their own rendering on a device that can
+carry it -- shadows, reflections, uncapped resolution -- auto-detected from a
+quick hardware guess (or forced with ?quality=basic|balanced|high, or from the
+console with tauSetQuality(...)); a weak device keeps exactly the old plain
+path. Steam and the paid Android app still own the CONTENT -- the showcase
+board catalogue, unlocks, glass-through-glass, material acoustics -- since
+that's real production work, not a rendering toggle. The standalone Showcase
+boards page is gone from the desktop menu; every board is reachable and
+unlockable directly in a real match now.
+
+Colossus's crowd was too sparse and its little figures aliased at a distance --
+density is now a spacing target applied per ring (so a wide outer tier gets
+proportionally more figures than a narrow inner one) and the figures are a bit
+stockier with a bigger head. Its bass decays longer and its reverb carries more
+high end (a highshelf on the reverb SEND only, so the dry sand stays dark and
+muffled -- only the room brightens). Cosy's brass hub ball is smaller, matching
+its legs.
+
+Two audio regressions from material acoustics are fixed: the default (metal)
+piece's pick-up click and its win/loss rim impact both gained a new tone that
+wasn't there before -- both are back to exactly their original sound. In
+return, legs meeting legs now get a short contact tick the instant a shove
+connects, by the moving piece's material -- once per squeeze, not once per
+substep of it.
+
+The walkthrough's corner and two-feet slides (and every try-it slide) now have
+a Reset button: a wrong swing that boxes the piece in, or drifts off a guided
+slide's one answer, no longer needs leaving the whole walkthrough to recover
+from -- Reset puts the piece back at the slide's start pose without losing an
+already-earned goal.
+
 Play starts the selected AI level and side. Same-screen play is untimed. Esc
 opens the match menu. The match keeps going underneath it, offline or online, with
 the board visible behind the sheet, so the opponent finishes its swing while you
