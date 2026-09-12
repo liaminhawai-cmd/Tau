@@ -91,12 +91,14 @@ locked inside the showcase page (Noir, Math, Sumo, Cosy, Alien, Colossus), and
 Marble — a white stone table with black-marble rings and glass pieces: a small
 solid coloured ball on legs of clear glass that leave it colourless and take on
 its colour as they come down to solid coloured feet. Glass shows through glass:
-three's transmission buffer holds only opaque objects, so a leg behind another
-leg used to vanish. Each glass piece now carries a proxy of its legs that draws
-only into that buffer (never on screen), glossy and coloured the way the far leg
-looks over the board with the same colour ramp, so the red leg is seen through
-the blue one, refracted, and the other way round. Against the dark room a clear
-leg is drawn by its edges: a Fresnel rim along them.
+three's transmission is screen-space and shows only the opaque scene, so a leg
+behind another leg used to vanish. With two glass pieces up, the desktop draws
+the frame in two passes: everything but the piece nearest the camera goes into
+an off-screen picture (the far piece is real glass over the board there), then
+that picture is painted across the screen, colour and depth, and the near piece
+is rendered on top, so its legs refract the far piece as they refract the board.
+Against the dark room a clear leg is drawn by its edges: a Fresnel rim along
+them.
 
 Colossus brings its arena into the match: fourteen plain stone steps climbing
 away from the sand, the arched wall above them, the hanging dust, and a crowd of

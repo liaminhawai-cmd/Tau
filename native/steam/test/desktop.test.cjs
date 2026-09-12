@@ -920,27 +920,29 @@ test('the home panel scales to a short window instead of scrolling',async t=>{
   assert.deepEqual(g.errors,[]);
 });
 
-test('glass pieces carry a proxy that draws only in the transmission pass',async t=>{
+test('two glass pieces are drawn in two passes: the near one over a picture of the far one',async t=>{
   const g=await game();t.after(g.close);
-  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
-    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+  g.read(`window.__calls=[];
+    renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},getDrawingBufferSize(v){v.set(640,480);return v;},
+      setRenderTarget(t){window.__calls.push(['target',t?'offscreen':'screen']);},
+      render(sc,cam){window.__calls.push(['render',sc===scene?'world':'overlay', sc.children.filter(o=>o.userData&&o.userData.mat).length]);}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(); camera.position.set(0,120,150);
+    scene.add(new THREE.DirectionalLight(0xffffff,1)); scene.add(new THREE.HemisphereLight(0xffffff,0x222222,1));
     controls={mouseButtons:{},target:new THREE.Vector3()};
     boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
     boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
-    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)]; tripods.forEach(t=>scene.add(t));
+    tripods[0].position.set(0,0,40); tripods[1].position.set(0,0,-40);
     localStorage.setItem('tauDesktopTestBoards','1');`);
-  g.read("tauDesktop.board='marble'");
-  const p="tripods[0].userData.glassProxy";
-  assert.equal(g.read(`${p} && ${p}.visible`),true,'marble legs are glass: a proxy rides along');
-  assert.equal(g.read(`${p}.material.colorWrite`),false,'on screen it writes nothing');
-  assert.equal(g.read(`${p}.castShadow`),false);
-  g.read(`${p}.onBeforeRender({getRenderTarget:()=>({})})`);
-  assert.equal(g.read(`${p}.material.colorWrite && ${p}.material.depthWrite`),true,'into the transmission buffer it writes');
-  g.read(`${p}.onBeforeRender({getRenderTarget:()=>null})`);
-  assert.equal(g.read(`${p}.material.colorWrite`),false,'and stops again for the screen');
-  assert.equal(g.read(`${p}.material.userData.legTint`),g.read('tripods[0].userData.mat.userData.legTint'),'wearing the leg\'s own colour ramp');
   g.read("tauDesktop.board='walnut'");
-  assert.equal(g.read(`${p}.visible`),false,'a solid piece hides it');
+  assert.equal(g.read('tauDesktop.renderFrame()'),false,'solid pieces: the plain render');
+  g.read("tauDesktop.board='marble'; window.__calls=[]");
+  assert.equal(g.read('tauDesktop.renderFrame()'),true,'glass pieces: the desktop draws the frame');
+  const calls=g.read('JSON.stringify(window.__calls)');
+  assert.equal(calls,JSON.stringify([['target','offscreen'],['render','world',2],['target','screen'],['render','overlay',1]]),
+    'the world (both pieces, the near one writing no colour) into the picture first, then the picture and the near piece alone to the screen');
+  assert.equal(g.read('tripods.every(t=>t.parent===scene)'),true,'both pieces are back in the scene');
+  assert.equal(g.read('tripods.every(t=>{let ok=true; t.traverse(o=>{ if(o.material && (!o.material.colorWrite || !o.material.depthWrite)) ok=false; }); return ok;})'),true,'and write colour again');
   assert.deepEqual(g.errors,[]);
 });
 

@@ -616,37 +616,70 @@
     hub.scale.setScalar(CFG.legRadius * scale);
     return hub;
   }
-  // Glass seen through glass. three's transmission pass renders the OPAQUE scene into the buffer a
-  // glass surface then samples, so a glass leg behind another was simply not there: the near leg
-  // showed the board through the gap. Each glass piece now carries a proxy of its legs -- an opaque
-  // satin copy that writes only during that pass (a render target is set then, never for the
-  // screen), so the buffer holds the far leg and the near leg shows it, softened by its own
-  // roughness like anything else behind glass. On screen the proxy draws nothing at all.
-  // The proxy has to look the way the far leg looks when seen directly: a clear leg over the board
-  // is mostly the board's own colour, the piece's tint gathering towards the foot, with the glass's
-  // gloss on top. So it is glossy, coloured from the board's surface lightened a little, and wears
-  // the leg's colour ramp; refracted through the near leg that reads as glass behind glass.
-  function syncGlassProxy(piece, legMat, fin) {
-    const body = piece.children[0];
-    let proxy = piece.userData.glassProxy;
-    if (!legMat || !(legMat.transmission > 0)) { if (proxy) proxy.visible = false; return; }
-    if (!proxy) {
-      proxy = new THREE.Mesh(body.geometry, new THREE.MeshPhysicalMaterial());
-      proxy.castShadow = false; proxy.receiveShadow = true;
-      proxy.onBeforeRender = r => { const pass = r.getRenderTarget() !== null; proxy.material.colorWrite = pass; proxy.material.depthWrite = pass; };
-      piece.add(proxy); piece.userData.glassProxy = proxy;
+  // ---- Glass through glass: the nearer piece is drawn in a second pass over the finished frame ----
+  // three's transmission is screen-space: a glass surface shows the OPAQUE scene behind it, so a
+  // glass leg behind another was simply not there through it. (A proxy that drew the legs into
+  // that buffer was tried first; every leg then saw its own proxy and went opaque.) The answer is
+  // to give the nearer piece a finished picture to look through. Pass one renders everything but
+  // the piece nearest the camera into an off-screen target -- the far piece is real glass over
+  // the board there; the near piece still casts its shadow, it just writes no colour. Pass two
+  // paints that picture across the screen, colour and depth, and renders the near piece on top:
+  // three's own transmission pass copies the painted picture into its buffer, so the near legs
+  // refract the far piece exactly as they refract the board. Lights are cloned for the second
+  // scene (the key light with its shadow, so the near piece still shades itself); the far
+  // piece's shadow on the near one is the one thing lost. Only when two glass pieces are up.
+  let gpTarget = null, gpScene = null, gpQuad = null, gpLights = [], gpFailed = false;
+  const gpV = new THREE.Vector3(), gpSize = new THREE.Vector2();
+  function glassPieces() {
+    const out = [];
+    for (const pair of [typeof tripods !== 'undefined' ? tripods : null, typeof htpTripods !== 'undefined' ? htpTripods : null])
+      for (const t of pair || []) if (t && t.visible && t.userData.mat && t.userData.mat.transmission > 0) out.push(t);
+    return out;
+  }
+  function gpSetup() {
+    gpTarget = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4,
+      depthTexture: new THREE.DepthTexture(4, 4, THREE.UnsignedIntType) });
+    gpQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+      glslVersion: THREE.GLSL3, depthTest: false, depthWrite: true,
+      uniforms: { tColor: { value: gpTarget.texture }, tDepth: { value: gpTarget.depthTexture } },
+      vertexShader: 'out vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: 'precision highp float; uniform sampler2D tColor; uniform sampler2D tDepth; in vec2 vUv;\n' +
+        'layout(location = 0) out highp vec4 pc_fragColor;\n#define gl_FragColor pc_fragColor\n' +
+        'void main(){ gl_FragColor = texture(tColor, vUv); gl_FragDepth = texture(tDepth, vUv).r;\n' +
+        '#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}' }));
+    gpQuad.frustumCulled = false; gpQuad.renderOrder = -1;
+    gpScene = new THREE.Scene(); gpScene.add(gpQuad);
+    gpLights = [];
+    scene.traverse(o => { if (o.isLight) { const c = o.clone(); gpLights.push([o, c]); gpScene.add(c); if (c.target) gpScene.add(c.target); } });
+  }
+  function renderFrame() {
+    if (!renderer || !camera || gpFailed) return false;
+    const pieces = glassPieces();
+    if (pieces.length < 2) return false;
+    try {
+      if (!gpTarget) gpSetup();
+      pieces.forEach(t => t.updateMatrixWorld());
+      pieces.sort((a, b) => camera.position.distanceToSquared(a.getWorldPosition(gpV)) - camera.position.distanceToSquared(b.getWorldPosition(gpV)));
+      const near = pieces[0];
+      renderer.getDrawingBufferSize(gpSize);
+      if (gpTarget.width !== gpSize.x || gpTarget.height !== gpSize.y) gpTarget.setSize(gpSize.x, gpSize.y);
+      // pass one: the world without the near piece's colour (its shadow still falls)
+      const mats = [];
+      near.traverse(o => { if (o.material) { mats.push([o.material, o.material.colorWrite, o.material.depthWrite]); o.material.colorWrite = false; o.material.depthWrite = false; } });
+      renderer.setRenderTarget(gpTarget); renderer.render(scene, camera);
+      for (const [m, cw, dw] of mats) { m.colorWrite = cw; m.depthWrite = dw; }
+      // pass two: that picture, then the near piece through it
+      const parent = near.parent; parent.remove(near); gpScene.add(near);
+      for (const [o, c] of gpLights) { c.position.copy(o.position); c.intensity = o.intensity; c.color.copy(o.color); if (o.groundColor) c.groundColor.copy(o.groundColor); }
+      gpScene.environment = scene.environment; gpScene.fog = scene.fog;
+      renderer.setRenderTarget(null); renderer.render(gpScene, camera);
+      gpScene.remove(near); parent.add(near);
+      return true;
+    } catch (e) {
+      gpFailed = true; console.warn('glass two-pass render unavailable', e);
+      try { renderer.setRenderTarget(null); } catch (_) {}
+      return false;
     }
-    proxy.material.dispose();
-    const base = new THREE.Color(fin && fin.skin && fin.skin.flat ? fin.skin.flat : 0xdddddd).lerp(new THREE.Color(0xffffff), 0.35);
-    const mat = new THREE.MeshPhysicalMaterial({ color: base, metalness: 0,
-      roughness: 0.06, clearcoat: 1, clearcoatRoughness: 0.05, specularIntensity: 1,
-      envMapIntensity: Math.max(1, legMat.envMapIntensity || 1) });
-    mat.colorWrite = mat.depthWrite = false;
-    const SH = showcase();
-    if (SH && legMat.userData && legMat.userData.legTint != null) SH.installLegGradient(mat, legMat.userData.legTint);
-    proxy.material = mat;
-    proxy.position.copy(body.position); proxy.rotation.copy(body.rotation); proxy.scale.copy(body.scale);
-    proxy.visible = true;
   }
   function applyShowcasePieces(T) {
     for (const pair of [tripods, htpTripods]) pair.forEach((piece, i) => {
@@ -656,10 +689,9 @@
       const mats = T.pieces(side);
       const hub = ensureHub(piece, T.hubBall || 1.9);
       body.material = mats.leg; hub.material = mats.hub; hub.visible = true;
-      piece.children.forEach(c => { if (c !== body && c !== hub && c !== piece.userData.glassProxy) c.material = mats.foot || mats.leg; });
+      piece.children.forEach(c => { if (c !== body && c !== hub) c.material = mats.foot || mats.leg; });
       piece.userData.showMats = [...new Set([mats.leg, mats.hub, mats.foot].filter(Boolean))];
       piece.userData.mat = mats.leg;
-      syncGlassProxy(piece, mats.leg, finish());
     });
   }
   function restorePieces() {
@@ -667,8 +699,7 @@
       const body = piece.children[0];
       if (piece.userData.origMat) { body.material = piece.userData.origMat; piece.userData.mat = piece.userData.origMat; }
       if (piece.userData.hub) piece.userData.hub.visible = false;
-      if (piece.userData.glassProxy) piece.userData.glassProxy.visible = false;
-      piece.children.forEach(c => { if (c !== body && c !== piece.userData.hub && c !== piece.userData.glassProxy && typeof tripodPinMat !== 'undefined' && tripodPinMat) c.material = tripodPinMat; });
+      piece.children.forEach(c => { if (c !== body && c !== piece.userData.hub && typeof tripodPinMat !== 'undefined' && tripodPinMat) c.material = tripodPinMat; });
       (piece.userData.showMats || []).forEach(m => m.dispose()); piece.userData.showMats = null;
     });
   }
@@ -704,7 +735,6 @@
       mat.emissive.set(p.emissive?(i===0?p.blue:p.red):'#000000');
       mat.emissiveIntensity=p.emissive?(p.emissiveIntensity||.2):0;
       mat.needsUpdate=true;
-      syncGlassProxy(piece, mat, fin);
     });
   }
   // What each board is made of, for the ear: the piece material sets the pick-up click, the move
@@ -1105,7 +1135,7 @@
     get progress(){return {...progress};},
     recordResult,
     debugDetailMode(){ return detailMode; },
-    resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale,
+    resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, renderFrame,
     // The corner layout's camera goal for the current window (see desiredPose).
     cornerCameraPose(w3, h3){ if(!renderer||!camera) return null;
       const pos=new THREE.Vector3(), tgt=new THREE.Vector3(); desiredPose(false,pos,tgt,w3,h3); return {position:pos,target:tgt}; },
