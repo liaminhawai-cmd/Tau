@@ -1232,6 +1232,28 @@ test('with no client ID configured the app keeps exactly its username & password
   assert.deepEqual(g.errors,[]);
 });
 
+test('the sign-in panel is a centred sheet on the premium presentation, and a click outside still closes it',async t=>{
+  const g=await game();t.after(g.close);
+  g.read('openAcctPanel()');
+  assert.equal(g.read("document.getElementById('acctPanel').style.display"),'flex');
+  // Clicking the room behind the sheet closes it, as it always has. The dimmer is a pseudo-element
+  // on the panel itself, so it must not take pointer events -- otherwise every click outside would
+  // land on the panel and nothing would ever close.
+  g.read(`(()=>{const e=new MouseEvent('click',{bubbles:true});
+    Object.defineProperty(e,'target',{value:document.body}); acctPanelOpenedAt=0;
+    document.body.dispatchEvent(e);})()`);
+  assert.equal(g.read("document.getElementById('acctPanel').style.display"),'none','a click outside closes it');
+  const css=fs.readFileSync(path.join(root,'desktop/presentation.css'),'utf8');
+  const rule=css.slice(css.indexOf('.tau-desktop #acctPanel {'),css.indexOf('.tau-desktop #htpFull'));
+  assert.match(rule,/position:fixed; inset:0; margin:auto/,'centred by auto margins');
+  // NOT by a transform: a transformed element becomes the containing block for its own
+  // fixed-position descendants, which shrank the dimmer to the size of the sheet it sits behind.
+  assert.equal(/#acctPanel \{[^}]*transform:/.test(rule),false,'and never by a transform');
+  assert.match(rule,/#acctPanel::before \{[^}]*pointer-events:none/,'the dimmer passes clicks through');
+  assert.match(rule,/box-sizing:border-box/,'its padding counts inside the width, so a phone fits it');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('a plain web/PWA load (no ?steam, no Capacitor) stays off the desktop presentation',async t=>{
   const g=await game('');t.after(g.close);
   assert.equal(g.read('window.TAU_DESKTOP'),false);

@@ -535,3 +535,14 @@ a Layout select to override it and Xbox drawn when nothing is connected
 browser's standard mapping already lines the buttons up by position. Below
 700px of window the sheet goes compact: the keyboard becomes a key-then-meaning
 list (still rebindable) and the pad is drawn bare with its legend underneath.
+
+The sign-in panel is index.html's own `#acctPanel`, a flex child of the web menu
+-- which the premium presentation stretches across the whole window, so on Steam
+and in the app it landed as a bare column of plain web inputs pinned to the left
+edge. It is now a centred sheet in the modals' language (gold primary, the same
+box and shadow) with a dimmer behind it. Centred by `inset:0; margin:auto`, NOT
+by a transform: a transformed element becomes the containing block for its own
+fixed-position descendants, which shrinks the `::before` dimmer to the size of
+the sheet sitting in front of it. The dimmer takes no pointer events, so the
+document-level click-outside handler that closes the panel still sees the room
+behind it.

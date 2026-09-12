@@ -97,7 +97,34 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .tau-desktop.desktop-overhead #demoCanvas { display:block; position:absolute; right:5%; top:50%; transform:translateY(-50%); border:0; border-radius:50%; }
 .desktop-result-mark { display:block; width:44px; height:3px; background:var(--gold); margin:0 0 20px; }
 .desktop-result-detail { margin:0; color:var(--muted); }
-.tau-desktop #acctPanel { z-index:20; background:#192117; border:1px solid var(--edge); color:var(--paper); box-shadow:0 20px 80px #0008; }
+/* Signing in on the premium presentation. index.html's panel is a flex child of the web menu,
+   which this layout stretches across the whole window, so left alone it lands as a bare column
+   pinned to the left edge with the plain web inputs. Here it is a centred sheet in the same
+   language as the modals, with its own dimmer -- the dimmer takes no pointer events, so a click
+   outside still reaches the document handler that closes the panel. */
+.tau-desktop #acctPanel { position:fixed; inset:0; margin:auto; z-index:60;
+  box-sizing:border-box; width:min(380px,calc(100vw - 32px)); height:max-content; max-height:calc(100dvh - 48px);
+  overflow:auto; gap:12px; padding:34px; border:1px solid var(--edge); border-radius:7px;
+  background:linear-gradient(150deg,#22291f,#141b15); color:var(--paper); box-shadow:0 28px 100px #0007; }
+.tau-desktop #acctPanel::before { content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background:rgba(8,10,8,.62); }
+.tau-desktop #acctPanel .msg { color:var(--muted); font-size:13px; line-height:1.5; text-align:left; user-select:none; }
+.tau-desktop #acctPanel .profile { font-size:15px; line-height:1.6; user-select:none; }
+.tau-desktop #acctPanel input { background:#101810; border:1px solid var(--edge); border-radius:4px;
+  color:var(--paper); padding:11px 12px; font-size:14px; }
+.tau-desktop #acctPanel input:focus { outline:none; border-color:var(--gold); }
+.tau-desktop #acctPanel button { min-height:44px; padding:11px 16px; border:1px solid var(--edge);
+  border-radius:3px; background:transparent; color:var(--paper); font-size:14px; }
+.tau-desktop #acctPanel button:hover { border-color:var(--gold); color:var(--gold); }
+.tau-desktop #acctPanel button:not(.link) { width:100%; }
+.tau-desktop #acctPanel .row button:not(.link) { width:auto; flex:1; }
+.tau-desktop #acctPanel .primaryAuth, .tau-desktop #acctPanel #acctLogIn {
+  background:var(--gold); border-color:var(--gold); color:#182016; font-weight:600; }
+.tau-desktop #acctPanel .primaryAuth:hover, .tau-desktop #acctPanel #acctLogIn:hover {
+  filter:brightness(1.14); color:#182016; }
+.tau-desktop #acctPanel button.link { min-height:0; padding:4px 0; border:0; background:transparent;
+  color:var(--gold); font-size:13px; }
+.tau-desktop #acctPanel #acctPanelClose { margin-top:4px; }
 .tau-desktop #htpFull { background:#111910; color:var(--paper); }
 .tau-desktop #htpHead h2 { color:var(--paper); }
 .tau-desktop .desktop-notice { margin-top:16px; font-size:13px; line-height:1.5; color:var(--gold); }
