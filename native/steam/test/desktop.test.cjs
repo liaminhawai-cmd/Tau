@@ -1165,18 +1165,32 @@ test('the losing piece lands on the floor below the board with a thump, then is 
     boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
     boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
     tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
-    window.__thumps=0; playLandingSound=()=>window.__thumps++;
-    // Already off the rim and well into the ballistic phase -- falling straight toward the floor.
-    fall=Object.assign(mkFallState(G.pieces[1]), {idx:1, phase:'free', vy:-40, vx:5, vz:0});
-    tripods[1].position.set(80,-85,0);`);
-  g.read(`for(let i=0;i<50;i++) stepFall(0.05);`);   // 2.5s of real time: plenty to land and settle
+    window.__thumps=[]; playLandingSound=(s)=>window.__thumps.push(s===undefined?1:s);
+    // Off the rim at the board's own height, so it falls the full 20cm onto the floor.
+    // Pinned randomness: the tumble's wobble and the spin an impact adds are random, and this test
+    // is about the bounce, not about one lucky roll of it.
+    let seed=7; Math.random=()=>((seed=(seed*16807)%2147483647)/2147483647);
+    fall=Object.assign(mkFallState(G.pieces[1]), {idx:1, phase:'free', vy:0, vx:14, vz:3});
+    tripods[1].position.set(80,0,0);`);
+  // Four seconds at 60fps: the drop, the bounces, and the beat before it is tucked away. Clearance
+  // is how far the piece's lowest point sits above the floor on each frame.
+  g.read(`window.__clear=[];
+    for(let i=0;i<240 && fall.active;i++){ stepFall(1/60);
+      window.__clear.push(tripods[1].position.y + fallLowestBelowOrigin(tripods[1]) - fallFloorY()); }`)
   // It rests ON the floor: its lowest surface point touches -100, not its origin. A tumbling piece
   // is rotated, so clamping the origin (the plane its pins stand on) buried whatever hung below it.
   const lowest=g.read('tripods[1].position.y + fallLowestBelowOrigin(tripods[1])');
   assert.ok(Math.abs(lowest+100)<0.01,'its lowest point rests on the floor 20cm (100u) below the board, not falling forever');
   assert.ok(g.read('tripods[1].position.y')>-100,'and the piece sits above that floor rather than half through it');
   assert.ok(g.read('fallLowestBelowOrigin(tripods[1])')<-1,'this one landed on its side, so parts of it hang well below its origin');
-  assert.equal(g.read('window.__thumps'),1,'one landing thump on touchdown, not one per frame of resting on the floor');
+  // It bounces instead of stopping dead, and each landing is its own thump, quieter than the last.
+  const thumps=JSON.parse(g.read('JSON.stringify(window.__thumps)'));
+  assert.ok(thumps.length>=2 && thumps.length<=6,`a few bounces, not one dead stop and not a thump per frame (got ${thumps.length})`);
+  for(let i=1;i<thumps.length;i++) assert.ok(thumps[i]<thumps[i-1],'each bounce lands softer than the one before');
+  const clear=JSON.parse(g.read('JSON.stringify(window.__clear)'));
+  const firstHit=clear.findIndex(c=>c<=0.001);
+  assert.ok(firstHit>0,'it reaches the floor');
+  assert.ok(Math.max(...clear.slice(firstHit))>3,'and comes back off it rather than sticking where it landed');
   assert.equal(g.read('fall.active'),false,'after a beat resting on the floor it is tucked away, same as the old cutoff');
   assert.equal(g.read('fallenIdx'),1);
   assert.equal(g.read('tripods[1].visible'),false);

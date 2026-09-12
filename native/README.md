@@ -570,3 +570,24 @@ rests, not the centreline) under the piece's current rotation, and clamps that.
 The clamp runs after the frame's rotation, which is what decides where "lowest"
 is, and it re-runs each frame, so the piece keeps sitting on whichever part
 touches down as the last of the spin bleeds off.
+
+The board CASTS a shadow now, not just receives one. Without it the key light went
+straight through the board and the pieces standing on it threw shadows down onto
+the landing floor a hundred units below, as if the thing they were standing on
+were not there -- and because the light rakes in from (70,130,45) those shadows
+landed offset from the board's silhouette, so you saw them float on the floor
+beside it. The solid rim does the casting rather than the single-sided top plane
+(same footprint, and no coplanar caster/receiver to go acne-ridden), Colossus's
+plinth casts too, and the key light's shadow box went from +/-95 to +/-125: the
+board's own shadow disc reaches about 121 units out once projected down onto the
+floor, and the tighter box cut it off with a hard straight edge.
+
+A piece BOUNCES when it hits the floor instead of stopping dead. It keeps 0.38 of
+its approach speed, the floor drags on the skid, and the impact both sheds and
+adds spin -- shedding matters: a first cut that only ADDED spin could drive the
+contact point down as fast as the bounce lifted the piece, so it never visibly
+left the ground. Each landing is its own thump, quieter as they die away, and the
+count varies naturally with the tumble (two to four from the 20cm floor). The
+beat before the piece is tucked away starts when it stops bouncing rather than at
+first contact, with `downT` as a backstop so a fall can never hold the camera for
+more than a few seconds.

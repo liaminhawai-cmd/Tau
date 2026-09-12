@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 229</div>
+<div id="buildTag">build 230</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -7375,10 +7375,12 @@ function playPushContact() {
 // The loser's tumble ends on the floor below the board, not in blank space: one dull, material-keyed
 // thump the instant it lands (rising-edge gated by fall.landed in stepFallOn, so this fires once per
 // fall, not once per frame while it rests there).
-function playLandingSound() {
+function playLandingSound(strength) {
     if (!audioReady || !soundOn || !gameVisible()) return;
     const pp = pieceAcoustics();
-    const g = audioCtx.createGain(); g.gain.value = 0.8; g.connect(toneLP);
+    const g = audioCtx.createGain();
+    g.gain.value = 0.8 * Math.max(0.12, Math.min(1, strength === undefined ? 1 : strength));
+    g.connect(toneLP);
     switch (pp.impact) {
         case 'thud':    // stone: heavy and dusty
             tone(g, 'sine', 52, 22, 1.0, 0.9);
@@ -8545,8 +8547,12 @@ function init3D() {
         key.position.set(70,130,45);
         key.castShadow = true;
         key.shadow.mapSize.set(TAU_SHADOW_SIZE,TAU_SHADOW_SIZE);
-        key.shadow.camera.left = key.shadow.camera.bottom = -95;
-        key.shadow.camera.right = key.shadow.camera.top = 95;
+        // Wide enough to hold the board AND the board's own shadow cast down onto the landing floor:
+        // the light rakes in from (70,130,45), so a disc of radius edgeU at the board plane lands
+        // about 54 units off-centre and 100 below, reaching ~121 units out. A tighter box clipped
+        // that shadow and left a hard straight edge across the floor.
+        key.shadow.camera.left = key.shadow.camera.bottom = -125;
+        key.shadow.camera.right = key.shadow.camera.top = 125;
         key.shadow.camera.far = 400;
         key.shadow.bias = -0.0004;
         key.shadow.normalBias = 0.5;
@@ -8575,7 +8581,12 @@ function init3D() {
     // was lowered to -0.05 to un-bury the feet: the old rim top at +0.1 then poked through). Height
     // is 5, so centre -2.7 -> top -0.2, safely under boardTop's -0.05.
     boardRim.position.y=-2.7; scene.add(boardRim);
-    if (TAU_PREMIUM) { boardTop.receiveShadow = true; boardRim.receiveShadow = true; }
+    // The board CASTS as well as receives: without this the light went straight through it and the
+    // pieces standing on it threw shadows onto the floor a hundred units below, as if the board
+    // they were standing on were not there. The solid rim does the casting rather than the
+    // single-sided top plane, which both receives and sits coplanar with the surface it would
+    // shade -- the board's footprint is the same either way.
+    if (TAU_PREMIUM) { boardTop.receiveShadow = true; boardRim.receiveShadow = true; boardRim.castShadow = true; }
     // A dark floor under the board itself -- normally hidden behind it, but revealed the moment a
     // piece tumbles off the rim and drops into what used to be featureless black.
     fallFloor=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU*3.4,64),
@@ -8637,7 +8648,7 @@ function mkFallState(p) {
     return { active:true, phase:'slide', vx:fx/d*50, vz:fz/d*50, vy:0, tipRate:0,
              px:0, pz:0, ax:0, az:0, theta:0, omega:0,
              wx:(Math.random()-0.5)*7, wy:(Math.random()-0.5)*3, wz:(Math.random()-0.5)*7,
-             landed:false, settleT:0 };
+             landed:false, resting:false, settleT:0, downT:0 };
 }
 // kick off the dramatic slide-off when someone loses (silent=true for the replay's re-run)
 function triggerFall(silent) {
@@ -8681,6 +8692,10 @@ const FALL_HULL_LOCAL = (() => {
     return out;
 })();
 const fallHullW = new THREE.Vector3();
+// How much of its approach speed a piece keeps when it hits the floor, and the speed below which a
+// bounce is too small to bother with and it just settles. A drop from the 100-unit floor arrives at
+// about 228 u/s, so this gives a big first bounce, a smaller second and a last tap before it lies still.
+const FALL_RESTITUTION = 0.38, FALL_BOUNCE_MIN = 9;
 // How far the piece's lowest surface point sits BELOW its origin, at its current orientation.
 // Negative while it stands upright (nothing is below the pads), growing as it tips onto its side.
 function fallLowestBelowOrigin(t) {
@@ -8698,8 +8713,12 @@ function stepFall(dt) {
     // Give it a beat resting on the floor (thump already played in stepFallOn) before tucking it away,
     // so the landing actually reads instead of the piece thumping down and vanishing in the same frame.
     const t = tripods[fall.idx];
-    if (fall.landed) fall.settleT += dt;
-    if (fall.settleT > 0.6) { fall.active=false; fallenIdx=fall.idx; t.visible=false; camCenterFrac=1; camManualSet=false; }
+    // The beat before it is tucked away starts when it has stopped bouncing, not at first contact --
+    // otherwise the piece vanishes mid-bounce. downT is the backstop: however the bouncing goes, the
+    // fall is never allowed to hold the camera for more than a few seconds.
+    if (fall.resting) fall.settleT += dt;
+    if (fall.landed) fall.downT += dt;
+    if (fall.settleT > 0.6 || fall.downT > 4) { fall.active=false; fallenIdx=fall.idx; t.visible=false; camCenterFrac=1; camManualSet=false; }
 }
 // The physics itself, on any tripod + fall state — the tutorial's falls (goal-slide ending and
 // the push-off finale, on htpTripods) run this exact code, so a tumble looks the same everywhere.
@@ -8736,12 +8755,36 @@ function stepFallOn(t, fall, dt) {
         // so this comes AFTER the frame's rotation, which is what decides where "lowest" is.
         const floorY = fallFloorY(), below = fallLowestBelowOrigin(t);
         if (t.position.y + below <= floorY) {
-            // Hit the floor: stop the drop dead and bleed off the tumble into a quick settle, instead
-            // of ploughing on through it. One-shot the thump on the rising edge of contact.
             t.position.y = floorY - below;
-            if (!fall.landed) { fall.landed = true; playLandingSound(); }
-            fall.vy = 0; fall.vx *= 1 - Math.min(1, 6*dt); fall.vz *= 1 - Math.min(1, 6*dt);
-            fall.wx *= 1 - Math.min(1, 5*dt); fall.wy *= 1 - Math.min(1, 5*dt); fall.wz *= 1 - Math.min(1, 5*dt);
+            const impact = Math.max(0, -fall.vy);
+            if (impact > FALL_BOUNCE_MIN) {
+                // It bounces. A hard piece on a hard floor comes back at about a third of the speed
+                // it arrived with, and because it lands on a leg rather than flat on its axis, part
+                // of the blow goes into tumble instead of height -- which is what makes a dropped
+                // tripod skitter rather than pogo straight up. Each landing is its own thump, quieter
+                // as the bounces die away.
+                playLandingSound(Math.min(1, 0.3 + impact/170));
+                fall.landed = true;
+                fall.vy = impact * FALL_RESTITUTION;
+                fall.vx *= 0.74; fall.vz *= 0.74;                 // the floor drags on the skid
+                // An impact SHEDS spin as well as adding some: the floor is what the piece is
+                // rotating against. Only adding to it (the first cut) could drive the contact point
+                // down as fast as the bounce lifted the piece, so it never visibly left the ground.
+                const kick = impact * 0.02;
+                fall.wx = fall.wx*0.5 + (Math.random()-0.5)*kick;
+                fall.wy = fall.wy*0.5 + (Math.random()-0.5)*kick*0.4;
+                fall.wz = fall.wz*0.5 + (Math.random()-0.5)*kick;
+                fall.tipRate *= 0.45;
+            } else {
+                // Too slow to leave the floor again: it is down for good. Bleed off what is left so
+                // it rocks to a stop on whichever part it came to rest on.
+                if (!fall.landed) { fall.landed = true; playLandingSound(0.55); }
+                fall.resting = true;
+                fall.vy = 0;
+                fall.vx *= 1 - Math.min(1, 8*dt); fall.vz *= 1 - Math.min(1, 8*dt);
+                fall.wx *= 1 - Math.min(1, 7*dt); fall.wy *= 1 - Math.min(1, 7*dt); fall.wz *= 1 - Math.min(1, 7*dt);
+                fall.tipRate *= 1 - Math.min(1, 7*dt);
+            }
         }
     }
     // Board rest. During the flat SLIDE the trailing feet genuinely rest on the surface, so any foot

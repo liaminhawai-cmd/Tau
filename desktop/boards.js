@@ -605,7 +605,7 @@ const THEMES = {
       const TOP_R = R0 + STEPS*TREAD, TOP_Y = GROUND + STEPS*RISE, WALL_R = 470;
       const plinth = new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.04, CFG.edgeU*1.2, 16, 96),
         new THREE.MeshStandardMaterial({ color: 0x7e6f54, roughness: 0.95 }));
-      plinth.position.y = -5.2 - 8; plinth.receiveShadow = true; g.add(plinth);
+      plinth.position.y = -5.2 - 8; plinth.receiveShadow = true; plinth.castShadow = true; g.add(plinth);
       // the arena floor: raked sand, the same tone as the pitch
       const sv = document.createElement('canvas'); sv.width = sv.height = 256;
       const sc = sv.getContext('2d');
