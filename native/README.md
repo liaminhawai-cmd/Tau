@@ -146,10 +146,17 @@ is rendered on top, so its legs refract the far piece as they refract the board.
 Against the dark room a clear leg is drawn by its edges: a Fresnel rim along
 them.
 
-Colossus brings its arena into the match: fourteen plain stone steps climbing
-away from the sand, the arched wall above them, the hanging dust, and a crowd of
-two thousand little stone tripods in the two sides' colours standing on every
-step, one instanced draw. The flat board's round tile paints nothing behind the
+Colossus brings its ground into the match: a cricket oval. The pitch is a stone
+plinth twenty units above a mown grass outfield, then the boundary rope, a grass
+bank the crowd stands on (a slope, not steps -- the old stone tiers rose fifteen
+units a riser and the crowd on them was two and a half tall), a white picket
+fence, two sightscreens, a treeline in the haze and the hanging dust. The crowd
+is several thousand little Taus in the pieces' ordinary lacquered blue and red,
+built to the real piece's proportions (quarter-circle legs, slim tubes, a small
+crown bead, no head), one instanced draw. A fallen titan lands on the grass:
+a look can set `floorY` and index.html's stepFall lands there (through
+`tauDesktop.fallFloorY()`) instead of on the game's black floor, which the look
+hides. The flat board's round tile paints nothing behind the
 disc in a desktop match, so the arena shows around it. The camera sits lower
 and wider on that board so the tiers rise behind the far rim; haze grades with
 distance. A loser goes over at half speed, feet dragging dust through the sand,
@@ -289,9 +296,9 @@ boards page is gone from the desktop menu; every board is reachable and
 unlockable directly in a real match now.
 
 Colossus's crowd was too sparse and its little figures aliased at a distance --
-density is now a spacing target applied per ring (so a wide outer tier gets
-proportionally more figures than a narrow inner one) and the figures are a bit
-stockier with a bigger head. Its bass decays longer and its reverb carries more
+density is a spacing target applied per row (so a wide outer row gets
+proportionally more figures than a narrow inner one) and the leg tube is drawn
+a little thicker than true. Its bass decays longer and its reverb carries more
 high end (a highshelf on the reverb SEND only, so the dry sand stays dark and
 muffled -- only the room brightens). Cosy's brass hub ball is smaller, matching
 its legs.
@@ -377,10 +384,11 @@ played every simulated shove: a crackle of stone knocks through the whole
 think on Colossus with nothing on screen. A frame only ever sees the real
 state, and the click also requires the piece to have moved that frame.
 
-Colossus's crowd figures have arched legs now -- the same quarter-circle
-from hub to foot the real pieces' `legArcs()` walks, as a short tube -- in
-place of straight cones, which read as three-legged stools rather than
-little Taus.
+Colossus's crowd figures are built to the real piece's proportions now -- the
+quarter-circle leg `fusedTripodGeometry` describes, radius equal to height,
+with a short vertical foot, a slim tube and a small crown bead. The first
+arched pass kept a big sphere for a head over a too-tall, too-fat arc and read
+as mushrooms; straight cones before that read as three-legged stools.
 
 In a match the 3D view now fills the whole window and the flat board floats
 over it; the room, stands and dust carry on under the flat board instead of

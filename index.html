@@ -635,7 +635,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 225</div>
+<div id="buildTag">build 226</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2618,6 +2618,11 @@ let pivotGlowMesh=null, boardTop=null, boardRim=null, camProbe=null, coachArcs=n
 // 20cm below the board surface (1u = 2mm, so 20cm = 100u), for a losing piece's free fall to
 // actually land on instead of tumbling forever into blank space.
 const FALL_FLOOR_Y = -100;
+// A look with its own ground (Colossus's grass) lands the piece there instead.
+function fallFloorY() {
+    const d = window.tauDesktop, y = d && d.fallFloorY ? d.fallFloorY() : null;
+    return y == null ? FALL_FLOOR_Y : y;
+}
 let hoverDisc=null;   // the "this foot is grabbable" disc under the 3D cursor (built in init3D)
 let glowTexGold=null, glowTexHot=null;   // the pivot glow's two tints: gold for dark boards, white-hot for pale ones
 // Board SKIN: null = the default theme look (pure passthrough — normal players never touch this).
@@ -8693,10 +8698,11 @@ function stepFallOn(t, fall, dt) {
     } else {
         fall.vy -= 260*dt;
         t.position.x += fall.vx*dt; t.position.y += fall.vy*dt; t.position.z += fall.vz*dt;
-        if (t.position.y <= FALL_FLOOR_Y) {
+        const floorY = fallFloorY();
+        if (t.position.y <= floorY) {
             // Hit the floor: stop the drop dead and bleed off the tumble into a quick settle, instead
             // of ploughing on through it. One-shot the thump on the rising edge of contact.
-            t.position.y = FALL_FLOOR_Y;
+            t.position.y = floorY;
             if (!fall.landed) { fall.landed = true; playLandingSound(); }
             fall.vy = 0; fall.vx *= 1 - Math.min(1, 6*dt); fall.vz *= 1 - Math.min(1, 6*dt);
             fall.wx *= 1 - Math.min(1, 5*dt); fall.wy *= 1 - Math.min(1, 5*dt); fall.wz *= 1 - Math.min(1, 5*dt);

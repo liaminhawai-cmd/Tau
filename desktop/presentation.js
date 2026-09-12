@@ -602,6 +602,8 @@
   // Giants go over slowly: a look may slow the loser's fall (its simSpeed, floored so a match's
   // ending never drags), and the dust below runs on the same clock.
   function fallTimeScale() { return lookTheme && lookTheme.simSpeed ? Math.max(0.5, lookTheme.simSpeed) : 1; }
+  // Where a fallen piece lands on this look, if it brings its own ground (null: the game's floor).
+  function fallFloorY() { return lookTheme && lookTheme.floorY != null ? lookTheme.floorY : null; }
   // ---- Sand and stone: the dust a fall raises on a look that asks for it (T.dust) ----
   // Each puff is its own small point cloud thrown up from a spot: outward and up, slowed by the
   // air, settling under gravity, spreading and fading over a couple of seconds; beyond the rim
@@ -861,7 +863,7 @@
       boardRim.material.metalness=.68; boardRim.material.roughness=.34;
       applyPieceMaterials(fin);
     }
-    // A look's surroundings come into the match with it and leave with it: Colossus's stands and
+    // A look's surroundings come into the match with it and leave with it: Colossus's ground and
     // its haze (fog grades with distance, so the board stays clear and the far wall half-vanishes).
     const envWant = T && T.env ? fin.id : null;
     if (envFor !== envWant) {
@@ -875,6 +877,7 @@
     }
     scene.fog = T && T.fog ? new THREE.FogExp2(T.fog.color, T.fog.density) : null;
     lookTheme = T;
+    if (typeof fallFloor !== 'undefined' && fallFloor) fallFloor.visible = !(T && T.floorY != null);   // the look's own ground replaces the black floor
     detailMode = fin.detail==='wood' ? 1 : fin.detail==='marble' ? 2 : fin.detail==='alien' ? 3 : 0;
     mathLive = fin.id === 'math';
     const bg = T ? '#' + new THREE.Color(T.bg).getHexString() : fin.wood.bg;
@@ -998,7 +1001,7 @@
     }
     outTarget.set(tx,ty,tz);
     // The elevation is the boards' usual 44 degrees unless the showing look asks for its own
-    // (Colossus sits lower, to take in the stands); a wider lens keeps the dish the same size.
+    // (Colossus sits lower, to take in the bank); a wider lens keeps the dish the same size.
     const gc = lookTheme && lookTheme.gameCam;
     const elev = gc && gc.elev ? gc.elev : 0.765;
     if (gc && gc.fov) distance *= Math.tan(19*Math.PI/180) / Math.tan(gc.fov*Math.PI/360);
@@ -1220,7 +1223,7 @@
     get progress(){return {...progress};},
     recordResult,
     debugDetailMode(){ return detailMode; },
-    resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, renderFrame,
+    resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, renderFrame,
     // The corner layout's camera goal for the current window (see desiredPose).
     cornerCameraPose(w3, h3){ if(!renderer||!camera) return null;
       const pos=new THREE.Vector3(), tgt=new THREE.Vector3(); desiredPose(false,pos,tgt,w3,h3); return {position:pos,target:tgt}; },

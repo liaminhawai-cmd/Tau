@@ -987,7 +987,7 @@ test('two glass pieces are drawn in two passes: the near one over a picture of t
   assert.deepEqual(g.errors,[]);
 });
 
-test('Colossus brings its stands, crowd and haze into the match, and a fall raises dust',async t=>{
+test('Colossus brings its ground, crowd and haze into the match, and a fall raises dust',async t=>{
   const g=await game();t.after(g.close);
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
     scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
@@ -998,19 +998,21 @@ test('Colossus brings its stands, crowd and haze into the match, and a fall rais
     localStorage.setItem('tauDesktopTestBoards','1');`);
   g.read("tauDesktop.board='colossus'");
   const crowd=()=>g.read("(()=>{let c=null; scene.traverse(o=>{ if(o.isInstancedMesh) c=o; }); return c && {count:c.count, y:c.position.y};})()");
-  assert.ok(crowd() && crowd().count>=2000,'a crowd of little tripods fills the tiers');
+  assert.ok(crowd() && crowd().count>=2000,'a crowd of little tripods lines the bank');
   assert.equal(g.read('!!scene.fog'),true,'haze grades with distance');
-  assert.equal(g.read('camera.fov'),46,'a lower, wider lens takes in the stands');
+  assert.equal(g.read('camera.fov'),46,'a lower, wider lens takes in the bank');
   assert.equal(g.read('tauDesktop.fallTimeScale()'),0.5,'giants go over slowly');
+  assert.equal(g.read('tauDesktop.fallFloorY()'),-20,'a fallen titan lands on the grass below the plinth');
   const puffs=()=>g.read("scene.children.filter(o=>o.isPoints && o.userData.dust).length");
   g.read("fall={active:true,phase:'slide',idx:1,vx:50,vz:0,px:0,pz:0}; tripods[1].position.set(55,0,0);");
   g.read('tauDesktop.tick(0.2); tauDesktop.tick(0.2)');
   assert.ok(puffs()>=1,'feet dragging through the sand throw up dust');
   g.read("fall.phase='pivot'; fall.px=66.7; fall.pz=0; tauDesktop.tick(0.05); tauDesktop.tick(0.05)");
   assert.ok(puffs()>=2,'the rim gets a burst');
-  assert.ok(crowd().y>0,'and the stands erupt');
+  assert.ok(crowd().y>0,'and the crowd erupts');
   g.read("fall={active:false}; tauDesktop.board='walnut'");
   assert.equal(crowd(),null,'another board clears the arena');
+  assert.equal(g.read('tauDesktop.fallFloorY()'),null,'and lands pieces on the game\'s own floor again');
   assert.equal(g.read('scene.fog'),null);
   assert.equal(g.read('camera.fov'),38);
   assert.equal(g.read('tauDesktop.fallTimeScale()'),1);
