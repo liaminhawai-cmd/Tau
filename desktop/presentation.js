@@ -664,8 +664,8 @@
       renderer.getDrawingBufferSize(gpSize);
       if (gpTarget.width !== gpSize.x || gpTarget.height !== gpSize.y) gpTarget.setSize(gpSize.x, gpSize.y);
       // pass one: the world without the near piece's colour (its shadow still falls)
-      const mats = [];
-      near.traverse(o => { if (o.material) { mats.push([o.material, o.material.colorWrite, o.material.depthWrite]); o.material.colorWrite = false; o.material.depthWrite = false; } });
+      const mats = [], seen = new Set();   // the feet share the hub's material: save each once
+      near.traverse(o => { const m = o.material; if (m && !seen.has(m)) { seen.add(m); mats.push([m, m.colorWrite, m.depthWrite]); m.colorWrite = false; m.depthWrite = false; } });
       renderer.setRenderTarget(gpTarget); renderer.render(scene, camera);
       for (const [m, cw, dw] of mats) { m.colorWrite = cw; m.depthWrite = dw; }
       // pass two: that picture, then the near piece through it
