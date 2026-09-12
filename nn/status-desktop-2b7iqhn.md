@@ -1,14 +1,14 @@
 # Tau NN training status
-_Last updated: 2026-09-12T15:09:42.950Z_
+_Last updated: 2026-09-12T15:47:05.842Z_
 
 **Self-play batch:** -
-**Stage:** rating pool placement (started 2026-09-12T15:09:42.950Z)
+**Stage:** resume-train (6 epochs, started 2026-09-12T15:47:05.841Z)
 **mix:** -
 
-**Dual pool:** 4 active (minimum 4) (dual-pop-002-e40, dual-wild-01-256x128, dual-wild-04-48x96x192, dual-wild-05-128x32x128x32)
+**Dual pool:** (not initialized yet)
 
 **Last gate result:** (none yet)
 
-**Last checkpoint:** ckpt-315.json at 2026-09-12T15:09:39.964Z
+**Last checkpoint:** (none yet)
 
 **Last ladder sweep:** (none yet)
