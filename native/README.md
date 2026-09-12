@@ -46,6 +46,43 @@ App id `com.taugame.app`, portrait-locked, icons/splash generated from
 `icon-512.png` (regenerate with `npx capacitor-assets generate` after a logo
 change — sources in `app/assets/`).
 
+### Google sign-in in the app
+
+Google's OAuth servers refuse an app WebView outright (`disallowed_useragent`),
+so the web's redirect flow can never work inside the APK — no client-side trick
+gets around it. The app instead asks Android's Credential Manager through
+`@capgo/capacitor-social-login` and hands Supabase the ID token that comes back
+(`signInWithIdToken`). The plugin is already wired up, with Facebook/Apple/
+Twitter switched off in `capacitor.config.json` so only Google's SDK ships.
+
+It stays dormant until a client ID is set: with `TAU_GOOGLE_NATIVE_CLIENT_ID`
+empty (top of the Supabase section in `index.html`) the panel is exactly as it
+was — username & password, no dead Google button. To switch it on:
+
+1. **Google Cloud Console → Credentials → Create OAuth client ID → Android.**
+   Package name `com.taugame.app`, SHA-1 of the certificate the build is signed
+   with (`keytool -list -v -keystore <keystore> -alias <alias>`; Play App
+   Signing shows its own SHA-1 in Play Console → Setup → App integrity). This
+   is what makes Google trust the app; nothing from it is pasted into code.
+   A debug APK is signed with a different, per-machine debug key, so add that
+   SHA-1 too if you want to test before a signed release.
+2. **Copy the WEB client ID** — the one the Supabase dashboard's Google provider
+   already uses — into `TAU_GOOGLE_NATIVE_CLIENT_ID`. Android's ID token is
+   addressed to the *web* client, not the Android one; that trips people up.
+3. **Supabase → Authentication → Providers → Google**: add that same web client
+   ID under *Authorized Client IDs*, so Supabase accepts tokens with that
+   audience.
+
+A client ID can also be tried from the device console (`TAU_GOOGLE_NATIVE_CLIENT_ID
+= '…'`, then reopen the sign-in panel) before committing it.
+
+Known gap: unlike the web's `linkIdentity`, an ID-token sign-in cannot fold a
+guest's play into the Google account — Supabase has no link-by-ID-token — so a
+guest who signs in this way lands on the Google account rather than carrying
+their anonymous one over. iOS needs its own iOS OAuth client
+(`TAU_GOOGLE_IOS_CLIENT_ID`) plus that client's reversed ID as a URL scheme in
+the Xcode project.
+
 **Play Store**: the release AAB is unsigned. Create an upload keystore once
 (`keytool -genkey -v -keystore tau-upload.keystore -alias tau -keyalg RSA -keysize 2048 -validity 10000`),
 sign in `android/app/build.gradle` (`signingConfigs`) or in Play Console with

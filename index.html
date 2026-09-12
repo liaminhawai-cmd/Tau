@@ -635,7 +635,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 220</div>
+<div id="buildTag">build 221</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -5013,7 +5013,14 @@ function openAcctPanel() {
     acctPanelOpenedAt = Date.now();
     document.getElementById('acctPanel').style.display = 'flex';
     document.getElementById('menu').classList.add('acctOpen');   // demo tiles give way: sign-in fits unscrolled
-    if (typeof isNativeApp==='function' && isNativeApp()) {
+    const nativeGoogle = typeof nativeGoogleAvailable==='function' && nativeGoogleAvailable();
+    if (nativeGoogle) {
+        // The app has its own one-tap Google (Credential Manager, not the WebView), so the button
+        // stays and leads, exactly as on the web. A magic link still can't work here -- it would
+        // open in the phone's browser and sign THAT in, not the app -- so it stays hidden.
+        const magic = document.getElementById('acctMagic');
+        if (magic) magic.style.display = 'none';
+    } else if (typeof isNativeApp==='function' && isNativeApp()) {
         // The installed app: Google OAuth can't run in the WebView at all, and a magic link would
         // open in the phone's browser and sign THAT in, not the app. So username/password is the
         // ONLY working path here — hide the dead ends rather than explaining them.
@@ -10390,6 +10397,24 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 // failing confusingly. Local play and vs AI never touch this script or need a network call.
 const SUPABASE_URL = 'https://lwjanmztbtfipsyfrcwg.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_qo7O-7f6Wa69SV4f66aLXw_V67tpjNp';
+// Google sign-in inside the INSTALLED app. Google's OAuth servers refuse an app WebView outright
+// ("disallowed_useragent"), so the app can't use the web's redirect flow at all -- it asks Android's
+// Credential Manager (or Apple's native sheet) through @capgo/capacitor-social-login and hands
+// Supabase the ID token that comes back. Not a secret; client IDs are public by design.
+//
+// To switch it on, paste the WEB client ID here -- the very same one the Supabase dashboard's Google
+// provider already uses, because the ID token Android mints is addressed to the web client. Two
+// other pieces live outside this repo: an ANDROID OAuth client in the same Google Cloud project
+// (package name com.taugame.app + the signing certificate's SHA-1), which is what makes Google
+// trust the app but is never named in code, and that web client ID added to the Supabase Google
+// provider's "Authorized Client IDs" so Supabase accepts tokens with that audience.
+// Left empty the app simply keeps today's behaviour: username & password, no dead Google button.
+// `let`, not const, so a client ID can also be tried from the console on a real device (the panel
+// reads it at open/tap time) before it is committed here.
+let TAU_GOOGLE_NATIVE_CLIENT_ID = '';
+// iOS additionally needs its own iOS OAuth client (and that client's reversed ID as a URL scheme in
+// the Xcode project). Android ignores this; leave it empty until the iOS app is actually shipped.
+let TAU_GOOGLE_IOS_CLIENT_ID = '';
 
 let sb = null, sbUser = null;
 function sbConfigured() { return !SUPABASE_URL.startsWith('YOUR_') && !SUPABASE_ANON_KEY.startsWith('YOUR_'); }
@@ -10631,6 +10656,17 @@ document.getElementById('acctSendLink').addEventListener('click', async () => {
 });
 document.getElementById('acctGoogle').addEventListener('click', async () => {
     const msg = document.getElementById('acctMsg');
+    if (nativeGoogleAvailable()) {           // the app's own one-tap path, no browser involved
+        msg.textContent = t('Opening Google…');
+        try {
+            if (await nativeGoogleSignIn()) { msg.textContent = ''; return; }
+        } catch (e) {
+            // A cancelled sheet is not a failure worth shouting about; anything else says why.
+            const why = (e && e.message) || '';
+            msg.textContent = /cancel|closed|dismiss/i.test(why) ? '' : (why || t('Google sign-in could not start.'));
+            return;
+        }
+    }
     if (isNativeApp()) {   // belt-and-braces: the button is hidden in the app, but never let it 403
         msg.textContent = t('Sign in with a username & password. Signed up with Google? Set a password at tau-game.com first (account → Set a password), then log in here with your email + that password.');
         showAcctEmailOptions(true);
@@ -10691,6 +10727,38 @@ function isInAppBrowser() {
 function isNativeApp() {
     try { return !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()); }
     catch (e) { return false; }
+}
+// The installed app's one-tap Google path (see TAU_GOOGLE_NATIVE_CLIENT_ID): present only when the
+// plugin is actually in this build AND a client ID has been configured, so a build without either
+// silently keeps the username/password-only panel rather than offering a button that cannot work.
+function nativeGoogleAvailable() {
+    try {
+        return !!(isNativeApp() && TAU_GOOGLE_NATIVE_CLIENT_ID
+                  && Capacitor.Plugins && Capacitor.Plugins.SocialLogin);
+    } catch (e) { return false; }
+}
+let nativeGoogleInited = false;
+// Android's Credential Manager returns an ID token addressed to the web client; Supabase takes that
+// directly. NOTE: unlike the web's linkIdentity path this cannot fold a guest's play into the
+// Google account -- Supabase has no link-by-ID-token -- so a guest who signs in here lands on the
+// Google account rather than carrying their anonymous one over.
+async function nativeGoogleSignIn() {
+    const plugin = Capacitor.Plugins.SocialLogin;
+    if (!sb) throw new Error('Still connecting. Try again in a moment.');
+    if (!nativeGoogleInited) {
+        const google = { webClientId: TAU_GOOGLE_NATIVE_CLIENT_ID };
+        if (TAU_GOOGLE_IOS_CLIENT_ID) google.iOSClientId = TAU_GOOGLE_IOS_CLIENT_ID;
+        await plugin.initialize({ google });
+        nativeGoogleInited = true;
+    }
+    const res = await plugin.login({ provider: 'google', options: { scopes: ['email', 'profile'] } });
+    const token = res && res.result && res.result.idToken;
+    if (!token) throw new Error('Google did not return a sign-in token.');
+    // A real account, so the session persists like any other non-guest sign-in (see AUTH_PERSIST_FLAG).
+    localStorage.setItem(AUTH_PERSIST_FLAG, '1');
+    const { error } = await sb.auth.signInWithIdToken({ provider: 'google', token });
+    if (error) { localStorage.removeItem(AUTH_PERSIST_FLAG); throw error; }
+    return true;
 }
 // Since iPadOS 13, Safari's default UA reports as desktop Mac (no "iPad" substring at all) unless the
 // user has switched on "Request Mobile Website" -- the classic tell instead is a "Mac" platform that

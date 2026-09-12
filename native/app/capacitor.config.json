@@ -9,5 +9,15 @@
   "ios": {
     "contentInset": "never",
     "backgroundColor": "#15181c"
+  },
+  "plugins": {
+    "SocialLogin": {
+      "providers": {
+        "google": true,
+        "facebook": false,
+        "apple": false,
+        "twitter": false
+      }
+    }
   }
 }

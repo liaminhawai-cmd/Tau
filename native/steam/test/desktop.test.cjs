@@ -1155,6 +1155,40 @@ test('the native Android/iOS app gets the premium desktop presentation with no ?
   assert.deepEqual(g.errors,[]);
 });
 
+test('the app signs in with Google natively once a client ID is configured',async t=>{
+  // Google's servers refuse OAuth from an app WebView, so the app asks Android's Credential Manager
+  // through the Capacitor plugin and hands Supabase the ID token that comes back.
+  const g=await game('',{},{capacitor:true});t.after(g.close);
+  g.read(`TAU_GOOGLE_NATIVE_CLIENT_ID='123-abc.apps.googleusercontent.com';
+    window.__init=[]; window.__tokens=[];
+    Capacitor.Plugins={SocialLogin:{
+      initialize:o=>{window.__init.push(o);return Promise.resolve();},
+      login:o=>Promise.resolve({provider:'google',result:{idToken:'ID_TOKEN_FROM_GOOGLE'}}),
+    }};
+    sb={auth:{signInWithIdToken:o=>{window.__tokens.push(o);return Promise.resolve({error:null});}}};`);
+  assert.equal(g.read('nativeGoogleAvailable()'),true,'the button is live once the plugin and an ID are both there');
+  g.read('openAcctPanel()');
+  assert.notEqual(g.read("document.getElementById('acctGoogle').style.display"),'none','so it is shown, not hidden');
+  await g.read("nativeGoogleSignIn()");
+  assert.equal(g.read("JSON.stringify(window.__init[0].google.webClientId)"),'"123-abc.apps.googleusercontent.com"',
+    'Android is initialised with the WEB client ID -- the audience its ID token carries');
+  assert.equal(g.read("JSON.stringify(window.__tokens[0])"),
+    JSON.stringify({provider:'google',token:'ID_TOKEN_FROM_GOOGLE'}),'and Supabase takes that token directly');
+  assert.equal(g.read(`localStorage.getItem(AUTH_PERSIST_FLAG)`),'1','a real account, so the session persists');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('with no client ID configured the app keeps exactly its username & password panel',async t=>{
+  const g=await game('',{},{capacitor:true});t.after(g.close);
+  g.read(`Capacitor.Plugins={SocialLogin:{initialize:()=>Promise.resolve(),login:()=>Promise.resolve({})}};`);
+  assert.equal(g.read('TAU_GOOGLE_NATIVE_CLIENT_ID'),'','ships unset until the Google Cloud client exists');
+  assert.equal(g.read('nativeGoogleAvailable()'),false,'so nothing offers a Google button that cannot work');
+  g.read('openAcctPanel()');
+  assert.equal(g.read("document.getElementById('acctGoogle').style.display"),'none');
+  assert.match(g.read("document.getElementById('acctMsg').textContent"),/username & password/);
+  assert.deepEqual(g.errors,[]);
+});
+
 test('a plain web/PWA load (no ?steam, no Capacitor) stays off the desktop presentation',async t=>{
   const g=await game('');t.after(g.close);
   assert.equal(g.read('window.TAU_DESKTOP'),false);
