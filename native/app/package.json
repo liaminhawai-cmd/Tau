@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "sync-www": "node ../scripts/sync-www.mjs www",
+    "sync-www": "node ../scripts/sync-www.mjs www --premium",
     "sync": "npm run sync-www && npx cap sync",
     "android:apk": "npm run sync && cd android && ./gradlew assembleDebug",
     "android:aab": "npm run sync && cd android && ./gradlew bundleRelease",

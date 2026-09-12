@@ -3,9 +3,10 @@
 // so it can be bundled offline. The game is self-contained apart from its
 // three.js bundle (vendor/three/three.global.js), so only these files are needed.
 //
-// Usage: node sync-www.mjs <dest-dir> [--steam]   (dest is wiped and recreated)
-// --steam additionally bundles the desktop presentation plus the six-board premium
-// showcase (steam.html + vendor/three), which only the desktop/Steam wrapper ships.
+// Usage: node sync-www.mjs <dest-dir> [--premium]   (dest is wiped and recreated)
+// --premium additionally bundles the desktop presentation plus the six-board premium
+// showcase (steam.html + vendor/three) -- the Steam wrapper and the native Android/iOS
+// app both ship it; the plain web build does not.
 import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,16 +31,16 @@ const FILES = [
   'vendor/three/three.global.js',   // the game's three.js (classic-script bundle); every shell needs it
 ];
 
-const steam = process.argv.includes('--steam');
+const premium = process.argv.includes('--premium');
 rmSync(www, { recursive: true, force: true });
 mkdirSync(www, { recursive: true });
 for (const f of FILES) {
   mkdirSync(dirname(join(www, f)), { recursive: true });
   cpSync(join(repoRoot, f), join(www, f));
 }
-if (steam) {
+if (premium) {
   cpSync(join(repoRoot, 'steam.html'), join(www, 'steam.html'));
   cpSync(join(repoRoot, 'desktop'), join(www, 'desktop'), { recursive: true });
   cpSync(join(repoRoot, 'vendor'), join(www, 'vendor'), { recursive: true });
 }
-console.log(`Synced ${FILES.length}${steam ? ' + steam.html + desktop/ + vendor/' : ''} files into ${www}`);
+console.log(`Synced ${FILES.length}${premium ? ' + steam.html + desktop/ + vendor/' : ''} files into ${www}`);

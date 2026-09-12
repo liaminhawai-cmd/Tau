@@ -5,7 +5,7 @@ const path = require('node:path');
 const { JSDOM, ResourceLoader, VirtualConsole } = require('jsdom');
 const root = path.resolve(__dirname, '../../..');
 
-async function game(query = '?steam=1&premium=1', storage = {}) {
+async function game(query = '?steam=1&premium=1', storage = {}, opts = {}) {
   const errors = [], frames = new Map(), timers = new Map();
   let now = 0, id = 0;
   const logs = new VirtualConsole();
@@ -34,6 +34,10 @@ async function game(query = '?steam=1&premium=1', storage = {}) {
       // every plain web-mode test to 'balanced' and turn TAU_PREMIUM on where tests assume it off.
       // A test exercising the heuristic itself overrides this with its own defineProperty first.
       try { Object.defineProperty(w.navigator, 'hardwareConcurrency', { value: 2, configurable: true }); } catch(e) {}
+      // Stand in for Capacitor's native-shell bridge (real Capacitor injects window.Capacitor
+      // before any page script runs) so a test can exercise the native Android/iOS detection path
+      // without a ?steam URL param, the same way the real app has no such param either.
+      if (opts.capacitor) w.Capacitor = { isNativePlatform: () => true };
       w.fetch=async()=>{throw new Error('Offline test');};
       w.TextEncoder=TextEncoder; w.TextDecoder=TextDecoder;
       w.performance.now=()=>now;

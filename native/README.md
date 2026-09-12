@@ -15,6 +15,15 @@ shell's `www/` — run it (via the npm scripts below) after any game change so
 the bundled copy stays current. Online play/accounts still work in all
 shells: the game talks straight to Supabase.
 
+Both `app/` and `steam/` sync with `--premium`, which additionally bundles
+`desktop/` (the premium showcase board catalogue -- marble, colossus, cosy,
+alien, math, walnut -- plus glass-through-glass and the desktop presentation)
+and the full `vendor/three/`. `index.html` turns that presentation on for
+`?steam=1` (the Electron wrapper) OR when it detects it is running inside a
+Capacitor native shell (`window.Capacitor.isNativePlatform()`), which is how
+the Android/iOS app gets it with no URL param to set. The plain web/PWA build
+gets neither the files nor the flag.
+
 ## CI (easiest way to get builds)
 
 `.github/workflows/native-builds.yml` builds everything on GitHub runners:

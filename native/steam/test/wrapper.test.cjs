@@ -48,6 +48,32 @@ test('Electron loads the unified game and reserves Escape for its menu',async()=
   handlers.get('desktop:quit')();assert.equal(quits,1);
 });
 
+test('both native shells (Steam and the Android/iOS app) sync the premium showcase catalogue',()=>{
+  // The Android APK used to ship the plain web build (no marble/colossus/etc.) because only the
+  // Steam wrapper's sync-www passed --premium; the native app's own script silently didn't. Guard
+  // both package.json scripts directly, so losing the flag again fails a test instead of an APK.
+  const steamPkg=JSON.parse(fs.readFileSync(path.join(dir,'package.json'),'utf8'));
+  const appPkg=JSON.parse(fs.readFileSync(path.join(dir,'..','app','package.json'),'utf8'));
+  assert.match(steamPkg.scripts['sync-www'],/--premium\b/);
+  assert.match(appPkg.scripts['sync-www'],/--premium\b/);
+});
+
+test('sync-www.mjs --premium bundles the showcase catalogue; without it, only the plain web build',()=>{
+  const os=require('node:os'), {execFileSync}=require('node:child_process');
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'tau-sync-'));
+  const script=path.join(dir,'..','scripts','sync-www.mjs');
+  try {
+    execFileSync(process.execPath,[script,path.join(tmp,'plain')]);
+    assert.equal(fs.existsSync(path.join(tmp,'plain','desktop')),false,'plain build carries no showcase code');
+    assert.equal(fs.existsSync(path.join(tmp,'plain','steam.html')),false);
+    execFileSync(process.execPath,[script,path.join(tmp,'premium'),'--premium']);
+    assert.ok(fs.existsSync(path.join(tmp,'premium','desktop','boards.js')));
+    assert.ok(fs.existsSync(path.join(tmp,'premium','desktop','presentation.js')));
+    assert.ok(fs.existsSync(path.join(tmp,'premium','steam.html')));
+    assert.ok(fs.existsSync(path.join(tmp,'premium','vendor','three','three.global.js')));
+  } finally { fs.rmSync(tmp,{recursive:true,force:true}); }
+});
+
 test('preload exposes a narrow desktop and Steam IPC bridge',async()=>{
   let name,api;const calls=[];
   const electron={contextBridge:{exposeInMainWorld:(n,a)=>{name=n;api=a;}},

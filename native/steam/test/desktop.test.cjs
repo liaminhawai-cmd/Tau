@@ -1118,3 +1118,25 @@ test('the losing piece lands on the floor below the board with a thump, then is 
   assert.equal(g.read('tripods[1].visible'),false);
   assert.deepEqual(g.errors,[]);
 });
+
+test('the native Android/iOS app gets the premium desktop presentation with no ?steam URL param',async t=>{
+  // Capacitor never puts ?steam=1 on the page's URL the way the Electron wrapper does -- the native
+  // app instead has to be recognised by window.Capacitor, which Capacitor injects into every native
+  // WebView before any page script runs.
+  const g=await game('',{},{capacitor:true});t.after(g.close);
+  assert.equal(g.read('window.TAU_DESKTOP'),true,'a Capacitor native shell counts as desktop-grade too');
+  assert.equal(g.read("document.documentElement.classList.contains('tau-desktop')"),true);
+  g.read("localStorage.setItem('tauDesktopTestBoards','1')");
+  assert.equal(g.read("typeof tauDesktop"),'object','desktop/presentation.js actually loaded, not just the flag');
+  g.read("tauDesktop.board='marble'");
+  assert.equal(g.read('currentAcoustics().piece'),'glass','the showcase catalogue (marble etc.) is reachable');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a plain web/PWA load (no ?steam, no Capacitor) stays off the desktop presentation',async t=>{
+  const g=await game('');t.after(g.close);
+  assert.equal(g.read('window.TAU_DESKTOP'),false);
+  assert.equal(g.read("document.documentElement.classList.contains('tau-desktop')"),false);
+  assert.equal(g.read('typeof window.tauDesktop'),'undefined');
+  assert.deepEqual(g.errors,[]);
+});
