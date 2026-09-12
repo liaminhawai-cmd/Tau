@@ -835,12 +835,22 @@
   // The home panel never scrolls: on a window too short for it, the whole panel scales down to
   // fit (about its left-centre, where it is anchored), leaving room above and for the account line
   // beneath it. Measured with the transform off, so the natural height is what is compared.
+  // A narrow screen (the phone app, and a very narrow window) lays the panel out the other way --
+  // presentation.css anchors it to the BOTTOM under the board, with the room's gradient darkened
+  // behind it. The centring translate must not come back with the scale there: an inline transform
+  // beats the stylesheet's transform:none, which lifted the whole menu half its own height up into
+  // the board and left the bottom of the phone empty.
   function fitHome() {
     home.style.transform = '';
     const natural = home.offsetHeight;
     if (!natural) return;
-    const s = Math.min(1, (innerHeight - 110) / natural);
-    home.style.transform = `translateY(-50%) scale(${s.toFixed(4)})`;
+    const centred = !matchMedia('(max-width:600px)').matches;
+    // Centred: the panel owns the window's height. Bottom-anchored: it owns what is under the
+    // board (the 53% tile in layout(), plus the gradient's fade, which it may sit slightly over).
+    const room = centred ? innerHeight - 110 : innerHeight * 0.55 - 60;
+    const s = Math.min(1, room / natural);
+    home.style.transformOrigin = centred ? '0 50%' : '0 100%';
+    home.style.transform = centred ? `translateY(-50%) scale(${s.toFixed(4)})` : `scale(${s.toFixed(4)})`;
   }
   function layout() {
     root.classList.toggle('desktop-watching', inMatch() && passiveView());
@@ -902,7 +912,12 @@
       distance = cornerDistance(w3 || (cv && cv.w3) || innerWidth, h3 || (cv && cv.h3) || innerHeight);
     } else {
       const ratio = Math.max(.5, camera.aspect);
-      distance = Math.max(menu?222:205, 148/ratio);
+      // The menu's ambient tile is nearly square on a phone (full width, half the height), where a
+      // distance tuned for a wide window crops the dish and slices the pieces off at the top edge.
+      // Fit the dish across the tile the same way cornerDistance does; on any window wide enough for
+      // the established look the floor still wins, so the desktop framing is untouched.
+      const fitWide = CFG.edgeU / (0.92 * Math.tan(camera.fov * Math.PI / 360) * ratio);
+      distance = menu ? Math.max(222, fitWide) : Math.max(205, 148/ratio);
     }
     const yaw=menu && !settings.reducedMotion ? .18+Math.sin(performance.now()*.000055)*.045 : 0;
     if(falling && !settings.reducedMotion && G.winner!=null){

@@ -635,7 +635,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 219</div>
+<div id="buildTag">build 220</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -9529,11 +9529,16 @@ function resize() {
         canvas.style.bottom = cornerBottom+'px';
         document.documentElement.style.setProperty('--desktop-view-center', (cornerView3d.left + w3/2)+'px');
         document.documentElement.style.setProperty('--desktop-view-width', w3+'px');
+        // How high the flat board reaches. On a phone the HUD's hint line runs the full width, so a
+        // fixed offset put it straight through the board tile; the narrow stylesheet lifts it to
+        // clear whatever size the player has dragged the tile to.
+        document.documentElement.style.setProperty('--desktop-flat-lift', (cornerBottom + size + 14)+'px');
         document.getElementById('views').classList.toggle('view3dInset', cornerView3d.apart && !cornerView3d.above);
         document.getElementById('views').classList.toggle('view3dAbove', cornerView3d.above);
     } else {
         cv3.style.left = cv3.style.top = cv3.style.right = cv3.style.bottom = '';
         canvas.style.bottom = '';
+        document.documentElement.style.removeProperty('--desktop-flat-lift');
         document.getElementById('views').classList.remove('view3dInset', 'view3dAbove');
     }
 

@@ -28,7 +28,14 @@ async function game(query = '?steam=1&premium=1', storage = {}, opts = {}) {
       // The showcase boards bake 2048^2 procedural maps; on the CPU canvas stub that is pure cost
       // with nothing to look at, so the desktop asks for tiny bakes when this flag is present.
       w.TAU_TEST_BAKE_SIZE=128;
-      w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
+      // Feature queries (prefers-*, pointer, display-mode) stay false; width/height ones are
+      // answered from the window, so a test can put the layout on a phone-sized screen.
+      w.matchMedia=q=>{
+        const m=/\((max|min)-(width|height):\s*(\d+)px\)/.exec(String(q||''));
+        const v=m && (m[2]==='width'?w.innerWidth:w.innerHeight);
+        return {matches:!!m&&(m[1]==='max'?v<=+m[3]:v>=+m[3]),media:String(q||''),
+                addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}};
+      };
       // Pin the web/PWA render-quality heuristic (index.html's detectQualityTier) to its 'basic'
       // branch by default: JSDOM's real hardwareConcurrency (4) would otherwise silently promote
       // every plain web-mode test to 'balanced' and turn TAU_PREMIUM on where tests assume it off.

@@ -921,6 +921,28 @@ test('the home panel scales to a short window instead of scrolling',async t=>{
   assert.deepEqual(g.errors,[]);
 });
 
+test('on a phone the home panel stays anchored under the board, not lifted into it',async t=>{
+  // The narrow stylesheet anchors the panel to the bottom (top:auto; bottom:60px; transform:none)
+  // with the room darkened behind it. fitHome's inline transform used to override that and lift the
+  // menu half its own height up into the board, leaving the bottom of the screen empty -- which is
+  // what the Android app showed the moment it started running the desktop presentation.
+  const g=await game('',{},{capacitor:true});t.after(g.close);
+  const home=g.w.document.querySelector('.desktop-home');
+  Object.defineProperty(home,'offsetHeight',{get:()=>400});
+  g.w.innerWidth=412; g.w.innerHeight=915; g.read('tauDesktop.resize()');
+  assert.doesNotMatch(home.style.transform,/translateY/,'no centring translate on the bottom-anchored layout');
+  assert.equal(home.style.transform,'scale(1.0000)','it fits under the board at natural size');
+  assert.equal(home.style.transformOrigin,'0 100%','and scales from its anchored bottom edge');
+  // A phone too short for the panel still shrinks it rather than running it up over the board.
+  g.w.innerHeight=500; g.read('tauDesktop.resize()');
+  assert.equal(home.style.transform,'scale(0.5375)');
+  // A desktop-width window keeps the centred behaviour untouched.
+  g.w.innerWidth=1280; g.w.innerHeight=1000; g.read('tauDesktop.resize()');
+  assert.equal(home.style.transform,'translateY(-50%) scale(1.0000)');
+  assert.equal(home.style.transformOrigin,'0 50%');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('two glass pieces are drawn in two passes: the near one over a picture of the far one',async t=>{
   const g=await game();t.after(g.close);
   g.read(`window.__calls=[];
