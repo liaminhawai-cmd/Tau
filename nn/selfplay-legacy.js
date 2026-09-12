@@ -237,6 +237,15 @@ function main() {
   // openingPlies. Rows from these games carry src:'random' so the effect can be measured in
   // isolation later rather than taken on faith.
   const randomStartFrac = +arg('randomStartFrac', 0);
+  // --novelStartFrac F: this fraction of games starts from a random legal pose chosen where the
+  // accumulated data is THINNEST (novel-start.js keeps a coarse density index of every stored
+  // pose): an untouched cell when one turns up, a sparse one otherwise. It rides the same restore
+  // path as a stored seed pose, so the normal brains play it out for real; rows carry src:'novel'
+  // so the slice stays measurable on its own. --novelStarts is how the parent hands each forked
+  // task its own pre-drawn poses (one per game) instead of every worker rebuilding the index.
+  const novelStartFrac = Math.max(0, Math.min(1, +arg('novelStartFrac', 0)));
+  let novelStarts = [];
+  try { const parsed = JSON.parse(arg('novelStarts', '[]')); if (Array.isArray(parsed)) novelStarts = parsed; } catch (e) {}
   // --eloInbox: append one rating record per CLEAN game to elorank.js's append-only inbox, so a
   // self-play batch contributes to the rating pool instead of only to training data. Every game
   // here already knows both sides' pool ids (see nnIdAt/idA/idB below -- deliberately in elorank's
@@ -395,17 +404,30 @@ function main() {
         console.log(`seeding ~${Math.round(seedFrom*100)}% of games from ${pool.length} stored positions`);
       }
     }
+    // One novel pose per requested game, drawn ONCE here against the shared index; each task gets
+    // the slice for its own games and rolls --novelStartFrac per game as usual. Drawing is a few
+    // hundred random poses against a hash map, so over-drawing for a fraction below 1 costs nothing.
+    let novelPool = [];
+    if (novelStartFrac > 0) {
+      const ns = require('./novel-start.js');
+      const index = ns.loadIndex(path.join(__dirname, 'data'), { log: console.log });
+      novelPool = ns.drawNovelStarts(createEngine(), index, games);
+      console.log(`novel starts: ${novelPool.length} pose(s) drawn for ~${Math.round(novelStartFrac*100)}% of games, ` +
+                  `${novelPool.filter(s => !s.seen).length} in cells the data has never seen`);
+    }
     // Chunk size per forked task -- 1 by default (finest-grained load balancing, and fork overhead
     // is nothing next to a game that takes tens of seconds to several minutes). Exposed in case a
     // future workload is many very short games, where per-process overhead could actually matter.
     const gamesPerTask = Math.max(1, Math.floor(+arg('gamesPerTask', 1)));
-    const childArgs = (n, part, coverA, coverB) => ['--games', String(n), '--out', part, '--model', modelPath,
+    const childArgs = (n, part, coverA, coverB, novel) => ['--games', String(n), '--out', part, '--model', modelPath,
       '--levels', levels.join(','), '--deep', deep.join(','), '--deepEvery', String(deepEvery),
       '--discount', String(discount), '--temperature', String(temperature),
       '--mix', Object.entries(mix).map(([k, v]) => k + ':' + v).join(','),
       '--openingPlies', String(openingPlies), '--maxPlies', String(maxPlies),
       '--randomStartFrac', String(randomStartFrac), '--repeatGuard', String(repeatGuard),
       ...(seedFile ? ['--seedFrom', String(seedFrom), '--seedPool', seedFile] : ['--seedFrom', '0']),
+      ...(novel && novel.length ? ['--novelStartFrac', String(novelStartFrac), '--novelStarts', JSON.stringify(novel)]
+          : ['--novelStartFrac', '0']),
       '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(','),
       ...(modelPoolFile ? ['--modelPoolFile', modelPoolFile]
           : modelPoolPaths.length ? ['--modelPool', modelPoolPaths.join(',')] : []),
@@ -437,8 +459,9 @@ function main() {
       // wave cover everyone even with 14 concurrent lanes; two entries share one clean game.
       const coverA = coverageQueue.shift() || null;
       const coverB = coverageQueue.shift() || null;
+      const novel = novelPool.splice(0, n);
       try { fs.unlinkSync(part); } catch (e) {}
-      const ch = fork(__filename, childArgs(n, part, coverA, coverB),
+      const ch = fork(__filename, childArgs(n, part, coverA, coverB, novel),
         { env: Object.assign({}, process.env, { TAU_WORKER: String(laneNum + 1) }) });
       const finish = () => {
         if (fs.existsSync(part)) {
@@ -537,6 +560,14 @@ function main() {
       else if (!TAG) console.log(`seeding ~${Math.round(seedFrom*100)}% of games from ${seedPool.length} stored positions`);
     }
   }
+  // A direct single-process run draws its own novel starts; a forked task already has its slice.
+  if (novelStartFrac > 0 && !novelStarts.length) {
+    const ns = require('./novel-start.js');
+    const index = ns.loadIndex(path.join(__dirname, 'data'), { log: TAG ? () => {} : console.log });
+    novelStarts = ns.drawNovelStarts(eng, index, games);
+    if (!TAG) console.log(`novel starts: ${novelStarts.length} pose(s) drawn for ~${Math.round(novelStartFrac*100)}% of games, ` +
+                          `${novelStarts.filter(s => !s.seen).length} in cells the data has never seen`);
+  }
 
   // SYNCHRONOUS appends, not createWriteStream. createWriteStream opens the file asynchronously and
   // flushes on the event loop -- but the game loop below is fully synchronous CPU-bound search that
@@ -621,11 +652,15 @@ function main() {
     const seedPose = !coverageGame && seedPool.length && Math.random() < seedFrom ? pick(seedPool) : null;
     if (seedPose) tag = 'seeded ' + tag;
     // seedPose wins if both roll -- a stored decision point already IS a real, reachable
-    // position, so there's no reason to override it with an unconstrained random one.
-    const randomStart = !coverageGame && !seedPose && Math.random() < randomStartFrac;
+    // position, so there's no reason to override it with an unconstrained random one. A novel
+    // start is the density-aware version of a random one and takes precedence over it likewise.
+    const novelStart = !coverageGame && !seedPose && novelStarts.length && Math.random() < novelStartFrac
+      ? novelStarts.shift() : null;
+    if (novelStart) tag = 'novel-start ' + tag;
+    const randomStart = !coverageGame && !seedPose && !novelStart && Math.random() < randomStartFrac;
     if (randomStart) tag = 'random-start ' + tag;
     const { rows, winner, plies, capped, repeated, adjudicated } =
-      playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomStart, { repeatGuard });
+      playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose || novelStart, randomStart, { repeatGuard });
     // `g` marks which game a position came from. Without it train.js can only hold out random
     // ROWS, and consecutive positions in one game are near-identical -- so the same game lands on
     // both sides of the split and the val set stops being held-out data at all. Measured
@@ -636,7 +671,7 @@ function main() {
     // Present only on rows from a non-standard opening, so ordinary games' rows don't grow a
     // field every consumer would otherwise have to ignore. Lets --randomStartFrac's effect be
     // measured in isolation later: filter nn/data/*.jsonl by src before re-running train.js.
-    const src = randomStart ? { src: 'random' } : null;
+    const src = novelStart ? { src: 'novel' } : randomStart ? { src: 'random' } : null;
     if (winner !== null) {
       decided++;
       // An adjudicated win (the komi rule scoring the position at the move cap) is a real result but
@@ -695,7 +730,7 @@ function main() {
     // would have to play that slice at temperature 0.
     const sameNoiseClass = kind === 'nnnn' || kind === 'ladder';
     if (eloInbox && idA && idB && idA !== idB && sameNoiseClass &&
-        !seedPose && !randomStart && (winner !== null || capped)) {
+        !seedPose && !novelStart && !randomStart && (winner !== null || capped)) {
       const KL = eng.CFG.komiLoss;
       let rec = null;
       if (winner === null) rec = { w: 0, l: 0, d: 1 };                     // cap draw

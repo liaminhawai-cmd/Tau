@@ -111,6 +111,11 @@ const mix = arg('mix', 'nnnn:0.6,nnladder:0.3,ladder:0.1');
 // has to score sensibly. A minority slice on purpose: an unconstrained pose is a rougher signal
 // per game than a near-canonical one. Rows carry src:'random' so its effect stays measurable.
 const randomStartFrac = arg('randomStartFrac', '0');
+// Fraction of self-play games started from a random legal pose picked where the stored data is
+// thinnest (nn/novel-start.js), and how many of the strongest measured nets the self-play seats
+// are drawn from. Both are forwarded to selfplay.js; see its --novelStartFrac and --topN notes.
+const novelStartFrac = arg('novelStartFrac', '0');
+const selfplayTopN = arg('selfplayTopN', '10');
 // The benchmark is a SWEEP, not a single score. "0-12 vs L8" says "weaker than L8" and nothing
 // else -- it cannot tell a net that plays like L2 from one that nearly beat L7, which is why four
 // consecutive readings of 0%, 9%, 0%, 17% carried no usable signal. Playing a small number of
@@ -1524,6 +1529,7 @@ function startSelfplayBatch() {
   // random-start games must not be (their outcome is largely decided by the position drawn).
   const args = ['--games', String(gamesPerBatch), '--out', out, '--model', best, '--mix', mix,
     '--workers', workers, '--randomStartFrac', String(randomStartFrac),
+    '--novelStartFrac', String(novelStartFrac), '--topN', String(selfplayTopN),
     '--modelVarietyFrac', String(modelVarietyFrac),
     '--eloInbox', path.join(dir, 'elo-inbox.jsonl'),
     ...(modelPool.length ? ['--modelPool', modelPool.join(',')] : []),
