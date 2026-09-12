@@ -987,7 +987,7 @@ test('two glass pieces are drawn in two passes: the near one over a picture of t
   assert.deepEqual(g.errors,[]);
 });
 
-test('Colossus brings its ground, crowd and haze into the match, and a fall raises dust',async t=>{
+test('Colossus brings its stands, crowd and haze into the match, and a fall raises dust',async t=>{
   const g=await game();t.after(g.close);
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
     scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
@@ -998,11 +998,11 @@ test('Colossus brings its ground, crowd and haze into the match, and a fall rais
     localStorage.setItem('tauDesktopTestBoards','1');`);
   g.read("tauDesktop.board='colossus'");
   const crowd=()=>g.read("(()=>{let c=null; scene.traverse(o=>{ if(o.isInstancedMesh) c=o; }); return c && {count:c.count, y:c.position.y};})()");
-  assert.ok(crowd() && crowd().count>=2000,'a crowd of little tripods lines the bank');
+  assert.ok(crowd() && crowd().count>=2000,'a crowd of little tripods packs the tiers');
   assert.equal(g.read('!!scene.fog'),true,'haze grades with distance');
-  assert.equal(g.read('camera.fov'),46,'a lower, wider lens takes in the bank');
+  assert.equal(g.read('camera.fov'),46,'a lower, wider lens takes in the stands');
   assert.equal(g.read('tauDesktop.fallTimeScale()'),0.5,'giants go over slowly');
-  assert.equal(g.read('tauDesktop.fallFloorY()'),-20,'a fallen titan lands on the grass below the plinth');
+  assert.equal(g.read('tauDesktop.fallFloorY()'),-20,'a fallen titan lands on the arena sand below the plinth');
   const puffs=()=>g.read("scene.children.filter(o=>o.isPoints && o.userData.dust).length");
   g.read("fall={active:true,phase:'slide',idx:1,vx:50,vz:0,px:0,pz:0}; tripods[1].position.set(55,0,0);");
   g.read('tauDesktop.tick(0.2); tauDesktop.tick(0.2)');
@@ -1280,11 +1280,33 @@ test('Controls is its own section: a drawn keyboard and pad, the scheme switch, 
   g.$('desktopPadScheme').value='stick';g.$('desktopPadScheme').dispatchEvent(new g.w.Event('change'));
   assert.match(g.$('desktopPadDiagram').textContent,/right stick ← → · swing/,'switching the scheme redraws the pad');
   assert.equal(g.read('tauDesktop.padScheme'),'stick');
-  // Rebind "end turn" from Enter to Space: click the key, press the new one.
-  g.$('modalBox').querySelector('[data-rebind="commit"]').click();
+  // The pad is drawn for the make that is plugged in: an Xbox pad with nothing connected, the
+  // maker's own button names once a pad reports its id, and a plain numbered pad for the rest.
+  assert.match(g.$('desktopPadDiagram').textContent,/A · pin · end turn/,'Xbox names by default');
+  assert.equal(g.$('desktopPadBrand').options[0].textContent,'Auto · Xbox');
+  assert.equal(g.read("tauDesktop.padBrandOf('Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 09cc)')"),'playstation');
+  assert.equal(g.read("tauDesktop.padBrandOf('Pro Controller (STANDARD GAMEPAD Vendor: 057e Product: 2009)')"),'nintendo');
+  assert.equal(g.read("tauDesktop.padBrandOf('Xbox 360 Controller (XInput STANDARD GAMEPAD)')"),'xbox');
+  assert.equal(g.read("tauDesktop.padBrandOf('Generic USB Joystick (Vendor: 0079 Product: 0006)')"),'generic');
+  const pad={id:'DualSense Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)',connected:true,mapping:'standard',axes:[0,0,0,0],buttons:Array.from({length:17},()=>({pressed:false,value:0}))};
+  g.w.navigator.getGamepads=()=>[pad];g.tick();
+  assert.match(g.$('desktopPadDiagram').textContent,/✕ · pin · end turn/,'plugging in a PlayStation pad redraws the open sheet with its glyphs');
+  assert.equal(g.$('desktopPadBrand').options[0].textContent,'Auto · PlayStation');
+  g.$('desktopPadBrand').value='nintendo';g.$('desktopPadBrand').dispatchEvent(new g.w.Event('change'));
+  assert.match(g.$('desktopPadDiagram').textContent,/B · pin · end turn[\s\S]*\+ · match menu/,'a chosen layout overrides the detected one');
+  assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).padBrand,'nintendo');
+  g.$('desktopPadBrand').value='generic';g.$('desktopPadBrand').dispatchEvent(new g.w.Event('change'));
+  assert.match(g.$('desktopPadDiagram').textContent,/1 · pin · end turn/,'the generic pad numbers its buttons');
+  g.$('desktopPadBrand').value='auto';g.$('desktopPadBrand').dispatchEvent(new g.w.Event('change'));
+  g.w.navigator.getGamepads=()=>[];
+  // Rebind "end turn" from Enter to Space: click the key on the picture, press the new one.
+  const keyOf=a=>g.$('modalBox').querySelector(`[data-rebind="${a}"] .key`);
+  assert.equal(keyOf('commit').textContent,'Enter');
+  g.$('modalBox').querySelector('[data-rebind="commit"]').dispatchEvent(new g.w.MouseEvent('click',{bubbles:true}));
+  assert.equal(keyOf('commit').textContent,'…','the cap listens');
   g.w.dispatchEvent(new g.w.KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));
   assert.equal(g.read('tauDesktop.keys.commit'),' ');
-  assert.equal(g.$('modalBox').querySelector('[data-rebind="commit"]').textContent,'Space');
+  assert.equal(keyOf('commit').textContent,'Space');
   assert.match(g.$('desktopKeyboardDiagram').textContent,/Space/,'the picture follows the binding');
   assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).keys.commit,' ','and it is saved');
   g.$('modalBtns').firstElementChild.click();g.tick();
@@ -1328,5 +1350,19 @@ test('the premium home menu uses the web app\'s words and shape, with no subtitl
   app.$('desktopControls').click();app.tick();
   assert.equal(app.$('modalBox').querySelectorAll('svg.desktop-diagram').length,2);
   assert.equal(app.$('modalBox').querySelector('[data-rebind]'),null,'no keyboard rebinding in the app');
+  assert.match(app.$('modalBody').textContent,/Tap a foot to pin it/,'and the touch controls up top');
   assert.deepEqual(app.errors,[]);
+  // A narrow window gets the compact sheet: a key list instead of the keyboard picture, the pad
+  // drawn bare with its legend underneath, and the keys still rebindable from the list.
+  const nw=await game(undefined,{},{width:420});t.after(nw.close);
+  nw.$('desktopControls').click();nw.tick();
+  assert.equal(nw.$('modalBox').querySelectorAll('svg.desktop-diagram').length,1,'only the pad is a picture');
+  assert.ok(nw.$('modalBox').querySelector('svg.desktop-diagram.compact'),'drawn bare');
+  assert.match(nw.$('modalBox').querySelector('.desktop-pad-legend').textContent,/RT · swing ↻/,'with its legend below');
+  assert.equal(nw.$('modalBox').querySelector('kbd[data-rebind="commit"]').textContent,'Enter');
+  nw.$('modalBox').querySelector('kbd[data-rebind="commit"]').dispatchEvent(new nw.w.MouseEvent('click',{bubbles:true}));
+  nw.w.dispatchEvent(new nw.w.KeyboardEvent('keydown',{key:'x',bubbles:true,cancelable:true}));
+  assert.equal(nw.read('tauDesktop.keys.commit'),'x');
+  assert.equal(nw.$('modalBox').querySelector('kbd[data-rebind="commit"]').textContent,'X','shown as the cap prints it');
+  assert.deepEqual(nw.errors,[]);
 });

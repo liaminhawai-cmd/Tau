@@ -24,7 +24,7 @@ async function game(query = '?steam=1&premium=1', storage = {}, opts = {}) {
     pretendToBeVisual:true,
     beforeParse(w) {
       for (const [key,value] of Object.entries(storage)) w.localStorage.setItem(key,value);
-      w.innerWidth=1280; w.innerHeight=800;
+      w.innerWidth=opts.width||1280; w.innerHeight=opts.height||800;
       // The showcase boards bake 2048^2 procedural maps; on the CPU canvas stub that is pure cost
       // with nothing to look at, so the desktop asks for tiny bakes when this flag is present.
       w.TAU_TEST_BAKE_SIZE=128;

@@ -195,7 +195,7 @@
   ];
   const DEFAULT_KEYS = { pin1:'1', pin2:'2', pin3:'3', swingLeft:'ArrowLeft', swingRight:'ArrowRight',
     commit:'Enter', cancel:'Backspace', shrink:'[', grow:']' };
-  const settings = { level:4, colour:0, quality:'balanced', board:'walnut', padScheme:'triggers',
+  const settings = { level:4, colour:0, quality:'balanced', board:'walnut', padScheme:'triggers', padBrand:'auto',
     invertCamY:false, keys:{...DEFAULT_KEYS},
     reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches, haptics:true };
   try {
@@ -207,6 +207,7 @@
     if (['balanced','high'].includes(saved.quality)) settings.quality = saved.quality;
     if (BOARD_FINISHES.some(b => b.id === saved.board) && isUnlocked(saved.board)) settings.board = saved.board;
     if (PAD_SCHEMES.includes(saved.padScheme)) settings.padScheme = saved.padScheme;
+    if (['auto','xbox','playstation','nintendo','generic'].includes(saved.padBrand)) settings.padBrand = saved.padBrand;
     for (const k of ['reducedMotion','haptics','invertCamY']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
   } catch (_) {}
   const finish = () => BOARD_FINISHES.find(b => b.id === settings.board) || BOARD_FINISHES[0];
@@ -352,101 +353,174 @@
   const keyName = k => ({ArrowLeft:'←',ArrowRight:'→',ArrowUp:'↑',ArrowDown:'↓',' ':'Space',Escape:'Esc'})[k]
     || (k.length === 1 ? k.toUpperCase() : k);
   const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  // One key: a cap with its name, and the action written under it.
-  const keyCap = (x, y, w, name, action, bound) =>
-    `<rect class="k${bound?' bound':''}" x="${x}" y="${y}" width="${w}" height="26" rx="5"/>
-     <text x="${x+w/2}" y="${y+13}">${esc(name)}</text>
-     <text class="cap" x="${x+w/2}" y="${y+38}">${esc(action)}</text>`;
+  // ---- The Controls sheet: pictures of the inputs, each key or button wearing what it does ----
+  // Below 700px of window the pictures lose their side margins: the keyboard becomes a key-then-
+  // meaning list and the pad is drawn bare with its legend underneath, so nothing shrinks to a
+  // smudge on a phone or a small window.
+  const compactSheet = () => matchMedia('(max-width: 700px)').matches;
+  // One key: a cap with its name, and the action written under it. On desktop the cap is the
+  // rebind button itself -- click it on the picture, press the new key.
+  const keyCap = (x, y, w, name, action, bound, rebind) =>
+    `<g${rebind ? ` data-rebind="${rebind}" tabindex="0" role="button"` : ''}>
+     <rect class="k${bound?' bound':''}" x="${x}" y="${y}" width="${w}" height="40" rx="7"/>
+     <text class="key" x="${x+w/2}" y="${y+20}">${esc(name)}</text>
+     <text class="cap" x="${x+w/2}" y="${y+56}">${esc(action)}</text></g>`;
   function keyboardSvg() {
-    const K = settings.keys, k = (x,y,w,action,name,bound=true) => keyCap(x,y,w,name,action,bound);
-    const touch = typeof isNativeApp === 'function' && isNativeApp();
-    return `<svg class="desktop-diagram" viewBox="0 0 440 160" role="img" aria-label="Keyboard controls">
-      ${k(8,10,40,'menu','Esc',false)}${k(54,10,40,'controls','F1',false)}
-      ${k(130,10,34,'foot 1',keyName(K.pin1))}${k(170,10,34,'foot 2',keyName(K.pin2))}${k(210,10,34,'foot 3',keyName(K.pin3))}
-      ${k(290,10,78,'cancel swing',keyName(K.cancel))}${k(374,10,58,'end turn',keyName(K.commit))}
-      ${k(130,66,34,'',keyName(K.shrink))}${k(170,66,34,'',keyName(K.grow))}<text class="cap" x="167" y="104">flat board size</text>
-      ${k(290,66,50,'swing ↺',keyName(K.swingLeft))}${k(346,66,50,'swing ↻',keyName(K.swingRight))}
-      ${touch
-        ? `<text class="cap" x="220" y="134">Touch: tap a foot to pin it · drag another foot to swing</text>
-           <text class="cap" x="220" y="150">Drag the 3D view to look around</text>`
-        : `<text class="cap" x="220" y="134">Mouse: click a foot to pin it · drag another foot to swing · right-drag to look around</text>
-           <text class="cap" x="220" y="150">Scroll the flat board, or drag its rim knob, to resize it</text>`}
+    const K = settings.keys, rb = canRebind();
+    const k = (x,y,w,action,a) => keyCap(x,y,w,keyName(K[a]),action,true,rb ? a : '');
+    return `<svg class="desktop-diagram" viewBox="0 0 760 170" role="img" aria-label="Keyboard controls">
+      ${keyCap(16,10,58,'Esc','menu',false,'')}${keyCap(82,10,58,'F1','controls',false,'')}
+      ${k(186,10,52,'foot 1','pin1')}${k(246,10,52,'foot 2','pin2')}${k(306,10,52,'foot 3','pin3')}
+      ${k(404,10,130,'cancel swing','cancel')}${k(544,10,120,'end turn','commit')}
+      ${k(186,96,52,'','shrink')}${k(246,96,52,'','grow')}<text class="cap" x="242" y="152">flat board size</text>
+      ${k(404,96,88,'swing ↺','swingLeft')}${k(500,96,88,'swing ↻','swingRight')}
     </svg>`;
   }
-  function controllerSvg() {
-    const triggers = settings.padScheme === 'triggers';
-    const label = (x, y, text, anchor='middle') => `<text class="cap" x="${x}" y="${y}" style="text-anchor:${anchor}">${esc(text)}</text>`;
-    const lead = (x1,y1,x2,y2) => `<line class="lead" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
-    // Labels sit in 110px margins either side of the pad, anchored to its edge, so nothing runs off
-    // the picture; the trigger note goes underneath rather than stretching a label.
-    return `<svg class="desktop-diagram" viewBox="0 0 520 224" role="img" aria-label="Controller controls">
-      <rect class="body" x="160" y="60" width="200" height="110" rx="40"/>
-      <rect class="k" x="180" y="34" width="52" height="16" rx="6"/><text x="206" y="42">LB</text>
-      <rect class="k" x="288" y="34" width="52" height="16" rx="6"/><text x="314" y="42">RB</text>
-      <rect class="k${triggers?' bound':''}" x="186" y="14" width="40" height="14" rx="5"/><text x="206" y="21">LT</text>
-      <rect class="k${triggers?' bound':''}" x="294" y="14" width="40" height="14" rx="5"/><text x="314" y="21">RT</text>
-      <circle class="k bound" cx="200" cy="95" r="16"/><text x="200" y="95">L</text>
-      <circle class="k${triggers?'':' bound'}" cx="290" cy="135" r="16"/><text x="290" y="135">R</text>
-      <rect class="k bound" x="218" y="122" width="34" height="34" rx="6"/><text x="235" y="139">✚</text>
-      <circle class="k bound" cx="322" cy="80" r="9"/><text x="322" y="80">Y</text>
-      <circle class="k bound" cx="340" cy="98" r="9"/><text x="340" y="98">B</text>
-      <circle class="k bound" cx="322" cy="116" r="9"/><text x="322" y="116">A</text>
-      <circle class="k" cx="304" cy="98" r="9"/><text x="304" y="98">X</text>
-      <rect class="k bound" x="252" y="80" width="18" height="8" rx="3"/>
-      ${lead(186,21,116,21)}${label(112,21,triggers?'LT · swing ↺':'LT · unused','end')}
-      ${lead(180,42,116,42)}${label(112,42,'LB · smaller board','end')}
-      ${lead(160,95,116,95)}${label(112,95,'left stick · camera','end')}
-      ${lead(218,139,116,139)}${label(112,139,'D-pad ← → · foot','end')}
-      ${lead(334,21,404,21)}${label(408,21,triggers?'RT · swing ↻':'RT · unused','start')}
-      ${lead(340,42,404,42)}${label(408,42,'RB · bigger board','start')}
-      ${lead(331,80,404,72)}${label(408,72,'Y · controls','start')}
-      ${lead(349,98,404,98)}${label(408,98,'B · cancel swing','start')}
-      ${lead(331,116,404,124)}${label(408,124,'A · pin · end turn','start')}
-      ${lead(306,135,404,152)}${label(408,152,triggers?'right stick · unused':'right stick ← → · swing','start')}
-      ${lead(261,80,261,186)}${label(261,194,'Start · match menu')}
-      ${label(260,214,triggers?'Triggers: the harder you pull, the faster it turns':'Right stick: the further you push, the faster it turns')}
-    </svg>`;
+  function keyboardList() {
+    const rb = canRebind();
+    const rows = [['Esc','Menu',''],['F1','Controls',''], ...KEY_ACTIONS.map(([a, what]) => [keyName(settings.keys[a]), what, a])];
+    return `<div class="desktop-controls">${rows.map(([key, what, a]) =>
+      `<div class="desktop-controls-row"><kbd${a && rb ? ` data-rebind="${a}" tabindex="0" role="button"` : ''}>${esc(key)}</kbd><span>${esc(what)}</span></div>`).join('')}</div>`;
+  }
+  // Xbox and Nintendo pads put the left stick up top and the D-pad below it; PlayStation and most
+  // generic pads put both sticks at the bottom with the D-pad up top. The face buttons carry each
+  // maker's own names, and the browser's standard mapping already lines them up by POSITION
+  // (0 bottom, 1 right, 2 left, 3 top), so only the labels change between brands, never what a
+  // button does. Which picture to draw comes from the connected pad's id string unless the
+  // player picks one, and with nothing plugged in the picture is an Xbox pad, the common one.
+  const PAD_BRANDS = ['auto','xbox','playstation','nintendo','generic'];
+  const BRAND_NAMES = { xbox:'Xbox', playstation:'PlayStation', nintendo:'Nintendo', generic:'Generic' };
+  function padBrandOf(id) {
+    const s = String(id || '').toLowerCase();
+    if (/playstation|dualshock|dualsense|054c|sony/.test(s)) return 'playstation';
+    if (/nintendo|switch|joy-con|057e/.test(s)) return 'nintendo';
+    if (/xbox|x-box|xinput|045e|microsoft/.test(s)) return 'xbox';
+    return 'generic';
+  }
+  const detectedPadBrand = () => currentPad ? padBrandOf(currentPad.id) : 'xbox';
+  const padBrand = () => settings.padBrand === 'auto' ? detectedPadBrand() : settings.padBrand;
+  const BRAND_KEYS = {   // what each maker prints on the buttons, by position
+    xbox:        { top:'Y', right:'B', bottom:'A', left:'X', lb:'LB', rb:'RB', lt:'LT', rt:'RT', menu:'Menu', view:'View', sticksLow:false },
+    nintendo:    { top:'X', right:'A', bottom:'B', left:'Y', lb:'L', rb:'R', lt:'ZL', rt:'ZR', menu:'+', view:'−', sticksLow:false },
+    playstation: { top:'△', right:'○', bottom:'✕', left:'□', lb:'L1', rb:'R1', lt:'L2', rt:'R2', menu:'Options', view:'Create', sticksLow:true },
+    generic:     { top:'4', right:'2', bottom:'1', left:'3', lb:'L1', rb:'R1', lt:'L2', rt:'R2', menu:'Start', view:'Select', sticksLow:true },
+  };
+  // What each control does, as [name, meaning]; the side-labelled picture and the legend both read it.
+  function padBindings(B, triggers) {
+    return { lt:[B.lt, triggers?'swing ↺':'unused'], lb:[B.lb,'smaller board'], ls:['left stick','camera'], dp:['D-pad ← →','foot'],
+      rt:[B.rt, triggers?'swing ↻':'unused'], rb:[B.rb,'bigger board'], top:[B.top,'controls'], right:[B.right,'cancel swing'],
+      bottom:[B.bottom,'pin · end turn'], rs: triggers ? ['right stick','unused'] : ['right stick ← →','swing'], menu:[B.menu,'match menu'] };
+  }
+  function controllerSvg(brand = padBrand(), compact = false) {
+    const B = BRAND_KEYS[brand] || BRAND_KEYS.generic, triggers = settings.padScheme === 'triggers', L = padBindings(B, triggers);
+    const c = 380;   // the pad's centre line; labels sit in the margins either side, anchored to its edge
+    const txt = ([name, what]) => `${name} · ${what}`;
+    const label = (x, y, key, anchor) => compact ? '' : `<text x="${x}" y="${y}" style="text-anchor:${anchor}">${esc(txt(L[key]))}</text>`;
+    const lead = (x1,y1,x2,y2) => compact ? '' : `<line class="lead" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+    const stick = (x, y, bound) => `<circle class="k${bound?' bound':''}" cx="${x}" cy="${y}" r="24"/><circle class="k" cx="${x}" cy="${y}" r="13"/>`;
+    const dpad = (x, y) => `<rect class="k bound" x="${x-7}" y="${y-23}" width="14" height="46" rx="3"/><rect class="k bound" x="${x-23}" y="${y-7}" width="46" height="14" rx="3"/>`;
+    const face = (x, y, name, bound) => `<circle class="k${bound?' bound':''}" cx="${x}" cy="${y}" r="13"/><text x="${x}" y="${y}">${esc(name)}</text>`;
+    const pill = (x, y, w, name, bound) => `<rect class="k${bound?' bound':''}" x="${x-w/2}" y="${y-9}" width="${w}" height="18" rx="9"/><text x="${x}" y="${y}">${esc(name)}</text>`;
+    // Xbox-style body: a wide rounded top and two grips.
+    const body = `<path class="body" d="M${c-130},90 C${c-90},66 ${c+90},66 ${c+130},90 C${c+170},104 ${c+200},160 ${c+208},210
+      C${c+216},262 ${c+198},302 ${c+168},306 C${c+138},310 ${c+118},272 ${c+104},252 C${c+80},228 ${c-80},228 ${c-104},252
+      C${c-118},272 ${c-138},310 ${c-168},306 C${c-198},302 ${c-216},262 ${c-208},210 C${c-200},160 ${c-170},104 ${c-130},90 Z"/>`;
+    const low = B.sticksLow;
+    const LS = low ? [c-50, 202] : [c-105, 132], RS = [c+50, 202], DP = low ? [c-105, 132] : [c-50, 202], FC = [c+105, 132];
+    const centreBits = brand === 'playstation'
+      ? `<rect class="k" x="${c-40}" y="88" width="80" height="46" rx="8"/><text class="cap" x="${c}" y="111">touch pad</text>
+         <rect class="k" x="${c-64}" y="94" width="10" height="26" rx="5"/><rect class="k bound" x="${c+54}" y="94" width="10" height="26" rx="5"/>
+         <circle class="k" cx="${c}" cy="160" r="9"/>`
+      : brand === 'generic'
+      ? `${pill(c-34, 132, 48, B.view, false)}${pill(c+34, 132, 48, B.menu, true)}`
+      : `<circle class="k" cx="${c}" cy="98" r="13"/>${face(c-32, 132, B.view === '−' ? '−' : '⧉', false)}${face(c+32, 132, B.menu === '+' ? '+' : '≡', true)}`;
+    const menuPoint = brand === 'playstation' ? [c+59, 94] : brand === 'generic' ? [c+34, 123] : [c+32, 119];
+    const view = compact ? '160 14 440 300' : '0 0 760 316';
+    return `<svg class="desktop-diagram${compact?' compact':''}" viewBox="${view}" role="img" aria-label="${esc(BRAND_NAMES[brand] || 'Controller')} controls">
+      ${body}
+      <rect class="k" x="${c-150}" y="52" width="80" height="18" rx="9"/><text x="${c-110}" y="61">${esc(B.lb)}</text>
+      <rect class="k" x="${c+70}" y="52" width="80" height="18" rx="9"/><text x="${c+110}" y="61">${esc(B.rb)}</text>
+      <rect class="k${triggers?' bound':''}" x="${c-140}" y="22" width="60" height="22" rx="8"/><text x="${c-110}" y="33">${esc(B.lt)}</text>
+      <rect class="k${triggers?' bound':''}" x="${c+80}" y="22" width="60" height="22" rx="8"/><text x="${c+110}" y="33">${esc(B.rt)}</text>
+      ${stick(LS[0], LS[1], true)}${stick(RS[0], RS[1], !triggers)}${dpad(DP[0], DP[1])}
+      ${face(FC[0], FC[1]-28, B.top, true)}${face(FC[0]-28, FC[1], B.left, false)}${face(FC[0]+28, FC[1], B.right, true)}${face(FC[0], FC[1]+28, B.bottom, true)}
+      ${centreBits}
+      ${lead(c-140,33,232,33)}${label(224,33,'lt','end')}
+      ${lead(c-150,61,232,61)}${label(224,61,'lb','end')}
+      ${lead(LS[0]-24,LS[1],232,LS[1])}${label(224,LS[1],'ls','end')}
+      ${lead(DP[0]-23,DP[1],232,DP[1])}${label(224,DP[1],'dp','end')}
+      ${lead(c+140,33,528,33)}${label(536,33,'rt','start')}
+      ${lead(c+150,61,528,61)}${label(536,61,'rb','start')}
+      ${lead(FC[0]+13,FC[1]-28,528,FC[1]-28)}${label(536,FC[1]-28,'top','start')}
+      ${lead(FC[0]+41,FC[1],528,FC[1])}${label(536,FC[1],'right','start')}
+      ${lead(FC[0]+13,FC[1]+28,528,FC[1]+28)}${label(536,FC[1]+28,'bottom','start')}
+      ${lead(RS[0]+24,RS[1],528,RS[1])}${label(536,RS[1],'rs','start')}
+      ${lead(menuPoint[0],menuPoint[1],menuPoint[0],10)}${compact ? '' : `<text x="${menuPoint[0]+8}" y="10" style="text-anchor:start">${esc(txt(L.menu))}</text>`}
+    </svg>${compact ? `<div class="desktop-pad-legend">${['lt','rt','lb','rb','ls','rs','dp','menu','top','right','bottom'].map(k =>
+      `<span><b>${esc(L[k][0])}</b> · ${esc(L[k][1])}</span>`).join('')}</div>` : ''}`;
   }
   // Rebinding is a keyboard thing on desktop. The app has no keyboard, and a controller is
   // remapped by Steam Input (Steam → Settings → Controller) at the Steam level, per game, so an
   // in-game remap would only fight it.
   const canRebind = () => !(typeof isNativeApp === 'function' && isNativeApp());
-  let rebindListener = null;
+  let rebindListener = null, padBrandShown = null;
   function stopRebind() { if (rebindListener) { removeEventListener('keydown', rebindListener, true); rebindListener = null; } }
+  function drawPad() {
+    const el = $('desktopPadDiagram'); if (!el) return;
+    padBrandShown = padBrand(); el.innerHTML = controllerSvg(padBrandShown, compactSheet());
+    if ($('desktopPadNote')) $('desktopPadNote').textContent = settings.padScheme === 'triggers'
+      ? 'Triggers: the harder you pull, the faster it turns.' : 'Right stick: the further you push, the faster it turns.';
+    const auto = $('desktopPadBrand') && $('desktopPadBrand').options[0];
+    if (auto) auto.textContent = `Auto · ${BRAND_NAMES[detectedPadBrand()]}`;
+  }
   function openControls() {
     stopRebind();
-    const rebindRows = canRebind() ? `<div class="desktop-rebind">${KEY_ACTIONS.map(([a, what]) =>
-        `<span>${esc(what)}</span><button type="button" data-rebind="${a}">${esc(keyName(settings.keys[a]))}</button>`).join('')}
-      <span></span><button type="button" id="desktopKeysReset">Reset keys</button></div>
-      <p class="desktop-controls-note">Click a key to change it, then press the new one. Esc and F1 stay as they are.${window.tauSteam ? ' Controllers are remapped in Steam’s own controller settings.' : ''}</p>` : '';
-    showModal('Controls', `<div id="desktopKeyboardDiagram">${keyboardSvg()}</div>
-      <div class="desktop-controls-scheme"><span class="desktop-controls-note" style="margin:0">Controller · swing with</span>
-        <select id="desktopPadScheme" aria-label="Controller scheme"><option value="triggers">Triggers</option><option value="stick">Right stick</option></select></div>
-      <div id="desktopPadDiagram">${controllerSvg()}</div>${rebindRows}`, [
+    const touch = typeof isNativeApp === 'function' && isNativeApp(), compact = compactSheet();
+    const keyboard = () => compact ? keyboardList() : keyboardSvg();
+    showModal('Controls', `${touch
+        ? `<div class="desktop-controls-head">Touch</div><p class="desktop-controls-note" style="margin:0 0 16px">Tap a foot to pin it, then drag another foot to swing. Drag the 3D view to look around. Drag the flat board's rim knob to resize it.</p>`
+        : ''}
+      <div class="desktop-controls-head">Keyboard${touch ? ' (if one is connected)' : ' and mouse'}</div>
+      <div id="desktopKeyboardDiagram" class="desktop-diagram-wrap">${keyboard()}</div>
+      ${touch ? '' : `<p class="desktop-controls-note" style="margin:0">Click a foot to pin it, then drag another foot to swing. Right-drag to look around. Scroll the flat board, or drag its rim knob, to resize it.</p>`}
+      ${canRebind() ? `<p class="desktop-controls-note">Click a key to change it, then press the new one. Esc and F1 stay as they are.${window.tauSteam ? ' Controllers are remapped in Steam’s own controller settings.' : ''} <button type="button" id="desktopKeysReset">Reset keys</button></p>` : ''}
+      <div class="desktop-controls-head" style="margin-top:20px">Controller</div>
+      <div class="desktop-controls-scheme">
+        <label>Layout <select id="desktopPadBrand" aria-label="Controller layout"><option value="auto">Auto</option>${['xbox','playstation','nintendo','generic'].map(b => `<option value="${b}">${BRAND_NAMES[b]}</option>`).join('')}</select></label>
+        <label>Swing with <select id="desktopPadScheme" aria-label="Controller scheme"><option value="triggers">Triggers</option><option value="stick">Right stick</option></select></label>
+      </div>
+      <div id="desktopPadDiagram" class="desktop-diagram-wrap"></div>
+      <p class="desktop-controls-note" id="desktopPadNote" style="margin:0"></p>`, [
       { label:'Done', onClick:() => { stopRebind(); if (inMatch()) focusBoard(); } },
     ], true, {dismiss:stopRebind});
+    $('modalBox').classList.add('desktop-sheet');
+    $('desktopPadBrand').value = settings.padBrand;
+    $('desktopPadBrand').onchange = e => { settings.padBrand = e.target.value; saveSettings(); drawPad(); };
     $('desktopPadScheme').value = settings.padScheme;
-    $('desktopPadScheme').onchange = e => { settings.padScheme = e.target.value; saveSettings(); $('desktopPadDiagram').innerHTML = controllerSvg(); };
+    $('desktopPadScheme').onchange = e => { settings.padScheme = e.target.value; saveSettings(); drawPad(); };
+    drawPad();
     if (!canRebind()) return;
-    const redraw = () => {
-      $('desktopKeyboardDiagram').innerHTML = keyboardSvg();
-      for (const b of $('modalBox').querySelectorAll('[data-rebind]')) { b.textContent = keyName(settings.keys[b.dataset.rebind]); b.classList.remove('listening'); }
-    };
-    for (const b of $('modalBox').querySelectorAll('[data-rebind]')) b.onclick = () => {
-      stopRebind(); redraw(); b.classList.add('listening'); b.textContent = '…';
-      // Captured on the WINDOW so it runs before the game's own document-level keydown handler;
-      // Esc backs out of the rebind without also closing the sheet.
-      rebindListener = e => {
-        e.preventDefault(); e.stopImmediatePropagation(); stopRebind();
-        if (e.key !== 'Escape' && e.key !== 'F1') {
-          const action = b.dataset.rebind;
-          for (const [other] of KEY_ACTIONS) if (other !== action && settings.keys[other] === e.key) settings.keys[other] = DEFAULT_KEYS[other] === e.key ? '' : DEFAULT_KEYS[other];   // one key, one job
-          settings.keys[action] = e.key; saveSettings();
-        }
-        redraw();
+    const keyText = el => el.querySelector('.key') || el;
+    const wire = () => {
+      for (const b of $('modalBox').querySelectorAll('[data-rebind]')) b.onclick = () => {
+        stopRebind(); redraw(); const el = $('modalBox').querySelector(`[data-rebind="${b.dataset.rebind}"]`);
+        el.classList.add('listening'); keyText(el).textContent = '…';
+        // Captured on the WINDOW so it runs before the game's own document-level keydown handler;
+        // Esc backs out of the rebind without also closing the sheet.
+        rebindListener = e => {
+          e.preventDefault(); e.stopImmediatePropagation(); stopRebind();
+          if (e.key !== 'Escape' && e.key !== 'F1') {
+            const action = b.dataset.rebind;
+            for (const [other] of KEY_ACTIONS) if (other !== action && settings.keys[other] === e.key) settings.keys[other] = DEFAULT_KEYS[other] === e.key ? '' : DEFAULT_KEYS[other];   // one key, one job
+            settings.keys[action] = e.key; saveSettings();
+          }
+          redraw();
+        };
+        addEventListener('keydown', rebindListener, true);
       };
-      addEventListener('keydown', rebindListener, true);
     };
+    const redraw = () => { $('desktopKeyboardDiagram').innerHTML = keyboard(); wire(); };
+    wire();
     $('desktopKeysReset').onclick = () => { stopRebind(); settings.keys = {...DEFAULT_KEYS}; saveSettings(); redraw(); };
   }
   // Grow or shrink the flat board. The corner layout is the only one with a board to resize, so
@@ -863,7 +937,7 @@
       boardRim.material.metalness=.68; boardRim.material.roughness=.34;
       applyPieceMaterials(fin);
     }
-    // A look's surroundings come into the match with it and leave with it: Colossus's ground and
+    // A look's surroundings come into the match with it and leave with it: Colossus's stands and
     // its haze (fog grades with distance, so the board stays clear and the far wall half-vanishes).
     const envWant = T && T.env ? fin.id : null;
     if (envFor !== envWant) {
@@ -1001,7 +1075,7 @@
     }
     outTarget.set(tx,ty,tz);
     // The elevation is the boards' usual 44 degrees unless the showing look asks for its own
-    // (Colossus sits lower, to take in the bank); a wider lens keeps the dish the same size.
+    // (Colossus sits lower, to take in the stands); a wider lens keeps the dish the same size.
     const gc = lookTheme && lookTheme.gameCam;
     const elev = gc && gc.elev ? gc.elev : 0.765;
     if (gc && gc.fov) distance *= Math.tan(19*Math.PI/180) / Math.tan(gc.fov*Math.PI/360);
@@ -1118,6 +1192,7 @@
     }
     const pads=navigator.getGamepads?.() || [];
     currentPad=Array.from(pads).find(p=>p?.connected && p.mapping==='standard') || null;
+    if(padBrandShown && $('desktopPadDiagram') && padBrand()!==padBrandShown) drawPad();   // the sheet follows the pad that is plugged in
     if(lastActive!==G.active){lastActive=G.active;chosenFoot=0;heldLeft=heldRight=false;lastCrossings=0;}
     if(currentPad){
       const down=i=>!!currentPad.buttons[i]?.pressed, pressed=i=>down(i)&&!padButtons[i];
@@ -1214,6 +1289,9 @@
     get keys(){return {...settings.keys};},
     get skin(){return finish().skin;},
     get padScheme(){return settings.padScheme;},
+    get padBrand(){return settings.padBrand;},
+    set padBrand(v){ if(PAD_BRANDS.includes(v)){ settings.padBrand=v; saveSettings(); if($('desktopPadBrand')) $('desktopPadBrand').value=v; drawPad(); } },
+    padBrandOf, controllerSvg,
     set padScheme(v){ if(PAD_SCHEMES.includes(v)){ settings.padScheme=v; saveSettings(); } },
     get invertCamY(){return settings.invertCamY;},
     set invertCamY(v){ settings.invertCamY=!!v; saveSettings(); },
@@ -1241,7 +1319,7 @@
       // board is blocked by the open dialog itself (canPlay / inputBlocked check dialogOpen).
       requestAnimationFrame(()=>{if(dialogOpen())(focusable($('modalBtns'))[0]||focusable($('modalBox'))[0])?.focus();});
     },
-    onModalHidden(){setPaused(false);if(previousFocus?.isConnected)previousFocus.focus({preventScroll:true});previousFocus=null;},
+    onModalHidden(){setPaused(false);$('modalBox').classList.remove('desktop-sheet');if(previousFocus?.isConnected)previousFocus.focus({preventScroll:true});previousFocus=null;},
   };
   saveSettings(); applyTheme(); resize();
   if(!inMatch())$('desktopPlay').focus({preventScroll:true});

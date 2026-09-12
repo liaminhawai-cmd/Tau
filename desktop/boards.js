@@ -531,11 +531,11 @@ const THEMES = {
     },
   },
 
-  // ============ COLOSSUS — two titans the size of buildings, playing on a cricket ground ============
+  // ============ COLOSSUS — two titans the size of buildings, seen from the stands ============
   // Enormity is all cues, not size: heavy atmospheric haze (far things fade = far things are FAR),
-  // a telephoto camera from the far boundary (long lens compresses = monumental), slow motion
-  // (giant things move slowly — the whole sim runs at a third speed), a crowd of ordinary-sized
-  // Taus around the boundary for scale reference, and dust hanging in the sun.
+  // a telephoto camera high in the stands (long lens compresses = monumental), slow motion
+  // (giant things move slowly — the whole sim runs at a third speed), tiers packed with a crowd
+  // of ordinary-sized Taus for scale reference, and dust hanging in the sun.
   colossus: {
     bg: 0xb9a888, exposure: 1.0, bloom: [0.12, 0.4, 0.95],
     fill:{ color: 0x9fb4d8, intensity: 0.25 },
@@ -548,10 +548,10 @@ const THEMES = {
     cam: { pos: [-150, 115, 300], target: [0, 22, 0], fov: 34 },
     simSpeed: 0.35,
     dust: { color: 0xd9c49c, size: 2.6 },   // the sand a fall throws up (see the desktop's tickEffects)
-    // In the game the camera sits lower and wider than on the other boards, so the bank and its
+    // In the game the camera sits lower and wider than on the other boards, so the tiers and their
     // crowd rise behind the far rim instead of staying above the top of the frame.
     gameCam: { elev: 0.5, fov: 46 },
-    floorY: -20,   // the grass a fallen titan lands on -- the pitch is a plinth twenty units above it
+    floorY: -20,   // the arena sand a fallen titan lands on -- the pitch is a plinth twenty units above it
     paint() {
       const [al, a] = canvas2d();
       a.fillStyle = '#b49b6d'; a.fillRect(0, 0, S, S);           // raked arena sand
@@ -594,76 +594,56 @@ const THEMES = {
         envMapIntensity: 0.12, flatShading: true });
       return { leg: mk(), hub: mk() };
     },
-    env() {   // a cricket ground: grass outfield, the boundary rope, a bank of spectators, pickets, trees
+    env() {   // the colosseum: an arena floor, stone tiers the crowd can climb, the arched wall, dust
       const g = new THREE.Group();
-      // The titans play on a raised stone square in the middle of an oval. Everything else is at
-      // the scale of the crowd: a boundary rope they could step over, a grass bank they could walk
-      // up (the old stone tiers rose fifteen units a step and the crowd on them was two and a half
-      // tall -- nothing that size builds what it can't climb), a picket fence at chest height, and
-      // trees behind. Enormity stays in the cues: the haze, the long lens, the slow motion.
-      const GROUND = -20, ROPE = 196, BANK0 = 204, BANK1 = 364, BANK_H = 26, FENCE = 370;
-      const bankY = r => {   // grass level at radius r: flat outfield, a smooth rise, flat again
-        const u = Math.min(1, Math.max(0, (r - BANK0)/(BANK1 - BANK0)));
-        return GROUND + BANK_H * u*u*(3 - 2*u);
-      };
-      // the plinth the pitch sits on -- the board's rim ends at -5, the grass is at -20
+      // Everything the crowd stands on is at the CROWD'S scale. A figure is about two and a half
+      // units tall, so a step rises a little over one -- the way a stadium's rows are built for
+      // the people who sit in them -- and every tread holds one packed row. The old tiers rose
+      // fifteen units a riser: nothing that size builds what it can't climb. The titans play on a
+      // stone plinth twenty units above the sand, so a fallen one has somewhere to land.
+      const GROUND = -20, R0 = 200, STEPS = 36, RISE = 1.15, TREAD = 5.0;
+      const TOP_R = R0 + STEPS*TREAD, TOP_Y = GROUND + STEPS*RISE, WALL_R = 470;
       const plinth = new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU*1.04, CFG.edgeU*1.2, 16, 96),
         new THREE.MeshStandardMaterial({ color: 0x7e6f54, roughness: 0.95 }));
       plinth.position.y = -5.2 - 8; plinth.receiveShadow = true; g.add(plinth);
-      // The ground is one lathe of the grass profile, and its texture is the outfield's mowing: rings
-      // of alternately-lit stripes around the square, the way a ground gets cut from the middle out.
-      const gv = document.createElement('canvas'); gv.width = 32; gv.height = 1024;
-      const gc = gv.getContext('2d');
-      for (let y = 0; y < 1024; y += 24) { gc.fillStyle = ((y/24)|0) % 2 ? '#5a8a3a' : '#4f7d33'; gc.fillRect(0, y, 32, 24); }
-      gc.globalAlpha = 0.25; gc.drawImage(noiseCanvas(0.2, 515), 0, 0, 32, 1024); gc.globalAlpha = 1;
-      const grassTex = new THREE.CanvasTexture(gv); grassTex.colorSpace = THREE.SRGBColorSpace; grassTex.anisotropy = 8;
-      const profile = [];
-      for (let r = 40; r <= 700; r += 10) profile.push(new THREE.Vector2(r, bankY(r)));
-      const ground = new THREE.Mesh(new THREE.LatheGeometry(profile, 160),
-        new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1, metalness: 0, side: THREE.DoubleSide }));
-      ground.receiveShadow = true; g.add(ground);
-      // the boundary rope
-      const rope = new THREE.Mesh(new THREE.TorusGeometry(ROPE, 1.0, 6, 180),
-        new THREE.MeshStandardMaterial({ color: 0xf1ebdc, roughness: 0.9 }));
-      rope.rotation.x = -Math.PI/2; rope.position.y = GROUND + 1.0; g.add(rope);
-      // a white picket fence along the top of the bank: one instanced picket, two rails
-      const fenceMat = new THREE.MeshStandardMaterial({ color: 0xeeeae0, roughness: 0.8 });
-      const NP = Math.round(2*Math.PI*FENCE / 2.2), fenceY = bankY(FENCE);
-      const pickets = new THREE.InstancedMesh(new THREE.BoxGeometry(0.7, 3.4, 0.35), fenceMat, NP);
-      const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Pv = new THREE.Vector3(), Sv = new THREE.Vector3(1, 1, 1);
-      const UP = new THREE.Vector3(0, 1, 0);
-      for (let i = 0; i < NP; i++) {
-        const th = i/NP*Math.PI*2;
-        Pv.set(Math.cos(th)*FENCE, fenceY + 1.7, Math.sin(th)*FENCE); Q.setFromAxisAngle(UP, -th);
-        M.compose(Pv, Q, Sv); pickets.setMatrixAt(i, M);
+      // the arena floor: raked sand, the same tone as the pitch
+      const sv = document.createElement('canvas'); sv.width = sv.height = 256;
+      const sc = sv.getContext('2d');
+      sc.fillStyle = '#b09a6e'; sc.fillRect(0, 0, 256, 256);
+      sc.globalAlpha = 0.35; sc.drawImage(noiseCanvas(0.2, 515), 0, 0, 256, 256); sc.globalAlpha = 1;
+      const sandTex = new THREE.CanvasTexture(sv); sandTex.colorSpace = THREE.SRGBColorSpace;
+      sandTex.wrapS = sandTex.wrapT = THREE.RepeatWrapping; sandTex.repeat.set(8, 8); sandTex.anisotropy = 8;
+      const floor = new THREE.Mesh(new THREE.RingGeometry(40, R0 + 1, 128),
+        new THREE.MeshStandardMaterial({ map: sandTex, roughness: 1, metalness: 0 }));
+      floor.rotation.x = -Math.PI/2; floor.position.y = GROUND; floor.receiveShadow = true; g.add(floor);
+      // The tiers: one lathe of a stair profile, riser and tread, unindexed so every face shades
+      // flat (a smooth-shaded stair rounds its own edges off), then the promenade under the wall.
+      const profile = [new THREE.Vector2(R0, GROUND)];
+      for (let i = 0; i < STEPS; i++) {
+        const r0 = R0 + i*TREAD, y1 = GROUND + (i+1)*RISE;
+        profile.push(new THREE.Vector2(r0, y1), new THREE.Vector2(r0 + TREAD, y1));
       }
-      pickets.instanceMatrix.needsUpdate = true; g.add(pickets);
-      for (const h of [1.0, 2.5]) {
-        const rail = new THREE.Mesh(new THREE.TorusGeometry(FENCE, 0.22, 4, 240), fenceMat);
-        rail.rotation.x = -Math.PI/2; rail.position.y = fenceY + h; g.add(rail);
+      profile.push(new THREE.Vector2(WALL_R, TOP_Y));
+      const stone = new THREE.MeshStandardMaterial({ color: 0x9a8a6a, roughness: 0.95, side: THREE.DoubleSide });
+      const tiers = new THREE.Mesh(new THREE.LatheGeometry(profile, 160).toNonIndexed(), stone);
+      tiers.geometry.computeVertexNormals();
+      tiers.receiveShadow = true; g.add(tiers);
+      // outer wall with dark arched openings, mostly swallowed by the haze
+      const wv = document.createElement('canvas'); wv.width = 1024; wv.height = 256;
+      const w = wv.getContext('2d');
+      w.fillStyle = '#93835f'; w.fillRect(0, 0, 1024, 256);
+      for (let x = 20; x < 1024; x += 86) {
+        w.fillStyle = '#2c2618';
+        w.beginPath(); w.moveTo(x, 220); w.lineTo(x, 120);
+        w.arc(x + 23, 120, 23, Math.PI, 0); w.lineTo(x + 46, 220); w.closePath(); w.fill();
       }
-      // two sightscreens, one behind each end of the pitch
-      for (const s of [-1, 1]) {
-        const screen = new THREE.Mesh(new THREE.BoxGeometry(46, 26, 1.6),
-          new THREE.MeshStandardMaterial({ color: 0xf4f1ea, roughness: 0.9 }));
-        screen.position.set(s*(FENCE + 14), bankY(FENCE + 14) + 13, 0); screen.rotation.y = Math.PI/2;
-        g.add(screen);
-      }
-      // a treeline swallowed by the haze: low-poly canopies in two loose rows
-      let tr = 7171; const trn = () => (tr = (tr*16807)%2147483647)/2147483647;
-      const NT = 240;
-      const trees = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 7, 5),
-        new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true }), NT);
-      const col = new THREE.Color();
-      for (let i = 0; i < NT; i++) {
-        const th = i/NT*Math.PI*2 + (trn()-0.5)*0.03, rr = 560 + trn()*120, s = 16 + trn()*26;
-        Pv.set(Math.cos(th)*rr, bankY(rr) + s*0.75, Math.sin(th)*rr);
-        Q.setFromAxisAngle(UP, trn()*6.28); Sv.set(s, s*0.85, s);
-        M.compose(Pv, Q, Sv); trees.setMatrixAt(i, M);
-        trees.setColorAt(i, col.setHex(0x3f6a2c).multiplyScalar(0.8 + trn()*0.4));
-      }
-      trees.instanceMatrix.needsUpdate = true; g.add(trees);
-      Sv.set(1, 1, 1);
+      const wallTex = new THREE.CanvasTexture(wv);
+      wallTex.wrapS = THREE.RepeatWrapping; wallTex.repeat.set(12, 1); wallTex.anisotropy = 8;
+      wallTex.colorSpace = THREE.SRGBColorSpace;
+      const WALL_H = 150;
+      const wall = new THREE.Mesh(new THREE.CylinderGeometry(WALL_R, WALL_R, WALL_H, 128, 1, true),
+        new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.95, side: THREE.BackSide }));
+      wall.position.y = TOP_Y + WALL_H/2; g.add(wall);
       // dust hanging in the raking sun — the air itself has depth, and depth reads as SIZE. Two
       // layers: a fine far haze of motes across the whole bowl, and a coarser near-camera drift of
       // bigger flecks that catch the light — the parallax between them sells the volume of air.
@@ -685,7 +665,7 @@ const THEMES = {
       const dustFar = mkDust(1100, 380, 200, 1.3, 0.16, 909);
       const dustNear = mkDust(320, 200, 90, 3.2, 0.28, 313);
       g.add(dustFar, dustNear);
-      // The crowd: little Taus on the bank, the pieces below at a tenth of the size and in their
+      // The crowd: little Taus on every step, the pieces below at a tenth of the size and in their
       // ordinary lacquered blue and red -- not stone. The figure is the real piece's proportions
       // (fusedTripodGeometry, index.html): a quarter-circle leg that leaves the crown level and
       // lands vertically, a short straight foot, a slim tube (thickened a little past true so it
@@ -716,25 +696,29 @@ const THEMES = {
       const figure = new THREE.BufferGeometry();
       figure.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
       figure.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
-      // Rows up the bank, evenly spaced around each row (pure random placement clumps and gaps)
-      // with a little jitter so it doesn't read as a grid.
-      const ROW = 5.0, SPACING = 4.0;
+      // One packed row per tread, evenly spaced around it (pure random placement clumps and gaps)
+      // with a little jitter so it doesn't read as a grid. Density is a spacing target applied per
+      // step, so a wide outer row gets proportionally more figures than a narrow inner one.
+      const SPACING = 3.8;
       const rows = [];
       let crowdTotal = 0;
-      for (let r = BANK0 + 3; r < BANK1 - 2; r += ROW) {
-        const count = Math.round(2*Math.PI*r / SPACING); rows.push([r, count]); crowdTotal += count;
+      for (let i = 0; i < STEPS; i++) {
+        const r = R0 + i*TREAD + TREAD*0.55, count = Math.round(2*Math.PI*r / SPACING);
+        rows.push([r, GROUND + (i+1)*RISE, count]); crowdTotal += count;
       }
       const crowd = new THREE.InstancedMesh(figure,
         new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.34, metalness: 0.1,
                                          clearcoat: 0.65, clearcoatRoughness: 0.22, envMapIntensity: 0.9 }), crowdTotal);
+      const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Pv = new THREE.Vector3(), Sv = new THREE.Vector3();
+      const UP = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
       let cr = 4242; const crn = () => (cr = (cr*16807)%2147483647)/2147483647;
       const blue = new THREE.Color(0x6b9eff), red = new THREE.Color(0xff6b6b);
       let n = 0;
-      for (const [r, count] of rows) {
+      for (const [r, y, count] of rows) {
         for (let j = 0; j < count; j++) {
-          const th = (j/count)*Math.PI*2 + (crn()-0.5)*(Math.PI*2/count)*0.6;
-          const rr = r + (crn()-0.5)*(ROW-1.6), sc = 1.7 + crn()*0.6;
-          Pv.set(Math.cos(th)*rr, bankY(rr), Math.sin(th)*rr);
+          const th = (j/count)*Math.PI*2 + (crn()-0.5)*(Math.PI*2/count)*0.5;
+          const rr = r + (crn()-0.5)*1.4, sc = 1.7 + crn()*0.5;
+          Pv.set(Math.cos(th)*rr, y, Math.sin(th)*rr);
           Q.setFromAxisAngle(UP, crn()*6.28);
           Sv.set(sc, sc, sc);
           M.compose(Pv, Q, Sv); crowd.setMatrixAt(n, M);
@@ -744,10 +728,9 @@ const THEMES = {
       }
       crowd.instanceMatrix.needsUpdate = true;
       if (crowd.instanceColor) crowd.instanceColor.needsUpdate = true;
-      crowd.castShadow = true;
       g.add(crowd);
       let exciteT = 99;
-      g.userData.excite = () => { exciteT = 0; };   // a titan went over: the whole ground jumps
+      g.userData.excite = () => { exciteT = 0; };   // a titan went over: the whole bowl jumps
       g.userData.tick = (t, dt) => {
         dustFar.rotation.y = t*0.003; dustFar.position.y = Math.sin(t*0.08)*2;
         dustNear.rotation.y = -t*0.006; dustNear.position.y = Math.sin(t*0.13 + 1)*3;

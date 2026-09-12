@@ -120,7 +120,7 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
    than reading sentences. Scrolls inside the modal, which already caps its own height. */
 .desktop-controls { display:grid; grid-template-columns:auto 1fr; gap:7px 14px; align-items:baseline;
   text-align:left; }
-.desktop-controls-head { grid-column:1/-1; margin:14px 0 2px; font:600 12px/1 "Segoe UI",system-ui,sans-serif;
+.desktop-controls-head { grid-column:1/-1; margin:14px 0 6px; text-align:left; font:600 13px/1 "Segoe UI",system-ui,sans-serif;
   letter-spacing:.14em; text-transform:uppercase; color:var(--gold); }
 .desktop-controls-head:first-child { margin-top:0; }
 .desktop-controls-row { display:contents; }
@@ -129,22 +129,33 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .desktop-controls-row span { color:var(--muted); font-size:14px; }
 /* The Controls section draws the inputs instead of listing them: a keyboard cluster and a pad,
    each key/button carrying the name of what it does. The keyboard picture is built from the
-   live bindings, so a rebind redraws it. */
-.desktop-diagram { display:block; width:100%; max-width:440px; margin:4px auto 10px; overflow:visible; }
-.desktop-diagram .k { fill:#0000003d; stroke:var(--edge); stroke-width:1; }
-.desktop-diagram .k.bound { stroke:var(--gold); }
-.desktop-diagram .body { fill:#0000002e; stroke:var(--edge); stroke-width:1.2; }
-.desktop-diagram text { font:11px "Segoe UI",system-ui,sans-serif; fill:var(--paper); text-anchor:middle; dominant-baseline:middle; }
-.desktop-diagram .cap { font-size:10px; fill:var(--muted); }
+   live bindings, so a rebind redraws it; the pad is drawn for the make that is plugged in. The
+   sheet takes a wider box than the other dialogs so the pictures are read at their drawn size;
+   below that width they keep their size and scroll sideways rather than shrinking to a smudge. */
+.tau-desktop #modalBox.desktop-sheet { width:min(880px,100%); max-width:min(880px,96vw); }
+.desktop-diagram-wrap { overflow-x:auto; overflow-y:hidden; margin:4px 0 6px; }
+.desktop-diagram { display:block; width:100%; min-width:600px; margin:0 auto; overflow:visible; }
+.desktop-diagram .k { fill:#0000003d; stroke:var(--edge); stroke-width:1.2; }
+.desktop-diagram .k.bound { stroke:var(--gold); stroke-width:1.6; }
+.desktop-diagram .body { fill:#0000002e; stroke:var(--edge); stroke-width:1.4; }
+.desktop-diagram text { font:15px "Segoe UI",system-ui,sans-serif; fill:var(--paper); text-anchor:middle; dominant-baseline:middle; }
+.desktop-diagram .cap { font-size:13px; fill:var(--muted); }
 .desktop-diagram .lead { stroke:var(--edge); stroke-width:1; }
-.desktop-rebind { display:grid; grid-template-columns:1fr auto; gap:5px 12px; align-items:center; text-align:left; margin-top:6px; }
-.desktop-rebind span { color:var(--muted); font-size:13px; }
-.desktop-rebind button { font:12px/1.5 "Segoe UI",system-ui,sans-serif; border:1px solid var(--edge); border-radius:4px;
-  padding:3px 9px; min-width:54px; background:#0000003d; color:var(--paper); }
-.desktop-rebind button.listening { border-color:var(--gold); color:var(--gold); }
-.desktop-controls-note { color:var(--muted); font-size:13px; margin:10px 0 0; text-align:left; }
+.desktop-diagram.compact { min-width:0; max-width:400px; }
+.desktop-diagram g[data-rebind] { cursor:pointer; outline:none; }
+.desktop-diagram g[data-rebind]:hover .k, .desktop-diagram g[data-rebind]:focus-visible .k { fill:#d9b77b22; }
+.desktop-diagram g.listening .k { stroke:var(--gold); fill:#d9b77b33; }
+.desktop-diagram g.listening .key { fill:var(--gold); }
+.desktop-controls kbd[data-rebind] { cursor:pointer; }
+.desktop-controls kbd.listening { border-color:var(--gold); color:var(--gold); }
+.desktop-pad-legend { display:grid; grid-template-columns:1fr 1fr; gap:5px 14px; margin:8px 0 4px; font-size:14px; color:var(--muted); text-align:left; }
+.desktop-pad-legend b { color:var(--paper); font-weight:500; }
+.desktop-controls-note button { font:13px/1.5 "Segoe UI",system-ui,sans-serif; border:1px solid var(--edge); border-radius:4px; padding:3px 10px; margin-left:8px; background:#0000003d; color:var(--paper); }
+.desktop-controls-note { color:var(--muted); font-size:14px; line-height:1.45; margin:10px 0 0; text-align:left; }
 .desktop-controls-note b { color:var(--paper); font-weight:500; }
-.desktop-controls-scheme { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:2px 0 8px; text-align:left; }
+.desktop-controls-scheme { display:flex; flex-wrap:wrap; align-items:center; gap:8px 24px; margin:2px 0 8px; text-align:left; color:var(--muted); font-size:14px; }
+.desktop-controls-scheme label { display:flex; align-items:center; gap:8px; }
+.desktop-controls-scheme select { max-width:100%; }
 /* Replay captions and controls follow the 3D view's centre. The flat board sits above the controls,
    with its normal size preference held for the return to play. */
 .tau-desktop.desktop-watching #topHud { left:var(--desktop-view-center,50%)!important; }

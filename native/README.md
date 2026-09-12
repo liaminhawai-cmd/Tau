@@ -146,17 +146,18 @@ is rendered on top, so its legs refract the far piece as they refract the board.
 Against the dark room a clear leg is drawn by its edges: a Fresnel rim along
 them.
 
-Colossus brings its ground into the match: a cricket oval. The pitch is a stone
-plinth twenty units above a mown grass outfield, then the boundary rope, a grass
-bank the crowd stands on (a slope, not steps -- the old stone tiers rose fifteen
-units a riser and the crowd on them was two and a half tall), a white picket
-fence, two sightscreens, a treeline in the haze and the hanging dust. The crowd
-is several thousand little Taus in the pieces' ordinary lacquered blue and red,
-built to the real piece's proportions (quarter-circle legs, slim tubes, a small
-crown bead, no head), one instanced draw. A fallen titan lands on the grass:
-a look can set `floorY` and index.html's stepFall lands there (through
-`tauDesktop.fallFloorY()`) instead of on the game's black floor, which the look
-hides. The flat board's round tile paints nothing behind the
+Colossus brings its arena into the match: the pitch is a stone plinth twenty
+units above a sand floor, then thirty-six stone tiers -- each step a little
+over one unit high, about half a crowd figure, the way a stadium's rows are
+built for the people in them (the old tiers rose fifteen units a riser and the
+crowd on them was two and a half tall) -- the arched wall above them and the
+hanging dust. The crowd is several thousand little Taus, one packed row per
+step, in the pieces' ordinary lacquered blue and red, built to the real piece's
+proportions (quarter-circle legs, slim tubes, a small crown bead, no head), one
+instanced draw. A fallen titan lands on the sand: a look can set `floorY` and
+index.html's stepFall lands there (through `tauDesktop.fallFloorY()`) instead
+of on the game's black floor, which the look hides.
+The flat board's round tile paints nothing behind the
 disc in a desktop match, so the arena shows around it. The camera sits lower
 and wider on that board so the tiers rise behind the far rim; haze grades with
 distance. A loser goes over at half speed, feet dragging dust through the sand,
@@ -521,3 +522,16 @@ progress currently lives in localStorage/Supabase).
 `steamcmd +login <builder> +run_app_build .../app_build.vdf +quit`.
 Launch options: `Tau.exe` (Windows) / `Tau` (Linux) / `Tau.app` (macOS).
 The backlog's premium skins (`docs/handover/05`) slot into this build later.
+
+The Controls sheet was redrawn at a readable size: it takes a wider box than the
+other dialogs (880px), the keyboard and pad pictures are drawn at 760 units
+across with 15px labels, and on desktop the keyboard's caps ARE the rebind
+buttons -- click a cap on the picture, press the new key. The pad is drawn as an
+Xbox-style body and labelled for the make that is plugged in: the connected
+pad's id string picks Xbox, PlayStation (△○✕□, L1/L2, Options, sticks low and
+the D-pad up top), Nintendo (X/A/B/Y, ZL/ZR, +) or a generic numbered pad, with
+a Layout select to override it and Xbox drawn when nothing is connected
+(`padBrandOf` in presentation.js). Only the labels change between makes: the
+browser's standard mapping already lines the buttons up by position. Below
+700px of window the sheet goes compact: the keyboard becomes a key-then-meaning
+list (still rebindable) and the pad is drawn bare with its legend underneath.
