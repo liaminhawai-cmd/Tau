@@ -82,6 +82,12 @@ const benchEveryMin = Math.max(1, +arg('benchEveryMin', 60));
 // --trainEveryMin 0 disables it (pure retrain-from-scratch, decided only by round robins).
 const trainEveryMin = Math.max(0, +arg('trainEveryMin', 30));
 const epochs = arg('epochs', '6');
+// Every other resume tick trains on RECENT data only (--recentDays, 0 disables the arm): the same
+// best.json, the same epochs, the same everything except that files older than N days are left
+// out before the size budget. The candidate is named recent-NNN and enters the same panel gate as
+// its resume-NNN twin, so the gate log answers "is old data from weak players misleading?" one
+// promotion at a time -- compare how often, and by how much, each arm clears.
+const recentDays = Math.max(0, +arg('recentDays', 3));
 // selfplay.js's game-source mix, once a model exists (before that it's always pure ladder-vs-
 // ladder). This used to be a single "selfRatio" ramped 0.25->0.85 across the first 6 iterations
 // then left completely flat -- but nn-vs-nn scaled as selfRatio^2 while nn-vs-ladder only scaled
@@ -1325,7 +1331,7 @@ function nextNum(pattern) {
   const scan = (d, rx) => { if (!fs.existsSync(d)) return;
     for (const f of fs.readdirSync(d)) { const m = rx.exec(f); if (m) max = Math.max(max, +m[1]); } };
   if (pattern === 'batch') scan(path.join(dir, 'data'), require('./machine-id.js').BATCH_RX);
-  else if (pattern === 'resume') scan(modelsDir, /^resume-(\d+)\.json$/);
+  else if (pattern === 'resume') scan(modelsDir, /^(?:resume|recent)-(\d+)\.json$/);
   else {
     scan(modelsDir, /^ckpt-(\d+)\.json$/);
     try { max = Math.max(max, +JSON.parse(fs.readFileSync(cycleFile, 'utf8')).last || 0); } catch (e) {}
@@ -1558,12 +1564,16 @@ let lastTournamentAt = Date.now(), lastBenchAt = Date.now(), lastTrainAt = Date.
 async function runTrainCycle() {
   if (!fs.existsSync(best)) return;   // nothing to resume from yet
   const num = resumeNum++;
-  const out = path.join(dir, 'models', `resume-${String(num).padStart(3, '0')}.json`);
-  log(`resume-train ${epochs} epochs from best.json -> resume-${String(num).padStart(3, '0')} ` +
-      `(queued for the next pool cycle's rank-CI check, not promoted automatically)`);
-  writeStatus(`resume-train (${epochs} epochs, started ${new Date().toISOString()})`);
+  const recent = recentDays > 0 && num % 2 === 1;
+  const tag = `${recent ? 'recent' : 'resume'}-${String(num).padStart(3, '0')}`;
+  const out = path.join(dir, 'models', `${tag}.json`);
+  log(`${recent ? 'recent' : 'resume'}-train ${epochs} epochs from best.json` +
+      `${recent ? ` on the last ${recentDays} day(s) of data only` : ''} -> ${tag} ` +
+      `(queued for the next pool cycle's panel gate, not promoted automatically)`);
+  writeStatus(`${recent ? 'recent' : 'resume'}-train (${epochs} epochs, started ${new Date().toISOString()})`);
   try {
-    await runAsync('train-value.js', ['--epochs', epochs, '--out', out, '--resume', best]);
+    await runAsync('train-value.js', ['--epochs', epochs, '--out', out, '--resume', best,
+                                      ...(recent ? ['--dataSinceDays', String(recentDays)] : [])]);
     if (fs.existsSync(out)) {
       // models/value.json is a fixed name several other tools read by that path (option 24's
       // single-pass trainer, option 40's Python-vs-JS check, VALUE-SHOOTOUT) -- keep it current as

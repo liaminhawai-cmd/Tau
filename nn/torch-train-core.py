@@ -71,7 +71,27 @@ def total_ram_bytes():
         return 8 << 30
 
 
-def cap_files(paths, budget_mb):
+def file_stamp(pth):
+    """When the file was made, for --dataSinceDays. The date in the name wins (league-20260912014836,
+    retro-ratchet-20260912001136-...): a git pull stamps every pulled file with the checkout time,
+    so mtime alone would call a week-old laptop batch "today". Undated names (batch-<machine>-117)
+    fall back to mtime, which is real for files this machine wrote itself."""
+    import re, time
+    m = re.search(r'(20\d{2})(\d{2})(\d{2})(?:T?(\d{2})(\d{2})(\d{2}))?', os.path.basename(pth))
+    if m:
+        try:
+            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            hh, mm, ss = (int(m.group(4) or 0), int(m.group(5) or 0), int(m.group(6) or 0))
+            return time.mktime((y, mo, d, hh, mm, ss, 0, 0, -1))
+        except (ValueError, OverflowError):
+            pass
+    try:
+        return os.stat(pth).st_mtime
+    except OSError:
+        return 0.0
+
+
+def cap_files(paths, budget_mb, since_days=0.0):
     """Same corpus cap as train.js, same reasons, same shape of answer. There was no cap on
     either trainer, and the committed corpus quietly outgrew every machine that pulls it (~1.9 GB
     of JSONL by the time it froze two laptops); parsed into per-row Python lists that is several
@@ -84,6 +104,20 @@ def cap_files(paths, budget_mb):
     budget = float(budget_mb) if budget_mb and budget_mb > 0 else \
         min(2048.0, max(256.0, total_ram_bytes() / (1 << 20) / 20.0))
     budget_bytes = int(budget * (1 << 20))
+    # --dataSinceDays N: only files made in the last N days, BEFORE the size budget. The experiment
+    # this serves is "is old data from weak players misleading?" -- every row carries the same
+    # label weight whoever produced it, and --eloWeight only floors a weak game at 0.15, never at 0.
+    # The newest file always survives, as with the budget.
+    if since_days and since_days > 0:
+        import time
+        cutoff = time.time() - float(since_days) * 86400.0
+        stamped = sorted(((file_stamp(p), p) for p in paths), reverse=True)
+        fresh = [p for st, p in stamped if st >= cutoff] or [p for _, p in stamped[:1]]
+        dropped = len(stamped) - len(fresh)
+        kept_mb = sum(os.path.getsize(p) for p in fresh if os.path.exists(p)) / (1 << 20)
+        print('recent-only: %d of %d files made in the last %g day(s) (%.1f MB); %d older file(s) left out'
+              % (len(fresh), len(stamped), since_days, kept_mb, dropped))
+        paths = fresh
     listed = []
     for pth in paths:
         try:
@@ -114,13 +148,13 @@ def mover_name(mv):
     return MOVER_FACE.sub('', str(mv))
 
 
-def load_rows(data_glob, budget_mb=0.0):
+def load_rows(data_glob, budget_mb=0.0, since_days=0.0):
     """Read training rows. Mirrors train.js's filtering exactly. Also collects, per game, the
     set of mover identities (for --eloWeight) and, per row, the raw pose (for --poseInput) --
     both fields have been stamped on rows by arena.js/selfplay-legacy.js all along."""
     by_game, skipped_nof, stale, policy_rows = defaultdict(list), 0, defaultdict(int), 0
     game_movers = defaultdict(set)
-    for path in cap_files(glob.glob(data_glob), budget_mb):
+    for path in cap_files(glob.glob(data_glob), budget_mb, since_days):
         name = os.path.basename(path)
         inferred, prev_abs, cur = 0, float('inf'), None
         with open(path, 'r', encoding='utf-8', errors='replace') as fh:
@@ -327,6 +361,8 @@ def main():
     ap.add_argument('--residualScale', type=float, default=0.2)
     ap.add_argument('--eloWeight', default='off', choices=['off', 'logistic'],
                     help='weight each game by its players\' current league Elo (see elo_game_weights)')
+    ap.add_argument('--dataSinceDays', type=float, default=0.0,
+                    help='train only on data files made in the last N days (0 = all, then the size budget)')
     ap.add_argument('--dataBudgetMB', type=float, default=0.0,
                     help='cap on raw JSONL read into memory; 0 = scale to this machine\'s RAM')
     ap.add_argument('--eloWeightFloor', type=float, default=0.15)
@@ -351,7 +387,7 @@ def main():
           (f" ({torch.cuda.get_device_name(0)})" if device.type == 'cuda' else ''))
 
     torch.manual_seed(args.seed)
-    by_game, game_movers = load_rows(args.data, args.dataBudgetMB)
+    by_game, game_movers = load_rows(args.data, args.dataBudgetMB, args.dataSinceDays)
     if not by_game:
         print(f"no training rows matched {args.data}", file=sys.stderr)
         sys.exit(1)
