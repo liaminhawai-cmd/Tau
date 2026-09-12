@@ -82,12 +82,12 @@ const benchEveryMin = Math.max(1, +arg('benchEveryMin', 60));
 // --trainEveryMin 0 disables it (pure retrain-from-scratch, decided only by round robins).
 const trainEveryMin = Math.max(0, +arg('trainEveryMin', 30));
 const epochs = arg('epochs', '6');
-// Every other resume tick trains on RECENT data only (--recentDays, 0 disables the arm): the same
-// best.json, the same epochs, the same everything except that files older than N days are left
-// out before the size budget. The candidate is named recent-NNN and enters the same panel gate as
-// its resume-NNN twin, so the gate log answers "is old data from weak players misleading?" one
-// promotion at a time -- compare how often, and by how much, each arm clears.
-const recentDays = Math.max(0, +arg('recentDays', 3));
+// --recentRows: how much of the newest data a RECENT-only variant of best.json trains on (the full
+// corpus is ~1M rows after the size cap, so 200k is the freshest fifth). See the population mint
+// below: when the cull opens a slot, the new member is a mutant, an extra-epoch resume of best, or a
+// recent-only resume of best, in rotation, and the standings answer "is old data from weak players
+// misleading?" with real game counts behind each answer. 0 drops the recent option from the rotation.
+const recentRows = Math.max(0, +arg('recentRows', 200000));
 // selfplay.js's game-source mix, once a model exists (before that it's always pure ladder-vs-
 // ladder). This used to be a single "selfRatio" ramped 0.25->0.85 across the first 6 iterations
 // then left completely flat -- but nn-vs-nn scaled as selfRatio^2 while nn-vs-ladder only scaled
@@ -1331,7 +1331,7 @@ function nextNum(pattern) {
   const scan = (d, rx) => { if (!fs.existsSync(d)) return;
     for (const f of fs.readdirSync(d)) { const m = rx.exec(f); if (m) max = Math.max(max, +m[1]); } };
   if (pattern === 'batch') scan(path.join(dir, 'data'), require('./machine-id.js').BATCH_RX);
-  else if (pattern === 'resume') scan(modelsDir, /^(?:resume|recent)-(\d+)\.json$/);
+  else if (pattern === 'resume') scan(modelsDir, /^resume-(\d+)\.json$/);
   else {
     scan(modelsDir, /^ckpt-(\d+)\.json$/);
     try { max = Math.max(max, +JSON.parse(fs.readFileSync(cycleFile, 'utf8')).last || 0); } catch (e) {}
@@ -1564,16 +1564,12 @@ let lastTournamentAt = Date.now(), lastBenchAt = Date.now(), lastTrainAt = Date.
 async function runTrainCycle() {
   if (!fs.existsSync(best)) return;   // nothing to resume from yet
   const num = resumeNum++;
-  const recent = recentDays > 0 && num % 2 === 1;
-  const tag = `${recent ? 'recent' : 'resume'}-${String(num).padStart(3, '0')}`;
-  const out = path.join(dir, 'models', `${tag}.json`);
-  log(`${recent ? 'recent' : 'resume'}-train ${epochs} epochs from best.json` +
-      `${recent ? ` on the last ${recentDays} day(s) of data only` : ''} -> ${tag} ` +
+  const out = path.join(dir, 'models', `resume-${String(num).padStart(3, '0')}.json`);
+  log(`resume-train ${epochs} epochs from best.json -> resume-${String(num).padStart(3, '0')} ` +
       `(queued for the next pool cycle's panel gate, not promoted automatically)`);
-  writeStatus(`${recent ? 'recent' : 'resume'}-train (${epochs} epochs, started ${new Date().toISOString()})`);
+  writeStatus(`resume-train (${epochs} epochs, started ${new Date().toISOString()})`);
   try {
-    await runAsync('train-value.js', ['--epochs', epochs, '--out', out, '--resume', best,
-                                      ...(recent ? ['--dataSinceDays', String(recentDays)] : [])]);
+    await runAsync('train-value.js', ['--epochs', epochs, '--out', out, '--resume', best]);
     if (fs.existsSync(out)) {
       // models/value.json is a fixed name several other tools read by that path (option 24's
       // single-pass trainer, option 40's Python-vs-JS check, VALUE-SHOOTOUT) -- keep it current as
@@ -1748,7 +1744,30 @@ async function runPoolCycle() {
         // shape actually being defended -- once a mutant is adopted, yesterday's scratch is a
         // control for a shape nobody is running any more. Otherwise spawn a mutant.
         const haveScratch = mutantPop.active.some(m => m.kind === 'scratch' && m.shape === h);
-        const kind = haveScratch ? 'mutant' : 'scratch';
+        // With the control in place, the slot rotates through three VARIANTS OF BEST: a shape
+        // mutant (from scratch, as before), an extra-epoch resume of best.json on the full corpus,
+        // and a recent-only resume of best.json on the newest --recentRows rows. All three are
+        // standing members rated on real game counts, so the population answers "more epochs?",
+        // "fresher data?" and "other shape?" side by side. The shape verdict below only ever looks
+        // at scratch and mutant members: a resumed copy of best at the champion shape would be a
+        // far stronger "control" than the fresh net that comparison is defined against.
+        const rotation = ['mutant', 'extra', ...(recentRows > 0 ? ['recent'] : [])];
+        const kind = haveScratch ? rotation[mutantPop.next % rotation.length] : 'scratch';
+        if (kind === 'extra' || kind === 'recent') {
+          const serial = String(mutantPop.next++).padStart(3, '0');
+          const file = `${kind}-${serial}.json`, outPath = path.join(dir, 'models', file), shape = hiddenOfBest() || h;
+          log(`pool cycle ${num} — ${kind} ${serial}: ${epochs} more epochs on best.json (${shape})` +
+              (kind === 'recent' ? ` using only the newest ${recentRows} rows` : ' on the full corpus') +
+              `, population ${mutantPop.active.length + 1}/${mutantCap}`);
+          writeStatus(`${kind} ${serial} training (${epochs} epochs from best.json, started ${new Date().toISOString()})`);
+          await runSoftAsync('train-value.js', ['--epochs', epochs, '--out', outPath, '--resume', best,
+                                                ...(kind === 'recent' ? ['--dataRecentRows', String(recentRows)] : [])]);
+          if (fs.existsSync(outPath)) {
+            mutantPop.active.push({ file, kind, shape, op: kind === 'recent' ? 'recent-rows' : 'extra-epochs',
+                                    parent: 'best.json', born: num });
+          } else log(`pool cycle ${num} — ${kind} ${serial} failed to train; slot left open`);
+          continue;
+        }
         // Breed from a medal holder when medals exist; fall back to a rated active member, then
         // to the champion shape -- which is also how the very first mutant gets created.
         const medal = kind === 'mutant' ? drawMedal() : null;
@@ -2029,10 +2048,13 @@ async function runPoolCycle() {
       // scratches at the new shape, and a label-based lookup then had no control and could produce
       // no verdict until a slot happened to free up (6 of 40 cycles in a lifecycle simulation).
       const champShapeNow = championShape() || scratchHidden || hiddenOfBest();
-      const atChamp = rated.filter(x => x.m.shape === champShapeNow);
+      // Resumed copies of best (extra-/recent-) never take part in the SHAPE verdict: they are not
+      // fresh nets, so at the champion shape they would be a control nothing from scratch can beat.
+      const fresh = rated.filter(x => x.m.kind === 'scratch' || x.m.kind === 'mutant');
+      const atChamp = fresh.filter(x => x.m.shape === champShapeNow);
       // Challengers are the members at some OTHER shape -- comparing the champion shape against
       // itself would just measure init variance and could never resolve.
-      const challengers = rated.filter(x => x.m.shape !== champShapeNow);
+      const challengers = fresh.filter(x => x.m.shape !== champShapeNow);
       const ctlEntry = atChamp.slice().sort((a, b) => b.r.elo - a.r.elo)[0];
       const ctl = ctlEntry ? ctlEntry.r : null;
       if (ctl && challengers.length) {

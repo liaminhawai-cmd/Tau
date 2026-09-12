@@ -91,7 +91,7 @@ def file_stamp(pth):
         return 0.0
 
 
-def cap_files(paths, budget_mb, since_days=0.0):
+def cap_files(paths, budget_mb, since_days=0.0, recent_rows=0):
     """Same corpus cap as train.js, same reasons, same shape of answer. There was no cap on
     either trainer, and the committed corpus quietly outgrew every machine that pulls it (~1.9 GB
     of JSONL by the time it froze two laptops); parsed into per-row Python lists that is several
@@ -117,6 +117,25 @@ def cap_files(paths, budget_mb, since_days=0.0):
         kept_mb = sum(os.path.getsize(p) for p in fresh if os.path.exists(p)) / (1 << 20)
         print('recent-only: %d of %d files made in the last %g day(s) (%.1f MB); %d older file(s) left out'
               % (len(fresh), len(stamped), since_days, kept_mb, dropped))
+        paths = fresh
+    # --dataRecentRows N: the newest files, in order, until they hold N rows between them (then the
+    # size budget as usual). Rows rather than days: a busy day and a quiet day are the same amount
+    # of evidence in days and very different amounts in rows.
+    if recent_rows and recent_rows > 0:
+        stamped = sorted(((file_stamp(p), p) for p in paths), reverse=True)
+        fresh, rows = [], 0
+        for _, p in stamped:
+            if rows >= recent_rows and fresh:
+                break
+            try:
+                with open(p, 'rb') as fh:
+                    n = sum(1 for _ in fh)
+            except OSError:
+                continue
+            fresh.append(p); rows += n
+        dropped = len(stamped) - len(fresh)
+        print('recent-only: newest %d of %d files hold %d rows (asked for %d); %d older file(s) left out'
+              % (len(fresh), len(stamped), rows, int(recent_rows), dropped))
         paths = fresh
     listed = []
     for pth in paths:
@@ -148,13 +167,13 @@ def mover_name(mv):
     return MOVER_FACE.sub('', str(mv))
 
 
-def load_rows(data_glob, budget_mb=0.0, since_days=0.0):
+def load_rows(data_glob, budget_mb=0.0, since_days=0.0, recent_rows=0):
     """Read training rows. Mirrors train.js's filtering exactly. Also collects, per game, the
     set of mover identities (for --eloWeight) and, per row, the raw pose (for --poseInput) --
     both fields have been stamped on rows by arena.js/selfplay-legacy.js all along."""
     by_game, skipped_nof, stale, policy_rows = defaultdict(list), 0, defaultdict(int), 0
     game_movers = defaultdict(set)
-    for path in cap_files(glob.glob(data_glob), budget_mb, since_days):
+    for path in cap_files(glob.glob(data_glob), budget_mb, since_days, recent_rows):
         name = os.path.basename(path)
         inferred, prev_abs, cur = 0, float('inf'), None
         with open(path, 'r', encoding='utf-8', errors='replace') as fh:
@@ -363,6 +382,8 @@ def main():
                     help='weight each game by its players\' current league Elo (see elo_game_weights)')
     ap.add_argument('--dataSinceDays', type=float, default=0.0,
                     help='train only on data files made in the last N days (0 = all, then the size budget)')
+    ap.add_argument('--dataRecentRows', type=int, default=0,
+                    help='train only on the newest files holding this many rows (0 = all)')
     ap.add_argument('--dataBudgetMB', type=float, default=0.0,
                     help='cap on raw JSONL read into memory; 0 = scale to this machine\'s RAM')
     ap.add_argument('--eloWeightFloor', type=float, default=0.15)
@@ -387,7 +408,7 @@ def main():
           (f" ({torch.cuda.get_device_name(0)})" if device.type == 'cuda' else ''))
 
     torch.manual_seed(args.seed)
-    by_game, game_movers = load_rows(args.data, args.dataBudgetMB, args.dataSinceDays)
+    by_game, game_movers = load_rows(args.data, args.dataBudgetMB, args.dataSinceDays, args.dataRecentRows)
     if not by_game:
         print(f"no training rows matched {args.data}", file=sys.stderr)
         sys.exit(1)
