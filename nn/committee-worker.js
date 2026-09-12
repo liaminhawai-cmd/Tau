@@ -18,6 +18,10 @@ const { MLP } = require('./net.js');
 const { nnPlanFor } = require('./nnai.js');
 
 const { spec, depth, keepForDepth, ctrl, port } = workerData;
+// A judge answers a proposal one ply shallower than it proposes, exactly as nnai's own deep loop
+// searches the opponent at depth-1: measured on the 10x400 net, D3 is 11.6s and D2 2.2s, so
+// judging three proposals at full depth would cost three root searches per move on top of the one.
+const judgeDepth = Math.max(1, depth - 1);
 const CTRL = new Int32Array(ctrl);
 const eng = createEngine();
 eng.newGame();
@@ -43,7 +47,7 @@ function build(spec) {
     const usePolicy = /\+P$/i.test(parts[1] || '');
     return {
       name: 'dual(' + path.basename(mp) + (usePolicy ? ',+P' : '') + ')',
-      plan: idx => nnPlanFor(eng, null, idx, { temperature: 0, depth, keepForDepth, dual, dualPolicy: usePolicy, policyPrune: false }),
+      plan: (idx, d) => nnPlanFor(eng, null, idx, { temperature: 0, depth: d || depth, keepForDepth, dual, dualPolicy: usePolicy, policyPrune: false }),
       leaf: idx => { const v = dual.value(features(eng)); return G().active === idx ? v : -v; },
     };
   }
@@ -52,7 +56,7 @@ function build(spec) {
   const net = MLP.fromJSON(JSON.parse(fs.readFileSync(mp, 'utf8')));
   return {
     name: 'nn(' + path.basename(mp) + ')',
-    plan: idx => nnPlanFor(eng, net, idx, { temperature: 0, depth, keepForDepth }),
+    plan: (idx, d) => nnPlanFor(eng, net, idx, { temperature: 0, depth: d || depth, keepForDepth }),
     leaf: idx => { const v = net.value(features(eng)); return G().active === idx ? v : -v; },
   };
 }
@@ -77,7 +81,7 @@ function judge(pose, active, plies, plan) {
   eng.applyPlanSearch(plan);
   let g = G();
   if (g.over) return g.winner === idx ? 1e6 : -1e6;
-  const reply = member.plan(1 - idx);
+  const reply = member.plan(1 - idx, judgeDepth);
   if (reply) {
     eng.applyPlanSearch(reply);
     g = G();
