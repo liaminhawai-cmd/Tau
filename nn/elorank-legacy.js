@@ -63,12 +63,41 @@ function fitBT(ids,results){
   for(let it=0;it<300;it++){const den=cur.map(v=>W/(v+1));for(const[i,j,n]of es){const q=n/Math.max(1e-12,cur[i]+cur[j]);den[i]+=q;den[j]+=q;}const next=cur.map((_,i)=>(wins[i]+priorWins[i])/Math.max(1e-12,den[i]));let delta=0;for(let i=0;i<next.length;i++)delta=Math.max(delta,Math.abs(next[i]-cur[i]));cur=next;if(delta<1e-8)break;}
   return Object.fromEntries(ids.map((id,i)=>[id,400*Math.log10(Math.max(cur[i],1e-12))]));
 }
-function bootstrap(ids,B){
+function bootstrap(ids,B,point){
+  point=point||fitBT(ids,store.results);
   const samples=Object.fromEntries(ids.map(id=>[id,[]])),entries=Object.entries(store.results);
   // Jeffreys-smoothed resampling: one observed match must still produce a BROAD interval instead of
   // a fake zero-width CI. That is what lets the optimistic upper bound protect newcomers from cull.
   for(let b=0;b<B;b++){const rr={};for(const[k,r]of entries){const n=Math.round(matchN(r));if(!n)continue;const den=n+1.5,pw=((+r.w||0)+.5)/den,pl=((+r.l||0)+.5)/den;let w=0,l=0,d=0;for(let q=0;q<n;q++){const u=Math.random();if(u<pw)w++;else if(u<pw+pl)l++;else d++;}rr[k]={w,l,d};}const e=fitBT(ids,rr);for(const id of ids)if(Number.isFinite(e[id]))samples[id].push(e[id]);}
-  const out={};for(const id of ids){const a=samples[id].sort((x,y)=>x-y);out[id]=a.length>=10?{lo:a[Math.floor(.05*a.length)],hi:a[Math.min(a.length-1,Math.floor(.95*a.length))]}:{lo:null,hi:null};}return out;
+  // BASIC (pivotal) interval, not the percentile one. The resample distribution here is badly
+  // skewed and shifted, so [q05,q95] read off it directly says the opposite of what it should.
+  //
+  // A face that won its only match resamples to w=1 60% of the time (pw=(1+.5)/2.5), so 60% of
+  // replicates land back on its observed Elo and only 40% land lower: the distribution has mass
+  // BELOW the point estimate and almost none above it, q95 falls inside that 60% spike, and the
+  // percentile upper bound comes out equal to the point estimate -- zero margin. Meanwhile a face
+  // that has played 20 matches and lost most of them gets a genuinely broad distribution and a HIGH
+  // percentile upper bound. So the cull, which retires the lowest upper bound, was sparing the
+  // proven losers and executing the unbeaten. Measured over the live store: mean upper margin 75
+  // for unbeaten faces against 161 for faces with 10+ matches and a losing record.
+  //
+  // The basic interval reflects the spread through the point estimate (2*theta - q95 .. 2*theta -
+  // q05) and states the right thing at the top: an unbeaten face is AT LEAST as good as observed and
+  // possibly much better. But on its own it does not WIDEN a skewed interval, it only swaps which end
+  // is wide -- measured over the live store, an unbeaten face went from 76 above / 380 below to 380
+  // above / 76 below. That trades the cull bug for a medal bug, because publish-medals.js ranks on
+  // the LOWER bound: a face with one lucky game would carry a tight lower bound straight to gold.
+  //
+  // At one match neither end is known, so both belong far out. Taking the wider of the two methods at
+  // each end says exactly that, and costs nothing once a face is measured: at 30+ matches the
+  // resample is near-symmetric, the two methods almost coincide, and the union is 108/108 against
+  // basic's 97/38. Unbeaten faces end at 380/380, faces with 10+ matches and a losing record at
+  // 167/167 -- so the cull still separates them better than 2:1 on the upper bound it sorts by,
+  // while the medal gate keeps the pessimism that stops a fluke winning one.
+  const out={};for(const id of ids){const a=samples[id].sort((x,y)=>x-y);
+    if(a.length<10||!Number.isFinite(+point[id])){out[id]={lo:null,hi:null};continue;}
+    const t=+point[id],q05=a[Math.floor(.05*a.length)],q95=a[Math.min(a.length-1,Math.floor(.95*a.length))];
+    out[id]={lo:Math.min(q05,2*t-q95),hi:Math.max(q95,2*t-q05)};}return out;
 }
 // Depth is only the PRIOR for compute cost. The real rent is measured: an EWMA of ms per
 // physical game, learned from the matches this scheduler itself launches and persisted in the
@@ -209,7 +238,7 @@ function play(a,b){const t0=Date.now();return new Promise(resolve=>execFile(proc
 // its slowest in-flight match returns, so one committee match (10-50 minutes) used to hold the
 // ladder, the medals and evolution-roster's ingest at the previous window's numbers the whole
 // time, which reads as "no games are being played" while eight lanes are finishing matches.
-function writeSummary(quiet){const ids=players.map(p=>p.id),elo=fitBT(ids,store.results),ci=bootstrap(ids,bootstrapN),{g}=totals(),out={updated:new Date().toISOString(),ratingSemanticsVersion:ratingState.VERSION,semantics:ratingState.SEMANTICS,seedWeightMatches:store.seedWeightMatches,compatStrengthUnit:'elo/100 (legacy consumers only; not a ladder rank)',players:{}};for(const p of players){const games=Math.round(g[p.id]||0),e=elo[p.id],c=games>=2?ci[p.id]:{lo:null,hi:null},lo=Number.isFinite(c&&c.lo)?c.lo:null,hi=Number.isFinite(c&&c.hi)?c.hi:null;out.players[p.id]={kind:p.kind,elo:Number.isFinite(e)?+e.toFixed(1):null,eloLo:lo==null?null:+lo.toFixed(1),eloHi:hi==null?null:+hi.toFixed(1),games,...(p.kind==='committee'?{model:p.model,depth:1,searchDepth:p.searchDepth||3,brain:'committee',dualPolicy:false,members:p.members,sweeping:!!p.sweeping,rank:Number.isFinite(e)?+(e/100).toFixed(3):null,rankLo:lo==null?null:+(lo/100).toFixed(3),rankHi:hi==null?null:+(hi/100).toFixed(3)}:p.kind==='ladder'?{level:p.level,...(p.corner?{corner:true}:{})}:{model:p.model,depth:p.depth,brain:p.brain||'nn',dualPolicy:!!p.dualPolicy,rank:Number.isFinite(e)?+(e/100).toFixed(3):null,rankLo:lo==null?null:+(lo/100).toFixed(3),rankHi:hi==null?null:+(hi/100).toFixed(3),rankLoEdge:null,rankHiEdge:null,extrapRank:null,extrapRankLo:null,extrapRankHi:null})};}atomic(summaryPath,JSON.stringify(out,null,1));if(quiet)return;const rows=players.map(p=>({p,elo:elo[p.id],games:Math.round(g[p.id]||0),ci:ci[p.id]})).sort((a,b)=>(b.elo||0)-(a.elo||0));console.log(`\n=== unified Elo (${Object.values(store.results).reduce((s,r)=>s+matchN(r),0)} colour-balanced matches / ${Object.values(store.results).reduce((s,r)=>s+physicalN(r),0)} physical games) ===`);console.log('  Elo       90% CI       games  brain');for(const r of rows){const c=r.games>=2&&r.ci&&Number.isFinite(r.ci.lo)?`${Math.round(r.ci.lo)}..${Math.round(r.ci.hi)}`:'—';console.log(`${String(Math.round(r.elo||0)).padStart(5)}  ${c.padStart(13)}  ${String(r.games).padStart(5)}  ${r.p.label}${r.p.kind==='ladder'?'  [immortal]':''}`);}}
+function writeSummary(quiet){const ids=players.map(p=>p.id),elo=fitBT(ids,store.results),ci=bootstrap(ids,bootstrapN,elo),{g}=totals(),out={updated:new Date().toISOString(),ratingSemanticsVersion:ratingState.VERSION,semantics:ratingState.SEMANTICS,seedWeightMatches:store.seedWeightMatches,compatStrengthUnit:'elo/100 (legacy consumers only; not a ladder rank)',players:{}};for(const p of players){const games=Math.round(g[p.id]||0),e=elo[p.id],c=games>=2?ci[p.id]:{lo:null,hi:null},lo=Number.isFinite(c&&c.lo)?c.lo:null,hi=Number.isFinite(c&&c.hi)?c.hi:null;out.players[p.id]={kind:p.kind,elo:Number.isFinite(e)?+e.toFixed(1):null,eloLo:lo==null?null:+lo.toFixed(1),eloHi:hi==null?null:+hi.toFixed(1),games,...(p.kind==='committee'?{model:p.model,depth:1,searchDepth:p.searchDepth||3,brain:'committee',dualPolicy:false,members:p.members,sweeping:!!p.sweeping,rank:Number.isFinite(e)?+(e/100).toFixed(3):null,rankLo:lo==null?null:+(lo/100).toFixed(3),rankHi:hi==null?null:+(hi/100).toFixed(3)}:p.kind==='ladder'?{level:p.level,...(p.corner?{corner:true}:{})}:{model:p.model,depth:p.depth,brain:p.brain||'nn',dualPolicy:!!p.dualPolicy,rank:Number.isFinite(e)?+(e/100).toFixed(3):null,rankLo:lo==null?null:+(lo/100).toFixed(3),rankHi:hi==null?null:+(hi/100).toFixed(3),rankLoEdge:null,rankHiEdge:null,extrapRank:null,extrapRankLo:null,extrapRankHi:null})};}atomic(summaryPath,JSON.stringify(out,null,1));if(quiet)return;const rows=players.map(p=>({p,elo:elo[p.id],games:Math.round(g[p.id]||0),ci:ci[p.id]})).sort((a,b)=>(b.elo||0)-(a.elo||0));console.log(`\n=== unified Elo (${Object.values(store.results).reduce((s,r)=>s+matchN(r),0)} colour-balanced matches / ${Object.values(store.results).reduce((s,r)=>s+physicalN(r),0)} physical games) ===`);console.log('  Elo       90% CI       games  brain');for(const r of rows){const c=r.games>=2&&r.ci&&Number.isFinite(r.ci.lo)?`${Math.round(r.ci.lo)}..${Math.round(r.ci.hi)}`:'—';console.log(`${String(Math.round(r.elo||0)).padStart(5)}  ${c.padStart(13)}  ${String(r.games).padStart(5)}  ${r.p.label}${r.p.kind==='ladder'?'  [immortal]':''}`);}}
 async function main(){console.log(`[rating] ${players.length} players; one scheduler; temp 0; every pairing = two games, colours reversed; pairs drawn by score, rent by measured compute`);if(refit){writeSummary();return;}if(dryrun)return;const start=Date.now(),busy=new Set();let stop=false;const timedOut=()=>budgetHours>0&&(Date.now()-start)/3600000>=budgetHours;
   // A fit plus a 100-sample bootstrap, so it is throttled rather than run per match. Starting at 0
   // means the FIRST completed match publishes, which is what makes a fresh pass visible right away.

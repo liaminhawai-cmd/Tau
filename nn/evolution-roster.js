@@ -208,7 +208,32 @@ function stochasticCount(x){const n=Math.floor(x);return n+(Math.random()<x-n?1:
 // A crowded field wastes far more measurement on dead weight than a noisy filter costs, the model
 // FILE survives on disk either way, and survivors are re-measured properly as the field thins.
 function cullMinGames(k,population){const full=FACE_MIN_GAMES[k];if(!(population>TARGET_FACES))return full;return Math.max(2,Math.min(full,Math.round(full*TARGET_FACES/population)));}
-function eligibleByDepth(s,population,protect=new Set(),recs={}){const pop=Number.isFinite(population)?population:activeFaceSet(s).size;const out={D1:[],D2:[],D3:[],D4:[]};for(let d=1;d<=4;d++){const k=depthKey(d),need=cullMinGames(k,pop);for(const id of s.facePools[k].active||[]){const r=faceReading(s,id);if(!r||(+r.games||0)<need||!Number.isFinite(+r.eloHi))continue;if(undefeated(recs[id]))continue;const x=splitFaceId(id);if(x&&protect.has(x.name))continue;/* population members leave through run.js's own retirement, never the elastic cull (a cull would be undone by the next sync anyway) */out[k].push({id,r,depth:d,key:k});}out[k].sort((a,b)=>+a.r.eloHi-+b.r.eloHi||+a.r.elo-+b.r.elo);}return out;}
+// The cull's sort key: the face's upper bound, with a small floor guarding the residual cases where
+// the bootstrap still returns a degenerate interval.
+//
+// The real fix is in elorank-legacy.js's bootstrap(), which read its interval off the raw resample
+// percentiles. That distribution is skewed and shifted, so the upper bound it produced was inverted:
+// measured over the live store, unbeaten faces averaged 75 Elo of upper margin while faces with 10+
+// matches and a LOSING record averaged 161. The cull retires the lowest upper bound, so it was
+// sparing the proven losers and executing the faces that had never been beaten -- resume-115@D2 went
+// 6-0-0 and was culled, and simulated over the live field every one of the 25 faces the old key
+// would retire had exactly 2 games. "Lowest upper bound" is the right rule; the interval feeding it
+// was lying. Fixed at source by widening each end to the wider of the percentile and basic bootstrap
+// (see bootstrap() there): upper margin 380 for unbeaten faces against 167 for faces with 10+
+// matches and a losing record, so the rule now retires the proven losers it was always meant to.
+//
+// The floor below is only a guard, not the mechanism. It is set to sit at or under the corrected
+// interval everywhere (250 Elo at one match, 125 at four, 46 at thirty), so once a rating pass has
+// written a corrected summary it almost never binds -- but it stops a face being retired on a
+// zero-width interval, including during the window before the first corrected summary lands, when
+// the stored numbers are still the old percentile ones.
+const CI_FLOOR=250;
+function cullKey(r){const matches=Math.max(1,(+r.games||0)/2),hi=+r.eloHi;
+  return Math.max(Number.isFinite(hi)?hi:-Infinity,(+r.elo||0)+CI_FLOOR/Math.sqrt(matches));}
+// `skip` holds the faces this pass has just put back. Without it the cull could retire a face in the
+// same call that reinstated it -- and the one-shot marker meant it then never came back. A
+// reinstated face gets a checkpoint to actually play before it is judged again.
+function eligibleByDepth(s,population,protect=new Set(),skip=null){const pop=Number.isFinite(population)?population:activeFaceSet(s).size;const out={D1:[],D2:[],D3:[],D4:[]};for(let d=1;d<=4;d++){const k=depthKey(d),need=cullMinGames(k,pop);for(const id of s.facePools[k].active||[]){if(skip&&skip.has(id))continue;const r=faceReading(s,id);if(!r||(+r.games||0)<need||!Number.isFinite(+r.eloHi))continue;const x=splitFaceId(id);if(x&&protect.has(x.name))continue;/* population members leave through run.js's own retirement, never the elastic cull (a cull would be undone by the next sync anyway) */out[k].push({id,r,depth:d,key:k});}out[k].sort((a,b)=>cullKey(a.r)-cullKey(b.r)||+a.r.elo-+b.r.elo);}return out;}
 // Cull pressure follows MEASURED compute, not assumed depth cost. The rating store keeps an
 // EWMA of ms-per-game for every face it has actually run (elorank-legacy.js), so the old 1:3:9:27
 // becomes an emergent default rather than a constant -- and a policy face that genuinely saves
@@ -268,17 +293,46 @@ function cull(dir){const s=sync(dir),recs=faceRecords(dir);
   // Deliberately ABOVE the bank gate: putting back a face that was never beaten is a correction, not
   // a cull, and must not wait on the 100 games that pay for the next cull checkpoint. It did wait,
   // once -- the bank sat at 53 and the correction silently never ran.
-  const reinstated=[];
-  for(let d=1;d<=4;d++){const k=depthKey(d),p=s.facePools[k];
-    for(const id of Object.keys(p.retired||{})){
-      if((p.retired[id]||{}).reason!=='elastic cull'||!undefeated(recs[id]))continue;
-      delete p.retired[id];if(!(p.active||[]).includes(id))(p.active||=[]).push(id);
-      reinstated.push(id);
+  // ONE SHOT per face, tracked in state. Before the sort key was fixed this reinstate was the only
+  // thing standing between an unbeaten face and a cull judging on an inverted interval, so it had to
+  // be unconditional -- and that left 158 of 213 live faces (74% of the field) permanently
+  // cull-immune against a target of 50, which is why the population sat at 4.2x target. Now the
+  // corrected interval protects the under-measured on rank, so this only repairs faces that lost
+  // their seat under the broken one. Reinstating the same face twice would let it ping-pong against
+  // the cull for ever.
+  //
+  // TWO ways a face loses its seat, and only the first leaves a trace:
+  //  (a) the elastic cull, which writes a retired entry;
+  //  (b) falling out of the pools entirely, with no retired entry at all -- the live ladder calls
+  //      these "historical". reconcile() drops a face from active AND deletes its retired entry the
+  //      moment its model is missing from stableModelEntries, so a single unreadable or half-written
+  //      model file (modelMeta swallows the error and reports it unusable) erases every seat that
+  //      model held; the next sync re-mints it, but the mint only ever seats a model at ONE depth,
+  //      so its D2/D3/D4 faces are gone with nothing recording that they ever existed. That is why
+  //      unbeaten faces like dual-wild-01-256x128@D3 (399 Elo, 1-0-0) sat as "historical" while the
+  //      reinstate, which only walked p.retired, reported nothing to put back.
+  // Both are repaired here. A face is only a candidate if it has an actual rated record in the store
+  // and that record has never been beaten, so this can never seat a face the league has not played.
+  const reinstated=[],once=new Set(s.reinstatedOnce||[]);
+  const avail={};{const entries=stableModelEntries(dir);for(let d=1;d<=4;d++)avail[depthKey(d)]=new Set(entries.flatMap(e=>candidateFaces(e,d)));}
+  for(let d=1;d<=4;d++){const k=depthKey(d),p=s.facePools[k];p.retired||={};p.active||=[];
+    const seat=id=>{if(!p.active.includes(id))p.active.push(id);once.add(id);reinstated.push(id);};
+    for(const id of Object.keys(p.retired)){
+      if(p.retired[id].reason!=='elastic cull'||!undefeated(recs[id])||once.has(id))continue;
+      delete p.retired[id];seat(id);
+    }
+    for(const id of avail[k]||[]){
+      if(once.has(id)||!undefeated(recs[id]))continue;
+      if(p.active.includes(id)||p.trial===id||p.retired[id])continue;
+      seat(id);
     }}
-  if(reinstated.length)saveState(dir,s);
+  // Prune ids whose model file is gone (reconcile drops them from every pool) so this list cannot
+  // grow without bound across the life of a state file.
+  if(reinstated.length){const known=new Set();for(let d=1;d<=4;d++){const q=s.facePools[depthKey(d)];for(const id of q.active||[])known.add(id);for(const id of Object.keys(q.retired||{}))known.add(id);}
+    s.reinstatedOnce=[...once].filter(id=>known.has(id));saveState(dir,s);}
   if(s.gamesSinceCull<CULL_EVERY_GAMES)return{culled:[],birth:null,admitted:[],reinstated,state:s};
-  const mc=measuredCosts(dir),protect=protectedModels(dir);
-  const checkpoints=Math.floor(s.gamesSinceCull/CULL_EVERY_GAMES),culled=[],admitted=[];for(let q=0;q<checkpoints;q++){const population=activeFaceSet(s).size,e0=eligibleByDepth(s,population,protect,recs),seen=e0.D1.length+e0.D2.length+e0.D3.length+e0.D4.length,want=Math.min(stochasticCount(expectedCulls(population)),Math.floor(seen/2));for(let i=0;i<want;i++){const e=eligibleByDepth(s,population,protect,recs),k=chooseDepth(e,mc);if(!k)break;const v=e[k][0],p=s.facePools[k],now=new Date().toISOString();p.active=p.active.filter(id=>id!==v.id);p.retired[v.id]={at:now,reason:'elastic cull',eloHi:v.r.eloHi,elo:v.r.elo,games:+v.r.games||0,population};culled.push({type:'face',name:v.id,face:v.id,depth:v.depth,replacedBy:null,result:'elastic-cull'});}admitted.push(...admitFrontier(s,stableModelEntries(dir),mc));s.gamesSinceCull=Math.max(0,s.gamesSinceCull-CULL_EVERY_GAMES);}if(culled.length||admitted.length||reinstated.length)s.lastEvent={at:new Date().toISOString(),culled:culled.map(x=>x.face),admitted,reinstated,result:'elastic-checkpoint'};saveState(dir,s);return{culled,birth:null,admitted,reinstated,state:s};}
+  const mc=measuredCosts(dir),protect=protectedModels(dir),justBack=new Set(reinstated);
+  const checkpoints=Math.floor(s.gamesSinceCull/CULL_EVERY_GAMES),culled=[],admitted=[];for(let q=0;q<checkpoints;q++){const population=activeFaceSet(s).size,e0=eligibleByDepth(s,population,protect,justBack),seen=e0.D1.length+e0.D2.length+e0.D3.length+e0.D4.length,want=Math.min(stochasticCount(expectedCulls(population)),Math.floor(seen/2));for(let i=0;i<want;i++){const e=eligibleByDepth(s,population,protect,justBack),k=chooseDepth(e,mc);if(!k)break;const v=e[k][0],p=s.facePools[k],now=new Date().toISOString();p.active=p.active.filter(id=>id!==v.id);p.retired[v.id]={at:now,reason:'elastic cull',eloHi:v.r.eloHi,elo:v.r.elo,games:+v.r.games||0,population};culled.push({type:'face',name:v.id,face:v.id,depth:v.depth,replacedBy:null,result:'elastic-cull'});}admitted.push(...admitFrontier(s,stableModelEntries(dir),mc));s.gamesSinceCull=Math.max(0,s.gamesSinceCull-CULL_EVERY_GAMES);}if(culled.length||admitted.length||reinstated.length)s.lastEvent={at:new Date().toISOString(),culled:culled.map(x=>x.face),admitted,reinstated,result:'elastic-checkpoint'};saveState(dir,s);return{culled,birth:null,admitted,reinstated,state:s};}
 function noteBirth(dir,birth){if(birth&&birth.outPath&&fs.existsSync(birth.outPath))sync(dir);}
 function status(dir){const s=sync(dir),pop=activeFaceSet(s).size,faces={};for(let d=1;d<=4;d++){const k=depthKey(d),p=s.facePools[k];faces[k]={seats:(p.active||[]).length,trial:p.trial?1:0,waiting:(p.waiting||[]).length,deferred:0,retired:Object.keys(p.retired||{}).length,capacity:null};}return{models:activeModelNames(dir).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,faces,targetFaces:TARGET_FACES,population:pop,admitCeiling:ADMIT_CEILING,cullMinGames:Object.fromEntries([1,2,3,4].map(d=>[depthKey(d),cullMinGames(depthKey(d),pop)])),heldModels:+(s.queueCompaction&&s.queueCompaction.heldModels)||0};}
 function restoreDepthSpecialists(){return[];}function retireBadD4(){return[];}
