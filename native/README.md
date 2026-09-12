@@ -89,8 +89,12 @@ a desktop-only sub-set: the browser build's original skins (Dark, Slate, Dojo,
 Yellow), the wood finishes (Walnut, Ebony, Maple), the six looks that used to be
 locked inside the showcase page (Noir, Math, Sumo, Cosy, Alien, Colossus), and
 Marble — a white stone table with black-marble rings and glass pieces: a small
-solid coloured ball on legs that leave it clear and take on its colour as they
-come down to solid coloured feet.
+solid coloured ball on legs of satin glass that leave it pale and take on its
+colour as they come down to solid coloured feet. Satin rather than water-clear on
+purpose: three's glass shows only the opaque scene behind it, so a clear leg
+against the dark room, or in front of another leg, drew as a black stroke. A
+fifth of each leg's shading is its own body under the lights, with a Fresnel rim
+along the edges, so a leg holds its shape against anything.
 
 You start on Walnut and **unlock** the rest by playing. The everyday boards open
 with wins and games played (Dojo after a win, Slate after three games, Maple,
@@ -132,9 +136,11 @@ flat on purpose. The wooden boards are assembled: the centre disc, each ring
 band and the six lens segments are separate pieces that meet at the printed
 curves, each cut from its plank at its own angle so the grain turns at every
 joint, with each zone a different shade of the same timber. There are no
-straight cuts anywhere; the joints are the rings and arcs themselves. The bake
-and the per-pixel shader use the same `woodFrame`, so the printed figure and the
-live grain agree on every piece.
+straight cuts anywhere; the joints are the rings and arcs themselves. Slate is
+assembled the same way, its cleavage running a different way on each piece, and
+so is Marble: its veining turns at every joint, in a neutral grey that favours
+neither colour. The bake and the per-pixel shader use the same `woodFrame`, so
+the printed figure and the live grain agree on every piece.
 
 Wood and marble boards carry per-pixel surface detail on top of the baked
 texture: a fragment-shader pass (`installDetailShader`) adds grain, pores, veins
@@ -178,6 +184,21 @@ Replays, shared recordings and spectating use the same desktop corner layout,
 with a smaller overhead board and room beneath it for replay controls. Captions
 and controls align with the 3D view. Watching temporarily caps the overhead size;
 returning to play restores the saved size and the resize grip.
+
+The home screen never scrolls: the menu is pinned to the window and clips, and
+the offsets the corner layout gives the 3D tile in a match are cleared on the way
+back. Behind the menu the ambient demo simulates each next endgame silently (a
+whole game in a few hundred milliseconds); the render loop holds the pieces
+still until the recorded tail is ready, so arriving at the menu no longer shows a
+game flashing by at speed.
+
+**Learn to play** draws the same tripod the match does on its flat board: legs at
+the tube's diameter, the crown, the tube-end feet with their pins, in the board
+skin's own piece colours, beside the 3D view of the real thing; the whole-game
+preview plays at a pace that can be followed. On the 3D pane the foot you hold
+glows as it does on the flat board and the cursor turns to a hand over a foot,
+so on the push-off slide, where the 3D pane is the only board, a press is seen
+to land.
 
 Play starts the selected AI level and side. Same-screen play is untimed. Esc
 opens the match menu. The match keeps going underneath it, offline or online, with

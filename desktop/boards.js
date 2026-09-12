@@ -699,10 +699,16 @@ const THEMES = {
       // as "the piece"; everything between them is what you look through.
       const solid = PHYS({ color: tint, metalness: 0, roughness: 0.08,
         clearcoat: 1, clearcoatRoughness: 0.04, specularIntensity: 1, envMapIntensity: 1 });
-      const leg = PHYS({ color: 0xf6f9ff,
-        metalness: 0, roughness: 0.03, transmission: 1.0, ior: 1.52, thickness: 2.6,
+      // Satin glass, not water-clear. three's transmission shows whatever the OPAQUE scene has
+      // behind the surface, so a clear leg against the dark room -- or in front of another glass
+      // leg, which the transmission pass leaves out -- rendered as a black stroke ("glass optics
+      // doesn't work with 2 glass"). A fifth of the shading now comes from the leg's own pale body
+      // under the lights, with a Fresnel rim on top (installLegGradient), so a leg keeps its shape
+      // against anything and one leg seen through another reads as two pieces of glass.
+      const leg = PHYS({ color: 0xeef2f8,
+        metalness: 0, roughness: 0.10, transmission: 0.78, ior: 1.52, thickness: 2.6,
         attenuationColor: new THREE.Color(0xe4ecff), attenuationDistance: 40,
-        clearcoat: 1, clearcoatRoughness: 0.03, specularIntensity: 1, envMapIntensity: 1 });
+        clearcoat: 1, clearcoatRoughness: 0.04, specularIntensity: 1, envMapIntensity: 1.7 });
       installLegGradient(leg, tint);
       return { leg, hub: solid, foot: solid };
     },
@@ -732,7 +738,14 @@ function installLegGradient(material, tint) {
         'diffuseColor.rgb = mix(diffuseColor.rgb, uLegTint, legG);')
       .replace('material.transmission = transmission;', 'material.transmission = transmission * (1.0 - 0.7*legG*legG);')
       .replace('material.attenuationColor = attenuationColor;', 'material.attenuationColor = mix(attenuationColor, uLegTint, legG);')
-      .replace('material.attenuationDistance = attenuationDistance;', 'material.attenuationDistance = mix(attenuationDistance, 2.5, legG);');
+      .replace('material.attenuationDistance = attenuationDistance;', 'material.attenuationDistance = mix(attenuationDistance, 2.5, legG);')
+      // The rim: glass is seen by its edges. Where the surface turns away from the eye the leg
+      // catches a pale Fresnel glow (the ball's colour towards the foot), so a leg against the
+      // black backdrop, where there is nothing to see through it, is still drawn.
+      .replace('#include <opaque_fragment>',
+        '{ float rim = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0);\n' +
+        '  outgoingLight += mix(vec3(0.80, 0.86, 0.95), uLegTint, legG) * rim * 0.30; }\n' +
+        '#include <opaque_fragment>');
   };
   material.customProgramCacheKey = () => 'tau-leg-gradient';
   return material;
@@ -823,8 +836,9 @@ vec3 woodDetail(vec2 p0, out float rough){
   return vec3(tint, 0.0, h);
 }
 // Marble: domain-warped ridged veins with a second, finer generation branching off them, plus the
-// crystalline speckle of polished calcite. Inside the black inlay (read off the bake's luminance)
-// the palette inverts: pale veins in dark stone.
+// crystalline speckle of polished calcite. Fed through woodFrame, so the table is assembled from
+// slabs that meet at the printed curves and the veining turns at every joint. Inside the black
+// inlay (read off the bake's luminance) the palette inverts: pale veins in dark stone.
 vec3 marbleDetail(vec2 p, float lum, out float rough, out vec3 col){
   vec2 s = p * 0.07;
   vec2 q = vec2(afbm(s), afbm(s + vec2(4.1, 2.3)));
@@ -835,7 +849,7 @@ vec3 marbleDetail(vec2 p, float lum, out float rough, out vec3 col){
   float cloud = smoothstep(0.3, 0.75, q.y);
   float spark = pow(anoise(p * 5.5), 26.0);              // calcite facets catching the light: occasional glints
   float inlay = 1.0 - smoothstep(0.12, 0.28, lum);       // dark bake = the black marble
-  vec3 field = mix(vec3(1.0), vec3(0.52, 0.55, 0.62), vein*0.95) * (1.0 - cloud*0.12);
+  vec3 field = mix(vec3(1.0), vec3(0.56, 0.55, 0.53), vein*0.95) * (1.0 - cloud*0.12);   // neutral grey veins: the table favours neither colour
   vec3 black = mix(vec3(1.0), vec3(2.6, 2.5, 2.4), vein*0.55) * (1.0 + cloud*0.15);
   col = mix(field, black, inlay);
   rough = 0.16 + 0.10*vein + 0.06*cloud - 0.12*spark;
@@ -878,7 +892,7 @@ function installDetailShader(material) {
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' +
         'float dH = 0.0; float dRough = roughnessFactor;\n' +
         'if (uDetail > 0.5 && uDetail < 1.5) { float r; vec3 w = woodDetail(vWPos.xz, r); diffuseColor.rgb *= w.x * uDetailTint; dRough = r; dH = w.z; }\n' +
-        'if (uDetail > 1.5 && uDetail < 2.5) { float r; vec3 c; float lum = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722)); vec3 m = marbleDetail(vWPos.xz, lum, r, c); diffuseColor.rgb *= c; dRough = r; dH = m.z; }\n' +
+        'if (uDetail > 1.5 && uDetail < 2.5) { float r; vec3 c; float lum = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722)); vec3 m = marbleDetail(woodFrame(vWPos.xz), lum, r, c); diffuseColor.rgb *= c; dRough = r; dH = m.z; }\n' +
         'if (uDetail > 0.5) roughnessFactor = clamp(dRough, 0.02, 1.0);\n')
       // relief: after the normal is final, bend it by the detail height's screen-space slope
       .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' +

@@ -47,7 +47,7 @@
     { id:'slate', name:'Slate',
       skin:{ shadeByZoneValue:true, v4:'#5a636c', v3:'#4b535b', v2:'#3c434a', v1:'#2f353b',
              flat:'#454d55', lines:'#12161a', rim:'#8f979e', bg:'#0c0e11', pb:'#5487c4', pr:'#d05a48' },
-      wood:{ base:[69,77,85], line:'#12161a', rim:'#8f979e', trim:'#6d777f', bg:'#0c0e11', grain:.35, dots:['#5487c4','#d05a48'] },
+      wood:{ base:[69,77,85], line:'#12161a', rim:'#8f979e', trim:'#6d777f', bg:'#0c0e11', grain:.55, assembled:true, dots:['#5487c4','#d05a48'] },
       piece:{ blue:'#5487c4', red:'#d05a48', metalness:.5, roughness:.36, clearcoat:.3, clearcoatRoughness:.32, envMapIntensity:.65 } },
     { id:'dojo', name:'Dojo',
       skin:{ shadeByZoneValue:true, v4:'#e9d9b3', v3:'#ddc99b', v2:'#cbb47e', v1:'#b89a62',
@@ -283,7 +283,12 @@
   // which has no other way in from a packaged desktop build with no URL bar).
   $('desktopLab').onclick = () => { if (typeof labOpenDrop === 'function') labOpenDrop(); };
   $('desktopSettings').onclick = openSettings;
-  $('desktopPause').onclick = openPause;
+  // The Menu button answers on the press, not the click: a click needs the pointer to come up on
+  // the same element after the board's own pointer handling has had its say, and on a busy frame
+  // that read as lag next to Escape. Keyboard activation (Enter/Space) still arrives as a click
+  // with detail 0, so that path keeps working.
+  $('desktopPause').addEventListener('pointerdown', e => { if (e.button === 0) { e.preventDefault(); openPause(); } });
+  $('desktopPause').onclick = e => { if (e.detail === 0) openPause(); };
   $('desktopHome').onclick = openPause;
   if (window.tauSteam?.quit) {
     $('desktopQuit').hidden = false; $('desktopQuit').onclick = () => window.tauSteam.quit();
@@ -483,7 +488,7 @@
       if (zones) {
         woodFrame((x-O)/sc, (y-O)/sc, fr);
         const z = zones[fr.zone-1]; br=z[0]; bg=z[1]; bb=z[2];
-        if (fin.detail === 'wood') {
+        if (fin.detail === 'wood' || wood.assembled) {   // assembled: cleavage runs its own way on each piece
           gx = fr.x*sc; gy = fr.y*sc;
         }
       }
@@ -688,6 +693,10 @@
     }
     if(inMatch()) return false;   // hand off to the real 2D/3D split
     const cv=$('view3d');
+    // The corner layout positions the 3D tile with inline offsets and clears them in the game's own
+    // resize(), which the menu never reaches (this returns true first). Left in place they pushed
+    // the view past the window's edge -- the home screen with scrollbars -- so they go here.
+    cv.style.left=cv.style.top=cv.style.right=cv.style.bottom='';
     const w=Math.max(1,Math.round(innerWidth>600?innerWidth*.76:innerWidth));
     const h=Math.max(1,Math.round(innerWidth<=600?innerHeight*.53:innerHeight));
     cv.style.width=w+'px'; cv.style.height=h+'px'; cv.style.display='block';

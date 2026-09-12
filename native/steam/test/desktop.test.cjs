@@ -1,6 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {game} = require('./game-harness.cjs');
+const {game, root} = require('./game-harness.cjs');
+const fs = require('node:fs');
+const path = require('node:path');
 
 test('offline launch, keyboard move, pause and settings use the real game', async t=>{
   const g=await game();t.after(g.close);
@@ -809,4 +811,63 @@ test('the board shader links: every uniform the detail, Math and leg passes read
   })()`));
   assert.deepEqual(report.board,[],'board surface shader');
   assert.deepEqual(report.leg,[],'glass leg shader');
+});
+
+test('the home menu never scrolls: the corner layout\'s offsets stay in the match',async t=>{
+  const g=await game();t.after(g.close);
+  // #menu is the game's own scroller on the web (overflow-y:auto under a 97vh cap); pinned to the
+  // window as the desktop home it must clip instead, or a 3D view sized to the window overflows
+  // its 97% and draws scrollbars.
+  const css=fs.readFileSync(path.join(root,'desktop/presentation.css'),'utf8');
+  const menuRule=css.match(/\.tau-desktop #menu \{[^}]*\}/)[0];
+  assert.match(menuRule,/overflow:hidden/); assert.match(menuRule,/max-height:none/);
+  g.$('desktopLocal').click();g.tick();
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio:()=>{},getPixelRatio:()=>1,setSize(){},shadowMap:{}};
+    camera=new THREE.PerspectiveCamera(38,1.6,1,2000); camera.position.set(0,145,148); camera.lookAt(0,4,0);
+    controls={mouseButtons:{},target:new THREE.Vector3(0,4,0)};
+    setViewSplit(1,true); resize();`);
+  assert.notEqual(g.read("document.getElementById('view3d').style.left"),'','dragged out, the corner layout positions the 3D tile inline');
+  g.read('G.over=true; G.winner=1; renderGameOverSheet()');
+  // The stub renderer has no scene to draw, so frames run without it and it is back for the
+  // menu's own layout pass, which is what clears the offsets.
+  g.read('window.__stub=renderer; renderer=null');g.tick();g.read('renderer=window.__stub');
+  [...g.$('modalBtns').children].find(b=>b.textContent==='Main menu').click();
+  assert.equal(g.$('menu').style.display,'flex');
+  for (const side of ['left','top','right','bottom'])
+    assert.equal(g.read(`document.getElementById('view3d').style.${side}`),'',`back on the home screen the 3D view carries no ${side} offset`);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the ambient demo simulates its next endgame behind a flag the render loop honours',async t=>{
+  const g=await game();t.after(g.close);
+  // The silent simulation drives G through a whole game between yields; the meshes must not
+  // follow it (that was the "sped-up game" on arrival), so animate() checks the flag before the sync.
+  assert.match(g.read('animate.toString()'),/if \(demoSimulating > 0\)/);
+  // The menu demo started on load and is mid-simulation; stopping it lets that run wind down.
+  g.read('demoStop()');
+  for(let i=0;i<500 && g.read('demoSimulating')>0;i++){ g.tick(); await new Promise(r=>setImmediate(r)); }
+  assert.equal(g.read('demoSimulating'),0,'a stopped demo\'s simulation lets go of the gate');
+  assert.equal(g.read('window.__sim=demoSimulateEndgame(demoGen); demoSimulating'),1,'up the moment a simulation starts');
+  g.read('window.__sim.then(r=>{window.__simResult=r;})');
+  for(let i=0;i<2000 && g.read('window.__simResult')===undefined;i++){ g.tick(); await new Promise(r=>setImmediate(r)); }
+  assert.ok(g.read('window.__simResult && window.__simResult.queue.length>0'),'the simulation reached a recorded finish');
+  assert.equal(g.read('demoSimulating'),0,'and the gate is open again before the tail is restored');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the walkthrough draws the match\'s own tripod: tube-width legs in the skin\'s colours',async t=>{
+  const g=await game();t.after(g.close);
+  assert.ok(g.read('TUTOR_SPEED')<=0.3,'the whole-game preview plays at a pace that can be followed');
+  // Record what the walkthrough's flat board asks its context to draw.
+  g.read(`(()=>{ const orig=HTMLCanvasElement.prototype.getContext; const rec=window.__rec={widths:new Set(),strokes:new Set()};
+    HTMLCanvasElement.prototype.getContext=function(type){ const c=orig.call(this,type); if(!c||this.id!=='htpBigCanvas')return c;
+      return this.__rec||(this.__rec=new Proxy(c,{set(o,k,v){ if(k==='lineWidth')rec.widths.add(v); if(k==='strokeStyle')rec.strokes.add(v); o[k]=v; return true; }, get:(o,k)=>o[k]})); }; })()`);
+  g.$('desktopLearn').click();g.tick();
+  assert.ok(g.$('htpFull'),'the walkthrough is open');
+  g.$('htpNext').click();g.tick(80);   // the first rule slide: a live piece on the flat board
+  const cv="document.getElementById('htpBigCanvas')";
+  const legW=g.read(`Math.max(2, 2*CFG.legRadius*htpMap(${cv}.width, ${cv}.height).sc)`);
+  assert.ok(g.read(`[...window.__rec.widths].some(w=>Math.abs(w-${legW})<1e-9)`),'legs are the tube\'s diameter through the slide\'s own scale, as Piece.prototype.draw draws them');
+  assert.ok(g.read('window.__rec.strokes.has(pieceHex(0))'),'in the board skin\'s blue, not a stock colour');
+  assert.deepEqual(g.errors,[]);
 });

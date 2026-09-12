@@ -5,7 +5,7 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .tau-desktop button:focus-visible,.tau-desktop select:focus-visible,.tau-desktop input:focus-visible,.tau-desktop canvas:focus-visible { outline:2px solid var(--gold); outline-offset:5px; }
 .tau-desktop #wrap { padding:0; }
 .tau-desktop #wrap>h1,.tau-desktop #themeToggle,.tau-desktop #soundToggle,.tau-desktop #langToggle,.tau-desktop #buildTag,.tau-desktop #bopomofoToggle { display:none!important; }
-.tau-desktop #menu { position:fixed; inset:0; width:auto; max-width:none; padding:0; margin:0; align-items:stretch; justify-content:center; }
+.tau-desktop #menu { position:fixed; inset:0; width:auto; max-width:none; max-height:none; overflow:hidden; padding:0; margin:0; align-items:stretch; justify-content:center; }
 .tau-desktop #menu>#playArea,.tau-desktop #menu>#modeMsg,.tau-desktop #menu>#presenceLine,.tau-desktop #menu>#rankLine,.tau-desktop #menu>#installLine { display:none!important; }
 .tau-desktop #demoViews { position:absolute; inset:0; display:block; width:auto; margin:0; pointer-events:none; }
 .tau-desktop #demoCanvas { display:none; }
