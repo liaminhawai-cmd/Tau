@@ -622,7 +622,11 @@
   // satin copy that writes only during that pass (a render target is set then, never for the
   // screen), so the buffer holds the far leg and the near leg shows it, softened by its own
   // roughness like anything else behind glass. On screen the proxy draws nothing at all.
-  function syncGlassProxy(piece, legMat) {
+  // The proxy has to look the way the far leg looks when seen directly: a clear leg over the board
+  // is mostly the board's own colour, the piece's tint gathering towards the foot, with the glass's
+  // gloss on top. So it is glossy, coloured from the board's surface lightened a little, and wears
+  // the leg's colour ramp; refracted through the near leg that reads as glass behind glass.
+  function syncGlassProxy(piece, legMat, fin) {
     const body = piece.children[0];
     let proxy = piece.userData.glassProxy;
     if (!legMat || !(legMat.transmission > 0)) { if (proxy) proxy.visible = false; return; }
@@ -633,9 +637,10 @@
       piece.add(proxy); piece.userData.glassProxy = proxy;
     }
     proxy.material.dispose();
-    const mat = new THREE.MeshPhysicalMaterial({ color: legMat.color.clone(), metalness: 0,
-      roughness: Math.min(1, Math.max(0.3, legMat.roughness + 0.25)), clearcoat: 0.5, clearcoatRoughness: 0.2,
-      envMapIntensity: Math.min(1, legMat.envMapIntensity || 1) });
+    const base = new THREE.Color(fin && fin.skin && fin.skin.flat ? fin.skin.flat : 0xdddddd).lerp(new THREE.Color(0xffffff), 0.35);
+    const mat = new THREE.MeshPhysicalMaterial({ color: base, metalness: 0,
+      roughness: 0.06, clearcoat: 1, clearcoatRoughness: 0.05, specularIntensity: 1,
+      envMapIntensity: Math.max(1, legMat.envMapIntensity || 1) });
     mat.colorWrite = mat.depthWrite = false;
     const SH = showcase();
     if (SH && legMat.userData && legMat.userData.legTint != null) SH.installLegGradient(mat, legMat.userData.legTint);
@@ -654,7 +659,7 @@
       piece.children.forEach(c => { if (c !== body && c !== hub && c !== piece.userData.glassProxy) c.material = mats.foot || mats.leg; });
       piece.userData.showMats = [...new Set([mats.leg, mats.hub, mats.foot].filter(Boolean))];
       piece.userData.mat = mats.leg;
-      syncGlassProxy(piece, mats.leg);
+      syncGlassProxy(piece, mats.leg, finish());
     });
   }
   function restorePieces() {
@@ -699,12 +704,21 @@
       mat.emissive.set(p.emissive?(i===0?p.blue:p.red):'#000000');
       mat.emissiveIntensity=p.emissive?(p.emissiveIntensity||.2):0;
       mat.needsUpdate=true;
-      syncGlassProxy(piece, mat);
+      syncGlassProxy(piece, mat, fin);
     });
   }
+  // What each board is made of, for the ear: the piece material sets the pick-up click, the move
+  // thump and the rim impact; the surface bakes the sweep's own noise and sets the room.
+  const ACOUSTICS_BY_BOARD = {
+    walnut:['metal','wood'], ebony:['metal','wood'], maple:['metal','wood'], cosy:['metal','wood'],
+    dark:['metal','slate'], slate:['metal','slate'], dojo:['metal','wood'], yellow:['metal','paper'],
+    noir:['glass','slate'], math:['graphite','paper'], sumo:['wood','clay'], alien:['chitin','membrane'],
+    colossus:['stone','sand'], marble:['glass','marble'],
+  };
   function applyMaterials() {
-    if(!renderer || !boardTop) return;
     const fin=finish();
+    if (typeof setAcoustics === 'function') { const a = ACOUSTICS_BY_BOARD[fin.id] || ['metal','wood']; setAcoustics(a[0], a[1]); }
+    if(!renderer || !boardTop) return;
     const bm = boardTop.material;
     const SH = showcase();
     const T = SH && fin.showcase ? SH.THEMES[fin.showcase] : null;

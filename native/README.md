@@ -89,19 +89,20 @@ a desktop-only sub-set: the browser build's original skins (Dark, Slate, Dojo,
 Yellow), the wood finishes (Walnut, Ebony, Maple), the six looks that used to be
 locked inside the showcase page (Noir, Math, Sumo, Cosy, Alien, Colossus), and
 Marble — a white stone table with black-marble rings and glass pieces: a small
-solid coloured ball on legs of satin glass that leave it pale and take on its
-colour as they come down to solid coloured feet. Satin rather than water-clear on
-purpose: three's glass shows only the opaque scene behind it, so a clear leg
-against the dark room, or in front of another leg, drew as a black stroke. A
-fifth of each leg's shading is its own body under the lights, with a Fresnel rim
-along the edges, so a leg holds its shape against anything. Glass also shows
-through glass: three's transmission buffer holds only opaque objects, so each
-glass piece carries an opaque satin proxy of its legs that draws only into that
-buffer (never on screen), and a leg behind another leg is seen through it.
+solid coloured ball on legs of clear glass that leave it colourless and take on
+its colour as they come down to solid coloured feet. Glass shows through glass:
+three's transmission buffer holds only opaque objects, so a leg behind another
+leg used to vanish. Each glass piece now carries a proxy of its legs that draws
+only into that buffer (never on screen), glossy and coloured the way the far leg
+looks over the board with the same colour ramp, so the red leg is seen through
+the blue one, refracted, and the other way round. Against the dark room a clear
+leg is drawn by its edges: a Fresnel rim along them.
 
-Colossus brings its arena into the match: the tiered stands, the arched wall,
-the hanging dust, and a crowd of two thousand little stone tripods in the two
-sides' colours along every walkway, one instanced draw. The camera sits lower
+Colossus brings its arena into the match: fourteen plain stone steps climbing
+away from the sand, the arched wall above them, the hanging dust, and a crowd of
+two thousand little stone tripods in the two sides' colours standing on every
+step, one instanced draw. The flat board's round tile paints nothing behind the
+disc in a desktop match, so the arena shows around it. The camera sits lower
 and wider on that board so the tiers rise behind the far rim; haze grades with
 distance. A loser goes over at half speed, feet dragging dust through the sand,
 a burst at the rim, and the stands leap.
@@ -215,6 +216,19 @@ the goal is met. You still make the move yourself. Done returns to the home
 screen with the 3D view laid out for it (it used to come back as a thumbnail in
 the corner). The home panel itself scales to a short window rather than
 scrolling.
+
+**Sound is in the board's materials.** The design is the web build's: one noise
+voice through a bandpass whose pitch tracks the moving piece from low at the
+centre to high at the rim, gated by speed, a scrape riding it, a click on pick-up,
+a thump as the move begins, the voice climbing into the room on a win or loss.
+What the board changes is the noise itself and the room. Each surface bakes its
+own looping buffer (a spectral tilt, an amplitude grain, sparse crackle, faint
+glassy rings on polished stone), so the same sweep is a chalky rasp on walnut, a
+grainy hiss on Colossus's sand and a fine fizz on marble; the surface also sets
+how sharp the peak is, how bright the tone stays and how much the room gives
+back. The piece sets the impacts: metal ticks, glass pings, stone knocks, wood
+toks, and the thump and the rim impact scale with its weight. The Sound panel's
+tuning still applies; every material term is a factor on it.
 
 Play starts the selected AI level and side. Same-screen play is untimed. Esc
 opens the match menu. The match keeps going underneath it, offline or online, with

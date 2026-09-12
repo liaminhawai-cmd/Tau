@@ -630,7 +630,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 213</div>
+<div id="buildTag">build 214</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -6903,7 +6903,13 @@ addEventListener('load', () => {
 // Apply the CURRENT look (active skin = colour-lab override, else Slate in light mode, else the flat
 // dark default) to every 3D material and the 2D piece colours. Rebuilds the board texture (disposing
 // the old one), and recolours the rim, both piece materials, the scene backdrop and the 2D pieces.
+// The web build's four skins, as materials: the same steel-and-lacquer pieces on a dark matte
+// slate, on slate, on a pale lacquered wood, on a printed paper board. The desktop names its own.
+const SKIN_ACOUSTICS = { dark:['metal','slate'], slate:['metal','slate'], dojo:['metal','wood'], yellow:['metal','paper'] };
 function applyTheme() {
+    if (!window.tauDesktop && typeof setAcoustics === 'function') {
+        const a = SKIN_ACOUSTICS[BOARD_SKINS[skinIdx].id] || SKIN_ACOUSTICS.dark; setAcoustics(a[0], a[1]);
+    }
     const sk = activeSkin();
     if (boardTop && !window.tauDesktop) {
         const tex = boardTexture(currentTheme === 'dark');
@@ -6965,6 +6971,109 @@ const SFX = Object.assign({}, SFX_DEFAULTS);
 try { if (+localStorage.getItem('tauSfxV') === SFX_VERSION) Object.assign(SFX, JSON.parse(localStorage.getItem('tauSfx')||'{}')); } catch(e) {}
 let audioCtx=null, noiseSrc=null, bandpass=null, voiceGain=null, scrapeHP=null, scrapeGain=null,
     dryGain=null, convolver=null, wetGain=null, toneLP=null, masterGain=null, limiter=null, audioReady=false;
+// ---------- Material acoustics: the same voice, in the board's own materials ----------
+// The design above is unchanged in its bones: one looping noise source through a bandpass whose
+// pitch tracks the moving piece's distance from the centre (low in the middle, high at the rim),
+// gated by speed; a scrape layer riding it; a click when a foot is picked up; a thump as the move
+// begins; the voice climbing into the room on a win or a loss. What changes with the board is the
+// NOISE itself and the room around it. Each surface has a texture -- wood grain, gritty stone,
+// glassy marble, dry sand, soft paper, packed clay, wet membrane -- baked as its own looping
+// buffer (a spectral tilt, an amplitude grain, sparse crackle, and for polished stone faint
+// glassy rings), so the very same filter sweep is a chalky rasp on walnut, a grainy hiss on sand
+// and a fine fizz on marble. The piece decides the impacts: a metal tick, a glass ping, a stone
+// knock, a wooden tok, and the thump and the rim impact scale with its weight. The surface sets
+// the room: how sharp the sweep's peak is, how bright the tone stays, how much the space gives
+// back. The Sound panel's tuning still applies -- every material term is a factor on it.
+const SURFACE_ACOUSTICS = {
+    //          tilt -1 brown .. 0 white .. +1 bright | grain: events/s, depth | crackle: impulses/s | ring: glassy rings/s
+    wood:     { tilt:-0.35, grainRate:90,  grainDepth:0.55, crackle:14,  ring:0,  q:1.0,  scrapeHz:1.0,  highCut:0.8,  reverb:0.02, reverbEnd:0.85 },
+    slate:    { tilt:-0.10, grainRate:260, grainDepth:0.45, crackle:60,  ring:0,  q:0.8,  scrapeHz:0.9,  highCut:0.9,  reverb:0.04, reverbEnd:0.95 },
+    marble:   { tilt:+0.35, grainRate:40,  grainDepth:0.25, crackle:6,   ring:18, q:1.6,  scrapeHz:1.4,  highCut:1.4,  reverb:0.12, reverbEnd:1.1 },
+    sand:     { tilt:-0.70, grainRate:400, grainDepth:0.70, crackle:220, ring:0,  q:0.55, scrapeHz:0.55, highCut:0.55, reverb:0.08, reverbEnd:0.9 },
+    paper:    { tilt:-0.15, grainRate:160, grainDepth:0.35, crackle:30,  ring:0,  q:0.9,  scrapeHz:1.1,  highCut:0.7,  reverb:0.0,  reverbEnd:0.65 },
+    clay:     { tilt:-0.50, grainRate:120, grainDepth:0.50, crackle:40,  ring:0,  q:0.7,  scrapeHz:0.7,  highCut:0.6,  reverb:0.05, reverbEnd:0.95 },
+    membrane: { tilt:-0.30, grainRate:14,  grainDepth:0.80, crackle:4,   ring:0,  q:1.3,  scrapeHz:0.6,  highCut:0.75, reverb:0.06, reverbEnd:1.0 },
+};
+const PIECE_ACOUSTICS = {
+    //          pick-up click | move thump: pitch, length, weight (factors on the tuned 808) | rim impact
+    metal:    { click:'tick',  bassHz:1.0,  bassLen:1.0, bassVol:1.0, impact:'clang' },
+    glass:    { click:'ping',  bassHz:1.25, bassLen:0.8, bassVol:0.8, impact:'chime' },
+    stone:    { click:'knock', bassHz:0.7,  bassLen:1.6, bassVol:1.2, impact:'thud'  },
+    wood:     { click:'tok',   bassHz:0.9,  bassLen:1.1, bassVol:0.9, impact:'knock' },
+    graphite: { click:'tok',   bassHz:1.0,  bassLen:0.7, bassVol:0.6, impact:'knock' },
+    chitin:   { click:'tok',   bassHz:0.85, bassLen:1.2, bassVol:0.9, impact:'thud'  },
+};
+let acoustics = { piece:'metal', surface:'wood', applied:false };
+const materialNoiseCache = {};
+function currentAcoustics() { return { piece: acoustics.piece, surface: acoustics.surface }; }
+function surfaceAcoustics() { return SURFACE_ACOUSTICS[acoustics.surface] || SURFACE_ACOUSTICS.wood; }
+function pieceAcoustics() { return PIECE_ACOUSTICS[acoustics.piece] || PIECE_ACOUSTICS.metal; }
+// Bake a surface's noise. Seeded, so a board sounds the same every time it is chosen.
+function makeMaterialNoise(ctx, prof, seconds) {
+    const sr = ctx.sampleRate, n = Math.floor(sr*seconds);
+    const buf = ctx.createBuffer(1, n, sr), d = buf.getChannelData(0);
+    let rng = 0x2545F491; const rnd = () => (rng = (Math.imul(rng, 1664525) + 1013904223) >>> 0) / 4294967296;
+    // 1. the spectral tilt: white, pink (Kellet's filter) and brown (a leaky integrator) blended for
+    //    the dark surfaces; the lows pulled out for a bright one.
+    let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0, brown=0, lp=0;
+    for (let i=0;i<n;i++){
+        const w = rnd()*2-1;
+        b0 = 0.99886*b0 + w*0.0555179; b1 = 0.99332*b1 + w*0.0750759; b2 = 0.96900*b2 + w*0.1538520;
+        b3 = 0.86650*b3 + w*0.3104856; b4 = 0.55000*b4 + w*0.5329522; b5 = -0.7616*b5 - w*0.0168980;
+        const pink = (b0+b1+b2+b3+b4+b5+b6 + w*0.5362)*0.11; b6 = w*0.115926;
+        brown = (brown + 0.02*w)/1.02;
+        let v;
+        if (prof.tilt <= 0) { const t = -prof.tilt; v = t < 0.5 ? (1-2*t)*w + 2*t*pink : (2-2*t)*pink + (2*t-1)*brown*3.5; }
+        else { lp += 0.15*(w-lp); v = w + prof.tilt*2.0*(w-lp); }
+        d[i] = v;
+    }
+    // 2. the grain: a smoothed random amplitude envelope, grainRate events a second -- fibres under a
+    //    foot on wood, grit on stone, the coarse churn of sand, slow squelch on a membrane.
+    if (prof.grainDepth > 0) {
+        let env = 1, target = 1; const step = Math.max(1, Math.floor(sr/prof.grainRate));
+        for (let i=0;i<n;i++){ if (i%step===0) target = 1 - prof.grainDepth*rnd(); env += (target-env)*0.02; d[i] *= env; }
+    }
+    // 3. crackle: sparse sharp impulses (a grain of sand catching, a fibre snapping)
+    for (let k=0, K=Math.floor(prof.crackle*seconds); k<K; k++){
+        const i = Math.floor(rnd()*(n-8)), a = (0.4+rnd()*0.6)*(rnd()<0.5?-1:1);
+        for (let j=0;j<6;j++) d[i+j] += a*(1-j/6);
+    }
+    // 4. rings: sparse decaying sine bursts at glassy pitches (hard polished stone under a glass foot)
+    for (let k=0, K=Math.floor(prof.ring*seconds); k<K; k++){
+        const i = Math.floor(rnd()*(n-2000)), f = 1800+rnd()*4200, a = 0.25+rnd()*0.35, L = 600+Math.floor(rnd()*1400);
+        for (let j=0;j<L && i+j<n;j++) d[i+j] += a*Math.sin(2*Math.PI*f*j/sr)*Math.exp(-4*j/L);
+    }
+    // level-matched to the white noise the mix was tuned on (RMS 1/sqrt 3), so the volumes hold;
+    // twice, because the peakier textures lose a little to the clamp on the first pass
+    for (let pass = 0; pass < 2; pass++) {
+        let sum=0; for (let i=0;i<n;i++) sum += d[i]*d[i];
+        const gain = 0.577/Math.sqrt(sum/n || 1);
+        for (let i=0;i<n;i++) d[i] = Math.max(-1, Math.min(1, d[i]*gain));
+    }
+    return buf;
+}
+function materialNoiseBuffer() {
+    const k = acoustics.surface;
+    return materialNoiseCache[k] || (materialNoiseCache[k] = makeMaterialNoise(audioCtx, surfaceAcoustics(), 2));
+}
+// The board says what it is made of. Called by the desktop on every board change and by the web
+// build's skin cycle; before the audio exists it just remembers, and initAudio bakes from it.
+function setAcoustics(piece, surface) {
+    piece = PIECE_ACOUSTICS[piece] ? piece : 'metal'; surface = SURFACE_ACOUSTICS[surface] ? surface : 'wood';
+    if (acoustics.piece === piece && acoustics.surface === surface && (acoustics.applied || !audioReady)) return;
+    acoustics = { piece, surface, applied:false };
+    if (audioReady) applyAcoustics();
+}
+function applyAcoustics() {
+    if (!audioReady) return;
+    // Swap the looping source. The voice is speed-gated, so between moves the swap is silent.
+    const src = audioCtx.createBufferSource(); src.buffer = materialNoiseBuffer(); src.loop = true;
+    src.connect(bandpass); src.connect(scrapeHP); src.start();
+    const old = noiseSrc; noiseSrc = src;
+    if (old) { try { old.stop(audioCtx.currentTime + 0.05); } catch(e){} setTimeout(() => { try { old.disconnect(); } catch(e){} }, 120); }
+    acoustics.applied = true;
+    applySfx();   // Q, scrape tone, high cut and the room, with this surface's factors folded in
+}
 let soundOn = true, audioReplayIdx = null, audioPrevFeet = null;
 try { soundOn = localStorage.getItem('tauSound') !== '0'; } catch(e) {}
 // User volume (0-100, independent of the tuned SFX.master mix). 70 is the DEFAULT and is calibrated
@@ -7011,17 +7120,19 @@ function initAudio() {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     audioCtx = new AC();
+    const sp = surfaceAcoustics();
     noiseSrc = audioCtx.createBufferSource();
-    noiseSrc.buffer = makeNoiseBuffer(audioCtx, 2);
+    noiseSrc.buffer = materialNoiseBuffer();   // the board's own texture (see SURFACE_ACOUSTICS)
     noiseSrc.loop = true;
-    bandpass = audioCtx.createBiquadFilter(); bandpass.type='bandpass'; bandpass.frequency.value=SFX.minHz; bandpass.Q.value=SFX.q;
+    acoustics.applied = true;
+    bandpass = audioCtx.createBiquadFilter(); bandpass.type='bandpass'; bandpass.frequency.value=SFX.minHz; bandpass.Q.value=SFX.q*sp.q;
     voiceGain = audioCtx.createGain(); voiceGain.gain.value = 0;   // speed-driven; silent at rest
-    scrapeHP = audioCtx.createBiquadFilter(); scrapeHP.type='highpass'; scrapeHP.frequency.value=SFX.scrapeHz;
+    scrapeHP = audioCtx.createBiquadFilter(); scrapeHP.type='highpass'; scrapeHP.frequency.value=SFX.scrapeHz*sp.scrapeHz;
     scrapeGain = audioCtx.createGain(); scrapeGain.gain.value = 0;
     dryGain = audioCtx.createGain(); dryGain.gain.value = 1;
     convolver = audioCtx.createConvolver(); convolver.buffer = makeCathedralImpulse(audioCtx);
-    wetGain = audioCtx.createGain(); wetGain.gain.value = SFX.reverb;
-    toneLP = audioCtx.createBiquadFilter(); toneLP.type='lowpass'; toneLP.frequency.value = SFX.highCut;
+    wetGain = audioCtx.createGain(); wetGain.gain.value = Math.max(SFX.reverb, sp.reverb);
+    toneLP = audioCtx.createBiquadFilter(); toneLP.type='lowpass'; toneLP.frequency.value = SFX.highCut*sp.highCut;
     masterGain = audioCtx.createGain(); masterGain.gain.value = soundOn ? effectiveMaster() : 0;
     // Brickwall safety limiter: the volume scale is calibrated to stay just under clip at 200%,
     // and this catches any transient stacking beyond the calibration (e.g. click + 808 + swell
@@ -7053,33 +7164,96 @@ function resumeAudio() {
     }
 }
 // "Chalk click" when a foot is picked up: a very short high-passed noise tick. Crisp, not a rumble.
+// A filtered burst of the board's own noise into `dest`, decaying over `len` seconds.
+function noiseTick(dest, type, hz, q, len) {
+    const f = audioCtx.createBiquadFilter(); f.type=type; f.frequency.value=hz; f.Q.value=q;
+    const tg = audioCtx.createGain(); const t0 = audioCtx.currentTime;
+    tg.gain.setValueAtTime(1, t0); tg.gain.exponentialRampToValueAtTime(0.0001, t0+len);
+    noiseSrc.connect(f); f.connect(tg); tg.connect(dest);
+    setTimeout(() => { try { f.disconnect(); tg.disconnect(); } catch(e){} }, (len+0.15)*1000);
+}
+// A short sine (or triangle) partial into `dest`: pitch f0 sliding to f1, decaying over `len`.
+function tone(dest, type, f0, f1, amp, len) {
+    const o = audioCtx.createOscillator(); o.type=type; const t0 = audioCtx.currentTime;
+    o.frequency.setValueAtTime(f0, t0); if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t0+len*0.6);
+    const g = audioCtx.createGain(); g.gain.setValueAtTime(amp, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0+len);
+    o.connect(g); g.connect(dest); o.start(t0); o.stop(t0+len+0.05);
+    setTimeout(() => { try { g.disconnect(); } catch(e){} }, (len+0.2)*1000);
+}
+// The pick-up: the piece's material, at the tuned click volume and length. Metal keeps the chalk
+// tick with a fine partial on it; glass pings, a slightly inharmonic pair that outlasts the tick;
+// stone knocks, low and dull; wood (and graphite, and chitin) gives a woody tok.
 function playSelectClick() {
     resumeAudio();
     if (!audioReady || !soundOn || !gameVisible()) return;
-    const hp = audioCtx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=SFX.clickHz; hp.Q.value=0.7;
-    const g = audioCtx.createGain(); const t0 = audioCtx.currentTime;
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(SFX.clickVol, t0+0.001);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0+SFX.clickLen);
-    noiseSrc.connect(hp); hp.connect(g); g.connect(masterGain);
-    setTimeout(() => { try { hp.disconnect(); g.disconnect(); } catch(e){} }, (SFX.clickLen+0.1)*1000);
+    const t0 = audioCtx.currentTime, len = SFX.clickLen, vol = SFX.clickVol;
+    const g = audioCtx.createGain(); g.connect(masterGain);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0+0.001);
+    let tail = len;
+    switch (pieceAcoustics().click) {
+        case 'ping':
+            tail = len*4;
+            tone(g, 'sine', 2600*(0.97+Math.random()*0.06), 2600, 0.35, tail);
+            tone(g, 'sine', 4130*(0.97+Math.random()*0.06), 4130, 0.18, tail*0.8);
+            noiseTick(g, 'highpass', SFX.clickHz*2.5, 0.7, len*0.5);
+            break;
+        case 'knock':
+            tail = len*2.4;
+            tone(g, 'sine', 240, 120, 0.6, tail);
+            noiseTick(g, 'lowpass', 900, 0.7, len*1.6);
+            break;
+        case 'tok':
+            tail = len*1.5;
+            noiseTick(g, 'bandpass', 900, 2.0, tail);
+            tone(g, 'sine', 420, 300, 0.25, tail*0.7);
+            break;
+        default:   // 'tick'
+            tone(g, 'triangle', 3200, 3200, 0.12, len);
+            noiseTick(g, 'highpass', SFX.clickHz, 0.7, len);
+    }
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+tail);
+    setTimeout(() => { try { g.disconnect(); } catch(e){} }, (tail+0.2)*1000);
 }
 // Move-start bass: an "808"-style kick. A sine whose pitch snaps down from a few x the fundamental
 // to the low fundamental in ~40ms (that fast pitch envelope IS the kick "punch"), with a quick
 // exponential amplitude decay. Short and low.
 function playMoveBass() {
     if (!audioReady || !soundOn || !gameVisible()) return;
-    const t0 = audioCtx.currentTime, f0 = SFX.bassHz;
+    const pp = pieceAcoustics();   // a stone titan lands lower, longer and heavier than a glass piece
+    const t0 = audioCtx.currentTime, f0 = SFX.bassHz*pp.bassHz, len = SFX.bassLen*pp.bassLen, vol = SFX.bassVol*pp.bassVol;
     const osc = audioCtx.createOscillator(); osc.type='sine';
     osc.frequency.setValueAtTime(f0*3.2, t0);
     osc.frequency.exponentialRampToValueAtTime(f0, t0+0.045);
     const g = audioCtx.createGain();
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(SFX.bassVol, t0+0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0+SFX.bassLen);
+    g.gain.exponentialRampToValueAtTime(vol, t0+0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+len);
     osc.connect(g); g.connect(masterGain);
-    osc.start(t0); osc.stop(t0+SFX.bassLen+0.05);
-    setTimeout(() => { try { g.disconnect(); } catch(e){} }, (SFX.bassLen+0.15)*1000);
+    osc.start(t0); osc.stop(t0+len+0.05);
+    setTimeout(() => { try { g.disconnect(); } catch(e){} }, (len+0.15)*1000);
+}
+// The rim: the loser's piece meets the edge in its own material as the voice starts its climb.
+function playImpact() {
+    const pp = pieceAcoustics(), sp = surfaceAcoustics();
+    const g = audioCtx.createGain(); g.gain.value = 1; g.connect(toneLP);   // through the room like everything else
+    switch (pp.impact) {
+        case 'thud':    // stone: a deep drop and a breath of dust
+            tone(g, 'sine', 70, 34, 0.9, 0.45);
+            noiseTick(g, 'lowpass', 500, 0.5, 0.5);
+            break;
+        case 'chime':   // glass: a small inharmonic cluster ringing out
+            tone(g, 'sine', 2210, 2210, 0.22, 0.9); tone(g, 'sine', 3330, 3330, 0.14, 0.7); tone(g, 'sine', 4720, 4720, 0.08, 0.5);
+            noiseTick(g, 'highpass', 3000, 0.7, 0.08);
+            break;
+        case 'clang':   // metal: two detuned partials and a bright tick
+            tone(g, 'triangle', 910, 890, 0.22, 0.5); tone(g, 'triangle', 1370, 1340, 0.14, 0.4);
+            noiseTick(g, 'highpass', 2500, 0.7, 0.05);
+            break;
+        default:        // 'knock': wood on the rim
+            tone(g, 'sine', 160, 110, 0.5, 0.3);
+            noiseTick(g, 'bandpass', 600*sp.highCut, 1.5, 0.1);
+    }
+    setTimeout(() => { try { g.disconnect(); } catch(e){} }, 1400);
 }
 // "Singing bowl" strike at the start of a game: a real struck bowl rings at inharmonic partials
 // (≈1 : 2.7 : 4.1 : 5.4 of the fundamental) with each partial split into a barely-detuned pair --
@@ -7149,19 +7323,22 @@ function playLossSound() {
     voiceGain.gain.setValueAtTime(Math.max(voiceGain.gain.value, 0.2), t0);  // just enough to hear the tail
     voiceGain.gain.setTargetAtTime(0, t0, 0.3);                              // volume down real quick
     scrapeGain.gain.setTargetAtTime(0, t0, 0.1);
-    wetGain.gain.setTargetAtTime(SFX.reverbEnd, t0, 0.12);                   // reverb up real quick
-    dryGain.gain.setTargetAtTime(1-SFX.reverbEnd, t0, 0.12);
+    const wet = Math.min(0.97, SFX.reverbEnd * surfaceAcoustics().reverbEnd);   // marble gives more back than paper
+    wetGain.gain.setTargetAtTime(wet, t0, 0.12);                             // reverb up real quick
+    dryGain.gain.setTargetAtTime(1-wet, t0, 0.12);
+    playImpact();
 }
 // Restores the dry/normal balance and silences the voice for a fresh game.
 function resetAudioForNewGame() {
     if (!audioReady) return;
     const t0 = audioCtx.currentTime;
     audioPrevFeet = null;
-    bandpass.Q.setTargetAtTime(SFX.q, t0, 0.05);
+    const sp = surfaceAcoustics();
+    bandpass.Q.setTargetAtTime(SFX.q*sp.q, t0, 0.05);
     voiceGain.gain.setTargetAtTime(0, t0, 0.05);
     scrapeGain.gain.setTargetAtTime(0, t0, 0.05);
     dryGain.gain.setTargetAtTime(1, t0, 0.05);
-    wetGain.gain.setTargetAtTime(SFX.reverb, t0, 0.05);
+    wetGain.gain.setTargetAtTime(Math.max(SFX.reverb, sp.reverb), t0, 0.05);
     masterGain.gain.setTargetAtTime(soundOn ? effectiveMaster() : 0, t0, 0.05);
 }
 // Push the current SFX values to the live nodes (called live while dragging the Sound panel sliders)
@@ -7170,10 +7347,11 @@ function applySfx() {
     try { localStorage.setItem('tauSfx', JSON.stringify(SFX)); localStorage.setItem('tauSfxV', SFX_VERSION); } catch(e) {}
     if (!audioReady) return;
     const t0 = audioCtx.currentTime;
+    const sp = surfaceAcoustics();
     masterGain.gain.setTargetAtTime(soundOn ? effectiveMaster() : 0, t0, 0.03);
-    toneLP.frequency.setTargetAtTime(SFX.highCut, t0, 0.03);
-    scrapeHP.frequency.setTargetAtTime(SFX.scrapeHz, t0, 0.03);
-    if (!G || !G.over) { bandpass.Q.setTargetAtTime(SFX.q, t0, 0.03); wetGain.gain.setTargetAtTime(SFX.reverb, t0, 0.03); }
+    toneLP.frequency.setTargetAtTime(SFX.highCut*sp.highCut, t0, 0.03);
+    scrapeHP.frequency.setTargetAtTime(SFX.scrapeHz*sp.scrapeHz, t0, 0.03);
+    if (!G || !G.over) { bandpass.Q.setTargetAtTime(SFX.q*sp.q, t0, 0.03); wetGain.gain.setTargetAtTime(Math.max(SFX.reverb, sp.reverb), t0, 0.03); }
 }
 const ICON_SPEAKER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.2h3.4L12 5.2v13.6l-4.6-4H4z"/>';
 const ICON_WAVES = '<path d="M15.6 9.4a3.6 3.6 0 010 5.2M18.2 6.8a7.2 7.2 0 010 10.4"/></svg>';
@@ -7701,7 +7879,10 @@ function render() {
     syncCanvas();
     const w = canvas.clientWidth || 300;
     const col=boardColors();
-    ctx.fillStyle=col.bg; ctx.fillRect(0,0,w,w);
+    // In a desktop match the flat board's round tile floats over the 3D scene: nothing is painted
+    // behind the disc, so the room (Colossus's arena, say) shows around it.
+    if (window.tauDesktop && document.body.classList.contains('ingame')) ctx.clearRect(0,0,w,w);
+    else { ctx.fillStyle=col.bg; ctx.fillRect(0,0,w,w); }
     const O=bx2px(0,0);
     // board disc — the surface simply ends at the drop-off; no line is printed there
     fillBoardDisc(ctx, O.x, O.y, scale);

@@ -586,37 +586,23 @@ const THEMES = {
     },
     env() {   // the colosseum: tiered stands flecked with crowd, an arched outer wall, hanging dust
       const g = new THREE.Group();
-      // crowd texture: rows of tiny multicoloured specks on stone — individual people at this
-      // distance are two pixels wide, which is exactly what sells the size of everything else
-      // person-scale specks: at these radii a spectator is ~2 units tall — big enough to read as
-      // a crowd, small enough that every one of them shouts how big the arena is
-      const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 256;
-      const c = cv.getContext('2d');
-      c.fillStyle = '#867457'; c.fillRect(0, 0, 1024, 256);
-      let rng = 121212; const rnd = () => (rng = (rng*16807)%2147483647)/2147483647;
-      const hues = ['#5a4a38','#8a5b36','#4a4a52','#96826a','#3e3a34','#a8906c','#7a4438','#4e5c6a','#6d5347'];
-      for (let x = 4 + rnd()*6; x < 1024; x += 9 + rnd()*8)
-        if (rnd() > 0.18) {
-          c.fillStyle = hues[Math.floor(rnd()*hues.length)];
-          const h = 90 + rnd()*50;
-          c.fillRect(x, 250 - h, 5 + rnd()*3, h);                      // body
-          c.fillStyle = '#c9a882';
-          c.beginPath(); c.arc(x + 3.5, 246 - h, 4.5, 0, 7); c.fill(); // head
-        }
-      const crowdTex = new THREE.CanvasTexture(cv);
-      crowdTex.wrapS = THREE.RepeatWrapping; crowdTex.repeat.set(24, 1); crowdTex.anisotropy = 8;
-      crowdTex.colorSpace = THREE.SRGBColorSpace;
-      // stepped seating, seen from INSIDE the bowl: a vertical riser faced with crowd, then a
-      // flat stone walkway — the step profile is what reads as architecture instead of wallpaper
-      const crowdMat = new THREE.MeshStandardMaterial({ map: crowdTex, roughness: 0.95, side: THREE.DoubleSide });
+      // The colosseum in the round: plain stone steps climbing away from the arena, riser and
+      // tread, and the crowd standing on every one of them (built below, once the wall is up).
+      // An earlier pass faced each riser with a painted crowd; at this distance those read as
+      // tall pencils, so the stone is bare and the crowd is real geometry.
       const stoneMat = new THREE.MeshStandardMaterial({ color: 0x9a8a6a, roughness: 0.95, side: THREE.DoubleSide });
-      for (let i = 0; i < 7; i++) {
-        const r0 = 200 + i*58, y0 = 2 + i*30;
-        const riser = new THREE.Mesh(new THREE.CylinderGeometry(r0, r0, 30, 96, 1, true), crowdMat);
-        riser.position.y = y0 + 15; g.add(riser);
-        const walk = new THREE.Mesh(new THREE.RingGeometry(r0, r0 + 58, 96), stoneMat);
-        walk.rotation.x = -Math.PI/2; walk.position.y = y0 + 30; g.add(walk);
+      const riserMat = new THREE.MeshStandardMaterial({ color: 0x86765a, roughness: 0.95, side: THREE.DoubleSide });
+      const STEPS = 14, R0 = 200, RISE = 15, TREAD = 26;
+      for (let i = 0; i < STEPS; i++) {
+        const r0 = R0 + i*TREAD, y0 = 2 + i*RISE;
+        const riser = new THREE.Mesh(new THREE.CylinderGeometry(r0, r0, RISE, 128, 1, true), riserMat);
+        riser.position.y = y0 + RISE/2; g.add(riser);
+        const tread = new THREE.Mesh(new THREE.RingGeometry(r0, r0 + TREAD, 128), stoneMat);
+        tread.rotation.x = -Math.PI/2; tread.position.y = y0 + RISE; g.add(tread);
       }
+      const topR = R0 + STEPS*TREAD, topY = 2 + STEPS*RISE;   // the promenade under the wall
+      const prom = new THREE.Mesh(new THREE.RingGeometry(topR, 660, 128), stoneMat);
+      prom.rotation.x = -Math.PI/2; prom.position.y = topY; g.add(prom);
       // outer wall with dark arched openings, mostly swallowed by the haze
       const wv = document.createElement('canvas'); wv.width = 1024; wv.height = 256;
       const w = wv.getContext('2d');
@@ -653,10 +639,10 @@ const THEMES = {
       const dustFar = mkDust(1100, 380, 200, 1.3, 0.16, 909);
       const dustNear = mkDust(320, 200, 90, 3.2, 0.28, 313);
       g.add(dustFar, dustNear);
-      // The crowd in the round: little tripods in the stands, each a stone figure of the pieces
-      // below, spread along every walkway in the two sides' muted colours and facing the arena.
-      // Two thousand of them cost one draw call (an instanced figure: three leaning legs and a
-      // head, merged once), and they leap when a titan goes over the rim.
+      // The crowd: little tripods on every step, each a stone figure of the pieces below, in the
+      // two sides' muted colours and facing the arena. Two thousand of them cost one draw call
+      // (an instanced figure: three leaning legs and a head, merged once), and they leap when a
+      // titan goes over the rim.
       const UP = new THREE.Vector3(0, 1, 0), H = 2.2, F = 1.1;
       const partsOf = [];
       for (let k = 0; k < 3; k++) {
@@ -676,17 +662,17 @@ const THEMES = {
       const figure = new THREE.BufferGeometry();
       figure.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
       figure.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
-      const TIERS = 7, PER = 290;
+      const PER = 150;   // per step: 2100 in the stands
       const crowd = new THREE.InstancedMesh(figure,
-        new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0, flatShading: true }), TIERS*PER);
+        new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0, flatShading: true }), STEPS*PER);
       const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Pv = new THREE.Vector3(), Sv = new THREE.Vector3(), col = new THREE.Color();
       let cr = 4242; const crn = () => (cr = (cr*16807)%2147483647)/2147483647;
       const shades = [0x5f7189, 0x4e5c6a, 0x6b7f99, 0x8a5b36, 0x7a4438, 0x9a6a4a, 0x96826a, 0x6d5347];
       let n = 0;
-      for (let i = 0; i < TIERS; i++) {
-        const r0 = 200 + i*58, yTop = 2 + i*30 + 30;   // the tier's walkway
+      for (let i = 0; i < STEPS; i++) {
+        const r0 = R0 + i*TREAD, yTop = 2 + (i+1)*RISE;   // standing on the step's tread
         for (let j = 0; j < PER; j++) {
-          const th = crn()*Math.PI*2, rr = r0 + 8 + crn()*42, sc = 0.85 + crn()*0.45;
+          const th = crn()*Math.PI*2, rr = r0 + 5 + crn()*(TREAD-10), sc = 0.85 + crn()*0.45;
           Pv.set(Math.cos(th)*rr, yTop, Math.sin(th)*rr);
           Q.setFromAxisAngle(UP, -th + (crn()-0.5)*0.8);
           Sv.set(sc, sc, sc);
@@ -757,16 +743,15 @@ const THEMES = {
       // as "the piece"; everything between them is what you look through.
       const solid = PHYS({ color: tint, metalness: 0, roughness: 0.08,
         clearcoat: 1, clearcoatRoughness: 0.04, specularIntensity: 1, envMapIntensity: 1 });
-      // Satin glass, not water-clear. three's transmission shows whatever the OPAQUE scene has
-      // behind the surface, so a clear leg against the dark room -- or in front of another glass
-      // leg, which the transmission pass leaves out -- rendered as a black stroke ("glass optics
-      // doesn't work with 2 glass"). A fifth of the shading now comes from the leg's own pale body
-      // under the lights, with a Fresnel rim on top (installLegGradient), so a leg keeps its shape
-      // against anything and one leg seen through another reads as two pieces of glass.
-      const leg = PHYS({ color: 0xeef2f8,
-        metalness: 0, roughness: 0.10, transmission: 0.78, ior: 1.52, thickness: 2.6,
+      // Water-clear glass: everything behind a leg shows through it, refracted by its thickness.
+      // three's transmission buffer holds only the opaque scene, so the game gives each glass piece
+      // a proxy of its legs that draws into that buffer alone (desktop/presentation.js,
+      // syncGlassProxy) -- that is how the red leg is seen through the blue one. Against the dark
+      // room a clear leg is drawn by its edges: a Fresnel rim in installLegGradient.
+      const leg = PHYS({ color: 0xf6f9ff,
+        metalness: 0, roughness: 0.03, transmission: 1.0, ior: 1.52, thickness: 2.6,
         attenuationColor: new THREE.Color(0xe4ecff), attenuationDistance: 40,
-        clearcoat: 1, clearcoatRoughness: 0.04, specularIntensity: 1, envMapIntensity: 1.7 });
+        clearcoat: 1, clearcoatRoughness: 0.03, specularIntensity: 1, envMapIntensity: 1.3 });
       installLegGradient(leg, tint);
       return { leg, hub: solid, foot: solid };
     },
@@ -815,7 +800,7 @@ function installLegGradient(material, tint) {
       // black backdrop, where there is nothing to see through it, is still drawn.
       .replace('#include <opaque_fragment>',
         '{ float rim = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0);\n' +
-        '  outgoingLight += mix(vec3(0.80, 0.86, 0.95), uLegTint, legG) * rim * 0.30; }\n' +
+        '  outgoingLight += mix(vec3(0.80, 0.86, 0.95), uLegTint, legG) * rim * 0.24; }\n' +
         '#include <opaque_fragment>');
   };
   material.customProgramCacheKey = () => 'tau-leg-gradient';

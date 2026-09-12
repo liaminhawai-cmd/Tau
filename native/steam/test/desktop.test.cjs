@@ -973,3 +973,39 @@ test('Colossus brings its stands, crowd and haze into the match, and a fall rais
   assert.equal(g.read('tauDesktop.fallTimeScale()'),1);
   assert.deepEqual(g.errors,[]);
 });
+
+test('each board names its materials for the ear, and every surface bakes its own noise',async t=>{
+  const g=await game();t.after(g.close);
+  g.read("localStorage.setItem('tauDesktopTestBoards','1')");
+  const at=id=>{ g.read(`tauDesktop.board='${id}'`); return g.read('JSON.stringify(currentAcoustics())'); };
+  const is=(p,su)=>JSON.stringify({piece:p,surface:su});
+  assert.equal(at('walnut'),is('metal','wood'));
+  assert.equal(at('marble'),is('glass','marble'));
+  assert.equal(at('colossus'),is('stone','sand'));
+  assert.equal(at('alien'),is('chitin','membrane'));
+  assert.equal(at('math'),is('graphite','paper'));
+  // The noise under the same pitch sweep is the surface's own: sand is darker than wood, wood
+  // darker than marble (a fake context bakes the buffers; the ratio of sample-to-sample change to
+  // level is a plain measure of brightness).
+  const bright=g.read(`(()=>{ const ctx={sampleRate:22050, createBuffer:(c,n)=>{const d=new Float32Array(n); return {getChannelData:()=>d};}};
+    const sharp=k=>{ const d=makeMaterialNoise(ctx, SURFACE_ACOUSTICS[k], 0.5).getChannelData(0); let hf=0, all=0;
+      for(let i=1;i<d.length;i++){ hf+=Math.abs(d[i]-d[i-1]); all+=Math.abs(d[i]); } return hf/all; };
+    return {sand:sharp('sand'), clay:sharp('clay'), wood:sharp('wood'), slate:sharp('slate'), marble:sharp('marble')}; })()`);
+  assert.ok(bright.sand<bright.clay && bright.clay<bright.wood && bright.wood<bright.slate && bright.slate<bright.marble,
+    `darker to brighter: ${JSON.stringify(bright)}`);
+  // level-matched: a bake sits at the white noise's RMS the mix was tuned on
+  const rms=g.read(`(()=>{ const ctx={sampleRate:22050, createBuffer:(c,n)=>{const d=new Float32Array(n); return {getChannelData:()=>d};}};
+    const d=makeMaterialNoise(ctx, SURFACE_ACOUSTICS.sand, 0.5).getChannelData(0); let s=0; for (const v of d) s+=v*v; return Math.sqrt(s/d.length); })()`);
+  assert.ok(Math.abs(rms-0.577)<0.06, `sand bake RMS ${rms}`);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the web build\'s skins name their materials too',async t=>{
+  const g=await game('');t.after(g.close);
+  const at=id=>{ g.read(`skinIdx=BOARD_SKINS.findIndex(s=>s.id==='${id}'); applyTheme()`); return g.read('JSON.stringify(currentAcoustics())'); };
+  const is=(p,su)=>JSON.stringify({piece:p,surface:su});
+  assert.equal(at('dojo'),is('metal','wood'));
+  assert.equal(at('yellow'),is('metal','paper'));
+  assert.equal(at('slate'),is('metal','slate'));
+  assert.deepEqual(g.errors,[]);
+});
