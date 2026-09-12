@@ -59,6 +59,10 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
       return eng.ladderPlanFor(lvl - 1, idx);
     } };
   }
+  // "committee:L11;nn:0:a.json;nn:0:b.json" or "committee:auto" -- several brains vote on one move,
+  // each in its own worker thread (see committee.js). Only --depth/--keepForDepth carry over.
+  if (/^committee:/i.test(spec))
+    return require('./committee.js').makeBrain(eng, spec, { depth, keepForDepth, dir: __dirname, verbose: process.argv.includes('--verbose') });
   const parts = spec.split(':');
   // "le:L11[:temperature]" -- L11's hand-tuned EVAL inside nnai.js's search, so it gets a real
   // clock, iterative deepening and policy pruning, none of which the fixed-depth ladder rung has.
