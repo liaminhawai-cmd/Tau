@@ -1174,18 +1174,24 @@ test('the app signs in with Google natively once a client ID is configured',asyn
   // through the Capacitor plugin and hands Supabase the ID token that comes back.
   const g=await game('',{},{capacitor:true});t.after(g.close);
   g.read(`TAU_GOOGLE_NATIVE_CLIENT_ID='123-abc.apps.googleusercontent.com';
-    window.__init=[]; window.__tokens=[];
+    window.__init=[]; window.__logins=[];
     Capacitor.Plugins={SocialLogin:{
       initialize:o=>{window.__init.push(o);return Promise.resolve();},
-      login:o=>Promise.resolve({provider:'google',result:{idToken:'ID_TOKEN_FROM_GOOGLE'}}),
+      login:o=>{window.__logins.push(o);return Promise.resolve({provider:'google',result:{idToken:'ID_TOKEN_FROM_GOOGLE'}});},
     }};
-    sb={auth:{signInWithIdToken:o=>{window.__tokens.push(o);return Promise.resolve({error:null});}}};`);
+    sb={auth:{signInWithIdToken:o=>{window.__tokens=(window.__tokens||[]);window.__tokens.push(o);return Promise.resolve({error:null});}}};`);
   assert.equal(g.read('nativeGoogleAvailable()'),true,'the button is live once the plugin and an ID are both there');
   g.read('openAcctPanel()');
   assert.notEqual(g.read("document.getElementById('acctGoogle').style.display"),'none','so it is shown, not hidden');
   await g.read("nativeGoogleSignIn()");
   assert.equal(g.read("JSON.stringify(window.__init[0].google.webClientId)"),'"123-abc.apps.googleusercontent.com"',
     'Android is initialised with the WEB client ID -- the audience its ID token carries');
+  // The plugin's Android side rejects with "You CANNOT use scopes without modifying the main
+  // activity" the instant a request-level `scopes` array is present at all -- even naming just its
+  // own defaults (email/profile) trips it, since only scopes BEYOND the defaults need that native
+  // change. Those defaults already cover a sign-in, so the fix is asking for no scopes.
+  assert.equal(g.read("'scopes' in (window.__logins[0].options||{})"),false,
+    'no scopes requested -- would reject on real Android with "You CANNOT use scopes..."');
   assert.equal(g.read("JSON.stringify(window.__tokens[0])"),
     JSON.stringify({provider:'google',token:'ID_TOKEN_FROM_GOOGLE'}),'and Supabase takes that token directly');
   assert.equal(g.read(`localStorage.getItem(AUTH_PERSIST_FLAG)`),'1','a real account, so the session persists');

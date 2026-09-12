@@ -635,7 +635,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 223</div>
+<div id="buildTag">build 224</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -10776,7 +10776,11 @@ async function nativeGoogleSignIn() {
         await plugin.initialize({ google });
         nativeGoogleInited = true;
     }
-    const res = await plugin.login({ provider: 'google', options: { scopes: ['email', 'profile'] } });
+    // No `scopes` here on purpose: passing ANY scopes list -- even just the plugin's own defaults
+    // named explicitly -- makes its Android side demand a native MainActivity change we don't need
+    // ("You CANNOT use scopes without modifying the main activity"). The plugin already requests
+    // email/profile/openid by default, which is all a sign-in needs, so the fix is asking for nothing.
+    const res = await plugin.login({ provider: 'google', options: {} });
     const token = res && res.result && res.result.idToken;
     if (!token) throw new Error('Google did not return a sign-in token.');
     // A real account, so the session persists like any other non-guest sign-in (see AUTH_PERSIST_FLAG).

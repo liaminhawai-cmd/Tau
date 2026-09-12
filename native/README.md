@@ -346,6 +346,15 @@ once this repo is checked out. The Play Store release is signed by a
 different key (Play App Signing's, or your upload key) and needs its own
 Android OAuth client with that SHA-1.
 
+Pass no `scopes` in the login call. The plugin's Android side already
+requests `email`/`profile`/`openid` by default -- naming them again in a
+request-level `scopes` array (even the exact same ones) makes it demand a
+native `MainActivity` change we have no use for
+(`ModifiedMainActivityForSocialLoginPlugin`, needed only for scopes beyond
+those defaults) and reject with "You CANNOT use scopes without modifying the
+main activity." `nativeGoogleSignIn()` in index.html calls
+`plugin.login({ provider: 'google', options: {} })` for exactly this reason.
+
 **Controls** is its own section (home menu, match menu, F1, Y on a pad): a
 drawn keyboard cluster and a drawn controller, each key and button carrying
 the name of what it does, with the controller scheme switch. On desktop the
