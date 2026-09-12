@@ -72,6 +72,7 @@ for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])
     // Population line every checkpoint, not just on a cull: while the field is over the admission
     // ceiling it is the only number that says whether the league is draining or still stuck.
     const held=after.heldModels?`, ${after.heldModels} model(s) held out of the league`:'';
+    if(c.reinstated.length)console.log(`[evolution] reinstated ${c.reinstated.length} face(s) the cull retired that had never been beaten: ${c.reinstated.join(', ')}`);
     if(c.culled.length||c.admitted.length)console.log(`[evolution] checkpoint: ${c.culled.length} culled, ${c.admitted.length} frontier face(s) admitted; bank ${after.gamesSinceCull.toFixed(0)}`);
     else console.log(`[evolution] no rating checkpoint due; bank ${before.gamesSinceCull.toFixed(0)}`);
     console.log(`[evolution] population ${after.population} face(s), ceiling ${after.admitCeiling}, target ${after.targetFaces}${held}`);
@@ -104,6 +105,7 @@ for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])
     evo.ingestSummary(dir,summary);
 
     const c=evo.cull(dir);
+    if(c.reinstated.length)console.log(`[evolution] reinstated ${c.reinstated.length} face(s) the cull retired that had never been beaten: ${c.reinstated.join(', ')}`);
     if(c.culled.length||c.admitted.length)console.log(`[evolution] checkpoint: ${c.culled.length} culled, ${c.admitted.length} frontier face(s) admitted`);
     try{medals.main();}catch(e){console.error('[medals] refresh failed:',e.message);}
   } finally { dropHeldLock(); }
