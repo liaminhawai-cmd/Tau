@@ -56,26 +56,55 @@ function pickAuto(dir) {
   return out;
 }
 
-function parseSpec(spec, dir) {
+// "committee:<members>[@opt,opt]" -- options are d1/d2/d3 (deepest stage), flat (one stage at that
+// depth instead of the D1->D2->D3 funnel), borda (the old rank-and-veto rule), k=N (candidates per
+// member's sweep), temp=N (the ladder members' logistic temperature).
+function splitSpec(spec) {
   const body = spec.replace(/^committee:/i, '');
+  const at = body.lastIndexOf('@');
+  return at >= 0 ? { body: body.slice(0, at), opts: body.slice(at + 1) } : { body, opts: '' };
+}
+function parseSpec(spec, dir) {
+  const { body } = splitSpec(spec);
   if (body === 'auto' || body === '') return pickAuto(dir);
   return body.split(';').map(s => s.trim()).filter(Boolean);
+}
+function parseOpts(spec) {
+  const out = { depth: null, flat: false, borda: false, k: 4, temp: 0 };
+  for (const t of splitSpec(spec).opts.split(',').map(x => x.trim().toLowerCase()).filter(Boolean)) {
+    const dm = /^d([1-4])$/.exec(t); if (dm) { out.depth = +dm[1]; continue; }
+    const km = /^k=(\d+)$/.exec(t); if (km) { out.k = Math.max(1, +km[1]); continue; }
+    const tm = /^temp=(\d+(?:\.\d+)?)$/.exec(t); if (tm) { out.temp = +tm[1]; continue; }
+    if (t === 'flat') out.flat = true;
+    else if (t === 'borda') out.borda = true;
+  }
+  return out;
+}
+// The funnel: judge everything cheaply, then spend the deep search only on what survived. Judging
+// every candidate at full depth is what made the first version so expensive, and most candidates
+// are settled by a 1-ply look anyway.
+function stagesFor(maxDepth, flat) {
+  if (flat || maxDepth <= 1) return [{ depth: maxDepth, keep: 1 }];
+  if (maxDepth === 2) return [{ depth: 1, keep: 4 }, { depth: 2, keep: 1 }];
+  return [{ depth: 1, keep: 6 }, { depth: 2, keep: 3 }, { depth: maxDepth, keep: 1 }];
 }
 
 function makeBrain(eng, spec, opts) {
   const o = opts || {};
   const dir = o.dir || __dirname;
-  const depth = o.depth || 3, keepForDepth = o.keepForDepth || 4;
+  const cfg = parseOpts(spec);
+  const depth = cfg.depth || o.depth || 3, keepForDepth = o.keepForDepth || 4;
+  const stages = stagesFor(depth, cfg.flat);
   const specs = parseSpec(spec, dir);
   if (specs.length < 2) throw new Error('a committee needs at least two members');
   const members = specs.map(s => {
     const ctrl = new SharedArrayBuffer(4);
     const { port1, port2 } = new MessageChannel();
     const w = new Worker(path.join(__dirname, 'committee-worker.js'),
-                         { workerData: { spec: s, depth, keepForDepth, ctrl, port: port2 }, transferList: [port2] });
+                         { workerData: { spec: s, depth, keepForDepth, ladderTemp: cfg.temp, ctrl, port: port2 }, transferList: [port2] });
     w.on('error', e => { console.error('[committee] member ' + s + ' died: ' + (e && e.message)); });
     w.unref();
-    return { spec: s, worker: w, port: port1, ctrl: new Int32Array(ctrl), seen: 0, name: s };
+    return { spec: s, worker: w, port: port1, ctrl: new Int32Array(ctrl), name: s };
   });
   // Block until one message is available on the member's port, then take it.
   const take = m => {
@@ -86,120 +115,189 @@ function makeBrain(eng, spec, opts) {
     }
   };
   for (const m of members) { const r = take(m); if (r.error) throw new Error(r.error); m.name = r.name || m.spec; }
-  const name = 'committee(' + members.map(m => m.name).join('|') + (depth !== 3 ? ',D' + depth : '') + ')';
+  const name = 'committee(' + members.map(m => m.name).join('|') +
+               (depth !== 3 ? ',D' + depth : '') + (cfg.borda ? ',borda' : '') + (cfg.flat ? ',flat' : '') + ')';
   let jobId = 0;
   const ask = (m, job) => { job.id = ++jobId; m.port.postMessage(job); };
   const sameMove = (a, b) => a.pivotIdx === b.pivotIdx && a.dir === b.dir && Math.abs(Math.abs(a.targetRad) - Math.abs(b.targetRad)) < SAME_STOP_RAD;
-  const stats = { moves: 0, vetoes: 0, unanimous: 0, chairOverruled: 0 };
+  const stats = { moves: 0, vetoes: 0, unanimous: 0, chairOverruled: 0, provenWins: 0 };
+  const fmt = v => !v ? '?' : v.proven > 0 ? 'WIN' : v.proven < 0 ? 'LOSS' : v.p.toFixed(3);
+
+  // Ask every member for the same list of moves, at this stage's depth.
+  function judgeAll(pose, idx, plies, plans, d) {
+    for (const m of members) ask(m, { type: 'judge', pose, active: idx, plies, plans, depth: d });
+    return members.map(m => {
+      const r = take(m);
+      if (r.error) { console.error('[committee] ' + m.name + ' judge failed: ' + String(r.error).split('\n')[0]); return null; }
+      return r.scores;
+    });
+  }
+  // LOG POOL: every member turns its own verdict into a win probability, and the totals are the
+  // sums of their logs. Multiplying probabilities is what makes one member's "this is nearly dead"
+  // decisive -- log p -> -Infinity as p -> 0 -- without letting a member with a bigger raw scale
+  // dominate an ordinary position, which is what summing raw scores would do. Engine-PROVEN results
+  // are not opinions and are not pooled: a proven loss is an absolute floor, a proven win an
+  // absolute ceiling.
+  function pool(rows, n) {
+    const out = [];
+    for (let j = 0; j < n; j++) {
+      let sum = 0, dead = false, won = false;
+      for (const row of rows) {
+        const v = row && row[j];
+        if (!v) continue;
+        if (v.proven < 0) dead = true; else if (v.proven > 0) won = true;
+        sum += Math.log(v.p);
+      }
+      out.push(dead ? -Infinity : won ? Infinity : sum);
+    }
+    return out;
+  }
 
   function fn(idx) {
     const g = eng.getG();
     const pose = g.pieces.map(p => [p.x, p.y, p.rot]);
     const plies = g.plies || 0;
-    // 1. propose, all members at once
-    for (const m of members) ask(m, { type: 'propose', pose, active: idx, plies });
-    const proposals = [];
+    // 1. SWEEP -- the candidate set is the UNION of every member's own shortlist, not one move
+    // each. A move only one member likes can still win the pool; it could never even be considered
+    // when every member reported only its single favourite.
+    for (const m of members) ask(m, { type: 'sweep', pose, active: idx, plies, depth: stages[0].depth, k: cfg.k });
+    const cands = [], by = [];
     members.forEach((m, mi) => {
       const r = take(m);
-      if (r.error) { console.error('[committee] ' + m.name + ' propose failed: ' + r.error.split('\n')[0]); return; }
-      if (!r.plan) return;
-      const dup = proposals.find(p => sameMove(p.plan, r.plan));
-      if (dup) dup.by.push(mi); else proposals.push({ plan: r.plan, by: [mi] });
+      if (r.error) { console.error('[committee] ' + m.name + ' sweep failed: ' + String(r.error).split('\n')[0]); return; }
+      for (const p of r.plans || []) {
+        const at = cands.findIndex(c => sameMove(c, p));
+        if (at >= 0) { if (!by[at].includes(mi)) by[at].push(mi); }
+        else { cands.push(p); by.push([mi]); }
+      }
     });
-    if (!proposals.length) return null;
+    if (!cands.length) return null;
     stats.moves++;
-    if (proposals.length === 1) { stats.unanimous++; return proposals[0].plan; }
-    // 2. judge: every member scores every proposal, in parallel across members
-    const plans = proposals.map(p => p.plan);
-    for (const m of members) ask(m, { type: 'judge', pose, active: idx, plies, plans });
-    const scores = members.map(m => { const r = take(m); return r.error ? null : r.scores; });
-    // 3. veto: a proven loss in ANY member's eyes kills the proposal
-    const dead = plans.map((_, pi) => scores.some(s => s && s[pi] <= -1e5));
-    let alive = proposals.map((p, pi) => pi).filter(pi => !dead[pi]);
-    if (!alive.length) alive = proposals.map((p, pi) => pi);   // everything lost: least-bad below
-    else if (alive.length < proposals.length) stats.vetoes++;
-    // 4. Borda over the survivors; ties to the chair (member 0)
-    const borda = new Array(plans.length).fill(0);
-    scores.forEach(s => {
-      if (!s) return;
-      const order = alive.slice().sort((a, b) => s[b] - s[a]);
-      order.forEach((pi, rank) => { borda[pi] += rank; });
-    });
-    alive.sort((a, b) => borda[a] - borda[b] || (scores[0] ? scores[0][b] - scores[0][a] : 0) || Math.min(...proposals[a].by) - Math.min(...proposals[b].by));
-    const pick = alive[0];
-    if (!proposals[pick].by.includes(0)) stats.chairOverruled++;
-    if (o.verbose) {
-      console.log('[committee] ' + proposals.map((p, pi) => `#${pi}<-${p.by.map(i => members[i].name).join('+')} borda ${borda[pi]}${dead[pi] ? ' DEAD' : ''} ` +
-        scores.map((s, mi) => s ? members[mi].name.slice(0, 8) + '=' + (Math.abs(s[pi]) >= 1e5 ? (s[pi] > 0 ? 'WIN' : 'LOSS') : s[pi].toFixed(3)) : '?').join(' ')).join(' | ') + ` -> #${pick}`);
+    if (cands.length === 1) { stats.unanimous++; return cands[0]; }
+
+    // 2. FUNNEL -- judge what is still alive at this stage's depth, pool, keep the best few.
+    let alive = cands.map((_, i) => i);
+    for (const st of stages) {
+      if (alive.length === 1) break;
+      const plans = alive.map(i => cands[i]);
+      const rows = judgeAll(pose, idx, plies, plans, st.depth);
+      const totals = cfg.borda ? bordaTotals(rows, plans.length) : pool(rows, plans.length);
+      const order = plans.map((_, j) => j).sort((a, b) => totals[b] - totals[a]);
+      if (o.verbose) {
+        console.log('[committee] D' + st.depth + ' ' + plans.map((_, j) =>
+          '#' + alive[j] + (totals[j] === -Infinity ? ' DEAD' : totals[j] === Infinity ? ' WIN' : ' ' + totals[j].toFixed(2)) + '[' +
+          rows.map((row, mi) => members[mi].name.slice(0, 8) + '=' + fmt(row && row[j])).join(' ') + ']').join(' | '));
+      }
+      if (totals[order[0]] === Infinity) { stats.provenWins++; alive = [alive[order[0]]]; break; }
+      if (totals.some(t => t === -Infinity)) stats.vetoes++;
+      const keep = Math.max(1, Math.min(st.keep, order.length));
+      // A candidate a member proved lost never advances, even if that leaves fewer than `keep`.
+      const kept = order.slice(0, keep).filter(j => totals[j] > -Infinity);
+      alive = (kept.length ? kept : order.slice(0, 1)).map(j => alive[j]);
     }
-    return proposals[pick].plan;
+    const pick = alive[0];
+    if (!by[pick].includes(0)) stats.chairOverruled++;
+    return cands[pick];
+  }
+  // The old rule, kept behind @borda so the two can be raced against each other: rank within each
+  // member, sum the ranks, and treat only a proven loss as disqualifying.
+  function bordaTotals(rows, n) {
+    const alive = [];
+    for (let j = 0; j < n; j++) alive.push(rows.some(row => row && row[j] && row[j].proven < 0) ? null : j);
+    const live = alive.filter(j => j !== null);
+    const borda = new Array(n).fill(0);
+    for (const row of rows) {
+      if (!row) continue;
+      const ord = live.slice().sort((a, b) => (row[b] ? row[b].s : -Infinity) - (row[a] ? row[a].s : -Infinity));
+      ord.forEach((j, rank) => { borda[j] += rank; });
+    }
+    // higher is better everywhere else, so flip the rank sum and floor the dead
+    return borda.map((v, j) => alive[j] === null ? -Infinity : -v);
   }
   fn.stats = stats;
   fn.close = () => { for (const m of members) m.worker.terminate(); };
   return { name, fn, close: fn.close, stats };
 }
 
-// ---- the league's committee face -------------------------------------------------------------
-// One committee at a time holds a seat in the official league (elorank-legacy.js). It is formed
-// ADAPTIVELY -- the strongest live rung, the best-rated net, and the next-best net of a different
-// hidden shape, as of the pass that forms it -- and then PINNED for the life of its sweep, because a
-// rating has to belong to one thing. While sweeping it is immortal: never culled, and the scheduler
-// serves it an unplayed opponent ahead of any other pairing until it has met every face once
-// (two games, colours reversed, the league's usual match). Once it has played every face it stops
-// being immortal: the sweep is marked done, the seat is released at the next pass, and the next
-// pass forms a fresh committee from whatever is strongest THEN. Its games stay in elo-results.json
-// for the "All history" view, and its final rating is kept in this state file.
+// ---- the league's committee faces ------------------------------------------------------------
+// THREE committees are fielded at once, the same three brains judged at D1, D2 and D3, so the
+// depth question is answered by the league itself instead of by argument. Each is formed ADAPTIVELY
+// (strongest live rung, best-rated net, next-best net of a different hidden shape, as of the pass
+// that forms it) and then PINNED, because a rating has to belong to one thing. While sweeping a
+// committee is immortal: never culled, and the scheduler serves it unplayed opponents ahead of any
+// other pairing until it has met SWEEP_FACES distinct faces. Then it stops being immortal -- a
+// pseudo-model file is written under its own name, evolution-roster admits it like any other model,
+// and the elastic cull, the admission ceiling and the played-pair rule apply to it exactly as to a
+// net. Its games stay in elo-results.json, and the next formation happens once all three are done.
+const SWEEP_FACES = Math.max(2, +(process.env.TAU_COMMITTEE_SWEEP || 20));
+const DEPTHS = [1, 2, 3];
 const STATE = dir => path.join(dir, 'models', '.committee-state.json');
 const readState = dir => { try { return JSON.parse(fs.readFileSync(STATE(dir), 'utf8')); } catch (_) { return null; } };
 const writeState = (dir, st) => { const { atomicWrite } = require('./atomic-write.js'); atomicWrite(STATE(dir), JSON.stringify(st, null, 1)); };
 const shortName = spec => /^L\d+/.test(spec) ? spec : path.basename(spec.split(':').slice(2).join(':'), '.json');
 const memberFile = spec => /^L\d+/.test(spec) ? null : spec.split(':').slice(2).join(':');
-// Called by the wrapper (elorank.js) once per pass, before the pass starts: keep the active sweep,
-// retire it if a member's model file has gone, and form a new one when there is none.
-function resolveLeagueCommittee(dir, { log = console.log } = {}) {
-  const st = readState(dir) || { history: [] };
+function loadState(dir) {
+  const st = readState(dir) || {};
   st.history = st.history || [];
-  const cur = st.active;
-  if (cur && !cur.swept) {
+  // migrate the single-committee state this replaced
+  if (st.active && !st.actives) { st.actives = [st.active]; delete st.active; }
+  st.actives = st.actives || [];
+  return st;
+}
+// Called by the wrapper (elorank.js) once per pass, before the pass starts: keep the live sweeps,
+// retire any whose member files have gone, and form a fresh set of three when none are left.
+function resolveLeagueCommittees(dir, { log = console.log } = {}) {
+  const st = loadState(dir);
+  const keep = [];
+  for (const cur of st.actives) {
+    if (cur.swept) { st.history.push({ ...cur, endedAt: cur.endedAt || new Date().toISOString() }); continue; }
     const gone = cur.members.map(memberFile).filter(f => f && !fs.existsSync(f));
-    if (!gone.length) return cur;
-    log(`[committee] ${cur.id} retired: member file(s) gone (${gone.map(f => path.basename(f)).join(', ')})`);
-    st.history.push({ ...cur, swept: true, endedAt: new Date().toISOString(), reason: 'member gone' });
-    st.active = null;
-  } else if (cur && cur.swept) {
-    st.history.push({ ...cur, endedAt: cur.endedAt || new Date().toISOString() });
-    st.active = null;
+    if (gone.length) {
+      log(`[committee] ${cur.id} retired: member file(s) gone (${gone.map(f => path.basename(f)).join(', ')})`);
+      st.history.push({ ...cur, swept: true, endedAt: new Date().toISOString(), reason: 'member gone' });
+      continue;
+    }
+    keep.push(cur);
   }
+  st.actives = keep;
+  if (keep.length) { writeState(dir, st); return keep; }
   let members;
-  try { members = pickAuto(dir); } catch (e) { log('[committee] not fielded: ' + e.message); writeState(dir, st); return null; }
-  // The id is a FACE id (name@D1) from day one, so the record it builds during the sweep is the
-  // same record it keeps afterwards as an ordinary roster face (see markSwept): every pair it
-  // played stays a played pair, and only faces that arrive later are new games for it.
-  const name = 'committee[' + members.map(shortName).join(',') + ']';
-  const next = { id: name + '@D1', name, file: path.join(dir, 'models', name + '.json'), spec: 'committee:' + members.join(';'), members,
-                 depth: 3, startedAt: new Date().toISOString(), swept: false };
-  // The same three brains again would have nothing left to play (every pair is a played pair), so
-  // the seat stays empty until the field's top changes.
-  if (st.history.some(h => h.id === next.id)) { if (!st.waitingLogged || st.waitingLogged !== next.id) { log(`[committee] ${next.id} already swept the field; seat empty until the best rung/net/next-shape changes`); st.waitingLogged = next.id; } writeState(dir, st); return null; }
-  st.active = next;
+  try { members = pickAuto(dir); } catch (e) { log('[committee] not fielded: ' + e.message); writeState(dir, st); return []; }
+  const base = members.map(shortName).join(',');
+  const fresh = [];
+  for (const d of DEPTHS) {
+    const name = `committee-d${d}[${base}]`;
+    // The same three brains at the same depth again would have nothing left to play, so that
+    // variant waits until the field's top changes rather than replaying its own games.
+    if (st.history.some(h => h.name === name)) continue;
+    fresh.push({ id: name + '@D1', name, file: path.join(dir, 'models', name + '.json'),
+                 spec: 'committee:' + members.join(';') + '@d' + d, members, depth: d,
+                 startedAt: new Date().toISOString(), swept: false });
+  }
+  st.actives = fresh;
   writeState(dir, st);
-  log(`[committee] formed ${next.id}: best rung + best net + next-best net of a different shape; immortal until it has played every face`);
-  return next;
+  if (fresh.length) log(`[committee] formed ${fresh.length} committee(s) from ${base}: D${fresh.map(f => f.depth).join('/D')}, ` +
+                        `immortal until each has played ${SWEEP_FACES} faces`);
+  else log(`[committee] every depth of ${base} has already swept; seat empty until the best rung/net/next-shape changes`);
+  return fresh;
 }
 // Read-only view for the pass itself.
-function activeLeagueCommittee(dir) { const st = readState(dir); return st && st.active && !st.active.swept ? st.active : null; }
-// Sweep done: the committee stops being immortal and becomes an ordinary model. Concretely, a
-// pseudo-model file is written under its own name; evolution-roster admits it like any other model
-// (modelMeta -> committee:true), elorank-legacy builds the same voting brain from the file
-// (facePlayer), and from then on the elastic cull, the admission ceiling and the played-pair rule
-// apply to it exactly as to a net. selfplay never loads it (selfplaySlice filters committee files).
-function markSwept(dir, id, elo) {
-  const st = readState(dir); if (!st || !st.active || st.active.id !== id) return;
-  st.active.swept = true; st.active.endedAt = new Date().toISOString(); if (Number.isFinite(elo)) st.active.finalElo = +elo.toFixed(1);
+function activeLeagueCommittees(dir) { return loadState(dir).actives.filter(c => !c.swept); }
+// Sweep done: stop being immortal and become an ordinary model. The pseudo-model file is what
+// evolution-roster admits (modelMeta -> committee:true) and what elorank-legacy rebuilds the voting
+// brain from (facePlayer), so nothing else has to know this face was ever special.
+function markSwept(dir, id, elo, faces) {
+  const st = loadState(dir);
+  const cur = st.actives.find(c => c.id === id);
+  if (!cur) return;
+  cur.swept = true; cur.endedAt = new Date().toISOString(); cur.facesMet = faces || 0;
+  if (Number.isFinite(elo)) cur.finalElo = +elo.toFixed(1);
   const { atomicWrite } = require('./atomic-write.js');
-  atomicWrite(st.active.file, JSON.stringify({ committee: true, id, spec: st.active.spec, members: st.active.members, depth: st.active.depth || 3,
-                                               startedAt: st.active.startedAt, sweptAt: st.active.endedAt, finalElo: st.active.finalElo }, null, 1));
+  atomicWrite(cur.file, JSON.stringify({ committee: true, id, spec: cur.spec, members: cur.members, depth: cur.depth,
+                                         startedAt: cur.startedAt, sweptAt: cur.endedAt, facesMet: cur.facesMet,
+                                         finalElo: cur.finalElo }, null, 1));
   writeState(dir, st);
 }
 
-module.exports = { makeBrain, pickAuto, parseSpec, resolveLeagueCommittee, activeLeagueCommittee, markSwept };
+module.exports = { makeBrain, pickAuto, parseSpec, parseOpts, SWEEP_FACES,
+                   resolveLeagueCommittees, activeLeagueCommittees, markSwept };
