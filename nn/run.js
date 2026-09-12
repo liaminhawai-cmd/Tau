@@ -1525,7 +1525,12 @@ function startSelfplayBatch() {
   // "[evolution] fixed-rung training reference" line), so printing it as THE mix used to mislead
   // once that override existed. Labelled a starting point now; read the follow-up line for the real
   // split actually played.
-  log(`self-play batch ${num} starting: ${gamesPerBatch} games (mix ${mix} default, ${workers} workers${poolNote}${sharedNote}${weightNote}${coverageNote})`);
+  // selfplay.js overrides the seats, the rungs, the mix and first coverage from live evidence (its
+  // own "[evolution]" lines say what is really played), so this line reports only what run.js
+  // itself decides. The old ZPD pool/shared-pool readout here was being read as the real draw.
+  log(`self-play batch ${num} starting: ${gamesPerBatch} games, ${workers} worker(s); seats, ladder rungs and mix ` +
+      `are decided by selfplay.js from live ratings (see its [evolution] lines)`);
+  void poolNote; void sharedNote; void weightNote; void coverageNote; void mix;
   statusState.batch = num;
   statusState.mix = fs.existsSync(best) ? '(see selfplay log: fixed-rung training reference)' : '(no model yet — pure ladder)';
   // Self-play games now feed the rating pool as well as the training corpus. They always knew both
