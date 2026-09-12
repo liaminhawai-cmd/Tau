@@ -94,7 +94,7 @@ for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])
     const a=['--faces',faces.join(','),'--levels',levels.join(','),'--summary',summary,
       '--out',get(original,'out',path.join(dir,'elo-results.json')),
       '--games',get(original,'ratingGames','2')];
-    for(const n of ['budgetHours','workers','saveData','bootstrap','targetGames','openingPlies'])forward(original,a,n);
+    for(const n of ['budgetHours','workers','saveData','bootstrap','targetGames','openingPlies','committeeLanes'])forward(original,a,n);
     if(has(original,'refit'))a.push('--refit');if(has(original,'dryrun'))a.push('--dryrun');if(cms.length)a.push('--committee');
     const sd=get(original,'saveData',null);
     // L7 and up are rated twice (as themselves and opening with the corner cross, see elorank-legacy)
