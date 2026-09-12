@@ -183,11 +183,25 @@
   // from RT/LT with the analog pull as the speed. Both keep the D-pad on the foot and the left
   // stick on the camera.
   const PAD_SCHEMES = ['triggers','stick'];
+  // The keyboard's bindings, by action. Rebindable from the Controls section (desktop only: the
+  // app has no keyboard, and a controller is remapped by Steam Input rather than here). Esc and F1
+  // are fixed: the way out of a menu and the way to this sheet should never be something a player
+  // can bind away from themselves.
+  const KEY_ACTIONS = [
+    ['pin1','Pin foot 1'], ['pin2','Pin foot 2'], ['pin3','Pin foot 3'],
+    ['swingLeft','Swing anticlockwise'], ['swingRight','Swing clockwise'],
+    ['commit','Pin · end your turn'], ['cancel','Cancel the swing'],
+    ['shrink','Shrink the flat board'], ['grow','Grow the flat board'],
+  ];
+  const DEFAULT_KEYS = { pin1:'1', pin2:'2', pin3:'3', swingLeft:'ArrowLeft', swingRight:'ArrowRight',
+    commit:'Enter', cancel:'Backspace', shrink:'[', grow:']' };
   const settings = { level:4, colour:0, quality:'balanced', board:'walnut', padScheme:'triggers',
-    invertCamY:false,
+    invertCamY:false, keys:{...DEFAULT_KEYS},
     reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches, haptics:true };
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    if (saved.keys && typeof saved.keys === 'object')
+      for (const [action] of KEY_ACTIONS) if (typeof saved.keys[action] === 'string' && saved.keys[action]) settings.keys[action] = saved.keys[action];
     if (Number.isInteger(saved.level) && saved.level >= 1 && saved.level <= LADDER_N) settings.level = saved.level;
     if (saved.colour === 0 || saved.colour === 1) settings.colour = saved.colour;
     if (['balanced','high'].includes(saved.quality)) settings.quality = saved.quality;
@@ -224,34 +238,31 @@
   const home = document.createElement('section');
   home.className = 'desktop-home';
   home.setAttribute('aria-label','Main menu');
+  // The web app's menu, in the same words and the same order, on the premium presentation: the
+  // gold Play (with its opponent and colour) up top, then the web's own entries. "Local 1v1" lives
+  // inside 1v1 exactly as it does there, and Watch IS the replays screen, so neither gets a second
+  // door here. No tagline or caption under the logo: the board behind it says what the game is.
   home.innerHTML = `<img class="desktop-logo" src="tau-logo.png" alt="Tau" width="220" height="62">
-    <h2>A delicate<br>balance.</h2>
-    <p class="desktop-intro">Pin a foot. Swing the other two.<br>Push your opponent off the board.</p>
     <button class="desktop-primary" id="desktopPlay">Play</button>
     <div class="desktop-choices">
       <label>Opponent<select id="desktopLevel" aria-label="Opponent level"></select></label>
       <label>You play<select id="desktopColour" aria-label="Your colour"><option value="0">Blue · first</option><option value="1">Red · second</option></select></label>
     </div>
     <nav class="desktop-links" aria-label="Other ways to play">
-      <button id="desktopLocal">Two players · same screen</button>
-      <button id="desktopOnline">Play online</button>
-      <button id="desktopLearn">Learn to play</button>
-      <button id="desktopLevels">Ranked &amp; levels</button>
+      <button id="desktopLevels">vs AI</button>
+      <button id="desktopOnline">1v1</button>
+      <button id="desktopWatch">Watch</button>
+      <button id="desktopLearn">How to play</button>
+      <button id="desktopLeaderboard">Leaderboard</button>
+      <button id="desktopSteel">Get a physical set</button>
     </nav>
-    <div class="desktop-home-bottom"><button id="desktopSettings">Settings</button><button id="desktopWatch">Replays</button><button id="desktopLab">Lab</button><button id="desktopQuit" hidden>Quit</button></div>`;
+    <div class="desktop-home-bottom"><button id="desktopSettings">Settings</button><button id="desktopControls">Controls</button><button id="desktopLab">Lab</button><button id="desktopQuit" hidden>Quit</button></div>`;
   $('menu').appendChild(home);
-  const materialLabel = document.createElement('div');
-  materialLabel.className = 'desktop-material'; materialLabel.textContent = 'Walnut · metal · brass';
-  $('menu').appendChild(materialLabel);
-  if (!renderer) {
-    root.classList.add('desktop-overhead');
-    materialLabel.textContent = 'Overhead mode · 3D unavailable';
-  }
+  if (!renderer) root.classList.add('desktop-overhead');
   const toolbar = document.createElement('div');
   toolbar.className = 'desktop-toolbar';
   toolbar.innerHTML = `<button class="desktop-brand" id="desktopHome" aria-label="Open pause menu">TAU</button>
-    <button class="desktop-menu" id="desktopPause">Menu <kbd>Esc</kbd></button>
-    <div class="desktop-input-hint" id="desktopInputHint">Drag a foot to swing<br>Right-drag the 3D view to look around<br>Scroll over the flat board to resize it</div>`;
+    <button class="desktop-menu" id="desktopPause">Menu <kbd>Esc</kbd></button>`;
   document.body.appendChild(toolbar);
   for (let n=1;n<=LADDER_N;n++) {
     const opt = document.createElement('option'); opt.value = String(n); opt.textContent = 'Level ' + n;
@@ -270,11 +281,15 @@
     focusBoard();
   }
   $('desktopPlay').onclick = () => startMatch();
-  $('desktopLocal').onclick = () => startMatch(true);
-  $('desktopOnline').onclick = () => $('modeOnline').click();
-  $('desktopLearn').onclick = () => $('howToPlayBtn').click();
+  // Every entry routes to the web app's own handler for that button, so the two menus can never
+  // drift apart in what they do -- only in how they look.
   $('desktopLevels').onclick = () => $('modeAI').click();
+  $('desktopOnline').onclick = () => $('modeOnline').click();
   $('desktopWatch').onclick = () => $('watchBtn').click();
+  $('desktopLearn').onclick = () => $('howToPlayBtn').click();
+  $('desktopLeaderboard').onclick = () => $('leaderboardBtn').click();
+  $('desktopSteel').onclick = () => $('steelBtn').click();
+  $('desktopControls').onclick = openControls;
   // The six art-directed premium boards (noir/math/sumo/cosy/alien/colossus) — the attract-mode
   // page the wrapper also reaches with F2; its "full game →" link returns here.
   // The analysis lab: brains on the bench, custom openings, position tools (the #lab dev route,
@@ -321,7 +336,7 @@
     // The match keeps going under this menu, offline as much as online: an opponent mid-swing
     // finishes its swing, and you can change the board or check the controls while it thinks.
     // The board stays visible behind the sheet (no blur on the backdrop) so you see it happen.
-    showModal('Match menu', 'The match continues while this menu is open.', [
+    showModal('Match menu', '', [
       { label:'Continue', onClick:() => focusBoard() },
       { label:'Controls', onClick:openControls },
       { label:'Settings', onClick:openSettings },
@@ -332,46 +347,109 @@
   // One place that answers "what do the buttons do". Built from the live settings rather than
   // written out twice, so switching controller scheme changes what this says — a reference sheet
   // that can disagree with the actual bindings is worse than none.
-  function controlsRows() {
-    const swing = settings.padScheme === 'triggers'
-      ? ['LT / RT', 'Swing — pull harder to turn faster']
-      : ['Right stick ← →', 'Swing — push further to turn faster'];
-    return [
-      ['h', 'Controller'],
-      ['D-pad ← →', 'Choose which foot to pin'],
-      ['A', 'Pin that foot · end your turn'],
-      swing,
-      ['B', 'Cancel the swing'],
-      ['LB / RB', 'Shrink · grow the flat board'],
-      ['Left stick', 'Move the camera'],
-      ['Y', 'These controls'],
-      ['Start', 'Match menu'],
-      ['h', 'Mouse'],
-      ['Click a foot', 'Pin it'],
-      ['Drag another', 'Swing around the pinned foot'],
-      ['Right-drag', 'Look around the 3D view'],
-      ['Scroll the flat board', 'Resize it'],
-      ['Drag the rim knob', 'Resize it precisely'],
-      ['h', 'Keyboard'],
-      ['1 – 3', 'Pin a foot · re-pick'],
-      ['← →', 'Swing'],
-      ['Enter', 'End your turn'],
-      ['Backspace', 'Cancel the swing'],
-      ['[ ]', 'Shrink · grow the flat board'],
-      ['Esc', 'Match menu'],
-      ['F1', 'These controls'],
-      ['F11 · F2', 'Fullscreen · showcase boards'],
-    ];
+  // The Controls section: the inputs DRAWN, each key and button wearing the name of what it does,
+  // rather than a table to read down. The keyboard is built from the live bindings so a rebind
+  // redraws it; the pad from the chosen scheme. Both pictures are inline SVG, so they follow the
+  // sheet's colours and scale with it.
+  const keyName = k => ({ArrowLeft:'←',ArrowRight:'→',ArrowUp:'↑',ArrowDown:'↓',' ':'Space',Escape:'Esc'})[k]
+    || (k.length === 1 ? k.toUpperCase() : k);
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // One key: a cap with its name, and the action written under it.
+  const keyCap = (x, y, w, name, action, bound) =>
+    `<rect class="k${bound?' bound':''}" x="${x}" y="${y}" width="${w}" height="26" rx="5"/>
+     <text x="${x+w/2}" y="${y+13}">${esc(name)}</text>
+     <text class="cap" x="${x+w/2}" y="${y+38}">${esc(action)}</text>`;
+  function keyboardSvg() {
+    const K = settings.keys, k = (x,y,w,action,name,bound=true) => keyCap(x,y,w,name,action,bound);
+    const touch = typeof isNativeApp === 'function' && isNativeApp();
+    return `<svg class="desktop-diagram" viewBox="0 0 440 160" role="img" aria-label="Keyboard controls">
+      ${k(8,10,40,'menu','Esc',false)}${k(54,10,40,'controls','F1',false)}
+      ${k(130,10,34,'foot 1',keyName(K.pin1))}${k(170,10,34,'foot 2',keyName(K.pin2))}${k(210,10,34,'foot 3',keyName(K.pin3))}
+      ${k(290,10,78,'cancel swing',keyName(K.cancel))}${k(374,10,58,'end turn',keyName(K.commit))}
+      ${k(130,66,34,'',keyName(K.shrink))}${k(170,66,34,'',keyName(K.grow))}<text class="cap" x="167" y="104">flat board size</text>
+      ${k(290,66,50,'swing ↺',keyName(K.swingLeft))}${k(346,66,50,'swing ↻',keyName(K.swingRight))}
+      ${touch
+        ? `<text class="cap" x="220" y="134">Touch: tap a foot to pin it · drag another foot to swing</text>
+           <text class="cap" x="220" y="150">Drag the 3D view to look around</text>`
+        : `<text class="cap" x="220" y="134">Mouse: click a foot to pin it · drag another foot to swing · right-drag to look around</text>
+           <text class="cap" x="220" y="150">Scroll the flat board, or drag its rim knob, to resize it</text>`}
+    </svg>`;
   }
+  function controllerSvg() {
+    const triggers = settings.padScheme === 'triggers';
+    const label = (x, y, text, anchor='middle') => `<text class="cap" x="${x}" y="${y}" style="text-anchor:${anchor}">${esc(text)}</text>`;
+    const lead = (x1,y1,x2,y2) => `<line class="lead" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+    // Labels sit in 110px margins either side of the pad, anchored to its edge, so nothing runs off
+    // the picture; the trigger note goes underneath rather than stretching a label.
+    return `<svg class="desktop-diagram" viewBox="0 0 520 224" role="img" aria-label="Controller controls">
+      <rect class="body" x="160" y="60" width="200" height="110" rx="40"/>
+      <rect class="k" x="180" y="34" width="52" height="16" rx="6"/><text x="206" y="42">LB</text>
+      <rect class="k" x="288" y="34" width="52" height="16" rx="6"/><text x="314" y="42">RB</text>
+      <rect class="k${triggers?' bound':''}" x="186" y="14" width="40" height="14" rx="5"/><text x="206" y="21">LT</text>
+      <rect class="k${triggers?' bound':''}" x="294" y="14" width="40" height="14" rx="5"/><text x="314" y="21">RT</text>
+      <circle class="k bound" cx="200" cy="95" r="16"/><text x="200" y="95">L</text>
+      <circle class="k${triggers?'':' bound'}" cx="290" cy="135" r="16"/><text x="290" y="135">R</text>
+      <rect class="k bound" x="218" y="122" width="34" height="34" rx="6"/><text x="235" y="139">✚</text>
+      <circle class="k bound" cx="322" cy="80" r="9"/><text x="322" y="80">Y</text>
+      <circle class="k bound" cx="340" cy="98" r="9"/><text x="340" y="98">B</text>
+      <circle class="k bound" cx="322" cy="116" r="9"/><text x="322" y="116">A</text>
+      <circle class="k" cx="304" cy="98" r="9"/><text x="304" y="98">X</text>
+      <rect class="k bound" x="252" y="80" width="18" height="8" rx="3"/>
+      ${lead(186,21,116,21)}${label(112,21,triggers?'LT · swing ↺':'LT · unused','end')}
+      ${lead(180,42,116,42)}${label(112,42,'LB · smaller board','end')}
+      ${lead(160,95,116,95)}${label(112,95,'left stick · camera','end')}
+      ${lead(218,139,116,139)}${label(112,139,'D-pad ← → · foot','end')}
+      ${lead(334,21,404,21)}${label(408,21,triggers?'RT · swing ↻':'RT · unused','start')}
+      ${lead(340,42,404,42)}${label(408,42,'RB · bigger board','start')}
+      ${lead(331,80,404,72)}${label(408,72,'Y · controls','start')}
+      ${lead(349,98,404,98)}${label(408,98,'B · cancel swing','start')}
+      ${lead(331,116,404,124)}${label(408,124,'A · pin · end turn','start')}
+      ${lead(306,135,404,152)}${label(408,152,triggers?'right stick · unused':'right stick ← → · swing','start')}
+      ${lead(261,80,261,186)}${label(261,194,'Start · match menu')}
+      ${label(260,214,triggers?'Triggers: the harder you pull, the faster it turns':'Right stick: the further you push, the faster it turns')}
+    </svg>`;
+  }
+  // Rebinding is a keyboard thing on desktop. The app has no keyboard, and a controller is
+  // remapped by Steam Input (Steam → Settings → Controller) at the Steam level, per game, so an
+  // in-game remap would only fight it.
+  const canRebind = () => !(typeof isNativeApp === 'function' && isNativeApp());
+  let rebindListener = null;
+  function stopRebind() { if (rebindListener) { removeEventListener('keydown', rebindListener, true); rebindListener = null; } }
   function openControls() {
-    const html = controlsRows().map(([k, v]) => k === 'h'
-      ? `<h3 class="desktop-controls-head">${v}</h3>`
-      : `<div class="desktop-controls-row"><kbd>${k}</kbd><span>${v}</span></div>`).join('');
-    // isHtml (4th) must be true: showModal writes a plain-text body with textContent, which would
-    // print this markup as literal angle brackets rather than rendering it.
-    showModal('Controls', `<div class="desktop-controls">${html}</div>`, [
-      { label:'Done', onClick:() => focusBoard() },
-    ], true, {dismiss:true});
+    stopRebind();
+    const rebindRows = canRebind() ? `<div class="desktop-rebind">${KEY_ACTIONS.map(([a, what]) =>
+        `<span>${esc(what)}</span><button type="button" data-rebind="${a}">${esc(keyName(settings.keys[a]))}</button>`).join('')}
+      <span></span><button type="button" id="desktopKeysReset">Reset keys</button></div>
+      <p class="desktop-controls-note">Click a key to change it, then press the new one. Esc and F1 stay as they are.${window.tauSteam ? ' Controllers are remapped in Steam’s own controller settings.' : ''}</p>` : '';
+    showModal('Controls', `<div id="desktopKeyboardDiagram">${keyboardSvg()}</div>
+      <div class="desktop-controls-scheme"><span class="desktop-controls-note" style="margin:0">Controller · swing with</span>
+        <select id="desktopPadScheme" aria-label="Controller scheme"><option value="triggers">Triggers</option><option value="stick">Right stick</option></select></div>
+      <div id="desktopPadDiagram">${controllerSvg()}</div>${rebindRows}`, [
+      { label:'Done', onClick:() => { stopRebind(); if (inMatch()) focusBoard(); } },
+    ], true, {dismiss:stopRebind});
+    $('desktopPadScheme').value = settings.padScheme;
+    $('desktopPadScheme').onchange = e => { settings.padScheme = e.target.value; saveSettings(); $('desktopPadDiagram').innerHTML = controllerSvg(); };
+    if (!canRebind()) return;
+    const redraw = () => {
+      $('desktopKeyboardDiagram').innerHTML = keyboardSvg();
+      for (const b of $('modalBox').querySelectorAll('[data-rebind]')) { b.textContent = keyName(settings.keys[b.dataset.rebind]); b.classList.remove('listening'); }
+    };
+    for (const b of $('modalBox').querySelectorAll('[data-rebind]')) b.onclick = () => {
+      stopRebind(); redraw(); b.classList.add('listening'); b.textContent = '…';
+      // Captured on the WINDOW so it runs before the game's own document-level keydown handler;
+      // Esc backs out of the rebind without also closing the sheet.
+      rebindListener = e => {
+        e.preventDefault(); e.stopImmediatePropagation(); stopRebind();
+        if (e.key !== 'Escape' && e.key !== 'F1') {
+          const action = b.dataset.rebind;
+          for (const [other] of KEY_ACTIONS) if (other !== action && settings.keys[other] === e.key) settings.keys[other] = DEFAULT_KEYS[other] === e.key ? '' : DEFAULT_KEYS[other];   // one key, one job
+          settings.keys[action] = e.key; saveSettings();
+        }
+        redraw();
+      };
+      addEventListener('keydown', rebindListener, true);
+    };
+    $('desktopKeysReset').onclick = () => { stopRebind(); settings.keys = {...DEFAULT_KEYS}; saveSettings(); redraw(); };
   }
   // Grow or shrink the flat board. The corner layout is the only one with a board to resize, so
   // outside it this is a no-op rather than quietly moving a split nothing is showing.
@@ -382,7 +460,7 @@
     saveViewSplit();
   }
   function confirmLeave() {
-    showModal('Leave this match?', 'The current game will end.', [
+    showModal('Leave this match?', '', [
       {label:'Keep playing',onClick:() => focusBoard()},
       {label:'Leave match',onClick:backToMenu},
     ], false, {dismiss:true});
@@ -394,16 +472,13 @@
       <label class="desktop-setting">Board<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${b.name}</option>`:`<option value="${b.id}" disabled>${b.name} · ${unlockText(b.id)}</option>`).join('')}</select></label>
       ${testBoards ? '<p class="desktop-result-detail">All boards are open for testing. Type <b>ALLBOARDS</b> on the main menu to restore locks.</p>' : ''}
       <label class="desktop-setting">Graphics<select id="desktopQuality"><option value="balanced">Balanced</option><option value="high">High</option></select></label>
-      <label class="desktop-setting">Controller<select id="desktopPadScheme"><option value="triggers">Triggers · pull to swing</option><option value="stick">Right stick · push to swing</option></select></label>
       <label class="desktop-setting">Invert camera Y<input id="desktopInvertY" type="checkbox" ${settings.invertCamY?'checked':''}></label>
       <label class="desktop-setting">Reduce camera motion<input id="desktopMotion" type="checkbox" ${settings.reducedMotion?'checked':''}></label>
       <label class="desktop-setting">Controller vibration<input id="desktopHaptics" type="checkbox" ${settings.haptics?'checked':''}></label>
-      ${fullscreen ? '<label class="desktop-setting">Fullscreen<input id="desktopFullscreen" type="checkbox"></label>' : ''}
-      <p class="desktop-result-detail">Keyboard: 1–3 choose a foot; ← → swing; Enter ends your turn.<br>Controller: the D-pad always chooses the foot; A pins or ends the turn; B cancels. <b>Sticks</b> — push the right stick out to any direction, then turn it: the piece follows the stick degree for degree, and the left stick moves the camera. <b>Triggers</b> — RT turns clockwise, LT anticlockwise, and the harder you pull the faster it turns.${window.tauSteam ? ' F2 flips between the game and the showcase boards.' : ''}</p>`,
+      ${fullscreen ? '<label class="desktop-setting">Fullscreen<input id="desktopFullscreen" type="checkbox"></label>' : ''}`,
       [{label:'Done',onClick:() => { if(inMatch()) focusBoard(); }}], true, {dismiss:true});
     $('desktopQuality').value = settings.quality;
     $('desktopBoard').value = settings.board;
-    $('desktopPadScheme').value = settings.padScheme;
     $('desktopBoard').onchange = e => {
       if (!isUnlocked(e.target.value)) { e.target.value = settings.board; return; }
       settings.board=e.target.value; saveSettings();
@@ -411,7 +486,6 @@
       applyTheme();       // repaints the flat board from the same entry's palette
       render();
     };
-    $('desktopPadScheme').onchange = e => { settings.padScheme=e.target.value; saveSettings(); };
     $('desktopInvertY').onchange = e => { settings.invertCamY=e.target.checked; saveSettings(); };
     $('desktopVolume').oninput = e => {
       setUserVol(Number(e.target.value)); $('desktopVolumeValue').textContent = userVol+'%'; $('desktopMute').checked = !soundOn;
@@ -1088,11 +1162,6 @@
         if(canPlay())v3HoverIdx=G.pinned===null?chosenFoot:G.pinned;
       }
       padButtons=currentPad.buttons.map(b=>b.pressed);
-      $('desktopInputHint').innerHTML = '<kbd>D-pad ← →</kbd> choose foot · <kbd>A</kbd> pin / end<br>'
-        + (settings.padScheme==='triggers'
-            ? '<kbd>LT / RT</kbd> swing — press harder to go faster'
-            : '<kbd>Right stick ← →</kbd> swing')
-        + ' · <kbd>Left stick</kbd> camera<br>Scroll over the flat board to resize it';
     } else { padButtons=[]; padAxisLatch=false; }
     if(heldLeft||heldRight)swing((heldRight?1:0)-(heldLeft?1:0),dt);
     tickEffects(dt);
@@ -1113,18 +1182,19 @@
       if((e.shiftKey&&i<=0)||(!e.shiftKey&&(i===els.length-1||i<0))){e.preventDefault();els[e.shiftKey?els.length-1:0].focus();}return;
     }
     if(/INPUT|SELECT|TEXTAREA|BUTTON/.test(e.target.tagName)||!canPlay())return;
-    if(/^[123]$/.test(e.key)){e.preventDefault();chooseFoot(Number(e.key)-1);if(G.pinned===null)pinOrCommit();}
-    if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
-      e.preventDefault(); heldLeft=e.key==='ArrowLeft'; heldRight=e.key==='ArrowRight';
+    const K=settings.keys, pinIdx=[K.pin1,K.pin2,K.pin3].indexOf(e.key);
+    if(pinIdx>=0){e.preventDefault();chooseFoot(pinIdx);if(G.pinned===null)pinOrCommit();}
+    if(e.key===K.swingLeft||e.key===K.swingRight){
+      e.preventDefault(); heldLeft=e.key===K.swingLeft; heldRight=e.key===K.swingRight;
       // A quick tap is a useful precision step; holding continues smoothly on animation frames.
       if(!e.repeat)swing(heldRight?1:-1,.08);
     }
-    if(e.key==='Enter'&&!e.repeat){e.preventDefault();pinOrCommit();}
-    if(e.key==='Backspace'){e.preventDefault();cancelSwing();}
-    if(e.key==='['){e.preventDefault();resizeBoard(-0.06);}
-    if(e.key===']'){e.preventDefault();resizeBoard(+0.06);}
+    if(e.key===K.commit&&!e.repeat){e.preventDefault();pinOrCommit();}
+    if(e.key===K.cancel){e.preventDefault();cancelSwing();}
+    if(e.key===K.shrink){e.preventDefault();resizeBoard(-0.06);}
+    if(e.key===K.grow){e.preventDefault();resizeBoard(+0.06);}
   },true);
-  addEventListener('keyup',e=>{if(e.key==='ArrowLeft')heldLeft=false;if(e.key==='ArrowRight')heldRight=false;});
+  addEventListener('keyup',e=>{if(e.key===settings.keys.swingLeft)heldLeft=false;if(e.key===settings.keys.swingRight)heldRight=false;});
   addEventListener('blur',()=>{heldLeft=heldRight=false;if(inMatch()&&!G.over&&!dialogOpen()&&!onlineMatch&&!$('htpFull'))openPause();});
   $('view3d').tabIndex=0;
   $('view3d').setAttribute('aria-label','Game board. Click a foot to pin it, then drag another foot to swing. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.');
@@ -1137,6 +1207,8 @@
   window.tauDesktop={
     get paused(){return paused;},
     get menuOpen(){return dialogOpen();},
+    startMatch,
+    get keys(){return {...settings.keys};},
     get skin(){return finish().skin;},
     get padScheme(){return settings.padScheme;},
     set padScheme(v){ if(PAD_SCHEMES.includes(v)){ settings.padScheme=v; saveSettings(); } },

@@ -15,8 +15,6 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .desktop-home { z-index:2; position:absolute; left:clamp(28px,5vw,90px); top:50%; transform:translateY(-50%); width:clamp(270px,27vw,350px); }
 .desktop-home { transform-origin:0 50%; padding:6px; margin-left:-6px; }   /* scaled to the window's height by fitHome(), never scrolled */
 .desktop-logo { display:block; width:220px; max-width:80%; height:auto; filter:brightness(0) invert(.91) sepia(.18); margin:0 0 32px; }
-.desktop-home h2 { font:400 clamp(30px,3.2vw,48px)/1.12 Georgia,serif; letter-spacing:-.025em; margin:0 0 18px; color:var(--paper); }
-.desktop-intro { margin:0 0 28px; max-width:270px; color:var(--muted); font-size:16px; line-height:1.65; }
 .desktop-primary { width:100%; min-height:56px; border:1px solid #e2c38d; background:linear-gradient(115deg,#e4c58d,#ba965d); color:#191c15; font-weight:600!important; border-radius:3px; padding:14px 22px; box-shadow:0 7px 30px #0003; transition:filter .15s,transform .15s; }
 .desktop-primary:hover { filter:brightness(1.08); transform:translateY(-1px); }
 .desktop-choices { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:16px 0 24px; }
@@ -28,7 +26,6 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .desktop-home-bottom { display:flex; align-items:center; gap:25px; margin-top:24px; padding-top:18px; border-top:1px solid var(--edge); }
 .desktop-home-bottom button { border:0; background:transparent; color:var(--muted); padding:6px 0; font-size:14px; }
 .desktop-home-bottom button:hover { color:var(--paper); }
-.desktop-material { position:fixed; z-index:2; bottom:28px; right:34px; color:#b5aa91; font-size:12px; letter-spacing:.16em; text-transform:uppercase; pointer-events:none; }
 .tau-desktop #acctStatus { z-index:3; position:absolute; left:clamp(28px,5vw,90px); bottom:22px; margin:0; color:#b4ab99; font-size:12px; max-width:320px; text-align:left; }
 .tau-desktop #acctStatus button { color:var(--gold); font-size:12px; }
 .tau-desktop #game { width:100%; height:100%; padding:0; margin:0; }
@@ -74,8 +71,6 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .desktop-brand { top:24px; left:24px; border:0; background:transparent; font:400 25px Georgia,serif; letter-spacing:5px; }
 .desktop-menu { top:24px; right:24px; }
 .desktop-menu kbd { font:11px inherit; color:var(--muted); margin-left:13px; border:1px solid var(--edge); border-radius:3px; padding:2px 5px; }
-.desktop-input-hint { position:absolute; right:26px; bottom:27px; max-width:190px; color:var(--muted); font-size:12px; line-height:1.6; text-align:right; }
-.desktop-input-hint kbd { font:inherit; color:var(--paper); }
 .tau-desktop #replayBtns { pointer-events:auto; justify-content:center; flex-wrap:wrap; }
 .tau-desktop #replayBtns button { font-size:13px; padding:9px 12px; border:1px solid var(--edge); background:#172018; color:var(--paper); }
 .tau-desktop #modalBackdrop { z-index:110; background:rgba(5,9,6,.30); padding:24px; box-sizing:border-box; }
@@ -100,7 +95,6 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .tau-desktop [hidden] { display:none!important; }
 .tau-desktop.desktop-overhead #view3d { display:none!important; }
 .tau-desktop.desktop-overhead #demoCanvas { display:block; position:absolute; right:5%; top:50%; transform:translateY(-50%); border:0; border-radius:50%; }
-.tau-desktop.desktop-overhead .desktop-input-hint { display:none; }
 .desktop-result-mark { display:block; width:44px; height:3px; background:var(--gold); margin:0 0 20px; }
 .desktop-result-detail { margin:0; color:var(--muted); }
 .tau-desktop #acctPanel { z-index:20; background:#192117; border:1px solid var(--edge); color:var(--paper); box-shadow:0 20px 80px #0008; }
@@ -122,9 +116,6 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .tau-desktop.desktop-pale-room #meta,
 .tau-desktop.desktop-pale-room #help { color:#23272e!important; text-shadow:0 1px 2px #ffffffb0; }
 .tau-desktop.desktop-pale-room .desktop-brand { color:#1d2026; }
-.tau-desktop.desktop-pale-room .desktop-input-hint { color:#3a3f47; }
-.tau-desktop.desktop-pale-room .desktop-input-hint kbd { color:#1d2026; }
-.tau-desktop.desktop-pale-room .desktop-material { color:#4a4a42; }
 /* The controls sheet: two columns of key-then-meaning, so the eye runs down the bindings rather
    than reading sentences. Scrolls inside the modal, which already caps its own height. */
 .desktop-controls { display:grid; grid-template-columns:auto 1fr; gap:7px 14px; align-items:baseline;
@@ -136,13 +127,30 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .desktop-controls-row kbd { justify-self:start; font:12px/1.5 "Segoe UI",system-ui,sans-serif; color:var(--paper);
   border:1px solid var(--edge); border-radius:4px; padding:3px 7px; white-space:nowrap; background:#0000003d; }
 .desktop-controls-row span { color:var(--muted); font-size:14px; }
+/* The Controls section draws the inputs instead of listing them: a keyboard cluster and a pad,
+   each key/button carrying the name of what it does. The keyboard picture is built from the
+   live bindings, so a rebind redraws it. */
+.desktop-diagram { display:block; width:100%; max-width:440px; margin:4px auto 10px; overflow:visible; }
+.desktop-diagram .k { fill:#0000003d; stroke:var(--edge); stroke-width:1; }
+.desktop-diagram .k.bound { stroke:var(--gold); }
+.desktop-diagram .body { fill:#0000002e; stroke:var(--edge); stroke-width:1.2; }
+.desktop-diagram text { font:11px "Segoe UI",system-ui,sans-serif; fill:var(--paper); text-anchor:middle; dominant-baseline:middle; }
+.desktop-diagram .cap { font-size:10px; fill:var(--muted); }
+.desktop-diagram .lead { stroke:var(--edge); stroke-width:1; }
+.desktop-rebind { display:grid; grid-template-columns:1fr auto; gap:5px 12px; align-items:center; text-align:left; margin-top:6px; }
+.desktop-rebind span { color:var(--muted); font-size:13px; }
+.desktop-rebind button { font:12px/1.5 "Segoe UI",system-ui,sans-serif; border:1px solid var(--edge); border-radius:4px;
+  padding:3px 9px; min-width:54px; background:#0000003d; color:var(--paper); }
+.desktop-rebind button.listening { border-color:var(--gold); color:var(--gold); }
+.desktop-controls-note { color:var(--muted); font-size:13px; margin:10px 0 0; text-align:left; }
+.desktop-controls-note b { color:var(--paper); font-weight:500; }
+.desktop-controls-scheme { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:2px 0 8px; text-align:left; }
 /* Replay captions and controls follow the 3D view's centre. The flat board sits above the controls,
    with its normal size preference held for the return to play. */
 .tau-desktop.desktop-watching #topHud { left:var(--desktop-view-center,50%)!important; }
 .tau-desktop.desktop-watching #bottomHud { inset:auto auto 25px!important;
   left:var(--desktop-view-center,50%)!important; width:calc(var(--desktop-view-width,100vw) - 40px);
   transform:translateX(-50%); }
-.tau-desktop.desktop-watching .desktop-input-hint { display:none; }
 
 /* Soft, rounded controls and open spacing carry the chrome without ruled separators. */
 .desktop-primary,.desktop-brand,.desktop-menu,.desktop-menu kbd,

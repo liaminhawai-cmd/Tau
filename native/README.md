@@ -251,7 +251,7 @@ whole game in a few hundred milliseconds); the render loop holds the pieces
 still until the recorded tail is ready, so arriving at the menu no longer shows a
 game flashing by at speed.
 
-**Learn to play** draws the same tripod the match does on its flat board: legs at
+**How to play** draws the same tripod the match does on its flat board: legs at
 the tube's diameter, the crown, the tube-end feet with their pins, in the board
 skin's own piece colours, beside the 3D view of the real thing; the whole-game
 preview plays at a pace that can be followed. On the 3D pane the foot you hold
@@ -318,6 +318,36 @@ for a beat before being tucked away, same as before. The how-to-play finale
 and the goal-slide ending share the exact same fall physics, so they land on
 the same floor with the same thump instead of running to their own distance
 cutoffs.
+
+The premium home menu (Steam and the app) now uses the web app's own words
+and shape -- Play (gold, with opponent and colour), then vs AI · 1v1 · Watch ·
+How to play · Leaderboard · Get a physical set, and Settings · Controls · Lab
+underneath -- every entry routing to the web's own handler for that button.
+Local 1v1 lives inside 1v1 as it does there. The tagline, the "A delicate
+balance" heading, the material caption, the corner input hint, the subtitles
+under the match menu and the leave confirm, and the in-match "Step 1 / Step
+2" coaching lines are all gone from the premium presentation; the web build
+keeps its coaching lines.
+
+**Controls** is its own section (home menu, match menu, F1, Y on a pad): a
+drawn keyboard cluster and a drawn controller, each key and button carrying
+the name of what it does, with the controller scheme switch. On desktop the
+keyboard is rebindable from the same sheet -- click a key, press the new one;
+one key does one job; Esc and F1 stay fixed. Bindings live in
+`tauDesktopSettingsV1.keys`. Controllers are remapped by Steam Input rather
+than in-game, and the app (no keyboard) shows the pictures without rebinding.
+
+Sound: a shove still clicks once on first contact, and while the legs stay
+pressed together AND moving it now plays one resonant drag instead -- the
+board's noise through a narrow bandpass, pitched by where on the leg the
+contact sits (`pushContactFoot`, 0 hub .. 1 foot): high near the foot like
+the free end of a ruler, low near the body. Silent at rest and out of contact.
+
+Fixed: on the phone, tapping the in-match Menu button opened the menu and
+closed it in the same tap. The button opens on pointerdown; a touch tap then
+delivers its click to whatever is under the lift point -- the modal backdrop
+-- which counted as tap-outside. Tap-outside now requires the press to have
+started on the backdrop. A mouse never hit this.
 
 Play starts the selected AI level and side. Same-screen play is untimed. Esc
 opens the match menu. The match keeps going underneath it, offline or online, with

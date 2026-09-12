@@ -9,7 +9,7 @@ test('offline launch, keyboard move, pause and settings use the real game', asyn
   assert.ok(g.w.tauDesktop,'desktop script initialized');
   assert.deepEqual(g.errors,[]);
   assert.ok(g.w.document.documentElement.classList.contains('desktop-overhead'));
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   assert.equal(g.read('G.active'),0);
   assert.equal(g.read('turnClockMode()'),false);
   g.key('1');g.key('2');
@@ -38,6 +38,22 @@ test('offline launch, keyboard move, pause and settings use the real game', asyn
   assert.deepEqual(g.errors,[]);
 });
 
+test('a touch tap on the Menu button opens the match menu and leaves it open',async t=>{
+  // The button opens on pointerdown; a touch tap then delivers its click to whatever is under
+  // the lift point, which by then is the modal backdrop. That click must not count as tap-outside.
+  const g=await game();t.after(g.close);
+  g.$('desktopPlay').click();g.tick();
+  const ev=(el,type,init)=>el.dispatchEvent(new g.w.MouseEvent(type,{bubbles:true,cancelable:true,button:0,...init}));
+  ev(g.$('desktopPause'),'pointerdown');
+  assert.equal(g.$('modalTitle').textContent,'Match menu','opens on the press');
+  ev(g.$('modalBackdrop'),'click');   // the same tap's click, landing on the backdrop -- no press started there
+  assert.equal(g.$('modalBackdrop').style.display,'flex','the opening tap does not also dismiss it');
+  // A genuine tap outside (press AND release on the backdrop) still closes it.
+  ev(g.$('modalBackdrop'),'pointerdown'); ev(g.$('modalBackdrop'),'click');
+  assert.equal(g.$('modalBackdrop').style.display,'none','tap outside still dismisses');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('the opponent keeps playing under the match menu, and the board stays visible',async t=>{
   const g=await game();t.after(g.close);
   g.$('desktopLevel').value='1';g.$('desktopLevel').dispatchEvent(new g.w.Event('change'));
@@ -45,7 +61,7 @@ test('the opponent keeps playing under the match menu, and the board stays visib
   g.$('desktopPlay').click();
   g.$('desktopPause').click();g.tick();
   assert.equal(g.$('modalTitle').textContent,'Match menu');
-  assert.match(g.$('modalBody').textContent,/continues while this menu is open/);
+  assert.equal(g.$('modalBody').textContent,'','no subtitle under the match menu');
   // The menu does not stop the clock: the AI takes its turn while you are in Settings.
   const before=g.read('JSON.stringify(takeSnap())');
   g.tick(2600);
@@ -60,7 +76,7 @@ test('the opponent keeps playing under the match menu, and the board stays visib
 
 test('result offers same-mode rematch and returns to the desktop menu',async t=>{
   const g=await game();t.after(g.close);
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   // End-state fixture: result bookkeeping and rematch are the production handlers.
   g.read('G.over=true; G.winner=0; renderGameOverSheet()');g.tick();
   assert.equal(g.$('modalBtns').firstElementChild.textContent,'Rematch');
@@ -92,7 +108,7 @@ test('a real match hands board sizing to the shared layout, not a cut-down deskt
   assert.equal(g.$('desktopMap'),null,'the old overhead-toggle button is removed');
   assert.equal(Object.prototype.hasOwnProperty.call(
     JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')||'{}'), 'map'), false);
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   // Simulate WebGL being available (this harness has no real GPU) and confirm window.tauDesktop's
   // resize hook backs OFF while a match is on screen, instead of doing its own board sizing. That
   // hand-off is what puts BOTH builds through the one sizing function in index.html: the browser
@@ -107,7 +123,7 @@ test('a real match hands board sizing to the shared layout, not a cut-down deskt
 
 test('dragged out, the flat board takes over and the 3D view becomes the inset',async t=>{
   const g=await game();t.after(g.close);
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio:()=>{},getPixelRatio:()=>1,
     setSize(){},shadowMap:{}};
     camera=new THREE.PerspectiveCamera(38,1.6,1,2000); camera.position.set(0,145,148); camera.lookAt(0,4,0);
@@ -197,7 +213,7 @@ test('standard controller pins, swings, commits, cancels and opens the menu',asy
   // Triggers are the default scheme: hold RT to swing, let go to stop.
   const pull=(i,v,ms)=>{pad.buttons[i].value=v;pad.buttons[i].pressed=v>.5;g.tick(ms);
     pad.buttons[i].value=0;pad.buttons[i].pressed=false;g.tick();};
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   // The D-pad chooses the foot in every scheme.
   press(15);press(0);assert.equal(g.read('G.pinned'),1);
   pull(7,1,300);press(0);
@@ -220,7 +236,7 @@ test('the stick scheme turns at a speed set by how far the right stick is pushed
   const press=i=>{pad.buttons[i].pressed=true;g.tick();pad.buttons[i].pressed=false;g.tick();};
   const hold=(x,ms)=>{pad.axes[2]=x;g.tick(ms);pad.axes[2]=0;g.tick();};
   g.w.tauDesktop.padScheme='stick';
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   press(15);press(0);assert.equal(g.read('G.pinned'),1);
   // Half deflection for a fixed time, then the same time at full: further pushed turns further. The
   // window is kept short so the whole comparison stays inside the turn's crossing allowance —
@@ -255,7 +271,7 @@ test('the trigger scheme swings by how far the trigger is pulled, and the left s
     vibrationActuator:{playEffect:()=>Promise.resolve()}};
   g.w.navigator.getGamepads=()=>[pad];
   const press=i=>{pad.buttons[i].pressed=true;g.tick();pad.buttons[i].pressed=false;g.tick();};
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   g.w.tauDesktop.padScheme='triggers';
   assert.equal(g.w.tauDesktop.padScheme,'triggers');
   press(15);press(0);assert.equal(g.read('G.pinned'),1,'D-pad still picks the foot here');
@@ -301,7 +317,7 @@ test('choosing a board finish repaints the flat board and the 3D one from the sa
 
 test('the 3D view steps aside by exactly what the flat board needs, and not before',async t=>{
   const g=await game();t.after(g.close);
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio:()=>{},getPixelRatio:()=>1,
     setSize(){},shadowMap:{}};
     camera=new THREE.PerspectiveCamera(38,1.6,1,2000); camera.position.set(0,145,148); camera.lookAt(0,4,0);
@@ -333,7 +349,7 @@ test('the 3D view steps aside by exactly what the flat board needs, and not befo
 
 test('on a window taller than it is wide, the 3D view steps up rather than sideways',async t=>{
   const g=await game();t.after(g.close);
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   // The harness fixes a landscape window; turn it portrait before laying out.
   g.w.innerWidth=900; g.w.innerHeight=1200;
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio:()=>{},getPixelRatio:()=>1,
@@ -368,7 +384,7 @@ test('on a window taller than it is wide, the 3D view steps up rather than sidew
 
 test('the corner board is resizable by a knob on its rim and by scrolling over it',async t=>{
   const g=await game();t.after(g.close);
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio:()=>{},getPixelRatio:()=>1,
     setSize(){},shadowMap:{}};
     camera=new THREE.PerspectiveCamera(); controls={mouseButtons:{},target:new THREE.Vector3()};
@@ -393,22 +409,20 @@ test('the corner board is resizable by a knob on its rim and by scrolling over i
 
 test('the controls sheet lists the live bindings and the pad can resize the board',async t=>{
   const g=await game();t.after(g.close);
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   // F1 from anywhere. Rendered as real markup, not printed as literal tags: showModal writes a
   // plain-text body with textContent unless told otherwise, so this is the guard for that argument.
   g.key('F1');g.tick();
   assert.equal(g.$('modalTitle').textContent,'Controls');
-  const rows=[...g.$('modalBody').querySelectorAll('.desktop-controls-row')];
-  assert.ok(rows.length>12, `the sheet lists the bindings, got ${rows.length} rows`);
-  assert.equal(g.$('modalBody').textContent.includes('<kbd>'),false,'rendered, not printed as markup');
-  const say=()=>rows.map(r=>r.textContent).join(' | ');
+  assert.equal(g.$('modalBody').querySelectorAll('svg.desktop-diagram').length,2,'the sheet draws a keyboard and a pad');
+  assert.equal(g.$('modalBody').textContent.includes('<svg'),false,'rendered, not printed as markup');
+  const padText=()=>g.$('desktopPadDiagram').textContent;
   // It reads the live scheme rather than a second hard-coded copy, so it cannot contradict the pad.
-  assert.ok(/LT \/ RT/.test(say()),'the trigger scheme is described by default');
+  assert.ok(/RT · swing/.test(padText()),'the trigger scheme is drawn by default');
   g.$('modalBtns').firstElementChild.click();g.tick();
   g.w.tauDesktop.padScheme='stick';
   g.key('F1');g.tick();
-  const after=[...g.$('modalBody').querySelectorAll('.desktop-controls-row')].map(r=>r.textContent).join(' | ');
-  assert.ok(/Right stick/.test(after),'switching scheme changes what the sheet says');
+  assert.ok(/right stick ← → · swing/.test(padText()),'switching scheme changes what the pad picture says');
   g.$('modalBtns').firstElementChild.click();g.tick();
   // The bumpers resize the flat board, held to repeat. The GPU device is stubbed only from here:
   // with a renderer present the harness's animation loop wants a whole scene, and this section
@@ -531,7 +545,7 @@ test('the camera stick looks where it is pushed, and Y can be inverted',async t=
     buttons:Array.from({length:17},()=>({pressed:false,value:0})),
     vibrationActuator:{playEffect:()=>Promise.resolve()}};
   g.w.navigator.getGamepads=()=>[pad];
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   // Stand a camera up where a match holds it, with the GPU device stubbed (no GL here), then drive
   // the pad poll directly: this is about where the stick sends the camera, not about the draw call.
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
@@ -561,7 +575,7 @@ test('the camera stick looks where it is pushed, and Y can be inverted',async t=
 
 test('online match menu leaves the server turn clock running',async t=>{
   const g=await game();t.after(g.close);
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   g.read('onlineMatch={}; onlineTurnDeadline=performance.now()+30000');
   const deadline=g.read('onlineTurnDeadline');
   g.$('desktopPause').click();g.tick(1600);
@@ -633,7 +647,7 @@ test('ALLBOARDS opens every finish, survives restart and restores earned locks w
 
 test('replay keeps both boards clear, aligns its chrome, and preserves live resizing',async t=>{
   const g=await game();t.after(g.close);
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},getPixelRatio:()=>1,setSize(){},shadowMap:{}};
     camera=new THREE.PerspectiveCamera(38,1.6,1,2000);camera.position.set(0,145,148);
     controls={mouseButtons:{},target:new THREE.Vector3(0,4,0)};
@@ -712,7 +726,7 @@ test('the wood texture has continuous grain across the former radial joins',asyn
 test('a legal ring-out reaches the result and rematch through keyboard controls',async t=>{
   const g=await game();t.after(g.close);
   const endgame=require('./fixtures/ringout.json');
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   g.read(`G.pieces.forEach((p,i)=>Object.assign(p,${JSON.stringify(endgame.pose)}[i]));
     G.active=${endgame.active};G.koHist=${JSON.stringify(endgame.koHist)};G.plies=${endgame.plies};render();`);
   g.key(String(endgame.plan.pivotIdx+1));
@@ -822,7 +836,7 @@ test('the home menu never scrolls: the corner layout\'s offsets stay in the matc
   const css=fs.readFileSync(path.join(root,'desktop/presentation.css'),'utf8');
   const menuRule=css.match(/\.tau-desktop #menu \{[^}]*\}/)[0];
   assert.match(menuRule,/overflow:hidden/); assert.match(menuRule,/max-height:none/);
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio:()=>{},getPixelRatio:()=>1,setSize(){},shadowMap:{}};
     camera=new THREE.PerspectiveCamera(38,1.6,1,2000); camera.position.set(0,145,148); camera.lookAt(0,4,0);
     controls={mouseButtons:{},target:new THREE.Vector3(0,4,0)};
@@ -1088,7 +1102,7 @@ test('web/PWA quality: the desktop build always gets the top tier regardless of 
 
 test('legs meeting legs get a short contact tick, once per squeeze not once per substep',async t=>{
   const g=await game();t.after(g.close);
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   g.read(`window.__pushes=0; playPushContact=()=>window.__pushes++;
     // Face the pieces at each other close enough that swinging one shoves the other on contact.
     G.pieces[0].x=-30; G.pieces[0].y=0; G.pieces[0].rot=0;
@@ -1121,7 +1135,7 @@ test('a stuck walkthrough slide can be reset without losing earned progress',asy
 
 test('the losing piece lands on the floor below the board with a thump, then is tucked away',async t=>{
   const g=await game();t.after(g.close);
-  g.$('desktopLocal').click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
     scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
     controls={mouseButtons:{},target:new THREE.Vector3()};
@@ -1195,4 +1209,94 @@ test('a plain web/PWA load (no ?steam, no Capacitor) stays off the desktop prese
   assert.equal(g.read("document.documentElement.classList.contains('tau-desktop')"),false);
   assert.equal(g.read('typeof window.tauDesktop'),'undefined');
   assert.deepEqual(g.errors,[]);
+});
+
+test('legs rubbing along legs: one click on contact, then a drag pitched by where they touch',async t=>{
+  const g=await game();t.after(g.close);
+  g.read('tauDesktop.startMatch(true)');g.tick();
+  g.read(`window.__pushes=0; playPushContact=()=>window.__pushes++;
+    G.pieces[0].x=-30; G.pieces[0].y=0; G.pieces[0].rot=0;
+    G.pieces[1].x=-6; G.pieces[1].y=0; G.pieces[1].rot=Math.PI;
+    G.active=0; pinFoot(0); applySwing(50*Math.PI/180);`);
+  assert.equal(g.read('window.__pushes'),1,'the click plays once, on first contact');
+  assert.equal(g.read('G.pushContact'),true,'and the legs are still pressed together');
+  const foot=g.read('pushContactFoot');
+  assert.ok(foot>0&&foot<=1,`the contact sits somewhere along the leg, 0 hub .. 1 foot (${foot})`);
+  // Drive the per-frame audio with stand-in nodes: pressed together AND moving opens the rub at a
+  // pitch set by the contact point; the same feet next frame (at rest) closes it.
+  g.read(`window.__rub=[]; window.__hz=[];
+    const node=()=>({gain:{setTargetAtTime(){}},frequency:{setTargetAtTime(){}}});
+    voiceGain=node(); scrapeGain=node(); bandpass=node();
+    rubGain={gain:{setTargetAtTime:v=>window.__rub.push(v)}}; rubBP={frequency:{setTargetAtTime:v=>window.__hz.push(v)}};
+    audioReady=true; soundOn=true; audioCtx={currentTime:0};
+    audioPrevFeet=G.pieces[0].feet().map(f=>({x:f.x-40,y:f.y}));
+    updateAudioMovement(0.016);`);
+  assert.ok(g.read('window.__rub.at(-1)')>0,'moving while pressed together: the rub sounds');
+  const hz=g.read('window.__hz.at(-1)');
+  assert.ok(hz>320&&hz<=2220,`pitched between the hub (low) and the foot (high): ${hz} Hz`);
+  assert.ok(Math.abs(hz-(320+1900*foot))<1e-6,'and it is the contact point that sets it');
+  g.read('updateAudioMovement(0.016)');
+  assert.equal(g.read('window.__rub.at(-1)'),0,'at rest the rub closes');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('Controls is its own section: a drawn keyboard and pad, the scheme switch, and rebindable keys',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopControls').click();g.tick();
+  assert.equal(g.$('modalTitle').textContent,'Controls');
+  assert.equal(g.$('modalBox').querySelectorAll('svg.desktop-diagram').length,2,'a keyboard picture and a controller picture');
+  assert.match(g.$('desktopKeyboardDiagram').textContent,/foot 1[\s\S]*end turn/,'each key wears what it does');
+  assert.match(g.$('desktopPadDiagram').textContent,/RT · swing/,'the triggers scheme is drawn by default');
+  g.$('desktopPadScheme').value='stick';g.$('desktopPadScheme').dispatchEvent(new g.w.Event('change'));
+  assert.match(g.$('desktopPadDiagram').textContent,/right stick ← → · swing/,'switching the scheme redraws the pad');
+  assert.equal(g.read('tauDesktop.padScheme'),'stick');
+  // Rebind "end turn" from Enter to Space: click the key, press the new one.
+  g.$('modalBox').querySelector('[data-rebind="commit"]').click();
+  g.w.dispatchEvent(new g.w.KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));
+  assert.equal(g.read('tauDesktop.keys.commit'),' ');
+  assert.equal(g.$('modalBox').querySelector('[data-rebind="commit"]').textContent,'Space');
+  assert.match(g.$('desktopKeyboardDiagram').textContent,/Space/,'the picture follows the binding');
+  assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).keys.commit,' ','and it is saved');
+  g.$('modalBtns').firstElementChild.click();g.tick();
+  // The new key drives the game and the old one no longer does.
+  g.read('tauDesktop.startMatch(true)');g.tick();
+  g.read('G.active=0; clearTurn(); if(document.activeElement&&document.activeElement.blur) document.activeElement.blur();');
+  g.key('1');g.tick();
+  assert.notEqual(g.read('G.pinned'),null,'1 still pins a foot');
+  g.key('ArrowRight');g.key('ArrowRight','keyup');   // a legal move, so ending the turn is possible at all
+  g.key('Enter');g.tick();
+  assert.equal(g.read('G.active'),0,'Enter no longer ends the turn');
+  g.key(' ');g.tick();
+  assert.equal(g.read('G.active'),1,'Space does');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the premium home menu uses the web app\'s words and shape, with no subtitles anywhere',async t=>{
+  const g=await game();t.after(g.close);
+  const labels=[...g.w.document.querySelectorAll('.desktop-links button')].map(b=>b.textContent);
+  assert.deepEqual(labels,['vs AI','1v1','Watch','How to play','Leaderboard','Get a physical set']);
+  const bottom=[...g.w.document.querySelectorAll('.desktop-home-bottom button')].filter(b=>!b.hidden).map(b=>b.textContent);
+  assert.deepEqual(bottom,['Settings','Controls','Lab']);
+  assert.equal(g.$('desktopPlay').textContent,'Play','the gold Play stays');
+  for (const sel of ['.desktop-home h2','.desktop-intro','.desktop-material','#desktopInputHint','#desktopLocal'])
+    assert.equal(g.w.document.querySelector(sel),null,sel+' is gone');
+  // The entries are the web's own buttons behind the premium chrome: 1v1 is the web's hub.
+  g.$('desktopOnline').click();g.tick();
+  assert.equal(g.$('modalTitle').textContent,'1v1');
+  assert.ok([...g.$('modalBtns').children].some(b=>b.textContent==='Local 1v1'),'same-screen play lives inside 1v1, as on the web');
+  g.$('modalBtns').lastElementChild.click();g.tick();
+  // In a match the line under the board carries state, never the step-by-step coaching.
+  g.read('tauDesktop.startMatch(true)');g.tick();
+  assert.equal(g.$('help').textContent,'','no "Step 1" subtitle under the board on the premium presentation');
+  g.$('desktopPause').click();g.tick();
+  assert.equal(g.$('modalBody').textContent,'');
+  [...g.$('modalBtns').children].find(b=>b.textContent==='Leave match').click();g.tick();
+  assert.equal(g.$('modalBody').textContent,'','no subtitle under the leave confirm either');
+  assert.deepEqual(g.errors,[]);
+  // The app (no keyboard) gets the same Controls section, minus rebinding.
+  const app=await game('',{},{capacitor:true});t.after(app.close);
+  app.$('desktopControls').click();app.tick();
+  assert.equal(app.$('modalBox').querySelectorAll('svg.desktop-diagram').length,2);
+  assert.equal(app.$('modalBox').querySelector('[data-rebind]'),null,'no keyboard rebinding in the app');
+  assert.deepEqual(app.errors,[]);
 });
