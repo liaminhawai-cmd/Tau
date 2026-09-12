@@ -54,6 +54,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
+const { planMint, stripPolicyHead } = require('./mint-plan.js');
 const evo = require('./evolution-roster.js');
 const gate = require('./promotion-gate.js');
 const { fmtElo } = require('./elo.js');
@@ -84,8 +85,8 @@ const trainEveryMin = Math.max(0, +arg('trainEveryMin', 30));
 const epochs = arg('epochs', '6');
 // --recentRows: how much of the newest data a RECENT-only variant of best.json trains on (the full
 // corpus is ~1M rows after the size cap, so 200k is the freshest fifth). See the population mint
-// below: when the cull opens a slot, the new member is a mutant, an extra-epoch resume of best, or a
-// recent-only resume of best, in rotation, and the standings answer "is old data from weak players
+// below: when the cull opens a slot, the new member is a medal holder with a random combination of
+// edits applied (mint-plan.js), and the standings answer "is old data from weak players
 // misleading?" with real game counts behind each answer. 0 drops the recent option from the rotation.
 const recentRows = Math.max(0, +arg('recentRows', 200000));
 // selfplay.js's game-source mix, once a model exists (before that it's always pure ladder-vs-
@@ -706,6 +707,12 @@ function mutateHidden(spec) {
   }
   return null;
 }
+
+const topoOf = p => {
+  try { const t = JSON.parse(fs.readFileSync(p, 'utf8')).topology; return t && t.kind === 'dense-memory-v1' ? { memoryWidth: +t.memoryWidth, residualScale: +t.residualScale } : null; }
+  catch (e) { return null; }
+};
+const isDualFile = p => { try { return JSON.parse(fs.readFileSync(p, 'utf8')).dual === true; } catch (e) { return false; } };
 
 const currentDualShape = () => {
   try { return JSON.parse(fs.readFileSync(dualShapeFile, 'utf8')).shape || dualInitialShape; }
@@ -1724,25 +1731,28 @@ async function runPoolCycle() {
         log(`pool cycle ${num} — population full (${mutantPop.active.length}/${mutantCap}); ` +
             `training none, a slot opens when a member is retired as confidently weak`);
       }
-      // Mutants breed from the CURRENT TOP THREE of the whole league, not from each other. The
-      // medal files already are "best three distinct models by pessimistic Elo bound", so gold's
-      // shape gets half the litters, silver a third, bronze the rest -- probabilistic, no
-      // thresholds, and the mutation budget always chases whatever is actually winning instead
-      // of drifting around inside the mutant population's own gene pool.
-      const medalShapes = (() => {
+      // Mints breed from the CURRENT TOP THREE of the whole league, not from each other. The
+      // medal files already are "best three distinct models by pessimistic Elo bound", so gold
+      // parents half the litters, silver a third, bronze the rest -- probabilistic, no
+      // thresholds, and the mint budget always chases whatever is actually winning instead
+      // of drifting around inside the population's own gene pool.
+      const medalParents = (() => {
         try {
           const med = JSON.parse(fs.readFileSync(require('./machine-id.js').medalsMetaPath(dir), 'utf8'));
           return ['gold', 'silver', 'bronze']
-            .map(n => med.medals && med.medals[n] && med.medals[n].source)
-            .filter(Boolean)
-            .map(src => ({ src, shape: hiddenOf(path.join(dir, 'models', src + '.json')) }))
-            .filter(x => x.shape);
+            .map(n => ({ medal: n, src: med.medals && med.medals[n] && med.medals[n].source }))
+            .filter(x => x.src)
+            .map(({ medal, src }) => {
+              const file = path.join(dir, 'models', src + '.json');
+              return { medal, name: src, file, shape: hiddenOf(file), topo: topoOf(file), dual: isDualFile(file) };
+            })
+            .filter(x => x.shape && fs.existsSync(x.file));
         } catch (e) { return []; }
       })();
       const drawMedal = () => {
-        if (!medalShapes.length) return null;
+        if (!medalParents.length) return null;
         const r = Math.random();
-        return medalShapes[Math.min(medalShapes.length - 1, r < 0.5 ? 0 : r < 0.83 ? 1 : 2)];
+        return medalParents[Math.min(medalParents.length - 1, r < 0.5 ? 0 : r < 0.83 ? 1 : 2)];
       };
       for (let s = 0; s < spawn; s++) {
         // A scratch is spawned when the population has none at the CURRENT champion shape. That is
@@ -1750,58 +1760,74 @@ async function runPoolCycle() {
         // shape actually being defended -- once a mutant is adopted, yesterday's scratch is a
         // control for a shape nobody is running any more. Otherwise spawn a mutant.
         const haveScratch = mutantPop.active.some(m => m.kind === 'scratch' && m.shape === h);
-        // With the control in place, the slot rotates through three VARIANTS OF BEST: a shape
-        // mutant (from scratch, as before), an extra-epoch resume of best.json on the full corpus,
-        // and a recent-only resume of best.json on the newest --recentRows rows. All three are
-        // standing members rated on real game counts, so the population answers "more epochs?",
-        // "fresher data?" and "other shape?" side by side. The shape verdict below only ever looks
-        // at scratch and mutant members: a resumed copy of best at the champion shape would be a
-        // far stronger "control" than the fresh net that comparison is defined against.
-        const rotation = ['mutant', 'extra', ...(recentRows > 0 ? ['recent'] : [])];
-        const kind = haveScratch ? rotation[mutantPop.next % rotation.length] : 'scratch';
-        if (kind === 'extra' || kind === 'recent') {
+        if (!haveScratch) {
           const serial = String(mutantPop.next++).padStart(3, '0');
-          const file = `${kind}-${serial}.json`, outPath = path.join(dir, 'models', file), shape = hiddenOfBest() || h;
-          log(`pool cycle ${num} — ${kind} ${serial}: ${epochs} more epochs on best.json (${shape})` +
-              (kind === 'recent' ? ` using only the newest ${recentRows} rows` : ' on the full corpus') +
-              `, population ${mutantPop.active.length + 1}/${mutantCap}`);
-          writeStatus(`${kind} ${serial} training (${epochs} epochs from best.json, started ${new Date().toISOString()})`);
-          await runSoftAsync('train-value.js', ['--epochs', epochs, '--out', outPath, '--resume', best,
-                                                ...(kind === 'recent' ? ['--dataRecentRows', String(recentRows)] : [])]);
-          if (fs.existsSync(outPath)) {
-            mutantPop.active.push({ file, kind, shape, op: kind === 'recent' ? 'recent-rows' : 'extra-epochs',
-                                    parent: 'best.json', born: num });
-          } else log(`pool cycle ${num} — ${kind} ${serial} failed to train; slot left open`);
+          const file = `scratch-${serial}.json`, outPath = path.join(dir, 'models', file);
+          log(`pool cycle ${num} — scratch ${serial}: fresh init at the champion shape ${h}, ` +
+              `population ${mutantPop.active.length + 1}/${mutantCap}`);
+          writeStatus(`scratch ${serial} training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
+          await runSoftAsync('train-value.js', ['--epochs', scratchEpochs, '--out', outPath, '--hidden', h]);
+          // Only a member that actually trained joins the population -- a failed run must not
+          // consume a slot that nothing can ever retire, since retirement needs a rating and an
+          // unrated phantom would never earn one.
+          if (fs.existsSync(outPath)) mutantPop.active.push({ file, kind: 'scratch', shape: h, op: 'scratch', parent: null, born: num });
+          else log(`pool cycle ${num} — scratch ${serial} failed to train; slot left open`);
           continue;
         }
-        // Breed from a medal holder when medals exist; fall back to a rated active member, then
-        // to the champion shape -- which is also how the very first mutant gets created.
-        const medal = kind === 'mutant' ? drawMedal() : null;
-        const parent = kind === 'mutant' && !medal ? pickParent(mutantPop.active, ratingOf) : null;
-        const baseShape = medal ? medal.shape : parent ? parent.shape : h;
-        const mut = kind === 'scratch' ? { shape: h, op: 'scratch' } : mutateHidden(baseShape);
-        if (!mut) continue;
+        // With the control in place, the slot goes to a MINT: a medal holder (falling back to a
+        // rated member, then to the champion shape, which is also how the very first mint is born)
+        // with a random combination of edits -- see mint-plan.js for the menu and the odds. Every
+        // child is a standing member rated on real game counts, so the population answers "more
+        // epochs?", "fresher data?", "other shape?", "skip packets?", "a policy head?" side by
+        // side. The shape verdict below only reads fresh PLAIN members (scratch/mutant without a
+        // topology): a resumed or re-headed copy of a medalist at the champion shape would be a far
+        // stronger "control" than the fresh net that comparison is defined against.
+        const medal = drawMedal();
+        const fallback = medal ? null : pickParent(mutantPop.active.filter(m => m.kind !== 'dual'), ratingOf);
+        const parent = medal ? { via: medal.medal, name: medal.name, file: medal.file, shape: medal.shape, topo: medal.topo, dual: medal.dual }
+          : fallback ? { via: 'population', name: path.basename(fallback.file, '.json'), file: path.join(dir, 'models', fallback.file),
+                         shape: fallback.shape, topo: fallback.topo || topoOf(path.join(dir, 'models', fallback.file)), dual: false }
+          : { via: 'champion shape', name: 'champion shape', file: null, shape: h, topo: null, dual: false };
+        const dualEpochs = dualEpochChoices[Math.floor(dualEpochChoices.length/2)] || 40;
+        // A parent with no file (the champion-shape fallback) cannot be resumed or re-headed, so
+        // only a fresh plan will do for it; a few re-draws find one.
+        let plan = null;
+        for (let t = 0; t < 8 && !(plan && (parent.file || plan.mode === 'fresh')); t++)
+          plan = planMint(parent, { scratchEpochs: +scratchEpochs, epochs: +epochs, dualEpochs, recentRows, mutateHidden });
+        if (!plan || (!parent.file && plan.mode !== 'fresh')) continue;
         const serial = String(mutantPop.next++).padStart(3, '0');
-        const file = `${kind}-${serial}.json`;
-        const outPath = path.join(dir, 'models', file);
-        log(`pool cycle ${num} — ${kind} ${serial}: ` +
-            (kind === 'scratch' ? `fresh init at the champion shape ${h}`
-                                : `${baseShape} -> ${mut.shape} (${mut.op})` +
-                                  (medal ? ` from medal holder ${medal.src}`
-                                         : parent ? ` from ${path.basename(parent.file, '.json')}`
-                                                  : ` from the champion shape`)) +
-            `, population ${mutantPop.active.length + 1}/${mutantCap}`);
-        writeStatus(`${kind} ${serial} training (${scratchEpochs} epochs, started ${new Date().toISOString()})`);
-        await runSoftAsync('train-value.js', ['--epochs', scratchEpochs, '--out', outPath, '--hidden', mut.shape]);
-        // Only a member that actually trained joins the population -- a failed run must not consume
-        // a slot that nothing can ever retire, since retirement needs a rating and an unrated
-        // phantom would never earn one.
-        if (fs.existsSync(outPath)) {
-          mutantPop.active.push({ file, kind, shape: mut.shape, op: mut.op,
-                                  parent: medal ? medal.src + '.json' : parent ? parent.file : null,
-                                  born: num });
+        const file = `${plan.prefix}-${serial}.json`, outPath = path.join(dir, 'models', file);
+        log(`pool cycle ${num} — ${plan.prefix} ${serial} from ${parent.via}: ${plan.describe()}, ` +
+            `population ${mutantPop.active.length + 1}/${mutantCap}`);
+        writeStatus(`${plan.prefix} ${serial} training (${plan.ops.join('+')}, ${plan.epochs} epochs, started ${new Date().toISOString()})`);
+        let ok = false;
+        if (plan.mode === 'dual') {
+          ok = await trainDualOne(outPath, plan.hidden, plan.epochs, 43000 + +serial, `dual mint ${serial}`);
         } else {
-          log(`pool cycle ${num} — ${kind} ${serial} failed to train; slot left open`);
+          let resumeFrom = plan.resumeFrom, trunk = null;
+          if (plan.mode === 'strip') {
+            // .partial.json so the roster never mistakes the headless trunk for a model of its own.
+            trunk = outPath.replace(/\.json$/, '.trunk.partial.json');
+            let stripped = null;
+            try { stripped = stripPolicyHead(JSON.parse(fs.readFileSync(parent.file, 'utf8'))); } catch (e) {}
+            if (!stripped) { log(`pool cycle ${num} — ${plan.prefix} ${serial}: ${parent.name} is not a dual net; slot left open`); continue; }
+            atomicWrite(trunk, JSON.stringify(stripped));
+            resumeFrom = trunk;
+          }
+          await runSoftAsync('train-value.js', ['--epochs', String(plan.epochs), '--out', outPath,
+            ...(resumeFrom ? ['--resume', resumeFrom] : ['--hidden', plan.hidden]),
+            ...(!resumeFrom && plan.topology ? ['--topology', 'dense-memory', '--memoryWidth', String(plan.topology.memoryWidth),
+                                              '--residualScale', String(plan.topology.residualScale)] : []),
+            ...(plan.recentRows ? ['--dataRecentRows', String(plan.recentRows)] : [])]);
+          if (trunk) { try { fs.unlinkSync(trunk); } catch (e) {} }
+          ok = fs.existsSync(outPath);
+        }
+        if (ok) {
+          mutantPop.active.push({ file, kind: plan.kind, shape: plan.hidden, op: plan.ops.join('+'),
+                                  topo: plan.mode === 'fresh' ? plan.topology : null,
+                                  parent: parent.file ? path.basename(parent.file) : null, born: num });
+        } else {
+          log(`pool cycle ${num} — ${plan.prefix} ${serial} failed to train; slot left open`);
         }
       }
       saveMutantPop(mutantPop);
@@ -2054,9 +2080,11 @@ async function runPoolCycle() {
       // scratches at the new shape, and a label-based lookup then had no control and could produce
       // no verdict until a slot happened to free up (6 of 40 cycles in a lifecycle simulation).
       const champShapeNow = championShape() || scratchHidden || hiddenOfBest();
-      // Resumed copies of best (extra-/recent-) never take part in the SHAPE verdict: they are not
-      // fresh nets, so at the champion shape they would be a control nothing from scratch can beat.
-      const fresh = rated.filter(x => x.m.kind === 'scratch' || x.m.kind === 'mutant');
+      // Resumed copies of a medalist (extra-/recent-/strip-) never take part in the SHAPE verdict:
+      // they are not fresh nets, so at the champion shape they would be a control nothing from
+      // scratch can beat. Nor do dual or dense-memory members: the verdict is about hidden sizes,
+      // and a different head or a skip topology at the same sizes is a different question.
+      const fresh = rated.filter(x => (x.m.kind === 'scratch' || x.m.kind === 'mutant') && !x.m.topo);
       const atChamp = fresh.filter(x => x.m.shape === champShapeNow);
       // Challengers are the members at some OTHER shape -- comparing the champion shape against
       // itself would just measure init variance and could never resolve.
