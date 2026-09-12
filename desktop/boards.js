@@ -538,6 +538,10 @@ const THEMES = {
     key: { color: 0xffe0b0, intensity: 3.4, pos: [230,90,120], shadow: 0.9 },
     cam: { pos: [-150, 115, 300], target: [0, 22, 0], fov: 34 },
     simSpeed: 0.35,
+    dust: { color: 0xd9c49c, size: 2.6 },   // the sand a fall throws up (see the desktop's tickEffects)
+    // In the game the camera sits lower and wider than on the other boards, so the tiers and their
+    // crowd rise behind the far rim instead of staying above the top of the frame.
+    gameCam: { elev: 0.5, fov: 46 },
     paint() {
       const [al, a] = canvas2d();
       a.fillStyle = '#b49b6d'; a.fillRect(0, 0, S, S);           // raked arena sand
@@ -631,6 +635,9 @@ const THEMES = {
       // dust hanging in the raking sun — the air itself has depth, and depth reads as SIZE. Two
       // layers: a fine far haze of motes across the whole bowl, and a coarser near-camera drift of
       // bigger flecks that catch the light — the parallax between them sells the volume of air.
+      // A mote is a soft disc, not a square: a point sprite with a radial falloff, so a fleck near
+      // the camera reads as a blur of light and not a pixel block.
+      const mote = softDiscTexture();
       const mkDust = (N, spreadR, spreadY, size, op, seed) => {
         let dr = seed; const rn = () => (dr = (dr*16807)%2147483647)/2147483647;
         const pos = new Float32Array(N*3);
@@ -640,15 +647,66 @@ const THEMES = {
         }
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-        return new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffedc8, size, transparent: true,
+        return new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffedc8, size, transparent: true, map: mote,
           opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true }));
       };
       const dustFar = mkDust(1100, 380, 200, 1.3, 0.16, 909);
       const dustNear = mkDust(320, 200, 90, 3.2, 0.28, 313);
       g.add(dustFar, dustNear);
-      g.userData.tick = t => {
+      // The crowd in the round: little tripods in the stands, each a stone figure of the pieces
+      // below, spread along every walkway in the two sides' muted colours and facing the arena.
+      // Two thousand of them cost one draw call (an instanced figure: three leaning legs and a
+      // head, merged once), and they leap when a titan goes over the rim.
+      const UP = new THREE.Vector3(0, 1, 0), H = 2.2, F = 1.1;
+      const partsOf = [];
+      for (let k = 0; k < 3; k++) {
+        const a = k*2*Math.PI/3, leg = new THREE.CylinderGeometry(0.16, 0.2, Math.hypot(F, H), 5, 1, true);
+        const dir = new THREE.Vector3(-F*Math.cos(a), H, -F*Math.sin(a)).normalize();   // foot to head
+        leg.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, dir));
+        leg.translate(F*Math.cos(a)/2, H/2, F*Math.sin(a)/2);
+        partsOf.push(leg);
+      }
+      const head = new THREE.SphereGeometry(0.42, 6, 5); head.translate(0, H, 0); partsOf.push(head);
+      const P = [], N = [];
+      for (const part of partsOf) {
+        const flat = part.toNonIndexed();
+        P.push(...flat.attributes.position.array); N.push(...flat.attributes.normal.array);
+        part.dispose(); flat.dispose();
+      }
+      const figure = new THREE.BufferGeometry();
+      figure.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+      figure.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+      const TIERS = 7, PER = 290;
+      const crowd = new THREE.InstancedMesh(figure,
+        new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0, flatShading: true }), TIERS*PER);
+      const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Pv = new THREE.Vector3(), Sv = new THREE.Vector3(), col = new THREE.Color();
+      let cr = 4242; const crn = () => (cr = (cr*16807)%2147483647)/2147483647;
+      const shades = [0x5f7189, 0x4e5c6a, 0x6b7f99, 0x8a5b36, 0x7a4438, 0x9a6a4a, 0x96826a, 0x6d5347];
+      let n = 0;
+      for (let i = 0; i < TIERS; i++) {
+        const r0 = 200 + i*58, yTop = 2 + i*30 + 30;   // the tier's walkway
+        for (let j = 0; j < PER; j++) {
+          const th = crn()*Math.PI*2, rr = r0 + 8 + crn()*42, sc = 0.85 + crn()*0.45;
+          Pv.set(Math.cos(th)*rr, yTop, Math.sin(th)*rr);
+          Q.setFromAxisAngle(UP, -th + (crn()-0.5)*0.8);
+          Sv.set(sc, sc, sc);
+          M.compose(Pv, Q, Sv); crowd.setMatrixAt(n, M);
+          crowd.setColorAt(n, col.setHex(shades[Math.floor(crn()*shades.length)]));
+          n++;
+        }
+      }
+      crowd.instanceMatrix.needsUpdate = true;
+      if (crowd.instanceColor) crowd.instanceColor.needsUpdate = true;
+      g.add(crowd);
+      let exciteT = 99;
+      g.userData.excite = () => { exciteT = 0; };   // a titan went over: the whole bowl jumps
+      g.userData.tick = (t, dt) => {
         dustFar.rotation.y = t*0.003; dustFar.position.y = Math.sin(t*0.08)*2;
         dustNear.rotation.y = -t*0.006; dustNear.position.y = Math.sin(t*0.13 + 1)*3;
+        if (exciteT < 3.2) {
+          exciteT += dt || 0.016;
+          crowd.position.y = 2.4 * Math.abs(Math.sin(exciteT*8)) * Math.max(0, 1 - exciteT/3.2);
+        } else crowd.position.y = 0;
       };
       return g;
     },
@@ -721,7 +779,20 @@ const THEMES = {
 // (clear for the first quarter) and does three things at the foot end: the glass tints, absorbs
 // more, and transmits less, so the last stretch reads as solid colour that the pin then continues.
 const LEG_FOOT_TOP = 3.6;   // TRIPOD_PIN_LIFT + TRIPOD_FOOT_LEN in the game's fused tripod
+// A point sprite: white with a radial falloff, for dust and motes drawn as THREE.Points.
+let softDiscTex = null;
+function softDiscTexture() {
+  if (softDiscTex) return softDiscTex;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const c = cv.getContext('2d');
+  const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.35, 'rgba(255,255,255,0.65)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  c.fillStyle = g; c.fillRect(0, 0, 64, 64);
+  softDiscTex = new THREE.CanvasTexture(cv);
+  return softDiscTex;
+}
 function installLegGradient(material, tint) {
+  material.userData.legTint = tint;   // read by the game's glass proxies, which wear the same ramp
   material.onBeforeCompile = shader => {
     shader.uniforms.uLegTint = { value: new THREE.Color(tint) };
     shader.uniforms.uFootTop = { value: LEG_FOOT_TOP };
@@ -920,7 +991,7 @@ function installDetailShader(material) {
 }
 
   return { S, sc, ox, oy, px, LW, DOTS, canvas2d, strokeLines, noiseCanvas, vignette, tex, texL,
-           THEMES, ALIEN_GLSL, DETAIL_GLSL, MATH_GLSL, installDetailShader, installLegGradient, shadeZones };
+           THEMES, ALIEN_GLSL, DETAIL_GLSL, MATH_GLSL, installDetailShader, installLegGradient, shadeZones, softDiscTexture };
 }
 if (typeof window !== 'undefined') window.makeShowcaseBoards = makeShowcaseBoards;
 if (typeof module !== 'undefined') module.exports = makeShowcaseBoards;

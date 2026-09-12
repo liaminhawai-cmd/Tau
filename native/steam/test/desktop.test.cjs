@@ -871,3 +871,105 @@ test('the walkthrough draws the match\'s own tripod: tube-width legs in the skin
   assert.ok(g.read('window.__rec.strokes.has(pieceHex(0))'),'in the board skin\'s blue, not a stock colour');
   assert.deepEqual(g.errors,[]);
 });
+
+test('the corner and two-feet slides show a guide, and following it meets the goal',async t=>{
+  const g=await game();t.after(g.close);
+  for (const key of ['double','twofeet']) {
+    const guide=g.read(`htpState('${key}').guide`);
+    assert.ok(guide && guide.pivot>=0 && Math.abs(guide.dir)===1 && guide.angle>0, `${key}: a foot to hold and a way to swing`);
+    // Do exactly what the guide shows: hold that foot, swing that way, that far.
+    const done=g.read(`(()=>{ const st=htpState('${key}'); st.pinned=${guide.pivot}; st.dragging=true;
+      const step=1.5*Math.PI/180; for (let a=0; a<${guide.angle}+1e-9; a+=step) htpTrySwing(st,'${key}',${guide.dir}*step);
+      return st.done; })()`);
+    assert.equal(done,true,`${key}: the guide leads to the goal`);
+    // and the rails are drawn from the held foot, one per free foot
+    const rails=g.read(`(()=>{ const st=htpState('${key}'); return htpGuideRails(st, st.guide); })()`);
+    assert.equal(rails.rails.length,2);
+  }
+  assert.deepEqual(g.errors,[]);
+});
+
+test('after the walkthrough the 3D view is laid out for the desktop home again',async t=>{
+  const g=await game();t.after(g.close);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},getPixelRatio:()=>1,setSize(){},shadowMap:{},
+      domElement:document.getElementById('view3d')};
+    scene=new THREE.Scene(); camera=new THREE.PerspectiveCamera(38,1.6,1,2000);
+    controls={mouseButtons:{},touches:{},target:new THREE.Vector3(),addEventListener(){},enabled:true};
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)]; htpTripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];`);
+  g.$('desktopLearn').click();
+  assert.ok(g.$('htpFull'),'the walkthrough is open');
+  assert.equal(g.read("document.getElementById('view3d').parentElement.id"),'htp3DPane','and owns the 3D view');
+  g.$('htpDoneBtn').style.display=''; g.$('htpDoneBtn').disabled=false; g.$('htpDoneBtn').click();
+  assert.equal(g.$('htpFull'),null,'Done closes it');
+  assert.equal(g.read("document.getElementById('view3d').parentElement.id"),'demoViews','the 3D view is back behind the menu');
+  const want=Math.round(g.read('innerWidth')*.76)+'px';
+  assert.equal(g.read("document.getElementById('view3d').style.width"),want,'sized by the desktop home layout, not the phone menu tile');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the home panel scales to a short window instead of scrolling',async t=>{
+  const g=await game();t.after(g.close);
+  const home=g.w.document.querySelector('.desktop-home');
+  Object.defineProperty(home,'offsetHeight',{get:()=>780});   // JSDOM does no layout: a plausible natural height
+  const css=fs.readFileSync(path.join(root,'desktop/presentation.css'),'utf8');
+  assert.doesNotMatch(css.match(/\.desktop-home \{[^}]*\}/g).join(' '),/overflow-y:auto|max-height/,'the panel has no scroll box');
+  g.w.innerHeight=500; g.read('tauDesktop.resize()');
+  assert.equal(home.style.transform,'translateY(-50%) scale(0.5000)','short window: scaled to fit above the account line');
+  g.w.innerHeight=1000; g.read('tauDesktop.resize()');
+  assert.equal(home.style.transform,'translateY(-50%) scale(1.0000)','tall window: natural size');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('glass pieces carry a proxy that draws only in the transmission pass',async t=>{
+  const g=await game();t.after(g.close);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    localStorage.setItem('tauDesktopTestBoards','1');`);
+  g.read("tauDesktop.board='marble'");
+  const p="tripods[0].userData.glassProxy";
+  assert.equal(g.read(`${p} && ${p}.visible`),true,'marble legs are glass: a proxy rides along');
+  assert.equal(g.read(`${p}.material.colorWrite`),false,'on screen it writes nothing');
+  assert.equal(g.read(`${p}.castShadow`),false);
+  g.read(`${p}.onBeforeRender({getRenderTarget:()=>({})})`);
+  assert.equal(g.read(`${p}.material.colorWrite && ${p}.material.depthWrite`),true,'into the transmission buffer it writes');
+  g.read(`${p}.onBeforeRender({getRenderTarget:()=>null})`);
+  assert.equal(g.read(`${p}.material.colorWrite`),false,'and stops again for the screen');
+  assert.equal(g.read(`${p}.material.userData.legTint`),g.read('tripods[0].userData.mat.userData.legTint'),'wearing the leg\'s own colour ramp');
+  g.read("tauDesktop.board='walnut'");
+  assert.equal(g.read(`${p}.visible`),false,'a solid piece hides it');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('Colossus brings its stands, crowd and haze into the match, and a fall raises dust',async t=>{
+  const g=await game();t.after(g.close);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    localStorage.setItem('tauDesktopTestBoards','1');`);
+  g.read("tauDesktop.board='colossus'");
+  const crowd=()=>g.read("(()=>{let c=null; scene.traverse(o=>{ if(o.isInstancedMesh) c=o; }); return c && {count:c.count, y:c.position.y};})()");
+  assert.ok(crowd() && crowd().count>=2000,'a crowd of little tripods fills the tiers');
+  assert.equal(g.read('!!scene.fog'),true,'haze grades with distance');
+  assert.equal(g.read('camera.fov'),46,'a lower, wider lens takes in the stands');
+  assert.equal(g.read('tauDesktop.fallTimeScale()'),0.5,'giants go over slowly');
+  const puffs=()=>g.read("scene.children.filter(o=>o.isPoints && o.userData.dust).length");
+  g.read("fall={active:true,phase:'slide',idx:1,vx:50,vz:0,px:0,pz:0}; tripods[1].position.set(55,0,0);");
+  g.read('tauDesktop.tick(0.2); tauDesktop.tick(0.2)');
+  assert.ok(puffs()>=1,'feet dragging through the sand throw up dust');
+  g.read("fall.phase='pivot'; fall.px=66.7; fall.pz=0; tauDesktop.tick(0.05); tauDesktop.tick(0.05)");
+  assert.ok(puffs()>=2,'the rim gets a burst');
+  assert.ok(crowd().y>0,'and the stands erupt');
+  g.read("fall={active:false}; tauDesktop.board='walnut'");
+  assert.equal(crowd(),null,'another board clears the arena');
+  assert.equal(g.read('scene.fog'),null);
+  assert.equal(g.read('camera.fov'),38);
+  assert.equal(g.read('tauDesktop.fallTimeScale()'),1);
+  assert.deepEqual(g.errors,[]);
+});

@@ -630,7 +630,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 212</div>
+<div id="buildTag">build 213</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -5848,11 +5848,115 @@ const HTP_TRY = {
 let htpNow = null;
 function htpMark(blue, red, fallK) { htpNow = { blue, red: red || null, fallK: fallK || 0 }; }
 function htpState(key) {
-    if (!htpCache['try_'+key]) htpCache['try_'+key] = Object.assign(
-        { key, touched:false, pinned:null, dragging:false, armFrom:null, lastAng:0, turnDir:0,
-          netAng:0, crossings:0, contact:null, done:false, burst:null, parts:[], lastT:0,
-          lockFlashT:-9, blockFlashT:-9, blockId:null }, HTP_TRY[key].make());
+    if (!htpCache['try_'+key]) {
+        htpCache['try_'+key] = Object.assign(
+            { key, touched:false, pinned:null, dragging:false, armFrom:null, lastAng:0, turnDir:0,
+              netAng:0, crossings:0, contact:null, done:false, burst:null, parts:[], lastT:0,
+              lockFlashT:-9, blockFlashT:-9, blockId:null }, HTP_TRY[key].make());
+        if (HTP_GUIDED[key]) htpCache['try_'+key].guide = htpFindGuide(key);
+    }
     return htpCache['try_'+key];
+}
+// ---- Guided slides: which foot to hold and which way to swing ----
+// Corners-once and two-feet are set poses with one right answer, and a slide that only stated the
+// rule left people holding the wrong foot and swinging into refusals. The answer is found the way
+// the goal itself is judged: hold each foot in turn, swing a scratch copy of the piece step by
+// step under the real crossing rules, both ways, and keep the shortest swing that meets the
+// slide's goal. The slide then shows it -- the foot to hold pulses, a dotted arc with an arrowhead
+// points the way, on the flat board and the 3D one -- and still makes you do it.
+const HTP_GUIDED = { double: true, twofeet: true };
+function htpGoalMet(key, st) {
+    if (!st.contact || st.pinned === null) return false;
+    const fresh = i => (st.contact[i] || []).filter(id => !(st.turnStartContact && st.turnStartContact[i] || []).includes(id));
+    if (key === 'double') return [0,1,2].some(i => i !== st.pinned && fresh(i).length >= 2);
+    if (key === 'twofeet') return [0,1,2].filter(i => i !== st.pinned && fresh(i).length > 0).length >= 2;
+    return false;
+}
+function htpFindGuide(key) {
+    const step = 1.5*Math.PI/180, MAX = 150;   // up to 225 degrees either way
+    let best = null;
+    for (let pivot = 0; pivot < 3; pivot++) for (const dir of [1, -1]) {
+        // done:true up front keeps the scratch swing from firing the slide's confetti and hint
+        const sc = Object.assign({ key, pinned: pivot, dragging: true, turnDir: 0, netAng: 0, crossings: 0,
+                                   contact: null, justCrossed: [], blockId: null, done: true, lastT: 0,
+                                   lockFlashT: -9, blockFlashT: -9 }, HTP_TRY[key].make());
+        let ang = 0, hit = null;
+        for (let n = 0; n < MAX; n++) {
+            const before = sc.p.rot;
+            htpTrySwing(sc, key, dir*step);
+            if (sc.p.rot === before) break;   // refused: this way is spent
+            ang += step;
+            if (htpGoalMet(key, sc)) { hit = ang; break; }
+        }
+        if (hit !== null && (!best || hit < best.angle)) best = { pivot, dir, angle: hit };
+    }
+    return best;
+}
+// The guide as drawn: the foot to hold breathes until it is held (or while the wrong one is), and
+// the free feet's rails run from the pose the turn began in -- the current pose wound back by the
+// net swing so far -- a little past the goal, arrowhead at the far end.
+function htpGuideRails(st, guide) {
+    if (st.pinned !== null && st.pinned !== guide.pivot) return null;   // wrong foot held: no rail for it
+    const feet = st.p.feet(), pv = feet[guide.pivot];
+    const sweep = guide.dir * (guide.angle + 8*Math.PI/180);
+    const back = st.pinned === guide.pivot ? st.netAng : 0;
+    const rails = [];
+    for (let i = 0; i < 3; i++) { if (i === guide.pivot) continue;
+        rails.push({ r: Math.hypot(feet[i].x - pv.x, feet[i].y - pv.y),
+                     a0: Math.atan2(feet[i].y - pv.y, feet[i].x - pv.x) - back, sweep });
+    }
+    return { pv, rails };
+}
+function htpDrawGuide(c, m, st, guide, t) {
+    const k = htpScale, feet = st.p.feet(), pv = feet[guide.pivot], P = m.b(pv.x, pv.y);
+    const pale = boardIsPale();
+    const railCol = pale ? 'rgba(74,82,94,0.75)' : 'rgba(255,210,63,0.55)';
+    const arrowCol = pale ? 'rgba(58,66,78,0.95)' : 'rgba(255,214,80,0.9)';
+    if (st.pinned !== guide.pivot) {   // the foot to hold breathes, alone
+        const pulse = 0.45 + 0.4*Math.abs(Math.sin(t*3));
+        c.fillStyle = `rgba(255,210,63,${pulse*0.22})`; c.beginPath(); c.arc(P.x, P.y, 13*k, 0, 7); c.fill();
+        c.strokeStyle = `rgba(255,210,63,${pulse})`; c.lineWidth = 2.5*k;
+        c.beginPath(); c.arc(P.x, P.y, 13*k, 0, 7); c.stroke();
+    }
+    const g = htpGuideRails(st, guide);
+    if (!g) return;
+    c.save(); c.lineCap = 'round';
+    for (const rail of g.rails) {
+        const A = rail.a0, B = rail.a0 + rail.sweep;
+        c.setLineDash([2.5*k, 5*k]); c.strokeStyle = railCol; c.lineWidth = 1.6*k;
+        c.beginPath(); c.arc(P.x, P.y, rail.r*m.sc, A, B, rail.sweep < 0); c.stroke();
+        c.setLineDash([]); c.strokeStyle = arrowCol; c.lineWidth = 2*k;
+        const ep = m.b(pv.x + rail.r*Math.cos(B), pv.y + rail.r*Math.sin(B));
+        const tang = B + Math.sign(rail.sweep)*Math.PI/2;
+        c.beginPath();
+        c.moveTo(ep.x, ep.y); c.lineTo(ep.x + Math.cos(tang+2.5)*8*k, ep.y + Math.sin(tang+2.5)*8*k);
+        c.moveTo(ep.x, ep.y); c.lineTo(ep.x + Math.cos(tang-2.5)*8*k, ep.y + Math.sin(tang-2.5)*8*k);
+        c.stroke();
+    }
+    c.restore();
+}
+// The same rails on the 3D board, on the coach's dashed lines (unused while the walkthrough owns
+// the scene). Hidden the moment the goal is met or a slide without a guide is showing.
+function htpGuide3D() {
+    if (!coachArcs) return;
+    const s = HTP_STEPS[htpFullIdx], st = s && s.tryKey && htpCache['try_'+s.tryKey];
+    const g = st && st.guide && !st.done && !htpFallMode ? htpGuideRails(st, st.guide) : null;
+    if (!g) { coachArcs.forEach(l => l.visible = false); return; }
+    const railHex = boardIsPale() ? 0x5a626e : 0xffd23f;
+    let li = 0;
+    for (const rail of g.rails) {
+        const line = coachArcs[li++]; if (!line) break;
+        line.material.color.setHex(railHex);
+        const pos = line.geometry.attributes.position.array, N = pos.length / 3;
+        for (let k = 0; k < N; k++) {
+            const a = rail.a0 + rail.sweep * (k / (N - 1));
+            pos[k*3] = g.pv.x + rail.r*Math.cos(a); pos[k*3+1] = 0.4; pos[k*3+2] = g.pv.y + rail.r*Math.sin(a);
+        }
+        line.geometry.attributes.position.needsUpdate = true;
+        line.computeLineDistances();
+        line.visible = true;
+    }
+    for (; li < coachArcs.length; li++) coachArcs[li].visible = false;
 }
 function htpGoalDone(key, st, at) {
     st.done = true;
@@ -5986,7 +6090,9 @@ function htpDrawTry(c,w,h,t,key) {
     const m = htpMap(w,h); htpBoard(c,m.b,m.sc);
     if (st.red) htpPiece(c, st.red, m.b, -1, t);
     htpPiece(c, st.p, m.b, st.pinned === null ? -1 : st.pinned, t);
-    if (st.pinned === null) {   // nothing held yet: every foot invites the tap
+    const guide = st.guide && !st.done ? st.guide : null;
+    if (guide) htpDrawGuide(c, m, st, guide, t);
+    if (st.pinned === null && !guide) {   // nothing held yet: every foot invites the tap
         const pulse = 0.35 + 0.3*Math.abs(Math.sin(t*3));
         for (const f of st.p.feet()) { const g = m.b(f.x,f.y);
             c.strokeStyle = `rgba(255,210,63,${pulse})`; c.lineWidth = 2*htpScale;
@@ -6200,7 +6306,7 @@ function htp3DEnter(w, h) {
     htpCamManual = false;
     htp3DActive = true;
 }
-function htp3DExit() {
+function htp3DExit(dropEl) {
     htp3DActive = false;
     if (typeof controls !== 'undefined' && controls && htpCtrlSaved) {
         controls.enabled = htpCtrlSaved.enabled;
@@ -6213,6 +6319,7 @@ function htp3DExit() {
     // how-to-play only ever opens from the menu, so the ambient demo is always the right home
     if (renderer && document.getElementById('demoViews')) {
         document.getElementById('demoViews').appendChild(document.getElementById('view3d'));
+        if (dropEl) dropEl.remove();   // out of the DOM before the menu measures itself (see stopHowToPlayAnim)
         demoResize();
     }
     if (typeof demoStart === 'function') demoStart();   // resume the ambient loop we paused on entry
@@ -6231,9 +6338,9 @@ const HTP_STEPS = [
     { title:t('One line per turn'), text:t('You may cross only one line per turn. A foot that starts on a line leaves it for free.'), draw:htpTryDraw('cross'), tryKey:'cross',
       hint:t('keep swinging until a line refuses you') },
     { title:t('Corners count once'), text:t('A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.'), draw:htpTryDraw('double'), tryKey:'double',
-      hint:t('swing a foot through a corner where two lines meet') },
+      hint:t('hold the glowing foot and swing along the dots, through the corner') },
     { title:t('Two feet at once'), text:t('Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.'), draw:htpTryDraw('twofeet'), tryKey:'twofeet',
-      hint:t('one swing that takes two feet across two lines') },
+      hint:t('hold the glowing foot and swing along the dots: two feet, two lines') },
     { title:t('Push them off'), text:t('Push your opponent off the edge. When one of their feet leaves the board, you win.'), is3D:true, tryKey:'off',
       hint:t('pin a foot and shove Red over the edge') },
 ];
@@ -6242,8 +6349,12 @@ function stopHowToPlayAnim() {
     if (htpRaf) cancelAnimationFrame(htpRaf); htpRaf=null;
     if (htpKeyHandler) { removeEventListener('keydown', htpKeyHandler); htpKeyHandler=null; }
     if (htpResizeHandler) { removeEventListener('resize', htpResizeHandler); htpResizeHandler=null; }
-    if (htp3DActive) htp3DExit();
     const el = document.getElementById('htpFull');
+    // The 3D view goes home and the walkthrough's element leaves the DOM BEFORE the menu lays the
+    // view out again: the desktop's layout pass declines while #htpFull exists, so the web's own
+    // phone-tile sizing ran instead and left a thumbnail of the board in the corner of the
+    // desktop home (the "black screen with only the material label" after Done).
+    if (htp3DActive) htp3DExit(el);
     if (el) el.remove();
 }
 // Furthest slide the player has unlocked: the first slide whose goal is still outstanding (or the
@@ -8620,13 +8731,18 @@ function animate() {
         // and on the push-off slide the only one, so a press has to be seen to land.
         const htpS = HTP_STEPS[htpFullIdx], htpSt = htpS && htpS.tryKey && htpCache['try_'+htpS.tryKey];
         const htpPin = htpSt && htpSt.pinned !== null && htpSt.pinned !== undefined && !(htpFallMode && htpPhase !== 'push');
-        if (htpPin) {
+        // A guided slide's foot-to-hold breathes here too, until it is the one held.
+        const htpInvite = htpSt && htpSt.guide && !htpSt.done && htpSt.pinned !== htpSt.guide.pivot ? htpSt.guide.pivot : -1;
+        if (htpPin || htpInvite >= 0) {
             const glowMap = boardIsPale() ? glowTexHot : glowTexGold;
             if (glowMap && pivotGlowMesh.material.map !== glowMap) pivotGlowMesh.material.map = glowMap;
-            const f = htpSt.p.feet()[htpSt.pinned];
-            pivotGlowMesh.visible = true; pivotGlowMesh.material.opacity = 0.75 + Math.sin(performance.now()*0.006)*0.15;
+            const f = htpSt.p.feet()[htpPin ? htpSt.pinned : htpInvite];
+            pivotGlowMesh.visible = true;
+            pivotGlowMesh.material.opacity = htpPin ? 0.75 + Math.sin(performance.now()*0.006)*0.15
+                                                   : 0.5 + Math.sin(performance.now()*0.006)*0.3;
             pivotGlowMesh.position.set(f.x, 0.25, f.y);
         } else pivotGlowMesh.visible = false;
+        htpGuide3D();
         if (hoverDisc) hoverDisc.visible = false;
         hideCrossFlashes3D();   // the live game's alerts must not bleed into the how-to-play scene
         renderer.render(scene,camera);
@@ -8643,7 +8759,8 @@ function animate() {
         tripods[i].rotation.set(0, -G.pieces[i].rot, 0);
         tripods[i].scale.set(1,1,1);
     }
-    if (fall.active) stepFall(dt);
+    // A look may slow the fall (Colossus: giants go over slowly); the desktop layer says by how much.
+    if (fall.active) stepFall(dt * (window.tauDesktop && window.tauDesktop.fallTimeScale ? window.tauDesktop.fallTimeScale() : 1));
     if (fall.active) {
         updateFallCam(dt);   // dramatic loss cam takes over regardless of manual/auto state
     } else {

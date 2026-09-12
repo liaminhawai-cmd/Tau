@@ -528,6 +528,71 @@
     renderer.shadowMap.needsUpdate=true;
   }
   let boardTrim = null;
+  let envGroup = null, envFor = null, lookTheme = null;   // the showing look's surroundings, if it has any
+  // Giants go over slowly: a look may slow the loser's fall (its simSpeed, floored so a match's
+  // ending never drags), and the dust below runs on the same clock.
+  function fallTimeScale() { return lookTheme && lookTheme.simSpeed ? Math.max(0.5, lookTheme.simSpeed) : 1; }
+  // ---- Sand and stone: the dust a fall raises on a look that asks for it (T.dust) ----
+  // Each puff is its own small point cloud thrown up from a spot: outward and up, slowed by the
+  // air, settling under gravity, spreading and fading over a couple of seconds; beyond the rim
+  // it keeps falling with the piece. Spawned where the loser's feet drag through the sand during
+  // the slide, and in a burst where the piece meets the rim and tips.
+  const puffs = [];
+  function spawnDust(x, z, n, spread) {
+    const T = lookTheme; if (!T || !T.dust || !scene) return;
+    const pos = new Float32Array(n*3), vel = new Float32Array(n*3);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random()*Math.PI*2, sp = spread*(0.3 + Math.random());
+      pos[i*3] = x + (Math.random()-0.5)*5; pos[i*3+1] = 0.4 + Math.random()*2; pos[i*3+2] = z + (Math.random()-0.5)*5;
+      vel[i*3] = Math.cos(a)*sp; vel[i*3+1] = spread*(0.4 + Math.random()*1.1); vel[i*3+2] = Math.sin(a)*sp;
+    }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const SH = showcase();
+    const mat = new THREE.PointsMaterial({ color: T.dust.color, size: T.dust.size || 2.4, transparent: true,
+      map: SH && SH.softDiscTexture ? SH.softDiscTexture() : null, alphaTest: 0.04,
+      opacity: 0.8, depthWrite: false, sizeAttenuation: true });
+    const pts = new THREE.Points(geo, mat);
+    pts.userData.dust = { vel, age: 0, life: 2.0 + Math.random()*0.8, size: T.dust.size || 2.4 };
+    scene.add(pts); puffs.push(pts);
+  }
+  function tickDust(dt) {
+    for (let k = puffs.length-1; k >= 0; k--) {
+      const p = puffs[k], d = p.userData.dust, pos = p.geometry.attributes.position.array, v = d.vel;
+      d.age += dt;
+      const drag = Math.max(0, 1 - 1.8*dt);
+      for (let i = 0; i < v.length; i += 3) {
+        v[i+1] -= 40*dt; v[i] *= drag; v[i+2] *= drag;
+        pos[i] += v[i]*dt; pos[i+1] += v[i+1]*dt; pos[i+2] += v[i+2]*dt;
+        const floor = Math.hypot(pos[i], pos[i+2]) > CFG.edgeU ? -80 : 0.3;
+        if (pos[i+1] < floor) { pos[i+1] = floor; v[i+1] = 0; }
+      }
+      p.geometry.attributes.position.needsUpdate = true;
+      p.material.opacity = 0.8 * Math.max(0, 1 - d.age/d.life);
+      p.material.size = d.size * (1 + d.age*1.3);   // the cloud spreads as it thins
+      if (d.age >= d.life) { scene.remove(p); p.geometry.dispose(); p.material.dispose(); puffs.splice(k, 1); }
+    }
+  }
+  let lastFallPhase = null, slideDustT = 0;
+  function tickEffects(dt) {
+    const now = performance.now()/1000;
+    if (envGroup && envGroup.userData.tick) envGroup.userData.tick(now, dt);
+    const phase = fall.active ? fall.phase : null;
+    if (lookTheme && lookTheme.dust && fall.active && typeof tripods !== 'undefined' && tripods[fall.idx]) {
+      const ts = fallTimeScale(), tp = tripods[fall.idx].position;
+      if (phase === 'slide') {   // feet dragging through the sand: a puff behind the piece every so often
+        slideDustT += dt*ts;
+        if (slideDustT > 0.14) { slideDustT = 0;
+          const d = Math.hypot(fall.vx, fall.vz) || 1;
+          spawnDust(tp.x - fall.vx/d*10, tp.z - fall.vz/d*10, 26, 10); }
+      }
+      if (phase === 'pivot' && lastFallPhase === 'slide') {   // the rim: the big one, and the stands erupt
+        spawnDust(fall.px, fall.pz, 170, 24);
+        if (envGroup && envGroup.userData.excite) envGroup.userData.excite();
+      }
+    } else slideDustT = 0;
+    lastFallPhase = phase;
+    if (puffs.length) tickDust(dt * (lookTheme && lookTheme.dust ? fallTimeScale() : 1));
+  }
   // The tripod material for the chosen board. Every finish sets the ordinary standard-material
   // terms; the exotic ones (noir's glass, alien's thin film, colossus' flat-shaded stone) add
   // theirs on top. Terms a finish does not ask for are reset to their neutral value rather than
@@ -551,6 +616,33 @@
     hub.scale.setScalar(CFG.legRadius * scale);
     return hub;
   }
+  // Glass seen through glass. three's transmission pass renders the OPAQUE scene into the buffer a
+  // glass surface then samples, so a glass leg behind another was simply not there: the near leg
+  // showed the board through the gap. Each glass piece now carries a proxy of its legs -- an opaque
+  // satin copy that writes only during that pass (a render target is set then, never for the
+  // screen), so the buffer holds the far leg and the near leg shows it, softened by its own
+  // roughness like anything else behind glass. On screen the proxy draws nothing at all.
+  function syncGlassProxy(piece, legMat) {
+    const body = piece.children[0];
+    let proxy = piece.userData.glassProxy;
+    if (!legMat || !(legMat.transmission > 0)) { if (proxy) proxy.visible = false; return; }
+    if (!proxy) {
+      proxy = new THREE.Mesh(body.geometry, new THREE.MeshPhysicalMaterial());
+      proxy.castShadow = false; proxy.receiveShadow = true;
+      proxy.onBeforeRender = r => { const pass = r.getRenderTarget() !== null; proxy.material.colorWrite = pass; proxy.material.depthWrite = pass; };
+      piece.add(proxy); piece.userData.glassProxy = proxy;
+    }
+    proxy.material.dispose();
+    const mat = new THREE.MeshPhysicalMaterial({ color: legMat.color.clone(), metalness: 0,
+      roughness: Math.min(1, Math.max(0.3, legMat.roughness + 0.25)), clearcoat: 0.5, clearcoatRoughness: 0.2,
+      envMapIntensity: Math.min(1, legMat.envMapIntensity || 1) });
+    mat.colorWrite = mat.depthWrite = false;
+    const SH = showcase();
+    if (SH && legMat.userData && legMat.userData.legTint != null) SH.installLegGradient(mat, legMat.userData.legTint);
+    proxy.material = mat;
+    proxy.position.copy(body.position); proxy.rotation.copy(body.rotation); proxy.scale.copy(body.scale);
+    proxy.visible = true;
+  }
   function applyShowcasePieces(T) {
     for (const pair of [tripods, htpTripods]) pair.forEach((piece, i) => {
       const body = piece.children[0], side = i===0 ? 'blue' : 'red';
@@ -559,9 +651,10 @@
       const mats = T.pieces(side);
       const hub = ensureHub(piece, T.hubBall || 1.9);
       body.material = mats.leg; hub.material = mats.hub; hub.visible = true;
-      piece.children.forEach(c => { if (c !== body && c !== hub) c.material = mats.foot || mats.leg; });
+      piece.children.forEach(c => { if (c !== body && c !== hub && c !== piece.userData.glassProxy) c.material = mats.foot || mats.leg; });
       piece.userData.showMats = [...new Set([mats.leg, mats.hub, mats.foot].filter(Boolean))];
       piece.userData.mat = mats.leg;
+      syncGlassProxy(piece, mats.leg);
     });
   }
   function restorePieces() {
@@ -569,7 +662,8 @@
       const body = piece.children[0];
       if (piece.userData.origMat) { body.material = piece.userData.origMat; piece.userData.mat = piece.userData.origMat; }
       if (piece.userData.hub) piece.userData.hub.visible = false;
-      piece.children.forEach(c => { if (c !== body && c !== piece.userData.hub && typeof tripodPinMat !== 'undefined' && tripodPinMat) c.material = tripodPinMat; });
+      if (piece.userData.glassProxy) piece.userData.glassProxy.visible = false;
+      piece.children.forEach(c => { if (c !== body && c !== piece.userData.hub && c !== piece.userData.glassProxy && typeof tripodPinMat !== 'undefined' && tripodPinMat) c.material = tripodPinMat; });
       (piece.userData.showMats || []).forEach(m => m.dispose()); piece.userData.showMats = null;
     });
   }
@@ -605,6 +699,7 @@
       mat.emissive.set(p.emissive?(i===0?p.blue:p.red):'#000000');
       mat.emissiveIntensity=p.emissive?(p.emissiveIntensity||.2):0;
       mat.needsUpdate=true;
+      syncGlassProxy(piece, mat);
     });
   }
   function applyMaterials() {
@@ -652,6 +747,20 @@
       boardRim.material.metalness=.68; boardRim.material.roughness=.34;
       applyPieceMaterials(fin);
     }
+    // A look's surroundings come into the match with it and leave with it: Colossus's stands and
+    // its haze (fog grades with distance, so the board stays clear and the far wall half-vanishes).
+    const envWant = T && T.env ? fin.id : null;
+    if (envFor !== envWant) {
+      if (envGroup) {
+        scene.remove(envGroup);
+        envGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } });
+        envGroup = null;
+      }
+      if (envWant) { envGroup = T.env(); scene.add(envGroup); }
+      envFor = envWant;
+    }
+    scene.fog = T && T.fog ? new THREE.FogExp2(T.fog.color, T.fog.density) : null;
+    lookTheme = T;
     detailMode = fin.detail==='wood' ? 1 : fin.detail==='marble' ? 2 : fin.detail==='alien' ? 3 : 0;
     mathLive = fin.id === 'math';
     const bg = T ? '#' + new THREE.Color(T.bg).getHexString() : fin.wood.bg;
@@ -665,6 +774,8 @@
       camera.fov=38; camera.clearViewOffset(); camera.updateProjectionMatrix();
       artInstalled=true;
     }
+    const fovWant = T && T.gameCam && T.gameCam.fov ? T.gameCam.fov : 38;   // a look's own lens (Colossus)
+    if (camera.fov !== fovWant) { camera.fov = fovWant; camera.updateProjectionMatrix(); }
     if(boardTrim) boardTrim.material.color.set(trim);
     scene.background=new THREE.Color(bg);
     root.style.setProperty('--desk-bg', bg);
@@ -679,9 +790,20 @@
   // false, and the game's own resize() (the same split-view math and #splitHandle the web build
   // uses) lays out #canvas and #view3d side by side. Desktop never gets a cut-down board layout —
   // same full flat-board-plus-3D view as web, just with the walnut chrome floated over it.
+  // The home panel never scrolls: on a window too short for it, the whole panel scales down to
+  // fit (about its left-centre, where it is anchored), leaving room above and for the account line
+  // beneath it. Measured with the transform off, so the natural height is what is compared.
+  function fitHome() {
+    home.style.transform = '';
+    const natural = home.offsetHeight;
+    if (!natural) return;
+    const s = Math.min(1, (innerHeight - 110) / natural);
+    home.style.transform = `translateY(-50%) scale(${s.toFixed(4)})`;
+  }
   function layout() {
     root.classList.toggle('desktop-watching', inMatch() && passiveView());
     if(htp3DActive || $('htpFull')) return false;
+    if(!inMatch()) fitHome();
     if(!renderer) {   // no WebGL: overhead-only, in the menu or a match
       const size=Math.max(160,Math.floor(Math.min(innerHeight-160,innerWidth-60)));
       canvas.style.width=canvas.style.height=size+'px';
@@ -746,7 +868,12 @@
       tx=Math.max(-24,Math.min(24,p.x*.25)); tz=Math.max(-24,Math.min(24,p.z*.25)); distance+=18;
     }
     outTarget.set(tx,ty,tz);
-    outPos.set(tx+Math.sin(yaw)*distance*.72,ty+distance*.69,tz+Math.cos(yaw)*distance*.72);
+    // The elevation is the boards' usual 44 degrees unless the showing look asks for its own
+    // (Colossus sits lower, to take in the stands); a wider lens keeps the dish the same size.
+    const gc = lookTheme && lookTheme.gameCam;
+    const elev = gc && gc.elev ? gc.elev : 0.765;
+    if (gc && gc.fov) distance *= Math.tan(19*Math.PI/180) / Math.tan(gc.fov*Math.PI/360);
+    outPos.set(tx+Math.sin(yaw)*distance*Math.cos(elev),ty+distance*Math.sin(elev),tz+Math.cos(yaw)*distance*Math.cos(elev));
   }
   function updateCamera(dt, falling=false) {
     if(!renderer || htp3DActive) return false;
@@ -911,6 +1038,7 @@
         + ' · <kbd>Left stick</kbd> camera<br>Scroll over the flat board to resize it';
     } else { padButtons=[]; padAxisLatch=false; }
     if(heldLeft||heldRight)swing((heldRight?1:0)-(heldLeft?1:0),dt);
+    tickEffects(dt);
   }
   document.addEventListener('keydown',e=>{
     if($('htpFull'))return;
@@ -963,7 +1091,7 @@
     get progress(){return {...progress};},
     recordResult,
     debugDetailMode(){ return detailMode; },
-    resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult,
+    resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale,
     // The corner layout's camera goal for the current window (see desiredPose).
     cornerCameraPose(w3, h3){ if(!renderer||!camera) return null;
       const pos=new THREE.Vector3(), tgt=new THREE.Vector3(); desiredPose(false,pos,tgt,w3,h3); return {position:pos,target:tgt}; },

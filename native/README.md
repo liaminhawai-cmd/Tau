@@ -94,7 +94,17 @@ colour as they come down to solid coloured feet. Satin rather than water-clear o
 purpose: three's glass shows only the opaque scene behind it, so a clear leg
 against the dark room, or in front of another leg, drew as a black stroke. A
 fifth of each leg's shading is its own body under the lights, with a Fresnel rim
-along the edges, so a leg holds its shape against anything.
+along the edges, so a leg holds its shape against anything. Glass also shows
+through glass: three's transmission buffer holds only opaque objects, so each
+glass piece carries an opaque satin proxy of its legs that draws only into that
+buffer (never on screen), and a leg behind another leg is seen through it.
+
+Colossus brings its arena into the match: the tiered stands, the arched wall,
+the hanging dust, and a crowd of two thousand little stone tripods in the two
+sides' colours along every walkway, one instanced draw. The camera sits lower
+and wider on that board so the tiers rise behind the far rim; haze grades with
+distance. A loser goes over at half speed, feet dragging dust through the sand,
+a burst at the rim, and the stands leap.
 
 You start on Walnut and **unlock** the rest by playing. The everyday boards open
 with wins and games played (Dojo after a win, Slate after three games, Maple,
@@ -198,7 +208,13 @@ skin's own piece colours, beside the 3D view of the real thing; the whole-game
 preview plays at a pace that can be followed. On the 3D pane the foot you hold
 glows as it does on the flat board and the cursor turns to a hand over a foot,
 so on the push-off slide, where the 3D pane is the only board, a press is seen
-to land.
+to land. The corners-once and two-feet slides are guided: the foot to hold
+pulses and dotted rails with arrowheads show the way, on both boards, found at
+slide start by swinging a scratch copy of the piece under the real rules until
+the goal is met. You still make the move yourself. Done returns to the home
+screen with the 3D view laid out for it (it used to come back as a thumbnail in
+the corner). The home panel itself scales to a short window rather than
+scrolling.
 
 Play starts the selected AI level and side. Same-screen play is untimed. Esc
 opens the match menu. The match keeps going underneath it, offline or online, with
