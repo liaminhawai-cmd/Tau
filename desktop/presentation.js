@@ -315,8 +315,10 @@
   function openPause() {
     if (!inMatch()) return;
     if (G.over && !replayActive) { renderGameOverSheet(); return; }
-    const body = onlineMatch ? 'Your online match continues while this menu is open.' : '';
-    showModal(onlineMatch ? 'Match menu' : 'Paused', body, [
+    // The match keeps going under this menu, offline as much as online: an opponent mid-swing
+    // finishes its swing, and you can change the board or check the controls while it thinks.
+    // The board stays visible behind the sheet (no blur on the backdrop) so you see it happen.
+    showModal('Match menu', 'The match continues while this menu is open.', [
       { label:'Continue', onClick:() => focusBoard() },
       { label:'Controls', onClick:openControls },
       { label:'Settings', onClick:openSettings },
@@ -443,13 +445,23 @@
   // consumes the random stream used by the opponents. The printed geometry comes from CFG.
   // Smooth grain coordinates shared with boards.js's detail shader. No polar angle or segmented
   // frame: those create radial joins (including a seam where atan wraps around the negative axis).
+  // The board is assembled from pieces that meet at the printed curves -- the centre disc, each
+  // ring band, and the six lens segments are separate boards -- and every piece was cut from its
+  // plank at its own angle, so the grain turns at each joint the way a real inlaid top does. No
+  // straight cuts anywhere: the joints ARE the rings and arcs. Nine pieces, each with a golden-angle
+  // grain direction (neighbours never share one) and its own offset so no figure continues across
+  // a joint; the gentle warp on top keeps the fibres curved. Mirrored in boards.js.
   function woodFrame(x, y, out) {
     const r = Math.hypot(x,y), r0=CFG.rings[0], r1=CFG.rings[1];
     const band = r < r0 ? 2 : r < r1 ? 1 : 0;
-    const lens = CFG.sideArcs.some(a => Math.hypot(x-a.cx, y-a.cy) < a.r);
-    out.zone = band + 2 - (lens ? 1 : 0);   // the flat board's zone value: 4 centre .. 1 outer lens
-    out.x = x + 3.4*Math.sin(y*0.065) + 1.6*Math.sin((x+y)*0.035);
-    out.y = y + 1.8*Math.sin(x*0.05);
+    const side = Math.hypot(x-CFG.sideArcs[0].cx, y-CFG.sideArcs[0].cy) < CFG.sideArcs[0].r ? 1
+               : Math.hypot(x-CFG.sideArcs[1].cx, y-CFG.sideArcs[1].cy) < CFG.sideArcs[1].r ? 2 : 0;
+    out.zone = band + 2 - (side ? 1 : 0);   // the flat board's zone value: 4 centre .. 1 outer lens
+    const id = (2 - band) + 3*side;          // 0 centre, 1 mid ring, 2 outer ring, 3..8 the lens pieces
+    const ang = (id * 2.399) % Math.PI, c = Math.cos(ang), sn = Math.sin(ang);
+    const qx = c*x - sn*y + id*37, qy = sn*x + c*y + id*23;
+    out.x = qx + 3.4*Math.sin(qy*0.065) + 1.6*Math.sin((qx+qy)*0.035);
+    out.y = qy + 1.8*Math.sin(qx*0.05);
     return out;
   }
   function woodMaps(fin) {
@@ -930,6 +942,7 @@
 
   window.tauDesktop={
     get paused(){return paused;},
+    get menuOpen(){return dialogOpen();},
     get skin(){return finish().skin;},
     get padScheme(){return settings.padScheme;},
     set padScheme(v){ if(PAD_SCHEMES.includes(v)){ settings.padScheme=v; saveSettings(); } },
@@ -955,7 +968,8 @@
     onModalShown(){
       delete $('modalBox').dataset.desktopResult;
       previousFocus=document.activeElement;
-      if(inMatch()&&(!G.over||replayActive))setPaused(true);
+      // No pause here: the opponent keeps playing under the menu (see openPause). Input to the
+      // board is blocked by the open dialog itself (canPlay / inputBlocked check dialogOpen).
       requestAnimationFrame(()=>{if(dialogOpen())(focusable($('modalBtns'))[0]||focusable($('modalBox'))[0])?.focus();});
     },
     onModalHidden(){setPaused(false);if(previousFocus?.isConnected)previousFocus.focus({preventScroll:true});previousFocus=null;},

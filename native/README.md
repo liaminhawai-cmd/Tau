@@ -128,10 +128,13 @@ backdrop's real luminance rather than by which board it is.
 Most boards grade their zones the way the flat board always has — the centre a
 touch lighter, each band out a touch darker, the lens segments darker again — so
 the two views agree about which band a foot is on. Yellow, Math and Alien stay
-flat on purpose. The wooden boards have continuous, gently curved grain across
-one slab, with each zone a different shade of the same timber. There are no
-radial stave joins or glue grooves. The bake and per-pixel shader use matching
-`woodFrame` coordinates so the printed figure and live grain flow together.
+flat on purpose. The wooden boards are assembled: the centre disc, each ring
+band and the six lens segments are separate pieces that meet at the printed
+curves, each cut from its plank at its own angle so the grain turns at every
+joint, with each zone a different shade of the same timber. There are no
+straight cuts anywhere; the joints are the rings and arcs themselves. The bake
+and the per-pixel shader use the same `woodFrame`, so the printed figure and the
+live grain agree on every piece.
 
 Wood and marble boards carry per-pixel surface detail on top of the baked
 texture: a fragment-shader pass (`installDetailShader`) adds grain, pores, veins
@@ -177,8 +180,9 @@ and controls align with the 3D view. Watching temporarily caps the overhead size
 returning to play restores the saved size and the resize grip.
 
 Play starts the selected AI level and side. Same-screen play is untimed. Esc
-opens the match menu and pauses offline matches, including an AI turn; an online
-opponent's clock continues. Settings persist locally. The result screen offers
+opens the match menu. The match keeps going underneath it, offline or online, with
+the board visible behind the sheet, so the opponent finishes its swing while you
+are in Settings, and an online opponent's clock continues. Settings persist locally. The result screen offers
 Rematch, the next level after a win, a replay when recorded, and Main menu.
 Ranked, online and tutorial screens still use their existing game flows. The
 menu's **Lab** button opens the analysis lab (the `#lab` dev route — bench any

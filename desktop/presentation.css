@@ -78,7 +78,10 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .desktop-input-hint kbd { font:inherit; color:var(--paper); }
 .tau-desktop #replayBtns { pointer-events:auto; justify-content:center; flex-wrap:wrap; }
 .tau-desktop #replayBtns button { font-size:13px; padding:9px 12px; border:1px solid var(--edge); background:#172018; color:var(--paper); }
-.tau-desktop #modalBackdrop { z-index:110; background:rgba(5,9,6,.62); backdrop-filter:blur(9px); padding:24px; box-sizing:border-box; }
+.tau-desktop #modalBackdrop { z-index:110; background:rgba(5,9,6,.30); padding:24px; box-sizing:border-box; }
+/* The match goes on under a menu, so the backdrop stays clear enough to watch the opponent's swing;
+   only the sheet itself frosts what is directly behind it. */
+.tau-desktop #modalBox { backdrop-filter:blur(10px); }
 .tau-desktop #modalBox { position:relative; box-sizing:border-box; width:min(460px,100%); max-width:600px; max-height:calc(100dvh - 48px); overflow:auto; background:linear-gradient(150deg,#22291f,#141b15); border:1px solid var(--edge); border-radius:7px; padding:38px; color:var(--paper); box-shadow:0 28px 100px #0007; }
 .tau-desktop #modalTitle { font:400 32px/1.2 Georgia,serif; color:var(--paper); letter-spacing:-.02em; margin:0 0 20px; text-align:left; }
 .tau-desktop #modalBody { color:var(--muted); font-size:15px; line-height:1.65; margin-bottom:24px; }

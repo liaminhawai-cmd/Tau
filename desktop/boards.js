@@ -745,7 +745,6 @@ function installLegGradient(material, tint) {
 // near ring A and near curve B simultaneously = near their crossing.
 const MATH_GLSL = `
 uniform float uMath; uniform vec2 uFeet[6]; uniform float uRingR;
-uniform vec4 uBoardGeom;   // inner ring, outer ring, board edge (= lens-circle centre), lens-circle radius
 float mcurve(vec2 p, vec2 c, float r) { return abs(distance(p, c) - r); }
 float mboard(vec2 p) {   // nearest printed line (full circles, as the math board draws them)
   float d = mcurve(p, vec2(0.0), uBoardGeom.x);
@@ -789,12 +788,24 @@ float afbm(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<6;i++){ s+=a*anoise(p); p=p
 // that makes the light actually break over them. Mode 3 is the alien membrane, verbatim.
 const DETAIL_GLSL = `
 uniform float uDetail; uniform float uDetailTime; uniform vec3 uDetailTint;
+uniform vec4 uBoardGeom;   // inner ring, outer ring, board edge (= lens-circle centre), lens-circle radius
 float dfbm4(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<4;i++){ s+=a*anoise(p); p=p*2.11+vec2(3.1,7.7); a*=0.5; } return s; }
-// Continuous, gently curved fibres across one slab. Mirrored in presentation.js's texture bake.
-// Keep this Cartesian: angular sectors introduce straight seams and discontinuous normals.
+// The board is assembled from pieces that meet at the printed curves: the centre disc, each ring
+// band and the six lens segments are separate boards, each cut from its plank at its own angle, so
+// the grain turns at every joint. No straight cuts: the joints ARE the rings and arcs. Nine pieces,
+// golden-angle grain directions (neighbours never share one), an offset per piece so no figure
+// continues across a joint, and a gentle warp so the fibres stay curved. Mirrored in presentation.js.
 vec2 woodFrame(vec2 p){
-  return vec2(p.x + 3.4*sin(p.y*0.065) + 1.6*sin((p.x+p.y)*0.035),
-              p.y + 1.8*sin(p.x*0.05));
+  float r = length(p);
+  float band = r < uBoardGeom.x ? 2.0 : (r < uBoardGeom.y ? 1.0 : 0.0);
+  float side = distance(p, vec2(-uBoardGeom.z, 0.0)) < uBoardGeom.w ? 1.0
+             : (distance(p, vec2(uBoardGeom.z, 0.0)) < uBoardGeom.w ? 2.0 : 0.0);
+  float id = (2.0 - band) + 3.0*side;
+  float ang = mod(id * 2.399, 3.14159265);
+  float c = cos(ang), sn = sin(ang);
+  vec2 q = vec2(c*p.x - sn*p.y, sn*p.x + c*p.y) + vec2(id*37.0, id*23.0);
+  return vec2(q.x + 3.4*sin(q.y*0.065) + 1.6*sin((q.x+q.y)*0.035),
+              q.y + 1.8*sin(q.x*0.05));
 }
 // Wood: growth bands along a warped axis, early/late wood, and pores that pit the late wood.
 // Returns (tint multiplier, roughness, height).

@@ -16,38 +16,43 @@ test('offline launch, keyboard move, pause and settings use the real game', asyn
   assert.ok(g.read('Math.abs(G.netRad)')>Math.PI/90,'a tap exceeds the minimum legal move');
   const before=g.read('JSON.stringify(takeSnap())');
   g.key('Escape');g.tick();
-  assert.equal(g.$('modalTitle').textContent,'Paused');
-  assert.equal(g.w.tauDesktop.paused,true);
+  assert.equal(g.$('modalTitle').textContent,'Match menu');
+  assert.equal(g.w.tauDesktop.menuOpen,true);
   g.tick(3200);
-  assert.equal(g.read('JSON.stringify(takeSnap())'),before,'pause freezes the match');
+  assert.equal(g.read('JSON.stringify(takeSnap())'),before,'your own turn waits for you under the menu');
   assert.equal(g.read('G.active'),0);
   g.key('Escape');g.tick();
-  assert.equal(g.w.tauDesktop.paused,false);
+  assert.equal(g.w.tauDesktop.menuOpen,false);
   g.key('Enter');g.tick();
   assert.equal(g.read('G.active'),1,'Enter commits through the production turn handler');
   g.$('desktopPause').click();g.tick();
   [...g.$('modalBtns').children].find(b=>b.textContent==='Settings').click();g.tick();
-  assert.equal(g.w.tauDesktop.paused,true);
+  assert.equal(g.w.tauDesktop.menuOpen,true);
   assert.equal(g.$('modalBox').getAttribute('role'),'dialog');
   g.$('desktopMotion').checked=true;g.$('desktopMotion').dispatchEvent(new g.w.Event('change'));
   assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).reducedMotion,true);
   g.$('modalBtns').firstElementChild.click();g.tick();
-  assert.equal(g.w.tauDesktop.paused,false);
+  assert.equal(g.w.tauDesktop.menuOpen,false);
   assert.deepEqual(g.errors,[]);
 });
 
-test('AI waits while paused and resumes after Continue',async t=>{
+test('the opponent keeps playing under the match menu, and the board stays visible',async t=>{
   const g=await game();t.after(g.close);
   g.$('desktopLevel').value='1';g.$('desktopLevel').dispatchEvent(new g.w.Event('change'));
   g.$('desktopColour').value='1';g.$('desktopColour').dispatchEvent(new g.w.Event('change'));
   g.$('desktopPlay').click();
   g.$('desktopPause').click();g.tick();
+  assert.equal(g.$('modalTitle').textContent,'Match menu');
+  assert.match(g.$('modalBody').textContent,/continues while this menu is open/);
+  // The menu does not stop the clock: the AI takes its turn while you are in Settings.
   const before=g.read('JSON.stringify(takeSnap())');
-  g.tick(1500);
-  assert.equal(g.read('JSON.stringify(takeSnap())'),before);
-  assert.equal(g.read('aiAnim'),null);
-  g.$('modalBtns').firstElementChild.click();g.tick(2200);
-  assert.notEqual(g.read('JSON.stringify(takeSnap())'),before);
+  g.tick(2600);
+  assert.notEqual(g.read('JSON.stringify(takeSnap())'),before,'the AI moved while the menu was open');
+  assert.equal(g.read('tauDesktop.paused'),false);
+  // ...but the open dialog still blocks the board: keys and the pad reach the menu, not the pieces.
+  assert.equal(g.read('inputBlocked()'),true);
+  g.$('modalBtns').firstElementChild.click();g.tick();
+  assert.equal(!!g.read('inputBlocked()'),g.read('vsAI && G.active===aiIdx'),'closing the menu hands the board back on your turn');
   assert.deepEqual(g.errors,[]);
 });
 
@@ -198,8 +203,8 @@ test('standard controller pins, swings, commits, cancels and opens the menu',asy
   press(0);pull(7,1,300);press(1);
   assert.equal(g.read('JSON.stringify(takeSnap())'),before);
   assert.equal(g.read('G.pinned'),null);
-  press(9);assert.equal(g.w.tauDesktop.paused,true);
-  press(0);assert.equal(g.w.tauDesktop.paused,false);
+  press(9);assert.equal(g.w.tauDesktop.menuOpen,true);
+  press(0);assert.equal(g.w.tauDesktop.menuOpen,false);
   assert.deepEqual(g.errors,[]);
 });
 
