@@ -450,6 +450,17 @@ function nnPlanFor(eng, net, idx, opts) {
     for (let i = 0; i < cands.length; i++) { r -= ws[i]; if (r <= 0) { chosen = cands[i]; break; } }
   }
   chosen.roughness = roughness;   // reported for diagnostics/calibration, never used to rank
+  // o.captureTop: a back-channel for callers that need the whole shortlist, not just the winner
+  // (committee.js pools several brains' sweeps, and a move only ONE member likes can still win the
+  // pool -- it can never even be considered if every member reports its single favourite). Pure
+  // output: the array is filled and the return value is unchanged, so no existing caller moves.
+  // `deep` is the recursive score where a depth>=2 search produced one, `s` the smoothed root score.
+  if (Array.isArray(o.captureTop)) {
+    const lim = Math.max(1, o.captureTopN || 6);
+    for (const c of cands.slice(0, lim))
+      o.captureTop.push({ pivotIdx: c.pivotIdx, dir: c.dir, targetRad: c.targetRad,
+                          score: Number.isFinite(c.deep) ? c.deep : c.s });
+  }
   return chosen;
 }
 

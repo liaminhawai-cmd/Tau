@@ -41,7 +41,7 @@ const faceIds=(String(arg('faces',arg('allowPlayers',''))).match(/(?:\[[^\]]*\]|
 const CORNER_FACE_MIN_LEVEL=7;
 const players=(levels.length?levels:productionLevels()).flatMap(level=>{const base={id:`L${level}`,kind:'ladder',level,spec:`L${level}`,label:`L${level}`};return level>=CORNER_FACE_MIN_LEVEL?[base,{...base,id:`L${level}+corner`,spec:`L${level}+corner`,label:`L${level}+corner`,corner:true}]:[base];});for(const id of(faceIds.length?faceIds:fallbackFaces())){const p=facePlayer(id);if(p)players.push(p);}
 // The committee seat (committee.js): one voting brain of several, immortal while it sweeps the field.
-const committee=process.argv.includes('--committee')?require('./committee.js').activeLeagueCommittee(dir):null;if(committee)players.push({id:committee.id,kind:'committee',brain:'committee',sweeping:true,spec:committee.spec,label:committee.name||committee.id,depth:1,searchDepth:committee.depth||3,model:committee.file,members:committee.members});
+const committees=process.argv.includes('--committee')?require('./committee.js').activeLeagueCommittees(dir):[];for(const c of committees)players.push({id:c.id,kind:'committee',brain:'committee',sweeping:true,spec:c.spec,label:c.name||c.id,depth:1,searchDepth:c.depth||3,model:c.file,members:c.members});
 const uniq=[],seen=new Set();for(const p of players)if(!seen.has(p.id)){seen.add(p.id);uniq.push(p);}players.length=0;players.push(...uniq);
 
 const store=read(outPath,{ratingSemanticsVersion:ratingState.VERSION,semantics:ratingState.SEMANTICS,seedWeightMatches:1,seedElo:{},results:{},recent:[]});store.ratingSemanticsVersion=ratingState.VERSION;store.semantics=ratingState.SEMANTICS;store.seedWeightMatches=Math.max(.01,+store.seedWeightMatches||1);store.seedElo||={};store.results||={};store.recent||=[];
@@ -126,25 +126,41 @@ function pickAnchor(elo,g,pair,fr,free){
 // live match are excluded outright, which is what spreads first coverage across many zero-game
 // faces instead of twelve lanes bursting one face at a time.
 let cmActive=0;
-// One member's own depth-3 search is the whole cost of a lane; committee.members.length lanes
-// worth of them is what the box can actually run without thrashing.
-const cmCap=committee?Math.max(1,Math.floor(workers/Math.max(1,(committee.members||[]).length))):0;
+// One member's own search is the whole cost of a lane, so the cap is shared across ALL sweeping
+// committees -- three of them in flight must not mean three times the threads.
+const cmMembers=committees.length?Math.max(...committees.map(c=>(c.members||[]).length)):1;
+const cmCap=committees.length?Math.max(1,Math.floor(workers/Math.max(1,cmMembers))):0;
+const {SWEEP_FACES}=committees.length?require('./committee.js'):{SWEEP_FACES:20};
+const metWith=cm=>players.filter(o=>o.id!==cm.id&&((store.tsPairs||{})[canonical(cm.id,o.id)]||0)>=PHYSICAL_GAMES_PER_MATCH).length;
+const unmetFor=cm=>players.filter(o=>o.id!==cm.id&&((store.tsPairs||{})[canonical(cm.id,o.id)]||0)<PHYSICAL_GAMES_PER_MATCH);
+const sweepDone=cm=>metWith(cm)>=SWEEP_FACES||!unmetFor(cm).length;
+// Pairs already handed to a lane. tsPairs only updates when a match FINISHES, so without this two
+// lanes can start the same committee pairing at the same moment and play it twice.
+const inflight=new Set();
 function pickPair(elo,busy){
   const{g,pair}=totals(),free=players.filter(p=>!busy.has(p.id)),fr=fieldRange(elo);
   // A SWEEPING committee is the whole league until it has met every face: every lane serves it an
   // opponent it has not played (it is never marked busy itself, so all lanes run it at once), and
   // no other pair is drawn while any face is still unmet. A lane that finds every unmet face already
   // in flight waits rather than falling back to a normal pair. Its Elo is the point of fielding it.
-  const cm=players.find(p=>p.kind==='committee'&&p.sweeping);
-  if(cm){const unmet=players.filter(o=>o.id!==cm.id&&((store.tsPairs||{})[canonical(cm.id,o.id)]||0)<PHYSICAL_GAMES_PER_MATCH);
-    // Concurrency is CAPPED, not "every free lane": each committee match already spawns one worker
-    // thread per member doing its own depth-3 search, so letting all `workers` lanes grab it at once
-    // oversubscribes the box by a factor of memberCount (measured: 4 lanes x 3 members = 12+ search
-    // threads fighting over 8-12 cores, turning a ~700s match into 5000s+). cmCap lanes run it in
-    // parallel; the rest sit out with 'wait' rather than playing an unrelated pair, because 100%
-    // pressure means no other face plays any other face while the sweep is short of games -- it
-    // means the compute goes to the sweep, not that every lane must be inside one committee match.
-    if(unmet.length){if(cmActive>=cmCap)return'wait';const scored=unmet.filter(o=>!busy.has(o.id)).map(o=>[pairScore(cm,o,elo,g,pair,fr),o]).filter(x=>x[0]>0);const o=weightedDraw(scored);return o?[cm,o]:'wait';}}
+  // Concurrency is CAPPED, not "every free lane": each committee match already spawns one worker
+  // thread per member doing its own search, so letting all `workers` lanes grab one at once
+  // oversubscribes the box by a factor of memberCount (measured: 4 lanes x 3 members = 12+ search
+  // threads fighting over 8-12 cores, turning a ~700s match into 5000s+). cmCap lanes run the sweep
+  // in parallel; the rest sit out with 'wait' rather than playing an unrelated pair, because 100%
+  // pressure means no other face plays any other face while a sweep is short of games -- it means
+  // the compute goes to the sweep, not that every lane must be crammed into one committee match.
+  // The committee with the fewest faces met goes first, so D1/D2/D3 finish together rather than the
+  // cheapest one racing ahead.
+  const sweeping=players.filter(p=>p.kind==='committee'&&p.sweeping&&!sweepDone(p)).sort((a,b)=>metWith(a)-metWith(b));
+  if(sweeping.length){
+    if(cmActive>=cmCap)return'wait';
+    for(const cm of sweeping){
+      const scored=unmetFor(cm).filter(o=>!busy.has(o.id)&&!inflight.has(canonical(cm.id,o.id))).map(o=>[pairScore(cm,o,elo,g,pair,fr),o]).filter(x=>x[0]>0);
+      const o=weightedDraw(scored);if(o)return[cm,o];
+    }
+    return'wait';
+  }
   if(Math.random()<ANCHOR_MATCH_P){const an=pickAnchor(elo,g,pair,fr,free);if(an)return an;}
   const unknown=free.filter(p=>(g[p.id]||0)===0);
   if(unknown.length){
@@ -171,6 +187,9 @@ function arenaArgs(a,b){const args=[path.join(dir,'arena.js'),'--a',a.spec,'--b'
 function matchLimitMs(a,b){return Math.round(Math.max(15*60e3,12*(costMs(a)+costMs(b))));}
 function play(a,b){const t0=Date.now();return new Promise(resolve=>execFile(process.execPath,arenaArgs(a,b),{encoding:'utf8',maxBuffer:1<<24,timeout:matchLimitMs(a,b),killSignal:'SIGKILL'},(err,stdout,stderr)=>{if(stdout)process.stdout.write(stdout);if(stderr)process.stderr.write(stderr);const m=[...String(stdout||'').matchAll(/:\s*(\d+)-(\d+)(?:-(\d+))?\s+\(/g)];if(err||!m.length){console.error(`[rating] no result: ${a.id} vs ${b.id}${err&&err.killed?' (match timed out and was killed)':''}`);return resolve();}const q=m.at(-1),aw=+q[1],bw=+q[2],draws=+(q[3]||0);const rec=aw>bw?{w:1,l:0,d:0}:bw>aw?{w:0,l:1,d:0}:{w:0,l:0,d:1};const key=`${a.id}|${b.id}`,old=store.results[key]||{w:0,l:0,d:0,physical:0};store.results[key]={w:(+old.w||0)+rec.w,l:(+old.l||0)+rec.l,d:(+old.d||0)+rec.d,physical:(+old.physical||0)+PHYSICAL_GAMES_PER_MATCH};store.recent.push({at:new Date().toISOString(),a:a.id,b:b.id,...rec,physical:2,raw:`${aw}-${bw}${draws?'-'+draws:''}`});store.recent=store.recent.slice(-24);store.tsPairs||={};const ck=canonical(a.id,b.id);store.tsPairs[ck]=(+store.tsPairs[ck]||0)+PHYSICAL_GAMES_PER_MATCH;noteCost(a,b,Date.now()-t0);saveStore();resolve();}));}
 function writeSummary(){const ids=players.map(p=>p.id),elo=fitBT(ids,store.results),ci=bootstrap(ids,bootstrapN),{g}=totals(),out={updated:new Date().toISOString(),ratingSemanticsVersion:ratingState.VERSION,semantics:ratingState.SEMANTICS,seedWeightMatches:store.seedWeightMatches,compatStrengthUnit:'elo/100 (legacy consumers only; not a ladder rank)',players:{}};for(const p of players){const games=Math.round(g[p.id]||0),e=elo[p.id],c=games>=2?ci[p.id]:{lo:null,hi:null},lo=Number.isFinite(c&&c.lo)?c.lo:null,hi=Number.isFinite(c&&c.hi)?c.hi:null;out.players[p.id]={kind:p.kind,elo:Number.isFinite(e)?+e.toFixed(1):null,eloLo:lo==null?null:+lo.toFixed(1),eloHi:hi==null?null:+hi.toFixed(1),games,...(p.kind==='committee'?{model:p.model,depth:1,searchDepth:p.searchDepth||3,brain:'committee',dualPolicy:false,members:p.members,sweeping:!!p.sweeping,rank:Number.isFinite(e)?+(e/100).toFixed(3):null,rankLo:lo==null?null:+(lo/100).toFixed(3),rankHi:hi==null?null:+(hi/100).toFixed(3)}:p.kind==='ladder'?{level:p.level,...(p.corner?{corner:true}:{})}:{model:p.model,depth:p.depth,brain:p.brain||'nn',dualPolicy:!!p.dualPolicy,rank:Number.isFinite(e)?+(e/100).toFixed(3):null,rankLo:lo==null?null:+(lo/100).toFixed(3),rankHi:hi==null?null:+(hi/100).toFixed(3),rankLoEdge:null,rankHiEdge:null,extrapRank:null,extrapRankLo:null,extrapRankHi:null})};}atomic(summaryPath,JSON.stringify(out,null,1));const rows=players.map(p=>({p,elo:elo[p.id],games:Math.round(g[p.id]||0),ci:ci[p.id]})).sort((a,b)=>(b.elo||0)-(a.elo||0));console.log(`\n=== unified Elo (${Object.values(store.results).reduce((s,r)=>s+matchN(r),0)} colour-balanced matches / ${Object.values(store.results).reduce((s,r)=>s+physicalN(r),0)} physical games) ===`);console.log('  Elo       90% CI       games  brain');for(const r of rows){const c=r.games>=2&&r.ci&&Number.isFinite(r.ci.lo)?`${Math.round(r.ci.lo)}..${Math.round(r.ci.hi)}`:'—';console.log(`${String(Math.round(r.elo||0)).padStart(5)}  ${c.padStart(13)}  ${String(r.games).padStart(5)}  ${r.p.label}${r.p.kind==='ladder'?'  [immortal]':''}`);}}
-async function main(){console.log(`[rating] ${players.length} players; one scheduler; temp 0; every pairing = two games, colours reversed; pairs drawn by score, rent by measured compute`);if(refit){writeSummary();return;}if(dryrun)return;const start=Date.now(),busy=new Set();let stop=false;const timedOut=()=>budgetHours>0&&(Date.now()-start)/3600000>=budgetHours;const lane=async()=>{while(!stop&&!timedOut()){const{g}=totals();if(!budgetHours&&players.length&&players.every(p=>(g[p.id]||0)>=targetGames)){stop=true;break;}const elo=fitBT(players.map(p=>p.id),store.results),pair=pickPair(elo,busy);if(pair==='wait'){await new Promise(r=>setTimeout(r,3000));continue;}if(!pair)break;const[a,b]=pair;if(a.sweeping)cmActive++;else busy.add(a.id);busy.add(b.id);try{await play(a,b);}finally{if(a.sweeping)cmActive--;else busy.delete(a.id);busy.delete(b.id);}}};await Promise.all(Array.from({length:workers},lane));writeSummary();
-  if(committee){const cm=players.find(p=>p.id===committee.id),others=players.filter(p=>p.id!==committee.id),left=others.filter(o=>((store.tsPairs||{})[canonical(cm.id,o.id)]||0)<PHYSICAL_GAMES_PER_MATCH);const elo=fitBT(players.map(p=>p.id),store.results)[cm.id];if(!left.length){require('./committee.js').markSwept(dir,cm.id,elo);console.log(`[committee] ${cm.id} has played every face (${others.length}): final Elo ${Number.isFinite(elo)?Math.round(elo):'?'}; no longer immortal -- from the next pass it is an ordinary roster face under the normal cull`);}else console.log(`[committee] ${cm.id}: ${others.length-left.length}/${others.length} faces met, Elo ${Number.isFinite(elo)?Math.round(elo):'?'} so far`);}}
+async function main(){console.log(`[rating] ${players.length} players; one scheduler; temp 0; every pairing = two games, colours reversed; pairs drawn by score, rent by measured compute`);if(refit){writeSummary();return;}if(dryrun)return;const start=Date.now(),busy=new Set();let stop=false;const timedOut=()=>budgetHours>0&&(Date.now()-start)/3600000>=budgetHours;const lane=async()=>{while(!stop&&!timedOut()){const{g}=totals();if(!budgetHours&&players.length&&players.every(p=>(g[p.id]||0)>=targetGames)){stop=true;break;}const elo=fitBT(players.map(p=>p.id),store.results),pair=pickPair(elo,busy);if(pair==='wait'){await new Promise(r=>setTimeout(r,3000));continue;}if(!pair)break;const[a,b]=pair;const ck=canonical(a.id,b.id);if(a.sweeping){cmActive++;inflight.add(ck);}else busy.add(a.id);busy.add(b.id);try{await play(a,b);}finally{if(a.sweeping){cmActive--;inflight.delete(ck);}else busy.delete(a.id);busy.delete(b.id);}}};await Promise.all(Array.from({length:workers},lane));writeSummary();
+  if(committees.length){const elo=fitBT(players.map(p=>p.id),store.results);
+    for(const c of committees){const cm=players.find(p=>p.id===c.id);if(!cm)continue;const met=metWith(cm),e=elo[cm.id];
+      if(sweepDone(cm)){require('./committee.js').markSwept(dir,cm.id,e,met);console.log(`[committee] ${cm.id} has played ${met} faces: final Elo ${Number.isFinite(e)?Math.round(e):'?'}; no longer immortal -- from the next pass it is an ordinary roster face under the normal cull`);}
+      else console.log(`[committee] ${cm.id}: ${met}/${SWEEP_FACES} faces met, Elo ${Number.isFinite(e)?Math.round(e):'?'} so far`);}}}
 main().catch(e=>{console.error('[rating] unified league failed:',e.stack||e.message);process.exitCode=1;});
