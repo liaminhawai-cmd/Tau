@@ -263,6 +263,16 @@ slide's one answer, no longer needs leaving the whole walkthrough to recover
 from -- Reset puts the piece back at the slide's start pose without losing an
 already-earned goal.
 
+The losing piece's tumble used to fall forever into blank space until a
+distance cutoff quietly hid it. There is now a dark floor 20cm (100 board
+units -- 1u = 2mm) below the board, and the piece actually lands on it: free
+fall stops dead at the floor, one material-keyed thump plays on touchdown (a
+new `playImpact`-style case, `playLandingSound`), and the piece rests there
+for a beat before being tucked away, same as before. The how-to-play finale
+and the goal-slide ending share the exact same fall physics, so they land on
+the same floor with the same thump instead of running to their own distance
+cutoffs.
+
 Play starts the selected AI level and side. Same-screen play is untimed. Esc
 opens the match menu. The match keeps going underneath it, offline or online, with
 the board visible behind the sheet, so the opponent finishes its swing while you

@@ -630,7 +630,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 217</div>
+<div id="buildTag">build 218</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2602,7 +2602,10 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 let cx = 0, cy = 0, scale = 1;   // recomputed every frame by syncCanvas (px)
 let renderer=null, scene, camera, controls, tripods=[];   // 3D side view — always shown once THREE loads
-let pivotGlowMesh=null, boardTop=null, boardRim=null, camProbe=null, coachArcs=null;   // pivot glow + board surface + rim + fit-probe camera (built in init3D)
+let pivotGlowMesh=null, boardTop=null, boardRim=null, camProbe=null, coachArcs=null, fallFloor=null;   // pivot glow + board surface + rim + fit-probe camera + the floor a falling piece lands on (built in init3D)
+// 20cm below the board surface (1u = 2mm, so 20cm = 100u), for a losing piece's free fall to
+// actually land on instead of tumbling forever into blank space.
+const FALL_FLOOR_Y = -100;
 let hoverDisc=null;   // the "this foot is grabbable" disc under the 3D cursor (built in init3D)
 let glowTexGold=null, glowTexHot=null;   // the pivot glow's two tints: gold for dark boards, white-hot for pale ones
 // Board SKIN: null = the default theme look (pure passthrough — normal players never touch this).
@@ -6187,12 +6190,11 @@ function htp3DStep(dt) {
         }
     } else if (htpPhase==='fall') {
         stepFallOn(htpTripods[1], htpFallState, dt);   // byte-identical physics to a real match's loser
-        // A real match watches the whole 700-unit drop (fine there — it's a one-off, framed by
-        // the "You win!" popup). Looping that here would zoom the camera out until the piece
-        // vanishes into blank space, confusing rather than dramatic. Same physics, just cut to
-        // "done" once it's clearly, obviously off. The safety timer covers a fall state that
-        // somehow never drops (it shouldn't, but a stuck finale would soft-lock the loop).
-        if (htpTripods[1].position.y < -240 || htpPhaseT > 5) { htpPhase='done'; htpPhaseT=0; }
+        // A real match watches the piece land on the floor below the board (fine there — it's a
+        // one-off, framed by the "You win!" popup). Same physics here: cut to "done" once it's
+        // landed and had a moment to settle. The safety timer covers a fall state that somehow
+        // never lands (it shouldn't, but a stuck finale would soft-lock the loop).
+        if (htpFallState.landed || htpPhaseT > 5) { htpPhase='done'; htpPhaseT=0; }
     } else if (htpPhase==='done' && htpPhaseT > 1.1) {
         htp3DReset();
     }
@@ -7327,6 +7329,32 @@ function playPushContact() {
             tone(g, 'triangle', 1800, 1800, 0.08, 0.06);
     }
     setTimeout(() => { try { g.disconnect(); } catch(e){} }, 500);
+}
+// The loser's tumble ends on the floor below the board, not in blank space: one dull, material-keyed
+// thump the instant it lands (rising-edge gated by fall.landed in stepFallOn, so this fires once per
+// fall, not once per frame while it rests there).
+function playLandingSound() {
+    if (!audioReady || !soundOn || !gameVisible()) return;
+    const pp = pieceAcoustics();
+    const g = audioCtx.createGain(); g.gain.value = 0.8; g.connect(toneLP);
+    switch (pp.impact) {
+        case 'thud':    // stone: heavy and dusty
+            tone(g, 'sine', 52, 22, 1.0, 0.9);
+            noiseTick(g, 'lowpass', 380, 0.5, 0.4);
+            break;
+        case 'chime':   // glass: a brittle low knock, not a ring -- it's the floor, not another piece
+            tone(g, 'sine', 500, 260, 0.5, 0.3);
+            noiseTick(g, 'highpass', 2400, 0.6, 0.12);
+            break;
+        case 'knock':   // wood: a soft, resonant drop
+            tone(g, 'sine', 130, 85, 0.7, 0.4);
+            noiseTick(g, 'bandpass', 500, 1.2, 0.2);
+            break;
+        default:        // metal and everything else: a dull floor knock, no ring
+            tone(g, 'sine', 95, 60, 0.7, 0.35);
+            noiseTick(g, 'lowpass', 450, 0.6, 0.15);
+    }
+    setTimeout(() => { try { g.disconnect(); } catch(e){} }, 1200);
 }
 // "Singing bowl" strike at the start of a game: a real struck bowl rings at inharmonic partials
 // (≈1 : 2.7 : 4.1 : 5.4 of the fundamental) with each partial split into a barely-detuned pair --
@@ -8492,6 +8520,12 @@ function init3D() {
     // is 5, so centre -2.7 -> top -0.2, safely under boardTop's -0.05.
     boardRim.position.y=-2.7; scene.add(boardRim);
     if (TAU_PREMIUM) { boardTop.receiveShadow = true; boardRim.receiveShadow = true; }
+    // A dark floor under the board itself -- normally hidden behind it, but revealed the moment a
+    // piece tumbles off the rim and drops into what used to be featureless black.
+    fallFloor=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU*3.4,64),
+        new THREE.MeshStandardMaterial({color:0x050505, roughness:0.95, metalness:0}));
+    fallFloor.rotation.x=-Math.PI/2; fallFloor.position.y=FALL_FLOOR_Y; scene.add(fallFloor);
+    if (TAU_PREMIUM) fallFloor.receiveShadow = true;
     tripods=[buildTripod(0x6b9eff), buildTripod(0xff6b6b)];   // [blue, red] = pieces order
     tripods.forEach(t=>scene.add(t));
     htpTripods=[buildTripod(0x6b9eff), buildTripod(0xff6b6b)];   // how-to-play's own pair, hidden until slide 5 is open
@@ -8546,7 +8580,8 @@ function mkFallState(p) {
     const d = Math.hypot(fx,fz)||1;
     return { active:true, phase:'slide', vx:fx/d*50, vz:fz/d*50, vy:0, tipRate:0,
              px:0, pz:0, ax:0, az:0, theta:0, omega:0,
-             wx:(Math.random()-0.5)*7, wy:(Math.random()-0.5)*3, wz:(Math.random()-0.5)*7 };
+             wx:(Math.random()-0.5)*7, wy:(Math.random()-0.5)*3, wz:(Math.random()-0.5)*7,
+             landed:false, settleT:0 };
 }
 // kick off the dramatic slide-off when someone loses (silent=true for the replay's re-run)
 function triggerFall(silent) {
@@ -8576,8 +8611,11 @@ function stepFall(dt) {
     stepFallOn(tripods[fall.idx], fall, dt);
     // Done falling: stop the animation AND remember which piece fell, so the render loop keeps it
     // hidden instead of snapping its mesh back onto the board (its logical position never moved).
+    // Give it a beat resting on the floor (thump already played in stepFallOn) before tucking it away,
+    // so the landing actually reads instead of the piece thumping down and vanishing in the same frame.
     const t = tripods[fall.idx];
-    if (t.position.y < -700) { fall.active=false; fallenIdx=fall.idx; t.visible=false; camCenterFrac=1; camManualSet=false; }
+    if (fall.landed) fall.settleT += dt;
+    if (fall.settleT > 0.6) { fall.active=false; fallenIdx=fall.idx; t.visible=false; camCenterFrac=1; camManualSet=false; }
 }
 // The physics itself, on any tripod + fall state — the tutorial's falls (goal-slide ending and
 // the push-off finale, on htpTripods) run this exact code, so a tumble looks the same everywhere.
@@ -8607,6 +8645,14 @@ function stepFallOn(t, fall, dt) {
     } else {
         fall.vy -= 260*dt;
         t.position.x += fall.vx*dt; t.position.y += fall.vy*dt; t.position.z += fall.vz*dt;
+        if (t.position.y <= FALL_FLOOR_Y) {
+            // Hit the floor: stop the drop dead and bleed off the tumble into a quick settle, instead
+            // of ploughing on through it. One-shot the thump on the rising edge of contact.
+            t.position.y = FALL_FLOOR_Y;
+            if (!fall.landed) { fall.landed = true; playLandingSound(); }
+            fall.vy = 0; fall.vx *= 1 - Math.min(1, 6*dt); fall.vz *= 1 - Math.min(1, 6*dt);
+            fall.wx *= 1 - Math.min(1, 5*dt); fall.wy *= 1 - Math.min(1, 5*dt); fall.wz *= 1 - Math.min(1, 5*dt);
+        }
         const r = Math.hypot(t.position.x, t.position.z);
         applyFallRotation(t, fall, dt, Math.max(0, Math.min(1, (r - CFG.edgeU) / 25)));
     }

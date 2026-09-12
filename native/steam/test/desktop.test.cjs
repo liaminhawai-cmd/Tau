@@ -1096,3 +1096,25 @@ test('a stuck walkthrough slide can be reset without losing earned progress',asy
   assert.equal(g.read("document.getElementById('htpReset').style.display"),'none');
   assert.deepEqual(g.errors,[]);
 });
+
+test('the losing piece lands on the floor below the board with a thump, then is tucked away',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopLocal').click();g.tick();
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    window.__thumps=0; playLandingSound=()=>window.__thumps++;
+    // Already off the rim and well into the ballistic phase -- falling straight toward the floor.
+    fall=Object.assign(mkFallState(G.pieces[1]), {idx:1, phase:'free', vy:-40, vx:5, vz:0});
+    tripods[1].position.set(80,-85,0);`);
+  g.read(`for(let i=0;i<50;i++) stepFall(0.05);`);   // 2.5s of real time: plenty to land and settle
+  assert.equal(g.read('tripods[1].position.y'),-100,'clamps at the floor 20cm (100u) below the board, not falling forever');
+  assert.equal(g.read('window.__thumps'),1,'one landing thump on touchdown, not one per frame of resting on the floor');
+  assert.equal(g.read('fall.active'),false,'after a beat resting on the floor it is tucked away, same as the old cutoff');
+  assert.equal(g.read('fallenIdx'),1);
+  assert.equal(g.read('tripods[1].visible'),false);
+  assert.deepEqual(g.errors,[]);
+});
