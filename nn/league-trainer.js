@@ -18,9 +18,14 @@ const arg=(n,d)=>{const i=process.argv.indexOf('--'+n);return i>=0?process.argv[
 const cores=Math.max(2,os.cpus().length);
 // cores-3: one lane each for exploration and retromine, and ONE CORE LEFT FREE for the OS, the
 // GPU trainer's data loading and the rating pass's bootstrap, so the desktop stays usable.
-const leagueWorkers=Math.max(1,+arg('leagueWorkers',Math.max(4,cores-3)));
-const exploreWorkers=Math.max(1,+arg('exploreWorkers',1));
+// --noSelfplay / --retroWorkers 0 hand their core back to the league: with both side streams off
+// the league takes every core but one (LEAGUE-ONLY.bat). run.js still runs -- it owns mutation,
+// GPU training, the gate, culling and medals -- it just starts no self-play batches.
+const noSelfplay=process.argv.includes('--noSelfplay');
 const retroWorkers=Math.max(0,+arg('retroWorkers',1));
+const exploreWorkers=noSelfplay?0:Math.max(1,+arg('exploreWorkers',1));
+const sideLanes=(retroWorkers?1:0)+(exploreWorkers?1:0);
+const leagueWorkers=Math.max(1,+arg('leagueWorkers',Math.max(4,cores-1-sideLanes)));
 // Exploration batch size and start policy. 60 games on one lane is a trickle next to the league,
 // which is the point; novelStartFrac 1 means every one of them opens where the data is thinnest.
 const exploreGames=Math.max(1,+arg('exploreGames',60));
@@ -48,10 +53,12 @@ const reaped=proc.reapOrphans(ORPHAN_SCRIPTS);
 if(reaped==null)console.log('[trainer] could not list processes; if an older trainer is still running, close it by hand');
 else if(reaped.length)console.log(`[trainer] closed ${reaped.length} leftover process tree(s) from an earlier trainer: ${reaped.map(r=>`${r.script} (pid ${r.pid})`).join(', ')}`);
 
-console.log(`[trainer] league-first allocation: ${leagueWorkers} league + ${exploreWorkers} exploration`+
-            (retroWorkers?` + ${retroWorkers} retromine`:'')+` worker(s)`);
+console.log(`[trainer] league-first allocation: ${leagueWorkers} league`+
+            (exploreWorkers?` + ${exploreWorkers} exploration`:'')+
+            (retroWorkers?` + ${retroWorkers} retromine`:'')+` worker(s), 1 core left for the OS`);
 console.log('[trainer] official league games are both Elo evidence and training data; exploration never contaminates Elo');
-console.log(`[trainer] exploration: ${exploreGames}-game batches, top-rated nets only, ${Math.round(100*+novelStartFrac)}% of games from positions the data has never seen`);
+if(noSelfplay)console.log('[trainer] LEAGUE ONLY: no self-play, no retromine unless asked; evolution (mints, GPU training, gate, cull, medals) runs as normal');
+else console.log(`[trainer] exploration: ${exploreGames}-game batches, top-rated nets only, ${Math.round(100*+novelStartFrac)}% of games from positions the data has never seen`);
 
 start('PRIMARY OFFICIAL LEAGUE','league-loop.js',['--workers',String(leagueWorkers),'--budgetHours','.25']);
 if(retroWorkers) start('SMALL RETROMINE STREAM','retroloop.js',
@@ -68,7 +75,8 @@ const forwarded=process.argv.slice(2).filter((x,i,a)=>{
   if(i>0&&OWN_ARGS.includes(a[i-1]))return false;
   return true;
 });
-const runArgs=['--workers',String(exploreWorkers),'--poolWorkers',String(exploreWorkers),
+const lanes=String(Math.max(1,exploreWorkers));
+const runArgs=['--workers',lanes,'--poolWorkers',lanes,
   '--poolBudgetHours','0.01','--benchEveryMin','100000','--randomStartFrac','0',
   '--gamesPerBatch',String(exploreGames),'--novelStartFrac',String(novelStartFrac),...forwarded];
 const core=start('EVOLUTION + EXPLORATION','run.js',runArgs);

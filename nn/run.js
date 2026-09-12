@@ -117,6 +117,8 @@ const randomStartFrac = arg('randomStartFrac', '0');
 // are drawn from. Both are forwarded to selfplay.js; see its --novelStartFrac and --topN notes.
 const novelStartFrac = arg('novelStartFrac', '0');
 const selfplayTopN = arg('selfplayTopN', '10');
+// Run every evolution duty but start no self-play batches at all (LEAGUE-ONLY.bat).
+const noSelfplay = process.argv.includes('--noSelfplay');
 // The benchmark is a SWEEP, not a single score. "0-12 vs L8" says "weaker than L8" and nothing
 // else -- it cannot tell a net that plays like L2 from one that nearly beat L7, which is why four
 // consecutive readings of 0%, 9%, 0%, 17% carried no usable signal. Playing a small number of
@@ -2559,7 +2561,12 @@ if (poolOnce) {
   // Apply any banked, already-confident retirements immediately on restart, before the
   // first 1000-game batch takes its roster snapshot. This is a no-game/no-training pass.
   runSoftAsync('elorank.js', ['--cullOnly']).then(() => {
-    startSelfplayBatch();
+    // --noSelfplay: keep every evolution duty (pool cycles, mints, GPU training, the panel gate,
+    // culling, medals) but generate no exploration games. The league already writes training rows
+    // from every rated game, so this is not "no training data" -- it is all of the machine's game
+    // budget spent on measurement. See LEAGUE-ONLY.bat.
+    if (noSelfplay) log('self-play disabled (--noSelfplay): the league is the only game stream; evolution, culling and training run as normal');
+    else startSelfplayBatch();
     return schedulerLoop();
   }).catch(e => { log(`FATAL: scheduler stopped (${(e && e.message) || e})`); process.exitCode = 1; });
 }
