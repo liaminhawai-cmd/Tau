@@ -1,6 +1,6 @@
 'use strict';
 // One trainer, three deliberately unequal streams:
-//   1) official league: every core but two. Its rated games are ALSO the main training corpus,
+//   1) official league: every core but three (one spare for the OS). Its rated games are ALSO the main training corpus,
 //      every pairing is a face the model has never met (the scheduler refuses re-matches), and
 //      culling plus fresh mints keep the field turning over, so it never runs out of new games;
 //   2) exploration self-play: ONE lane, small batches, the strongest measured nets and the top
@@ -16,7 +16,9 @@ const proc=require('./proc-tree.js');
 const dir=__dirname;
 const arg=(n,d)=>{const i=process.argv.indexOf('--'+n);return i>=0?process.argv[i+1]:d;};
 const cores=Math.max(2,os.cpus().length);
-const leagueWorkers=Math.max(1,+arg('leagueWorkers',Math.max(4,cores-2)));
+// cores-3: one lane each for exploration and retromine, and ONE CORE LEFT FREE for the OS, the
+// GPU trainer's data loading and the rating pass's bootstrap, so the desktop stays usable.
+const leagueWorkers=Math.max(1,+arg('leagueWorkers',Math.max(4,cores-3)));
 const exploreWorkers=Math.max(1,+arg('exploreWorkers',1));
 const retroWorkers=Math.max(0,+arg('retroWorkers',1));
 // Exploration batch size and start policy. 60 games on one lane is a trickle next to the league,
