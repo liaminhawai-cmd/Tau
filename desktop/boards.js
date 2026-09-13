@@ -731,6 +731,7 @@ const THEMES = {
       g.add(crowd);
       let exciteT = 99;
       g.userData.excite = () => { exciteT = 0; };   // a titan went over: the whole bowl jumps
+      g.userData.lift = () => crowd.position.y;     // how far up the jump is, for the desktop's rest detector
       g.userData.tick = (t, dt) => {
         dustFar.rotation.y = t*0.003; dustFar.position.y = Math.sin(t*0.08)*2;
         dustNear.rotation.y = -t*0.006; dustNear.position.y = Math.sin(t*0.13 + 1)*3;

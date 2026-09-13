@@ -147,9 +147,9 @@
     pendingUnlocks = []; return html;
   }
   function toastUnlocks() {
-    showUnlockToast(takeUnlockHtml());
+    showToast(takeUnlockHtml());
   }
-  function showUnlockToast(html) {
+  function showToast(html) {
     let el = $('desktopUnlockToast');
     if (!el) { el = document.createElement('div'); el.id = 'desktopUnlockToast'; el.className = 'desktop-unlock-toast'; document.body.appendChild(el); }
     el.innerHTML = html; el.setAttribute('role','status'); el.classList.add('show');
@@ -174,7 +174,7 @@
     if (!isUnlocked(settings.board)) {
       settings.board = 'walnut'; saveSettings(); applyMaterials(); applyTheme(); render();
     }
-    showUnlockToast(`<p class="desktop-unlock">${testBoards
+    showToast(`<p class="desktop-unlock">${testBoards
       ? 'All boards unlocked for testing. Type ALLBOARDS again to restore locks.'
       : 'Normal board locks restored. Your earned boards are still available.'}</p>`);
     e.preventDefault();
@@ -196,7 +196,7 @@
   const DEFAULT_KEYS = { pin1:'1', pin2:'2', pin3:'3', swingLeft:'ArrowLeft', swingRight:'ArrowRight',
     commit:'Enter', cancel:'Backspace', shrink:'[', grow:']' };
   const settings = { level:4, colour:0, quality:'balanced', board:'walnut', padScheme:'triggers', padBrand:'auto',
-    invertCamY:false, keys:{...DEFAULT_KEYS},
+    invertCamY:false, keys:{...DEFAULT_KEYS}, rayTrace:false,
     reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches, haptics:true };
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
@@ -208,7 +208,7 @@
     if (BOARD_FINISHES.some(b => b.id === saved.board) && isUnlocked(saved.board)) settings.board = saved.board;
     if (PAD_SCHEMES.includes(saved.padScheme)) settings.padScheme = saved.padScheme;
     if (['auto','xbox','playstation','nintendo','generic'].includes(saved.padBrand)) settings.padBrand = saved.padBrand;
-    for (const k of ['reducedMotion','haptics','invertCamY']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
+    for (const k of ['reducedMotion','haptics','invertCamY','rayTrace']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
   } catch (_) {}
   const finish = () => BOARD_FINISHES.find(b => b.id === settings.board) || BOARD_FINISHES[0];
   // Relative luminance of a #rrggbb, against the same 0.5 threshold index.html's boardIsPale uses.
@@ -714,6 +714,7 @@
       <label class="desktop-setting">Board<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${b.name}</option>`:`<option value="${b.id}" disabled>${b.name} · ${unlockText(b.id)}</option>`).join('')}</select></label>
       ${testBoards ? '<p class="desktop-result-detail">All boards are open for testing. Type <b>ALLBOARDS</b> on the main menu to restore locks.</p>' : ''}
       <label class="desktop-setting">Graphics<select id="desktopQuality"><option value="balanced">Balanced</option><option value="high">High</option></select></label>
+      <label class="desktop-setting"><span>Ray tracing (Ultra)<small>Stills only — needs a strong GPU</small></span><input id="desktopRayTrace" type="checkbox" ${settings.rayTrace?'checked':''}></label>
       <label class="desktop-setting">Invert camera Y<input id="desktopInvertY" type="checkbox" ${settings.invertCamY?'checked':''}></label>
       <label class="desktop-setting">Reduce camera motion<input id="desktopMotion" type="checkbox" ${settings.reducedMotion?'checked':''}></label>
       <label class="desktop-setting">Controller vibration<input id="desktopHaptics" type="checkbox" ${settings.haptics?'checked':''}></label>
@@ -729,6 +730,7 @@
       render();
     };
     $('desktopInvertY').onchange = e => { settings.invertCamY=e.target.checked; saveSettings(); };
+    $('desktopRayTrace').onchange = e => { settings.rayTrace=e.target.checked; saveSettings(); if(settings.rayTrace) rayTraceLoad(); };
     $('desktopVolume').oninput = e => {
       setUserVol(Number(e.target.value)); $('desktopVolumeValue').textContent = userVol+'%'; $('desktopMute').checked = !soundOn;
       if(paused && masterGain && audioCtx) masterGain.gain.setTargetAtTime(0,audioCtx.currentTime,.03);
@@ -990,7 +992,7 @@
     gpLights = [];
     scene.traverse(o => { if (o.isLight) { const c = o.clone(); gpLights.push([o, c]); gpScene.add(c); if (c.target) gpScene.add(c.target); } });
   }
-  function renderFrame() {
+  function renderGlassFrame() {
     if (!renderer || !camera || gpFailed) return false;
     const pieces = glassPieces();
     if (pieces.length < 2) return false;
@@ -1018,6 +1020,157 @@
       try { renderer.setRenderTarget(null); } catch (_) {}
       return false;
     }
+  }
+  // ---- Ray tracing (Ultra): the still frame is path traced, everything else is rasterised ----
+  // Off by default and desktop-only. While anything at all is in motion — the camera, a piece, a
+  // fall, the crowd, a sheet opening — the frame is drawn exactly as it always was, so no control
+  // ever waits on a traced sample. Once the picture has held still for a couple of frames the
+  // tracer takes the canvas and refines the same image sample by sample until it hits the cap,
+  // then stops drawing entirely and leaves the finished frame on screen.
+  //
+  // The bundle is fetched only when someone turns the setting on, so a player who never does
+  // never downloads it. Anything that throws anywhere along the way — load, init, scene build,
+  // sample — puts the rasteriser back for the session and says so.
+  const PT_SRC = 'vendor/pathtracer/pathtracer.global.js';
+  const PT_SAMPLE_CAP = 256;
+  const PT_STILL_FRAMES = 2;
+  let ptPhase = 'off';                    // off | loading | ready | failed
+  let ptTracer = null, ptScene = null, ptEnv = null;
+  let ptKey = '', ptWorldKey = '', ptStill = 0, ptWorldRev = 0;
+
+  const ptRound = v => Math.round(v * 1000) / 1000;
+  // Pure. One string for everything the traced picture depends on; two frames that hash the same
+  // are the same picture. Matrices are quantised because OrbitControls' damping keeps trickling
+  // ever-smaller deltas into the camera long after the drag that started them has stopped — at
+  // full precision the scene would never once read as at rest.
+  function rayTraceKey(s) {
+    const mat = m => m ? Array.from(m, ptRound).join(',') : '-';
+    return [mat(s.camera), mat(s.proj), s.size, (s.pieces || []).map(mat).join(';'), s.board,
+      s.rev, s.fall ? 1 : 0, s.ai ? 1 : 0, s.replay ? 1 : 0, s.pinned, ptRound(s.netRad || 0),
+      ptRound(s.lift || 0), s.modal ? 1 : 0, s.hidden ? 1 : 0].join('|');
+  }
+  function rayTraceMotion(prev, next) { return prev && rayTraceKey(prev) === rayTraceKey(next) ? 'still' : 'moving'; }
+  function rayTraceState() {
+    const pieces = [];
+    for (const pair of [typeof tripods !== 'undefined' ? tripods : null, typeof htpTripods !== 'undefined' ? htpTripods : null])
+      for (const t of pair || []) pieces.push(t && t.visible ? t.matrixWorld.elements : null);
+    const G_ = typeof G !== 'undefined' && G ? G : null;
+    return {
+      camera: camera.matrixWorld.elements, proj: camera.projectionMatrix.elements,
+      size: renderer.domElement.width + 'x' + renderer.domElement.height,
+      pieces, board: settings.board, rev: ptWorldRev,
+      fall: typeof fall !== 'undefined' && fall.active,
+      ai: typeof aiAnim !== 'undefined' && !!aiAnim,
+      replay: typeof replayActive !== 'undefined' && !!replayActive,
+      pinned: G_ ? G_.pinned : null, netRad: G_ ? G_.netRad : 0,
+      // Colossus' stands jump when a titan goes over; the bowl is traced, so that is real motion.
+      lift: envGroup && envGroup.userData.lift ? envGroup.userData.lift() : 0,
+      modal: dialogOpen(), hidden: document.hidden,
+    };
+  }
+  function rayTraceLoad() {
+    if (ptPhase === 'failed') { rayTraceOff(); return; }   // asked for again after it fell over: say so again
+    if (ptPhase !== 'off') return;
+    if (window.TAU_PT) { ptPhase = 'ready'; return; }
+    ptPhase = 'loading';
+    showToast('<p class="desktop-unlock">Ray tracing: loading…</p>');
+    const s = document.createElement('script');
+    s.src = PT_SRC;
+    s.onload = () => { if (window.TAU_PT) ptPhase = 'ready'; else rayTraceFail(new Error('bundle loaded without TAU_PT')); };
+    s.onerror = () => rayTraceFail(new Error('could not load ' + PT_SRC));
+    document.body.appendChild(s);
+  }
+  function rayTraceOff() {
+    ptPhase = 'failed'; ptTracer = null; ptScene = null;
+    // Turned off in memory but deliberately NOT saved: the same profile may open tomorrow on a
+    // machine whose GPU can run it, and the player's choice should still be there when it does.
+    settings.rayTrace = false;
+    if ($('desktopRayTrace')) $('desktopRayTrace').checked = false;
+    showToast('<p class="desktop-unlock">Ray tracing could not start on this GPU.</p>');
+  }
+  function rayTraceFail(err) {
+    console.warn('ray tracing unavailable', err);
+    try { renderer.setRenderTarget(null); } catch (_) {}
+    rayTraceOff();
+  }
+  // The tracer has no hemisphere light and cannot sample a PMREM environment, which is where all
+  // of this scene's ambient light comes from. Both are the same studio room, so it is rendered
+  // once into a cube map; the tracer converts that to the equirect map it does understand.
+  function ptEnvMap() {
+    if (ptEnv || typeof premiumEnvScene !== 'function') return ptEnv;
+    const room = premiumEnvScene();
+    const rt = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType });
+    new THREE.CubeCamera(1, 1200, rt).update(renderer, room);
+    room.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+    ptEnv = rt.texture;
+    return ptEnv;
+  }
+  // What is worth tracing: the board, the pieces and the look's surroundings. Left out are the
+  // dust and mote clouds (Points, which a path tracer has no notion of), the glow and hover
+  // planes, the coach's rails, and the fog — none of them survive as geometry — and the crowd,
+  // whose InstancedMesh this version of the tracer would bake as one figure at the group origin.
+  function ptObjects() {
+    const out = [], add = o => { if (o && o.visible) out.push(o); };
+    if (typeof boardTop !== 'undefined') add(boardTop);
+    if (typeof boardRim !== 'undefined') add(boardRim);
+    add(boardTrim);
+    if (typeof fallFloor !== 'undefined') add(fallFloor);
+    for (const pair of [typeof tripods !== 'undefined' ? tripods : null, typeof htpTripods !== 'undefined' ? htpTripods : null])
+      for (const t of pair || []) add(t);
+    if (envGroup) envGroup.traverse(o => { if (o.isMesh && !o.isInstancedMesh) add(o); });
+    scene.traverse(o => { if (o.isDirectionalLight) out.push(o); });   // the key and its rim; hemisphere light has no equivalent
+    return out;
+  }
+  function ptInit() {
+    ptTracer = new window.TAU_PT.WebGLPathTracer(renderer);
+    ptTracer.renderDelay = 0;
+    ptTracer.minSamples = 2;
+    ptTracer.fadeDuration = 350;
+    ptTracer.bounces = 5;
+    ptTracer.transmissiveBounces = 8;
+    ptTracer.tiles.set(2, 2);   // a quarter of the frame per call, so the first press still lands inside a frame
+    // Until the traced image has samples to show, what fills the canvas is the GAME's frame —
+    // dust, glow and all — not the stripped scene the tracer holds, so nothing blinks out.
+    ptTracer.rasterizeSceneCallback = () => { if (!renderGlassFrame()) renderer.render(scene, camera); };
+    ptScene = new THREE.Scene();
+    ptScene.environment = ptEnvMap();
+  }
+  function ptRest(state) {
+    if (!ptTracer) ptInit();
+    const world = rayTraceKey({ ...state, camera: null, proj: null, size: '' });
+    if (world === ptWorldKey) { ptTracer.updateCamera(); return; }   // same world, new viewpoint: no BVH work
+    ptWorldKey = world;
+    // The meshes in the traced scene must be the GAME's meshes, or nothing the player did would
+    // show in the trace. Adding them would reparent them out of the live scene, so the list goes
+    // straight onto children: three builds each world matrix from the object's REAL parent, not
+    // from whoever is traversing it, so both scenes see the same, correct transforms.
+    ptScene.children = ptObjects();
+    ptScene.background = scene.background;
+    ptTracer.setScene(ptScene, camera);
+  }
+  // The board's live cues — the pinned foot's glow, the hover disc, a line-crossing flash — pulse
+  // and fade frame by frame, and none of them survives into the traced scene. Whenever one is up
+  // the board is being played on, not looked at, so the rasteriser keeps it.
+  function ptCuesUp() {
+    return (typeof pivotGlowMesh !== 'undefined' && pivotGlowMesh && pivotGlowMesh.visible)
+      || (typeof hoverDisc !== 'undefined' && hoverDisc && hoverDisc.visible)
+      || (typeof crossFlashes !== 'undefined' && crossFlashes.length > 0);
+  }
+  function rayTraceFrame() {
+    if (ptPhase !== 'ready' || ptCuesUp()) { ptStill = 0; return false; }
+    try {
+      const state = rayTraceState(), key = rayTraceKey(state);
+      if (key !== ptKey) { ptKey = key; ptStill = 0; return false; }
+      if (++ptStill < PT_STILL_FRAMES) return false;
+      if (ptStill === PT_STILL_FRAMES) ptRest(state);
+      if (ptTracer.samples < PT_SAMPLE_CAP) ptTracer.renderSample();
+      return true;   // at the cap nothing is drawn at all: the finished frame stays on the canvas
+    } catch (e) { rayTraceFail(e); return false; }
+  }
+  function renderFrame() {
+    if (!renderer || !camera) return false;
+    if (settings.rayTrace && rayTraceFrame()) return true;
+    return renderGlassFrame();
   }
   function applyShowcasePieces(T) {
     for (const pair of [tripods, htpTripods]) pair.forEach((piece, i) => {
@@ -1168,6 +1321,7 @@
     // over the 3D view now answers the same question about the ROOM behind it.
     root.classList.toggle('desktop-pale-room', isPale(bg));
     configureQuality();
+    ptWorldRev++;   // new surfaces, pieces and surroundings: the traced scene has to be rebuilt
   }
   // This is the MENU's own ambient layout only. A real match is never sized here: it returns
   // false, and the game's own resize() (the same split-view math and #splitHandle the web build
@@ -1517,6 +1671,11 @@
     recordResult,
     debugDetailMode(){ return detailMode; },
     resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, renderFrame,
+    get rayTrace(){return settings.rayTrace;},
+    set rayTrace(v){ settings.rayTrace=!!v; saveSettings(); if($('desktopRayTrace')) $('desktopRayTrace').checked=settings.rayTrace;
+      if(settings.rayTrace) rayTraceLoad(); },
+    rayTraceStatus(){return ptPhase;},
+    rayTraceMotion,
     // The corner layout's camera goal for the current window (see desiredPose).
     cornerCameraPose(w3, h3){ if(!renderer||!camera) return null;
       const pos=new THREE.Vector3(), tgt=new THREE.Vector3(); desiredPose(false,pos,tgt,w3,h3); return {position:pos,target:tgt}; },
@@ -1537,5 +1696,6 @@
     onModalHidden(){setPaused(false);$('modalBox').classList.remove('desktop-sheet');if(previousFocus?.isConnected)previousFocus.focus({preventScroll:true});previousFocus=null;},
   };
   saveSettings(); applyTheme(); resize();
+  if(settings.rayTrace) rayTraceLoad();
   if(!inMatch())$('desktopPlay').focus({preventScroll:true});
 })();

@@ -1665,3 +1665,142 @@ test('the premium home menu uses the web app\'s words and shape, with no subtitl
   assert.equal(nw.$('modalBox').querySelector('kbd[data-rebind="commit"]').textContent,'X','shown as the cap prints it');
   assert.deepEqual(nw.errors,[]);
 });
+
+// ---- Ray tracing (Ultra) ----
+// JSDOM has no WebGL, so these check the wiring around the tracer, never a traced pixel: that the
+// setting persists, that the bundle is fetched once and only on request, that the rest detector
+// tells a held frame from a moving one, and that a tracer which cannot start hands the frame back.
+const ptStage = `renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},
+    domElement:{width:640,height:480}, coordinateSystem:THREE.WebGLCoordinateSystem, xr:{enabled:false},
+    getRenderTarget:()=>null, getActiveCubeFace:()=>0, getActiveMipmapLevel:()=>0, setRenderTarget(){},
+    getDrawingBufferSize(v){v.set(640,480);return v;},
+    render(){window.__rasterised=(window.__rasterised||0)+1;}};
+  scene=new THREE.Scene(); scene.background=new THREE.Color(0x0c0e11);
+  camera=new THREE.PerspectiveCamera(); camera.position.set(0,120,150); camera.updateMatrixWorld();
+  scene.add(new THREE.DirectionalLight(0xffffff,1)); scene.add(new THREE.HemisphereLight(0xffffff,0x222222,1));
+  controls={mouseButtons:{},target:new THREE.Vector3()};
+  boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial()); scene.add(boardTop);
+  boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial()); scene.add(boardRim);
+  tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)]; tripods.forEach(t=>scene.add(t));
+  scene.add(new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial()));
+  crossFlashes.length=0;
+  hoverDisc=new THREE.Mesh(new THREE.CircleGeometry(3.2),new THREE.MeshBasicMaterial());
+  pivotGlowMesh=new THREE.Mesh(new THREE.PlaneGeometry(4,4),new THREE.MeshBasicMaterial());
+  hoverDisc.visible=pivotGlowMesh.visible=false; scene.add(hoverDisc,pivotGlowMesh);
+  scene.updateMatrixWorld(true);`;
+
+test('ray tracing is off by default, persists when turned on, and fetches its bundle once',async t=>{
+  const g=await game();t.after(g.close);
+  const tags=()=>g.w.document.querySelectorAll('script[src="vendor/pathtracer/pathtracer.global.js"]').length;
+  g.$('desktopSettings').click();g.tick();
+  const box=g.$('desktopRayTrace');
+  assert.ok(box,'the Settings sheet offers the mode');
+  assert.equal(box.checked,false,'off by default');
+  assert.equal(tags(),0,'and nothing is downloaded for a player who never asks');
+  assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).rayTrace,false);
+  box.checked=true;box.dispatchEvent(new g.w.Event('change'));
+  assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).rayTrace,true,'the choice is saved');
+  assert.equal(tags(),1,'asking for it injects the bundle');
+  assert.equal(g.read('tauDesktop.rayTraceStatus()'),'loading');
+  box.checked=false;box.dispatchEvent(new g.w.Event('change'));
+  box.checked=true;box.dispatchEvent(new g.w.Event('change'));
+  assert.equal(tags(),1,'and turning it off and on again does not fetch it a second time');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the rest detector tells a held frame from a moving one',async t=>{
+  const g=await game();t.after(g.close);
+  const held={camera:[1,0,0,0, 0,1,0,0, 0,0,1,0, 0,120,150,1], proj:[1,0,0,0], size:'640x480',
+    pieces:[[1,0,0,0],[0,1,0,0]], board:'walnut', rev:0, fall:false, ai:false, replay:false,
+    pinned:null, netRad:0, lift:0, modal:false, hidden:false};
+  const motion=patch=>g.read(`tauDesktop.rayTraceMotion(${JSON.stringify(held)},${JSON.stringify({...held,...patch})})`);
+  assert.equal(motion({}),'still','the same frame twice is at rest');
+  assert.equal(motion({camera:[1,0,0,0, 0,1,0,0, 0,0,1,0, 0,120,151,1]}),'moving','the camera moved');
+  assert.equal(motion({pieces:[[1,0,0,0],[0,1,0,1]]}),'moving','a piece moved');
+  assert.equal(motion({fall:true}),'moving','a piece is going over');
+  assert.equal(motion({board:'noir'}),'moving','a different board');
+  assert.equal(motion({size:'800x600'}),'moving','the window was resized');
+  assert.equal(motion({lift:2.1}),'moving','the stands are jumping');
+  // Sub-quantum camera drift is what OrbitControls' damping leaves behind for whole seconds after
+  // a drag; it has to read as at rest or the tracer would never once get to start.
+  assert.equal(motion({camera:[1,0,0,0, 0,1,0,0, 0,0,1,0, 0,120,150.00002,1]}),'still');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a path tracer that cannot start on this GPU hands the frame back to the rasteriser',async t=>{
+  const g=await game();t.after(g.close);
+  g.read(ptStage);
+  g.read(`window.TAU_PT={WebGLPathTracer:function(){throw new Error('no float blending');}};
+    tauDesktop.rayTrace=true;`);
+  assert.equal(g.read('tauDesktop.rayTraceStatus()'),'ready','the bundle was already there, so no fetch');
+  assert.equal(g.read('tauDesktop.renderFrame()'),false,'the first frame is always rasterised');
+  assert.equal(g.read('tauDesktop.renderFrame()'),false);
+  assert.equal(g.read('tauDesktop.renderFrame()'),false,'the frame the tracer would have taken');
+  assert.equal(g.read('tauDesktop.rayTraceStatus()'),'failed');
+  assert.equal(g.read('tauDesktop.rayTrace'),false,'and the setting is unchecked for the session');
+  assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).rayTrace,true,
+    'but kept on disk: another machine may run it');
+  assert.match(g.$('desktopUnlockToast').textContent,/could not start on this GPU/);
+  assert.equal(g.read('tauDesktop.renderFrame()'),false,'every later frame is the ordinary render');
+  // Asked for again in the same session it says so again rather than going quiet.
+  g.$('desktopUnlockToast').textContent='';
+  g.read('tauDesktop.rayTrace=true');
+  assert.equal(g.read('tauDesktop.rayTrace'),false);
+  assert.match(g.$('desktopUnlockToast').textContent,/could not start on this GPU/);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('at rest the traced scene is built from the board and the pieces, and motion drops it',async t=>{
+  const g=await game();t.after(g.close);
+  g.read(ptStage);
+  g.read(`window.__pt=null;
+    window.TAU_PT={WebGLPathTracer:class{
+      constructor(){ this.samples=0; this.tiles={set(){}}; this.calls=[]; window.__pt=this; }
+      setScene(s,c){ this.calls.push('setScene'); this.scene=s; this.camera=c; }
+      updateCamera(){ this.calls.push('updateCamera'); }
+      renderSample(){ this.calls.push('renderSample'); this.samples++; }
+    }};
+    tauDesktop.rayTrace=true;`);
+  assert.equal(g.read('tauDesktop.renderFrame()'),false);
+  assert.equal(g.read('tauDesktop.renderFrame()'),false);
+  assert.equal(g.read('tauDesktop.renderFrame()'),true,'held still, the tracer takes the frame');
+  assert.equal(g.read('JSON.stringify(window.__pt.calls)'),JSON.stringify(['setScene','renderSample']));
+  assert.equal(g.read('window.__pt.scene.children.includes(boardTop) && window.__pt.scene.children.includes(boardRim)'),true);
+  assert.equal(g.read('tripods.every(t=>window.__pt.scene.children.includes(t))'),true,'both pieces are in it');
+  assert.equal(g.read('window.__pt.scene.children.some(o=>o.isPoints)'),false,'dust and motes are not');
+  assert.equal(g.read('window.__pt.scene.children.includes(hoverDisc) || window.__pt.scene.children.includes(pivotGlowMesh)'),
+    false,'nor the glow and hover planes');
+  assert.equal(g.read('window.__pt.scene.children.filter(o=>o.isLight).length'),1,'the directional key only');
+  assert.equal(g.read('tripods.every(t=>t.parent===scene)'),true,'and the pieces still belong to the live scene');
+  assert.equal(g.read('!!(window.__pt.scene.environment && window.__pt.scene.environment.isCubeTexture)'),true,
+    'lit by the room, rendered into a cube map the tracer can read');
+  // The same world from a new viewpoint costs no BVH work.
+  g.read('camera.position.set(0,130,150); camera.updateMatrixWorld();');
+  assert.equal(g.read('tauDesktop.renderFrame()'),false,'the camera moved: back to the rasteriser');
+  g.read('tauDesktop.renderFrame(); tauDesktop.renderFrame();');
+  assert.equal(g.read('JSON.stringify(window.__pt.calls.slice(2))'),JSON.stringify(['updateCamera','renderSample']));
+  // A piece moving is a new world.
+  g.read('tripods[0].position.set(10,0,0); scene.updateMatrixWorld(true);');
+  g.read('tauDesktop.renderFrame(); tauDesktop.renderFrame(); tauDesktop.renderFrame();');
+  assert.equal(g.read('window.__pt.calls.filter(c=>c==="setScene").length'),2,'the traced scene is rebuilt');
+  // The board's live cues are not in the traced scene, so while one is up the rasteriser keeps it.
+  g.read('pivotGlowMesh.visible=true;');
+  assert.equal(g.read('tauDesktop.renderFrame()'),false,'a glowing pinned foot is a board in play');
+  g.read('pivotGlowMesh.visible=false; tauDesktop.renderFrame(); tauDesktop.renderFrame();');
+  assert.equal(g.read('tauDesktop.renderFrame()'),true,'and the trace comes back when it goes');
+  // The cap: once the image is finished nothing is drawn at all.
+  g.read('window.__pt.samples=1e4; window.__pt.calls=[];');
+  assert.equal(g.read('tauDesktop.renderFrame()'),true);
+  assert.equal(g.read('JSON.stringify(window.__pt.calls)'),'[]','no more GPU work on a finished frame');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('with ray tracing off the desktop draws its frames exactly as before',async t=>{
+  const g=await game();t.after(g.close);
+  g.read(ptStage);
+  g.read('window.TAU_PT={WebGLPathTracer:function(){throw new Error("must never be constructed");}};');
+  for (let i=0;i<5;i++) assert.equal(g.read('tauDesktop.renderFrame()'),false,'the plain render, every frame');
+  assert.equal(g.read('tauDesktop.rayTraceStatus()'),'off','the tracer is never even reached');
+  assert.equal(g.w.document.querySelectorAll('script[src="vendor/pathtracer/pathtracer.global.js"]').length,0);
+  assert.deepEqual(g.errors,[]);
+});

@@ -430,6 +430,84 @@ delivers its click to whatever is under the lift point -- the modal backdrop
 -- which counted as tap-outside. Tap-outside now requires the press to have
 started on the backdrop. A mouse never hit this.
 
+### Ray tracing (Ultra)
+
+An optional Settings checkbox, off by default and desktop-presentation only
+(the plain web/PWA build never carries the files and never asks the question).
+With it on, a frame that is standing still is **path traced** — soft shadows,
+real bounce light, glass and thin film traced rather than approximated — and
+the instant anything moves the ordinary rasteriser draws the frame again. It is
+a way to look at a position, not a way to play: no control ever waits on a
+traced sample.
+
+**Stills only, and what counts as a still.** Every frame the desktop layer
+hashes what the picture depends on: the camera's world and projection matrices,
+the drawing-buffer size, each piece's world matrix (or "hidden"), the board, a
+counter bumped whenever materials are rebuilt, `fall.active`, `aiAnim`,
+`replayActive`, `G.pinned`, `G.netRad`, how far Colossus' stands are through
+their jump, whether a sheet is open and `document.hidden`. Same hash two frames
+running and the tracer takes the canvas; a different hash and the rasteriser
+does, immediately. Matrices are quantised to 1e-3 because OrbitControls' damping
+keeps trickling ever-smaller deltas into the camera for seconds after a drag —
+at full precision the scene would never once read as at rest. The board's live
+cues (the pinned foot's glow, the hover disc, a line-crossing flash) pulse frame
+by frame and are not in the traced scene, so while one of them is up the
+rasteriser keeps the frame: a board being played on is not a still.
+
+Samples accumulate up to 256, after which nothing is drawn at all and the
+finished frame simply stays on the canvas — an idle traced position costs no
+GPU. A new viewpoint over the same world is `updateCamera()` only (no BVH work);
+a piece moving, a board change or pieces hidden after a fall rebuild the traced
+scene through `setScene()`. That build is synchronous: `setSceneAsync()` needs a
+BVH web worker, which cannot be shipped inside a classic-script bundle, and the
+rebuild lands on a frame that was already at rest.
+
+**One three.js, not two.** The game runs a single `window.THREE`
+(`vendor/three/three.global.js`), and the tracer is handed the game's own
+meshes, materials and lights — every `instanceof` check inside it has to see the
+same classes. So the bundle does not contain three at all:
+`scripts/build-pathtracer-global.mjs` resolves `three` to a generated shim that
+re-exports `window.THREE`'s names one by one, `three/examples/jsm/*` to the
+vendored `vendor/three/addons/*`, and `three-mesh-bvh` to the vendored source.
+The traced scene is a `THREE.Scene` whose `children` array is assigned the
+game's objects directly rather than `add()`ed, which would reparent them out of
+the live scene; three computes each world matrix from the object's real parent,
+not from whoever is traversing it, so both scenes see the same transforms.
+
+**What is in the traced scene**: the board surface, rim and trim, the landing
+floor, both pieces, the look's surroundings, and the directional key and rim
+lights. **What is not**: the dust and mote clouds (`THREE.Points` — a path
+tracer has no notion of them), the glow, hover and coach overlays, the fog, the
+hemisphere light (the tracer has no equivalent), and Colossus' instanced crowd,
+which this version of the tracer would bake as a single figure at the group
+origin. Ambient light instead comes from the same studio room the rasteriser
+uses (`premiumEnvScene()` in index.html) rendered once into a cube map, which
+the tracer converts to the equirect map it can sample. The board's per-pixel
+detail shader is an `onBeforeCompile` hook, so the traced board is plain PBR
+over the baked map — visibly smoother than the rasterised one.
+
+**Fail-safe.** Anything that throws — the bundle failing to load, the tracer
+failing to construct, a scene build, a sample — turns the mode off for the
+session, puts the rasteriser back and shows "Ray tracing could not start on this
+GPU." The saved setting is deliberately left on: the same profile may open
+tomorrow on a machine that can run it.
+
+**Cost.** `vendor/pathtracer/pathtracer.global.js` is ~212 kB and is injected
+only when someone ticks the box, so a player who never does never downloads it.
+
+```bash
+# rebuild the bundle after changing the vendored sources or three's version
+node scripts/build-pathtracer-global.mjs       # fetches esbuild 0.24.0 into a temp prefix
+```
+
+The vendored sources are `vendor/pathtracer/three-gpu-pathtracer` (0.0.23 — the
+last release that supports three r169; 0.0.24 needs three ≥ 0.180) and
+`vendor/pathtracer/three-mesh-bvh` (0.7.8), each with its LICENSE. Both are
+committed alongside the built file, the same way three is vendored here.
+`src/utils/UVUnwrapper.js` is the one file that wants `xatlas-web`; nothing in
+the bundle imports it and the build stubs the module so it can never be pulled
+in.
+
 Play starts the selected AI level and side. Same-screen play is untimed. Esc
 opens the match menu. The match keeps going underneath it, offline or online, with
 the board visible behind the sheet, so the opponent finishes its swing while you
