@@ -5108,12 +5108,11 @@ function ladderPlanCorner(idx, w, o, fallback){
     if (bk.at!==1) return done();
     const pv=bk.pivotIdx, d=bk.dir, B=bk.crossFoot;
     ladderRestore(snap0); G.active=idx; pinFoot(pv);
-    const baseCrossings=G.crossings;
     let guard=0, radAtCross=null;
     while (!G.atLimit && Math.abs(G.netRad) < 20*Math.PI/180 && guard++ < 500){
         applySwing(d*AI_STEP_RAD);
         if (G.pieces[idx].anyFootOff()) break;
-        if (G.crossings>baseCrossings){ if (nearLineIds(me.feet()[B], CFG.touchEps).length) radAtCross=Math.abs(G.netRad); break; }
+        if (G.crossings>0){ if (nearLineIds(me.feet()[B], CFG.touchEps).length) radAtCross=Math.abs(G.netRad); break; }
     }
     ladderRestore(snap0);
     if (radAtCross===null) return done();
