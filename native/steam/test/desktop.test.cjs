@@ -2040,6 +2040,16 @@ test('at rest the traced scene is built from the board and the pieces, and motio
   assert.equal(g.read('tauDesktop.renderFrame()'),false,'a glowing pinned foot is a board in play');
   g.read('pivotGlowMesh.visible=false; tauDesktop.renderFrame(); tauDesktop.renderFrame();');
   assert.equal(g.read('tauDesktop.renderFrame()'),true,'and the trace comes back when it goes');
+  // The hover highlight is the exception: the mouse sits over the board all game, so dropping the
+  // trace for it flipped the picture between two looks every time the cursor crossed the rim. The
+  // trace is kept and the disc is painted over it.
+  g.read('window.__rasterised=0; hoverDisc.visible=true;');
+  assert.equal(g.read('tauDesktop.renderFrame()'),true,'the cursor resting on the board keeps the traced frame');
+  assert.equal(g.read('window.__rasterised'),1,'and the hover disc is drawn over it');
+  assert.equal(g.read('tauDesktop.rayTraceOverlay().children.length===1 && tauDesktop.rayTraceOverlay().children[0]===hoverDisc'),true,
+    'that overlay is the hover disc alone, not the whole board again');
+  assert.equal(g.read('hoverDisc.parent===scene'),true,'which still belongs to the live scene');
+  g.read('hoverDisc.visible=false;');
   // The cap: once the image is finished nothing is drawn at all.
   g.read('window.__pt.samples=1e4; window.__pt.calls=[];');
   assert.equal(g.read('tauDesktop.renderFrame()'),true);
@@ -2130,4 +2140,92 @@ test('every string the premium layer translates has a translation',async t=>{
   const missing=[...used].filter(s=>!known.has(s));
   assert.deepEqual(missing,[],'these premium strings reach t() with no entry in any language table');
   assert.ok(used.size>80,'the premium layer routes its text through t()');
+});
+
+// The glass boards (Noir, Marble) break their loser rather than rolling it: one crack, a burst of
+// shards that spray along the way it was going and skip on the same floor, then they clear away.
+const glassFallSetup = (seed, speed) => `
+  renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+  scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+  controls={mouseButtons:{},target:new THREE.Vector3()};
+  tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+  tripods.forEach(t=>scene.add(t));
+  window.__crack=[]; playShatterSound=s=>window.__crack.push(s);
+  window.__thump=[]; playLandingSound=s=>window.__thump.push(s);
+  let seed=${seed}; Math.random=()=>((seed=(seed*16807)%2147483647)/2147483647);
+  fall=Object.assign(mkFallState(G.pieces[1]),
+    {idx:1, phase:'free', vy:${speed}, vx:14, vz:3, shatterOk:true});
+  tripods[1].position.set(80,26,0);`;
+
+test('a glass piece dropped hard breaks instead of rolling, and the shards clear away',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  g.read(`setAcoustics('glass','marble');` + glassFallSetup(11,-90));
+  g.read('for(let i=0;i<60 && fall.active;i++) stepFall(1/60);');
+  assert.equal(g.read("currentAcoustics().piece"),'glass','the marble look plays glass pieces');
+  assert.equal(g.read('fall.shattered'),true,'the landing broke it');
+  assert.equal(g.read('tripods[1].visible'),false,'the intact piece is gone');
+  assert.ok(g.read('shards.length')>10,'and a burst of shards is in its place');
+  assert.equal(g.read('window.__crack.length'),1,'one crack, not one per frame');
+  // It may touch down once before the contact that does it (a tumbling piece can brush the floor
+  // on the way over); what must not happen is the break ALSO thumping, or thumping after it.
+  const thumpsAtBreak = g.read('window.__thump.length');
+  assert.ok(thumpsAtBreak<=1,'the break is not a landing as well');
+  assert.ok(g.read('shards.every(s=>s.m.parent===tripods[1].parent)'),'the shards are in the scene the piece fell in');
+  assert.ok(g.read('shards.some(s=>s.vy>0)'),'some of it comes up off the floor');
+  // The shards land ON the floor the piece was falling to, and end up spread around where it hit.
+  g.read('for(let i=0;i<200;i++) stepShards(1/60);');
+  const floor=g.read('fallFloorY()');
+  assert.ok(g.read('shards.every(s=>s.m.position.y>=fallFloorY()-0.01)'),'no shard sinks through the floor');
+  assert.ok(g.read('Math.max(...shards.map(s=>Math.hypot(s.m.position.x-80,s.m.position.z)))')>6,
+    'they scatter rather than piling up on the spot');
+  assert.ok(g.read('shards[0].mat.opacity')<0.9,'and they are fading out by then');
+  // Given the rest of their life they disappear entirely, leaving nothing on the floor.
+  g.read('for(let i=0;i<200;i++) stepShards(1/60);');
+  assert.equal(g.read('shards.length'),0,'the glass is gone once it has faded');
+  // Only the two tripod groups were ever added to this scene, so a stray mesh in it is a shard
+  // that was dropped from the list but never taken out of the world.
+  assert.equal(g.read('scene.children.filter(o=>o.isMesh).length'),0,'and nothing is left behind in the scene');
+  assert.ok(floor<0,'all of which happened on the floor below the board');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a metal piece takes the same landing and rolls, and a gentle glass landing survives',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  g.read(`setAcoustics('metal','wood');` + glassFallSetup(11,-90));
+  g.read('for(let i=0;i<60 && fall.active;i++) stepFall(1/60);');
+  assert.equal(g.read('!!fall.shattered'),false,'metal does not break');
+  assert.equal(g.read('tripods[1].visible'),true,'it is still there to see');
+  assert.equal(g.read('shards.length'),0);
+  assert.ok(g.read('window.__thump.length')>0,'it lands with a thump like any other material');
+  // Same glass, set down gently: started just above the floor, barely moving and not turning, so
+  // nothing it can do on the way down gets near the speed that breaks it. It rolls out instead.
+  g.read(`setAcoustics('glass','marble'); clearShards();` + glassFallSetup(11,-2));
+  g.read('tripods[1].position.set(80,fallFloorY()+1.2,0); fall.wx=fall.wy=fall.wz=0; fall.tipRate=0;');
+  g.read('for(let i=0;i<90 && fall.active;i++) stepFall(1/60);');
+  assert.equal(g.read('!!fall.shattered'),false,'a soft landing leaves the glass whole');
+  assert.equal(g.read('window.__crack.length'),0);
+  assert.equal(g.read('tripods[1].visible'),true);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the how-to-play tumble never breaks, and a new game puts the broken piece back',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  g.read(`setAcoustics('glass','marble');` + glassFallSetup(11,-90));
+  // The tutorial loops its fall and rebuilds its pieces each pass, so its fall state is not marked
+  // as breakable -- only the real match's loser is.
+  g.read('fall.shatterOk=false;');
+  g.read('for(let i=0;i<60 && fall.active;i++) stepFall(1/60);');
+  assert.equal(g.read('!!fall.shattered'),false,'a fall that was not marked breakable stays whole');
+  assert.equal(g.read('shards.length'),0);
+  // And when the match's own loser does break, the next game brings the piece back rather than
+  // starting with one side invisible.
+  g.read(`clearShards();` + glassFallSetup(11,-90));
+  g.read('for(let i=0;i<60 && fall.active;i++) stepFall(1/60);');
+  assert.equal(g.read('tripods[1].visible'),false,'it broke');
+  g.read('fallenIdx=-1; fall={active:false}; for(let i=0;i<2;i++){ if(i===fallenIdx) continue; tripods[i].visible=true; }');
+  assert.equal(g.read('tripods[1].visible'),true,'a fresh board has both pieces again');
+  assert.deepEqual(g.errors,[]);
 });

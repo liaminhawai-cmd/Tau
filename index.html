@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 243</div>
+<div id="buildTag">build 244</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -7810,6 +7810,32 @@ function playLandingSound(strength) {
     }
     setTimeout(() => { try { g.disconnect(); } catch(e){} }, 1200);
 }
+// Breaking glass: the crack, then the scatter. A real break is one sharp transient (the fracture
+// itself -- broadband, gone in a blink) followed by a couple of hundred milliseconds of small
+// pieces raining onto the floor, each its own tiny high ping, arriving unevenly and getting
+// quieter. Nothing rings: a shard is too small to hold a note.
+function playShatterSound(strength) {
+    if (!audioReady || !soundOn || !gameVisible()) return;
+    const vol = Math.max(0.15, Math.min(1, strength === undefined ? 1 : strength));
+    const g = audioCtx.createGain();
+    g.gain.value = 0.85*vol;
+    g.connect(toneLP);
+    noiseTick(g, 'highpass', 2600, 0.7, 0.16);        // the fracture: a bright broadband crack
+    noiseTick(g, 'bandpass', 5200, 1.4, 0.1);
+    tone(g, 'square', 2400, 900, 0.1, 0.07);          // the body of the piece letting go
+    tone(g, 'sine', 180, 110, 0.22, 0.2);             // the dull weight of it hitting at the same instant
+    // The scatter: chips landing over the next quarter second, thinning out as they settle.
+    for (let i = 0; i < 9; i++) {
+        const at = 40 + i*22 + Math.random()*45, fade = 1 - i/11;
+        setTimeout(() => {
+            if (!audioReady || !soundOn) return;
+            const hz = 1700 + Math.random()*3200;
+            tone(g, 'triangle', hz, hz*0.72, 0.075*fade*vol, 0.05 + Math.random()*0.05);
+            if (i % 3 === 0) noiseTick(g, 'highpass', 4200, 0.9, 0.05);
+        }, at);
+    }
+    setTimeout(() => { try { g.disconnect(); } catch(e){} }, 1400);
+}
 // "Singing bowl" strike at the start of a game: a real struck bowl rings at inharmonic partials
 // (≈1 : 2.7 : 4.1 : 5.4 of the fundamental) with each partial split into a barely-detuned pair --
 // the detuning is what produces the slow shimmer/beating a bowl has that a plain chord doesn't.
@@ -9068,7 +9094,8 @@ function triggerFall(silent) {
     if (!silent) playLossSound();
     if (!renderer) return;
     const li = 1 - G.winner;
-    fall = Object.assign(mkFallState(G.pieces[li]), { idx: li });
+    clearShards();
+    fall = Object.assign(mkFallState(G.pieces[li]), { idx: li, shatterOk: true });
 }
 // Three phases, so the piece behaves like a rigid body going over a real table edge instead of
 // sliding out onto an invisible extension of the board and then sinking:
@@ -9123,6 +9150,97 @@ function fallMaterial() {
     return FALL_MATERIALS[p] || FALL_MATERIALS.metal;
 }
 const fallRollAxis = new THREE.Vector3();
+// ---------- Glass shatter ----------
+// Glass that comes down hard doesn't roll, it breaks. The tumble is the same physics as every
+// other material right up to the contact that does it; at that moment the body is swapped for a
+// burst of shards that carry the piece's own travel and spin outward and bounce on the same floor
+// it was heading for. Shards take the piece's own colour (a blue piece throws blue glass) and fade
+// out rather than lying there forever -- the board is cleared for the next game either way.
+// Only a real match's loser shatters: the how-to-play's tumbles re-run on a loop and rebuild their
+// pieces every pass, so triggerFall marks its own fall state as the one that may break.
+const SHATTER_SPEED = 48;                    // slower than this and the glass survives, and rolls
+const SHARD_LIFE = 3.4, SHARD_FADE = 1.2, SHARD_OPACITY = 0.92;
+let shards = [], shardGeos = null;
+function shardGeometry(i) {
+    // Thin sharp flakes, not pebbles: a tetrahedron squashed along one axis (the per-shard scale
+    // below) reads as broken glass from any angle, and three shapes are plenty at this size.
+    if (!shardGeos) shardGeos = [ new THREE.TetrahedronGeometry(1, 0),
+                                  new THREE.TetrahedronGeometry(1.2, 0),
+                                  new THREE.OctahedronGeometry(0.85, 0) ];
+    return shardGeos[i % shardGeos.length];
+}
+function shatterPiece(t, fall, impact) {
+    const parent = t.parent;
+    if (!parent) return;
+    // The colour the player is actually looking at: a showcase look swaps the body's material for
+    // its own (marble glass, noir smoke), so the piece's base lacquer is the wrong thing to ask.
+    const body = t.children && t.children[0];
+    const src = (body && body.material && body.material.color) ? body.material : (t.userData && t.userData.mat);
+    // One material for the whole burst: the shards are born and die together, so a single fade
+    // drives all of them and there's one thing to dispose when they're gone.
+    const mat = new THREE.MeshPhysicalMaterial({
+        color: src ? src.color.getHex() : 0xffffff,
+        roughness: 0.06, metalness: 0, transparent: true, opacity: SHARD_OPACITY,
+        clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.4,
+        side: THREE.DoubleSide,
+    });
+    const n = TAU_PREMIUM ? 26 : 14, spray = Math.min(1.7, impact/110);
+    for (let i = 0; i < n; i++) {
+        const m = new THREE.Mesh(shardGeometry(i), mat);
+        // Seed each shard on the body that just hit -- the hull points are the piece's own legs and
+        // crown -- so the break comes apart along the shape instead of out of a point at its centre.
+        const h = FALL_HULL_LOCAL[i % FALL_HULL_LOCAL.length];
+        m.position.copy(h.p).multiplyScalar(0.5 + Math.random()*0.85).applyQuaternion(t.quaternion).add(t.position);
+        const s = 0.55 + Math.random()*1.4;
+        m.scale.set(s*(0.28+Math.random()*0.5), s*(0.8+Math.random()*0.9), s*(0.4+Math.random()*0.7));
+        m.rotation.set(Math.random()*6.283, Math.random()*6.283, Math.random()*6.283);
+        if (TAU_PREMIUM) m.castShadow = true;
+        parent.add(m);
+        // Outward from the hub, up off the floor, and carrying half the body's travel: glass sprays
+        // along the way the piece was going, it doesn't burst symmetrically out of a standing stop.
+        const dx = m.position.x - t.position.x, dz = m.position.z - t.position.z, d = Math.hypot(dx, dz) || 1;
+        shards.push({ m, mat, t: 0,
+            vx: fall.vx*0.55 + dx/d*(16 + Math.random()*44)*spray,
+            vy: 12 + Math.random()*58*spray,
+            vz: fall.vz*0.55 + dz/d*(16 + Math.random()*44)*spray,
+            wx: (Math.random()-0.5)*24, wy: (Math.random()-0.5)*24, wz: (Math.random()-0.5)*24 });
+    }
+    t.visible = false;
+}
+// Shards outlive the fall itself (the camera is back on the board long before the last chip stops
+// skipping), so they step from the render loop, not from stepFall.
+function stepShards(dt) {
+    if (!shards.length) return;
+    const floorY = fallFloorY();
+    for (let i = shards.length - 1; i >= 0; i--) {
+        const s = shards[i], m = s.m;
+        s.t += dt;
+        s.vy -= 260*dt;
+        m.position.x += s.vx*dt; m.position.y += s.vy*dt; m.position.z += s.vz*dt;
+        m.rotation.x += s.wx*dt; m.rotation.y += s.wy*dt; m.rotation.z += s.wz*dt;
+        const rest = Math.max(m.scale.x, m.scale.y, m.scale.z)*0.5;
+        if (m.position.y - rest <= floorY) {
+            m.position.y = floorY + rest;
+            if (s.vy < -7) { s.vy = -s.vy*0.28; s.vx *= 0.7; s.vz *= 0.7; }   // a chip skips a couple of times
+            else {
+                s.vy = 0;
+                const k = 1 - Math.min(1, 2.6*dt);
+                s.vx*=k; s.vz*=k; s.wx*=k; s.wy*=k; s.wz*=k;
+            }
+        }
+        if (s.t > SHARD_LIFE - SHARD_FADE)
+            s.mat.opacity = Math.max(0, SHARD_OPACITY*(SHARD_LIFE - s.t)/SHARD_FADE);
+        if (s.t >= SHARD_LIFE) {
+            if (m.parent) m.parent.remove(m);
+            shards.splice(i, 1);
+            if (!shards.some(o => o.mat === s.mat)) s.mat.dispose();
+        }
+    }
+}
+function clearShards() {
+    for (const s of shards) { if (s.m.parent) s.m.parent.remove(s.m); try { s.mat.dispose(); } catch(e){} }
+    shards = [];
+}
 // How far the piece's lowest surface point sits BELOW its origin, at its current orientation.
 // Negative while it stands upright (nothing is below the pads), growing as it tips onto its side.
 function fallLowestBelowOrigin(t) {
@@ -9194,6 +9312,17 @@ function stepFallOn(t, fall, dt) {
             // Every contact, bounce or final, is a dust cue for the presentation layer: where and
             // how hard the piece actually met the ground, not just where it happens to rest now.
             fall.lastImpact = { x: t.position.x, z: t.position.z, y: floorY, speed: impact };
+            // Glass, hit hard enough: the piece doesn't bounce, it breaks. Everything below this
+            // is the intact body's landing, so the tumble ends here -- resting immediately, which
+            // hands the camera back to the board while the shards are still skipping about.
+            if (fall.shatterOk && !fall.shattered && impact > SHATTER_SPEED
+                && (typeof currentAcoustics === 'function' ? currentAcoustics().piece : '') === 'glass') {
+                playShatterSound(Math.min(1, 0.45 + impact/200));
+                shatterPiece(t, fall, impact);
+                fall.shattered = true; fall.landed = true; fall.resting = true;
+                fall.vx = fall.vy = fall.vz = 0;
+                return;
+            }
             if (impact > MAT.minBounce) {
                 // It bounces. A hard piece on a hard floor comes back at about a third of the speed
                 // it arrived with, and because it lands on a leg rather than flat on its axis, part
@@ -9685,9 +9814,11 @@ function animate() {
         tripods[i].position.set(G.pieces[i].x, 0, G.pieces[i].y);
         tripods[i].rotation.set(0, -G.pieces[i].rot, 0);
         tripods[i].scale.set(1,1,1);
+        tripods[i].visible = true;   // back from a shatter: a new game rebuilds the piece it broke
     }
     // A look may slow the fall (Colossus: giants go over slowly); the desktop layer says by how much.
     if (fall.active) stepFall(dt * (window.tauDesktop && window.tauDesktop.fallTimeScale ? window.tauDesktop.fallTimeScale() : 1));
+    stepShards(dt);
     if (fall.active) {
         updateFallCam(dt);   // dramatic loss cam takes over regardless of manual/auto state
     } else {

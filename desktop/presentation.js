@@ -1181,8 +1181,15 @@
   const PT_SRC = 'vendor/pathtracer/pathtracer.global.js';
   const PT_SAMPLE_CAP = 256;
   const PT_STILL_FRAMES = 2;
+  // How much light the traced scene gets, against what the rasteriser is given. The tracer carries
+  // light between surfaces and the rasteriser does not, so handed the same room and the same key
+  // it returns a markedly brighter picture -- the board "lighting up" the moment the scene settled,
+  // which is the one thing Ultra must not do: it is meant to be the same table, better rendered.
+  // One factor on both the room and the lamps scales every path equally, bounced light included,
+  // so the traced frame lands on the rasterised one instead of above it.
+  const PT_LIGHT_TRIM = 0.62;
   let ptPhase = 'off';                    // off | loading | ready | failed
-  let ptTracer = null, ptScene = null, ptEnv = null;
+  let ptTracer = null, ptScene = null, ptEnv = null, ptCueScene = null;
   let ptKey = '', ptWorldKey = '', ptStill = 0, ptWorldRev = 0;
 
   const ptRound = v => Math.round(v * 1000) / 1000;
@@ -1193,7 +1200,7 @@
   function rayTraceKey(s) {
     const mat = m => m ? Array.from(m, ptRound).join(',') : '-';
     return [mat(s.camera), mat(s.proj), s.size, (s.pieces || []).map(mat).join(';'), s.board,
-      s.rev, s.fall ? 1 : 0, s.ai ? 1 : 0, s.replay ? 1 : 0, s.pinned, ptRound(s.netRad || 0),
+      s.rev, s.fall ? 1 : 0, s.shards || 0, s.ai ? 1 : 0, s.replay ? 1 : 0, s.pinned, ptRound(s.netRad || 0),
       ptRound(s.lift || 0), s.modal ? 1 : 0, s.hidden ? 1 : 0].join('|');
   }
   function rayTraceMotion(prev, next) { return prev && rayTraceKey(prev) === rayTraceKey(next) ? 'still' : 'moving'; }
@@ -1207,6 +1214,10 @@
       size: renderer.domElement.width + 'x' + renderer.domElement.height,
       pieces, board: settings.board, rev: ptWorldRev,
       fall: typeof fall !== 'undefined' && fall.active,
+      // Glass in the air is still motion: the shards of a shattered piece keep flying for a few
+      // seconds after the fall itself has finished. Their age (not their count, which holds steady
+      // while they fly) is what changes every frame, so the tracer waits until they are gone.
+      shards: typeof shards !== 'undefined' && shards.length ? ptRound(shards[0].t) : 0,
       ai: typeof aiAnim !== 'undefined' && !!aiAnim,
       replay: typeof replayActive !== 'undefined' && !!replayActive,
       pinned: G_ ? G_.pinned : null, netRad: G_ ? G_.netRad : 0,
@@ -1272,8 +1283,11 @@
   function ptInit() {
     ptTracer = new window.TAU_PT.WebGLPathTracer(renderer);
     ptTracer.renderDelay = 0;
-    ptTracer.minSamples = 2;
-    ptTracer.fadeDuration = 350;
+    // Nothing traced reaches the screen until it has this many samples on it: below about twenty
+    // the image is visibly speckled, and fading raster -> noise -> clean image read as the picture
+    // "going grainy" every time the scene settled. The rasterised frame holds until it is clean.
+    ptTracer.minSamples = 24;
+    ptTracer.fadeDuration = 450;
     ptTracer.bounces = 5;
     ptTracer.transmissiveBounces = 8;
     ptTracer.tiles.set(2, 2);   // a quarter of the frame per call, so the first press still lands inside a frame
@@ -1294,15 +1308,40 @@
     // from whoever is traversing it, so both scenes see the same, correct transforms.
     ptScene.children = ptObjects();
     ptScene.background = scene.background;
-    ptTracer.setScene(ptScene, camera);
+    ptScene.environmentIntensity = PT_LIGHT_TRIM;
+    // The lamps in the traced scene ARE the game's lamps, so they are turned down only for the
+    // moment the tracer reads them (setScene copies their intensities into its own uniforms) and
+    // put straight back -- the rasterised frame, which shares them, keeps its own exposure.
+    const dimmed = [];
+    scene.traverse(o => { if (o.isDirectionalLight) { dimmed.push([o, o.intensity]); o.intensity *= PT_LIGHT_TRIM; } });
+    try { ptTracer.setScene(ptScene, camera); }
+    finally { for (const [l, i] of dimmed) l.intensity = i; }
   }
-  // The board's live cues — the pinned foot's glow, the hover disc, a line-crossing flash — pulse
-  // and fade frame by frame, and none of them survives into the traced scene. Whenever one is up
-  // the board is being played on, not looked at, so the rasteriser keeps it.
+  // The board's live cues pulse and fade frame by frame and none of them survives into the traced
+  // scene. The pinned foot's glow and a line-crossing flash mean the board is being PLAYED on, not
+  // looked at, so those keep the rasteriser. The hover disc does not: the mouse resting on the
+  // board is where it sits all game, and dropping the trace for it made the picture flip between
+  // two looks every time the cursor crossed the rim. It is drawn over the finished trace instead.
   function ptCuesUp() {
     return (typeof pivotGlowMesh !== 'undefined' && pivotGlowMesh && pivotGlowMesh.visible)
-      || (typeof hoverDisc !== 'undefined' && hoverDisc && hoverDisc.visible)
       || (typeof crossFlashes !== 'undefined' && crossFlashes.length > 0);
+  }
+  // The hover highlight, painted on top of the traced frame. Its own scene, holding the game's own
+  // mesh (children assigned directly, so three still builds the matrix from its REAL parent), with
+  // the clear suppressed so the trace underneath survives. It is an additive disc lying on the
+  // board, so drawing it without the scene's depth costs nothing but a piece never hiding it.
+  function ptDrawHover() {
+    if (typeof hoverDisc === 'undefined' || !hoverDisc || !hoverDisc.visible) return;
+    if (!ptCueScene) ptCueScene = new THREE.Scene();
+    ptCueScene.children = [hoverDisc];
+    const auto = renderer.autoClear;
+    renderer.autoClear = false;
+    // The depth left in the buffer belongs to whichever frame last rasterised, which may be from
+    // before the camera moved; clearing it means the disc is drawn against nothing but the traced
+    // picture, which is exactly what it is meant to sit on.
+    if (renderer.clearDepth) renderer.clearDepth();
+    renderer.render(ptCueScene, camera);
+    renderer.autoClear = auto;
   }
   function rayTraceFrame() {
     if (ptPhase !== 'ready' || ptCuesUp()) { ptStill = 0; return false; }
@@ -1312,6 +1351,7 @@
       if (++ptStill < PT_STILL_FRAMES) return false;
       if (ptStill === PT_STILL_FRAMES) ptRest(state);
       if (ptTracer.samples < PT_SAMPLE_CAP) ptTracer.renderSample();
+      ptDrawHover();
       return true;   // at the cap nothing is drawn at all: the finished frame stays on the canvas
     } catch (e) { rayTraceFail(e); return false; }
   }
@@ -1834,6 +1874,8 @@
       saveSettings(); if($('desktopQuality')) $('desktopQuality').value=settings.quality;
       if(settings.rayTrace) rayTraceLoad(); drawQualityNote(); },
     rayTraceStatus(){return ptPhase;},
+    rayTraceOverlay(){return ptCueScene;},   // what gets painted over a finished trace
+    rayTraceSamples(){return ptTracer ? ptTracer.samples : 0;},   // how far the still has refined
     canPlayNow: canPlay, canLookNow: canLook,
     rayTraceMotion,
     // The corner layout's camera goal for the current window (see desiredPose).
