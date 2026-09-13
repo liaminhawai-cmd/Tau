@@ -24,7 +24,7 @@ const SEEDS = [
   // the corner-crossing veto: a rules-exact "can they cross a corner next turn?" and the stop
   // nudge that answers it. Nothing in the app calls these yet -- they exist to be rated in the
   // league as a modifier on a rung -- so nothing else would drag them into the closure.
-  'oppCornerCrossAvailable', 'ladderPlanVeto',
+  'oppTwoForOneAvailable', 'ladderPlanVeto',
 ];
 
 function topLevelDefs(src) {
@@ -201,7 +201,7 @@ __exports = {
   directionToward, aiChoosePlan, simMoveToLimit, searchedPlanFor,
   AI_LADDER, ladderPlanFor, ladderEval,
   angInSpan, nearLineIds, lineDistOf, lineSideOf, LINE_INTERSECTIONS,
-  oppCornerCrossAvailable, ladderPlanVeto,
+  oppTwoForOneAvailable, ladderPlanVeto,
   newGame: __newGame, applyPlan: __applyPlan, applyPlanSearch: __applyPlanSearch,
   getG: () => G, setActive: a => { G.active = a; },
 };`, sandbox, { filename: 'tau-engine-extract.js' });

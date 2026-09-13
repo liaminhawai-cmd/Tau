@@ -5062,30 +5062,32 @@ function ladderCornerSetupStops(idx, pv, d){
 // every reply with an evaluator that may or may not have learned what a corner is worth; this asks
 // one yes/no question the rules settle exactly, for the cost of six sweeps.
 //
-// The test is the rules engine's OWN corner rule, read off live state rather than re-derived: a
-// single foot holding two lines at once while sitting within cornerEps of the printed intersection
-// those two lines make. That is verbatim the `roundingCorner` allowance in crossingSubstep -- the
-// one place a second line joins an open episode for free -- so this can neither over- nor
-// under-report relative to what the board will actually permit.
 // `stepRad` is the OBSERVATION step, not the physics step (applySwing substeps at CFG.substepDeg
-// either way). It has to be no wider than the corner window itself or the sweep can step over one:
-// crossingSubstep's own note measures a near-miss window at 1.2 degrees, so the 3-degree planning
-// step would straddle a real corner round and report nothing. Default CORNER_VETO_STEP.
-const CORNER_VETO_STEP = 1 * Math.PI/180;
-function oppCornerCrossAvailable(opp, stepRad){
+// whatever this is). Resolution does NOT matter here, which is worth stating because it is not
+// obvious and an earlier version of this file claimed the opposite: G.justCrossed ACCUMULATES over
+// the turn, so the sweep reads the same set whenever it looks rather than having to land on the
+// substep where a foot sits on the corner. Measured over 192 sampled positions, 3/1/0.4 degrees
+// flag 102/101/102 of them. (The earlier claim that 3 degrees missed 88% was measuring the buggy
+// instantaneous detector this replaced, not the board.) Kept at the planning step.
+const CORNER_VETO_STEP = 3 * Math.PI/180;
+// What is actually being denied is a TWO-FOR-ONE: the turn's crossing budget is 1, so getting a
+// foot past two printed lines while being billed once is a free line. Rounding a printed corner is
+// how that happens (the two lines meet, so one continuous crossing takes both), and it is what the
+// centre-spin rides.
+//
+// Detected as the engine's own OUTPUT rather than by reimplementing its rule: sweep, and watch for
+// two distinct ids in G.justCrossed while G.crossings is still 1. An earlier version of this tried
+// to re-derive crossingSubstep's `roundingCorner` condition directly and got it wrong -- it read
+// the corner allowance as "both lines fresh", which silently excluded the centre-spin, whose ring
+// contact dates from turn start and is free for a different reason. Reading what the board actually
+// billed cannot drift from the rules that way.
+//
+// This counts a two-for-one taken by two different feet as well as by one foot rounding a corner.
+// That is deliberate: it is the same free line either way, and it is the advantage, not the
+// mechanism, that the veto exists to deny.
+function oppTwoForOneAvailable(opp, stepRad){
     const step=stepRad || CORNER_VETO_STEP;
     const snap0=takeSnap(), origActive=G.active;
-    const roundingCorner=()=>{
-        const feet=G.pieces[opp].feet(), ct=G.contact;
-        if (!ct) return false;
-        for (let i=0;i<3;i++){
-            if (i===G.pinned || !ct[i] || ct[i].length<2) continue;
-            for (const P of LINE_INTERSECTIONS)
-                if (ct[i].includes(P.lines[0]) && ct[i].includes(P.lines[1]) &&
-                    Math.hypot(feet[i].x-P.x, feet[i].y-P.y) <= CFG.cornerEps) return true;
-        }
-        return false;
-    };
     let found=false;
     for (let pv=0; pv<3 && !found; pv++) for (const d of [1,-1]){
         ladderRestore(snap0); G.active=opp; pinFoot(pv);
@@ -5093,7 +5095,7 @@ function oppCornerCrossAvailable(opp, stepRad){
         while (!G.atLimit && Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && guard++ < 2000){
             applySwing(d*step);
             if (G.pieces[opp].anyFootOff()) break;
-            if (roundingCorner()){ found=true; break; }
+            if (G.crossings > 0 && new Set(G.justCrossed||[]).size >= 2){ found=true; break; }
         }
         if (found) break;
     }
@@ -5117,7 +5119,7 @@ function ladderPlanVeto(idx, plan, stepDeg, maxSteps){
         if (!ladderSwingTo(idx, plan.pivotIdx, plan.dir, rad)) return null;
         // A throw ends the game: never talk the rung out of one to tidy up a corner.
         if (G.pieces[opp].anyFootOff()) return {win:true};
-        return {win:false, corner:oppCornerCrossAvailable(opp)};
+        return {win:false, corner:oppTwoForOneAvailable(opp)};
     };
     const b=probe(base);
     ladderRestore(snap0); G.active=origActive;
