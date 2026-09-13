@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 235</div>
+<div id="buildTag">build 236</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2625,7 +2625,7 @@ let pivotGlowMesh=null, boardTop=null, boardRim=null, camProbe=null, coachArcs=n
 // has to pull right back to keep the tumble in frame, and the board shrinks away with it. A short
 // drop reads as "off the board onto the surface below" and keeps the camera in close, the way
 // Colossus's arena floor (its own floorY, 20 units down) already did.
-const FALL_FLOOR_Y = -24;
+const FALL_FLOOR_Y = -34;
 // A look with its own ground (Colossus's grass) lands the piece there instead.
 function fallFloorY() {
     const d = window.tauDesktop, y = d && d.fallFloorY ? d.fallFloorY() : null;
@@ -8752,17 +8752,16 @@ function fallLowestBelowOrigin(t) {
 }
 function stepFall(dt) {
     stepFallOn(tripods[fall.idx], fall, dt);
-    // Done falling: stop the animation AND remember which piece fell, so the render loop keeps it
-    // hidden instead of snapping its mesh back onto the board (its logical position never moved).
-    // Give it a beat resting on the floor (thump already played in stepFallOn) before tucking it away,
-    // so the landing actually reads instead of the piece thumping down and vanishing in the same frame.
-    const t = tripods[fall.idx];
-    // The beat before it is tucked away starts when it has stopped bouncing, not at first contact --
-    // otherwise the piece vanishes mid-bounce. downT is the backstop: however the bouncing goes, the
-    // fall is never allowed to hold the camera for more than a few seconds.
+    // The piece LIES WHERE IT LANDED. Only the animation stops here; fallenIdx keeps the render loop
+    // from snapping the mesh back onto the board (its logical position never moved), and the camera
+    // is released back to the board. It used to be hidden outright, which read as the loser blinking
+    // out of existence the moment it touched down.
+    // The beat before that starts once the piece has stopped rolling, not at first contact -- so a
+    // bounce or a roll is never cut off. downT is the backstop: however the tumble goes, the fall is
+    // never allowed to hold the camera for more than a few seconds.
     if (fall.resting) fall.settleT += dt;
     if (fall.landed) fall.downT += dt;
-    if (fall.settleT > 0.6 || fall.downT > 4) { fall.active=false; fallenIdx=fall.idx; t.visible=false; camCenterFrac=1; camManualSet=false; }
+    if (fall.settleT > 0.9 || fall.downT > 5) { fall.active=false; fallenIdx=fall.idx; camCenterFrac=1; camManualSet=false; }
 }
 // The physics itself, on any tripod + fall state — the tutorial's falls (goal-slide ending and
 // the push-off finale, on htpTripods) run this exact code, so a tumble looks the same everywhere.
@@ -8836,14 +8835,21 @@ function stepFallOn(t, fall, dt) {
                 fall.tipRate *= 0.3;
                 fall.prevClear = undefined;
             } else {
-                // Too slow to leave the floor again: it is down for good. Bleed off what is left so
-                // it rocks to a stop on whichever part it came to rest on.
+                // Too slow to leave the floor again, but not stopped: it ROLLS. A tripod that comes
+                // down on its side carries its sideways speed into a tumble across the ground, so
+                // friction here is gentle and the spin keeps turning it over its own legs -- the
+                // contact clamp above re-seats it on whatever is lowest each frame, which is what
+                // makes that read as rolling rather than sliding on the spot.
                 if (!fall.landed) { fall.landed = true; playLandingSound(0.55); }
-                fall.resting = true;
                 fall.vy = 0;
-                fall.vx *= 1 - Math.min(1, 8*dt); fall.vz *= 1 - Math.min(1, 8*dt);
-                fall.wx *= 1 - Math.min(1, 7*dt); fall.wy *= 1 - Math.min(1, 7*dt); fall.wz *= 1 - Math.min(1, 7*dt);
-                fall.tipRate *= 1 - Math.min(1, 7*dt);
+                const roll = 1 - Math.min(1, 1.9*dt), spin = 1 - Math.min(1, 1.6*dt);
+                fall.vx *= roll; fall.vz *= roll;
+                fall.wx *= spin; fall.wy *= spin; fall.wz *= spin;
+                fall.tipRate *= 1 - Math.min(1, 2.2*dt);
+                // Resting means actually still, not merely touching: the beat before the camera goes
+                // back to the board starts when the roll has died, not the moment it first landed.
+                fall.resting = Math.hypot(fall.vx, fall.vz) < 3
+                    && Math.abs(fall.wx) + Math.abs(fall.wy) + Math.abs(fall.wz) < 1.2;
             }
         }
     }

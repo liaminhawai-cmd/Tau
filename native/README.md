@@ -743,3 +743,22 @@ the board, and `tickDust`'s floor clamp reads a puff's OWN ground (stored in
 its `userData.dust.floorY`) rather than a single hard-coded plane, so a puff
 thrown up on the sand settles on the sand and one thrown up on the board still
 falls on past the rim the way it always did.
+
+A fallen piece now ROLLS and stays. It used to be hidden outright 0.6s after the
+first contact, which read as the loser blinking out of existence the moment it
+touched down. Once it is too slow to bounce again it keeps its sideways speed
+under gentle friction with the spin still turning it over its own legs (the
+contact clamp re-seats it on whatever is lowest each frame, which is what makes
+that read as rolling rather than sliding on the spot), and "resting" now means
+actually still rather than merely touching -- so neither a bounce nor a roll is
+ever cut off. When it stops, only the animation ends: `fallenIdx` still keeps the
+render loop from snapping the mesh back onto the board, but the piece lies where
+it fell. The floor went to 34 units down to give the tumble a little more room.
+
+The premium presentation hides index.html's `#buildTag`, so the Settings sheet
+prints the build number at the bottom -- "which build am I running" is the first
+question any bug report needs answered, and on Steam there was no way to tell.
+The Controls sheet prints, live, which pads the game can actually see: a
+controller that does nothing is otherwise impossible to tell apart from one the
+browser never handed us, since the Gamepad API only reports a pad once its own
+window has focus and a button has been pressed on it.

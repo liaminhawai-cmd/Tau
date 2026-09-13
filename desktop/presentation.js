@@ -501,6 +501,12 @@
   const canRebind = () => !(typeof isNativeApp === 'function' && isNativeApp());
   let rebindListener = null, padBrandShown = null;
   function stopRebind() { if (rebindListener) { removeEventListener('keydown', rebindListener, true); rebindListener = null; } }
+  // index.html stamps the build into #buildTag, which this presentation hides -- but "which build am
+  // I running" is the first question any bug report needs answered.
+  function buildTagText() {
+    const el = $('buildTag');
+    return el && el.textContent ? el.textContent.trim() : 'build unknown';
+  }
   function drawPad() {
     const el = $('desktopPadDiagram'); if (!el) return;
     padBrandShown = padBrand(); el.innerHTML = controllerSvg(padBrandShown, compactSheet());
@@ -508,6 +514,16 @@
       ? 'Triggers: the harder you pull, the faster it turns.' : 'Right stick: the further you push, the faster it turns.';
     const auto = $('desktopPadBrand') && $('desktopPadBrand').options[0];
     if (auto) auto.textContent = `Auto · ${BRAND_NAMES[detectedPadBrand()]}`;
+    drawPadSeen();
+  }
+  // What the game can actually SEE, live. A controller that does nothing is otherwise impossible to
+  // tell apart from one the browser never handed us -- the Gamepad API only reports a pad once its
+  // own window has focus and a button has been pressed on it.
+  function drawPadSeen() {
+    const el = $('desktopPadSeen'); if (!el) return;
+    el.textContent = padList.length
+      ? 'Connected: ' + padList.map((p, i) => `${BRAND_NAMES[padBrandOf(p.id)]} (pad ${i + 1})`).join(', ')
+      : 'No controller detected. Press a button on it with this window in front; some pads only appear once they are woken up.';
   }
   function openControls() {
     stopRebind();
@@ -526,7 +542,8 @@
         <label>Swing with <select id="desktopPadScheme" aria-label="Controller scheme"><option value="triggers">Triggers</option><option value="stick">Right stick</option></select></label>
       </div>
       <div id="desktopPadDiagram" class="desktop-diagram-wrap"></div>
-      <p class="desktop-controls-note" id="desktopPadNote" style="margin:0"></p>`, [
+      <p class="desktop-controls-note" id="desktopPadNote" style="margin:0"></p>
+      <p class="desktop-controls-note" id="desktopPadSeen"></p>`, [
       { label:'Done', onClick:() => { stopRebind(); if (inMatch()) focusBoard(); } },
     ], true, {dismiss:stopRebind});
     $('modalBox').classList.add('desktop-sheet');
@@ -718,7 +735,8 @@
       <label class="desktop-setting">Invert camera Y<input id="desktopInvertY" type="checkbox" ${settings.invertCamY?'checked':''}></label>
       <label class="desktop-setting">Reduce camera motion<input id="desktopMotion" type="checkbox" ${settings.reducedMotion?'checked':''}></label>
       <label class="desktop-setting">Controller vibration<input id="desktopHaptics" type="checkbox" ${settings.haptics?'checked':''}></label>
-      ${fullscreen ? '<label class="desktop-setting">Fullscreen<input id="desktopFullscreen" type="checkbox"></label>' : ''}`,
+      ${fullscreen ? '<label class="desktop-setting">Fullscreen<input id="desktopFullscreen" type="checkbox"></label>' : ''}
+      <p class="desktop-controls-note" style="text-align:center">${esc(buildTagText())}</p>`,
       [{label:'Done',onClick:() => { if(inMatch()) focusBoard(); }}], true, {dismiss:true});
     $('desktopQuality').value = settings.quality;
     $('desktopBoard').value = settings.board;
@@ -1541,6 +1559,7 @@
     currentPad=padList[0] || null;
     if(pick){pollPick();padPrev=padList.map(p=>p.buttons.map(b=>b.pressed));tickEffects(dt);return;}
     if(padBrandShown && $('desktopPadDiagram') && padBrand()!==padBrandShown) drawPad();   // the sheet follows the pad that is plugged in
+    if($('desktopPadSeen')) drawPadSeen();
     if(lastActive!==G.active){lastActive=G.active;chosenFoot=0;heldLeft=heldRight=false;lastCrossings=0;}
     // The seats belong to the match that chose them, and nothing else: back on the menu (or in any
     // match that never asked) they are empty and every input is one player's.

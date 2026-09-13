@@ -1229,7 +1229,7 @@ test('the losing piece lands on the floor below the board with a thump, then is 
   // Four seconds at 60fps: the drop, the bounces, and the beat before it is tucked away. Clearance
   // is how far the piece's lowest point sits above the floor on each frame.
   g.read(`window.__clear=[];
-    for(let i=0;i<240 && fall.active;i++){ stepFall(1/60);
+    for(let i=0;i<420 && fall.active;i++){ stepFall(1/60);
       window.__clear.push(tripods[1].position.y + fallLowestBelowOrigin(tripods[1]) - fallFloorY()); }`)
   // It rests ON the floor: its lowest surface point touches -100, not its origin. A tumbling piece
   // is rotated, so clamping the origin (the plane its pins stand on) buried whatever hung below it.
@@ -1242,15 +1242,19 @@ test('the losing piece lands on the floor below the board with a thump, then is 
   const thumps=JSON.parse(g.read('JSON.stringify(window.__thumps)'));
   assert.ok(thumps.length>=2 && thumps.length<=6,`a few bounces, not one dead stop and not a thump per frame (got ${thumps.length})`);
   for(let i=1;i<thumps.length;i++) assert.ok(thumps[i]<thumps[i-1],'each bounce lands softer than the one before');
+  const CFG_EDGE=g.read('CFG.edgeU');
   const clear=JSON.parse(g.read('JSON.stringify(window.__clear)'));
   const firstHit=clear.findIndex(c=>c<=0.001);
   assert.ok(firstHit>0,'it reaches the floor');
   // The hop scales with the drop, and the floor sits close under the board so the loss camera can
   // stay in tight: a few units of air is what the physics gives here, not a pogo.
   assert.ok(Math.max(...clear.slice(firstHit))>0.8,'and comes back off it rather than sticking where it landed');
-  assert.equal(g.read('fall.active'),false,'after a beat resting on the floor it is tucked away, same as the old cutoff');
-  assert.equal(g.read('fallenIdx'),1);
-  assert.equal(g.read('tripods[1].visible'),false);
+  assert.equal(g.read('fall.active'),false,'the animation stops once it has stopped rolling');
+  assert.equal(g.read('fallenIdx'),1,'and the render loop leaves it where it fell instead of snapping it back');
+  // It LIES on the floor rather than blinking out: the loser is still there to see.
+  assert.equal(g.read('tripods[1].visible'),true,'the fallen piece stays on the ground');
+  const rest=JSON.parse(g.read('JSON.stringify([tripods[1].position.x,tripods[1].position.z])'));
+  assert.ok(Math.hypot(rest[0],rest[1])>CFG_EDGE*0.7,'and it comes to rest out by the rim it went over, not back in the middle');
   assert.deepEqual(g.errors,[]);
 });
 
