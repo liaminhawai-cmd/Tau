@@ -5,26 +5,35 @@ const fs=require('node:fs');
 const path=require('node:path');
 const dir=path.resolve(__dirname,'..');
 
-test('Electron loads the unified game and reserves Escape for its menu',async()=>{
-  const windows=[], handlers=new Map();
-  let quits=0;
+// Runs the real main.js against a stub Electron and hands back everything it touched.
+async function loadMain(){
+  const windows=[], handlers=new Map(), opened=[], appEvents={};
+  const counts={quits:0};
   class BrowserWindow {
     constructor(options){this.options=options;this.fullscreen=false;this.events={};
       this.webContents={on:(name,fn)=>this.events[name]=fn,setWindowOpenHandler:fn=>this.openLink=fn};windows.push(this);}
+    on(name,fn){this.events[name]=fn;}
     loadFile(file,options){this.file=file;this.loadOptions=options;}
     isFullScreen(){return this.fullscreen;}
     setFullScreen(value){this.fullscreen=value;}
     static fromWebContents(sender){return windows.find(w=>w.webContents===sender);}
     static getAllWindows(){return windows;}
   }
-  const app={requestSingleInstanceLock:()=>true,quit:()=>quits++,isPackaged:false,
-    commandLine:{appendSwitch(){}},on(){},whenReady:()=>Promise.resolve()};
-  const electron={app,BrowserWindow,ipcMain:{handle:(k,v)=>handlers.set(k,v)},shell:{openExternal(){}}};
+  const app={requestSingleInstanceLock:()=>true,quit:()=>counts.quits++,isPackaged:false,
+    commandLine:{appendSwitch(){}},on(name,fn){appEvents[name]=fn;},whenReady:()=>Promise.resolve()};
+  const electron={app,BrowserWindow,ipcMain:{handle:(k,v)=>handlers.set(k,v)},
+    shell:{openExternal:url=>opened.push(url)}};
   vm.runInNewContext(fs.readFileSync(path.join(dir,'main.js'),'utf8'),{
-    require:n=>{if(n==='electron')return electron;if(n==='steamworks.js')throw Error('Steam offline');return require(n);},
+    require:n=>{if(n==='electron')return electron;if(n==='steamworks.js')throw Error('Steam offline');
+      return require(n.startsWith('.')?path.join(dir,n):n);},
     __dirname:dir,process:{platform:'linux'},module:{exports:{}},console,
   });
   await Promise.resolve();
+  return {windows,handlers,opened,appEvents,counts};
+}
+
+test('Electron loads the unified game and reserves Escape for its menu',async()=>{
+  const {windows,handlers,counts}=await loadMain();
   const win=windows[0];
   assert.equal(path.basename(win.file),'index.html');
   assert.equal(win.loadOptions.query.steam,'1');
@@ -45,7 +54,7 @@ test('Electron loads the unified game and reserves Escape for its menu',async()=
   assert.equal(handlers.get('desktop:fullscreen')(event,false),false);
   assert.equal(handlers.get('desktop:fullscreen')(event),false);
   assert.equal(handlers.get('steam:status')().available,false);
-  handlers.get('desktop:quit')();assert.equal(quits,1);
+  handlers.get('desktop:quit')();assert.equal(counts.quits,1);
 });
 
 test('both native shells (Steam and the Android/iOS app) sync the premium showcase catalogue',()=>{
@@ -55,6 +64,9 @@ test('both native shells (Steam and the Android/iOS app) sync the premium showca
   const steamPkg=JSON.parse(fs.readFileSync(path.join(dir,'package.json'),'utf8'));
   const appPkg=JSON.parse(fs.readFileSync(path.join(dir,'..','app','package.json'),'utf8'));
   assert.match(steamPkg.scripts['sync-www'],/--premium\b/);
+  // main.js requires loopback-auth.js at startup, so leaving it out of the packaged files would
+  // break the shipped app on launch while every test here still passed.
+  assert.ok(steamPkg.build.files.includes('loopback-auth.js'),'the packaged build ships the sign-in server');
   assert.match(appPkg.scripts['sync-www'],/--premium\b/);
 });
 
@@ -87,4 +99,53 @@ test('preload exposes a narrow desktop and Steam IPC bridge',async()=>{
   await api.isFullscreen();await api.setFullscreen(false);await api.quit();
   assert.deepEqual(calls,[['desktop:fullscreen'],['desktop:fullscreen',false],['desktop:quit']]);
   assert.equal(api.ipcRenderer,undefined);
+  // The desktop Google sign-in: reserve the loopback port, then hand over the authorize URL.
+  calls.length=0;
+  await api.googleAuthBegin();
+  await api.googleSignIn('https://project.supabase.co/auth/v1/authorize?x=1','STATE');
+  await api.googleSignIn();
+  // preload.js runs in its own vm realm here, so its payloads are read field by field.
+  assert.deepEqual(calls.map(c=>c[0]),['auth:google-begin','auth:google','auth:google']);
+  assert.equal(calls[1][1].url,'https://project.supabase.co/auth/v1/authorize?x=1');
+  assert.equal(calls[1][1].state,'STATE');
+  assert.equal(calls[2][1].url,'','a call with nothing in it still sends a plain, harmless payload');
+  assert.equal(calls[2][1].state,'');
+});
+
+test('the desktop Google flow opens the system browser and carries the code back',async()=>{
+  const {handlers,appEvents,opened}=await loadMain();
+  const http=require('node:http');
+  const fetchBack=url=>new Promise((resolve,reject)=>{
+    const req=http.get(url,res=>{res.resume();res.on('end',()=>resolve(res.statusCode));});
+    req.on('error',reject);
+  });
+
+  // Nothing happens before the renderer has asked for a port. (main.js runs in its own vm realm,
+  // so its replies are compared field by field: deepEqual would trip over the foreign prototype.)
+  assert.equal((await handlers.get('auth:google')({}, {url:'https://x/',state:'anything'})).error,
+    'Sign-in was not started.');
+
+  const begin=await handlers.get('auth:google-begin')();
+  if (begin.error) return;   // all three fixed ports busy on this machine: nothing to test
+  assert.equal(begin.redirectUri,`http://127.0.0.1:${begin.port}/`);
+  assert.ok([8765,8766,8767].includes(begin.port),'only the whitelisted ports are used');
+
+  // A caller that does not know the state the main process minted gets nowhere, and the attempt
+  // it tried to hijack is torn down with it.
+  assert.equal((await handlers.get('auth:google')({}, {url:'https://evil.example/',state:'guess'})).error,
+    'Sign-in request was rejected.');
+  await assert.rejects(fetchBack(begin.redirectUri),/ECONNREFUSED/,'and the port is released');
+
+  const second=await handlers.get('auth:google-begin')();
+  const url='https://project.supabase.co/auth/v1/authorize?provider=google';
+  const waiting=handlers.get('auth:google')({}, {url,state:second.state});
+  await new Promise(r=>setTimeout(r,10));
+  assert.deepEqual([...opened],[url],'the SYSTEM browser is sent there -- the game window is never navigated');
+  assert.equal(await fetchBack(`${second.redirectUri}?code=FROM_GOOGLE&state=${second.state}`),200);
+  assert.equal((await waiting).code,'FROM_GOOGLE');
+
+  // Quitting (or closing the window) can never leave a listener behind.
+  const third=await handlers.get('auth:google-begin')();
+  appEvents['before-quit']();
+  await assert.rejects(fetchBack(third.redirectUri),/ECONNREFUSED/);
 });

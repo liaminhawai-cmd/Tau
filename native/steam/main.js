@@ -5,6 +5,7 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { startLoopbackAuth } = require('./loopback-auth');
 
 // Steam expects a single running instance per user.
 if (!app.requestSingleInstanceLock()) {
@@ -87,6 +88,49 @@ ipcMain.handle('steam:rich-presence', (e, status) => {
   }
 });
 
+// ---- Google sign-in -------------------------------------------------------------------------
+// Two steps, because the renderer can only ask Supabase for an authorize URL once it knows which
+// loopback address to put in it: 'auth:google-begin' reserves the port and mints the state,
+// 'auth:google' hands the finished URL to the system browser and waits for the code to come back.
+let pendingAuth = null;
+function endPendingAuth() {
+  if (!pendingAuth) return;
+  const flow = pendingAuth;
+  pendingAuth = null;
+  flow.cancel();
+}
+ipcMain.handle('auth:google-begin', async () => {
+  endPendingAuth();   // a second click abandons the first attempt; there is only one port
+  try {
+    pendingAuth = await startLoopbackAuth();
+    return { port: pendingAuth.port, redirectUri: pendingAuth.redirectUri, state: pendingAuth.state };
+  } catch (e) {
+    pendingAuth = null;
+    return { error: (e && e.message) || 'Could not start sign-in.' };
+  }
+});
+ipcMain.handle('auth:google', async (event, payload) => {
+  const flow = pendingAuth;
+  const url = payload && typeof payload.url === 'string' ? payload.url : '';
+  const state = payload && typeof payload.state === 'string' ? payload.state : '';
+  if (!flow) return { error: 'Sign-in was not started.' };
+  if (state !== flow.state || !/^https:\/\//i.test(url)) {
+    endPendingAuth();
+    return { error: 'Sign-in request was rejected.' };
+  }
+  try {
+    shell.openExternal(url);
+  } catch (e) {
+    endPendingAuth();
+    return { error: 'Could not open your browser.' };
+  }
+  try {
+    return await flow.result;
+  } finally {
+    if (pendingAuth === flow) pendingAuth = null;
+  }
+});
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
@@ -128,6 +172,8 @@ function createWindow() {
     }
   });
 
+  win.on('closed', endPendingAuth);   // never leave a loopback listener behind
+
   loadPage(win);
 }
 
@@ -150,6 +196,8 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+
+app.on('before-quit', endPendingAuth);
 
 app.on('window-all-closed', () => {
   app.quit();

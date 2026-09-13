@@ -13,4 +13,8 @@ contextBridge.exposeInMainWorld('tauSteam', {
   unlock: (name) => ipcRenderer.invoke('steam:unlock', name),
   // Set the friends-list rich presence line -> bool
   setStatus: (text) => ipcRenderer.invoke('steam:rich-presence', text),
+  // Reserve the loopback port Google will come back to -> { port, redirectUri, state } | { error }
+  googleAuthBegin: () => ipcRenderer.invoke('auth:google-begin'),
+  // Open that authorize URL in the system browser and wait -> { code } | { cancelled } | { error }
+  googleSignIn: (url, state) => ipcRenderer.invoke('auth:google', { url: String(url ?? ''), state: String(state ?? '') }),
 });

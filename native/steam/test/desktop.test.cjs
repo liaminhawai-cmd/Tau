@@ -1312,6 +1312,144 @@ test('with no client ID configured the app keeps exactly its username & password
   assert.deepEqual(g.errors,[]);
 });
 
+// ---- The Steam desktop build's Google sign-in ---------------------------------------------
+// Electron has no https origin for Google to return to, so the wrapper opens the system browser
+// and catches the return trip on a loopback server (native/steam/loopback-auth.js). These stub
+// that bridge, plus the two Supabase clients the flow uses, and check the renderer half.
+const flush = async (n=30) => { for (let i=0;i<n;i++) await new Promise(r=>setImmediate(r)); };
+// A Steam build with the loopback bridge, a throwaway PKCE client and a stub of the real client.
+const steamAuth = (g, opts={}) => g.read(`
+  window.__bridge={begins:0,handed:[],reply:${JSON.stringify(opts.reply||{code:'CODE_FROM_GOOGLE'})}};
+  window.tauSteam={status:()=>Promise.resolve({available:false}),
+    googleAuthBegin:()=>{window.__bridge.begins++;
+      return Promise.resolve({port:8765,redirectUri:'http://127.0.0.1:8765/',state:'STATE-abc'});},
+    googleSignIn:(url,state)=>{window.__bridge.handed.push([url,state]);
+      return Promise.resolve(window.__bridge.reply);}};
+  window.__tmp={options:null,oauth:[],link:[],adopted:[],exchanged:[]};
+  window.supabase={createClient:(url,key,options)=>{window.__tmp.options=options;return {auth:{
+    signInWithOAuth:o=>{window.__tmp.oauth.push(o);
+      return Promise.resolve({data:{url:'https://tau.supabase.co/auth/v1/authorize?provider=google'},error:null});},
+    linkIdentity:o=>{window.__tmp.link.push(o);
+      return Promise.resolve({data:{url:'https://tau.supabase.co/auth/v1/authorize?link=1'},error:null});},
+    setSession:s=>{window.__tmp.adopted.push(s);return Promise.resolve({error:null});},
+    exchangeCodeForSession:c=>{window.__tmp.exchanged.push(c);
+      return Promise.resolve({data:{session:{access_token:'REAL_AT',refresh_token:'REAL_RT'}},error:null});},
+  }};}};
+  window.__real={sessions:[]};
+  sb={auth:{
+    getSession:()=>Promise.resolve({data:{session:{access_token:'GUEST_AT',refresh_token:'GUEST_RT'}}}),
+    setSession:s=>{window.__real.sessions.push(s);return Promise.resolve({error:null});}}};
+  sbUser=${opts.guest ? "{id:'guest',is_anonymous:true}" : 'null'};
+  localStorage.removeItem(AUTH_PERSIST_FLAG);`);
+
+test('the Steam desktop build leads with Continue with Google, like the web', async t=>{
+  const g=await game();t.after(g.close);
+  steamAuth(g);
+  assert.equal(g.read('isSteamApp()'),true);
+  g.read('openAcctPanel()');
+  assert.notEqual(g.read("document.getElementById('acctGoogle').style.display"),'none',
+    'the loopback flow works here, so the button is shown, not hidden');
+  assert.equal(g.read("document.getElementById('acctMagic').style.display"),'none',
+    'a magic link would open in the system browser and sign THAT in, so it stays hidden');
+  assert.notEqual(g.read("document.getElementById('acctMoreOptions').style.display"),'none',
+    'username & password is still there for anyone who wants it');
+  assert.equal(g.read("document.getElementById('acctMsg').textContent"),'',
+    'and nothing apologises for a missing Google button any more');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('clicking Continue with Google on Steam goes out through the loopback bridge', async t=>{
+  const g=await game();t.after(g.close);
+  steamAuth(g);
+  const where=g.read('location.href');
+  g.read('openAcctPanel()');
+  g.$('acctGoogle').click();
+  await flush();
+  assert.equal(g.read('location.href'),where,'the game window itself never navigates to Google');
+  assert.equal(g.read('window.__bridge.begins'),1,'the wrapper reserves the loopback port first');
+  assert.equal(g.read('window.__tmp.options.auth.flowType'),'pkce',
+    'the code is only redeemable on a PKCE client, so the exchange gets its own');
+  assert.equal(g.read('window.__tmp.options.auth.persistSession'),false,
+    'and that throwaway client never touches the stored session');
+  assert.equal(g.read('window.__tmp.options.auth.detectSessionInUrl'),false);
+  assert.equal(g.read("JSON.stringify(window.__tmp.oauth[0].options)"),
+    JSON.stringify({redirectTo:'http://127.0.0.1:8765/',skipBrowserRedirect:true}),
+    'Supabase builds the URL for the loopback address but must NOT navigate to it itself');
+  assert.equal(g.read('JSON.stringify(window.__bridge.handed[0])'),
+    JSON.stringify(['https://tau.supabase.co/auth/v1/authorize?provider=google','STATE-abc']),
+    'the URL Supabase returned is what the browser is sent to, with the state the wrapper minted');
+  assert.equal(g.read('window.__tmp.exchanged[0]'),'CODE_FROM_GOOGLE','the returned code is exchanged');
+  assert.equal(g.read('JSON.stringify(window.__real.sessions)'),
+    JSON.stringify([{access_token:'REAL_AT',refresh_token:'REAL_RT'}]),
+    'and the finished session is handed to the client the rest of the game reads');
+  assert.equal(g.read(`localStorage.getItem(AUTH_PERSIST_FLAG)`),'1','a real account, so it persists');
+  assert.equal(g.read("document.getElementById('acctMsg').textContent"),'','nothing left over on success');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a guest signing in on Steam is LINKED, so the rating comes with them', async t=>{
+  const g=await game();t.after(g.close);
+  steamAuth(g,{guest:true});
+  g.read('openAcctPanel()');
+  g.$('acctGoogle').click();
+  await flush();
+  assert.equal(g.read('window.__tmp.oauth.length'),0,'never a fresh, unrelated account');
+  assert.equal(g.read("JSON.stringify(window.__tmp.link[0])"),
+    JSON.stringify({provider:'google',options:{redirectTo:'http://127.0.0.1:8765/',skipBrowserRedirect:true}}));
+  assert.equal(g.read("JSON.stringify(window.__tmp.adopted[0])"),
+    JSON.stringify({access_token:'GUEST_AT',refresh_token:'GUEST_RT'}),
+    'linkIdentity signs with the guest JWT, so the throwaway client has to be holding it');
+  assert.equal(g.read('JSON.stringify(window.__real.sessions)'),
+    JSON.stringify([{access_token:'REAL_AT',refresh_token:'REAL_RT'}]));
+  assert.deepEqual(g.errors,[]);
+});
+
+test('walking away from the Google tab leaves the Steam panel exactly as it was', async t=>{
+  const g=await game();t.after(g.close);
+  steamAuth(g,{reply:{cancelled:true}});
+  g.read('openAcctPanel()');
+  g.$('acctGoogle').click();
+  await flush();
+  assert.equal(g.read("document.getElementById('acctMsg').textContent"),'',
+    'a cancel or a timeout is not an error worth shouting about');
+  assert.equal(g.read(`localStorage.getItem(AUTH_PERSIST_FLAG)`),null,
+    'and nothing was signed in, so the persist flag goes back');
+  assert.equal(g.read('JSON.stringify(window.__real.sessions)'),'[]');
+  assert.equal(g.read("document.getElementById('acctGoogle').disabled"),false,'the button still works');
+  assert.equal(g.read("document.getElementById('acctPanel').style.display"),'flex');
+  g.$('acctGoogle').click();
+  await flush();
+  assert.equal(g.read('window.__bridge.begins'),2,'a second try starts a second flow');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a real failure says what went wrong and keeps username & password reachable', async t=>{
+  const g=await game();t.after(g.close);
+  steamAuth(g,{reply:{error:'Provider is down'}});
+  g.read('openAcctPanel()');
+  g.$('acctGoogle').click();
+  await flush();
+  assert.equal(g.read("document.getElementById('acctMsg').textContent"),'Provider is down');
+  assert.equal(g.read(`localStorage.getItem(AUTH_PERSIST_FLAG)`),null);
+  assert.equal(g.read("document.getElementById('acctEmailOptions').style.display"),'block',
+    'the working path is opened up rather than left hidden behind a disclosure');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the Capacitor app ignores the desktop loopback path entirely', async t=>{
+  const g=await game('',{},{capacitor:true});t.after(g.close);
+  // No window.tauSteam in the phone app: the button stays hidden and the click falls through to
+  // the app's own message, never to the wrapper's bridge.
+  g.read(`TAU_GOOGLE_NATIVE_CLIENT_ID=''; sb={auth:{}};`);
+  assert.equal(g.read('isSteamApp()'),false);
+  g.read('openAcctPanel()');
+  assert.equal(g.read("document.getElementById('acctGoogle').style.display"),'none');
+  g.$('acctGoogle').click();
+  await flush();
+  assert.match(g.read("document.getElementById('acctMsg').textContent"),/username & password/);
+  assert.deepEqual(g.errors,[]);
+});
+
 test('the sign-in panel is a centred sheet on the premium presentation, and a click outside still closes it',async t=>{
   const g=await game();t.after(g.close);
   g.read('openAcctPanel()');
