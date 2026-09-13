@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 245</div>
+<div id="buildTag">build 246</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -9172,16 +9172,26 @@ function shardGeometry(i) {
 function shatterPiece(t, fall, impact) {
     const parent = t.parent;
     if (!parent) return;
-    // The colour the player is actually looking at: a showcase look swaps the body's material for
-    // its own (marble glass, noir smoke), so the piece's base lacquer is the wrong thing to ask.
+    // The colour that says WHOSE piece just broke. A showcase look swaps the body's material for its
+    // own, and on the glass looks that material is near-clear -- the legs are what you look through,
+    // and the side's colour lives in the ball and feet. So the hub is asked first, the body next,
+    // and the base lacquer last: a red piece throws red glass on every board.
+    const hub = t.userData && t.userData.hub;
     const body = t.children && t.children[0];
-    const src = (body && body.material && body.material.color) ? body.material : (t.userData && t.userData.mat);
+    const src = (hub && hub.material && hub.material.color) ? hub.material
+              : (body && body.material && body.material.color) ? body.material
+              : (t.userData && t.userData.mat);
     // One material for the whole burst: the shards are born and die together, so a single fade
     // drives all of them and there's one thing to dispose when they're gone.
+    // A flake is thin enough to be lit from either face, and a tumbling one turns its back to the
+    // key light constantly -- at pure reflection the away-facing ones went black and the burst read
+    // as dirt. A little of the piece's own colour emitted from the glass keeps every shard visible
+    // whichever way it is facing, which is also how real glass behaves: it carries light through.
+    const hex = src ? src.color.getHex() : 0xffffff;
     const mat = new THREE.MeshPhysicalMaterial({
-        color: src ? src.color.getHex() : 0xffffff,
-        roughness: 0.06, metalness: 0, transparent: true, opacity: SHARD_OPACITY,
-        clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.4,
+        color: hex, emissive: hex, emissiveIntensity: 0.22,
+        roughness: 0.12, metalness: 0, transparent: true, opacity: SHARD_OPACITY,
+        clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.6,
         side: THREE.DoubleSide,
     });
     const n = TAU_PREMIUM ? 26 : 14, spray = Math.min(1.7, impact/110);
@@ -9191,7 +9201,7 @@ function shatterPiece(t, fall, impact) {
         // crown -- so the break comes apart along the shape instead of out of a point at its centre.
         const h = FALL_HULL_LOCAL[i % FALL_HULL_LOCAL.length];
         m.position.copy(h.p).multiplyScalar(0.5 + Math.random()*0.85).applyQuaternion(t.quaternion).add(t.position);
-        const s = 0.55 + Math.random()*1.4;
+        const s = 0.9 + Math.random()*2.0;   // a broken piece leaves pieces, not grit
         m.scale.set(s*(0.28+Math.random()*0.5), s*(0.8+Math.random()*0.9), s*(0.4+Math.random()*0.7));
         m.rotation.set(Math.random()*6.283, Math.random()*6.283, Math.random()*6.283);
         if (TAU_PREMIUM) m.castShadow = true;
@@ -9199,10 +9209,12 @@ function shatterPiece(t, fall, impact) {
         // Outward from the hub, up off the floor, and carrying half the body's travel: glass sprays
         // along the way the piece was going, it doesn't burst symmetrically out of a standing stop.
         const dx = m.position.x - t.position.x, dz = m.position.z - t.position.z, d = Math.hypot(dx, dz) || 1;
+        // Glass scatters AROUND where it broke. The first cut of this threw the shards half the
+        // table away, which read as debris blown across the floor rather than a piece going down.
         shards.push({ m, mat, t: 0,
-            vx: fall.vx*0.55 + dx/d*(16 + Math.random()*44)*spray,
-            vy: 12 + Math.random()*58*spray,
-            vz: fall.vz*0.55 + dz/d*(16 + Math.random()*44)*spray,
+            vx: fall.vx*0.4 + dx/d*(9 + Math.random()*22)*spray,
+            vy: 14 + Math.random()*44*spray,
+            vz: fall.vz*0.4 + dz/d*(9 + Math.random()*22)*spray,
             wx: (Math.random()-0.5)*24, wy: (Math.random()-0.5)*24, wz: (Math.random()-0.5)*24 });
     }
     t.visible = false;
@@ -9224,7 +9236,7 @@ function stepShards(dt) {
             if (s.vy < -7) { s.vy = -s.vy*0.28; s.vx *= 0.7; s.vz *= 0.7; }   // a chip skips a couple of times
             else {
                 s.vy = 0;
-                const k = 1 - Math.min(1, 2.6*dt);
+                const k = 1 - Math.min(1, 4.2*dt);   // glass on a hard floor skitters, it doesn't slide on
                 s.vx*=k; s.vz*=k; s.wx*=k; s.wy*=k; s.wz*=k;
             }
         }
