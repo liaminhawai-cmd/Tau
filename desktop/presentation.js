@@ -204,11 +204,12 @@
       for (const [action] of KEY_ACTIONS) if (typeof saved.keys[action] === 'string' && saved.keys[action]) settings.keys[action] = saved.keys[action];
     if (Number.isInteger(saved.level) && saved.level >= 1 && saved.level <= LADDER_N) settings.level = saved.level;
     if (saved.colour === 0 || saved.colour === 1) settings.colour = saved.colour;
-    if (['balanced','high'].includes(saved.quality)) settings.quality = saved.quality;
+    if (['balanced','high','ultra'].includes(saved.quality)) settings.quality = saved.quality;
     if (BOARD_FINISHES.some(b => b.id === saved.board) && isUnlocked(saved.board)) settings.board = saved.board;
     if (PAD_SCHEMES.includes(saved.padScheme)) settings.padScheme = saved.padScheme;
     if (['auto','xbox','playstation','nintendo','generic'].includes(saved.padBrand)) settings.padBrand = saved.padBrand;
     for (const k of ['reducedMotion','haptics','invertCamY','rayTrace']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
+    settings.rayTrace = settings.quality === 'ultra';   // one switch, not two that can disagree
   } catch (_) {}
   const finish = () => BOARD_FINISHES.find(b => b.id === settings.board) || BOARD_FINISHES[0];
   // Relative luminance of a #rrggbb, against the same 0.5 threshold index.html's boardIsPale uses.
@@ -522,6 +523,17 @@
     const el = $('buildTag');
     return el && el.textContent ? el.textContent.trim() : 'build unknown';
   }
+  // Ultra is the one setting whose effect you cannot see at a glance -- it only shows itself once
+  // the board holds still -- so it says out loud what it is doing.
+  function drawQualityNote() {
+    const el = $('desktopQualityNote'); if (!el) return;
+    if (settings.quality !== 'ultra') { el.textContent = ''; return; }
+    el.textContent = ptPhase === 'failed' ? 'Ray tracing could not start on this GPU — drawing normally.'
+      : ptPhase === 'loading' ? 'Ray tracing: loading…'
+      : ptPhase !== 'ready' ? 'Ray tracing: starting…'
+      : ptStill >= PT_STILL_FRAMES ? 'Ray tracing: refining the still frame.'
+      : 'Ray tracing: ready — it takes over whenever the board holds still.';
+  }
   function drawPad() {
     const el = $('desktopPadDiagram'); if (!el) return;
     padBrandShown = padBrand(); el.innerHTML = controllerSvg(padBrandShown, compactSheet());
@@ -746,8 +758,8 @@
       <label class="desktop-setting">Mute<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
       <label class="desktop-setting">Board<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${b.name}</option>`:`<option value="${b.id}" disabled>${b.name} · ${unlockText(b.id)}</option>`).join('')}</select></label>
       ${testBoards ? '<p class="desktop-result-detail">All boards are open for testing. Type <b>ALLBOARDS</b> on the main menu to restore locks.</p>' : ''}
-      <label class="desktop-setting">Graphics<select id="desktopQuality"><option value="balanced">Balanced</option><option value="high">High</option></select></label>
-      <label class="desktop-setting"><span>Ray tracing (Ultra)<small>Stills only — needs a strong GPU</small></span><input id="desktopRayTrace" type="checkbox" ${settings.rayTrace?'checked':''}></label>
+      <label class="desktop-setting">Graphics<select id="desktopQuality"><option value="balanced">Balanced</option><option value="high">High</option><option value="ultra">Ultra · ray tracing</option></select></label>
+      <p class="desktop-controls-note" id="desktopQualityNote" style="margin:0"></p>
       <label class="desktop-setting">Invert camera Y<input id="desktopInvertY" type="checkbox" ${settings.invertCamY?'checked':''}></label>
       <label class="desktop-setting">Reduce camera motion<input id="desktopMotion" type="checkbox" ${settings.reducedMotion?'checked':''}></label>
       <label class="desktop-setting">Controller vibration<input id="desktopHaptics" type="checkbox" ${settings.haptics?'checked':''}></label>
@@ -764,13 +776,19 @@
       render();
     };
     $('desktopInvertY').onchange = e => { settings.invertCamY=e.target.checked; saveSettings(); };
-    $('desktopRayTrace').onchange = e => { settings.rayTrace=e.target.checked; saveSettings(); if(settings.rayTrace) rayTraceLoad(); };
     $('desktopVolume').oninput = e => {
       setUserVol(Number(e.target.value)); $('desktopVolumeValue').textContent = userVol+'%'; $('desktopMute').checked = !soundOn;
       if(paused && masterGain && audioCtx) masterGain.gain.setTargetAtTime(0,audioCtx.currentTime,.03);
     };
     $('desktopMute').onchange = e => { setSoundOn(!e.target.checked); if(paused && masterGain && audioCtx) masterGain.gain.setTargetAtTime(0,audioCtx.currentTime,.03); };
-    $('desktopQuality').onchange = e => { settings.quality=e.target.value; saveSettings(); configureQuality(); resize(); };
+    $('desktopQuality').onchange = e => {
+      settings.quality = e.target.value;
+      settings.rayTrace = settings.quality === 'ultra';
+      saveSettings(); configureQuality(); resize();
+      if (settings.rayTrace) rayTraceLoad();
+      drawQualityNote();
+    };
+    drawQualityNote();
     $('desktopMotion').onchange = e => { settings.reducedMotion=e.target.checked; saveSettings(); };
     $('desktopHaptics').onchange = e => { settings.haptics=e.target.checked; saveSettings(); };
     if (fullscreen) {
@@ -867,11 +885,11 @@
   }
   function configureQuality() {
     if(!renderer) return;
-    renderer.setPixelRatio(Math.min(devicePixelRatio||1, settings.quality==='high'?2:1.5));
+    renderer.setPixelRatio(Math.min(devicePixelRatio||1, settings.quality==='balanced'?1.5:2));
     renderer.toneMappingExposure=1.03;
     renderer.shadowMap.enabled=true;
     scene.traverse(o=>{ if(!o.isLight || !o.castShadow) return;
-      const size=settings.quality==='high'?2048:1024;
+      const size=settings.quality==='balanced'?1024:2048;
       if(o.shadow.mapSize.x!==size){ o.shadow.mapSize.set(size,size); if(o.shadow.map){o.shadow.map.dispose();o.shadow.map=null;} }
       o.shadow.normalBias=.16; o.shadow.bias=-.0002;
     });
@@ -1119,7 +1137,8 @@
     // Turned off in memory but deliberately NOT saved: the same profile may open tomorrow on a
     // machine whose GPU can run it, and the player's choice should still be there when it does.
     settings.rayTrace = false;
-    if ($('desktopRayTrace')) $('desktopRayTrace').checked = false;
+    if (settings.quality === 'ultra') settings.quality = 'high';
+    if ($('desktopQuality') && $('desktopQuality').value === 'ultra') $('desktopQuality').value = 'high';
     showToast('<p class="desktop-unlock">Ray tracing could not start on this GPU.</p>');
   }
   function rayTraceFail(err) {
@@ -1581,6 +1600,7 @@
     if(pick){pollPick();padPrev=padList.map(p=>p.buttons.map(b=>b.pressed));tickEffects(dt);return;}
     if(padBrandShown && $('desktopPadDiagram') && padBrand()!==padBrandShown) drawPad();   // the sheet follows the pad that is plugged in
     if($('desktopPadSeen')) drawPadSeen();
+    if($('desktopQualityNote')) drawQualityNote();
     if(lastActive!==G.active){lastActive=G.active;chosenFoot=0;heldLeft=heldRight=false;lastCrossings=0;}
     // The seats belong to the match that chose them, and nothing else: back on the menu (or in any
     // match that never asked) they are empty and every input is one player's.
@@ -1705,8 +1725,9 @@
     debugDetailMode(){ return detailMode; },
     resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, renderFrame,
     get rayTrace(){return settings.rayTrace;},
-    set rayTrace(v){ settings.rayTrace=!!v; saveSettings(); if($('desktopRayTrace')) $('desktopRayTrace').checked=settings.rayTrace;
-      if(settings.rayTrace) rayTraceLoad(); },
+    set rayTrace(v){ settings.rayTrace=!!v; settings.quality = settings.rayTrace ? 'ultra' : (settings.quality==='ultra'?'high':settings.quality);
+      saveSettings(); if($('desktopQuality')) $('desktopQuality').value=settings.quality;
+      if(settings.rayTrace) rayTraceLoad(); drawQualityNote(); },
     rayTraceStatus(){return ptPhase;},
     rayTraceMotion,
     // The corner layout's camera goal for the current window (see desiredPose).

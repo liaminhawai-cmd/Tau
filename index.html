@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 238</div>
+<div id="buildTag">build 239</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -8745,7 +8745,22 @@ const fallHullW = new THREE.Vector3();
 // How much of its approach speed a piece keeps when it hits the floor, and the speed below which a
 // bounce is too small to bother with and it just settles. A drop from the 100-unit floor arrives at
 // about 228 u/s, so this gives a big first bounce, a smaller second and a last tap before it lies still.
-const FALL_RESTITUTION = 0.38, FALL_BOUNCE_MIN = 9;
+// How a landing feels is the piece's MATERIAL, not one number for everything: glass barely bounces
+// and skates away, stone lands dead and stops, metal rings on and rolls. `keep` is the share of the
+// approach speed a bounce returns, `drag` the rolling friction (per second), `grip` how much spin a
+// contact sheds (lower = keeps turning), and `minBounce` the speed below which it stops bouncing.
+const FALL_MATERIALS = {
+    glass:    { keep: 0.20, drag: 1.1, grip: 0.55, minBounce: 13 },
+    stone:    { keep: 0.26, drag: 3.4, grip: 0.25, minBounce: 12 },
+    metal:    { keep: 0.44, drag: 1.7, grip: 0.40, minBounce: 8 },
+    chitin:   { keep: 0.34, drag: 2.2, grip: 0.35, minBounce: 9 },
+    graphite: { keep: 0.28, drag: 2.6, grip: 0.30, minBounce: 10 },
+};
+function fallMaterial() {
+    const p = typeof currentAcoustics === 'function' ? currentAcoustics().piece : 'metal';
+    return FALL_MATERIALS[p] || FALL_MATERIALS.metal;
+}
+const fallRollAxis = new THREE.Vector3();
 // How far the piece's lowest surface point sits BELOW its origin, at its current orientation.
 // Negative while it stands upright (nothing is below the pads), growing as it tips onto its side.
 function fallLowestBelowOrigin(t) {
@@ -8813,11 +8828,11 @@ function stepFallOn(t, fall, dt) {
         fall.prevClear = clear;
         if (clear <= 0) {
             t.position.y = floorY - below;
-            const impact = Math.max(0, -fall.vy, closing);
+            const impact = Math.max(0, -fall.vy, closing), MAT = fallMaterial();
             // Every contact, bounce or final, is a dust cue for the presentation layer: where and
             // how hard the piece actually met the ground, not just where it happens to rest now.
             fall.lastImpact = { x: t.position.x, z: t.position.z, y: floorY, speed: impact };
-            if (impact > FALL_BOUNCE_MIN) {
+            if (impact > MAT.minBounce) {
                 // It bounces. A hard piece on a hard floor comes back at about a third of the speed
                 // it arrived with, and because it lands on a leg rather than flat on its axis, part
                 // of the blow goes into tumble instead of height -- which is what makes a dropped
@@ -8826,19 +8841,17 @@ function stepFallOn(t, fall, dt) {
                 playLandingSound(Math.min(1, 0.3 + impact/170));
                 fall.landed = true;
                 fall.bounces++;
-                fall.vy = impact * FALL_RESTITUTION;
-                fall.vx *= 0.74; fall.vz *= 0.74;                 // the floor drags on the skid
-                // An impact SHEDS spin as well as adding some: the floor is what the piece is
-                // rotating against. Only adding to it (the first cut) could drive the contact point
-                // down as fast as the bounce lifted the piece, so it never visibly left the ground.
-                // The floor is what the piece is spinning against, so a bounce sheds most of the
-                // spin and adds a little scatter. Shedding hard is what lets the piece actually
-                // leave the ground instead of grinding along it.
+                fall.vy = impact * MAT.keep;
+                fall.vx *= 0.84; fall.vz *= 0.84;                 // the floor drags on the skid
+                // A contact both sheds spin (the floor is what the piece turns against) and adds a
+                // little scatter. Shedding is what lets it leave the ground rather than grinding
+                // along, but shedding too hard was the "hit and pause": the piece arrived, stopped
+                // turning, and slid flat. It keeps most of its tumble now, by material.
                 const kick = impact * 0.015;
-                fall.wx = fall.wx*0.3 + (Math.random()-0.5)*kick;
-                fall.wy = fall.wy*0.3 + (Math.random()-0.5)*kick*0.4;
-                fall.wz = fall.wz*0.3 + (Math.random()-0.5)*kick;
-                fall.tipRate *= 0.3;
+                fall.wx = fall.wx*MAT.grip + (Math.random()-0.5)*kick;
+                fall.wy = fall.wy*MAT.grip + (Math.random()-0.5)*kick*0.4;
+                fall.wz = fall.wz*MAT.grip + (Math.random()-0.5)*kick;
+                fall.tipRate *= MAT.grip;
                 fall.prevClear = undefined;
             } else {
                 // Too slow to leave the floor again, but not stopped: it ROLLS. A tripod that comes
@@ -8848,10 +8861,20 @@ function stepFallOn(t, fall, dt) {
                 // makes that read as rolling rather than sliding on the spot.
                 if (!fall.landed) { fall.landed = true; playLandingSound(0.55); }
                 fall.vy = 0;
-                const roll = 1 - Math.min(1, 1.9*dt), spin = 1 - Math.min(1, 1.6*dt);
+                const roll = 1 - Math.min(1, MAT.drag*dt), spin = 1 - Math.min(1, MAT.drag*0.85*dt);
                 fall.vx *= roll; fall.vz *= roll;
                 fall.wx *= spin; fall.wy *= spin; fall.wz *= spin;
-                fall.tipRate *= 1 - Math.min(1, 2.2*dt);
+                fall.tipRate *= 1 - Math.min(1, MAT.drag*1.2*dt);
+                // ROLLING, not sliding. The contact turns the piece at the rate its own speed
+                // implies, about the axis across its direction of travel -- a body whose contact
+                // sits `below` under its centre turns v/|below| per second. Without this the piece
+                // kept its speed but stopped turning, which is exactly the "lands and pauses" look:
+                // a tripod skating flat across the floor instead of tumbling to a halt.
+                const sp = Math.hypot(fall.vx, fall.vz);
+                if (sp > 0.4) {
+                    fallRollAxis.set(fall.vz/sp, 0, -fall.vx/sp);
+                    t.rotateOnWorldAxis(fallRollAxis, (sp / Math.max(6, -below)) * dt);
+                }
                 // Resting means actually still, not merely touching: the beat before the camera goes
                 // back to the board starts when the roll has died, not the moment it first landed.
                 fall.resting = Math.hypot(fall.vx, fall.vz) < 3

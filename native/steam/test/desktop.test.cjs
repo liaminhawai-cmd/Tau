@@ -1855,17 +1855,22 @@ test('ray tracing is off by default, persists when turned on, and fetches its bu
   const g=await game();t.after(g.close);
   const tags=()=>g.w.document.querySelectorAll('script[src="vendor/pathtracer/pathtracer.global.js"]').length;
   g.$('desktopSettings').click();g.tick();
-  const box=g.$('desktopRayTrace');
-  assert.ok(box,'the Settings sheet offers the mode');
-  assert.equal(box.checked,false,'off by default');
+  // It lives in the Graphics picker, where someone looking for a graphics setting will find it --
+  // a checkbox further down the sheet went unnoticed.
+  const sel=g.$('desktopQuality');
+  assert.ok([...sel.options].some(o=>o.value==='ultra'),'Graphics offers Ultra');
+  assert.notEqual(sel.value,'ultra','not the default');
   assert.equal(tags(),0,'and nothing is downloaded for a player who never asks');
   assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).rayTrace,false);
-  box.checked=true;box.dispatchEvent(new g.w.Event('change'));
+  const pick=v=>{sel.value=v;sel.dispatchEvent(new g.w.Event('change'));};
+  pick('ultra');
   assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).rayTrace,true,'the choice is saved');
   assert.equal(tags(),1,'asking for it injects the bundle');
   assert.equal(g.read('tauDesktop.rayTraceStatus()'),'loading');
-  box.checked=false;box.dispatchEvent(new g.w.Event('change'));
-  box.checked=true;box.dispatchEvent(new g.w.Event('change'));
+  assert.match(g.$('desktopQualityNote').textContent,/Ray tracing/,'and it says what it is doing');
+  pick('high');
+  assert.equal(g.$('desktopQualityNote').textContent,'','which it stops saying when it is off');
+  pick('ultra');
   assert.equal(tags(),1,'and turning it off and on again does not fetch it a second time');
   assert.deepEqual(g.errors,[]);
 });

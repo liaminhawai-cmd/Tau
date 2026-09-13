@@ -840,3 +840,21 @@ a free port (code, bad state, cancel, provider error, timeout, busy ports),
 Electron, and `desktop.test.cjs` covers the renderer with the bridge and both
 Supabase clients stubbed. Electron itself cannot run in CI, so the only untested
 link is `shell.openExternal` actually raising a browser.
+
+Ray tracing moved from a checkbox into the Graphics picker (Balanced / High /
+Ultra · ray tracing) with a line under it saying what it is doing. A checkbox
+below the fold of a long sheet was simply never found, and "Ultra" is the word
+someone looks for when they want the fancy mode. `settings.rayTrace` is now
+derived from `settings.quality` so the two can never disagree, and Ultra renders
+at the High budget when it is rasterising.
+
+A landing is the piece's MATERIAL now, not one number for everything
+(`FALL_MATERIALS`, keyed by the same `currentAcoustics().piece` the sound uses):
+glass barely rebounds and skitters, stone lands dead and stops quickly, metal
+rings on and rolls furthest. Two things fixed the "hits the ground and pauses"
+look. A contact used to shed 70% of the spin, so the piece arrived, stopped
+turning and slid flat -- it now keeps most of its tumble, by material. And the
+roll is a real rolling constraint: the contact turns the piece at the rate its
+own speed implies (v over the distance its contact sits below its centre) about
+the axis across its direction of travel, so it tumbles to a halt instead of
+skating.
