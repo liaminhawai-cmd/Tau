@@ -1187,7 +1187,10 @@
   // which is the one thing Ultra must not do: it is meant to be the same table, better rendered.
   // One factor on both the room and the lamps scales every path equally, bounced light included,
   // so the traced frame lands on the rasterised one instead of above it.
-  const PT_LIGHT_TRIM = 0.62;
+  // Calibrated, not guessed: the same board and viewpoint captured traced and rasterised, at three
+  // trims -- 1.00 came out 1.76x the rasterised frame's mean luminance, 0.62 gave 1.18x, 0.45 gave
+  // 0.88x. The fit through those puts parity at 0.52, which is what this is.
+  const PT_LIGHT_TRIM = 0.52;
   let ptPhase = 'off';                    // off | loading | ready | failed
   let ptTracer = null, ptScene = null, ptEnv = null, ptCueScene = null;
   let ptKey = '', ptWorldKey = '', ptStill = 0, ptWorldRev = 0;
