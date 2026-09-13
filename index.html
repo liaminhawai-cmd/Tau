@@ -5051,6 +5051,84 @@ function ladderCornerSetupStops(idx, pv, d){
     ladderRestore(snap0);
     return stops;
 }
+// ---------- corner-crossing veto (an experimental modifier any rung can wear) ----------
+// A printed corner is a point where two lines meet, so a pad that passes through one touches BOTH
+// inside a single crossing episode -- two lines for the price of the turn's one crossing (the
+// budget block above bills an episode once, however many lines it spans). That is the manoeuvre a
+// human learns to deny, and denying it needs no evaluator: whether the opponent HAS one is pure
+// geometry, decided by where the pieces sit and nothing else.
+//
+// This is the cheap half of a ply. A depth-2 search answers "what is their best reply" by scoring
+// every reply with an evaluator that may or may not have learned what a corner is worth; this asks
+// one yes/no question the rules settle exactly, for the cost of six sweeps.
+//
+// The test is the rules engine's OWN corner rule, read off live state rather than re-derived: a
+// single foot holding two lines at once while sitting within cornerEps of the printed intersection
+// those two lines make. That is verbatim the `roundingCorner` allowance in crossingSubstep -- the
+// one place a second line joins an open episode for free -- so this can neither over- nor
+// under-report relative to what the board will actually permit.
+// `stepRad` is the OBSERVATION step, not the physics step (applySwing substeps at CFG.substepDeg
+// either way). It has to be no wider than the corner window itself or the sweep can step over one:
+// crossingSubstep's own note measures a near-miss window at 1.2 degrees, so the 3-degree planning
+// step would straddle a real corner round and report nothing. Default CORNER_VETO_STEP.
+const CORNER_VETO_STEP = 1 * Math.PI/180;
+function oppCornerCrossAvailable(opp, stepRad){
+    const step=stepRad || CORNER_VETO_STEP;
+    const snap0=takeSnap(), origActive=G.active;
+    const roundingCorner=()=>{
+        const feet=G.pieces[opp].feet(), ct=G.contact;
+        if (!ct) return false;
+        for (let i=0;i<3;i++){
+            if (i===G.pinned || !ct[i] || ct[i].length<2) continue;
+            for (const P of LINE_INTERSECTIONS)
+                if (ct[i].includes(P.lines[0]) && ct[i].includes(P.lines[1]) &&
+                    Math.hypot(feet[i].x-P.x, feet[i].y-P.y) <= CFG.cornerEps) return true;
+        }
+        return false;
+    };
+    let found=false;
+    for (let pv=0; pv<3 && !found; pv++) for (const d of [1,-1]){
+        ladderRestore(snap0); G.active=opp; pinFoot(pv);
+        let guard=0;
+        while (!G.atLimit && Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && guard++ < 2000){
+            applySwing(d*step);
+            if (G.pieces[opp].anyFootOff()) break;
+            if (roundingCorner()){ found=true; break; }
+        }
+        if (found) break;
+    }
+    ladderRestore(snap0); G.active=origActive;
+    return found;
+}
+// Move only the STOP, never the arm or the direction: this refines the rung's own move rather than
+// replacing it, so a rung wearing the veto is still recognisably itself. Steps shorter first, then
+// longer, in `stepDeg` increments, and takes the first stop that plays legally and leaves the
+// opponent no corner crossing. If every reachable stop on the arm hands them one, the rung's own
+// choice stands -- the veto never makes a move worse than the one it was given.
+function ladderPlanVeto(idx, plan, stepDeg, maxSteps){
+    if (!plan || !(Math.abs(plan.targetRad) > 0)) return plan;
+    const snap0=takeSnap(), origActive=G.active, opp=1-idx;
+    const step=(stepDeg||3)*Math.PI/180, tries=Math.max(1, maxSteps||4), base=Math.abs(plan.targetRad);
+    // Play `rad` on the rung's arm and report what it leaves the opponent. null = not playable at
+    // all (under the minimum move, or the swing cannot reach it cleanly).
+    const probe=rad=>{
+        if (rad < HARD_MIN_MOVE_RAD) return null;
+        ladderRestore(snap0); G.active=idx;
+        if (!ladderSwingTo(idx, plan.pivotIdx, plan.dir, rad)) return null;
+        // A throw ends the game: never talk the rung out of one to tidy up a corner.
+        if (G.pieces[opp].anyFootOff()) return {win:true};
+        return {win:false, corner:oppCornerCrossAvailable(opp)};
+    };
+    const b=probe(base);
+    ladderRestore(snap0); G.active=origActive;
+    if (!b || b.win || !b.corner) return plan;                 // nothing to veto
+    for (let k=1; k<=tries; k++) for (const rad of [base-k*step, base+k*step]){
+        const r=probe(rad);
+        ladderRestore(snap0); G.active=origActive;
+        if (r && (r.win || !r.corner)) return {...plan, targetRad:rad, vetoStep:(rad<base?-k:k)};
+    }
+    return plan;
+}
 // L11's eval, used for the red-side choice between the two back feet when the rung wearing the
 // opening has no positional eval of its own (L1, L2, the noise rungs).
 const CORNER_CHOICE_W = {margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2};

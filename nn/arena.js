@@ -50,13 +50,18 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
   // ladderPlanCorner, then itself). Both are pinned explicitly: the app flips a coin per game for
   // L7 and up, but a rated face has to be one thing or the other, or its Elo is a blend of two
   // brains. Retromine and the league rate the two as separate immortals.
-  const m = /^L(\d+)(\+corner)?$/i.exec(spec);
+  // "+veto" additionally wears the corner-crossing veto (index.html's ladderPlanVeto): the rung
+  // picks its move as usual, then the stop is nudged off any angle that would hand the opponent a
+  // corner crossing on their reply. Optional step size, e.g. "L11+veto:2" for 2-degree nudges.
+  const m = /^L(\d+)(\+corner)?(\+veto(?::([\d.]+))?)?$/i.exec(spec);
   if (m) {
-    const lvl = +m[1], corner = !!m[2];
+    const lvl = +m[1], corner = !!m[2], veto = !!m[3], vetoStep = m[4] ? +m[4] : 3;
     if (lvl < 1 || lvl > eng.AI_LADDER.length) throw new Error('no such ladder level: ' + spec);
-    return { name: 'L' + lvl + (corner ? '+corner' : ''), fn: idx => {
+    const vTag = veto ? '+veto' + (m[4] ? ':' + m[4] : '') : '';
+    return { name: 'L' + lvl + (corner ? '+corner' : '') + vTag, fn: idx => {
       const G = eng.getG(); (G.cornerOpening || (G.cornerOpening = [null, null]))[idx] = corner;
-      return eng.ladderPlanFor(lvl - 1, idx);
+      const plan = eng.ladderPlanFor(lvl - 1, idx);
+      return veto ? eng.ladderPlanVeto(idx, plan, vetoStep) : plan;
     } };
   }
   // "committee:L11;nn:0:a.json;nn:0:b.json" or "committee:auto" -- several brains vote on one move,
