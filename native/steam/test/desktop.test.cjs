@@ -1179,10 +1179,11 @@ test('the losing piece lands on the floor below the board with a thump, then is 
       window.__clear.push(tripods[1].position.y + fallLowestBelowOrigin(tripods[1]) - fallFloorY()); }`)
   // It rests ON the floor: its lowest surface point touches -100, not its origin. A tumbling piece
   // is rotated, so clamping the origin (the plane its pins stand on) buried whatever hung below it.
-  const lowest=g.read('tripods[1].position.y + fallLowestBelowOrigin(tripods[1])');
-  assert.ok(Math.abs(lowest+100)<0.01,'its lowest point rests on the floor 20cm (100u) below the board, not falling forever');
-  assert.ok(g.read('tripods[1].position.y')>-100,'and the piece sits above that floor rather than half through it');
+  const floor=g.read('fallFloorY()'), lowest=g.read('tripods[1].position.y + fallLowestBelowOrigin(tripods[1])');
+  assert.ok(Math.abs(lowest-floor)<0.01,'its lowest point rests on the floor below the board, not falling forever');
+  assert.ok(g.read('tripods[1].position.y')>floor,'and the piece sits above that floor rather than half through it');
   assert.ok(g.read('fallLowestBelowOrigin(tripods[1])')<-1,'this one landed on its side, so parts of it hang well below its origin');
+  assert.ok(floor>-60,'the drop is short enough that the loss camera stays in close');
   // It bounces instead of stopping dead, and each landing is its own thump, quieter than the last.
   const thumps=JSON.parse(g.read('JSON.stringify(window.__thumps)'));
   assert.ok(thumps.length>=2 && thumps.length<=6,`a few bounces, not one dead stop and not a thump per frame (got ${thumps.length})`);
@@ -1190,7 +1191,9 @@ test('the losing piece lands on the floor below the board with a thump, then is 
   const clear=JSON.parse(g.read('JSON.stringify(window.__clear)'));
   const firstHit=clear.findIndex(c=>c<=0.001);
   assert.ok(firstHit>0,'it reaches the floor');
-  assert.ok(Math.max(...clear.slice(firstHit))>3,'and comes back off it rather than sticking where it landed');
+  // The hop scales with the drop, and the floor sits close under the board so the loss camera can
+  // stay in tight: a few units of air is what the physics gives here, not a pogo.
+  assert.ok(Math.max(...clear.slice(firstHit))>0.8,'and comes back off it rather than sticking where it landed');
   assert.equal(g.read('fall.active'),false,'after a beat resting on the floor it is tucked away, same as the old cutoff');
   assert.equal(g.read('fallenIdx'),1);
   assert.equal(g.read('tripods[1].visible'),false);
@@ -1317,6 +1320,69 @@ test('the leaderboard\'s watch link is styled by the presentation, not hard-code
   const css=fs.readFileSync(path.join(root,'desktop/presentation.css'),'utf8');
   assert.match(css,/\.tau-desktop \.lbWatch \{[^}]*var\(--gold\)/,'the premium sheet draws it in gold');
   assert.match(css,/\.tau-desktop #modalBox\.wide \{[^}]*width:min\(720px/,'and gives the table room for the column');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('two controllers share one screen in a local 1v1: a pad per colour, menus on either',async t=>{
+  const g=await game();t.after(g.close);
+  const mk=id=>({id,connected:true,mapping:'standard',axes:[0,0,0,0],
+    buttons:Array.from({length:17},()=>({pressed:false,value:0}))});
+  const blue=mk('Xbox pad 1'), red=mk('Xbox pad 2');
+  g.w.navigator.getGamepads=()=>[blue,red];
+  g.read('tauDesktop.startMatch(true)');g.tick();   // startMatch(local) -- a local 1v1: two humans, no AI
+  assert.equal(g.read('tauDesktop.twoPadSeats()'),true,'two pads take the two seats');
+  const press=(pad,i)=>{pad.buttons[i].pressed=true;g.tick();pad.buttons[i].pressed=false;g.tick();};
+  const active=()=>g.read('G.active');
+  // Blue to move: red's pad is ignored, blue's pad picks a foot.
+  assert.equal(active(),0);
+  const foot=()=>g.read('v3HoverIdx');   // the highlighted foot follows whichever pad is allowed to act
+  press(red,15); assert.equal(foot(),0,"the waiting player's pad cannot move the piece");
+  press(blue,15); assert.equal(foot(),1,'the player whose turn it is can');
+  // Either pad opens the match menu, so neither player has to hand the other a controller.
+  press(red,9);
+  assert.equal(g.$('modalTitle').textContent,'Match menu','either player can call the match menu');
+  g.$('modalBtns').firstElementChild.click();g.tick();
+  // Turned off, or with one pad, everything stays on the first controller as before.
+  g.read('tauDesktop.twoPads=false');
+  assert.equal(g.read('tauDesktop.twoPadSeats()'),false);
+  g.read('tauDesktop.twoPads=true');
+  g.w.navigator.getGamepads=()=>[blue];g.tick();
+  assert.equal(g.read('tauDesktop.twoPadSeats()'),false,'one pad is still one player');
+  // A game against the AI has only one human however many pads are plugged in.
+  g.w.navigator.getGamepads=()=>[blue,red];
+  g.read('vsAI=true');g.tick();
+  assert.equal(g.read('tauDesktop.twoPadSeats()'),false,'vs the AI there is only one seat');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a brand-new player lands on the menu and is offered the rules when they first press play',async t=>{
+  // A fresh profile -- what an incognito window gives you. Nothing should open by itself: the
+  // how-to used to auto-open at load and read as a flash of rules that closed again.
+  const g=await game('?steam=1&premium=1',{},{freshPlayer:true});t.after(g.close);
+  assert.equal(g.read("!!document.getElementById('htpFull')"),false,'the rules do not open themselves');
+  assert.equal(g.read("document.getElementById('modalBackdrop').style.display"),'','and nothing else is in the way');
+  assert.equal(g.read("localStorage.getItem('tauOnboard')"),null,'still marked as new');
+  g.$('desktopPlay').click();g.tick();
+  assert.equal(g.$('modalTitle').textContent,'New to Tau?','pressing play asks first');
+  const labels=[...g.$('modalBtns').children].map(b=>b.textContent);
+  assert.deepEqual(labels,['Show me how','Just play']);
+  // Skipping starts the game, and the question never comes back.
+  labels.indexOf('Just play');
+  [...g.$('modalBtns').children].find(b=>b.textContent==='Just play').click();g.tick();
+  assert.equal(g.read("document.getElementById('game').style.display"),'flex','it plays the game you asked for');
+  assert.ok(g.read("localStorage.getItem('tauOnboard')"),'and remembers it asked');
+  g.read('backToMenu()');g.tick();
+  g.$('desktopPlay').click();g.tick();
+  // The title element keeps whatever it last showed, so ask whether a dialog is actually up.
+  assert.equal(g.read("document.getElementById('modalBackdrop').style.display"),'none','it never asks twice');
+  assert.equal(g.read("document.getElementById('game').style.display"),'flex','play just starts');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a returning player is never offered the rules again',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopPlay').click();g.tick();
+  assert.equal(g.read("document.getElementById('game').style.display"),'flex','play starts straight away');
   assert.deepEqual(g.errors,[]);
 });
 

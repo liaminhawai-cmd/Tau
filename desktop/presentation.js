@@ -195,7 +195,7 @@
   ];
   const DEFAULT_KEYS = { pin1:'1', pin2:'2', pin3:'3', swingLeft:'ArrowLeft', swingRight:'ArrowRight',
     commit:'Enter', cancel:'Backspace', shrink:'[', grow:']' };
-  const settings = { level:4, colour:0, quality:'balanced', board:'walnut', padScheme:'triggers', padBrand:'auto',
+  const settings = { level:4, colour:0, quality:'balanced', board:'walnut', padScheme:'triggers', padBrand:'auto', twoPads:true,
     invertCamY:false, keys:{...DEFAULT_KEYS},
     reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches, haptics:true };
   try {
@@ -208,7 +208,7 @@
     if (BOARD_FINISHES.some(b => b.id === saved.board) && isUnlocked(saved.board)) settings.board = saved.board;
     if (PAD_SCHEMES.includes(saved.padScheme)) settings.padScheme = saved.padScheme;
     if (['auto','xbox','playstation','nintendo','generic'].includes(saved.padBrand)) settings.padBrand = saved.padBrand;
-    for (const k of ['reducedMotion','haptics','invertCamY']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
+    for (const k of ['reducedMotion','haptics','invertCamY','twoPads']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
   } catch (_) {}
   const finish = () => BOARD_FINISHES.find(b => b.id === settings.board) || BOARD_FINISHES[0];
   // Relative luminance of a #rrggbb, against the same 0.5 threshold index.html's boardIsPale uses.
@@ -220,7 +220,15 @@
   }
 
   let paused = false, pauseAt = 0, ownMatch = false, previousFocus = null;
-  let currentPad = null, padButtons = [], padAxisLatch = false, padFocus = 0;
+  let currentPad = null, padList = [], padPrev = [], padAxisLatch = false, padFocus = 0, twoPadToldT = false;
+  // True when this match is two people sharing one screen with a controller each: a local 1v1 (no
+  // AI, no online opponent, not a replay) with the setting on and two pads actually plugged in.
+  function twoPadSeats() {
+    // These are index.html's own top-level bindings, shared through the script scope like G and
+    // canPlay are -- they are NOT on window, so reading them off window silently saw "no AI match".
+    return settings.twoPads && padList.length > 1 && inMatch()
+      && !vsAI && !onlineMatch && !replayActive;
+  }
   let chosenFoot = 0, heldLeft = false, heldRight = false, lastActive = -1;
   let textures = null, texturesFor = null, artInstalled = false, lastRumble = -Infinity;
   // The shared board art (desktop/boards.js), made on first use so the menu opens without baking.
@@ -279,7 +287,8 @@
     if (local) onlineTurnDeadline = null;
     focusBoard();
   }
-  $('desktopPlay').onclick = () => startMatch();
+  // A first-time player is offered the rules here too, the same as on the web menu.
+  $('desktopPlay').onclick = () => (typeof offerHowToFirst === 'function' ? offerHowToFirst(() => startMatch()) : startMatch());
   // Every entry routes to the web app's own handler for that button, so the two menus can never
   // drift apart in what they do -- only in how they look. The web's "vs AI" is the gold Play here
   // (the opponent and colour sit right under it), and its physical-set shop link doesn't belong
@@ -488,6 +497,7 @@
       <div class="desktop-controls-scheme">
         <label>Layout <select id="desktopPadBrand" aria-label="Controller layout"><option value="auto">Auto</option>${['xbox','playstation','nintendo','generic'].map(b => `<option value="${b}">${BRAND_NAMES[b]}</option>`).join('')}</select></label>
         <label>Swing with <select id="desktopPadScheme" aria-label="Controller scheme"><option value="triggers">Triggers</option><option value="stick">Right stick</option></select></label>
+        <label><input type="checkbox" id="desktopTwoPads"> A controller each in a local 1v1</label>
       </div>
       <div id="desktopPadDiagram" class="desktop-diagram-wrap"></div>
       <p class="desktop-controls-note" id="desktopPadNote" style="margin:0"></p>`, [
@@ -498,6 +508,8 @@
     $('desktopPadBrand').onchange = e => { settings.padBrand = e.target.value; saveSettings(); drawPad(); };
     $('desktopPadScheme').value = settings.padScheme;
     $('desktopPadScheme').onchange = e => { settings.padScheme = e.target.value; saveSettings(); drawPad(); };
+    $('desktopTwoPads').checked = settings.twoPads;
+    $('desktopTwoPads').onchange = e => { settings.twoPads = e.target.checked; saveSettings(); };
     drawPad();
     if (!canRebind()) return;
     const keyText = el => el.querySelector('.key') || el;
@@ -1099,10 +1111,11 @@
   }
 
   function rumble(strength=.2) {
-    if(!settings.haptics || !currentPad?.vibrationActuator) return;
+    const pad = (twoPadSeats() ? padList[G.active] : currentPad);
+    if(!settings.haptics || !pad?.vibrationActuator) return;
     if(performance.now()-lastRumble<120) return;
     lastRumble=performance.now();
-    try { const p=currentPad.vibrationActuator.playEffect('dual-rumble',{duration:65,weakMagnitude:strength,strongMagnitude:strength*.35}); p?.catch(()=>{}); } catch(_) {}
+    try { const p=pad.vibrationActuator.playEffect('dual-rumble',{duration:65,weakMagnitude:strength,strongMagnitude:strength*.35}); p?.catch(()=>{}); } catch(_) {}
   }
   function canPlay() { return inMatch() && !dialogOpen() && !$('htpFull') && !paused && !G.over && !replayActive && !inputBlocked() && !aiAnim; }
   function chooseFoot(i) {
@@ -1125,12 +1138,12 @@
   // Analog trigger pull, 0..1 each, as one signed axis: + is clockwise (RT), - anticlockwise (LT).
   // buttons[].value is the analog reading on a standard pad; a digital-only pad has no value, so
   // fall back to pressed = fully pulled rather than reading a trigger as permanently released.
-  function triggerPull(i) {
-    const b=currentPad?.buttons[i]; if(!b) return 0;
+  function triggerPull(i, pad) {
+    const b=(pad||currentPad)?.buttons[i]; if(!b) return 0;
     const v=typeof b.value==='number' ? b.value : (b.pressed?1:0);
     return v>.04 ? (v-.04)/.96 : 0;
   }
-  function triggerAxis() { return triggerPull(7)-triggerPull(6); }
+  function triggerAxis(pad) { return triggerPull(7,pad)-triggerPull(6,pad); }
   // Left stick orbits the camera around whatever the controls are already looking at. Setting
   // camManualSet stops updateCamera's auto-frame from hauling the view back the next frame — the
   // same latch a mouse drag sets, so a pad and a mouse hand off to each other cleanly.
@@ -1190,12 +1203,31 @@
         }
       });
     }
-    const pads=navigator.getGamepads?.() || [];
-    currentPad=Array.from(pads).find(p=>p?.connected && p.mapping==='standard') || null;
+    padList=Array.from(navigator.getGamepads?.() || []).filter(p=>p?.connected && p.mapping==='standard');
+    currentPad=padList[0] || null;
     if(padBrandShown && $('desktopPadDiagram') && padBrand()!==padBrandShown) drawPad();   // the sheet follows the pad that is plugged in
     if(lastActive!==G.active){lastActive=G.active;chosenFoot=0;heldLeft=heldRight=false;lastCrossings=0;}
-    if(currentPad){
-      const down=i=>!!currentPad.buttons[i]?.pressed, pressed=i=>down(i)&&!padButtons[i];
+    // Two controllers on one screen: in a local 1v1 the first pad plays blue and the second plays
+    // red, and only the pad whose colour it is can move a piece. Menus stay on whichever pad is in
+    // hand, so either player can pause or change a setting. Any other match (vs the AI, online, a
+    // replay) has one human, so it stays on the first pad however many are plugged in.
+    const seats = twoPadSeats();
+    const seatPad = seats ? (padList[G.active] || null) : currentPad;
+    // Say it once per match, the first time a second pad actually takes a seat -- nothing about the
+    // screen otherwise tells you the pads have split up.
+    if (seats && !twoPadToldT && typeof showPassToast === 'function') {
+      twoPadToldT = true; showPassToast('Two controllers: pad 1 plays Blue, pad 2 plays Red');
+    } else if (!inMatch()) twoPadToldT = false;
+    const inPlay = inMatch() && !dialogOpen() && !$('htpFull');
+    const act = inPlay ? seatPad : currentPad;
+    // The match menu answers to EVERY pad, not just the one whose turn it is: either player has to
+    // be able to pause, change a setting or leave without being handed the other's controller.
+    if(inPlay) padList.forEach((p,i)=>{
+      if(p!==act && p.buttons[9]?.pressed && !(padPrev[i]||[])[9]) openPause();
+    });
+    if(act){
+      const prev=padPrev[padList.indexOf(act)] || [];
+      const down=i=>!!act.buttons[i]?.pressed, pressed=i=>down(i)&&!prev[i];
       const context=$('htpFull') || (dialogOpen()?$('modalBox'):(!inMatch()?home:null));
       if(context){
         const els=focusable(context), axis=currentPad.axes[1]||0;
@@ -1226,11 +1258,11 @@
           // Analog triggers: right clockwise, left anticlockwise, and how far you pull IS the speed.
           // Triggers rest at a true zero (no stick drift), so the dead zone can be tiny and a feather
           // press still gives a slow, controllable creep.
-          swing(triggerAxis(),dt,.02);
+          swing(triggerAxis(act),dt,.02);
         } else {
-          swing(currentPad.axes[2]||0, dt);                                // right stick left/right turns
+          swing(act.axes[2]||0, dt);                                       // right stick left/right turns
         }
-        orbitCamera(currentPad.axes[0]||0, currentPad.axes[1]||0, dt);     // left stick moves the camera, always
+        orbitCamera(act.axes[0]||0, act.axes[1]||0, dt);                   // left stick moves the camera, always
         // A short pulse each time a foot actually crosses a printed line: the rule that decides the
         // turn, felt rather than read off the crossings counter.
         if(typeof G.crossings==='number'){
@@ -1239,8 +1271,10 @@
         }
         if(canPlay())v3HoverIdx=G.pinned===null?chosenFoot:G.pinned;
       }
-      padButtons=currentPad.buttons.map(b=>b.pressed);
-    } else { padButtons=[]; padAxisLatch=false; }
+    } else if(!padList.length) padAxisLatch=false;
+    // Every pad's buttons are remembered, not just the acting one: otherwise the pad that is waiting
+    // for its turn would fire everything it was holding the moment the turn passed to it.
+    padPrev=padList.map(p=>p.buttons.map(b=>b.pressed));
     if(heldLeft||heldRight)swing((heldRight?1:0)-(heldLeft?1:0),dt);
     tickEffects(dt);
   }
@@ -1289,6 +1323,9 @@
     get keys(){return {...settings.keys};},
     get skin(){return finish().skin;},
     get padScheme(){return settings.padScheme;},
+    get twoPads(){return settings.twoPads;},
+    set twoPads(v){ settings.twoPads=!!v; saveSettings(); },
+    twoPadSeats,
     get padBrand(){return settings.padBrand;},
     set padBrand(v){ if(PAD_BRANDS.includes(v)){ settings.padBrand=v; saveSettings(); if($('desktopPadBrand')) $('desktopPadBrand').value=v; drawPad(); } },
     padBrandOf, controllerSvg,

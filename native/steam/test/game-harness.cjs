@@ -23,6 +23,10 @@ async function game(query = '?steam=1&premium=1', storage = {}, opts = {}) {
     runScripts:'dangerously', resources:new Assets(), virtualConsole:logs,
     pretendToBeVisual:true,
     beforeParse(w) {
+      // Almost every test is about a player who already knows the game, and a brand-new profile is
+      // now offered the rules the first time it presses play. Tests that want that offer ask for it
+      // with opts.freshPlayer; everyone else starts as a returning player.
+      if (!opts.freshPlayer && !('tauOnboard' in storage)) w.localStorage.setItem('tauOnboard','howto');
       for (const [key,value] of Object.entries(storage)) w.localStorage.setItem(key,value);
       w.innerWidth=opts.width||1280; w.innerHeight=opts.height||800;
       // The showcase boards bake 2048^2 procedural maps; on the CPU canvas stub that is pure cost

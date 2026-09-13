@@ -591,3 +591,37 @@ count varies naturally with the tumble (two to four from the 20cm floor). The
 beat before the piece is tucked away starts when it stops bouncing rather than at
 first contact, with `downT` as a backstop so a fall can never hold the camera for
 more than a few seconds.
+
+The landing floor moved from a literal 20cm (100 units) to 24 units under the
+board. The real drop from a table is the honest number, but at that distance the
+loss camera has to pull right back to hold the tumble and the board shrinks away
+with it; a short drop reads as "off the board onto the surface below" and keeps
+the camera in close, which is what Colossus's own arena floor already did.
+
+The bounce is measured on the CONTACT POINT's closing speed, not the body's fall
+speed. A tumbling piece swings the part that touches down on its own account, so
+measuring only vy made a fast-spinning piece "land softly", bounce a little, and
+have the same spin close the gap again before it could leave the ground -- one
+dead thump instead of a bounce, and worse the shorter the drop. With the closing
+speed (and a harder spin shed on impact) every drop height gives two or three
+bounces that decay properly.
+
+Two controllers, one screen: in a local 1v1 with the setting on (Controls sheet,
+"A controller each in a local 1v1") and two pads plugged in, pad 1 plays Blue and
+pad 2 plays Red, and only the pad whose colour it is can move a piece. The match
+menu answers to EVERY pad, so either player can pause or leave without being
+handed the other's controller, and every pad's buttons are remembered per frame
+-- otherwise the waiting pad fires everything it was holding the moment the turn
+passes to it. vs the AI, online, and replays stay single-seat however many pads
+are connected. The match-state flags it reads (`vsAI`, `onlineMatch`,
+`replayActive`) are index.html's own top-level bindings shared through the script
+scope -- they are NOT on `window`, and reading them off `window` silently saw
+"not an AI match".
+
+First run: a new player lands on the MENU. The how-to used to open itself at load,
+which on a fresh profile (an incognito window is the easy way to see it) read as
+the rules flashing up and vanishing again while the page was still settling. The
+offer now comes when it is wanted -- the first time someone presses play, a single
+"New to Tau?" with "Show me how" and "Just play". Either answer marks the profile
+asked, so it never comes back. The test harness seeds `tauOnboard` by default so
+only tests passing `opts.freshPlayer` see the offer.
