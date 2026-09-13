@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 239</div>
+<div id="buildTag">build 240</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -8750,11 +8750,11 @@ const fallHullW = new THREE.Vector3();
 // approach speed a bounce returns, `drag` the rolling friction (per second), `grip` how much spin a
 // contact sheds (lower = keeps turning), and `minBounce` the speed below which it stops bouncing.
 const FALL_MATERIALS = {
-    glass:    { keep: 0.20, drag: 1.1, grip: 0.55, minBounce: 13 },
-    stone:    { keep: 0.26, drag: 3.4, grip: 0.25, minBounce: 12 },
-    metal:    { keep: 0.44, drag: 1.7, grip: 0.40, minBounce: 8 },
-    chitin:   { keep: 0.34, drag: 2.2, grip: 0.35, minBounce: 9 },
-    graphite: { keep: 0.28, drag: 2.6, grip: 0.30, minBounce: 10 },
+    glass:    { keep: 0.20, drag: 0.50, grip: 0.62, minBounce: 8 },
+    stone:    { keep: 0.26, drag: 1.55, grip: 0.34, minBounce: 8 },
+    metal:    { keep: 0.44, drag: 0.75, grip: 0.50, minBounce: 6 },
+    chitin:   { keep: 0.34, drag: 1.00, grip: 0.42, minBounce: 7 },
+    graphite: { keep: 0.28, drag: 1.20, grip: 0.38, minBounce: 7 },
 };
 function fallMaterial() {
     const p = typeof currentAcoustics === 'function' ? currentAcoustics().piece : 'metal';
@@ -8782,7 +8782,7 @@ function stepFall(dt) {
     // never allowed to hold the camera for more than a few seconds.
     if (fall.resting) fall.settleT += dt;
     if (fall.landed) fall.downT += dt;
-    if (fall.settleT > 0.9 || fall.downT > 5) { fall.active=false; fallenIdx=fall.idx; camCenterFrac=1; camManualSet=false; }
+    if (fall.settleT > 0.9 || fall.downT > 7) { fall.active=false; fallenIdx=fall.idx; camCenterFrac=1; camManualSet=false; }
 }
 // The physics itself, on any tripod + fall state — the tutorial's falls (goal-slide ending and
 // the push-off finale, on htpTripods) run this exact code, so a tumble looks the same everywhere.
@@ -8877,8 +8877,8 @@ function stepFallOn(t, fall, dt) {
                 }
                 // Resting means actually still, not merely touching: the beat before the camera goes
                 // back to the board starts when the roll has died, not the moment it first landed.
-                fall.resting = Math.hypot(fall.vx, fall.vz) < 3
-                    && Math.abs(fall.wx) + Math.abs(fall.wy) + Math.abs(fall.wz) < 1.2;
+                fall.resting = Math.hypot(fall.vx, fall.vz) < 1.1
+                    && Math.abs(fall.wx) + Math.abs(fall.wy) + Math.abs(fall.wz) < 0.5;
             }
         }
     }

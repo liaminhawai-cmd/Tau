@@ -858,3 +858,20 @@ roll is a real rolling constraint: the contact turns the piece at the rate its
 own speed implies (v over the distance its contact sits below its centre) about
 the axis across its direction of travel, so it tumbles to a halt instead of
 skating.
+
+The loss camera follows the PIECE. It used to nudge its target a quarter of the
+way toward the faller, clamped to 24 units, and hold it at board height -- while
+the loser dropped thirty-odd units below that and rolled out past the rim. The
+camera framed an empty board with the whole fall off the bottom edge, which is
+what read as "it jumps to a weird spot". The target now tracks the piece's real
+position and follows it down, with more distance so the board stays in shot
+behind it.
+
+The roll was sticky because the friction was tuned when the roll was only meant
+to be a short settle: every material's drag is roughly a third of what it was,
+the speed at which a piece counts as stopped dropped from 3 to 1.1 units a
+second, and the bounce floor came down so a leg catching the ground mid-tumble
+registers as its own tap rather than being swallowed. A tumble's taps are no
+longer monotonically quieter -- a leg can slap harder than the tap before it,
+which is what a real tumble sounds like -- so the test asserts the arrival is
+loudest and it dies away, not that each is softer than the last.

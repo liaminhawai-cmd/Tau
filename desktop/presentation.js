@@ -1469,8 +1469,13 @@
     }
     const yaw=menu && !settings.reducedMotion ? .18+Math.sin(performance.now()*.000055)*.045 : 0;
     if(falling && !settings.reducedMotion && G.winner!=null){
+      // WATCH THE PIECE, not the board it left. The target used to barely move off centre and stay
+      // at board height while the loser dropped thirty-odd units below it and rolled out past the
+      // rim -- the camera ended up framing an empty board with the whole fall off the bottom edge.
+      // Following most of the way keeps both the board and the landing in shot.
       const p=tripods[fall.idx].position;
-      tx=Math.max(-24,Math.min(24,p.x*.25)); tz=Math.max(-24,Math.min(24,p.z*.25)); distance+=18;
+      tx=Math.max(-110,Math.min(110,p.x)); tz=Math.max(-110,Math.min(110,p.z));
+      ty=p.y+6; distance+=34;
     }
     outTarget.set(tx,ty,tz);
     // The elevation is the boards' usual 44 degrees unless the showing look asks for its own
