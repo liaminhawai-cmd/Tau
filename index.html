@@ -608,7 +608,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 198</div>
+<div id="buildTag">build 197</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -5108,12 +5108,11 @@ function ladderPlanCorner(idx, w, o, fallback){
     if (bk.at!==1) return done();
     const pv=bk.pivotIdx, d=bk.dir, B=bk.crossFoot;
     ladderRestore(snap0); G.active=idx; pinFoot(pv);
-    const baseCrossings=G.crossings;
     let guard=0, radAtCross=null;
     while (!G.atLimit && Math.abs(G.netRad) < 20*Math.PI/180 && guard++ < 500){
         applySwing(d*AI_STEP_RAD);
         if (G.pieces[idx].anyFootOff()) break;
-        if (G.crossings>baseCrossings){ if (nearLineIds(me.feet()[B], CFG.touchEps).length) radAtCross=Math.abs(G.netRad); break; }
+        if (G.crossings>0){ if (nearLineIds(me.feet()[B], CFG.touchEps).length) radAtCross=Math.abs(G.netRad); break; }
     }
     ladderRestore(snap0);
     if (radAtCross===null) return done();
