@@ -606,17 +606,39 @@ dead thump instead of a bounce, and worse the shorter the drop. With the closing
 speed (and a harder spin shed on impact) every drop height gives two or three
 bounces that decay properly.
 
-Two controllers, one screen: in a local 1v1 with the setting on (Controls sheet,
-"A controller each in a local 1v1") and two pads plugged in, pad 1 plays Blue and
-pad 2 plays Red, and only the pad whose colour it is can move a piece. The match
-menu answers to EVERY pad, so either player can pause or leave without being
-handed the other's controller, and every pad's buttons are remembered per frame
--- otherwise the waiting pad fires everything it was holding the moment the turn
-passes to it. vs the AI, online, and replays stay single-seat however many pads
-are connected. The match-state flags it reads (`vsAI`, `onlineMatch`,
-`replayActive`) are index.html's own top-level bindings shared through the script
-scope -- they are NOT on `window`, and reading them off `window` silently saw
-"not an AI match".
+Choose your controls: a local 1v1 -- the one match with two people at one screen
+-- opens with a full-screen device pick instead of seating whatever happens to be
+plugged in. Blue is on the left, Red on the right, each with its own tripod over
+the device that plays it. Blue chooses first: press any button on a pad and that
+pad's make is drawn in the slot and asks for its own bottom face button by name
+(A / X / B / 1), or press a key or click and it is keyboard and mouse; then Red
+does the same. The same device on both sides is simply pass and play and the
+screen says so, Esc or a pad's B steps back a stage (and cancels from the first),
+and "Skip -- pass and play" is there for anyone who just wants the board.
+
+Input is then gated by SEAT, and through index.html's single inputBlocked() gate
+rather than inside each handler. That gate is the one thing every input path
+already goes through -- keys, mouse, touch and pad all reach the board via
+canPlay()/onDown() -- so the rule lives in one place and a handler added later
+cannot forget it. But inputBlocked() is shared with the AI and online rules and
+knows nothing about controllers, so the desktop layer tags who is pressing:
+pollInput sets window.tauDesktop.inputDevice to 'pad' around the acting pad's
+work and leaves it 'kbm' for everything else, and tauDesktop.seatBlocks(device)
+answers whether that device is the colour to move. Which pad acts is settled
+before that, in pollInput -- the acting pad is the one whose gamepad.index
+matches the seat -- so a pad seated to the other colour never gets as far as the
+gate; the tag is what keeps the keyboard and mouse off the board on a pad's turn,
+and vice versa. Start (button 9) still answers on EVERY pad, so either player can
+call the match menu without being handed the other's controller, and every pad's
+buttons are remembered per frame -- otherwise the waiting pad fires everything it
+was holding the moment the turn passes to it.
+
+Two more things the seats deliberately do not do. With the same device on both
+sides seatBlocks is always false: pass and play has nothing to gate. And a pad
+that unplugs mid-match takes the gate off entirely rather than stranding the
+player whose seat it was -- both colours share whatever is still connected. The
+seats belong to the match that chose them and are dropped as soon as pollInput
+sees no match, so vs the AI, online and replays never gate anything.
 
 First run: a new player lands on the MENU. The how-to used to open itself at load,
 which on a fresh profile (an incognito window is the easy way to see it) read as
