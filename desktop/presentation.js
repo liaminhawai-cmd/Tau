@@ -121,9 +121,9 @@
   function isUnlocked(id) { return testBoards || isEarned(id); }
   function unlockText(id) {
     const n = unlockNeed(id); if (!n) return '';
-    if (n.wins) return `win ${n.wins} game${n.wins>1?'s':''}`;
-    if (n.played) return `play ${n.played} games`;
-    return n.level >= LADDER_N ? `beat the top ladder level` : `beat ladder level ${n.level}`;
+    if (n.wins) return n.wins > 1 ? tf('win {n} games', {n:n.wins}) : t('win 1 game');
+    if (n.played) return tf('play {n} games', {n:n.played});
+    return n.level >= LADDER_N ? t('beat the top ladder level') : tf('beat ladder level {n}', {n:n.level});
   }
   let pendingUnlocks = [];
   // Called by the game when a match ends (showGameOverModal). Counts it, and remembers what it
@@ -143,7 +143,8 @@
   function showResultSoon() { return ownMatch && !onlineMatch && !labActive && !rankedMode; }
   function takeUnlockHtml() {
     if (!pendingUnlocks.length) return '';
-    const html = `<p class="desktop-unlock">New board${pendingUnlocks.length>1?'s':''} unlocked: <b>${pendingUnlocks.map(b=>b.name).join(', ')}</b></p>`;
+    const names = `<b>${pendingUnlocks.map(b=>b.name).join(', ')}</b>`;
+    const html = `<p class="desktop-unlock">${pendingUnlocks.length>1 ? tf('New boards unlocked: {names}',{names}) : tf('New board unlocked: {name}',{name:names})}</p>`;
     pendingUnlocks = []; return html;
   }
   function toastUnlocks() {
@@ -280,34 +281,58 @@
 
   const home = document.createElement('section');
   home.className = 'desktop-home';
-  home.setAttribute('aria-label','Main menu');
   // The web app's menu, in the same words and the same order, on the premium presentation: the
   // gold Play (with its opponent and colour) up top, then the web's own entries. "Local 1v1" lives
   // inside 1v1 exactly as it does there, and Watch IS the replays screen, so neither gets a second
   // door here. No tagline or caption under the logo: the board behind it says what the game is.
+  // The words are left out of the markup and painted by relabelHome: this menu is built once, at
+  // load, and has to answer a language change that happens while it is on screen.
   home.innerHTML = `<img class="desktop-logo" src="tau-logo.png" alt="Tau" width="220" height="62">
-    <button class="desktop-primary" id="desktopPlay">Play</button>
+    <button class="desktop-primary" id="desktopPlay"></button>
     <div class="desktop-choices">
-      <label>Opponent<select id="desktopLevel" aria-label="Opponent level"></select></label>
-      <label>You play<select id="desktopColour" aria-label="Your colour"><option value="0">Blue · first</option><option value="1">Red · second</option></select></label>
+      <label><span id="desktopLevelLabel"></span><select id="desktopLevel"></select></label>
+      <label><span id="desktopColourLabel"></span><select id="desktopColour"><option value="0"></option><option value="1"></option></select></label>
     </div>
-    <nav class="desktop-links" aria-label="Other ways to play">
+    <nav class="desktop-links" id="desktopLinks">
       <button id="desktopOnline">1v1</button>
-      <button id="desktopWatch">Watch</button>
-      <button id="desktopLearn">How to play</button>
-      <button id="desktopLeaderboard">Leaderboard</button>
+      <button id="desktopWatch"></button>
+      <button id="desktopLearn"></button>
+      <button id="desktopLeaderboard"></button>
     </nav>
-    <div class="desktop-home-bottom"><button id="desktopSettings">Settings</button><button id="desktopControls">Controls</button><button id="desktopLab">Lab</button><button id="desktopQuit" hidden>Quit</button></div>`;
+    <div class="desktop-home-bottom"><button id="desktopSettings"></button><button id="desktopControls"></button><button id="desktopLab"></button><button id="desktopQuit" hidden></button></div>`;
   $('menu').appendChild(home);
   if (!renderer) root.classList.add('desktop-overhead');
   const toolbar = document.createElement('div');
   toolbar.className = 'desktop-toolbar';
-  toolbar.innerHTML = `<button class="desktop-brand" id="desktopHome" aria-label="Open pause menu">TAU</button>
-    <button class="desktop-menu" id="desktopPause">Menu <kbd>Esc</kbd></button>`;
+  toolbar.innerHTML = `<button class="desktop-brand" id="desktopHome">TAU</button>
+    <button class="desktop-menu" id="desktopPause"><span id="desktopPauseLabel"></span> <kbd>Esc</kbd></button>`;
   document.body.appendChild(toolbar);
   for (let n=1;n<=LADDER_N;n++) {
-    const opt = document.createElement('option'); opt.value = String(n); opt.textContent = 'Level ' + n;
+    const opt = document.createElement('option'); opt.value = String(n);
     $('desktopLevel').appendChild(opt);
+  }
+  // Every label this layer paints once and keeps. Re-run whenever the language changes; the sheets
+  // and the device-pick screen are built as they open, so they need nothing here.
+  function relabelHome() {
+    const set = (id, text) => { $(id).textContent = text; };
+    home.setAttribute('aria-label', t('Main menu'));
+    set('desktopPlay', t('Play'));
+    set('desktopLevelLabel', t('Opponent'));
+    set('desktopColourLabel', t('You play'));
+    $('desktopLevel').setAttribute('aria-label', t('Opponent level'));
+    $('desktopColour').setAttribute('aria-label', t('Your colour'));
+    $('desktopColour').options[0].textContent = t('Blue · first');
+    $('desktopColour').options[1].textContent = t('Red · second');
+    for (const opt of $('desktopLevel').options) opt.textContent = tf('Level {n}', { n: opt.value });
+    $('desktopLinks').setAttribute('aria-label', t('Other ways to play'));
+    set('desktopWatch', t('Watch')); set('desktopLearn', t('How to play'));
+    set('desktopLeaderboard', t('Leaderboard'));
+    set('desktopSettings', t('Settings')); set('desktopControls', t('Controls'));
+    set('desktopLab', t('Lab')); set('desktopQuit', t('Quit'));
+    set('desktopPauseLabel', t('Menu'));
+    $('desktopHome').setAttribute('aria-label', t('Open pause menu'));
+    $('view3d').setAttribute('aria-label', t('Game board. Click a foot to pin it, then drag another foot to swing. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.'));
+    canvas.setAttribute('aria-label', t('Overhead game board. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.'));
   }
   $('desktopLevel').value = String(settings.level); $('desktopColour').value = String(settings.colour);
   $('desktopLevel').addEventListener('change', e => { settings.level = Number(e.target.value); saveSettings(); });
@@ -384,12 +409,12 @@
     // The match keeps going under this menu, offline as much as online: an opponent mid-swing
     // finishes its swing, and you can change the board or check the controls while it thinks.
     // The board stays visible behind the sheet (no blur on the backdrop) so you see it happen.
-    showModal('Match menu', '', [
-      { label:'Continue', onClick:() => focusBoard() },
-      { label:'Controls', onClick:openControls },
-      { label:'Settings', onClick:openSettings },
-      { label:'How to play', onClick:() => $('howToPlayBtn').click() },
-      { label:'Leave match', onClick:confirmLeave },
+    showModal(t('Match menu'), '', [
+      { label:t('Continue'), onClick:() => focusBoard() },
+      { label:t('Controls'), onClick:openControls },
+      { label:t('Settings'), onClick:openSettings },
+      { label:t('How to play'), onClick:() => $('howToPlayBtn').click() },
+      { label:t('Leave match'), onClick:confirmLeave },
     ], false, {dismiss:true});
   }
   // One place that answers "what do the buttons do". Built from the live settings rather than
@@ -417,17 +442,17 @@
   function keyboardSvg() {
     const K = settings.keys, rb = canRebind();
     const k = (x,y,w,action,a) => keyCap(x,y,w,keyName(K[a]),action,true,rb ? a : '');
-    return `<svg class="desktop-diagram" viewBox="0 0 760 170" role="img" aria-label="Keyboard controls">
-      ${keyCap(16,10,58,'Esc','menu',false,'')}${keyCap(82,10,58,'F1','controls',false,'')}
-      ${k(186,10,52,'foot 1','pin1')}${k(246,10,52,'foot 2','pin2')}${k(306,10,52,'foot 3','pin3')}
-      ${k(404,10,130,'cancel swing','cancel')}${k(544,10,120,'end turn','commit')}
-      ${k(186,96,52,'','shrink')}${k(246,96,52,'','grow')}<text class="cap" x="242" y="152">flat board size</text>
-      ${k(404,96,88,'swing ↺','swingLeft')}${k(500,96,88,'swing ↻','swingRight')}
+    return `<svg class="desktop-diagram" viewBox="0 0 760 170" role="img" aria-label="${esc(t('Keyboard controls'))}">
+      ${keyCap(16,10,58,'Esc',t('menu'),false,'')}${keyCap(82,10,58,'F1',t('controls'),false,'')}
+      ${k(186,10,52,t('foot 1'),'pin1')}${k(246,10,52,t('foot 2'),'pin2')}${k(306,10,52,t('foot 3'),'pin3')}
+      ${k(404,10,130,t('cancel swing'),'cancel')}${k(544,10,120,t('end turn'),'commit')}
+      ${k(186,96,52,'','shrink')}${k(246,96,52,'','grow')}<text class="cap" x="242" y="152">${esc(t('flat board size'))}</text>
+      ${k(404,96,88,t('swing ↺'),'swingLeft')}${k(500,96,88,t('swing ↻'),'swingRight')}
     </svg>`;
   }
   function keyboardList() {
     const rb = canRebind();
-    const rows = [['Esc','Menu',''],['F1','Controls',''], ...KEY_ACTIONS.map(([a, what]) => [keyName(settings.keys[a]), what, a])];
+    const rows = [['Esc',t('Menu'),''],['F1',t('Controls'),''], ...KEY_ACTIONS.map(([a, what]) => [keyName(settings.keys[a]), t(what), a])];
     return `<div class="desktop-controls">${rows.map(([key, what, a]) =>
       `<div class="desktop-controls-row"><kbd${a && rb ? ` data-rebind="${a}" tabindex="0" role="button"` : ''}>${esc(key)}</kbd><span>${esc(what)}</span></div>`).join('')}</div>`;
   }
@@ -456,9 +481,9 @@
   };
   // What each control does, as [name, meaning]; the side-labelled picture and the legend both read it.
   function padBindings(B, triggers) {
-    return { lt:[B.lt, triggers?'swing ↺':'unused'], lb:[B.lb,'smaller board'], ls:['left stick','camera'], dp:['D-pad ← →','foot'],
-      rt:[B.rt, triggers?'swing ↻':'unused'], rb:[B.rb,'bigger board'], top:[B.top,'controls'], right:[B.right,'cancel swing'],
-      bottom:[B.bottom,'pin · end turn'], rs: triggers ? ['right stick','unused'] : ['right stick ← →','swing'], menu:[B.menu,'match menu'] };
+    return { lt:[B.lt, triggers?t('swing ↺'):t('unused')], lb:[B.lb,t('smaller board')], ls:[t('left stick'),t('camera')], dp:[t('D-pad ← →'),t('foot')],
+      rt:[B.rt, triggers?t('swing ↻'):t('unused')], rb:[B.rb,t('bigger board')], top:[B.top,t('controls')], right:[B.right,t('cancel swing')],
+      bottom:[B.bottom,t('pin · end turn')], rs: triggers ? [t('right stick'),t('unused')] : [t('right stick ← →'),t('swing')], menu:[B.menu,t('match menu')] };
   }
   // Xbox-style body: a wide rounded top and two grips, around the centre line x = c.
   const padBodyPath = c => `M${c-130},90 C${c-90},66 ${c+90},66 ${c+130},90 C${c+170},104 ${c+200},160 ${c+208},210
@@ -480,7 +505,7 @@
     const body = `<path class="body" d="${padBodyPath(c)}"/>`;
     const P = padParts(B, c), LS = P.ls, RS = P.rs, DP = P.dp, FC = P.fc;
     const centreBits = brand === 'playstation'
-      ? `<rect class="k" x="${c-40}" y="88" width="80" height="46" rx="8"/><text class="cap" x="${c}" y="111">touch pad</text>
+      ? `<rect class="k" x="${c-40}" y="88" width="80" height="46" rx="8"/><text class="cap" x="${c}" y="111">${esc(t('touch pad'))}</text>
          <rect class="k" x="${c-64}" y="94" width="10" height="26" rx="5"/><rect class="k bound" x="${c+54}" y="94" width="10" height="26" rx="5"/>
          <circle class="k" cx="${c}" cy="160" r="9"/>`
       : brand === 'generic'
@@ -488,7 +513,7 @@
       : `<circle class="k" cx="${c}" cy="98" r="13"/>${face(c-32, 132, B.view === '−' ? '−' : '⧉', false)}${face(c+32, 132, B.menu === '+' ? '+' : '≡', true)}`;
     const menuPoint = brand === 'playstation' ? [c+59, 94] : brand === 'generic' ? [c+34, 123] : [c+32, 119];
     const view = compact ? '160 14 440 300' : '0 0 760 316';
-    return `<svg class="desktop-diagram${compact?' compact':''}" viewBox="${view}" role="img" aria-label="${esc(BRAND_NAMES[brand] || 'Controller')} controls">
+    return `<svg class="desktop-diagram${compact?' compact':''}" viewBox="${view}" role="img" aria-label="${esc(tf('{brand} controls', {brand: BRAND_NAMES[brand] || t('Controller')}))}">
       ${body}
       <rect class="k" x="${c-150}" y="52" width="80" height="18" rx="9"/><text x="${c-110}" y="61">${esc(B.lb)}</text>
       <rect class="k" x="${c+70}" y="52" width="80" height="18" rx="9"/><text x="${c+110}" y="61">${esc(B.rb)}</text>
@@ -528,19 +553,35 @@
   function drawQualityNote() {
     const el = $('desktopQualityNote'); if (!el) return;
     if (settings.quality !== 'ultra') { el.textContent = ''; return; }
-    el.textContent = ptPhase === 'failed' ? 'Ray tracing could not start on this GPU — drawing normally.'
-      : ptPhase === 'loading' ? 'Ray tracing: loading…'
-      : ptPhase !== 'ready' ? 'Ray tracing: starting…'
-      : ptStill >= PT_STILL_FRAMES ? 'Ray tracing: refining the still frame.'
-      : 'Ray tracing: ready — it takes over whenever the board holds still.';
+    el.textContent = ptPhase === 'failed' ? t('Ray tracing could not start on this GPU — drawing normally.')
+      : ptPhase === 'loading' ? t('Ray tracing: loading…')
+      : ptPhase !== 'ready' ? t('Ray tracing: starting…')
+      : ptStill >= PT_STILL_FRAMES ? t('Ray tracing: refining the still frame.')
+      : t('Ray tracing: ready — it takes over whenever the board holds still.');
+  }
+  // The labels around the pictures wear whatever language is on, and a long one runs past the box
+  // the picture was drawn in -- which the wrapper clips rather than scrolls. Measured once they are
+  // in the document (no width guess per language holds) and the view opened out to what they need.
+  function fitDiagram(wrap) {
+    const svg = wrap && wrap.firstElementChild;
+    if (!svg || typeof svg.getBBox !== 'function') return;
+    const vb = svg.viewBox.baseVal;
+    let left = vb.x, right = vb.x + vb.width;
+    for (const label of svg.querySelectorAll('text')) {
+      const b = label.getBBox();
+      left = Math.min(left, b.x); right = Math.max(right, b.x + b.width);
+    }
+    if (left < vb.x || right > vb.x + vb.width)
+      svg.setAttribute('viewBox', `${left - 6} ${vb.y} ${right - left + 12} ${vb.height}`);
   }
   function drawPad() {
     const el = $('desktopPadDiagram'); if (!el) return;
     padBrandShown = padBrand(); el.innerHTML = controllerSvg(padBrandShown, compactSheet());
+    fitDiagram(el);
     if ($('desktopPadNote')) $('desktopPadNote').textContent = settings.padScheme === 'triggers'
-      ? 'Triggers: the harder you pull, the faster it turns.' : 'Right stick: the further you push, the faster it turns.';
+      ? t('Triggers: the harder you pull, the faster it turns.') : t('Right stick: the further you push, the faster it turns.');
     const auto = $('desktopPadBrand') && $('desktopPadBrand').options[0];
-    if (auto) auto.textContent = `Auto · ${BRAND_NAMES[detectedPadBrand()]}`;
+    if (auto) auto.textContent = tf('Auto · {brand}', {brand: BRAND_NAMES[detectedPadBrand()]});
     drawPadSeen();
   }
   // What the game can actually SEE, live. A controller that does nothing is otherwise impossible to
@@ -549,30 +590,30 @@
   function drawPadSeen() {
     const el = $('desktopPadSeen'); if (!el) return;
     el.textContent = padList.length
-      ? 'Connected: ' + padList.map((p, i) => `${BRAND_NAMES[padBrandOf(p.id)]} (pad ${i + 1})`
-          + (p.mapping === 'standard' ? '' : ' — non-standard mapping, some buttons may be in odd places')).join(', ')
-      : 'No controller detected. Press a button on it with this window in front; some pads only appear once they are woken up. If a browser gamepad tester sees it and Tau does not, tell us.';
+      ? t('Connected: ') + padList.map((p, i) => tf('{brand} (pad {n})', {brand: BRAND_NAMES[padBrandOf(p.id)], n: i + 1})
+          + (p.mapping === 'standard' ? '' : t(' — non-standard mapping, some buttons may be in odd places'))).join(', ')
+      : t('No controller detected. Press a button on it with this window in front; some pads only appear once they are woken up. If a browser gamepad tester sees it and Tau does not, tell us.');
   }
   function openControls() {
     stopRebind();
     const touch = typeof isNativeApp === 'function' && isNativeApp(), compact = compactSheet();
     const keyboard = () => compact ? keyboardList() : keyboardSvg();
-    showModal('Controls', `${touch
-        ? `<div class="desktop-controls-head">Touch</div><p class="desktop-controls-note" style="margin:0 0 16px">Tap a foot to pin it, then drag another foot to swing. Drag the 3D view to look around. Drag the flat board's rim knob to resize it.</p>`
+    showModal(t('Controls'), `${touch
+        ? `<div class="desktop-controls-head">${esc(t('Touch'))}</div><p class="desktop-controls-note" style="margin:0 0 16px">${esc(t('Tap a foot to pin it, then drag another foot to swing. Drag the 3D view to look around. Drag the flat board\'s rim knob to resize it.'))}</p>`
         : ''}
-      <div class="desktop-controls-head">Keyboard${touch ? ' (if one is connected)' : ' and mouse'}</div>
+      <div class="desktop-controls-head">${esc(touch ? t('Keyboard (if one is connected)') : t('Keyboard and mouse'))}</div>
       <div id="desktopKeyboardDiagram" class="desktop-diagram-wrap">${keyboard()}</div>
-      ${touch ? '' : `<p class="desktop-controls-note" style="margin:0">Click a foot to pin it, then drag another foot to swing. Right-drag to look around. Scroll the flat board, or drag its rim knob, to resize it.</p>`}
-      ${canRebind() ? `<p class="desktop-controls-note">Click a key to change it, then press the new one. Esc and F1 stay as they are.${window.tauSteam ? ' Controllers are remapped in Steam’s own controller settings.' : ''} <button type="button" id="desktopKeysReset">Reset keys</button></p>` : ''}
-      <div class="desktop-controls-head" style="margin-top:20px">Controller</div>
+      ${touch ? '' : `<p class="desktop-controls-note" style="margin:0">${esc(t('Click a foot to pin it, then drag another foot to swing. Right-drag to look around. Scroll the flat board, or drag its rim knob, to resize it.'))}</p>`}
+      ${canRebind() ? `<p class="desktop-controls-note">${esc(t('Click a key to change it, then press the new one. Esc and F1 stay as they are.'))}${window.tauSteam ? ' ' + esc(t('Controllers are remapped in Steam’s own controller settings.')) : ''} <button type="button" id="desktopKeysReset">${esc(t('Reset keys'))}</button></p>` : ''}
+      <div class="desktop-controls-head" style="margin-top:20px">${esc(t('Controller'))}</div>
       <div class="desktop-controls-scheme">
-        <label>Layout <select id="desktopPadBrand" aria-label="Controller layout"><option value="auto">Auto</option>${['xbox','playstation','nintendo','generic'].map(b => `<option value="${b}">${BRAND_NAMES[b]}</option>`).join('')}</select></label>
-        <label>Swing with <select id="desktopPadScheme" aria-label="Controller scheme"><option value="triggers">Triggers</option><option value="stick">Right stick</option></select></label>
+        <label>${esc(t('Layout'))} <select id="desktopPadBrand" aria-label="${esc(t('Controller layout'))}"><option value="auto">${esc(t('Auto'))}</option>${['xbox','playstation','nintendo','generic'].map(b => `<option value="${b}">${BRAND_NAMES[b]}</option>`).join('')}</select></label>
+        <label>${esc(t('Swing with'))} <select id="desktopPadScheme" aria-label="${esc(t('Controller scheme'))}"><option value="triggers">${esc(t('Triggers'))}</option><option value="stick">${esc(t('Right stick'))}</option></select></label>
       </div>
       <div id="desktopPadDiagram" class="desktop-diagram-wrap"></div>
       <p class="desktop-controls-note" id="desktopPadNote" style="margin:0"></p>
       <p class="desktop-controls-note" id="desktopPadSeen"></p>`, [
-      { label:'Done', onClick:() => { stopRebind(); if (inMatch()) focusBoard(); } },
+      { label:t('Done'), onClick:() => { stopRebind(); if (inMatch()) focusBoard(); } },
     ], true, {dismiss:stopRebind});
     $('modalBox').classList.add('desktop-sheet');
     $('desktopPadBrand').value = settings.padBrand;
@@ -580,6 +621,7 @@
     $('desktopPadScheme').value = settings.padScheme;
     $('desktopPadScheme').onchange = e => { settings.padScheme = e.target.value; saveSettings(); drawPad(); };
     drawPad();
+    fitDiagram($('desktopKeyboardDiagram'));
     if (!canRebind()) return;
     const keyText = el => el.querySelector('.key') || el;
     const wire = () => {
@@ -600,7 +642,7 @@
         addEventListener('keydown', rebindListener, true);
       };
     };
-    const redraw = () => { $('desktopKeyboardDiagram').innerHTML = keyboard(); wire(); };
+    const redraw = () => { $('desktopKeyboardDiagram').innerHTML = keyboard(); fitDiagram($('desktopKeyboardDiagram')); wire(); };
     wire();
     $('desktopKeysReset').onclick = () => { stopRebind(); settings.keys = {...DEFAULT_KEYS}; saveSettings(); redraw(); };
   }
@@ -611,8 +653,8 @@
   const SEAT_NAMES = ['Blue', 'Red'];
   const SEAT_COLOURS = ['#6b9eff', '#ff6b6b'];   // the pieces' own blue and red
   let pick = null;
-  const deviceName = d => d.kind === 'kbm' ? 'Keyboard & mouse'
-    : d.brand === 'generic' ? 'Controller' : BRAND_NAMES[d.brand];
+  const deviceName = d => d.kind === 'kbm' ? t('Keyboard & mouse')
+    : d.brand === 'generic' ? t('Controller') : BRAND_NAMES[d.brand];
   // A piece, as it stands on the board: three legs 120° apart from the hub, each on a round foot.
   function tripodSvg(colour) {
     const c = 50, r = 31, feet = [90, 210, 330].map(a => [c + r*Math.cos(a*Math.PI/180), c + r*Math.sin(a*Math.PI/180)]);
@@ -627,7 +669,7 @@
   function padIconSvg(brand) {
     const c = 380, P = padParts(BRAND_KEYS[brand] || BRAND_KEYS.generic, c);
     const dot = ([x, y], r, dx = 0, dy = 0) => `<circle class="pick-part" cx="${x+dx}" cy="${y+dy}" r="${r}"/>`;
-    return `<svg class="desktop-pick-icon" viewBox="166 58 428 258" role="img" aria-label="${esc(BRAND_NAMES[brand] || 'Controller')} controller">
+    return `<svg class="desktop-pick-icon" viewBox="166 58 428 258" role="img" aria-label="${esc(tf('{brand} controller', {brand: BRAND_NAMES[brand] || t('Controller')}))}">
       <path class="pick-body" d="${padBodyPath(c)}" stroke-width="6"/>
       ${dot(P.ls, 25)}${dot(P.rs, 25)}
       <rect class="pick-part" x="${P.dp[0]-8}" y="${P.dp[1]-26}" width="16" height="52" rx="4"/>
@@ -638,7 +680,7 @@
     const keys = [];
     for (let row = 0; row < 3; row++) for (let k = 0; k < 6; k++)
       keys.push(`<rect class="pick-part" x="${8 + k*13}" y="${23 + row*11}" width="9" height="7" rx="2"/>`);
-    return `<svg class="desktop-pick-icon" viewBox="0 0 120 72" role="img" aria-label="Keyboard and mouse">
+    return `<svg class="desktop-pick-icon" viewBox="0 0 120 72" role="img" aria-label="${esc(t('Keyboard & mouse'))}">
       <rect class="pick-body" x="2" y="16" width="86" height="52" rx="8" stroke-width="2"/>
       ${keys.join('')}<rect class="pick-part" x="21" y="56" width="44" height="7" rx="2"/>
       <rect class="pick-body" x="96" y="14" width="22" height="42" rx="11" stroke-width="2"/>
@@ -651,20 +693,20 @@
     const el = document.createElement('section');
     el.className = 'desktop-pick';
     el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true');
-    el.setAttribute('aria-label', 'Choose your controls');
+    el.setAttribute('aria-label', t('Choose your controls'));
     el.innerHTML = `<div class="desktop-pick-sheet" tabindex="-1">
-      <h2>Choose your controls</h2>
-      <p class="desktop-pick-hint">One device each, or the same one twice to pass and play.</p>
+      <h2>${esc(t('Choose your controls'))}</h2>
+      <p class="desktop-pick-hint">${esc(t('One device each, or the same one twice to pass and play.'))}</p>
       <div class="desktop-pick-seats">${[0, 1].map(i => `<div class="desktop-pick-seat" data-seat="${i}">
-          <span class="desktop-pick-colour" style="color:${SEAT_COLOURS[i]}">${SEAT_NAMES[i]}</span>
+          <span class="desktop-pick-colour" style="color:${SEAT_COLOURS[i]}">${esc(t(SEAT_NAMES[i]))}</span>
           ${tripodSvg(SEAT_COLOURS[i])}
           <div class="desktop-pick-device"></div>
           <p class="desktop-pick-prompt"></p>
         </div>`).join('')}</div>
-      <p class="desktop-pick-same" hidden>Same device — pass and play</p>
+      <p class="desktop-pick-same" hidden>${esc(t('Same device — pass and play'))}</p>
       <div class="desktop-pick-actions">
-        <button type="button" id="desktopPickSkip">Skip — pass and play</button>
-        <button type="button" id="desktopPickBack">Back <kbd>Esc</kbd></button>
+        <button type="button" id="desktopPickSkip">${esc(t('Skip — pass and play'))}</button>
+        <button type="button" id="desktopPickBack">${esc(t('Back'))} <kbd>Esc</kbd></button>
       </div></div>`;
     document.body.appendChild(el);
     pick = { el, start, stage: 0, cand: null, onKey: pickKey };
@@ -688,11 +730,11 @@
       card.classList.toggle('is-set', !!device && i !== pick.stage);
       card.querySelector('.desktop-pick-device').innerHTML = device
         ? `${deviceIcon(device)}<span class="desktop-pick-device-name">${esc(deviceName(device))}</span>`
-        : `<span class="desktop-pick-blank"></span><span class="desktop-pick-device-name">Not chosen</span>`;
-      card.querySelector('.desktop-pick-prompt').textContent = i !== pick.stage ? (seats[i] ? 'Ready' : '')
-        : !pick.cand ? `${SEAT_NAMES[i]}: press any button on your controller, or a key / click`
-        : pick.cand.kind === 'kbm' ? 'Click or press Enter to confirm'
-        : `Press ${(BRAND_KEYS[pick.cand.brand] || BRAND_KEYS.generic).bottom} to confirm`;
+        : `<span class="desktop-pick-blank"></span><span class="desktop-pick-device-name">${esc(t('Not chosen'))}</span>`;
+      card.querySelector('.desktop-pick-prompt').textContent = i !== pick.stage ? (seats[i] ? t('Ready') : '')
+        : !pick.cand ? tf('{colour}: press any button on your controller, or a key / click', {colour: t(SEAT_NAMES[i])})
+        : pick.cand.kind === 'kbm' ? t('Click or press Enter to confirm')
+        : tf('Press {button} to confirm', {button: (BRAND_KEYS[pick.cand.brand] || BRAND_KEYS.generic).bottom});
     }
     pick.el.querySelector('.desktop-pick-same').hidden = !(pick.stage === 1 && sameDevice(seats[0], pick.cand));
   }
@@ -747,26 +789,31 @@
     saveViewSplit();
   }
   function confirmLeave() {
-    showModal('Leave this match?', '', [
-      {label:'Keep playing',onClick:() => focusBoard()},
-      {label:'Leave match',onClick:backToMenu},
+    showModal(t('Leave this match?'), '', [
+      {label:t('Keep playing'),onClick:() => focusBoard()},
+      {label:t('Leave match'),onClick:backToMenu},
     ], false, {dismiss:true});
   }
   function openSettings() {
     const fullscreen = window.tauSteam?.setFullscreen;
-    showModal('Settings', `<label class="desktop-setting desktop-volume">Sound <output id="desktopVolumeValue">${userVol}%</output><input id="desktopVolume" aria-label="Sound volume" type="range" min="0" max="200" step="5" value="${userVol}"></label>
-      <label class="desktop-setting">Mute<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
-      <label class="desktop-setting">Board<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${b.name}</option>`:`<option value="${b.id}" disabled>${b.name} · ${unlockText(b.id)}</option>`).join('')}</select></label>
+    showModal(t('Settings'), `<label class="desktop-setting desktop-volume">${esc(t('Sound'))} <output id="desktopVolumeValue">${userVol}%</output><input id="desktopVolume" aria-label="${esc(t('Sound volume'))}" type="range" min="0" max="200" step="5" value="${userVol}"></label>
+      <label class="desktop-setting">${esc(t('Mute'))}<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
+      <label class="desktop-setting">${esc(t('Board'))}<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${b.name}</option>`:`<option value="${b.id}" disabled>${b.name} · ${esc(unlockText(b.id))}</option>`).join('')}</select></label>
       ${testBoards ? '<p class="desktop-result-detail">All boards are open for testing. Type <b>ALLBOARDS</b> on the main menu to restore locks.</p>' : ''}
-      <label class="desktop-setting">Graphics<select id="desktopQuality"><option value="balanced">Balanced</option><option value="high">High</option><option value="ultra">Ultra · ray tracing</option></select></label>
+      <label class="desktop-setting">${esc(t('Graphics'))}<select id="desktopQuality"><option value="balanced">${esc(t('Balanced'))}</option><option value="high">${esc(t('High'))}</option><option value="ultra">${esc(t('Ultra · ray tracing'))}</option></select></label>
       <p class="desktop-controls-note" id="desktopQualityNote" style="margin:0"></p>
-      <label class="desktop-setting">Invert camera Y<input id="desktopInvertY" type="checkbox" ${settings.invertCamY?'checked':''}></label>
-      <label class="desktop-setting">Reduce camera motion<input id="desktopMotion" type="checkbox" ${settings.reducedMotion?'checked':''}></label>
-      <label class="desktop-setting">Controller vibration<input id="desktopHaptics" type="checkbox" ${settings.haptics?'checked':''}></label>
-      ${fullscreen ? '<label class="desktop-setting">Fullscreen<input id="desktopFullscreen" type="checkbox"></label>' : ''}
+      <label class="desktop-setting">${esc(t('Language'))}<select id="desktopLanguage" aria-label="${esc(t('Language'))}">${LANG_NAMES.map(([code,label])=>`<option value="${code}">${esc(label)}</option>`).join('')}</select></label>
+      <label class="desktop-setting">${esc(t('Invert camera Y'))}<input id="desktopInvertY" type="checkbox" ${settings.invertCamY?'checked':''}></label>
+      <label class="desktop-setting">${esc(t('Reduce camera motion'))}<input id="desktopMotion" type="checkbox" ${settings.reducedMotion?'checked':''}></label>
+      <label class="desktop-setting">${esc(t('Controller vibration'))}<input id="desktopHaptics" type="checkbox" ${settings.haptics?'checked':''}></label>
+      ${fullscreen ? `<label class="desktop-setting">${esc(t('Fullscreen'))}<input id="desktopFullscreen" type="checkbox"></label>` : ''}
       <p class="desktop-controls-note" style="text-align:center">${esc(buildTagText())}</p>`,
-      [{label:'Done',onClick:() => { if(inMatch()) focusBoard(); }}], true, {dismiss:true});
+      [{label:t('Done'),onClick:() => { if(inMatch()) focusBoard(); }}], true, {dismiss:true});
     $('desktopQuality').value = settings.quality;
+    $('desktopLanguage').value = LANG;
+    // setLang repaints the page (this layer included, via onLangChange); the sheet itself is
+    // rebuilt right after so the player is not left reading the old language's Settings.
+    $('desktopLanguage').onchange = e => { setLang(e.target.value); openSettings(); };
     $('desktopBoard').value = settings.board;
     $('desktopBoard').onchange = e => {
       if (!isUnlocked(e.target.value)) { e.target.value = settings.board; return; }
@@ -803,12 +850,13 @@
       if (local) startGame(false); else startLadderLevel(level, colour);
       ownMatch = true; onlineTurnDeadline = null; focusBoard();
     };
-    const buttons = [{label:'Rematch',onClick:rematch}];
+    const buttons = [{label:t('Rematch'),onClick:rematch}];
     if (!local && G.winner===humanIdx && level+1<LADDER_N)
-      buttons.push({label:'Next level',onClick:() => { settings.level=level+2; saveSettings(); $('desktopLevel').value=String(settings.level); startMatch(); }});
-    if(replayFrames.length>15) buttons.push({label:'Watch replay',onClick:startReplay});
-    buttons.push({label:'Main menu',onClick:backToMenu});
-    const detail = local ? 'Two players · same screen' : `Level ${level+1} · You played ${colour===0?'Blue':'Red'}`;
+      buttons.push({label:t('Next level'),onClick:() => { settings.level=level+2; saveSettings(); $('desktopLevel').value=String(settings.level); startMatch(); }});
+    if(replayFrames.length>15) buttons.push({label:t('Watch replay'),onClick:startReplay});
+    buttons.push({label:t('Main menu'),onClick:backToMenu});
+    const detail = local ? t('Two players · same screen')
+      : tf('Level {n} · You played {colour}', {n: level+1, colour: colour===0?t('Blue'):t('Red')});
     showModal(title, `<span class="desktop-result-mark" aria-hidden="true"></span><p class="desktop-result-detail">${detail}</p>${bodyHtml||''}${takeUnlockHtml()}`, buttons, true, {dismiss:false});
     $('modalBox').dataset.desktopResult='true';
     return true;
@@ -1125,7 +1173,7 @@
     if (ptPhase !== 'off') return;
     if (window.TAU_PT) { ptPhase = 'ready'; return; }
     ptPhase = 'loading';
-    showToast('<p class="desktop-unlock">Ray tracing: loading…</p>');
+    showToast(`<p class="desktop-unlock">${esc(t('Ray tracing: loading…'))}</p>`);
     const s = document.createElement('script');
     s.src = PT_SRC;
     s.onload = () => { if (window.TAU_PT) ptPhase = 'ready'; else rayTraceFail(new Error('bundle loaded without TAU_PT')); };
@@ -1139,7 +1187,7 @@
     settings.rayTrace = false;
     if (settings.quality === 'ultra') settings.quality = 'high';
     if ($('desktopQuality') && $('desktopQuality').value === 'ultra') $('desktopQuality').value = 'high';
-    showToast('<p class="desktop-unlock">Ray tracing could not start on this GPU.</p>');
+    showToast(`<p class="desktop-unlock">${esc(t('Ray tracing could not start on this GPU.'))}</p>`);
   }
   function rayTraceFail(err) {
     console.warn('ray tracing unavailable', err);
@@ -1695,9 +1743,7 @@
   addEventListener('keyup',e=>{if(e.key===settings.keys.swingLeft)heldLeft=false;if(e.key===settings.keys.swingRight)heldRight=false;});
   addEventListener('blur',()=>{heldLeft=heldRight=false;if(inMatch()&&!G.over&&!dialogOpen()&&!onlineMatch&&!$('htpFull'))openPause();});
   $('view3d').tabIndex=0;
-  $('view3d').setAttribute('aria-label','Game board. Click a foot to pin it, then drag another foot to swing. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.');
   canvas.tabIndex=0;
-  canvas.setAttribute('aria-label','Overhead game board. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.');
   $('modalBox').setAttribute('role','dialog');
   $('modalBox').setAttribute('aria-modal','true');
   $('modalBox').setAttribute('aria-labelledby','modalTitle');
@@ -1740,6 +1786,8 @@
     onMatchStart(){ ownMatch=false; paused=false; heldLeft=heldRight=false; lastActive=-1; lastCrossings=0;
       focusBoard(); resize(); requestAnimationFrame(()=>resize()); },
     onMenu(){ ownMatch=false; paused=false; heldLeft=heldRight=false; camManualSet=false; resize(); $('desktopPlay').focus({preventScroll:true}); },
+    // index.html's setLang, after a switch from the corner picker or this layer's own Settings row.
+    onLangChange(){ relabelHome(); resize(); },
     onModalShown(){
       delete $('modalBox').dataset.desktopResult;
       previousFocus=document.activeElement;
@@ -1749,6 +1797,7 @@
     },
     onModalHidden(){setPaused(false);$('modalBox').classList.remove('desktop-sheet');if(previousFocus?.isConnected)previousFocus.focus({preventScroll:true});previousFocus=null;},
   };
+  relabelHome();
   saveSettings(); applyTheme(); resize();
   if(settings.rayTrace) rayTraceLoad();
   if(!inMatch())$('desktopPlay').focus({preventScroll:true});

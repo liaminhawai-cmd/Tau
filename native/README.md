@@ -430,6 +430,41 @@ delivers its click to whatever is under the lift point -- the modal backdrop
 -- which counted as tap-outside. Tap-outside now requires the press to have
 started on the backdrop. A mouse never hit this.
 
+### Language
+
+The premium presentation keeps no strings of its own. Every label a player
+reads goes through index.html's `t()` / `tf()`, against the one set of
+translation tables in `I18N` there (ja, zh-Hans, zh-Hant, ko, de, fr, es, pt,
+ru, vi), and the language itself is index.html's `LANG` -- read once from
+`localStorage.tauLang`, the same key the web app's corner globe writes. A
+packaged build has no globe (the desktop CSS hides it), so Settings carries a
+**Language** row next to Graphics, listing `LANG_NAMES` in each language's own
+name. Choosing one calls `setLang(code)`: it stores `tauLang`, re-points
+`LANG`, repaints the labels the page painted for itself, and calls
+`tauDesktop.onLangChange()`. Nothing reloads -- a packaged build would drop its
+baked board art and its GL context to do that.
+
+Most of this layer needs no help: the Settings and Controls sheets, the match
+and result modals and the "choose your controls" screen are written as they
+open, so they open in whatever language is current (the Settings sheet
+re-opens itself after a switch so the row you just used is in the new language
+too). What does need help is anything painted ONCE at load and kept: the home
+menu, its opponent list, the toolbar and the board's aria-labels. Those live in
+`relabelHome()`, which runs at startup and again on every switch.
+
+To add a string: wrap it in `t('…')` (or `tf('…', {…})` where a value goes
+inside -- never string concatenation), and add its English source as a key to
+**every** table in index.html. A string held in a const table of sources
+(`KEY_ACTIONS`, `SEAT_NAMES`) stays English where it is defined and goes
+through `t()` where it is used. The desktop test *every string the premium
+layer translates has a translation* reads both shapes out of
+`desktop/presentation.js`, checks each against the tables, and fails when a new
+literal has no entry anywhere. Left untranslated on purpose: board finish names
+(Walnut, Noir), controller makers' own button names (Xbox's A/B, PlayStation's
+✕/○), key names (Esc, F1), the build tag and the ALLBOARDS testing messages.
+Keep a new label short enough to survive a native `<select>`, which truncates
+rather than wraps -- the Graphics row is the tight one.
+
 ### Ray tracing (Ultra)
 
 An optional Settings checkbox, off by default and desktop-presentation only
