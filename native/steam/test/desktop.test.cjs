@@ -1714,6 +1714,30 @@ test('the loss camera follows the piece down instead of framing the board it lef
   assert.deepEqual(g.errors,[]);
 });
 
+test('a pad that sends directions on a hat or a stick still drives the menus and picks a foot',async t=>{
+  const g=await game();t.after(g.close);
+  // A DirectInput pad: empty mapping, no D-pad buttons at all, hat on axis 9, stick on 0/1.
+  const pad={id:'Generic USB Joystick',index:0,connected:true,mapping:'',
+    axes:[0,0,0,0,0,0,0,0,0,3.28],buttons:Array.from({length:12},()=>({pressed:false,value:0}))};
+  g.w.navigator.getGamepads=()=>[pad];
+  const hat=(v)=>{pad.axes[9]=v;g.tick();pad.axes[9]=3.28;g.tick();};   // 3.28 is the centre value
+  const focus=()=>g.w.document.activeElement && g.w.document.activeElement.id;
+  g.tick();
+  const first=focus();
+  hat(0.142);                                    // down
+  assert.notEqual(focus(),first,'a hat step moves the menu focus');
+  const second=focus();
+  pad.axes[1]=1;g.tick();pad.axes[1]=0;g.tick();  // left stick down
+  assert.notEqual(focus(),second,'and so does the left stick');
+  localMatch(g);
+  assert.equal(g.read('v3HoverIdx'),0);
+  hat(-0.428);                                   // right
+  assert.equal(g.read('v3HoverIdx'),1,'the hat changes which foot is chosen, visibly, with no button press');
+  pad.axes[0]=-1;g.tick();pad.axes[0]=0;g.tick(); // stick left
+  assert.equal(g.read('v3HoverIdx'),0,'and so does the stick');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('a plain web/PWA load (no ?steam, no Capacitor) stays off the desktop presentation',async t=>{
   const g=await game('');t.after(g.close);
   assert.equal(g.read('window.TAU_DESKTOP'),false);

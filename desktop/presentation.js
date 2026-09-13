@@ -222,7 +222,36 @@
   }
 
   let paused = false, pauseAt = 0, ownMatch = false, previousFocus = null;
-  let currentPad = null, padList = [], padPrev = [], padAxisLatch = false, padFocus = 0;
+  let currentPad = null, padList = [], padPrev = [], padFocus = 0;
+  // A direction from a pad, however that pad expresses one. The standard mapping puts the D-pad on
+  // buttons 12-15, but a controller the browser has no table for (DirectInput, adapters) reports an
+  // empty mapping and puts its D-pad on a HAT AXIS instead, and its sticks wherever it likes. Such a
+  // pad answered nothing at all: no menu navigation, and no way to change which foot is chosen --
+  // which is why the only way to find out what was selected was to press A and see what got pinned.
+  // Buttons, stick and hat all feed the same answer here.
+  const PAD_DEAD = 0.55;
+  function padHat(pad) {
+    // The 8-way hat DirectInput pads report as one axis: -1 up, stepping clockwise in sevenths,
+    // with a centre value outside [-1,1] (commonly 3.28) or exactly 0 on some.
+    for (let i = 4; i < pad.axes.length; i++) {
+      const v = pad.axes[i];
+      if (typeof v !== 'number' || v === 0 || v < -1.05 || v > 1.05) continue;
+      const step = (v + 1) * 3.5;
+      if (Math.abs(step - Math.round(step)) > 0.12) continue;   // a real stick lands between steps
+      const k = Math.round(step) % 8;
+      return { x: [0,1,1,1,0,-1,-1,-1][k], y: [-1,-1,0,1,1,1,0,-1][k] };
+    }
+    return null;
+  }
+  function padDir(pad) {
+    const btn = i => !!pad.buttons[i]?.pressed;
+    const hat = padHat(pad);
+    const ax = pad.axes[0] || 0, ay = pad.axes[1] || 0;
+    return {
+      x: btn(15) ? 1 : btn(14) ? -1 : (hat && hat.x) || (Math.abs(ax) > PAD_DEAD ? Math.sign(ax) : 0),
+      y: btn(13) ? 1 : btn(12) ? -1 : (hat && hat.y) || (Math.abs(ay) > PAD_DEAD ? Math.sign(ay) : 0),
+    };
+  }
   // Who holds what in a local 1v1, one device per colour, as answered on the "choose your controls"
   // screen: {kind:'pad', index, brand} or {kind:'kbm'}. Empty in every other kind of match.
   let seats = [null, null];
@@ -248,10 +277,9 @@
   // menu belongs to whoever reaches for a controller, a piece belongs to the colour whose turn it is.
   function padMenu(pad, prev, context) {
     const down=i=>!!pad.buttons[i]?.pressed, pressed=i=>down(i)&&!prev[i];
-    const els=focusable(context), axis=pad.axes[1]||0;
-    const move=(pressed(13)?1:pressed(12)?-1:(!padAxisLatch&&Math.abs(axis)>.6?Math.sign(axis):0));
+    const els=focusable(context), dir=padDir(pad), was=prev.dir||{x:0,y:0};
+    const move=dir.y && dir.y!==was.y ? dir.y : 0;   // one step per push, however the pad sends it
     if(move && els.length){const current=els.indexOf(document.activeElement);padFocus=(Math.max(0,current)+move+els.length)%els.length;els[padFocus].focus();}
-    if(Math.abs(axis)>.4) padAxisLatch=true; else if(pad===padList[padList.length-1]) padAxisLatch=false;
     const el=document.activeElement;
     if(el?.tagName==='SELECT' && (pressed(14)||pressed(15))){el.selectedIndex=Math.max(0,Math.min(el.options.length-1,el.selectedIndex+(pressed(15)?1:-1)));el.dispatchEvent(new Event('change',{bubbles:true}));}
     if(el?.type==='range' && (pressed(14)||pressed(15))){el.value=String(Math.max(Number(el.min),Math.min(Number(el.max),Number(el.value)+(pressed(15)?1:-1)*Number(el.step||1))));el.dispatchEvent(new Event('input',{bubbles:true}));}
@@ -1650,7 +1678,7 @@
     // what the readout warns about, but a pad that mostly works beats a pad that does nothing.
     padList=Array.from(navigator.getGamepads?.() || []).filter(p=>p?.connected);
     currentPad=padList[0] || null;
-    if(pick){pollPick();padPrev=padList.map(p=>p.buttons.map(b=>b.pressed));tickEffects(dt);return;}
+    if(pick){pollPick();padPrev=padList.map(p=>{ const a=p.buttons.map(b=>b.pressed); a.dir=padDir(p); return a; });tickEffects(dt);return;}
     if(padBrandShown && $('desktopPadDiagram') && padBrand()!==padBrandShown) drawPad();   // the sheet follows the pad that is plugged in
     if($('desktopPadSeen')) drawPadSeen();
     if($('desktopQualityNote')) drawQualityNote();
@@ -1682,8 +1710,8 @@
         if(pressed(9))openPause();
         // The D-pad picks the foot in EVERY scheme — one thing that never moves, so the sticks and
         // triggers are free to mean different things per scheme without the choice of foot moving too.
-        if(pressed(14))chooseFoot(chosenFoot-1);
-        if(pressed(15))chooseFoot(chosenFoot+1);
+        const dir=padDir(act), wasX=(prev.dir||{}).x||0;
+        if(dir.x && dir.x!==wasX) chooseFoot(chosenFoot+dir.x);
         if(pressed(0))pinOrCommit();
         if(pressed(1))cancelSwing();
         if(pressed(3))openControls();
@@ -1710,10 +1738,10 @@
         if(canPlay())v3HoverIdx=G.pinned===null?chosenFoot:G.pinned;
       }
       inputDevice='kbm';
-    } else if(!padList.length) padAxisLatch=false;
+    }
     // Every pad's buttons are remembered, not just the acting one: otherwise the pad that is waiting
     // for its turn would fire everything it was holding the moment the turn passed to it.
-    padPrev=padList.map(p=>p.buttons.map(b=>b.pressed));
+    padPrev=padList.map(p=>{ const a=p.buttons.map(b=>b.pressed); a.dir=padDir(p); return a; });
     if(heldLeft||heldRight)swing((heldRight?1:0)-(heldLeft?1:0),dt);
     tickEffects(dt);
   }

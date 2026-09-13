@@ -910,3 +910,14 @@ registers as its own tap rather than being swallowed. A tumble's taps are no
 longer monotonically quieter -- a leg can slap harder than the tap before it,
 which is what a real tumble sounds like -- so the test asserts the arrival is
 loudest and it dies away, not that each is softer than the last.
+
+A pad's DIRECTION is read from wherever that pad sends one (`padDir`). The
+standard mapping puts the D-pad on buttons 12-15, but a controller the browser
+has no table for -- DirectInput, adapters, anything unusual -- reports an empty
+mapping and sends its D-pad as an 8-way HAT on a single axis (-1 up, stepping in
+sevenths, centre outside [-1,1]) with the sticks wherever it likes. Reading only
+buttons 12-15 meant such a pad answered nothing: no menu navigation, and no way
+to change the chosen foot -- so the only way to find out which foot was selected
+was to press A and see what got pinned. Buttons, left stick and hat now feed one
+answer, edge-detected per pad, and the chosen foot highlights as you move across
+it instead of only revealing itself when you commit.
