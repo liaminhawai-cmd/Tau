@@ -1992,3 +1992,78 @@ test('with ray tracing off the desktop draws its frames exactly as before',async
   assert.equal(g.w.document.querySelectorAll('script[src="vendor/pathtracer/pathtracer.global.js"]').length,0);
   assert.deepEqual(g.errors,[]);
 });
+
+// ---- Language: the premium layer speaks whatever the web app speaks ----
+
+test('Settings offers the languages in their own names and applies one straight away',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopSettings').click();g.tick();
+  const sel=g.$('desktopLanguage');
+  assert.ok(sel,'the Settings sheet has a Language row');
+  assert.equal(sel.value,'en','English by default, the same as the web app');
+  assert.deepEqual([...sel.options].map(o=>o.value),['en','ja','zh','zht','ko','de','fr','es','pt','ru','vi'],
+    'the same list the web #langMenu offers');
+  assert.deepEqual([...sel.options].map(o=>o.textContent).slice(0,3),['English','日本語','简体中文'],'each in its own name');
+  sel.value='de';sel.dispatchEvent(new g.w.Event('change'));g.tick();
+  assert.equal(g.$('modalTitle').textContent,'Einstellungen','the open sheet is rebuilt in the new language');
+  assert.equal(g.$('desktopLanguage').value,'de','with the choice still showing');
+  assert.equal(g.$('desktopPlay').textContent,'Spielen','and the menu behind it is re-labelled');
+  assert.equal(g.$('desktopSettings').textContent,'Einstellungen');
+  assert.equal(g.$('desktopLevel').options[3].textContent,'Level 4','including the opponent list, built once at load');
+  assert.equal(g.w.localStorage.getItem('tauLang'),'de','stored under the web app\'s own key');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the chosen language reaches the screens built as they open',async t=>{
+  const g=await game('?steam=1&premium=1',{tauLang:'ja'});t.after(g.close);
+  assert.equal(g.$('desktopPlay').textContent,'プレイ','a stored language is there from the first paint');
+  assert.deepEqual([...g.w.document.querySelectorAll('.desktop-links button')].map(b=>b.textContent),
+    ['1v1','観戦','遊び方','ランキング']);
+  g.$('desktopControls').click();g.tick();
+  assert.equal(g.$('modalTitle').textContent,'操作方法','the Controls sheet');
+  assert.deepEqual([...g.w.document.querySelectorAll('.desktop-controls-head')].map(h=>h.textContent),
+    ['キーボードとマウス','コントローラー']);
+  assert.match(g.$('modalBody').innerHTML,/ターン終了/,'the key caps wear translated actions');
+  assert.match(g.$('desktopPadSeen').textContent,/^コントローラーが検出されていません/,'and the live pad readout');
+  g.$('modalBtns').firstElementChild.click();g.tick();
+  g.read('tauDesktop.startMatch(true)');g.tick();
+  const pick=g.w.document.querySelector('.desktop-pick');
+  assert.equal(pick.querySelector('h2').textContent,'操作デバイスを選ぶ','the device-pick screen');
+  assert.equal(pick.querySelector('.desktop-pick-colour').textContent,'青');
+  assert.match(pick.querySelector('.desktop-pick-prompt').textContent,/^青: /,'its prompt names the colour in the same language');
+  assert.equal(g.$('desktopPickSkip').textContent,'スキップ — 交代でプレイ');
+  g.$('desktopPickSkip').click();g.tick();
+  g.$('desktopPause').click();g.tick();
+  assert.equal(g.$('modalTitle').textContent,'対局メニュー','and the pause menu');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the language outlives the app, through the key the web app already uses',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopSettings').click();g.tick();
+  const sel=g.$('desktopLanguage');sel.value='ja';sel.dispatchEvent(new g.w.Event('change'));g.tick();
+  const restarted=await game('?steam=1&premium=1',{tauLang:g.w.localStorage.getItem('tauLang')});
+  t.after(restarted.close);
+  assert.equal(restarted.read('LANG'),'ja');
+  assert.equal(restarted.$('desktopPlay').textContent,'プレイ','a fresh launch comes up in the language that was chosen');
+  assert.deepEqual(restarted.errors,[]);
+});
+
+test('every string the premium layer translates has a translation',async t=>{
+  const src=fs.readFileSync(path.join(root,'desktop/presentation.js'),'utf8');
+  const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+  // The tables, straight out of the page: { ja: {...}, zh: {...}, ... }, English being the sources.
+  const from=html.indexOf('const I18N = {'), to=html.indexOf('\n};\n',from);
+  const I18N=eval(html.slice(from,to+3)+'\nI18N');
+  const known=new Set(Object.values(I18N).flatMap(table=>Object.keys(table)));
+  // t('…') and tf('…', …) with a literal, plus the two tables of source strings the layer holds
+  // and hands to t() by variable (the key bindings' action names, the seat colours).
+  const used=new Set();
+  for (const m of src.matchAll(/(?<![\w$.])tf?\(\s*'((?:[^'\\]|\\.)*)'/g)) used.add(m[1].replace(/\\(.)/g,'$1'));
+  const grab=(block,each)=>{for (const m of src.match(block)[1].matchAll(each)) used.add(m[1]);};
+  grab(/const KEY_ACTIONS = \[([\s\S]*?)\n {2}\];/,/\['\w+','([^']+)'\]/g);
+  grab(/const SEAT_NAMES = \[([^\]]*)\]/,/'([^']+)'/g);
+  const missing=[...used].filter(s=>!known.has(s));
+  assert.deepEqual(missing,[],'these premium strings reach t() with no entry in any language table');
+  assert.ok(used.size>80,'the premium layer routes its text through t()');
+});

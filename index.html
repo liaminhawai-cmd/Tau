@@ -877,13 +877,16 @@ if (window.TAU_DESKTOP) {
 
 // ---------- i18n ----------
 // Device language is detected once and can be overridden from the language corner menu (stored in
-// localStorage; switching reloads). Chinese splits on script: zh-TW/HK/MO and zh-Hant* get
+// localStorage; switching repaints the page live, see setLang). Chinese splits on script: zh-TW/HK/MO and zh-Hant* get
 // Traditional (Taiwan-flavoured vocabulary), other zh* gets Simplified — mismatching script reads
 // as "the other side's" localisation to both audiences, so the split matters more than the words.
 // t() falls back to the English source string for any missing key, so untranslated corners of the
 // UI degrade to English instead of breaking.
 const LANGS = ['en','ja','zh','zht','ko','de','fr','es','pt','ru','vi'];
-const LANG = (() => {
+// Every language in its own name, for the corner picker and the desktop build's Settings sheet.
+const LANG_NAMES = [['en','English'],['ja','日本語'],['zh','简体中文'],['zht','繁體中文'],['ko','한국어'],
+    ['de','Deutsch'],['fr','Français'],['es','Español'],['pt','Português'],['ru','Русский'],['vi','Tiếng Việt']];
+let LANG = (() => {
     try { const s = localStorage.getItem('tauLang'); if (LANGS.includes(s)) return s; } catch(e) {}
     const l = (navigator.language || 'en').toLowerCase();
     if (l.startsWith('zh')) return /tw|hk|mo|hant/.test(l) ? 'zht' : 'zh';
@@ -892,6 +895,17 @@ const LANG = (() => {
 })();
 function t(str) { const d = I18N[LANG]; return (d && d[str]) || str; }
 function tf(str, vars) { let r = t(str); for (const k in vars) r = r.split('{'+k+'}').join(vars[k]); return r; }
+// The one way the language changes, the corner picker and the desktop build's Settings sheet
+// alike: remember it, re-point LANG, and repaint the labels the page painted for itself. Nothing
+// reloads -- a packaged desktop build would drop its baked board art and its scene to do that --
+// and every other screen is written from t() as it opens, so it comes up in the new language.
+function setLang(code) {
+    if (!LANGS.includes(code) || code === LANG) return;
+    try { localStorage.setItem('tauLang', code); } catch(e) {}
+    LANG = code;
+    applyI18nStatic();
+    if (window.tauDesktop) window.tauDesktop.onLangChange();
+}
 // ---------- Bopomofo (Zhuyin): ruby annotations for the Traditional Chinese UI, off by default,
 // toggle at #bopomofoToggle. Curated per-character (not a general converter) -- a character missing
 // from the map just renders plain, never a guessed reading, since this is meant to teach a correct
@@ -994,7 +1008,38 @@ ja: {
 "Sign up to choose your own name. You keep your current rating.":"登録すると名前を選べます — レートは引き継がれます。",
 "Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"このアプリ内ではGoogleログインが使えません。共有メニューから「Safari/Chromeで開く」を選ぶか、下のユーザー名とパスワードをご利用ください。",
 "Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Googleログインには通常のブラウザが必要です（共有 → Safari/Chromeで開く）。このアプリ内ではユーザー名とパスワードをご利用ください。",
-"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Tauをインストール：<b>共有</b> →<b>ホーム画面に追加</b>。"
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Tauをインストール：<b>共有</b> →<b>ホーム画面に追加</b>。",
+"win 1 game":"1勝する","win {n} games":"{n}勝する","play {n} games":"{n}局プレイする","beat ladder level {n}":"レベル{n}をクリアする","beat the top ladder level":"最高レベルをクリアする",
+"New board unlocked: {name}":"新しい盤を解放: {name}","New boards unlocked: {names}":"新しい盤を解放: {names}",
+"Main menu":"メインメニュー","Play":"プレイ","Opponent":"対戦相手","Opponent level":"対戦相手のレベル","You play":"あなたの色","Your colour":"あなたの色","Blue · first":"青 · 先手","Red · second":"赤 · 後手",
+"Other ways to play":"その他の遊び方","Settings":"設定","Controls":"操作方法","Lab":"ラボ","Quit":"終了","Open pause menu":"一時停止メニューを開く",
+"Game board. Click a foot to pin it, then drag another foot to swing. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"ゲーム盤。足をクリックして軸に固定し、別の足をドラッグしてスイング。キーボード: 1〜3で軸足、矢印キーでスイング、Enterでターン終了。",
+"Overhead game board. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"真上から見たゲーム盤。キーボード: 1〜3で軸足、矢印キーでスイング、Enterでターン終了。",
+"Match menu":"対局メニュー","Continue":"続ける","Leave match":"対局を離れる","Leave this match?":"この対局を離れますか？","Keep playing":"続けてプレイ",
+"Keyboard controls":"キーボード操作","menu":"メニュー","controls":"操作方法","foot 1":"足1","foot 2":"足2","foot 3":"足3","cancel swing":"スイング取消","end turn":"ターン終了","flat board size":"平面盤のサイズ","swing ↺":"スイング ↺",
+"swing ↻":"スイング ↻","Pin foot 1":"足1を軸にする","Pin foot 2":"足2を軸にする","Pin foot 3":"足3を軸にする","Swing anticlockwise":"反時計回りにスイング","Swing clockwise":"時計回りにスイング","Pin · end your turn":"軸足 · ターン終了",
+"Cancel the swing":"スイングを取り消す","Shrink the flat board":"平面盤を小さくする","Grow the flat board":"平面盤を大きくする",
+"unused":"未使用","smaller board":"盤を小さく","bigger board":"盤を大きく","left stick":"左スティック","right stick":"右スティック","right stick ← →":"右スティック ← →","camera":"カメラ","D-pad ← →":"十字キー ← →","foot":"足",
+"swing":"スイング","pin · end turn":"軸足 · ターン終了","match menu":"対局メニュー","touch pad":"タッチパッド","Controller":"コントローラー","{brand} controls":"{brand}の操作","{brand} controller":"{brand}コントローラー",
+"Auto · {brand}":"自動 · {brand}","{brand} (pad {n})":"{brand}（パッド{n}）","Connected: ":"接続中: "," — non-standard mapping, some buttons may be in odd places":" — 非標準マッピングです。ボタンの位置がずれている場合があります",
+"No controller detected. Press a button on it with this window in front; some pads only appear once they are woken up. If a browser gamepad tester sees it and Tau does not, tell us.":"コントローラーが検出されていません。このウィンドウを前面にしてボタンを押してください。目を覚まさないと現れないパッドもあります。ブラウザのゲームパッドテスターでは見えるのにTauで見えない場合はお知らせください。",
+"Triggers: the harder you pull, the faster it turns.":"トリガー: 強く引くほど速く回ります。","Right stick: the further you push, the faster it turns.":"右スティック: 大きく倒すほど速く回ります。",
+"Touch":"タッチ",
+"Tap a foot to pin it, then drag another foot to swing. Drag the 3D view to look around. Drag the flat board's rim knob to resize it.":"足をタップして軸に固定し、別の足をドラッグしてスイング。3Dビューをドラッグすると視点が回ります。平面盤の縁のつまみをドラッグするとサイズを変えられます。",
+"Keyboard and mouse":"キーボードとマウス","Keyboard (if one is connected)":"キーボード（接続している場合）",
+"Click a foot to pin it, then drag another foot to swing. Right-drag to look around. Scroll the flat board, or drag its rim knob, to resize it.":"足をクリックして軸に固定し、別の足をドラッグしてスイング。右ドラッグで視点が回ります。平面盤はスクロールか縁のつまみのドラッグでサイズを変えられます。",
+"Click a key to change it, then press the new one. Esc and F1 stay as they are.":"キーをクリックしてから新しいキーを押すと変更できます。EscとF1は固定です。",
+"Controllers are remapped in Steam’s own controller settings.":"コントローラーの割り当て変更はSteam側のコントローラー設定で行います。","Reset keys":"キー設定をリセット","Layout":"配列","Controller layout":"コントローラーの配列","Auto":"自動",
+"Swing with":"スイング操作","Controller scheme":"コントローラーの操作方式","Triggers":"トリガー","Right stick":"右スティック","Done":"完了",
+"Choose your controls":"操作デバイスを選ぶ","One device each, or the same one twice to pass and play.":"ひとり1台ずつ、または同じ1台を2回選んで交代プレイ。","Same device — pass and play":"同じデバイス — 交代でプレイ",
+"Skip — pass and play":"スキップ — 交代でプレイ","Back":"戻る","Not chosen":"未選択","Ready":"準備完了","{colour}: press any button on your controller, or a key / click":"{colour}: コントローラーのボタン、キー、またはクリックで選択",
+"Click or press Enter to confirm":"クリックまたはEnterで決定","Press {button} to confirm":"{button}を押して決定","Keyboard & mouse":"キーボードとマウス",
+"Sound":"サウンド","Sound volume":"音量","Mute":"ミュート","Board":"盤","Graphics":"グラフィック","Balanced":"バランス","High":"高","Ultra · ray tracing":"ウルトラ · レイトレ","Language":"言語","Invert camera Y":"カメラY軸を反転",
+"Reduce camera motion":"カメラの動きを抑える","Controller vibration":"コントローラーの振動","Fullscreen":"フルスクリーン","Ray tracing: loading…":"レイトレーシング: 読み込み中…","Ray tracing: starting…":"レイトレーシング: 起動中…",
+"Ray tracing: refining the still frame.":"レイトレーシング: 静止画を精細化しています。","Ray tracing: ready — it takes over whenever the board holds still.":"レイトレーシング: 準備完了 — 盤が静止すると切り替わります。",
+"Ray tracing could not start on this GPU — drawing normally.":"このGPUではレイトレーシングを開始できませんでした — 通常描画に戻します。","Ray tracing could not start on this GPU.":"このGPUではレイトレーシングを開始できませんでした。",
+"Two players · same screen":"2人プレイ · 同じ画面","Level {n} · You played {colour}":"レベル{n} · あなたは{colour}",
+"username or email":"ユーザー名またはメール"
 },
 zh: {
 "Local 1v1":"本地对战","Online 1v1":"在线对战","vs AI":"人机对战","How to play":"玩法说明","Leaderboard":"排行榜","Watch":"观战",
@@ -1046,7 +1091,38 @@ zh: {
 "Sign up to choose your own name. You keep your current rating.":"注册后可自选用户名——当前等级分会保留。",
 "Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"应用内浏览器无法使用Google登录。请通过分享菜单选择「在Safari/Chrome中打开」，或使用下方的用户名和密码。",
 "Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Google登录需要真正的浏览器（分享 → 在Safari/Chrome中打开）。在此应用内请使用下方的用户名和密码。",
-"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"安装Tau：点按<b>分享</b>，再选<b>添加到主屏幕</b>。"
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"安装Tau：点按<b>分享</b>，再选<b>添加到主屏幕</b>。",
+"win 1 game":"赢1局","win {n} games":"赢{n}局","play {n} games":"对局{n}次","beat ladder level {n}":"通关第{n}关","beat the top ladder level":"通关最高关卡","New board unlocked: {name}":"解锁新棋盘：{name}",
+"New boards unlocked: {names}":"解锁新棋盘：{names}",
+"Main menu":"主菜单","Play":"开始游戏","Opponent":"对手","Opponent level":"对手等级","You play":"你执","Your colour":"你的颜色","Blue · first":"蓝 · 先手","Red · second":"红 · 后手","Other ways to play":"其他玩法",
+"Settings":"设置","Controls":"操作","Lab":"实验室","Quit":"退出","Open pause menu":"打开暂停菜单",
+"Game board. Click a foot to pin it, then drag another foot to swing. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"棋盘。点击一只脚将其固定为轴心，再拖动另一只脚摆动。键盘：1至3固定脚，方向键摆动，回车结束回合。",
+"Overhead game board. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"俯视棋盘。键盘：1至3固定脚，方向键摆动，回车结束回合。",
+"Match menu":"对局菜单","Continue":"继续","Leave match":"离开对局","Leave this match?":"要离开这局吗？","Keep playing":"继续对局",
+"Keyboard controls":"键盘操作","menu":"菜单","controls":"操作","foot 1":"脚1","foot 2":"脚2","foot 3":"脚3","cancel swing":"取消摆动","end turn":"结束回合","flat board size":"平面棋盘大小","swing ↺":"摆动 ↺","swing ↻":"摆动 ↻",
+"Pin foot 1":"固定脚1","Pin foot 2":"固定脚2","Pin foot 3":"固定脚3","Swing anticlockwise":"逆时针摆动","Swing clockwise":"顺时针摆动","Pin · end your turn":"固定 · 结束回合","Cancel the swing":"取消这次摆动",
+"Shrink the flat board":"缩小平面棋盘","Grow the flat board":"放大平面棋盘",
+"unused":"未使用","smaller board":"缩小棋盘","bigger board":"放大棋盘","left stick":"左摇杆","right stick":"右摇杆","right stick ← →":"右摇杆 ← →","camera":"镜头","D-pad ← →":"方向键 ← →","foot":"脚","swing":"摆动",
+"pin · end turn":"固定 · 结束回合","match menu":"对局菜单","touch pad":"触控板","Controller":"手柄","{brand} controls":"{brand}操作","{brand} controller":"{brand}手柄","Auto · {brand}":"自动 · {brand}",
+"{brand} (pad {n})":"{brand}（手柄{n}）","Connected: ":"已连接："," — non-standard mapping, some buttons may be in odd places":" — 非标准映射，部分按键位置可能不对",
+"No controller detected. Press a button on it with this window in front; some pads only appear once they are woken up. If a browser gamepad tester sees it and Tau does not, tell us.":"未检测到手柄。请让本窗口保持在最前面并按一下手柄上的按键；有些手柄要先唤醒才会出现。如果浏览器的手柄测试页能看到它而Tau看不到，请告诉我们。",
+"Triggers: the harder you pull, the faster it turns.":"扳机：拉得越用力，转得越快。","Right stick: the further you push, the faster it turns.":"右摇杆：推得越远，转得越快。",
+"Touch":"触控",
+"Tap a foot to pin it, then drag another foot to swing. Drag the 3D view to look around. Drag the flat board's rim knob to resize it.":"点按一只脚将其固定为轴心，再拖动另一只脚摆动。拖动3D视图可环视。拖动平面棋盘边缘的把手可调整大小。",
+"Keyboard and mouse":"键盘和鼠标","Keyboard (if one is connected)":"键盘（如果已连接）",
+"Click a foot to pin it, then drag another foot to swing. Right-drag to look around. Scroll the flat board, or drag its rim knob, to resize it.":"点击一只脚将其固定为轴心，再拖动另一只脚摆动。右键拖动可环视。滚动平面棋盘或拖动其边缘把手即可调整大小。",
+"Click a key to change it, then press the new one. Esc and F1 stay as they are.":"点击某个按键，再按下新按键即可更改。Esc和F1保持不变。",
+"Controllers are remapped in Steam’s own controller settings.":"手柄按键请在Steam自身的手柄设置中重新映射。","Reset keys":"重置按键","Layout":"布局","Controller layout":"手柄布局","Auto":"自动","Swing with":"摆动方式",
+"Controller scheme":"手柄操作方案","Triggers":"扳机","Right stick":"右摇杆","Done":"完成",
+"Choose your controls":"选择你的操作设备","One device each, or the same one twice to pass and play.":"每人一个设备，或同一个设备选两次来轮流对战。","Same device — pass and play":"同一设备——轮流对战","Skip — pass and play":"跳过——轮流对战",
+"Back":"返回","Not chosen":"未选择","Ready":"已就绪","{colour}: press any button on your controller, or a key / click":"{colour}：按手柄上的任意键，或按键盘 / 点击","Click or press Enter to confirm":"点击或按回车确认",
+"Press {button} to confirm":"按{button}确认","Keyboard & mouse":"键盘和鼠标",
+"Sound":"音量","Sound volume":"音量","Mute":"静音","Board":"棋盘","Graphics":"画质","Balanced":"均衡","High":"高","Ultra · ray tracing":"超高 · 光线追踪","Language":"语言","Invert camera Y":"反转镜头Y轴",
+"Reduce camera motion":"减少镜头移动","Controller vibration":"手柄震动","Fullscreen":"全屏","Ray tracing: loading…":"光线追踪：加载中…","Ray tracing: starting…":"光线追踪：启动中…",
+"Ray tracing: refining the still frame.":"光线追踪：正在细化静止画面。","Ray tracing: ready — it takes over whenever the board holds still.":"光线追踪：已就绪——棋盘静止时自动接管。",
+"Ray tracing could not start on this GPU — drawing normally.":"此GPU无法启动光线追踪——改用常规绘制。","Ray tracing could not start on this GPU.":"此GPU无法启动光线追踪。",
+"Two players · same screen":"两人 · 同屏","Level {n} · You played {colour}":"第{n}关 · 你执{colour}",
+"username or email":"用户名或邮箱"
 },
 zht: {
 "Local 1v1":"本機對戰","Online 1v1":"線上對戰","vs AI":"人機對戰","How to play":"玩法說明","Leaderboard":"排行榜","Watch":"觀戰",
@@ -1098,7 +1174,38 @@ zht: {
 "Sign up to choose your own name. You keep your current rating.":"註冊後可自選名稱——目前的等級分會保留。",
 "Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"此應用程式內無法使用Google登入。請點分享選單選擇「在Safari/Chrome開啟」，或使用下方的帳號密碼。",
 "Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Google登入需要真正的瀏覽器（分享 → 在Safari或Chrome開啟）。在此應用程式內請使用下方的帳號密碼。",
-"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"安裝Tau：點<b>分享</b>，再選<b>加入主畫面</b>。"
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"安裝Tau：點<b>分享</b>，再選<b>加入主畫面</b>。",
+"win 1 game":"贏1局","win {n} games":"贏{n}局","play {n} games":"對局{n}次","beat ladder level {n}":"通過第{n}關","beat the top ladder level":"通過最高關卡","New board unlocked: {name}":"解鎖新棋盤：{name}",
+"New boards unlocked: {names}":"解鎖新棋盤：{names}",
+"Main menu":"主選單","Play":"開始遊戲","Opponent":"對手","Opponent level":"對手等級","You play":"你執","Your colour":"你的顏色","Blue · first":"藍 · 先手","Red · second":"紅 · 後手","Other ways to play":"其他玩法",
+"Settings":"設定","Controls":"操作","Lab":"實驗室","Quit":"離開","Open pause menu":"開啟暫停選單",
+"Game board. Click a foot to pin it, then drag another foot to swing. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"棋盤。點擊一隻腳將其固定為軸心，再拖曳另一隻腳擺動。鍵盤：1至3固定腳，方向鍵擺動，Enter結束回合。",
+"Overhead game board. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"俯視棋盤。鍵盤：1至3固定腳，方向鍵擺動，Enter結束回合。",
+"Match menu":"對局選單","Continue":"繼續","Leave match":"離開對局","Leave this match?":"要離開這局嗎？","Keep playing":"繼續對局",
+"Keyboard controls":"鍵盤操作","menu":"選單","controls":"操作","foot 1":"腳1","foot 2":"腳2","foot 3":"腳3","cancel swing":"取消擺動","end turn":"結束回合","flat board size":"平面棋盤大小","swing ↺":"擺動 ↺","swing ↻":"擺動 ↻",
+"Pin foot 1":"固定腳1","Pin foot 2":"固定腳2","Pin foot 3":"固定腳3","Swing anticlockwise":"逆時針擺動","Swing clockwise":"順時針擺動","Pin · end your turn":"固定 · 結束回合","Cancel the swing":"取消這次擺動",
+"Shrink the flat board":"縮小平面棋盤","Grow the flat board":"放大平面棋盤",
+"unused":"未使用","smaller board":"縮小棋盤","bigger board":"放大棋盤","left stick":"左搖桿","right stick":"右搖桿","right stick ← →":"右搖桿 ← →","camera":"鏡頭","D-pad ← →":"方向鍵 ← →","foot":"腳","swing":"擺動",
+"pin · end turn":"固定 · 結束回合","match menu":"對局選單","touch pad":"觸控板","Controller":"手把","{brand} controls":"{brand}操作","{brand} controller":"{brand}手把","Auto · {brand}":"自動 · {brand}",
+"{brand} (pad {n})":"{brand}（手把{n}）","Connected: ":"已連接："," — non-standard mapping, some buttons may be in odd places":" — 非標準對應，部分按鍵位置可能不對",
+"No controller detected. Press a button on it with this window in front; some pads only appear once they are woken up. If a browser gamepad tester sees it and Tau does not, tell us.":"未偵測到手把。請讓本視窗保持在最前面並按一下手把上的按鍵；有些手把要先喚醒才會出現。如果瀏覽器的手把測試頁看得到它而Tau看不到，請告訴我們。",
+"Triggers: the harder you pull, the faster it turns.":"扳機：拉得越用力，轉得越快。","Right stick: the further you push, the faster it turns.":"右搖桿：推得越遠，轉得越快。",
+"Touch":"觸控",
+"Tap a foot to pin it, then drag another foot to swing. Drag the 3D view to look around. Drag the flat board's rim knob to resize it.":"點按一隻腳將其固定為軸心，再拖曳另一隻腳擺動。拖曳3D視圖可環視。拖曳平面棋盤邊緣的把手可調整大小。",
+"Keyboard and mouse":"鍵盤與滑鼠","Keyboard (if one is connected)":"鍵盤（若已連接）",
+"Click a foot to pin it, then drag another foot to swing. Right-drag to look around. Scroll the flat board, or drag its rim knob, to resize it.":"點擊一隻腳將其固定為軸心，再拖曳另一隻腳擺動。右鍵拖曳可環視。捲動平面棋盤或拖曳其邊緣把手即可調整大小。",
+"Click a key to change it, then press the new one. Esc and F1 stay as they are.":"點擊某個按鍵，再按下新按鍵即可更改。Esc與F1維持不變。",
+"Controllers are remapped in Steam’s own controller settings.":"手把按鍵請在Steam本身的手把設定中重新對應。","Reset keys":"重設按鍵","Layout":"配置","Controller layout":"手把配置","Auto":"自動","Swing with":"擺動方式",
+"Controller scheme":"手把操作方案","Triggers":"扳機","Right stick":"右搖桿","Done":"完成",
+"Choose your controls":"選擇你的操作裝置","One device each, or the same one twice to pass and play.":"每人一台裝置，或同一台選兩次來輪流對戰。","Same device — pass and play":"同一裝置——輪流對戰","Skip — pass and play":"跳過——輪流對戰",
+"Back":"返回","Not chosen":"未選擇","Ready":"已就緒","{colour}: press any button on your controller, or a key / click":"{colour}：按手把上的任意鍵，或按鍵盤 / 點擊","Click or press Enter to confirm":"點擊或按Enter確認",
+"Press {button} to confirm":"按{button}確認","Keyboard & mouse":"鍵盤與滑鼠",
+"Sound":"音量","Sound volume":"音量","Mute":"靜音","Board":"棋盤","Graphics":"畫質","Balanced":"均衡","High":"高","Ultra · ray tracing":"超高 · 光線追蹤","Language":"語言","Invert camera Y":"反轉鏡頭Y軸",
+"Reduce camera motion":"減少鏡頭移動","Controller vibration":"手把震動","Fullscreen":"全螢幕","Ray tracing: loading…":"光線追蹤：載入中…","Ray tracing: starting…":"光線追蹤：啟動中…",
+"Ray tracing: refining the still frame.":"光線追蹤：正在細化靜止畫面。","Ray tracing: ready — it takes over whenever the board holds still.":"光線追蹤：已就緒——棋盤靜止時自動接手。",
+"Ray tracing could not start on this GPU — drawing normally.":"此GPU無法啟動光線追蹤——改用一般繪製。","Ray tracing could not start on this GPU.":"此GPU無法啟動光線追蹤。",
+"Two players · same screen":"兩人 · 同螢幕","Level {n} · You played {colour}":"第{n}關 · 你執{colour}",
+"username or email":"使用者名稱或電子郵件"
 },
 ko: {
 "Local 1v1":"로컬 대전","Online 1v1":"온라인 대전","vs AI":"AI 대전","How to play":"게임 방법","Leaderboard":"랭킹","Watch":"관전",
@@ -1150,7 +1257,38 @@ ko: {
 "Sign up to choose your own name. You keep your current rating.":"가입하면 원하는 이름을 고를 수 있습니다 — 현재 레이팅은 유지됩니다.",
 "Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"이 앱 안에서는 Google 로그인이 차단됩니다. ⋯ / 공유 아이콘을 눌러 “Safari/Chrome에서 열기”를 선택하거나, 아래에서 아이디와 비밀번호를 사용하세요.",
 "Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Google 로그인에는 일반 브라우저가 필요합니다 (⋯ / 공유 → Safari 또는 Chrome에서 열기). 이 앱 안에서는 아래의 아이디와 비밀번호를 사용하세요.",
-"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Tau 설치: <b>공유</b>를 누른 뒤 <b>홈 화면에 추가</b>를 선택하세요."
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Tau 설치: <b>공유</b>를 누른 뒤 <b>홈 화면에 추가</b>를 선택하세요.",
+"win 1 game":"1승 달성","win {n} games":"{n}승 달성","play {n} games":"{n}판 플레이","beat ladder level {n}":"레벨 {n} 클리어","beat the top ladder level":"최고 레벨 클리어","New board unlocked: {name}":"새 보드 해금: {name}",
+"New boards unlocked: {names}":"새 보드 해금: {names}",
+"Main menu":"메인 메뉴","Play":"플레이","Opponent":"상대","Opponent level":"상대 레벨","You play":"내 색","Your colour":"내 색깔","Blue · first":"파랑 · 선공","Red · second":"빨강 · 후공","Other ways to play":"다른 플레이 방법",
+"Settings":"설정","Controls":"조작법","Lab":"연구실","Quit":"종료","Open pause menu":"일시정지 메뉴 열기",
+"Game board. Click a foot to pin it, then drag another foot to swing. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"게임 보드. 발을 클릭해 축으로 고정한 뒤 다른 발을 끌어 스윙하세요. 키보드: 1~3으로 발 고정, 화살표 키로 스윙, Enter로 턴 종료.",
+"Overhead game board. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"위에서 본 게임 보드. 키보드: 1~3으로 발 고정, 화살표 키로 스윙, Enter로 턴 종료.",
+"Match menu":"대국 메뉴","Continue":"계속하기","Leave match":"대국 나가기","Leave this match?":"이 대국을 나갈까요?","Keep playing":"계속 플레이",
+"Keyboard controls":"키보드 조작","menu":"메뉴","controls":"조작법","foot 1":"발 1","foot 2":"발 2","foot 3":"발 3","cancel swing":"스윙 취소","end turn":"턴 종료","flat board size":"평면 보드 크기","swing ↺":"스윙 ↺",
+"swing ↻":"스윙 ↻","Pin foot 1":"발 1 고정","Pin foot 2":"발 2 고정","Pin foot 3":"발 3 고정","Swing anticlockwise":"반시계 방향 스윙","Swing clockwise":"시계 방향 스윙","Pin · end your turn":"고정 · 턴 종료",
+"Cancel the swing":"스윙 취소하기","Shrink the flat board":"평면 보드 축소","Grow the flat board":"평면 보드 확대",
+"unused":"사용 안 함","smaller board":"보드 축소","bigger board":"보드 확대","left stick":"왼쪽 스틱","right stick":"오른쪽 스틱","right stick ← →":"오른쪽 스틱 ← →","camera":"카메라","D-pad ← →":"십자 패드 ← →","foot":"발",
+"swing":"스윙","pin · end turn":"고정 · 턴 종료","match menu":"대국 메뉴","touch pad":"터치패드","Controller":"컨트롤러","{brand} controls":"{brand} 조작","{brand} controller":"{brand} 컨트롤러",
+"Auto · {brand}":"자동 · {brand}","{brand} (pad {n})":"{brand}(패드 {n})","Connected: ":"연결됨: "," — non-standard mapping, some buttons may be in odd places":" — 비표준 매핑이라 일부 버튼 위치가 다를 수 있습니다",
+"No controller detected. Press a button on it with this window in front; some pads only appear once they are woken up. If a browser gamepad tester sees it and Tau does not, tell us.":"컨트롤러가 감지되지 않았습니다. 이 창을 앞에 둔 채 컨트롤러의 버튼을 눌러 보세요. 일부 패드는 깨워야 나타납니다. 브라우저의 게임패드 테스터에서는 보이는데 Tau에서 보이지 않으면 알려 주세요.",
+"Triggers: the harder you pull, the faster it turns.":"트리거: 세게 당길수록 빠르게 돕니다.","Right stick: the further you push, the faster it turns.":"오른쪽 스틱: 더 멀리 밀수록 빠르게 돕니다.",
+"Touch":"터치",
+"Tap a foot to pin it, then drag another foot to swing. Drag the 3D view to look around. Drag the flat board's rim knob to resize it.":"발을 탭해 축으로 고정한 뒤 다른 발을 끌어 스윙하세요. 3D 화면을 끌면 시점이 돌아갑니다. 평면 보드의 테두리 손잡이를 끌면 크기를 바꿀 수 있습니다.",
+"Keyboard and mouse":"키보드와 마우스","Keyboard (if one is connected)":"키보드(연결된 경우)",
+"Click a foot to pin it, then drag another foot to swing. Right-drag to look around. Scroll the flat board, or drag its rim knob, to resize it.":"발을 클릭해 축으로 고정한 뒤 다른 발을 끌어 스윙하세요. 오른쪽 버튼으로 끌면 시점이 돌아갑니다. 평면 보드는 스크롤하거나 테두리 손잡이를 끌어 크기를 바꿉니다.",
+"Click a key to change it, then press the new one. Esc and F1 stay as they are.":"키를 클릭한 뒤 새 키를 누르면 바뀝니다. Esc와 F1은 그대로입니다.",
+"Controllers are remapped in Steam’s own controller settings.":"컨트롤러 매핑은 Steam의 컨트롤러 설정에서 바꿉니다.","Reset keys":"키 초기화","Layout":"배치","Controller layout":"컨트롤러 배치","Auto":"자동","Swing with":"스윙 방식",
+"Controller scheme":"컨트롤러 조작 방식","Triggers":"트리거","Right stick":"오른쪽 스틱","Done":"완료",
+"Choose your controls":"조작 기기를 선택하세요","One device each, or the same one twice to pass and play.":"각자 하나씩, 또는 같은 기기를 두 번 골라 번갈아 플레이하세요.","Same device — pass and play":"같은 기기 — 번갈아 플레이",
+"Skip — pass and play":"건너뛰기 — 번갈아 플레이","Back":"뒤로","Not chosen":"선택 안 됨","Ready":"준비 완료","{colour}: press any button on your controller, or a key / click":"{colour}: 컨트롤러의 아무 버튼이나 키를 누르거나 클릭하세요",
+"Click or press Enter to confirm":"클릭하거나 Enter로 확인","Press {button} to confirm":"{button} 버튼을 눌러 확인","Keyboard & mouse":"키보드와 마우스",
+"Sound":"소리","Sound volume":"음량","Mute":"음소거","Board":"보드","Graphics":"그래픽","Balanced":"균형","High":"높음","Ultra · ray tracing":"울트라 · 레이 트레이싱","Language":"언어","Invert camera Y":"카메라 Y축 반전",
+"Reduce camera motion":"카메라 움직임 줄이기","Controller vibration":"컨트롤러 진동","Fullscreen":"전체 화면","Ray tracing: loading…":"레이 트레이싱: 불러오는 중…","Ray tracing: starting…":"레이 트레이싱: 시작하는 중…",
+"Ray tracing: refining the still frame.":"레이 트레이싱: 정지 화면을 다듬는 중입니다.","Ray tracing: ready — it takes over whenever the board holds still.":"레이 트레이싱: 준비됨 — 보드가 멈추면 자동으로 넘겨받습니다.",
+"Ray tracing could not start on this GPU — drawing normally.":"이 GPU에서는 레이 트레이싱을 시작할 수 없어 일반 렌더링으로 그립니다.","Ray tracing could not start on this GPU.":"이 GPU에서는 레이 트레이싱을 시작할 수 없습니다.",
+"Two players · same screen":"2인 · 같은 화면","Level {n} · You played {colour}":"레벨 {n} · 당신은 {colour}",
+"username or email":"사용자명 또는 이메일"
 },
 de: {
 "Local 1v1":"Lokales 1v1","Online 1v1":"Online-1v1","vs AI":"Gegen KI","How to play":"Spielanleitung","Leaderboard":"Bestenliste","Watch":"Zuschauen",
@@ -1202,7 +1340,44 @@ de: {
 "Sign up to choose your own name. You keep your current rating.":"Registriere dich und wähle deinen Namen – deine Wertung bleibt erhalten.",
 "Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"Google-Anmeldung ist in dieser App blockiert. Tippe auf ⋯ / Teilen und wähle „In Safari/Chrome öffnen“, oder nutze unten Benutzername & Passwort.",
 "Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Google-Anmeldung braucht einen richtigen Browser (⋯ / Teilen → In Safari oder Chrome öffnen). Nutze in dieser App unten Benutzername & Passwort.",
-"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Tau installieren: <b>Teilen</b> antippen, dann <b>Zum Home-Bildschirm</b>."
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Tau installieren: <b>Teilen</b> antippen, dann <b>Zum Home-Bildschirm</b>.",
+"win 1 game":"1 Spiel gewinnen","win {n} games":"{n} Spiele gewinnen","play {n} games":"{n} Spiele spielen","beat ladder level {n}":"Level {n} schaffen",
+"beat the top ladder level":"das höchste Level schaffen","New board unlocked: {name}":"Neues Brett freigeschaltet: {name}","New boards unlocked: {names}":"Neue Bretter freigeschaltet: {names}",
+"Main menu":"Hauptmenü","Play":"Spielen","Opponent":"Gegner","Opponent level":"Gegnerstufe","You play":"Du spielst","Your colour":"Deine Farbe","Blue · first":"Blau · zuerst",
+"Red · second":"Rot · danach","Other ways to play":"Weitere Spielarten","Settings":"Einstellungen","Controls":"Steuerung","Lab":"Labor","Quit":"Beenden","Open pause menu":"Pausenmenü öffnen",
+"Game board. Click a foot to pin it, then drag another foot to swing. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"Spielbrett. Klicke einen Fuß an, um ihn als Drehpunkt zu setzen, und zieh dann einen anderen Fuß zum Schwingen. Tastatur: 1 bis 3 setzen den Fuß, Pfeiltasten schwingen, Enter beendet den Zug.",
+"Overhead game board. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"Spielbrett von oben. Tastatur: 1 bis 3 setzen den Fuß, Pfeiltasten schwingen, Enter beendet den Zug.",
+"Match menu":"Partiemenü","Continue":"Weiter","Leave match":"Partie verlassen","Leave this match?":"Diese Partie verlassen?","Keep playing":"Weiterspielen",
+"Keyboard controls":"Tastatursteuerung","menu":"Menü","controls":"Steuerung","foot 1":"Fuß 1","foot 2":"Fuß 2","foot 3":"Fuß 3","cancel swing":"Schwung abbrechen","end turn":"Zug beenden",
+"flat board size":"Größe des flachen Bretts","swing ↺":"schwingen ↺","swing ↻":"schwingen ↻","Pin foot 1":"Fuß 1 festsetzen","Pin foot 2":"Fuß 2 festsetzen","Pin foot 3":"Fuß 3 festsetzen",
+"Swing anticlockwise":"Gegen den Uhrzeigersinn schwingen","Swing clockwise":"Im Uhrzeigersinn schwingen","Pin · end your turn":"Festsetzen · Zug beenden","Cancel the swing":"Schwung abbrechen",
+"Shrink the flat board":"Flaches Brett verkleinern","Grow the flat board":"Flaches Brett vergrößern",
+"unused":"ungenutzt","smaller board":"kleineres Brett","bigger board":"größeres Brett","left stick":"linker Stick","right stick":"rechter Stick","right stick ← →":"rechter Stick ← →",
+"camera":"Kamera","D-pad ← →":"Steuerkreuz ← →","foot":"Fuß","swing":"schwingen","pin · end turn":"festsetzen · Zug beenden","match menu":"Partiemenü","touch pad":"Touchpad","Controller":"Controller",
+"{brand} controls":"{brand}-Steuerung","{brand} controller":"{brand}-Controller","Auto · {brand}":"Automatisch · {brand}","{brand} (pad {n})":"{brand} (Pad {n})","Connected: ":"Verbunden: ",
+" — non-standard mapping, some buttons may be in odd places":" — nicht standardmäßige Belegung, einige Tasten sitzen womöglich woanders",
+"No controller detected. Press a button on it with this window in front; some pads only appear once they are woken up. If a browser gamepad tester sees it and Tau does not, tell us.":"Kein Controller erkannt. Drück eine Taste darauf, während dieses Fenster im Vordergrund ist; manche Pads tauchen erst auf, wenn sie geweckt wurden. Wenn ein Gamepad-Tester im Browser ihn sieht und Tau nicht, sag uns Bescheid.",
+"Triggers: the harder you pull, the faster it turns.":"Trigger: je stärker du ziehst, desto schneller dreht es.",
+"Right stick: the further you push, the faster it turns.":"Rechter Stick: je weiter du drückst, desto schneller dreht es.",
+"Touch":"Touch",
+"Tap a foot to pin it, then drag another foot to swing. Drag the 3D view to look around. Drag the flat board's rim knob to resize it.":"Tipp einen Fuß an, um ihn festzusetzen, und zieh dann einen anderen Fuß zum Schwingen. Zieh die 3D-Ansicht, um dich umzusehen. Zieh am Randknopf des flachen Bretts, um seine Größe zu ändern.",
+"Keyboard and mouse":"Tastatur und Maus","Keyboard (if one is connected)":"Tastatur (falls angeschlossen)",
+"Click a foot to pin it, then drag another foot to swing. Right-drag to look around. Scroll the flat board, or drag its rim knob, to resize it.":"Klicke einen Fuß an, um ihn festzusetzen, und zieh dann einen anderen Fuß zum Schwingen. Mit der rechten Maustaste ziehen, um dich umzusehen. Scrolle über dem flachen Brett oder zieh an seinem Randknopf, um es zu skalieren.",
+"Click a key to change it, then press the new one. Esc and F1 stay as they are.":"Klick eine Taste an und drück dann die neue. Esc und F1 bleiben, wie sie sind.",
+"Controllers are remapped in Steam’s own controller settings.":"Controller werden in Steams eigenen Controller-Einstellungen neu belegt.","Reset keys":"Tasten zurücksetzen","Layout":"Layout",
+"Controller layout":"Controller-Layout","Auto":"Automatisch","Swing with":"Schwingen mit","Controller scheme":"Controller-Schema","Triggers":"Trigger","Right stick":"Rechter Stick","Done":"Fertig",
+"Choose your controls":"Wähle deine Steuerung","One device each, or the same one twice to pass and play.":"Je ein Gerät, oder zweimal dasselbe für abwechselndes Spielen.",
+"Same device — pass and play":"Dasselbe Gerät — abwechselnd spielen","Skip — pass and play":"Überspringen — abwechselnd spielen","Back":"Zurück","Not chosen":"Nicht gewählt","Ready":"Bereit",
+"{colour}: press any button on your controller, or a key / click":"{colour}: drück eine Taste am Controller, eine Taste oder klick",
+"Click or press Enter to confirm":"Klicken oder Enter zum Bestätigen","Press {button} to confirm":"{button} drücken zum Bestätigen","Keyboard & mouse":"Tastatur & Maus",
+"Sound":"Ton","Sound volume":"Lautstärke","Mute":"Stumm","Board":"Brett","Graphics":"Grafik","Balanced":"Ausgewogen","High":"Hoch","Ultra · ray tracing":"Ultra · Raytracing","Language":"Sprache",
+"Invert camera Y":"Kamera-Y umkehren","Reduce camera motion":"Kamerabewegung reduzieren","Controller vibration":"Controller-Vibration","Fullscreen":"Vollbild",
+"Ray tracing: loading…":"Raytracing: wird geladen…","Ray tracing: starting…":"Raytracing: startet…","Ray tracing: refining the still frame.":"Raytracing: verfeinert das stehende Bild.",
+"Ray tracing: ready — it takes over whenever the board holds still.":"Raytracing: bereit — es übernimmt, sobald das Brett still steht.",
+"Ray tracing could not start on this GPU — drawing normally.":"Raytracing konnte auf dieser GPU nicht starten — es wird normal gezeichnet.",
+"Ray tracing could not start on this GPU.":"Raytracing konnte auf dieser GPU nicht starten.",
+"Two players · same screen":"Zwei Spieler · ein Bildschirm","Level {n} · You played {colour}":"Level {n} · Du hast {colour} gespielt",
+"username or email":"Benutzername oder E-Mail"
 },
 fr: {
 "Local 1v1":"1v1 local","Online 1v1":"1v1 en ligne","vs AI":"Contre l'IA","How to play":"Comment jouer","Leaderboard":"Classement","Watch":"Regarder",
@@ -1254,7 +1429,45 @@ fr: {
 "Sign up to choose your own name. You keep your current rating.":"Crée un compte pour choisir ton nom — tu gardes ton Elo actuel.",
 "Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"La connexion Google est bloquée dans cette appli. Touche ⋯ / partager et choisis « Ouvrir dans Safari/Chrome », ou utilise identifiant & mot de passe ci-dessous.",
 "Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"La connexion Google demande un vrai navigateur (⋯ / partager → Ouvrir dans Safari ou Chrome). Dans cette appli, utilise identifiant & mot de passe ci-dessous.",
-"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Installer Tau : touche <b>Partager</b> puis <b>Sur l'écran d'accueil</b>."
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Installer Tau : touche <b>Partager</b> puis <b>Sur l'écran d'accueil</b>.",
+"win 1 game":"gagner 1 partie","win {n} games":"gagner {n} parties","play {n} games":"jouer {n} parties","beat ladder level {n}":"battre le niveau {n}",
+"beat the top ladder level":"battre le niveau le plus haut","New board unlocked: {name}":"Nouveau plateau débloqué : {name}","New boards unlocked: {names}":"Nouveaux plateaux débloqués : {names}",
+"Main menu":"Menu principal","Play":"Jouer","Opponent":"Adversaire","Opponent level":"Niveau de l’adversaire","You play":"Vous jouez","Your colour":"Votre couleur","Blue · first":"Bleu · premier",
+"Red · second":"Rouge · second","Other ways to play":"Autres façons de jouer","Settings":"Paramètres","Controls":"Commandes","Lab":"Labo","Quit":"Quitter","Open pause menu":"Ouvrir le menu pause",
+"Game board. Click a foot to pin it, then drag another foot to swing. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"Plateau de jeu. Cliquez sur un pied pour le fixer comme pivot, puis faites glisser un autre pied pour pivoter. Clavier : 1 à 3 fixent un pied, les flèches pivotent, Entrée termine le tour.",
+"Overhead game board. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"Plateau vu de dessus. Clavier : 1 à 3 fixent un pied, les flèches pivotent, Entrée termine le tour.",
+"Match menu":"Menu de la partie","Continue":"Continuer","Leave match":"Quitter la partie","Leave this match?":"Quitter cette partie ?","Keep playing":"Continuer à jouer",
+"Keyboard controls":"Commandes clavier","menu":"menu","controls":"commandes","foot 1":"pied 1","foot 2":"pied 2","foot 3":"pied 3","cancel swing":"annuler le pivot","end turn":"finir le tour",
+"flat board size":"taille du plateau plat","swing ↺":"pivoter ↺","swing ↻":"pivoter ↻","Pin foot 1":"Fixer le pied 1","Pin foot 2":"Fixer le pied 2","Pin foot 3":"Fixer le pied 3",
+"Swing anticlockwise":"Pivoter dans le sens antihoraire","Swing clockwise":"Pivoter dans le sens horaire","Pin · end your turn":"Fixer · finir le tour","Cancel the swing":"Annuler le pivot",
+"Shrink the flat board":"Réduire le plateau plat","Grow the flat board":"Agrandir le plateau plat",
+"unused":"inutilisé","smaller board":"plateau plus petit","bigger board":"plateau plus grand","left stick":"stick gauche","right stick":"stick droit","right stick ← →":"stick droit ← →",
+"camera":"caméra","D-pad ← →":"croix directionnelle ← →","foot":"pied","swing":"pivoter","pin · end turn":"fixer · finir le tour","match menu":"menu de la partie","touch pad":"pavé tactile",
+"Controller":"Manette","{brand} controls":"Commandes {brand}","{brand} controller":"Manette {brand}","Auto · {brand}":"Auto · {brand}","{brand} (pad {n})":"{brand} (manette {n})",
+"Connected: ":"Connecté : "," — non-standard mapping, some buttons may be in odd places":" — mappage non standard, certains boutons peuvent se trouver à des endroits inattendus",
+"No controller detected. Press a button on it with this window in front; some pads only appear once they are woken up. If a browser gamepad tester sees it and Tau does not, tell us.":"Aucune manette détectée. Appuyez sur un bouton avec cette fenêtre au premier plan ; certaines manettes n’apparaissent qu’une fois réveillées. Si un testeur de manette du navigateur la voit et pas Tau, dites-le-nous.",
+"Triggers: the harder you pull, the faster it turns.":"Gâchettes : plus vous appuyez fort, plus la rotation est rapide.",
+"Right stick: the further you push, the faster it turns.":"Stick droit : plus vous poussez loin, plus la rotation est rapide.",
+"Touch":"Tactile",
+"Tap a foot to pin it, then drag another foot to swing. Drag the 3D view to look around. Drag the flat board's rim knob to resize it.":"Touchez un pied pour le fixer, puis faites glisser un autre pied pour pivoter. Faites glisser la vue 3D pour regarder autour de vous. Faites glisser le bouton du bord du plateau plat pour le redimensionner.",
+"Keyboard and mouse":"Clavier et souris","Keyboard (if one is connected)":"Clavier (s’il y en a un)",
+"Click a foot to pin it, then drag another foot to swing. Right-drag to look around. Scroll the flat board, or drag its rim knob, to resize it.":"Cliquez sur un pied pour le fixer, puis faites glisser un autre pied pour pivoter. Faites un clic droit glissé pour regarder autour de vous. Faites défiler sur le plateau plat, ou tirez son bouton de bord, pour le redimensionner.",
+"Click a key to change it, then press the new one. Esc and F1 stay as they are.":"Cliquez sur une touche, puis appuyez sur la nouvelle. Esc et F1 ne changent pas.",
+"Controllers are remapped in Steam’s own controller settings.":"Les manettes se reconfigurent dans les paramètres de manette de Steam.","Reset keys":"Réinitialiser les touches","Layout":"Disposition",
+"Controller layout":"Disposition de la manette","Auto":"Auto","Swing with":"Pivoter avec","Controller scheme":"Schéma de la manette","Triggers":"Gâchettes","Right stick":"Stick droit",
+"Done":"Terminé",
+"Choose your controls":"Choisissez vos commandes","One device each, or the same one twice to pass and play.":"Un appareil chacun, ou deux fois le même pour jouer chacun son tour.",
+"Same device — pass and play":"Même appareil — chacun son tour","Skip — pass and play":"Passer — chacun son tour","Back":"Retour","Not chosen":"Non choisi","Ready":"Prêt",
+"{colour}: press any button on your controller, or a key / click":"{colour} : appuyez sur un bouton de la manette, une touche ou cliquez",
+"Click or press Enter to confirm":"Cliquez ou appuyez sur Entrée pour confirmer","Press {button} to confirm":"Appuyez sur {button} pour confirmer","Keyboard & mouse":"Clavier et souris",
+"Sound":"Son","Sound volume":"Volume sonore","Mute":"Muet","Board":"Plateau","Graphics":"Graphismes","Balanced":"Équilibré","High":"Élevé","Ultra · ray tracing":"Ultra · ray tracing",
+"Language":"Langue","Invert camera Y":"Inverser l’axe Y","Reduce camera motion":"Réduire les mouvements de caméra","Controller vibration":"Vibration de la manette","Fullscreen":"Plein écran",
+"Ray tracing: loading…":"Ray tracing : chargement…","Ray tracing: starting…":"Ray tracing : démarrage…","Ray tracing: refining the still frame.":"Ray tracing : affinage de l’image fixe.",
+"Ray tracing: ready — it takes over whenever the board holds still.":"Ray tracing : prêt — il prend le relais dès que le plateau s’immobilise.",
+"Ray tracing could not start on this GPU — drawing normally.":"Le ray tracing n’a pas pu démarrer sur ce GPU — rendu normal.",
+"Ray tracing could not start on this GPU.":"Le ray tracing n’a pas pu démarrer sur ce GPU.",
+"Two players · same screen":"Deux joueurs · même écran","Level {n} · You played {colour}":"Niveau {n} · Vous jouiez {colour}",
+"username or email":"nom d’utilisateur ou e-mail"
 },
 es: {
 "Local 1v1":"1v1 local","Online 1v1":"1v1 en línea","vs AI":"Contra la IA","How to play":"Cómo se juega","Leaderboard":"Clasificación","Watch":"Ver",
@@ -1306,7 +1519,44 @@ es: {
 "Sign up to choose your own name. You keep your current rating.":"Regístrate para elegir tu nombre — conservas tu Elo actual.",
 "Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"Esta app bloquea el inicio de sesión con Google. Toca ⋯ / compartir y elige «Abrir en Safari/Chrome», o usa usuario y contraseña abajo.",
 "Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Google necesita un navegador real (⋯ / compartir → Abrir en Safari o Chrome). En esta app, usa usuario y contraseña abajo.",
-"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Instala Tau: toca <b>Compartir</b> y luego <b>Añadir a pantalla de inicio</b>."
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Instala Tau: toca <b>Compartir</b> y luego <b>Añadir a pantalla de inicio</b>.",
+"win 1 game":"gana 1 partida","win {n} games":"gana {n} partidas","play {n} games":"juega {n} partidas","beat ladder level {n}":"supera el nivel {n}",
+"beat the top ladder level":"supera el nivel más alto","New board unlocked: {name}":"Nuevo tablero desbloqueado: {name}","New boards unlocked: {names}":"Nuevos tableros desbloqueados: {names}",
+"Main menu":"Menú principal","Play":"Jugar","Opponent":"Rival","Opponent level":"Nivel del rival","You play":"Juegas con","Your colour":"Tu color","Blue · first":"Azul · primero",
+"Red · second":"Rojo · segundo","Other ways to play":"Otras formas de jugar","Settings":"Ajustes","Controls":"Controles","Lab":"Laboratorio","Quit":"Salir","Open pause menu":"Abrir el menú de pausa",
+"Game board. Click a foot to pin it, then drag another foot to swing. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"Tablero de juego. Haz clic en un pie para fijarlo como pivote y luego arrastra otro pie para girar. Teclado: 1 a 3 fijan un pie, las flechas giran, Intro termina el turno.",
+"Overhead game board. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"Tablero visto desde arriba. Teclado: 1 a 3 fijan un pie, las flechas giran, Intro termina el turno.",
+"Match menu":"Menú de la partida","Continue":"Continuar","Leave match":"Salir de la partida","Leave this match?":"¿Salir de esta partida?","Keep playing":"Seguir jugando",
+"Keyboard controls":"Controles de teclado","menu":"menú","controls":"controles","foot 1":"pie 1","foot 2":"pie 2","foot 3":"pie 3","cancel swing":"cancelar el giro","end turn":"terminar el turno",
+"flat board size":"tamaño del tablero plano","swing ↺":"girar ↺","swing ↻":"girar ↻","Pin foot 1":"Fijar el pie 1","Pin foot 2":"Fijar el pie 2","Pin foot 3":"Fijar el pie 3",
+"Swing anticlockwise":"Girar en sentido antihorario","Swing clockwise":"Girar en sentido horario","Pin · end your turn":"Fijar · terminar el turno","Cancel the swing":"Cancelar el giro",
+"Shrink the flat board":"Reducir el tablero plano","Grow the flat board":"Ampliar el tablero plano",
+"unused":"sin uso","smaller board":"tablero más pequeño","bigger board":"tablero más grande","left stick":"stick izquierdo","right stick":"stick derecho","right stick ← →":"stick derecho ← →",
+"camera":"cámara","D-pad ← →":"cruceta ← →","foot":"pie","swing":"girar","pin · end turn":"fijar · terminar el turno","match menu":"menú de la partida","touch pad":"panel táctil","Controller":"Mando",
+"{brand} controls":"Controles de {brand}","{brand} controller":"Mando {brand}","Auto · {brand}":"Automático · {brand}","{brand} (pad {n})":"{brand} (mando {n})","Connected: ":"Conectado: ",
+" — non-standard mapping, some buttons may be in odd places":" — asignación no estándar, algunos botones pueden estar en sitios raros",
+"No controller detected. Press a button on it with this window in front; some pads only appear once they are woken up. If a browser gamepad tester sees it and Tau does not, tell us.":"No se detecta ningún mando. Pulsa un botón con esta ventana en primer plano; algunos mandos solo aparecen cuando se despiertan. Si un probador de mandos del navegador lo ve y Tau no, cuéntanoslo.",
+"Triggers: the harder you pull, the faster it turns.":"Gatillos: cuanto más fuerte aprietas, más rápido gira.",
+"Right stick: the further you push, the faster it turns.":"Stick derecho: cuanto más lo empujas, más rápido gira.",
+"Touch":"Táctil",
+"Tap a foot to pin it, then drag another foot to swing. Drag the 3D view to look around. Drag the flat board's rim knob to resize it.":"Toca un pie para fijarlo y luego arrastra otro pie para girar. Arrastra la vista 3D para mirar alrededor. Arrastra el tirador del borde del tablero plano para cambiar su tamaño.",
+"Keyboard and mouse":"Teclado y ratón","Keyboard (if one is connected)":"Teclado (si hay uno conectado)",
+"Click a foot to pin it, then drag another foot to swing. Right-drag to look around. Scroll the flat board, or drag its rim knob, to resize it.":"Haz clic en un pie para fijarlo y luego arrastra otro pie para girar. Arrastra con el botón derecho para mirar alrededor. Desplaza la rueda sobre el tablero plano, o arrastra su tirador del borde, para cambiar su tamaño.",
+"Click a key to change it, then press the new one. Esc and F1 stay as they are.":"Haz clic en una tecla y pulsa la nueva. Esc y F1 no cambian.",
+"Controllers are remapped in Steam’s own controller settings.":"Los mandos se reasignan en los ajustes de mando de Steam.","Reset keys":"Restablecer teclas","Layout":"Disposición",
+"Controller layout":"Disposición del mando","Auto":"Automático","Swing with":"Girar con","Controller scheme":"Esquema del mando","Triggers":"Gatillos","Right stick":"Stick derecho","Done":"Listo",
+"Choose your controls":"Elige tus controles","One device each, or the same one twice to pass and play.":"Un dispositivo para cada uno, o el mismo dos veces para jugar por turnos.",
+"Same device — pass and play":"Mismo dispositivo: por turnos","Skip — pass and play":"Omitir: por turnos","Back":"Atrás","Not chosen":"Sin elegir","Ready":"Listo",
+"{colour}: press any button on your controller, or a key / click":"{colour}: pulsa cualquier botón del mando, una tecla o haz clic",
+"Click or press Enter to confirm":"Haz clic o pulsa Intro para confirmar","Press {button} to confirm":"Pulsa {button} para confirmar","Keyboard & mouse":"Teclado y ratón",
+"Sound":"Sonido","Sound volume":"Volumen","Mute":"Silenciar","Board":"Tablero","Graphics":"Gráficos","Balanced":"Equilibrado","High":"Alto","Ultra · ray tracing":"Ultra · trazado",
+"Language":"Idioma","Invert camera Y":"Invertir el eje Y","Reduce camera motion":"Reducir el movimiento de cámara","Controller vibration":"Vibración del mando","Fullscreen":"Pantalla completa",
+"Ray tracing: loading…":"Trazado de rayos: cargando…","Ray tracing: starting…":"Trazado de rayos: iniciando…","Ray tracing: refining the still frame.":"Trazado de rayos: refinando la imagen fija.",
+"Ray tracing: ready — it takes over whenever the board holds still.":"Trazado de rayos: listo; toma el relevo en cuanto el tablero se queda quieto.",
+"Ray tracing could not start on this GPU — drawing normally.":"El trazado de rayos no pudo iniciarse en esta GPU: se dibuja de forma normal.",
+"Ray tracing could not start on this GPU.":"El trazado de rayos no pudo iniciarse en esta GPU.",
+"Two players · same screen":"Dos jugadores · misma pantalla","Level {n} · You played {colour}":"Nivel {n} · Jugaste con {colour}",
+"username or email":"usuario o correo"
 },
 pt: {
 "Local 1v1":"1v1 local","Online 1v1":"1v1 online","vs AI":"Contra a IA","How to play":"Como jogar","Leaderboard":"Ranking","Watch":"Assistir",
@@ -1358,7 +1608,45 @@ pt: {
 "Sign up to choose your own name. You keep your current rating.":"Cadastre-se para escolher seu nome — você mantém seu Elo atual.",
 "Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"O login do Google é bloqueado dentro deste app. Toque em ⋯ / compartilhar e escolha “Abrir no Safari/Chrome”, ou use usuário e senha abaixo.",
 "Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"O login do Google precisa de um navegador de verdade (⋯ / compartilhar → Abrir no Safari ou Chrome). Neste app, use usuário e senha abaixo.",
-"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Instale o Tau: toque em <b>Compartilhar</b> e depois <b>Adicionar à Tela de Início</b>."
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Instale o Tau: toque em <b>Compartilhar</b> e depois <b>Adicionar à Tela de Início</b>.",
+"win 1 game":"vença 1 partida","win {n} games":"vença {n} partidas","play {n} games":"jogue {n} partidas","beat ladder level {n}":"vença o nível {n}",
+"beat the top ladder level":"vença o nível mais alto","New board unlocked: {name}":"Novo tabuleiro desbloqueado: {name}","New boards unlocked: {names}":"Novos tabuleiros desbloqueados: {names}",
+"Main menu":"Menu principal","Play":"Jogar","Opponent":"Adversário","Opponent level":"Nível do adversário","You play":"Você joga","Your colour":"Sua cor","Blue · first":"Azul · primeiro",
+"Red · second":"Vermelho · segundo","Other ways to play":"Outras formas de jogar","Settings":"Configurações","Controls":"Controles","Lab":"Laboratório","Quit":"Sair",
+"Open pause menu":"Abrir o menu de pausa",
+"Game board. Click a foot to pin it, then drag another foot to swing. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"Tabuleiro. Clique em um pé para fixá-lo como pivô e arraste outro pé para girar. Teclado: 1 a 3 fixam um pé, as setas giram, Enter encerra o turno.",
+"Overhead game board. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"Tabuleiro visto de cima. Teclado: 1 a 3 fixam um pé, as setas giram, Enter encerra o turno.",
+"Match menu":"Menu da partida","Continue":"Continuar","Leave match":"Sair da partida","Leave this match?":"Sair desta partida?","Keep playing":"Continuar jogando",
+"Keyboard controls":"Controles do teclado","menu":"menu","controls":"controles","foot 1":"pé 1","foot 2":"pé 2","foot 3":"pé 3","cancel swing":"cancelar o giro","end turn":"encerrar o turno",
+"flat board size":"tamanho do tabuleiro plano","swing ↺":"girar ↺","swing ↻":"girar ↻","Pin foot 1":"Fixar o pé 1","Pin foot 2":"Fixar o pé 2","Pin foot 3":"Fixar o pé 3",
+"Swing anticlockwise":"Girar no sentido anti-horário","Swing clockwise":"Girar no sentido horário","Pin · end your turn":"Fixar · encerrar o turno","Cancel the swing":"Cancelar o giro",
+"Shrink the flat board":"Diminuir o tabuleiro plano","Grow the flat board":"Aumentar o tabuleiro plano",
+"unused":"sem uso","smaller board":"tabuleiro menor","bigger board":"tabuleiro maior","left stick":"analógico esquerdo","right stick":"analógico direito","right stick ← →":"analógico direito ← →",
+"camera":"câmera","D-pad ← →":"direcional ← →","foot":"pé","swing":"girar","pin · end turn":"fixar · encerrar o turno","match menu":"menu da partida","touch pad":"touchpad","Controller":"Controle",
+"{brand} controls":"Controles do {brand}","{brand} controller":"Controle {brand}","Auto · {brand}":"Automático · {brand}","{brand} (pad {n})":"{brand} (controle {n})","Connected: ":"Conectado: ",
+" — non-standard mapping, some buttons may be in odd places":" — mapeamento fora do padrão, alguns botões podem estar em lugares estranhos",
+"No controller detected. Press a button on it with this window in front; some pads only appear once they are woken up. If a browser gamepad tester sees it and Tau does not, tell us.":"Nenhum controle detectado. Aperte um botão nele com esta janela em primeiro plano; alguns controles só aparecem depois de acordados. Se um testador de gamepad do navegador enxerga e o Tau não, avise a gente.",
+"Triggers: the harder you pull, the faster it turns.":"Gatilhos: quanto mais forte você puxa, mais rápido gira.",
+"Right stick: the further you push, the faster it turns.":"Analógico direito: quanto mais você empurra, mais rápido gira.",
+"Touch":"Toque",
+"Tap a foot to pin it, then drag another foot to swing. Drag the 3D view to look around. Drag the flat board's rim knob to resize it.":"Toque em um pé para fixá-lo e arraste outro pé para girar. Arraste a vista 3D para olhar em volta. Arraste o botão da borda do tabuleiro plano para redimensioná-lo.",
+"Keyboard and mouse":"Teclado e mouse","Keyboard (if one is connected)":"Teclado (se houver um)",
+"Click a foot to pin it, then drag another foot to swing. Right-drag to look around. Scroll the flat board, or drag its rim knob, to resize it.":"Clique em um pé para fixá-lo e arraste outro pé para girar. Arraste com o botão direito para olhar em volta. Role sobre o tabuleiro plano, ou arraste o botão da borda, para redimensioná-lo.",
+"Click a key to change it, then press the new one. Esc and F1 stay as they are.":"Clique em uma tecla e pressione a nova. Esc e F1 continuam como estão.",
+"Controllers are remapped in Steam’s own controller settings.":"Os controles são remapeados nas próprias configurações de controle do Steam.","Reset keys":"Redefinir teclas","Layout":"Layout",
+"Controller layout":"Layout do controle","Auto":"Automático","Swing with":"Girar com","Controller scheme":"Esquema do controle","Triggers":"Gatilhos","Right stick":"Analógico direito","Done":"Pronto",
+"Choose your controls":"Escolha seus controles","One device each, or the same one twice to pass and play.":"Um dispositivo para cada, ou o mesmo duas vezes para revezar.",
+"Same device — pass and play":"Mesmo dispositivo — revezando","Skip — pass and play":"Pular — revezando","Back":"Voltar","Not chosen":"Não escolhido","Ready":"Pronto",
+"{colour}: press any button on your controller, or a key / click":"{colour}: aperte qualquer botão do controle, uma tecla ou clique",
+"Click or press Enter to confirm":"Clique ou pressione Enter para confirmar","Press {button} to confirm":"Aperte {button} para confirmar","Keyboard & mouse":"Teclado e mouse",
+"Sound":"Som","Sound volume":"Volume","Mute":"Mudo","Board":"Tabuleiro","Graphics":"Gráficos","Balanced":"Equilibrado","High":"Alto","Ultra · ray tracing":"Ultra · ray tracing","Language":"Idioma",
+"Invert camera Y":"Inverter o eixo Y","Reduce camera motion":"Reduzir o movimento da câmera","Controller vibration":"Vibração do controle","Fullscreen":"Tela cheia",
+"Ray tracing: loading…":"Ray tracing: carregando…","Ray tracing: starting…":"Ray tracing: iniciando…","Ray tracing: refining the still frame.":"Ray tracing: refinando a imagem parada.",
+"Ray tracing: ready — it takes over whenever the board holds still.":"Ray tracing: pronto — assume sempre que o tabuleiro fica parado.",
+"Ray tracing could not start on this GPU — drawing normally.":"O ray tracing não pôde iniciar nesta GPU — desenhando normalmente.",
+"Ray tracing could not start on this GPU.":"O ray tracing não pôde iniciar nesta GPU.",
+"Two players · same screen":"Dois jogadores · mesma tela","Level {n} · You played {colour}":"Nível {n} · Você jogou de {colour}",
+"username or email":"usuário ou e-mail"
 },
 ru: {
 "Local 1v1":"Локальный 1v1","Online 1v1":"Онлайн 1v1","vs AI":"Против ИИ","How to play":"Как играть","Leaderboard":"Таблица лидеров","Watch":"Смотреть",
@@ -1410,7 +1698,45 @@ ru: {
 "Sign up to choose your own name. You keep your current rating.":"Зарегистрируйтесь, чтобы выбрать имя — рейтинг сохранится.",
 "Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"Вход через Google заблокирован внутри этого приложения. Нажмите ⋯ / «поделиться» и выберите «Открыть в Safari/Chrome», или используйте имя пользователя и пароль ниже.",
 "Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Для входа через Google нужен обычный браузер (⋯ / поделиться → Открыть в Safari или Chrome). В этом приложении используйте имя пользователя и пароль ниже.",
-"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Установите Tau: нажмите <b>Поделиться</b>, затем <b>На экран «Домой»</b>."
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Установите Tau: нажмите <b>Поделиться</b>, затем <b>На экран «Домой»</b>.",
+"win 1 game":"выиграйте 1 партию","win {n} games":"выиграйте {n} партий","play {n} games":"сыграйте {n} партий","beat ladder level {n}":"пройдите уровень {n}",
+"beat the top ladder level":"пройдите высший уровень","New board unlocked: {name}":"Открыта новая доска: {name}","New boards unlocked: {names}":"Открыты новые доски: {names}",
+"Main menu":"Главное меню","Play":"Играть","Opponent":"Соперник","Opponent level":"Уровень соперника","You play":"Вы играете","Your colour":"Ваш цвет","Blue · first":"Синие · первые",
+"Red · second":"Красные · вторые","Other ways to play":"Другие режимы игры","Settings":"Настройки","Controls":"Управление","Lab":"Лаборатория","Quit":"Выход","Open pause menu":"Открыть меню паузы",
+"Game board. Click a foot to pin it, then drag another foot to swing. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"Игровая доска. Щёлкните по ноге, чтобы закрепить её как ось, затем перетащите другую ногу для поворота. Клавиатура: 1–3 закрепляют ногу, стрелки поворачивают, Enter завершает ход.",
+"Overhead game board. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"Доска сверху. Клавиатура: 1–3 закрепляют ногу, стрелки поворачивают, Enter завершает ход.",
+"Match menu":"Меню партии","Continue":"Продолжить","Leave match":"Покинуть партию","Leave this match?":"Покинуть эту партию?","Keep playing":"Продолжить игру",
+"Keyboard controls":"Управление с клавиатуры","menu":"меню","controls":"управление","foot 1":"нога 1","foot 2":"нога 2","foot 3":"нога 3","cancel swing":"отменить поворот","end turn":"завершить ход",
+"flat board size":"размер плоской доски","swing ↺":"поворот ↺","swing ↻":"поворот ↻","Pin foot 1":"Закрепить ногу 1","Pin foot 2":"Закрепить ногу 2","Pin foot 3":"Закрепить ногу 3",
+"Swing anticlockwise":"Поворот против часовой стрелки","Swing clockwise":"Поворот по часовой стрелке","Pin · end your turn":"Закрепить · завершить ход","Cancel the swing":"Отменить поворот",
+"Shrink the flat board":"Уменьшить плоскую доску","Grow the flat board":"Увеличить плоскую доску",
+"unused":"не используется","smaller board":"доска меньше","bigger board":"доска больше","left stick":"левый стик","right stick":"правый стик","right stick ← →":"правый стик ← →","camera":"камера",
+"D-pad ← →":"крестовина ← →","foot":"нога","swing":"поворот","pin · end turn":"закрепить · завершить ход","match menu":"меню партии","touch pad":"тачпад","Controller":"Контроллер",
+"{brand} controls":"Управление {brand}","{brand} controller":"Контроллер {brand}","Auto · {brand}":"Авто · {brand}","{brand} (pad {n})":"{brand} (геймпад {n})","Connected: ":"Подключено: ",
+" — non-standard mapping, some buttons may be in odd places":" — нестандартная раскладка, некоторые кнопки могут быть не на своих местах",
+"No controller detected. Press a button on it with this window in front; some pads only appear once they are woken up. If a browser gamepad tester sees it and Tau does not, tell us.":"Контроллер не обнаружен. Нажмите на нём любую кнопку, когда это окно на переднем плане; некоторые геймпады появляются только после пробуждения. Если тестер геймпадов в браузере его видит, а Tau — нет, сообщите нам.",
+"Triggers: the harder you pull, the faster it turns.":"Триггеры: чем сильнее нажим, тем быстрее поворот.",
+"Right stick: the further you push, the faster it turns.":"Правый стик: чем дальше отклонён, тем быстрее поворот.",
+"Touch":"Сенсор",
+"Tap a foot to pin it, then drag another foot to swing. Drag the 3D view to look around. Drag the flat board's rim knob to resize it.":"Коснитесь ноги, чтобы закрепить её, затем перетащите другую ногу для поворота. Перетаскивайте 3D-вид, чтобы осмотреться. Потяните за ручку на ободе плоской доски, чтобы изменить её размер.",
+"Keyboard and mouse":"Клавиатура и мышь","Keyboard (if one is connected)":"Клавиатура (если подключена)",
+"Click a foot to pin it, then drag another foot to swing. Right-drag to look around. Scroll the flat board, or drag its rim knob, to resize it.":"Щёлкните по ноге, чтобы закрепить её, затем перетащите другую ногу для поворота. Правой кнопкой — осмотреться. Прокрутка над плоской доской или перетаскивание ручки на её ободе меняет её размер.",
+"Click a key to change it, then press the new one. Esc and F1 stay as they are.":"Щёлкните по клавише и нажмите новую. Esc и F1 остаются неизменными.",
+"Controllers are remapped in Steam’s own controller settings.":"Контроллеры переназначаются в собственных настройках контроллера Steam.","Reset keys":"Сбросить клавиши","Layout":"Раскладка",
+"Controller layout":"Раскладка контроллера","Auto":"Авто","Swing with":"Поворот с помощью","Controller scheme":"Схема управления контроллером","Triggers":"Триггеры","Right stick":"Правый стик",
+"Done":"Готово",
+"Choose your controls":"Выберите управление","One device each, or the same one twice to pass and play.":"По устройству на каждого — или одно и то же дважды, чтобы играть по очереди.",
+"Same device — pass and play":"Одно устройство — по очереди","Skip — pass and play":"Пропустить — играть по очереди","Back":"Назад","Not chosen":"Не выбрано","Ready":"Готово",
+"{colour}: press any button on your controller, or a key / click":"{colour}: нажмите любую кнопку на геймпаде, клавишу или щёлкните мышью",
+"Click or press Enter to confirm":"Щёлкните или нажмите Enter для подтверждения","Press {button} to confirm":"Нажмите {button} для подтверждения","Keyboard & mouse":"Клавиатура и мышь",
+"Sound":"Звук","Sound volume":"Громкость","Mute":"Без звука","Board":"Доска","Graphics":"Графика","Balanced":"Баланс","High":"Высокая","Ultra · ray tracing":"Ультра · с лучами",
+"Language":"Язык","Invert camera Y":"Инвертировать ось Y","Reduce camera motion":"Меньше движения камеры","Controller vibration":"Вибрация контроллера","Fullscreen":"Полный экран",
+"Ray tracing: loading…":"Трассировка лучей: загрузка…","Ray tracing: starting…":"Трассировка лучей: запуск…","Ray tracing: refining the still frame.":"Трассировка лучей: уточняет неподвижный кадр.",
+"Ray tracing: ready — it takes over whenever the board holds still.":"Трассировка лучей: готова — включается, как только доска замирает.",
+"Ray tracing could not start on this GPU — drawing normally.":"Трассировка лучей не запустилась на этом GPU — рисуем обычным способом.",
+"Ray tracing could not start on this GPU.":"Трассировка лучей не запустилась на этом GPU.",
+"Two players · same screen":"Двое · один экран","Level {n} · You played {colour}":"Уровень {n} · Вы играли за {colour}",
+"username or email":"имя пользователя или эл. почта"
 },
 vi: {
 "Local 1v1":"1 chọi 1 tại chỗ","Online 1v1":"1 chọi 1 online","vs AI":"Đấu AI","How to play":"Cách chơi","Leaderboard":"Bảng xếp hạng","Watch":"Xem",
@@ -1462,7 +1788,43 @@ vi: {
 "Sign up to choose your own name. You keep your current rating.":"Đăng ký để tự chọn tên của bạn — bạn vẫn giữ nguyên Elo hiện tại.",
 "Google sign-in is blocked inside this app. Tap the ⋯ / share icon and choose “Open in Safari/Chrome”, or use a username & password below.":"Đăng nhập Google bị chặn trong ứng dụng này. Chạm vào biểu tượng ⋯ / chia sẻ và chọn “Mở trong Safari/Chrome”, hoặc dùng tên đăng nhập & mật khẩu bên dưới.",
 "Google sign-in needs a real browser (⋯ / share → Open in Safari or Chrome). In this app, use a username & password below.":"Đăng nhập Google cần một trình duyệt thật (⋯ / chia sẻ → Mở trong Safari hoặc Chrome). Trong ứng dụng này, hãy dùng tên đăng nhập & mật khẩu bên dưới.",
-"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Cài Tau: chạm <b>Chia sẻ</b> rồi <b>Thêm vào Màn hình chính</b>."
+"Install Tau: tap <b>Share</b> then <b>Add to Home Screen</b>.":"Cài Tau: chạm <b>Chia sẻ</b> rồi <b>Thêm vào Màn hình chính</b>.",
+"win 1 game":"thắng 1 ván","win {n} games":"thắng {n} ván","play {n} games":"chơi {n} ván","beat ladder level {n}":"hạ cấp độ {n}","beat the top ladder level":"hạ cấp độ cao nhất",
+"New board unlocked: {name}":"Đã mở khóa bàn cờ mới: {name}","New boards unlocked: {names}":"Đã mở khóa bàn cờ mới: {names}",
+"Main menu":"Menu chính","Play":"Chơi","Opponent":"Đối thủ","Opponent level":"Cấp độ đối thủ","You play":"Bạn cầm","Your colour":"Màu của bạn","Blue · first":"Xanh · đi trước",
+"Red · second":"Đỏ · đi sau","Other ways to play":"Cách chơi khác","Settings":"Cài đặt","Controls":"Điều khiển","Lab":"Phòng thí nghiệm","Quit":"Thoát","Open pause menu":"Mở menu tạm dừng",
+"Game board. Click a foot to pin it, then drag another foot to swing. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"Bàn cờ. Nhấp vào một chân để ghim làm trục, rồi kéo chân khác để xoay. Bàn phím: 1 đến 3 ghim chân, phím mũi tên xoay, Enter kết thúc lượt.",
+"Overhead game board. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.":"Bàn cờ nhìn từ trên. Bàn phím: 1 đến 3 ghim chân, phím mũi tên xoay, Enter kết thúc lượt.",
+"Match menu":"Menu ván đấu","Continue":"Tiếp tục","Leave match":"Rời ván đấu","Leave this match?":"Rời ván này?","Keep playing":"Chơi tiếp",
+"Keyboard controls":"Điều khiển bàn phím","menu":"menu","controls":"điều khiển","foot 1":"chân 1","foot 2":"chân 2","foot 3":"chân 3","cancel swing":"hủy xoay","end turn":"kết thúc lượt",
+"flat board size":"cỡ bàn phẳng","swing ↺":"xoay ↺","swing ↻":"xoay ↻","Pin foot 1":"Ghim chân 1","Pin foot 2":"Ghim chân 2","Pin foot 3":"Ghim chân 3",
+"Swing anticlockwise":"Xoay ngược chiều kim đồng hồ","Swing clockwise":"Xoay theo chiều kim đồng hồ","Pin · end your turn":"Ghim · kết thúc lượt","Cancel the swing":"Hủy lượt xoay",
+"Shrink the flat board":"Thu nhỏ bàn phẳng","Grow the flat board":"Phóng to bàn phẳng",
+"unused":"không dùng","smaller board":"bàn nhỏ hơn","bigger board":"bàn lớn hơn","left stick":"cần trái","right stick":"cần phải","right stick ← →":"cần phải ← →","camera":"máy quay",
+"D-pad ← →":"phím D ← →","foot":"chân","swing":"xoay","pin · end turn":"ghim · kết thúc lượt","match menu":"menu ván đấu","touch pad":"bàn cảm ứng","Controller":"Tay cầm",
+"{brand} controls":"Điều khiển {brand}","{brand} controller":"Tay cầm {brand}","Auto · {brand}":"Tự động · {brand}","{brand} (pad {n})":"{brand} (tay cầm {n})","Connected: ":"Đã kết nối: ",
+" — non-standard mapping, some buttons may be in odd places":" — ánh xạ không chuẩn, một số nút có thể nằm ở vị trí lạ",
+"No controller detected. Press a button on it with this window in front; some pads only appear once they are woken up. If a browser gamepad tester sees it and Tau does not, tell us.":"Không phát hiện tay cầm. Hãy nhấn một nút trên tay cầm khi cửa sổ này ở phía trước; một số tay cầm chỉ hiện ra sau khi được đánh thức. Nếu trang kiểm tra tay cầm của trình duyệt thấy nó mà Tau thì không, hãy báo cho chúng tôi.",
+"Triggers: the harder you pull, the faster it turns.":"Cò: kéo càng mạnh, xoay càng nhanh.","Right stick: the further you push, the faster it turns.":"Cần phải: đẩy càng xa, xoay càng nhanh.",
+"Touch":"Cảm ứng",
+"Tap a foot to pin it, then drag another foot to swing. Drag the 3D view to look around. Drag the flat board's rim knob to resize it.":"Chạm vào một chân để ghim, rồi kéo chân khác để xoay. Kéo khung 3D để nhìn quanh. Kéo núm ở vành bàn phẳng để đổi kích thước.",
+"Keyboard and mouse":"Bàn phím và chuột","Keyboard (if one is connected)":"Bàn phím (nếu có)",
+"Click a foot to pin it, then drag another foot to swing. Right-drag to look around. Scroll the flat board, or drag its rim knob, to resize it.":"Nhấp vào một chân để ghim, rồi kéo chân khác để xoay. Kéo chuột phải để nhìn quanh. Cuộn trên bàn phẳng, hoặc kéo núm ở vành, để đổi kích thước.",
+"Click a key to change it, then press the new one. Esc and F1 stay as they are.":"Nhấp vào một phím rồi nhấn phím mới. Esc và F1 giữ nguyên.",
+"Controllers are remapped in Steam’s own controller settings.":"Tay cầm được ánh xạ lại trong phần cài đặt tay cầm của Steam.","Reset keys":"Đặt lại phím","Layout":"Bố cục",
+"Controller layout":"Bố cục tay cầm","Auto":"Tự động","Swing with":"Xoay bằng","Controller scheme":"Sơ đồ tay cầm","Triggers":"Cò","Right stick":"Cần phải","Done":"Xong",
+"Choose your controls":"Chọn thiết bị điều khiển","One device each, or the same one twice to pass and play.":"Mỗi người một thiết bị, hoặc chọn cùng một thiết bị hai lần để chơi luân phiên.",
+"Same device — pass and play":"Cùng thiết bị — chơi luân phiên","Skip — pass and play":"Bỏ qua — chơi luân phiên","Back":"Quay lại","Not chosen":"Chưa chọn","Ready":"Sẵn sàng",
+"{colour}: press any button on your controller, or a key / click":"{colour}: nhấn nút bất kỳ trên tay cầm, một phím hoặc nhấp chuột",
+"Click or press Enter to confirm":"Nhấp hoặc nhấn Enter để xác nhận","Press {button} to confirm":"Nhấn {button} để xác nhận","Keyboard & mouse":"Bàn phím và chuột",
+"Sound":"Âm thanh","Sound volume":"Âm lượng","Mute":"Tắt tiếng","Board":"Bàn cờ","Graphics":"Đồ họa","Balanced":"Cân bằng","High":"Cao","Ultra · ray tracing":"Siêu cao · dò tia","Language":"Ngôn ngữ",
+"Invert camera Y":"Đảo trục Y máy quay","Reduce camera motion":"Giảm chuyển động máy quay","Controller vibration":"Rung tay cầm","Fullscreen":"Toàn màn hình",
+"Ray tracing: loading…":"Dò tia: đang tải…","Ray tracing: starting…":"Dò tia: đang khởi động…","Ray tracing: refining the still frame.":"Dò tia: đang tinh chỉnh khung hình tĩnh.",
+"Ray tracing: ready — it takes over whenever the board holds still.":"Dò tia: sẵn sàng — tự tiếp quản khi bàn cờ đứng yên.",
+"Ray tracing could not start on this GPU — drawing normally.":"Không thể khởi động dò tia trên GPU này — vẽ theo cách thường.",
+"Ray tracing could not start on this GPU.":"Không thể khởi động dò tia trên GPU này.",
+"Two players · same screen":"Hai người · cùng màn hình","Level {n} · You played {colour}":"Cấp độ {n} · Bạn cầm {colour}",
+"username or email":"tên người dùng hoặc email"
 }
 };
 
@@ -9859,32 +10221,47 @@ applyTheme();   // first load may be light (Slate) from the device preference �
 resize();
 animate();
 demoStart();
-// Apply translations to the static HTML and build the subtle language row. English needs no
-// rewriting (sources are English); the row always renders so any language can switch away.
-(function applyI18nStatic(){
-    if (LANG !== 'en') {
-        const setTxt = (id, key) => { const el = document.getElementById(id); if (el) el.textContent = t(key); };
-        applyMenuBopomofo();   // the 6 mode buttons + Get a physical set (ruby-annotated on zht)
-        setTxt('reset','Surrender'); setTxt('menuBtn','Menu');
-        setTxt('replayShare','Share this game'); setTxt('replaySave','Save this game'); setTxt('replaySkip','Skip ⏭');
-        setTxt('replayPlayOn','Play on from here');
-        setTxt('acctGoogle','Continue with Google'); setTxt('acctMoreOptions','or use a username & password');
-        setTxt('acctLogIn','Log in'); setTxt('acctSignUp','Sign up'); setTxt('acctSendLink','Send link');
-        setTxt('acctPanelClose','Close'); setTxt('acctSignOut','Sign out');
-        const u=document.getElementById('acctUser'); if (u) u.placeholder=t('username');
-        const pw=document.getElementById('acctPass'); if (pw) pw.placeholder=t('password');
-        const oneTime=document.querySelector('#acctEmailOptions p.msg'); if (oneTime) oneTime.textContent=t('or a one-time email link');
-        const prof=document.querySelector('#acctSignedIn .profile');
-        if (prof && prof.childNodes.length>=4){ prof.childNodes[0].textContent=t('Signed in as '); prof.childNodes[3].textContent=t('Rating:')+' '; }
-    }
+// Apply translations to the static HTML and mark the language in the corner picker. Re-callable:
+// setLang runs the same pass again on a live switch, and t() hands back the English source for
+// every key, so switching back to English repaints English.
+function applyI18nStatic(){
+    const setTxt = (id, key) => { const el = document.getElementById(id); if (el) el.textContent = t(key); };
+    applyMenuBopomofo();   // the 6 mode buttons + Get a physical set (ruby-annotated on zht)
+    setTxt('reset','Surrender'); setTxt('menuBtn','Menu');
+    setTxt('replayShare','Share this game'); setTxt('replaySave','Save this game'); setTxt('replaySkip','Skip ⏭');
+    setTxt('replayPlayOn','Play on from here');
+    setTxt('acctGoogle','Continue with Google'); setTxt('acctMoreOptions','or use a username & password');
+    setTxt('acctLogIn','Log in'); setTxt('acctSignUp','Sign up'); setTxt('acctSendLink','Send link');
+    setTxt('acctPanelClose','Close'); setTxt('acctSignOut','Sign out');
+    const u=document.getElementById('acctUser'); if (u) u.placeholder=t('username or email');
+    const pw=document.getElementById('acctPass'); if (pw) pw.placeholder=t('password');
+    const oneTime=document.querySelector('#acctEmailOptions p.msg'); if (oneTime) oneTime.textContent=t('or a one-time email link');
+    const prof=document.querySelector('#acctSignedIn .profile');
+    if (prof && prof.childNodes.length>=4){ prof.childNodes[0].textContent=t('Signed in as '); prof.childNodes[3].textContent=t('Rating:')+' '; }
     // Bopomofo toggle: only meaningful (and only shown) on Traditional Chinese.
     const bpBtn = document.getElementById('bopomofoToggle');
-    if (bpBtn && LANG === 'zht') {
+    if (bpBtn) bpBtn.style.display = LANG === 'zht' ? 'block' : 'none';
+    document.documentElement.lang = LANG === 'zht' ? 'zh-Hant' : LANG === 'zh' ? 'zh-Hans' : LANG;
+    // Language picker lives in the top-right corner cluster (next to sound/theme), not the menu:
+    // it's a set-once control, so it stays out of the way behind a small globe button.
+    const langMenu = document.getElementById('langMenu');
+    if (!langMenu) return;
+    langMenu.textContent = '';
+    LANG_NAMES.forEach(([code,label]) => {
+        const b=document.createElement('button'); b.textContent=label;
+        if (code===LANG) b.className='cur';
+        b.addEventListener('click',()=>setLang(code));
+        langMenu.appendChild(b);
+    });
+}
+(function bootI18n(){
+    applyI18nStatic();
+    const bpBtn = document.getElementById('bopomofoToggle');
+    if (bpBtn) {
         const syncBpBtn = () => {
             bpBtn.classList.toggle('off', !bopomofoOn);
             bpBtn.title = bopomofoOn ? 'Bopomofo annotations (tap to turn off)' : 'Bopomofo annotations (tap to turn on)';
         };
-        bpBtn.style.display = 'block';
         syncBpBtn();
         bpBtn.addEventListener('click', () => {
             bopomofoOn = !bopomofoOn;
@@ -9893,19 +10270,8 @@ demoStart();
             applyMenuBopomofo();
         });
     }
-    // Language picker lives in the top-right corner cluster (next to sound/theme), not the menu:
-    // it's a set-once control, so it stays out of the way behind a small globe button.
-    document.documentElement.lang = LANG === 'zht' ? 'zh-Hant' : LANG === 'zh' ? 'zh-Hans' : LANG;
     const langMenu = document.getElementById('langMenu'), langBtn = document.getElementById('langToggle');
     if (langMenu && langBtn) {
-        langMenu.textContent = '';
-        [['en','English'],['ja','日本語'],['zh','简体中文'],['zht','繁體中文'],['ko','한국어'],
-         ['de','Deutsch'],['fr','Français'],['es','Español'],['pt','Português'],['ru','Русский'],['vi','Tiếng Việt']].forEach(([code,label]) => {
-            const b=document.createElement('button'); b.textContent=label;
-            if (code===LANG) b.className='cur';
-            b.addEventListener('click',()=>{ try{localStorage.setItem('tauLang',code);}catch(e){} location.reload(); });
-            langMenu.appendChild(b);
-        });
         langBtn.addEventListener('click', e => {
             e.stopPropagation();
             langMenu.style.display = langMenu.style.display === 'flex' ? 'none' : 'flex';
