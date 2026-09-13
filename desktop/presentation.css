@@ -3,6 +3,11 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .tau-desktop button,.tau-desktop select,.tau-desktop input { font:inherit; }
 .tau-desktop button { cursor:pointer; }
 .tau-desktop button:focus-visible,.tau-desktop select:focus-visible,.tau-desktop input:focus-visible,.tau-desktop canvas:focus-visible { outline:2px solid var(--gold); outline-offset:5px; }
+/* While a controller is driving, plain :focus gets the ring too: a programmatic focus() does not
+   satisfy :focus-visible on its own, so pad navigation was moving an invisible cursor. */
+.tau-desktop.desktop-pad-nav button:focus,.tau-desktop.desktop-pad-nav select:focus,
+.tau-desktop.desktop-pad-nav input:focus,.tau-desktop.desktop-pad-nav [tabindex="0"]:focus {
+  outline:2px solid var(--gold); outline-offset:5px; }
 .tau-desktop #wrap { padding:0; }
 .tau-desktop #wrap>h1,.tau-desktop #themeToggle,.tau-desktop #soundToggle,.tau-desktop #langToggle,.tau-desktop #buildTag,.tau-desktop #bopomofoToggle { display:none!important; }
 .tau-desktop #menu { position:fixed; inset:0; width:auto; max-width:none; max-height:none; overflow:hidden; padding:0; margin:0; align-items:stretch; justify-content:center; }

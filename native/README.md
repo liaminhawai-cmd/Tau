@@ -921,3 +921,22 @@ to change the chosen foot -- so the only way to find out which foot was selected
 was to press A and see what got pinned. Buttons, left stick and hat now feed one
 answer, edge-detected per pad, and the chosen foot highlights as you move across
 it instead of only revealing itself when you commit.
+
+A pad moving the menu focus now says so out loud: the premium focus ring is
+`:focus-visible`, and Chromium only grants that when it judges focus should be
+shown -- a programmatic `focus()` made after the player last touched a mouse
+does not qualify. So a controller was quietly walking an invisible cursor down
+the menu and nothing on screen moved, which is indistinguishable from "the
+controller does not work in menus". `desktop-pad-nav` on the root turns plain
+`:focus` into the ring while a controller is driving, and any pointer movement
+takes it off again.
+
+Looking around is not a move. `orbitCamera` sat behind `canPlay()`, which is
+false on anyone else's turn, so the view froze exactly when a player had time to
+study the board. It uses `canLook()` now -- in a match, no dialog, not paused,
+not a replay -- and in a local 1v1 the waiting player's pad can move the camera
+too, though it still cannot touch a piece.
+
+The Lab is a developer drop-target for neural-net models and is removed
+outright from the packaged Steam and app builds; it stays in a browser, where
+it is used.

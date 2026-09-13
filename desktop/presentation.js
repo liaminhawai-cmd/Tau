@@ -279,7 +279,17 @@
     const down=i=>!!pad.buttons[i]?.pressed, pressed=i=>down(i)&&!prev[i];
     const els=focusable(context), dir=padDir(pad), was=prev.dir||{x:0,y:0};
     const move=dir.y && dir.y!==was.y ? dir.y : 0;   // one step per push, however the pad sends it
-    if(move && els.length){const current=els.indexOf(document.activeElement);padFocus=(Math.max(0,current)+move+els.length)%els.length;els[padFocus].focus();}
+    if(move && els.length){
+      const current=els.indexOf(document.activeElement);
+      padFocus=(Math.max(0,current)+move+els.length)%els.length;
+      els[padFocus].focus();
+      // A pad moving focus has to LOOK like it moved focus. The premium ring is :focus-visible,
+      // which Chromium only grants when it judges focus should be shown -- a programmatic .focus()
+      // after the player last touched a mouse does not qualify, so the pad was quietly walking an
+      // invisible cursor down the menu and nothing on screen changed. This flag says "a controller
+      // is driving now", and the mouse takes it away again.
+      root.classList.add('desktop-pad-nav');
+    }
     const el=document.activeElement;
     if(el?.tagName==='SELECT' && (pressed(14)||pressed(15))){el.selectedIndex=Math.max(0,Math.min(el.options.length-1,el.selectedIndex+(pressed(15)?1:-1)));el.dispatchEvent(new Event('change',{bubbles:true}));}
     if(el?.type==='range' && (pressed(14)||pressed(15))){el.value=String(Math.max(Number(el.min),Math.min(Number(el.max),Number(el.value)+(pressed(15)?1:-1)*Number(el.step||1))));el.dispatchEvent(new Event('input',{bubbles:true}));}
@@ -287,6 +297,8 @@
     if(pressed(1)&&dialogOpen()&&modalDismiss)modalDismiss();
     if(pressed(1)&&$('htpFull'))$('htpClose')?.click();
   }
+  addEventListener('pointermove', () => root.classList.remove('desktop-pad-nav'), { passive: true });
+  addEventListener('pointerdown', () => root.classList.remove('desktop-pad-nav'), { passive: true });
   function actingPad() {
     const s = activeSeat();
     if (!s) return currentPad;
@@ -356,7 +368,8 @@
     set('desktopWatch', t('Watch')); set('desktopLearn', t('How to play'));
     set('desktopLeaderboard', t('Leaderboard'));
     set('desktopSettings', t('Settings')); set('desktopControls', t('Controls'));
-    set('desktopLab', t('Lab')); set('desktopQuit', t('Quit'));
+    if ($('desktopLab')) set('desktopLab', t('Lab'));
+    set('desktopQuit', t('Quit'));
     set('desktopPauseLabel', t('Menu'));
     $('desktopHome').setAttribute('aria-label', t('Open pause menu'));
     $('view3d').setAttribute('aria-label', t('Game board. Click a foot to pin it, then drag another foot to swing. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.'));
@@ -395,7 +408,13 @@
   // page the wrapper also reaches with F2; its "full game →" link returns here.
   // The analysis lab: brains on the bench, custom openings, position tools (the #lab dev route,
   // which has no other way in from a packaged desktop build with no URL bar).
-  $('desktopLab').onclick = () => { if (typeof labOpenDrop === 'function') labOpenDrop(); };
+  // The Lab is a developer drop-target for neural-net models. It has no place in a shipped game, so
+  // it only exists where it is actually used: a browser, never the packaged Steam or app build.
+  if (window.TAU_DESKTOP && (window.tauSteam || (typeof isNativeApp === 'function' && isNativeApp()))) {
+    $('desktopLab').remove();
+  } else {
+    $('desktopLab').onclick = () => { if (typeof labOpenDrop === 'function') labOpenDrop(); };
+  }
   $('desktopSettings').onclick = openSettings;
   // The Menu button answers on the press, not the click: a click needs the pointer to come up on
   // the same element after the board's own pointer handling has had its say, and on a busy frame
@@ -1615,8 +1634,12 @@
   // Left stick orbits the camera around whatever the controls are already looking at. Setting
   // camManualSet stops updateCamera's auto-frame from hauling the view back the next frame — the
   // same latch a mouse drag sets, so a pad and a mouse hand off to each other cleanly.
+  // Looking around is not a move: the camera answers whenever a match is on screen, including while
+  // the opponent is thinking or playing their turn. It used to sit behind canPlay(), which is false
+  // on anyone else's turn, so the view froze exactly when a player had time to study the board.
+  function canLook() { return inMatch() && !dialogOpen() && !$('htpFull') && !paused && !replayActive; }
   function orbitCamera(lx,ly,dt) {
-    if(!renderer || !canPlay() || (Math.abs(lx)<.18 && Math.abs(ly)<.18)) return;
+    if(!renderer || !canLook() || (Math.abs(lx)<.18 && Math.abs(ly)<.18)) return;
     camOffset.copy(camera.position).sub(controls.target);
     camSpherical.setFromVector3(camOffset);
     // A stick is a LOOK control, not a grab: pushing right turns the view right, so the board
@@ -1729,6 +1752,9 @@
           swing(act.axes[2]||0, dt);                                       // right stick left/right turns
         }
         orbitCamera(act.axes[0]||0, act.axes[1]||0, dt);                   // left stick moves the camera, always
+        // Both seats can look around in a local 1v1: the waiting player is allowed to study the
+        // board from their own angle, they just cannot touch a piece (see seatBlocks).
+        for (const p of padList) if (p !== act) orbitCamera(p.axes[0]||0, p.axes[1]||0, dt);
         // A short pulse each time a foot actually crosses a printed line: the rule that decides the
         // turn, felt rather than read off the crossings counter.
         if(typeof G.crossings==='number'){
@@ -1808,6 +1834,7 @@
       saveSettings(); if($('desktopQuality')) $('desktopQuality').value=settings.quality;
       if(settings.rayTrace) rayTraceLoad(); drawQualityNote(); },
     rayTraceStatus(){return ptPhase;},
+    canPlayNow: canPlay, canLookNow: canLook,
     rayTraceMotion,
     // The corner layout's camera goal for the current window (see desiredPose).
     cornerCameraPose(w3, h3){ if(!renderer||!camera) return null;

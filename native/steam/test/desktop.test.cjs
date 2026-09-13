@@ -99,10 +99,23 @@ test('the home menu reaches the analysis lab, and no longer offers the standalon
   // Every board is selectable and unlockable directly in a real match now, so the separate
   // attract-mode showcase page is gone from the menu.
   assert.equal(g.$('desktopShowcase'),null);
-  // The Lab button opens the #lab overlay in place — no URL bar needed in a packaged build.
+  // The Lab button opens the #lab overlay in place — in a BROWSER. It is a developer drop-target
+  // for neural-net models and is removed from the packaged Steam and app builds entirely.
   g.$('desktopLab').click();g.tick();
   assert.ok(g.$('labOverlay').classList.contains('open'),'lab overlay opened');
   assert.deepEqual(g.errors,[]);
+});
+
+test('the Lab is a developer tool and never ships in a packaged build',async t=>{
+  const steam=await game();t.after(steam.close);
+  steam.read("window.tauSteam={quit(){}};");
+  steam.read('tauDesktop.relabel && tauDesktop.relabel()');
+  const packaged=await game('?steam=1&premium=1',{},{capacitor:true});t.after(packaged.close);
+  assert.equal(packaged.$('desktopLab'),null,'no Lab in the app build');
+  const labels=[...packaged.$('desktopHome').querySelectorAll('.desktop-home-bottom button')]
+    .filter(b=>!b.hidden).map(b=>b.textContent);
+  assert.ok(!labels.includes('Lab'),`bottom row is ${labels.join(', ')}`);
+  assert.deepEqual(packaged.errors,[]);
 });
 
 test('a real match hands board sizing to the shared layout, not a cut-down desktop one',async t=>{
@@ -1726,6 +1739,12 @@ test('a pad that sends directions on a hat or a stick still drives the menus and
   const first=focus();
   hat(0.142);                                    // down
   assert.notEqual(focus(),first,'a hat step moves the menu focus');
+  // And it has to LOOK moved: :focus-visible alone does not fire for a programmatic focus().
+  assert.ok(g.w.document.documentElement.classList.contains('desktop-pad-nav'),
+    'the menu shows a focus ring while a controller is driving');
+  g.w.dispatchEvent(new g.w.Event('pointermove'));
+  assert.equal(g.w.document.documentElement.classList.contains('desktop-pad-nav'),false,
+    'and the mouse takes it away again');
   const second=focus();
   pad.axes[1]=1;g.tick();pad.axes[1]=0;g.tick();  // left stick down
   assert.notEqual(focus(),second,'and so does the left stick');
@@ -1735,6 +1754,27 @@ test('a pad that sends directions on a hat or a stick still drives the menus and
   assert.equal(g.read('v3HoverIdx'),1,'the hat changes which foot is chosen, visibly, with no button press');
   pad.axes[0]=-1;g.tick();pad.axes[0]=0;g.tick(); // stick left
   assert.equal(g.read('v3HoverIdx'),0,'and so does the stick');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the camera can be moved while the opponent is on the clock',async t=>{
+  const g=await game();t.after(g.close);
+  g.read('tauDesktop.startMatch()');g.tick();   // vs the AI
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(38,1.6,1,4000);
+    camera.position.set(0,150,200);
+    controls={mouseButtons:{},target:new THREE.Vector3(0,4,0),update(){}};
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    vsAI=true; G.active=aiIdx;`);   // their turn: no piece may be touched
+  assert.equal(g.read('tauDesktop.canPlayNow()'),false,'no move is allowed');
+  const before=g.read('camera.position.x');
+  const pad={id:'Xbox',index:0,connected:true,mapping:'standard',axes:[1,0,0,0],
+    buttons:Array.from({length:17},()=>({pressed:false,value:0}))};
+  g.w.navigator.getGamepads=()=>[pad];
+  // Drive the input poll straight: the full render loop wants a whole scene, and the camera gate is
+  // what this test is about.
+  g.read('for(let i=0;i<20;i++) tauDesktop.tick(1/60)');
+  assert.notEqual(g.read('camera.position.x'),before,'but the view still answers the stick');
   assert.deepEqual(g.errors,[]);
 });
 
@@ -1834,7 +1874,7 @@ test('the premium home menu uses the web app\'s words and shape, with no subtitl
   const labels=[...g.w.document.querySelectorAll('.desktop-links button')].map(b=>b.textContent);
   assert.deepEqual(labels,['1v1','Watch','How to play','Leaderboard'],'the web\'s vs AI is the gold Play here; no shop link inside a paid build');
   const bottom=[...g.w.document.querySelectorAll('.desktop-home-bottom button')].filter(b=>!b.hidden).map(b=>b.textContent);
-  assert.deepEqual(bottom,['Settings','Controls','Lab']);
+  assert.deepEqual(bottom,['Settings','Controls','Lab']);   // a browser build keeps the developer Lab
   assert.equal(g.$('desktopPlay').textContent,'Play','the gold Play stays');
   for (const sel of ['.desktop-home h2','.desktop-intro','.desktop-material','#desktopInputHint','#desktopLocal'])
     assert.equal(g.w.document.querySelector(sel),null,sel+' is gone');
