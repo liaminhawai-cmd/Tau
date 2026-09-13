@@ -5071,11 +5071,17 @@ function openAcctPanel() {
         // open in the phone's browser and sign THAT in, not the app -- so it stays hidden.
         const magic = document.getElementById('acctMagic');
         if (magic) magic.style.display = 'none';
-    } else if ((typeof isNativeApp==='function' && isNativeApp()) || (typeof isSteamApp==='function' && isSteamApp())) {
-        // The installed app or the Steam desktop wrapper: Google's browser-redirect OAuth doesn't
-        // work in either (see isSteamApp's comment), and a magic link would open in the system
-        // browser and sign THAT in, not this window. Username/password is the ONLY working path
-        // here — hide the dead ends rather than explaining them.
+    } else if (typeof isSteamApp==='function' && isSteamApp()) {
+        // The desktop wrapper signs in through the system browser and a loopback server
+        // (steamGoogleSignIn), so Google leads here exactly as on the web. A magic link still
+        // can't work — it would open in the browser and sign THAT in, not this window.
+        const magic = document.getElementById('acctMagic');
+        if (magic) magic.style.display = 'none';
+    } else if (typeof isNativeApp==='function' && isNativeApp()) {
+        // The installed app without its own one-tap Google: browser-redirect OAuth doesn't work in
+        // a native WebView, and a magic link would open in the phone's browser and sign THAT in.
+        // Username/password is the ONLY working path here — hide the dead ends rather than
+        // explaining them.
         document.getElementById('acctGoogle').style.display = 'none';
         const magic = document.getElementById('acctMagic');
         if (magic) magic.style.display = 'none';
@@ -10889,6 +10895,10 @@ document.getElementById('acctGoogle').addEventListener('click', async () => {
             return;
         }
     }
+    if (isSteamApp()) {   // the desktop wrapper's own flow: system browser out, loopback server back
+        await steamGoogleSignIn();
+        return;
+    }
     if (isNativeApp()) {   // belt-and-braces: the button is hidden in the app, but never let it 403
         msg.textContent = t('Sign in with a username & password. Signed up with Google? Set a password at tau-game.com first (account → Set a password), then log in here with your email + that password.');
         showAcctEmailOptions(true);
@@ -10951,16 +10961,79 @@ function isNativeApp() {
     catch (e) { return false; }
 }
 // The Electron/Steam desktop wrapper (window.tauSteam comes from its preload; see native/steam).
-// Google's web OAuth redirect is the WRONG tool here for two separate reasons: Electron's own
-// user-agent string can get the same "disallowed_useragent" treatment a WebView gets, and even
-// when Google lets it through, the redirect lands back on a URL with no ?steam=1 on it (on
-// purpose -- see the click handler below -- so it always matches Supabase's allowed redirect
-// list), which drops the game out of the desktop presentation entirely: it looked signed in, then
-// the whole premium menu was just gone, back to the plain web layout in the same window. Until a
-// real desktop flow exists (a loopback-redirect OAuth through the system browser, the way Google's
-// own docs describe for installed apps), Steam gets the same username/password-only treatment the
-// app does, rather than a button that quietly breaks the thing it's part of.
+// Google's web OAuth redirect is the WRONG tool here: Electron's own user-agent can draw the same
+// "disallowed_useragent" refusal a WebView gets, and even when Google lets it through, the
+// redirect lands back on a URL with no ?steam=1 on it (on purpose -- so it always matches
+// Supabase's allowed redirect list), which drops the game out of the desktop presentation
+// entirely. steamGoogleSignIn() below is the flow Google's own docs describe for installed apps
+// instead: out to the system browser, back to a loopback server the wrapper runs.
 function isSteamApp() { return !!window.tauSteam; }
+// The desktop sign-in, in three hops: the wrapper reserves 127.0.0.1:<port> and mints a state,
+// Supabase builds the authorize URL for that address, and the wrapper opens it in the real browser
+// and hands back the code Google's return trip leaves on the loopback server.
+async function steamGoogleSignIn() {
+    const msg = document.getElementById('acctMsg');
+    const bridge = window.tauSteam;
+    if (!sb) { msg.textContent = t('Still connecting. Try again in a moment.'); return; }
+    if (!bridge || typeof bridge.googleAuthBegin !== 'function' || typeof bridge.googleSignIn !== 'function') {
+        msg.textContent = t('This build can’t open Google. Use a username & password below.');
+        showAcctEmailOptions(true);
+        return;
+    }
+    // A real account is being made, so the session persists like any other non-guest sign-in.
+    localStorage.setItem(AUTH_PERSIST_FLAG, '1');
+    try {
+        const begin = await bridge.googleAuthBegin();
+        if (!begin || begin.error || !begin.redirectUri) throw new Error((begin && begin.error) || t('Google sign-in could not start.'));
+        // A SEPARATE client for this one exchange. The code that comes back is only redeemable by
+        // whichever client generated the PKCE verifier, and the shared client must stay on the
+        // implicit flow the working web redirect uses -- so this one gets its own flowType, its own
+        // storage key (no lock contention with the shared client) and no persistence at all.
+        const tmp = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: {
+                flowType: 'pkce', detectSessionInUrl: false, persistSession: false,
+                autoRefreshToken: false, storageKey: SB_STORAGE_KEY + '-desktop-oauth',
+            },
+        });
+        const guest = !!(sbUser && sbUser.is_anonymous);
+        const options = { redirectTo: begin.redirectUri, skipBrowserRedirect: true };
+        if (guest) {
+            // linkIdentity signs its request with the CURRENT session's JWT, so the throwaway client
+            // has to be holding the guest's session -- otherwise Google would mint an unrelated new
+            // account and the guest's rating and level clears would be abandoned.
+            const { data: { session } } = await sb.auth.getSession();
+            if (!session) throw new Error(t('Still connecting. Try again in a moment.'));
+            const { error } = await tmp.auth.setSession({ access_token: session.access_token, refresh_token: session.refresh_token });
+            if (error) throw error;
+        }
+        const { data, error } = guest
+            ? await tmp.auth.linkIdentity({ provider: 'google', options })
+            : await tmp.auth.signInWithOAuth({ provider: 'google', options });
+        if (error) throw error;
+        if (!data || !data.url) throw new Error(t('Google sign-in could not start.'));
+        msg.textContent = t('Opening Google in your browser…');
+        const back = await bridge.googleSignIn(data.url, begin.state);
+        // Closing the tab, pressing Cancel on Google's screen or just walking away is not a failure:
+        // put the panel back the way it was and say nothing.
+        if (!back || back.cancelled) { localStorage.removeItem(AUTH_PERSIST_FLAG); msg.textContent = ''; return; }
+        if (back.error) throw new Error(back.error);
+        if (!back.code) throw new Error(t('Google did not return a sign-in code.'));
+        const { data: exchanged, error: exchangeError } = await tmp.auth.exchangeCodeForSession(back.code);
+        if (exchangeError) throw exchangeError;
+        const session = exchanged && exchanged.session;
+        if (!session) throw new Error(t('Google sign-in did not return a session.'));
+        // Hand the finished session to the real client, which is the one everything else reads.
+        const { error: adoptError } = await sb.auth.setSession({
+            access_token: session.access_token, refresh_token: session.refresh_token,
+        });
+        if (adoptError) throw adoptError;
+        msg.textContent = '';
+    } catch (e) {
+        localStorage.removeItem(AUTH_PERSIST_FLAG);
+        msg.textContent = (e && e.message) || t('Google sign-in could not start.');
+        showAcctEmailOptions(true);
+    }
+}
 // The installed app's one-tap Google path (see TAU_GOOGLE_NATIVE_CLIENT_ID): present only when the
 // plugin is actually in this build AND a client ID has been configured, so a build without either
 // silently keeps the username/password-only panel rather than offering a button that cannot work.

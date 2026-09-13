@@ -762,3 +762,73 @@ The Controls sheet prints, live, which pads the game can actually see: a
 controller that does nothing is otherwise impossible to tell apart from one the
 browser never handed us, since the Gamepad API only reports a pad once its own
 window has focus and a button has been pressed on it.
+
+### Google sign-in on Steam (loopback OAuth)
+
+The desktop build used to hide the Google button: a packaged Electron app has no
+https origin for Google to return to, Google refuses to render its sign-in page
+inside the game window at all, and the web redirect would come back to a URL
+with no `?steam=1` on it — which dropped the game out of the desktop
+presentation entirely. It now does what Google's own docs prescribe for
+installed apps: the sign-in happens in the player's real browser and comes home
+to a loopback server.
+
+What happens on a click:
+
+1. The renderer asks the wrapper for a port (`auth:google-begin`). The main
+   process opens an `http` server bound to **127.0.0.1** on a fixed port —
+   8765, else 8766, else 8767 — and mints a random `state` for this attempt.
+2. The renderer asks Supabase for the authorize URL for exactly that address
+   (`redirectTo: 'http://127.0.0.1:<port>/'`, `skipBrowserRedirect: true`, so
+   nothing navigates), or `linkIdentity` with the same options when the player
+   is currently a guest, which keeps their uid, rating and level clears.
+3. It hands that URL back (`auth:google`); the main process opens it with
+   `shell.openExternal` — the system browser, never the game window — and waits.
+4. Google returns to Supabase, Supabase redirects the browser to
+   `http://127.0.0.1:<port>/?code=…`. The server answers that one request with a
+   small self-contained "you can close this tab" page, closes, and resolves the
+   IPC promise with the code.
+5. The renderer exchanges the code for a session and hands the tokens to the
+   real client with `sb.auth.setSession(...)`.
+
+The server only ever listens on loopback, rejects any request whose remote
+address is not loopback, rejects a `state` that is not the one it minted,
+answers anything that is not the redirect (a favicon probe) without ending the
+flow, gives up after three minutes, and is torn down on window close and on
+quit — a second click abandons the first attempt rather than leaking a listener.
+A cancelled or timed-out flow is not an error: the panel goes back to how it
+was and says nothing.
+
+**Why a second Supabase client.** Only a client on the PKCE flow can exchange
+that code, and it must be the same client that generated the verifier. The
+shared client (`ensureSupabase`) stays exactly as it is — implicit flow — so the
+web redirect path that works today is untouched; `steamGoogleSignIn()` creates a
+short-lived client with `flowType: 'pkce'`, `persistSession: false` (which forces
+the library's own in-memory storage, so nothing in `localStorage`/
+`sessionStorage` is touched), `autoRefreshToken: false` and its own `storageKey`,
+uses it for the authorize URL and the exchange, and then throws it away.
+
+**The one manual step.** In the Supabase dashboard → **Authentication → URL
+Configuration → Redirect URLs**, add all three, exactly, trailing slash included:
+
+```
+http://127.0.0.1:8765/
+http://127.0.0.1:8766/
+http://127.0.0.1:8767/
+```
+
+Sign-in fails with "redirect_to is not allowed" on any machine where the port
+that got used is not on that list, which is why the ports are a fixed short list
+rather than an ephemeral port.
+
+**No new Google Cloud client is needed.** Google never sees 127.0.0.1: the only
+redirect URI it is ever given is Supabase's own
+`https://<project>.supabase.co/auth/v1/callback`, already registered for the web
+build. The loopback address is purely between Supabase and the desktop app.
+
+Tests: `native/steam/test/loopback.test.cjs` drives the real server over HTTP on
+a free port (code, bad state, cancel, provider error, timeout, busy ports),
+`wrapper.test.cjs` runs the real `main.js` IPC handlers end to end against a stub
+Electron, and `desktop.test.cjs` covers the renderer with the bridge and both
+Supabase clients stubbed. Electron itself cannot run in CI, so the only untested
+link is `shell.openExternal` actually raising a browser.
