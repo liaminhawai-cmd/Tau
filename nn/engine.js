@@ -50,12 +50,26 @@ function topLevelDefs(src) {
     }
     if (end < 0) continue;
     const text = src.slice(start, end);
-    // register every name a multi-declarator line introduces (let a = 1, b = 2;)
+    // Register every name a multi-declarator line introduces (let a = 1, b = 2;) -- but ONLY the
+    // ones in the declaration HEAD, at paren/brace depth 0. Scanning the whole definition for
+    // ", name =" also scoops up locals inside an IIFE body, and then any picked def that merely
+    // uses that name as a loop variable or lambda parameter drags the whole unrelated def into the
+    // closure. That is not hypothetical: FALL_HULL_LOCAL's body declares `R`, LINE_INTERSECTIONS
+    // (a seed) has a `.map((R,k) => ...)`, and the 3D hull came along with THREE attached.
     const names = [m[2]];
     if (kind === 'const' || kind === 'let') {
-      const flat = text.replace(/\n/g, ' ');
-      const extra = flat.match(/,\s*([A-Za-z_$][\w$]*)\s*=/g) || [];
-      for (const e of extra) names.push(e.replace(/[,=\s]/g, ''));
+      const bare = stripCommentsAndStrings(text);
+      let depth = 0;
+      for (let k = 0; k < bare.length; k++) {
+        const c = bare[k];
+        if (c === '(' || c === '[' || c === '{') depth++;
+        else if (c === ')' || c === ']' || c === '}') depth--;
+        else if (c === ';' && depth === 0) break;
+        else if (c === ',' && depth === 0) {
+          const r = /^\s*([A-Za-z_$][\w$]*)\s*=/.exec(bare.slice(k + 1));
+          if (r) names.push(r[1]);
+        }
+      }
     }
     defs.push({ names, text, pos: start });
     re.lastIndex = end;
@@ -122,7 +136,7 @@ function buildEngineSource() {
   }
   const code = [...picked].sort((a, b) => a.pos - b.pos).map(d => d.text).join('\n');
   const bare = stripCommentsAndStrings(code);
-  if (/document\.|getElementById|localStorage/.test(bare))
+  if (/(?<![.\\w$])THREE\\b|(?<![.\\w$])window\\b|document\\.|getElementById|localStorage/.test(bare))
     throw new Error('extracted engine pulled in DOM code — the closure reached too far');
   if (!/(^|\n)let G;/.test(code)) throw new Error("closure missed the game's `let G;` declaration");
   const source = code + '\n';
