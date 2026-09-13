@@ -71,6 +71,10 @@ test('sync-www.mjs --premium bundles the showcase catalogue; without it, only th
     assert.ok(fs.existsSync(path.join(tmp,'premium','desktop','presentation.js')));
     assert.ok(fs.existsSync(path.join(tmp,'premium','steam.html')));
     assert.ok(fs.existsSync(path.join(tmp,'premium','vendor','three','three.global.js')));
+    // Ray tracing (Ultra) loads its bundle from disk at the moment a player turns it on, so an
+    // offline shell that did not ship the file would offer a setting that can never work.
+    assert.ok(fs.existsSync(path.join(tmp,'premium','vendor','pathtracer','pathtracer.global.js')));
+    assert.equal(fs.existsSync(path.join(tmp,'plain','vendor','pathtracer')),false,'never in the plain web build');
   } finally { fs.rmSync(tmp,{recursive:true,force:true}); }
 });
 

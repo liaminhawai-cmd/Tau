@@ -96,6 +96,7 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .desktop-setting input[type="range"] { width:100%; accent-color:var(--gold); }
 .desktop-setting input[type="checkbox"] { justify-self:end; width:20px; height:20px; accent-color:var(--gold); }
 .desktop-setting output { font-size:12px; color:var(--muted); margin-left:7px; }
+.desktop-setting small { display:block; font-size:12px; color:var(--muted); margin-top:3px; }
 .desktop-volume output { justify-self:end; }
 .desktop-volume input { grid-column:1/-1; }
 .tau-desktop [hidden] { display:none!important; }
