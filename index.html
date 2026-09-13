@@ -3387,7 +3387,13 @@ function nearestFoot(p, feet, exclude) {
 function inputBlocked() {
     // The desktop's match menu no longer pauses the match, so the open sheet itself is what keeps
     // keys and pad input off the pieces while the opponent plays on underneath it.
-    if (window.tauDesktop && (window.tauDesktop.paused || window.tauDesktop.menuOpen)) return true;
+    // seatBlocks is the desktop's local 1v1 on two devices: the players chose a device each, so
+    // only the active colour's own device may touch the board. It is asked HERE, at the one gate
+    // every input path already goes through, rather than in each handler -- the desktop layer tags
+    // who is pressing (tauDesktop.inputDevice: 'pad' while it drives a pad, 'kbm' otherwise) and
+    // this answers for keys, mouse, touch and pad alike, wherever they entered.
+    const d = window.tauDesktop;
+    if (d && (d.paused || d.menuOpen || d.seatBlocks(d.inputDevice))) return true;
     return (vsAI && G.active===aiIdx) || (onlineMatch && !myOnlineTurnNow());
 }
 // Tapping the board dismisses the volume / language popouts. Their own document-level "click
@@ -7723,7 +7729,8 @@ function choose1v1Mode() {
     showModal(t('1v1'), '', [
         { label: t('Online Ranked'),  onClick: () => ensureOnlineIdentity(startOnlineMatchmaking) },
         { label: t('Online Private'), onClick: () => ensureOnlineIdentity(openPrivateMatchMenu) },
-        { label: t('Local 1v1'),      onClick: () => startGame(false) },
+        { label: t('Local 1v1'),      onClick: () => (window.tauDesktop && window.tauDesktop.chooseDevices
+                                            ? window.tauDesktop.chooseDevices(() => startGame(false)) : startGame(false)) },
         { label: t('Cancel'),         onClick: () => {} },
     ], false, { dismiss: true });
 }

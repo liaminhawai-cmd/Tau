@@ -195,7 +195,7 @@
   ];
   const DEFAULT_KEYS = { pin1:'1', pin2:'2', pin3:'3', swingLeft:'ArrowLeft', swingRight:'ArrowRight',
     commit:'Enter', cancel:'Backspace', shrink:'[', grow:']' };
-  const settings = { level:4, colour:0, quality:'balanced', board:'walnut', padScheme:'triggers', padBrand:'auto', twoPads:true,
+  const settings = { level:4, colour:0, quality:'balanced', board:'walnut', padScheme:'triggers', padBrand:'auto',
     invertCamY:false, keys:{...DEFAULT_KEYS},
     reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches, haptics:true };
   try {
@@ -208,7 +208,7 @@
     if (BOARD_FINISHES.some(b => b.id === saved.board) && isUnlocked(saved.board)) settings.board = saved.board;
     if (PAD_SCHEMES.includes(saved.padScheme)) settings.padScheme = saved.padScheme;
     if (['auto','xbox','playstation','nintendo','generic'].includes(saved.padBrand)) settings.padBrand = saved.padBrand;
-    for (const k of ['reducedMotion','haptics','invertCamY','twoPads']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
+    for (const k of ['reducedMotion','haptics','invertCamY']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
   } catch (_) {}
   const finish = () => BOARD_FINISHES.find(b => b.id === settings.board) || BOARD_FINISHES[0];
   // Relative luminance of a #rrggbb, against the same 0.5 threshold index.html's boardIsPale uses.
@@ -220,14 +220,32 @@
   }
 
   let paused = false, pauseAt = 0, ownMatch = false, previousFocus = null;
-  let currentPad = null, padList = [], padPrev = [], padAxisLatch = false, padFocus = 0, twoPadToldT = false;
-  // True when this match is two people sharing one screen with a controller each: a local 1v1 (no
-  // AI, no online opponent, not a replay) with the setting on and two pads actually plugged in.
-  function twoPadSeats() {
-    // These are index.html's own top-level bindings, shared through the script scope like G and
-    // canPlay are -- they are NOT on window, so reading them off window silently saw "no AI match".
-    return settings.twoPads && padList.length > 1 && inMatch()
-      && !vsAI && !onlineMatch && !replayActive;
+  let currentPad = null, padList = [], padPrev = [], padAxisLatch = false, padFocus = 0;
+  // Who holds what in a local 1v1, one device per colour, as answered on the "choose your controls"
+  // screen: {kind:'pad', index, brand} or {kind:'kbm'}. Empty in every other kind of match.
+  let seats = [null, null];
+  // Who is pressing, for index.html's one input gate (see seatBlocks): pollInput tags its pad work
+  // 'pad', and everything else -- keys, mouse, touch -- arrives as the keyboard-and-mouse seat.
+  let inputDevice = 'kbm';
+  const KBM = { kind:'kbm' };
+  const padSeat = p => ({ kind:'pad', index:p.index, brand:padBrandOf(p.id) });
+  const sameDevice = (a, b) => !!a && !!b && a.kind === b.kind && (a.kind !== 'pad' || a.index === b.index);
+  // The seats only GATE anything when the two colours sit on DIFFERENT devices. One device on both
+  // sides is pass and play, where every input belongs to whoever is to move.
+  function splitSeats() {
+    if (!seats[0] || !seats[1] || sameDevice(seats[0], seats[1]) || !inMatch()) return false;
+    // A pad unplugged mid-match must not strand its player: with a seated pad gone the gate comes
+    // off and both colours share whatever is still connected.
+    return seats.every(s => s.kind !== 'pad' || padList.some(p => p.index === s.index));
+  }
+  const activeSeat = () => splitSeats() ? seats[G.active] : null;
+  const seatBlocks = device => { const s = activeSeat(); return !!s && s.kind !== device; };
+  // The pad allowed to act: the active colour's own pad on split seats, otherwise the first one
+  // plugged in. Rumble and the trigger reads follow it.
+  function actingPad() {
+    const s = activeSeat();
+    if (!s) return currentPad;
+    return s.kind === 'pad' ? padList.find(p => p.index === s.index) || null : null;
   }
   let chosenFoot = 0, heldLeft = false, heldRight = false, lastActive = -1;
   let textures = null, texturesFor = null, artInstalled = false, lastRumble = -Infinity;
@@ -280,6 +298,12 @@
   $('desktopColour').addEventListener('change', e => { settings.colour = Number(e.target.value); saveSettings(); });
 
   function startMatch(local = false) {
+    // Two people at one screen say who holds what before the board appears; every other match has
+    // one human and starts straight away.
+    if (local) chooseDevices(() => beginMatch(true));
+    else beginMatch(false);
+  }
+  function beginMatch(local) {
     if (local) startGame(false);
     else startLadderLevel(settings.level - 1, settings.colour);
     ownMatch = true;
@@ -420,6 +444,13 @@
       rt:[B.rt, triggers?'swing ↻':'unused'], rb:[B.rb,'bigger board'], top:[B.top,'controls'], right:[B.right,'cancel swing'],
       bottom:[B.bottom,'pin · end turn'], rs: triggers ? ['right stick','unused'] : ['right stick ← →','swing'], menu:[B.menu,'match menu'] };
   }
+  // Xbox-style body: a wide rounded top and two grips, around the centre line x = c.
+  const padBodyPath = c => `M${c-130},90 C${c-90},66 ${c+90},66 ${c+130},90 C${c+170},104 ${c+200},160 ${c+208},210
+    C${c+216},262 ${c+198},302 ${c+168},306 C${c+138},310 ${c+118},272 ${c+104},252 C${c+80},228 ${c-80},228 ${c-104},252
+    C${c-118},272 ${c-138},310 ${c-168},306 C${c-198},302 ${c-216},262 ${c-208},210 C${c-200},160 ${c-170},104 ${c-130},90 Z`;
+  // Where a brand's sticks, D-pad and face cluster sit, as [x, y] on that same centre line.
+  const padParts = (B, c) => ({ ls: B.sticksLow ? [c-50,202] : [c-105,132], rs: [c+50,202],
+    dp: B.sticksLow ? [c-105,132] : [c-50,202], fc: [c+105,132] });
   function controllerSvg(brand = padBrand(), compact = false) {
     const B = BRAND_KEYS[brand] || BRAND_KEYS.generic, triggers = settings.padScheme === 'triggers', L = padBindings(B, triggers);
     const c = 380;   // the pad's centre line; labels sit in the margins either side, anchored to its edge
@@ -430,12 +461,8 @@
     const dpad = (x, y) => `<rect class="k bound" x="${x-7}" y="${y-23}" width="14" height="46" rx="3"/><rect class="k bound" x="${x-23}" y="${y-7}" width="46" height="14" rx="3"/>`;
     const face = (x, y, name, bound) => `<circle class="k${bound?' bound':''}" cx="${x}" cy="${y}" r="13"/><text x="${x}" y="${y}">${esc(name)}</text>`;
     const pill = (x, y, w, name, bound) => `<rect class="k${bound?' bound':''}" x="${x-w/2}" y="${y-9}" width="${w}" height="18" rx="9"/><text x="${x}" y="${y}">${esc(name)}</text>`;
-    // Xbox-style body: a wide rounded top and two grips.
-    const body = `<path class="body" d="M${c-130},90 C${c-90},66 ${c+90},66 ${c+130},90 C${c+170},104 ${c+200},160 ${c+208},210
-      C${c+216},262 ${c+198},302 ${c+168},306 C${c+138},310 ${c+118},272 ${c+104},252 C${c+80},228 ${c-80},228 ${c-104},252
-      C${c-118},272 ${c-138},310 ${c-168},306 C${c-198},302 ${c-216},262 ${c-208},210 C${c-200},160 ${c-170},104 ${c-130},90 Z"/>`;
-    const low = B.sticksLow;
-    const LS = low ? [c-50, 202] : [c-105, 132], RS = [c+50, 202], DP = low ? [c-105, 132] : [c-50, 202], FC = [c+105, 132];
+    const body = `<path class="body" d="${padBodyPath(c)}"/>`;
+    const P = padParts(B, c), LS = P.ls, RS = P.rs, DP = P.dp, FC = P.fc;
     const centreBits = brand === 'playstation'
       ? `<rect class="k" x="${c-40}" y="88" width="80" height="46" rx="8"/><text class="cap" x="${c}" y="111">touch pad</text>
          <rect class="k" x="${c-64}" y="94" width="10" height="26" rx="5"/><rect class="k bound" x="${c+54}" y="94" width="10" height="26" rx="5"/>
@@ -497,7 +524,6 @@
       <div class="desktop-controls-scheme">
         <label>Layout <select id="desktopPadBrand" aria-label="Controller layout"><option value="auto">Auto</option>${['xbox','playstation','nintendo','generic'].map(b => `<option value="${b}">${BRAND_NAMES[b]}</option>`).join('')}</select></label>
         <label>Swing with <select id="desktopPadScheme" aria-label="Controller scheme"><option value="triggers">Triggers</option><option value="stick">Right stick</option></select></label>
-        <label><input type="checkbox" id="desktopTwoPads"> A controller each in a local 1v1</label>
       </div>
       <div id="desktopPadDiagram" class="desktop-diagram-wrap"></div>
       <p class="desktop-controls-note" id="desktopPadNote" style="margin:0"></p>`, [
@@ -508,8 +534,6 @@
     $('desktopPadBrand').onchange = e => { settings.padBrand = e.target.value; saveSettings(); drawPad(); };
     $('desktopPadScheme').value = settings.padScheme;
     $('desktopPadScheme').onchange = e => { settings.padScheme = e.target.value; saveSettings(); drawPad(); };
-    $('desktopTwoPads').checked = settings.twoPads;
-    $('desktopTwoPads').onchange = e => { settings.twoPads = e.target.checked; saveSettings(); };
     drawPad();
     if (!canRebind()) return;
     const keyText = el => el.querySelector('.key') || el;
@@ -534,6 +558,140 @@
     const redraw = () => { $('desktopKeyboardDiagram').innerHTML = keyboard(); wire(); };
     wire();
     $('desktopKeysReset').onclick = () => { stopRebind(); settings.keys = {...DEFAULT_KEYS}; saveSettings(); redraw(); };
+  }
+  // ---- "Choose your controls": who plays Blue, who plays Red ----
+  // A local 1v1 is the one match with two people at one screen, so it ASKS who is on what rather
+  // than seating whatever happens to be plugged in. Blue chooses first, then Red; the same device
+  // on both sides is pass and play, and two different devices each move only their own colour.
+  const SEAT_NAMES = ['Blue', 'Red'];
+  const SEAT_COLOURS = ['#6b9eff', '#ff6b6b'];   // the pieces' own blue and red
+  let pick = null;
+  const deviceName = d => d.kind === 'kbm' ? 'Keyboard & mouse'
+    : d.brand === 'generic' ? 'Controller' : BRAND_NAMES[d.brand];
+  // A piece, as it stands on the board: three legs 120° apart from the hub, each on a round foot.
+  function tripodSvg(colour) {
+    const c = 50, r = 31, feet = [90, 210, 330].map(a => [c + r*Math.cos(a*Math.PI/180), c + r*Math.sin(a*Math.PI/180)]);
+    const leg = ([x, y]) => `<line x1="${c}" y1="${c}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke-width="7" stroke-linecap="round"/>`;
+    const foot = ([x, y]) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="10" stroke="none"/>`;
+    return `<svg class="desktop-pick-tripod" viewBox="0 0 100 100" aria-hidden="true" fill="${colour}" stroke="${colour}">
+      ${feet.map(leg).join('')}${feet.map(foot).join('')}
+      <circle cx="${c}" cy="${c}" r="9" stroke="none"/></svg>`;
+  }
+  // The same pad outline the Controls sheet draws, small and unlabelled: body, sticks, D-pad and
+  // the four face buttons, which is as much as still reads at icon size.
+  function padIconSvg(brand) {
+    const c = 380, P = padParts(BRAND_KEYS[brand] || BRAND_KEYS.generic, c);
+    const dot = ([x, y], r, dx = 0, dy = 0) => `<circle class="pick-part" cx="${x+dx}" cy="${y+dy}" r="${r}"/>`;
+    return `<svg class="desktop-pick-icon" viewBox="166 58 428 258" role="img" aria-label="${esc(BRAND_NAMES[brand] || 'Controller')} controller">
+      <path class="pick-body" d="${padBodyPath(c)}" stroke-width="6"/>
+      ${dot(P.ls, 25)}${dot(P.rs, 25)}
+      <rect class="pick-part" x="${P.dp[0]-8}" y="${P.dp[1]-26}" width="16" height="52" rx="4"/>
+      <rect class="pick-part" x="${P.dp[0]-26}" y="${P.dp[1]-8}" width="52" height="16" rx="4"/>
+      ${dot(P.fc, 12, 0, -28)}${dot(P.fc, 12, -28)}${dot(P.fc, 12, 28)}${dot(P.fc, 12, 0, 28)}</svg>`;
+  }
+  function kbmIconSvg() {
+    const keys = [];
+    for (let row = 0; row < 3; row++) for (let k = 0; k < 6; k++)
+      keys.push(`<rect class="pick-part" x="${8 + k*13}" y="${23 + row*11}" width="9" height="7" rx="2"/>`);
+    return `<svg class="desktop-pick-icon" viewBox="0 0 120 72" role="img" aria-label="Keyboard and mouse">
+      <rect class="pick-body" x="2" y="16" width="86" height="52" rx="8" stroke-width="2"/>
+      ${keys.join('')}<rect class="pick-part" x="21" y="56" width="44" height="7" rx="2"/>
+      <rect class="pick-body" x="96" y="14" width="22" height="42" rx="11" stroke-width="2"/>
+      <line class="pick-line" x1="107" y1="14" x2="107" y2="30" stroke-width="2"/></svg>`;
+  }
+  const deviceIcon = d => d.kind === 'kbm' ? kbmIconSvg() : padIconSvg(d.brand);
+  function chooseDevices(start) {
+    if (pick) return;
+    seats = [null, null];
+    const el = document.createElement('section');
+    el.className = 'desktop-pick';
+    el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true');
+    el.setAttribute('aria-label', 'Choose your controls');
+    el.innerHTML = `<div class="desktop-pick-sheet" tabindex="-1">
+      <h2>Choose your controls</h2>
+      <p class="desktop-pick-hint">One device each, or the same one twice to pass and play.</p>
+      <div class="desktop-pick-seats">${[0, 1].map(i => `<div class="desktop-pick-seat" data-seat="${i}">
+          <span class="desktop-pick-colour" style="color:${SEAT_COLOURS[i]}">${SEAT_NAMES[i]}</span>
+          ${tripodSvg(SEAT_COLOURS[i])}
+          <div class="desktop-pick-device"></div>
+          <p class="desktop-pick-prompt"></p>
+        </div>`).join('')}</div>
+      <p class="desktop-pick-same" hidden>Same device — pass and play</p>
+      <div class="desktop-pick-actions">
+        <button type="button" id="desktopPickSkip">Skip — pass and play</button>
+        <button type="button" id="desktopPickBack">Back <kbd>Esc</kbd></button>
+      </div></div>`;
+    document.body.appendChild(el);
+    pick = { el, start, stage: 0, cand: null, onKey: pickKey };
+    // Clicks are listened for on the OVERLAY, not the document: the click that opened this screen
+    // is still on its way up through the menu it came from, and a document listener would catch it
+    // as the first player offering the mouse.
+    el.addEventListener('click', e => {
+      if (!pick || e.target.closest('button')) return;
+      if (pick.cand?.kind === 'kbm') pickConfirm(); else pickCandidate(KBM);
+    });
+    $('desktopPickSkip').onclick = () => { seats = [KBM, KBM]; pickPlay(); };
+    $('desktopPickBack').onclick = pickBack;
+    addEventListener('keydown', pick.onKey, true);
+    drawPick();
+    el.querySelector('.desktop-pick-sheet').focus({ preventScroll: true });
+  }
+  function drawPick() {
+    for (const i of [0, 1]) {
+      const card = pick.el.querySelector(`[data-seat="${i}"]`), device = i === pick.stage ? pick.cand : seats[i];
+      card.classList.toggle('is-choosing', i === pick.stage);
+      card.classList.toggle('is-set', !!device && i !== pick.stage);
+      card.querySelector('.desktop-pick-device').innerHTML = device
+        ? `${deviceIcon(device)}<span class="desktop-pick-device-name">${esc(deviceName(device))}</span>`
+        : `<span class="desktop-pick-blank"></span><span class="desktop-pick-device-name">Not chosen</span>`;
+      card.querySelector('.desktop-pick-prompt').textContent = i !== pick.stage ? (seats[i] ? 'Ready' : '')
+        : !pick.cand ? `${SEAT_NAMES[i]}: press any button on your controller, or a key / click`
+        : pick.cand.kind === 'kbm' ? 'Click or press Enter to confirm'
+        : `Press ${(BRAND_KEYS[pick.cand.brand] || BRAND_KEYS.generic).bottom} to confirm`;
+    }
+    pick.el.querySelector('.desktop-pick-same').hidden = !(pick.stage === 1 && sameDevice(seats[0], pick.cand));
+  }
+  function pickCandidate(device) {
+    if (sameDevice(device, pick.cand)) return;
+    pick.cand = device; drawPick();
+  }
+  function pickConfirm() {
+    if (!pick.cand) return;
+    seats[pick.stage] = pick.cand;
+    if (pick.stage === 1) { pickPlay(); return; }
+    pick.stage = 1; pick.cand = null; drawPick();
+  }
+  function pickBack() {
+    if (pick.stage === 0) { closePick(); $('desktopPlay').focus({ preventScroll: true }); return; }
+    // Back to Blue choosing, holding what they had: they can confirm it again, or hand the device
+    // over and pick something else.
+    pick.stage = 0; pick.cand = seats[0]; seats[0] = null; drawPick();
+  }
+  function pickPlay() { const start = pick.start; closePick(); start(); }
+  function closePick() { removeEventListener('keydown', pick.onKey, true); pick.el.remove(); pick = null; }
+  function pickKey(e) {
+    if (!pick || e.key === 'Tab') return;
+    // Enter or Space on one of this screen's own buttons is that button being pressed, not someone
+    // offering the keyboard; a bare modifier (alt-tabbing back in, say) is nobody choosing anything.
+    if (pick.el.contains(e.target) && e.target.tagName === 'BUTTON' && (e.key === 'Enter' || e.key === ' ')) return;
+    if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(e.key)) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (e.key === 'Escape') pickBack();
+    else if (pick.cand?.kind === 'kbm' && (e.key === 'Enter' || e.key === ' ')) pickConfirm();
+    else pickCandidate(KBM);
+  }
+  // One press per pad per frame, off the same per-pad button memory the match uses. Button 1 (B) is
+  // the way back everywhere on a pad, so it steps back rather than offering the pad; anything else
+  // offers it, and once offered button 0 confirms it.
+  function pollPick() {
+    for (let i = 0; i < padList.length && pick; i++) {
+      const pad = padList[i], prev = padPrev[i] || [];
+      const hit = pad.buttons.findIndex((b, n) => b?.pressed && !prev[n]);
+      if (hit < 0) continue;
+      if (hit === 1) pickBack();
+      else if (hit === 0 && pick.cand?.kind === 'pad' && pick.cand.index === pad.index) pickConfirm();
+      else pickCandidate(padSeat(pad));
+    }
   }
   // Grow or shrink the flat board. The corner layout is the only one with a board to resize, so
   // outside it this is a no-op rather than quietly moving a split nothing is showing.
@@ -1133,7 +1291,7 @@
   }
 
   function rumble(strength=.2) {
-    const pad = (twoPadSeats() ? padList[G.active] : currentPad);
+    const pad = actingPad();
     if(!settings.haptics || !pad?.vibrationActuator) return;
     if(performance.now()-lastRumble<120) return;
     lastRumble=performance.now();
@@ -1227,27 +1385,25 @@
     }
     padList=Array.from(navigator.getGamepads?.() || []).filter(p=>p?.connected && p.mapping==='standard');
     currentPad=padList[0] || null;
+    if(pick){pollPick();padPrev=padList.map(p=>p.buttons.map(b=>b.pressed));tickEffects(dt);return;}
     if(padBrandShown && $('desktopPadDiagram') && padBrand()!==padBrandShown) drawPad();   // the sheet follows the pad that is plugged in
     if(lastActive!==G.active){lastActive=G.active;chosenFoot=0;heldLeft=heldRight=false;lastCrossings=0;}
-    // Two controllers on one screen: in a local 1v1 the first pad plays blue and the second plays
-    // red, and only the pad whose colour it is can move a piece. Menus stay on whichever pad is in
-    // hand, so either player can pause or change a setting. Any other match (vs the AI, online, a
-    // replay) has one human, so it stays on the first pad however many are plugged in.
-    const seats = twoPadSeats();
-    const seatPad = seats ? (padList[G.active] || null) : currentPad;
-    // Say it once per match, the first time a second pad actually takes a seat -- nothing about the
-    // screen otherwise tells you the pads have split up.
-    if (seats && !twoPadToldT && typeof showPassToast === 'function') {
-      twoPadToldT = true; showPassToast('Two controllers: pad 1 plays Blue, pad 2 plays Red');
-    } else if (!inMatch()) twoPadToldT = false;
+    // The seats belong to the match that chose them, and nothing else: back on the menu (or in any
+    // match that never asked) they are empty and every input is one player's.
+    if(!inMatch() && (seats[0]||seats[1])) seats=[null,null];
     const inPlay = inMatch() && !dialogOpen() && !$('htpFull');
-    const act = inPlay ? seatPad : currentPad;
+    // In a local 1v1 on split seats only the active colour's own pad can move a piece; menus stay
+    // on whichever pad is in hand. Everything else has one human, so it stays on the first pad.
+    const act = inPlay ? actingPad() : currentPad;
     // The match menu answers to EVERY pad, not just the one whose turn it is: either player has to
     // be able to pause, change a setting or leave without being handed the other's controller.
     if(inPlay) padList.forEach((p,i)=>{
       if(p!==act && p.buttons[9]?.pressed && !(padPrev[i]||[])[9]) openPause();
     });
     if(act){
+      // Everything this pad does is tagged as pad input, so index.html's one gate can turn away a
+      // pad seated to the other colour (see seatBlocks) without knowing anything about pads.
+      inputDevice='pad';
       const prev=padPrev[padList.indexOf(act)] || [];
       const down=i=>!!act.buttons[i]?.pressed, pressed=i=>down(i)&&!prev[i];
       const context=$('htpFull') || (dialogOpen()?$('modalBox'):(!inMatch()?home:null));
@@ -1293,6 +1449,7 @@
         }
         if(canPlay())v3HoverIdx=G.pinned===null?chosenFoot:G.pinned;
       }
+      inputDevice='kbm';
     } else if(!padList.length) padAxisLatch=false;
     // Every pad's buttons are remembered, not just the acting one: otherwise the pad that is waiting
     // for its turn would fire everything it was holding the moment the turn passed to it.
@@ -1341,13 +1498,12 @@
   window.tauDesktop={
     get paused(){return paused;},
     get menuOpen(){return dialogOpen();},
-    startMatch,
+    startMatch, chooseDevices, seatBlocks,
+    get inputDevice(){return inputDevice;},
+    set inputDevice(v){ inputDevice = v === 'pad' ? 'pad' : 'kbm'; },
     get keys(){return {...settings.keys};},
     get skin(){return finish().skin;},
     get padScheme(){return settings.padScheme;},
-    get twoPads(){return settings.twoPads;},
-    set twoPads(v){ settings.twoPads=!!v; saveSettings(); },
-    twoPadSeats,
     get padBrand(){return settings.padBrand;},
     set padBrand(v){ if(PAD_BRANDS.includes(v)){ settings.padBrand=v; saveSettings(); if($('desktopPadBrand')) $('desktopPadBrand').value=v; drawPad(); } },
     padBrandOf, controllerSvg,
