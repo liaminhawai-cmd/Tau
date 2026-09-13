@@ -1535,6 +1535,26 @@ test('a returning player is never offered the rules again',async t=>{
   assert.deepEqual(g.errors,[]);
 });
 
+test('a controller the browser has no mapping table for is still a controller',async t=>{
+  const g=await game();t.after(g.close);
+  // Chromium only reports mapping 'standard' for pads it recognises; a DirectInput pad, an adapter
+  // or anything unusual reports ''. Filtering those out made such a pad invisible to everything.
+  const odd={id:'4 axis 16 button joystick',index:0,connected:true,mapping:'',
+    axes:[0,0,0,0],buttons:Array.from({length:17},()=>({pressed:false,value:0}))};
+  g.w.navigator.getGamepads=()=>[odd];
+  g.$('desktopControls').click();g.tick();
+  const seen=()=>g.$('desktopPadSeen').textContent;
+  assert.match(seen(),/^Connected:/,'the sheet reports it rather than claiming nothing is plugged in');
+  assert.match(seen(),/non-standard mapping/,'and says its buttons may not line up');
+  g.$('modalBtns').firstElementChild.click();g.tick();
+  // It can drive the game too: start a match and move the chosen foot with the D-pad.
+  localMatch(g);
+  const press=i=>{odd.buttons[i].pressed=true;g.tick();odd.buttons[i].pressed=false;g.tick();};
+  press(15);
+  assert.equal(g.read('v3HoverIdx'),1,'a non-standard pad still plays');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('a plain web/PWA load (no ?steam, no Capacitor) stays off the desktop presentation',async t=>{
   const g=await game('');t.after(g.close);
   assert.equal(g.read('window.TAU_DESKTOP'),false);

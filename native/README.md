@@ -762,3 +762,11 @@ The Controls sheet prints, live, which pads the game can actually see: a
 controller that does nothing is otherwise impossible to tell apart from one the
 browser never handed us, since the Gamepad API only reports a pad once its own
 window has focus and a button has been pressed on it.
+
+Pads are no longer filtered by `mapping === 'standard'`. Chromium only reports
+that mapping for controllers it has a table for; a pad in DirectInput mode, a
+USB adapter, or anything unusual reports an empty mapping, and filtering those
+out made such a controller invisible to the ENTIRE game -- no seat on the
+device-pick screen, nothing in the Controls readout, no way to press anything.
+Their button numbers can sit in different places, which is what the readout now
+warns about, but a pad that mostly works beats a pad that does nothing at all.

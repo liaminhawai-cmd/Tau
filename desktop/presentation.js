@@ -522,8 +522,9 @@
   function drawPadSeen() {
     const el = $('desktopPadSeen'); if (!el) return;
     el.textContent = padList.length
-      ? 'Connected: ' + padList.map((p, i) => `${BRAND_NAMES[padBrandOf(p.id)]} (pad ${i + 1})`).join(', ')
-      : 'No controller detected. Press a button on it with this window in front; some pads only appear once they are woken up.';
+      ? 'Connected: ' + padList.map((p, i) => `${BRAND_NAMES[padBrandOf(p.id)]} (pad ${i + 1})`
+          + (p.mapping === 'standard' ? '' : ' — non-standard mapping, some buttons may be in odd places')).join(', ')
+      : 'No controller detected. Press a button on it with this window in front; some pads only appear once they are woken up. If a browser gamepad tester sees it and Tau does not, tell us.';
   }
   function openControls() {
     stopRebind();
@@ -1555,7 +1556,12 @@
         }
       });
     }
-    padList=Array.from(navigator.getGamepads?.() || []).filter(p=>p?.connected && p.mapping==='standard');
+    // Every connected pad, not only the ones the browser labels "standard". A controller in
+    // DirectInput mode, an adapter, or anything Chromium has no mapping table for reports an empty
+    // mapping -- filtering those out made such a pad invisible to the whole game: no seat, no
+    // readout, nothing to press. Their button numbers can differ from the standard layout, which is
+    // what the readout warns about, but a pad that mostly works beats a pad that does nothing.
+    padList=Array.from(navigator.getGamepads?.() || []).filter(p=>p?.connected);
     currentPad=padList[0] || null;
     if(pick){pollPick();padPrev=padList.map(p=>p.buttons.map(b=>b.pressed));tickEffects(dt);return;}
     if(padBrandShown && $('desktopPadDiagram') && padBrand()!==padBrandShown) drawPad();   // the sheet follows the pad that is plugged in
