@@ -59,6 +59,8 @@ const path = require('path');
 const { createEngine } = require('./engine.js');
 const { moveFrame, jointMoveFrame } = require('./features.js');
 const { armIndex, binIndex, actionIndex, CAP_RAD, JOINT_ENCODING } = require('./policy.js');
+const { once } = require('events');
+const { finished } = require('stream/promises');
 
 const MIN_MOVE = 2*Math.PI/180;    // below this the engine treats it as a non-move; also skips
                                    // the null-plan "pass" rows (pose unchanged, active swapped)
@@ -78,7 +80,7 @@ function freshCounts() {
            ambiguous: 0, fullTrustRows: 0, shallowRows: 0, ladderRows: 0, untaggedRows: 0 };
 }
 
-function main() {
+async function main() {
   const dataDir = arg('data', path.join(__dirname, 'data'));
   // NOT inside dataDir: train.js globs nn/data/*.jsonl, and these rows carry a real `f` and `z`,
   // so they pass its validation and get trained on as VALUE data -- silently double-weighting
@@ -249,6 +251,30 @@ function main() {
   const files = fs.readdirSync(dataDir)
     .filter(f => f.endsWith('.jsonl') && !f.startsWith('policy-targets')).sort();
   const ws = fs.createWriteStream(outPath);
+  // The mining loop below is entirely synchronous -- readFileSync, a sync mineFile, a sync emit --
+  // so the event loop never turns while it runs and the stream therefore NEVER drains. Writing one
+  // chunk per target meant all 2.5M lines sat in the stream's internal buffer until ws.end(), at
+  // which point Node handed the whole accumulated array to a single writev: ~400-750 MB in one
+  // syscall, which died on the real machine as
+  //     SystemError [ERR_SYSTEM_ERROR]: A system error occurred: undefined returned undefined
+  //     info: 'writev failed'
+  // -- Node failing to map the OS error code, which is what an allocation failure in the flush
+  // looks like. (It was not disk: the box had 215 GB free.) The mint had already done all its work,
+  // and the whole dual/policy branch was skipped for that cycle because of the write.
+  //
+  // So: accumulate into a 4 MiB string and write THAT, which turns millions of queued buffers into
+  // a couple of hundred, and yield between source files so the queue actually empties as we go.
+  const CHUNK = 4 << 20;
+  let pending = '', backedUp = false, wsError = null;
+  // Without this handler any I/O error is an unhandled 'error' event: the process dies on an
+  // unmapped errno with no indication of which file or step failed.
+  ws.on('error', e => { wsError = e; });
+  const push = s => { if (!s) return; pending += s; if (pending.length >= CHUNK) flushPending(); };
+  const flushPending = () => { if (!pending) return; backedUp = !ws.write(pending); pending = ''; };
+  const breathe = async () => {
+    if (wsError) throw wsError;
+    if (backedUp) { await once(ws, 'drain'); backedUp = false; }
+  };
   let games = 0, targets = 0, skippedRows = 0, passRows = 0, ambiguous = 0;
   let fullTrustRows = 0, shallowRows = 0, ladderRows = 0, untaggedRows = 0;
   let cacheHits = 0, cacheMisses = 0;
@@ -274,10 +300,11 @@ function main() {
       let cachedTxt;
       try { cachedTxt = fs.readFileSync(cacheFile, 'utf8'); } catch (e) { cachedTxt = null; }
       if (cachedTxt !== null) {
-        if (cachedTxt) ws.write(cachedTxt);
+        push(cachedTxt);
         fold(cached.c);
         newManifest[file] = cached;
         cacheHits++;
+        await breathe();
         continue;
       }
       // cache entry in the manifest but the backing file vanished -- fall through to a fresh mine
@@ -289,9 +316,9 @@ function main() {
     const c = freshCounts();
     let buf = noCache ? null : '';
     const emit = obj => {
-      const line = JSON.stringify(obj);
-      ws.write(line + '\n');
-      if (buf !== null) buf += line + '\n';
+      const line = JSON.stringify(obj) + '\n';
+      push(line);
+      if (buf !== null) buf += line;
     };
     mineFile(txt, emit, c);
     fold(c);
@@ -301,12 +328,17 @@ function main() {
         newManifest[file] = { mtimeMs: st.mtimeMs, size: st.size, c };
       } catch (e) {}   // cache write failing shouldn't fail the mint -- just costs the speedup next time
     }
+    await breathe();
   }
+  flushPending();
   if (!noCache) {
     try { fs.writeFileSync(manifestPath, JSON.stringify(newManifest)); } catch (e) {}
   }
 
-  ws.end(() => console.log(
+  await new Promise(res => ws.end(res));
+  await finished(ws);
+  if (wsError) throw wsError;
+  console.log(
     `policy targets: ${targets} moves reconstructed from ${games} games -> ${outPath}\n` +
     (noThrows ? '' : `(+ ${throwTargets} throw targets recovered, ${throwMissed} misses)\n`) +
     `(skipped: ${skippedRows} rows without pose/tag, ${passRows} null-plan passes, ` +
@@ -316,7 +348,13 @@ function main() {
         `${shallowRows} shallow@${SHALLOW_W}, ${ladderRows} ladder@${LADDER_W}, ` +
         `${untaggedRows} untagged@${UNTAGGED_W})`) + '\n' +
     (noCache ? '(cache: OFF, --noCache)'
-      : `(cache: ${cacheHits} file(s) replayed, ${cacheMisses} freshly mined)`)));
+      : `(cache: ${cacheHits} file(s) replayed, ${cacheMisses} freshly mined)`));
 }
 
-main();
+main().catch(e => {
+  // A clean exit 1 with a readable reason. policyloop.js's runSoft already treats that correctly
+  // (it logged "dual branch failed ... placing CPU candidates only" and carried on); what it could
+  // not do anything with was an unhandled 'error' event and a stack from node:events.
+  console.error(`[policy-targets] failed writing targets: ${(e && e.message) || e}`);
+  process.exit(1);
+});
