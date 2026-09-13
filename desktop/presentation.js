@@ -242,6 +242,21 @@
   const seatBlocks = device => { const s = activeSeat(); return !!s && s.kind !== device; };
   // The pad allowed to act: the active colour's own pad on split seats, otherwise the first one
   // plugged in. Rumble and the trigger reads follow it.
+  // One pad's turn at the menus. Kept apart from the in-match branch because the rules differ: a
+  // menu belongs to whoever reaches for a controller, a piece belongs to the colour whose turn it is.
+  function padMenu(pad, prev, context) {
+    const down=i=>!!pad.buttons[i]?.pressed, pressed=i=>down(i)&&!prev[i];
+    const els=focusable(context), axis=pad.axes[1]||0;
+    const move=(pressed(13)?1:pressed(12)?-1:(!padAxisLatch&&Math.abs(axis)>.6?Math.sign(axis):0));
+    if(move && els.length){const current=els.indexOf(document.activeElement);padFocus=(Math.max(0,current)+move+els.length)%els.length;els[padFocus].focus();}
+    if(Math.abs(axis)>.4) padAxisLatch=true; else if(pad===padList[padList.length-1]) padAxisLatch=false;
+    const el=document.activeElement;
+    if(el?.tagName==='SELECT' && (pressed(14)||pressed(15))){el.selectedIndex=Math.max(0,Math.min(el.options.length-1,el.selectedIndex+(pressed(15)?1:-1)));el.dispatchEvent(new Event('change',{bubbles:true}));}
+    if(el?.type==='range' && (pressed(14)||pressed(15))){el.value=String(Math.max(Number(el.min),Math.min(Number(el.max),Number(el.value)+(pressed(15)?1:-1)*Number(el.step||1))));el.dispatchEvent(new Event('input',{bubbles:true}));}
+    if(pressed(0)){const target=els.includes(el)?el:els[0];if(target?.tagName!=='SELECT')target?.click();}
+    if(pressed(1)&&dialogOpen()&&modalDismiss)modalDismiss();
+    if(pressed(1)&&$('htpFull'))$('htpClose')?.click();
+  }
   function actingPad() {
     const s = activeSeat();
     if (!s) return currentPad;
@@ -1579,25 +1594,18 @@
     if(inPlay) padList.forEach((p,i)=>{
       if(p!==act && p.buttons[9]?.pressed && !(padPrev[i]||[])[9]) openPause();
     });
-    if(act){
+    // Menus answer to EVERY pad. Driving them from one chosen pad meant player two's controller did
+    // nothing at all outside their own turn -- and on the home menu it made the answer to "which pad
+    // works here" depend on which one the browser happened to list first.
+    const menuContext = $('htpFull') || (dialogOpen()?$('modalBox'):(!inMatch()?home:null));
+    if(menuContext) padList.forEach((pad,i)=>padMenu(pad, padPrev[i]||[], menuContext));
+    if(act && !menuContext){
       // Everything this pad does is tagged as pad input, so index.html's one gate can turn away a
       // pad seated to the other colour (see seatBlocks) without knowing anything about pads.
       inputDevice='pad';
       const prev=padPrev[padList.indexOf(act)] || [];
       const down=i=>!!act.buttons[i]?.pressed, pressed=i=>down(i)&&!prev[i];
-      const context=$('htpFull') || (dialogOpen()?$('modalBox'):(!inMatch()?home:null));
-      if(context){
-        const els=focusable(context), axis=currentPad.axes[1]||0;
-        const move=(pressed(13)?1:pressed(12)?-1:(!padAxisLatch&&Math.abs(axis)>.6?Math.sign(axis):0));
-        if(move && els.length){const current=els.indexOf(document.activeElement);padFocus=(Math.max(0,current)+move+els.length)%els.length;els[padFocus].focus();}
-        padAxisLatch=Math.abs(axis)>.4;
-        const el=document.activeElement;
-        if(el?.tagName==='SELECT' && (pressed(14)||pressed(15))){el.selectedIndex=Math.max(0,Math.min(el.options.length-1,el.selectedIndex+(pressed(15)?1:-1)));el.dispatchEvent(new Event('change',{bubbles:true}));}
-        if(el?.type==='range' && (pressed(14)||pressed(15))){el.value=String(Math.max(Number(el.min),Math.min(Number(el.max),Number(el.value)+(pressed(15)?1:-1)*Number(el.step||1))));el.dispatchEvent(new Event('input',{bubbles:true}));}
-        if(pressed(0)){const target=els.includes(el)?el:els[0];if(target?.tagName!=='SELECT')target?.click();}
-        if(pressed(1)&&dialogOpen()&&modalDismiss)modalDismiss();
-        if(pressed(1)&&$('htpFull'))$('htpClose')?.click();
-      } else if(inMatch()) {
+      if(inMatch()) {
         if(pressed(9))openPause();
         // The D-pad picks the foot in EVERY scheme — one thing that never moves, so the sticks and
         // triggers are free to mean different things per scheme without the choice of foot moving too.
