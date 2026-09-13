@@ -101,6 +101,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: OpenGL ES shader compiler (software renderer)
+        if: matrix.label == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1-mesa-dri
       - name: Build
         working-directory: native/steam
         run: |
