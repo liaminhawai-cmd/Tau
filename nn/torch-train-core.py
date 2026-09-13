@@ -249,6 +249,41 @@ def elo_lookup(summary_path):
     return best
 
 
+def retired_elo_lookup(roster_path):
+    """Model name -> last measured Elo, for faces the elastic cull has already retired.
+
+    elo_lookup only sees the CURRENT league summary, so the moment a face is culled its games
+    stop resolving and elo_game_weights hands them the "unknown provenance" midpoint. For a face
+    culled as confidently weak that is backwards: it raises the weight of games it should lower,
+    and it gets worse the harder we cull, because every cull moves more of the corpus from rated
+    into unknown. The cull already records what we need -- see evolution-roster.js, which writes
+    {at, reason, elo, eloHi, games, population} per retired face -- so this is a lookup gap, not a
+    measurement gap. Same <6-game discipline and same max-across-faces rule as elo_lookup, so a
+    retired face is treated exactly like a live one; only its provenance differs.
+    """
+    try:
+        with open(roster_path, 'r', encoding='utf-8') as fh:
+            pools = (json.load(fh).get('facePools') or {})
+    except Exception:
+        return {}
+    best = {}
+    for pool in pools.values():
+        for face_id, rec in ((pool or {}).get('retired') or {}).items():
+            if not isinstance(rec, dict):
+                continue
+            elo = rec.get('elo')
+            if elo is None or (rec.get('games') or 0) < 6:
+                continue
+            name = mover_name(face_id)          # the exact face->model strip the rows use
+            try:
+                v = float(elo)
+            except (TypeError, ValueError):
+                continue
+            if name not in best or v > best[name]:
+                best[name] = v
+    return best
+
+
 def elo_game_weights(game_movers, lookup, floor, temp):
     """Per-game multiplier: floor + (1-floor) * sigmoid((game Elo - corpus median) / temp).
     Game Elo is the mean of its movers' current Elo; the reference is the corpus's own median,
@@ -389,6 +424,10 @@ def main():
     ap.add_argument('--eloWeightFloor', type=float, default=0.15)
     ap.add_argument('--eloWeightTemp', type=float, default=150.0)
     ap.add_argument('--eloSummary', default=tau_paths.elo_summary_path(os.path.dirname(__file__)))
+    ap.add_argument('--eloRoster', default=os.path.join(os.path.dirname(__file__), 'models', '.evolution-roster.json'),
+                    help='evolution-roster state, read for the last Elo of culled faces')
+    ap.add_argument('--eloRetired', default='on', choices=['on', 'off'],
+                    help='let a culled face keep its final Elo instead of scoring as unknown (--eloWeight only)')
     ap.add_argument('--poseInput', action='store_true',
                     help='EXPERIMENT: append the z-scored raw pose (6 values) to the feature vector. '
                          'Offline ablation only -- live play feeds nets the plain features, so a '
@@ -438,14 +477,19 @@ def main():
         print(f"poseInput: appended 6 z-scored pose values; {dropped} row(s) without a pose dropped")
     game_w = None
     if args.eloWeight != 'off':
-        game_w, ref, rated = elo_game_weights(game_movers, elo_lookup(args.eloSummary),
+        live = elo_lookup(args.eloSummary)
+        retired = retired_elo_lookup(args.eloRoster) if args.eloRetired == 'on' else {}
+        lookup = {**retired, **live}            # a face still in the league always wins
+        recovered = len(set(lookup) - set(live))
+        game_w, ref, rated = elo_game_weights(game_movers, lookup,
                                               args.eloWeightFloor, args.eloWeightTemp)
         if ref is None:
             print('eloWeight: no game had a rateable player in the summary; weighting off this run')
             game_w = None
         else:
-            print(f"eloWeight: {rated}/{len(by_game)} games carry a current-Elo weight "
-                  f"(median ref {ref:.0f}, floor {args.eloWeightFloor}, temp {args.eloWeightTemp:.0f})")
+            print(f"eloWeight: {rated}/{len(by_game)} games carry an Elo weight "
+                  f"({len(live)} live model(s) + {recovered} recovered from retired faces; "
+                  f"median ref {ref:.0f}, floor {args.eloWeightFloor}, temp {args.eloWeightTemp:.0f})")
     train, val = split_and_weight(by_game, args.seed, args.gameWeight, args.familyWeight,
                                   args.drawWeight, game_w)
     print(f"data: {len(train)} train / {len(val)} val positions "
