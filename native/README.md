@@ -625,3 +625,21 @@ offer now comes when it is wanted -- the first time someone presses play, a sing
 "New to Tau?" with "Show me how" and "Just play". Either answer marks the profile
 asked, so it never comes back. The test harness seeds `tauOnboard` by default so
 only tests passing `opts.freshPlayer` see the offer.
+
+Dust used to spawn only at the BOARD's surface -- `spawnDust` hard-coded its
+puff to y 0.4..2.4 -- because the only two call sites were the slide (feet
+dragging through the sand) and the rim burst (the tip-over), both of which
+happen at board height. Once a look's floor sits well below the board
+(Colossus's arena sand, 20 units down), that left the one moment the piece
+actually hits the ground with no dust at all: a titan slams down onto sand in
+total silence, dust-wise. `stepFallOn` now records every ground contact --
+each bounce and the final resting one -- as `fall.lastImpact` (`{x,z,y,speed}`,
+`y` being that contact's own floor) and counts them in `fall.bounces`;
+`tickEffects` watches `fall.bounces` for an increase and throws a puff at
+`fall.lastImpact`, sized by impact speed (a big cloud on the first landing, a
+smaller kick on each bounce after, a last quiet settle when it comes to rest).
+`spawnDust` takes that contact height as a parameter now instead of assuming
+the board, and `tickDust`'s floor clamp reads a puff's OWN ground (stored in
+its `userData.dust.floorY`) rather than a single hard-coded plane, so a puff
+thrown up on the sand settles on the sand and one thrown up on the board still
+falls on past the rim the way it always did.

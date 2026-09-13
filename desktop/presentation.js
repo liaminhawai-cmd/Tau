@@ -694,14 +694,15 @@
   // Each puff is its own small point cloud thrown up from a spot: outward and up, slowed by the
   // air, settling under gravity, spreading and fading over a couple of seconds; beyond the rim
   // it keeps falling with the piece. Spawned where the loser's feet drag through the sand during
-  // the slide, and in a burst where the piece meets the rim and tips.
+  // the slide, in a burst where the piece meets the rim and tips, and again wherever it actually
+  // lands (spawnDust's y: 0 for the board surface, the fall's own floor height below it).
   const puffs = [];
-  function spawnDust(x, z, n, spread) {
+  function spawnDust(x, z, n, spread, y = 0) {
     const T = lookTheme; if (!T || !T.dust || !scene) return;
     const pos = new Float32Array(n*3), vel = new Float32Array(n*3);
     for (let i = 0; i < n; i++) {
       const a = Math.random()*Math.PI*2, sp = spread*(0.3 + Math.random());
-      pos[i*3] = x + (Math.random()-0.5)*5; pos[i*3+1] = 0.4 + Math.random()*2; pos[i*3+2] = z + (Math.random()-0.5)*5;
+      pos[i*3] = x + (Math.random()-0.5)*5; pos[i*3+1] = y + 0.4 + Math.random()*2; pos[i*3+2] = z + (Math.random()-0.5)*5;
       vel[i*3] = Math.cos(a)*sp; vel[i*3+1] = spread*(0.4 + Math.random()*1.1); vel[i*3+2] = Math.sin(a)*sp;
     }
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -710,7 +711,7 @@
       map: SH && SH.softDiscTexture ? SH.softDiscTexture() : null, alphaTest: 0.04,
       opacity: 0.8, depthWrite: false, sizeAttenuation: true });
     const pts = new THREE.Points(geo, mat);
-    pts.userData.dust = { vel, age: 0, life: 2.0 + Math.random()*0.8, size: T.dust.size || 2.4 };
+    pts.userData.dust = { vel, age: 0, life: 2.0 + Math.random()*0.8, size: T.dust.size || 2.4, floorY: y };
     scene.add(pts); puffs.push(pts);
   }
   function tickDust(dt) {
@@ -721,7 +722,11 @@
       for (let i = 0; i < v.length; i += 3) {
         v[i+1] -= 40*dt; v[i] *= drag; v[i+2] *= drag;
         pos[i] += v[i]*dt; pos[i+1] += v[i+1]*dt; pos[i+2] += v[i+2]*dt;
-        const floor = Math.hypot(pos[i], pos[i+2]) > CFG.edgeU ? -80 : 0.3;
+        // Board-surface dust (floorY 0) keeps falling once it drifts past the rim, into the drop
+        // below; dust spawned AT a landing floor (Colossus' sand, say) has no such edge to clear --
+        // it rests on ITS OWN ground everywhere, which is why the floor comes from the puff, not a
+        // fixed constant.
+        const floor = d.floorY !== 0 ? d.floorY + 0.3 : (Math.hypot(pos[i], pos[i+2]) > CFG.edgeU ? -80 : 0.3);
         if (pos[i+1] < floor) { pos[i+1] = floor; v[i+1] = 0; }
       }
       p.geometry.attributes.position.needsUpdate = true;
@@ -730,7 +735,7 @@
       if (d.age >= d.life) { scene.remove(p); p.geometry.dispose(); p.material.dispose(); puffs.splice(k, 1); }
     }
   }
-  let lastFallPhase = null, slideDustT = 0;
+  let lastFallPhase = null, slideDustT = 0, lastFallBounces = 0, lastFallResting = false;
   function tickEffects(dt) {
     const now = performance.now()/1000;
     if (envGroup && envGroup.userData.tick) envGroup.userData.tick(now, dt);
@@ -747,7 +752,24 @@
         spawnDust(fall.px, fall.pz, 170, 24);
         if (envGroup && envGroup.userData.excite) envGroup.userData.excite();
       }
-    } else slideDustT = 0;
+      // A fresh tumble starting mid-frame (the previous one never ran the reset branch below,
+      // e.g. a replay re-running straight into another loss) must not inherit the last one's count.
+      if (phase === 'slide' && lastFallPhase !== 'slide') { lastFallBounces = 0; lastFallResting = false; }
+      // The ground below is a second surface entirely: a titan hitting the sand needs its own dust,
+      // thrown up where it actually LANDS rather than where it left the board. Impact speed sets
+      // the size -- the first landing is the heavy one, each bounce after throws up less.
+      if (fall.bounces > lastFallBounces && fall.lastImpact) {
+        const hit = fall.lastImpact, first = lastFallBounces === 0;
+        const k = Math.max(0.85, Math.min(1.35, hit.speed/130));
+        if (first) spawnDust(hit.x, hit.z, Math.round(150*k), 24*k, hit.y);
+        else spawnDust(hit.x, hit.z, Math.round(45*k), 9*k, hit.y);
+      }
+      lastFallBounces = fall.bounces || 0;
+      if (fall.resting && !lastFallResting && fall.lastImpact) {
+        spawnDust(fall.lastImpact.x, fall.lastImpact.z, 30, 5, fall.lastImpact.y);   // it settles: one last small puff
+      }
+      lastFallResting = fall.resting;
+    } else { slideDustT = 0; lastFallBounces = 0; lastFallResting = false; }
     lastFallPhase = phase;
     if (puffs.length) tickDust(dt * (lookTheme && lookTheme.dust ? fallTimeScale() : 1));
   }

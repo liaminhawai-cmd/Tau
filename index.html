@@ -8684,7 +8684,8 @@ function mkFallState(p) {
     return { active:true, phase:'slide', vx:fx/d*50, vz:fz/d*50, vy:0, tipRate:0,
              px:0, pz:0, ax:0, az:0, theta:0, omega:0,
              wx:(Math.random()-0.5)*7, wy:(Math.random()-0.5)*3, wz:(Math.random()-0.5)*7,
-             landed:false, resting:false, settleT:0, downT:0, prevClear:undefined };
+             landed:false, resting:false, settleT:0, downT:0, prevClear:undefined,
+             bounces:0, lastImpact:null };
 }
 // kick off the dramatic slide-off when someone loses (silent=true for the replay's re-run)
 function triggerFall(silent) {
@@ -8801,6 +8802,9 @@ function stepFallOn(t, fall, dt) {
         if (clear <= 0) {
             t.position.y = floorY - below;
             const impact = Math.max(0, -fall.vy, closing);
+            // Every contact, bounce or final, is a dust cue for the presentation layer: where and
+            // how hard the piece actually met the ground, not just where it happens to rest now.
+            fall.lastImpact = { x: t.position.x, z: t.position.z, y: floorY, speed: impact };
             if (impact > FALL_BOUNCE_MIN) {
                 // It bounces. A hard piece on a hard floor comes back at about a third of the speed
                 // it arrived with, and because it lands on a leg rather than flat on its axis, part
@@ -8809,6 +8813,7 @@ function stepFallOn(t, fall, dt) {
                 // as the bounces die away.
                 playLandingSound(Math.min(1, 0.3 + impact/170));
                 fall.landed = true;
+                fall.bounces++;
                 fall.vy = impact * FALL_RESTITUTION;
                 fall.vx *= 0.74; fall.vz *= 0.74;                 // the floor drags on the skid
                 // An impact SHEDS spin as well as adding some: the floor is what the piece is

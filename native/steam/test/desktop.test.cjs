@@ -1019,6 +1019,56 @@ test('Colossus brings its stands, crowd and haze into the match, and a fall rais
   assert.deepEqual(g.errors,[]);
 });
 
+test('a fallen titan throws up dust where it actually lands on the sand, not on the board above',async t=>{
+  const g=await game();t.after(g.close);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    localStorage.setItem('tauDesktopTestBoards','1');`);
+  g.read("tauDesktop.board='colossus'");
+  // Drop the real fall physics straight into the free-tumble branch (skip slide/pivot, which are
+  // covered by the test above) so the only dust in play is the landing itself, and pin the wobble
+  // so the drop is not a coin flip about how many bounces it takes to settle.
+  g.read(`playLandingSound=()=>{};
+    let seed=11; Math.random=()=>((seed=(seed*16807)%2147483647)/2147483647);
+    fall=Object.assign(mkFallState(G.pieces[1]), {idx:1, phase:'free', vy:0, vx:18, vz:6});
+    tripods[1].position.set(90,0,0);`);
+  // Run the real physics and the desktop's per-frame tick side by side, exactly as a match does,
+  // logging a sample of the newest floor-height dust cloud each time a bounce lands.
+  g.read(`window.__log=[];
+    const floorPuffs=()=>scene.children.filter(o=>o.isPoints && o.userData.dust.floorY===fallFloorY());
+    let prevBounces=0;
+    for(let i=0;i<400;i++){
+      if(fall.active) stepFall(1/60);
+      tauDesktop.tick(1/60);
+      if(fall.bounces!==prevBounces){
+        prevBounces=fall.bounces;
+        const pts=floorPuffs(), newest=pts[pts.length-1], pos=newest.geometry.attributes.position.array;
+        let minY=Infinity,maxY=-Infinity; for(let j=1;j<pos.length;j+=3){ if(pos[j]<minY)minY=pos[j]; if(pos[j]>maxY)maxY=pos[j]; }
+        window.__log.push({bounces:fall.bounces, n:pos.length/3, minY, maxY, floorCount:pts.length});
+      }
+    }`);
+  const floor=g.read('fallFloorY()');
+  assert.equal(floor,-20,'colossus lands its loser on the arena sand');
+  assert.ok(g.read('fall.bounces')>=2,'a titan dropped from the board bounces more than once before it settles');
+  assert.equal(g.read('fall.lastImpact.y'),floor,'the last recorded contact is the sand, not the board');
+  const log=JSON.parse(g.read('JSON.stringify(window.__log)'));
+  assert.ok(log.length>=2,`at least two landings logged (got ${log.length})`);
+  assert.ok(log[0].minY>floor-0.01 && log[0].minY<floor+3,'the first landing spawns right at the floor, not the board surface');
+  assert.ok(log[0].n>log[1].n,`the first landing is the big puff, later bounces are smaller (${log[0].n} vs ${log[1].n})`);
+  assert.ok(log[1].floorCount>=2,'a later bounce adds its own puff rather than replacing the first');
+  // Let the airborne dust keep integrating after the piece itself has settled, then check none of
+  // it ever sank through the sand it was thrown up from.
+  g.read(`for(let i=0;i<90;i++) tauDesktop.tick(1/30);`);
+  const minYAfter=g.read(`Math.min(...scene.children.filter(o=>o.isPoints && o.userData.dust && o.userData.dust.floorY===${floor})
+    .flatMap(o=>{ const a=o.geometry.attributes.position.array, ys=[]; for(let j=1;j<a.length;j+=3) ys.push(a[j]); return ys; }))`);
+  assert.ok(!isFinite(minYAfter) || minYAfter>=floor+0.3-0.01,'no dust particle falls through the sand it landed on');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('each board names its materials for the ear, and every surface bakes its own noise',async t=>{
   const g=await game();t.after(g.close);
   g.read("localStorage.setItem('tauDesktopTestBoards','1')");
