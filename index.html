@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 248</div>
+<div id="buildTag">build 249</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -9107,62 +9107,9 @@ function init3D() {
 // independently frame-by-frame does NOT compose into "spin cleanly around one fixed axis" — the
 // components interact non-commutatively as they build up, which is what produced the earlier
 // "flying/spinning the wrong way" look instead of a believable tip-and-fall.
-const fallTipAxis = new THREE.Vector3();
-const FALL_AXIS_X = new THREE.Vector3(1,0,0), FALL_AXIS_Y = new THREE.Vector3(0,1,0), FALL_AXIS_Z = new THREE.Vector3(0,0,1);
-function applyFallRotation(t, f, dt, clear) {
-    // Angular momentum carries over: after the rim pivot lets go, the piece must keep tumbling about
-    // the SAME axis it was pivoting on (f.ax/f.az, set when the pivot began). The old code re-derived
-    // the axis from the CURRENT horizontal velocity each frame -- but past ~90 deg of tip the pivot's
-    // exit velocity can point back INWARD over the board, which flipped the derived axis ~180 deg and
-    // made the spin visibly reverse direction mid-fall. The velocity-derived axis remains only as the
-    // fallback for fall states that never pivoted (the how-to demo's simple tip-while-sliding).
-    if (f.ax !== undefined) fallTipAxis.set(f.ax, 0, f.az);
-    else { const speed = Math.hypot(f.vx, f.vz) || 1; fallTipAxis.set(f.vz/speed, 0, -f.vx/speed); }
-    t.rotateOnWorldAxis(fallTipAxis, f.tipRate*dt);     // leading edge keeps pitching over the rim
-    if (clear > 0) {
-        t.rotateOnWorldAxis(FALL_AXIS_X, f.wx*dt*clear);
-        t.rotateOnWorldAxis(FALL_AXIS_Y, f.wy*dt*clear);
-        t.rotateOnWorldAxis(FALL_AXIS_Z, f.wz*dt*clear);
-    }
-}
-// A fresh fall state for a piece about to go over: slide out along the off-board foot direction.
-// Shared by a real match's triggerFall and the tutorial's falls (goal-slide ending, finale), so
-// every tumble anywhere runs the same three-phase physics below.
-function mkFallState(p) {
-    let fx=0, fz=0, fr=-1;
-    for (const f of p.feet()){ const r=Math.hypot(f.x,f.y); if (r>fr){ fr=r; fx=f.x; fz=f.y; } }
-    const d = Math.hypot(fx,fz)||1;
-    return { active:true, phase:'slide', vx:fx/d*50, vz:fz/d*50, vy:0, tipRate:0,
-             px:0, pz:0, ax:0, az:0, theta:0, omega:0,
-             wx:(Math.random()-0.5)*7, wy:(Math.random()-0.5)*3, wz:(Math.random()-0.5)*7,
-             landed:false, resting:false, settleT:0, downT:0, prevClear:undefined,
-             bounces:0, lastImpact:null };
-}
-// kick off the dramatic slide-off when someone loses (silent=true for the replay's re-run)
-function triggerFall(silent) {
-    if (G.winner === null || G.winner === undefined) return;   // no winner, no faller (e.g. a replay with no recorded result)
-    if (!silent) playLossSound();
-    if (!renderer) return;
-    const li = 1 - G.winner;
-    clearShards();
-    fall = Object.assign(mkFallState(G.pieces[li]), { idx: li, shatterOk: true });
-}
-// Three phases, so the piece behaves like a rigid body going over a real table edge instead of
-// sliding out onto an invisible extension of the board and then sinking:
-//   slide — flat travel while the centre of mass (≈ the hub) is still over the board; the trailing
-//           feet genuinely support it, so staying level here IS physical.
-//   pivot — the instant the CoM passes the rim, the piece rotates about the RIM CONTACT POINT
-//           (position and orientation together — the hub swings down-and-out around that point),
-//           with the rotation rate accelerating as the lean grows, exactly like a book pushed
-//           slowly off a table. The old code rotated it about its own hub while it kept
-//           translating flat, which is what read as "the invisible plane disappears".
-//   free  — once well past vertical it lets go: ballistic fall carrying the velocity the pivot
-//           gave it, plus the chaotic wobble.
-const fallQ = new THREE.Quaternion(), fallP = new THREE.Vector3(), fallAxisV2 = new THREE.Vector3(), fallLever = new THREE.Vector3();
+const fallQ = new THREE.Quaternion();
 // Local-space positions of the three feet (buildTripod puts them at radius footR, height 0) and a
 // scratch for their world positions -- used to keep feet from scything through the board mid-tip.
-const FALL_FEET_LOCAL = [0,1,2].map(i => new THREE.Vector3(Math.cos(i*2*Math.PI/3)*CFG.footR, 0, Math.sin(i*2*Math.PI/3)*CFG.footR));
-const fallFootW = new THREE.Vector3();
 // The points that can touch the ground first when a piece lands mid-tumble: the three foot pads,
 // the midpoint of each leg arc, and the crown. A falling piece is rotating, so its ORIGIN (the
 // plane its pins stand on) is almost never its lowest point -- clamping that origin to the floor,
@@ -9181,25 +9128,6 @@ const FALL_HULL_LOCAL = (() => {
     return out;
 })();
 const fallHullW = new THREE.Vector3();
-// How much of its approach speed a piece keeps when it hits the floor, and the speed below which a
-// bounce is too small to bother with and it just settles. A drop from the 100-unit floor arrives at
-// about 228 u/s, so this gives a big first bounce, a smaller second and a last tap before it lies still.
-// How a landing feels is the piece's MATERIAL, not one number for everything: glass barely bounces
-// and skates away, stone lands dead and stops, metal rings on and rolls. `keep` is the share of the
-// approach speed a bounce returns, `drag` the rolling friction (per second), `grip` how much spin a
-// contact sheds (lower = keeps turning), and `minBounce` the speed below which it stops bouncing.
-const FALL_MATERIALS = {
-    glass:    { keep: 0.20, drag: 0.50, grip: 0.62, minBounce: 8 },
-    stone:    { keep: 0.26, drag: 1.55, grip: 0.34, minBounce: 8 },
-    metal:    { keep: 0.44, drag: 0.75, grip: 0.50, minBounce: 6 },
-    chitin:   { keep: 0.34, drag: 1.00, grip: 0.42, minBounce: 7 },
-    graphite: { keep: 0.28, drag: 1.20, grip: 0.38, minBounce: 7 },
-};
-function fallMaterial() {
-    const p = typeof currentAcoustics === 'function' ? currentAcoustics().piece : 'metal';
-    return FALL_MATERIALS[p] || FALL_MATERIALS.metal;
-}
-const fallRollAxis = new THREE.Vector3();
 // ---------- Glass shatter ----------
 // Glass that comes down hard doesn't roll, it breaks. The tumble is the same physics as every
 // other material right up to the contact that does it; at that moment the body is swapped for a
@@ -9303,6 +9231,136 @@ function clearShards() {
     for (const s of shards) { if (s.m.parent) s.m.parent.remove(s.m); try { s.mat.dispose(); } catch(e){} }
     shards = [];
 }
+// ---------- The tumble: a rigid body, not a set of rules ----------
+// This used to be a state machine -- a flat "slide", a "pivot" with an invented torque law that
+// grew with the lean, then a "free" phase with a hand-written rolling constraint, velocity surgery
+// on release and a knob per material. Every bug it had was fixed by adding another rule, and rules
+// do not compose: the piece could pivot into a velocity that pointed back over the board, or land
+// and skate, or stop turning because a contact "shed spin".
+//
+// What follows is the actual thing instead. The piece is a rigid body -- mass, inertia, position,
+// orientation, linear and angular velocity -- and the only things acting on it are gravity and
+// contacts. A contact resolves with an impulse: restitution decides how much of the approach speed
+// comes back, Coulomb friction decides how much of the sliding goes away and into spin. That is
+// the whole model. Tipping over the rim, bouncing, rolling, skidding to a stop and toppling off a
+// ledge are not written down anywhere; they are what those two laws do to this shape.
+const FALL_GRAVITY = 260;         // u/s^2, the scale the rest of the game's motion was tuned at
+const FALL_SUBSTEPS = 4;          // per frame: a piece can cross its own foot in one frame at speed
+const FALL_SLOP = 0.02;           // penetration left alone, so resting contacts stop jittering
+const FALL_BIAS = 0.25;           // share of the remaining penetration pushed out per substep
+const FALL_MAX_BIAS = 3;          // u/s: separation speed a deep overlap may be given, and no more
+const FALL_MARGIN = 0.06;         // speculative contact distance: catch a surface before it is hit
+const FALL_LIN_DAMP = 0.12, FALL_ANG_DAMP = 0.22;   // air and rolling losses, per second
+// What a piece is MADE of, as the two numbers a contact actually uses: how much of the approach
+// speed a bounce returns, and how hard the surface holds against sliding. Glass is hard and slick;
+// stone comes down dead and grips; metal rings on and rolls. Nothing else is per-material any more.
+const FALL_MATERIALS = {
+    glass:    { bounce: 0.30, grip: 0.22 },
+    stone:    { bounce: 0.07, grip: 0.85 },
+    metal:    { bounce: 0.42, grip: 0.38 },
+    chitin:   { bounce: 0.30, grip: 0.55 },
+    graphite: { bounce: 0.16, grip: 0.70 },
+    wood:     { bounce: 0.22, grip: 0.60 },
+};
+function fallMaterial() {
+    const p = typeof currentAcoustics === 'function' ? currentAcoustics().piece : 'metal';
+    return FALL_MATERIALS[p] || FALL_MATERIALS.metal;
+}
+// The body: the hull points double as its mass distribution. Treating each as a point mass gives
+// the centre of mass and the inertia tensor about it -- which is what decides how readily the piece
+// turns when something pushes it off-centre, i.e. the whole character of the tumble. It is computed
+// from the real shape rather than guessed, so a tripod tips like a tripod and not like a ball.
+const FALL_BODY = (() => {
+    const pts = FALL_HULL_LOCAL, n = pts.length, m = 1/n;
+    const com = new THREE.Vector3();
+    for (const h of pts) com.add(h.p);
+    com.multiplyScalar(1/n);
+    let xx=0, yy=0, zz=0, xy=0, xz=0, yz=0;
+    for (const h of pts) {
+        const x = h.p.x-com.x, y = h.p.y-com.y, z = h.p.z-com.z;
+        xx += m*(y*y + z*z); yy += m*(x*x + z*z); zz += m*(x*x + y*y);
+        xy -= m*x*y; xz -= m*x*z; yz -= m*y*z;
+    }
+    const I = new THREE.Matrix3().set(xx, xy, xz,  xy, yy, yz,  xz, yz, zz);
+    let span = 0;
+    for (const h of pts) span = Math.max(span, h.p.distanceTo(com) + h.r);
+    return { com, invI: I.clone().invert(), invM: 1, span };
+})();
+const fallR3 = new THREE.Matrix3(), fallRT3 = new THREE.Matrix3(), fallInvIW = new THREE.Matrix3();
+const fallRotM4 = new THREE.Matrix4();
+const fallPW = new THREE.Vector3(), fallLever = new THREE.Vector3(), fallU = new THREE.Vector3();
+const fallN = new THREE.Vector3(), fallTan = new THREE.Vector3(), fallTmp = new THREE.Vector3();
+const fallImpulse = new THREE.Vector3(), fallComW = new THREE.Vector3();
+const FALL_CONTACTS = [];
+for (let i = 0; i < FALL_HULL_LOCAL.length * 2; i++)
+    FALL_CONTACTS.push({ p: new THREE.Vector3(), n: new THREE.Vector3(), depth: 0, jn: 0 });
+// The world the body falls in, as one question: what is under this point, and which way does that
+// surface face? Everything the piece can hit is here -- the board it is standing on (a disc with a
+// real edge, which is why it tips instead of sliding out onto thin air) and the ground below, which
+// a look may shape (Colossus stands its pitch on a plinth). No phase knows about either.
+const FALL_BOARD_T = 4;           // the board's own thickness, so a piece can fall PAST its rim
+function fallBoardContact(p, r, out) {
+    if (p.y < -FALL_BOARD_T - r) return false;          // already below the board: it is past it
+    const R = CFG.edgeU, rho = Math.hypot(p.x, p.z);
+    if (rho <= R) {
+        const d = r - p.y;                               // the top face
+        if (d < -FALL_MARGIN) return false;
+        out.n.set(0, 1, 0); out.depth = Math.max(0, d); return true;
+    }
+    // Out past the rim, the nearest piece of board is the rim CIRCLE -- the edge the piece pivots
+    // over. Contact against that edge is what turns a slide into a topple, with no pivot phase.
+    const k = R/rho, dx = p.x - p.x*k, dy = p.y, dz = p.z - p.z*k;
+    const len = Math.hypot(dx, dy, dz);
+    if (len < 1e-6) return false;
+    const d = r - len;
+    if (d < -FALL_MARGIN) return false;
+    out.n.set(dx/len, dy/len, dz/len); out.depth = Math.max(0, d); return true;
+}
+function fallGroundContact(p, r, out) {
+    const g = fallFloorY(p.x, p.z), d = r - (p.y - g);
+    if (d < -FALL_MARGIN) return false;
+    // The ground's normal, read off the ground itself: level almost everywhere, but a look with a
+    // shaped floor (the plinth's flank) leans it, and a leaning normal is what rolls a piece down
+    // a slope. Nothing tells it to roll off the podium; the slope does.
+    const e = 1.5;
+    const hx = fallFloorY(p.x+e, p.z) - fallFloorY(p.x-e, p.z);
+    const hz = fallFloorY(p.x, p.z+e) - fallFloorY(p.x, p.z-e);
+    out.n.set(-hx/(2*e), 1, -hz/(2*e)).normalize();
+    out.depth = Math.max(0, d);
+    return true;
+}
+// A fresh fall: the piece as it stands, with the push that sent it over. Everything after this is
+// gravity and contacts -- where it tips, how it lands and where it ends up are not decided here.
+function mkFallState(p) {
+    let fx=0, fz=0, fr=-1;
+    for (const f of p.feet()){ const r=Math.hypot(f.x,f.y); if (r>fr){ fr=r; fx=f.x; fz=f.y; } }
+    const d = Math.hypot(fx,fz)||1;
+    // The push, and almost no spin: a piece shoved off a table does not leave it already turning.
+    // What tips it is the rim -- the far feet run out of board, the near ones catch the edge, and
+    // gravity does the rest. The jitter is only so two falls are never identical.
+    return { active:true, vx:fx/d*50, vz:fz/d*50, vy:0,
+             wx:(Math.random()-0.5)*1.2, wy:(Math.random()-0.5)*0.8, wz:(Math.random()-0.5)*1.2,
+             X:null, V:null, W:null, phase:'board',
+             landed:false, resting:false, stillT:0, settleT:0, downT:0,
+             bounces:0, lastImpact:null };
+}
+// kick off the dramatic slide-off when someone loses (silent=true for the replay's re-run)
+function triggerFall(silent) {
+    if (G.winner === null || G.winner === undefined) return;   // no winner, no faller
+    if (!silent) playLossSound();
+    if (!renderer) return;
+    clearShards();
+    const li = 1 - G.winner;
+    fall = Object.assign(mkFallState(G.pieces[li]), { idx: li, shatterOk: true });
+}
+// The body's state is taken from the mesh the first time it steps, not when the state is made: the
+// render loop may not have moved the piece to its final pose yet, and a test may pose it by hand.
+function fallSeed(t, fall) {
+    t.updateMatrixWorld();
+    fall.X = new THREE.Vector3().copy(FALL_BODY.com).applyQuaternion(t.quaternion).add(t.position);
+    fall.V = new THREE.Vector3(fall.vx||0, fall.vy||0, fall.vz||0);
+    fall.W = new THREE.Vector3(fall.wx||0, fall.wy||0, fall.wz||0);
+}
 // How far the piece's lowest surface point sits BELOW its origin, at its current orientation.
 // Negative while it stands upright (nothing is below the pads), growing as it tips onto its side.
 function fallLowestBelowOrigin(t) {
@@ -9317,163 +9375,143 @@ function stepFall(dt) {
     stepFallOn(tripods[fall.idx], fall, dt);
     // The piece LIES WHERE IT LANDED. Only the animation stops here; fallenIdx keeps the render loop
     // from snapping the mesh back onto the board (its logical position never moved), and the camera
-    // is released back to the board. It used to be hidden outright, which read as the loser blinking
-    // out of existence the moment it touched down.
-    // The beat before that starts once the piece has stopped rolling, not at first contact -- so a
-    // bounce or a roll is never cut off. downT is the backstop: however the tumble goes, the fall is
-    // never allowed to hold the camera for more than a few seconds.
+    // is released back to the board. The beat before that starts once the piece has stopped moving,
+    // not at first contact, so a bounce or a long roll is never cut off; downT is the backstop.
     if (fall.resting) fall.settleT += dt;
     if (fall.landed) fall.downT += dt;
     if (fall.settleT > 0.9 || fall.downT > 7) { fall.active=false; fallenIdx=fall.idx; camCenterFrac=1; camManualSet=false; }
 }
-// The physics itself, on any tripod + fall state — the tutorial's falls (goal-slide ending and
-// the push-off finale, on htpTripods) run this exact code, so a tumble looks the same everywhere.
+// One frame of rigid-body motion, on any tripod + fall state -- the tutorial's falls run this exact
+// code, so a tumble looks the same everywhere.
 function stepFallOn(t, fall, dt) {
-    if (fall.phase === 'slide') {
-        t.position.x += fall.vx*dt; t.position.z += fall.vz*dt;
-        const r = Math.hypot(t.position.x, t.position.z);
-        if (r >= CFG.edgeU) {
-            const ux = t.position.x/r, uz = t.position.z/r;
-            fall.px = ux*CFG.edgeU; fall.pz = uz*CFG.edgeU;
-            fall.ax = uz; fall.az = -ux;       // rim-tangent axis, signed so the outboard side rotates DOWN
-            fall.theta = 0; fall.omega = 0.3;  // small initial rate: the tip reads immediately, then gravity takes over
-            fall.phase = 'pivot';
-        }
-    } else if (fall.phase === 'pivot') {
-        fall.omega += (5 + 9*fall.theta) * dt;         // gravity torque grows with the lean
-        const dth = fall.omega * dt;
-        fall.theta += dth;
-        fallAxisV2.set(fall.ax, 0, fall.az);
-        fallQ.setFromAxisAngle(fallAxisV2, dth);
-        fallP.set(fall.px, 0, fall.pz);
-        t.position.sub(fallP).applyQuaternion(fallQ).add(fallP);   // orbit the contact point…
-        t.quaternion.premultiply(fallQ);                            // …and lean by the same angle
-        fall.vx *= Math.max(0, 1-2.5*dt); fall.vz *= Math.max(0, 1-2.5*dt);   // residual slide bleeds off
-        t.position.x += fall.vx*dt; t.position.z += fall.vz*dt;
-        if (fall.theta > 1.9) fallLetGo(t, fall);      // ~110° past level: contact can't hold — let go
-    } else {
-        fall.vy -= 260*dt;
-        t.position.x += fall.vx*dt; t.position.y += fall.vy*dt; t.position.z += fall.vz*dt;
-        const r = Math.hypot(t.position.x, t.position.z);
-        applyFallRotation(t, fall, dt, Math.max(0, Math.min(1, (r - CFG.edgeU) / 25)));
-        // Rest ON the ground, not through it. The piece stops when whichever part of it is lowest
-        // reaches the floor, and keeps sitting on that part as the last of the spin bleeds off --
-        // so this comes AFTER the frame's rotation, which is what decides where "lowest" is.
-        const floorY = fallFloorY(t.position.x, t.position.z), below = fallLowestBelowOrigin(t);
-        // How fast the piece's lowest point is actually closing on the floor. Its fall speed alone
-        // is not the impact: the piece is tumbling, so the part that touches down is swinging
-        // downward on its own account. Measuring only the body's vy meant a fast-spinning piece hit
-        // "softly", bounced a little, and had the gap closed again by the same spin before it could
-        // leave the ground -- which is why a short drop produced one dead thump instead of a bounce.
-        const clear = t.position.y + below - floorY;
-        const closing = fall.prevClear === undefined ? 0 : (fall.prevClear - clear) / Math.max(dt, 1e-4);
-        fall.prevClear = clear;
-        if (clear <= 0) {
-            t.position.y = floorY - below;
-            const impact = Math.max(0, -fall.vy, closing), MAT = fallMaterial();
-            // Every contact, bounce or final, is a dust cue for the presentation layer: where and
-            // how hard the piece actually met the ground, not just where it happens to rest now.
-            fall.lastImpact = { x: t.position.x, z: t.position.z, y: floorY, speed: impact };
-            // Glass, hit hard enough: the piece doesn't bounce, it breaks. Everything below this
-            // is the intact body's landing, so the tumble ends here -- resting immediately, which
-            // hands the camera back to the board while the shards are still skipping about.
-            if (fall.shatterOk && !fall.shattered && impact > SHATTER_SPEED
-                && (typeof currentAcoustics === 'function' ? currentAcoustics().piece : '') === 'glass') {
-                playShatterSound(Math.min(1, 0.45 + impact/200));
-                shatterPiece(t, fall, impact);
-                fall.shattered = true; fall.landed = true; fall.resting = true;
-                fall.vx = fall.vy = fall.vz = 0;
-                return;
-            }
-            if (impact > MAT.minBounce) {
-                // It bounces. A hard piece on a hard floor comes back at about a third of the speed
-                // it arrived with, and because it lands on a leg rather than flat on its axis, part
-                // of the blow goes into tumble instead of height -- which is what makes a dropped
-                // tripod skitter rather than pogo straight up. Each landing is its own thump, quieter
-                // as the bounces die away.
-                playLandingSound(Math.min(1, 0.3 + impact/170));
-                fall.landed = true;
-                fall.bounces++;
-                fall.vy = impact * MAT.keep;
-                fall.vx *= 0.84; fall.vz *= 0.84;                 // the floor drags on the skid
-                // A contact both sheds spin (the floor is what the piece turns against) and adds a
-                // little scatter. Shedding is what lets it leave the ground rather than grinding
-                // along, but shedding too hard was the "hit and pause": the piece arrived, stopped
-                // turning, and slid flat. It keeps most of its tumble now, by material.
-                const kick = impact * 0.015;
-                fall.wx = fall.wx*MAT.grip + (Math.random()-0.5)*kick;
-                fall.wy = fall.wy*MAT.grip + (Math.random()-0.5)*kick*0.4;
-                fall.wz = fall.wz*MAT.grip + (Math.random()-0.5)*kick;
-                fall.tipRate *= MAT.grip;
-                fall.prevClear = undefined;
-            } else {
-                // Too slow to leave the floor again, but not stopped: it ROLLS. A tripod that comes
-                // down on its side carries its sideways speed into a tumble across the ground, so
-                // friction here is gentle and the spin keeps turning it over its own legs -- the
-                // contact clamp above re-seats it on whatever is lowest each frame, which is what
-                // makes that read as rolling rather than sliding on the spot.
-                if (!fall.landed) { fall.landed = true; playLandingSound(0.55); }
-                fall.vy = 0;
-                const roll = 1 - Math.min(1, MAT.drag*dt), spin = 1 - Math.min(1, MAT.drag*0.85*dt);
-                fall.vx *= roll; fall.vz *= roll;
-                fall.wx *= spin; fall.wy *= spin; fall.wz *= spin;
-                fall.tipRate *= 1 - Math.min(1, MAT.drag*1.2*dt);
-                // ROLLING, not sliding. The contact turns the piece at the rate its own speed
-                // implies, about the axis across its direction of travel -- a body whose contact
-                // sits `below` under its centre turns v/|below| per second. Without this the piece
-                // kept its speed but stopped turning, which is exactly the "lands and pauses" look:
-                // a tripod skating flat across the floor instead of tumbling to a halt.
-                const sp = Math.hypot(fall.vx, fall.vz);
-                if (sp > 0.4) {
-                    fallRollAxis.set(fall.vz/sp, 0, -fall.vx/sp);
-                    t.rotateOnWorldAxis(fallRollAxis, (sp / Math.max(6, -below)) * dt);
-                }
-                // Resting means actually still, not merely touching: the beat before the camera goes
-                // back to the board starts when the roll has died, not the moment it first landed.
-                fall.resting = Math.hypot(fall.vx, fall.vz) < 1.1
-                    && Math.abs(fall.wx) + Math.abs(fall.wy) + Math.abs(fall.wz) < 0.5;
-            }
-        }
-    }
-    // Board rest. During the flat SLIDE the trailing feet genuinely rest on the surface, so any foot
-    // still horizontally over the board is lifted back onto it. During the PIVOT the piece rotates
-    // rigidly about the rim contact -- that rotation RAISES the inboard feet, so a still-over-board
-    // foot ending up below the surface doesn't mean "sunk, nudge the piece up": it means the rigid
-    // pivot is no longer compatible with resting contact at all (a foot has swung around under the
-    // board). Nudging the piece up per-frame there is what read as the tumble "bouncing" and the
-    // trailing feet "sticking" (and, unbounded, as the old 30u+ mid-fall teleport). The physical
-    // piece has already let go at that point, so let go: hand over to ballistic free fall the moment
-    // a still-over-board foot would have to pass through the surface.
-    if (fall.phase !== 'free') {
-        t.updateMatrixWorld();
-        let minY = 0;
-        for (let i=0;i<3;i++){
-            fallFootW.copy(FALL_FEET_LOCAL[i]).applyMatrix4(t.matrixWorld);
-            if (Math.hypot(fallFootW.x, fallFootW.z) < CFG.edgeU && fallFootW.y < minY) minY = fallFootW.y;
-        }
-        if (fall.phase === 'slide') { if (minY < 0) t.position.y -= minY; }
-        else if (minY < -0.6) fallLetGo(t, fall);
-    }
+    if (!fall.X) fallSeed(t, fall);
+    const MAT = fallMaterial();
+    const h = Math.min(dt, 1/30) / FALL_SUBSTEPS;
+    for (let s = 0; s < FALL_SUBSTEPS; s++) fallSubstep(t, fall, h, MAT);
+    // Keep the mesh where the body is: the simulation tracks the centre of mass, the mesh hangs off
+    // it by the same offset, turned by the body's orientation.
+    t.position.copy(fall.X).sub(fallComW.copy(FALL_BODY.com).applyQuaternion(t.quaternion));
+    t.updateMatrixWorld();
 }
-// End the pivot: hand the piece over to ballistic free fall, carrying the exit velocity the pivot
-// rotation gave it (v = ω · (axis × lever) about the rim contact point). Shared by the normal
-// past-vertical release and the lost-contact (foot-curled-under) release above.
-function fallLetGo(t, fall) {
-    fallAxisV2.set(fall.ax, 0, fall.az);
-    fallLever.set(t.position.x-fall.px, t.position.y, t.position.z-fall.pz);
-    fallLever.cross(fallAxisV2).multiplyScalar(-fall.omega);
-    fall.vx += fallLever.x; fall.vy = fallLever.y; fall.vz += fallLever.z;
-    // The pivot swings the hub DOWN about the rim like a pendulum, so past ~90° its orbital velocity
-    // points back INBOARD — handing that to free fall flung the just-tipped piece back across (and
-    // under) the board instead of dropping it off the edge ("curling under the board"). Remove only
-    // the inboard part of the horizontal exit velocity: the piece keeps its downward drop, any
-    // genuine outward drift, and its spin, so it falls away off the rim as it tumbles.
-    const ol = Math.hypot(fall.px, fall.pz) || 1;   // contact point direction = the outward radial
-    const ux = fall.px/ol, uz = fall.pz/ol;
-    const radial = fall.vx*ux + fall.vz*uz;
-    if (radial < 0) { fall.vx -= radial*ux; fall.vz -= radial*uz; }
-    fall.tipRate = fall.omega;
-    fall.phase = 'free';
+function fallSubstep(t, fall, h, MAT) {
+    // 1. Gravity, and the drift of a turning body. Then move.
+    fall.V.y -= FALL_GRAVITY*h;
+    fall.V.multiplyScalar(Math.max(0, 1 - FALL_LIN_DAMP*h));
+    fall.W.multiplyScalar(Math.max(0, 1 - FALL_ANG_DAMP*h));
+    fall.X.addScaledVector(fall.V, h);
+    const wlen = fall.W.length();
+    if (wlen > 1e-6) {
+        fallTmp.copy(fall.W).multiplyScalar(1/wlen);
+        t.quaternion.premultiply(fallQ.setFromAxisAngle(fallTmp, wlen*h)).normalize();
+    }
+    // 2. The inertia tensor turns with the body: how hard the piece is to spin about an axis
+    //    depends on which way it is facing.
+    fallRotM4.makeRotationFromQuaternion(t.quaternion);
+    fallR3.setFromMatrix4(fallRotM4);
+    fallRT3.copy(fallR3).transpose();
+    fallInvIW.copy(fallR3).multiply(FALL_BODY.invI).multiply(fallRT3);
+    // 3. Everything the piece is touching this instant.
+    let n = 0, deepest = 0, hardest = 0, hx = 0, hy = 0, hz = 0, onBoard = false;
+    for (const hull of FALL_HULL_LOCAL) {
+        fallPW.copy(hull.p).applyQuaternion(t.quaternion).add(
+            fallTmp.copy(fall.X).sub(fallComW.copy(FALL_BODY.com).applyQuaternion(t.quaternion)));
+        for (const probe of [fallBoardContact, fallGroundContact]) {
+            const c = FALL_CONTACTS[n];
+            if (!probe(fallPW, hull.r, c)) continue;
+            c.p.copy(fallPW); c.jn = 0;
+            if (c.depth > deepest) deepest = c.depth;
+            if (probe === fallBoardContact) onBoard = true;
+            n++;
+        }
+    }
+    fall.phase = n ? (onBoard ? 'board' : 'ground') : 'air';
+    if (!n) { fall.stillT = 0; return; }
+    // 4. Resolve them. Each contact gets an impulse along its normal -- enough to stop the approach
+    //    and hand back `bounce` of it -- and a friction impulse across it, capped by `grip` times
+    //    the normal one. Several passes, because contacts share a body and each one's answer
+    //    changes what the others need; a handful is plenty at this scale.
+    for (let iter = 0; iter < 6; iter++) {
+        for (let i = 0; i < n; i++) {
+            const c = FALL_CONTACTS[i];
+            fallLever.copy(c.p).sub(fall.X);
+            fallU.copy(fall.W).cross(fallLever).add(fall.V);
+            const vn = fallU.dot(c.n);
+            // Restitution only for a real arrival: a resting contact must not be handed energy back
+            // every frame, which is what makes a body buzz on the floor instead of lying on it.
+            const e = vn < -12 ? MAT.bounce : 0;
+            // Pushing an overlap apart is corrective, not a source of energy: deep penetration --
+            // a leg swung through the board in one step -- would otherwise be handed hundreds of
+            // units a second of separation speed and fire the piece into the air.
+            const bias = c.depth > FALL_SLOP
+                ? Math.min(FALL_MAX_BIAS, (c.depth - FALL_SLOP)*FALL_BIAS/h) : 0;
+            const k = fallContactMass(c.n, fallLever);
+            let jn = (-(1 + e)*vn + bias) / k;
+            const prev = c.jn;
+            c.jn = Math.max(0, prev + jn);       // the total push can only ever be outward
+            jn = c.jn - prev;
+            if (jn !== 0) {
+                fallImpulse.copy(c.n).multiplyScalar(jn);
+                fall.V.addScaledVector(fallImpulse, FALL_BODY.invM);
+                fallTmp.copy(fallLever).cross(fallImpulse).applyMatrix3(fallInvIW);
+                fall.W.add(fallTmp);
+                if (iter === 0 && -vn > hardest) { hardest = -vn; hx = c.p.x; hy = c.p.y; hz = c.p.z; }
+            }
+            // Friction: whatever sliding is left across the surface, opposed and capped. This is
+            // what turns a skid into a roll -- the held contact point becomes the axis it turns on.
+            fallU.copy(fall.W).cross(fallLever).add(fall.V);
+            fallTan.copy(fallU).addScaledVector(c.n, -fallU.dot(c.n));
+            const vt = fallTan.length();
+            if (vt > 1e-4 && c.jn > 0) {
+                fallTan.multiplyScalar(1/vt);
+                const jt = Math.max(-MAT.grip*c.jn, -vt/fallContactMass(fallTan, fallLever));
+                fallImpulse.copy(fallTan).multiplyScalar(jt);
+                fall.V.addScaledVector(fallImpulse, FALL_BODY.invM);
+                fallTmp.copy(fallLever).cross(fallImpulse).applyMatrix3(fallInvIW);
+                fall.W.add(fallTmp);
+            }
+        }
+    }
+    // 5. Anything still overlapping is pushed out of the surface rather than left buried.
+    if (deepest > FALL_SLOP) {
+        for (let i = 0; i < n; i++) {
+            const c = FALL_CONTACTS[i];
+            if (c.depth > FALL_SLOP) fall.X.addScaledVector(c.n, (c.depth - FALL_SLOP)*FALL_BIAS);
+        }
+    }
+    // 6. What the rest of the game wants to know about the landing: where and how hard.
+    if (hardest > 8) fallReportImpact(t, fall, hardest, hx, hy, hz, MAT);
+    const moving = fall.V.length() + fall.W.length()*FALL_BODY.span;
+    fall.stillT = moving < 2.2 ? fall.stillT + h : 0;
+    fall.resting = fall.stillT > 0.25;
+}
+// The effective mass of the body at one contact, along one direction: how much a unit impulse there
+// actually changes the approach speed, once the body's ability to turn about that point is counted.
+function fallContactMass(dir, lever) {
+    fallTmp.copy(lever).cross(dir).applyMatrix3(fallInvIW).cross(lever);
+    return FALL_BODY.invM + fallTmp.dot(dir);
+}
+function fallReportImpact(t, fall, speed, x, y, z, MAT) {
+    fall.lastImpact = { x, z, y, speed };
+    fall.bounces++;
+    // Glass, hit hard enough, breaks instead of bouncing -- and only a real match's loser may, since
+    // the how-to-play tumbles loop and rebuild their pieces every pass.
+    if (fall.shatterOk && !fall.shattered && speed > SHATTER_SPEED
+        && (typeof currentAcoustics === 'function' ? currentAcoustics().piece : '') === 'glass') {
+        playShatterSound(Math.min(1, 0.45 + speed/200));
+        shatterPiece(t, fall, speed);
+        fall.shattered = true; fall.landed = true; fall.resting = true;
+        fall.V.set(0,0,0); fall.W.set(0,0,0);
+        return;
+    }
+    // A tumbling piece really does strike the ground many times as it clatters over, and the
+    // physics counts every one of them -- but two strikes a few hundredths apart are one sound to
+    // the ear, and playing them all turns a landing into a rattle. The ear gets the loudest of
+    // each burst; the dust and the bounce count still see every contact.
+    if (fall.lastSound === undefined || fall.downT - fall.lastSound > 0.09) {
+        fall.lastSound = fall.downT;
+        playLandingSound(Math.min(1, 0.3 + speed/170));
+    }
+    fall.landed = true;
 }
 // ---------- Auto camera: gentle, never a fight ----------
 // The camera is driven by two things blended together:

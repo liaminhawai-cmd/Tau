@@ -1021,11 +1021,13 @@ test('Colossus brings its stands, crowd and haze into the match, and a fall rais
   assert.equal(g.read('tauDesktop.fallTimeScale()'),0.5,'giants go over slowly');
   assert.equal(g.read('tauDesktop.fallFloorY()'),-20,'a fallen titan lands on the arena sand below the plinth');
   const puffs=()=>g.read("scene.children.filter(o=>o.isPoints && o.userData.dust).length");
-  g.read("fall={active:true,phase:'slide',idx:1,vx:50,vz:0,px:0,pz:0}; tripods[1].position.set(55,0,0);");
+  // The body says what it is touching: 'board' while any of it is still on the board, then 'air'.
+  g.read(`fall={active:true, phase:'board', idx:1, V:new THREE.Vector3(50,0,0), bounces:0, resting:false};
+    tripods[1].position.set(55,0,0);`);
   g.read('tauDesktop.tick(0.2); tauDesktop.tick(0.2)');
   assert.ok(puffs()>=1,'feet dragging through the sand throw up dust');
-  g.read("fall.phase='pivot'; fall.px=66.7; fall.pz=0; tauDesktop.tick(0.05); tauDesktop.tick(0.05)");
-  assert.ok(puffs()>=2,'the rim gets a burst');
+  g.read("fall.phase='air'; tauDesktop.tick(0.05); tauDesktop.tick(0.05)");
+  assert.ok(puffs()>=2,'leaving the rim gets a burst');
   assert.ok(crowd().y>0,'and the crowd erupts');
   g.read("fall={active:false}; tauDesktop.board='walnut'");
   assert.equal(crowd(),null,'another board clears the arena');
@@ -1051,38 +1053,50 @@ test('a fallen titan throws up dust where it actually lands on the sand, not on 
   // so the drop is not a coin flip about how many bounces it takes to settle.
   g.read(`playLandingSound=()=>{};
     let seed=11; Math.random=()=>((seed=(seed*16807)%2147483647)/2147483647);
-    fall=Object.assign(mkFallState(G.pieces[1]), {idx:1, phase:'free', vy:0, vx:18, vz:6});
+    fall=Object.assign(mkFallState(G.pieces[1]), {idx:1, vy:0, vx:18, vz:6});
     tripods[1].position.set(90,0,0);`);
   // Run the real physics and the desktop's per-frame tick side by side, exactly as a match does,
   // logging a sample of the newest floor-height dust cloud each time a bounce lands.
   g.read(`window.__log=[];
-    const floorPuffs=()=>scene.children.filter(o=>o.isPoints && o.userData.dust.floorY===fallFloorY());
+    // Every dust cloud thrown up below the board -- the sand, and the plinth's flank on the way
+    // down to it. (Clouds raised ON the board sit at its own height and are not these.)
+    const floorPuffs=()=>scene.children.filter(o=>o.isPoints && o.userData.dust && o.userData.dust.floorY < -1);
     let prevBounces=0;
     for(let i=0;i<400;i++){
       if(fall.active) stepFall(1/60);
       tauDesktop.tick(1/60);
       if(fall.bounces!==prevBounces){
         prevBounces=fall.bounces;
-        const pts=floorPuffs(), newest=pts[pts.length-1], pos=newest.geometry.attributes.position.array;
+        // Only landings on the GROUND: a titan on its way over clips the board it is leaving, and
+        // that contact belongs to the board, not to the sand this test is about.
+        if(!fall.lastImpact || fall.lastImpact.y > -1) continue;
+        const pts=floorPuffs(), newest=pts[pts.length-1];
+        if(!newest) continue;
+        const pos=newest.geometry.attributes.position.array;
         let minY=Infinity,maxY=-Infinity; for(let j=1;j<pos.length;j+=3){ if(pos[j]<minY)minY=pos[j]; if(pos[j]>maxY)maxY=pos[j]; }
-        window.__log.push({bounces:fall.bounces, n:pos.length/3, minY, maxY, floorCount:pts.length});
+        window.__log.push({bounces:fall.bounces, n:pos.length/3, minY, maxY,
+                           hitY:fall.lastImpact.y, floorCount:pts.length});
       }
     }`);
   const floor=g.read('fallFloorY()');
   assert.equal(floor,-20,'colossus lands its loser on the arena sand');
   assert.ok(g.read('fall.bounces')>=2,'a titan dropped from the board bounces more than once before it settles');
-  assert.equal(g.read('fall.lastImpact.y'),floor,'the last recorded contact is the sand, not the board');
+  assert.ok(g.read('fall.lastImpact.y')<-1,'the last recorded contact is below the board, on the ground');
   const log=JSON.parse(g.read('JSON.stringify(window.__log)'));
   assert.ok(log.length>=2,`at least two landings logged (got ${log.length})`);
-  assert.ok(log[0].minY>floor-0.01 && log[0].minY<floor+3,'the first landing spawns right at the floor, not the board surface');
-  assert.ok(log[0].n>log[1].n,`the first landing is the big puff, later bounces are smaller (${log[0].n} vs ${log[1].n})`);
-  assert.ok(log[1].floorCount>=2,'a later bounce adds its own puff rather than replacing the first');
+  assert.ok(log[0].minY>log[0].hitY-0.01 && log[0].minY<log[0].hitY+3,
+    'the landing spawns right at the ground it hit, not at the board surface above');
+  assert.ok(log[0].hitY<-1,'and that ground is below the board');
+  // How much is thrown up follows how hard it hit: the arrival is the fastest contact, so it is
+  // the biggest cloud, and the taps it settles with are smaller.
+  assert.ok(log[0].n>log[log.length-1].n,`the hardest landing is the big puff (${log[0].n} vs ${log[log.length-1].n})`);
+  assert.ok(log[log.length-1].floorCount>log[0].floorCount,'later landings add their own puffs rather than replacing the first');
   // Let the airborne dust keep integrating after the piece itself has settled, then check none of
   // it ever sank through the sand it was thrown up from.
   g.read(`for(let i=0;i<90;i++) tauDesktop.tick(1/30);`);
-  const minYAfter=g.read(`Math.min(...scene.children.filter(o=>o.isPoints && o.userData.dust && o.userData.dust.floorY===${floor})
+  const minYAfter=g.read(`Math.min(...scene.children.filter(o=>o.isPoints && o.userData.dust && o.userData.dust.floorY < -1)
     .flatMap(o=>{ const a=o.geometry.attributes.position.array, ys=[]; for(let j=1;j<a.length;j+=3) ys.push(a[j]); return ys; }))`);
-  assert.ok(!isFinite(minYAfter) || minYAfter>=floor+0.3-0.01,'no dust particle falls through the sand it landed on');
+  assert.ok(!isFinite(minYAfter) || minYAfter>=floor+0.3-0.01,'no dust particle falls through the ground it landed on');
   assert.deepEqual(g.errors,[]);
 });
 
@@ -1223,7 +1237,7 @@ test('a stuck walkthrough slide can be reset without losing earned progress',asy
   assert.deepEqual(g.errors,[]);
 });
 
-test('the losing piece lands on the floor below the board with a thump, then is tucked away',async t=>{
+test('the loser goes over the rim, lands on the floor below and comes to rest lying there',async t=>{
   const g=await game();t.after(g.close);
   localMatch(g);
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
@@ -1233,44 +1247,55 @@ test('the losing piece lands on the floor below the board with a thump, then is 
     boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
     tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
     window.__thumps=[]; playLandingSound=(s)=>window.__thumps.push(s===undefined?1:s);
-    // Off the rim at the board's own height, so it falls the full 20cm onto the floor.
-    // Pinned randomness: the tumble's wobble and the spin an impact adds are random, and this test
-    // is about the bounce, not about one lucky roll of it.
+    // A real loss: the piece stands near the rim and gets the push the game gives it. Nothing here
+    // says "now tip" or "now fall" -- it is standing on a board that runs out.
+    // Pinned randomness, since the seeded jitter differs run to run and this is about the motion.
     let seed=7; Math.random=()=>((seed=(seed*16807)%2147483647)/2147483647);
-    fall=Object.assign(mkFallState(G.pieces[1]), {idx:1, phase:'free', vy:0, vx:14, vz:3});
-    tripods[1].position.set(80,0,0);`);
-  // Four seconds at 60fps: the drop, the bounces, and the beat before it is tucked away. Clearance
-  // is how far the piece's lowest point sits above the floor on each frame.
-  g.read(`window.__clear=[];
-    for(let i=0;i<420 && fall.active;i++){ stepFall(1/60);
-      window.__clear.push(tripods[1].position.y + fallLowestBelowOrigin(tripods[1]) - fallFloorY()); }`)
-  // It rests ON the floor: its lowest surface point touches -100, not its origin. A tumbling piece
-  // is rotated, so clamping the origin (the plane its pins stand on) buried whatever hung below it.
-  const floor=g.read('fallFloorY()'), lowest=g.read('tripods[1].position.y + fallLowestBelowOrigin(tripods[1])');
-  assert.ok(Math.abs(lowest-floor)<0.01,'its lowest point rests on the floor below the board, not falling forever');
-  assert.ok(g.read('tripods[1].position.y')>floor,'and the piece sits above that floor rather than half through it');
-  assert.ok(g.read('fallLowestBelowOrigin(tripods[1])')<-1,'this one landed on its side, so parts of it hang well below its origin');
-  assert.ok(floor>-60,'the drop is short enough that the loss camera stays in close');
-  // It bounces instead of stopping dead, and each landing is its own thump, quieter than the last.
-  const thumps=JSON.parse(g.read('JSON.stringify(window.__thumps)'));
-  assert.ok(thumps.length>=2 && thumps.length<=6,`a few bounces, not one dead stop and not a thump per frame (got ${thumps.length})`);
-  // Not strictly monotonic: a leg catching the ground mid-roll can slap harder than the tap before
-  // it, which is what a real tumble sounds like. The arrival is the loudest and it dies away.
-  assert.equal(Math.max(...thumps),thumps[0],'the arrival is the loudest');
-  assert.ok(thumps[thumps.length-1]<thumps[0],'and the tumble dies away');
-  const CFG_EDGE=g.read('CFG.edgeU');
+    G.pieces[1].x = CFG.edgeU - 10; G.pieces[1].y = 0;
+    tripods[1].position.set(G.pieces[1].x, 0, 0);
+    fall=Object.assign(mkFallState(G.pieces[1]), {idx:1});`);
+  // Ten seconds at 60fps: over the edge, down, along the floor, and the beat before it is tucked
+  // away. Tilt is how far off upright the piece is; clearance, how far its lowest point is above
+  // the floor.
+  g.read(`window.__tilt=[]; window.__clear=[]; window.__radius=[]; window.__up=new THREE.Vector3(0,1,0);
+    for(let i=0;i<600 && fall.active;i++){ stepFall(1/60);
+      window.__radius.push(Math.hypot(tripods[1].position.x, tripods[1].position.z));
+      window.__tilt.push(Math.acos(Math.max(-1,Math.min(1,
+        window.__up.clone().applyQuaternion(tripods[1].quaternion).y)))*180/Math.PI);
+      window.__clear.push(tripods[1].position.y + fallLowestBelowOrigin(tripods[1]) - fallFloorY()); }`);
+  const tilt=JSON.parse(g.read('JSON.stringify(window.__tilt)'));
   const clear=JSON.parse(g.read('JSON.stringify(window.__clear)'));
-  const firstHit=clear.findIndex(c=>c<=0.001);
-  assert.ok(firstHit>0,'it reaches the floor');
-  // The hop scales with the drop, and the floor sits close under the board so the loss camera can
-  // stay in tight: a few units of air is what the physics gives here, not a pogo.
-  assert.ok(Math.max(...clear.slice(firstHit))>0.8,'and comes back off it rather than sticking where it landed');
-  assert.equal(g.read('fall.active'),false,'the animation stops once it has stopped rolling');
-  assert.equal(g.read('fallenIdx'),1,'and the render loop leaves it where it fell instead of snapping it back');
-  // It LIES on the floor rather than blinking out: the loser is still there to see.
-  assert.equal(g.read('tripods[1].visible'),true,'the fallen piece stays on the ground');
+  // It starts upright and standing ON the board, and goes over because the board runs out under it.
+  assert.ok(tilt[0]<6,'it starts upright, standing');
+  const firstHit=clear.findIndex(c=>c<=0.05);
+  assert.ok(firstHit>10,'it takes a moment to reach the floor: it tips, then falls');
+  g.read(`window.__hitR = window.__radius[${firstHit}]`);
+  assert.ok(tilt[firstHit]>45,`it is already going over by the time it lands (tilt ${tilt[firstHit]|0} deg)`);
+  assert.ok(Math.max(...tilt)>90,'and it goes past on its side rather than landing on its feet');
+  // It rests ON the floor -- its lowest surface point, not its origin, which is rotated away.
+  const floor=g.read('fallFloorY()'), lowest=g.read('tripods[1].position.y + fallLowestBelowOrigin(tripods[1])');
+  assert.ok(Math.abs(lowest-floor)<0.1,`its lowest point rests on the floor (${lowest.toFixed(2)} vs ${floor})`);
+  assert.ok(g.read('tripods[1].position.y')>floor,'the piece sits above that floor rather than half through it');
+  assert.ok(floor>-60,'the drop is short enough that the loss camera stays in close');
+  // It carries on after it lands rather than stopping dead where it first touched. It does not
+  // necessarily HOP: a tripod comes down on a leg, off its centre, so most of the blow goes into
+  // turning it rather than bouncing it -- it cartwheels along the ground, which is the thing a
+  // scripted "bounce then slide" never did.
+  assert.ok(g.read('fall.bounces')>=3,'a tumbling piece strikes the ground more than once');
+  const afterHit=tilt.slice(firstHit);
+  assert.ok(Math.max(...afterHit)-Math.min(...afterHit)>25,'and it keeps turning over after it lands');
+  const travel=g.read(`Math.hypot(tripods[1].position.x, tripods[1].position.z)`) - g.read('window.__hitR');
+  assert.ok(travel>8,`it travels on across the floor after landing (${travel.toFixed(1)} units)`);
+  // The ear gets the strikes, but not one per contact: a clatter is not a rattle.
+  const thumps=JSON.parse(g.read('JSON.stringify(window.__thumps)'));
+  assert.ok(thumps.length>=2,'the landing is heard');
+  assert.ok(thumps.length<=g.read('fall.bounces'),'but never more often than it actually hits');
+  assert.ok(Math.max(...thumps)>0.5,'the hardest strike is a real thump, not a tap');
+  assert.equal(g.read('fall.active'),false,'the animation stops once it has stopped moving');
+  assert.equal(g.read('fallenIdx'),1,'and the render loop leaves it where it fell');
+  assert.equal(g.read('tripods[1].visible'),true,'the fallen piece stays on the ground to see');
   const rest=JSON.parse(g.read('JSON.stringify([tripods[1].position.x,tripods[1].position.z])'));
-  assert.ok(Math.hypot(rest[0],rest[1])>CFG_EDGE*0.7,'and it comes to rest out by the rim it went over, not back in the middle');
+  assert.ok(Math.hypot(rest[0],rest[1])>g.read('CFG.edgeU'),'it comes to rest off the board, past the rim it went over');
   assert.deepEqual(g.errors,[]);
 });
 
@@ -1717,7 +1742,7 @@ test('the loss camera follows the piece down instead of framing the board it lef
     controls={mouseButtons:{},target:new THREE.Vector3(),update(){}};
     tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
     G.over=true; G.winner=0;
-    fall=Object.assign(mkFallState(G.pieces[1]),{idx:1,phase:'free'});
+    fall=Object.assign(mkFallState(G.pieces[1]),{idx:1});
     tripods[1].position.set(62,-30,44);
     for(let i=0;i<120;i++) tauDesktop.updateCamera(1/60,true);`);
   const tgt=JSON.parse(g.read('JSON.stringify([controls.target.x,controls.target.y,controls.target.z])'));
@@ -2154,7 +2179,7 @@ const glassFallSetup = (seed, speed) => `
   window.__thump=[]; playLandingSound=s=>window.__thump.push(s);
   let seed=${seed}; Math.random=()=>((seed=(seed*16807)%2147483647)/2147483647);
   fall=Object.assign(mkFallState(G.pieces[1]),
-    {idx:1, phase:'free', vy:${speed}, vx:14, vz:3, shatterOk:true});
+    {idx:1, vy:${speed}, vx:14, vz:3, shatterOk:true});
   tripods[1].position.set(80,26,0);`;
 
 test('a glass piece dropped hard breaks instead of rolling, and the shards clear away',async t=>{
@@ -2167,10 +2192,10 @@ test('a glass piece dropped hard breaks instead of rolling, and the shards clear
   assert.equal(g.read('tripods[1].visible'),false,'the intact piece is gone');
   assert.ok(g.read('shards.length')>10,'and a burst of shards is in its place');
   assert.equal(g.read('window.__crack.length'),1,'one crack, not one per frame');
-  // It may touch down once before the contact that does it (a tumbling piece can brush the floor
-  // on the way over); what must not happen is the break ALSO thumping, or thumping after it.
-  const thumpsAtBreak = g.read('window.__thump.length');
-  assert.ok(thumpsAtBreak<=1,'the break is not a landing as well');
+  // A tumbling piece can brush the ground on the way over, so touches before the one that breaks
+  // it are fair; what must not happen is the break itself also thumping.
+  const thumps=JSON.parse(g.read('JSON.stringify(window.__thump)'));
+  assert.ok(thumps.every(v=>v<1),'no landing was reported at full force alongside the break');
   assert.ok(g.read('shards.every(s=>s.m.parent===tripods[1].parent)'),'the shards are in the scene the piece fell in');
   assert.ok(g.read('shards.some(s=>s.vy>0)'),'some of it comes up off the floor');
   // The shards land ON the floor the piece was falling to, and end up spread around where it hit.
@@ -2202,7 +2227,7 @@ test('a metal piece takes the same landing and rolls, and a gentle glass landing
   // Same glass, set down gently: started just above the floor, barely moving and not turning, so
   // nothing it can do on the way down gets near the speed that breaks it. It rolls out instead.
   g.read(`setAcoustics('glass','marble'); clearShards();` + glassFallSetup(11,-2));
-  g.read('tripods[1].position.set(80,fallFloorY()+1.2,0); fall.wx=fall.wy=fall.wz=0; fall.tipRate=0;');
+  g.read('tripods[1].position.set(80,fallFloorY()+1.2,0); fall.wx=fall.wy=fall.wz=0;');
   g.read('for(let i=0;i<90 && fall.active;i++) stepFall(1/60);');
   assert.equal(g.read('!!fall.shattered'),false,'a soft landing leaves the glass whole');
   assert.equal(g.read('window.__crack.length'),0);
@@ -2330,14 +2355,28 @@ test('a titan lands on the Colossus plinth and rolls off it, instead of sinking 
   assert.equal(look,-20,'asked with no position the look still names its ground level');
   const flank=g.read('fallFloorY(CFG.edgeU*1.12, 0)');
   assert.ok(flank<top && flank>sand,`the plinth's flank slopes between the two (got ${flank})`);
-  // A piece dropped over the plinth comes to rest ON it.
+  // A piece dropped just past the rim, over the plinth, comes to rest ON the stone -- not fifteen
+  // units down inside it, which is where it ended up when the sand was the ground everywhere.
   g.read(`let seed=5; Math.random=()=>((seed=(seed*16807)%2147483647)/2147483647);
-    fall=Object.assign(mkFallState(G.pieces[1]),{idx:1, phase:'free', vy:-40, vx:0, vz:0});
-    tripods[1].position.set(CFG.edgeU*0.6, 14, 0);
-    for(let i=0;i<400 && fall.active;i++) stepFall(1/60);`);
-  const y=g.read('tripods[1].position.y'), below=g.read('fallLowestBelowOrigin(tripods[1])');
-  const here=g.read('fallFloorY(tripods[1].position.x, tripods[1].position.z)');
-  assert.ok(Math.abs(y+below-here)<0.01,'its lowest point rests on the stone under it');
-  assert.ok(y+below>-10,`and that is the plinth, not the sand twenty down (lowest ${(y+below).toFixed(1)})`);
+    fall=Object.assign(mkFallState(G.pieces[1]),{idx:1, vy:-30, vx:4, vz:0});
+    tripods[1].position.set(CFG.edgeU*1.03, 10, 0);
+    for(let i=0;i<600 && fall.active;i++) stepFall(1/60);`);
+  // Wherever it ends up -- the plinth's narrow lip, its flank, or the sand it rolls out onto -- no
+  // part of it is inside the stone. That is the bug that was reported: told the sand was the ground
+  // everywhere, a titan fell straight through the plinth and lay buried in it.
+  const worst=g.read(`(() => {
+    const t=tripods[1]; let worst=0;
+    const origin=new THREE.Vector3().copy(fall.X)
+      .sub(new THREE.Vector3().copy(FALL_BODY.com).applyQuaternion(t.quaternion));
+    for (const h of FALL_HULL_LOCAL) {
+      const p=new THREE.Vector3().copy(h.p).applyQuaternion(t.quaternion).add(origin);
+      const d = fallFloorY(p.x, p.z) - (p.y - h.r);
+      if (d > worst) worst = d;
+    }
+    return worst;
+  })()`);
+  assert.ok(worst<0.6,`no part of the titan is inside the stone (deepest ${worst.toFixed(2)} in)`);
+  const lowest=g.read('tripods[1].position.y + fallLowestBelowOrigin(tripods[1])');
+  assert.ok(lowest<1,'and it is below the board it fell from');
   assert.deepEqual(g.errors,[]);
 });

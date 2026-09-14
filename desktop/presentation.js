@@ -1059,27 +1059,33 @@
     const phase = fall.active ? fall.phase : null;
     if (lookTheme && lookTheme.dust && fall.active && typeof tripods !== 'undefined' && tripods[fall.idx]) {
       const ts = fallTimeScale(), tp = tripods[fall.idx].position;
-      if (phase === 'slide') {   // feet dragging through the sand: a puff behind the piece every so often
+      // The body reports what it is touching, not which act of a script it is in: 'board' while
+      // something of it is still on the board, 'ground' once it is down, 'air' in between.
+      const vx = fall.V ? fall.V.x : 0, vz = fall.V ? fall.V.z : 0;
+      if (phase === 'board') {   // feet dragging across the board: a puff behind the piece every so often
         slideDustT += dt*ts;
         if (slideDustT > 0.14) { slideDustT = 0;
-          const d = Math.hypot(fall.vx, fall.vz) || 1;
-          spawnDust(tp.x - fall.vx/d*10, tp.z - fall.vz/d*10, 26, 10); }
+          const d = Math.hypot(vx, vz) || 1;
+          spawnDust(tp.x - vx/d*10, tp.z - vz/d*10, 26, 10); }
       }
-      if (phase === 'pivot' && lastFallPhase === 'slide') {   // the rim: the big one, and the stands erupt
-        spawnDust(fall.px, fall.pz, 170, 24);
+      if (phase !== 'board' && lastFallPhase === 'board') {   // it has just left the rim: the big one
+        spawnDust(tp.x, tp.z, 170, 24);
         if (envGroup && envGroup.userData.excite) envGroup.userData.excite();
       }
       // A fresh tumble starting mid-frame (the previous one never ran the reset branch below,
       // e.g. a replay re-running straight into another loss) must not inherit the last one's count.
-      if (phase === 'slide' && lastFallPhase !== 'slide') { lastFallBounces = 0; lastFallResting = false; }
+      if (phase === 'board' && lastFallPhase !== 'board') { lastFallBounces = 0; lastFallResting = false; }
       // The ground below is a second surface entirely: a titan hitting the sand needs its own dust,
       // thrown up where it actually LANDS rather than where it left the board. Impact speed sets
       // the size -- the first landing is the heavy one, each bounce after throws up less.
       if (fall.bounces > lastFallBounces && fall.lastImpact) {
-        const hit = fall.lastImpact, first = lastFallBounces === 0;
-        const k = Math.max(0.85, Math.min(1.35, hit.speed/130));
-        if (first) spawnDust(hit.x, hit.z, Math.round(150*k), 24*k, hit.y);
-        else spawnDust(hit.x, hit.z, Math.round(45*k), 9*k, hit.y);
+        // How much is thrown up follows how hard it hit, and nothing else. This used to single out
+        // "the first landing" as the big one, which only held while a script decided what the first
+        // landing was; the body reports every contact it makes, and the heaviest one is the heaviest
+        // one whenever it happens -- a titan that clips the rim on the way over raises a little, and
+        // the arrival on the sand raises a cloud.
+        const hit = fall.lastImpact, k = Math.max(0.18, Math.min(1.35, hit.speed/130));
+        spawnDust(hit.x, hit.z, Math.round(150*k*k), 24*k, hit.y);
       }
       lastFallBounces = fall.bounces || 0;
       if (fall.resting && !lastFallResting && fall.lastImpact) {
