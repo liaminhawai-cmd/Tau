@@ -552,6 +552,17 @@ const THEMES = {
     // crowd rise behind the far rim instead of staying above the top of the frame.
     gameCam: { elev: 0.5, fov: 46 },
     floorY: -20,   // the arena sand a fallen titan lands on -- the pitch is a plinth twenty units above it
+    // …but the plinth is WIDER than the pitch, so a titan that goes over the rim comes down on
+    // stone, not on sand: it lands on the plinth's top face, and only reaches the arena floor by
+    // rolling off the edge and down the flank. Told the sand was the ground everywhere, it dropped
+    // straight through the plinth and came to rest buried inside it.
+    floorAt(x, z) {
+      const r = Math.hypot(x, z), TOP_R = CFG.edgeU*1.04, BASE_R = CFG.edgeU*1.2;
+      const TOP = -5.2, BASE = TOP - 16, GROUND = -20;
+      if (r <= TOP_R) return TOP;
+      if (r >= BASE_R) return GROUND;
+      return Math.max(GROUND, TOP + (BASE - TOP)*(r - TOP_R)/(BASE_R - TOP_R));   // the sloped flank
+    },
     paint() {
       const [al, a] = canvas2d();
       a.fillStyle = '#b49b6d'; a.fillRect(0, 0, S, S);           // raked arena sand

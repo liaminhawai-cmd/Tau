@@ -600,7 +600,9 @@
   function drawQualityNote() {
     const el = $('desktopQualityNote'); if (!el) return;
     if (settings.quality !== 'ultra') { el.textContent = ''; return; }
-    el.textContent = ptPhase === 'failed' ? t('Ray tracing could not start on this GPU — drawing normally.')
+    el.textContent = ptPhase === 'failed'
+        ? t(ptFailReason === 'slow' ? 'Ray tracing runs too slowly on this GPU — drawing normally.'
+                                    : 'Ray tracing could not start on this GPU — drawing normally.')
       : ptPhase === 'loading' ? t('Ray tracing: loading…')
       : ptPhase !== 'ready' ? t('Ray tracing: starting…')
       : ptStill >= PT_STILL_FRAMES ? t('Ray tracing: refining the still frame.')
@@ -996,7 +998,15 @@
   // ending never drags), and the dust below runs on the same clock.
   function fallTimeScale() { return lookTheme && lookTheme.simSpeed ? Math.max(0.5, lookTheme.simSpeed) : 1; }
   // Where a fallen piece lands on this look, if it brings its own ground (null: the game's floor).
-  function fallFloorY() { return lookTheme && lookTheme.floorY != null ? lookTheme.floorY : null; }
+  // Where a fallen piece lands on this look, if it brings its own ground. A look whose ground is
+  // not one flat plane -- Colossus stands its pitch on a plinth wider than the board -- answers per
+  // position instead: asked with no position (the tests, and anything that just wants the look's
+  // ground level) it still gives the one number.
+  function fallFloorY(x, z) {
+    if (!lookTheme) return null;
+    if (x !== undefined && typeof lookTheme.floorAt === 'function') return lookTheme.floorAt(x, z);
+    return lookTheme.floorY != null ? lookTheme.floorY : null;
+  }
   // ---- Sand and stone: the dust a fall raises on a look that asks for it (T.dust) ----
   // Each puff is its own small point cloud thrown up from a spot: outward and up, slowed by the
   // air, settling under gravity, spreading and fading over a couple of seconds; beyond the rim
@@ -1117,6 +1127,31 @@
   // piece's shadow on the near one is the one thing lost. Only when two glass pieces are up.
   let gpTarget = null, gpScene = null, gpQuad = null, gpLights = [], gpFailed = false;
   const gpV = new THREE.Vector3(), gpSize = new THREE.Vector2();
+  // WHICH piece is the near one decides which is drawn through the other, so that choice is a big
+  // part of what the player reads as "in front" -- and it has to be steady. Two pieces facing each
+  // other sit the SAME distance from a camera looking down the line between them, so picking on
+  // raw centre distance there turns on the last bit of a float: four degrees of orbit swapped which
+  // piece looked in front, over and over. Two changes. Distance is measured to the nearest PART of
+  // a piece, not its centre -- a leg reaching towards the camera is what being in front means --
+  // and the standing choice is held until the other is nearer by a clear margin, so a slow orbit
+  // hands over once, where the geometry really crosses, instead of strobing at the meeting point.
+  const GP_HOLD = 5;   // units the challenger must beat the standing near piece by
+  let gpNear = null;
+  const GP_FEET = (() => {
+    const out = [];
+    for (let i = 0; i < 3; i++) {
+      const a = i*2*Math.PI/3;
+      out.push(new THREE.Vector3(Math.cos(a)*CFG.footR, 0, Math.sin(a)*CFG.footR));
+    }
+    return out;
+  })();
+  function gpNearest(t) {
+    let best = Infinity;
+    for (const p of GP_FEET) best = Math.min(best, camera.position.distanceTo(gpV.copy(p).applyMatrix4(t.matrixWorld)));
+    const hub = t.userData && t.userData.hub;
+    if (hub) best = Math.min(best, camera.position.distanceTo(hub.getWorldPosition(gpV)));
+    return best;
+  }
   function glassPieces() {
     const out = [];
     for (const pair of [typeof tripods !== 'undefined' ? tripods : null, typeof htpTripods !== 'undefined' ? htpTripods : null])
@@ -1146,8 +1181,13 @@
     try {
       if (!gpTarget) gpSetup();
       pieces.forEach(t => t.updateMatrixWorld());
-      pieces.sort((a, b) => camera.position.distanceToSquared(a.getWorldPosition(gpV)) - camera.position.distanceToSquared(b.getWorldPosition(gpV)));
-      const near = pieces[0];
+      const dists = pieces.map(gpNearest);
+      let ni = 0;
+      for (let i = 1; i < dists.length; i++) if (dists[i] < dists[ni]) ni = i;
+      const held = pieces.indexOf(gpNear);
+      if (held >= 0 && held !== ni && dists[ni] > dists[held] - GP_HOLD) ni = held;
+      const near = pieces[ni];
+      gpNear = near;
       renderer.getDrawingBufferSize(gpSize);
       if (gpTarget.width !== gpSize.x || gpTarget.height !== gpSize.y) gpTarget.setSize(gpSize.x, gpSize.y);
       // pass one: the world without the near piece's colour (its shadow still falls)
@@ -1181,6 +1221,16 @@
   const PT_SRC = 'vendor/pathtracer/pathtracer.global.js';
   const PT_SAMPLE_CAP = 256;
   const PT_STILL_FRAMES = 2;
+  // A path tracer asks the GPU for orders of magnitude more work than the rasteriser, and a card
+  // that cannot keep up does not fail -- it just takes a second or more per frame, which from the
+  // outside is a frozen game. So the tracer is watched, and a machine it is too slow on is told so
+  // and put back on the rasteriser rather than left grinding. Three ways it can be too slow: the
+  // scene build (one synchronous BVH pass), a single sample, or a run of heavy frames.
+  const PT_SLOW_BUILD = 2600;    // ms to build the traced scene, once per world change
+  const PT_SLOW_FRAME = 420;     // ms a traced frame takes before it reads as a stutter
+  const PT_SLOW_STRIKES = 6;     // consecutive heavy frames -- one hitch is not a verdict
+  const PT_TRACE_PIXELS = 1.2e6; // traced pixels per frame; above this the frame is traced smaller
+  let ptSlow = 0, ptFrameAt = 0, ptWarm = 0;
   // How much light the traced scene gets, against what the rasteriser is given. The tracer carries
   // light between surfaces and the rasteriser does not, so handed the same room and the same key
   // it returns a markedly brighter picture -- the board "lighting up" the moment the scene settled,
@@ -1193,7 +1243,7 @@
   const PT_LIGHT_TRIM = 0.52;
   let ptPhase = 'off';                    // off | loading | ready | failed
   let ptTracer = null, ptScene = null, ptEnv = null, ptCueScene = null;
-  let ptKey = '', ptWorldKey = '', ptStill = 0, ptWorldRev = 0;
+  let ptKey = '', ptWorldKey = '', ptStill = 0, ptWorldRev = 0, ptFailReason = '';
 
   const ptRound = v => Math.round(v * 1000) / 1000;
   // Pure. One string for everything the traced picture depends on; two frames that hash the same
@@ -1241,14 +1291,23 @@
     s.onerror = () => rayTraceFail(new Error('could not load ' + PT_SRC));
     document.body.appendChild(s);
   }
-  function rayTraceOff() {
-    ptPhase = 'failed'; ptTracer = null; ptScene = null;
+  function rayTraceOff(reason) {
+    ptPhase = 'failed'; ptTracer = null; ptScene = null; ptFailReason = reason || 'failed';
+    ptSlow = 0; ptFrameAt = 0;
     // Turned off in memory but deliberately NOT saved: the same profile may open tomorrow on a
     // machine whose GPU can run it, and the player's choice should still be there when it does.
     settings.rayTrace = false;
     if (settings.quality === 'ultra') settings.quality = 'high';
     if ($('desktopQuality') && $('desktopQuality').value === 'ultra') $('desktopQuality').value = 'high';
-    showToast(`<p class="desktop-unlock">${esc(t('Ray tracing could not start on this GPU.'))}</p>`);
+    showToast(`<p class="desktop-unlock">${esc(t(ptFailReason === 'slow'
+      ? 'Ray tracing is too slow on this GPU.' : 'Ray tracing could not start on this GPU.'))}</p>`);
+  }
+  // Not a crash: the GPU works, it is simply too slow to be worth it. Same exit, different words.
+  function rayTraceTooSlow(what, ms) {
+    console.warn(`ray tracing is too slow on this GPU (${what} took ${Math.round(ms)}ms); drawing normally`);
+    try { renderer.setRenderTarget(null); } catch (_) {}
+    rayTraceOff('slow');
+    drawQualityNote();
   }
   function rayTraceFail(err) {
     console.warn('ray tracing unavailable', err);
@@ -1303,7 +1362,7 @@
   function ptRest(state) {
     if (!ptTracer) ptInit();
     const world = rayTraceKey({ ...state, camera: null, proj: null, size: '' });
-    if (world === ptWorldKey) { ptTracer.updateCamera(); return; }   // same world, new viewpoint: no BVH work
+    if (world === ptWorldKey) { ptTracer.updateCamera(); return true; }   // same world, new viewpoint: no BVH work
     ptWorldKey = world;
     // The meshes in the traced scene must be the GAME's meshes, or nothing the player did would
     // show in the trace. Adding them would reparent them out of the live scene, so the list goes
@@ -1317,8 +1376,18 @@
     // put straight back -- the rasterised frame, which shares them, keeps its own exposure.
     const dimmed = [];
     scene.traverse(o => { if (o.isDirectionalLight) { dimmed.push([o, o.intensity]); o.intensity *= PT_LIGHT_TRIM; } });
+    // Trace fewer pixels than the screen has when the screen is large, and let the blit stretch
+    // them: a 4K canvas is four times the work of a 1080p one for a picture the eye reads the same,
+    // and that difference alone is what puts some machines under.
+    const px = renderer.domElement.width * renderer.domElement.height;
+    ptTracer.renderScale = px > PT_TRACE_PIXELS ? Math.sqrt(PT_TRACE_PIXELS / px) : 1;
+    const t0 = (performance || Date).now();
     try { ptTracer.setScene(ptScene, camera); }
     finally { for (const [l, i] of dimmed) l.intensity = i; }
+    const build = (performance || Date).now() - t0;
+    ptWarm = 0;   // the frames right after a build carry the shader compile; don't judge those
+    if (build > PT_SLOW_BUILD) { rayTraceTooSlow('the scene build', build); return false; }
+    return true;
   }
   // The board's live cues pulse and fade frame by frame and none of them survives into the traced
   // scene. The pinned foot's glow and a line-crossing flash mean the board is being PLAYED on, not
@@ -1350,10 +1419,20 @@
     if (ptPhase !== 'ready' || ptCuesUp()) { ptStill = 0; return false; }
     try {
       const state = rayTraceState(), key = rayTraceKey(state);
-      if (key !== ptKey) { ptKey = key; ptStill = 0; return false; }
+      if (key !== ptKey) { ptKey = key; ptStill = 0; ptFrameAt = 0; ptSlow = 0; return false; }
       if (++ptStill < PT_STILL_FRAMES) return false;
-      if (ptStill === PT_STILL_FRAMES) ptRest(state);
-      if (ptTracer.samples < PT_SAMPLE_CAP) ptTracer.renderSample();
+      if (ptStill === PT_STILL_FRAMES && !ptRest(state)) return false;
+      if (ptTracer.samples < PT_SAMPLE_CAP) {
+        // How long the LAST traced frame took, measured from the outside: renderSample only queues
+        // the work, so the honest number is how long the game took to come back round for another.
+        const now = (performance || Date).now();
+        if (ptFrameAt && ptWarm++ > 2) {
+          ptSlow = now - ptFrameAt > PT_SLOW_FRAME ? ptSlow + 1 : 0;
+          if (ptSlow >= PT_SLOW_STRIKES) { rayTraceTooSlow('a traced frame', now - ptFrameAt); return false; }
+        }
+        ptFrameAt = now;
+        ptTracer.renderSample();
+      }
       ptDrawHover();
       return true;   // at the cap nothing is drawn at all: the finished frame stays on the canvas
     } catch (e) { rayTraceFail(e); return false; }
@@ -1878,6 +1957,7 @@
       if(settings.rayTrace) rayTraceLoad(); drawQualityNote(); },
     rayTraceStatus(){return ptPhase;},
     rayTraceOverlay(){return ptCueScene;},   // what gets painted over a finished trace
+    glassNear(){return gpNear;},   // the piece currently drawn through the other
     rayTraceSamples(){return ptTracer ? ptTracer.samples : 0;},   // how far the still has refined
     canPlayNow: canPlay, canLookNow: canLook,
     rayTraceMotion,
