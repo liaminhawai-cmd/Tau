@@ -811,7 +811,7 @@ const THEMES = {
       const leg = PHYS({ color: 0xf6f9ff,
         metalness: 0, roughness: 0.03, transmission: 0.9, ior: 1.52, thickness: 2.6,
         attenuationColor: new THREE.Color(0xe4ecff), attenuationDistance: 40,
-        clearcoat: 1, clearcoatRoughness: 0.03, specularIntensity: 1, envMapIntensity: 1.3 });
+        clearcoat: 1, clearcoatRoughness: 0.03, specularIntensity: 1, envMapIntensity: 2.6 });
       installLegGradient(leg, tint);
       return { leg, hub: solid, foot: solid };
     },
@@ -864,7 +864,7 @@ function installLegGradient(material, tint) {
       // and wider (a gentler falloff), so it runs along the tube instead of hugging its outline.
       .replace('#include <opaque_fragment>',
         '{ float rim = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 2.2);\n' +
-        '  outgoingLight += mix(vec3(0.80, 0.86, 0.95), uLegTint, legG) * rim * 0.62; }\n' +
+        '  outgoingLight += mix(vec3(0.80, 0.86, 0.95), uLegTint, legG) * rim * 0.30; }\n' +
         '#include <opaque_fragment>');
   };
   material.customProgramCacheKey = () => 'tau-leg-gradient';
