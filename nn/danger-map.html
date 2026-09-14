@@ -770,6 +770,14 @@ $('pinSlider').addEventListener('input', () => {
   drawPiece(panels[0].ctx, { x: ghost.x, y: ghost.y, rot: ghost.rot }, 'rgba(229,189,112,.45)');
 });
 $('commitMove').addEventListener('click', () => {
+  // A move at 0deg is the slider's own resting position, not a chosen swing -- committing it
+  // silently would record a real move that never actually moves, which then made "Animate through
+  // moves" look broken (the swing step resolves in one frame at netRad=0, and the position never
+  // changes between "frames" that are all the same pose).
+  if (Math.abs(pinnedMove.targetDeg) < 1) {
+    setStatus('Drag the slider to choose a swing before committing — a 0° move does nothing.', true);
+    return;
+  }
   const ghost = previewMove();
   state.op = { x: ghost.x, y: ghost.y, rot: ghost.rot };
   state.moves.push({ pivotIdx: pinnedMove.pivotIdx, dir: pinnedMove.targetDeg < 0 ? -1 : 1,
@@ -1032,21 +1040,35 @@ async function animateThroughMoves() {
   const frames = [{ ...state.opStart }];
   for (let i = 0; i < state.moves.length; i++) { replayMovesTo(i+1); frames.push({ ...state.op }); }
   for (let f = 0; f < frames.length && mode === 'running'; f++) {
-    if (f > 0) await animateSwing(state.moves[f-1], frames[f-1], frames[f]);
+    if (f > 0) {
+      setPhase(`Playing move ${f} of ${state.moves.length}…`);
+      await animateSwing(state.moves[f-1], frames[f-1], frames[f]);
+    }
     state.op = { ...frames[f] };
+    setPhase(`Sweeping position ${f+1} of ${frames.length}…`);
     activePanels().forEach(resetPanelSweep);
     await runPanelsToCompletion();
   }
   if (mode !== 'running') { state.op = savedOp; enterSetup(); return; }
-  mode = 'done'; activePanels().forEach(drawFinished);
+  mode = 'done'; setPhase('');
+  activePanels().forEach(drawFinished);
   updateButtons();
 }
+function setPhase(text) { $('status').querySelector('.phase')?.remove();
+  if (text) $('status').insertAdjacentHTML('beforeend', ` <span class="phase" style="color:var(--accent)">${esc(text)}</span>`); }
 function animateSwing(mv, fromPose, toPose) {
   return new Promise(resolve => {
     const G = Engine.getG();
     G.pieces[0].x = state.me.x; G.pieces[0].y = state.me.y; G.pieces[0].rot = state.me.rot;
     G.pieces[1].x = fromPose.x; G.pieces[1].y = fromPose.y; G.pieces[1].rot = fromPose.rot;
     Engine.setActive(1); Engine.pinFoot(mv.pivotIdx);
+    // A move's PHYSICAL step size stays whatever the engine needs for accuracy, but the ANIMATION
+    // step is separately capped so a small swing still takes a perceptible minimum number of real
+    // frames (~25, ~400ms at 60fps) instead of finishing in 2-3 frames and reading as a jump cut.
+    // Never coarser than 3deg either way, so a large swing isn't slowed down from how it already
+    // played -- this only ever makes a fast swing take LONGER, never a slow one shorter.
+    const MIN_FRAMES = 25;
+    const stepRad = Math.min(3*Math.PI/180, Math.max(mv.targetRad/MIN_FRAMES, 0.05*Math.PI/180));
     function step() {
       if (mode !== 'running') { resolve(); return; }
       if (globalPaused) { requestAnimationFrame(step); return; }
@@ -1055,7 +1077,7 @@ function animateSwing(mv, fromPose, toPose) {
         state.op = { x: g2.pieces[1].x, y: g2.pieces[1].y, rot: g2.pieces[1].rot };
         resolve(); return;
       }
-      Engine.applySwing(mv.dir*Math.min(3*Math.PI/180, mv.targetRad - Math.abs(g2.netRad)));
+      Engine.applySwing(mv.dir*Math.min(stepRad, mv.targetRad - Math.abs(g2.netRad)));
       const g3 = Engine.getG();
       state.op = { x: g3.pieces[1].x, y: g3.pieces[1].y, rot: g3.pieces[1].rot };
       drawStaticBackground(panels[0].ctx); drawBoardLines(panels[0].ctx); drawStagePieces(panels[0].ctx);

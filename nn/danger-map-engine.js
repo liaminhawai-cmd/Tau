@@ -1,8 +1,8 @@
-// GENERATED from index.html via nn/engine.js buildEngineSource() -- do not hand-edit.
-// Regenerate with: node -e "require('fs').writeFileSync('nn/danger-map-engine.js', ...)"
-// (see the generation script this file was produced by, or re-run the same call engine.js makes).
-// This is the REAL rules engine -- pinFoot/applySwing/endTurn/ladderEval/AI_LADDER -- the exact
-// code every arena/retromine/policyloop worker runs, wrapped for a browser instead of Node vm.
+// GENERATED from index.html via nn/engine.js's buildEngineSource() + the EXACT trailer text its
+// own createEngine() uses (extracted programmatically from engine.js's source, not retyped, so it
+// cannot drift from what every arena/retromine/policyloop worker actually runs). Regenerate with:
+//   node -e "require('/tmp/gen-bundle.js-equivalent')" -- or re-run this same extraction pattern
+//   against a fresh nn/engine.js if index.html's rules ever change.
 function buildTauEngine() {
 const CFG = {
     edgeU: 66.667,                 // drop-off radius (266.67mm board, matches Metal base 266.666.stl)
@@ -1402,12 +1402,17 @@ function __newGame() {
   G = { pieces: [blue, red], active: 0, pinned: null, pivot: null, handle: null, turnDir: 0,
         crossings: 0, atLimit: false, netRad: 0, ptrAngle: null, over: false, winner: null,
         snap: null, contact: null, justCrossed: [],
+        // must mirror reset()'s G in index.html -- this literal is the one piece of engine state
+        // that is duplicated rather than extracted, so new per-game fields have to be added twice
         koHist: [], plies: 0, adjudicated: false };
-  koReset();
+  koReset();   // the opening counts as a position the board has been in -- see koReset
   return G;
 }
+// play one full turn from a { pivotIdx, dir, targetRad } plan (the shape every brain returns)
 function __applyPlan(plan) {
   if (!plan || Math.abs(plan.targetRad) < 1e-9) { clearTurn(); G.active = 1 - G.active; return; }
+  // Ko: the brains search without the rule (which keeps them exactly as fast as before), so the
+  // chosen move's stopping angle is moved off any position the board has already been at.
   plan = koLegalizePlan(plan);
   pinFoot(plan.pivotIdx);
   let guard = 0;
@@ -1417,6 +1422,20 @@ function __applyPlan(plan) {
   }
   commitTurn();
 }
+// The same turn played "in its head": no ko legalising, no ko history, no ply counter. Search that
+// walks candidate turns forward and rolls them back (nnai's depth-2/3 lookahead, throwprobe's
+// hanging-move check) MUST use this -- committing through __applyPlan would file positions that
+// never happened into G.koHist and tick the move cap several times per real move.
+function __applyPlanSearch(plan) {
+  if (!plan || Math.abs(plan.targetRad) < 1e-9) { clearTurn(); G.active = 1 - G.active; return; }
+  pinFoot(plan.pivotIdx);
+  let guard = 0;
+  while (!G.atLimit && Math.abs(G.netRad) < Math.abs(plan.targetRad) && guard++ < 5000) {
+    const rem = Math.abs(plan.targetRad) - Math.abs(G.netRad);
+    applySwing(plan.dir * Math.min(AI_STEP_RAD, rem));
+  }
+  endTurn();
+}
 let __exports;
 __exports = {
   CFG, Piece, radU, norm,
@@ -1425,9 +1444,9 @@ __exports = {
   directionToward, aiChoosePlan, simMoveToLimit, searchedPlanFor,
   AI_LADDER, ladderPlanFor, ladderEval,
   angInSpan, nearLineIds, lineDistOf, lineSideOf, LINE_INTERSECTIONS,
-  newGame: __newGame, applyPlan: __applyPlan,
+  oppTwoForOneAvailable, ladderPlanVeto,
+  newGame: __newGame, applyPlan: __applyPlan, applyPlanSearch: __applyPlanSearch,
   getG: () => G, setActive: a => { G.active = a; },
 };
 return __exports;
-
 }
