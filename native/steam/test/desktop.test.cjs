@@ -2229,3 +2229,81 @@ test('the how-to-play tumble never breaks, and a new game puts the broken piece 
   assert.equal(g.read('tripods[1].visible'),true,'a fresh board has both pieces again');
   assert.deepEqual(g.errors,[]);
 });
+
+// ---- The walkthrough: a wrong foot rewinds, the pane frames itself, the finale ends ----
+
+test('a guided slide rewinds when you take the foot it did not point at',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopLearn').click();g.tick();
+  // The corner slide ('double'): guided, so it glows one foot and lays the dots out from it.
+  const idx=g.read("HTP_STEPS.findIndex(s=>s.tryKey==='double')");
+  g.read(`for (const k of Object.keys(HTP_TRY)) { const st=htpState(k); st.done=true; st.touched=true; }
+    htpShowStep(${idx}); const st=htpState('double'); st.done=false;`);
+  const pivot=g.read("htpState('double').guide.pivot");
+  assert.equal(typeof pivot,'number','the slide points at a foot');
+  g.read(`const st=htpState('double'); st.lastT=1; st.pinned=null;`);
+  g.read(`htpState('double').p.rot=0.9;`);   // a pose the rewind must undo
+  // Now pin the WRONG foot through the same path the pointer uses.
+  const wrong=(pivot+1)%3;
+  g.read(`(() => { const st=htpState('double'); st.pinned=null; st.pendingPin=${wrong}; st.dragging=false;
+    document.getElementById('htpBigCanvas').dispatchEvent(new window.Event('pointerup',{bubbles:true})); })()`);
+  const after=JSON.parse(g.read(`JSON.stringify({pinned:htpState('double').pinned,
+    rot:+htpState('double').p.rot.toFixed(3), done:htpState('double').done})`));
+  assert.equal(after.pinned,null,'the wrong foot is not taken');
+  assert.equal(after.rot,+g.read("+HTP_TRY.double.make().p.rot.toFixed(3)"),'and the board is back at the start');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the walkthrough pane frames itself instead of inheriting the match layout',async t=>{
+  const g=await game('?steam=1&premium=1',{},{width:1280,height:800});t.after(g.close);
+  localMatch(g);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},
+      setSize(){}, domElement:document.getElementById('view3d'), render(){}, setRenderTarget(){}};
+    camera=new THREE.PerspectiveCamera(42,1.6,1,3000);
+    cornerViewOffset={fw:862,fh:800,x:-418,y:0,w:1280,h:800};
+    applyCornerViewOffset(camera);`);
+  assert.ok(g.read('!!camera.view && camera.view.enabled'),'the match layout shears the frustum into its corner tile');
+  // Opening the walkthrough hands the camera to a square pane: it must take its own projection.
+  g.read(`const pane=document.createElement('div'); pane.id='htp3DPane'; document.body.appendChild(pane);
+    htpEnsure3DInput = () => {};   // the pane's pointer wiring needs a real canvas; not what this checks
+    controls = { enabled:true, target:new THREE.Vector3(), mouseButtons:{}, touches:{}, update(){} };
+    htp3DEnter(300, 300);`);
+  assert.equal(g.read('!!(camera.view && camera.view.enabled)'),false,
+    'the pane drops the match offset rather than rendering a slice of the match frustum');
+  assert.equal(g.read('+camera.aspect.toFixed(3)'),1,'and frames its own square');
+  // And the offset is not handed to anything else that draws with this camera afterwards.
+  g.read("document.getElementById('game').style.display='none'; applyCornerViewOffset(camera);");
+  assert.equal(g.read('!!(camera.view && camera.view.enabled)'),false,
+    'away from that layout the offset is cleared, not left set for the menu demo');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the push-off finale ends the walkthrough instead of looping it',async t=>{
+  const g=await game();t.after(g.close);
+  g.$('desktopLearn').click();g.tick();
+  const idx=g.read("HTP_STEPS.findIndex(s=>s.tryKey==='off')");
+  g.read(`for (const k of Object.keys(HTP_TRY)) { const st=htpState(k); st.done=true; st.touched=true; }
+    htpShowStep(${idx});`);
+  // Goal earned, the piece has landed and the beat after it has passed.
+  g.read(`htpState('off').done=true; htpPhase='done'; htpPhaseT=2;`);
+  g.read('htp3DStep(0.016)');
+  assert.equal(g.$('htpFull'),null,'the walkthrough closes when the last goal is met');
+  assert.equal(g.w.localStorage.getItem('tauOnboard'),'howto','and the player counts as taught');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('closing the walkthrough opened from a match gives the board back to the match',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  const before=g.read('JSON.stringify(takeSnap())');
+  g.read(`window.__demoStarted=0; const realDemoStart=demoStart; demoStart=()=>{window.__demoStarted++;};`);
+  g.$('desktopLearn').click();g.tick();
+  assert.ok(g.$('htpFull'),'the walkthrough is up over the live match');
+  g.read('stopHowToPlayAnim()');
+  assert.equal(g.read("document.getElementById('view3d').parentElement.id"),'views',
+    'the 3D board goes back beside the match, not into the menu container');
+  assert.equal(g.read('window.__demoStarted'),0,
+    'and the ambient demo is NOT restarted on top of a live game (it overwrites the position)');
+  assert.equal(g.read('JSON.stringify(takeSnap())'),before,'the match is exactly as it was left');
+  assert.deepEqual(g.errors,[]);
+});
