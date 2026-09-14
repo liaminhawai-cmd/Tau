@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1020">
+<title>Tau Danger Map</title>
+<style>
+:root{
+  --bg:#070b13;--panel:#101725;--panel2:#151f31;--line:#2b3952;
+  --text:#eef4ff;--muted:#95a4bc;--accent:#65dbc8;--gold:#e5bd70;
+  --danger:#ff858d;--shadow:0 18px 48px rgba(0,0,0,.36)
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:
+radial-gradient(circle at 12% 0,#162843 0,#080c15 42%,#050810 100%);
+color:var(--text);font:14px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+button,input,select{font:inherit}
+button{cursor:pointer}
+code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.app{max-width:1320px;margin:auto;padding:22px}
+.top{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap}
+.brand{display:flex;gap:14px;align-items:center}
+.logo{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;flex:none;
+border:1px solid #526580;background:linear-gradient(145deg,#1a2942,#0b101d);
+font:700 21px Georgia,serif;box-shadow:var(--shadow)}
+h1{font-size:clamp(22px,3vw,32px);line-height:1.05;letter-spacing:-.04em;margin:0}
+.subtitle{color:var(--muted);margin-top:5px;font-size:13px}
+.privacy{font-size:12px;color:var(--muted);text-align:right}
+.btn{border:1px solid #3a4964;background:#172238;color:var(--text);
+padding:9px 12px;border-radius:10px;font-weight:700;display:inline-block}
+.btn:hover{border-color:#7184a1}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#061311}
+.btn.ghost{background:transparent}
+.btn[disabled]{opacity:.45;pointer-events:none}
+input[type=file]{display:none}
+.status{border:1px solid #30415d;background:rgba(15,22,36,.9);padding:10px 13px;
+border-radius:12px;margin-bottom:14px;color:#cbd6e8;font-size:13px}
+.status.bad{border-color:#683d4a;color:#ffd4d8}
+.layout{display:grid;grid-template-columns:290px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:860px){.layout{grid-template-columns:1fr}}
+.panel{background:linear-gradient(160deg,rgba(21,31,49,.98),rgba(10,15,25,.98));
+border:1px solid #27364f;border-radius:16px;box-shadow:var(--shadow)}
+.sidebar{padding:15px;position:sticky;top:10px}
+@media (max-width:860px){.sidebar{position:static}}
+.block{border-bottom:1px solid #28364e;padding-bottom:14px;margin-bottom:14px}
+.block:last-child{border:0;padding:0;margin:0}
+.block h2{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:#9baac0;margin:0 0 9px}
+.field{display:grid;gap:5px;margin:9px 0}
+.field label{font-size:12px;color:#aab7ca;display:flex;justify-content:space-between}
+.field label small{color:var(--muted);font-weight:400}
+.field input[type=number],.field select{width:100%;background:#0d1421;border:1px solid #33425d;
+color:var(--text);border-radius:9px;padding:7px 8px}
+.field input[type=range]{width:100%}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.modelinfo{font-size:12px;color:#c4cfe0;line-height:1.6}
+.modelinfo b{color:var(--text)}
+.warn{margin-top:8px;padding:8px 10px;border:1px solid #6b5a2e;background:rgba(229,189,112,.08);
+border-radius:9px;font-size:12px;color:var(--gold)}
+.stats{display:grid;gap:6px;font-size:12px;color:#c4cfe0}
+.stats .k{color:var(--muted)}
+.stats div{display:flex;justify-content:space-between;gap:10px}
+.legend{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--muted)}
+.legend .bar{flex:1;height:10px;border-radius:6px;
+background:linear-gradient(90deg,var(--danger),#2a3247,var(--accent))}
+.boardwrap{padding:15px;display:flex;flex-direction:column;align-items:center;gap:10px}
+canvas{border-radius:14px;background:#0a0f1a;max-width:100%;touch-action:none;cursor:crosshair}
+.hoverline{font-size:12px;color:#c4cfe0;min-height:18px}
+.hoverline b{color:var(--text)}
+.hint{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <div class="logo">τ</div>
+      <div>
+        <h1>Tau Danger Map</h1>
+        <div class="subtitle">Sweep a value net over the board and watch where it thinks the position is good or bad.</div>
+      </div>
+    </div>
+    <div class="privacy">Everything runs locally in this tab.<br>No model or game data leaves your machine.</div>
+  </header>
+
+  <div class="status" id="status"><strong>No model loaded.</strong> Pick a value or dual net from <code>nn/models/</code> (e.g. <code>best.json</code>, a <code>ckpt-*.json</code>, a <code>resume-*.json</code>, a <code>dual-*.json</code>).</div>
+
+  <div class="layout">
+    <aside class="panel sidebar">
+      <div class="block">
+        <h2>Model</h2>
+        <label class="btn primary" for="fileInput" style="width:100%;text-align:center">Load model .json</label>
+        <input id="fileInput" type="file" accept=".json">
+        <div class="modelinfo" id="modelInfo" style="margin-top:9px">No model loaded.</div>
+        <div id="modelWarn"></div>
+      </div>
+
+      <div class="block">
+        <h2>Opponent (fixed piece)</h2>
+        <div class="row2">
+          <div class="field"><label>X</label><input id="opX" type="number" step="1"></div>
+          <div class="field"><label>Y</label><input id="opY" type="number" step="1"></div>
+        </div>
+        <div class="field">
+          <label>Rotation <small id="opRotLbl">0°</small></label>
+          <input id="opRot" type="range" min="0" max="359" step="1" value="180">
+        </div>
+        <div class="hint">Click the board to place the opponent's hub there.</div>
+        <button class="btn ghost" id="opReset" style="width:100%;margin-top:8px">Reset to start position</button>
+      </div>
+
+      <div class="block">
+        <h2>Mover (swept piece)</h2>
+        <div class="field">
+          <label>Rotation <small id="meRotLbl">0°</small></label>
+          <input id="meRot" type="range" min="0" max="359" step="1" value="0">
+        </div>
+        <button class="btn ghost" id="swap" style="width:100%">Swap mover ↔ opponent</button>
+      </div>
+
+      <div class="block">
+        <h2>Resolution</h2>
+        <div class="field">
+          <label>Finest grid (cells across)</label>
+          <select id="resSelect">
+            <option value="64">64 — fast</option>
+            <option value="128">128</option>
+            <option value="256" selected>256 — good default</option>
+            <option value="512">512 — fine</option>
+            <option value="1024">1024 — very fine, leave it running</option>
+          </select>
+        </div>
+        <div class="row2">
+          <button class="btn" id="pauseBtn" disabled>Pause</button>
+          <button class="btn" id="restartBtn" disabled>Restart</button>
+        </div>
+      </div>
+
+      <div class="block">
+        <h2>Progress</h2>
+        <div class="stats">
+          <div><span class="k">cells done</span><span id="stCells">—</span></div>
+          <div><span class="k">cell size</span><span id="stCell">—</span></div>
+          <div><span class="k">evals / sec</span><span id="stRate">—</span></div>
+          <div><span class="k">elapsed</span><span id="stElapsed">—</span></div>
+        </div>
+        <div class="legend"><span>danger</span><span class="bar"></span><span>good</span></div>
+        <div class="hint" style="margin-top:6px">Colour is the net's value for the swept piece, as if it were about to move from there. Dim cells are poses where a foot would leave the board — the net is extrapolating, not judging a reachable position.</div>
+      </div>
+    </aside>
+
+    <div class="panel boardwrap">
+      <canvas id="board" width="720" height="720"></canvas>
+      <div class="hoverline" id="hoverline">Hover the board to sample a single point.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ===================================================================================
+ * nn/net.js, verbatim minus module.exports -- the plain-JS MLP forward pass. Any model
+ * this tool loads runs through the exact same code path the trainer and the in-game AI
+ * use, so a number shown here is not an approximation of the net's judgement, it IS it.
+ * =================================================================================== */
+class MLP {
+  constructor(sizes, topology=null, fanIns=null) {
+    this.sizes = sizes;
+    this.topology = topology || null;
+    this.fanIns = fanIns || sizes.slice(0, -1);
+    if (this.fanIns.length !== sizes.length - 1)
+      throw new Error(`fanIns has ${this.fanIns.length} entries for ${sizes.length - 1} layers`);
+    this.W = []; this.b = [];
+    for (let l = 0; l < sizes.length - 1; l++) {
+      const fanIn = this.fanIns[l], n = sizes[l+1];
+      this.W.push(new Float64Array(fanIn*n));
+      this.b.push(new Float64Array(n));
+    }
+  }
+  forward(x) {
+    const acts = [Float64Array.from(x)];
+    let a = acts[0];
+    const dense = this.topology && this.topology.kind === 'dense-memory-v1';
+    const memoryWidth = dense ? (+this.topology.memoryWidth || 0) : 0;
+    const residualScale = dense ? (+this.topology.residualScale || 0) : 0;
+    const memories = [];
+    for (let l = 0; l < this.W.length; l++) {
+      let aIn = a;
+      if (dense && l > 0) {
+        const earlier = memories.slice(0, -1);
+        aIn = new Float64Array(a.length + earlier.length*memoryWidth);
+        aIn.set(a); let off = a.length;
+        for (const m of earlier) { aIn.set(m, off); off += memoryWidth; }
+      }
+      const nIn = this.fanIns[l], nOut = this.sizes[l+1];
+      if (aIn.length !== nIn) throw new Error(`layer ${l} input ${aIn.length}, expected ${nIn}`);
+      const residual = dense && residualScale !== 0 && l > 0 && l < this.W.length - 1 && a.length === nOut;
+      const z = new Float64Array(nOut), W = this.W[l], b = this.b[l];
+      for (let j = 0; j < nOut; j++) {
+        let s = b[j];
+        for (let i = 0; i < nIn; i++) s += W[j*nIn + i]*aIn[i];
+        const branch = Math.tanh(s);
+        z[j] = residual ? a[j] + residualScale*branch : branch;
+      }
+      if (dense && l < this.W.length - 1) memories.push(z.slice(0, memoryWidth));
+      acts.push(z); a = z;
+    }
+    return { out: a[0], acts };
+  }
+  value(x) {
+    if (!this.topology || this.topology.kind !== 'dense-memory-v1') return this.forward(x).out;
+    const k=+this.topology.memoryWidth, scale=+this.topology.residualScale;
+    if(!this._valueScratch)this._valueScratch=this.sizes.slice(1).map(n=>new Float64Array(n));
+    let a=x;const memories=[];
+    for(let l=0;l<this.W.length;l++){
+      const z=this._valueScratch[l],W=this.W[l],b=this.b[l],nOut=this.sizes[l+1];
+      const earlier=memories.length>0?memories.length-1:0;
+      const residual=scale!==0&&l>0&&l<this.W.length-1&&a.length===nOut;
+      for(let j=0;j<nOut;j++){
+        const row=j*this.fanIns[l];let s=b[j],off=0;
+        for(let i=0;i<a.length;i++)s+=W[row+off++]*a[i];
+        for(let m=0;m<earlier;m++)for(let i=0;i<k;i++)s+=W[row+off++]*memories[m][i];
+        const branch=Math.tanh(s);
+        z[j]=residual?a[j]+scale*branch:branch;
+      }
+      if(l<this.W.length-1)memories.push(z);a=z;
+    }
+    return a[0];
+  }
+  static fromJSON(j) {
+    const m = new MLP(j.sizes, j.topology || null, j.fanIns || null);
+    j.W.forEach((w, l) => m.W[l].set(w));
+    j.b.forEach((b, l) => m.b[l].set(b));
+    return m;
+  }
+}
+
+/* ===================================================================================
+ * nn/features.js, verbatim minus module.exports and the unused moveFrame/jointMoveFrame
+ * (this tool only ever calls features() itself). Position -> feature vector, exactly as
+ * the trainer and the AI compute it -- see that file for the full design rationale.
+ * =================================================================================== */
+const N_FEATURES = 16 + 30 + 36 + 12;
+const TWO_PI = Math.PI*2;
+const SWING_CAP = 170*Math.PI/180;
+
+function sortedFeet(p, CFG) {
+  const out = [];
+  for (let i = 0; i < 3; i++) {
+    const a = p.rot + i*TWO_PI/3;
+    const x = p.x + Math.cos(a)*CFG.footR, y = p.y + Math.sin(a)*CFG.footR;
+    out.push({ x, y, r: Math.hypot(x, y), idx: i });
+  }
+  out.sort((u, v) => v.r - u.r);
+  return out;
+}
+
+function circleMeetAngles(px, py, R, cx, cy, cr, out) {
+  const dx = cx - px, dy = cy - py, d = Math.hypot(dx, dy);
+  if (d < 1e-9 || d > R + cr || d < Math.abs(R - cr)) return;
+  const a = (d*d + R*R - cr*cr)/(2*d), h2 = R*R - a*a;
+  if (h2 < 0) return;
+  const h = Math.sqrt(h2), ux = dx/d, uy = dy/d;
+  for (const s of [1, -1]) {
+    const qx = px + a*ux - s*h*uy, qy = py + a*uy + s*h*ux;
+    out.push({ ang: Math.atan2(qy - py, qx - px), x: qx, y: qy });
+  }
+}
+
+function arcSignedDist(f, a, angInSpan) {
+  const dx = f.x - a.cx, dy = f.y - a.cy, d = Math.hypot(dx, dy);
+  const side = d >= a.r ? 1 : -1;
+  if (angInSpan(Math.atan2(dy, dx)*180/Math.PI, a.a0, a.a1)) return side*Math.abs(d - a.r);
+  let best = Infinity;
+  for (const deg of [a.a0, a.a1]) {
+    const t = deg*Math.PI/180;
+    best = Math.min(best, Math.hypot(f.x - (a.cx + a.r*Math.cos(t)), f.y - (a.cy + a.r*Math.sin(t))));
+  }
+  return side*best;
+}
+
+function features(eng) {
+  const G = eng.getG(), CFG = eng.CFG, E = CFG.edgeU;
+  const angInSpan = eng.angInSpan, INTER = eng.LINE_INTERSECTIONS;
+  const me = G.pieces[G.active], op = G.pieces[1 - G.active];
+
+  const b = Math.atan2(me.y, me.x) || 0;
+  const cb = Math.cos(-b), sb = Math.sin(-b);
+  let oxr = op.x*cb - op.y*sb, oyr = op.x*sb + op.y*cb;
+  const mirror = oyr < 0 ? -1 : 1;
+  oyr *= mirror;
+  const meR = Math.hypot(me.x, me.y);
+  const opB = Math.atan2(op.y, op.x) || 0;
+  const a3m = 3*(me.rot - b), a3o = 3*(op.rot - opB);
+  const mFeet = sortedFeet(me, CFG), oFeet = sortedFeet(op, CFG);
+  const out = [
+    meR/E,
+    Math.cos(a3m), Math.sin(a3m)*mirror,
+    oxr/E, oyr/E,
+    Math.cos(a3o), Math.sin(a3o)*mirror,
+    Math.hypot(op.x - me.x, op.y - me.y)/E,
+    mFeet[0].r/E, mFeet[1].r/E, mFeet[2].r/E,
+    oFeet[0].r/E, oFeet[1].r/E, oFeet[2].r/E,
+    (E - mFeet[0].r)/E,
+    (E - oFeet[0].r)/E,
+  ];
+
+  for (const feet of [mFeet, oFeet]) {
+    for (const f of feet) {
+      let nearestLine = Infinity;
+      for (const R of CFG.rings) {
+        const d = f.r - R;
+        out.push(d/E);
+        nearestLine = Math.min(nearestLine, Math.abs(d));
+      }
+      let arc = Infinity;
+      for (const a of CFG.sideArcs) {
+        const d = arcSignedDist(f, a, angInSpan);
+        if (Math.abs(d) < Math.abs(arc)) arc = d;
+      }
+      out.push(arc/E);
+      nearestLine = Math.min(nearestLine, Math.abs(arc));
+      out.push(Math.exp(-nearestLine/CFG.crossEps));
+      let inter = Infinity;
+      for (const P of INTER) inter = Math.min(inter, Math.hypot(f.x - P.x, f.y - P.y));
+      out.push(Math.min(inter, E)/E);
+    }
+  }
+
+  for (const [piece, feet] of [[me, mFeet], [op, oFeet]]) {
+    for (let pv = 0; pv < 3; pv++) {
+      const P = feet[pv];
+      const hits = [], rimHits = [];
+      for (let i = 0; i < 3; i++) {
+        if (i === pv) continue;
+        const S = feet[i];
+        const R = Math.hypot(S.x - P.x, S.y - P.y);
+        if (R < 1e-9) continue;
+        const start = Math.atan2(S.y - P.y, S.x - P.x);
+        const raw = [];
+        for (const ring of CFG.rings) circleMeetAngles(P.x, P.y, R, 0, 0, ring, raw);
+        const arcRaw = [];
+        for (const a of CFG.sideArcs) {
+          const before = arcRaw.length;
+          circleMeetAngles(P.x, P.y, R, a.cx, a.cy, a.r, arcRaw);
+          for (let k = arcRaw.length - 1; k >= before; k--)
+            if (!angInSpan(Math.atan2(arcRaw[k].y - a.cy, arcRaw[k].x - a.cx)*180/Math.PI, a.a0, a.a1))
+              arcRaw.splice(k, 1);
+        }
+        for (const q of raw.concat(arcRaw)) hits.push({ ang: q.ang, start });
+        const rim = [];
+        circleMeetAngles(P.x, P.y, R, 0, 0, E, rim);
+        for (const q of rim) rimHits.push({ ang: q.ang, start });
+      }
+      for (const dir of [1, -1]) {
+        const travel = h => {
+          let t = dir > 0 ? h.ang - h.start : h.start - h.ang;
+          t %= TWO_PI; if (t < 0) t += TWO_PI;
+          return t;
+        };
+        const angs = hits.map(travel).filter(t => t > 0.01).sort((x, y) => x - y);
+        const rims = rimHits.map(travel).filter(t => t > 0.01).sort((x, y) => x - y);
+        out.push(Math.min(angs[0] !== undefined ? angs[0] : SWING_CAP, SWING_CAP)/SWING_CAP);
+        out.push(Math.min(angs[1] !== undefined ? angs[1] : SWING_CAP, SWING_CAP)/SWING_CAP);
+        out.push(Math.min(rims[0] !== undefined ? rims[0] : SWING_CAP, SWING_CAP)/SWING_CAP);
+      }
+    }
+  }
+
+  const zoneOf = f => {
+    const band = f.r < CFG.rings[0] ? 4 : f.r < CFG.rings[1] ? 3 : 2;
+    const inLens = CFG.sideArcs.some(a => Math.hypot(f.x - a.cx, f.y - a.cy) < a.r);
+    return inLens ? band - 1 : band;
+  };
+  const freedomOf = feet => {
+    let free = 0;
+    for (const f of feet) {
+      let d = 1e9;
+      for (const R of CFG.rings) d = Math.min(d, Math.abs(f.r - R));
+      for (const a of CFG.sideArcs)
+        if (angInSpan(Math.atan2(f.y - a.cy, f.x - a.cx)*180/Math.PI, a.a0, a.a1))
+          d = Math.min(d, Math.abs(Math.hypot(f.x - a.cx, f.y - a.cy) - a.r));
+      free += Math.min(d, 10);
+    }
+    return free;
+  };
+  const triAt = (p, q) => {
+    const ax = -p.x, ay = -p.y, bx = q.x - p.x, by = q.y - p.y;
+    const la = Math.hypot(ax, ay) || 1e-9, lb = Math.hypot(bx, by) || 1e-9;
+    return Math.acos(Math.max(-1, Math.min(1, (ax*bx + ay*by)/(la*lb))))*180/Math.PI;
+  };
+  out.push((zoneOf(mFeet[0]) + zoneOf(mFeet[1]) + zoneOf(mFeet[2]))/12);
+  out.push((zoneOf(oFeet[0]) + zoneOf(oFeet[1]) + zoneOf(oFeet[2]))/12);
+  out.push(zoneOf(mFeet[0])/4, zoneOf(mFeet[1])/4, zoneOf(mFeet[2])/4);
+  out.push(zoneOf(oFeet[0])/4, zoneOf(oFeet[1])/4, zoneOf(oFeet[2])/4);
+  out.push(freedomOf(mFeet)/30);
+  out.push(freedomOf(oFeet)/30);
+  out.push(triAt(me, op)/180);
+  out.push(triAt(op, me)/180);
+  return out;
+}
+
+/* ===================================================================================
+ * Board geometry -- baked constants, not re-derived from index.html at runtime, so this
+ * page needs nothing but itself. Pulled once via `node -e "createEngine()..."` against
+ * the live rules engine; if the board's printed geometry ever changes, re-pull these.
+ * =================================================================================== */
+const CFG = {"edgeU":66.667,"rings":[40,53.3],
+  "sideArcs":[{"cx":-66.667,"cy":0,"r":40,"a0":-72.542,"a1":72.542},
+              {"cx":66.667,"cy":0,"r":40,"a0":107.458,"a1":252.542}],
+  "footR":23.095,"startX":30.597,"crossEps":0.81};
+const LINE_INTERSECTIONS = [
+  {"x":-33.3335,"y":-22.110580674193066,"lines":["r0","a0"]},
+  {"x":-33.3335,"y":22.110580674193066,"lines":["r0","a0"]},
+  {"x":33.3335,"y":22.110580674193066,"lines":["r0","a1"]},
+  {"x":33.3335,"y":-22.110580674193066,"lines":["r0","a1"]},
+  {"x":-42.64012846685766,"y":-31.979828710139692,"lines":["r1","a0"]},
+  {"x":-42.64012846685766,"y":31.979828710139692,"lines":["r1","a0"]},
+  {"x":42.64012846685766,"y":31.979828710139692,"lines":["r1","a1"]},
+  {"x":42.64012846685766,"y":-31.979828710139692,"lines":["r1","a1"]}];
+function angInSpan(deg, a0, a1) {
+  const w = x => { while (x < 0) x += 360; while (x >= 360) x -= 360; return x; };
+  deg = w(deg); const lo = w(a0), hi = w(a1);
+  return lo <= hi ? (deg >= lo && deg <= hi) : (deg >= lo || deg <= hi);
+}
+
+/* ===================================================================================
+ * App: model loading, pose controls, and the progressive coarse-to-fine sweep.
+ * =================================================================================== */
+const $ = id => document.getElementById(id);
+const statusEl = $('status'), modelInfoEl = $('modelInfo'), modelWarnEl = $('modelWarn');
+const canvas = $('board'), ctx = canvas.getContext('2d');
+const hoverline = $('hoverline');
+
+let net = null;
+const state = {
+  op: { x: CFG.startX, y: 0, rot: Math.PI },
+  meRot: 0,
+};
+
+function setStatus(msg, bad) {
+  statusEl.innerHTML = msg;
+  statusEl.classList.toggle('bad', !!bad);
+}
+
+// ---- model loading ----
+$('fileInput').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let j;
+    try { j = JSON.parse(reader.result); }
+    catch (err) { setStatus(`<strong>Could not parse ${esc(f.name)}</strong> — not valid JSON.`, true); return; }
+    let m;
+    try { m = MLP.fromJSON(j); }
+    catch (err) { setStatus(`<strong>Could not load ${esc(f.name)}</strong> — ${esc(err.message)}`, true); return; }
+    // Prove the shape matches THIS page's feature vector before committing to a sweep that
+    // would otherwise die on cell 1 with a cryptic "layer 0 input X, expected Y".
+    try { m.value(features(mockEng({x:0,y:0,rot:0},{x:CFG.startX,y:0,rot:Math.PI}))); }
+    catch (err) {
+      setStatus(`<strong>${esc(f.name)} does not match this tool's feature vector</strong> — ${esc(err.message)}. ` +
+                 `This usually means a legacy or differently-shaped net; the live game's engine is the source of truth.`, true);
+      return;
+    }
+    net = m;
+    const params = m.W.reduce((a, w) => a + w.length, 0) + m.b.reduce((a, b) => a + b.length, 0);
+    const outW = m.sizes[m.sizes.length - 1];
+    modelInfoEl.innerHTML = `<b>${esc(f.name)}</b><br>sizes: ${m.sizes.join('-')}` +
+      (m.topology ? `<br>topology: ${esc(m.topology.kind)}` : '') +
+      `<br>${params.toLocaleString()} params`;
+    modelWarnEl.innerHTML = (outW !== 1 && outW !== 23)
+      ? `<div class="warn">Output width is ${outW} — this tool reads output[0] as "value." Plain value nets are width 1 and dual nets are width 23; if this is a policy-only net (policy-champ.json, policy-joint*.json) the number shown is one policy logit, not an evaluation.</div>`
+      : '';
+    setStatus(`<strong>${esc(f.name)} loaded.</strong> Sweeping the board — colour is this net's value for the piece being swept.`);
+    $('pauseBtn').disabled = false; $('restartBtn').disabled = false;
+    resetSweep();
+  };
+  reader.readAsText(f);
+});
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function mockEng(me, op) { return { getG: () => ({ pieces: [me, op], active: 0 }), CFG, angInSpan, LINE_INTERSECTIONS }; }
+
+// ---- pose controls ----
+function syncPoseInputs() {
+  $('opX').value = Math.round(state.op.x);
+  $('opY').value = Math.round(state.op.y);
+  $('opRot').value = Math.round(state.op.rot*180/Math.PI);
+  $('opRotLbl').textContent = Math.round(state.op.rot*180/Math.PI) + '°';
+  $('meRot').value = Math.round(state.meRot*180/Math.PI);
+  $('meRotLbl').textContent = Math.round(state.meRot*180/Math.PI) + '°';
+}
+['opX','opY'].forEach(id => $(id).addEventListener('change', () => {
+  state.op.x = +$('opX').value || 0; state.op.y = +$('opY').value || 0; resetSweep();
+}));
+$('opRot').addEventListener('input', () => {
+  state.op.rot = (+$('opRot').value)*Math.PI/180; $('opRotLbl').textContent = $('opRot').value + '°'; resetSweep();
+});
+$('meRot').addEventListener('input', () => {
+  state.meRot = (+$('meRot').value)*Math.PI/180; $('meRotLbl').textContent = $('meRot').value + '°'; resetSweep();
+});
+$('opReset').addEventListener('click', () => {
+  state.op.x = CFG.startX; state.op.y = 0; state.op.rot = Math.PI; syncPoseInputs(); resetSweep();
+});
+$('swap').addEventListener('click', () => {
+  const oldOp = { ...state.op }, oldMeRot = state.meRot;
+  state.op = { x: -oldOp.x, y: -oldOp.y, rot: oldMeRot };  // the swept piece sat wherever the cursor was; the
+  state.meRot = oldOp.rot;                                  // cleanest swap is to hand the opponent's OLD pose
+  syncPoseInputs(); resetSweep();                            // to the mover's rotation and mirror the opponent in
+});
+$('resSelect').addEventListener('change', resetSweep);
+$('pauseBtn').addEventListener('click', () => {
+  sweep.paused = !sweep.paused;
+  $('pauseBtn').textContent = sweep.paused ? 'Resume' : 'Pause';
+});
+$('restartBtn').addEventListener('click', resetSweep);
+syncPoseInputs();
+
+// ---- canvas geometry: board units <-> canvas pixels ----
+const DPR = Math.max(1, window.devicePixelRatio || 1);
+const CSS_SIZE = 640;
+canvas.style.width = CSS_SIZE + 'px'; canvas.style.height = CSS_SIZE + 'px';
+canvas.width = CSS_SIZE*DPR; canvas.height = CSS_SIZE*DPR;
+ctx.scale(DPR, DPR);
+const PAD = 1.08;                         // small margin so the rim circle doesn't touch the edge
+const HALF = CFG.edgeU*PAD;               // board-unit half-extent of the square we sweep
+const PXPU = CSS_SIZE/(2*HALF);           // pixels per board unit
+function boardToPx(x, y) { return [CSS_SIZE/2 + x*PXPU, CSS_SIZE/2 - y*PXPU]; }
+function pxToBoard(px, py) { return [(px - CSS_SIZE/2)/PXPU, (CSS_SIZE/2 - py)/PXPU]; }
+
+// ---- colour ----
+function colorFor(v) {
+  v = Math.max(-1, Math.min(1, v));
+  const neutral = [26, 32, 48], bad = [255, 90, 100], good = [70, 225, 205];
+  const t = Math.min(1, Math.abs(v)*1.15);
+  const target = v < 0 ? bad : good;
+  const r = neutral[0] + (target[0]-neutral[0])*t, g = neutral[1] + (target[1]-neutral[1])*t, b = neutral[2] + (target[2]-neutral[2])*t;
+  return `rgb(${r|0},${g|0},${b|0})`;
+}
+
+// ---- static overlay: the printed board, redrawn once per sweep restart under the heat layer ----
+function drawStaticBackground() {
+  ctx.clearRect(0, 0, CSS_SIZE, CSS_SIZE);
+  ctx.fillStyle = '#0a0f1a'; ctx.fillRect(0, 0, CSS_SIZE, CSS_SIZE);
+}
+function drawOverlay() {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(180,196,224,.55)'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.arc(CSS_SIZE/2, CSS_SIZE/2, CFG.edgeU*PXPU, 0, TWO_PI); ctx.stroke();
+  for (const R of CFG.rings) { ctx.beginPath(); ctx.arc(CSS_SIZE/2, CSS_SIZE/2, R*PXPU, 0, TWO_PI); ctx.stroke(); }
+  for (const a of CFG.sideArcs) {
+    const [cx, cy] = boardToPx(a.cx, a.cy);
+    ctx.beginPath(); ctx.arc(cx, cy, a.r*PXPU, -a.a1*Math.PI/180, -a.a0*Math.PI/180); ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(180,196,224,.7)';
+  for (const P of LINE_INTERSECTIONS) { const [x,y]=boardToPx(P.x,P.y); ctx.beginPath(); ctx.arc(x,y,2.2,0,TWO_PI); ctx.fill(); }
+  drawPiece(state.op, '#e5bd70', 1);
+  ctx.restore();
+}
+function drawPiece(p, color, alpha) {
+  const [hx, hy] = boardToPx(p.x, p.y);
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(hx, hy, 3.5, 0, TWO_PI); ctx.fill();
+  for (let i = 0; i < 3; i++) {
+    const a = p.rot + i*TWO_PI/3;
+    const [fx, fy] = boardToPx(p.x + Math.cos(a)*CFG.footR, p.y + Math.sin(a)*CFG.footR);
+    ctx.beginPath(); ctx.arc(fx, fy, 4.5, 0, TWO_PI); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(fx, fy); ctx.globalAlpha = alpha*0.5; ctx.stroke(); ctx.globalAlpha = alpha;
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---- evaluate one point: value + whether the swept piece has a foot off the board ----
+function evalAt(x, y) {
+  const me = { x, y, rot: state.meRot };
+  const v = net.value(features(mockEng(me, state.op)));
+  let offBoard = false;
+  for (let i = 0; i < 3 && !offBoard; i++) {
+    const a = state.meRot + i*TWO_PI/3;
+    if (Math.hypot(x + Math.cos(a)*CFG.footR, y + Math.sin(a)*CFG.footR) > CFG.edgeU) offBoard = true;
+  }
+  return { v, offBoard };
+}
+
+// ---- progressive coarse-to-fine sweep, time-boxed per animation frame ----
+const sweep = { N: 0, cellPx: 0, stride: 1, col: 0, row: 0, done: 0, total: 0, evalCount: 0,
+                t0: 0, paused: false, running: false, totalCache: {} };
+
+function countInDisc(N) {
+  if (sweep.totalCache[N] !== undefined) return sweep.totalCache[N];
+  let n = 0;
+  const cell = 2*HALF/N;
+  for (let r = 0; r < N; r++) {
+    const y = -HALF + (r + 0.5)*cell;
+    for (let c = 0; c < N; c++) {
+      const x = -HALF + (c + 0.5)*cell;
+      if (x*x + y*y <= CFG.edgeU*CFG.edgeU) n++;
+    }
+  }
+  sweep.totalCache[N] = n;
+  return n;
+}
+
+function resetSweep() {
+  if (!net) return;
+  sweep.N = +$('resSelect').value;
+  sweep.cellBoard = 2*HALF/sweep.N;
+  sweep.cellPx = sweep.N ? CSS_SIZE/sweep.N : 0;
+  let s = 1; while (s*8 < sweep.N) s *= 2;
+  sweep.stride = s; sweep.col = 0; sweep.row = 0;
+  sweep.done = 0; sweep.total = countInDisc(sweep.N);
+  sweep.evalCount = 0; sweep.t0 = performance.now();
+  sweep.paused = false; $('pauseBtn').textContent = 'Pause';
+  sweep.running = true;
+  drawStaticBackground();
+  drawOverlay();
+  if (!sweep.looping) { sweep.looping = true; requestAnimationFrame(tick); }
+}
+
+function advanceCursor() {
+  sweep.col += sweep.stride;
+  if (sweep.col >= sweep.N) { sweep.col = 0; sweep.row += sweep.stride; }
+  if (sweep.row >= sweep.N) {
+    sweep.stride = sweep.stride >> 1;
+    sweep.col = 0; sweep.row = 0;
+  }
+}
+
+function tick() {
+  if (!net || !sweep.running) { sweep.looping = false; return; }
+  if (sweep.paused) { requestAnimationFrame(tick); return; }
+  const budget = 8, tStart = performance.now();
+  const initialStride = (() => { let s = 1; while (s*8 < sweep.N) s *= 2; return s; })();
+  while (performance.now() - tStart < budget) {
+    if (sweep.stride < 1) {
+      sweep.running = false;
+      updateStats(true);
+      requestAnimationFrame(tick);
+      return;
+    }
+    const isNew = sweep.stride === initialStride ||
+                  (sweep.col % (sweep.stride*2) !== 0) || (sweep.row % (sweep.stride*2) !== 0);
+    if (isNew) {
+      const x = -HALF + (sweep.col + 0.5)*sweep.cellBoard;
+      const y = -HALF + (sweep.row + 0.5)*sweep.cellBoard;
+      if (x*x + y*y <= CFG.edgeU*CFG.edgeU) {
+        const { v, offBoard } = evalAt(x, -y);   // canvas row grows downward; board y grows upward
+        paintCell(sweep.col, sweep.row, sweep.stride, v, offBoard);
+        sweep.done++; sweep.evalCount++;
+      }
+    }
+    advanceCursor();
+  }
+  updateStats(false);
+  requestAnimationFrame(tick);
+}
+
+function paintCell(col, row, stride, v, offBoard) {
+  const px = col*sweep.cellPx, py = row*sweep.cellPx, size = stride*sweep.cellPx;
+  ctx.globalAlpha = offBoard ? 0.4 : 1;
+  ctx.fillStyle = colorFor(v);
+  ctx.fillRect(px, py, size + 0.6, size + 0.6);   // +0.6 closes hairline seams between adjacent cells
+  ctx.globalAlpha = 1;
+}
+
+function updateStats(finished) {
+  const elapsed = (performance.now() - sweep.t0)/1000;
+  $('stCells').textContent = `${sweep.done.toLocaleString()} / ${sweep.total.toLocaleString()}` + (finished ? ' (done)' : '');
+  $('stCell').textContent = sweep.stride >= 1 ? `${(sweep.stride*sweep.cellBoard).toFixed(2)}u` : '—';
+  $('stRate').textContent = elapsed > 0 ? Math.round(sweep.evalCount/elapsed).toLocaleString() : '—';
+  $('stElapsed').textContent = elapsed.toFixed(1) + 's';
+  if (finished) {
+    // redraw the overlay on top now that the heat layer is complete, so rings/arcs/corners
+    // and the opponent marker stay crisp instead of getting painted over by the last cells
+    drawOverlay();
+  }
+}
+
+// ---- interaction: click to place the opponent, hover to sample a single point ----
+canvas.addEventListener('click', e => {
+  if (!net) return;
+  const rect = canvas.getBoundingClientRect();
+  const px = (e.clientX - rect.left)*(CSS_SIZE/rect.width), py = (e.clientY - rect.top)*(CSS_SIZE/rect.height);
+  const [x, y] = pxToBoard(px, py);
+  if (x*x + y*y > CFG.edgeU*CFG.edgeU) return;
+  state.op.x = x; state.op.y = y; syncPoseInputs(); resetSweep();
+});
+canvas.addEventListener('mousemove', e => {
+  if (!net) return;
+  const rect = canvas.getBoundingClientRect();
+  const px = (e.clientX - rect.left)*(CSS_SIZE/rect.width), py = (e.clientY - rect.top)*(CSS_SIZE/rect.height);
+  const [x, y] = pxToBoard(px, py);
+  if (x*x + y*y > CFG.edgeU*CFG.edgeU) { hoverline.textContent = 'Off the board.'; return; }
+  const { v, offBoard } = evalAt(x, y);
+  hoverline.innerHTML = `x=${x.toFixed(1)} y=${y.toFixed(1)} &nbsp; value <b>${v>=0?'+':''}${v.toFixed(3)}</b>` +
+    (offBoard ? ' &nbsp; <span style="color:var(--gold)">a foot here leaves the board</span>' : '');
+});
+canvas.addEventListener('mouseleave', () => { hoverline.textContent = 'Hover the board to sample a single point.'; });
+
+drawStaticBackground();
+</script>
+</body>
+</html>
