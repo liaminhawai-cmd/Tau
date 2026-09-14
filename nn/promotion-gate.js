@@ -188,6 +188,46 @@ function pairedElo(fc, fi, boots) {
   const sigma = (hi - lo)/4;
   return { elo, sigma, lo, hi, n, verdict: lo > 0 ? 'beats' : hi < 0 ? 'loses' : 'undecided' };
 }
+// How much a prospective panel member can possibly tell us about THIS incumbent, read straight off
+// the cache the gate already keeps. A member the incumbent sweeps 2-0 produces the same cell for
+// every candidate that also sweeps it, and a paired comparison cancels those to nothing: measured
+// on cycle 360, 31 of the 40 panel members gave resume-278 and ckpt-354 identical results, so 78%
+// of the games played carried no information and the verdict rested on 9 members. Ranking by
+// |score - 0.5| puts the members that actually separate two strong nets at the front.
+//
+// Returns null for a member the incumbent has never played -- unknown, not uninformative, and the
+// caller is expected to keep some of those so new blood can still enter the panel.
+function memberInformativeness(incumbentName, depth, memberId) {
+  const c = readCache()[`${incumbentName}@D${depth}|${memberId}`];
+  if (!c) return null;
+  return Math.abs(cellFrac(c, komiWinValue()) - 0.5);
+}
+// Order a pool of prospective members best-first for gating `incumbentName`: proven discriminators
+// first (closest to an even score), then unplayed members in the order given, then the ones the
+// incumbent is already known to sweep or lose outright. `keepUnknown` reserves places for unplayed
+// members so the panel cannot ossify around whatever it measured first.
+function orderPanelPool(incumbentName, depth, pool, keepUnknown = 0.25) {
+  const known = [], unknown = [];
+  for (const m of pool) {
+    const info = memberInformativeness(incumbentName, depth, m.id);
+    (info == null ? unknown : known).push({ m, info });
+  }
+  known.sort((a, b) => a.info - b.info);
+  const out = [], nUnknown = Math.round(keepUnknown*pool.length);
+  const k = known.map(x => x.m), u = unknown.map(x => x.m);
+  // Interleave so the reserved unknown slice is spread through the panel rather than tacked on the
+  // end, where a short panel would never reach it.
+  const every = nUnknown > 0 ? Math.max(1, Math.floor(pool.length/nUnknown)) : Infinity;
+  let ki = 0, ui = 0;
+  for (let i = 0; out.length < pool.length; i++) {
+    const wantUnknown = (i + 1) % every === 0 && ui < u.length;
+    if (wantUnknown) out.push(u[ui++]);
+    else if (ki < k.length) out.push(k[ki++]);
+    else if (ui < u.length) out.push(u[ui++]);
+    else break;
+  }
+  return out;
+}
 async function runPanelGate(opts) {
   const { incumbent, candidates, panel, lanes = 4, depth = 1, dataPrefix = null, log = console.log } = opts;
   const cands = [...new Set(candidates)].filter(p => p && fs.existsSync(p) && p !== incumbent);
@@ -231,4 +271,5 @@ async function runPanelGate(opts) {
   return { results, played };
 }
 
-module.exports = { runGate, runPanelGate, pairedElo, clears, describe, splitGames };
+module.exports = { runGate, runPanelGate, pairedElo, clears, describe, splitGames,
+                   memberInformativeness, orderPanelPool };

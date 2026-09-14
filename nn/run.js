@@ -2027,12 +2027,23 @@ async function runPoolCycle() {
       const rungs = require('./ladder-sampling.js').productionTop(6);
       const panel = rungs.map(l => ({ id: `L${l}`, spec: `L${l}` }));
       const excluded = new Set([ckpt, best, ...candidates]);
+      // Members are chosen for what they can SEPARATE, not for how strong they are. Taking the
+      // strongest faces by Elo sounds right and measures badly: the incumbent sweeps most of them
+      // 2-0, the candidate sweeps the same ones, and a paired comparison cancels every such member
+      // to zero. Cycle 360 spent 78% of its gate games on members that gave both nets identical
+      // results. orderPanelPool ranks by the incumbent's own cached score against each member --
+      // closest to even first -- and keeps a slice of never-played members so the panel still
+      // takes in new blood instead of ossifying around what it happened to measure first.
+      const pool = [];
       for (const r of ranked) {
-        if (panel.length >= panelN) break;
         const p = livePath(r);
         if (!fs.existsSync(p) || excluded.has(p) || isBestTwin(p)) continue;
-        if (panel.some(m => m.spec === `nn:0:${p}`)) continue;
-        panel.push({ id: `${path.basename(p, '.json')}@D1`, spec: `nn:0:${p}`, depth: 1 });
+        if (pool.some(m => m.spec === `nn:0:${p}`)) continue;
+        pool.push({ id: `${path.basename(p, '.json')}@D1`, spec: `nn:0:${p}`, depth: 1 });
+      }
+      for (const m of gate.orderPanelPool(incumbentName, 1, pool)) {
+        if (panel.length >= panelN) break;
+        panel.push(m);
       }
       writeStatus(`promotion gate: ${candidates.length} candidate(s) vs ${incumbentName} over a ${panel.length}-member panel ` +
                   `(started ${new Date().toISOString()})`);
