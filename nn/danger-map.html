@@ -174,7 +174,34 @@ canvas.board{cursor:crosshair}
           </div>
         </div>
         <div class="hint">Drag it to explore a single value live. Only its rotation feeds the sweep — position doesn't, since the sweep tries every position. The icon shows which way it's facing (tick = 0°/up).</div>
-        <button class="btn small" id="animateRotBtn" style="width:100%;margin-top:8px" disabled>Animate rotation — spin &amp; watch the map morph</button>
+        <div class="field">
+          <label>Spin step <small id="rotFrames">360 frames</small></label>
+          <select id="rotStep">
+            <option value="1" selected>1° — 360 frames</option>
+            <option value="2">2° — 180 frames</option>
+            <option value="5">5° — 72 frames</option>
+            <option value="10">10° — 36 frames</option>
+            <option value="15">15° — 24 frames</option>
+            <option value="30">30° — 12 frames</option>
+          </select>
+        </div>
+        <div class="estimate" id="rotEstimate">Pick a source to estimate the spin.</div>
+        <button class="btn small" id="animateRotBtn" style="width:100%;margin-top:8px" disabled>Spin &amp; capture a full turn</button>
+        <div id="playback" style="display:none;margin-top:10px">
+          <div class="row2">
+            <button class="btn small primary" id="playBtn">Play</button>
+            <button class="btn small ghost" id="saveFrames">Save frames (.zip)</button>
+          </div>
+          <div class="field">
+            <label>Frame <small id="frameLbl">1 / 1</small></label>
+            <input id="frameSlider" type="range" min="0" max="0" step="1" value="0">
+          </div>
+          <div class="field">
+            <label>Playback <small id="fpsLbl">24 fps</small></label>
+            <input id="fps" type="range" min="4" max="60" step="1" value="24">
+          </div>
+          <div class="hint">Frames are the finished map at each step, captured from the board on the left. Saving writes them all as one zip rather than several hundred separate downloads.</div>
+        </div>
         <button class="btn ghost small" id="swap" style="width:100%;margin-top:6px">Swap mover ↔ opponent</button>
       </div>
 
@@ -1529,7 +1556,7 @@ function calibrate(p) {
 }
 function updateEstimate() {
   const active = panels.filter(panelVisible).filter(p => p.source);
-  if (!active.length) { $('estimate').innerHTML = 'Load a model or pick a ladder rung to see a compute-time estimate.'; return; }
+  if (!active.length) { $('estimate').innerHTML = 'Load a model or pick a ladder rung to see a compute-time estimate.'; updateRotEstimate(); return; }
   active.forEach(p => { if (p.msPerEval == null) p.msPerEval = calibrate(p); });
   const frames = 1 + state.moves.length;
   // Cells are independent, so N workers really do divide the wall clock by N here -- there is no
@@ -1543,6 +1570,7 @@ function updateEstimate() {
     return `<div><span>${N}×${N}</span><span>${fmtS(perFrameS)}/frame · ${fmtS(totalS)} total (${frames} frame${frames>1?'s':''})</span></div>`;
   }).join('');
   $('estimate').innerHTML = rows + `<div style="margin-top:6px;color:var(--muted)">${lanes} core${lanes>1?'s':''} · ${esc(active.map(p => `${p.id}: ${p.msPerEval.toFixed(2)}ms/cell`).join(' · '))}</div>`;
+  updateRotEstimate();
 }
 function fmtS(s) { return s < 1 ? Math.round(s*1000)+'ms' : s < 10 ? s.toFixed(1)+'s' : Math.round(s)+'s'; }
 
@@ -1776,6 +1804,7 @@ function updateButtons() {
   $('exportB').disabled = mode !== 'done' || !panels[1].source || !panels[1].sweep.grid;
 }
 function enterSetup() {
+  stopPlayback();
   mode = 'setup'; globalPaused = false;
   drawSetup();
   $('stCells').textContent='—'; $('stCell').textContent='—'; $('stRate').textContent='—'; $('stElapsed').textContent='—';
@@ -1784,6 +1813,7 @@ function enterSetup() {
 // Everything a run needs in place before the first cell: workers built (or proved unavailable)
 // and holding the current sources, and a per-cell cost measured so jobs can be sized sensibly.
 function beginRun() {
+  stopPlayback();
   panels.forEach(gpuEnsure);
   updateEstimate();
   // Workers still matter with the GPU on: a compare panel can be a rung or a D2/D3 net, which
@@ -1844,27 +1874,204 @@ function spinMeTo(target) {
     step();
   });
 }
+/* ===================================================================================
+ * Spin & capture: sweep a full map at every step of the mover's own rotation, keep each
+ * finished map as a PNG, then play the stack back as an animation of the map morphing
+ * as the piece turns. Each frame is a complete sweep, so this costs (360/step) runs --
+ * which is why the step is a control and why its own estimate sits next to it.
+ *
+ * Frames are held as PNG blobs rather than decoded images: at 1 degree that is 360 of
+ * them, and 360 decoded 520x520 bitmaps would be ~390MB of live canvas memory. Blobs are
+ * a fraction of that, are exactly what the zip needs anyway, and decode fast enough that
+ * playback can turn one into a bitmap on demand with a frame of lookahead.
+ * =================================================================================== */
+const capture = { frames: [], playing: false, idx: 0, raf: null, cache: new Map(), lastAt: 0 };
+function rotStepDeg() { return +$('rotStep').value || 1; }
+function rotFrameCount() { return Math.round(360/rotStepDeg()); }
+function captureReset() {
+  stopPlayback();
+  capture.frames = []; capture.idx = 0;
+  capture.cache.forEach(b => b.close && b.close());
+  capture.cache.clear();
+  $('playback').style.display = 'none';
+}
+function canvasToPng(canvas) {
+  return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+}
 async function animateThroughRotations() {
   if (!panels.some(p => p.source)) return;
+  captureReset();
   beginRun();
   const savedRot = state.me.rot;
-  const STEPS = 12, STEP_ANGLE = TWO_PI/STEPS;   // 30deg stops, full turn
-  for (let i = 0; i < STEPS && mode === 'running'; i++) {
+  const stepDeg = rotStepDeg(), steps = rotFrameCount();
+  const frames = [];
+  for (let i = 0; i < steps && mode === 'running'; i++) {
     // Always spin to the target, even for the first stop (0deg) -- whatever rotation was set
-    // before pressing the button, the sequence itself is deterministic: 0, 30, 60deg, ... and
+    // before pressing the button, the sequence itself is deterministic: 0, step, 2*step ... and
     // the phase label always matches the rotation actually swept.
-    const target = i*STEP_ANGLE;
-    setPhase(`Turning to ${Math.round(target*180/Math.PI)}°…`);
-    await spinMeTo(target);
+    const deg = i*stepDeg, target = deg*Math.PI/180;
+    // Only interpolate the turn when the steps are coarse enough for it to read as motion. At a
+    // degree a step the sweeps themselves are the animation, and 20 tween frames between each
+    // would be most of the wall clock spent not computing anything.
+    if (stepDeg >= 5) { setPhase(`Turning to ${Math.round(deg)}°…`); await spinMeTo(target); }
+    else { state.me.rot = target; syncPoseInputs(); }
     if (mode !== 'running') break;
-    setPhase(`Facing ${Math.round(target*180/Math.PI)}° — sweeping…`);
+    setPhase(`${Math.round(deg)}° — sweeping frame ${i+1} of ${steps}…`);
     activePanels().forEach(resetPanelSweep);
     await runPanelsToCompletion();
+    if (mode !== 'running') break;
+    activePanels().forEach(finishPanel);        // capture the same picture a finished run shows
+    frames.push({ deg, blob: await canvasToPng(panels[0].canvas) });
   }
   if (mode !== 'running') { state.me.rot = savedRot; syncPoseInputs(); enterSetup(); return; }
   mode = 'done'; setPhase('');
+  capture.frames = frames;
   activePanels().forEach(finishPanel);
+  if (frames.length) {
+    $('playback').style.display = '';
+    $('frameSlider').max = String(frames.length - 1);
+    $('frameSlider').value = '0';
+    showFrame(0);
+    startPlayback();
+  }
   updateButtons();
+}
+
+/* Playback ------------------------------------------------------------------------ */
+async function frameBitmap(i) {
+  const f = capture.frames[i];
+  if (!f) return null;
+  let bmp = capture.cache.get(i);
+  if (bmp) return bmp;
+  bmp = await createImageBitmap(f.blob);
+  capture.cache.set(i, bmp);
+  // A small ring of decoded frames is enough for smooth playback and keeps the memory bounded
+  // however long the spin was; the blobs themselves stay, so nothing has to be recomputed.
+  if (capture.cache.size > 12) {
+    const oldest = capture.cache.keys().next().value;
+    const old = capture.cache.get(oldest);
+    if (old && old.close) old.close();
+    capture.cache.delete(oldest);
+  }
+  return bmp;
+}
+async function showFrame(i) {
+  const bmp = await frameBitmap(i);
+  if (!bmp) return;
+  const ctx = panels[0].ctx;
+  ctx.clearRect(0, 0, CSS_SIZE, CSS_SIZE);
+  ctx.drawImage(bmp, 0, 0, CSS_SIZE, CSS_SIZE);
+  capture.idx = i;
+  $('frameSlider').value = String(i);
+  $('frameLbl').textContent = `${i+1} / ${capture.frames.length} — ${Math.round(capture.frames[i].deg)}°`;
+  frameBitmap((i + 1) % capture.frames.length);      // one frame of lookahead
+}
+function startPlayback() {
+  if (!capture.frames.length || capture.playing) return;
+  capture.playing = true; capture.lastAt = 0;
+  $('playBtn').textContent = 'Pause';
+  const tick = async now => {
+    if (!capture.playing) return;
+    const interval = 1000/(+$('fps').value || 24);
+    if (!capture.lastAt || now - capture.lastAt >= interval) {
+      capture.lastAt = now;
+      await showFrame((capture.idx + 1) % capture.frames.length);
+    }
+    capture.raf = requestAnimationFrame(tick);
+  };
+  capture.raf = requestAnimationFrame(tick);
+}
+function stopPlayback() {
+  if (!capture.playing) return;
+  capture.playing = false;
+  if (capture.raf) cancelAnimationFrame(capture.raf);
+  capture.raf = null;
+  $('playBtn').textContent = 'Play';
+}
+$('playBtn').addEventListener('click', () => { capture.playing ? stopPlayback() : startPlayback(); });
+$('frameSlider').addEventListener('input', () => { stopPlayback(); showFrame(+$('frameSlider').value); });
+$('fps').addEventListener('input', () => { $('fpsLbl').textContent = $('fps').value + ' fps'; });
+$('rotStep').addEventListener('change', () => {
+  $('rotFrames').textContent = `${rotFrameCount()} frames`;
+  updateRotEstimate();
+});
+
+/* Saving ---------------------------------------------------------------------------
+ * A store-only zip, written by hand. Several hundred separate downloads is not a
+ * reasonable thing to do to a browser, and PNG is already compressed, so there is
+ * nothing for a deflate implementation to earn here -- the container is the whole job.
+ * ---------------------------------------------------------------------------------- */
+function crc32(buf) {
+  let table = crc32.table;
+  if (!table) {
+    table = crc32.table = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      table[n] = c >>> 0;
+    }
+  }
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = table[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function zipStore(files) {
+  const enc = new TextEncoder(), local = [], central = [];
+  let offset = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name), crc = crc32(f.data), size = f.data.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0, true);
+    lh.setUint16(8, 0, true); lh.setUint16(10, 0, true); lh.setUint16(12, 0, true);
+    lh.setUint32(14, crc, true); lh.setUint32(18, size, true); lh.setUint32(22, size, true);
+    lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+    local.push(new Uint8Array(lh.buffer), name, f.data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+    ch.setUint16(8, 0, true); ch.setUint16(10, 0, true); ch.setUint16(12, 0, true); ch.setUint16(14, 0, true);
+    ch.setUint32(16, crc, true); ch.setUint32(20, size, true); ch.setUint32(24, size, true);
+    ch.setUint16(28, name.length, true); ch.setUint16(30, 0, true); ch.setUint16(32, 0, true);
+    ch.setUint16(34, 0, true); ch.setUint16(36, 0, true); ch.setUint32(38, 0, true);
+    ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), name);
+    offset += 30 + name.length + size;
+  }
+  let cdSize = 0;
+  for (const c of central) cdSize += c.length;
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true);
+  end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+  return new Blob([...local, ...central, new Uint8Array(end.buffer)], { type: 'application/zip' });
+}
+$('saveFrames').addEventListener('click', async () => {
+  if (!capture.frames.length) return;
+  const btn = $('saveFrames');
+  btn.disabled = true; btn.textContent = 'Zipping…';
+  try {
+    const tag = (panels[0].source ? panels[0].source.name : 'map').replace(/[^\w.-]+/g, '_');
+    const files = [];
+    for (const f of capture.frames)
+      files.push({ name: `${tag}-${String(Math.round(f.deg)).padStart(3, '0')}deg.png`,
+                   data: new Uint8Array(await f.blob.arrayBuffer()) });
+    const url = URL.createObjectURL(zipStore(files));
+    const a = document.createElement('a');
+    a.href = url; a.download = `tau-danger-map-spin-${tag}-${files.length}frames.zip`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+  } finally { btn.disabled = false; btn.textContent = 'Save frames (.zip)'; }
+});
+
+function updateRotEstimate() {
+  const active = panels.filter(panelVisible).filter(p => p.source);
+  if (!active.length) { $('rotEstimate').textContent = 'Pick a source to estimate the spin.'; return; }
+  active.forEach(p => { if (p.msPerEval == null) p.msPerEval = calibrate(p); });
+  const lanes = $('useWorkers').checked ? Math.max(1, poolSize()) : 1;
+  const cells = countInDisc(+$('resSelect').value);
+  const perFrameS = active.reduce((a, p) => a + p.msPerEval*cells, 0)/1000/lanes;
+  const n = rotFrameCount();
+  $('rotEstimate').innerHTML =
+    `<div><span>${n} frames</span><span>${fmtS(perFrameS)}/frame · <b>${fmtS(perFrameS*n)}</b> total</span></div>`;
 }
 function setPhase(text) { $('status').querySelector('.phase')?.remove();
   if (text) $('status').insertAdjacentHTML('beforeend', ` <span class="phase" style="color:var(--accent)">${esc(text)}</span>`); }
