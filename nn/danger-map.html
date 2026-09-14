@@ -786,20 +786,40 @@ void main() {
   int i = int(gl_FragCoord.x) - uDstX, p = int(gl_FragCoord.y);
   outColor = vec4(texelFetch(uZ, ivec2(i, p), 0).r, 0.0, 0.0, 1.0);
 }`;
+// ONE context for the whole tool, created once. Giving each GpuNet its own was a real bug rather
+// than mere waste: a browser keeps only so many live WebGL contexts and force-loses the oldest, so
+// after toggling the GPU off and on a couple of times an earlier context would quietly die and its
+// draws would silently no-op -- leaving stale texture contents that still read back as plausible
+// numbers. Measured as two identical GPU runs disagreeing on 11% of pixels. Sharing one context
+// (and noticing if it is ever lost) is what makes the path repeatable.
+let GPU_CTX = null;
+function gpuContext() {
+  if (GPU_CTX === 'lost') throw new Error('WebGL context was lost');
+  if (GPU_CTX) return GPU_CTX;
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl2', { antialias: false, depth: false, stencil: false });
+  if (!gl) throw new Error('WebGL2 not available');
+  if (!gl.getExtension('EXT_color_buffer_float')) throw new Error('float render targets not supported');
+  canvas.addEventListener('webglcontextlost', e => {
+    e.preventDefault();
+    GPU_CTX = 'lost';
+    panels.forEach(p => { p.gpu = null; p.msPerEval = null; });
+    setStatus('<strong>GPU context was lost</strong> — sweeping on the CPU from here.', true);
+  });
+  GPU_CTX = gl;
+  return gl;
+}
 class GpuNet {
   // Throws when WebGL2 or float-render support is missing; callers treat that as "no GPU".
   constructor(net) {
-    const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl2', { antialias: false, depth: false, stencil: false });
-    if (!gl) throw new Error('WebGL2 not available');
-    if (!gl.getExtension('EXT_color_buffer_float')) throw new Error('float render targets not supported');
+    const gl = gpuContext();
     this.gl = gl; this.net = net;
     this.L = net.W.length;
     this.dense = !!(net.topology && net.topology.kind === 'dense-memory-v1');
     this.k = this.dense ? (+net.topology.memoryWidth || 0) : 0;
     this.scale = this.dense ? (+net.topology.residualScale || 0) : 0;
-    this.prog = this.link(GPU_VERT, GPU_FRAG);
-    this.progMem = this.link(GPU_VERT, GPU_FRAG_MEM);
+    if (!gl.__dmProg) { gl.__dmProg = this.link(GPU_VERT, GPU_FRAG); gl.__dmProgMem = this.link(GPU_VERT, GPU_FRAG_MEM); }
+    this.prog = gl.__dmProg; this.progMem = gl.__dmProgMem;
     const vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
     const buf = gl.createBuffer();
@@ -879,6 +899,8 @@ class GpuNet {
       gl.uniform1i(gl.getUniformLocation(this.prog, 'uAw'), aw);
       gl.uniform1i(gl.getUniformLocation(this.prog, 'uEarlierK'), earlier*this.k);
       gl.uniform1f(gl.getUniformLocation(this.prog, 'uResScale'), residual ? this.scale : 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE)
+        throw new Error(`framebuffer incomplete at layer ${l}`);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       if (this.dense && l < this.L - 1) {
         gl.useProgram(this.progMem);
@@ -901,12 +923,15 @@ class GpuNet {
   }
   destroy() {
     const gl = this.gl;
+    if (GPU_CTX === 'lost') return;
     this.texW.forEach(t => gl.deleteTexture(t));
     this.texB.forEach(t => gl.deleteTexture(t));
     (this.texZ || []).forEach(t => gl.deleteTexture(t));
     if (this.texA) gl.deleteTexture(this.texA);
     if (this.texM) gl.deleteTexture(this.texM);
     gl.deleteFramebuffer(this.fbo);
+    gl.deleteVertexArray(this.vao);
+    this.texW = []; this.texB = []; this.texZ = []; this.texA = null; this.texM = null;
   }
 }
 
@@ -1480,7 +1505,7 @@ function calibrate(p) {
   // When the GPU is what will actually run the sweep, the honest per-cell cost is a real GPU
   // batch -- dominated by CPU-side features() rather than by the net at all -- not the CPU eval.
   if (gpuEligible(p) && p.gpu) {
-    const nIn = N_FEATURES, B = 256, xs = new Float32Array(B*nIn);
+    const nIn = N_FEATURES, B = GPU_BATCH, xs = new Float32Array(B*nIn);
     const t0 = performance.now();
     for (let i = 0; i < B; i++) {
       const ang = i*0.13;
@@ -1551,11 +1576,21 @@ function resetPanelSweep(p) {
   s.offGrid = new Uint8Array(s.N*s.N);
   drawStaticBackground(p.ctx); drawBoardLines(p.ctx);
 }
+// Cell rects are snapped to whole pixels and share their edges exactly: cell c's right edge is
+// round((c+1)*cellPx), which is cell c+1's left edge. That leaves neither the hairline gaps a
+// fractional cell size would otherwise show, nor the overdraw the old `size + 0.6` fudge used to
+// close them with. The overdraw mattered for more than tidiness -- it made each boundary pixel
+// belong to whichever neighbour painted LAST, so the finished picture depended on the order cells
+// came back in, which under a worker pool means the core count. It also double-blended the 0.4
+// alpha of off-board cells wherever two of them overlapped.
 function paintCell(p, col, row, stride, v, offBoard) {
-  const px = col*p.sweep.cellPx, py = row*p.sweep.cellPx, size = stride*p.sweep.cellPx;
+  const s = p.sweep;
+  const x0 = Math.round(col*s.cellPx), y0 = Math.round(row*s.cellPx);
+  const x1 = Math.round(Math.min(s.N, col + stride)*s.cellPx);
+  const y1 = Math.round(Math.min(s.N, row + stride)*s.cellPx);
   p.ctx.globalAlpha = offBoard ? 0.4 : 1;
   p.ctx.fillStyle = colorFor(v);
-  p.ctx.fillRect(px, py, size + 0.6, size + 0.6);
+  p.ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
   p.ctx.globalAlpha = 1;
 }
 // The one cursor over the grid, shared by the single-threaded and worker paths so there is no
@@ -1629,14 +1664,20 @@ function gpuEnsure(p) {
 // One batch per frame. The GPU finishes a batch in about a millisecond; what sets the pace is
 // features() on the CPU for each position, so the batch is sized to keep a frame's work small
 // enough that the page stays interactive rather than to keep the GPU busy.
+const GPU_BATCH = 512;
 function gpuTickPanel(p) {
-  const s = p.sweep, cells = [], B = 512, nIn = N_FEATURES;
-  while (cells.length < B) { const c = nextCell(s); if (!c) break; cells.push(c); }
+  const s = p.sweep, cells = [], nIn = N_FEATURES;
+  while (cells.length < GPU_BATCH) { const c = nextCell(s); if (!c) break; cells.push(c); }
   if (!cells.length) return;
-  const xs = new Float32Array(cells.length*nIn);
+  // Always a full-size batch, zero-padded, so the textures are allocated once and never resized
+  // mid-sweep. A varying batch size made the path reallocate every framebuffer attachment on the
+  // final short batch (and again on the next run's first full one), and that churn was enough to
+  // make two identical runs disagree -- 11% of pixels, measured. The padding rows are computed
+  // and thrown away; a few hundred wasted positions per sweep is nothing next to being repeatable.
+  const xs = new Float32Array(GPU_BATCH*nIn);
   for (let i = 0; i < cells.length; i++)
     xs.set(features(mockEng({ x: cells[i].x, y: cells[i].y, rot: state.me.rot }, state.op)), i*nIn);
-  const vals = p.gpu.values(xs, cells.length);
+  const vals = p.gpu.values(xs, GPU_BATCH);
   for (let i = 0; i < cells.length; i++) recordCell(p, cells[i], vals[i]);
 }
 // Keep every idle worker fed. Each job is sized to about a tenth of a second of work from the
@@ -1882,10 +1923,16 @@ function repaintFromGrid(p) {
   }
   drawFinished(p);
 }
-// A rung's colours depend on the sweep's full range, so the finished picture is repainted once
-// the range is final. For a net this is just the normal finish draw -- its values need no scaling.
+// The finished picture is always repainted from the stored grid, which makes it a pure function
+// of the data: every cell drawn once, at stride 1, in one fixed order. Two things need that.
+// A rung's colours are scaled to the sweep's own range, which is only final once the sweep is --
+// and progressive painting composites the 0.4 alpha of off-board cells over whatever coarser pass
+// sits beneath them, so the picture otherwise carries a trace of the order it was filled in. With
+// a worker pool that order follows the core count, so without this the finished map would quietly
+// differ between machines. It also makes what's on screen match the PNG export exactly, since
+// both now render the same grid the same way.
 function finishPanel(p) {
-  if (p.source && p.source.kind !== 'net' && p.sweep.grid) repaintFromGrid(p);
+  if (p.sweep.grid) repaintFromGrid(p);
   else drawFinished(p);
 }
 function repaintAllFinished() { if (mode === 'done') panels.forEach(p => { if (p.source && p.sweep.grid) repaintFromGrid(p); }); }
@@ -1920,7 +1967,7 @@ function exportPanel(p, scale) {
       if (Number.isNaN(raw)) continue;
       octx.globalAlpha = s.offGrid[row*s.N + col] === 1 ? 0.4 : 1;
       octx.fillStyle = colorFor(scaleFor(p.source, raw, s));
-      octx.fillRect(col*scale, row*scale, scale + 0.6, scale + 0.6);
+      octx.fillRect(col*scale, row*scale, scale, scale);   // integer scale: edges already meet exactly
     }
   }
   octx.globalAlpha = 1;
