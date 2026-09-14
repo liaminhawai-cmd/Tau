@@ -214,6 +214,8 @@ canvas.board{cursor:crosshair}
 
       <div class="block">
         <h2>Speed</h2>
+        <h2 style="margin:0 0 6px"><label class="check"><input type="checkbox" id="useGpu"> Draw the map on the GPU (D1 only)</label></h2>
+        <div class="hint" id="gpuNote" style="margin:-2px 0 8px">Worth it on a big net, where the forward pass is nearly the whole cell. GPU maths is float32 rather than float64, so this drives the picture only — hover readouts stay exact — and it doesn't apply to ladder rungs or to D2/D3, which stay on the cores.</div>
         <h2 style="margin:0 0 6px"><label class="check"><input type="checkbox" id="useWorkers" checked> Use every core (Web Workers)</label></h2>
         <div class="field" id="coresWrap">
           <label>Cores <small id="coresLbl"></small></label>
@@ -711,10 +713,201 @@ function evalRaw(source, me, op) {
   // case `.s` already equals `.v`, the same huge throw score `.deep` would have carried anyway.
   return (depth >= 2 && chosen.deep !== undefined) ? chosen.deep : chosen.s;
 }
-function normalize(source, raw, panel) {
-  if (source.kind === 'net') return raw;
-  panel.sweep.maxAbsRaw = Math.max(panel.sweep.maxAbsRaw, Math.abs(raw));
-  return raw / panel.sweep.maxAbsRaw;
+// A net's value is already tanh-bounded to [-1,1] and needs no scaling. A rung's raw ladderEval
+// score is unbounded, so its panel is scaled to its own sweep's range -- which is only actually
+// known once the sweep has finished. Scaling is therefore split in two: noteRaw widens the range
+// as values arrive, and scaleFor is a pure function of (raw, range) used for every paint.
+//
+// The grid stores RAW values for this reason. Scaling at paint time instead of at evaluation time
+// is what makes a finished map independent of the order its cells were computed in -- and with a
+// worker pool that order depends on how many cores ran it, so storing pre-scaled values made the
+// picture itself change with the core count. It also fixes the same latent bug for colour-grade
+// repaints and PNG exports, which were re-colouring values frozen against different running maxima.
+function noteRaw(source, raw, panel) {
+  if (source.kind !== 'net') panel.sweep.maxAbsRaw = Math.max(panel.sweep.maxAbsRaw, Math.abs(raw));
+}
+function scaleFor(source, raw, sweep) {
+  return source.kind === 'net' ? raw : raw/sweep.maxAbsRaw;
+}
+
+/* ===================================================================================
+ * GPU evaluator (WebGL2). Worth having for exactly one reason, and only after it was
+ * measured: on a big net the forward pass IS the cell. nnai.js's note that "an 18k-param
+ * forward pass is microseconds" is true of the nets it profiled, but best.json is 2.06M
+ * parameters over 11 layers and costs 5.6ms a call -- about 98% of a D1 cell -- so a
+ * 256x256 sweep is ~290s of almost pure matrix-vector product. That part is what a GPU
+ * is for. (Plain-JS alternatives were tried first and are dead ends: batching the same
+ * arithmetic won 1.11x since it is memory-bound on 16MB of weights, and float32 was
+ * actually 0.88x, because JS widens every float32 back to double to do arithmetic on it.)
+ *
+ * Scope, deliberately narrow:
+ *   - D1 only. A D2/D3 cell interleaves its net calls with sequential physics stepping,
+ *     so there is no batch to hand the GPU without restructuring the search itself.
+ *   - The map only. GPU maths is float32 against the CPU's float64, so hover readouts,
+ *     the compare panels' numbers and anything quoted as a value stay on the exact path;
+ *     the GPU drives pixels, where the difference lands far below one 8-bit colour step.
+ *
+ * One layer = one full-screen pass: the framebuffer is (nOut x batch), so fragment (j,p)
+ * computes output j of position p and the whole batch's GEMM falls out of the raster.
+ * =================================================================================== */
+const GPU_VERT = `#version 300 es
+in vec2 pos;
+void main() { gl_Position = vec4(pos, 0.0, 1.0); }`;
+const GPU_FRAG = `#version 300 es
+precision highp float;
+precision highp int;
+uniform highp sampler2D uA;     // activations, (aw x batch)
+uniform highp sampler2D uW;     // weights, (fanIn x nOut), texel (i,j) = W[j*fanIn + i]
+uniform highp sampler2D uB;     // bias, (nOut x 1)
+uniform highp sampler2D uM;     // memory packets so far, (earlierK x batch)
+uniform int uAw, uEarlierK;
+uniform float uResScale;        // 0 when this layer takes no residual
+out vec4 outColor;
+void main() {
+  int j = int(gl_FragCoord.x), p = int(gl_FragCoord.y);
+  float s = texelFetch(uB, ivec2(j, 0), 0).r;
+  for (int i = 0; i < uAw; i++)
+    s += texelFetch(uW, ivec2(i, j), 0).r * texelFetch(uA, ivec2(i, p), 0).r;
+  for (int i = 0; i < uEarlierK; i++)
+    s += texelFetch(uW, ivec2(uAw + i, j), 0).r * texelFetch(uM, ivec2(i, p), 0).r;
+  float br = tanh(s);
+  outColor = vec4(uResScale != 0.0 ? texelFetch(uA, ivec2(j, p), 0).r + uResScale*br : br, 0.0, 0.0, 1.0);
+}`;
+// Copies the first k columns of a layer's output into a slice of the memory texture, which is
+// how a memory packet gets recorded. A pass of its own because the destination is a sub-rect of
+// a wider texture, which is a viewport, not something the GEMM pass can write on the side.
+const GPU_FRAG_MEM = `#version 300 es
+precision highp float;
+precision highp int;
+uniform highp sampler2D uZ;
+uniform int uDstX;
+out vec4 outColor;
+void main() {
+  int i = int(gl_FragCoord.x) - uDstX, p = int(gl_FragCoord.y);
+  outColor = vec4(texelFetch(uZ, ivec2(i, p), 0).r, 0.0, 0.0, 1.0);
+}`;
+class GpuNet {
+  // Throws when WebGL2 or float-render support is missing; callers treat that as "no GPU".
+  constructor(net) {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false, depth: false, stencil: false });
+    if (!gl) throw new Error('WebGL2 not available');
+    if (!gl.getExtension('EXT_color_buffer_float')) throw new Error('float render targets not supported');
+    this.gl = gl; this.net = net;
+    this.L = net.W.length;
+    this.dense = !!(net.topology && net.topology.kind === 'dense-memory-v1');
+    this.k = this.dense ? (+net.topology.memoryWidth || 0) : 0;
+    this.scale = this.dense ? (+net.topology.residualScale || 0) : 0;
+    this.prog = this.link(GPU_VERT, GPU_FRAG);
+    this.progMem = this.link(GPU_VERT, GPU_FRAG_MEM);
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(this.prog, 'pos');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    this.vao = vao;
+    this.texW = net.W.map((w, l) => this.tex(net.fanIns[l], net.sizes[l+1], Float32Array.from(w)));
+    this.texB = net.b.map((b, l) => this.tex(net.sizes[l+1], 1, Float32Array.from(b)));
+    this.fbo = gl.createFramebuffer();
+    this.batch = 0;
+  }
+  link(vs, fs) {
+    const gl = this.gl;
+    const sh = (type, src) => {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error('shader: ' + gl.getShaderInfoLog(s));
+      return s;
+    };
+    const p = gl.createProgram();
+    gl.attachShader(p, sh(gl.VERTEX_SHADER, vs));
+    gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('link: ' + gl.getProgramInfoLog(p));
+    return p;
+  }
+  tex(w, h, data) {
+    const gl = this.gl, t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, w, h, 0, gl.RED, gl.FLOAT, data || null);
+    return t;
+  }
+  // Per-batch-size scratch: the layer outputs and the memory strip are all `batch` tall.
+  resize(batch) {
+    if (this.batch === batch) return;
+    const gl = this.gl, net = this.net;
+    (this.texZ || []).forEach(t => gl.deleteTexture(t));
+    if (this.texA) gl.deleteTexture(this.texA);
+    if (this.texM) gl.deleteTexture(this.texM);
+    this.texA = this.tex(net.sizes[0], batch, null);
+    this.texZ = net.sizes.slice(1).map(n => this.tex(n, batch, null));
+    this.texM = this.tex(Math.max(1, (this.L - 1)*this.k), batch, null);
+    this.batch = batch;
+  }
+  // xs: Float32Array(batch * nIn), row-major per position. Returns Float32Array(batch).
+  values(xs, batch) {
+    const gl = this.gl, net = this.net;
+    this.resize(batch);
+    const nIn = net.sizes[0];
+    gl.bindTexture(gl.TEXTURE_2D, this.texA);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, nIn, batch, gl.RED, gl.FLOAT, xs);
+    gl.bindVertexArray(this.vao);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+    let srcTex = this.texA, aw = nIn, memCount = 0;
+    for (let l = 0; l < this.L; l++) {
+      const nOut = net.sizes[l+1];
+      const earlier = this.dense ? Math.max(0, memCount - 1) : 0;
+      const residual = this.dense && this.scale !== 0 && l > 0 && l < this.L - 1 && aw === nOut;
+      gl.useProgram(this.prog);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.texZ[l], 0);
+      gl.viewport(0, 0, nOut, batch);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, srcTex);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.texW[l]);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.texB[l]);
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.texM);
+      gl.uniform1i(gl.getUniformLocation(this.prog, 'uA'), 0);
+      gl.uniform1i(gl.getUniformLocation(this.prog, 'uW'), 1);
+      gl.uniform1i(gl.getUniformLocation(this.prog, 'uB'), 2);
+      gl.uniform1i(gl.getUniformLocation(this.prog, 'uM'), 3);
+      gl.uniform1i(gl.getUniformLocation(this.prog, 'uAw'), aw);
+      gl.uniform1i(gl.getUniformLocation(this.prog, 'uEarlierK'), earlier*this.k);
+      gl.uniform1f(gl.getUniformLocation(this.prog, 'uResScale'), residual ? this.scale : 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      if (this.dense && l < this.L - 1) {
+        gl.useProgram(this.progMem);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.texM, 0);
+        gl.viewport(memCount*this.k, 0, this.k, batch);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.texZ[l]);
+        gl.uniform1i(gl.getUniformLocation(this.progMem, 'uZ'), 0);
+        gl.uniform1i(gl.getUniformLocation(this.progMem, 'uDstX'), memCount*this.k);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        memCount++;
+      }
+      srcTex = this.texZ[l]; aw = nOut;
+    }
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.texZ[this.L-1], 0);
+    const out = new Float32Array(batch*4);
+    gl.readPixels(0, 0, 1, batch, gl.RGBA, gl.FLOAT, out);
+    const vals = new Float32Array(batch);
+    for (let p = 0; p < batch; p++) vals[p] = out[p*4];
+    return vals;
+  }
+  destroy() {
+    const gl = this.gl;
+    this.texW.forEach(t => gl.deleteTexture(t));
+    this.texB.forEach(t => gl.deleteTexture(t));
+    (this.texZ || []).forEach(t => gl.deleteTexture(t));
+    if (this.texA) gl.deleteTexture(this.texA);
+    if (this.texM) gl.deleteTexture(this.texM);
+    gl.deleteFramebuffer(this.fbo);
+  }
 }
 
 /* ===================================================================================
@@ -851,8 +1044,8 @@ function drawMeRotIcon() {
   }
 }
 const panels = [
-  { id: 'A', canvas: $('board'), source: null, sweep: freshSweep(), msPerEval: null, isStage: true },
-  { id: 'B', canvas: $('boardB'), source: null, sweep: freshSweep(), msPerEval: null, isStage: false },
+  { id: 'A', canvas: $('board'), source: null, sweep: freshSweep(), msPerEval: null, gpu: null, isStage: true },
+  { id: 'B', canvas: $('boardB'), source: null, sweep: freshSweep(), msPerEval: null, gpu: null, isStage: false },
 ];
 panels.forEach(p => { p.ctx = setupCanvas(p.canvas); });
 // Single source of truth for "is this panel currently shown" -- the compare checkbox IS what
@@ -1085,7 +1278,13 @@ function syncSpeedControls() {
   $('widthWrap').style.display = anyDeep ? '' : 'none';
   $('coresWrap').style.display = $('useWorkers').checked ? '' : 'none';
   $('coresLbl').textContent = `${navigator.hardwareConcurrency || '?'} available`;
+  $('gpuNote').style.display = $('useGpu').checked ? '' : 'none';
 }
+$('useGpu').addEventListener('change', () => {
+  panels.forEach(p => { p.msPerEval = null; });
+  panels.forEach(gpuEnsure);
+  syncSpeedControls(); updateEstimate(); enterSetup();
+});
 $('useWorkers').addEventListener('change', () => { poolDestroy(); syncSpeedControls(); updateEstimate(); enterSetup(); });
 $('cores').addEventListener('change', () => { poolDestroy(); updateEstimate(); enterSetup(); });
 $('searchWidth').addEventListener('change', () => {
@@ -1276,7 +1475,20 @@ boardBCanvas.addEventListener('pointerleave', () => { hoverlineB.textContent = '
 /* ===================================================================================
  * Compute-time estimate
  * =================================================================================== */
-function calibrate(source) {
+function calibrate(p) {
+  const source = p.source;
+  // When the GPU is what will actually run the sweep, the honest per-cell cost is a real GPU
+  // batch -- dominated by CPU-side features() rather than by the net at all -- not the CPU eval.
+  if (gpuEligible(p) && p.gpu) {
+    const nIn = N_FEATURES, B = 256, xs = new Float32Array(B*nIn);
+    const t0 = performance.now();
+    for (let i = 0; i < B; i++) {
+      const ang = i*0.13;
+      xs.set(features(mockEng({ x: Math.cos(ang)*20, y: Math.sin(ang)*20, rot: ang }, state.op)), i*nIn);
+    }
+    p.gpu.values(xs, B);
+    return (performance.now()-t0)/B;
+  }
   // A D2/D3 eval is a full minimax search (hundreds of net calls), not one forward pass, so
   // probing it 150x would freeze the tab for the same time a small chunk of the real sweep
   // takes. Its cost is dominated by the fixed arm-sweep/recursion shape rather than by which
@@ -1293,7 +1505,7 @@ function calibrate(source) {
 function updateEstimate() {
   const active = panels.filter(panelVisible).filter(p => p.source);
   if (!active.length) { $('estimate').innerHTML = 'Load a model or pick a ladder rung to see a compute-time estimate.'; return; }
-  active.forEach(p => { if (p.msPerEval == null) p.msPerEval = calibrate(p.source); });
+  active.forEach(p => { if (p.msPerEval == null) p.msPerEval = calibrate(p); });
   const frames = 1 + state.moves.length;
   // Cells are independent, so N workers really do divide the wall clock by N here -- there is no
   // shared work between them to serialise on. Calibration is measured on the main thread, so the
@@ -1383,10 +1595,10 @@ function footOffBoard(x, y) {
 }
 function recordCell(p, c, raw) {
   const s = p.sweep;
-  const v = normalize(p.source, raw, p);
+  noteRaw(p.source, raw, p);
   const offBoard = footOffBoard(c.x, c.y);
-  paintCell(p, c.col, c.row, c.stride, v, offBoard);
-  s.grid[c.row*s.N + c.col] = v; s.offGrid[c.row*s.N + c.col] = offBoard ? 1 : 0;
+  paintCell(p, c.col, c.row, c.stride, scaleFor(p.source, raw, s), offBoard);
+  s.grid[c.row*s.N + c.col] = raw; s.offGrid[c.row*s.N + c.col] = offBoard ? 1 : 0;
   s.done++; s.evalCount++;
 }
 function tickPanel(p, budgetMs) {
@@ -1396,6 +1608,36 @@ function tickPanel(p, budgetMs) {
     if (!c) return;
     recordCell(p, c, evalRaw(p.source, { x: c.x, y: c.y, rot: state.me.rot }, state.op));
   } while (performance.now() - tStart < budgetMs);
+}
+// The GPU only ever drives a D1 net sweep: a rung has no net to run, and a D2/D3 cell interleaves
+// its net calls with sequential physics, so there is no batch to hand over.
+function gpuEligible(p) {
+  return $('useGpu').checked && p.source && p.source.kind === 'net' && (p.source.searchDepth || 1) === 1;
+}
+function gpuEnsure(p) {
+  if (!gpuEligible(p)) { if (p.gpu) { p.gpu.destroy(); p.gpu = null; } return false; }
+  if (p.gpu && p.gpu.net === p.source.net) return true;
+  if (p.gpu) p.gpu.destroy();
+  try { p.gpu = new GpuNet(p.source.net); }
+  catch (err) {
+    p.gpu = null;
+    setStatus(`<strong>GPU unavailable</strong> — ${esc(err.message)}. Sweeping on the CPU instead.`, true);
+    return false;
+  }
+  return true;
+}
+// One batch per frame. The GPU finishes a batch in about a millisecond; what sets the pace is
+// features() on the CPU for each position, so the batch is sized to keep a frame's work small
+// enough that the page stays interactive rather than to keep the GPU busy.
+function gpuTickPanel(p) {
+  const s = p.sweep, cells = [], B = 512, nIn = N_FEATURES;
+  while (cells.length < B) { const c = nextCell(s); if (!c) break; cells.push(c); }
+  if (!cells.length) return;
+  const xs = new Float32Array(cells.length*nIn);
+  for (let i = 0; i < cells.length; i++)
+    xs.set(features(mockEng({ x: cells[i].x, y: cells[i].y, rot: state.me.rot }, state.op)), i*nIn);
+  const vals = p.gpu.values(xs, cells.length);
+  for (let i = 0; i < cells.length; i++) recordCell(p, cells[i], vals[i]);
 }
 // Keep every idle worker fed. Each job is sized to about a tenth of a second of work from the
 // calibrated per-cell cost, so a D1 job carries thousands of cells and a D3 job carries one or
@@ -1459,15 +1701,18 @@ function runPanelsToCompletion() {
       if (globalPaused) { requestAnimationFrame(frame); return; }
       const active = activePanels().filter(panelBusy);
       if (!active.length) { resolve(); return; }
+      const gpuPanels = active.filter(p => p.gpu);
+      const cpuPanels = active.filter(p => !p.gpu);
+      for (const p of gpuPanels) gpuTickPanel(p);
       if (parallel) {
         // Share the pool between the panels rather than letting whichever is dispatched first
         // take every idle worker -- otherwise comparing two models would fill in A completely
         // while B sat blank, which is the opposite of what a side-by-side is for.
-        const share = Math.max(1, Math.ceil(pool.workers.length/active.length));
-        for (const p of active) dispatchPanel(p, share);
+        const share = Math.max(1, Math.ceil(pool.workers.length/Math.max(1, cpuPanels.length)));
+        for (const p of cpuPanels) dispatchPanel(p, share);
       } else {
-        const budget = active.length > 1 ? 5 : 8;
-        for (const p of active) tickPanel(p, budget);
+        const budget = cpuPanels.length > 1 ? 5 : 8;
+        for (const p of cpuPanels) tickPanel(p, budget);
       }
       updateStats();
       requestAnimationFrame(frame);
@@ -1498,7 +1743,10 @@ function enterSetup() {
 // Everything a run needs in place before the first cell: workers built (or proved unavailable)
 // and holding the current sources, and a per-cell cost measured so jobs can be sized sensibly.
 function beginRun() {
+  panels.forEach(gpuEnsure);
   updateEstimate();
+  // Workers still matter with the GPU on: a compare panel can be a rung or a D2/D3 net, which
+  // the GPU never takes, and those keep sweeping on the cores alongside it.
   if (poolEnsure()) poolSendSources();
   mode = 'running'; updateButtons();
 }
@@ -1507,7 +1755,7 @@ async function startRun() {
   beginRun();
   activePanels().forEach(resetPanelSweep);
   await runPanelsToCompletion();
-  if (mode === 'running') { mode = 'done'; activePanels().forEach(drawFinished); }
+  if (mode === 'running') { mode = 'done'; activePanels().forEach(finishPanel); }
   updateButtons();
 }
 async function animateThroughMoves() {
@@ -1528,7 +1776,7 @@ async function animateThroughMoves() {
   }
   if (mode !== 'running') { state.op = savedOp; enterSetup(); return; }
   mode = 'done'; setPhase('');
-  activePanels().forEach(drawFinished);
+  activePanels().forEach(finishPanel);
   updateButtons();
 }
 // Spins the mover's own rotation smoothly to `target` (radians), redrawing the stage and the
@@ -1574,7 +1822,7 @@ async function animateThroughRotations() {
   }
   if (mode !== 'running') { state.me.rot = savedRot; syncPoseInputs(); enterSetup(); return; }
   mode = 'done'; setPhase('');
-  activePanels().forEach(drawFinished);
+  activePanels().forEach(finishPanel);
   updateButtons();
 }
 function setPhase(text) { $('status').querySelector('.phase')?.remove();
@@ -1627,12 +1875,18 @@ function repaintFromGrid(p) {
   drawStaticBackground(p.ctx);
   for (let row = 0; row < s.N; row++) {
     for (let col = 0; col < s.N; col++) {
-      const v = s.grid[row*s.N + col];
-      if (Number.isNaN(v)) continue;
-      paintCell(p, col, row, 1, v, s.offGrid[row*s.N + col] === 1);
+      const raw = s.grid[row*s.N + col];
+      if (Number.isNaN(raw)) continue;
+      paintCell(p, col, row, 1, scaleFor(p.source, raw, s), s.offGrid[row*s.N + col] === 1);
     }
   }
   drawFinished(p);
+}
+// A rung's colours depend on the sweep's full range, so the finished picture is repainted once
+// the range is final. For a net this is just the normal finish draw -- its values need no scaling.
+function finishPanel(p) {
+  if (p.source && p.source.kind !== 'net' && p.sweep.grid) repaintFromGrid(p);
+  else drawFinished(p);
 }
 function repaintAllFinished() { if (mode === 'done') panels.forEach(p => { if (p.source && p.sweep.grid) repaintFromGrid(p); }); }
 $('palette').addEventListener('change', () => { colorOpts.palette = $('palette').value; repaintAllFinished(); });
@@ -1662,10 +1916,10 @@ function exportPanel(p, scale) {
   octx.fillStyle = '#0a0f1a'; octx.fillRect(0, 0, size, size);
   for (let row = 0; row < s.N; row++) {
     for (let col = 0; col < s.N; col++) {
-      const v = s.grid[row*s.N + col];
-      if (Number.isNaN(v)) continue;
+      const raw = s.grid[row*s.N + col];
+      if (Number.isNaN(raw)) continue;
       octx.globalAlpha = s.offGrid[row*s.N + col] === 1 ? 0.4 : 1;
-      octx.fillStyle = colorFor(v);
+      octx.fillStyle = colorFor(scaleFor(p.source, raw, s));
       octx.fillRect(col*scale, row*scale, scale + 0.6, scale + 0.6);
     }
   }
