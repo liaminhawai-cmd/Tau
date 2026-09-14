@@ -619,7 +619,7 @@ let globalPaused = false;
 function mockEng(me, op) { return { getG: () => ({ pieces: [me, op], active: 0 }), CFG, angInSpan, LINE_INTERSECTIONS }; }
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function depthNote(source) {
-  const depth = source && source.kind === 'net' ? (source.searchDepth || 1) : 1;
+  const depth = source ? (source.searchDepth || 1) : 1;
   return depth > 1 ? ` <span style="color:var(--muted)">(D1 preview — run the sweep for D${depth})</span>` : '';
 }
 
@@ -721,7 +721,7 @@ function evalD1(source, me, op) {
 }
 function evalRaw(source, me, op) {
   if (!source) return null;
-  const depth = source.kind === 'net' ? (source.searchDepth || 1) : 1;
+  const depth = source.searchDepth || 1;
   if (depth <= 1) return evalD1(source, me, op);
   // Search-based colour: root the real engine at `me` (the swept piece) to move, and let it
   // search `depth` plies deep against `op` fixed where it's posed. Same evalFn contract as
@@ -733,7 +733,16 @@ function evalRaw(source, me, op) {
   Engine.setActive(0);
   Engine.clearTurn();
   G.over = false; G.winner = null;
-  const chosen = nnPlanForLite(Engine, source.net, 0, { depth, keepForDepth: source.keepForDepth || 4 });
+  // A rung is searched through its OWN eval: nnPlanForLite takes a leaf evaluator, and ladderEval
+  // is one. This matters because the real rungs are not static -- L6 plays at depth 2 and L8 to L11
+  // at depth 3 -- so a rung's map at D1 is its raw weighted sum, not its judgement. The evalFn
+  // contract is what makes it safe: ladderEval is NOT antisymmetric (its park term reads only
+  // pieces[idx], oppFree only pieces[1-idx]), so it must be asked for a named side's score rather
+  // than negated from the opponent's, which is exactly what evalFn(e, side) does.
+  const chosen = source.kind === 'net'
+    ? nnPlanForLite(Engine, source.net, 0, { depth, keepForDepth: source.keepForDepth || 4 })
+    : nnPlanForLite(Engine, null, 0, { depth, keepForDepth: source.keepForDepth || 4,
+                                       evalFn: (e, side) => Engine.ladderEval(side, source.w) });
   if (!chosen) return evalD1(source, me, op);   // wedged -- fall back to the raw value
   // `.deep` is only set when the depth>=2 recursion actually ran -- it's skipped outright when
   // the root's best candidate is already a clean throw (nothing to search deeper for), in which
@@ -750,11 +759,19 @@ function evalRaw(source, me, op) {
 // worker pool that order depends on how many cores ran it, so storing pre-scaled values made the
 // picture itself change with the core count. It also fixes the same latent bug for colour-grade
 // repaints and PNG exports, which were re-colouring values frozen against different running maxima.
+// A searched rung reports a throw as +/-1e6, engine-exact rather than evaluated. A net's value is
+// tanh-bounded so colorFor just clamps it, but a rung's map is scaled to its own observed range --
+// so letting one throw into that range would divide every other cell by a million and flatten the
+// picture to neutral. Throws are kept out of the range and painted at the extreme instead.
+const THROW_SCALE = 1e5;
 function noteRaw(source, raw, panel) {
-  if (source.kind !== 'net') panel.sweep.maxAbsRaw = Math.max(panel.sweep.maxAbsRaw, Math.abs(raw));
+  if (source.kind !== 'net' && Math.abs(raw) < THROW_SCALE)
+    panel.sweep.maxAbsRaw = Math.max(panel.sweep.maxAbsRaw, Math.abs(raw));
 }
 function scaleFor(source, raw, sweep) {
-  return source.kind === 'net' ? raw : raw/sweep.maxAbsRaw;
+  if (source.kind === 'net') return raw;
+  if (Math.abs(raw) >= THROW_SCALE) return raw > 0 ? 1 : -1;
+  return raw/sweep.maxAbsRaw;
 }
 
 /* ===================================================================================
@@ -985,7 +1002,7 @@ self.onmessage = e => {
   if (m.type === 'source') {
     sources[m.panelId] = m.source ? (m.source.kind === 'net'
       ? { kind: 'net', net: MLP.fromJSON(m.source.net), searchDepth: m.source.searchDepth, keepForDepth: m.source.keepForDepth }
-      : { kind: 'ladder', w: m.source.w }) : null;
+      : { kind: 'ladder', w: m.source.w, searchDepth: m.source.searchDepth, keepForDepth: m.source.keepForDepth }) : null;
     return;
   }
   if (m.type === 'job') {
@@ -1013,7 +1030,11 @@ function buildWorkerSource() {
 // arrays but not the class, so it is rebuilt there through the same fromJSON the file loader uses.
 function sourceForWorker(src) {
   if (!src) return null;
-  if (src.kind !== 'net') return { kind: 'ladder', w: src.w };
+  // searchDepth/keepForDepth have to cross for a LADDER too, not just a net: the rungs really do
+  // search (L6 at depth 2, L8-L11 at depth 3), so dropping them here made every worker silently
+  // evaluate a rung at D1 while the main thread's estimate priced D2 -- identical maps, 24s of
+  // phantom cost. Both branches carry the same two fields for exactly that reason.
+  if (src.kind !== 'net') return { kind: 'ladder', w: src.w, searchDepth: src.searchDepth || 1, keepForDepth: src.keepForDepth || 4 };
   const m = src.net;
   return { kind: 'net', searchDepth: src.searchDepth || 1, keepForDepth: src.keepForDepth || 4,
            net: { sizes: m.sizes, topology: m.topology, fanIns: m.fanIns, W: m.W, b: m.b } };
@@ -1227,13 +1248,14 @@ function wireSourcePicker(letter) {
       p.source = { kind: 'ladder', level: lvl, w: Engine.AI_LADDER[lvl-1].w, name: `Ladder L${lvl}` };
       nameEl.innerHTML = `<b>Ladder L${lvl}</b><br>ladderEval(idx, w) -- L${lvl}'s own weights, unnormalised score`;
     }
-    depthWrap.style.display = 'none';   // a rung's depth (if any) is baked into AI_LADDER, not a knob here
+    depthWrap.style.display = lvl ? '' : 'none';
+    if (p.source) p.source.searchDepth = +depthSel.value || 1;
     p.msPerEval = null;
     syncSpeedControls();
     onSourceChanged();
   });
   depthSel.addEventListener('change', () => {
-    if (p.source && p.source.kind === 'net') p.source.searchDepth = +depthSel.value;
+    if (p.source) p.source.searchDepth = +depthSel.value;
     p.msPerEval = null;
     syncSpeedControls();
     onSourceChanged();
@@ -1326,7 +1348,7 @@ $('resSelect').addEventListener('change', () => { updateEstimate(); enterSetup()
 // Speed controls. Search width is only meaningful once something is searching, so it stays hidden
 // until a panel is set to D2/D3; the core count always applies, since even a D1 sweep parallelises.
 function syncSpeedControls() {
-  const anyDeep = panels.some(p => p.source && p.source.kind === 'net' && (p.source.searchDepth || 1) >= 2);
+  const anyDeep = panels.some(p => p.source && (p.source.searchDepth || 1) >= 2);
   $('widthWrap').style.display = anyDeep ? '' : 'none';
   $('coresWrap').style.display = $('useWorkers').checked ? '' : 'none';
   $('coresLbl').textContent = `${navigator.hardwareConcurrency || '?'} available`;
@@ -1341,7 +1363,7 @@ $('useWorkers').addEventListener('change', () => { poolDestroy(); syncSpeedContr
 $('cores').addEventListener('change', () => { poolDestroy(); updateEstimate(); enterSetup(); });
 $('searchWidth').addEventListener('change', () => {
   const keep = +$('searchWidth').value;
-  panels.forEach(p => { if (p.source && p.source.kind === 'net') { p.source.keepForDepth = keep; p.msPerEval = null; } });
+  panels.forEach(p => { if (p.source) { p.source.keepForDepth = keep; p.msPerEval = null; } });
   updateEstimate(); enterSetup();
 });
 syncSpeedControls();
@@ -1527,7 +1549,7 @@ boardBCanvas.addEventListener('pointerleave', () => { hoverlineB.textContent = '
 /* ===================================================================================
  * Compute-time estimate
  * =================================================================================== */
-function calibrate(p) {
+function calibrate(p, budgetMs = 1200) {
   const source = p.source;
   // When the GPU is what will actually run the sweep, the honest per-cell cost is a real GPU
   // batch -- dominated by CPU-side features() rather than by the net at all -- not the CPU eval.
@@ -1541,23 +1563,41 @@ function calibrate(p) {
     p.gpu.values(xs, B);
     return (performance.now()-t0)/B;
   }
-  // A D2/D3 eval is a full minimax search (hundreds of net calls), not one forward pass, so
-  // probing it 150x would freeze the tab for the same time a small chunk of the real sweep
-  // takes. Its cost is dominated by the fixed arm-sweep/recursion shape rather than by which
-  // position it's asked about, so far fewer samples still give an honest per-cell estimate.
-  const depth = source.kind === 'net' ? (source.searchDepth || 1) : 1;
+  // A D2/D3 eval is a full minimax search, not one forward pass, and how many net calls that is
+  // depends on the net: a 2M-parameter one costs ~5.6ms a call, so a single D2 cell is ~600 calls
+  // and about three and a half seconds. A fixed sample count cannot survive that -- 20 samples of
+  // it froze the page for over a minute -- so the probe is bounded by TIME, not by count. One
+  // sample always completes (there is no way to interrupt a search mid-flight) and the loop stops
+  // the moment the budget is spent. Accuracy survives the cut because the cost is set by the fixed
+  // arm-sweep and recursion shape rather than by which position is asked about.
+  const depth = source.searchDepth || 1;
   const N = depth >= 3 ? 6 : depth >= 2 ? 20 : 150;
   const t0 = performance.now();
-  for (let i = 0; i < N; i++) {
+  let i = 0;
+  do {
     const ang = i*0.13;
     evalRaw(source, { x: Math.cos(ang)*20, y: Math.sin(ang)*20, rot: ang }, state.op);
-  }
-  return (performance.now()-t0)/N;
+    i++;
+  } while (i < N && performance.now() - t0 < budgetMs);
+  return (performance.now()-t0)/i;
 }
-function updateEstimate() {
+// `force` is what a run passes: measure now, whatever it costs, because the sweep is about to pay
+// that price anyway. Without it a panel whose per-cell cost is expensive to even MEASURE (D2/D3 on
+// a big net: one probe is seconds) is left unmeasured and says so, rather than freezing the page
+// the instant the depth dropdown changes -- which is a setting being adjusted, not work requested.
+function estimateIsCheap(p) {
+  return gpuEligible(p) || (p.source.searchDepth || 1) < 2;
+}
+function updateEstimate(force) {
   const active = panels.filter(panelVisible).filter(p => p.source);
   if (!active.length) { $('estimate').innerHTML = 'Load a model or pick a ladder rung to see a compute-time estimate.'; updateRotEstimate(); return; }
-  active.forEach(p => { if (p.msPerEval == null) p.msPerEval = calibrate(p); });
+  active.forEach(p => { if (p.msPerEval == null && (force || estimateIsCheap(p))) p.msPerEval = calibrate(p); });
+  if (active.some(p => p.msPerEval == null)) {
+    $('estimate').innerHTML = `<div><span>${active.filter(p => p.msPerEval == null).map(p => 'D' + (p.source.searchDepth || 1)).join(', ')} search</span>` +
+      `<span>timing it costs seconds on a big net — press Run to measure</span></div>`;
+    updateRotEstimate();
+    return;
+  }
   const frames = 1 + state.moves.length;
   // Cells are independent, so N workers really do divide the wall clock by N here -- there is no
   // shared work between them to serialise on. Calibration is measured on the main thread, so the
@@ -1815,7 +1855,7 @@ function enterSetup() {
 function beginRun() {
   stopPlayback();
   panels.forEach(gpuEnsure);
-  updateEstimate();
+  updateEstimate(true);
   // Workers still matter with the GPU on: a compare panel can be a rung or a D2/D3 net, which
   // the GPU never takes, and those keep sweeping on the cores alongside it.
   if (poolEnsure()) poolSendSources();
@@ -2065,7 +2105,13 @@ $('saveFrames').addEventListener('click', async () => {
 function updateRotEstimate() {
   const active = panels.filter(panelVisible).filter(p => p.source);
   if (!active.length) { $('rotEstimate').textContent = 'Pick a source to estimate the spin.'; return; }
-  active.forEach(p => { if (p.msPerEval == null) p.msPerEval = calibrate(p); });
+  // Same deferral as updateEstimate: never pay seconds to time something the user has only
+  // selected, not asked for. A spin is priced once the per-cell cost is known.
+  active.forEach(p => { if (p.msPerEval == null && estimateIsCheap(p)) p.msPerEval = calibrate(p); });
+  if (active.some(p => p.msPerEval == null)) {
+    $('rotEstimate').textContent = `${rotFrameCount()} frames — press Run once to measure the per-cell cost.`;
+    return;
+  }
   const lanes = $('useWorkers').checked ? Math.max(1, poolSize()) : 1;
   const cells = countInDisc(+$('resSelect').value);
   const perFrameS = active.reduce((a, p) => a + p.msPerEval*cells, 0)/1000/lanes;
