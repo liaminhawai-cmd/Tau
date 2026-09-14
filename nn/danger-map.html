@@ -213,6 +213,32 @@ canvas.board{cursor:crosshair}
       </div>
 
       <div class="block">
+        <h2>Speed</h2>
+        <h2 style="margin:0 0 6px"><label class="check"><input type="checkbox" id="useWorkers" checked> Use every core (Web Workers)</label></h2>
+        <div class="field" id="coresWrap">
+          <label>Cores <small id="coresLbl"></small></label>
+          <select id="cores">
+            <option value="auto" selected>Auto — half the machine</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="4">4</option>
+            <option value="8">8</option>
+            <option value="16">16</option>
+          </select>
+        </div>
+        <div class="field" id="widthWrap" style="display:none">
+          <label>Search width (D2/D3)</label>
+          <select id="searchWidth">
+            <option value="4" selected>4 — full strength (nnai default)</option>
+            <option value="3">3 — ~1.7× faster</option>
+            <option value="2">2 — ~3× faster</option>
+            <option value="1">1 — ~8× faster, greedy</option>
+          </select>
+        </div>
+        <div class="hint">Auto leaves half the machine free, so a sweep doesn't fight a trainer running alongside it. Search width is how many candidate moves get searched deeper — the one knob that compounds per ply, so it's where D2/D3 time actually goes.</div>
+      </div>
+
+      <div class="block">
         <h2>Colour</h2>
         <div class="field">
           <label>Palette</label>
@@ -678,7 +704,7 @@ function evalRaw(source, me, op) {
   Engine.setActive(0);
   Engine.clearTurn();
   G.over = false; G.winner = null;
-  const chosen = nnPlanForLite(Engine, source.net, 0, { depth, keepForDepth: 4 });
+  const chosen = nnPlanForLite(Engine, source.net, 0, { depth, keepForDepth: source.keepForDepth || 4 });
   if (!chosen) return evalD1(source, me, op);   // wedged -- fall back to the raw value
   // `.deep` is only set when the depth>=2 recursion actually ran -- it's skipped outright when
   // the root's best candidate is already a clean throw (nothing to search deeper for), in which
@@ -689,6 +715,101 @@ function normalize(source, raw, panel) {
   if (source.kind === 'net') return raw;
   panel.sweep.maxAbsRaw = Math.max(panel.sweep.maxAbsRaw, Math.abs(raw));
   return raw / panel.sweep.maxAbsRaw;
+}
+
+/* ===================================================================================
+ * Worker pool. The sweep is embarrassingly parallel -- every cell is an independent
+ * evaluation of a fixed position -- so the only thing standing between it and every
+ * core on the machine is getting the code into a Worker. That matters most exactly
+ * where it hurts most: a D1 cell is one forward pass, but a D2/D3 cell is a full
+ * physics-driven minimax, hundreds of times more work.
+ *
+ * The workers are built from a Blob URL rather than a separate .js file, because this
+ * tool is opened as a local file and a file:// Worker script is blocked (a blob: one
+ * is not). Their source is assembled by stringifying the very functions this page
+ * already runs -- including buildTauEngine, the whole rules engine -- so there is no
+ * second copy of anything to drift: a worker literally runs this file's own code.
+ * =================================================================================== */
+const WORKER_MAIN = `
+const Engine = buildTauEngine();
+Engine.newGame();
+const CFG = Engine.CFG, LINE_INTERSECTIONS = Engine.LINE_INTERSECTIONS, angInSpan = Engine.angInSpan;
+const sources = {};                       // panel id -> source, since A and B can differ
+self.onmessage = e => {
+  const m = e.data;
+  if (m.type === 'source') {
+    sources[m.panelId] = m.source ? (m.source.kind === 'net'
+      ? { kind: 'net', net: MLP.fromJSON(m.source.net), searchDepth: m.source.searchDepth, keepForDepth: m.source.keepForDepth }
+      : { kind: 'ladder', w: m.source.w }) : null;
+    return;
+  }
+  if (m.type === 'job') {
+    const src = sources[m.panelId], n = m.xs.length, out = new Float64Array(n);
+    for (let i = 0; i < n; i++)
+      out[i] = evalRaw(src, { x: m.xs[i], y: m.ys[i], rot: m.meRot }, m.op);
+    self.postMessage({ type: 'done', jobId: m.jobId, panelId: m.panelId, seq: m.seq, values: out }, [out.buffer]);
+  }
+};
+`;
+function buildWorkerSource() {
+  return [
+    `const TWO_PI = ${TWO_PI};`,
+    `const N_FEATURES = ${N_FEATURES};`,
+    `const SWING_CAP = ${SWING_CAP};`,
+    `const SEARCH_CAP_RAD = ${SEARCH_CAP_RAD}, SEARCH_MIN_MOVE = ${SEARCH_MIN_MOVE};`,
+    MLP.toString(),
+    sortedFeet.toString(), circleMeetAngles.toString(), arcSignedDist.toString(), features.toString(),
+    buildTauEngine.toString(),
+    mockEng.toString(), nnPlanForLite.toString(), evalD1.toString(), evalRaw.toString(),
+    WORKER_MAIN,
+  ].join('\n');
+}
+// A net crosses to a worker as plain data, not as an MLP: structured clone copies the typed
+// arrays but not the class, so it is rebuilt there through the same fromJSON the file loader uses.
+function sourceForWorker(src) {
+  if (!src) return null;
+  if (src.kind !== 'net') return { kind: 'ladder', w: src.w };
+  const m = src.net;
+  return { kind: 'net', searchDepth: src.searchDepth || 1, keepForDepth: src.keepForDepth || 4,
+           net: { sizes: m.sizes, topology: m.topology, fanIns: m.fanIns, W: m.W, b: m.b } };
+}
+const pool = { workers: [], idle: [], url: null, jobId: 0, jobs: new Map() };
+function poolSize() {
+  const sel = $('cores').value;
+  const hw = navigator.hardwareConcurrency || 4;
+  return sel === 'auto' ? Math.max(1, Math.floor(hw/2)) : Math.max(0, Math.min(+sel, 32));
+}
+function poolDestroy() {
+  pool.workers.forEach(w => w.terminate());
+  pool.workers = []; pool.idle = []; pool.jobs.clear();
+  if (pool.url) { URL.revokeObjectURL(pool.url); pool.url = null; }
+}
+// Returns the number of live workers (0 means "run it on the main thread instead"). Worker
+// creation is allowed to fail -- some browsers refuse them for a local file outright -- and this
+// tool has to keep working when it does, so a failure downgrades to the inline path rather than
+// breaking the run.
+function poolEnsure() {
+  const want = $('useWorkers').checked ? poolSize() : 0;
+  if (pool.workers.length === want) return want;
+  poolDestroy();
+  if (!want) return 0;
+  try {
+    pool.url = URL.createObjectURL(new Blob([buildWorkerSource()], { type: 'application/javascript' }));
+    for (let i = 0; i < want; i++) {
+      const w = new Worker(pool.url);
+      w.onmessage = ev => onWorkerResult(w, ev.data);
+      pool.workers.push(w); pool.idle.push(w);
+    }
+  } catch (err) {
+    poolDestroy();
+    setStatus(`<strong>Workers unavailable</strong> — ${esc(err.message)}. Falling back to a single-threaded sweep.`, true);
+    return 0;
+  }
+  return pool.workers.length;
+}
+function poolSendSources() {
+  for (const w of pool.workers)
+    for (const p of panels) w.postMessage({ type: 'source', panelId: p.id, source: sourceForWorker(p.source) });
 }
 
 /* ===================================================================================
@@ -863,11 +984,13 @@ function wireSourcePicker(letter) {
     }
     depthWrap.style.display = 'none';   // a rung's depth (if any) is baked into AI_LADDER, not a knob here
     p.msPerEval = null;
+    syncSpeedControls();
     onSourceChanged();
   });
   depthSel.addEventListener('change', () => {
     if (p.source && p.source.kind === 'net') p.source.searchDepth = +depthSel.value;
     p.msPerEval = null;
+    syncSpeedControls();
     onSourceChanged();
   });
   fileInput.addEventListener('change', e => {
@@ -885,9 +1008,11 @@ function wireSourcePicker(letter) {
       }
       const outW = m.sizes[m.sizes.length - 1];
       const params = m.W.reduce((a, w) => a + w.length, 0) + m.b.reduce((a, b) => a + b.length, 0);
-      p.source = { kind: 'net', net: m, name: f.name, searchDepth: +depthSel.value || 1 };
+      p.source = { kind: 'net', net: m, name: f.name, searchDepth: +depthSel.value || 1,
+                   keepForDepth: +$('searchWidth').value || 4 };
       p.msPerEval = null;
       depthWrap.style.display = '';
+      syncSpeedControls();
       nameEl.innerHTML = `<b>${esc(f.name)}</b><br>sizes: ${m.sizes.join('-')}` +
         (m.topology ? `<br>topology: ${esc(m.topology.kind)}` : '') + `<br>${params.toLocaleString()} params` +
         (outW !== 1 && outW !== 23 ? `<div class="warn">Output width ${outW} — expected 1 (value) or 23 (dual). If this is a policy-only net, the number shown is one policy logit, not an evaluation.</div>` : '');
@@ -952,6 +1077,23 @@ $('swap').addEventListener('click', () => {
   syncPoseInputs(); opMovedManually(); enterSetup();
 });
 $('resSelect').addEventListener('change', () => { updateEstimate(); enterSetup(); });
+
+// Speed controls. Search width is only meaningful once something is searching, so it stays hidden
+// until a panel is set to D2/D3; the core count always applies, since even a D1 sweep parallelises.
+function syncSpeedControls() {
+  const anyDeep = panels.some(p => p.source && p.source.kind === 'net' && (p.source.searchDepth || 1) >= 2);
+  $('widthWrap').style.display = anyDeep ? '' : 'none';
+  $('coresWrap').style.display = $('useWorkers').checked ? '' : 'none';
+  $('coresLbl').textContent = `${navigator.hardwareConcurrency || '?'} available`;
+}
+$('useWorkers').addEventListener('change', () => { poolDestroy(); syncSpeedControls(); updateEstimate(); enterSetup(); });
+$('cores').addEventListener('change', () => { poolDestroy(); updateEstimate(); enterSetup(); });
+$('searchWidth').addEventListener('change', () => {
+  const keep = +$('searchWidth').value;
+  panels.forEach(p => { if (p.source && p.source.kind === 'net') { p.source.keepForDepth = keep; p.msPerEval = null; } });
+  updateEstimate(); enterSetup();
+});
+syncSpeedControls();
 syncPoseInputs();
 
 /* ===================================================================================
@@ -1153,13 +1295,17 @@ function updateEstimate() {
   if (!active.length) { $('estimate').innerHTML = 'Load a model or pick a ladder rung to see a compute-time estimate.'; return; }
   active.forEach(p => { if (p.msPerEval == null) p.msPerEval = calibrate(p.source); });
   const frames = 1 + state.moves.length;
+  // Cells are independent, so N workers really do divide the wall clock by N here -- there is no
+  // shared work between them to serialise on. Calibration is measured on the main thread, so the
+  // per-cell cost it reports is the right thing to divide.
+  const lanes = $('useWorkers').checked ? Math.max(1, poolSize()) : 1;
   const rows = [64, 128, 256, 512, 1024].map(N => {
     const cells = countInDisc(N);
-    const perFrameS = active.reduce((a, p) => a + p.msPerEval*cells, 0)/1000;
+    const perFrameS = active.reduce((a, p) => a + p.msPerEval*cells, 0)/1000/lanes;
     const totalS = perFrameS*frames;
     return `<div><span>${N}×${N}</span><span>${fmtS(perFrameS)}/frame · ${fmtS(totalS)} total (${frames} frame${frames>1?'s':''})</span></div>`;
   }).join('');
-  $('estimate').innerHTML = rows;
+  $('estimate').innerHTML = rows + `<div style="margin-top:6px;color:var(--muted)">${lanes} core${lanes>1?'s':''} · ${esc(active.map(p => `${p.id}: ${p.msPerEval.toFixed(2)}ms/cell`).join(' · '))}</div>`;
 }
 function fmtS(s) { return s < 1 ? Math.round(s*1000)+'ms' : s < 10 ? s.toFixed(1)+'s' : Math.round(s)+'s'; }
 
@@ -1179,8 +1325,12 @@ function resetPanelSweep(p) {
   const s = p.sweep;
   s.N = +$('resSelect').value; s.cellBoard = 2*HALF/s.N; s.cellPx = CSS_SIZE/s.N;
   let st = 1; while (st*8 < s.N) st *= 2;
-  s.stride = st; s.col = 0; s.row = 0; s.done = 0; s.total = countInDisc(s.N);
+  s.stride = st; s.initialStride = st; s.col = 0; s.row = 0; s.done = 0; s.total = countInDisc(s.N);
   s.evalCount = 0; s.t0 = performance.now(); s.maxAbsRaw = 1;
+  // Results still in flight belong to the sweep that was running when they were dispatched, not
+  // to this one -- a new rotation frame or a re-run must not paint them. They carry the seq they
+  // were issued under and are dropped on arrival if it no longer matches.
+  s.seq = (s.seq || 0) + 1; s.outstanding = 0;
   // Kept so colour-control changes and PNG export can redraw at full precision straight from the
   // computed data, with no re-sweep: every in-disc cell is individually visited exactly once by
   // the time a sweep completes (see the scheduler's own coverage note), so this array is the same
@@ -1196,52 +1346,129 @@ function paintCell(p, col, row, stride, v, offBoard) {
   p.ctx.fillRect(px, py, size + 0.6, size + 0.6);
   p.ctx.globalAlpha = 1;
 }
+// The one cursor over the grid, shared by the single-threaded and worker paths so there is no
+// second copy of the coarse-to-fine ordering to drift out of step. Advances to the next cell that
+// is BOTH new at the current stride (never re-visiting one a coarser pass already did) and inside
+// the board disc, and returns null when this stride's pass is exhausted.
+//
+// Null also comes back at a stride boundary while worker results are still outstanding, and that
+// is load-bearing rather than merely tidy: a stride-S cell paints an SxS block, so a late result
+// from pass S landing after pass S/2 has painted inside that block would blot the finer detail
+// back out. Holding the finer pass until the coarser one is fully home makes the picture strictly
+// refine, exactly as it does single-threaded.
+function nextCell(s) {
+  for (;;) {
+    if (s.stride < 1) return null;
+    if (s.row >= s.N) {
+      if (s.outstanding > 0) return null;
+      s.stride = s.stride >> 1; s.col = 0; s.row = 0;
+      continue;
+    }
+    const col = s.col, row = s.row, stride = s.stride;
+    s.col += stride;
+    if (s.col >= s.N) { s.col = 0; s.row += stride; }
+    const isNew = stride === s.initialStride || (col % (stride*2) !== 0) || (row % (stride*2) !== 0);
+    if (!isNew) continue;
+    const x = -HALF + (col + 0.5)*s.cellBoard, yRaw = -HALF + (row + 0.5)*s.cellBoard;
+    if (x*x + yRaw*yRaw > CFG.edgeU*CFG.edgeU) continue;
+    return { col, row, stride, x, y: -yRaw };
+  }
+}
+function footOffBoard(x, y) {
+  for (let i = 0; i < 3; i++) {
+    const a = state.me.rot + i*TWO_PI/3;
+    if (Math.hypot(x + Math.cos(a)*CFG.footR, y + Math.sin(a)*CFG.footR) > CFG.edgeU) return true;
+  }
+  return false;
+}
+function recordCell(p, c, raw) {
+  const s = p.sweep;
+  const v = normalize(p.source, raw, p);
+  const offBoard = footOffBoard(c.x, c.y);
+  paintCell(p, c.col, c.row, c.stride, v, offBoard);
+  s.grid[c.row*s.N + c.col] = v; s.offGrid[c.row*s.N + c.col] = offBoard ? 1 : 0;
+  s.done++; s.evalCount++;
+}
 function tickPanel(p, budgetMs) {
   const s = p.sweep, tStart = performance.now();
-  const initialStride = (() => { let st = 1; while (st*8 < s.N) st *= 2; return st; })();
-  while (performance.now() - tStart < budgetMs) {
-    if (s.stride < 1) return;
-    const isNew = s.stride === initialStride || (s.col % (s.stride*2) !== 0) || (s.row % (s.stride*2) !== 0);
-    if (isNew) {
-      const x = -HALF + (s.col + 0.5)*s.cellBoard, yRaw = -HALF + (s.row + 0.5)*s.cellBoard;
-      if (x*x + yRaw*yRaw <= CFG.edgeU*CFG.edgeU) {
-        const y = -yRaw;
-        const me = { x, y, rot: state.me.rot };
-        const raw = evalRaw(p.source, me, state.op);
-        const v = normalize(p.source, raw, p);
-        let offBoard = false;
-        for (let i = 0; i < 3 && !offBoard; i++) {
-          const a = state.me.rot + i*TWO_PI/3;
-          if (Math.hypot(x + Math.cos(a)*CFG.footR, y + Math.sin(a)*CFG.footR) > CFG.edgeU) offBoard = true;
-        }
-        paintCell(p, s.col, s.row, s.stride, v, offBoard);
-        s.grid[s.row*s.N + s.col] = v; s.offGrid[s.row*s.N + s.col] = offBoard ? 1 : 0;
-        s.done++; s.evalCount++;
-      }
+  do {
+    const c = nextCell(s);
+    if (!c) return;
+    recordCell(p, c, evalRaw(p.source, { x: c.x, y: c.y, rot: state.me.rot }, state.op));
+  } while (performance.now() - tStart < budgetMs);
+}
+// Keep every idle worker fed. Each job is sized to about a tenth of a second of work from the
+// calibrated per-cell cost, so a D1 job carries thousands of cells and a D3 job carries one or
+// two -- the point being that the pause button and the painting stay responsive at either end.
+function dispatchPanel(p, maxOutstanding) {
+  const s = p.sweep;
+  const per = p.msPerEval || 1;
+  const batchSize = Math.max(1, Math.min(4096, Math.round(100/per)));
+  while (pool.idle.length && s.outstanding < maxOutstanding) {
+    const cells = [];
+    while (cells.length < batchSize) {
+      const c = nextCell(s);
+      if (!c) break;
+      cells.push(c);
     }
-    s.col += s.stride;
-    if (s.col >= s.N) { s.col = 0; s.row += s.stride; }
-    if (s.row >= s.N) { s.stride = s.stride >> 1; s.col = 0; s.row = 0; }
+    if (!cells.length) return;
+    const xs = new Float64Array(cells.length), ys = new Float64Array(cells.length);
+    cells.forEach((c, i) => { xs[i] = c.x; ys[i] = c.y; });
+    const w = pool.idle.pop();
+    const jobId = ++pool.jobId;
+    s.outstanding++;
+    pool.jobs.set(jobId, { panel: p, cells, seq: s.seq });
+    w.postMessage({ type: 'job', jobId, panelId: p.id, seq: s.seq, xs, ys,
+                    meRot: state.me.rot, op: { x: state.op.x, y: state.op.y, rot: state.op.rot } },
+                  [xs.buffer, ys.buffer]);
   }
+}
+function onWorkerResult(w, msg) {
+  pool.idle.push(w);
+  const job = pool.jobs.get(msg.jobId);
+  pool.jobs.delete(msg.jobId);
+  if (!job) return;
+  const p = job.panel, s = p.sweep;
+  if (job.seq !== s.seq) return;            // belongs to a sweep that has since been restarted
+  s.outstanding--;
+  // A run that was stopped (Edit pose, or a pose drag) has already redrawn the canvas as the
+  // setup view; painting a late job's cells over it would leave stray colour on top. Nothing is
+  // lost by dropping them -- a completed run has no jobs outstanding by definition, since the
+  // run loop only finishes once every panel is idle.
+  if (mode !== 'running') return;
+  for (let i = 0; i < job.cells.length; i++) recordCell(p, job.cells[i], msg.values[i]);
 }
 function updateStats() {
   const p = panels.find(pp => pp.source) || panels[0];
   const s = p.sweep, elapsed = (performance.now()-s.t0)/1000;
-  $('stCells').textContent = `${s.done.toLocaleString()} / ${s.total.toLocaleString()}` + (s.stride < 1 ? ' (done)' : '');
+  $('stCells').textContent = `${s.done.toLocaleString()} / ${s.total.toLocaleString()}` + (panelBusy(p) ? '' : ' (done)');
   $('stCell').textContent = s.stride >= 1 ? `${(s.stride*s.cellBoard).toFixed(2)}u` : '—';
   $('stRate').textContent = elapsed > 0 ? Math.round(s.evalCount/elapsed).toLocaleString() : '—';
   $('stElapsed').textContent = elapsed.toFixed(1) + 's';
 }
 function activePanels() { return panels.filter(p => p.source && panelVisible(p)); }
+function panelBusy(p) { return p.sweep.stride >= 1 || p.sweep.outstanding > 0; }
 function runPanelsToCompletion() {
   return new Promise(resolve => {
+    const parallel = pool.workers.length > 0;
     function frame() {
       if (mode !== 'running') { resolve(); return; }
+      // Pausing stops handing out new work; jobs already with a worker still land and paint,
+      // which is a job's worth of work at most and keeps the two sides from disagreeing about
+      // what has been swept.
       if (globalPaused) { requestAnimationFrame(frame); return; }
-      const active = activePanels().filter(p => p.sweep.stride >= 1);
+      const active = activePanels().filter(panelBusy);
       if (!active.length) { resolve(); return; }
-      const budget = active.length > 1 ? 5 : 8;
-      for (const p of active) tickPanel(p, budget);
+      if (parallel) {
+        // Share the pool between the panels rather than letting whichever is dispatched first
+        // take every idle worker -- otherwise comparing two models would fill in A completely
+        // while B sat blank, which is the opposite of what a side-by-side is for.
+        const share = Math.max(1, Math.ceil(pool.workers.length/active.length));
+        for (const p of active) dispatchPanel(p, share);
+      } else {
+        const budget = active.length > 1 ? 5 : 8;
+        for (const p of active) tickPanel(p, budget);
+      }
       updateStats();
       requestAnimationFrame(frame);
     }
@@ -1268,9 +1495,16 @@ function enterSetup() {
   $('stCells').textContent='—'; $('stCell').textContent='—'; $('stRate').textContent='—'; $('stElapsed').textContent='—';
   updateButtons();
 }
+// Everything a run needs in place before the first cell: workers built (or proved unavailable)
+// and holding the current sources, and a per-cell cost measured so jobs can be sized sensibly.
+function beginRun() {
+  updateEstimate();
+  if (poolEnsure()) poolSendSources();
+  mode = 'running'; updateButtons();
+}
 async function startRun() {
   if (!panels.some(p => p.source)) return;
-  mode = 'running'; updateButtons();
+  beginRun();
   activePanels().forEach(resetPanelSweep);
   await runPanelsToCompletion();
   if (mode === 'running') { mode = 'done'; activePanels().forEach(drawFinished); }
@@ -1278,7 +1512,7 @@ async function startRun() {
 }
 async function animateThroughMoves() {
   if (!panels.some(p => p.source) || !state.moves.length) return;
-  mode = 'running'; updateButtons();
+  beginRun();
   const savedOp = { ...state.op };
   const frames = [{ ...state.opStart }];
   for (let i = 0; i < state.moves.length; i++) { replayMovesTo(i+1); frames.push({ ...state.op }); }
@@ -1323,7 +1557,7 @@ function spinMeTo(target) {
 }
 async function animateThroughRotations() {
   if (!panels.some(p => p.source)) return;
-  mode = 'running'; updateButtons();
+  beginRun();
   const savedRot = state.me.rot;
   const STEPS = 12, STEP_ANGLE = TWO_PI/STEPS;   // 30deg stops, full turn
   for (let i = 0; i < STEPS && mode === 'running'; i++) {
