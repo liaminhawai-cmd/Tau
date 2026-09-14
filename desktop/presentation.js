@@ -991,6 +991,7 @@
       o.shadow.normalBias=.16; o.shadow.bias=-.0002;
     });
     renderer.shadowMap.needsUpdate=true;
+    if (gpTarget && gpSamples !== gpSampleWant()) gpDispose();   // rebuilt on the next glass frame
   }
   let boardTrim = null;
   let envGroup = null, envFor = null, lookTheme = null;   // the showing look's surroundings, if it has any
@@ -1131,7 +1132,7 @@
   // refract the far piece exactly as they refract the board. Lights are cloned for the second
   // scene (the key light with its shadow, so the near piece still shades itself); the far
   // piece's shadow on the near one is the one thing lost. Only when two glass pieces are up.
-  let gpTarget = null, gpScene = null, gpQuad = null, gpLights = [], gpFailed = false;
+  let gpTarget = null, gpScene = null, gpQuad = null, gpLights = [], gpFailed = false, gpSamples = -1;
   const gpV = new THREE.Vector3(), gpSize = new THREE.Vector2();
   // WHICH piece is the near one decides which is drawn through the other, so that choice is a big
   // part of what the player reads as "in front" -- and it has to be steady. Two pieces facing each
@@ -1164,8 +1165,39 @@
       for (const t of pair || []) if (t && t.visible && t.userData.mat && t.userData.mat.transmission > 0) out.push(t);
     return out;
   }
+  // Two full scene renders a frame is a real cost, and three's own transmission pre-pass doubles
+  // each of them: a marble frame is about four draws of the world. It is worth that ONLY where the
+  // two pieces overlap on screen, because that is the only place the near piece has any of the far
+  // one behind it to refract. Everywhere else the ordinary single-pass frame is the same picture,
+  // pixel for pixel, so the second pass is skipped and an orbit costs what every other board costs.
+  const gpBoxA = new THREE.Box2(), gpBoxB = new THREE.Box2(), gpV2 = new THREE.Vector2();
+  const GP_MARGIN = 0.06;   // NDC slack: a leg bends in a little of what sits just outside it
+  function gpMark(box, x, y, z, m) {
+    gpV.set(x, y, z).applyMatrix4(m).project(camera);
+    box.expandByPoint(gpV2.set(gpV.x, gpV.y));
+  }
+  function gpScreenBox(t, box) {
+    box.makeEmpty();
+    const m = t.matrixWorld, hub = t.userData && t.userData.hub, cy = hub ? hub.position.y : 12;
+    for (const p of GP_FEET) {
+      gpMark(box, p.x, 0, p.z, m);                  // the foot
+      gpMark(box, p.x, cy*0.45, p.z, m);            // the arc, where it bulges widest
+    }
+    gpMark(box, 0, cy, 0, m);                       // the crown
+    box.min.x -= GP_MARGIN; box.min.y -= GP_MARGIN;
+    box.max.x += GP_MARGIN; box.max.y += GP_MARGIN;
+    return box;
+  }
+  // A multisampled colour+depth target is both the expensive and the least portable part of the
+  // pass (the depth resolve is where drivers differ), so the cheap tier does without it.
+  function gpSampleWant() { return settings.quality === 'balanced' ? 0 : 4; }
+  function gpDispose() {
+    if (!gpTarget) return;
+    gpTarget.depthTexture.dispose(); gpTarget.dispose(); gpTarget = null;
+  }
   function gpSetup() {
-    gpTarget = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4,
+    gpSamples = gpSampleWant();
+    gpTarget = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: gpSamples,
       depthTexture: new THREE.DepthTexture(4, 4, THREE.UnsignedIntType) });
     gpQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
       glslVersion: THREE.GLSL3, depthTest: false, depthWrite: true,
@@ -1194,19 +1226,37 @@
       if (held >= 0 && held !== ni && dists[ni] > dists[held] - GP_HOLD) ni = held;
       const near = pieces[ni];
       gpNear = near;
+      // nothing of the far piece behind the near one: the plain frame is the same picture
+      gpScreenBox(near, gpBoxA);
+      let crossing = false;
+      for (const t of pieces) if (t !== near && gpBoxA.intersectsBox(gpScreenBox(t, gpBoxB))) { crossing = true; break; }
+      if (!crossing) return false;
       renderer.getDrawingBufferSize(gpSize);
       if (gpTarget.width !== gpSize.x || gpTarget.height !== gpSize.y) gpTarget.setSize(gpSize.x, gpSize.y);
       // pass one: the world without the near piece's colour (its shadow still falls)
       const mats = [], seen = new Set();   // the feet share the hub's material: save each once
       near.traverse(o => { const m = o.material; if (m && !seen.has(m)) { seen.add(m); mats.push([m, m.colorWrite, m.depthWrite]); m.colorWrite = false; m.depthWrite = false; } });
-      renderer.setRenderTarget(gpTarget); renderer.render(scene, camera);
-      for (const [m, cw, dw] of mats) { m.colorWrite = cw; m.depthWrite = dw; }
-      // pass two: that picture, then the near piece through it
-      const parent = near.parent; parent.remove(near); gpScene.add(near);
-      for (const [o, c] of gpLights) { c.position.copy(o.position); c.intensity = o.intensity; c.color.copy(o.color); if (o.groundColor) c.groundColor.copy(o.groundColor); }
-      gpScene.environment = scene.environment; gpScene.fog = scene.fog;
-      renderer.setRenderTarget(null); renderer.render(gpScene, camera);
-      gpScene.remove(near); parent.add(near);
+      // the near piece gets its colour back for pass two; the far ones lose theirs there instead
+      try { renderer.setRenderTarget(gpTarget); renderer.render(scene, camera); }
+      finally { for (const [m, cw, dw] of mats) { m.colorWrite = cw; m.depthWrite = dw; } }
+      // pass two: that picture, then the near piece through it. The pieces are LENT to the second
+      // scene for one render and always handed back -- a throw that left one there would take it
+      // out of the game. The far pieces come too, drawn without colour: they are already in the
+      // painted picture, but without them in this scene they cast no shadow on the near piece, and
+      // that shadow blinking on and off as the near/far choice hands over is itself a flicker.
+      const lent = [];
+      try {
+        for (const t of pieces) {
+          lent.push([t, t.parent]); t.parent.remove(t); gpScene.add(t);
+          if (t !== near) t.traverse(o => { const m = o.material; if (m && !seen.has(m)) { seen.add(m); mats.push([m, m.colorWrite, m.depthWrite]); m.colorWrite = false; m.depthWrite = false; } });
+        }
+        for (const [o, c] of gpLights) { c.position.copy(o.position); c.intensity = o.intensity; c.color.copy(o.color); if (o.groundColor) c.groundColor.copy(o.groundColor); }
+        gpScene.environment = scene.environment; gpScene.fog = scene.fog;
+        renderer.setRenderTarget(null); renderer.render(gpScene, camera);
+      } finally {
+        for (const [t, parent] of lent) { gpScene.remove(t); parent.add(t); }
+        for (const [m, cw, dw] of mats) { m.colorWrite = cw; m.depthWrite = dw; }
+      }
       return true;
     } catch (e) {
       gpFailed = true; console.warn('glass two-pass render unavailable', e);
@@ -1720,7 +1770,11 @@
     // ease briskly there so the dish is not still zooming into place a second after they let go.
     // The menu and the ordinary match keep the slower, calmer settle.
     const corner = typeof cornerLayoutActive === 'function' && cornerLayoutActive();
-    const blend=settings.reducedMotion?1:1-Math.exp(-dt*(corner?6.5:3.2));
+    // A falling piece is chased, not settled towards: on a look whose floor is a long way down
+    // (marble's table stands in a hall) the calm rate leaves the camera a third of a second behind
+    // and the landing happens below the bottom edge.
+    const rate = corner ? 6.5 : falling ? 5.8 : 3.2;
+    const blend=settings.reducedMotion?1:1-Math.exp(-dt*rate);
     camera.position.lerp(cameraGoal,blend); controls.target.lerp(targetGoal,blend);
     return true;
   }
@@ -1964,6 +2018,10 @@
     rayTraceStatus(){return ptPhase;},
     rayTraceOverlay(){return ptCueScene;},   // what gets painted over a finished trace
     glassNear(){return gpNear;},   // the piece currently drawn through the other
+    // whether two pieces overlap on screen from where the camera stands -- the question that
+    // decides whether the second pass is worth drawing at all
+    glassOverlap(a, b){ if(!camera||!a||!b) return false; a.updateMatrixWorld(); b.updateMatrixWorld();
+      return gpScreenBox(a, gpBoxA).intersectsBox(gpScreenBox(b, gpBoxB)); },
     rayTraceSamples(){return ptTracer ? ptTracer.samples : 0;},   // how far the still has refined
     canPlayNow: canPlay, canLookNow: canLook,
     rayTraceMotion,

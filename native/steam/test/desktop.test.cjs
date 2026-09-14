@@ -983,7 +983,8 @@ test('two glass pieces are drawn in two passes: the near one over a picture of t
   g.read(`window.__calls=[];
     renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},getDrawingBufferSize(v){v.set(640,480);return v;},
       setRenderTarget(t){window.__calls.push(['target',t?'offscreen':'screen']);},
-      render(sc,cam){window.__calls.push(['render',sc===scene?'world':'overlay', sc.children.filter(o=>o.userData&&o.userData.mat).length]);}};
+      render(sc,cam){const gl=sc.children.filter(o=>o.userData&&o.userData.mat);
+        window.__calls.push(['render',sc===scene?'world':'overlay', gl.length, gl.filter(o=>o.userData.mat.colorWrite!==false).length]);}};
     scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(); camera.position.set(0,120,150);
     scene.add(new THREE.DirectionalLight(0xffffff,1)); scene.add(new THREE.HemisphereLight(0xffffff,0x222222,1));
     controls={mouseButtons:{},target:new THREE.Vector3()};
@@ -997,8 +998,11 @@ test('two glass pieces are drawn in two passes: the near one over a picture of t
   g.read("tauDesktop.board='marble'; window.__calls=[]");
   assert.equal(g.read('tauDesktop.renderFrame()'),true,'glass pieces: the desktop draws the frame');
   const calls=g.read('JSON.stringify(window.__calls)');
-  assert.equal(calls,JSON.stringify([['target','offscreen'],['render','world',2],['target','screen'],['render','overlay',1]]),
-    'the world (both pieces, the near one writing no colour) into the picture first, then the picture and the near piece alone to the screen');
+  // Both passes hold both pieces -- what changes is which of them writes colour. Pass one paints
+  // the world with the near piece silent; pass two paints that picture and draws the near piece
+  // over it, the far one silent but still there, so it keeps casting its shadow on the near one.
+  assert.equal(calls,JSON.stringify([['target','offscreen'],['render','world',2,1],['target','screen'],['render','overlay',2,1]]),
+    'each pass has both pieces in it and exactly one of them drawing');
   assert.equal(g.read('tripods.every(t=>t.parent===scene)'),true,'both pieces are back in the scene');
   assert.equal(g.read('tripods.every(t=>{let ok=true; t.traverse(o=>{ if(o.material && (!o.material.colorWrite || !o.material.depthWrite)) ok=false; }); return ok;})'),true,'and write colour again');
   assert.deepEqual(g.errors,[]);
@@ -2210,6 +2214,10 @@ test('a glass piece dropped hard breaks instead of rolling, and the shards clear
   assert.equal(g.read('fall.shattered'),true,'the landing broke it');
   assert.equal(g.read('tripods[1].visible'),false,'the intact piece is gone');
   assert.ok(g.read('shards.length')>10,'and a burst of shards is in its place');
+  // There is no body left to simulate, so the fall is over at the break: the shards finish under
+  // their own steam and the result is not held back behind an invisible piece still tumbling.
+  assert.equal(g.read('fall.active'),false,'the break ends the fall');
+  assert.equal(g.read('fallenIdx'),1,'and the piece stays off the board');
   assert.equal(g.read('window.__crack.length'),1,'one crack, not one per frame');
   // A tumbling piece can brush the ground on the way over, so touches before the one that breaks
   // it are fair; what must not happen is the break itself also thumping.
@@ -2378,6 +2386,58 @@ test('a stone titan is pushed hard enough to actually leave the board',async t=>
   const y=g.read('tripods[1].position.y');
   assert.ok(r>g.read('CFG.edgeU'),`the titan ends up off the board, not standing on it (r ${r.toFixed(0)})`);
   assert.ok(y<-4,`and below it (y ${y.toFixed(1)})`);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the marble table stands in a room, so a piece pushed off it really falls',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    tripods.forEach(t=>scene.add(t));
+    localStorage.setItem('tauDesktopTestBoards','1');`);
+  g.read("tauDesktop.board='marble'");
+  const floor=g.read('tauDesktop.fallFloorY()');
+  assert.ok(floor<-60,`the floor is the room's, a table's height below the board (got ${floor})`);
+  // and the look brings its own ground to land on, so the game's black plane steps aside
+  // (the harness never builds that plane, so its absence is the same answer)
+  assert.equal(g.read('!!(fallFloor && fallFloor.visible)'),false,"the look's own floor replaces the game's");
+  assert.ok(g.read(`(()=>{let lo=0; scene.traverse(o=>{ if(o.isMesh && o.position.y<lo) lo=o.position.y; }); return lo;})()`)<=floor,
+    'there is something down there to land on');
+  // a piece dropped off the rim reaches it and stops there rather than falling through
+  g.read(`setAcoustics('stone','marble');
+    fall=Object.assign(mkFallState(G.pieces[1]),{idx:1, vy:0, vx:16, vz:0});
+    tripods[1].position.set(CFG.edgeU+2, 4, 0);`);
+  g.read('for(let i=0;i<1400 && fall.active;i++) stepFall(1/120);');
+  const rest=g.read('tripods[1].position.y');
+  assert.ok(rest<floor+40 && rest>floor,`it comes to rest on that floor (got ${rest}, floor ${floor})`);
+  assert.ok(g.read('fall.bounces')>0,'having actually struck it');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the glass second pass is only paid where the two pieces actually cross',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();
+    camera=new THREE.PerspectiveCamera(38, 16/9, 1, 4000);
+    camera.position.set(0,70,150); camera.lookAt(0,6,0);
+    camera.updateMatrixWorld(true); camera.updateProjectionMatrix();
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    tripods.forEach(t=>scene.add(t));`);
+  // Side by side across the line of sight: neither has any of the other behind it, so the second
+  // render would paint exactly the same picture the ordinary one does -- and cost a whole frame.
+  g.read('tripods[0].position.set(-45,0,0); tripods[1].position.set(45,0,0);');
+  assert.equal(g.read('tauDesktop.glassOverlap(tripods[0],tripods[1])'),false,
+    'apart on screen, there is nothing to look through');
+  // One behind the other down the line of sight: this is the crossing the pass exists for.
+  g.read('tripods[0].position.set(0,0,-14); tripods[1].position.set(0,0,14);');
+  assert.equal(g.read('tauDesktop.glassOverlap(tripods[0],tripods[1])'),true,
+    'one behind the other, the pass has real work to do');
   assert.deepEqual(g.errors,[]);
 });
 

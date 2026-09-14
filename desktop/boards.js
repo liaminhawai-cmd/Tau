@@ -767,6 +767,36 @@ const THEMES = {
     band: { color: 0x17171c, rough: 0.28, metal: 0.05 }, slabColor: 0x1a1a1f, tableColor: 0x0f1013,
     boardEnv: 0.9, bumpScale: 0.5, boardReflect: 0.22, guide: 0x3a3f4a,
     detail: 'marble', hubBall: 2.0,
+    dust: { color: 0xc9d2e4, size: 1.6 },   // the pale haze a piece knocks up off polished stone
+    // The marble table stands in a dark hall, and the hall has a floor a long way down. A piece
+    // pushed over this rim falls the height of the table rather than the width of a hand -- which
+    // is the drop the glass wants, since what waits at the bottom is stone.
+    floorY: -86,
+    env() {
+      const g = new THREE.Group();
+      // Polished black stone, faded out into the dark so its edge is never a visible disc against
+      // the backdrop. Rough enough to be stone, smooth enough to hold the room's reflection.
+      const sv = document.createElement('canvas'); sv.width = sv.height = 256;
+      const sc = sv.getContext('2d');
+      sc.fillStyle = '#0f1013'; sc.fillRect(0, 0, 256, 256);
+      sc.globalCompositeOperation = 'screen'; sc.globalAlpha = 0.18;
+      sc.drawImage(noiseCanvas(0.45, 7373), 0, 0, 256, 256);
+      sc.globalCompositeOperation = 'source-over'; sc.globalAlpha = 1;
+      const tex = new THREE.CanvasTexture(sv); tex.colorSpace = THREE.SRGBColorSpace;
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(7, 7); tex.anisotropy = 8;
+      const av = document.createElement('canvas'); av.width = av.height = 256;
+      const ac = av.getContext('2d');
+      const ag = ac.createRadialGradient(128, 128, 0, 128, 128, 128);
+      ag.addColorStop(0, '#ffffff'); ag.addColorStop(0.45, '#ffffff'); ag.addColorStop(1, '#000000');
+      ac.fillStyle = ag; ac.fillRect(0, 0, 256, 256);
+      const fade = new THREE.CanvasTexture(av);
+      const floor = new THREE.Mesh(new THREE.CircleGeometry(340, 96),
+        new THREE.MeshStandardMaterial({ map: tex, alphaMap: fade, transparent: true,
+          roughness: 0.24, metalness: 0.1, envMapIntensity: 0.7 }));
+      floor.rotation.x = -Math.PI/2; floor.position.y = -86; floor.receiveShadow = true;
+      g.add(floor);
+      return g;
+    },
     paint() {
       const [al, a] = canvas2d();
       a.fillStyle = '#e9e6df'; a.fillRect(0, 0, S, S);                       // warm white stone
@@ -808,9 +838,17 @@ const THEMES = {
       // Not QUITE total transmission: a tenth of the surface left to catch light gives the clear
       // end some body, so the arch is a glass tube rather than a hole cut in the picture. You still
       // see the board, the rings and the other piece straight through it.
+      // THICKNESS IS THE WHOLE ARGUMENT HERE. three refracts in screen space: it samples the picture
+      // behind the surface, offset by how far the glass would bend the ray. A solid rod 2.6 units
+      // thick bends it a long way, and since the offset is measured in SCREEN pixels rather than
+      // followed through the glass, the leg behind arrives as a coloured blob somewhere it is not --
+      // a red arch with a blue smudge floating inside it, sliding about as the camera turns. A thin
+      // wall bends it a little, so what is behind shows through roughly WHERE IT IS, and the leg
+      // still reads as glass because the reflection and the tint do that work. (The absorption is
+      // shortened to match: it is applied over the thickness, so the foot keeps the colour it had.)
       const leg = PHYS({ color: 0xf6f9ff,
-        metalness: 0, roughness: 0.03, transmission: 0.9, ior: 1.52, thickness: 2.6,
-        attenuationColor: new THREE.Color(0xe4ecff), attenuationDistance: 40,
+        metalness: 0, roughness: 0.03, transmission: 0.9, ior: 1.52, thickness: 0.8,
+        attenuationColor: new THREE.Color(0xe4ecff), attenuationDistance: 13,
         clearcoat: 1, clearcoatRoughness: 0.03, specularIntensity: 1, envMapIntensity: 2.6 });
       installLegGradient(leg, tint);
       return { leg, hub: solid, foot: solid };
@@ -854,7 +892,7 @@ function installLegGradient(material, tint) {
         'diffuseColor.rgb = mix(diffuseColor.rgb, uLegTint, legG);')
       .replace('material.transmission = transmission;', 'material.transmission = transmission * (1.0 - 0.7*legG*legG);')
       .replace('material.attenuationColor = attenuationColor;', 'material.attenuationColor = mix(attenuationColor, uLegTint, legG);')
-      .replace('material.attenuationDistance = attenuationDistance;', 'material.attenuationDistance = mix(attenuationDistance, 2.5, legG);')
+      .replace('material.attenuationDistance = attenuationDistance;', 'material.attenuationDistance = mix(attenuationDistance, 0.8, legG);')
       // The rim: glass is seen by its edges. Where the surface turns away from the eye the leg
       // catches a pale Fresnel glow (the ball's colour towards the foot), so a leg against the
       // black backdrop, where there is nothing to see through it, is still drawn.

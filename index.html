@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 252</div>
+<div id="buildTag">build 253</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -9434,6 +9434,12 @@ function fallLowestBelowOrigin(t) {
     return lowest;
 }
 function stepFall(dt) {
+    // Glass that broke has no body left to simulate. The break sets resting, but the solver
+    // recomputes that from the live velocities every substep and clears it again, so the piece --
+    // invisible since shatterPiece hid it -- went on tumbling until the seven-second backstop and
+    // the result sat waiting behind it. The fall ends ON the break; the shards carry on by
+    // themselves in stepShards, which is what they were always written to do.
+    if (fall.shattered) { fall.active=false; fallenIdx=fall.idx; camCenterFrac=1; camManualSet=false; return; }
     stepFallOn(tripods[fall.idx], fall, dt);
     // The piece LIES WHERE IT LANDED. Only the animation stops here; fallenIdx keeps the render loop
     // from snapping the mesh back onto the board (its logical position never moved), and the camera
