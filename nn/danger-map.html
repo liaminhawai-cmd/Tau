@@ -18,7 +18,7 @@ color:var(--text);font:14px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-s
 button,input,select{font:inherit}
 button{cursor:pointer}
 code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
-.app{max-width:1320px;margin:auto;padding:22px}
+.app{max-width:1420px;margin:auto;padding:22px}
 .top{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap}
 .brand{display:flex;gap:14px;align-items:center}
 .logo{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;flex:none;
@@ -28,46 +28,58 @@ h1{font-size:clamp(22px,3vw,32px);line-height:1.05;letter-spacing:-.04em;margin:
 .subtitle{color:var(--muted);margin-top:5px;font-size:13px}
 .privacy{font-size:12px;color:var(--muted);text-align:right}
 .btn{border:1px solid #3a4964;background:#172238;color:var(--text);
-padding:9px 12px;border-radius:10px;font-weight:700;display:inline-block}
+padding:9px 12px;border-radius:10px;font-weight:700;display:inline-block;text-align:center}
 .btn:hover{border-color:#7184a1}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#061311}
 .btn.ghost{background:transparent}
-.btn[disabled]{opacity:.45;pointer-events:none}
+.btn.small{padding:6px 9px;font-size:12px;font-weight:600}
+.btn[disabled]{opacity:.4;pointer-events:none}
 input[type=file]{display:none}
 .status{border:1px solid #30415d;background:rgba(15,22,36,.9);padding:10px 13px;
 border-radius:12px;margin-bottom:14px;color:#cbd6e8;font-size:13px}
 .status.bad{border-color:#683d4a;color:#ffd4d8}
-.layout{display:grid;grid-template-columns:290px minmax(0,1fr);gap:16px;align-items:start}
-@media (max-width:860px){.layout{grid-template-columns:1fr}}
+.layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.layout{grid-template-columns:1fr}}
 .panel{background:linear-gradient(160deg,rgba(21,31,49,.98),rgba(10,15,25,.98));
 border:1px solid #27364f;border-radius:16px;box-shadow:var(--shadow)}
-.sidebar{padding:15px;position:sticky;top:10px}
-@media (max-width:860px){.sidebar{position:static}}
-.block{border-bottom:1px solid #28364e;padding-bottom:14px;margin-bottom:14px}
+.sidebar{padding:15px;position:sticky;top:10px;max-height:calc(100vh - 20px);overflow:auto}
+@media (max-width:900px){.sidebar{position:static;max-height:none}}
+.block{border-bottom:1px solid #28364e;padding-bottom:13px;margin-bottom:13px}
 .block:last-child{border:0;padding:0;margin:0}
-.block h2{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:#9baac0;margin:0 0 9px}
-.field{display:grid;gap:5px;margin:9px 0}
+.block h2{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:#9baac0;margin:0 0 8px}
+.field{display:grid;gap:5px;margin:8px 0}
 .field label{font-size:12px;color:#aab7ca;display:flex;justify-content:space-between}
 .field label small{color:var(--muted);font-weight:400}
 .field input[type=number],.field select{width:100%;background:#0d1421;border:1px solid #33425d;
 color:var(--text);border-radius:9px;padding:7px 8px}
 .field input[type=range]{width:100%}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.modelinfo{font-size:12px;color:#c4cfe0;line-height:1.6}
-.modelinfo b{color:var(--text)}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.srcname{font-size:12px;color:#c4cfe0;margin-top:6px;line-height:1.5;min-height:18px}
+.srcname b{color:var(--text)}
 .warn{margin-top:8px;padding:8px 10px;border:1px solid #6b5a2e;background:rgba(229,189,112,.08);
 border-radius:9px;font-size:12px;color:var(--gold)}
-.stats{display:grid;gap:6px;font-size:12px;color:#c4cfe0}
+.check{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#c4cfe0;cursor:pointer}
+.stats{display:grid;gap:5px;font-size:12px;color:#c4cfe0}
 .stats .k{color:var(--muted)}
 .stats div{display:flex;justify-content:space-between;gap:10px}
 .legend{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--muted)}
 .legend .bar{flex:1;height:10px;border-radius:6px;
 background:linear-gradient(90deg,var(--danger),#2a3247,var(--accent))}
-.boardwrap{padding:15px;display:flex;flex-direction:column;align-items:center;gap:10px}
-canvas{border-radius:14px;background:#0a0f1a;max-width:100%;touch-action:none;cursor:crosshair}
+.hint{font-size:11.5px;color:var(--muted);line-height:1.5}
+.moves{display:flex;flex-direction:column;gap:4px;margin:8px 0;font-size:12px;color:#c4cfe0}
+.moves .mv{display:flex;justify-content:space-between;background:#0d1421;border:1px solid #263248;
+border-radius:7px;padding:5px 8px}
+.estimate{font-size:12px;color:#c4cfe0}
+.estimate div{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed #253150}
+.estimate div:last-child{border:0}
+.main{display:flex;flex-wrap:wrap;gap:16px}
+.stagecol{display:flex;flex-direction:column;gap:8px}
+canvas{border-radius:14px;background:#0a0f1a;max-width:100%;touch-action:none}
+canvas.board{cursor:crosshair}
+.cardtitle{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;padding:0 2px}
 .hoverline{font-size:12px;color:#c4cfe0;min-height:18px}
 .hoverline b{color:var(--text)}
-.hint{font-size:12px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -77,26 +89,51 @@ canvas{border-radius:14px;background:#0a0f1a;max-width:100%;touch-action:none;cu
       <div class="logo">τ</div>
       <div>
         <h1>Tau Danger Map</h1>
-        <div class="subtitle">Sweep a value net over the board and watch where it thinks the position is good or bad.</div>
+        <div class="subtitle">Sweep a value net (or a ladder rung's own eval) over the board — and script real moves to watch it change.</div>
       </div>
     </div>
     <div class="privacy">Everything runs locally in this tab.<br>No model or game data leaves your machine.</div>
   </header>
 
-  <div class="status" id="status"><strong>No model loaded.</strong> Pick a value or dual net from <code>nn/models/</code> (e.g. <code>best.json</code>, a <code>ckpt-*.json</code>, a <code>resume-*.json</code>, a <code>dual-*.json</code>).</div>
+  <div class="status" id="status"><strong>Ready.</strong> Pick a source for Model A below — a value/dual net .json, or a ladder rung — then pose the tripods and press Run.</div>
 
   <div class="layout">
     <aside class="panel sidebar">
+
       <div class="block">
-        <h2>Model</h2>
-        <label class="btn primary" for="fileInput" style="width:100%;text-align:center">Load model .json</label>
-        <input id="fileInput" type="file" accept=".json">
-        <div class="modelinfo" id="modelInfo" style="margin-top:9px">No model loaded.</div>
-        <div id="modelWarn"></div>
+        <h2>Model A</h2>
+        <div class="row2">
+          <button class="btn small" id="srcA-ladder-btn">Ladder rung</button>
+          <label class="btn small" for="fileA" id="srcA-file-btn">Load model…</label>
+        </div>
+        <input id="fileA" type="file" accept=".json">
+        <div class="field" id="ladderA-wrap" style="display:none">
+          <select id="ladderA">
+            <option value="">— pick a rung —</option>
+          </select>
+        </div>
+        <div class="srcname" id="srcA-name">No source chosen.</div>
       </div>
 
       <div class="block">
-        <h2>Opponent (fixed piece)</h2>
+        <h2><label class="check"><input type="checkbox" id="compareToggle"> Compare a 2nd model</label></h2>
+        <div id="modelB-block" style="display:none">
+          <div class="row2">
+            <button class="btn small" id="srcB-ladder-btn">Ladder rung</button>
+            <label class="btn small" for="fileB" id="srcB-file-btn">Load model…</label>
+          </div>
+          <input id="fileB" type="file" accept=".json">
+          <div class="field" id="ladderB-wrap" style="display:none">
+            <select id="ladderB">
+              <option value="">— pick a rung —</option>
+            </select>
+          </div>
+          <div class="srcname" id="srcB-name">No source chosen.</div>
+        </div>
+      </div>
+
+      <div class="block">
+        <h2>Opponent</h2>
         <div class="row2">
           <div class="field"><label>X</label><input id="opX" type="number" step="1"></div>
           <div class="field"><label>Y</label><input id="opY" type="number" step="1"></div>
@@ -105,8 +142,8 @@ canvas{border-radius:14px;background:#0a0f1a;max-width:100%;touch-action:none;cu
           <label>Rotation <small id="opRotLbl">0°</small></label>
           <input id="opRot" type="range" min="0" max="359" step="1" value="180">
         </div>
-        <div class="hint">Click the board to place the opponent's hub there.</div>
-        <button class="btn ghost" id="opReset" style="width:100%;margin-top:8px">Reset to start position</button>
+        <div class="hint">Drag its tripod to move it; hold shift while dragging to spin it about its own hub. Moving it this way clears any planned move sequence below.</div>
+        <button class="btn ghost small" id="opReset" style="width:100%;margin-top:8px">Reset to start position</button>
       </div>
 
       <div class="block">
@@ -115,13 +152,33 @@ canvas{border-radius:14px;background:#0a0f1a;max-width:100%;touch-action:none;cu
           <label>Rotation <small id="meRotLbl">0°</small></label>
           <input id="meRot" type="range" min="0" max="359" step="1" value="0">
         </div>
-        <button class="btn ghost" id="swap" style="width:100%">Swap mover ↔ opponent</button>
+        <div class="hint">Drag it to explore a single value live. Only its rotation feeds the sweep — position doesn't, since the sweep tries every position.</div>
+        <button class="btn ghost small" id="swap" style="width:100%;margin-top:6px">Swap mover ↔ opponent</button>
+      </div>
+
+      <div class="block">
+        <h2>Plan the opponent's moves <small style="color:var(--muted);font-weight:400">(real rules, up to 6)</small></h2>
+        <div class="hint">Click one of the opponent's three feet on the board to pin it, then use the slider that appears for the true legal range — this replays through the actual engine (pinFoot/applySwing), so it can't produce an illegal stop.</div>
+        <div id="pinPanel" style="display:none;margin-top:8px">
+          <div class="field">
+            <label>Swing <small id="pinDegLbl">0°</small></label>
+            <input id="pinSlider" type="range" min="-180" max="180" step="1" value="0">
+          </div>
+          <div class="row2">
+            <button class="btn small primary" id="commitMove">Commit move</button>
+            <button class="btn small ghost" id="cancelPin">Cancel</button>
+          </div>
+        </div>
+        <div class="moves" id="moveList"></div>
+        <div class="row2">
+          <button class="btn small ghost" id="undoMove" disabled>Undo last</button>
+          <button class="btn small ghost" id="resetMoves" disabled>Clear all</button>
+        </div>
       </div>
 
       <div class="block">
         <h2>Resolution</h2>
         <div class="field">
-          <label>Finest grid (cells across)</label>
           <select id="resSelect">
             <option value="64">64 — fast</option>
             <option value="128">128</option>
@@ -130,9 +187,16 @@ canvas{border-radius:14px;background:#0a0f1a;max-width:100%;touch-action:none;cu
             <option value="1024">1024 — very fine, leave it running</option>
           </select>
         </div>
-        <div class="row2">
+        <div class="estimate" id="estimate">Load a model or pick a ladder rung to see a compute-time estimate.</div>
+      </div>
+
+      <div class="block">
+        <h2>Run</h2>
+        <button class="btn primary" id="runBtn" style="width:100%" disabled>Run at current pose</button>
+        <button class="btn" id="animateBtn" style="width:100%;margin-top:8px" disabled>Animate through moves</button>
+        <div class="row2" style="margin-top:8px">
           <button class="btn" id="pauseBtn" disabled>Pause</button>
-          <button class="btn" id="restartBtn" disabled>Restart</button>
+          <button class="btn ghost" id="editBtn">Edit pose</button>
         </div>
       </div>
 
@@ -145,17 +209,26 @@ canvas{border-radius:14px;background:#0a0f1a;max-width:100%;touch-action:none;cu
           <div><span class="k">elapsed</span><span id="stElapsed">—</span></div>
         </div>
         <div class="legend"><span>danger</span><span class="bar"></span><span>good</span></div>
-        <div class="hint" style="margin-top:6px">Colour is the net's value for the swept piece, as if it were about to move from there. Dim cells are poses where a foot would leave the board — the net is extrapolating, not judging a reachable position.</div>
+        <div class="hint" style="margin-top:6px">A ladder rung's raw score isn't tanh-bounded like a net's, so its panel is colour-scaled to its own sweep's range instead of a fixed ±1. Dim cells are poses where the swept piece has a foot off the board.</div>
       </div>
     </aside>
 
-    <div class="panel boardwrap">
-      <canvas id="board" width="720" height="720"></canvas>
-      <div class="hoverline" id="hoverline">Hover the board to sample a single point.</div>
+    <div class="main">
+      <div class="stagecol">
+        <div class="cardtitle"><span>Board / Model A</span><span id="cardA-name"></span></div>
+        <canvas id="board" class="board" width="520" height="520"></canvas>
+        <div class="hoverline" id="hoverline">Hover the board to sample a single point, or drag a tripod to pose it.</div>
+      </div>
+      <div class="stagecol" id="stageB" style="display:none">
+        <div class="cardtitle"><span>Model B</span><span id="cardB-name"></span></div>
+        <canvas id="boardB" class="board" width="520" height="520"></canvas>
+        <div class="hoverline" id="hoverlineB">&nbsp;</div>
+      </div>
     </div>
   </div>
 </div>
 
+<script src="danger-map-engine.js"></script>
 <script>
 'use strict';
 
@@ -237,9 +310,8 @@ class MLP {
 }
 
 /* ===================================================================================
- * nn/features.js, verbatim minus module.exports and the unused moveFrame/jointMoveFrame
- * (this tool only ever calls features() itself). Position -> feature vector, exactly as
- * the trainer and the AI compute it -- see that file for the full design rationale.
+ * nn/features.js, verbatim minus module.exports and the unused moveFrame/jointMoveFrame.
+ * Position -> feature vector, exactly as the trainer and the AI compute it.
  * =================================================================================== */
 const N_FEATURES = 16 + 30 + 36 + 12;
 const TWO_PI = Math.PI*2;
@@ -402,149 +474,93 @@ function features(eng) {
 }
 
 /* ===================================================================================
- * Board geometry -- baked constants, not re-derived from index.html at runtime, so this
- * page needs nothing but itself. Pulled once via `node -e "createEngine()..."` against
- * the live rules engine; if the board's printed geometry ever changes, re-pull these.
+ * The REAL rules engine (nn/danger-map-engine.js, generated from index.html via
+ * nn/engine.js's own buildEngineSource() -- see that file's header for how to regenerate
+ * it). pinFoot/applySwing/endTurn/commitTurn/ladderEval/AI_LADDER are the exact code
+ * every arena/retromine/policyloop worker runs, not a reimplementation.
  * =================================================================================== */
-const CFG = {"edgeU":66.667,"rings":[40,53.3],
-  "sideArcs":[{"cx":-66.667,"cy":0,"r":40,"a0":-72.542,"a1":72.542},
-              {"cx":66.667,"cy":0,"r":40,"a0":107.458,"a1":252.542}],
-  "footR":23.095,"startX":30.597,"crossEps":0.81};
-const LINE_INTERSECTIONS = [
-  {"x":-33.3335,"y":-22.110580674193066,"lines":["r0","a0"]},
-  {"x":-33.3335,"y":22.110580674193066,"lines":["r0","a0"]},
-  {"x":33.3335,"y":22.110580674193066,"lines":["r0","a1"]},
-  {"x":33.3335,"y":-22.110580674193066,"lines":["r0","a1"]},
-  {"x":-42.64012846685766,"y":-31.979828710139692,"lines":["r1","a0"]},
-  {"x":-42.64012846685766,"y":31.979828710139692,"lines":["r1","a0"]},
-  {"x":42.64012846685766,"y":31.979828710139692,"lines":["r1","a1"]},
-  {"x":42.64012846685766,"y":-31.979828710139692,"lines":["r1","a1"]}];
-function angInSpan(deg, a0, a1) {
-  const w = x => { while (x < 0) x += 360; while (x >= 360) x -= 360; return x; };
-  deg = w(deg); const lo = w(a0), hi = w(a1);
-  return lo <= hi ? (deg >= lo && deg <= hi) : (deg >= lo || deg <= hi);
+const Engine = buildTauEngine();
+Engine.newGame();                      // allocates real Piece instances we keep mutating in place
+const CFG = Engine.CFG, LINE_INTERSECTIONS = Engine.LINE_INTERSECTIONS, angInSpan = Engine.angInSpan;
+// Rungs with a plain `w` object usable directly through ladderEval(idx, w). L1 ('l1' kind) and L2
+// ('dumb' brain) have no scalar eval at all; L7 blends a separate hand-tuned brain with only a
+// partial dose of ladderEval's terms (its own `mw`, combined inside that brain's own code, not a
+// call this tool can reproduce) -- so those three are left out rather than shown with a misleading
+// number. L12-L14 are retired/experimental slots, skipped to keep the list to the named ladder.
+const LADDER_LEVELS = [3, 4, 5, 6, 8, 9, 10, 11];
+
+/* ===================================================================================
+ * App state
+ * =================================================================================== */
+const $ = id => document.getElementById(id);
+let mode = 'setup';   // 'setup' | 'running' | 'done'
+const state = {
+  op: { x: CFG.startX, y: 0, rot: Math.PI },
+  opStart: { x: CFG.startX, y: 0, rot: Math.PI },
+  me: { x: -CFG.startX, y: 0, rot: 0 },
+  moves: [],           // committed opponent moves: [{pivotIdx, dir, targetRad}, ...]
+};
+let dragging = null;    // { which:'op'|'me', kind:'move'|'rotate', startRot, startAng }
+let pinnedMove = null;  // { pivotIdx, maxFwd, maxBack, targetDeg } while composing a move
+let globalPaused = false;
+
+function mockEng(me, op) { return { getG: () => ({ pieces: [me, op], active: 0 }), CFG, angInSpan, LINE_INTERSECTIONS }; }
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function evalRaw(source, me, op) {
+  if (!source) return null;
+  if (source.kind === 'net') return source.net.value(features(mockEng(me, op)));
+  const G = Engine.getG();
+  G.pieces[0].x = me.x; G.pieces[0].y = me.y; G.pieces[0].rot = me.rot;
+  G.pieces[1].x = op.x; G.pieces[1].y = op.y; G.pieces[1].rot = op.rot;
+  Engine.setActive(0);
+  return Engine.ladderEval(0, source.w);
+}
+function normalize(source, raw, panel) {
+  if (source.kind === 'net') return raw;
+  panel.sweep.maxAbsRaw = Math.max(panel.sweep.maxAbsRaw, Math.abs(raw));
+  return raw / panel.sweep.maxAbsRaw;
 }
 
 /* ===================================================================================
- * App: model loading, pose controls, and the progressive coarse-to-fine sweep.
+ * Panels: A (the stage -- also shows tripods) and B (compare-only, hidden by default).
  * =================================================================================== */
-const $ = id => document.getElementById(id);
-const statusEl = $('status'), modelInfoEl = $('modelInfo'), modelWarnEl = $('modelWarn');
-const canvas = $('board'), ctx = canvas.getContext('2d');
-const hoverline = $('hoverline');
-
-let net = null;
-const state = {
-  op: { x: CFG.startX, y: 0, rot: Math.PI },
-  meRot: 0,
-};
-
-function setStatus(msg, bad) {
-  statusEl.innerHTML = msg;
-  statusEl.classList.toggle('bad', !!bad);
-}
-
-// ---- model loading ----
-$('fileInput').addEventListener('change', e => {
-  const f = e.target.files[0];
-  if (!f) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    let j;
-    try { j = JSON.parse(reader.result); }
-    catch (err) { setStatus(`<strong>Could not parse ${esc(f.name)}</strong> — not valid JSON.`, true); return; }
-    let m;
-    try { m = MLP.fromJSON(j); }
-    catch (err) { setStatus(`<strong>Could not load ${esc(f.name)}</strong> — ${esc(err.message)}`, true); return; }
-    // Prove the shape matches THIS page's feature vector before committing to a sweep that
-    // would otherwise die on cell 1 with a cryptic "layer 0 input X, expected Y".
-    try { m.value(features(mockEng({x:0,y:0,rot:0},{x:CFG.startX,y:0,rot:Math.PI}))); }
-    catch (err) {
-      setStatus(`<strong>${esc(f.name)} does not match this tool's feature vector</strong> — ${esc(err.message)}. ` +
-                 `This usually means a legacy or differently-shaped net; the live game's engine is the source of truth.`, true);
-      return;
-    }
-    net = m;
-    const params = m.W.reduce((a, w) => a + w.length, 0) + m.b.reduce((a, b) => a + b.length, 0);
-    const outW = m.sizes[m.sizes.length - 1];
-    modelInfoEl.innerHTML = `<b>${esc(f.name)}</b><br>sizes: ${m.sizes.join('-')}` +
-      (m.topology ? `<br>topology: ${esc(m.topology.kind)}` : '') +
-      `<br>${params.toLocaleString()} params`;
-    modelWarnEl.innerHTML = (outW !== 1 && outW !== 23)
-      ? `<div class="warn">Output width is ${outW} — this tool reads output[0] as "value." Plain value nets are width 1 and dual nets are width 23; if this is a policy-only net (policy-champ.json, policy-joint*.json) the number shown is one policy logit, not an evaluation.</div>`
-      : '';
-    setStatus(`<strong>${esc(f.name)} loaded.</strong> Sweeping the board — colour is this net's value for the piece being swept.`);
-    $('pauseBtn').disabled = false; $('restartBtn').disabled = false;
-    resetSweep();
-  };
-  reader.readAsText(f);
-});
-function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function mockEng(me, op) { return { getG: () => ({ pieces: [me, op], active: 0 }), CFG, angInSpan, LINE_INTERSECTIONS }; }
-
-// ---- pose controls ----
-function syncPoseInputs() {
-  $('opX').value = Math.round(state.op.x);
-  $('opY').value = Math.round(state.op.y);
-  $('opRot').value = Math.round(state.op.rot*180/Math.PI);
-  $('opRotLbl').textContent = Math.round(state.op.rot*180/Math.PI) + '°';
-  $('meRot').value = Math.round(state.meRot*180/Math.PI);
-  $('meRotLbl').textContent = Math.round(state.meRot*180/Math.PI) + '°';
-}
-['opX','opY'].forEach(id => $(id).addEventListener('change', () => {
-  state.op.x = +$('opX').value || 0; state.op.y = +$('opY').value || 0; resetSweep();
-}));
-$('opRot').addEventListener('input', () => {
-  state.op.rot = (+$('opRot').value)*Math.PI/180; $('opRotLbl').textContent = $('opRot').value + '°'; resetSweep();
-});
-$('meRot').addEventListener('input', () => {
-  state.meRot = (+$('meRot').value)*Math.PI/180; $('meRotLbl').textContent = $('meRot').value + '°'; resetSweep();
-});
-$('opReset').addEventListener('click', () => {
-  state.op.x = CFG.startX; state.op.y = 0; state.op.rot = Math.PI; syncPoseInputs(); resetSweep();
-});
-$('swap').addEventListener('click', () => {
-  const oldOp = { ...state.op }, oldMeRot = state.meRot;
-  state.op = { x: -oldOp.x, y: -oldOp.y, rot: oldMeRot };  // the swept piece sat wherever the cursor was; the
-  state.meRot = oldOp.rot;                                  // cleanest swap is to hand the opponent's OLD pose
-  syncPoseInputs(); resetSweep();                            // to the mover's rotation and mirror the opponent in
-});
-$('resSelect').addEventListener('change', resetSweep);
-$('pauseBtn').addEventListener('click', () => {
-  sweep.paused = !sweep.paused;
-  $('pauseBtn').textContent = sweep.paused ? 'Resume' : 'Pause';
-});
-$('restartBtn').addEventListener('click', resetSweep);
-syncPoseInputs();
-
-// ---- canvas geometry: board units <-> canvas pixels ----
+function freshSweep() { return { N: 0, cellBoard: 0, cellPx: 0, stride: 1, col: 0, row: 0,
+                                   done: 0, total: 0, evalCount: 0, t0: 0, totalCache: {}, maxAbsRaw: 1 }; }
+const CSS_SIZE = 520;
 const DPR = Math.max(1, window.devicePixelRatio || 1);
-const CSS_SIZE = 640;
-canvas.style.width = CSS_SIZE + 'px'; canvas.style.height = CSS_SIZE + 'px';
-canvas.width = CSS_SIZE*DPR; canvas.height = CSS_SIZE*DPR;
-ctx.scale(DPR, DPR);
-const PAD = 1.08;                         // small margin so the rim circle doesn't touch the edge
-const HALF = CFG.edgeU*PAD;               // board-unit half-extent of the square we sweep
-const PXPU = CSS_SIZE/(2*HALF);           // pixels per board unit
+function setupCanvas(canvas) {
+  canvas.style.width = CSS_SIZE + 'px'; canvas.style.height = CSS_SIZE + 'px';
+  canvas.width = CSS_SIZE*DPR; canvas.height = CSS_SIZE*DPR;
+  const ctx = canvas.getContext('2d'); ctx.scale(DPR, DPR);
+  return ctx;
+}
+const panels = [
+  { id: 'A', canvas: $('board'), source: null, sweep: freshSweep(), msPerEval: null, isStage: true },
+  { id: 'B', canvas: $('boardB'), source: null, sweep: freshSweep(), msPerEval: null, isStage: false },
+];
+panels.forEach(p => { p.ctx = setupCanvas(p.canvas); });
+// Single source of truth for "is this panel currently shown" -- the compare checkbox IS what
+// toggles panel B's visibility (see the compareToggle handler), so this is the one place that
+// decision gets made; every other spot that needs it calls this rather than re-deriving it.
+function panelVisible(p) { return p.isStage || $('compareToggle').checked; }
+
+const PAD = 1.08;
+const HALF = CFG.edgeU*PAD;
+const PXPU = CSS_SIZE/(2*HALF);
 function boardToPx(x, y) { return [CSS_SIZE/2 + x*PXPU, CSS_SIZE/2 - y*PXPU]; }
 function pxToBoard(px, py) { return [(px - CSS_SIZE/2)/PXPU, (CSS_SIZE/2 - py)/PXPU]; }
 
-// ---- colour ----
 function colorFor(v) {
   v = Math.max(-1, Math.min(1, v));
   const neutral = [26, 32, 48], bad = [255, 90, 100], good = [70, 225, 205];
   const t = Math.min(1, Math.abs(v)*1.15);
   const target = v < 0 ? bad : good;
-  const r = neutral[0] + (target[0]-neutral[0])*t, g = neutral[1] + (target[1]-neutral[1])*t, b = neutral[2] + (target[2]-neutral[2])*t;
-  return `rgb(${r|0},${g|0},${b|0})`;
+  return `rgb(${(neutral[0]+(target[0]-neutral[0])*t)|0},${(neutral[1]+(target[1]-neutral[1])*t)|0},${(neutral[2]+(target[2]-neutral[2])*t)|0})`;
 }
 
-// ---- static overlay: the printed board, redrawn once per sweep restart under the heat layer ----
-function drawStaticBackground() {
-  ctx.clearRect(0, 0, CSS_SIZE, CSS_SIZE);
-  ctx.fillStyle = '#0a0f1a'; ctx.fillRect(0, 0, CSS_SIZE, CSS_SIZE);
-}
-function drawOverlay() {
+function drawStaticBackground(ctx) { ctx.fillStyle = '#0a0f1a'; ctx.fillRect(0, 0, CSS_SIZE, CSS_SIZE); }
+function drawBoardLines(ctx) {
   ctx.save();
   ctx.strokeStyle = 'rgba(180,196,224,.55)'; ctx.lineWidth = 1.2;
   ctx.beginPath(); ctx.arc(CSS_SIZE/2, CSS_SIZE/2, CFG.edgeU*PXPU, 0, TWO_PI); ctx.stroke();
@@ -555,151 +571,508 @@ function drawOverlay() {
   }
   ctx.fillStyle = 'rgba(180,196,224,.7)';
   for (const P of LINE_INTERSECTIONS) { const [x,y]=boardToPx(P.x,P.y); ctx.beginPath(); ctx.arc(x,y,2.2,0,TWO_PI); ctx.fill(); }
-  drawPiece(state.op, '#e5bd70', 1);
   ctx.restore();
 }
-function drawPiece(p, color, alpha) {
+const GRAB_PX = 22;
+function drawPiece(ctx, p, color) {
   const [hx, hy] = boardToPx(p.x, p.y);
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.arc(hx, hy, 3.5, 0, TWO_PI); ctx.fill();
+  ctx.save();
+  ctx.strokeStyle = color; ctx.setLineDash([3,4]); ctx.globalAlpha = 0.3; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(hx, hy, GRAB_PX, 0, TWO_PI); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.globalAlpha = 1;
+  ctx.beginPath(); ctx.arc(hx, hy, 5, 0, TWO_PI); ctx.fill();
   for (let i = 0; i < 3; i++) {
     const a = p.rot + i*TWO_PI/3;
     const [fx, fy] = boardToPx(p.x + Math.cos(a)*CFG.footR, p.y + Math.sin(a)*CFG.footR);
     ctx.beginPath(); ctx.arc(fx, fy, 4.5, 0, TWO_PI); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(fx, fy); ctx.globalAlpha = alpha*0.5; ctx.stroke(); ctx.globalAlpha = alpha;
+    ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(fx, fy); ctx.stroke(); ctx.globalAlpha = 1;
   }
-  ctx.globalAlpha = 1;
+}
+function drawStagePieces(ctx) {
+  drawPiece(ctx, state.op, '#e5bd70');
+  drawPiece(ctx, state.me, '#65dbc8');
+  if (pinnedMove) {
+    const foot = feetOf(state.op)[pinnedMove.pivotIdx];
+    const [fx, fy] = boardToPx(foot.x, foot.y);
+    ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(fx, fy, 7, 0, TWO_PI); ctx.stroke(); ctx.restore();
+  }
+}
+function feetOf(p) {
+  const out = [];
+  for (let i = 0; i < 3; i++) { const a = p.rot + i*TWO_PI/3; out.push({ x: p.x+Math.cos(a)*CFG.footR, y: p.y+Math.sin(a)*CFG.footR }); }
+  return out;
 }
 
-// ---- evaluate one point: value + whether the swept piece has a foot off the board ----
-function evalAt(x, y) {
-  const me = { x, y, rot: state.meRot };
-  const v = net.value(features(mockEng(me, state.op)));
-  let offBoard = false;
-  for (let i = 0; i < 3 && !offBoard; i++) {
-    const a = state.meRot + i*TWO_PI/3;
-    if (Math.hypot(x + Math.cos(a)*CFG.footR, y + Math.sin(a)*CFG.footR) > CFG.edgeU) offBoard = true;
+function drawSetup() {
+  panels.forEach(p => {
+    if (!panelVisible(p)) return;
+    drawStaticBackground(p.ctx); drawBoardLines(p.ctx);
+  });
+  drawStagePieces(panels[0].ctx);
+  syncCardNames();
+}
+function drawFinished(p) { drawBoardLines(p.ctx); if (p.isStage) drawStagePieces(p.ctx); }
+
+/* ===================================================================================
+ * Model / ladder source pickers, per panel
+ * =================================================================================== */
+function ladderOptionsHTML() {
+  return LADDER_LEVELS.map(l => `<option value="${l}">Ladder L${l}</option>`).join('');
+}
+$('ladderA').innerHTML += ladderOptionsHTML();
+$('ladderB').innerHTML += ladderOptionsHTML();
+
+function wireSourcePicker(letter) {
+  const p = panels[letter === 'A' ? 0 : 1];
+  const ladderBtn = $(`src${letter}-ladder-btn`), fileBtn = $(`src${letter}-file-btn`);
+  const ladderWrap = $(`ladder${letter}-wrap`), ladderSel = $(`ladder${letter}`);
+  const fileInput = $(`file${letter}`), nameEl = $(`src${letter}-name`);
+  let uiMode = 'ladder';
+  function refreshBtns() {
+    ladderBtn.classList.toggle('primary', uiMode === 'ladder');
+    fileBtn.classList.toggle('primary', uiMode === 'file');
+    ladderWrap.style.display = uiMode === 'ladder' ? '' : 'none';
   }
-  return { v, offBoard };
+  ladderBtn.addEventListener('click', () => { uiMode = 'ladder'; refreshBtns(); });
+  fileBtn.addEventListener('click', () => { uiMode = 'file'; refreshBtns(); });
+  refreshBtns();
+  ladderSel.addEventListener('change', () => {
+    const lvl = +ladderSel.value;
+    if (!lvl) { p.source = null; nameEl.textContent = 'No source chosen.'; }
+    else {
+      p.source = { kind: 'ladder', level: lvl, w: Engine.AI_LADDER[lvl-1].w, name: `Ladder L${lvl}` };
+      nameEl.innerHTML = `<b>Ladder L${lvl}</b><br>ladderEval(idx, w) -- L${lvl}'s own weights, unnormalised score`;
+    }
+    p.msPerEval = null;
+    onSourceChanged();
+  });
+  fileInput.addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let j, m;
+      try { j = JSON.parse(reader.result); } catch (err) { setStatus(`<strong>Could not parse ${esc(f.name)}</strong> — not valid JSON.`, true); return; }
+      try { m = MLP.fromJSON(j); } catch (err) { setStatus(`<strong>Could not load ${esc(f.name)}</strong> — ${esc(err.message)}`, true); return; }
+      try { m.value(features(mockEng({x:0,y:0,rot:0},{x:CFG.startX,y:0,rot:Math.PI}))); }
+      catch (err) {
+        setStatus(`<strong>${esc(f.name)} does not match this tool's feature vector</strong> — ${esc(err.message)}. Likely a legacy or differently-shaped net.`, true);
+        return;
+      }
+      const outW = m.sizes[m.sizes.length - 1];
+      const params = m.W.reduce((a, w) => a + w.length, 0) + m.b.reduce((a, b) => a + b.length, 0);
+      p.source = { kind: 'net', net: m, name: f.name };
+      p.msPerEval = null;
+      nameEl.innerHTML = `<b>${esc(f.name)}</b><br>sizes: ${m.sizes.join('-')}` +
+        (m.topology ? `<br>topology: ${esc(m.topology.kind)}` : '') + `<br>${params.toLocaleString()} params` +
+        (outW !== 1 && outW !== 23 ? `<div class="warn">Output width ${outW} — expected 1 (value) or 23 (dual). If this is a policy-only net, the number shown is one policy logit, not an evaluation.</div>` : '');
+      setStatus(`<strong>${esc(f.name)} loaded as Model ${letter}.</strong>`);
+      onSourceChanged();
+    };
+    reader.readAsText(f);
+  });
+}
+wireSourcePicker('A'); wireSourcePicker('B');
+
+$('compareToggle').addEventListener('change', e => {
+  const on = e.target.checked;
+  $('modelB-block').style.display = on ? '' : 'none';
+  $('stageB').style.display = on ? '' : 'none';
+  if (!on) panels[1].source = null;
+  onSourceChanged();
+  enterSetup();
+});
+
+function syncCardNames() {
+  $('cardA-name').textContent = panels[0].source ? panels[0].source.name : '';
+  $('cardB-name').textContent = panels[1].source ? panels[1].source.name : '';
 }
 
-// ---- progressive coarse-to-fine sweep, time-boxed per animation frame ----
-const sweep = { N: 0, cellPx: 0, stride: 1, col: 0, row: 0, done: 0, total: 0, evalCount: 0,
-                t0: 0, paused: false, running: false, totalCache: {} };
+function setStatus(msg, bad) { $('status').innerHTML = msg; $('status').classList.toggle('bad', !!bad); }
 
+/* ===================================================================================
+ * Pose controls (numeric/slider) -- any pose edit drops back to setup and clears the
+ * planned move sequence if it's the opponent that moved.
+ * =================================================================================== */
+function syncPoseInputs() {
+  $('opX').value = Math.round(state.op.x); $('opY').value = Math.round(state.op.y);
+  const opDeg = ((Math.round(state.op.rot*180/Math.PI)%360)+360)%360;
+  $('opRot').value = opDeg; $('opRotLbl').textContent = opDeg + '°';
+  const meDeg = ((Math.round(state.me.rot*180/Math.PI)%360)+360)%360;
+  $('meRot').value = meDeg; $('meRotLbl').textContent = meDeg + '°';
+}
+function opMovedManually() {
+  state.moves = []; state.opStart = { ...state.op };
+  syncMoveList();
+}
+['opX','opY'].forEach(id => $(id).addEventListener('change', () => {
+  state.op.x = +$('opX').value || 0; state.op.y = +$('opY').value || 0;
+  opMovedManually(); enterSetup();
+}));
+$('opRot').addEventListener('input', () => {
+  state.op.rot = (+$('opRot').value)*Math.PI/180; $('opRotLbl').textContent = $('opRot').value + '°';
+  opMovedManually(); enterSetup();
+});
+$('meRot').addEventListener('input', () => {
+  state.me.rot = (+$('meRot').value)*Math.PI/180; $('meRotLbl').textContent = $('meRot').value + '°';
+  enterSetup();
+});
+$('opReset').addEventListener('click', () => {
+  state.op = { x: CFG.startX, y: 0, rot: Math.PI }; syncPoseInputs(); opMovedManually(); enterSetup();
+});
+$('swap').addEventListener('click', () => {
+  const tmp = state.op; state.op = state.me; state.me = tmp;
+  syncPoseInputs(); opMovedManually(); enterSetup();
+});
+$('resSelect').addEventListener('change', () => { updateEstimate(); enterSetup(); });
+syncPoseInputs();
+
+/* ===================================================================================
+ * Move planner -- real engine, so a committed move can never be illegal.
+ * =================================================================================== */
+function syncBundleG() {
+  const G = Engine.getG();
+  G.pieces[0].x = state.me.x; G.pieces[0].y = state.me.y; G.pieces[0].rot = state.me.rot;
+  G.pieces[1].x = state.op.x; G.pieces[1].y = state.op.y; G.pieces[1].rot = state.op.rot;
+  Engine.setActive(1);
+}
+function sweepMaxReach(pivotIdx, dir) {
+  syncBundleG(); Engine.pinFoot(pivotIdx);
+  let guard = 0;
+  while (!Engine.getG().atLimit && guard++ < 3000) Engine.applySwing(dir*3*Math.PI/180);
+  return Math.abs(Engine.getG().netRad)*180/Math.PI;
+}
+function startPin(pivotIdx) {
+  if (mode !== 'setup' || state.moves.length >= 6) return;
+  const maxFwd = sweepMaxReach(pivotIdx, 1), maxBack = sweepMaxReach(pivotIdx, -1);
+  pinnedMove = { pivotIdx, maxFwd, maxBack, targetDeg: 0 };
+  $('pinPanel').style.display = '';
+  $('pinSlider').min = -maxBack; $('pinSlider').max = maxFwd; $('pinSlider').value = 0;
+  $('pinDegLbl').textContent = '0°';
+  drawSetup();
+}
+function previewMove() {
+  syncBundleG(); Engine.pinFoot(pinnedMove.pivotIdx);
+  const targetRad = Math.abs(pinnedMove.targetDeg)*Math.PI/180, dir = pinnedMove.targetDeg < 0 ? -1 : 1;
+  let guard = 0;
+  while (!Engine.getG().atLimit && Math.abs(Engine.getG().netRad) < targetRad && guard++ < 3000)
+    Engine.applySwing(dir*Math.min(3*Math.PI/180, targetRad - Math.abs(Engine.getG().netRad)));
+  const g2 = Engine.getG();
+  return { x: g2.pieces[1].x, y: g2.pieces[1].y, rot: g2.pieces[1].rot, netRad: g2.netRad };
+}
+$('pinSlider').addEventListener('input', () => {
+  pinnedMove.targetDeg = +$('pinSlider').value;
+  $('pinDegLbl').textContent = pinnedMove.targetDeg + '°';
+  const ghost = previewMove();
+  drawSetup();
+  drawPiece(panels[0].ctx, { x: ghost.x, y: ghost.y, rot: ghost.rot }, 'rgba(229,189,112,.45)');
+});
+$('commitMove').addEventListener('click', () => {
+  const ghost = previewMove();
+  state.op = { x: ghost.x, y: ghost.y, rot: ghost.rot };
+  state.moves.push({ pivotIdx: pinnedMove.pivotIdx, dir: pinnedMove.targetDeg < 0 ? -1 : 1,
+                      targetRad: Math.abs(ghost.netRad) });
+  pinnedMove = null; $('pinPanel').style.display = 'none';
+  syncPoseInputs(); syncMoveList(); enterSetup();
+});
+$('cancelPin').addEventListener('click', () => { pinnedMove = null; $('pinPanel').style.display = 'none'; drawSetup(); });
+$('undoMove').addEventListener('click', () => {
+  if (!state.moves.length) return;
+  state.moves.pop(); replayMovesTo(state.moves.length); syncPoseInputs(); syncMoveList(); enterSetup();
+});
+$('resetMoves').addEventListener('click', () => {
+  state.moves = []; replayMovesTo(0); syncPoseInputs(); syncMoveList(); enterSetup();
+});
+function replayMovesTo(n) {
+  const G = Engine.getG();
+  G.pieces[0].x = state.me.x; G.pieces[0].y = state.me.y; G.pieces[0].rot = state.me.rot;
+  G.pieces[1].x = state.opStart.x; G.pieces[1].y = state.opStart.y; G.pieces[1].rot = state.opStart.rot;
+  Engine.setActive(1);
+  for (let i = 0; i < n; i++) {
+    const mv = state.moves[i];
+    Engine.pinFoot(mv.pivotIdx);
+    let guard = 0;
+    while (!Engine.getG().atLimit && Math.abs(Engine.getG().netRad) < mv.targetRad && guard++ < 3000)
+      Engine.applySwing(mv.dir*Math.min(3*Math.PI/180, mv.targetRad - Math.abs(Engine.getG().netRad)));
+  }
+  const g2 = Engine.getG();
+  state.op = { x: g2.pieces[1].x, y: g2.pieces[1].y, rot: g2.pieces[1].rot };
+}
+function syncMoveList() {
+  $('moveList').innerHTML = state.moves.map((mv, i) =>
+    `<div class="mv"><span>move ${i+1}</span><span>pivot ${mv.pivotIdx}, ${mv.dir>0?'+':'-'}${Math.round(mv.targetRad*180/Math.PI)}°</span></div>`
+  ).join('');
+  $('undoMove').disabled = !state.moves.length;
+  $('resetMoves').disabled = !state.moves.length;
+  $('animateBtn').disabled = !state.moves.length || !panels.some(p => p.source);
+  updateEstimate();
+}
+
+/* ===================================================================================
+ * Drag interaction on the stage canvas: move (free reposition) or shift+drag (rotate
+ * about the piece's own hub), for either piece. Pinning a foot for move-planning is a
+ * separate click target (the foot itself), handled in pointerdown before the hub check.
+ * =================================================================================== */
+function clientToBoard(canvas, e) {
+  const rect = canvas.getBoundingClientRect();
+  const px = (e.clientX - rect.left)*(CSS_SIZE/rect.width), py = (e.clientY - rect.top)*(CSS_SIZE/rect.height);
+  return { px, py, board: pxToBoard(px, py) };
+}
+function pieceAt(px, py) {
+  const [ox, oy] = boardToPx(state.op.x, state.op.y), [mx, my] = boardToPx(state.me.x, state.me.y);
+  const dOp = Math.hypot(px-ox, py-oy), dMe = Math.hypot(px-mx, py-my);
+  if (dOp > GRAB_PX && dMe > GRAB_PX) return null;
+  return dOp <= dMe ? 'op' : 'me';
+}
+function footAt(px, py) {
+  const feet = feetOf(state.op);
+  for (let i = 0; i < 3; i++) {
+    const [fx, fy] = boardToPx(feet[i].x, feet[i].y);
+    if (Math.hypot(px-fx, py-fy) <= 14) return i;
+  }
+  return -1;
+}
+function clampToDisc(x, y) {
+  const r = Math.hypot(x, y);
+  if (r <= CFG.edgeU) return [x, y];
+  const k = CFG.edgeU/r;
+  return [x*k, y*k];
+}
+const stageCanvas = panels[0].canvas, hoverline = $('hoverline');
+stageCanvas.addEventListener('pointerdown', e => {
+  if (mode === 'running') return;
+  // Composing a move is modal: the slider's bounds and the ghost preview are only valid for the
+  // pivot and pose they were computed from, so nothing else on the board is interactive until the
+  // move is committed or cancelled -- otherwise a hub-drag mid-composition would silently leave
+  // that slider pointing at a foot/reach that no longer matches the piece's actual position.
+  if (pinnedMove) return;
+  const { px, py } = clientToBoard(stageCanvas, e);
+  const fi = footAt(px, py);
+  if (fi >= 0 && state.moves.length < 6) { startPin(fi); return; }
+  const which = pieceAt(px, py);
+  if (!which) return;
+  stageCanvas.setPointerCapture(e.pointerId);
+  const p = state[which], { board } = clientToBoard(stageCanvas, e);
+  dragging = e.shiftKey
+    ? { which, kind: 'rotate', startRot: p.rot, startAng: Math.atan2(board[1]-p.y, board[0]-p.x) }
+    : { which, kind: 'move' };
+  if (mode === 'done') enterSetup();
+});
+stageCanvas.addEventListener('pointermove', e => {
+  const { board } = clientToBoard(stageCanvas, e);
+  if (dragging) {
+    const p = state[dragging.which];
+    if (dragging.kind === 'move') { const [cx, cy] = clampToDisc(board[0], board[1]); p.x = cx; p.y = cy; }
+    else { const ang = Math.atan2(board[1]-p.y, board[0]-p.x); p.rot = dragging.startRot + (ang - dragging.startAng); }
+    if (dragging.which === 'op') opMovedManually();
+    syncPoseInputs(); drawSetup();
+    if (dragging.which === 'me' && panels[0].source) {
+      const v = evalRaw(panels[0].source, p, state.op);
+      hoverline.innerHTML = `mover value here: <b>${v>=0?'+':''}${v.toFixed(3)}</b>`;
+    } else {
+      hoverline.textContent = `${dragging.which==='op'?'opponent':'mover'} x=${p.x.toFixed(1)} y=${p.y.toFixed(1)} rot=${Math.round(p.rot*180/Math.PI)}°`;
+    }
+    return;
+  }
+  if (!panels[0].source) return;
+  if (board[0]*board[0] + board[1]*board[1] > CFG.edgeU*CFG.edgeU) { hoverline.textContent = 'Off the board.'; return; }
+  const v = evalRaw(panels[0].source, { x: board[0], y: board[1], rot: state.me.rot }, state.op);
+  hoverline.innerHTML = `x=${board[0].toFixed(1)} y=${board[1].toFixed(1)} &nbsp; value <b>${v>=0?'+':''}${v.toFixed(3)}</b>`;
+});
+stageCanvas.addEventListener('pointerup', e => { if (dragging) { stageCanvas.releasePointerCapture(e.pointerId); dragging = null; } });
+stageCanvas.addEventListener('pointerleave', () => { if (!dragging) hoverline.textContent = 'Hover the board to sample a single point, or drag a tripod to pose it.'; });
+
+// Panel B has no tripods of its own (it always mirrors A's pose) -- just a read-only hover so you
+// can compare what each source says about the exact same point.
+const boardBCanvas = panels[1].canvas, hoverlineB = $('hoverlineB');
+boardBCanvas.addEventListener('pointermove', e => {
+  if (!panels[1].source) { hoverlineB.textContent = 'Pick a source for Model B to sample it here.'; return; }
+  const { board } = clientToBoard(boardBCanvas, e);
+  if (board[0]*board[0] + board[1]*board[1] > CFG.edgeU*CFG.edgeU) { hoverlineB.textContent = 'Off the board.'; return; }
+  const v = evalRaw(panels[1].source, { x: board[0], y: board[1], rot: state.me.rot }, state.op);
+  hoverlineB.innerHTML = `x=${board[0].toFixed(1)} y=${board[1].toFixed(1)} &nbsp; value <b>${v>=0?'+':''}${v.toFixed(3)}</b>`;
+});
+boardBCanvas.addEventListener('pointerleave', () => { hoverlineB.textContent = 'Hover to sample Model B at a point.'; });
+
+/* ===================================================================================
+ * Compute-time estimate
+ * =================================================================================== */
+function calibrate(source) {
+  const t0 = performance.now(), N = 150;
+  for (let i = 0; i < N; i++) {
+    const ang = i*0.13;
+    evalRaw(source, { x: Math.cos(ang)*20, y: Math.sin(ang)*20, rot: ang }, state.op);
+  }
+  return (performance.now()-t0)/N;
+}
+function updateEstimate() {
+  const active = panels.filter(panelVisible).filter(p => p.source);
+  if (!active.length) { $('estimate').innerHTML = 'Load a model or pick a ladder rung to see a compute-time estimate.'; return; }
+  active.forEach(p => { if (p.msPerEval == null) p.msPerEval = calibrate(p.source); });
+  const frames = 1 + state.moves.length;
+  const rows = [64, 128, 256, 512, 1024].map(N => {
+    const cells = countInDisc(N);
+    const perFrameS = active.reduce((a, p) => a + p.msPerEval*cells, 0)/1000;
+    const totalS = perFrameS*frames;
+    return `<div><span>${N}×${N}</span><span>${fmtS(perFrameS)}/frame · ${fmtS(totalS)} total (${frames} frame${frames>1?'s':''})</span></div>`;
+  }).join('');
+  $('estimate').innerHTML = rows;
+}
+function fmtS(s) { return s < 1 ? Math.round(s*1000)+'ms' : s < 10 ? s.toFixed(1)+'s' : Math.round(s)+'s'; }
+
+/* ===================================================================================
+ * Progressive sweep, per panel, driven by one shared rAF loop so both panels (when
+ * comparing) advance together. Every cell visited exactly once, coarsest stride first.
+ * =================================================================================== */
 function countInDisc(N) {
-  if (sweep.totalCache[N] !== undefined) return sweep.totalCache[N];
-  let n = 0;
-  const cell = 2*HALF/N;
-  for (let r = 0; r < N; r++) {
-    const y = -HALF + (r + 0.5)*cell;
-    for (let c = 0; c < N; c++) {
-      const x = -HALF + (c + 0.5)*cell;
-      if (x*x + y*y <= CFG.edgeU*CFG.edgeU) n++;
-    }
-  }
-  sweep.totalCache[N] = n;
-  return n;
+  if (!countInDisc.cache) countInDisc.cache = {};
+  if (countInDisc.cache[N] !== undefined) return countInDisc.cache[N];
+  let n = 0; const cell = 2*HALF/N;
+  for (let r = 0; r < N; r++) { const y = -HALF + (r+0.5)*cell;
+    for (let c = 0; c < N; c++) { const x = -HALF + (c+0.5)*cell; if (x*x+y*y <= CFG.edgeU*CFG.edgeU) n++; } }
+  return countInDisc.cache[N] = n;
 }
-
-function resetSweep() {
-  if (!net) return;
-  sweep.N = +$('resSelect').value;
-  sweep.cellBoard = 2*HALF/sweep.N;
-  sweep.cellPx = sweep.N ? CSS_SIZE/sweep.N : 0;
-  let s = 1; while (s*8 < sweep.N) s *= 2;
-  sweep.stride = s; sweep.col = 0; sweep.row = 0;
-  sweep.done = 0; sweep.total = countInDisc(sweep.N);
-  sweep.evalCount = 0; sweep.t0 = performance.now();
-  sweep.paused = false; $('pauseBtn').textContent = 'Pause';
-  sweep.running = true;
-  drawStaticBackground();
-  drawOverlay();
-  if (!sweep.looping) { sweep.looping = true; requestAnimationFrame(tick); }
+function resetPanelSweep(p) {
+  const s = p.sweep;
+  s.N = +$('resSelect').value; s.cellBoard = 2*HALF/s.N; s.cellPx = CSS_SIZE/s.N;
+  let st = 1; while (st*8 < s.N) st *= 2;
+  s.stride = st; s.col = 0; s.row = 0; s.done = 0; s.total = countInDisc(s.N);
+  s.evalCount = 0; s.t0 = performance.now(); s.maxAbsRaw = 1;
+  drawStaticBackground(p.ctx); drawBoardLines(p.ctx);
 }
-
-function advanceCursor() {
-  sweep.col += sweep.stride;
-  if (sweep.col >= sweep.N) { sweep.col = 0; sweep.row += sweep.stride; }
-  if (sweep.row >= sweep.N) {
-    sweep.stride = sweep.stride >> 1;
-    sweep.col = 0; sweep.row = 0;
-  }
+function paintCell(p, col, row, stride, v, offBoard) {
+  const px = col*p.sweep.cellPx, py = row*p.sweep.cellPx, size = stride*p.sweep.cellPx;
+  p.ctx.globalAlpha = offBoard ? 0.4 : 1;
+  p.ctx.fillStyle = colorFor(v);
+  p.ctx.fillRect(px, py, size + 0.6, size + 0.6);
+  p.ctx.globalAlpha = 1;
 }
-
-function tick() {
-  if (!net || !sweep.running) { sweep.looping = false; return; }
-  if (sweep.paused) { requestAnimationFrame(tick); return; }
-  const budget = 8, tStart = performance.now();
-  const initialStride = (() => { let s = 1; while (s*8 < sweep.N) s *= 2; return s; })();
-  while (performance.now() - tStart < budget) {
-    if (sweep.stride < 1) {
-      sweep.running = false;
-      updateStats(true);
-      requestAnimationFrame(tick);
-      return;
-    }
-    const isNew = sweep.stride === initialStride ||
-                  (sweep.col % (sweep.stride*2) !== 0) || (sweep.row % (sweep.stride*2) !== 0);
+function tickPanel(p, budgetMs) {
+  const s = p.sweep, tStart = performance.now();
+  const initialStride = (() => { let st = 1; while (st*8 < s.N) st *= 2; return st; })();
+  while (performance.now() - tStart < budgetMs) {
+    if (s.stride < 1) return;
+    const isNew = s.stride === initialStride || (s.col % (s.stride*2) !== 0) || (s.row % (s.stride*2) !== 0);
     if (isNew) {
-      const x = -HALF + (sweep.col + 0.5)*sweep.cellBoard;
-      const y = -HALF + (sweep.row + 0.5)*sweep.cellBoard;
-      if (x*x + y*y <= CFG.edgeU*CFG.edgeU) {
-        const { v, offBoard } = evalAt(x, -y);   // canvas row grows downward; board y grows upward
-        paintCell(sweep.col, sweep.row, sweep.stride, v, offBoard);
-        sweep.done++; sweep.evalCount++;
+      const x = -HALF + (s.col + 0.5)*s.cellBoard, yRaw = -HALF + (s.row + 0.5)*s.cellBoard;
+      if (x*x + yRaw*yRaw <= CFG.edgeU*CFG.edgeU) {
+        const y = -yRaw;
+        const me = { x, y, rot: state.me.rot };
+        const raw = evalRaw(p.source, me, state.op);
+        const v = normalize(p.source, raw, p);
+        let offBoard = false;
+        for (let i = 0; i < 3 && !offBoard; i++) {
+          const a = state.me.rot + i*TWO_PI/3;
+          if (Math.hypot(x + Math.cos(a)*CFG.footR, y + Math.sin(a)*CFG.footR) > CFG.edgeU) offBoard = true;
+        }
+        paintCell(p, s.col, s.row, s.stride, v, offBoard);
+        s.done++; s.evalCount++;
       }
     }
-    advanceCursor();
+    s.col += s.stride;
+    if (s.col >= s.N) { s.col = 0; s.row += s.stride; }
+    if (s.row >= s.N) { s.stride = s.stride >> 1; s.col = 0; s.row = 0; }
   }
-  updateStats(false);
-  requestAnimationFrame(tick);
 }
-
-function paintCell(col, row, stride, v, offBoard) {
-  const px = col*sweep.cellPx, py = row*sweep.cellPx, size = stride*sweep.cellPx;
-  ctx.globalAlpha = offBoard ? 0.4 : 1;
-  ctx.fillStyle = colorFor(v);
-  ctx.fillRect(px, py, size + 0.6, size + 0.6);   // +0.6 closes hairline seams between adjacent cells
-  ctx.globalAlpha = 1;
-}
-
-function updateStats(finished) {
-  const elapsed = (performance.now() - sweep.t0)/1000;
-  $('stCells').textContent = `${sweep.done.toLocaleString()} / ${sweep.total.toLocaleString()}` + (finished ? ' (done)' : '');
-  $('stCell').textContent = sweep.stride >= 1 ? `${(sweep.stride*sweep.cellBoard).toFixed(2)}u` : '—';
-  $('stRate').textContent = elapsed > 0 ? Math.round(sweep.evalCount/elapsed).toLocaleString() : '—';
+function updateStats() {
+  const p = panels.find(pp => pp.source) || panels[0];
+  const s = p.sweep, elapsed = (performance.now()-s.t0)/1000;
+  $('stCells').textContent = `${s.done.toLocaleString()} / ${s.total.toLocaleString()}` + (s.stride < 1 ? ' (done)' : '');
+  $('stCell').textContent = s.stride >= 1 ? `${(s.stride*s.cellBoard).toFixed(2)}u` : '—';
+  $('stRate').textContent = elapsed > 0 ? Math.round(s.evalCount/elapsed).toLocaleString() : '—';
   $('stElapsed').textContent = elapsed.toFixed(1) + 's';
-  if (finished) {
-    // redraw the overlay on top now that the heat layer is complete, so rings/arcs/corners
-    // and the opponent marker stay crisp instead of getting painted over by the last cells
-    drawOverlay();
-  }
+}
+function activePanels() { return panels.filter(p => p.source && panelVisible(p)); }
+function runPanelsToCompletion() {
+  return new Promise(resolve => {
+    function frame() {
+      if (mode !== 'running') { resolve(); return; }
+      if (globalPaused) { requestAnimationFrame(frame); return; }
+      const active = activePanels().filter(p => p.sweep.stride >= 1);
+      if (!active.length) { resolve(); return; }
+      const budget = active.length > 1 ? 5 : 8;
+      for (const p of active) tickPanel(p, budget);
+      updateStats();
+      requestAnimationFrame(frame);
+    }
+    frame();
+  });
 }
 
-// ---- interaction: click to place the opponent, hover to sample a single point ----
-canvas.addEventListener('click', e => {
-  if (!net) return;
-  const rect = canvas.getBoundingClientRect();
-  const px = (e.clientX - rect.left)*(CSS_SIZE/rect.width), py = (e.clientY - rect.top)*(CSS_SIZE/rect.height);
-  const [x, y] = pxToBoard(px, py);
-  if (x*x + y*y > CFG.edgeU*CFG.edgeU) return;
-  state.op.x = x; state.op.y = y; syncPoseInputs(); resetSweep();
-});
-canvas.addEventListener('mousemove', e => {
-  if (!net) return;
-  const rect = canvas.getBoundingClientRect();
-  const px = (e.clientX - rect.left)*(CSS_SIZE/rect.width), py = (e.clientY - rect.top)*(CSS_SIZE/rect.height);
-  const [x, y] = pxToBoard(px, py);
-  if (x*x + y*y > CFG.edgeU*CFG.edgeU) { hoverline.textContent = 'Off the board.'; return; }
-  const { v, offBoard } = evalAt(x, y);
-  hoverline.innerHTML = `x=${x.toFixed(1)} y=${y.toFixed(1)} &nbsp; value <b>${v>=0?'+':''}${v.toFixed(3)}</b>` +
-    (offBoard ? ' &nbsp; <span style="color:var(--gold)">a foot here leaves the board</span>' : '');
-});
-canvas.addEventListener('mouseleave', () => { hoverline.textContent = 'Hover the board to sample a single point.'; });
+/* ===================================================================================
+ * Mode transitions and Run / Animate
+ * =================================================================================== */
+function updateButtons() {
+  const hasSource = panels.some(p => p.source);
+  $('runBtn').disabled = mode !== 'setup' || !hasSource;
+  $('animateBtn').disabled = mode !== 'setup' || !hasSource || !state.moves.length;
+  $('pauseBtn').disabled = mode !== 'running';
+  $('pauseBtn').textContent = globalPaused ? 'Resume' : 'Pause';
+}
+function enterSetup() {
+  mode = 'setup'; globalPaused = false;
+  drawSetup();
+  $('stCells').textContent='—'; $('stCell').textContent='—'; $('stRate').textContent='—'; $('stElapsed').textContent='—';
+  updateButtons();
+}
+async function startRun() {
+  if (!panels.some(p => p.source)) return;
+  mode = 'running'; updateButtons();
+  activePanels().forEach(resetPanelSweep);
+  await runPanelsToCompletion();
+  if (mode === 'running') { mode = 'done'; activePanels().forEach(drawFinished); }
+  updateButtons();
+}
+async function animateThroughMoves() {
+  if (!panels.some(p => p.source) || !state.moves.length) return;
+  mode = 'running'; updateButtons();
+  const savedOp = { ...state.op };
+  const frames = [{ ...state.opStart }];
+  for (let i = 0; i < state.moves.length; i++) { replayMovesTo(i+1); frames.push({ ...state.op }); }
+  for (let f = 0; f < frames.length && mode === 'running'; f++) {
+    if (f > 0) await animateSwing(state.moves[f-1], frames[f-1], frames[f]);
+    state.op = { ...frames[f] };
+    activePanels().forEach(resetPanelSweep);
+    await runPanelsToCompletion();
+  }
+  if (mode !== 'running') { state.op = savedOp; enterSetup(); return; }
+  mode = 'done'; activePanels().forEach(drawFinished);
+  updateButtons();
+}
+function animateSwing(mv, fromPose, toPose) {
+  return new Promise(resolve => {
+    const G = Engine.getG();
+    G.pieces[0].x = state.me.x; G.pieces[0].y = state.me.y; G.pieces[0].rot = state.me.rot;
+    G.pieces[1].x = fromPose.x; G.pieces[1].y = fromPose.y; G.pieces[1].rot = fromPose.rot;
+    Engine.setActive(1); Engine.pinFoot(mv.pivotIdx);
+    function step() {
+      if (mode !== 'running') { resolve(); return; }
+      if (globalPaused) { requestAnimationFrame(step); return; }
+      const g2 = Engine.getG();
+      if (g2.atLimit || Math.abs(g2.netRad) >= mv.targetRad - 1e-6) {
+        state.op = { x: g2.pieces[1].x, y: g2.pieces[1].y, rot: g2.pieces[1].rot };
+        resolve(); return;
+      }
+      Engine.applySwing(mv.dir*Math.min(3*Math.PI/180, mv.targetRad - Math.abs(g2.netRad)));
+      const g3 = Engine.getG();
+      state.op = { x: g3.pieces[1].x, y: g3.pieces[1].y, rot: g3.pieces[1].rot };
+      drawStaticBackground(panels[0].ctx); drawBoardLines(panels[0].ctx); drawStagePieces(panels[0].ctx);
+      requestAnimationFrame(step);
+    }
+    step();
+  });
+}
 
-drawStaticBackground();
+$('runBtn').addEventListener('click', startRun);
+$('animateBtn').addEventListener('click', animateThroughMoves);
+$('pauseBtn').addEventListener('click', () => { if (mode !== 'running') return; globalPaused = !globalPaused; updateButtons(); });
+$('editBtn').addEventListener('click', () => { if (pinnedMove) { pinnedMove = null; $('pinPanel').style.display = 'none'; } enterSetup(); });
+
+function onSourceChanged() { updateButtons(); syncMoveList(); syncCardNames(); enterSetup(); }
+syncMoveList();
+enterSetup();
 </script>
 </body>
 </html>
