@@ -191,6 +191,33 @@ canvas.board{cursor:crosshair}
       </div>
 
       <div class="block">
+        <h2>Colour</h2>
+        <div class="field">
+          <label>Palette</label>
+          <select id="palette">
+            <option value="default">Danger / good (default)</option>
+            <option value="traffic">Traffic light</option>
+            <option value="diverging">Diverging blue / orange</option>
+            <option value="mono">Grayscale</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Curve</label>
+          <select id="curve">
+            <option value="linear">Linear</option>
+            <option value="log">Log — emphasise near-zero</option>
+            <option value="exp">Exponential — emphasise extremes</option>
+            <option value="power">Power (gamma)</option>
+          </select>
+        </div>
+        <div class="field" id="gammaWrap" style="display:none">
+          <label>Gamma <small id="gammaLbl">1.0</small></label>
+          <input id="gamma" type="range" min="0.2" max="4" step="0.1" value="1">
+        </div>
+        <div class="hint">Repaints a finished map instantly from its stored data — no need to re-run.</div>
+      </div>
+
+      <div class="block">
         <h2>Run</h2>
         <button class="btn primary" id="runBtn" style="width:100%" disabled>Run at current pose</button>
         <button class="btn" id="animateBtn" style="width:100%;margin-top:8px" disabled>Animate through moves</button>
@@ -218,11 +245,19 @@ canvas.board{cursor:crosshair}
         <div class="cardtitle"><span>Board / Model A</span><span id="cardA-name"></span></div>
         <canvas id="board" class="board" width="520" height="520"></canvas>
         <div class="hoverline" id="hoverline">Hover the board to sample a single point, or drag a tripod to pose it.</div>
+        <div class="row2">
+          <select id="exportScaleA"><option value="1">Export size: N×N</option><option value="2">Export size: 2N×2N</option><option value="4" selected>Export size: 4N×4N</option></select>
+          <button class="btn small" id="exportA" disabled>Save PNG</button>
+        </div>
       </div>
       <div class="stagecol" id="stageB" style="display:none">
         <div class="cardtitle"><span>Model B</span><span id="cardB-name"></span></div>
         <canvas id="boardB" class="board" width="520" height="520"></canvas>
         <div class="hoverline" id="hoverlineB">&nbsp;</div>
+        <div class="row2">
+          <select id="exportScaleB"><option value="1">Export size: N×N</option><option value="2">Export size: 2N×2N</option><option value="4" selected>Export size: 4N×4N</option></select>
+          <button class="btn small" id="exportB" disabled>Save PNG</button>
+        </div>
       </div>
     </div>
   </div>
@@ -526,7 +561,7 @@ function normalize(source, raw, panel) {
  * Panels: A (the stage -- also shows tripods) and B (compare-only, hidden by default).
  * =================================================================================== */
 function freshSweep() { return { N: 0, cellBoard: 0, cellPx: 0, stride: 1, col: 0, row: 0,
-                                   done: 0, total: 0, evalCount: 0, t0: 0, totalCache: {}, maxAbsRaw: 1 }; }
+                                   done: 0, total: 0, evalCount: 0, t0: 0, totalCache: {}, maxAbsRaw: 1, grid: null }; }
 const CSS_SIZE = 520;
 const DPR = Math.max(1, window.devicePixelRatio || 1);
 function setupCanvas(canvas) {
@@ -551,12 +586,33 @@ const PXPU = CSS_SIZE/(2*HALF);
 function boardToPx(x, y) { return [CSS_SIZE/2 + x*PXPU, CSS_SIZE/2 - y*PXPU]; }
 function pxToBoard(px, py) { return [(px - CSS_SIZE/2)/PXPU, (CSS_SIZE/2 - py)/PXPU]; }
 
-function colorFor(v) {
+const PALETTES = {
+  default:   { neutral: [26, 32, 48],    bad: [255, 90, 100],  good: [70, 225, 205] },
+  traffic:   { neutral: [24, 26, 28],    bad: [225, 60, 55],   good: [70, 200, 95] },
+  diverging: { neutral: [235, 236, 240], bad: [55, 110, 220],  good: [230, 130, 55] },
+  mono:      { neutral: [30, 30, 34],    bad: [15, 15, 17],    good: [235, 235, 238] },
+};
+// The colour state every panel reads from -- one shared setting rather than per-panel, since
+// comparing two maps drawn on different scales would defeat the point of comparing them.
+const colorOpts = { palette: 'default', curve: 'linear', gamma: 1 };
+// `t` in [0,1] is "how far toward the extreme colour", as a function of |v|. The 1.15 gain before
+// clamping matches the original fixed mapping: most real values never reach exactly +-1, so without
+// it the strongest colours would almost never appear. log/exp/power reshape the SAME gained input,
+// so they stay visually comparable to linear rather than needing their own separate calibration.
+function curveT(absV, curve, gamma) {
+  const x = Math.min(1, absV*1.15);
+  if (curve === 'log')   return Math.log1p(x*9)/Math.log(10);       // concave: stretches near-zero detail
+  if (curve === 'exp')   return (Math.exp(x*3) - 1)/(Math.exp(3) - 1); // convex: stretches near-extreme detail
+  if (curve === 'power') return Math.pow(x, gamma);                  // gamma<1 like log, gamma>1 like exp, 1=linear
+  return x;                                                          // linear
+}
+function colorFor(v, opts) {
+  opts = opts || colorOpts;
   v = Math.max(-1, Math.min(1, v));
-  const neutral = [26, 32, 48], bad = [255, 90, 100], good = [70, 225, 205];
-  const t = Math.min(1, Math.abs(v)*1.15);
-  const target = v < 0 ? bad : good;
-  return `rgb(${(neutral[0]+(target[0]-neutral[0])*t)|0},${(neutral[1]+(target[1]-neutral[1])*t)|0},${(neutral[2]+(target[2]-neutral[2])*t)|0})`;
+  const pal = PALETTES[opts.palette] || PALETTES.default;
+  const t = curveT(Math.abs(v), opts.curve, opts.gamma);
+  const target = v < 0 ? pal.bad : pal.good;
+  return `rgb(${(pal.neutral[0]+(target[0]-pal.neutral[0])*t)|0},${(pal.neutral[1]+(target[1]-pal.neutral[1])*t)|0},${(pal.neutral[2]+(target[2]-pal.neutral[2])*t)|0})`;
 }
 
 function drawStaticBackground(ctx) { ctx.fillStyle = '#0a0f1a'; ctx.fillRect(0, 0, CSS_SIZE, CSS_SIZE); }
@@ -948,6 +1004,12 @@ function resetPanelSweep(p) {
   let st = 1; while (st*8 < s.N) st *= 2;
   s.stride = st; s.col = 0; s.row = 0; s.done = 0; s.total = countInDisc(s.N);
   s.evalCount = 0; s.t0 = performance.now(); s.maxAbsRaw = 1;
+  // Kept so colour-control changes and PNG export can redraw at full precision straight from the
+  // computed data, with no re-sweep: every in-disc cell is individually visited exactly once by
+  // the time a sweep completes (see the scheduler's own coverage note), so this array is the same
+  // N-by-N precision the finished picture shows -- not a snapshot of the coarse first pass.
+  s.grid = new Float32Array(s.N*s.N).fill(NaN);
+  s.offGrid = new Uint8Array(s.N*s.N);
   drawStaticBackground(p.ctx); drawBoardLines(p.ctx);
 }
 function paintCell(p, col, row, stride, v, offBoard) {
@@ -976,6 +1038,7 @@ function tickPanel(p, budgetMs) {
           if (Math.hypot(x + Math.cos(a)*CFG.footR, y + Math.sin(a)*CFG.footR) > CFG.edgeU) offBoard = true;
         }
         paintCell(p, s.col, s.row, s.stride, v, offBoard);
+        s.grid[s.row*s.N + s.col] = v; s.offGrid[s.row*s.N + s.col] = offBoard ? 1 : 0;
         s.done++; s.evalCount++;
       }
     }
@@ -1018,6 +1081,8 @@ function updateButtons() {
   $('animateBtn').disabled = mode !== 'setup' || !hasSource || !state.moves.length;
   $('pauseBtn').disabled = mode !== 'running';
   $('pauseBtn').textContent = globalPaused ? 'Resume' : 'Pause';
+  $('exportA').disabled = mode !== 'done' || !panels[0].source || !panels[0].sweep.grid;
+  $('exportB').disabled = mode !== 'done' || !panels[1].source || !panels[1].sweep.grid;
 }
 function enterSetup() {
   mode = 'setup'; globalPaused = false;
@@ -1091,6 +1156,81 @@ $('runBtn').addEventListener('click', startRun);
 $('animateBtn').addEventListener('click', animateThroughMoves);
 $('pauseBtn').addEventListener('click', () => { if (mode !== 'running') return; globalPaused = !globalPaused; updateButtons(); });
 $('editBtn').addEventListener('click', () => { if (pinnedMove) { pinnedMove = null; $('pinPanel').style.display = 'none'; } enterSetup(); });
+
+/* ===================================================================================
+ * Colour controls: repaint an already-finished sweep straight from its stored grid, at
+ * the CURRENT palette/curve/gamma -- no re-evaluation, so this is instant regardless of
+ * resolution. Only meaningful once a sweep has actually produced a grid to read.
+ * =================================================================================== */
+function repaintFromGrid(p) {
+  const s = p.sweep;
+  if (!s.grid || !s.N) return;
+  drawStaticBackground(p.ctx);
+  for (let row = 0; row < s.N; row++) {
+    for (let col = 0; col < s.N; col++) {
+      const v = s.grid[row*s.N + col];
+      if (Number.isNaN(v)) continue;
+      paintCell(p, col, row, 1, v, s.offGrid[row*s.N + col] === 1);
+    }
+  }
+  drawFinished(p);
+}
+function repaintAllFinished() { if (mode === 'done') panels.forEach(p => { if (p.source && p.sweep.grid) repaintFromGrid(p); }); }
+$('palette').addEventListener('change', () => { colorOpts.palette = $('palette').value; repaintAllFinished(); });
+$('curve').addEventListener('change', () => {
+  colorOpts.curve = $('curve').value;
+  $('gammaWrap').style.display = colorOpts.curve === 'power' ? '' : 'none';
+  repaintAllFinished();
+});
+$('gamma').addEventListener('input', () => {
+  colorOpts.gamma = +$('gamma').value; $('gammaLbl').textContent = colorOpts.gamma.toFixed(1);
+  repaintAllFinished();
+});
+
+/* ===================================================================================
+ * PNG export: rendered straight from the same stored grid, at a chosen pixel-per-cell
+ * scale (so an N=256 sweep can still export crisp at up to 1024x1024) -- nearest-
+ * neighbour, deliberately: interpolating between cells would imply precision the sweep
+ * never actually computed there.
+ * =================================================================================== */
+function exportPanel(p, scale) {
+  const s = p.sweep;
+  if (!s.grid || !s.N) return;
+  const size = s.N*scale;
+  const off = document.createElement('canvas');
+  off.width = size; off.height = size;
+  const octx = off.getContext('2d');
+  octx.fillStyle = '#0a0f1a'; octx.fillRect(0, 0, size, size);
+  for (let row = 0; row < s.N; row++) {
+    for (let col = 0; col < s.N; col++) {
+      const v = s.grid[row*s.N + col];
+      if (Number.isNaN(v)) continue;
+      octx.globalAlpha = s.offGrid[row*s.N + col] === 1 ? 0.4 : 1;
+      octx.fillStyle = colorFor(v);
+      octx.fillRect(col*scale, row*scale, scale + 0.6, scale + 0.6);
+    }
+  }
+  octx.globalAlpha = 1;
+  // board reference lines, scaled to THIS canvas's own size (independent of the on-screen CSS_SIZE)
+  const pxpu2 = size/(2*HALF), b2p = (x, y) => [size/2 + x*pxpu2, size/2 - y*pxpu2];
+  octx.save();
+  octx.strokeStyle = 'rgba(220,230,245,.6)'; octx.lineWidth = Math.max(1, scale*0.35);
+  octx.beginPath(); octx.arc(size/2, size/2, CFG.edgeU*pxpu2, 0, TWO_PI); octx.stroke();
+  for (const R of CFG.rings) { octx.beginPath(); octx.arc(size/2, size/2, R*pxpu2, 0, TWO_PI); octx.stroke(); }
+  for (const a of CFG.sideArcs) {
+    const [cx, cy] = b2p(a.cx, a.cy);
+    octx.beginPath(); octx.arc(cx, cy, a.r*pxpu2, -a.a1*Math.PI/180, -a.a0*Math.PI/180); octx.stroke();
+  }
+  octx.restore();
+  off.toBlob(blob => {
+    const url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = `tau-danger-map-${p.id}-${p.source.name.replace(/[^\w.-]+/g,'_')}-${size}px.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }, 'image/png');
+}
+$('exportA').addEventListener('click', () => exportPanel(panels[0], +$('exportScaleA').value));
+$('exportB').addEventListener('click', () => exportPanel(panels[1], +$('exportScaleB').value));
 
 function onSourceChanged() { updateButtons(); syncMoveList(); syncCardNames(); enterSetup(); }
 syncMoveList();
