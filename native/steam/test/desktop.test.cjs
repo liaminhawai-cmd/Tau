@@ -2307,3 +2307,37 @@ test('closing the walkthrough opened from a match gives the board back to the ma
   assert.equal(g.read('JSON.stringify(takeSnap())'),before,'the match is exactly as it was left');
   assert.deepEqual(g.errors,[]);
 });
+
+test('a titan lands on the Colossus plinth and rolls off it, instead of sinking into the stone',async t=>{
+  const g=await game();t.after(g.close);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    localStorage.setItem('tauDesktopTestBoards','1');`);
+  g.read("tauDesktop.board='colossus'");
+  // The pitch stands on a stone plinth a little WIDER than the board, so the ground is asked per
+  // position: the plinth's face over the plinth, its sloped flank at the edge, the sand beyond.
+  // Told the sand was the ground everywhere, a titan fell straight through the stone and rested
+  // fifteen units inside it.
+  const top=g.read('fallFloorY(0,0)'), rim=g.read('fallFloorY(CFG.edgeU, 0)');
+  const sand=g.read('fallFloorY(CFG.edgeU*2, 0)'), look=g.read('tauDesktop.fallFloorY()');
+  assert.ok(top>-10,`over the plinth the ground is the plinth's face, not the sand (got ${top})`);
+  assert.equal(rim,top,'and it is still the face right out at the board rim');
+  assert.equal(sand,-20,'well clear of the plinth it is the arena sand');
+  assert.equal(look,-20,'asked with no position the look still names its ground level');
+  const flank=g.read('fallFloorY(CFG.edgeU*1.12, 0)');
+  assert.ok(flank<top && flank>sand,`the plinth's flank slopes between the two (got ${flank})`);
+  // A piece dropped over the plinth comes to rest ON it.
+  g.read(`let seed=5; Math.random=()=>((seed=(seed*16807)%2147483647)/2147483647);
+    fall=Object.assign(mkFallState(G.pieces[1]),{idx:1, phase:'free', vy:-40, vx:0, vz:0});
+    tripods[1].position.set(CFG.edgeU*0.6, 14, 0);
+    for(let i=0;i<400 && fall.active;i++) stepFall(1/60);`);
+  const y=g.read('tripods[1].position.y'), below=g.read('fallLowestBelowOrigin(tripods[1])');
+  const here=g.read('fallFloorY(tripods[1].position.x, tripods[1].position.z)');
+  assert.ok(Math.abs(y+below-here)<0.01,'its lowest point rests on the stone under it');
+  assert.ok(y+below>-10,`and that is the plinth, not the sand twenty down (lowest ${(y+below).toFixed(1)})`);
+  assert.deepEqual(g.errors,[]);
+});
