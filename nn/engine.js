@@ -107,15 +107,36 @@ function stripCommentsAndStrings(s) {
 // (mtimeMs + size): cache the built source string and skip straight past the closure walk when
 // index.html hasn't moved since the cache was written. A miss or a corrupt cache just falls through
 // to the unchanged rebuild path below, so this can only make a run faster, never wrong.
+// Every seed has to be DEFINED in the emitted source, not merely mentioned in it -- `oppFoo` used
+// inside another function's body is not `oppFoo` existing.
+function seedsDefinedIn(source) {
+  return SEEDS.every(s => new RegExp('(^|\\n)\\s*(function\\s+|const\\s+|let\\s+|var\\s+|class\\s+)' +
+                                     s.replace(/\$/g, '\\$') + '\\b').test(source));
+}
+
 const HTML_PATH = path.join(__dirname, '..', 'index.html');
 const ENGINE_CACHE_PATH = path.join(__dirname, '.engine-cache.json');
 
+// The key covers index.html AND THIS FILE. What actually runs is index.html's extracted closure
+// plus createEngine's own __exports tail and the SEEDS that root the walk -- and those two live
+// here, not there. Keying on index.html alone let a rename in this file land against a body cached
+// from before it: every worker died with `<name> is not defined` at the exports line, because a
+// cache hit returns before the seed-existence check below and so nothing compared the tail to the
+// body. Live trainer, every rating match, one push. Both halves of the program are in the key now.
+function cacheKeyFor() {
+  const h = fs.statSync(HTML_PATH), s = fs.statSync(__filename);
+  return `${h.mtimeMs}:${h.size}|${s.mtimeMs}:${s.size}|${SEEDS.join(',')}`;
+}
+
 function buildEngineSource() {
-  const stat = fs.statSync(HTML_PATH);
-  const cacheKey = stat.mtimeMs + ':' + stat.size;
+  const cacheKey = cacheKeyFor();
   try {
     const cached = JSON.parse(fs.readFileSync(ENGINE_CACHE_PATH, 'utf8'));
-    if (cached.key === cacheKey && typeof cached.source === 'string') return cached.source;
+    // Verified on the way out of the cache as well as on the way in: a key can only prove the
+    // inputs are unchanged, and this proves the thing being returned actually defines what the
+    // tail is about to reference. A stale or hand-edited cache now rebuilds instead of exploding.
+    if (cached.key === cacheKey && typeof cached.source === 'string' && seedsDefinedIn(cached.source))
+      return cached.source;
   } catch (e) { /* no cache yet, or unreadable/corrupt -- fall through and rebuild */ }
 
   const html = fs.readFileSync(HTML_PATH, 'utf8');
@@ -144,6 +165,7 @@ function buildEngineSource() {
     throw new Error('extracted engine pulled in DOM code — the closure reached too far');
   if (!/(^|\n)let G;/.test(code)) throw new Error("closure missed the game's `let G;` declaration");
   const source = code + '\n';
+  if (!seedsDefinedIn(source)) throw new Error('extracted engine is missing a seed definition');
   try { fs.writeFileSync(ENGINE_CACHE_PATH, JSON.stringify({ key: cacheKey, source })); }
   catch (e) { /* best-effort -- a write failure just costs the next process the rebuild, nothing more */ }
   return source;
