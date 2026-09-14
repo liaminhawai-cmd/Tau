@@ -153,13 +153,29 @@ function fieldRange(elo){let lo=Infinity,hi=-Infinity;for(const p of players){co
 function standing(p,elo,fr){const e=Number.isFinite(elo[p.id])?elo[p.id]:(fr.lo+fr.hi)/2;return .15+.85*Math.max(0,Math.min(1,(e-fr.lo)/Math.max(1e-9,fr.hi-fr.lo)));}
 function uncertainty(p,g){const matches=(g[p.id]||0)/PHYSICAL_GAMES_PER_MATCH;if(!matches)return 1;const hw=prevCI[p.id];const u=Number.isFinite(hw)?hw/100:12/(12+matches);return Math.max(.05,Math.min(1,u));}
 function freshness(p,g){return 1/(Math.log2((g[p.id]||0)+2));}
+// Rung-vs-rung: the pair equation without its cost divisor, and without the closeness term that
+// would quietly skip the very comparisons that pin the order (L7 vs L11 is the least "close" pair
+// on the board and the most load-bearing). Scored high enough to be drawn early, because until the
+// yardstick is ordered every other rating on the board is provisional.
+function ladderPinScore(a,b,elo,g,pair,fr){
+  return 6*Math.sqrt(standing(a,elo,fr)*standing(b,elo,fr));
+}
 function pairScore(a,b,elo,g,pair,fr){
-  // Two ladder brains never meet: both deterministic, the same two games every time, and neither
-  // side learns. And a pair that has already played its two true-start games (one per colour) is
-  // done for good -- every brain here is deterministic from a fixed start, so a re-match would
-  // replay the same games and add nothing to the rating or the data. Breadth is the evidence.
-  if(a.kind==='ladder'&&b.kind==='ladder')return 0;
+  // A pair that has already played its two true-start games (one per colour) is done for good --
+  // every brain here is deterministic from a fixed start, so a re-match would replay the same
+  // games and add nothing to the rating or the data. Breadth is the evidence.
   if(((store.tsPairs||{})[canonical(a.id,b.id)]||0)>=PHYSICAL_GAMES_PER_MATCH)return 0;
+  // Two ladder brains DO meet, once, and the rent is waived for it. They used to be barred
+  // outright on the grounds that both are deterministic and neither learns -- true, but it left
+  // the rungs with no direct comparison at all, so nothing in the fit pinned their order. Measured
+  // over the whole recorded history: 3 rung-vs-rung matches against ~590 rung matches overall, and
+  // the ladder came out scrambled -- L9 at -106 sitting 200 Elo ABOVE L11 at -306, with L9 and L10
+  // drifting 170 Elo across nine consecutive passes despite 230 games each. An unordered yardstick
+  // makes every model rating measured against it suspect, which is the whole point of having one.
+  // The tsPairs guard above already caps this at one match per pair forever, so the entire cost is
+  // C(rungs,2) matches once -- and rent is waived because these are the reference the rest of the
+  // field is priced in, the same argument the anchor waiver makes, but bounded and self-ending.
+  if(a.kind==='ladder'&&b.kind==='ladder')return ladderPinScore(a,b,elo,g,pair,fr);
   const ea=Number.isFinite(elo[a.id])?elo[a.id]:0,eb=Number.isFinite(elo[b.id])?elo[b.id]:0,p=1/(1+Math.pow(10,(eb-ea)/400)),close=4*p*(1-p);
   const need=.55*((uncertainty(a,g)+uncertainty(b,g))/2)+.45*Math.max(freshness(a,g),freshness(b,g));
   const novelty=1/Math.log2((pair[canonical(a.id,b.id)]||0)+2);
