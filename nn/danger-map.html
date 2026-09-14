@@ -67,6 +67,8 @@ border-radius:9px;font-size:12px;color:var(--gold)}
 .legend .bar{flex:1;height:10px;border-radius:6px;
 background:linear-gradient(90deg,var(--danger),#2a3247,var(--accent))}
 .hint{font-size:11.5px;color:var(--muted);line-height:1.5}
+.rotrow{display:flex;gap:10px;align-items:center}
+.roticon{flex:none;border-radius:8px;background:#0c1220;border:1px solid #263048}
 .moves{display:flex;flex-direction:column;gap:4px;margin:8px 0;font-size:12px;color:#c4cfe0}
 .moves .mv{display:flex;justify-content:space-between;background:#0d1421;border:1px solid #263248;
 border-radius:7px;padding:5px 8px}
@@ -112,6 +114,14 @@ canvas.board{cursor:crosshair}
             <option value="">— pick a rung —</option>
           </select>
         </div>
+        <div class="field" id="depthA-wrap" style="display:none">
+          <label>Search depth</label>
+          <select id="depthA">
+            <option value="1">D1 — single position (fast)</option>
+            <option value="2">D2 — 2-ply minimax (much slower)</option>
+            <option value="3">D3 — 3-ply minimax (very slow)</option>
+          </select>
+        </div>
         <div class="srcname" id="srcA-name">No source chosen.</div>
       </div>
 
@@ -126,6 +136,14 @@ canvas.board{cursor:crosshair}
           <div class="field" id="ladderB-wrap" style="display:none">
             <select id="ladderB">
               <option value="">— pick a rung —</option>
+            </select>
+          </div>
+          <div class="field" id="depthB-wrap" style="display:none">
+            <label>Search depth</label>
+            <select id="depthB">
+              <option value="1">D1 — single position (fast)</option>
+              <option value="2">D2 — 2-ply minimax (much slower)</option>
+              <option value="3">D3 — 3-ply minimax (very slow)</option>
             </select>
           </div>
           <div class="srcname" id="srcB-name">No source chosen.</div>
@@ -148,11 +166,15 @@ canvas.board{cursor:crosshair}
 
       <div class="block">
         <h2>Mover (swept piece)</h2>
-        <div class="field">
-          <label>Rotation <small id="meRotLbl">0°</small></label>
-          <input id="meRot" type="range" min="0" max="359" step="1" value="0">
+        <div class="rotrow">
+          <canvas id="meRotIcon" class="roticon" width="56" height="56"></canvas>
+          <div class="field" style="flex:1;margin:0">
+            <label>Rotation <small id="meRotLbl">0°</small></label>
+            <input id="meRot" type="range" min="0" max="359" step="1" value="0">
+          </div>
         </div>
-        <div class="hint">Drag it to explore a single value live. Only its rotation feeds the sweep — position doesn't, since the sweep tries every position.</div>
+        <div class="hint">Drag it to explore a single value live. Only its rotation feeds the sweep — position doesn't, since the sweep tries every position. The icon shows which way it's facing (tick = 0°/up).</div>
+        <button class="btn small" id="animateRotBtn" style="width:100%;margin-top:8px" disabled>Animate rotation — spin &amp; watch the map morph</button>
         <button class="btn ghost small" id="swap" style="width:100%;margin-top:6px">Swap mover ↔ opponent</button>
       </div>
 
@@ -541,8 +563,99 @@ let globalPaused = false;
 
 function mockEng(me, op) { return { getG: () => ({ pieces: [me, op], active: 0 }), CFG, angInSpan, LINE_INTERSECTIONS }; }
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function depthNote(source) {
+  const depth = source && source.kind === 'net' ? (source.searchDepth || 1) : 1;
+  return depth > 1 ? ` <span style="color:var(--muted)">(D1 preview — run the sweep for D${depth})</span>` : '';
+}
 
-function evalRaw(source, me, op) {
+/* ===================================================================================
+ * nn/nnai.js's real move search, trimmed to what a static danger-map cell needs: no
+ * policy net, no dual net, no quiescence, no alpha-beta cutoff, no adaptive keep, no
+ * temperature -- none of those are wired into this tool (no policy.js is loaded, no
+ * `temperature` control exists here), so they're left out rather than faked. Everything
+ * that IS kept -- the arm sweep, the plateau/throw smoothing, the depth>=2 recursion via
+ * applyPlanSearch, the evalFn(eng, side) sign contract -- is copied near-verbatim from
+ * nnai.js's nnPlanFor, since that contract is exactly what makes this a real minimax over
+ * the loaded net rather than a lookalike. A cell's colour at D2/D3 is this function's
+ * chosen candidate's score (`.deep` once depth>=2 has run, `.s` at depth 1), for `idx`.
+ * =================================================================================== */
+const SEARCH_CAP_RAD = 170*Math.PI/180, SEARCH_MIN_MOVE = 2*Math.PI/180;
+function nnPlanForLite(eng, net, idx, opts) {
+  const o = opts || {};
+  const stepRad = (o.sweepDeg ? +o.sweepDeg : 3)*Math.PI/180;
+  const evalFn = o.evalFn || ((e, side) => {
+    const v = net.value(features(e));
+    return e.getG().active === side ? v : -v;
+  });
+  const G = eng.getG();
+  if (G.active !== idx) throw new Error('nnPlanForLite called for the wrong side');
+  const snap = eng.takeSnap();
+  const restore = () => {
+    const g = eng.getG();
+    g.pieces.forEach((p, i) => { p.x = snap[i].x; p.y = snap[i].y; p.rot = snap[i].rot; });
+    g.turnDir = 0; g.crossings = 0; g.atLimit = false; g.netRad = 0; g.contact = null;
+    g.pinned = null; g.pivot = null; g.active = idx; g.over = false; g.winner = null;
+  };
+  const cands = [];
+  for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
+    eng.pinFoot(pv);
+    const arm = [];
+    let guard = 0;
+    while (!eng.getG().atLimit && Math.abs(eng.getG().netRad) < SEARCH_CAP_RAD && guard++ < 200) {
+      eng.applySwing(dir*stepRad);
+      const g = eng.getG();
+      const rad = g.netRad;
+      if (Math.abs(rad) < SEARCH_MIN_MOVE) { if (g.atLimit) break; continue; }
+      const oppOff = g.pieces[1 - idx].feet().some(f => Math.hypot(f.x, f.y) > eng.CFG.edgeU + eng.CFG.edgeEps);
+      let v;
+      if (oppOff) v = 1e6 - Math.abs(rad)*1e-3;
+      else { g.active = 1 - idx; v = evalFn(eng, idx); g.active = idx; }
+      arm.push({ pivotIdx: pv, dir, targetRad: rad, v });
+    }
+    restore();
+    for (let i = 0; i < arm.length; i++) {
+      const w = arm[i], isThrow = w.v >= 1e5;
+      if (isThrow) { w.s = w.v; cands.push(w); continue; }
+      let sum = w.v, n = 1;
+      if (i > 0 && arm[i-1].v < 1e5) { sum += arm[i-1].v; n++; }
+      if (i + 1 < arm.length && arm[i+1].v < 1e5) { sum += arm[i+1].v; n++; }
+      w.s = sum/n;
+      cands.push(w);
+    }
+  }
+  if (!cands.length) return null;
+  cands.sort((a, b) => b.s - a.s);
+  const depth = o.depth || 1;
+  if (depth >= 2 && cands[0].v < 1e5) {           // a clean throw is already provably best, skip
+    const keep = Math.min(cands.length, o.keepForDepth || 4);
+    const deepCands = cands.slice(0, keep);
+    for (const c of deepCands) {
+      eng.applyPlanSearch(c);                     // hypothetical: no koHist, no ply-cap tick
+      const g1 = eng.getG();
+      let deep;
+      if (g1.over) deep = g1.winner === idx ? 1e6 : -1e6;
+      else {
+        const oppPlan = nnPlanForLite(eng, net, 1 - idx, { depth: depth - 1, keepForDepth: o.keepForDepth, sweepDeg: o.sweepDeg, evalFn: o.evalFn });
+        if (!oppPlan) deep = evalFn(eng, idx);     // opponent wedged -- score the position as it stands
+        else {
+          eng.applyPlanSearch(oppPlan);
+          const g2 = eng.getG();
+          deep = g2.over ? (g2.winner === idx ? 1e6 : -1e6) : evalFn(eng, idx);
+        }
+      }
+      restore();
+      c.deep = deep;
+    }
+    deepCands.sort((a, b) => b.deep - a.deep);
+    const chosenSet = new Set(deepCands);
+    cands.splice(0, cands.length, ...deepCands, ...cands.filter(c => !chosenSet.has(c)));
+  }
+  return cands[0];
+}
+
+// The plain D1 evaluation, no search -- used for the sweep at depth 1 AND for hover/drag
+// sampling regardless of the selected depth (see evalRaw below for why).
+function evalD1(source, me, op) {
   if (!source) return null;
   if (source.kind === 'net') return source.net.value(features(mockEng(me, op)));
   const G = Engine.getG();
@@ -550,6 +663,27 @@ function evalRaw(source, me, op) {
   G.pieces[1].x = op.x; G.pieces[1].y = op.y; G.pieces[1].rot = op.rot;
   Engine.setActive(0);
   return Engine.ladderEval(0, source.w);
+}
+function evalRaw(source, me, op) {
+  if (!source) return null;
+  const depth = source.kind === 'net' ? (source.searchDepth || 1) : 1;
+  if (depth <= 1) return evalD1(source, me, op);
+  // Search-based colour: root the real engine at `me` (the swept piece) to move, and let it
+  // search `depth` plies deep against `op` fixed where it's posed. Same evalFn contract as
+  // nnai.js: the returned score is always for the mover (idx 0 == me here), matching D1's raw
+  // value exactly at depth 1, so switching the toggle back to D1 reproduces the old numbers.
+  const G = Engine.getG();
+  G.pieces[0].x = me.x; G.pieces[0].y = me.y; G.pieces[0].rot = me.rot;
+  G.pieces[1].x = op.x; G.pieces[1].y = op.y; G.pieces[1].rot = op.rot;
+  Engine.setActive(0);
+  Engine.clearTurn();
+  G.over = false; G.winner = null;
+  const chosen = nnPlanForLite(Engine, source.net, 0, { depth, keepForDepth: 4 });
+  if (!chosen) return evalD1(source, me, op);   // wedged -- fall back to the raw value
+  // `.deep` is only set when the depth>=2 recursion actually ran -- it's skipped outright when
+  // the root's best candidate is already a clean throw (nothing to search deeper for), in which
+  // case `.s` already equals `.v`, the same huge throw score `.deep` would have carried anyway.
+  return (depth >= 2 && chosen.deep !== undefined) ? chosen.deep : chosen.s;
 }
 function normalize(source, raw, panel) {
   if (source.kind === 'net') return raw;
@@ -569,6 +703,31 @@ function setupCanvas(canvas) {
   canvas.width = CSS_SIZE*DPR; canvas.height = CSS_SIZE*DPR;
   const ctx = canvas.getContext('2d'); ctx.scale(DPR, DPR);
   return ctx;
+}
+function setupMiniCanvas(canvas, size) {
+  canvas.style.width = size + 'px'; canvas.style.height = size + 'px';
+  canvas.width = size*DPR; canvas.height = size*DPR;
+  const ctx = canvas.getContext('2d'); ctx.scale(DPR, DPR);
+  return ctx;
+}
+// Small always-visible indicator of the mover's current rotation -- a tick marks 0deg/up, three
+// dots its feet, same board-angle convention drawPiece/boardToPx use (screen y is flipped board y)
+// so it reads exactly like the tripod would look on the main board at that rotation.
+const meRotIconCtx = setupMiniCanvas($('meRotIcon'), 56);
+function drawMeRotIcon() {
+  const size = 56, ctx = meRotIconCtx, cx = size/2, cy = size/2, R = size*0.32;
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = '#0c1220'; ctx.fillRect(0, 0, size, size);
+  ctx.strokeStyle = 'rgba(180,196,224,.4)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx, 3); ctx.lineTo(cx, 9); ctx.stroke();
+  ctx.strokeStyle = '#65dbc8'; ctx.fillStyle = '#65dbc8'; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.arc(cx, cy, 3, 0, TWO_PI); ctx.fill();
+  for (let i = 0; i < 3; i++) {
+    const a = state.me.rot + i*TWO_PI/3;
+    const fx = cx + Math.cos(a)*R, fy = cy - Math.sin(a)*R;
+    ctx.beginPath(); ctx.arc(fx, fy, 3, 0, TWO_PI); ctx.stroke();
+    ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(fx, fy); ctx.stroke(); ctx.globalAlpha = 1;
+  }
 }
 const panels = [
   { id: 'A', canvas: $('board'), source: null, sweep: freshSweep(), msPerEval: null, isStage: true },
@@ -685,6 +844,7 @@ function wireSourcePicker(letter) {
   const ladderBtn = $(`src${letter}-ladder-btn`), fileBtn = $(`src${letter}-file-btn`);
   const ladderWrap = $(`ladder${letter}-wrap`), ladderSel = $(`ladder${letter}`);
   const fileInput = $(`file${letter}`), nameEl = $(`src${letter}-name`);
+  const depthWrap = $(`depth${letter}-wrap`), depthSel = $(`depth${letter}`);
   let uiMode = 'ladder';
   function refreshBtns() {
     ladderBtn.classList.toggle('primary', uiMode === 'ladder');
@@ -701,6 +861,12 @@ function wireSourcePicker(letter) {
       p.source = { kind: 'ladder', level: lvl, w: Engine.AI_LADDER[lvl-1].w, name: `Ladder L${lvl}` };
       nameEl.innerHTML = `<b>Ladder L${lvl}</b><br>ladderEval(idx, w) -- L${lvl}'s own weights, unnormalised score`;
     }
+    depthWrap.style.display = 'none';   // a rung's depth (if any) is baked into AI_LADDER, not a knob here
+    p.msPerEval = null;
+    onSourceChanged();
+  });
+  depthSel.addEventListener('change', () => {
+    if (p.source && p.source.kind === 'net') p.source.searchDepth = +depthSel.value;
     p.msPerEval = null;
     onSourceChanged();
   });
@@ -719,8 +885,9 @@ function wireSourcePicker(letter) {
       }
       const outW = m.sizes[m.sizes.length - 1];
       const params = m.W.reduce((a, w) => a + w.length, 0) + m.b.reduce((a, b) => a + b.length, 0);
-      p.source = { kind: 'net', net: m, name: f.name };
+      p.source = { kind: 'net', net: m, name: f.name, searchDepth: +depthSel.value || 1 };
       p.msPerEval = null;
+      depthWrap.style.display = '';
       nameEl.innerHTML = `<b>${esc(f.name)}</b><br>sizes: ${m.sizes.join('-')}` +
         (m.topology ? `<br>topology: ${esc(m.topology.kind)}` : '') + `<br>${params.toLocaleString()} params` +
         (outW !== 1 && outW !== 23 ? `<div class="warn">Output width ${outW} — expected 1 (value) or 23 (dual). If this is a policy-only net, the number shown is one policy logit, not an evaluation.</div>` : '');
@@ -758,6 +925,7 @@ function syncPoseInputs() {
   $('opRot').value = opDeg; $('opRotLbl').textContent = opDeg + '°';
   const meDeg = ((Math.round(state.me.rot*180/Math.PI)%360)+360)%360;
   $('meRot').value = meDeg; $('meRotLbl').textContent = meDeg + '°';
+  drawMeRotIcon();
 }
 function opMovedManually() {
   state.moves = []; state.opStart = { ...state.op };
@@ -773,6 +941,7 @@ $('opRot').addEventListener('input', () => {
 });
 $('meRot').addEventListener('input', () => {
   state.me.rot = (+$('meRot').value)*Math.PI/180; $('meRotLbl').textContent = $('meRot').value + '°';
+  drawMeRotIcon();
   enterSetup();
 });
 $('opReset').addEventListener('click', () => {
@@ -933,8 +1102,10 @@ stageCanvas.addEventListener('pointermove', e => {
     if (dragging.which === 'op') opMovedManually();
     syncPoseInputs(); drawSetup();
     if (dragging.which === 'me' && panels[0].source) {
-      const v = evalRaw(panels[0].source, p, state.op);
-      hoverline.innerHTML = `mover value here: <b>${v>=0?'+':''}${v.toFixed(3)}</b>`;
+      // Always D1 here: this fires on every pointermove, and a D2/D3 search costs hundreds of
+      // net calls -- fine for a progressive sweep, not for tracking the mouse in real time.
+      const v = evalD1(panels[0].source, p, state.op);
+      hoverline.innerHTML = `mover value here: <b>${v>=0?'+':''}${v.toFixed(3)}</b>${depthNote(panels[0].source)}`;
     } else {
       hoverline.textContent = `${dragging.which==='op'?'opponent':'mover'} x=${p.x.toFixed(1)} y=${p.y.toFixed(1)} rot=${Math.round(p.rot*180/Math.PI)}°`;
     }
@@ -942,8 +1113,8 @@ stageCanvas.addEventListener('pointermove', e => {
   }
   if (!panels[0].source) return;
   if (board[0]*board[0] + board[1]*board[1] > CFG.edgeU*CFG.edgeU) { hoverline.textContent = 'Off the board.'; return; }
-  const v = evalRaw(panels[0].source, { x: board[0], y: board[1], rot: state.me.rot }, state.op);
-  hoverline.innerHTML = `x=${board[0].toFixed(1)} y=${board[1].toFixed(1)} &nbsp; value <b>${v>=0?'+':''}${v.toFixed(3)}</b>`;
+  const v = evalD1(panels[0].source, { x: board[0], y: board[1], rot: state.me.rot }, state.op);
+  hoverline.innerHTML = `x=${board[0].toFixed(1)} y=${board[1].toFixed(1)} &nbsp; value <b>${v>=0?'+':''}${v.toFixed(3)}</b>${depthNote(panels[0].source)}`;
 });
 stageCanvas.addEventListener('pointerup', e => { if (dragging) { stageCanvas.releasePointerCapture(e.pointerId); dragging = null; } });
 stageCanvas.addEventListener('pointerleave', () => { if (!dragging) hoverline.textContent = 'Hover the board to sample a single point, or drag a tripod to pose it.'; });
@@ -955,8 +1126,8 @@ boardBCanvas.addEventListener('pointermove', e => {
   if (!panels[1].source) { hoverlineB.textContent = 'Pick a source for Model B to sample it here.'; return; }
   const { board } = clientToBoard(boardBCanvas, e);
   if (board[0]*board[0] + board[1]*board[1] > CFG.edgeU*CFG.edgeU) { hoverlineB.textContent = 'Off the board.'; return; }
-  const v = evalRaw(panels[1].source, { x: board[0], y: board[1], rot: state.me.rot }, state.op);
-  hoverlineB.innerHTML = `x=${board[0].toFixed(1)} y=${board[1].toFixed(1)} &nbsp; value <b>${v>=0?'+':''}${v.toFixed(3)}</b>`;
+  const v = evalD1(panels[1].source, { x: board[0], y: board[1], rot: state.me.rot }, state.op);
+  hoverlineB.innerHTML = `x=${board[0].toFixed(1)} y=${board[1].toFixed(1)} &nbsp; value <b>${v>=0?'+':''}${v.toFixed(3)}</b>${depthNote(panels[1].source)}`;
 });
 boardBCanvas.addEventListener('pointerleave', () => { hoverlineB.textContent = 'Hover to sample Model B at a point.'; });
 
@@ -964,7 +1135,13 @@ boardBCanvas.addEventListener('pointerleave', () => { hoverlineB.textContent = '
  * Compute-time estimate
  * =================================================================================== */
 function calibrate(source) {
-  const t0 = performance.now(), N = 150;
+  // A D2/D3 eval is a full minimax search (hundreds of net calls), not one forward pass, so
+  // probing it 150x would freeze the tab for the same time a small chunk of the real sweep
+  // takes. Its cost is dominated by the fixed arm-sweep/recursion shape rather than by which
+  // position it's asked about, so far fewer samples still give an honest per-cell estimate.
+  const depth = source.kind === 'net' ? (source.searchDepth || 1) : 1;
+  const N = depth >= 3 ? 6 : depth >= 2 ? 20 : 150;
+  const t0 = performance.now();
   for (let i = 0; i < N; i++) {
     const ang = i*0.13;
     evalRaw(source, { x: Math.cos(ang)*20, y: Math.sin(ang)*20, rot: ang }, state.op);
@@ -1079,6 +1256,7 @@ function updateButtons() {
   const hasSource = panels.some(p => p.source);
   $('runBtn').disabled = mode !== 'setup' || !hasSource;
   $('animateBtn').disabled = mode !== 'setup' || !hasSource || !state.moves.length;
+  $('animateRotBtn').disabled = mode !== 'setup' || !hasSource;
   $('pauseBtn').disabled = mode !== 'running';
   $('pauseBtn').textContent = globalPaused ? 'Resume' : 'Pause';
   $('exportA').disabled = mode !== 'done' || !panels[0].source || !panels[0].sweep.grid;
@@ -1119,6 +1297,52 @@ async function animateThroughMoves() {
   activePanels().forEach(drawFinished);
   updateButtons();
 }
+// Spins the mover's own rotation smoothly to `target` (radians), redrawing the stage and the
+// little orientation icon every frame -- purely a display interpolation (no engine physics
+// involved, unlike animateSwing's opponent moves: rotating in place is always legal, there's
+// nothing to simulate) -- so animateThroughRotations reads as a continuous turn rather than a
+// jump cut between sweep frames.
+function spinMeTo(target) {
+  return new Promise(resolve => {
+    const from = state.me.rot;
+    let delta = ((target - from + Math.PI) % TWO_PI + TWO_PI) % TWO_PI - Math.PI;
+    const SPIN_FRAMES = 20;
+    let i = 0;
+    function step() {
+      if (mode !== 'running') { resolve(); return; }
+      if (globalPaused) { requestAnimationFrame(step); return; }
+      i++;
+      state.me.rot = from + delta*(i/SPIN_FRAMES);
+      syncPoseInputs();
+      drawStaticBackground(panels[0].ctx); drawBoardLines(panels[0].ctx); drawStagePieces(panels[0].ctx);
+      if (i >= SPIN_FRAMES) { resolve(); return; }
+      requestAnimationFrame(step);
+    }
+    step();
+  });
+}
+async function animateThroughRotations() {
+  if (!panels.some(p => p.source)) return;
+  mode = 'running'; updateButtons();
+  const savedRot = state.me.rot;
+  const STEPS = 12, STEP_ANGLE = TWO_PI/STEPS;   // 30deg stops, full turn
+  for (let i = 0; i < STEPS && mode === 'running'; i++) {
+    // Always spin to the target, even for the first stop (0deg) -- whatever rotation was set
+    // before pressing the button, the sequence itself is deterministic: 0, 30, 60deg, ... and
+    // the phase label always matches the rotation actually swept.
+    const target = i*STEP_ANGLE;
+    setPhase(`Turning to ${Math.round(target*180/Math.PI)}°…`);
+    await spinMeTo(target);
+    if (mode !== 'running') break;
+    setPhase(`Facing ${Math.round(target*180/Math.PI)}° — sweeping…`);
+    activePanels().forEach(resetPanelSweep);
+    await runPanelsToCompletion();
+  }
+  if (mode !== 'running') { state.me.rot = savedRot; syncPoseInputs(); enterSetup(); return; }
+  mode = 'done'; setPhase('');
+  activePanels().forEach(drawFinished);
+  updateButtons();
+}
 function setPhase(text) { $('status').querySelector('.phase')?.remove();
   if (text) $('status').insertAdjacentHTML('beforeend', ` <span class="phase" style="color:var(--accent)">${esc(text)}</span>`); }
 function animateSwing(mv, fromPose, toPose) {
@@ -1154,6 +1378,7 @@ function animateSwing(mv, fromPose, toPose) {
 
 $('runBtn').addEventListener('click', startRun);
 $('animateBtn').addEventListener('click', animateThroughMoves);
+$('animateRotBtn').addEventListener('click', animateThroughRotations);
 $('pauseBtn').addEventListener('click', () => { if (mode !== 'running') return; globalPaused = !globalPaused; updateButtons(); });
 $('editBtn').addEventListener('click', () => { if (pinnedMove) { pinnedMove = null; $('pinPanel').style.display = 'none'; } enterSetup(); });
 
