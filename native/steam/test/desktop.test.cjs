@@ -1275,7 +1275,9 @@ test('the loser goes over the rim, lands on the floor below and comes to rest ly
   // It rests ON the floor -- its lowest surface point, not its origin, which is rotated away.
   const floor=g.read('fallFloorY()'), lowest=g.read('tripods[1].position.y + fallLowestBelowOrigin(tripods[1])');
   assert.ok(Math.abs(lowest-floor)<0.1,`its lowest point rests on the floor (${lowest.toFixed(2)} vs ${floor})`);
-  assert.ok(g.read('tripods[1].position.y')>floor,'the piece sits above that floor rather than half through it');
+  // Standing on its pins the origin sits exactly ON the floor (the pin tips are its y=0), so this
+  // is "not sunk into it", not "strictly above it".
+  assert.ok(g.read('tripods[1].position.y')>=floor-0.05,'the piece sits on that floor rather than half through it');
   assert.ok(floor>-60,'the drop is short enough that the loss camera stays in close');
   // It carries on after it lands rather than stopping dead where it first touched. It does not
   // necessarily HOP: a tripod comes down on a leg, off its centre, so most of the blow goes into
@@ -1296,6 +1298,23 @@ test('the loser goes over the rim, lands on the floor below and comes to rest ly
   assert.equal(g.read('tripods[1].visible'),true,'the fallen piece stays on the ground to see');
   const rest=JSON.parse(g.read('JSON.stringify([tripods[1].position.x,tripods[1].position.z])'));
   assert.ok(Math.hypot(rest[0],rest[1])>g.read('CFG.edgeU'),'it comes to rest off the board, past the rim it went over');
+  // And nothing of it is inside anything else. The body is a chain of spheres down the centreline
+  // of each leg; sampled coarsely, legs slipped through the board between samples.
+  const inBoard=g.read(`(() => {
+    const t=tripods[1], R=CFG.edgeU; let worst=0;
+    const origin=new THREE.Vector3().copy(fall.X)
+      .sub(new THREE.Vector3().copy(FALL_BODY.com).applyQuaternion(t.quaternion));
+    for (const hh of FALL_HULL_LOCAL) {
+      const p=new THREE.Vector3().copy(hh.p).applyQuaternion(t.quaternion).add(origin);
+      const rho=Math.hypot(p.x,p.z);
+      // how far this sphere is inside the board's solid: the top face over the disc, the rim
+      // circle outside it. Positive means the leg is in the wood.
+      const d = rho<=R ? (hh.r - p.y) : (hh.r - Math.hypot(p.x-p.x*R/rho, p.y, p.z-p.z*R/rho));
+      if (p.y > -8 && d > worst) worst = d;
+    }
+    return worst;
+  })()`);
+  assert.ok(inBoard<0.35,`no leg is left inside the board (deepest ${inBoard.toFixed(2)})`);
   assert.deepEqual(g.errors,[]);
 });
 

@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 249</div>
+<div id="buildTag">build 250</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -6646,7 +6646,8 @@ function htp3DStep(dt) {
         if (st.red.feet().some(f=>radU(f)>CFG.edgeU)) {
             if (!st.done) htpGoalDone('off', st, { x: st.red.x, y: st.red.y });
             htpPhase='fall'; htpPhaseT=0;
-            htpFallState = mkFallState(st.red);   // the REAL match fall: slide → rim pivot → free tumble
+            htpFallState = mkFallState(st.red);   // the REAL match fall, same body and contacts
+            htpFallState.other = htpTripods[0];   // …including the piece that pushed it, still standing there
         }
     } else if (htpPhase==='fall') {
         stepFallOn(htpTripods[1], htpFallState, dt);   // byte-identical physics to a real match's loser
@@ -6694,6 +6695,7 @@ function htp3DMirror(dt) {
                 // keeps its flat slide-out-and-fade — a top-down view of a fall IS that.
                 if (!htpGoalFall) {
                     htpGoalFall = mkFallState(htpNow.red);
+                    htpGoalFall.other = htpTripods[0];
                     htpTripods[1].position.set(htpNow.red.x, 0, htpNow.red.y);
                     htpTripods[1].rotation.set(0, -htpNow.red.rot, 0);
                 }
@@ -9110,21 +9112,38 @@ function init3D() {
 const fallQ = new THREE.Quaternion();
 // Local-space positions of the three feet (buildTripod puts them at radius footR, height 0) and a
 // scratch for their world positions -- used to keep feet from scything through the board mid-tip.
-// The points that can touch the ground first when a piece lands mid-tumble: the three foot pads,
-// the midpoint of each leg arc, and the crown. A falling piece is rotating, so its ORIGIN (the
-// plane its pins stand on) is almost never its lowest point -- clamping that origin to the floor,
-// as this used to, let a piece landing on its side or its head bury half of itself in the ground.
-// Each point carries the radius of the tube around it, so the tube's SURFACE rests on the floor
-// rather than its centreline; the pads already sit on their own bottom face, so they carry none.
+// The piece's own shape, as a chain of spheres down the centreline of each leg -- which is what a
+// leg IS: a constant-width tube bent round a quarter circle, then straight down to the pad. This is
+// what the body collides with, so it has to be the real curve at the real thickness: sampled with a
+// sphere per leg and a sphere at the crown, as it was, the gaps between samples were eighteen units
+// wide on a tube one and a half units thick, and legs went clean through the board between them.
+// Spacing is finer than the tube's own radius now, so the chain is continuous with no seams to slip
+// through. Each sphere carries the length of leg it stands for, so the mass -- and with it the
+// inertia, which decides how readily the piece turns -- is spread the way the metal actually is.
 const FALL_HULL_LOCAL = (() => {
-    const FOOT_TOP = TRIPOD_PIN_LIFT + TRIPOD_FOOT_LEN, R = CFG.footR, M = Math.SQRT1_2, out = [];
+    const FOOT_TOP = TRIPOD_PIN_LIFT + TRIPOD_FOOT_LEN, R = CFG.footR, LR = CFG.legRadius;
+    const ARC = 26, FOOT = 4, out = [];
+    const arcStep = (Math.PI/2)*R/ARC, footStep = TRIPOD_FOOT_LEN/FOOT;
     for (let i = 0; i < 3; i++) {
-        const a = i*2*Math.PI/3, ca = Math.cos(a), sa = Math.sin(a);
-        out.push({ p: new THREE.Vector3(ca*R, 0, sa*R), r: 0 });                                  // foot pad
-        out.push({ p: new THREE.Vector3(ca*R*M, FOOT_TOP + R*M, sa*R*M), r: CFG.legRadius });     // arc midpoint
-        out.push({ p: new THREE.Vector3(ca*R, FOOT_TOP, sa*R), r: CFG.legRadius });               // ankle
+        const th = i*2*Math.PI/3, ct = Math.cos(th), st = Math.sin(th);
+        for (let k = 0; k <= ARC; k++) {      // the quarter-circle centreline, crown round to ankle
+            const a = (k/ARC)*(Math.PI/2), u = Math.sin(a)*R;
+            out.push({ p: new THREE.Vector3(u*ct, FOOT_TOP + Math.cos(a)*R, u*st), r: LR, m: arcStep });
+        }
+        for (let k = 1; k <= FOOT; k++) {     // and straight down to the pad, tapering to the pin
+            const t = 1 - k/FOOT, s2 = t*t*(3 - 2*t);
+            out.push({ p: new THREE.Vector3(R*ct, TRIPOD_PIN_LIFT + TRIPOD_FOOT_LEN*t, R*st),
+                       r: TRIPOD_TIP_RAD + (LR - TRIPOD_TIP_RAD)*s2, m: footStep });
+        }
     }
-    out.push({ p: new THREE.Vector3(0, FOOT_TOP + R, 0), r: CFG.legRadius*1.15 });                // crown bead
+    out.push({ p: new THREE.Vector3(0, FOOT_TOP + R, 0), r: LR*1.15, m: arcStep*2 });   // crown bead
+    // The three magnet pins it actually stands on. Without them the body came to rest on its pads
+    // and sat half a millimetre into the board -- the real piece stands on its pins, tips at y=0.
+    for (let i = 0; i < 3; i++) {
+        const th = i*2*Math.PI/3;
+        out.push({ p: new THREE.Vector3(Math.cos(th)*R, TRIPOD_PIN_RAD, Math.sin(th)*R),
+                   r: TRIPOD_PIN_RAD, m: footStep*0.3 });
+    }
     return out;
 })();
 const fallHullW = new THREE.Vector3();
@@ -9247,8 +9266,7 @@ function clearShards() {
 const FALL_GRAVITY = 260;         // u/s^2, the scale the rest of the game's motion was tuned at
 const FALL_SUBSTEPS = 4;          // per frame: a piece can cross its own foot in one frame at speed
 const FALL_SLOP = 0.02;           // penetration left alone, so resting contacts stop jittering
-const FALL_BIAS = 0.25;           // share of the remaining penetration pushed out per substep
-const FALL_MAX_BIAS = 3;          // u/s: separation speed a deep overlap may be given, and no more
+const FALL_BIAS = 0.8;            // share of the remaining penetration eased out per substep
 const FALL_MARGIN = 0.06;         // speculative contact distance: catch a surface before it is hit
 const FALL_LIN_DAMP = 0.12, FALL_ANG_DAMP = 0.22;   // air and rolling losses, per second
 // What a piece is MADE of, as the two numbers a contact actually uses: how much of the approach
@@ -9271,12 +9289,14 @@ function fallMaterial() {
 // turns when something pushes it off-centre, i.e. the whole character of the tumble. It is computed
 // from the real shape rather than guessed, so a tripod tips like a tripod and not like a ball.
 const FALL_BODY = (() => {
-    const pts = FALL_HULL_LOCAL, n = pts.length, m = 1/n;
+    const pts = FALL_HULL_LOCAL;
+    let total = 0;
+    for (const h of pts) total += h.m;
     const com = new THREE.Vector3();
-    for (const h of pts) com.add(h.p);
-    com.multiplyScalar(1/n);
+    for (const h of pts) com.addScaledVector(h.p, h.m/total);
     let xx=0, yy=0, zz=0, xy=0, xz=0, yz=0;
     for (const h of pts) {
+        const m = h.m/total;
         const x = h.p.x-com.x, y = h.p.y-com.y, z = h.p.z-com.z;
         xx += m*(y*y + z*z); yy += m*(x*x + z*z); zz += m*(x*x + y*y);
         xy -= m*x*y; xz -= m*x*z; yz -= m*y*z;
@@ -9292,8 +9312,41 @@ const fallPW = new THREE.Vector3(), fallLever = new THREE.Vector3(), fallU = new
 const fallN = new THREE.Vector3(), fallTan = new THREE.Vector3(), fallTmp = new THREE.Vector3();
 const fallImpulse = new THREE.Vector3(), fallComW = new THREE.Vector3();
 const FALL_CONTACTS = [];
-for (let i = 0; i < FALL_HULL_LOCAL.length * 2; i++)
-    FALL_CONTACTS.push({ p: new THREE.Vector3(), n: new THREE.Vector3(), depth: 0, jn: 0 });
+for (let i = 0; i < 64; i++)
+    FALL_CONTACTS.push({ p: new THREE.Vector3(), n: new THREE.Vector3(), depth: 0, jn: 0, jt: 0 });
+const fallOtherW = [];        // the standing piece's spheres in world space, taken once per fall
+const fallOtherMid = new THREE.Vector3();
+let fallOtherR = 0;
+// The piece still standing is part of the world the loser falls through. It is held on the board by
+// its own magnets, so it is an obstacle rather than a second body: it pushes, it is not pushed. Its
+// spheres are taken once, when the fall starts -- it does not move while the other one goes over.
+function fallTakeObstacle(other) {
+    fallOtherW.length = 0;
+    fallOtherR = 0;
+    if (!other) return;
+    other.updateMatrixWorld();
+    fallOtherMid.copy(FALL_BODY.com).applyQuaternion(other.quaternion).add(other.position);
+    for (const h of FALL_HULL_LOCAL) {
+        const p = h.p.clone().applyQuaternion(other.quaternion).add(other.position);
+        fallOtherW.push({ p, r: h.r });
+        fallOtherR = Math.max(fallOtherR, p.distanceTo(fallOtherMid) + h.r);
+    }
+}
+function fallOtherContact(p, r, out) {
+    if (!fallOtherW.length || p.distanceTo(fallOtherMid) > fallOtherR + r + FALL_MARGIN) return false;
+    let best = null, bestDepth = -Infinity;
+    for (const o of fallOtherW) {
+        const d = (o.r + r) - p.distanceTo(o.p);
+        if (d > bestDepth) { bestDepth = d; best = o; }
+    }
+    if (bestDepth < -FALL_MARGIN) return false;
+    out.n.copy(p).sub(best.p);
+    const len = out.n.length();
+    if (len < 1e-6) return false;
+    out.n.multiplyScalar(1/len);
+    out.depth = Math.max(0, bestDepth);
+    return true;
+}
 // The world the body falls in, as one question: what is under this point, and which way does that
 // surface face? Everything the piece can hit is here -- the board it is standing on (a disc with a
 // real edge, which is why it tips instead of sliding out onto thin air) and the ground below, which
@@ -9351,12 +9404,13 @@ function triggerFall(silent) {
     if (!renderer) return;
     clearShards();
     const li = 1 - G.winner;
-    fall = Object.assign(mkFallState(G.pieces[li]), { idx: li, shatterOk: true });
+    fall = Object.assign(mkFallState(G.pieces[li]), { idx: li, shatterOk: true, other: tripods[G.winner] });
 }
 // The body's state is taken from the mesh the first time it steps, not when the state is made: the
 // render loop may not have moved the piece to its final pose yet, and a test may pose it by hand.
 function fallSeed(t, fall) {
     t.updateMatrixWorld();
+    fallTakeObstacle(fall.other);
     fall.X = new THREE.Vector3().copy(FALL_BODY.com).applyQuaternion(t.quaternion).add(t.position);
     fall.V = new THREE.Vector3(fall.vx||0, fall.vy||0, fall.vz||0);
     fall.W = new THREE.Vector3(fall.wx||0, fall.wy||0, fall.wz||0);
@@ -9415,10 +9469,11 @@ function fallSubstep(t, fall, h, MAT) {
     for (const hull of FALL_HULL_LOCAL) {
         fallPW.copy(hull.p).applyQuaternion(t.quaternion).add(
             fallTmp.copy(fall.X).sub(fallComW.copy(FALL_BODY.com).applyQuaternion(t.quaternion)));
-        for (const probe of [fallBoardContact, fallGroundContact]) {
+        for (const probe of [fallBoardContact, fallGroundContact, fallOtherContact]) {
+            if (n >= FALL_CONTACTS.length) break;
             const c = FALL_CONTACTS[n];
             if (!probe(fallPW, hull.r, c)) continue;
-            c.p.copy(fallPW); c.jn = 0;
+            c.p.copy(fallPW); c.jn = 0; c.jt = 0;
             if (c.depth > deepest) deepest = c.depth;
             if (probe === fallBoardContact) onBoard = true;
             n++;
@@ -9430,7 +9485,7 @@ function fallSubstep(t, fall, h, MAT) {
     //    and hand back `bounce` of it -- and a friction impulse across it, capped by `grip` times
     //    the normal one. Several passes, because contacts share a body and each one's answer
     //    changes what the others need; a handful is plenty at this scale.
-    for (let iter = 0; iter < 6; iter++) {
+    for (let iter = 0; iter < 8; iter++) {
         for (let i = 0; i < n; i++) {
             const c = FALL_CONTACTS[i];
             fallLever.copy(c.p).sub(fall.X);
@@ -9439,13 +9494,12 @@ function fallSubstep(t, fall, h, MAT) {
             // Restitution only for a real arrival: a resting contact must not be handed energy back
             // every frame, which is what makes a body buzz on the floor instead of lying on it.
             const e = vn < -12 ? MAT.bounce : 0;
-            // Pushing an overlap apart is corrective, not a source of energy: deep penetration --
-            // a leg swung through the board in one step -- would otherwise be handed hundreds of
-            // units a second of separation speed and fire the piece into the air.
-            const bias = c.depth > FALL_SLOP
-                ? Math.min(FALL_MAX_BIAS, (c.depth - FALL_SLOP)*FALL_BIAS/h) : 0;
+            // Nothing here pushes an overlap apart: an impulse that separates bodies is energy, and
+            // a piece lying still on the floor would be handed a little of it every substep and buzz
+            // there forever. The velocity solve only stops the approach; the overlap itself is eased
+            // out by moving the body (step 5), which costs nothing.
             const k = fallContactMass(c.n, fallLever);
-            let jn = (-(1 + e)*vn + bias) / k;
+            let jn = -(1 + e)*vn / k;
             const prev = c.jn;
             c.jn = Math.max(0, prev + jn);       // the total push can only ever be outward
             jn = c.jn - prev;
@@ -9463,20 +9517,26 @@ function fallSubstep(t, fall, h, MAT) {
             const vt = fallTan.length();
             if (vt > 1e-4 && c.jn > 0) {
                 fallTan.multiplyScalar(1/vt);
-                const jt = Math.max(-MAT.grip*c.jn, -vt/fallContactMass(fallTan, fallLever));
-                fallImpulse.copy(fallTan).multiplyScalar(jt);
+                // Friction accumulates the same way the normal push does. Applied fresh each pass
+                // instead, a leg lying flat -- forty contacts at once -- had friction applied forty
+                // times over, which does not stop the piece: it reverses it, and the piece careers
+                // about the floor gaining speed it was never given.
+                const want = -vt/fallContactMass(fallTan, fallLever), cap = MAT.grip*c.jn;
+                const prevT = c.jt;
+                c.jt = Math.max(-cap, Math.min(cap, prevT + want));
+                fallImpulse.copy(fallTan).multiplyScalar(c.jt - prevT);
                 fall.V.addScaledVector(fallImpulse, FALL_BODY.invM);
                 fallTmp.copy(fallLever).cross(fallImpulse).applyMatrix3(fallInvIW);
                 fall.W.add(fallTmp);
             }
         }
     }
-    // 5. Anything still overlapping is pushed out of the surface rather than left buried.
+    // 5. Anything still overlapping is eased out -- ONCE, along the worst overlap. Pushing at every
+    //    contact separately meant a leg resting flat was shoved out forty times over and took off.
     if (deepest > FALL_SLOP) {
-        for (let i = 0; i < n; i++) {
-            const c = FALL_CONTACTS[i];
-            if (c.depth > FALL_SLOP) fall.X.addScaledVector(c.n, (c.depth - FALL_SLOP)*FALL_BIAS);
-        }
+        let worst = FALL_CONTACTS[0];
+        for (let i = 1; i < n; i++) if (FALL_CONTACTS[i].depth > worst.depth) worst = FALL_CONTACTS[i];
+        fall.X.addScaledVector(worst.n, (worst.depth - FALL_SLOP)*FALL_BIAS);
     }
     // 6. What the rest of the game wants to know about the landing: where and how hard.
     if (hardest > 8) fallReportImpact(t, fall, hardest, hx, hy, hz, MAT);
