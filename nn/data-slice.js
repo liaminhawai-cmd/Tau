@@ -1,6 +1,15 @@
 'use strict';
-// Build a fixed-size training corpus with a CONTROLLED composition of strong-play vs pool games,
-// for data-quality ablations ("does training on medalist games beat training on zoo games?").
+// Build a fixed-size training corpus with a CONTROLLED composition of one "focus" class of games
+// against everything else, for data-quality ablations. Two classes ship:
+//
+//   --class medalist (default)  focus = games a strong model played in
+//                               ("does training on medalist games beat training on zoo games?")
+//   --class retro               focus = Retromine games
+//                               ("does retromine data make models better, or just bigger?")
+//
+// Only the CLASSIFIER differs between them; the fixed-N machinery, game grouping and stats output
+// below are shared, which is the point -- an ablation is only readable if both arms were built by
+// the same code.
 //
 // Every training row already records its provenance: `g` is the game id and `mv` is the face id
 // of the mover (e.g. resume-056@D1, L10) -- arena.js and selfplay-legacy.js both stamp it. So a
@@ -23,6 +32,14 @@
 // Medalists default to the current medal holders (nn/medals/medals.json) plus the --top N
 // distinct models by pessimistic Elo bound in elo-summary.json -- clean v4 measurements only,
 // never the archived pre-reset ratings.
+//
+// --class retro needs none of that: retromine stamps every row it writes with src:'retro' and a
+// `fam` seed-family id (retromine.js), so provenance is read off the row itself rather than
+// inferred from a filename -- a retro row copied into a differently-named file still classifies
+// correctly. Retro games are additionally grouped by FAMILY, not by game: one seed family is a
+// set of replays of the same position, so its members are near-duplicates. Selecting whole
+// families keeps "30% retro" meaning 30% from distinct mined positions rather than 30% of
+// siblings of a handful of them.
 const fs = require('fs');
 const path = require('path');
 const dir = __dirname;
@@ -35,7 +52,12 @@ const rule = arg('rule', 'any') === 'both' ? 'both' : 'any';
 const seed = (+arg('seed', 12345)) >>> 0;
 const out = arg('out', path.join(dir, 'experiments', `slice-share${share}-${Date.now()}.jsonl`));
 const topN = Math.max(0, +arg('top', 6));
+const klass = arg('class', 'medalist') === 'retro' ? 'retro' : 'medalist';
 const quiet = process.argv.includes('--quiet');
+// Census mode: print what the two classes hold and stop. The equal-volume cap is a property of
+// the corpus, not of any one arm, so a caller deciding whether a run is worth starting should be
+// able to ask without building (and then deleting) a quarter-million-row slice to find out.
+const census = process.argv.includes('--census');
 
 function mulberry32(a) { return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 function shuffle(items, rnd) { for (let i = items.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [items[i], items[j]] = [items[j], items[i]]; } return items; }
@@ -64,9 +86,10 @@ function medalistSet() {
 }
 
 function main() {
-  const medalists = medalistSet();
-  if (!medalists.size) { console.error('[slice] no medalists resolved; pass --medalists a,b,c'); process.exitCode = 1; return; }
-  if (!quiet) console.log(`[slice] medalists (${rule}): ${[...medalists].sort().join(', ')}`);
+  const medalists = klass === 'retro' ? new Set() : medalistSet();
+  if (klass === 'medalist' && !medalists.size) { console.error('[slice] no medalists resolved; pass --medalists a,b,c'); process.exitCode = 1; return; }
+  if (!quiet) console.log(klass === 'retro' ? '[slice] focus class: retromine rows (src:"retro"), grouped by seed family'
+                                            : `[slice] medalists (${rule}): ${[...medalists].sort().join(', ')}`);
 
   // Group raw LINES by game, per file. Mirrors torch-train-core.py's load_rows filtering: rows
   // without `f` and policy-target rows (arm+bin) are not training data; rows without `g` fall
@@ -85,9 +108,12 @@ function main() {
       let g = j.g;
       if (g == null) { const a = Math.abs(+j.z || 0); if (a < prevAbs) cur = `${f}#${++inferred}`; prevAbs = a; g = cur; }
       else prevAbs = Infinity;
-      const key = `${f}|${g}`;
+      // A retro row's group is its seed FAMILY, so replays of one mined position stay together.
+      const isRetro = j.src === 'retro';
+      const key = isRetro && j.fam != null ? `${f}|fam:${j.fam}` : `${f}|${g}`;
       let rec = games.get(key);
-      if (!rec) { rec = { lines: [], movers: new Set(), hasMv: false }; games.set(key, rec); }
+      if (!rec) { rec = { lines: [], movers: new Set(), hasMv: false, retro: false }; games.set(key, rec); }
+      if (isRetro) rec.retro = true;
       rec.lines.push(s);
       if (j.mv != null) { rec.hasMv = true; const m = moverModel(j.mv); if (m) rec.movers.add(m); }
     }
@@ -96,15 +122,23 @@ function main() {
   const strong = [], pool = [];
   for (const rec of games.values()) {
     const named = [...rec.movers];
-    const isStrong = rec.hasMv && named.length > 0 &&
-      (rule === 'both' ? named.every(m => medalists.has(m)) && named.length >= 2
-                       : named.some(m => medalists.has(m)));
+    const isStrong = klass === 'retro' ? rec.retro
+      : rec.hasMv && named.length > 0 &&
+        (rule === 'both' ? named.every(m => medalists.has(m)) && named.length >= 2
+                         : named.some(m => medalists.has(m)));
     (isStrong ? strong : pool).push(rec);
   }
   const posOf = a => a.reduce((s, r) => s + r.lines.length, 0);
   const strongPos = posOf(strong), poolPos = posOf(pool);
-  if (!quiet) console.log(`[slice] corpus: ${strong.length} strong games / ${strongPos} positions; ` +
+  const unit = klass === 'retro' ? 'retro families' : 'strong games';
+  if (!quiet) console.log(`[slice] corpus: ${strong.length} ${unit} / ${strongPos} positions; ` +
                           `${pool.length} pool games / ${poolPos} positions`);
+
+  if (census) {
+    console.log(`[slice] cap at share ${share}: ${share >= 1 ? strongPos : share <= 0 ? poolPos
+                 : Math.floor(Math.min(strongPos/share, poolPos/(1 - share)))} positions per arm`);
+    return;
+  }
 
   // The scarcer class caps the total so every --share arm can be built at the SAME size.
   const auto = share >= 1 ? strongPos : share <= 0 ? poolPos
@@ -130,7 +164,7 @@ function main() {
   let rows = 0;
   for (const rec of all) for (const line of rec.lines) { ws.write(line + '\n'); rows++; }
   ws.end();
-  const stats = { out, share, rule, seed, medalists: [...medalists].sort(),
+  const stats = { out, share, klass, rule, seed, medalists: [...medalists].sort(),
                   corpus: { strongGames: strong.length, strongPos, poolGames: pool.length, poolPos },
                   selected: { strongGames: a.picked.length, strongPos: a.got,
                               poolGames: b.picked.length, poolPos: b.got, rows } };
