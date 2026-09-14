@@ -2352,6 +2352,35 @@ test('closing the walkthrough opened from a match gives the board back to the ma
   assert.deepEqual(g.errors,[]);
 });
 
+test('a stone titan is pushed hard enough to actually leave the board',async t=>{
+  const g=await game();t.after(g.close);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    localStorage.setItem('tauDesktopTestBoards','1');`);
+  g.read("tauDesktop.board='colossus'");
+  assert.equal(g.read("currentAcoustics().piece"),'stone','Colossus plays stone titans');
+  // Stone grips nearly three times harder than metal. A fixed shove died on it: the titan slid a
+  // little and stood there, which is not a loss. The push is sized from the board it has to cross
+  // and the friction across it, so it always goes over -- spent, but over.
+  const push=g.read(`(() => { G.pieces[1].x = CFG.edgeU - 14; G.pieces[1].y = 0;
+    const st = mkFallState(G.pieces[1]); return Math.hypot(st.vx, st.vz); })()`);
+  assert.ok(push>50,`a gripping board earns a harder shove (got ${push.toFixed(0)})`);
+  g.read(`let seed=3; Math.random=()=>((seed=(seed*16807)%2147483647)/2147483647);
+    G.pieces[1].x = CFG.edgeU - 14; G.pieces[1].y = 0;
+    tripods[1].position.set(G.pieces[1].x, 0, 0);
+    fall=Object.assign(mkFallState(G.pieces[1]),{idx:1});
+    for(let i=0;i<900 && fall.active;i++) stepFall(1/60);`);
+  const r=g.read('Math.hypot(tripods[1].position.x, tripods[1].position.z)');
+  const y=g.read('tripods[1].position.y');
+  assert.ok(r>g.read('CFG.edgeU'),`the titan ends up off the board, not standing on it (r ${r.toFixed(0)})`);
+  assert.ok(y<-4,`and below it (y ${y.toFixed(1)})`);
+  assert.deepEqual(g.errors,[]);
+});
+
 test('a titan lands on the Colossus plinth and rolls off it, instead of sinking into the stone',async t=>{
   const g=await game();t.after(g.close);
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};

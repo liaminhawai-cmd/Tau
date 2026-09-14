@@ -805,8 +805,11 @@ const THEMES = {
       // a proxy of its legs that draws into that buffer alone (desktop/presentation.js,
       // syncGlassProxy) -- that is how the red leg is seen through the blue one. Against the dark
       // room a clear leg is drawn by its edges: a Fresnel rim in installLegGradient.
+      // Not QUITE total transmission: a tenth of the surface left to catch light gives the clear
+      // end some body, so the arch is a glass tube rather than a hole cut in the picture. You still
+      // see the board, the rings and the other piece straight through it.
       const leg = PHYS({ color: 0xf6f9ff,
-        metalness: 0, roughness: 0.03, transmission: 1.0, ior: 1.52, thickness: 2.6,
+        metalness: 0, roughness: 0.03, transmission: 0.9, ior: 1.52, thickness: 2.6,
         attenuationColor: new THREE.Color(0xe4ecff), attenuationDistance: 40,
         clearcoat: 1, clearcoatRoughness: 0.03, specularIntensity: 1, envMapIntensity: 1.3 });
       installLegGradient(leg, tint);
@@ -855,9 +858,13 @@ function installLegGradient(material, tint) {
       // The rim: glass is seen by its edges. Where the surface turns away from the eye the leg
       // catches a pale Fresnel glow (the ball's colour towards the foot), so a leg against the
       // black backdrop, where there is nothing to see through it, is still drawn.
+      // It was set far too faint to do that job. Water-clear glass in a near-black room genuinely
+      // IS black -- which is what the arch looked like, a dark band over the board -- and the edges
+      // are the only thing that ever reveals a clear rod. So the glow is strong enough to read now,
+      // and wider (a gentler falloff), so it runs along the tube instead of hugging its outline.
       .replace('#include <opaque_fragment>',
-        '{ float rim = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0);\n' +
-        '  outgoingLight += mix(vec3(0.80, 0.86, 0.95), uLegTint, legG) * rim * 0.24; }\n' +
+        '{ float rim = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 2.2);\n' +
+        '  outgoingLight += mix(vec3(0.80, 0.86, 0.95), uLegTint, legG) * rim * 0.62; }\n' +
         '#include <opaque_fragment>');
   };
   material.customProgramCacheKey = () => 'tau-leg-gradient';

@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 250</div>
+<div id="buildTag">build 251</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -9388,10 +9388,18 @@ function mkFallState(p) {
     let fx=0, fz=0, fr=-1;
     for (const f of p.feet()){ const r=Math.hypot(f.x,f.y); if (r>fr){ fr=r; fx=f.x; fz=f.y; } }
     const d = Math.hypot(fx,fz)||1;
-    // The push, and almost no spin: a piece shoved off a table does not leave it already turning.
-    // What tips it is the rim -- the far feet run out of board, the near ones catch the edge, and
-    // gravity does the rest. The jitter is only so two falls are never identical.
-    return { active:true, vx:fx/d*50, vz:fz/d*50, vy:0,
+    // How hard the shove is, is not a taste: a piece is off the board when its CENTRE passes the
+    // rim, and getting there means crossing whatever board is left against whatever that board
+    // grips with. v^2 = 2*mu*g*s, the schoolbook one. One fixed number suited metal and died on
+    // Colossus, whose stone grips nearly three times harder -- the titan slid a little and simply
+    // stood there, which is not a loss. Sized this way it always leaves, and the material shows in
+    // HOW: stone arrives at the edge nearly spent and topples over it, metal is still travelling.
+    const gap = Math.max(0, CFG.edgeU - Math.hypot(p.x, p.y)) + CFG.footR*0.35;
+    const push = Math.max(50, Math.sqrt(2*fallMaterial().grip*FALL_GRAVITY*gap)*1.15);
+    // Almost no spin: a piece shoved off a table does not leave it already turning. What tips it is
+    // the rim -- the far feet run out of board, the near ones catch the edge, gravity does the rest.
+    // The jitter is only so two falls are never identical.
+    return { active:true, vx:fx/d*push, vz:fz/d*push, vy:0,
              wx:(Math.random()-0.5)*1.2, wy:(Math.random()-0.5)*0.8, wz:(Math.random()-0.5)*1.2,
              X:null, V:null, W:null, phase:'board',
              landed:false, resting:false, stillT:0, settleT:0, downT:0,
