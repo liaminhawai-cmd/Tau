@@ -1023,10 +1023,12 @@
   };
   let lookFloor = null, lookOwnGround = false;
   function gameFloor() { return typeof FALL_FLOOR_Y !== 'undefined' ? FALL_FLOOR_Y : -34; }
-  // {floor, ceiling} on a look whose floor is a way out rather than a bottom; null everywhere else.
-  function fallPortal() {
-    return lookTheme && lookTheme.portal
-      ? { floor: fallFloorY(), ceiling: lookTheme.portal.ceiling } : null;
+  // How hard this look's gravity pulls, as a fraction of the usual, after a piece has been falling
+  // for `airT` seconds. One everywhere except a look that says otherwise.
+  function fallGravity(airT) {
+    const g = lookTheme && lookTheme.gravity;
+    if (!g) return 1;
+    return Math.max(g.lift, 1 - (airT || 0)/g.fade);
   }
   function fallFloorY(x, z) {
     if (lookTheme && x !== undefined && typeof lookTheme.floorAt === 'function') return lookTheme.floorAt(x, z);
@@ -1658,7 +1660,7 @@
     scene.fog = T && T.fog ? new THREE.FogExp2(T.fog.color, T.fog.density) : null;
     lookTheme = T;
     // the look's own ground replaces the black floor; otherwise the black floor is moved to its depth
-    lookOwnGround = !!(T && (T.ownGround || T.portal));   // a portal has no floor to show either
+    lookOwnGround = !!(T && (T.ownGround || T.gravity));   // nothing to draw a floor for if it never lands
     lookFloor = (T && T.floorY != null) ? T.floorY
               : (FLOOR_BY_BOARD[fin.id] != null ? FLOOR_BY_BOARD[fin.id] : gameFloor());
     if (typeof fallFloor !== 'undefined' && fallFloor) {
@@ -1788,23 +1790,17 @@
       // at board height while the loser dropped thirty-odd units below it and rolled out past the
       // rim -- the camera ended up framing an empty board with the whole fall off the bottom edge.
       // Following most of the way keeps both the board and the landing in shot.
-      const portal = lookTheme && lookTheme.portal ? fallPortal() : null;
-      if (portal) {
-        // A LOOP IS NOT A FALL. Chasing the piece down here would ride it out through the floor and
-        // back in at the ceiling for ever, which is unwatchable. What you want is to stand back far
-        // enough to hold the whole circuit in one frame -- ceiling, board and floor -- and let it
-        // come round in front of you. So the camera pulls straight back rather than following: the
-        // target sits at the middle of the drop and the distance is whatever fits the drop's height.
-        const span = portal.ceiling - portal.floor;
-        ty = (portal.ceiling + portal.floor)*0.5;
-        distance = Math.max(distance, (span*0.62) / Math.tan(camera.fov*Math.PI/360));
-        // and it drops towards level, because the board's usual forty-four degrees is looking DOWN
-        // at something that is only going up and down -- from up there a lap is a dot changing size.
-        elevOverride = 0.30;
-      } else {
-        const p=tripods[fall.idx].position;
-        tx=Math.max(-110,Math.min(110,p.x)); tz=Math.max(-110,Math.min(110,p.z));
-        ty=p.y+6; distance+=34;
+      const p=tripods[fall.idx].position;
+      tx=Math.max(-110,Math.min(110,p.x)); tz=Math.max(-110,Math.min(110,p.z));
+      ty=p.y+6; distance+=34;
+      // A piece that gravity has let go of goes up rather than down, and it keeps going. Stand back
+      // as it climbs and drop towards level, so the board stays in shot under it instead of the
+      // camera riding away with it into empty sky.
+      if (lookTheme && lookTheme.gravity && p.y > 0) {
+        const climb = Math.min(1, p.y/150);
+        ty = p.y*(1 - climb*0.55) + 6;
+        distance += climb*150;
+        elevOverride = 0.765 - climb*0.42;
       }
     }
     outTarget.set(tx,ty,tz);
@@ -2186,7 +2182,7 @@
     get progress(){return {...progress};},
     recordResult,
     debugDetailMode(){ return detailMode; },
-    resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, fallPortal, renderFrame,
+    resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, fallGravity, renderFrame,
     get rayTrace(){return settings.rayTrace;},
     set rayTrace(v){ settings.rayTrace=!!v; settings.quality = settings.rayTrace ? 'ultra' : (settings.quality==='ultra'?'high':settings.quality);
       saveSettings(); if($('desktopQuality')) $('desktopQuality').value=settings.quality;

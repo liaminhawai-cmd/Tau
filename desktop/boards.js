@@ -434,11 +434,12 @@ const THEMES = {
     // The showcase's bloom threshold lets only the brightest channels glow; the game has no bloom,
     // so the same emissive floods the whole membrane. This is the level the game applies instead.
     gameEmissive: 0.45,
-    // THERE IS NO FLOOR HERE. What looks like one is a way out: a piece pushed off the board drops
-    // through it, is handed back by the ceiling, and falls again -- keeping every bit of the speed
-    // it arrived with, so each lap is quicker than the last -- and goes on falling behind the
-    // result, and behind the next game, until you leave the board.
-    floorY: -70, portal: { ceiling: 118 },
+    // GRAVITY LETS GO HERE. A piece pushed off the rim drops like it would anywhere, and then the
+    // pull eases off as it goes: gone by the time it has fallen its own height, and a little past
+    // gone after that. So it falls, slows, hangs, and lifts away -- something let go of underwater
+    // rather than something dropped. `fade` is how long the pull takes to reach nothing, `lift` is
+    // what is left over once it has.
+    floorY: -70, gravity: { fade: 0.85, lift: -0.16 },
     fog: { color: 0x0a0816, density: 0.0018 },
     paint() {
       // one vein network, drawn into albedo (dark), bump (raised) — precompute the segments
@@ -902,8 +903,17 @@ function installLegGradient(material, tint) {
         '  vLegT = clamp(a / 1.5707963, 0.0, 1.0); }');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vLegT; uniform vec3 uLegTint;')
+      // THE TINT ALONG THE LEG, both ends. Running it one way only -- clear at the crown, full colour
+      // at the foot -- left the glass at its palest exactly where it meets the ball, so a solid
+      // coloured sphere sat on top of a colourless tube with a hard line between them. The colour
+      // comes back at the top as well, but on a much tighter curve: a hyperbolic shoulder that is
+      // full at the join and has fallen away inside the first tenth of the arc. Close up it is the
+      // colour running out of the ball into the glass and thinning as it goes; from across the room
+      // it is simply that the two parts belong to each other. The foot end, and the whole clear
+      // middle, are exactly as they were.
       .replace('#include <color_fragment>', '#include <color_fragment>\n' +
         'float legG = smoothstep(0.25, 1.0, vLegT);\n' +
+        'legG = max(legG, 1.0/(1.0 + pow(vLegT/0.055, 2.4)));\n' +
         'diffuseColor.rgb = mix(diffuseColor.rgb, uLegTint, legG);')
       .replace('material.transmission = transmission;', 'material.transmission = transmission * (1.0 - 0.7*legG*legG);')
       .replace('material.attenuationColor = attenuationColor;', 'material.attenuationColor = mix(attenuationColor, uLegTint, legG);')
@@ -965,6 +975,35 @@ float anoise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
   return mix(mix(ahash(i),ahash(i+vec2(1.0,0.0)),u.x), mix(ahash(i+vec2(0.0,1.0)),ahash(i+vec2(1.0,1.0)),u.x), u.y); }
 float afbm(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<6;i++){ s+=a*anoise(p); p=p*2.03+vec2(1.7,9.2); a*=0.5; } return s; }
 float afbm3(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<3;i++){ s+=a*anoise(p); p=p*2.11+vec2(3.3,5.9); a*=0.5; } return s; }
+// A FBM WHERE EVERY OCTAVE IS ALIVE. Ordinary noise, however many octaves you stack on it, is a
+// still photograph -- pushing time through it makes the whole picture drift, one thing sliding
+// about, and the detail inside it is as dead when it arrives as it was when it left. Here each
+// octave swells and draws back on a clock of its own, and WHERE it is swelling is itself a slow
+// wander, so the coarse shape can be blooming in one corner while the fine grain inside it is
+// receding, and a moment later the other way round. Divided through by its own weights at the end,
+// so what changes is which scale is speaking loudest rather than how bright the whole thing is.
+// The upshot is that it is growing at every size at once: go closer and there is more of it, still
+// moving, all the way down.
+float lfbm6(vec2 p, float t){
+  float s=0.0, w=0.0, a=0.5;
+  for(int i=0;i<6;i++){
+    float fi=float(i);
+    float bl=0.35+1.30*(0.5+0.5*sin(t*(0.10+0.085*fi)+anoise(p*0.28+fi*7.3)*6.2832));
+    s+=a*anoise(p)*bl; w+=a*bl;
+    p=p*2.03+vec2(1.7,9.2); a*=0.5;
+  }
+  return w>1e-5 ? s/w : 0.5;
+}
+float lfbm4(vec2 p, float t){
+  float s=0.0, w=0.0, a=0.5;
+  for(int i=0;i<4;i++){
+    float fi=float(i);
+    float bl=0.35+1.30*(0.5+0.5*sin(t*(0.14+0.11*fi)+anoise(p*0.33+fi*5.1)*6.2832));
+    s+=a*anoise(p)*bl; w+=a*bl;
+    p=p*2.07+vec2(5.3,2.9); a*=0.5;
+  }
+  return w>1e-5 ? s/w : 0.5;
+}
 // FROST, NOT SNOWFLAKES. Three tries got here. Threads from five roots read as fireworks. Round
 // buds read as a crop of mushrooms. Six-armed stars on a grid read as clip art -- and deforming
 // them did not help, because the problem was never the symmetry, it was that they were ISOLATED
@@ -1136,11 +1175,15 @@ function installDetailShader(material) {
         MATH_PASS +
         'if (uAlien > 0.5) {\n' +
         '  vec2 p = vWPos.xz * 0.06;\n' +
-        '  vec2 q = vec2(afbm(p), afbm(p + vec2(5.2, 1.3)));\n' +
-        '  float warp = afbm(p + 1.8*q + uAlienTime*0.015);\n' +
+        '  vec2 q = vec2(afbm3(p), afbm3(p + vec2(5.2, 1.3)));\n' +
+        // three layers of the same living noise, each an order finer than the last, so whatever
+        // distance you look from there is structure at that size and it is moving
+        '  float warp = lfbm6(p + 1.8*q, uAlienTime);\n' +
         '  float vein = pow(1.0 - abs(warp*2.0 - 1.0), 6.0);\n' +
-        '  float fine = afbm(p*3.9 + 4.0*q);\n' +
+        '  float fine = lfbm4(p*3.9 + 4.0*q, uAlienTime*1.7);\n' +
         '  vein += 0.55 * pow(1.0 - abs(fine*2.0 - 1.0), 9.0);\n' +
+        '  float finer = lfbm4(p*14.0 + 2.0*q, uAlienTime*2.6);\n' +
+        '  vein += 0.30 * pow(1.0 - abs(finer*2.0 - 1.0), 11.0);\n' +
         '  float pulse = 0.65 + 0.35*sin(uAlienTime*0.7 + warp*6.28);\n' +
         '  float blotch = smoothstep(0.32, 0.72, q.x);\n' +
         '  outgoingLight *= (1.0 - blotch*0.3);\n' +

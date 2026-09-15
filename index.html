@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 260</div>
+<div id="buildTag">build 261</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2400,7 +2400,7 @@ function reset() {
           // commitTurn). adjudicated marks a result that came from the move cap rather than a fall.
           koHist:[], plies:0, adjudicated:false };
     koReset();   // the opening counts as a position the board has been in — see koReset
-    fall.active=false; fallenIdx=-1; clearPortalDrift(); breakHold=0;
+    fall.active=false; fallenIdx=-1; clearFloatDrift(); breakHold=0;
     // A fresh board is never mid-coach: drop the guided/free-play rail state so a ladder level or
     // casual game started from the coach's game-over sheet doesn't inherit the dotted guides.
     // (startCoach() re-arms what it needs right after its own reset() call. typeof guards: these
@@ -2993,13 +2993,15 @@ const FALL_FLOOR_Y = -34;
 // -- but a look may stand its board on something (Colossus: a stone plinth wider than the pitch),
 // and then a piece that goes over the rim lands on THAT, and only reaches the ground below by
 // rolling off its edge. Asked without a position it gives the look's ground level.
-// A look whose floor is a WAY OUT rather than a bottom: {floor, ceiling}. The alien board has no
-// ground under it at all -- a piece pushed off drops through where the floor would be and is handed
-// back by the ceiling, and goes round again. Nothing else in the fall changes: it is the same rigid
-// body, it can still clip the board's rim on the way back down through, and it simply never lands.
-function fallPortal() {
+// How hard gravity pulls on this look, as a fraction of the usual, given how long the piece has
+// been falling. Everywhere but the alien board this is 1 for ever. There it fades: the piece leaves
+// the rim and drops like anything else, the pull eases off as it goes, and by the time it has fallen
+// a piece's height there is nothing holding it at all -- then a little less than nothing, and it
+// stops, hangs, and lifts away like something let go of underwater.
+function fallGravityScale(fall) {
     const d = window.tauDesktop;
-    return d && d.fallPortal ? d.fallPortal() : null;
+    if (!d || !d.fallGravity) return 1;
+    return d.fallGravity(fall.airT || 0);
 }
 function fallFloorY(x, z) {
     const d = window.tauDesktop, y = d && d.fallFloorY ? d.fallFloorY(x, z) : null;
@@ -3097,9 +3099,9 @@ let clock=null, fall={active:false};                                  // loss-an
 let fallenIdx=-1;
 // The aftermath of a fall, declared here beside fallenIdx because every place that clears one
 // clears these too: how long the camera still holds on a break, and the piece that is still
-// falling through the alien board's portal after the match has moved on.
+// drifting up and away from the alien board after the match has moved on.
 const BREAK_HOLD = 2.3;   // seconds the camera stays on a break before the board gets it back
-let breakHold = 0, portalDrift = null;
+let breakHold = 0, floatDrift = null;
 // ---------- Replay recorder ----------
 // Records the VISIBLE motion of a live game as raw per-frame poses (both pieces' x/y/rot), sampled
 // in animate() only on frames where something actually moved -- so thinking time, turn clocks and
@@ -3195,7 +3197,7 @@ function segmentReplayTurns() {
 function startReplay() {
     if (replayFrames.length < 2 || !G) return;
     hideModal(); clearTimeout(gameOverTimer);
-    fall.active = false; fallenIdx=-1; clearPortalDrift(); breakHold=0;       // the fallen piece pops back to the board for the re-run
+    fall.active = false; fallenIdx=-1; clearFloatDrift(); breakHold=0;       // the fallen piece pops back to the board for the re-run
     if (typeof tripods !== 'undefined' && tripods && !(typeof htp3DActive !== 'undefined' && htp3DActive))
         tripods.forEach(tp => { if (tp) tp.visible = true; });
     // Post-game: the board still holds the true final position — snapshot it. A shared/link replay
@@ -5254,7 +5256,7 @@ function demoRestoreClone(snap) {
           crossings:0, atLimit:false, netRad:0, ptrAngle:null, over: snap.over, winner: snap.winner,
           snap:null, contact:null,
           koHist: snap.koHist.map(q => Array.isArray(q) ? q.slice() : {...q}), plies: snap.plies, adjudicated: snap.adjudicated };
-    fall.active=false; fallenIdx=-1; clearPortalDrift(); breakHold=0;
+    fall.active=false; fallenIdx=-1; clearFloatDrift(); breakHold=0;
 }
 // Drives ONE turn to completion instantly (no animation, no delay) -- the exact same plan/pin/swing/
 // endTurn path a real or visible-demo turn uses, just without the timers between the steps.
@@ -5871,7 +5873,7 @@ function coachHandoff() {
     if (typeof markOnboarded === 'function') markOnboarded('coach');   // guided beats done = onboarded
     coachActive = false; coachStage = 'off'; coachGuided = null;
     clearTurn(); G.over = false; G.winner = null; G.active = 0;
-    fall.active = false; fallenIdx=-1; clearPortalDrift(); breakHold=0;
+    fall.active = false; fallenIdx=-1; clearFloatDrift(); breakHold=0;
     vsAI = true; aiDifficulty = 'dumb'; ladderLevel = null; humanIdx = 0; aiIdx = 1;
     coachFreeGuide = true; coachFreeArc = null;   // keep the dotted rail + narration going in the live game
     document.getElementById('btns').style.display = 'flex';
@@ -7216,7 +7218,7 @@ function labTakeBack() {
     aiAnim = null; labAuto = false;
     hideModal();
     replayApplyPose(h.pose); G.active = h.active;
-    G.over = false; G.winner = null; fall.active = false; fallenIdx=-1; clearPortalDrift(); breakHold=0;
+    G.over = false; G.winner = null; fall.active = false; fallenIdx=-1; clearFloatDrift(); breakHold=0;
     if (typeof tripods !== 'undefined' && tripods) tripods.forEach(t => { t.visible = true; t.position.y = 0; });
     clearTurn(); labBenchRender(); render();
 }
@@ -9382,7 +9384,6 @@ function clearShards() {
 const FALL_GRAVITY = 260;         // u/s^2, the scale the rest of the game's motion was tuned at
 const FALL_SUBSTEPS = 4;
 const FALL_SUBSTEPS_MAX = 10;      // as many as a piece at full portal speed needs to still hit things
-const FALL_PORTAL_VMAX = 900;      // and the speed at which even ten would start missing the world          // per frame: a piece can cross its own foot in one frame at speed
 const FALL_SLOP = 0.02;           // penetration left alone, so resting contacts stop jittering
 const FALL_BIAS = 0.8;            // share of the remaining penetration eased out per substep
 const FALL_MARGIN = 0.06;         // speculative contact distance: catch a surface before it is hit
@@ -9572,75 +9573,69 @@ function stepFall(dt) {
     // not at first contact, so a bounce or a long roll is never cut off; downT is the backstop.
     if (fall.resting) fall.settleT += dt;
     if (fall.landed) fall.downT += dt;
-    // A piece falling through a portal never lands, so neither the settle nor the landing backstop
-    // can ever fire and the result would wait for ever. Two laps is the beat; after that the match
-    // moves on and the piece is handed to portalDrift, which keeps it falling in the background for
-    // as long as the board is up. It is still going round when you start the next game.
-    if (fall.portal && (fall.loops || 0) >= 2) {
-        portalDrift = { idx: fall.idx, state: fall };
+    // A piece that gravity has let go of never lands, so neither the settle nor the landing backstop
+    // can ever fire and the result would wait for ever. Once it has stopped falling and started to
+    // rise again the fall is over as far as the match is concerned: the result comes up, and the
+    // piece is handed to a drift that keeps lifting it, behind everything, until it is out of the
+    // world. That is the whole of it -- a thing let go of underwater.
+    if (fall.gMul < 0 && fall.V.y > 4 && !fall.resting) {
+        floatDrift = { idx: fall.idx, state: fall };
         fall = Object.assign({}, fall, { active:false });
-        fallenIdx = portalDrift.idx;
-        // Keep the stood-back view the loop was being watched from. Handing the camera back to the
-        // board would close in on a winner while the loser is still going round behind it.
-        camManualPos.copy(camera.position); camManualTgt.copy(controls.target);
-        camManualSet = true; camCenterFrac = 0;
+        fallenIdx = floatDrift.idx;
+        camCenterFrac = 1; camManualSet = false;
         return;
     }
     if (fall.settleT > 0.9 || fall.downT > 7) { fall.active=false; fallenIdx=fall.idx; camCenterFrac=1; camManualSet=false; }
 }
-// The loser of an alien match goes on falling through the world after the result is up: the same
-// rigid body, stepped from the render loop the way the shards are, until the board changes.
-function stepPortalDrift(dt) {
-    if (!portalDrift) return;
-    const t = tripods[portalDrift.idx];
-    if (!t || !fallPortal()) { portalDrift = null; return; }
-    stepFallOn(t, portalDrift.state, dt);
+// The loser of an alien match goes on rising after the result is up: the same rigid body, stepped
+// from the render loop the way the shards are, until it is far enough up to be gone for good.
+const FLOAT_RISE = 30;                        // the steady speed it settles to once it is going up
+const FLOAT_GONE = 600;                       // the height at which it is not coming back
+function stepFloatDrift(dt) {
+    if (!floatDrift) return;
+    const t = tripods[floatDrift.idx];
+    if (!t) { floatDrift = null; return; }
+    stepFallOn(t, floatDrift.state, dt);
+    if (t.position.y > FLOAT_GONE) { t.visible = false; floatDrift = null; }
 }
-function clearPortalDrift() { portalDrift = null; }
+function clearFloatDrift() { floatDrift = null; }
 // One frame of rigid-body motion, on any tripod + fall state -- the tutorial's falls run this exact
 // code, so a tumble looks the same everywhere.
 function stepFallOn(t, fall, dt) {
     if (!fall.X) fallSeed(t, fall);
     const MAT = fallMaterial();
-    fall.portal = fallPortal();
-    // A piece gathering speed lap after lap outruns a fixed four substeps: at three hundred units a
-    // second a substep is already longer than a leg is thick, and a contact found that deep resolves
-    // into a kick across the room. The step count follows the speed instead, so the same four steps
-    // at a walk become ten at a fall, and the piece keeps meeting the board's rim on the way past
-    // rather than flickering through it.
+    fall.airT = (fall.airT || 0) + dt;
+    fall.gMul = fallGravityScale(fall);
+    // A piece gathering speed outruns a fixed four substeps: at three hundred units a second a
+    // substep is already longer than a leg is thick, and a contact found that deep resolves into a
+    // kick across the room. The step count follows the speed instead, so the same four steps at a
+    // walk become ten at a fall, and the piece keeps meeting the board's rim on the way past rather
+    // than flickering through it.
     const speed = fall.V ? fall.V.length() : 0;
     const subs = Math.max(FALL_SUBSTEPS, Math.min(FALL_SUBSTEPS_MAX,
                           Math.ceil(speed * Math.min(dt, 1/30) / (CFG.legRadius*1.2))));
     const h = Math.min(dt, 1/30) / subs;
     for (let s = 0; s < subs; s++) fallSubstep(t, fall, h, MAT);
-    if (fall.portal && fall.X.y < fall.portal.floor) {
-        // Out through the floor, in at the ceiling, KEEPING EVERYTHING. A portal that took the speed
-        // away would just be a long fall on repeat; carrying it through means every lap hands the
-        // piece the whole drop again on top of what it already had, so it comes round quicker and
-        // quicker and spinning harder, and after a dozen laps it is a streak going past. The cap is
-        // not there to tame it -- it is the speed past which the integrator would start stepping
-        // clean over the world between substeps, and nothing below it is held back.
-        fall.X.y += fall.portal.ceiling - fall.portal.floor;
-        fall.V.y = Math.max(fall.V.y, -FALL_PORTAL_VMAX);
-        fall.loops = (fall.loops || 0) + 1;
-    }
+
     // Keep the mesh where the body is: the simulation tracks the centre of mass, the mesh hangs off
     // it by the same offset, turned by the body's orientation.
     t.position.copy(fall.X).sub(fallComW.copy(FALL_BODY.com).applyQuaternion(t.quaternion));
     t.updateMatrixWorld();
 }
 const FALL_PROBES = [fallBoardContact, fallGroundContact, fallOtherContact];
-const FALL_PROBES_PORTAL = [fallBoardContact, fallOtherContact];   // no ground: it falls right through
 function fallSubstep(t, fall, h, MAT) {
     // 1. Gravity, and the drift of a turning body. Then move.
-    fall.V.y -= FALL_GRAVITY*h;
+    fall.V.y -= FALL_GRAVITY*(fall.gMul === undefined ? 1 : fall.gMul)*h;
     // The damping stands in for everything a tumbling piece rubs against on its way down. Between
     // an alien floor and an alien ceiling there is nothing to rub against: left in, it bled away
     // both the speed the portal exists to build and the tumble, so a piece that should have been
     // whipping past end over end was drifting down flatter each lap.
-    const damp = (fall.portal && fall.phase === 'air') ? 0 : 1;
-    fall.V.multiplyScalar(Math.max(0, 1 - FALL_LIN_DAMP*damp*h));
-    fall.W.multiplyScalar(Math.max(0, 1 - FALL_ANG_DAMP*damp*h));
+    fall.V.multiplyScalar(Math.max(0, 1 - FALL_LIN_DAMP*h));
+    fall.W.multiplyScalar(Math.max(0, 1 - FALL_ANG_DAMP*h));
+    // Once the pull has turned round, the rise is capped. Nothing that floats accelerates for ever:
+    // it reaches the speed at which what it is drifting through holds it back and then just goes,
+    // steadily, which is the whole difference between something rising and something being fired.
+    if (fall.gMul < 0) fall.V.y = Math.min(fall.V.y, FLOAT_RISE);
     fall.X.addScaledVector(fall.V, h);
     const wlen = fall.W.length();
     if (wlen > 1e-6) {
@@ -9656,12 +9651,11 @@ function fallSubstep(t, fall, h, MAT) {
     // 3. Everything the piece is touching this instant -- unless it is going so fast that this
     //    substep stepped further than a leg is thick, in which case anything found would be a deep
     //    contact resolved into a fling. It goes through.
-    if (fall.portal && fall.V.length()*h > CFG.legRadius*1.6) { fall.phase = 'air'; fall.stillT = 0; return; }
     let n = 0, deepest = 0, hardest = 0, hx = 0, hy = 0, hz = 0, onBoard = false;
     for (const hull of FALL_HULL_LOCAL) {
         fallPW.copy(hull.p).applyQuaternion(t.quaternion).add(
             fallTmp.copy(fall.X).sub(fallComW.copy(FALL_BODY.com).applyQuaternion(t.quaternion)));
-        for (const probe of (fall.portal ? FALL_PROBES_PORTAL : FALL_PROBES)) {
+        for (const probe of FALL_PROBES) {
             if (n >= FALL_CONTACTS.length) break;
             const c = FALL_CONTACTS[n];
             if (!probe(fallPW, hull.r, c)) continue;
@@ -10171,7 +10165,7 @@ function animate() {
     // A look may slow the fall (Colossus: giants go over slowly); the desktop layer says by how much.
     if (fall.active) stepFall(dt * (window.tauDesktop && window.tauDesktop.fallTimeScale ? window.tauDesktop.fallTimeScale() : 1));
     stepShards(dt);
-    stepPortalDrift(dt);
+    stepFloatDrift(dt);
     if (fall.active || breakHold > 0) {
         updateFallCam(dt);   // dramatic loss cam takes over regardless of manual/auto state
         if (!fall.active) {
