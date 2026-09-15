@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 254</div>
+<div id="buildTag">build 255</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -9157,14 +9157,80 @@ const fallHullW = new THREE.Vector3();
 // pieces every pass, so triggerFall marks its own fall state as the one that may break.
 const SHATTER_SPEED = 48;                    // slower than this and the glass survives, and rolls
 const SHARD_LIFE = 3.4, SHARD_FADE = 1.2, SHARD_OPACITY = 0.92;
-let shards = [], shardGeos = null;
-function shardGeometry(i) {
-    // Thin sharp flakes, not pebbles: a tetrahedron squashed along one axis (the per-shard scale
-    // below) reads as broken glass from any angle, and three shapes are plenty at this size.
-    if (!shardGeos) shardGeos = [ new THREE.TetrahedronGeometry(1, 0),
-                                  new THREE.TetrahedronGeometry(1.2, 0),
-                                  new THREE.OctahedronGeometry(0.85, 0) ];
-    return shardGeos[i % shardGeos.length];
+let shards = [], shardParts = null, shardSliver = null;
+const shardOut = new THREE.Vector3();
+// WHAT A BREAKING PIECE LEAVES. Confetti was wrong twice over: the body vanished in one frame, and
+// what replaced it was a cloud of little pyramids that had never been part of anything. Glass comes
+// apart ALONG ITSELF -- an arch snaps into lengths of tube, the ball bursts into shells, the feet
+// break off whole -- so the fragments here are built from the very numbers that build the piece
+// (the same arc the legs are swept along), each one starting exactly where that part of the piece
+// was standing. The first frame of a break is therefore the piece, in pieces; the frame after that
+// is it coming apart. Only the spray of fine splinters is invented, because that is what the powder
+// at a break really is.
+// A break is not a cut. A cylinder straight out of the box has two flat discs for ends, which read
+// as sawn pipe; real glass parts along an uneven face. The end rings are pushed in and out along
+// the tube by a little sum of waves in the angle round it -- a function of the angle, so the seam
+// where the ring closes matches itself automatically -- and the same wave nudges the radius, so no
+// two fragments are the same width the whole way along.
+function raggedEnds(geo, len, amp, seed) {
+    const P = geo.attributes.position, a = P.array;
+    for (let i = 0; i < a.length; i += 3) {
+        const x = a[i], y = a[i+1], z = a[i+2], rho = Math.hypot(x, z);
+        if (rho < 1e-4) continue;                       // the cap's centre pin stays put
+        const th = Math.atan2(z, x);
+        const w = Math.sin(th*3 + seed) * 0.6 + Math.cos(th*5 - seed*1.7) * 0.4;
+        if (Math.abs(Math.abs(y) - len*0.5) < 1e-3) a[i+1] = y + Math.sign(y)*w*amp;
+        const k = 1 + w*0.07;
+        a[i] = x*k; a[i+2] = z*k;
+    }
+    P.needsUpdate = true; geo.computeVertexNormals();
+    return geo;
+}
+function shardParticles() {
+    if (shardParts) return shardParts;
+    const R = CFG.footR, LR = CFG.legRadius, FOOT_TOP = TRIPOD_PIN_LIFT + TRIPOD_FOOT_LEN;
+    const UP = new THREE.Vector3(0, 1, 0), out = [];
+    const at = (a, ct, st) => new THREE.Vector3(Math.sin(a)*R*ct, FOOT_TOP + Math.cos(a)*R, Math.sin(a)*R*st);
+    // Uneven cuts: glass does not break into equal lengths, and a tube that did would read as sawn.
+    const CUTS = [0, 0.19, 0.41, 0.58, 0.79, 1];
+    for (let i = 0; i < 3; i++) {
+        const th = i*2*Math.PI/3, ct = Math.cos(th), st = Math.sin(th);
+        for (let k = 0; k < CUTS.length - 1; k++) {
+            const p0 = at(CUTS[k]*Math.PI/2, ct, st), p1 = at(CUTS[k+1]*Math.PI/2, ct, st);
+            const dir = p1.clone().sub(p0), len = dir.length();
+            // Six sides, not smooth: a broken rod is faceted, and the facets are what catch the light
+            // as it turns. The radius wobbles a little so the lengths do not look machined.
+            const rad = LR*(0.86 + (k%2)*0.16);
+            out.push({ geo: raggedEnds(new THREE.CylinderGeometry(rad, rad*0.94, len, 6, 1), len, rad*0.8, i*2.1 + k),
+                       p: p0.clone().add(p1).multiplyScalar(0.5),
+                       q: new THREE.Quaternion().setFromUnitVectors(UP, dir.normalize()),
+                       h: len*0.5, rr: rad, glass: true });
+        }
+        // The foot: the solid tinted stub, which breaks off in one piece and lands like a pebble.
+        out.push({ geo: raggedEnds(new THREE.CylinderGeometry(TRIPOD_TIP_RAD, LR, TRIPOD_FOOT_LEN, 6, 1),
+                                   TRIPOD_FOOT_LEN, LR*0.5, i*3.7),
+                   p: new THREE.Vector3(R*ct, TRIPOD_PIN_LIFT + TRIPOD_FOOT_LEN*0.5, R*st),
+                   q: new THREE.Quaternion(), h: TRIPOD_FOOT_LEN*0.5, rr: LR, glass: false });
+    }
+    // The ball at the crown: four shells, open where they parted from each other.
+    const RB = LR*2;
+    for (let i = 0; i < 4; i++) {
+        // Each shell parts from the other three, so it carries the way it was facing as well: left
+        // to the break's own direction alone they all took the same push (the crown is the far end
+        // of the piece from the foot that hit) and landed as one lump on the floor.
+        const ph = (i + 0.5)*Math.PI/2;
+        out.push({ geo: new THREE.SphereGeometry(RB, 12, 8, i*Math.PI/2, Math.PI/2, 0, Math.PI),
+                   p: new THREE.Vector3(0, FOOT_TOP + R, 0), q: new THREE.Quaternion(),
+                   out: new THREE.Vector3(Math.cos(ph), 0.35, Math.sin(ph)),
+                   h: RB, rr: RB, glass: false, ball: true });
+    }
+    shardParts = out;
+    return out;
+}
+// The fine stuff: a tetrahedron stretched long and pressed flat is a splinter from any angle.
+function shardSliverGeo() {
+    if (!shardSliver) shardSliver = new THREE.TetrahedronGeometry(1, 0);
+    return shardSliver;
 }
 function shatterPiece(t, fall, impact) {
     const parent = t.parent;
@@ -9178,46 +9244,72 @@ function shatterPiece(t, fall, impact) {
     const src = (hub && hub.material && hub.material.color) ? hub.material
               : (body && body.material && body.material.color) ? body.material
               : (t.userData && t.userData.mat);
-    // One material for the whole burst: the shards are born and die together, so a single fade
-    // drives all of them and there's one thing to dispose when they're gone.
-    // A flake is thin enough to be lit from either face, and a tumbling one turns its back to the
-    // key light constantly -- at pure reflection the away-facing ones went black and the burst read
-    // as dirt. A little of the piece's own colour emitted from the glass keeps every shard visible
-    // whichever way it is facing, which is also how real glass behaves: it carries light through.
-    const hex = src ? src.color.getHex() : 0xffffff;
-    const mat = new THREE.MeshPhysicalMaterial({
-        color: hex, emissive: hex, emissiveIntensity: 0.22,
-        roughness: 0.12, metalness: 0, transparent: true, opacity: SHARD_OPACITY,
-        clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.6,
+    const tint = new THREE.Color(src ? src.color.getHex() : 0xffffff);
+    // Two materials for the burst, because the piece is two things: the legs you look THROUGH and
+    // the ball and feet that carry the colour. Both fade on the same clock and are disposed together.
+    // A fragment is thin enough to be lit from either face and turns its back to the key light
+    // constantly as it tumbles -- at pure reflection the away-facing ones went black and the burst
+    // read as dirt -- so a little of the piece's own colour is emitted, which is also how real glass
+    // behaves: it carries light through rather than stopping it.
+    const glassCol = tint.clone().lerp(new THREE.Color(0xffffff), 0.45);   // pale, but still THIS side's glass
+    const mk = col => new THREE.MeshPhysicalMaterial({
+        color: col.getHex(), emissive: col.getHex(), emissiveIntensity: 0.22,
+        roughness: 0.08, metalness: 0, transparent: true, opacity: SHARD_OPACITY,
+        clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.8,
         side: THREE.DoubleSide,
     });
-    const n = TAU_PREMIUM ? 26 : 14, spray = Math.min(1.7, impact/110);
-    for (let i = 0; i < n; i++) {
-        const m = new THREE.Mesh(shardGeometry(i), mat);
-        // Seed each shard on the body that just hit -- the hull points are the piece's own legs and
-        // crown -- so the break comes apart along the shape instead of out of a point at its centre.
-        const h = FALL_HULL_LOCAL[i % FALL_HULL_LOCAL.length];
-        m.position.copy(h.p).multiplyScalar(0.5 + Math.random()*0.85).applyQuaternion(t.quaternion).add(t.position);
-        const s = 0.9 + Math.random()*2.0;   // a broken piece leaves pieces, not grit
-        m.scale.set(s*(0.28+Math.random()*0.5), s*(0.8+Math.random()*0.9), s*(0.4+Math.random()*0.7));
-        m.rotation.set(Math.random()*6.283, Math.random()*6.283, Math.random()*6.283);
-        if (TAU_PREMIUM) m.castShadow = true;
+    const glassMat = mk(glassCol), solidMat = mk(tint);
+    // Where the break started. Fragments near the contact are thrown; the far side of the piece is
+    // barely pushed at all and simply drops, which is what makes it read as a break rather than an
+    // explosion at the centre of mass.
+    const hit = fall.lastImpact || { x: t.position.x, y: t.position.y, z: t.position.z };
+    const spray = Math.min(1.7, impact/110);
+    const V = fall.V || { x: fall.vx || 0, y: 0, z: fall.vz || 0 };
+    const hubR = hub ? (hub.scale.x || CFG.legRadius*2) : CFG.legRadius*2;
+    const add = (geo, mat, pos, quat, h, rr, boost, scale, out) => {
+        const m = new THREE.Mesh(geo, mat);
+        m.position.copy(pos); m.quaternion.copy(quat);
+        if (scale) m.scale.setScalar(scale);
+        if (TAU_PREMIUM) { m.castShadow = true; m.receiveShadow = true; }
         parent.add(m);
-        // Outward from the hub, up off the floor, and carrying half the body's travel: glass sprays
-        // along the way the piece was going, it doesn't burst symmetrically out of a standing stop.
-        const dx = m.position.x - t.position.x, dz = m.position.z - t.position.z, d = Math.hypot(dx, dz) || 1;
-        // Glass scatters AROUND where it broke. The first cut of this threw the shards half the
-        // table away, which read as debris blown across the floor rather than a piece going down.
-        shards.push({ m, mat, t: 0,
-            vx: fall.vx*0.4 + dx/d*(9 + Math.random()*22)*spray,
-            vy: 14 + Math.random()*44*spray,
-            vz: fall.vz*0.4 + dz/d*(9 + Math.random()*22)*spray,
-            wx: (Math.random()-0.5)*24, wy: (Math.random()-0.5)*24, wz: (Math.random()-0.5)*24 });
+        // Thrown OUT from the break, up off the floor, and carrying half of what the body was doing.
+        // Glass scatters around where it broke: it does not get blown across the table.
+        const dx = m.position.x - hit.x, dy = m.position.y - hit.y, dz = m.position.z - hit.z;
+        const d = Math.hypot(dx, dy, dz) || 1;
+        const near = 1/(1 + d/14);                 // the struck end bursts, the far end just falls
+        const k = boost*near*spray;
+        const ox = out ? out.x*22*spray : 0, oy = out ? out.y*22*spray : 0, oz = out ? out.z*22*spray : 0;
+        shards.push({ m, mat, t: 0, h: h*(scale || 1), rr: rr*(scale || 1),
+            vx: V.x*0.4 + dx/d*26*k + ox + (Math.random()-0.5)*7,
+            vy: V.y*0.25 + (10 + Math.random()*26)*k + oy + 4,
+            vz: V.z*0.4 + dz/d*26*k + oz + (Math.random()-0.5)*7,
+            wx: (Math.random()-0.5)*18*(0.4+near), wy: (Math.random()-0.5)*18*(0.4+near),
+            wz: (Math.random()-0.5)*18*(0.4+near) });
+        return m;
+    };
+    const wp = new THREE.Vector3(), wq = new THREE.Quaternion();
+    for (const part of shardParticles()) {
+        wp.copy(part.p).applyQuaternion(t.quaternion).add(t.position);
+        wq.copy(t.quaternion).multiply(part.q);
+        const sc = part.ball ? hubR/(CFG.legRadius*2) : 0;
+        add(part.geo, part.glass ? glassMat : solidMat, wp, wq, part.h, part.rr, 1, sc || 0,
+            part.out ? shardOut.copy(part.out).applyQuaternion(t.quaternion) : null);
+    }
+    // …and the splinters, off the same body, thrown harder because they weigh nothing.
+    const fines = TAU_PREMIUM ? 14 : 6;
+    for (let i = 0; i < fines; i++) {
+        const h = FALL_HULL_LOCAL[Math.floor(Math.random()*FALL_HULL_LOCAL.length)];
+        wp.copy(h.p).applyQuaternion(t.quaternion).add(t.position);
+        wq.set(Math.random(), Math.random(), Math.random(), Math.random()).normalize();
+        const long = CFG.legRadius*(1.1 + Math.random()*1.3), thin = CFG.legRadius*(0.18 + Math.random()*0.2);
+        const m = add(shardSliverGeo(), glassMat, wp, wq, long, thin, 1.8, 0);
+        m.scale.set(thin, long, CFG.legRadius*(0.3+Math.random()*0.3));
     }
     t.visible = false;
 }
 // Shards outlive the fall itself (the camera is back on the board long before the last chip stops
 // skipping), so they step from the render loop, not from stepFall.
+const shardSpinQ = new THREE.Quaternion(), shardSpinAx = new THREE.Vector3(), shardUp = new THREE.Vector3();
 function stepShards(dt) {
     if (!shards.length) return;
     for (let i = shards.length - 1; i >= 0; i--) {
@@ -9225,8 +9317,19 @@ function stepShards(dt) {
         s.t += dt;
         s.vy -= 260*dt;
         m.position.x += s.vx*dt; m.position.y += s.vy*dt; m.position.z += s.vz*dt;
-        m.rotation.x += s.wx*dt; m.rotation.y += s.wy*dt; m.rotation.z += s.wz*dt;
-        const rest = Math.max(m.scale.x, m.scale.y, m.scale.z)*0.5;
+        // Turned about its own axis of spin, not by three Euler angles: a fragment starts at the
+        // orientation its part of the piece was in, and stacking Euler increments onto that would
+        // throw that away on the first frame.
+        const sp = Math.hypot(s.wx, s.wy, s.wz);
+        if (sp > 1e-4) {
+            shardSpinAx.set(s.wx/sp, s.wy/sp, s.wz/sp);
+            m.quaternion.premultiply(shardSpinQ.setFromAxisAngle(shardSpinAx, sp*dt));
+        }
+        // How far its lowest point is below its centre RIGHT NOW: a length of tube lying flat rests on
+        // its width, the same tube on end rests on its length. Resting everything on one radius left
+        // the long fragments hovering over the floor with a gap you could see.
+        shardUp.set(0, 1, 0).applyQuaternion(m.quaternion);
+        const rest = Math.abs(s.h*shardUp.y) + s.rr*Math.sqrt(Math.max(0, 1 - shardUp.y*shardUp.y));
         const floorY = fallFloorY(m.position.x, m.position.z);
         if (m.position.y - rest <= floorY) {
             m.position.y = floorY + rest;

@@ -428,7 +428,7 @@ const THEMES = {
     zoneGrade: 0,   // the membrane's blotches already grade it; banding would fight them
     bg: 0x04060b, exposure: 1.05, bloom: [0.45, 0.7, 0.72],
     key: { color: 0x9d8ce8, intensity: 1.0, pos: [-70,110,-50], shadow: 0.35 },
-    fill:{ color: 0x35e8c8, intensity: 0.55 },
+    fill:{ color: 0x86d6c8, intensity: 0.45 },
     band: { color: 0x191324, rough: 0.35, metal: 0.25 }, slabColor: 0x110d1a, tableColor: 0x06060c,
     boardEnv: 0.25, bumpScale: 1.1, emissiveIntensity: 1.5, boardReflect: 0.28, guide: 0x8dffe8,
     // The showcase's bloom threshold lets only the brightest channels glow; the game has no bloom,
@@ -508,15 +508,24 @@ const THEMES = {
       }
       return { albedo: al, rough: ro, bump: bu, emissive: em };
     },
+    // THREE COLOURS, NOT ONE. The board is a living teal membrane and it lights the room: measured
+    // off the render, the board sat at hue 178, the blue piece at 192 and both read as the same
+    // glowing cyan -- the piece disappeared into the table it stood on. Three things were doing it.
+    // The side's glow was a cyan (0x3fd2ff, hue 196), which at this emissive strength IS the piece's
+    // colour; full thin-film iridescence smears any hue towards the same spectral wash; and a
+    // saturated teal fill light tinted whatever the two of them left. Blue is a true blue now, the
+    // iridescence is a sheen rather than the whole surface, and the fill is a paler teal. Measured
+    // again: board 177, blue 233, red 348 -- 56 degrees and 114 degrees apart, three hues you can
+    // name. Red was never the problem and is untouched.
     pieces(which) {   // thin-film iridescent chitin with a faint internal glow
-      const base = which === 'blue' ? 0x24558c : 0x7c2030;      // petrol / haem — bright enough to read
+      const base = which === 'blue' ? 0x2436a8 : 0x7c2030;      // deep blue / haem — three hues, not two
       const film = which === 'blue' ? [140, 520] : [240, 700];  // nm range picks each side's shimmer
       // Self-luminous, like the membrane's channels: the glow is a BRIGHT bioluminescent tint of
       // each side, not the dark body colour turned up (a dark emissive at any intensity only
       // reads as a slightly less dark surface). Hot enough for the bloom pass to pick up.
-      const glow = which === 'blue' ? 0x3fd2ff : 0xff5c7a;
+      const glow = which === 'blue' ? 0x3355ff : 0xff5c7a;
       const mk = o => PHYS(Object.assign({
-        color: base, metalness: 0, iridescence: 1.0, iridescenceIOR: 1.8,
+        color: base, metalness: 0, iridescence: 0.45, iridescenceIOR: 1.8,
         iridescenceThicknessRange: film, emissive: new THREE.Color(glow),
       }, o));
       return {
@@ -525,7 +534,7 @@ const THEMES = {
         // legs: PARTIAL thin-film only — at true grazing angles full iridescence goes white in
         // every wavelength (it replaces Fresnel entirely), so the legs run half-strength shimmer
         // over waxy chitin, rough enough to diffuse the sheath, lit from inside
-        leg: mk({ iridescence: 0.45, roughness: 0.44, clearcoat: 0.2, clearcoatRoughness: 0.35,
+        leg: mk({ iridescence: 0.18, roughness: 0.44, clearcoat: 0.2, clearcoatRoughness: 0.35,
                   emissiveIntensity: 1.1, envMapIntensity: 0.15, specularIntensity: 0.35 }),
       };
     },
