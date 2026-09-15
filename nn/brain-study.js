@@ -32,9 +32,14 @@ const pose = arg('pose', 'swing1');
 const res = +arg('res', 1024);
 const outFile = arg('out', 'nn/brain-maps/study-' + pose + '.json');
 
+// A map is a .json with its .bin beside it. Name matching alone is not enough: rough-poses.js
+// writes poses-rough-<mapname>.json into this same directory, and that name ends with exactly the
+// pose/res suffix a map has, so any pattern on the name picks it up and then dies on the missing
+// .bin. Requiring the pair is both simpler and not fooled by whatever lands here next.
 const files = fs.readdirSync(dir)
-  .filter(f => f.endsWith('.json') && f.includes(`__${pose}__${res}`))
-  .map(f => path.join(dir, f.replace(/\.json$/, '')));
+  .filter(f => f.endsWith(`__${pose}__${res}.json`))
+  .map(f => path.join(dir, f.replace(/\.json$/, '')))
+  .filter(b => fs.existsSync(b + '.bin'));
 if (!files.length) { console.error(`no ${res}px maps for pose ${pose} in ${dir}`); process.exit(1); }
 
 const maps = files.map(A.loadMap).sort((a, b) => a.meta.params - b.meta.params);
@@ -85,8 +90,16 @@ console.log('   Pearson r between band-passed maps, per scale. 1.0 = identical s
 const pairs = [];
 for (let i = 0; i < big.length; i++) for (let j = i + 1; j < big.length; j++) pairs.push([big[i], big[j]]);
 // also anchor the biggest net against the smallest, as a floor for what "agreement" looks like
-const smallest = maps.filter(m => m.meta.kind !== 'engine')[0];
+const smallest = maps.filter(m => m.meta.kind !== 'engine' && !/^random/.test(m.meta.tag))[0];
 if (big.length && smallest) pairs.push([big[0], smallest.meta.tag]);
+// THE CONTROL PAIR. Band-passing a smooth field does not isolate that band cleanly -- a fine band
+// still carries some of the coarse field's local gradient -- so a high fine-scale correlation can
+// be shared coarse structure rather than shared detail. Two UNTRAINED nets of identical shape have
+// no learned structure to share at any scale, so whatever they score is what this metric reads on
+// nothing. Every number in this table has to be judged against that floor, not against zero.
+const rnd = maps.filter(m => /^random/.test(m.meta.tag)).map(m => m.meta.tag);
+if (rnd.length >= 2) pairs.push([rnd[0], rnd[1]]);
+if (rnd.length && big.length) pairs.push([big[0], rnd[0]]);
 
 console.log('   ' + 'pair'.padEnd(28) + bands.map(s => (s + 'u').padStart(8)).join(''));
 const bandRows = [];
