@@ -304,7 +304,14 @@ function nnPlanFor(eng, net, idx, opts) {
       // stopped landing real parks, which is why it grew a dedicated park recorder.
       for (let i = 0; i < arm.length; i++) {
         const w = arm[i], isThrow = w.v >= 1e5;
-        if (isThrow || w.park) { w.s = w.v; cands.push(w); continue; }
+        // o.rawRoot: skip plateau smoothing entirely, so the root score IS the leaf evaluation.
+        // Off by default, so every existing search stays bit-identical. It exists for the depth
+        // study (brain-depth.js): that measures how the ROOT VALUE surface changes as the search
+        // gets deeper, and smoothing is applied only at depth 1 (depth >= 2 ranks on the raw
+        // recursive `deep`), so leaving it on would put a low-pass filter on the depth-1 rung of
+        // the ladder and none of the others -- an apparent smoothness difference that is an
+        // artefact of the instrument rather than a fact about the search.
+        if (isThrow || w.park || o.rawRoot) { w.s = w.v; cands.push(w); continue; }
         let sum = w.v, n = 1;
         if (i > 0 && arm[i-1].v < 1e5) { sum += arm[i-1].v; n++; }
         if (i + 1 < arm.length && arm[i+1].v < 1e5) { sum += arm[i+1].v; n++; }
@@ -389,7 +396,7 @@ function nnPlanFor(eng, net, idx, opts) {
       let deep;
       if (g1.over) deep = g1.winner === idx ? 1e6 : -1e6;
       else {
-        const oppPlan = nnPlanFor(eng, net, 1 - idx, { temperature: 0, depth: depth - 1, keepForDepth: o.keepForDepth,
+        const oppPlan = nnPlanFor(eng, net, 1 - idx, { temperature: 0, depth: depth - 1, keepForDepth: o.keepForDepth, rawRoot: o.rawRoot,
                                                       policy: o.policy, policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride, evalFn: o.evalFn, sweepDeg: o.sweepDeg, parkStops: o.parkStops,
                                                       dual: o.dual, dualPolicy: o.dualPolicy,
                                                       abCut: o.abCut,
