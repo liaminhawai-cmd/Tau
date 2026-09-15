@@ -95,12 +95,19 @@ function pickLines(rnd, CFG, op, span, n) {
   return out;
 }
 
-function makeEval(eng, model) {
+function makeEval(eng, model, rung) {
   if (model === '__engine') {
-    const topW = eng.AI_LADDER[eng.AI_LADDER.length - 1].w;
+    // Which rung matters more than it looks. L11 carries 5 weighted terms, so its leaf surface has
+    // plenty of encoding structure of its own -- the very thing this study is trying to see past.
+    // L3 carries ONE. Its leaf map is close to featureless, so almost anything visible in its
+    // SEARCHED map has to have been manufactured by the search, which makes it the cleanest
+    // separation of the two sources available without writing a new evaluator.
+    const idx = rung == null ? eng.AI_LADDER.length - 1 : Math.max(0, Math.min(eng.AI_LADDER.length - 1, rung - 1));
+    const w = eng.AI_LADDER[idx].w;
     // ladderEval already answers "score for `side`, whoever's turn it is" -- it is NOT antisymmetric
     // (see the evalFn contract note in nnai.js), so it must be passed through unnegated.
-    return { evalFn: (e, side) => e.ladderEval(side, topW), info: { kind: 'engine', params: 0, sizes: [] } };
+    return { evalFn: (e, side) => e.ladderEval(side, w),
+             info: { kind: `engine-L${idx + 1}`, params: Object.keys(w || {}).length, sizes: [] } };
   }
   const info = loadValueNet(model);
   return {
@@ -112,11 +119,11 @@ function makeEval(eng, model) {
 // ---------------------------------------------------------------------------- worker
 
 if (!isMainThread) {
-  const { model, pose, keep, sweepDeg } = workerData;
+  const { model, pose, keep, sweepDeg, rung } = workerData;
   const eng = createEngine();
   const ref = setupPose(eng, pose);
   const CFG = eng.CFG, g = eng.getG(), me = g.pieces[g.active];
-  const { evalFn } = makeEval(eng, model);
+  const { evalFn } = makeEval(eng, model, rung);
   const top = [];
 
   // The root value of a d-ply search from this hub position. `captureTop` is the only way out of
@@ -166,8 +173,11 @@ function arg(n, d) {
   return v === undefined || v.startsWith('--') ? true : v;
 }
 
+function defaultRungTag(rung) { return rung == null ? 'L11' : 'L' + rung; }
+
 async function main() {
   const model = arg('model', '__engine');
+  const rung = arg('rung', null) == null ? null : +arg('rung');
   const pose = arg('pose', 'swing1');
   const span = +arg('span', 2);
   const samples = +arg('samples', 65);
@@ -177,12 +187,12 @@ async function main() {
   const depths = String(arg('depths', '1,2,3,4,5,6')).split(',').map(Number);
   const outDir = arg('out', 'nn/brain-maps');
   const threads = Math.max(1, +arg('threads', 4));
-  const tag = arg('tag', model === '__engine' ? 'L11' : path.basename(String(model)).replace(/\.json$/, ''));
+  const tag = arg('tag', model === '__engine' ? defaultRungTag(rung) : path.basename(String(model)).replace(/\.json$/, ''));
 
   fs.mkdirSync(outDir, { recursive: true });
   const eng = createEngine();
   const ref = setupPose(eng, pose);
-  const { info } = makeEval(eng, model);
+  const { info } = makeEval(eng, model, rung);
   const segs = pickLines(mulberry(20260915), eng.CFG, ref.op, span, lines);
   if (segs.length < lines) console.log(`  only ${segs.length}/${lines} lines fit at span ${span}`);
   const h = span / (samples - 1);
@@ -220,7 +230,7 @@ async function main() {
       w.postMessage({ seg: segs[j.lineIdx], samples, depth: j.depth, lineIdx: j.lineIdx });
     };
     for (let t = 0; t < threads; t++) {
-      const w = new Worker(__filename, { workerData: { model, pose, keep, sweepDeg } });
+      const w = new Worker(__filename, { workerData: { model, pose, keep, sweepDeg, rung } });
       w.on('message', m => {
         if (m.ready) { feed(w); return; }
         got.get(m.depth)[m.lineIdx] = m.trace;
