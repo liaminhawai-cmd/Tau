@@ -1003,10 +1003,34 @@
   // not one flat plane -- Colossus stands its pitch on a plinth wider than the board -- answers per
   // position instead: asked with no position (the tests, and anything that just wants the look's
   // ground level) it still gives the one number.
+  // EVERY BOARD SITS AT ITS OWN HEIGHT. A drop is a big part of what a board feels like, and they
+  // were all the same twenty centimetres: Maple is a low table you could sweep a piece off onto the
+  // rug, Dark is a board floating in a room with no bottom you can see. A look that draws its own
+  // ground (Colossus' sand, Marble's hall) says so and keeps it; every other board just names a
+  // depth and the game's own black floor is moved down to meet it.
+  const FLOOR_BY_BOARD = {
+    maple:  -11,    // a low bench: the piece is on the floor almost as soon as it leaves the board
+    yellow: -16,
+    dojo:   -20,    // the mat is right there
+    walnut: -34,    // the height the rest of the game was tuned at
+    ebony:  -44,
+    slate:  -58,
+    cosy:   -26,    // a rug, a foot below the coffee table
+    sumo:   -14,    // the dohyo is built up off the ground, not much
+    math:   -72,
+    noir:  -130,    // it goes down into the dark and you hear it land
+    dark:  -190,    // no bottom you can see from here
+  };
+  let lookFloor = null, lookOwnGround = false;
+  function gameFloor() { return typeof FALL_FLOOR_Y !== 'undefined' ? FALL_FLOOR_Y : -34; }
+  // {floor, ceiling} on a look whose floor is a way out rather than a bottom; null everywhere else.
+  function fallPortal() {
+    return lookTheme && lookTheme.portal
+      ? { floor: fallFloorY(), ceiling: lookTheme.portal.ceiling } : null;
+  }
   function fallFloorY(x, z) {
-    if (!lookTheme) return null;
-    if (x !== undefined && typeof lookTheme.floorAt === 'function') return lookTheme.floorAt(x, z);
-    return lookTheme.floorY != null ? lookTheme.floorY : null;
+    if (lookTheme && x !== undefined && typeof lookTheme.floorAt === 'function') return lookTheme.floorAt(x, z);
+    return lookFloor != null ? lookFloor : gameFloor();
   }
   // ---- Sand and stone: the dust a fall raises on a look that asks for it (T.dust) ----
   // Each puff is its own small point cloud thrown up from a spot: outward and up, slowed by the
@@ -1633,7 +1657,14 @@
     }
     scene.fog = T && T.fog ? new THREE.FogExp2(T.fog.color, T.fog.density) : null;
     lookTheme = T;
-    if (typeof fallFloor !== 'undefined' && fallFloor) fallFloor.visible = !(T && T.floorY != null);   // the look's own ground replaces the black floor
+    // the look's own ground replaces the black floor; otherwise the black floor is moved to its depth
+    lookOwnGround = !!(T && (T.ownGround || T.portal));   // a portal has no floor to show either
+    lookFloor = (T && T.floorY != null) ? T.floorY
+              : (FLOOR_BY_BOARD[fin.id] != null ? FLOOR_BY_BOARD[fin.id] : gameFloor());
+    if (typeof fallFloor !== 'undefined' && fallFloor) {
+      fallFloor.visible = !lookOwnGround;
+      fallFloor.position.y = lookFloor;
+    }
     detailMode = fin.detail==='wood' ? 1 : fin.detail==='marble' ? 2 : fin.detail==='alien' ? 3 : 0;
     mathLive = fin.id === 'math';
     const bg = T ? '#' + new THREE.Color(T.bg).getHexString() : fin.wood.bg;
@@ -1868,12 +1899,37 @@
   // thumb in a circle to wind the piece round was accurate on paper and genuinely awkward in the
   // hand, and it is the one thing playtesting rejected outright. Speed on an axis is the same
   // control the triggers give, so the two schemes now differ only in which fingers hold it.
+  // The board is alive; two dead lacquered objects standing on it give the game away. Each side
+  // breathes on its own clock -- the glow swells and falls, and the thin-film sheen drifts with it,
+  // which is the part you notice without being able to say what moved. Slow enough that a still
+  // frame looks like any other; nothing here is a cue the player has to read.
+  function alienBreath(now) {
+    for (const pair of [typeof tripods !== 'undefined' ? tripods : null,
+                        typeof htpTripods !== 'undefined' ? htpTripods : null]) {
+      if (!pair) continue;
+      pair.forEach((piece, i) => {
+        const mats = piece && piece.userData && piece.userData.showMats;
+        if (!mats) return;
+        const ph = now*0.5 + i*2.4;
+        const swell = 0.74 + 0.30*Math.sin(ph) + 0.09*Math.sin(ph*2.7 + 1.1);
+        for (const m of mats) {
+          if (!m) continue;
+          const d = m.userData;
+          if (d.alienEmissive == null) d.alienEmissive = m.emissiveIntensity;
+          if (d.alienIrid == null) d.alienIrid = m.iridescence;
+          m.emissiveIntensity = d.alienEmissive * swell;
+          if (d.alienIrid) m.iridescence = d.alienIrid * (0.72 + 0.4*Math.sin(ph*0.63 + 0.8));
+        }
+      });
+    }
+  }
   function pollInput(dt) {
     if (detail && detail.uniforms) {
       const u = detail.uniforms, now = performance.now()/1000;
       u.uDetail.value = detailMode === 3 ? 0 : detailMode;   // the membrane is its own pass below
       u.uDetailTime.value = now;
       u.uAlien.value = detailMode === 3 ? 1 : 0; u.uAlienTime.value = now;
+      if (detailMode === 3) alienBreath(now);   // the pieces are of this place too, so they breathe
       // Math: every foot's pivot-sweep circle, read off the RENDERED pieces (local foot positions
       // through the mesh's own transform), so the construction glides with the eased swing rather
       // than jumping to the rule engine's end pose.
@@ -2021,7 +2077,7 @@
     get progress(){return {...progress};},
     recordResult,
     debugDetailMode(){ return detailMode; },
-    resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, renderFrame,
+    resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, fallPortal, renderFrame,
     get rayTrace(){return settings.rayTrace;},
     set rayTrace(v){ settings.rayTrace=!!v; settings.quality = settings.rayTrace ? 'ultra' : (settings.quality==='ultra'?'high':settings.quality);
       saveSettings(); if($('desktopQuality')) $('desktopQuality').value=settings.quality;

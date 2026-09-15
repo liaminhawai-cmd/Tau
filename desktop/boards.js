@@ -434,6 +434,10 @@ const THEMES = {
     // The showcase's bloom threshold lets only the brightest channels glow; the game has no bloom,
     // so the same emissive floods the whole membrane. This is the level the game applies instead.
     gameEmissive: 0.45,
+    // THERE IS NO FLOOR HERE. What looks like one is a way out: a piece pushed off the board drops
+    // through it, is handed back by the ceiling, and falls again -- and goes on falling behind the
+    // result, and behind the next game, until you leave the board.
+    floorY: -70, portal: { ceiling: 118 },
     fog: { color: 0x0a0816, density: 0.0018 },
     paint() {
       // one vein network, drawn into albedo (dark), bump (raised) — precompute the segments
@@ -560,7 +564,7 @@ const THEMES = {
     // In the game the camera sits lower and wider than on the other boards, so the tiers and their
     // crowd rise behind the far rim instead of staying above the top of the frame.
     gameCam: { elev: 0.5, fov: 46 },
-    floorY: -20,   // the arena sand a fallen titan lands on -- the pitch is a plinth twenty units above it
+    floorY: -20, ownGround: true,   // the arena sand a fallen titan lands on -- the pitch is a plinth twenty units above it
     // …but the plinth is WIDER than the pitch, so a titan that goes over the rim comes down on
     // stone, not on sand: it lands on the plinth's top face, and only reaches the arena floor by
     // rolling off the edge and down the flank. Told the sand was the ground everywhere, it dropped
@@ -780,7 +784,7 @@ const THEMES = {
     // The marble table stands in a dark hall, and the hall has a floor a long way down. A piece
     // pushed over this rim falls the height of the table rather than the width of a hand -- which
     // is the drop the glass wants, since what waits at the bottom is stone.
-    floorY: -86,
+    floorY: -86, ownGround: true,
     env() {
       const g = new THREE.Group();
       // Polished black stone, faded out into the dark so its edge is never a visible disc against
@@ -957,6 +961,38 @@ float ahash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453123);
 float anoise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
   return mix(mix(ahash(i),ahash(i+vec2(1.0,0.0)),u.x), mix(ahash(i+vec2(0.0,1.0)),ahash(i+vec2(1.0,1.0)),u.x), u.y); }
 float afbm(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<6;i++){ s+=a*anoise(p); p=p*2.03+vec2(1.7,9.2); a*=0.5; } return s; }
+float afbm3(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<3;i++){ s+=a*anoise(p); p=p*2.11+vec2(3.3,5.9); a*=0.5; } return s; }
+// TENDRILS. The membrane was only ever fluid: pretty, and completely inert -- nothing about it was
+// doing anything. What makes a thing look ALIVE is that it reaches, and then thinks better of it.
+// Five roots sit around the board. From each, threads grow outward, and the trick that makes them
+// branch rather than merely radiate is that the noise is read in (angle, radius) with the ANGULAR
+// frequency rising with the radius: one thread at the root is two a little further out and four
+// beyond that, which is how a dendrite divides. Each root grows and retracts on its own slow clock,
+// with a long fold-away between reaches, and the growing tip carries a bright bulb -- the eye on the
+// end of a snail's horn, drawn back in the moment it has seen enough.
+// Returns the thread mask; the bulbs come back in the out parameter.
+float tendrils(vec2 bp, float t, out float tips) {
+  float sum = 0.0; tips = 0.0;
+  for (int i = 0; i < 5; i++) {
+    float fi = float(i);
+    vec2 root = (vec2(ahash(vec2(fi, 3.7)), ahash(vec2(fi, 8.1))) - 0.5) * 1.35;
+    vec2 d = bp - root;
+    float r = length(d) + 1e-4;
+    float a = atan(d.y, d.x);
+    float branch = 2.0 + r*3.6;                      // one thread becomes two, not a hundred
+    float f = afbm3(vec2(a*branch, r*2.2 - t*0.05) + fi*13.0);
+    float fil = pow(1.0 - abs(f*2.0 - 1.0), 13.0);   // thin ridges: the threads themselves
+    fil *= fil > 0.02 ? 1.0 : 0.0;                   // and nothing at all between them
+    // Out, hold, and back in. The rest between reaches is longer than the reach.
+    float ph = t*0.17 + fi*1.37;
+    float g = smoothstep(0.42, 1.0, sin(ph)*0.5 + 0.5);
+    float reach = 0.07 + g*0.38;                     // a hand's reach from its root, not the board
+    float grown = smoothstep(reach, reach - 0.16, r) * smoothstep(0.02, 0.07, r);
+    sum += fil * grown;
+    tips += fil * g * smoothstep(0.05, 0.0, abs(r - reach*0.93));
+  }
+  return sum;
+}
 `;
 
 // ---- per-pixel surface detail ---------------------------------------------------------------
@@ -1078,6 +1114,11 @@ function installDetailShader(material) {
         '  float blotch = smoothstep(0.32, 0.72, q.x);\n' +
         '  outgoingLight *= (1.0 - blotch*0.3);\n' +
         '  outgoingLight += vec3(0.10, 0.95, 0.80) * vein * 0.55 * pulse;\n' +
+        // the growing things, over the flow: new growth is paler than the old channels, and the
+        // bulb on the end of a reaching thread is the brightest thing on the board
+        '  float tips; float tend = tendrils(vWPos.xz / max(uBoardGeom.z, 1.0), uAlienTime, tips);\n' +
+        '  outgoingLight += vec3(0.32, 1.00, 0.55) * min(tend, 1.0) * 0.75;\n' +
+        '  outgoingLight += vec3(0.75, 1.00, 0.70) * min(tips, 1.0) * 1.30;\n' +
         '}\n' + finalHook);
     holder.uniforms = shader.uniforms;
   };

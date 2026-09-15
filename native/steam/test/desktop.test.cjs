@@ -1045,7 +1045,7 @@ test('Colossus brings its stands, crowd and haze into the match, and a fall rais
   assert.ok(crowd().y>0,'and the crowd erupts');
   g.read("fall={active:false}; tauDesktop.board='walnut'");
   assert.equal(crowd(),null,'another board clears the arena');
-  assert.equal(g.read('tauDesktop.fallFloorY()'),null,'and lands pieces on the game\'s own floor again');
+  assert.equal(g.read('tauDesktop.fallFloorY()'),-34,'and lands pieces on the walnut table\'s own floor again');
   assert.equal(g.read('scene.fog'),null);
   assert.equal(g.read('camera.fov'),38);
   assert.equal(g.read('tauDesktop.fallTimeScale()'),1);
@@ -2396,6 +2396,31 @@ test('a stone titan is pushed hard enough to actually leave the board',async t=>
   const y=g.read('tripods[1].position.y');
   assert.ok(r>g.read('CFG.edgeU'),`the titan ends up off the board, not standing on it (r ${r.toFixed(0)})`);
   assert.ok(y<-4,`and below it (y ${y.toFixed(1)})`);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('every board sits at its own height above its floor',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    fallFloor=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU*3),new THREE.MeshStandardMaterial());
+    scene.add(fallFloor);
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    localStorage.setItem('tauDesktopTestBoards','1');`);
+  const depth = id => { g.read(`tauDesktop.board='${id}'`); return g.read('tauDesktop.fallFloorY()'); };
+  const maple = depth('maple'), walnut = depth('walnut'), dark = depth('dark');
+  assert.ok(maple > walnut, `Maple is a low bench (${maple}) next to the walnut table (${walnut})`);
+  assert.ok(dark < walnut*3, `Dark drops away into the room (${dark})`);
+  // A board with no ground of its own keeps the game's black floor -- moved down to meet it, so the
+  // piece is not landing on nothing.
+  assert.equal(g.read('fallFloor.visible'),true,'the plain boards keep the game floor');
+  assert.equal(g.read('fallFloor.position.y'),dark,'and it is moved to this board\'s depth');
+  depth('colossus');
+  assert.equal(g.read('fallFloor.visible'),false,'a look that brings its own ground hides it');
   assert.deepEqual(g.errors,[]);
 });
 
