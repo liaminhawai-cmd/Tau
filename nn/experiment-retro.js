@@ -97,9 +97,17 @@ async function main() {
   // than the experiment asks for.
   const top = shares[shares.length - 1];
   const probeOut = path.join(expDir, `data-${tagOf(top)}.jsonl`);
-  await run('data-slice.js', ['--class', 'retro', '--share', String(top), '--seed', seed, '--out', probeOut,
-                              ...(userCap != null ? ['--positions', userCap] : [])]);
-  const probe = readJson(probeOut.replace(/\.jsonl$/, '') + '.stats.json', null);
+  // --skipTrain must not re-slice. nn/data grows continuously while the trainer runs, so a second
+  // pass over an existing run would draw a DIFFERENT corpus and a different equal-volume cap -- and
+  // the arms it is about to play were trained on the first one. Reusing the existing stats file
+  // keeps a follow-up run (more games on the decisive pairing, say) describing the real experiment.
+  const probeStats = probeOut.replace(/\.jsonl$/, '') + '.stats.json';
+  if (!(skipTrain && fs.existsSync(probeStats)))
+    await run('data-slice.js', ['--class', 'retro', '--share', String(top), '--seed', seed, '--out', probeOut,
+                                ...(userCap != null ? ['--positions', userCap] : [])]);
+  else
+    console.log(`[retro] --skipTrain: reusing the corpus the arms were trained on (${probeStats})`);
+  const probe = readJson(probeStats, null);
   if (!probe || !probe.selected.rows) { console.error('[retro] probe slice produced no rows'); process.exitCode = 1; return; }
   const cap = String(probe.selected.rows);
   console.log(`[retro] equal-volume cap: ${cap} positions per arm ` +
@@ -109,7 +117,7 @@ async function main() {
   for (const s of shares) {
     const tag = tagOf(s);
     const slice = s === top ? probeOut : path.join(expDir, `data-${tag}.jsonl`);
-    if (s !== top)
+    if (s !== top && !(skipTrain && fs.existsSync(slice)))
       await run('data-slice.js', ['--class', 'retro', '--share', String(s), '--seed', seed,
                                   '--positions', cap, '--out', slice]);
     const model = path.join(expDir, `arm-${tag}.json`);
