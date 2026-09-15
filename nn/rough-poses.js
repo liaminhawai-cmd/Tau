@@ -83,8 +83,20 @@ const far = (c, chosen) => chosen.every(o => Math.hypot(c.x - o.x, c.y - o.y) >=
 const roughSet = [];
 for (const c of hi) { if (roughSet.length >= nPoses) break; if (far(c, roughSet)) roughSet.push(c); }
 
-// For each rough pick, the smooth cell closest to it in (centre, opponent, line) space. Scales are
-// all in board units already, so a plain Euclidean distance over the triple is the right metric.
+// For each rough pick, the smooth cell closest to it in (centre, opponent, line) space.
+//
+// The three coordinates are STANDARDISED before the distance is taken. They are all in board units,
+// so a raw Euclidean distance looks fair, but their spreads are not remotely comparable -- distance
+// to the nearest line lives in a couple of units while distance to the opponent spans eighty. Left
+// raw, the match is decided almost entirely by the two wide coordinates and drifts on the narrow
+// one, which is the worst possible outcome here: line proximity is exactly the confound this
+// matching exists to remove, because near-line is where the surface gets rough in the first place.
+const sd = k => {
+  const all = cells.map(c => c[k]);
+  const m = all.reduce((s, v) => s + v, 0) / all.length;
+  return Math.sqrt(all.reduce((s, v) => s + (v - m) ** 2, 0) / all.length) || 1;
+};
+const W = { rc: 1 / sd('rc'), rop: 1 / sd('rop'), rl: 1 / sd('rl') };
 const used = new Set();
 const smoothSet = [];
 for (const r of roughSet) {
@@ -92,10 +104,24 @@ for (const r of roughSet) {
   for (let i = 0; i < lo.length; i++) {
     if (used.has(i)) continue;
     const c = lo[i];
-    const d = (c.rc - r.rc) ** 2 + (c.rop - r.rop) ** 2 + (c.rl - r.rl) ** 2;
+    const d = ((c.rc - r.rc) * W.rc) ** 2 + ((c.rop - r.rop) * W.rop) ** 2 + ((c.rl - r.rl) * W.rl) ** 2;
     if (best === null || d < best) { best = d; bi = i; }
   }
   if (bi >= 0) { used.add(bi); smoothSet.push(lo[bi]); }
+}
+
+// How much of the roughness is simply "near a printed line"? Reported because it is the mechanism
+// behind the confound above, and worth knowing in its own right.
+{
+  const n = cells.length;
+  let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+  for (const c of cells) {
+    const x = Math.min(c.rl, 5), y = Math.log(c.rough + 1e-9);
+    sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y;
+  }
+  const cov = sxy / n - (sx / n) * (sy / n);
+  const r = cov / Math.sqrt((sxx / n - (sx / n) ** 2) * (syy / n - (sy / n) ** 2));
+  console.log(`roughness vs distance-to-nearest-line (clamped 5u): r = ${r.toFixed(3)}`);
 }
 
 const mean = (a, k) => a.reduce((s, c) => s + c[k], 0) / a.length;
