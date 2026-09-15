@@ -1934,107 +1934,13 @@
       });
     }
   }
-  // ---- The automata: a reaction diffusion run on the GPU, which is what the membrane grows into --
-  // Noise can be made to LOOK like something spreading, but it is a picture of growth, not growth:
-  // every frame is computed from scratch and nothing that happened a moment ago has any bearing on
-  // what happens next. This is the real thing. Two chemicals sit in a small texture; one feeds and
-  // diffuses, the other eats the first and dies off, and each cell only ever looks at the four
-  // beside it. Nobody drew branches: they come out of the rule, the way they do in a petri dish,
-  // and because the feed and kill rates vary across the board no two districts behave alike -- one
-  // throws out coral fingers, another divides and divides, a third eats itself back to nothing.
-  // The board shader reads this as WHERE the growth has got to, and its own filament structure
-  // fills that in, so the crystal has somewhere real to be.
-  const AUTO_SIZE = 256, AUTO_STEPS = 8;
-  let autoA = null, autoB = null, autoScene = null, autoCam = null, autoMat = null, autoSeeded = false;
-  const AUTO_HEAD =
-    'precision highp float;\nvarying vec2 vUv;\nuniform sampler2D tPrev;\nuniform vec2 uTexel;\n' +
-    'uniform float uSeed;\n' +
-    'float ahash2(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453123); }\n' +
-    'float anoise2(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);\n' +
-    '  return mix(mix(ahash2(i),ahash2(i+vec2(1.0,0.0)),u.x), mix(ahash2(i+vec2(0.0,1.0)),ahash2(i+vec2(1.0,1.0)),u.x), u.y); }\n';
-  function autoSetup() {
-    const opt = { type: THREE.HalfFloatType, format: THREE.RGBAFormat,
-                  minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
-                  wrapS: THREE.ClampToEdgeWrapping, wrapT: THREE.ClampToEdgeWrapping, depthBuffer: false };
-    autoA = new THREE.WebGLRenderTarget(AUTO_SIZE, AUTO_SIZE, opt);
-    autoB = new THREE.WebGLRenderTarget(AUTO_SIZE, AUTO_SIZE, opt);
-    autoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    autoMat = new THREE.ShaderMaterial({
-      uniforms: { tPrev: { value: null }, uTexel: { value: new THREE.Vector2(1/AUTO_SIZE, 1/AUTO_SIZE) },
-                  uSeed: { value: 0 } },
-      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
-      fragmentShader: AUTO_HEAD +
-        'void main(){\n' +
-        // The seed pass: everything full of the first chemical, with a scatter of the second
-        // dropped in. Growth has to start somewhere and it may as well start unevenly.
-        '  if (uSeed > 0.5) {\n' +
-        '    float blob = 0.0;\n' +
-        '    for (int i = 0; i < 9; i++) {\n' +
-        '      vec2 c = vec2(ahash2(vec2(float(i), 3.3)), ahash2(vec2(float(i), 8.8)));\n' +
-        '      blob = max(blob, smoothstep(0.045, 0.012, distance(vUv, c)));\n' +
-        '    }\n' +
-        '    gl_FragColor = vec4(1.0, blob, 0.0, 1.0); return;\n' +
-        '  }\n' +
-        // One step of the rule. The five-point laplacian IS the "only looks at its neighbours" part.
-        '  vec2 c = texture2D(tPrev, vUv).xy;\n' +
-        '  vec2 lap = texture2D(tPrev, vUv + vec2(uTexel.x, 0.0)).xy\n' +
-        '           + texture2D(tPrev, vUv - vec2(uTexel.x, 0.0)).xy\n' +
-        '           + texture2D(tPrev, vUv + vec2(0.0, uTexel.y)).xy\n' +
-        '           + texture2D(tPrev, vUv - vec2(0.0, uTexel.y)).xy - 4.0*c;\n' +
-        // Feed and kill wander across the board, so its districts live differently: the low end of
-        // this range is coral that puts out fingers, the high end divides like cells.
-        '  float f = 0.0300 + 0.0260*anoise2(vUv*3.1);\n' +
-        '  float k = 0.0570 + 0.0090*anoise2(vUv*2.6 + 11.0);\n' +
-        '  float uvv = c.x*c.y*c.y;\n' +
-        '  vec2 n = c + vec2(0.16*lap.x - uvv + f*(1.0 - c.x),\n' +
-        '                    0.08*lap.y + uvv - (f + k)*c.y);\n' +
-        '  gl_FragColor = vec4(clamp(n, 0.0, 1.0), 0.0, 1.0);\n' +
-        '}' });
-    autoScene = new THREE.Scene();
-    autoScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), autoMat));
-    autoSeeded = false;
-  }
-  function autoDispose() {
-    if (!autoA) return;
-    autoA.dispose(); autoB.dispose(); autoMat.dispose();
-    autoScene.children.forEach(o => o.geometry && o.geometry.dispose());
-    autoA = autoB = autoScene = autoCam = autoMat = null; autoSeeded = false;
-  }
-  function autoStep() {
-    if (!renderer) return null;
-    if (!autoA) { try { autoSetup(); } catch (e) { console.warn('automata unavailable', e); return null; } }
-    const target = renderer.getRenderTarget();
-    try {
-      if (!autoSeeded) {
-        autoMat.uniforms.uSeed.value = 1;
-        for (const rt of [autoA, autoB]) { renderer.setRenderTarget(rt); renderer.render(autoScene, autoCam); }
-        autoMat.uniforms.uSeed.value = 0; autoSeeded = true;
-      }
-      // Many steps a frame: one step of this rule moves almost nothing, and the point is to watch
-      // it spread rather than to watch it think about it.
-      for (let i = 0; i < AUTO_STEPS; i++) {
-        autoMat.uniforms.tPrev.value = autoA.texture;
-        renderer.setRenderTarget(autoB); renderer.render(autoScene, autoCam);
-        const t = autoA; autoA = autoB; autoB = t;
-      }
-    } catch (e) { console.warn('automata step failed', e); autoDispose(); return null; }
-    finally { renderer.setRenderTarget(target); }
-    return autoA.texture;
-  }
   function pollInput(dt) {
     if (detail && detail.uniforms) {
       const u = detail.uniforms, now = performance.now()/1000;
       u.uDetail.value = detailMode === 3 ? 0 : detailMode;   // the membrane is its own pass below
       u.uDetailTime.value = now;
       u.uAlien.value = detailMode === 3 ? 1 : 0; u.uAlienTime.value = now;
-      if (detailMode === 3) {
-        alienBreath(now);                       // the pieces are of this place too, so they breathe
-        const tex = paused ? (autoA && autoA.texture) : autoStep();
-        u.uAuto.value = tex || null;
-        u.uAutoOn.value = tex ? 1 : 0;          // no texture: the board falls back to its own swell
-      } else if (u.uAutoOn.value) {
-        u.uAutoOn.value = 0; u.uAuto.value = null; autoDispose();
-      }
+      if (detailMode === 3) alienBreath(now);   // the pieces are of this place too, so they breathe
       // Math: every foot's pivot-sweep circle, read off the RENDERED pieces (local foot positions
       // through the mesh's own transform), so the construction glides with the eased swing rather
       // than jumping to the rule engine's end pose.

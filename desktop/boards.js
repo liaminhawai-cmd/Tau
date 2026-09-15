@@ -906,14 +906,16 @@ function installLegGradient(material, tint) {
       // THE TINT ALONG THE LEG, both ends. Running it one way only -- clear at the crown, full colour
       // at the foot -- left the glass at its palest exactly where it meets the ball, so a solid
       // coloured sphere sat on top of a colourless tube with a hard line between them. The colour
-      // comes back at the top as well, but on a much tighter curve: a hyperbolic shoulder that is
-      // full at the join and has fallen away inside the first tenth of the arc. Close up it is the
-      // colour running out of the ball into the glass and thinning as it goes; from across the room
-      // it is simply that the two parts belong to each other. The foot end, and the whole clear
-      // middle, are exactly as they were.
+      // comes back at the top as well, but over a shorter run than it takes to reach the foot.
+      // A hyperbola was tried for that and came off too hard -- it holds full colour for no distance
+      // at all and then drops, so the join swapped one hard line for another a hair further down.
+      // A cubic instead: flat where it meets the ball, easing off through the middle of its run and
+      // arriving at nothing with no edge on it. Close up it is the colour running out of the ball
+      // into the glass and thinning as it goes; from across the room it is simply that the two parts
+      // belong to each other. The foot end, and the clear middle, are exactly as they were.
       .replace('#include <color_fragment>', '#include <color_fragment>\n' +
         'float legG = smoothstep(0.25, 1.0, vLegT);\n' +
-        'legG = max(legG, 1.0/(1.0 + pow(vLegT/0.055, 2.4)));\n' +
+        'legG = max(legG, 1.0 - smoothstep(0.0, 0.28, vLegT));\n' +
         'diffuseColor.rgb = mix(diffuseColor.rgb, uLegTint, legG);')
       .replace('material.transmission = transmission;', 'material.transmission = transmission * (1.0 - 0.7*legG*legG);')
       .replace('material.attenuationColor = attenuationColor;', 'material.attenuationColor = mix(attenuationColor, uLegTint, legG);')
@@ -969,7 +971,6 @@ const MATH_PASS =
   '}\n';
 const ALIEN_GLSL = `
 uniform float uAlien; uniform float uAlienTime; varying vec3 vWPos;
-uniform sampler2D uAuto; uniform float uAutoOn;
 float ahash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453123); }
 float anoise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
   return mix(mix(ahash(i),ahash(i+vec2(1.0,0.0)),u.x), mix(ahash(i+vec2(0.0,1.0)),ahash(i+vec2(1.0,1.0)),u.x), u.y); }
@@ -1003,63 +1004,6 @@ float lfbm4(vec2 p, float t){
     p=p*2.07+vec2(5.3,2.9); a*=0.5;
   }
   return w>1e-5 ? s/w : 0.5;
-}
-// FROST, NOT SNOWFLAKES. Three tries got here. Threads from five roots read as fireworks. Round
-// buds read as a crop of mushrooms. Six-armed stars on a grid read as clip art -- and deforming
-// them did not help, because the problem was never the symmetry, it was that they were ISOLATED
-// SHAPES sitting on a surface. Crystal growth is not a stamp. It is a thing that spreads, from what
-// it has already made, across everything, unevenly, leaving some of it bare.
-//
-// So there is no seed and no star here. Each generation is a ridged noise squashed hard along one
-// direction, which turns its ridges into long filaments running that way rather than blobs -- that
-// is the straight, angular quality of a crystal, and it comes from the squash, not from geometry.
-// The next generation is turned by the golden angle and read PHI times finer, so its filaments run
-// across the ones underneath at an angle that never lines up however many generations you stack,
-// and -- this is the part that makes it grow instead of just existing -- it is GATED by the
-// generation beneath it. Fine structure can only appear where coarse structure already is. What
-// comes out is branches off branches off branches, connected, all one thing.
-//
-// Then the whole field is let in and out by a slow wandering swell, and the finer generations need
-// more of that swell than the coarse ones do, so a patch frosts over in order -- a spar first, then
-// its branches, then the fur on those -- and clears the same way when the swell moves off it. It is
-// never the same twice and it is never even.
-const float PHI = 1.6180339887;
-const float GOLD_ANGLE = 2.3999632297;    // 2*PI/PHI^2 -- the turn that never repeats
-// WHERE IT HAS REACHED comes from the automata when they are running: the second chemical's
-// concentration, read straight off the simulation, which got there by the rule rather than by
-// anybody drawing it. The slow noise swell stays as the fallback for a machine that could not give
-// us the buffers, so the board is never dead.
-float frostReach(vec2 p, vec2 uv, float t) {
-  if (uAutoOn > 0.5) return smoothstep(0.05, 0.32, texture2D(uAuto, uv).y);
-  return smoothstep(0.46, 0.74, afbm3(p*0.20 + vec2(t*0.013, -t*0.009)));
-}
-float frost(vec2 p, vec2 uv, float t, out float edge) {
-  float reach = frostReach(p, uv, t);
-  // WHICH WAY IT IS GROWING, and it is not the same way everywhere. Squashing the noise along one
-  // fixed axis made every filament on the board run parallel, which reads as brush strokes rather
-  // than as growth. The squash turns with a slow wandering angle instead, so a frond here runs one
-  // way and a frond a hand's width off runs another, and they meet at whatever angle they meet at.
-  float dir = afbm3(p*0.13 + 5.0)*9.4248;
-  float dc = cos(dir), ds = sin(dir);
-  float acc = 0.0, amp = 0.85, gate = 1.0;
-  edge = 0.0;
-  vec2 q = vec2(dc*p.x - ds*p.y, ds*p.x + dc*p.y);
-  for (int k = 0; k < 4; k++) {
-    float fk = float(k);
-    // 3 across, 13 along: the squash is what makes a filament out of a blob
-    float n = afbm3(vec2(q.x*0.62, q.y*2.68) + fk*11.7);
-    float ridge = pow(1.0 - abs(n*2.0 - 1.0), 12.0);
-    // this generation only where the last one got to, and only where the swell has reached far
-    // enough for detail this fine
-    float v = ridge * gate * smoothstep(fk*0.13, fk*0.13 + 0.34, reach);
-    acc += amp*v;
-    edge = max(edge, amp*v);
-    gate = smoothstep(0.03, 0.28, v);
-    float c = cos(GOLD_ANGLE), sn = sin(GOLD_ANGLE);
-    q = vec2(c*q.x - sn*q.y, sn*q.x + c*q.y)*PHI + vec2(3.1, 7.7);
-    amp /= PHI;
-  }
-  return acc;
 }
 `;
 
@@ -1145,8 +1089,6 @@ function installDetailShader(material) {
     shader.uniforms.uDetailTint = { value: new THREE.Vector3(1,1,1) };
     shader.uniforms.uAlien = { value: 0 };
     shader.uniforms.uAlienTime = { value: 0 };
-    shader.uniforms.uAuto = { value: null };      // the automata's field, if it is running
-    shader.uniforms.uAutoOn = { value: 0 };
     shader.uniforms.uMath = { value: 0 };
     shader.uniforms.uRingR = { value: CFG.footR*Math.sqrt(3) };
     shader.uniforms.uFeet = { value: Array.from({ length: 6 }, () => new THREE.Vector2(1e4, 1e4)) };
@@ -1188,13 +1130,6 @@ function installDetailShader(material) {
         '  float blotch = smoothstep(0.32, 0.72, q.x);\n' +
         '  outgoingLight *= (1.0 - blotch*0.3);\n' +
         '  outgoingLight += vec3(0.10, 0.95, 0.80) * vein * 0.55 * pulse;\n' +
-        // The crystal over the flow. It is drawn the way frost on glass is: the structure itself
-        // bright and hard-edged, with a faint bloom either side of it where the light spreads into
-        // the membrane it is growing through.
-        '  vec2 bxz = vWPos.xz / max(uBoardGeom.z, 1.0);\n' +
-        '  float ce; float cr = frost(bxz * 7.0, bxz*0.5 + 0.5, uAlienTime, ce);\n' +
-        '  outgoingLight += vec3(0.10, 0.42, 0.34) * smoothstep(0.0, 0.30, cr) * 0.22;\n' +
-        '  outgoingLight += vec3(0.62, 1.00, 0.88) * min(cr, 0.85) * 0.80;\n' +
         '}\n' + finalHook);
     holder.uniforms = shader.uniforms;
   };
