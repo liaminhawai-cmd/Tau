@@ -1,5 +1,6 @@
 // Head-to-head evaluation. Brains: L1..L11 (ladder levels) or nn[:temperature][:modelPath].
 //   node nn/arena.js --a nn --b L8 --games 24 [--openingPlies 2]
+//   node nn/arena.js --a nn:0:m1.json --b nn:0:m2.json --games 200 --poses rough.json
 //   node nn/arena.js --a nn:0.2 --b nn:0.2:nn/models/prev.json --games 24
 //   node nn/arena.js --a nn:0:models/best.json --b nn:0:models/best.json --depthA 1 --quiesceA --depthB 1
 //     (same net both sides -- isolates what quiescence alone is worth over plain depth 1)
@@ -280,6 +281,13 @@ function main() {
   // pair; the promotion gate spreads over a panel) instead of scrambling the opening.
   const openingPlies = +arg('openingPlies', 0);
   const randomStartFrac = +arg('randomStartFrac', 0);
+  // --poses: start every game from an explicit list of board positions instead of the canonical
+  // opening. The file is a JSON array of { blue:{x,y,rot}, red:{x,y,rot}, active }. Poses are
+  // consumed two games at a time so each one is played once with A as blue and once as red --
+  // without that pairing a pose that simply favours the first mover would read as a brain result.
+  const posesFile = arg('poses', null);
+  const POSES = posesFile ? JSON.parse(fs.readFileSync(posesFile, 'utf8')) : null;
+  if (POSES && !POSES.length) throw new Error(`${posesFile} holds no poses`);
 
   // --saveData <file>: append training rows as the games are played (see the header note).
   // Appended per game rather than buffered to the end, for the same reason the score log is
@@ -368,7 +376,14 @@ function main() {
     // Fresh clock per game, both sides matched (see --timeMsLo/--timeMsHi above).
     const gameMs = drawClock();
     const randomStart = Math.random() < randomStartFrac;
-    if (randomStart) { randomStartPose(eng); eng.setActive(Math.random() < 0.5 ? 0 : 1); }
+    if (POSES) {
+      const P = POSES[Math.floor(g/2) % POSES.length], G = eng.getG();
+      const put = (pc, q) => { pc.x = q.x; pc.y = q.y; pc.rot = q.rot; };
+      put(G.pieces[0], P.blue); put(G.pieces[1], P.red);
+      G.turnDir = 0; G.crossings = 0; G.atLimit = false; G.netRad = 0; G.contact = null;
+      eng.setActive(P.active | 0);
+    }
+    else if (randomStart) { randomStartPose(eng); eng.setActive(Math.random() < 0.5 ? 0 : 1); }
     else playRandomOpening(eng, openingPlies);
     let plies = 0, nulls = 0;
     const rows = [];

@@ -21,3 +21,8 @@ nn/gauntlet-runs/
 # that MUST differ between clones -- committing it would hand every machine the same identity and
 # rebuild the collision it exists to remove.
 nn/.machine-id
+
+# Brain-map study output: raw float32 value-surface sweeps (4MB+ each), high-resolution transect
+# traces, and the pose lists derived from them. All of it regenerates from nn/brain-map.js and
+# nn/brain-transect.js, and none of it is source. The study's conclusions live in the report.
+nn/brain-maps/
