@@ -422,6 +422,52 @@ class MLP {
 }
 
 /* ===================================================================================
+ * Which of this project's net files can actually be mapped, and which cannot.
+ *
+ * Three export shapes exist and they are not interchangeable:
+ *   value  (net.js)     {sizes, W, b, topology?}            output 1  -- slot 0 IS the evaluation
+ *   dual   (dualnet.js) {dual:true, sizes, W, b}            output 23 -- slot 0 is the value head,
+ *                       slots 1..22 are policy logits. net.js's forward pass tanh's every output
+ *                       while dualnet.js tanh's only slot 0 -- but slot 0 is all this tool reads,
+ *                       and it is tanh'd identically in both, so an MLP built from a dual export
+ *                       returns the dual net's own value. That is why one class covers both.
+ *   policy (policy.js)  {policy:true, sizes, W, b, ...}     output 22 or 198 -- arm/bin logits and
+ *                       NOTHING else. There is no evaluation in there to draw.
+ *
+ * A policy net used to load anyway and paint a beautiful, meaningless map of one policy logit
+ * dressed as an evaluation, which is worse than refusing. And a wrapper file that nests its net
+ * under a key (a joint-policy pair entry, say) died on `sizes.slice of undefined` -- an error that
+ * says nothing about what the file actually was. Both are now named for what they are.
+ * =================================================================================== */
+function describeJson(j) {
+  const keys = Object.keys(j || {});
+  return keys.length ? keys.slice(0, 8).join(', ') + (keys.length > 8 ? ', …' : '') : '(no keys)';
+}
+function looksLikeNet(j) {
+  return j && typeof j === 'object' && Array.isArray(j.sizes) && Array.isArray(j.W) && Array.isArray(j.b);
+}
+function findValueNet(j) {
+  if (looksLikeNet(j)) {
+    if (j.policy === true)
+      throw new Error('this is a policy net — it predicts which arm to swing and how far, not how ' +
+                      'good a position is, so it has no value surface to map');
+    return { json: j, note: j.dual === true ? 'dual net — mapping its value head (slot 0)' : '' };
+  }
+  // Wrapper files nest the net under a key. Take the first nested value-bearing net and say so,
+  // rather than failing with whatever TypeError the missing top-level `sizes` happens to produce.
+  for (const [k, v] of Object.entries(j || {})) {
+    if (looksLikeNet(v) && v.policy !== true)
+      return { json: v, note: `value net read from the "${k}" field of a wrapper file` };
+  }
+  const nestedPolicy = Object.entries(j || {}).find(([, v]) => looksLikeNet(v) && v.policy === true);
+  if (nestedPolicy)
+    throw new Error(`the only net in this file is under "${nestedPolicy[0]}" and it is a policy ` +
+                    'net — arm/bin logits, no evaluation to map');
+  throw new Error(`no value net in this file (top-level keys: ${describeJson(j)}). Expected either ` +
+                  'a value net {sizes, W, b} or a dual net {dual:true, …}');
+}
+
+/* ===================================================================================
  * nn/features.js, verbatim minus module.exports and the unused moveFrame/jointMoveFrame.
  * Position -> feature vector, exactly as the trainer and the AI compute it.
  * =================================================================================== */
@@ -1265,9 +1311,10 @@ function wireSourcePicker(letter) {
     if (!f) return;
     const reader = new FileReader();
     reader.onload = () => {
-      let j, m;
+      let j, m, found;
       try { j = JSON.parse(reader.result); } catch (err) { setStatus(`<strong>Could not parse ${esc(f.name)}</strong> — not valid JSON.`, true); return; }
-      try { m = MLP.fromJSON(j); } catch (err) { setStatus(`<strong>Could not load ${esc(f.name)}</strong> — ${esc(err.message)}`, true); return; }
+      try { found = findValueNet(j); m = MLP.fromJSON(found.json); }
+      catch (err) { setStatus(`<strong>Could not load ${esc(f.name)}</strong> — ${esc(err.message)}`, true); return; }
       try { m.value(features(mockEng({x:0,y:0,rot:0},{x:CFG.startX,y:0,rot:Math.PI}))); }
       catch (err) {
         setStatus(`<strong>${esc(f.name)} does not match this tool's feature vector</strong> — ${esc(err.message)}. Likely a legacy or differently-shaped net.`, true);
@@ -1282,7 +1329,8 @@ function wireSourcePicker(letter) {
       syncSpeedControls();
       nameEl.innerHTML = `<b>${esc(f.name)}</b><br>sizes: ${m.sizes.join('-')}` +
         (m.topology ? `<br>topology: ${esc(m.topology.kind)}` : '') + `<br>${params.toLocaleString()} params` +
-        (outW !== 1 && outW !== 23 ? `<div class="warn">Output width ${outW} — expected 1 (value) or 23 (dual). If this is a policy-only net, the number shown is one policy logit, not an evaluation.</div>` : '');
+        (found.note ? `<br><span class="hint">${esc(found.note)}</span>` : '') +
+        (outW !== 1 && outW !== 23 ? `<div class="warn">Output width ${outW} — expected 1 (value) or 23 (dual). This net's first output may not be an evaluation.</div>` : '');
       setStatus(`<strong>${esc(f.name)} loaded as Model ${letter}.</strong>`);
       onSourceChanged();
     };
