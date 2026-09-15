@@ -964,71 +964,56 @@ float anoise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
   return mix(mix(ahash(i),ahash(i+vec2(1.0,0.0)),u.x), mix(ahash(i+vec2(0.0,1.0)),ahash(i+vec2(1.0,1.0)),u.x), u.y); }
 float afbm(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<6;i++){ s+=a*anoise(p); p=p*2.03+vec2(1.7,9.2); a*=0.5; } return s; }
 float afbm3(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<3;i++){ s+=a*anoise(p); p=p*2.11+vec2(3.3,5.9); a*=0.5; } return s; }
-// CRYSTAL. The first try threw threads out from five roots and read as fireworks; the second grew
-// soft round buds and read as a crop of mushrooms. What this wants is the third thing: growth that
-// is ANGULAR and self-similar -- frost taking a window, an ice dendrite, a mineral creeping along
-// its own arms -- where every branch is a smaller copy of the branch it came off.
+// FROST, NOT SNOWFLAKES. Three tries got here. Threads from five roots read as fireworks. Round
+// buds read as a crop of mushrooms. Six-armed stars on a grid read as clip art -- and deforming
+// them did not help, because the problem was never the symmetry, it was that they were ISOLATED
+// SHAPES sitting on a surface. Crystal growth is not a stamp. It is a thing that spreads, from what
+// it has already made, across everything, unevenly, leaving some of it bare.
 //
-// One crystal is built by folding. The angle round its seed is folded into one sixth, so whatever
-// is drawn in that wedge appears six times: that is the six-fold symmetry every real crystal has,
-// for the price of one mod(). In the folded frame, distance along the arm and distance across it
-// become the two axes of a ridged noise read at very different frequencies -- coarse along, fine
-// across -- and ridges in that space ARE side branches, angling off the arm at the noise's own
-// pitch. A taper to the tip makes it grow to a point rather than stop at a circle.
+// So there is no seed and no star here. Each generation is a ridged noise squashed hard along one
+// direction, which turns its ridges into long filaments running that way rather than blobs -- that
+// is the straight, angular quality of a crystal, and it comes from the squash, not from geometry.
+// The next generation is turned by the golden angle and read PHI times finer, so its filaments run
+// across the ones underneath at an angle that never lines up however many generations you stack,
+// and -- this is the part that makes it grow instead of just existing -- it is GATED by the
+// generation beneath it. Fine structure can only appear where coarse structure already is. What
+// comes out is branches off branches off branches, connected, all one thing.
 //
-// Then the same trick three deep. A crystal's spread is MULTIPLIED by its parent's, so nothing can
-// form except on an arm that is already there -- which is how frost actually spreads, nucleating on
-// what it has already made -- and when a parent melts back it takes its branches with it. Each seed
-// keeps its own clock, so at any moment some are spreading and others are going.
-// Kept small enough to die out inside its own cell, which costs one seed a scale instead of nine
-// and leaves no seam, because a crystal that ends before the boundary never meets one.
-// The numbers are not decoration. Where a thing that grows has a count, nature keeps reaching for
-// the same short list -- 5, 8, 13 arms on a flower head, a pinecone, a sunflower -- and where it
-// has to place the next thing around a stem it turns by the golden angle, 137.5 degrees, because
-// that is the one turn that never lines up with itself however many times you repeat it, so nothing
-// ever ends up in another's shadow. This crystal is built on exactly that. Each generation carries
-// a Fibonacci number of arms, is turned from its parent by the golden angle, and is PHI squared
-// smaller and PHI times fainter than the one that made it. The two frequencies the branches are
-// read at, along the arm and across it, are 13 and 34.
+// Then the whole field is let in and out by a slow wandering swell, and the finer generations need
+// more of that swell than the coarse ones do, so a patch frosts over in order -- a spar first, then
+// its branches, then the fur on those -- and clears the same way when the swell moves off it. It is
+// never the same twice and it is never even.
 const float PHI = 1.6180339887;
 const float GOLD_ANGLE = 2.3999632297;    // 2*PI/PHI^2 -- the turn that never repeats
-float fibArms(float k) { return k < 0.5 ? 5.0 : (k < 1.5 ? 8.0 : 13.0); }
-float crystalAt(vec2 g, float t, float k, out float edge) {
+float frost(vec2 p, float t, out float edge) {
+  // where it has reached: a slow swell drifting over the board, nothing to do with the structure
+  float swell = afbm3(p*0.20 + vec2(t*0.013, -t*0.009));
+  float reach = smoothstep(0.46, 0.74, swell);
+  // WHICH WAY IT IS GROWING, and it is not the same way everywhere. Squashing the noise along one
+  // fixed axis made every filament on the board run parallel, which reads as brush strokes rather
+  // than as growth. The squash turns with a slow wandering angle instead, so a frond here runs one
+  // way and a frond a hand's width off runs another, and they meet at whatever angle they meet at.
+  float dir = afbm3(p*0.13 + 5.0)*9.4248;
+  float dc = cos(dir), ds = sin(dir);
+  float acc = 0.0, amp = 0.85, gate = 1.0;
   edge = 0.0;
-  vec2 cell = floor(g);
-  float r1 = ahash(cell + k*37.0), r2 = ahash(cell + k*91.0 + 5.0);
-  vec2 c = cell + 0.5 + 0.14*(vec2(r1, r2)*2.0 - 1.0);
-  // Each seed's clock is stepped along the golden sequence too, so no two anywhere near each other
-  // are ever spreading in step.
-  float ph = fract(r1 + k*0.6180339887)*6.2832;
-  float grow = smoothstep(0.06, 1.0, sin(t*(0.09 + 0.08*r2)*(1.0 + k*0.6) + ph)*0.5 + 0.5);
-  float rad = (0.23 + 0.15*r1) * grow;
-  if (rad < 1e-3) return 0.0;
-  vec2 q = g - c;
-  float r = length(q);
-  if (r > rad) return 0.0;
-  float sect = 6.2831853 / fibArms(k);                       // five arms, then eight, then thirteen
-  float a = atan(q.y, q.x) + r1*6.2832 + k*GOLD_ANGLE;       // and turned off its parent by the angle
-  float across = abs(mod(a + sect*0.5, sect) - sect*0.5) * r;   // how far off this arm's axis
-  float n = afbm3(vec2(r*13.0, across*34.0) + r2*23.0);      // along, across: 13 and 34
-  float ridge = pow(1.0 - abs(n*2.0 - 1.0), 7.0);            // the branches off the arm
-  float spine = smoothstep(0.020, 0.0, across);              // the arms themselves
-  float v = clamp(max(spine, ridge*0.85) * (1.0 - r/rad), 0.0, 1.0);
-  edge = v;
-  return v;
-}
-float crystals(vec2 p, float t, out float edge) {
-  float h = 0.0, alive = 1.0, amp = 1.0, scale = 1.0;
-  edge = 0.0;
-  for (int k = 0; k < 3; k++) {
-    float e;
-    float v = crystalAt(p*scale, t, float(k), e) * alive;
-    h += amp*v;
-    edge = max(edge, amp*e*alive);
-    alive = v;              // and nothing forms except on an arm already there
-    scale *= PHI*PHI; amp /= PHI;
+  vec2 q = vec2(dc*p.x - ds*p.y, ds*p.x + dc*p.y);
+  for (int k = 0; k < 4; k++) {
+    float fk = float(k);
+    // 3 across, 13 along: the squash is what makes a filament out of a blob
+    float n = afbm3(vec2(q.x*0.62, q.y*2.68) + fk*11.7);
+    float ridge = pow(1.0 - abs(n*2.0 - 1.0), 12.0);
+    // this generation only where the last one got to, and only where the swell has reached far
+    // enough for detail this fine
+    float v = ridge * gate * smoothstep(fk*0.13, fk*0.13 + 0.34, reach);
+    acc += amp*v;
+    edge = max(edge, amp*v);
+    gate = smoothstep(0.03, 0.28, v);
+    float c = cos(GOLD_ANGLE), sn = sin(GOLD_ANGLE);
+    q = vec2(c*q.x - sn*q.y, sn*q.x + c*q.y)*PHI + vec2(3.1, 7.7);
+    amp /= PHI;
   }
-  return h;
+  return acc;
 }
 `;
 
@@ -1154,9 +1139,9 @@ function installDetailShader(material) {
         // The crystal over the flow. It is drawn the way frost on glass is: the structure itself
         // bright and hard-edged, with a faint bloom either side of it where the light spreads into
         // the membrane it is growing through.
-        '  float ce; float cr = crystals(vWPos.xz / max(uBoardGeom.z, 1.0) * 2.7, uAlienTime, ce);\n' +
-        '  outgoingLight += vec3(0.10, 0.42, 0.34) * smoothstep(0.0, 0.35, cr) * 0.30;\n' +
-        '  outgoingLight += vec3(0.62, 1.00, 0.88) * min(cr, 1.2) * 0.95;\n' +
+        '  float ce; float cr = frost(vWPos.xz / max(uBoardGeom.z, 1.0) * 7.0, uAlienTime, ce);\n' +
+        '  outgoingLight += vec3(0.10, 0.42, 0.34) * smoothstep(0.0, 0.30, cr) * 0.22;\n' +
+        '  outgoingLight += vec3(0.62, 1.00, 0.88) * min(cr, 0.85) * 0.80;\n' +
         '}\n' + finalHook);
     holder.uniforms = shader.uniforms;
   };
