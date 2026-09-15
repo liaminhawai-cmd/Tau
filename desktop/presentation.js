@@ -1768,7 +1768,7 @@
   function desiredPose(falling, outPos, outTarget, w3, h3) {
     const menu=!inMatch();
     const corner = typeof cornerLayoutActive === 'function' && cornerLayoutActive();
-    let distance, tx=0,ty=4,tz=0;
+    let distance, tx=0,ty=4,tz=0, elevOverride=0;
     if (corner) {
       // The tile the layout chose (index.html's resize sets cornerView3d), or an explicit candidate.
       const cv = (typeof cornerView3d !== 'undefined' && cornerView3d) || null;
@@ -1788,15 +1788,30 @@
       // at board height while the loser dropped thirty-odd units below it and rolled out past the
       // rim -- the camera ended up framing an empty board with the whole fall off the bottom edge.
       // Following most of the way keeps both the board and the landing in shot.
-      const p=tripods[fall.idx].position;
-      tx=Math.max(-110,Math.min(110,p.x)); tz=Math.max(-110,Math.min(110,p.z));
-      ty=p.y+6; distance+=34;
+      const portal = lookTheme && lookTheme.portal ? fallPortal() : null;
+      if (portal) {
+        // A LOOP IS NOT A FALL. Chasing the piece down here would ride it out through the floor and
+        // back in at the ceiling for ever, which is unwatchable. What you want is to stand back far
+        // enough to hold the whole circuit in one frame -- ceiling, board and floor -- and let it
+        // come round in front of you. So the camera pulls straight back rather than following: the
+        // target sits at the middle of the drop and the distance is whatever fits the drop's height.
+        const span = portal.ceiling - portal.floor;
+        ty = (portal.ceiling + portal.floor)*0.5;
+        distance = Math.max(distance, (span*0.62) / Math.tan(camera.fov*Math.PI/360));
+        // and it drops towards level, because the board's usual forty-four degrees is looking DOWN
+        // at something that is only going up and down -- from up there a lap is a dot changing size.
+        elevOverride = 0.30;
+      } else {
+        const p=tripods[fall.idx].position;
+        tx=Math.max(-110,Math.min(110,p.x)); tz=Math.max(-110,Math.min(110,p.z));
+        ty=p.y+6; distance+=34;
+      }
     }
     outTarget.set(tx,ty,tz);
     // The elevation is the boards' usual 44 degrees unless the showing look asks for its own
     // (Colossus sits lower, to take in the stands); a wider lens keeps the dish the same size.
     const gc = lookTheme && lookTheme.gameCam;
-    const elev = gc && gc.elev ? gc.elev : 0.765;
+    const elev = elevOverride || (gc && gc.elev ? gc.elev : 0.765);
     if (gc && gc.fov) distance *= Math.tan(19*Math.PI/180) / Math.tan(gc.fov*Math.PI/360);
     outPos.set(tx+Math.sin(yaw)*distance*Math.cos(elev),ty+distance*Math.sin(elev),tz+Math.cos(yaw)*distance*Math.cos(elev));
   }

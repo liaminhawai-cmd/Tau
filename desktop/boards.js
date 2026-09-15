@@ -781,7 +781,8 @@ const THEMES = {
     band: { color: 0x17171c, rough: 0.28, metal: 0.05 }, slabColor: 0x1a1a1f, tableColor: 0x0f1013,
     boardEnv: 0.9, bumpScale: 0.5, boardReflect: 0.22, guide: 0x3a3f4a,
     detail: 'marble', hubBall: 2.0,
-    dust: { color: 0xc9d2e4, size: 1.6 },   // the pale haze a piece knocks up off polished stone
+    // No dust on this one. Polished stone throws nothing up, and a shower of pale specks raining off
+    // the table every time the glass went was reading as debris falling out of the board itself.
     // The marble table stands in a dark hall, and the hall has a floor a long way down. A piece
     // pushed over this rim falls the height of the table rather than the width of a hand -- which
     // is the drop the glass wants, since what waits at the bottom is stone.
@@ -963,36 +964,71 @@ float anoise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
   return mix(mix(ahash(i),ahash(i+vec2(1.0,0.0)),u.x), mix(ahash(i+vec2(0.0,1.0)),ahash(i+vec2(1.0,1.0)),u.x), u.y); }
 float afbm(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<6;i++){ s+=a*anoise(p); p=p*2.03+vec2(1.7,9.2); a*=0.5; } return s; }
 float afbm3(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<3;i++){ s+=a*anoise(p); p=p*2.11+vec2(3.3,5.9); a*=0.5; } return s; }
-// TENDRILS. The membrane was only ever fluid: pretty, and completely inert -- nothing about it was
-// doing anything. What makes a thing look ALIVE is that it reaches, and then thinks better of it.
-// Five roots sit around the board. From each, threads grow outward, and the trick that makes them
-// branch rather than merely radiate is that the noise is read in (angle, radius) with the ANGULAR
-// frequency rising with the radius: one thread at the root is two a little further out and four
-// beyond that, which is how a dendrite divides. Each root grows and retracts on its own slow clock,
-// with a long fold-away between reaches, and the growing tip carries a bright bulb -- the eye on the
-// end of a snail's horn, drawn back in the moment it has seen enough.
-// Returns the thread mask; the bulbs come back in the out parameter.
-float tendrils(vec2 bp, float t, out float tips) {
-  float sum = 0.0; tips = 0.0;
-  for (int i = 0; i < 5; i++) {
-    float fi = float(i);
-    vec2 root = (vec2(ahash(vec2(fi, 3.7)), ahash(vec2(fi, 8.1))) - 0.5) * 1.35;
-    vec2 d = bp - root;
-    float r = length(d) + 1e-4;
-    float a = atan(d.y, d.x);
-    float branch = 2.0 + r*3.6;                      // one thread becomes two, not a hundred
-    float f = afbm3(vec2(a*branch, r*2.2 - t*0.05) + fi*13.0);
-    float fil = pow(1.0 - abs(f*2.0 - 1.0), 13.0);   // thin ridges: the threads themselves
-    fil *= fil > 0.02 ? 1.0 : 0.0;                   // and nothing at all between them
-    // Out, hold, and back in. The rest between reaches is longer than the reach.
-    float ph = t*0.17 + fi*1.37;
-    float g = smoothstep(0.42, 1.0, sin(ph)*0.5 + 0.5);
-    float reach = 0.07 + g*0.38;                     // a hand's reach from its root, not the board
-    float grown = smoothstep(reach, reach - 0.16, r) * smoothstep(0.02, 0.07, r);
-    sum += fil * grown;
-    tips += fil * g * smoothstep(0.05, 0.0, abs(r - reach*0.93));
+// CRYSTAL. The first try threw threads out from five roots and read as fireworks; the second grew
+// soft round buds and read as a crop of mushrooms. What this wants is the third thing: growth that
+// is ANGULAR and self-similar -- frost taking a window, an ice dendrite, a mineral creeping along
+// its own arms -- where every branch is a smaller copy of the branch it came off.
+//
+// One crystal is built by folding. The angle round its seed is folded into one sixth, so whatever
+// is drawn in that wedge appears six times: that is the six-fold symmetry every real crystal has,
+// for the price of one mod(). In the folded frame, distance along the arm and distance across it
+// become the two axes of a ridged noise read at very different frequencies -- coarse along, fine
+// across -- and ridges in that space ARE side branches, angling off the arm at the noise's own
+// pitch. A taper to the tip makes it grow to a point rather than stop at a circle.
+//
+// Then the same trick three deep. A crystal's spread is MULTIPLIED by its parent's, so nothing can
+// form except on an arm that is already there -- which is how frost actually spreads, nucleating on
+// what it has already made -- and when a parent melts back it takes its branches with it. Each seed
+// keeps its own clock, so at any moment some are spreading and others are going.
+// Kept small enough to die out inside its own cell, which costs one seed a scale instead of nine
+// and leaves no seam, because a crystal that ends before the boundary never meets one.
+// The numbers are not decoration. Where a thing that grows has a count, nature keeps reaching for
+// the same short list -- 5, 8, 13 arms on a flower head, a pinecone, a sunflower -- and where it
+// has to place the next thing around a stem it turns by the golden angle, 137.5 degrees, because
+// that is the one turn that never lines up with itself however many times you repeat it, so nothing
+// ever ends up in another's shadow. This crystal is built on exactly that. Each generation carries
+// a Fibonacci number of arms, is turned from its parent by the golden angle, and is PHI squared
+// smaller and PHI times fainter than the one that made it. The two frequencies the branches are
+// read at, along the arm and across it, are 13 and 34.
+const float PHI = 1.6180339887;
+const float GOLD_ANGLE = 2.3999632297;    // 2*PI/PHI^2 -- the turn that never repeats
+float fibArms(float k) { return k < 0.5 ? 5.0 : (k < 1.5 ? 8.0 : 13.0); }
+float crystalAt(vec2 g, float t, float k, out float edge) {
+  edge = 0.0;
+  vec2 cell = floor(g);
+  float r1 = ahash(cell + k*37.0), r2 = ahash(cell + k*91.0 + 5.0);
+  vec2 c = cell + 0.5 + 0.14*(vec2(r1, r2)*2.0 - 1.0);
+  // Each seed's clock is stepped along the golden sequence too, so no two anywhere near each other
+  // are ever spreading in step.
+  float ph = fract(r1 + k*0.6180339887)*6.2832;
+  float grow = smoothstep(0.06, 1.0, sin(t*(0.09 + 0.08*r2)*(1.0 + k*0.6) + ph)*0.5 + 0.5);
+  float rad = (0.23 + 0.15*r1) * grow;
+  if (rad < 1e-3) return 0.0;
+  vec2 q = g - c;
+  float r = length(q);
+  if (r > rad) return 0.0;
+  float sect = 6.2831853 / fibArms(k);                       // five arms, then eight, then thirteen
+  float a = atan(q.y, q.x) + r1*6.2832 + k*GOLD_ANGLE;       // and turned off its parent by the angle
+  float across = abs(mod(a + sect*0.5, sect) - sect*0.5) * r;   // how far off this arm's axis
+  float n = afbm3(vec2(r*13.0, across*34.0) + r2*23.0);      // along, across: 13 and 34
+  float ridge = pow(1.0 - abs(n*2.0 - 1.0), 7.0);            // the branches off the arm
+  float spine = smoothstep(0.020, 0.0, across);              // the arms themselves
+  float v = clamp(max(spine, ridge*0.85) * (1.0 - r/rad), 0.0, 1.0);
+  edge = v;
+  return v;
+}
+float crystals(vec2 p, float t, out float edge) {
+  float h = 0.0, alive = 1.0, amp = 1.0, scale = 1.0;
+  edge = 0.0;
+  for (int k = 0; k < 3; k++) {
+    float e;
+    float v = crystalAt(p*scale, t, float(k), e) * alive;
+    h += amp*v;
+    edge = max(edge, amp*e*alive);
+    alive = v;              // and nothing forms except on an arm already there
+    scale *= PHI*PHI; amp /= PHI;
   }
-  return sum;
+  return h;
 }
 `;
 
@@ -1115,11 +1151,12 @@ function installDetailShader(material) {
         '  float blotch = smoothstep(0.32, 0.72, q.x);\n' +
         '  outgoingLight *= (1.0 - blotch*0.3);\n' +
         '  outgoingLight += vec3(0.10, 0.95, 0.80) * vein * 0.55 * pulse;\n' +
-        // the growing things, over the flow: new growth is paler than the old channels, and the
-        // bulb on the end of a reaching thread is the brightest thing on the board
-        '  float tips; float tend = tendrils(vWPos.xz / max(uBoardGeom.z, 1.0), uAlienTime, tips);\n' +
-        '  outgoingLight += vec3(0.32, 1.00, 0.55) * min(tend, 1.0) * 0.75;\n' +
-        '  outgoingLight += vec3(0.75, 1.00, 0.70) * min(tips, 1.0) * 1.30;\n' +
+        // The crystal over the flow. It is drawn the way frost on glass is: the structure itself
+        // bright and hard-edged, with a faint bloom either side of it where the light spreads into
+        // the membrane it is growing through.
+        '  float ce; float cr = crystals(vWPos.xz / max(uBoardGeom.z, 1.0) * 2.7, uAlienTime, ce);\n' +
+        '  outgoingLight += vec3(0.10, 0.42, 0.34) * smoothstep(0.0, 0.35, cr) * 0.30;\n' +
+        '  outgoingLight += vec3(0.62, 1.00, 0.88) * min(cr, 1.2) * 0.95;\n' +
         '}\n' + finalHook);
     holder.uniforms = shader.uniforms;
   };
