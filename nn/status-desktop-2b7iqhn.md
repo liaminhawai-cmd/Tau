@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-09-15T03:46:10.199Z_
+_Last updated: 2026-09-15T03:47:59.285Z_
 
 **Self-play batch:** -
-**Stage:** self-play batch undefined running, next check in 5 min
+**Stage:** rating pool placement (started 2026-09-15T03:47:59.285Z)
 **mix:** -
 
 **Dual pool:** 4 active (minimum 4) (dual-wild-04-48x96x192, dual-pop-006-e60, dual-pop-008-e40, dual-pop-009-e60)
