@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-09-15T04:37:02.185Z_
+_Last updated: 2026-09-15T04:37:45.894Z_
 
 **Self-play batch:** -
-**Stage:** pool cycle 365 complete
+**Stage:** resume-train (6 epochs, started 2026-09-15T04:37:45.894Z)
 **mix:** -
 
 **Dual pool:** 4 active (minimum 4) (dual-wild-04-48x96x192, dual-pop-006-e60, dual-pop-008-e40, dual-pop-009-e60); pending dual-wild-04-48x96x192.json -> dual-pop-010-e20.json
