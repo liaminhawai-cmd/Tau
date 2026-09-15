@@ -91,6 +91,11 @@ const same = (a, b) => {
 
 const N = limit ? Math.min(limit, poses.length) : poses.length;
 let changed = 0, armChanged = 0, done = 0, sumAngle = 0;
+// Per-pose outcomes, because rough-poses.js emits the two sets as MATCHED PAIRS: rough[i] and
+// smooth[i] are the same position geometrically and differ in the net's roughness. Throwing that
+// pairing away and comparing two rates treats matched data as independent, which is both wrong and
+// weaker than the paired test the design already paid for.
+const per = [];
 const t0 = Date.now();
 for (let i = 0; i < N; i++) {
   setPose(poses[i]);
@@ -99,9 +104,13 @@ for (let i = 0; i < N; i++) {
   setPose(poses[i]);
   const b = nnPlanFor(eng, null, idx, { depth, evalFn: blurEval });
   done++;
-  if (!same(a, b)) changed++;
-  if (a && b && (a.pivotIdx !== b.pivotIdx || a.dir !== b.dir)) armChanged++;
-  if (a && b) sumAngle += Math.abs(a.targetRad - b.targetRad) * 180 / Math.PI;
+  const ch = !same(a, b);
+  const armCh = !!(a && b && (a.pivotIdx !== b.pivotIdx || a.dir !== b.dir));
+  const dAng = a && b ? Math.abs(a.targetRad - b.targetRad) * 180 / Math.PI : 0;
+  if (ch) changed++;
+  if (armCh) armChanged++;
+  sumAngle += dAng;
+  per.push({ i, changed: ch, armChanged: armCh, dAngleDeg: dAng });
   process.stdout.write(`\r  ${done}/${N}  changed ${changed}  ${((Date.now() - t0) / 1000).toFixed(0)}s   `);
 }
 const pct = 100 * changed / done, armPct = 100 * armChanged / done;
@@ -109,6 +118,9 @@ console.log(`\r${tag}  (${info.params} params, ${info.kind})`);
 console.log(`  poses ${done}   move changed by the epsilon blur: ${changed} (${pct.toFixed(1)}%)` +
             `   arm changed: ${armChanged} (${armPct.toFixed(1)}%)` +
             `   mean |dAngle| ${(sumAngle / done).toFixed(2)} deg   ${((Date.now() - t0) / 1000).toFixed(0)}s`);
-console.log(JSON.stringify({ tag, model: modelPath, poses: posesFile, params: info.params,
-                             n: done, changed, changedPct: pct, armChanged, armChangedPct: armPct,
-                             meanAbsAngleDeg: sumAngle / done }));
+const out = { tag, model: modelPath, poses: posesFile, params: info.params,
+              n: done, changed, changedPct: pct, armChanged, armChangedPct: armPct,
+              meanAbsAngleDeg: sumAngle / done, per };
+const saveTo = arg('save', null);
+if (saveTo) fs.writeFileSync(saveTo, JSON.stringify(out));
+console.log(JSON.stringify({ ...out, per: undefined }));
