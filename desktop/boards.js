@@ -435,7 +435,8 @@ const THEMES = {
     // so the same emissive floods the whole membrane. This is the level the game applies instead.
     gameEmissive: 0.45,
     // THERE IS NO FLOOR HERE. What looks like one is a way out: a piece pushed off the board drops
-    // through it, is handed back by the ceiling, and falls again -- and goes on falling behind the
+    // through it, is handed back by the ceiling, and falls again -- keeping every bit of the speed
+    // it arrived with, so each lap is quicker than the last -- and goes on falling behind the
     // result, and behind the next game, until you leave the board.
     floorY: -70, portal: { ceiling: 118 },
     fog: { color: 0x0a0816, density: 0.0018 },

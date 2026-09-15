@@ -2424,6 +2424,61 @@ test('every board sits at its own height above its floor',async t=>{
   assert.deepEqual(g.errors,[]);
 });
 
+test('the alien board has no floor: the piece falls through it and comes back faster every lap',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    fallFloor=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU*3),new THREE.MeshStandardMaterial());
+    scene.add(fallFloor);
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    tripods.forEach(t=>scene.add(t));
+    localStorage.setItem('tauDesktopTestBoards','1');`);
+  g.read("tauDesktop.board='alien'");
+  const portal=JSON.parse(g.read('JSON.stringify(fallPortal())'));
+  assert.ok(portal && portal.ceiling > 0 && portal.floor < 0,`the floor is a way out, not a bottom (${JSON.stringify(portal)})`);
+  assert.equal(g.read('fallFloor.visible'),false,'and there is nothing down there to see');
+  // Drive the whole thing by hand at a fixed step and watch each lap come round.
+  const laps=JSON.parse(g.read(`(()=>{
+    // Seeded at the rim and shoved off it, the way the other fall tests do: the shove triggerFall
+    // works out comes from where the two pieces actually stand, which in a bare harness is nowhere.
+    G.winner=0; G.over=true;
+    fall=Object.assign(mkFallState(G.pieces[1]),{idx:1, vx:70, vz:0, vy:0});
+    tripods[1].position.set(CFG.edgeU-3, 0, 0);
+    const out=[]; let seen=0;
+    for (let i=0;i<3000;i++) {
+      if (fall.active) stepFall(1/60); else stepPortalDrift(1/60);
+      const st = portalDrift ? portalDrift.state : fall;
+      if ((st.loops||0) > seen) { seen = st.loops; out.push({lap:seen, at:i/60, vy:st.V.y}); }
+      if (seen >= 5) break;
+    }
+    const st = portalDrift ? portalDrift.state : fall;
+    return JSON.stringify({laps:out, drifting:!!portalDrift, active:fall.active,
+      resting:st.resting, y:tripods[1].position.y});
+  })()`));
+  assert.ok(laps.laps.length >= 5,'it goes round and round rather than landing');
+  // It may well clip the board's rim on the way past -- that is the point of keeping the board in
+  // the contact set -- but it never comes to rest, because there is nothing to come to rest on.
+  assert.equal(laps.resting,false,'it never settles anywhere');
+  assert.ok(laps.y > portal.floor,'and it is somewhere between the floor and the ceiling, still going');
+  // Momentum is carried through, so every lap starts faster and takes less time than the one before.
+  const v=laps.laps.map(L=>-L.vy);
+  assert.ok(v[4] > v[0]*1.5,`it enters faster every lap (${v.map(x=>x.toFixed(0)).join(' -> ')})`);
+  const first=laps.laps[1].at-laps.laps[0].at, last=laps.laps[4].at-laps.laps[3].at;
+  assert.ok(last < first*0.8,`and comes round quicker (${first.toFixed(2)}s -> ${last.toFixed(2)}s)`);
+  // The match cannot wait for a piece that never lands: it moves on, and the piece keeps falling.
+  assert.equal(laps.active,false,'the result does not wait for it');
+  assert.equal(laps.drifting,true,'but it is still going round behind the result');
+  assert.equal(g.read('tripods[1].visible'),true,'and it is still there to watch');
+  // A new game takes it back off its loop, so it is not still whipping past behind the next match.
+  g.read('reset()');
+  assert.equal(g.read('!!portalDrift'),false,'a new game takes the piece back off its loop');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('the marble table stands in a room, so a piece pushed off it really falls',async t=>{
   const g=await game();t.after(g.close);
   localMatch(g);
