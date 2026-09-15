@@ -959,6 +959,7 @@ const MATH_PASS =
   '}\n';
 const ALIEN_GLSL = `
 uniform float uAlien; uniform float uAlienTime; varying vec3 vWPos;
+uniform sampler2D uAuto; uniform float uAutoOn;
 float ahash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453123); }
 float anoise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
   return mix(mix(ahash(i),ahash(i+vec2(1.0,0.0)),u.x), mix(ahash(i+vec2(0.0,1.0)),ahash(i+vec2(1.0,1.0)),u.x), u.y); }
@@ -985,10 +986,16 @@ float afbm3(vec2 p){ float a=0.5,s=0.0; for(int i=0;i<3;i++){ s+=a*anoise(p); p=
 // never the same twice and it is never even.
 const float PHI = 1.6180339887;
 const float GOLD_ANGLE = 2.3999632297;    // 2*PI/PHI^2 -- the turn that never repeats
-float frost(vec2 p, float t, out float edge) {
-  // where it has reached: a slow swell drifting over the board, nothing to do with the structure
-  float swell = afbm3(p*0.20 + vec2(t*0.013, -t*0.009));
-  float reach = smoothstep(0.46, 0.74, swell);
+// WHERE IT HAS REACHED comes from the automata when they are running: the second chemical's
+// concentration, read straight off the simulation, which got there by the rule rather than by
+// anybody drawing it. The slow noise swell stays as the fallback for a machine that could not give
+// us the buffers, so the board is never dead.
+float frostReach(vec2 p, vec2 uv, float t) {
+  if (uAutoOn > 0.5) return smoothstep(0.05, 0.32, texture2D(uAuto, uv).y);
+  return smoothstep(0.46, 0.74, afbm3(p*0.20 + vec2(t*0.013, -t*0.009)));
+}
+float frost(vec2 p, vec2 uv, float t, out float edge) {
+  float reach = frostReach(p, uv, t);
   // WHICH WAY IT IS GROWING, and it is not the same way everywhere. Squashing the noise along one
   // fixed axis made every filament on the board run parallel, which reads as brush strokes rather
   // than as growth. The squash turns with a slow wandering angle instead, so a frond here runs one
@@ -1099,6 +1106,8 @@ function installDetailShader(material) {
     shader.uniforms.uDetailTint = { value: new THREE.Vector3(1,1,1) };
     shader.uniforms.uAlien = { value: 0 };
     shader.uniforms.uAlienTime = { value: 0 };
+    shader.uniforms.uAuto = { value: null };      // the automata's field, if it is running
+    shader.uniforms.uAutoOn = { value: 0 };
     shader.uniforms.uMath = { value: 0 };
     shader.uniforms.uRingR = { value: CFG.footR*Math.sqrt(3) };
     shader.uniforms.uFeet = { value: Array.from({ length: 6 }, () => new THREE.Vector2(1e4, 1e4)) };
@@ -1139,7 +1148,8 @@ function installDetailShader(material) {
         // The crystal over the flow. It is drawn the way frost on glass is: the structure itself
         // bright and hard-edged, with a faint bloom either side of it where the light spreads into
         // the membrane it is growing through.
-        '  float ce; float cr = frost(vWPos.xz / max(uBoardGeom.z, 1.0) * 7.0, uAlienTime, ce);\n' +
+        '  vec2 bxz = vWPos.xz / max(uBoardGeom.z, 1.0);\n' +
+        '  float ce; float cr = frost(bxz * 7.0, bxz*0.5 + 0.5, uAlienTime, ce);\n' +
         '  outgoingLight += vec3(0.10, 0.42, 0.34) * smoothstep(0.0, 0.30, cr) * 0.22;\n' +
         '  outgoingLight += vec3(0.62, 1.00, 0.88) * min(cr, 0.85) * 0.80;\n' +
         '}\n' + finalHook);

@@ -2424,6 +2424,35 @@ test('every board sits at its own height above its floor',async t=>{
   assert.deepEqual(g.errors,[]);
 });
 
+test('the alien membrane runs a real automaton, and does without one when it cannot',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  // A renderer that can do render targets: every step is recorded so we can see it actually run.
+  g.read(`window.__auto=[];
+    renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},
+      getRenderTarget(){return null;}, setRenderTarget(t){window.__auto.push(t?'to-sim':'to-screen');},
+      render(){}, };
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    localStorage.setItem('tauDesktopTestBoards','1');`);
+  // The uniform table is only filled when three compiles the material, which needs a GPU these
+  // tests do not have -- so run the hook by hand, exactly as the shader-link test does.
+  g.read(`tauDesktop.board='alien';
+    (()=>{ const lib=THREE.ShaderLib.physical;
+      boardTop.material.onBeforeCompile({uniforms:{}, vertexShader:lib.vertexShader, fragmentShader:lib.fragmentShader}); })();
+    window.__auto=[]; tauDesktop.tick(1/60)`);
+  const steps=JSON.parse(g.read('JSON.stringify(window.__auto)'));
+  assert.ok(steps.length>4,`the rule is stepped many times a frame, not once (${steps.length})`);
+  assert.equal(steps[steps.length-1],'to-screen','and it always hands the screen back');
+  // Leaving the board puts it away again: nothing should still be simulating behind a walnut table.
+  g.read("tauDesktop.board='walnut'; window.__auto=[]; tauDesktop.tick(1/60)");
+  assert.deepEqual(JSON.parse(g.read('JSON.stringify(window.__auto)')),[],'another board stops the simulation');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('the alien board has no floor: the piece falls through it and comes back faster every lap',async t=>{
   const g=await game();t.after(g.close);
   localMatch(g);
