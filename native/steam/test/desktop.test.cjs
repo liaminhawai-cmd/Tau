@@ -984,6 +984,8 @@ test('two glass pieces are drawn in two passes: the near one over a picture of t
     renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},getDrawingBufferSize(v){v.set(640,480);return v;},
       setRenderTarget(t){window.__calls.push(['target',t?'offscreen':'screen']);},
       render(sc,cam){const gl=sc.children.filter(o=>o.userData&&o.userData.mat);
+        if(sc!==scene){const q=sc.children.find(o=>o.isMesh&&o.renderOrder===-1);
+          window.__quad=q&&{test:q.material.depthTest,write:q.material.depthWrite,func:q.material.depthFunc};}
         window.__calls.push(['render',sc===scene?'world':'overlay', gl.length, gl.filter(o=>o.userData.mat.colorWrite!==false).length]);}};
     scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(); camera.position.set(0,120,150);
     scene.add(new THREE.DirectionalLight(0xffffff,1)); scene.add(new THREE.HemisphereLight(0xffffff,0x222222,1));
@@ -1003,6 +1005,14 @@ test('two glass pieces are drawn in two passes: the near one over a picture of t
   // over it, the far one silent but still there, so it keeps casting its shadow on the near one.
   assert.equal(calls,JSON.stringify([['target','offscreen'],['render','world',2,1],['target','screen'],['render','overlay',2,1]]),
     'each pass has both pieces in it and exactly one of them drawing');
+  // The whole point of the second pass is that the near piece is DEPTH-TESTED against the picture,
+  // so the two sets of legs weave through each other. The quad restores that depth per pixel -- and
+  // GL throws depth writes away whenever the depth test is disabled, whatever depthMask says, so
+  // the test has to be ON and always-passing. With it off the near piece drew over the far one at
+  // every crossing and the lot flipped together when the near/far choice handed over.
+  assert.deepEqual(JSON.parse(g.read('JSON.stringify(window.__quad)')),
+    {test:true, write:true, func:g.read('THREE.AlwaysDepth')},
+    'the picture is blitted with an always-passing depth test, not a disabled one');
   assert.equal(g.read('tripods.every(t=>t.parent===scene)'),true,'both pieces are back in the scene');
   assert.equal(g.read('tripods.every(t=>{let ok=true; t.traverse(o=>{ if(o.material && (!o.material.colorWrite || !o.material.depthWrite)) ok=false; }); return ok;})'),true,'and write colour again');
   assert.deepEqual(g.errors,[]);

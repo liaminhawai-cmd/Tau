@@ -1170,23 +1170,29 @@
   // two pieces overlap on screen, because that is the only place the near piece has any of the far
   // one behind it to refract. Everywhere else the ordinary single-pass frame is the same picture,
   // pixel for pixel, so the second pass is skipped and an orbit costs what every other board costs.
-  const gpBoxA = new THREE.Box2(), gpBoxB = new THREE.Box2(), gpV2 = new THREE.Vector2();
-  const GP_MARGIN = 0.06;   // NDC slack: a leg bends in a little of what sits just outside it
-  function gpMark(box, x, y, z, m) {
-    gpV.set(x, y, z).applyMatrix4(m).project(camera);
-    box.expandByPoint(gpV2.set(gpV.x, gpV.y));
+  //
+  // The test is angular, not a projection. Projecting to NDC gets this wrong the moment the corner
+  // layout puts a view offset on the camera -- the offset rescales NDC around a sub-rectangle, and
+  // two interlocked pieces came out as boxes a whole unit apart, so the pass was skipped exactly
+  // where it was needed. An angle between two directions does not care how the frustum is cropped:
+  // each piece is a sphere, and they overlap from here if the angle between their centres is less
+  // than the sum of the angles they each subtend.
+  const gpCenA = new THREE.Vector3(), gpCenB = new THREE.Vector3();
+  const gpDirA = new THREE.Vector3(), gpDirB = new THREE.Vector3();
+  const GP_SLACK = 1.15;   // a little generous: a leg bends in what sits just outside it
+  function gpSpan(t, centre) {          // world centre of the piece, and the radius that holds it
+    const cy = (t.userData && t.userData.hub) ? t.userData.hub.position.y : 12;
+    centre.set(0, cy*0.5, 0).applyMatrix4(t.matrixWorld);
+    return Math.hypot(CFG.footR, cy*0.5) * GP_SLACK;
   }
-  function gpScreenBox(t, box) {
-    box.makeEmpty();
-    const m = t.matrixWorld, hub = t.userData && t.userData.hub, cy = hub ? hub.position.y : 12;
-    for (const p of GP_FEET) {
-      gpMark(box, p.x, 0, p.z, m);                  // the foot
-      gpMark(box, p.x, cy*0.45, p.z, m);            // the arc, where it bulges widest
-    }
-    gpMark(box, 0, cy, 0, m);                       // the crown
-    box.min.x -= GP_MARGIN; box.min.y -= GP_MARGIN;
-    box.max.x += GP_MARGIN; box.max.y += GP_MARGIN;
-    return box;
+  function gpOverlap(a, b) {
+    const ra = gpSpan(a, gpCenA), rb = gpSpan(b, gpCenB);
+    const da = camera.position.distanceTo(gpCenA), db = camera.position.distanceTo(gpCenB);
+    if (da <= ra || db <= rb) return true;          // standing inside one of them: never skip
+    gpDirA.copy(gpCenA).sub(camera.position).divideScalar(da);
+    gpDirB.copy(gpCenB).sub(camera.position).divideScalar(db);
+    const apart = Math.acos(Math.max(-1, Math.min(1, gpDirA.dot(gpDirB))));
+    return apart < Math.asin(ra/da) + Math.asin(rb/db);
   }
   // A multisampled colour+depth target is both the expensive and the least portable part of the
   // pass (the depth resolve is where drivers differ), so the cheap tier does without it.
@@ -1199,8 +1205,14 @@
     gpSamples = gpSampleWant();
     gpTarget = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: gpSamples,
       depthTexture: new THREE.DepthTexture(4, 4, THREE.UnsignedIntType) });
+    // ALWAYS-passing depth test, NOT a disabled one. GL throws depth writes away whenever the
+    // depth test is off -- depthMask does not matter -- so with depthTest:false the restored
+    // gl_FragDepth here went nowhere and pass two ran against an empty depth buffer. The near
+    // piece then drew over the far one at EVERY crossing instead of weaving through it, and the
+    // whole lot swapped over at once when the near/far choice handed over: "the red is in front,
+    // turn a little and the blue is in front". This is that bug.
     gpQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
-      glslVersion: THREE.GLSL3, depthTest: false, depthWrite: true,
+      glslVersion: THREE.GLSL3, depthTest: true, depthFunc: THREE.AlwaysDepth, depthWrite: true,
       uniforms: { tColor: { value: gpTarget.texture }, tDepth: { value: gpTarget.depthTexture } },
       vertexShader: 'out vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
       fragmentShader: 'precision highp float; uniform sampler2D tColor; uniform sampler2D tDepth; in vec2 vUv;\n' +
@@ -1227,9 +1239,8 @@
       const near = pieces[ni];
       gpNear = near;
       // nothing of the far piece behind the near one: the plain frame is the same picture
-      gpScreenBox(near, gpBoxA);
       let crossing = false;
-      for (const t of pieces) if (t !== near && gpBoxA.intersectsBox(gpScreenBox(t, gpBoxB))) { crossing = true; break; }
+      for (const t of pieces) if (t !== near && gpOverlap(near, t)) { crossing = true; break; }
       if (!crossing) return false;
       renderer.getDrawingBufferSize(gpSize);
       if (gpTarget.width !== gpSize.x || gpTarget.height !== gpSize.y) gpTarget.setSize(gpSize.x, gpSize.y);
@@ -2021,7 +2032,7 @@
     // whether two pieces overlap on screen from where the camera stands -- the question that
     // decides whether the second pass is worth drawing at all
     glassOverlap(a, b){ if(!camera||!a||!b) return false; a.updateMatrixWorld(); b.updateMatrixWorld();
-      return gpScreenBox(a, gpBoxA).intersectsBox(gpScreenBox(b, gpBoxB)); },
+      return gpOverlap(a, b); },
     rayTraceSamples(){return ptTracer ? ptTracer.samples : 0;},   // how far the still has refined
     canPlayNow: canPlay, canLookNow: canLook,
     rayTraceMotion,
