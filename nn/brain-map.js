@@ -17,6 +17,12 @@ const os = require('os');
 const { Worker, isMainThread, workerData, parentPort } = require('worker_threads');
 
 const { createEngine } = require('./engine.js');
+const { nnPlanFor } = require('./nnai.js');
+
+// Held in step with brain-depth.js so a searched map and a searched transect are the same surface.
+// keep 2 is the only frontier width the deep plies fit in; 9 degrees is the sweep resolution the
+// cost study was run at.
+const SEARCH_KEEP = 2, SEARCH_SWEEP_DEG = 9;
 const { features } = require('./features.js');
 const { loadValueNet } = require('./load-value-net.js');
 
@@ -74,7 +80,16 @@ function gridAxis(res, E) {
   return a;
 }
 
-function sweepRows(model, pose, res, rowStart, rowEnd, onRow) {
+// `ply` >= 1 records the root value of an N-ply search instead of the leaf evaluation, and `rung`
+// picks which AI_LADDER weights drive it. Both default to the old behaviour (leaf eval, top rung),
+// so an existing sweep is unchanged. It is called `ply` and not `depth` deliberately: a LEAF map
+// and a ONE-PLY SEARCH map are different surfaces (the first is what the evaluator says here, the
+// second is what it says after playing its best move), and numbering both of them "depth 1" is
+// exactly the kind of collision that makes two runs silently incomparable. Leaf is ply 0. Cost is the reason this is a knob rather than the default:
+// measured per cell, d1 costs ~70ms and d3 ~10s, so a 256^2 searched map is hours where a leaf map
+// is seconds. rawRoot matches brain-depth.js, so a searched map and a searched transect describe
+// the same surface.
+function sweepRows(model, pose, res, rowStart, rowEnd, onRow, ply, rung) {
   const eng = createEngine();
   const ref = setupPose(eng, pose);
   const CFG = eng.CFG, E = CFG.edgeU;
@@ -83,9 +98,16 @@ function sweepRows(model, pose, res, rowStart, rowEnd, onRow) {
   const net = model === '__engine'
     ? null
     : loadValueNet(model);
-  const topW = eng.AI_LADDER[eng.AI_LADDER.length - 1].w;
+  const rIdx = rung == null ? eng.AI_LADDER.length - 1
+                            : Math.max(0, Math.min(eng.AI_LADDER.length - 1, rung - 1));
+  const topW = eng.AI_LADDER[rIdx].w;
   const ax = gridAxis(res, E);
   const inside = makeMask(CFG);
+  const D = ply || 0;
+  const evalFn = net
+    ? ((e, side) => { const v = net.value(features(e)); return e.getG().active === side ? v : -v; })
+    : ((e, side) => e.ladderEval(side, topW));
+  const top = [];
 
   for (let j = rowStart; j < rowEnd; j++) {
     const row = new Float32Array(res);
@@ -94,19 +116,28 @@ function sweepRows(model, pose, res, rowStart, rowEnd, onRow) {
       const x = ax[i];
       if (!inside(x, y, ref.op)) { row[i] = NaN; continue; }
       me.x = x; me.y = y; me.rot = ref.meRot;
-      row[i] = net ? net.value(features(eng)) : eng.ladderEval(g.active, topW);
+      if (D < 1) { row[i] = evalFn(eng, ref.active); continue; }
+      g.active = ref.active;
+      top.length = 0;
+      const plan = nnPlanFor(eng, null, ref.active, {
+        temperature: 0, depth: D, keepForDepth: SEARCH_KEEP, rawRoot: true, evalFn,
+        sweepDeg: SEARCH_SWEEP_DEG, captureTop: top, captureTopN: 1,
+      });
+      // Wedged (no legal waypoint) or a throw: a throw is scored 1e6 by the engine rather than by
+      // the evaluator, and one of those in a field would set the colour scale for the whole map.
+      row[i] = (!plan || !top.length || Math.abs(top[0].score) >= 1e5) ? NaN : top[0].score;
     }
     onRow(j, row);
   }
 }
 
 if (!isMainThread) {
-  const { model, pose, res, rowStart, rowEnd } = workerData;
+  const { model, pose, res, rowStart, rowEnd, ply, rung } = workerData;
   const out = new Float32Array((rowEnd - rowStart) * res);
   sweepRows(model, pose, res, rowStart, rowEnd, (j, row) => {
     out.set(row, (j - rowStart) * res);
     if ((j - rowStart) % 16 === 0) parentPort.postMessage({ progress: j - rowStart });
-  });
+  }, ply, rung);
   parentPort.postMessage({ done: true, rowStart, rowEnd, buf: out.buffer }, [out.buffer]);
 } else {
   main();
@@ -123,16 +154,21 @@ async function main() {
   const model = arg('model', 'nn/models/best.json');
   const pose = arg('pose', 'swing1');
   const res = +arg('res', 1024);
+  const ply = +arg('ply', 0);   // 0 = leaf evaluation (the original behaviour); N >= 1 = root value of an N-ply search
+  const rung = arg('rung', null) == null ? null : +arg('rung');
   const outDir = arg('out', 'nn/brain-maps');
   const threads = +arg('threads', Math.max(1, Math.min(os.cpus().length, 4)));
-  const tag = arg('tag', path.basename(String(model)).replace(/\.json$/, ''));
+  const tag = arg('tag', (model === '__engine' ? 'L' + (rung == null ? 11 : rung)
+                                              : path.basename(String(model)).replace(/\.json$/, '')) +
+                         (ply >= 1 ? '-p' + ply : ''));
 
   fs.mkdirSync(outDir, { recursive: true });
   const eng = createEngine();
   const ref = setupPose(eng, pose);
   const E = eng.CFG.edgeU;
   const info = model === '__engine'
-    ? { kind: 'engine', params: 0, sizes: [], note: "L11's own eval, as a ground-truth field" }
+    ? { kind: `engine-L${rung == null ? eng.AI_LADDER.length : rung}`, params: 0, sizes: [],
+         note: `ladder rung L${rung == null ? eng.AI_LADDER.length : rung}'s own eval, as a ground-truth field` }
     : loadValueNet(model);
   if (info.note) console.log(`  note: ${info.note}`);
 
@@ -150,7 +186,7 @@ async function main() {
   let doneRows = 0;
   await Promise.all(bounds.map(([a, b]) => new Promise((resolve, reject) => {
     if (a >= b) return resolve();
-    const w = new Worker(__filename, { workerData: { model, pose, res, rowStart: a, rowEnd: b } });
+    const w = new Worker(__filename, { workerData: { model, pose, res, rowStart: a, rowEnd: b, ply, rung } });
     let last = 0;
     w.on('message', m => {
       if (m.done) {
@@ -172,7 +208,8 @@ async function main() {
   const base = path.join(outDir, `${tag}__${pose}__${res}`);
   fs.writeFileSync(base + '.bin', Buffer.from(field.buffer));
   fs.writeFileSync(base + '.json', JSON.stringify({
-    tag, model, pose, res, extent: E, cell, crossEps: eng.CFG.crossEps,
+    tag, model, pose, res, ply, rung, keep: ply >= 1 ? SEARCH_KEEP : null,
+    extent: E, cell, crossEps: eng.CFG.crossEps,
     kind: info.kind, params: info.params, sizes: info.sizes,
     live: n, min: mn, max: mx, mean: sum / n, seconds: secs,
     opponent: ref.op, meRot: ref.meRot, active: ref.active,
