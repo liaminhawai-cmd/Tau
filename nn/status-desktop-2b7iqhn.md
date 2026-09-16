@@ -1,5 +1,5 @@
 # Tau NN training status
-_Last updated: 2026-09-16T01:31:17.532Z_
+_Last updated: 2026-09-16T01:36:21.410Z_
 
 **Self-play batch:** -
 **Stage:** self-play batch undefined running, next check in 5 min
@@ -9,6 +9,6 @@ _Last updated: 2026-09-16T01:31:17.532Z_
 
 **Last gate result:** pool cycle 380 — no candidate provably beats ckpt-376 (closest resume-298: 55-25-0, +0 +/- 81 Elo); keeping best.json
 
-**Last checkpoint:** ckpt-376.json at 2026-09-16T00:14:14.834Z
+**Last checkpoint:** ckpt-376.json at 2026-09-16T01:35:20.318Z
 
 **Last ladder sweep:** (none yet)
