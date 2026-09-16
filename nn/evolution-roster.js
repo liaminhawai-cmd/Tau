@@ -275,9 +275,19 @@ function faceRecords(dir){
 const undefeated=r=>!!r&&r.l===0&&r.d===0&&r.w>0;
 
 function measuredCosts(dir){try{const s=JSON.parse(fs.readFileSync(path.join(dir,'elo-results.json'),'utf8'));return{cost:s.cost||{},unit:+s.costUnitMs>0?+s.costUnitMs:1500};}catch(_){return{cost:{},unit:1500};}}
+// The cull draws a depth class in proportion to the rent that class is paying, and rent is now
+// charged BELOW cost for deep faces -- the same discount elorank-legacy.js applies to the schedule,
+// for the same reason. At full price a D4 face pays 27 units against a D1 face's 1, so the cull
+// reaches into D4 twenty-seven times as often per face; the measured per-face hazard was 3.7% at
+// D1, 13.5% at D2 and 48.7% at D3, which is a rung that cannot hold a population long enough to be
+// rated. At RENT_POW 0.5 that 27x becomes 5.2x. Deep seats still cost more than shallow ones --
+// they should, they really are more expensive -- just not so much more that the rung empties before
+// anything on it has been measured. TAU_RENT_POW overrides; 1 restores the old full-price cull.
+const RENT_POW=(()=>{const v=+process.env.TAU_RENT_POW;return Number.isFinite(v)&&v>0&&v<=1?v:0.5;})();
+function discountRent(ms,unit){return unit*Math.pow(Math.max(1e-9,ms)/unit,RENT_POW);}
 function chooseDepth(e,mc){const keys=Object.keys(DEPTH_CULL_WEIGHT).filter(k=>e[k]&&e[k].length);if(!keys.length)return null;
   const unit=(mc&&mc.unit)||1500,cost=(mc&&mc.cost)||{};
-  const w={};for(const k of keys){let rent=0;for(const v of e[k]){const ms=+cost[v.id];rent+=Number.isFinite(ms)&&ms>0?ms:DEPTH_CULL_WEIGHT[k]*unit;}w[k]=rent;}
+  const w={};for(const k of keys){let rent=0;for(const v of e[k]){const ms=+cost[v.id];rent+=discountRent(Number.isFinite(ms)&&ms>0?ms:DEPTH_CULL_WEIGHT[k]*unit,unit);}w[k]=rent;}
   const total=keys.reduce((s,k)=>s+w[k],0),x=Math.random()*total;let a=0;for(const k of keys){a+=w[k];if(x<a)return k;}return keys.at(-1);}
 // The cull may take at most HALF of the faces it can currently see. The list it culls from is
 // sorted by rating, but when fewer faces clear the bar than the population asks to lose, the sort

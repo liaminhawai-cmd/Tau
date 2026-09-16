@@ -134,6 +134,26 @@ function bootstrap(ids,B,point){
 // attribution self-corrects as estimates improve.
 function priorCost(p){if(p.kind==='nn')return Math.pow(3,Math.max(0,p.depth-1));if(p.kind==='committee')return 27;return p.level<=5?1:p.level<=7?3:p.level<=9?9:27;}
 function costMs(p){const m=store.cost&&+store.cost[p.id];if(Number.isFinite(m)&&m>0)return m;const u=Number.isFinite(+store.costUnitMs)&&+store.costUnitMs>0?+store.costUnitMs:1500;return priorCost(p)*u;}
+// RENT is what the SCHEDULER charges a face for its compute, which no longer has to equal what the
+// compute actually costs. costMs stays honest -- it is the estimate noteCost refines and
+// matchLimitMs budgets against, and both need real milliseconds. rentMs is the PRICE, and it is
+// deliberately below cost for deep faces.
+//
+// WHY. The true cost curve is about 3x per ply (measured: D1 ~30s, D2 ~100s, D3 ~400s, D4 ~1200s a
+// game), and charging it in full is what emptied the deep rungs: a D4 face pays 27x, so the pair
+// equation's /sqrt(cost) hands it 5.2x fewer games than a D1 face of equal merit. The league's own
+// table shows the result -- every D4 entry sits on 2 to 18 games with a 90% CI of +-200 to +-350,
+// which is not a measurement. Deep play is the one lever that makes a fixed set of weights play
+// stronger, and it cannot be evaluated while it is priced out of the schedule.
+//
+// The exponent is the whole knob: rent = unit * (cost/unit)^RENT_POW. At 1 the old behaviour
+// returns exactly. At 0.5 the 3x-per-ply cost curve is charged as ~1.73x per ply, so D4's 27x
+// becomes 5.2x and its pair-equation handicap falls from 5.2x to 2.3x. It is still a real fee --
+// deep faces still cost more seats and more schedule than shallow ones -- just not the full one.
+// TAU_RENT_POW overrides it without an edit.
+const RENT_POW=(()=>{const v=+process.env.TAU_RENT_POW;return Number.isFinite(v)&&v>0&&v<=1?v:0.5;})();
+function rentMs(p){const u=Number.isFinite(+store.costUnitMs)&&+store.costUnitMs>0?+store.costUnitMs:1500;
+  return u*Math.pow(Math.max(1e-9,costMs(p))/u,RENT_POW);}
 function noteCost(a,b,elapsedMs){
   const per=Math.max(1,elapsedMs)/PHYSICAL_GAMES_PER_MATCH;store.cost||={};
   const ca=costMs(a),cb=costMs(b),shareA=ca/Math.max(1e-9,ca+cb);
@@ -179,7 +199,7 @@ function pairScore(a,b,elo,g,pair,fr){
   const ea=Number.isFinite(elo[a.id])?elo[a.id]:0,eb=Number.isFinite(elo[b.id])?elo[b.id]:0,p=1/(1+Math.pow(10,(eb-ea)/400)),close=4*p*(1-p);
   const need=.55*((uncertainty(a,g)+uncertainty(b,g))/2)+.45*Math.max(freshness(a,g),freshness(b,g));
   const novelty=1/Math.log2((pair[canonical(a.id,b.id)]||0)+2);
-  return(.20+close)*Math.sqrt(standing(a,elo,fr)*standing(b,elo,fr))*(.30+.70*need)*(.35+.65*novelty)/Math.sqrt(costMs(a)+costMs(b));
+  return(.20+close)*Math.sqrt(standing(a,elo,fr)*standing(b,elo,fr))*(.30+.70*need)*(.35+.65*novelty)/Math.sqrt(rentMs(a)+rentMs(b));
 }
 // ANCHOR MATCHES: a small stochastic slice of pairings forces one seat to a ladder brain.
 // Without this the compute rent (an L10 game runs minutes, not seconds) prices the ladders out
@@ -201,7 +221,7 @@ function pickAnchor(elo,g,pair,fr,free){
   const ladders=free.filter(p=>p.kind==='ladder');if(!ladders.length)return null;
   const l=weightedDraw(ladders.map(x=>[.30+.70*(.55*uncertainty(x,g)+.45*freshness(x,g)),x]));if(!l)return null;
   const pool=free.filter(p=>p.kind==='nn');if(!pool.length)return null;
-  const scored=pool.map(o=>[pairScore(l,o,elo,g,pair,fr)*Math.sqrt(costMs(l)+costMs(o)),o]).filter(x=>x[0]>0);
+  const scored=pool.map(o=>[pairScore(l,o,elo,g,pair,fr)*Math.sqrt(rentMs(l)+rentMs(o)),o]).filter(x=>x[0]>0);
   const o=weightedDraw(scored);return o?[l,o]:null;
 }
 // Selection is a WEIGHTED DRAW over pair scores, not an argmax. Sampling keeps the environment
