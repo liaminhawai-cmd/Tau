@@ -123,9 +123,15 @@ function sweepRows(model, pose, res, rowStart, rowEnd, onRow, ply, rung) {
         temperature: 0, depth: D, keepForDepth: SEARCH_KEEP, rawRoot: true, evalFn,
         sweepDeg: SEARCH_SWEEP_DEG, captureTop: top, captureTopN: 1,
       });
-      // Wedged (no legal waypoint) or a throw: a throw is scored 1e6 by the engine rather than by
-      // the evaluator, and one of those in a field would set the colour scale for the whole map.
-      row[i] = (!plan || !top.length || Math.abs(top[0].score) >= 1e5) ? NaN : top[0].score;
+      // A FORCED WIN OR LOSS is scored +-1e6 by the engine rather than by the evaluator, and those
+      // cells are the most interesting ones in a searched map, not noise: they are where the search
+      // proved "I can throw them next move" or "they can throw me". Masking them out (which this
+      // line used to do) deletes exactly the structure a depth-2 map exists to show. They cannot be
+      // left at 1e6 either -- one of those sets the colour scale for the whole field -- so they are
+      // CLAMPED to a sentinel just outside the evaluator's own range, which renders as saturated at
+      // the right end while leaving the graded interior readable. `throwClamp` is applied after the
+      // sweep, once the finite range is known; here they are recorded verbatim.
+      row[i] = (!plan || !top.length) ? NaN : top[0].score;
     }
     onRow(j, row);
   }
@@ -202,6 +208,24 @@ async function main() {
   })));
 
   const secs = (Date.now() - t0) / 1000;
+  // Pull the +-1e6 forced-win/loss cells in to just past the finite range, so they saturate the
+  // colour ramp instead of collapsing it. Reported, because how much of a searched map is decided
+  // rather than evaluated is itself a result.
+  let decidedWin = 0, decidedLoss = 0;
+  if (ply >= 1) {
+    let fmn = Infinity, fmx = -Infinity;
+    for (const v of field) if (Number.isFinite(v) && Math.abs(v) < 1e5) { if (v < fmn) fmn = v; if (v > fmx) fmx = v; }
+    const pad = (fmx - fmn) * 0.12 || 1;
+    for (let i = 0; i < field.length; i++) {
+      if (!Number.isFinite(field[i])) continue;
+      if (field[i] >= 1e5) { field[i] = fmx + pad; decidedWin++; }
+      else if (field[i] <= -1e5) { field[i] = fmn - pad; decidedLoss++; }
+    }
+    console.log(`  decided by search: ${decidedWin} forced-win cells, ${decidedLoss} forced-loss cells`);
+  }
+
+  // Stats AFTER the clamp, so the recorded min/max describe the field actually written to the .bin
+  // rather than the +-1e6 sentinels the clamp just removed.
   let n = 0, mn = Infinity, mx = -Infinity, sum = 0;
   for (const v of field) if (Number.isFinite(v)) { n++; sum += v; if (v < mn) mn = v; if (v > mx) mx = v; }
 
@@ -211,7 +235,7 @@ async function main() {
     tag, model, pose, res, ply, rung, keep: ply >= 1 ? SEARCH_KEEP : null,
     extent: E, cell, crossEps: eng.CFG.crossEps,
     kind: info.kind, params: info.params, sizes: info.sizes,
-    live: n, min: mn, max: mx, mean: sum / n, seconds: secs,
+    live: n, min: mn, max: mx, mean: sum / n, seconds: secs, decidedWin, decidedLoss,
     opponent: ref.op, meRot: ref.meRot, active: ref.active,
   }, null, 1));
   console.log(`\r  done ${secs.toFixed(0)}s  live=${n}  range=[${mn.toFixed(4)}, ${mx.toFixed(4)}]  -> ${base}.bin`);
