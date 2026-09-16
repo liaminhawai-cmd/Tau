@@ -126,9 +126,25 @@ if (require.main === module) {
   // palette's neutral pivot, so "no detail here" reads as blank rather than as a colour.
   if (roughSigma) { const a = Math.max(Math.abs(lo), Math.abs(hi)); lo = -a; hi = a; }
   const out = arg('out', base + (roughSigma ? `.rough${roughSigma}` : '') + '.png');
-  const png = pngIndexed(render(field, m.res, lo, hi), m.res, m.res, palette());
+  // NEAREST-NEIGHBOUR upscale, never interpolation. A zoomed deep-ply sweep is only a few dozen
+  // cells on a side, which is unreadable at 1:1 on a screen, but smoothing it would invent detail
+  // at exactly the scale this study is trying to measure. Block pixels are honest: what you see is
+  // one cell, one evaluation.
+  const scale = Math.max(1, Math.floor(+arg('scale', 1) || 1));
+  let idx = render(field, m.res, lo, hi), W = m.res;
+  if (scale > 1) {
+    const big = new Uint8Array(m.res * scale * m.res * scale);
+    for (let j = 0; j < m.res; j++)
+      for (let i = 0; i < m.res; i++) {
+        const v = idx[j * m.res + i];
+        for (let b = 0; b < scale; b++)
+          big.fill(v, ((j * scale + b) * m.res * scale) + i * scale, ((j * scale + b) * m.res * scale) + i * scale + scale);
+      }
+    idx = big; W = m.res * scale;
+  }
+  const png = pngIndexed(idx, W, W, palette());
   fs.writeFileSync(out, png);
-  console.log(`${out}  ${m.res}x${m.res}  ${kind}  range [${lo.toFixed(4)}, ${hi.toFixed(4)}]  ${(png.length/1024).toFixed(0)}KB`);
+  console.log(`${out}  ${W}x${W} (${m.res} cells, x${scale})  ${kind}  range [${lo.toFixed(4)}, ${hi.toFixed(4)}]  ${(png.length/1024).toFixed(0)}KB`);
 }
 
 module.exports = { pngIndexed, palette, ramp, render, limits };

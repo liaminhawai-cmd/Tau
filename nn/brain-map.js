@@ -73,10 +73,18 @@ function makeMask(CFG) {
   return (x, y, op) => Math.hypot(x, y) <= hubR && Math.hypot(x - op.x, y - op.y) >= minSep;
 }
 
-function gridAxis(res, E) {
-  // Cell centres across the full board box, so cell size is exactly 2E/res.
+// Cell centres across a square window of half-width `half` centred on `c`. The default window is
+// the whole board box (c = 0, half = edgeU), which reproduces the original full-board axis exactly.
+//
+// WHY A WINDOW EXISTS AT ALL: the cost of a searched map is set by the CELL COUNT, not by the area
+// it covers, and the deep plies are expensive enough that a full board at a pitch fine enough to
+// see anything is days. Cropping to a window buys pitch at constant cost -- the same 64^2 budget
+// that renders an eighth of the board at 0.13u renders the whole board at 0.52u. Since the question
+// is whether deeper search puts structure at scales a shallow search leaves smooth, pitch is the
+// axis worth spending on, so the deep plies are run zoomed rather than not at all.
+function gridAxis(res, c, half) {
   const a = new Float64Array(res);
-  for (let i = 0; i < res; i++) a[i] = -E + (i + 0.5) * (2 * E / res);
+  for (let i = 0; i < res; i++) a[i] = c - half + (i + 0.5) * (2 * half / res);
   return a;
 }
 
@@ -89,7 +97,7 @@ function gridAxis(res, E) {
 // measured per cell, d1 costs ~70ms and d3 ~10s, so a 256^2 searched map is hours where a leaf map
 // is seconds. rawRoot matches brain-depth.js, so a searched map and a searched transect describe
 // the same surface.
-function sweepRows(model, pose, res, rowStart, rowEnd, onRow, ply, rung) {
+function sweepRows(model, pose, res, rows, onRow, ply, rung, win) {
   const eng = createEngine();
   const ref = setupPose(eng, pose);
   const CFG = eng.CFG, E = CFG.edgeU;
@@ -101,7 +109,8 @@ function sweepRows(model, pose, res, rowStart, rowEnd, onRow, ply, rung) {
   const rIdx = rung == null ? eng.AI_LADDER.length - 1
                             : Math.max(0, Math.min(eng.AI_LADDER.length - 1, rung - 1));
   const topW = eng.AI_LADDER[rIdx].w;
-  const ax = gridAxis(res, E);
+  const axX = gridAxis(res, win.cx, win.half);
+  const axY = gridAxis(res, win.cy, win.half);
   const inside = makeMask(CFG);
   const D = ply || 0;
   const evalFn = net
@@ -109,11 +118,11 @@ function sweepRows(model, pose, res, rowStart, rowEnd, onRow, ply, rung) {
     : ((e, side) => e.ladderEval(side, topW));
   const top = [];
 
-  for (let j = rowStart; j < rowEnd; j++) {
+  for (const j of rows) {
     const row = new Float32Array(res);
-    const y = ax[j];
+    const y = axY[j];
     for (let i = 0; i < res; i++) {
-      const x = ax[i];
+      const x = axX[i];
       if (!inside(x, y, ref.op)) { row[i] = NaN; continue; }
       me.x = x; me.y = y; me.rot = ref.meRot;
       if (D < 1) { row[i] = evalFn(eng, ref.active); continue; }
@@ -138,13 +147,15 @@ function sweepRows(model, pose, res, rowStart, rowEnd, onRow, ply, rung) {
 }
 
 if (!isMainThread) {
-  const { model, pose, res, rowStart, rowEnd, ply, rung } = workerData;
-  const out = new Float32Array((rowEnd - rowStart) * res);
-  sweepRows(model, pose, res, rowStart, rowEnd, (j, row) => {
-    out.set(row, (j - rowStart) * res);
-    if ((j - rowStart) % 16 === 0) parentPort.postMessage({ progress: j - rowStart });
-  }, ply, rung);
-  parentPort.postMessage({ done: true, rowStart, rowEnd, buf: out.buffer }, [out.buffer]);
+  // Every finished row goes home immediately rather than being accumulated and shipped at the end.
+  // A deep-ply sweep runs for hours, and this box has lost two multi-hour runs to container
+  // restarts; streaming rows lets the parent checkpoint, so a restart costs minutes instead of the
+  // whole map.
+  const { model, pose, res, rows, ply, rung, win } = workerData;
+  sweepRows(model, pose, res, rows, (j, row) => {
+    parentPort.postMessage({ row: j, buf: row.buffer }, [row.buffer]);
+  }, ply, rung, win);
+  parentPort.postMessage({ done: true });
 } else {
   main();
 }
@@ -164,42 +175,84 @@ async function main() {
   const rung = arg('rung', null) == null ? null : +arg('rung');
   const outDir = arg('out', 'nn/brain-maps');
   const threads = +arg('threads', Math.max(1, Math.min(os.cpus().length, 4)));
-  const tag = arg('tag', (model === '__engine' ? 'L' + (rung == null ? 11 : rung)
-                                              : path.basename(String(model)).replace(/\.json$/, '')) +
-                         (ply >= 1 ? '-p' + ply : ''));
 
   fs.mkdirSync(outDir, { recursive: true });
   const eng = createEngine();
   const ref = setupPose(eng, pose);
   const E = eng.CFG.edgeU;
+  // Window: defaults to the whole board box, so an existing command line is unchanged.
+  const half = +arg('half', E), cx = +arg('cx', 0), cy = +arg('cy', 0);
+  const zoomed = half !== E || cx !== 0 || cy !== 0;
+  const tag = arg('tag', (model === '__engine' ? 'L' + (rung == null ? 11 : rung)
+                                              : path.basename(String(model)).replace(/\.json$/, '')) +
+                         (ply >= 1 ? '-p' + ply : '') +
+                         (zoomed ? `-z${half.toFixed(1)}` : ''));
   const info = model === '__engine'
     ? { kind: `engine-L${rung == null ? eng.AI_LADDER.length : rung}`, params: 0, sizes: [],
          note: `ladder rung L${rung == null ? eng.AI_LADDER.length : rung}'s own eval, as a ground-truth field` }
     : loadValueNet(model);
   if (info.note) console.log(`  note: ${info.note}`);
 
-  const cell = 2 * E / res;
-  console.log(`${tag}: ${res}x${res} over [-${E},${E}]  cell=${cell.toFixed(4)}u  ` +
+  const win = { cx, cy, half };
+  const cell = 2 * half / res;
+  console.log(`${tag}: ${res}x${res} over x[${(cx - half).toFixed(2)},${(cx + half).toFixed(2)}] ` +
+              `y[${(cy - half).toFixed(2)},${(cy + half).toFixed(2)}]  cell=${cell.toFixed(4)}u  ` +
               `crossEps=${eng.CFG.crossEps}u = ${(eng.CFG.crossEps / cell).toFixed(1)} cells`);
 
+  const base = path.join(outDir, `${tag}__${pose}__${res}`);
   const field = new Float32Array(res * res);
-  const t0 = Date.now();
+  const rowDone = new Uint8Array(res);
 
-  const bounds = [];
-  for (let t = 0; t < threads; t++)
-    bounds.push([Math.floor(t * res / threads), Math.floor((t + 1) * res / threads)]);
-
-  let doneRows = 0;
-  await Promise.all(bounds.map(([a, b]) => new Promise((resolve, reject) => {
-    if (a >= b) return resolve();
-    const w = new Worker(__filename, { workerData: { model, pose, res, rowStart: a, rowEnd: b, ply, rung } });
-    let last = 0;
-    w.on('message', m => {
-      if (m.done) {
-        field.set(new Float32Array(m.buf), m.rowStart * res);
-        return;
+  // RESUME. A part file is only reusable if it describes the same sweep, so its stamp carries every
+  // parameter that changes the field. Anything that does not match is ignored rather than merged --
+  // half a map of one surface glued to half of another is worse than starting over, because it
+  // still looks like a map.
+  const stamp = JSON.stringify({ model, pose, res, ply, rung, cx, cy, half, keep: SEARCH_KEEP, sweep: SEARCH_SWEEP_DEG });
+  let carried = 0;
+  if (fs.existsSync(base + '.part.json') && fs.existsSync(base + '.part.bin')) {
+    try {
+      const meta = JSON.parse(fs.readFileSync(base + '.part.json', 'utf8'));
+      if (meta.stamp === stamp) {
+        const buf = fs.readFileSync(base + '.part.bin');
+        field.set(new Float32Array(buf.buffer, buf.byteOffset, res * res));
+        for (const j of meta.rows) { rowDone[j] = 1; carried++; }
+        console.log(`  resuming: ${carried}/${res} rows already on disk`);
+      } else {
+        console.log('  ignoring stale part file (different sweep)');
       }
-      doneRows += m.progress - last; last = m.progress;
+    } catch (e) { console.log('  unreadable part file, starting over:', e.message); }
+  }
+
+  const t0 = Date.now();
+  const pending = [];
+  for (let j = 0; j < res; j++) if (!rowDone[j]) pending.push(j);
+
+  // Round-robin rather than contiguous blocks: rows differ wildly in cost (a row through the middle
+  // of the board is all legal cells, a row near the rim is mostly masked), so contiguous blocks
+  // leave one worker grinding for an hour after the others have finished.
+  const lanes = Array.from({ length: threads }, () => []);
+  pending.forEach((j, k) => lanes[k % threads].push(j));
+
+  let doneRows = carried, lastSave = Date.now();
+  const saveMs = 30000;
+  const savePart = () => {
+    const rows = [];
+    for (let j = 0; j < res; j++) if (rowDone[j]) rows.push(j);
+    fs.writeFileSync(base + '.part.bin.tmp', Buffer.from(field.buffer));
+    fs.renameSync(base + '.part.bin.tmp', base + '.part.bin');
+    fs.writeFileSync(base + '.part.json.tmp', JSON.stringify({ stamp, rows }));
+    fs.renameSync(base + '.part.json.tmp', base + '.part.json');
+  };
+
+  await Promise.all(lanes.map(rows => new Promise((resolve, reject) => {
+    if (!rows.length) return resolve();
+    const w = new Worker(__filename, { workerData: { model, pose, res, rows, ply, rung, win } });
+    w.on('message', m => {
+      if (m.done) return;
+      field.set(new Float32Array(m.buf), m.row * res);
+      rowDone[m.row] = 1;
+      doneRows++;
+      if (Date.now() - lastSave > saveMs) { savePart(); lastSave = Date.now(); }
       const pct = (100 * doneRows / res).toFixed(0);
       process.stdout.write(`\r  ${pct}%  ${((Date.now() - t0) / 1000).toFixed(0)}s   `);
     });
@@ -229,14 +282,14 @@ async function main() {
   let n = 0, mn = Infinity, mx = -Infinity, sum = 0;
   for (const v of field) if (Number.isFinite(v)) { n++; sum += v; if (v < mn) mn = v; if (v > mx) mx = v; }
 
-  const base = path.join(outDir, `${tag}__${pose}__${res}`);
   fs.writeFileSync(base + '.bin', Buffer.from(field.buffer));
   fs.writeFileSync(base + '.json', JSON.stringify({
     tag, model, pose, res, ply, rung, keep: ply >= 1 ? SEARCH_KEEP : null,
-    extent: E, cell, crossEps: eng.CFG.crossEps,
+    extent: half, cx, cy, half, boardEdge: E, cell, crossEps: eng.CFG.crossEps,
     kind: info.kind, params: info.params, sizes: info.sizes,
     live: n, min: mn, max: mx, mean: sum / n, seconds: secs, decidedWin, decidedLoss,
     opponent: ref.op, meRot: ref.meRot, active: ref.active,
   }, null, 1));
+  for (const f of [base + '.part.bin', base + '.part.json']) if (fs.existsSync(f)) fs.unlinkSync(f);
   console.log(`\r  done ${secs.toFixed(0)}s  live=${n}  range=[${mn.toFixed(4)}, ${mx.toFixed(4)}]  -> ${base}.bin`);
 }
