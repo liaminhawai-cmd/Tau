@@ -386,9 +386,23 @@ function nnPlanFor(eng, net, idx, opts) {
     // could never reach. Every legal waypoint was still generated and every throw is protected;
     // this changes the narrow deep-search frontier only. Legacy policies retain the old shallow-
     // value shortlist exactly.
+    // o.keepDiverse: fill the frontier one candidate PER ARM first (each arm's best), then by score.
+    // Measured on the L10 depth-2 map's forced-loss cells: the greedy top-k is twelve neighbouring
+    // stops on one attractive-but-losing arm once stops are sampled densely, so the search keeps
+    // missing the victim's small escape on another arm -- keep 12 at 1-degree stops called 11 of 15
+    // certified-escapable cells dead, WORSE than keep 12 at 9 degrees (5 of 15). Opt-in; the
+    // default frontier is bit-identical to before.
+    const byArm = () => {
+      const bestOf = new Map();
+      for (const c of cands) { const k = c.pivotIdx * 2 + (c.dir > 0 ? 0 : 1); if (!bestOf.has(k)) bestOf.set(k, c); }
+      const heads = [...bestOf.values()].sort((a, b) => b.s - a.s).slice(0, keep);
+      const chosen = new Set(heads);
+      for (const c of cands) { if (heads.length >= keep) break; if (!chosen.has(c)) { heads.push(c); chosen.add(c); } }
+      return heads;
+    };
     const deepCands = jointActions
       ? cands.slice().sort((a, b) => (b.prior || 0) - (a.prior || 0)).slice(0, keep)
-      : cands.slice(0, keep);
+      : o.keepDiverse ? byArm() : cands.slice(0, keep);
     let bestDeep = -Infinity;
     for (const c of deepCands) {
       eng.applyPlanSearch(c);   // hypothetical: must not file into koHist or tick the move cap
@@ -396,7 +410,7 @@ function nnPlanFor(eng, net, idx, opts) {
       let deep;
       if (g1.over) deep = g1.winner === idx ? 1e6 : -1e6;
       else {
-        const oppPlan = nnPlanFor(eng, net, 1 - idx, { temperature: 0, depth: depth - 1, keepForDepth: o.keepForDepth, rawRoot: o.rawRoot,
+        const oppPlan = nnPlanFor(eng, net, 1 - idx, { temperature: 0, depth: depth - 1, keepForDepth: o.keepForDepth, rawRoot: o.rawRoot, keepDiverse: o.keepDiverse,
                                                       policy: o.policy, policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride, evalFn: o.evalFn, sweepDeg: o.sweepDeg, parkStops: o.parkStops,
                                                       dual: o.dual, dualPolicy: o.dualPolicy,
                                                       abCut: o.abCut,
