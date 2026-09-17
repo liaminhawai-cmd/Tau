@@ -199,6 +199,30 @@ function verifyAllReplies(pieces, mover, K, replyStepDeg, safety, lipFloor) {
   if (unresolved) return { certified: false, status: 'unresolved', why: unresolved, worstMargin };
   return { certified: true, status: 'dead', worstMargin };
 }
+// The family profile: from a parent position with `mover` to move, every reply arm sampled every
+// `stepDeg`, and at each stop the other side's best throw margin -- so an arm reads as segments,
+// "stops 2-14 degrees dead, 14-43 alive". This is the class description: every position in a
+// dead segment is one you reach from the same parent by the same arm, and is lost.
+function familyProfile(pieces, mover, K, stepDeg) {
+  const other = 1 - mover, arms = [];
+  for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
+    const fam = replyFamily(pieces, mover, pv, dir, K); if (!fam) { arms.push({ pv, dir, legal: false }); continue; }
+    const stepRad = (stepDeg || 2) * Math.PI / 180, stops = [];
+    for (let a = MIN_MOVE; ; a += stepRad) {
+      const last = a >= fam.lim - 1e-9, at = last ? fam.lim : a;
+      const rec = fam.out.record.find(q => q.alpha >= at - 1e-9) || fam.out.record[fam.out.record.length - 1];
+      const p = pieces.map(q => ({ ...q })); p[mover] = moverAt(pieces[mover], pv, dir, rec.alpha); p[other] = { x: rec.x, y: rec.y, rot: rec.rot };
+      const thrown = rec.maxFootR > EDGE;                                       // the reply itself throws the other side
+      const bt = thrown ? null : bestThrow(p, other, K);
+      stops.push({ deg: +(rec.alpha * 180 / Math.PI).toFixed(1), margin: thrown ? -Infinity : +bt.margin.toFixed(2), wins: thrown });
+      if (last) break;
+    }
+    // segments of equal fate
+    const segs = []; for (const st of stops) { const fate = st.wins ? 'WINS' : st.margin > 0 ? 'dead' : 'alive'; const L = segs[segs.length - 1]; if (L && L.fate === fate) { L.to = st.deg; L.n++; } else segs.push({ fate, from: st.deg, to: st.deg, n: 1 }); }
+    arms.push({ pv, dir, legal: true, limitDeg: +(fam.lim * 180 / Math.PI).toFixed(1), stops, segments: segs });
+  }
+  return arms;
+}
 // The engine's check of an ESCAPE claim: play the escaping reply, then sweep every attacker arc;
 // the attacker must find no throw.
 function simCheckEscape(pieces, victim, esc) {
@@ -261,7 +285,7 @@ function simCheckDead(pieces, victim, n) {
   return { agree, n, fails };
 }
 
-module.exports = { load, swingLimit, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, simCheckForcedIn2, simCheckDead, simCheckEscape };
+module.exports = { load, swingLimit, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, simCheckForcedIn2, simCheckDead, simCheckEscape, familyProfile };
 
 // A victim with one foot `inside` u from the rim and the attacker 26-44u from that foot on the
 // inward side, not touching.
@@ -310,7 +334,36 @@ function report(v, pieces, victim, label) {
   } else { T.unresolved++; console.log(`  unresolved: ${label} -- ${v.why}`); }
 }
 
-if (require.main === module && process.argv[2] === '--pos') {
+if (require.main === module && process.argv[2] === '--catalog') {
+  // A catalogue of the obvious families: a victim with one foot `inside` u from the rim at the
+  // 12 o'clock rim point, turned `vrot` from radial; the attacker `dist` from that foot at approach
+  // angle `approach` (0 = straight inward of the foot), turned `arot`. Each grid point is tagged
+  // win-in-1 (attacker to move) and, when the attacker has a throw, whether the VICTIM to move is
+  // dead or has an escape. Rows go to --out (default nn/catalog-rim.jsonl); classes are the
+  // contiguous runs of equal verdict along each parameter.
+  const fs = require('fs'), K = REPLICA, outPath = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : 'nn/catalog-rim.jsonl';
+  const hubMax = eng.CFG.edgeU - R - eng.CFG.edgeEps, t0 = Date.now();
+  const insides = [1, 2, 3, 4.5, 6], vrots = [0, 45, 90, 135], dists = [26, 30, 34, 38, 42], approaches = [-60, -30, 0, 30, 60], arots = [0, 40, 80];
+  const T = { skipped: 0, win1: 0, dead: 0, escape: 0, unresolved: 0, safe: 0 }; let n = 0;
+  for (const inside of insides) for (const vrot of vrots) for (const dist of dists) for (const approach of approaches) for (const arot of arots) {
+    const fr = eng.CFG.edgeU - inside, fx = 0, fy = fr;                         // exposed foot at 12 o'clock
+    const v = { rot: (90 + vrot) * Math.PI / 180 }; v.x = fx - Math.cos(v.rot) * R; v.y = fy - Math.sin(v.rot) * R;   // foot 0 is the exposed one
+    const aa = (-90 + approach) * Math.PI / 180, a = { x: fx + dist * Math.cos(aa), y: fy + dist * Math.sin(aa), rot: arot * Math.PI / 180 };
+    const pieces = [v, a];                                                       // blue = victim, red = attacker
+    if (Math.hypot(v.x, v.y) > hubMax || Math.hypot(a.x, a.y) > hubMax || anyOff(v) || anyOff(a)) { T.skipped++; continue; }
+    const bt = bestThrow(pieces, 1, K); if (!Number.isFinite(bt.margin)) { T.skipped++; continue; }   // touching
+    const row = { inside, vrot, dist, approach, arot, p: [v.x, v.y, v.rot, a.x, a.y, a.rot], win1: bt.margin > 0, win1Margin: +bt.margin.toFixed(2), win1Arc: [bt.pv, bt.dir] };
+    if (bt.margin > 0) {
+      T.win1++;
+      const vv = verifyAllReplies(pieces, 0, K, 2, 3, 1);                        // victim to move: can it get out?
+      row.victimToMove = vv.status; row.victimMargin = Number.isFinite(vv.worstMargin) ? +vv.worstMargin.toFixed(2) : null; if (vv.escape) row.escape = vv.escape;
+      T[vv.status]++;
+    } else T.safe++;
+    fs.appendFileSync(outPath, JSON.stringify(row) + '\n'); n++;
+    if (n % 50 === 0) console.log(`  ${n} rows, ${((Date.now() - t0) / 60000).toFixed(1)} min: ${JSON.stringify(T)}`);
+  }
+  console.log(`\ncatalogue: ${n} positions -> ${outPath}\n  attacker to move: win in one ${T.win1}, no throw ${T.safe}, skipped (off-board/touching) ${T.skipped}\n  of the win-in-one positions, victim to move: dead ${T.dead}, escape ${T.escape}, unresolved ${T.unresolved}`);
+} else if (require.main === module && process.argv[2] === '--pos') {
   // One position, pasted from the lab: node nn/forced-win.js --pos bx,by,brot,rx,ry,rrot --mover 0|1 [--deep]
   // Reports the mover's verdict (dead / escape / unresolved) with the engine's check, the other
   // side's best throw if it were their move instead, and with --deep, whether the escape only leads
@@ -322,6 +375,7 @@ if (require.main === module && process.argv[2] === '--pos') {
   for (const i of [0, 1]) console.log(`${i === 0 ? 'blue' : 'red '} hub (${pieces[i].x.toFixed(1)},${pieces[i].y.toFixed(1)}) feet ` + g.pieces[i].feet().map((f, k) => `${k}:(${f.x.toFixed(1)},${f.y.toFixed(1)}) r=${Math.hypot(f.x, f.y).toFixed(1)}`).join('  '));
   const ob = bestThrow(pieces, other, K); console.log(`if it were ${other === 0 ? 'blue' : 'red'}'s move: best throw arc (${ob.pv},${ob.dir}) margin ${ob.margin.toFixed(2)}u ${ob.margin > 0 ? '-- a throw' : '-- none'}`);
   const mb = bestThrow(pieces, mover, K); console.log(`${mover === 0 ? 'blue' : 'red'} (to move) best throw now: arc (${mb.pv},${mb.dir}) margin ${mb.margin.toFixed(2)}u ${mb.margin > 0 ? '-- wins in one' : '-- none'}`);
+  if (process.argv.includes('--profile')) for (const arm of familyProfile(pieces, mover, K, 2)) console.log(`  arm (${arm.pv},${arm.dir}): ` + (arm.legal ? `to ${arm.limitDeg}deg  ` + arm.segments.map(sg => `${sg.fate} ${sg.from}-${sg.to}`).join(' | ') : 'no legal move'));
   const v = verifyAllReplies(pieces, mover, K, 2, 3, 1);
   console.log(`${mover === 0 ? 'BLUE' : 'RED'} TO MOVE: ${v.status.toUpperCase()} -- ${v.why || `every move certified lost, worst margin ${v.worstMargin.toFixed(2)}u`}`);
   if (v.status === 'dead') { const c = simCheckDead(pieces, mover, 40); console.log(`  engine: ${c.agree}/${c.n} random moves lose to a throw`); }
