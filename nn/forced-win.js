@@ -310,7 +310,34 @@ function report(v, pieces, victim, label) {
   } else { T.unresolved++; console.log(`  unresolved: ${label} -- ${v.why}`); }
 }
 
-if (require.main === module && process.argv[2] === '--mine') {
+if (require.main === module && process.argv[2] === '--pos') {
+  // One position, pasted from the lab: node nn/forced-win.js --pos bx,by,brot,rx,ry,rrot --mover 0|1 [--deep]
+  // Reports the mover's verdict (dead / escape / unresolved) with the engine's check, the other
+  // side's best throw if it were their move instead, and with --deep, whether the escape only leads
+  // into a forced loss in two (level 2 from the post-escape position, the other side attacking).
+  const K = REPLICA, nums = process.argv[3].split(',').map(Number);
+  const mover = process.argv.includes('--mover') ? +process.argv[process.argv.indexOf('--mover') + 1] : 0, other = 1 - mover;
+  const pieces = [{ x: nums[0], y: nums[1], rot: nums[2] }, { x: nums[3], y: nums[4], rot: nums[5] }];
+  const g = load(pieces, mover);
+  for (const i of [0, 1]) console.log(`${i === 0 ? 'blue' : 'red '} hub (${pieces[i].x.toFixed(1)},${pieces[i].y.toFixed(1)}) feet ` + g.pieces[i].feet().map((f, k) => `${k}:(${f.x.toFixed(1)},${f.y.toFixed(1)}) r=${Math.hypot(f.x, f.y).toFixed(1)}`).join('  '));
+  const ob = bestThrow(pieces, other, K); console.log(`if it were ${other === 0 ? 'blue' : 'red'}'s move: best throw arc (${ob.pv},${ob.dir}) margin ${ob.margin.toFixed(2)}u ${ob.margin > 0 ? '-- a throw' : '-- none'}`);
+  const mb = bestThrow(pieces, mover, K); console.log(`${mover === 0 ? 'blue' : 'red'} (to move) best throw now: arc (${mb.pv},${mb.dir}) margin ${mb.margin.toFixed(2)}u ${mb.margin > 0 ? '-- wins in one' : '-- none'}`);
+  const v = verifyAllReplies(pieces, mover, K, 2, 3, 1);
+  console.log(`${mover === 0 ? 'BLUE' : 'RED'} TO MOVE: ${v.status.toUpperCase()} -- ${v.why || `every move certified lost, worst margin ${v.worstMargin.toFixed(2)}u`}`);
+  if (v.status === 'dead') { const c = simCheckDead(pieces, mover, 40); console.log(`  engine: ${c.agree}/${c.n} random moves lose to a throw`); }
+  if (v.status === 'escape' && v.escape) {
+    const c = simCheckEscape(pieces, mover, v.escape); console.log(`  engine confirms the escape: ${c.agree}${c.thrownBy ? ' (NO: still thrown by arc ' + c.thrownBy + ')' : ''}`);
+    if (process.argv.includes('--deep') && !v.escape.throws) {
+      const esc = v.escape, fam = replyFamily(pieces, mover, esc.pv, esc.dir, K);
+      const rec = fam.out.record.find(r => r.alpha >= esc.stop - 1e-9) || fam.out.record[fam.out.record.length - 1];
+      const after = pieces.map(q => ({ ...q })); after[mover] = moverAt(pieces[mover], esc.pv, esc.dir, rec.alpha); after[other] = { x: rec.x, y: rec.y, rot: rec.rot };
+      console.log(`  after the escape: [${after.map(q => `${q.x.toFixed(2)},${q.y.toFixed(2)},${q.rot.toFixed(4)}`).join(',')}] -- does ${other === 0 ? 'blue' : 'red'} have a forced win in two from here?`);
+      const r2 = certifyForcedIn2(after, other, K);
+      if (r2.certified) console.log(`  YES: level ${r2.level} -- ${other === 0 ? 'blue' : 'red'} plays (${r2.witness.pv},${r2.witness.dir}) to ${(r2.witness.stop * 180 / Math.PI).toFixed(1)}deg${r2.detail ? `; every reply certified lost, worst margin ${r2.detail.worstMargin.toFixed(2)}u` : ' and throws'}`);
+      else console.log(`  NO forced win in two certified: ${r2.refuted}/${r2.tried} attacking moves refuted by an escape, ${r2.unresolvedN}/${r2.tried} unresolved`);
+    }
+  }
+} else if (require.main === module && process.argv[2] === '--mine') {
   // Real dead positions from real games. Every recorded row carries the raw pose (p = blue x,y,rot,
   // red x,y,rot) and the mover (m); a game's rows are contiguous under one tag (g), and a decided
   // game's last row is the winner's position before the throw (z ~ +1). The row before it is the
