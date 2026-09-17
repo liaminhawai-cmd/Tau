@@ -227,6 +227,32 @@ function familyProfile(pieces, mover, K, stepDeg) {
   }
   return arms;
 }
+// A DEAD verdict over a box of the victim's poses (the attacker held): every grid sample must
+// certify dead with its worst margin clearing the cell diagonal times a Lipschitz allowance taken
+// from the grid's steepest finite difference (never under 1). Sample verdicts other than dead
+// refuse the box outright. This is what turns a dead POINT into a dead REGION -- and a region is
+// what the next rung needs, because "every victim move lands in a forced win in two" can only be
+// tested against regions, never against the curves a single dead point unwinds into.
+function certifyDeadBox(pieces, victim, box, h, K, opts) {
+  const safety = (opts && opts.safety) || 3, lipFloor = (opts && opts.lipFloor) || 1;
+  const axis = (lo, hi, step) => { const n = Math.max(1, Math.ceil((hi - lo) / step)); return Array.from({ length: n + 1 }, (_, i) => lo + (hi - lo) * i / n); };
+  const xs = axis(box.x[0], box.x[1], h), ys = axis(box.y[0], box.y[1], h), rs = axis(box.rot[0], box.rot[1], h / R);
+  const grid = new Map(), key = (i, j, k) => `${i},${j},${k}`; let minMargin = Infinity, worstLip = 0, refuse = null;
+  for (let i = 0; i < xs.length && !refuse; i++) for (let j = 0; j < ys.length && !refuse; j++) for (let k = 0; k < rs.length && !refuse; k++) {
+    const p = pieces.map(q => ({ ...q })); const v = p[victim]; v.x = xs[i]; v.y = ys[j]; v.rot = rs[k];
+    const r = verifyAllReplies(p, victim, K, 2, 3, 1);
+    if (r.status !== 'dead') { refuse = `sample (${i},${j},${k}) is ${r.status}: ${r.why}`; break; }
+    grid.set(key(i, j, k), r.worstMargin); minMargin = Math.min(minMargin, r.worstMargin);
+  }
+  if (refuse) return { certified: false, why: refuse, samples: grid.size };
+  const dx = xs.length > 1 ? xs[1] - xs[0] : 1, dy = ys.length > 1 ? ys[1] - ys[0] : 1, dr = rs.length > 1 ? (rs[1] - rs[0]) * R : 1;
+  for (let i = 0; i < xs.length; i++) for (let j = 0; j < ys.length; j++) for (let k = 0; k < rs.length; k++) {
+    const a = grid.get(key(i, j, k));
+    for (const [n, d] of [[key(i + 1, j, k), dx], [key(i, j + 1, k), dy], [key(i, j, k + 1), dr]]) { const b = grid.get(n); if (b != null) worstLip = Math.max(worstLip, Math.abs(a - b) / d); }
+  }
+  const lip = Math.max(lipFloor, safety * worstLip), need = lip * Math.hypot(dx, dy, dr) / 2;
+  return { certified: minMargin > need, minMargin, need, lip, samples: grid.size, why: minMargin > need ? null : `min worst-margin ${minMargin.toFixed(2)}u under the allowance ${need.toFixed(2)}u` };
+}
 // The engine's check of an ESCAPE claim: play the escaping reply, then sweep every attacker arc;
 // the attacker must find no throw.
 function simCheckEscape(pieces, victim, esc) {
@@ -289,7 +315,7 @@ function simCheckDead(pieces, victim, n) {
   return { agree, n, fails };
 }
 
-module.exports = { load, swingLimit, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, simCheckForcedIn2, simCheckDead, simCheckEscape, familyProfile };
+module.exports = { load, swingLimit, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, simCheckForcedIn2, simCheckDead, simCheckEscape, familyProfile, certifyDeadBox };
 
 // A victim with one foot `inside` u from the rim and the attacker 26-44u from that foot on the
 // inward side, not touching.
@@ -338,7 +364,18 @@ function report(v, pieces, victim, label) {
   } else { T.unresolved++; console.log(`  unresolved: ${label} -- ${v.why}`); }
 }
 
-if (require.main === module && process.argv[2] === '--back-from') {
+if (require.main === module && process.argv[2] === '--dead-box') {
+  // node nn/forced-win.js --dead-box bx,..,rrot --mover m [--half 0.5] [--h 0.5]: the dead verdict
+  // over a box of the mover's poses, then the engine on random poses in the box (every move lost).
+  const K = REPLICA, nums = process.argv[3].split(',').map(Number);
+  const mover = process.argv.includes('--mover') ? +process.argv[process.argv.indexOf('--mover') + 1] : 0;
+  const half = process.argv.includes('--half') ? +process.argv[process.argv.indexOf('--half') + 1] : 0.5, h = process.argv.includes('--h') ? +process.argv[process.argv.indexOf('--h') + 1] : 0.5;
+  const D = [{ x: nums[0], y: nums[1], rot: nums[2] }, { x: nums[3], y: nums[4], rot: nums[5] }], v = D[mover];
+  const box = { x: [v.x - half, v.x + half], y: [v.y - half, v.y + half], rot: [v.rot - half / R, v.rot + half / R] }, t0 = Date.now();
+  const c = certifyDeadBox(D, mover, box, h, K);
+  console.log(`dead box +-${half}u around ${mover === 0 ? 'blue' : 'red'} (grid ${h}u, ${c.samples} samples, ${((Date.now() - t0) / 60).toFixed(0)}s): ${c.certified ? `CERTIFIED -- min worst-margin ${c.minMargin.toFixed(2)}u > ${c.need.toFixed(2)}u (lip ${c.lip.toFixed(2)})` : 'refused -- ' + c.why}`);
+  if (c.certified) { let agree = 0, n = 25; for (let t = 0; t < n; t++) { const p = D.map(q => ({ ...q })); const w = p[mover]; w.x = box.x[0] + Math.random() * 2 * half; w.y = box.y[0] + Math.random() * 2 * half; w.rot = box.rot[0] + Math.random() * 2 * half / R; const s = simCheckDead(p, mover, 8); if (s.agree === s.n) agree++; } console.log(`  engine: ${agree}/${n} random poses in the box lose every one of 8 random moves to a throw`); }
+} else if (require.main === module && process.argv[2] === '--back-from') {
   // Backward families from a certified DEAD position: node nn/forced-win.js --back-from bx,..,rrot --mover m
   // `mover` is the side to move in D (the dead side); the OTHER side just swung into D. Unwinding
   // each of its six arms gives the positions it could have come from; wherever the forward swing
