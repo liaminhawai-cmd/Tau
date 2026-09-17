@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-09-17T11:01:51.731Z_
+_Last updated: 2026-09-17T11:01:54.840Z_
 
 **Self-play batch:** 134
-**Stage:** resume-train (6 epochs, started 2026-09-17T11:01:51.731Z)
+**Stage:** self-play batch 134 running, next check in 5 min
 **mix:** (see selfplay log: fixed-rung training reference)
 
 **Dual pool:** (not initialized yet)
