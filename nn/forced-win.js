@@ -299,12 +299,24 @@ function report(v, pieces, victim, label) {
 if (require.main === module && process.argv[2] === '--dead-map') {
   // Real dead positions: the cells a searched danger map marked forced-lost at ply 2 (the mover has
   // no move that escapes a throw). Reconstruct each cell's position and certify it.
+  // A finished map (.json + .bin, losses clamped to the map's min) or a map still being swept
+  // (.part.json + .part.bin, losses still at the raw -1e6, the pose taken from a sibling map's json
+  // given as the 5th argument -- every swing1 map shares it).
   const fs = require('fs'), base = process.argv[3], N = +(process.argv[4] || 30), K = REPLICA;
-  const j = JSON.parse(fs.readFileSync(base + '.json', 'utf8')), buf = fs.readFileSync(base + '.bin');
-  const field = new Float32Array(buf.buffer, buf.byteOffset, j.res * j.res);
-  const lossVal = j.min, cells = [];
-  for (let k = 0; k < field.length; k++) if (Number.isFinite(field[k]) && Math.abs(field[k] - lossVal) < 1e-4) cells.push(k);
-  console.log(`${base}: ${j.decidedLoss} forced-loss cells recorded, ${cells.length} found at the clamp value; certifying ${Math.min(N, cells.length)} of them`);
+  let j, field, isLoss;
+  if (fs.existsSync(base + '.json')) {
+    j = JSON.parse(fs.readFileSync(base + '.json', 'utf8')); const buf = fs.readFileSync(base + '.bin');
+    field = new Float32Array(buf.buffer, buf.byteOffset, j.res * j.res); const lossVal = j.min; isLoss = v => Math.abs(v - lossVal) < 1e-4;
+  } else {
+    const part = JSON.parse(fs.readFileSync(base + '.part.json', 'utf8')), stamp = JSON.parse(part.stamp);
+    j = { ...JSON.parse(fs.readFileSync(process.argv[5], 'utf8')), res: stamp.res, cx: stamp.cx, cy: stamp.cy, half: stamp.half, decidedLoss: '?' };
+    const buf = fs.readFileSync(base + '.part.bin'); field = new Float32Array(buf.buffer, buf.byteOffset, j.res * j.res);
+    const done = new Set(part.rows); isLoss = (v, k) => done.has(Math.floor(k / j.res)) && v <= -1e5;
+    console.log(`partial map: ${part.rows.length}/${j.res} rows swept`);
+  }
+  const cells = [];
+  for (let k = 0; k < field.length; k++) if (Number.isFinite(field[k]) && isLoss(field[k], k)) cells.push(k);
+  console.log(`${base}: ${j.decidedLoss} forced-loss cells recorded, ${cells.length} found; certifying ${Math.min(N, cells.length)} of them`);
   const half = j.half != null ? j.half : j.extent, cx = j.cx || 0, cy = j.cy || 0, cell = 2 * half / j.res;
   for (let t = 0; t < N && cells.length; t++) {
     const k = cells.splice(Math.floor(Math.random() * cells.length), 1)[0], i = k % j.res, row = Math.floor(k / j.res);
