@@ -21,6 +21,10 @@ const SEEDS = [
   // via the rules engine's own dependency closure, but they're seeded explicitly so a future
   // refactor of applySwing/ladderEval can't silently drop them and break featurisation instead.
   'angInSpan', 'nearLineIds', 'lineDistOf', 'lineSideOf', 'LINE_INTERSECTIONS',
+  // the corner-crossing veto: a rules-exact "can they cross a corner next turn?" and the stop
+  // nudge that answers it. Nothing in the app calls these yet -- they exist to be rated in the
+  // league as a modifier on a rung -- so nothing else would drag them into the closure.
+  'oppTwoForOneAvailable', 'ladderPlanVeto',
 ];
 
 function topLevelDefs(src) {
@@ -50,12 +54,26 @@ function topLevelDefs(src) {
     }
     if (end < 0) continue;
     const text = src.slice(start, end);
-    // register every name a multi-declarator line introduces (let a = 1, b = 2;)
+    // Register every name a multi-declarator line introduces (let a = 1, b = 2;) -- but ONLY the
+    // ones in the declaration HEAD, at paren/brace depth 0. Scanning the whole definition for
+    // ", name =" also scoops up locals inside an IIFE body, and then any picked def that merely
+    // uses that name as a loop variable or lambda parameter drags the whole unrelated def into the
+    // closure. That is not hypothetical: FALL_HULL_LOCAL's body declares `R`, LINE_INTERSECTIONS
+    // (a seed) has a `.map((R,k) => ...)`, and the 3D hull came along with THREE attached.
     const names = [m[2]];
     if (kind === 'const' || kind === 'let') {
-      const flat = text.replace(/\n/g, ' ');
-      const extra = flat.match(/,\s*([A-Za-z_$][\w$]*)\s*=/g) || [];
-      for (const e of extra) names.push(e.replace(/[,=\s]/g, ''));
+      const bare = stripCommentsAndStrings(text);
+      let depth = 0;
+      for (let k = 0; k < bare.length; k++) {
+        const c = bare[k];
+        if (c === '(' || c === '[' || c === '{') depth++;
+        else if (c === ')' || c === ']' || c === '}') depth--;
+        else if (c === ';' && depth === 0) break;
+        else if (c === ',' && depth === 0) {
+          const r = /^\s*([A-Za-z_$][\w$]*)\s*=/.exec(bare.slice(k + 1));
+          if (r) names.push(r[1]);
+        }
+      }
     }
     defs.push({ names, text, pos: start });
     re.lastIndex = end;
@@ -89,15 +107,36 @@ function stripCommentsAndStrings(s) {
 // (mtimeMs + size): cache the built source string and skip straight past the closure walk when
 // index.html hasn't moved since the cache was written. A miss or a corrupt cache just falls through
 // to the unchanged rebuild path below, so this can only make a run faster, never wrong.
+// Every seed has to be DEFINED in the emitted source, not merely mentioned in it -- `oppFoo` used
+// inside another function's body is not `oppFoo` existing.
+function seedsDefinedIn(source) {
+  return SEEDS.every(s => new RegExp('(^|\\n)\\s*(function\\s+|const\\s+|let\\s+|var\\s+|class\\s+)' +
+                                     s.replace(/\$/g, '\\$') + '\\b').test(source));
+}
+
 const HTML_PATH = path.join(__dirname, '..', 'index.html');
 const ENGINE_CACHE_PATH = path.join(__dirname, '.engine-cache.json');
 
+// The key covers index.html AND THIS FILE. What actually runs is index.html's extracted closure
+// plus createEngine's own __exports tail and the SEEDS that root the walk -- and those two live
+// here, not there. Keying on index.html alone let a rename in this file land against a body cached
+// from before it: every worker died with `<name> is not defined` at the exports line, because a
+// cache hit returns before the seed-existence check below and so nothing compared the tail to the
+// body. Live trainer, every rating match, one push. Both halves of the program are in the key now.
+function cacheKeyFor() {
+  const h = fs.statSync(HTML_PATH), s = fs.statSync(__filename);
+  return `${h.mtimeMs}:${h.size}|${s.mtimeMs}:${s.size}|${SEEDS.join(',')}`;
+}
+
 function buildEngineSource() {
-  const stat = fs.statSync(HTML_PATH);
-  const cacheKey = stat.mtimeMs + ':' + stat.size;
+  const cacheKey = cacheKeyFor();
   try {
     const cached = JSON.parse(fs.readFileSync(ENGINE_CACHE_PATH, 'utf8'));
-    if (cached.key === cacheKey && typeof cached.source === 'string') return cached.source;
+    // Verified on the way out of the cache as well as on the way in: a key can only prove the
+    // inputs are unchanged, and this proves the thing being returned actually defines what the
+    // tail is about to reference. A stale or hand-edited cache now rebuilds instead of exploding.
+    if (cached.key === cacheKey && typeof cached.source === 'string' && seedsDefinedIn(cached.source))
+      return cached.source;
   } catch (e) { /* no cache yet, or unreadable/corrupt -- fall through and rebuild */ }
 
   const html = fs.readFileSync(HTML_PATH, 'utf8');
@@ -122,10 +161,11 @@ function buildEngineSource() {
   }
   const code = [...picked].sort((a, b) => a.pos - b.pos).map(d => d.text).join('\n');
   const bare = stripCommentsAndStrings(code);
-  if (/document\.|getElementById|localStorage/.test(bare))
+  if (/(?<![.\\w$])THREE\\b|(?<![.\\w$])window\\b|document\\.|getElementById|localStorage/.test(bare))
     throw new Error('extracted engine pulled in DOM code — the closure reached too far');
   if (!/(^|\n)let G;/.test(code)) throw new Error("closure missed the game's `let G;` declaration");
   const source = code + '\n';
+  if (!seedsDefinedIn(source)) throw new Error('extracted engine is missing a seed definition');
   try { fs.writeFileSync(ENGINE_CACHE_PATH, JSON.stringify({ key: cacheKey, source })); }
   catch (e) { /* best-effort -- a write failure just costs the next process the rebuild, nothing more */ }
   return source;
@@ -183,6 +223,7 @@ __exports = {
   directionToward, aiChoosePlan, simMoveToLimit, searchedPlanFor,
   AI_LADDER, ladderPlanFor, ladderEval,
   angInSpan, nearLineIds, lineDistOf, lineSideOf, LINE_INTERSECTIONS,
+  oppTwoForOneAvailable, ladderPlanVeto,
   newGame: __newGame, applyPlan: __applyPlan, applyPlanSearch: __applyPlanSearch,
   getG: () => G, setActive: a => { G.active = a; },
 };`, sandbox, { filename: 'tau-engine-extract.js' });

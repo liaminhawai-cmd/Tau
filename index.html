@@ -5051,6 +5051,86 @@ function ladderCornerSetupStops(idx, pv, d){
     ladderRestore(snap0);
     return stops;
 }
+// ---------- corner-crossing veto (an experimental modifier any rung can wear) ----------
+// A printed corner is a point where two lines meet, so a pad that passes through one touches BOTH
+// inside a single crossing episode -- two lines for the price of the turn's one crossing (the
+// budget block above bills an episode once, however many lines it spans). That is the manoeuvre a
+// human learns to deny, and denying it needs no evaluator: whether the opponent HAS one is pure
+// geometry, decided by where the pieces sit and nothing else.
+//
+// This is the cheap half of a ply. A depth-2 search answers "what is their best reply" by scoring
+// every reply with an evaluator that may or may not have learned what a corner is worth; this asks
+// one yes/no question the rules settle exactly, for the cost of six sweeps.
+//
+// `stepRad` is the OBSERVATION step, not the physics step (applySwing substeps at CFG.substepDeg
+// whatever this is). Resolution does NOT matter here, which is worth stating because it is not
+// obvious and an earlier version of this file claimed the opposite: G.justCrossed ACCUMULATES over
+// the turn, so the sweep reads the same set whenever it looks rather than having to land on the
+// substep where a foot sits on the corner. Measured over 192 sampled positions, 3/1/0.4 degrees
+// flag 102/101/102 of them. (The earlier claim that 3 degrees missed 88% was measuring the buggy
+// instantaneous detector this replaced, not the board.) Kept at the planning step.
+const CORNER_VETO_STEP = 3 * Math.PI/180;
+// What is actually being denied is a TWO-FOR-ONE: the turn's crossing budget is 1, so getting a
+// foot past two printed lines while being billed once is a free line. Rounding a printed corner is
+// how that happens (the two lines meet, so one continuous crossing takes both), and it is what the
+// centre-spin rides.
+//
+// Detected as the engine's own OUTPUT rather than by reimplementing its rule: sweep, and watch for
+// two distinct ids in G.justCrossed while G.crossings is still 1. An earlier version of this tried
+// to re-derive crossingSubstep's `roundingCorner` condition directly and got it wrong -- it read
+// the corner allowance as "both lines fresh", which silently excluded the centre-spin, whose ring
+// contact dates from turn start and is free for a different reason. Reading what the board actually
+// billed cannot drift from the rules that way.
+//
+// This counts a two-for-one taken by two different feet as well as by one foot rounding a corner.
+// That is deliberate: it is the same free line either way, and it is the advantage, not the
+// mechanism, that the veto exists to deny.
+function oppTwoForOneAvailable(opp, stepRad){
+    const step=stepRad || CORNER_VETO_STEP;
+    const snap0=takeSnap(), origActive=G.active;
+    let found=false;
+    for (let pv=0; pv<3 && !found; pv++) for (const d of [1,-1]){
+        ladderRestore(snap0); G.active=opp; pinFoot(pv);
+        let guard=0;
+        while (!G.atLimit && Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && guard++ < 2000){
+            applySwing(d*step);
+            if (G.pieces[opp].anyFootOff()) break;
+            if (G.crossings > 0 && new Set(G.justCrossed||[]).size >= 2){ found=true; break; }
+        }
+        if (found) break;
+    }
+    ladderRestore(snap0); G.active=origActive;
+    return found;
+}
+// Move only the STOP, never the arm or the direction: this refines the rung's own move rather than
+// replacing it, so a rung wearing the veto is still recognisably itself. Steps shorter first, then
+// longer, in `stepDeg` increments, and takes the first stop that plays legally and leaves the
+// opponent no corner crossing. If every reachable stop on the arm hands them one, the rung's own
+// choice stands -- the veto never makes a move worse than the one it was given.
+function ladderPlanVeto(idx, plan, stepDeg, maxSteps){
+    if (!plan || !(Math.abs(plan.targetRad) > 0)) return plan;
+    const snap0=takeSnap(), origActive=G.active, opp=1-idx;
+    const step=(stepDeg||3)*Math.PI/180, tries=Math.max(1, maxSteps||4), base=Math.abs(plan.targetRad);
+    // Play `rad` on the rung's arm and report what it leaves the opponent. null = not playable at
+    // all (under the minimum move, or the swing cannot reach it cleanly).
+    const probe=rad=>{
+        if (rad < HARD_MIN_MOVE_RAD) return null;
+        ladderRestore(snap0); G.active=idx;
+        if (!ladderSwingTo(idx, plan.pivotIdx, plan.dir, rad)) return null;
+        // A throw ends the game: never talk the rung out of one to tidy up a corner.
+        if (G.pieces[opp].anyFootOff()) return {win:true};
+        return {win:false, corner:oppTwoForOneAvailable(opp)};
+    };
+    const b=probe(base);
+    ladderRestore(snap0); G.active=origActive;
+    if (!b || b.win || !b.corner) return plan;                 // nothing to veto
+    for (let k=1; k<=tries; k++) for (const rad of [base-k*step, base+k*step]){
+        const r=probe(rad);
+        ladderRestore(snap0); G.active=origActive;
+        if (r && (r.win || !r.corner)) return {...plan, targetRad:rad, vetoStep:(rad<base?-k:k)};
+    }
+    return plan;
+}
 // L11's eval, used for the red-side choice between the two back feet when the rung wearing the
 // opening has no positional eval of its own (L1, L2, the noise rungs).
 const CORNER_CHOICE_W = {margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2};
@@ -5101,6 +5181,32 @@ function ladderPlanCorner(idx, w, o, fallback){
         G.cornerBook[idx]={ at:1, pivotIdx:pick.pivotIdx, dir:pick.dir, crossFoot, firstDeg:pick.targetRad*180/Math.PI };
         return { pivotIdx:pick.pivotIdx, dir:pick.dir, targetRad:pick.targetRad };
     }
+    // Move 3: the swing back through the corner move 2 set up. The book owns the pivot (the crossed
+    // foot, which is sitting a foot-to-foot length from the corner precisely so the swing about it
+    // rounds that corner) and the direction -- the reverse of the book's own, the one that carries
+    // the hub inward. Only the stop is the rung's, scored with its own eval: "stopping where the
+    // rung's own eval likes". Leaving the pivot to the rung too threw the setup away -- it pinned a
+    // different foot and the piece stopped inside the corner.
+    if (bk.at===2){
+        const B3=bk.crossFoot, d3=-bk.dir;
+        if (B3==null) return done();
+        const step=(o.sampleDeg||6)*Math.PI/180;
+        let best=null;
+        const consider=a=>{ const q=ladderEval(idx,w)+(G.pieces[1-idx].anyFootOff()?HARD_WIN_BONUS:0);
+                            if (!best || q>best.q) best={q,targetRad:a}; };
+        ladderRestore(snap0); G.active=idx; pinFoot(B3);
+        let g3=0, lastMark=0;
+        while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && g3++ < 500){
+            applySwing(d3*AI_STEP_RAD); const a=Math.abs(G.netRad);
+            if (a-lastMark >= step && a >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()){ lastMark=a; consider(a); }
+        }
+        if (Math.abs(G.netRad) >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()) consider(Math.abs(G.netRad));
+        ladderRestore(snap0); G.active=origActive;
+        if (!best) return done();
+        G.cornerBook[idx]={ ...bk, at:3, thirdDeg:best.targetRad*180/Math.PI };
+        G.cornerDone[idx]=true;   // the line is played out; from here the rung is simply itself
+        return { pivotIdx:B3, dir:d3, targetRad:best.targetRad };
+    }
     // Move 2: same pin, same way. The crossed foot takes the next line and stops a few degrees
     // past it -- at the solved setup angle if one lies just past the crossing, else 4 degrees past.
     // The opening survives a nudge but not a shove: the swing's first crossing must be THAT foot
@@ -5123,8 +5229,7 @@ function ladderPlanCorner(idx, w, o, fallback){
     ladderRestore(snap0);
     if (!ladderSwingTo(idx, pv, d, rad)){ ladderRestore(snap0); rad=radAtCross+few; if (!ladderSwingTo(idx, pv, d, rad)) return done(); }
     ladderRestore(snap0); G.active=origActive;
-    G.cornerBook[idx]={ at:2, pivotIdx:pv, dir:d, firstDeg:bk.firstDeg, secondDeg:rad*180/Math.PI, crossDeg:radAtCross*180/Math.PI, solved:!!solved };
-    G.cornerDone[idx]=true;   // from here the rung is L11
+    G.cornerBook[idx]={ at:2, pivotIdx:pv, dir:d, crossFoot:B, firstDeg:bk.firstDeg, secondDeg:rad*180/Math.PI, crossDeg:radAtCross*180/Math.PI, solved:!!solved };
     return { pivotIdx:pv, dir:d, targetRad:rad };
 }
 function ladderProbe(idx, pv, dir){
