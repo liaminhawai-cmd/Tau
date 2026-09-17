@@ -148,45 +148,67 @@ function certifyForcedIn2(pieces, attacker, K, opts) {
   }
   return { level: 2, certified: false, closest: best };
 }
-// For a position with `mover` to reply: does every reply leave the other side a throw?
+// For a position with `mover` to reply: does every reply leave the other side a throw? Three
+// verdicts, never a bare "no": DEAD (certified along every arc), ESCAPE (a sampled stop at which
+// no attacker arc has a positive margin -- a real position, checkable), or UNRESOLVED (margins
+// positive everywhere sampled but too small for the allowance even at the engine's own substep).
+// Gaps that fail the allowance with positive margins at both ends are subdivided before giving up.
 function verifyAllReplies(pieces, mover, K, replyStepDeg, safety, lipFloor) {
-  const other = 1 - mover; let worstMargin = Infinity, legalArcs = 0;
+  const other = 1 - mover; let worstMargin = Infinity, legalArcs = 0, unresolved = null;
+  const minStepRad = eng.CFG.substepDeg * Math.PI / 180;
   for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
     const fam = replyFamily(pieces, mover, pv, dir, K); if (!fam) continue;
     legalArcs++;
-    if (fam.out.maxFootR > EDGE) return { certified: false, why: `reply (${pv},${dir}) throws the attacker`, worstMargin: -Infinity };
-    // sample the stops
-    const stepRad = replyStepDeg * Math.PI / 180, samples = [];
-    for (let s = MIN_MOVE; ; s += stepRad) {
-      const last = s >= fam.lim - 1e-9;
-      const a = last ? fam.lim : s;
-      const rec = fam.out.record.find(r => r.alpha >= a - 1e-9) || fam.out.record[fam.out.record.length - 1];
-      const p = pieces.map(q => ({ ...q })); p[mover] = moverAt(pieces[mover], pv, dir, rec.alpha); p[other] = { x: rec.x, y: rec.y, rot: rec.rot };
+    if (fam.out.maxFootR > EDGE) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) throws the attacker`, escape: { pv, dir, stop: fam.out.offAt, throws: true }, worstMargin: -Infinity };
+    const rec = fam.out.record;
+    const sampleAt = a => {
+      const r = rec.find(q => q.alpha >= a - 1e-9) || rec[rec.length - 1];
+      const p = pieces.map(q => ({ ...q })); p[mover] = moverAt(pieces[mover], pv, dir, r.alpha); p[other] = { x: r.x, y: r.y, rot: r.rot };
       const arcs = [];
       for (let apv = 0; apv < 3; apv++) for (const adir of [1, -1]) { const t = throwMargin(p, other, apv, adir, K); arcs.push({ apv, adir, m: t.margin, sig: signature(t.out) }); }
-      samples.push({ alpha: rec.alpha, arcs });
-      if (last) break;
-    }
-    // cover the arc: between neighbours k, k+1 one attacker arc must clear the allowance at both ends
-    // with a consistent contact history; the pose moves at most 2R per radian of the reply
-    for (let k = 0; k + 1 < samples.length; k++) {
-      const A = samples[k], B = samples[k + 1], gapU = (B.alpha - A.alpha) * 2 * R;
+      return { alpha: r.alpha, arcs, best: Math.max(...arcs.map(x => x.m)) };
+    };
+    const stepRad = replyStepDeg * Math.PI / 180, first = [];
+    for (let a = MIN_MOVE; ; a += stepRad) { const last = a >= fam.lim - 1e-9; first.push(sampleAt(last ? fam.lim : a)); if (last) break; }
+    for (const smp of first) if (!(smp.best > 0)) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) to ${(smp.alpha * 180 / Math.PI).toFixed(1)}deg leaves no throw (best margin ${smp.best.toFixed(2)}u)`, escape: { pv, dir, stop: smp.alpha, bestMargin: smp.best }, worstMargin: Math.min(worstMargin, smp.best) };
+    // certify each gap, subdividing while it fails with positive ends
+    const gaps = []; for (let k = 0; k + 1 < first.length; k++) gaps.push([first[k], first[k + 1]]);
+    while (gaps.length) {
+      const [A, B] = gaps.pop(); const gapU = (B.alpha - A.alpha) * 2 * R;
       let ok = false, bestM = -Infinity;
       for (let i = 0; i < 6; i++) {
         const a = A.arcs[i], b = B.arcs[i];
         if (!Number.isFinite(a.m) || !Number.isFinite(b.m)) continue;
-        const lip = Math.max(lipFloor, safety * Math.abs(a.m - b.m) / Math.max(gapU, 1e-9));
-        const need = lip * gapU / 2;
+        const lip = Math.max(lipFloor, safety * Math.abs(a.m - b.m) / Math.max(gapU, 1e-9)), need = lip * gapU / 2;
         const consistent = a.sig.pairs === b.sig.pairs && (a.sig.onset == null || b.sig.onset == null || Math.abs(a.sig.onset - b.sig.onset) < 5 * Math.PI / 180);
         bestM = Math.max(bestM, Math.min(a.m, b.m));
         if (a.m > need && b.m > need && consistent) { ok = true; break; }
       }
+      if (ok) { worstMargin = Math.min(worstMargin, bestM); continue; }
+      if (B.alpha - A.alpha > minStepRad * 1.5) {                       // subdivide
+        const M = sampleAt((A.alpha + B.alpha) / 2);
+        if (!(M.best > 0)) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) to ${(M.alpha * 180 / Math.PI).toFixed(1)}deg leaves no throw (best margin ${M.best.toFixed(2)}u)`, escape: { pv, dir, stop: M.alpha, bestMargin: M.best }, worstMargin: Math.min(worstMargin, M.best) };
+        gaps.push([A, M], [M, B]); continue;
+      }
+      unresolved = unresolved || `reply (${pv},${dir}) ${(A.alpha * 180 / Math.PI).toFixed(1)}-${(B.alpha * 180 / Math.PI).toFixed(1)}deg: margins positive (${bestM.toFixed(2)}u) but under the allowance at the engine's substep`;
       worstMargin = Math.min(worstMargin, bestM);
-      if (!ok) return { certified: false, why: `reply (${pv},${dir}) stop ${(A.alpha * 180 / Math.PI).toFixed(0)}-${(B.alpha * 180 / Math.PI).toFixed(0)}deg: no throw certified (best min margin ${bestM.toFixed(2)}u)`, worstMargin };
     }
   }
-  if (!legalArcs) return { certified: false, why: 'victim has no legal reply', worstMargin: -Infinity };
-  return { certified: true, worstMargin };
+  if (!legalArcs) return { certified: false, status: 'escape', why: 'victim has no legal reply', worstMargin: -Infinity };
+  if (unresolved) return { certified: false, status: 'unresolved', why: unresolved, worstMargin };
+  return { certified: true, status: 'dead', worstMargin };
+}
+// The engine's check of an ESCAPE claim: play the escaping reply, then sweep every attacker arc;
+// the attacker must find no throw.
+function simCheckEscape(pieces, victim, esc) {
+  const attacker = 1 - victim; let g = load(pieces, victim); eng.pinFoot(esc.pv); let guard = 0;
+  while (!g.atLimit && Math.abs(g.netRad) < esc.stop - 1e-9 && guard++ < 2000) { eng.applySwing(esc.dir * Math.min(Math.PI / 180, esc.stop - Math.abs(g.netRad))); if (g.pieces[attacker].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) return { agree: !!esc.throws }; }
+  const after = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+  for (let apv = 0; apv < 3; apv++) for (const adir of [1, -1]) {
+    g = load(after, attacker); eng.pinFoot(apv); guard = 0;
+    while (!g.atLimit && guard++ < 400) { eng.applySwing(adir * Math.PI / 180); if (g.pieces[victim].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) return { agree: false, thrownBy: [apv, adir] }; }
+  }
+  return { agree: true };
 }
 // The engine's check of a level-2 claim: random replies (arc, stop) played by the engine, then
 // the engine sweeps each attacker arc to its limit looking for a throw.
@@ -238,7 +260,7 @@ function simCheckDead(pieces, victim, n) {
   return { agree, n, fails };
 }
 
-module.exports = { load, swingLimit, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, simCheckForcedIn2, simCheckDead };
+module.exports = { load, swingLimit, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, simCheckForcedIn2, simCheckDead, simCheckEscape };
 
 // A victim with one foot `inside` u from the rim and the attacker 26-44u from that foot on the
 // inward side, not touching.
@@ -260,21 +282,49 @@ function exposedPose(insideLo, insideHi) {
   return null;
 }
 
-if (require.main === module && process.argv[2] === '--dead') {
+// Shared reporting for a verifyAllReplies verdict, with the engine's check of whichever claim it is.
+const T = { dead: 0, deadOK: 0, deadBad: 0, escape: 0, escapeOK: 0, escapeBad: 0, unresolved: 0 };
+function report(v, pieces, victim, label) {
+  if (v.status === 'dead') {
+    T.dead++; const c = simCheckDead(pieces, victim, 30);
+    if (c.agree === c.n) T.deadOK++; else { T.deadBad++; console.log(`  CONTRADICTED: engine found an escape ${c.n - c.agree}/${c.n}: ${JSON.stringify(c.fails.slice(0, 2))}`); }
+    console.log(`  DEAD: ${label} -- every reply certified lost, worst margin ${v.worstMargin.toFixed(2)}u; engine agrees ${c.agree}/${c.n}`);
+  } else if (v.status === 'escape') {
+    T.escape++; const c = simCheckEscape(pieces, victim, v.escape);
+    if (c.agree) T.escapeOK++; else { T.escapeBad++; console.log(`  CONTRADICTED: engine still throws after the escape (arc ${JSON.stringify(c.thrownBy)})`); }
+    console.log(`  escape: ${label} -- ${v.why}; engine agrees ${c.agree}`);
+  } else { T.unresolved++; console.log(`  unresolved: ${label} -- ${v.why}`); }
+}
+
+if (require.main === module && process.argv[2] === '--dead-map') {
+  // Real dead positions: the cells a searched danger map marked forced-lost at ply 2 (the mover has
+  // no move that escapes a throw). Reconstruct each cell's position and certify it.
+  const fs = require('fs'), base = process.argv[3], N = +(process.argv[4] || 30), K = REPLICA;
+  const j = JSON.parse(fs.readFileSync(base + '.json', 'utf8')), buf = fs.readFileSync(base + '.bin');
+  const field = new Float32Array(buf.buffer, buf.byteOffset, j.res * j.res);
+  const lossVal = j.min, cells = [];
+  for (let k = 0; k < field.length; k++) if (Number.isFinite(field[k]) && Math.abs(field[k] - lossVal) < 1e-4) cells.push(k);
+  console.log(`${base}: ${j.decidedLoss} forced-loss cells recorded, ${cells.length} found at the clamp value; certifying ${Math.min(N, cells.length)} of them`);
+  const half = j.half != null ? j.half : j.extent, cx = j.cx || 0, cy = j.cy || 0, cell = 2 * half / j.res;
+  for (let t = 0; t < N && cells.length; t++) {
+    const k = cells.splice(Math.floor(Math.random() * cells.length), 1)[0], i = k % j.res, row = Math.floor(k / j.res);
+    const x = cx - half + (i + 0.5) * cell, y = cy - half + (row + 0.5) * cell;
+    const pieces = [null, null]; pieces[j.active] = { x, y, rot: j.meRot }; pieces[1 - j.active] = { x: j.opponent.x, y: j.opponent.y, rot: j.opponent.rot };
+    const v = verifyAllReplies(pieces, j.active, K, 2, 3, 1);
+    report(v, pieces, j.active, `cell (${x.toFixed(1)},${y.toFixed(1)})`);
+  }
+  console.log(`\ndead certified ${T.dead} (engine agreed on every move in ${T.deadOK}, contradicted ${T.deadBad}); escapes ${T.escape} (engine agreed ${T.escapeOK}, contradicted ${T.escapeBad}); unresolved ${T.unresolved}`);
+} else if (require.main === module && process.argv[2] === '--dead') {
   // The victim to move: is every move answered by a throw? Certified along the six reply arcs,
   // then checked by the engine on random moves.
-  const N = +(process.argv[3] || 20), K = REPLICA; let tried = 0, dead = 0, deadOK = 0, deadBad = 0, alive = 0, win1 = 0; const t0 = Date.now();
+  const N = +(process.argv[3] || 20), K = REPLICA; let tried = 0, win1 = 0; const t0 = Date.now();
   while (tried < N) {
     const s = exposedPose(4, 12); if (!s) continue; tried++;
     if (s.win1) win1++;                                             // the attacker could throw now; the question is whether the victim can fix that
     const v = verifyAllReplies(s.pieces, s.victim, K, 2, 3, 1);
-    if (v.certified) {
-      dead++; const c = simCheckDead(s.pieces, s.victim, 30);
-      if (c.agree === c.n) deadOK++; else { deadBad++; console.log(`  CONTRADICTED: engine found an escape ${c.n - c.agree}/${c.n}: ${JSON.stringify(c.fails.slice(0, 2))}`); }
-      console.log(`  dead: victim ${s.victim} (foot ${s.inside.toFixed(1)}u inside) -- every reply certified lost, worst margin ${v.worstMargin.toFixed(2)}u; engine agrees ${c.agree}/${c.n}`);
-    } else { alive++; console.log(`  alive: ${v.why}`); }
+    report(v, s.pieces, s.victim, `victim ${s.victim} (foot ${s.inside.toFixed(1)}u inside)`);
   }
-  console.log(`\n${tried} positions (victim to move, foot 4-12u inside): dead certified ${dead} (engine agreed on every move in ${deadOK}, contradicted ${deadBad}); alive ${alive}; attacker had a throw available in ${win1}   ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+  console.log(`\n${tried} positions (victim to move, foot 4-12u inside): dead certified ${T.dead} (engine agreed on every move in ${T.deadOK}, contradicted ${T.deadBad}); escapes ${T.escape} (engine agreed ${T.escapeOK}, contradicted ${T.escapeBad}); unresolved ${T.unresolved}; attacker had a throw available in ${win1}   ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 } else if (require.main === module && process.argv[2] === '--in2') {
   // Sample positions with a victim foot a few units inside the rim and the attacker in reach,
   // skip those the attacker wins in one, try to certify a forced win in two, check each in the engine.
