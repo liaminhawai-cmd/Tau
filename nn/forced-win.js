@@ -190,7 +190,7 @@ function verifyAllReplies(pieces, mover, K, replyStepDeg, safety, lipFloor) {
         if (!(M.best > 0)) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) to ${(M.alpha * 180 / Math.PI).toFixed(1)}deg leaves no throw (best margin ${M.best.toFixed(2)}u)`, escape: { pv, dir, stop: M.alpha, bestMargin: M.best }, worstMargin: Math.min(worstMargin, M.best) };
         gaps.push([A, M], [M, B]); continue;
       }
-      unresolved = unresolved || `reply (${pv},${dir}) ${(A.alpha * 180 / Math.PI).toFixed(1)}-${(B.alpha * 180 / Math.PI).toFixed(1)}deg: margins positive (${bestM.toFixed(2)}u) but under the allowance at the engine's substep`;
+      unresolved = unresolved || `reply (${pv},${dir}) ${(A.alpha * 180 / Math.PI).toFixed(1)}-${(B.alpha * 180 / Math.PI).toFixed(1)}deg: no single arc certifies the gap (best min margin ${bestM.toFixed(2)}u) even at the engine's substep -- the throw changes arm here`;
       worstMargin = Math.min(worstMargin, bestM);
     }
   }
@@ -282,6 +282,19 @@ function exposedPose(insideLo, insideHi) {
   return null;
 }
 
+// The engine's own depth-2 verdict on a position at several search widths, as "keep/sweep:dead|ok".
+function searchVerdicts(pieces, mover, rung) {
+  const { nnPlanFor } = require('./nnai.js');
+  const w = eng.AI_LADDER[(rung || eng.AI_LADDER.length) - 1].w, evalFn = (e, side) => e.ladderEval(side, w);
+  const out = [];
+  for (const [keep, sweep] of [[2, 9], [12, 9], [12, 3], [12, 1]]) {
+    load(pieces, mover); const top = [];
+    const plan = nnPlanFor(eng, null, mover, { temperature: 0, depth: 2, keepForDepth: keep, rawRoot: true, evalFn, sweepDeg: sweep, captureTop: top, captureTopN: 1 });
+    const v = plan && top.length ? top[0].score : NaN;
+    out.push(`${keep}/${sweep}:${v <= -1e5 ? 'DEAD' : v >= 1e5 ? 'win' : Number.isFinite(v) ? 'ok' : '?'}`);
+  }
+  return out;
+}
 // Shared reporting for a verifyAllReplies verdict, with the engine's check of whichever claim it is.
 const T = { dead: 0, deadOK: 0, deadBad: 0, escape: 0, escapeOK: 0, escapeBad: 0, unresolved: 0 };
 function report(v, pieces, victim, label) {
@@ -324,8 +337,40 @@ if (require.main === module && process.argv[2] === '--dead-map') {
     const pieces = [null, null]; pieces[j.active] = { x, y, rot: j.meRot }; pieces[1 - j.active] = { x: j.opponent.x, y: j.opponent.y, rot: j.opponent.rot };
     const v = verifyAllReplies(pieces, j.active, K, 2, 3, 1);
     report(v, pieces, j.active, `cell (${x.toFixed(1)},${y.toFixed(1)})`);
+    if (process.argv.includes('--search')) console.log('      engine depth-2 search says dead at (keep,sweep): ' + searchVerdicts(pieces, j.active, j.rung).join('  '));
   }
   console.log(`\ndead certified ${T.dead} (engine agreed on every move in ${T.deadOK}, contradicted ${T.deadBad}); escapes ${T.escape} (engine agreed ${T.escapeOK}, contradicted ${T.escapeBad}); unresolved ${T.unresolved}`);
+} else if (require.main === module && process.argv[2] === '--win-map') {
+  // The cells a searched map marked forced-WON at ply 2: replay the engine's own chosen move (the
+  // same search settings the map used), then ask whether every reply really leaves a throw.
+  const fs = require('fs'), base = process.argv[3], N = +(process.argv[4] || 20), K = REPLICA;
+  const { nnPlanFor } = require('./nnai.js');
+  let j, field, isWin;
+  if (fs.existsSync(base + '.json')) { j = JSON.parse(fs.readFileSync(base + '.json', 'utf8')); const buf = fs.readFileSync(base + '.bin'); field = new Float32Array(buf.buffer, buf.byteOffset, j.res * j.res); isWin = v => Math.abs(v - j.max) < 1e-4; }
+  else { const part = JSON.parse(fs.readFileSync(base + '.part.json', 'utf8')), stamp = JSON.parse(part.stamp); j = { ...JSON.parse(fs.readFileSync(process.argv[5], 'utf8')), res: stamp.res, cx: stamp.cx, cy: stamp.cy, half: stamp.half, rung: stamp.rung }; const buf = fs.readFileSync(base + '.part.bin'); field = new Float32Array(buf.buffer, buf.byteOffset, j.res * j.res); const done = new Set(part.rows); isWin = (v, k) => done.has(Math.floor(k / j.res)) && v >= 1e5; }
+  const cells = []; for (let k = 0; k < field.length; k++) if (Number.isFinite(field[k]) && isWin(field[k], k)) cells.push(k);
+  console.log(`${base}: ${cells.length} forced-win cells found; checking ${Math.min(N, cells.length)}`);
+  const half = j.half != null ? j.half : j.extent, cx = j.cx || 0, cy = j.cy || 0, cell = 2 * half / j.res;
+  const w = eng.AI_LADDER[(j.rung || eng.AI_LADDER.length) - 1].w, evalFn = (e, side) => e.ladderEval(side, w);
+  let holds = 0, broken = 0, unres = 0, win1 = 0;
+  for (let t = 0; t < N && cells.length; t++) {
+    const k = cells.splice(Math.floor(Math.random() * cells.length), 1)[0], i = k % j.res, row = Math.floor(k / j.res);
+    const x = cx - half + (i + 0.5) * cell, y = cy - half + (row + 0.5) * cell;
+    const pieces = [null, null]; pieces[j.active] = { x, y, rot: j.meRot }; pieces[1 - j.active] = { x: j.opponent.x, y: j.opponent.y, rot: j.opponent.rot };
+    load(pieces, j.active); const top = [];
+    const plan = nnPlanFor(eng, null, j.active, { temperature: 0, depth: 2, keepForDepth: 2, rawRoot: true, evalFn, sweepDeg: 9, captureTop: top, captureTopN: 1 });
+    if (!plan) { console.log('  no plan'); continue; }
+    // play it on the law and see whether it is a throw outright or a forced-in-2 claim
+    const lim = swingLimit(pieces, j.active, plan.pivotIdx, plan.dir), rad = Math.min(Math.abs(plan.targetRad), lim);
+    const out = swing(pieces, j.active, plan.pivotIdx, plan.dir, rad, { ...K, record: true });
+    if (out.maxFootR > EDGE) { win1++; console.log(`  cell (${x.toFixed(1)},${y.toFixed(1)}): the move throws outright`); continue; }
+    const after = pieces.map(q => ({ ...q })); after[j.active] = moverAt(pieces[j.active], plan.pivotIdx, plan.dir, rad); after[1 - j.active] = { x: out.opp.x, y: out.opp.y, rot: out.opp.rot };
+    const v = verifyAllReplies(after, 1 - j.active, K, 2, 3, 1);
+    if (v.status === 'dead') { holds++; const c = simCheckDead(after, 1 - j.active, 30); console.log(`  cell (${x.toFixed(1)},${y.toFixed(1)}): forced win HOLDS -- every reply certified lost (worst ${v.worstMargin.toFixed(2)}u); engine agrees ${c.agree}/${c.n}`); }
+    else if (v.status === 'escape') { broken++; const c = simCheckEscape(after, 1 - j.active, v.escape); console.log(`  cell (${x.toFixed(1)},${y.toFixed(1)}): forced win BROKEN -- ${v.why}; engine agrees ${c.agree}`); }
+    else { unres++; console.log(`  cell (${x.toFixed(1)},${y.toFixed(1)}): unresolved -- ${v.why}`); }
+  }
+  console.log(`\nforced-win cells: throws outright ${win1}, forced-in-2 holds ${holds}, broken (a reply escapes) ${broken}, unresolved ${unres}`);
 } else if (require.main === module && process.argv[2] === '--dead') {
   // The victim to move: is every move answered by a throw? Certified along the six reply arcs,
   // then checked by the engine on random moves.
