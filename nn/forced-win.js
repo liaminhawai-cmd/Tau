@@ -291,7 +291,7 @@ function deadCertificate(pieces, mover, K, opts) {
       for (let apv = 0; apv < 3; apv++) for (const adir of [1, -1]) { const t = throwMargin(p, other, apv, adir, K); arcs.push({ apv, adir, m: t.margin, sig: signature(t.out) }); }
       return { alpha: r.alpha, arcs, best: Math.max(...arcs.map(x => x.m)) };
     };
-    const stepRad = (screen ? 8 : replyStepDeg) * Math.PI / 180, first = [];
+    const stepRad = (screen ? (opts.screenStepDeg || 8) : replyStepDeg) * Math.PI / 180, first = [];
     for (let a = MIN_MOVE; ; a += stepRad) { const last = a >= fam.lim - 1e-9; first.push(sampleAt(last ? fam.lim : a)); if (last) break; }
     for (const smp of first) { minBest = Math.min(minBest, smp.best); if (smp.best <= -ESC_TOL) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) to ${(smp.alpha * 180 / Math.PI).toFixed(1)}deg leaves no throw (best margin ${smp.best.toFixed(2)}u)`, escape: { pv, dir, stop: smp.alpha, bestMargin: smp.best }, worstMargin: Math.min(worstMargin, smp.best), minBest, profile }; }
     if (screen) { profile.push({ pv, dir, legal: true, lim: fam.lim, stops: first.map(s => ({ alpha: s.alpha, best: s.best })) }); continue; }
@@ -550,6 +550,16 @@ class DeadlineHit extends Error {}
 // A screen's smallest best margin: the escape's own margin when it ended early, -Infinity when
 // the victim cannot move at all (deadCertificate calls that an escape).
 const screenMin = scr => scr.status === 'escape' ? (Number.isFinite(scr.minBest) ? scr.minBest : -Infinity) : (!scr.legalArcs ? -Infinity : scr.minBest);
+// The move that took `mover` from pose pA to pose pB (six numbers each): the pivot is the foot
+// that did not move, dir and rad from the change of rotation (wrapped to a half turn). footErr is
+// how far the pivot foot drifted -- a real swing leaves it within the engine's rounding.
+function moveBetween(pA, pB, mover) {
+  const A = { x: pA[mover * 3], y: pA[mover * 3 + 1], rot: pA[mover * 3 + 2] }, B = { x: pB[mover * 3], y: pB[mover * 3 + 1], rot: pB[mover * 3 + 2] };
+  const fa = feetOf(A), fb = feetOf(B); let pv = 0, best = Infinity;
+  for (let i = 0; i < 3; i++) { const d = Math.hypot(fa[i].x - fb[i].x, fa[i].y - fb[i].y); if (d < best) { best = d; pv = i; } }
+  let d = B.rot - A.rot; d = Math.atan2(Math.sin(d), Math.cos(d));
+  return { pv, dir: d < 0 ? -1 : 1, rad: Math.abs(d), footErr: best };
+}
 // How a certified gap reads to a person (both deadCertificate's gaps and deadDeep's).
 function gapLabel(g) {
   if (g.witness) return `witness (${g.witness.apv},${g.witness.adir}) stop ${degOf(g.witness.aFrom)}..${degOf(g.witness.aTo)}deg`;
@@ -572,7 +582,8 @@ function deadDeep(pieces, victim, K, depth, opts, ctx) {
   opts = opts || {};
   const stepDeg = opts.stepDeg || 2, attStepDeg = opts.attStepDeg || 3, maxTries = opts.maxWitnessTries || 4, safety = opts.safety || 3, lipFloor = opts.lipFloor || 1;
   const top = !ctx;
-  ctx = ctx || { full: new Map(), screens: new Map(), stats: { samples: 0, screens: 0, fullChildren: 0, memoHits: 0, seconds: 0 }, t0: Date.now(), deadline: opts.deadline || Infinity };
+  ctx = ctx || { full: opts.memo || new Map(), screens: new Map(), stats: { samples: 0, screens: 0, coarseScreens: 0, fullChildren: 0, memoHits: 0, continued: 0, searched: 0, seconds: 0 }, t0: Date.now(), deadline: opts.deadline || Infinity };
+  const hint = top && opts.hint && opts.hint.attacker ? opts.hint.attacker : null;   // the seed game's own attacker reply: tried first
   const finish = v => { if (top) v.stats = { ...ctx.stats, seconds: +((Date.now() - ctx.t0) / 1000).toFixed(1) }; return v; };
   if (depth <= 1) return finish({ ...deadCertificate(pieces, victim, K, { replyStepDeg: stepDeg, safety, lipFloor }), plies: 1 });
   const attacker = 1 - victim, plies = 2 * depth - 1, stepRad = stepDeg * DEG, attStepRad = attStepDeg * DEG;
@@ -593,42 +604,70 @@ function deadDeep(pieces, victim, K, depth, opts, ctx) {
   // the witness search at a sample: candidates on every attacker arm (preferArm first), screened,
   // then the full certificate at d-1 in screen order. Sets smp.w on success.
   const findWitness = (smp, preferArm) => {
-    smp.searched = true;
-    const cands = [];
-    const order = [...ARMS]; if (preferArm) order.sort((x, y) => ((y[0] === preferArm.apv && y[1] === preferArm.adir) ? 1 : 0) - ((x[0] === preferArm.apv && x[1] === preferArm.adir) ? 1 : 0));
-    for (const [apv, adir] of order) {
-      const afam = replyFamily(smp.pose, attacker, apv, adir, K); if (!afam) continue;
-      const rec = afam.out.record;
-      for (let a = MIN_MOVE; ; a += attStepRad) {
-        tick();
-        const last = a >= afam.lim - 1e-9, at = last ? afam.lim : a, r = rec.find(q => q.alpha >= at - 1e-9) || rec[rec.length - 1];
-        if (r.maxFootR > EDGE) break;                                   // from here on the swing throws (thinly): not a position
-        const Q = smp.pose.map(q => ({ ...q })); Q[attacker] = moverAt(smp.pose[attacker], apv, adir, r.alpha); Q[victim] = { x: r.x, y: r.y, rot: r.rot };
-        const key = poseKey(Q, victim, 'screen'); let scr = ctx.screens.get(key);
-        if (scr) ctx.stats.memoHits++; else { scr = deadCertificate(Q, victim, K, { screen: true }); ctx.stats.screens++; ctx.screens.set(key, scr); }
-        const minBest = screenMin(scr);
-        // a level-1 escape is rejected outright when the child is judged at depth 1; deeper
-        // children may still be dead past it, so the screen only orders them (the batch's rule)
-        if (depth - 1 >= 2 || minBest > -ESC_TOL) cands.push({ apv, adir, a: r.alpha, Q, minBest, preferred: preferArm && apv === preferArm.apv && adir === preferArm.adir });
-        if (last) break;
+    smp.searched = true; smp.candidates = 0;
+    const screenAt = (Q, deg) => {
+      const key = poseKey(Q, victim, 'screen' + deg); let scr = ctx.screens.get(key);
+      if (scr) ctx.stats.memoHits++; else { scr = deadCertificate(Q, victim, K, { screen: true, screenStepDeg: deg }); if (deg === 8) ctx.stats.screens++; else ctx.stats.coarseScreens++; ctx.screens.set(key, scr); }
+      return screenMin(scr);
+    };
+    // one arm's candidates: every attStepDeg to the limit (plus the hinted stop itself), the
+    // 16-degree screen on each, the 8-degree screen on the best three, then the full certificate
+    // in that order; true at the first certified child
+    const tryArms = (armList, nearStop, budget) => {
+      const cands = [];
+      for (const [apv, adir] of armList) {
+        const afam = replyFamily(smp.pose, attacker, apv, adir, K); if (!afam) continue;
+        const rec = afam.out.record, stops = [];
+        for (let a = MIN_MOVE; ; a += attStepRad) { const last = a >= afam.lim - 1e-9; stops.push(last ? afam.lim : a); if (last) break; }
+        if (nearStop != null && nearStop >= MIN_MOVE && nearStop <= afam.lim) stops.push(nearStop);
+        if (nearStop != null) stops.sort((x, y) => Math.abs(x - nearStop) - Math.abs(y - nearStop));
+        const seen = new Set();
+        for (const at of stops) {
+          tick();
+          const r = rec.find(q => q.alpha >= at - 1e-9) || rec[rec.length - 1];
+          if (r.maxFootR > EDGE || seen.has(r.alpha)) continue;                   // a thin throw is not a position; a ladder step once
+          seen.add(r.alpha);
+          const Q = smp.pose.map(q => ({ ...q })); Q[attacker] = moverAt(smp.pose[attacker], apv, adir, r.alpha); Q[victim] = { x: r.x, y: r.y, rot: r.rot };
+          const full = ctx.full.get(poseKey(Q, victim, depth - 1));
+          const minBest = full ? (full.certified ? Infinity : -Infinity) : screenAt(Q, 16);
+          // a level-1 escape is rejected outright when the child is judged at depth 1; deeper
+          // children may still be dead past it, so the screen only orders them (the batch's rule)
+          if (depth - 1 >= 2 || minBest > -ESC_TOL) cands.push({ apv, adir, a: r.alpha, Q, minBest, rank: nearStop != null ? Math.abs(r.alpha - nearStop) : 0 });
+        }
       }
-    }
-    cands.sort((x, y) => (y.preferred ? 1 : 0) - (x.preferred ? 1 : 0) || y.minBest - x.minBest);
-    let tries = 0;
-    for (const c of cands) {
-      if (tries >= maxTries) break;
-      const key = poseKey(c.Q, victim, depth - 1); let child = ctx.full.get(key);
-      if (child) ctx.stats.memoHits++; else { child = deadDeep(c.Q, victim, K, depth - 1, opts, ctx); ctx.stats.fullChildren++; ctx.full.set(key, child); tries++; }
-      if (Number.isFinite(child.worstMargin) && (smp.bestChild == null || child.worstMargin > smp.bestChild)) smp.bestChild = child.worstMargin;
-      if (child.certified) { smp.w = { apv: c.apv, adir: c.adir, a: c.a, childMargin: child.worstMargin, childPlies: child.plies, child }; return true; }
-    }
-    smp.candidates = cands.length;
-    return false;
+      smp.candidates += cands.length;
+      cands.sort((x, y) => y.minBest - x.minBest || x.rank - y.rank);
+      for (const c of cands.slice(0, 3)) if (Number.isFinite(c.minBest)) c.minBest = screenAt(c.Q, 8);
+      cands.sort((x, y) => y.minBest - x.minBest || x.rank - y.rank);
+      let tries = 0;
+      for (const c of cands) {
+        if (tries >= budget) break;
+        if (depth - 1 < 2 && c.minBest <= -ESC_TOL) continue;
+        const key = poseKey(c.Q, victim, depth - 1); let child = ctx.full.get(key);
+        if (child) ctx.stats.memoHits++; else { child = deadDeep(c.Q, victim, K, depth - 1, opts, ctx); ctx.stats.fullChildren++; ctx.full.set(key, child); tries++; }
+        if (Number.isFinite(child.worstMargin) && (smp.bestChild == null || child.worstMargin > smp.bestChild)) smp.bestChild = child.worstMargin;
+        if (child.certified) { smp.w = { apv: c.apv, adir: c.adir, a: c.a, childMargin: child.worstMargin, childPlies: child.plies, child }; return true; }
+      }
+      return false;
+    };
+    // CONTINUATION: the previous witness on this arm (or the played line's reply when there is
+    // none yet) is tried first -- its arm, candidate stops nearest its stop first, two full tries
+    // -- since neighbouring stops of one victim arm are answered by neighbouring attacker swings
+    // wherever the witness rule can certify the gap at all. Only then the full order: the hinted
+    // arm, then every other arm, maxTries full children each.
+    const prev = preferArm || hint, prevArm = prev ? [prev.apv != null ? prev.apv : prev.pv, prev.adir != null ? prev.adir : prev.dir] : null, prevStop = prev && prev.rad != null ? prev.rad : (prev && prev.a != null ? prev.a : null);
+    if (prev && tryArms([prevArm], prevStop, 2)) { ctx.stats.continued++; return true; }
+    const hintArm = hint ? [hint.pv, hint.dir] : null;
+    let found = false;
+    if (hintArm && !(prevArm && prevArm[0] === hintArm[0] && prevArm[1] === hintArm[1])) found = tryArms([hintArm], hint.rad, maxTries);
+    if (!found) found = tryArms(ARMS.filter(([p, d]) => !(hintArm && p === hintArm[0] && d === hintArm[1])), null, maxTries);
+    if (found) ctx.stats.searched++;
+    return found;
   };
   // resolve: 'thrown' when the best margin clears ESC_TOL, else a witness or an escape descriptor
-  const resolve = (smp, pv, dir) => {
+  const resolve = (smp, pv, dir, prev) => {
     if (smp.best > ESC_TOL) { smp.kind = 'thrown'; return null; }
-    if (findWitness(smp, null)) { smp.kind = 'witness'; return null; }
+    if (findWitness(smp, prev ? { apv: prev.apv, adir: prev.adir, a: prev.a } : null)) { smp.kind = 'witness'; return null; }
     return { pv, dir, stop: smp.alpha, level: depth, m1: smp.best, candidates: smp.candidates, bestChild: smp.bestChild };
   };
   const escapeFrom = e => fail('escape', `reply (${e.pv},${e.dir}) to ${degOf(e.stop)}deg: no attacker reply leads to a certified dead position (level-1 best margin ${e.m1.toFixed(2)}u, ${e.candidates} candidates, best child margin ${e.bestChild == null ? 'none' : e.bestChild.toFixed(2) + 'u'})`, { escape: { pv: e.pv, dir: e.dir, stop: e.stop, level: e.level, bestMargin: e.m1, bestChild: e.bestChild } });
@@ -666,20 +705,22 @@ function deadDeep(pieces, victim, K, depth, opts, ctx) {
       const entry = { pv, dir, legal: true, lim: fam.lim }; profile.push(entry); arms.push({ pv, dir, fam, first, entry });
     }
     if (!legalArcs) return fail('escape', 'victim has no legal reply', { worstMargin: -Infinity });
-    // 2. resolve the samples, the thinnest level-1 margins first: a stop with no witness is an
-    //    escape and ends the run, so the likeliest refutation is paid for first
-    const all = []; for (const arm of arms) for (const s of arm.first) all.push({ s, pv: arm.pv, dir: arm.dir });
-    all.sort((x, y) => x.s.best - y.s.best);
-    for (const { s, pv, dir } of all) { const e = resolve(s, pv, dir); if (e) return escapeFrom(e); }
-    // 3. the gap rule per arm, subdividing to the substep
+    // 2. the cheap level-1 pass: every sample whose best margin clears ESC_TOL is 'thrown' now,
+    //    no witness search here (the only level-1 escapes that end a deep run, replies that throw
+    //    the attacker, were caught above)
+    for (const arm of arms) for (const s of arm.first) if (s.best > ESC_TOL) s.kind = 'thrown';
+    // 3. per arm, in order of increasing stop: the witness searches with continuation from the
+    //    previous witness on the arm, then the gap rule, subdividing to the substep
     for (const { pv, dir, fam, first, entry } of arms) {
+      let last = null;
+      for (const s of first) { if (s.kind) continue; const e = resolve(s, pv, dir, last); if (e) return escapeFrom(e); last = s.w; }
       const gaps = [], done = []; for (let k = 0; k + 1 < first.length; k++) gaps.push([first[k], first[k + 1]]);
       while (gaps.length) {
         const [A, B] = gaps.pop(); const gapU = (B.alpha - A.alpha) * 2 * R;
         let g = gapOf(A, B, gapU);
         if (g) { worstMargin = Math.min(worstMargin, g.m); done.push(g); continue; }
         if (B.alpha - A.alpha > SUBSTEP * 1.5) {
-          const M = sampleAt(fam, pv, dir, (A.alpha + B.alpha) / 2); const e = resolve(M, pv, dir); if (e) return escapeFrom(e);
+          const M = sampleAt(fam, pv, dir, (A.alpha + B.alpha) / 2); const e = resolve(M, pv, dir, A.w || B.w); if (e) return escapeFrom(e);
           gaps.push([A, M], [M, B]); continue;
         }
         if (A.kind === 'thrown' && B.kind === 'thrown') {
@@ -746,6 +787,29 @@ function simCheckDeadDeep(pieces, victim, n, depth, verdict) {
     else { const c = simCheckDeadDeep(child, victim, 8, depth - 1, gap.child || { profile: [] }); if (c.pass === c.n) pass++; else fails.push({ ...rec, witnessStopDeg: +degOf(a), why: `child not dead at ${2 * depth - 3} plies: ${c.pass}/${c.n}`, childFails: c.fails.slice(0, 2) }); }
   }
   return { n, pass, fails };
+}
+
+// One --dead-batch seed, in whichever thread: the depth-1 screen (which at depth 1 may settle it),
+// deadDeep under the run's deadline with the memo and the played-line hint, and for a certified
+// deep verdict the per-arm table and the engine's playouts. Returns the JSON row and the lines
+// to print; memoRows are depth-1 verdict rows (dead -> certified) to seed the child memo.
+function batchSeed(r, depth, o) {
+  const K = REPLICA, ts = Date.now(), hint = o.hint || null, pieces = [{ x: r.p[0], y: r.p[1], rot: r.p[2] }, { x: r.p[3], y: r.p[4], rot: r.p[5] }];
+  const memo = new Map(); for (const m of o.memoRows || []) if (m.p && m.mover != null && m.status) memo.set(poseKey([{ x: m.p[0], y: m.p[1], rot: m.p[2] }, { x: m.p[3], y: m.p[4], rot: m.p[5] }], m.mover, 1), { certified: m.status === 'dead', status: m.status, plies: 1, worstMargin: m.worstMargin != null ? m.worstMargin : -Infinity, why: m.why || null, profile: [], seeded: true });
+  const scr = deadCertificate(pieces, r.mover, K, { screen: true }), scrMin = screenMin(scr), scrEsc = scrMin <= -ESC_TOL;
+  let v;
+  if (depth === 1 && scrEsc) v = { certified: false, status: 'escape', plies: 1, why: scr.why || `screen: best margin ${scrMin.toFixed(2)}u`, worstMargin: scrMin, screenOnly: true, escape: scr.escape || null };
+  else v = deadDeep(pieces, r.mover, K, depth, { deadline: o.deadline || Infinity, memo, hint });
+  const status = v.certified ? 'certified' : v.status, seconds = +((Date.now() - ts) / 1000).toFixed(1), lines = [];
+  const row = { kind: 'batch', p: r.p, mover: r.mover, k: r.k, g: r.g, file: r.file, depth, plies: v.plies, hint: hint ? { victim: { pv: hint.victim.pv, dir: hint.victim.dir, deg: +degOf(hint.victim.rad) }, attacker: { pv: hint.attacker.pv, dir: hint.attacker.dir, deg: +degOf(hint.attacker.rad) } } : null, certified: !!v.certified, status: v.status, worstMargin: Number.isFinite(v.worstMargin) ? +v.worstMargin.toFixed(3) : null, why: v.why || null, escape: v.escape || null, screenMinBest: Number.isFinite(scrMin) ? +scrMin.toFixed(3) : null, screenOnly: !!v.screenOnly, slivers: v.slivers || 0, probedSlivers: v.probedSlivers || 0, seconds, stats: v.stats || null, stamp: new Date().toISOString() };
+  if (v.certified) row.witnesses = v.witnesses || [];
+  lines.push(`${status.padEnd(10)} ${String(seconds).padStart(7)}s  worst ${row.worstMargin == null ? '   -' : row.worstMargin.toFixed(2).padStart(6)}  screen ${row.screenMinBest == null ? '-' : row.screenMinBest.toFixed(2)}  ${r.g}${hint ? `  played: victim (${hint.victim.pv},${hint.victim.dir}) ${degOf(hint.victim.rad)}deg, attacker (${hint.attacker.pv},${hint.attacker.dir}) ${degOf(hint.attacker.rad)}deg` : ''}${v.stats ? `  [${v.stats.samples} samples, ${v.stats.coarseScreens} coarse + ${v.stats.screens} screens, ${v.stats.fullChildren} full children, ${v.stats.memoHits} memo hits, ${v.stats.continued} continued / ${v.stats.searched} searched]` : ''}${v.why ? '  -- ' + v.why : ''}`);
+  if (v.certified && depth >= 2) {
+    for (const arm of v.profile || []) lines.push(`  arm (${arm.pv},${arm.dir}): ` + (arm.legal ? `to ${degOf(arm.lim)}deg  ` + (arm.segments || []).map(sg => `${degOf(sg.from)}-${degOf(sg.to)} ${gapLabel(sg)}`).join(' | ') : 'no legal move'));
+    const engine = simCheckDeadDeep(pieces, r.mover, 20, depth, v); row.engine = { n: engine.n, pass: engine.pass, fails: engine.fails.slice(0, 3) };
+    lines.push(`  engine: ${engine.pass}/${engine.n} random moves lose${engine.fails.length ? '; fails: ' + JSON.stringify(engine.fails.slice(0, 3)) : ''}`);
+  }
+  return { row, lines, status };
 }
 
 // ---- The graph: metric, reach envelopes, stars, arcs, lookup, the file ------------------------
@@ -1197,7 +1261,7 @@ function phaseTol(events, stopsPer) {
   return { events: events.length, stops: dPose.length, stopsPerEvent: stopsPer, median: q(dPose, .5), p90: q(dPose, .9), max: q(dPose, 1), limMedianDeg: q(dLim, .5), limMaxDeg: q(dLim, 1), stoppedEarly: early };
 }
 
-module.exports = { load, swingLimit, limitAt, swingLimitMemo, memoStats, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, deadCertificate, profilesConsistent, simCheckForcedIn2, simCheckDead, simCheckEscape, familyProfile, certifyDeadBox, deadDeep, simCheckDeadDeep, probeGap, dragTo, sweepThrows, segmentsOf, gapLabel,
+module.exports = { load, swingLimit, limitAt, swingLimitMemo, memoStats, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, deadCertificate, profilesConsistent, simCheckForcedIn2, simCheckDead, simCheckEscape, familyProfile, certifyDeadBox, deadDeep, simCheckDeadDeep, probeGap, dragTo, sweepThrows, segmentsOf, gapLabel, moveBetween, batchSeed,
   moverAt, replyFamily, dist6, pose6, piecesOf, randomInBall, reachEnvelope, certifyStar, simCheckDeadBall, arcPose, hubFromFoot, fibre, tubeGrid, unwindArcs, makeArc, simCheckArc, lookup, dedupeKey, loadGraph, appendNode, phaseTol,
   MIN_MOVE, SUBSTEP, GAP_LIP, LIM_PHASE, MIN_WINDOW, MIN_RUN, LAND_TOL, GRAPH_PATH, PHASE_TOL, ARMS, armIndex };
 
@@ -1395,29 +1459,57 @@ if (require.main === module && process.argv[2] === '--dead-box') {
   // depth 2), then deadDeep under the run's deadline. One row per seed; stops cleanly at --maxSeconds.
   const K = REPLICA, arg = (name, def) => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : def;
   const seedsPath = process.argv[3], depth = +arg('--depth', 1), outPath = arg('--out', null), maxSeconds = +arg('--maxSeconds', Infinity), only = process.argv.includes('--only') ? +arg('--only') : null;
+  // --games <dirs or files...>: the seed games, for the played line as a witness hint; --memo f:
+  // depth-1 verdicts preloaded into the child memo; --childDead f: only seeds whose game's k=2
+  // row is certified dead there
+  const gameArgs = []; if (process.argv.includes('--games')) for (let i = process.argv.indexOf('--games') + 1; i < process.argv.length && !process.argv[i].startsWith('--'); i++) gameArgs.push(process.argv[i]);
+  const gameFiles = new Map(); for (const a of gameArgs) { if (!fs.existsSync(a)) continue; if (fs.statSync(a).isDirectory()) { for (const n of fs.readdirSync(a)) if (n.endsWith('.jsonl')) gameFiles.set(n, path.join(a, n)); } else gameFiles.set(path.basename(a), a); }
+  const gameCache = new Map(), loadGame = (file, g) => { if (!gameFiles.has(file)) return null; if (!gameCache.has(file)) gameCache.set(file, fs.readFileSync(gameFiles.get(file), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l))); return gameCache.get(file).filter(r => r.g === g && r.p); };
+  const memoRows = arg('--memo', null) ? fs.readFileSync(arg('--memo'), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)).filter(r => r.p && r.mover != null && r.status) : [];
+  const childDead = arg('--childDead', null) ? new Set(fs.readFileSync(arg('--childDead'), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)).filter(r => r.status === 'dead' && r.g).map(r => r.g)) : null;
+  const threads = Math.max(1, +arg('--threads', 1));
   const keyOf = (p, mover) => p.map(x => (+x).toFixed(6)).join(',') + '|' + mover + '|' + depth;
   let seeds = fs.readFileSync(seedsPath, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)).filter(r => r.p && r.mover != null);
   if (only != null) seeds = seeds.filter(r => r.k === only);
+  if (childDead) seeds = seeds.filter(r => childDead.has(r.g));
   const done = new Set(outPath && fs.existsSync(outPath) ? fs.readFileSync(outPath, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)).filter(r => r.status !== 'timeout' && r.depth === depth).map(r => keyOf(r.p, r.mover)) : []);
   const todo = seeds.filter(r => !done.has(keyOf(r.p, r.mover)));
   const tally = { certified: 0, escape: 0, unresolved: 0, timeout: 0 }, t0 = Date.now(), deadline = t0 + maxSeconds * 1000;
-  console.log(`${seeds.length} seeds${only != null ? ` with k=${only}` : ''}, ${done.size} done, ${todo.length} to do, depth ${depth}, budget ${Number.isFinite(maxSeconds) ? maxSeconds + 's' : 'none'}`);
-  for (const r of todo) {
-    if (Date.now() > deadline) { console.log(`budget of ${maxSeconds}s reached; ${todo.length - Object.values(tally).reduce((a, b) => a + b, 0)} seeds left for the next run`); break; }
-    const ts = Date.now(), pieces = [{ x: r.p[0], y: r.p[1], rot: r.p[2] }, { x: r.p[3], y: r.p[4], rot: r.p[5] }];
-    const scr = deadCertificate(pieces, r.mover, K, { screen: true });
-    const scrMin = screenMin(scr), scrEsc = scrMin <= -ESC_TOL;
-    let v;
-    if (depth === 1 && scrEsc) v = { certified: false, status: 'escape', plies: 1, why: scr.why || `screen: best margin ${scrMin.toFixed(2)}u`, worstMargin: scrMin, screenOnly: true, escape: scr.escape || null };
-    else v = deadDeep(pieces, r.mover, K, depth, { deadline });
-    const status = v.certified ? 'certified' : v.status; tally[status] = (tally[status] || 0) + 1;
-    const seconds = +((Date.now() - ts) / 1000).toFixed(1);
-    const row = { kind: 'batch', p: r.p, mover: r.mover, k: r.k, g: r.g, file: r.file, depth, plies: v.plies, certified: !!v.certified, status: v.status, worstMargin: Number.isFinite(v.worstMargin) ? +v.worstMargin.toFixed(3) : null, why: v.why || null, escape: v.escape || null, screenMinBest: Number.isFinite(scrMin) ? +scrMin.toFixed(3) : null, screenOnly: !!v.screenOnly, slivers: v.slivers || 0, probedSlivers: v.probedSlivers || 0, seconds, stats: v.stats || null, stamp: new Date().toISOString() };
-    if (v.certified) row.witnesses = v.witnesses || [];
-    if (outPath) fs.appendFileSync(outPath, JSON.stringify(row) + '\n');
-    console.log(`${status.padEnd(10)} ${String(seconds).padStart(7)}s  worst ${row.worstMargin == null ? '   -' : row.worstMargin.toFixed(2).padStart(6)}  screen ${row.screenMinBest == null ? '-' : row.screenMinBest.toFixed(2)}  ${r.g}${v.why ? '  -- ' + v.why : ''}`);
+  console.log(`${seeds.length} seeds${only != null ? ` with k=${only}` : ''}${childDead ? ` whose k=2 row is dead in ${arg('--childDead')}` : ''}, ${done.size} done, ${todo.length} to do, depth ${depth}, budget ${Number.isFinite(maxSeconds) ? maxSeconds + 's' : 'none'}${memoRows.length ? `, memo seeded with ${memoRows.length} depth-1 verdicts` : ''}${gameFiles.size ? `, ${gameFiles.size} game files` : ''}${threads > 1 ? `, ${threads} threads` : ''}`);
+  // the played line: the seed's row in its game, the victim's move to the next row, the attacker's to the one after
+  const hintOf = r => {
+    if (!gameFiles.size || !r.g || !r.file) return null;
+    const rows = loadGame(r.file, r.g) || [], i = rows.findIndex(q => q.p.every((x, n) => Math.abs(x - r.p[n]) < 1e-3));
+    if (i < 0 || i + 2 >= rows.length) return null;
+    return { victim: moveBetween(rows[i].p, rows[i + 1].p, r.mover), attacker: moveBetween(rows[i + 1].p, rows[i + 2].p, 1 - r.mover), childPose: rows[i + 2].p };
+  };
+  const record = res => {
+    tally[res.status] = (tally[res.status] || 0) + 1;
+    if (outPath) fs.appendFileSync(outPath, JSON.stringify(res.row) + '\n');
+    for (const l of res.lines) console.log(l);
     console.log(`  tally: certified ${tally.certified} / escape ${tally.escape} / unresolved ${tally.unresolved} / timeout ${tally.timeout}   ${((Date.now() - t0) / 1000).toFixed(0)}s`);
-    if (v.status === 'timeout') { console.log(`budget of ${maxSeconds}s reached inside a seed; it is recorded as a timeout and retried next run`); break; }
+  };
+  const budgetNote = () => console.log(`budget of ${maxSeconds}s reached; ${todo.length - Object.values(tally).reduce((a, b) => a + b, 0)} seeds left for the next run (a timed-out seed is retried)`);
+  if (threads === 1) {
+    for (const r of todo) {
+      if (Date.now() > deadline) { budgetNote(); break; }
+      const res = batchSeed(r, depth, { deadline, memoRows, hint: hintOf(r) }); record(res);
+      if (res.status === 'timeout') { budgetNote(); break; }
+    }
+  } else {
+    // worker threads: each requires this module afresh and runs batchSeed on one seed; the seed
+    // row, the options, the hint and the memo rows travel by workerData, the result by postMessage
+    const { Worker } = require('worker_threads'); let next = 0, active = 0;
+    const script = `const { parentPort, workerData: w } = require('worker_threads'); const FW = require(w.file); parentPort.postMessage(FW.batchSeed(w.seed, w.depth, { deadline: w.deadline, memoRows: w.memoRows, hint: w.hint }));`;
+    const launch = () => {
+      if (next >= todo.length || Date.now() > deadline) { if (!active) budgetNote(); return; }
+      const r = todo[next++]; active++;
+      const w = new Worker(script, { eval: true, workerData: { file: __filename, seed: r, depth, deadline, memoRows, hint: hintOf(r) } });
+      w.on('message', res => { res.row.thread = w.threadId; record(res); });
+      w.on('error', e => console.log(`worker error on ${r.g}: ${e.message}`));
+      w.on('exit', () => { active--; launch(); });
+    };
+    for (let i = 0; i < threads; i++) launch();
   }
 } else if (require.main === module && process.argv[2] === '--pos') {
   // One position, pasted from the lab: node nn/forced-win.js --pos bx,by,brot,rx,ry,rrot --mover 0|1 [--deep]
