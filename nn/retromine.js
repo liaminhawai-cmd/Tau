@@ -7,8 +7,20 @@
 //   node nn/retromine.js [--seeds 20] [--summary nn/elo-summary.json] [--maxDepth 2]
 //                        [--seedBottom 6] [--bigGuns 4] [--ultimateGuns 1] [--probesPerPos 10]
 //                        [--randomStartFrac 0.3] [--maxReplaysPerSeed 60]
+//                        [--champion nn/models/best.json | none] [--knownFloor -0.8]
 //                        [--out nn/data/retro.jsonl]
 //
+// WHERE THE REPLAYS GO (--champion): the champion's one-ply static value is asked about every
+// rewound position before any game is played. Measured on 10,754 fresh retromined positions, that
+// value correlates 0.88 with the ratchet's own labels, and only 6% of the positions the ratchet
+// calls lost are scored positive by the net -- so at 4-10 replays per ply (seat test, bisection,
+// big guns, wildcards) most of a seed's budget goes on confirming what the net already knows. The
+// information is in the plies where the net and the outcome DISAGREE. So where the champion is
+// confident the climber is lost (value below --knownFloor), the ply gets ONE probe with the top of
+// the axis instead of the whole search: if even the top loses, the net was right and the ply is
+// recorded dead at the price of one game; if the top escapes, the net was confidently wrong, and
+// that is exactly the ply worth the full ratchet -- it runs as it always did, so the rows that
+// teach the net come out unchanged. `--champion none` turns all of this off.
 // THE STRENGTH AXIS is the standing rating pool (elo-summary.json), not a hand-assembled ladder.
 // Every rated brain -- ladder rungs and (net x depth) pairs alike -- is a candidate escaper, sorted
 // by measured Elo. This replaces the old --ensemble "path@rank" spec, which asked a human to paste
@@ -107,6 +119,20 @@ function main() {
   const maxPlies = +arg('maxPlies', 300);
   const openingPlies = +arg('openingPlies', 2);
   const out = arg('out', path.join(__dirname, 'data', 'retro.jsonl'));
+  // See the header note on where the replays go. The champion is read ONCE here, not per seed: the
+  // trainer rewrites best.json between cycles, and a run that swapped its yardstick mid-way would
+  // be measuring two different nets' confidence with one counter.
+  const championPath = arg('champion', path.join(__dirname, 'models', 'best.json'));
+  const knownFloor = +arg('knownFloor', -0.8);
+  let champion = null;
+  if (championPath !== 'none') {
+    try { champion = MLP.fromJSON(JSON.parse(fs.readFileSync(championPath, 'utf8'))); }
+    catch (e) {
+      // not fatal: a fresh checkout has no best.json yet, and the ordinary ratchet is still the
+      // right thing to run there -- it just cannot skip anything
+      console.log(`  (no champion at ${championPath}: ${e.message} -- every ply takes the full ratchet)`);
+    }
+  }
 
   const eng = createEngine();
 
@@ -206,9 +232,23 @@ function main() {
   if (wildcards.length)
     console.log(`  wildcards armed: ${wildcards.map(w => `${w.id}@${Math.round(w.elo)}`).join(', ')} ` +
                 `-- tried before any position is called dead, regardless of axis position`);
+  // The single probe a net-confident ply gets: the strongest thing we have. The escape hatch only
+  // counts if it genuinely outrates the ordinary top -- globalBest is the best NET at any depth,
+  // and a ladder rung can still sit above it on the axis.
+  const topProbe = (ultimateGuns && ultimateGuns.elo > topEntry.elo) ? ultimateGuns : topEntry;
+  if (champion)
+    console.log(`  champion ${path.basename(championPath)} armed: a ply it scores below ${knownFloor} ` +
+                `for the climber gets one probe by ${topProbe.id} instead of the full search`);
 
   const ws = fs.createWriteStream(out, { flags: 'a' });
   let famCount = 0, gameCount = 0, positions = 0, deadFound = 0;
+  // --champion bookkeeping: plies the net's verdict settled with one probe, plies where it was
+  // confidently wrong, and what the ordinary path spends on a dead ply (to price the saving --
+  // the counterfactual is "this ply would have been a dead ply on the ordinary path", which is
+  // what a confirmed probe says it was).
+  let netSkipped = 0, netWrong = 0, ordinaryDead = 0, ordinaryDeadReplays = 0;
+  const savedEstimate = (skipped, dead, deadReplays) =>
+    dead ? Math.round(skipped*(deadReplays/dead - 1)) : 0;
   const discount = 0.995;
   // Same row schema selfplay.js writes (f, z, p, m, g) so train.js and policy-targets.js consume
   // this file with no changes, plus src:'retro' for ablation, fam to trace every replay back to
@@ -257,6 +297,27 @@ function main() {
     let seatBeatenHere = true;
     let rewind = 1, climber = 1 - seed.winner, replays = 0;
     const deadAt = [];
+    // v[k]: the champion's static value for the side to move k plies from the end, at exactly the
+    // plies where that side is the seed's loser -- the climber the search starts with. Every row
+    // already carries features(eng) for its mover (that is what `f` IS, computed by playGame at
+    // the position before the move), so this is nnai.js's leaf evaluation `net.value(features(e))`
+    // for the mover, read off the seed game instead of restoring each pose to recompute it. Plies
+    // where the winner is to move get no entry and take the ordinary path, as does everything once
+    // an escape has flipped the roles: the net has said nothing about the winner's side.
+    const v = [];
+    let seedSkipped = 0, seedWrong = 0;
+    if (champion) {
+      const loser = 1 - seed.winner;
+      const ks = [];
+      for (let k = 1; k <= seed.rows.length; k++) {
+        const r = seed.rows[seed.rows.length - k];
+        if (r.mover !== loser) continue;
+        v[k] = champion.value(r.f);
+        ks.push(`${k}:${v[k].toFixed(2)}`);
+      }
+      console.log(`seed ${fam}: ${seedA.id} vs ${seedB.id}, ${seed.rows.length} plies, ` +
+                  `${loser === 0 ? 'blue' : 'red'} lost -- champion v[k] by plies from the end: ${ks.join(' ')}`);
+    }
 
     while (replays < maxReplaysPerSeed && rewind <= seed.rows.length) {
       // both seats at the top of the pool: nothing left for either side to climb, so the escape
@@ -269,6 +330,42 @@ function main() {
       // asked is "how weak a brain suffices to beat THIS defender from here", so moving both at
       // once would make the answer uninterpretable
       const def = brainAt(floor[defender]);
+      const plyStart = replays;
+
+      // --- the net is confident the climber is lost: one probe by the top, not the whole search --
+      // Only where the ordinary path would actually spend games: a seat already at the top with
+      // its loss here on record has nothing to probe, and the ordinary path ends the seed there.
+      if (champion && point.mover === climber && v[rewind] !== undefined && v[rewind] < knownFloor &&
+          !(seatBeatenHere && floor[climber] >= pool.length - 1)) {
+        const brainA = climber === 0 ? topProbe.fn : def.fn;
+        const idBlue = climber === 0 ? topProbe.id : def.id;
+        const idRed = climber === 0 ? def.id : topProbe.id;
+        const result = playGame(eng, brainA, climber === 0 ? def.fn : topProbe.fn,
+                                maxPlies, 0, seedPose, false);
+        replays++;
+        // capped/adjudicated tells nothing either way -- the ordinary ratchet takes the ply as if
+        // the net had said nothing
+        if (result.winner !== null && !result.adjudicated) {
+          writeGame(result.rows, result.winner, fam, idBlue, idRed);
+          if (result.winner !== climber) {
+            // the net was right: dead, exactly as the bisection would have recorded it, and the
+            // ratchet does not slip -- one game instead of the seat test, bisection, guns, wildcards
+            deadAt.push({ rewind, side: climber, triedGuns: topProbe === ultimateGuns });
+            deadFound++; netSkipped++; seedSkipped++;
+            console.log(`  seed ${fam}, ${rewind} plies from the end: dead for ` +
+                        `${climber === 0 ? 'blue' : 'red'} (net ${v[rewind].toFixed(2)}, top probe only)`);
+            rewind++;
+            seatBeatenHere = false;
+            continue;
+          }
+          // confidently wrong -- the ply the net most needs to learn from. Fall through to the
+          // ordinary ratchet so its rows come out exactly as they do today.
+          netWrong++; seedWrong++;
+          console.log(`  seed ${fam}, ${rewind} plies from the end: net said lost ` +
+                      `(${v[rewind].toFixed(2)}) but ${topProbe.id} escaped`);
+        }
+        if (replays >= maxReplaysPerSeed) break;
+      }
 
       // --- find the lowest escaper -------------------------------------------------------------
       let lo = floor[climber];        // strongest index known (or assumed) to fail from here
@@ -375,6 +472,8 @@ function main() {
             // a dead position -- and one ply earlier the same occupant gets the first try again.
             deadAt.push({ rewind, side: climber, triedGuns: !!ultimateGuns });
             deadFound++;
+            // what a dead verdict costs the ordinary way -- the price a net-skipped ply avoids
+            ordinaryDead++; ordinaryDeadReplays += replays - plyStart;
             rewind++;
             seatBeatenHere = false;   // fresh position: the occupant has not lost from HERE
           }
@@ -387,9 +486,20 @@ function main() {
                   `${d.side === 0 ? 'blue' : 'red'} (nothing in the pool escaped), ` +
                   `${replays} replays, ${gameCount} games logged so far`);
     }
+    if (champion)
+      console.log(`seed ${fam}: net skipped ${seedSkipped} plies (top probe confirmed dead), ` +
+                  `confidently wrong at ${seedWrong}, ~${savedEstimate(seedSkipped, ordinaryDead, ordinaryDeadReplays)} ` +
+                  `replays saved of ${replays} spent`);
   }
-  ws.end(() => console.log(`retromine done: ${famCount} seed families, ${deadFound} dead positions, ` +
-                           `${gameCount} games, ${positions} positions -> ${out}`));
+  ws.end(() => {
+    if (champion)
+      console.log(`champion: ${netSkipped} plies skipped (top probe confirmed dead), ${netWrong} confidently ` +
+                  `wrong, ~${savedEstimate(netSkipped, ordinaryDead, ordinaryDeadReplays)} replays saved ` +
+                  `(ordinary path: ${ordinaryDead ? (ordinaryDeadReplays/ordinaryDead).toFixed(1) : '?'} ` +
+                  `replays per dead ply over ${ordinaryDead} dead plies)`);
+    console.log(`retromine done: ${famCount} seed families, ${deadFound} dead positions, ` +
+                `${gameCount} games, ${positions} positions -> ${out}`);
+  });
 }
 
 main();
