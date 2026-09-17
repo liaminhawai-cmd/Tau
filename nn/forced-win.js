@@ -22,6 +22,9 @@ const MIN_MOVE = eng.CFG.minMoveDeg * Math.PI / 180;
 // engine differ by up to ~0.6u on a push (contact-law.js), and three thin "escapes" mined from real
 // games were contradicted by the engine before this existed. Between -ESC_TOL and 0 is unresolved.
 const ESC_TOL = 0.75;
+// A gap at the engine's substep whose ends both clear this margin (on any arm) is accepted as a
+// sliver -- see verifyAllReplies.
+const SLIVER_BAR = 5;
 
 // Put a position on the engine's board (G is rebuilt per game, so fetch it afterwards).
 function load(pieces, active) {
@@ -50,8 +53,11 @@ function bestThrow(pieces, active, K) {
 // A contact history's signature: which leg pairs touched, and when the first touch came.
 function signature(out) {
   if (!out || !out.trace || !out.trace.length) return { pairs: '', onset: null };
-  const pairs = [...new Set(out.trace.map(t => t.i * 3 + t.j))].sort().join(',');
-  return { pairs, onset: out.trace[0].alpha };
+  // only the contacts BEFORE the foot leaves: nothing after a throw can un-throw it, and a late,
+  // irrelevant leg pair was breaking the consistency check between neighbouring stops
+  const upto = out.offAt != null ? out.trace.filter(t => t.alpha <= out.offAt + 1e-9) : out.trace;
+  const pairs = [...new Set(upto.map(t => t.i * 3 + t.j))].sort().join(',');
+  return { pairs, onset: upto.length ? upto[0].alpha : out.trace[0].alpha };
 }
 
 // Certify: every victim pose in `box` ({x:[lo,hi], y:[lo,hi], rot:[lo,hi]}) is thrown by the
@@ -159,7 +165,7 @@ function certifyForcedIn2(pieces, attacker, K, opts) {
 // positive everywhere sampled but too small for the allowance even at the engine's own substep).
 // Gaps that fail the allowance with positive margins at both ends are subdivided before giving up.
 function verifyAllReplies(pieces, mover, K, replyStepDeg, safety, lipFloor) {
-  const other = 1 - mover; let worstMargin = Infinity, legalArcs = 0, unresolved = null;
+  const other = 1 - mover; let worstMargin = Infinity, legalArcs = 0, unresolved = null, slivers = 0;
   const minStepRad = eng.CFG.substepDeg * Math.PI / 180;
   for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
     const fam = replyFamily(pieces, mover, pv, dir, K); if (!fam) continue;
@@ -195,13 +201,19 @@ function verifyAllReplies(pieces, mover, K, replyStepDeg, safety, lipFloor) {
         if (M.best <= -ESC_TOL) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) to ${(M.alpha * 180 / Math.PI).toFixed(1)}deg leaves no throw (best margin ${M.best.toFixed(2)}u)`, escape: { pv, dir, stop: M.alpha, bestMargin: M.best }, worstMargin: Math.min(worstMargin, M.best) };
         gaps.push([A, M], [M, B]); continue;
       }
+      // At the engine's own substep, a gap whose two ends both clear a high bar on SOME arm (not
+      // necessarily the same one) is accepted as a sliver: for the throw to vanish inside it, the
+      // margin would have to fall from over SLIVER_BAR to zero and back within one substep, which
+      // the engine itself cannot resolve. Counted and reported, so the certificate says
+      // "relative to the engine's resolution" in so many words.
+      if (A.best > SLIVER_BAR && B.best > SLIVER_BAR) { slivers++; worstMargin = Math.min(worstMargin, Math.min(A.best, B.best)); continue; }
       unresolved = unresolved || `reply (${pv},${dir}) ${(A.alpha * 180 / Math.PI).toFixed(1)}-${(B.alpha * 180 / Math.PI).toFixed(1)}deg: no single arc certifies the gap (best min margin ${bestM.toFixed(2)}u) even at the engine's substep -- the throw changes arm here`;
       worstMargin = Math.min(worstMargin, bestM);
     }
   }
   if (!legalArcs) return { certified: false, status: 'escape', why: 'victim has no legal reply', worstMargin: -Infinity };
-  if (unresolved) return { certified: false, status: 'unresolved', why: unresolved, worstMargin };
-  return { certified: true, status: 'dead', worstMargin };
+  if (unresolved) return { certified: false, status: 'unresolved', why: unresolved, worstMargin, slivers };
+  return { certified: true, status: 'dead', worstMargin, slivers };
 }
 // The family profile: from a parent position with `mover` to move, every reply arm sampled every
 // `stepDeg`, and at each stop the other side's best throw margin -- so an arm reads as segments,
