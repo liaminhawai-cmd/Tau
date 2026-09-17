@@ -360,27 +360,23 @@ if (require.main === module && process.argv[2] === '--back-from') {
       const sRad = deg * Math.PI / 180;
       const prev = D.map(q => ({ ...q })); prev[att] = moverAt(D[att], pv, -dir, sRad);
       let ok = !anyOff(prev[att]) && Math.hypot(prev[att].x, prev[att].y) <= eng.CFG.edgeU - R - eng.CFG.edgeEps;
-      if (ok) { const lim = swingLimit(prev, att, pv, dir); ok = lim >= sRad - 1e-6; }
-      if (ok) { const out = swing(prev, att, pv, dir, sRad, { ...K, trace: true }); ok = !(out.trace && out.trace.length) && Math.hypot(out.opp.x - D[mover].x, out.opp.y - D[mover].y) < 1e-6; }
+      if (ok) {
+        // the engine plays the forward swing itself: legal iff it reaches s without a limit, and a
+        // valid predecessor iff BOTH pieces land on D (a push on the way would have moved the victim)
+        const g = load(prev, att); eng.pinFoot(pv); let guard = 0;
+        while (!g.atLimit && Math.abs(g.netRad) < sRad - 1e-9 && guard++ < 3000) eng.applySwing(dir * Math.min(Math.PI / 180, sRad - Math.abs(g.netRad)));
+        const a = g.pieces[att], m = g.pieces[mover];
+        ok = !g.atLimit && Math.abs(g.netRad) >= sRad - 1e-6 && Math.hypot(a.x - D[att].x, a.y - D[att].y) < 0.05 && Math.abs(a.rot - D[att].rot) < 1e-3 && Math.hypot(m.x - D[mover].x, m.y - D[mover].y) < 0.05 && Math.abs(m.rot - D[mover].rot) < 1e-3;
+      }
       if (ok) { if (!cur) cur = { from: deg, to: deg }; else cur.to = deg; } else if (cur) { segs.push(cur); cur = null; }
     }
     if (cur) segs.push(cur);
     for (const sg of segs) {
       total += sg.to - sg.from + 1;
-      // engine check at two random points of the segment: play the forward swing, land on D?
-      let agree = 0; const n = 2;
-      for (let t = 0; t < n; t++) {
-        const deg = sg.from + Math.random() * (sg.to - sg.from), sRad = deg * Math.PI / 180;
-        const prev = D.map(q => ({ ...q })); prev[att] = moverAt(D[att], pv, -dir, sRad);
-        const g = load(prev, att); eng.pinFoot(pv); let guard = 0;
-        while (!g.atLimit && Math.abs(g.netRad) < sRad - 1e-9 && guard++ < 3000) eng.applySwing(dir * Math.min(Math.PI / 180, sRad - Math.abs(g.netRad)));
-        const a = g.pieces[att], m = g.pieces[mover];
-        if (Math.hypot(a.x - D[att].x, a.y - D[att].y) < 0.05 && Math.hypot(m.x - D[mover].x, m.y - D[mover].y) < 0.05) agree++;
-      }
-      console.log(`  ${att === 0 ? 'blue' : 'red'} came by arm (${pv},${dir}) from ${sg.from}-${sg.to}deg back: ${sg.to - sg.from + 1} degrees of forced-win-in-two positions; engine lands on D ${agree}/${n}`);
+      console.log(`  ${att === 0 ? 'blue' : 'red'} came by arm (${pv},${dir}) from ${sg.from}-${sg.to}deg back: ${sg.to - sg.from + 1} degrees of forced-win-in-two positions (each played forward by the engine, landing on D)`);
     }
   }
-  console.log(`\n${total} degrees of predecessor arc certified as forced win in two for ${att === 0 ? 'blue' : 'red'} (each degree ~0.4-0.8u of hub travel)`);
+  console.log(`\n${total} degrees of predecessor arc certified as forced win in two for ${att === 0 ? 'blue' : 'red'} (each degree ~0.4-0.8u of hub travel). Contact-free arrivals only: a predecessor that PUSHED its way in has a different victim pose, and the game record is where those come from (the row before a mined dead position).`);
 } else if (require.main === module && process.argv[2] === '--throw-map') {
   // The picture: node nn/forced-win.js --throw-map bx,..,rrot --mover m [--half 20] [--res 64] [--out base]
   // The other side's throw region over the MOVER's hub positions (mover's rotation held, other side
@@ -513,7 +509,12 @@ if (require.main === module && process.argv[2] === '--back-from') {
         const key = `${k === 0 ? 'one move before the throw' : k + ' loser-moves earlier'}: ${v.status}${agreed === false ? ' (ENGINE DISAGREED)' : ''}`;
         bump(key);
         fs.appendFileSync(outPath, JSON.stringify({ g, file: require('path').basename(file), row: i, back: k, mover: victim, p: r.p, mv: r.mv, verdict: v.status, worstMargin: Number.isFinite(v.worstMargin) ? +v.worstMargin.toFixed(3) : null, escape: v.escape || null, why: v.why || null, engineAgreed: agreed }) + '\n');
-        if (v.status === 'dead') console.log(`  DEAD ${g} (${k} back): every move of ${victim === 0 ? 'blue' : 'red'} loses to a throw, worst margin ${v.worstMargin.toFixed(2)}u; engine ${check.agree}/${check.n}`);
+        if (v.status === 'dead') {
+          console.log(`  DEAD ${g} (${k} back): every move of ${victim === 0 ? 'blue' : 'red'} loses to a throw, worst margin ${v.worstMargin.toFixed(2)}u; engine ${check.agree}/${check.n}`);
+          // and the position before it -- the winner to move, whose played move led here -- is a
+          // certified forced win in two, with the played move as the witness
+          if (i >= 1) { const w = gr[i - 1]; fs.appendFileSync(outPath, JSON.stringify({ g, file: require('path').basename(file), row: i - 1, back: k, mover: w.m, p: w.p, mv: w.mv, verdict: 'win-in-2', witness: 'the move played', leadsTo: { row: i } }) + '\n'); bump('the position before it: win in two (certified by the dead position)'); }
+        }
       }
       if (games % 10 === 0) console.log(`  ${games} games, ${((Date.now() - t0) / 60000).toFixed(1)} min`);
     }
