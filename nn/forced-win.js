@@ -432,12 +432,18 @@ if (require.main === module && process.argv[2] === '--dead-box') {
     if (Math.hypot(x, y) > hubMax || anyOff(p[mover])) { field[j * res + i] = NaN; continue; }
     const bt = bestThrow(p, other, K); field[j * res + i] = Number.isFinite(bt.margin) ? bt.margin : NaN;   // NaN where the pieces overlap
   } if (j % 8 === 7) process.stdout.write(`\r  ${Math.round(100 * (j + 1) / res)}%  ${((Date.now() - t0) / 1000).toFixed(0)}s  `); }
-  // the mover's reachable arcs: hub trajectory per stop, marked 2 where the arc touches the other side
+  // The mover's reachable arcs, each stop coloured by the other side's TRUE throw margin at that
+  // stop's actual pose (the mover's rotation changes along an arc and the other side moves where the
+  // arc touches it, so the background slice -- rotation held, other side held -- is not the margin
+  // at the arc's own points). Dead reads literally: every arc point in the positive colour.
   const arcs = [];
   for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) { const fam = replyFamily(D, mover, pv, dir, K); if (!fam) continue;
-    const touched = new Set((fam.out.trace || []).map(t => +t.alpha.toFixed(6)));
-    let tr = swing(D, mover, pv, dir, fam.lim, { ...K, trace: true, record: true });
-    for (const r of tr.record) { const h = moverAt(D[mover], pv, dir, r.alpha); arcs.push({ x: h.x, y: h.y, touch: !!(tr.trace && tr.trace.find(t => Math.abs(t.alpha - r.alpha) < 1e-9)) }); } }
+    const rec = fam.out.record; let insideArc = 0;
+    for (let k = 0; k < rec.length; k += 3) { const r = rec[k]; const h = moverAt(D[mover], pv, dir, r.alpha);
+      const p = D.map(q => ({ ...q })); p[mover] = h; p[other] = { x: r.x, y: r.y, rot: r.rot };
+      const m = r.maxFootR > EDGE ? -Infinity : bestThrow(p, other, K).margin;         // the reply itself throws: no margin
+      arcs.push({ x: h.x, y: h.y, margin: m }); }
+  }
   require('fs').writeFileSync(base + '.bin', Buffer.from(field.buffer));
   require('fs').writeFileSync(base + '.json', JSON.stringify({ tag: 'throw-map', res, cx, cy, half, cell, extent: half, mover, D, live: [...field].filter(Number.isFinite).length }));
   // render: map-png's ramp for the margin, arcs punched through as index 0 (page background)
@@ -446,11 +452,13 @@ if (require.main === module && process.argv[2] === '--dead-box') {
   const idx = P.render(m.field, res, lo, hi), scale = 8, W = res * scale, big = new Uint8Array(W * W);
   for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) for (let b = 0; b < scale; b++) big.fill(idx[j * res + i], (j * scale + b) * W + i * scale, (j * scale + b) * W + i * scale + scale);
   const px = (x, y) => [Math.round((x - (cx - half)) / cell * scale), Math.round((y - (cy - half)) / cell * scale)];
-  for (const q of arcs) { const [X, Y] = px(q.x, q.y); for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const X2 = X + dx, Y2 = Y + dy; if (X2 >= 0 && Y2 >= 0 && X2 < W && Y2 < W && (!q.touch || (dx + dy) % 2 === 0)) big[Y2 * W + X2] = 0; } }
+  // arc points: a black-bordered dot whose fill is the ramp colour of the TRUE margin
+  const rampIdx = m => !Number.isFinite(m) ? 0 : Math.max(1, Math.min(255, 1 + Math.round(254 * (Math.max(lo, Math.min(hi, m)) - lo) / (hi - lo))));
+  for (const q of arcs) { const [X, Y] = px(q.x, q.y); for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const X2 = X + dx, Y2 = Y + dy; if (X2 < 0 || Y2 < 0 || X2 >= W || Y2 >= W) continue; const d = Math.abs(dx) + Math.abs(dy); if (d > 4) continue; big[Y2 * W + X2] = d >= 3 ? 0 : rampIdx(q.margin); } }
   { const [X, Y] = px(D[mover].x, D[mover].y); for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) if (Math.abs(dx) + Math.abs(dy) > 3 && Math.abs(dx) + Math.abs(dy) < 6) { const X2 = X + dx, Y2 = Y + dy; if (X2 >= 0 && Y2 >= 0 && X2 < W && Y2 < W) big[Y2 * W + X2] = 0; } }
   require('fs').writeFileSync(base + '.png', P.pngIndexed(big, W, W, P.palette()));
-  const inside = arcs.filter(q => { const i = Math.floor((q.x - (cx - half)) / cell), j = Math.floor((q.y - (cy - half)) / cell); const v = field[j * res + i]; return Number.isFinite(v) && v > 0; }).length;
-  console.log(`\n${base}.png: ${other === 0 ? 'blue' : 'red'}'s throw margin over ${mover === 0 ? 'blue' : 'red'}'s hub (rot held), ${res}x${res} over +-${half}u; range [${lo.toFixed(1)}, ${hi.toFixed(1)}]u; ${mover === 0 ? 'blue' : 'red'}'s arcs drawn (dotted where they touch): ${inside}/${arcs.length} arc points inside the positive region`);
+  const inside = arcs.filter(q => q.margin > 0).length, thrown = arcs.filter(q => q.margin === -Infinity).length;
+  console.log(`\n${base}.png: ${other === 0 ? 'blue' : 'red'}'s throw margin over ${mover === 0 ? 'blue' : 'red'}'s hub (background: rotation held), ${res}x${res} over +-${half}u; range [${lo.toFixed(1)}, ${hi.toFixed(1)}]u; ${mover === 0 ? 'blue' : 'red'}'s arcs as dots coloured by the true margin at each stop: ${inside}/${arcs.length} stops lost to a throw${thrown ? `, ${thrown} stops where the move itself throws` : ''}`);
 } else if (require.main === module && process.argv[2] === '--catalog') {
   // A catalogue of the obvious families: a victim with one foot `inside` u from the rim at the
   // 12 o'clock rim point, turned `vrot` from radial; the attacker `dist` from that foot at approach
