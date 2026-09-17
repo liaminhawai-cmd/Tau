@@ -93,6 +93,23 @@ function pointArcClosest(p, A) {
   return best;
 }
 
+// The closest approach of two tripods, as one number: the same leg-leg, hub-leg and hub-hub terms
+// the push solver tests (and `touching` asks as a boolean), each shifted so that it compares to
+// MIND -- the pieces are contact-free iff minGapOf >= MIND, and minGapOf - MIND is the clearance.
+// No chord pre-filter: the filter is exact for the CONTACT question (an arc's 3D gap is never below
+// its chords' flat gap) but it would report a chord gap where the true 3D gap is larger, and the
+// clearance is what the arc tubes in forced-win.js are sized by. Cost: the 9 arc pairs at N = 12
+// are 1296 segment pairs, ~0.1 ms; a 60-degree sweep tracking it is ~150 of those.
+function minGapOf(a, b, N = 12) {
+  const A = arcsOf(a, N), B = arcsOf(b, N);
+  let best = Infinity;
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) best = Math.min(best, arcClosest(A[i], B[j]).dist);
+  const ha = { x: a.x, y: a.y, h: H }, hb = { x: b.x, y: b.y, h: H };
+  for (let j = 0; j < 3; j++) best = Math.min(best, pointArcClosest(ha, B[j]).dist - (HUBLEGD - MIND));
+  for (let i = 0; i < 3; i++) best = Math.min(best, pointArcClosest(hb, A[i]).dist - (HUBLEGD - MIND));
+  return Math.min(best, Math.hypot(a.x - b.x, a.y - b.y) - (2 * HUBR - MIND));
+}
+
 // ---- the law, with the engine's departures as knobs ----
 const IDEAL   = { N: 24, stepDeg: 0.1, iters: 60, cap: Infinity, hfFloor: 1e-4, deepRule: false, tol: 1e-7 };
 const REPLICA = { N: 12, stepDeg: 0.4,  iters: 10, cap: 0.8,      hfFloor: 0.35, deepRule: true,  tol: 0 };
@@ -105,6 +122,11 @@ function swing(pieces, activeIdx, pivotIdx, dir, rad, K) {
   const trace = K.trace ? [] : null;                      // per-step primary-contact geometry
   let alpha = 0, maxFootR = Math.max(...feetOf(opp).map(f => Math.hypot(f.x, f.y))), offAt = null;
   const record = K.record ? [] : null;                    // pushed piece's pose after every step: the family of stops
+  // K.gap: the closest the two pieces come over the whole sweep, the start pose included (the
+  // sweep from one degree further back passes through this start, but the arc's last sample has
+  // no such neighbour). Read after each step's push, so a pushing sweep reports ~MIND and only a
+  // contact-free sweep's minGap carries information; that is the only sweep it is asked about.
+  let minGap = K.gap ? minGapOf(active, opp, K.N) : null;
   for (let s = 0; s < steps; s++) {
     rotateAround(active, pivot.x, pivot.y, step); alpha += Math.abs(step);
     let primary = null;                                   // deepest leg-leg contact this step
@@ -169,8 +191,9 @@ function swing(pieces, activeIdx, pivotIdx, dir, rad, K) {
     if (fr > maxFootR) maxFootR = fr;
     if (offAt === null && fr > EDGE) offAt = alpha;
     if (record) record.push({ alpha, x: opp.x, y: opp.y, rot: opp.rot, maxFootR });
+    if (K.gap) { const gp = minGapOf(active, opp, K.N); if (gp < minGap) minGap = gp; }
   }
-  return { opp, off: anyOff(opp), offAt, maxFootR, flags, trace, record, pivot, rad };
+  return { opp, off: anyOff(opp), offAt, maxFootR, flags, trace, record, pivot, rad, minGap };
 }
 
 // A victim parked near the rim with the attacker a leg's reach away, not touching: the poses where
@@ -244,7 +267,7 @@ function sampleEvent() {
   return { pieces, active, pv, dir, rad, engine: { x: oppE.x, y: oppE.y, rot: oppE.rot, off: offE }, moved };
 }
 
-module.exports = { swing, IDEAL, REPLICA, feetOf, anyOff, R, I, EDGE, eng };
+module.exports = { swing, minGapOf, sampleEvent, IDEAL, REPLICA, feetOf, anyOff, R, I, EDGE, MIND, eng };
 if (require.main !== module) return;
 const N = +(process.argv[2] || 200);
 const rows = [];
