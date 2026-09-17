@@ -80,6 +80,11 @@ const ESC_TOL = 0.75;
 // A gap at the engine's substep whose ends both clear this margin (on any arm) is accepted as a
 // sliver -- see verifyAllReplies.
 const SLIVER_BAR = 5;
+// A substep gap that fails SLIVER_BAR but whose two ends clear this margin on a COMMON arc is
+// probed with the engine itself (probeGap): PROBE_N random stops inside it, every one must be
+// thrown. Measured on 44 retro seeds: 18 refusals were arm-change gaps at the substep, 11 of them
+// with best-min margins 2.4-4.95u, refused only because SLIVER_BAR is 5u.
+const PROBE_BAR = 1.5, PROBE_N = 12;
 
 // Put a position on the engine's board (G is rebuilt per game, so fetch it afterwards).
 function load(pieces, active) {
@@ -271,7 +276,7 @@ function verifyAllReplies(pieces, mover, K, replyStepDeg, safety, lipFloor) {
 function deadCertificate(pieces, mover, K, opts) {
   opts = opts || {};
   const replyStepDeg = opts.replyStepDeg || 2, safety = opts.safety || 3, lipFloor = opts.lipFloor || 1, reach = opts.reach || null, screen = !!opts.screen;
-  const other = 1 - mover; let worstMargin = Infinity, legalArcs = 0, unresolved = null, slivers = 0, minBest = Infinity;
+  const other = 1 - mover; let worstMargin = Infinity, legalArcs = 0, unresolved = null, slivers = 0, probedSlivers = 0, minBest = Infinity;
   const minStepRad = SUBSTEP, profile = [];
   for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
     const env = reach ? reach[pv * 2 + (dir < 0 ? 1 : 0)] : null;
@@ -316,7 +321,19 @@ function deadCertificate(pieces, mover, K, opts) {
       // the engine itself cannot resolve. Counted and reported, so the certificate says
       // "relative to the engine's resolution" in so many words.
       if (A.best > SLIVER_BAR && B.best > SLIVER_BAR) { slivers++; worstMargin = Math.min(worstMargin, Math.min(A.best, B.best)); done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, sliver: true, m: Math.min(A.best, B.best) }); continue; }
-      unresolved = unresolved || `reply (${pv},${dir}) ${(A.alpha * 180 / Math.PI).toFixed(1)}-${(B.alpha * 180 / Math.PI).toFixed(1)}deg: no single arc certifies the gap (best min margin ${bestM.toFixed(2)}u) even at the engine's substep -- the throw changes arm here`;
+      // The empirical sliver: at the substep, with both ends' margins over PROBE_BAR on a COMMON
+      // arc (the probe confirms a robust throw, never rescues a marginal one), the shipped engine
+      // is asked directly -- PROBE_N random stops inside the gap, each reached by a human-style
+      // drag, then the attacker's six arms swept to their limits. All thrown: accepted, counted
+      // apart (probedSlivers) and carried into worstMargin like a sliver. Any stop not thrown:
+      // the gap stays unresolved and the verdict names that stop.
+      let probeNote = '';
+      if (A.arcs.some((a, i) => Number.isFinite(a.m) && a.m > PROBE_BAR && B.arcs[i].m > PROBE_BAR)) {
+        const pr = probeGap(pieces, mover, pv, dir, A.alpha, B.alpha, PROBE_N);
+        if (pr.ok) { probedSlivers++; worstMargin = Math.min(worstMargin, Math.min(A.best, B.best)); done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, probed: true, m: Math.min(A.best, B.best) }); continue; }
+        probeNote = `; engine probe: stop ${(pr.stop * 180 / Math.PI).toFixed(2)}deg ${pr.why}`;
+      }
+      unresolved = unresolved || `reply (${pv},${dir}) ${(A.alpha * 180 / Math.PI).toFixed(1)}-${(B.alpha * 180 / Math.PI).toFixed(1)}deg: no single arc certifies the gap (best min margin ${bestM.toFixed(2)}u) even at the engine's substep -- the throw changes arm here${probeNote}`;
       worstMargin = Math.min(worstMargin, bestM);
       done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, unresolved: true, m: bestM });
     }
@@ -327,8 +344,8 @@ function deadCertificate(pieces, mover, K, opts) {
   }
   if (screen) return { certified: false, status: 'screen', minBest, legalArcs, profile };
   if (!legalArcs) return { certified: false, status: 'escape', why: 'victim has no legal reply', worstMargin: -Infinity, profile };
-  if (unresolved) return { certified: false, status: 'unresolved', why: unresolved, worstMargin, slivers, minBest, profile };
-  return { certified: true, status: 'dead', worstMargin, slivers, minBest, profile };
+  if (unresolved) return { certified: false, status: 'unresolved', why: unresolved, worstMargin, slivers, probedSlivers, minBest, profile };
+  return { certified: true, status: 'dead', worstMargin, slivers, probedSlivers, minBest, profile };
 }
 // Two dead profiles agree when they have the same set of legal reply arms and every gap of both is
 // certified (or a sliver). A switch of the certifying attacker arc between overlapping gaps -- the
@@ -463,6 +480,272 @@ function simCheckDead(pieces, victim, n) {
     if (thrown && !attackerThrown) agree++; else fails.push({ pv, dir, stop, attackerThrown });
   }
   return { agree, n, fails };
+}
+
+// ---- Engine probes: a human-style drag, an arm swept to its limit, a gap probed -----------------
+// A drag to `stop` about the pinned foot: applySwing calls of random size in [0.3, maxDeg] degrees
+// (a human drag integrates a different ladder from the law's fixed record), the last call exact.
+// Returns true when the other piece went off the rim on the way.
+function dragTo(g, other, dir, stop, maxDeg) {
+  let guard = 0;
+  while (!g.atLimit && Math.abs(g.netRad) < stop - 1e-9 && guard++ < 5000) {
+    eng.applySwing(dir * Math.min((0.3 + (maxDeg - 0.3) * Math.random()) * DEG, stop - Math.abs(g.netRad)));
+    if (g.pieces[other].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) return true;
+  }
+  return false;
+}
+// The attacker's arm swept to its limit by the engine (limitAt's loop, a degree at a time): does a
+// victim foot pass the rim on the way?
+function sweepThrows(pieces, attacker, apv, adir) {
+  const g = load(pieces, attacker); eng.pinFoot(apv); let guard = 0;
+  while (!g.atLimit && Math.abs(g.netRad) < 2 * Math.PI - 1e-9 && guard++ < 1200) {
+    eng.applySwing(adir * Math.min(DEG, 2 * Math.PI - Math.abs(g.netRad)));
+    if (g.pieces[1 - attacker].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) return true;
+  }
+  return false;
+}
+// The empirical sliver's probe: n random stops of the victim's reply (pv, dir) inside [lo, hi],
+// each reached by a drag from `pieces`, then the attacker's six arms swept. ok when every stop is
+// thrown; otherwise the first stop that was not and why.
+function probeGap(pieces, victim, pv, dir, lo, hi, n) {
+  const attacker = 1 - victim;
+  for (let t = 0; t < n; t++) {
+    const stop = lo + Math.random() * (hi - lo), g = load(pieces, victim); eng.pinFoot(pv);
+    if (dragTo(g, attacker, dir, stop, 3)) return { ok: false, stop, why: 'the reply threw the attacker' };
+    const after = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+    if (!ARMS.some(([apv, adir]) => sweepThrows(after, attacker, apv, adir))) return { ok: false, stop, why: 'no attacker arm throws' };
+  }
+  return { ok: true };
+}
+
+// ---- Dead-deep: certified forced losses more than one move before the end -------------------
+// Victim V to move, attacker A. Dead at d moves (2d-1 plies): for every reply r of V (every arm,
+// every stop) EITHER A has a throw now (the level-1 case, deadCertificate's rule) OR A has a
+// WITNESS reply a(r) -- a concrete swing (arm, stop) recorded in the certificate -- after which the
+// position is dead at d-1 moves for V. Sampled along each reply arm exactly as deadCertificate
+// samples it (the recorded family, stops every stepDeg, the last at the limit), each sample
+// resolved 'thrown' (best level-1 margin over ESC_TOL) or 'witness' (the attacker's candidate
+// swings every attStepDeg, each screened by the cheap deadCertificate screen, the survivors tried
+// in order of their screen margin with the full deadDeep at d-1, at most maxWitnessTries per
+// sample), and the gap between neighbouring samples certified by the same sampled-slope rule:
+//   thrown-thrown on a common arc with the same contact signature: today's rule;
+//   witness-witness with the SAME attacker arm and stops within 2*attStepDeg: the child margins
+//     take the place of the throw margins. Along such a run the child's margin W_{d-1}(Q_{a(s)})
+//     is a composition of the victim's swing (Lipschitz in the stop, Jacobian <= 1+sqrt2), the
+//     attacker's swing (the same) and W_{d-1} itself (Lipschitz where it is certified, by the same
+//     sampled-slope standard), so the finite difference between the two ends, times the safety
+//     factor, bounds it over the gap. Sampled, not a proof, like everything else here;
+//   mixed (or witness arms differ): subdivide to the substep; there a thrown-thrown gap is a
+//     sliver by today's rules, and a mixed gap gets one more chance -- the thrown end is searched
+//     for a witness too (on the arm the other end uses), so that the boundary between a thrown
+//     region and a witnessed one, where the level-1 margin passes ESC_TOL and can never certify a
+//     gap on its own, is bridged by the witness rule; failing that the gap is unresolved.
+// A sample with no witness is an ESCAPE at this depth and ends the run. Full results and screens
+// are memoised by pose key (six values to six decimals, the victim, the depth). opts.deadline (ms
+// epoch) stops the run cleanly with status 'timeout'.
+const poseKey = (pieces, victim, tag) => pieces.map(q => `${q.x.toFixed(6)},${q.y.toFixed(6)},${q.rot.toFixed(6)}`).join(',') + '|' + victim + '|' + tag;
+const armsOf = m => [0, 1, 2, 3, 4, 5].filter(i => m & (1 << i)).map(i => `(${i >> 1},${i & 1 ? -1 : 1})`).join('');
+const degOf = x => (x * 180 / Math.PI).toFixed(1);
+class DeadlineHit extends Error {}
+// A screen's smallest best margin: the escape's own margin when it ended early, -Infinity when
+// the victim cannot move at all (deadCertificate calls that an escape).
+const screenMin = scr => scr.status === 'escape' ? (Number.isFinite(scr.minBest) ? scr.minBest : -Infinity) : (!scr.legalArcs ? -Infinity : scr.minBest);
+// How a certified gap reads to a person (both deadCertificate's gaps and deadDeep's).
+function gapLabel(g) {
+  if (g.witness) return `witness (${g.witness.apv},${g.witness.adir}) stop ${degOf(g.witness.aFrom)}..${degOf(g.witness.aTo)}deg`;
+  if (g.sliver) return 'sliver'; if (g.probed) return 'engine-probed sliver'; if (g.unresolved) return 'UNRESOLVED';
+  return `thrown by ${armsOf(g.arcs)}`;
+}
+// Runs of consecutive gaps with the same label kind (thrown by the same set of arcs / witness on
+// the same arm / sliver / probed / unresolved); a witness run carries the span of its stops.
+function segmentsOf(gaps) {
+  const kind = g => g.witness ? `w${g.witness.apv},${g.witness.adir}` : g.sliver ? 'sliver' : g.probed ? 'probed' : g.unresolved ? 'unres' : `t${g.arcs}`;
+  const segs = [];
+  for (const g of gaps) {
+    const L = segs[segs.length - 1];
+    if (L && L.kind === kind(g)) { L.to = g.to; L.n++; L.m = Math.min(L.m, g.m); if (g.witness) { L.witness.aFrom = Math.min(L.witness.aFrom, g.witness.aFrom, g.witness.aTo); L.witness.aTo = Math.max(L.witness.aTo, g.witness.aFrom, g.witness.aTo); } }
+    else segs.push({ kind: kind(g), from: g.from, to: g.to, n: 1, m: g.m, arcs: g.arcs, arc: g.arc, sliver: !!g.sliver, probed: !!g.probed, unresolved: !!g.unresolved, witness: g.witness ? { apv: g.witness.apv, adir: g.witness.adir, aFrom: Math.min(g.witness.aFrom, g.witness.aTo), aTo: Math.max(g.witness.aFrom, g.witness.aTo) } : null });
+  }
+  return segs;
+}
+function deadDeep(pieces, victim, K, depth, opts, ctx) {
+  opts = opts || {};
+  const stepDeg = opts.stepDeg || 2, attStepDeg = opts.attStepDeg || 3, maxTries = opts.maxWitnessTries || 4, safety = opts.safety || 3, lipFloor = opts.lipFloor || 1;
+  const top = !ctx;
+  ctx = ctx || { full: new Map(), screens: new Map(), stats: { samples: 0, screens: 0, fullChildren: 0, memoHits: 0, seconds: 0 }, t0: Date.now(), deadline: opts.deadline || Infinity };
+  const finish = v => { if (top) v.stats = { ...ctx.stats, seconds: +((Date.now() - ctx.t0) / 1000).toFixed(1) }; return v; };
+  if (depth <= 1) return finish({ ...deadCertificate(pieces, victim, K, { replyStepDeg: stepDeg, safety, lipFloor }), plies: 1 });
+  const attacker = 1 - victim, plies = 2 * depth - 1, stepRad = stepDeg * DEG, attStepRad = attStepDeg * DEG;
+  let worstMargin = Infinity, legalArcs = 0, unresolved = null, slivers = 0, probedSlivers = 0;
+  const profile = [], witnesses = [], arms = [];
+  const tick = () => { if (Date.now() > ctx.deadline) throw new DeadlineHit('deadline'); };
+  const fail = (status, why, extra) => finish({ certified: false, status, why, plies, worstMargin, profile, witnesses, ...extra });
+  // the level-1 view of a stop: the six attacker margins with signatures (deadCertificate's sampleAt)
+  const sampleAt = (fam, pv, dir, a) => {
+    tick();
+    const rec = fam.out.record, r = rec.find(q => q.alpha >= a - 1e-9) || rec[rec.length - 1];
+    const p = pieces.map(q => ({ ...q })); p[victim] = moverAt(pieces[victim], pv, dir, r.alpha); p[attacker] = { x: r.x, y: r.y, rot: r.rot };
+    const arcs = [];
+    for (let apv = 0; apv < 3; apv++) for (const adir of [1, -1]) { const t = throwMargin(p, attacker, apv, adir, K); arcs.push({ apv, adir, m: t.margin, sig: signature(t.out) }); }
+    ctx.stats.samples++;
+    return { alpha: r.alpha, pose: p, arcs, best: Math.max(...arcs.map(x => x.m)), kind: null, w: null, searched: false, bestChild: null };
+  };
+  // the witness search at a sample: candidates on every attacker arm (preferArm first), screened,
+  // then the full certificate at d-1 in screen order. Sets smp.w on success.
+  const findWitness = (smp, preferArm) => {
+    smp.searched = true;
+    const cands = [];
+    const order = [...ARMS]; if (preferArm) order.sort((x, y) => ((y[0] === preferArm.apv && y[1] === preferArm.adir) ? 1 : 0) - ((x[0] === preferArm.apv && x[1] === preferArm.adir) ? 1 : 0));
+    for (const [apv, adir] of order) {
+      const afam = replyFamily(smp.pose, attacker, apv, adir, K); if (!afam) continue;
+      const rec = afam.out.record;
+      for (let a = MIN_MOVE; ; a += attStepRad) {
+        tick();
+        const last = a >= afam.lim - 1e-9, at = last ? afam.lim : a, r = rec.find(q => q.alpha >= at - 1e-9) || rec[rec.length - 1];
+        if (r.maxFootR > EDGE) break;                                   // from here on the swing throws (thinly): not a position
+        const Q = smp.pose.map(q => ({ ...q })); Q[attacker] = moverAt(smp.pose[attacker], apv, adir, r.alpha); Q[victim] = { x: r.x, y: r.y, rot: r.rot };
+        const key = poseKey(Q, victim, 'screen'); let scr = ctx.screens.get(key);
+        if (scr) ctx.stats.memoHits++; else { scr = deadCertificate(Q, victim, K, { screen: true }); ctx.stats.screens++; ctx.screens.set(key, scr); }
+        const minBest = screenMin(scr);
+        // a level-1 escape is rejected outright when the child is judged at depth 1; deeper
+        // children may still be dead past it, so the screen only orders them (the batch's rule)
+        if (depth - 1 >= 2 || minBest > -ESC_TOL) cands.push({ apv, adir, a: r.alpha, Q, minBest, preferred: preferArm && apv === preferArm.apv && adir === preferArm.adir });
+        if (last) break;
+      }
+    }
+    cands.sort((x, y) => (y.preferred ? 1 : 0) - (x.preferred ? 1 : 0) || y.minBest - x.minBest);
+    let tries = 0;
+    for (const c of cands) {
+      if (tries >= maxTries) break;
+      const key = poseKey(c.Q, victim, depth - 1); let child = ctx.full.get(key);
+      if (child) ctx.stats.memoHits++; else { child = deadDeep(c.Q, victim, K, depth - 1, opts, ctx); ctx.stats.fullChildren++; ctx.full.set(key, child); tries++; }
+      if (Number.isFinite(child.worstMargin) && (smp.bestChild == null || child.worstMargin > smp.bestChild)) smp.bestChild = child.worstMargin;
+      if (child.certified) { smp.w = { apv: c.apv, adir: c.adir, a: c.a, childMargin: child.worstMargin, childPlies: child.plies, child }; return true; }
+    }
+    smp.candidates = cands.length;
+    return false;
+  };
+  // resolve: 'thrown' when the best margin clears ESC_TOL, else a witness or an escape descriptor
+  const resolve = (smp, pv, dir) => {
+    if (smp.best > ESC_TOL) { smp.kind = 'thrown'; return null; }
+    if (findWitness(smp, null)) { smp.kind = 'witness'; return null; }
+    return { pv, dir, stop: smp.alpha, level: depth, m1: smp.best, candidates: smp.candidates, bestChild: smp.bestChild };
+  };
+  const escapeFrom = e => fail('escape', `reply (${e.pv},${e.dir}) to ${degOf(e.stop)}deg: no attacker reply leads to a certified dead position (level-1 best margin ${e.m1.toFixed(2)}u, ${e.candidates} candidates, best child margin ${e.bestChild == null ? 'none' : e.bestChild.toFixed(2) + 'u'})`, { escape: { pv: e.pv, dir: e.dir, stop: e.stop, level: e.level, bestMargin: e.m1, bestChild: e.bestChild } });
+  const gapOf = (A, B, gapU) => {
+    // thrown-thrown: today's rule over the six arcs
+    if (A.kind === 'thrown' && B.kind === 'thrown') {
+      let ok = false, bestM = -Infinity, mask = 0, firstArc = -1;
+      for (let i = 0; i < 6; i++) {
+        const a = A.arcs[i], b = B.arcs[i];
+        if (!Number.isFinite(a.m) || !Number.isFinite(b.m)) continue;
+        const lip = Math.max(lipFloor, safety * Math.abs(a.m - b.m) / Math.max(gapU, 1e-9)), need = lip * gapU / 2;
+        const consistent = a.sig.pairs === b.sig.pairs && (a.sig.onset == null || b.sig.onset == null || Math.abs(a.sig.onset - b.sig.onset) < 5 * Math.PI / 180);
+        if (!ok) bestM = Math.max(bestM, Math.min(a.m, b.m));
+        if (a.m > need && b.m > need && consistent) { mask |= 1 << i; if (!ok) { ok = true; firstArc = i; } }
+      }
+      if (ok) return { from: A.alpha, to: B.alpha, arcs: mask, arc: firstArc, pairs: A.arcs[firstArc].sig.pairs, m: bestM };
+    }
+    // witness-witness on the same attacker arm with stops within 2*attStepDeg: the child margins
+    if (A.w && B.w && A.w.apv === B.w.apv && A.w.adir === B.w.adir && Math.abs(A.w.a - B.w.a) <= 2 * attStepRad + 1e-9) {
+      const mA = A.w.childMargin, mB = B.w.childMargin;
+      const lip = Math.max(lipFloor, safety * Math.abs(mA - mB) / Math.max(gapU, 1e-9)), need = lip * gapU / 2;
+      if (mA > need && mB > need) return { from: A.alpha, to: B.alpha, arcs: 0, arc: -1, witness: { apv: A.w.apv, adir: A.w.adir, aFrom: A.w.a, aTo: B.w.a }, child: A.w.child, m: Math.min(mA, mB) };
+    }
+    return null;
+  };
+  const valueOf = s => s.kind === 'witness' ? s.w.childMargin : s.best;
+  try {
+    // 1. every arm's family and its level-1 samples (cheap); an attacker-throwing reply is an escape
+    for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
+      const fam = replyFamily(pieces, victim, pv, dir, K); if (!fam) { profile.push({ pv, dir, legal: false }); continue; }
+      legalArcs++;
+      if (fam.out.maxFootR > EDGE) return fail('escape', `reply (${pv},${dir}) throws the attacker`, { escape: { pv, dir, stop: fam.out.offAt, throws: true, level: 1 }, worstMargin: -Infinity });
+      const first = [];
+      for (let a = MIN_MOVE; ; a += stepRad) { const last = a >= fam.lim - 1e-9; first.push(sampleAt(fam, pv, dir, last ? fam.lim : a)); if (last) break; }
+      const entry = { pv, dir, legal: true, lim: fam.lim }; profile.push(entry); arms.push({ pv, dir, fam, first, entry });
+    }
+    if (!legalArcs) return fail('escape', 'victim has no legal reply', { worstMargin: -Infinity });
+    // 2. resolve the samples, the thinnest level-1 margins first: a stop with no witness is an
+    //    escape and ends the run, so the likeliest refutation is paid for first
+    const all = []; for (const arm of arms) for (const s of arm.first) all.push({ s, pv: arm.pv, dir: arm.dir });
+    all.sort((x, y) => x.s.best - y.s.best);
+    for (const { s, pv, dir } of all) { const e = resolve(s, pv, dir); if (e) return escapeFrom(e); }
+    // 3. the gap rule per arm, subdividing to the substep
+    for (const { pv, dir, fam, first, entry } of arms) {
+      const gaps = [], done = []; for (let k = 0; k + 1 < first.length; k++) gaps.push([first[k], first[k + 1]]);
+      while (gaps.length) {
+        const [A, B] = gaps.pop(); const gapU = (B.alpha - A.alpha) * 2 * R;
+        let g = gapOf(A, B, gapU);
+        if (g) { worstMargin = Math.min(worstMargin, g.m); done.push(g); continue; }
+        if (B.alpha - A.alpha > SUBSTEP * 1.5) {
+          const M = sampleAt(fam, pv, dir, (A.alpha + B.alpha) / 2); const e = resolve(M, pv, dir); if (e) return escapeFrom(e);
+          gaps.push([A, M], [M, B]); continue;
+        }
+        if (A.kind === 'thrown' && B.kind === 'thrown') {
+          if (A.best > SLIVER_BAR && B.best > SLIVER_BAR) { slivers++; worstMargin = Math.min(worstMargin, Math.min(A.best, B.best)); done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, sliver: true, m: Math.min(A.best, B.best) }); continue; }
+          if (A.arcs.some((a, i) => Number.isFinite(a.m) && a.m > PROBE_BAR && B.arcs[i].m > PROBE_BAR) && probeGap(pieces, victim, pv, dir, A.alpha, B.alpha, PROBE_N).ok) { probedSlivers++; worstMargin = Math.min(worstMargin, Math.min(A.best, B.best)); done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, probed: true, m: Math.min(A.best, B.best) }); continue; }
+        } else if (A.kind !== B.kind) {
+          // the thrown end gets a witness search on the other end's arm, then the witness rule
+          const T = A.kind === 'thrown' ? A : B, W = T === A ? B : A;
+          if (!T.searched) findWitness(T, { apv: W.w.apv, adir: W.w.adir });
+          g = gapOf(A, B, gapU); if (g) { worstMargin = Math.min(worstMargin, g.m); done.push(g); continue; }
+        }
+        const bestM = Math.min(valueOf(A), valueOf(B));
+        unresolved = unresolved || `reply (${pv},${dir}) ${degOf(A.alpha)}-${degOf(B.alpha)}deg: ${A.kind}/${B.kind} ends, no common certificate even at the engine's substep (min end value ${bestM.toFixed(2)}u)`;
+        worstMargin = Math.min(worstMargin, bestM);
+        done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, unresolved: true, m: bestM });
+      }
+      done.sort((a, b) => a.from - b.from);
+      const segments = segmentsOf(done);
+      for (const sg of segments) if (sg.witness) witnesses.push({ pv, dir, from: sg.from, to: sg.to, apv: sg.witness.apv, adir: sg.witness.adir, aFrom: sg.witness.aFrom, aTo: sg.witness.aTo, m: sg.m });
+      entry.gaps = done; entry.segments = segments;
+    }
+  } catch (e) {
+    if (!(e instanceof DeadlineHit)) throw e;
+    if (!top) throw e;
+    return fail('timeout', 'deadline reached', { worstMargin: Number.isFinite(worstMargin) ? worstMargin : null });
+  }
+  if (unresolved) return fail('unresolved', unresolved, { slivers, probedSlivers });
+  return finish({ certified: true, status: 'dead', plies, worstMargin, slivers, probedSlivers, profile, witnesses });
+}
+// The engine's check of a deep claim: n random legal victim moves (random arm, uniform stop),
+// played by random-size drags; the certificate's gap containing the stop says what happens next:
+// 'thrown' -- the attacker sweeps the certifying arc (all six for a sliver) and the victim must go
+// off; 'witness' -- the attacker plays the witness swing, its stop interpolated across the gap,
+// then the child is checked recursively (at depth 1, simCheckDead 8/8). A fail records the stop,
+// the segment and what happened.
+function simCheckDeadDeep(pieces, victim, n, depth, verdict) {
+  const attacker = 1 - victim; let pass = 0; const fails = [];
+  for (let t = 0; t < n; t++) {
+    const pv = Math.floor(Math.random() * 3), dir = Math.random() < 0.5 ? 1 : -1;
+    let g = load(pieces, victim); const snap = eng.takeSnap(); const lim = Math.abs(eng.simMoveToLimit(pv, dir)); eng.restoreSnap(snap);
+    if (lim < MIN_MOVE) { t--; continue; }
+    const stop = MIN_MOVE + Math.random() * (lim - MIN_MOVE), rec = { pv, dir, stopDeg: +degOf(stop) };
+    const arm = (verdict.profile || []).find(a => a.pv === pv && a.dir === dir);
+    const gaps = arm && arm.legal && arm.gaps ? arm.gaps : [];
+    // a stop under the first sample (the record's first ladder step at or past MIN_MOVE) or past
+    // the last belongs to the end gap, as the certificate's own coverage reads
+    const gap = gaps.find(q => stop >= q.from - 1e-9 && stop <= q.to + 1e-9) || (gaps.length ? (stop > gaps[gaps.length - 1].to ? gaps[gaps.length - 1] : gaps[0]) : null);
+    if (!gap) { fails.push({ ...rec, why: 'no certified gap contains this stop' }); continue; }
+    rec.seg = gapLabel(gap);
+    eng.pinFoot(pv);
+    if (dragTo(g, attacker, dir, stop, 6)) { fails.push({ ...rec, why: 'the reply threw the attacker' }); continue; }
+    const after = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+    if (!gap.witness) {
+      if (gap.unresolved) { fails.push({ ...rec, why: 'the stop lies in an unresolved gap' }); continue; }
+      const arcs = gap.arc >= 0 ? [ARMS[gap.arc]] : ARMS;
+      if (arcs.some(([apv, adir]) => sweepThrows(after, attacker, apv, adir))) pass++; else fails.push({ ...rec, why: 'the attacker sweep did not throw' });
+      continue;
+    }
+    const f = (stop - gap.from) / Math.max(gap.to - gap.from, 1e-12), a = gap.witness.aFrom + Math.min(1, Math.max(0, f)) * (gap.witness.aTo - gap.witness.aFrom);
+    g = load(after, attacker); eng.pinFoot(gap.witness.apv);
+    if (dragTo(g, victim, gap.witness.adir, a, 6)) { pass++; continue; }                     // the witness swing threw the victim outright
+    const child = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+    if (depth - 1 <= 1) { const c = simCheckDead(child, victim, 8); if (c.agree === c.n) pass++; else fails.push({ ...rec, witnessStopDeg: +degOf(a), why: `child not dead: ${c.agree}/${c.n}`, childFails: c.fails.slice(0, 2) }); }
+    else { const c = simCheckDeadDeep(child, victim, 8, depth - 1, gap.child || { profile: [] }); if (c.pass === c.n) pass++; else fails.push({ ...rec, witnessStopDeg: +degOf(a), why: `child not dead at ${2 * depth - 3} plies: ${c.pass}/${c.n}`, childFails: c.fails.slice(0, 2) }); }
+  }
+  return { n, pass, fails };
 }
 
 // ---- The graph: metric, reach envelopes, stars, arcs, lookup, the file ------------------------
@@ -914,7 +1197,7 @@ function phaseTol(events, stopsPer) {
   return { events: events.length, stops: dPose.length, stopsPerEvent: stopsPer, median: q(dPose, .5), p90: q(dPose, .9), max: q(dPose, 1), limMedianDeg: q(dLim, .5), limMaxDeg: q(dLim, 1), stoppedEarly: early };
 }
 
-module.exports = { load, swingLimit, limitAt, swingLimitMemo, memoStats, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, deadCertificate, profilesConsistent, simCheckForcedIn2, simCheckDead, simCheckEscape, familyProfile, certifyDeadBox,
+module.exports = { load, swingLimit, limitAt, swingLimitMemo, memoStats, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, deadCertificate, profilesConsistent, simCheckForcedIn2, simCheckDead, simCheckEscape, familyProfile, certifyDeadBox, deadDeep, simCheckDeadDeep, probeGap, dragTo, sweepThrows, segmentsOf, gapLabel,
   moverAt, replyFamily, dist6, pose6, piecesOf, randomInBall, reachEnvelope, certifyStar, simCheckDeadBall, arcPose, hubFromFoot, fibre, tubeGrid, unwindArcs, makeArc, simCheckArc, lookup, dedupeKey, loadGraph, appendNode, phaseTol,
   MIN_MOVE, SUBSTEP, GAP_LIP, LIM_PHASE, MIN_WINDOW, MIN_RUN, LAND_TOL, GRAPH_PATH, PHASE_TOL, ARMS, armIndex };
 
@@ -1089,6 +1372,53 @@ if (require.main === module && process.argv[2] === '--dead-box') {
     if (n % 50 === 0) console.log(`  ${n} rows, ${((Date.now() - t0) / 60000).toFixed(1)} min: ${JSON.stringify(T)}`);
   }
   console.log(`\ncatalogue: ${n} positions -> ${outPath}\n  attacker to move: win in one ${T.win1}, no throw ${T.safe}, skipped (off-board/touching) ${T.skipped}\n  of the win-in-one positions, victim to move: dead ${T.dead}, escape ${T.escape}, unresolved ${T.unresolved}`);
+} else if (require.main === module && process.argv[2] === '--dead-deep') {
+  // node nn/forced-win.js --dead-deep bx,by,brot,rx,ry,rrot --mover m [--depth 2] [--step 2] [--attStep 3]
+  //   [--tries 4] [--engine 20] [--out file]
+  // The dead-deep verdict for the mover (dead at `depth` moves = 2*depth-1 plies), the per-arm
+  // segment table, the stats, then the engine's playouts of the certificate; one JSON row to --out.
+  const K = REPLICA, nums = process.argv[3].split(',').map(Number), arg = (name, def) => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : def;
+  const mover = +arg('--mover', 0), depth = +arg('--depth', 2), stepDeg = +arg('--step', 2), attStepDeg = +arg('--attStep', 3), maxWitnessTries = +arg('--tries', 4), engineN = +arg('--engine', 20), outPath = arg('--out', null);
+  const pieces = [{ x: nums[0], y: nums[1], rot: nums[2] }, { x: nums[3], y: nums[4], rot: nums[5] }], t0 = Date.now();
+  const v = deadDeep(pieces, mover, K, depth, { stepDeg, attStepDeg, maxWitnessTries });
+  console.log(`${mover === 0 ? 'BLUE' : 'RED'} TO MOVE, depth ${depth} (${v.plies} plies): ${v.status.toUpperCase()} -- ${v.why || `every move certified lost, worst margin ${v.worstMargin.toFixed(2)}u`}${v.slivers ? `, ${v.slivers} sliver${v.slivers === 1 ? '' : 's'}` : ''}${v.probedSlivers ? `, ${v.probedSlivers} engine-probed` : ''}`);
+  for (const arm of v.profile || []) console.log(`  arm (${arm.pv},${arm.dir}): ` + (arm.legal ? (arm.gaps ? `to ${degOf(arm.lim)}deg  ` + segmentsOf(arm.gaps).map(sg => `${degOf(sg.from)}-${degOf(sg.to)} ${gapLabel(sg)}`).join(' | ') : `to ${degOf(arm.lim)}deg (not certified: the run ended first)`) : 'no legal move'));
+  const st = v.stats || {}; console.log(`  stats: ${st.samples || 0} samples, ${st.screens || 0} screens, ${st.fullChildren || 0} full children, ${st.memoHits || 0} memo hits, ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  let engine = null;
+  if (v.certified && engineN > 0) { engine = simCheckDeadDeep(pieces, mover, engineN, depth, v); console.log(`  engine: ${engine.pass}/${engine.n} random moves lose${engine.fails.length ? '; fails: ' + JSON.stringify(engine.fails.slice(0, 3)) : ''}`); }
+  if (outPath) fs.appendFileSync(outPath, JSON.stringify({ kind: 'deep', plies: v.plies, pose: nums, mover, certified: v.certified, status: v.status, worstMargin: Number.isFinite(v.worstMargin) ? +v.worstMargin.toFixed(3) : null, why: v.why || null, witnesses: v.witnesses || [], engine: engine ? { n: engine.n, pass: engine.pass } : null, stats: v.stats || null, stamp: new Date().toISOString() }) + '\n');
+} else if (require.main === module && process.argv[2] === '--dead-batch') {
+  // node nn/forced-win.js --dead-batch seeds.jsonl --depth d [--out results.jsonl] [--maxSeconds S] [--only k]
+  // Rows { p, mover, k, g, file }. Resumable: rows whose (p, mover, depth) already appear in --out
+  // are skipped (a 'timeout' row is retried). Depth 1: the screen, then the full certificate;
+  // depth >= 2: the screen is recorded but never rejects (a level-1 escape is still a candidate at
+  // depth 2), then deadDeep under the run's deadline. One row per seed; stops cleanly at --maxSeconds.
+  const K = REPLICA, arg = (name, def) => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : def;
+  const seedsPath = process.argv[3], depth = +arg('--depth', 1), outPath = arg('--out', null), maxSeconds = +arg('--maxSeconds', Infinity), only = process.argv.includes('--only') ? +arg('--only') : null;
+  const keyOf = (p, mover) => p.map(x => (+x).toFixed(6)).join(',') + '|' + mover + '|' + depth;
+  let seeds = fs.readFileSync(seedsPath, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)).filter(r => r.p && r.mover != null);
+  if (only != null) seeds = seeds.filter(r => r.k === only);
+  const done = new Set(outPath && fs.existsSync(outPath) ? fs.readFileSync(outPath, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)).filter(r => r.status !== 'timeout' && r.depth === depth).map(r => keyOf(r.p, r.mover)) : []);
+  const todo = seeds.filter(r => !done.has(keyOf(r.p, r.mover)));
+  const tally = { certified: 0, escape: 0, unresolved: 0, timeout: 0 }, t0 = Date.now(), deadline = t0 + maxSeconds * 1000;
+  console.log(`${seeds.length} seeds${only != null ? ` with k=${only}` : ''}, ${done.size} done, ${todo.length} to do, depth ${depth}, budget ${Number.isFinite(maxSeconds) ? maxSeconds + 's' : 'none'}`);
+  for (const r of todo) {
+    if (Date.now() > deadline) { console.log(`budget of ${maxSeconds}s reached; ${todo.length - Object.values(tally).reduce((a, b) => a + b, 0)} seeds left for the next run`); break; }
+    const ts = Date.now(), pieces = [{ x: r.p[0], y: r.p[1], rot: r.p[2] }, { x: r.p[3], y: r.p[4], rot: r.p[5] }];
+    const scr = deadCertificate(pieces, r.mover, K, { screen: true });
+    const scrMin = screenMin(scr), scrEsc = scrMin <= -ESC_TOL;
+    let v;
+    if (depth === 1 && scrEsc) v = { certified: false, status: 'escape', plies: 1, why: scr.why || `screen: best margin ${scrMin.toFixed(2)}u`, worstMargin: scrMin, screenOnly: true, escape: scr.escape || null };
+    else v = deadDeep(pieces, r.mover, K, depth, { deadline });
+    const status = v.certified ? 'certified' : v.status; tally[status] = (tally[status] || 0) + 1;
+    const seconds = +((Date.now() - ts) / 1000).toFixed(1);
+    const row = { kind: 'batch', p: r.p, mover: r.mover, k: r.k, g: r.g, file: r.file, depth, plies: v.plies, certified: !!v.certified, status: v.status, worstMargin: Number.isFinite(v.worstMargin) ? +v.worstMargin.toFixed(3) : null, why: v.why || null, escape: v.escape || null, screenMinBest: Number.isFinite(scrMin) ? +scrMin.toFixed(3) : null, screenOnly: !!v.screenOnly, slivers: v.slivers || 0, probedSlivers: v.probedSlivers || 0, seconds, stats: v.stats || null, stamp: new Date().toISOString() };
+    if (v.certified) row.witnesses = v.witnesses || [];
+    if (outPath) fs.appendFileSync(outPath, JSON.stringify(row) + '\n');
+    console.log(`${status.padEnd(10)} ${String(seconds).padStart(7)}s  worst ${row.worstMargin == null ? '   -' : row.worstMargin.toFixed(2).padStart(6)}  screen ${row.screenMinBest == null ? '-' : row.screenMinBest.toFixed(2)}  ${r.g}${v.why ? '  -- ' + v.why : ''}`);
+    console.log(`  tally: certified ${tally.certified} / escape ${tally.escape} / unresolved ${tally.unresolved} / timeout ${tally.timeout}   ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+    if (v.status === 'timeout') { console.log(`budget of ${maxSeconds}s reached inside a seed; it is recorded as a timeout and retried next run`); break; }
+  }
 } else if (require.main === module && process.argv[2] === '--pos') {
   // One position, pasted from the lab: node nn/forced-win.js --pos bx,by,brot,rx,ry,rrot --mover 0|1 [--deep]
   // Reports the mover's verdict (dead / escape / unresolved) with the engine's check, the other
