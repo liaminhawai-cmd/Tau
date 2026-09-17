@@ -239,6 +239,8 @@ function sampleEvent() {
   return { pieces, active, pv, dir, rad, engine: { x: oppE.x, y: oppE.y, rot: oppE.rot, off: offE }, moved };
 }
 
+module.exports = { swing, IDEAL, REPLICA, feetOf, anyOff, R, I, EDGE, eng };
+if (require.main !== module) return;
 const N = +(process.argv[2] || 200);
 const rows = [];
 let tries = 0;
