@@ -100,7 +100,7 @@ function gridAxis(res, c, half) {
 // measured per cell, d1 costs ~70ms and d3 ~10s, so a 256^2 searched map is hours where a leaf map
 // is seconds. rawRoot matches brain-depth.js, so a searched map and a searched transect describe
 // the same surface.
-function sweepRows(model, pose, res, rows, onRow, ply, rung, win, keep) {
+function sweepRows(model, pose, res, rows, onRow, ply, rung, win, keep, diverse) {
   const eng = createEngine();
   const ref = setupPose(eng, pose);
   const CFG = eng.CFG, E = CFG.edgeU;
@@ -132,7 +132,7 @@ function sweepRows(model, pose, res, rows, onRow, ply, rung, win, keep) {
       g.active = ref.active;
       top.length = 0;
       const plan = nnPlanFor(eng, null, ref.active, {
-        temperature: 0, depth: D, keepForDepth: keep, rawRoot: true, evalFn,
+        temperature: 0, depth: D, keepForDepth: keep, keepDiverse: !!diverse, rawRoot: true, evalFn,
         sweepDeg: SEARCH_SWEEP_DEG, captureTop: top, captureTopN: 1,
       });
       // A FORCED WIN OR LOSS is scored +-1e6 by the engine rather than by the evaluator, and those
@@ -154,10 +154,10 @@ if (!isMainThread) {
   // A deep-ply sweep runs for hours, and this box has lost two multi-hour runs to container
   // restarts; streaming rows lets the parent checkpoint, so a restart costs minutes instead of the
   // whole map.
-  const { model, pose, res, rows, ply, rung, win, keep } = workerData;
+  const { model, pose, res, rows, ply, rung, win, keep, diverse } = workerData;
   sweepRows(model, pose, res, rows, (j, row) => {
     parentPort.postMessage({ row: j, buf: row.buffer }, [row.buffer]);
-  }, ply, rung, win, keep);
+  }, ply, rung, win, keep, diverse);
   parentPort.postMessage({ done: true });
 } else {
   main();
@@ -177,6 +177,7 @@ async function main() {
   const ply = +arg('ply', 0);   // 0 = leaf evaluation (the original behaviour); N >= 1 = root value of an N-ply search
   const rung = arg('rung', null) == null ? null : +arg('rung');
   const keep = +arg('keep', SEARCH_KEEP_DEFAULT);
+  const diverse = process.argv.includes('--diverse');   // the per-arm-diverse shortlist (nnai.js o.keepDiverse): the map of that player
   const outDir = arg('out', 'nn/brain-maps');
   const threads = +arg('threads', Math.max(1, Math.min(os.cpus().length, 4)));
 
@@ -189,7 +190,7 @@ async function main() {
   const zoomed = half !== E || cx !== 0 || cy !== 0;
   const tag = arg('tag', (model === '__engine' ? 'L' + (rung == null ? 11 : rung)
                                               : path.basename(String(model)).replace(/\.json$/, '')) +
-                         (ply >= 1 ? '-p' + ply : '') + (ply >= 1 && keep !== SEARCH_KEEP_DEFAULT ? '-k' + keep : '') +
+                         (ply >= 1 ? '-p' + ply : '') + (ply >= 1 && keep !== SEARCH_KEEP_DEFAULT ? '-k' + keep : '') + (ply >= 1 && diverse ? '-div' : '') +
                          (zoomed ? `-z${half.toFixed(1)}` : ''));
   const info = model === '__engine'
     ? { kind: `engine-L${rung == null ? eng.AI_LADDER.length : rung}`, params: 0, sizes: [],
@@ -211,7 +212,7 @@ async function main() {
   // parameter that changes the field. Anything that does not match is ignored rather than merged --
   // half a map of one surface glued to half of another is worse than starting over, because it
   // still looks like a map.
-  const stamp = JSON.stringify({ model, pose, res, ply, rung, cx, cy, half, keep, sweep: SEARCH_SWEEP_DEG });
+  const stamp = JSON.stringify({ model, pose, res, ply, rung, cx, cy, half, keep, diverse, sweep: SEARCH_SWEEP_DEG });
   let carried = 0;
   if (fs.existsSync(base + '.part.json') && fs.existsSync(base + '.part.bin')) {
     try {
@@ -250,7 +251,7 @@ async function main() {
 
   await Promise.all(lanes.map(rows => new Promise((resolve, reject) => {
     if (!rows.length) return resolve();
-    const w = new Worker(__filename, { workerData: { model, pose, res, rows, ply, rung, win, keep } });
+    const w = new Worker(__filename, { workerData: { model, pose, res, rows, ply, rung, win, keep, diverse } });
     w.on('message', m => {
       if (m.done) return;
       field.set(new Float32Array(m.buf), m.row * res);
@@ -288,7 +289,7 @@ async function main() {
 
   fs.writeFileSync(base + '.bin', Buffer.from(field.buffer));
   fs.writeFileSync(base + '.json', JSON.stringify({
-    tag, model, pose, res, ply, rung, keep: ply >= 1 ? keep : null,
+    tag, model, pose, res, ply, rung, keep: ply >= 1 ? keep : null, diverse: ply >= 1 ? diverse : null,
     extent: half, cx, cy, half, boardEdge: E, cell, crossEps: eng.CFG.crossEps,
     kind: info.kind, params: info.params, sizes: info.sizes,
     live: n, min: mn, max: mx, mean: sum / n, seconds: secs, decidedWin, decidedLoss,
