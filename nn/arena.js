@@ -46,7 +46,7 @@ function arg(name, dflt) {
 // recursive search stops once it has refuted the candidate (never blind -- no cutoff means every
 // arm is still swept); without it, the policy hard-prunes to its top arms, the original wiring.
 // Default stays pruning so the existing menu A/Bs keep testing what they say they test.
-function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, abCut, policyArms, stopStride, sweepDeg, parkStops, dualPolicy) {
+function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, abCut, policyArms, stopStride, sweepDeg, parkStops, dualPolicy, keepDiverse) {
   // "L9" is the rung as itself; "L9+back" / "L9+front" is the rung opening with that corner line
   // (index.html's ladderPlanCorner, then itself); "L9+corner" opens with either, chosen the way the
   // app chooses (blue a coin, red a look at all four options). All pinned explicitly: the app draws
@@ -81,13 +81,13 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
       ? require('./policy.js').PolicyMLP.fromJSON(JSON.parse(fs.readFileSync(policyPath, 'utf8')))
       : null;
     const pTag = policy ? (abCut ? ',P-ab:' : ',P:') + path.basename(policyPath).replace(/\.json$/i, '') : '';
-    const kTag = keepForDepth !== 4 ? ',K' + keepForDepth : '';
+    const kTag = (keepForDepth !== 4 ? ',K' + keepForDepth : '') + (keepDiverse ? ',DIV' : '');
     const aTag = (policy && !abCut && policyArms) ? ',A' + policyArms : '';
     // Park exemption rides in the name too: it changes which moves the brain can even pick, so two
     // runs that differ only by it must not print the same name and pool as one brain.
     const sTag = (stopStride > 1 ? ',S' + stopStride : '') + (sweepDeg !== 3 ? ',W' + sweepDeg : '') +
                  (parkStops ? ',PARK' : '');
-    const common = { temperature, keepForDepth, quiesce, policy, policyArms, stopStride, sweepDeg, evalFn,
+    const common = { temperature, keepForDepth, quiesce, keepDiverse: !!keepDiverse, policy, policyArms, stopStride, sweepDeg, evalFn,
                      parkStops: !!parkStops,
                      policyPrune: !!policy && !abCut, abCut: !!abCut };
     if (timeMs) {
@@ -110,13 +110,13 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
     const temperature = parts[1] ? +parts[1] : 0;
     const mp = parts.length > 2 ? parts.slice(2).join(':') : path.join(__dirname, 'models', 'dual.json');
     const dual = require('./dualnet.js').DualMLP.fromJSON(JSON.parse(fs.readFileSync(mp, 'utf8')));
-    const kTag = keepForDepth !== 4 ? ',K' + keepForDepth : '';
+    const kTag = (keepForDepth !== 4 ? ',K' + keepForDepth : '') + (keepDiverse ? ',DIV' : '');
     // Policy tag only when dualPolicy is actually spending it -- a bare dual: brain isn't using its
     // policy head at all, and printing an A/ab tag it doesn't act on would be misleading.
     const pTag = dualPolicy ? (abCut ? ',ab' : '') + ((!abCut && policyArms) ? ',A' + policyArms : '') : '';
     const sTag = (stopStride > 1 ? ',S' + stopStride : '') + (sweepDeg !== 3 ? ',W' + sweepDeg : '') +
                  (parkStops ? ',PARK' : '');
-    const common = { temperature, keepForDepth, quiesce, dual, dualPolicy: !!dualPolicy, policyArms,
+    const common = { temperature, keepForDepth, quiesce, keepDiverse: !!keepDiverse, dual, dualPolicy: !!dualPolicy, policyArms,
                      stopStride, sweepDeg, parkStops: !!parkStops,
                      policyPrune: !!dualPolicy && !abCut, abCut: !!abCut };
     if (timeMs) {
@@ -150,7 +150,7 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
   // Shown only when it differs from the default, same reasoning as the D1.5 label above: a
   // keep-4-vs-keep-6 A/B is a same-net comparison, so without this both sides print an identical
   // name and the score line silently compares two things that look like the same brain.
-  const kTag = keepForDepth !== 4 ? ',K' + keepForDepth : '';
+  const kTag = (keepForDepth !== 4 ? ',K' + keepForDepth : '') + (keepDiverse ? ',DIV' : '');
   if (timeMs) {
     // timeMs may be a number OR a live {ms} box shared by both sides -- the randomised-clock mode
     // below rewrites that box between games, so the brain has to read it per move rather than
@@ -164,7 +164,7 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
                  (parkStops ? ',PARK' : '');
     return { name: 'nn(' + path.basename(mp) + ',' + tTag + kTag + pTag + aTag + sTag + ')',
              fn: idx => nnPlanForTimed(eng, net, idx, { temperature, keepForDepth, quiesce, policy,
-                                                        timeMs: tm(), policyArms, stopStride, sweepDeg,
+                                                        timeMs: tm(), keepDiverse: !!keepDiverse, policyArms, stopStride, sweepDeg,
                                                         parkStops: !!parkStops,
                                                         policyPrune: !!policy && !abCut, abCut: !!abCut }) };
   }
@@ -177,7 +177,7 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
                 (parkStops ? ',PARK' : '');
   return { name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + (depthLabel > 1 ? ',D' + depthLabel : '') +
            kTag + pTag + aTagD + sTagD + ')',
-           fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth, quiesce, policy, policyArms, stopStride, sweepDeg,
+           fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth, keepDiverse: !!keepDiverse, quiesce, policy, policyArms, stopStride, sweepDeg,
                                                  parkStops: !!parkStops,
                                                  policyPrune: !!policy && !abCut, abCut: !!abCut }) };
 }
@@ -270,9 +270,13 @@ function main() {
   const dualPolicy = process.argv.includes('--dualPolicy');
   const dualPolicyA = dualPolicy || process.argv.includes('--dualPolicyA');
   const dualPolicyB = dualPolicy || process.argv.includes('--dualPolicyB');
+  // --diverse / --diverseA / --diverseB: fill the deep-search frontier one candidate per arm first
+  // (nnai.js o.keepDiverse) instead of the top-k by shallow score.
+  const diverse = process.argv.includes('--diverse');
+  const diverseA = diverse || process.argv.includes('--diverseA'), diverseB = diverse || process.argv.includes('--diverseB');
   const asClock = t => (t && typeof t === 'object' ? t : t && +t);
-  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepA, quiesceA, arg('policyA', policy), asClock(timeMsA), abA, policyArmsA, stopStrideA, sweepDegA, parkStopsA, dualPolicyA);
-  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepB, quiesceB, arg('policyB', policy), asClock(timeMsB), abB, policyArmsB, stopStrideB, sweepDegB, parkStopsB, dualPolicyB);
+  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepA, quiesceA, arg('policyA', policy), asClock(timeMsA), abA, policyArmsA, stopStrideA, sweepDegA, parkStopsA, dualPolicyA, diverseA);
+  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepB, quiesceB, arg('policyB', policy), asClock(timeMsB), abB, policyArmsB, stopStrideB, sweepDegB, parkStopsB, dualPolicyB, diverseB);
   const games = +arg('games', 24);
   // both brains are commonly fully deterministic (nn at temperature 0, or a noise-free ladder
   // level) from the same fixed start -- without a shuffled opening, every game with the same
