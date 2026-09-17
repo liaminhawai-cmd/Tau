@@ -215,28 +215,75 @@ function simCheckForcedIn2(pieces, attacker, witness, n) {
   return { agree, n, fails };
 }
 
-module.exports = { load, swingLimit, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, simCheckForcedIn2 };
+// The engine's check of a "dead" claim (victim to move, every move loses to a throw): random
+// legal victim moves played by the engine, then the engine sweeps each attacker arc for the throw.
+function simCheckDead(pieces, victim, n) {
+  const attacker = 1 - victim; let agree = 0; const fails = [];
+  for (let t = 0; t < n; t++) {
+    const pv = Math.floor(Math.random() * 3), dir = Math.random() < 0.5 ? 1 : -1;
+    let g = load(pieces, victim); const snap = eng.takeSnap(); const lim = Math.abs(eng.simMoveToLimit(pv, dir)); eng.restoreSnap(snap);
+    if (lim < MIN_MOVE) { t--; continue; }
+    const stop = MIN_MOVE + Math.random() * (lim - MIN_MOVE);
+    eng.pinFoot(pv); let guard = 0, attackerThrown = false;
+    while (!g.atLimit && Math.abs(g.netRad) < stop - 1e-9 && guard++ < 2000) { eng.applySwing(dir * Math.min(Math.PI / 180, stop - Math.abs(g.netRad))); if (g.pieces[attacker].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) { attackerThrown = true; break; } }
+    const after = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+    let thrown = false;
+    if (!attackerThrown) for (let apv = 0; apv < 3 && !thrown; apv++) for (const adir of [1, -1]) {
+      g = load(after, attacker); eng.pinFoot(apv); guard = 0;
+      while (!g.atLimit && guard++ < 400) { eng.applySwing(adir * Math.PI / 180); if (g.pieces[victim].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) { thrown = true; break; } }
+      if (thrown) break;
+    }
+    if (thrown && !attackerThrown) agree++; else fails.push({ pv, dir, stop, attackerThrown });
+  }
+  return { agree, n, fails };
+}
 
-if (require.main === module && process.argv[2] === '--in2') {
-  // Sample positions with a victim foot a few units inside the rim and the attacker in reach,
-  // skip those the attacker wins in one, try to certify a forced win in two, check each in the engine.
-  const N = +(process.argv[3] || 20), K = REPLICA;
+module.exports = { load, swingLimit, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, simCheckForcedIn2, simCheckDead };
+
+// A victim with one foot `inside` u from the rim and the attacker 26-44u from that foot on the
+// inward side, not touching.
+function exposedPose(insideLo, insideHi) {
   const hubMax = eng.CFG.edgeU - R - eng.CFG.edgeEps;
-  let tried = 0, win1 = 0, cert2 = 0, cert2ok = 0, cert2bad = 0, refused = 0; const t0 = Date.now();
-  while (tried < N) {
+  for (let t = 0; t < 200; t++) {
     eng.newGame(); const g = eng.getG();
     const victim = Math.random() < 0.5 ? 0 : 1, attacker = 1 - victim, v = g.pieces[victim], a = g.pieces[attacker];
-    const fr = eng.CFG.edgeU - 3 - 7 * Math.random(), fa = Math.random() * 2 * Math.PI;
+    const inside = insideLo + (insideHi - insideLo) * Math.random(), fr = eng.CFG.edgeU - inside, fa = Math.random() * 2 * Math.PI;
     v.rot = Math.random() * 2 * Math.PI; v.x = fr * Math.cos(fa) - Math.cos(v.rot) * R; v.y = fr * Math.sin(fa) - Math.sin(v.rot) * R;
     if (Math.hypot(v.x, v.y) > hubMax || anyOff(v)) continue;
     const d = 26 + 18 * Math.random(), aa = fa + Math.PI + (Math.random() - 0.5) * 1.6;
     a.x = fr * Math.cos(fa) + d * Math.cos(aa); a.y = fr * Math.sin(fa) + d * Math.sin(aa); a.rot = Math.random() * 2 * Math.PI;
     if (Math.hypot(a.x, a.y) > hubMax || anyOff(a)) continue;
     const pieces = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
-    // not touching, and not a win in one
-    const b1 = bestThrow(pieces, attacker, K); if (!Number.isFinite(b1.margin)) continue;
-    tried++;
-    if (b1.margin > 0) { win1++; continue; }
+    const b1 = bestThrow(pieces, attacker, REPLICA); if (!Number.isFinite(b1.margin)) continue;   // touching / no legal arc
+    return { pieces, victim, attacker, inside, win1: b1.margin > 0 };
+  }
+  return null;
+}
+
+if (require.main === module && process.argv[2] === '--dead') {
+  // The victim to move: is every move answered by a throw? Certified along the six reply arcs,
+  // then checked by the engine on random moves.
+  const N = +(process.argv[3] || 20), K = REPLICA; let tried = 0, dead = 0, deadOK = 0, deadBad = 0, alive = 0, win1 = 0; const t0 = Date.now();
+  while (tried < N) {
+    const s = exposedPose(4, 12); if (!s) continue; tried++;
+    if (s.win1) win1++;                                             // the attacker could throw now; the question is whether the victim can fix that
+    const v = verifyAllReplies(s.pieces, s.victim, K, 2, 3, 1);
+    if (v.certified) {
+      dead++; const c = simCheckDead(s.pieces, s.victim, 30);
+      if (c.agree === c.n) deadOK++; else { deadBad++; console.log(`  CONTRADICTED: engine found an escape ${c.n - c.agree}/${c.n}: ${JSON.stringify(c.fails.slice(0, 2))}`); }
+      console.log(`  dead: victim ${s.victim} (foot ${s.inside.toFixed(1)}u inside) -- every reply certified lost, worst margin ${v.worstMargin.toFixed(2)}u; engine agrees ${c.agree}/${c.n}`);
+    } else { alive++; console.log(`  alive: ${v.why}`); }
+  }
+  console.log(`\n${tried} positions (victim to move, foot 4-12u inside): dead certified ${dead} (engine agreed on every move in ${deadOK}, contradicted ${deadBad}); alive ${alive}; attacker had a throw available in ${win1}   ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+} else if (require.main === module && process.argv[2] === '--in2') {
+  // Sample positions with a victim foot a few units inside the rim and the attacker in reach,
+  // skip those the attacker wins in one, try to certify a forced win in two, check each in the engine.
+  const N = +(process.argv[3] || 20), K = REPLICA;
+  let tried = 0, win1 = 0, cert2 = 0, cert2ok = 0, cert2bad = 0, refused = 0; const t0 = Date.now();
+  while (tried < N) {
+    const s = exposedPose(6, 14); if (!s) continue; tried++;
+    if (s.win1) { win1++; continue; }
+    const { pieces, attacker } = s, fr = eng.CFG.edgeU - s.inside;
     const r = certifyForcedIn2(pieces, attacker, K);
     if (r.certified) {
       cert2++;
