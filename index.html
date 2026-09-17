@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 262</div>
+<div id="buildTag">build 263</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2400,7 +2400,7 @@ function reset() {
           // commitTurn). adjudicated marks a result that came from the move cap rather than a fall.
           koHist:[], plies:0, adjudicated:false };
     koReset();   // the opening counts as a position the board has been in — see koReset
-    fall.active=false; fallenIdx=-1; clearFloatDrift(); breakHold=0;
+    fall.active=false; fallenIdx=-1; clearFloatDrift(); breakHold=0; floatHold=0;
     // A fresh board is never mid-coach: drop the guided/free-play rail state so a ladder level or
     // casual game started from the coach's game-over sheet doesn't inherit the dotted guides.
     // (startCoach() re-arms what it needs right after its own reset() call. typeof guards: these
@@ -3101,7 +3101,7 @@ let fallenIdx=-1;
 // clears these too: how long the camera still holds on a break, and the piece that is still
 // drifting up and away from the alien board after the match has moved on.
 const BREAK_HOLD = 2.3;   // seconds the camera stays on a break before the board gets it back
-let breakHold = 0, floatDrift = null;
+let breakHold = 0, floatHold = 0, floatDrift = null;
 // ---------- Replay recorder ----------
 // Records the VISIBLE motion of a live game as raw per-frame poses (both pieces' x/y/rot), sampled
 // in animate() only on frames where something actually moved -- so thinking time, turn clocks and
@@ -3197,7 +3197,7 @@ function segmentReplayTurns() {
 function startReplay() {
     if (replayFrames.length < 2 || !G) return;
     hideModal(); clearTimeout(gameOverTimer);
-    fall.active = false; fallenIdx=-1; clearFloatDrift(); breakHold=0;       // the fallen piece pops back to the board for the re-run
+    fall.active = false; fallenIdx=-1; clearFloatDrift(); breakHold=0; floatHold=0;       // the fallen piece pops back to the board for the re-run
     if (typeof tripods !== 'undefined' && tripods && !(typeof htp3DActive !== 'undefined' && htp3DActive))
         tripods.forEach(tp => { if (tp) tp.visible = true; });
     // Post-game: the board still holds the true final position — snapshot it. A shared/link replay
@@ -5256,7 +5256,7 @@ function demoRestoreClone(snap) {
           crossings:0, atLimit:false, netRad:0, ptrAngle:null, over: snap.over, winner: snap.winner,
           snap:null, contact:null,
           koHist: snap.koHist.map(q => Array.isArray(q) ? q.slice() : {...q}), plies: snap.plies, adjudicated: snap.adjudicated };
-    fall.active=false; fallenIdx=-1; clearFloatDrift(); breakHold=0;
+    fall.active=false; fallenIdx=-1; clearFloatDrift(); breakHold=0; floatHold=0;
 }
 // Drives ONE turn to completion instantly (no animation, no delay) -- the exact same plan/pin/swing/
 // endTurn path a real or visible-demo turn uses, just without the timers between the steps.
@@ -5873,7 +5873,7 @@ function coachHandoff() {
     if (typeof markOnboarded === 'function') markOnboarded('coach');   // guided beats done = onboarded
     coachActive = false; coachStage = 'off'; coachGuided = null;
     clearTurn(); G.over = false; G.winner = null; G.active = 0;
-    fall.active = false; fallenIdx=-1; clearFloatDrift(); breakHold=0;
+    fall.active = false; fallenIdx=-1; clearFloatDrift(); breakHold=0; floatHold=0;
     vsAI = true; aiDifficulty = 'dumb'; ladderLevel = null; humanIdx = 0; aiIdx = 1;
     coachFreeGuide = true; coachFreeArc = null;   // keep the dotted rail + narration going in the live game
     document.getElementById('btns').style.display = 'flex';
@@ -7218,7 +7218,7 @@ function labTakeBack() {
     aiAnim = null; labAuto = false;
     hideModal();
     replayApplyPose(h.pose); G.active = h.active;
-    G.over = false; G.winner = null; fall.active = false; fallenIdx=-1; clearFloatDrift(); breakHold=0;
+    G.over = false; G.winner = null; fall.active = false; fallenIdx=-1; clearFloatDrift(); breakHold=0; floatHold=0;
     if (typeof tripods !== 'undefined' && tripods) tripods.forEach(t => { t.visible = true; t.position.y = 0; });
     clearTurn(); labBenchRender(); render();
 }
@@ -9582,7 +9582,11 @@ function stepFall(dt) {
         floatDrift = { idx: fall.idx, state: fall };
         fall = Object.assign({}, fall, { active:false });
         fallenIdx = floatDrift.idx;
-        camCenterFrac = 1; camManualSet = false;
+        // AND WATCH IT GO. Handing the camera straight back to the board at this point meant the one
+        // thing worth seeing -- the piece turning over and lifting away -- happened off the top of
+        // the frame while the camera looked at an empty table. The loss cam keeps it for a few
+        // seconds more, standing back and levelling off as it climbs, and lets go once it is small.
+        floatHold = FLOAT_WATCH;
         return;
     }
     if (fall.settleT > 0.9 || fall.downT > 7) { fall.active=false; fallenIdx=fall.idx; camCenterFrac=1; camManualSet=false; }
@@ -9590,6 +9594,7 @@ function stepFall(dt) {
 // The loser of an alien match goes on rising after the result is up: the same rigid body, stepped
 // from the render loop the way the shards are, until it is far enough up to be gone for good.
 const FLOAT_RISE = 30;                        // the steady speed it settles to once it is going up
+const FLOAT_WATCH = 4.5;                      // seconds the camera stays with it once it starts to rise
 const FLOAT_GONE = 600;                       // the height at which it is not coming back
 function stepFloatDrift(dt) {
     if (!floatDrift) return;
@@ -9598,13 +9603,18 @@ function stepFloatDrift(dt) {
     stepFallOn(t, floatDrift.state, dt);
     if (t.position.y > FLOAT_GONE) { t.visible = false; floatDrift = null; }
 }
-function clearFloatDrift() { floatDrift = null; }
+function clearFloatDrift() { floatDrift = null; floatHold = 0; }
 // One frame of rigid-body motion, on any tripod + fall state -- the tutorial's falls run this exact
 // code, so a tumble looks the same everywhere.
 function stepFallOn(t, fall, dt) {
     if (!fall.X) fallSeed(t, fall);
     const MAT = fallMaterial();
-    fall.airT = (fall.airT || 0) + dt;
+    // TIME IN THE AIR, and the emphasis is on AIR. Counting from the moment the fall was triggered
+    // meant the clock ran all the way across the board while the piece was still being shoved along
+    // it -- so on a look whose gravity fades, most of the pull was gone before the piece ever
+    // reached the rim, and instead of falling off the edge it wandered over it and hung there. The
+    // clock starts when the board stops holding it up.
+    if (fall.phase !== 'board') fall.airT = (fall.airT || 0) + dt;
     fall.gMul = fallGravityScale(fall);
     // A piece gathering speed outruns a fixed four substeps: at three hundred units a second a
     // substep is already longer than a leg is thick, and a contact found that deep resolves into a
@@ -10166,9 +10176,14 @@ function animate() {
     if (fall.active) stepFall(dt * (window.tauDesktop && window.tauDesktop.fallTimeScale ? window.tauDesktop.fallTimeScale() : 1));
     stepShards(dt);
     stepFloatDrift(dt);
-    if (fall.active || breakHold > 0) {
+    if (fall.active || breakHold > 0 || floatHold > 0) {
         updateFallCam(dt);   // dramatic loss cam takes over regardless of manual/auto state
-        if (!fall.active) {
+        if (!fall.active && floatHold > 0) {
+            // Still with the piece as it rises. When the hold runs out the board gets the camera
+            // back the ordinary way -- there is nothing to linger on once it is a speck.
+            floatHold -= dt;
+            if (floatHold <= 0) { camCenterFrac = 1; camManualSet = false; }
+        } else if (!fall.active) {
             // Still framing where it broke. The piece is gone but its mesh is where it was, which is
             // exactly what the loss cam wants to point at.
             breakHold -= dt;
