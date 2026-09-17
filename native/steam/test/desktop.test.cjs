@@ -2424,6 +2424,33 @@ test('every board sits at its own height above its floor',async t=>{
   assert.deepEqual(g.errors,[]);
 });
 
+test('typing lab at the menu opens the brain bench, and nowhere else does',async t=>{
+  const g=await game();t.after(g.close);
+  const open=()=>g.read("document.getElementById('labOverlay').classList.contains('open')");
+  assert.equal(open(),false,'it is not showing to begin with');
+  // Three letters at the menu, and the picker is up.
+  for (const k of ['l','a','b']) g.key(k);
+  assert.equal(open(),true,'typing its name opens it');
+  g.read("labCloseDrop()");
+  // The letters have to be in order and together: a near miss does nothing.
+  for (const k of ['l','b','a','l','x','b']) g.key(k);
+  assert.equal(open(),false,'and nothing else does');
+  // Not while the caret is in a field -- plenty of ordinary words have "lab" in them.
+  g.read(`(()=>{ const i=document.createElement('input'); i.id='labTypeProbe';
+    document.body.appendChild(i); i.focus(); })()`);
+  for (const k of ['l','a','b']) g.key(k);
+  assert.equal(open(),false,'typing into a box is just typing');
+  g.read("document.getElementById('labTypeProbe').remove(); document.body.focus && document.body.focus();");
+  // And never in the middle of a game.
+  g.read("document.body.classList.add('ingame')");
+  for (const k of ['l','a','b']) g.key(k);
+  assert.equal(open(),false,'a game is not interrupted by it');
+  g.read("document.body.classList.remove('ingame')");
+  for (const k of ['l','a','b']) g.key(k);
+  assert.equal(open(),true,'back at the menu it answers again');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('on the alien board gravity lets go: the piece falls, hangs, and floats away',async t=>{
   const g=await game();t.after(g.close);
   localMatch(g);

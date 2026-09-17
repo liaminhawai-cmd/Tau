@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 263</div>
+<div id="buildTag">build 264</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -11190,6 +11190,26 @@ function labUpdateBtn() {
 // old separate drop screen's job, one file-pick away.
 if (/^#lab\b/i.test(location.hash)) labOpenDrop();
 else if (/^#nn\b/i.test(location.hash)) { labSetSide(0, 'human'); labSetSide(1, 'custom'); labOpenDrop(); }
+// ...and a way in that does not need an address bar. A hash is fine in a browser and no use at all
+// in the Steam build, where there is nowhere to type one -- so the lab answers to its own name as
+// well: type l, a, b at the menu and the brain picker opens. Heard on the way DOWN, so it still
+// arrives if something downstream claims the key; collected only while the menu is up, so it can
+// never go off in the middle of a game; and dropped the moment the caret is in a field, because
+// somebody typing "collaborate" into a text box is not asking for this.
+(function labKnock() {
+    const WORD = 'lab';
+    let typed = '';
+    addEventListener('keydown', e => {
+        if (e.ctrlKey || e.metaKey || e.altKey || !e.key || e.key.length !== 1) { typed = ''; return; }
+        if (document.body.classList.contains('ingame')) { typed = ''; return; }
+        const el = e.target;
+        if (el && el.closest && el.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) {
+            typed = ''; return;
+        }
+        typed = (typed + e.key.toLowerCase()).slice(-WORD.length);
+        if (typed === WORD) { typed = ''; labOpenDrop(); }
+    }, true);
+})();
 // Tapping a share link often focuses an EXISTING tau tab instead of opening a new one — the OS just
 // changes the hash, nothing reloads, and the link silently does nothing (the reported "it had me
 // play against myself": the old page simply stayed up). Boot the replay on hashchange too. Don't
