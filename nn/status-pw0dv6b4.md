@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-09-17T19:20:49.174Z_
+_Last updated: 2026-09-17T19:20:58.201Z_
 
 **Self-play batch:** 139
-**Stage:** mutant 006 training (mutate, 30 epochs, started 2026-09-17T19:20:49.174Z)
+**Stage:** self-play batch 139 running (started 2026-09-17T18:40:48.408Z)
 **mix:** (see selfplay log: fixed-rung training reference)
 
 **Dual pool:** disabled
