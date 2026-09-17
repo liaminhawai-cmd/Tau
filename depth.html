@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="robots" content="noindex, nofollow">
-<title>Tau · Strategic Depth</title>
+<title>Tau · How deep is it?</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -213,6 +213,11 @@
   .wipe .handle { position:absolute; top:0; bottom:0; left:50%; width:2px; background:var(--ink); pointer-events:none; }
   .wipe input[type=range] { position:absolute; inset:0; width:100%; height:100%; margin:0; opacity:0; cursor:ew-resize; }
   .ramp { height:10px; border-radius:5px; margin:6px 0 2px; background:linear-gradient(90deg,#0a2e2b 0%,#116b60 18%,#82b7ac 38%,#ebeee9 50%,#d6a381 62%,#ac4c2b 82%,#4a160c 100%); border:1px solid var(--line); }
+  /* ---- fourth edition: ladder, classes, scorecard, next ---- */
+  table.data.scorecard th, table.data.scorecard td { white-space:normal; text-align:left; vertical-align:top; }
+  table.data.scorecard td.hi { color:var(--blue); font-weight:700; } table.data.scorecard td.mid { color:var(--board); font-weight:700; } table.data.scorecard td.lo { color:var(--red); font-weight:700; }
+  ol.next { padding-left:22px; color:var(--ink-2); max-width:64ch; } ol.next li { margin:0 0 12px; } ol.next strong { color:var(--ink); }
+  .beltlab { fill:var(--ink-3); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; }
   @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
 </style>
 </head>
@@ -223,11 +228,11 @@
 <header class="hero">
   <svg id="heroRings" viewBox="0 0 860 460" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
   <div class="wrap hero-inner">
-    <p class="eyebrow">Tau &nbsp;·&nbsp; Strategic-depth analysis</p>
-    <h1>The evidence points to a genuinely deep game.</h1>
-    <p class="lede">We ran <span class="num">1,280</span> computer-versus-computer games across eight strength levels, each starting from a slightly different position, to answer one question a strong abstract game has to pass: as the players get better, does the game collapse onto a single winning recipe, or does skilled play stay varied? Then, for this second edition, we grew the ladder to <span class="num">eleven</span> levels and spent another <span class="num">900+</span> games actively trying to break the result: single-idea bots against the champions, same-brain searches at different depths, and a hunt for a best strategy at the ceiling. For this third edition we stopped sampling positions and started <em>proving</em> them: the engine&rsquo;s contact rule was reduced to a small law, forced losses were certified position by position, and learned evaluators pushed the ceiling some four hundred Elo past the shipped top level.</p>
-    <div class="verdict"><span class="dot"></span><span>Verdict: &nbsp;<b>it stays varied at every level, no forced win from the opening was found, the forced losses that do exist are rare endgame traps we can now prove, and no single best strategy exists at the top.</b></span></div>
-    <p class="byline">Produced with <b>Claude</b>, Anthropic&rsquo;s AI assistant, running the game&rsquo;s own engine. This is an AI analysis, not an independent human study.</p>
+    <p class="eyebrow">Tau &nbsp;·&nbsp; How deep is it? &nbsp;·&nbsp; Fourth edition</p>
+    <h1>How many levels of play does Tau have, and how does that compare with chess and Go?</h1>
+    <p class="lede">Tau is a two-player game with one piece each: a tripod that you pin on one foot and swing, crossing at most one line per turn, until you shove the other piece off a round board. Since the game shipped we have played it against itself well over a hundred thousand times, built a ladder of eleven computer opponents, trained learned players from <span class="num">19</span> thousand to <span class="num">2</span> million parameters on millions of positions, and built a proof engine that can certify whether a given position is lost. This report is the one place all of that is put together, for someone who has never played: what we asked, what we found, how sure we are, and what we would do next.</p>
+    <div class="verdict"><span class="dot"></span><span>Verdict: &nbsp;<b>Tau already has about five chess-classes of skill between a newcomer and the best player we have built, every level found so far has been beaten by the next, no forced line exists at any strength we can reach, and the ceiling is set by our players, not by the game. That is the shape of a deep game. How deep is still being measured.</b></span></div>
+    <p class="byline">Produced with <b>Claude</b>, Anthropic&rsquo;s AI assistant, running the game&rsquo;s own engine. This is an AI analysis of computer play, checked against the game's code and data. It is not an independent human study, and it says so wherever that matters.</p>
   </div>
 </header>
 
@@ -235,98 +240,70 @@
 
   <div class="tiles" id="tiles"></div>
 
-  <section id="s-converge">
-    <p class="kicker">The headline question</p>
-    <h2>Strong play stays varied. It never narrows to one line.</h2>
-    <p>The clearest warning sign in an abstract game is <em>convergence</em>: once players are good enough, everyone plays the same handful of moves and the game feels solved. To test for it we had each strength level play <strong>itself</strong>, 24 times, from tiny random starting nudges, and looked at how many genuinely different opening lines came out (counting which foot pivots and which way it turns, ignoring exact angles).</p>
-    <p>A solved or degenerate game would land near the bottom of the chart: one or two lines, repeated over and over. Tau does the opposite. Even the <strong>strongest</strong> level, playing itself, produces a dozen distinct opening lines across 24 games, and its single most-common line shows up in only about <span class="readout num">1 in 5</span>. Skilled play does focus a little as strength rises, exactly as it does in chess or Go, but it stays a long way from a single forced line.</p>
-    <figure>
-      <div class="chart" id="chart-converge"></div>
-      <figcaption class="cap">Distinct opening lines out of 24 self-play games, at the weakest, a middle, and the strongest level. The shaded band near the bottom marks what a solved or degenerate game would look like. Every level sits far above it.</figcaption>
-    </figure>
-  </section>
-
-  <section id="s-comeback">
-    <p class="kicker">Comeback potential</p>
-    <h2>Being ahead helps. It rarely settles the game.</h2>
-    <p>Depth also lives in whether a lead is safe. We pooled every position from all 1,280 games and measured, for a given size of lead, how often the player who was ahead actually went on to win. If a small edge locked in the result, the game would be shallow.</p>
-    <p>It does not. From a dead-even position the eventual winner is a coin flip (<span class="readout num">47%</span>). A real, visible lead is worth only about <span class="readout num">75%</span>, so better than one game in five is still lost from there. It takes a commanding lead to reach <span class="readout num">~85%</span>, and even that is not certain. In practice the outcome almost never becomes a foregone conclusion: <strong>only <span class="num">0.9%</span> of games</strong> reached a point where the result was locked in before the closing moves.</p>
-    <figure>
-      <div class="legend"><span><span class="swatch" style="background:var(--blue)"></span>Chance the leader wins</span><span><span class="swatch" style="background:var(--mid);border:1px solid var(--line)"></span>Coin flip (even position)</span></div>
-      <div class="chart" id="chart-comeback"></div>
-      <figcaption class="cap">Reading left to right: how likely the first player is to win as their position goes from far behind to far ahead. The curve rises gently and never reaches certainty, the signature of a game you can fight back in.</figcaption>
-    </figure>
-  </section>
-
-  <section id="s-fair">
-    <p class="kicker">Fairness</p>
-    <h2>Going first is a small edge at most, never a decisive one.</h2>
-    <p>Many simple games are quietly settled by who moves first. Tau is not one of them. Across all <span class="num">1,280</span> games the first player wins exactly <strong><span class="num">50%</span></strong>; in level-versus-itself play it averages <span class="num">41%</span>, if anything a slight edge to the responder. The edge does vary by level, and at the very top there is a mild first-mover advantage of roughly <strong>two-thirds</strong>. That is the ordinary, healthy edge strong abstract games carry; chess, Go and Hex all favour the opener a little. What matters is that nowhere, at any level, does it come near the near-certain win a forced opening would produce. The second edition's newest levels run a touch higher (73% pooled over 48 self-play games at Levels 10 and 11), a trend worth watching; because Tau's start is continuous, a komi-in-degrees compensation is available if stronger play confirms it.</p>
-    <figure>
-      <div class="chart" id="chart-fair"></div>
-      <figcaption class="cap">First-player win rate when a level plays itself, level by level. The edge runs both ways and stays mild: a responder advantage at several levels, a moderate first-mover edge at the strongest. None approaches the near-certain win a forced opening would show.</figcaption>
-    </figure>
+  <section id="s-what">
+    <p class="kicker">Start here</p>
+    <h2>What depth means, and how you measure it in a game nobody has played for long.</h2>
+    <p>People say a game is <em>deep</em> when getting better at it never seems to end. Chess and Go are the reference points: centuries of play, millions of players, and still no book that tells you the best move. Both have something you can count. Line the players up so that each one beats the one below about three games in four, and see how many rungs the ladder has. In chess that ladder runs from a beginner to the world champion in roughly eleven such steps, and the strongest engines add three or four more. Go's runs about twice as long. Draughts and Othello, both strong games, run shorter. The number is not the whole story, but it is the part you can put in a table.</p>
+    <p>Tau has no centuries and no millions. It has a few months, one lab, and a game engine that can play itself very fast. So the question this report can answer is narrower and more honest than "is Tau as deep as Go": <strong>how many rungs of skill have we been able to find so far, is anything about the game stopping the ladder from growing, and what does play look like at the top of what we have?</strong> Everything below is organised around those three questions, and each section ends by saying how sure we are.</p>
+    <p>A word on the pieces. Blue and Red each have one tripod. A move is a choice of which foot to pin, which way to turn, and where to stop, and the stop can be any angle, so a Tau position is continuous rather than a grid. The only constraint is that a swing may cross one printed line. When a swing runs into the other piece it shoves it, and the shove is real physics, resolved as the arc goes. You lose the moment one of your feet is past the rim. That is the whole rulebook, and it is why several things measured here have no chess or Go equivalent.</p>
   </section>
 
   <section id="s-ladder">
-    <p class="kicker">The strength range</p>
-    <h2>The eight levels are a real ladder, not window dressing.</h2>
-    <p>For the analysis above to mean anything, the eight levels have to actually differ in skill and span a wide range. They do. The strongest levels beat the entire field below them cleanly, so the "does it converge at the top?" question really is being asked at the top of a genuine ladder, not among near-equal opponents. Lower down it gets more interesting: the aggressive early levels can punish the cautious middle ones, so skill here is not a single straight line. Style beating style is itself a mark of a game with more than one good idea in it.</p>
-    <p>Since this matrix was recorded the ladder has kept growing: the game now ships <strong>eleven</strong> levels. The deeper-search stress player from the appendix became Level 9, and two rounds of feature research produced Levels 10 and 11, each beating the rung below it decisively when added (77% and 67%). Under the current rules the ladder's adjacent steps measure 83, 63, 67, 71 and 67 percent from L6 up to L11, a smooth staircase with no rung skippable and no rung a wall. The point for depth is not the count; it is that three new, stronger brains were found <em>after</em> the first edition and none of them collapsed the game (the full battery below).</p>
+    <p class="kicker">Question one</p>
+    <h2>How many levels does Tau have? So far, about five chess-classes above a newcomer, and the top keeps moving.</h2>
+    <p>Think of jiu-jitsu belts: a blue belt beats a white belt, purple beats blue, brown beats purple, black beats brown, and a competition black belt beats an ordinary one. Each belt is a real, repeatable gap. Rating systems make that idea precise. In chess, a gap of 200 Elo points means the stronger player scores about <span class="num">76%</span>, and 200 points is called a class. Counting classes between a beginner and the best player is the standard way to say how long a game's ladder is.</p>
+    <p>Tau's ladder has been built rung by rung, and every rung was tested against the one below it before it shipped. The game offers <strong>eleven</strong> computer opponents. Levels 1 and 2 are hand rules; Level 3 is the first that plans a move; Level 6 is the first that reads the reply; Level 7 reads its own follow-up; Levels 8 and 9 add finer choices of where to stop the swing; Levels 10 and 11 keep Level 9's search and change only what the brain values, with weights learned from the game's own data. Head to head, the upper steps measure <span class="num">83, 63, 67, 71</span> and <span class="num">67%</span> for the stronger level from Level 6 up to Level 11: a real staircase, no step skippable, no step a wall. On the ladder's own rating scale that is roughly <span class="num">940</span> Elo from Level 1 to Level 11.</p>
+    <p>Above Level 11 sit the learned players. Neural networks trained on self-play, searching only one or two moves ahead, now rate <span class="num">200</span> to <span class="num">270</span> Elo above Level 11 when measured over forty to eighty games each, and a committee of three brains voting together rates about <span class="num">360</span> above it. The very top of the live table reads a little higher still, on samples too small to trust. Nothing we have built has failed to be beaten by something built later.</p>
+    <p>Where do people fit? We do not yet have a rated human pool, so this is informal: in play so far, most first-timers get stuck around <strong>Level 4</strong>, and the strongest human games on record beat <strong>Level 11</strong>, using an opening idea (rounding a printed corner to cross two lines on one crossing budget) that the engines had to be taught. Take a newcomer at Level 4 and the best learned player as the top, and the ladder is about <span class="readout num">1,000</span> Elo long: <strong>about five chess-classes</strong>, or nine or ten belts at the ladder's own 65% spacing. The figure below draws it.</p>
     <figure>
-      <div class="legend"><span><span class="swatch" style="background:var(--blue)"></span>First player (row) wins more</span><span><span class="swatch" style="background:var(--red)"></span>Second player (column) wins more</span></div>
-      <div class="chart" id="chart-heat"></div>
-      <figcaption class="cap">Each cell: how often the row level (playing first) beats the column level. Bottom-left is deep blue (strong levels crush weak ones); the near-even diagonal is the same level against itself.</figcaption>
+      <div class="chart" id="chart-ladder"></div>
+      <figcaption class="cap">Tau's ladder on one rating scale. Gold: the eleven shipped levels at their published ratings (Level 1 is the zero). Blue: the learned players, placed by their measured gap over Level 11. The shaded bands are 200-point classes counted upward from where first-timers currently sit. Ratings for Levels 9 to 11 and for the nets are estimates from head-to-head play; the live league's numbers move by tens of points from week to week, so read the bands, not the decimals.</figcaption>
     </figure>
-  </section>
-
-  <section id="s-length">
-    <p class="kicker">Shape of a game</p>
-    <h2>Games have an arc, and they vary.</h2>
-    <p>Finally, the games are not all the same length or over in a flash. A typical game runs <strong><span class="num">17</span> turns</strong> to someone going off the edge, with plenty of short skirmishes and long grinds on either side. Under <span class="num">3%</span> ran long enough to hit our safety cut-off. That spread is what you want: room for different kinds of games rather than one rhythm on repeat.</p>
-    <p>We checked whether that cut-off was hiding true stalemates, and it is not. Of the games that reached it, only a handful were genuine deadlocks with neither side making progress: about <strong><span class="num">0.3%</span> of all games</strong>. The rest had a clear leader and simply had not landed the finishing push yet. The few real grinds nearly all came from one very defensive strength level playing itself, the matchup most prone to it. When we raised the cut-off to <span class="num">300</span> turns and replayed those matchups, they resolved: the two strongest levels ended <strong>every</strong> game, and even that grinding matchup finished nine in ten. Tau has slow positions, not stalemated ones.</p>
+    <p><strong>How that compares.</strong> The table is the honest comparison, and the caveat matters more than the numbers: chess's and Go's ladders are what centuries, huge talent pools and superhuman engines have found. Tau's is what one lab found in a few months with a shipped engine and a training rig. A count of five is a floor, and every edition of this report has raised it (Level 8 was the top in the first edition; Level 11 in the second; the nets in the third). The right reading is not "Tau is half as deep as chess" but "we have found five classes and have not yet hit anything that looks like a bottom".</p>
     <figure>
-      <div class="chart" id="chart-length"></div>
-      <figcaption class="cap">How many turns games lasted before a piece was pushed off the board. The tall middle and long tail show variety, not a single fixed length.</figcaption>
+      <div class="chart" id="chart-classes"></div>
+      <figcaption class="cap">Classes of skill (200 Elo, roughly a 3-to-1 win rate) between a newcomer and the best known player. Chess and Go figures are approximate conversions of their published rating scales and are shown for orientation; the Go conversion in particular is a rough one because a Go rank is not a fixed number of Elo points. Tau's bar is what has been measured; the hatched end marks that its top is our best player, not the game's ceiling.</figcaption>
     </figure>
+    <p class="cap" style="max-width:64ch">How sure: the ladder's ordering and adjacent win rates are solid (24 to 60 games per step, re-verified under the current rules). The Elo span is soft by perhaps a class either way, because Tau's ladder is not perfectly transitive (an aggressive Level 2 beats the cautious Levels 3 to 5) and the learned players are rated in a different pool from the shipped levels. The human placements are anecdote until the next study.</p>
   </section>
 
-  <section id="s-battery">
-    <p class="kicker">The second edition: hunting hidden shallowness</p>
-    <h2>We tried to break it. Here is what actually bent.</h2>
-    <p>After the first edition, the ladder grew to eleven levels: the deeper-search stress player shipped as Level 9, and two rounds of feature research produced Levels 10 and 11, each a decisive step. Then we turned around and went hunting for ways the game could still be secretly shallow, with a battery of adversarial tests. The full data is in the appendix; three findings deserve the front page, and one of them is not flattering.</p>
-    <p><strong>The score is not the strategy.</strong> We built six bots that each optimise a <em>single</em> variable, gave every one of them the top level's full search so only the judgement differs, and played a 336-game round-robin against the shipped multi-idea brains. The bot that optimises the actual win condition, rim safety, finished mid-table. Four single ideas collapsed without support. Winning Tau means optimising something other than the score, the same displacement chess and Go show between the objective and the strategy that achieves it.</p>
-    <p><strong>At the ceiling, no strategy is safe.</strong> The three strongest brains in the study, pure territory, pure inside-line, and the shipped combined evaluation, beat each other in a circle: territory beats the combined brain, the combined brain beats inside-line, inside-line beats territory, each by the same modest edge. There is no best way to play Tau in this population, only answers to answers. A game with a metagame among its strongest players is the opposite of a solved one.</p>
-    <p><strong>And the unflattering one, reported straight:</strong> two of the six single ideas, territory and the inside-line angle, played at the level of the best combined brains. At the engines' current three-ply depth, one well-chosen idea can carry you to the top of this population. That is a genuine narrowness signal at this search depth, and the appendix quantifies it rather than hiding it. The counterweights are real too: which idea matters enormously, the single-idea champions struggle to actually finish games they dominate, and the ceiling itself has moved three times in one day of research, which is not what an exhausted game looks like. Two structural findings round out the picture: with well-fitted judgement, reading deeper adds only single digits, because a Tau move resolves most of its own tactics as it sweeps, and most strong-play positions hold one clearly best sweep rather than several rival plans. Tau's difficulty concentrates in judgement and degree, where to stop and how far to commit, not in broad move-tree calculation. Meanwhile the strongest levels playing themselves got <em>more</em> varied again (23 of 24 distinct openings at Levels 10 and 11, no repeated game in 72), so the first edition's central verdict survived its hardest test yet.</p>
+  <section id="s-converge">
+    <p class="kicker">Question two</p>
+    <h2>As players get better, does Tau collapse onto one line? No. Stronger play gets more varied.</h2>
+    <p>The warning sign of a shallow game is <em>convergence</em>: once players are good enough, everyone plays the same few moves and the game feels solved. We have now tested this at seven strengths across three editions. Each level plays itself 24 times from tiny random starting nudges, and we count how many genuinely different opening lines come out (which foot pivots and which way it turns, ignoring exact angles).</p>
+    <p>A solved game lands near the bottom of the chart: one or two lines, repeated. Tau does the opposite, and the trend runs the wrong way for a shallow game. The weakest level is varied because it is random. The middle levels narrow a little, as they do in chess. Then every stronger player found since has <em>widened</em> play again: Level 8 produced 12 distinct lines in 24 games; the same brain given more search produced 17; Level 9 produced 21; Levels 10 and 11 produced 23 each, with the single most common line appearing in only <span class="readout num">1 in 12</span> games. No full game ever repeated another: 72 of 72 top-level games had distinct move sequences.</p>
+    <figure>
+      <div class="chart" id="chart-converge"></div>
+      <figcaption class="cap">Distinct opening lines out of 24 self-play games, by strength. The red band is what a solved or degenerate game would look like. Every rise in strength since Level 8 has widened play, not narrowed it.</figcaption>
+    </figure>
+    <p class="cap" style="max-width:64ch">How sure: solid on direction, modest on precision (24 games per level). This is the finding that has survived the most attempts to break it, including giving the top brain far more search and looking for repeated games.</p>
   </section>
 
-  <section id="s-proof">
-    <p class="kicker">The third edition: proving positions instead of sampling them</p>
-    <h2>Forced losses exist. They are rare, they need contact, and the engines miss the escapes.</h2>
-    <p>Everything in the first two editions was statistical: many games, many brains, and a verdict about tendencies. A tendency cannot settle whether a particular position is lost. So this edition built the tool that can. The engine's collision rule &mdash; a piece swinging into another shoves it, sliding and spinning it out of the way &mdash; was reduced to a three-line physical law (a minimum-motion push that trades slide for spin by the contact's lever arm), and that law reproduces the shipped engine's pushes to within the engine's own rounding: median error <span class="num">0.02</span> board units on a push of several units, and exactly zero when it is given the engine's step size. With a law you can do what a tournament cannot: take one position and <em>certify</em> that every move the player has ends in being thrown off the board.</p>
-    <p><strong>Forced losses are real, and now proven.</strong> Mining the recorded games for positions where the loser had no escape produced four positions from real play in which the side to move is dead: every legal swing, at every stopping angle, is followed by a throw. Each was certified by the law and then attacked by the engine with hundreds of random moves; the engine never found an escape. Around one of them a whole box of positions was certified dead, so the result is a region, not a single coordinate. Twenty-nine <em>throw-in-one</em> regions were certified the same way (1,160 sampled poses, zero contradictions), and twelve families of positions were traced back one move further: from anywhere along those arcs the attacker has a forced win in two.</p>
-    <figure class="anim" id="fig-dead">
-      <div class="stage"><div class="chart" id="board-dead"></div></div>
-      <div class="side">
-        <div class="abar" id="bar-dead"></div>
-        <p class="astatus" id="status-dead"></p>
-        <div class="agauge" id="gauge-dead"><i></i><b></b></div>
-        <div class="alab"><span>Blue's furthest foot</span><span>rim</span></div>
-        <figcaption class="cap">A certified dead position from a real game (Blue to move). Blue has six legal swings; the animation plays a representative stop on each, then Red's answer. Every one ends with a Blue foot past the rim. The certificate covers every stopping angle on every arm, not just the six shown. Pick an arm, or let it cycle.</figcaption>
-      </div>
+  <section id="s-comeback">
+    <p class="kicker">Question three</p>
+    <h2>Does a lead settle the game, and does going first? A lead helps. Neither decides it.</h2>
+    <p>Depth also lives in whether a lead is safe. Pooling every position from 1,280 ladder games, we measured how often the player ahead by a given amount actually went on to win. From a dead-even position the eventual winner is a coin flip (<span class="readout num">47%</span>). A real, visible lead is worth about <span class="readout num">75%</span>, so one game in four is still lost from there. A commanding lead reaches about <span class="readout num">85%</span>. Only <span class="num">0.9%</span> of games reached a point where the result was locked in before the closing moves. Games run a median of <span class="num">17</span> turns with a long tail, and the few very long ones are slow positions, not stalemates: replayed with the turn cap lifted, the strongest levels finished every game.</p>
+    <figure>
+      <div class="legend"><span><span class="swatch" style="background:var(--blue)"></span>Chance the leader wins</span><span><span class="swatch" style="background:var(--mid);border:1px solid var(--line)"></span>Coin flip (even position)</span></div>
+      <div class="chart" id="chart-comeback"></div>
+      <figcaption class="cap">How likely the first player is to win as their position goes from far behind to far ahead. The curve rises gently and never reaches certainty.</figcaption>
     </figure>
-    <p><strong>They are rare, and they need contact.</strong> Across the mined games, about <span class="readout num">7%</span> of losses passed through a provably dead position one move before the end, and <em>none</em> did two moves before. A sweep of 175 constructed near-rim positions with the victim not touching the attacker found a throw available in 137 of them &mdash; and the threatened piece, moving first, escaped in all 137. A dead position in Tau is a piece already jammed against its opponent at the rim, not a piece merely standing near the edge.</p>
-    <figure class="anim" id="fig-escape">
-      <div class="stage"><div class="chart" id="board-escape"></div></div>
-      <div class="side">
-        <div class="abar" id="bar-escape"></div>
-        <p class="astatus" id="status-escape"></p>
-        <div class="agauge" id="gauge-escape"><i></i><b></b></div>
-        <div class="alab"><span>Blue's furthest foot</span><span>rim</span></div>
-        <figcaption class="cap">One of the 137 constructed near-rim positions with the pieces not touching. If Blue stood still, Red's sweep would throw it. Blue moves first and simply re-orients on one foot, and Red's best sweep then leaves every Blue foot inside the rim. The shipped search misses moves like this because they score badly and never make its candidate list.</figcaption>
-      </div>
+    <p>Going first is a small edge at most. Across all 1,280 ladder games the first player won exactly <span class="num">50%</span>; in level-versus-itself play it averaged <span class="num">41%</span>, a slight edge to the responder. At the top of the ladder the edge turns the other way: about two-thirds at Level 8 and <span class="num">73%</span> pooled over 48 games at Levels 10 and 11. That is the ordinary edge strong abstract games carry (chess, Go and Hex all favour the opener a little), and nowhere near a forced win. Because Tau's start is continuous, it also has a balance dial discrete games lack: if the edge holds up at higher strength, the second player can be compensated by a few degrees of starting rotation, a komi measured in degrees, without touching a rule.</p>
+    <figure>
+      <div class="chart" id="chart-fair"></div>
+      <figcaption class="cap">First-player win rate when a level plays itself, Levels 1 to 8. The edge runs both ways and stays mild.</figcaption>
     </figure>
-    <p><strong>The engines see forced losses that are not there.</strong> When the shipped two-ply search declares a position lost, it is usually wrong: of 40 cells the search marked as forced losses, 38 had an escape, each one a quiet re-orientation the search never examined because its candidate list is filled by score, and quiet moves score badly. Widening the list from 2 to 12 candidates per move cut the false verdicts by more than half; making it one candidate per pivot-and-direction instead of the best two overall was worth a small, not-yet-significant edge in play (<span class="num">77&ndash;63</span> over 140 games). The narrowness signals of the second edition were partly the searchers' narrowness, not the game's.</p>
+    <p class="cap" style="max-width:64ch">How sure: the comeback curve is descriptive and pools positions across games, so its buckets are not independent samples; the shape is robust, the third decimal is not. The first-mover figures at Levels 10 and 11 rest on 48 games and should be re-measured with the learned players.</p>
+  </section>
+
+  <section id="s-judgement">
+    <p class="kicker">Question four</p>
+    <h2>Where does the difficulty live? In judgement and the precise stop, not in long calculation.</h2>
+    <p>Chess rewards calculation: reading concrete lines many moves deep. Go rewards judgement: evaluating shapes no one can read out. Which is Tau? Three separate lines of evidence give the same answer, and it is the least expected result in the study.</p>
+    <p><strong>Reading deeper pays little once judgement is good.</strong> One brain, one sampling, three search depths: three-ply beat greedy only <span class="num">63%</span> end to end, and the adjacent steps were noise. Pushing the top brain's search finer than its shipped setting lost games; a wider beam gained nothing. Meanwhile re-learning what the brain values at the same depth was worth a full rung (<span class="num">77%</span>), and a single new geometric idea (owning the inside line between the centre and the opponent) was worth another (<span class="num">67%</span>). Across 77 learned evaluators the pattern is exact: the worse a net judges positions, the more a second ply gives it (correlation <span class="num">&minus;0.62</span>), and the strongest nets gain nothing from a second or third ply at all. Part of the reason is physical: a Tau move is a full sweep with its pushes and crossings resolved as it goes, so even a one-ply player is doing a kind of lookahead a chess one-ply search is not.</p>
+    <p><strong>No single idea is safe, and the score is not the strategy.</strong> Six bots each optimising one idea, all given the top level's full search, played a 336-game round-robin against the shipped brains. The bot optimising the actual win condition, rim safety, finished mid-table. Two ideas (territory, the inside line) played at the level of the best combined brains; three were useless alone; and the three strongest brains in the study beat each other in a circle, each by the same modest edge. At the ceiling there is no best way to play, only answers to answers, which is the working definition of a metagame. The unflattering half of this is reported straight: at three plies, one well-chosen idea can reach this population's top, a narrowness signal at the engines' depth.</p>
+    <p><strong>Each position usually has one best move, but the sequence never repeats.</strong> Scanning 201 strong-play positions, about <span class="num">82%</span> had a single nine-degree stopping zone that was near-optimal, not a range. That is chess-like sharpness, not Go's several live candidates. Tau's depth does not live in per-turn breadth; it lives in the fact that those single-best replies still do not collapse into a repeated line (the previous section), and in the precision the stop demands: certified winning entries into some traps need the stop within about half a degree, and the outcome of real games has turned on less than a hundredth of a degree.</p>
+    <p><strong>The engines' own maps show whose boundaries they are.</strong> Scoring a position for every place Red's piece could stand gives a danger map. Below, one region of the board at Level 3 looking one, two and three moves ahead: the picture changes completely from ply 1 to ply 2 (correlation <span class="num">&minus;0.40</span>) and then stops changing (<span class="num">0.998</span> from ply 2 to ply 3, <span class="num">0.99</span> across the whole board at the top level). It looks like convergence. It is not: drawn again with a wider list of candidate moves, the two-ply map is a different picture (correlation <span class="num">&minus;0.09</span> with the narrow one). Ply-on-ply agreement was a searcher agreeing with itself. The lines on these maps belong to the searcher's candidate list, not to the game, which is exactly what the proofs in the next section find at the scale of single positions.</p>
     <figure id="fig-maps">
       <div class="legend"><span><span class="swatch" style="background:#ac4c2b"></span>Good for the mover (Red)</span><span><span class="swatch" style="background:#ebeee9;border:1px solid var(--line)"></span>Even</span><span><span class="swatch" style="background:#116b60"></span>Bad for the mover</span><span><span class="swatch" style="background:var(--surface);border:1px solid var(--line)"></span>Red cannot stand here</span></div>
       <div class="plates">
@@ -356,24 +333,95 @@
       </div>
       <figcaption class="cap">Danger maps: Blue's piece is fixed one swing into the game; Red's hub is placed at every pixel (heading fixed) and the engine scores the position for Red. Left, a 17-unit window near Blue's piece at Level 3's one-, two- and three-move lookahead: the picture changes completely from ply 1 to ply 2, then stops changing (correlation 0.998 between ply 2 and ply 3). The fourth plate is ply 2 again with a wider search, 12 candidate moves per ply instead of 2: a different map altogether (correlation &minus;0.09 with the narrow ply 2), so the agreement between plies is the searcher's, not the game's. Right, the whole board at Level 10: drag the divider across and try to find where ply 2 and ply 3 disagree (they agree to 0.991). The coloured disc is smaller than the board because Red's hub must sit at least one leg-length inside the rim. The small box marks the window on the left. Maps are block pixels on purpose: each is one evaluated position.</figcaption>
     </figure>
-    <p><strong>Reading deeper pays exactly when judgement is weak.</strong> With 77 learned evaluators now in the population, the pattern is clean: the worse a net plays at one ply, the more a second ply gives it (correlation <span class="num">&minus;0.62</span>), and the same again from two plies to three (<span class="num">&minus;0.72</span>). Weak evaluators gain 130&ndash;150 Elo per ply; the strongest gain nothing. Maps of a fixed brain's searched evaluation tell the same story: the one-ply and two-ply maps of a region are almost unrelated (correlation <span class="num">&minus;0.40</span>), but two, three and four plies agree to <span class="num">0.998</span> and better, and at the shipped top level the two- and three-ply maps of the whole board agree to <span class="num">0.99</span>. The second ply sets the decision boundaries; the plies after it redraw the same lines. <strong>But the lines belong to the searcher, not to the game.</strong> The same two-ply map drawn with a wider candidate list (12 per move instead of the shipped 2) is a different picture: correlation <span class="num">&minus;0.09</span> with the narrow two-ply map, <span class="num">0.73</span> with the one-ply map, and smoother. Ply-on-ply agreement measures a searcher agreeing with itself; a searcher that considers more moves settles on other boundaries. That is the map-scale version of the false forced losses above.</p>
-    <p><strong>What the fine texture is.</strong> The first edition asked whether the jagged look of the evaluation maps was hidden depth. It is not: it is the rules' own seams. Independent mathematical review of the contact law confirmed that a grazing contact does <em>not</em> create a discontinuity (its sensitivity is a projection of norm one), and that the kinks come from something with no contact at all: the piece's outermost foot changing identity, and the stopping event of a swing changing from one printed line to another. Those kinks are also why <em>proof</em> in the strict sense is out of reach for the pushes: the rigorous error bounds on the pushed motion grow like e<sup>103&middot;T</sup> in the swing angle. So every certificate here is a sampled one &mdash; a dense grid, a slope allowance, and the engine's own verdict on every claim &mdash; and the report says so rather than calling it a theorem.</p>
-    <p><strong>Two things this edition sharpened.</strong> Entering a proven dead region without touching the victim requires stopping within about half a degree of the right angle; the real games reach these traps by shoving, not by aiming. And the retro-mining that feeds the trainer now routinely finds positions that are lost for every brain in a pool of sixty, from three up to fifteen moves before the end: long forced sequences exist below the engines' horizon, and a three-ply brain occasionally escapes where every two-ply brain could not. Tau's difficulty is where the second edition put it &mdash; in judgement and in the precise stop &mdash; and the certified positions are the first hard floor under that claim.</p>
-    <div class="callout"><b>Ceiling, third reading.</b> Learned evaluators trained on self-play now sit roughly four hundred Elo above the shipped Level 11 while searching one ply, and the learned ceiling moved again during this edition. Adding a policy head (a move-suggesting output) to those nets has so far been worth nothing measurable. The knowledge axis keeps paying; the calculation axis, at this engine's resolution, does not.</div>
+    <p class="cap" style="max-width:64ch">How sure: the direction (knowledge over search) has now been seen on hand-built brains, on learned brains and on maps, three independent ways, at every strength we have. What remains open is whether a fundamentally different searcher, one that plans over the continuous move space rather than a candidate list, would change it. Nothing built so far does.</p>
+  </section>
+
+  <section id="s-proof">
+    <p class="kicker">Question five</p>
+    <h2>What is actually proven? Forced losses exist, they are rare endgame traps, and the engines misjudge them.</h2>
+    <p>Everything above is statistical. A tendency cannot settle whether a particular position is lost, so the third edition built the tool that can. The engine's collision rule was reduced to a three-line physical law (a minimum-motion push that trades slide for spin by the contact's lever arm), and that law reproduces the shipped engine's pushes to within its rounding. With a law you can take one position and <em>certify</em> that every move the player has ends with a foot past the rim.</p>
+    <p>Mining the recorded games for positions where the loser had no escape produced four positions from real play in which the side to move is dead: every legal swing, at every stopping angle, is followed by a throw. Each was certified by the law and then attacked by the engine with hundreds of random moves without finding an escape. Around one of them a whole region was certified dead, and twelve families of positions one move earlier were certified as forced wins in two. The animation replays one of them.</p>
+    <figure class="anim" id="fig-dead">
+      <div class="stage"><div class="chart" id="board-dead"></div></div>
+      <div class="side">
+        <div class="abar" id="bar-dead"></div>
+        <p class="astatus" id="status-dead"></p>
+        <div class="agauge" id="gauge-dead"><i></i><b></b></div>
+        <div class="alab"><span>Blue's furthest foot</span><span>rim</span></div>
+        <figcaption class="cap">A certified dead position from a real game (Blue to move). Blue has six legal swings; the animation plays a representative stop on each, then Red's answer. Every one ends with a Blue foot past the rim. The certificate covers every stopping angle on every arm, not just the six shown. Pick an arm, or let it cycle.</figcaption>
+      </div>
+    </figure>
+    <p>They are rare, and they need contact. About <span class="readout num">7%</span> of lost games passed through a provably dead position one move before the end, and none did two moves before. In 175 constructed near-rim positions where the pieces were not touching, a throw was available in 137, and the threatened piece, moving first, escaped in all 137. A dead position in Tau is a piece already jammed against its opponent at the rim, not a piece merely standing near the edge.</p>
+    <figure class="anim" id="fig-escape">
+      <div class="stage"><div class="chart" id="board-escape"></div></div>
+      <div class="side">
+        <div class="abar" id="bar-escape"></div>
+        <p class="astatus" id="status-escape"></p>
+        <div class="agauge" id="gauge-escape"><i></i><b></b></div>
+        <div class="alab"><span>Blue's furthest foot</span><span>rim</span></div>
+        <figcaption class="cap">One of the 137 constructed near-rim positions with the pieces not touching. If Blue stood still, Red's sweep would throw it. Blue moves first and simply re-orients on one foot, and Red's best sweep then leaves every Blue foot inside the rim. The shipped search misses moves like this because they score badly and never make its candidate list.</figcaption>
+      </div>
+    </figure>
+    <p>The engines see forced losses that are not there. Of 40 positions the shipped two-ply search marked as lost, 38 had an escape, each a quiet re-orientation the search never examined because its candidate list is filled by score and quiet moves score badly. Widening the list cut the false verdicts by more than half. So part of the "narrowness" measured in earlier editions was the searchers' narrowness, not the game's, and the retro-mining that feeds the trainer now routinely finds positions lost for every brain in a pool of sixty from three to fifteen moves before the end: long forced sequences exist below the engines' horizon.</p>
+    <p class="cap" style="max-width:64ch">How sure: the certificates are sampled claims checked by the engine, not theorems; an independent mathematical review confirmed that strict proof of the pushes is out of reach and adopted floors for the allowances. Four dead points from real games is a small set. The appendix has the method and every table.</p>
+  </section>
+
+  <section id="s-nets">
+    <p class="kicker">Question six</p>
+    <h2>What did the learning machines find? The ceiling moved, capacity barely matters, and knowledge still pays.</h2>
+    <p>Since the second edition a training rig has run on two machines around the clock: self-play in batches (past <span class="num">125</span> batches on each), a league in which every learned player and every shipped level are rated against each other (<span class="num">19,500</span> rated games at the time of writing), a promotion gate that requires a new champion to beat the old one in eighty colour-balanced games, and retro-mining of lost games to teach the nets the traps. The repository's data snapshot holds about <span class="num">130,000</span> distinct games and <span class="num">2.6</span> million positions; more than <span class="num">77</span> learned evaluators have been rated, at network sizes from 19 thousand to 2.06 million parameters, a hundredfold range.</p>
+    <p><strong>The ceiling moved and then slowed.</strong> The first nets that beat Level 11 arrived within weeks. The best-rated single nets now sit 200 to 270 Elo above it and a committee of three about 360 above. But promotions have become occasional rather than routine: in most recent cycles every challenger measures within noise of the champion (the gate at cycle 392 read +0 &plusmn; 78 Elo for the closest), with a new champion only every hundred cycles or so. Whether that is a plateau of the method (one-ply nets on a fixed feature set) or a ceiling of the game is the central open question of this edition, and the honest answer is that nothing yet distinguishes the two.</p>
+    <p><strong>Capacity buys loudness, not resolution.</strong> Nets a hundred times larger did not see finer structure: three two-million-parameter nets agree with each other closely on the fine texture of the map (<span class="num">0.88</span> to <span class="num">0.96</span>) and only weakly with Level 11 (<span class="num">0.24</span> to <span class="num">0.38</span>), and in play a net of 185 thousand parameters rated slightly above the two-million champion, a 35-thousand net level with it, and only the smallest nets, around 20 thousand parameters, fell away (<span class="num">&minus;130</span> to <span class="num">&minus;220</span> Elo). A policy head (a move-suggesting output) has so far been worth nothing measurable. Three different brains voting together rate about a hundred Elo above the best single net in the table, which says the brains disagree in useful ways, another mark of a game with more than one good idea in it.</p>
+    <p class="cap" style="max-width:64ch">How sure: league ratings carry confidence intervals of roughly &plusmn;80 Elo at forty games, so individual placements shift week to week; the gaps quoted are those with the most games behind them. The game count is from the data snapshot in the repository and undercounts the second machine.</p>
+  </section>
+
+  <section id="s-scorecard">
+    <p class="kicker">How much do we know</p>
+    <h2>The scorecard.</h2>
+    <p>Each row is a way an abstract game can turn out to be shallow, what we found when we looked for it in Tau, and how firmly we would defend the finding.</p>
+    <div class="datawrap"><table class="data scorecard">
+      <thead><tr><th>The worry</th><th>What we found</th><th>Confidence</th><th>What would change it</th></tr></thead>
+      <tbody>
+        <tr><td>A short skill ladder</td><td>About five classes above a newcomer so far, top still rising</td><td class="mid">medium</td><td>A rated human pool; a stronger player class</td></tr>
+        <tr><td>Strong play converges on a line</td><td>Variety rises with strength; no repeated game in 72 at the top</td><td class="hi">high</td><td>A much stronger player that narrows</td></tr>
+        <tr><td>A lead or the first move decides it</td><td>47% from even, ~75% from a clear lead; first move 50% overall, ~2/3 at the top</td><td class="hi">high</td><td>Top-level first-mover edge growing past ~75%</td></tr>
+        <tr><td>A forced win from the opening</td><td>None found at any strength; forced losses only as rare contact traps, proven</td><td class="hi">high (not found)</td><td>A certified forced line; it cannot be ruled out by play alone</td></tr>
+        <tr><td>One idea runs the game</td><td>Two single ideas reach the top at 3 plies, but no idea dominates: a cycle</td><td class="mid">medium</td><td>Deeper searchers separating the ideas</td></tr>
+        <tr><td>Depth is just calculation</td><td>Reading deeper pays only when judgement is weak; knowledge keeps paying</td><td class="hi">high</td><td>A planner over the continuous move space</td></tr>
+        <tr><td>Many draws or dead games</td><td>Essentially none; long games are slow, not stalemated</td><td class="hi">high</td><td>&mdash;</td></tr>
+        <tr><td>The learned ceiling is the game's ceiling</td><td>Promotions now occasional; challengers within noise of the champion</td><td class="lo">open</td><td>Bigger search, policy nets, longer training</td></tr>
+        <tr><td>Humans do not climb it</td><td>First-timers stall ~L4; the best recorded human games beat L11</td><td class="lo">anecdote</td><td>The per-level crowd statistics the game already records</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="s-next">
+    <p class="kicker">Next studies</p>
+    <h2>What would move the number.</h2>
+    <p>In order of how much each would change this report.</p>
+    <ol class="next">
+      <li><strong>A human ladder.</strong> The game already records, per level, how many players have beaten it, and ranked online play has an Elo. Neither has been analysed. Fitting humans onto the same scale as the levels would replace every "informal" above with a number, and tell us whether human improvement stalls where the engines' does.</li>
+      <li><strong>A different kind of player.</strong> Every brain so far chooses from a candidate list of stops. A planner that searches the continuous move space directly (or a learned policy that proposes stops) is the one thing that could either extend the ladder past the current top or show that it ends there. This is also the test that would settle whether the slowing of the champion is a plateau of the method.</li>
+      <li><strong>The ceiling, on purpose.</strong> Train past the current champion with the promotion gate in place and record every cycle: if the Elo curve bends flat while the maps keep changing, that is evidence of a ceiling in our method, not the game; if both go flat together, it is the game.</li>
+      <li><strong>Komi in degrees.</strong> Measure the first-mover edge with the learned players over a few hundred games, and if it holds near two-thirds, find the starting rotation that evens it.</li>
+      <li><strong>Grow the proofs.</strong> Extend the certified dead regions (currently thin) and mine deeper for positions lost two or more moves before the end, so the "rare traps" claim rests on more than four seeds.</li>
+      <li><strong>The physical game.</strong> The rig measures the digital engine. A tournament on the physical set would test whether the precision axis (stopping within a degree) survives real hands and real magnets.</li>
+    </ol>
   </section>
 
   <section id="s-method">
     <p class="kicker">How this was measured</p>
     <h2>Method, in plain terms.</h2>
-    <p>Everything here comes from the game's real engine playing against itself, not a simplified model. The same code that runs the game ran the tournament.</p>
+    <p>Everything here comes from the game's real engine playing itself, not a simplified model. The same code that runs the game ran every tournament, the training league and the proof engine.</p>
     <div class="method">
       <h3>At a glance</h3>
       <dl>
-        <dt>Games played</dt><dd class="num">1,280 full games (every pairing of 8 levels, both colours first, 20 games each) plus 72 self-play games for the opening-variety test.</dd>
-        <dt>Players</dt><dd>The eight built-in difficulty levels, from a gentle beginner to the engine's strongest setting.</dd>
-        <dt>Starting positions</dt><dd>Each game began from the standard setup with a small random nudge to both pieces, so no two games were forced to be identical.</dd>
-        <dt>What "a lead" means</dt><dd>How much closer to safety one player's nearest-the-edge piece sits than the other's. The win-chance curve is measured, not assumed.</dd>
-        <dt>Honest caveats</dt><dd>This is the computer opponents playing themselves. Strong self-play is good evidence of depth but not a substitute for a human tournament; a fuller picture would add human games over time. The opening-variety counts use a modest sample per level.</dd>
+        <dt>Editions</dt><dd>First: 1,280 ladder games (eight levels, every pairing, both colours, 20 games each) plus opening-variety runs. Second: 900+ games under the current rules, the shallowness battery, Levels 9 to 11. Third: the contact law and certificates, danger maps, the learned population. Fourth: this synthesis, with the ladder count and the comparison.</dd>
+        <dt>Players</dt><dd>The eleven shipped levels; six single-idea bots; 77+ learned evaluators from 19k to 2.06M parameters, rated at one to three plies; committees of three.</dd>
+        <dt>Starting positions</dt><dd>Every game began from the standard setup with a small random rotation of each piece, so no two games were forced to be identical.</dd>
+        <dt>Ratings</dt><dd>Elo with the usual 400-point scale. The shipped levels' ratings come from round-robins among themselves; the learned players are rated in a live league with the levels as fixed anchors. The two pools do not share a zero, which is why spans are quoted as ranges.</dd>
+        <dt>Comparison figures</dt><dd>Chess and Go class counts are approximate conversions from their public rating systems, given for orientation. Tau's count is a measurement of our players, not of the game's ceiling.</dd>
+        <dt>Honest caveats</dt><dd>Computer play only, no rated humans yet. Adjacent-level samples are 24 to 60 games. Certificates are sampled claims checked by the engine, not theorems. Because Tau's state is continuous, self-play can fail to find a forced line but cannot prove none exists.</dd>
       </dl>
     </div>
   </section>
@@ -381,7 +429,7 @@
   <section class="appendix-open" id="s-appendix">
     <p class="kicker">Technical appendix</p>
     <h2>The detail, for readers who want it.</h2>
-    <p>Everything above stands on its own. This appendix is for the technically inclined: how the eight computer opponents actually work and how they differ, the exact parameters, the full result tables, and a stress test that pushed the strongest brain harder still. None of it is needed to read the report, and none of it changes the conclusion.</p>
+    <p>Everything above stands on its own. This appendix is the record of the first three editions for the technically inclined: how the eleven computer opponents work and how they differ, the exact parameters, the stress tests, the shallowness battery in full, the certificate method, and the full result tables. None of it is needed to read the report, and none of it changes the conclusion.</p>
   </section>
 
   <section id="s-engine">
@@ -608,6 +656,15 @@
 
   <section id="s-tables">
     <h3 class="subh">Full result tables</h3>
+    <figure>
+      <div class="legend"><span><span class="swatch" style="background:var(--blue)"></span>First player (row) wins more</span><span><span class="swatch" style="background:var(--red)"></span>Second player (column) wins more</span></div>
+      <div class="chart" id="chart-heat"></div>
+      <figcaption class="cap">The first-edition ladder, Levels 1 to 8: how often the row level, moving first, beat the column level over 20 games. Bottom-left is deep blue (strong levels crush weak ones); the lower-middle rungs are non-transitive, with the aggressive Level 2 punishing the cautious Levels 3 to 5.</figcaption>
+    </figure>
+    <figure>
+      <div class="chart" id="chart-length"></div>
+      <figcaption class="cap">How many turns games lasted before a piece was pushed off, all 1,280 first-edition games. The tall middle and long tail show variety, not one fixed length; the red bar is the 70-turn safety cap.</figcaption>
+    </figure>
 
     <div class="datawrap"><table class="data heatnum">
       <caption>Win-rate matrix. Each cell is how often the <strong>row</strong> level, moving first, beat the <strong>column</strong> level, over 20 games. The diagonal is a level against itself (first-mover rate). Note the upper rungs (L6 to L8) beat the whole field cleanly, while the lower-middle rungs are non-transitive: L2's all-out aggression punishes the more passive L3 to L5, yet folds to the searching brains. Style beating style is itself a sign of depth, not a defect.</caption>
@@ -658,7 +715,7 @@
 <div id="tip" role="status" aria-live="polite"></div>
 
 <script>
-const DATA = {"totalGames":1280,"matrix":[[45,5,5,0,0,0,0,0],[100,25,85,75,65,35,0,0],[100,20,55,35,15,0,0,0],[100,55,60,55,40,0,0,0],[100,55,90,50,20,0,5,5],[100,100,100,100,95,25,10,0],[100,100,100,100,100,95,40,30],[100,100,100,100,100,75,80,65]],"calib":[{"margin":-40,"p":2,"n":41},{"margin":-32,"p":13,"n":163},{"margin":-24,"p":20,"n":738},{"margin":-16,"p":22,"n":4137},{"margin":-8,"p":25,"n":4497},{"margin":0,"p":47,"n":6253},{"margin":8,"p":68,"n":4949},{"margin":16,"p":75,"n":5221},{"margin":24,"p":78,"n":1140},{"margin":32,"p":84,"n":207},{"margin":40,"p":87,"n":46}],"hist":[{"bucket":0,"n":6},{"bucket":5,"n":129},{"bucket":10,"n":371},{"bucket":15,"n":246},{"bucket":20,"n":180},{"bucket":25,"n":97},{"bucket":30,"n":63},{"bucket":35,"n":55},{"bucket":40,"n":32},{"bucket":45,"n":29},{"bucket":50,"n":16},{"bucket":55,"n":11},{"bucket":60,"n":4},{"bucket":65,"n":3},{"bucket":70,"n":38}],"selfFirst":[{"rung":1,"p":45},{"rung":2,"p":25},{"rung":3,"p":55},{"rung":4,"p":55},{"rung":5,"p":20},{"rung":6,"p":25},{"rung":7,"p":40},{"rung":8,"p":65}],"lengthStats":{"median":17,"p25":12,"p75":26,"mean":21.4,"min":1,"max":70,"cappedPct":2.9},"firstMoverPct":50.2,"selfFirstMoverPct":41.3,"ponrGames":11,"ponrPct":0.86,"structural":[{"rung":1,"distinct":22,"of":24,"topShare":8},{"rung":4,"distinct":15,"of":24,"topShare":17},{"rung":8,"distinct":12,"of":24,"topShare":21}]};
+const DATA = {"totalGames":1280,"matrix":[[45,5,5,0,0,0,0,0],[100,25,85,75,65,35,0,0],[100,20,55,35,15,0,0,0],[100,55,60,55,40,0,0,0],[100,55,90,50,20,0,5,5],[100,100,100,100,95,25,10,0],[100,100,100,100,100,95,40,30],[100,100,100,100,100,75,80,65]],"calib":[{"margin":-40,"p":2,"n":41},{"margin":-32,"p":13,"n":163},{"margin":-24,"p":20,"n":738},{"margin":-16,"p":22,"n":4137},{"margin":-8,"p":25,"n":4497},{"margin":0,"p":47,"n":6253},{"margin":8,"p":68,"n":4949},{"margin":16,"p":75,"n":5221},{"margin":24,"p":78,"n":1140},{"margin":32,"p":84,"n":207},{"margin":40,"p":87,"n":46}],"hist":[{"bucket":0,"n":6},{"bucket":5,"n":129},{"bucket":10,"n":371},{"bucket":15,"n":246},{"bucket":20,"n":180},{"bucket":25,"n":97},{"bucket":30,"n":63},{"bucket":35,"n":55},{"bucket":40,"n":32},{"bucket":45,"n":29},{"bucket":50,"n":16},{"bucket":55,"n":11},{"bucket":60,"n":4},{"bucket":65,"n":3},{"bucket":70,"n":38}],"selfFirst":[{"rung":1,"p":45},{"rung":2,"p":25},{"rung":3,"p":55},{"rung":4,"p":55},{"rung":5,"p":20},{"rung":6,"p":25},{"rung":7,"p":40},{"rung":8,"p":65}],"lengthStats":{"median":17,"p25":12,"p75":26,"mean":21.4,"min":1,"max":70,"cappedPct":2.9},"firstMoverPct":50.2,"selfFirstMoverPct":41.3,"ponrGames":11,"ponrPct":0.86,"structural":[{"rung":1,"lab":"L1","distinct":22,"of":24,"topShare":8},{"rung":4,"lab":"L4","distinct":15,"of":24,"topShare":17},{"rung":8,"lab":"L8","distinct":12,"of":24,"topShare":21},{"rung":8.5,"lab":"L8, more search","distinct":17,"of":24,"topShare":8},{"rung":9,"lab":"L9","distinct":21,"of":24,"topShare":8},{"rung":10,"lab":"L10","distinct":23,"of":24,"topShare":8},{"rung":11,"lab":"L11","distinct":23,"of":24,"topShare":8}]};
 
 /* ---------- shared helpers ---------- */
 const NS = "http://www.w3.org/2000/svg";
@@ -673,10 +730,10 @@ function bindTip(node, html){ node.style.cursor='default'; node.addEventListener
 /* ---------- stat tiles ---------- */
 (function(){
   const tiles = [
-    { k:'23 / 24', cls:'board', lab:'distinct opening lines at the new maximum strength (Level 11). Play keeps widening as strength rises.' },
-    { k:'47%', cls:'blue', lab:'win chance from a dead-even position. A lead rarely decides the game.' },
-    { k:'50 / 50', cls:'blue', lab:'the first move barely matters: an even split across all 1,280 games, a mild edge at most at the very top, never a forced win.' },
-    { k:'0', cls:'board', lab:'forced wins from the opening, at any strength. Forced losses exist only as endgame traps, now proven position by position: 7% of lost games were provably lost one move before the end, none two moves before.' },
+    { k:'11+', cls:'board', lab:'shipped levels, each beating the one below, with learned players 200 to 360 Elo above the top one.' },
+    { k:'~5', cls:'blue', lab:'chess-classes of skill between a newcomer and the best player built so far (chess ~11, Go ~20). A floor, not a ceiling.' },
+    { k:'23 / 24', cls:'board', lab:'distinct opening lines at Level 11 playing itself. Play keeps widening as strength rises.' },
+    { k:'0', cls:'blue', lab:'forced wins from the opening at any strength. Forced losses exist only as rare endgame traps, now proven position by position.' },
   ];
   const host = document.getElementById('tiles');
   tiles.forEach(t=>{ const d=document.createElement('div'); d.className='tile';
@@ -688,7 +745,7 @@ function drawConverge(){
   const box={w:760,h:300,l:52,r:20,t:18,b:58};
   const svg=el('svg',{viewBox:`0 0 ${box.w} ${box.h}`,role:'img','aria-label':'Distinct opening lines by strength level'});
   const d=DATA.structural, maxV=24;
-  const labs=['Weakest (L1)','Middle (L4)','Strongest (L8)'];
+  const labs=d.map(r=>r.lab);
   const plotW=box.w-box.l-box.r, plotH=box.h-box.t-box.b, base=box.t+plotH;
   const y=v=> base - (v/maxV)*plotH;
   // gridlines
@@ -697,9 +754,9 @@ function drawConverge(){
   // "solved game" band 0..2
   svg.appendChild(el('rect',{x:box.l,y:y(2),width:plotW,height:base-y(2),fill:cvar('--red'),opacity:.10}));
   svg.appendChild(txt('text',{x:box.w-box.r-4,y:y(2)-6,'text-anchor':'end',class:'axislab',fill:cvar('--red')},'solved / forced-game territory'));
-  const bw=96, gap=(plotW-bw*3)/4;
+  const n=d.length, gap=plotW/n*0.3, bw=plotW/n-gap;
   d.forEach((row,i)=>{
-    const x=box.l+gap+(bw+gap)*i, h=base-y(row.distinct);
+    const x=box.l+gap/2+(bw+gap)*i, h=base-y(row.distinct);
     const g=el('g',{class:'cell'});
     g.appendChild(el('rect',{x,y:y(row.distinct),width:bw,height:h,rx:5,fill:cvar('--board')}));
     g.appendChild(txt('text',{x:x+bw/2,y:y(row.distinct)-9,'text-anchor':'middle',class:'vallab tab'},row.distinct+' of 24'));
@@ -852,11 +909,86 @@ function drawHeroRings(){
   svg.appendChild(tri(cx+52, cvar('--red')));
 }
 
+
+/* ---------- 6. the ladder on one scale (fourth edition) ---------- */
+const LADDER = {
+  levels:[{n:1,e:0},{n:2,e:117},{n:3,e:200},{n:4,e:273},{n:5,e:323},{n:6,e:392},{n:7,e:461},{n:8,e:550},{n:9,e:670},{n:10,e:820},{n:11,e:940}],
+  nets:[{lab:'best single nets',e:940+235,lo:940+200,hi:940+270},{lab:'committee of three',e:940+360}],
+  newcomer:{lo:200,hi:323,lab:'first-timers, so far'},
+  belts:['white','blue','purple','brown','black','elite black']
+};
+function drawLadder(){
+  const box={w:760,h:250,l:24,r:24,t:56,b:44};
+  const svg=el('svg',{viewBox:`0 0 ${box.w} ${box.h}`,role:'img','aria-label':'Tau skill ladder on one Elo scale, with 200-point classes'});
+  const xmin=-40, xmax=1400, plotW=box.w-box.l-box.r;
+  const x=e=> box.l+((e-xmin)/(xmax-xmin))*plotW;
+  const axisY=box.t+90;
+  // classes from L4
+  const start=273; let k=0;
+  for(let e=start; e<xmax; e+=200, k++){
+    const x0=x(e), x1=x(Math.min(e+200,xmax));
+    svg.appendChild(el('rect',{x:x0,y:box.t-6,width:x1-x0,height:axisY-box.t+52,fill:k%2?cvar('--surface-2'):cvar('--board'),opacity:k%2?.9:.10}));
+    if(k<LADDER.belts.length) svg.appendChild(txt('text',{x:(x0+x1)/2,y:box.t+6,'text-anchor':'middle',class:'beltlab'},LADDER.belts[k]));
+  }
+  // newcomer band
+  svg.appendChild(el('rect',{x:x(LADDER.newcomer.lo),y:axisY+14,width:x(LADDER.newcomer.hi)-x(LADDER.newcomer.lo),height:8,rx:2,fill:cvar('--ink-3'),opacity:.6}));
+  svg.appendChild(txt('text',{x:(x(LADDER.newcomer.lo)+x(LADDER.newcomer.hi))/2,y:axisY+36,'text-anchor':'middle',class:'axislab'},LADDER.newcomer.lab));
+  // axis
+  svg.appendChild(el('line',{x1:x(xmin),x2:x(xmax),y1:axisY,y2:axisY,stroke:cvar('--line'),'stroke-width':1.5}));
+  [0,200,400,600,800,1000,1200,1400].forEach(e=>{ svg.appendChild(el('line',{x1:x(e),x2:x(e),y1:axisY-4,y2:axisY+4,stroke:cvar('--ink-3')})); svg.appendChild(txt('text',{x:x(e),y:axisY+60,'text-anchor':'middle',class:'axislab'},e===0?'Elo 0':String(e))); });
+  // levels
+  LADDER.levels.forEach((L,i)=>{ const cx=x(L.e), up=i%2===0; const cy=axisY;
+    const g=el('g',{class:'cell'});
+    g.appendChild(el('line',{x1:cx,x2:cx,y1:cy,y2:up?cy-22:cy-8,stroke:cvar('--board'),'stroke-width':1}));
+    g.appendChild(el('circle',{cx,cy,r:5,fill:cvar('--board'),stroke:cvar('--surface'),'stroke-width':1.5}));
+    g.appendChild(txt('text',{x:cx,y:up?cy-27:cy-12,'text-anchor':'middle',class:'vallab tab',style:'font-size:11.5px'},'L'+L.n));
+    bindTip(g,`Level ${L.n}<br>rating <span class="tk">${L.e}</span> on the ladder's scale`);
+    svg.appendChild(g);
+  });
+  // nets
+  LADDER.nets.forEach((N,i)=>{ const cx=x(N.e), cy=axisY; const g=el('g',{class:'cell'});
+    if(N.lo!=null) g.appendChild(el('line',{x1:x(N.lo),x2:x(N.hi),y1:cy,y2:cy,stroke:cvar('--blue'),'stroke-width':4,opacity:.45,'stroke-linecap':'round'}));
+    g.appendChild(el('line',{x1:cx,x2:cx,y1:cy,y2:cy-(i?48:28),stroke:cvar('--blue'),'stroke-width':1}));
+    g.appendChild(el('circle',{cx,cy,r:5.5,fill:cvar('--blue'),stroke:cvar('--surface'),'stroke-width':1.5}));
+    g.appendChild(txt('text',{x:cx,y:cy-(i?53:33),'text-anchor':'middle',class:'vallab',style:'font-size:11.5px;fill:'+cvar('--blue')},N.lab));
+    bindTip(g,`${N.lab}<br>about <span class="tk">+${N.e-940}</span> Elo over Level 11`+(N.lo!=null?`<br><span style="color:var(--ink-3)">range of the best-measured nets: +${N.lo-940} to +${N.hi-940}</span>`:''));
+    svg.appendChild(g);
+  });
+  // human marker at L11
+  svg.appendChild(txt('text',{x:x(940),y:axisY+36,'text-anchor':'middle',class:'axislab'},'strongest recorded human games beat L11'));
+  document.getElementById('chart-ladder').appendChild(svg);
+}
+
+/* ---------- 7. classes of skill, game by game (approximate) ---------- */
+const CLASSES=[
+  {lab:'Tau, newcomer to best learned player (measured)',v:5,open:true},
+  {lab:'Chess, beginner to best human (approx.)',v:11},
+  {lab:'Chess, beginner to best engine (approx.)',v:14.5},
+  {lab:'Go, beginner to best human (approx.)',v:20},
+  {lab:'Go, beginner to best AI (approx.)',v:26},
+];
+function drawClasses(){
+  const box={w:760,h:230,l:16,r:60,t:10,b:30};
+  const svg=el('svg',{viewBox:`0 0 ${box.w} ${box.h}`,role:'img','aria-label':'Classes of skill between a newcomer and the best known player, Tau against chess and Go'});
+  const plotW=box.w-box.l-box.r, maxV=28, rowH=(box.h-box.t-box.b)/CLASSES.length, bh=rowH*0.42;
+  const x=v=> box.l+(v/maxV)*plotW;
+  CLASSES.forEach((c,i)=>{ const y=box.t+rowH*i; const g=el('g',{class:'cell'});
+    g.appendChild(txt('text',{x:box.l,y:y+12,'text-anchor':'start',class:'axislab',style:'fill:var(--ink-2)'},c.lab));
+    g.appendChild(el('rect',{x:x(0),y:y+18,width:x(c.v)-x(0),height:bh,rx:3,fill:i?cvar('--board'):cvar('--blue'),opacity:i?.85:1}));
+    if(c.open){ for(let v=c.v;v<c.v+3;v+=0.5) g.appendChild(el('rect',{x:x(v)+1,y:y+18,width:x(0.25)-x(0),height:bh,fill:cvar('--blue'),opacity:.35})); g.appendChild(txt('text',{x:x(c.v+3.4),y:y+18+bh*0.75,'text-anchor':'start',class:'axislab'},'top not yet found')); }
+    g.appendChild(txt('text',{x:x(c.v)+(c.open?0:6),y:y+18+bh*0.75,'text-anchor':c.open?'end':'start',class:'vallab tab',style:'font-size:11.5px'+(c.open?';fill:#fff':'')},(c.open?'~':'~')+c.v));
+    bindTip(g,`${c.lab}<br>about <span class="tk">${c.v}</span> classes of 200 Elo`);
+    svg.appendChild(g);
+  });
+  svg.appendChild(txt('text',{x:box.w-box.r,y:box.h-8,'text-anchor':'end',class:'axislab'},'classes of 200 Elo (about a 3-to-1 win rate each)'));
+  document.getElementById('chart-classes').appendChild(svg);
+}
+
 /* ---------- theme toggle ---------- */
 (function(){
   const btn=document.getElementById('themeBtn');
   function redraw(){ document.querySelectorAll('.chart').forEach(c=>c.innerHTML=''); document.getElementById('heroRings').innerHTML='';
-    drawConverge(); drawComeback(); drawFair(); drawHeat(); drawLength(); drawHeroRings(); }
+    drawConverge(); drawComeback(); drawFair(); drawHeat(); drawLength(); drawHeroRings(); drawLadder(); drawClasses(); }
   btn.addEventListener('click', ()=>{
     const cur=document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
     const next=cur==='dark'?'light':'dark';
@@ -881,8 +1013,7 @@ function buildTables(){
     cb.insertAdjacentHTML('beforeend','<tr><td>'+lab+'</td><td>'+c.p+'%</td><td>'+c.n.toLocaleString()+'</td></tr>'); });
   // structural diversity (+ L8+ stress row)
   const sb=document.getElementById('structBody');
-  const rows = DATA.structural.map(s=>({lab:'L'+s.rung,d:s.distinct,of:s.of,top:s.topShare}));
-  rows.push({lab:'L8+ (deeper search)',d:17,of:24,top:8});
+  const rows = DATA.structural.map(s=>({lab:s.lab,d:s.distinct,of:s.of,top:s.topShare}));
   rows.forEach(s=> sb.insertAdjacentHTML('beforeend','<tr><td>'+s.lab+'</td><td>'+s.d+' / '+s.of+'</td><td>'+s.top+'%</td></tr>'));
   // length histogram
   const hb=document.getElementById('histBody'); const tot=DATA.hist.reduce((a,b)=>a+b.n,0);
@@ -891,7 +1022,7 @@ function buildTables(){
 }
 buildTables();
 
-drawConverge(); drawComeback(); drawFair(); drawHeat(); drawLength(); drawHeroRings();
+drawConverge(); drawComeback(); drawFair(); drawHeat(); drawLength(); drawHeroRings(); drawLadder(); drawClasses();
 /* ---------- board animations (third edition) ---------- */
 /* Poses were recorded through the contact law at the engine's own step size: every frame is a
    position the engine itself passes through. Coordinates are board units; y grows downward, as on
