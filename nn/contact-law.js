@@ -104,6 +104,7 @@ function swing(pieces, activeIdx, pivotIdx, dir, rad, K) {
   const flags = { deep: 0, hfFloor: 0, cap: 0, multi: 0, maxContacts: 0 };
   const trace = K.trace ? [] : null;                      // per-step primary-contact geometry
   let alpha = 0, maxFootR = Math.max(...feetOf(opp).map(f => Math.hypot(f.x, f.y))), offAt = null;
+  const record = K.record ? [] : null;                    // pushed piece's pose after every step: the family of stops
   for (let s = 0; s < steps; s++) {
     rotateAround(active, pivot.x, pivot.y, step); alpha += Math.abs(step);
     let primary = null;                                   // deepest leg-leg contact this step
@@ -167,8 +168,9 @@ function swing(pieces, activeIdx, pivotIdx, dir, rad, K) {
     const fr = Math.max(...feetOf(opp).map(f => Math.hypot(f.x, f.y)));
     if (fr > maxFootR) maxFootR = fr;
     if (offAt === null && fr > EDGE) offAt = alpha;
+    if (record) record.push({ alpha, x: opp.x, y: opp.y, rot: opp.rot, maxFootR });
   }
-  return { opp, off: anyOff(opp), offAt, maxFootR, flags, trace, pivot, rad };
+  return { opp, off: anyOff(opp), offAt, maxFootR, flags, trace, record, pivot, rad };
 }
 
 // A victim parked near the rim with the attacker a leg's reach away, not touching: the poses where

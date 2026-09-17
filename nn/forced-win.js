@@ -99,9 +99,154 @@ function simCheck(pieces, active, pv, dir, box, n, expect) {
   return { agree, n, fails };
 }
 
-module.exports = { load, swingLimit, throwMargin, bestThrow, certifyThrowBox, simCheck, signature };
 
-if (require.main === module) {
+// ---- Level 2: forced in two ---------------------------------------------------------------
+// A witness is one attacker move M = (arc, stop). It is certified when, along EVERY victim reply
+// arc, every stop leaves the attacker a throw: the reply family is ONE sweep of the law (the
+// pushed attacker's pose is recorded at every step, and a stop at s is a prefix of the sweep to
+// the limit), sampled every `stepDeg`; at each sample the attacker's six throw margins are taken
+// and the max must clear a Lipschitz allowance over the gap to the next sample, with the chosen
+// arc's contact history consistent between neighbours (else a grazing surface could hide). The
+// reply must not throw the attacker either -- the pushed piece's furthest foot is monotone in the
+// stop, so the full sweep answers that for every stop at once.
+//
+// The mover's own pose where a swing is rotated: the law's `swing` moves `active` about its pivot
+// but returns only the pushed piece, so the mover's pose at a stop is recomputed here.
+function moverAt(piece, pv, dir, rad) {
+  const f = feetOf(piece)[pv], c = Math.cos(dir * rad), sn = Math.sin(dir * rad), rx = piece.x - f.x, ry = piece.y - f.y;
+  return { x: f.x + rx * c - ry * sn, y: f.y + rx * sn + ry * c, rot: piece.rot + dir * rad };
+}
+function replyFamily(pieces, mover, pv, dir, K) {
+  const lim = swingLimit(pieces, mover, pv, dir);
+  if (lim < MIN_MOVE) return null;
+  const out = swing(pieces, mover, pv, dir, lim, { ...K, record: true });
+  return { lim, out };
+}
+function certifyForcedIn2(pieces, attacker, K, opts) {
+  const stepDeg = (opts && opts.stepDeg) || 3, replyStepDeg = (opts && opts.replyStepDeg) || 2;
+  const safety = (opts && opts.safety) || 3, lipFloor = (opts && opts.lipFloor) || 1;
+  const victim = 1 - attacker;
+  const candidates = [];
+  for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
+    const fam = replyFamily(pieces, attacker, pv, dir, K); if (!fam) continue;
+    // a candidate is a stop; the victim's pose there comes from the recorded family
+    const stepRad = stepDeg * Math.PI / 180;
+    for (let s = MIN_MOVE; s <= fam.lim + 1e-9; s += stepRad) {
+      const rec = fam.out.record.find(r => r.alpha >= s - 1e-9) || fam.out.record[fam.out.record.length - 1];
+      if (rec.maxFootR > EDGE) { candidates.push({ pv, dir, stop: s, winsNow: true }); break; }   // a throw in one: done
+      const p = pieces.map(q => ({ ...q })); p[attacker] = moverAt(pieces[attacker], pv, dir, rec.alpha); p[victim] = { x: rec.x, y: rec.y, rot: rec.rot };
+      candidates.push({ pv, dir, stop: rec.alpha, after: p });
+    }
+  }
+  const win1 = candidates.find(c => c.winsNow);
+  if (win1) return { level: 1, witness: win1, certified: true };
+  let best = null;
+  for (const c of candidates) {
+    const v = verifyAllReplies(c.after, victim, K, replyStepDeg, safety, lipFloor);
+    if (v.certified) return { level: 2, witness: c, certified: true, detail: v };
+    if (!best || v.worstMargin > best.v.worstMargin) best = { c, v };
+  }
+  return { level: 2, certified: false, closest: best };
+}
+// For a position with `mover` to reply: does every reply leave the other side a throw?
+function verifyAllReplies(pieces, mover, K, replyStepDeg, safety, lipFloor) {
+  const other = 1 - mover; let worstMargin = Infinity, legalArcs = 0;
+  for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
+    const fam = replyFamily(pieces, mover, pv, dir, K); if (!fam) continue;
+    legalArcs++;
+    if (fam.out.maxFootR > EDGE) return { certified: false, why: `reply (${pv},${dir}) throws the attacker`, worstMargin: -Infinity };
+    // sample the stops
+    const stepRad = replyStepDeg * Math.PI / 180, samples = [];
+    for (let s = MIN_MOVE; ; s += stepRad) {
+      const last = s >= fam.lim - 1e-9;
+      const a = last ? fam.lim : s;
+      const rec = fam.out.record.find(r => r.alpha >= a - 1e-9) || fam.out.record[fam.out.record.length - 1];
+      const p = pieces.map(q => ({ ...q })); p[mover] = moverAt(pieces[mover], pv, dir, rec.alpha); p[other] = { x: rec.x, y: rec.y, rot: rec.rot };
+      const arcs = [];
+      for (let apv = 0; apv < 3; apv++) for (const adir of [1, -1]) { const t = throwMargin(p, other, apv, adir, K); arcs.push({ apv, adir, m: t.margin, sig: signature(t.out) }); }
+      samples.push({ alpha: rec.alpha, arcs });
+      if (last) break;
+    }
+    // cover the arc: between neighbours k, k+1 one attacker arc must clear the allowance at both ends
+    // with a consistent contact history; the pose moves at most 2R per radian of the reply
+    for (let k = 0; k + 1 < samples.length; k++) {
+      const A = samples[k], B = samples[k + 1], gapU = (B.alpha - A.alpha) * 2 * R;
+      let ok = false, bestM = -Infinity;
+      for (let i = 0; i < 6; i++) {
+        const a = A.arcs[i], b = B.arcs[i];
+        if (!Number.isFinite(a.m) || !Number.isFinite(b.m)) continue;
+        const lip = Math.max(lipFloor, safety * Math.abs(a.m - b.m) / Math.max(gapU, 1e-9));
+        const need = lip * gapU / 2;
+        const consistent = a.sig.pairs === b.sig.pairs && (a.sig.onset == null || b.sig.onset == null || Math.abs(a.sig.onset - b.sig.onset) < 5 * Math.PI / 180);
+        bestM = Math.max(bestM, Math.min(a.m, b.m));
+        if (a.m > need && b.m > need && consistent) { ok = true; break; }
+      }
+      worstMargin = Math.min(worstMargin, bestM);
+      if (!ok) return { certified: false, why: `reply (${pv},${dir}) stop ${(A.alpha * 180 / Math.PI).toFixed(0)}-${(B.alpha * 180 / Math.PI).toFixed(0)}deg: no throw certified (best min margin ${bestM.toFixed(2)}u)`, worstMargin };
+    }
+  }
+  if (!legalArcs) return { certified: false, why: 'victim has no legal reply', worstMargin: -Infinity };
+  return { certified: true, worstMargin };
+}
+// The engine's check of a level-2 claim: random replies (arc, stop) played by the engine, then
+// the engine sweeps each attacker arc to its limit looking for a throw.
+function simCheckForcedIn2(pieces, attacker, witness, n) {
+  const victim = 1 - attacker; let agree = 0; const fails = [];
+  for (let t = 0; t < n; t++) {
+    let g = load(pieces, attacker); eng.pinFoot(witness.pv);
+    let guard = 0; while (!g.atLimit && Math.abs(g.netRad) < witness.stop - 1e-9 && guard++ < 2000) eng.applySwing(witness.dir * Math.min(Math.PI / 180, witness.stop - Math.abs(g.netRad)));
+    const after = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+    // a random legal reply
+    const pv = Math.floor(Math.random() * 3), dir = Math.random() < 0.5 ? 1 : -1;
+    g = load(after, victim); const snap = eng.takeSnap(); const lim = Math.abs(eng.simMoveToLimit(pv, dir)); eng.restoreSnap(snap);
+    if (lim < MIN_MOVE) { t--; continue; }
+    const stop = MIN_MOVE + Math.random() * (lim - MIN_MOVE);
+    eng.pinFoot(pv); guard = 0; let attackerThrown = false;
+    while (!g.atLimit && Math.abs(g.netRad) < stop - 1e-9 && guard++ < 2000) { eng.applySwing(dir * Math.min(Math.PI / 180, stop - Math.abs(g.netRad))); if (g.pieces[attacker].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) { attackerThrown = true; break; } }
+    const after2 = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+    let thrown = false;
+    if (!attackerThrown) for (let apv = 0; apv < 3 && !thrown; apv++) for (const adir of [1, -1]) {
+      g = load(after2, attacker); eng.pinFoot(apv); guard = 0;
+      while (!g.atLimit && guard++ < 400) { eng.applySwing(adir * Math.PI / 180); if (g.pieces[victim].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) { thrown = true; break; } }
+      if (thrown) break;
+    }
+    if (thrown && !attackerThrown) agree++; else fails.push({ pv, dir, stop, attackerThrown });
+  }
+  return { agree, n, fails };
+}
+
+module.exports = { load, swingLimit, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, simCheckForcedIn2 };
+
+if (require.main === module && process.argv[2] === '--in2') {
+  // Sample positions with a victim foot a few units inside the rim and the attacker in reach,
+  // skip those the attacker wins in one, try to certify a forced win in two, check each in the engine.
+  const N = +(process.argv[3] || 20), K = REPLICA;
+  const hubMax = eng.CFG.edgeU - R - eng.CFG.edgeEps;
+  let tried = 0, win1 = 0, cert2 = 0, cert2ok = 0, cert2bad = 0, refused = 0; const t0 = Date.now();
+  while (tried < N) {
+    eng.newGame(); const g = eng.getG();
+    const victim = Math.random() < 0.5 ? 0 : 1, attacker = 1 - victim, v = g.pieces[victim], a = g.pieces[attacker];
+    const fr = eng.CFG.edgeU - 3 - 7 * Math.random(), fa = Math.random() * 2 * Math.PI;
+    v.rot = Math.random() * 2 * Math.PI; v.x = fr * Math.cos(fa) - Math.cos(v.rot) * R; v.y = fr * Math.sin(fa) - Math.sin(v.rot) * R;
+    if (Math.hypot(v.x, v.y) > hubMax || anyOff(v)) continue;
+    const d = 26 + 18 * Math.random(), aa = fa + Math.PI + (Math.random() - 0.5) * 1.6;
+    a.x = fr * Math.cos(fa) + d * Math.cos(aa); a.y = fr * Math.sin(fa) + d * Math.sin(aa); a.rot = Math.random() * 2 * Math.PI;
+    if (Math.hypot(a.x, a.y) > hubMax || anyOff(a)) continue;
+    const pieces = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+    // not touching, and not a win in one
+    const b1 = bestThrow(pieces, attacker, K); if (!Number.isFinite(b1.margin)) continue;
+    tried++;
+    if (b1.margin > 0) { win1++; continue; }
+    const r = certifyForcedIn2(pieces, attacker, K);
+    if (r.certified) {
+      cert2++;
+      const s = simCheckForcedIn2(pieces, attacker, r.witness, 30);
+      if (s.agree === s.n) cert2ok++; else { cert2bad++; console.log(`  CONTRADICTED: engine disagreed on ${s.n - s.agree}/${s.n}: ${JSON.stringify(s.fails.slice(0, 2))}`); }
+      console.log(`  forced in 2: attacker ${attacker} plays (${r.witness.pv},${r.witness.dir}) to ${(r.witness.stop * 180 / Math.PI).toFixed(1)}deg; worst certified margin ${r.detail.worstMargin.toFixed(2)}u; engine agrees ${s.agree}/${s.n}   [victim foot ${(eng.CFG.edgeU - fr).toFixed(1)}u inside]`);
+    } else { refused++; if (r.closest) console.log(`  no certificate (closest: (${r.closest.c.pv},${r.closest.c.dir})@${(r.closest.c.stop * 180 / Math.PI).toFixed(0)}deg -- ${r.closest.v.why})`); }
+  }
+  console.log(`\n${tried} positions (victim foot 3-10u inside the rim): win-in-1 ${win1}, forced-in-2 certified ${cert2} (engine agreed on every reply in ${cert2ok}, contradicted ${cert2bad}), no certificate ${refused}   ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+} else if (require.main === module) {
   // Demo on recorded contact events: around every engine throw, try to certify a box of victim
   // poses of half-width `half` and check the claim against the engine.
   const rows = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));
