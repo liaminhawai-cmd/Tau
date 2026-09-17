@@ -18,6 +18,10 @@
 const { swing, IDEAL, REPLICA, feetOf, anyOff, R, EDGE, eng } = require('./contact-law.js');
 
 const MIN_MOVE = eng.CFG.minMoveDeg * Math.PI / 180;
+// An ESCAPE claim needs the best throw margin below -ESC_TOL, not merely below zero: the law and the
+// engine differ by up to ~0.6u on a push (contact-law.js), and three thin "escapes" mined from real
+// games were contradicted by the engine before this existed. Between -ESC_TOL and 0 is unresolved.
+const ESC_TOL = 0.75;
 
 // Put a position on the engine's board (G is rebuilt per game, so fetch it afterwards).
 function load(pieces, active) {
@@ -171,7 +175,7 @@ function verifyAllReplies(pieces, mover, K, replyStepDeg, safety, lipFloor) {
     };
     const stepRad = replyStepDeg * Math.PI / 180, first = [];
     for (let a = MIN_MOVE; ; a += stepRad) { const last = a >= fam.lim - 1e-9; first.push(sampleAt(last ? fam.lim : a)); if (last) break; }
-    for (const smp of first) if (!(smp.best > 0)) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) to ${(smp.alpha * 180 / Math.PI).toFixed(1)}deg leaves no throw (best margin ${smp.best.toFixed(2)}u)`, escape: { pv, dir, stop: smp.alpha, bestMargin: smp.best }, worstMargin: Math.min(worstMargin, smp.best) };
+    for (const smp of first) if (smp.best <= -ESC_TOL) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) to ${(smp.alpha * 180 / Math.PI).toFixed(1)}deg leaves no throw (best margin ${smp.best.toFixed(2)}u)`, escape: { pv, dir, stop: smp.alpha, bestMargin: smp.best }, worstMargin: Math.min(worstMargin, smp.best) };
     // certify each gap, subdividing while it fails with positive ends
     const gaps = []; for (let k = 0; k + 1 < first.length; k++) gaps.push([first[k], first[k + 1]]);
     while (gaps.length) {
@@ -188,7 +192,7 @@ function verifyAllReplies(pieces, mover, K, replyStepDeg, safety, lipFloor) {
       if (ok) { worstMargin = Math.min(worstMargin, bestM); continue; }
       if (B.alpha - A.alpha > minStepRad * 1.5) {                       // subdivide
         const M = sampleAt((A.alpha + B.alpha) / 2);
-        if (!(M.best > 0)) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) to ${(M.alpha * 180 / Math.PI).toFixed(1)}deg leaves no throw (best margin ${M.best.toFixed(2)}u)`, escape: { pv, dir, stop: M.alpha, bestMargin: M.best }, worstMargin: Math.min(worstMargin, M.best) };
+        if (M.best <= -ESC_TOL) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) to ${(M.alpha * 180 / Math.PI).toFixed(1)}deg leaves no throw (best margin ${M.best.toFixed(2)}u)`, escape: { pv, dir, stop: M.alpha, bestMargin: M.best }, worstMargin: Math.min(worstMargin, M.best) };
         gaps.push([A, M], [M, B]); continue;
       }
       unresolved = unresolved || `reply (${pv},${dir}) ${(A.alpha * 180 / Math.PI).toFixed(1)}-${(B.alpha * 180 / Math.PI).toFixed(1)}deg: no single arc certifies the gap (best min margin ${bestM.toFixed(2)}u) even at the engine's substep -- the throw changes arm here`;
@@ -334,7 +338,87 @@ function report(v, pieces, victim, label) {
   } else { T.unresolved++; console.log(`  unresolved: ${label} -- ${v.why}`); }
 }
 
-if (require.main === module && process.argv[2] === '--catalog') {
+if (require.main === module && process.argv[2] === '--back-from') {
+  // Backward families from a certified DEAD position: node nn/forced-win.js --back-from bx,..,rrot --mover m
+  // `mover` is the side to move in D (the dead side); the OTHER side just swung into D. Unwinding
+  // each of its six arms gives the positions it could have come from; wherever the forward swing
+  // is legal (reaches the unwound angle before any limit) and touches nothing on the way (else the
+  // victim would have been pushed and the predecessor's victim pose differs), that predecessor is
+  // a certified forced win in two: the move lands exactly on D. Each family is checked in the
+  // engine at random points: play the forward swing, confirm it lands on D.
+  const K = REPLICA, nums = process.argv[3].split(',').map(Number);
+  const mover = process.argv.includes('--mover') ? +process.argv[process.argv.indexOf('--mover') + 1] : 0, att = 1 - mover;
+  const D = [{ x: nums[0], y: nums[1], rot: nums[2] }, { x: nums[3], y: nums[4], rot: nums[5] }];
+  const v = verifyAllReplies(D, mover, K, 2, 3, 1);
+  console.log(`D: ${mover === 0 ? 'blue' : 'red'} to move -- ${v.status}${v.status === 'dead' ? ` (worst margin ${v.worstMargin.toFixed(2)}u)` : ': ' + v.why}`);
+  if (v.status !== 'dead') { console.log('not a dead position; nothing to unwind'); process.exit(0); }
+  let total = 0;
+  for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
+    // unwind: the attacker rotated about its foot pv by +dir*s to arrive at D, so before it sat at -dir*s
+    const foot = feetOf(D[att])[pv]; const segs = []; let cur = null;
+    for (let deg = 2; deg <= 170; deg += 1) {
+      const sRad = deg * Math.PI / 180;
+      const prev = D.map(q => ({ ...q })); prev[att] = moverAt(D[att], pv, -dir, sRad);
+      let ok = !anyOff(prev[att]) && Math.hypot(prev[att].x, prev[att].y) <= eng.CFG.edgeU - R - eng.CFG.edgeEps;
+      if (ok) { const lim = swingLimit(prev, att, pv, dir); ok = lim >= sRad - 1e-6; }
+      if (ok) { const out = swing(prev, att, pv, dir, sRad, { ...K, trace: true }); ok = !(out.trace && out.trace.length) && Math.hypot(out.opp.x - D[mover].x, out.opp.y - D[mover].y) < 1e-6; }
+      if (ok) { if (!cur) cur = { from: deg, to: deg }; else cur.to = deg; } else if (cur) { segs.push(cur); cur = null; }
+    }
+    if (cur) segs.push(cur);
+    for (const sg of segs) {
+      total += sg.to - sg.from + 1;
+      // engine check at two random points of the segment: play the forward swing, land on D?
+      let agree = 0; const n = 2;
+      for (let t = 0; t < n; t++) {
+        const deg = sg.from + Math.random() * (sg.to - sg.from), sRad = deg * Math.PI / 180;
+        const prev = D.map(q => ({ ...q })); prev[att] = moverAt(D[att], pv, -dir, sRad);
+        const g = load(prev, att); eng.pinFoot(pv); let guard = 0;
+        while (!g.atLimit && Math.abs(g.netRad) < sRad - 1e-9 && guard++ < 3000) eng.applySwing(dir * Math.min(Math.PI / 180, sRad - Math.abs(g.netRad)));
+        const a = g.pieces[att], m = g.pieces[mover];
+        if (Math.hypot(a.x - D[att].x, a.y - D[att].y) < 0.05 && Math.hypot(m.x - D[mover].x, m.y - D[mover].y) < 0.05) agree++;
+      }
+      console.log(`  ${att === 0 ? 'blue' : 'red'} came by arm (${pv},${dir}) from ${sg.from}-${sg.to}deg back: ${sg.to - sg.from + 1} degrees of forced-win-in-two positions; engine lands on D ${agree}/${n}`);
+    }
+  }
+  console.log(`\n${total} degrees of predecessor arc certified as forced win in two for ${att === 0 ? 'blue' : 'red'} (each degree ~0.4-0.8u of hub travel)`);
+} else if (require.main === module && process.argv[2] === '--throw-map') {
+  // The picture: node nn/forced-win.js --throw-map bx,..,rrot --mover m [--half 20] [--res 64] [--out base]
+  // The other side's throw region over the MOVER's hub positions (mover's rotation held, other side
+  // held), as a margin field, with the mover's six reachable arcs drawn on it (hub trajectories,
+  // stops where the arc touches the other side skipped, since there the other side would have
+  // moved). If the mover is dead, every arc lies inside the positive region.
+  const K = REPLICA, nums = process.argv[3].split(',').map(Number);
+  const mover = process.argv.includes('--mover') ? +process.argv[process.argv.indexOf('--mover') + 1] : 0, other = 1 - mover;
+  const half = process.argv.includes('--half') ? +process.argv[process.argv.indexOf('--half') + 1] : 20, res = process.argv.includes('--res') ? +process.argv[process.argv.indexOf('--res') + 1] : 64;
+  const base = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : 'nn/brain-maps/throw-map';
+  const D = [{ x: nums[0], y: nums[1], rot: nums[2] }, { x: nums[3], y: nums[4], rot: nums[5] }];
+  const cx = D[mover].x, cy = D[mover].y, cell = 2 * half / res, field = new Float32Array(res * res), t0 = Date.now();
+  const hubMax = eng.CFG.edgeU - R - eng.CFG.edgeEps;
+  for (let j = 0; j < res; j++) { for (let i = 0; i < res; i++) {
+    const x = cx - half + (i + 0.5) * cell, y = cy - half + (j + 0.5) * cell, p = D.map(q => ({ ...q })); p[mover] = { x, y, rot: D[mover].rot };
+    if (Math.hypot(x, y) > hubMax || anyOff(p[mover])) { field[j * res + i] = NaN; continue; }
+    const bt = bestThrow(p, other, K); field[j * res + i] = Number.isFinite(bt.margin) ? bt.margin : NaN;   // NaN where the pieces overlap
+  } if (j % 8 === 7) process.stdout.write(`\r  ${Math.round(100 * (j + 1) / res)}%  ${((Date.now() - t0) / 1000).toFixed(0)}s  `); }
+  // the mover's reachable arcs: hub trajectory per stop, marked 2 where the arc touches the other side
+  const arcs = [];
+  for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) { const fam = replyFamily(D, mover, pv, dir, K); if (!fam) continue;
+    const touched = new Set((fam.out.trace || []).map(t => +t.alpha.toFixed(6)));
+    let tr = swing(D, mover, pv, dir, fam.lim, { ...K, trace: true, record: true });
+    for (const r of tr.record) { const h = moverAt(D[mover], pv, dir, r.alpha); arcs.push({ x: h.x, y: h.y, touch: !!(tr.trace && tr.trace.find(t => Math.abs(t.alpha - r.alpha) < 1e-9)) }); } }
+  require('fs').writeFileSync(base + '.bin', Buffer.from(field.buffer));
+  require('fs').writeFileSync(base + '.json', JSON.stringify({ tag: 'throw-map', res, cx, cy, half, cell, extent: half, mover, D, live: [...field].filter(Number.isFinite).length }));
+  // render: map-png's ramp for the margin, arcs punched through as index 0 (page background)
+  const P = require('./map-png.js'); const A = require('./map-analyze.js');
+  const m = A.loadMap(base); let { lo, hi } = P.limits(m.field); const a = Math.max(Math.abs(lo), Math.abs(hi)); lo = -a; hi = a;   // symmetric: zero = the boundary
+  const idx = P.render(m.field, res, lo, hi), scale = 8, W = res * scale, big = new Uint8Array(W * W);
+  for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) for (let b = 0; b < scale; b++) big.fill(idx[j * res + i], (j * scale + b) * W + i * scale, (j * scale + b) * W + i * scale + scale);
+  const px = (x, y) => [Math.round((x - (cx - half)) / cell * scale), Math.round((y - (cy - half)) / cell * scale)];
+  for (const q of arcs) { const [X, Y] = px(q.x, q.y); for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const X2 = X + dx, Y2 = Y + dy; if (X2 >= 0 && Y2 >= 0 && X2 < W && Y2 < W && (!q.touch || (dx + dy) % 2 === 0)) big[Y2 * W + X2] = 0; } }
+  { const [X, Y] = px(D[mover].x, D[mover].y); for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) if (Math.abs(dx) + Math.abs(dy) > 3 && Math.abs(dx) + Math.abs(dy) < 6) { const X2 = X + dx, Y2 = Y + dy; if (X2 >= 0 && Y2 >= 0 && X2 < W && Y2 < W) big[Y2 * W + X2] = 0; } }
+  require('fs').writeFileSync(base + '.png', P.pngIndexed(big, W, W, P.palette()));
+  const inside = arcs.filter(q => { const i = Math.floor((q.x - (cx - half)) / cell), j = Math.floor((q.y - (cy - half)) / cell); const v = field[j * res + i]; return Number.isFinite(v) && v > 0; }).length;
+  console.log(`\n${base}.png: ${other === 0 ? 'blue' : 'red'}'s throw margin over ${mover === 0 ? 'blue' : 'red'}'s hub (rot held), ${res}x${res} over +-${half}u; range [${lo.toFixed(1)}, ${hi.toFixed(1)}]u; ${mover === 0 ? 'blue' : 'red'}'s arcs drawn (dotted where they touch): ${inside}/${arcs.length} arc points inside the positive region`);
+} else if (require.main === module && process.argv[2] === '--catalog') {
   // A catalogue of the obvious families: a victim with one foot `inside` u from the rim at the
   // 12 o'clock rim point, turned `vrot` from radial; the attacker `dist` from that foot at approach
   // angle `approach` (0 = straight inward of the foot), turned `arot`. Each grid point is tagged
