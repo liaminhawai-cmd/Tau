@@ -140,13 +140,14 @@ function certifyForcedIn2(pieces, attacker, K, opts) {
   }
   const win1 = candidates.find(c => c.winsNow);
   if (win1) return { level: 1, witness: win1, certified: true };
-  let best = null;
+  let best = null, refuted = 0, unresolvedN = 0;
   for (const c of candidates) {
     const v = verifyAllReplies(c.after, victim, K, replyStepDeg, safety, lipFloor);
     if (v.certified) return { level: 2, witness: c, certified: true, detail: v };
+    if (v.status === 'escape') refuted++; else unresolvedN++;
     if (!best || v.worstMargin > best.v.worstMargin) best = { c, v };
   }
-  return { level: 2, certified: false, closest: best };
+  return { level: 2, certified: false, closest: best, refuted, unresolvedN, tried: candidates.length };
 }
 // For a position with `mover` to reply: does every reply leave the other side a throw? Three
 // verdicts, never a bare "no": DEAD (certified along every arc), ESCAPE (a sampled stop at which
@@ -397,7 +398,7 @@ if (require.main === module && process.argv[2] === '--dead-map') {
       const s = simCheckForcedIn2(pieces, attacker, r.witness, 30);
       if (s.agree === s.n) cert2ok++; else { cert2bad++; console.log(`  CONTRADICTED: engine disagreed on ${s.n - s.agree}/${s.n}: ${JSON.stringify(s.fails.slice(0, 2))}`); }
       console.log(`  forced in 2: attacker ${attacker} plays (${r.witness.pv},${r.witness.dir}) to ${(r.witness.stop * 180 / Math.PI).toFixed(1)}deg; worst certified margin ${r.detail.worstMargin.toFixed(2)}u; engine agrees ${s.agree}/${s.n}   [victim foot ${(eng.CFG.edgeU - fr).toFixed(1)}u inside]`);
-    } else { refused++; if (r.closest) console.log(`  no certificate (closest: (${r.closest.c.pv},${r.closest.c.dir})@${(r.closest.c.stop * 180 / Math.PI).toFixed(0)}deg -- ${r.closest.v.why})`); }
+    } else { refused++; if (r.closest) console.log(`  no certificate (closest candidate (${r.closest.c.pv},${r.closest.c.dir})@${(r.closest.c.stop * 180 / Math.PI).toFixed(0)}deg: ${r.closest.v.status} -- ${r.closest.v.why}); refuted by an escape: ${r.refuted}/${r.tried}, unresolved: ${r.unresolvedN}/${r.tried}`); }
   }
   console.log(`\n${tried} positions (victim foot 3-10u inside the rim): win-in-1 ${win1}, forced-in-2 certified ${cert2} (engine agreed on every reply in ${cert2ok}, contradicted ${cert2bad}), no certificate ${refused}   ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 } else if (require.main === module) {
