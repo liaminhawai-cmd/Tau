@@ -310,7 +310,52 @@ function report(v, pieces, victim, label) {
   } else { T.unresolved++; console.log(`  unresolved: ${label} -- ${v.why}`); }
 }
 
-if (require.main === module && process.argv[2] === '--dead-map') {
+if (require.main === module && process.argv[2] === '--mine') {
+  // Real dead positions from real games. Every recorded row carries the raw pose (p = blue x,y,rot,
+  // red x,y,rot) and the mover (m); a game's rows are contiguous under one tag (g), and a decided
+  // game's last row is the winner's position before the throw (z ~ +1). The row before it is the
+  // LOSER to move, one move from being thrown: was every move already lost there (dead), or did an
+  // escape exist that the loser missed (a blunder)? Either is an exact label. Certified verdicts are
+  // appended to the --out file (default nn/dead-positions.jsonl) with the pose, the mover, the
+  // verdict, the margin and the game.
+  //   node nn/forced-win.js --mine <files.jsonl...> [--out f] [--max N] [--back K]
+  // --back K also looks K loser-moves earlier (2K rows back), to see how deep the point of no return
+  // lies in play.
+  const fs = require('fs'), K = REPLICA;
+  const files = process.argv.slice(3).filter(a => !a.startsWith('--') && a !== process.argv[process.argv.indexOf('--out') + 1] && a !== process.argv[process.argv.indexOf('--max') + 1] && a !== process.argv[process.argv.indexOf('--back') + 1]);
+  const outPath = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : 'nn/dead-positions.jsonl';
+  const maxGames = process.argv.includes('--max') ? +process.argv[process.argv.indexOf('--max') + 1] : Infinity;
+  const back = process.argv.includes('--back') ? +process.argv[process.argv.indexOf('--back') + 1] : 0;
+  const tally = {}; let games = 0; const t0 = Date.now();
+  const bump = k => { tally[k] = (tally[k] || 0) + 1; };
+  for (const file of files) {
+    const rows = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
+    const byGame = new Map(); rows.forEach(r => { if (r.g && r.p) { if (!byGame.has(r.g)) byGame.set(r.g, []); byGame.get(r.g).push(r); } });
+    for (const [g, gr] of byGame) {
+      if (games >= maxGames) break;
+      const last = gr[gr.length - 1];
+      if (!(Math.abs(last.z) >= 0.98) || gr.length < 2) continue;          // not a decided game ending in a throw
+      games++;
+      for (let k = 0; k <= back; k++) {
+        const i = gr.length - 2 - 2 * k; if (i < 0) break;
+        const r = gr[i], victim = r.m;
+        const pieces = [{ x: r.p[0], y: r.p[1], rot: r.p[2] }, { x: r.p[3], y: r.p[4], rot: r.p[5] }];
+        const v = verifyAllReplies(pieces, victim, K, 2, 3, 1);
+        let check = null;
+        if (v.status === 'dead') check = simCheckDead(pieces, victim, 20);
+        else if (v.status === 'escape') check = simCheckEscape(pieces, victim, v.escape);
+        const agreed = check ? (check.n != null ? check.agree === check.n : check.agree) : null;
+        const key = `${k === 0 ? 'one move before the throw' : k + ' loser-moves earlier'}: ${v.status}${agreed === false ? ' (ENGINE DISAGREED)' : ''}`;
+        bump(key);
+        fs.appendFileSync(outPath, JSON.stringify({ g, file: require('path').basename(file), row: i, back: k, mover: victim, p: r.p, mv: r.mv, verdict: v.status, worstMargin: Number.isFinite(v.worstMargin) ? +v.worstMargin.toFixed(3) : null, escape: v.escape || null, why: v.why || null, engineAgreed: agreed }) + '\n');
+        if (v.status === 'dead') console.log(`  DEAD ${g} (${k} back): every move of ${victim === 0 ? 'blue' : 'red'} loses to a throw, worst margin ${v.worstMargin.toFixed(2)}u; engine ${check.agree}/${check.n}`);
+      }
+      if (games % 10 === 0) console.log(`  ${games} games, ${((Date.now() - t0) / 60000).toFixed(1)} min`);
+    }
+  }
+  console.log(`\n${games} decided games:`); for (const k of Object.keys(tally).sort()) console.log(`  ${k}: ${tally[k]}`);
+  console.log(`verdicts appended to ${outPath}`);
+} else if (require.main === module && process.argv[2] === '--dead-map') {
   // Real dead positions: the cells a searched danger map marked forced-lost at ply 2 (the mover has
   // no move that escapes a throw). Reconstruct each cell's position and certify it.
   // A finished map (.json + .bin, losses clamped to the map's min) or a map still being swept
