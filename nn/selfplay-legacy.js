@@ -226,7 +226,9 @@ function main() {
   // open with the corner cross (index.html's ladderPlanCorner: two set moves, then the rung is
   // itself) -- the line the nets were measured soft against, taught from every rung that knows it
   // rather than a rung of its own. L1-L6 never play it, in the app or here. Default matches the app.
-  const cornerOpeningFrac = Math.max(0, Math.min(1, +arg('cornerOpening', 0.5)));
+  // Two thirds by default, matching the app: a third of games on each of the two corner lines
+  // (ladderPlanCorner picks which), a third neutral.
+  const cornerOpeningFrac = Math.max(0, Math.min(1, +arg('cornerOpening', 2/3)));
   const CORNER_OPENING_MIN_LEVEL = 7;
   // This fraction of games starts from a fully random LEGAL pose (see opening.js's
   // randomStartPose) instead of the canonical start -- coverage far outside anything a real

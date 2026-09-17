@@ -47,15 +47,17 @@ function arg(name, dflt) {
 // arm is still swept); without it, the policy hard-prunes to its top arms, the original wiring.
 // Default stays pruning so the existing menu A/Bs keep testing what they say they test.
 function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, abCut, policyArms, stopStride, sweepDeg, parkStops, dualPolicy) {
-  // "L9" is the rung as itself; "L9+corner" is the rung opening with the corner cross (index.html's
-  // ladderPlanCorner, then itself). Both are pinned explicitly: the app flips a coin per game for
-  // L7 and up, but a rated face has to be one thing or the other, or its Elo is a blend of two
-  // brains. Retromine and the league rate the two as separate immortals.
-  const m = /^L(\d+)(\+corner)?$/i.exec(spec);
+  // "L9" is the rung as itself; "L9+back" / "L9+front" is the rung opening with that corner line
+  // (index.html's ladderPlanCorner, then itself); "L9+corner" opens with either, chosen the way the
+  // app chooses (blue a coin, red a look at all four options). All pinned explicitly: the app draws
+  // per game for L7 and up, but a rated face has to be one thing, or its Elo is a blend of brains.
+  // Retromine and the league rate these as separate immortals.
+  const m = /^L(\d+)(\+corner|\+back|\+front)?$/i.exec(spec);
   if (m) {
-    const lvl = +m[1], corner = !!m[2];
+    const lvl = +m[1], tag = (m[2] || '').toLowerCase();
+    const corner = tag === '+corner' ? true : tag ? tag.slice(1) : false;
     if (lvl < 1 || lvl > eng.AI_LADDER.length) throw new Error('no such ladder level: ' + spec);
-    return { name: 'L' + lvl + (corner ? '+corner' : ''), fn: idx => {
+    return { name: 'L' + lvl + tag, fn: idx => {
       const G = eng.getG(); (G.cornerOpening || (G.cornerOpening = [null, null]))[idx] = corner;
       return eng.ladderPlanFor(lvl - 1, idx);
     } };

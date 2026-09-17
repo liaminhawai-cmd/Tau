@@ -5046,7 +5046,7 @@ function ladderCornerSetupStops(idx, pv, d){
             if ((delta(b.i,P)<0)!==s0){ hit=true; break; }
         }
         const at=Math.abs(G.netRad);
-        if (hit && at >= HARD_MIN_MOVE_RAD) stops.push({pivotIdx:pv, dir:d, targetRad:at, nextPivot:b.i});
+        if (hit && at >= HARD_MIN_MOVE_RAD) stops.push({pivotIdx:pv, dir:d, targetRad:at, nextPivot:b.i, corner:b.k});
     }
     ladderRestore(snap0);
     return stops;
@@ -5153,20 +5153,38 @@ function ladderPlanCorner(idx, w, o, fallback){
     };
     const bk=G.cornerBook[idx];
     if (!bk){
-        // Move 1. The back feet are the two farthest from the centre; each has one forward way
-        // round (the one that brings the hub in). Blue: coin. Red: L11's depth-3 look at each.
+        // Move 1. TWO lines share this book, and both end in the same move 3 (a swing back that
+        // rounds a printed corner); they differ in how they get the piece set up for it.
+        //   BACK  -- pin a back foot (the two farthest from the centre) and swing the other back
+        //            foot forward as far as the rules allow. The original line.
+        //   FRONT -- pin the FRONT foot (the one nearest the centre) and swing to the limit either
+        //            way: the trailing back foot slides into the other's place and the leading one
+        //            parks on the ring, a foot-length from crossing it. The second line Liam
+        //            demonstrated (2026-09-17); its setup is the trailing foot's swing, not the
+        //            pinned foot's again, so the book records which line it is playing.
+        // Blue: a coin between the lines on offer, then a coin within the line -- so each line gets
+        // an equal share whatever number of options it puts up. Red: a depth-3 look at EVERY option
+        // on offer (up to four: two back feet, two ways round the front foot) and takes the best.
+        // G.cornerOpening[idx] may pin the line ('back' | 'front'); true leaves the choice here.
         const feet=me.feet();
-        const backs=[0,1,2].sort((a,b)=>Math.hypot(feet[b].x,feet[b].y)-Math.hypot(feet[a].x,feet[a].y)).slice(0,2);
+        const byR=[0,1,2].sort((a,b)=>Math.hypot(feet[b].x,feet[b].y)-Math.hypot(feet[a].x,feet[a].y));
+        const backs=byR.slice(0,2), front=byR[2];
+        const want=G.cornerOpening[idx];
+        const lines = want==='back' ? ['back'] : want==='front' ? ['front'] : ['back','front'];
         const opts=[];
-        for (const pv of backs){
+        if (lines.includes('back')) for (const pv of backs){
             let best=null;
             for (const d of [1,-1]){ const s=sweepMax(pv,d); if (s && s.fwd && (!best || s.targetRad>best.targetRad)) best=s; }
-            if (best) opts.push(best);
+            if (best) opts.push({ ...best, line:'back' });
         }
+        if (lines.includes('front')) for (const d of [1,-1]){ const s=sweepMax(front,d); if (s && s.fwd) opts.push({ ...s, line:'front' }); }
         if (!opts.length) return done();
         let pick;
-        if (idx===0 || opts.length===1) pick=opts[Math.floor(Math.random()*opts.length)];
-        else {
+        if (idx===0 || opts.length===1){
+            const have=[...new Set(opts.map(s=>s.line))], line=have[Math.floor(Math.random()*have.length)];
+            const pool=opts.filter(s=>s.line===line);
+            pick=pool[Math.floor(Math.random()*pool.length)];
+        } else {
             let bestQ=-Infinity;
             for (const s of opts){
                 ladderRestore(s.snap); const q0=ladderEval(idx,w);
@@ -5174,11 +5192,13 @@ function ladderPlanCorner(idx, w, o, fallback){
                 if (q>bestQ){ bestQ=q; pick=s; }
             }
         }
-        // the crossed foot: the moving foot that came in toward the centre (the other is the front)
+        // the crossed foot: the moving foot that came in toward the centre (for the back line the
+        // other mover is the front; for the front line it is the trailing foot, move 2's pivot)
         ladderRestore(snap0); const f0=me.feet(); ladderRestore(pick.snap); const f1=me.feet();
         const crossFoot=[0,1,2].filter(i=>i!==pick.pivotIdx).sort((a,b)=>(Math.hypot(f1[a].x,f1[a].y)-Math.hypot(f0[a].x,f0[a].y))-(Math.hypot(f1[b].x,f1[b].y)-Math.hypot(f0[b].x,f0[b].y)))[0];
+        const trailFoot=[0,1,2].find(i=>i!==pick.pivotIdx && i!==crossFoot);
         ladderRestore(snap0); G.active=origActive;
-        G.cornerBook[idx]={ at:1, pivotIdx:pick.pivotIdx, dir:pick.dir, crossFoot, firstDeg:pick.targetRad*180/Math.PI };
+        G.cornerBook[idx]={ at:1, line:pick.line, pivotIdx:pick.pivotIdx, dir:pick.dir, crossFoot, trailFoot, firstDeg:pick.targetRad*180/Math.PI };
         return { pivotIdx:pick.pivotIdx, dir:pick.dir, targetRad:pick.targetRad };
     }
     // Move 3: the swing back through the corner move 2 set up. The book owns the pivot (the crossed
@@ -5188,7 +5208,7 @@ function ladderPlanCorner(idx, w, o, fallback){
     // rung's own eval likes". Leaving the pivot to the rung too threw the setup away -- it pinned a
     // different foot and the piece stopped inside the corner.
     if (bk.at===2){
-        const B3=bk.crossFoot, d3=-bk.dir;
+        const B3=bk.crossFoot, d3=bk.thirdDir!=null ? bk.thirdDir : -bk.dir;
         if (B3==null) return done();
         const step=(o.sampleDeg||6)*Math.PI/180;
         let best=null;
@@ -5212,6 +5232,56 @@ function ladderPlanCorner(idx, w, o, fallback){
     // The opening survives a nudge but not a shove: the swing's first crossing must be THAT foot
     // taking a line within 20 degrees, or the line is gone and the rung is L11 from here.
     if (bk.at!==1) return done();
+    if (bk.line==='front'){
+        // Move 2 (front line): pin the TRAILING foot, same way round. The parked foot takes the
+        // ring almost at once; the stop is the solved setup angle at which the FRONT foot (move
+        // 1's pivot) sits exactly a foot-to-foot length from the corner beside the trailing foot,
+        // so that the swing back about the front foot carries the trailing foot round that
+        // corner. Solved at the board like the back line's, and the same survival rule: the
+        // swing's first crossing must be the parked foot taking a line within 20 degrees, or
+        // the line is gone and the rung is itself from here.
+        const pv=bk.trailFoot, d=bk.dir, B=bk.crossFoot, F=bk.pivotIdx;
+        // Scanned at 1 degree, not the planning step: the parked foot starts 0.9u outside the ring
+        // and is 1.1u INSIDE it after one 3-degree step -- past touchEps, so the crossing would be
+        // seen but not credited to the foot (measured: 3 deg -> r 38.86, no line; 1 deg -> r 40.18,
+        // on it). The back line's crossing comes later in a slower approach and never hit this.
+        const scan=Math.PI/180;
+        ladderRestore(snap0); G.active=idx; pinFoot(pv);
+        let guard=0, radAtCross=null;
+        while (!G.atLimit && Math.abs(G.netRad) < 20*Math.PI/180 && guard++ < 500){
+            applySwing(d*scan);
+            if (G.pieces[idx].anyFootOff()) break;
+            if (G.crossings>0){ if (nearLineIds(me.feet()[B], CFG.touchEps).length) radAtCross=Math.abs(G.netRad); break; }
+        }
+        ladderRestore(snap0);
+        if (radAtCross===null) return done();
+        // Which corner: the one right beside the pinned trailing foot (it will be carried round it;
+        // the mirror-image corner on the far side also puts the front foot a foot-length away,
+        // earlier in the sweep, and is not the one the line means). Nearest such solved stop past
+        // the crossing.
+        const tf=me.feet()[pv], nearU=20;
+        const solved=ladderCornerSetupStops(idx, pv, d)
+            .filter(s=>s.nextPivot===F && s.targetRad>radAtCross &&
+                       Math.hypot(LINE_INTERSECTIONS[s.corner].x-tf.x, LINE_INTERSECTIONS[s.corner].y-tf.y) < nearU)
+            .sort((a,b)=>a.targetRad-b.targetRad)[0];
+        if (!solved) return done();
+        ladderRestore(snap0);
+        if (!ladderSwingTo(idx, pv, d, solved.targetRad)) return done();
+        // Move 3's direction: about the front foot, the way that carries the hub inward (for the
+        // back line that is always the reverse of the book's; here it is solved rather than assumed).
+        const at2=takeSnap(), hubR2=hubR();
+        let thirdDir=-d;
+        for (const d3 of [1,-1]){
+            ladderRestore(at2); G.active=idx; pinFoot(F);
+            let k=0; while (!G.atLimit && Math.abs(G.netRad) < 3*AI_STEP_RAD && k++ < 10) applySwing(d3*AI_STEP_RAD);
+            if (!G.pieces[idx].anyFootOff() && hubR() < hubR2-1e-6){ thirdDir=d3; break; }
+        }
+        ladderRestore(snap0); G.active=origActive;
+        // the book hands move 3 the FRONT foot as its pivot: crossFoot is what move 3 pins
+        G.cornerBook[idx]={ at:2, line:'front', pivotIdx:pv, dir:d, crossFoot:F, thirdDir, corner:solved.corner,
+                            firstDeg:bk.firstDeg, secondDeg:solved.targetRad*180/Math.PI, crossDeg:radAtCross*180/Math.PI, solved:true };
+        return { pivotIdx:pv, dir:d, targetRad:solved.targetRad };
+    }
     const pv=bk.pivotIdx, d=bk.dir, B=bk.crossFoot;
     ladderRestore(snap0); G.active=idx; pinFoot(pv);
     let guard=0, radAtCross=null;
@@ -5229,7 +5299,7 @@ function ladderPlanCorner(idx, w, o, fallback){
     ladderRestore(snap0);
     if (!ladderSwingTo(idx, pv, d, rad)){ ladderRestore(snap0); rad=radAtCross+few; if (!ladderSwingTo(idx, pv, d, rad)) return done(); }
     ladderRestore(snap0); G.active=origActive;
-    G.cornerBook[idx]={ at:2, pivotIdx:pv, dir:d, crossFoot:B, firstDeg:bk.firstDeg, secondDeg:rad*180/Math.PI, crossDeg:radAtCross*180/Math.PI, solved:!!solved };
+    G.cornerBook[idx]={ at:2, line:'back', pivotIdx:pv, dir:d, crossFoot:B, firstDeg:bk.firstDeg, secondDeg:rad*180/Math.PI, crossDeg:radAtCross*180/Math.PI, solved:!!solved };
     return { pivotIdx:pv, dir:d, targetRad:rad };
 }
 function ladderProbe(idx, pv, dir){
@@ -5274,11 +5344,13 @@ function ladderRandomPlan(idx){
     return ladderDumbPlan(idx);
 }
 // returns { pivotIdx, dir, targetRad } for the ladder brain at `levelIdx`, whoever is active (idx)
-// The corner opening: from L7 up, a rung opens with it in half its games -- in the app, in the
+// The corner openings: from L7 up, a rung opens with a corner line in two thirds of its games --
+// a third on each of the two lines ladderPlanCorner knows, a third neutrally -- in the app, in the
 // lab and in the trainer alike. The coin is flipped here, once per side per game, on that side's
-// first move (G is rebuilt every game); a caller that has already set G.cornerOpening[idx] (the
-// trainer's --cornerOpening dial) keeps its choice. L1-L6 never know the line.
-const CORNER_OPENING_MIN_LEVEL = 7, CORNER_OPENING_P = 0.5;
+// first move (G is rebuilt every game); a caller that has already set G.cornerOpening[idx] keeps
+// its choice: true (either line, chosen in ladderPlanCorner), 'back' or 'front' (that line), false.
+// L1-L6 never know either line.
+const CORNER_OPENING_MIN_LEVEL = 7, CORNER_OPENING_P = 2/3;
 function ladderPlanFor(levelIdx, idx){
     const def=AI_LADDER[levelIdx]; if (!def) return null;
     if (!G.cornerOpening) G.cornerOpening=[null,null];
