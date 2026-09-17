@@ -1,0 +1,13 @@
+{
+ "phaseTol": 0.30554441256640347,
+ "events": "/tmp/claude-0/-home-user-Tau/0b7e1e2d-c820-5511-8b82-925fcf90ba79/scratchpad/law/events.json",
+ "stops": 196,
+ "stopsPerEvent": 5,
+ "median": 0.03548989981629479,
+ "p90": 0.1600125795892937,
+ "max": 0.30554441256640347,
+ "limMedianDeg": 0.10224866878634163,
+ "limMaxDeg": 21.155375715882833,
+ "stoppedEarly": 1,
+ "measured": "2026-09-17T09:52:03.236Z"
+}

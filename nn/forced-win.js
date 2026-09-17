@@ -14,10 +14,48 @@
 //
 // Level 1 here: throw-in-1 boxes. Level 2 (forced in two: my move, every reply, my throw) is the
 // same certificate walked along each of the victim's six reply arcs.
+//
+// THE GRAPH (nn/family-graph.jsonl, one JSON row per node, immutable once appended). Deeper
+// results are regions in the JOINT space of both poses, measured in one metric, d(p, q) = the sum
+// over the two pieces of hypot(dx, dy) + R*|drot| (L1 across the pieces and across position and
+// rotation; with an L1 metric a max-over-axes finite difference is a valid Lipschitz constant,
+// which is what lets a star of probes certify a ball). Two node kinds:
+//   point (even plies): the side to move LOSES; region = the L1 ball of radius eps around pose,
+//     eps from certifyStar (13 dead certificates, the reply families swept to a reach ENVELOPE of
+//     the victim's box rather than each sample's own limit, so no stop reachable anywhere in the
+//     ball goes uncertified);
+//   arc (odd plies): the side to move WINS by one move that lands exactly on a point node; the
+//     arc is the child's attacker unwound about its own foot, every position played forward by the
+//     engine, with a tube radius eps = min(child.eps / 3, clearance - 0.17u, limit slack) -- 3 is
+//     the L1 Lipschitz constant of a rigid rotation about a foot (hub moves <= |dxy| + 2R|drot|,
+//     rot moves |drot|), 0.17u is what the tube gap can change between two samples 0.5 degrees
+//     apart (no point of the swinging piece is farther than R*sqrt(3) = 40u from the pivot).
+// Level 1 is never stored: "throws now" is bestThrow, "thrown for a box" is certifyThrowBox.
+// Every certificate is followed by the engine playing random positions of the claim, and a
+// contradiction halts the run: it is a bug here, never a rounding.
 'use strict';
-const { swing, IDEAL, REPLICA, feetOf, anyOff, R, EDGE, eng } = require('./contact-law.js');
+const fs = require('fs'), path = require('path');
+const { swing, minGapOf, sampleEvent, IDEAL, REPLICA, feetOf, anyOff, R, EDGE, MIND, eng } = require('./contact-law.js');
 
 const MIN_MOVE = eng.CFG.minMoveDeg * Math.PI / 180;
+const DEG = Math.PI / 180, SUBSTEP = eng.CFG.substepDeg * DEG;
+// Between two samples of a sweep at most 0.5 degrees apart, no point of the swinging piece moves
+// more than R*sqrt(3) (the far feet from the pivot) * 0.25 degrees = 0.17u, so the tube gap sampled
+// at the law's 0.4-degree step bounds the continuous gap to within this. A proof, not a fit.
+const GAP_STEP = R * Math.sqrt(3) * 0.25 * DEG;
+// A non-pivot foot travels R*sqrt(3) * (1/3 degree) = 0.23u in one substep of a 1-degree applySwing
+// call, so the line a foot was stopped short of is within touchEps + 0.25u of it after the rollback
+// (measured at the four dead points: 0.81-1.01u).
+const STOP_BAND = eng.CFG.touchEps + 0.25;
+// The engine lands a played-forward arc on its target within this (the --back-from tolerance,
+// 0.05u and 1e-3 rad per piece), in the metric.
+const LAND_TOL = 2 * (0.05 + R * 1e-3);
+const GRAPH_PATH = path.join(__dirname, 'family-graph.jsonl');
+// PHASE_TOL: how far the law's fixed 0.4-degree record can sit from an engine turn of arbitrary
+// phase (applySwing splits each call into EQUAL substeps, so a human drag integrates a different
+// ladder). Measured by --phase-tol and read here; null until it has been measured, and level 3
+// (pushed landings) must not run without it.
+const PHASE_TOL = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'phase-tol.json'), 'utf8')).phaseTol; } catch (e) { return null; } })();
 // An ESCAPE claim needs the best throw margin below -ESC_TOL, not merely below zero: the law and the
 // engine differ by up to ~0.6u on a push (contact-law.js), and three thin "escapes" mined from real
 // games were contradicted by the engine before this existed. Between -ESC_TOL and 0 is unresolved.
@@ -38,9 +76,40 @@ function swingLimit(pieces, active, pv, dir) {
   const g = load(pieces, active); const snap = eng.takeSnap();
   const lim = Math.abs(eng.simMoveToLimit(pv, dir)); eng.restoreSnap(snap); return lim;
 }
+// The mover's TRUE limit: applySwing looped a degree at a time until the engine stops it or a full
+// turn is done. Not simMoveToLimit: that is the AI's move generator and stops at its own 170-degree
+// safety cap (index.html AI_SAFETY_CAP_RAD) which a human drag does not have; applySwing itself
+// stops only for 'selfoff' (an own foot past the rim) or 'cross' (the one-crossing rule). Measured
+// at the four dead points: 13-408 ms per arm against 9-357 ms for simMoveToLimit, the same, because
+// these arms stop at 3-110 degrees; the limits differ by 0.1-0.3 degrees (the two ladders' phase).
+// Also says WHAT stopped it -- the reason, the lines crossed on the way, the foot that was stopped
+// and the line (or rim) it was stopped at -- as a signature: a reach envelope refuses a box whose
+// grid neighbours stop on different events, since the limit is only continuous between events.
+function limitAt(pieces, active, pv, dir) {
+  const g = load(pieces, active); eng.pinFoot(pv); let guard = 0;
+  while (!g.atLimit && Math.abs(g.netRad) < 2 * Math.PI - 1e-9 && guard++ < 1200) eng.applySwing(dir * Math.min(DEG, 2 * Math.PI - Math.abs(g.netRad)));
+  const feet = g.pieces[active].feet(), reason = g.limitReason || 'full';
+  let foot = null, line = null, best = Infinity;
+  if (reason === 'selfoff') { for (let i = 0; i < 3; i++) if (i !== pv) { const r = -Math.hypot(feet[i].x, feet[i].y); if (r < best) { best = r; foot = i; line = 'rim'; } } }
+  else for (let i = 0; i < 3; i++) { if (i === pv) continue; for (const id of eng.nearLineIds(feet[i], STOP_BAND)) { const d = eng.lineDistOf(feet[i], id); if (d < best) { best = d; foot = i; line = id; } } }
+  const crossed = [...new Set(g.justCrossed || [])].sort();
+  return { lim: Math.abs(g.netRad), reason, crossed, foot, line, sig: `${reason}|${crossed.join(',')}|${foot == null ? '-' : foot + ':' + line}` };
+}
+// The limit is a function of the mover's own pose alone (pinFoot and crossingSubstep read only the
+// active piece; resolvePush moves only the other one), so it is memoised on that pose. Along a
+// contact-free reply the pushed attacker never moves and its six throw limits repeat at every stop;
+// measured hit rate 44% at the dead points, verifyAllReplies 44-70 s -> ~30-40 s. Keyed at 1e-7:
+// a pose that differs by less is the same pose to the engine's substep.
+const limitMemo = new Map(), memoStats = { hits: 0, misses: 0 };
+function swingLimitMemo(pieces, active, pv, dir) {
+  const p = pieces[active], key = `${p.x.toFixed(7)},${p.y.toFixed(7)},${p.rot.toFixed(7)},${pv},${dir}`;
+  const hit = limitMemo.get(key); if (hit !== undefined) { memoStats.hits++; return hit; }
+  memoStats.misses++; if (limitMemo.size > 500000) limitMemo.clear();
+  const lim = limitAt(pieces, active, pv, dir).lim; limitMemo.set(key, lim); return lim;
+}
 // Throw margin of one swing swept to its limit: furthest any victim foot gets beyond the rim.
 function throwMargin(pieces, active, pv, dir, K) {
-  const rad = swingLimit(pieces, active, pv, dir);
+  const rad = swingLimitMemo(pieces, active, pv, dir);
   if (rad < MIN_MOVE) return { margin: -Infinity, rad, out: null };
   const out = swing(pieces, active, pv, dir, rad, { ...K, trace: true });
   return { margin: out.maxFootR - EDGE, rad, out };
@@ -126,8 +195,12 @@ function moverAt(piece, pv, dir, rad) {
   const f = feetOf(piece)[pv], c = Math.cos(dir * rad), sn = Math.sin(dir * rad), rx = piece.x - f.x, ry = piece.y - f.y;
   return { x: f.x + rx * c - ry * sn, y: f.y + rx * sn + ry * c, rot: piece.rot + dir * rad };
 }
-function replyFamily(pieces, mover, pv, dir, K) {
-  const lim = swingLimit(pieces, mover, pv, dir);
+// limOverride: sweep to this angle instead of the mover's own limit -- a reach envelope's hi, so
+// that a certificate over a region covers every stop reachable from anywhere in it. Stops past the
+// mover's own limit are then certified too (a superset of its replies; past a 'selfoff' limit the
+// mover has thrown itself, which the throw margin reads as won at once).
+function replyFamily(pieces, mover, pv, dir, K, limOverride) {
+  const lim = limOverride != null ? Math.min(limOverride, 2 * Math.PI) : swingLimitMemo(pieces, mover, pv, dir);
   if (lim < MIN_MOVE) return null;
   const out = swing(pieces, mover, pv, dir, lim, { ...K, record: true });
   return { lim, out };
@@ -165,12 +238,29 @@ function certifyForcedIn2(pieces, attacker, K, opts) {
 // positive everywhere sampled but too small for the allowance even at the engine's own substep).
 // Gaps that fail the allowance with positive margins at both ends are subdivided before giving up.
 function verifyAllReplies(pieces, mover, K, replyStepDeg, safety, lipFloor) {
-  const other = 1 - mover; let worstMargin = Infinity, legalArcs = 0, unresolved = null, slivers = 0;
-  const minStepRad = eng.CFG.substepDeg * Math.PI / 180;
+  return deadCertificate(pieces, mover, K, { replyStepDeg, safety, lipFloor });
+}
+// The same certificate with what a REGION needs of it. opts.reach: the six per-arm reach
+// envelopes of the victim's box (index pv*2 + (dir < 0)); each reply family is swept to its hi
+// instead of this sample's own limit. opts.screen: stops every 8 degrees and no gap loop, ~6 s,
+// returning only the smallest best margin seen (minBest) -- a cheap first look at a candidate
+// child before its certificate is paid for. And every verdict carries a PROFILE: per reply arm,
+// the certified gaps with the SET of attacker arcs that certify each (a bitmask over apv*2 +
+// (adir < 0)); two profiles are consistent when every pair of overlapping gaps shares a certifying
+// arc, i.e. the same throw answers the same reply across the region -- the grazing guard the star
+// needs between its probes, tolerant of the ties that a "first arc" rule would break on.
+// worstMargin is computed exactly as before this existed (the running best over arcs up to and
+// including the first certifying one), so verifyAllReplies' verdicts and margins are unchanged.
+function deadCertificate(pieces, mover, K, opts) {
+  opts = opts || {};
+  const replyStepDeg = opts.replyStepDeg || 2, safety = opts.safety || 3, lipFloor = opts.lipFloor || 1, reach = opts.reach || null, screen = !!opts.screen;
+  const other = 1 - mover; let worstMargin = Infinity, legalArcs = 0, unresolved = null, slivers = 0, minBest = Infinity;
+  const minStepRad = SUBSTEP, profile = [];
   for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
-    const fam = replyFamily(pieces, mover, pv, dir, K); if (!fam) continue;
+    const env = reach ? reach[pv * 2 + (dir < 0 ? 1 : 0)] : null;
+    const fam = replyFamily(pieces, mover, pv, dir, K, env ? env.hi : undefined); if (!fam) { profile.push({ pv, dir, legal: false }); continue; }
     legalArcs++;
-    if (fam.out.maxFootR > EDGE) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) throws the attacker`, escape: { pv, dir, stop: fam.out.offAt, throws: true }, worstMargin: -Infinity };
+    if (fam.out.maxFootR > EDGE) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) throws the attacker`, escape: { pv, dir, stop: fam.out.offAt, throws: true }, worstMargin: -Infinity, profile };
     const rec = fam.out.record;
     const sampleAt = a => {
       const r = rec.find(q => q.alpha >= a - 1e-9) || rec[rec.length - 1];
@@ -179,26 +269,28 @@ function verifyAllReplies(pieces, mover, K, replyStepDeg, safety, lipFloor) {
       for (let apv = 0; apv < 3; apv++) for (const adir of [1, -1]) { const t = throwMargin(p, other, apv, adir, K); arcs.push({ apv, adir, m: t.margin, sig: signature(t.out) }); }
       return { alpha: r.alpha, arcs, best: Math.max(...arcs.map(x => x.m)) };
     };
-    const stepRad = replyStepDeg * Math.PI / 180, first = [];
+    const stepRad = (screen ? 8 : replyStepDeg) * Math.PI / 180, first = [];
     for (let a = MIN_MOVE; ; a += stepRad) { const last = a >= fam.lim - 1e-9; first.push(sampleAt(last ? fam.lim : a)); if (last) break; }
-    for (const smp of first) if (smp.best <= -ESC_TOL) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) to ${(smp.alpha * 180 / Math.PI).toFixed(1)}deg leaves no throw (best margin ${smp.best.toFixed(2)}u)`, escape: { pv, dir, stop: smp.alpha, bestMargin: smp.best }, worstMargin: Math.min(worstMargin, smp.best) };
+    for (const smp of first) { minBest = Math.min(minBest, smp.best); if (smp.best <= -ESC_TOL) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) to ${(smp.alpha * 180 / Math.PI).toFixed(1)}deg leaves no throw (best margin ${smp.best.toFixed(2)}u)`, escape: { pv, dir, stop: smp.alpha, bestMargin: smp.best }, worstMargin: Math.min(worstMargin, smp.best), minBest, profile }; }
+    if (screen) { profile.push({ pv, dir, legal: true, lim: fam.lim, stops: first.map(s => ({ alpha: s.alpha, best: s.best })) }); continue; }
     // certify each gap, subdividing while it fails with positive ends
-    const gaps = []; for (let k = 0; k + 1 < first.length; k++) gaps.push([first[k], first[k + 1]]);
+    const gaps = [], done = []; for (let k = 0; k + 1 < first.length; k++) gaps.push([first[k], first[k + 1]]);
     while (gaps.length) {
       const [A, B] = gaps.pop(); const gapU = (B.alpha - A.alpha) * 2 * R;
-      let ok = false, bestM = -Infinity;
+      let ok = false, bestM = -Infinity, mask = 0, firstArc = -1;
       for (let i = 0; i < 6; i++) {
         const a = A.arcs[i], b = B.arcs[i];
         if (!Number.isFinite(a.m) || !Number.isFinite(b.m)) continue;
         const lip = Math.max(lipFloor, safety * Math.abs(a.m - b.m) / Math.max(gapU, 1e-9)), need = lip * gapU / 2;
         const consistent = a.sig.pairs === b.sig.pairs && (a.sig.onset == null || b.sig.onset == null || Math.abs(a.sig.onset - b.sig.onset) < 5 * Math.PI / 180);
-        bestM = Math.max(bestM, Math.min(a.m, b.m));
-        if (a.m > need && b.m > need && consistent) { ok = true; break; }
+        if (!ok) bestM = Math.max(bestM, Math.min(a.m, b.m));
+        if (a.m > need && b.m > need && consistent) { mask |= 1 << i; if (!ok) { ok = true; firstArc = i; } }
       }
-      if (ok) { worstMargin = Math.min(worstMargin, bestM); continue; }
+      if (ok) { worstMargin = Math.min(worstMargin, bestM); done.push({ from: A.alpha, to: B.alpha, arcs: mask, arc: firstArc, pairs: A.arcs[firstArc].sig.pairs, m: bestM }); continue; }
       if (B.alpha - A.alpha > minStepRad * 1.5) {                       // subdivide
         const M = sampleAt((A.alpha + B.alpha) / 2);
-        if (M.best <= -ESC_TOL) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) to ${(M.alpha * 180 / Math.PI).toFixed(1)}deg leaves no throw (best margin ${M.best.toFixed(2)}u)`, escape: { pv, dir, stop: M.alpha, bestMargin: M.best }, worstMargin: Math.min(worstMargin, M.best) };
+        minBest = Math.min(minBest, M.best);
+        if (M.best <= -ESC_TOL) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) to ${(M.alpha * 180 / Math.PI).toFixed(1)}deg leaves no throw (best margin ${M.best.toFixed(2)}u)`, escape: { pv, dir, stop: M.alpha, bestMargin: M.best }, worstMargin: Math.min(worstMargin, M.best), minBest, profile };
         gaps.push([A, M], [M, B]); continue;
       }
       // At the engine's own substep, a gap whose two ends both clear a high bar on SOME arm (not
@@ -206,14 +298,38 @@ function verifyAllReplies(pieces, mover, K, replyStepDeg, safety, lipFloor) {
       // margin would have to fall from over SLIVER_BAR to zero and back within one substep, which
       // the engine itself cannot resolve. Counted and reported, so the certificate says
       // "relative to the engine's resolution" in so many words.
-      if (A.best > SLIVER_BAR && B.best > SLIVER_BAR) { slivers++; worstMargin = Math.min(worstMargin, Math.min(A.best, B.best)); continue; }
+      if (A.best > SLIVER_BAR && B.best > SLIVER_BAR) { slivers++; worstMargin = Math.min(worstMargin, Math.min(A.best, B.best)); done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, sliver: true, m: Math.min(A.best, B.best) }); continue; }
       unresolved = unresolved || `reply (${pv},${dir}) ${(A.alpha * 180 / Math.PI).toFixed(1)}-${(B.alpha * 180 / Math.PI).toFixed(1)}deg: no single arc certifies the gap (best min margin ${bestM.toFixed(2)}u) even at the engine's substep -- the throw changes arm here`;
       worstMargin = Math.min(worstMargin, bestM);
+      done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, unresolved: true, m: bestM });
     }
+    done.sort((a, b) => a.from - b.from);
+    // segments: runs of gaps certified by the same set of arcs, as the arm reads to a person
+    const segments = []; for (const gp of done) { const L = segments[segments.length - 1]; if (L && L.arcs === gp.arcs) { L.to = gp.to; L.n++; } else segments.push({ from: gp.from, to: gp.to, arcs: gp.arcs, arc: gp.arc, n: 1 }); }
+    profile.push({ pv, dir, legal: true, lim: fam.lim, gaps: done, segments });
   }
-  if (!legalArcs) return { certified: false, status: 'escape', why: 'victim has no legal reply', worstMargin: -Infinity };
-  if (unresolved) return { certified: false, status: 'unresolved', why: unresolved, worstMargin, slivers };
-  return { certified: true, status: 'dead', worstMargin, slivers };
+  if (screen) return { certified: false, status: 'screen', minBest, legalArcs, profile };
+  if (!legalArcs) return { certified: false, status: 'escape', why: 'victim has no legal reply', worstMargin: -Infinity, profile };
+  if (unresolved) return { certified: false, status: 'unresolved', why: unresolved, worstMargin, slivers, minBest, profile };
+  return { certified: true, status: 'dead', worstMargin, slivers, minBest, profile };
+}
+// Two dead profiles agree when, on every reply arm, every pair of overlapping certified gaps shares
+// a certifying attacker arc. Slivers (no certifying arc, at the substep) are wildcards.
+function profilesConsistent(a, b) {
+  const bad = [], deg = x => (x * 180 / Math.PI).toFixed(1), arcsOf = m => [0, 1, 2, 3, 4, 5].filter(i => m & (1 << i)).map(i => `(${i >> 1},${i & 1 ? -1 : 1})`).join('');
+  for (let k = 0; k < 6; k++) {
+    const A = a[k], B = b[k]; if (!A || !B) { bad.push({ arm: k, why: 'missing arm' }); continue; }
+    if (!!A.legal !== !!B.legal) { bad.push({ arm: k, why: `arm (${A.pv},${A.dir}) legal at one sample only` }); continue; }
+    if (!A.legal) continue;
+    let hit = null;
+    for (const ga of A.gaps) { for (const gb of B.gaps) {
+      const lo = Math.max(ga.from, gb.from), hi = Math.min(ga.to, gb.to);
+      if (hi - lo <= 1e-9 || !ga.arcs || !gb.arcs) continue;
+      if (!(ga.arcs & gb.arcs)) { hit = `arm (${A.pv},${A.dir}) ${deg(lo)}-${deg(hi)}deg certified by ${arcsOf(ga.arcs)} at one sample and ${arcsOf(gb.arcs)} at the other`; break; }
+    } if (hit) break; }
+    if (hit) bad.push({ arm: k, why: hit });
+  }
+  return { ok: bad.length === 0, bad };
 }
 // The family profile: from a parent position with `mover` to move, every reply arm sampled every
 // `stepDeg`, and at each stop the other side's best throw margin -- so an arm reads as segments,
@@ -327,7 +443,310 @@ function simCheckDead(pieces, victim, n) {
   return { agree, n, fails };
 }
 
-module.exports = { load, swingLimit, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, simCheckForcedIn2, simCheckDead, simCheckEscape, familyProfile, certifyDeadBox };
+// ---- The graph: metric, reach envelopes, stars, arcs, lookup, the file ------------------------
+// Poses travel as the game's own six numbers [bx, by, brot, rx, ry, rrot], rotations raw.
+const pose6 = p => typeof p[0] === 'number' ? p : [p[0].x, p[0].y, p[0].rot, p[1].x, p[1].y, p[1].rot];
+const piecesOf = p => typeof p[0] === 'number' ? [{ x: p[0], y: p[1], rot: p[2] }, { x: p[3], y: p[4], rot: p[5] }] : p.map(q => ({ ...q }));
+const ARMS = [[0, 1], [0, -1], [1, 1], [1, -1], [2, 1], [2, -1]];
+const armIndex = (pv, dir) => pv * 2 + (dir < 0 ? 1 : 0);
+// The metric: L1 across the pieces and across position and rotation, rotation weighted by R so a
+// unit is a unit of foot travel either way. Rotations compared raw: the tripod's 120-degree
+// relabelling is a symmetry of the geometry but not of the game's numbers, and the dedupe key is
+// where symmetries live.
+function dist6(p, q) {
+  const a = pose6(p), b = pose6(q);
+  return Math.hypot(a[0] - b[0], a[1] - b[1]) + R * Math.abs(a[2] - b[2]) + Math.hypot(a[3] - b[3], a[4] - b[4]) + R * Math.abs(a[5] - b[5]);
+}
+// A random point inside the L1 ball of radius eps around a pose: the length split over the six
+// axes by normalised exponentials with random signs (uniform on the L1 sphere), the radius drawn
+// as eps * U^(1/6) (uniform in the ball). The xy axes are entered as |dx| + |dy| >= hypot(dx, dy),
+// so every sample is inside the metric ball, biased slightly inward on those axes.
+function randomInBall(pose, eps) {
+  const p = pose6(pose).slice(); if (!(eps > 0)) return p;
+  const e = Array.from({ length: 6 }, () => -Math.log(1 - Math.random())), s = e.reduce((a, b) => a + b, 0), r = eps * Math.pow(Math.random(), 1 / 6);
+  for (let k = 0; k < 6; k++) { const v = (Math.random() < 0.5 ? -1 : 1) * r * e[k] / s; p[k] += k % 3 === 2 ? v / R : v; }
+  return p;
+}
+
+// The reach ENVELOPE of one reply arm over a box of the mover's pose: the limit on an n^3 grid, the
+// steepest finite difference between grid neighbours times the standing safety factor 3 (floor 1
+// degree per u: a foot 40u from the pivot meets a line ~1.4 degrees later per unit of hub shift,
+// so the floor is below the natural slope; the throw certificates' floor of 1 is margin-u per u,
+// and a floor of 1 radian per u here would be a 20-degree allowance on a 0.375u half-cell), times
+// the half cell diagonal in L1, plus one substep (0.4 degrees: applySwing splits each call into
+// EQUAL substeps, so the ladder's phase depends on the caller and the limit with it, measured at
+// 0.1-0.3 degrees between 3-degree and 1-degree steps). Refused when two grid neighbours stop on
+// different events -- the limit is continuous only between events, and a box straddling a
+// tangency (a foot's arc grazing a line's band, a corner merge flipping) is two regions, to be
+// split along the named axis, never averaged. D-claims (the victim's replies) use hi; W-claims
+// (the attacker's witness legality) use lo.
+function reachEnvelope(pieces, mover, pv, dir, box, n) {
+  n = n || 5;
+  const ax = (lo, hi) => Array.from({ length: n }, (_, i) => n === 1 ? (lo + hi) / 2 : lo + (hi - lo) * i / (n - 1));
+  const xs = ax(box.x[0], box.x[1]), ys = ax(box.y[0], box.y[1]), rs = ax(box.rot[0], box.rot[1]);
+  const L = new Map(), key = (i, j, k) => `${i},${j},${k}`;
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) {
+    const p = pieces.map(q => ({ ...q })); p[mover] = { x: xs[i], y: ys[j], rot: rs[k] };
+    const l = limitAt(p, mover, pv, dir); L.set(key(i, j, k), l); lo = Math.min(lo, l.lim); hi = Math.max(hi, l.lim);
+  }
+  const dx = n > 1 ? xs[1] - xs[0] : 0, dy = n > 1 ? ys[1] - ys[0] : 0, dr = n > 1 ? (rs[1] - rs[0]) * R : 0;
+  let slope = 0, refused = null;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) {
+    const a = L.get(key(i, j, k));
+    for (const [nb, d] of [[[i + 1, j, k], dx], [[i, j + 1, k], dy], [[i, j, k + 1], dr]]) {
+      const b = L.get(key(...nb)); if (!b) continue;
+      if (a.sig !== b.sig) refused = refused || `arm (${pv},${dir}): stopping event changes between cells (${i},${j},${k})-(${nb}): ${a.sig} vs ${b.sig}`;
+      slope = Math.max(slope, Math.abs(a.lim - b.lim) / d);
+    }
+  }
+  const lip = Math.max(DEG, 3 * slope), allow = lip * (dx + dy + dr) / 2 + SUBSTEP, c = L.get(key(n >> 1, n >> 1, n >> 1));
+  return { pv, dir, lo: lo - allow, hi: hi + allow, sig: c.sig, reason: c.reason, crossed: c.crossed, foot: c.foot, line: c.line, min: lo, max: hi, slope, lip, allow, n, refused };
+}
+const envText = e => `(${e.pv},${e.dir}) ${(e.lo * 180 / Math.PI).toFixed(1)}-${(e.hi * 180 / Math.PI).toFixed(1)} deg [${e.reason}${e.crossed.length ? ' ' + e.crossed.join(',') : ''}${e.foot != null ? ' foot ' + e.foot + (e.reason === 'selfoff' ? '' : ' at ' + e.line) : ''}]`;
+
+// certifyStar: a dead POINT becomes a dead BALL. Six reach envelopes over the victim's box (+-h,
+// rotation +-h/R); the certificate at the centre and at +-h on each of the six axes, every one
+// with the families swept to the envelopes; all 13 dead and every probe's profile consistent with
+// the centre's; lipStar = max(1, 3 * the steepest central difference of W per u); then every q
+// with d(q, pose) <= eps has W(q) >= W_centre - lipStar * eps > 0, so eps = min(h, W_centre /
+// lipStar). Falsified by simCheckDeadBall right after.
+function certifyStar(node, h, K, opts) {
+  const log = (opts && opts.log) || (() => {}), V = node.side, A = 1 - V, base = piecesOf(node.pose), v = base[V];
+  const box = { x: [v.x - h, v.x + h], y: [v.y - h, v.y + h], rot: [v.rot - h / R, v.rot + h / R] };
+  node.reach = []; const refused = [];
+  for (const [pv, dir] of ARMS) { const t = Date.now(); const e = reachEnvelope(base, V, pv, dir, box, 5); node.reach.push(e); log(`  reach: arm ${envText(e)}  grid ${e.min === Infinity ? '-' : (e.min * 180 / Math.PI).toFixed(1)}-${(e.max * 180 / Math.PI).toFixed(1)}, slope ${(e.slope / DEG).toFixed(2)} deg/u, allow ${(e.allow / DEG).toFixed(2)} deg (${((Date.now() - t) / 1000).toFixed(0)}s)${e.refused ? '  REFUSED: ' + e.refused : ''}`); if (e.refused) refused.push(e.refused); }
+  if (refused.length) { node.star = { h, refused, certified: false }; return node; }
+  const axes = [[V, 'x', h], [V, 'y', h], [V, 'rot', h / R], [A, 'x', h], [A, 'y', h], [A, 'rot', h / R]];
+  const run = (p, tag, axis, sign) => {
+    const t = Date.now(), r = deadCertificate(p, V, K, { reach: node.reach }), secs = +((Date.now() - t) / 1000).toFixed(0);
+    log(`  ${tag}: ${r.status} worst ${Number.isFinite(r.worstMargin) ? r.worstMargin.toFixed(3) : r.worstMargin} (${secs}s)${r.why ? ' ' + r.why : ''}`);
+    return { axis, sign, tag, status: r.status, W: r.worstMargin, why: r.why || null, slivers: r.slivers || 0, secs, profile: r.profile };
+  };
+  const centre = run(base, 'centre', -1, 0), probes = [];
+  for (let i = 0; i < 6; i++) for (const sign of [1, -1]) { const p = base.map(q => ({ ...q })); p[axes[i][0]][axes[i][1]] += sign * axes[i][2]; probes.push(run(p, `${axes[i][0] === V ? 'V' : 'A'}.${axes[i][1]}${sign > 0 ? '+' : '-'}`, i, sign)); }
+  let allDead = centre.status === 'dead', minW = centre.W; const badArms = new Set(), whys = [];
+  for (const pr of probes) {
+    if (pr.status !== 'dead') { allDead = false; pr.profileOK = null; continue; }
+    minW = Math.min(minW, pr.W);
+    const c = centre.status === 'dead' ? profilesConsistent(centre.profile, pr.profile) : { ok: false, bad: [] };
+    pr.profileOK = c.ok; if (!c.ok) { pr.profileWhy = c.bad.map(b => b.why); for (const b of c.bad) { badArms.add(b.arm); whys.push(`${pr.tag}: ${b.why}`); } }
+  }
+  let maxSlope = 0; const slopes = [];
+  for (let i = 0; i < 6; i++) { const plus = probes[2 * i], minus = probes[2 * i + 1]; const s = plus.status === 'dead' && minus.status === 'dead' ? Math.abs(plus.W - minus.W) / (2 * h) : null; slopes.push(s); if (s != null) maxSlope = Math.max(maxSlope, s); }
+  const lipStar = Math.max(1, 3 * maxSlope), certified = allDead && badArms.size === 0;
+  const strip = pr => ({ ...pr, profile: pr.profile ? pr.profile.map(a => a.legal ? { pv: a.pv, dir: a.dir, lim: a.lim, segments: a.segments } : a) : null });
+  node.star = { h, probes: [strip(centre), ...probes.map(strip)], lipStar, maxSlope, slopes, consistentArms: 6 - badArms.size, inconsistent: whys, minW, certified };
+  node.margin = centre.W; node.lip = lipStar; node.eps = certified ? Math.min(h, centre.W / lipStar) : 0; node.need = lipStar * node.eps;
+  return node;
+}
+// The engine on the ball: random poses inside it, each played through random legal victim moves
+// (the engine's own limits, random stops), then the six attacker sweeps: every trial must end in a
+// throw of the victim.
+function simCheckDeadBall(node, nPoses, nMoves) {
+  let agree = 0; const fails = [];
+  for (let t = 0; t < nPoses; t++) {
+    const q = piecesOf(randomInBall(node.pose, node.eps)), s = simCheckDead(q, node.side, nMoves);
+    if (s.agree === s.n) agree++; else fails.push({ pose: pose6(q).map(x => +x.toFixed(4)), fails: s.fails.slice(0, 2) });
+  }
+  return { trials: nPoses, moves: nMoves, agree, n: nPoses, fails };
+}
+
+// The position on an arc at unwound angle s: the child's pose with its attacker rotated back about
+// its own foot pv. Playing (pv, dir) forward by s from here lands exactly on the child (the same
+// rigid rotation, inverted) when nothing is touched on the way.
+function arcPose(node, s) { const p = piecesOf(node.pose); p[node.side] = moverAt(p[node.side], node.arc.pv, -node.arc.dir, s); return p; }
+// unwindArcs: from a point node, the six arms of the side that just moved in, each unwound a degree
+// at a time from 2 to 359 (uncapped, like the limit). A sample is on the arc when the engine plays
+// the forward swing and lands BOTH pieces on the child (the --back-from test: the attacker within
+// 0.05u / 1e-3 rad, the victim likewise, no limit hit), the law's sweep pushes nothing (the pushed
+// piece's pose exactly unchanged, no leg contact traced) and the engine's limit from there clears
+// the stop by a substep. Samples are cut into arcs where that fails or where the stopping event
+// (limitAt's signature) changes, so one arc has one limit event to probe. The tube radius is
+// eps = min(child.eps / 3, clearance - 0.17u, limSlack) with clearance = the least gap over the
+// sweep minus MIND -- measured at the four dead points from real games the landing pose ITSELF is
+// in contact (gap - MIND = +-2e-5, the solver's resolution: the victim was pushed into place), so
+// every arc into them has clearance 0 and eps 0. Such an arc is still a certified curve (every
+// position on it wins by the engine-played swing plus the child's certificate); a positive tube
+// needs a child whose landing is clear of contact, or a pushed-landing allowance that does not
+// exist yet (the victim's push per unit of penetration is up to ~3.7x in this metric: hf floored
+// at 0.35, lever arm 0.39R).
+function unwindArcs(node, K, opts) {
+  const log = (opts && opts.log) || (() => {}), att = 1 - node.side, D = piecesOf(node.pose), hubMax = eng.CFG.edgeU - R - eng.CFG.edgeEps, arcs = [];
+  for (const [pv, dir] of ARMS) {
+    const t0 = Date.now(), samples = [], tally = { off: 0, limit: 0, pushed: 0, contact: 0, slack: 0, ok: 0 };
+    for (let deg = 2; deg <= 359; deg++) {
+      const s = deg * DEG, prev = D.map(q => ({ ...q })); prev[att] = moverAt(D[att], pv, -dir, s);
+      const smp = { s, ok: false };
+      if (anyOff(prev[att]) || Math.hypot(prev[att].x, prev[att].y) > hubMax) { tally.off++; samples.push(smp); continue; }
+      const g = load(prev, att); eng.pinFoot(pv); let guard = 0;
+      while (!g.atLimit && Math.abs(g.netRad) < s - 1e-9 && guard++ < 3000) eng.applySwing(dir * Math.min(DEG, s - Math.abs(g.netRad)));
+      const a = g.pieces[att], m = g.pieces[node.side];
+      const lands = !g.atLimit && Math.abs(g.netRad) >= s - 1e-6 && Math.hypot(a.x - D[att].x, a.y - D[att].y) < 0.05 && Math.abs(a.rot - D[att].rot) < 1e-3 && Math.hypot(m.x - D[node.side].x, m.y - D[node.side].y) < 0.05 && Math.abs(m.rot - D[node.side].rot) < 1e-3;
+      if (!lands) { tally[g.atLimit ? 'limit' : 'pushed']++; samples.push(smp); continue; }
+      const out = swing(prev, att, pv, dir, s, { ...K, gap: true, trace: true }), v = prev[node.side];
+      smp.minGap = out.minGap;
+      if (out.trace.length || Math.hypot(out.opp.x - v.x, out.opp.y - v.y) + R * Math.abs(out.opp.rot - v.rot) > 1e-9) { tally.contact++; samples.push(smp); continue; }
+      const ls = limitAt(prev, att, pv, dir); smp.lim = ls.lim; smp.limSig = ls.sig;
+      if (ls.lim < s + SUBSTEP) { tally.slack++; samples.push(smp); continue; }
+      smp.ok = true; tally.ok++; samples.push(smp);
+    }
+    let run = []; const runs = [];
+    const flush = () => { if (run.length >= 2) runs.push(run); run = []; };
+    for (const smp of samples) { if (!smp.ok || (run.length && run[run.length - 1].limSig !== smp.limSig)) flush(); if (smp.ok) run.push(smp); }
+    flush();
+    log(`  ${att === 0 ? 'blue' : 'red'} arm (${pv},${dir}): ${tally.ok} of 358 degrees on the arc (off board ${tally.off}, engine limit ${tally.limit}, pushed ${tally.pushed}, law contact ${tally.contact}, limit slack ${tally.slack}), ${runs.length} arc${runs.length === 1 ? '' : 's'} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+    for (const r of runs) arcs.push(makeArc(node, pv, dir, r, K, log));
+  }
+  return arcs;
+}
+function makeArc(node, pv, dir, run, K, log) {
+  const att = 1 - node.side, clearance = Math.min(...run.map(r => r.minGap)) - MIND, ends = [run[0], run[run.length - 1]];
+  const arc = { id: null, plies: node.plies + 1, side: att, kind: 'arc', pose: pose6(node.pose).slice(), eps: 0, margin: clearance, lip: 3, need: GAP_STEP, reach: null, star: null,
+    arc: { pv, dir, span: [run[0].s, run[run.length - 1].s], step: DEG, perSample: run.map(r => ({ s: r.s, minGap: r.minGap, lim: r.lim, limSig: r.limSig })), limSig: run[0].limSig, limSlack: [] },
+    child: node.id, samples: null, engine: null, koProof: false, seed: node.seed || null, key: dedupeKey(node.pose) };
+  // limit slack: 12 limitAt probes at +-eps on the attacker's three axes at the arc's two ends must
+  // clear the stop by a substep with the arc's own stopping event; else halve eps, three rounds
+  let eps = Math.min((node.eps || 0) / 3, clearance - GAP_STEP), slackOK = !(eps > 0);
+  for (let round = 0; round < 3 && eps > 0 && !slackOK; round++) {
+    let bad = null;
+    for (const end of ends) for (const [axis, d] of [['x', eps], ['y', eps], ['rot', eps / R]]) for (const sign of [1, -1]) {
+      const p = arcPose({ ...node, side: att, arc: { pv, dir } }, end.s); p[att][axis] += sign * d;
+      const ls = limitAt(p, att, pv, dir);
+      if (!(ls.lim >= end.s + SUBSTEP && ls.sig === end.limSig)) { bad = `at ${(end.s / DEG).toFixed(0)}deg ${axis}${sign > 0 ? '+' : '-'}: limit ${(ls.lim / DEG).toFixed(1)}deg [${ls.sig}] vs [${end.limSig}]`; break; }
+    }
+    arc.arc.limSlack.push({ eps, ok: !bad, bad }); if (!bad) slackOK = true; else eps /= 2;
+  }
+  arc.eps = slackOK && eps > 0 ? eps : 0;
+  arc.engine = simCheckArc(arc, node, 30);
+  log(`    arc ${(run[0].s / DEG).toFixed(0)}-${(run[run.length - 1].s / DEG).toFixed(0)}deg (${run.length} samples) [${run[0].limSig}]: clearance ${clearance.toFixed(3)}u, child eps ${(node.eps || 0).toFixed(3)} -> tube eps ${arc.eps.toFixed(3)}u${arc.arc.limSlack.length ? ` (limit slack ${arc.arc.limSlack.map(r => r.ok ? 'ok@' + r.eps.toFixed(3) : 'no@' + r.eps.toFixed(3)).join(' ')})` : ''}; engine: ${arc.engine.agree}/${arc.engine.n} forward swings from the tube land inside ${node.id}'s ball, victim untouched${arc.engine.fails.length ? ' -- FAILS ' + JSON.stringify(arc.engine.fails.slice(0, 2)) : ''}`);
+  return arc;
+}
+// The engine on an arc: a random s in the span, a random q in the tube around arcPose(s), the
+// forward swing played by the engine (pinFoot + applySwing a degree at a time); the landing must be
+// inside the child's ball without a limit, and then lose every one of 8 random moves to a throw.
+function simCheckArc(arc, child, n) {
+  const att = arc.side, [s0, s1] = arc.arc.span, { pv, dir } = arc.arc; let agree = 0; const fails = [];
+  for (let t = 0; t < n; t++) {
+    const s = s0 + Math.random() * (s1 - s0), q = piecesOf(randomInBall(arcPose(arc, s), arc.eps));
+    const g = load(q, att); eng.pinFoot(pv); let guard = 0;
+    while (!g.atLimit && Math.abs(g.netRad) < s - 1e-9 && guard++ < 3000) eng.applySwing(dir * Math.min(DEG, s - Math.abs(g.netRad)));
+    const landing = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot })), d = dist6(landing, child.pose);
+    const inside = !g.atLimit && d <= (child.eps > 0 ? child.eps + 1e-6 : LAND_TOL);
+    const dead = inside ? simCheckDead(landing, child.side, 8) : null;
+    if (inside && dead.agree === dead.n) agree++; else fails.push({ s: +(s / DEG).toFixed(2), atLimit: g.atLimit, d: +d.toFixed(4), dead: dead ? `${dead.agree}/${dead.n}` : null });
+  }
+  return { trials: n, agree, n, fails };
+}
+
+// lookup: is q inside a node of the given plies and side? Points: depth = eps - d(q, pose). Arcs:
+// depth = eps - the least distance to the arc's polyline (the chords between consecutive samples;
+// the metric is convex along a chord, so a ternary search finds the minimum) minus the chord's
+// sagitta R*step^2/8 (the hub travels a circle of radius R about the foot, 8.8e-4u at a 1-degree
+// step; the rotation is exactly linear in s). The distance to the nearest SAMPLE would not do: it
+// sits up to half a chord, 2R * step / 2 = 0.4u at 1 degree, above the distance to the arc, so a
+// tube thinner than that could only be hit at its samples. Returns the deepest hit with depth > 0,
+// or null. No canonicalisation: the graph is a tree of real positions and a hit is a coincidence
+// of positions, not a symmetry.
+function lookup(q, plies, side, graph) {
+  let best = null; const q6 = pose6(q);
+  for (const node of graph) {
+    if (node.plies !== plies || node.side !== side || !(node.eps > 0)) continue;
+    let depth;
+    if (node.kind === 'point') depth = node.eps - dist6(q6, node.pose);
+    else {
+      const P = node.arc.perSample.map(smp => pose6(arcPose(node, smp.s))); let dmin = Infinity;
+      for (let k = 0; k + 1 < P.length; k++) {
+        const A = P[k], B = P[k + 1], at = t => dist6(q6, A.map((a, i) => a + t * (B[i] - a)));
+        let lo = 0, hi = 1; for (let it = 0; it < 40; it++) { const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3; if (at(m1) < at(m2)) hi = m2; else lo = m1; }
+        dmin = Math.min(dmin, at((lo + hi) / 2), at(0), at(1));
+      }
+      if (P.length === 1) dmin = dist6(q6, P[0]);
+      depth = node.eps - dmin - R * node.arc.step * node.arc.step / 8;
+    }
+    if (depth > 0 && (!best || depth > best.depth)) best = { node, depth };
+  }
+  return best;
+}
+// The board's symmetries, used ONLY to recognise a seed already certified: x -> -x (feet renumbered,
+// rot -> pi - rot), y -> -y (rot -> -rot), their product (the 180-degree rotation) and the tripod's
+// own 120-degree relabelling (rot folded into [0, 2pi/3)); the smallest image, rounded to 0.1u (0.1
+// u/R in rotation). No certificate is ever transported across these: resolvePush is Gauss-Seidel
+// in a fixed (i, j) order, so a reflected or relabelled multi-contact push is not bit-identical.
+function dedupeKey(pose) {
+  const p = pose6(pose), fold = r => { const t = 2 * Math.PI / 3; r = r % t; return r < 0 ? r + t : r; }, imgs = [];
+  for (const sx of [1, -1]) for (const sy of [1, -1]) {
+    const im = [];
+    for (let i = 0; i < 6; i += 3) { let rot = p[i + 2]; if (sx < 0) rot = Math.PI - rot; if (sy < 0) rot = -rot; im.push(Math.round(p[i] * sx * 10), Math.round(p[i + 1] * sy * 10), Math.round(fold(rot) * R * 10)); }
+    imgs.push(im.join(','));
+  }
+  return imgs.sort()[0];
+}
+// The file. One JSON row per node, appended whole in one write under a directory lock (mkdir is
+// atomic on every filesystem this runs on) so that several processes -- the level-3 program runs
+// one per seed -- never interleave rows or hand out the same id. Ids are P2-0001, A3-0001, P4-,
+// A5-: kind letter, plies, a counter per prefix taken from the rows already there. Nodes are
+// immutable once appended: a lookup that hits another process's node is reading a finished
+// certificate. (Not the tmp-and-rename writer used for the trainer's state files: that replaces
+// the whole file, which would drop rows another process appended meanwhile.)
+function sleepSync(ms) { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch (e) { const end = Date.now() + ms; while (Date.now() < end); } }
+function loadGraph(file) {
+  file = file || GRAPH_PATH;
+  let text; try { text = fs.readFileSync(file, 'utf8'); } catch (e) { return []; }
+  const rows = [];
+  for (const line of text.split('\n')) { if (!line.startsWith('{')) continue; try { rows.push(JSON.parse(line)); } catch (e) { /* a row still being written by another process */ } }
+  return rows;
+}
+function appendNode(node, file) {
+  file = file || GRAPH_PATH;
+  const lock = file + '.lock', t0 = Date.now();
+  for (;;) {
+    try { fs.mkdirSync(lock); break; }
+    catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      try { if (Date.now() - fs.statSync(lock).mtimeMs > 120000) { fs.rmdirSync(lock); continue; } } catch (e2) { /* the holder just released it */ }
+      if (Date.now() - t0 > 60000) throw new Error(`could not lock ${file} in 60 s (stale ${lock}?)`);
+      sleepSync(50);
+    }
+  }
+  try {
+    const prefix = `${node.kind === 'point' ? 'P' : 'A'}${node.plies}-`; let n = 0;
+    for (const r of loadGraph(file)) if (r.id && r.id.startsWith(prefix)) n = Math.max(n, +r.id.slice(prefix.length) || 0);
+    node.id = prefix + String(n + 1).padStart(4, '0'); node.written = new Date().toISOString(); node.host = require('os').hostname();
+    if (!fs.existsSync(file)) fs.writeFileSync(file, '# the family graph (nn/forced-win.js --star / --unwind / --lost4): one node per row, immutable. point = the side to move loses within `plies` plies everywhere in the L1 ball of radius eps (u, both pieces) around pose; arc = the side to move wins by playing (arc.pv, arc.dir) to stop s from any position within eps of the child\'s attacker unwound by s, s in arc.span. pose = [bx,by,brot,rx,ry,rrot].\n');
+    fs.appendFileSync(file, JSON.stringify(node) + '\n');
+    return node.id;
+  } finally { try { fs.rmdirSync(lock); } catch (e) { /* released */ } }
+}
+
+// PHASE_TOL: the engine stopped at random angles by applySwing calls of random size (0.3-6
+// degrees, like a human drag) against the law's fixed-ladder record read as the certificates read
+// it (the first recorded step at or past the angle). The pushed piece's pose differs by the phase
+// of the substep ladder AND by the record's rounding up to the next step; both are in every
+// pushed-landing claim at level 3, so the p100 of this is what those claims must absorb. Also the
+// limit reached by the random-size calls against limitAt's 1-degree ladder.
+function phaseTol(events, stopsPer) {
+  const dPose = [], dLim = []; let early = 0;
+  for (const ev of events) {
+    const rec = swing(ev.pieces, ev.active, ev.pv, ev.dir, ev.rad, { ...REPLICA, record: true }).record;
+    const stops = Array.from({ length: stopsPer }, () => MIN_MOVE + Math.random() * (ev.rad - MIN_MOVE)).sort((a, b) => a - b);
+    const g = load(ev.pieces, ev.active); eng.pinFoot(ev.pv); let guard = 0;
+    for (const a of stops) {
+      while (!g.atLimit && Math.abs(g.netRad) < a - 1e-9 && guard++ < 5000) eng.applySwing(ev.dir * Math.min((0.3 + 5.7 * Math.random()) * DEG, a - Math.abs(g.netRad)));
+      if (g.atLimit) { early++; break; }
+      const o = g.pieces[1 - ev.active], r = rec.find(q => q.alpha >= a - 1e-9) || rec[rec.length - 1];
+      dPose.push(Math.hypot(o.x - r.x, o.y - r.y) + R * Math.abs(o.rot - r.rot));
+    }
+    while (!g.atLimit && Math.abs(g.netRad) < 2 * Math.PI && guard++ < 5000) eng.applySwing(ev.dir * (0.3 + 5.7 * Math.random()) * DEG);
+    dLim.push(Math.abs(Math.abs(g.netRad) - limitAt(ev.pieces, ev.active, ev.pv, ev.dir).lim) / DEG);
+  }
+  const q = (arr, p) => { const s = [...arr].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : NaN; };
+  return { events: events.length, stops: dPose.length, stopsPerEvent: stopsPer, median: q(dPose, .5), p90: q(dPose, .9), max: q(dPose, 1), limMedianDeg: q(dLim, .5), limMaxDeg: q(dLim, 1), stoppedEarly: early };
+}
+
+module.exports = { load, swingLimit, limitAt, swingLimitMemo, memoStats, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, deadCertificate, profilesConsistent, simCheckForcedIn2, simCheckDead, simCheckEscape, familyProfile, certifyDeadBox,
+  moverAt, replyFamily, dist6, pose6, piecesOf, randomInBall, reachEnvelope, certifyStar, simCheckDeadBall, arcPose, unwindArcs, makeArc, simCheckArc, lookup, dedupeKey, loadGraph, appendNode, phaseTol,
+  MIN_MOVE, SUBSTEP, GAP_STEP, LAND_TOL, GRAPH_PATH, PHASE_TOL, ARMS, armIndex };
 
 // A victim with one foot `inside` u from the rim and the attacker 26-44u from that foot on the
 // inward side, not touching.
@@ -669,6 +1088,68 @@ if (require.main === module && process.argv[2] === '--dead-box') {
     } else { refused++; if (r.closest) console.log(`  no certificate (closest candidate (${r.closest.c.pv},${r.closest.c.dir})@${(r.closest.c.stop * 180 / Math.PI).toFixed(0)}deg: ${r.closest.v.status} -- ${r.closest.v.why}); refuted by an escape: ${r.refuted}/${r.tried}, unresolved: ${r.unresolvedN}/${r.tried}`); }
   }
   console.log(`\n${tried} positions (victim foot 3-10u inside the rim): win-in-1 ${win1}, forced-in-2 certified ${cert2} (engine agreed on every reply in ${cert2ok}, contradicted ${cert2bad}), no certificate ${refused}   ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+} else if (require.main === module && process.argv[2] === '--phase-tol') {
+  // node nn/forced-win.js --phase-tol [n=200] [--events events.json] [--stops 5]
+  // Step 0 of the graph: the constant every pushed-landing claim absorbs, measured before any
+  // level-3 claim is trusted. Events are the law's own sampleEvent set (regenerated -- Math.random
+  // has no seed here -- or a saved set from `node nn/contact-law.js 200 events.json`). Writes
+  // nn/phase-tol.json; forced-win.js reads it at load as PHASE_TOL.
+  const n = /^\d+$/.test(process.argv[3] || '') ? +process.argv[3] : 200, stopsPer = process.argv.includes('--stops') ? +process.argv[process.argv.indexOf('--stops') + 1] : 5;
+  const evPath = process.argv.includes('--events') ? process.argv[process.argv.indexOf('--events') + 1] : null, t0 = Date.now();
+  let events;
+  if (evPath) events = JSON.parse(fs.readFileSync(evPath, 'utf8')).slice(0, n);
+  else { events = []; let tries = 0; while (events.length < n && tries++ < n * 50) { const ev = sampleEvent(); if (ev) events.push(ev); } }
+  console.log(`${events.length} contact events${evPath ? ' from ' + evPath : ' sampled'}; the engine stopped at ${stopsPer} random angles each by random-size (0.3-6 degree) applySwing calls, against the law's 0.4-degree record`);
+  const r = phaseTol(events, stopsPer);
+  console.log(`PHASE_TOL: pushed-pose difference (L1) median ${r.median.toFixed(3)}u p90 ${r.p90.toFixed(3)}u max ${r.max.toFixed(3)}u over ${r.stops} stops; limit difference median ${r.limMedianDeg.toFixed(2)} max ${r.limMaxDeg.toFixed(2)} deg (${r.events} events, ${r.stoppedEarly} stopped early by the engine)   ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+  const out = { phaseTol: r.max, ...r, measured: new Date().toISOString(), events: evPath || 'sampled' };
+  require('./atomic-write.js').atomicWrite(path.join(__dirname, 'phase-tol.json'), JSON.stringify(out, null, 1) + '\n');
+  console.log(`written to nn/phase-tol.json (phaseTol = ${r.max.toFixed(3)}u)${r.max > 0.5 ? ' -- above 0.5u: level-3 gaps on pushing arms will need the record re-swept at the gap\'s own phase' : ''}`);
+} else if (require.main === module && process.argv[2] === '--star') {
+  // node nn/forced-win.js --star bx,..,rrot --mover m [--h 0.5] [--out nn/family-graph.jsonl] [--seed tag]
+  // Step 1: a dead point (the mover to move loses every move to a throw) becomes a dead BALL in the
+  // joint space, node P2-xxxx. Six reach envelopes over the mover's box, 13 dead certificates swept
+  // to them, the star's Lipschitz radius, the engine on random poses in the ball, then the row.
+  const K = REPLICA, nums = process.argv[3].split(',').map(Number);
+  const mover = process.argv.includes('--mover') ? +process.argv[process.argv.indexOf('--mover') + 1] : 0;
+  const h = process.argv.includes('--h') ? +process.argv[process.argv.indexOf('--h') + 1] : 0.5;
+  const outPath = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : GRAPH_PATH;
+  const seed = process.argv.includes('--seed') ? process.argv[process.argv.indexOf('--seed') + 1] : null;
+  const node = { id: null, plies: 2, side: mover, kind: 'point', pose: nums, eps: 0, margin: null, lip: null, need: null, reach: null, star: null, arc: null, child: null, samples: null, engine: null, koProof: false, seed, key: dedupeKey(nums) };
+  const dup = loadGraph(outPath).find(r => r.kind === 'point' && r.plies === 2 && r.key === node.key && r.eps > 0);
+  if (dup) { console.log(`a dead ball with this seed's key is already in ${outPath}: ${dup.id} (eps ${dup.eps.toFixed(3)}u, h ${dup.star && dup.star.h}); nothing to do`); process.exit(0); }
+  console.log(`star on ${mover === 0 ? 'blue' : 'red'} to move at [${nums.join(',')}], h ${h}u (rotation ${(h / R).toFixed(4)} rad)`);
+  const t0 = Date.now();
+  certifyStar(node, h, K, { log: console.log });
+  const st = node.star;
+  if (st.refused) { console.log(`refused: a reach envelope changes stopping event inside the box -- split the box along the named axis and rerun\n  ${st.refused.join('\n  ')}`); process.exit(1); }
+  const dead = st.probes.filter(p => p.status === 'dead').length;
+  console.log(`star h=${h}u: ${dead}/13 dead, profiles consistent ${st.consistentArms}/6 arms; W centre ${node.margin.toFixed(2)}, min ${st.minW.toFixed(2)}; max |dW|/2h ${st.maxSlope.toFixed(2)}/u -> lipStar ${st.lipStar.toFixed(2)} -> eps = min(${h}, ${(node.margin / st.lipStar).toFixed(2)}) = ${node.eps.toFixed(2)}u (L1, both pieces)   (${((Date.now() - t0) / 60000).toFixed(1)} min, limit memo ${memoStats.hits}/${memoStats.hits + memoStats.misses} hits)`);
+  if (!st.certified) { console.log(`refused: ${dead < 13 ? st.probes.filter(p => p.status !== 'dead').map(p => `${p.tag} is ${p.status}: ${p.why}`).join('; ') : st.inconsistent.join('; ')}`); process.exit(1); }
+  node.engine = simCheckDeadBall(node, 25, 8);
+  console.log(`engine: ${node.engine.agree}/${node.engine.n} random poses in the ball lose every one of ${node.engine.moves} random moves to a throw`);
+  if (node.engine.agree < node.engine.n) { console.log(`CONTRADICTED -- the engine escaped from inside a certified ball: ${JSON.stringify(node.engine.fails.slice(0, 3))}\nhalting: this is a bug in the certificate, not a rounding; nothing appended`); process.exit(2); }
+  const id = appendNode(node, outPath);
+  console.log(`appended ${id} (plies 2, side ${mover}, eps ${node.eps.toFixed(3)}u, W ${node.margin.toFixed(3)}u) to ${outPath}`);
+} else if (require.main === module && process.argv[2] === '--unwind') {
+  // node nn/forced-win.js --unwind <nodeId> [--graph nn/family-graph.jsonl]
+  // Step 2: the WIN(plies+1) arcs of the side that moved into a point node, one per arm and
+  // stopping event, each engine-checked, appended as A3-xxxx (A5- from a plies-4 point).
+  const K = REPLICA, id = process.argv[3], graphPath = process.argv.includes('--graph') ? process.argv[process.argv.indexOf('--graph') + 1] : GRAPH_PATH;
+  const graph = loadGraph(graphPath), node = graph.find(r => r.id === id);
+  if (!node) { console.log(`no node ${id} in ${graphPath}`); process.exit(1); }
+  if (node.kind !== 'point') { console.log(`${id} is an arc; only point nodes unwind`); process.exit(1); }
+  const have = graph.filter(r => r.kind === 'arc' && r.child === id);
+  if (have.length) console.log(`note: ${have.length} arc${have.length === 1 ? '' : 's'} already unwound from ${id} (${have.map(r => r.id).join(', ')}); nodes are immutable, so new ones are appended`);
+  console.log(`unwinding ${id}: ${node.side === 0 ? 'blue' : 'red'} to move loses (plies ${node.plies}, eps ${(node.eps || 0).toFixed(3)}u, W ${node.margin != null ? node.margin.toFixed(3) : '-'}u); ${node.side === 0 ? 'red' : 'blue'}'s six arms unwound 2-359 degrees`);
+  const t0 = Date.now(), arcs = unwindArcs(node, K, { log: console.log });
+  let written = 0;
+  for (const arc of arcs) {
+    if (arc.engine.agree < arc.engine.n) { console.log(`CONTRADICTED on arm (${arc.arc.pv},${arc.arc.dir}) ${(arc.arc.span[0] / DEG).toFixed(0)}-${(arc.arc.span[1] / DEG).toFixed(0)}deg: ${JSON.stringify(arc.engine.fails.slice(0, 3))}\nhalting: this is a bug; ${written} arcs appended before it`); process.exit(2); }
+    const aid = appendNode(arc, graphPath); written++;
+    console.log(`  appended ${aid}: arm (${arc.arc.pv},${arc.arc.dir}) ${(arc.arc.span[0] / DEG).toFixed(0)}-${(arc.arc.span[1] / DEG).toFixed(0)}deg, tube eps ${arc.eps.toFixed(3)}u, child ${id}`);
+  }
+  console.log(`\n${written} WIN(${node.plies + 1}) arc${written === 1 ? '' : 's'} for ${node.side === 0 ? 'red' : 'blue'} into ${id}, ${arcs.reduce((a, r) => a + r.arc.perSample.length, 0)} degrees in all, ${arcs.filter(a => a.eps > 0).length} with a positive tube radius   (${((Date.now() - t0) / 60000).toFixed(1)} min)`);
 } else if (require.main === module) {
   // Demo on recorded contact events: around every engine throw, try to certify a box of victim
   // poses of half-width `half` and check the claim against the engine.
