@@ -418,16 +418,39 @@
     <div class="tiles">
       <div class="tile"><div class="k blue num">19,562</div><div class="lab">rated games</div></div>
       <div class="tile"><div class="k board num">9,781</div><div class="lab">two-game matches</div></div>
-      <div class="tile"><div class="k blue num">73</div><div class="lab">active model configurations</div></div>
+      <div class="tile"><div class="k blue num">73</div><div class="lab">live model faces</div></div>
       <div class="tile"><div class="k board num">52</div><div class="lab">model files behind them</div></div>
     </div>
     <p class="source-note">Snapshot supplied from Tau Live Ladder on 17 September 2026. These numbers are a dated readout, not an automatically updating feed. Ten persistent reference opponents are additional to the 73 model configurations.</p>
-    <p>A <strong>face</strong> is a model with a particular search setting. <strong>D1</strong> examines one move; <strong>D2</strong> includes the reply; D3 and D4 look further ahead. A model can occupy several faces. A <strong>committee</strong> combines evaluations from three players.</p>
+    <p><strong>The live self-play league is the current evidence.</strong> It is a league of model faces playing one another, including the hand-built reference opponents. The earlier 1,280-game round-robin is useful historical context; these 19,562 games tell us what the current population can separate today.</p>
+    <div class="callout"><b>How to read a rung.</b> Think of jiu-jitsu belts: a blue belt reliably beats a white belt, a purple belt beats a blue belt, and so on. A belt is a useful name for a repeatable gap, not a conversion between sports. In an Elo league, 200 points is a rough “class”: the stronger player is expected to score about 76% of a match. Chess and Go use similar language when people describe skill ranges, but their player pools and rating systems are different. Here we borrow the picture—several meaningful gaps between players—without claiming that a Tau class is literally a chess class.</div>
+        <p>A <strong>face</strong> is a model with a particular search setting. <strong>D1</strong> examines one move; <strong>D2</strong> includes the reply; D3 and D4 look further ahead. A model can occupy several faces. A <strong>committee</strong> combines evaluations from three players.</p>
+    <div class="datawrap" id="data-live-ladder" tabindex="0" role="region" aria-label="Live ladder depth pools"><table class="data">
+      <caption>Live ladder snapshot supplied 17 September 2026. The 73 live faces are grouped by search depth; model files can appear in more than one face.</caption>
+      <thead><tr><th scope="col">Search face</th><th scope="col">Live seats</th><th scope="col">Retired</th><th scope="col">Measured in snapshot</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">D1 · one-ply</th><td>42</td><td>1,016</td><td>42</td></tr>
+        <tr><th scope="row">D2 · reply included</th><td>19</td><td>793</td><td>19</td></tr>
+        <tr><th scope="row">D3 · deeper reply</th><td>7</td><td>434</td><td>5</td></tr>
+        <tr><th scope="row">D4 · deepest face</th><td>5</td><td>142</td><td>not supplied</td></tr>
+      </tbody>
+    </table></div>
     <div class="datawrap" tabindex="0" role="region" aria-label="Data table"><table class="data ratings"><caption>Selected entries from the supplied live-ladder snapshot, 17 September 2026. These are point estimates within one league, not a complete ranking.</caption><thead><tr><th scope="col">Player / setting</th><th scope="col">Elo</th><th scope="col">Matches</th></tr></thead><tbody><tr><th scope="row">Learned · D1<small>resume-317</small></th><td>+358</td><td>4<small>8 games</small></td></tr><tr><th scope="row">Committee · D1<small>L11 + ultra-m3-319 + resume-239</small></th><td>+337</td><td>23<small>46 games</small></td></tr><tr><th scope="row">Learned · D2<small>resume-281</small></th><td>+238</td><td>20<small>40 games</small></td></tr><tr><th scope="row">Learned · D1<small>resume-293</small></th><td>+176</td><td>38<small>76 games</small></td></tr><tr><th scope="row">Hand-built Level 9</th><td>−25</td><td>127<small>254 games</small></td></tr><tr><th scope="row">Hand-built Level 11</th><td>−27</td><td>138<small>276 games</small></td></tr></tbody></table></div>
-    <p>The broad signal is that the hand-built players were not the end of the skill ladder. Several learned configurations and the committee sit well above them in this fit. The exact order at the top is much less secure: the highest displayed D1 entry has only <strong>four matches</strong>, and the active population changes as players are added and retired.</p>
+    <div class="datawrap" id="data-live-matches" tabindex="0" role="region" aria-label="Recent live ladder matches"><table class="data">
+      <caption>Recent two-game matches from the supplied readout. A score of 1–1 is a match draw because the players swapped colours.</caption>
+      <thead><tr><th scope="col">Pairing</th><th scope="col">Depths</th><th scope="col">Games</th><th scope="col">League result</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">resume-312 vs resume-311</th><td>D2 vs D1</td><td>2–0</td><td>A match win</td></tr>
+        <tr><th scope="row">dual-pop-016-e20+P vs dual-pop-014-e40</th><td>D1 vs D3</td><td>1–1</td><td>draw</td></tr>
+        <tr><th scope="row">deep-m9-402 vs mutant-013</th><td>D1 vs D2</td><td>1–1</td><td>draw</td></tr>
+        <tr><th scope="row">resume-311 vs resume-140</th><td>D1 vs D4</td><td>1–1</td><td>draw</td></tr>
+      </tbody>
+    </table></div>
+    <p class="source-note">This is a small recent slice, included to show the league’s unit of evidence. The rating fit uses the full match history, not these four pairings.</p>
+    <p>The broad signal is that the hand-built players were not the end of the skill ladder. Several learned configurations and the committee sit well above them in this fit. The exact order at the top is much less secure: the highest displayed D1 entry has only <strong>four matches</strong>, and the live population changes as players are added and retired. The league is therefore strong evidence that the current players differ in ability; it is weaker evidence for a final number of Tau skill levels.</p>
     <p>Elo is a relative rating within this league, not a universal measure of game depth. A 200-point gap corresponds to about a 76% expected <em>match score</em> under the rating model. It does not mean a Tau player is equivalent to a chess player with that rating, or that every 200 points is a distinct human skill level.</p>
     <div class="callout"><b>Why two games make one match.</b> The players swap colours. A 1–1 split is recorded as a drawn match, even when both individual games ended with a winner. The ladder fits match outcomes; its 19,562 game count is not 19,562 independent rating observations.</div>
-    <p class="takeaway"><b>What this says about depth:</b> there is a measured skill ladder with room beyond the original opponents. We need a rated human population and stronger, well-tested challengers to say how many meaningful levels of mastery it contains.</p>
+    <p class="takeaway"><b>What this says about depth:</b> the live self-play league now gives us a large, ongoing measurement of relative skill, with several learned faces above the reference ladder. It shows room to climb; it does not yet locate the top or translate Tau directly into chess or jiu-jitsu levels.</p>
   </section>
 
   <section id="s-strategy">
