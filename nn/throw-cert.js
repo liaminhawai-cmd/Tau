@@ -30,13 +30,37 @@ const { REPLICA, feetOf, R, I, MIND: D, EDGE } = CL;
 const eng = CL.eng, CFG = eng.CFG;
 const H = CFG.hubHeight, RHO = CFG.legRadius, HUBR = RHO * 1.9, HUBLEGD = HUBR + RHO, NSEG = CFG.legSegs;
 const DEG = Math.PI / 180, LIM_SUB = DEG / Math.ceil(1 / CFG.substepDeg);   // the engine's substep under a one-degree swing
-// The overshoot a substep's pushes can leave. The law moves the touched point by exactly the gap
-// along the contact normal, so to first order the pair ends at exactly D; what is left is the
-// difference between the finite rotation the push applies and its linearisation, for a point at
-// radius at most R. With eps the total turn over the substep's pushes that is
-//     R (1 - cos eps)  radially  +  R (eps - sin eps)  tangentially.
-// Measured against the engine it is ~1e-5u, against the 0.005u a blanket Lemma-1 bound would give.
-const etaOf = eps => R * (1 - Math.cos(eps)) + R * Math.max(0, eps - Math.sin(eps));
+// The overshoot a substep's pushes can leave, i.e. how far above D the pair can end up.
+//
+// The tempting argument is that the law moves the touched point by exactly the gap along the contact
+// normal, so to first order the pair ends at exactly D, leaving only the difference between the
+// finite rotation and its linearisation, R(1 - cos eps) + R(eps - sin eps). That is about 8e-6u
+// here, and it is WRONG: measured against the engine over this sweep it is exceeded, by about 10%,
+// from the first chord-vertex crossing onward (substep 32 of 138: true 8.838e-6u against a bound of
+// 8.025e-6u). It follows one old material point, whereas the quantity that has to be bounded is the
+// shortest distance after the push, which is re-minimised over the whole polyline.
+//
+// Use the projection form instead. In mass coordinates the one-contact update is a Newton step on
+// the gap, Phi(z) = z - G(z) a/|a|^2 with a = grad G, so its linear term cancels exactly and
+// Taylor's theorem leaves
+//     |G(Phi(z))|  <=  M p^2 / (2 m^2),
+// with p the penetration entering the substep, m a lower bound on |a| = hf sqrt(1 + rn^2/I), and M a
+// bound on the Hessian of the gap. For one chord pair, with alpha = R/sqrt(I), p0 = sqrt(1+alpha^2),
+// sigma = sqrt(1 - cbar^2), b0 = p0/sigma + d/(sqrt(I) sigma^2),
+//     k_n = 1/(sqrt(I) sigma)                    both contact points interior,
+//     k_n = p0/d + 1/(sqrt(I) sigma)             if an endpoint may clamp,
+//     M   = sqrt( k_n^2 + [alpha k_n + alpha/sqrt(I) + b0/sqrt(I)]^2 ).
+// That is about 0.226/u interior and 1.06/u with clamping, giving a residual near 1.1e-3u rather
+// than 8e-6u. Two orders of magnitude looser, and actually proved. (Due to an outside reviewer,
+// whose counterexample is what showed the material-point bound was unsound.)
+const SQI = Math.sqrt(I), ALPHA = R / SQI, P0 = Math.hypot(1, ALPHA);
+function hessBound(cbar, dHi, clamping, dLo) {
+  const sigma = Math.sqrt(Math.max(1e-6, 1 - cbar * cbar));
+  const b0 = P0 / sigma + dHi / (SQI * sigma * sigma);
+  const kn = (clamping ? P0 / Math.max(dLo, 1e-3) : 0) + 1 / (SQI * sigma);
+  return Math.hypot(kn, ALPHA * kn + ALPHA / SQI + b0 / SQI);
+}
+const etaOf = (M, p, m) => (M * p * p) / (2 * Math.max(m, 1e-3) * Math.max(m, 1e-3));
 const EPS_LO = 1e-7;               // the solver leaves no pair under D (it stops when none is); fp slack
 
 // ---- intervals ----
@@ -358,11 +382,11 @@ function analyse(box, att, pairWant) {
       const psiN2 = [psiC - dpsi, psiC + dpsi], hf2 = [Math.max(0.01, hfC - phi), Math.min(1, hfC + phi)];
       const aB = { x: [pA.x - pad, pA.x + pad], y: [pA.y - pad, pA.y + pad], h: [pA.h - pad, pA.h + pad] };
       const vB = { x: [pV.x - pad, pV.x + pad], y: [pV.y - pad, pV.y + pad], h: [pV.h - pad, pV.h + pad] };
-      segPairs.push({ a: sg.a, b: sg.b, aBox: aB, vBox: vB, psiN: psiN2, hf: hf2, fanA, fanV, dmax, vertex: side,
+      segPairs.push({ a: sg.a, b: sg.b, aBox: aB, vBox: vB, psiN: psiN2, hf: hf2, fanA, fanV, dmax, cth, vertex: side,
         rn: dotCone(neg(sub(vB.y, box.y)), sub(vB.x, box.x), psiN2),
         why: `(${sg.a},${sg.b}) VERTEX ${side} cone ${(2 * dpsi / DEG).toFixed(2)}deg` });
     }
-    segPairs.push({ a: sg.a, b: sg.b, aBox, vBox, psiN, hf, fanA, fanV, rn, dmax, why: `(${sg.a},${sg.b}) d ${sg.dist.toFixed(4)} cross ${(Math.acos(cth) / DEG).toFixed(1)}deg mu ${mu.toFixed(3)} dmax ${dmax.toFixed(3)} sA ${sA.toFixed(2)}/${LA.toFixed(2)} sV ${sV.toFixed(2)}/${LV.toFixed(2)} ends ${[atStartA, atEndA, atStartV, atEndV].map(v => (v ? 1 : 0)).join('')} n ${(psiN[0] / DEG).toFixed(2)}..${(psiN[1] / DEG).toFixed(2)}` });
+    segPairs.push({ a: sg.a, b: sg.b, aBox, vBox, psiN, hf, fanA, fanV, rn, dmax, cth, why: `(${sg.a},${sg.b}) d ${sg.dist.toFixed(4)} cross ${(Math.acos(cth) / DEG).toFixed(1)}deg mu ${mu.toFixed(3)} dmax ${dmax.toFixed(3)} sA ${sA.toFixed(2)}/${LA.toFixed(2)} sV ${sV.toFixed(2)}/${LV.toFixed(2)} ends ${[atStartA, atEndA, atStartV, atEndV].map(v => (v ? 1 : 0)).join('')} n ${(psiN[0] / DEG).toFixed(2)}..${(psiN[1] / DEG).toFixed(2)}` });
     segPairs.push({ a: sg.a, b: sg.b, aBox, vBox, psiN, hf, fanA, fanV, rn });
   }
   out.segPairs = segPairs;
@@ -372,10 +396,14 @@ function analyse(box, att, pairWant) {
   for (const sp of segPairs) { psiN = [Math.min(psiN[0], sp.psiN[0]), Math.max(psiN[1], sp.psiN[1])]; hf = hull(hf, sp.hf); rn = hull(rn, sp.rn); }
   const nx = cosRange(psiN), ny = sinRange(psiN);
   out.psiN = psiN; out.hf = hf; out.rn = rn; out.n = [nx, ny];
+  out.cbar = Math.max(...segPairs.map(s => s.cth || 0));          // worst |cos(crossing angle)|
+  out.clamping = segPairs.some(s => s.vertex);                     // an endpoint may be active
+  out.aMin = hf[0] * Math.sqrt(1 + (rn[0] <= 0 && rn[1] >= 0 ? 0 : Math.min(rn[0] * rn[0], rn[1] * rn[1])) / I);
   out.G = [mul(hf, nx), mul(hf, ny), mul(hf, rn)];
   return out;
 }
-const hullAn = (p, q) => { const psiN = [Math.min(p.psiN[0], q.psiN[0]), Math.max(p.psiN[1], q.psiN[1])], hf = hull(p.hf, q.hf), rn = hull(p.rn, q.rn), nx = cosRange(psiN), ny = sinRange(psiN); return { psiN, hf, rn, n: [nx, ny], G: [mul(hf, nx), mul(hf, ny), mul(hf, rn)] }; };
+const hullAn = (p, q) => { const psiN = [Math.min(p.psiN[0], q.psiN[0]), Math.max(p.psiN[1], q.psiN[1])], hf = hull(p.hf, q.hf), rn = hull(p.rn, q.rn), nx = cosRange(psiN), ny = sinRange(psiN);
+  return { psiN, hf, rn, n: [nx, ny], G: [mul(hf, nx), mul(hf, ny), mul(hf, rn)], cth: Math.max(p.cth || 0, q.cth || 0), cbar: Math.max(p.cbar || p.cth || 0, q.cbar || q.cth || 0), clamping: !!(p.clamping || q.clamping || p.vertex || q.vertex) }; };
 // the pair's distance function and closest pair at one pose
 function pairDist(att, q, pair) {
   const A = arcPts(att, pair[0]), V = arcPts(q, pair[1]); let best = null;
@@ -400,6 +428,9 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
   for (let k = 1; k <= K; k++) {
     const t = traj[k - 1], att = t.att, qcNext = t.pose;
     if (t.flags.hub || t.flags.deep || t.flags.cap || t.flags.hfFloor) return fail(`the centre's own push used a hub contact / deep rule / cap / hf floor`, k);
+    // the shell argument needs the solver to have STOPPED because nothing was under D, not because
+    // it ran out of passes: at the cap the post-push distance is not bounded below by D at all
+    if (t.pushes.length && t.flags.iters >= REPLICA.iters) return fail(`the solver used all ${REPLICA.iters} passes, so the contact shell's lower edge is not established`, k);
     const pre = analyse(aabbOf(qc, M, U), att, pair);
     if (pre.refuse) return fail(pre.refuse, k);
     if (pre.free) { if (t.pushes.length) return fail('centre pushed while the box was declared free (bug)', k); rows.push({ k, free: true }); continue; }
@@ -461,7 +492,9 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
       else groups.push({ psiN: sp.psiN.slice(), rn: sp.rn.slice(), hf: sp.hf.slice() });
     }
     for (const g of groups) { g.n = [cosRange(g.psiN), sinRange(g.psiN)]; g.G = [mul(g.hf, g.n[0]), mul(g.hf, g.n[1]), mul(g.hf, g.rn)]; }
-    let ETA = etaOf(0.01), target = [D - EPS_LO, Math.max(D + ETA, fHi)];
+    const pen = Math.max(0, D - fPre[0]);          // the deepest penetration entering this substep
+    const M0 = hessBound(pre.cbar, D, pre.clamping, fPre[0]);
+    let ETA = etaOf(M0, pen, pre.aMin), target = [D - EPS_LO, Math.max(D + ETA, fHi)];
     let Un = null, post = null, U3 = null, Lam = null, rounds = 0, Uout = null, coneWide = 0;
     // Lambda's range BEFORE the pin. Upper: the pair's distance rises through the pushes and stops at
     // D + eta, so Lambda min(G.a) <= D + eta - fPre_lo. Lower, and this one matters as much: a pose
@@ -472,7 +505,7 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
       const hi = g0[0] > 0 ? Math.max(0, D + ETA - fPre[0]) / g0[0] : Math.max(0, D + ETA - fPre[0]) / Math.max(pre.hf[0], 0.35);
       return [fPre[1] < D ? Math.max(0, (D - EPS_LO - fPre[1]) / gHi) : 0, hi]; })();
     for (const grp of groups) {
-      let cone = grp; Lam = Lam0.slice(); ETA = etaOf(0.01); target = [D - EPS_LO, Math.max(D + ETA, fHi)];
+      let cone = grp; Lam = Lam0.slice(); ETA = etaOf(M0, pen, pre.aMin); target = [D - EPS_LO, Math.max(D + ETA, fHi)];
       for (let round = 1; round <= 24; round++) {
         rounds = Math.max(rounds, round);
         const da = [sub(cone.n[0], [a_c[0], a_c[0]]), sub(cone.n[1], [a_c[1], a_c[1]]), scale(sub(cone.rn, [cc.rn, cc.rn]), 1 / I)];
@@ -491,7 +524,7 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
         if (U3n[0] > U3n[1] + 1e-12) return fail(`constraint and push ranges disjoint: [${alpha.map(v => v.toFixed(5))}] vs [${Un[2].map(v => v.toFixed(5))}]`, k);
         const LamN = isect(add([LamC, LamC], sub(sub(U3n, U[2]), cw[2])), Lam);
         if (LamN[0] > LamN[1] + 1e-12) return fail('push-magnitude range empty', k);
-        ETA = etaOf(Math.max(Math.abs(LamN[1]), Math.abs(LamN[0])) * Math.max(Math.abs(post.rn[0]), Math.abs(post.rn[1])) / I);
+        ETA = etaOf(hessBound(Math.max(pre.cbar, post.cbar), D, pre.clamping || post.clamping, fPre[0]), pen, Math.min(pre.aMin, post.aMin));
         target = [D - EPS_LO, Math.max(D + ETA, fHi)];
         // this regime's own post cone: the pairs of the post analysis that belong to it, hulled with
         // the regime's pre cone. Hulling with the PRE set only (never with earlier rounds) lets the
@@ -517,7 +550,7 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
     // sanity: the centre (u = 0) is inside
     if (!(U[0][0] <= 1e-9 && U[0][1] >= -1e-9 && U[1][0] <= 1e-9 && U[1][1] >= -1e-9 && U[2][0] <= 1e-9 && U[2][1] >= -1e-9)) return fail(`centre left its own set (bug): U=${JSON.stringify(U)}`, k);
     const bb = aabbOf(qc, M, U);
-    rows.push({ k, deg: +(k * LIM_SUB / DEG).toFixed(2), pad: +post.pad.toFixed(3), psiN: post.psiN.map(v => +(v / DEG).toFixed(2)), hf: post.hf.map(v => +v.toFixed(3)), rn: post.rn.map(v => +v.toFixed(2)), fPre: fPre.map(v => +v.toFixed(4)), LamC: +LamC.toFixed(4), U: U.map(u => u.map(v => +v.toFixed(5))), Mlen: [0, 1, 2].map(j => +Math.hypot(M[0][j], M[1][j], M[2][j] * R).toFixed(3)), box: { x: bb.x.map(v => +v.toFixed(3)), y: bb.y.map(v => +v.toFixed(3)), rot: bb.rot.map(v => +(v / DEG).toFixed(3)) }, footR: +t.maxFootR.toFixed(3), segs: post.segPairs.map(s => `${s.a},${s.b}`).join(' ') });
+    rows.push({ k, deg: +(k * LIM_SUB / DEG).toFixed(2), pad: +post.pad.toFixed(3), psiN: post.psiN.map(v => +(v / DEG).toFixed(2)), hf: post.hf.map(v => +v.toFixed(3)), rn: post.rn.map(v => +v.toFixed(2)), fPre: fPre.map(v => +v.toFixed(4)), LamC: +LamC.toFixed(4), U: U.map(u => u.map(v => +v.toFixed(5))), Mlen: [0, 1, 2].map(j => +Math.hypot(M[0][j], M[1][j], M[2][j] * R).toFixed(3)), box: { x: bb.x.map(v => +v.toFixed(3)), y: bb.y.map(v => +v.toFixed(3)), rot: bb.rot.map(v => +(v / DEG).toFixed(3)) }, bbRaw: bb, footR: +t.maxFootR.toFixed(3), segs: post.segPairs.map(s => `${s.a},${s.b}`).join(' ') });
   }
   // the exposed foot's radius over the final set: F = hub + R e(rot + jF 120deg), linear in u up to
   // R (drot)^2 / 2, bounded below by its projection on the centre foot's direction
@@ -562,8 +595,11 @@ if (require.main === module) {
       // -> re-run certify's bookkeeping is heavy; instead check the axis-aligned boxes of the rows and the final parallelotope
       for (const t of tr) {
         const r = byK.get(t.k); if (!r || r.free || r.noTouch) continue;
-        const p = t.pose, inBox = p.x >= r.box.x[0] - 1e-6 && p.x <= r.box.x[1] + 1e-6 && p.y >= r.box.y[0] - 1e-6 && p.y <= r.box.y[1] + 1e-6 && p.rot >= r.box.rot[0] * DEG - 1e-6 && p.rot <= r.box.rot[1] * DEG + 1e-6;
-        if (!inBox) { viol++; if (viol <= 8) console.log(`  VIOLATION pose ${tI} k${t.k}: [${p.x.toFixed(4)},${p.y.toFixed(4)},${(p.rot / DEG).toFixed(3)}] outside x[${r.box.x}] y[${r.box.y}] rot[${r.box.rot}]`); }
+        // NB against bbRaw, not the row's display box: that one is rounded to 1e-3 for printing, which
+        // at a +-0.001u starting box is the same size as the box itself and reports phantom misses
+        const p = t.pose, bb = r.bbRaw;
+        const over = Math.max(bb.x[0] - p.x, p.x - bb.x[1], bb.y[0] - p.y, p.y - bb.y[1], (bb.rot[0] - p.rot) * R, (p.rot - bb.rot[1]) * R);
+        if (over > 1e-6) { viol++; if (viol <= 8) console.log(`  VIOLATION pose ${tI} k${t.k}: [${p.x.toFixed(6)},${p.y.toFixed(6)},${(p.rot / DEG).toFixed(5)}] outside x[${bb.x}] y[${bb.y}] rot[${bb.rot.map(v => v / DEG)}] by ${over.toExponential(2)}u`); }
         if (t.pushes.length) { const pd = pairDist(t.att, t.pose, res.pair); if (pd.dist > D + maxOver) maxOver = pd.dist - D; if (pd.dist < minPost) minPost = pd.dist; }
       }
       if (res.final) {

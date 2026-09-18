@@ -99,13 +99,8 @@ slack is several times the gap between them, so this is the test that bites.
   every substep from pure bookkeeping. The basis is now built from the contact
   itself -- the tangential slide, the spin-led tangent, the push -- which are
   mutually orthogonal in the foot-displacement metric.
-- **The overshoot.** The push moves the touched point by exactly the gap along
-  the normal, so to first order the pair ends at exactly D; what is left is the
-  difference between the finite rotation and its linearisation, R(1 - cos eps) +
-  R(eps - sin eps) with eps the substep's total turn. That is about 1e-5u, and
-  the engine agrees: post-push pair distances measured over 200 poses all lie in
-  [2.88000, 2.88001]. The blanket 0.005u bound the first checker used was the
-  floor on how thin the set could ever be; the pin is now 70x tighter.
+- **The overshoot.** See section 7: the first answer here was wrong and has been
+  replaced by a proved one.
 - **The push magnitude, from below as well as above.** A pose already inside D
   must be pushed until it is not, so when the whole set is under D the magnitude
   has a floor. Without it every substep handed the set 0.06u of free slack along
@@ -130,13 +125,36 @@ first checker used):
 
 | | first checker | this one |
 | --- | --- | --- |
-| set size while in contact | grows ~1.3x per substep | flat at 0.021-0.027u from 4.7 to 9.0 degrees |
+| set size while in contact | grows ~1.3x per substep | flat, 0.014u to 0.042u over 47 substeps |
 | contact normal cone | 7.8 deg, with a floor | 0.03-0.06 deg |
-| stops at | 11.6 deg, set already ~1.8u wide | 12.0 deg, set 0.25u |
+| stops at | 11.6 deg, set already ~1.8u wide | 11.3 deg at this box size |
 
-Soundness was checked the whole way: 200 simulated poses across two box sizes,
-every per-substep enclosure and every bound asserted against the engine's own
-contact law, **zero violations**.
+That last row is the one that changed most on re-measurement, and not in the
+direction section 6 first claimed. Reach against the starting box:
+
+| starting box | reaches | stopped by |
+| --- | --- | --- |
+| +-0.005u / +-0.02 deg | 11.33 deg | the first chord-vertex crossing |
+| +-0.003u / +-0.012 deg | 23.00 deg | the second crossing |
+| +-0.002u / +-0.008 deg | 24.33 deg | the second crossing |
+| +-0.001u / +-0.004 deg | 24.33 deg | the second crossing |
+| +-0.0005u / +-0.002 deg | 24.67 deg | the second crossing |
+
+The centre pose is thrown at 28 degrees. So a box of +-0.002u survives the first
+crossing outright -- the set bumps from 0.019u to 0.024u across it and settles
+back to 0.018u -- and gets to within 3.7 degrees of the throw before the second
+crossing does the same thing it used to do at the first. Shrinking below
++-0.001u buys almost nothing, because the second crossing is not a box-size
+problem either.
+
+Soundness was checked the whole way: 200 simulated poses at each of five box
+sizes, every per-substep enclosure and every bound asserted against the engine's
+own contact law, **zero violations**. The `--validate` check itself had a bug
+worth naming, since it is the thing that is supposed to catch bugs: it compared
+each pose against the row's *printed* box, which is rounded to 1e-3 for display.
+At a +-0.005u box that is invisible; at +-0.001u the rounding is the same size as
+the box, and it reported 3 to 36 phantom containment failures. It now checks the
+unrounded enclosure and reports the overshoot in units.
 
 So the mechanism is fixed and the two lemmas hold, but the sweep coverage is
 about what it was, because a different obstacle now binds. The centre pose is
@@ -171,12 +189,90 @@ the crossing substep: it has to split when the neighbouring chord's minimum
 first comes within the set's own width of the live one, and re-merge when it
 leaves again.
 
-Shrinking the starting box does not avoid this -- at +-0.001u it simply crosses
-the vertex a few substeps later -- so subdividing the box is not the answer
-either. The crossing has to be handled, not dodged.
+Shrinking the starting box gets past the *first* crossing (the table in section
+5), because a narrow enough set never has two chords live at once there. It does
+not get past the second: at every box size from +-0.0005u to +-0.003u the run
+ends within half a degree of 24.5. So subdivision buys one crossing and then
+stops buying. The crossing has to be handled, not dodged.
 
 The honest next step is to carry the regimes as genuinely separate sets rather
 than unioning them into one parallelotope at the end of each substep, so that a
 crossing costs one 0.01u step and nothing compounds. That is a real change to
 the checker's state, not another bound, and it is the last thing between this
 and a throw proof over a box.
+
+
+## 7. The overshoot bound was wrong
+
+The bound above -- the push moves the touched point by exactly the gap along the
+normal, so all that is left over a substep is the difference between the finite
+rotation and its linearisation,
+
+    eta = R(1 - cos eps) + R(eps - sin eps),
+
+about 8e-6u -- is **not sound**, and an outside review is what prompted checking
+it. Measured against the engine over this sweep it is exceeded, by about 10%, on
+75 of the 138 substeps, starting at substep 32, which is exactly the first
+chord-vertex crossing: true overshoot 8.838e-6u against a bound of 8.025e-6u.
+
+The error is the object being bounded. That argument follows one material point
+through the rotation. What has to be bounded is the *shortest distance* between
+the two polylines after the push, which is re-minimised over every chord pair,
+so it can settle on a different point than the one the push moved. At a vertex
+crossing it does.
+
+The replacement is a projection argument. In mass coordinates -- so that the
+push direction is the gradient of the gap -- the one-contact update is a Newton
+step on the gap,
+
+    Phi(z) = z - G(z) a / |a|^2,     a = grad G,
+
+whose linear term cancels exactly, so Taylor's theorem with the remainder gives
+
+    |G(Phi(z))|  <=  M p^2 / (2 m^2),
+
+with p the penetration entering the substep, m a lower bound on
+|a| = hf sqrt(1 + rn^2/I), and M a bound on the gap's Hessian over the set. For
+one chord pair, with alpha = R/sqrt(I), p0 = sqrt(1 + alpha^2), cbar the worst
+|cos(crossing angle)| and sigma = sqrt(1 - cbar^2),
+
+    b0  = p0/sigma + d/(sqrt(I) sigma^2)
+    k_n = 1/(sqrt(I) sigma)                    both contact points interior
+    k_n = p0/d + 1/(sqrt(I) sigma)             if an endpoint may clamp
+    M   = sqrt( k_n^2 + [alpha k_n + alpha/sqrt(I) + b0/sqrt(I)]^2 )
+
+which is about 0.226/u interior and 1.06/u with clamping, and a residual near
+1.1e-3u rather than 8e-6u. Two orders of magnitude looser, and actually proved.
+It is `hessBound` in `nn/throw-cert.js`.
+
+It costs about two substeps of reach at every box size (12.00 -> 11.33 at
++-0.005u, 24.67 -> 24.33 at +-0.001u), which is a cheap price for a bound that
+holds.
+
+One unstated assumption came out of the same audit and is now checked. The shell
+argument needs the Gauss-Seidel solver to have stopped because no pair was under
+D, not because it ran out of its ten passes: at the cap the post-push distance is
+not bounded below by D at all. Measured, the solver uses at most two passes over
+this sweep and never exhausts them, but the checker now refuses rather than
+assuming it.
+
+### What the review got wrong
+
+Two other claims in it do not land.
+
+Its counterexample -- two interior chord contacts tied at 2.8707, where a 1e-7
+translation switches the selected pair and jumps the 3D unit normal by 0.119, or
+6.833 degrees -- reproduces against our engine to every digit it gave, including
+the 0.002465181u hub difference. But it is an instance of the obstacle already in
+section 6: the two attacker chords involved are adjacent, sharing the phi = 22.5
+degree vertex, which is the first crossing. And the checker is sound on it: at
+every box size from +-1e-7 to +-0.02 it keeps *both* tied branches and reports a
+10.575-degree cone, which covers the 6.833-degree jump. The specific failure it
+warns of -- intersecting a cone about the centre's winning branch with a vertex
+fan, and wrongly dropping the second branch -- is not what the code does.
+
+Its "lemmas A and B are false globally" is true and not a refutation, because
+neither is claimed globally: both are stated per chord-rectangle, above and in
+the code, and its own results table grants them for one nonparallel segment pair
+including endpoint clamping. It also says it was never given `throw-cert.js`, so
+none of it is an audit of the checker that exists.
