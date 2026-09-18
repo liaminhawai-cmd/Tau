@@ -1,0 +1,31 @@
+cell A: centre -27.3934,-36.2838,1.2052,-11.7593,-23.2838,2.9442 half 1,0.875,1
+cell 1 (depth 0, victim half-widths 1.000/0.875/1.000u): centre [-27.3934,-36.2838,1.2052,-11.7593,-23.2838,2.9442]
+    reach: arm (0,1) 36.6-51.7 deg [cross r1 foot 2 at r0]  grid 37.00-51.33, enclosure 37.00-51.33 deg
+    reach: arm (0,-1) 58.3-67.4 deg [cross a0 foot 2 at a0]  grid 58.67-67.00, enclosure 58.67-67.00 deg
+    reach: arm (1,1) 9.9-19.1 deg [cross r1 foot 0 at a0]  grid 10.33-18.67, enclosure 10.33-18.67 deg
+    reach: arm (1,-1) 13.3-20.7 deg [selfoff foot 2]  grid 13.67-20.33, enclosure 13.67-20.33 deg
+    reach: arm (2,1) 0.9-9.1 deg [selfoff foot 1]  grid 1.33-8.67, enclosure 1.33-8.67 deg
+    reach: arm (2,-1) 11.9-19.4 deg [cross a0 foot 1 at r1]  grid 12.33-19.00, enclosure 12.33-19.00 deg
+    round 1: 53 pairs refused, 53 midpoints to certify (step 0.500u)
+    round 2: 87 pairs refused, 87 midpoints to certify (step 0.250u)
+    round 3: 117 pairs refused, 117 midpoints to certify (step 0.125u)
+    round 4: 162 pairs refused, 162 midpoints to certify (step 0.063u)
+cell 1 (depth 0, victim half-widths 1.000/0.875/1.000u): unresolved -- 11 (pose pair, arm, stop) gaps unresolved at the 0.05u pose step; first: [{"axis":0,"d":0.0625,"from":[-27.3309,-37.1588,1.1619,-11.7593,-23.2838,2.9442],"arm":
+cell A: 0/1 leaves, 0.0% of the cell, 6.0 min
+  not certified: 11 (pose pair, arm, stop) gaps unresolved at the 0.05u pose step; first: [{"axis":0,"d":0.0625,"from":[-27.3309,-37.1588,1.1619,-11.7593,-23.2838,2.9442],"arm":"2,-1","stopDeg":19.4,"bestMin":3.43,"why":"signature differs (0|0)","sliver":false},{"axis":0,"d":0.0625,"from":[-27.2684,-37.1588,1.1619,-
+cell B: centre -27.3934,-37.2838,1.2106,-11.7593,-23.2838,2.9442 half 1,0.125,0.875
+cell 1 (depth 0, victim half-widths 1.000/0.125/0.875u): centre [-27.3934,-37.2838,1.2106,-11.7593,-23.2838,2.9442]
+    reach: arm (0,1) 40.6-51.4 deg [cross r1 foot 2 at r0]  grid 41.00-51.00, enclosure 41.00-51.00 deg
+    reach: arm (0,-1) 59.9-67.7 deg [cross a0 foot 2 at a0]  grid 60.33-67.33, enclosure 60.33-67.33 deg
+    reach: arm (1,1) 10.9-18.7 deg [cross r1 foot 0 at a0]  grid 11.33-18.33, enclosure 11.33-18.33 deg
+    reach: arm (1,-1) 12.9-18.1 deg [selfoff foot 2]  grid 13.33-17.67, enclosure 13.33-17.67 deg
+    reach: arm (2,1) 0.9-6.7 deg [selfoff foot 1]  grid 1.33-6.33, enclosure 1.33-6.33 deg
+    reach: arm (2,-1) 13.6-19.7 deg [cross a0 foot 1 at r1]  grid 14.00-19.33, enclosure 14.00-19.33 deg
+    round 1: 46 pairs refused, 46 midpoints to certify (step 0.500u)
+    round 2: 63 pairs refused, 63 midpoints to certify (step 0.250u)
+    round 3: 89 pairs refused, 89 midpoints to certify (step 0.125u)
+    round 4: 121 pairs refused, 121 midpoints to certify (step 0.063u)
+cell 1 (depth 0, victim half-widths 1.000/0.125/0.875u): unresolved -- 18 (pose pair, arm, stop) gaps unresolved at the 0.05u pose step; first: [{"axis":1,"d":0.0625,"from":[-27.3934,-37.4088,1.1727,-11.7593,-23.2838,2.9442],"arm":
+cell B: 0/1 leaves, 0.0% of the cell, 5.1 min
+  not certified: 18 (pose pair, arm, stop) gaps unresolved at the 0.05u pose step; first: [{"axis":1,"d":0.0625,"from":[-27.3934,-37.4088,1.1727,-11.7593,-23.2838,2.9442],"arm":"2,-1","stopDeg":19.73,"bestMin":3.39,"why":"signature differs (0|0)","sliver":false},{"axis":1,"d":0.0625,"from":[-26.3934,-37.3463,1.1727,
+DONE
