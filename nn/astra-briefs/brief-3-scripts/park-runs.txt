@@ -1,0 +1,38 @@
+  k   entering the substep      leaving it
+ 70   chord 4 at 0.09370           chord 4 at 0.11349
+ 71   chord 4 at 0.08072           chord 4 at 0.10065
+ 72   chord 4 at 0.06767           chord 4 at 0.08777
+ 73   chord 4 at 0.00166           chord 4 at 0.02729
+ 74   chord 3 at 1.00000 PARKED    chord 4 at 0.02256
+ 75   chord 3 at 1.00000 PARKED    chord 4 at 0.01773
+ 76   chord 3 at 1.00000 PARKED    chord 4 at 0.01282
+ 77   chord 3 at 1.00000 PARKED    chord 4 at 0.00781
+ 78   chord 3 at 1.00000 PARKED    chord 4 at 0.00270
+ 79   chord 3 at 1.00000 PARKED    chord 3 at 1.00000 PARKED
+ 80   chord 3 at 1.00000 PARKED    chord 3 at 1.00000 PARKED
+ 81   chord 3 at 1.00000 PARKED    chord 3 at 1.00000 PARKED
+ 82   chord 3 at 1.00000 PARKED    chord 3 at 1.00000 PARKED
+ 96   chord 3 at 1.00000 PARKED    chord 3 at 1.00000 PARKED
+ 97   chord 3 at 1.00000 PARKED    chord 3 at 1.00000 PARKED
+ 98   chord 3 at 1.00000 PARKED    chord 3 at 1.00000 PARKED
+ 99   chord 3 at 0.99858           chord 3 at 1.00000 PARKED
+100   chord 3 at 0.99055           chord 3 at 1.00000 PARKED
+101   chord 3 at 0.98865           chord 3 at 1.00000 PARKED
+102   chord 3 at 0.98390           chord 3 at 1.00000 PARKED
+103   chord 3 at 0.99361           chord 3 at 1.00000 PARKED
+104   chord 3 at 0.98330           chord 3 at 1.00000 PARKED
+105   chord 3 at 0.97244           chord 3 at 0.99927
+106   chord 3 at 0.96120           chord 3 at 0.99206
+107   chord 3 at 0.95104           chord 3 at 0.98451
+108   chord 3 at 0.94320           chord 3 at 0.98202
+109   chord 3 at 0.94041           chord 3 at 1.00000 PARKED
+110   chord 3 at 0.96417           chord 3 at 1.00000 PARKED
+111   chord 3 at 0.97836           chord 3 at 1.00000 PARKED
+112   chord 3 at 0.99622           chord 3 at 1.00000 PARKED
+113   chord 3 at 1.00000 PARKED    chord 3 at 1.00000 PARKED
+114   chord 3 at 1.00000 PARKED    chord 3 at 1.00000 PARKED
+115   chord 3 at 1.00000 PARKED    chord 3 at 1.00000 PARKED
+
+parked entering the substep: 74-98, 113-115
+parked leaving the substep:  79-104, 109-115
+the throw is at substep 84

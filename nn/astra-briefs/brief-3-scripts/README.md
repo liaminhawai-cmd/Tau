@@ -49,3 +49,10 @@ converting a limit to a substep count, or better, chain one-degree calls as `gri
 from the pose entering each substep. The jump is 11.0 degrees at the first crossing and 13.0 at
 the second, so the size of the discontinuity is not what separates the passable one from the
 blocking one.
+
+`park-runs.js` -> `park-runs.txt`: the park measured both ways, from the pose entering each
+substep and from the pose leaving it. Entering: 74-98 and 113-115. Leaving: 79-104 and 109-115.
+The throw is at 84. This is what brief 3's question 3 got wrong: it assumed one interval, so it
+asked for the condition under which a park "persists across a push" starting at 74, which is
+false at the centre, since a pose at 74 enters parked and leaves off the vertex. The interval
+that is stable across the push is the intersection, 79 to 98.
