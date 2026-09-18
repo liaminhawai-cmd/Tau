@@ -796,7 +796,7 @@ test('a board is an opponent: the next one opens when this one is beaten as Blue
   const sel=g.w.document.getElementById('desktopBoard');
   const opt=id=>[...sel.options].find(o=>o.value===id);
   assert.ok(opt('walnut') && !opt('walnut').disabled,'Walnut is selectable');
-  assert.ok(opt('marble').disabled && /Marble · Alabaster · beat Escher as Blue and as Red/.test(opt('marble').textContent),
+  assert.ok(opt('marble').disabled && /Marble · Alabaster · beat Chorus as Blue and as Red/.test(opt('marble').textContent),
     'Marble is listed with who lives there and what opens it');
   sel.value='marble'; sel.onchange({target:sel});
   assert.equal(D.board,'walnut','a locked pick is refused');
@@ -810,7 +810,7 @@ test('choosing the opponent chooses the board, and choosing the board chooses th
   // Every rung wears its board's name, and the ones you have not reached are greyed rather than
   // hidden: you can see who is waiting two boards up, you just cannot skip to them.
   assert.match([...lv.options][0].textContent,/Level 1 · Hazel/);
-  assert.match([...lv.options][4].textContent,/Level 5 · Gran/);
+  assert.match([...lv.options][4].textContent,/Level 5 · Vesper/);
   assert.ok([...lv.options][1].disabled,'a rung whose board is locked cannot be picked');
   assert.equal(lv.value,'1','and a fresh player is on rung 1, whatever the saved level said');
   // Open two rungs, then pick the second: the board comes with it.

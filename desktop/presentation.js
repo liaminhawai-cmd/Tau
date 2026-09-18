@@ -120,13 +120,13 @@
     { board:'dojo',     opponent:'Sifu' },
     { board:'slate',    opponent:'Flint' },
     { board:'maple',    opponent:'Birdseye' },   // the figure in the timber
-    { board:'cosy',     opponent:'Gran' },
+    { board:'cosy',     opponent:'Vesper' },     // whoever has owned this heirloom table for forty years
     { board:'sumo',     opponent:'Rikishi' },    // 力士
-    { board:'colossus', opponent:'Titan' },
     { board:'noir',     opponent:'Marlowe' },
     { board:'math',     opponent:'Escher' },
-    { board:'marble',   opponent:'Alabaster' },
     { board:'alien',    opponent:'Chorus' },     // it is not one of anything
+    { board:'marble',   opponent:'Alabaster' },
+    { board:'colossus', opponent:'Titan' },      // the arena, last
   ];
   // The counters the boards used to be gated on. Kept for the three reserved boards, and kept as a
   // SECOND way in for every other board: a player who earned Marble by playing a hundred games must
