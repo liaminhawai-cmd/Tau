@@ -1,0 +1,20 @@
++-0.1u / +-0.01 rad, 200 poses
+  substeps with every pose in contact: 124;  partial: 5 (10,11,12,13,14);  none: 8
+  FLOOR, the smallest per-substep minimum over poses where all are in contact: 1.392e-3u at substep 15
+  smallest nonzero gain any single pose ever has: 2.761e-7u at substep 11 (never summed by the barrier)
++-0.125u / +-0.01 rad, 200 poses
+  substeps with every pose in contact: 123;  partial: 7 (9,10,11,12,13,14,15);  none: 7
+  FLOOR, the smallest per-substep minimum over poses where all are in contact: 6.458e-3u at substep 16
+  smallest nonzero gain any single pose ever has: 4.000e-5u at substep 14 (never summed by the barrier)
++-0.125u / +-0.05 rad, 200 poses
+  substeps with every pose in contact: 119;  partial: 15 (5,6,7,8,9,10,11,12,13,14,15,16,17,18,19);  none: 3
+  FLOOR, the smallest per-substep minimum over poses where all are in contact: 4.685e-4u at substep 20
+  smallest nonzero gain any single pose ever has: 1.383e-6u at substep 15 (never summed by the barrier)
++-0.25u / +-0.01 rad, 200 poses
+  substeps with every pose in contact: 121;  partial: 12 (6,7,8,9,10,11,12,13,14,15,16,17);  none: 4
+  FLOOR, the smallest per-substep minimum over poses where all are in contact: 3.834e-3u at substep 18
+  smallest nonzero gain any single pose ever has: 1.083e-4u at substep 11 (never summed by the barrier)
++-0.5u / +-0.01 rad, 200 poses
+  substeps with every pose in contact: 116;  partial: 21 (2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22);  none: 0
+  FLOOR, the smallest per-substep minimum over poses where all are in contact: 9.603e-3u at substep 23
+  smallest nonzero gain any single pose ever has: 8.649e-5u at substep 6 (never summed by the barrier)
