@@ -1957,13 +1957,25 @@ class Piece {
     // 3D polylines of the quarter-circle legs — the same curve the 3D view renders,
     // so what you see touching is exactly what the physics feels. {x,y} board plane, h up.
     legArcs() {
-        const R=CFG.footR, H=CFG.hubHeight, N=CFG.legSegs, out=[];
+        // The along-chord offset and height of the k-th arc point depend only on k, so they are
+        // tabulated once (the same expressions as before, so the same doubles) and each call pays
+        // one cos and one sin per leg instead of one per point.
+        const T = Piece.arcTable || (Piece.arcTable = (() => {
+            const R=CFG.footR, H=CFG.hubHeight, N=CFG.legSegs, s=[], h=[], r=[];
+            for (let k=0;k<=N;k++){ const ph=(k/N)*(Math.PI/2); s.push(Math.sin(ph)*R); h.push(Math.cos(ph)*H); }
+            // half-length of each polyline segment: a constant of the shape, used by arcClosest's
+            // bounding-sphere skip
+            for (let k=0;k<N;k++) r.push(Math.hypot(s[k+1]-s[k], h[k+1]-h[k])*0.5);
+            return { s, h, r, N };
+        })());
+        const out=[];
         for (let i=0;i<3;i++){
             const a=this.rot+i*(2*Math.PI/3), ca=Math.cos(a), sa=Math.sin(a), pts=[];
-            for (let k=0;k<=N;k++){
-                const ph=(k/N)*(Math.PI/2), s=Math.sin(ph)*R;
-                pts.push({ x:this.x+ca*s, y:this.y+sa*s, h:Math.cos(ph)*H });
-            }
+            for (let k=0;k<=T.N;k++) pts.push({ x:this.x+ca*T.s[k], y:this.y+sa*T.s[k], h:T.h[k] });
+            // segment centres, for arcClosest's bounding-sphere skip
+            const c=new Float64Array(T.N*3);
+            for (let k=0;k<T.N;k++){ c[k*3]=(pts[k].x+pts[k+1].x)*0.5; c[k*3+1]=(pts[k].y+pts[k+1].y)*0.5; c[k*3+2]=(pts[k].h+pts[k+1].h)*0.5; }
+            pts.sph = { c, r: T.r };
             out.push(pts);
         }
         return out;
@@ -2274,11 +2286,33 @@ function segClosest3(p1,q1,p2,q2){
     return { pa, pb, dist:Math.sqrt(dx*dx+dy*dy+dh*dh) };
 }
 // min-distance closest points between two arc polylines
-function arcClosest(A, B){
-    let best=null;
-    for (let i=0;i<A.length-1;i++) for (let j=0;j<B.length-1;j++){
-        const c=segClosest3(A[i],A[i+1],B[j],B[j+1]);
-        if (!best || c.dist<best.dist) best=c;
+// segment centres and half-lengths of a polyline, for the bounding-sphere skip below (legArcs
+// attaches them ready-made as .sph; any other polyline gets them computed here)
+function segSpheres(A){
+    if (A.sph) return A.sph;
+    const n=A.length-1, c=new Float64Array(n*3), r=new Float64Array(n);
+    for (let k=0;k<n;k++){
+        const p=A[k], q=A[k+1];
+        c[k*3]=(p.x+q.x)*0.5; c[k*3+1]=(p.y+q.y)*0.5; c[k*3+2]=(p.h+q.h)*0.5;
+        r[k]=Math.hypot(q.x-p.x, q.y-p.y, q.h-p.h)*0.5;
+    }
+    return { c, r };
+}
+function arcClosest(A, B, cut){
+    let best=null, bestD = cut===undefined ? Infinity : cut;
+    const nA=A.length-1, nB=B.length-1, SA=segSpheres(A), SB=segSpheres(B), cA=SA.c, rA=SA.r, cB=SB.c, rB=SB.r;
+    for (let i=0;i<nA;i++){
+        const cx=cA[i*3], cy=cA[i*3+1], ch=cA[i*3+2], ra=rA[i];
+        for (let j=0;j<nB;j++){
+            // every point of a segment is within its half-length of its centre, so the two
+            // segments are at least |cA-cB| - rA - rB apart: a pair that cannot get below the
+            // best so far is skipped. Compared squared, with a hair of slack so rounding can
+            // only keep a pair, never drop one that would have won.
+            const dx=cB[j*3]-cx, dy=cB[j*3+1]-cy, dh=cB[j*3+2]-ch, reach=bestD+ra+rB[j];
+            if (dx*dx+dy*dy+dh*dh > reach*reach*(1+1e-9)) continue;
+            const c=segClosest3(A[i],A[i+1],B[j],B[j+1]);
+            if (c.dist<bestD){ best=c; bestD=c.dist; }
+        }
     }
     return best;
 }
@@ -2319,7 +2353,38 @@ function resolvePush(active, opp) {
     // push direction from opp's position, and if that position is itself being corrected
     // inside this loop the sign can flip between iterations and the piece just chatters.
     const opp0 = { x: opp.x, y: opp.y };
-    const aArcs = active.legArcs(), aChords = active.legs();
+    const hubLegD = hubR + CFG.legRadius, R = CFG.footR;
+    // Piece-level gate: every point of a piece is within R of its hub (flat), so two hubs more
+    // than 2R + minD apart cannot bring any two legs within minD, nor a hub within hubLegD of a
+    // leg (R + hubLegD < 2R + minD), nor the hubs within 2 hubR. Exact, and it settles the
+    // common case of two pieces nowhere near each other with one hypot.
+    if (Math.hypot(opp.x-active.x, opp.y-active.y) >= 2*R + minD) return everContacted;
+    const aChords = active.legs();
+    // flat distance from a point to a chord (the top-down projection of a leg arc)
+    const pointChordDist = (p, ch) => {
+        const ax=ch[0].x, ay=ch[0].y, dx=ch[1].x-ax, dy=ch[1].y-ay, len2=dx*dx+dy*dy || 1e-12;
+        let t=((p.x-ax)*dx+(p.y-ay)*dy)/len2; t=Math.max(0,Math.min(1,t));
+        return Math.hypot(ax+dx*t-p.x, ay+dy*t-p.y);
+    };
+    // flat chord-chord gap, with a bounding-circle skip first: a chord's points are all within
+    // R/2 of its midpoint, so midpoints more than R + minD apart mean the chords are clear
+    const chordGapClear = (A, B) => {
+        const mx=(A[0].x+A[1].x-B[0].x-B[1].x)*0.5, my=(A[0].y+A[1].y-B[0].y-B[1].y)*0.5, reach=R+minD;
+        if (mx*mx+my*my > reach*reach*(1+1e-9)) return true;
+        return segClosest(A[0],A[1],B[0],B[1]).dist >= minD;
+    };
+    let oChords = opp.legs();
+    {
+        // exact early out: every 3D contact test below is bounded from below by a flat one
+        let near = false;
+        for (let i=0;i<3 && !near;i++) for (let j=0;j<3;j++) if (!chordGapClear(aChords[i], oChords[j])) { near = true; break; }
+        for (let j=0;j<3 && !near;j++) if (pointChordDist(active, oChords[j]) < hubLegD) near = true;
+        for (let i=0;i<3 && !near;i++) if (pointChordDist(opp, aChords[i]) < hubLegD) near = true;
+        if (!near && Math.hypot(opp.x-active.x, opp.y-active.y) >= 2*hubR) return everContacted;
+    }
+    // the active piece's arcs, built per leg on first use (a leg whose chord never gets near
+    // anything is never built)
+    let aArcsAll = null; const aArc = i => (aArcsAll || (aArcsAll = active.legArcs()))[i];
     const aHub = { x:active.x, y:active.y, h:H };
 
     // horizontal push of magnitude sep along unit (nx,ny), applied at contact point (px,py)
@@ -2346,15 +2411,20 @@ function resolvePush(active, opp) {
     };
 
     for (let iter=0; iter<CFG.pushIters; iter++) {
-        const oArcs = opp.legArcs(), oChords = opp.legs();
+        if (iter > 0) oChords = opp.legs();          // the opponent moved: fresh chords (iteration 0 reuses the gate's)
+        // the opponent's arcs as of the START of this iteration (the pushes below move it, and the
+        // pairs after them must still see the same geometry the whole-iteration build saw), built
+        // per leg on first use
+        const oSnap = { x: opp.x, y: opp.y, rot: opp.rot }; let oArcsAll = null;
+        const oArc = j => (oArcsAll || (oArcsAll = Piece.prototype.legArcs.call(oSnap)))[j];
         const oHub = { x:opp.x, y:opp.y, h:H };
         let any = false;
         for (let i=0;i<3;i++) for (let j=0;j<3;j++) {
             // exact prune: an arc projects straight down onto its hub→foot chord, so the 3D
             // gap can never be smaller than the flat top-down gap between the chords.
-            if (segClosest(aChords[i][0],aChords[i][1],oChords[j][0],oChords[j][1]).dist >= minD) continue;
-            const c = arcClosest(aArcs[i], oArcs[j]);
-            if (c.dist >= minD) continue;            // clears over/under — no touch, no push
+            if (chordGapClear(aChords[i], oChords[j])) continue;
+            const c = arcClosest(aArc(i), oArc(j), minD);
+            if (!c) continue;                        // clears over/under — no touch, no push
             any = true; noteContact(c.dist, c.pa.h);
             if (c.dist < 0.3) {                      // tubes deeply crossed: shove ⟂ off the active leg, toward opp's side
                 const A=aChords[i], ax=A[1].x-A[0].x, ay=A[1].y-A[0].y, L=Math.hypot(ax,ay)||1;
@@ -2366,13 +2436,14 @@ function resolvePush(active, opp) {
             }
         }
         // hub ball contacts: my hub vs their legs, their hub vs my legs, hub vs hub
-        const hubLegD = hubR + CFG.legRadius;
         for (let j=0;j<3;j++){
-            const c = pointArcClosest(aHub, oArcs[j]);
+            if (pointChordDist(aHub, oChords[j]) >= hubLegD) continue;   // flat gap bounds the 3D one
+            const c = pointArcClosest(aHub, oArc(j));
             if (c.dist < hubLegD && c.dist > 1e-6){ any=true; noteContact(c.dist, H); push3d(aHub, c.pt, c.dist, hubLegD - c.dist); }
         }
         for (let i=0;i<3;i++){
-            const c = pointArcClosest(oHub, aArcs[i]);
+            if (pointChordDist(oHub, aChords[i]) >= hubLegD) continue;
+            const c = pointArcClosest(oHub, aArc(i));
             if (c.dist < hubLegD && c.dist > 1e-6){ any=true; noteContact(c.dist, c.pt.h); push3d(c.pt, oHub, c.dist, hubLegD - c.dist); }
         }
         {
