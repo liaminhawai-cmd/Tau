@@ -1880,7 +1880,7 @@ test('the loss camera follows the piece down instead of framing the board it lef
   assert.deepEqual(g.errors,[]);
 });
 
-test('a pad that sends directions on a hat or a stick still drives the menus and picks a foot',async t=>{
+test('a pad that sends directions on a hat or a stick drives the menus, and the hat picks the foot',async t=>{
   const g=await game();t.after(g.close);
   // A DirectInput pad: empty mapping, no D-pad buttons at all, hat on axis 9, stick on 0/1.
   const pad={id:'Generic USB Joystick',index:0,connected:true,mapping:'',
@@ -1905,8 +1905,12 @@ test('a pad that sends directions on a hat or a stick still drives the menus and
   assert.equal(g.read('v3HoverIdx'),0);
   hat(-0.428);                                   // right
   assert.equal(g.read('v3HoverIdx'),1,'the hat changes which foot is chosen, visibly, with no button press');
-  pad.axes[0]=-1;g.tick();pad.axes[0]=0;g.tick(); // stick left
-  assert.equal(g.read('v3HoverIdx'),0,'and so does the stick');
+  // ...but in a MATCH the left stick is the camera and only the camera. Such a pad still has its
+  // hat for the foot, and looking around must not walk the choice along under the player.
+  pad.axes[0]=-1;g.tick(300);pad.axes[0]=0;g.tick(); // stick left, held
+  assert.equal(g.read('v3HoverIdx'),1,'the stick leaves the foot where the hat put it');
+  hat(0.714);                                    // left
+  assert.equal(g.read('v3HoverIdx'),0,'and the hat still walks it back');
   assert.deepEqual(g.errors,[]);
 });
 
@@ -2939,5 +2943,175 @@ test('the jam buzzes once on arrival, not eight times a second for as long as yo
     return n;
   })()`);
   assert.ok(buzzes<=1,`holding a swing at the limit buzzes at most once (got ${buzzes})`);
+  assert.deepEqual(g.errors,[]);
+});
+
+// ---- the left stick is the camera and nothing else, and the foot has its own inputs -----------
+
+const padStub = () => ({connected:true,mapping:'standard',axes:[0,0,0,0],
+  buttons:Array.from({length:17},()=>({pressed:false,value:0})),
+  vibrationActuator:{playEffect:()=>Promise.resolve()}});
+
+test('the left stick looks around without moving which foot is chosen',async t=>{
+  const g=await game();t.after(g.close);
+  const pad=padStub();
+  g.w.navigator.getGamepads=()=>[pad];
+  const press=i=>{pad.buttons[i].pressed=true;g.tick();pad.buttons[i].pressed=false;g.tick();};
+  const unpin=()=>{g.read('restoreSnap();G.pinned=null;G.pivot=null;G.handle=null;G.ptrAngle=null');g.tick();};
+  localMatch(g);
+  // The D-pad steps to foot 1 and pins it — that part is unchanged.
+  press(15);press(0);
+  assert.equal(g.read('G.pinned'),1,'the D-pad still chooses the foot');
+  unpin();
+  // Now hold the left stick hard over for half a second. It used to read as a D-pad push as well,
+  // so looking to the right also walked the choice on to the next foot.
+  pad.axes[0]=1;g.tick(500);pad.axes[0]=0;g.tick();
+  press(0);
+  assert.equal(g.read('G.pinned'),1,'the stick left the chosen foot alone');
+  unpin();
+  // ...and the other way, which used to walk it back.
+  pad.axes[0]=-1;g.tick(500);pad.axes[0]=0;g.tick();
+  press(0);
+  assert.equal(g.read('G.pinned'),1,'pushing the other way does not move it either');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a pad with no D-pad mapping still drives the menus from its stick',async t=>{
+  const g=await game();t.after(g.close);
+  const pad=padStub();
+  pad.mapping='';                       // the DirectInput case: no button table at all
+  pad.buttons=Array.from({length:4},()=>({pressed:false,value:0}));
+  g.w.navigator.getGamepads=()=>[pad];
+  g.$('desktopPlay').focus();
+  const before=g.w.document.activeElement.id;
+  pad.axes[1]=1;g.tick();pad.axes[1]=0;g.tick();
+  assert.notEqual(g.w.document.activeElement.id,before,'the stick still walks the home menu');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the arrows walk round the feet and still turn the piece',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  g.key('ArrowDown');g.key('Enter');
+  assert.equal(g.read('G.pinned'),1,'down steps on to the next foot');
+  g.key('ArrowUp');
+  assert.equal(g.read('G.pinned'),0,'up steps back, re-pinning as it goes');
+  g.key('ArrowRight');g.key('ArrowRight','keyup');
+  assert.ok(g.read('Math.abs(G.netRad)')>0,'left and right are still the swing');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('one key and one pad button walk the boards already earned',async t=>{
+  const g=await game(undefined,{tauDesktopProgress:JSON.stringify({played:3,wins:1,topLevel:1})});
+  t.after(g.close);
+  const D=g.w.tauDesktop;
+  const open=()=>D.boards.filter(b=>b.unlocked).map(b=>b.id);
+  assert.ok(open().length>1,'more than one board is available to walk between');
+  const saved=()=>JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1'));
+  // On the menu the opponent comes with the board, the same as picking one in Settings.
+  const first=D.board;
+  g.$('desktopPlay').focus();g.key('b');
+  const second=D.board;
+  assert.notEqual(second,first,'the board key moves to the next earned board');
+  assert.equal(saved().board,second,'and the choice is remembered');
+  assert.equal(String(saved().level),g.$('desktopLevel').value,'the ladder follows it on the menu');
+  // Shift walks back, so one key covers both directions.
+  g.w.document.activeElement.dispatchEvent(
+    new g.w.KeyboardEvent('keydown',{key:'b',bubbles:true,cancelable:true,shiftKey:true}));
+  assert.equal(D.board,first,'shift walks back the other way');
+  // It never lands on something still locked.
+  for(let i=0;i<open().length+2;i++){g.key('b');assert.ok(open().includes(D.board),`${D.board} is earned`);}
+  // In a match the look changes and the ladder stays put: you are already playing somebody.
+  const before=D.board;
+  localMatch(g);
+  const rung=g.$('desktopLevel').value;
+  const pad=padStub();
+  g.w.navigator.getGamepads=()=>[pad];
+  pad.buttons[8].pressed=true;g.tick();pad.buttons[8].pressed=false;g.tick();
+  assert.notEqual(D.board,before,'the View button changes the board in a match too');
+  assert.equal(g.$('desktopLevel').value,rung,'the opponent you are playing does not change under you');
+  assert.deepEqual(g.errors,[]);
+});
+
+// ---- the camera's second derivative ----------------------------------------------------------
+
+// Stand a camera up where a match holds it, with the GPU stubbed, and return a stepper that
+// reports how far the camera moved on each frame. Speed per frame IS the first derivative; the
+// differences between consecutive speeds are the second.
+async function camRig(t) {
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3(0,4,0)};`);
+  const at=()=>g.read('[camera.position.x,camera.position.y,camera.position.z]');
+  const step=(dt=1/60)=>{
+    const a=at(); g.read(`tauDesktop.updateCamera(${dt})`); const b=at();
+    return Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);
+  };
+  return {g,at,step};
+}
+
+test('the camera accelerates into a move instead of starting at its top speed',async t=>{
+  const {g,at,step}=await camRig(t);
+  // Put it a long way from the pose the match wants and let go.
+  g.read('camera.position.set(60,220,60)');
+  const speeds=[];for(let i=0;i<24;i++)speeds.push(step());
+  // A first-order ease closes a fixed FRACTION of the gap each frame, so its fastest frame is
+  // always the first one and every frame after is slower. Starting from rest the settle must do
+  // the opposite: creep off the mark and build up.
+  const peak=Math.max(...speeds), peakAt=speeds.indexOf(peak);
+  assert.ok(peakAt>0,`the first frame should not be the fastest one (peak was frame ${peakAt})`);
+  assert.ok(speeds[0]<peak*0.35,
+    `the move should start gently (first frame ${speeds[0].toFixed(3)}, peak ${peak.toFixed(3)})`);
+  // ...and the speed must change gradually throughout: no frame may be a large step in speed.
+  for(let i=1;i<speeds.length;i++)
+    assert.ok(Math.abs(speeds[i]-speeds[i-1])<peak*0.25,
+      `frame ${i} steps the speed (${speeds[i-1].toFixed(3)} -> ${speeds[i].toFixed(3)})`);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the camera still arrives, and holds still once it is there',async t=>{
+  const {g,at,step}=await camRig(t);
+  g.read('camera.position.set(60,220,60)');
+  for(let i=0;i<240;i++)step();        // four seconds
+  const settled=at();
+  const moved=[];for(let i=0;i<30;i++)moved.push(step());
+  assert.ok(Math.max(...moved)<0.02,
+    `a settled camera stops (largest of the last 30 frames: ${Math.max(...moved).toFixed(4)})`);
+  // And it settled on the pose the match asks for, not short of it or past it.
+  g.read('camera.position.set(0,0,0)');
+  for(let i=0;i<240;i++)step();
+  const again=g.read('[camera.position.x,camera.position.y,camera.position.z]');
+  for(let k=0;k<3;k++) assert.ok(Math.abs(again[k]-settled[k])<0.5,
+    `it lands on the same pose from either side (${again[k].toFixed(2)} vs ${settled[k].toFixed(2)})`);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a hand on the camera clears the settle, and a long frame does not fling it',async t=>{
+  const {g,at,step}=await camRig(t);
+  g.read('camera.position.set(60,220,60)');
+  for(let i=0;i<20;i++)step();          // build up some speed
+  // The player takes the reins: the pose they place is the new rest, so the carried speed goes.
+  const pad={connected:true,mapping:'standard',axes:[1,0,0,0],
+    buttons:Array.from({length:17},()=>({pressed:false,value:0}))};
+  g.w.navigator.getGamepads=()=>[pad];
+  g.w.tauDesktop.tick(0.016);
+  pad.axes[0]=0;
+  const afterHand=step();
+  assert.ok(afterHand<0.35,`letting go leaves no push behind (${afterHand.toFixed(3)})`);
+  // A frame that runs long (a hitch while the opponent thinks) must land where the same quarter
+  // second of ordinary frames lands — not fling the camera past it. A drag start is what puts the
+  // settle back at rest, so both runs begin from the same standstill.
+  const rest=()=>{g.read('camDragging=true;tauDesktop.updateCamera(1/60);camDragging=false');};
+  const from=()=>{g.read('camera.position.set(60,220,60)');rest();};
+  from(); step(0.25);
+  const hitched=at();
+  from(); for(let i=0;i<15;i++)step(1/60);
+  const steady=at();
+  const apart=Math.hypot(hitched[0]-steady[0],hitched[1]-steady[1],hitched[2]-steady[2]);
+  assert.ok(Number.isFinite(apart)&&apart<6,
+    `one long frame lands where fifteen short ones do (${apart.toFixed(2)} apart)`);
+  assert.ok(Number.isFinite(step(1/60)),'and the frame after the hitch is still a number');
   assert.deepEqual(g.errors,[]);
 });
