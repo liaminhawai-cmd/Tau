@@ -219,18 +219,21 @@
   }
   // A reversible testing override, separate from earned progress and native achievements.
   // Enter ALLBOARDS on the main menu; repeat it to restore the normal unlock requirements.
+  // Returns true while the keys typed so far are still the beginning of the word, so a letter the
+  // code is spelling with is not ALSO taken as its own shortcut -- B is the board key, and B is in
+  // ALLBOARDS.
   let cheatBuffer = '', cheatAt = 0;
   function boardCheat(e) {
     if (inMatch() || dialogOpen() || e.ctrlKey || e.metaKey || e.altKey || e.isComposing
         || e.target.closest?.('input,select,textarea,[contenteditable]:not([contenteditable="false"])')) {
-      cheatBuffer = ''; return;
+      cheatBuffer = ''; return false;
     }
-    if (e.repeat) return;
-    if (!/^[a-z]$/i.test(e.key)) { cheatBuffer = ''; return; }
+    if (e.repeat) return false;
+    if (!/^[a-z]$/i.test(e.key)) { cheatBuffer = ''; return false; }
     const now = performance.now();
     if (now - cheatAt > 2000) cheatBuffer = '';
     cheatAt = now; cheatBuffer = (cheatBuffer + e.key.toUpperCase()).slice(-9);
-    if (cheatBuffer !== 'ALLBOARDS') return;
+    if (cheatBuffer !== 'ALLBOARDS') return 'ALLBOARDS'.startsWith(cheatBuffer);
     cheatBuffer = ''; testBoards = !testBoards;
     try { if (testBoards) localStorage.setItem(TEST_BOARDS_KEY,'1'); else localStorage.removeItem(TEST_BOARDS_KEY); } catch (_) {}
     if (!isUnlocked(settings.board)) {
@@ -240,6 +243,7 @@
       ? 'All boards unlocked for testing. Type ALLBOARDS again to restore locks.'
       : 'Normal board locks restored. Your earned boards are still available.'}</p>`);
     e.preventDefault();
+    return true;
   }
   // Right stick turns the piece at a speed set by how far it is pushed; the triggers do the same
   // from RT/LT with the analog pull as the speed. Both keep the D-pad on the foot and the left
@@ -251,12 +255,19 @@
   // can bind away from themselves.
   const KEY_ACTIONS = [
     ['pin1','Pin foot 1'], ['pin2','Pin foot 2'], ['pin3','Pin foot 3'],
+    ['footPrev','Previous foot'], ['footNext','Next foot'],
     ['swingLeft','Swing anticlockwise'], ['swingRight','Swing clockwise'],
     ['commit','Pin · end your turn'], ['cancel','Cancel the swing'],
     ['shrink','Shrink the flat board'], ['grow','Grow the flat board'],
+    ['board','Change the board'],
   ];
-  const DEFAULT_KEYS = { pin1:'1', pin2:'2', pin3:'3', swingLeft:'ArrowLeft', swingRight:'ArrowRight',
-    commit:'Enter', cancel:'Backspace', shrink:'[', grow:']' };
+  // The arrows are the foot AND the swing, split by axis: up and down walk round the three feet,
+  // left and right turn the piece. Keeping the turn on left/right matters -- it is the control that
+  // is held rather than tapped, and it is the one whose direction is already written on the key.
+  // 1 · 2 · 3 still go straight to a foot for anyone who would rather not step round to it.
+  const DEFAULT_KEYS = { pin1:'1', pin2:'2', pin3:'3', footPrev:'ArrowUp', footNext:'ArrowDown',
+    swingLeft:'ArrowLeft', swingRight:'ArrowRight',
+    commit:'Enter', cancel:'Backspace', shrink:'[', grow:']', board:'b' };
   const settings = { level:4, colour:0, quality:'balanced', board:'walnut', padScheme:'triggers', padBrand:'auto',
     invertCamY:false, keys:{...DEFAULT_KEYS}, rayTrace:false,
     reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches, haptics:true, fullscreen:true };
@@ -316,14 +327,27 @@
     }
     return null;
   }
-  function padDir(pad) {
+  // ...but the stick only stands in for a missing D-pad WHERE THE STICK IS NOT ALREADY DOING
+  // SOMETHING ELSE. In a match the left stick is the camera, and reading a direction off it there
+  // meant one push both turned the view and changed which foot was chosen -- two answers to one
+  // shove, and the foot moving under a player who was only looking around. A menu has no camera to
+  // steer, so there the stick still navigates, which is what a stick is for on a menu.
+  function padDir(pad, allowStick = true) {
     const btn = i => !!pad.buttons[i]?.pressed;
     const hat = padHat(pad);
-    const ax = pad.axes[0] || 0, ay = pad.axes[1] || 0;
+    const ax = allowStick ? (pad.axes[0] || 0) : 0, ay = allowStick ? (pad.axes[1] || 0) : 0;
     return {
       x: btn(15) ? 1 : btn(14) ? -1 : (hat && hat.x) || (Math.abs(ax) > PAD_DEAD ? Math.sign(ax) : 0),
       y: btn(13) ? 1 : btn(12) ? -1 : (hat && hat.y) || (Math.abs(ay) > PAD_DEAD ? Math.sign(ay) : 0),
     };
+  }
+  // One frame of a pad, kept so the next frame can tell a press from a hold. Both readings of the
+  // direction are remembered -- with the stick and without -- because the menu and the match ask
+  // different questions of the same pad and each has to compare against its own last answer.
+  function padSnapshot(pad) {
+    const a = pad.buttons.map(b => b.pressed);
+    a.dir = padDir(pad); a.padDir = padDir(pad, false);
+    return a;
   }
   // Who holds what in a local 1v1, one device per colour, as answered on the "choose your controls"
   // screen: {kind:'pad', index, brand} or {kind:'kbm'}. Empty in every other kind of match.
@@ -369,6 +393,7 @@
     if(pressed(0)){const target=els.includes(el)?el:els[0];if(target?.tagName!=='SELECT')target?.click();}
     if(pressed(1)&&dialogOpen()&&modalDismiss)modalDismiss();
     if(pressed(1)&&$('htpFull'))$('htpClose')?.click();
+    if(pressed(8))cycleBoard(1);   // the same board walk as in a match, so the button never changes meaning
   }
   addEventListener('pointermove', () => root.classList.remove('desktop-pad-nav'), { passive: true });
   addEventListener('pointerdown', () => root.classList.remove('desktop-pad-nav'), { passive: true });
@@ -574,6 +599,29 @@
     $('desktopLevel').value = String(settings.level);
     drawOpponentTile();
   }
+  // WALK THE BOARDS YOU HAVE EARNED, without leaving the board to do it. Settings still has the
+  // full list with its unlock lines, which is where you go to see what is still shut; this is the
+  // quick way round the ones already open, on a key and on a controller button.
+  // On the menu the opponent comes with the board, exactly as picking one in Settings does -- a
+  // ladder board is somebody's board. Inside a match it does not: you are already playing a named
+  // opponent, and re-pointing the ladder underneath a game in progress would be a change nobody
+  // asked for. There the look changes and the match carries on.
+  function cycleBoard(step) {
+    const open = BOARD_FINISHES.filter(b => isUnlocked(b.id));
+    if (open.length < 2) return;
+    const at = open.findIndex(b => b.id === settings.board);
+    const next = open[((at < 0 ? 0 : at + step) % open.length + open.length) % open.length];
+    if (!next || next.id === settings.board) return;
+    settings.board = next.id;
+    if (!inMatch()) {
+      const rung = boardRung(next.id);
+      if (rung) { settings.level = rung; if ($('desktopLevel')) $('desktopLevel').value = String(rung); }
+    }
+    saveSettings();
+    if ($('desktopBoard')) $('desktopBoard').value = next.id;
+    applyMaterials(); applyTheme(); render();
+    showToast(`<p class="desktop-unlock">${esc(boardLabel(next))}</p>`);
+  }
   // On boot the BOARD is the more specific choice: a ladder board names its opponent, so the
   // opponent follows it. A reserved board (one still waiting for its rung) names nobody, and the
   // opponent stays whatever it was.
@@ -697,8 +745,10 @@
       ${keyCap(16,10,58,'Esc',t('menu'),false,'')}${keyCap(82,10,58,'F1',t('controls'),false,'')}
       ${k(186,10,52,t('foot 1'),'pin1')}${k(246,10,52,t('foot 2'),'pin2')}${k(306,10,52,t('foot 3'),'pin3')}
       ${k(404,10,130,t('cancel swing'),'cancel')}${k(544,10,120,t('end turn'),'commit')}
+      ${k(16,96,58,t('board'),'board')}
       ${k(186,96,52,'','shrink')}${k(246,96,52,'','grow')}<text class="cap" x="242" y="152">${esc(t('flat board size'))}</text>
       ${k(404,96,88,t('swing ↺'),'swingLeft')}${k(500,96,88,t('swing ↻'),'swingRight')}
+      ${k(628,96,52,'','footPrev')}${k(688,96,52,'','footNext')}<text class="cap" x="684" y="152">${esc(t('choose foot'))}</text>
     </svg>`;
   }
   function keyboardList() {
@@ -733,6 +783,7 @@
   // What each control does, as [name, meaning]; the side-labelled picture and the legend both read it.
   function padBindings(B, triggers) {
     return { lt:[B.lt, triggers?t('swing ↺'):t('unused')], lb:[B.lb,t('smaller board')], ls:[t('left stick'),t('camera')], dp:[t('D-pad ← →'),t('foot')],
+      view:[B.view,t('change board')],
       rt:[B.rt, triggers?t('swing ↻'):t('unused')], rb:[B.rb,t('bigger board')], top:[B.top,t('controls')], right:[B.right,t('cancel swing')],
       bottom:[B.bottom,t('pin · end turn')], rs: triggers ? [t('right stick'),t('unused')] : [t('right stick ← →'),t('swing')], menu:[B.menu,t('match menu')] };
   }
@@ -760,9 +811,10 @@
          <rect class="k" x="${c-64}" y="94" width="10" height="26" rx="5"/><rect class="k bound" x="${c+54}" y="94" width="10" height="26" rx="5"/>
          <circle class="k" cx="${c}" cy="160" r="9"/>`
       : brand === 'generic'
-      ? `${pill(c-34, 132, 48, B.view, false)}${pill(c+34, 132, 48, B.menu, true)}`
-      : `<circle class="k" cx="${c}" cy="98" r="13"/>${face(c-32, 132, B.view === '−' ? '−' : '⧉', false)}${face(c+32, 132, B.menu === '+' ? '+' : '≡', true)}`;
+      ? `${pill(c-34, 132, 48, B.view, true)}${pill(c+34, 132, 48, B.menu, true)}`
+      : `<circle class="k" cx="${c}" cy="98" r="13"/>${face(c-32, 132, B.view === '−' ? '−' : '⧉', true)}${face(c+32, 132, B.menu === '+' ? '+' : '≡', true)}`;
     const menuPoint = brand === 'playstation' ? [c+59, 94] : brand === 'generic' ? [c+34, 123] : [c+32, 119];
+    const viewPoint = brand === 'playstation' ? [c-59, 94] : brand === 'generic' ? [c-34, 123] : [c-32, 119];
     const view = compact ? '160 14 440 300' : '0 0 760 316';
     return `<svg class="desktop-diagram${compact?' compact':''}" viewBox="${view}" role="img" aria-label="${esc(tf('{brand} controls', {brand: BRAND_NAMES[brand] || t('Controller')}))}">
       ${body}
@@ -784,7 +836,8 @@
       ${lead(FC[0]+13,FC[1]+28,528,FC[1]+28)}${label(536,FC[1]+28,'bottom','start')}
       ${lead(RS[0]+24,RS[1],528,RS[1])}${label(536,RS[1],'rs','start')}
       ${lead(menuPoint[0],menuPoint[1],menuPoint[0],10)}${compact ? '' : `<text x="${menuPoint[0]+8}" y="10" style="text-anchor:start">${esc(txt(L.menu))}</text>`}
-    </svg>${compact ? `<div class="desktop-pad-legend">${['lt','rt','lb','rb','ls','rs','dp','menu','top','right','bottom'].map(k =>
+      ${lead(viewPoint[0],viewPoint[1],viewPoint[0],10)}${compact ? '' : `<text x="${viewPoint[0]-8}" y="10" style="text-anchor:end">${esc(txt(L.view))}</text>`}
+    </svg>${compact ? `<div class="desktop-pad-legend">${['lt','rt','lb','rb','ls','rs','dp','menu','view','top','right','bottom'].map(k =>
       `<span><b>${esc(L[k][0])}</b> · ${esc(L[k][1])}</span>`).join('')}</div>` : ''}`;
   }
   // Rebinding is a keyboard thing on desktop. The app has no keyboard, and a controller is
@@ -2081,8 +2134,10 @@
   function easeDrift(dt) {
     const want = theirTurn() && !settings.reducedMotion ? 1 : 0;
     // Slower in than out: it should creep in without being noticed, and be gone by the time you
-    // have reached for a foot.
-    driftAmt += (want - driftAmt) * (1 - Math.exp(-dt * (want ? 0.8 : 2.6)));
+    // have reached for a foot. "Gone by then" is about a second and a half, though -- unwinding
+    // nine degrees in the old four tenths was the sharpest thing the camera did between moves, and
+    // it landed exactly as the turn came back to you.
+    driftAmt += (want - driftAmt) * (1 - Math.exp(-dt * (want ? 0.8 : 1.6)));
     if (driftAmt > 1e-3) driftPhase += dt * DRIFT_RATE;
     else { driftAmt = 0; driftPhase = 0; }
   }
@@ -2097,6 +2152,44 @@
     pos.copy(target).add(driftOff);
   }
   const MANUAL_PULL = 0.2;   // how far a player-placed view leans towards the game's own framing
+  // SPRINGY BETWEEN MOVES. The settle was a plain exponential ease -- each frame the camera closed
+  // a fixed FRACTION of its remaining distance to the goal. That makes the position smooth and the
+  // SPEED a direct function of the gap, so the instant the goal moves at all (the turn changes
+  // hands and the opponent's-turn drift starts or stops, the player lets go of the stick, a piece
+  // goes over the rim, the layout hands the camera a new framing) the speed steps to a new value
+  // inside one frame. A step in speed is an unbounded acceleration, and that is what reads as
+  // jerk: nothing in the picture is discontinuous, but the rate at which it moves is.
+  //
+  // Same ease, one order higher. The camera now carries a VELOCITY and is pulled by a critically
+  // damped spring -- it accelerates out of rest and decelerates into the goal, and a goal that
+  // jumps bends the path instead of snapping the speed. Integrated with the closed-form
+  // approximation to the critically damped step (Game Programming Gems 4): stable at any frame
+  // time, never overshoots, and needs no sub-stepping when a frame runs long.
+  //
+  // smoothTime is roughly how long a move takes. The match's is deliberately longer than the old
+  // ease was quick -- between moves the camera should look like it is breathing, not correcting.
+  const CAM_SMOOTH_MATCH = 0.55, CAM_SMOOTH_CORNER = 0.30, CAM_SMOOTH_FALL = 0.26;
+  const CAM_AXES = ['x','y','z'];
+  const camVel = new THREE.Vector3(), targetVel = new THREE.Vector3();
+  let camSmoothT = CAM_SMOOTH_MATCH;
+  function smoothDampVec(cur, goal, vel, smoothTime, dt) {
+    if (!(dt > 0)) return;   // a zero-length frame moves nothing, and would divide by it below
+    const omega = 2/smoothTime, x = omega*dt;
+    const decay = 1/(1 + x + 0.48*x*x + 0.235*x*x*x);
+    for (const k of CAM_AXES) {
+      const want = goal[k], change = cur[k] - want;
+      const temp = (vel[k] + omega*change)*dt;
+      vel[k] = (vel[k] - omega*temp)*decay;
+      let out = want + (change + temp)*decay;
+      // The approximation can step past the goal on a very long frame; land on it and stop rather
+      // than letting the carried velocity turn that into a wobble.
+      if ((want - cur[k] > 0) === (out > want)) { out = want; vel[k] = (out - want)/dt; }
+      cur[k] = out;
+    }
+  }
+  // A hand on the camera clears the spring: the pose the player is placing is the new rest, and a
+  // velocity left over from the settle would go on pushing after they stopped.
+  function releaseCamSpring() { camVel.set(0,0,0); targetVel.set(0,0,0); }
   // COMING ROUND TO WATCH IT GO. A fall moved the camera's target and pulled it back, but never its
   // BEARING -- so a piece shoved over the far rim went down on the opposite side of the board from
   // wherever the camera happened to be standing, and the board itself was in the way of the only
@@ -2126,7 +2219,7 @@
     // view offset (index.html's applyCornerViewOffset); anywhere else this clears a stale one.
     if (typeof applyCornerViewOffset === 'function') applyCornerViewOffset(camera); else camera.clearViewOffset();
     easeDrift(dt);              // the opponent's-turn orbit fades in and out whether or not it is used
-    if(camDragging) return true;
+    if(camDragging) { releaseCamSpring(); return true; }
     // A FIFTH OF THE WAY, AND NO FURTHER. Once the player had placed the camera this went completely
     // passive -- the view never moved again, however far the game wandered off the side of it. The
     // web's camera does the opposite and keeps easing all the way home, which takes the shot off
@@ -2136,7 +2229,7 @@
     // a slower pull that still arrives eventually is just the web's behaviour with a delay.
     easeFallYaw(dt, falling);   // where the camera is walking round to, if something is going over
     const manual = inMatch() && camManualSet && !falling;
-    if (manual && settings.reducedMotion) return true;   // asked for no drift: then none
+    if (manual && settings.reducedMotion) { releaseCamSpring(); return true; }   // asked for no drift: then none
     desiredPose(falling, cameraGoal, targetGoal);
     if (manual) {
       cameraGoal.lerp(camManualPos, 1 - MANUAL_PULL);
@@ -2155,9 +2248,17 @@
     // A falling piece is chased, not settled towards: on a look whose floor is a long way down
     // (marble's table stands in a hall) the calm rate leaves the camera a third of a second behind
     // and the landing happens below the bottom edge.
-    const rate = corner ? 6.5 : falling ? 5.8 : 3.2;
-    const blend=settings.reducedMotion?1:1-Math.exp(-dt*rate);
-    camera.position.lerp(cameraGoal,blend); controls.target.lerp(targetGoal,blend);
+    const wantT = corner ? CAM_SMOOTH_CORNER : falling ? CAM_SMOOTH_FALL : CAM_SMOOTH_MATCH;
+    // ...and the settle time itself eases into place. Swapping it outright is its own jerk -- the
+    // spring would be asked to cover the same remaining gap in half the time, which is a step in
+    // acceleration at the moment a fall starts or the flat board is dragged out.
+    camSmoothT += (wantT - camSmoothT) * (1 - Math.exp(-dt*3.5));
+    if (settings.reducedMotion) {
+      camera.position.copy(cameraGoal); controls.target.copy(targetGoal); releaseCamSpring();
+    } else {
+      smoothDampVec(camera.position, cameraGoal, camVel, camSmoothT, dt);
+      smoothDampVec(controls.target, targetGoal, targetVel, camSmoothT, dt);
+    }
     return true;
   }
 
@@ -2227,6 +2328,7 @@
     // and the pull undid it, over and over, and the camera sat there not moving at all.
     camManualPos.copy(camera.position); camManualTgt.copy(controls.target);
     camManualSet=true;
+    releaseCamSpring();   // the player has the reins; whatever the settle was doing is over
   }
   // Both input styles need the same preamble: the first movement of a turn adopts a foot as the
   // handle and takes its current bearing as the starting angle.
@@ -2304,7 +2406,7 @@
     // what the readout warns about, but a pad that mostly works beats a pad that does nothing.
     padList=Array.from(navigator.getGamepads?.() || []).filter(p=>p?.connected);
     currentPad=padList[0] || null;
-    if(pick){pollPick();padPrev=padList.map(p=>{ const a=p.buttons.map(b=>b.pressed); a.dir=padDir(p); return a; });tickEffects(dt);return;}
+    if(pick){pollPick();padPrev=padList.map(p=>padSnapshot(p));tickEffects(dt);return;}
     if(padBrandShown && $('desktopPadDiagram') && padBrand()!==padBrandShown) drawPad();   // the sheet follows the pad that is plugged in
     if($('desktopPadSeen')) drawPadSeen();
     if($('desktopQualityNote')) drawQualityNote();
@@ -2336,8 +2438,12 @@
         if(pressed(9))openPause();
         // The D-pad picks the foot in EVERY scheme — one thing that never moves, so the sticks and
         // triggers are free to mean different things per scheme without the choice of foot moving too.
-        const dir=padDir(act), wasX=(prev.dir||{}).x||0;
+        const dir=padDir(act,false), wasX=(prev.padDir||{}).x||0;
         if(dir.x && dir.x!==wasX) chooseFoot(chosenFoot+dir.x);
+        // The View/Select button walks the boards you have earned. It is the one face-side button
+        // that did nothing, and swapping the look you are playing on is exactly the sort of thing
+        // you want without leaving the board to go through Settings.
+        if(pressed(8))cycleBoard(1);
         if(pressed(0))pinOrCommit();
         if(pressed(1))cancelSwing();
         if(pressed(3))openControls();
@@ -2370,13 +2476,13 @@
     }
     // Every pad's buttons are remembered, not just the acting one: otherwise the pad that is waiting
     // for its turn would fire everything it was holding the moment the turn passed to it.
-    padPrev=padList.map(p=>{ const a=p.buttons.map(b=>b.pressed); a.dir=padDir(p); return a; });
+    padPrev=padList.map(p=>padSnapshot(p));
     if(heldLeft||heldRight)swing((heldRight?1:0)-(heldLeft?1:0),dt);
     tickEffects(dt);
   }
   document.addEventListener('keydown',e=>{
     if($('htpFull'))return;
-    boardCheat(e);
+    const spellingCheat = boardCheat(e);
     // F1 is the one key people already try when they want to know what the buttons do, so it works
     // from anywhere -- in a match, in the menus, and on top of another dialog.
     if(e.key==='F1'){e.preventDefault();e.stopImmediatePropagation();openControls();return;}
@@ -2389,9 +2495,19 @@
       const i=els.indexOf(document.activeElement);
       if((e.shiftKey&&i<=0)||(!e.shiftKey&&(i===els.length-1||i<0))){e.preventDefault();els[e.shiftKey?els.length-1:0].focus();}return;
     }
+    // Changing the board is not a move, so it answers on the menu as well as in a match -- the same
+    // reach as the controller's View button, and shifted it walks back the other way. A focused
+    // BUTTON does not turn it away the way it turns away the move keys below: on a menu something
+    // is always focused, and the menu is exactly where a player reaches for this.
+    if(e.key===settings.keys.board&&!e.repeat&&!spellingCheat&&!e.ctrlKey&&!e.metaKey&&!e.altKey
+       &&!dialogOpen()&&!$('htpFull')&&!paused
+       &&!e.target.closest?.('input,select,textarea,[contenteditable]:not([contenteditable="false"])')){
+      e.preventDefault(); cycleBoard(e.shiftKey?-1:1); return;
+    }
     if(/INPUT|SELECT|TEXTAREA|BUTTON/.test(e.target.tagName)||!canPlay())return;
     const K=settings.keys, pinIdx=[K.pin1,K.pin2,K.pin3].indexOf(e.key);
     if(pinIdx>=0){e.preventDefault();chooseFoot(pinIdx);if(G.pinned===null)pinOrCommit();}
+    if(e.key===K.footPrev||e.key===K.footNext){e.preventDefault();if(!e.repeat)chooseFoot(chosenFoot+(e.key===K.footNext?1:-1));}
     if(e.key===K.swingLeft||e.key===K.swingRight){
       e.preventDefault(); heldLeft=e.key===K.swingLeft; heldRight=e.key===K.swingRight;
       // A quick tap is a useful precision step; holding continues smoothly on animation frames.
