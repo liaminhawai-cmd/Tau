@@ -596,9 +596,16 @@ const THEMES = {
       strokeLines(a, 'rgba(40,32,22,0.5)', LW*2.4);
       strokeLines(a, '#4a4038', LW*1.7);
       strokeLines(a, 'rgba(150,138,120,0.35)', LW*0.5);          // worn top sheen
+      // The dot and the darker disc under it are CONCENTRIC. The other looks nudge that disc a
+      // little to one side, where it reads as a shadow thrown by a small stud sitting proud of the
+      // surface. This board's dots are more than twice that size and its stone is only a shade off
+      // the sand around it, so the same nudge stopped reading as a shadow and started reading as a
+      // ring the dot had slipped inside -- six of them, each apparently off its own mark. Centred,
+      // it is what the board actually is: basalt sunk into sand, with the sand darker where it
+      // meets the stone.
       const dotR = Math.max(5, px(CFG.edgeU * CFG.padRadiusFrac * 2.2));
       for (const [dx,dy] of DOTS) {
-        a.fillStyle = 'rgba(40,32,22,0.5)'; a.beginPath(); a.arc(ox+px(dx), oy+px(dy)+dotR*0.3, dotR*1.3, 0, 7); a.fill();
+        a.fillStyle = 'rgba(40,32,22,0.5)'; a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR*1.3, 0, 7); a.fill();
         a.fillStyle = '#4a4038'; a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR, 0, 7); a.fill();
       }
       const [ro, r] = canvas2d();
@@ -730,41 +737,71 @@ const THEMES = {
       let crowdTotal = 0;
       for (let i = 0; i < STEPS; i++) {
         const r = R0 + i*TREAD + TREAD*0.55, count = Math.round(2*Math.PI*r / SPACING);
-        rows.push([r, GROUND + (i+1)*RISE, count]); crowdTotal += count;
+        rows.push([r, GROUND + (i+1)*RISE, count, i/STEPS]); crowdTotal += count;
       }
-      const crowd = new THREE.InstancedMesh(figure,
-        new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.34, metalness: 0.1,
-                                         clearcoat: 0.65, clearcoatRoughness: 0.22, envMapIntensity: 0.9 }), crowdTotal);
+      // Who sits where: supporters clump. A smooth field over the bowl -- three harmonics around the
+      // arena, each drifting as it climbs the tiers -- says which way a seat leans, and a coin flip
+      // wide enough to cross that field puts about a fifth of the crowd in among the other lot. So
+      // reds sit in patches and blues in patches, still half the bowl each, with ragged edges rather
+      // than an arena split down the middle. A flat coin flip per seat, which is what this was,
+      // gives no patches at all: at any distance seventeen thousand alternating figures average out
+      // to one uniform mauve speckle, and the arena reads as having no sides.
+      const lean = (th, u) => Math.sin(6*th + 2.6*u + 0.7)
+                            + 0.70*Math.sin(10*th - 4.1*u + 2.4)
+                            + 0.55*Math.sin(15*th + 7.3*u + 5.1);
+      const MIX = 1.05;   // how far a seat may fall from its patch; 0 packs them into blocks, 2.25 is the old coin flip
       const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Pv = new THREE.Vector3(), Sv = new THREE.Vector3();
       const UP = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
       let cr = 4242; const crn = () => (cr = (cr*16807)%2147483647)/2147483647;
       const blue = new THREE.Color(0x6b9eff), red = new THREE.Color(0xff6b6b);
-      let n = 0;
-      for (const [r, y, count] of rows) {
+      // Placed first, built second: the two halves are separate meshes so the winning colour can
+      // jump on its own, and neither count is known until every seat has picked a side.
+      const seats = [], counts = [0, 0];
+      for (const [r, y, count, u] of rows) {
         for (let j = 0; j < count; j++) {
           const th = (j/count)*Math.PI*2 + (crn()-0.5)*(Math.PI*2/count)*0.5;
-          const rr = r + (crn()-0.5)*1.4, sc = 1.7 + crn()*0.5;
-          Pv.set(Math.cos(th)*rr, y, Math.sin(th)*rr);
-          Q.setFromAxisAngle(UP, crn()*6.28);
-          Sv.set(sc, sc, sc);
-          M.compose(Pv, Q, Sv); crowd.setMatrixAt(n, M);
-          crowd.setColorAt(n, col.copy(crn() < 0.5 ? blue : red).multiplyScalar(0.9 + crn()*0.15));
-          n++;
+          const rr = r + (crn()-0.5)*1.4, sc = 1.7 + crn()*0.5, yaw = crn()*6.28;
+          const side = (lean(th, u) + (crn()-0.5)*2*MIX) > 0 ? 0 : 1;
+          seats.push([Math.cos(th)*rr, y, Math.sin(th)*rr, yaw, sc, side, 0.9 + crn()*0.15]);
+          counts[side]++;
         }
       }
-      crowd.instanceMatrix.needsUpdate = true;
-      if (crowd.instanceColor) crowd.instanceColor.needsUpdate = true;
-      g.add(crowd);
-      let exciteT = 99;
-      g.userData.excite = () => { exciteT = 0; };   // a titan went over: the whole bowl jumps
-      g.userData.lift = () => crowd.position.y;     // how far up the jump is, for the desktop's rest detector
+      const crowdMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.34, metalness: 0.1,
+                                                        clearcoat: 0.65, clearcoatRoughness: 0.22, envMapIntensity: 0.9 });
+      const crowds = [new THREE.InstancedMesh(figure, crowdMat, counts[0]),
+                      new THREE.InstancedMesh(figure, crowdMat, counts[1])];
+      const at = [0, 0];
+      for (const [x, y, z, yaw, sc, side, shade] of seats) {
+        Pv.set(x, y, z); Q.setFromAxisAngle(UP, yaw); Sv.set(sc, sc, sc);
+        M.compose(Pv, Q, Sv);
+        crowds[side].setMatrixAt(at[side], M);
+        crowds[side].setColorAt(at[side], col.copy(side === 0 ? blue : red).multiplyScalar(shade));
+        at[side]++;
+      }
+      for (const c of crowds) {
+        c.instanceMatrix.needsUpdate = true;
+        if (c.instanceColor) c.instanceColor.needsUpdate = true;
+        g.add(c);
+      }
+      const exciteT = [99, 99];
+      // A titan went over, and the half of the bowl that came to see it win is the half that jumps.
+      // `side` is the WINNING colour (0 blue, 1 red); called with nothing -- the showcase page, where
+      // nobody is playing -- the whole arena goes up, which is what it used to do for everyone.
+      g.userData.excite = side => {
+        if (side === 0 || side === 1) exciteT[side] = 0;
+        else exciteT[0] = exciteT[1] = 0;
+      };
+      // How far up the jump is, for the desktop's rest detector: whichever half is highest.
+      g.userData.lift = () => Math.max(crowds[0].position.y, crowds[1].position.y);
       g.userData.tick = (t, dt) => {
         dustFar.rotation.y = t*0.003; dustFar.position.y = Math.sin(t*0.08)*2;
         dustNear.rotation.y = -t*0.006; dustNear.position.y = Math.sin(t*0.13 + 1)*3;
-        if (exciteT < 3.2) {
-          exciteT += dt || 0.016;
-          crowd.position.y = 2.4 * Math.abs(Math.sin(exciteT*8)) * Math.max(0, 1 - exciteT/3.2);
-        } else crowd.position.y = 0;
+        for (let s = 0; s < 2; s++) {
+          if (exciteT[s] < 3.2) {
+            exciteT[s] += dt || 0.016;
+            crowds[s].position.y = 2.4 * Math.abs(Math.sin(exciteT[s]*8)) * Math.max(0, 1 - exciteT[s]/3.2);
+          } else crowds[s].position.y = 0;
+        }
       };
       return g;
     },

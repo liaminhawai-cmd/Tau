@@ -3,7 +3,7 @@
 // network-first (so an online player always gets the newest build), with the cached copy as the
 // offline fallback; static assets are cache-first. Cross-origin requests (Supabase auth/realtime)
 // are never touched — they always go straight to the network.
-const CACHE = 'tau-v115';  // bump on asset changes so clients drop the old cache (v115: the Steam ladder climbs and Settings can reset progress, on top of v114's controls and camera work -- all of it in desktop/presentation.js, which the Android build serves through this worker)
+const CACHE = 'tau-v116';  // bump on asset changes so clients drop the old cache (v116: board preview icons on the opponent picker and the Colossus arena's crowd and dots -- desktop/presentation.js, its stylesheet and desktop/boards.js, all served through this worker on Android)
 const ASSETS = [
   './', './index.html', './tau-logo.png',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon-32.png',
