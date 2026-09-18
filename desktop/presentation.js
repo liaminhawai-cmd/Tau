@@ -892,18 +892,45 @@
       $('desktopFullscreen').onchange = e => window.tauSteam.setFullscreen(e.target.checked);
     }
   }
-  function showResult({ title, bodyHtml }) {
+  // Whatever the sheet's buttons start, the desktop has to notice: it tracks whose match is on
+  // screen, its clock belongs to the last one, its level selector has to follow a "Next level" that
+  // came from the game's own sheet rather than from the dropdown, and the board wants the keyboard
+  // back. A button that took us to a menu instead is left alone -- there is no match to own.
+  function ownWhateverThatStarted(fn) {
+    return () => {
+      fn();
+      if (!$('game') || $('game').style.display !== 'flex') return;
+      ownMatch = true; onlineTurnDeadline = null;
+      if (typeof ladderLevel === 'number' && ladderLevel != null) {
+        settings.level = ladderLevel + 1; saveSettings();
+        if ($('desktopLevel')) $('desktopLevel').value = String(settings.level);
+      }
+      focusBoard();
+    };
+  }
+  function showResult({ title, bodyHtml, buttons: gameButtons }) {
     if (!ownMatch || onlineMatch || labActive || rankedMode) return false;
     const local = !vsAI, level = ladderLevel, colour = humanIdx;
+    // THE GAME DECIDES WHERE EACH MODE GOES NEXT, here as everywhere else. This used to build its
+    // own short list -- rematch, next level, replay, menu -- which meant Steam quietly lost every
+    // route the mode actually had: playing the same opponent as the other colour, the ranked step,
+    // the levels screen, sharing or saving the replay. An online game keeps all of that, because it
+    // returns before it ever reaches this sheet. So the buttons come in with the title now, and
+    // what is left here is what this layer is actually for: how they look.
     const rematch = () => {
       if (local) startGame(false); else startLadderLevel(level, colour);
       ownMatch = true; onlineTurnDeadline = null; focusBoard();
     };
-    const buttons = [{label:t('Rematch'),onClick:rematch}];
-    if (!local && G.winner===humanIdx && level+1<LADDER_N)
-      buttons.push({label:t('Next level'),onClick:() => { settings.level=level+2; saveSettings(); $('desktopLevel').value=String(settings.level); startMatch(); }});
-    if(replayFrames.length>15) buttons.push({label:t('Watch replay'),onClick:startReplay});
-    buttons.push({label:t('Main menu'),onClick:backToMenu});
+    const buttons = (gameButtons && gameButtons.length)
+      ? gameButtons.map(b => Object.assign({}, b, { onClick: ownWhateverThatStarted(b.onClick) }))
+      : (() => {
+          const fallback = [{label:t('Rematch'),onClick:rematch}];
+          if (!local && G.winner===humanIdx && level+1<LADDER_N)
+            fallback.push({label:t('Next level'),onClick:() => { settings.level=level+2; saveSettings(); $('desktopLevel').value=String(settings.level); startMatch(); }});
+          if(replayFrames.length>15) fallback.push({label:t('Watch replay'),onClick:startReplay});
+          fallback.push({label:t('Main menu'),onClick:backToMenu});
+          return fallback;
+        })();
     const detail = local ? t('Two players · same screen')
       : tf('Level {n} · You played {colour}', {n: level+1, colour: colour===0?t('Blue'):t('Red')});
     showModal(title, `<span class="desktop-result-mark" aria-hidden="true"></span><p class="desktop-result-detail">${detail}</p>${bodyHtml||''}${takeUnlockHtml()}`, buttons, true, {dismiss:false});
@@ -1784,7 +1811,7 @@
       const fitWide = CFG.edgeU / (0.92 * Math.tan(camera.fov * Math.PI / 360) * ratio);
       distance = menu ? Math.max(222, fitWide) : Math.max(205, 148/ratio);
     }
-    const yaw=menu && !settings.reducedMotion ? .18+Math.sin(performance.now()*.000055)*.045 : 0;
+    let yaw=menu && !settings.reducedMotion ? .18+Math.sin(performance.now()*.000055)*.045 : 0;
     if(falling && !settings.reducedMotion && G.winner!=null){
       // WATCH THE PIECE, not the board it left. The target used to barely move off centre and stay
       // at board height while the loser dropped thirty-odd units below it and rolled out past the
@@ -1793,6 +1820,11 @@
       const p=tripods[fall.idx].position;
       tx=Math.max(-110,Math.min(110,p.x)); tz=Math.max(-110,Math.min(110,p.z));
       ty=p.y+6; distance+=34;
+      if (fallYaw !== null) yaw = fallYaw;   // stand on the piece's side of the board, not the far one
+      // ...and get down to it. Forty-four degrees is looking at a TABLETOP; once the piece is below
+      // the rim the interesting thing is under that, and a lower eye sees it against the room
+      // instead of against the board it just left.
+      if (p.y < -2) elevOverride = Math.max(0.30, 0.765 - Math.min(0.42, (-p.y)/110*0.42));
       // A piece that gravity has let go of goes up rather than down, and it keeps going. Stand back
       // as it climbs and drop towards level, so the board stays in shot under it instead of the
       // camera riding away with it into empty sky.
@@ -1811,14 +1843,51 @@
     if (gc && gc.fov) distance *= Math.tan(19*Math.PI/180) / Math.tan(gc.fov*Math.PI/360);
     outPos.set(tx+Math.sin(yaw)*distance*Math.cos(elev),ty+distance*Math.sin(elev),tz+Math.cos(yaw)*distance*Math.cos(elev));
   }
+  const MANUAL_PULL = 0.2;   // how far a player-placed view leans towards the game's own framing
+  // COMING ROUND TO WATCH IT GO. A fall moved the camera's target and pulled it back, but never its
+  // BEARING -- so a piece shoved over the far rim went down on the opposite side of the board from
+  // wherever the camera happened to be standing, and the board itself was in the way of the only
+  // thing worth looking at. The camera now walks round to the piece's own side while it falls, so
+  // the piece is between the camera and the board and nothing can come between them.
+  // It is the ANGLE that eases, not the position: lerping a viewpoint from one side of a table to
+  // the other takes it straight through the middle of the table. Held here rather than worked out
+  // fresh each frame, because where it is coming FROM is half of an arc.
+  let fallYaw = null;
+  const FALL_YAW_RATE = 1.7;              // radians-ish per second of swing; a walk, not a whip
+  function easeFallYaw(dt, falling) {
+    if (!falling || typeof fall === 'undefined' || !fall || typeof tripods === 'undefined'
+        || !tripods[fall.idx]) { fallYaw = null; return null; }
+    const p = tripods[fall.idx].position;
+    const want = Math.atan2(p.x, p.z);    // the piece's bearing from the middle of the board
+    if (fallYaw === null) fallYaw = Math.atan2(camera.position.x - controls.target.x,
+                                               camera.position.z - controls.target.z);
+    let d = want - fallYaw;
+    while (d >  Math.PI) d -= Math.PI*2;  // go the short way round, whichever way that is
+    while (d < -Math.PI) d += Math.PI*2;
+    fallYaw += d * (1 - Math.exp(-dt*FALL_YAW_RATE));
+    return fallYaw;
+  }
   function updateCamera(dt, falling=false) {
     if(!renderer || htp3DActive) return false;
     // The corner layout renders the whole window and aims the camera at its solved tile with a
     // view offset (index.html's applyCornerViewOffset); anywhere else this clears a stale one.
     if (typeof applyCornerViewOffset === 'function') applyCornerViewOffset(camera); else camera.clearViewOffset();
     if(camDragging) return true;
-    if(inMatch() && camManualSet && !falling) return true;
+    // A FIFTH OF THE WAY, AND NO FURTHER. Once the player had placed the camera this went completely
+    // passive -- the view never moved again, however far the game wandered off the side of it. The
+    // web's camera does the opposite and keeps easing all the way home, which takes the shot off
+    // you. Neither is right. The settled pose is now a fifth of the way from where the player put
+    // the camera towards where the game wants it: enough that the board leans after the action, not
+    // enough to take the view away. Note it is a fifth of the DISTANCE, not a fifth of the speed --
+    // a slower pull that still arrives eventually is just the web's behaviour with a delay.
+    easeFallYaw(dt, falling);   // where the camera is walking round to, if something is going over
+    const manual = inMatch() && camManualSet && !falling;
+    if (manual && settings.reducedMotion) return true;   // asked for no drift: then none
     desiredPose(falling, cameraGoal, targetGoal);
+    if (manual) {
+      cameraGoal.lerp(camManualPos, 1 - MANUAL_PULL);
+      targetGoal.lerp(camManualTgt, 1 - MANUAL_PULL);
+    }
     // In the corner layout the pose tracks the tile, and the tile moves under the player's drag:
     // ease briskly there so the dish is not still zooming into place a second after they let go.
     // The menu and the ordinary match keep the slower, calmer settle.

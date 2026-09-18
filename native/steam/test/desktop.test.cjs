@@ -81,14 +81,16 @@ test('the opponent keeps playing under the match menu, and the board stays visib
 test('result offers same-mode rematch and returns to the desktop menu',async t=>{
   const g=await game();t.after(g.close);
   localMatch(g);
-  // End-state fixture: result bookkeeping and rematch are the production handlers.
+  // End-state fixture: result bookkeeping and rematch are the production handlers. The way back is
+  // matched loosely because the desktop sheet no longer names its own buttons -- it shows the ones
+  // the game computed, so this reads "Menu" now where it used to read the desktop's "Main menu".
   g.read('G.over=true; G.winner=0; renderGameOverSheet()');g.tick();
   assert.equal(g.$('modalBtns').firstElementChild.textContent,'Rematch');
   g.$('modalBtns').firstElementChild.click();g.tick();
   assert.equal(g.read('G.over'),false);assert.equal(g.read('vsAI'),false);
   assert.equal(g.read('G.active'),0);assert.equal(g.read('turnClockMode()'),false);
   g.read('G.over=true; G.winner=1; renderGameOverSheet()');g.tick();
-  [...g.$('modalBtns').children].find(b=>b.textContent==='Main menu').click();g.tick();
+  [...g.$('modalBtns').children].find(b=>/^(Menu|Main menu)$/.test(b.textContent)).click();g.tick();
   assert.equal(g.$('menu').style.display,'flex');
   assert.equal(g.w.document.activeElement,g.$('desktopPlay'));
   assert.deepEqual(g.errors,[]);
@@ -867,7 +869,7 @@ test('the home menu never scrolls: the corner layout\'s offsets stay in the matc
   // The stub renderer has no scene to draw, so frames run without it and it is back for the
   // menu's own layout pass, which is what clears the offsets.
   g.read('window.__stub=renderer; renderer=null');g.tick();g.read('renderer=window.__stub');
-  [...g.$('modalBtns').children].find(b=>b.textContent==='Main menu').click();
+  [...g.$('modalBtns').children].find(b=>/^(Menu|Main menu)$/.test(b.textContent)).click();
   assert.equal(g.$('menu').style.display,'flex');
   for (const side of ['left','top','right','bottom'])
     assert.equal(g.read(`document.getElementById('view3d').style.${side}`),'',`back on the home screen the 3D view carries no ${side} offset`);
@@ -2421,6 +2423,99 @@ test('every board sits at its own height above its floor',async t=>{
   assert.equal(g.read('fallFloor.position.y'),dark,'and it is moved to this board\'s depth');
   depth('colossus');
   assert.equal(g.read('fallFloor.visible'),false,'a look that brings its own ground hides it');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the camera comes round to the piece going over, never watching from behind the board',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},render(){},
+      setRenderTarget(){},getRenderTarget(){return null;}};
+    scene=new THREE.Scene();
+    camera=new THREE.PerspectiveCamera(38,1.6,1,2000);
+    controls={mouseButtons:{},target:new THREE.Vector3(),update(){},addEventListener(){}};
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    G.winner=0; G.over=true; camManualSet=false;`);
+  // Put the camera on one side and drop the loser over the OPPOSITE rim -- the case where the board
+  // used to sit squarely between the two.
+  const side=JSON.parse(g.read(`(()=>{
+    camera.position.set(0,150,200); controls.target.set(0,4,0);
+    fall={active:true, idx:1, phase:'air'};
+    tripods[1].position.set(0,-30,-95);           // gone over the far rim
+    for(let i=0;i<600;i++) tauDesktop.updateCamera(1/60,true);
+    const p=tripods[1].position;
+    return JSON.stringify({camX:camera.position.x,camZ:camera.position.z,px:p.x,pz:p.z,
+      camY:camera.position.y}); })()`));
+  // The camera should now stand BEYOND the piece, looking back past it at the board: same side of
+  // the middle as the piece, and further out than it.
+  assert.ok(side.camZ < 0, `it walked round to the piece's side (camera z ${side.camZ.toFixed(0)}, piece z ${side.pz})`);
+  assert.ok(Math.abs(side.camZ) > Math.abs(side.pz),
+    'and stands further out than the piece, so the board is behind it, not in front');
+  // And it got down off the tabletop to do it.
+  const high=JSON.parse(g.read(`(()=>{
+    fall={active:true, idx:1, phase:'air'}; tripods[1].position.set(0,0,-95);
+    camera.position.set(0,150,200); controls.target.set(0,4,0);
+    for(let i=0;i<600;i++) tauDesktop.updateCamera(1/60,true);
+    return JSON.stringify({y:camera.position.y}); })()`));
+  assert.ok(side.camY < high.y,
+    `a piece below the rim is watched from lower down (${side.camY.toFixed(0)} vs ${high.y.toFixed(0)})`);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a view the player placed leans a fifth of the way towards the game, and no further',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},render(){},
+      setRenderTarget(){},getRenderTarget(){return null;}};
+    scene=new THREE.Scene();
+    camera=new THREE.PerspectiveCamera(38,1.6,1,2000);
+    controls={mouseButtons:{},target:new THREE.Vector3(),update(){},addEventListener(){}};`);
+  // Where the game would put the camera if nobody had touched it.
+  const auto=JSON.parse(g.read(`(()=>{ camManualSet=false;
+    for(let i=0;i<400;i++) tauDesktop.updateCamera(1/60);
+    return JSON.stringify({x:camera.position.x,y:camera.position.y,z:camera.position.z}); })()`));
+  // Now the player places it somewhere else entirely and lets it settle.
+  const placed={x:auto.x+260,y:auto.y+120,z:auto.z-180};
+  const rest=JSON.parse(g.read(`(()=>{
+    camManualPos.set(${placed.x},${placed.y},${placed.z}); camManualTgt.set(0,4,0);
+    camera.position.copy(camManualPos); controls.target.copy(camManualTgt);
+    camManualSet=true; camDragging=false;
+    for(let i=0;i<2000;i++) tauDesktop.updateCamera(1/60);
+    return JSON.stringify({x:camera.position.x,y:camera.position.y,z:camera.position.z}); })()`));
+  // It moved off where it was put -- it is not passive...
+  const moved=Math.hypot(rest.x-placed.x,rest.y-placed.y,rest.z-placed.z);
+  assert.ok(moved>1,`it leans towards the game (moved ${moved.toFixed(1)})`);
+  // ...but it settles a fifth of the way, and stays there however long it runs. A pull that was
+  // merely SLOW would have arrived by now: two thousand frames is over half a minute.
+  const span=Math.hypot(placed.x-auto.x,placed.y-auto.y,placed.z-auto.z);
+  assert.ok(Math.abs(moved/span-0.2)<0.03,
+    `a fifth of the distance, not all of it (${(moved/span*100).toFixed(0)}% of ${span.toFixed(0)})`);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a win or loss on Steam routes exactly where the web one does',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  // Finish a ladder game as a win, and read the sheet the desktop put up.
+  g.read(`ladderLevel=2; humanIdx=0; vsAI=true; rankedMode=false; labActive=false;
+    G.over=true; G.winner=0; replayFrames=new Array(40).fill(0);
+    document.getElementById('game').style.display='flex';
+    renderGameOverSheet();`);
+  const labels=()=>JSON.parse(g.read(
+    "JSON.stringify([...document.querySelectorAll('#modalBtns button')].map(b=>b.textContent.trim()))"));
+  const onSteam=labels();
+  assert.equal(g.read("document.getElementById('modalBox').dataset.desktopResult"),'true',
+    'the desktop dresses the sheet');
+  // The same game over with the desktop layer out of the way is what the web shows.
+  g.read("window.__desk=window.tauDesktop; window.tauDesktop=null; renderGameOverSheet();");
+  const onWeb=labels();
+  g.read("window.tauDesktop=window.__desk;");
+  assert.deepEqual(onSteam,onWeb,`Steam offers what the web offers (steam ${onSteam.join('/')} vs web ${onWeb.join('/')})`);
+  // Which for a cleared level means the mode's real routing, not a hand-rolled short list.
+  assert.ok(onSteam.some(l=>/Red/.test(l)),'including playing the level again as the other colour');
+  assert.ok(onSteam.some(l=>/Level/i.test(l)),'and the levels screen');
+  assert.ok(onSteam.some(l=>/Share/i.test(l)) && onSteam.some(l=>/Save/i.test(l)),
+    'and sharing or saving the replay, which the desktop sheet used to drop');
   assert.deepEqual(g.errors,[]);
 });
 
