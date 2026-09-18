@@ -825,3 +825,51 @@ What is left of the barrier route is therefore one hypothesis and one piece of
 bookkeeping: that the tube is invariant in the two TANGENTIAL directions, and an
 interval version of the moment arm's range over the box, for which Lemma 1's
 contact-point localisation is the tool.
+
+## 15. The sideways half, measured
+
+What section 14 leaves is invariance in the two directions ACROSS the push.
+`nn/throw-audit/tangential.js` splits each pose's deviation from the centre at
+`G = (hf n_x, hf n_y, hf rn)`, the gradient of the pair's distance -- the
+component along `G` is the slab's thickness, already bounded, and what is left is
+the tangential spread.
+
+The thin direction collapsing is visible directly: at +-0.1u the along-`G`
+deviation runs 0.152u at first contact, 0.095u one substep later, 0.038u the
+next, and 0.00017u by the third, where it stays. That is section 14's shell reset
+seen from the other side.
+
+Across `G`, over the whole contact window, first contact to the centre's throw:
+
+| box | tangential spread, start -> end | overall | worst substep |
+|---|---|---|---|
+| +-0.0125u | 0.02171 -> 0.02427u | x1.1179 | x1.0128 at 83 |
+| +-0.025u | 0.04342 -> 0.04467u | x1.0287 | x1.0025 at 83 |
+| +-0.05u | 0.08684 -> 0.08933u | x1.0287 | x1.0025 at 83 |
+| +-0.1u | 0.17366 -> 0.17883u | x1.0298 | x1.0025 at 83 |
+
+Three things to read, and one not to. **The spread is exactly proportional to the
+box** at the three larger sizes -- 0.04342 is twice 0.02171, 0.08684 twice that,
+0.17366 twice that again -- and the factor is the same to three decimals. A map
+whose output scales with its input is linear in the box size, which is the
+signature of NO threshold: the enclosure's growth was nonlinear and that is what
+gave it one. **The growth is a transient, not a rate.** Through the interior
+stretch the spread is flat or slightly contracting (x0.9996 a substep); all of it
+arrives in the last dozen substeps, the park. So the worst substep is not a figure
+to compound -- x1.0128 over 71 substeps would be x2.47 and means nothing.
+**A tube 1.2x the starting box's tangential extent covers every case here.**
+
+What not to read: the split is relative to a direction that itself turns as the
+contact walks along the leg, so some of the late growth is `G` rotating and
+relabelling a deviation rather than the set spreading. That makes these numbers an
+upper bound on the spreading, which is the useful direction, but it means the
+park's factor should not be attributed to the dynamics without separating the two.
+
+The +-0.0125u row does not fit the proportionality: its end spread is about
+0.002u wider than the line, and it reproduces exactly at 60, 200 and 500 sampled
+poses, so it is deterministic rather than a sampling artefact. It is unexplained.
+
+None of this is a proof -- it is 200 poses again. What it says is what a proof of
+(a) has to deliver: not a contraction, which is false, but a per-substep tangential
+factor bounded by about 1.003, holding over a set that is thin along `G`, with the
+park's last dozen substeps carrying all of the growth.
