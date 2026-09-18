@@ -768,3 +768,60 @@ bound on its thickness that is not the blanket pad. The thinness is not an
 assumption about the poses; it is what the contact shell does to them, and
 section 9's shell argument already pins the distance from both sides. H3 is
 otherwise done.
+
+## 14. Why the slab stays thin, and by how much
+
+Section 13 leaves a certificate owing two things: invariance of a slab, and a
+bound on its thickness that is not the blanket pad. The second one has an answer,
+and it does not need an enclosure. `nn/throw-audit/thickness.js` checks it.
+
+Write `g_k(q)` for the distance from the attacker's leg at substep `k` to the
+victim's. After substep `k-1`'s push the solver leaves EVERY pose on the shell,
+`g_{k-1} = D` to its own tolerance, so the set's thickness in `g` is reset to the
+shell's width every substep. **It does not accumulate.** That is the structural
+reason there is no threshold on this side, and it is the same fact section 9's
+shell argument already establishes, used for a different purpose. The attacker
+then turns by one substep and the distance falls by that substep's advance:
+
+    pen_k(q) = D - g_k(q) = LIM_SUB * [ z x (p_A - P) ] . n  + (within-substep variation)
+
+with `p_A` the attacker's contact point, `P` its pivot foot and `n` the unit
+contact normal. Everything on the right is contact geometry, so the SPREAD of the
+penetration across the set is one substep's worth of a quantity that varies only
+as much as the contact point does. A 0.13u-wide set presents a 1e-3u-thin
+profile because 0.00582 rad multiplies a moment arm differing by a tenth of a
+unit between its poses.
+
+**The rate is not constant within the substep**, and taking it only at the
+substep's end understates the spread by up to 1.7x at a vertex crossing -- the
+same trap the outside review named for the stopping program, two events of one
+foot inside one substep. Hulling the rate over the substep's own sweep is what
+the integral sees, and with that the prediction bounds the measurement at every
+substep of every box tried:
+
+| box | substeps checked | worst measured/predicted | thickest, after the entry substep |
+|---|---|---|---|
+| +-0.0125u | 72 | 0.984 | 5.982e-3u at substep 74 |
+| +-0.025u | 72 | 0.995 | 6.128e-3u at substep 74 |
+| +-0.05u | 72 | 0.995 | 6.346e-3u at substep 74 |
+| +-0.1u | 71 | 0.996 | 7.139e-3u at substep 75 |
+
+Two things to read off. The thickness is **almost independent of the box**,
+because its peak is the vertex crossing at substep 74, not the box's width; away
+from the crossing it is about 1e-3u. And the entry substep is again the odd one
+out -- there the poses are not all on the shell yet, so its residual is the box's
+own width rather than the solver's tolerance, which is section 12's grazing
+substep arriving for the third time and for the same reason.
+
+**Put the derived thickness back into H3 and it still closes.** With 6.13e-3u --
+the worst the argument predicts anywhere after the entry substep, not the
+measured 0.0033u -- from a starting box of +-0.0125u into a tube of +-0.025u, the
+certified gain sums to 3.4195u against 3.2026u needed. It survives 8e-3u as well
+(3.2625u). So the thickness is not what limits the box: at +-0.1u the predicted
+thickness is still only 7.1e-3u, and what fails there is the normal cone opening,
+which is a different obligation.
+
+What is left of the barrier route is therefore one hypothesis and one piece of
+bookkeeping: that the tube is invariant in the two TANGENTIAL directions, and an
+interval version of the moment arm's range over the box, for which Lemma 1's
+contact-point localisation is the tool.
