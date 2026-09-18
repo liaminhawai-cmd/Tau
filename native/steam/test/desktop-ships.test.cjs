@@ -22,7 +22,13 @@ const root = path.resolve(__dirname, '../../..');
 // trigger, stopping at the next key. Parsed rather than duplicated, so editing the workflow is the
 // only place this rule is written down.
 function pushPaths() {
-  const yml = fs.readFileSync(path.join(root, '.github/workflows/native-builds.yml'), 'utf8');
+  const file = path.join(root, '.github/workflows/native-builds.yml');
+  // The Steam CI job checks out sparsely, and this is the one test that needs a path outside the
+  // wrapper directories. Say so plainly rather than leaving a bare ENOENT for whoever trims that
+  // list next.
+  assert.ok(fs.existsSync(file),
+    'native-builds.yml is missing -- if this is CI, .github has dropped out of the job\'s sparse-checkout');
+  const yml = fs.readFileSync(file, 'utf8');
   const block = /\n {2}push:\n([\s\S]*?)\njobs:/.exec(yml);
   assert.ok(block, 'native-builds.yml still has a push: trigger above jobs:');
   const paths = /\n {4}paths:\n((?: {6}- .*\n)+)/.exec(block[1]);

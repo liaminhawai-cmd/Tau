@@ -106,11 +106,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # Cone mode always includes root-level files (index.html, steam.html…);
-          # vendor/ holds the showcase's Three.js modules.
+          # vendor/ holds the showcase's Three.js modules. .github is here because this job runs
+          # the test suite, and desktop-ships.test.cjs reads this very file to check that
+          # everything sync-www.mjs ships is something a push to it would build.
           sparse-checkout: |
             native
             desktop
             vendor
+            .github
       - uses: actions/setup-node@v4
         with:
           node-version: 22
