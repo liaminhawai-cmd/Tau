@@ -85,6 +85,19 @@ const SLIVER_BAR = 5;
 // thrown. Measured on 44 retro seeds: 18 refusals were arm-change gaps at the substep, 11 of them
 // with best-min margins 2.4-4.95u, refused only because SLIVER_BAR is 5u.
 const PROBE_BAR = 1.5, PROBE_N = 12;
+// BIN_GUARD: how close two events may come before the engine's sampling phase decides the
+// programme. The rule is asked only at the substep grid, so two events inside ONE substep are
+// seen together, and for two events of the SAME foot on DIFFERENT lines that is the corner
+// merge: contact is handed from one line to the other inside a single sampled step, the episode
+// stays charged, and the swing runs on instead of stopping. Measured at 6dgqa1fd8 (brief 2's
+// counterexample, reproduced by limitLadder in nn/dead-region-check/phase1.js): foot 2 leaving
+// r1's inner edge and reaching a0's outer edge are 0.1215 degrees apart at every pose of that
+// family, and the arm's limit is 63.67 degrees when they land in different bins and 95.33 when
+// they land in the same one -- with the pivot foot held fixed, so no pivot-plane geometry
+// distinguishes them. Two events of DIFFERENT feet in one bin are safe: whichever the engine
+// sees first stops the arm, so the minimum of their enclosures still bounds the limit (that is
+// ndpxhts24's arm (0,-1), 1.8% of its box).
+const BIN_GUARD = 1.1 * DEG / 3;
 
 // Put a position on the engine's board (G is rebuilt per game, so fetch it afterwards).
 function load(pieces, active) {
@@ -1138,6 +1151,23 @@ function reachEnvelope(pieces, mover, pv, dir, box, n, opts) {
       }
     }
   }
+  // the substep-bin guard: scan the box (the grid's x, y and a dense sweep of rot, since the
+  // strips are thin in rot) for a same-foot two-line pair that can share a substep
+  if (exact && !refused) {
+    const nT = opts.phaseScan || 41, t0 = box.rot[0], t1 = box.rot[1];
+    scan: for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let t = 0; t < nT; t++) {
+      const pose = { x: xs[i], y: ys[j], rot: nT > 1 ? t0 + (t1 - t0) * t / (nT - 1) : (t0 + t1) / 2 }, ft = feetOf(pose);
+      if (ft.some(f => Math.hypot(f.x, f.y) > LIM_EDGE)) continue;
+      const ev = limitEvents(ft, pv, dir).filter(e => e.s <= exact.hi + LIM_SUB);
+      for (let a = 0; a < ev.length; a++) for (let b = a + 1; b < ev.length; b++) {
+        if (ev[a].foot !== ev[b].foot || ev[a].circle === ev[b].circle) continue;
+        const gap = Math.abs(ev[a].s - ev[b].s);
+        if (gap >= BIN_GUARD) continue;
+        refused = `arm (${pv},${dir}): foot ${ev[a].foot} meets two lines ${(gap / DEG).toFixed(4)} deg apart inside the box (circles ${ev[a].circle} and ${ev[b].circle}), within one ${(LIM_SUB / DEG).toFixed(3)}-degree substep: the sampling phase, not the geometry, decides whether the swing stops there`;
+        break scan;
+      }
+    }
+  }
   if (exact && !refused) { lo = exact.lo; hi = exact.hi; }
   return { pv, dir, lo: lo - allow, hi: hi + allow, sig: c.sig, reason: c.reason, crossed: c.crossed, foot: c.foot, line: c.line, min: lo, max: hi, slope, lip, allow, n, phase, refused, offBoard, wall, union: union ? union.map(evKey) : null, rim: exact && exact.rim || null, exact: exact && !exact.refused ? { lo: exact.lo, hi: exact.hi, sLo: exact.sLo, sHi: exact.sHi, event: exact.event ? { kind: exact.event.kind, foot: exact.event.foot, circle: exact.event.circle, D: exact.event.D, A: exact.event.A, sign: exact.event.sign } : null } : null };
 }
@@ -1617,7 +1647,7 @@ async function certifyDeadCell(pieces, victim, half, n, K, opts) {
   if (gridPoses.every(pose => offBoardPose(pose, victim))) return { certified: false, status: 'offboard', why: 'every grid pose has a victim foot over the rim at the start', poses: 0, reach, stats, seconds: (Date.now() - t0) / 1000 };
   await run(gridPoses);
   const notDead = gridPoses.filter(pose => !['dead', 'offboard'].includes(results.get(keyOf(pose)).status));
-  if (notDead.length) { const pose = notDead[0], r = results.get(keyOf(pose)); if (pool) pool.forEach(w => w.terminate()); return { certified: false, status: r.status, why: `grid pose [${pose.map(x => +x.toFixed(4)).join(',')}] is ${r.status}: ${r.why}`, notDead: notDead.length, poses: gridPoses.length, reach, stats, seconds: (Date.now() - t0) / 1000 }; }
+  if (notDead.length) { const pose = notDead[0], r = results.get(keyOf(pose)); if (pool) pool.forEach(w => w.terminate()); return { certified: false, status: r.status, why: `grid pose [${pose.map(x => +x.toFixed(4)).join(',')}] is ${r.status}: ${r.why}`, atPose: pose, notDead: notDead.length, poses: gridPoses.length, reach, stats, seconds: (Date.now() - t0) / 1000 }; }
   // 3. the gap rule between neighbours along each pose axis, per arm and stop; a refused pair is
   //    subdivided at its midpoint (a new full certificate) down to minStep, where a pair whose two
   //    ends both clear SLIVER_BAR on some arc at that stop is accepted as a sliver, as along an arm
@@ -1675,20 +1705,26 @@ async function certifyDeadCell(pieces, victim, half, n, K, opts) {
     }
     if (mids.length) { stats.midpoints += mids.length; log(`  round ${stats.rounds}: ${next.length / 2} pairs refused, ${mids.length} midpoints to certify (step ${(next[0].d).toFixed(3)}u)`); await run(mids); }
     const bad = mids.filter(m => !['dead', 'offboard'].includes(results.get(keyOf(m)).status));
-    if (bad.length) { const r = results.get(keyOf(bad[0])); if (pool) pool.forEach(w => w.terminate()); return { certified: false, status: r.status, why: `midpoint pose [${bad[0].map(x => +x.toFixed(4)).join(',')}] is ${r.status}: ${r.why}`, poses: results.size, reach, stats, seconds: (Date.now() - t0) / 1000 }; }
+    if (bad.length) { const r = results.get(keyOf(bad[0])); if (pool) pool.forEach(w => w.terminate()); return { certified: false, status: r.status, why: `midpoint pose [${bad[0].map(x => +x.toFixed(4)).join(',')}] is ${r.status}: ${r.why}`, atPose: bad[0], poses: results.size, reach, stats, seconds: (Date.now() - t0) / 1000 }; }
     pending = next;
   }
   if (pool) pool.forEach(w => w.terminate());
   const all = [...results.values()].filter(r => r.status !== 'offboard'), offBoardPoses = results.size - all.length, W = Math.min(...all.map(r => r.worstMargin)), Wa = Math.min(...all.map(r => r.acceptMargin == null ? Infinity : r.acceptMargin));
   const certified = refusals.length === 0;
-  return { certified, status: certified ? 'dead' : 'unresolved', why: certified ? null : `${refusals.length} (pose pair, arm, stop) gaps unresolved at the ${minStep}u pose step; first: ${JSON.stringify(refusals.slice(0, 3))}`, poses: all.length, offBoardPoses, gridPoses: gridPoses.length, pairs, slivers, probedGaps, rimPairs, refusals: refusals.slice(0, 50), refusedN: refusals.length, minAccept, worstMargin: W, acceptMargin: Wa, reach, half, n, stats, seconds: (Date.now() - t0) / 1000 };
+  return { certified, status: certified ? 'dead' : 'unresolved', atPose: certified ? null : refusals[0].from, atAxis: certified ? null : refusals[0].axis, why: certified ? null : `${refusals.length} (pose pair, arm, stop) gaps unresolved at the ${minStep}u pose step; first: ${JSON.stringify(refusals.slice(0, 3))}`, poses: all.length, offBoardPoses, gridPoses: gridPoses.length, pairs, slivers, probedGaps, rimPairs, refusals: refusals.slice(0, 50), refusedN: refusals.length, minAccept, worstMargin: W, acceptMargin: Wa, reach, half, n, stats, seconds: (Date.now() - t0) / 1000 };
 }
-// The box cut along its walls: a cell whose envelope is refused (a stopping event changes
-// between two grid cells, a tangency, a wrap, a foot at the rim) is split in half on the axis the
+// The box cut along its walls: a cell whose envelope is refused (a stopping program changes
+// between two grid cells, a tangency, a wrap, a co-event) is split in half on the axis the
 // refusal names (the axis on which the two cells differ; the longest victim axis otherwise), and
 // the halves are certified as cells of their own with their own envelopes, down to opts.minHalf.
-// An escape or an unresolved grid pose is not split: it is a real position. Returns the leaves
-// and the fraction of the box's volume that certified.
+// A cell that FAILS -- a grid or midpoint pose that escapes, or a gap left unresolved at the pose
+// step -- is split too, on the axis that puts the offending pose furthest from the centre, so the
+// escape (a real position, and a real hole in the dead set) is cut off from the dead part around
+// it rather than taking the whole box with it. Before the envelope united event-order walls the
+// splitting on refusals did this incidentally; now that a box survives such a wall whole, a single
+// escape inside it would otherwise cost the lot. A cell whose failure sits at its own centre is
+// not split: there is nothing to cut off.
+// Returns the leaves and the fraction of the box's volume that certified.
 // The fraction of a box (six half-widths in pose6 order, rotation as arc length) whose poses have
 // every victim foot on the board, by uniform sampling.
 function onBoardFraction(centre, half, victim, nSamples) {
@@ -1704,15 +1740,21 @@ async function certifyDeadCells(pieces, victim, half, n, K, opts) {
     const cell = queue.shift(), tag = `cell ${++seen} (depth ${cell.depth}, victim half-widths ${[0, 1, 2].map(d => cell.half[off + d].toFixed(3)).join('/')}u)`;
     log(`${tag}: centre [${cell.centre.map(x => +x.toFixed(4)).join(',')}]`);
     const v = await certifyDeadCell(piecesOf(cell.centre), victim, cell.half, n, K, { ...opts, log: m => log('  ' + m) });
+    let axis = null;
     if (v.status === 'refused' && v.why.startsWith('reach envelope')) {
-      const m = /between cells \((\d+),(\d+),(\d+)\)-\((\d+),(\d+),(\d+)\)/.exec(v.why); let axis = null;
+      const m = /between cells \((\d+),(\d+),(\d+)\)-\((\d+),(\d+),(\d+)\)/.exec(v.why);
       if (m) axis = [0, 1, 2].find(d => m[1 + d] !== m[4 + d]);
       if (axis == null) axis = [0, 1, 2].reduce((b, d) => cell.half[off + d] > cell.half[off + b] ? d : b, 0);
-      if (cell.half[off + axis] / 2 >= minHalf - 1e-12) {
-        for (const sgn of [-1, 1]) { const c = cell.centre.slice(), h = cell.half.slice(); h[off + axis] /= 2; c[off + axis] += sgn * (axis === 2 ? h[off + axis] / R : h[off + axis]); queue.push({ centre: c, half: h, depth: cell.depth + 1 }); }
-        log(`${tag}: split on the victim's ${['x', 'y', 'rot'][axis]} axis (${v.why.slice(0, 120)})`);
-        continue;
-      }
+    } else if ((v.status === 'escape' || v.status === 'unresolved') && v.atPose) {
+      // cut on the axis along which the failing pose is furthest from this cell's centre
+      const away = [0, 1, 2].map(d => Math.abs(v.atPose[off + d] - cell.centre[off + d]) * (d === 2 ? R : 1));
+      if (v.atAxis != null && v.atAxis - off >= 0 && v.atAxis - off < 3 && away[v.atAxis - off] > 1e-9) axis = v.atAxis - off;
+      else if (Math.max(...away) > 1e-9) axis = away.indexOf(Math.max(...away));
+    }
+    if (axis != null && cell.half[off + axis] / 2 >= minHalf - 1e-12) {
+      for (const sgn of [-1, 1]) { const c = cell.centre.slice(), h = cell.half.slice(); h[off + axis] /= 2; c[off + axis] += sgn * (axis === 2 ? h[off + axis] / R : h[off + axis]); queue.push({ centre: c, half: h, depth: cell.depth + 1 }); }
+      log(`${tag}: split on the victim's ${['x', 'y', 'rot'][axis]} axis (${v.status}: ${v.why.slice(0, 110)})`);
+      continue;
     }
     const onBoard = onBoardFraction(cell.centre, cell.half, victim, 4000);
     leaves.push({ centre: cell.centre, half: cell.half, depth: cell.depth, status: v.status, certified: v.certified, why: v.why, poses: v.poses, offBoardPoses: v.offBoardPoses || 0, pairs: v.pairs, slivers: v.slivers, probedGaps: v.probedGaps || 0, rimPairs: v.rimPairs || 0, onBoard, minAccept: v.minAccept, worstMargin: v.worstMargin, acceptMargin: v.acceptMargin, engine: null, seconds: v.seconds });
