@@ -642,6 +642,22 @@ The first is what the sum uses. The second is the comfortable one and is true
 only of the dwell. The third is never summed by anything, and reading it as "the
 minimum gain" makes the hypothesis look about twenty times harder than it is.
 
+**But 9.22e-4u is itself a boundary artefact, and quoting it was wrong.** It is
+the gain at substep 16, the first substep of the window, and nowhere else. Taking
+the minimum over poses from the throw back to a slab starting at substep s:
+
+| s | 16 | 17 | 18 | 20 | 22 | 25 | 30 |
+|---|---|---|---|---|---|---|---|
+| min gain (u) | 9.2e-4 | 9.0e-3 | 9.3e-3 | 9.9e-3 | 1.1e-2 | 1.2e-2 | 1.3e-2 |
+
+One substep of patience is worth a factor of ten, and the profile is smooth
+everywhere after it. The same profile comes out of 200 and 600 sampled poses to
+two significant figures, so this is a property of the geometry and not of the
+sample. The useful statement for a proof is therefore not a single number: the
+first slab should not begin at the first substep where the whole box is in
+contact, because that substep is grazing and contributes almost nothing. Begin it
+one later and carry about 9e-3u a substep, rising to 5.8e-2u through the dwell.
+
 ### The partial-contact substeps
 
 Of the 131 substeps where anything is in contact, 8 have only SOME poses in
@@ -653,6 +669,16 @@ barrier certificate has to establish "every pose in the box is in contact at
 substep k" before it may count substep k's gain, and give the partial substeps
 zero. That is an interval test over the box, and it is separate from the gain
 bound and from invariance.
+
+What makes that test tractable is that contact does not come and go: on arm
+(0,-1), at every box size tried, no pose's contact lapses once it has begun, so
+contact is a single interval per pose and the test only has to find where the
+last pose joins. The unqualified version of that -- contact never lapses -- is
+false, and arm (2,-1) refutes it: there every one of 200 poses loses contact,
+first at about substep 210. But all of those lapses happen after that pose has
+already been thrown, at substep 113 or earlier. So the statement a certificate
+can lean on is the scoped one, contact does not lapse BEFORE the throw, which is
+all the barrier sums over anyway.
 
 ### And a genuine pair of readings, both right
 
