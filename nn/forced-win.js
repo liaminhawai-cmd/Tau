@@ -1571,6 +1571,36 @@ async function certifyDeadCell(pieces, victim, half, n, K, opts) {
   const certified = refusals.length === 0;
   return { certified, status: certified ? 'dead' : 'unresolved', why: certified ? null : `${refusals.length} (pose pair, arm, stop) gaps unresolved at the ${minStep}u pose step; first: ${JSON.stringify(refusals.slice(0, 3))}`, poses: results.size, gridPoses: gridPoses.length, pairs, slivers, refusals: refusals.slice(0, 50), refusedN: refusals.length, minAccept, worstMargin: W, acceptMargin: Wa, reach, half, n, stats, seconds: (Date.now() - t0) / 1000 };
 }
+// The box cut along its walls: a cell whose envelope is refused (a stopping event changes
+// between two grid cells, a tangency, a wrap, a foot at the rim) is split in half on the axis the
+// refusal names (the axis on which the two cells differ; the longest victim axis otherwise), and
+// the halves are certified as cells of their own with their own envelopes, down to opts.minHalf.
+// An escape or an unresolved grid pose is not split: it is a real position. Returns the leaves
+// and the fraction of the box's volume that certified.
+async function certifyDeadCells(pieces, victim, half, n, K, opts) {
+  opts = opts || {}; const log = opts.log || (() => {}), minHalf = opts.minHalf || 0.1, off = victim * 3, t0 = Date.now();
+  const queue = [{ centre: pose6(pieces).slice(), half: half.slice(), depth: 0 }], leaves = [];
+  const vol = h => [0, 1, 2].reduce((a, d) => a * 2 * h[off + d], 1), total = vol(half);
+  while (queue.length) {
+    const cell = queue.shift(), tag = `cell ${leaves.length + queue.length + 1} (depth ${cell.depth}, victim half-widths ${[0, 1, 2].map(d => cell.half[off + d].toFixed(3)).join('/')}u)`;
+    log(`${tag}: centre [${cell.centre.map(x => +x.toFixed(4)).join(',')}]`);
+    const v = await certifyDeadCell(piecesOf(cell.centre), victim, cell.half, n, K, { ...opts, log: m => log('  ' + m) });
+    if (v.status === 'refused' && v.why.startsWith('reach envelope')) {
+      const m = /between cells \((\d+),(\d+),(\d+)\)-\((\d+),(\d+),(\d+)\)/.exec(v.why); let axis = null;
+      if (m) axis = [0, 1, 2].find(d => m[1 + d] !== m[4 + d]);
+      if (axis == null) axis = [0, 1, 2].reduce((b, d) => cell.half[off + d] > cell.half[off + b] ? d : b, 0);
+      if (cell.half[off + axis] / 2 >= minHalf - 1e-12) {
+        for (const sgn of [-1, 1]) { const c = cell.centre.slice(), h = cell.half.slice(); h[off + axis] /= 2; c[off + axis] += sgn * (axis === 2 ? h[off + axis] / R : h[off + axis]); queue.push({ centre: c, half: h, depth: cell.depth + 1 }); }
+        log(`${tag}: split on the victim's ${['x', 'y', 'rot'][axis]} axis (${v.why.slice(0, 120)})`);
+        continue;
+      }
+    }
+    leaves.push({ centre: cell.centre, half: cell.half, depth: cell.depth, status: v.status, certified: v.certified, why: v.why, poses: v.poses, pairs: v.pairs, slivers: v.slivers, minAccept: v.minAccept, worstMargin: v.worstMargin, acceptMargin: v.acceptMargin, engine: null, seconds: v.seconds });
+    log(`${tag}: ${v.status}${v.certified ? ` (${v.poses} poses, ${v.pairs} gaps, ${v.slivers} slivers, min accepted ${v.minAccept.toFixed(2)}u)` : ' -- ' + v.why.slice(0, 160)}`);
+  }
+  const certifiedVol = leaves.filter(l => l.certified).reduce((a, l) => a + vol(l.half), 0);
+  return { leaves, certified: leaves.filter(l => l.certified).length, of: leaves.length, fraction: certifiedVol / total, seconds: (Date.now() - t0) / 1000 };
+}
 // The engine on the cell: random poses uniform in the box, each played through random legal
 // victim moves (the engine's own limits, random stops), then the six attacker sweeps.
 function simCheckDeadBox(pieces, victim, half, nPoses, nMoves) {
@@ -1607,7 +1637,7 @@ function azimuthScan(pieces, victim, K, stepDeg, opts) {
 }
 
 module.exports = { load, swingLimit, limitAt, limitLadder, limitEvents, limitEnclosure, swingLimitMemo, memoStats, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, deadCertificate, profilesConsistent, simCheckForcedIn2, simCheckDead, simCheckEscape, familyProfile, certifyDeadBox, deadDeep, simCheckDeadDeep, probeGap, dragTo, sweepThrows, segmentsOf, gapLabel, moveBetween, batchSeed,
-  moverAt, replyFamily, dist6, pose6, piecesOf, randomInBall, reachEnvelope, certifyStar, simCheckDeadBall, cellSample, certifyDeadCell, simCheckDeadBox, azimuthScan, arcPose, hubFromFoot, fibre, tubeGrid, unwindArcs, makeArc, simCheckArc, lookup, dedupeKey, loadGraph, appendNode, phaseTol,
+  moverAt, replyFamily, dist6, pose6, piecesOf, randomInBall, reachEnvelope, certifyStar, simCheckDeadBall, cellSample, certifyDeadCell, certifyDeadCells, simCheckDeadBox, azimuthScan, arcPose, hubFromFoot, fibre, tubeGrid, unwindArcs, makeArc, simCheckArc, lookup, dedupeKey, loadGraph, appendNode, phaseTol,
   MIN_MOVE, SUBSTEP, GAP_LIP, LIM_PHASE, MIN_WINDOW, MIN_RUN, LAND_TOL, GRAPH_PATH, PHASE_TOL, ARMS, armIndex };
 
 // A victim with one foot `inside` u from the rim and the attacker 26-44u from that foot on the
@@ -2105,12 +2135,16 @@ if (require.main === module && process.argv[2] === '--dead-box') {
   const mover = +arg('--mover', 0), h = +arg('--h', 1), hA = +arg('--hA', h), n = +arg('--n', 3), nA = +arg('--nA', n), threads = +arg('--threads', 1), engineN = +arg('--engine', 25), outPath = arg('--out', null), minStep = +arg('--minStep', 0.05);
   const half = [0, 1, 2, 3, 4, 5].map(d => (d < 3) === (mover === 0) ? h : hA), grid = [0, 1, 2, 3, 4, 5].map(d => (d < 3) === (mover === 0) ? n : nA);
   console.log(`dead cell on ${mover === 0 ? 'blue' : 'red'} to move at [${nums.join(',')}]: victim +-${h}u x ${n}, attacker +-${hA}u x ${nA} (${grid.reduce((a, b) => a * b, 1)} grid poses${threads > 1 ? `, ${threads} threads` : ''})`);
-  certifyDeadCell(piecesOf(nums), mover, half, grid, REPLICA, { threads, minStep, log: console.log }).then(v => {
-    console.log(`cell: ${v.status}${v.certified ? ` -- ${v.poses} poses dead (${v.gridPoses} grid + ${v.stats.midpoints} midpoints in ${v.stats.rounds} rounds), ${v.pairs} (pair, arm, stop) gaps accepted, ${v.slivers} slivers, min accepted margin ${v.minAccept.toFixed(2)}u, W ${v.worstMargin.toFixed(2)}u (accepting-arc margin ${v.acceptMargin.toFixed(2)}u)` : ` -- ${v.why}`}   (${(v.seconds / 60).toFixed(1)} min)`);
-    let engine = null;
-    if (v.certified && engineN > 0) { engine = simCheckDeadBox(piecesOf(nums), mover, half, engineN, 8); console.log(`engine: ${engine.agree}/${engine.n} random poses in the cell lose every one of ${engine.moves} random moves to a throw${engine.fails.length ? '; CONTRADICTED: ' + JSON.stringify(engine.fails.slice(0, 3)) : ''}`); }
-    if (outPath) fs.appendFileSync(outPath, JSON.stringify({ kind: 'cell', pose: nums, mover, half, n: grid, certified: v.certified, status: v.status, why: v.why, poses: v.poses, gridPoses: v.gridPoses || null, pairs: v.pairs, slivers: v.slivers || 0, stats: v.stats || null, minStep, refusedN: v.refusedN || 0, refusals: v.refusals || [], minAccept: Number.isFinite(v.minAccept) ? +v.minAccept.toFixed(3) : null, worstMargin: v.worstMargin != null ? +v.worstMargin.toFixed(3) : null, acceptMargin: v.acceptMargin != null ? +v.acceptMargin.toFixed(3) : null, reach: v.reach ? v.reach.map(e => ({ pv: e.pv, dir: e.dir, lo: e.lo, hi: e.hi, sig: e.sig, exact: e.exact, refused: e.refused })) : null, engine: engine ? { n: engine.n, agree: engine.agree, fails: engine.fails.slice(0, 3) } : null, seconds: +v.seconds.toFixed(1), stamp: new Date().toISOString() }) + '\n');
-    if (engine && engine.agree < engine.n) process.exit(2);
+  const minHalf = +arg('--minHalf', 0.1);
+  certifyDeadCells(piecesOf(nums), mover, half, grid, REPLICA, { threads, minStep, minHalf, log: console.log }).then(v => {
+    console.log(`cells: ${v.certified}/${v.of} leaves certified, ${(100 * v.fraction).toFixed(0)}% of the box's volume   (${(v.seconds / 60).toFixed(1)} min)`);
+    for (const l of v.leaves) {
+      if (!l.certified || engineN <= 0) continue;
+      l.engine = simCheckDeadBox(piecesOf(l.centre), mover, l.half, engineN, 8);
+      console.log(`engine on leaf at [${l.centre.map(x => +x.toFixed(3)).join(',')}] +-${[0, 1, 2].map(d => l.half[(mover * 3) + d].toFixed(2)).join('/')}u: ${l.engine.agree}/${l.engine.n} random poses lose every one of ${l.engine.moves} random moves${l.engine.fails.length ? '; CONTRADICTED: ' + JSON.stringify(l.engine.fails.slice(0, 3)) : ''}`);
+    }
+    if (outPath) fs.appendFileSync(outPath, JSON.stringify({ kind: 'cells', pose: nums, mover, half, n: grid, minStep, minHalf, certified: v.certified, of: v.of, fraction: +v.fraction.toFixed(4), leaves: v.leaves.map(l => ({ ...l, minAccept: Number.isFinite(l.minAccept) ? +l.minAccept.toFixed(3) : null, worstMargin: l.worstMargin != null && Number.isFinite(l.worstMargin) ? +l.worstMargin.toFixed(3) : null, acceptMargin: l.acceptMargin != null && Number.isFinite(l.acceptMargin) ? +l.acceptMargin.toFixed(3) : null, engine: l.engine ? { n: l.engine.n, agree: l.engine.agree, fails: l.engine.fails.slice(0, 3) } : null, seconds: +l.seconds.toFixed(1) })), seconds: +v.seconds.toFixed(1), stamp: new Date().toISOString() }) + '\n');
+    if (v.leaves.some(l => l.engine && l.engine.agree < l.engine.n)) process.exit(2);
     if (!v.certified) process.exit(1);
   });
 } else if (require.main === module && process.argv[2] === '--azimuth') {
@@ -2122,7 +2156,7 @@ if (require.main === module && process.argv[2] === '--dead-box') {
   console.log(`azimuth scan of ${mover === 0 ? 'blue' : 'red'} to move at [${nums.join(',')}], every ${step} degrees`);
   const t0 = Date.now(), a = azimuthScan(piecesOf(nums), mover, REPLICA, step, { log: console.log });
   for (const r of a.runs) console.log(`  ${r.status} ${r.from}-${r.to} deg (${r.n} azimuths)${Number.isFinite(r.minW) ? ' min W ' + r.minW.toFixed(2) : ''}${r.status !== 'dead' && r.why ? ': ' + r.why.slice(0, 100) : ''}`);
-  console.log(`dead at ${a.dead}/${a.pts.length} azimuths, ${a.signatures} distinct stopping-event signatures around the circle (${((Date.now() - t0) / 60).toFixed(1)} min)`);
+  console.log(`dead at ${a.dead}/${a.pts.length} azimuths, ${a.signatures} distinct stopping-event signatures around the circle (${((Date.now() - t0) / 60000).toFixed(1)} min)`);
   if (outPath) fs.appendFileSync(outPath, JSON.stringify({ kind: 'azimuth', pose: nums, mover, step, dead: a.dead, of: a.pts.length, signatures: a.signatures, runs: a.runs, pts: a.pts.map(p => ({ deg: p.deg, status: p.status, W: p.W, lims: p.lims.map(l => +(l.lim / DEG).toFixed(2)), sigs: p.lims.map(l => l.sig) })), stamp: new Date().toISOString() }) + '\n');
 } else if (require.main === module && process.argv[2] === '--unwind') {
   // node nn/forced-win.js --unwind <nodeId> [--graph nn/family-graph.jsonl]
