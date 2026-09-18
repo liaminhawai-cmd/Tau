@@ -155,6 +155,22 @@ the localisation radius, which puts more chord ends in play, which widens the
 vertex cones, which widens the set. From 0.027u it runs 0.033, 0.046, 0.090,
 0.122, 0.226, 0.401 and then refuses.
 
+`nn/throw-crossings.js` traces the closest pair's chord indices over a sweep and
+says how many crossings there are. On this throw the contact is in touch for
+24.00 degrees, from 4.00 to 27.67, and walks 5.030u down the attacker's leg and
+2.751u down the victim's, so 0.0708u per substep against a chord of 3.021u.
+There are exactly **three** crossings before the throw: the attacker's leg at
+phi = 22.5 degrees, crossed at 10.67 degrees of sweep; the attacker's at
+phi = 15.0, at 24.33; and the victim's at phi = 30.0, at 25.00.
+
+The checker refuses at 12.00, which is 1.3 degrees **past** the first crossing,
+and the set starts growing at 9.33, which is 1.3 degrees **before** it. So the
+box straddles the vertex for about eight substeps either side while the centre
+pose is still safely inside one chord. A branching scheme cannot simply split at
+the crossing substep: it has to split when the neighbouring chord's minimum
+first comes within the set's own width of the live one, and re-merge when it
+leaves again.
+
 Shrinking the starting box does not avoid this -- at +-0.001u it simply crosses
 the vertex a few substeps later -- so subdividing the box is not the answer
 either. The crossing has to be handled, not dodged.
