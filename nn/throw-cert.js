@@ -388,6 +388,35 @@ function analyse(box, att, pairWant) {
     // interiority of the centre's own minimiser, in arclength, with the slack it needs
     const sA = sg.s * LA, sV = sg.t * LV;
     const atStartA = sA <= dmax, atEndA = LA - sA <= dmax, atStartV = sV <= dmax, atEndV = LV - sV <= dmax;
+
+    // IS THE INTERIOR/INTERIOR REGIME REACHABLE AT ALL? Its normal is the one perpendicular to both
+    // chord tangents, which is a genuine contact only when some pose in the set has its minimiser in
+    // the interior of BOTH chords. During a park no pose does: the minimiser sits on a vertex for the
+    // whole dwell. Carrying the interior entry anyway is SOUND -- it only widens the hull -- but it
+    // costs several degrees of normal cone on every parked substep, and that cone is what the box
+    // grows by each push, so the waste compounds.
+    //
+    // The drop test is the first-order condition at the clamped endpoint. Write F(s,t) = |A(s)-V(t)|^2
+    // with pa = A(s), pb = V(t) and n = (pb-pa)/dist. Then dF/ds = -2 dist (n.uA) and dF/dt = +2 dist
+    // (n.uV). If the centre's minimiser is clamped hard at t = 0 then dF/dt >= 0 there; if it is
+    // bounded away from zero by more than the drift the derivative can pick up across the set, every
+    // pose in the set is clamped at t = 0 too, and no pose has an interior minimiser in t.
+    //
+    // Drift bound: at a hard clamp pb IS the chord endpoint, a material point of the victim, so it
+    // moves by at most pad; the foot on the fixed attacker chord is its projection, and projection
+    // onto a fixed segment is 1-Lipschitz, so it moves by at most pad as well. The connecting vector
+    // therefore changes by at most 2 pad and turns by at most 2 pad / (dist - 2 pad) -- the SHRUNK
+    // distance, since the pair can close over the set. uA and uV turn with the pose by at most drot.
+    // Anything short of a strict pass keeps the entry, which is the sound fallback.
+    const nHat = [(sg.pb.x - sg.pa.x) / sg.dist, (sg.pb.y - sg.pa.y) / sg.dist, (sg.pb.h - sg.pa.h) / sg.dist];
+    const dotVc = nHat[0] * uV[0] + nHat[1] * uV[1] + nHat[2] * uV[2];
+    const dotAc = nHat[0] * uA[0] + nHat[1] * uA[1] + nHat[2] * uA[2];
+    const mDrift = 2 * pad / Math.max(sg.dist - 2 * pad, 1e-6) + drot;
+    const HARD = 1e-12;
+    const interiorImpossible =
+      (sg.t <= HARD && dotVc > mDrift) || (sg.t >= 1 - HARD && dotVc < -mDrift) ||
+      (sg.s <= HARD && dotAc < -mDrift) || (sg.s >= 1 - HARD && dotAc > mDrift);
+    if (process.env.DBGI) console.log(`      interior? (${sg.a},${sg.b}) s ${sg.s.toFixed(6)} t ${sg.t.toFixed(6)} dotA ${dotAc.toFixed(4)} dotV ${dotVc.toFixed(4)} mDrift ${mDrift.toFixed(4)} -> ${interiorImpossible ? 'DROP' : 'keep'}`);
     if ((atStartA && atEndA) || (atStartV && atEndV)) return { ...out, refuse: `contact point not localised on segments (${sg.a},${sg.b}) (slack ${dmax.toFixed(3)}u of ${Math.min(LA, LV).toFixed(2)}u)` };
     if ((sg.a === 0 && atStartA) || (sg.b === 0 && atStartV)) return { ...out, refuse: 'closest point may be at a hub end' };
     if ((sg.a === NSEG - 1 && atEndA) || (sg.b === NSEG - 1 && atEndV)) return { ...out, refuse: 'closest point may be at a foot end (the victim could slide off)' };
@@ -470,8 +499,10 @@ function analyse(box, att, pairWant) {
       if (!pick) return { ...out, refuse: `vertex cone too wide (${(phi / DEG).toFixed(1)} deg)` };
       segPairs.push(pick);
     }
-    segPairs.push({ a: sg.a, b: sg.b, aBox, vBox, psiN, hf, fanA, fanV, rn, dmax, cth, atStartV, atEndV, why: `(${sg.a},${sg.b}) d ${sg.dist.toFixed(4)} cross ${(Math.acos(cth) / DEG).toFixed(1)}deg mu ${mu.toFixed(3)} dmax ${dmax.toFixed(3)} sA ${sA.toFixed(2)}/${LA.toFixed(2)} sV ${sV.toFixed(2)}/${LV.toFixed(2)} ends ${[atStartA, atEndA, atStartV, atEndV].map(v => (v ? 1 : 0)).join('')} n ${(psiN[0] / DEG).toFixed(2)}..${(psiN[1] / DEG).toFixed(2)}` });
-    segPairs.push({ a: sg.a, b: sg.b, aBox, vBox, psiN, hf, fanA, fanV, rn, atStartV, atEndV });
+    // ... and the interior entry itself, once. It used to be pushed twice, identically but for the
+    // annotation; the hull is idempotent so the duplicate changed no bound, but it doubled this
+    // pair's contribution to the regime and state counts that MAXSTATES caps.
+    if (!interiorImpossible) segPairs.push({ a: sg.a, b: sg.b, aBox, vBox, psiN, hf, fanA, fanV, rn, dmax, cth, atStartV, atEndV, why: `(${sg.a},${sg.b}) d ${sg.dist.toFixed(4)} cross ${(Math.acos(cth) / DEG).toFixed(1)}deg mu ${mu.toFixed(3)} dmax ${dmax.toFixed(3)} sA ${sA.toFixed(2)}/${LA.toFixed(2)} sV ${sV.toFixed(2)}/${LV.toFixed(2)} ends ${[atStartA, atEndA, atStartV, atEndV].map(v => (v ? 1 : 0)).join('')} n ${(psiN[0] / DEG).toFixed(2)}..${(psiN[1] / DEG).toFixed(2)}` });
   }
   // A PARK IS ONE REGIME, NOT TWO. While the closest point dwells on the vertex shared by victim
   // chords k-1 and k, both chord pairs report their minimiser AT that vertex: the same physical
