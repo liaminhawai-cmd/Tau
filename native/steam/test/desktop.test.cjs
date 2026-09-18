@@ -2718,3 +2718,132 @@ test('a titan lands on the Colossus plinth and rolls off it, instead of sinking 
   assert.ok(lowest<1,'and it is below the board it fell from');
   assert.deepEqual(g.errors,[]);
 });
+
+// ---- Thinking without stopping the world, and a camera that shows it -------------------------
+
+test('a deep ladder think is spread over frames instead of freezing one',async t=>{
+  const g=await game();t.after(g.close);
+  // L11 on the ladder: the rung whose search runs for the better part of a second.
+  g.read('tauDesktop.startMatch()');g.tick();
+  // ...and not the corner opening, whose first two moves are a stored line and return at once:
+  // this test is about the rung's own deep search.
+  g.read('ladderLevel=10; aiIdx=G.active; vsAI={mode:"ai",level:11}; G.cornerOpening=[false,false];');
+  // The harness freezes performance.now between ticks; the driver reads it to size each slice, so
+  // give it a clock that moves or it would swallow the whole search in one go.
+  g.read('(()=>{ let t=0; performance.now=()=>(t+=1); })()');
+  const first=g.read(`(()=>{ startAiTurn(); return JSON.stringify({pending:!!aiSearch, played:!!aiAnim}); })()`);
+  const s=JSON.parse(first);
+  assert.equal(s.pending,true,'startAiTurn leaves a search in progress rather than returning with the answer');
+  // ...and the board a frame would draw is the REAL one, not the search's working position.
+  const parked=JSON.parse(g.read(`JSON.stringify({pinned:G.pinned,active:G.active,
+    x:G.pieces[0].x.toFixed(6),y:G.pieces[0].y.toFixed(6),rot:G.pieces[0].rot.toFixed(6)})`));
+  assert.equal(parked.pinned,null,'no foot is pinned mid-think');
+  assert.equal(parked.active,g.read('aiIdx'),'and it is still the thinker’s turn');
+  // Each frame takes one slice; between slices the board never moves.
+  const moved=g.read(`(()=>{ const x=G.pieces[0].x, r=G.pieces[0].rot; let slices=0, drift=0;
+    while(aiSearch && slices<4000){ stepAiSearch(); slices++;
+      drift=Math.max(drift, Math.abs(G.pieces[0].x-x)+Math.abs(G.pieces[0].rot-r)); }
+    return JSON.stringify({slices, drift}); })()`);
+  const m=JSON.parse(moved);
+  assert.ok(m.slices>1,`the search really does take more than one slice (${m.slices})`);
+  assert.ok(m.drift<1e-9,'and the board a frame would draw never moves while it thinks');
+  assert.ok(g.read('!!aiAnim || G.pinned!==null || G.over'),'and the move it found is played when it finishes');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a sliced search picks exactly the move the whole-breath one picks',async t=>{
+  const g=await game();t.after(g.close);
+  g.read('tauDesktop.startMatch()');g.tick();
+  // Every rung, drained in one go versus driven a slice at a time from the same position.
+  const same=g.read(`(()=>{
+    const out=[];
+    for (const lvl of [0,3,5,6,7,10,12,13]) {
+      let seed=99+lvl; Math.random=()=>((seed=(seed*16807)%2147483647)/2147483647);
+      G.cornerOpening=null; G.cornerDone=null; G.cornerBook=null;
+      const whole=ladderPlanFor(lvl, 0);
+      seed=99+lvl; G.cornerOpening=null; G.cornerDone=null; G.cornerBook=null;
+      const gen=ladderPlanForGen(lvl, 0); const truth=aiSearchState();
+      let r, mid=null;
+      for(;;){ if(mid) aiSearchRestore(mid); r=gen.next();
+               if(r.done) break; mid=aiSearchState(); aiSearchRestore(truth); }
+      aiSearchRestore(truth);
+      const key=p=>p?[p.pivotIdx,p.dir,p.targetRad.toFixed(12)].join(','):'null';
+      out.push(lvl+':'+(key(whole)===key(r.value)?'same':key(whole)+' vs '+key(r.value)));
+    }
+    return out.join('|');
+  })()`);
+  for (const part of same.split('|'))
+    assert.ok(part.endsWith(':same'), `sliced and whole agree (${part})`);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the camera drifts while the opponent thinks and settles when the turn comes back',async t=>{
+  const g=await game();t.after(g.close);
+  g.read('tauDesktop.startMatch()');g.tick();
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},render(){},
+      setRenderTarget(){},getRenderTarget(){return null;}};
+    scene=new THREE.Scene();
+    camera=new THREE.PerspectiveCamera(38,1.6,1,2000);
+    camera.position.set(0,150,200);
+    controls={mouseButtons:{},target:new THREE.Vector3(0,4,0),update(){},addEventListener(){}};
+    camManualSet=false; vsAI={mode:"ai",level:1}; aiIdx=G.active;`);
+  const bearing=`Math.atan2(camera.position.x-controls.target.x, camera.position.z-controls.target.z)`;
+  const out=JSON.parse(g.read(`(()=>{
+    G.active=1-aiIdx;                                            // your turn: the still photograph
+    for(let i=0;i<240;i++) tauDesktop.updateCamera(1/60);
+    const a0=${bearing}, amt0=tauDesktop.debugDrift();
+    G.active=aiIdx;                                              // ...and now they are thinking
+    let spread=0;
+    for(let i=0;i<900;i++){ tauDesktop.updateCamera(1/60); spread=Math.max(spread, Math.abs(${bearing}-a0)); }
+    const amt1=tauDesktop.debugDrift();
+    G.active=1-aiIdx;                                            // your turn again
+    for(let i=0;i<300;i++) tauDesktop.updateCamera(1/60);
+    return JSON.stringify({amt0, amt1, spread, back:Math.abs(${bearing}-a0), amt2:tauDesktop.debugDrift()});
+  })()`));
+  assert.ok(out.amt0<0.01,'while it is your move the camera holds the shot');
+  assert.ok(out.amt1>0.8,`the drift is running while the opponent thinks (${out.amt1.toFixed(2)})`);
+  assert.ok(out.spread>0.05,`and it actually moves the view (${out.spread.toFixed(3)} rad)`);
+  assert.ok(out.spread<0.35,`...gently, not a pan (${out.spread.toFixed(3)} rad)`);
+  assert.ok(out.amt2<0.01,'it is gone once the turn is yours');
+  assert.ok(out.back<0.02,`and the view is back where it was (${out.back.toFixed(4)} rad)`);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('nobody drifts the camera in a local 1v1, or when the player asked for less motion',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},render(){},
+      setRenderTarget(){},getRenderTarget(){return null;}};
+    scene=new THREE.Scene();
+    camera=new THREE.PerspectiveCamera(38,1.6,1,2000);
+    camera.position.set(0,150,200);
+    controls={mouseButtons:{},target:new THREE.Vector3(0,4,0),update(){},addEventListener(){}};
+    camManualSet=false;`);
+  const local=g.read(`(()=>{ for(let i=0;i<300;i++) tauDesktop.updateCamera(1/60);
+                             return tauDesktop.debugDrift(); })()`);
+  assert.ok(local<0.01,'two people at one screen are both playing; the camera holds still');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the jam buzzes once on arrival, not eight times a second for as long as you hold it',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  const buzzes=g.read(`(()=>{
+    let n=0;
+    // Count the effects a real pad would be sent: one actuator, no rate gate of its own.
+    const pad={connected:true,mapping:'standard',index:0,
+      buttons:Array.from({length:17},()=>({pressed:false,value:0})),axes:[0,0,0,0],
+      vibrationActuator:{playEffect(){ n++; return Promise.resolve(); }}};
+    navigator.getGamepads=()=>[pad];
+    tauDesktop.tick(1/60);
+    pinFoot(0);
+    G.atLimit=true;                       // the piece is already jammed against the rule
+    let t=0; const realNow=performance.now;
+    for(let i=0;i<180;i++){ t+=20; performance.now=()=>t;   // three seconds of leaning on it
+      pad.axes[2]=1; tauDesktop.tick(1/60); G.atLimit=true; }
+    performance.now=realNow;
+    return n;
+  })()`);
+  assert.ok(buzzes<=1,`holding a swing at the limit buzzes at most once (got ${buzzes})`);
+  assert.deepEqual(g.errors,[]);
+});
