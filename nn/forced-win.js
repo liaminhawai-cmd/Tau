@@ -98,24 +98,101 @@ function swingLimit(pieces, active, pv, dir) {
   const g = load(pieces, active); const snap = eng.takeSnap();
   const lim = Math.abs(eng.simMoveToLimit(pv, dir)); eng.restoreSnap(snap); return lim;
 }
-// The mover's TRUE limit: applySwing looped a degree at a time until the engine stops it or a full
-// turn is done. Not simMoveToLimit: that is the AI's move generator and stops at its own 170-degree
-// safety cap (index.html AI_SAFETY_CAP_RAD) which a human drag does not have; applySwing itself
-// stops only for 'selfoff' (an own foot past the rim) or 'cross' (the one-crossing rule). Measured
-// at the four dead points: 13-408 ms per arm against 9-357 ms for simMoveToLimit, the same, because
-// these arms stop at 3-110 degrees; the limits differ by 0.1-0.3 degrees (the two ladders' phase).
+// The mover's TRUE limit: what applySwing looped a degree at a time would reach before the engine
+// stops it or a full turn is done. Not simMoveToLimit: that is the AI's move generator and stops at
+// its own 170-degree safety cap (index.html AI_SAFETY_CAP_RAD) which a human drag does not have;
+// applySwing itself stops only for 'selfoff' (an own foot past the rim) or 'cross' (the
+// one-crossing rule).
+//
+// Computed from CLOSED-FORM EVENTS rather than by running the ladder (limitLadder below is the
+// ladder, kept as the oracle for --limit-check). Every input the crossing rule reads is a distance
+// from a moving foot to a fixed circle centre: the ring and side-arc bands (|d - R| < touchEps,
+// the centreline R for the side flips), the side arcs' span rays, the printed corners (cornerEps)
+// and the rim (EDGE). A non-pivot foot moves on a circle of radius rho about the pivot P, so with
+// u = P - C its distance to C is d^2 = |u|^2 + rho^2 + 2 rho |u| cos(phi + theta - psi), and d = D
+// is an acos, a ray crossing an asin: about 44 events per arm over a full turn. Between two
+// events the rule's inputs are constant and crossingSubstep is idempotent on constant inputs, so
+// evaluating the engine's own crossingSubstep at the first substep past each event reaches
+// exactly the state the full ladder would, on the same substep grid (applySwing splits each
+// one-degree call into ceil(1 / substepDeg) equal substeps; the stop is that grid's floor of the
+// analytic event, which is what every certificate, LIM_PHASE and phase-tol.json are built on).
+// Pushes never enter: the mover is kinematic, resolvePush moves only the other piece.
+// Measured (2026-09-18): 0 mismatches against the ladder on 1440 arms of 120 real poses (limit,
+// reason, lines crossed, stopping foot and line; |lim| within 2e-14 rad), 0.13 ms per arm against
+// 80 ms, which took a depth-2 dead certificate from 1974 s to 247 s with the same verdict and the
+// same search path (identical memo and screen counts).
 // Also says WHAT stopped it -- the reason, the lines crossed on the way, the foot that was stopped
 // and the line (or rim) it was stopped at -- as a signature: a reach envelope refuses a box whose
 // grid neighbours stop on different events, since the limit is only continuous between events.
-function limitAt(pieces, active, pv, dir) {
-  const g = load(pieces, active); eng.pinFoot(pv); let guard = 0;
-  while (!g.atLimit && Math.abs(g.netRad) < 2 * Math.PI - 1e-9 && guard++ < 1200) eng.applySwing(dir * Math.min(DEG, 2 * Math.PI - Math.abs(g.netRad)));
+const LIM_SUBSTEPS = Math.ceil(1 / eng.CFG.substepDeg), LIM_SUB = DEG / LIM_SUBSTEPS, LIM_KMAX = 360 * LIM_SUBSTEPS;
+const LIM_EDGE = eng.CFG.edgeU + eng.CFG.edgeEps, LIM_EPS = eng.CFG.touchEps;
+// the circles whose level sets are the rule's inputs, fixed once from CFG
+const LIM_CIRCLES = (() => {
+  const out = [];
+  eng.CFG.rings.forEach(R => out.push({ cx: 0, cy: 0, levels: [R - LIM_EPS, R, R + LIM_EPS] }));
+  eng.CFG.sideArcs.forEach(a => out.push({ cx: a.cx, cy: a.cy, levels: [a.r - LIM_EPS, a.r, a.r + LIM_EPS], rays: [a.a0 * DEG, a.a1 * DEG] }));
+  out.push({ cx: 0, cy: 0, levels: [LIM_EDGE] });
+  eng.LINE_INTERSECTIONS.forEach(P => out.push({ cx: P.x, cy: P.y, levels: [eng.CFG.cornerEps] }));
+  return out;
+})();
+const wrapS = s => { s %= 2 * Math.PI; if (s < 0) s += 2 * Math.PI; return s === 0 ? 2 * Math.PI : s; };
+// swing magnitudes s in (0, 2pi] at which the foot (rho, phi about P) is at distance D from C
+function limitLevelEvents(P, rho, phi, dir, C, D, out) {
+  const ux = P.x - C.cx, uy = P.y - C.cy, u = Math.hypot(ux, uy);
+  if (u < 1e-12) return;                                   // pivot on the centre: constant distance
+  const c = (D * D - u * u - rho * rho) / (2 * rho * u);
+  if (c <= -1 || c >= 1) return;
+  const psi = Math.atan2(uy, ux), a = Math.acos(c);
+  out.push(wrapS(dir * (psi + a - phi)), wrapS(dir * (psi - a - phi)));
+}
+// ... and at which it is on the ray from C at angle A: (f - C) x e(A) = 0
+function limitRayEvents(P, rho, phi, dir, C, A, out) {
+  const ux = P.x - C.cx, uy = P.y - C.cy, v = -(ux * Math.sin(A) - uy * Math.cos(A)) / rho;
+  if (v <= -1 || v >= 1) return;
+  const b = Math.asin(v);
+  out.push(wrapS(dir * (A - b - phi)), wrapS(dir * (A - (Math.PI - b) - phi)));
+}
+function describeStop(g, active, pv) {
   const feet = g.pieces[active].feet(), reason = g.limitReason || 'full';
   let foot = null, line = null, best = Infinity;
   if (reason === 'selfoff') { for (let i = 0; i < 3; i++) if (i !== pv) { const r = -Math.hypot(feet[i].x, feet[i].y); if (r < best) { best = r; foot = i; line = 'rim'; } } }
   else for (let i = 0; i < 3; i++) { if (i === pv) continue; for (const id of eng.nearLineIds(feet[i], STOP_BAND)) { const d = eng.lineDistOf(feet[i], id); if (d < best) { best = d; foot = i; line = id; } } }
   const crossed = [...new Set(g.justCrossed || [])].sort();
   return { lim: Math.abs(g.netRad), reason, crossed, foot, line, sig: `${reason}|${crossed.join(',')}|${foot == null ? '-' : foot + ':' + line}` };
+}
+function limitAt(pieces, active, pv, dir) {
+  const g = load(pieces, active); eng.pinFoot(pv);
+  const mover = g.pieces[active], feet0 = mover.feet(), P = { x: feet0[pv].x, y: feet0[pv].y }, h0 = { x: mover.x, y: mover.y, rot: mover.rot };
+  const ev = [];
+  for (let i = 0; i < 3; i++) {
+    if (i === pv) continue;
+    const rho = Math.hypot(feet0[i].x - P.x, feet0[i].y - P.y), phi = Math.atan2(feet0[i].y - P.y, feet0[i].x - P.x);
+    for (const C of LIM_CIRCLES) { for (const D of C.levels) limitLevelEvents(P, rho, phi, dir, C, D, ev); if (C.rays) for (const A of C.rays) limitRayEvents(P, rho, phi, dir, C, A, ev); }
+  }
+  ev.sort((a, b) => a - b);
+  // the substeps to ask the rule at: the first one (it seeds the turn-start contact from the
+  // start pose), then the first substep past each event
+  const ks = [1]; for (const s of ev) { const k = Math.floor(s / LIM_SUB) + 1; if (k <= LIM_KMAX && k !== ks[ks.length - 1]) ks.push(k); }
+  const poseAt = k => { const th = dir * k * LIM_SUB, c = Math.cos(th), s = Math.sin(th), rx = h0.x - P.x, ry = h0.y - P.y; mover.x = P.x + rx * c - ry * s; mover.y = P.y + rx * s + ry * c; mover.rot = h0.rot + th; };
+  let before = feet0, kPrev = 0, stopped = false;
+  for (const k of ks) {
+    if (k > kPrev + 1) { poseAt(k - 1); before = mover.feet(); }
+    poseAt(k); const after = mover.feet();
+    // the same two checks, in the same order, as applySwing's substep
+    if (mover.anyFootOff()) { g.limitReason = 'selfoff'; stopped = true; }
+    else if (eng.crossingSubstep(before, after, g)) { g.limitReason = 'cross'; stopped = true; }
+    if (stopped) { g.atLimit = true; poseAt(k - 1); g.netRad = dir * (k - 1) * LIM_SUB; break; }
+    g.netRad = dir * k * LIM_SUB; before = after; kPrev = k;
+  }
+  if (!stopped) { poseAt(LIM_KMAX); g.netRad = dir * LIM_KMAX * LIM_SUB; }
+  return describeStop(g, active, pv);
+}
+// The ladder itself: applySwing looped a degree at a time, pushes and all. The oracle limitAt is
+// checked against (--limit-check); 80 ms per arm against limitAt's 0.13.
+function limitLadder(pieces, active, pv, dir) {
+  const g = load(pieces, active); eng.pinFoot(pv); let guard = 0;
+  while (!g.atLimit && Math.abs(g.netRad) < 2 * Math.PI - 1e-9 && guard++ < 1200) eng.applySwing(dir * Math.min(DEG, 2 * Math.PI - Math.abs(g.netRad)));
+  return describeStop(g, active, pv);
 }
 // The limit is a function of the mover's own pose alone (pinFoot and crossingSubstep read only the
 // active piece; resolvePush moves only the other one), so it is memoised on that pose. Along a
@@ -1261,7 +1338,7 @@ function phaseTol(events, stopsPer) {
   return { events: events.length, stops: dPose.length, stopsPerEvent: stopsPer, median: q(dPose, .5), p90: q(dPose, .9), max: q(dPose, 1), limMedianDeg: q(dLim, .5), limMaxDeg: q(dLim, 1), stoppedEarly: early };
 }
 
-module.exports = { load, swingLimit, limitAt, swingLimitMemo, memoStats, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, deadCertificate, profilesConsistent, simCheckForcedIn2, simCheckDead, simCheckEscape, familyProfile, certifyDeadBox, deadDeep, simCheckDeadDeep, probeGap, dragTo, sweepThrows, segmentsOf, gapLabel, moveBetween, batchSeed,
+module.exports = { load, swingLimit, limitAt, limitLadder, swingLimitMemo, memoStats, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, deadCertificate, profilesConsistent, simCheckForcedIn2, simCheckDead, simCheckEscape, familyProfile, certifyDeadBox, deadDeep, simCheckDeadDeep, probeGap, dragTo, sweepThrows, segmentsOf, gapLabel, moveBetween, batchSeed,
   moverAt, replyFamily, dist6, pose6, piecesOf, randomInBall, reachEnvelope, certifyStar, simCheckDeadBall, arcPose, hubFromFoot, fibre, tubeGrid, unwindArcs, makeArc, simCheckArc, lookup, dedupeKey, loadGraph, appendNode, phaseTol,
   MIN_MOVE, SUBSTEP, GAP_LIP, LIM_PHASE, MIN_WINDOW, MIN_RUN, LAND_TOL, GRAPH_PATH, PHASE_TOL, ARMS, armIndex };
 
@@ -1451,6 +1528,33 @@ if (require.main === module && process.argv[2] === '--dead-box') {
   let engine = null;
   if (v.certified && engineN > 0) { engine = simCheckDeadDeep(pieces, mover, engineN, depth, v); console.log(`  engine: ${engine.pass}/${engine.n} random moves lose${engine.fails.length ? '; fails: ' + JSON.stringify(engine.fails.slice(0, 3)) : ''}`); }
   if (outPath) fs.appendFileSync(outPath, JSON.stringify({ kind: 'deep', plies: v.plies, pose: nums, mover, certified: v.certified, status: v.status, worstMargin: Number.isFinite(v.worstMargin) ? +v.worstMargin.toFixed(3) : null, why: v.why || null, witnesses: v.witnesses || [], engine: engine ? { n: engine.n, pass: engine.pass } : null, stats: v.stats || null, stamp: new Date().toISOString() }) + '\n');
+} else if (require.main === module && process.argv[2] === '--limit-check') {
+  // node nn/forced-win.js --limit-check [poses=100] [--seed n]: limitAt (closed-form events) against
+  // limitLadder (the engine's applySwing ladder) on real poses -- nn/dead-positions.jsonl, the
+  // certified positions, plus random rows of the nn/data games -- both movers, all six arms. Any
+  // mismatch in limit, reason, lines crossed or the stopping foot and line is a bug in limitAt.
+  const n = +(process.argv[3] && !process.argv[3].startsWith('--') ? process.argv[3] : 100);
+  let seed = process.argv.includes('--seed') ? +process.argv[process.argv.indexOf('--seed') + 1] : 12345;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const poses = [];
+  for (const l of fs.readFileSync(path.join(__dirname, 'dead-positions.jsonl'), 'utf8').split('\n')) if (l[0] === '{') { const r = JSON.parse(l); if (Array.isArray(r.p) && r.p.length === 6) poses.push({ p: r.p, tag: 'dead-positions:' + r.g }); }
+  const dataDir = path.join(__dirname, 'data'), files = fs.existsSync(dataDir) ? fs.readdirSync(dataDir).filter(f => /^(batch|retro).*\.jsonl$/.test(f)).sort() : [];
+  while (poses.length < n && files.length) {
+    const f = files[Math.floor(rnd() * files.length)], lines = fs.readFileSync(path.join(dataDir, f), 'utf8').split('\n').filter(l => l[0] === '{');
+    if (!lines.length) continue;
+    const r = JSON.parse(lines[Math.floor(rnd() * lines.length)]); if (Array.isArray(r.p) && r.p.length === 6) poses.push({ p: r.p, tag: f + ':' + r.g });
+  }
+  let arms = 0, bad = 0, tEv = 0, tLad = 0, maxD = 0; const reasons = {};
+  const same = (a, b) => a.reason === b.reason && a.foot === b.foot && a.line === b.line && a.crossed.join() === b.crossed.join() && Math.abs(a.lim - b.lim) < 1e-9;
+  for (const q of poses) for (const mover of [0, 1]) for (const [pv, dir] of ARMS) {
+    const pieces = piecesOf(q.p);
+    let t = process.hrtime.bigint(); const a = limitAt(pieces, mover, pv, dir); tEv += Number(process.hrtime.bigint() - t);
+    t = process.hrtime.bigint(); const b = limitLadder(pieces, mover, pv, dir); tLad += Number(process.hrtime.bigint() - t);
+    arms++; reasons[b.reason] = (reasons[b.reason] || 0) + 1; maxD = Math.max(maxD, Math.abs(a.lim - b.lim));
+    if (!same(a, b)) { bad++; if (bad <= 20) console.log(`MISMATCH ${q.tag} mover ${mover} arm (${pv},${dir}): events ${(a.lim / DEG).toFixed(3)}deg ${a.sig} | ladder ${(b.lim / DEG).toFixed(3)}deg ${b.sig}`); }
+  }
+  console.log(`${arms} arms over ${poses.length} poses, ladder reasons ${JSON.stringify(reasons)}: ${bad} mismatch${bad === 1 ? '' : 'es'}, max |lim| difference ${maxD.toExponential(2)} rad; ${(tEv / 1e6 / arms).toFixed(3)} ms/arm events vs ${(tLad / 1e6 / arms).toFixed(3)} ms/arm ladder (${(tLad / tEv).toFixed(0)}x)`);
+  if (bad) process.exit(1);
 } else if (require.main === module && process.argv[2] === '--dead-batch') {
   // node nn/forced-win.js --dead-batch seeds.jsonl --depth d [--out results.jsonl] [--maxSeconds S] [--only k]
   // Rows { p, mover, k, g, file }. Resumable: rows whose (p, mover, depth) already appear in --out
