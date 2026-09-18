@@ -1,5 +1,5 @@
 # Tau NN training status
-_Last updated: 2026-09-18T18:58:27.745Z_
+_Last updated: 2026-09-18T19:03:39.674Z_
 
 **Self-play batch:** 137
 **Stage:** self-play batch 137 running, next check in 5 min
@@ -9,6 +9,6 @@ _Last updated: 2026-09-18T18:58:27.745Z_
 
 **Last gate result:** pool cycle 405 — promoted resume-323: 53-9-0 vs ckpt-401, +156 +/- 101 Elo (lower bound clears +0)
 
-**Last checkpoint:** ckpt-401.json at 2026-09-18T18:13:33.390Z
+**Last checkpoint:** ckpt-406.json at 2026-09-18T19:03:34.239Z
 
 **Last ladder sweep:** (none yet)
