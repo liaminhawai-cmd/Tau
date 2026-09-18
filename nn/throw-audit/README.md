@@ -18,8 +18,9 @@ certified dead point `ndpxhts24`:
 | `vertex-park.js` | Does the victim's contact point transit the phi=30 vertex, or park on it? | yes |
 
 `vertex-park.js` settles the other correction: the victim's contact arc angle is
-30.000000 degrees exactly from substep 74 through the throw at 84 and beyond, so
-what the tracer called a third crossing is an index flip during a dwell.
+30.000000 degrees exactly from substep 74 to 98, so what the tracer called a
+third crossing is an index flip during a twenty-five-substep dwell. It also shows
+the attacker's crossing and the victim's arrival falling in the same substep, 73.
 
 `overshoot-bound.js` is the one that found a real error. It deliberately keeps the old
 `eta = R(1 - cos eps) + R(eps - sin eps)` inline so it can report how often the

@@ -29,5 +29,5 @@ for (let k = 1; k <= K; k++) {
   const phi = (best.b + best.t) * 90 / NSEG;
   const onVertex = Math.abs(phi - Math.round(phi/(90/NSEG))*(90/NSEG)) < 1e-9;
   const deg = k*TC.LIM_SUB/DEG;
-  if (deg >= 22 && deg <= 28.5) console.log(`  ${String(k).padStart(3)} ${deg.toFixed(2).padStart(5)}  (${best.i},${best.j}) ${best.a},${best.b}  ${best.s.toFixed(3)} ${best.t.toFixed(3)} ${best.dist.toFixed(4)}   phi ${phi.toFixed(6).padStart(10)}   ${onVertex?'VERTEX':''}`);
+  if (deg >= 22 && deg <= 35) console.log(`  ${String(k).padStart(3)} ${deg.toFixed(2).padStart(5)}  (${best.i},${best.j}) ${best.a},${best.b}  ${best.s.toFixed(3)} ${best.t.toFixed(3)} ${best.dist.toFixed(4)}   phi ${phi.toFixed(6).padStart(10)}   ${onVertex?'VERTEX':''}`);
 }
