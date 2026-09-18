@@ -1,18 +1,22 @@
-# Brief 2: three contraction lemmas for the throw proof, and the oriented split at the jumping walls
+# Brief 2: the last obstacle in the throw proof, and the oriented split at the jumping walls
 
 This is a self-contained follow-up to the dead-region brief. You have no access to the code or the game; everything you need is in here (the first brief's definitions are repeated where they are needed, so this can be read alone). Units: board units `u` (1u = 2 mm); angles in degrees unless a formula says radians. Every number below was recomputed today from the engine's own code at the commit you pinned last time (e32f09d), not copied from earlier notes.
 
-There are three jobs. **Job 1 is the one I want first**: it is blocking a proof that is otherwise days of work. Job 2 is the open question from your first answer. Job 3 is optional.
+There are three jobs. **Job 1 is the one I want first**: it is the one thing left between us and a machine-checked proof that a throw works over a whole region of poses. Job 2 is the open question left from your first answer. Job 3 is optional.
+
+A note on Job 1: an earlier draft of this brief asked you for three contraction lemmas. Between writing it and sending it, two of the three were proved and built here, and the third turned out to be nearly free, so Job 1 below asks instead about the single obstacle that now binds. Sections 1.4 and 1.6 say what was proved and what broke, in case the proofs are wrong.
 
 ---
 
 ## 0. What came back from the first brief, in three lines
 
-Your geometry was right and every number that could be re-derived here was re-derived to the printed digit (24 arm limits, the 40 events on arm (0,-), E01 at 63.6927 against 68.7636 degrees, grad H = (-3.9884, +1.6929, +4.3300) deg per u, nearest point 1.1606u). Two things you said changed what we do: the E01 wall at ndpxhts24 is an event-order curve where **both** events stop the arm, so the limit is continuous across it and the box needs no split at all (enclose both events, take the minimum: the whole +-1u box became one cell, 476 poses dead, in 6.5 minutes against 28 minutes for 59% before); and the "no legal reply" points at l5807vazg were off the board at the start, not limit walls. Your three corrections to the throw note (the deficit is two-sided, the foot-gain error is 5e-4u not 1e-4u, "s = a" is first order) all stand and are folded in below.
+Your geometry was right and every number that could be re-derived here was re-derived to the printed digit (24 arm limits, the 40 events on arm (0,-), E01 at 63.6927 against 68.7636 degrees, grad H = (-3.9884, +1.6929, +4.3300) deg per u, nearest point 1.1606u). Two things you said changed what we do: the E01 wall at ndpxhts24 is an event-order curve where **both** events stop the arm, so the limit is continuous across it and the box needs no split at all (enclose both events, take the minimum: the whole +-1u box became one cell, 476 poses dead, in 6.5 minutes against 28 minutes for 59% before); and the "no legal reply" points at l5807vazg were off the board at the start, not limit walls. Your three corrections to the throw note (the deficit is two-sided, the foot-gain error is 5e-4u not 1e-4u, "s = a" is first order) all stand and are folded in below. Your conjectured Lipschitz constant for the closest-point vector also pointed the right way, though the answer turned out to be sharper than Lipschitz: see 1.4.
 
 ---
 
-## 1. Job 1: the throw proof, and the three lemmas that would close it
+## 1. Job 1: the last obstacle in the throw proof
+
+Since your first answer this has moved a long way: the two geometric lemmas that were wanted are proved and built, the checker's normal bound improved by a factor of two hundred and its pose set stopped growing. It still does not reach the end of a throw, and what stops it now is one specific, well-localised thing. That is the question.
 
 ### 1.1 The objects in 3-D (this is what the first brief left out)
 
@@ -24,7 +28,7 @@ Each leg is a quarter circle in the vertical plane through the hub and its foot:
 
     L_i(phi) = ( x + R sin(phi) cos(psi_i),  y + R sin(phi) sin(psi_i),  H cos(phi) ),   psi_i = rot + 120 i deg.
 
-Since H = R the leg is a true quarter circle of radius R. **The engine draws it as a 12-segment polyline**, vertices at `phi_k = 7.5 k` degrees, k = 0..12, so a chord's direction is the arc tangent at its middle angle `7.5 (k + 1/2)` degrees, and the direction jumps by 7.5 degrees at every vertex. The leg is a tube of radius `rho = 1.44u` about that polyline; two legs are in contact when their polylines' closest points are less than `D = 2.88u` apart in 3-D. The hub is a sphere of radius `1.9 rho = 2.736u` (hub-to-leg contact at 4.176u, hub-to-hub at 5.472u); no hub contact occurs in anything below.
+Since H = R the leg is a true quarter circle of radius R. **The engine draws it as a 12-segment polyline**, vertices at `phi_k = 7.5 k` degrees, k = 0..12. A chord is `R . 7.5 deg = 3.023u` long, its direction is the arc tangent at its middle angle, the direction jumps by 7.5 degrees at every vertex, and the chord's sagitta against the true arc is 0.0494u. **Those vertices are the whole of Job 1.** The leg is a tube of radius `rho = 1.44u` about the polyline; two legs are in contact when their polylines' closest points are less than `D = 2.88u` apart in 3-D. The hub is a sphere of radius 2.736u; no hub contact occurs in anything below.
 
 The unit tangent of leg i at arc angle phi is
 
@@ -32,135 +36,115 @@ The unit tangent of leg i at arc angle phi is
 
 ### 1.2 The push law, exactly as the code has it
 
-The attacker is kinematic: it rotates rigidly about its pinned foot P by `delta = 0.4 degrees` per substep, in one direction. The victim is a free rigid body in the plane: hub c, orientation theta, mass 1, inertia `I = 0.7 R^2 = 373.37 u^2`.
+The attacker is kinematic: it rotates rigidly about its pinned foot P by a substep of `1/3 degree`, in one direction. The victim is a free rigid body in the plane: hub c, orientation theta, mass 1, inertia `I = 0.7 R^2 = 373.37 u^2`.
 
-After each substep of the attacker the solver runs up to 10 passes. A pass visits every leg pair (i, j) whose polylines are closer than D and, for each, computes the 3-D closest points `p_A` (on the attacker) and `p` (on the victim), the 3-D unit vector `n3` from p_A to p, its horizontal part `n = (n3_x, n3_y) / hf` with `hf = |(n3_x, n3_y)|` (the horizontal fraction), and the separation
+After each substep the solver runs up to 10 passes. A pass visits each leg pair whose polylines are closer than D and, for each, takes the **single globally closest** segment pair, its 3-D closest points `p_A` (attacker) and `p` (victim), the 3-D unit vector `n3` from p_A to p, its horizontal part `n = (n3_x, n3_y) / hf` with `hf = |(n3_x, n3_y)|`, and the separation
 
     s = (D - dist) / max(hf, 0.35),   capped at 0.8u.
 
-Then with `r = p_xy - c` (the contact point from the victim's hub, horizontal) and `rn = r x n = r_x n_y - r_y n_x` (the lever arm: the signed distance of the hub from the line of the push),
+Then with `r = p_xy - c` and `rn = r x n` (the lever arm: the signed distance of the hub from the line of the push),
 
     lambda = s / (1 + rn^2 / I),     c <- c + lambda n,     theta <- theta + lambda rn / I.
 
-A pass with no pair under D ends the solver. (A deep-crossing rule for dist < 0.3u exists and has never fired; the 0.8u cap and the 0.35 floor have never fired in 300 measured throws; there is no friction and no restitution.) The polyline closest-point routine is the standard segment-segment one with clamping to the segment ends.
+A pass with no pair under D ends the solver. (A deep-crossing rule for dist < 0.3u exists and has never fired; the 0.8u cap and the 0.35 floor have never fired in 300 measured throws; no friction, no restitution.) Note the consequence of "globally closest": **which segment pair wins decides the push direction outright**, so where two pairs are nearly tied the applied push is genuinely discontinuous in the pose. That is not a modelling artefact to be smoothed; it is what the engine does.
 
-### 1.3 What is already proved from that update (with your corrections)
+### 1.3 The dynamics lemmas, proved earlier
 
-- **Lemma 1.** After one update the touched point p moves by `Delta p` with `Delta p . n = s - eta`, `|eta| <= (1 - cos e)|r| + (e^2/6)(s - lambda)`, `e = lambda rn / I`. With s <= 0.8 and |r| <= R this is `|eta| <= 0.005u`; eta is two-sided (measured range over 5e5 random updates: -0.0035 to +0.0035u).
-- **Lemma 2.** `lambda` is in `[0.4118 s, s]` (since |rn| <= R and 1/(1 + R^2/I) = 0.7/1.7) and the spin `|lambda rn / I| <= s / (2 sqrt I) = 0.02588 s` radians, i.e. at most 1.48 degrees per u of separation.
-- **Lemma 3.** For a foot `F = c + R f` with outward unit `u = F/|F|`, the radial gain of one update is `lambda [ n . u + (rn / I) R (J f) . u ]` up to a second-order error that is 5.1e-4u in the worst configuration at one substep's separations (J the quarter turn). The bracket is the **gain coefficient g**: slide plus spin.
-- **One substep of the attacker** moves any point of its legs by at most `2 sqrt(3) R sin(0.2 deg) = 0.2793u`. If a pair is at distance D at the start of the substep and the attacker's contact point advances by `a` along n, the solver asks for `s = a` to first order (exactly `s = a` if hf >= 0.35 and the gap closes by a hf), so the cap never binds.
-- **The theorem (barrier form).** Fix the attacker's swing. Let B be a set of victim poses and F the exposed foot. If for every substep and every pose in B that touches: (H1) exactly one leg pair touches, closest points interior to both polylines, hf >= 0.35, no hub contact; (H2) the attacker's contact point advances into the victim by `a >= a_min(k) > 0`; (H3) `g >= g_min(k) > 0` and `rn^2 <= L^2`; (H4) B is invariant under the pushes; then the victim is thrown no later than the first substep by which `sum_k a_min(k) g_min(k) / (1 + L^2/I)` exceeds `67.167 - |F_0|` plus 0.005u per contact substep. Nothing in the proof runs the solver; the hypotheses are geometry, checkable by interval arithmetic on the polylines.
+- **Lemma 1.** One update moves the touched point p by `Delta p . n = s - eta` with `|eta| <= 0.005u`, two-sided (measured range over 5e5 updates: -0.0035 to +0.0035u).
+- **Lemma 2.** `lambda` is in `[0.4118 s, s]`, and the spin is at most `0.02588 s` radians, i.e. 1.48 degrees per u of separation.
+- **Lemma 3.** For a foot `F = c + R f` with outward unit `u = F/|F|`, the radial gain of one update is `lambda [ n . u + (rn / I) R (J f) . u ]` up to 5.1e-4u (J the quarter turn). The bracket is the **gain coefficient g**.
+- **The theorem (barrier form).** Over a set B of victim poses and a sweep, if at every substep exactly one leg pair touches with interior closest points and hf >= 0.35 (H1), the attacker advances into it by `a >= a_min(k) > 0` (H2), `g >= g_min(k) > 0` with `rn^2 <= L^2` (H3), and B is invariant under the pushes (H4), then the victim is thrown once `sum_k a_min(k) g_min(k) / (1 + L^2/I)` reaches the exposed foot's distance to the rim (plus 0.005u per contact substep). Nothing in the proof runs the solver; the hypotheses are geometry over B.
 
-### 1.4 The real throw the proof has to reproduce
+### 1.4 The geometry lemmas, now proved (these were Job 1 of the draft you are not being sent)
 
-ndpxhts24, the certified dead point (blue victim). Blue replies with arm (pivot foot 0, anticlockwise) to 8 degrees; that reply pushes nothing. The position after it:
+The first checker bounded H1 to H3 by interval arithmetic over an axis-aligned box and was sound but useless: the box grew about 1.3x per substep. Measurement showed why. On the throw of 1.5, over a box of victim poses of +-0.005u and +-0.02 degrees, 150 simulated poses through all 138 substeps of the sweep:
+
+| quantity | true spread over the box | the old bound |
+|---|---|---|
+| contact normal, azimuth | 0.014 deg | 7.8 deg |
+| horizontal fraction hf | 0.0001 | 0.10 |
+| lever arm rn | 0.005u | 2.3u |
+| pose set, foot-displacement spread | 0.0239u at substep 1, 0.0246u at substep 38 | grew without limit |
+
+The normal bound was loose by a factor of five hundred **and had a floor**: it came from a fan of neighbouring chord directions, and one chord subtends 7.5 degrees however small the box is. Two lemmas removed that.
+
+**Lemma A (where the contact point can be).** For two chords parameterised by arclength, `F(s, t) = |A(s) - V_q(t)|^2` is a quadratic with the pose-independent Hessian
+
+    grad^2 F = 2 [[1, -c], [-c, 1]],    c = cos(crossing angle),    mu = 2(1 - |c|),
+
+so with `z_c` the constrained minimiser for the centre pose and `z*` that for any pose in the set, adding the two variational inequalities gives
+
+    mu |z* - z_c|^2 <= -g . (z* - z_c),   hence   |z* - z_c| <= |g| / mu,
+
+where `|g|` bounds the change in grad F over the set. This is **linear** in the set's size, where the obvious argument through function values gives only the square root (0.75u of leg rather than 0.05u at a set radius of 0.024u), and it holds for a minimiser on the rectangle's boundary as well as inside.
+
+**Lemma B (the normal is then exact).** At an interior minimum the closest-point vector is perpendicular to both chords, so it is parallel to `u_A x u_V`, and on a polyline those are constant per chord. So once Lemma A confines the closest point to one chord pair, the contact normal is not merely bounded but exact up to the set's own rotation span: the cone went from 7.8 degrees to 0.03 to 0.06, against the measured truth of 0.014. Two bookkeeping rules make it usable: a **stale-neighbour test** (two chords meeting at a vertex both report a minimiser at that vertex; the one whose distance rises into its own chord is not a real local minimum of the pair and is dropped) and a **gap test** (a rival pair is dropped when the centre pose's gap exceeds what the *difference* of the two pairs' gradients can accumulate over the set; near a shared vertex the two contact points are close, so their gradients nearly coincide and the gap barely moves even though each distance moves a lot).
+
+Your third lemma, the contraction along the normal, turned out to be nearly free once the first two were in hand: the push moves the touched point by exactly the gap along the normal, so the pair ends at D up to the difference between the finite rotation and its linearisation, `R(1 - cos eps) + R(eps - sin eps)`, about **1e-5u**; the engine agrees, post-push pair distances over 200 poses all in [2.88000, 2.88001]. The blanket 0.005u the first checker used was the floor on how thin the set could ever be.
+
+Three other things had to change: the enclosure is a **parallelotope** around the centre pose's own simulated trajectory, with its basis built from the contact frame (tangential slide, spin-led tangent, push) rather than by projecting the previous columns, which alone was inflating the set 1.6x per substep; the push magnitude is bounded **from below** as well as above (a pose already inside D must be pushed out of it); and within a substep the checker **branches on contact regime** when two chords are live, since no pose has both normals.
+
+Result, on the same throw, a +-0.005u / +-0.02-degree box, 138 substeps:
+
+| | first checker | with the lemmas |
+|---|---|---|
+| set size while in contact | grows 1.3x per substep | flat at 0.021 to 0.027u from 4.7 to 9.0 degrees |
+| contact normal cone | 7.8 deg, with a floor | 0.03 to 0.06 deg |
+| stops at | 11.6 deg, set already 1.8u wide | 12.0 deg, set 0.25u |
+
+Soundness was checked throughout: 200 simulated poses over two box sizes, every per-substep enclosure and bound asserted against the engine's own law, **zero violations**.
+
+### 1.5 The throw the proof has to reach
+
+ndpxhts24, a certified dead point (blue victim). Blue replies with arm (pivot foot 0, anticlockwise) to 8 degrees; that reply pushes nothing. The position after it:
 
 | | hub (x, y) | rot | feet (x, y) [radius] |
 |---|---|---|---|
 | blue (victim) | (-24.3113, -37.3480) | 77.053 deg | f0 (-19.137, -14.840) [24.217]; **f1 (-46.391, -44.121) [64.021]**; f2 (-7.406, -53.083) [53.597] |
 | red (attacker) | (-11.7593, -23.2838) | 168.689 deg | **f0 (-34.406, -18.755) [39.185]** = the pivot P; f1 (-4.358, -45.161); f2 (3.486, -5.936) |
 
-Clearance between the pieces at the start: 0.498u (leg-axis distance minus D). Red swings arm (pivot foot 0, clockwise); its closed-form limit is 46.00 degrees (foot 1 reaches the rim). The engine throws blue's foot 1 at 28.0 degrees with margin 6.71u; foot 1 needs 3.146u of radial gain from 64.021u to 67.167u. Contact is red leg 0 against blue leg 0 only, from substep 10 (4.0 degrees) to the throw at substep 70; 61 substeps in contact. Substep by substep (the engine's replica, traced):
+Clearance at the start 0.498u. Red swings arm (pivot foot 0, clockwise); the closed-form limit of that arm is 46.00 degrees. The engine throws blue's foot 1 at 28.0 degrees with margin 6.71u; foot 1 needs 3.146u of radial gain from 64.021u. Contact is red leg 0 against blue leg 0 only, from 4.0 degrees of sweep to the throw. Traced (0.4-degree substeps here, so the sweep angles are what to read, not the substep numbers):
 
-| substep (deg) | phi on red leg / blue leg (deg down from the hub) | 3-D crossing angle of the leg tangents | hf | lever rn (u) | bearing of n (deg) | n . u at foot 1 | penetration created (u) | foot-1 gain (u) | victim pose after |
-|---|---|---|---|---|---|---|---|---|---|
-| 10 (4.0) | 26.0 / 36.8 | 73.0 | 0.632 | -7.91 | -68.1 | 0.37 | 0.0021 | 0.0004 | (-24.310, -37.351, 77.049) |
-| 20 (8.0) | 24.2 / 35.3 | 72.0 | 0.622 | -7.20 | -70.9 | 0.41 | 0.0464 | 0.0139 | (-24.088, -37.948, 76.315) |
-| 30 (12.0) | 21.4 / 33.6 | 71.2 | 0.578 | -4.29 | -84.7 | 0.62 | 0.0520 | 0.0430 | (-23.930, -38.668, 75.657) |
-| 40 (16.0) | 19.5 / 32.6 | 69.5 | 0.572 | -3.57 | -88.2 | 0.67 | 0.0536 | 0.0517 | (-23.878, -39.550, 75.130) |
-| 50 (20.0) | 17.6 / 31.6 | 67.5 | 0.566 | -2.84 | -91.7 | 0.72 | 0.0553 | 0.0612 | (-23.880, -40.484, 74.677) |
-| 60 (24.0) | 15.6 / 30.5 | 65.5 | 0.562 | -2.10 | -95.3 | 0.75 | 0.0573 | 0.0714 | (-23.944, -41.466, 74.310) |
-| 70 (28.0) | 13.5 / 30.0 | 62.9 | 0.509 | +0.82 | -109.7 | 0.89 | 0.0599 | 0.1101 | (-24.322, -42.566, 74.430) |
+| sweep (deg) | phi on red leg / blue leg (deg from the hub) | 3-D crossing angle of the tangents | hf | lever rn (u) | bearing of n (deg) | n . u at foot 1 | foot-1 gain (u) |
+|---|---|---|---|---|---|---|---|
+| 4.0 | 26.0 / 36.8 | 73.0 | 0.632 | -7.91 | -68.1 | 0.37 | 0.0004 |
+| 8.0 | 24.2 / 35.3 | 72.0 | 0.622 | -7.20 | -70.9 | 0.41 | 0.0139 |
+| 12.0 | 21.4 / 33.6 | 71.2 | 0.578 | -4.29 | -84.7 | 0.62 | 0.0430 |
+| 16.0 | 19.5 / 32.6 | 69.5 | 0.572 | -3.57 | -88.2 | 0.67 | 0.0517 |
+| 20.0 | 17.6 / 31.6 | 67.5 | 0.566 | -2.84 | -91.7 | 0.72 | 0.0612 |
+| 24.0 | 15.6 / 30.5 | 65.5 | 0.562 | -2.10 | -95.3 | 0.75 | 0.0714 |
+| 28.0 | 13.5 / 30.0 | 62.9 | 0.509 | +0.82 | -109.7 | 0.89 | 0.1101 |
 
-(The bearing of blue's leg 0 is 77.05 falling to 74.4 degrees as it is pushed; red's leg 0 is at 168.69 - 0.4 k degrees. Foot 1's outward direction is at bearing -136.4 degrees.) The attacker's advance a per substep is 0.072 to 0.117u, summing to 5.66u; the separations applied sum to 5.59u; the engine's foot gain sums to 3.170u and Lemma 3's formula to 3.18u, worst single-substep difference 0.009u. So the per-substep formula is right; what is missing is bounding its inputs over a **set** of poses.
+The engine's gains sum to 3.170u and Lemma 3's formula to 3.18u, worst single-substep difference 0.009u. The legs never come near parallel: the crossing angle stays between 63 and 73 degrees.
 
-**The dynamics are contractive.** 40 random poses from the box +-0.1u in x and y, +-0.5 degrees in rotation around the pose above, all simulated with the engine to the throw (40 of 40 thrown), have these spreads (max minus min over the 40):
+**Where the polyline vertices fall.** The contact walks 5.04u down the attacker's leg and 2.74u down the victim's over those 24 degrees, that is 0.070u per 1/3-degree substep against a chord of 3.023u. So in the whole contact phase the contact point crosses exactly three vertices:
 
-| substep (deg) | spread in x (u) | in y (u) | in rot (deg) | in foot-1 radius (u) |
-|---|---|---|---|---|
-| 0 | 0.193 | 0.184 | 0.97 | 0.294 |
-| 10 (4.0) | 0.218 | 0.133 | 0.97 | 0.297 |
-| 20 (8.0) | 0.244 | 0.131 | 0.87 | 0.304 |
-| 30 (12.0) | 0.225 | 0.060 | 0.86 | 0.231 |
-| 50 (20.0) | 0.228 | 0.047 | 0.90 | 0.225 |
-| 70 (28.0) | 0.207 | 0.065 | 0.93 | 0.150 |
+| vertex | at sweep |
+|---|---|
+| attacker's leg, phi = 22.5 deg | **10.6 deg** |
+| attacker's leg, phi = 15.0 deg | 24.2 deg |
+| victim's leg, phi = 30.0 deg | 24.4 deg |
 
-From the box +-0.01u, +-0.05 degrees the spreads are 0.019 / 0.020 / 0.09 at the start and 0.023 / 0.009 / 0.11 at substep 70. Nothing spreads; the y direction (close to the push normal, bearing -70 to -110 degrees) shrinks by three to four times. The contact constraint pulls the poses together along the normal and nothing drives them apart tangentially.
+The checker stops at 12.0 degrees. It stops at the first of them.
 
-### 1.5 The checker, and exactly where its bounds are loose
+### 1.6 What stops it now, exactly
 
-The checker implements the theorem as an interval computation over a box of victim poses `B = [x0 +- hx] x [y0 +- hy] x [rot0 +- ht]`, carried substep by substep:
+As the contact point approaches a vertex, the neighbouring chord's minimum converges on the live one: over four substeps, 2.9041, 2.8963, 2.8886, 2.8804, against a steady 2.8801. For a few substeps the two are genuinely within the set's own width of each other, so both regimes are live. Their exact normals differ by the polyline's turn, and the resulting pushes differ by about 0.01u. That alone would be survivable. What is not survivable is the feedback: a wider set raises Lemma A's localisation radius, which puts more chord ends in play, which widens the vertex cones, which widens the set. From 0.027u it runs 0.033, 0.046, 0.090, 0.122, 0.226, 0.401, and then refuses.
 
-1. **Pad.** Every point of the victim moves at most `pad = hypot(hx, hy) + 2 R sin(ht/2)` across the box. All geometry is done on the box's centre pose and widened by pad.
-2. **H1.** A leg pair is "touchable" if its centre-pose polyline distance minus pad is under D. Refuse if two pairs are touchable, or any hub contact is possible.
-3. **Candidate segments.** On the touchable pair, a segment pair is a candidate if its centre-pose distance is under `thr = min(D, dist_c + pad) + pad`. On each candidate segment, only the **portion** whose distance to the other segment is under thr can hold a closest point (that distance is convex along a segment, so the portion is an interval found by bisection from the minimiser). Refuse if a portion reaches a hub end or a foot end of a polyline.
-4. **The normal.** The closest-point vector between two polylines is perpendicular to both at interior points, so `n3` is parallel to `u_A(phi_A) x u_V(phi_V)` with phi_A, phi_V in the candidate chords' angle **fans**: a chord's own middle angle, widened to the neighbouring chord's middle angle when the portion reaches a vertex (a 7.5-degree wedge). The cross product is evaluated by interval arithmetic over the fans and over the victim's rotation interval; its sign is fixed by the centre pose's own closest vector (unique and continuous on one segment pair); `hf` is read off the family; the horizontal cone `psi_N` is the angular hull. Refuse if the family is wider than 45 degrees.
-5. **Advance and penetration.** The attacker's contact point moves by the exact chord of its 0.4-degree rotation; its component along the cone is `a` (an interval; refuse if a can be <= 0). With the pair at distance in [D - res, D] before the substep (res the residual Lemma 1 can leave, 0.005u), the penetration created is `D - |d - chord|`, bounded above and below.
-6. **Separation, lambda, gain.** `s` in `[pen_min / max(hf_hi, 0.35), min(0.8, pen_max / max(hf_lo, 0.35))]`; `rn` from the victim's candidate-portion box minus the hub box, dotted with the cone; `lambda` from s and rn; `g_min = min(n . u) + min(spin term)` with u the outward direction over the foot's box; gain >= lambda_min g_min.
-7. **Move the box (H4).** New box = old box shifted by `lambda n` (interval in the cone) and `lambda rn / I` in rotation; until every pose of the original box has surely been touched, the new box is the hull of the old and the moved one.
-8. **--validate**: random poses in the box are simulated with the engine's law and every per-substep bound (pose inside the carried box, normal inside the cone, hf inside its interval, gain above the bound) is asserted. **Zero violations in every run**, so the bounds are sound as far as simulation can tell.
+Shrinking the starting box does not help: at +-0.001u the contact crosses the vertex a few substeps later and the same thing happens. **Subdividing the box is not the answer; the crossing has to be handled.** There is also a third regime in play: while the closest point dwells exactly on a shared vertex the vector to it is perpendicular to neither chord, and lies in the vertex's normal fan (the checker carries this case with a cone computed from the vertex's known position; only one endpoint is uncertain when the vertex is the attacker's, since the attacker is fixed through the substep).
 
-**Where it fails**, reproduced today on the pose of 1.4:
-
-| starting box | how far it gets | what stops it |
-|---|---|---|
-| +-0.1u, +-0.5 deg | substep 20 (8.0 deg) | after the push, a second leg pair (red 1, blue 2) can no longer be excluded: 6.20u at the centre, but the pad has grown past 3.3u |
-| +-0.03u, +-0.1 deg | substep 26 (10.4 deg) | same, at 5.25u |
-| +-0.01u, +-0.05 deg | substep 29 (11.6 deg) | same, at 4.98u |
-| +-0.01u, with the conjectured Lipschitz cone of 1.7 below instead of the fans | substep 16 | the cone exceeds 30 degrees once the box is wide |
-
-The carried box for the +-0.01u, +-0.05-degree start (the engine's own spread from this box is 0.022 x 0.014u x 0.09 degrees at every substep to the throw):
-
-| substep (deg) | box width x (u) | y (u) | rot (deg) | advance a | penetration | gain bound per substep |
-|---|---|---|---|---|---|---|
-| 11 (4.4) | 0.044 | 0.069 | 0.18 | [0.0686, 0.0815] | [0.0408, 0.0649] | 0.0067 (engine: 0.010) |
-| 15 (6.0) | 0.152 | 0.280 | 0.52 | [0.0655, 0.0866] | [0.0385, 0.0635] | 0.0059 |
-| 20 (8.0) | 0.364 | 0.730 | 1.30 | [0.0624, 0.1004] | [0.0333, 0.0750] | 0.0043 |
-| 25 (10.0) | 0.819 | 1.474 | 2.83 | [0.0479, 0.1094] | [0.0199, 0.0835] | 0 |
-| 28 (11.2) | 1.411 | 2.109 | 4.64 | [0.0311, 0.1256] | [0.0115, 0.0919] | 0 |
-
-The box grows by 1.2 to 1.3x per substep whatever the starting size, because each substep adds the full width of the separation interval to the box, the wider box widens the candidate portions and the fans, and that widens the next separation interval. Three bounds are loose **by construction**, and these are what the lemmas have to replace:
-
-1. **Where the contact is.** The candidate portion of a segment is a sublevel set of the distance, and near the minimiser the distance is flat: for legs crossing at 63 to 73 degrees the portion is about +-0.8u along each leg even for a 0.01u box (thr exceeds the minimum by about 2 pad, and a quadratic with the curvature of two crossing tubes is that wide). The lever arm rn inherits it (an interval 1.6u wide, against a true spread of a few hundredths), and the rotation interval inherits rn.
-2. **The normal.** Whenever a portion reaches a polyline vertex the fan includes the whole 7.5-degree wedge, hf then spans two chords' values (0.61 to 0.72 where the true hf moves by 0.005 across the box), and the horizontal cone is several degrees wide.
-3. **The normal coordinate.** After the solver every touching pose is at distance D - eta from the attacker (Lemma 1), so the set of post-push poses is a thin sheet, and the carried box should be no wider along n than the tangential widths allow. The carrier never uses that.
-
-### 1.6 The three lemmas wanted, with the constants
-
-Notation for all three: two smooth curves in R^3, the attacker's leg `A(phi) = L_A(phi)` and the victim's leg `V(phi') = L_V(phi')` as in 1.1 (quarter circles of radius R = 23.095, in vertical planes), at a configuration where their closest points are interior and their distance is `d` near D = 2.88 (the curvature radius R is 8 times D, so locally these are nearly straight lines crossing at the angle `chi` between the tangents, 63 to 73 degrees in the throw above). A pose change of the victim by `(dx, dy, dtheta)` moves every point of its leg by at most `pad = hypot(dx, dy) + 2 R sin(|dtheta|/2)`. Write `phi*` and `phi'*` for the arc angles of the closest points and `n3` for the unit closest-point vector.
-
-**Lemma A (the contact point is Lipschitz in the pose).** For two curves crossing at angle chi with interior closest points, the closest-point parameters move by at most
-
-    |Delta phi*| R <= C_A pad,    |Delta phi'*| R <= C_A pad,    with C_A = C_A(chi, d, R) explicit,
-
-and the engine's contact point moves by at most (1 + C_A) pad. The natural argument is strong convexity: the squared distance along each curve near the minimiser has second derivative at least `sin^2(chi)` times the arc-length metric for straight lines, minus a curvature correction of order `d / R`; the minimiser of a strongly convex function is Lipschitz in the function's parameters. I want the constant, and the correction for the polyline: the true minimiser can sit at a vertex (a 7.5-degree kink), where the closest point is stationary in a whole range of poses and the vector is in the vertex's normal fan. Expected size for the throw above: about `pad / sin(chi)`, i.e. under 0.1u for the +-0.03u box (pad 0.083u), against the +-0.8u the sublevel set gives.
-
-**Lemma B (the closest-point vector is Lipschitz).** Under the same hypotheses,
-
-    |Delta n3| <= K pad / d,     K = K(chi) explicit, conjectured about 1 + 1 / sin(chi)   (2.05 to 2.12 in the throw above),
-
-for pose changes small against d, and the horizontal fraction hf and the horizontal bearing of n inherit it (`|Delta hf| <= |Delta n3|`, `|Delta bearing| <= |Delta n3| / (hf - |Delta n3|)`). This is the `--lipschitz` cone the checker already offers as a conjecture; validation never caught it out, and it is unproved. For the polyline: across a vertex the closest-point vector rotates continuously through the 7.5-degree normal fan while the closest point sits at the vertex, so the Lipschitz statement needs a bound on how fast the pose can drive the vector through that fan (the fan is 7.5 degrees wide, but a pose change of pad can only turn the vector by about pad / d, so the cone the checker should use is the smaller of the two).
-
-**Lemma C (the contact constraint contracts the box along the normal).** After the solver, every touching pose is at distance in `[D - eta, D + res]` from the attacker (eta <= 0.005u from Lemma 1, res the residual overlap, measured 0.0000u). Therefore the carried set after a substep lies in the intersection of the moved box with the shell `{pose : dist(pose) in [D - eta, D + res]}`. I want the contractor: given a box whose normals lie in a cone of half-angle beta about n_c and whose hf lies in [hf_lo, hf_hi], and tangential widths w_t (along the horizontal direction perpendicular to n_c) and w_theta (rotation), the post-push set's width along n_c is at most
-
-    w_n <= (eta + res) / hf_lo + w_t tan(beta) + (something) R w_theta + (curvature term in d / R),
-
-with the constants filled in, and the proof. The point is that w_n then no longer grows with the separation interval, which is what compounds. With Lemmas A and B making beta and the lever interval small, this is the step that should make the carried box track the engine's non-spreading trajectories (1.4) instead of doubling every three substeps.
-
-**Lemma D (optional, the strongest form).** Show that the substep map `pose -> pushed pose` on the set of touching poses is a contraction along n in the sense that `|Delta dist_after| <= q |Delta dist_before|` with q < 1 explicit (the engine's y spread in 1.4 falls from 0.18u to 0.05u by substep 50 while x holds), and non-expanding tangentially up to the attacker's own 0.28u chord. That would let the carried box be a fixed small box plus the attacker's known motion, and the whole 46-degree sweep would follow at once.
+The obvious next step is to carry the regimes as genuinely separate sets across substeps rather than unioning them into one parallelotope at the end of each, so that a crossing costs one 0.01u step and nothing compounds. Before building that, I want the geometry checked.
 
 ### 1.7 What I want from you (Job 1)
 
-1. **State and prove Lemmas A, B and C** for two circular arcs of radius R in vertical planes crossing at angle chi at distance d, with explicit constants in chi, d and R, and say for each what changes on the 12-segment polyline (the vertex case). Where a lemma is false as stated, say so and give the true statement (for instance if the contact-point Lipschitz constant blows up as the legs approach parallel, give the condition on chi it needs; the throw above never goes below 62 degrees).
-2. **Give the contractor of Lemma C as a formula** we can code: inputs are the box, the cone, the hf interval and the residuals; output is the reduced box. If it is cleaner to carry the set in coordinates (normal, tangential, rotation) about the centre pose than as an axis-aligned box, say so and write the coordinate change down.
-3. **Predict the numbers.** For the +-0.01u, +-0.05-degree box at substep 11 (chi = 73 degrees, d = 2.88, pad = 0.034u, hf 0.63), what should the widths of the contact-point interval, the normal cone and the post-push box be under your lemmas? We will compare against the engine's spreads in 1.4 and against the checker.
-4. **Say whether Lemma D holds**, and if it does, whether the carried box can be made invariant outright (a single box B that maps into itself under every substep of the sweep), which is the theorem's H4 in its cleanest form.
-5. If you see a different proof shape that avoids carrying a box altogether (for instance a monotonicity argument: the exposed foot's radius is non-decreasing along the sweep for every pose in a region, so only the last substeps need the interval computation), say so; the engine's per-substep gains above are all positive from substep 10 on.
+1. **Is separating the regimes the right answer, and does it terminate?** The regime partition is by which chord pair holds the global minimum, that is by the sign of a gap function on the pose set; carrying regimes separately means carrying the set intersected with a moving half-space of that kind. Over the sweep there are three crossings (1.5), so at worst eight branches if each crossing splits once and nothing ever re-merges. Is that the true complexity, or can the partition refine faster than that (a pose oscillating across the boundary, or a third pair entering while two are tied)? State the condition under which the branch count is bounded by the number of vertices crossed.
+2. **Do the branches re-converge, and can that be proved?** Two poses that differ only by regime get pushes differing by about 0.01u once, and thereafter the contact constraint pins both to distance D from the same attacker. The engine says the difference does not accumulate: measured spreads over the whole box are flat at 0.024u through substep 38, and boxes spanning a crossing are inside that measurement. I would like either (a) a contraction statement for the difference of two branches, so the union's width is bounded by the largest single-crossing cost rather than their sum, or (b) a clear statement that no such contraction holds and the branches must be carried to the end separately.
+3. **The right state to carry.** The set is currently a parallelotope in pose space around the centre trajectory, and one of its three directions is pinned by the contact constraint to about 1e-5u, so the live set is effectively two-dimensional (tangential slide and spin). Is the better object a set in a contact chart, with the normal coordinate pinned and the chart changing at a vertex crossing? If so, give the chart, the transition map at a crossing, and what happens to the vertex-dwell regime in it (in the chart it should be an interval of the chart's own boundary rather than a separate case).
+4. **The vertex-dwell regime, cleanly.** The polyline's distance function is a max-type non-smooth function whose closest-point vector at a vertex lies in a normal cone. Is there a formulation in which the three regimes (chord a, vertex, chord a-1) are one set-valued map with enough monotonicity that the pushed set stays convex, so the checker carries one convex set through the crossing instead of a union? If the push map is monotone in the right sense, the crossing costs nothing at all.
+5. **Can the polyline be traded for the arc, with an explicit error?** The polyline is a discretisation of the true quarter circle: chord 3.023u, sagitta 0.0494u, direction error up to 3.75 degrees. On the arc there are no vertices and Lemma B's normal is smooth in the pose, so the proof would run to the end. The transfer has to be of the applied push, not of the geometry: for a pose whose polyline contact is at or near a vertex, how far can the polyline's push (direction and magnitude) be from the arc's, and is that bound small against the set width of 0.027u? My guess is that it is not, because the sagitta alone is twice that width, and that this route is dead; I would like it either killed properly or rescued.
+6. If you see a proof shape that avoids carrying a set through the crossing at all, say so. One candidate: prove the exposed foot's radius is monotone in the sweep for every pose in the region, so that only a per-substep lower bound is needed and the normal's exact direction stops mattering near the vertices. The engine's per-substep gains are all positive from 4 degrees on (1.5).
 
-What we can do with your answer: the checker (`throw-cert.js`, 330 lines, available beside this brief if you want to read how the fans and portions are built) has `--validate`, so every lemma you state can be checked against thousands of simulated poses before it is trusted; the engine's contact law is reproduced exactly by `swing` in `contact-law.js`; the closed-form limit of any arm at any pose is 0.13 ms.
-
----
+What we can do with your answer: the checker (580 lines) has a `--validate` mode that simulates random poses from the set with the engine's own law and asserts every per-substep enclosure and bound, so any lemma you state can be tested against hundreds of real trajectories before it is trusted; there is a measurement tool that reports the true spread of every bracketed quantity; the engine's contact law is reproduced bit for bit by a 200-line function; the closed-form limit of any arm at any pose costs 0.13 ms.
 
 ## 2. Job 2: the oriented split at the three points where the limit really jumps
 
@@ -244,9 +228,9 @@ Unused from the first brief, still useful as a visual check on the closed-form d
 
 ## 4. Facts to keep straight
 
-- The closed form covers the **limits** (which stops exist), never the **throws** (whether a stop is punished). The throw is the push ODE of 1.2; its per-substep formula is exact to 0.01u but its inputs must be bounded over sets, which is Job 1.
-- The checker's bounds are sound (zero violations against simulation, every run); its problem is width, not correctness.
+- The closed form covers the **limits** (which stops exist), never the **throws** (whether a stop is punished). The throw is the push law of 1.2; its per-substep formula is exact to 0.01u but its inputs must be bounded over sets, which is Job 1.
+- The checker's bounds are sound (zero violations against simulation, every run); correctness has never been the problem. It was width, and since the lemmas of 1.4 it is the vertex crossing of 1.6.
 - Every wall at the three jumping points is closed-form and identified above, to three digits, except one corner merge in a box corner at 0r8c3cohc.
-- The engine floors every limit to a 1/3-degree substep grid and the throw sweep steps at 0.4 degrees; every certificate is built on those.
+- The engine floors every limit to a 1/3-degree substep grid, and a swing is integrated in 1/3-degree substeps; the 0.4 degrees in the traced table of 1.5 is a cap an older tool used, not what real play does. Every certificate is built on those.
 - Rotation on a pose axis is quoted as arc length at R = 23.095u: 1u of rot is 1/23.095 radians, 2.48 degrees.
 - The corrections from your first answer are in force: Lemma 1's deficit is two-sided (|eta| <= 0.005u), Lemma 3's error is 5e-4u, "s = a" is first order, the theorem sums contact substeps only, the ndpxhts24 wall needs no split, and l5807vazg's "no legal reply" points were off the board.
