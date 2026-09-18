@@ -514,8 +514,8 @@
     const n = settings.level, fin = finishOf(rungBoard(n));
     const icon = boardIconURL(fin, 68);
     el.innerHTML = (icon ? `<img src="${icon}" alt="" width="34" height="34">` : '<span class="noicon"></span>')
-      + `<span class="who"><span class="name">${esc(rungName(n))}</span>`
-      + `<span class="rung">${esc(tf('Level {n}', { n }))} · ${esc(fin.name)}${clearMarks(n)}</span></span>`;
+      + `<span class="who"><span class="name">${esc(rungName(n))}${clearMarks(n)}</span>`
+      + `<span class="rung">${esc(tf('Level {n}', { n }))} · ${esc(fin.name)}</span></span>`;
     el.setAttribute('aria-label', tf('Level {n} · {name}', { n, name: rungName(n) }));
   }
   // The whole ladder at once, as boards with people on them. A locked rung is shown greyed with what

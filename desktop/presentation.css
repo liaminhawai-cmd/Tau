@@ -34,7 +34,8 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .desktop-opponent img, .desktop-opponent .noicon { width:34px; height:34px; border-radius:50%;
   display:block; box-shadow:0 1px 5px #0007; background:#222; }
 .desktop-opponent .who { display:grid; gap:1px; min-width:0; }
-.desktop-opponent .name { font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.desktop-opponent .name { font-size:14px; display:flex; align-items:center; gap:5px;
+  overflow:hidden; white-space:nowrap; }
 .desktop-opponent .rung { font-size:11px; color:var(--muted); display:flex; align-items:center; gap:5px;
   overflow:hidden; white-space:nowrap; }
 .marks { display:inline-flex; gap:2px; flex:none; }
