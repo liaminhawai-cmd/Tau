@@ -98,6 +98,39 @@
   // You start on Walnut. The rest of the catalogue opens with play: wins and games played for the
   // everyday boards, high ladder rungs for the deluxe looks, a hundred games for the marble table.
   // Progress counts finished matches against the AI or online (never the lab), persisted locally.
+  // ---- The board ladder -----------------------------------------------------------------------
+  // Each board is the FACE of one ladder rung -- the opponent you meet on it. Beat that opponent as
+  // Blue AND as Red and the next board opens. The record this reads was already there: index.html
+  // keeps one flag per rung per colour (ladderCleared / markLadderCleared, the thing the web's level
+  // list has always drawn its two lit tripods from). All that was missing was the boards reading it
+  // instead of the old mixture of "win 3 games" and "play 20 games" counters, which had nothing to
+  // do with who you were playing.
+  //
+  // Eleven boards for the eleven proven rungs, in order. Yellow, Ebony and Dark are deliberately NOT
+  // in the list: they are the reserved seats for the three rungs above the shipped ladder -- L11
+  // searched to depth 4, the strongest trained model, and the committee -- and they keep their old
+  // count-based unlocks until those rungs exist. (See index.html's LADDER_N comment.)
+  // Each rung has a board and somebody who lives on it. The opponent is a CHARACTER on the board
+  // rather than a new name for it: in the ladder you are challenging Sifu, in Settings you are
+  // picking the Dojo, and the Dojo never stops being called the Dojo. That is what keeps the two
+  // from disagreeing the moment somebody goes back to play an earlier board again.
+  // Names are names -- they are not routed through t(), the same as the board names beside them.
+  const LADDER_BOARDS = [
+    { board:'walnut',   opponent:'Hazel' },      // the club set: a first, patient opponent
+    { board:'dojo',     opponent:'Sifu' },
+    { board:'slate',    opponent:'Flint' },
+    { board:'maple',    opponent:'Birdseye' },   // the figure in the timber
+    { board:'cosy',     opponent:'Gran' },
+    { board:'sumo',     opponent:'Rikishi' },    // 力士
+    { board:'colossus', opponent:'Titan' },
+    { board:'noir',     opponent:'Marlowe' },
+    { board:'math',     opponent:'Escher' },
+    { board:'marble',   opponent:'Alabaster' },
+    { board:'alien',    opponent:'Chorus' },     // it is not one of anything
+  ];
+  // The counters the boards used to be gated on. Kept for the three reserved boards, and kept as a
+  // SECOND way in for every other board: a player who earned Marble by playing a hundred games must
+  // not lose it because the rule changed under them. Nothing here ever takes a board away.
   const UNLOCKS = {
     walnut:  null,
     dojo:    { wins: 1 },   slate: { played: 3 },  maple: { wins: 3 },   dark: { played: 10 },
@@ -105,6 +138,16 @@
     cosy:    { level: 5 },  sumo:  { level: 7 },   colossus: { played: 50 },
     noir:    { level: 9 },  math:  { level: 10 },  marble: { played: 100 }, alien: { level: LADDER_N },
   };
+  function boardRung(id) { const i = LADDER_BOARDS.findIndex(r => r.board === id); return i < 0 ? 0 : i + 1; }
+  function rungBoard(n) { return (LADDER_BOARDS[n-1] || LADDER_BOARDS[0]).board; }
+  function rungName(n) { return (LADDER_BOARDS[n-1] || LADDER_BOARDS[0]).opponent; }
+  // "Dojo · Sifu" wherever the BOARD is what is being picked, so the name in an unlock line
+  // ("beat Sifu as Red") is never a person the player cannot place.
+  function boardLabel(b) { const r = boardRung(b.id); return r ? b.name + ' · ' + rungName(r) : b.name; }
+  function rungClearedOn(n, colour) {
+    return typeof ladderCleared === 'function' && !!ladderCleared(n, colour);
+  }
+  function rungCleared(n) { return rungClearedOn(n, 0) && rungClearedOn(n, 1); }
   const PROGRESS_KEY = 'tauDesktopProgress';
   const TEST_BOARDS_KEY = 'tauDesktopTestBoards';
   let testBoards = false;
@@ -113,13 +156,30 @@
   try { const p = JSON.parse(localStorage.getItem(PROGRESS_KEY) || '{}');
         for (const k in progress) if (Number.isInteger(p[k]) && p[k] >= 0) progress[k] = p[k]; } catch (_) {}
   function unlockNeed(id) { return UNLOCKS[id] === undefined ? null : UNLOCKS[id]; }
-  function isEarned(id) {
+  function earnedTheOldWay(id) {
     const n = unlockNeed(id); if (!n) return true;
     return (n.wins ? progress.wins >= n.wins : true) && (n.played ? progress.played >= n.played : true)
         && (n.level ? progress.topLevel >= n.level : true);
   }
+  function isEarned(id) {
+    const rung = boardRung(id);
+    // The board below, beaten on both colours -- or whatever the old counters asked for, so nobody
+    // loses a board they already had.
+    if (rung) return rung === 1 || rungCleared(rung - 1) || earnedTheOldWay(id);
+    return earnedTheOldWay(id);
+  }
   function isUnlocked(id) { return testBoards || isEarned(id); }
   function unlockText(id) {
+    const rung = boardRung(id);
+    if (rung > 1) {
+      // Name the half that is still missing: "beat Dojo as Red" is a thing to go and do; "beat Dojo
+      // as Blue and as Red" when you have already done the Blue half is just wrong.
+      const name = rungName(rung - 1);
+      if (rungClearedOn(rung-1, 0) && !rungClearedOn(rung-1, 1)) return tf('beat {name} as Red', {name});
+      if (rungClearedOn(rung-1, 1) && !rungClearedOn(rung-1, 0)) return tf('beat {name} as Blue', {name});
+      return tf('beat {name} as Blue and as Red', {name});
+    }
+    if (rung === 1) return '';
     const n = unlockNeed(id); if (!n) return '';
     if (n.wins) return n.wins > 1 ? tf('win {n} games', {n:n.wins}) : t('win 1 game');
     if (n.played) return tf('play {n} games', {n:n.played});
@@ -136,6 +196,7 @@
     if (humanWon && vsAI && Number.isInteger(level)) progress.topLevel = Math.max(progress.topLevel, level + 1);
     try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress)); } catch (_) {}
     pendingUnlocks = BOARD_FINISHES.filter(b => isEarned(b.id) && !before.includes(b.id));
+    if ($('desktopLevel')) drawLadderPicker();   // the rung that just opened is selectable now
     if (pendingUnlocks.length && !showResultSoon()) toastUnlocks();
   }
   // showResult (the desktop's own sheet) runs for offline matches; online and ranked results use the
@@ -373,7 +434,7 @@
     $('desktopColour').setAttribute('aria-label', t('Your colour'));
     $('desktopColour').options[0].textContent = t('Blue · first');
     $('desktopColour').options[1].textContent = t('Red · second');
-    for (const opt of $('desktopLevel').options) opt.textContent = tf('Level {n}', { n: opt.value });
+    drawLadderPicker();
     $('desktopLinks').setAttribute('aria-label', t('Other ways to play'));
     set('desktopWatch', t('Watch')); set('desktopLearn', t('How to play'));
     set('desktopLeaderboard', t('Leaderboard'));
@@ -385,8 +446,42 @@
     $('view3d').setAttribute('aria-label', t('Game board. Click a foot to pin it, then drag another foot to swing. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.'));
     canvas.setAttribute('aria-label', t('Overhead game board. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.'));
   }
-  $('desktopLevel').value = String(settings.level); $('desktopColour').value = String(settings.colour);
-  $('desktopLevel').addEventListener('change', e => { settings.level = Number(e.target.value); saveSettings(); });
+  // Choosing your opponent IS choosing the board, because they are the same choice: every rung has a
+  // board and every board has a rung. A locked rung is shown greyed rather than hidden -- you can
+  // see who is waiting for you two boards up, you just cannot skip to them.
+  function drawLadderPicker() {
+    for (const opt of $('desktopLevel').options) {
+      const n = Number(opt.value), id = rungBoard(n);
+      opt.textContent = tf('Level {n} · {name}', { n, name: rungName(n) });
+      opt.disabled = !isUnlocked(id);
+    }
+    if (!isUnlocked(rungBoard(settings.level))) {
+      let n = settings.level; while (n > 1 && !isUnlocked(rungBoard(n))) n--;
+      settings.level = n;
+    }
+    $('desktopLevel').value = String(settings.level);
+  }
+  // One choice, two places to make it: the home menu names the opponent, Settings names the board,
+  // and picking either moves the other. They can never disagree, which is what stops a player from
+  // free-playing an unlocked board against an opponent who does not live on it.
+  function setLadderLevel(n, repaint) {
+    settings.level = n;
+    const id = rungBoard(n);
+    if (isUnlocked(id) && settings.board !== id) {
+      settings.board = id;
+      if (repaint) { applyMaterials(); applyTheme(); render(); }
+      if ($('desktopBoard')) $('desktopBoard').value = id;
+    }
+    saveSettings();
+    $('desktopLevel').value = String(settings.level);
+  }
+  // On boot the BOARD is the more specific choice: a ladder board names its opponent, so the
+  // opponent follows it. A reserved board (one still waiting for its rung) names nobody, and the
+  // opponent stays whatever it was.
+  if (boardRung(settings.board)) settings.level = boardRung(settings.board);
+  drawLadderPicker();
+  $('desktopColour').value = String(settings.colour);
+  $('desktopLevel').addEventListener('change', e => setLadderLevel(Number(e.target.value), true));
   $('desktopColour').addEventListener('change', e => { settings.colour = Number(e.target.value); saveSettings(); });
 
   function startMatch(local = false) {
@@ -857,7 +952,7 @@
     const fullscreen = window.tauSteam?.setFullscreen;
     showModal(t('Settings'), `<label class="desktop-setting desktop-volume">${esc(t('Sound'))} <output id="desktopVolumeValue">${userVol}%</output><input id="desktopVolume" aria-label="${esc(t('Sound volume'))}" type="range" min="0" max="200" step="5" value="${userVol}"></label>
       <label class="desktop-setting">${esc(t('Mute'))}<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
-      <label class="desktop-setting">${esc(t('Board'))}<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${b.name}</option>`:`<option value="${b.id}" disabled>${b.name} · ${esc(unlockText(b.id))}</option>`).join('')}</select></label>
+      <label class="desktop-setting">${esc(t('Board'))}<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${esc(boardLabel(b))}</option>`:`<option value="${b.id}" disabled>${esc(boardLabel(b))} · ${esc(unlockText(b.id))}</option>`).join('')}</select></label>
       ${testBoards ? '<p class="desktop-result-detail">All boards are open for testing. Type <b>ALLBOARDS</b> on the main menu to restore locks.</p>' : ''}
       <label class="desktop-setting">${esc(t('Graphics'))}<select id="desktopQuality"><option value="balanced">${esc(t('Balanced'))}</option><option value="high">${esc(t('High'))}</option><option value="ultra">${esc(t('Ultra · ray tracing'))}</option></select></label>
       <p class="desktop-controls-note" id="desktopQualityNote" style="margin:0"></p>
@@ -877,6 +972,9 @@
     $('desktopBoard').onchange = e => {
       if (!isUnlocked(e.target.value)) { e.target.value = settings.board; return; }
       settings.board=e.target.value; saveSettings();
+      // ...and the opponent comes with it: a ladder board is somebody's board.
+      const rung = boardRung(settings.board);
+      if (rung) { settings.level = rung; saveSettings(); if ($('desktopLevel')) $('desktopLevel').value = String(rung); }
       applyMaterials();   // rebakes the 3D surface for the new finish
       applyTheme();       // repaints the flat board from the same entry's palette
       render();
