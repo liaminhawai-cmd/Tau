@@ -1,0 +1,39 @@
++-0.1u / +-0.01 rad, 200 poses, D = 2.88
+substep   separation: min      max      range     pose spread (u)
+     12   2.880000  3.027846  1.48e-1   0.2039   (not all in contact)
+     16   2.880000  2.880013  1.24e-5   0.2464
+     20   2.880012  2.880012  8.37e-7   0.2478
+     30   2.880000  2.880012  1.18e-5   0.2512
+     50   2.880006  2.880007  7.92e-7   0.2372
+     70   2.880003  2.880004  6.77e-7   0.2381
+     74   2.880000  2.880695  6.95e-4   0.2094
+     80   2.880963  2.881054  9.16e-5   0.2095
+     84   2.881062  2.881080  1.71e-5   0.2094
+     90   2.881100  2.881112  1.14e-5   0.2096
+     98   2.880549  2.881139  5.90e-4   0.2172
+
+substeps with the whole box in contact entering them: 124
+mean separation range over those substeps: 2.214e-3u; worst 3.220e-2u at substep 15
+mean separation range through the park (74-98): 1.942e-4u over 25 substeps
+mean pose spread over those substeps: 0.1902u
+ratio, pose spread to separation range: 85.9x on average
+
++-0.125u / +-0.01 rad, 200 poses, D = 2.88
+substep   separation: min      max      range     pose spread (u)
+     12   2.880000  3.045208  1.65e-1   0.2576   (not all in contact)
+     16   2.880000  2.890823  1.08e-2   0.3019
+     20   2.880012  2.880013  8.90e-7   0.3036
+     30   2.880000  2.880012  1.18e-5   0.3077
+     50   2.880006  2.880007  8.27e-7   0.2853
+     70   2.880003  2.880004  7.08e-7   0.2860
+     74   2.880000  2.880765  7.65e-4   0.2547
+     80   2.880936  2.881056  1.20e-4   0.2429
+     84   2.881061  2.881081  2.01e-5   0.2448
+     90   2.881099  2.881112  1.28e-5   0.2480
+     98   2.880407  2.881139  7.31e-4   0.2537
+
+substeps with the whole box in contact entering them: 123
+mean separation range over those substeps: 2.134e-3u; worst 2.887e-2u at substep 102
+mean separation range through the park (74-98): 2.231e-4u over 25 substeps
+mean pose spread over those substeps: 0.2239u
+ratio, pose spread to separation range: 104.9x on average

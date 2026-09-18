@@ -566,3 +566,205 @@ each substep -- would not pay the per-substep cost at all. That is a different
 piece of work from anything in this file, and it is where the next effort should
 go if the goal is to retire the Lipschitz sampling rather than to have proved
 that it can be done at all.
+
+
+## 11. The monotone quantity is there
+
+Section 10 said the route that could close the gap is not to take twenty-five
+steps through the park. `nn/throw-audit/park-monotone.js` measures whether that
+route has anything to aim at, on the engine, over boxes far wider than the
+certificate manages.
+
+It does. Three cases, two arms:
+
+| | arm (0,-1), +-0.1u | arm (0,-1), +-0.25u | arm (2,-1), +-0.1u |
+|---|---|---|---|
+| radius monotone in the substep | every pose | every pose | every pose |
+| min radial gain, contact substeps | 0.0030u | 0.0040u | 0.0035u |
+| gain through the park | 0.05..0.09u | 0.05..0.09u | ~0.08u |
+| spread, first contact to throw | x1.038 | x1.043 | x1.045 |
+| contact regimes across the box | 1 | 1 | 1 |
+| thrown | 200/200 by 85 | 200/200 by 86 | 120/120 by 113 |
+
+The radius never falls, for any sampled pose, at any box size tried. +-0.25u is
+1250 times wider per axis than the certificate closes at.
+
+**Why this is the right target.** The barrier theorem in `throw-theorem.md` needs
+a lower bound on the radial gain and an INVARIANT box -- one that maps into
+itself -- rather than an enclosure that says where inside the box each pose goes.
+That difference is the whole thing. Propagation is what creates the feedback loop
+that section 8 measured and section 10 showed is a threshold; invariance has no
+loop, so there is nothing to fall off. The hypotheses are weaker and the boxes
+they hold on are three orders of magnitude bigger.
+
+The theorem's earlier verdict was that uniform bounds give only 0.44u and
+per-slab bounds are needed. Per-slab is exactly what the table shows is
+available: through the park the gain is stable at 0.05 to 0.09u, and the 0.003u
+minimum sits at an early grazing contact where the normal is far off radial, not
+in the park at all.
+
+**What this does not say.** Two hundred sampled poses establish that the
+hypotheses are true, not that they are provable. Proving the gain bound is an
+interval computation per substep with no accumulation, which is the easy half.
+Proving invariance is the open half, and the Jacobian from section 8 is the right
+tool for it, since invariance is a statement about the deviation map being
+non-expansive plus a remainder that fits inside the margin.
+
+**A correction to the first reading of this measurement.** Taken to the end of
+the sweep the spread appeared to contract. That included the substeps after the
+throw and, on arm (2,-1), the 74 substeps before first contact where the victim
+is not pushed at all and therefore cannot spread. Over the contact window it
+expands, slightly. For the same reason a gain bound taken over every substep
+reads as "not positive" while saying nothing: the barrier sums the substeps that
+push, and that is where the bound has to hold.
+
+
+## 12. Two things the barrier's bookkeeping has to get right
+
+Both came out of cross-checking section 11's measurement against a second,
+independently written probe. They agreed on the headline and disagreed on two
+numbers, and both disagreements were about WHICH quantity was being measured
+rather than about the engine.
+
+### The gain the theorem sums is the minimum over poses, not over pushes
+
+The barrier needs, at each substep, a lower bound on the radial gain valid for
+EVERY pose in the box. Three different numbers are available at +-0.125u /
++-0.01 rad over 200 poses, and only one of them is that:
+
+| quantity | value |
+|---|---|
+| min over poses, over the 123 substeps where the WHOLE box is in contact | 9.22e-4u at substep 16 |
+| min over poses, over the park window 74-98 | 5.8e-2 to 6.1e-2u |
+| smallest nonzero gain any SINGLE pose ever has | 4.2e-6u at substep 11 |
+
+The first is what the sum uses. The second is the comfortable one and is true
+only of the dwell. The third is never summed by anything, and reading it as "the
+minimum gain" makes the hypothesis look about twenty times harder than it is.
+
+**But 9.22e-4u is itself a boundary artefact, and quoting it was wrong.** It is
+the gain at substep 16, the first substep of the window, and nowhere else. Taking
+the minimum over poses from the throw back to a slab starting at substep s:
+
+| s | 16 | 17 | 18 | 20 | 22 | 25 | 30 |
+|---|---|---|---|---|---|---|---|
+| min gain (u) | 9.2e-4 | 9.0e-3 | 9.3e-3 | 9.9e-3 | 1.1e-2 | 1.2e-2 | 1.3e-2 |
+
+One substep of patience is worth a factor of ten, and the profile is smooth
+everywhere after it. The same profile comes out of 200 and 600 sampled poses to
+two significant figures, so this is a property of the geometry and not of the
+sample. The useful statement for a proof is therefore not a single number: the
+first slab should not begin at the first substep where the whole box is in
+contact, because that substep is grazing and contributes almost nothing. Begin it
+one later and carry about 9e-3u a substep, rising to 5.8e-2u through the dwell.
+
+### The partial-contact substeps
+
+Of the 131 substeps where anything is in contact, 8 have only SOME poses in
+contact. At those the minimum over poses is exactly zero, because a pose that is
+not pushed does not move at all, so the barrier cannot count them.
+
+This is a proof obligation that H1 to H4 in `throw-theorem.md` do not state. A
+barrier certificate has to establish "every pose in the box is in contact at
+substep k" before it may count substep k's gain, and give the partial substeps
+zero. That is an interval test over the box, and it is separate from the gain
+bound and from invariance.
+
+What makes that test tractable is that contact does not come and go: on arm
+(0,-1), at every box size tried, no pose's contact lapses once it has begun, so
+contact is a single interval per pose and the test only has to find where the
+last pose joins. The unqualified version of that -- contact never lapses -- is
+false, and arm (2,-1) refutes it: there every one of 200 poses loses contact,
+first at about substep 210. But all of those lapses happen after that pose has
+already been thrown, at substep 113 or earlier. So the statement a certificate
+can lean on is the scoped one, contact does not lapse BEFORE the throw, which is
+all the barrier sums over anyway.
+
+### And a genuine pair of readings, both right
+
+The POSE box expands by about 1.04x from first contact to the throw. The spread
+of the exposed foot's RADIUS across the box -- the quantity the theorem actually
+sums -- contracts hard over the same window: 0.5596 to 0.2375u at +-0.125u,
+0.9131 to 0.3160u at +-0.25u, 1.6199 to 0.4799u at +-0.5u, so by a factor of
+0.42, 0.35 and 0.30, strengthening as the box grows. Neither reading is the other
+one's correction. Quoted together they are a better argument for invariance than
+either alone: the poses barely spread and their outcomes converge.
+
+## 13. H3 computed rather than sampled, and what it says the set's shape is
+
+Section 11 measured the barrier's two hypotheses on 200 sampled poses and found
+both true. Sampling says they hold, not that they are provable. Of the two, H3
+-- a lower bound on the exposed foot's radial gain per substep valid for EVERY
+pose in the set -- is the half that needs no accumulation, so it can be computed
+now, before anyone has proved H4. `nn/throw-audit/gain-bound.js` computes it.
+
+The bound per substep. `analyse` over the tube box gives the contact pair, the
+normal cone, `hf` and the lever `rn` as intervals, and the engine's push is
+`lambda = sep / (1 + rn^2/I)` with `sep = (D - dist)/max(hf, hfFloor)`, capped.
+With `F` the exposed foot and `Fhat` its radial unit vector at the START of the
+substep, `|v| >= u.v` for any unit `u` gives
+
+    r_after >= Fhat . F_after
+             = r + lambda [ n.Fhat + (rn/I) R (-sin th, cos th).Fhat ] - R dth^2/2
+
+exactly, the last term being the foot's own rotation remainder. Every quantity in
+the bracket is an interval over the box, so its minimum is a bound over every
+pose in it. Bounding `dth` through the push model costs a factor of `iters^2` and
+at the early grazing substeps that penalty alone exceeds the gain; the tube gives
+it for nothing instead, since the pose's rotation change differs from the
+centre's, which is known exactly, by at most the tube's own width.
+
+### The first run certifies nothing, and the reason is the result
+
+At a tube of +-0.1u not one substep passes, because whole-box contact needs the
+box's whole distance range under `D` and the blanket pad of that box is 0.2414u
+against a penetration of a few hundredths. But section 11 measured the opposite
+on the same box: 123 of 131 substeps have every pose in contact. Both are right,
+and together they say the reachable set is not a box around the centre.
+`nn/throw-audit/slab-shape.js` measures the shape directly:
+
+| | value |
+|---|---|
+| poses' spread across the plane, +-0.1u box | 0.13u |
+| their distance range to the attacker's leg, mean over the 74 contact substeps | **0.0033u** |
+| the same range in the park, substeps 40 to 70 | 0.00093u |
+| the blanket pad a +-0.1u box carries | 0.2414u |
+| so the pad overstates the distance uncertainty by | 74x on average, 260x in the park |
+
+The dynamics PIN every pose onto the contact shell. The set is a thin sheet: as
+wide as the box across the push, as thin as the shell along it. An axis-aligned
+box is the wrong shape, and the factor above is what it costs.
+
+### What H3 certifies once the shape is right
+
+Unconditionally, with the box's own pad as the distance uncertainty and no
+assumption about shape, at a tube of +-0.01u: 86 substeps bounded, and the
+certified gain sums to **2.113u** against the 3.168u needed to lift the box's
+minimum starting radius over the rim. Two thirds of the way, and the whole
+shortfall is the pad.
+
+With the slab hypothesis -- the distance range taken as 0.005u, which is 1.5x
+the measured 0.0033u, every other bound still over the full tube -- from a
+starting box of +-0.0125u into a tube of +-0.025u:
+
+    certified sum 3.5144u  against  3.2026u needed;  clears the rim at substep 92
+
+and the 200 sampled poses stay inside that tube (worst deviation 0.0170u at
+substep 84). The first refusal from `analyse` is at substep 99, seven substeps
+after the bound has already closed.
+
+That box is **62x wider per axis** than the enclosure certificate of section 8,
+and within 5x of the 0.125u cell that `certifyThrowBox` works on. The route is
+not blocked by the throw's own margins. It dies at +-0.05u (2.65u of 3.26u) and
+at +-0.1u (0.29u of 3.37u), where the normal cone opens far enough to cost more
+than the extra width buys.
+
+### What this makes the open question
+
+Not "can the barrier hypotheses be proved over a box of order 0.1u". The set is
+not a box. The two things a certificate now owes are a proof that a SLAB -- thin
+along the contact normal, wide across it -- maps into itself, and a rigorous
+bound on its thickness that is not the blanket pad. The thinness is not an
+assumption about the poses; it is what the contact shell does to them, and
+section 9's shell argument already pins the distance from both sides. H3 is
+otherwise done.

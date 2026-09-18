@@ -49,15 +49,29 @@
   `node lapse.js <foot> <dir> <one-degree calls> <box u> <rot rad> <poses>`. Both of these
   reproduce the throw-bound thread's corrections independently on this harness.
 
-- `throw-cert-at-1cf90f63f.js`, `THROW-CONTACT-LEMMAS-at-1cf90f63f.md`: the throw-bound thread's
-  checker and write-up at commit 1cf90f63f on claude/project-thread-kyx87p, the commit whose
-  results brief 4 quotes. They are that thread's files; these copies are a snapshot, not a fork.
-  Both were verified against the repository by blob hash: b8fb4c6f3bc69beedd8b8973e96994d65dc2c96a
-  and 87f479d63a929f2844ff719b238c293a8e832fd8 respectively. It is pinned at the commit whose
-  certificate results the brief quotes rather than tracking that thread's head, which moves every
-  few minutes. The write-up is byte-identical through fbad09315; a section 11, writing up that
-  thread's own version of the brief's section 3 measurement, landed at 4a73d2a78 and so is not in
-  this snapshot.
+- `throw-cert-at-4adf870c7.js`, `THROW-CONTACT-LEMMAS-at-4adf870c7.md`, `gain-bound-at-4adf870c7.js`,
+  `gain-bound-at-4adf870c7.txt`, `slab-shape-at-4adf870c7.js`, `slab-shape-at-4adf870c7.txt`: the
+  throw-bound thread's checker, write-up and section 13 programs at commit 4adf870c7 on
+  claude/project-thread-kyx87p, the commit whose results brief 4 quotes. They are that thread's
+  files; these copies are a snapshot, not a fork, pinned rather than tracking that thread's head,
+  which moves every few minutes. All were verified against the repository by blob hash, read from a
+  directory listing of that commit rather than recalled: throw-cert.js
+  b8fb4c6f3bc69beedd8b8973e96994d65dc2c96a (unchanged since 1cf90f63f), THROW-CONTACT-LEMMAS.md
+  38f2aceba24839f5d3969fed2c651b5b822b2f98, gain-bound.js eb415d5966a2a493f465278d7ef50bc100fbad2b,
+  gain-bound.txt caba4270531afe1c194483af488c523e2ce84b02, slab-shape.js
+  3c0823b0f50281369084f62ac401b2ad7ab63bf4, slab-shape.txt 6257009aecd4e62c2e21da6f86588e067b04ebd9.
+  Section 13 is the one brief 4's question 1 now turns on: H3 computed rigorously rather than
+  sampled, certifying nothing over a +-0.1u box because the blanket pad is 0.2414u, and closing
+  (3.5144u against 3.2026u needed) once the set is taken to be a thin slab instead.
+
+- `gap-spread.js` -> `gap-spread.txt`: our own check of that shape claim. For each substep it prints
+  the range, over the pose box, of the separation between attacker and victim entering the substep,
+  beside the spatial spread of the poses themselves. At +-0.1u the poses span 0.19u of the plane
+  while their separation range averages 2.2e-3u over the 124 whole-box-contact substeps and 1.9e-4u
+  through the park, a ratio of 86. The throw-bound thread measures the pre-push distance instead and
+  gets 3.3e-3u and 9.3e-4u; different quantity, same conclusion. Contact is taken as motion, as in
+  `lapse.js`. Run as `node gap-spread.js <box u> <rot rad> <poses>`.
+
 
 The substep-grid warning from `brief-3-scripts/README.md` applies here too: `swing` divides one
 call into `ceil(rad/stepMax)` equal substeps, so asking for a whole sweep in one call integrates
