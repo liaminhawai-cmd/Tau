@@ -2875,51 +2875,157 @@ test('a sliced search picks exactly the move the whole-breath one picks',async t
   assert.deepEqual(g.errors,[]);
 });
 
-test('the camera drifts while the opponent thinks and settles when the turn comes back',async t=>{
-  const g=await game();t.after(g.close);
-  g.read('tauDesktop.startMatch()');g.tick();
-  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},render(){},
+const CAM_RIG = `renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},render(){},
       setRenderTarget(){},getRenderTarget(){return null;}};
     scene=new THREE.Scene();
     camera=new THREE.PerspectiveCamera(38,1.6,1,2000);
     camera.position.set(0,150,200);
     controls={mouseButtons:{},target:new THREE.Vector3(0,4,0),update(){},addEventListener(){}};
-    camManualSet=false; vsAI={mode:"ai",level:1}; aiIdx=G.active;`);
-  const bearing=`Math.atan2(camera.position.x-controls.target.x, camera.position.z-controls.target.z)`;
+    camManualSet=false;`;
+const BEARING = `Math.atan2(camera.position.x-controls.target.x, camera.position.z-controls.target.z)`;
+
+test('nothing in the camera notices whose turn it is',async t=>{
+  const g=await game();t.after(g.close);
+  g.read('tauDesktop.startMatch()');g.tick();
+  g.read(CAM_RIG+`vsAI={mode:"ai",level:1}; aiIdx=G.active;`);
+  // The camera used to drift on a slow orbit while the opponent thought and unwind when the turn
+  // came back, which is a motion that starts and stops on the game's clock. Let it settle on your
+  // turn, hand the turn over WITHOUT touching a piece, and nothing about the view may change.
   const out=JSON.parse(g.read(`(()=>{
-    G.active=1-aiIdx;                                            // your turn: the still photograph
-    for(let i=0;i<240;i++) tauDesktop.updateCamera(1/60);
-    const a0=${bearing}, amt0=tauDesktop.debugDrift();
-    G.active=aiIdx;                                              // ...and now they are thinking
-    let spread=0;
-    for(let i=0;i<900;i++){ tauDesktop.updateCamera(1/60); spread=Math.max(spread, Math.abs(${bearing}-a0)); }
-    const amt1=tauDesktop.debugDrift();
-    G.active=1-aiIdx;                                            // your turn again
+    G.active=1-aiIdx;
+    for(let i=0;i<600;i++) tauDesktop.updateCamera(1/60);
+    const a0=${BEARING}, p0=camera.position.clone();
+    G.active=aiIdx;                                              // ...their turn, same board
+    let spread=0, moved=0;
+    for(let i=0;i<900;i++){ tauDesktop.updateCamera(1/60);
+      spread=Math.max(spread, Math.abs(${BEARING}-a0));
+      moved=Math.max(moved, camera.position.distanceTo(p0)); }
+    G.active=1-aiIdx;                                            // ...and back to you
     for(let i=0;i<300;i++) tauDesktop.updateCamera(1/60);
-    return JSON.stringify({amt0, amt1, spread, back:Math.abs(${bearing}-a0), amt2:tauDesktop.debugDrift()});
+    return JSON.stringify({spread, moved, back:camera.position.distanceTo(p0)});
   })()`));
-  assert.ok(out.amt0<0.01,'while it is your move the camera holds the shot');
-  assert.ok(out.amt1>0.8,`the drift is running while the opponent thinks (${out.amt1.toFixed(2)})`);
-  assert.ok(out.spread>0.05,`and it actually moves the view (${out.spread.toFixed(3)} rad)`);
-  assert.ok(out.spread<0.35,`...gently, not a pan (${out.spread.toFixed(3)} rad)`);
-  assert.ok(out.amt2<0.01,'it is gone once the turn is yours');
-  assert.ok(out.back<0.02,`and the view is back where it was (${out.back.toFixed(4)} rad)`);
+  assert.ok(out.spread<1e-6,`the bearing does not move when the turn changes hands (${out.spread})`);
+  assert.ok(out.moved<1e-6,`nor does the camera (${out.moved.toFixed(6)} units)`);
+  assert.ok(out.back<1e-6,'and there is nothing to unwind when it comes back');
   assert.deepEqual(g.errors,[]);
 });
 
-test('nobody drifts the camera in a local 1v1, or when the player asked for less motion',async t=>{
+test('the match camera stands the same distance from both players',async t=>{
   const g=await game();t.after(g.close);
   localMatch(g);
-  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},render(){},
-      setRenderTarget(){},getRenderTarget(){return null;}};
-    scene=new THREE.Scene();
-    camera=new THREE.PerspectiveCamera(38,1.6,1,2000);
-    camera.position.set(0,150,200);
-    controls={mouseButtons:{},target:new THREE.Vector3(0,4,0),update(){},addEventListener(){}};
-    camManualSet=false;`);
-  const local=g.read(`(()=>{ for(let i=0;i<300;i++) tauDesktop.updateCamera(1/60);
-                             return tauDesktop.debugDrift(); })()`);
-  assert.ok(local<0.01,'two people at one screen are both playing; the camera holds still');
+  g.read(CAM_RIG);
+  // Put the two pieces somewhere lopsided -- nowhere near the middle, and not on a line the camera
+  // happens to already face -- and let the settle finish.
+  const out=JSON.parse(g.read(`(()=>{
+    G.pieces[0].x=-38; G.pieces[0].y=  9;
+    G.pieces[1].x= 14; G.pieces[1].y=-33;
+    for(let i=0;i<900;i++) tauDesktop.updateCamera(1/60);
+    const d0=Math.hypot(camera.position.x-G.pieces[0].x, camera.position.z-G.pieces[0].y);
+    const d1=Math.hypot(camera.position.x-G.pieces[1].x, camera.position.z-G.pieces[1].y);
+    return JSON.stringify({d0,d1,
+      tx:controls.target.x, tz:controls.target.z,
+      mx:(G.pieces[0].x+G.pieces[1].x)/2, mz:(G.pieces[0].y+G.pieces[1].y)/2}); })()`));
+  // Equidistant is a property of where the camera stands, not a happy accident, so this is tight.
+  // It is not exact only because the bearing leans a sixth of the way towards the 2D map's heading
+  // (ORIENT_K) rather than sitting dead on the perpendicular -- without that lean the camera would
+  // swing right round the table as the pieces turned, which is a great deal more motion than the
+  // few percent of asymmetry the lean costs. Board-centred, this pair came out 23% apart.
+  const gap = Math.abs(out.d0-out.d1) / ((out.d0+out.d1)/2);
+  assert.ok(gap < 0.06,
+    `both players are about the same distance away (${out.d0.toFixed(1)} vs ${out.d1.toFixed(1)}, ${(gap*100).toFixed(1)}%)`);
+  // ...and it is LOOKING at the pair, not at the middle of the board with them off to one side.
+  assert.ok(Math.hypot(out.tx-out.mx, out.tz-out.mz) < 1,
+    `and it looks at the point between them (${out.tx.toFixed(1)},${out.tz.toFixed(1)} vs ${out.mx},${out.mz})`);
+  assert.ok(Math.hypot(out.tx,out.tz) > 10, 'which is not the middle of the board');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the pull is the same one whether a piece is moving, resting or going over the rim',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  // The corner layout has a settle time of its own, and it is on by default in this rig: leave it
+  // running and all three states would be measured against IT, which is how a difference between
+  // them hides. This flag is the one cornerLayoutActive checks, so the ordinary game camera answers.
+  g.read(CAM_RIG+`document.body.classList.add('dirUnlocked');`);
+  // Measure the settle the only way that matters: let the camera arrive, shove it a known distance
+  // along one axis, and watch how it comes back over the same tenth of a second. One axis, because
+  // the spring runs per axis and that keeps the reading free of whatever else the goal is doing.
+  const probe=`(state)=>{
+    for(let i=0;i<900;i++) tauDesktop.updateCamera(1/60, state==='fall');
+    const gx=camera.position.x, gp=camera.position.clone();
+    for(let i=0;i<10;i++) tauDesktop.updateCamera(1/60, state==='fall');
+    const creep=camera.position.distanceTo(gp);          // it really has arrived before we shove it
+    camera.position.x = gx + 90;
+    const step=[];
+    for(let i=0;i<6;i++){ const was=camera.position.x-gx;
+      tauDesktop.updateCamera(1/60, state==='fall'); step.push(was-(camera.position.x-gx)); }
+    return {creep, closed: 1-(camera.position.x-gx)/90, step};
+  }`;
+  const out=JSON.parse(g.read(`(()=>{ const probe=${probe};
+    const rest=probe('rest');
+    G.handle=0; G.pinned=0;                                  // a piece under the player's hand
+    const moving=probe('move');
+    G.handle=null; G.pinned=null;
+    G.over=true; G.winner=0;
+    fall=Object.assign(mkFallState(G.pieces[1]),{idx:1});
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
+    tripods[1].position.set(40,-20,30);
+    const falling=probe('fall');
+    return JSON.stringify({rest,moving,falling}); })()`));
+  for (const [name,r] of Object.entries(out))
+    assert.ok(r.creep < 1e-6, `${name}: the camera has arrived before the shove (${r.creep})`);
+  // All three are the same spring, so all three close the same fraction of the same gap.
+  assert.ok(Math.abs(out.rest.closed-out.moving.closed) < 1e-6,
+    `a move settles like a rest (${out.rest.closed.toFixed(4)} vs ${out.moving.closed.toFixed(4)})`);
+  assert.ok(Math.abs(out.rest.closed-out.falling.closed) < 1e-6,
+    `and so does a piece going over (${out.rest.closed.toFixed(4)} vs ${out.falling.closed.toFixed(4)})`);
+  // ...and it is a spring, not a lerp: each of the first frames moves FURTHER than the one before,
+  // where the old first-order ease moved most on frame one and less every frame after.
+  for (let i=1;i<out.rest.step.length;i++)
+    assert.ok(out.rest.step[i] > out.rest.step[i-1],
+      `frame ${i+1} moves further than frame ${i} (${out.rest.step[i].toFixed(3)} vs ${out.rest.step[i-1].toFixed(3)})`);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the web camera is the same spring, and nothing steps it at the end of a move',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  // The plain web/PWA build ships no desktop layer at all, so its camera is updateGentleCam. It was
+  // left on the old first-order ease when the premium one was fixed, which is why the two builds
+  // felt different; it also jogged its own goal at the end of every move.
+  g.read(CAM_RIG+`camProbe=new THREE.PerspectiveCamera(42,1,1,3000);`);
+  const out=JSON.parse(g.read(`(()=>{
+    const real=window.tauDesktop; window.tauDesktop=null;
+    try {
+      const release=()=>{ if(typeof releaseCamSpring==='function') releaseCamSpring(); };
+      camDragging=false; camManualSet=false; camCenterFrac=1; release();
+      for(let i=0;i<900;i++) updateGentleCam(1/60);
+      const gx=camera.position.x, gp=camera.position.clone();
+      for(let i=0;i<10;i++) updateGentleCam(1/60);
+      const creep=camera.position.distanceTo(gp);
+      camera.position.x = gx + 90;
+      const step=[];
+      for(let i=0;i<6;i++){ const was=camera.position.x-gx;
+        updateGentleCam(1/60); step.push(was-(camera.position.x-gx)); }
+      // ...and a completed move must not jog the frame it is chasing.
+      camera.position.copy(gp); release();
+      for(let i=0;i<120;i++) updateGentleCam(1/60);
+      const held=camera.position.clone();
+      endTurn();                                    // the old per-move recentre fired exactly here
+      let jump=0;
+      for(let i=0;i<3;i++){ const p=camera.position.clone(); updateGentleCam(1/60);
+        jump=Math.max(jump, camera.position.distanceTo(p)); }
+      return JSON.stringify({creep, step, jump, drifted:held.distanceTo(gp)});
+    } finally { window.tauDesktop=real; }
+  })()`));
+  assert.ok(out.creep < 1e-6, `the web camera arrives and holds still (${out.creep})`);
+  // A spring accelerates: each of the first frames closes MORE than the one before it. The old
+  // first-order lerp did the exact opposite, closing most on frame one and less every frame after.
+  for (let i=1;i<out.step.length;i++)
+    assert.ok(out.step[i] > out.step[i-1],
+      `frame ${i+1} moves further than frame ${i} (${out.step[i].toFixed(3)} vs ${out.step[i-1].toFixed(3)})`);
+  assert.ok(out.step[0] < 90*0.06, `and it leaves slowly rather than at its top speed (${out.step[0].toFixed(2)} of 90)`);
+  assert.ok(out.jump < 0.02, `a completed move does not jog the camera (${out.jump.toFixed(4)} units)`);
   assert.deepEqual(g.errors,[]);
 });
 

@@ -1988,6 +1988,7 @@
     const fitTall = CFG.edgeU / (DISH_ASPECT * 0.80 * tanHalf);
     return Math.max(205, fitWide, fitTall);   // 205: the established look on an open window
   }
+  const ORIENT_K = 0.15;   // how hard the framing leans towards the 2D map's heading (camera home at +z)
   function desiredPose(falling, outPos, outTarget, w3, h3) {
     const menu=!inMatch();
     const corner = typeof cornerLayoutActive === 'function' && cornerLayoutActive();
@@ -2005,7 +2006,44 @@
       const fitWide = CFG.edgeU / (0.92 * Math.tan(camera.fov * Math.PI / 360) * ratio);
       distance = menu ? Math.max(222, fitWide) : Math.max(205, 148/ratio);
     }
-    let yaw=menu && !settings.reducedMotion ? .18+Math.sin(performance.now()*.000055)*.045 : 0;
+    // EQUIDISTANT FROM BOTH PLAYERS. The match camera used to be nailed to the middle of the board on
+    // one fixed bearing -- it never framed the two pieces at all, so how you saw a position depended
+    // on where on the board that position happened to sit, and the camera had nothing to say about
+    // the game going on in front of it. It now stands on the line PERPENDICULAR to the one joining
+    // the two hubs and looks at their midpoint: every point on that perpendicular is the same
+    // distance from both pieces, by construction. This is exactly what the web camera has always
+    // done (computeFullFrame in index.html), which is half of why the two builds felt like different
+    // games. Leaning a sixth of the way towards the 2D map's heading keeps the familiar north-up
+    // view leading rather than letting the camera swing right round the table as the pieces turn.
+    let hubYaw = null;
+    // Not under reduced motion: there the camera is copied straight onto its goal rather than
+    // sprung towards it, so a goal that tracked the pieces would hand that player the one thing
+    // they turned the setting on to avoid. They keep the still, board-centred frame.
+    if (!menu && !falling && !settings.reducedMotion
+        && typeof G !== 'undefined' && G && G.pieces && G.pieces.length === 2) {
+      if (G.over && G.winner != null && G.pieces[G.winner]) {
+        // Once the fall is finished the loser's hub is frozen wherever it went over, often well past
+        // the rim, and framing around it would hold the view needlessly wide for good. Settle on the
+        // winner, which is what the web camera does at the same moment.
+        const w = G.pieces[G.winner];
+        tx = w.x; tz = w.y; hubYaw = 0;
+      } else {
+        const p0 = G.pieces[0], p1 = G.pieces[1];
+        tx = (p0.x + p1.x)/2; tz = (p0.y + p1.y)/2;        // a piece's .y is the board's z
+        let dx = p1.x - p0.x, dz = p1.y - p0.y;
+        const len = Math.hypot(dx, dz);
+        if (len < 1e-6) { dx = 1; dz = 0; } else { dx /= len; dz /= len; }   // coincident hubs: any axis
+        let px = -dz, pz = dx;
+        if (pz < 0) { px = -px; pz = -pz; }                // of the two perpendiculars, the map's side
+        px *= (1 - ORIENT_K); pz = pz*(1 - ORIENT_K) + ORIENT_K;
+        const pl = Math.hypot(px, pz) || 1; px /= pl; pz /= pl;
+        hubYaw = Math.atan2(px, pz);
+      }
+      // Looking off-centre puts the far rim that much further away; give back exactly what the
+      // target moved, so the whole board stays in shot however far the pieces have wandered.
+      distance += Math.hypot(tx, tz);
+    }
+    let yaw=hubYaw!==null ? hubYaw : (menu && !settings.reducedMotion ? .18+Math.sin(performance.now()*.000055)*.045 : 0);
     if(falling && !settings.reducedMotion && G.winner!=null){
       // WATCH THE PIECE, not the board it left. The target used to barely move off centre and stay
       // at board height while the loser dropped thirty-odd units below it and rolled out past the
@@ -2037,87 +2075,33 @@
     if (gc && gc.fov) distance *= Math.tan(19*Math.PI/180) / Math.tan(gc.fov*Math.PI/360);
     outPos.set(tx+Math.sin(yaw)*distance*Math.cos(elev),ty+distance*Math.sin(elev),tz+Math.cos(yaw)*distance*Math.cos(elev));
   }
-  // WHILE THE OTHER ONE IS THINKING. Between your turns the match camera is nailed to one bearing,
-  // so the opponent's move plays out as a still photograph of a board nobody is touching. It now
-  // drifts: a slow, shallow orbit that fades in when the turn leaves you and fades back out the
-  // moment it is yours again. It is deliberately too slow and too small to be mistaken for your own
-  // input -- about nine degrees either side over the better part of half a minute -- and it turns
-  // around whatever the camera is already looking at, so a player who has placed the view keeps it
-  // and simply gets a living shot instead of a photograph. Two incommensurate rates (yaw and a
-  // shallower rise and fall) so it never quite repeats a pass.
-  let driftAmt = 0, driftPhase = 0;
-  const DRIFT_YAW = 0.16, DRIFT_ELEV = 0.045, DRIFT_RATE = 0.30;
-  const driftOff = new THREE.Vector3(), driftSph = new THREE.Spherical();
-  // "Not yours to touch, and nobody is sitting here waiting for it" -- the same question
-  // index.html's inputBlocked asks, minus the pause and menu parts, which are not somebody thinking.
-  // A local 1v1 never drifts: both turns belong to someone in the room with their hands on it.
-  function theirTurn() {
-    if (!inMatch() || typeof G === 'undefined' || !G || G.over) return false;
-    if (typeof replayActive !== 'undefined' && replayActive) return false;
-    if (typeof vsAI !== 'undefined' && vsAI) return G.active === aiIdx;
-    if (typeof onlineMatch !== 'undefined' && onlineMatch)
-      return typeof myOnlineTurnNow === 'function' ? !myOnlineTurnNow() : false;
-    return false;
-  }
-  function easeDrift(dt) {
-    const want = theirTurn() && !settings.reducedMotion ? 1 : 0;
-    // Slower in than out: it should creep in without being noticed, and be gone by the time you
-    // have reached for a foot. "Gone by then" is about a second and a half, though -- unwinding
-    // nine degrees in the old four tenths was the sharpest thing the camera did between moves, and
-    // it landed exactly as the turn came back to you.
-    driftAmt += (want - driftAmt) * (1 - Math.exp(-dt * (want ? 0.8 : 1.6)));
-    if (driftAmt > 1e-3) driftPhase += dt * DRIFT_RATE;
-    else { driftAmt = 0; driftPhase = 0; }
-  }
-  function applyDrift(pos, target) {
-    if (driftAmt <= 1e-3) return;
-    driftOff.copy(pos).sub(target);
-    driftSph.setFromVector3(driftOff);
-    driftSph.theta += driftAmt * DRIFT_YAW * Math.sin(driftPhase);
-    driftSph.phi = Math.max(.2, Math.min(Math.PI/2 - .05,
-      driftSph.phi - driftAmt * DRIFT_ELEV * Math.sin(driftPhase*0.61 + 1.3)));
-    driftOff.setFromSpherical(driftSph);
-    pos.copy(target).add(driftOff);
-  }
-  const MANUAL_PULL = 0.2;   // how far a player-placed view leans towards the game's own framing
-  // SPRINGY BETWEEN MOVES. The settle was a plain exponential ease -- each frame the camera closed
-  // a fixed FRACTION of its remaining distance to the goal. That makes the position smooth and the
-  // SPEED a direct function of the gap, so the instant the goal moves at all (the turn changes
-  // hands and the opponent's-turn drift starts or stops, the player lets go of the stick, a piece
-  // goes over the rim, the layout hands the camera a new framing) the speed steps to a new value
-  // inside one frame. A step in speed is an unbounded acceleration, and that is what reads as
-  // jerk: nothing in the picture is discontinuous, but the rate at which it moves is.
+  // NOTHING HERE KNOWS WHOSE TURN IT IS. Between your turns the camera used to drift: a slow
+  // nine-degree orbit that faded in when the turn left you and unwound when it came back, so the
+  // opponent's move played out as a living shot rather than a still photograph. It was the only
+  // part of the camera that reacted to a turn changing hands, and that is exactly what it felt
+  // like -- the camera setting off and stopping again twice a move, and behaving one way while
+  // somebody was thinking and another way while you were. A camera with one steady pull cannot
+  // also have a second motion that starts and stops on the game's clock, so the drift is gone.
+  // If the still photograph ever wants solving again, solve it with something that never starts
+  // or stops: a constant, unhurried breath that is running before the match does.
+  // ONE SPRING, ONE NUMBER, BOTH BUILDS. The settle itself lives in index.html now (camSmoothDamp,
+  // CAM_SETTLE) rather than being a second copy here -- this file and the web page were drifting
+  // into two different cameras, one of them fixed and one of them not, and a player who moved
+  // between them could feel it. CAM_MANUAL_PULL, how far a player-placed view leans towards the
+  // game's own framing, is shared for the same reason.
   //
-  // Same ease, one order higher. The camera now carries a VELOCITY and is pulled by a critically
-  // damped spring -- it accelerates out of rest and decelerates into the goal, and a goal that
-  // jumps bends the path instead of snapping the speed. Integrated with the closed-form
-  // approximation to the critically damped step (Game Programming Gems 4): stable at any frame
-  // time, never overshoots, and needs no sub-stepping when a frame runs long.
-  //
-  // smoothTime is roughly how long a move takes. The match's is deliberately longer than the old
-  // ease was quick -- between moves the camera should look like it is breathing, not correcting.
-  const CAM_SMOOTH_MATCH = 0.55, CAM_SMOOTH_CORNER = 0.30, CAM_SMOOTH_FALL = 0.26;
-  const CAM_AXES = ['x','y','z'];
+  // The only settle time that is still its own is the corner layout's: there the goal tracks a tile
+  // the player is dragging with their hand, and a view that is still easing into place a second
+  // after they let go of the divider reads as lag, not as calm. Nothing about a MOVE changes the
+  // number any more -- a resting board, a piece being pushed and a piece going over the rim are all
+  // the one pull, because a camera that settles at one rate while you play and another while you
+  // wait is two cameras with a handover you can feel.
+  const CAM_SMOOTH_CORNER = 0.30;
   const camVel = new THREE.Vector3(), targetVel = new THREE.Vector3();
-  let camSmoothT = CAM_SMOOTH_MATCH;
-  function smoothDampVec(cur, goal, vel, smoothTime, dt) {
-    if (!(dt > 0)) return;   // a zero-length frame moves nothing, and would divide by it below
-    const omega = 2/smoothTime, x = omega*dt;
-    const decay = 1/(1 + x + 0.48*x*x + 0.235*x*x*x);
-    for (const k of CAM_AXES) {
-      const want = goal[k], change = cur[k] - want;
-      const temp = (vel[k] + omega*change)*dt;
-      vel[k] = (vel[k] - omega*temp)*decay;
-      let out = want + (change + temp)*decay;
-      // The approximation can step past the goal on a very long frame; land on it and stop rather
-      // than letting the carried velocity turn that into a wobble.
-      if ((want - cur[k] > 0) === (out > want)) { out = want; vel[k] = (out - want)/dt; }
-      cur[k] = out;
-    }
-  }
+  let camSmoothT = CAM_SETTLE;
   // A hand on the camera clears the spring: the pose the player is placing is the new rest, and a
   // velocity left over from the settle would go on pushing after they stopped.
-  function releaseCamSpring() { camVel.set(0,0,0); targetVel.set(0,0,0); }
+  function clearCamSpring() { camVel.set(0,0,0); targetVel.set(0,0,0); }
   // COMING ROUND TO WATCH IT GO. A fall moved the camera's target and pulled it back, but never its
   // BEARING -- so a piece shoved over the far rim went down on the opposite side of the board from
   // wherever the camera happened to be standing, and the board itself was in the way of the only
@@ -2146,46 +2130,37 @@
     // The corner layout renders the whole window and aims the camera at its solved tile with a
     // view offset (index.html's applyCornerViewOffset); anywhere else this clears a stale one.
     if (typeof applyCornerViewOffset === 'function') applyCornerViewOffset(camera); else camera.clearViewOffset();
-    easeDrift(dt);              // the opponent's-turn orbit fades in and out whether or not it is used
-    if(camDragging) { releaseCamSpring(); return true; }
+    if(camDragging) { clearCamSpring(); return true; }
     // A FIFTH OF THE WAY, AND NO FURTHER. Once the player had placed the camera this went completely
     // passive -- the view never moved again, however far the game wandered off the side of it. The
-    // web's camera does the opposite and keeps easing all the way home, which takes the shot off
-    // you. Neither is right. The settled pose is now a fifth of the way from where the player put
-    // the camera towards where the game wants it: enough that the board leans after the action, not
-    // enough to take the view away. Note it is a fifth of the DISTANCE, not a fifth of the speed --
-    // a slower pull that still arrives eventually is just the web's behaviour with a delay.
+    // web's camera used to do the opposite and ease all the way home, which takes the shot off you.
+    // Neither is right, so both builds now do this: the settled pose is a fifth of the way from
+    // where the player put the camera towards where the game wants it, and stops there. Enough that
+    // the board leans after the action, never enough to take the view away. Note it is a fifth of
+    // the DISTANCE, not a fifth of the speed -- a slower pull that still arrives eventually is just
+    // the old behaviour with a delay on it.
     easeFallYaw(dt, falling);   // where the camera is walking round to, if something is going over
     const manual = inMatch() && camManualSet && !falling;
-    if (manual && settings.reducedMotion) { releaseCamSpring(); return true; }   // asked for no drift: then none
+    if (manual && settings.reducedMotion) { clearCamSpring(); return true; }   // asked for no motion: then none
     desiredPose(falling, cameraGoal, targetGoal);
     if (manual) {
-      cameraGoal.lerp(camManualPos, 1 - MANUAL_PULL);
-      targetGoal.lerp(camManualTgt, 1 - MANUAL_PULL);
+      cameraGoal.lerp(camManualPos, 1 - CAM_MANUAL_PULL);
+      targetGoal.lerp(camManualTgt, 1 - CAM_MANUAL_PULL);
     }
-    // ...and then the whole settled pose turns, at full strength whether the view is the game's or
-    // the player's own. Applied here rather than inside desiredPose so a manual view drifts too:
-    // leaning a fifth of the way towards a drifting pose would be a fifth of a drift, which is
-    // nothing. camManualPos is never written from here, so there is no feedback -- when the turn
-    // comes back the orbit unwinds to exactly the pose the player left.
-    if (!falling) applyDrift(cameraGoal, targetGoal);
     // In the corner layout the pose tracks the tile, and the tile moves under the player's drag:
     // ease briskly there so the dish is not still zooming into place a second after they let go.
-    // The menu and the ordinary match keep the slower, calmer settle.
+    // Everywhere else -- resting, mid-move, or watching a piece go over the rim -- is the one time.
     const corner = typeof cornerLayoutActive === 'function' && cornerLayoutActive();
-    // A falling piece is chased, not settled towards: on a look whose floor is a long way down
-    // (marble's table stands in a hall) the calm rate leaves the camera a third of a second behind
-    // and the landing happens below the bottom edge.
-    const wantT = corner ? CAM_SMOOTH_CORNER : falling ? CAM_SMOOTH_FALL : CAM_SMOOTH_MATCH;
+    const wantT = corner ? CAM_SMOOTH_CORNER : CAM_SETTLE;
     // ...and the settle time itself eases into place. Swapping it outright is its own jerk -- the
     // spring would be asked to cover the same remaining gap in half the time, which is a step in
     // acceleration at the moment a fall starts or the flat board is dragged out.
     camSmoothT += (wantT - camSmoothT) * (1 - Math.exp(-dt*3.5));
     if (settings.reducedMotion) {
-      camera.position.copy(cameraGoal); controls.target.copy(targetGoal); releaseCamSpring();
+      camera.position.copy(cameraGoal); controls.target.copy(targetGoal); clearCamSpring();
     } else {
-      smoothDampVec(camera.position, cameraGoal, camVel, camSmoothT, dt);
-      smoothDampVec(controls.target, targetGoal, targetVel, camSmoothT, dt);
+      camSmoothDamp(camera.position, cameraGoal, camVel, camSmoothT, dt);
+      camSmoothDamp(controls.target, targetGoal, targetVel, camSmoothT, dt);
     }
     return true;
   }
@@ -2256,7 +2231,7 @@
     // and the pull undid it, over and over, and the camera sat there not moving at all.
     camManualPos.copy(camera.position); camManualTgt.copy(controls.target);
     camManualSet=true;
-    releaseCamSpring();   // the player has the reins; whatever the settle was doing is over
+    clearCamSpring();   // the player has the reins; whatever the settle was doing is over
   }
   // Both input styles need the same preamble: the first movement of a turn adopts a foot as the
   // handle and takes its current bearing as the starting angle.
@@ -2475,7 +2450,6 @@
     get progress(){return {...progress};},
     recordResult,
     debugDetailMode(){ return detailMode; },
-    debugDrift(){ return driftAmt; },
     resize:layout, updateCamera, orbitCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, fallGravity, renderFrame,
     get rayTrace(){return settings.rayTrace;},
     set rayTrace(v){ settings.rayTrace=!!v; settings.quality = settings.rayTrace ? 'ultra' : (settings.quality==='ultra'?'high':settings.quality);

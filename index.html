@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 274</div>
+<div id="buildTag">build 275</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3990,7 +3990,6 @@ function finishTurn() {
     if (labMode && G.snap) labHist.push({ pose: [G.snap[0].x, G.snap[0].y, G.snap[0].rot,
                                                  G.snap[1].x, G.snap[1].y, G.snap[1].rot], active: G.active });
     commitTurn();
-    progressCentering();   // each completed move creeps the camera a quarter back toward centre
     if (labMode) labBenchRender();   // the bench's take-back state changes with every committed move
     if (labSetup) {   // building a position: no winner, no AI reply, just the board as you left it
         G.over = false; G.winner = null; fall.active = false;
@@ -5402,7 +5401,7 @@ function demoStepLoop() {
     if (delta > 1e-6 && !G.atLimit) applySwing(demoAnim.dir*delta);
     demoDraw();
     if (s < 1 && !G.atLimit) { demoTimer = setTimeout(demoStepLoop, 16); return; }
-    demoAnim = null; endTurn(); progressCentering(); demoDraw();
+    demoAnim = null; endTurn(); demoDraw();
     if (G.over) {
         // Let the loser actually tumble off the 3D board (same triggerFall/stepFall as a real
         // game -- playLossSound is gameVisible-guarded, so the menu demo falls silently), THEN
@@ -10022,6 +10021,43 @@ const acTgt = new THREE.Vector3(), acPos = new THREE.Vector3();
 const AUTOCAM_MIN_DIST = 108, AUTOCAM_MARGIN = 0.87, AUTOCAM_TARGET_Y = 6, AUTOCAM_SMOOTH = 3.2;
 const AUTOCAM_RATIO_D = 115, AUTOCAM_RATIO_H = 82;   // offset "shape" (azimuth/elevation), from the original hand-tuned view
 const AUTOCAM_RATIO_L = Math.hypot(AUTOCAM_RATIO_D, AUTOCAM_RATIO_H);
+// ONE PULL, AND THE SAME ONE EVERYWHERE. The settle used to be `position.lerp(goal, 1-exp(-k*dt))`:
+// each frame the camera closes a fixed FRACTION of its remaining distance. That makes the position
+// smooth and the SPEED a direct function of the gap, so the instant the goal moves the speed steps
+// to a new value inside one frame -- an unbounded acceleration, which is what reads as jerk.
+//
+// Same ease, one order higher: the camera carries a VELOCITY and is pulled by a critically damped
+// spring, so it accelerates out of rest, decelerates into the goal, and a goal that jumps bends the
+// path instead of snapping the speed. Closed-form approximation to the critically damped step
+// (Game Programming Gems 4): stable at any frame time, never overshoots, no sub-stepping needed
+// when a frame runs long.
+//
+// CAM_SETTLE is roughly how long a move takes, and it is deliberately unhurried: the camera should
+// look like it is breathing, not correcting. THE SAME NUMBER DRIVES THE WEB AND THE PREMIUM/STEAM
+// CAMERA, and the same number drives a resting frame, a piece being pushed and a piece going over
+// the rim -- a camera that settles at one rate while you move and another while you wait is two
+// cameras, and you can feel the handover between them.
+const CAM_SETTLE = 0.55;
+const CAM_AXES = ['x','y','z'];
+function camSmoothDamp(cur, goal, vel, smoothTime, dt) {
+    if (!(dt > 0)) return;   // a zero-length frame moves nothing, and would divide by it below
+    const omega = 2/smoothTime, x = omega*dt;
+    const decay = 1/(1 + x + 0.48*x*x + 0.235*x*x*x);
+    for (const k of CAM_AXES) {
+        const want = goal[k], change = cur[k] - want;
+        const temp = (vel[k] + omega*change)*dt;
+        vel[k] = (vel[k] - omega*temp)*decay;
+        let out = want + (change + temp)*decay;
+        // The approximation can step past the goal on a very long frame; land on it and stop rather
+        // than letting the carried velocity turn that into a wobble.
+        if ((want - cur[k] > 0) === (out > want)) { out = want; vel[k] = (out - want)/dt; }
+        cur[k] = out;
+    }
+}
+const camPosVel = new THREE.Vector3(), camTgtVel = new THREE.Vector3();
+// A hand on the camera clears the spring: the pose the player is placing is the new rest, and a
+// velocity left over from the settle would go on pushing after they let go.
+function releaseCamSpring() { camPosVel.set(0,0,0); camTgtVel.set(0,0,0); }
 // The board's real silhouette is TWO circles, not one: the playing surface's drop-off at radius
 // edgeU / y=0, and the base band below it, which flares to edgeU*1.04 and bottoms out at y=-5.2
 // (CylinderGeometry(edgeU, edgeU*1.04, 5) centred at -2.7 — see boardRim in init3D). Fitting only
@@ -10210,20 +10246,29 @@ function computeFullFrame(outPos, outTgt) {
         camWantBias += (camWatchBias - camWantBias) * camWatchMix;   // ...and so does the lens shift
     }
 }
-// Called once per completed move: creep a quarter of the remaining gap back toward centre, and
-// gently unwind the player's manual heading toward the 2D map's orientation (the default view down
-// +z) -- 12% of the remaining azimuth per move, distance/elevation untouched, so a deliberately
-// spun view drifts home over several moves without ever snapping.
-function progressCentering() {
-    camCenterFrac = Math.min(1, camCenterFrac + 0.25);
-    if (camManualSet) {
-        const d = -Math.atan2(camManualPos.x, camManualPos.z) * 0.12;   // azimuth 0 = home/2D-map heading
-        const c = Math.cos(d), s = Math.sin(d);
-        let x = camManualPos.x*c + camManualPos.z*s, z = -camManualPos.x*s + camManualPos.z*c;
-        camManualPos.x = x; camManualPos.z = z;
-        x = camManualTgt.x*c + camManualTgt.z*s; z = -camManualTgt.x*s + camManualTgt.z*c;
-        camManualTgt.x = x; camManualTgt.z = z;
-    }
+// COMING BACK TO THE GAME, WITHOUT A STEP AT EVERY MOVE. This used to be called once per completed
+// move and creep a quarter of the remaining gap back toward centre, plus unwind 12% of the player's
+// manual heading. Both were instantaneous changes to the pose the camera is chasing, landing on the
+// exact frame a move ended -- so every move finished with a nudge. The same two pulls now run
+// CONTINUOUSLY, every frame, off the clock rather than off the move counter (see easeRecentre), and
+// there is nothing left for a completed move to trigger.
+//
+// They are also much weaker than they were. The old one arrived: four moves and the camera was back
+// at the game's own framing, wherever the player had put it. It now leans CAM_MANUAL_PULL of the way
+// and stops, which is what the premium camera has always done -- enough that the view follows the
+// action, never enough to take it off you.
+const CAM_MANUAL_PULL = 0.2;    // how far a player-placed view ends up leaning towards the game's framing
+const CAM_RECENTRE_RATE = 0.2;  // ...and how fast it gets there: ~2/3 of the lean over five seconds
+const CAM_UNSPIN_RATE = 0.025;  // the heading unwinds far slower still; a spun view is a choice
+function easeRecentre(dt) {
+    if (!camManualSet) return;
+    camCenterFrac += (CAM_MANUAL_PULL - camCenterFrac) * (1 - Math.exp(-dt*CAM_RECENTRE_RATE));
+    const d = -Math.atan2(camManualPos.x, camManualPos.z) * (1 - Math.exp(-dt*CAM_UNSPIN_RATE));
+    const c = Math.cos(d), s = Math.sin(d);                             // azimuth 0 = home/2D-map heading
+    let x = camManualPos.x*c + camManualPos.z*s, z = -camManualPos.x*s + camManualPos.z*c;
+    camManualPos.x = x; camManualPos.z = z;
+    x = camManualTgt.x*c + camManualTgt.z*s; z = -camManualTgt.x*s + camManualTgt.z*c;
+    camManualTgt.x = x; camManualTgt.z = z;
 }
 // Would a camera at (pos looking at tgt) keep all 6 feet on screen?
 function feetFitAt(pos, tgt) {
@@ -10244,7 +10289,7 @@ function updateGentleCam(dt) {
     if (window.tauDesktop && window.tauDesktop.updateCamera(dt)) return;
     // While the player is steering by hand the composition is theirs — unwind the lens shift so the
     // board sits where they aimed it, and let it return as the auto frame takes back over.
-    if (camDragging) { easeCamBias(0, dt); return; }
+    if (camDragging) { easeCamBias(0, dt); releaseCamSpring(); return; }
     // Tween the watching<->playing mode mix (see camWatchMix). A mode flip mid-tween simply
     // retargets from the current value, so reversals stay continuous too.
     const mixWant = camWatchingNow() ? 1 : 0;
@@ -10254,16 +10299,20 @@ function updateGentleCam(dt) {
         const u = camMixT * camMixT * (3 - 2 * camMixT);   // smoothstep: zero velocity at both ends
         camWatchMix = camMixFrom + (camMixTo - camMixFrom) * u;
     }
+    easeRecentre(dt);        // the lean back towards the game's framing, a little every frame
     computeFullFrame(camFullPos, camFullTgt);
     const baseP = camManualSet ? camManualPos : camFullPos;   // the 0%-centred reference
     const baseT = camManualSet ? camManualTgt : camFullTgt;
     let frac = camCenterFrac;
     camWantPos.lerpVectors(baseP, camFullPos, frac);
     camWantTgt.lerpVectors(baseT, camFullTgt, frac);
-    // Only enforce "all feet in view" while a piece is actually moving — resting the camera
-    // super zoomed-in between moves is allowed; the fit is a response to motion, not a leash.
-    const moving = G.handle!==null || !!aiAnim || !!demoAnim;
-    if (moving && !feetFitAt(camWantPos, camWantTgt)) {
+    // "All six feet in view" used to be enforced only while a piece was actually moving, so the
+    // goal gained a push the moment a move started and lost it the moment the move ended: the
+    // camera behaved one way during a move and another at rest, and you could feel the handover.
+    // It is one rule now, asked every frame. It still only ever engages when a foot would be off
+    // the screen, and still pushes the smallest amount that fixes that, so a view the player
+    // zoomed in stays theirs right up to the point where it would hide the game.
+    if (!feetFitAt(camWantPos, camWantTgt)) {
         // minimal extra push toward the (always-fits) full-frame view — smallest frac in
         // [current, 1] that gets every foot back on screen.
         let lo=frac, hi=1;
@@ -10276,9 +10325,8 @@ function updateGentleCam(dt) {
     // The shift belongs to the auto frame, so it fades in with it: at frac 0 the camera is exactly
     // where the player left it and gets no shift at all.
     easeCamBias(camWantBias * (camManualSet ? frac : 1), dt);
-    const k = 1 - Math.exp(-AUTOCAM_SMOOTH*dt);    // frame-rate-independent easing
-    camera.position.lerp(camWantPos, k);
-    controls.target.lerp(camWantTgt, k);
+    camSmoothDamp(camera.position, camWantPos, camPosVel, CAM_SETTLE, dt);
+    camSmoothDamp(controls.target, camWantTgt, camTgtVel, CAM_SETTLE, dt);
 }
 // While the losing piece is sliding/tumbling off the table, follow the drama: frame the
 // midpoint of the (stationary) winner and the falling piece's LIVE position — not the
@@ -10299,9 +10347,11 @@ function updateFallCam(dt) {
     acTgt.set(mx, AUTOCAM_TARGET_Y, mz);
     acPos.set(mx+px*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L), AUTOCAM_TARGET_Y+dist*(AUTOCAM_RATIO_H/AUTOCAM_RATIO_L), mz+pz*dist*(AUTOCAM_RATIO_D/AUTOCAM_RATIO_L));
     easeCamBias(sol.bias, dt);
-    const k = 1 - Math.exp(-AUTOCAM_SMOOTH*dt);
-    camera.position.lerp(acPos, k);
-    controls.target.lerp(acTgt, k);
+    // The same spring and the same settle time as every other frame: a piece going over the rim is
+    // followed, not chased. Chasing it on a quicker ease was its own handover -- the camera changed
+    // character at the exact moment the game got dramatic.
+    camSmoothDamp(camera.position, acPos, camPosVel, CAM_SETTLE, dt);
+    camSmoothDamp(controls.target, acTgt, camTgtVel, CAM_SETTLE, dt);
 }
 function animate() {
     requestAnimationFrame(animate);
@@ -12744,7 +12794,6 @@ function finishOnlineTurn() {
     if (onlineMatch && onlineMatch.passStreak) onlineMatch.passStreak[onlineMatch.myColor] = 0;   // I moved -> reset my miss streak
     if (onlineMatch && onlineMatch.movesMade) onlineMatch.movesMade[onlineMatch.myColor]++;
     commitTurn();
-    progressCentering();
     const winnerColor = G.over ? (G.winner===0?'blue':'red') : null;
     const finalState = {
         blue: { x:G.pieces[0].x, y:G.pieces[0].y, rot:G.pieces[0].rot },
@@ -12845,7 +12894,6 @@ async function replayOpponentMove(row) {
     // index the opponent's move just used and silently failing to insert every other turn.
     onlineMatch.nextMoveIndex = Math.max(onlineMatch.nextMoveIndex, row.move_index + 1);
     clearTurn();
-    progressCentering();
     if (fs.winner) {
         G.over = true; G.winner = fs.winner==='blue' ? 0 : 1;
         triggerFall(); showGameOverModal(); onlineFinishMatch(fs.winner);
