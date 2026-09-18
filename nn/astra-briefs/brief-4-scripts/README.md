@@ -12,6 +12,13 @@
   zero gain, so a box-wide first-contact substep understates it), and the contraction of the
   foot-radius spread from first contact to the last pose's throw.
 
+- `sustained-contact.js` -> `sustained-contact.txt`: per-pose first contact across a box, whether
+  any pose's contact lapses after it begins (none does), the substep from which the WHOLE box is in
+  sustained contact, and the smallest per-substep gain from there on. This is the number a per-slab
+  (H2)/(H3) has to work with; a minimum taken over the mixed window, where some poses of the box are
+  touching and others are not, is a statement about the slab boundary rather than about the contact,
+  and comes out near zero for that reason.
+
 - `throw-cert-at-1cf90f63f.js`, `THROW-CONTACT-LEMMAS-at-1cf90f63f.md`: the throw-bound thread's
   checker and write-up at commit 1cf90f63f on claude/project-thread-kyx87p, the commit whose
   results brief 4 quotes. They are that thread's files; these copies are a snapshot, not a fork.

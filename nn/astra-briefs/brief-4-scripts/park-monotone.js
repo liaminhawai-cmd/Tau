@@ -48,6 +48,10 @@ for (let i = 0; i < runs.length; i++) {
   if (bad) nonMono++;
 }
 console.log(`across substeps ${PARK[0]}-${PARK[1]}: ${nonMono} of ${N} poses have a non-increasing step; smallest step anywhere ${worstStep.toFixed(6)}u (at substep ${worstAt})`);
+{ let clear = null;
+  for (let k = 1; k <= runs[0].length; k++) { const mn = Math.min(...at(k).map(r => r.foot));
+    if (mn > EDGE) { clear = k; break; } }
+  console.log(`box minimum clears the rim at substep ${clear === null ? 'never' : clear}; latest individual throw at ${Math.max(...leaves.filter(Boolean))}`); }
 console.log('\nsubstep  min foot radius over the box   max        centre     spread   clears rim?');
 for (const k of [70, 74, 78, 82, 84, 85, 86, 90, 94, 98]) {
   const v = at(k).map(r => r.foot), mn = Math.min(...v), mx = Math.max(...v);

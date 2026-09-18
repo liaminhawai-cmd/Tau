@@ -2,6 +2,7 @@ start poses: max foot radius 63.817 to 64.207 (rim 67.167); off board at the sta
 box +-0.1u / +-0.01 rad, 200 poses (the first is the centre), foot 1, rim 67.167
 thrown: 200 of 200; first leaves at substep 83, last at 85
 across substeps 74-98: 0 of 200 poses have a non-increasing step; smallest step anywhere 0.083614u (at substep 75)
+box minimum clears the rim at substep 85; latest individual throw at 85
 
 substep  min foot radius over the box   max        centre     spread   clears rim?
    70    65.8366                      66.1343    65.9962   0.2977   no
@@ -23,6 +24,7 @@ start poses: max foot radius 63.789 to 64.230 (rim 67.167); off board at the sta
 box +-0.125u / +-0.01 rad, 200 poses (the first is the centre), foot 1, rim 67.167
 thrown: 200 of 200; first leaves at substep 83, last at 85
 across substeps 74-98: 0 of 200 poses have a non-increasing step; smallest step anywhere 0.062809u (at substep 75)
+box minimum clears the rim at substep 85; latest individual throw at 85
 
 substep  min foot radius over the box   max        centre     spread   clears rim?
    70    65.8303                      66.1497    65.9962   0.3194   no
@@ -44,6 +46,7 @@ start poses: max foot radius 63.372 to 64.615 (rim 67.167); off board at the sta
 box +-0.125u / +-0.05 rad, 200 poses (the first is the centre), foot 1, rim 67.167
 thrown: 200 of 200; first leaves at substep 80, last at 89
 across substeps 74-98: 0 of 200 poses have a non-increasing step; smallest step anywhere 0.061551u (at substep 75)
+box minimum clears the rim at substep 89; latest individual throw at 89
 
 substep  min foot radius over the box   max        centre     spread   clears rim?
    70    65.5345                      66.5464    65.9962   1.0119   no
@@ -65,6 +68,7 @@ start poses: max foot radius 63.648 to 64.393 (rim 67.167); off board at the sta
 box +-0.25u / +-0.01 rad, 200 poses (the first is the centre), foot 1, rim 67.167
 thrown: 200 of 200; first leaves at substep 83, last at 86
 across substeps 74-98: 0 of 200 poses have a non-increasing step; smallest step anywhere 0.060485u (at substep 75)
+box minimum clears the rim at substep 86; latest individual throw at 86
 
 substep  min foot radius over the box   max        centre     spread   clears rim?
    70    65.8032                      66.2220    65.9962   0.4188   no
@@ -86,6 +90,7 @@ start poses: max foot radius 63.348 to 64.718 (rim 67.167); off board at the sta
 box +-0.5u / +-0.01 rad, 200 poses (the first is the centre), foot 1, rim 67.167
 thrown: 200 of 200; first leaves at substep 83, last at 87
 across substeps 74-98: 0 of 200 poses have a non-increasing step; smallest step anywhere 0.059418u (at substep 75)
+box minimum clears the rim at substep 87; latest individual throw at 87
 
 substep  min foot radius over the box   max        centre     spread   clears rim?
    70    65.7364                      66.3965    65.9962   0.6601   no

@@ -1,0 +1,5 @@
++-0.1u / +-0.01 rad   first contact 10-15   lapses 0/200   whole box in sustained contact from 15   smallest gain from there 0.008736u at substep 16   thrown 200/200 by 85
++-0.125u / +-0.01 rad   first contact 9-16   lapses 0/200   whole box in sustained contact from 16   smallest gain from there 0.009022u at substep 17   thrown 200/200 by 85
++-0.125u / +-0.05 rad   first contact 5-20   lapses 0/200   whole box in sustained contact from 20   smallest gain from there 0.009901u at substep 21   thrown 200/200 by 89
++-0.25u / +-0.01 rad   first contact 6-18   lapses 0/200   whole box in sustained contact from 18   smallest gain from there 0.009478u at substep 19   thrown 200/200 by 86
++-0.5u / +-0.01 rad   first contact 2-23   lapses 0/200   whole box in sustained contact from 23   smallest gain from there 0.010719u at substep 24   thrown 200/200 by 87

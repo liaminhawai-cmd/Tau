@@ -8,7 +8,7 @@ Same conventions as briefs 2 and 3: board units `u`, degrees unless a formula sa
 
 ## 0. What your last answer did
 
-**The park work landed and the proof closes.** You gave exact projection formulas for a contact resting on a polyline vertex. Making both sides of the dwell exact — the victim's contact is a known material point, the attacker's is the perpendicular foot from that point onto a fixed chord — and then putting the *linear part* of the resulting push-direction map into the enclosure's basis Lohner-style, rather than carrying the direction as an interval, dropped the per-substep growth through the park from about 1.4x to 1.11x. With that, at a victim box of `+-0.0002u` in position and `+-0.002 rad` in rotation, every pose is certified thrown off the board. A second throw arm on the same seed certifies too.
+**The park work landed and the proof closes.** You gave exact projection formulas for a contact resting on a polyline vertex. Making both sides of the dwell exact — the victim's contact is a known material point, the attacker's is the perpendicular foot from that point onto a fixed chord — and then putting the *linear part* of the resulting push-direction map into the enclosure's basis Lohner-style, rather than carrying the direction as an interval, dropped the per-substep growth through the park from about 1.4x to 1.11x. (Both figures are measured from a starting box of zero width, so that everything the enclosure carries is its own slack; they are the checker's intrinsic rate, not the rate a real box sees.) With that, at a victim box of `+-0.0002u` in position and `+-0.002 rad` in rotation, every pose is certified thrown off the board. A second throw arm on the same seed certifies too.
 
 **Two of your other recommendations were load-bearing and both were taken.** Stopping the moment the worst state's lower bound on the exposed foot's radius clears the rim, rather than running the sweep out — the certificate had been asked to survive fifty substeps of a dwell whose purpose it had already served. And, from the review before, the projection bound on the post-push residual, which replaced an unsound overshoot argument.
 
@@ -40,7 +40,7 @@ One size up, at `+-0.0003u / +-0.003 rad`, it dies at substep 85 itself with the
 
 The certificate exists to replace a sampling argument in the search: a grid of poses, each sample's throw margin required to clear the cell diagonal times a Lipschitz allowance measured from the grid's own finite differences, times a safety factor. That argument is falsifiable and carefully made, but it is measurement, not proof.
 
-The sampled routine works on a victim box of half-width 0.5u with a grid step of 0.25u. One cell therefore has a per-axis half-width of about **0.125u**. The interval certificate closes at **0.0002u**. That is 600 times too small per axis; covering one cell by subdivision is on the order of `10^8` sub-certificates.
+The sampled routine works on a victim box of half-width 0.5u with a grid step of 0.25u. One cell therefore has a per-axis half-width of about **0.125u**. The interval certificate closes at **0.0002u**. That is 600 times too small per axis; covering one cell by subdivision is on the order of `10^8` sub-certificates. (The 0.125u is read from that routine's demo defaults, which is the scale it is worked at but not confirmed against whatever the production pipeline runs, so treat the 600 as an order of magnitude rather than a measured constant. Nothing below turns on the exact figure.)
 
 Subdivision does not bridge it, and neither, as far as we can see, does term-tightening. With the push's linear part in the basis the feedback is quadratic — the enclosure grows like `pad + c pad^2` per substep rather than by a constant factor — so `0.0002u` is a **threshold**, not a soft limit, and raising it 600-fold means cutting `c` 600-fold. Measured at substeps 80 to 84, the three terms of the remainder:
 
@@ -50,7 +50,7 @@ Subdivision does not bridge it, and neither, as far as we can see, does term-tig
 | `lambda Lambda_c B m3` | 2.6e-3 |
 | `Lambda_c dB . dq` | 1.8e-4 |
 
-The Jacobian's own spread, the term the linearisation introduced, is the smallest by a factor of 29. What dominates is `lambda . da`, the push magnitude's range times the direction cone, and it resists the same treatment: `da` hulls the direction over the whole substep, from before the push to after it, whereas `B` is the pose derivative at one instant, so `B . dq` does not enclose it. A careful re-derivation of that term looks likely to buy a factor of a few. The gap is three orders of magnitude wider than that.
+The Jacobian's own spread, the term the linearisation introduced, is the smallest by a factor of 29. What dominates is `lambda . da`, the push magnitude's range times the direction cone, and it resists the same treatment: `da` hulls the direction over the whole substep, from before the push to after it, whereas `B` is the pose derivative at one instant, so `B . dq` does not enclose it. A careful re-derivation of that term looks likely to buy a factor of a few — that last is a judgement, not a measurement, and it is the judgement on which the whole "tightening will not close it" conclusion rests, so it is fair game. The gap is three orders of magnitude wider than it.
 
 ---
 
@@ -58,23 +58,27 @@ The Jacobian's own spread, the term the linearisation introduced, is the smalles
 
 This is the part that decides what to ask you, because it says the difficulty is in the accounting rather than in the motion.
 
-Sample victim start poses from a box about this position, run each through the sweep on the search's own substep grid, and watch the exposed foot's radius. 200 poses per box, the centre included, every start pose checked to be on the board and not already touching the attacker.
+Sample victim start poses from a box about this position, run each through the sweep on the search's own substep grid, and watch the exposed foot's radius. 200 poses per box, the centre included, every start pose checked to be on the board and not already touching the attacker. Position and rotation half-widths are given independently below rather than tied together through a metric.
 
-| box, per axis | thrown | poses with a non-increasing step over substeps 74-98 | smallest increment anywhere | box minimum clears the rim at |
-|---|---|---|---|---|
-| `+-0.1u / +-0.01 rad` | 200/200 | 0 | 0.0836u | substep 85 |
-| `+-0.125u / +-0.01 rad` | 200/200 | 0 | 0.0628u | substep 85 |
-| `+-0.125u / +-0.05 rad` | 200/200 | 0 | 0.0616u | — |
-| `+-0.25u / +-0.01 rad` | 200/200 | 0 | 0.0605u | — |
-| `+-0.5u / +-0.01 rad` | 200/200 | 0 | 0.0594u | substep 90 |
+| box, per axis | thrown | poses with a non-increasing step, whole sweep | whole box in sustained contact from | smallest step from there on | smallest step over substeps 74-98 | box minimum clears the rim at |
+|---|---|---|---|---|---|---|
+| `+-0.1u / +-0.01 rad` | 200/200 | 0 | substep 15 | 0.0087u | 0.0836u | substep 85 |
+| `+-0.125u / +-0.01 rad` | 200/200 | 0 | substep 16 | 0.0090u | 0.0628u | substep 85 |
+| `+-0.125u / +-0.05 rad` | 200/200 | 0 | substep 20 | 0.0099u | 0.0616u | substep 89 |
+| `+-0.25u / +-0.01 rad` | 200/200 | 0 | substep 18 | 0.0095u | 0.0605u | substep 86 |
+| `+-0.5u / +-0.01 rad` | 200/200 | 0 | substep 23 | 0.0107u | 0.0594u | substep 87 |
+
+The last column is the first substep at which the *minimum over the sampled box* exceeds the rim. It equals the latest individual throw in every row, which is what monotonicity forces, and unlike the other columns it is a property of the sample rather than of the box: a wider sample can only push it later.
 
 Four things to read off it.
 
 **The exposed foot's radius never falls.** Not only through the dwell: over the whole sweep, for every pose, at every box size. Zero decreasing steps in 27400 steps per box, three box sizes checked, and the throw-bound thread gets the same on the second throw arm independently.
 
-**The increments through the dwell are enormous relative to the widths in play.** The smallest anywhere across 1000 park trajectories is 0.059u, against enclosure widths of 0.01 to 0.1u. Through the dwell the gain runs 0.05 to 0.09u a substep.
+**Through the dwell the increments are large relative to the widths in play, and they barely move with the box.** The smallest across 1000 park trajectories is 0.059u, against enclosure widths of 0.01 to 0.1u, and it falls only from 0.0628u to 0.0594u as the box grows fourfold. Through the dwell the gain runs 0.05 to 0.09u a substep.
 
-**The small gains are all early, which is exactly the known problem.** The minimum gain over a pose's whole contact window is 4.0e-5u at substep 14 at a `+-0.125u` box, and 1.1e-4u at substep 11 at `+-0.25u`. Both sit at a grazing first contact, not in the dwell. That matters because `throw-theorem.md` already found that uniform bounds over the sweep give a total of only 0.44u by 28 degrees, dominated by the early substeps where the normal is still 68 degrees off radial, and that per-slab bounds would follow the engine's real 3.18u closely. Per-slab is precisely what this measurement says is available.
+**The early gains are small, and where the slab should start is the interesting part.** Over a wide box the poses do not all begin touching at the same substep: at `+-0.125u` the first contact ranges over substeps 9 to 16, and at `+-0.5u` over 2 to 23. In the window where some poses of the box are touching and others are not, the minimum gain over the box is of course near zero, and quoting it as a bound on the gain is meaningless — it is a statement about the slab boundary, not about the contact.
+
+The right question is what the floor is once the *whole* box is in contact, and there the picture is clean. **No pose's contact ever lapses once it has begun**, at any box size tried, so "in contact" is an interval per pose. From the substep at which the whole box is in sustained contact, the smallest per-substep gain is **0.0087u to 0.0107u** across the five boxes — and it *rises* slightly with box size, because a wider box starts its slab later and so skips more of the grazing phase. That is the number a per-slab (H2)/(H3) has to work with at the hard end: 0.009u a substep near the start, rising to 0.059u through the dwell. That matters because `throw-theorem.md` already found that uniform bounds over the sweep give a total of only 0.44u by 28 degrees, dominated by the early substeps where the normal is still 68 degrees off radial, and that per-slab bounds would follow the engine's real 3.18u closely. Per-slab is precisely what this measurement says is available.
 
 **The spread of the outcome contracts.** From first contact to the last pose's throw, the spread of the exposed foot's radius across the box goes 0.4408u to 0.2008u at `+-0.125u` (a factor of 0.456), 0.7443u to 0.2509u at `+-0.25u`, and 1.3697u to 0.3824u at `+-0.5u`. Meanwhile the pose box itself expands by only 1.04x over the same window (the throw-bound thread's measurement, not ours). So the dynamics do not merely fail to blow up; in the quantity the proof cares about they pull the box together.
 
@@ -99,7 +103,7 @@ The structural reason this route can work where the stepping method cannot: **in
 
 So the question is how to prove (H2), (H3) and (H4) over a box of order `+-0.1u`. Two parts, and we would push hardest on the second:
 
-- **(H2) and (H3) per slab.** Uniform-over-the-sweep bounds give 0.44u, which fails. The measurement says the gain is stable through the dwell and only collapses at the early grazing contacts, so the bound wants to be per slab of a few degrees. What is the right way to get a rigorous per-slab `a_min` and `g_min` over a box, given that during the dwell the victim's contact is a known material point — the vertex at arc angle 30 degrees on leg 0, at `p(q) = (x, y) + R sin(30) (cos rot, sin rot)`, height `R cos(30)` — and the attacker's is the perpendicular foot from that point onto a chord that is fixed within a substep?
+- **(H2) and (H3) per slab.** Uniform-over-the-sweep bounds give 0.44u, which fails. The measurement says the gain is stable through the dwell and worst at the early contacts, so the bound wants to be per slab of a few degrees, with the first slab beginning where the whole box is in contact rather than where the centre first touches. What is the right way to get a rigorous per-slab `a_min` and `g_min` over a box, given that during the dwell the victim's contact is a known material point — the vertex at arc angle 30 degrees on leg 0, at `p(q) = (x, y) + R sin(30) (cos rot, sin rot)`, height `R cos(30)` — and the attacker's is the perpendicular foot from that point onto a chord that is fixed within a substep?
 - **(H4), invariance.** This is where we do not know the answer. The Jacobian machinery from the park work is the right tool — the push direction is an exactly differentiable function of the pose during a dwell — but whether the mean-value remainder is small enough for a box of 0.1u to be shown to map into itself, we cannot say. If it is not, is there a different shape of set, or a different coordinate system, in which invariance is checkable?
 
 A clear argument that (H4) cannot hold at this box size would also be worth having, before more effort goes into it.
