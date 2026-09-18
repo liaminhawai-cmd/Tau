@@ -853,11 +853,19 @@ box** at the three larger sizes -- 0.04342 is twice 0.02171, 0.08684 twice that,
 0.17366 twice that again -- and the factor is the same to three decimals. A map
 whose output scales with its input is linear in the box size, which is the
 signature of NO threshold: the enclosure's growth was nonlinear and that is what
-gave it one. **The growth is a transient, not a rate.** Through the interior
-stretch the spread is flat or slightly contracting (x0.9996 a substep); all of it
-arrives in the last dozen substeps, the park. So the worst substep is not a figure
-to compound -- x1.0128 over 71 substeps would be x2.47 and means nothing.
-**A tube 1.2x the starting box's tangential extent covers every case here.**
+gave it one. **The growth is a small sustained rate, after an
+initial dip.** At +-0.1u the spread contracts at x0.9996 a substep from first
+contact to about substep 35, falling from 0.17366 to 0.16404u, and then grows at
+x1.0017 rising to x1.0025 a substep for the remaining forty-odd, back up to
+0.17883u. That profile is a rate, not a transient, and an earlier draft of this
+section called it the opposite: the growth begins around substep 40, not in the
+park, and x1.002 compounded over the 45 substeps from there is x1.09, which is
+what is measured over that stretch. What saves it is that the rate is small and
+the dip pays for most of it, so the window nets x1.03. **A tube 1.05x the
+starting box's tangential extent covers every case here, and 1.2x covers it with
+room.** The worst single substep is still not a figure to compound over the whole
+sweep -- x1.0128 for 71 substeps would be x2.47 -- because it is reached only at
+the end.
 
 What not to read: the split is relative to a direction that itself turns as the
 contact walks along the leg, so some of the late growth is `G` rotating and
@@ -869,7 +877,15 @@ The +-0.0125u row does not fit the proportionality: its end spread is about
 0.002u wider than the line, and it reproduces exactly at 60, 200 and 500 sampled
 poses, so it is deterministic rather than a sampling artefact. It is unexplained.
 
+One reading that turned out not to be a difference. The brief thread measures the
+WHOLE deviation in `(dx, dy, R drot)` rather than splitting at `G`, and the two
+were carried side by side as possibly disagreeing about the interior stretch. They
+are the same number here to five decimals, because once the along-`G` part has
+collapsed to 2e-4u it adds in quadrature to a tangential part three orders larger
+and disappears. So the split is free, and any remaining difference between the two
+harnesses is not the splitting.
+
 None of this is a proof -- it is 200 poses again. What it says is what a proof of
 (a) has to deliver: not a contraction, which is false, but a per-substep tangential
-factor bounded by about 1.003, holding over a set that is thin along `G`, with the
-park's last dozen substeps carrying all of the growth.
+factor bounded by about 1.003, holding over a set that is thin along `G`, sustained
+over the second half of the contact window rather than concentrated anywhere.
