@@ -596,9 +596,16 @@ const THEMES = {
       strokeLines(a, 'rgba(40,32,22,0.5)', LW*2.4);
       strokeLines(a, '#4a4038', LW*1.7);
       strokeLines(a, 'rgba(150,138,120,0.35)', LW*0.5);          // worn top sheen
+      // The dot and the darker disc under it are CONCENTRIC. The other looks nudge that disc a
+      // little to one side, where it reads as a shadow thrown by a small stud sitting proud of the
+      // surface. This board's dots are more than twice that size and its stone is only a shade off
+      // the sand around it, so the same nudge stopped reading as a shadow and started reading as a
+      // ring the dot had slipped inside -- six of them, each apparently off its own mark. Centred,
+      // it is what the board actually is: basalt sunk into sand, with the sand darker where it
+      // meets the stone.
       const dotR = Math.max(5, px(CFG.edgeU * CFG.padRadiusFrac * 2.2));
       for (const [dx,dy] of DOTS) {
-        a.fillStyle = 'rgba(40,32,22,0.5)'; a.beginPath(); a.arc(ox+px(dx), oy+px(dy)+dotR*0.3, dotR*1.3, 0, 7); a.fill();
+        a.fillStyle = 'rgba(40,32,22,0.5)'; a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR*1.3, 0, 7); a.fill();
         a.fillStyle = '#4a4038'; a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR, 0, 7); a.fill();
       }
       const [ro, r] = canvas2d();
