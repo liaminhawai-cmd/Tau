@@ -1,0 +1,14 @@
+box +-0.0005u / +-0.0020 deg, 120 poses
+substep  regime    poses  hub spread (u)  normal cone (deg)
+   40    interior   120   0.001162        0.0007
+   50    interior   120   0.001169        0.0006
+   60    interior   120   0.001175        0.0005
+   70    interior   120   0.001181        0.0004
+   72    interior   120   0.001182        0.0004
+   73    combined   120   0.001182        0.0001
+   74    park       120   0.001164        0.0116
+   76    park       120   0.001177        0.0116
+   80    park       120   0.001204        0.0125
+   84    park       120   0.001235        0.0136
+   90    park       120   0.001291        0.0155
+   96    park       120   0.001381        0.0182
