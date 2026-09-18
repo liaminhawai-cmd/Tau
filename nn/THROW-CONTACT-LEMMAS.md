@@ -479,3 +479,42 @@ window, which dropped the vertex identity and with it the Jacobian; and the
 vertex regime's blanket cone bound, chosen whenever it beats the exact one, was
 not carrying the vertex index, so every box large enough for the blanket to win
 lost the Jacobian too.
+
+
+## 9. A second arm, and a guard that was firing on noise
+
+This seed has two throw arms. The second, attacker 1 about foot 2 in direction
+-1, has a 110.3 degree limit and throws at substep 112 of 331. It also certifies,
+at the same +-0.0002u / +-0.002 rad box: foot 1's radius at least 67.205u against
+the rim, 500 poses, zero violations.
+
+It did not certify at any box size until a guard was corrected, and the guard is
+worth recording because its failure mode was invisible. The shell argument needs
+the push solver to have stopped because nothing was under the contact distance,
+not because it ran out of passes, so the checker refuses a substep where the
+solver used all ten. On this arm it caps on 43 of its 331 substeps -- and it has
+converged by pass two. The push magnitudes run
+
+    9.99e-2,  2.04e-6,  1.28e-15,  1.28e-15,  ...
+
+to the cap. It is grinding at the floating-point noise floor because its
+termination test never fires there, not because a contact is unresolved. The
+residual overlap at every one of those substeps is zero.
+
+Judge the last push instead of the pass count. With `lambda = s/(1 + rn^2/I)` and
+`s` the penetration along the normal, a final push of `lambda` leaves at most
+`lambda (1 + R^2/I)` of penetration behind it, which at this noise floor is four
+orders of magnitude inside the slack the shell's lower edge already carries. A
+solver that caps with a substantial last push is still refused.
+
+The lesson is the same one as the foot index in section 8. Both failures reported
+something true -- the solver did use every pass, the foot radius was not below
+the bound -- while the thing they were supposed to be testing never happened.
+
+### The two arms stop for different reasons
+
+Arm (0,-1) is limited by enclosure width through the chord-vertex park, as
+section 8 describes. Arm (2,-1) is not: at +-0.001u it reaches substep 113 of
+331, one past its own throw, and its own blow-up starts at substep 109 where the
+cone goes from 0.20 to 5.32 degrees. So the method has more than one ceiling, and
+the park is not the universal obstacle it looked like from one arm.
