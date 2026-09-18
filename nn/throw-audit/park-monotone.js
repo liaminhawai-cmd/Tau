@@ -30,6 +30,11 @@ const pose = process.env.POSE.split(',').map(Number);
 const att = +(process.argv[2] ?? 1), pv = +(process.argv[3] ?? 0), dir = +(process.argv[4] ?? -1);
 const jF = +(process.argv[5] ?? 1);
 const half = +(process.argv[6] ?? 0.1), N = +(process.argv[7] ?? 200);
+// Rotation half-width in RADIANS, given explicitly. The default ties it to the position half-width
+// through R, matching the project's pose metric d = hypot(dx,dy) + R|drot|, but a box quoted as
+// "+-0.25u / +-0.01 rad" is a different box from "+-0.25u" in that metric and the two do not
+// compare, so it has to be sayable.
+const hrotArg = process.argv[8] === undefined ? null : +process.argv[8];
 const victim = 1 - att;
 
 const base = FW.piecesOf(pose);
@@ -38,7 +43,7 @@ const rOf = p => { const f = feetOf(p)[jF]; return Math.hypot(f.x, f.y); };
 
 // deterministic sampling: corners, axis midpoints and a fixed pseudo-random fill
 let seed = 12345; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
-const c = base[victim], hr = half / R, offs = [];
+const c = base[victim], hr = hrotArg === null ? half / R : hrotArg, offs = [];
 for (const dx of [-1, 0, 1]) for (const dy of [-1, 0, 1]) for (const dt of [-1, 0, 1]) offs.push([dx * half, dy * half, dt * hr]);
 while (offs.length < N) offs.push([(2 * rnd() - 1) * half, (2 * rnd() - 1) * half, (2 * rnd() - 1) * hr]);
 
@@ -84,6 +89,13 @@ for (let k = 1; k <= K; k++) {
   if (k >= firstContact && k <= Math.min(K, thrownAll + 20)) console.log(`  ${String(k).padStart(3)} ${(k * TC.LIM_SUB / DEG).toFixed(2).padStart(6)}  ${gmin.toFixed(6).padStart(9)} ${gmax.toFixed(6).padStart(9)}  | ${Math.min(...rs).toFixed(3).padStart(8)} ${Math.max(...rs).toFixed(3).padStart(8)} ${spread.toFixed(4).padStart(8)}  |    ${regimes.size}      ${thrown}/${runs.length}`);
 }
 console.log(`\nH3 (radial gain bounded below over the box, CONTACT substeps only): min gain ${worstGain.toFixed(6)}u at substep ${worstGainK} -- ${worstGain > 0 ? 'POSITIVE throughout' : 'NOT positive'}`);
+// The park window separately. The two differ by more than an order of magnitude and quoting the
+// park's figure as "the smallest step anywhere" overstates the margin by about 20x.
+{ const [pk0, pk1] = [74, 98]; let m = Infinity, mk = 0;
+  for (let k = pk0; k <= Math.min(pk1, K); k++) for (const r of runs) {
+    if (!r.tr[k - 1].pushes.length) continue;
+    const g = r.r[k - 1] - r.r[k - 2]; if (g < m) { m = g; mk = k; } }
+  console.log(`   over the PARK window ${pk0}-${pk1} only: min gain ${m === Infinity ? 'n/a' : m.toFixed(6) + 'u at substep ' + mk}`); }
 // measured across the CONTACT window: during free flight the victim does not move, so including
 // the no-push substeps only dilutes whatever the pushes do.
 const sp0 = Math.max(...runs.map(r => dist(r.tr[firstContact - 1], centre.tr[firstContact - 1])));
