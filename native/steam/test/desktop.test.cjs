@@ -636,7 +636,7 @@ test('ALLBOARDS opens every finish, survives restart and restores earned locks w
   const D=g.w.tauDesktop;
   assert.ok(D.boards.some(b=>!b.unlocked));
   // Typing in a menu field or with a shortcut modifier must never activate the cheat.
-  g.$('desktopLevel').focus();type('ALLBOARDS');
+  g.$('desktopColour').focus();type('ALLBOARDS');
   assert.ok(D.boards.some(b=>!b.unlocked));
   g.$('desktopPlay').focus();
   for(const key of 'ALLBOARDS')g.$('desktopPlay').dispatchEvent(new g.w.KeyboardEvent('keydown',{key,bubbles:true,ctrlKey:true}));
@@ -825,6 +825,37 @@ test('choosing the opponent chooses the board, and choosing the board chooses th
   sel.value='dojo'; sel.onchange({target:sel});
   assert.equal(D.board,'dojo');
   assert.equal(lv.value,'2','and the opponent followed the board');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the opponent is a board with somebody on it, and the sheet shows the whole ladder',async t=>{
+  const g=await game();t.after(g.close);
+  const D=g.w.tauDesktop;
+  const tile=g.$('desktopOpponent');
+  // The menu names who you are playing and where, not a level number on its own.
+  assert.match(tile.textContent,/Hazel/,'the tile names the opponent');
+  assert.match(tile.textContent,/Level 1 · Walnut/,'and the rung and the board they play on');
+  assert.equal(g.$('desktopLevel').value,'1','the select underneath is still the control');
+  tile.click();
+  const rungs=[...g.w.document.querySelectorAll('.desktop-ladder .desktop-rung')];
+  assert.equal(rungs.length,11,'every rung of the ladder is on the sheet');
+  assert.match(rungs[10].textContent,/Titan/);
+  assert.match(rungs[10].textContent,/Level 11 · Colossus/);
+  assert.equal(rungs[0].getAttribute('aria-current'),'true','the one you are on is marked');
+  // A locked rung is shown greyed with what it is waiting for, never hidden.
+  assert.ok(rungs[1].disabled,'a rung whose board is locked cannot be picked');
+  assert.match(rungs[1].textContent,/beat Hazel/,'and it says what opens it');
+  // Open two rungs and pick the second from the sheet: board, select and tile all follow.
+  g.w.document.getElementById('modalClose')?.click?.();
+  g.read('markLadderCleared(1,0);markLadderCleared(1,1);markLadderCleared(2,0);markLadderCleared(2,1);');
+  D.recordResult({humanWon:false,vsAI:true,online:false,lab:false,level:0});
+  tile.click();
+  const open=[...g.w.document.querySelectorAll('.desktop-ladder .desktop-rung')];
+  assert.ok(!open[2].disabled,'Slate is reachable now');
+  open[2].click();
+  assert.equal(D.board,'slate','picking a face on the sheet put us on their board');
+  assert.equal(g.$('desktopLevel').value,'3','and moved the control underneath');
+  assert.match(g.$('desktopOpponent').textContent,/Flint/,'and the tile now wears the new opponent');
   assert.deepEqual(g.errors,[]);
 });
 

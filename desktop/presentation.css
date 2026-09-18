@@ -23,7 +23,35 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .desktop-primary { width:100%; min-height:56px; border:1px solid #e2c38d; background:linear-gradient(115deg,#e4c58d,#ba965d); color:#191c15; font-weight:600!important; border-radius:3px; padding:14px 22px; box-shadow:0 7px 30px #0003; transition:filter .15s,transform .15s; }
 .desktop-primary:hover { filter:brightness(1.08); transform:translateY(-1px); }
 .desktop-choices { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:16px 0 24px; }
-.desktop-choices label { color:var(--muted); font-size:13px; display:grid; gap:8px; }
+.desktop-choices label, .desktop-choice { color:var(--muted); font-size:13px; display:grid; gap:8px; }
+/* The opponent is a picture of a board with somebody on it, not a line of text. The <select> under
+   it is still the control every other route drives, so it stays in the document and out of sight. */
+.desktop-choice > select { display:none; }
+.desktop-opponent { width:100%; min-width:0; display:grid; grid-template-columns:auto minmax(0,1fr);
+  align-items:center; gap:9px; border:0; border-bottom:1px solid var(--edge); background:#151a15;
+  color:var(--paper); padding:6px 7px; text-align:left; border-radius:0; transition:color .15s; }
+.desktop-opponent:hover { color:var(--gold); }
+.desktop-opponent img, .desktop-opponent .noicon { width:34px; height:34px; border-radius:50%;
+  display:block; box-shadow:0 1px 5px #0007; background:#222; }
+.desktop-opponent .who { display:grid; gap:1px; min-width:0; }
+.desktop-opponent .name { font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.desktop-opponent .rung { font-size:11px; color:var(--muted); display:flex; align-items:center; gap:5px;
+  overflow:hidden; white-space:nowrap; }
+.marks { display:inline-flex; gap:2px; flex:none; }
+.marks svg { width:13px; height:13px; }
+/* The whole ladder, as boards with people on them. */
+.desktop-ladder { display:grid; grid-template-columns:repeat(auto-fill,minmax(116px,1fr)); gap:10px; }
+.desktop-rung { display:grid; justify-items:center; align-content:start; gap:5px; padding:11px 6px;
+  border:1px solid var(--edge); border-radius:3px; background:#151a15; color:var(--paper);
+  transition:border-color .15s,transform .15s; }
+.desktop-rung:hover:not([disabled]) { border-color:var(--gold); transform:translateY(-2px); }
+.desktop-rung[aria-current="true"] { border-color:var(--gold); }
+.desktop-rung[disabled] { opacity:.42; }
+.desktop-rung img, .desktop-rung .noicon { width:60px; height:60px; border-radius:50%; display:block;
+  box-shadow:0 2px 8px #0007; background:#222; }
+.desktop-rung .name { font-size:15px; }
+.desktop-rung .rung, .desktop-rung .need { font-size:11px; color:var(--muted); text-align:center; }
+.desktop-rung .marks svg { width:15px; height:15px; }
 .desktop-choices select { width:100%; min-width:0; border:0; border-bottom:1px solid var(--edge); background:#151a15; color:var(--paper); padding:10px 6px; font-size:14px; border-radius:0; }
 .desktop-links { display:grid; gap:3px; }
 .desktop-links button { border:0; padding:11px 0; text-align:left; background:transparent; color:#d1c8b7; font-size:16px; transition:color .15s,transform .15s; }
@@ -207,6 +235,8 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .tau-desktop #replayBtns button,.tau-desktop #modalBtns>button,
 .desktop-setting select,.desktop-controls-row kbd { border:0; border-radius:999px; }
 .desktop-choices select { border:0; border-radius:18px; padding:10px 12px; }
+.desktop-opponent { border:0; border-radius:18px; padding:6px 10px 6px 6px; }
+.desktop-rung { border-radius:18px; }
 .desktop-home-bottom { border:0; }
 .tau-desktop #modalBox { border:0; border-radius:28px; }
 .desktop-result-mark { width:34px; height:14px; background:transparent;

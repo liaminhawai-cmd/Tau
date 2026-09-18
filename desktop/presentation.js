@@ -274,6 +274,8 @@
     settings.rayTrace = settings.quality === 'ultra';   // one switch, not two that can disagree
   } catch (_) {}
   const finish = () => BOARD_FINISHES.find(b => b.id === settings.board) || BOARD_FINISHES[0];
+  const finishOf = id => BOARD_FINISHES.find(b => b.id === id) || BOARD_FINISHES[0];
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   // Relative luminance of a #rrggbb, against the same 0.5 threshold index.html's boardIsPale uses.
   const isPale = hex => { const n = parseInt(hex.slice(1), 16);
     return (0.2126*((n>>16)&255) + 0.7152*((n>>8)&255) + 0.0722*(n&255)) / 255 > 0.5; };
@@ -401,7 +403,9 @@
   home.innerHTML = `<img class="desktop-logo" src="tau-logo.png" alt="Tau" width="220" height="62">
     <button class="desktop-primary" id="desktopPlay"></button>
     <div class="desktop-choices">
-      <label><span id="desktopLevelLabel"></span><select id="desktopLevel"></select></label>
+      <div class="desktop-choice"><span id="desktopLevelLabel"></span>
+        <button type="button" id="desktopOpponent" class="desktop-opponent"></button>
+        <select id="desktopLevel"></select></div>
       <label><span id="desktopColourLabel"></span><select id="desktopColour"><option value="0"></option><option value="1"></option></select></label>
     </div>
     <nav class="desktop-links" id="desktopLinks">
@@ -429,6 +433,7 @@
     home.setAttribute('aria-label', t('Main menu'));
     set('desktopPlay', t('Play'));
     set('desktopLevelLabel', t('Opponent'));
+    drawOpponentTile();
     set('desktopColourLabel', t('You play'));
     $('desktopLevel').setAttribute('aria-label', t('Opponent level'));
     $('desktopColour').setAttribute('aria-label', t('Your colour'));
@@ -446,6 +451,98 @@
     $('view3d').setAttribute('aria-label', t('Game board. Click a foot to pin it, then drag another foot to swing. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.'));
     canvas.setAttribute('aria-label', t('Overhead game board. Keyboard: 1 to 3 pin, arrow keys swing, Enter ends the turn.'));
   }
+  // ---- Board preview icons ---------------------------------------------------------------------
+  // A board's face, small: its own disc colours, the printed rings and lens arcs, and the six start
+  // dots in its own blue and red. Drawn from the SKIN -- the palette the flat 2D board uses -- and
+  // not from the 3D bake, because a bake is a per-pixel pass over a canvas of up to 4096 squared and
+  // there are thirteen boards to show at once. What survives at icon size is what tells the boards
+  // apart anyway: the colour of the wood or the stone, the colour of the printed line, and how dark
+  // the room behind it is. Cached by id and size, since a sheet redraws every time it opens.
+  const boardIcons = new Map();
+  function boardIconURL(fin, size) {
+    const key = fin.id + '@' + size;
+    const had = boardIcons.get(key); if (had) return had;
+    const cv = document.createElement('canvas'); cv.width = cv.height = size;
+    const c = cv.getContext('2d');
+    if (!c) return '';                                   // a canvas-less test environment
+    const sk = fin.skin, sc = (size/2 - 1) / CFG.edgeU, O = size/2;
+    const disc = r => { c.beginPath(); c.arc(O, O, r*sc, 0, 7); };
+    if (sk.shadeByZoneValue) {                           // the same four zone values fillBoardDisc paints
+      c.fillStyle = sk.v2; disc(CFG.edgeU);    c.fill();
+      c.fillStyle = sk.v3; disc(CFG.rings[1]); c.fill();
+      c.fillStyle = sk.v4; disc(CFG.rings[0]); c.fill();
+      for (const a of CFG.sideArcs) {
+        c.save(); disc(CFG.edgeU); c.clip();
+        c.beginPath(); c.arc(O + a.cx*sc, O + a.cy*sc, a.r*sc, 0, 7); c.clip();
+        c.fillStyle = sk.v1; disc(CFG.edgeU);    c.fill();
+        c.fillStyle = sk.v2; disc(CFG.rings[1]); c.fill();
+        c.fillStyle = sk.v3; disc(CFG.rings[0]); c.fill();
+        c.restore();
+      }
+    } else { c.fillStyle = sk.flat; disc(CFG.edgeU); c.fill(); }
+    // The printed line is 0.8% of the board's width: at icon size that is a quarter of a pixel and
+    // the rings vanish. Drawn at the weight they need to still be rings.
+    c.strokeStyle = sk.lines; c.lineWidth = Math.max(1, size/32);
+    for (const r of CFG.rings) { disc(r); c.stroke(); }
+    for (const a of CFG.sideArcs) {
+      c.beginPath(); c.arc(O + a.cx*sc, O + a.cy*sc, a.r*sc, a.a0*Math.PI/180, a.a1*Math.PI/180); c.stroke();
+    }
+    const dotR = Math.max(1, size/28);
+    CFG.startDots.forEach((p, i) => {
+      c.beginPath(); c.arc(O + p[0]*sc, O + p[1]*sc, dotR, 0, 7);
+      c.fillStyle = i < 3 ? sk.pb : sk.pr; c.fill();
+    });
+    let url = '';
+    try { url = cv.toDataURL(); } catch (_) { return ''; }
+    boardIcons.set(key, url);
+    return url;
+  }
+  // The two tripods the web's level list has always drawn: lit for a rung you have beaten on that
+  // colour. Same picture, same meaning, at the size a tile can carry.
+  function clearMarks(n) {
+    if (typeof ladderTripodSVG !== 'function') return '';
+    return `<span class="marks">${ladderTripodSVG('#6b9eff', rungClearedOn(n, 0))}`
+         + `${ladderTripodSVG('#ff6b6b', rungClearedOn(n, 1))}</span>`;
+  }
+  // The opponent as a face on a board rather than a line in a dropdown: the board's own art, the
+  // name of whoever plays on it, and the two tripods saying whether you have beaten them as Blue and
+  // as Red. The <select> is still the control underneath -- every other route into a level change,
+  // the game's own result sheet included, drives that element -- so the tile only ever READS it and
+  // the sheet only ever writes through setLadderLevel. One path, so the two can never disagree.
+  function drawOpponentTile() {
+    const el = $('desktopOpponent'); if (!el) return;
+    const n = settings.level, fin = finishOf(rungBoard(n));
+    const icon = boardIconURL(fin, 68);
+    el.innerHTML = (icon ? `<img src="${icon}" alt="" width="34" height="34">` : '<span class="noicon"></span>')
+      + `<span class="who"><span class="name">${esc(rungName(n))}</span>`
+      + `<span class="rung">${esc(tf('Level {n}', { n }))} · ${esc(fin.name)}${clearMarks(n)}</span></span>`;
+    el.setAttribute('aria-label', tf('Level {n} · {name}', { n, name: rungName(n) }));
+  }
+  // The whole ladder at once, as boards with people on them. A locked rung is shown greyed with what
+  // it is waiting for, never hidden: you can see who is two boards up, you just cannot skip to them.
+  function openOpponentSheet() {
+    const tiles = LADDER_BOARDS.map((r, i) => {
+      const n = i + 1, fin = finishOf(r.board), open = isUnlocked(r.board), icon = boardIconURL(fin, 120);
+      return `<button type="button" class="desktop-rung" data-n="${n}"${open ? '' : ' disabled'}`
+        + `${n === settings.level ? ' aria-current="true"' : ''}>`
+        + (icon ? `<img src="${icon}" alt="" width="60" height="60">` : '<span class="noicon"></span>')
+        + `<span class="name">${esc(r.opponent)}</span>`
+        + `<span class="rung">${esc(tf('Level {n}', { n }))} · ${esc(fin.name)}</span>`
+        + clearMarks(n)
+        + (open ? '' : `<span class="need">${esc(unlockText(r.board))}</span>`)
+        + `</button>`;
+    }).join('');
+    showModal(t('Opponent'), `<div class="desktop-ladder">${tiles}</div>`,
+      [{ label: t('Close'), onClick: () => { if (inMatch()) focusBoard(); } }], true, { dismiss:true });
+    $('modalBox').classList.add('wide');                 // eleven boards want more than a dialog's width
+    for (const b of document.querySelectorAll('.desktop-ladder .desktop-rung')) {
+      b.addEventListener('click', () => {
+        hideModal();
+        setLadderLevel(Number(b.dataset.n), true);       // the one path: board, select and tile all follow
+        if (inMatch()) focusBoard();
+      });
+    }
+  }
   // Choosing your opponent IS choosing the board, because they are the same choice: every rung has a
   // board and every board has a rung. A locked rung is shown greyed rather than hidden -- you can
   // see who is waiting for you two boards up, you just cannot skip to them.
@@ -460,6 +557,7 @@
       settings.level = n;
     }
     $('desktopLevel').value = String(settings.level);
+    drawOpponentTile();
   }
   // One choice, two places to make it: the home menu names the opponent, Settings names the board,
   // and picking either moves the other. They can never disagree, which is what stops a player from
@@ -474,6 +572,7 @@
     }
     saveSettings();
     $('desktopLevel').value = String(settings.level);
+    drawOpponentTile();
   }
   // On boot the BOARD is the more specific choice: a ladder board names its opponent, so the
   // opponent follows it. A reserved board (one still waiting for its rung) names nobody, and the
@@ -482,6 +581,7 @@
   drawLadderPicker();
   $('desktopColour').value = String(settings.colour);
   $('desktopLevel').addEventListener('change', e => setLadderLevel(Number(e.target.value), true));
+  $('desktopOpponent').addEventListener('click', openOpponentSheet);
   $('desktopColour').addEventListener('change', e => { settings.colour = Number(e.target.value); saveSettings(); });
 
   function startMatch(local = false) {
@@ -578,7 +678,6 @@
   // sheet's colours and scale with it.
   const keyName = k => ({ArrowLeft:'←',ArrowRight:'→',ArrowUp:'↑',ArrowDown:'↓',' ':'Space',Escape:'Esc'})[k]
     || (k.length === 1 ? k.toUpperCase() : k);
-  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   // ---- The Controls sheet: pictures of the inputs, each key or button wearing what it does ----
   // Below 700px of window the pictures lose their side margins: the keyboard becomes a key-then-
   // meaning list and the pad is drawn bare with its legend underneath, so nothing shrinks to a
@@ -974,7 +1073,7 @@
       settings.board=e.target.value; saveSettings();
       // ...and the opponent comes with it: a ladder board is somebody's board.
       const rung = boardRung(settings.board);
-      if (rung) { settings.level = rung; saveSettings(); if ($('desktopLevel')) $('desktopLevel').value = String(rung); }
+      if (rung) { settings.level = rung; saveSettings(); if ($('desktopLevel')) $('desktopLevel').value = String(rung); drawOpponentTile(); }
       applyMaterials();   // rebakes the 3D surface for the new finish
       applyTheme();       // repaints the flat board from the same entry's palette
       render();
@@ -1014,6 +1113,7 @@
       if (typeof ladderLevel === 'number' && ladderLevel != null) {
         settings.level = ladderLevel + 1; saveSettings();
         if ($('desktopLevel')) $('desktopLevel').value = String(settings.level);
+        drawOpponentTile();
       }
       focusBoard();
     };
