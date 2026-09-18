@@ -1063,8 +1063,14 @@ test('Colossus brings its stands, crowd and haze into the match, and a fall rais
     tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)];
     localStorage.setItem('tauDesktopTestBoards','1');`);
   g.read("tauDesktop.board='colossus'");
-  const crowd=()=>g.read("(()=>{let c=null; scene.traverse(o=>{ if(o.isInstancedMesh) c=o; }); return c && {count:c.count, y:c.position.y};})()");
-  assert.ok(crowd() && crowd().count>=2000,'a crowd of little tripods packs the tiers');
+  // The stands are two instanced meshes now, one colour each, so the winning half can jump on its
+  // own. Each is identified by the colour it was given rather than by the order it was added.
+  const crowd=()=>g.read(`(()=>{const out=[]; scene.traverse(o=>{ if(o.isInstancedMesh && o.instanceColor) out.push(o); });
+    return out.map(c=>({count:c.count, y:+c.position.y.toFixed(3), blue:c.instanceColor.array[2]>c.instanceColor.array[0]}));})()`);
+  assert.equal(crowd().length,2,'the stands hold a blue half and a red half');
+  assert.ok(crowd().reduce((n,c)=>n+c.count,0)>=2000,'a crowd of little tripods packs the tiers');
+  const halves=crowd().map(c=>c.count);
+  assert.ok(Math.min(...halves)/Math.max(...halves)>0.8,'and the two sets of supporters are about even');
   assert.equal(g.read('!!scene.fog'),true,'haze grades with distance');
   assert.equal(g.read('camera.fov'),46,'a lower, wider lens takes in the stands');
   assert.equal(g.read('tauDesktop.fallTimeScale()'),0.5,'giants go over slowly');
@@ -1077,9 +1083,13 @@ test('Colossus brings its stands, crowd and haze into the match, and a fall rais
   assert.ok(puffs()>=1,'feet dragging through the sand throw up dust');
   g.read("fall.phase='air'; tauDesktop.tick(0.05); tauDesktop.tick(0.05)");
   assert.ok(puffs()>=2,'leaving the rim gets a burst');
-  assert.ok(crowd().y>0,'and the crowd erupts');
+  // Red (idx 1) is the piece going over, so Blue won the bout: Blue's half of the bowl comes up
+  // and Red's stays in its seat. A whole arena cheering for whoever just lost was the old behaviour.
+  const bout=crowd();
+  assert.ok(bout.find(c=>c.blue).y>0,'and the winner\'s half of the crowd erupts');
+  assert.equal(bout.find(c=>!c.blue).y,0,'while the half that just lost stays down');
   g.read("fall={active:false}; tauDesktop.board='walnut'");
-  assert.equal(crowd(),null,'another board clears the arena');
+  assert.equal(crowd().length,0,'another board clears the arena');
   assert.equal(g.read('tauDesktop.fallFloorY()'),-34,'and lands pieces on the walnut table\'s own floor again');
   assert.equal(g.read('scene.fog'),null);
   assert.equal(g.read('camera.fov'),38);

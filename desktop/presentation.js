@@ -1234,7 +1234,10 @@
       }
       if (phase !== 'board' && lastFallPhase === 'board') {   // it has just left the rim: the big one
         spawnDust(tp.x, tp.z, 170, 24);
-        if (envGroup && envGroup.userData.excite) envGroup.userData.excite();
+        // The crowd is told WHO won, not just that somebody did: the piece going over the rim is
+        // the loser (triggerFall takes fall.idx as 1 - G.winner), so the other colour is the one
+        // whose half of the stands comes up. 0 is Blue and 1 is Red on both sides of this.
+        if (envGroup && envGroup.userData.excite) envGroup.userData.excite(1 - fall.idx);
       }
       // A fresh tumble starting mid-frame (the previous one never ran the reset branch below,
       // e.g. a replay re-running straight into another loss) must not inherit the last one's count.
