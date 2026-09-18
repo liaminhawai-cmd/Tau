@@ -617,3 +617,49 @@ is not pushed at all and therefore cannot spread. Over the contact window it
 expands, slightly. For the same reason a gain bound taken over every substep
 reads as "not positive" while saying nothing: the barrier sums the substeps that
 push, and that is where the bound has to hold.
+
+
+## 12. Two things the barrier's bookkeeping has to get right
+
+Both came out of cross-checking section 11's measurement against a second,
+independently written probe. They agreed on the headline and disagreed on two
+numbers, and both disagreements were about WHICH quantity was being measured
+rather than about the engine.
+
+### The gain the theorem sums is the minimum over poses, not over pushes
+
+The barrier needs, at each substep, a lower bound on the radial gain valid for
+EVERY pose in the box. Three different numbers are available at +-0.125u /
++-0.01 rad over 200 poses, and only one of them is that:
+
+| quantity | value |
+|---|---|
+| min over poses, over the 123 substeps where the WHOLE box is in contact | 9.22e-4u at substep 16 |
+| min over poses, over the park window 74-98 | 5.8e-2 to 6.1e-2u |
+| smallest nonzero gain any SINGLE pose ever has | 4.2e-6u at substep 11 |
+
+The first is what the sum uses. The second is the comfortable one and is true
+only of the dwell. The third is never summed by anything, and reading it as "the
+minimum gain" makes the hypothesis look about twenty times harder than it is.
+
+### The partial-contact substeps
+
+Of the 131 substeps where anything is in contact, 8 have only SOME poses in
+contact. At those the minimum over poses is exactly zero, because a pose that is
+not pushed does not move at all, so the barrier cannot count them.
+
+This is a proof obligation that H1 to H4 in `throw-theorem.md` do not state. A
+barrier certificate has to establish "every pose in the box is in contact at
+substep k" before it may count substep k's gain, and give the partial substeps
+zero. That is an interval test over the box, and it is separate from the gain
+bound and from invariance.
+
+### And a genuine pair of readings, both right
+
+The POSE box expands by about 1.04x from first contact to the throw. The spread
+of the exposed foot's RADIUS across the box -- the quantity the theorem actually
+sums -- contracts hard over the same window: 0.5596 to 0.2375u at +-0.125u,
+0.9131 to 0.3160u at +-0.25u, 1.6199 to 0.4799u at +-0.5u, so by a factor of
+0.42, 0.35 and 0.30, strengthening as the box grows. Neither reading is the other
+one's correction. Quoted together they are a better argument for invariance than
+either alone: the poses barely spread and their outcomes converge.
