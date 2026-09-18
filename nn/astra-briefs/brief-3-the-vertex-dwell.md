@@ -51,6 +51,8 @@ Substep 73 is where the attacker's `phi` drops from 15.590 to 14.461: its contac
 
 The attacker's parameter walks steadily down chord 1 at about 0.012 of a chord per substep and stays well inside it, which is what section 2 leans on.
 
+A measurement convention worth stating, because it has caught both of us: all of this is read from the pose **entering** each substep, which is the pose the engine's contact search actually sees. Read from the pose after the push instead and the numbers change qualitatively, not just numerically: the victim's contact reads a few hundredths of a chord off its vertex rather than exactly on it, and the touching pair reads as not touching at all, because after the push it sits at exactly `D`.
+
 **What is different from the first crossing: the two events coincide.** At the first crossing, substep 32, the victim's contact is **1.419u** from its nearest vertex and neither leg's contact is anywhere near a corner: one thing happening, in isolation, and a small box gets through it. At substep 73 the attacker's contact crosses its `phi = 15` vertex **and** the victim's contact arrives at its `phi = 30` vertex in the same substep: at 73 the victim's contact is 0.005u from that vertex, and from 74 it is exactly on it. Two vertex events, on opposite legs, one substep apart. The lever arm shows it too: `rn` does not drift through zero, it jumps from -2.103 to +0.534 between substeps 72 and 73.
 
 That coincidence, not the crossing by itself, is my candidate explanation for why the first crossing is passable at a smaller box and this one is not at any box size we have tried.
@@ -69,7 +71,11 @@ so the lever arm `r = p_xy - c` is exact, with no interval at all, and `rn` is e
 
 The questions, in the order I care about them:
 
-1. **Why is the crossing at 24.33 hard when the one at 10.67 is easy?** Both are ordinary attacker-side chord-vertex crossings. The difference visible in the data is that the second happens in the same substep as the victim's contact reaching its own vertex (0.005u at 73, exactly on it at 74), against 1.42u of clearance at the first. Is that the mechanism, and if so what exactly goes wrong: does the victim's near-corner make its own closest point ill-localised by Lemma A (the minimiser is approaching a constraint boundary of the chord rectangle), so that the attacker-side branching then has a wider set to work with? Or is it something else? If it is the near-corner, the remedy may be to enter the park regime *early*, before the attacker's crossing, rather than after it.
+1. **Does a simultaneous two-leg vertex event need different treatment from a single one?** This is the question I most want answered, and it is sharper than "how do I handle a crossing". At substep 32 one leg has a vertex event and the other leg's contact is 1.42u of arc from its nearest vertex: one thing happening, in isolation, and a small box gets through it. At substep 73 both legs have one in the same substep. Are those just two independent branchings that happen to coincide, so that a scheme handling each separately handles both, or does the pair need something the single case does not?
+
+    What makes me doubt the easy answer is that the jump in the closest-point normal is about the same size at both: the normal's azimuth goes -72.61 to -83.57 degrees across the first crossing and -95.32 to -108.34 across the second, 11.0 degrees against 13.0. So whatever distinguishes them is not simply a bigger discontinuity to enclose.
+
+    And if the near-corner is the mechanism — the victim's minimiser approaching a constraint boundary of its chord rectangle, so Lemma A localises it less well just as the attacker-side branching needs it — then the remedy may be to enter the park regime *early*, before the attacker's crossing, rather than after it.
 
 2. **Is a park contact exactly determined?** With the victim's closest point pinned at a known vertex and the attacker's interior to a known chord, the closest-point vector is the perpendicular from that vertex to the attacker's chord: perpendicular to the attacker's tangent only, not to the victim's. Write down what it is exactly as a function of the pose, and say what replaces Lemma B — an exact formula, or a cone, and if a cone, how wide over a set of radius 0.024u.
 

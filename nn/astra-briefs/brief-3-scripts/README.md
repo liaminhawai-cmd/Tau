@@ -41,3 +41,8 @@ victim pose:
 Substep indices happen to agree either way (73 ordinary, 74 parked), which is why the error showed
 up only as angles that were about 0.18 degrees low. Use `Math.round` rather than `Math.ceil` when
 converting a limit to a substep count, or better, chain one-degree calls as `grid138.js` does.
+
+`normal-jumps.txt`: the closest-point normal's azimuth either side of both crossings, measured
+from the pose entering each substep. The jump is 11.0 degrees at the first crossing and 13.0 at
+the second, so the size of the discontinuity is not what separates the passable one from the
+blocking one.
