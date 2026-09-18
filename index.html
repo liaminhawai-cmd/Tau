@@ -4713,6 +4713,15 @@ const AI_LADDER = [
     { kind:'p3', experimental:'hub-leverage', label:'Leverage',
       w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2,hubAttack:2,hubExpose:-2},
       o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },
+    // L12a / L12b EXPERIMENT (2026-09-18): two ways to spend the time the cheaper push physics
+    // bought, both with L11's eval and candidates, both in the training pool (they are the 15th and
+    // 16th entries, so the trainer's rung numbering calls them L15 and L16; not experimental on
+    // purpose, so productionTop picks them up).
+    //   L12a: L11's search one ply deeper (kind 'p4', ladderPlan4).
+    //   L12b: L11's roots, but the reply is L11's own brain instead of six swing-to-the-jam guesses
+    //         (kind 'opp', ladderPlanOppModel), six candidates deep.
+    { kind:'p4', label:'L12a', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:4,keepStops:4,maxCands:28} },
+    { kind:'opp', label:'L12b', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:3,keepStops:4,oppLevel:10,oppCands:6} },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 
@@ -4872,6 +4881,68 @@ function ladderPlan3(idx, w, o){
         if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
         else {
             const worst = ladderScore3(idx, w, c.snap, best ? best.score : undefined);
+            score = worst===Infinity ? c.q : worst;
+        }
+        if (!best || score>best.score) best={pivotIdx:c.pivotIdx,dir:c.dir,targetRad:c.targetRad,score};
+    }
+    ladderRestore(snap0); G.active=origActive; return best;
+}
+// L12a EXPERIMENT (kind 'p4'): ladderPlan3 one ply deeper. The same roots, the same worst-of-six
+// replies and best-of-six follow-ups, but each follow-up is scored by the worst of the opponent's
+// six swing-to-the-jam answers to it instead of by the eval alone. Up to six times the sweeps of a
+// p3 rung; the fourth ply stops as soon as it cannot beat the best follow-up so far, and the third
+// as soon as it cannot beat the best root so far, exactly as before.
+function ladderScore4(idx, w, snap, alpha){
+    let worst=Infinity;
+    reply: for (let op=0; op<3; op++) for (const od of [1,-1]){
+        ladderRestore(snap); G.active=1-idx;
+        const onet=simMoveToLimit(op,od);
+        if (Math.abs(onet) < HARD_MIN_MOVE_RAD) continue;
+        if (G.pieces[1-idx].anyFootOff()) continue;
+        let rs;
+        if (G.pieces[idx].anyFootOff()) rs = -HARD_WIN_BONUS;
+        else {
+            const s2=takeSnap(); let bf=-Infinity;
+            for (let fp=0; fp<3 && bf<HARD_WIN_BONUS/2; fp++) for (const fd of [1,-1]){
+                ladderRestore(s2); G.active=idx;
+                const fnet=simMoveToLimit(fp,fd);
+                if (Math.abs(fnet) < HARD_MIN_MOVE_RAD) continue;
+                if (G.pieces[idx].anyFootOff()) continue;
+                let fs;
+                if (G.pieces[1-idx].anyFootOff()) fs = HARD_WIN_BONUS+ladderEval(idx,w);
+                else {
+                    const s3=takeSnap(); let w4=Infinity;
+                    answer: for (let ap=0; ap<3; ap++) for (const ad of [1,-1]){
+                        ladderRestore(s3); G.active=1-idx;
+                        const anet=simMoveToLimit(ap,ad);
+                        if (Math.abs(anet) < HARD_MIN_MOVE_RAD) continue;
+                        if (G.pieces[1-idx].anyFootOff()) continue;
+                        const as = G.pieces[idx].anyFootOff() ? -HARD_WIN_BONUS : ladderEval(idx,w);
+                        if (as<w4) w4=as;
+                        if (w4<=bf) break answer;
+                    }
+                    if (w4===Infinity){ ladderRestore(s3); G.active=idx; fs = ladderEval(idx,w); }   // no legal answer: the position stands
+                    else fs = w4;
+                }
+                if (fs>bf) bf=fs;
+            }
+            rs = bf===-Infinity ? ladderEval(idx,w) : bf;
+        }
+        if (rs<worst) worst=rs;
+        if (alpha!==undefined && worst<=alpha) break reply;
+    }
+    return worst;
+}
+function ladderPlan4(idx, w, o){
+    const origActive=G.active, snap0=takeSnap();
+    const roots = ladderRoots3(idx, w, o, snap0);
+    if (!roots.length){ ladderRestore(snap0); G.active=origActive; return null; }
+    let best=null;
+    for (const c of roots.slice(0, o.maxCands||10)){
+        ladderRestore(c.snap); let score;
+        if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
+        else {
+            const worst = ladderScore4(idx, w, c.snap, best ? best.score : undefined);
             score = worst===Infinity ? c.q : worst;
         }
         if (!best || score>best.score) best={pivotIdx:c.pivotIdx,dir:c.dir,targetRad:c.targetRad,score};
@@ -5363,6 +5434,7 @@ function ladderPlanRung(def, idx){
     if (def.kind==='l1') return ladderL1Plan(idx);
     if (def.kind==='builtin') return def.brain==='master' ? aiChoosePlanMaster(idx, def.mw) : ladderDumbPlan(idx);
     if (def.kind==='p3') return ladderPlan3(idx, def.w, def.o);
+    if (def.kind==='p4') return ladderPlan4(idx, def.w, def.o);
     if (def.kind==='opp') return ladderPlanOppModel(idx, def.w, def.o);
     if (def.kind==='opp2') return ladderPlan13(idx, def.w, def.o);
     return ladderSampledPlan(idx, def.w, def.o);
