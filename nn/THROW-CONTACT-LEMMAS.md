@@ -518,3 +518,43 @@ section 8 describes. Arm (2,-1) is not: at +-0.001u it reaches substep 113 of
 331, one past its own throw, and its own blow-up starts at substep 109 where the
 cone goes from 0.20 to 5.32 degrees. So the method has more than one ceiling, and
 the park is not the universal obstacle it looked like from one arm.
+
+
+## 10. How far this is from replacing the sampled certificate
+
+The point of an interval throw certificate is to replace the sampling argument in
+`forced-win.js`: a grid of poses, each sample's throw margin required to clear
+the cell diagonal times a Lipschitz allowance measured from the grid's own finite
+differences, times a safety factor. That argument is falsifiable and well made,
+but it is measurement, not proof, which is the whole reason this file exists.
+
+`certifyThrowBox` works on a victim box of half-width 0.5u with a grid step of
+0.25u, so one cell has a half-diagonal of about 0.217u and a per-axis half-width
+of about 0.125u.
+
+The interval certificate closes at a per-axis half-width of 0.0002u. That is
+about **600 times too small per axis**. Covering one cell by subdivision would
+take on the order of 10^8 sub-certificates. Subdivision does not bridge this.
+
+It is worth being precise about why term-tightening will not either. With the
+push's linear part in the basis the feedback is now quadratic -- the enclosure
+grows like `pad + c pad^2` a substep rather than by a constant factor -- so there
+is a threshold, and the threshold is what 0.0002u is. Raising it 600-fold means
+cutting `c` 600-fold. The measurements in section 8 say `c` is dominated by
+`lambda . da`, the push magnitude's range times the direction cone, and the best
+that a careful re-derivation of that term looks likely to buy is a factor of a
+few. The gap is three orders of magnitude wider than that.
+
+So the honest position: the method is proved end to end and it certifies two
+throws, but it does not currently scale to the cells the dead-region work needs,
+and the shortfall is not a tuning problem.
+
+What might actually close it is not a tighter step. It is not taking 25 steps.
+Every substep of the park is a chance for the enclosure to grow, and the park is
+where all the growth is. An argument that handles the park as a whole -- some
+monotone quantity over the dwell, so that the exposed foot's radius can be shown
+to increase for every pose in a large box without carrying an enclosure through
+each substep -- would not pay the per-substep cost at all. That is a different
+piece of work from anything in this file, and it is where the next effort should
+go if the goal is to retire the Lipschitz sampling rather than to have proved
+that it can be done at all.
