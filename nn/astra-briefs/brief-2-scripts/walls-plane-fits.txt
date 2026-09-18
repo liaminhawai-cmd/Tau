@@ -1,0 +1,212 @@
+
+==== 6dgqa1fd8 (victim piece 1); seed pose [2.6627,33.2224,2.2687,4.2061,47.1181,4.4905]
+victim feet: f0=(-0.88,24.59) r=24.60  f1=(26.26,53.98) r=60.03  f2=(-12.76,62.78) r=64.07
+
+arm (0,+): seed limit 63.00 deg, program: cross|crossed r1|stop f2:a0@40.81+
+  programs in the box: 96.9% [cross|crossed r1|stop f2:a0@40.81+]
+                       3.1% [cross|crossed a0,r1|stop f2:r0@40.81+]
+  WALL (832 neighbour pairs, limit jump up to 35.00 deg): cross|crossed a0,r1|stop f2:r0@40.81+ <-> cross|crossed r1|stop f2:a0@40.81+
+     plane fit in victim (dx,dy,t) u: centroid (-0.71,0.14,-0.72), normal (-0.697,0.102,-0.710), signed distance of the seed from the plane -1.018u, rms residual 0.143u
+  event ladder at the seed (angle deg: event): 53.23: f2:r1@54.11+ | 55.92: f2:r1@53.30+ | 58.54: f2:r1@52.49+ | 63.24: f2:a0@40.81+ | 64.60: f2:a0@40.00+ | 66.00: f2:a0@39.19+ | 90.68: f2:r0@40.81+ | 92.67: f2:r0@40.00+ | 94.64: f2:r0@39.19+
+
+arm (0,-): seed limit 39.67 deg, program: cross|crossed r1|stop f1:a1@40.81-
+  programs in the box: 100.0% [cross|crossed r1|stop f1:a1@40.81-]
+
+arm (1,+): seed limit 34.00 deg, program: cross|crossed r1|stop f2:r0@40.81+
+  programs in the box: 100.0% [cross|crossed r1|stop f2:r0@40.81+]
+
+arm (1,-): seed limit 4.67 deg, program: selfoff|crossed -|stop f2:rim@67.17+
+  programs in the box: 100.0% [selfoff|crossed -|stop f2:rim@67.17+]
+
+arm (2,+): seed limit 10.67 deg, program: selfoff|crossed -|stop f1:rim@67.17-
+  programs in the box: 100.0% [selfoff|crossed -|stop f1:rim@67.17-]
+
+arm (2,-): seed limit 27.67 deg, program: cross|crossed r1|stop f1:r0@40.81-
+  programs in the box: 100.0% [cross|crossed r1|stop f1:r0@40.81-]
+
+==== l5807vazg (victim piece 1); seed pose [37.6039,-3.2612,1.8896,50.4287,10.5092,-0.859]
+victim feet: f0=(65.51,-6.98) r=65.88  f1=(58.03,32.32) r=66.42  f2=(27.74,6.19) r=28.42
+
+arm (0,+): seed limit 18.00 deg, program: cross|crossed a1|stop f1:r1@54.11+
+  programs in the box: 50.2% [cross|crossed a1|stop f1:r1@54.11+]
+                       21.6% [cross|crossed r1|stop f1:r0@40.81+]
+                       8.0% [cross|crossed a1,r1|stop f1:r0@40.81+]
+  WALL (620 neighbour pairs, limit jump up to 19.67 deg): cross|crossed a1|stop f1:r1@54.11+ <-> cross|crossed r1|stop f1:r0@40.81+
+     plane fit in victim (dx,dy,t) u: centroid (-0.60,-0.01,0.02), normal (-0.937,0.146,-0.319), signed distance of the seed from the plane -0.555u, rms residual 0.024u
+  WALL (392 neighbour pairs, limit jump up to 19.67 deg): cross|crossed a1,r1|stop f1:r0@40.81+ <-> cross|crossed a1|stop f1:r1@54.11+
+     plane fit in victim (dx,dy,t) u: centroid (0.48,-0.10,0.55), normal (-0.778,-0.073,-0.624), signed distance of the seed from the plane 0.708u, rms residual 0.022u
+  event ladder at the seed (angle deg: event): 2.10: f1:a1ray107.46+ | 4.75: f2:a1@40.00- | 11.39: f2:a1@40.81- | 18.00: f1:r1@54.11+ | 19.16: f1:r1@53.30+ | 20.32: f1:r1@52.49+ | 37.34: f1:r0@40.81+ | 38.58: f1:r0@40.00+ | 39.83: f1:r0@39.19+ | 46.45: f2:r0@39.19- | 47.70: f2:r0@40.00- | 48.93: f2:r0@40.81- | 58.18: f1:a1@39.19- | 64.75: f1:a1@40.00- | 65.95: f2:r1@52.49- | 67.11: f2:r1@53.30-
+
+arm (0,-): seed limit 1.00 deg, program: selfoff|crossed -|stop f1:rim@67.17+
+  programs in the box: 77.0% [selfoff|crossed -|stop f1:rim@67.17+]
+                       0.8% [selfoff|crossed -|stop f1:rim@67.17+,f2:a1@39.19-]
+                       0.7% [selfoff|crossed -|stop f2:a1@39.19-,f1:rim@67.17+]
+                       0.7% [selfoff|crossed -|stop f1:rim@67.17+,f2:a1@40.00-]
+                       0.5% [selfoff|crossed -|stop f2:a1@40.00-,f1:rim@67.17+]
+                       0.1% [selfoff|crossed a1|stop f1:rim@67.17+]
+                       0.0% [selfoff|crossed -|stop f2:a1@40.81-,f1:rim@67.17+]
+                       0.0% [selfoff|crossed -|stop f1:rim@67.17+,f2:a1@40.81-]
+  WALL (356 neighbour pairs, limit jump up to 0.33 deg): selfoff|crossed -|stop f1:rim@67.17+ <-> selfoff|crossed -|stop f1:rim@67.17+,f2:a1@39.19-
+     plane fit in victim (dx,dy,t) u: centroid (-0.02,-0.35,-0.01), normal (0.851,-0.274,0.449), signed distance of the seed from the plane -0.072u, rms residual 0.034u
+  WALL (311 neighbour pairs, limit jump up to 0.33 deg): selfoff|crossed -|stop f1:rim@67.17+ <-> selfoff|crossed -|stop f2:a1@39.19-,f1:rim@67.17+
+     plane fit in victim (dx,dy,t) u: centroid (0.02,0.06,0.23), normal (-0.845,0.270,-0.462), signed distance of the seed from the plane 0.103u, rms residual 0.033u
+  WALL (300 neighbour pairs, limit jump up to 0.33 deg): selfoff|crossed -|stop f1:rim@67.17+ <-> selfoff|crossed -|stop f1:rim@67.17+,f2:a1@40.00-
+     plane fit in victim (dx,dy,t) u: centroid (-0.64,-0.05,-0.53), normal (0.846,-0.303,0.438), signed distance of the seed from the plane 0.759u, rms residual 0.032u
+  WALL (213 neighbour pairs, limit jump up to 0.33 deg): selfoff|crossed -|stop f1:rim@67.17+ <-> selfoff|crossed -|stop f2:a1@40.00-,f1:rim@67.17+
+     plane fit in victim (dx,dy,t) u: centroid (-0.69,0.13,-0.25), normal (0.838,-0.302,0.455), signed distance of the seed from the plane 0.734u, rms residual 0.032u
+  WALL (48 neighbour pairs, limit jump up to 0.00 deg): selfoff|crossed -|stop f1:rim@67.17+,f2:a1@39.19- <-> selfoff|crossed -|stop f2:a1@39.19-,f1:rim@67.17+
+     plane fit in victim (dx,dy,t) u: centroid (0.13,-0.29,-0.23), normal (0.845,-0.277,0.458), signed distance of the seed from the plane -0.087u, rms residual 0.009u
+  WALL (37 neighbour pairs, limit jump up to 0.00 deg): selfoff|crossed -|stop f1:rim@67.17+,f2:a1@40.00- <-> selfoff|crossed -|stop f2:a1@40.00-,f1:rim@67.17+
+     plane fit in victim (dx,dy,t) u: centroid (-0.55,-0.11,-0.72), normal (-0.841,0.305,-0.447), signed distance of the seed from the plane -0.749u, rms residual 0.007u
+  WALL (24 neighbour pairs, limit jump up to 0.33 deg): selfoff|crossed -|stop f1:rim@67.17+ <-> selfoff|crossed a1|stop f1:rim@67.17+
+     plane fit in victim (dx,dy,t) u: centroid (-0.96,0.80,-0.89), normal (-0.928,0.188,-0.321), signed distance of the seed from the plane -1.328u, rms residual 0.018u
+
+arm (1,+): seed limit 1.67 deg, program: selfoff|crossed -|stop f0:rim@67.17-
+  programs in the box: 58.2% [selfoff|crossed -|stop f0:rim@67.17-]
+                       21.6% [selfoff|crossed a1|stop f0:rim@67.17-]
+  WALL (620 neighbour pairs, limit jump up to 0.33 deg): selfoff|crossed -|stop f0:rim@67.17- <-> selfoff|crossed a1|stop f0:rim@67.17-
+     plane fit in victim (dx,dy,t) u: centroid (-0.60,-0.01,0.02), normal (0.937,-0.145,0.319), signed distance of the seed from the plane 0.555u, rms residual 0.024u
+
+arm (1,-): seed limit 17.00 deg, program: cross|crossed a1|stop f0:r1@54.11-
+  programs in the box: 58.2% [cross|crossed a1|stop f0:r1@54.11-]
+                       21.6% [cross|crossed r1|stop f0:r0@40.81-]
+  WALL (620 neighbour pairs, limit jump up to 19.67 deg): cross|crossed a1|stop f0:r1@54.11- <-> cross|crossed r1|stop f0:r0@40.81-
+     plane fit in victim (dx,dy,t) u: centroid (-0.60,-0.01,0.02), normal (-0.937,0.146,-0.319), signed distance of the seed from the plane -0.555u, rms residual 0.024u
+  event ladder at the seed (angle deg: event): 1.10: f2:a1@40.00+ | 1.60: f0:a1ray252.54+ | 2.63: f2:a1@40.81+ | 17.15: f0:r1@54.11- | 18.31: f0:r1@53.30- | 19.47: f0:r1@52.49- | 36.55: f0:r0@40.81- | 37.80: f0:r0@40.00- | 39.06: f0:r0@39.19- | 44.28: f2:r0@39.19+ | 45.54: f2:r0@40.00+ | 46.79: f2:r0@40.81+ | 59.58: f0:a1@39.19+ | 61.10: f0:a1@40.00+ | 62.63: f0:a1@40.81+ | 63.87: f2:r1@52.49+ | 65.03: f2:r1@53.30+ | 66.19: f2:r1@54.11+
+
+arm (2,+): seed limit 9.33 deg, program: selfoff|crossed a1|stop f0:rim@67.17-
+  programs in the box: 43.7% [selfoff|crossed a1|stop f0:rim@67.17-]
+                       28.5% [selfoff|crossed -|stop f0:rim@67.17-]
+                       1.0% [selfoff|crossed -|stop f0:a1ray107.46-,f0:rim@67.17-]
+                       0.8% [selfoff|crossed -|stop f0:rim@67.17-,f0:a1ray107.46-]
+                       0.7% [selfoff|crossed a1|stop f0:rim@67.17-,f1:a1@40.81-]
+                       0.7% [selfoff|crossed a1|stop f0:rim@67.17-,f1:a1@40.00-]
+                       0.7% [selfoff|crossed -|stop f1:a1@39.19-,f0:rim@67.17-]
+                       0.6% [selfoff|crossed -|stop f0:rim@67.17-,f1:a1@39.19-]
+                       0.6% [selfoff|crossed a1|stop f1:a1@40.81-,f0:rim@67.17-]
+                       0.6% [selfoff|crossed a1|stop f1:a1@40.00-,f0:rim@67.17-]
+                       0.6% [selfoff|crossed -|stop f0:rim@67.17-,f1:a1ray107.46+]
+                       0.5% [selfoff|crossed -|stop f1:a1ray107.46+,f0:rim@67.17-]
+                       0.4% [selfoff|crossed a1|stop f0:rim@67.17-,f0:a1ray252.54-]
+                       0.4% [selfoff|crossed a1|stop f0:a1ray252.54-,f0:rim@67.17-]
+  WALL (314 neighbour pairs, limit jump up to 1.00 deg): selfoff|crossed -|stop f0:a1ray107.46-,f0:rim@67.17- <-> selfoff|crossed -|stop f0:rim@67.17-
+     plane fit in victim (dx,dy,t) u: centroid (0.07,-0.05,0.18), normal (-0.926,0.167,-0.338), signed distance of the seed from the plane 0.132u, rms residual 0.034u
+  WALL (283 neighbour pairs, limit jump up to 1.33 deg): selfoff|crossed -|stop f0:rim@67.17- <-> selfoff|crossed -|stop f0:rim@67.17-,f0:a1ray107.46-
+     plane fit in victim (dx,dy,t) u: centroid (0.08,-0.12,0.22), normal (0.923,-0.180,0.341), signed distance of the seed from the plane -0.166u, rms residual 0.038u
+  WALL (267 neighbour pairs, limit jump up to 1.33 deg): selfoff|crossed -|stop f0:rim@67.17- <-> selfoff|crossed a1|stop f0:rim@67.17-
+     plane fit in victim (dx,dy,t) u: centroid (-0.07,-0.12,0.17), normal (0.931,-0.157,0.328), signed distance of the seed from the plane -0.012u, rms residual 0.020u
+  WALL (267 neighbour pairs, limit jump up to 1.00 deg): selfoff|crossed a1|stop f0:rim@67.17- <-> selfoff|crossed a1|stop f0:rim@67.17-,f1:a1@40.00-
+     plane fit in victim (dx,dy,t) u: centroid (-0.11,0.03,0.01), normal (0.937,-0.146,0.319), signed distance of the seed from the plane 0.107u, rms residual 0.033u
+  WALL (260 neighbour pairs, limit jump up to 1.33 deg): selfoff|crossed a1|stop f0:rim@67.17- <-> selfoff|crossed a1|stop f0:rim@67.17-,f1:a1@40.81-
+     plane fit in victim (dx,dy,t) u: centroid (-0.27,-0.02,0.06), normal (0.943,-0.132,0.306), signed distance of the seed from the plane 0.233u, rms residual 0.033u
+  WALL (241 neighbour pairs, limit jump up to 1.67 deg): selfoff|crossed a1|stop f0:rim@67.17- <-> selfoff|crossed a1|stop f1:a1@40.81-,f0:rim@67.17-
+     plane fit in victim (dx,dy,t) u: centroid (-0.27,-0.02,-0.02), normal (-0.947,0.124,-0.297), signed distance of the seed from the plane -0.256u, rms residual 0.034u
+  WALL (225 neighbour pairs, limit jump up to 1.33 deg): selfoff|crossed a1|stop f0:rim@67.17- <-> selfoff|crossed a1|stop f1:a1@40.00-,f0:rim@67.17-
+     plane fit in victim (dx,dy,t) u: centroid (-0.17,-0.06,0.08), normal (0.941,-0.135,0.310), signed distance of the seed from the plane 0.126u, rms residual 0.032u
+  WALL (186 neighbour pairs, limit jump up to 1.67 deg): selfoff|crossed a1|stop f0:rim@67.17- <-> selfoff|crossed a1|stop f0:rim@67.17-,f0:a1ray252.54-
+     plane fit in victim (dx,dy,t) u: centroid (-0.35,-0.04,0.10), normal (-0.952,0.110,-0.286), signed distance of the seed from the plane -0.301u, rms residual 0.033u
+  WALL (178 neighbour pairs, limit jump up to 1.67 deg): selfoff|crossed a1|stop f0:a1ray252.54-,f0:rim@67.17- <-> selfoff|crossed a1|stop f0:rim@67.17-
+     plane fit in victim (dx,dy,t) u: centroid (-0.33,0.03,0.00), normal (-0.952,0.110,-0.285), signed distance of the seed from the plane -0.315u, rms residual 0.032u
+  WALL (174 neighbour pairs, limit jump up to 1.00 deg): selfoff|crossed -|stop f0:rim@67.17- <-> selfoff|crossed -|stop f0:rim@67.17-,f1:a1ray107.46+
+     plane fit in victim (dx,dy,t) u: centroid (0.38,-0.19,0.34), normal (-0.987,-0.037,-0.155), signed distance of the seed from the plane 0.421u, rms residual 0.038u
+  WALL (146 neighbour pairs, limit jump up to 1.33 deg): selfoff|crossed -|stop f1:a1@39.19-,f0:rim@67.17- <-> selfoff|crossed a1|stop f0:rim@67.17-
+     plane fit in victim (dx,dy,t) u: centroid (-0.06,-0.08,0.07), normal (0.933,-0.154,0.325), signed distance of the seed from the plane 0.021u, rms residual 0.018u
+  WALL (143 neighbour pairs, limit jump up to 1.00 deg): selfoff|crossed -|stop f0:rim@67.17- <-> selfoff|crossed -|stop f1:a1ray107.46+,f0:rim@67.17-
+     plane fit in victim (dx,dy,t) u: centroid (0.37,-0.15,0.23), normal (-0.988,-0.040,-0.152), signed distance of the seed from the plane 0.396u, rms residual 0.038u
+  WALL (114 neighbour pairs, limit jump up to 1.33 deg): selfoff|crossed -|stop f0:rim@67.17- <-> selfoff|crossed -|stop f0:rim@67.17-,f1:a1@39.19-
+     plane fit in victim (dx,dy,t) u: centroid (-0.03,-0.07,0.16), normal (0.931,-0.157,0.329), signed distance of the seed from the plane -0.042u, rms residual 0.015u
+  WALL (111 neighbour pairs, limit jump up to 1.00 deg): selfoff|crossed -|stop f0:rim@67.17-,f1:a1@39.19- <-> selfoff|crossed a1|stop f0:rim@67.17-
+     plane fit in victim (dx,dy,t) u: centroid (-0.08,-0.04,0.19), normal (-0.931,0.156,-0.331), signed distance of the seed from the plane -0.009u, rms residual 0.017u
+  WALL (105 neighbour pairs, limit jump up to 1.00 deg): selfoff|crossed -|stop f0:rim@67.17- <-> selfoff|crossed -|stop f1:a1@39.19-,f0:rim@67.17-
+     plane fit in victim (dx,dy,t) u: centroid (0.02,-0.08,0.02), normal (0.931,-0.161,0.327), signed distance of the seed from the plane -0.034u, rms residual 0.017u
+  WALL (92 neighbour pairs, limit jump up to 0.33 deg): selfoff|crossed -|stop f0:a1ray107.46-,f0:rim@67.17- <-> selfoff|crossed -|stop f0:rim@67.17-,f0:a1ray107.46-
+     plane fit in victim (dx,dy,t) u: centroid (0.07,-0.01,0.24), normal (-0.922,0.176,-0.344), signed distance of the seed from the plane 0.146u, rms residual 0.010u
+  WALL (57 neighbour pairs, limit jump up to 0.33 deg): selfoff|crossed a1|stop f0:rim@67.17-,f1:a1@40.81- <-> selfoff|crossed a1|stop f1:a1@40.81-,f0:rim@67.17-
+     plane fit in victim (dx,dy,t) u: centroid (-0.26,-0.02,0.01), normal (0.946,-0.125,0.300), signed distance of the seed from the plane 0.242u, rms residual 0.009u
+  WALL (52 neighbour pairs, limit jump up to 0.33 deg): selfoff|crossed a1|stop f0:rim@67.17-,f1:a1@40.00- <-> selfoff|crossed a1|stop f1:a1@40.00-,f0:rim@67.17-
+     plane fit in victim (dx,dy,t) u: centroid (-0.13,-0.05,-0.01), normal (0.938,-0.146,0.313), signed distance of the seed from the plane 0.116u, rms residual 0.008u
+  WALL (44 neighbour pairs, limit jump up to 0.33 deg): selfoff|crossed -|stop f0:rim@67.17-,f1:a1@39.19- <-> selfoff|crossed -|stop f1:a1@39.19-,f0:rim@67.17-
+     plane fit in victim (dx,dy,t) u: centroid (-0.06,-0.12,0.16), normal (0.932,-0.154,0.328), signed distance of the seed from the plane -0.012u, rms residual 0.010u
+  WALL (35 neighbour pairs, limit jump up to 1.33 deg): selfoff|crossed -|stop f0:a1ray107.46-,f0:rim@67.17- <-> selfoff|crossed -|stop f0:rim@67.17-,f1:a1@39.19-
+     plane fit in victim (dx,dy,t) u: centroid (-0.02,-0.06,0.25), normal (-0.929,0.157,-0.335), signed distance of the seed from the plane 0.074u, rms residual 0.008u
+  WALL (32 neighbour pairs, limit jump up to 0.33 deg): selfoff|crossed -|stop f0:rim@67.17-,f1:a1ray107.46+ <-> selfoff|crossed -|stop f1:a1ray107.46+,f0:rim@67.17-
+     plane fit in victim (dx,dy,t) u: centroid (0.38,-0.14,0.23), normal (-0.987,-0.041,-0.155), signed distance of the seed from the plane 0.409u, rms residual 0.007u
+  WALL (21 neighbour pairs, limit jump up to 0.33 deg): selfoff|crossed a1|stop f0:a1ray252.54-,f0:rim@67.17- <-> selfoff|crossed a1|stop f0:rim@67.17-,f0:a1ray252.54-
+     plane fit in victim (dx,dy,t) u: centroid (-0.33,0.09,0.08), normal (0.952,-0.112,0.286), signed distance of the seed from the plane 0.306u, rms residual 0.009u
+
+arm (2,-): seed limit 5.67 deg, program: selfoff|crossed -|stop f1:rim@67.17+
+  programs in the box: 79.0% [selfoff|crossed -|stop f1:rim@67.17+]
+                       0.4% [selfoff|crossed -|stop f0:a1ray252.54+,f1:rim@67.17+]
+                       0.4% [selfoff|crossed -|stop f1:rim@67.17+,f0:a1ray252.54+]
+  WALL (165 neighbour pairs, limit jump up to 1.33 deg): selfoff|crossed -|stop f0:a1ray252.54+,f1:rim@67.17+ <-> selfoff|crossed -|stop f1:rim@67.17+
+     plane fit in victim (dx,dy,t) u: centroid (-0.34,-0.02,0.01), normal (-0.991,-0.098,-0.088), signed distance of the seed from the plane -0.338u, rms residual 0.040u
+  WALL (160 neighbour pairs, limit jump up to 1.00 deg): selfoff|crossed -|stop f1:rim@67.17+ <-> selfoff|crossed -|stop f1:rim@67.17+,f0:a1ray252.54+
+     plane fit in victim (dx,dy,t) u: centroid (-0.33,-0.07,0.13), normal (0.991,0.104,0.082), signed distance of the seed from the plane 0.328u, rms residual 0.038u
+  WALL (41 neighbour pairs, limit jump up to 0.67 deg): selfoff|crossed -|stop f0:a1ray252.54+,f1:rim@67.17+ <-> selfoff|crossed -|stop f1:rim@67.17+,f0:a1ray252.54+
+     plane fit in victim (dx,dy,t) u: centroid (-0.35,-0.03,0.15), normal (-0.991,-0.105,-0.080), signed distance of the seed from the plane -0.337u, rms residual 0.012u
+
+==== 0r8c3cohc (victim piece 1); seed pose [0.8192,-30.3367,-3.2227,19.4916,-35.329,4.106]
+victim feet: f0=(6.33,-54.31) r=54.67  f1=(42.51,-37.24) r=56.51  f2=(9.64,-14.44) r=17.36
+
+arm (0,+): seed limit 23.33 deg, program: cross|crossed r1|stop f1:r0@40.81+
+  programs in the box: 71.0% [cross|crossed r1|stop f1:r0@40.81+]
+                       28.8% [cross|crossed r1|stop f1:a1@40.81+]
+                       0.2% [cross|crossed a1,r1|stop f1:r0@40.81+]
+  WALL (745 neighbour pairs, limit jump up to 10.67 deg): cross|crossed r1|stop f1:a1@40.81+ <-> cross|crossed r1|stop f1:r0@40.81+
+     plane fit in victim (dx,dy,t) u: centroid (0.28,0.21,0.08), normal (-0.723,-0.654,-0.224), signed distance of the seed from the plane 0.354u, rms residual 0.020u
+  WALL (61 neighbour pairs, limit jump up to 17.67 deg): cross|crossed a1,r1|stop f1:r0@40.81+ <-> cross|crossed r1|stop f1:a1@40.81+
+     plane fit in victim (dx,dy,t) u: centroid (0.92,0.88,0.79), normal (-0.782,-0.545,-0.304), signed distance of the seed from the plane 1.435u, rms residual 0.043u
+  event ladder at the seed (angle deg: event): 3.72: f1:r1@54.11+ | 4.95: f1:r1@53.30+ | 6.18: f1:r1@52.49+ | 23.34: f1:r0@40.81+ | 24.50: f1:r0@40.00+ | 25.67: f1:r0@39.19+ | 57.12: f2:r0@39.19- | 58.28: f2:r0@40.00- | 59.44: f2:r0@40.81-
+
+arm (0,-): seed limit 17.33 deg, program: selfoff|crossed -|stop f1:rim@67.17+
+  programs in the box: 100.0% [selfoff|crossed -|stop f1:rim@67.17+]
+
+arm (1,+): seed limit 19.67 deg, program: selfoff|crossed -|stop f0:rim@67.17-
+  programs in the box: 97.6% [selfoff|crossed -|stop f0:rim@67.17-]
+                       2.4% [selfoff|crossed r1|stop f0:rim@67.17-]
+  WALL (181 neighbour pairs, limit jump up to 0.33 deg): selfoff|crossed -|stop f0:rim@67.17- <-> selfoff|crossed r1|stop f0:rim@67.17-
+     plane fit in victim (dx,dy,t) u: centroid (-0.11,0.85,-0.78), normal (-0.086,0.825,-0.558), signed distance of the seed from the plane -1.143u, rms residual 0.020u
+
+arm (1,-): seed limit 20.00 deg, program: cross|crossed r1|stop f0:r0@40.81-
+  programs in the box: 97.6% [cross|crossed r1|stop f0:r0@40.81-]
+                       2.4% [cross|crossed r0|stop f2:a1@40.81-]
+  WALL (181 neighbour pairs, limit jump up to 13.00 deg): cross|crossed r0|stop f2:a1@40.81- <-> cross|crossed r1|stop f0:r0@40.81-
+     plane fit in victim (dx,dy,t) u: centroid (-0.11,0.85,-0.78), normal (-0.086,0.826,-0.558), signed distance of the seed from the plane -1.143u, rms residual 0.020u
+  event ladder at the seed (angle deg: event): 0.85: f0:r1@54.11- | 2.07: f0:r1@53.30- | 3.28: f0:r1@52.49- | 20.26: f0:r0@40.81- | 21.42: f0:r0@40.00- | 22.58: f0:r0@39.19- | 30.67: f2:a1@40.81- | 31.93: f2:a1@40.00- | 33.19: f2:a1@39.19- | 50.37: f2:r0@39.19+ | 51.53: f2:r0@40.00+ | 52.69: f2:r0@40.81+ | 69.68: f2:r1@52.49+
+
+arm (2,+): seed limit 20.67 deg, program: cross|crossed a1|stop f1:r1@54.11+
+  programs in the box: 97.5% [cross|crossed a1|stop f1:r1@54.11+]
+                       2.4% [cross|crossed a1,r1|stop f1:r1@54.11+]
+                       0.1% [cross|crossed a1,r1|stop f0:a1@40.81+]
+                       0.0% [cross|crossed a1|stop f1:a1@40.00+,f1:r1@54.11+]
+                       0.0% [cross|crossed r1|stop f1:a1@40.81+]
+                       0.0% [cross|crossed a1|stop f1:r1@54.11+,f1:K8@0.81+,f1:K8@0.81-]
+  WALL (176 neighbour pairs, limit jump up to 1.00 deg): cross|crossed a1,r1|stop f1:r1@54.11+ <-> cross|crossed a1|stop f1:r1@54.11+
+     plane fit in victim (dx,dy,t) u: centroid (-0.10,0.85,-0.77), normal (-0.085,0.828,-0.554), signed distance of the seed from the plane -1.143u, rms residual 0.020u
+  WALL (43 neighbour pairs, limit jump up to 59.67 deg): cross|crossed a1,r1|stop f0:a1@40.81+ <-> cross|crossed a1|stop f1:r1@54.11+
+     plane fit in victim (dx,dy,t) u: centroid (-0.92,0.84,0.90), normal (0.899,-0.338,-0.279), signed distance of the seed from the plane 1.358u, rms residual 0.060u
+  event ladder at the seed (angle deg: event): 5.13: f1:a1@40.81+ | 6.29: f1:a1@40.00+ | 7.46: f1:a1@39.19+ | 20.83: f1:r1@54.11+ | 25.91: f1:r1@53.30+ | 30.54: f1:r1@52.49+ | 65.13: f0:a1@40.81+ | 66.29: f0:a1@40.00+ | 67.46: f0:a1@39.19+
+
+arm (2,-): seed limit 61.00 deg, program: cross|crossed r1|stop f0:r0@40.81-
+  programs in the box: 76.4% [cross|crossed r1|stop f0:r0@40.81-]
+                       18.7% [cross|crossed r1|stop f1:r1@54.11-]
+                       2.4% [cross|crossed r0,r1|stop f0:a0@40.81-]
+                       1.3% [cross|crossed r1|stop f0:r0@40.81-,f1:r1@54.11-]
+                       1.2% [cross|crossed r1|stop f1:r1@54.11-,f0:r0@40.81-]
+  WALL (366 neighbour pairs, limit jump up to 0.67 deg): cross|crossed r1|stop f0:r0@40.81- <-> cross|crossed r1|stop f0:r0@40.81-,f1:r1@54.11-
+     plane fit in victim (dx,dy,t) u: centroid (-0.22,0.41,0.10), normal (0.540,-0.831,-0.134), signed distance of the seed from the plane 0.470u, rms residual 0.028u
+  WALL (307 neighbour pairs, limit jump up to 1.00 deg): cross|crossed r1|stop f1:r1@54.11- <-> cross|crossed r1|stop f1:r1@54.11-,f0:r0@40.81-
+     plane fit in victim (dx,dy,t) u: centroid (-0.21,0.52,0.09), normal (0.542,-0.829,-0.138), signed distance of the seed from the plane 0.559u, rms residual 0.025u
+  WALL (183 neighbour pairs, limit jump up to 1.00 deg): cross|crossed r1|stop f0:r0@40.81-,f1:r1@54.11- <-> cross|crossed r1|stop f1:r1@54.11-
+     plane fit in victim (dx,dy,t) u: centroid (-0.29,0.43,0.13), normal (0.536,-0.834,-0.132), signed distance of the seed from the plane 0.534u, rms residual 0.025u
+  WALL (175 neighbour pairs, limit jump up to 0.67 deg): cross|crossed r1|stop f0:r0@40.81- <-> cross|crossed r1|stop f1:r1@54.11-,f0:r0@40.81-
+     plane fit in victim (dx,dy,t) u: centroid (-0.15,0.49,0.07), normal (0.547,-0.826,-0.140), signed distance of the seed from the plane 0.494u, rms residual 0.023u
+  WALL (134 neighbour pairs, limit jump up to 0.67 deg): cross|crossed r1|stop f0:r0@40.81- <-> cross|crossed r1|stop f1:r1@54.11-
+     plane fit in victim (dx,dy,t) u: centroid (-0.22,0.46,0.09), normal (-0.545,0.826,0.145), signed distance of the seed from the plane -0.516u, rms residual 0.024u
+  WALL (104 neighbour pairs, limit jump up to 24.00 deg): cross|crossed r0,r1|stop f0:a0@40.81- <-> cross|crossed r1|stop f1:r1@54.11-
+     plane fit in victim (dx,dy,t) u: centroid (-0.52,0.85,-0.72), normal (0.091,-0.835,0.543), signed distance of the seed from the plane 1.144u, rms residual 0.020u
+  WALL (93 neighbour pairs, limit jump up to 0.67 deg): cross|crossed r1|stop f0:r0@40.81-,f1:r1@54.11- <-> cross|crossed r1|stop f1:r1@54.11-,f0:r0@40.81-
+     plane fit in victim (dx,dy,t) u: centroid (-0.17,0.51,0.01), normal (-0.548,0.825,0.142), signed distance of the seed from the plane -0.512u, rms residual 0.021u
+  WALL (72 neighbour pairs, limit jump up to 29.67 deg): cross|crossed r0,r1|stop f0:a0@40.81- <-> cross|crossed r1|stop f0:r0@40.81-
+     plane fit in victim (dx,dy,t) u: centroid (0.48,0.85,-0.86), normal (-0.100,0.818,-0.567), signed distance of the seed from the plane -1.135u, rms residual 0.020u
+  event ladder at the seed (angle deg: event): 3.90: f0:r1@54.11- | 8.99: f0:r1@53.30- | 13.62: f0:r1@52.49- | 61.33: f0:r0@40.81- | 63.90: f1:r1@54.11- | 64.08: f0:r0@40.00- | 66.81: f0:r0@39.19- | 68.99: f1:r1@53.30- | 73.62: f1:r1@52.49- | 79.75: f0:a0@40.81- | 82.07: f0:a0@40.00- | 84.80: f0:a0@39.19- | 107.15: f0:a0@39.19+ | 109.87: f0:a0@40.00+

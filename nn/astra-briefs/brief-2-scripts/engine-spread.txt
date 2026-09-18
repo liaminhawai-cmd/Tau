@@ -1,0 +1,24 @@
+box +-0.1u, +-0.5 deg: 40/40 thrown
+  substep 0 (0.0 deg): spread x 0.193u y 0.182u rot 0.96 deg; foot1 radius spread 0.332u
+  substep 5 (2.0 deg): spread x 0.193u y 0.182u rot 0.96 deg; foot1 radius spread 0.332u
+  substep 10 (4.0 deg): spread x 0.214u y 0.158u rot 0.90 deg; foot1 radius spread 0.334u
+  substep 15 (6.0 deg): spread x 0.239u y 0.154u rot 0.85 deg; foot1 radius spread 0.341u
+  substep 20 (8.0 deg): spread x 0.241u y 0.146u rot 0.85 deg; foot1 radius spread 0.341u
+  substep 25 (10.0 deg): spread x 0.243u y 0.124u rot 0.87 deg; foot1 radius spread 0.318u
+  substep 30 (12.0 deg): spread x 0.223u y 0.067u rot 0.87 deg; foot1 radius spread 0.249u
+  substep 40 (16.0 deg): spread x 0.224u y 0.056u rot 0.89 deg; foot1 radius spread 0.246u
+  substep 50 (20.0 deg): spread x 0.225u y 0.049u rot 0.91 deg; foot1 radius spread 0.242u
+  substep 60 (24.0 deg): spread x 0.221u y 0.052u rot 0.92 deg; foot1 radius spread 0.201u
+  substep 70 (28.0 deg): spread x 0.200u y 0.063u rot 0.96 deg; foot1 radius spread 0.166u
+box +-0.01u, +-0.05 deg: 40/40 thrown
+  substep 0 (0.0 deg): spread x 0.019u y 0.019u rot 0.10 deg; foot1 radius spread 0.037u
+  substep 5 (2.0 deg): spread x 0.019u y 0.019u rot 0.10 deg; foot1 radius spread 0.037u
+  substep 10 (4.0 deg): spread x 0.016u y 0.018u rot 0.09 deg; foot1 radius spread 0.038u
+  substep 15 (6.0 deg): spread x 0.018u y 0.018u rot 0.09 deg; foot1 radius spread 0.038u
+  substep 20 (8.0 deg): spread x 0.018u y 0.017u rot 0.10 deg; foot1 radius spread 0.038u
+  substep 25 (10.0 deg): spread x 0.018u y 0.016u rot 0.10 deg; foot1 radius spread 0.038u
+  substep 30 (12.0 deg): spread x 0.018u y 0.009u rot 0.10 deg; foot1 radius spread 0.035u
+  substep 40 (16.0 deg): spread x 0.019u y 0.007u rot 0.10 deg; foot1 radius spread 0.035u
+  substep 50 (20.0 deg): spread x 0.019u y 0.005u rot 0.11 deg; foot1 radius spread 0.034u
+  substep 60 (24.0 deg): spread x 0.019u y 0.004u rot 0.11 deg; foot1 radius spread 0.034u
+  substep 70 (28.0 deg): spread x 0.019u y 0.008u rot 0.12 deg; foot1 radius spread 0.029u

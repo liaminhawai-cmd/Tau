@@ -1,0 +1,30 @@
+l5807vazg A: |foot2 - Ca1| - 40.00: value at seed -0.5856, |grad| 1.0559 per u, unit grad (-0.935,0.149,-0.321), cos with plane normal 1.001, distance to zero set 0.555u (plane fit 0.555u)
+l5807vazg B: s[f1 enters r1 band 54.11] - s[f2 leaves a1 band 40.81] on arm (0,+), deg: value at seed 6.6153, |grad| 8.6685 per u, unit grad (-0.812,0.050,-0.582), cos with plane normal 0.991, distance to zero set 0.763u (plane fit 0.708u)
+   B with the pivot foot fixed and rot varied +-3u: max change 3.82e-14 deg
+0r8c3cohc C: |foot0| - 53.30: value at seed 1.3741, |grad| 1.1988 per u, unit grad (0.097,-0.829,0.552), cos with plane normal -1.000, distance to zero set 1.146u (plane fit 1.143u)
+0r8c3cohc D: |foot0 - Ca1| - (rho + 40.81), arm (0,+) tangency: value at seed 0.3658, |grad| 1.0260 per u, unit grad (-0.724,-0.652,-0.224), cos with plane normal 1.000, distance to zero set 0.356u (plane fit 0.354u)
+0r8c3cohc E: |foot0 - K8| - (rho + 0.81), arm (0,+) corner-disc tangency: value at seed 1.8135, |grad| 1.0776 per u, unit grad (-0.791,-0.486,-0.373), cos with plane normal 0.996, distance to zero set 1.683u (plane fit 1.435u)
+6dgqa1fd8 F: |foot0 - K6| - (rho + 0.81), arm (0,+) corner-disc tangency: value at seed 1.6007, |grad| 1.4134 per u, unit grad (0.697,-0.123,0.707), cos with plane normal -1.000, distance to zero set 1.132u (plane fit 1.018u)
+   corner-disc events on (0,+) at the seed within 100 deg: 
+node:fs:560
+  return binding.open(
+                 ^
+
+Error: ENOENT: no such file or directory, open 'out/throw-rows.json'
+    at Object.openSync (node:fs:560:18)
+    at Object.readFileSync (node:fs:444:35)
+    at Object.<anonymous> (/home/user/tau-cell/nn/out/verify-walls.js:25:38)
+    at Module._compile (node:internal/modules/cjs/loader:1705:14)
+    at Object..js (node:internal/modules/cjs/loader:1838:10)
+    at Module.load (node:internal/modules/cjs/loader:1441:32)
+    at Function._load (node:internal/modules/cjs/loader:1263:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5) {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'out/throw-rows.json'
+}
+
+Node.js v22.22.2
