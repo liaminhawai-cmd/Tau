@@ -1486,6 +1486,8 @@ function cellSample(w) {
 }
 async function certifyDeadCell(pieces, victim, half, n, K, opts) {
   opts = opts || {}; const log = opts.log || (() => {}), safety = opts.safety || 3, lipFloor = opts.lipFloor || 1, stepDeg = opts.stepDeg || 2, threads = Math.max(1, opts.threads || 1), minStep = opts.minStep || 0.05;
+  // A single grid point on an axis certifies only that coordinate: the box is flat there.
+  half = half.map((h, d) => (n[d] > 1 ? h : 0));
   const t0 = Date.now(), centre = pose6(pieces).slice(), v = pieces[victim], off = victim * 3;
   const box = { x: [v.x - half[off], v.x + half[off]], y: [v.y - half[off + 1], v.y + half[off + 1]], rot: [v.rot - half[off + 2] / R, v.rot + half[off + 2] / R] };
   // 1. exact envelopes
@@ -1579,10 +1581,10 @@ async function certifyDeadCell(pieces, victim, half, n, K, opts) {
 // and the fraction of the box's volume that certified.
 async function certifyDeadCells(pieces, victim, half, n, K, opts) {
   opts = opts || {}; const log = opts.log || (() => {}), minHalf = opts.minHalf || 0.1, off = victim * 3, t0 = Date.now();
-  const queue = [{ centre: pose6(pieces).slice(), half: half.slice(), depth: 0 }], leaves = [];
+  const queue = [{ centre: pose6(pieces).slice(), half: half.slice(), depth: 0 }], leaves = []; let seen = 0;
   const vol = h => [0, 1, 2].reduce((a, d) => a * 2 * h[off + d], 1), total = vol(half);
   while (queue.length) {
-    const cell = queue.shift(), tag = `cell ${leaves.length + queue.length + 1} (depth ${cell.depth}, victim half-widths ${[0, 1, 2].map(d => cell.half[off + d].toFixed(3)).join('/')}u)`;
+    const cell = queue.shift(), tag = `cell ${++seen} (depth ${cell.depth}, victim half-widths ${[0, 1, 2].map(d => cell.half[off + d].toFixed(3)).join('/')}u)`;
     log(`${tag}: centre [${cell.centre.map(x => +x.toFixed(4)).join(',')}]`);
     const v = await certifyDeadCell(piecesOf(cell.centre), victim, cell.half, n, K, { ...opts, log: m => log('  ' + m) });
     if (v.status === 'refused' && v.why.startsWith('reach envelope')) {
@@ -2133,7 +2135,8 @@ if (require.main === module && process.argv[2] === '--dead-box') {
   // certified, the gap rule between grid neighbours, then the engine on random poses in the box.
   const nums = process.argv[3].split(',').map(Number), arg = (name, def) => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : def;
   const mover = +arg('--mover', 0), h = +arg('--h', 1), hA = +arg('--hA', h), n = +arg('--n', 3), nA = +arg('--nA', n), threads = +arg('--threads', 1), engineN = +arg('--engine', 25), outPath = arg('--out', null), minStep = +arg('--minStep', 0.05);
-  const half = [0, 1, 2, 3, 4, 5].map(d => (d < 3) === (mover === 0) ? h : hA), grid = [0, 1, 2, 3, 4, 5].map(d => (d < 3) === (mover === 0) ? n : nA);
+  const grid = [0, 1, 2, 3, 4, 5].map(d => (d < 3) === (mover === 0) ? n : nA), half = [0, 1, 2, 3, 4, 5].map(d => grid[d] > 1 ? ((d < 3) === (mover === 0) ? h : hA) : 0);
+  if (nA === 1 && hA > 0) console.log(`attacker grid has one point, so the attacker is held fixed (--hA ignored)`);
   console.log(`dead cell on ${mover === 0 ? 'blue' : 'red'} to move at [${nums.join(',')}]: victim +-${h}u x ${n}, attacker +-${hA}u x ${nA} (${grid.reduce((a, b) => a * b, 1)} grid poses${threads > 1 ? `, ${threads} threads` : ''})`);
   const minHalf = +arg('--minHalf', 0.1);
   certifyDeadCells(piecesOf(nums), mover, half, grid, REPLICA, { threads, minStep, minHalf, log: console.log }).then(v => {
