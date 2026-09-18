@@ -4714,14 +4714,21 @@ const AI_LADDER = [
       w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2,hubAttack:2,hubExpose:-2},
       o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },
     // L12a / L12b EXPERIMENT (2026-09-18): two ways to spend the time the cheaper push physics
-    // bought, both with L11's eval and candidates, both in the training pool (they are the 15th and
-    // 16th entries, so the trainer's rung numbering calls them L15 and L16; not experimental on
-    // purpose, so productionTop picks them up).
+    // bought, both with L11's eval and candidates (they are the 15th and 16th entries, so the
+    // trainer's rung numbering calls them L15 and L16).
     //   L12a: L11's search one ply deeper (kind 'p4', ladderPlan4).
     //   L12b: L11's roots, but the reply is L11's own brain instead of six swing-to-the-jam guesses
     //         (kind 'opp', ladderPlanOppModel), six candidates deep.
-    { kind:'p4', label:'L12a', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:4,keepStops:4,maxCands:28} },
-    { kind:'opp', label:'L12b', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:3,keepStops:4,oppLevel:10,oppCands:6} },
+    // Shipped non-experimental for half a day so productionTop would pick them up, then marked
+    // experimental on Liam's call (2026-09-18 evening): `experimental` is the only switch the
+    // league has here, because a fixed rung is either rated -- and then immortal, since the
+    // L-brains sit outside the face pools the cull works on -- or not rated at all. Their immortal
+    // seats were expensive (L12a is ~4x an L11 move) and were pushing L7/L8 out of the rated set
+    // and L9/L10 out of self-play's ladder reference, on a pair of rungs whose first sanity
+    // matches went 1-2 and 0-3 against plain L11. They stay in the game, stay playable as explicit
+    // arena opponents (`L15` / `L16`), and can be rated any time by clearing the flag again.
+    { kind:'p4', experimental:'d4-deeper', label:'L12a', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:4,keepStops:4,maxCands:28} },
+    { kind:'opp', experimental:'opp-model', label:'L12b', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:3,keepStops:4,oppLevel:10,oppCands:6} },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 
