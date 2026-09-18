@@ -14,10 +14,13 @@ e32f09d, as with the brief-2 scripts.
 - `second-crossing.js` -> `second-crossing.txt`, `dwell.js` -> `dwell.txt`: the earlier traces.
   **Both are on the wrong grid** and their sweep angles are about 0.18 degrees low; `grid138.js`
   supersedes them. Kept because they are what brief 3's first version was measured from.
-- `throw-cert-at-2b307e2f2.js`, `THROW-CONTACT-LEMMAS-at-2b307e2f2.md`: the throw-bound thread's
-  checker and write-up as of commit 2b307e2f2 on claude/project-thread-kyx87p, copied here because
+- `throw-cert-at-2d39d4d53.js`, `THROW-CONTACT-LEMMAS-at-2d39d4d53.md`: the throw-bound thread's
+  checker and write-up as of commit 2d39d4d53 on claude/project-thread-kyx87p, copied here because
   brief 3 ships the checker's source rather than describing it. They are that thread's files; the
-  copies are a snapshot, not a fork.
+  copies are a snapshot, not a fork, and both were verified against the remote by blob hash.
+  The write-up was re-snapshotted at 2d39d4d53 because the earlier copy, at 2b307e2f2, still
+  asserted three crossings before the throw and still carried the pre-fix rn numbers, which brief 3
+  corrects. `throw-cert.js` is byte-identical at both commits, so only the markdown changed.
 
 ## The substep grid, and a bug that was in the earlier scripts
 

@@ -173,15 +173,39 @@ the localisation radius, which puts more chord ends in play, which widens the
 vertex cones, which widens the set. From 0.027u it runs 0.033, 0.046, 0.090,
 0.122, 0.226, 0.401 and then refuses.
 
-`nn/throw-crossings.js` traces the closest pair's chord indices over a sweep and
-says how many crossings there are. On this throw the contact is in touch for
-24.00 degrees, from 4.00 to 27.67, and walks 5.030u down the attacker's leg and
-2.751u down the victim's, so 0.0708u per substep against a chord of 3.021u.
-There are exactly **three** crossings before the throw: the attacker's leg at
-phi = 22.5 degrees, crossed at 10.67 degrees of sweep; the attacker's at
-phi = 15.0, at 24.33; and the victim's at phi = 30.0, at 25.00.
+`nn/throw-crossings.js` traces the closest pair over a sweep. On this throw the
+contact is in touch for 24.00 degrees, from 4.00 to 27.67, and walks 5.030u down
+the attacker's leg and 2.751u down the victim's, so 0.0708u per substep against a
+chord of 3.021u. There are **two** crossings and **one park** before the throw:
 
-The checker refuses at 12.00, which is 1.3 degrees **past** the first crossing,
+- the attacker transits its phi = 22.5 vertex at substep 32 (10.67 degrees),
+- the attacker transits its phi = 15.0 vertex at substep 73 (24.33), and in that
+  same substep the victim's contact arrives 0.005u from its own phi = 30 vertex,
+- the victim is **parked** exactly on that vertex from substep 74 to 98, leaving
+  it at 99: twenty-five substeps, eleven to the throw at 84 and fourteen past it.
+
+The third of those was called a crossing at 25.00 in the first version of this
+note, and that was wrong in kind, not just in the number. A closest point on a
+polyline sits still on a vertex whenever neither adjacent chord has an interior
+perpendicular foot, and while it does, the chord index it is reported under flips
+between the two chords sharing the vertex. That index flip is what the tracer was
+reading. Measured directly, the victim's contact arc angle is 30.000000 degrees
+exactly for every substep from 74 to 98 -- twenty-five substeps of dwell, not a
+transit. The tracer now classifies by arc position rather than
+index and reports parks separately.
+
+That distinction matters because a park should be the *easy* regime. While it
+holds, the victim's contact point is a known material point of the victim -- the
+vertex at arc angle 30 on leg 0 -- so its position and lever arm are exact
+functions of the pose with no interval at all, and the attacker's side is the
+perpendicular foot from a known point onto a fixed chord. That is strictly fewer
+unknowns than ordinary interior contact. If the checker treats a vertex as a
+transient special case carrying a cone, it is paying for uncertainty that is not
+there. (Credit to the sibling thread working the second brief, which found the park,
+made this argument, and caught that the crossing and the park arrival fall in the
+same substep rather than two apart.)
+
+The +-0.005u run refuses 1.3 degrees **past** the first crossing,
 and the set starts growing at 9.33, which is 1.3 degrees **before** it. So the
 box straddles the vertex for about eight substeps either side while the centre
 pose is still safely inside one chord. A branching scheme cannot simply split at
@@ -194,6 +218,61 @@ Shrinking the starting box gets past the *first* crossing (the table in section
 not get past the second: at every box size from +-0.0005u to +-0.003u the run
 ends within half a degree of 24.5. So subdivision buys one crossing and then
 stops buying. The crossing has to be handled, not dodged.
+
+And the second spot is not one event, it is two on opposite legs in the *same
+substep*. At 73 the attacker's contact steps across its phi = 15 vertex (arc
+angle 15.60 -> 14.47, chord 2 to chord 1) and the victim's contact arrives 0.005u
+from its own phi = 30 vertex, parking on it from 74. Nothing about it is gradual:
+across that one substep the lever arm rn goes -2.1033 -> +0.5342 and the contact
+normal's azimuth goes -95.32 -> -108.34 degrees. Compare the first crossing,
+where one leg has an event and the other's nearest vertex is 1.4u away. That is
+the candidate explanation for why a small box walks through the first and not the
+second.
+
+Two natural explanations for that contrast are both wrong, which is worth
+recording because it narrows what is left.
+
+**Not the size of the discontinuity.** The closest-point normal's azimuth jumps
+by about the same amount at both: -72.61 to -83.57 degrees at substep 32, and
+-95.32 to -108.34 at 73. Eleven degrees against thirteen. Whatever separates the
+passable crossing from the blocking one, it is not how much normal the enclosure
+has to span. (Measured by the sibling thread, confirmed here.)
+
+**Not the width of the set arriving.** The obvious story is that 40 substeps of
+slow growth leave the set too wide by the time it reaches the second event. The
+set does arrive wider, and it does shrink with the starting box, but the reach
+does not follow:
+
+| starting box | pad at k12 | at k31 (first crossing) | at k71 (before the second) | stops at |
+| --- | --- | --- | --- | --- |
+| +-0.005u | 0.045 | 0.093 | - | 34 |
+| +-0.003u | 0.028 | 0.027 | - | 69 |
+| +-0.002u | 0.019 | 0.019 | 0.042 | 73 |
+| +-0.001u | 0.009 | 0.010 | 0.025 | 73 |
+| +-0.0005u | 0.004 | 0.006 | 0.018 | 74 |
+
+At +-0.0005u the set enters the second event at 0.018u, which is *narrower* than
+the 0.019u that walks straight through the first event at +-0.002u, and it still
+fails. Shrinking the box fourfold from there buys one substep. So the second
+event is not the first event with a fatter set.
+
+What is left is the thing that is actually different about it: two legs have a
+vertex event in the same substep, where at 32 one leg moves and the other's
+nearest vertex is 1.4u away. Whether that needs its own treatment, or is just two
+independent branchings that happen to coincide, is the open question.
+
+The rn sign change was worth ruling out separately as a cause, since the
+enclosure basis is built from the tangential slide, the spin-led tangent and the
+push, and the spin-led direction is the one that would degenerate at rn = 0. It
+is not a cause, for two independent reasons. First, rn never gets near zero: it
+jumps across from -2.10 to +0.53 in one substep and is never evaluated in
+between. Second, the basis would be fine even if it did. It uses
+kappa = hf rn / (G . a) = rn / (1 + rn^2/I), whose denominator never vanishes, so
+kappa goes smoothly to zero with rn, and at rn = 0 the three columns are the
+horizontal tangent, the horizontal normal and pure rotation -- a perfectly
+orthogonal triple. Measured through the crossing the basis Gram cosines are 0, 0
+and -0.04 at a condition number of 1.008, the best of the whole sweep. The width
+there is geometry, not bookkeeping.
 
 The honest next step is to carry the regimes as genuinely separate sets rather
 than unioning them into one parallelotope at the end of each substep, so that a
