@@ -258,6 +258,70 @@ function footOnFixedSeg(pB, q0, q1) {
   return { w, foot, t };
 }
 
+// ---- the push direction's Jacobian, for the linearised update ----
+// The checker's set grows because every substep adds the WIDTH of the push-direction cone to the
+// enclosure. That width is proportional to the set's own size, so the set grows by a constant factor
+// each substep -- measured, about thirty times too wide by the park, where the true spread is flat.
+// The cure is to stop treating the push's variation as an independent interval and treat it as what
+// it is: a linear function of where the pose sits in the set, plus a second-order remainder. The
+// linear part is then absorbed into the enclosure's BASIS, where it costs nothing, and only the
+// remainder widens the box.
+//
+// For a parked contact this is exact and cheap. The dwelling vertex p(q) is a material point, the
+// attacker's chord is fixed, so w = P_perp (p - A0) with P_perp = I - u u^T, and everything below is
+// the chain rule on that. Returns B = da/dq at the centre, and the same over the whole box so the
+// mean-value remainder (B_box - B_centre) dq can be bounded.
+function parkJacobian(att, q, pair, vk, box) {
+  const A = arcPts(att, pair[0]), V = arcPts(q, pair[1]);
+  const p = V[vk];
+  // the attacker chord holding the perpendicular foot
+  let seg = null, bestd = Infinity;
+  for (let a = 0; a < NSEG; a++) { const c = segClosest3(A[a], A[a + 1], p, p); if (c.dist < bestd) { bestd = c.dist; seg = a; } }
+  const e = [A[seg + 1].x - A[seg].x, A[seg + 1].y - A[seg].y, A[seg + 1].h - A[seg].h], eL = Math.hypot(...e), u = e.map(v => v / eL);
+  const Pp = [0, 1, 2].map(i => [0, 1, 2].map(j => (i === j ? 1 : 0) - u[i] * u[j]));
+  // ONE builder, evaluated in interval arithmetic throughout. Degenerate intervals give the centre's
+  // Jacobian exactly; the box's intervals give a genuine ENCLOSURE of the Jacobian over the box,
+  // which is what the mean value theorem needs -- sampling the box's eight corners would only
+  // sample a nonlinear function, not bound it, and the remainder would not be proved.
+  //
+  // gxI, gyI are the lever from the hub to the vertex. It is a function of the ROTATION alone (the
+  // vertex is a material point at a fixed radius and phase), so taking it from the rotation interval
+  // is both correct and far tighter than differencing the vertex box against the hub box.
+  const build = (rI, gxI, gyI) => {
+    const w = [0, 1, 2].map(i => add(add(scale(rI[0], Pp[i][0]), scale(rI[1], Pp[i][1])), scale(rI[2], Pp[i][2])));
+    const wh2 = add(sq(w[0]), sq(w[1])); if (wh2[0] < 1e-18) return null;
+    const wh = [Math.sqrt(wh2[0]), Math.sqrt(wh2[1])];
+    const n = [divPos(w[0], wh), divPos(w[1], wh)];
+    // dp/dq: the vertex translates with the hub and rotates about it
+    const Dp = [[[1, 1], [0, 0], neg(gyI)], [[0, 0], [1, 1], gxI], [[0, 0], [0, 0], [0, 0]]];
+    const W = [0, 1, 2].map(i => [0, 1, 2].map(j =>
+      add(add(scale(Dp[0][j], Pp[i][0]), scale(Dp[1][j], Pp[i][1])), scale(Dp[2][j], Pp[i][2]))));
+    // dn/dq = (I2 - n n^T) / |w_h| . dw_h/dq
+    const dn = [0, 1].map(i => [0, 1, 2].map(j => divPos(
+      add(mul(sub([i === 0 ? 1 : 0, i === 0 ? 1 : 0], mul(n[i], n[0])), W[0][j]),
+          mul(sub([i === 1 ? 1 : 0, i === 1 ? 1 : 0], mul(n[i], n[1])), W[1][j])), wh)));
+    // rn = g x n ; g depends on the pose only through the rotation
+    const dg = [[[0, 0], [0, 0], neg(gyI)], [[0, 0], [0, 0], gxI]];
+    const drn = [0, 1, 2].map(j => add(add(sub(mul(dg[0][j], n[1]), mul(dg[1][j], n[0])),
+      mul(gxI, dn[1][j])), neg(mul(gyI, dn[0][j]))));
+    return [dn[0], dn[1], drn.map(v => scale(v, 1 / I))];
+  };
+  const pt = t => [t, t];
+  const Bi = build([pt(p.x - A[seg].x), pt(p.y - A[seg].y), pt(p.h - A[seg].h)], pt(p.x - q.x), pt(p.y - q.y));
+  if (!Bi) return null;
+  const Bc = Bi.map(r => r.map(v => (v[0] + v[1]) / 2));
+  // the same over the box. The vertex's own arc gives r; the rotation interval gives the lever.
+  const vb = vertexBoxOf(box, pair[1], vk);
+  const ang = [box.rot[0] + pair[1] * 2 * Math.PI / 3, box.rot[1] + pair[1] * 2 * Math.PI / 3];
+  const ph = (vk / NSEG) * Math.PI / 2, sR = Math.sin(ph) * R;
+  const gxI = scale(cosRange(ang), sR), gyI = scale(sinRange(ang), sR);
+  const Bb = build([sub(vb.x, pt(A[seg].x)), sub(vb.y, pt(A[seg].y)), sub(vb.h, pt(A[seg].h))], gxI, gyI);
+  if (!Bb) return null;
+  const Blo = [0, 1, 2].map(i => [0, 1, 2].map(j => Bb[i][j][0]));
+  const Bhi = [0, 1, 2].map(i => [0, 1, 2].map(j => Bb[i][j][1]));
+  return { Bc, Blo, Bhi, seg };
+}
+
 // ---- one substep's analysis over an axis-aligned box of victim poses (throw-cert.js's) ----
 function analyse(box, att, pairWant) {
   const c = { x: (box.x[0] + box.x[1]) / 2, y: (box.y[0] + box.y[1]) / 2, rot: (box.rot[0] + box.rot[1]) / 2 };
@@ -545,8 +609,14 @@ function pairDist(att, q, pair) {
 // the hull is barely bigger than either, the split is costing bookkeeping and buying nothing. Over
 // the cap, merge the closest pair repeatedly -- merging is always sound, it only loosens.
 const MAXSTATES = 12;
-function mergeStates(list, M) {
-  const hullOf = (a, b) => [0, 1, 2].map(r => hull(a[r], b[r]));
+function mergeStates(list) {
+  // Each state now carries its OWN basis, so two of them cannot be hulled in coefficient space: the
+  // same u means different poses in different frames. Re-express the second onto the first's basis
+  // and hull there. That transform goes through interval arithmetic and widens, which is exactly
+  // what we want the cost to see -- two states whose bases have diverged come out expensive and are
+  // left apart, and only states whose frames still agree merge cheaply.
+  const reexpress = (st, M) => { const T = matMul(matInv(M), st.M);
+    return [0, 1, 2].map(r => add(add(scale(st.U[0], T[r][0]), scale(st.U[1], T[r][1])), scale(st.U[2], T[r][2]))); };
   // cost by WIDTH, per axis, not by volume: these boxes are thin, so a volume ratio is dominated by
   // whichever axis happens to be thinnest and reads two clearly separated regimes as cheap to merge.
   const costOf = (a, b, h) => Math.max(...[0, 1, 2].map(r => wid(h[r]) / Math.max(wid(a[r]), wid(b[r]), 1e-12)));
@@ -554,12 +624,14 @@ function mergeStates(list, M) {
   for (let pass = 0; pass < 64; pass++) {
     let best = null;
     for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) {
-      const h = hullOf(out[i], out[j]), cost = costOf(out[i], out[j], h);
-      if (!best || cost < best.cost) best = { i, j, h, cost };
+      let Uj; try { Uj = out[i].M === out[j].M ? out[j].U : reexpress(out[j], out[i].M); } catch (e) { continue; }
+      if (!Uj.every(r => Number.isFinite(r[0]) && Number.isFinite(r[1]))) continue;
+      const h = [0, 1, 2].map(r => hull(out[i].U[r], Uj[r])), cost = costOf(out[i].U, Uj, h);
+      if (!best || cost < best.cost) best = { i, j, h, cost, M: out[i].M, keep: out[i].keep && out[j].keep };
     }
     if (!best) break;
     if (best.cost > 1.15 && out.length <= MAXSTATES) break;
-    out = out.filter((_, x) => x !== best.i && x !== best.j).concat([best.h]);
+    out = out.filter((_, x) => x !== best.i && x !== best.j).concat([{ U: best.h, M: best.M, keep: best.keep }]);
   }
   return out;
 }
@@ -574,13 +646,27 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
   log(`throw arm (${pv},${dir}) limit ${(lim / DEG).toFixed(2)} deg = ${K} substeps of ${(LIM_SUB / DEG).toFixed(4)} deg; centre thrown ${traj.findIndex(t => t.maxFootR > EDGE) + 1 || 'never'}`);
   // the parallelotope: centre q_c (the centre trajectory), columns M, coefficient box U
   let qc = c0, M = colsOf([(box0.x[1] - box0.x[0]) / 2, 0, 0], [0, (box0.y[1] - box0.y[0]) / 2, 0], [0, 0, (box0.rot[1] - box0.rot[0]) / 2]);
+  const M00 = M;
   // The enclosure is a LIST of coefficient boxes, all in the same (q_c, M) frame. One box per live
   // contact regime, because hulling the regimes into a single box at the end of every substep is
   // what a chord-vertex event costs: at the crowded one, three regimes go live at once and the hull
   // is three times either of them, which then admits more chords. Kept apart they each stay thin,
   // and a regime that no pose can be in proves itself empty and is dropped.
-  let Us = [[[-1, 1], [-1, 1], [-1, 1]]], pair = null;
+  // Each state carries its OWN basis, because the point of the linearised park step is to put the
+  // push's linear part into the basis; rebuilding every state onto one shared contact-aligned frame
+  // each substep would transform it straight back into the box and undo it.
+  let Us = [{ M: null, U: [[-1, 1], [-1, 1], [-1, 1]], keep: false }], pair = null;
   const rows = [], fail = (why, k) => ({ certified: false, traj, pair, why: `substep ${k} (${(k * LIM_SUB / DEG).toFixed(2)} deg): ${why}`, k, rows, K });
+  // The exposed foot's radius over one state: F = hub + R e(rot + jF 120deg), linear in u up to
+  // R (drot)^2 / 2, bounded below by its projection on the CENTRE foot's direction.
+  const footBound = (qcA, st) => {
+    const th = qcA.rot + jF * 2 * Math.PI / 3, Fc = { x: qcA.x + R * Math.cos(th), y: qcA.y + R * Math.sin(th) };
+    const rcA = Math.hypot(Fc.x, Fc.y), fx = Fc.x / rcA, fy = Fc.y / rcA;
+    let mR = rcA, drot = 0;
+    for (let j = 0; j < 3; j++) { const m = col(st.M, j), coef = (m[0] - R * Math.sin(th) * m[2]) * fx + (m[1] + R * Math.cos(th) * m[2]) * fy; mR += Math.min(coef * st.U[j][0], coef * st.U[j][1]); drot += Math.abs(m[2]) * Math.max(Math.abs(st.U[j][0]), Math.abs(st.U[j][1])); }
+    if (process.env.DBGF) console.log(`      foot: rc ${rcA.toFixed(3)} linear ${(mR - rcA).toFixed(4)} drot ${(drot / DEG).toFixed(4)}deg quad ${(R * drot * drot / 2).toFixed(4)} -> ${(mR - R * drot * drot / 2).toFixed(3)}`);
+    return mR - R * drot * drot / 2;
+  };
   for (let k = 1; k <= K; k++) {
     const t = traj[k - 1], att = t.att, qcNext = t.pose;
     if (t.flags.hub || t.flags.deep || t.flags.cap || t.flags.hfFloor) return fail(`the centre's own push used a hub contact / deep rule / cap / hf floor`, k);
@@ -588,7 +674,8 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
     // it ran out of passes: at the cap the post-push distance is not bounded below by D at all
     if (t.pushes.length && t.flags.iters >= REPLICA.iters) return fail(`the solver used all ${REPLICA.iters} passes, so the contact shell's lower edge is not established`, k);
     // the aabb of the whole enclosure, for pair discovery and the free / no-touch tests
-    const bbAll = Us.map(U => aabbOf(qc, M, U)).reduce((a, b) => ({ x: hull(a.x, b.x), y: hull(a.y, b.y), rot: hull(a.rot, b.rot) }));
+    for (const st of Us) if (!st.M) st.M = M00;
+    const bbAll = Us.map(st => aabbOf(qc, st.M, st.U)).reduce((a, b) => ({ x: hull(a.x, b.x), y: hull(a.y, b.y), rot: hull(a.rot, b.rot) }));
     const preAll = analyse(bbAll, att, pair);
     if (preAll.refuse) return fail(preAll.refuse, k);
     if (preAll.free) { if (t.pushes.length) return fail('centre pushed while the box was declared free (bug)', k); rows.push({ k, free: true }); continue; }
@@ -606,8 +693,18 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
       const t1 = [-cc.ny, cc.nx, 0];
       let t2 = [-a_c[0] * kap, -a_c[1] * kap, 1 - a_c[2] * kap];
       const n2 = Math.hypot(t2[0], t2[1], t2[2] * R); t2 = t2.map(v => v / n2);
-      const Mn = colsOf(t1, t2, a_c), T = matMul(matInv(Mn), M);
-      Us = Us.map(U => [0, 1, 2].map(r => add(add(scale(U[0], T[r][0]), scale(U[1], T[r][1])), scale(U[2], T[r][2]))));
+      const Mn = colsOf(t1, t2, a_c);
+      // Re-align a state onto the contact frame only when it is NOT carrying a propagated linear
+      // part, or when its own frame has gone badly conditioned. Re-aligning transforms the box with
+      // interval arithmetic, which is what the propagation exists to avoid paying.
+      for (const st of Us) {
+        const L = [0, 1, 2].map(j => Math.hypot(st.M[0][j], st.M[1][j], st.M[2][j] * R));
+        const bad = Math.max(...L) / Math.max(Math.min(...L), 1e-12) > 8;
+        if (st.keep && !bad) continue;
+        const T = matMul(matInv(Mn), st.M);
+        st.U = [0, 1, 2].map(r => add(add(scale(st.U[0], T[r][0]), scale(st.U[1], T[r][1])), scale(st.U[2], T[r][2])));
+        st.M = Mn; st.keep = false;
+      }
       M = Mn;
     }
     // the centre's push decomposed: Lambda_c a_c + v_c, over all its solver iterations
@@ -617,25 +714,25 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
     const qcPush = [qcNext.x - qc.x, qcNext.y - qc.y, qcNext.rot - qc.rot];
     for (let r = 0; r < 3; r++) if (Math.abs(qcPush[r] - LamC * a_c[r] - vC[r]) > 1e-9) return fail('centre push decomposition off (bug)', k);
     const fc = pairDist(att, qcNext, pair).dist;
-    const m1 = col(M, 0), m2 = col(M, 1), Mi = matInv(M);
     const Gdot = (A, w) => add(add(mul(A.G[0], [w[0], w[0]]), mul(A.G[1], [w[1], w[1]])), mul(A.G[2], [w[2], w[2]]));
     const GdotA = A => mul(A.hf, add(cosRange([-wid(A.psiN), wid(A.psiN)]), scale(mul(A.rn, A.rn), 1 / I)));
     // poses that receive no push at all keep their absolute positions, so relative to the centre --
     // which did move -- their coefficients shift by -M^-1 (centre push)
-    const noPush = matVec(Mi, qcPush.map(v => -v));
     const nextUs = [];
     let rounds = 0, coneWide = 0, post = null, fPreAny = null, ngroups = 0;
 
-    for (const U of Us) {
+    for (const st of Us) {
+      const U = st.U, M = st.M, Mi = matInv(M), m1 = col(M, 0), m2 = col(M, 1), m3 = col(M, 2);
+      const noPush = matVec(Mi, qcPush.map(v => -v));
       const pre = analyse(aabbOf(qc, M, U), att, pair);
       if (pre.refuse) return fail(pre.refuse, k);
       // this regime's poses cannot touch this substep: they take no push
-      if (pre.free) { nextUs.push([0, 1, 2].map(r => add(U[r], [noPush[r], noPush[r]]))); continue; }
+      if (pre.free) { nextUs.push({ U: [0, 1, 2].map(r => add(U[r], [noPush[r], noPush[r]])), M, keep: st.keep }); continue; }
       // pre-push distance over the set, by the mean-value form around the centre
       const dev = matVecIv(M, U);
       const fPre = add([cc.dist, cc.dist], add(add(mul(pre.G[0], dev[0]), mul(pre.G[1], dev[1])), mul(pre.G[2], dev[2])));
       fPreAny = fPreAny ? hull(fPreAny, fPre) : fPre;
-      if (fPre[0] >= D) { nextUs.push([0, 1, 2].map(r => add(U[r], [noPush[r], noPush[r]]))); continue; }
+      if (fPre[0] >= D) { nextUs.push({ U: [0, 1, 2].map(r => add(U[r], [noPush[r], noPush[r]])), M, keep: st.keep }); continue; }
       const fHi = fPre[1];
       // BRANCH ON THE CONTACT REGIME. When the contact point crosses a chord vertex, two chords are
       // both live and their exact normals differ by the polyline's turn, about 7.5 degrees. Hulling
@@ -652,8 +749,8 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
       const groups = [];
       for (const sp of pre.segPairs) {
         const g = groups.find(gr => Math.abs(gr.seed - (sp.psiN[0] + sp.psiN[1]) / 2) < 1.5 * DEG);
-        if (g) { g.psiN = [Math.min(g.psiN[0], sp.psiN[0]), Math.max(g.psiN[1], sp.psiN[1])]; g.rn = hull(g.rn, sp.rn); g.hf = hull(g.hf, sp.hf); }
-        else groups.push({ psiN: sp.psiN.slice(), rn: sp.rn.slice(), hf: sp.hf.slice(), seed: (sp.psiN[0] + sp.psiN[1]) / 2 });
+        if (g) { g.psiN = [Math.min(g.psiN[0], sp.psiN[0]), Math.max(g.psiN[1], sp.psiN[1])]; g.rn = hull(g.rn, sp.rn); g.hf = hull(g.hf, sp.hf); if (!(sp.exact && sp.vertex === 'V' && sp.vk === g.vk)) g.vk = null; }
+        else groups.push({ psiN: sp.psiN.slice(), rn: sp.rn.slice(), hf: sp.hf.slice(), seed: (sp.psiN[0] + sp.psiN[1]) / 2, vk: (sp.exact && sp.vertex === 'V') ? sp.vk : null });
       }
       for (const g of groups) { g.n = [cosRange(g.psiN), sinRange(g.psiN)]; g.G = [mul(g.hf, g.n[0]), mul(g.hf, g.n[1]), mul(g.hf, g.rn)]; }
       ngroups += groups.length;
@@ -672,20 +769,58 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
       for (const grp of groups) {
         let cone = grp; Lam = Lam0.slice(); ETA = etaOf(M0, pen, pre.aMin); target = [D - EPS_LO, Math.max(D + ETA, fHi)];
         let inflated = false, empty = false;
+        // hoisted: the settled round's basis and its columns are what the state carries forward
+        let cw, Mp = M, Mpi = Mi, mA = a_c, mB1 = m1, mB2 = m2, linear = false;
+        // During a park the push direction is an exactly differentiable function of the pose, so its
+        // variation over the set is a LINEAR map plus a second-order remainder rather than an
+        // independent interval. Absorb the linear part into the basis, where it costs nothing.
+        const JB = grp.vk !== null && grp.vk !== undefined && grp.vk >= 0 ? parkJacobian(att, qc, pair, grp.vk, aabbOf(qc, M, U)) : null;
         for (let round = 1; round <= 32; round++) {
           rounds = Math.max(rounds, round);
           const da = [sub(cone.n[0], [a_c[0], a_c[0]]), sub(cone.n[1], [a_c[1], a_c[1]]), scale(sub(cone.rn, [cc.rn, cc.rn]), 1 / I)];
-          const w = da.map((d, r) => sub(mul(Lam, d), [vC[r], vC[r]]));
-          const cw = matVecIv(Mi, w);
-          Un = [add(U[0], cw[0]), add(U[1], cw[1]), add(add(U[2], cw[2]), sub(Lam, [LamC, LamC]))];
-          post = analyse(aabbOf(qcNext, M, Un), att, pair);
+          Mp = M; Mpi = Mi; mA = a_c; mB1 = m1; mB2 = m2; linear = false; cw = null;
+          if (JB) {
+            // dq_post = (I + Lam_c B) dq + [ Lam_c dB dq + lam a_c + lam da - v_c ],  dB the spread
+            // of the Jacobian over the box, which is what the mean value theorem leaves over.
+            const N = [0, 1, 2].map(i => [0, 1, 2].map(j => (i === j ? 1 : 0) + LamC * JB.Bc[i][j]));
+            Mp = matMul(N, M);
+            let ok = true; try { Mpi = matInv(Mp); } catch (e) { ok = false; }
+            if (ok) {
+              const dev2 = matVecIv(M, U), lam = sub(Lam, [LamC, LamC]);
+              const dB = [0, 1, 2].map(i => [0, 1, 2].map(j => [JB.Blo[i][j] - JB.Bc[i][j], JB.Bhi[i][j] - JB.Bc[i][j]]));
+              // KEEP lambda ON ITS OWN AXIS. a_c is M's third column, so in the old basis the push
+              // magnitude's variation was exactly the third coefficient and cost nothing. Sending
+              // lambda a_c through Mp^-1 instead smears it over all three, and that alone made the
+              // linearised step WORSE than the interval one it replaces -- 76 substeps against 82.
+              // Recover the structure from a_c = m3 and N m3 = m3 + Lam_c B m3:
+              //     lambda a_c = lambda N m3 - lambda Lam_c B m3,
+              // so lambda still lands on the third axis of the NEW basis and all that is left in the
+              // remainder is the second-order lambda Lam_c B m3.
+              const Bm3 = [0, 1, 2].map(i => JB.Bc[i][0] * m3[0] + JB.Bc[i][1] * m3[1] + JB.Bc[i][2] * m3[2]);
+              const Rv = [0, 1, 2].map(i => {
+                let acc = [-vC[i], -vC[i]];
+                for (let j = 0; j < 3; j++) acc = add(acc, scale(mul(dB[i][j], dev2[j]), LamC));
+                return add(add(acc, mul(lam, da[i])), scale(mul(lam, [-Bm3[i], -Bm3[i]]), LamC));
+              });
+              cw = matVecIv(Mpi, Rv);
+              Un = [add(U[0], cw[0]), add(U[1], cw[1]), add(add(U[2], cw[2]), lam)];
+              mA = col(Mp, 2); mB1 = col(Mp, 0); mB2 = col(Mp, 1); linear = true;
+            }
+          }
+          if (!linear) {
+            Mp = M; Mpi = Mi; mA = a_c; mB1 = m1; mB2 = m2;
+            const wv = da.map((d, r) => sub(mul(Lam, d), [vC[r], vC[r]]));
+            cw = matVecIv(Mi, wv);
+            Un = [add(U[0], cw[0]), add(U[1], cw[1]), add(add(U[2], cw[2]), sub(Lam, [LamC, LamC]))];
+          }
+          post = analyse(aabbOf(qcNext, Mp, Un), att, pair);
           if (post.refuse) return fail(`after the push: ${post.refuse}`, k);
           if (post.free) return fail('post-push set declared free (bug)', k);
           // pin u3 by the post-push contact constraint (mean value along the segment from the centre,
           // which stays inside the post set, so post's own gradient bound applies). The pin uses the
           // WHOLE post set's gradient, not this regime's: a pose may change regime across the push.
-          const Ga = Gdot(post, a_c);
-          const alpha = Ga[0] > 0 ? divPos(sub(sub(sub(target, [fc, fc]), mul(Gdot(post, m1), Un[0])), mul(Gdot(post, m2), Un[1])), Ga) : [-Infinity, Infinity];
+          const Ga = Gdot(post, mA);
+          const alpha = Ga[0] > 0 ? divPos(sub(sub(sub(target, [fc, fc]), mul(Gdot(post, mB1), Un[0])), mul(Gdot(post, mB2), Un[1])), Ga) : [-Infinity, Infinity];
           const U3n = isect(alpha, Un[2]);
           // An empty range is a PROOF that no pose is in this regime: both sides are necessary
           // conditions on a pose that is. Drop the regime rather than failing the certificate.
@@ -726,7 +861,7 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
         }
         if (empty) continue;
         coneWide = Math.max(coneWide, wid(cone.psiN));
-        nextUs.push([Un[0], Un[1], U3]);
+        nextUs.push({ U: [Un[0], Un[1], U3], M: Mp, keep: linear });
       }
     }
     if (!nextUs.length) return fail('every regime proved empty, so the centre is in none of them (bug)', k);
@@ -734,29 +869,36 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
     // Merge regimes that have come back together, and cap the count. Two boxes merge when their hull
     // is no bigger than a shade over their union would have to be anyway, which is the case as soon
     // as the regimes stop being distinct; over the cap, merge the closest pair repeatedly.
-    Us = mergeStates(nextUs, M);
+    Us = mergeStates(nextUs);
     qc = qcNext;
     if (process.env.DBG2 && post) for (const sp of post.segPairs) console.log(`      k${k} ${sp.why}`);
-    if (process.env.DBG) console.log(`   dbg k${k} rounds ${rounds} states ${Us.length} (from ${nextUs.length}, ${ngroups} groups) fPre[${fPre.map(v => v.toFixed(4))}] cone ${(coneWide / DEG).toFixed(2)}deg pad ${post ? post.pad.toFixed(3) : '-'}`);
+    if (process.env.DBG) console.log(`   dbg k${k} rounds ${rounds} states ${Us.length} (from ${nextUs.length}, ${ngroups} groups) fPre[${fPre.map(v => v.toFixed(4))}] cone ${(coneWide / DEG).toFixed(2)}deg pad ${post ? post.pad.toFixed(3) : "-"} footR>=${Math.min(...Us.map(st => footBound(qcNext, st))).toFixed(3)} (centre ${t.maxFootR.toFixed(3)}, rim ${EDGE})`);
     // sanity: the centre (u = 0) is inside at least one of them
-    if (!Us.some(U => U[0][0] <= 1e-9 && U[0][1] >= -1e-9 && U[1][0] <= 1e-9 && U[1][1] >= -1e-9 && U[2][0] <= 1e-9 && U[2][1] >= -1e-9)) return fail(`centre left every set (bug)`, k);
-    const U = Us.reduce((a, b) => [0, 1, 2].map(r => hull(a[r], b[r])));   // for reporting only
-    const bb = aabbOf(qc, M, U);
+    if (!Us.some(st => st.U.every(r => r[0] <= 1e-9 && r[1] >= -1e-9))) return fail(`centre left every set (bug)`, k);
+    // For reporting: the states no longer share a frame, so hull them in WORLD coordinates.
+    const U = Us[0].U, bb = Us.map(st => aabbOf(qc, st.M, st.U)).reduce((a, b) => ({ x: hull(a.x, b.x), y: hull(a.y, b.y), rot: hull(a.rot, b.rot) }));
+    // STOP AT A CERTIFIED THROW. The claim is that every pose in the box leaves the board, and the
+    // board test is the exposed foot's radius against the rim. The moment the WORST state's lower
+    // bound on that radius clears the rim, every pose in the enclosure is off and the rest of the
+    // sweep proves nothing further -- so there is no need to carry the enclosure out to the full
+    // limit, which is where it was being asked to survive twenty more substeps of a park it had
+    // already outlived its purpose in. The centre leaves at its own substep; the set follows a few
+    // later, and that is the one that matters.
+    const minRk = Math.min(...Us.map(st => footBound(qc, st)));
+    if (minRk > EDGE) {
+      rows.push({ k, deg: +(k * LIM_SUB / DEG).toFixed(2), thrown: true, minR: +minRk.toFixed(3), bbRaw: bb, box: { x: bb.x.map(v => +v.toFixed(3)), y: bb.y.map(v => +v.toFixed(3)), rot: bb.rot.map(v => +(v / DEG).toFixed(3)) } });
+      log(`  thrown at substep ${k} (${(k * LIM_SUB / DEG).toFixed(2)} deg): foot ${jF} radius >= ${minRk.toFixed(3)}u over the whole set, rim ${EDGE}`);
+      return { certified: true, why: null, k, K, rows, minR: minRk, rc: Math.hypot(qc.x + R * Math.cos(qc.rot + jF * 2 * Math.PI / 3), qc.y + R * Math.sin(qc.rot + jF * 2 * Math.PI / 3)), final: { qc, states: Us }, pair, traj, thrownAt: k };
+    }
     rows.push({ k, deg: +(k * LIM_SUB / DEG).toFixed(2), pad: +post.pad.toFixed(3), psiN: post.psiN.map(v => +(v / DEG).toFixed(2)), hf: post.hf.map(v => +v.toFixed(3)), rn: post.rn.map(v => +v.toFixed(2)), fPre: fPre.map(v => +v.toFixed(4)), LamC: +LamC.toFixed(4), U: U.map(u => u.map(v => +v.toFixed(5))), Mlen: [0, 1, 2].map(j => +Math.hypot(M[0][j], M[1][j], M[2][j] * R).toFixed(3)), box: { x: bb.x.map(v => +v.toFixed(3)), y: bb.y.map(v => +v.toFixed(3)), rot: bb.rot.map(v => +(v / DEG).toFixed(3)) }, bbRaw: bb, footR: +t.maxFootR.toFixed(3), segs: post.segPairs.map(s => `${s.a},${s.b}`).join(' ') });
   }
-  // the exposed foot's radius over the final set: F = hub + R e(rot + jF 120deg), linear in u up to
-  // R (drot)^2 / 2, bounded below by its projection on the centre foot's direction
-  const th = qc.rot + jF * 2 * Math.PI / 3, Fc = { x: qc.x + R * Math.cos(th), y: qc.y + R * Math.sin(th) }, rc = Math.hypot(Fc.x, Fc.y), fx = Fc.x / rc, fy = Fc.y / rc;
+  const th = qc.rot + jF * 2 * Math.PI / 3, rc = Math.hypot(qc.x + R * Math.cos(th), qc.y + R * Math.sin(th));
   // every regime must clear the rim, so the bound is the WORST of them
-  const minROf = U => { let mR = rc, drot = 0;
-    for (let j = 0; j < 3; j++) { const m = col(M, j), coef = (m[0] - R * Math.sin(th) * m[2]) * fx + (m[1] + R * Math.cos(th) * m[2]) * fy; mR += Math.min(coef * U[j][0], coef * U[j][1]); drot += Math.abs(m[2]) * Math.max(Math.abs(U[j][0]), Math.abs(U[j][1])); }
-    return mR - R * drot * drot / 2; };
-  const minR = Math.min(...Us.map(minROf));
-  const U = Us.reduce((a, b) => [0, 1, 2].map(r => hull(a[r], b[r])));
-  const bb = aabbOf(qc, M, U);
+  const minR = Math.min(...Us.map(st => footBound(qc, st)));
+  const bb = Us.map(st => aabbOf(qc, st.M, st.U)).reduce((a, b) => ({ x: hull(a.x, b.x), y: hull(a.y, b.y), rot: hull(a.rot, b.rot) }));
   log(`  final set: x[${bb.x.map(v => v.toFixed(3))}] y[${bb.y.map(v => v.toFixed(3))}] rot[${bb.rot.map(v => (v / DEG).toFixed(3))}] deg; foot ${jF} radius >= ${minR.toFixed(3)}u (centre ${rc.toFixed(3)}), rim ${EDGE}`);
   const certified = minR > EDGE;
-  return { certified, why: certified ? null : `final foot radius bound ${minR.toFixed(3)} <= ${EDGE}`, k: K, K, rows, minR, rc, final: { qc, M, U }, pair, traj };
+  return { certified, why: certified ? null : `final foot radius bound ${minR.toFixed(3)} <= ${EDGE}`, k: K, K, rows, minR, rc, final: { qc, states: Us }, pair, traj };
 }
 
 module.exports = { certify, analyse, sweep, pushSubstep, LIM_SUB };
@@ -769,7 +911,7 @@ if (require.main === module) {
   const box0 = { x: [v.x - hx, v.x + hx], y: [v.y - hy, v.y + hy], rot: [v.rot - hr, v.rot + hr] };
   const t0 = Date.now();
   const res = certify(pieces, attacker, pv, dir, box0, jF, { log: console.log });
-  console.log(`${res.certified ? 'CERTIFIED' : 'REFUSED'}: ${res.why || `every pose thrown by ${(res.K * LIM_SUB / DEG).toFixed(2)} deg`}   (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+  console.log(`${res.certified ? 'CERTIFIED' : 'REFUSED'}: ${res.why || `every pose thrown by ${((res.thrownAt || res.K) * LIM_SUB / DEG).toFixed(2)} deg${res.thrownAt ? ` (substep ${res.thrownAt} of ${res.K})` : ""}`}   (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
   if (args.includes('--rows')) for (const r of res.rows) console.log(r.free ? `  k${r.k} free` : r.noTouch ? `  k${r.k} no pose touches, f[${r.fPre}]` : `  k${r.k} ${r.deg}deg pad ${r.pad} n[${r.psiN}] hf[${r.hf}] rn[${r.rn}] f[${r.fPre}] LamC ${r.LamC} U ${JSON.stringify(r.U)} |m| ${r.Mlen} box x[${r.box.x}] y[${r.box.y}] rot[${r.box.rot}] footR ${r.footR} segs ${r.segs}`);
   if (args.includes('--engine')) {
     // the sweep against the engine itself, a degree at a time, on the centre pose
@@ -798,8 +940,18 @@ if (require.main === module) {
         if (t.pushes.length) { const pd = pairDist(t.att, t.pose, res.pair); if (pd.dist > D + maxOver) maxOver = pd.dist - D; if (pd.dist < minPost) minPost = pd.dist; }
       }
       if (res.final) {
-        const last = tr[tr.length - 1].pose, { qc, M, U } = res.final, u = matVec(matInv(M), [last.x - qc.x, last.y - qc.y, last.rot - qc.rot]);
-        for (let j = 0; j < 3; j++) if (u[j] < U[j][0] - 1e-6 || u[j] > U[j][1] + 1e-6) { viol++; if (viol <= 8) console.log(`  VIOLATION pose ${tI} final: u${j} = ${u[j].toFixed(5)} outside [${U[j]}]`); }
+        // the enclosure is a UNION of states, each in its own frame: the pose must be in ONE of them
+        // Compare at the substep the certificate STOPPED on, not at the end of the replica's sweep:
+        // with the certified-throw stop those are no longer the same substep, and the replica runs on.
+        const last = tr[Math.min(res.k, tr.length) - 1].pose, { qc, states } = res.final, dq = [last.x - qc.x, last.y - qc.y, last.rot - qc.rot];
+        let inSome = false, worstU = null;
+        for (const st of states) {
+          const u = matVec(matInv(st.M), dq);
+          const out3 = Math.max(...[0, 1, 2].map(j => Math.max(u[j] - st.U[j][1], st.U[j][0] - u[j])));
+          if (worstU === null || out3 < worstU.out3) worstU = { u, U: st.U, out3 };
+          if (out3 <= 1e-6) { inSome = true; break; }
+        }
+        if (!inSome) { viol++; if (viol <= 8) console.log(`  VIOLATION pose ${tI} final: u = [${worstU.u.map(v => v.toFixed(5))}] outside every state, nearest [${worstU.U.map(r => r.map(v => v.toFixed(5)))}] by ${worstU.out3.toExponential(2)}`); }
         const rF = Math.hypot(...(() => { const f = feetOf(last)[jF]; return [f.x, f.y]; })());
         if (rF < worstR) worstR = rF;
         if (rF < res.minR - 1e-6) { viol++; if (viol <= 8) console.log(`  VIOLATION pose ${tI}: final foot radius ${rF.toFixed(4)} < bound ${res.minR.toFixed(4)}`); }
