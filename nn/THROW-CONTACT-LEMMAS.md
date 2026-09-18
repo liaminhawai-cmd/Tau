@@ -566,3 +566,54 @@ each substep -- would not pay the per-substep cost at all. That is a different
 piece of work from anything in this file, and it is where the next effort should
 go if the goal is to retire the Lipschitz sampling rather than to have proved
 that it can be done at all.
+
+
+## 11. The monotone quantity is there
+
+Section 10 said the route that could close the gap is not to take twenty-five
+steps through the park. `nn/throw-audit/park-monotone.js` measures whether that
+route has anything to aim at, on the engine, over boxes far wider than the
+certificate manages.
+
+It does. Three cases, two arms:
+
+| | arm (0,-1), +-0.1u | arm (0,-1), +-0.25u | arm (2,-1), +-0.1u |
+|---|---|---|---|
+| radius monotone in the substep | every pose | every pose | every pose |
+| min radial gain, contact substeps | 0.0030u | 0.0040u | 0.0035u |
+| gain through the park | 0.05..0.09u | 0.05..0.09u | ~0.08u |
+| spread, first contact to throw | x1.038 | x1.043 | x1.045 |
+| contact regimes across the box | 1 | 1 | 1 |
+| thrown | 200/200 by 85 | 200/200 by 86 | 120/120 by 113 |
+
+The radius never falls, for any sampled pose, at any box size tried. +-0.25u is
+1250 times wider per axis than the certificate closes at.
+
+**Why this is the right target.** The barrier theorem in `throw-theorem.md` needs
+a lower bound on the radial gain and an INVARIANT box -- one that maps into
+itself -- rather than an enclosure that says where inside the box each pose goes.
+That difference is the whole thing. Propagation is what creates the feedback loop
+that section 8 measured and section 10 showed is a threshold; invariance has no
+loop, so there is nothing to fall off. The hypotheses are weaker and the boxes
+they hold on are three orders of magnitude bigger.
+
+The theorem's earlier verdict was that uniform bounds give only 0.44u and
+per-slab bounds are needed. Per-slab is exactly what the table shows is
+available: through the park the gain is stable at 0.05 to 0.09u, and the 0.003u
+minimum sits at an early grazing contact where the normal is far off radial, not
+in the park at all.
+
+**What this does not say.** Two hundred sampled poses establish that the
+hypotheses are true, not that they are provable. Proving the gain bound is an
+interval computation per substep with no accumulation, which is the easy half.
+Proving invariance is the open half, and the Jacobian from section 8 is the right
+tool for it, since invariance is a statement about the deviation map being
+non-expansive plus a remainder that fits inside the margin.
+
+**A correction to the first reading of this measurement.** Taken to the end of
+the sweep the spread appeared to contract. That included the substeps after the
+throw and, on arm (2,-1), the 74 substeps before first contact where the victim
+is not pushed at all and therefore cannot spread. Over the contact window it
+expands, slightly. For the same reason a gain bound taken over every substep
+reads as "not positive" while saying nothing: the barrier sums the substeps that
+push, and that is where the bound has to hold.
