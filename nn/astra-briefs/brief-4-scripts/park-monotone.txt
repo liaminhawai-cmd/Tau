@@ -1,0 +1,85 @@
+start poses: max foot radius 63.817 to 64.207 (rim 67.167); off board at the start: 0; already touching the attacker: 0
+box +-0.1u / +-0.01 rad, 200 poses (the first is the centre), foot 1, rim 67.167
+thrown: 200 of 200; first leaves at substep 83, last at 85
+across substeps 74-98: 0 of 200 poses have a non-increasing step; smallest step anywhere 0.083614u (at substep 75)
+
+substep  min foot radius over the box   max        centre     spread   clears rim?
+   70    65.8366                      66.1343    65.9962   0.2977   no
+   74    66.1868                      66.3732    66.2866   0.1864   no
+   78    66.5428                      66.7283    66.6455   0.1855   no
+   82    66.9036                      67.0948    67.0097   0.1913   no
+   84    67.0855                      67.2799    67.1934   0.1945   no
+   85    67.1767                      67.3729    67.2857   0.1962   yes
+   86    67.2682                      67.4661    67.3782   0.1979   yes
+   90    67.6358                      67.8416    67.7505   0.2057   yes
+   94    68.0050                      68.2203    68.1254   0.2153   yes
+   98    68.3737                      68.6011    68.5016   0.2274   yes
+
+start poses: max foot radius 63.789 to 64.230 (rim 67.167); off board at the start: 0; already touching the attacker: 0
+box +-0.125u / +-0.01 rad, 200 poses (the first is the centre), foot 1, rim 67.167
+thrown: 200 of 200; first leaves at substep 83, last at 85
+across substeps 74-98: 0 of 200 poses have a non-increasing step; smallest step anywhere 0.062809u (at substep 75)
+
+substep  min foot radius over the box   max        centre     spread   clears rim?
+   70    65.8303                      66.1497    65.9962   0.3194   no
+   74    66.1805                      66.3882    66.2866   0.2077   no
+   78    66.5363                      66.7261    66.6455   0.1898   no
+   82    66.8968                      67.0926    67.0097   0.1958   no
+   84    67.0785                      67.2776    67.1934   0.1991   no
+   85    67.1697                      67.3706    67.2857   0.2008   yes
+   86    67.2611                      67.4638    67.3782   0.2026   yes
+   90    67.6283                      67.8389    67.7505   0.2106   yes
+   94    67.9968                      68.2171    68.1254   0.2203   yes
+   98    68.3651                      68.6037    68.5016   0.2386   yes
+
+start poses: max foot radius 63.372 to 64.615 (rim 67.167); off board at the start: 0; already touching the attacker: 0
+box +-0.125u / +-0.05 rad, 200 poses (the first is the centre), foot 1, rim 67.167
+thrown: 200 of 200; first leaves at substep 80, last at 89
+across substeps 74-98: 0 of 200 poses have a non-increasing step; smallest step anywhere 0.061551u (at substep 75)
+
+substep  min foot radius over the box   max        centre     spread   clears rim?
+   70    65.5345                      66.5464    65.9962   1.0119   no
+   74    65.8752                      66.7876    66.2866   0.9124   no
+   78    66.2207                      67.0405    66.6455   0.8198   no
+   82    66.5699                      67.3807    67.0097   0.8108   no
+   84    66.7456                      67.5694    67.1934   0.8239   no
+   85    66.8336                      67.6643    67.2857   0.8307   no
+   86    66.9217                      67.7594    67.3782   0.8377   no
+   90    67.2743                      68.1428    67.7505   0.8685   yes
+   94    67.6269                      68.5600    68.1254   0.9331   yes
+   98    67.9901                      68.9492    68.5016   0.9591   yes
+
+start poses: max foot radius 63.648 to 64.393 (rim 67.167); off board at the start: 0; already touching the attacker: 0
+box +-0.25u / +-0.01 rad, 200 poses (the first is the centre), foot 1, rim 67.167
+thrown: 200 of 200; first leaves at substep 83, last at 86
+across substeps 74-98: 0 of 200 poses have a non-increasing step; smallest step anywhere 0.060485u (at substep 75)
+
+substep  min foot radius over the box   max        centre     spread   clears rim?
+   70    65.8032                      66.2220    65.9962   0.4188   no
+   74    66.1529                      66.4573    66.2866   0.3044   no
+   78    66.5077                      66.7419    66.6455   0.2342   no
+   82    66.8670                      67.1088    67.0097   0.2418   no
+   84    67.0480                      67.2941    67.1934   0.2461   no
+   85    67.1387                      67.3872    67.2857   0.2484   no
+   86    67.2297                      67.4806    67.3782   0.2509   yes
+   90    67.5947                      67.8568    67.7505   0.2620   yes
+   94    67.9604                      68.2366    68.1254   0.2762   yes
+   98    68.3279                      68.6347    68.5016   0.3068   yes
+
+start poses: max foot radius 63.348 to 64.718 (rim 67.167); off board at the start: 0; already touching the attacker: 0
+box +-0.5u / +-0.01 rad, 200 poses (the first is the centre), foot 1, rim 67.167
+thrown: 200 of 200; first leaves at substep 83, last at 87
+across substeps 74-98: 0 of 200 poses have a non-increasing step; smallest step anywhere 0.059418u (at substep 75)
+
+substep  min foot radius over the box   max        centre     spread   clears rim?
+   70    65.7364                      66.3965    65.9962   0.6601   no
+   74    66.0839                      66.6274    66.2866   0.5435   no
+   78    66.4359                      66.8697    66.6455   0.4338   no
+   82    66.7916                      67.1547    67.0097   0.3631   no
+   84    66.9704                      67.3406    67.1934   0.3702   no
+   85    67.0600                      67.4340    67.2857   0.3741   no
+   86    67.1497                      67.5278    67.3782   0.3781   no
+   90    67.5084                      67.9055    67.7505   0.3970   yes
+   94    67.8683                      68.2871    68.1254   0.4188   yes
+   98    68.2396                      68.6755    68.5016   0.4359   yes
+
