@@ -1,0 +1,18 @@
+victim contact sits EXACTLY on its phi = 30 vertex from sweep 24.49 deg for 26 of the 127 contact substeps (max deviation 0.0e+0u)
+throw at 28.46 deg, sweep limit 46.00; so the dwell covers 3.97 deg of the 28.46-degree run to the throw
+at the end of the sweep phiB = 8.502 deg, phiA = 28.488 deg
+
+at sweep 26.00, distance from the attacker polyline to points along the victim leg near the vertex (phi in deg -> 3D distance u):
+   phi 27.0  3.14448
+   phi 27.5  3.06606
+   phi 28.0  2.99852
+   phi 28.5  2.94260
+   phi 29.0  2.89900
+   phi 29.5  2.86827
+   phi 30.0  2.85084   <- the polyline vertex
+   phi 30.5  2.84694
+   phi 31.0  2.85665
+   phi 31.5  2.87851
+   phi 32.0  2.90371
+   phi 32.5  2.94120
+   phi 33.0  2.99052

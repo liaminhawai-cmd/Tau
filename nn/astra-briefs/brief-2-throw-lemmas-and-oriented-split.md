@@ -1,5 +1,7 @@
 # Brief 2: the last obstacle in the throw proof, and the oriented split at the jumping walls
 
+> **Sent, answered, and superseded in part on the throw side (see `brief-3-the-vertex-dwell.md`).** Two statements in section 1 turned out to be wrong, and are left here as written rather than edited, since this is the text that was sent. First, "shrinking the starting box does not help" is false for the first crossing: at a +-0.002u box the checker passes it and reaches 24.33 degrees. Second, the third item in the vertex table is not a crossing at 25.00 degrees; the victim's contact point arrives at its phi = 30 vertex at 24.49 and dwells on it exactly for the rest of the sweep. Job 2, the oriented split, is unaffected.
+
 This is a self-contained follow-up to the dead-region brief. You have no access to the code or the game; everything you need is in here (the first brief's definitions are repeated where they are needed, so this can be read alone). Units: board units `u` (1u = 2 mm); angles in degrees unless a formula says radians. Every number below was recomputed today from the engine's own code at the commit you pinned last time (e32f09d), not copied from earlier notes.
 
 There are three jobs. **Job 1 is the one I want first**: it is the one thing left between us and a machine-checked proof that a throw works over a whole region of poses. Job 2 is the open question left from your first answer. Job 3 is optional.
