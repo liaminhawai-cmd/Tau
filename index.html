@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 265</div>
+<div id="buildTag">build 267</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -2732,10 +2732,12 @@ function aiSwingDir(dir) {
 //                          so it won't take a move that looks good now but walks into a bad reply.
 // zone/hard/master return a searched plan ({ pivotIdx, dir, targetRad }); dumb/easy fall through to
 // the heuristic (null), with dumb applying the random stop-short fraction.
-function searchedPlanFor(difficulty, aiIdx){
-    return difficulty==='master' ? aiChoosePlanMaster(aiIdx)
-         : difficulty==='hard'   ? aiChoosePlanHard(aiIdx)
-         : difficulty==='zone'   ? aiChoosePlanZone(aiIdx) : null;
+function searchedPlanFor(difficulty, aiIdx){ return drainPlan(searchedPlanForGen(difficulty, aiIdx)); }
+function* searchedPlanForGen(difficulty, aiIdx){
+    if (difficulty==='master') return yield* aiChoosePlanMasterGen(aiIdx);
+    if (difficulty==='hard')   return yield* aiChoosePlanHardGen(aiIdx);
+    if (difficulty==='zone')   return aiChoosePlanZone(aiIdx);
+    return null;
 }
 function aiStopFrac(){ return aiDifficulty==='dumb' ? 0.6 + Math.random()*0.3 : 1; }
 // runs one full AI move to completion synchronously — used by headless tests (one call = one full turn).
@@ -2831,7 +2833,8 @@ function simMoveToLimit(pivot, dir){
     while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && guard++ < 500) applySwing(dir*AI_STEP_RAD);
     return G.netRad;
 }
-function aiChoosePlanHard(aiIdx){
+function aiChoosePlanHard(aiIdx){ return drainPlan(aiChoosePlanHardGen(aiIdx)); }
+function* aiChoosePlanHardGen(aiIdx){
     const humanIdx = 1 - aiIdx, origActive = G.active;
     const snap0 = takeSnap();
     const restore = (snap) => {
@@ -2840,6 +2843,7 @@ function aiChoosePlanHard(aiIdx){
     };
     let best = null;   // { pivotIdx, dir, targetRad, score }
     for (let mp=0; mp<3; mp++) for (const md of [1,-1]) {
+        yield;                                                    // a frame may happen here
         restore(snap0); G.active = aiIdx;
         const net = simMoveToLimit(mp, md);
         if (Math.abs(net) < HARD_MIN_MOVE_RAD) continue;          // this pivot/dir can't make a real move
@@ -2917,7 +2921,8 @@ function masterEval(aiIdx, mw){
         s += mw.oppFree * free; }
     return s;
 }
-function aiChoosePlanMaster(aiIdx, mw){
+function aiChoosePlanMaster(aiIdx, mw){ return drainPlan(aiChoosePlanMasterGen(aiIdx, mw)); }
+function* aiChoosePlanMasterGen(aiIdx, mw){
     const humanIdx = 1 - aiIdx, origActive = G.active;
     const snap0 = takeSnap();
     const restore = (snap) => {
@@ -2963,6 +2968,7 @@ function aiChoosePlanMaster(aiIdx, mw){
     }
     let best = null;   // { pivotIdx, dir, targetRad, score }
     for (const c of cands) {
+        yield;                                                    // a frame may happen here
         restore(c.snap); G.active = aiIdx;
         let score;
         if (G.pieces[humanIdx].anyFootOff()) {
@@ -2972,6 +2978,7 @@ function aiChoosePlanMaster(aiIdx, mw){
             let worst = Infinity;                                  // the human picks their best (= my worst) reply
             reply:
             for (let op=0; op<3; op++) for (const od of [1,-1]) {
+                yield;                                            // ...and here
                 restore(snap1); G.active = humanIdx;
                 const onet = simMoveToLimit(op, od);
                 if (Math.abs(onet) < HARD_MIN_MOVE_RAD) continue;
@@ -4161,7 +4168,8 @@ function ladderEval(idx, w){
     return s;
 }
 // depth 1/2 planner over sampled STOP POINTS along each sweep (the visible partial rotations)
-function ladderSampledPlan(idx, w, o){
+function ladderSampledPlan(idx, w, o){ return drainPlan(ladderSampledPlanGen(idx, w, o)); }
+function* ladderSampledPlanGen(idx, w, o){
     const origActive=G.active, snap0=takeSnap(); const cands=[];
     for (let pv=0; pv<3; pv++) for (const dir of [1,-1]){
         ladderRestore(snap0); G.active=idx; pinFoot(pv);
@@ -4181,11 +4189,13 @@ function ladderSampledPlan(idx, w, o){
     else {
         cands.sort((a,b)=>b.q-a.q);
         for (const c of cands.slice(0, o.maxCands||10)){
+            yield;                                                // a frame may happen here
             ladderRestore(c.snap); let score;
             if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
             else {
                 const s1=takeSnap(); let worst=Infinity;
                 reply: for (let op=0; op<3; op++) for (const od of [1,-1]){
+                    yield;                                        // ...and here
                     ladderRestore(s1); G.active=1-idx;
                     const onet=simMoveToLimit(op,od);
                     if (Math.abs(onet) < HARD_MIN_MOVE_RAD) continue;
@@ -4247,9 +4257,11 @@ function ladderRoots3(idx, w, o, snap0){
 // opponent's six swing-to-the-jam replies can leave me, each answered by the best of my own six,
 // scored by the rung's eval. Infinity when the opponent has no legal reply. Stops early once the
 // answer can't beat `alpha`. Restores nothing -- callers restore.
-function ladderScore3(idx, w, snap, alpha){
+function ladderScore3(idx, w, snap, alpha){ return drainPlan(ladderScore3Gen(idx, w, snap, alpha)); }
+function* ladderScore3Gen(idx, w, snap, alpha){
     let worst=Infinity;
     reply: for (let op=0; op<3; op++) for (const od of [1,-1]){
+        yield;                                                    // a frame may happen here
         ladderRestore(snap); G.active=1-idx;
         const onet=simMoveToLimit(op,od);
         if (Math.abs(onet) < HARD_MIN_MOVE_RAD) continue;
@@ -4273,16 +4285,18 @@ function ladderScore3(idx, w, snap, alpha){
     }
     return worst;
 }
-function ladderPlan3(idx, w, o){
+function ladderPlan3(idx, w, o){ return drainPlan(ladderPlan3Gen(idx, w, o)); }
+function* ladderPlan3Gen(idx, w, o){
     const origActive=G.active, snap0=takeSnap();
     const roots = ladderRoots3(idx, w, o, snap0);
     if (!roots.length){ ladderRestore(snap0); G.active=origActive; return null; }
     let best=null;
     for (const c of roots.slice(0, o.maxCands||10)){
+        yield;                                                    // a frame may happen here
         ladderRestore(c.snap); let score;
         if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
         else {
-            const worst = ladderScore3(idx, w, c.snap, best ? best.score : undefined);
+            const worst = yield* ladderScore3Gen(idx, w, c.snap, best ? best.score : undefined);
             score = worst===Infinity ? c.q : worst;
         }
         if (!best || score>best.score) best={pivotIdx:c.pivotIdx,dir:c.dir,targetRad:c.targetRad,score};
@@ -4310,12 +4324,14 @@ function ladderPlan3(idx, w, o){
 //
 // COST: oppCands full brain calls per move, so ~4x an L11 move at the default, with no cheap cutoff
 // to reclaim it since every candidate needs its reply played out before it can be scored.
-function ladderPlanOppModel(idx, w, o){
+function ladderPlanOppModel(idx, w, o){ return drainPlan(ladderPlanOppModelGen(idx, w, o)); }
+function* ladderPlanOppModelGen(idx, w, o){
     const origActive=G.active, snap0=takeSnap();
     const roots = ladderRoots3(idx, w, o, snap0);
     if (!roots.length){ ladderRestore(snap0); G.active=origActive; return null; }
     let best=null;
     for (const c of roots.slice(0, o.oppCands||4)){
+        yield;                                                    // a frame may happen here
         ladderRestore(c.snap);
         let score;
         if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;   // already won; no reply to model
@@ -4323,7 +4339,7 @@ function ladderPlanOppModel(idx, w, o){
             G.active = 1-idx;
             // oppLevel is a 0-based AI_LADDER index and must point at a NON-'opp' rung or this
             // recurses; the L12 entry below pins it to L11.
-            const reply = ladderPlanFor(o.oppLevel, 1-idx);
+            const reply = yield* ladderPlanForGen(o.oppLevel, 1-idx);
             if (!reply || Math.abs(reply.targetRad) < 1e-9) score = ladderEval(idx, w);
             else {
                 pinFoot(reply.pivotIdx);
@@ -4414,12 +4430,14 @@ function ladderOppReplies(oppIdx, meIdx, o, snap){
 // COST: the reply sweeps were already being paid for, so generating the richer set is close to
 // free. What does cost is that there are now more replies to play out, so they are pre-filtered by
 // a single cheap eval and only the oppKeep most dangerous get the full follow-up ply.
-function ladderPlan13(idx, w, o){
+function ladderPlan13(idx, w, o){ return drainPlan(ladderPlan13Gen(idx, w, o)); }
+function* ladderPlan13Gen(idx, w, o){
     const origActive=G.active, snap0=takeSnap();
     const roots = ladderRoots3(idx, w, o, snap0);
     if (!roots.length){ ladderRestore(snap0); G.active=origActive; return null; }
     let best=null;
     for (const c of roots.slice(0, o.maxCands||10)){
+        yield;                                                    // a frame may happen here
         ladderRestore(c.snap);
         let score;
         if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
@@ -4442,6 +4460,7 @@ function ladderPlan13(idx, w, o){
             replies.sort((a,b)=>a.v-b.v);
             let worst=Infinity;
             reply: for (const rep of replies.slice(0, o.oppKeep||6)){
+                yield;                                            // ...and here
                 let rs;
                 if (rep.v <= -HARD_WIN_BONUS) rs = -HARD_WIN_BONUS;
                 else {
@@ -4536,14 +4555,19 @@ function ladderCornerSetupStops(idx, pv, d){
 // L11's eval, used for the red-side choice between the two back feet when the rung wearing the
 // opening has no positional eval of its own (L1, L2, the noise rungs).
 const CORNER_CHOICE_W = {margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2};
+// The corner opening's own fallback is the rung underneath it, so the sync entry point hands the
+// generator a generator-returning one -- built lazily, since most turns never reach it.
 function ladderPlanCorner(idx, w, o, fallback){
+    return drainPlan(ladderPlanCornerGen(idx, w, o, function*(){ return fallback(); }));
+}
+function* ladderPlanCornerGen(idx, w, o, fallback){
     const openPlies = o.openPlies==null ? 10 : o.openPlies;
     if (!G.cornerBook) G.cornerBook=[null,null];
     if (!G.cornerDone) G.cornerDone=[false,false];
-    if (G.cornerDone[idx] || (G.plies||0) >= openPlies){ G.cornerBook[idx]=null; return fallback(); }
+    if (G.cornerDone[idx] || (G.plies||0) >= openPlies){ G.cornerBook[idx]=null; return yield* fallback(); }
     const origActive=G.active, snap0=takeSnap(), me=G.pieces[idx];
     const hubR=()=>Math.hypot(me.x, me.y), hubR0=hubR();
-    const done=()=>{ G.cornerDone[idx]=true; G.cornerBook[idx]=null; ladderRestore(snap0); G.active=origActive; return fallback(); };
+    function* done(){ G.cornerDone[idx]=true; G.cornerBook[idx]=null; ladderRestore(snap0); G.active=origActive; return yield* fallback(); }
     // Sweep (pv,d) as far as the rules allow. Returns the stop, whether the hub moved toward the
     // centre, and the pose there; null if the swing is nothing or throws the piece off.
     const sweepMax=(pv,d)=>{
@@ -4565,14 +4589,14 @@ function ladderPlanCorner(idx, w, o, fallback){
             for (const d of [1,-1]){ const s=sweepMax(pv,d); if (s && s.fwd && (!best || s.targetRad>best.targetRad)) best=s; }
             if (best) opts.push(best);
         }
-        if (!opts.length) return done();
+        if (!opts.length) return yield* done();
         let pick;
         if (idx===0 || opts.length===1) pick=opts[Math.floor(Math.random()*opts.length)];
         else {
             let bestQ=-Infinity;
             for (const s of opts){
                 ladderRestore(s.snap); const q0=ladderEval(idx,w);
-                const v=ladderScore3(idx, w, s.snap), q=v===Infinity ? q0 : v;
+                const v=yield* ladderScore3Gen(idx, w, s.snap), q=v===Infinity ? q0 : v;
                 if (q>bestQ){ bestQ=q; pick=s; }
             }
         }
@@ -4591,7 +4615,7 @@ function ladderPlanCorner(idx, w, o, fallback){
     // different foot and the piece stopped inside the corner.
     if (bk.at===2){
         const B3=bk.crossFoot, d3=-bk.dir;
-        if (B3==null) return done();
+        if (B3==null) return yield* done();
         const step=(o.sampleDeg||6)*Math.PI/180;
         let best=null;
         const consider=a=>{ const q=ladderEval(idx,w)+(G.pieces[1-idx].anyFootOff()?HARD_WIN_BONUS:0);
@@ -4604,7 +4628,7 @@ function ladderPlanCorner(idx, w, o, fallback){
         }
         if (Math.abs(G.netRad) >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()) consider(Math.abs(G.netRad));
         ladderRestore(snap0); G.active=origActive;
-        if (!best) return done();
+        if (!best) return yield* done();
         G.cornerBook[idx]={ ...bk, at:3, thirdDeg:best.targetRad*180/Math.PI };
         G.cornerDone[idx]=true;   // the line is played out; from here the rung is simply itself
         return { pivotIdx:B3, dir:d3, targetRad:best.targetRad };
@@ -4613,7 +4637,7 @@ function ladderPlanCorner(idx, w, o, fallback){
     // past it -- at the solved setup angle if one lies just past the crossing, else 4 degrees past.
     // The opening survives a nudge but not a shove: the swing's first crossing must be THAT foot
     // taking a line within 20 degrees, or the line is gone and the rung is L11 from here.
-    if (bk.at!==1) return done();
+    if (bk.at!==1) return yield* done();
     const pv=bk.pivotIdx, d=bk.dir, B=bk.crossFoot;
     ladderRestore(snap0); G.active=idx; pinFoot(pv);
     let guard=0, radAtCross=null;
@@ -4623,13 +4647,13 @@ function ladderPlanCorner(idx, w, o, fallback){
         if (G.crossings>0){ if (nearLineIds(me.feet()[B], CFG.touchEps).length) radAtCross=Math.abs(G.netRad); break; }
     }
     ladderRestore(snap0);
-    if (radAtCross===null) return done();
+    if (radAtCross===null) return yield* done();
     const few=4*Math.PI/180, window=12*Math.PI/180;
     const solved=ladderCornerSetupStops(idx, pv, d).filter(s=>s.targetRad>radAtCross && s.targetRad<=radAtCross+window)
         .sort((a,b)=>a.targetRad-b.targetRad)[0];
     let rad=solved ? solved.targetRad : radAtCross+few;
     ladderRestore(snap0);
-    if (!ladderSwingTo(idx, pv, d, rad)){ ladderRestore(snap0); rad=radAtCross+few; if (!ladderSwingTo(idx, pv, d, rad)) return done(); }
+    if (!ladderSwingTo(idx, pv, d, rad)){ ladderRestore(snap0); rad=radAtCross+few; if (!ladderSwingTo(idx, pv, d, rad)) return yield* done(); }
     ladderRestore(snap0); G.active=origActive;
     G.cornerBook[idx]={ at:2, pivotIdx:pv, dir:d, crossFoot:B, firstDeg:bk.firstDeg, secondDeg:rad*180/Math.PI, crossDeg:radAtCross*180/Math.PI, solved:!!solved };
     return { pivotIdx:pv, dir:d, targetRad:rad };
@@ -4681,22 +4705,24 @@ function ladderRandomPlan(idx){
 // first move (G is rebuilt every game); a caller that has already set G.cornerOpening[idx] (the
 // trainer's --cornerOpening dial) keeps its choice. L1-L6 never know the line.
 const CORNER_OPENING_MIN_LEVEL = 7, CORNER_OPENING_P = 0.5;
-function ladderPlanFor(levelIdx, idx){
+function ladderPlanFor(levelIdx, idx){ return drainPlan(ladderPlanForGen(levelIdx, idx)); }
+function* ladderPlanForGen(levelIdx, idx){
     const def=AI_LADDER[levelIdx]; if (!def) return null;
     if (!G.cornerOpening) G.cornerOpening=[null,null];
     if (G.cornerOpening[idx]==null) G.cornerOpening[idx] = levelIdx+1 >= CORNER_OPENING_MIN_LEVEL && Math.random() < CORNER_OPENING_P;
     if (G.cornerOpening[idx] && !(G.cornerDone && G.cornerDone[idx]))
-        return ladderPlanCorner(idx, def.w && def.w.zone ? def.w : CORNER_CHOICE_W, def.o||{}, () => ladderPlanRung(def, idx));
-    return ladderPlanRung(def, idx);
+        return yield* ladderPlanCornerGen(idx, def.w && def.w.zone ? def.w : CORNER_CHOICE_W, def.o||{}, () => ladderPlanRungGen(def, idx));
+    return yield* ladderPlanRungGen(def, idx);
 }
-function ladderPlanRung(def, idx){
+function ladderPlanRung(def, idx){ return drainPlan(ladderPlanRungGen(def, idx)); }
+function* ladderPlanRungGen(def, idx){
     if (def.noise && Math.random()<def.noise) return ladderRandomPlan(idx);
     if (def.kind==='l1') return ladderL1Plan(idx);
-    if (def.kind==='builtin') return def.brain==='master' ? aiChoosePlanMaster(idx, def.mw) : ladderDumbPlan(idx);
-    if (def.kind==='p3') return ladderPlan3(idx, def.w, def.o);
-    if (def.kind==='opp') return ladderPlanOppModel(idx, def.w, def.o);
-    if (def.kind==='opp2') return ladderPlan13(idx, def.w, def.o);
-    return ladderSampledPlan(idx, def.w, def.o);
+    if (def.kind==='builtin') return def.brain==='master' ? yield* aiChoosePlanMasterGen(idx, def.mw) : ladderDumbPlan(idx);
+    if (def.kind==='p3') return yield* ladderPlan3Gen(idx, def.w, def.o);
+    if (def.kind==='opp') return yield* ladderPlanOppModelGen(idx, def.w, def.o);
+    if (def.kind==='opp2') return yield* ladderPlan13Gen(idx, def.w, def.o);
+    return yield* ladderSampledPlanGen(idx, def.w, def.o);
 }
 
 // ===================== Hidden mode (#nn): a trained checkpoint as the AI brain =====================
@@ -5128,17 +5154,100 @@ function nnPlanForGameTimed(idx, temperature, timeMs, model, keepForDepth, polic
     }
 }
 
+// ---------- Thinking without stopping the world ----------
+// The top of the ladder searches for the better part of a second, and a search is straight-line
+// JavaScript: while it ran the page WAS that search. No frame was drawn, so the camera did not
+// drift, the board did not breathe, and a controller might as well have been unplugged -- the
+// opponent's "thinking" was a frozen photograph. The searches are therefore written as generators
+// that yield between root candidates and between the opponent's replies (see ladderPlan3Gen and
+// friends), and in a live match the driver below runs one a slice at a time between frames.
+//
+// Everywhere without a frame loop to lean on -- the lab's model-vs-model games, the trainer's
+// extracted engine, the headless tests -- the plain function is the same generator drained in one
+// go, so not one move differs from before.
+function drainPlan(gen){ let r; do { r = gen.next(); } while (!r.done); return r.value; }
+// A search scribbles all over G: it walks pieces round, pins feet, flips whose turn it is, and
+// rolls back as it goes. A frame drawn in the middle of that would show the board mid-daydream --
+// so the driver parks the REAL position before handing the frame back, and puts the search's own
+// working position back before letting it continue. Nothing inside the search can tell it was
+// interrupted, which is what lets this stay a mechanical change to the loops and nothing more.
+function aiSearchState(){
+    return { snap: takeSnap(), active: G.active, pinned: G.pinned, pivot: G.pivot, handle: G.handle,
+             ptrAngle: G.ptrAngle, turnDir: G.turnDir, crossings: G.crossings, atLimit: G.atLimit,
+             netRad: G.netRad, contact: G.contact, justCrossed: G.justCrossed,
+             // pinFoot writes these too, and a search pins a foot for every candidate it tries
+             turnSnap: G.snap, limitReason: G.limitReason, pushContact: G.pushContact };
+}
+function aiSearchRestore(st){
+    G.pieces.forEach((p,i)=>{ p.x=st.snap[i].x; p.y=st.snap[i].y; p.rot=st.snap[i].rot; });
+    G.active=st.active; G.pinned=st.pinned; G.pivot=st.pivot; G.handle=st.handle; G.ptrAngle=st.ptrAngle;
+    G.turnDir=st.turnDir; G.crossings=st.crossings; G.atLimit=st.atLimit; G.netRad=st.netRad;
+    G.contact=st.contact; G.justCrossed=st.justCrossed;
+    G.snap=st.turnSnap; G.limitReason=st.limitReason; G.pushContact=st.pushContact;
+}
+let aiSearch = null, aiSearchGuard = null;
+const AI_SLICE_MS = 6;          // at most this long in any one frame, so 60Hz survives a deep think
+const AI_SEARCH_GUARD_MS = 8000;   // frames stopped (hidden tab, lost context): finish it and play anyway
+function stepAiSearch(){
+    if (!aiSearch) return;
+    const job = aiSearch;
+    // The position it is thinking about has gone -- the game ended, the turn passed, the match was
+    // left. Drop the search; the board is already the real one (every slice ends parked).
+    if (!G || G.over || G.active !== aiIdx) { cancelAiSearch(); return; }
+    // Paused, it simply keeps its place: nothing is waiting on the answer, and throwing the work
+    // away would mean starting the think again from nothing when the player comes back.
+    if (window.tauDesktop && window.tauDesktop.paused) return;
+    if (job.mid) aiSearchRestore(job.mid);            // back onto the board the search was standing on
+    const t0 = performance.now();
+    let r;
+    do { r = job.gen.next(); } while (!r.done && performance.now() - t0 < AI_SLICE_MS);
+    if (!r.done) { job.mid = aiSearchState(); aiSearchRestore(job.truth); return; }
+    aiSearch = null; clearTimeout(aiSearchGuard); aiSearchGuard = null;
+    aiSearchRestore(job.truth);
+    job.done(r.value);
+}
+function cancelAiSearch(){
+    if (!aiSearch) return;
+    aiSearch = null; clearTimeout(aiSearchGuard); aiSearchGuard = null;
+}
+// rAF does not run in a hidden tab, and a half-finished search would sit there until the window
+// came back. Past this the remainder is drained in one go and the move is played as normal.
+function finishAiSearchNow(){
+    if (!aiSearch) return;
+    // A paused match is not a stalled one -- wait it out rather than playing a move into a menu.
+    if (window.tauDesktop && window.tauDesktop.paused) {
+        aiSearchGuard = setTimeout(finishAiSearchNow, AI_SEARCH_GUARD_MS); return;
+    }
+    const job = aiSearch; aiSearch = null; aiSearchGuard = null;
+    if (job.mid) aiSearchRestore(job.mid);
+    const plan = drainPlan(job.gen);
+    aiSearchRestore(job.truth);
+    if (!G || G.over || G.active !== aiIdx) return;
+    job.done(plan);
+}
 function startAiTurn() {
     if (window.tauDesktop && window.tauDesktop.paused) return;
     if (G.over || G.active!==aiIdx) return;
+    if (aiSearch) { stepAiSearch(); return; }   // already thinking about this position: carry on with it
     if (labMode) labApplyBrainFor(aiIdx);   // each side keeps its own brain in a lab game
-    let pivotIdx, dir, target = 0;
     // Ladder games route through the tuned per-level brain, an #nn game routes through the loaded
     // checkpoint, everything else uses the classic difficulty planner. All return the same
     // { pivotIdx, dir, targetRad } the animation plays.
-    const sp = (aiDifficulty === 'nn' && nnModel)
-                 ? (nnDynamic ? nnPlanForGameTimed(aiIdx, nnTemperature, nnTimeMs) : nnPlanForGame(aiIdx, nnTemperature, nnDepth))
-             : (ladderLevel!=null) ? ladderPlanFor(ladderLevel, aiIdx) : searchedPlanFor(aiDifficulty, aiIdx);
+    const gen = (aiDifficulty === 'nn' && nnModel)
+                 ? (function*(){ return nnDynamic ? nnPlanForGameTimed(aiIdx, nnTemperature, nnTimeMs)
+                                                  : nnPlanForGame(aiIdx, nnTemperature, nnDepth); })()
+             : (ladderLevel!=null) ? ladderPlanForGen(ladderLevel, aiIdx) : searchedPlanForGen(aiDifficulty, aiIdx);
+    // The lab runs hundreds of turns behind a menu with nobody watching the board, so it thinks in
+    // one breath as it always has; a real match spreads the think across frames.
+    if (labMode || typeof requestAnimationFrame !== 'function') { aiPlayPlan(drainPlan(gen)); return; }
+    aiSearch = { gen, truth: aiSearchState(), mid: null, done: aiPlayPlan };
+    clearTimeout(aiSearchGuard);
+    aiSearchGuard = setTimeout(finishAiSearchNow, AI_SEARCH_GUARD_MS);
+    stepAiSearch();
+}
+function aiPlayPlan(sp) {
+    if (G.over || G.active!==aiIdx) return;
+    let pivotIdx, dir, target = 0;
     if (sp) { pivotIdx = sp.pivotIdx; dir = sp.dir; target = sp.targetRad; }
     else {
         const plan = aiChoosePlan(aiIdx);
@@ -5778,7 +5887,7 @@ function startGame(aiMode, humanColorIdx, difficulty) {
     if (difficulty !== 'ladder') ladderLevel = null;   // classic AI / online / local game — not a ladder rung
     humanIdx = humanColorIdx===undefined ? 0 : humanColorIdx;
     aiIdx = 1 - humanIdx;
-    clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); cancelAiSearch(); aiAnim = null;
     camCenterFrac = 1; camManualSet = false;   // fresh game starts fully centred
     document.getElementById('menu').style.display = 'none';
     document.getElementById('game').style.display = 'flex';
@@ -5872,7 +5981,7 @@ function coachSimRange(pivotIdx) {
     return { cw, ccw };
 }
 function startCoach() {
-    hideModal(); clearTimeout(gameOverTimer); clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
+    hideModal(); clearTimeout(gameOverTimer); clearTimeout(aiTimer); clearTimeout(aiGapTimer); cancelAiSearch(); aiAnim = null;
     demoStop();
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
     vsAI = false; ladderLevel = null; humanIdx = 0; aiIdx = 1;
@@ -6030,7 +6139,7 @@ function backToMenu() {
     tutorJustPlayed = false; if (typeof tutorEnd === 'function') tutorEnd();
     if (window.tauSteam) window.tauSteam.setStatus('In the menus');   // Steam friends-list presence
     labActive = false;
-    clearTimeout(aiTimer); clearTimeout(aiGapTimer); clearTimeout(coachHoldTimer); aiAnim = null;
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); cancelAiSearch(); clearTimeout(coachHoldTimer); aiAnim = null;
     clearTimeout(coachAnimTimer); document.getElementById('views').classList.remove('animSize');
     replayActive = false; ladderLevel = null; coachActive = false;
     coachFreeGuide = false; coachFreeArc = null; coachGuided = null;   // leave the coach guide behind
@@ -7276,7 +7385,7 @@ function labAutoTurn() {
 function labBenchApply() {
     if (!G) return;
     const hb = labSideCfg[0].type === 'human', hr = labSideCfg[1].type === 'human';
-    clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); cancelAiSearch(); aiAnim = null;
     clearTurn();
     onlineTurnDeadline = null;        // switching sides must not leave an old deadline armed
     labAuto = !hb && !hr;
@@ -7290,7 +7399,7 @@ function labBenchApply() {
 function labTakeBack() {
     const h = labHist.pop();
     if (!h || !G) return;
-    clearTimeout(aiTimer); clearTimeout(aiGapTimer); clearTimeout(gameOverTimer);
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); cancelAiSearch(); clearTimeout(gameOverTimer);
     aiAnim = null; labAuto = false;
     hideModal();
     replayApplyPose(h.pose); G.active = h.active;
@@ -7403,7 +7512,7 @@ function parsePoseCode(str) {
 // recording, game-over) is the ordinary machinery — only the opening position differs.
 function playFromPose(pose, active, humanColorIdx, difficulty) {
     startGame(true, humanColorIdx, difficulty || 'zone');
-    clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); cancelAiSearch(); aiAnim = null;
     replayApplyPose(pose);
     G.active = active;
     clearTurn();
@@ -8459,7 +8568,7 @@ addEventListener('focus', repaintOnReturn);
 function surrender() {
     if (!G || G.over) return;
     if (onlineMatch && onlineMatch.spectator) { backToMenu(); return; }   // "Surrender" = stop watching
-    clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); cancelAiSearch(); aiAnim = null;
     const loserIdx = onlineMatch ? (onlineMatch.myColor === 'blue' ? 0 : 1) : vsAI ? humanIdx : G.active;
     if (onlineMatch) { endOnlineMatch(loserIdx); return; }
     G.over = true; G.winner = 1 - loserIdx;
@@ -10183,6 +10292,9 @@ function animate() {
     // AI swing advances every frame along its eased time-arc (see stepAi) — per-frame real-dt
     // stepping is what keeps both the motion AND the speed-driven sound perfectly smooth.
     if (aiAnim) stepAi(dt);
+    // A deep ladder think is spread over frames (see stepAiSearch): one slice per frame, with the
+    // real board handed back in between, so everything else here carries on while it thinks.
+    if (aiSearch) stepAiSearch();
     if (replayActive) stepReplay(); else recordReplayFrame();
     // Declared in the later "online accounts" script tag, which hasn't run yet for animate()'s
     // very first few frames (same reason onlineMatch needed its own early declaration above) --
@@ -11108,7 +11220,7 @@ function labWatchGame() {
             hideModal(); clearTimeout(gameOverTimer); demoStop();
             if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));
             vsAI = false; ladderLevel = null; labActive = true;
-            clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null;
+            clearTimeout(aiTimer); clearTimeout(aiGapTimer); cancelAiSearch(); aiAnim = null;
             camCenterFrac = 1; camManualSet = false;
             document.getElementById('menu').style.display = 'none';
             document.getElementById('game').style.display = 'flex';
@@ -12509,7 +12621,7 @@ async function enterOnlineMatch(row) {
 }
 async function finishEnterOnlineMatch(row) {
     setPresenceStatus('match');
-    clearTimeout(aiTimer); clearTimeout(aiGapTimer); aiAnim = null; ladderLevel = null;   // a pending AI-while-you-wait move must not fire into the online match
+    clearTimeout(aiTimer); clearTimeout(aiGapTimer); cancelAiSearch(); aiAnim = null; ladderLevel = null;   // a pending AI-while-you-wait move must not fire into the online match
     hideModal();
     demoStop();
     if (renderer) document.getElementById('views').appendChild(document.getElementById('view3d'));

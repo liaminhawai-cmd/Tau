@@ -149,3 +149,19 @@ test('the desktop Google flow opens the system browser and carries the code back
   appEvents['before-quit']();
   await assert.rejects(fetchBack(third.redirectUri),/ECONNREFUSED/);
 });
+
+test('the Steam window opens full screen, and says so whenever that changes',async()=>{
+  const {windows}=await loadMain();
+  const win=windows[0];
+  assert.equal(win.options.fullscreen,true,'the game is a game from the first frame, not a window on a desktop');
+  assert.equal(win.options.fullscreenable,true,'and F11 can still leave it');
+  // Whatever moved the window in or out of fullscreen -- F11, the Settings switch, the window
+  // manager -- the page is told, so the remembered setting is the one the player last chose.
+  const sent=[];
+  win.webContents.send=(...a)=>sent.push(a);
+  win.fullscreen=false;
+  win.events['leave-full-screen']();
+  win.fullscreen=true;
+  win.events['enter-full-screen']();
+  assert.deepEqual(sent,[['desktop:fullscreen-changed',false],['desktop:fullscreen-changed',true]]);
+});

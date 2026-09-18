@@ -23,15 +23,35 @@ const SEEDS = [
   'angInSpan', 'nearLineIds', 'lineDistOf', 'lineSideOf', 'LINE_INTERSECTIONS',
 ];
 
+// A copy of one definition's text with every nested (bracketed) stretch, string and comment blanked
+// out, so a scan can see only what is written at the definition's own depth.
+function topLevelMask(s) {
+  let out = '', depth = 0, inStr = null, inCom = null;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i], c2 = s.substr(i, 2);
+    const keep = ch => { out += depth === 0 ? ch : ' '; };
+    if (inCom === '//') { if (c === '\n') { inCom = null; out += ' '; } else out += ' '; continue; }
+    if (inCom === '/*') { out += ' '; if (c2 === '*/') { inCom = null; out += ' '; i++; } continue; }
+    if (inStr) { out += ' '; if (c === '\\') { out += ' '; i++; } else if (c === inStr) inStr = null; continue; }
+    if (c2 === '//' || c2 === '/*') { inCom = c2; out += '  '; i++; continue; }
+    if (c === "'" || c === '"' || c === '`') { inStr = c; out += ' '; continue; }
+    if (c === '{' || c === '(' || c === '[') { keep(c); depth++; continue; }
+    if (c === '}' || c === ')' || c === ']') { depth--; keep(c); continue; }
+    keep(c === '\n' ? '\n' : c);
+  }
+  return out;
+}
 function topLevelDefs(src) {
   // top-level defs in index.html sit at column 0; capture each one's full text by brace/paren
   // balancing (const/let run to the first ';' at depth 0 — handles multiline object and IIFE
   // initializers like LINE_INTERSECTIONS)
   const defs = [];
-  const re = /^(function|class|const|let)\s+([A-Za-z_$][\w$]*)/gm;
+  // `function*` counts as a function: the ladder's searches are generators (see drainPlan in
+  // index.html) and a scanner that skipped them left every sync wrapper calling into nothing.
+  const re = /^(function\s*\*?|class|const|let)\s+([A-Za-z_$][\w$]*)/gm;
   let m;
   while ((m = re.exec(src))) {
-    const kind = m[1], start = m.index;
+    const kind = m[1].startsWith('function') ? 'function' : m[1], start = m.index;
     let i = start, depth = 0, end = -1, inStr = null, inCom = null;
     for (; i < src.length; i++) {
       const c = src[i], c2 = src.substr(i, 2);
@@ -53,8 +73,14 @@ function topLevelDefs(src) {
     // register every name a multi-declarator line introduces (let a = 1, b = 2;)
     const names = [m[2]];
     if (kind === 'const' || kind === 'let') {
-      const flat = text.replace(/\n/g, ' ');
-      const extra = flat.match(/,\s*([A-Za-z_$][\w$]*)\s*=/g) || [];
+      // ...but only the ones in THIS declaration list. Read off the raw text, the pattern also
+      // matched every `, x =` nested inside an initializer -- and a top-level IIFE-initialized
+      // const (`const FALL_HULL_LOCAL = (() => { const a = 1, out = []; ... })();`) then claimed
+      // ordinary local names like `out` and `u` as its own. Any engine function that happened to
+      // use one of those words as a variable pulled the whole IIFE into the closure, where it ran
+      // at eval time and died on the three.js it builds. Mask everything nested first, so only
+      // declarators at the declaration's own depth can register a name.
+      const extra = topLevelMask(text).match(/,\s*([A-Za-z_$][\w$]*)\s*=/g) || [];
       for (const e of extra) names.push(e.replace(/[,=\s]/g, ''));
     }
     defs.push({ names, text, pos: start });

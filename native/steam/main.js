@@ -140,6 +140,12 @@ function createWindow() {
     backgroundColor: '#101410',
     autoHideMenuBar: true,
     fullscreenable: true,
+    // A game bought on Steam opens as a game, not as a window on a desktop: full screen from the
+    // first frame, so there is never a moment of looking at a title bar. F11 and the Fullscreen
+    // switch in Settings both still work, and a player who turns it off is remembered -- the page
+    // asks for a window back as it loads (see presentation.js), which is why the size above still
+    // matters: it is what it drops back to.
+    fullscreen: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -162,6 +168,7 @@ function createWindow() {
       win.setFullScreen(!win.isFullScreen());
       event.preventDefault();
     }
+
     // F2 flips between the desktop game and the six-board premium showcase (steam.html),
     // from either side — the showcase's own "full game →" link comes back here too.
     if (input.key === 'F2') {
@@ -171,6 +178,12 @@ function createWindow() {
       event.preventDefault();
     }
   });
+
+  // However fullscreen changed -- F11, the Settings switch, the window manager -- the page hears
+  // about it, so the remembered setting is the one the player last actually chose.
+  const tellPage = () => { try { win.webContents.send('desktop:fullscreen-changed', win.isFullScreen()); } catch (e) {} };
+  win.on('enter-full-screen', tellPage);
+  win.on('leave-full-screen', tellPage);
 
   win.on('closed', endPendingAuth);   // never leave a loopback listener behind
 

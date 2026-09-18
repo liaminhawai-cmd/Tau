@@ -198,7 +198,7 @@
     commit:'Enter', cancel:'Backspace', shrink:'[', grow:']' };
   const settings = { level:4, colour:0, quality:'balanced', board:'walnut', padScheme:'triggers', padBrand:'auto',
     invertCamY:false, keys:{...DEFAULT_KEYS}, rayTrace:false,
-    reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches, haptics:true };
+    reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches, haptics:true, fullscreen:true };
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     if (saved.keys && typeof saved.keys === 'object')
@@ -209,13 +209,23 @@
     if (BOARD_FINISHES.some(b => b.id === saved.board) && isUnlocked(saved.board)) settings.board = saved.board;
     if (PAD_SCHEMES.includes(saved.padScheme)) settings.padScheme = saved.padScheme;
     if (['auto','xbox','playstation','nintendo','generic'].includes(saved.padBrand)) settings.padBrand = saved.padBrand;
-    for (const k of ['reducedMotion','haptics','invertCamY','rayTrace']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
+    for (const k of ['reducedMotion','haptics','invertCamY','rayTrace','fullscreen']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
     settings.rayTrace = settings.quality === 'ultra';   // one switch, not two that can disagree
   } catch (_) {}
   const finish = () => BOARD_FINISHES.find(b => b.id === settings.board) || BOARD_FINISHES[0];
   // Relative luminance of a #rrggbb, against the same 0.5 threshold index.html's boardIsPale uses.
   const isPale = hex => { const n = parseInt(hex.slice(1), 16);
     return (0.2126*((n>>16)&255) + 0.7152*((n>>8)&255) + 0.0722*(n&255)) / 255 > 0.5; };
+  // The Steam window opens full screen (native/steam/main.js) so the game is a game from the first
+  // frame. Only the player who turned that off has anything to do here: ask for the window back as
+  // the page comes up, rather than making everyone else watch a title bar appear and then leave.
+  if (window.tauSteam && window.tauSteam.setFullscreen && !settings.fullscreen)
+    try { window.tauSteam.setFullscreen(false); } catch (_) {}
+  if (window.tauSteam && window.tauSteam.onFullscreenChange)
+    try { window.tauSteam.onFullscreenChange(value => {
+      settings.fullscreen = value; saveSettings();
+      if ($('desktopFullscreen')) $('desktopFullscreen').checked = value;
+    }); } catch (_) {}
   function saveSettings() {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
     root.classList.toggle('desktop-reduced-motion', settings.reducedMotion);
@@ -889,7 +899,9 @@
     $('desktopHaptics').onchange = e => { settings.haptics=e.target.checked; saveSettings(); };
     if (fullscreen) {
       window.tauSteam.isFullscreen().then(value => { if($('desktopFullscreen')) $('desktopFullscreen').checked=value; }).catch(() => {});
-      $('desktopFullscreen').onchange = e => window.tauSteam.setFullscreen(e.target.checked);
+      // Remembered, so the answer survives a restart: the window is born full screen and the page
+      // asks for it back only if this says the player wanted otherwise.
+      $('desktopFullscreen').onchange = e => { settings.fullscreen=e.target.checked; saveSettings(); window.tauSteam.setFullscreen(e.target.checked); };
     }
   }
   // Whatever the sheet's buttons start, the desktop has to notice: it tracks whose match is on
@@ -1843,6 +1855,46 @@
     if (gc && gc.fov) distance *= Math.tan(19*Math.PI/180) / Math.tan(gc.fov*Math.PI/360);
     outPos.set(tx+Math.sin(yaw)*distance*Math.cos(elev),ty+distance*Math.sin(elev),tz+Math.cos(yaw)*distance*Math.cos(elev));
   }
+  // WHILE THE OTHER ONE IS THINKING. Between your turns the match camera is nailed to one bearing,
+  // so the opponent's move plays out as a still photograph of a board nobody is touching. It now
+  // drifts: a slow, shallow orbit that fades in when the turn leaves you and fades back out the
+  // moment it is yours again. It is deliberately too slow and too small to be mistaken for your own
+  // input -- about nine degrees either side over the better part of half a minute -- and it turns
+  // around whatever the camera is already looking at, so a player who has placed the view keeps it
+  // and simply gets a living shot instead of a photograph. Two incommensurate rates (yaw and a
+  // shallower rise and fall) so it never quite repeats a pass.
+  let driftAmt = 0, driftPhase = 0;
+  const DRIFT_YAW = 0.16, DRIFT_ELEV = 0.045, DRIFT_RATE = 0.30;
+  const driftOff = new THREE.Vector3(), driftSph = new THREE.Spherical();
+  // "Not yours to touch, and nobody is sitting here waiting for it" -- the same question
+  // index.html's inputBlocked asks, minus the pause and menu parts, which are not somebody thinking.
+  // A local 1v1 never drifts: both turns belong to someone in the room with their hands on it.
+  function theirTurn() {
+    if (!inMatch() || typeof G === 'undefined' || !G || G.over) return false;
+    if (typeof replayActive !== 'undefined' && replayActive) return false;
+    if (typeof vsAI !== 'undefined' && vsAI) return G.active === aiIdx;
+    if (typeof onlineMatch !== 'undefined' && onlineMatch)
+      return typeof myOnlineTurnNow === 'function' ? !myOnlineTurnNow() : false;
+    return false;
+  }
+  function easeDrift(dt) {
+    const want = theirTurn() && !settings.reducedMotion ? 1 : 0;
+    // Slower in than out: it should creep in without being noticed, and be gone by the time you
+    // have reached for a foot.
+    driftAmt += (want - driftAmt) * (1 - Math.exp(-dt * (want ? 0.8 : 2.6)));
+    if (driftAmt > 1e-3) driftPhase += dt * DRIFT_RATE;
+    else { driftAmt = 0; driftPhase = 0; }
+  }
+  function applyDrift(pos, target) {
+    if (driftAmt <= 1e-3) return;
+    driftOff.copy(pos).sub(target);
+    driftSph.setFromVector3(driftOff);
+    driftSph.theta += driftAmt * DRIFT_YAW * Math.sin(driftPhase);
+    driftSph.phi = Math.max(.2, Math.min(Math.PI/2 - .05,
+      driftSph.phi - driftAmt * DRIFT_ELEV * Math.sin(driftPhase*0.61 + 1.3)));
+    driftOff.setFromSpherical(driftSph);
+    pos.copy(target).add(driftOff);
+  }
   const MANUAL_PULL = 0.2;   // how far a player-placed view leans towards the game's own framing
   // COMING ROUND TO WATCH IT GO. A fall moved the camera's target and pulled it back, but never its
   // BEARING -- so a piece shoved over the far rim went down on the opposite side of the board from
@@ -1872,6 +1924,7 @@
     // The corner layout renders the whole window and aims the camera at its solved tile with a
     // view offset (index.html's applyCornerViewOffset); anywhere else this clears a stale one.
     if (typeof applyCornerViewOffset === 'function') applyCornerViewOffset(camera); else camera.clearViewOffset();
+    easeDrift(dt);              // the opponent's-turn orbit fades in and out whether or not it is used
     if(camDragging) return true;
     // A FIFTH OF THE WAY, AND NO FURTHER. Once the player had placed the camera this went completely
     // passive -- the view never moved again, however far the game wandered off the side of it. The
@@ -1888,6 +1941,12 @@
       cameraGoal.lerp(camManualPos, 1 - MANUAL_PULL);
       targetGoal.lerp(camManualTgt, 1 - MANUAL_PULL);
     }
+    // ...and then the whole settled pose turns, at full strength whether the view is the game's or
+    // the player's own. Applied here rather than inside desiredPose so a manual view drifts too:
+    // leaning a fifth of the way towards a drifting pose would be a fifth of a drift, which is
+    // nothing. camManualPos is never written from here, so there is no feedback -- when the turn
+    // comes back the orbit unwinds to exactly the pose the player left.
+    if (!falling) applyDrift(cameraGoal, targetGoal);
     // In the corner layout the pose tracks the tile, and the tile moves under the player's drag:
     // ease briskly there so the dish is not still zooming into place a second after they let go.
     // The menu and the ordinary match keep the slower, calmer settle.
@@ -1908,6 +1967,7 @@
     lastRumble=performance.now();
     try { const p=pad.vibrationActuator.playEffect('dual-rumble',{duration:65,weakMagnitude:strength,strongMagnitude:strength*.35}); p?.catch(()=>{}); } catch(_) {}
   }
+  let wasAtLimit = false;   // the jam buzzes on arrival; see swing()
   function canPlay() { return inMatch() && !dialogOpen() && !$('htpFull') && !paused && !G.over && !replayActive && !inputBlocked() && !aiAnim; }
   function chooseFoot(i) {
     if(!canPlay()) return;
@@ -1917,12 +1977,12 @@
   }
   function pinOrCommit() {
     if(!canPlay()) return;
-    if(G.pinned===null){ pinFoot(chosenFoot); playSelectClick(); rumble(); if(onlineMatch){pendingKeyframes=[];lastKeyframeT=0;} render(); }
+    if(G.pinned===null){ pinFoot(chosenFoot); playSelectClick(); rumble(); wasAtLimit=false; if(onlineMatch){pendingKeyframes=[];lastKeyframeT=0;} render(); }
     else if(G.handle!==null){ onUp(); rumble(.12); }
   }
   function cancelSwing() {
     if(!canPlay() || G.pinned===null) return;
-    restoreSnap(); G.pinned=null; G.pivot=null; G.handle=null; G.ptrAngle=null; lastCrossings=0;
+    restoreSnap(); G.pinned=null; G.pivot=null; G.handle=null; G.ptrAngle=null; lastCrossings=0; wasAtLimit=false;
     if(onlineMatch){pendingKeyframes=[];lastKeyframeT=0;}
     render();
   }
@@ -1957,6 +2017,14 @@
     camOffset.setFromSpherical(camSpherical);
     camera.position.copy(controls.target).add(camOffset);
     camera.lookAt(controls.target);
+    // AND SAY WHERE IT ENDED UP. A stick claims the camera the same way a mouse drag does, and the
+    // drag records the pose it left behind as well as raising the flag. This only raised the flag.
+    // That cost nothing while a claimed camera was simply frozen -- but now that a claimed camera
+    // eases a fifth of the way towards the game's framing, the pose it eases FROM has to be real:
+    // left stale, every frame pulled the camera back to wherever the mouse last let go of it, which
+    // on a pad that has never been touched by a mouse is the middle of the board. The stick nudged
+    // and the pull undid it, over and over, and the camera sat there not moving at all.
+    camManualPos.copy(camera.position); camManualTgt.copy(controls.target);
     camManualSet=true;
   }
   // Both input styles need the same preamble: the first movement of a turn adopts a foot as the
@@ -1972,7 +2040,12 @@
     if(!canPlay() || G.pinned===null || Math.abs(axis)<dead) return;
     beginSwing();
     boardMove(G.ptrAngle+axis*.72*dt);
-    if(G.atLimit) rumble(.08);
+    // ONE buzz when the piece arrives at the jam. This used to fire on every frame the swing was
+    // still being asked for at the limit, which the 120ms gate turned into eight pulses a second
+    // for as long as a finger stayed on the trigger -- a controller held in a near-continuous
+    // rumble, which on a wireless pad is the fastest way there is to flatten its batteries.
+    if(G.atLimit && !wasAtLimit) rumble(.08);
+    wasAtLimit = G.atLimit;
   }
   // Push the right stick left or right and the piece turns that way, faster the further it goes.
   // This replaced a dial that mapped the stick's BEARING onto the piece one-to-one: turning your
@@ -2034,7 +2107,7 @@
     if(padBrandShown && $('desktopPadDiagram') && padBrand()!==padBrandShown) drawPad();   // the sheet follows the pad that is plugged in
     if($('desktopPadSeen')) drawPadSeen();
     if($('desktopQualityNote')) drawQualityNote();
-    if(lastActive!==G.active){lastActive=G.active;chosenFoot=0;heldLeft=heldRight=false;lastCrossings=0;}
+    if(lastActive!==G.active){lastActive=G.active;chosenFoot=0;heldLeft=heldRight=false;lastCrossings=0;wasAtLimit=false;}
     // The seats belong to the match that chose them, and nothing else: back on the menu (or in any
     // match that never asked) they are empty and every input is one player's.
     if(!inMatch() && (seats[0]||seats[1])) seats=[null,null];
@@ -2157,7 +2230,8 @@
     get progress(){return {...progress};},
     recordResult,
     debugDetailMode(){ return detailMode; },
-    resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, fallGravity, renderFrame,
+    debugDrift(){ return driftAmt; },
+    resize:layout, updateCamera, orbitCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, fallGravity, renderFrame,
     get rayTrace(){return settings.rayTrace;},
     set rayTrace(v){ settings.rayTrace=!!v; settings.quality = settings.rayTrace ? 'ultra' : (settings.quality==='ultra'?'high':settings.quality);
       saveSettings(); if($('desktopQuality')) $('desktopQuality').value=settings.quality;

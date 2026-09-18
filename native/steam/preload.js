@@ -8,6 +8,10 @@ contextBridge.exposeInMainWorld('tauSteam', {
   status: () => ipcRenderer.invoke('steam:status'),
   isFullscreen: () => ipcRenderer.invoke('desktop:fullscreen'),
   setFullscreen: (value) => ipcRenderer.invoke('desktop:fullscreen', !!value),
+  // F11 belongs to the window, not to the page, so the page is told when it has been pressed --
+  // otherwise the remembered Fullscreen setting and the window it describes drift apart.
+  onFullscreenChange: (fn) => ipcRenderer.on('desktop:fullscreen-changed',
+                                             (_e, value) => { try { fn(!!value); } catch (_) {} }),
   quit: () => ipcRenderer.invoke('desktop:quit'),
   // Unlock an achievement by its Steamworks API name (idempotent) -> bool
   unlock: (name) => ipcRenderer.invoke('steam:unlock', name),
