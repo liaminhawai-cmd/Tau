@@ -18,6 +18,14 @@ before that, and they still describe the lemmas the certificate rests on. Sectio
 sweep, with the exposed foot's radius bounded below by 67.193u against a 67.167u
 rim. Two thousand sampled poses, zero containment violations.
 
+One number in that sentence invites a double take, so it is worth disarming here.
+The box minimum at substep 85 is 67.1930u, and the CENTRE's radius at substep 84
+is 67.1934u. They are not the same quantity and the agreement is a coincidence:
+the centre advances 0.0923u a substep, and the enclosure's foot-radius slack at
+substep 85 is 0.0927u. Substep 84 does not certify -- its bound is 67.158, nine
+thousandths under the rim -- which is why the certificate needs 85 while the
+centre leaves at 84.
+
 ## 1. What the measurement said
 
 Before proving anything I measured what the checker was supposed to bound.

@@ -923,7 +923,11 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
     const minRk = Math.min(...Us.map(st => footBound(qc, st)));
     if (minRk > EDGE) {
       rows.push({ k, deg: +(k * LIM_SUB / DEG).toFixed(2), thrown: true, minR: +minRk.toFixed(3), bbRaw: bb, box: { x: bb.x.map(v => +v.toFixed(3)), y: bb.y.map(v => +v.toFixed(3)), rot: bb.rot.map(v => +(v / DEG).toFixed(3)) } });
-      log(`  thrown at substep ${k} (${(k * LIM_SUB / DEG).toFixed(2)} deg): foot ${jF} radius >= ${minRk.toFixed(3)}u over the whole set, rim ${EDGE}`);
+      // Four decimals, and the centre's own radius beside it. At three the box minimum here reads
+      // 67.193, which is also the CENTRE's radius one substep earlier, to three decimals -- the
+      // centre advances 0.0923u a substep and the box's slack happens to be 0.0927u. Two unrelated
+      // numbers agreeing to 4e-4 looks exactly like an off-by-one and cost a reader a round trip.
+      log(`  thrown at substep ${k} (${(k * LIM_SUB / DEG).toFixed(2)} deg): foot ${jF} radius >= ${minRk.toFixed(4)}u over the whole set (centre ${t.maxFootR.toFixed(4)}u), rim ${EDGE}`);
       return { certified: true, why: null, k, K, rows, minR: minRk, rc: Math.hypot(qc.x + R * Math.cos(qc.rot + jF * 2 * Math.PI / 3), qc.y + R * Math.sin(qc.rot + jF * 2 * Math.PI / 3)), final: { qc, states: Us }, pair, traj, thrownAt: k };
     }
     rows.push({ k, deg: +(k * LIM_SUB / DEG).toFixed(2), pad: +post.pad.toFixed(3), psiN: post.psiN.map(v => +(v / DEG).toFixed(2)), hf: post.hf.map(v => +v.toFixed(3)), rn: post.rn.map(v => +v.toFixed(2)), fPre: fPre.map(v => +v.toFixed(4)), LamC: +LamC.toFixed(4), U: U.map(u => u.map(v => +v.toFixed(5))), Mlen: [0, 1, 2].map(j => +Math.hypot(M[0][j], M[1][j], M[2][j] * R).toFixed(3)), box: { x: bb.x.map(v => +v.toFixed(3)), y: bb.y.map(v => +v.toFixed(3)), rot: bb.rot.map(v => +(v / DEG).toFixed(3)) }, bbRaw: bb, footR: +t.maxFootR.toFixed(3), segs: post.segPairs.map(s => `${s.a},${s.b}`).join(' ') });
