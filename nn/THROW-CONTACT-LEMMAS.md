@@ -229,6 +229,38 @@ where one leg has an event and the other's nearest vertex is 1.4u away. That is
 the candidate explanation for why a small box walks through the first and not the
 second.
 
+Two natural explanations for that contrast are both wrong, which is worth
+recording because it narrows what is left.
+
+**Not the size of the discontinuity.** The closest-point normal's azimuth jumps
+by about the same amount at both: -72.61 to -83.57 degrees at substep 32, and
+-95.32 to -108.34 at 73. Eleven degrees against thirteen. Whatever separates the
+passable crossing from the blocking one, it is not how much normal the enclosure
+has to span. (Measured by the sibling thread, confirmed here.)
+
+**Not the width of the set arriving.** The obvious story is that 40 substeps of
+slow growth leave the set too wide by the time it reaches the second event. The
+set does arrive wider, and it does shrink with the starting box, but the reach
+does not follow:
+
+| starting box | pad at k12 | at k31 (first crossing) | at k71 (before the second) | stops at |
+| --- | --- | --- | --- | --- |
+| +-0.005u | 0.045 | 0.093 | - | 34 |
+| +-0.003u | 0.028 | 0.027 | - | 69 |
+| +-0.002u | 0.019 | 0.019 | 0.042 | 73 |
+| +-0.001u | 0.009 | 0.010 | 0.025 | 73 |
+| +-0.0005u | 0.004 | 0.006 | 0.018 | 74 |
+
+At +-0.0005u the set enters the second event at 0.018u, which is *narrower* than
+the 0.019u that walks straight through the first event at +-0.002u, and it still
+fails. Shrinking the box fourfold from there buys one substep. So the second
+event is not the first event with a fatter set.
+
+What is left is the thing that is actually different about it: two legs have a
+vertex event in the same substep, where at 32 one leg moves and the other's
+nearest vertex is 1.4u away. Whether that needs its own treatment, or is just two
+independent branchings that happen to coincide, is the open question.
+
 The rn sign change was worth ruling out separately as a cause, since the
 enclosure basis is built from the tangential slide, the spin-led tangent and the
 push, and the spin-led direction is the one that would degenerate at rn = 0. It
