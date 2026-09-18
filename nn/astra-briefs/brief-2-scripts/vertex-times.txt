@@ -1,0 +1,6 @@
+  chord pair 3,4 -> 2,4 between sweep 10.33 and 10.67 deg: attacker's leg, vertex phi=22.5 deg
+  chord pair 2,4 -> 1,4 between sweep 24.00 and 24.33 deg: attacker's leg, vertex phi=15.0 deg
+  chord pair 1,4 -> 1,3 between sweep 25.00 and 25.33 deg: victim's leg, vertex phi=30.0 deg
+thrown at sweep 28.33 deg
+in contact 4.00 to 28.33 deg; phiA 25.99 -> 13.31, phiV 36.80 -> 30.00
+walk attacker 5.110u, victim 2.739u; per substep 0.0700u and 0.0375u; chord 3.023u

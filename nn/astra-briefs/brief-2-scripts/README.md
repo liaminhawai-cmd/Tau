@@ -24,3 +24,9 @@ of sweep in contact the contact point walks 5.04u down the attacker's leg and 2.
 victim's, at 0.070u per 1/3-degree substep against a 3.023u chord, so it crosses exactly three
 vertices (attacker phi = 22.5 deg at sweep 10.6, attacker phi = 15.0 at 24.2, victim phi = 30.0
 at 24.4). The checker stops at 12.0 degrees, which is the first of them.
+
+`vertex-times.js` -> `vertex-times.txt`: the vertex crossings traced properly, by watching which
+chord pair holds the global minimum at each 1/3-degree substep rather than by reading a rounded
+arc angle. It corrects the third crossing (victim leg, phi = 30 degrees) from 24.4 to 25.00
+degrees of sweep, and gives the first two as 10.67 and 24.33. The throw-bound thread traced the
+same three independently and agrees.
