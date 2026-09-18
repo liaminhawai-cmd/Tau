@@ -26,12 +26,15 @@ const refDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tau-physics-ref-')), refNN
 fs.mkdirSync(refNN);
 const show = f => cp.execFileSync('git', ['-C', ROOT, 'show', `${REF}:${f}`], { maxBuffer: 1 << 28 });
 fs.writeFileSync(path.join(refDir, 'index.html'), show('index.html'));
-fs.writeFileSync(path.join(refNN, 'contact-law.js'), show('nn/contact-law.js'));
+// the contact law exists only on the certification branches; where either side lacks it, only
+// the engine is compared
+let hasLaw = fs.existsSync(path.join(NN, 'contact-law.js'));
+if (hasLaw) { try { fs.writeFileSync(path.join(refNN, 'contact-law.js'), show('nn/contact-law.js')); } catch (e) { hasLaw = false; } }
 for (const f of ['engine.js', 'opening.js']) fs.copyFileSync(path.join(NN, f), path.join(refNN, f));
 process.on('exit', () => { try { fs.rmSync(refDir, { recursive: true, force: true }); } catch (e) { /* leave it */ } });
 
 const eRef = require(path.join(refNN, 'engine.js')).createEngine(), eNew = require(path.join(NN, 'engine.js')).createEngine();
-const lawRef = require(path.join(refNN, 'contact-law.js')), lawNew = require(path.join(NN, 'contact-law.js'));
+const lawRef = hasLaw && require(path.join(refNN, 'contact-law.js')), lawNew = hasLaw && require(path.join(NN, 'contact-law.js'));
 const { MLP } = require(path.join(NN, 'net.js')), { nnPlanFor } = require(path.join(NN, 'nnai.js'));
 const modelPath = ['best.json', 'value.json'].map(f => path.join(NN, 'models', f)).find(fs.existsSync);
 const net = modelPath ? MLP.fromJSON(JSON.parse(fs.readFileSync(modelPath, 'utf8'))) : null;
@@ -86,7 +89,8 @@ let failed = 0;
   }
 }
 // 3. the contact law's swing, replica and ideal constants
-{
+if (!hasLaw) console.log('contact law: not on this branch, skipped');
+else {
   let n = 0, bad = 0, t1 = 0n, t2 = 0n, pushed = 0;
   for (const K of [lawRef.REPLICA, { ...lawRef.IDEAL, stepDeg: 0.4 }]) for (const p of poses) for (const idx of [0, 1]) for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
     const pieces = [{ x: p[0], y: p[1], rot: p[2] }, { x: p[3], y: p[4], rot: p[5] }], rad = (20 + 60 * rnd()) * Math.PI / 180;
