@@ -816,6 +816,11 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
                 for (let j = 0; j < 3; j++) acc = add(acc, scale(mul(dB[i][j], dev2[j]), LamC));
                 return add(add(acc, mul(lam, da[i])), scale(mul(lam, [-Bm3[i], -Bm3[i]]), LamC));
               });
+              if (process.env.DBGR) {
+                const t1 = [0,1,2].map(i => { let a=[0,0]; for (let j=0;j<3;j++) a=add(a, scale(mul(dB[i][j], dev2[j]), LamC)); return wid(a); });
+                const t2 = [0,1,2].map(i => wid(mul(lam, da[i]))), t3 = [0,1,2].map(i => wid(scale(mul(lam, [-Bm3[i], -Bm3[i]]), LamC)));
+                console.log(`      Rv widths: dB.dq [${t1.map(v=>v.toExponential(2))}] lam.da [${t2.map(v=>v.toExponential(2))}] lam.Bm3 [${t3.map(v=>v.toExponential(2))}]`);
+              }
               cw = matVecIv(Mpi, Rv);
               Un = [add(U[0], cw[0]), add(U[1], cw[1]), add(add(U[2], cw[2]), lam)];
               mA = col(Mp, 2); mB1 = col(Mp, 0); mB2 = col(Mp, 1); linear = true;

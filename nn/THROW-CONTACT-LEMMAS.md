@@ -11,6 +11,13 @@ new and specific, so it is written down here too.
 
 `nn/throw-cert.js` is the checker, `nn/throw-spread.js` the measurement tool.
 
+**Update, later the same day: it closes.** Sections 1 to 7 below are the state
+before that, and they still describe the lemmas the certificate rests on. Section
+8 is what finally made it a proof. At a victim box of +-0.0002u in position and
++-0.002 rad in rotation, every pose is thrown off the board by 28.33 degrees of
+sweep, with the exposed foot's radius bounded below by 67.193u against a 67.167u
+rim. Two thousand sampled poses, zero containment violations.
+
 ## 1. What the measurement said
 
 Before proving anything I measured what the checker was supposed to bound.
@@ -355,3 +362,120 @@ neither is claimed globally: both are stated per chord-rectangle, above and in
 the code, and its own results table grants them for one nonparallel segment pair
 including endpoint clamping. It also says it was never given `throw-cert.js`, so
 none of it is an audit of the checker that exists.
+
+
+## 8. The proof closes
+
+Section 6 named the obstacle: through a chord-vertex park the enclosure grew by a
+constant factor a substep. That diagnosis was right and the factor is measurable.
+Starting the checker from a box of zero width, so that everything it carries is
+its own slack and nothing is the box's, the geometric pad goes:
+
+| substep | 65..72 | 73 | 74 | 75 | 76 | 77 | 78 | 79 | 80 | 81 | 82 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| pad (u) | 0.009..0.012 | 0.019 | 0.032 | 0.033 | 0.038 | 0.045 | 0.052 | 0.061 | 0.073 | 0.110 | refused |
+
+Flat for the whole interior stretch, a step at the crossing, and then a clean
+geometric climb of about 1.4x a substep for as long as the contact is parked. The
+centre is thrown at substep 84.
+
+### The park's push direction is a function of the pose, not an interval
+
+Each substep adds the WIDTH of the push-direction cone to the enclosure, and that
+width is proportional to the enclosure's own size, so the enclosure multiplies.
+The way out is not a tighter interval but a different object. While the contact
+dwells on a vertex the push direction is an exactly differentiable function of
+the pose: the dwelling vertex is a material point of the victim, and the
+attacker's chord is fixed for the substep, so with `Q = Id - a a^T` the whole
+contact is `w = Q(p(q) - A0)` and everything follows by the chain rule.
+
+`parkJacobian()` returns `B = da/dq` at the centre and an enclosure of `B` over
+the box. The linear part then goes into the enclosure's BASIS, Lohner-style:
+where the update used to be
+
+    u_next = u + M^-1 [ Lambda da - v_c ],    da an interval,
+
+it becomes, with `N = Id + Lambda_c B` and `M' = N M`,
+
+    u_next = u + M'^-1 [ Lambda_c dB dq + lambda da - v_c ],
+
+and only the mean-value remainder widens the box. The growth factor falls from
+about 1.4 to 1.11 a substep and the first five parked substeps go nearly flat.
+Reach: substep 82 to 88.
+
+Two details are load-bearing and neither is optional.
+
+**The Jacobian's spread must be an interval evaluation.** The first draft sampled
+the box's eight corners. That samples a nonlinear function; it does not bound it,
+and a remainder built on it is not proved. `build()` is now evaluated in interval
+arithmetic throughout, with the lever taken from the ROTATION interval rather
+than by differencing the vertex box against the hub box, which would invent
+translation uncertainty that is not there.
+
+**Lambda has to stay on its own axis.** `a_c` is the basis's third column, so the
+push magnitude's variation used to be exactly the third coefficient and cost
+nothing. Sending `lambda a_c` through the new basis's inverse smears it over all
+three, and that one detail made the linearised step WORSE than the interval step
+it replaces: substep 76 against 82. Since `a_c = m3` and `N m3 = m3 + Lambda_c B m3`,
+
+    lambda a_c = lambda N m3 - lambda Lambda_c B m3,
+
+so lambda lands on the third axis of the new basis again and only the
+second-order `lambda Lambda_c B m3` is left in the remainder.
+
+Because each state now carries its own basis, two states can no longer be hulled
+in coefficient space: the same `u` means different poses in different frames.
+`mergeStates` re-expresses one onto the other's frame first, and that transform's
+own widening is what the merge cost sees, so states whose frames have diverged
+stay apart on their own account.
+
+### Stop at a certified throw
+
+The claim being proved is that every pose leaves the board, and the board's test
+is the exposed foot's radius against the rim. The moment the worst state's lower
+bound on that radius clears the rim, every pose in the enclosure is off and the
+rest of the sweep proves nothing further. The checker had been asked to survive
+fifty more substeps of a park it had already outlived the purpose of. This was
+the outside review's fifth recommendation and it is plainly right.
+
+### A bug that had been hiding the result
+
+The foot index was being passed as `0.85`. It indexes an array, so
+`feetOf(pose)[0.85]` is `undefined`, the comparison against the rim was against
+`NaN`, and the check silently never ran. Every `--validate` run for a day printed
+`final foot radius min Infinity` in plain view. The foot that leaves the board on
+this seed is foot 1. A check that reports no failures because it never executed
+looks exactly like a check that passes.
+
+### Where it stops now
+
+Certified at +-0.0002u / +-0.002 rad. One size up, +-0.0003u / +-0.003 rad, the
+enclosure runs the whole park at 1.11x and dies at substep 85 -- the throw
+substep itself -- with the foot-radius bound at 67.109u against the 67.167u rim,
+0.058u short, one substep before it would have cleared.
+
+The remaining width is not where the diagnosis above would suggest. Of the three
+terms in the remainder, measured at substeps 80 to 84:
+
+| term | width (u) |
+|---|---|
+| `lambda . da` | 5.2e-3 |
+| `lambda Lambda_c B m3` | 2.6e-3 |
+| `Lambda_c dB . dq` | 1.8e-4 |
+
+The Jacobian's own spread, the thing the linearisation introduced, is the
+smallest of the three by a factor of 29. What dominates is `lambda . da`, the
+product of the push magnitude's range with the direction cone. It cannot be
+linearised the same way: `da` hulls the direction over the whole substep, from
+before the push to after it, while `B` is the pose derivative at one instant, so
+`B . dq` does not enclose it. Tightening it needs either a bound on `B` over the
+swept pre-and-post domain or a correlated treatment of `lambda` and `da`, which
+are not independent -- both are determined by the same pose.
+
+Two further things were fixed on the way and neither moved a reach, so neither is
+the obstacle: the pre-push grouping was merging a parked regime with a
+neighbouring interior one whenever their bearings fell within its 1.5 degree
+window, which dropped the vertex identity and with it the Jacobian; and the
+vertex regime's blanket cone bound, chosen whenever it beats the exact one, was
+not carrying the vertex index, so every box large enough for the blanket to win
+lost the Jacobian too.
