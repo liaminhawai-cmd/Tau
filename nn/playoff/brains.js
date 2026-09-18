@@ -5,6 +5,7 @@ const REPO = process.env.TAU_REPO || path.resolve(__dirname, '..', '..');
 const { createEngine } = require(path.join(REPO, 'nn/engine.js'));
 const { MLP } = require(path.join(REPO, 'nn/net.js'));
 const { nnPlanFor } = require(path.join(REPO, 'nn/nnai.js'));
+const { features } = require(path.join(REPO, 'nn/features.js'));
 let netCache = {};
 function net(file) { if (!netCache[file]) netCache[file] = MLP.fromJSON(JSON.parse(fs.readFileSync(file, 'utf8'))); return netCache[file]; }
 function makeBrain(eng, spec) {
@@ -25,4 +26,4 @@ function loadPose(eng, pose, active, plies) {
   if (g.cornerOpening) { g.cornerOpening = [false, false]; g.cornerDone = [true, true]; }
   if (typeof eng.koReset === 'function') eng.koReset();
 }
-module.exports = { createEngine, makeBrain, loadPose, REPO };
+module.exports = { createEngine, makeBrain, loadPose, features, REPO };

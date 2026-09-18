@@ -2,7 +2,7 @@
 const fs = require('fs');
 const prefix = process.argv[2] || 'playoff-L8';
 const rows = [];
-for (const f of fs.readdirSync('.').filter(f => f.startsWith(prefix + '-w') && f.endsWith('.jsonl')))
+for (const f of fs.readdirSync('.').filter(f => f.startsWith(prefix + '-w') && f.endsWith('.jsonl') && !f.endsWith('.data.jsonl')))
   for (const l of fs.readFileSync(f, 'utf8').split('\n')) if (l) rows.push(JSON.parse(l));
 const movers = process.env.MOVERS ? process.env.MOVERS.split(',') : [...new Set(rows.map(r => r.mover))];
 const score = r => r.res === 'win' ? 1 : r.res === 'draw' ? 0.5 : 0;
