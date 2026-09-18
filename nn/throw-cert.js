@@ -526,10 +526,11 @@ function analyse(box, att, pairWant) {
       // widen faster than linearly once the box is large.
       //
       // Take whichever is narrower. Both enclose, so the narrower one is the valid one to carry.
-      let exactSP = null;
+      let exactSP = null, kvOut = null;
       {
         let kv = null, vBx = null, ft = null;
         if (side === 'V') { kv = vp === V0 ? sg.b : sg.b + 1; vBx = vertexBoxOf(box, P.j, kv); ft = footOnFixedSeg(vBx, oth0, oth1); }
+        if (side === 'V') kvOut = kv;
         else { kv = -1 - (vp === A0 ? sg.a : sg.a + 1); ft = footOnMovingSeg(vp, vertexBoxOf(box, P.j, sg.b), vertexBoxOf(box, P.j, sg.b + 1)); if (ft) vBx = ft.foot; }
         if (ft) {
           const hor2v = add(sq(ft.w[0]), sq(ft.w[1]));
@@ -555,7 +556,11 @@ function analyse(box, att, pairWant) {
         const psiN2 = [psiC - dpsi, psiC + dpsi], hf2 = [Math.max(0.01, hfC - phi), Math.min(1, hfC + phi)];
         const aB = { x: [pA.x - pad, pA.x + pad], y: [pA.y - pad, pA.y + pad], h: [pA.h - pad, pA.h + pad] };
         const vB = { x: [pV.x - pad, pV.x + pad], y: [pV.y - pad, pV.y + pad], h: [pV.h - pad, pV.h + pad] };
-        blanketSP = { a: sg.a, b: sg.b, aBox: aB, vBox: vB, psiN: psiN2, hf: hf2, fanA, fanV, dmax, cth, vertex: side,
+        // carries vk even though it is the BLANKET bound: the vertex identity and the width of the
+        // cone are independent facts, and the park's Jacobian only needs the identity. Without this,
+        // every box big enough for the blanket to beat the exact bound silently lost the linearised
+        // step and fell back to the interval push.
+        blanketSP = { a: sg.a, b: sg.b, aBox: aB, vBox: vB, psiN: psiN2, hf: hf2, fanA, fanV, dmax, cth, vertex: side, vk: kvOut,
           rn: dotCone(neg(sub(vB.y, box.y)), sub(vB.x, box.x), psiN2),
           why: `(${sg.a},${sg.b}) VERTEX ${side} cone ${(2 * dpsi / DEG).toFixed(2)}deg` };
       }
@@ -746,11 +751,20 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
       // neighbouring regime's pairs and the cone grows every round until it is thirty degrees wide.
       // Keyed on (attacker chord, victim chord, which endpoint dwells) each regime keeps the exact,
       // hair-thin cone that Lemma 2 gives it.
+      // A PARKED REGIME IS NEVER MERGED WITH A NEIGHBOUR. The azimuth window alone put the parked
+      // entry and an interior one into the same group whenever their bearings happened to sit within
+      // it, and the group then lost its vertex identity (g.vk went null), so the park's Jacobian was
+      // dropped and the substep fell back to the interval push. That is what took the cone to 51
+      // degrees at substep 74 one box size up. Keying the window on the dwelling vertex as well
+      // costs one more state and keeps the linearised step alive. Branching is always sound here:
+      // every pose's pre-push contact is described by some segPair, and each segPair joins exactly
+      // one group, so the groups still cover the set -- it is the HULL that loses.
       const groups = [];
       for (const sp of pre.segPairs) {
-        const g = groups.find(gr => Math.abs(gr.seed - (sp.psiN[0] + sp.psiN[1]) / 2) < 1.5 * DEG);
-        if (g) { g.psiN = [Math.min(g.psiN[0], sp.psiN[0]), Math.max(g.psiN[1], sp.psiN[1])]; g.rn = hull(g.rn, sp.rn); g.hf = hull(g.hf, sp.hf); if (!(sp.exact && sp.vertex === 'V' && sp.vk === g.vk)) g.vk = null; }
-        else groups.push({ psiN: sp.psiN.slice(), rn: sp.rn.slice(), hf: sp.hf.slice(), seed: (sp.psiN[0] + sp.psiN[1]) / 2, vk: (sp.exact && sp.vertex === 'V') ? sp.vk : null });
+        const spvk = (sp.vertex === 'V' && sp.vk !== null && sp.vk !== undefined) ? sp.vk : null;
+        const g = groups.find(gr => gr.vk === spvk && Math.abs(gr.seed - (sp.psiN[0] + sp.psiN[1]) / 2) < 1.5 * DEG);
+        if (g) { g.psiN = [Math.min(g.psiN[0], sp.psiN[0]), Math.max(g.psiN[1], sp.psiN[1])]; g.rn = hull(g.rn, sp.rn); g.hf = hull(g.hf, sp.hf); }
+        else groups.push({ psiN: sp.psiN.slice(), rn: sp.rn.slice(), hf: sp.hf.slice(), seed: (sp.psiN[0] + sp.psiN[1]) / 2, vk: spvk });
       }
       for (const g of groups) { g.n = [cosRange(g.psiN), sinRange(g.psiN)]; g.G = [mul(g.hf, g.n[0]), mul(g.hf, g.n[1]), mul(g.hf, g.rn)]; }
       ngroups += groups.length;
