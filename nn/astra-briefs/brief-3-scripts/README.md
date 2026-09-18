@@ -11,3 +11,10 @@ e32f09d, as with the brief-2 scripts.
   checker and write-up as of commit 2b307e2f2 on claude/project-thread-kyx87p, copied here because
   brief 3 ships the checker's source rather than describing it. They are that thread's files; the
   copies are a snapshot, not a fork.
+
+Note on substep conventions: `swing` divides the 46-degree sweep by
+`ceil(rad/stepMax)`, which for a 1/3-degree cap gives 139 substeps of 0.330935
+degrees here, while the checker's own run uses 138 of 0.33333. Substep indices
+agree between the two; sweep angles differ by about 0.18 degrees at the same
+index. Compare indices, not angles. Both runs put the last ordinary substep at
+73 and the first parked one at 74.
