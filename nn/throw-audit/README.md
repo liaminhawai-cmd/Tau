@@ -15,7 +15,12 @@ certified dead point `ndpxhts24`:
 | `tied-contact-branches.js` | Does `analyse()` keep both tied branches, or prune one away? | no |
 | `crossing-chord-data.js` | Which chord pair holds the closest contact at each substep? | yes |
 | `overshoot-bound.js` | Is the finite-rotation overshoot bound actually respected? | yes |
+| `vertex-park.js` | Does the victim's contact point transit the phi=30 vertex, or park on it? | yes |
 
-The last one is the one that found a real error. It deliberately keeps the old
+`vertex-park.js` settles the other correction: the victim's contact arc angle is
+30.000000 degrees exactly from substep 74 through the throw at 84 and beyond, so
+what the tracer called a third crossing is an index flip during a dwell.
+
+`overshoot-bound.js` is the one that found a real error. It deliberately keeps the old
 `eta = R(1 - cos eps) + R(eps - sin eps)` inline so it can report how often the
 engine beats it: 75 of 138 substeps, from the first chord-vertex crossing on.

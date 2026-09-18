@@ -173,15 +173,36 @@ the localisation radius, which puts more chord ends in play, which widens the
 vertex cones, which widens the set. From 0.027u it runs 0.033, 0.046, 0.090,
 0.122, 0.226, 0.401 and then refuses.
 
-`nn/throw-crossings.js` traces the closest pair's chord indices over a sweep and
-says how many crossings there are. On this throw the contact is in touch for
-24.00 degrees, from 4.00 to 27.67, and walks 5.030u down the attacker's leg and
-2.751u down the victim's, so 0.0708u per substep against a chord of 3.021u.
-There are exactly **three** crossings before the throw: the attacker's leg at
-phi = 22.5 degrees, crossed at 10.67 degrees of sweep; the attacker's at
-phi = 15.0, at 24.33; and the victim's at phi = 30.0, at 25.00.
+`nn/throw-crossings.js` traces the closest pair over a sweep. On this throw the
+contact is in touch for 24.00 degrees, from 4.00 to 27.67, and walks 5.030u down
+the attacker's leg and 2.751u down the victim's, so 0.0708u per substep against a
+chord of 3.021u. There are **two** crossings and **one park** before the throw:
 
-The checker refuses at 12.00, which is 1.3 degrees **past** the first crossing,
+- the attacker transits its phi = 22.5 vertex at 10.67 degrees of sweep,
+- the attacker transits its phi = 15.0 vertex at 24.33,
+- the victim **parks** on its phi = 30.0 vertex at 24.67 and never leaves.
+
+The third of those was called a crossing at 25.00 in the first version of this
+note, and that was wrong in kind, not just in the number. A closest point on a
+polyline sits still on a vertex whenever neither adjacent chord has an interior
+perpendicular foot, and while it does, the chord index it is reported under flips
+between the two chords sharing the vertex. That index flip is what the tracer was
+reading. Measured directly, the victim's contact arc angle is 30.000000 degrees
+exactly for every substep from 74 through the throw at 84 and beyond -- eleven
+substeps, not a transit. The tracer now classifies by arc position rather than
+index and reports parks separately.
+
+That distinction matters because a park should be the *easy* regime. While it
+holds, the victim's contact point is a known material point of the victim -- the
+vertex at arc angle 30 on leg 0 -- so its position and lever arm are exact
+functions of the pose with no interval at all, and the attacker's side is the
+perpendicular foot from a known point onto a fixed chord. That is strictly fewer
+unknowns than ordinary interior contact. If the checker treats a vertex as a
+transient special case carrying a cone, it is paying for uncertainty that is not
+there. (Credit to the sibling thread working the second brief, which found the
+park and made this argument.)
+
+The +-0.005u run refuses 1.3 degrees **past** the first crossing,
 and the set starts growing at 9.33, which is 1.3 degrees **before** it. So the
 box straddles the vertex for about eight substeps either side while the centre
 pose is still safely inside one chord. A branching scheme cannot simply split at
@@ -194,6 +215,19 @@ Shrinking the starting box gets past the *first* crossing (the table in section
 not get past the second: at every box size from +-0.0005u to +-0.003u the run
 ends within half a degree of 24.5. So subdivision buys one crossing and then
 stops buying. The crossing has to be handled, not dodged.
+
+And the second spot is crowded. Inside 0.16 degrees of sweep: the attacker
+transits its phi = 15.0 vertex at 24.33, the lever arm rn passes through zero at
+24.42 (from -2.074 to +0.542), and the victim parks on its phi = 30.0 vertex at
+24.49-24.67. The rn zero-crossing was worth ruling out as a cause, since the
+enclosure basis is built from the tangential slide, the spin-led tangent and the
+push, and the spin-led direction is the one that could degenerate when rn = 0. It
+does not. The basis uses kappa = hf rn / (G . a) = rn / (1 + rn^2/I), which goes
+smoothly to zero with rn, so at rn = 0 the three columns are the horizontal
+tangent, the horizontal normal and pure rotation -- a perfectly orthogonal
+triple. Measured through the crossing the basis Gram cosines are 0, 0 and -0.04
+with a condition number of 1.008, the best of the whole sweep. The width there is
+geometry, not bookkeeping.
 
 The honest next step is to carry the regimes as genuinely separate sets rather
 than unioning them into one parallelotope at the end of each substep, so that a

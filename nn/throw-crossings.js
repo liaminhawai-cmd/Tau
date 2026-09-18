@@ -17,6 +17,7 @@ const seg3=(p1,q1,p2,q2)=>{const d1={x:q1.x-p1.x,y:q1.y-p1.y,h:q1.h-p1.h},d2={x:
  const pa={x:p1.x+d1.x*s,y:p1.y+d1.y*s,h:p1.h+d1.h*s},pb={x:p2.x+d2.x*t,y:p2.y+d2.y*t,h:p2.h+d2.h*t};
  return {pa,pb,dist:Math.hypot(pb.x-pa.x,pb.y-pa.y,pb.h-pa.h),s,t};};
 const tr = TC.sweep(pieces, att, pv, dir, K);
+const VTOL = 1e-9;                  // the closest point sits on a vertex EXACTLY, so this is fp slack only
 let prev = null, walkA = 0, walkV = 0, first = null, last = null, thrown = null;
 const evs = [];
 for (const st of tr) {
@@ -38,8 +39,18 @@ for (const st of tr) {
   if (prev) {
     walkA += Math.abs((best.p + best.s) - (prev.p + prev.s)) * LA;
     walkV += Math.abs((best.q + best.t) - (prev.q + prev.t)) * LA;
-    if (best.p !== prev.p) evs.push(`attacker chord ${prev.p}->${best.p} (phi ${(prev.p<best.p?best.p:prev.p)*7.5} deg) at ${(st.k*LIM/DEG).toFixed(2)} deg of sweep, substep ${st.k}`);
-    if (best.q !== prev.q) evs.push(`victim   chord ${prev.q}->${best.q} (phi ${(prev.q<best.q?best.q:prev.q)*7.5} deg) at ${(st.k*LIM/DEG).toFixed(2)} deg of sweep, substep ${st.k}`);
+    // A changed chord index is NOT automatically a crossing. When the closest point parks ON a
+    // vertex -- which it does whenever neither adjacent chord has an interior perpendicular foot --
+    // the index flips between the two chords that share it while the point does not move at all.
+    // So classify by the ARC POSITION, not the index: a transit moves through the vertex, a dwell
+    // sits on it. The victim's phi=30 vertex here is a dwell from 24.67 deg to past the throw.
+    for (const [who, uPrev, uNow] of [['attacker', prev.p + prev.s, best.p + best.s], ['victim  ', prev.q + prev.t, best.q + best.t]]) {
+      const vPrev = Math.abs(uPrev - Math.round(uPrev)) < VTOL, vNow = Math.abs(uNow - Math.round(uNow)) < VTOL;
+      const at = `at ${(st.k*LIM/DEG).toFixed(2)} deg of sweep, substep ${st.k}`;
+      if (vNow && vPrev && Math.abs(uNow - uPrev) < VTOL) continue;                  // still parked
+      if (vNow) { evs.push(`${who} PARKS on the vertex at phi ${(Math.round(uNow)*7.5).toFixed(1)} deg, ${at}`); continue; }
+      if (Math.floor(uPrev) !== Math.floor(uNow)) evs.push(`${who} crosses the vertex at phi ${(Math.max(Math.ceil(Math.min(uPrev,uNow)), 0)*7.5).toFixed(1)} deg, ${at}`);
+    }
     if (best.i !== prev.i || best.j !== prev.j) evs.push(`LEG PAIR changed (${prev.i},${prev.j})->(${best.i},${best.j}) at ${(st.k*LIM/DEG).toFixed(2)} deg`);
   }
   prev = best;
@@ -48,4 +59,4 @@ const A0 = arcPts(tr[0].att, 0);
 console.log(`chord length ${Math.hypot(A0[1].x-A0[0].x,A0[1].y-A0[0].y,A0[1].h-A0[0].h).toFixed(4)}u; sweep limit ${(lim/DEG).toFixed(2)} deg = ${K} substeps`);
 console.log(`in contact from ${(first*LIM/DEG).toFixed(2)} to ${(last*LIM/DEG).toFixed(2)} deg (${last-first+1} substeps = ${((last-first+1)*LIM/DEG).toFixed(2)} deg); thrown at substep ${thrown} = ${(thrown*LIM/DEG).toFixed(2)} deg`);
 console.log(`contact walks ${walkA.toFixed(3)}u down the attacker's leg, ${walkV.toFixed(3)}u down the victim's; ${(walkA/(last-first)).toFixed(4)}u and ${(walkV/(last-first)).toFixed(4)}u per substep`);
-console.log(`chord-vertex crossings (${evs.length}):`); for (const e of evs) console.log('  ' + e);
+console.log(`vertex events (${evs.length}) -- a crossing transits, a park dwells:`); for (const e of evs) console.log('  ' + e);
