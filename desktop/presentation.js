@@ -119,7 +119,7 @@
     { board:'walnut',   opponent:'Hazel' },      // the club set: a first, patient opponent
     { board:'dojo',     opponent:'Sifu' },
     { board:'slate',    opponent:'Flint' },
-    { board:'maple',    opponent:'Clem' },       // clement: the bright board after the dark one
+    { board:'maple',    opponent:'Lily' },       // the bright board straight after the dark one
     { board:'cosy',     opponent:'Vesper' },     // whoever has owned this heirloom table for forty years
     { board:'sumo',     opponent:'Rikishi' },    // 力士
     { board:'noir',     opponent:'Marlowe' },

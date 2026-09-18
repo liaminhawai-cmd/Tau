@@ -2176,7 +2176,7 @@ test('Settings offers the languages in their own names and applies one straight 
   assert.equal(g.$('desktopLanguage').value,'de','with the choice still showing');
   assert.equal(g.$('desktopPlay').textContent,'Spielen','and the menu behind it is re-labelled');
   assert.equal(g.$('desktopSettings').textContent,'Einstellungen');
-  assert.equal(g.$('desktopLevel').options[3].textContent,'Stufe 4 · Clem',
+  assert.equal(g.$('desktopLevel').options[3].textContent,'Stufe 4 · Lily',
     'including the opponent list, built once at load -- the rung is translated, the name is a name');
   assert.equal(g.w.localStorage.getItem('tauLang'),'de','stored under the web app\'s own key');
   assert.deepEqual(g.errors,[]);
