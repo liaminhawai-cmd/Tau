@@ -859,6 +859,66 @@ test('the opponent is a board with somebody on it, and the sheet shows the whole
   assert.deepEqual(g.errors,[]);
 });
 
+test('the result sheet\'s own Next level moves the board and the colour with it',async t=>{
+  // The Steam build\'s picker is "which opponent", and every opponent is a board. When the level
+  // moved on its own -- from the result sheet\'s Next level, not from the dropdown -- the board
+  // stayed behind, so the next match looked identical to the one just won. Worse, the board is the
+  // more specific choice on boot, so the next launch pulled the level back down to the board\'s
+  // rung: a player who kept pressing Next level never left Level 1.
+  const g=await game();t.after(g.close);
+  const D=g.w.tauDesktop;
+  const col=g.$('desktopColour'); col.value='1'; col.dispatchEvent(new g.w.Event('change'));
+  g.$('desktopPlay').click(); g.tick();
+  assert.equal(g.read('ladderLevel'),0); assert.equal(g.read('humanIdx'),1);
+  assert.equal(D.board,'walnut');
+  g.read('G.over=true; G.winner=1; showGameOverModal()'); g.tick(3200);
+  assert.equal(g.$('modalTitle').textContent,'Level 1 cleared!');
+  [...g.$('modalBtns').children].find(b=>/Next level/.test(b.textContent)).click(); g.tick();
+  assert.equal(g.read('ladderLevel'),1,'Level 2');
+  assert.equal(D.board,'dojo','and Sifu\'s board came with him');
+  assert.equal(g.$('desktopLevel').value,'2');
+  assert.equal(g.$('desktopColour').value,'0','the picker follows the colour actually being played');
+  const saved=JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1'));
+  assert.equal(saved.board,'dojo','so a relaunch does not pull the level back to the board\'s rung');
+  assert.equal(saved.level,2);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('Reset progress puts the profile back to a first launch and keeps the preferences',async t=>{
+  const storage = {
+    tauLadder: '{"b":{"1":1,"2":1,"3":1},"r":{"1":1,"2":1}}',
+    tauRankedLevel: '6',
+    tauDesktopProgress: '{"played":14,"wins":9,"topLevel":3}',
+    tauDesktopSettingsV1: '{"level":3,"colour":1,"board":"slate","quality":"high","keys":{"pin1":"q"}}',
+    tauSavedReplays: '[{"id":"x"}]',
+  };
+  const g=await game('?steam=1&premium=1', storage);t.after(g.close);
+  const D=g.w.tauDesktop;
+  const by=id=>D.boards.find(b=>b.id===id);
+  assert.ok(by('slate').unlocked,'three rungs in, Flint\'s board is open');
+  assert.equal(g.$('desktopLevel').value,'3');
+  g.$('desktopSettings').click(); g.tick();
+  g.$('desktopResetProgress').click(); g.tick();
+  assert.equal(g.$('modalTitle').textContent,'Reset progress?','it asks first');
+  // Backing out changes nothing at all.
+  [...g.$('modalBtns').children].find(b=>b.textContent==='Cancel').click(); g.tick();
+  assert.equal(D.progress.wins,9,'Cancel is a real cancel');
+  g.$('desktopResetProgress').click(); g.tick();
+  [...g.$('modalBtns').children].find(b=>b.textContent==='Reset progress').click(); g.tick();
+  assert.equal(g.w.localStorage.getItem('tauLadder'),null,'every clear is gone');
+  assert.equal(g.w.localStorage.getItem('tauRankedLevel'),null,'and the rank with it');
+  assert.equal(g.w.localStorage.getItem('tauSavedReplays'),null,'and the saved games');
+  assert.equal(D.progress.played,0); assert.equal(D.progress.wins,0); assert.equal(D.progress.topLevel,0);
+  assert.ok(by('walnut').unlocked && !by('dojo').unlocked,'back to one board');
+  assert.equal(D.board,'walnut');
+  assert.equal(g.$('desktopLevel').value,'1','and to Level 1, as Blue');
+  assert.equal(g.$('desktopColour').value,'0');
+  const kept=JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1'));
+  assert.equal(kept.quality,'high','how you like to play it is not progress');
+  assert.equal(kept.keys.pin1,'q','and neither are your bindings');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('the flat board and the 3D bake shade the same zones of one timber',async t=>{
   const g=await game();t.after(g.close);
   const D=g.w.tauDesktop;

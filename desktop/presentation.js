@@ -245,6 +245,34 @@
     e.preventDefault();
     return true;
   }
+  // ---- Reset progress -------------------------------------------------------------------------
+  // Everything the game remembers about how far you have got, and nothing about how you like to
+  // play it: sound, language, graphics, key bindings and the camera options all survive, so a
+  // player testing a fresh start does not have to set the game up again afterwards. Signing in is
+  // not progress either -- the account stays signed in, and the crowd figures on the Levels screen
+  // belong to everybody, not to this profile. Steam achievements live on Steam's servers and are
+  // not ours to take back: reset those from the game's page in the Steam client.
+  const RESET_KEYS = ['tauLadder', 'tauRankedLevel', PROGRESS_KEY, TEST_BOARDS_KEY,
+                      'tauSavedReplays', 'tauOnboard', 'tauFsHint', 'tauSplitUsed'];
+  function resetProgress() {
+    for (const key of RESET_KEYS) { try { localStorage.removeItem(key); } catch (_) {} }
+    progress.played = 0; progress.wins = 0; progress.topLevel = 0;
+    testBoards = false;
+    settings.colour = 0;
+    if ($('desktopColour')) $('desktopColour').value = '0';
+    setLadderLevel(1, true);   // rung 1, its board, and the picker -- all three, as ever
+    drawLadderPicker();        // every other rung is locked again
+    showToast(`<p class="desktop-unlock">${esc(t('Progress reset.'))}</p>`);
+  }
+  // Nothing here is recoverable, so it is asked once and plainly, and the button that does it is
+  // the one that is NOT the default -- the same shape as leaving a match.
+  function confirmResetProgress() {
+    showModal(t('Reset progress?'),
+      `<p class="desktop-result-detail">${esc(t('Clears every level you have beaten, your rank and your saved games. Your sound, language, graphics and controls are kept. This cannot be undone.'))}</p>`,
+      [{label: t('Cancel'), onClick: () => openSettings()},
+       {label: t('Reset progress'), onClick: () => { resetProgress(); openSettings(); }}],
+      false, {dismiss: true});
+  }
   // Right stick turns the piece at a speed set by how far it is pushed; the triggers do the same
   // from RT/LT with the analog pull as the speed. Both keep the D-pad on the foot and the left
   // stick on the camera.
@@ -1113,6 +1141,7 @@
       <label class="desktop-setting">${esc(t('Reduce camera motion'))}<input id="desktopMotion" type="checkbox" ${settings.reducedMotion?'checked':''}></label>
       <label class="desktop-setting">${esc(t('Controller vibration'))}<input id="desktopHaptics" type="checkbox" ${settings.haptics?'checked':''}></label>
       ${fullscreen ? `<label class="desktop-setting">${esc(t('Fullscreen'))}<input id="desktopFullscreen" type="checkbox"></label>` : ''}
+      ${inMatch() ? '' : `<p class="desktop-controls-note"><button type="button" id="desktopResetProgress">${esc(t('Reset progress'))}</button> ${esc(t('Puts this profile back to a first launch.'))}</p>`}
       <p class="desktop-controls-note" style="text-align:center">${esc(buildTagText())}</p>`,
       [{label:t('Done'),onClick:() => { if(inMatch()) focusBoard(); }}], true, {dismiss:true});
     $('desktopQuality').value = settings.quality;
@@ -1131,6 +1160,7 @@
       applyTheme();       // repaints the flat board from the same entry's palette
       render();
     };
+    if ($('desktopResetProgress')) $('desktopResetProgress').onclick = confirmResetProgress;
     $('desktopInvertY').onchange = e => { settings.invertCamY=e.target.checked; saveSettings(); };
     $('desktopVolume').oninput = e => {
       setUserVol(Number(e.target.value)); $('desktopVolumeValue').textContent = userVol+'%'; $('desktopMute').checked = !soundOn;
@@ -1163,10 +1193,12 @@
       fn();
       if (!$('game') || $('game').style.display !== 'flex') return;
       ownMatch = true; onlineTurnDeadline = null;
-      if (typeof ladderLevel === 'number' && ladderLevel != null) {
-        settings.level = ladderLevel + 1; saveSettings();
-        if ($('desktopLevel')) $('desktopLevel').value = String(settings.level);
-        drawOpponentTile();
+      // main's route: setLadderLevel moves the level, the board, the select and the tile together,
+      // which is the whole point of #25 -- so this no longer sets any of them by hand.
+      if (typeof ladderLevel === 'number' && ladderLevel != null) setLadderLevel(ladderLevel + 1, true);
+      if (humanIdx === 0 || humanIdx === 1) {
+        settings.colour = humanIdx; saveSettings();
+        if ($('desktopColour')) $('desktopColour').value = String(settings.colour);
       }
       focusBoard();
     };
@@ -1189,7 +1221,7 @@
       : (() => {
           const fallback = [{label:t('Rematch'),onClick:rematch}];
           if (!local && G.winner===humanIdx && level+1<LADDER_N)
-            fallback.push({label:t('Next level'),onClick:() => { settings.level=level+2; saveSettings(); $('desktopLevel').value=String(settings.level); startMatch(); }});
+            fallback.push({label:t('Next level'),onClick:() => { setLadderLevel(level+2, false); startMatch(); }});
           if(replayFrames.length>15) fallback.push({label:t('Watch replay'),onClick:startReplay});
           fallback.push({label:t('Main menu'),onClick:backToMenu});
           return fallback;
