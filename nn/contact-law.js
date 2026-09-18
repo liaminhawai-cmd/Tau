@@ -48,11 +48,29 @@ const EDGE = CFG.edgeU + CFG.edgeEps;
 // ---- the objects (the same definitions as the game's Piece, restated) ----
 const feetOf = p => [0, 1, 2].map(i => { const a = p.rot + i * 2 * Math.PI / 3; return { x: p.x + Math.cos(a) * R, y: p.y + Math.sin(a) * R }; });
 const chordsOf = p => feetOf(p).map(f => [{ x: p.x, y: p.y }, f]);
+// The along-chord offset and height of the k-th arc point depend only on k and N, so they are
+// tabulated once per N (the same expressions, so the same doubles); each call pays one cos and one
+// sin per leg. The table also carries each segment's half-length, and every polyline gets its
+// segment centres attached (.sph), both for arcClosest's bounding-sphere skip.
+const ARC_TABLES = new Map();
+function arcTable(N) {
+  let T = ARC_TABLES.get(N);
+  if (!T) {
+    const s = [], h = [], r = [];
+    for (let k = 0; k <= N; k++) { const ph = (k / N) * Math.PI / 2; s.push(Math.sin(ph) * R); h.push(Math.cos(ph) * H); }
+    for (let k = 0; k < N; k++) r.push(Math.hypot(s[k + 1] - s[k], h[k + 1] - h[k]) * 0.5);
+    T = { s, h, r, N }; ARC_TABLES.set(N, T);
+  }
+  return T;
+}
 function arcsOf(p, N) {
-  const out = [];
+  const T = arcTable(N), out = [];
   for (let i = 0; i < 3; i++) {
     const a = p.rot + i * 2 * Math.PI / 3, ca = Math.cos(a), sa = Math.sin(a), pts = [];
-    for (let k = 0; k <= N; k++) { const ph = (k / N) * Math.PI / 2, s = Math.sin(ph) * R; pts.push({ x: p.x + ca * s, y: p.y + sa * s, h: Math.cos(ph) * H }); }
+    for (let k = 0; k <= N; k++) pts.push({ x: p.x + ca * T.s[k], y: p.y + sa * T.s[k], h: T.h[k] });
+    const c = new Float64Array(N * 3);
+    for (let k = 0; k < N; k++) { c[k * 3] = (pts[k].x + pts[k + 1].x) * 0.5; c[k * 3 + 1] = (pts[k].y + pts[k + 1].y) * 0.5; c[k * 3 + 2] = (pts[k].h + pts[k + 1].h) * 0.5; }
+    pts.sph = { c, r: T.r };
     out.push(pts);
   }
   return out;
@@ -81,7 +99,39 @@ function segClosest3(p1, q1, p2, q2) {
   const pa = { x: p1.x + d1.x * s, y: p1.y + d1.y * s, h: p1.h + d1.h * s }, pb = { x: p2.x + d2.x * t, y: p2.y + d2.y * t, h: p2.h + d2.h * t };
   return { pa, pb, dist: Math.hypot(pb.x - pa.x, pb.y - pa.y, pb.h - pa.h) };
 }
-function arcClosest(A, B) { let best = null; for (let i = 0; i < A.length - 1; i++) for (let j = 0; j < B.length - 1; j++) { const c = segClosest3(A[i], A[i + 1], B[j], B[j + 1]); if (!best || c.dist < best.dist) best = c; } return best; }
+// Closest pair of segments of two polylines, the same pair and the same numbers as the plain
+// 144-pair scan, found faster: every point of a segment is within its half-length of its centre,
+// so a pair whose centres are further apart than the two half-lengths plus the best distance so
+// far cannot win and is skipped (compared squared, with a hair of slack so rounding can only keep
+// a pair, never drop one that would have won). With `cut`, the search starts at that distance
+// and returns null when no pair gets below it.
+function segSpheres(A) {
+  if (A.sph) return A.sph;
+  const n = A.length - 1, c = new Float64Array(n * 3), r = new Float64Array(n);
+  for (let k = 0; k < n; k++) { const p = A[k], q = A[k + 1]; c[k * 3] = (p.x + q.x) * 0.5; c[k * 3 + 1] = (p.y + q.y) * 0.5; c[k * 3 + 2] = (p.h + q.h) * 0.5; r[k] = Math.hypot(q.x - p.x, q.y - p.y, q.h - p.h) * 0.5; }
+  return { c, r };
+}
+function arcClosest(A, B, cut) {
+  let best = null, bestD = cut === undefined ? Infinity : cut;
+  const nA = A.length - 1, nB = B.length - 1, SA = segSpheres(A), SB = segSpheres(B), cA = SA.c, rA = SA.r, cB = SB.c, rB = SB.r;
+  for (let i = 0; i < nA; i++) {
+    const cx = cA[i * 3], cy = cA[i * 3 + 1], ch = cA[i * 3 + 2], ra = rA[i];
+    for (let j = 0; j < nB; j++) {
+      const dx = cB[j * 3] - cx, dy = cB[j * 3 + 1] - cy, dh = cB[j * 3 + 2] - ch, reach = bestD + ra + rB[j];
+      if (dx * dx + dy * dy + dh * dh > reach * reach * (1 + 1e-9)) continue;
+      const c = segClosest3(A[i], A[i + 1], B[j], B[j + 1]);
+      if (c.dist < bestD) { best = c; bestD = c.dist; }
+    }
+  }
+  return best;
+}
+// flat distance from a point to a chord: the top-down projection of a leg arc, so a lower bound on
+// the 3D distance from that point to the arc
+function pointChordDist(p, ch) {
+  const ax = ch[0].x, ay = ch[0].y, dx = ch[1].x - ax, dy = ch[1].y - ay, len2 = dx * dx + dy * dy || 1e-12;
+  let t = ((p.x - ax) * dx + (p.y - ay) * dy) / len2; t = Math.max(0, Math.min(1, t));
+  return Math.hypot(ax + dx * t - p.x, ay + dy * t - p.y);
+}
 function pointArcClosest(p, A) {
   let best = null;
   for (let i = 0; i < A.length - 1; i++) {
@@ -130,7 +180,15 @@ function swing(pieces, activeIdx, pivotIdx, dir, rad, K) {
   for (let s = 0; s < steps; s++) {
     rotateAround(active, pivot.x, pivot.y, step); alpha += Math.abs(step);
     let primary = null;                                   // deepest leg-leg contact this step
-    const aArcs = arcsOf(active, K.N), aChords = chordsOf(active), aHub = { x: active.x, y: active.y, h: H };
+    const aChords = chordsOf(active), aHub = { x: active.x, y: active.y, h: H };
+    let aArcsAll = null; const aArc = i => (aArcsAll || (aArcsAll = arcsOf(active, K.N)))[i];
+    // flat chord-chord gap with a bounding-circle skip: a chord's points are all within R/2 of its
+    // midpoint, so midpoints more than R + MIND apart mean the chords are clear
+    const chordGapClear = (A, B) => {
+      const mx = (A[0].x + A[1].x - B[0].x - B[1].x) * 0.5, my = (A[0].y + A[1].y - B[0].y - B[1].y) * 0.5, reach = R + MIND;
+      if (mx * mx + my * my > reach * reach * (1 + 1e-9)) return true;
+      return segClosest(A[0], A[1], B[0], B[1]).dist >= MIND;
+    };
     const opp0 = { x: opp.x, y: opp.y };
     const apply = (px, py, nx, ny, sep) => {
       if (sep > K.cap) { flags.cap++; sep = K.cap; }
@@ -144,12 +202,28 @@ function swing(pieces, activeIdx, pivotIdx, dir, rad, K) {
       apply(pb.x, pb.y, nx3 / hf, ny3 / hf, gap / Math.max(hf, K.hfFloor));
     };
     for (let iter = 0; iter < K.iters; iter++) {
-      const oArcs = arcsOf(opp, K.N), oChords = chordsOf(opp), oHub = { x: opp.x, y: opp.y, h: H };
+      // piece-level gate: every point of a piece is within R of its hub (flat), so hubs more than
+      // 2R + MIND apart cannot touch anywhere. Exact, one hypot.
+      if (Math.hypot(opp.x - active.x, opp.y - active.y) >= 2 * R + MIND) break;
+      const oChords = chordsOf(opp);
+      // exact early out: every 3D contact test below is bounded from below by a flat one, so when
+      // every flat gap clears its threshold this iteration would find nothing and the loop would
+      // end here; now it ends without building a single arc
+      {
+        let near = Math.hypot(opp.x - active.x, opp.y - active.y) < 2 * HUBR;
+        for (let i = 0; i < 3 && !near; i++) for (let j = 0; j < 3; j++) if (!chordGapClear(aChords[i], oChords[j])) { near = true; break; }
+        for (let j = 0; j < 3 && !near; j++) if (pointChordDist(active, oChords[j]) < HUBLEGD) near = true;
+        for (let i = 0; i < 3 && !near; i++) if (pointChordDist(opp, aChords[i]) < HUBLEGD) near = true;
+        if (!near) break;
+      }
+      // the opponent's arcs as of the start of this iteration (the pushes below move it, and later
+      // pairs must still see the geometry the whole-iteration build saw), built per leg on first use
+      const oSnap = { x: opp.x, y: opp.y, rot: opp.rot }, oHub = { x: opp.x, y: opp.y, h: H }; let oArcsAll = null; const oArc = j => (oArcsAll || (oArcsAll = arcsOf(oSnap, K.N)))[j];
       let any = 0, worst = 0;
       for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
-        if (segClosest(aChords[i][0], aChords[i][1], oChords[j][0], oChords[j][1]).dist >= MIND) continue;
-        const c = arcClosest(aArcs[i], oArcs[j]);
-        if (c.dist >= MIND) continue;
+        if (chordGapClear(aChords[i], oChords[j])) continue;
+        const c = arcClosest(aArc(i), oArc(j), MIND);
+        if (!c) continue;
         any++; worst = Math.max(worst, MIND - c.dist);
         if (trace && iter === 0 && (!primary || MIND - c.dist > primary.pen)) {
           // where along each leg (phi: 0 = hub, pi/2 = foot), the angle between the legs, the
@@ -179,8 +253,8 @@ function swing(pieces, activeIdx, pivotIdx, dir, rad, K) {
           apply(c.pb.x, c.pb.y, nx, ny, MIND);
         } else push3d(c.pa, c.pb, c.dist, MIND - c.dist);
       }
-      for (let j = 0; j < 3; j++) { const c = pointArcClosest(aHub, oArcs[j]); if (c.dist < HUBLEGD && c.dist > 1e-6) { any++; worst = Math.max(worst, HUBLEGD - c.dist); push3d(aHub, c.pt, c.dist, HUBLEGD - c.dist); } }
-      for (let i = 0; i < 3; i++) { const c = pointArcClosest(oHub, aArcs[i]); if (c.dist < HUBLEGD && c.dist > 1e-6) { any++; worst = Math.max(worst, HUBLEGD - c.dist); push3d(c.pt, oHub, c.dist, HUBLEGD - c.dist); } }
+      for (let j = 0; j < 3; j++) { if (pointChordDist(aHub, oChords[j]) >= HUBLEGD) continue; const c = pointArcClosest(aHub, oArc(j)); if (c.dist < HUBLEGD && c.dist > 1e-6) { any++; worst = Math.max(worst, HUBLEGD - c.dist); push3d(aHub, c.pt, c.dist, HUBLEGD - c.dist); } }
+      for (let i = 0; i < 3; i++) { if (pointChordDist(oHub, aChords[i]) >= HUBLEGD) continue; const c = pointArcClosest(oHub, aArc(i)); if (c.dist < HUBLEGD && c.dist > 1e-6) { any++; worst = Math.max(worst, HUBLEGD - c.dist); push3d(c.pt, oHub, c.dist, HUBLEGD - c.dist); } }
       { const dx = opp.x - active.x, dy = opp.y - active.y, d = Math.hypot(dx, dy); if (d < 2 * HUBR && d > 1e-6) { any++; worst = Math.max(worst, 2 * HUBR - d); apply(opp.x, opp.y, dx / d, dy / d, 2 * HUBR - d); } }
       if (any > 1) flags.multi++;
       flags.maxContacts = Math.max(flags.maxContacts, any);
