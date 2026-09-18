@@ -615,7 +615,7 @@
     settings.board = next.id;
     if (!inMatch()) {
       const rung = boardRung(next.id);
-      if (rung) { settings.level = rung; if ($('desktopLevel')) $('desktopLevel').value = String(rung); }
+      if (rung) { settings.level = rung; if ($('desktopLevel')) $('desktopLevel').value = String(rung); drawOpponentTile(); }
     }
     saveSettings();
     if ($('desktopBoard')) $('desktopBoard').value = next.id;
