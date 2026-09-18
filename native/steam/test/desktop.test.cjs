@@ -853,6 +853,41 @@ test('the result sheet\'s own Next level moves the board and the colour with it'
   assert.deepEqual(g.errors,[]);
 });
 
+test('Reset progress puts the profile back to a first launch and keeps the preferences',async t=>{
+  const storage = {
+    tauLadder: '{"b":{"1":1,"2":1,"3":1},"r":{"1":1,"2":1}}',
+    tauRankedLevel: '6',
+    tauDesktopProgress: '{"played":14,"wins":9,"topLevel":3}',
+    tauDesktopSettingsV1: '{"level":3,"colour":1,"board":"slate","quality":"high","keys":{"pin1":"q"}}',
+    tauSavedReplays: '[{"id":"x"}]',
+  };
+  const g=await game('?steam=1&premium=1', storage);t.after(g.close);
+  const D=g.w.tauDesktop;
+  const by=id=>D.boards.find(b=>b.id===id);
+  assert.ok(by('slate').unlocked,'three rungs in, Flint\'s board is open');
+  assert.equal(g.$('desktopLevel').value,'3');
+  g.$('desktopSettings').click(); g.tick();
+  g.$('desktopResetProgress').click(); g.tick();
+  assert.equal(g.$('modalTitle').textContent,'Reset progress?','it asks first');
+  // Backing out changes nothing at all.
+  [...g.$('modalBtns').children].find(b=>b.textContent==='Cancel').click(); g.tick();
+  assert.equal(D.progress.wins,9,'Cancel is a real cancel');
+  g.$('desktopResetProgress').click(); g.tick();
+  [...g.$('modalBtns').children].find(b=>b.textContent==='Reset progress').click(); g.tick();
+  assert.equal(g.w.localStorage.getItem('tauLadder'),null,'every clear is gone');
+  assert.equal(g.w.localStorage.getItem('tauRankedLevel'),null,'and the rank with it');
+  assert.equal(g.w.localStorage.getItem('tauSavedReplays'),null,'and the saved games');
+  assert.equal(D.progress.played,0); assert.equal(D.progress.wins,0); assert.equal(D.progress.topLevel,0);
+  assert.ok(by('walnut').unlocked && !by('dojo').unlocked,'back to one board');
+  assert.equal(D.board,'walnut');
+  assert.equal(g.$('desktopLevel').value,'1','and to Level 1, as Blue');
+  assert.equal(g.$('desktopColour').value,'0');
+  const kept=JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1'));
+  assert.equal(kept.quality,'high','how you like to play it is not progress');
+  assert.equal(kept.keys.pin1,'q','and neither are your bindings');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('the flat board and the 3D bake shade the same zones of one timber',async t=>{
   const g=await game();t.after(g.close);
   const D=g.w.tauDesktop;
