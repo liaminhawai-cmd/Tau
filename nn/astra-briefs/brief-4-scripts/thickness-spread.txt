@@ -1,0 +1,68 @@
++-0.0125u / +-0.031 deg, 200 poses; first whole-box-contact substep 13
+substep   penetration entering the next push: min      max      spread
+     13   2.89e-2  3.80e-2  9.07e-3
+     14   3.79e-2  3.80e-2  1.07e-4
+     20   3.83e-2  3.84e-2  1.07e-4
+     40   4.37e-2  4.38e-2  1.16e-4
+     60   4.61e-2  4.62e-2  1.16e-4
+     70   4.74e-2  4.75e-2  1.17e-4
+     73   4.83e-2  5.29e-2  4.62e-3
+     74   5.31e-2  5.36e-2  4.95e-4
+     75   5.31e-2  5.34e-2  2.95e-4
+     80   5.16e-2  5.19e-2  3.13e-4
+     84   5.02e-2  5.06e-2  3.54e-4
+     90   4.78e-2  4.83e-2  4.31e-4
+     98   4.40e-2  4.45e-2  5.81e-4
+thickest after the entry substep: 1.144e-1u at substep 138; mean 6.034e-2u over 125 substeps
+
++-0.025u / +-0.062 deg, 200 poses; first whole-box-contact substep 13
+substep   penetration entering the next push: min      max      spread
+     13   1.79e-2  3.80e-2  2.02e-2
+     14   3.79e-2  3.81e-2  2.12e-4
+     20   3.83e-2  3.85e-2  2.13e-4
+     40   4.37e-2  4.39e-2  1.98e-4
+     60   4.61e-2  4.63e-2  1.97e-4
+     70   4.74e-2  4.76e-2  1.97e-4
+     73   4.78e-2  5.35e-2  5.70e-3
+     74   5.27e-2  5.36e-2  8.83e-4
+     75   5.30e-2  5.35e-2  4.69e-4
+     80   5.14e-2  5.19e-2  4.99e-4
+     84   5.00e-2  5.06e-2  5.64e-4
+     90   4.76e-2  4.83e-2  6.87e-4
+     98   4.37e-2  4.46e-2  9.26e-4
+thickest after the entry substep: 1.144e-1u at substep 138; mean 6.047e-2u over 125 substeps
+
++-0.05u / +-0.124 deg, 200 poses; first whole-box-contact substep 14
+substep   penetration entering the next push: min      max      spread
+     14   3.38e-2  3.82e-2  4.41e-3
+     15   3.78e-2  3.83e-2  4.27e-4
+     20   3.82e-2  3.86e-2  4.27e-4
+     40   4.36e-2  4.40e-2  3.73e-4
+     60   4.60e-2  4.63e-2  3.75e-4
+     70   4.73e-2  4.77e-2  3.75e-4
+     73   4.77e-2  5.35e-2  5.81e-3
+     74   5.11e-2  5.36e-2  2.48e-3
+     75   5.30e-2  5.36e-2  6.06e-4
+     80   5.14e-2  5.20e-2  6.44e-4
+     84   5.00e-2  5.07e-2  7.28e-4
+     90   4.76e-2  4.85e-2  8.89e-4
+     98   4.36e-2  4.48e-2  1.19e-3
+thickest after the entry substep: 1.145e-1u at substep 138; mean 6.090e-2u over 124 substeps
+
++-0.1u / +-0.248 deg, 200 poses; first whole-box-contact substep 15
+substep   penetration entering the next push: min      max      spread
+     15   2.79e-2  3.85e-2  1.06e-2
+     16   3.77e-2  3.86e-2  8.54e-4
+     20   3.80e-2  3.88e-2  8.53e-4
+     40   4.34e-2  4.42e-2  7.47e-4
+     60   4.58e-2  4.65e-2  7.49e-4
+     70   4.71e-2  4.79e-2  7.50e-4
+     73   4.75e-2  5.36e-2  6.02e-3
+     74   4.77e-2  5.36e-2  5.88e-3
+     75   5.15e-2  5.36e-2  2.03e-3
+     80   5.11e-2  5.23e-2  1.24e-3
+     84   4.96e-2  5.10e-2  1.40e-3
+     90   4.71e-2  4.88e-2  1.71e-3
+     98   4.33e-2  4.53e-2  2.02e-3
+thickest after the entry substep: 1.146e-1u at substep 138; mean 6.188e-2u over 123 substeps
+

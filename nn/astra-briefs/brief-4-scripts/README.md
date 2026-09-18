@@ -49,17 +49,32 @@
   `node lapse.js <foot> <dir> <one-degree calls> <box u> <rot rad> <poses>`. Both of these
   reproduce the throw-bound thread's corrections independently on this harness.
 
-- `throw-cert-at-4adf870c7.js`, `THROW-CONTACT-LEMMAS-at-4adf870c7.md`, `gain-bound-at-4adf870c7.js`,
-  `gain-bound-at-4adf870c7.txt`, `slab-shape-at-4adf870c7.js`, `slab-shape-at-4adf870c7.txt`: the
-  throw-bound thread's checker, write-up and section 13 programs at commit 4adf870c7 on
+- `thickness-spread.js` -> `thickness-spread.txt`: our own check of section 14. For each substep it
+  prints the penetration D - g entering the next push, per pose, and its spread over the box, which
+  is the slab's thickness along the normal. Away from the vertex crossing the spread is 1e-4 to
+  8e-4u; at the crossing it peaks at 4.6e-3, 5.7e-3, 5.8e-3 and 6.0e-3u for boxes of +-0.0125,
+  +-0.025, +-0.05 and +-0.1u, against their predicted 5.98e-3, 6.13e-3, 6.35e-3 and 7.14e-3u. Same
+  peak location, same near-independence of the box, and the measurements sit under the predictions,
+  which is the right side for a bound. The entry substep is the odd one out at 4e-3 to 2e-2u, since
+  the poses are not all on the shell yet. The penetration itself is ~4.8e-2u, which is 0.00582 rad
+  times a moment arm of about eight units. Rotation defaults to their pairing (0.248 deg at 0.1u,
+  scaled); run as `node thickness-spread.js <box u> [rot rad] [poses]`.
+
+- `throw-cert-at-dbee5e4a4.js`, `THROW-CONTACT-LEMMAS-at-dbee5e4a4.md`, `gain-bound-at-dbee5e4a4.js`,
+  `gain-bound-at-dbee5e4a4.txt`, `slab-shape-at-dbee5e4a4.js`, `slab-shape-at-dbee5e4a4.txt`: the
+  throw-bound thread's checker, write-up and section 13/14 programs at commit dbee5e4a4 on
   claude/project-thread-kyx87p, the commit whose results brief 4 quotes. They are that thread's
   files; these copies are a snapshot, not a fork, pinned rather than tracking that thread's head,
   which moves every few minutes. All were verified against the repository by blob hash, read from a
   directory listing of that commit rather than recalled: throw-cert.js
   b8fb4c6f3bc69beedd8b8973e96994d65dc2c96a (unchanged since 1cf90f63f), THROW-CONTACT-LEMMAS.md
-  38f2aceba24839f5d3969fed2c651b5b822b2f98, gain-bound.js eb415d5966a2a493f465278d7ef50bc100fbad2b,
+  f37e70cea042f2ec1f45f58e32583fd6a6dfc36a, gain-bound.js eb415d5966a2a493f465278d7ef50bc100fbad2b,
   gain-bound.txt caba4270531afe1c194483af488c523e2ce84b02, slab-shape.js
-  3c0823b0f50281369084f62ac401b2ad7ab63bf4, slab-shape.txt 6257009aecd4e62c2e21da6f86588e067b04ebd9.
+  3c0823b0f50281369084f62ac401b2ad7ab63bf4, slab-shape.txt 6257009aecd4e62c2e21da6f86588e067b04ebd9,
+  thickness.js 1fd166f3f4392de0610cb1a2e1a93ceee4dff30c, thickness.txt
+  63ed3ac74bb819bf3a9a14d6e212099ac74f3b8e. Section 14 is the answer to question 1(b): the
+  penetration entering a substep is one substep of the attacker's advance, because the push resets
+  every pose onto the shell, so the thickness never accumulates.
   Section 13 is the one brief 4's question 1 now turns on: H3 computed rigorously rather than
   sampled, certifying nothing over a +-0.1u box because the blanket pad is 0.2414u, and closing
   (3.5144u against 3.2026u needed) once the set is taken to be a thin slab instead.
