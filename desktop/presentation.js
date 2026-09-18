@@ -1011,9 +1011,10 @@
       fn();
       if (!$('game') || $('game').style.display !== 'flex') return;
       ownMatch = true; onlineTurnDeadline = null;
-      if (typeof ladderLevel === 'number' && ladderLevel != null) {
-        settings.level = ladderLevel + 1; saveSettings();
-        if ($('desktopLevel')) $('desktopLevel').value = String(settings.level);
+      if (typeof ladderLevel === 'number' && ladderLevel != null) setLadderLevel(ladderLevel + 1, true);
+      if (humanIdx === 0 || humanIdx === 1) {
+        settings.colour = humanIdx; saveSettings();
+        if ($('desktopColour')) $('desktopColour').value = String(settings.colour);
       }
       focusBoard();
     };
@@ -1036,7 +1037,7 @@
       : (() => {
           const fallback = [{label:t('Rematch'),onClick:rematch}];
           if (!local && G.winner===humanIdx && level+1<LADDER_N)
-            fallback.push({label:t('Next level'),onClick:() => { settings.level=level+2; saveSettings(); $('desktopLevel').value=String(settings.level); startMatch(); }});
+            fallback.push({label:t('Next level'),onClick:() => { setLadderLevel(level+2, false); startMatch(); }});
           if(replayFrames.length>15) fallback.push({label:t('Watch replay'),onClick:startReplay});
           fallback.push({label:t('Main menu'),onClick:backToMenu});
           return fallback;

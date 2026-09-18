@@ -828,6 +828,31 @@ test('choosing the opponent chooses the board, and choosing the board chooses th
   assert.deepEqual(g.errors,[]);
 });
 
+test('the result sheet\'s own Next level moves the board and the colour with it',async t=>{
+  // The Steam build\'s picker is "which opponent", and every opponent is a board. When the level
+  // moved on its own -- from the result sheet\'s Next level, not from the dropdown -- the board
+  // stayed behind, so the next match looked identical to the one just won. Worse, the board is the
+  // more specific choice on boot, so the next launch pulled the level back down to the board\'s
+  // rung: a player who kept pressing Next level never left Level 1.
+  const g=await game();t.after(g.close);
+  const D=g.w.tauDesktop;
+  const col=g.$('desktopColour'); col.value='1'; col.dispatchEvent(new g.w.Event('change'));
+  g.$('desktopPlay').click(); g.tick();
+  assert.equal(g.read('ladderLevel'),0); assert.equal(g.read('humanIdx'),1);
+  assert.equal(D.board,'walnut');
+  g.read('G.over=true; G.winner=1; showGameOverModal()'); g.tick(3200);
+  assert.equal(g.$('modalTitle').textContent,'Level 1 cleared!');
+  [...g.$('modalBtns').children].find(b=>/Next level/.test(b.textContent)).click(); g.tick();
+  assert.equal(g.read('ladderLevel'),1,'Level 2');
+  assert.equal(D.board,'dojo','and Sifu\'s board came with him');
+  assert.equal(g.$('desktopLevel').value,'2');
+  assert.equal(g.$('desktopColour').value,'0','the picker follows the colour actually being played');
+  const saved=JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1'));
+  assert.equal(saved.board,'dojo','so a relaunch does not pull the level back to the board\'s rung');
+  assert.equal(saved.level,2);
+  assert.deepEqual(g.errors,[]);
+});
+
 test('the flat board and the 3D bake shade the same zones of one timber',async t=>{
   const g=await game();t.after(g.close);
   const D=g.w.tauDesktop;
