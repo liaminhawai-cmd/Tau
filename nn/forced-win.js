@@ -246,8 +246,17 @@ function eventInterval(e, pv, dir, box, near) {
     sI = e.sign > 0 ? [e.A - b[1] - phi[1], e.A - b[0] - phi[0]] : [e.A - (Math.PI - b[0]) - phi[1], e.A - (Math.PI - b[1]) - phi[0]];
   }
   if (dir < 0) sI = [-sI[1], -sI[0]];
-  const cx = (sI[0] + sI[1]) / 2, shift = Math.round((near - cx) / (2 * Math.PI)) * 2 * Math.PI, lo = sI[0] + shift, hi = sI[1] + shift;
-  if (lo <= 0 || hi > 2 * Math.PI) return { refused: 'the stopping event\'s angle wraps a full turn inside the box' };
+  // `near` at an off-board sub-box centre reads a rim crossing that is already behind the start
+  // as an angle just under a full turn; for the rim event unwrap it towards zero instead
+  const isRim = C.levels.length === 1 && C.levels[0] === LIM_EDGE, near0 = isRim && near > Math.PI ? near - 2 * Math.PI : near;
+  const cx = (sI[0] + sI[1]) / 2, shift = Math.round((near0 - cx) / (2 * Math.PI)) * 2 * Math.PI; let lo = sI[0] + shift; const hi = sI[1] + shift;
+  // A rim event whose enclosure reaches down to zero: the poses where the foot's outward crossing
+  // of the rim would come at or before the start are poses with that foot already over the rim,
+  // which are not positions (the cell is claimed for on-board poses only, see limitEnclosure), so
+  // the enclosure for the poses that count is (0, hi]. A foot 0.74u from the rim (l5807vazg) has
+  // its rim-stopped arms here, with limits of 0 to 1.3 degrees across the box.
+  if (lo <= 0 && hi > 0 && isRim) lo = 0;
+  if (lo < 0 || hi > 2 * Math.PI) return { refused: 'the stopping event\'s angle wraps a full turn inside the box' };
   return { lo, hi };
 }
 // The stopping event's angle at one pose, by the same formula (for unwrapping sub-boxes).
@@ -1073,7 +1082,7 @@ function reachEnvelope(pieces, mover, pv, dir, box, n, opts) {
   // line label is the nearest line within STOP_BAND and flips between two lines for one and the
   // same event (arm (2,-1) at ndpxhts24), which used to read as a wall.
   const evKey = e => [e.kind, e.foot, e.circle, e.kind === 'level' ? e.D : e.A, e.sign].join(':');
-  const progOf = l => l.reason + '|' + l.crossed.join(',');
+  const progOf = l => l.reason + '|' + (l.reason === 'cross' ? l.crossed.join(',') : '');
   let slope = 0, refused = null, wall = false;
   for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) {
     const a = L.get(key(i, j, k)); if (!a) continue;
@@ -1087,7 +1096,18 @@ function reachEnvelope(pieces, mover, pv, dir, box, n, opts) {
   const all = [...L.values()];
   if (!refused && all.some(l => l.reason === 'full')) refused = `arm (${pv},${dir}): a grid pose swings a full turn`;
   if (!refused && all.some(l => !l.events || !l.events.length)) refused = `arm (${pv},${dir}): a grid pose stops on no closed-form event`;
-  const union = refused ? null : [...new Map(all.flatMap(l => l.events.map(e => [evKey(e), e]))).values()];
+  // The events to enclose: those that stop the arm ALONE at some grid pose. An event that only
+  // ever shares the stopping substep with another (a co-event) is not known to be a stop at all
+  // (a band entered as the turn's first, free crossing lands in the same substep as the rim), and
+  // enclosing it would pull the minimum below the true limit; a co-event pose whose events include
+  // no known stop is refused instead.
+  let union = null;
+  if (!refused) {
+    const known = new Map(all.filter(l => l.events.length === 1).map(l => [evKey(l.events[0]), l.events[0]]));
+    const orphan = all.find(l => l.events.length > 1 && !l.events.some(e => known.has(evKey(e))));
+    if (!known.size || orphan) refused = `arm (${pv},${dir}): a grid pose stops on ${(orphan || all[0]).events.length} events in one substep, none known to stop the arm alone`;
+    else union = [...known.values()];
+  }
   let lip = Math.max(DEG, 3 * slope), allow = lip * (dx + dy + dr) / 2 + SUBSTEP; const c = L.get(key(n >> 1, n >> 1, n >> 1)) || all[0];
   let exact = null;
   if (opts.exact && !refused) {
