@@ -4729,6 +4729,11 @@ const AI_LADDER = [
     // arena opponents (`L15` / `L16`), and can be rated any time by clearing the flag again.
     { kind:'p4', experimental:'d4-deeper', label:'L12a', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:4,keepStops:4,maxCands:28} },
     { kind:'opp', experimental:'opp-model', label:'L12b', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:3,keepStops:4,oppLevel:10,oppCands:6} },
+    // L12c EXPERIMENT (2026-09-18 evening): L12a's question asked one ply further out. Same eval,
+    // same candidates, depth 5 (kind 'p5', ladderPlanDeep). Experimental from the start, as L12a and
+    // L12b now are: at several times an L12a move it is far too expensive for an immortal rated
+    // seat, and what it exists to settle is an arena question (play it as `L17`).
+    { kind:'p5', experimental:'d5-deeper', label:'L12c', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:5,keepStops:4,maxCands:28} },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 
@@ -4950,6 +4955,71 @@ function ladderPlan4(idx, w, o){
         if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
         else {
             const worst = ladderScore4(idx, w, c.snap, best ? best.score : undefined);
+            score = worst===Infinity ? c.q : worst;
+        }
+        if (!best || score>best.score) best={pivotIdx:c.pivotIdx,dir:c.dir,targetRad:c.targetRad,score};
+    }
+    ladderRestore(snap0); G.active=origActive; return best;
+}
+// L12c EXPERIMENT (kind 'p5'): the same search to any depth, so a rung can buy another ply.
+//
+// ladderScore3 and ladderScore4 are the depth-3 and depth-4 cases of one alternation: the opponent
+// moves and takes the worst for me, I move and take the best, repeat, score with the rung's eval at
+// the bottom. Written out, each extra ply is another copy of the two loops, so this pair of mutually
+// recursive functions is the same thing with the nesting as a parameter. They are NOT wired into the
+// p3 and p4 rungs, which keep their own hand-written copies; nn/ladder-deep-check.js asserts that
+// all three pick the same move, so the general pair is only trusted where it is checked.
+//
+// plies counts the plies BELOW this node: ladderDeepMin(..., 1) is ladderScore3, 2 is ladderScore4,
+// 3 is the depth-5 search L12c uses. The cutoffs are the ones the written-out versions use: a min
+// node stops once it cannot beat the maximiser's alpha, a max node stops once it has found a win.
+function ladderDeepMin(idx, w, snap, alpha, plies){
+    let worst=Infinity;
+    reply: for (let op=0; op<3; op++) for (const od of [1,-1]){
+        ladderRestore(snap); G.active=1-idx;
+        const onet=simMoveToLimit(op,od);
+        if (Math.abs(onet) < HARD_MIN_MOVE_RAD) continue;
+        if (G.pieces[1-idx].anyFootOff()) continue;
+        let rs;
+        if (G.pieces[idx].anyFootOff()) rs = -HARD_WIN_BONUS;
+        else if (plies <= 0) rs = ladderEval(idx,w);
+        else rs = ladderDeepMax(idx, w, takeSnap(), plies-1);
+        if (rs<worst) worst=rs;
+        if (alpha!==undefined && worst<=alpha) break reply;
+    }
+    return worst;
+}
+function ladderDeepMax(idx, w, snap, plies){
+    let bf=-Infinity;
+    for (let fp=0; fp<3 && bf<HARD_WIN_BONUS/2; fp++) for (const fd of [1,-1]){
+        ladderRestore(snap); G.active=idx;
+        const fnet=simMoveToLimit(fp,fd);
+        if (Math.abs(fnet) < HARD_MIN_MOVE_RAD) continue;
+        if (G.pieces[idx].anyFootOff()) continue;
+        let fs;
+        if (G.pieces[1-idx].anyFootOff()) fs = HARD_WIN_BONUS+ladderEval(idx,w);
+        else if (plies <= 0) fs = ladderEval(idx,w);
+        else {
+            const s=takeSnap();
+            fs = ladderDeepMin(idx, w, s, bf, plies-1);
+            // no legal answer down there: the position as I left it stands
+            if (fs===Infinity){ ladderRestore(s); G.active=idx; fs = ladderEval(idx,w); }
+        }
+        if (fs>bf) bf=fs;
+    }
+    return bf===-Infinity ? ladderEval(idx,w) : bf;
+}
+// o.depth picks the nesting: 3 is ladderPlan3, 4 is ladderPlan4, 5 is one ply deeper again.
+function ladderPlanDeep(idx, w, o){
+    const origActive=G.active, snap0=takeSnap(), plies=Math.max(1,(o.depth||3)-2);
+    const roots = ladderRoots3(idx, w, o, snap0);
+    if (!roots.length){ ladderRestore(snap0); G.active=origActive; return null; }
+    let best=null;
+    for (const c of roots.slice(0, o.maxCands||10)){
+        ladderRestore(c.snap); let score;
+        if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
+        else {
+            const worst = ladderDeepMin(idx, w, c.snap, best ? best.score : undefined, plies);
             score = worst===Infinity ? c.q : worst;
         }
         if (!best || score>best.score) best={pivotIdx:c.pivotIdx,dir:c.dir,targetRad:c.targetRad,score};
@@ -5442,6 +5512,7 @@ function ladderPlanRung(def, idx){
     if (def.kind==='builtin') return def.brain==='master' ? aiChoosePlanMaster(idx, def.mw) : ladderDumbPlan(idx);
     if (def.kind==='p3') return ladderPlan3(idx, def.w, def.o);
     if (def.kind==='p4') return ladderPlan4(idx, def.w, def.o);
+    if (def.kind==='p5') return ladderPlanDeep(idx, def.w, def.o);
     if (def.kind==='opp') return ladderPlanOppModel(idx, def.w, def.o);
     if (def.kind==='opp2') return ladderPlan13(idx, def.w, def.o);
     return ladderSampledPlan(idx, def.w, def.o);
