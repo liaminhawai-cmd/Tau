@@ -71,6 +71,7 @@ const centre = runs[13];
 console.log(`box +-${half}u, +-${(hr/DEG).toFixed(3)} deg, ${runs.length} poses, arm (${pv},${dir}), foot ${jF}`);
 console.log('\n   k   deg  | deviation from the centre | along G   | across G  | across, per substep');
 let first = null, firstAcross = 0, lastAcross = 0, lastK = 0, worstStep = 0, worstStepK = 0, prevAcross = null;
+let firstTotal = 0, lastTotal = 0, midK = null, midAcross = 0, midTotal = 0;
 for (let k = 1; k <= K; k++) {
   const pr = centre.tr[k-1].pushes; if (!pr.length) continue;
   const qc = centre.tr[k-1].pose;
@@ -83,21 +84,29 @@ for (let k = 1; k <= K; k++) {
   const rn = (cc.pb.x - qc.x)*ny - (cc.pb.y - qc.y)*nx;
   // G in the scaled metric (dx, dy, R drot)
   let g = [hf*nx, hf*ny, hf*rn/R]; const gL = Math.hypot(...g); g = g.map(v => v/gL);
-  let along = 0, across = 0;
+  // Also the WHOLE deviation, unsplit, because the brief thread measures that and the two readings
+  // have to be reconciled rather than left side by side: if the total grows while the tangential
+  // part is flat, the difference is either the along-G component or G's own rotation.
+  let along = 0, across = 0, total = 0;
   for (const r of runs) {
     const q = r.tr[k-1].pose; if (rOf(q) > EDGE) continue;
     const d = [q.x - qc.x, q.y - qc.y, R*(q.rot - qc.rot)];
     const p = d[0]*g[0] + d[1]*g[1] + d[2]*g[2];
     const t = Math.hypot(d[0]-p*g[0], d[1]-p*g[1], d[2]-p*g[2]);
     along = Math.max(along, Math.abs(p)); across = Math.max(across, t);
+    total = Math.max(total, Math.hypot(d[0], d[1], d[2]));
   }
-  if (first === null) { first = k; firstAcross = across; }
+  if (first === null) { first = k; firstAcross = across; firstTotal = total; }
+  lastTotal = total;
   const step = prevAcross === null ? 1 : across / Math.max(prevAcross, 1e-12);
   if (k > first && step > worstStep) { worstStep = step; worstStepK = k; }
   prevAcross = across; lastAcross = across; lastK = k;
-  if (k % 10 === 0 || k < first + 4) console.log(`  ${String(k).padStart(3)} ${(k*TC.LIM_SUB/DEG).toFixed(2).padStart(6)} |                           | ${along.toFixed(5).padStart(9)} | ${across.toFixed(5).padStart(9)} | ${step.toFixed(5).padStart(9)}`);
+  if (k === first + 60) { midK = k; midAcross = across; midTotal = total; }
+  if (k % 10 === 0 || k < first + 4) console.log(`  ${String(k).padStart(3)} ${(k*TC.LIM_SUB/DEG).toFixed(2).padStart(6)} | ${total.toFixed(5).padStart(25)} | ${along.toFixed(5).padStart(9)} | ${across.toFixed(5).padStart(9)} | ${step.toFixed(5).padStart(9)}`);
 }
 console.log(`\nacross the push, first contact ${first} to substep ${lastK} (the centre's throw): ${firstAcross.toFixed(5)}u -> ${lastAcross.toFixed(5)}u, x${(lastAcross/firstAcross).toFixed(4)} overall`);
+console.log(`the WHOLE deviation, unsplit, over the same window: ${firstTotal.toFixed(5)}u -> ${lastTotal.toFixed(5)}u, x${(lastTotal/firstTotal).toFixed(4)}`);
+if (midK) console.log(`over the INTERIOR stretch alone, ${first} to ${midK}: across x${(midAcross/firstAcross).toFixed(4)}, whole x${(midTotal/firstTotal).toFixed(4)}`);
 console.log(`worst single substep: x${worstStep.toFixed(5)} at substep ${worstStepK}`);
 // The worst substep is not the figure to compound. What a tube has to absorb is the OVERALL factor,
 // and where the growth sits matters more than its peak: a factor confined to the last dozen substeps

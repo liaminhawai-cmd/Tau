@@ -33,6 +33,13 @@ let entry = null; for (let k = 1; k <= K; k++) if (moving[k]) { entry = k; break
 const THROW = 84;
 const a = dev(entry), b = dev(THROW);
 console.log(`+-${BOX}u / +-${(ROT / DEG).toFixed(3)} deg, ${N} poses: spread ${a.toFixed(5)} at first contact (substep ${entry}) -> ${b.toFixed(5)} at the centre's throw (84), x${(b / a).toFixed(4)}`);
+{ // per-substep profile: where does the spread contract and where does it grow?
+  let minAt = null, minV = Infinity;
+  for (let k = entry; k <= THROW; k++) { const v = dev(k); if (v < minV) { minV = v; minAt = k; } }
+  console.log(`   profile: ${dev(entry).toFixed(5)} at ${entry} -> trough ${minV.toFixed(5)} at ${minAt} -> ${dev(THROW).toFixed(5)} at ${THROW}; dip x${(minV/dev(entry)).toFixed(4)}, rise x${(dev(THROW)/minV).toFixed(4)} over ${THROW-minAt} substeps (x${Math.pow(dev(THROW)/minV, 1/(THROW-minAt)).toFixed(5)} a substep)`);
+  const f = k => dev(k) / dev(k - 1);
+  console.log('   per-substep factor: ' + [entry+5, 20, 30, 35, 40, 50, 60, 70, 74, 80, 84].filter(k => k > entry && k <= THROW).map(k => `${k}:${f(k).toFixed(5)}`).join('  '));
+}
 let flat = 1, worst = 1, worstAt = null;
 for (let k = entry + 1; k <= THROW; k++) { const f = dev(k) / dev(k - 1);
   if (k < 74) flat *= f;

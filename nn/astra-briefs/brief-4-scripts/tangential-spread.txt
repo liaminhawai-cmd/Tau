@@ -1,8 +1,16 @@
 +-0.0125u / +-0.031 deg, 200 poses: spread 0.01815 at first contact (substep 13) -> 0.02050 at the centre's throw (84), x1.1299
+   profile: 0.01815 at 13 -> trough 0.01794 at 32 -> 0.02050 at 84; dip x0.9889, rise x1.1426 over 52 substeps (x1.00257 a substep)
+   per-substep factor: 18:0.99975  20:0.99975  30:0.99975  35:1.00071  40:1.00077  50:1.00091  60:1.00150  70:1.00159  74:1.00051  80:1.01097  84:1.01188
    through the interior stretch (14..73): x1.0362 in total; worst single substep x1.0119 at 84; park (74..84) x1.0905
 +-0.025u / +-0.062 deg, 200 poses: spread 0.03629 at first contact (substep 13) -> 0.04113 at the centre's throw (84), x1.1333
+   profile: 0.03629 at 13 -> trough 0.03590 at 32 -> 0.04113 at 84; dip x0.9892, rise x1.1457 over 52 substeps (x1.00262 a substep)
+   per-substep factor: 18:0.99975  20:0.99975  30:0.99975  35:1.00070  40:1.00077  50:1.00091  60:1.00108  70:1.00159  74:1.00054  80:1.01102  84:1.01195
    through the interior stretch (14..73): x1.0360 in total; worst single substep x1.0119 at 84; park (74..84) x1.0940
 +-0.05u / +-0.124 deg, 200 poses: spread 0.07255 at first contact (substep 14) -> 0.07756 at the centre's throw (84), x1.0691
+   profile: 0.07255 at 14 -> trough 0.07083 at 33 -> 0.07756 at 84; dip x0.9763, rise x1.0951 over 51 substeps (x1.00178 a substep)
+   per-substep factor: 19:0.99975  20:0.99975  30:0.99975  35:1.00137  40:1.00140  50:1.00147  60:1.00153  70:1.00159  74:1.00071  80:1.00361  84:1.00379
    through the interior stretch (15..73): x1.0362 in total; worst single substep x1.0038 at 84; park (74..84) x1.0318
 +-0.1u / +-0.248 deg, 200 poses: spread 0.14503 at first contact (substep 15) -> 0.15527 at the centre's throw (84), x1.0706
+   profile: 0.14503 at 15 -> trough 0.14154 at 32 -> 0.15527 at 84; dip x0.9759, rise x1.0971 over 52 substeps (x1.00178 a substep)
+   per-substep factor: 20:0.99974  20:0.99974  30:0.99974  35:1.00137  40:1.00140  50:1.00147  60:1.00153  70:1.00159  74:1.00157  80:1.00362  84:1.00380
    through the interior stretch (16..73): x1.0358 in total; worst single substep x1.0038 at 84; park (74..84) x1.0337

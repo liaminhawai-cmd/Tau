@@ -68,25 +68,29 @@
   itself exactly proportional to the box (0.018, 0.036, 0.073, 0.145u). So: same proportionality,
   same near-flat interior, same anomaly at the small boxes, and the park carrying the growth. One
   honest difference: measured this way the interior stretch grows slightly (x1.036 over 60
-  substeps) where their tangential split has it slightly contracting, which is what you would
-  expect if some of the difference is G's own rotation. Rotation defaults to box/R; run as
+  substeps) rather than contracting. That difference was chased and settled: the contraction is
+  real but only to a trough around substep 32, after which the spread grows at 1.0007 rising to
+  1.0016 a substep, so the growth is a sustained rate over the second half of the contact window
+  rather than a transient in the park. Their section 15 was corrected to match, and the whole
+  deviation and the split-at-G tangential part turn out to be the same number to five decimals.
+  Rotation defaults to box/R; run as
   `node tangential-spread.js <box u> [rot rad|-] [poses]`.
 
-- `throw-cert-at-0bcb6f2b4.js`, `THROW-CONTACT-LEMMAS-at-0bcb6f2b4.md`, `gain-bound-at-0bcb6f2b4.js`,
-  `gain-bound-at-0bcb6f2b4.txt`, `slab-shape-at-0bcb6f2b4.js`, `slab-shape-at-0bcb6f2b4.txt`: the
-  throw-bound thread's checker, write-up and section 13 to 15 programs at commit 0bcb6f2b4 on
+- `throw-cert-at-1ba97f2a9.js`, `THROW-CONTACT-LEMMAS-at-1ba97f2a9.md`, `gain-bound-at-1ba97f2a9.js`,
+  `gain-bound-at-1ba97f2a9.txt`, `slab-shape-at-1ba97f2a9.js`, `slab-shape-at-1ba97f2a9.txt`: the
+  throw-bound thread's checker, write-up and section 13 to 15 programs at commit 1ba97f2a9 on
   claude/project-thread-kyx87p, the commit whose results brief 4 quotes. They are that thread's
   files; these copies are a snapshot, not a fork, pinned rather than tracking that thread's head,
   which moves every few minutes. All were verified against the repository by blob hash, read from a
   directory listing of that commit rather than recalled: throw-cert.js
   b8fb4c6f3bc69beedd8b8973e96994d65dc2c96a (unchanged since 1cf90f63f), THROW-CONTACT-LEMMAS.md
-  67ddbbb713a5df5fb0cb79e812c94bbac8521ddb, gain-bound.js eb415d5966a2a493f465278d7ef50bc100fbad2b,
+  f3c98860aec54941443dfdc4a7b93e9a732f918e, gain-bound.js eb415d5966a2a493f465278d7ef50bc100fbad2b,
   gain-bound.txt caba4270531afe1c194483af488c523e2ce84b02, slab-shape.js
   3c0823b0f50281369084f62ac401b2ad7ab63bf4, slab-shape.txt 6257009aecd4e62c2e21da6f86588e067b04ebd9,
   thickness.js 1fd166f3f4392de0610cb1a2e1a93ceee4dff30c, thickness.txt
   63ed3ac74bb819bf3a9a14d6e212099ac74f3b8e, tangential.js
-  906f36fd6f2db694057c4cbab53cdd71ef3a28d3, tangential.txt
-  1c09c8377ca9c474917b375816695e71206d0e52. Section 14 is the answer to question 1(b): the
+  802b9755e0ace70a1862139cc3399a70459c2b21, tangential.txt
+  55a75670b18cfb2d349f2e336ba6c13d37819981. Section 14 is the answer to question 1(b): the
   penetration entering a substep is one substep of the attacker's advance, because the push resets
   every pose onto the shell, so the thickness never accumulates.
   Section 13 is the one brief 4's question 1 now turns on: H3 computed rigorously rather than
