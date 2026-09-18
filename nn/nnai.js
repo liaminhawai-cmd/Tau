@@ -465,10 +465,17 @@ function nnPlanFor(eng, net, idx, opts) {
   const temp = o.temperature || 0;
   let chosen = cands[0];
   if (temp > 1e-6 && cands[0].v < 1e5) {            // never dice away a clean throw
-    const mx = cands[0].s;
-    const ws = cands.map(c => Math.exp((c.s - mx)/temp));
+    // At depth 2+ the dial rolls over the deep-searched candidates by their DEEP score. It used to
+    // roll over every stop by its shallow score even after the deep re-rank above, so the deeper
+    // answer only survived when the roll happened to land on it. Same fix as nnPlanForGame.
+    const useDeep = depth >= 2;
+    const pool = useDeep ? cands.filter(c => Number.isFinite(c.deep)) : cands;
+    const key = c => useDeep ? c.deep : c.s;
+    const mx = key(pool[0]);
+    const ws = pool.map(c => Math.exp((key(c) - mx)/temp));
     let r = Math.random()*ws.reduce((a, b) => a + b, 0);
-    for (let i = 0; i < cands.length; i++) { r -= ws[i]; if (r <= 0) { chosen = cands[i]; break; } }
+    chosen = pool[0];
+    for (let i = 0; i < pool.length; i++) { r -= ws[i]; if (r <= 0) { chosen = pool[i]; break; } }
   }
   chosen.roughness = roughness;   // reported for diagnostics/calibration, never used to rank
   // o.captureTop: a back-channel for callers that need the whole shortlist, not just the winner

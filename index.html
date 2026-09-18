@@ -5384,7 +5384,11 @@ let nnModel = null, nnPolicyModel = null, nnModelName = '';
 // deepening (nnPlanForGameTimed) instead of a fixed depth -- both are set from #nnSearchSettings
 // on the drop screen, URL params just seed the initial values.
 let nnDepth = (() => { const m = /[?&]depth=(\d)/.exec(location.hash); return m ? +m[1] : 2; })();
-let nnDynamic = false, nnTimeMs = 2000, nnTemperature = 0.05;
+// Temperature 0 by default: a human-facing game plays the net's actual best move. 0.05 used to be
+// the floor here and in the lab (`|| 0.05`), and with a value net whose scores sit within a few
+// hundredths of each other in any clearly won or lost position, that floor made the pick close to
+// uniform over 50-80 stops -- the net floated when ahead and blundered when behind.
+let nnDynamic = false, nnTimeMs = 2000, nnTemperature = 0;
 // MUST stay arithmetically identical to nn/features.js -- a checkpoint is trained against one and
 // played against the other, so any divergence makes a dropped-in model play worse here than it did
 // in training, in a way nothing would report. NN_N_FEATURES is checked against the model's own
@@ -5773,9 +5777,16 @@ function nnPlanForGame(idx, temperature, depth, keepForDepth, model, policyModel
 
     let k = 0;
     if (temperature > 1e-6 && cands[0].v < 1e5) {
-        const mx = cands[0].s, ws = cands.map(c => Math.exp((c.s - mx)/temperature));
-        let r = Math.random()*ws.reduce((a, b) => a + b, 0);
-        for (let i = 0; i < cands.length; i++) { r -= ws[i]; if (r <= 0) { k = i; break; } }
+        // At depth 2+ the dial rolls over the deep-searched candidates by their DEEP score. It used
+        // to roll over every stop by its shallow score even after the deep re-rank, so the deeper
+        // answer only survived when the roll happened to land on it.
+        const deep = (depth||1) >= 2;
+        const pool = deep ? cands.filter(c => Number.isFinite(c.deep)) : cands;
+        const key = c => deep ? c.deep : c.s;
+        const mx = key(pool[0]), ws = pool.map(c => Math.exp((key(c) - mx)/temperature));
+        let r = Math.random()*ws.reduce((a, b) => a + b, 0), pick = pool[0];
+        for (let i = 0; i < pool.length; i++) { r -= ws[i]; if (r <= 0) { pick = pool[i]; break; } }
+        k = cands.indexOf(pick);
     }
     return cands[k];
 }
@@ -7688,7 +7699,7 @@ function labApplyBrainFor(side) {
         const b = labBrains[side];
         nnModel = b.model; nnPolicyModel = b.policy || null; nnModelName = b.name;
         nnDepth = b.depth; nnDynamic = b.dynamic; nnTimeMs = b.timeMs;
-        nnTemperature = b.temperature || 0.05;
+        nnTemperature = b.temperature || 0;   // a typed 0 stays 0 (see nnTemperature's declaration)
         ladderLevel = null; aiDifficulty = 'nn';
     } else {
         aiDifficulty = 'ladder'; ladderLevel = c.level;
@@ -10245,7 +10256,7 @@ function labPosInit() {
         if (b.model) {
             nnModel = b.model; nnPolicyModel = b.policy || null; nnModelName = b.name;
             nnDepth = b.depth; nnDynamic = b.dynamic; nnTimeMs = b.timeMs;
-            nnTemperature = b.temperature || 0.05;
+            nnTemperature = b.temperature || 0;   // a typed 0 stays 0 (see nnTemperature's declaration)
             playFromPose(parsed.pose, +turn.value, human, 'nn');
         } else {
             playFromPose(parsed.pose, +turn.value, human, 'ladder');
@@ -10330,7 +10341,7 @@ function labWatchGame() {
         if (b.model) {
             nnModel = b.model; nnPolicyModel = b.policy || null; nnModelName = b.name;
             nnDepth = b.depth; nnDynamic = b.dynamic; nnTimeMs = b.timeMs;
-            nnTemperature = b.temperature || 0.05;
+            nnTemperature = b.temperature || 0;   // a typed 0 stays 0 (see nnTemperature's declaration)
             startGame(true, h0 ? 0 : 1, 'nn');
         } else {
             startLadderLevel(b.level, h0 ? 0 : 1);               // ladder clears bank as usual
