@@ -1,6 +1,6 @@
-# Brief 4: the throw certificate is proved, and six hundred times too small
+# Brief 4: the throw certificate is proved, six hundred times too small, and there is a way round it
 
-Your last answer closed a proof. This one is about the fact that the proof does not yet do the job it was built for, by a margin that no amount of tightening will cover, and about one idea that might.
+Your last answer closed a proof. This one is about the fact that the proof does not yet do the job it was built for, by a margin no amount of tightening will cover, and about a route round it that measurement says is open. The ask at the end is specific: two hypotheses, over a box, proved.
 
 Same conventions as briefs 2 and 3: board units `u`, degrees unless a formula says radians. Everything below was measured today against the engine's own code. Where a number is the checker's rather than the engine's, it says so. The checker's current source and the write-up it implements are attached, both at commit `1cf90f63f` and both verified against the repository by blob hash.
 
@@ -54,9 +54,9 @@ The Jacobian's own spread, the term the linearisation introduced, is the smalles
 
 ---
 
-## 3. The gap is bookkeeping, and here is the measurement that says so
+## 3. The gap is bookkeeping, not dynamics
 
-This is the part we would most like you to take seriously, because it says the difficulty is not in the dynamics.
+This is the part that decides what to ask you, because it says the difficulty is in the accounting rather than in the motion.
 
 Sample victim start poses from a box about this position, run each through the sweep on the search's own substep grid, and watch the exposed foot's radius. 200 poses per box, the centre included, every start pose checked to be on the board and not already touching the attacker.
 
@@ -68,29 +68,43 @@ Sample victim start poses from a box about this position, run each through the s
 | `+-0.25u / +-0.01 rad` | 200/200 | 0 | 0.0605u | — |
 | `+-0.5u / +-0.01 rad` | 200/200 | 0 | 0.0594u | substep 90 |
 
-Three things to read off it.
+Four things to read off it.
 
-**The exposed foot's radius increases at every substep of the dwell, for every pose, at every box size we can construct.** Not marginally: the smallest increment anywhere in 1000 sampled trajectories is 0.059u, which is two orders of magnitude above the enclosure widths the checker is fighting over. `+-0.125u` is one whole grid cell; `+-0.5u` is the entire box the sampled routine works on.
+**The exposed foot's radius never falls.** Not only through the dwell: over the whole sweep, for every pose, at every box size. Zero decreasing steps in 27400 steps per box, three box sizes checked, and the throw-bound thread gets the same on the second throw arm independently.
 
-**The true spread barely grows.** At `+-0.125u` the spread of the foot radius across the box goes 0.2077u at substep 74 to 0.2386u at 98, which is **1.0058 per substep**. The checker's best enclosure grows at 1.11. At `+-0.5u` the spread *contracts* through the approach, 0.660u at substep 70 down to 0.363u at 82, then grows at about 1.011.
+**The increments through the dwell are enormous relative to the widths in play.** The smallest anywhere across 1000 park trajectories is 0.059u, against enclosure widths of 0.01 to 0.1u. Through the dwell the gain runs 0.05 to 0.09u a substep.
 
-**At one grid cell the margin is available at the same substep the certificate already needs.** At `+-0.125u` the minimum over the box clears the rim at substep 85 — the same substep the interval certificate reaches at a box 600 times smaller. A monotone argument over a whole cell would not need a longer sweep. It would need different accounting.
+**The small gains are all early, which is exactly the known problem.** The minimum gain over a pose's whole contact window is 4.0e-5u at substep 14 at a `+-0.125u` box, and 1.1e-4u at substep 11 at `+-0.25u`. Both sit at a grazing first contact, not in the dwell. That matters because `throw-theorem.md` already found that uniform bounds over the sweep give a total of only 0.44u by 28 degrees, dominated by the early substeps where the normal is still 68 degrees off radial, and that per-slab bounds would follow the engine's real 3.18u closely. Per-slab is precisely what this measurement says is available.
 
-So the dynamics through the dwell are neutral to contracting and the margin is enormous, and essentially the whole 600x is the cost of carrying an enclosure through twenty-five substeps one at a time.
+**The spread of the outcome contracts.** From first contact to the last pose's throw, the spread of the exposed foot's radius across the box goes 0.4408u to 0.2008u at `+-0.125u` (a factor of 0.456), 0.7443u to 0.2509u at `+-0.25u`, and 1.3697u to 0.3824u at `+-0.5u`. Meanwhile the pose box itself expands by only 1.04x over the same window (the throw-bound thread's measurement, not ours). So the dynamics do not merely fail to blow up; in the quantity the proof cares about they pull the box together.
 
-(Sampling is of course not proof — it is exactly the argument the certificate exists to replace. It is offered as evidence about where the difficulty is, not as a substitute for one.)
+And at `+-0.125u`, one whole grid cell, the minimum over the box clears the rim at substep 85 — the same substep the interval certificate reaches at a box 600 times smaller. A non-stepping argument over a whole cell would not need a longer sweep.
+
+**This is sampling, and sampling is not proof.** Two hundred poses per box say the hypotheses below are *true*; they say nothing about whether they are *provable*. Sampling is exactly the argument the certificate exists to replace, and it is offered here as evidence about where the difficulty lies, not as a substitute.
 
 ---
 
 ## 4. The questions
 
-**1. Is there a monotone quantity over the whole dwell?** This is the one we care about. Every substep of the park is a chance for the enclosure to grow, and the park is where all the growth is. What we want is an argument that does not step: some quantity, defined on the pose, that can be shown to increase at every substep for every pose in a box of order 0.125u, so that the exposed foot's radius at the end of the dwell is bounded below without carrying a set through each substep.
+**1. How do we prove the barrier hypotheses over a box of order 0.1u?** This is the one that matters, and it is not "is there a monotone quantity" — section 3 answers that empirically. The monotone quantity is the exposed foot's radius, and the structure it needs is already written down. `throw-theorem.md` states a barrier theorem whose hypotheses are, over a box `B` of victim poses and until the throw:
 
-The structure that makes this look possible: during the dwell the victim's contact point is a fixed material point of the victim, the vertex at arc angle 30 degrees on its leg 0, at `p(q) = (x, y) + R sin(30) (cos rot, sin rot)` and height `R cos(30)`. The attacker's chord is fixed within a substep and rotates by 1/3 degree between them. The push is always along the perpendicular from that vertex to that chord, which is a direction that points, broadly, outward. The exposed foot is a different material point of the same body. So the question has a concrete form: is `d/dk` of the exposed foot's radius expressible as something sign-definite over a box, given the dwell holds — a Lyapunov-style argument on the sweep index rather than an enclosure?
+- **(H1)** the touching pair is one tube pair with closest points interior to both tubes, `hf >= 0.35`, and no hub contact;
+- **(H2)** the attacker's contact point advances into the victim: `a(alpha, pose) >= a_min(alpha) > 0`;
+- **(H3)** the gain coefficient `g = n . u + (rn / I) R (J f) . u` satisfies `g >= g_min(alpha) > 0`, with `rn^2 <= L^2`;
+- **(H4)** `B` is invariant until the throw: it contains the start pose and every pose reached from it by slides along normals of the cone (H1) allows over `B`, of total length at most the attacker's total advance, together with spins of at most 0.02588 times that length.
 
-What would count as an answer, in descending order of usefulness: a quantity and a proof that it is monotone; a quantity and the conditions under which it is monotone, interval-checkable over a box; or a clear argument that no such quantity exists on this dynamics, which would be worth knowing before more effort goes in.
+Given those, the foot gains `lambda g = a g / (1 + rn^2/I) >= a_min g_min / (1 + L^2/I)` a substep, and summing over the sweep reaches the rim. No enclosure is carried.
 
-**2. Can `lambda . da` be handled without stepping?** If the answer to 1 is no, this is the term that decides how far the stepping method can be pushed. `lambda` is the push magnitude and `da` the hull of the push direction over the substep, from before the push to after it. They are not independent — both are determined by the same pose — but the checker bounds them separately and multiplies, which is where the factor comes from. Is there a form of the one-contact update in which the product appears as a single quantity with a bound tighter than the product of the parts? The update itself, in mass coordinates, is the Newton step you gave us: `Phi(z) = z - G(z) a / |a|^2`.
+The structural reason this route can work where the stepping method cannot: **invariance replaces propagation**. A box that maps into itself needs nothing carried from substep to substep, so there is no feedback loop, so there is no threshold to fall off. The `pad + c pad^2` recursion of section 2 simply does not arise.
+
+So the question is how to prove (H2), (H3) and (H4) over a box of order `+-0.1u`. Two parts, and we would push hardest on the second:
+
+- **(H2) and (H3) per slab.** Uniform-over-the-sweep bounds give 0.44u, which fails. The measurement says the gain is stable through the dwell and only collapses at the early grazing contacts, so the bound wants to be per slab of a few degrees. What is the right way to get a rigorous per-slab `a_min` and `g_min` over a box, given that during the dwell the victim's contact is a known material point — the vertex at arc angle 30 degrees on leg 0, at `p(q) = (x, y) + R sin(30) (cos rot, sin rot)`, height `R cos(30)` — and the attacker's is the perpendicular foot from that point onto a chord that is fixed within a substep?
+- **(H4), invariance.** This is where we do not know the answer. The Jacobian machinery from the park work is the right tool — the push direction is an exactly differentiable function of the pose during a dwell — but whether the mean-value remainder is small enough for a box of 0.1u to be shown to map into itself, we cannot say. If it is not, is there a different shape of set, or a different coordinate system, in which invariance is checkable?
+
+A clear argument that (H4) cannot hold at this box size would also be worth having, before more effort goes into it.
+
+**2. Can `lambda . da` be handled without stepping?** If the invariance route does not close, this is the term that decides how far the stepping method can be pushed. `lambda` is the push magnitude and `da` the hull of the push direction over the substep, from before the push to after it. They are not independent — both are determined by the same pose — but the checker bounds them separately and multiplies, which is where the factor comes from. Is there a form of the one-contact update in which the product appears as a single quantity with a bound tighter than the product of the parts? The update itself, in mass coordinates, is the Newton step you gave us: `Phi(z) = z - G(z) a / |a|^2`.
 
 **3. Does the method have one ceiling or several?** We assumed the dwell was the universal obstacle because it was the obstacle on the arm we studied. It is not: the second throw arm, attacker 1 about foot 2, is not limited by the dwell at all. At `+-0.001u` it reaches substep 113 of 331, one past its own throw, and its blow-up begins at substep 109 where the direction cone goes from 0.20 to 5.32 degrees. We have not diagnosed that one. If the two ceilings have different causes, a method that fixes the dwell fixes half the problem, and we would rather know that now than after building it.
 
@@ -103,4 +117,5 @@ What would count as an answer, in descending order of usefulness: a quantity and
 - The park runs substeps 74 to 98 measured entering each substep, 79 to 104 measured leaving it. The stable intersection is 79 to 98.
 - All contact geometry here is read from the pose **entering** a substep, which is what the engine's contact search sees. Read from the post-push pose instead and the victim's contact sits a few hundredths of a chord off its vertex rather than exactly on it, and a touching pair reads as not touching at all, since after the push it sits at exactly `D`.
 - The checker has a `--validate` mode that simulates poses from the box with the engine's own law and asserts every per-substep enclosure and bound, so anything proposed here can be tested against real trajectories before it is trusted. It has itself had a bug: it compared each pose against the *printed* enclosure, rounded to 1e-3 for display, which is invisible at a `+-0.005u` box and the size of the box at `+-0.001u`. It checks the unrounded enclosure now.
-- Attached: `throw-cert-at-1cf90f63f.js`, the checker as it stands; `THROW-CONTACT-LEMMAS-at-1cf90f63f.md`, the write-up it implements, whose sections 8 to 10 cover the park work, the second arm and the gap; and `park-monotone.js` with its output, the measurement in section 3.
+- The barrier theorem and its hypotheses predate all of this work; what is new here is the evidence that its per-slab form is within reach. The earlier verdict on it was that the interval checker was the way forward, which is the method sections 1 and 2 describe.
+- Attached: `throw-cert-at-1cf90f63f.js`, the checker as it stands; `THROW-CONTACT-LEMMAS-at-1cf90f63f.md`, the write-up it implements, whose sections 8 to 10 cover the park work, the second arm and the gap (that file is byte-identical at the thread's later head `fbad09315`, so it is current); and `park-monotone.js` with its output, the measurement in section 3.

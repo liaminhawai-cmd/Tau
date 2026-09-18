@@ -15,6 +15,10 @@ substep  min foot radius over the box   max        centre     spread   clears ri
    94    68.0050                      68.2203    68.1254   0.2153   yes
    98    68.3737                      68.6011    68.5016   0.2274   yes
 
+whole sweep: 0 decreasing steps in 200 x 137 = 27400 steps
+first contact at substep 10; smallest gain over each pose's own contact window 0.000000u at substep 11
+foot-radius spread: 0.3895u at first contact, 0.1962u at the last pose's throw (substep 85), ratio 0.504
+
 start poses: max foot radius 63.789 to 64.230 (rim 67.167); off board at the start: 0; already touching the attacker: 0
 box +-0.125u / +-0.01 rad, 200 poses (the first is the centre), foot 1, rim 67.167
 thrown: 200 of 200; first leaves at substep 83, last at 85
@@ -31,6 +35,10 @@ substep  min foot radius over the box   max        centre     spread   clears ri
    90    67.6283                      67.8389    67.7505   0.2106   yes
    94    67.9968                      68.2171    68.1254   0.2203   yes
    98    68.3651                      68.6037    68.5016   0.2386   yes
+
+whole sweep: 0 decreasing steps in 200 x 137 = 27400 steps
+first contact at substep 9; smallest gain over each pose's own contact window 0.000040u at substep 14
+foot-radius spread: 0.4408u at first contact, 0.2008u at the last pose's throw (substep 85), ratio 0.456
 
 start poses: max foot radius 63.372 to 64.615 (rim 67.167); off board at the start: 0; already touching the attacker: 0
 box +-0.125u / +-0.05 rad, 200 poses (the first is the centre), foot 1, rim 67.167
@@ -49,6 +57,10 @@ substep  min foot radius over the box   max        centre     spread   clears ri
    94    67.6269                      68.5600    68.1254   0.9331   yes
    98    67.9901                      68.9492    68.5016   0.9591   yes
 
+whole sweep: 0 decreasing steps in 200 x 137 = 27400 steps
+first contact at substep 5; smallest gain over each pose's own contact window 0.000001u at substep 15
+foot-radius spread: 1.2430u at first contact, 0.8604u at the last pose's throw (substep 89), ratio 0.692
+
 start poses: max foot radius 63.648 to 64.393 (rim 67.167); off board at the start: 0; already touching the attacker: 0
 box +-0.25u / +-0.01 rad, 200 poses (the first is the centre), foot 1, rim 67.167
 thrown: 200 of 200; first leaves at substep 83, last at 86
@@ -66,6 +78,10 @@ substep  min foot radius over the box   max        centre     spread   clears ri
    94    67.9604                      68.2366    68.1254   0.2762   yes
    98    68.3279                      68.6347    68.5016   0.3068   yes
 
+whole sweep: 0 decreasing steps in 200 x 137 = 27400 steps
+first contact at substep 6; smallest gain over each pose's own contact window 0.000108u at substep 11
+foot-radius spread: 0.7443u at first contact, 0.2509u at the last pose's throw (substep 86), ratio 0.337
+
 start poses: max foot radius 63.348 to 64.718 (rim 67.167); off board at the start: 0; already touching the attacker: 0
 box +-0.5u / +-0.01 rad, 200 poses (the first is the centre), foot 1, rim 67.167
 thrown: 200 of 200; first leaves at substep 83, last at 87
@@ -82,4 +98,8 @@ substep  min foot radius over the box   max        centre     spread   clears ri
    90    67.5084                      67.9055    67.7505   0.3970   yes
    94    67.8683                      68.2871    68.1254   0.4188   yes
    98    68.2396                      68.6755    68.5016   0.4359   yes
+
+whole sweep: 0 decreasing steps in 200 x 137 = 27400 steps
+first contact at substep 2; smallest gain over each pose's own contact window 0.000086u at substep 6
+foot-radius spread: 1.3697u at first contact, 0.3824u at the last pose's throw (substep 87), ratio 0.279
 

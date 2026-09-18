@@ -53,3 +53,30 @@ for (const k of [70, 74, 78, 82, 84, 85, 86, 90, 94, 98]) {
   const v = at(k).map(r => r.foot), mn = Math.min(...v), mx = Math.max(...v);
   console.log(`${String(k).padStart(5)}    ${mn.toFixed(4)}                      ${mx.toFixed(4)}    ${at(k)[0].foot.toFixed(4)}   ${(mx - mn).toFixed(4)}   ${mn > EDGE ? 'yes' : 'no'}`);
 }
+
+// --- the barrier theorem's hypotheses, as facts about the sample -------------------------------
+// (a) is the exposed foot's radius monotone in the substep for every pose, over the WHOLE sweep?
+// (b) what is the smallest per-substep gain over the whole contact window, and where?
+// (c) how much does the pose box itself expand from first contact to the throw?
+{
+  let bad = 0, minGain = Infinity, minAt = null, firstContact = null;
+  const K = runs[0].length;
+  // first contact: the first substep at which any pose's foot radius changes from the pure-rotation
+  // value, i.e. the victim is being pushed. It is not moving at all before then.
+  for (let k = 2; k <= K; k++) if (runs.some(r => Math.abs(r[k - 1].foot - r[k - 2].foot) > 1e-12)) { firstContact = k; break; }
+  for (const r of runs) {
+    let own = null;                                        // this pose's own first contact
+    for (let k = 2; k <= K; k++) if (Math.abs(r[k - 1].foot - r[k - 2].foot) > 1e-12) { own = k; break; }
+    for (let k = 2; k <= K; k++) {
+      const d = r[k - 1].foot - r[k - 2].foot;
+      if (d < 0) bad++;
+      if (own !== null && k >= own && d < minGain) { minGain = d; minAt = k; }
+    }
+  }
+  const spread = k => { const h = runs.map(r => r[k - 1]); let w = 0;
+    for (let i = 0; i < h.length; i++) for (let j = i + 1; j < h.length; j++) w = Math.max(w, Math.abs(h[i].foot - h[j].foot)); return w; };
+  const thrown = Math.max(...leaves.filter(Boolean));
+  console.log(`\nwhole sweep: ${bad} decreasing steps in ${runs.length} x ${K - 1} = ${runs.length * (K - 1)} steps`);
+  console.log(`first contact at substep ${firstContact}; smallest gain over each pose's own contact window ${minGain.toFixed(6)}u at substep ${minAt}`);
+  console.log(`foot-radius spread: ${spread(firstContact).toFixed(4)}u at first contact, ${spread(thrown).toFixed(4)}u at the last pose's throw (substep ${thrown}), ratio ${(spread(thrown) / spread(firstContact)).toFixed(3)}`);
+}
