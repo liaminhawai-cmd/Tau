@@ -1,0 +1,8 @@
++-0.0125u / +-0.031 deg, 200 poses: spread 0.01815 at first contact (substep 13) -> 0.02050 at the centre's throw (84), x1.1299
+   through the interior stretch (14..73): x1.0362 in total; worst single substep x1.0119 at 84; park (74..84) x1.0905
++-0.025u / +-0.062 deg, 200 poses: spread 0.03629 at first contact (substep 13) -> 0.04113 at the centre's throw (84), x1.1333
+   through the interior stretch (14..73): x1.0360 in total; worst single substep x1.0119 at 84; park (74..84) x1.0940
++-0.05u / +-0.124 deg, 200 poses: spread 0.07255 at first contact (substep 14) -> 0.07756 at the centre's throw (84), x1.0691
+   through the interior stretch (15..73): x1.0362 in total; worst single substep x1.0038 at 84; park (74..84) x1.0318
++-0.1u / +-0.248 deg, 200 poses: spread 0.14503 at first contact (substep 15) -> 0.15527 at the centre's throw (84), x1.0706
+   through the interior stretch (16..73): x1.0358 in total; worst single substep x1.0038 at 84; park (74..84) x1.0337
