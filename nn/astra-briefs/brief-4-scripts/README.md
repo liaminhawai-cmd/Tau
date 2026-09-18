@@ -18,16 +18,36 @@
   count of full, partial and no-contact substeps, the floor over the countable ones, and separately
   the smallest nonzero gain any single pose ever has, which nothing sums. The floor is a minimum
   over the sample, so it can only fall as poses are added: at +-0.125u/+-0.01 rad this sample gives
-  6.5e-3u where the throw-bound thread's gives 9.2e-4u.
+  6.5e-3u where the throw-bound thread's gives 9.2e-4u. Both are the FIRST qualifying substep,
+  and that substep alone is sample-dependent, which is what `slab-start.js` shows; the floor is
+  not the number to quote.
 
 - `sustained-contact.js` -> `sustained-contact.txt`: per-pose first contact across a box, whether
-  any pose's contact lapses after it begins (none does), the substep from which the WHOLE box is in
-  sustained contact, and the smallest per-substep gain from there on. This is the number a per-slab
+  any pose's contact lapses after it begins (none does ON THIS ARM; see `lapse.js`), the substep
+  from which the WHOLE box is in sustained contact, and the smallest per-substep gain from there on. This is the number a per-slab
   (H2)/(H3) has to work with; a minimum taken over the mixed window, where some poses of the box are
   touching and others are not, is a statement about the slab boundary rather than about the contact,
   and comes out near zero for that reason. Superseded by `gain-floor.js` for the brief's table: its
   "smallest gain from there on" skipped the first qualifying substep, which is where the floor
   actually sits.
+
+- `slab-start.js` -> `slab-start.txt`: the same per-substep minimum as `gain-floor.js`, printed as a
+  profile rather than reduced to its floor, at 200, 600 and 2000 poses. It answers whether the low
+  value at the first qualifying substep is sampling or geometry: only that substep moves with the
+  sample (6.5e-3, 6.5e-3, 3.9e-3u at +-0.125u), and every substep from the next one on is stable to
+  three significant figures. Hence the brief's rule: begin the first slab one substep after the
+  whole box is in contact, and carry ~9e-3u a substep from there. The same holds at +-0.25u, where
+  first full contact is at substep 18 and a slab from 19 carries 9.5e-3u. Run as
+  `node slab-start.js <box u> <rot rad> <poses>`.
+
+- `lapse.js` -> `lapse.txt`: does contact ever lapse once it has begun, and is any lapse before the
+  throw. Contact is read off motion, since the victim is a free body and moves exactly when pushed.
+  On arm (0,-1) contact never lapses at all (0 of 200 at +-0.125u and at +-0.5u). On arm (2,-1)
+  every pose loses contact, first at substep 211 and 209 respectively, but the throw there is at
+  substep 111 to 113 and 0 of 200 lapse before their own throw. So the defensible claim is the
+  scoped one: contact does not lapse before the throw. Run as
+  `node lapse.js <foot> <dir> <one-degree calls> <box u> <rot rad> <poses>`. Both of these
+  reproduce the throw-bound thread's corrections independently on this harness.
 
 - `throw-cert-at-1cf90f63f.js`, `THROW-CONTACT-LEMMAS-at-1cf90f63f.md`: the throw-bound thread's
   checker and write-up at commit 1cf90f63f on claude/project-thread-kyx87p, the commit whose

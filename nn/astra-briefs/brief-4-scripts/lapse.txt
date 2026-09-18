@@ -1,0 +1,19 @@
+arm (0,-1), 46 one-degree calls = 138 substeps, +-0.125u / +-0.01 rad, 200 poses
+  thrown: 200/200, substeps 83 to 85
+  poses whose contact lapses at some point: 0/200
+  poses whose contact lapses BEFORE that pose is thrown: 0/200
+
+arm (0,-1), 46 one-degree calls = 138 substeps, +-0.5u / +-0.01 rad, 200 poses
+  thrown: 200/200, substeps 83 to 87
+  poses whose contact lapses at some point: 0/200
+  poses whose contact lapses BEFORE that pose is thrown: 0/200
+
+arm (2,-1), 111 one-degree calls = 333 substeps, +-0.125u / +-0.01 rad, 200 poses
+  thrown: 200/200, substeps 111 to 113
+  poses whose contact lapses at some point: 200/200, earliest lapse at substep 211
+  poses whose contact lapses BEFORE that pose is thrown: 0/200
+
+arm (2,-1), 111 one-degree calls = 333 substeps, +-0.5u / +-0.01 rad, 200 poses
+  thrown: 200/200, substeps 107 to 118
+  poses whose contact lapses at some point: 200/200, earliest lapse at substep 209
+  poses whose contact lapses BEFORE that pose is thrown: 0/200
