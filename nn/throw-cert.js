@@ -61,6 +61,16 @@ function hessBound(cbar, dHi, clamping, dLo) {
   return Math.hypot(kn, ALPHA * kn + ALPHA / SQI + b0 / SQI);
 }
 const etaOf = (M, p, m) => (M * p * p) / (2 * Math.max(m, 1e-3) * Math.max(m, 1e-3));
+// Epsilon-inflation, for the fixed point below. The round loop looks for an assumed contact cone C
+// whose own image Phi(C) is contained in C, which certifies C as an enclosure of the true post-push
+// cone. The iteration contracts geometrically but reaches containment only in the limit, so a plain
+// equality test runs out of rounds a hair short. The standard remedy is to test a slightly FATTENED
+// candidate instead: if Phi(C+) is contained in C+, then C+ is a valid enclosure, and nothing about
+// the containment test is weakened -- only the candidate offered to it is better chosen.
+const inflate = (a, eps) => { const w = Math.max(wid(a) * eps, eps * 1e-3); return [a[0] - w, a[1] + w]; };
+const inflateCone = (c, eps) => { const psiN = inflate(c.psiN, eps), rn = inflate(c.rn, eps), hf = [Math.max(0.01, inflate(c.hf, eps)[0]), Math.min(1, inflate(c.hf, eps)[1])];
+  const n = [cosRange(psiN), sinRange(psiN)];
+  return { psiN, rn, hf, n, G: [mul(hf, n[0]), mul(hf, n[1]), mul(hf, rn)], cth: c.cth, cbar: c.cbar, clamping: c.clamping }; };
 const EPS_LO = 1e-7;               // the solver leaves no pair under D (it stops when none is); fp slack
 
 // ---- intervals ----
@@ -203,6 +213,51 @@ function sweep(pieces, attacker, pv, dir, steps) {
   return out;
 }
 
+// The victim's own leg vertices are KNOWN MATERIAL POINTS of the victim, so over a set of poses each
+// one traces an exactly computable arc, not a blanket ball of radius pad. Leg j's vertex k sits at
+// arclength angle ph = (k/NSEG)(pi/2), so at radius R sin(ph) and fixed height H cos(ph), turned by
+// the pose's own rotation. This is the whole reason a vertex contact is CHEAPER than an interior one
+// rather than dearer: one end of the contact vector stops being something to localise.
+function vertexBoxOf(box, j, k) {
+  const ang = [box.rot[0] + j * 2 * Math.PI / 3, box.rot[1] + j * 2 * Math.PI / 3];
+  const ph = (k / NSEG) * Math.PI / 2, s = Math.sin(ph) * R, hh = Math.cos(ph) * H;
+  return { x: add(box.x, scale(cosRange(ang), s)), y: add(box.y, scale(sinRange(ang), s)), h: [hh, hh] };
+}
+// The foot of the perpendicular from ONE FIXED point onto a segment whose ends are themselves known
+// material points of the victim. The attacker does not move within a substep, so its own vertices are
+// exact; this is the mirror of footOnFixedSeg and makes an attacker-vertex contact exact too.
+function footOnMovingSeg(pt, B0, B1) {
+  const e = [sub(B1.x, B0.x), sub(B1.y, B0.y), sub(B1.h, B0.h)];
+  const eL2 = add(add(sq(e[0]), sq(e[1])), sq(e[2]));
+  if (eL2[0] < 1e-12) return null;
+  const r = [sub([pt.x, pt.x], B0.x), sub([pt.y, pt.y], B0.y), sub([pt.h, pt.h], B0.h)];
+  const t = divPos(add(add(mul(r[0], e[0]), mul(r[1], e[1])), mul(r[2], e[2])), eL2);
+  if (t[0] <= 1e-4 || t[1] >= 1 - 1e-4) return null;
+  const foot = { x: add(B0.x, mul(t, e[0])), y: add(B0.y, mul(t, e[1])), h: add(B0.h, mul(t, e[2])) };
+  const w = [sub(foot.x, [pt.x, pt.x]), sub(foot.y, [pt.y, pt.y]), sub(foot.h, [pt.h, pt.h])];   // foot - pt
+  return { w, foot, t };
+}
+// The foot of the perpendicular from a set of points onto ONE FIXED segment. The attacker does not
+// move within a substep, so for a victim-vertex contact this is exact too: t is affine in the point,
+// and w = p - foot is the point's component orthogonal to the chord. Returns null when the foot can
+// leave the segment, where the clamp makes it a different (endpoint) regime.
+function footOnFixedSeg(pB, q0, q1) {
+  const e = [q1.x - q0.x, q1.y - q0.y, q1.h - q0.h], eL2 = dot3(e, e);
+  if (eL2 < 1e-12) return null;
+  const r = [sub(pB.x, [q0.x, q0.x]), sub(pB.y, [q0.y, q0.y]), sub(pB.h, [q0.h, q0.h])];
+  const t = scale(add(add(mul(r[0], [e[0], e[0]]), mul(r[1], [e[1], e[1]])), mul(r[2], [e[2], e[2]])), 1 / eL2);
+  if (t[0] <= 1e-4 || t[1] >= 1 - 1e-4) return null;
+  // w = p - foot is the component of r orthogonal to the chord, so apply the projector I - uu^T in
+  // ONE product with SCALAR coefficients. Forming t first and subtracting t e instead costs a whole
+  // extra level of interval dependency -- t and e are perfectly correlated and interval arithmetic
+  // cannot know it -- which was inflating the cone in the park by a factor of three.
+  const u = e.map(v => v / Math.sqrt(eL2));
+  const P = [0, 1, 2].map(i => [0, 1, 2].map(j => (i === j ? 1 : 0) - u[i] * u[j]));
+  const w = [0, 1, 2].map(i => add(add(scale(r[0], P[i][0]), scale(r[1], P[i][1])), scale(r[2], P[i][2])));
+  const foot = { x: sub(pB.x, w[0]), y: sub(pB.y, w[1]), h: sub(pB.h, w[2]) };
+  return { w, foot, t };
+}
+
 // ---- one substep's analysis over an axis-aligned box of victim poses (throw-cert.js's) ----
 function analyse(box, att, pairWant) {
   const c = { x: (box.x[0] + box.x[1]) / 2, y: (box.y[0] + box.y[1]) / 2, rot: (box.rot[0] + box.rot[1]) / 2 };
@@ -322,7 +377,7 @@ function analyse(box, att, pairWant) {
     if (process.env.DBG3) console.log(`        gap test (${sg.a},${sg.b}): gap ${gap.toFixed(4)} vs reach ${reach.toFixed(4)} (dG ${[0,1,2].map(i => (g[i] - gMin[i]).toFixed(3)).join(',')})`);
     return gap <= reach;
   });
-  const segPairs = [];
+  let segPairs = [];
   for (const sg of kept2) {
     const A0 = A[P.i][sg.a], A1 = A[P.i][sg.a + 1], V0 = V[P.j][sg.b], V1 = V[P.j][sg.b + 1];
     const LA = lenOf(A0, A1), LV = lenOf(V0, V1), uA = unitOf(A0, A1), uV = unitOf(V0, V1);
@@ -366,30 +421,71 @@ function analyse(box, att, pairWant) {
     // moves by at most the same amount), and is a couple of degrees rather than the wedge's 7.5
     for (const [flag, vp, oth0, oth1, side] of [[atStartV, V0, A0, A1, 'V'], [atEndV, V1, A0, A1, 'V'], [atStartA, A0, V0, V1, 'A'], [atEndA, A1, V0, V1, 'A']]) {
       if (!flag) continue;
+      // A dwelling vertex has TWO valid bounds, and which one is tighter depends on the set.
+      //
+      // Exact: the dwelling vertex is a known material point of its own piece, so over a pose set it
+      // traces a computable arc rather than a ball of radius pad, and the foot of the perpendicular
+      // on the other chord follows from it. This is what makes a park cheaper than interior contact
+      // and it has no floor -- it shrinks with the box all the way down.
+      //
+      // Blanket: both endpoints move by at most pad, so the vector turns by at most pad / L. Crude,
+      // but it never loses the contact, whereas the exact form goes through interval products that
+      // widen faster than linearly once the box is large.
+      //
+      // Take whichever is narrower. Both enclose, so the narrower one is the valid one to carry.
+      let exactSP = null;
+      {
+        let kv = null, vBx = null, ft = null;
+        if (side === 'V') { kv = vp === V0 ? sg.b : sg.b + 1; vBx = vertexBoxOf(box, P.j, kv); ft = footOnFixedSeg(vBx, oth0, oth1); }
+        else { kv = -1 - (vp === A0 ? sg.a : sg.a + 1); ft = footOnMovingSeg(vp, vertexBoxOf(box, P.j, sg.b), vertexBoxOf(box, P.j, sg.b + 1)); if (ft) vBx = ft.foot; }
+        if (ft) {
+          const hor2v = add(sq(ft.w[0]), sq(ft.w[1]));
+          const psiV = hor2v[0] > 1e-9 ? angleHull(ft.w[0], ft.w[1]) : null;
+          if (psiV) {
+            const tzv = divPos(sq(ft.w[2]), hor2v), hfv = [1 / Math.sqrt(1 + tzv[1]), 1 / Math.sqrt(1 + tzv[0])];
+            exactSP = { a: sg.a, b: sg.b, aBox: side === 'V' ? ft.foot : { x: [vp.x, vp.x], y: [vp.y, vp.y], h: [vp.h, vp.h] }, vBox: vBx,
+              psiN: psiV, hf: hfv, fanA, fanV, dmax, cth, vertex: side, exact: true, vk: kv,
+              rn: dotCone(neg(sub(vBx.y, box.y)), sub(vBx.x, box.x), psiV),
+              why: `(${sg.a},${sg.b}) VERTEX ${side} exact cone ${(wid(psiV) / DEG).toFixed(3)}deg t ${ft.t.map(v => v.toFixed(3))}` };
+          }
+        }
+      }
       const cc2 = segClosest3(vp, vp, oth0, oth1);
       const pA = side === 'V' ? cc2.pb : vp, pV = side === 'V' ? vp : cc2.pb;
       const w = [pV.x - pA.x, pV.y - pA.y, pV.h - pA.h], L = Math.hypot(w[0], w[1], w[2]);
       if (L < 1e-6) return { ...out, refuse: 'degenerate vertex contact' };
-      // How far the vector to the dwelling vertex can turn. Only ONE of its two endpoints is
-      // uncertain when the vertex is the attacker's: the attacker is fixed through the substep, so
-      // its vertex is exact and only the foot of the perpendicular on the victim's chord moves, by
-      // at most the victim's own rigid motion. A victim vertex costs both endpoints.
       const phi = (side === 'V' ? 2 * pad : pad) / L;
-      if (phi >= 0.5) return { ...out, refuse: `vertex cone too wide (${(phi / DEG).toFixed(1)} deg)` };
       const hfC = Math.hypot(w[0], w[1]) / L, psiC = Math.atan2(w[1], w[0]);
-      if (hfC - phi <= 0.05) return { ...out, refuse: `vertex normal may be vertical (pair ${sg.a},${sg.b} side ${side} d ${sg.dist.toFixed(3)} vs min ${P.dist.toFixed(3)}, L ${L.toFixed(3)}, hf ${hfC.toFixed(3)}, phi ${phi.toFixed(4)})` };
-      const dpsi = Math.asin(Math.min(0.99, phi / (hfC - phi)));
-      const psiN2 = [psiC - dpsi, psiC + dpsi], hf2 = [Math.max(0.01, hfC - phi), Math.min(1, hfC + phi)];
-      const aB = { x: [pA.x - pad, pA.x + pad], y: [pA.y - pad, pA.y + pad], h: [pA.h - pad, pA.h + pad] };
-      const vB = { x: [pV.x - pad, pV.x + pad], y: [pV.y - pad, pV.y + pad], h: [pV.h - pad, pV.h + pad] };
-      segPairs.push({ a: sg.a, b: sg.b, aBox: aB, vBox: vB, psiN: psiN2, hf: hf2, fanA, fanV, dmax, cth, vertex: side,
-        rn: dotCone(neg(sub(vB.y, box.y)), sub(vB.x, box.x), psiN2),
-        why: `(${sg.a},${sg.b}) VERTEX ${side} cone ${(2 * dpsi / DEG).toFixed(2)}deg` });
+      let blanketSP = null;
+      if (phi < 0.5 && hfC - phi > 0.05) {
+        const dpsi = Math.asin(Math.min(0.99, phi / (hfC - phi)));
+        const psiN2 = [psiC - dpsi, psiC + dpsi], hf2 = [Math.max(0.01, hfC - phi), Math.min(1, hfC + phi)];
+        const aB = { x: [pA.x - pad, pA.x + pad], y: [pA.y - pad, pA.y + pad], h: [pA.h - pad, pA.h + pad] };
+        const vB = { x: [pV.x - pad, pV.x + pad], y: [pV.y - pad, pV.y + pad], h: [pV.h - pad, pV.h + pad] };
+        blanketSP = { a: sg.a, b: sg.b, aBox: aB, vBox: vB, psiN: psiN2, hf: hf2, fanA, fanV, dmax, cth, vertex: side,
+          rn: dotCone(neg(sub(vB.y, box.y)), sub(vB.x, box.x), psiN2),
+          why: `(${sg.a},${sg.b}) VERTEX ${side} cone ${(2 * dpsi / DEG).toFixed(2)}deg` };
+      }
+      const pick = !exactSP ? blanketSP : !blanketSP ? exactSP : (wid(exactSP.psiN) <= wid(blanketSP.psiN) ? exactSP : blanketSP);
+      if (!pick) return { ...out, refuse: `vertex cone too wide (${(phi / DEG).toFixed(1)} deg)` };
+      segPairs.push(pick);
     }
-    segPairs.push({ a: sg.a, b: sg.b, aBox, vBox, psiN, hf, fanA, fanV, rn, dmax, cth, why: `(${sg.a},${sg.b}) d ${sg.dist.toFixed(4)} cross ${(Math.acos(cth) / DEG).toFixed(1)}deg mu ${mu.toFixed(3)} dmax ${dmax.toFixed(3)} sA ${sA.toFixed(2)}/${LA.toFixed(2)} sV ${sV.toFixed(2)}/${LV.toFixed(2)} ends ${[atStartA, atEndA, atStartV, atEndV].map(v => (v ? 1 : 0)).join('')} n ${(psiN[0] / DEG).toFixed(2)}..${(psiN[1] / DEG).toFixed(2)}` });
-    segPairs.push({ a: sg.a, b: sg.b, aBox, vBox, psiN, hf, fanA, fanV, rn });
+    segPairs.push({ a: sg.a, b: sg.b, aBox, vBox, psiN, hf, fanA, fanV, rn, dmax, cth, atStartV, atEndV, why: `(${sg.a},${sg.b}) d ${sg.dist.toFixed(4)} cross ${(Math.acos(cth) / DEG).toFixed(1)}deg mu ${mu.toFixed(3)} dmax ${dmax.toFixed(3)} sA ${sA.toFixed(2)}/${LA.toFixed(2)} sV ${sV.toFixed(2)}/${LV.toFixed(2)} ends ${[atStartA, atEndA, atStartV, atEndV].map(v => (v ? 1 : 0)).join('')} n ${(psiN[0] / DEG).toFixed(2)}..${(psiN[1] / DEG).toFixed(2)}` });
+    segPairs.push({ a: sg.a, b: sg.b, aBox, vBox, psiN, hf, fanA, fanV, rn, atStartV, atEndV });
   }
-  out.segPairs = segPairs;
+  // A PARK IS ONE REGIME, NOT TWO. While the closest point dwells on the vertex shared by victim
+  // chords k-1 and k, both chord pairs report their minimiser AT that vertex: the same physical
+  // contact, listed twice. Left alone they become two regimes that each branch again next substep,
+  // and the count doubles every step of the dwell. The exact vertex entry already describes that
+  // contact with no interval at all, so drop the two plain entries whose minimiser is clamped there.
+  // The stale-neighbour test cannot do this job: it discriminates by which side the distance falls
+  // on, and during a dwell neither side falls.
+  { const seenV = new Set(); segPairs = segPairs.filter(sp => { if (!sp.exact) return true; const key = `${sp.a}|${sp.vk}`; if (seenV.has(key)) return false; seenV.add(key); return true; }); }
+  const parked = segPairs.filter(sp => sp.exact && sp.vertex === 'V');
+  const keptSP = parked.length === 0 ? segPairs : segPairs.filter(sp =>
+    sp.exact || !parked.some(pk => pk.a === sp.a && ((sp.b === pk.vk && sp.atStartV) || (sp.b === pk.vk - 1 && sp.atEndV))));
+  out.segPairs = keptSP.length ? keptSP : segPairs;
+  segPairs = out.segPairs;
   // hulls over the candidate segment pairs: the normal cone (as an angle interval and as a vector
   // box), hf, rn, and the gradient of the pair's distance function (hf n, hf rn)
   let psiN = segPairs[0].psiN, hf = segPairs[0].hf, rn = segPairs[0].rn;
@@ -413,6 +509,30 @@ function pairDist(att, q, pair) {
   return { dist: best.dist, nx, ny, hf, rn, pa: best.pa, pb: best.pb };
 }
 
+// Merge coefficient boxes that have come back together, and cap how many are carried. Two regimes
+// are worth keeping apart only while they are actually apart: once their boxes overlap enough that
+// the hull is barely bigger than either, the split is costing bookkeeping and buying nothing. Over
+// the cap, merge the closest pair repeatedly -- merging is always sound, it only loosens.
+const MAXSTATES = 12;
+function mergeStates(list, M) {
+  const hullOf = (a, b) => [0, 1, 2].map(r => hull(a[r], b[r]));
+  // cost by WIDTH, per axis, not by volume: these boxes are thin, so a volume ratio is dominated by
+  // whichever axis happens to be thinnest and reads two clearly separated regimes as cheap to merge.
+  const costOf = (a, b, h) => Math.max(...[0, 1, 2].map(r => wid(h[r]) / Math.max(wid(a[r]), wid(b[r]), 1e-12)));
+  let out = list.slice();
+  for (let pass = 0; pass < 64; pass++) {
+    let best = null;
+    for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) {
+      const h = hullOf(out[i], out[j]), cost = costOf(out[i], out[j], h);
+      if (!best || cost < best.cost) best = { i, j, h, cost };
+    }
+    if (!best) break;
+    if (best.cost > 1.15 && out.length <= MAXSTATES) break;
+    out = out.filter((_, x) => x !== best.i && x !== best.j).concat([best.h]);
+  }
+  return out;
+}
+
 // ---- the certificate ----
 function certify(pieces, attacker, pv, dir, box0, jF, opts) {
   opts = opts || {}; const log = opts.log || (() => {}), victim = 1 - attacker;
@@ -423,7 +543,12 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
   log(`throw arm (${pv},${dir}) limit ${(lim / DEG).toFixed(2)} deg = ${K} substeps of ${(LIM_SUB / DEG).toFixed(4)} deg; centre thrown ${traj.findIndex(t => t.maxFootR > EDGE) + 1 || 'never'}`);
   // the parallelotope: centre q_c (the centre trajectory), columns M, coefficient box U
   let qc = c0, M = colsOf([(box0.x[1] - box0.x[0]) / 2, 0, 0], [0, (box0.y[1] - box0.y[0]) / 2, 0], [0, 0, (box0.rot[1] - box0.rot[0]) / 2]);
-  let U = [[-1, 1], [-1, 1], [-1, 1]], pair = null;
+  // The enclosure is a LIST of coefficient boxes, all in the same (q_c, M) frame. One box per live
+  // contact regime, because hulling the regimes into a single box at the end of every substep is
+  // what a chord-vertex event costs: at the crowded one, three regimes go live at once and the hull
+  // is three times either of them, which then admits more chords. Kept apart they each stay thin,
+  // and a regime that no pose can be in proves itself empty and is dropped.
+  let Us = [[[-1, 1], [-1, 1], [-1, 1]]], pair = null;
   const rows = [], fail = (why, k) => ({ certified: false, traj, pair, why: `substep ${k} (${(k * LIM_SUB / DEG).toFixed(2)} deg): ${why}`, k, rows, K });
   for (let k = 1; k <= K; k++) {
     const t = traj[k - 1], att = t.att, qcNext = t.pose;
@@ -431,10 +556,12 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
     // the shell argument needs the solver to have STOPPED because nothing was under D, not because
     // it ran out of passes: at the cap the post-push distance is not bounded below by D at all
     if (t.pushes.length && t.flags.iters >= REPLICA.iters) return fail(`the solver used all ${REPLICA.iters} passes, so the contact shell's lower edge is not established`, k);
-    const pre = analyse(aabbOf(qc, M, U), att, pair);
-    if (pre.refuse) return fail(pre.refuse, k);
-    if (pre.free) { if (t.pushes.length) return fail('centre pushed while the box was declared free (bug)', k); rows.push({ k, free: true }); continue; }
-    if (!pair) { pair = pre.pair; log(`  first possible contact at substep ${k} (${(k * LIM_SUB / DEG).toFixed(2)} deg): legs (${pair[0]},${pair[1]}), centre distance ${pre.distC.toFixed(3)}, pad ${pre.pad.toFixed(3)}`); }
+    // the aabb of the whole enclosure, for pair discovery and the free / no-touch tests
+    const bbAll = Us.map(U => aabbOf(qc, M, U)).reduce((a, b) => ({ x: hull(a.x, b.x), y: hull(a.y, b.y), rot: hull(a.rot, b.rot) }));
+    const preAll = analyse(bbAll, att, pair);
+    if (preAll.refuse) return fail(preAll.refuse, k);
+    if (preAll.free) { if (t.pushes.length) return fail('centre pushed while the box was declared free (bug)', k); rows.push({ k, free: true }); continue; }
+    if (!pair) { pair = preAll.pair; log(`  first possible contact at substep ${k} (${(k * LIM_SUB / DEG).toFixed(2)} deg): legs (${pair[0]},${pair[1]}), centre distance ${preAll.distC.toFixed(3)}, pad ${preAll.pad.toFixed(3)}`); }
     // the centre's pre-push contact: the push direction a_c and the constraint gradient G_c
     const cc = pairDist(att, qc, pair);
     const a_c = [cc.nx, cc.ny, cc.rn / I], G_c = [cc.hf * cc.nx, cc.hf * cc.ny, cc.hf * cc.rn];
@@ -449,115 +576,152 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
       let t2 = [-a_c[0] * kap, -a_c[1] * kap, 1 - a_c[2] * kap];
       const n2 = Math.hypot(t2[0], t2[1], t2[2] * R); t2 = t2.map(v => v / n2);
       const Mn = colsOf(t1, t2, a_c), T = matMul(matInv(Mn), M);
-      U = [0, 1, 2].map(r => add(add(scale(U[0], T[r][0]), scale(U[1], T[r][1])), scale(U[2], T[r][2])));
+      Us = Us.map(U => [0, 1, 2].map(r => add(add(scale(U[0], T[r][0]), scale(U[1], T[r][1])), scale(U[2], T[r][2]))));
       M = Mn;
     }
-    // pre-push distance over the set, by the mean-value form around the centre
-    const dev = matVecIv(M, U);
-    const fPre = add([cc.dist, cc.dist], add(add(mul(pre.G[0], dev[0]), mul(pre.G[1], dev[1])), mul(pre.G[2], dev[2])));
-    if (fPre[0] >= D) { if (t.pushes.length) return fail('centre pushed while no pose could touch (bug)', k); rows.push({ k, noTouch: true, fPre }); qc = qcNext; continue; }
     // the centre's push decomposed: Lambda_c a_c + v_c, over all its solver iterations
     for (const p of t.pushes) if (p.kind !== 'leg' || p.i !== pair[0] || p.j !== pair[1]) return fail(`the centre's push touched ${p.kind} (${p.i},${p.j})`, k);
-    const LamC = t.pushes.reduce((s, p) => s + p.lambda, 0);
+    const LamC = t.pushes.reduce((s2, p) => s2 + p.lambda, 0);
     const vC = [0, 0, 0]; for (const p of t.pushes) { vC[0] += p.lambda * (p.nx - a_c[0]); vC[1] += p.lambda * (p.ny - a_c[1]); vC[2] += p.lambda * (p.rn / I - a_c[2]); }
     const qcPush = [qcNext.x - qc.x, qcNext.y - qc.y, qcNext.rot - qc.rot];
     for (let r = 0; r < 3; r++) if (Math.abs(qcPush[r] - LamC * a_c[r] - vC[r]) > 1e-9) return fail('centre push decomposition off (bug)', k);
-    // Every pose's total push over the substep is  Lambda a_c + v,  Lambda >= 0 the component along
-    // the centre's own push direction and v in Lambda ([a] - a_c), where [a] is the push-direction
-    // cone over the pre- and post-push sets: each Gauss-Seidel iteration pushes along a normal in
-    // that cone by a non-negative amount, so their sum does too. Relative to the centre's own push
-    // (Lambda_c a_c + v_c) the coefficients move by
-    //     u_post = u_pre + (Lambda - Lambda_c) e3 + M^-1 (Lambda ([a] - a_c) - v_c).
-    // Lambda is bounded by the CONTACT CONSTRAINT, not by the geometry: the pair's distance rises
-    // through the pushes and ends in [D, D + eta] for a pushed pose, so Lambda min(G.a) <= D + eta -
-    // fPre_lo. Pinning u3 by that same constraint bounds Lambda again, which shrinks v, which
-    // shrinks the cone: iterate to a fixed point. The pin is what keeps the set thin.
-    const fHi = fPre[1], fc = pairDist(att, qcNext, pair).dist;
+    const fc = pairDist(att, qcNext, pair).dist;
     const m1 = col(M, 0), m2 = col(M, 1), Mi = matInv(M);
     const Gdot = (A, w) => add(add(mul(A.G[0], [w[0], w[0]]), mul(A.G[1], [w[1], w[1]])), mul(A.G[2], [w[2], w[2]]));
     const GdotA = A => mul(A.hf, add(cosRange([-wid(A.psiN), wid(A.psiN)]), scale(mul(A.rn, A.rn), 1 / I)));
-    // BRANCH ON THE CONTACT REGIME. When the contact point crosses a chord vertex, two chords are
-    // both live and their exact normals differ by the polyline's turn, about 7.5 degrees. Hulling
-    // those two into one cone before the push is what made every crossing run away: the push then
-    // gets 7.5 degrees of slack, the set widens, a wider set admits more chords, and round it goes.
-    // No pose has both normals, so carry the regimes SEPARATELY -- each with its own exact, hair-thin
-    // cone -- and union the results afterwards. The union is wider than one regime by the distance
-    // between the two pushes, Lambda times the turn, about 0.01u, once per crossing, and does not
-    // compound. The pin and Lambda's bounds stay over the whole set, which is conservative and keeps
-    // them valid whichever regime a pose is in.
-    const groups = [];
-    for (const sp of pre.segPairs) {
-      const g = groups.find(gr => Math.abs((gr.psiN[0] + gr.psiN[1]) / 2 - (sp.psiN[0] + sp.psiN[1]) / 2) < 1.5 * DEG);
-      if (g) { g.psiN = [Math.min(g.psiN[0], sp.psiN[0]), Math.max(g.psiN[1], sp.psiN[1])]; g.rn = hull(g.rn, sp.rn); g.hf = hull(g.hf, sp.hf); }
-      else groups.push({ psiN: sp.psiN.slice(), rn: sp.rn.slice(), hf: sp.hf.slice() });
-    }
-    for (const g of groups) { g.n = [cosRange(g.psiN), sinRange(g.psiN)]; g.G = [mul(g.hf, g.n[0]), mul(g.hf, g.n[1]), mul(g.hf, g.rn)]; }
-    const pen = Math.max(0, D - fPre[0]);          // the deepest penetration entering this substep
-    const M0 = hessBound(pre.cbar, D, pre.clamping, fPre[0]);
-    let ETA = etaOf(M0, pen, pre.aMin), target = [D - EPS_LO, Math.max(D + ETA, fHi)];
-    let Un = null, post = null, U3 = null, Lam = null, rounds = 0, Uout = null, coneWide = 0;
-    // Lambda's range BEFORE the pin. Upper: the pair's distance rises through the pushes and stops at
-    // D + eta, so Lambda min(G.a) <= D + eta - fPre_lo. Lower, and this one matters as much: a pose
-    // whose pre-push distance is already below D must be pushed until it is not, so when the WHOLE
-    // set is under D, Lambda max(G.a) >= D - fPre_hi. Without that floor Lambda starts at 0 and the
-    // set is handed a spurious 0.06u of slack along the push direction on every substep.
-    const Lam0 = (() => { const g0 = GdotA(pre), gHi = g0[1] > 0 ? g0[1] : 1;
-      const hi = g0[0] > 0 ? Math.max(0, D + ETA - fPre[0]) / g0[0] : Math.max(0, D + ETA - fPre[0]) / Math.max(pre.hf[0], 0.35);
-      return [fPre[1] < D ? Math.max(0, (D - EPS_LO - fPre[1]) / gHi) : 0, hi]; })();
-    for (const grp of groups) {
-      let cone = grp; Lam = Lam0.slice(); ETA = etaOf(M0, pen, pre.aMin); target = [D - EPS_LO, Math.max(D + ETA, fHi)];
-      for (let round = 1; round <= 24; round++) {
-        rounds = Math.max(rounds, round);
-        const da = [sub(cone.n[0], [a_c[0], a_c[0]]), sub(cone.n[1], [a_c[1], a_c[1]]), scale(sub(cone.rn, [cc.rn, cc.rn]), 1 / I)];
-        const w = da.map((d, r) => sub(mul(Lam, d), [vC[r], vC[r]]));
-        const cw = matVecIv(Mi, w);
-        Un = [add(U[0], cw[0]), add(U[1], cw[1]), add(add(U[2], cw[2]), sub(Lam, [LamC, LamC]))];
-        post = analyse(aabbOf(qcNext, M, Un), att, pair);
-        if (post.refuse) return fail(`after the push: ${post.refuse}`, k);
-        if (post.free) return fail('post-push set declared free (bug)', k);
-        // pin u3 by the post-push contact constraint (mean value along the segment from the centre,
-        // which stays inside the post set, so post's own gradient bound applies). The pin uses the
-        // WHOLE post set's gradient, not this regime's: a pose may change regime across the push.
-        const Ga = Gdot(post, a_c);
-        const alpha = Ga[0] > 0 ? divPos(sub(sub(sub(target, [fc, fc]), mul(Gdot(post, m1), Un[0])), mul(Gdot(post, m2), Un[1])), Ga) : [-Infinity, Infinity];
-        const U3n = isect(alpha, Un[2]);
-        if (U3n[0] > U3n[1] + 1e-12) return fail(`constraint and push ranges disjoint: [${alpha.map(v => v.toFixed(5))}] vs [${Un[2].map(v => v.toFixed(5))}]`, k);
-        const LamN = isect(add([LamC, LamC], sub(sub(U3n, U[2]), cw[2])), Lam);
-        if (LamN[0] > LamN[1] + 1e-12) return fail('push-magnitude range empty', k);
-        ETA = etaOf(hessBound(Math.max(pre.cbar, post.cbar), D, pre.clamping || post.clamping, fPre[0]), pen, Math.min(pre.aMin, post.aMin));
-        target = [D - EPS_LO, Math.max(D + ETA, fHi)];
-        // this regime's own post cone: the pairs of the post analysis that belong to it, hulled with
-        // the regime's pre cone. Hulling with the PRE set only (never with earlier rounds) lets the
-        // cone shrink as Lambda tightens instead of locking in one wide early estimate.
-        let pc = null;
-        for (const sp of post.segPairs) { const mid = (sp.psiN[0] + sp.psiN[1]) / 2; if (Math.abs(mid - (grp.psiN[0] + grp.psiN[1]) / 2) < 8 * DEG) pc = pc ? hullAn(pc, sp) : sp; }
-        const coneN = pc ? hullAn(grp, pc) : hullAn(grp, post);
-        const grew = coneN.psiN[0] < cone.psiN[0] - 1e-9 || coneN.psiN[1] > cone.psiN[1] + 1e-9 || coneN.rn[0] < cone.rn[0] - 1e-7 || coneN.rn[1] > cone.rn[1] + 1e-7 || coneN.hf[0] < cone.hf[0] - 1e-9 || coneN.hf[1] > cone.hf[1] + 1e-9;
-        const shrank = LamN[1] < Lam[1] - 1e-9 || LamN[0] > Lam[0] + 1e-9;
-        U3 = U3n; Lam = [Math.max(0, LamN[0]), LamN[1]]; cone = coneN;
-        // settled: this round's post set is enclosed by what the round assumed, so the enclosure is
-        // self-consistent and therefore valid for the true image
-        if (!grew && !shrank) break;
-        if (round === 24) return fail('the push cone did not settle', k);
+    // poses that receive no push at all keep their absolute positions, so relative to the centre --
+    // which did move -- their coefficients shift by -M^-1 (centre push)
+    const noPush = matVec(Mi, qcPush.map(v => -v));
+    const nextUs = [];
+    let rounds = 0, coneWide = 0, post = null, fPreAny = null, ngroups = 0;
+
+    for (const U of Us) {
+      const pre = analyse(aabbOf(qc, M, U), att, pair);
+      if (pre.refuse) return fail(pre.refuse, k);
+      // this regime's poses cannot touch this substep: they take no push
+      if (pre.free) { nextUs.push([0, 1, 2].map(r => add(U[r], [noPush[r], noPush[r]]))); continue; }
+      // pre-push distance over the set, by the mean-value form around the centre
+      const dev = matVecIv(M, U);
+      const fPre = add([cc.dist, cc.dist], add(add(mul(pre.G[0], dev[0]), mul(pre.G[1], dev[1])), mul(pre.G[2], dev[2])));
+      fPreAny = fPreAny ? hull(fPreAny, fPre) : fPre;
+      if (fPre[0] >= D) { nextUs.push([0, 1, 2].map(r => add(U[r], [noPush[r], noPush[r]]))); continue; }
+      const fHi = fPre[1];
+      // BRANCH ON THE CONTACT REGIME. When the contact point crosses a chord vertex, two chords are
+      // both live and their exact normals differ by the polyline's turn, about 7.5 degrees. Hulling
+      // those two into one cone before the push is what made every crossing run away: the push then
+      // gets 7.5 degrees of slack, the set widens, a wider set admits more chords, and round it goes.
+      // No pose has both normals, so carry the regimes SEPARATELY -- each with its own exact,
+      // hair-thin cone -- and now keep them apart ACROSS substeps too rather than hulling at the end.
+      // A regime is a CHORD PAIR, not a band of normal azimuths. Grouping by azimuth was wrong twice
+      // over: single-linkage on the midpoints chains two regimes together through anything sitting
+      // between them, and after the push the bands have moved, so an azimuth window picks up the
+      // neighbouring regime's pairs and the cone grows every round until it is thirty degrees wide.
+      // Keyed on (attacker chord, victim chord, which endpoint dwells) each regime keeps the exact,
+      // hair-thin cone that Lemma 2 gives it.
+      const groups = [];
+      for (const sp of pre.segPairs) {
+        const g = groups.find(gr => Math.abs(gr.seed - (sp.psiN[0] + sp.psiN[1]) / 2) < 1.5 * DEG);
+        if (g) { g.psiN = [Math.min(g.psiN[0], sp.psiN[0]), Math.max(g.psiN[1], sp.psiN[1])]; g.rn = hull(g.rn, sp.rn); g.hf = hull(g.hf, sp.hf); }
+        else groups.push({ psiN: sp.psiN.slice(), rn: sp.rn.slice(), hf: sp.hf.slice(), seed: (sp.psiN[0] + sp.psiN[1]) / 2 });
       }
-      coneWide = Math.max(coneWide, wid(cone.psiN));
-      const Ug = [Un[0], Un[1], U3];
-      Uout = Uout ? [0, 1, 2].map(r => hull(Uout[r], Ug[r])) : Ug;
+      for (const g of groups) { g.n = [cosRange(g.psiN), sinRange(g.psiN)]; g.G = [mul(g.hf, g.n[0]), mul(g.hf, g.n[1]), mul(g.hf, g.rn)]; }
+      ngroups += groups.length;
+      const pen = Math.max(0, D - fPre[0]);          // the deepest penetration entering this substep
+      const M0 = hessBound(pre.cbar, D, pre.clamping, fPre[0]);
+      let ETA = etaOf(M0, pen, pre.aMin), target = [D - EPS_LO, Math.max(D + ETA, fHi)];
+      let Un = null, U3 = null, Lam = null;
+      // Lambda's range BEFORE the pin. Upper: the pair's distance rises through the pushes and stops
+      // at D + eta, so Lambda min(G.a) <= D + eta - fPre_lo. Lower, and this one matters as much: a
+      // pose whose pre-push distance is already below D must be pushed until it is not, so when the
+      // WHOLE set is under D, Lambda max(G.a) >= D - fPre_hi. Without that floor Lambda starts at 0
+      // and the set is handed a spurious 0.06u of slack along the push direction on every substep.
+      const Lam0 = (() => { const g0 = GdotA(pre), gHi = g0[1] > 0 ? g0[1] : 1;
+        const hi = g0[0] > 0 ? Math.max(0, D + ETA - fPre[0]) / g0[0] : Math.max(0, D + ETA - fPre[0]) / Math.max(pre.hf[0], 0.35);
+        return [fPre[1] < D ? Math.max(0, (D - EPS_LO - fPre[1]) / gHi) : 0, hi]; })();
+      for (const grp of groups) {
+        let cone = grp; Lam = Lam0.slice(); ETA = etaOf(M0, pen, pre.aMin); target = [D - EPS_LO, Math.max(D + ETA, fHi)];
+        let inflated = false, empty = false;
+        for (let round = 1; round <= 32; round++) {
+          rounds = Math.max(rounds, round);
+          const da = [sub(cone.n[0], [a_c[0], a_c[0]]), sub(cone.n[1], [a_c[1], a_c[1]]), scale(sub(cone.rn, [cc.rn, cc.rn]), 1 / I)];
+          const w = da.map((d, r) => sub(mul(Lam, d), [vC[r], vC[r]]));
+          const cw = matVecIv(Mi, w);
+          Un = [add(U[0], cw[0]), add(U[1], cw[1]), add(add(U[2], cw[2]), sub(Lam, [LamC, LamC]))];
+          post = analyse(aabbOf(qcNext, M, Un), att, pair);
+          if (post.refuse) return fail(`after the push: ${post.refuse}`, k);
+          if (post.free) return fail('post-push set declared free (bug)', k);
+          // pin u3 by the post-push contact constraint (mean value along the segment from the centre,
+          // which stays inside the post set, so post's own gradient bound applies). The pin uses the
+          // WHOLE post set's gradient, not this regime's: a pose may change regime across the push.
+          const Ga = Gdot(post, a_c);
+          const alpha = Ga[0] > 0 ? divPos(sub(sub(sub(target, [fc, fc]), mul(Gdot(post, m1), Un[0])), mul(Gdot(post, m2), Un[1])), Ga) : [-Infinity, Infinity];
+          const U3n = isect(alpha, Un[2]);
+          // An empty range is a PROOF that no pose is in this regime: both sides are necessary
+          // conditions on a pose that is. Drop the regime rather than failing the certificate.
+          if (U3n[0] > U3n[1] + 1e-12) { empty = true; break; }
+          const LamN = isect(add([LamC, LamC], sub(sub(U3n, U[2]), cw[2])), Lam);
+          if (LamN[0] > LamN[1] + 1e-12) { empty = true; break; }
+          ETA = etaOf(hessBound(Math.max(pre.cbar, post.cbar), D, pre.clamping || post.clamping, fPre[0]), pen, Math.min(pre.aMin, post.aMin));
+          target = [D - EPS_LO, Math.max(D + ETA, fHi)];
+          // this regime's own post cone: the pairs of the post analysis that belong to it, hulled
+          // with the regime's pre cone. Hulling with the PRE set only (never with earlier rounds)
+          // lets the cone shrink as Lambda tightens instead of locking in one wide early estimate.
+          // This regime's own post pairs. Nearest-regime, not a fixed azimuth window: a window is an
+          // absolute width and the regimes are not absolutely spaced, so an 8-degree one swallowed
+          // the neighbour whenever it sat closer than that and the cone grew every round. But when
+          // this is the ONLY live regime there is no neighbour to be nearer to, and the window is
+          // what keeps a post pair from some unrelated part of the leg out, so keep both tests.
+          let pc = null;
+          for (const sp of post.segPairs) {
+            const mid = (sp.psiN[0] + sp.psiN[1]) / 2;
+            if (Math.abs(mid - grp.seed) >= 8 * DEG) continue;
+            let owner = 0, bestd = Infinity;
+            for (let gi = 0; gi < groups.length; gi++) { const d2 = Math.abs(mid - groups[gi].seed); if (d2 < bestd) { bestd = d2; owner = gi; } }
+            if (groups[owner] === grp) pc = pc ? hullAn(pc, sp) : sp;
+          }
+          const coneN = pc ? hullAn(grp, pc) : hullAn(grp, post);
+          const grew = coneN.psiN[0] < cone.psiN[0] - 1e-9 || coneN.psiN[1] > cone.psiN[1] + 1e-9 || coneN.rn[0] < cone.rn[0] - 1e-7 || coneN.rn[1] > cone.rn[1] + 1e-7 || coneN.hf[0] < cone.hf[0] - 1e-9 || coneN.hf[1] > cone.hf[1] + 1e-9;
+          const shrank = LamN[1] < Lam[1] - 1e-9 || LamN[0] > Lam[0] + 1e-9;
+          U3 = U3n; Lam = [Math.max(0, LamN[0]), LamN[1]];
+          // settled: this round's post set is enclosed by what the round assumed, so the enclosure
+          // is self-consistent and therefore valid for the true image
+          if (!grew && !shrank) { cone = coneN; break; }
+          // Still creeping after eight rounds, and creeping by less each time: offer the containment
+          // test a fattened candidate once, then go on iterating from it. If a later round comes back
+          // contained, that round's own check is what certifies it -- the inflation only proposes.
+          if (round >= 8 && !inflated) { cone = inflateCone(coneN, 0.25); inflated = true; continue; }
+          cone = coneN;
+          if (round === 32) return fail('the push cone did not settle', k);
+        }
+        if (empty) continue;
+        coneWide = Math.max(coneWide, wid(cone.psiN));
+        nextUs.push([Un[0], Un[1], U3]);
+      }
     }
-    if (process.env.DBG2) for (const sp of post.segPairs) console.log(`      k${k} ${sp.why}`);
-    if (process.env.DBG) console.log(`   dbg k${k} rounds ${rounds} groups ${groups.length} fPre[${fPre.map(v=>v.toFixed(4))}] cone ${(coneWide/DEG).toFixed(2)}deg Lam[${Lam.map(v=>v.toFixed(4))}] LamC ${LamC.toFixed(4)} U[${Uout.map(u=>'['+u.map(v=>v.toFixed(4))+']').join('')}] pad ${post.pad.toFixed(3)}`);
-    U = Uout; qc = qcNext;
-    // sanity: the centre (u = 0) is inside
-    if (!(U[0][0] <= 1e-9 && U[0][1] >= -1e-9 && U[1][0] <= 1e-9 && U[1][1] >= -1e-9 && U[2][0] <= 1e-9 && U[2][1] >= -1e-9)) return fail(`centre left its own set (bug): U=${JSON.stringify(U)}`, k);
+    if (!nextUs.length) return fail('every regime proved empty, so the centre is in none of them (bug)', k);
+    const fPre = fPreAny || [cc.dist, cc.dist];
+    // Merge regimes that have come back together, and cap the count. Two boxes merge when their hull
+    // is no bigger than a shade over their union would have to be anyway, which is the case as soon
+    // as the regimes stop being distinct; over the cap, merge the closest pair repeatedly.
+    Us = mergeStates(nextUs, M);
+    qc = qcNext;
+    if (process.env.DBG2 && post) for (const sp of post.segPairs) console.log(`      k${k} ${sp.why}`);
+    if (process.env.DBG) console.log(`   dbg k${k} rounds ${rounds} states ${Us.length} (from ${nextUs.length}, ${ngroups} groups) fPre[${fPre.map(v => v.toFixed(4))}] cone ${(coneWide / DEG).toFixed(2)}deg pad ${post ? post.pad.toFixed(3) : '-'}`);
+    // sanity: the centre (u = 0) is inside at least one of them
+    if (!Us.some(U => U[0][0] <= 1e-9 && U[0][1] >= -1e-9 && U[1][0] <= 1e-9 && U[1][1] >= -1e-9 && U[2][0] <= 1e-9 && U[2][1] >= -1e-9)) return fail(`centre left every set (bug)`, k);
+    const U = Us.reduce((a, b) => [0, 1, 2].map(r => hull(a[r], b[r])));   // for reporting only
     const bb = aabbOf(qc, M, U);
     rows.push({ k, deg: +(k * LIM_SUB / DEG).toFixed(2), pad: +post.pad.toFixed(3), psiN: post.psiN.map(v => +(v / DEG).toFixed(2)), hf: post.hf.map(v => +v.toFixed(3)), rn: post.rn.map(v => +v.toFixed(2)), fPre: fPre.map(v => +v.toFixed(4)), LamC: +LamC.toFixed(4), U: U.map(u => u.map(v => +v.toFixed(5))), Mlen: [0, 1, 2].map(j => +Math.hypot(M[0][j], M[1][j], M[2][j] * R).toFixed(3)), box: { x: bb.x.map(v => +v.toFixed(3)), y: bb.y.map(v => +v.toFixed(3)), rot: bb.rot.map(v => +(v / DEG).toFixed(3)) }, bbRaw: bb, footR: +t.maxFootR.toFixed(3), segs: post.segPairs.map(s => `${s.a},${s.b}`).join(' ') });
   }
   // the exposed foot's radius over the final set: F = hub + R e(rot + jF 120deg), linear in u up to
   // R (drot)^2 / 2, bounded below by its projection on the centre foot's direction
   const th = qc.rot + jF * 2 * Math.PI / 3, Fc = { x: qc.x + R * Math.cos(th), y: qc.y + R * Math.sin(th) }, rc = Math.hypot(Fc.x, Fc.y), fx = Fc.x / rc, fy = Fc.y / rc;
-  let minR = rc, drot = 0;
-  for (let j = 0; j < 3; j++) { const m = col(M, j), coef = (m[0] - R * Math.sin(th) * m[2]) * fx + (m[1] + R * Math.cos(th) * m[2]) * fy; minR += Math.min(coef * U[j][0], coef * U[j][1]); drot += Math.abs(m[2]) * Math.max(Math.abs(U[j][0]), Math.abs(U[j][1])); }
-  minR -= R * drot * drot / 2;
+  // every regime must clear the rim, so the bound is the WORST of them
+  const minROf = U => { let mR = rc, drot = 0;
+    for (let j = 0; j < 3; j++) { const m = col(M, j), coef = (m[0] - R * Math.sin(th) * m[2]) * fx + (m[1] + R * Math.cos(th) * m[2]) * fy; mR += Math.min(coef * U[j][0], coef * U[j][1]); drot += Math.abs(m[2]) * Math.max(Math.abs(U[j][0]), Math.abs(U[j][1])); }
+    return mR - R * drot * drot / 2; };
+  const minR = Math.min(...Us.map(minROf));
+  const U = Us.reduce((a, b) => [0, 1, 2].map(r => hull(a[r], b[r])));
   const bb = aabbOf(qc, M, U);
   log(`  final set: x[${bb.x.map(v => v.toFixed(3))}] y[${bb.y.map(v => v.toFixed(3))}] rot[${bb.rot.map(v => (v / DEG).toFixed(3))}] deg; foot ${jF} radius >= ${minR.toFixed(3)}u (centre ${rc.toFixed(3)}), rim ${EDGE}`);
   const certified = minR > EDGE;
