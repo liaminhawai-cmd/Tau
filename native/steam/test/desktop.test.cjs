@@ -2462,6 +2462,31 @@ test('the camera comes round to the piece going over, never watching from behind
   assert.deepEqual(g.errors,[]);
 });
 
+test('the stick keeps hold of the camera: a nudge is not undone by the lean',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},render(){},
+      setRenderTarget(){},getRenderTarget(){return null;}};
+    scene=new THREE.Scene();
+    camera=new THREE.PerspectiveCamera(38,1.6,1,2000);
+    camera.position.set(0,150,200);
+    controls={mouseButtons:{},target:new THREE.Vector3(0,4,0),update(){},addEventListener(){}};
+    camManualSet=false; camManualPos.set(0,0,0); camManualTgt.set(0,0,0);`);
+  // Push the stick for a second, letting the camera settle between nudges the way it does in play.
+  const out=JSON.parse(g.read(`(()=>{
+    const a0=Math.atan2(camera.position.x-controls.target.x, camera.position.z-controls.target.z);
+    for(let i=0;i<60;i++){ tauDesktop.orbitCamera(1,0,1/60); tauDesktop.updateCamera(1/60); }
+    const a1=Math.atan2(camera.position.x-controls.target.x, camera.position.z-controls.target.z);
+    return JSON.stringify({turned:a1-a0, manual:camManualSet,
+      posSet:camManualPos.length()>1, r:camera.position.distanceTo(controls.target)}); })()`));
+  assert.ok(Math.abs(out.turned)>0.5,
+    `a second of stick actually turns the view (${out.turned.toFixed(2)} rad)`);
+  assert.equal(out.manual,true,'the stick claims the camera');
+  assert.equal(out.posSet,true,'and records where it put it, which is what the lean eases from');
+  assert.ok(out.r>50,'and the camera is not dragged into the middle of the board');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('a view the player placed leans a fifth of the way towards the game, and no further',async t=>{
   const g=await game();t.after(g.close);
   localMatch(g);

@@ -1957,6 +1957,14 @@
     camOffset.setFromSpherical(camSpherical);
     camera.position.copy(controls.target).add(camOffset);
     camera.lookAt(controls.target);
+    // AND SAY WHERE IT ENDED UP. A stick claims the camera the same way a mouse drag does, and the
+    // drag records the pose it left behind as well as raising the flag. This only raised the flag.
+    // That cost nothing while a claimed camera was simply frozen -- but now that a claimed camera
+    // eases a fifth of the way towards the game's framing, the pose it eases FROM has to be real:
+    // left stale, every frame pulled the camera back to wherever the mouse last let go of it, which
+    // on a pad that has never been touched by a mouse is the middle of the board. The stick nudged
+    // and the pull undid it, over and over, and the camera sat there not moving at all.
+    camManualPos.copy(camera.position); camManualTgt.copy(controls.target);
     camManualSet=true;
   }
   // Both input styles need the same preamble: the first movement of a turn adopts a foot as the
@@ -2157,7 +2165,7 @@
     get progress(){return {...progress};},
     recordResult,
     debugDetailMode(){ return detailMode; },
-    resize:layout, updateCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, fallGravity, renderFrame,
+    resize:layout, updateCamera, orbitCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, fallGravity, renderFrame,
     get rayTrace(){return settings.rayTrace;},
     set rayTrace(v){ settings.rayTrace=!!v; settings.quality = settings.rayTrace ? 'ultra' : (settings.quality==='ultra'?'high':settings.quality);
       saveSettings(); if($('desktopQuality')) $('desktopQuality').value=settings.quality;
