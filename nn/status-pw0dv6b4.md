@@ -1,14 +1,14 @@
 # Tau NN training status
-_Last updated: 2026-09-17T22:59:47.929Z_
+_Last updated: 2026-09-18T07:41:28.699Z_
 
-**Self-play batch:** 141
-**Stage:** self-play batch 141 running, next check in 5 min
+**Self-play batch:** 142
+**Stage:** self-play batch 142 running (started 2026-09-18T07:36:21.718Z)
 **mix:** (see selfplay log: fixed-rung training reference)
 
-**Dual pool:** disabled
+**Dual pool:** (not initialized yet)
 
 **Last gate result:** (none yet)
 
-**Last checkpoint:** ckpt-007.json at 2026-09-17T11:19:26.468Z
+**Last checkpoint:** (none yet)
 
 **Last ladder sweep:** (none yet)
