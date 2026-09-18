@@ -689,3 +689,82 @@ sums -- contracts hard over the same window: 0.5596 to 0.2375u at +-0.125u,
 0.42, 0.35 and 0.30, strengthening as the box grows. Neither reading is the other
 one's correction. Quoted together they are a better argument for invariance than
 either alone: the poses barely spread and their outcomes converge.
+
+## 13. H3 computed rather than sampled, and what it says the set's shape is
+
+Section 11 measured the barrier's two hypotheses on 200 sampled poses and found
+both true. Sampling says they hold, not that they are provable. Of the two, H3
+-- a lower bound on the exposed foot's radial gain per substep valid for EVERY
+pose in the set -- is the half that needs no accumulation, so it can be computed
+now, before anyone has proved H4. `nn/throw-audit/gain-bound.js` computes it.
+
+The bound per substep. `analyse` over the tube box gives the contact pair, the
+normal cone, `hf` and the lever `rn` as intervals, and the engine's push is
+`lambda = sep / (1 + rn^2/I)` with `sep = (D - dist)/max(hf, hfFloor)`, capped.
+With `F` the exposed foot and `Fhat` its radial unit vector at the START of the
+substep, `|v| >= u.v` for any unit `u` gives
+
+    r_after >= Fhat . F_after
+             = r + lambda [ n.Fhat + (rn/I) R (-sin th, cos th).Fhat ] - R dth^2/2
+
+exactly, the last term being the foot's own rotation remainder. Every quantity in
+the bracket is an interval over the box, so its minimum is a bound over every
+pose in it. Bounding `dth` through the push model costs a factor of `iters^2` and
+at the early grazing substeps that penalty alone exceeds the gain; the tube gives
+it for nothing instead, since the pose's rotation change differs from the
+centre's, which is known exactly, by at most the tube's own width.
+
+### The first run certifies nothing, and the reason is the result
+
+At a tube of +-0.1u not one substep passes, because whole-box contact needs the
+box's whole distance range under `D` and the blanket pad of that box is 0.2414u
+against a penetration of a few hundredths. But section 11 measured the opposite
+on the same box: 123 of 131 substeps have every pose in contact. Both are right,
+and together they say the reachable set is not a box around the centre.
+`nn/throw-audit/slab-shape.js` measures the shape directly:
+
+| | value |
+|---|---|
+| poses' spread across the plane, +-0.1u box | 0.13u |
+| their distance range to the attacker's leg, mean over the 74 contact substeps | **0.0033u** |
+| the same range in the park, substeps 40 to 70 | 0.00093u |
+| the blanket pad a +-0.1u box carries | 0.2414u |
+| so the pad overstates the distance uncertainty by | 74x on average, 260x in the park |
+
+The dynamics PIN every pose onto the contact shell. The set is a thin sheet: as
+wide as the box across the push, as thin as the shell along it. An axis-aligned
+box is the wrong shape, and the factor above is what it costs.
+
+### What H3 certifies once the shape is right
+
+Unconditionally, with the box's own pad as the distance uncertainty and no
+assumption about shape, at a tube of +-0.01u: 86 substeps bounded, and the
+certified gain sums to **2.113u** against the 3.168u needed to lift the box's
+minimum starting radius over the rim. Two thirds of the way, and the whole
+shortfall is the pad.
+
+With the slab hypothesis -- the distance range taken as 0.005u, which is 1.5x
+the measured 0.0033u, every other bound still over the full tube -- from a
+starting box of +-0.0125u into a tube of +-0.025u:
+
+    certified sum 3.5144u  against  3.2026u needed;  clears the rim at substep 92
+
+and the 200 sampled poses stay inside that tube (worst deviation 0.0170u at
+substep 84). The first refusal from `analyse` is at substep 99, seven substeps
+after the bound has already closed.
+
+That box is **62x wider per axis** than the enclosure certificate of section 8,
+and within 5x of the 0.125u cell that `certifyThrowBox` works on. The route is
+not blocked by the throw's own margins. It dies at +-0.05u (2.65u of 3.26u) and
+at +-0.1u (0.29u of 3.37u), where the normal cone opens far enough to cost more
+than the extra width buys.
+
+### What this makes the open question
+
+Not "can the barrier hypotheses be proved over a box of order 0.1u". The set is
+not a box. The two things a certificate now owes are a proof that a SLAB -- thin
+along the contact normal, wide across it -- maps into itself, and a rigorous
+bound on its thickness that is not the blanket pad. The thinness is not an
+assumption about the poses; it is what the contact shell does to them, and
+section 9's shell argument already pins the distance from both sides. H3 is
+otherwise done.
