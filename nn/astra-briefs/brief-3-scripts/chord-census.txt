@@ -1,0 +1,10 @@
+k71  attacker chord 2 at 0.1033   victim chord 4 at 0.0807   d 2.83238
+k72  attacker chord 2 at 0.0802   victim chord 4 at 0.0677   d 2.83223
+k73  attacker chord 1 at 0.9291   victim chord 4 at 0.0017   d 2.82938
+k74  attacker chord 1 at 0.9172   victim chord 3 at 1.0000   d 2.82646
+k75  attacker chord 1 at 0.9054   victim chord 3 at 1.0000   d 2.82674
+k76  attacker chord 1 at 0.8935   victim chord 3 at 1.0000   d 2.82703
+k77  attacker chord 1 at 0.8817   victim chord 3 at 1.0000   d 2.82733
+k78  attacker chord 1 at 0.8697   victim chord 3 at 1.0000   d 2.82763
+k79  attacker chord 1 at 0.8577   victim chord 3 at 1.0000   d 2.82795
+k80  attacker chord 1 at 0.8456   victim chord 3 at 1.0000   d 2.82827

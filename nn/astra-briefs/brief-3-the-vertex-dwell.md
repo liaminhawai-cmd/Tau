@@ -22,24 +22,40 @@ Brief 2 said the contact point crosses three polyline vertices on the way to the
 
 **The first crossing is passable.** Brief 2 said shrinking the pose box does not help, because the contact crosses the vertex a few substeps later either way. That is false for the first crossing: at a box of +-0.002u the checker passes it and reaches 24.33 degrees instead of 11.33. It is true for what comes next: every box from +-0.0005u to +-0.003u dies within half a degree of 24.5.
 
-**The third "crossing" is not a crossing.** The victim's contact point arrives at the vertex at `phi = 30 degrees` on its leg 0 and **parks on it**: its arc angle reads 30.000000 degrees exactly at every substep from 74 through the throw and past it, eleven substeps to the throw and on to the sweep's end at 46. Not small: exactly the vertex. A closest point on a polyline parks at a vertex whenever neither adjacent chord has an interior perpendicular foot, and it is ordinary behaviour for a non-smooth curve. What brief 2 reported as a third crossing at 25.00 degrees was the reported chord index flipping from 4 to 3 while the point sat still on the vertex between them.
+**The third "crossing" is not a crossing.** The victim's contact point arrives at the vertex at `phi = 30 degrees` on its leg 0 and **parks on it**: its arc angle reads 30.000000 degrees exactly at every substep from 74 to 98, which is eleven substeps to the throw at 84 and fourteen more past it. Not small: exactly the vertex, deviation 0.0. A closest point on a polyline parks at a vertex whenever neither adjacent chord has an interior perpendicular foot, and it is ordinary behaviour for a non-smooth curve. What brief 2 reported as a third crossing was the reported chord index flipping from 4 to 3, which happens at substep 74, the substep the park begins: from there the victim's contact is the clamped endpoint of chord 3 rather than an interior point of chord 4, and chords 3 and 4 share the `phi = 30` vertex, so the index changes while the point sits still.
 
-**So the run ends just before the park, not inside it.** The checker's failure is at substep 73, 24.33 degrees, which is the attacker's own `phi = 15` chord-vertex crossing; the victim's park begins at substep 74. The remaining 3.8 degrees to the throw is one ordinary attacker-side crossing followed by a park that lasts the rest of the way.
+**So the run ends at the crossing, one substep before the park.** The checker's failure is at substep 73, 24.33 degrees, which is the attacker's own `phi = 15` chord-vertex crossing; the victim's park begins at substep 74. The remaining 3.67 degrees to the throw is that one crossing followed by a park that covers the whole rest of the way.
 
-That is the shape of the question. The traced geometry either side, by substep index (a note on angles: this trace divides the 46-degree sweep into 139 substeps of 0.3309 degrees, while the checker's own run divides it into 138 of 0.3333, so at the same substep index its sweep angle reads about 0.18 degrees higher; the indices are what to compare, and both runs put the last ordinary substep at 73 and the first parked one at 74):
+That is the shape of the question. The traced geometry either side, on the search's own grid (the search swings a degree at a time and the engine splits each call into `ceil(1 / 0.4) = 3` equal substeps, so the 46-degree sweep is exactly 138 substeps of exactly 1/3 degree):
 
-| substep | sweep (this trace) | phi attacker / victim | u to nearest attacker vertex | u to nearest victim vertex | rn | hf |
+| substep | sweep | phi attacker / victim | u to nearest attacker vertex | u to nearest victim vertex | rn | hf |
 |---|---|---|---|---|---|---|
-| 70 | 23.165 | 16.023 / 30.730 | 0.394 | 0.294 | -2.257 | 0.563 |
-| 72 | 23.827 | 15.686 / 30.543 | 0.277 | 0.219 | -2.135 | 0.562 |
-| 73 | 24.158 | 15.517 / 30.449 | 0.208 | 0.181 | -2.074 | 0.562 |
-| 74 | 24.489 | 14.397 / **30.000000** | 0.243 | **0.000** | +0.542 | 0.554 |
-| 76 | 25.151 | 14.219 / **30.000000** | 0.315 | **0.000** | +0.610 | 0.546 |
-| 80 | 26.475 | 13.858 / **30.000000** | 0.460 | **0.000** | +0.737 | 0.532 |
+| 70 | 23.333 | 15.930 / 30.676554 | 0.375 | 0.273 | -2.226 | 0.563 |
+| 71 | 23.667 | 15.760 / 30.582516 | 0.306 | 0.235 | -2.165 | 0.562 |
+| 72 | 24.000 | 15.590 / 30.488085 | 0.238 | 0.197 | -2.103 | 0.562 |
+| 73 | 24.333 | **14.461** / 30.011915 | 0.217 | **0.005** | **+0.534** | 0.556 |
+| 74 | 24.667 | 14.371 / **30.000000** | 0.254 | **0.000** | +0.569 | 0.552 |
+| 76 | 25.333 | 14.191 / **30.000000** | 0.326 | **0.000** | +0.638 | 0.545 |
+| 80 | 26.667 | 13.828 / **30.000000** | 0.472 | **0.000** | +0.765 | 0.530 |
+| 84 | 28.000 | 13.458 / **30.000000** | 0.622 | **0.000** | +0.876 | 0.514 |
 
-**What is different from the first crossing.** At the first crossing the victim's contact is **1.408u** from its nearest vertex and the two legs' contacts are nowhere near each other's corners: one thing happening, in isolation, and a small box gets through it. At substep 73, the last one before the attacker's crossing, the victim's contact is **0.181u** from its own vertex and lands on it at the very next substep. So the crossing that kills the run is an ordinary crossing on one leg happening while the other leg's contact is already within a fifth of a unit of its own corner. That coincidence, not the crossing by itself, is my candidate explanation for why one is passable at a smaller box and the other is not at any box size we have tried.
+Substep 73 is where the attacker's `phi` drops from 15.590 to 14.461: its contact point steps across the vertex at `phi = 15` from chord 2 onto chord 1, while the victim's arrives at its own vertex at `phi = 30`. By the chord parameters, taken from the pre-push pose at each substep:
 
-**One thing ruled out.** The lever arm `rn` also passes through zero in the same window, at 24.42, from -2.074 to +0.542, and I suspected that degenerated the checker's enclosure basis, which is built from the tangential slide, a spin-led tangent, and the push. That was checked and is false: the spin-led column uses `kappa = rn / (1 + rn^2/I)`, whose denominator never vanishes, so it goes smoothly to zero with `rn`, and at `rn = 0` the three columns are the horizontal tangent, the horizontal normal and pure rotation, an orthogonal triple. Measured through the crossing, the basis Gram cosines are 0, 0, -0.04 at condition number 1.008, against 1.086 earlier in the sweep. It is the best-conditioned point on the sweep. The width there is geometry, not bookkeeping, so please do not spend effort on it.
+| substep | attacker chord, parameter | victim chord, parameter |
+|---|---|---|
+| 71 | 2 at 0.1033 | 4 at 0.0807 |
+| 72 | 2 at 0.0802 | 4 at 0.0677 |
+| 73 | **1** at 0.9291 | 4 at **0.0017** |
+| 74 | 1 at 0.9172 | **3 at 1.0000** (clamped: the vertex) |
+| 80 | 1 at 0.8456 | 3 at 1.0000 |
+
+The attacker's parameter walks steadily down chord 1 at about 0.012 of a chord per substep and stays well inside it, which is what section 2 leans on.
+
+**What is different from the first crossing: the two events coincide.** At the first crossing, substep 32, the victim's contact is **1.419u** from its nearest vertex and neither leg's contact is anywhere near a corner: one thing happening, in isolation, and a small box gets through it. At substep 73 the attacker's contact crosses its `phi = 15` vertex **and** the victim's contact arrives at its `phi = 30` vertex in the same substep: at 73 the victim's contact is 0.005u from that vertex, and from 74 it is exactly on it. Two vertex events, on opposite legs, one substep apart. The lever arm shows it too: `rn` does not drift through zero, it jumps from -2.103 to +0.534 between substeps 72 and 73.
+
+That coincidence, not the crossing by itself, is my candidate explanation for why the first crossing is passable at a smaller box and this one is not at any box size we have tried.
+
+**One thing ruled out.** The lever arm `rn` changes sign in the same substep, from -2.103 to +0.534, and I suspected that degenerated the checker's enclosure basis, which is built from the tangential slide, a spin-led tangent, and the push. That was checked and is false: the spin-led column uses `kappa = rn / (1 + rn^2/I)`, whose denominator never vanishes, so it goes smoothly to zero with `rn`, and at `rn = 0` the three columns are the horizontal tangent, the horizontal normal and pure rotation, an orthogonal triple. Measured through the crossing, the basis Gram cosines are 0, 0, -0.04 at condition number 1.008, against 1.086 earlier in the sweep. It is the best-conditioned point on the sweep. The width there is geometry, not bookkeeping, so please do not spend effort on it.
 
 ---
 
@@ -53,11 +69,11 @@ so the lever arm `r = p_xy - c` is exact, with no interval at all, and `rn` is e
 
 The questions, in the order I care about them:
 
-1. **Why is the crossing at 24.33 hard when the one at 10.67 is easy?** Both are ordinary attacker-side chord-vertex crossings. The difference visible in the data is that the second happens while the victim's contact is 0.18u from its own vertex and about to park, against 1.41u at the first. Is that the mechanism, and if so what exactly goes wrong: does the victim's near-corner make its own closest point ill-localised by Lemma A (the minimiser is approaching a constraint boundary of the chord rectangle), so that the attacker-side branching then has a wider set to work with? Or is it something else? If it is the near-corner, the remedy may be to enter the park regime *early*, before the attacker's crossing, rather than after it.
+1. **Why is the crossing at 24.33 hard when the one at 10.67 is easy?** Both are ordinary attacker-side chord-vertex crossings. The difference visible in the data is that the second happens in the same substep as the victim's contact reaching its own vertex (0.005u at 73, exactly on it at 74), against 1.42u of clearance at the first. Is that the mechanism, and if so what exactly goes wrong: does the victim's near-corner make its own closest point ill-localised by Lemma A (the minimiser is approaching a constraint boundary of the chord rectangle), so that the attacker-side branching then has a wider set to work with? Or is it something else? If it is the near-corner, the remedy may be to enter the park regime *early*, before the attacker's crossing, rather than after it.
 
 2. **Is a park contact exactly determined?** With the victim's closest point pinned at a known vertex and the attacker's interior to a known chord, the closest-point vector is the perpendicular from that vertex to the attacker's chord: perpendicular to the attacker's tangent only, not to the victim's. Write down what it is exactly as a function of the pose, and say what replaces Lemma B — an exact formula, or a cone, and if a cone, how wide over a set of radius 0.024u.
 
-3. **When does a park hold, provably?** The closest point sits at a vertex exactly when the vector to the other curve lies in the vertex's normal cone, which is a pair of inequalities `v . u_before >= 0 >= v . u_after` on the two adjacent chord tangents. Give that as an interval-checkable test over a set of poses, and the condition under which it persists across a push, so the checker can certify "the park holds for the rest of the sweep" once rather than re-deciding every substep. Our numbers: it holds from substep 74 for the eleven substeps to the throw and onwards past it, with the geometry drifting slowly and monotonically (the attacker's contact moves 0.036u per substep, hf falls from 0.554 to 0.532, and the lever arm rises steadily from +0.54 to +0.74).
+3. **When does a park hold, provably?** The closest point sits at a vertex exactly when the vector to the other curve lies in the vertex's normal cone, which is a pair of inequalities `v . u_before >= 0 >= v . u_after` on the two adjacent chord tangents. Give that as an interval-checkable test over a set of poses, and the condition under which it persists across a push, so the checker can certify "the park holds for the rest of the sweep" once rather than re-deciding every substep. Our numbers: it holds from substep 74 to 98 without a break, which is eleven substeps to the throw at 84 and fourteen past it, with the geometry drifting slowly and monotonically throughout (the attacker's contact moves 0.036u per substep along its chord, hf falls from 0.552 to 0.514 by the throw, and the lever arm rises steadily from +0.57 to +0.88).
 
 4. **Does any of this go away on the true arc?** Brief 2 asked whether the polyline could be traded for the smooth quarter circle, and you may have answered it; if the park is an artefact of the discretisation with no counterpart on the arc, that is an argument for a different proof strategy, and I would like to know whether the transfer error can be made small enough to be worth it. The relevant scale is unchanged: chord 3.023u, sagitta 0.0494u, set width 0.024u.
 
@@ -67,8 +83,9 @@ What is attached: `throw-cert.js` as it now stands (616 lines, including `hessBo
 
 ## 3. Facts to keep straight
 
-- The engine's substep is 1/3 degree; the throw lands at 28.13 degrees of a 46-degree sweep (28.00 at the 0.4-degree substep an older tool used), which is substep 84 dividing the sweep into 138 and 85 dividing it into 139.
+- The engine's substep is a function of the call, not a global grid: one `applySwing` call of `x` degrees is split into `ceil(x / 0.4)` **equal** substeps. The search always swings one degree at a time, so its substeps are exactly 1/3 degree and this 46-degree sweep is exactly 138 of them. A different call pattern integrates a different trajectory (asking for the 46 degrees in one call moves the final victim pose by 0.0086u), so every number here is on the search's grid.
+- The throw lands at substep 84, 28.00 degrees of the 46-degree sweep. Contact begins at substep 12 and never breaks after that.
 - The checker reaches substep 73, 24.33 degrees, at a +-0.001u box, and 11.33 degrees at +-0.005u. The two-substep cost of the sound projection bound is included in both.
 - Every bound in the checker has been validated against the engine, on 200 simulated poses at two box sizes, with zero violations; the unsound overshoot bound was caught by measuring the engine directly after your review, not by the validator, which did not test that quantity.
 - The park is the engine's own behaviour, not a modelling choice: `arcClosest` returns the closest point between two 12-segment polylines, and on a polyline a closest point at a vertex is ordinary.
-- The lever arm's zero crossing at 24.42 has been checked and is not a source of trouble (section 1).
+- The lever arm's sign change at substep 73 has been checked and is not a source of trouble (section 1).
