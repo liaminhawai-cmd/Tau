@@ -4,12 +4,25 @@ on:
   workflow_dispatch:
   push:
     branches: [main, 'claude/**', 'feature/steam-*']
+    # Everything the shells actually ship, which is whatever native/scripts/sync-www.mjs copies
+    # into www/ -- plus the wrappers themselves and this file. The two lists had drifted: the
+    # filter named only index.html, steam.html and desktop/**, so a commit touching sw.js, the
+    # manifest, an icon or the three.js bundle built nothing on any platform and left the pull
+    # request with no checks at all. desktop-ships.test.cjs fails if they drift again.
     paths:
       - 'native/**'
+      - '.github/workflows/native-builds.yml'
       - 'index.html'
       - 'steam.html'
       - 'desktop/**'
-      - '.github/workflows/native-builds.yml'
+      - 'vendor/**'
+      - 'sw.js'
+      - 'manifest.webmanifest'
+      - 'apple-touch-icon.png'
+      - 'favicon-32.png'
+      - 'icon-192.png'
+      - 'icon-512.png'
+      - 'tau-logo.png'
 
 jobs:
   android:
