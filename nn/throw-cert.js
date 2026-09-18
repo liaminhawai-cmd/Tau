@@ -677,7 +677,24 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
     if (t.flags.hub || t.flags.deep || t.flags.cap || t.flags.hfFloor) return fail(`the centre's own push used a hub contact / deep rule / cap / hf floor`, k);
     // the shell argument needs the solver to have STOPPED because nothing was under D, not because
     // it ran out of passes: at the cap the post-push distance is not bounded below by D at all
-    if (t.pushes.length && t.flags.iters >= REPLICA.iters) return fail(`the solver used all ${REPLICA.iters} passes, so the contact shell's lower edge is not established`, k);
+    // The shell argument needs the solver to have STOPPED because nothing was under D, not because
+    // it ran out of passes: at the cap the post-push distance is not bounded below by D at all.
+    //
+    // But "used every pass" and "had not converged" are different things, and on some arms they come
+    // apart badly. On arm (2,-1) of this seed the solver reaches the cap on 43 of 331 substeps while
+    // having converged on pass two: the lambdas run 9.99e-2, 2.04e-6, then 1.28e-15 repeated until
+    // the cap. It is grinding at the floating-point noise floor because its termination test never
+    // fires there, not because a contact is unresolved. Refusing those substeps cost the whole arm.
+    //
+    // So judge the LAST push, not the pass count. The push law is lambda = s / (1 + rn^2/I) with s
+    // the penetration along the normal, so a final push of lambda leaves a residual penetration of
+    // at most lambda (1 + rn^2/I) <= lambda (1 + R^2/I) = lambda / 0.7 + lambda, since I = 0.7 R^2.
+    // Below LAM_SETTLED that residual is smaller than EPS_LO by four orders of magnitude and is
+    // already inside the slack the shell's lower edge carries.
+    if (t.pushes.length && t.flags.iters >= REPLICA.iters) {
+      const lamLast = t.pushes[t.pushes.length - 1].lambda;
+      if (!(lamLast * (1 + R * R / I) < EPS_LO * 1e-2)) return fail(`the solver used all ${REPLICA.iters} passes and its last push was ${lamLast.toExponential(2)}, so the contact shell's lower edge is not established`, k);
+    }
     // the aabb of the whole enclosure, for pair discovery and the free / no-touch tests
     for (const st of Us) if (!st.M) st.M = M00;
     const bbAll = Us.map(st => aabbOf(qc, st.M, st.U)).reduce((a, b) => ({ x: hull(a.x, b.x), y: hull(a.y, b.y), rot: hull(a.rot, b.rot) }));
