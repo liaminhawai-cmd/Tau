@@ -20,7 +20,7 @@ A short follow-up to brief 2, on the throw proof only. Two things prompted it: y
 
 Brief 2 said the contact point crosses three polyline vertices on the way to the throw, at 10.67, 24.33 and 25.00 degrees of sweep, and that the checker dies at the first. Three corrections, all found after sending it.
 
-**The first crossing is passable.** Brief 2 said shrinking the pose box does not help, because the contact crosses the vertex a few substeps later either way. That is false for the first crossing: at a box of +-0.002u the checker passes it and reaches 24.33 degrees instead of 11.33. It is true for what comes next: every box from +-0.0005u to +-0.003u dies within half a degree of 24.5.
+**The first crossing is passable.** Brief 2 said shrinking the pose box does not help, because the contact crosses the vertex a few substeps later either way. That is false for the first crossing: at a box of +-0.002u the checker passes it and reaches substep 73, 24.33 degrees, instead of 11.33. It is true for what comes next: shrinking the box a further fourfold, to +-0.0005u, buys exactly one substep. The numbers are in section 2, and they rule out a second explanation.
 
 **The third "crossing" is not a crossing.** The victim's contact point arrives at the vertex at `phi = 30 degrees` on its leg 0 and **parks on it**: its arc angle reads 30.000000 degrees exactly at every substep from 74 to 98, which is eleven substeps to the throw at 84 and fourteen more past it. Not small: exactly the vertex, deviation 0.0. A closest point on a polyline parks at a vertex whenever neither adjacent chord has an interior perpendicular foot, and it is ordinary behaviour for a non-smooth curve. What brief 2 reported as a third crossing was the reported chord index flipping from 4 to 3, which happens at substep 74, the substep the park begins: from there the victim's contact is the clamped endpoint of chord 3 rather than an interior point of chord 4, and chords 3 and 4 share the `phi = 30` vertex, so the index changes while the point sits still.
 
@@ -73,7 +73,19 @@ The questions, in the order I care about them:
 
 1. **Does a simultaneous two-leg vertex event need different treatment from a single one?** This is the question I most want answered, and it is sharper than "how do I handle a crossing". At substep 32 one leg has a vertex event and the other leg's contact is 1.42u of arc from its nearest vertex: one thing happening, in isolation, and a small box gets through it. At substep 73 both legs have one in the same substep. Are those just two independent branchings that happen to coincide, so that a scheme handling each separately handles both, or does the pair need something the single case does not?
 
-    What makes me doubt the easy answer is that the jump in the closest-point normal is about the same size at both: the normal's azimuth goes -72.61 to -83.57 degrees across the first crossing and -95.32 to -108.34 across the second, 11.0 degrees against 13.0. So whatever distinguishes them is not simply a bigger discontinuity to enclose.
+    Two obvious explanations are already dead. It is **not the size of the discontinuity**: the closest-point normal's azimuth goes -72.61 to -83.57 degrees across the first crossing and -95.32 to -108.34 across the second, 11.0 degrees against 13.0. And it is **not the width of the set arriving**, which is the natural story, since forty substeps of growth do leave the enclosure fatter by substep 73. The checker's own runs, at five starting boxes (pad is the enclosure's half-width in u at that substep):
+
+    | starting box | pad at k12 | pad at k31, the first event | pad at k71, before the second | last substep reached |
+    |---|---|---|---|---|
+    | +-0.005u | 0.045 | 0.093 | — | 34 |
+    | +-0.003u | 0.028 | 0.027 | — | 69 |
+    | +-0.002u | 0.019 | 0.019 | 0.042 | 73 |
+    | +-0.001u | 0.009 | 0.010 | 0.025 | 73 |
+    | +-0.0005u | 0.004 | 0.006 | 0.018 | 74 |
+
+    The last row decides it. At +-0.0005u the set reaches the second event at a half-width of 0.018u, **narrower** than the 0.019u that walks straight through the first event at +-0.002u, and it still fails. A set demonstrably narrow enough to survive a single-leg vertex event of the same magnitude does not survive the two-leg one. So the difference does not look quantitative at all: something categorical changes when both legs have an event in the same substep.
+
+    One structural point that may be the whole answer. The two events are on **opposite pieces**: the attacker's contact crosses a vertex of the attacker's own leg while the victim's contact arrives at a vertex of the victim's leg. It is not one contact point negotiating a corner, it is both ends of the same closest-point pair doing it at once, and the two ends are coupled through the single distance function they jointly minimise. That is the reason I doubt "two independent branchings that coincide", but it is a guess, and the guess is what I want you to confirm or break.
 
     And if the near-corner is the mechanism — the victim's minimiser approaching a constraint boundary of its chord rectangle, so Lemma A localises it less well just as the attacker-side branching needs it — then the remedy may be to enter the park regime *early*, before the attacker's crossing, rather than after it.
 
