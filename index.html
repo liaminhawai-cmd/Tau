@@ -2617,13 +2617,25 @@ class Piece {
     // 3D polylines of the quarter-circle legs — the same curve the 3D view renders,
     // so what you see touching is exactly what the physics feels. {x,y} board plane, h up.
     legArcs() {
-        const R=CFG.footR, H=CFG.hubHeight, N=CFG.legSegs, out=[];
+        // The along-chord offset and height of the k-th arc point depend only on k, so they are
+        // tabulated once (the same expressions as before, so the same doubles) and each call pays
+        // one cos and one sin per leg instead of one per point.
+        const T = Piece.arcTable || (Piece.arcTable = (() => {
+            const R=CFG.footR, H=CFG.hubHeight, N=CFG.legSegs, s=[], h=[], r=[];
+            for (let k=0;k<=N;k++){ const ph=(k/N)*(Math.PI/2); s.push(Math.sin(ph)*R); h.push(Math.cos(ph)*H); }
+            // half-length of each polyline segment: a constant of the shape, used by arcClosest's
+            // bounding-sphere skip
+            for (let k=0;k<N;k++) r.push(Math.hypot(s[k+1]-s[k], h[k+1]-h[k])*0.5);
+            return { s, h, r, N };
+        })());
+        const out=[];
         for (let i=0;i<3;i++){
             const a=this.rot+i*(2*Math.PI/3), ca=Math.cos(a), sa=Math.sin(a), pts=[];
-            for (let k=0;k<=N;k++){
-                const ph=(k/N)*(Math.PI/2), s=Math.sin(ph)*R;
-                pts.push({ x:this.x+ca*s, y:this.y+sa*s, h:Math.cos(ph)*H });
-            }
+            for (let k=0;k<=T.N;k++) pts.push({ x:this.x+ca*T.s[k], y:this.y+sa*T.s[k], h:T.h[k] });
+            // segment centres, for arcClosest's bounding-sphere skip
+            const c=new Float64Array(T.N*3);
+            for (let k=0;k<T.N;k++){ c[k*3]=(pts[k].x+pts[k+1].x)*0.5; c[k*3+1]=(pts[k].y+pts[k+1].y)*0.5; c[k*3+2]=(pts[k].h+pts[k+1].h)*0.5; }
+            pts.sph = { c, r: T.r };
             out.push(pts);
         }
         return out;
@@ -2934,11 +2946,33 @@ function segClosest3(p1,q1,p2,q2){
     return { pa, pb, dist:Math.sqrt(dx*dx+dy*dy+dh*dh) };
 }
 // min-distance closest points between two arc polylines
-function arcClosest(A, B){
-    let best=null;
-    for (let i=0;i<A.length-1;i++) for (let j=0;j<B.length-1;j++){
-        const c=segClosest3(A[i],A[i+1],B[j],B[j+1]);
-        if (!best || c.dist<best.dist) best=c;
+// segment centres and half-lengths of a polyline, for the bounding-sphere skip below (legArcs
+// attaches them ready-made as .sph; any other polyline gets them computed here)
+function segSpheres(A){
+    if (A.sph) return A.sph;
+    const n=A.length-1, c=new Float64Array(n*3), r=new Float64Array(n);
+    for (let k=0;k<n;k++){
+        const p=A[k], q=A[k+1];
+        c[k*3]=(p.x+q.x)*0.5; c[k*3+1]=(p.y+q.y)*0.5; c[k*3+2]=(p.h+q.h)*0.5;
+        r[k]=Math.hypot(q.x-p.x, q.y-p.y, q.h-p.h)*0.5;
+    }
+    return { c, r };
+}
+function arcClosest(A, B, cut){
+    let best=null, bestD = cut===undefined ? Infinity : cut;
+    const nA=A.length-1, nB=B.length-1, SA=segSpheres(A), SB=segSpheres(B), cA=SA.c, rA=SA.r, cB=SB.c, rB=SB.r;
+    for (let i=0;i<nA;i++){
+        const cx=cA[i*3], cy=cA[i*3+1], ch=cA[i*3+2], ra=rA[i];
+        for (let j=0;j<nB;j++){
+            // every point of a segment is within its half-length of its centre, so the two
+            // segments are at least |cA-cB| - rA - rB apart: a pair that cannot get below the
+            // best so far is skipped. Compared squared, with a hair of slack so rounding can
+            // only keep a pair, never drop one that would have won.
+            const dx=cB[j*3]-cx, dy=cB[j*3+1]-cy, dh=cB[j*3+2]-ch, reach=bestD+ra+rB[j];
+            if (dx*dx+dy*dy+dh*dh > reach*reach*(1+1e-9)) continue;
+            const c=segClosest3(A[i],A[i+1],B[j],B[j+1]);
+            if (c.dist<bestD){ best=c; bestD=c.dist; }
+        }
     }
     return best;
 }
@@ -2972,7 +3006,38 @@ function resolvePush(active, opp) {
     // push direction from opp's position, and if that position is itself being corrected
     // inside this loop the sign can flip between iterations and the piece just chatters.
     const opp0 = { x: opp.x, y: opp.y };
-    const aArcs = active.legArcs(), aChords = active.legs();
+    const hubLegD = hubR + CFG.legRadius, R = CFG.footR;
+    // Piece-level gate: every point of a piece is within R of its hub (flat), so two hubs more
+    // than 2R + minD apart cannot bring any two legs within minD, nor a hub within hubLegD of a
+    // leg (R + hubLegD < 2R + minD), nor the hubs within 2 hubR. Exact, and it settles the
+    // common case of two pieces nowhere near each other with one hypot.
+    if (Math.hypot(opp.x-active.x, opp.y-active.y) >= 2*R + minD) return;
+    const aChords = active.legs();
+    // flat distance from a point to a chord (the top-down projection of a leg arc)
+    const pointChordDist = (p, ch) => {
+        const ax=ch[0].x, ay=ch[0].y, dx=ch[1].x-ax, dy=ch[1].y-ay, len2=dx*dx+dy*dy || 1e-12;
+        let t=((p.x-ax)*dx+(p.y-ay)*dy)/len2; t=Math.max(0,Math.min(1,t));
+        return Math.hypot(ax+dx*t-p.x, ay+dy*t-p.y);
+    };
+    // flat chord-chord gap, with a bounding-circle skip first: a chord's points are all within
+    // R/2 of its midpoint, so midpoints more than R + minD apart mean the chords are clear
+    const chordGapClear = (A, B) => {
+        const mx=(A[0].x+A[1].x-B[0].x-B[1].x)*0.5, my=(A[0].y+A[1].y-B[0].y-B[1].y)*0.5, reach=R+minD;
+        if (mx*mx+my*my > reach*reach*(1+1e-9)) return true;
+        return segClosest(A[0],A[1],B[0],B[1]).dist >= minD;
+    };
+    let oChords = opp.legs();
+    {
+        // exact early out: every 3D contact test below is bounded from below by a flat one
+        let near = false;
+        for (let i=0;i<3 && !near;i++) for (let j=0;j<3;j++) if (!chordGapClear(aChords[i], oChords[j])) { near = true; break; }
+        for (let j=0;j<3 && !near;j++) if (pointChordDist(active, oChords[j]) < hubLegD) near = true;
+        for (let i=0;i<3 && !near;i++) if (pointChordDist(opp, aChords[i]) < hubLegD) near = true;
+        if (!near && Math.hypot(opp.x-active.x, opp.y-active.y) >= 2*hubR) return;
+    }
+    // the active piece's arcs, built per leg on first use (a leg whose chord never gets near
+    // anything is never built)
+    let aArcsAll = null; const aArc = i => (aArcsAll || (aArcsAll = active.legArcs()))[i];
     const aHub = { x:active.x, y:active.y, h:H };
 
     // horizontal push of magnitude sep along unit (nx,ny), applied at contact point (px,py)
@@ -2999,15 +3064,20 @@ function resolvePush(active, opp) {
     };
 
     for (let iter=0; iter<CFG.pushIters; iter++) {
-        const oArcs = opp.legArcs(), oChords = opp.legs();
+        if (iter > 0) oChords = opp.legs();          // the opponent moved: fresh chords (iteration 0 reuses the gate's)
+        // the opponent's arcs as of the START of this iteration (the pushes below move it, and the
+        // pairs after them must still see the same geometry the whole-iteration build saw), built
+        // per leg on first use
+        const oSnap = { x: opp.x, y: opp.y, rot: opp.rot }; let oArcsAll = null;
+        const oArc = j => (oArcsAll || (oArcsAll = Piece.prototype.legArcs.call(oSnap)))[j];
         const oHub = { x:opp.x, y:opp.y, h:H };
         let any = false;
         for (let i=0;i<3;i++) for (let j=0;j<3;j++) {
             // exact prune: an arc projects straight down onto its hub→foot chord, so the 3D
             // gap can never be smaller than the flat top-down gap between the chords.
-            if (segClosest(aChords[i][0],aChords[i][1],oChords[j][0],oChords[j][1]).dist >= minD) continue;
-            const c = arcClosest(aArcs[i], oArcs[j]);
-            if (c.dist >= minD) continue;            // clears over/under — no touch, no push
+            if (chordGapClear(aChords[i], oChords[j])) continue;
+            const c = arcClosest(aArc(i), oArc(j), minD);
+            if (!c) continue;                        // clears over/under — no touch, no push
             any = true;
             if (c.dist < 0.3) {                      // tubes deeply crossed: shove ⟂ off the active leg, toward opp's side
                 const A=aChords[i], ax=A[1].x-A[0].x, ay=A[1].y-A[0].y, L=Math.hypot(ax,ay)||1;
@@ -3019,13 +3089,14 @@ function resolvePush(active, opp) {
             }
         }
         // hub ball contacts: my hub vs their legs, their hub vs my legs, hub vs hub
-        const hubLegD = hubR + CFG.legRadius;
         for (let j=0;j<3;j++){
-            const c = pointArcClosest(aHub, oArcs[j]);
+            if (pointChordDist(aHub, oChords[j]) >= hubLegD) continue;   // flat gap bounds the 3D one
+            const c = pointArcClosest(aHub, oArc(j));
             if (c.dist < hubLegD && c.dist > 1e-6){ any=true; push3d(aHub, c.pt, c.dist, hubLegD - c.dist); }
         }
         for (let i=0;i<3;i++){
-            const c = pointArcClosest(oHub, aArcs[i]);
+            if (pointChordDist(oHub, aChords[i]) >= hubLegD) continue;
+            const c = pointArcClosest(oHub, aArc(i));
             if (c.dist < hubLegD && c.dist > 1e-6){ any=true; push3d(c.pt, oHub, c.dist, hubLegD - c.dist); }
         }
         {
@@ -4642,6 +4713,15 @@ const AI_LADDER = [
     { kind:'p3', experimental:'hub-leverage', label:'Leverage',
       w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2,hubAttack:2,hubExpose:-2},
       o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },
+    // L12a / L12b EXPERIMENT (2026-09-18): two ways to spend the time the cheaper push physics
+    // bought, both with L11's eval and candidates, both in the training pool (they are the 15th and
+    // 16th entries, so the trainer's rung numbering calls them L15 and L16; not experimental on
+    // purpose, so productionTop picks them up).
+    //   L12a: L11's search one ply deeper (kind 'p4', ladderPlan4).
+    //   L12b: L11's roots, but the reply is L11's own brain instead of six swing-to-the-jam guesses
+    //         (kind 'opp', ladderPlanOppModel), six candidates deep.
+    { kind:'p4', label:'L12a', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:4,keepStops:4,maxCands:28} },
+    { kind:'opp', label:'L12b', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:3,keepStops:4,oppLevel:10,oppCands:6} },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 
@@ -4801,6 +4881,68 @@ function ladderPlan3(idx, w, o){
         if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
         else {
             const worst = ladderScore3(idx, w, c.snap, best ? best.score : undefined);
+            score = worst===Infinity ? c.q : worst;
+        }
+        if (!best || score>best.score) best={pivotIdx:c.pivotIdx,dir:c.dir,targetRad:c.targetRad,score};
+    }
+    ladderRestore(snap0); G.active=origActive; return best;
+}
+// L12a EXPERIMENT (kind 'p4'): ladderPlan3 one ply deeper. The same roots, the same worst-of-six
+// replies and best-of-six follow-ups, but each follow-up is scored by the worst of the opponent's
+// six swing-to-the-jam answers to it instead of by the eval alone. Up to six times the sweeps of a
+// p3 rung; the fourth ply stops as soon as it cannot beat the best follow-up so far, and the third
+// as soon as it cannot beat the best root so far, exactly as before.
+function ladderScore4(idx, w, snap, alpha){
+    let worst=Infinity;
+    reply: for (let op=0; op<3; op++) for (const od of [1,-1]){
+        ladderRestore(snap); G.active=1-idx;
+        const onet=simMoveToLimit(op,od);
+        if (Math.abs(onet) < HARD_MIN_MOVE_RAD) continue;
+        if (G.pieces[1-idx].anyFootOff()) continue;
+        let rs;
+        if (G.pieces[idx].anyFootOff()) rs = -HARD_WIN_BONUS;
+        else {
+            const s2=takeSnap(); let bf=-Infinity;
+            for (let fp=0; fp<3 && bf<HARD_WIN_BONUS/2; fp++) for (const fd of [1,-1]){
+                ladderRestore(s2); G.active=idx;
+                const fnet=simMoveToLimit(fp,fd);
+                if (Math.abs(fnet) < HARD_MIN_MOVE_RAD) continue;
+                if (G.pieces[idx].anyFootOff()) continue;
+                let fs;
+                if (G.pieces[1-idx].anyFootOff()) fs = HARD_WIN_BONUS+ladderEval(idx,w);
+                else {
+                    const s3=takeSnap(); let w4=Infinity;
+                    answer: for (let ap=0; ap<3; ap++) for (const ad of [1,-1]){
+                        ladderRestore(s3); G.active=1-idx;
+                        const anet=simMoveToLimit(ap,ad);
+                        if (Math.abs(anet) < HARD_MIN_MOVE_RAD) continue;
+                        if (G.pieces[1-idx].anyFootOff()) continue;
+                        const as = G.pieces[idx].anyFootOff() ? -HARD_WIN_BONUS : ladderEval(idx,w);
+                        if (as<w4) w4=as;
+                        if (w4<=bf) break answer;
+                    }
+                    if (w4===Infinity){ ladderRestore(s3); G.active=idx; fs = ladderEval(idx,w); }   // no legal answer: the position stands
+                    else fs = w4;
+                }
+                if (fs>bf) bf=fs;
+            }
+            rs = bf===-Infinity ? ladderEval(idx,w) : bf;
+        }
+        if (rs<worst) worst=rs;
+        if (alpha!==undefined && worst<=alpha) break reply;
+    }
+    return worst;
+}
+function ladderPlan4(idx, w, o){
+    const origActive=G.active, snap0=takeSnap();
+    const roots = ladderRoots3(idx, w, o, snap0);
+    if (!roots.length){ ladderRestore(snap0); G.active=origActive; return null; }
+    let best=null;
+    for (const c of roots.slice(0, o.maxCands||10)){
+        ladderRestore(c.snap); let score;
+        if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
+        else {
+            const worst = ladderScore4(idx, w, c.snap, best ? best.score : undefined);
             score = worst===Infinity ? c.q : worst;
         }
         if (!best || score>best.score) best={pivotIdx:c.pivotIdx,dir:c.dir,targetRad:c.targetRad,score};
@@ -5292,6 +5434,7 @@ function ladderPlanRung(def, idx){
     if (def.kind==='l1') return ladderL1Plan(idx);
     if (def.kind==='builtin') return def.brain==='master' ? aiChoosePlanMaster(idx, def.mw) : ladderDumbPlan(idx);
     if (def.kind==='p3') return ladderPlan3(idx, def.w, def.o);
+    if (def.kind==='p4') return ladderPlan4(idx, def.w, def.o);
     if (def.kind==='opp') return ladderPlanOppModel(idx, def.w, def.o);
     if (def.kind==='opp2') return ladderPlan13(idx, def.w, def.o);
     return ladderSampledPlan(idx, def.w, def.o);
