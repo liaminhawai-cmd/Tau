@@ -347,12 +347,38 @@
   // not a frame cost at all, but the reason a board takes a moment to appear when you pick it.
   const QUALITIES = ['low','balanced','high','ultra'];
   const lowGfx = () => settings.quality === 'low';
-  // A phone starts on Low. Not "a small window" -- a desktop dragged narrow is still a desktop --
-  // but a coarse pointer with no hover, which is the pair of things a touchscreen answers to. Only
-  // the DEFAULT: the setting is a setting, and a saved one always wins.
+  // A touchscreen. Not "a small window" -- a desktop dragged narrow is still a desktop -- but a
+  // coarse pointer with no hover, which is the pair of things only a touch device answers to.
   function phoneClass() {
     try { return matchMedia('(pointer:coarse)').matches && matchMedia('(hover:none)').matches; }
     catch (_) { return false; }
+  }
+  // ---- Picking a tier for this device ----------------------------------------------------------
+  // A guess, and only ever the DEFAULT. The moment a player chooses a tier themselves the guess is
+  // finished with (settings.qualityPicked) and nothing here moves it again.
+  //
+  // It reads the same two signals the web build's own heuristic does -- index.html's
+  // detectQualityTier, core count and, where the browser volunteers it, memory -- because one
+  // machine answering the same question off two different tables gives two different answers. A
+  // missing API is never held against a device: iOS Safari does not report deviceMemory at all,
+  // and that is not evidence of a slow phone.
+  //
+  // A desktop or a laptop starts where it always did, on Balanced. A touchscreen is GRADED rather
+  // than assumed slow -- a current phone carries Balanced perfectly well and it is the older one
+  // that needs Low. Almost every Android reports eight cores whatever silicon is behind them, so
+  // on a phone it is the memory that actually separates them.
+  //
+  // Nothing is ever started on Ultra. It path-traces the still frame, which is a thing somebody
+  // turns on knowing what GPU they have -- and on a phone it is not worth offering at all, so the
+  // picker below leaves it out there entirely.
+  function detectQuality() {
+    if (!phoneClass()) return 'balanced';
+    let cores = 0, mem;
+    try {
+      if (typeof navigator.hardwareConcurrency === 'number') cores = navigator.hardwareConcurrency;
+      mem = navigator.deviceMemory;
+    } catch (_) {}
+    return (cores >= 8 && (mem === undefined || mem >= 6)) ? 'balanced' : 'low';
   }
   const DEFAULT_KEYS = { pin1:'1', pin2:'2', pin3:'3', footPrev:'ArrowUp', footNext:'ArrowDown',
     swingLeft:'ArrowLeft', swingRight:'ArrowRight',
@@ -361,10 +387,11 @@
   // a new player is pointed at Level 1 and walked up. levelSkipped remembers that the player chose
   // a rung that was NOT the one being suggested -- from then on the menu leaves their choice alone
   // instead of steering them back down after every match.
-  const settings = { level:1, levelSkipped:false, colour:0, quality:phoneClass()?'low':'balanced', board:'walnut', padScheme:'triggers', padBrand:'auto',
+  const settings = { level:1, levelSkipped:false, colour:0, quality:'balanced', qualityPicked:false, board:'walnut', padScheme:'triggers', padBrand:'auto',
     invertCamY:false, keys:{...DEFAULT_KEYS}, rayTrace:false,
     reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches, haptics:true, fullscreen:true };
   settings.level = ladderStep();   // outside the try: a corrupt settings blob must not lose the route
+  settings.quality = detectQuality();
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     if (saved.keys && typeof saved.keys === 'object')
@@ -374,13 +401,23 @@
       settings.levelSkipped = true;
     }
     if (saved.colour === 0 || saved.colour === 1) settings.colour = saved.colour;
-    if (QUALITIES.includes(saved.quality)) settings.quality = saved.quality;
+    // qualityPicked did not exist before this build, so a save from before it has to be read for
+    // intent. 'high' and 'ultra' are tiers the guess never produces on its own, so a save holding
+    // one was chosen by hand and is kept; 'low' and 'balanced' could equally be an old default,
+    // and this build grades a device better than the one that wrote them, so those are re-guessed.
+    if (QUALITIES.includes(saved.quality)
+        && (saved.qualityPicked === true || saved.quality === 'high' || saved.quality === 'ultra')) {
+      settings.quality = saved.quality; settings.qualityPicked = true;
+    }
     if (BOARD_FINISHES.some(b => b.id === saved.board) && isUnlocked(saved.board)) settings.board = saved.board;
     if (PAD_SCHEMES.includes(saved.padScheme)) settings.padScheme = saved.padScheme;
     if (['auto','xbox','playstation','nintendo','generic'].includes(saved.padBrand)) settings.padBrand = saved.padBrand;
     for (const k of ['reducedMotion','haptics','invertCamY','rayTrace','fullscreen']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
-    settings.rayTrace = settings.quality === 'ultra';   // one switch, not two that can disagree
   } catch (_) {}
+  // A phone never runs the traced tier, whatever a save says: the bundle it loads is not something
+  // a phone GPU finishes, and the picker does not offer it there for a saved value to come back to.
+  if (phoneClass() && settings.quality === 'ultra') settings.quality = 'high';
+  settings.rayTrace = settings.quality === 'ultra';   // one switch, not two that can disagree
   // A player on the default route gets the board that goes with the rung they are being pointed at.
   // One who has skipped keeps whatever board they last chose -- that is the free-play half.
   if (!settings.levelSkipped && isUnlocked(rungBoard(settings.level))) settings.board = rungBoard(settings.level);
@@ -976,13 +1013,28 @@
     const el = $('buildTag');
     return el && el.textContent ? el.textContent.trim() : 'build unknown';
   }
+  // The tiers this device is offered, in order. Ultra is missing on a phone on purpose -- see
+  // detectQuality. A tier that is not in the list cannot be reached by the picker OR by a pad
+  // nudging it along, which is the point of leaving it out rather than disabling it.
+  function qualityTiers() {
+    const all = [['low', t('Low')], ['balanced', t('Balanced')], ['high', t('High')],
+                 ['ultra', t('Ultra · ray tracing')]];
+    return phoneClass() ? all.slice(0, 3) : all;
+  }
+  function qualityOptions() {
+    return qualityTiers().map(([v, label]) => `<option value="${v}">${esc(label)}</option>`).join('');
+  }
+  function qualityName(id) { const r = qualityTiers().find(q => q[0] === id); return r ? r[1] : id; }
   // Ultra is the one setting whose effect you cannot see at a glance -- it only shows itself once
   // the board holds still -- so it says out loud what it is doing.
   function drawQualityNote() {
     const el = $('desktopQualityNote'); if (!el) return;
-    // Low says what it gives up, because it is the one tier a player picks to fix something.
-    if (lowGfx()) { el.textContent = t('Low: no shadows and fewer pixels — for phones and older machines.'); return; }
-    if (settings.quality !== 'ultra') { el.textContent = ''; return; }
+    // Low says what it gives up, because it is the one tier a player picks to fix something; and
+    // a tier nobody chose says so, so a player who wonders why they are on Low has the answer in
+    // front of them rather than assuming the game shipped that way.
+    const chosenFor = settings.qualityPicked ? '' : ' ' + t('Chosen for this device.');
+    if (lowGfx()) { el.textContent = t('Low: no shadows and fewer pixels — for phones and older machines.') + chosenFor; return; }
+    if (settings.quality !== 'ultra') { el.textContent = chosenFor.trim(); return; }
     el.textContent = ptPhase === 'failed'
         ? t(ptFailReason === 'slow' ? 'Ray tracing runs too slowly on this GPU — drawing normally.'
                                     : 'Ray tracing could not start on this GPU — drawing normally.')
@@ -1232,7 +1284,7 @@
       <label class="desktop-setting">${esc(t('Mute'))}<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
       <label class="desktop-setting">${esc(t('Board'))}<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${esc(boardLabel(b))}</option>`:boardRevealed(b.id)?`<option value="${b.id}" disabled>${esc(boardLabel(b))} · ${esc(unlockText(b.id))}</option>`:`<option value="${b.id}" disabled>${esc(SECRET_NAME)} · ${esc(t('keep climbing'))}</option>`).join('')}</select></label>
       ${testBoards ? '<p class="desktop-result-detail">All boards are open for testing. Type <b>ALLBOARDS</b> on the main menu to restore locks.</p>' : ''}
-      <label class="desktop-setting">${esc(t('Graphics'))}<select id="desktopQuality"><option value="low">${esc(t('Low'))}</option><option value="balanced">${esc(t('Balanced'))}</option><option value="high">${esc(t('High'))}</option><option value="ultra">${esc(t('Ultra · ray tracing'))}</option></select></label>
+      <label class="desktop-setting">${esc(t('Graphics'))}<select id="desktopQuality">${qualityOptions()}</select></label>
       <p class="desktop-controls-note" id="desktopQualityNote" style="margin:0"></p>
       <label class="desktop-setting">${esc(t('Language'))}<select id="desktopLanguage" aria-label="${esc(t('Language'))}">${LANG_NAMES.map(([code,label])=>`<option value="${code}">${esc(label)}</option>`).join('')}</select></label>
       <label class="desktop-setting">${esc(t('Invert camera Y'))}<input id="desktopInvertY" type="checkbox" ${settings.invertCamY?'checked':''}></label>
@@ -1269,6 +1321,7 @@
     $('desktopQuality').onchange = e => {
       const wasLow = lowGfx();
       settings.quality = e.target.value;
+      settings.qualityPicked = true;   // their choice from here on; the device guess is finished
       settings.rayTrace = settings.quality === 'ultra';
       saveSettings(); configureQuality(); resize();
       // Crossing into or out of Low changes the bake's size, and the bake is cached by board id --
@@ -2541,7 +2594,52 @@
       });
     }
   }
+  // ---- Checking the guess against the frames ---------------------------------------------------
+  // detectQuality reads what the device REPORTS, and what a device reports is only loosely about
+  // its GPU -- nearly every Android claims eight cores whatever is behind them. So the guess gets
+  // checked against the one measurement that is actually the question: how long a frame takes.
+  // Two hundred frames of a live match, and if most of them missed 22fps the tier steps down one
+  // and says so.
+  //
+  // Only on a tier NOBODY CHOSE. A player who picked High and wants it at 15fps is entitled to it,
+  // and being overruled by the game is worse than a slow frame. Once per session either way, so a
+  // board that is simply heavy cannot walk the setting down to Low over an evening.
+  //
+  // Timed here rather than from animate's dt, which is clamped to 50ms and so cannot report the
+  // frames this is looking for.
+  const FPS_WINDOW = 200, FPS_SLOW_MS = 45, FPS_SLOW_SHARE = 0.6, FPS_GAP_MS = 1000;
+  let fpsSeen = 0, fpsSlow = 0, fpsAt = 0, fpsStepped = false;
+  function watchFrameRate() {
+    const now = performance.now(), last = fpsAt;
+    fpsAt = now;
+    if (last) noteFrame(now - last);
+  }
+  function noteFrame(ms) {
+    if (fpsStepped || settings.qualityPicked || lowGfx() || !inMatch() || paused) return;
+    if (ms > FPS_GAP_MS) { fpsSeen = fpsSlow = 0; return; }   // a window that was asleep is not a slow frame
+    fpsSeen++; if (ms > FPS_SLOW_MS) fpsSlow++;
+    if (fpsSeen < FPS_WINDOW) return;
+    const share = fpsSlow / fpsSeen;
+    fpsSeen = fpsSlow = 0;
+    if (share < FPS_SLOW_SHARE) return;
+    stepQualityDown();
+  }
+  function stepQualityDown() {
+    const at = QUALITIES.indexOf(settings.quality);
+    if (at <= 0) return;
+    fpsStepped = true;
+    const wasLow = lowGfx();
+    settings.quality = QUALITIES[at - 1];
+    settings.rayTrace = false;                     // nothing below Ultra traces
+    saveSettings(); configureQuality(); layout();
+    if (wasLow !== lowGfx()) { texturesFor = null; applyMaterials(); }
+    if ($('desktopQuality')) $('desktopQuality').value = settings.quality;
+    drawQualityNote();
+    showToast(`<p class="desktop-unlock">${esc(tf('Graphics set to {name} to keep the board moving — Settings has the full range.',
+      { name: qualityName(settings.quality) }))}</p>`);
+  }
   function pollInput(dt) {
+    watchFrameRate();
     if (detail && detail.uniforms) {
       const u = detail.uniforms, now = performance.now()/1000;
       u.uDetail.value = detailMode === 3 ? 0 : detailMode;   // the membrane is its own pass below
@@ -2710,8 +2808,11 @@
     recordResult,
     debugDetailMode(){ return detailMode; },
     debugDrift(){ return driftAmt; },
+    debugFrame(ms){ noteFrame(ms); },   // feed the frame-rate watcher a measured frame
+    debugDetectQuality(){ return detectQuality(); },   // what this device would be started on now
     resize:layout, updateCamera, orbitCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, fallGravity, renderFrame,
     get quality(){return settings.quality;},   // read-only: the picker is the way to change it
+    get qualityPicked(){return settings.qualityPicked;},   // false while the device guess is still in charge
     get rayTrace(){return settings.rayTrace;},
     set rayTrace(v){ settings.rayTrace=!!v; settings.quality = settings.rayTrace ? 'ultra' : (settings.quality==='ultra'?'high':settings.quality);
       saveSettings(); if($('desktopQuality')) $('desktopQuality').value=settings.quality;

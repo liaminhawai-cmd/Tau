@@ -35,9 +35,13 @@ async function game(query = '?steam=1&premium=1', storage = {}, opts = {}) {
       // Feature queries (prefers-*, pointer, display-mode) stay false; width/height ones are
       // answered from the window, so a test can put the layout on a phone-sized screen.
       w.matchMedia=q=>{
-        const m=/\((max|min)-(width|height):\s*(\d+)px\)/.exec(String(q||''));
+        const s=String(q||'');
+        // opts.touch makes this a touchscreen: a coarse pointer that cannot hover, which is the
+        // pair the desktop layer asks about (phoneClass) to tell a phone from a narrow window.
+        const coarse=!!opts.touch && /pointer:\s*coarse|hover:\s*none/.test(s);
+        const m=/\((max|min)-(width|height):\s*(\d+)px\)/.exec(s);
         const v=m && (m[2]==='width'?w.innerWidth:w.innerHeight);
-        return {matches:!!m&&(m[1]==='max'?v<=+m[3]:v>=+m[3]),media:String(q||''),
+        return {matches:coarse||(!!m&&(m[1]==='max'?v<=+m[3]:v>=+m[3])),media:s,
                 addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}};
       };
       // Pin the web/PWA render-quality heuristic (index.html's detectQualityTier) to its 'basic'

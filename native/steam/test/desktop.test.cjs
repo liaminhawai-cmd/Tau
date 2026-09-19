@@ -1180,6 +1180,83 @@ test('Low graphics cuts the passes and the pixels, not the board',async t=>{
   assert.deepEqual(g.errors,[]);
 });
 
+// A touchscreen, with whatever the device reports about itself. phoneClass() asks matchMedia for a
+// coarse pointer with no hover, which the harness answers false for by default (a desktop).
+function touch(g, {cores, mem} = {}) {
+  const base = g.w.matchMedia;
+  g.w.matchMedia = q => /pointer:\s*coarse|hover:\s*none/.test(String(q||''))
+    ? {matches:true, media:String(q||''), addListener(){}, removeListener(){}, addEventListener(){}, removeEventListener(){}}
+    : base(q);
+  if (cores !== undefined) Object.defineProperty(g.w.navigator,'hardwareConcurrency',{value:cores,configurable:true});
+  if (mem !== undefined) Object.defineProperty(g.w.navigator,'deviceMemory',{value:mem,configurable:true});
+}
+
+test('the tier is guessed from the device, and only until somebody picks one',async t=>{
+  const g=await game();t.after(g.close);
+  // A desktop starts where it always did.
+  assert.equal(g.read('tauDesktop.quality'),'balanced','a machine with a mouse gets Balanced');
+  assert.equal(g.read('tauDesktop.qualityPicked'),false,'and nobody chose it');
+  g.$('desktopSettings').click();
+  assert.match(g.$('desktopQualityNote').textContent,/Chosen for this device/,'which the note says out loud');
+  // Picking one ends the guessing, and is remembered as a choice.
+  const q=g.$('desktopQuality'); q.value='high'; q.onchange({target:q});
+  assert.equal(g.read('tauDesktop.qualityPicked'),true);
+  assert.doesNotMatch(g.$('desktopQualityNote').textContent,/Chosen for this device/);
+  assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).qualityPicked,true,'and survives a relaunch');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a phone is graded rather than assumed slow, and is never offered ray tracing',async t=>{
+  // An older phone: eight cores like every Android, but the memory gives it away.
+  const weak=await game();t.after(weak.close);
+  touch(weak,{cores:8, mem:4});
+  assert.equal(weak.read('tauDesktop.debugDetectQuality()'),'low','4GB: Low');
+  // A current one carries Balanced perfectly well.
+  touch(weak,{cores:8, mem:8});
+  assert.equal(weak.read('tauDesktop.debugDetectQuality()'),'balanced','8GB: Balanced');
+  // iOS Safari never reports deviceMemory at all, and a missing API is not evidence of a slow
+  // phone -- the core count decides on its own there.
+  delete weak.w.navigator.deviceMemory;
+  touch(weak,{cores:8});
+  assert.equal(weak.read('tauDesktop.debugDetectQuality()'),'balanced','no memory API: judged on cores');
+  touch(weak,{cores:4});
+  assert.equal(weak.read('tauDesktop.debugDetectQuality()'),'low');
+  // And Ultra is not in the picker on a touchscreen: it path-traces the still frame, which is not
+  // a thing to offer a phone at all -- left out rather than disabled, so a pad cannot reach it.
+  const phone=await game('?steam=1&premium=1',{tauDesktopSettingsV1:'{"quality":"ultra","qualityPicked":true}'},
+    {touch:true});
+  t.after(phone.close);
+  phone.$('desktopSettings').click();
+  assert.deepEqual([...phone.$('desktopQuality').options].map(o=>o.value),['low','balanced','high'],
+    'no Ultra on a phone');
+  assert.equal(phone.read('tauDesktop.quality'),'high','and a save holding Ultra is brought down to High');
+  assert.equal(phone.read('tauDesktop.rayTrace'),false);
+  assert.deepEqual(phone.errors,[]);
+});
+
+test('a tier nobody chose steps down when the frames say it should',async t=>{
+  // What a device reports is only loosely about its GPU, so the guess is checked against the one
+  // measurement that is the actual question: how long a frame takes.
+  const g=await game();t.after(g.close);
+  const slow=n=>g.read(`for(let i=0;i<${n};i++) tauDesktop.debugFrame(70)`);
+  slow(400);
+  assert.equal(g.read('tauDesktop.quality'),'balanced','no match on screen: nothing to measure');
+  g.$('desktopPlay').click(); g.tick();
+  // Fast frames never trip it, however many of them there are.
+  g.read('for(let i=0;i<400;i++) tauDesktop.debugFrame(16)');
+  assert.equal(g.read('tauDesktop.quality'),'balanced','a game running well is left alone');
+  // Nor does a minority of slow ones.
+  g.read('for(let i=0;i<400;i++) tauDesktop.debugFrame(i%4===0?70:16)');
+  assert.equal(g.read('tauDesktop.quality'),'balanced','the odd stutter is not a verdict');
+  slow(200);
+  assert.equal(g.read('tauDesktop.quality'),'low','most of a window under 22fps: down a tier');
+  assert.equal(g.read('tauDesktop.qualityPicked'),false,'still the game guessing, not the player');
+  // Once per session: a heavy board cannot walk the setting all the way down over an evening.
+  slow(400);
+  assert.equal(g.read('tauDesktop.quality'),'low','and it only ever steps once');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('two glass pieces are drawn in two passes: the near one over a picture of the far one',async t=>{
   const g=await game();t.after(g.close);
   g.read(`window.__calls=[];
