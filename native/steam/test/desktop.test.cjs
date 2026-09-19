@@ -196,3 +196,21 @@ test('a legal ring-out reaches the result and rematch through keyboard controls'
   assert.equal(g.read('G.over'),false);
   assert.deepEqual(g.errors,[]);
 });
+
+// Regression guard: build 219 wired the Android/iOS app into the desktop presentation two
+// ways at once -- native/app's sync-www call gets the --steam flag that bundles desktop/ +
+// steam.html into the app, and index.html's TAU_DESKTOP gate detects the Capacitor runtime
+// so the bundled files actually get used. Both halves were later silently dropped by an
+// unrelated force-push that didn't have that commit locally (the app fell back to plain web
+// UI with no error, so it went unnoticed for a while) -- this only catches that specific
+// failure mode; it does not exercise the Capacitor-detected boot path end to end.
+test('the Android/iOS app still gets the desktop presentation it was wired up for', t => {
+  const fs = require('node:fs'), path = require('node:path');
+  const repoRoot = path.join(__dirname, '..', '..', '..');
+  const appPkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'native/app/package.json'), 'utf8'));
+  assert.match(appPkg.scripts['sync-www'], /--steam\b/,
+    'native/app/package.json\'s sync-www must pass --steam, or the APK never bundles desktop/ + steam.html');
+  const html = fs.readFileSync(path.join(repoRoot, 'index.html'), 'utf8');
+  assert.match(html, /window\.Capacitor\s*&&\s*typeof\s+window\.Capacitor\.isNativePlatform/,
+    'TAU_DESKTOP must detect the Capacitor runtime, or a native app that DOES bundle desktop/ still never activates it');
+});
