@@ -1,0 +1,742 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tau — from dead points to regions</title><style>*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#faf9f6;color:#202c3d;font:17px/1.7 system-ui,-apple-system,Segoe UI,sans-serif}main{max-width:1120px;margin:auto;padding:50px 32px 100px}h1{font:600 clamp(36px,5.4vw,62px)/1.12 Georgia,serif;letter-spacing:-.025em;max-width:950px;margin:20px 0 28px}h2{font:600 31px/1.25 Georgia,serif;border-top:1px solid #dce1e6;margin:62px 0 24px;padding-top:34px}h3{font:650 20px/1.4 system-ui;margin:34px 0 12px}p,li{max-width:940px}a{color:#145ba1;text-underline-offset:3px}a[id]{scroll-margin-top:24px}code{font: .86em/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;background:#edf0f3;padding:1px 4px;border-radius:3px;overflow-wrap:anywhere}pre{background:#edf2f7;border-left:3px solid #3974a8;padding:20px 22px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;margin:22px 0}pre code{font-size:14px;background:none;padding:0;border-radius:0}.table-wrap{overflow-x:auto;margin:24px 0}table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.5;background:#fff;min-width:620px}th,td{padding:12px 15px;text-align:left;vertical-align:top;border-bottom:1px solid #e5e9ee}th{background:#eaf0f5}nav{background:#edf2f6;border:1px solid #d6e0ea;padding:16px 26px 22px;margin:35px 0;border-radius:8px}nav h2{font:650 17px system-ui;border:0;margin:0;padding:0}nav ol{columns:2;column-gap:40px;padding-left:21px;margin:10px 0 0}nav li{break-inside:avoid;font-size:15px;margin:6px 0}li{padding-left:4px;margin:10px 0}figure{margin:28px 0;background:#fff;border:1px solid #dce1e6;padding:13px 8px;border-radius:8px}.drawing svg{width:100%;max-width:100%;height:auto;display:block}figcaption{font-size:13px;color:#657386;padding:12px 18px 4px}button{cursor:pointer;font:600 12px system-ui;color:#145ba1;background:#f3f7fa;border:1px solid #c6d4e2;padding:7px 12px;border-radius:5px}.zoom{display:block;margin:0 10px 8px auto}dialog{width:96vw;height:94vh;max-width:none;max-height:none;border:1px solid #b3bdc9;border-radius:8px;padding:0}dialog::backdrop{background:#132234bb}.dialog-top{position:sticky;top:0;background:#eaf0f5;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;z-index:5;font-size:13px}.zoom-content{overflow:auto;padding:15px}.zoom-content svg{width:1550px;height:auto}footer{font-size:13px;color:#657386;margin-top:50px;border-top:1px solid #dce1e6;padding-top:15px}@media(max-width:660px){body{font-size:16px}main{padding:25px 17px 70px}h2{font-size:26px}h3{font-size:19px}nav{padding:18px}nav ol{columns:1}pre{padding:12px}pre code{font-size:12px}th,td{padding:10px 12px}figure{padding:8px 2px}}@media print{body{background:white;font-size:10pt}main{padding:0;max-width:none}h2{font-size:20pt}h3{font-size:13pt}h2,h3{break-after:avoid}pre,figure{break-inside:avoid}pre code{font-size:8pt}.zoom,dialog{display:none}table{min-width:0;font-size:8pt}nav{break-after:page}a{color:inherit}}</style></head><body><main><h1>Tau: from dead points to regions</h1>
+<p><strong>Brief 5 review · 19 September 2026</strong></p>
+<p>The new corpus is useful evidence for generalisation. Its strongest negative
+conclusions do not follow, however: <strong>the published L17 implementation never
+loads the new corpus, and the 63 claimed balls have positive six-dimensional
+volume.</strong> The zero-hit match therefore does not test those balls or rule out
+lookup as a playing mechanism.</p>
+<p>The constructive answer is a <strong>finite cover of the victim&#39;s legal replies by
+verified winning responses</strong>. Different responses may cover overlapping parts
+of a region. Below is a sufficient condition, a quantitative way to bridge a
+reply gap and grow an initial-pose radius, and the correct induction for deeper
+forced wins. These are mathematical statements with explicit hypotheses.
+This review has not verified those hypotheses over a new nonempty Tau region.</p>
+<nav aria-label="Report index"><h2>Index</h2>
+<ol>
+<li><a href="#measurement">What was actually measured</a></li>
+<li><a href="#volume">The balls are full-dimensional</a></li>
+<li><a href="#corpus">What the corpus does and does not establish</a></li>
+<li><a href="#region">A sufficient condition over a region</a></li>
+<li><a href="#bridge">A quantitative bridge between winning responses</a></li>
+<li><a href="#tubes">Moving tubes and event boundaries</a></li>
+<li><a href="#induction">The right induction: forced win within n moves</a></li>
+<li><a href="#next">Concrete prediction and implementation order</a></li>
+<li><a href="#sources">Sources and reproduction</a></li>
+</ol></nav>
+<p><a id="measurement"></a></p>
+<h2>1. What was actually measured</h2>
+<p>The <a href="https://github.com/liaminhawai-cmd/Tau/blob/b9907b05e40103dc459d3013b7a873ac12941f78/docs/dead-regions/l11-dead-measured.md">measurement report</a>
+records L17 beating L11 by 56–40, with 23,804 table consultations and no hits.
+I inspected the index, Node loader and arena at the commit publishing that
+report, and at the later Brief 5 snapshot. Those three blobs are identical
+between the two revisions.</p>
+<p>The <a href="https://github.com/liaminhawai-cmd/Tau/blob/b9907b05e40103dc459d3013b7a873ac12941f78/index.html">embedded table</a>
+contains the following:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Quantity</th>
+<th>Published L17 table</th>
+<th>New research files</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Point entries</td>
+<td>4 old <code>dead</code> and 4 old <code>win2</code> entries</td>
+<td>261 sampled dead points</td>
+</tr>
+<tr>
+<td>Region/family entries</td>
+<td>12 old entry arcs</td>
+<td>63 sampled joint-pose balls</td>
+</tr>
+<tr>
+<td>Lookup radius</td>
+<td>1u, or 1.5u for one old entry</td>
+<td>0.009–0.350u</td>
+</tr>
+<tr>
+<td>Loaded by <code>nn/engine.js</code></td>
+<td>Constants extracted from <code>index.html</code></td>
+<td>Neither JSONL file is loaded</td>
+</tr>
+</tbody></table></div>
+<p>None of the 63 new centres exactly matches an embedded entry; none lies inside
+an old <code>dead</code> entry&#39;s lookup radius. The radii of 1–1.5u are what the runtime
+uses, <strong>not a finding that these radii are mathematically justified</strong>.</p>
+<p>The reported 2.85u is also a different quantity from the one Brief 5 needs.
+<code>nearestVictim</code> measures one piece&#39;s distance to eligible embedded point
+entries. It is not the minimum joint-pose distance to the 63 new balls, and it
+does not measure distance to their boundaries. <code>nearestJoint</code> is updated only
+after the first-piece radius gate passes; the arena prints <code>nearestVictim</code>.
+Comparing 2.85u with the new maximum radius 0.35u mixes different tables and
+different measurements.</p>
+<p><strong>Supported conclusion:</strong> the old table produced no recorded scoring hits in
+this run. The published code does not support saying that the new corpus was
+tested and missed. Raw match traces and a runtime artifact hash were not
+supplied, so this is an audit of the committed experiment, not a reconstruction
+of an unrecorded working tree.</p>
+<p>The score is inconclusive about strength, not evidence against every large
+gain. The reported 95% interval, −11 to +133 Elo, includes zero and +100. A
+claim that a “big margin” is ruled out needs a specified threshold and an
+appropriate interval. Openings, colour pairing and dependence also matter.
+Likewise, dense-test and guard counters show that those mechanisms ran; they
+do not isolate their causal effect. Use ablations and an equal-time baseline.
+The reported 81 seconds/game under six-way contention is not by itself a
+per-move cost ratio against L11.</p>
+<p><a id="volume"></a></p>
+<h2>2. The balls are full-dimensional</h2>
+<p>Fixing the attacker while varying the victim gives a 3D slice of joint pose
+space. That earlier observation is correct. It does <strong>not</strong> describe
+<code>certifyStar</code>, which perturbs all six pose coordinates: three for each piece.
+The <a href="https://github.com/liaminhawai-cmd/Tau/blob/c1ac39e771f8115797a4b8672587860fb676ad1b/docs/dead-regions/README.md">corpus README</a>
+actually says this correctly, contradicting the zero-volume argument in Brief 5.</p>
+<p>In scaled coordinates z = (bx, by, Rθb, rx, ry, Rθr), the implemented metric is</p>
+<pre><code class="language-text">d(z,z₀) = ‖Δbxy‖₂ + |RΔθb| + ‖Δrxy‖₂ + |RΔθr|.
+</code></pre>
+<p>This is a sum of two Euclidean translation norms and two absolute rotation
+coordinates. For a local angular chart, its radius-ε ball has ambient volume</p>
+<pre><code class="language-text">Vol₆(Bε) = (π²/45) ε⁶ &gt; 0,  for ε &gt; 0.
+</code></pre>
+<p>Derivation: use polar coordinates for the two translations, and split each
+rotation coordinate into its positive and negative half. The Jacobian factor
+is 16π² r₁r₂. Integrating over r₁+s₁+r₂+s₂ ≤ ε gives
+16π²ε⁶/720. In unscaled angle coordinates, divide by R².</p>
+<p>For the 63 reported radii, the sum of individual ambient volumes is
+<strong>0.00184559 u⁶</strong> in scaled coordinates. This is an upper bound on their union
+before board clipping and overlap accounting. It is not a fraction of actual
+play, nor a proved volume of dead positions: the deadness claims remain sampled.</p>
+<p>A concrete example makes the dimensional distinction visible. The largest
+reported ball has ε = 0.35 and centre</p>
+<pre><code class="language-text">blue: (−38.6035, 24.5839, −2.8424 radians)
+red:  (−29.1648, 14.0727,  3.6549 radians)
+</code></pre>
+<p>Moving blue&#39;s y by +0.0875u and red&#39;s x by +0.0875u changes <strong>both</strong> pieces and
+has distance 0.175u, inside the claimed ball. This demonstrates membership in
+the defined set; it is not an independent proof that the perturbed pose is dead.</p>
+<h3>Two metric details matter for the next checker</h3>
+<p><code>randomInBall</code> samples a coordinate L1 cross-polytope inside the actual metric
+ball. Its support occupies <strong>4/π² ≈ 40.5%</strong> of the latter&#39;s ambient volume.
+Thus the current random sampler never visits the remaining approximately
+59.5%. The source acknowledges an inward bias; this is the size of the support
+difference, not merely a nonuniform density over the whole ball.</p>
+<p>Also, the dual norm for a gradient is</p>
+<pre><code class="language-text">max(‖∇bxy f‖₂, |∂Rθb f|, ‖∇rxy f‖₂, |∂Rθr f|).
+</code></pre>
+<p>A maximum over six coordinate slopes is not the dual norm of this metric.
+For example, f = bx+by has coordinate derivatives at most 1 but changes by
+√2ε at a translation (ε/√2, ε/√2), whose metric length is ε. Even rigorously
+bounded coordinate derivatives must be combined in the correct norm.
+Three times <em>observed</em> slopes still supplies no uniform derivative bound;
+adding a √2 factor alone would not make the sampled method a proof.</p>
+<p><a id="corpus"></a></p>
+<h2>3. What the corpus does and does not establish</h2>
+<p>The <a href="audit.json">reproducible audit</a> confirms the file accounting:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Recorded quantity</th>
+<th align="right">Count</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Sampled dead points</td>
+<td align="right">261</td>
+</tr>
+<tr>
+<td>Sampled dead balls</td>
+<td align="right">63</td>
+</tr>
+<tr>
+<td>Point falsification trials / agreements</td>
+<td align="right">10,440 / 10,440</td>
+</tr>
+<tr>
+<td>Ball pose trials reported</td>
+<td align="right">1,575, all recorded as agreeing</td>
+</tr>
+<tr>
+<td>Uncertified controls</td>
+<td align="right">1,045</td>
+</tr>
+<tr>
+<td><code>escape</code>, including 865 screen-only rejections</td>
+<td align="right">909</td>
+</tr>
+<tr>
+<td><code>unresolved</code></td>
+<td align="right">136</td>
+</tr>
+<tr>
+<td>Points using ordinary slivers</td>
+<td align="right">104</td>
+</tr>
+<tr>
+<td>Points using engine-probed slivers</td>
+<td align="right">117</td>
+</tr>
+<tr>
+<td>Points using either kind</td>
+<td align="right">177</td>
+</tr>
+</tbody></table></div>
+<p>These are counts in the saved records; this review did not repeat all those
+trials. A label <code>escape</code> is not an exhibited safe continuation, and random
+agreement is not universal coverage. Even the 84 points with neither sliver
+kind still depend on sampled allowances.</p>
+<p>There are clearly separated sampled-dead examples: the largest clearance is
+17.1026u at <code>u6nehpcuw-1</code>, as reported. The literal count “10 strictly apart”
+needs a tolerance: using <code>CL.minGapOf − CL.MIND</code> gives 10 above <strong>0.05u</strong>, but
+187 above zero, including tiny residuals. This clearance function includes hub
+clearance adjustments, so it is not solely a nearest-leg measurement. The
+data support separated <em>sampled-dead</em> examples; they do not prove that contact
+is unnecessary for true deadness until at least one such example is proved.</p>
+<p>The tested scalar features and a few conjunctions are insufficient classifiers.
+That does not rule out static geometric classes. Reachable sets and response
+envelopes are themselves functions of the initial state and rules. The 1,045
+controls are unknowns selected by the screen, not verified negatives. A sound
+new region containing one of them may be a discovery rather than a false
+positive. Report agreement with the old labels separately from actual
+counterexamples; split validation by source game to reduce related-position
+leakage.</p>
+<h3>The repeated failure string is not a diagnosis</h3>
+<p>All 136 unresolved rows contain “no single arc certifies the gap”. But
+<code>deadCertificate</code> appends “the throw changes arm here” whenever its preceding
+checks fail, without testing whether the winning arm changed. Possible causes
+include small margins, signature disagreement, the empirical allowance,
+record snapping, or a failed engine probe. One message does not establish one
+physical cause, and in particular does not establish a substep-phase event.</p>
+<p>The 132 attempts / 67 accepted / 65 refused figures are reported in the README;
+the raw attempt logs and full star graphs are not in the inspected tree.
+The 63 summary rows cannot independently identify every refusal&#39;s cause.
+Even a genuine event change somewhere in a tested box does not imply its
+centre lies exactly on the event boundary.</p>
+<p>Reproduction also needs a small correction: the pinned <code>star-drive.js</code> hardcodes
+<code>[0.35, 0.25, 0.175, 0.125, 0.08, 0.05]</code> and never reads <code>STAR_HS</code>.
+The README&#39;s <code>STAR_HS=0.3,0.12,0.05</code> command therefore does not select that
+ladder in this version. Recorded h values include 0.3 and 0.12; preserve the
+historical driver or logs needed to reproduce those passes.</p>
+<p><a id="region"></a></p>
+<h2>4. A sufficient condition over a region</h2>
+<p>Call the threatened side V and the other side A. A Tau move is represented by
+a pivot foot, direction and legal stopping parameter. There are six pivot and
+direction pairs, called arms. The formulation below uses the chosen move
+protocol; if variable drag batching or reversals are allowed, include those
+inputs too, or explicitly restrict the claim.</p>
+<p>Let Q be a region of valid initial states with V to move. A state includes
+whatever the engine needs beyond the six poses: side, ko or other history,
+pending rule state, and a specified execution protocol. Write Fβ(q,t) for
+the state after V&#39;s legal reply on arm β at stop t. Its legal domain is</p>
+<pre><code class="language-text">Dβ = {(q,t): q ∈ Q, t is a legal stop on arm β from q}.
+</code></pre>
+<p>For each β, construct finitely many guarded patches Cβj covering Dβ.
+Each patch carries a legal response policy πβj and a verified positive lower
+bound on its winning margin. A policy may depend on the observed post-reply
+state; it must prescribe actions the engine can actually execute.</p>
+<p><strong>Region criterion.</strong> Assume every nonterminal q in Q has a legal victim move
+(otherwise apply the actual no-move rule). Suppose (i) no legal victim reply wins for V, (ii) every
+nonterminal reply lies in at least one patch, and (iii) that patch&#39;s response
+provably wins for A, including legality and any intermediate terminal checks.
+Then every q in Q is dead within one victim move and one attacker move.
+Replies that already lose for V are covered by their terminal outcome.</p>
+<p><strong>Proof.</strong> Choose any q and any legal victim reply. Its terminal outcome either
+already wins for A or it lies in a covering patch. The patch provides A&#39;s
+winning response. Both choices were arbitrary, giving ∀q ∀reply ∃response.</p>
+<p>The usable certificate is the finite patch data: domains, coverage checks,
+response policies, guard bounds and lower margins. Offline verification does
+the expensive work. Online membership can be a few inequalities locating q
+inside a verified initial region, followed by the stored response selection.
+The 261 examples can propose patch templates; their labels do not verify them.</p>
+<p>For margins Mj that genuinely certify legal wins, the desired structure is</p>
+<pre><code class="language-text">inf over legal (q,t) [ max over available responses j Mj(q,t) ] &gt; 0.
+</code></pre>
+<p>Requiring one common response throughout a whole patch instead asks for
+<code>max_j inf_(q,t) Mj(q,t) &gt; 0</code>, which is stronger. The existing checker already
+allows different arms across subdivided gaps; the missing step is rigorous
+coverage at the final unresolved gap and across initial poses, rather than
+an empirical sliver shortcut.</p>
+<p><a id="bridge"></a></p>
+<h2>5. A quantitative bridge between winning responses</h2>
+<p>Here is a directly implementable sufficient condition. On a reply interval
+[t₀,t₁], suppose response a has margin at least mL &gt; 0 at t₀, response b has
+margin at least mR &gt; 0 at t₁, and verified Lipschitz bounds along the full
+composed reply-and-response maps are BL, BR &gt; 0. Both responses must be legal
+where they are used. Then</p>
+<pre><code class="language-text">Ma(t) ≥ mL − BL(t−t₀),       Mb(t) ≥ mR − BR(t₁−t).
+</code></pre>
+<p>The left and right winning intervals overlap whenever</p>
+<pre><code class="language-text">mL/BL + mR/BR &gt; t₁−t₀.                         (bridge)
+</code></pre>
+<p>This strict inequality proves every stop has a winning response. The lower
+envelopes are straight lines, so a finite interval-cover calculation suffices.
+More than two responses or more endpoints give the same kind of finite cover.
+Zero Lipschitz constants are handled as constant lower bounds.</p>
+<p>For example, on [0,1] take Ma(t)=0.6−t and Mb(t)=t−0.4. Neither response wins
+throughout the interval: each has minimum −0.4. Nevertheless their maximum is
+at least 0.1, with overlap (0.4,0.6). There is no contact or phase switch in
+this example. Failure of a single common response is not evidence for either.</p>
+<figure><button class="zoom" type="button">Enlarge figure</button><div class="drawing"><svg role="img" aria-label="Exact synthetic example: two responses jointly cover all stopping parameters." xmlns:xlink="http://www.w3.org/1999/xlink" width="662.4pt" height="345.6pt" viewBox="0 0 662.4 345.6" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-09-19T07:50:45.006977</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.8, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="response-coverage-figure_1">
+  <g id="response-coverage-patch_1">
+   <path d="M 0 345.6 
+L 662.4 345.6 
+L 662.4 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="response-coverage-axes_1">
+   <g id="response-coverage-patch_2">
+    <path d="M 51.357271 310.307885 
+L 650.653041 310.307885 
+L 650.653041 19.030178 
+L 51.357271 19.030178 
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="response-coverage-patch_3">
+    <path d="M 291.075579 310.307885 
+L 410.934733 310.307885 
+L 410.934733 19.030178 
+L 291.075579 19.030178 
+z
+" clip-path="url(#response-coverage-p54f24e4fc8)" style="fill: #d4eee5; opacity: 0.9; stroke: #d4eee5; stroke-linejoin: miter"/>
+   </g>
+   <g id="response-coverage-matplotlib.axis_1">
+    <g id="response-coverage-xtick_1">
+     <g id="response-coverage-line2d_1">
+      <defs>
+       <path id="response-coverage-me7de23a682" d="M 0 0 
+L 0 3.5 
+" style="stroke: #000000; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#response-coverage-me7de23a682" x="51.357271" y="310.307885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="response-coverage-text_1">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="51.357271" y="325.666166" transform="rotate(-0 51.357271 325.666166)">0.0</text>
+     </g>
+    </g>
+    <g id="response-coverage-xtick_2">
+     <g id="response-coverage-line2d_2">
+      <g>
+       <use xlink:href="#response-coverage-me7de23a682" x="171.216425" y="310.307885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="response-coverage-text_2">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="171.216425" y="325.666166" transform="rotate(-0 171.216425 325.666166)">0.2</text>
+     </g>
+    </g>
+    <g id="response-coverage-xtick_3">
+     <g id="response-coverage-line2d_3">
+      <g>
+       <use xlink:href="#response-coverage-me7de23a682" x="291.075579" y="310.307885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="response-coverage-text_3">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="291.075579" y="325.666166" transform="rotate(-0 291.075579 325.666166)">0.4</text>
+     </g>
+    </g>
+    <g id="response-coverage-xtick_4">
+     <g id="response-coverage-line2d_4">
+      <g>
+       <use xlink:href="#response-coverage-me7de23a682" x="410.934733" y="310.307885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="response-coverage-text_4">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="410.934733" y="325.666166" transform="rotate(-0 410.934733 325.666166)">0.6</text>
+     </g>
+    </g>
+    <g id="response-coverage-xtick_5">
+     <g id="response-coverage-line2d_5">
+      <g>
+       <use xlink:href="#response-coverage-me7de23a682" x="530.793887" y="310.307885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="response-coverage-text_5">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="530.793887" y="325.666166" transform="rotate(-0 530.793887 325.666166)">0.8</text>
+     </g>
+    </g>
+    <g id="response-coverage-xtick_6">
+     <g id="response-coverage-line2d_6">
+      <g>
+       <use xlink:href="#response-coverage-me7de23a682" x="650.653041" y="310.307885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="response-coverage-text_6">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="650.653041" y="325.666166" transform="rotate(-0 650.653041 325.666166)">1.0</text>
+     </g>
+    </g>
+    <g id="response-coverage-text_7">
+     <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="351.005156" y="340.312104" transform="rotate(-0 351.005156 340.312104)">Victim stopping parameter t</text>
+    </g>
+   </g>
+   <g id="response-coverage-matplotlib.axis_2">
+    <g id="response-coverage-ytick_1">
+     <g id="response-coverage-line2d_7">
+      <path d="M 51.357271 297.419491 
+L 650.653041 297.419491 
+" clip-path="url(#response-coverage-p54f24e4fc8)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="response-coverage-line2d_8">
+      <defs>
+       <path id="response-coverage-m6215cb7a1f" d="M 0 0 
+L -3.5 0 
+" style="stroke: #000000; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#response-coverage-m6215cb7a1f" x="51.357271" y="297.419491" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="response-coverage-text_8">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="44.357271" y="301.598631" transform="rotate(-0 44.357271 301.598631)">−0.4</text>
+     </g>
+    </g>
+    <g id="response-coverage-ytick_2">
+     <g id="response-coverage-line2d_9">
+      <path d="M 51.357271 245.865914 
+L 650.653041 245.865914 
+" clip-path="url(#response-coverage-p54f24e4fc8)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="response-coverage-line2d_10">
+      <g>
+       <use xlink:href="#response-coverage-m6215cb7a1f" x="51.357271" y="245.865914" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="response-coverage-text_9">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="44.357271" y="250.045055" transform="rotate(-0 44.357271 250.045055)">−0.2</text>
+     </g>
+    </g>
+    <g id="response-coverage-ytick_3">
+     <g id="response-coverage-line2d_11">
+      <path d="M 51.357271 194.312338 
+L 650.653041 194.312338 
+" clip-path="url(#response-coverage-p54f24e4fc8)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="response-coverage-line2d_12">
+      <g>
+       <use xlink:href="#response-coverage-m6215cb7a1f" x="51.357271" y="194.312338" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="response-coverage-text_10">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="44.357271" y="198.491478" transform="rotate(-0 44.357271 198.491478)">0.0</text>
+     </g>
+    </g>
+    <g id="response-coverage-ytick_4">
+     <g id="response-coverage-line2d_13">
+      <path d="M 51.357271 142.758761 
+L 650.653041 142.758761 
+" clip-path="url(#response-coverage-p54f24e4fc8)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="response-coverage-line2d_14">
+      <g>
+       <use xlink:href="#response-coverage-m6215cb7a1f" x="51.357271" y="142.758761" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="response-coverage-text_11">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="44.357271" y="146.937902" transform="rotate(-0 44.357271 146.937902)">0.2</text>
+     </g>
+    </g>
+    <g id="response-coverage-ytick_5">
+     <g id="response-coverage-line2d_15">
+      <path d="M 51.357271 91.205185 
+L 650.653041 91.205185 
+" clip-path="url(#response-coverage-p54f24e4fc8)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="response-coverage-line2d_16">
+      <g>
+       <use xlink:href="#response-coverage-m6215cb7a1f" x="51.357271" y="91.205185" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="response-coverage-text_12">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="44.357271" y="95.384325" transform="rotate(-0 44.357271 95.384325)">0.4</text>
+     </g>
+    </g>
+    <g id="response-coverage-ytick_6">
+     <g id="response-coverage-line2d_17">
+      <path d="M 51.357271 39.651608 
+L 650.653041 39.651608 
+" clip-path="url(#response-coverage-p54f24e4fc8)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="response-coverage-line2d_18">
+      <g>
+       <use xlink:href="#response-coverage-m6215cb7a1f" x="51.357271" y="39.651608" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="response-coverage-text_13">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="44.357271" y="43.830749" transform="rotate(-0 44.357271 43.830749)">0.6</text>
+     </g>
+    </g>
+    <g id="response-coverage-text_14">
+     <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="11.358521" y="164.669031" transform="rotate(-90 11.358521 164.669031)">Winning margin</text>
+    </g>
+   </g>
+   <g id="response-coverage-line2d_19">
+    <path d="M 51.357271 194.312338 
+L 650.653041 194.312338 
+" clip-path="url(#response-coverage-p54f24e4fc8)" style="fill: none; stroke: #627181; stroke-linecap: square"/>
+   </g>
+   <g id="response-coverage-line2d_20">
+    <path d="M 51.357271 39.651608 
+L 650.653041 297.419491 
+L 650.653041 297.419491 
+" clip-path="url(#response-coverage-p54f24e4fc8)" style="fill: none; stroke: #2471a3; stroke-width: 2; stroke-linecap: square"/>
+   </g>
+   <g id="response-coverage-line2d_21">
+    <path d="M 51.357271 297.419491 
+L 650.653041 39.651608 
+L 650.653041 39.651608 
+" clip-path="url(#response-coverage-p54f24e4fc8)" style="fill: none; stroke: #b64a3b; stroke-width: 2; stroke-linecap: square"/>
+   </g>
+   <g id="response-coverage-line2d_22">
+    <path d="M 51.357271 39.651608 
+L 351.005156 168.535549 
+L 650.653041 39.651608 
+L 650.653041 39.651608 
+" clip-path="url(#response-coverage-p54f24e4fc8)" style="fill: none; stroke-dasharray: 11.1,4.8; stroke-dashoffset: 0; stroke: #186a4b; stroke-width: 3"/>
+   </g>
+   <g id="response-coverage-patch_4">
+    <path d="M 51.357271 310.307885 
+L 51.357271 19.030178 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="response-coverage-patch_5">
+    <path d="M 51.357271 310.307885 
+L 650.653041 310.307885 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="response-coverage-patch_6">
+    <path d="M 436.153017 124.554848 
+Q 394.466477 146.086843 353.773285 167.105751 
+" style="fill: none; stroke: #186a4b; stroke-linecap: round"/>
+    <path d="M 358.245036 167.047035 
+L 353.773285 167.105751 
+L 356.409363 163.493121 
+" style="fill: none; stroke: #186a4b; stroke-linecap: round"/>
+   </g>
+   <g id="response-coverage-text_15">
+    <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #186a4b" x="356.998114" y="119.559652" transform="rotate(-0 356.998114 119.559652)">Worst available winning margin = 0.1</text>
+   </g>
+   <g id="response-coverage-text_16">
+    <text style="font-size: 13.2px; font-family: 'DejaVu Sans'; text-anchor: middle" x="351.005156" y="13.030178" transform="rotate(-0 351.005156 13.030178)">Every stop has a winning response; neither response covers every stop</text>
+   </g>
+   <g id="response-coverage-PathCollection_1">
+    <defs>
+     <path id="response-coverage-maa0ac185c7" d="M 0 3 
+C 0.795609 3 1.55874 2.683901 2.12132 2.12132 
+C 2.683901 1.55874 3 0.795609 3 0 
+C 3 -0.795609 2.683901 -1.55874 2.12132 -2.12132 
+C 1.55874 -2.683901 0.795609 -3 0 -3 
+C -0.795609 -3 -1.55874 -2.683901 -2.12132 -2.12132 
+C -2.683901 -1.55874 -3 -0.795609 -3 0 
+C -3 0.795609 -2.683901 1.55874 -2.12132 2.12132 
+C -1.55874 2.683901 -0.795609 3 0 3 
+z
+" style="stroke: #186a4b"/>
+    </defs>
+    <g clip-path="url(#response-coverage-p54f24e4fc8)">
+     <use xlink:href="#response-coverage-maa0ac185c7" x="351.005156" y="168.535549" style="fill: #186a4b; stroke: #186a4b"/>
+    </g>
+   </g>
+   <g id="response-coverage-legend_1">
+    <g id="response-coverage-patch_7">
+     <path d="M 209.765625 287.125854 
+L 227.765625 287.125854 
+L 227.765625 280.825854 
+L 209.765625 280.825854 
+z
+" style="fill: #d4eee5; opacity: 0.9; stroke: #d4eee5; stroke-linejoin: miter"/>
+    </g>
+    <g id="response-coverage-text_17">
+     <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: start" x="234.965625" y="287.125854" transform="rotate(-0 234.965625 287.125854)">Both responses win</text>
+    </g>
+    <g id="response-coverage-line2d_23">
+     <path d="M 209.765625 297.186166 
+L 218.765625 297.186166 
+L 227.765625 297.186166 
+" style="fill: none; stroke: #2471a3; stroke-width: 2; stroke-linecap: square"/>
+    </g>
+    <g id="response-coverage-text_18">
+     <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: start" x="234.965625" y="300.336166" transform="rotate(-0 234.965625 300.336166)">Response A: 0.6 − t</text>
+    </g>
+    <g id="response-coverage-line2d_24">
+     <path d="M 342.045937 283.975854 
+L 351.045937 283.975854 
+L 360.045937 283.975854 
+" style="fill: none; stroke: #b64a3b; stroke-width: 2; stroke-linecap: square"/>
+    </g>
+    <g id="response-coverage-text_19">
+     <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: start" x="367.245937" y="287.125854" transform="rotate(-0 367.245937 287.125854)">Response B: t − 0.4</text>
+    </g>
+    <g id="response-coverage-line2d_25">
+     <path d="M 342.045937 297.186166 
+L 351.045937 297.186166 
+L 360.045937 297.186166 
+" style="fill: none; stroke-dasharray: 11.1,4.8; stroke-dashoffset: 0; stroke: #186a4b; stroke-width: 3"/>
+    </g>
+    <g id="response-coverage-text_20">
+     <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: start" x="367.245937" y="300.336166" transform="rotate(-0 367.245937 300.336166)">Choose the better response</text>
+    </g>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="response-coverage-p54f24e4fc8">
+   <rect x="51.357271" y="19.030178" width="599.29577" height="291.277707"/>
+  </clipPath>
+ </defs>
+</svg>
+</div><figcaption>Exact synthetic example: two responses jointly cover all stopping parameters.</figcaption></figure>
+<h3>Turn the bridge into a six-dimensional initial region</h3>
+<p>Let q₀ be a reference pose and r = d(q,q₀). Suppose AL and AR bound the change
+in the two endpoint margins with respect to the <strong>correct joint-pose metric</strong>,
+uniformly over a guarded neighbourhood. Then replace the endpoint bounds by
+<code>mL−ALr</code> and <code>mR−ARr</code>. The bridge holds for every q satisfying</p>
+<pre><code class="language-text">mL − ALr &gt; 0,    mR − ARr &gt; 0,
+(mL−ALr)/BL + (mR−ARr)/BR &gt; Δt.
+</code></pre>
+<p>When the denominator is positive, the last condition gives the explicit radius</p>
+<pre><code class="language-text">r &lt; (mL/BL + mR/BR − Δt) / (AL/BL + AR/BR).
+</code></pre>
+<p>Also cap r by the endpoint positivity radii, the verified guard neighbourhood
+and the radius over which the legal-reply cover remains valid. Apply this to
+all covered intervals on all six arms; the smallest permitted radius gives a
+sufficient initial ball. Use strict slack or an explicit positive safety
+margin, not equality at a zero-margin boundary.</p>
+<p>As a synthetic numerical example, mL=mR=0.6, BL=BR=1, Δt=1, AL=2 and AR=1
+permit r &lt; 1/15. At r=0.05 the endpoint lower bounds are 0.5 and 0.55; their
+winning intervals overlap by 0.05, and the worst lower margin is 0.025.
+These numbers illustrate the formula; they are not measured Tau constants.</p>
+<p>The outstanding Tau work is to bound these constants or lower envelopes for
+the <strong>complete finite program</strong>, including contact and stop branches. Observed
+finite differences cannot substitute for these hypotheses. A derivative jump
+can be handled with a common verified Lipschitz bound; an actual discontinuity
+needs separate guarded patches and explicit boundary handling.</p>
+<p><a id="tubes"></a></p>
+<h2>6. Moving tubes and event boundaries</h2>
+<p>Two different issues must be separated.</p>
+<p><strong>An initial region straddles an event boundary.</strong> Split it into guarded event
+cells, or enclose all feasible branches and verify their union. If two events
+both truly stop the move, their minimum can remain continuous as their order
+swaps. A refusal is not a proof of discontinuity, and shrinking finitely many
+boxes does not prove their centre lies exactly on a boundary.</p>
+<p><strong>A trajectory leaves its initial box.</strong> Brief 4 demonstrated this for the
+particular fixed small boxes at k15. A moving enclosure follows the path and
+can stay narrow. That result does not rule out every larger fixed enclosure,
+nor prove that the 65 new star refusals have the same cause.</p>
+<p>For a region Q, a suitable certificate carries phase-indexed sets Sk enclosing
+both pieces and all necessary rule state. With Tk the actual substep update,
+the obligations have the form</p>
+<pre><code class="language-text">S₀ contains Q,
+Tk(Sk−1 ∩ nonterminal, allowed inputs) ⊆ Sk ∪ verified winning terminals.
+</code></pre>
+<p>All losing terminals must be excluded; at the end, every remaining state must
+be in a verified winning response region or satisfy the throw condition.
+Guarded splits retain every feasible contact feature, stopping event and input
+phase. If initial uncertainty includes both pieces, the attacker cannot be
+silently fixed while propagating the victim&#39;s box.</p>
+<p>The execution schedule needs its own pin. The engine&#39;s 1° calls use ⅓°
+substeps, but the replica&#39;s <code>swing</code> divides an entire requested arc into equal
+steps no larger than 0.4°. <code>replyFamily</code> uses that whole-arc record, while
+<code>sampleAt</code> snaps upward to its next stored step. Those are different maps.
+A proof for one schedule is not automatically a proof for arbitrary dragging.
+An observed phase tolerance remains an empirical check.</p>
+<p><a id="induction"></a></p>
+<h2>7. The right induction: forced win within n moves</h2>
+<p>For a fixed attacking side A, let W₀ contain terminal A wins. On nonterminal
+states define the monotone bounded-horizon construction:</p>
+<pre><code class="language-text">Wn+1 = Wn
+     ∪ {A to move: some legal move has all allowed outcomes in Wn}
+     ∪ {V to move: legal moves are nonempty and every legal move
+                   has all allowed outcomes in Wn}.
+</code></pre>
+<p>For a deterministic engine there is one outcome per fully specified move.
+Set-valued outcomes allow certified uncertainty, including input schedules
+when required. Actual terminal and no-move rules must be applied explicitly;
+an empty move set is not a free universal-quantifier win.</p>
+<p>Induction proves that Wn contains only states from which A can force a win
+within n plies. The present one-victim-move/one-throw certificates aim at a
+subset of <strong>W₂</strong>. The miner&#39;s <code>k=0</code> is an offset from the recorded final throw,
+not the zero-horizon set W₀.</p>
+<p>This is the right object to grow by predecessor operations. A certificate can
+be a finite graph of regions with a decreasing remaining-ply rank. Circular
+claims such as “R wins because it reaches R” are insufficient. “Closed” here
+means stable under the appropriate game operation, not necessarily a
+topologically closed subset: strict throw margins naturally produce open
+conditions. In an infinite state/action space, the union of finite Wn is the
+finite-uniform-horizon attractor; do not assume it equals every conceivable
+eventual-win state without an additional boundedness argument.</p>
+<p><a id="next"></a></p>
+<h2>8. Concrete prediction and implementation order</h2>
+<p>The first unresolved control gives a useful regression case:</p>
+<pre><code class="language-text">game: arena7dd3b1us-1; red to move
+pose: [8.3707, −25.3453, −1.1528, 16.1925, −34.7032, 3.7508]
+victim arm: (pivot 1, direction +1)
+reported unresolved gap: 4.8–5.2 degrees
+</code></pre>
+<p>With the documented frozen engine, at each of the nine stops
+4.80, 4.85, …, 5.20 degrees, the victim has <strong>not</strong> thrown the attacker, and
+the <strong>same attacker arm (1,+1)</strong> throws the victim; the other five tested arms
+do not. This is saved in <a href="gap-probe.json">gap-probe.json</a>. The victim uses
+one-degree calls plus a final remainder, as in the falsification routine.</p>
+<p>The replica behaves differently: requests through 5.15° snap to 5.153153°,
+and 5.20° snaps to 5.549550°. These probes expose why rounded failure labels
+and sampled records need careful interpretation. Nine successful stops do
+not resolve the whole interval, and the rounded endpoints are not a replay
+of every internal gap sample. The precise prediction is the nine listed
+engine results, not a new universal deadness claim.</p>
+<p>The next implementation should proceed in this order:</p>
+<ol>
+<li><strong>Make the experiment identify its inputs.</strong> Log rule/index hash, loaded
+corpus hash, counts, radii, call schedule and full joint distance. Check
+lookups at known centres before playing games. Re-run any lookup experiment
+with the corpus it claims to test, preserving its sampled status.</li>
+<li><strong>Save the evidence needed for region construction.</strong> Keep full star
+graphs, all 13 probe profiles, legal-reply bounds, branch guards, selected
+response intervals, exact stops and refusal logs. The current summary rows
+are seeds for this work, not complete proof certificates.</li>
+<li><strong>Implement the interval cover and verified tube bounds.</strong> Start with one
+reference seed and one reply gap. Export certified endpoint margins and
+slope/enclosure bounds, then check the bridge inequalities. Extend to all
+six arms and a positive joint-pose radius before claiming a dead region.</li>
+<li><strong>Evaluate two separate outcomes.</strong> For geometry, report coverage and
+agreement on the old labelled corpus, newly covered unknowns, and actual
+falsifications. For playing strength, compare L11, table-only, dense-only,
+guard-only and combined versions under matched openings and equal budgets.</li>
+</ol>
+<p>The research target remains worthwhile: a compact family of verified reply
+covers could give both a mathematical class and a cheap playing mechanism.
+The present data neither establish that class nor rule out its usefulness.</p>
+<p><a id="sources"></a></p>
+<h2>9. Sources and reproduction</h2>
+<ul>
+<li><a href="https://github.com/liaminhawai-cmd/Tau/tree/c1ac39e771f8115797a4b8672587860fb676ad1b/docs/dead-regions">Brief 5 and corpus snapshot</a>: <code>c1ac39e771f8115797a4b8672587860fb676ad1b</code>.</li>
+<li><a href="https://github.com/liaminhawai-cmd/Tau/blob/c1ac39e771f8115797a4b8672587860fb676ad1b/nn/forced-win.js">Search implementation</a>: blob <code>7ac62262c268a2e86f199a1fe88f241a5665319c</code>.</li>
+<li><a href="https://github.com/liaminhawai-cmd/Tau/blob/b9907b05e40103dc459d3013b7a873ac12941f78/index.html">Published L17 implementation</a>: index blob <code>1d36f9ba6d6032d739f5e22b0a71608b520429b3</code>.</li>
+<li><a href="https://github.com/liaminhawai-cmd/Tau/blob/5252f2d839b739f52ce69158dcddfcedbd62bbb7/index.html">Frozen corpus rule source</a>: blob <code>729a394959968e5fbdb5af10d3067005712b890f</code>.</li>
+<li><a href="source-manifest.json">Source manifest</a>, <a href="README.md">reproduction instructions</a>, <a href="audit.js">dataset audit</a>, <a href="gap-probe.js">engine diagnostic</a>.</li>
+</ul>
+<p>The frozen loader receives only an in-memory export of <code>crossingSubstep</code>,
+matching the documented corpus setup. No engine rule body is changed. The
+metric-volume calculation, dual norm, response-cover criterion and induction
+are derivations in this review. Corpus labels and match outcomes are reported
+data; the nine-stop diagnostic is an ordinary floating-point reproduction.</p>
+<footer>Original derivations and reproducible numerical checks. Theorems, conditional predictions, and empirical counterexamples are distinguished throughout.</footer></main><dialog aria-label="Enlarged figure"><div class="dialog-top"><span>Scroll to inspect the figure.</span><button class="close" type="button">Close</button></div><div class="zoom-content"></div></dialog><script>const d=document.querySelector('dialog');document.querySelectorAll('.zoom').forEach(b=>b.addEventListener('click',()=>{document.querySelector('.zoom-content').replaceChildren(b.closest('figure').querySelector('svg').cloneNode(true));d.showModal();}));document.querySelector('.close').addEventListener('click',()=>d.close());d.addEventListener('click',e=>{if(e.target===d)d.close();});</script></body></html>
