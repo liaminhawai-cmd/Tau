@@ -493,9 +493,19 @@ function bootstrapCI(B = bootstrapN) {
   return out;
 }
 
+// Ranked on the CI's LOWER bound, not the point estimate. Sorting by elo sorts largely by who has
+// the smallest sample: a 6-0 start reads +446 Elo, and reaching that on 100 games would take a 95%
+// score, so the top of an elo-sorted board is a list of faces nobody has measured yet. On
+// desktop-2b7iqhn that put resume-330@D3 first at 361.7 on six games, interval [-38.7, +762.1] --
+// a lower bound below zero, i.e. not established to be better than the L11 anchor at all. eloLo
+// answers the question the board is read for ("what is provably good") instead of "what got
+// lucky", and a face climbs it by playing rather than by not playing. Faces without an interval
+// yet sort last rather than first, which is the same correction in the degenerate case.
+const rankOf=r=>(r.ci&&Number.isFinite(r.ci.lo))?r.ci.lo:-Infinity;
 function standingsText(elo, ci) {
   const g=gamesOf();
-  const rows=players.map(p=>({p,elo:elo[p.id]||0,g:g[p.id]||0,ci:ci[p.id]})).sort((a,b)=>b.elo-a.elo);
+  const rows=players.map(p=>({p,elo:elo[p.id]||0,g:g[p.id]||0,ci:ci[p.id]}))
+    .sort((a,b)=>rankOf(b)-rankOf(a)||b.elo-a.elo);
   const pct = state.games ? 100*state.ladderGames/state.games : 0;
   const lines=[];
   lines.push('TAU VALUE LEAGUE');

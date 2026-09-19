@@ -9,10 +9,23 @@ const TARGET_FACES=50;
 const TARGET_MODELS=TARGET_FACES;
 // Admission ceiling. The cull can only retire a face it has MEASURED (FACE_MIN_GAMES below), so a
 // population far past this point starves every face at once: games spread too thin for anything to
-// become eligible, nothing eligible means nothing culled, and the field ratchets up forever. Four
-// times target leaves plenty of room for an open league to breathe while keeping every face inside
-// reach of a real interval.
-const ADMIT_CEILING=TARGET_FACES*4;
+// become eligible, nothing eligible means nothing culled, and the field ratchets up forever.
+//
+// Four times target did not keep faces "inside reach of a real interval", which is what it was set
+// for. Measured on desktop-2b7iqhn at 72 faces: 22 of them had fewer than 10 rated games, and the
+// entire top of the board was unmeasured -- resume-330@D3 at 361.7 Elo on SIX games, interval
+// [-38.7, +762.1]. Best Elo by sample size ran 361.7 (1-9 games), 258.1 (10-24), 132.8 (25-49),
+// 96.3 (100+): pure regression to the mean, with the leaderboard sorted by a point estimate so the
+// top is populated by whoever has the luckiest small sample. Nothing mechanical forces that -- at
+// 100 games a perfect record reads 921 Elo -- the faces up there simply had not played enough to
+// come down.
+//
+// It compounds, because the cull retires on eloHi. That is the right choice (only retire a face
+// you are confident is weak), but it means being MEASURED is what makes a face cullable: median
+// eloHi was +200.8 for faces under 10 games and -24.7 for faces over 100. The field therefore
+// sheds what it knows about and keeps what it does not. Admission is the lever that actually
+// closes this -- the cull cannot, since a face it has never measured is one it may never retire.
+const ADMIT_CEILING=Math.round(TARGET_FACES*1.5);
 const FACE_CAPS=Object.freeze({D1:50,D2:14,D3:4,D4:1}); // compatibility export only; never enforced
 const FACE_MIN_GAMES=Object.freeze({D1:12,D2:8,D3:5,D4:2});
 const DEPTH_CULL_WEIGHT=Object.freeze({D1:1,D2:3,D3:9,D4:27});
