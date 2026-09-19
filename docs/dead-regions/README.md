@@ -100,6 +100,18 @@ continuous only between events, so the box straddles a wall and must be shrunk
 or split. The driver walks h = 0.3, 0.12, 0.05u and keeps the first that is
 accepted.
 
+**Result: 132 star attempts — 67 accepted, covering 63 distinct poses; 65 refused.**
+Radii run from `eps` 0.009u to **0.350u**, median 0.095u; the widest carries
+W = 1.014u with the engine agreeing on 25 of 25 random poses. Every one of the
+63 passed its engine falsification pass. Nearly half of all attempts were
+refused, which is the expected shape: the envelope-wall test is the binding
+constraint, not the margin.
+
+The refusals are as informative as the balls. A point that refuses at every `h`
+on the ladder is sitting on or beside an event wall, and those are exactly the
+places where a moving tube -- not a fixed box -- is the construction that will
+be needed. See the closing section.
+
 ### Recorded misses — `screened-not-dead.jsonl`
 
 All 1045 non-dead seeds, with the reason. 909 escape (865 of them from the
