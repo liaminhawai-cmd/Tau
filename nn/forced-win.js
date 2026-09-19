@@ -85,6 +85,28 @@ const SLIVER_BAR = 5;
 // thrown. Measured on 44 retro seeds: 18 refusals were arm-change gaps at the substep, 11 of them
 // with best-min margins 2.4-4.95u, refused only because SLIVER_BAR is 5u.
 const PROBE_BAR = 1.5, PROBE_N = 12;
+// Brief 5's region criterion at gap scale. COVER_BAR is PROBE_BAR on purpose: a cover confirms a
+// robust throw at every sample, it never rescues a marginal one.
+const COVER_BAR = 1.5, COVER_N = 12;
+// Cover [A,B] with finitely many patches, each one arm holding a positive margin over a run of
+// samples. Greedy: keep the held arm while it still clears the bar, otherwise open a new patch on
+// the best-margin arm at that sample. Null when any sample has no response above the bar -- that
+// is a real hole, not a patch boundary. SAMPLED: this bounds the margin at the sample points, not
+// over the interval between them.
+function coverGap(A, B, sampleAt) {
+  const pts = [A];
+  for (let i = 1; i < COVER_N; i++) pts.push(sampleAt(A.alpha + (B.alpha - A.alpha) * i / COVER_N));
+  pts.push(B);
+  let patches = 0, held = -1, min = Infinity, arms = [];
+  for (const s of pts) {
+    if (held >= 0) { const m = s.arcs[held].m; if (Number.isFinite(m) && m > COVER_BAR) { min = Math.min(min, m); continue; } }
+    let pick = -1, bm = -Infinity;
+    for (let i = 0; i < 6; i++) { const m = s.arcs[i].m; if (Number.isFinite(m) && m > COVER_BAR && m > bm) { bm = m; pick = i; } }
+    if (pick < 0) return null;
+    held = pick; patches++; arms.push(pick); min = Math.min(min, bm);
+  }
+  return { patches, min, arms, samples: pts.length };
+}
 // BIN_GUARD: how close two events may come before the engine's sampling phase decides the
 // programme. The rule is asked only at the substep grid, so two events inside ONE substep are
 // seen together, and for two events of the SAME foot on DIFFERENT lines that is the corner
@@ -483,7 +505,7 @@ function verifyAllReplies(pieces, mover, K, replyStepDeg, safety, lipFloor) {
 function deadCertificate(pieces, mover, K, opts) {
   opts = opts || {};
   const replyStepDeg = opts.replyStepDeg || 2, safety = opts.safety || 3, lipFloor = opts.lipFloor || 1, reach = opts.reach || null, screen = !!opts.screen;
-  const other = 1 - mover; let worstMargin = Infinity, acceptMargin = Infinity, legalArcs = 0, unresolved = null, slivers = 0, probedSlivers = 0, minBest = Infinity;
+  const other = 1 - mover; let worstMargin = Infinity, acceptMargin = Infinity, legalArcs = 0, unresolved = null, slivers = 0, probedSlivers = 0, covers = 0, minBest = Infinity;
   const minStepRad = SUBSTEP, profile = [], samples = opts.keepSamples ? [] : null;
   for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
     const env = reach ? reach[pv * 2 + (dir < 0 ? 1 : 0)] : null;
@@ -544,6 +566,18 @@ function deadCertificate(pieces, mover, K, opts) {
         if (pr.ok) { probedSlivers++; worstMargin = Math.min(worstMargin, Math.min(A.best, B.best)); acceptMargin = Math.min(acceptMargin, Math.min(A.best, B.best)); done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, probed: true, m: Math.min(A.best, B.best) }); continue; }
         probeNote = `; engine probe: stop ${(pr.stop * 180 / Math.PI).toFixed(2)}deg ${pr.why}`;
       }
+      // The single-arc rule above demands ONE arc clear both ends under one contact signature.
+      // 136 of 1306 screened seeds were refused for exactly that, and sweeping all 136 directly
+      // found one attacker arm throwing at every stop across the gap in 135 of them: the refusal
+      // was the demand's, not the position's. So try a cover before giving up -- patches may
+      // overlap and the arm may change between them, which is what an arm change inside the gap
+      // actually needs. Counted apart (covers) so a certificate still says how it was obtained.
+      const cv = coverGap(A, B, sampleAt);
+      if (cv) {
+        covers++; worstMargin = Math.min(worstMargin, cv.min); acceptMargin = Math.min(acceptMargin, cv.min);
+        done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, cover: cv.patches, coverArms: cv.arms, m: cv.min });
+        continue;
+      }
       unresolved = unresolved || `reply (${pv},${dir}) ${(A.alpha * 180 / Math.PI).toFixed(1)}-${(B.alpha * 180 / Math.PI).toFixed(1)}deg: no single arc certifies the gap (best min margin ${bestM.toFixed(2)}u) even at the engine's substep -- the throw changes arm here${probeNote}`;
       worstMargin = Math.min(worstMargin, bestM);
       done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, unresolved: true, m: bestM });
@@ -555,8 +589,8 @@ function deadCertificate(pieces, mover, K, opts) {
   }
   if (screen) return { certified: false, status: 'screen', minBest, legalArcs, profile };
   if (!legalArcs) return { certified: false, status: 'escape', why: 'victim has no legal reply', worstMargin: -Infinity, profile, samples };
-  if (unresolved) return { certified: false, status: 'unresolved', why: unresolved, worstMargin, acceptMargin, slivers, probedSlivers, minBest, profile, samples };
-  return { certified: true, status: 'dead', worstMargin, acceptMargin, slivers, probedSlivers, minBest, profile, samples };
+  if (unresolved) return { certified: false, status: 'unresolved', why: unresolved, worstMargin, acceptMargin, slivers, probedSlivers, covers, minBest, profile, samples };
+  return { certified: true, status: 'dead', worstMargin, acceptMargin, slivers, probedSlivers, covers, minBest, profile, samples };
 }
 // Two dead profiles agree when they have the same set of legal reply arms and every gap of both is
 // certified (or a sliver). A switch of the certifying attacker arc between overlapping gaps -- the
