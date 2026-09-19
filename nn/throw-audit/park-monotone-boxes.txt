@@ -1,0 +1,40 @@
+######## +-0.1 u / +-0.01 rad
+MONOTONE IN THE SUBSTEP: yes, for every pose over the whole sweep
+first push over the box: substep 9; every pose thrown by substep 85
+H3 (radial gain bounded below over the box, CONTACT substeps only): min gain 0.005631u at substep 16 -- POSITIVE throughout
+   over the PARK window 74-98 only: min gain 0.060467u at substep 74
+H4 (box invariance), first contact 9 to the throw 85: pose spread about the centre 0.2708u -> 0.3074u -- the true dynamics EXPAND by 1.135x
+every pose thrown: 200/200; latest throw substep 85
+
+######## +-0.125 u / +-0.01 rad
+MONOTONE IN THE SUBSTEP: yes, for every pose over the whole sweep
+first push over the box: substep 8; every pose thrown by substep 86
+H3 (radial gain bounded below over the box, CONTACT substeps only): min gain 0.000922u at substep 16 -- POSITIVE throughout
+   over the PARK window 74-98 only: min gain 0.060373u at substep 74
+H4 (box invariance), first contact 8 to the throw 86: pose spread about the centre 0.2908u -> 0.3277u -- the true dynamics EXPAND by 1.127x
+every pose thrown: 200/200; latest throw substep 86
+
+######## +-0.125 u / +-0.05 rad
+MONOTONE IN THE SUBSTEP: yes, for every pose over the whole sweep
+first push over the box: substep 4; every pose thrown by substep 90
+H3 (radial gain bounded below over the box, CONTACT substeps only): min gain 0.002734u at substep 21 -- POSITIVE throughout
+   over the PARK window 74-98 only: min gain 0.060373u at substep 74
+H4 (box invariance), first contact 4 to the throw 90: pose spread about the centre 1.1682u -> 1.2429u -- the true dynamics EXPAND by 1.064x
+every pose thrown: 200/200; latest throw substep 90
+
+######## +-0.25 u / +-0.01 rad
+MONOTONE IN THE SUBSTEP: yes, for every pose over the whole sweep
+first push over the box: substep 6; every pose thrown by substep 86
+H3 (radial gain bounded below over the box, CONTACT substeps only): min gain 0.004987u at substep 19 -- POSITIVE throughout
+   over the PARK window 74-98 only: min gain 0.059568u at substep 74
+H4 (box invariance), first contact 6 to the throw 86: pose spread about the centre 0.4223u -> 0.4327u -- the true dynamics EXPAND by 1.025x
+every pose thrown: 200/200; latest throw substep 86
+
+######## +-0.5 u / +-0.01 rad
+MONOTONE IN THE SUBSTEP: yes, for every pose over the whole sweep
+first push over the box: substep 1; every pose thrown by substep 87
+H3 (radial gain bounded below over the box, CONTACT substeps only): min gain 0.004677u at substep 24 -- POSITIVE throughout
+   over the PARK window 74-98 only: min gain 0.058425u at substep 74
+H4 (box invariance), first contact 1 to the throw 87: pose spread about the centre 0.7439u -> 0.6515u -- the true dynamics CONTRACT (x0.876)
+every pose thrown: 200/200; latest throw substep 87
+

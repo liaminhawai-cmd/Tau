@@ -1,0 +1,111 @@
+# thickness.js, arm (0,-1) of the ndpxhts24 seed, foot 1
+
+## box +-0.0125u
+```
+box +-0.0125u, +-0.031 deg, 60 poses, arm (0,-1), foot 1, substep 0.3333 deg
+
+   k   deg  | shell residual    | penetration spread | predicted        | ratio
+            | entering substep  | measured           | LIM_SUB x hull(arm)| meas/pred
+   13   4.33 |           1.09e-2 |            1.09e-2 |          1.11e-2 |    0.984
+   14   4.67 |           6.10e-6 |            1.35e-4 |          1.88e-4 |    0.717
+   15   5.00 |           7.92e-8 |            1.35e-4 |          1.81e-4 |    0.744
+   16   5.33 |           7.88e-8 |            1.35e-4 |          1.80e-4 |    0.747
+   17   5.67 |           7.83e-8 |            1.35e-4 |          1.79e-4 |    0.750
+   18   6.00 |           7.79e-8 |            1.35e-4 |          1.79e-4 |    0.753
+   19   6.33 |           7.74e-8 |            1.35e-4 |          1.78e-4 |    0.756
+   20   6.67 |           7.70e-8 |            1.34e-4 |          1.77e-4 |    0.759
+   30  10.00 |           7.22e-8 |            1.34e-4 |          1.69e-4 |    0.795
+   40  13.33 |           8.00e-8 |            1.45e-4 |          1.68e-4 |    0.861
+   50  16.67 |           7.27e-8 |            1.45e-4 |          1.86e-4 |    0.777
+   60  20.00 |           6.46e-8 |            1.45e-4 |          2.07e-4 |    0.699
+   70  23.33 |           5.53e-8 |            1.44e-4 |          2.31e-4 |    0.627
+   80  26.67 |           4.95e-6 |            3.42e-4 |          3.10e-3 |    0.110
+
+thickest the slab ever gets: predicted 1.110e-2u at substep 13, measured 1.093e-2u
+ignoring the entry substep 13: predicted at most 5.982e-3u, at substep 74
+over 72 substeps where the whole set is in contact: worst measured/predicted 0.984 at substep 13
+THE PREDICTION BOUNDS THE MEASUREMENT EVERYWHERE: one substep of a moment arm that varies
+only as much as the contact point does, on top of a shell that resets every substep.
+```
+
+## box +-0.025u
+```
+box +-0.025u, +-0.062 deg, 60 poses, arm (0,-1), foot 1, substep 0.3333 deg
+
+   k   deg  | shell residual    | penetration spread | predicted        | ratio
+            | entering substep  | measured           | LIM_SUB x hull(arm)| meas/pred
+   13   4.33 |           2.39e-2 |            2.39e-2 |          2.42e-2 |    0.988
+   14   4.67 |           1.07e-5 |            2.69e-4 |          3.27e-4 |    0.821
+   15   5.00 |           1.58e-7 |            2.69e-4 |          3.16e-4 |    0.853
+   16   5.33 |           1.57e-7 |            2.69e-4 |          3.15e-4 |    0.855
+   17   5.67 |           1.57e-7 |            2.69e-4 |          3.14e-4 |    0.857
+   18   6.00 |           1.56e-7 |            2.69e-4 |          3.13e-4 |    0.859
+   19   6.33 |           1.55e-7 |            2.69e-4 |          3.13e-4 |    0.861
+   20   6.67 |           1.54e-7 |            2.69e-4 |          3.12e-4 |    0.863
+   30  10.00 |           1.44e-7 |            2.68e-4 |          3.03e-4 |    0.886
+   40  13.33 |           1.50e-7 |            2.44e-4 |          2.67e-4 |    0.913
+   50  16.67 |           1.38e-7 |            2.44e-4 |          2.85e-4 |    0.855
+   60  20.00 |           1.25e-7 |            2.44e-4 |          3.06e-4 |    0.797
+   70  23.33 |           1.09e-7 |            2.43e-4 |          3.29e-4 |    0.738
+   80  26.67 |           7.54e-6 |            4.91e-4 |          3.24e-3 |    0.152
+
+thickest the slab ever gets: predicted 2.422e-2u at substep 13, measured 2.392e-2u
+ignoring the entry substep 13: predicted at most 6.128e-3u, at substep 74
+over 72 substeps where the whole set is in contact: worst measured/predicted 0.995 at substep 32
+THE PREDICTION BOUNDS THE MEASUREMENT EVERYWHERE: one substep of a moment arm that varies
+only as much as the contact point does, on top of a shell that resets every substep.
+```
+
+## box +-0.05u
+```
+box +-0.05u, +-0.124 deg, 60 poses, arm (0,-1), foot 1, substep 0.3333 deg
+
+   k   deg  | shell residual    | penetration spread | predicted        | ratio
+            | entering substep  | measured           | LIM_SUB x hull(arm)| meas/pred
+   14   4.67 |           1.17e-2 |            1.18e-2 |          1.23e-2 |    0.962
+   15   5.00 |           6.50e-6 |            5.39e-4 |          5.92e-4 |    0.910
+   16   5.33 |           3.15e-7 |            5.38e-4 |          5.84e-4 |    0.921
+   17   5.67 |           3.13e-7 |            5.38e-4 |          5.84e-4 |    0.922
+   18   6.00 |           3.11e-7 |            5.38e-4 |          5.83e-4 |    0.923
+   19   6.33 |           3.10e-7 |            5.38e-4 |          5.82e-4 |    0.925
+   20   6.67 |           3.08e-7 |            5.38e-4 |          5.81e-4 |    0.926
+   30  10.00 |           2.89e-7 |            5.36e-4 |          5.71e-4 |    0.939
+   40  13.33 |           2.76e-7 |            4.88e-4 |          5.12e-4 |    0.954
+   50  16.67 |           2.51e-7 |            4.88e-4 |          5.30e-4 |    0.921
+   60  20.00 |           2.25e-7 |            4.87e-4 |          5.50e-4 |    0.886
+   70  23.33 |           2.07e-7 |            4.87e-4 |          5.73e-4 |    0.849
+   80  26.67 |           3.06e-5 |            8.37e-4 |          3.38e-3 |    0.247
+
+thickest the slab ever gets: predicted 1.229e-2u at substep 14, measured 1.182e-2u
+ignoring the entry substep 14: predicted at most 6.346e-3u, at substep 74
+over 72 substeps where the whole set is in contact: worst measured/predicted 0.995 at substep 31
+THE PREDICTION BOUNDS THE MEASUREMENT EVERYWHERE: one substep of a moment arm that varies
+only as much as the contact point does, on top of a shell that resets every substep.
+```
+
+## box +-0.1u
+```
+box +-0.1u, +-0.248 deg, 60 poses, arm (0,-1), foot 1, substep 0.3333 deg
+
+   k   deg  | shell residual    | penetration spread | predicted        | ratio
+            | entering substep  | measured           | LIM_SUB x hull(arm)| meas/pred
+   15   5.00 |           2.50e-2 |            2.53e-2 |          2.62e-2 |    0.967
+   16   5.33 |           1.11e-5 |            1.08e-3 |          1.13e-3 |    0.950
+   17   5.67 |           6.26e-7 |            1.08e-3 |          1.12e-3 |    0.959
+   18   6.00 |           6.23e-7 |            1.08e-3 |          1.12e-3 |    0.960
+   19   6.33 |           6.19e-7 |            1.08e-3 |          1.12e-3 |    0.960
+   20   6.67 |           6.15e-7 |            1.08e-3 |          1.12e-3 |    0.961
+   30  10.00 |           1.16e-5 |            4.67e-3 |          4.69e-3 |    0.996
+   40  13.33 |           5.34e-7 |            9.30e-4 |          9.55e-4 |    0.975
+   50  16.67 |           4.95e-7 |            9.30e-4 |          9.72e-4 |    0.957
+   60  20.00 |           4.51e-7 |            9.29e-4 |          9.92e-4 |    0.937
+   70  23.33 |           4.15e-7 |            9.27e-4 |          1.01e-3 |    0.914
+   80  26.67 |           1.08e-4 |            1.56e-3 |          3.93e-3 |    0.397
+
+thickest the slab ever gets: predicted 2.616e-2u at substep 15, measured 2.529e-2u
+ignoring the entry substep 15: predicted at most 7.139e-3u, at substep 75
+over 71 substeps where the whole set is in contact: worst measured/predicted 0.996 at substep 30
+THE PREDICTION BOUNDS THE MEASUREMENT EVERYWHERE: one substep of a moment arm that varies
+only as much as the contact point does, on top of a shell that resets every substep.
+```
+

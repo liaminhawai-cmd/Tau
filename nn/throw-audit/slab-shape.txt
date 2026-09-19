@@ -1,0 +1,26 @@
+box +-0.1u, +-0.248 deg, 200 poses, arm (0,-1), foot 1, 138 substeps
+the blanket pad a box of this size carries: 0.2414u; D = 2.88
+
+  k    deg  | pre-push distance over the poses  | shell     | pose spread | overpay
+            |   min        max       range      | D - max   | dx      drot|  pad/range
+   12   4.00 | 2.8418 2.8800   0.03818 |   3.51e-5 | 0.1414  0.289 |      6.3  (97 free)
+   13   4.33 | 2.8415 2.8790   0.03749 |   9.80e-4 | 0.1404  0.348 |      6.4  (34 free)
+   14   4.67 | 2.8415 2.8701   0.02865 |   9.88e-3 | 0.1351  0.348 |      8.4  (7 free)
+   15   5.00 | 2.8414 2.8667   0.02529 |   1.33e-2 | 0.1348  0.349 |      9.5
+   16   5.33 | 2.8413 2.8424   0.00108 |   3.76e-2 | 0.1345  0.349 |    224.2
+   17   5.67 | 2.8413 2.8424   0.00108 |   3.76e-2 | 0.1343  0.350 |    224.3
+   18   6.00 | 2.8412 2.8423   0.00108 |   3.77e-2 | 0.1340  0.350 |    224.3
+   20   6.67 | 2.8411 2.8422   0.00108 |   3.78e-2 | 0.1334  0.351 |    224.5
+   30  10.00 | 2.8368 2.8414   0.00467 |   3.86e-2 | 0.1339  0.355 |     51.7
+   40  13.33 | 2.8357 2.8367   0.00093 |   4.33e-2 | 0.1247  0.362 |    259.1
+   50  16.67 | 2.8346 2.8355   0.00093 |   4.45e-2 | 0.1254  0.369 |    259.2
+   60  20.00 | 2.8334 2.8343   0.00093 |   4.57e-2 | 0.1261  0.377 |    259.5
+   70  23.33 | 2.8320 2.8330   0.00093 |   4.70e-2 | 0.1266  0.385 |    259.8
+   80  26.67 | 2.8276 2.8291   0.00157 |   5.09e-2 | 0.1102  0.396 |    153.6
+
+mean distance range over the 74 contact substeps: 0.00332u
+a box of +-0.1u carries a blanket pad of 0.2414u, so it overstates the distance uncertainty by about 73x
+
+READING: the poses are spread over ~0.2u of the plane but present the attacker with a distance range of
+~0.0033u, because each has been pushed onto the same shell. An invariant set has to be thin along
+the push and wide across it; an axis-aligned box is the wrong shape by the ratio above.

@@ -223,6 +223,9 @@ __exports = {
   directionToward, aiChoosePlan, simMoveToLimit, searchedPlanFor,
   AI_LADDER, ladderPlanFor, ladderEval,
   angInSpan, nearLineIds, lineDistOf, lineSideOf, LINE_INTERSECTIONS,
+  // the crossing rule itself, so a caller can ask it at chosen poses instead of only through
+  // applySwing's substep ladder (forced-win.js's limitAt asks it at closed-form event angles)
+  crossingSubstep,
   oppTwoForOneAvailable, ladderPlanVeto,
   newGame: __newGame, applyPlan: __applyPlan, applyPlanSearch: __applyPlanSearch,
   getG: () => G, setActive: a => { G.active = a; },

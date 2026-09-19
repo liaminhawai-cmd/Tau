@@ -1,0 +1,106 @@
+# tangential.js, arm (0,-1) of the ndpxhts24 seed, foot 1
+
+## box +-0.0125u
+```
+box +-0.0125u, +-0.031 deg, 200 poses, arm (0,-1), foot 1
+
+   k   deg  | deviation from the centre | along G   | across G  | across, per substep
+   12   4.00 |                   0.02171 |   0.01636 |   0.02171 |   1.00000
+   13   4.33 |                   0.02170 |   0.00001 |   0.02170 |   0.99965
+   14   4.67 |                   0.02170 |   0.00000 |   0.02170 |   0.99965
+   15   5.00 |                   0.02169 |   0.00000 |   0.02169 |   0.99965
+   20   6.67 |                   0.02165 |   0.00000 |   0.02165 |   0.99964
+   30  10.00 |                   0.02157 |   0.00000 |   0.02157 |   0.99963
+   40  13.33 |                   0.02149 |   0.00000 |   0.02149 |   1.00051
+   50  16.67 |                   0.02161 |   0.00000 |   0.02161 |   1.00063
+   60  20.00 |                   0.02176 |   0.00000 |   0.02176 |   1.00077
+   70  23.33 |                   0.02195 |   0.00000 |   0.02195 |   1.00094
+   80  26.67 |                   0.02338 |   0.00002 |   0.02338 |   1.01209
+
+across the push, first contact 12 to substep 83 (the centre's throw): 0.02171u -> 0.02427u, x1.1179 overall
+the WHOLE deviation, unsplit, over the same window: 0.02171u -> 0.02427u, x1.1179
+over the INTERIOR stretch alone, 12 to 72: across x1.0130, whole x1.0130
+worst single substep: x1.01284 at substep 83
+A tube 1.118x the starting box's tangential extent covers the whole contact window here.
+Where the growth sits is in the table: flat or contracting through the interior stretch, and
+confined to the park's last substeps, which is a transient rather than a constant rate.
+```
+
+## box +-0.025u
+```
+box +-0.025u, +-0.062 deg, 200 poses, arm (0,-1), foot 1
+
+   k   deg  | deviation from the centre | along G   | across G  | across, per substep
+   12   4.00 |                   0.04342 |   0.03580 |   0.04342 |   1.00000
+   13   4.33 |                   0.04341 |   0.00002 |   0.04341 |   0.99965
+   14   4.67 |                   0.04339 |   0.00001 |   0.04339 |   0.99965
+   15   5.00 |                   0.04338 |   0.00001 |   0.04338 |   0.99965
+   20   6.67 |                   0.04330 |   0.00001 |   0.04330 |   0.99964
+   30  10.00 |                   0.04314 |   0.00001 |   0.04314 |   0.99962
+   40  13.33 |                   0.04298 |   0.00001 |   0.04298 |   1.00050
+   50  16.67 |                   0.04323 |   0.00001 |   0.04323 |   1.00063
+   60  20.00 |                   0.04354 |   0.00002 |   0.04354 |   1.00077
+   70  23.33 |                   0.04391 |   0.00002 |   0.04391 |   1.00094
+   80  26.67 |                   0.04433 |   0.00005 |   0.04433 |   1.00248
+
+across the push, first contact 12 to substep 83 (the centre's throw): 0.04342u -> 0.04467u, x1.0287 overall
+the WHOLE deviation, unsplit, over the same window: 0.04342u -> 0.04467u, x1.0287
+over the INTERIOR stretch alone, 12 to 72: across x1.0014, whole x1.0014
+worst single substep: x1.00250 at substep 83
+A tube 1.029x the starting box's tangential extent covers the whole contact window here.
+Where the growth sits is in the table: flat or contracting through the interior stretch, and
+confined to the park's last substeps, which is a transient rather than a constant rate.
+```
+
+## box +-0.05u
+```
+box +-0.05u, +-0.124 deg, 200 poses, arm (0,-1), foot 1
+
+   k   deg  | deviation from the centre | along G   | across G  | across, per substep
+   12   4.00 |                   0.08684 |   0.07468 |   0.08684 |   1.00000
+   13   4.33 |                   0.08681 |   0.01755 |   0.08681 |   0.99965
+   14   4.67 |                   0.08678 |   0.00004 |   0.08678 |   0.99965
+   15   5.00 |                   0.08675 |   0.00004 |   0.08675 |   0.99965
+   20   6.67 |                   0.08659 |   0.00004 |   0.08659 |   0.99964
+   30  10.00 |                   0.08626 |   0.00191 |   0.08626 |   0.99951
+   40  13.33 |                   0.08194 |   0.00006 |   0.08194 |   1.00170
+   50  16.67 |                   0.08339 |   0.00006 |   0.08339 |   1.00180
+   60  20.00 |                   0.08495 |   0.00006 |   0.08495 |   1.00190
+   70  23.33 |                   0.08662 |   0.00006 |   0.08662 |   1.00199
+   80  26.67 |                   0.08867 |   0.00014 |   0.08867 |   1.00247
+
+across the push, first contact 12 to substep 83 (the centre's throw): 0.08684u -> 0.08933u, x1.0287 overall
+the WHOLE deviation, unsplit, over the same window: 0.08684u -> 0.08933u, x1.0287
+over the INTERIOR stretch alone, 12 to 72: across x1.0015, whole x1.0015
+worst single substep: x1.00250 at substep 83
+A tube 1.029x the starting box's tangential extent covers the whole contact window here.
+Where the growth sits is in the table: flat or contracting through the interior stretch, and
+confined to the park's last substeps, which is a transient rather than a constant rate.
+```
+
+## box +-0.1u
+```
+box +-0.1u, +-0.248 deg, 200 poses, arm (0,-1), foot 1
+
+   k   deg  | deviation from the centre | along G   | across G  | across, per substep
+   12   4.00 |                   0.17366 |   0.15243 |   0.17366 |   1.00000
+   13   4.33 |                   0.17360 |   0.09513 |   0.17360 |   0.99964
+   14   4.67 |                   0.17354 |   0.03765 |   0.17354 |   0.99964
+   15   5.00 |                   0.17348 |   0.00017 |   0.17348 |   0.99964
+   20   6.67 |                   0.17316 |   0.00017 |   0.17316 |   0.99963
+   30  10.00 |                   0.17253 |   0.01555 |   0.17253 |   0.99963
+   40  13.33 |                   0.16404 |   0.00023 |   0.16404 |   1.00170
+   50  16.67 |                   0.16694 |   0.00024 |   0.16694 |   1.00180
+   60  20.00 |                   0.17006 |   0.00025 |   0.17006 |   1.00190
+   70  23.33 |                   0.17340 |   0.00026 |   0.17340 |   1.00199
+   80  26.67 |                   0.17750 |   0.00053 |   0.17750 |   1.00248
+
+across the push, first contact 12 to substep 83 (the centre's throw): 0.17366u -> 0.17883u, x1.0298 overall
+the WHOLE deviation, unsplit, over the same window: 0.17366u -> 0.17883u, x1.0298
+over the INTERIOR stretch alone, 12 to 72: across x1.0025, whole x1.0025
+worst single substep: x1.00250 at substep 83
+A tube 1.030x the starting box's tangential extent covers the whole contact window here.
+Where the growth sits is in the table: flat or contracting through the interior stretch, and
+confined to the park's last substeps, which is a transient rather than a constant rate.
+```
+
