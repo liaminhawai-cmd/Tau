@@ -1,5 +1,40 @@
 # Does knowing the dead spots make L11 stronger?
 
+> ## CORRECTION (2026-09-19, after Brief 5 review)
+>
+> **This measurement did not test the 261-point / 63-ball corpus.** Astra's Brief 5
+> review checked the shipped code and found that the L17 rung carries a
+> hand-embedded table of ~4 `dead` entries and 4 `win2` entries at lookup radii
+> `DEAD_CERT_EPS = 1.0` / `DEAD_BALL_EPS = 1.5`, and that neither
+> `dead-points-mined.jsonl` nor `dead-balls.jsonl` is referenced anywhere in
+> `index.html` or `nn/engine.js`. Verified independently: both greps return zero.
+>
+> So "23,804 consultations, 0 hits" is a true statement about the **old
+> 4-point baseline table**, and says nothing about the new corpus. The
+> conclusion drawn below — that the certified set is too sparse to ever fire —
+> **does not follow from this experiment.**
+>
+> Two further corrections from the same review:
+>
+> * **The zero-volume argument is wrong.** It is true of a slice with the
+>   attacker held fixed, but `certifyStar` perturbs all six pose coordinates.
+>   In the implemented metric a radius-eps ball has ambient volume
+>   `Vol6 = (pi^2/45) * eps^6 > 0`; over the 63 radii that sums to
+>   0.00184559 u^6 in scaled coordinates. The balls are full-dimensional.
+>   The corpus README stated this correctly; the brief contradicted it.
+> * **`nearestVictim` 2.85u is not comparable to the 0.35u ball radius.** It
+>   measures one piece's distance to eligible *embedded point entries*, not the
+>   minimum joint-pose distance to the new balls. Comparing them mixes two
+>   different tables and two different measurements.
+>
+> What still stands: the 56-40 score itself, and that the interval is
+> inconclusive. But "a big margin is ruled out" also over-claims -- the 95%
+> interval runs -11 to +133 Elo and therefore includes +100. Ruling out a big
+> margin needs a stated threshold. The dense-test and guard counters likewise
+> show those mechanisms *ran*; isolating their effect needs an ablation and an
+> equal-time baseline, neither of which was done here.
+
+
 `AI_LADDER`'s `L11+dead` (arena spec **L17**, `kind:'dead'`, marked
 `experimental:'dead-set'`) is L11's evaluator, roots and pessimistic minimax
 plus knowledge of the certified dead set. This is the measurement.
