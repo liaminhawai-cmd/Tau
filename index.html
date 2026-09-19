@@ -608,7 +608,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 197</div>
+<div id="buildTag">build 198</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -4729,6 +4729,16 @@ const AI_LADDER = [
     // arena opponents (`L15` / `L16`), and can be rated any time by clearing the flag again.
     { kind:'p4', experimental:'d4-deeper', label:'L12a', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:4,keepStops:4,maxCands:28} },
     { kind:'opp', experimental:'opp-model', label:'L12b', w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2}, o:{sampleDeg:9,depth:3,keepStops:4,oppLevel:10,oppCands:6} },
+    // L11+dead EXPERIMENT (2026-09-19): "a version of L11 that knows all the dead spots we found".
+    // L11's eval, L11's roots and L11's pessimistic minimax, plus the certified dead set from
+    // nn/dead-positions.jsonl and the dense stop test those certificates are defined over -- see
+    // ladderPlanDead. It is the 17th entry, so the trainer's rung numbering calls it L17.
+    // Experimental on purpose: a fixed rung here is either rated -- and then immortal, since the
+    // L-brains sit outside the face pools the cull works on -- or not rated at all, and this one
+    // has to prove a margin over plain L11 before it costs the league a seat.
+    { kind:'dead', experimental:'dead-set', label:'L11+dead',
+      w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2},
+      o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28, deadDeg:6, deadStops:160, guardCands:6, guardReplies:12} },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 
@@ -5133,6 +5143,249 @@ function ladderPlan13(idx, w, o){
     }
     ladderRestore(snap0); G.active=origActive; return best;
 }
+// ===================== L11+dead: the certified dead set, and the test it is defined by =============
+// WHERE THE DATA COMES FROM. nn/dead-positions.jsonl (copied onto this branch from
+// claude/project-thread-mtkkjf @2c229a265, mined by nn/forced-win.js --mine out of real games):
+// four positions certified DEAD -- the side to move loses to a throw whatever it does, every reply
+// arc certified and the engine agreeing on random moves -- the four win-in-2 positions that led to
+// them, twelve one-parameter families of attacker poses that swing cleanly onto a dead position,
+// and one certified dead BALL (a 1u x 1u x 0.043rad box of victim poses with the attacker held).
+//
+// WHY A LOOKUP TABLE CANNOT BE THE RUNG. Those certificates are a 3-dimensional region inside a
+// 6-dimensional joint pose space: zero 6-volume. A rung that only recognised their coordinates
+// would match a real game position approximately never and would measure as exactly equal to L11.
+// The table is carried here anyway (DEAD_CERTS / deadCertVerdict, counted in DEAD_STATS) because it
+// is the ground truth and its hit rate is worth reporting -- but the strength, if there is any, has
+// to come from the SHAPE the certificates have rather than from where they sit.
+//
+// WHAT GENERALISES. Two things in that corpus do:
+//   1. "dead" is an operational test any position can be asked: every stop the side to move can
+//      reach on any of its six arms leaves the other side an immediate throw.
+//   2. the escapes are QUIET RE-ORIENTATIONS. The 175-position rim catalogue (the catalog-tally row
+//      of dead-positions.jsonl) found that every throw-in-1 position where the victim moved first
+//      was an escape, and the escaping move was a partial stop -- exactly the move ladderScore3's
+//      opponent model cannot express, because simMoveToLimit returns only the six swing-to-the-jam
+//      endpoints and discards every position along the way.
+// Put together those say something sharp about L11. ladderScore3 already scores a root at
+// HARD_WIN_BONUS whenever all six endpoint replies let it throw -- so L11 already owns a forced-
+// win-in-two detector, but one that reads 6 of the ~100 stops the opponent really has. Genuinely
+// dead implies the six endpoints lose too, so the dense test can never find a forced win L11 missed:
+// it can only REFUSE the ones the opponent can quietly walk out of. That is the whole rung -- L11,
+// with its forced wins falsified against the dense stop set the dead certificates are defined over,
+// and with the certified positions themselves recognised outright if a game ever reaches one.
+//
+// The certificate engine itself (nn/forced-win.js) is NOT used here and cannot be: one --pos call
+// on a certified dead point measured 6.8s of wall clock on this machine, and it is Node-only. A
+// per-move search needs milliseconds, so what crosses into the game is the data and the test shape.
+const DEAD_CERT_EPS = 1.0;          // metric radius we will claim a certificate covers
+const DEAD_BALL_EPS = 1.5;          // the one certified dead ball: +-0.5u, +-0.0216rad on the victim
+// p = [bx,by,brot, rx,ry,rrot]; `mover` is the side to move at that position.
+const DEAD_CERTS = [
+    { kind:'dead', mover:1, p:[2.6627, 33.2224, 2.2687, 4.2061, 47.1181, 4.4905], eps:DEAD_CERT_EPS },
+    { kind:'dead', mover:0, p:[-27.3934, -36.4088, 1.2052, -11.7593, -23.2838, 2.9442], eps:DEAD_BALL_EPS },
+    { kind:'dead', mover:1, p:[37.6039, -3.2612, 1.8896, 50.4287, 10.5092, -0.859], eps:DEAD_CERT_EPS },
+    { kind:'dead', mover:1, p:[0.8192, -30.3367, -3.2227, 19.4916, -35.329, 4.106], eps:DEAD_CERT_EPS },
+    { kind:'win2', mover:0, p:[13.4216, 17.4858, 3.1195, 10.2364, 29.7648, 4.7476], eps:DEAD_CERT_EPS },
+    { kind:'win2', mover:1, p:[-29.778, -19.7656, 1.481, -19.3659, -2.598, 1.9493], eps:DEAD_CERT_EPS },
+    { kind:'win2', mover:0, p:[22.5765, 2.5969, 2.603, 32.471, 14.8266, -1.2272], eps:DEAD_CERT_EPS },
+    { kind:'win2', mover:0, p:[-5.6148, -12.3923, -2.3719, 17.541, -17.8659, 3.6609], eps:DEAD_CERT_EPS },
+];
+// The twelve entry arcs: attacker pose = the dead position's attacker rotated about its own foot
+// arm[0] by -arm[1]*s degrees, for s in [deg[0], deg[1]]; the victim sits at the dead pose. The
+// forward swing is legal, touches nothing and lands exactly on the dead position (engine-played).
+// `mover` here is the ATTACKER -- the side to move, which wins.
+const DEAD_FAMILIES = [
+    { mover:1, dead:1, arm:[0,-1], deg:[2,68] }, { mover:1, dead:1, arm:[1,1], deg:[2,49] }, { mover:1, dead:1, arm:[2,1], deg:[2,29] },
+    { mover:0, dead:0, arm:[0,1], deg:[2,35] }, { mover:0, dead:0, arm:[2,-1], deg:[2,51] },
+    { mover:0, dead:2, arm:[0,1], deg:[2,43] }, { mover:0, dead:2, arm:[1,-1], deg:[2,28] }, { mover:0, dead:2, arm:[2,-1], deg:[2,33] },
+    { mover:0, dead:3, arm:[0,-1], deg:[2,36] }, { mover:0, dead:3, arm:[1,1], deg:[2,2] },
+    { mover:0, dead:3, arm:[1,-1], deg:[2,5] }, { mover:0, dead:3, arm:[2,1], deg:[2,141] },
+];
+// Counters, so the rung's two halves can be reported separately instead of guessed at: how often the
+// table was consulted and hit, and how often the dense test was run and overturned L11's claim.
+const DEAD_STATS = { certCalls:0, certHits:0, famHits:0, nearestVictim:Infinity, nearestJoint:Infinity,
+                     dense:0, confirmed:0, refuted:0, budgetOut:0, guards:0, guardHits:0, declined:0 };
+// The metric nn/forced-win.js certifies its balls in: L1 across the two pieces and across position
+// and rotation, with rotation carried as arc length (footR * |drot|).
+function deadPieceDist(p, q, o){
+    return Math.hypot(p[0]-q[o], p[1]-q[o+1]) + CFG.footR*Math.abs(norm(p[2]-q[o+2]));
+}
+function deadPoseNow(){ const p=G.pieces; return [p[0].x,p[0].y,p[0].rot, p[1].x,p[1].y,p[1].rot]; }
+// A pose rotated about one of its own feet, the way an entry-arc family is generated.
+function deadRotAbout(pose, footIdx, aRad){
+    const q=new Piece(0); q.x=pose[0]; q.y=pose[1]; q.rot=pose[2];
+    const w=q.feet()[footIdx], c=Math.cos(aRad), s=Math.sin(aRad);
+    const dx=pose[0]-w.x, dy=pose[1]-w.y;
+    return [w.x + dx*c - dy*s, w.y + dx*s + dy*c, pose[2]+aRad];
+}
+// Does the board right now sit inside a certificate, with `mover` to move? 'dead' = mover loses,
+// 'win2' = mover wins in two. Cheap because the VICTIM's pose alone is tested first: a 6D match is
+// impossible unless one piece already matches, so the family scan costs nothing in ordinary play.
+function deadCertVerdict(mover){
+    const p = deadPoseNow(); DEAD_STATS.certCalls++;
+    for (const c of DEAD_CERTS){
+        if (c.mover !== mover) continue;
+        const dv = deadPieceDist([p[3*mover],p[3*mover+1],p[3*mover+2]], c.p, 3*mover);
+        if (dv < DEAD_STATS.nearestVictim) DEAD_STATS.nearestVictim = dv;
+        if (dv > c.eps) continue;
+        const da = deadPieceDist([p[3*(1-mover)],p[3*(1-mover)+1],p[3*(1-mover)+2]], c.p, 3*(1-mover));
+        if (dv + da < DEAD_STATS.nearestJoint) DEAD_STATS.nearestJoint = dv + da;
+        if (dv + da <= c.eps){ DEAD_STATS.certHits++; return c.kind; }
+    }
+    // entry arcs: the victim is parked on a dead pose and the attacker is somewhere on its arc
+    for (const f of DEAD_FAMILIES){
+        const c = DEAD_CERTS[f.dead], vict = 1-f.mover;
+        if (f.mover !== mover) continue;
+        const dv = deadPieceDist([p[3*vict],p[3*vict+1],p[3*vict+2]], c.p, 3*vict);
+        if (dv > c.eps) continue;
+        const base = [c.p[3*f.mover], c.p[3*f.mover+1], c.p[3*f.mover+2]];
+        for (let s=f.deg[0]; s<=f.deg[1]; s++){
+            const a = deadRotAbout(base, f.arm[0], -f.arm[1]*s*Math.PI/180);
+            const da = deadPieceDist([p[3*f.mover],p[3*f.mover+1],p[3*f.mover+2]], [a[0],a[1],a[2]], 0);
+            if (dv + da <= c.eps){ DEAD_STATS.famHits++; return 'win2'; }
+        }
+    }
+    return null;
+}
+// THE TEST. `victim` is to move: it is DEAD when every stop it can reach on any of its six arms
+// leaves the attacker an immediate throw. Returns null when dead, or the first stop that gets away
+// -- the quiet re-orientation a swing-to-the-jam opponent model cannot express. Stops are sampled
+// every `stepDeg` along each arm plus the arm's own endpoint (the six ladderScore3 reads), so the
+// test strictly contains L11's and can only ever refuse a claim, never invent one. `maxStops` is a
+// hard budget: running out returns the stop it stopped at, i.e. refuses to certify.
+function ladderDeadEscape(victim, stepDeg, maxStops){
+    const att = 1-victim, s0 = takeSnap(), origActive = G.active;
+    const step = (stepDeg||6)*Math.PI/180;
+    let budget = maxStops || 160;
+    const give = st => { ladderRestore(s0); G.active=origActive; return st; };
+    for (let pv=0; pv<3; pv++) for (const dir of [1,-1]){
+        ladderRestore(s0); G.active=victim; pinFoot(pv);
+        let guard=0, lastMark=0; const stops=[];
+        while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && guard++ < 500){
+            applySwing(dir*AI_STEP_RAD); const a=Math.abs(G.netRad);
+            if (a-lastMark >= step && a >= HARD_MIN_MOVE_RAD && !G.pieces[victim].anyFootOff()){
+                lastMark=a; stops.push({pivotIdx:pv,dir,targetRad:a,snap:takeSnap()}); }
+        }
+        if (Math.abs(G.netRad) >= HARD_MIN_MOVE_RAD && !G.pieces[victim].anyFootOff())
+            stops.push({pivotIdx:pv,dir,targetRad:Math.abs(G.netRad),snap:takeSnap()});
+        for (const st of stops){
+            if (budget-- <= 0){ DEAD_STATS.budgetOut++; return give(st); }
+            ladderRestore(st.snap);
+            if (G.pieces[att].anyFootOff()) return give(st);        // the victim threw the attacker
+            const s1=takeSnap(); let punished=false;
+            for (let ap=0; ap<3 && !punished; ap++) for (const ad of [1,-1]){
+                ladderRestore(s1); G.active=att;
+                const anet=simMoveToLimit(ap,ad);
+                if (Math.abs(anet) < HARD_MIN_MOVE_RAD) continue;
+                if (G.pieces[att].anyFootOff()) continue;
+                if (G.pieces[victim].anyFootOff()){ punished=true; break; }
+            }
+            if (!punished) return give(st);
+        }
+    }
+    ladderRestore(s0); G.active=origActive; return null;
+}
+// The root re-scored against the escape the dense test found: the opponent plays it, I answer with
+// the best of my six, and that is what the root is worth. ladderScore3's inner block, verbatim,
+// against one reply it never had.
+function ladderDeadRescore(idx, w, esc){
+    ladderRestore(esc.snap);
+    if (G.pieces[idx].anyFootOff()) return -HARD_WIN_BONUS;
+    if (G.pieces[1-idx].anyFootOff()) return HARD_WIN_BONUS + ladderEval(idx,w);
+    const s2=takeSnap(); let bf=-Infinity;
+    for (let fp=0; fp<3 && bf<HARD_WIN_BONUS/2; fp++) for (const fd of [1,-1]){
+        ladderRestore(s2); G.active=idx;
+        const fnet=simMoveToLimit(fp,fd);
+        if (Math.abs(fnet) < HARD_MIN_MOVE_RAD) continue;
+        if (G.pieces[idx].anyFootOff()) continue;
+        const fs = G.pieces[1-idx].anyFootOff() ? HARD_WIN_BONUS+ladderEval(idx,w) : ladderEval(idx,w);
+        if (fs>bf) bf=fs;
+    }
+    return bf===-Infinity ? ladderEval(idx,w) : bf;
+}
+// THE OTHER DIRECTION -- not "can I kill", but "am I walking into one". All four certified dead
+// positions were mined out of REAL GAMES: somebody played into them. L11 cannot see that coming,
+// because seeing it means asking "after their reply, is EVERY stop of mine punished", and L11's
+// third ply answers only "does any of my six endpoint swings throw them". So this is where the dead
+// corpus has something L11 does not already have, and it is the half worth paying for.
+//
+// GATED ON WHAT THE FOUR CERTIFICATES LOOK LIKE, which is the only global statement the corpus
+// supports. At all four dead positions the victim's outermost foot is 0.7-10.7u inside the rim
+// (56.5, 64.1, 64.2, 66.4 against a 67.167u drop-off) and the hubs are 14-20u apart -- in contact,
+// which the 175-position rim catalogue underlines from the other side: it found NO dead position
+// among non-touching rim poses, and every throw-in-1 position with the victim to move was an escape.
+// A throw in two needs a foot of mine carried past the rim by one push, so a piece parked well
+// inside with the other piece a board away is not the shape. The gate skips those for nothing.
+const DEAD_GUARD_RIM = 54, DEAD_GUARD_HUB = 30;
+// Is the side to move here about to be shown a forced loss? True when the opponent has a reply
+// after which `me` is dead. Replies come from ladderOppReplies (endpoints, parks and the shove
+// stops), capped, because the move that sets a dead position up is exactly the quiet one.
+function ladderDeadGuard(me, o){
+    const opp=1-me;
+    if (outermostRadU(G.pieces[me]) < DEAD_GUARD_RIM) return null;
+    if (Math.hypot(G.pieces[0].x-G.pieces[1].x, G.pieces[0].y-G.pieces[1].y) > DEAD_GUARD_HUB) return null;
+    const s0=takeSnap(), origActive=G.active;
+    DEAD_STATS.guards++;
+    const replies = ladderOppReplies(opp, me, o, s0).slice(0, o.guardReplies||12);
+    for (const r of replies){
+        ladderRestore(s0); G.active=opp; pinFoot(r.pivotIdx);
+        let g=0;
+        while (!G.atLimit && Math.abs(G.netRad) < Math.abs(r.targetRad) && g++ < 500)
+            applySwing(r.dir*Math.min(AI_STEP_RAD, Math.abs(r.targetRad)-Math.abs(G.netRad)));
+        if (Math.abs(G.netRad) < HARD_MIN_MOVE_RAD) continue;
+        if (G.pieces[opp].anyFootOff()) continue;
+        if (G.pieces[me].anyFootOff()){ ladderRestore(s0); G.active=origActive; DEAD_STATS.guardHits++; return r; }
+        if (outermostRadU(G.pieces[me]) < DEAD_GUARD_RIM) continue;
+        if (!ladderDeadEscape(me, o.deadDeg||6, o.deadStops||160)){
+            ladderRestore(s0); G.active=origActive; DEAD_STATS.guardHits++; return r; }
+    }
+    ladderRestore(s0); G.active=origActive; return null;
+}
+// L11+dead (kind 'dead'): ladderPlan3, with two additions and nothing else changed.
+//   (a) the certified table, consulted on every candidate child (costs four distance sums);
+//   (b) the dense dead test, run ONLY on a child ladderScore3 has just called a forced win. That is
+//       what keeps it affordable: the test is skipped on the overwhelming majority of candidates,
+//       and when it does run it exits at the first stop that escapes -- which is usually the first
+//       stop it tries, six sweeps' work.
+//   (c) the guard: the top `guardCands` moves by L11's own score are checked for an opponent reply
+//       that leaves this rung dead, in score order, and the first one that survives is played. If
+//       every checked move walks into one, L11's own pick stands -- the guard can decline a move
+//       but never invents one, so a rung wearing it is still recognisably L11.
+function ladderPlanDead(idx, w, o){
+    const origActive=G.active, snap0=takeSnap();
+    const roots = ladderRoots3(idx, w, o, snap0);
+    if (!roots.length){ ladderRestore(snap0); G.active=origActive; return null; }
+    let best=null; const scored=[];
+    for (const c of roots.slice(0, o.maxCands||10)){
+        ladderRestore(c.snap); let score;
+        if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
+        else if (deadCertVerdict(1-idx) === 'dead') score = HARD_WIN_BONUS/2 + c.q;
+        else {
+            const worst = ladderScore3(idx, w, c.snap, best ? best.score : undefined);
+            score = worst===Infinity ? c.q : worst;
+            if (score >= HARD_WIN_BONUS/2){                 // L11 claims a forced win -- test it
+                DEAD_STATS.dense++;
+                ladderRestore(c.snap); G.active=idx;
+                const esc = ladderDeadEscape(1-idx, o.deadDeg||6, o.deadStops||160);
+                if (esc){ DEAD_STATS.refuted++; score = ladderDeadRescore(idx, w, esc); }
+                else DEAD_STATS.confirmed++;
+            }
+        }
+        if (!best || score>best.score) best={pivotIdx:c.pivotIdx,dir:c.dir,targetRad:c.targetRad,score};
+        scored.push({c, score});
+    }
+    scored.sort((a,b)=>b.score-a.score);
+    for (const sc of scored.slice(0, o.guardCands||6)){
+        if (sc.score >= HARD_WIN_BONUS/2) break;             // already winning: nothing to guard
+        ladderRestore(sc.c.snap); G.active=idx;
+        if (!ladderDeadGuard(idx, o)){
+            ladderRestore(snap0); G.active=origActive;
+            return {pivotIdx:sc.c.pivotIdx, dir:sc.c.dir, targetRad:sc.c.targetRad, score:sc.score};
+        }
+        DEAD_STATS.declined++;
+    }
+    ladderRestore(snap0); G.active=origActive; return best;
+}
 // manual sweep returning the natural limit + where the first crossing gets billed (for L1/random)
 // ---------- The corner-cross opening (a wrapper any ladder rung can wear) ----------
 // A printed corner is where a ring meets a side arc, and rounding one is a single crossing over two
@@ -5444,6 +5697,7 @@ function ladderPlanRung(def, idx){
     if (def.kind==='p4') return ladderPlan4(idx, def.w, def.o);
     if (def.kind==='opp') return ladderPlanOppModel(idx, def.w, def.o);
     if (def.kind==='opp2') return ladderPlan13(idx, def.w, def.o);
+    if (def.kind==='dead') return ladderPlanDead(idx, def.w, def.o);
     return ladderSampledPlan(idx, def.w, def.o);
 }
 

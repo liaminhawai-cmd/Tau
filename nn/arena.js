@@ -455,6 +455,19 @@ function main() {
                   `${(100*s.a/dec).toFixed(0)}% of decided, ${fmtElo(eloFromScore(s.a, s.b))}, ` +
                   `avg ${(pliesSum/games).toFixed(0)} plies, ${secs.toFixed(0)}s)`;
   console.log('\n' + summary);
+  // --deadStats: what the L11+dead rung (AI_LADDER's 'dead' kind) actually did this run. Reported
+  // because the honest question about a certified-position rung is how often its knowledge fired at
+  // all, and that has to be counted rather than assumed. certHits/famHits are the literal table;
+  // dense/refuted are the test the certificates are defined by, run only on a claimed forced win.
+  if (process.argv.includes('--deadStats') && eng.DEAD_STATS) {
+    const d = eng.DEAD_STATS;
+    const line = `dead-set: table consulted ${d.certCalls}x, hits ${d.certHits} point + ${d.famHits} arc; ` +
+                 `nearest victim ${d.nearestVictim === Infinity ? 'n/a' : d.nearestVictim.toFixed(2) + 'u'}; ` +
+                 `dense test run ${d.dense}x -> ${d.confirmed} confirmed dead, ${d.refuted} refuted; ` +
+                 `guard run ${d.guards}x -> ${d.guardHits} forced losses seen, ${d.declined} moves declined` +
+                 (d.budgetOut ? `, ${d.budgetOut} out of budget` : '');
+    console.log(line); writeLog(line + '\n');
+  }
   writeLog(`FINISHED ${new Date().toISOString()}\n${summary}\n` +
            `${fmtElo(eloFromScore(s.a, s.b))} on ${dec.toFixed(1)} decided games => ${eloFromScore(s.a, s.b).verdict}` +
            (aKomi + bKomi ? ` (${aKomi + bKomi} of them scored at the cap, worth ${eng.CFG.komiLoss} each)` : '') + `\n` +

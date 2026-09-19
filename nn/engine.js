@@ -17,6 +17,9 @@ const SEEDS = [
   'commitTurn', 'koLegalizePlan', 'koViolation', 'koReset', 'adjudicate', 'outermostRadU',
   'directionToward', 'aiChoosePlan', 'aiSwingDir', 'searchedPlanFor', 'simMoveToLimit',
   'AI_LADDER', 'ladderPlanFor',
+  // L11+dead's certificate table and counters: DEAD_STATS is read by the lab (arena/probe) to
+  // report how often the certified set was actually hit, which is the honest half of that rung.
+  'DEAD_CERTS', 'DEAD_STATS', 'ladderDeadEscape',
   // board geometry, for features.js: the printed lines and where they meet. These already rode in
   // via the rules engine's own dependency closure, but they're seeded explicitly so a future
   // refactor of applySwing/ladderEval can't silently drop them and break featurisation instead.
@@ -222,6 +225,7 @@ __exports = {
   koLegalizePlan, koViolation, koReset, adjudicate, outermostRadU,
   directionToward, aiChoosePlan, simMoveToLimit, searchedPlanFor,
   AI_LADDER, ladderPlanFor, ladderEval,
+  DEAD_CERTS, DEAD_FAMILIES, DEAD_STATS, deadCertVerdict, ladderDeadEscape,
   angInSpan, nearLineIds, lineDistOf, lineSideOf, LINE_INTERSECTIONS,
   // the crossing rule itself, so a caller can ask it at chosen poses instead of only through
   // applySwing's substep ladder (forced-win.js's limitAt asks it at closed-form event angles)
