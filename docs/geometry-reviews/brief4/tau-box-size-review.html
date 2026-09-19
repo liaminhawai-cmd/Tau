@@ -1,0 +1,973 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tau — the box-size gap</title><style>*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#faf9f6;color:#202c3d;font:17px/1.7 system-ui,-apple-system,Segoe UI,sans-serif}main{max-width:1120px;margin:auto;padding:50px 32px 100px}h1{font:600 clamp(36px,5.4vw,62px)/1.12 Georgia,serif;letter-spacing:-.025em;max-width:950px;margin:20px 0 28px}h2{font:600 31px/1.25 Georgia,serif;border-top:1px solid #dce1e6;margin:62px 0 24px;padding-top:34px}h3{font:650 20px/1.4 system-ui;margin:34px 0 12px}p,li{max-width:940px}a{color:#145ba1;text-underline-offset:3px}a[id]{scroll-margin-top:24px}code{font: .86em/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;background:#edf0f3;padding:1px 4px;border-radius:3px;overflow-wrap:anywhere}pre{background:#edf2f7;border-left:3px solid #3974a8;padding:20px 22px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;margin:22px 0}pre code{font-size:14px;background:none;padding:0;border-radius:0}.table-wrap{overflow-x:auto;margin:24px 0}table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.5;background:#fff;min-width:620px}th,td{padding:12px 15px;text-align:left;vertical-align:top;border-bottom:1px solid #e5e9ee}th{background:#eaf0f5}nav{background:#edf2f6;border:1px solid #d6e0ea;padding:16px 26px 22px;margin:35px 0;border-radius:8px}nav h2{font:650 17px system-ui;border:0;margin:0;padding:0}nav ol{columns:2;column-gap:40px;padding-left:21px;margin:10px 0 0}nav li{break-inside:avoid;font-size:15px;margin:6px 0}li{padding-left:4px;margin:10px 0}figure{margin:28px 0;background:#fff;border:1px solid #dce1e6;padding:13px 8px;border-radius:8px}.drawing svg{width:100%;max-width:100%;height:auto;display:block}figcaption{font-size:13px;color:#657386;padding:12px 18px 4px}button{cursor:pointer;font:600 12px system-ui;color:#145ba1;background:#f3f7fa;border:1px solid #c6d4e2;padding:7px 12px;border-radius:5px}.zoom{display:block;margin:0 10px 8px auto}dialog{width:96vw;height:94vh;max-width:none;max-height:none;border:1px solid #b3bdc9;border-radius:8px;padding:0}dialog::backdrop{background:#132234bb}.dialog-top{position:sticky;top:0;background:#eaf0f5;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;z-index:5;font-size:13px}.zoom-content{overflow:auto;padding:15px}.zoom-content svg{width:1550px;height:auto}footer{font-size:13px;color:#657386;margin-top:50px;border-top:1px solid #dce1e6;padding-top:15px}@media(max-width:660px){body{font-size:16px}main{padding:25px 17px 70px}h2{font-size:26px}h3{font-size:19px}nav{padding:18px}nav ol{columns:1}pre{padding:12px}pre code{font-size:12px}th,td{padding:10px 12px}figure{padding:8px 2px}}@media print{body{background:white;font-size:10pt}main{padding:0;max-width:none}h2{font-size:20pt}h3{font-size:13pt}h2,h3{break-after:avoid}pre,figure{break-inside:avoid}pre code{font-size:8pt}.zoom,dialog{display:none}table{min-width:0;font-size:8pt}nav{break-after:page}a{color:inherit}}</style></head><body><main><h1>Tau’s box-size gap: what is proved, what breaks, and what to try next</h1>
+<p><strong>Review of Brief 4 and <code>nn/throw-cert.js</code> at <code>1cf90f63fb597c039d99ff554242a12ff4b91f1a</code>.</strong> The checker has useful new geometry, but its small-box <code>certified</code> output is not yet justified by its enclosure argument. I reproduced a rotation-unit mismatch and found two concrete errors in the park linearisation. Separately, the proposed fixed small invariant box fails even for the centre trajectory.</p>
+<p>There is a constructive result: outward-rounded local calculations give <strong>positive attacker advance and radial gain over boxes of ±0.125u in position and ±0.01 rad in rotation</strong> at three park slabs. A derivative of the complete contact correction also captures the strong contraction that the direction-only calculation misses. Neither result, by itself, certifies the complete throw from that initial box.</p>
+<p>The reviewed checker’s Git blob is <code>b8fb4c6f3bc69beedd8b8973e96994d65dc2c96a</code>. It was unchanged at PR #18 head <code>1ba97f2a9b7bf169c40972fa9476b10c77c3ee13</code> when checked for this review; the explanatory document had advanced. All numerical findings below are tied to the pinned checker, not future branch heads.</p>
+<nav aria-label="Report index"><h2>Index</h2>
+<ol>
+<li><a href="#reproduction">Reproducing the claim and its units</a></li>
+<li><a href="#defects">Two errors in the enclosure calculation</a></li>
+<li><a href="#invariance">Why the fixed small box cannot be invariant</a></li>
+<li><a href="#slabs">Actual local bounds for H2 and H3</a></li>
+<li><a href="#full-map">The full correlated contact update</a></li>
+<li><a href="#barrier">A finite-step radial barrier</a></li>
+<li><a href="#second-arm">The second arm’s different contact transition</a></li>
+<li><a href="#moving-tube">A moving tube that could close the proof</a></li>
+<li><a href="#gap">What the size gap does and does not establish</a></li>
+<li><a href="#reproduce">Reproduction and remaining obligations</a></li>
+</ol></nav>
+<p><a id="reproduction"></a></p>
+<h2>1. Reproducing the claim and its units</h2>
+<p>The seed is <code>ndpxhts24</code>, after the victim’s 8° reply. <code>pieces.json</code> supplies the exact decimal inputs. Attacker 1 rotates clockwise around foot 0 or foot 2; exposed victim foot 1 is tested against radius 67.167u. The search calls one degree at a time, giving three equal ⅓° substeps per call. This schedule matters: one call for the whole swing would run a different finite computation.</p>
+<p>The CLI explicitly accepts <code>hRotDeg</code>, and converts it using <code>hr = +args[6] * DEG</code>. The reported small-box output is reproducible with <strong>±0.002 degrees</strong>, not the brief’s ±0.002 radians.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Initial position half-width</th>
+<th>Rotation half-width</th>
+<th>Foot-0 arm: checker output</th>
+<th>Foot-2 arm: checker output</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0.0002u</td>
+<td>0.002°</td>
+<td><code>certified</code>, k85, radius lower bound 67.192689</td>
+<td><code>certified</code>, k112, lower bound 67.204663</td>
+</tr>
+<tr>
+<td>0.0002u</td>
+<td>0.002 rad</td>
+<td>Exception at k11: <code>post</code> is null</td>
+<td>Refused at k78</td>
+</tr>
+<tr>
+<td>0.0003u</td>
+<td>0.003°</td>
+<td>Refused at k85</td>
+<td><code>certified</code>, k112, lower bound 67.202951</td>
+</tr>
+<tr>
+<td>0.001u</td>
+<td>0.01°</td>
+<td>Refused at k74</td>
+<td>Refused at k113</td>
+</tr>
+</tbody></table></div>
+<p>These are <strong>program outputs</strong>, not endorsed certificates. The null exception is reporting code reached when every state takes the no-push branch; it does not demonstrate a dynamical failure.</p>
+<p>The sampling grid scales the rotation axis as Rθ. Thus the first row’s metric half-widths are approximately <code>(0.0002, 0.0002, 0.00080613)u</code>. Against a cell with half-width 0.125u on all three metric axes, the subdivision ratios are approximately <strong>625, 625 and 155</strong>, a product of 6.06×10⁷. The order-of-magnitude subdivision concern survives, but the ratio is not 625 on every axis.</p>
+<p>The park timing correction in the brief is right: pre-push vertex contact spans k74–98, post-push contact k79–104. Their intersection contains the nominal first throw at k84. Those endpoint observations do not prove that every internal solver correction stays in that regime.</p>
+<p><a id="defects"></a></p>
+<h2>2. Two errors in the enclosure calculation</h2>
+<h3>2.1 The park Jacobian differentiates the wrong attacker chord</h3>
+<p><code>parkJacobian</code> selects a chord with:</p>
+<pre><code class="language-js">segClosest3(A[a], A[a + 1], p, p)
+</code></pre>
+<p>For this implementation of <code>segClosest3</code>, placing the degenerate point segment second returns the first segment’s start rather than its perpendicular projection. The selector chooses the nearest chord start. During the studied park it selects chord <strong>2</strong>, although the actual perpendicular foot is on chord <strong>1</strong>. The point-first call is:</p>
+<pre><code class="language-js">segClosest3(p, p, A[a], A[a + 1])
+</code></pre>
+<p>Here is one derivative entry, ∂nₓ/∂x, evaluated at singleton pre-push poses:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Substep</th>
+<th align="right">Current <code>parkJacobian</code></th>
+<th align="right">Derivative for the actual chord</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>74</td>
+<td align="right">0.203529327768</td>
+<td align="right">0.124912560021</td>
+</tr>
+<tr>
+<td>80</td>
+<td align="right">0.225863204514</td>
+<td align="right">0.141048778664</td>
+</tr>
+<tr>
+<td>84</td>
+<td align="right">0.242915167672</td>
+<td align="right">0.153818090129</td>
+</tr>
+</tbody></table></div>
+<p>The chord mismatch also occurs at k79, 85 and 95. At a singleton, a derivative interval for the wrong function cannot justify the mean-value enclosure for the real contact direction. This is an incorrect enclosure premise, not merely an overestimate of its width.</p>
+<h3>2.2 A carried basis no longer satisfies m₃ = a꜀</h3>
+<p>Let a꜀ be the current centre push direction, M the carried frame, m₃ its third column, B the direction Jacobian, and N = Id + Λ꜀B. In this identity λ = Λ − Λ꜀ is the variation in total push magnitude. The code preserves a well-conditioned frame across substeps using <code>st.keep</code>, but later uses the identity</p>
+<pre><code class="language-text">λ a꜀ = λ N m₃ − λ Λ꜀ B m₃.
+</code></pre>
+<p>The right side is <strong>λm₃</strong>. It equals the left side only when the third column still equals the current direction. Measured in <code>(x,y,Rθ)</code> coordinates, the norm of m₃ − a꜀ is 0 at k73, 0.02361 at k74, 0.05022 at k75 and 0.16927 at k79; its maximum before the reported certificate is about 0.39458.</p>
+<p>The frame-independent identity is</p>
+<pre><code class="language-text">λ a꜀ = λ N m₃ + λ(a꜀ − m₃ − Λ꜀ B m₃).
+</code></pre>
+<p>The missing term is λ(a꜀ − m₃). The nonlinear fallback’s assignment of the magnitude variation to coefficient 3 has the same assumption. Alternatively, carry the actual coordinates of a꜀ in the new frame, or differentiate the complete correction as in section 5.</p>
+<p>An in-memory diagnostic changing only chord selection returns <code>certified</code> at k84 for the smallest degree-labelled box. Adding the missing frame term makes that run refuse at k83 because two leg pairs become possible. These are useful ablations, <strong>not a repaired formal checker</strong>. They show that the reported small-box result depends on the disputed bookkeeping. They do not exhibit a pose that escapes the throw.</p>
+<p>The remaining proof must also cover direction derivatives along all internal corrections, all feasible contact transitions, and the finite solver’s residual for every pose. A Jacobian on the pre-push box alone does not automatically bound an average of directions along a multi-correction path.</p>
+<p><a id="invariance"></a></p>
+<h2>3. Why the fixed small box cannot be invariant</h2>
+<p>Interpret B literally as a box centred on the initial victim pose with half-widths <code>(0.1u, 0.1u, 0.01 rad)</code>. Its centre trajectory leaves B at <strong>k15, a 5° sweep</strong>, with displacement</p>
+<pre><code class="language-text">Δx = +0.058073207546u
+Δy = −0.147474534319u
+Δθ = −0.003303968478 rad.
+</code></pre>
+<p>Its outermost foot is then at 64.046910u, still on the board. The same witness leaves the ±0.125u box. Just before the nominal throw, after k83, the y displacement is −5.123380u and the angular displacement is −0.0459191 rad.</p>
+<p>Therefore H4 is false for that <strong>fixed</strong> small box, independently of how tightly derivatives are bounded. The initial uncertainty width is not the distance the body travels. A narrow set travelling with the trajectory, or a long curved region containing it, is a different and viable proposal.</p>
+<figure><button class="zoom" type="button">Enlarge figure</button><div class="drawing"><svg role="img" aria-label="The nominal trajectory leaves the initial ±0.125u box long before the throw. On the second arm, the closest attacker point approaches its 37.5° vertex while the victim point remains inside a chord." xmlns:xlink="http://www.w3.org/1999/xlink" width="864pt" height="324pt" viewBox="0 0 864 324" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-09-19T10:00:20.213373</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.8, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="trajectory-and-transition-figure_1">
+  <g id="trajectory-and-transition-patch_1">
+   <path d="M 0 324 
+L 864 324 
+L 864 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="trajectory-and-transition-axes_1">
+   <g id="trajectory-and-transition-patch_2">
+    <path d="M 40.862584 288.707885 
+L 423.542109 288.707885 
+L 423.542109 19.030178 
+L 40.862584 19.030178 
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="trajectory-and-transition-patch_3">
+    <path d="M 40.862584 42.765191 
+L 423.542109 42.765191 
+L 423.542109 31.288255 
+L 40.862584 31.288255 
+z
+" clip-path="url(#trajectory-and-transition-ped33493df7)" style="fill: #b9decf; opacity: 0.8; stroke: #b9decf; stroke-linejoin: miter"/>
+   </g>
+   <g id="trajectory-and-transition-matplotlib.axis_1">
+    <g id="trajectory-and-transition-xtick_1">
+     <g id="trajectory-and-transition-line2d_1">
+      <defs>
+       <path id="trajectory-and-transition-m3f318cccf1" d="M 0 0 
+L 0 3.5 
+" style="stroke: #000000; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#trajectory-and-transition-m3f318cccf1" x="40.862584" y="288.707885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_1">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="40.862584" y="304.066166" transform="rotate(-0 40.862584 304.066166)">0</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-xtick_2">
+     <g id="trajectory-and-transition-line2d_2">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m3f318cccf1" x="106.841812" y="288.707885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_2">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="106.841812" y="304.066166" transform="rotate(-0 106.841812 304.066166)">5</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-xtick_3">
+     <g id="trajectory-and-transition-line2d_3">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m3f318cccf1" x="172.821041" y="288.707885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_3">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="172.821041" y="304.066166" transform="rotate(-0 172.821041 304.066166)">10</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-xtick_4">
+     <g id="trajectory-and-transition-line2d_4">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m3f318cccf1" x="238.800269" y="288.707885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_4">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="238.800269" y="304.066166" transform="rotate(-0 238.800269 304.066166)">15</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-xtick_5">
+     <g id="trajectory-and-transition-line2d_5">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m3f318cccf1" x="304.779498" y="288.707885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_5">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="304.779498" y="304.066166" transform="rotate(-0 304.779498 304.066166)">20</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-xtick_6">
+     <g id="trajectory-and-transition-line2d_6">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m3f318cccf1" x="370.758727" y="288.707885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_6">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="370.758727" y="304.066166" transform="rotate(-0 370.758727 304.066166)">25</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-text_7">
+     <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="232.202347" y="318.712104" transform="rotate(-0 232.202347 318.712104)">Attacker sweep (degrees)</text>
+    </g>
+   </g>
+   <g id="trajectory-and-transition-matplotlib.axis_2">
+    <g id="trajectory-and-transition-ytick_1">
+     <g id="trajectory-and-transition-line2d_7">
+      <defs>
+       <path id="trajectory-and-transition-m734d27500d" d="M 0 0 
+L -3.5 0 
+" style="stroke: #000000; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#trajectory-and-transition-m734d27500d" x="40.862584" y="266.565448" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_8">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="33.862584" y="270.744588" transform="rotate(-0 33.862584 270.744588)">−5</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-ytick_2">
+     <g id="trajectory-and-transition-line2d_8">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m734d27500d" x="40.862584" y="220.657703" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_9">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="33.862584" y="224.836843" transform="rotate(-0 33.862584 224.836843)">−4</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-ytick_3">
+     <g id="trajectory-and-transition-line2d_9">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m734d27500d" x="40.862584" y="174.749958" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_10">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="33.862584" y="178.929099" transform="rotate(-0 33.862584 178.929099)">−3</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-ytick_4">
+     <g id="trajectory-and-transition-line2d_10">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m734d27500d" x="40.862584" y="128.842213" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_11">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="33.862584" y="133.021354" transform="rotate(-0 33.862584 133.021354)">−2</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-ytick_5">
+     <g id="trajectory-and-transition-line2d_11">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m734d27500d" x="40.862584" y="82.934468" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_12">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="33.862584" y="87.113609" transform="rotate(-0 33.862584 87.113609)">−1</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-ytick_6">
+     <g id="trajectory-and-transition-line2d_12">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m734d27500d" x="40.862584" y="37.026723" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_13">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="33.862584" y="41.205864" transform="rotate(-0 33.862584 41.205864)">0</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-text_14">
+     <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="11.358521" y="153.869031" transform="rotate(-90 11.358521 153.869031)">Victim y − initial y (u)</text>
+    </g>
+   </g>
+   <g id="trajectory-and-transition-line2d_13">
+    <path d="M 40.862584 37.026723 
+L 45.261199 37.026723 
+L 49.659814 37.026723 
+L 54.058429 37.026723 
+L 58.457045 37.026723 
+L 62.85566 37.026723 
+L 67.254275 37.026723 
+L 71.65289 37.026723 
+L 76.051506 37.026723 
+L 80.450121 37.026723 
+L 84.848736 37.026723 
+L 89.247351 37.026723 
+L 93.645967 37.1456 
+L 98.044582 39.348349 
+L 102.443197 41.565209 
+L 106.841812 43.796947 
+L 111.240428 46.043612 
+L 115.639043 48.305254 
+L 120.037658 50.581921 
+L 124.436273 52.873661 
+L 128.834888 55.180522 
+L 133.233504 57.50255 
+L 137.632119 59.839793 
+L 142.030734 62.192296 
+L 146.429349 64.560104 
+L 150.827965 66.943261 
+L 155.22658 69.341813 
+L 159.625195 71.755801 
+L 164.02381 74.18527 
+L 168.422426 76.63026 
+L 172.821041 79.090814 
+L 177.219656 81.566973 
+L 181.618271 84.702643 
+L 186.016887 87.915995 
+L 190.415502 91.146345 
+L 194.814117 94.393694 
+L 199.212732 97.658014 
+L 203.611348 100.939278 
+L 208.009963 104.237454 
+L 212.408578 107.552509 
+L 216.807193 110.88441 
+L 221.205808 114.233119 
+L 225.604424 117.598598 
+L 230.003039 120.980807 
+L 234.401654 124.379703 
+L 238.800269 127.795242 
+L 243.198885 131.227377 
+L 247.5975 134.676059 
+L 251.996115 138.141239 
+L 256.39473 141.622863 
+L 260.793346 145.120877 
+L 265.191961 148.635224 
+L 269.590576 152.165845 
+L 273.989191 155.712679 
+L 278.387807 159.275663 
+L 282.786422 162.854732 
+L 287.185037 166.449819 
+L 291.583652 170.060853 
+L 295.982267 173.687764 
+L 300.380883 177.330478 
+L 304.779498 180.988919 
+L 309.178113 184.663008 
+L 313.576728 188.352665 
+L 317.975344 192.057808 
+L 322.373959 195.778353 
+L 326.772574 199.514211 
+L 331.171189 203.265296 
+L 335.569805 207.031514 
+L 339.96842 210.812772 
+L 344.367035 214.608976 
+L 348.76565 218.420027 
+L 353.164266 222.245824 
+L 357.562881 226.086267 
+L 361.961496 230.050495 
+L 366.360111 234.265946 
+L 370.758727 238.482207 
+L 375.157342 242.699016 
+L 379.555957 246.916339 
+L 383.954572 251.134141 
+L 388.353187 255.352392 
+L 392.751803 259.57107 
+L 397.150418 263.790157 
+L 401.549033 268.009643 
+L 405.947648 272.229526 
+L 410.346264 276.449807 
+" clip-path="url(#trajectory-and-transition-ped33493df7)" style="fill: none; stroke: #263f72; stroke-width: 2.4; stroke-linecap: square"/>
+   </g>
+   <g id="trajectory-and-transition-line2d_14">
+    <path d="M 410.346264 288.707885 
+L 410.346264 19.030178 
+" clip-path="url(#trajectory-and-transition-ped33493df7)" style="fill: none; stroke-dasharray: 3.7,1.6; stroke-dashoffset: 0; stroke: #89919c"/>
+   </g>
+   <g id="trajectory-and-transition-patch_4">
+    <path d="M 40.862584 288.707885 
+L 40.862584 19.030178 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="trajectory-and-transition-patch_5">
+    <path d="M 40.862584 288.707885 
+L 423.542109 288.707885 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="trajectory-and-transition-PathCollection_1">
+    <defs>
+     <path id="trajectory-and-transition-maea87c6e18" d="M 0 3 
+C 0.795609 3 1.55874 2.683901 2.12132 2.12132 
+C 2.683901 1.55874 3 0.795609 3 0 
+C 3 -0.795609 2.683901 -1.55874 2.12132 -2.12132 
+C 1.55874 -2.683901 0.795609 -3 0 -3 
+C -0.795609 -3 -1.55874 -2.683901 -2.12132 -2.12132 
+C -2.683901 -1.55874 -3 -0.795609 -3 0 
+C -3 0.795609 -2.683901 1.55874 -2.12132 2.12132 
+C -1.55874 2.683901 -0.795609 3 0 3 
+z
+" style="stroke: #b5443d"/>
+    </defs>
+    <g clip-path="url(#trajectory-and-transition-ped33493df7)">
+     <use xlink:href="#trajectory-and-transition-maea87c6e18" x="106.841812" y="43.796947" style="fill: #b5443d; stroke: #b5443d"/>
+    </g>
+   </g>
+   <g id="trajectory-and-transition-patch_6">
+    <path d="M 158.028492 98.658212 
+Q 133.117787 71.959219 108.9698 46.077698 
+" style="fill: none; stroke: #b5443d; stroke-linecap: round"/>
+    <path d="M 110.36289 50.795675 
+L 108.9698 46.077698 
+L 113.580035 47.794013 
+" style="fill: none; stroke: #b5443d; stroke-linecap: round"/>
+   </g>
+   <g id="trajectory-and-transition-text_15">
+    <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #b5443d" x="120.037658" y="110.479115" transform="rotate(-0 120.037658 110.479115)">Leaves box at 5°</text>
+   </g>
+   <g id="trajectory-and-transition-text_16">
+    <text style="font-size: 13.2px; font-family: 'DejaVu Sans'; text-anchor: middle" x="232.202347" y="13.030178" transform="rotate(-0 232.202347 13.030178)">A small initial box is not a path enclosure</text>
+   </g>
+   <g id="trajectory-and-transition-legend_1">
+    <g id="trajectory-and-transition-patch_7">
+     <path d="M 48.962584 265.525854 
+L 66.962584 265.525854 
+L 66.962584 259.225854 
+L 48.962584 259.225854 
+z
+" style="fill: #b9decf; opacity: 0.8; stroke: #b9decf; stroke-linejoin: miter"/>
+    </g>
+    <g id="trajectory-and-transition-text_17">
+     <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: start" x="74.162584" y="265.525854" transform="rotate(-0 74.162584 265.525854)">Initial box: ±0.125u</text>
+    </g>
+    <g id="trajectory-and-transition-line2d_15">
+     <path d="M 48.962584 275.586166 
+L 57.962584 275.586166 
+L 66.962584 275.586166 
+" style="fill: none; stroke: #263f72; stroke-width: 2.4; stroke-linecap: square"/>
+    </g>
+    <g id="trajectory-and-transition-text_18">
+     <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: start" x="74.162584" y="278.736166" transform="rotate(-0 74.162584 278.736166)">Nominal y displacement</text>
+    </g>
+   </g>
+  </g>
+  <g id="trajectory-and-transition-axes_2">
+   <g id="trajectory-and-transition-patch_8">
+    <path d="M 478.320234 288.707885 
+L 860.99976 288.707885 
+L 860.99976 19.030178 
+L 478.320234 19.030178 
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="trajectory-and-transition-matplotlib.axis_3">
+    <g id="trajectory-and-transition-xtick_7">
+     <g id="trajectory-and-transition-line2d_16">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m3f318cccf1" x="495.714758" y="288.707885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_19">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="495.714758" y="304.066166" transform="rotate(-0 495.714758 304.066166)">108</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-xtick_8">
+     <g id="trajectory-and-transition-line2d_17">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m3f318cccf1" x="565.292854" y="288.707885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_20">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="565.292854" y="304.066166" transform="rotate(-0 565.292854 304.066166)">109</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-xtick_9">
+     <g id="trajectory-and-transition-line2d_18">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m3f318cccf1" x="634.870949" y="288.707885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_21">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="634.870949" y="304.066166" transform="rotate(-0 634.870949 304.066166)">110</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-xtick_10">
+     <g id="trajectory-and-transition-line2d_19">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m3f318cccf1" x="704.449045" y="288.707885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_22">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="704.449045" y="304.066166" transform="rotate(-0 704.449045 304.066166)">111</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-xtick_11">
+     <g id="trajectory-and-transition-line2d_20">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m3f318cccf1" x="774.027141" y="288.707885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_23">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="774.027141" y="304.066166" transform="rotate(-0 774.027141 304.066166)">112</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-xtick_12">
+     <g id="trajectory-and-transition-line2d_21">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m3f318cccf1" x="843.605236" y="288.707885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_24">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="843.605236" y="304.066166" transform="rotate(-0 843.605236 304.066166)">113</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-text_25">
+     <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="669.659997" y="318.712104" transform="rotate(-0 669.659997 318.712104)">Entering substep</text>
+    </g>
+   </g>
+   <g id="trajectory-and-transition-matplotlib.axis_4">
+    <g id="trajectory-and-transition-ytick_7">
+     <g id="trajectory-and-transition-line2d_22">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m734d27500d" x="478.320234" y="282.473838" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_26">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="471.320234" y="286.652979" transform="rotate(-0 471.320234 286.652979)">35.0</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-ytick_8">
+     <g id="trajectory-and-transition-line2d_23">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m734d27500d" x="478.320234" y="236.723934" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_27">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="471.320234" y="240.903075" transform="rotate(-0 471.320234 240.903075)">35.5</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-ytick_9">
+     <g id="trajectory-and-transition-line2d_24">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m734d27500d" x="478.320234" y="190.974031" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_28">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="471.320234" y="195.153171" transform="rotate(-0 471.320234 195.153171)">36.0</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-ytick_10">
+     <g id="trajectory-and-transition-line2d_25">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m734d27500d" x="478.320234" y="145.224127" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_29">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="471.320234" y="149.403268" transform="rotate(-0 471.320234 149.403268)">36.5</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-ytick_11">
+     <g id="trajectory-and-transition-line2d_26">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m734d27500d" x="478.320234" y="99.474224" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_30">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="471.320234" y="103.653364" transform="rotate(-0 471.320234 103.653364)">37.0</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-ytick_12">
+     <g id="trajectory-and-transition-line2d_27">
+      <g>
+       <use xlink:href="#trajectory-and-transition-m734d27500d" x="478.320234" y="53.72432" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="trajectory-and-transition-text_31">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end" x="471.320234" y="57.903461" transform="rotate(-0 471.320234 57.903461)">37.5</text>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-text_32">
+     <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle" x="440.540391" y="153.869031" transform="rotate(-90 440.540391 153.869031)">Leg arc coordinate (degrees)</text>
+    </g>
+   </g>
+   <g id="trajectory-and-transition-line2d_28">
+    <path d="M 478.320234 53.72432 
+L 860.99976 53.72432 
+" clip-path="url(#trajectory-and-transition-p28bd1a98fd)" style="fill: none; stroke-dasharray: 5.55,2.4; stroke-dashoffset: 0; stroke: #b5443d; stroke-width: 1.5"/>
+   </g>
+   <g id="trajectory-and-transition-line2d_29">
+    <path d="M 495.714758 126.128526 
+L 565.292854 103.617102 
+L 634.870949 80.987501 
+L 704.449045 58.239194 
+L 774.027141 52.800465 
+L 843.605236 31.288255 
+" clip-path="url(#trajectory-and-transition-p28bd1a98fd)" style="fill: none; stroke: #263f72; stroke-width: 1.5; stroke-linecap: square"/>
+    <defs>
+     <path id="trajectory-and-transition-ma99432eb21" d="M 0 3 
+C 0.795609 3 1.55874 2.683901 2.12132 2.12132 
+C 2.683901 1.55874 3 0.795609 3 0 
+C 3 -0.795609 2.683901 -1.55874 2.12132 -2.12132 
+C 1.55874 -2.683901 0.795609 -3 0 -3 
+C -0.795609 -3 -1.55874 -2.683901 -2.12132 -2.12132 
+C -2.683901 -1.55874 -3 -0.795609 -3 0 
+C -3 0.795609 -2.683901 1.55874 -2.12132 2.12132 
+C -1.55874 2.683901 -0.795609 3 0 3 
+z
+" style="stroke: #263f72"/>
+    </defs>
+    <g clip-path="url(#trajectory-and-transition-p28bd1a98fd)">
+     <use xlink:href="#trajectory-and-transition-ma99432eb21" x="495.714758" y="126.128526" style="fill: #263f72; stroke: #263f72"/>
+     <use xlink:href="#trajectory-and-transition-ma99432eb21" x="565.292854" y="103.617102" style="fill: #263f72; stroke: #263f72"/>
+     <use xlink:href="#trajectory-and-transition-ma99432eb21" x="634.870949" y="80.987501" style="fill: #263f72; stroke: #263f72"/>
+     <use xlink:href="#trajectory-and-transition-ma99432eb21" x="704.449045" y="58.239194" style="fill: #263f72; stroke: #263f72"/>
+     <use xlink:href="#trajectory-and-transition-ma99432eb21" x="774.027141" y="52.800465" style="fill: #263f72; stroke: #263f72"/>
+     <use xlink:href="#trajectory-and-transition-ma99432eb21" x="843.605236" y="31.288255" style="fill: #263f72; stroke: #263f72"/>
+    </g>
+   </g>
+   <g id="trajectory-and-transition-line2d_30">
+    <path d="M 495.714758 276.449807 
+L 565.292854 261.351652 
+L 634.870949 246.114359 
+L 704.449045 230.736358 
+L 774.027141 208.716603 
+L 843.605236 189.617122 
+" clip-path="url(#trajectory-and-transition-p28bd1a98fd)" style="fill: none; stroke: #30775f; stroke-width: 1.5; stroke-linecap: square"/>
+    <defs>
+     <path id="trajectory-and-transition-m788ec6d7a3" d="M 0 3 
+C 0.795609 3 1.55874 2.683901 2.12132 2.12132 
+C 2.683901 1.55874 3 0.795609 3 0 
+C 3 -0.795609 2.683901 -1.55874 2.12132 -2.12132 
+C 1.55874 -2.683901 0.795609 -3 0 -3 
+C -0.795609 -3 -1.55874 -2.683901 -2.12132 -2.12132 
+C -2.683901 -1.55874 -3 -0.795609 -3 0 
+C -3 0.795609 -2.683901 1.55874 -2.12132 2.12132 
+C -1.55874 2.683901 -0.795609 3 0 3 
+z
+" style="stroke: #30775f"/>
+    </defs>
+    <g clip-path="url(#trajectory-and-transition-p28bd1a98fd)">
+     <use xlink:href="#trajectory-and-transition-m788ec6d7a3" x="495.714758" y="276.449807" style="fill: #30775f; stroke: #30775f"/>
+     <use xlink:href="#trajectory-and-transition-m788ec6d7a3" x="565.292854" y="261.351652" style="fill: #30775f; stroke: #30775f"/>
+     <use xlink:href="#trajectory-and-transition-m788ec6d7a3" x="634.870949" y="246.114359" style="fill: #30775f; stroke: #30775f"/>
+     <use xlink:href="#trajectory-and-transition-m788ec6d7a3" x="704.449045" y="230.736358" style="fill: #30775f; stroke: #30775f"/>
+     <use xlink:href="#trajectory-and-transition-m788ec6d7a3" x="774.027141" y="208.716603" style="fill: #30775f; stroke: #30775f"/>
+     <use xlink:href="#trajectory-and-transition-m788ec6d7a3" x="843.605236" y="189.617122" style="fill: #30775f; stroke: #30775f"/>
+    </g>
+   </g>
+   <g id="trajectory-and-transition-patch_9">
+    <path d="M 478.320234 288.707885 
+L 478.320234 19.030177 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="trajectory-and-transition-patch_10">
+    <path d="M 478.320234 288.707885 
+L 860.99976 288.707885 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="trajectory-and-transition-text_33">
+    <text style="font-size: 13.2px; font-family: 'DejaVu Sans'; text-anchor: middle" x="669.659997" y="13.030178" transform="rotate(-0 669.659997 13.030178)">Second arm: an attacker-vertex transition</text>
+   </g>
+   <g id="trajectory-and-transition-legend_2">
+    <g id="trajectory-and-transition-line2d_31">
+     <path d="M 486.420234 139.992156 
+L 495.420234 139.992156 
+L 504.420234 139.992156 
+" style="fill: none; stroke-dasharray: 5.55,2.4; stroke-dashoffset: 0; stroke: #b5443d; stroke-width: 1.5"/>
+    </g>
+    <g id="trajectory-and-transition-text_34">
+     <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: start" x="511.620234" y="143.142156" transform="rotate(-0 511.620234 143.142156)">Attacker vertex: 37.5°</text>
+    </g>
+    <g id="trajectory-and-transition-line2d_32">
+     <path d="M 486.420234 153.202469 
+L 495.420234 153.202469 
+L 504.420234 153.202469 
+" style="fill: none; stroke: #263f72; stroke-width: 1.5; stroke-linecap: square"/>
+     <g>
+      <use xlink:href="#trajectory-and-transition-ma99432eb21" x="495.420234" y="153.202469" style="fill: #263f72; stroke: #263f72"/>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-text_35">
+     <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: start" x="511.620234" y="156.352469" transform="rotate(-0 511.620234 156.352469)">Closest point on attacker</text>
+    </g>
+    <g id="trajectory-and-transition-line2d_33">
+     <path d="M 486.420234 166.412781 
+L 495.420234 166.412781 
+L 504.420234 166.412781 
+" style="fill: none; stroke: #30775f; stroke-width: 1.5; stroke-linecap: square"/>
+     <g>
+      <use xlink:href="#trajectory-and-transition-m788ec6d7a3" x="495.420234" y="166.412781" style="fill: #30775f; stroke: #30775f"/>
+     </g>
+    </g>
+    <g id="trajectory-and-transition-text_36">
+     <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: start" x="511.620234" y="169.562781" transform="rotate(-0 511.620234 169.562781)">Closest point on victim</text>
+    </g>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="trajectory-and-transition-ped33493df7">
+   <rect x="40.862584" y="19.030178" width="382.679526" height="269.677707"/>
+  </clipPath>
+  <clipPath id="trajectory-and-transition-p28bd1a98fd">
+   <rect x="478.320234" y="19.030178" width="382.679526" height="269.677707"/>
+  </clipPath>
+ </defs>
+</svg>
+</div><figcaption>The nominal trajectory leaves the initial ±0.125u box long before the throw. On the second arm, the closest attacker point approaches its 37.5° vertex while the victim point remains inside a chord.</figcaption></figure>
+<p>H4 also needs consistent push units. For horizontal separation demand s and hub slide λ,</p>
+<pre><code class="language-text">λ = s / (1 + rₙ²/I),       ω = λ rₙ/I.
+|ω| ≤ s/(2√I),             |ω| ≤ (R/I)λ.
+</code></pre>
+<p>The constant 1/(2√I) ≈ 0.02588 bounds spin <strong>per unit s</strong>, not per unit λ. A bound in terms of accumulated hub-slide length needs L/I if |rₙ| ≤ L. The distinction matters on the second arm, whose lever arm is much larger.</p>
+<p><a id="slabs"></a></p>
+<h2>4. Actual local bounds for H2 and H3</h2>
+<p>I implemented an outward-rounded enclosure of the real polyline geometry in <code>slab-bounds.py</code>. For each row below, the victim pose ranges over a box centred on the nominal pose <strong>entering</strong> that substep, with half-widths <strong>±0.125u, ±0.125u, ±0.01 rad</strong>. The attacker angle ranges over the entire indicated ⅓° slab.</p>
+<p>Let n be the horizontal unit normal from attacker to victim, u the exposed foot’s radial unit vector, f its leg direction, and J a counterclockwise quarter-turn. Then</p>
+<pre><code class="language-text">g = n·u + (rₙ/I) R (Jf)·u.
+νₕ = (−J(pₐ − pivot))·n          [clockwise attacker advance per radian]
+ν₃ = h_f νₕ                     [3D distance closing per radian].
+</code></pre>
+<p>The displayed lower bounds are rounded down from the saved interval endpoints; the lever bounds are rounded up.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Substep</th>
+<th>Attacker slab</th>
+<th align="right">g lower bound</th>
+<th align="right">νₕ lower bound, u/rad</th>
+<th align="right">ν₃ lower bound, u/rad</th>
+<th align="right">Upper bound on |rₙ|, u</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>74</td>
+<td>24⅓°–24⅔°</td>
+<td align="right">0.45049</td>
+<td align="right">11.30605</td>
+<td align="right">5.14508</td>
+<td align="right">4.02593</td>
+</tr>
+<tr>
+<td>80</td>
+<td>26⅓°–26⅔°</td>
+<td align="right">0.34377</td>
+<td align="right">10.03130</td>
+<td align="right">4.76986</td>
+<td align="right">5.19592</td>
+</tr>
+<tr>
+<td>84</td>
+<td>27⅔°–28°</td>
+<td align="right">0.27072</td>
+<td align="right">9.01490</td>
+<td align="right">4.50484</td>
+<td align="right">5.94572</td>
+</tr>
+</tbody></table></div>
+<p>These are useful local H2/H3 bounds at the requested uncertainty scale. They are <strong>not</strong> bounds over the entire contact window, a proof that the trajectories enter these boxes, or an exclusion of other leg/hub contacts. In particular, these independent boxes cannot simply be summed into a throw certificate.</p>
+<p>The computation partitions the four-dimensional domain into 256 subboxes. It enumerates all 144 chord pairs for attacker leg 0 and victim leg 0 and their interior/endpoint active constraints. A candidate is discarded only by an interval projection/KKT test or because a verified distance lower bound exceeds an upper bound supplied by an admissible point pair. Every remaining minimiser contributes to the result. This avoids assuming that a whole box remains on the centre’s vertex.</p>
+<p>Arithmetic endpoints are rounded outward with <code>nextafter</code>; sine and cosine use interval Taylor polynomials and a derivative remainder bound, followed by a Lipschitz enclosure over the input interval. This establishes bounds for the stated <strong>real-geometry model with the supplied binary64 constants</strong>. It does not enclose every rounded instruction or branch comparison in the game engine. Ordinary floating-point grid checks are included as diagnostics, separately from this interval calculation.</p>
+<p>The same coarse calculation at k20 and k50 is inconclusive for g. A negative interval lower endpoint there is <strong>not a negative-g witness</strong>. The grazing approach and the full moving tube still need work.</p>
+<p><a id="full-map"></a></p>
+<h2>5. The full correlated contact update</h2>
+<p>Use mass coordinates z = <code>(x,y,√I θ)</code>. On one smooth closest-feature branch, let G(z) = d(z) − D, a = ∇G, S = aᵀa and H = ∇²G. For an active contact with no denominator floor, cap or deep-overlap switch, one actual correction is</p>
+<pre><code class="language-text">Φ(z) = z − G a/S.
+</code></pre>
+<p>Differentiating the <strong>whole correction</strong>, including its magnitude, gives</p>
+<pre><code class="language-text">DΦ = Id − aaᵀ/S − (G/S)H + (2G/S²) a(aᵀH)
+   = (Id − eeᵀ) + (G/S)(2eeᵀ − Id)H,    e = a/√S.
+</code></pre>
+<p>Since <code>2eeᵀ − Id</code> is an orthogonal reflection,</p>
+<pre><code class="language-text">‖DΦ − (Id − eeᵀ)‖ ≤ |G| ‖H‖ / S.
+</code></pre>
+<p>At G = 0 the active-branch derivative is a tangent-plane projection: the normal error is removed to first order. A calculation retaining only <code>Id + Λ꜀B</code>, with B the direction derivative, misses the magnitude derivative that supplies this contraction. There is no need to bound λ and the direction variation as independent intervals first.</p>
+<p>For one smooth branch on a convex enclosing domain, a mean-value inclusion is</p>
+<pre><code class="language-text">Φ(z꜀ + e) ∈ Φ(z꜀) + J꜀e + ([J] − J꜀)e,
+</code></pre>
+<p>where <code>[J]</code> encloses DΦ throughout that domain. A centred form, affine arithmetic or a Taylor model can retain the remaining dependencies. A third-derivative bound is optional; an interval enclosure of this explicit Jacobian is sufficient for the displayed formula.</p>
+<p><code>contact-map.js</code> implements second-order automatic differentiation of the interior/interior, victim-vertex and attacker-vertex distance formulas. Its full-update Jacobian agrees with centred finite differences to below 3×10⁻¹⁰ at the four tested park poses. These floating-point checks validate the formula implementation locally; they are not uniform interval bounds.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Substep</th>
+<th>Singular values of one correction’s Jacobian, mass coordinates</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>74</td>
+<td>1.011866, 1.002025, 0.037938</td>
+</tr>
+<tr>
+<td>80</td>
+<td>1.013382, 1.002059, 0.040853</td>
+</tr>
+<tr>
+<td>84</td>
+<td>1.014629, 1.002080, 0.042934</td>
+</tr>
+</tbody></table></div>
+<p>There is strong normal contraction and slight tangent expansion. This does not assert contraction in every direction, nor establish a whole-cell certificate.</p>
+<p>Two implementation consequences matter. First, at G = 0 this Jacobian is rank deficient: blindly replacing M by J꜀M and then inverting it is unsafe. Retain two tangent generators plus a bounded gap coordinate, or use a suitable invertible outer frame. Second, the engine applies a <strong>finite composition of piecewise corrections</strong>, not one correction with an averaged direction. Compose the maps for the actual passes, including the free identity branch, endpoint transitions and any reachable floor/cap branch. Distinct global minima can select different finite updates; preserve those branches rather than applying a mean-value theorem across a jump.</p>
+<p><a id="barrier"></a></p>
+<h2>6. A finite-step radial barrier</h2>
+<h3>Finite radial gain needs a rotational remainder</h3>
+<p>For one push let the exposed foot be F = c + Rf, radius r = |F|, radial unit u = F/r, and rotation ω = λrₙ/I. Convexity of the norm and the rotation Taylor bound give</p>
+<pre><code class="language-text">r_next − r ≥ u·(F_next − F)
+           ≥ λg − (R/2)ω²
+           = λ[g − Rλrₙ²/(2I²)].
+</code></pre>
+<p>Thus if g ≥ g_min, |rₙ| ≤ L and λ ≤ λ_max, a sufficient finite-step coefficient is</p>
+<pre><code class="language-text">γ = g_min − R λ_max L²/(2I²) &gt; 0,
+r_next − r ≥ γλ.
+</code></pre>
+<p>No extra negative quadratic remainder from the radial norm is necessary. Its support-plane inequality already has the useful sign. Conversely, <code>λg</code> alone is an infinitesimal expression, not an exact finite gain.</p>
+<p>Near first grazing, λ can approach zero even if g and attacker closing speed have positive lower bounds. Consequently a uniform positive <strong>gain per substep</strong> need not exist. Nondecrease permits zero gain while the pieces are free.</p>
+<h3>Attacker advance is not automatically penetration</h3>
+<p>Freeze q while the attacker moves from Aₖ₋₁ to Aₖ, and define the exact closing amount</p>
+<pre><code class="language-text">Cₖ(q) = d(Aₖ₋₁,q) − d(Aₖ,q).
+σ = d(Aₖ₋₁,q) − D.
+p = max(Cₖ(q) − σ, 0).
+</code></pre>
+<p>The first correction has λ = p/[h_f(1+rₙ²/I)] on the uncapped, unfloored branch. Previous clearance, first-contact timing and overshoot all matter. Replacing p by an instantaneous attacker velocity times a step, without integrating and accounting for σ, is not a proof.</p>
+<h3>A slab sum can charge clearance once</h3>
+<p>There is a useful non-stepping progress argument. Use the same designated leg-pair distance dₖ throughout a slab, while allowing its closest features to change. Write</p>
+<pre><code class="language-text">gₖ = dₖ(qₖ) − D,
+Cₖ = dₖ₋₁(qₖ₋₁) − dₖ(qₖ₋₁),
+δₖ = dₖ(qₖ) − dₖ(qₖ₋₁).
+</code></pre>
+<p>Here gₖ denotes the gap, not the radial coefficient g above. Direct telescoping yields</p>
+<pre><code class="language-text">Σδₖ = ΣCₖ + g_end − g_start.
+</code></pre>
+<p>Suppose every actual push in the slab satisfies radial gain ≥ γλ, and its contribution to the designated distance opening is at most b₊λ. The latter follows by integrating a verified directional derivative bound along each finite update, including every crossed feature branch. Then κ = γ/b₊ gives</p>
+<pre><code class="language-text">Δr_slab ≥ κ (Σ C_lower − g_start_upper − ε_end)
+</code></pre>
+<p>if g_end ≥ −ε_end. Monotonicity, when separately established, permits replacing a negative right side by zero. Sum these bounds with slab-specific κ values. This charges the slab’s initial clearance/overshoot once, instead of subtracting an unrelated worst-case penalty at every substep.</p>
+<p>The result is conditional on a verified reachable tube, the stated push bounds, and the finite solver’s end-gap bound. Running ten passes at the centre does not establish that bound for every pose. Likewise, a blanket refusal of all ten-pass executions is unnecessary if their residual can be bounded directly.</p>
+<p><a id="second-arm"></a></p>
+<h2>7. The second arm’s different contact transition</h2>
+<p>For attacker foot 2, the principal leg pair is <strong>(attacker 1, victim 0)</strong>. The centre approaches an <strong>attacker</strong> vertex at arc angle 37.5°, while the victim contact remains in a chord interior.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Entering substep</th>
+<th align="right">Attacker arc coordinate</th>
+<th align="right">Victim arc coordinate</th>
+<th>Centre contact</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>108</td>
+<td align="right">36.70870°</td>
+<td align="right">35.06584°</td>
+<td>Interior/interior</td>
+</tr>
+<tr>
+<td>109</td>
+<td align="right">36.95472°</td>
+<td align="right">35.23084°</td>
+<td>Interior/interior</td>
+</tr>
+<tr>
+<td>110</td>
+<td align="right">37.20204°</td>
+<td align="right">35.39737°</td>
+<td>Interior/interior</td>
+</tr>
+<tr>
+<td>111</td>
+<td align="right">37.45066°</td>
+<td align="right">35.56544°</td>
+<td>Interior/interior, very close to attacker vertex</td>
+</tr>
+<tr>
+<td>112</td>
+<td align="right">37.51010°</td>
+<td align="right">35.80609°</td>
+<td>Next attacker chord; nominal throw</td>
+</tr>
+</tbody></table></div>
+<p>At k109, the selected chord pair (4,4) has distance 2.745098267u; the adjacent attacker-clamped candidate (5,4) has distance 2.752669881u, only 0.007571614u farther away. At k111 the difference is about 0.000062208u. The uncertain set can admit the adjacent feature before the centre reaches it.</p>
+<p>The centre’s singleton bearing interval at k109 has <strong>zero width</strong>. For the carried ±0.001u/±0.01° run, the pre-k109 interval is only about 0.106° wide; the reported 5.32° growth is in the <strong>post-k109</strong> analysis. Pre-k110 already admits an attacker endpoint and adjacent interior branches, with a bearing hull about 4.23° wide. By k113 the inflated set admits additional victim-vertex branches too.</p>
+<p>So this is not the first arm’s victim-vertex dwell. It is uncertainty near an attacker-vertex transition, amplified by the endpoint enclosure and subsequent wrapping. The present special Jacobian runs only for a known victim vertex. The corresponding attacker-vertex map uses a fixed attacker point and its perpendicular projection onto a moving victim chord; its explicit branch formula is included in <code>contact-map.js</code>.</p>
+<p>Both arms can use a common family of exact feature maps and verified transition guards. Fixing only the victim-vertex special case does not cover the second obstruction.</p>
+<p><a id="moving-tube"></a></p>
+<h2>8. A moving tube that could close the proof</h2>
+<p>Choose a reference path q̄ₖ and sets Sₖ = q̄ₖ + PₖE <strong>in advance</strong>. Instead of recursively inflating the previous hull, verify the actual finite engine map Tₖ against those sets:</p>
+<pre><code class="language-text">B_initial ⊂ S₀,
+Tₖ(Sₖ₋₁ ∩ onboard) ⊂ Sₖ ∪ {thrown}.
+</code></pre>
+<p>This is invariance of a phase-indexed tube. It accommodates five units of travel while keeping uncertainty narrow. Choosing q̄ₖ from a nominal trajectory is fine; that trajectory alone does not verify the inclusions.</p>
+<p>For a centred error map in tube coordinates, a sufficient box inclusion has the form</p>
+<pre><code class="language-text">|cᵢ| + Σⱼ sup|Jᵢⱼ| bⱼ + remainderᵢ ≤ bᵢ.
+</code></pre>
+<p>An ellipsoid, zonotope or contact-coordinate tube may preserve correlations better. In particular, use exposed-foot polar coordinates <code>(r,ψ)</code> and orientation θ, so</p>
+<pre><code class="language-text">c = r u(ψ) − R f(θ).
+G = d − D,         ∂G/∂r = h_f n·u.
+</code></pre>
+<p>Where this derivative has a verified positive lower bound, the implicit function theorem solves the contact shell as <code>r = r(α,ψ,θ,σ)</code>, with σ = G. A narrow interval for the residual σ then represents normal uncertainty directly; the other coordinates carry tangential uncertainty. Verify that the finite solver returns to this shell and that ψ, θ stay within the chosen bounds. Use separate coordinate patches and guarded unions at feature changes.</p>
+<p>This is a concrete formulation of H4 that can be checked. It is not yet a completed inclusion proof for the ±0.125u initial box.</p>
+<p><a id="gap"></a></p>
+<h2>9. What the size gap does and does not establish</h2>
+<p>The observed size limit does <strong>not</strong> establish a representation-independent threshold. In particular:</p>
+<ul>
+<li>A recurrence <code>pad + c pad²</code> was not derived uniformly for the current piecewise checker. Nonzero growth from a zero-width input already shows a source of intrinsic enclosure slack.</li>
+<li>The swept direction hull contains variation along a correction path even at a single starting pose; that variation need not shrink quadratically with the initial box width.</li>
+<li>The complete map’s magnitude derivative supplies a first-order contraction absent from the direction-only update. Changing that representation changes the recurrence itself.</li>
+<li>The two verified implementation errors must be repaired before measuring the valid checker’s limiting size.</li>
+</ul>
+<p>It remains possible that a particular interval representation performs poorly at ±0.125u. The present experiments do not prove impossibility, nor justify a promise that the full-map method will close the whole cell. The most useful next target is a verified moving tube through first contact, the stable park and the second arm’s attacker-vertex transition.</p>
+<p><a id="reproduce"></a></p>
+<h2>10. Reproduction and remaining obligations</h2>
+<p><code>README.md</code> gives the commands. <code>source-manifest.json</code> pins seven source files by Git blob hash; <code>fetch-sources.py</code> restores them without changing a checkout. Instrumentation and the two diagnostic edits are applied <strong>in memory</strong>. No game or production checker file is changed by this package.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Evidence</th>
+<th>Files</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Checker outputs, units, kept-frame mismatch</td>
+<td><code>probe.js</code>, <code>baseline.json</code></td>
+<td>Reproduced floating-point executions</td>
+</tr>
+<tr>
+<td>Wrong chord and derivative entry</td>
+<td><code>jacobian-segments.json</code>, <code>map-checks.json</code></td>
+<td>Concrete code/geometry defect</td>
+</tr>
+<tr>
+<td>Complete-map derivative and finite radial inequality</td>
+<td>Sections 5–6</td>
+<td>Analytical identities/conditional bounds</td>
+</tr>
+<tr>
+<td>Full-map formula implementation</td>
+<td><code>contact-map.js</code>, <code>map-checks.js</code></td>
+<td>AD and finite-difference diagnostics</td>
+</tr>
+<tr>
+<td>Wide local park slabs</td>
+<td><code>slab-bounds.py</code>, <code>slab-bounds-step*.json</code></td>
+<td>Outward-rounded local real-geometry enclosures</td>
+</tr>
+<tr>
+<td>Fixed-box exit and attacker-vertex transition</td>
+<td><code>reference-poses.json</code>, <code>second-arm.json</code></td>
+<td>Reproduced nominal witnesses</td>
+</tr>
+<tr>
+<td>Whole-cell throw</td>
+<td>—</td>
+<td><strong>Open</strong></td>
+</tr>
+</tbody></table></div>
+<p>The remaining certificate needs initial legality; uniform exclusion or handling of other contacts and engine guards; coverage of every reachable closest-feature branch; a finite-pass residual bound; verified tube inclusion; and enough accumulated finite radial gain to cross the rim. A certificate of the actual floating-point program additionally needs explicit rounding/branch error control or a proved correspondence with the real model.</p>
+<p>The brief’s <code>park-monotone.js</code> and its sample output were not available among the supplied files or the pinned tree. Its 200-pose results are therefore treated as supplied empirical evidence, not independently reproduced volume-wide bounds. No conclusion here depends on accepting those samples as proof.</p>
+<p>Source links: <a href="https://github.com/liaminhawai-cmd/Tau/blob/1cf90f63fb597c039d99ff554242a12ff4b91f1a/nn/throw-cert.js">pinned checker</a>, <a href="https://github.com/liaminhawai-cmd/Tau/blob/1cf90f63fb597c039d99ff554242a12ff4b91f1a/nn/THROW-CONTACT-LEMMAS.md">pinned lemma write-up</a>, <a href="https://github.com/liaminhawai-cmd/Tau/blob/1cf90f63fb597c039d99ff554242a12ff4b91f1a/nn/forced-win.js">search and grid implementation</a>, <a href="https://github.com/liaminhawai-cmd/Tau/pull/18">PR #18</a>.</p>
+<footer>Original derivations and reproducible numerical checks. Theorems, conditional predictions, and empirical counterexamples are distinguished throughout.</footer></main><dialog aria-label="Enlarged figure"><div class="dialog-top"><span>Scroll to inspect the figure.</span><button class="close" type="button">Close</button></div><div class="zoom-content"></div></dialog><script>const d=document.querySelector('dialog');document.querySelectorAll('.zoom').forEach(b=>b.addEventListener('click',()=>{document.querySelector('.zoom-content').replaceChildren(b.closest('figure').querySelector('svg').cloneNode(true));d.showModal();}));document.querySelector('.close').addEventListener('click',()=>d.close());d.addEventListener('click',e=>{if(e.target===d)d.close();});</script></body></html>

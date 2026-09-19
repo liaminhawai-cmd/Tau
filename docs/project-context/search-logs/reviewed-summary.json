@@ -1,0 +1,237 @@
+{
+  "inputs": {
+    "dead1.jsonl": {
+      "sha256": "ebdb573bdaf64aadcc6a9e2482a1dd395b6580c4593543df0c5cdae8c4a8c6ea",
+      "bytes": 125955
+    },
+    "deep2.jsonl": {
+      "sha256": "22de49edbdae6a402efee25bb76c684d9254d91c9f05ed3febc21ef5f500fc71",
+      "bytes": 93411
+    },
+    "seeds-k4-childdead.jsonl": {
+      "sha256": "80b857aadac2b503617fd497d4d120cca631fcac039b16797c2abf6bf797a44d",
+      "bytes": 15560
+    },
+    "tally.txt": {
+      "sha256": "aa5c8040771d66439e0f668ac2cde5fc9e6857e04a0b103aef2b07f89a0167d8",
+      "bytes": 2669
+    }
+  },
+  "dead1": {
+    "rows": 334,
+    "unique": 334,
+    "status": {
+      "screenEscape": 184,
+      "unresolved": 52,
+      "dead": 84,
+      "escape": 14
+    }
+  },
+  "deep2": {
+    "rows": 111,
+    "unique": 100,
+    "retryRows": 11,
+    "status": {
+      "escape": 90,
+      "unresolved": 8,
+      "dead": 1,
+      "timeout": 1
+    },
+    "proper": {
+      "escape": 75,
+      "unresolved": 8,
+      "dead": 1
+    },
+    "extra": {
+      "escape": 15,
+      "timeout": 1
+    }
+  },
+  "seeds": {
+    "count": 84,
+    "linkedToDeadChildByGameFileAndMover": 84
+  },
+  "certified": [
+    {
+      "kind": "batch",
+      "p": [
+        4.4855,
+        -41.6478,
+        7.2017,
+        -0.0716,
+        -29.047,
+        2.7667
+      ],
+      "mover": 0,
+      "k": 4,
+      "g": "retro-0-0",
+      "file": "retro-pw0dv6b4-2026-08-21T13-08-06-498Z.jsonl",
+      "depth": 2,
+      "plies": 3,
+      "hint": {
+        "victim": {
+          "pv": 1,
+          "dir": 1,
+          "deg": 39
+        },
+        "attacker": {
+          "pv": 2,
+          "dir": 1,
+          "deg": 42
+        }
+      },
+      "certified": true,
+      "status": "dead",
+      "worstMargin": 0.105,
+      "why": null,
+      "escape": null,
+      "screenMinBest": -2.488,
+      "screenOnly": false,
+      "slivers": 0,
+      "probedSlivers": 0,
+      "seconds": 1694.3,
+      "stats": {
+        "samples": 81,
+        "screens": 27,
+        "coarseScreens": 209,
+        "fullChildren": 10,
+        "memoHits": 0,
+        "continued": 10,
+        "searched": 0,
+        "seconds": 1682.7
+      },
+      "stamp": "2026-09-18T04:14:28.053Z",
+      "witnesses": [
+        {
+          "pv": 1,
+          "dir": 1,
+          "from": 0.6184606525354002,
+          "to": 0.7504915783575644,
+          "apv": 2,
+          "adir": 1,
+          "aFrom": 0.6632251157578429,
+          "aTo": 0.8778359719290009,
+          "m": 2.2607272620907253,
+          "degrees": {
+            "from": 35.435185185185304,
+            "to": 43.00000000000015,
+            "aFrom": 37.99999999999987,
+            "aTo": 50.29629629629636
+          }
+        }
+      ],
+      "engine": {
+        "n": 20,
+        "pass": 20,
+        "fails": []
+      },
+      "thread": 37
+    }
+  ],
+  "unresolved": [
+    {
+      "file": "retro-pw0dv6b4-2026-08-17T13-12-09-135Z.jsonl",
+      "p": [
+        3.8514,
+        29.6496,
+        -0.9656,
+        5.8983,
+        41.3763,
+        6.1093
+      ],
+      "mover": 1,
+      "why": "reply (0,1) 35.7-36.1deg: thrown/witness ends, no common certificate even at the engine's substep (min end value 0.92u)"
+    },
+    {
+      "file": "retro-ratchet-20260818211659-9mw-w01-j00001.jsonl",
+      "p": [
+        -4.2788,
+        44.0612,
+        -0.074,
+        -0.6478,
+        29.9237,
+        -0.7966
+      ],
+      "mover": 0,
+      "why": "reply (0,1) 41.9-42.3deg: witness/witness ends, no common certificate even at the engine's substep (min end value 0.20u)"
+    },
+    {
+      "file": "retro-ratchet-20260818211659-9mw-w01-j00014.jsonl",
+      "p": [
+        -6.2403,
+        27.9651,
+        3.305,
+        2.8605,
+        38.8993,
+        -1.3153
+      ],
+      "mover": 1,
+      "why": "reply (1,1) 24.9-25.3deg: witness/witness ends, no common certificate even at the engine's substep (min end value 1.22u)"
+    },
+    {
+      "file": "retro-ratchet-20260819111253-ikg-w01-j00002.jsonl",
+      "p": [
+        14.1302,
+        -25.1964,
+        -5.1395,
+        12.3853,
+        -40.581,
+        4.3485
+      ],
+      "mover": 1,
+      "why": "reply (1,-1) 32.5-32.9deg: thrown/thrown ends, no common certificate even at the engine's substep (min end value 2.57u)"
+    },
+    {
+      "file": "retro-ratchet-20260819111253-ikg-w01-j00011.jsonl",
+      "p": [
+        20.1374,
+        41.5116,
+        1.7659,
+        16.891,
+        23.8156,
+        2.5223
+      ],
+      "mover": 0,
+      "why": "reply (2,1) 38.2-38.6deg: witness/witness ends, no common certificate even at the engine's substep (min end value 0.18u)"
+    },
+    {
+      "file": "retro-ratchet-20260819111253-ikg-w01-j00012.jsonl",
+      "p": [
+        5.4152,
+        -29.8957,
+        -5.1618,
+        7.3441,
+        -41.309,
+        6.2179
+      ],
+      "mover": 1,
+      "why": "reply (0,-1) 29.5-29.9deg: witness/witness ends, no common certificate even at the engine's substep (min end value 0.24u)"
+    },
+    {
+      "file": "retro-ratchet-20260907094725-8w4-w01-j00006.jsonl",
+      "p": [
+        -17.3391,
+        21.21,
+        4.5144,
+        -15.0245,
+        42.6543,
+        3.3413
+      ],
+      "mover": 1,
+      "why": "reply (0,-1) 32.6-33.0deg: witness/witness ends, no common certificate even at the engine's substep (min end value 0.20u)"
+    },
+    {
+      "file": "retro-ratchet-20260908070057-2ug-w01-j00036.jsonl",
+      "p": [
+        6.9007,
+        -23.6565,
+        -3.078,
+        20.8392,
+        -28.9215,
+        6.1602
+      ],
+      "mover": 1,
+      "why": "reply (0,-1) 26.3-26.7deg: witness/witness ends, no common certificate even at the engine's substep (min end value 0.84u)"
+    }
+  ]
+}
