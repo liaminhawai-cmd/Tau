@@ -307,10 +307,17 @@ const VARIANTS = [
   { tag: 'd1', depth: 1, opts: '', pair: false },
 ];
 const DEFAULT_VARIANTS = 4;
+// d2 and d2w field no matter what the environment asks for. The weighting is only answerable as a
+// DIFFERENCE -- d2w-minus-d2 over the same members is exactly what it is worth -- so dropping
+// either one leaves the other an unanchored rating that answers nothing. A stale
+// TAU_COMMITTEE_VARIANTS=d1,d2,d3 on a training box did precisely that: d1/d2/d3 accumulated 64-88
+// games each while the weighted committee never played a single rated game on that machine.
+const MANDATORY = ['d2', 'd2w'];
 function leagueVariants() {
   const want = String(process.env.TAU_COMMITTEE_VARIANTS || '').split(',').map(s => s.trim()).filter(Boolean);
-  if (!want.length) return VARIANTS.slice(0, DEFAULT_VARIANTS);
-  const out = VARIANTS.filter(v => want.includes(v.tag));
+  const wanted = new Set(want.length ? want : VARIANTS.slice(0, DEFAULT_VARIANTS).map(v => v.tag));
+  for (const t of MANDATORY) wanted.add(t);
+  const out = VARIANTS.filter(v => wanted.has(v.tag));
   return out.length ? out : VARIANTS.slice(0, DEFAULT_VARIANTS);
 }
 const STATE = dir => path.join(dir, 'models', '.committee-state.json');
@@ -342,7 +349,36 @@ function resolveLeagueCommittees(dir, { log = console.log } = {}) {
     keep.push(cur);
   }
   st.actives = keep;
-  if (keep.length) { writeState(dir, st); return keep; }
+  if (keep.length) {
+    // Top up a missing mandatory variant beside the live ones instead of waiting for the whole
+    // batch to sweep. Without this, a box whose live set predates d2w would not field it until
+    // every current committee had finished its 20-face sweep -- on a shared lane, that is a very
+    // long time to answer a question the run is supposed to be asking. Members are taken from a
+    // LIVE sibling rather than a fresh pickAuto, so the weighted and unweighted committees are the
+    // same brains and their difference stays the measurement.
+    const liveTags = new Set(keep.map(c => c.variant));
+    const donor = keep.find(c => c.variant === 'd2')
+               || keep.find(c => !/pair$/.test(String(c.variant || '')))
+               || keep[0];
+    const added = [];
+    for (const v of leagueVariants()) {
+      if (!MANDATORY.includes(v.tag) || liveTags.has(v.tag)) continue;
+      const mem = v.pair ? donor.members.slice(0, 2) : donor.members;
+      if (mem.length < 2) continue;
+      const name = `committee-${v.tag}[${mem.map(shortName).join(',')}]`;
+      if (st.history.some(h => h.name === name)) continue;
+      added.push({ id: name + '@D1', name, file: path.join(dir, 'models', name + '.json'),
+                   spec: 'committee:' + mem.join(';') + '@d' + v.depth + v.opts, members: mem, depth: v.depth,
+                   variant: v.tag, startedAt: new Date().toISOString(), swept: false });
+    }
+    if (added.length) {
+      st.actives = keep.concat(added);
+      log(`[committee] fielded ${added.map(c => c.variant).join(', ')} beside the live ` +
+          `${[...liveTags].join(', ')} (mandatory variant was missing)`);
+    }
+    writeState(dir, st);
+    return st.actives;
+  }
   let members;
   try { members = pickAuto(dir); } catch (e) { log('[committee] not fielded: ' + e.message); writeState(dir, st); return []; }
   const fresh = [];
