@@ -198,3 +198,34 @@ The user repeatedly asked the work to continue and asked that findings be
 made durable in GitHub. Finish authorised, reviewable work and state concrete
 results. Preserve uncertainty honestly and avoid resetting already-settled
 questions when context changes accounts.
+
+
+## Brief 5 update — dead points to regions (2026-09-19)
+
+The new Claude update and the mathematical audit are preserved in
+[the Brief 5 review](docs/geometry-reviews/brief5/tau-dead-region-classes-review.md),
+with a standalone HTML version and reproducible scripts. The forwarded update is
+[archived with the project inputs](docs/project-context/inputs/claude-brief-5-update-2026-09-19.md).
+
+The audit pins research snapshot `c1ac39e771f8115797a4b8672587860fb676ad1b`,
+frozen corpus rules at `5252f2d839b739f52ce69158dcddfcedbd62bbb7`, and the
+published L17 measurement at `b9907b05e40103dc459d3013b7a873ac12941f78`.
+The decisive correction is that the published L17 index contains eight old
+hard-coded entries and twelve old arcs. It does not load the new 261-point or
+63-ball files. Its zero-hit run therefore audits the old table, not the new
+corpus. The new balls vary all six pose coordinates and have positive ambient
+six-dimensional volume; they remain sampled certificates, not proofs.
+
+The constructive research target is a finite reply cover: for every legal
+victim stop in a region, at least one verified attacker response wins, with
+response policies allowed to change across guarded patches. The review gives a
+margin bridge for two responses, a phase-indexed moving-tube formulation, and
+the bounded-horizon forced-win induction. It does not claim a new proved
+nonempty Tau dead region. A nine-stop diagnostic of one unresolved control is
+saved beside the report; the same attacker arm wins at all nine tested stops,
+but the finite samples do not close the interval.
+
+The saved audit confirms 261 points, 63 balls, 1,045 controls, 10,440/10,440
+point falsification agreement and 1,575 recorded ball trials. Controls remain
+screen-biased and sampled labels are not universal negatives. The user reported
+that both trainers were stopped; no trainer was restarted for this update.

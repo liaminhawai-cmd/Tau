@@ -1,0 +1,298 @@
+{
+  "sourceSnapshot": "c1ac39e771f8115797a4b8672587860fb676ad1b",
+  "frozenRuleIndex": "729a394959968e5fbdb5af10d3067005712b890f",
+  "counts": {
+    "points": 261,
+    "balls": 63,
+    "controls": 1045,
+    "controlStatus": {
+      "escape": 909,
+      "unresolved": 136
+    },
+    "screenOnly": 865,
+    "pointEngineTrials": 10440,
+    "pointEngineAgreement": 10440,
+    "ballEngineTrials": 1575,
+    "pointsWithSlivers": 104,
+    "pointsWithProbedSlivers": 117,
+    "pointsWithEitherSliverKind": 177,
+    "pointsWithNeitherSliverKind": 84
+  },
+  "radii": {
+    "min": 0.009,
+    "median": 0.095,
+    "max": 0.35,
+    "hCounts": {
+      "0.35": 2,
+      "0.3": 17,
+      "0.25": 1,
+      "0.12": 22,
+      "0.05": 21
+    }
+  },
+  "volumes": {
+    "coordinateSystem": "(bx,by,R*btheta,rx,ry,R*rtheta)",
+    "singleBallCoefficient": 0.21932454224643017,
+    "sumIndividualBallVolumes": 0.001845593489206776,
+    "rawAngleCoordinateSum": 0.000003460191351181791,
+    "samplerSupportFraction": 0.4052847345693511,
+    "scope": "Unclipped ambient volumes; sum is a union upper bound, not an on-board or non-overlap volume."
+  },
+  "inventory": {
+    "entries": 8,
+    "kinds": {
+      "dead": 4,
+      "win2": 4
+    },
+    "families": 12,
+    "eps": [
+      1,
+      1.5,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "exactNewBallCentreMatches": 0,
+    "newBallCentresInsideAnyOldDeadEntry": 0,
+    "sourceReferencesNewDatasetNames": false
+  },
+  "bothPiecesVary": {
+    "eps": 0.35,
+    "initial": [
+      -38.6035,
+      24.5839,
+      -2.8424,
+      -29.1648,
+      14.0727,
+      3.6549
+    ],
+    "perturbed": [
+      -38.6035,
+      24.6714,
+      -2.8424,
+      -29.0773,
+      14.0727,
+      3.6549
+    ],
+    "distance": 0.17499999999999716,
+    "inside": true
+  },
+  "geometry": {
+    "clearanceDefinition": "CL.minGapOf minus CL.MIND: includes the hub-clearance adjustment as well as leg distances.",
+    "countsAboveTolerance": {
+      "0": 187,
+      "1": 7,
+      "0.0001": 158,
+      "0.001": 108,
+      "0.01": 37,
+      "0.05": 10,
+      "0.1": 8
+    },
+    "maxSurfaceClearance": 17.102591576586978,
+    "clearlySeparatedAtToleranceU": 0.05,
+    "noncontact": [
+      {
+        "game": "sa97a1p0g-3",
+        "pose": [
+          -20.7107,
+          -16.4296,
+          2.4845,
+          -38.0731,
+          -25.9161,
+          7.359
+        ],
+        "mover": 1,
+        "clearance": 1.2157550622145301,
+        "victimHub": 46.0565433225291,
+        "attackerHub": 26.436052100304238,
+        "victimMaxFoot": 66.68367525973368,
+        "hubSeparation": 19.785009881473396
+      },
+      {
+        "game": "yri46zt4g-9",
+        "pose": [
+          -12.9857,
+          -23.4698,
+          -0.2308,
+          -36.0167,
+          -23.756,
+          2.5898
+        ],
+        "mover": 1,
+        "clearance": 4.223272015793612,
+        "victimHub": 43.14568593602378,
+        "attackerHub": 26.822749980753276,
+        "victimMaxFoot": 59.48680724579584,
+        "hubSeparation": 23.032778196301027
+      },
+      {
+        "game": "bdbli24dg-4",
+        "pose": [
+          19.3251,
+          3.8309,
+          0.795,
+          50.3142,
+          -5.4299,
+          7.2686
+        ],
+        "mover": 1,
+        "clearance": 8.259225174163003,
+        "victimHub": 50.60634876821286,
+        "attackerHub": 19.701149327386965,
+        "victimMaxFoot": 65.98815246179333,
+        "hubSeparation": 32.34326414340396
+      },
+      {
+        "game": "arenagopxkvk8-1",
+        "pose": [
+          -15.3063,
+          -39.6302,
+          1.512,
+          -2.8314,
+          -28.8141,
+          4.6611
+        ],
+        "mover": 0,
+        "clearance": 0.05628625056999814,
+        "victimHub": 42.483356408480724,
+        "attackerHub": 28.952878695735937,
+        "victimMaxFoot": 61.56890823165035,
+        "hubSeparation": 16.51094028879034
+      },
+      {
+        "game": "tnj56agko-3",
+        "pose": [
+          -41.8275,
+          -24.9472,
+          8.6467,
+          -23.4708,
+          -14.5891,
+          2.2133
+        ],
+        "mover": 0,
+        "clearance": 0.5237494837821206,
+        "victimHub": 48.70218212862746,
+        "attackerHub": 27.635489708887015,
+        "victimMaxFoot": 67.13307297793808,
+        "hubSeparation": 21.077444591316095
+      },
+      {
+        "game": "u6nehpcuw-1",
+        "pose": [
+          -3.9934,
+          2.8817,
+          -0.0691,
+          33.4128,
+          -29.5851,
+          4.706
+        ],
+        "mover": 1,
+        "clearance": 17.102591576586978,
+        "victimHub": 44.628391701359796,
+        "attackerHub": 4.924574951201373,
+        "victimMaxFoot": 62.30345066980162,
+        "hubSeparation": 49.53096910701425
+      },
+      {
+        "game": "arena7mf6d38w-0",
+        "pose": [
+          -49.9979,
+          0.0808,
+          2.1103,
+          -38.0252,
+          14.2986,
+          1.0734
+        ],
+        "mover": 0,
+        "clearance": 0.06594013648811448,
+        "victimHub": 49.99796528909952,
+        "attackerHub": 40.624694423466124,
+        "victimMaxFoot": 64.98262493467172,
+        "hubSeparation": 18.58739847665617
+      },
+      {
+        "game": "phurxtd2w-8",
+        "pose": [
+          -1.2384,
+          -20.6473,
+          -1.1468,
+          -16.3941,
+          -38.9108,
+          3.4703
+        ],
+        "mover": 1,
+        "clearance": 1.6353959978968584,
+        "victimHub": 42.22341615087534,
+        "attackerHub": 20.684405523243836,
+        "victimMaxFoot": 60.10904865126945,
+        "hubSeparation": 23.73290278790186
+      },
+      {
+        "game": "arenagly3mpag-1",
+        "pose": [
+          14.3432,
+          28.7354,
+          4.6309,
+          37.6011,
+          24.723,
+          -0.6393
+        ],
+        "mover": 1,
+        "clearance": 6.069622088536625,
+        "victimHub": 45.00077166238375,
+        "attackerHub": 32.11620462321163,
+        "victimMaxFoot": 62.39607408811846,
+        "hubSeparation": 23.60146745797812
+      },
+      {
+        "game": "0tbtxinv0-1",
+        "pose": [
+          -30.4883,
+          29.1833,
+          -2.6585,
+          -10.9029,
+          28.1521,
+          6.5026
+        ],
+        "mover": 0,
+        "clearance": 2.5548553629631767,
+        "victimHub": 42.20428219718942,
+        "attackerHub": 30.189633366770124,
+        "victimMaxFoot": 60.03685585728505,
+        "hubSeparation": 19.61252830718161
+      }
+    ]
+  },
+  "unresolved": {
+    "count": 136,
+    "sameGenericFailureText": 136,
+    "victimArm": {
+      "1,1": 24,
+      "0,-1": 35,
+      "1,-1": 18,
+      "2,-1": 17,
+      "0,1": 31,
+      "2,1": 11
+    }
+  },
+  "metricDualWitness": {
+    "coordinateDerivativeMaximum": 1,
+    "metricDistance": 0.1,
+    "linearFunctionGain": 0.1414213562373095,
+    "ratio": 1.4142135623730951
+  },
+  "coverageCounterexample": {
+    "interval": [
+      0,
+      1
+    ],
+    "leftResponse": "0.6-t",
+    "rightResponse": "t-0.4",
+    "eachWorstMargin": -0.4,
+    "upperEnvelopeWorstMargin": 0.1,
+    "interpretation": "Two response regions overlap and cover the interval although neither one response works across it. No event-phase change is involved."
+  }
+}

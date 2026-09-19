@@ -1,0 +1,80 @@
+{
+  "repository": "liaminhawai-cmd/Tau",
+  "snapshot": "c1ac39e771f8115797a4b8672587860fb676ad1b",
+  "frozenEngineCommit": "5252f2d839b739f52ce69158dcddfcedbd62bbb7",
+  "files": [
+    {
+      "path": "docs/dead-regions/README.md",
+      "blob": "7939c5e4437b459538b1620c4860235ddb519ec7"
+    },
+    {
+      "path": "docs/dead-regions/astra-brief-5-from-points-to-classes.md",
+      "blob": "827d96f7c7c918e09db0e33ca927cef1d1b526d6"
+    },
+    {
+      "path": "docs/dead-regions/dead-balls.jsonl",
+      "blob": "f87d7ba8979462de4134c1f8d15aa52716573946"
+    },
+    {
+      "path": "docs/dead-regions/dead-points-mined.jsonl",
+      "blob": "80be4b2a1f27188aef9d11651735949b1ba84ea3"
+    },
+    {
+      "path": "docs/dead-regions/l11-dead-measured.md",
+      "blob": "1ba2c9e81cfd94283f92003aec750e06b9b56072"
+    },
+    {
+      "path": "docs/dead-regions/screened-not-dead.jsonl",
+      "blob": "f6706951c2562f3e7f54cce1582cae84ff71d3c9"
+    },
+    {
+      "path": "nn/arena.js",
+      "blob": "278de70a708bf84a370106511b74a7713a73bd41"
+    },
+    {
+      "path": "nn/contact-law.js",
+      "blob": "35c689de0269199f436d10dae566fae83b6aa6c6"
+    },
+    {
+      "path": "nn/engine.js",
+      "blob": "2f46a0d9f18d704e1d2230d771e89453147d21e7",
+      "ref": "5252f2d839b739f52ce69158dcddfcedbd62bbb7"
+    },
+    {
+      "path": "nn/forced-win.js",
+      "blob": "7ac62262c268a2e86f199a1fe88f241a5665319c"
+    },
+    {
+      "path": "nn/opening.js",
+      "blob": "4dba6585cde95f2430e14d31b70ac691524474f7"
+    },
+    {
+      "path": "nn/star-drive.js",
+      "blob": "3864c80257af5a65ad8cae2d4b04be1b3ff21414"
+    },
+    {
+      "path": "nn/verify-dead.js",
+      "blob": "a33078e718fa873d3efbe8783c76f84bbf6bf02a"
+    },
+    {
+      "path": "index.html",
+      "blob": "729a394959968e5fbdb5af10d3067005712b890f",
+      "ref": "5252f2d839b739f52ce69158dcddfcedbd62bbb7"
+    }
+  ],
+  "auditCurrentIndex": {
+    "local": "current-index.html",
+    "blob": "1d36f9ba6d6032d739f5e22b0a71608b520429b3"
+  },
+  "auditCurrentLoader": {
+    "local": "current-engine.js",
+    "blob": "e7d333a50ea8eb983dbd8308e5748606dbb0ec04"
+  },
+  "measurementPublication": {
+    "commit": "b9907b05e40103dc459d3013b7a873ac12941f78",
+    "indexBlob": "1d36f9ba6d6032d739f5e22b0a71608b520429b3",
+    "loaderBlob": "e7d333a50ea8eb983dbd8308e5748606dbb0ec04",
+    "arenaBlob": "278de70a708bf84a370106511b74a7713a73bd41",
+    "note": "These three blobs match the later audit snapshot. The raw match logs and a runtime artifact hash were not supplied."
+  }
+}

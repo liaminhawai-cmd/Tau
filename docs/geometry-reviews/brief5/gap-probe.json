@@ -1,0 +1,1084 @@
+{
+  "seed": {
+    "p": [
+      8.3707,
+      -25.3453,
+      -1.1528,
+      16.1925,
+      -34.7032,
+      3.7508
+    ],
+    "mover": 1,
+    "k": 0,
+    "g": "arena7dd3b1us-1",
+    "status": "unresolved",
+    "screenOnly": false,
+    "worstMargin": -0.023,
+    "screenMinBest": 0.049,
+    "why": "reply (1,1) 4.8-5.2deg: no single arc certifies the gap (best min margin 1.22u) even at the engine's substep -- the throw changes arm here"
+  },
+  "replyArm": [
+    1,
+    1
+  ],
+  "gapDegrees": [
+    4.8,
+    5.2
+  ],
+  "scope": "Nine diagnostic stops; replica records snap to the next stored step. Engine uses one-degree calls plus a final remainder. No interval proof.",
+  "samples": [
+    {
+      "requestedDegrees": 4.8,
+      "replicaRecordDegrees": 5.153153153153154,
+      "replica": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "margin": -8.619611535158654,
+          "signature": {
+            "pairs": "0",
+            "onset": 0.5051656491123234
+          }
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "margin": -5.070007272195269,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.07592675277037478
+          }
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "margin": 3.2001679637654945,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.2856062911925808
+          }
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "margin": -9.226866677241084,
+          "signature": {
+            "pairs": "",
+            "onset": null
+          }
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "margin": -4.093500639554996,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.041855581135789945
+          }
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "margin": -0.48838927903362617,
+          "signature": {
+            "pairs": "0,5",
+            "onset": 0.097183106076957
+          }
+        }
+      ],
+      "engine": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "result": true
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "result": false
+        }
+      ],
+      "attackerThrown": false
+    },
+    {
+      "requestedDegrees": 4.85,
+      "replicaRecordDegrees": 5.153153153153154,
+      "replica": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "margin": -8.619611535158654,
+          "signature": {
+            "pairs": "0",
+            "onset": 0.5051656491123234
+          }
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "margin": -5.070007272195269,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.07592675277037478
+          }
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "margin": 3.2001679637654945,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.2856062911925808
+          }
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "margin": -9.226866677241084,
+          "signature": {
+            "pairs": "",
+            "onset": null
+          }
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "margin": -4.093500639554996,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.041855581135789945
+          }
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "margin": -0.48838927903362617,
+          "signature": {
+            "pairs": "0,5",
+            "onset": 0.097183106076957
+          }
+        }
+      ],
+      "engine": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "result": true
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "result": false
+        }
+      ],
+      "attackerThrown": false
+    },
+    {
+      "requestedDegrees": 4.9,
+      "replicaRecordDegrees": 5.153153153153154,
+      "replica": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "margin": -8.619611535158654,
+          "signature": {
+            "pairs": "0",
+            "onset": 0.5051656491123234
+          }
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "margin": -5.070007272195269,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.07592675277037478
+          }
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "margin": 3.2001679637654945,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.2856062911925808
+          }
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "margin": -9.226866677241084,
+          "signature": {
+            "pairs": "",
+            "onset": null
+          }
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "margin": -4.093500639554996,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.041855581135789945
+          }
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "margin": -0.48838927903362617,
+          "signature": {
+            "pairs": "0,5",
+            "onset": 0.097183106076957
+          }
+        }
+      ],
+      "engine": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "result": true
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "result": false
+        }
+      ],
+      "attackerThrown": false
+    },
+    {
+      "requestedDegrees": 4.95,
+      "replicaRecordDegrees": 5.153153153153154,
+      "replica": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "margin": -8.619611535158654,
+          "signature": {
+            "pairs": "0",
+            "onset": 0.5051656491123234
+          }
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "margin": -5.070007272195269,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.07592675277037478
+          }
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "margin": 3.2001679637654945,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.2856062911925808
+          }
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "margin": -9.226866677241084,
+          "signature": {
+            "pairs": "",
+            "onset": null
+          }
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "margin": -4.093500639554996,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.041855581135789945
+          }
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "margin": -0.48838927903362617,
+          "signature": {
+            "pairs": "0,5",
+            "onset": 0.097183106076957
+          }
+        }
+      ],
+      "engine": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "result": true
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "result": false
+        }
+      ],
+      "attackerThrown": false
+    },
+    {
+      "requestedDegrees": 5,
+      "replicaRecordDegrees": 5.153153153153154,
+      "replica": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "margin": -8.619611535158654,
+          "signature": {
+            "pairs": "0",
+            "onset": 0.5051656491123234
+          }
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "margin": -5.070007272195269,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.07592675277037478
+          }
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "margin": 3.2001679637654945,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.2856062911925808
+          }
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "margin": -9.226866677241084,
+          "signature": {
+            "pairs": "",
+            "onset": null
+          }
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "margin": -4.093500639554996,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.041855581135789945
+          }
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "margin": -0.48838927903362617,
+          "signature": {
+            "pairs": "0,5",
+            "onset": 0.097183106076957
+          }
+        }
+      ],
+      "engine": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "result": true
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "result": false
+        }
+      ],
+      "attackerThrown": false
+    },
+    {
+      "requestedDegrees": 5.05,
+      "replicaRecordDegrees": 5.153153153153154,
+      "replica": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "margin": -8.619611535158654,
+          "signature": {
+            "pairs": "0",
+            "onset": 0.5051656491123234
+          }
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "margin": -5.070007272195269,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.07592675277037478
+          }
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "margin": 3.2001679637654945,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.2856062911925808
+          }
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "margin": -9.226866677241084,
+          "signature": {
+            "pairs": "",
+            "onset": null
+          }
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "margin": -4.093500639554996,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.041855581135789945
+          }
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "margin": -0.48838927903362617,
+          "signature": {
+            "pairs": "0,5",
+            "onset": 0.097183106076957
+          }
+        }
+      ],
+      "engine": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "result": true
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "result": false
+        }
+      ],
+      "attackerThrown": false
+    },
+    {
+      "requestedDegrees": 5.1,
+      "replicaRecordDegrees": 5.153153153153154,
+      "replica": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "margin": -8.619611535158654,
+          "signature": {
+            "pairs": "0",
+            "onset": 0.5051656491123234
+          }
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "margin": -5.070007272195269,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.07592675277037478
+          }
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "margin": 3.2001679637654945,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.2856062911925808
+          }
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "margin": -9.226866677241084,
+          "signature": {
+            "pairs": "",
+            "onset": null
+          }
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "margin": -4.093500639554996,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.041855581135789945
+          }
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "margin": -0.48838927903362617,
+          "signature": {
+            "pairs": "0,5",
+            "onset": 0.097183106076957
+          }
+        }
+      ],
+      "engine": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "result": true
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "result": false
+        }
+      ],
+      "attackerThrown": false
+    },
+    {
+      "requestedDegrees": 5.15,
+      "replicaRecordDegrees": 5.153153153153154,
+      "replica": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "margin": -8.619611535158654,
+          "signature": {
+            "pairs": "0",
+            "onset": 0.5051656491123234
+          }
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "margin": -5.070007272195269,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.07592675277037478
+          }
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "margin": 3.2001679637654945,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.2856062911925808
+          }
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "margin": -9.226866677241084,
+          "signature": {
+            "pairs": "",
+            "onset": null
+          }
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "margin": -4.093500639554996,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.041855581135789945
+          }
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "margin": -0.48838927903362617,
+          "signature": {
+            "pairs": "0,5",
+            "onset": 0.097183106076957
+          }
+        }
+      ],
+      "engine": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "result": true
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "result": false
+        }
+      ],
+      "attackerThrown": false
+    },
+    {
+      "requestedDegrees": 5.2,
+      "replicaRecordDegrees": 5.549549549549551,
+      "replica": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "margin": -8.729904078600029,
+          "signature": {
+            "pairs": "0",
+            "onset": 0.5328459586527249
+          }
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "margin": -5.068750169697601,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.06212188863030663
+          }
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "margin": 3.292175682807212,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.18808219176096783
+          }
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "margin": -9.226866677241091,
+          "signature": {
+            "pairs": "",
+            "onset": null
+          }
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "margin": -3.9951810677103907,
+          "signature": {
+            "pairs": "2",
+            "onset": 0.03487965094649162
+          }
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "margin": -0.4771935042205371,
+          "signature": {
+            "pairs": "0,5",
+            "onset": 0.10412475651102536
+          }
+        }
+      ],
+      "engine": [
+        {
+          "arm": [
+            0,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            0,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            1,
+            1
+          ],
+          "result": true
+        },
+        {
+          "arm": [
+            1,
+            -1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arm": [
+            2,
+            -1
+          ],
+          "result": false
+        }
+      ],
+      "attackerThrown": false
+    }
+  ]
+}

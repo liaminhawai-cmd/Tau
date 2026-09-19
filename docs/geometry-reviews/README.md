@@ -70,3 +70,17 @@ the original uploaded logs are now preserved separately in
 addition changes documentation and reproduction tooling only. It does not merge
 the experimental proof branches or change the game, live ladder or deployed
 depth page.
+
+
+| [Brief 5: from dead points to regions](brief5/tau-dead-region-classes-review.md) | L17 corpus-loading audit, six-dimensional dead balls, sampled-label limits, finite reply covers, moving tubes and forced-win induction | `c1ac39e771f8115797a4b8672587860fb676ad1b` |
+
+
+## Brief 5 current conclusion
+
+The 261-point / 63-ball corpus is valuable training data for a region
+characterisation, but the published L17 zero-hit measurement used the older
+hard-coded table and cannot test it. The balls vary both pieces and have
+positive six-dimensional volume, while the deadness labels remain sampled. The
+next rigorous object is a finite cover of legal replies by verified winning
+responses, propagated through guarded event cells or a phase-indexed moving
+ tube. No new nonempty proved dead region has been claimed here.

@@ -44,3 +44,16 @@ Latest operational update from the user, 2026-09-19: **both trainers have been
 stopped to make the handoff easier**. This is user-reported state, not a remote
 process inspection. No trainer restart was performed as part of this handoff.
 Inspect the current checkout, saved state and processes before resuming work.
+
+
+## Brief 5 handoff update (2026-09-19)
+
+- [Claude's forwarded Brief 5 update](inputs/claude-brief-5-update-2026-09-19.md)
+  preserves the 261-point / 63-ball discussion and the L17 match report.
+- [Brief 5 review](../geometry-reviews/brief5/tau-dead-region-classes-review.md)
+  audits the loaded table, the six-dimensional ball metric, the sampled labels,
+  and the proposed finite reply-cover generalisation.
+- The package includes the dataset JSONL copies, `audit.json`, the nine-stop
+  `gap-probe.json`, exact source pins and a fetch script. The review's central
+  correction is that the published zero-hit L17 run still used the older
+  eight-entry table; it did not load these new files.
