@@ -1,0 +1,53 @@
+1728 games, 432 positions touched, 432 complete across L11, L8, best@D1, best@D2; opponent L8
+
+## by all
+cell              n         L11          L8     best@D1     best@D2   L11-minus-best@D1  L11-minus-best@D2
+all             432         65%         53%         53%         68%      12 ± 4         -3 ± 5
+
+## by adv
+cell              n         L11          L8     best@D1     best@D2   L11-minus-best@D1  L11-minus-best@D2
+losing          144         31%         23%         19%         39%      12 ± 8         -8 ± 9
+even            144         67%         50%         52%         67%      15 ± 8          1 ± 9
+winning         144         97%         88%         88%         99%       9 ± 6         -1 ± 3
+
+## by dm
+cell              n         L11          L8     best@D1     best@D2   L11-minus-best@D1  L11-minus-best@D2
+inner           144         74%         58%         69%         85%       4 ± 8        -12 ± 8
+mid             144         68%         60%         49%         68%      19 ± 7          0 ± 8
+outer           144         53%         42%         40%         51%      13 ± 7          3 ± 7
+
+## by ply
+cell              n         L11          L8     best@D1     best@D2   L11-minus-best@D1  L11-minus-best@D2
+open             94         64%         45%         47%         65%      17 ± 10         -1 ± 11
+middle          208         64%         51%         53%         67%      11 ± 6         -3 ± 7
+late            130         68%         63%         58%         72%      10 ± 8         -4 ± 7
+
+## by advdm
+cell              n         L11          L8     best@D1     best@D2   L11-minus-best@D1  L11-minus-best@D2
+losing/inner     48         46%         29%         42%         67%       4 ± 17        -21 ± 19
+losing/mid       48         31%         31%         13%         35%      19 ± 13         -4 ± 17
+losing/outer     48         15%          8%          2%         15%      13 ± 10          0 ± 12
+even/inner       48         83%         60%         79%         92%       4 ± 13         -8 ± 13
+even/mid         48         73%         63%         52%         71%      21 ± 15          2 ± 16
+even/outer       48         46%         27%         25%         38%      21 ± 16          8 ± 19
+winning/inner    48         92%         83%         88%         98%       4 ± 13         -6 ± 7
+winning/mid      48        100%         88%         83%         98%      17 ± 11          2 ± 4
+winning/outer    48        100%         92%         94%        100%       6 ± 7          0 ± 0
+
+## root move agreement (same arm and within 5 degrees / same arm)
+all        432  L11~best@D1: 23%/51%   L11~best@D2: 27%/54%   L8~L11: 43%/63%   best@D1~best@D2: 71%/86%   L8~best@D1: 22%/48%
+losing     144  L11~best@D1: 24%/56%   L11~best@D2: 33%/58%   L8~L11: 39%/61%   best@D1~best@D2: 67%/84%   L8~best@D1: 29%/54%
+even       144  L11~best@D1: 28%/54%   L11~best@D2: 30%/57%   L8~L11: 47%/64%   best@D1~best@D2: 72%/89%   L8~best@D1: 23%/51%
+winning    144  L11~best@D1: 18%/43%   L11~best@D2: 19%/49%   L8~L11: 44%/63%   best@D1~best@D2: 74%/85%   L8~best@D1: 13%/39%
+inner      144  L11~best@D1: 22%/53%   L11~best@D2: 25%/57%   L8~L11: 30%/58%   best@D1~best@D2: 75%/88%   L8~best@D1: 17%/40%
+mid        144  L11~best@D1: 22%/48%   L11~best@D2: 24%/48%   L8~L11: 46%/63%   best@D1~best@D2: 62%/83%   L8~best@D1: 23%/58%
+outer      144  L11~best@D1: 26%/51%   L11~best@D2: 33%/58%   L8~L11: 54%/67%   best@D1~best@D2: 75%/88%   L8~best@D1: 26%/47%
+
+## when L11 and best@D1 choose different moves, outcome of each (paired)
+all        n=331  L11 66%  L8 55%  best@D1 51%  best@D2 69%
+losing     n=110  L11 32%  L8 27%  best@D1 18%  best@D2 43%
+even       n=103  L11 67%  L8 47%  best@D1 46%  best@D2 64%
+winning    n=118  L11 97%  L8 87%  best@D1 86%  best@D2 98%
+inner      n=112  L11 72%  L8 60%  best@D1 66%  best@D2 86%
+mid        n=112  L11 68%  L8 61%  best@D1 45%  best@D2 67%
+outer      n=107  L11 57%  L8 43%  best@D1 42%  best@D2 54%
