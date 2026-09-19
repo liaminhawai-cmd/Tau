@@ -1,0 +1,2396 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tau — contact bounds and curved certificate cells</title><style>*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#faf9f6;color:#202c3d;font:17px/1.7 system-ui,-apple-system,Segoe UI,sans-serif}main{max-width:1120px;margin:auto;padding:50px 32px 100px}h1{font:600 clamp(36px,5.4vw,62px)/1.12 Georgia,serif;letter-spacing:-.025em;max-width:950px;margin:20px 0 28px}h2{font:600 31px/1.25 Georgia,serif;border-top:1px solid #dce1e6;margin:62px 0 24px;padding-top:34px}h3{font:650 20px/1.4 system-ui;margin:34px 0 12px}p,li{max-width:940px}a{color:#145ba1;text-underline-offset:3px}a[id]{scroll-margin-top:24px}code{font: .86em/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;background:#edf0f3;padding:1px 4px;border-radius:3px;overflow-wrap:anywhere}pre{background:#edf2f7;border-left:3px solid #3974a8;padding:20px 22px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;margin:22px 0}pre code{font-size:14px;background:none;padding:0;border-radius:0}.table-wrap{overflow-x:auto;margin:24px 0}table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.5;background:#fff;min-width:620px}th,td{padding:12px 15px;text-align:left;vertical-align:top;border-bottom:1px solid #e5e9ee}th{background:#eaf0f5}nav{background:#edf2f6;border:1px solid #d6e0ea;padding:16px 26px 22px;margin:35px 0;border-radius:8px}nav h2{font:650 17px system-ui;border:0;margin:0;padding:0}nav ol{columns:2;column-gap:40px;padding-left:21px;margin:10px 0 0}nav li{break-inside:avoid;font-size:15px;margin:6px 0}li{padding-left:4px;margin:10px 0}figure{margin:28px 0;background:#fff;border:1px solid #dce1e6;padding:13px 8px;border-radius:8px}.drawing svg{width:100%;max-width:100%;height:auto;display:block}figcaption{font-size:13px;color:#657386;padding:12px 18px 4px}button{cursor:pointer;font:600 12px system-ui;color:#145ba1;background:#f3f7fa;border:1px solid #c6d4e2;padding:7px 12px;border-radius:5px}.zoom{display:block;margin:0 10px 8px auto}dialog{width:96vw;height:94vh;max-width:none;max-height:none;border:1px solid #b3bdc9;border-radius:8px;padding:0}dialog::backdrop{background:#132234bb}.dialog-top{position:sticky;top:0;background:#eaf0f5;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;z-index:5;font-size:13px}.zoom-content{overflow:auto;padding:15px}.zoom-content svg{width:1550px;height:auto}footer{font-size:13px;color:#657386;margin-top:50px;border-top:1px solid #dce1e6;padding-top:15px}@media(max-width:660px){body{font-size:16px}main{padding:25px 17px 70px}h2{font-size:26px}h3{font-size:19px}nav{padding:18px}nav ol{columns:1}pre{padding:12px}pre code{font-size:12px}th,td{padding:10px 12px}figure{padding:8px 2px}}@media print{body{background:white;font-size:10pt}main{padding:0;max-width:none}h2{font-size:20pt}h3{font-size:13pt}h2,h3{break-after:avoid}pre,figure{break-inside:avoid}pre code{font-size:8pt}.zoom,dialog{display:none}table{min-width:0;font-size:8pt}nav{break-after:page}a{color:inherit}}</style></head><body><main><h1>Tau: contact bounds and curved certificate cells</h1>
+<p>Response to <strong>Brief 2: three contraction lemmas for the throw proof, and the oriented split at the jumping walls</strong>. Computed 18 September 2026 against <code>e32f09d5be9600212c3d5294b70a3835f0517427</code>, the revision specified in the brief. Angles in the formulas are radians; numerical tables label degrees explicitly.</p>
+<p><strong>The useful replacement is a union of contact branches, contracted against a verified contact shell.</strong> A and B have small, explicit constants for an isolated smooth minimum or one fixed pair of chords. They are false for the globally selected polyline contact without that qualification. C is a valid geometric contractor once shell membership has been established. D, as stated for the engine, is false.</p>
+<p>There is also a substantial correction to Job 2: the engine&#39;s sampling phase can change the stopping program by tens of degrees with the pivot held fixed. Several apparent corner walls are not determined by a corner tangency. The geometric charts remain useful, but their cells need phase and state-machine guards.</p>
+<p>The report supplies proofs, numerical predictions, actual engine counterexamples, and formulas for the cells. It does <strong>not</strong> claim to have certified the whole throw box or a new dead region. <code>throw-cert.js</code> was not present among the supplied files or in the inspected PR branches, and the 21³ map data was not attached. This is not an audit of that checker&#39;s implementation.</p>
+<nav aria-label="Report index"><h2>Index</h2>
+<ol>
+<li><a href="#results">What is proved, and what fails</a></li>
+<li><a href="#lemma-a">A — contact-point sensitivity</a></li>
+<li><a href="#lemma-b">B — normal sensitivity</a></li>
+<li><a href="#counterexample">A contacting polyline counterexample</a></li>
+<li><a href="#lemma-c">C — the shell contractor</a></li>
+<li><a href="#numbers">Numerical predictions for the small box</a></li>
+<li><a href="#lemma-d">D — contraction, shell residuals, and the barrier</a></li>
+<li><a href="#cells">Explicit curved cells and their grids</a></li>
+<li><a href="#seeds">The three seeds: verified geometry and program changes</a></li>
+<li><a href="#implementation">Implementation order and reproducibility</a></li>
+</ol></nav>
+<p><a id="results"></a></p>
+<h2>1. What is proved, and what fails</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Claim</th>
+<th>Correct version</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A: closest-point parameters are Lipschitz</td>
+<td>Yes along an isolated, nondegenerate smooth minimizing branch; yes for one nonparallel segment pair, including endpoint clamping. No global bound across competing polyline minima.</td>
+</tr>
+<tr>
+<td>B: the closest-point normal is Lipschitz</td>
+<td>Yes on the same branches. On two interior straight segments its direction depends only on their directions, so translation contributes <strong>zero</strong> to normal rotation. No global bound across the engine&#39;s feature ties.</td>
+</tr>
+<tr>
+<td>C: the contact shell limits normal width</td>
+<td>Yes. The exact width bound below includes a <code>sec β</code> factor and a lever-arm term. It does not need an additional curvature term when the geometric bounds hold throughout the comparison region.</td>
+</tr>
+<tr>
+<td>Shell membership follows from Lemma 1</td>
+<td>No. Lemma 1 follows one old material point. The shortest distance after rotation and reselection is a different quantity. A verified distance residual is needed.</td>
+</tr>
+<tr>
+<td>D: the engine is a normal contraction and tangentially nonexpanding</td>
+<td>No as stated. Locally, within a regular branch, its linearization on contact is a mass-metric projection. That provides a useful local bound, not the proposed global invariant-box theorem.</td>
+</tr>
+<tr>
+<td>Every program wall is independent of rotation once the pivot is fixed</td>
+<td>True for an equality of continuous event phases on fixed branches. False for the sampled stopping program.</td>
+</tr>
+</tbody></table></div>
+<p>The successful minimum of two stopping envelopes at ndpxhts24 should be retained. Where both candidate events really stop the move, taking their minimum avoids an unnecessary split. That improvement does not require treating a continuous event-order swap as a jump. It also does not by itself prove a program classification that was only observed on a grid.</p>
+<p><a id="lemma-a"></a></p>
+<h2>2. A — contact-point sensitivity</h2>
+<h3>Assumptions and notation</h3>
+<p>Use arc lengths <code>s, t</code> on the attacker and victim curves. Write</p>
+<pre><code class="language-text">w = V(t,q) − A(s),       d = |w|,
+a = A_s,                b = V_t,        |a| = |b| = 1.
+</code></pre>
+<p>The attacker is fixed while comparing victim poses. Along the pose path and the minimizing branch, require:</p>
+<ul>
+<li><code>0 &lt; d₋ ≤ d ≤ d₊</code>;</li>
+<li><code>|a·b| ≤ c̄ &lt; 1</code>, and set <code>σ = √(1 − c̄²)</code>;</li>
+<li>an interior, isolated minimizing branch that continues throughout the path;</li>
+<li>for the curvature bound below, <code>κ = d₊/R &lt; 1 − c̄</code>.</li>
+</ul>
+<p>“Isolated” matters: either prove that the continued branch remains the global minimum, or keep it as one candidate among several. A crossing angle at one pose does not establish these uniform hypotheses. The absolute value in <code>|a·b|</code> also covers nearly antiparallel tangents.</p>
+<p>For a straight path in the victim&#39;s hub and orientation, put</p>
+<pre><code class="language-text">Θ = |Δθ|,
+P = |Δhub| + RΘ.
+</code></pre>
+<p><code>P</code> is the integrated bound on the speed of every material point. The brief&#39;s finite-displacement pad is slightly smaller. For <code>Θ &lt; π</code>, use</p>
+<pre><code class="language-text">P ≤ [Θ / (2 sin(Θ/2))] pad.
+</code></pre>
+<p>At 0.05° the multiplicative difference is about <code>3.2 × 10⁻⁸</code>. It is negligible numerically, but using <code>P</code> makes the proof exact.</p>
+<h3>The bound</h3>
+<p>Each contact parameter satisfies</p>
+<pre><code class="language-text">|Δs|, |Δt| ≤ B,
+
+B = [P/σ + d₊Θ/σ²] / [1 − κ/(1 − c̄)].                 (A1)
+</code></pre>
+<p>In the requested form, since <code>Θ ≤ P/R</code>, one can use</p>
+<pre><code class="language-text">C_A = [1/σ + κ/σ²] / [1 − κ/(1 − c̄)],
+|Δφ_A| R, |Δφ_V| R ≤ C_A P.                              (A2)
+</code></pre>
+<p>The attacker&#39;s selected point moves by at most <code>B</code>; the victim&#39;s selected point moves in world space by at most <code>P+B</code>. Parameter displacement and world-space contact displacement should not be confused.</p>
+<h3>Proof</h3>
+<p>Let <code>f(s,t,q) = |V−A|²/2</code>. Interior stationarity is <code>a·w = b·w = 0</code>. Its parameter Hessian is</p>
+<pre><code class="language-text">H₁₁ = 1 − w·A_ss,     H₁₂ = H₂₁ = −a·b,
+H₂₂ = 1 + w·V_tt.
+</code></pre>
+<p>For radius-R arcs, both curvature vectors have length <code>1/R</code>. Thus</p>
+<pre><code class="language-text">H = H₀ + E,       H₀ = [[1,−c],[−c,1]],       c = a·b,
+E is diagonal,    |E_ii| ≤ κ,
+λ_min(H) ≥ 1 − c̄ − κ &gt; 0.
+</code></pre>
+<p>Let <code>v</code> be the velocity of a fixed material point on the victim at the current contact parameter; let <code>ḃ_pose</code> be the tangent change due to rigid rotation, with <code>|ḃ_pose| ≤ |θ̇|</code>. Differentiating stationarity gives</p>
+<pre><code class="language-text">H [ṡ,ṫ]ᵀ = [a·v, −b·v − w·ḃ_pose]ᵀ.
+</code></pre>
+<p>Applying <code>H₀⁻¹</code> to the translation part gives numerators <code>(a−cb)·v</code> and <code>(ca−b)·v</code>, each bounded by <code>√(1−c²)|v|</code>. Its rotation part contributes at most <code>d₊|θ̇|/σ²</code> to either coordinate. Also</p>
+<pre><code class="language-text">||H₀⁻¹E||∞ ≤ κ/(1−c̄).
+</code></pre>
+<p>Move this last term to the left and integrate. This proves A1; A2 follows by bounding <code>d₊Θ ≤ κP</code>. The strong-convexity estimate gives local uniqueness; it does not exclude an unrelated competing minimum elsewhere on the curves.</p>
+<p>For these particular vertical quarter circles, there is a useful extra identity at an interior stationary pair:</p>
+<pre><code class="language-text">H₁₁ = cos φ_V / cos φ_A,
+H₂₂ = cos φ_A / cos φ_V,
+det H = 1 − (a·b)².
+</code></pre>
+<p>It follows by substituting the circular curvature vectors and the stationarity equations. Interval bounds on the two φ values can therefore sharpen A1. The generic bound above avoids needing them and is already useful at 62–73°.</p>
+<h3>One fixed chord pair, including vertices as endpoints</h3>
+<p>For one attacker segment and one victim segment, the parameter problem is a strictly convex quadratic on a rectangle whenever they are nonparallel. Its minimizer is unique and continuous as an endpoint becomes active. The corresponding bound is</p>
+<pre><code class="language-text">|Δs|, |Δt| ≤ B_seg = P/σ + d₊Θ/σ².                       (A3)
+</code></pre>
+<p>There is no curvature denominator. With both parameters free, the preceding proof has <code>E=0</code>. If the attacker endpoint is fixed, only <code>t</code> moves and <code>|ṫ| ≤ |v| + d₊|θ̇|</code>. If the victim endpoint is fixed, <code>|ṡ| ≤ |v|</code>; with both fixed, both parameter derivatives vanish. These bounds are no larger than A3&#39;s integrand. The piecewise derivatives integrate across active-set changes.</p>
+<p>Here <code>s,t</code> are lengths along the chord. If the implementation instead linearly interpolates the vertex φ labels, multiply by</p>
+<pre><code class="language-text">(π/24) / [2 sin(π/48)] = 1.000714… .
+</code></pre>
+<p>This is a bound on <strong>one fixed pair of segments</strong>. Minimizing over all 144 pairs is a nonconvex selection problem. An endpoint transition within one pair and a switch between two distinct minimizing pairs are different events.</p>
+<p><a id="lemma-b"></a></p>
+<h2>3. B — normal sensitivity</h2>
+<h3>Isolated smooth interior contact</h3>
+<p>Choose the continuous sign of <code>n₃ = ±(a×b)/|a×b|</code>. Differentiating the two perpendicularity constraints bounds its speed by</p>
+<pre><code class="language-text">|ṅ₃| ≤ (|ȧ| + |ḃ|)/σ
+      ≤ (|ṡ|/R + |ṫ|/R + |θ̇|)/σ.
+</code></pre>
+<p>Consequently,</p>
+<pre><code class="language-text">|Δn₃| ≤ ε_smooth = (2B/R + Θ)/σ.                        (B1)
+</code></pre>
+<p>One way to see the first inequality is to expand <code>ṅ₃</code> in the plane spanned by <code>a,b</code>: the two prescribed dot products are <code>−n₃·ȧ</code> and <code>−n₃·ḃ</code>, and each reciprocal basis vector has length <code>1/σ</code>.</p>
+<p>With A2 this supplies an explicit version of the requested <code>K pad/d</code> form:</p>
+<pre><code class="language-text">|Δn₃| ≤ K P/d₊,
+K = (d₊/R)(2C_A + 1)/σ.                                (B2)
+</code></pre>
+<p>At 73° and <code>d₊=2.88</code>, this sufficient K is about 0.505. It depends on <code>d₊/R</code> and on isolation as well as angle. A universal constant depending only on the angle is not justified for arbitrary curved-curve contacts near a focal degeneracy.</p>
+<h3>One fixed chord pair</h3>
+<p>If both closest points stay in the chord interiors, translation does not rotate the normal at all. The attacker tangent is fixed and only the victim tangent rotates:</p>
+<pre><code class="language-text">|Δn₃| ≤ Θ/σ.                                           (B3)
+</code></pre>
+<p>If endpoint clamping is allowed within that same pair, a safe uniform bound is</p>
+<pre><code class="language-text">|Δn₃| ≤ P/d₋ + Θ/σ.                                    (B4)
+</code></pre>
+<p>For example, with the attacker endpoint fixed and the victim parameter free,</p>
+<pre><code class="language-text">ẇ = (Id − bbᵀ)v − b(w·ḃ_pose).
+</code></pre>
+<p>Normalizing gives <code>|ṅ₃| ≤ |v|/d₋ + |θ̇|</code>. If only the victim endpoint is fixed, projection onto the plane perpendicular to the attacker segment gives <code>|ṅ₃| ≤ |v|/d₋</code>; with both endpoints fixed the same normalization bound applies. Combine these with the interior case and integrate. Thus the speed through an endpoint&#39;s normal fan is controlled <strong>within the fixed segment-pair problem</strong>.</p>
+<h3>Horizontal quantities</h3>
+<p>For any of the valid branch bounds <code>|Δn₃| ≤ ε</code>, with centre horizontal fraction <code>h₀ &gt; ε</code>,</p>
+<pre><code class="language-text">|Δhf| ≤ ε,
+|Δbearing| ≤ β = ε/(h₀−ε).
+</code></pre>
+<p>The horizontal projection lies in a radius-ε disk about the centre projection. Following the straight segment inside that disk proves the bearing bound. An <code>arcsin(ε/h₀)</code> disk bound is also available and slightly tighter. The error in the horizontal <em>unit</em> normal is at most <code>2 sin(β/2)</code>.</p>
+<p>At an uncertain global feature switch, form the union of the individual branch cones. Intersecting a cone about the centre&#39;s winning branch with a vertex fan can wrongly remove a valid second branch.</p>
+<p><a id="counterexample"></a></p>
+<h2>4. A contacting polyline counterexample</h2>
+<p>This is near substep 24 of the supplied throw, with the attacker frozen and the victim translated in x. It uses the exact R and 12-chord geometry in the pinned code. Both contacts are strictly inside their respective chords; their distances are below D.</p>
+<pre><code class="language-text">Attacker: (x,y,θ) = (−12.831776146126225,
+                     −26.997105145410310,
+                       2.7766483918085445)
+
+Victim at tie:       (−23.828114646314690,
+                     −38.136424156513700,
+                       1.3281868071241907)
+</code></pre>
+<p>Use leg 0 on both pieces. Segment indices are zero-based; a segment runs between vertices k and k+1.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Quantity</th>
+<th align="right">Attacker segment 3 / victim segment 4</th>
+<th align="right">Attacker segment 2 / victim segment 4</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Distance</td>
+<td align="right">2.870742032284565</td>
+<td align="right">2.870742032284564</td>
+</tr>
+<tr>
+<td>Attacker fraction along segment</td>
+<td align="right">0.0602483</td>
+<td align="right">0.9410009</td>
+</tr>
+<tr>
+<td>Victim fraction along segment</td>
+<td align="right">0.5963618</td>
+<td align="right">0.5598701</td>
+</tr>
+<tr>
+<td>Chord crossing angle</td>
+<td align="right">70.322665°</td>
+<td align="right">74.058151°</td>
+</tr>
+<tr>
+<td>n₃,x</td>
+<td align="right">0.190256853</td>
+<td align="right">0.074548421</td>
+</tr>
+<tr>
+<td>n₃,y</td>
+<td align="right">−0.588154018</td>
+<td align="right">−0.577871814</td>
+</tr>
+<tr>
+<td>n₃,z</td>
+<td align="right">−0.786051640</td>
+<td align="right">−0.812715633</td>
+</tr>
+</tbody></table></div>
+<p>At victim <code>x−10⁻⁷</code>, the engine selects the first pair. At <code>x+10⁻⁷</code>, it selects the second. The limiting jumps are approximately:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Selected quantity</th>
+<th align="right">Jump</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Attacker contact point</td>
+<td align="right">0.359471 u</td>
+</tr>
+<tr>
+<td>Victim contact point</td>
+<td align="right">0.110240 u</td>
+</tr>
+<tr>
+<td>3-D unit normal</td>
+<td align="right">0.119185</td>
+</tr>
+</tbody></table></div>
+<p>All other leg pairs have distance at least 4.626 u. This is not a nearly parallel or zero-distance example. For the two fixed directions, each interior line-pair distance is a signed linear function of this small x translation, and the two functions cross with different slopes. The branch formulas and the strict interior fractions explain the finite jump; it is not a demand to interpret the rounded tie digits as an exact algebraic equality.</p>
+<figure><button class="zoom" type="button">Enlarge figure</button><div class="drawing"><svg role="img" aria-label="Two competing interior contacts and their normal discontinuity" xmlns:xlink="http://www.w3.org/1999/xlink" width="672.339013pt" height="331.530375pt" viewBox="0 0 672.339013 331.530375" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-09-18T10:18:16.036223</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.8, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="01-contact-switch-figure_1">
+  <g id="01-contact-switch-patch_1">
+   <path d="M 0 331.530375 
+L 672.339013 331.530375 
+L 672.339013 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="01-contact-switch-patch_2">
+   <path d="M 7.2 293.974125 
+L 278.856 293.974125 
+L 278.856 22.318125 
+L 7.2 22.318125 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="01-contact-switch-pane3d_1">
+   <g id="01-contact-switch-patch_3">
+    <path d="M 29.986567 232.730154 
+L 106.043495 170.583129 
+L 104.755973 55.993869 
+L 25.900249 108.221433 
+" style="fill: #f2f2f2; opacity: 0.5; stroke: #f2f2f2; stroke-linejoin: miter"/>
+   </g>
+  </g>
+  <g id="01-contact-switch-pane3d_2">
+   <g id="01-contact-switch-patch_4">
+    <path d="M 106.043495 170.583129 
+L 257.161792 196.771119 
+L 260.815351 77.960737 
+L 104.755973 55.993869 
+" style="fill: #e6e6e6; opacity: 0.5; stroke: #e6e6e6; stroke-linejoin: miter"/>
+   </g>
+  </g>
+  <g id="01-contact-switch-pane3d_3">
+   <g id="01-contact-switch-patch_5">
+    <path d="M 29.986567 232.730154 
+L 193.631765 264.671979 
+L 257.161792 196.771119 
+L 106.043495 170.583129 
+" style="fill: #ececec; opacity: 0.5; stroke: #ececec; stroke-linejoin: miter"/>
+   </g>
+  </g>
+  <g id="01-contact-switch-grid3d_1">
+   <g id="01-contact-switch-Line3DCollection_1">
+    <path d="M 56.341337 237.874329 
+L 130.470645 174.816223 
+L 129.953024 59.540598 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 83.151532 243.107398 
+L 155.284423 179.116318 
+L 155.560244 63.145062 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 110.379632 248.422037 
+L 180.448434 183.477106 
+L 181.540593 66.802047 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 138.035484 253.820169 
+L 205.970146 187.899882 
+L 207.902285 70.512711 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 166.12925 259.303777 
+L 231.85724 192.385976 
+L 234.653779 74.278243 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+   </g>
+  </g>
+  <g id="01-contact-switch-grid3d_2">
+   <g id="01-contact-switch-Line3DCollection_2">
+    <path d="M 30.057903 105.467744 
+L 33.984384 229.46349 
+L 196.985049 261.087992 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 39.24974 99.379825 
+L 42.827686 222.237522 
+L 204.397112 253.165982 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 48.238222 93.426592 
+L 51.481788 215.166152 
+L 211.643261 245.421302 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 57.030022 87.603624 
+L 59.952698 208.24447 
+L 218.729003 237.848065 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 65.631527 81.906693 
+L 68.246171 201.467774 
+L 225.659606 230.440639 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 74.048849 76.33175 
+L 76.367725 194.831556 
+L 232.440112 223.193639 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 82.28784 70.874918 
+L 84.322651 188.331491 
+L 239.075342 216.101907 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 90.354108 65.532483 
+L 92.116024 181.963433 
+L 245.569918 209.160508 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 98.25303 60.300885 
+L 99.752716 175.7234 
+L 251.928264 202.364712 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+   </g>
+  </g>
+  <g id="01-contact-switch-grid3d_3">
+   <g id="01-contact-switch-Line3DCollection_3">
+    <path d="M 257.384179 189.539304 
+L 105.965025 163.599321 
+L 29.738276 225.164809 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 257.813482 175.578759 
+L 105.813581 150.120815 
+L 29.258806 210.555532 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 258.246128 161.509499 
+L 105.661007 136.541712 
+L 28.775389 195.825983 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 258.682157 147.330247 
+L 105.507289 122.860882 
+L 28.287976 180.974671 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 259.121608 133.039709 
+L 105.352416 109.077177 
+L 27.796517 166.00008 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 259.564521 118.63657 
+L 105.196374 95.189433 
+L 27.300961 150.900668 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 260.010938 104.119493 
+L 105.039149 81.196466 
+L 26.801258 135.674868 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+    <path d="M 260.460901 89.487121 
+L 104.880729 67.097077 
+L 26.297354 120.321087 
+" style="fill: none; stroke: #b0b0b0; stroke-width: 0.8"/>
+   </g>
+  </g>
+  <g id="01-contact-switch-axis3d_1">
+   <g id="01-contact-switch-line2d_1">
+    <path d="M 29.986567 232.730154 
+L 193.631765 264.671979 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+   </g>
+   <g id="01-contact-switch-xtick_1">
+    <g id="01-contact-switch-line2d_2">
+     <path d="M 56.994777 237.31848 
+L 55.031228 238.988773 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_1">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="49.911434" y="261.050029" transform="rotate(-0 49.911434 261.050029)">−23</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_2">
+    <g id="01-contact-switch-line2d_3">
+     <path d="M 83.787828 242.542922 
+L 81.875771 244.23916 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_2">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="76.823289" y="266.43385" transform="rotate(-0 76.823289 266.43385)">−22</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_3">
+    <g id="01-contact-switch-line2d_4">
+     <path d="M 110.998168 247.848732 
+L 109.139455 249.571524 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_3">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="104.157026" y="271.90207" transform="rotate(-0 104.157026 271.90207)">−21</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_4">
+    <g id="01-contact-switch-line2d_5">
+     <path d="M 138.635623 253.237825 
+L 136.832172 254.987801 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_4">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="131.922643" y="277.456689" transform="rotate(-0 131.922643 277.456689)">−20</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_5">
+    <g id="01-contact-switch-line2d_6">
+     <path d="M 166.710328 258.71218 
+L 164.964131 260.489987 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_5">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="160.130456" y="283.099771" transform="rotate(-0 160.130456 283.099771)">−19</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-text_6">
+    <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="95.757188" y="285.790306" transform="rotate(-348.955331 95.757188 285.790306)">x (u)</text>
+   </g>
+  </g>
+  <g id="01-contact-switch-axis3d_2">
+   <g id="01-contact-switch-line2d_7">
+    <path d="M 257.161792 196.771119 
+L 193.631765 264.671979 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+   </g>
+   <g id="01-contact-switch-xtick_6">
+    <g id="01-contact-switch-line2d_8">
+     <path d="M 195.61985 260.823123 
+L 199.718549 261.618331 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_7">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="210.729972" y="281.500333" transform="rotate(-0 210.729972 281.500333)">−27.0</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_7">
+    <g id="01-contact-switch-line2d_9">
+     <path d="M 203.044588 252.907075 
+L 207.105202 253.684378 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_8">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="217.993501" y="273.425453" transform="rotate(-0 217.993501 273.425453)">−26.5</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_8">
+    <g id="01-contact-switch-line2d_10">
+     <path d="M 210.303187 245.168157 
+L 214.326386 245.928156 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_9">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="225.094284" y="265.531498" transform="rotate(-0 225.094284 265.531498)">−26.0</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_9">
+    <g id="01-contact-switch-line2d_11">
+     <path d="M 217.401164 237.600491 
+L 221.387599 238.343756 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_10">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="232.037729" y="257.812456" transform="rotate(-0 232.037729 257.812456)">−25.5</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_10">
+    <g id="01-contact-switch-line2d_12">
+     <path d="M 224.34379 230.198456 
+L 228.294099 230.925533 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_11">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="238.829009" y="250.262577" transform="rotate(-0 238.829009 250.262577)">−25.0</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_11">
+    <g id="01-contact-switch-line2d_13">
+     <path d="M 231.136112 222.956671 
+L 235.050915 223.668084 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_12">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="245.473071" y="242.87636" transform="rotate(-0 245.473071 242.87636)">−24.5</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_12">
+    <g id="01-contact-switch-line2d_14">
+     <path d="M 237.782957 215.869989 
+L 241.662862 216.566239 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_13">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="251.974651" y="235.64854" transform="rotate(-0 251.974651 235.64854)">−24.0</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_13">
+    <g id="01-contact-switch-line2d_15">
+     <path d="M 244.288951 208.933479 
+L 248.134549 209.615045 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_14">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="258.338283" y="228.574077" transform="rotate(-0 258.338283 228.574077)">−23.5</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_14">
+    <g id="01-contact-switch-line2d_16">
+     <path d="M 250.658522 202.142419 
+L 254.470391 202.809761 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_15">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="264.568313" y="221.64814" transform="rotate(-0 264.568313 221.64814)">−23.0</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-text_16">
+    <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="257.624123" y="257.427044" transform="rotate(-46.904712 257.624123 257.427044)">y (u)</text>
+   </g>
+  </g>
+  <g id="01-contact-switch-axis3d_3">
+   <g id="01-contact-switch-line2d_17">
+    <path d="M 257.161792 196.771119 
+L 260.815351 77.960737 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+   </g>
+   <g id="01-contact-switch-xtick_15">
+    <g id="01-contact-switch-line2d_18">
+     <path d="M 256.121099 189.322922 
+L 259.912952 189.972514 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_17">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="274.818255" y="194.409391" transform="rotate(-0 274.818255 194.409391)">18.5</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_16">
+    <g id="01-contact-switch-line2d_19">
+     <path d="M 256.545356 175.366365 
+L 260.352367 176.003989 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_18">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="275.313012" y="180.499163" transform="rotate(-0 275.313012 180.499163)">19.0</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_17">
+    <g id="01-contact-switch-line2d_20">
+     <path d="M 256.972916 161.301161 
+L 260.795206 161.926609 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_19">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="275.811605" y="166.481085" transform="rotate(-0 275.811605 166.481085)">19.5</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_18">
+    <g id="01-contact-switch-line2d_21">
+     <path d="M 257.403818 147.126035 
+L 261.24151 147.739098 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_20">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="276.314078" y="152.353898" transform="rotate(-0 276.314078 152.353898)">20.0</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_19">
+    <g id="01-contact-switch-line2d_22">
+     <path d="M 257.8381 132.839694 
+L 261.691319 133.440158 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_21">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="276.820478" y="138.116322" transform="rotate(-0 276.820478 138.116322)">20.5</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_20">
+    <g id="01-contact-switch-line2d_23">
+     <path d="M 258.275803 118.440825 
+L 262.144675 119.028472 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_22">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="277.330851" y="123.767058" transform="rotate(-0 277.330851 123.767058)">21.0</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_21">
+    <g id="01-contact-switch-line2d_24">
+     <path d="M 258.716967 103.928092 
+L 262.60162 104.5027 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_23">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="277.845242" y="109.304788" transform="rotate(-0 277.845242 109.304788)">21.5</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-xtick_22">
+    <g id="01-contact-switch-line2d_25">
+     <path d="M 259.161634 89.300139 
+L 263.062196 89.861482 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linecap: square"/>
+    </g>
+    <g id="01-contact-switch-text_24">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="278.363701" y="94.72817" transform="rotate(-0 278.363701 94.72817)">22.0</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-text_25">
+    <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="299.94123" y="132.920595" transform="rotate(-88.238643 299.94123 132.920595)">height (u)</text>
+   </g>
+  </g>
+  <g id="01-contact-switch-axes_1">
+   <g id="01-contact-switch-line2d_26">
+    <path d="M 219.497864 105.559043 
+L 160.806442 111.261077 
+L 110.436933 127.722838 
+" clip-path="url(#01-contact-switch-p5b3d823e87)" style="fill: none; stroke: #2765ad; stroke-width: 2; stroke-linecap: square"/>
+    <defs>
+     <path id="01-contact-switch-mcae2b7eedc" d="M 0 2 
+C 0.530406 2 1.03916 1.789267 1.414214 1.414214 
+C 1.789267 1.03916 2 0.530406 2 0 
+C 2 -0.530406 1.789267 -1.03916 1.414214 -1.414214 
+C 1.03916 -1.789267 0.530406 -2 0 -2 
+C -0.530406 -2 -1.03916 -1.789267 -1.414214 -1.414214 
+C -1.789267 -1.03916 -2 -0.530406 -2 0 
+C -2 0.530406 -1.789267 1.03916 -1.414214 1.414214 
+C -1.03916 1.789267 -0.530406 2 0 2 
+z
+" style="stroke: #2765ad"/>
+    </defs>
+    <g clip-path="url(#01-contact-switch-p5b3d823e87)">
+     <use xlink:href="#01-contact-switch-mcae2b7eedc" x="219.497864" y="105.559043" style="fill: #2765ad; stroke: #2765ad"/>
+     <use xlink:href="#01-contact-switch-mcae2b7eedc" x="160.806442" y="111.261077" style="fill: #2765ad; stroke: #2765ad"/>
+     <use xlink:href="#01-contact-switch-mcae2b7eedc" x="110.436933" y="127.722838" style="fill: #2765ad; stroke: #2765ad"/>
+    </g>
+   </g>
+   <g id="01-contact-switch-line2d_27">
+    <path d="M 113.311526 191.131843 
+L 167.760035 208.908394 
+" clip-path="url(#01-contact-switch-p5b3d823e87)" style="fill: none; stroke: #b34839; stroke-width: 2; stroke-linecap: square"/>
+    <defs>
+     <path id="01-contact-switch-m4841f0781e" d="M 0 2 
+C 0.530406 2 1.03916 1.789267 1.414214 1.414214 
+C 1.789267 1.03916 2 0.530406 2 0 
+C 2 -0.530406 1.789267 -1.03916 1.414214 -1.414214 
+C 1.03916 -1.789267 0.530406 -2 0 -2 
+C -0.530406 -2 -1.03916 -1.789267 -1.414214 -1.414214 
+C -1.789267 -1.03916 -2 -0.530406 -2 0 
+C -2 0.530406 -1.789267 1.03916 -1.414214 1.414214 
+C -1.03916 1.789267 -0.530406 2 0 2 
+z
+" style="stroke: #b34839"/>
+    </defs>
+    <g clip-path="url(#01-contact-switch-p5b3d823e87)">
+     <use xlink:href="#01-contact-switch-m4841f0781e" x="113.311526" y="191.131843" style="fill: #b34839; stroke: #b34839"/>
+     <use xlink:href="#01-contact-switch-m4841f0781e" x="167.760035" y="208.908394" style="fill: #b34839; stroke: #b34839"/>
+    </g>
+   </g>
+   <g id="01-contact-switch-line2d_28">
+    <path d="M 157.629424 112.299389 
+L 146.597855 201.999287 
+" clip-path="url(#01-contact-switch-p5b3d823e87)" style="fill: none; stroke: #2d3640; stroke-width: 2; stroke-linecap: square"/>
+   </g>
+   <g id="01-contact-switch-line2d_29">
+    <path d="M 164.107848 110.940336 
+L 144.632143 201.357514 
+" clip-path="url(#01-contact-switch-p5b3d823e87)" style="fill: none; stroke-dasharray: 7.4,3.2; stroke-dashoffset: 0; stroke: #2d3640; stroke-width: 2"/>
+   </g>
+   <g id="01-contact-switch-text_26">
+    <text style="font-size: 12px; font-family: 'DejaVu Sans'; text-anchor: middle" x="143.028" y="16.318125" transform="rotate(-0 143.028 16.318125)">Two interior minima at one pose</text>
+   </g>
+   <g id="01-contact-switch-legend_1">
+    <g id="01-contact-switch-patch_6">
+     <path d="M 12.8 52.203125 
+L 94.25875 52.203125 
+Q 95.85875 52.203125 95.85875 50.603125 
+L 95.85875 27.918125 
+Q 95.85875 26.318125 94.25875 26.318125 
+L 12.8 26.318125 
+Q 11.2 26.318125 11.2 27.918125 
+L 11.2 50.603125 
+Q 11.2 52.203125 12.8 52.203125 
+z
+" style="fill: #ffffff; opacity: 0.8; stroke: #cccccc; stroke-linejoin: miter"/>
+    </g>
+    <g id="01-contact-switch-line2d_30">
+     <path d="M 14.4 32.796875 
+L 22.4 32.796875 
+L 30.4 32.796875 
+" style="fill: none; stroke: #2765ad; stroke-width: 2; stroke-linecap: square"/>
+     <g>
+      <use xlink:href="#01-contact-switch-mcae2b7eedc" x="22.4" y="32.796875" style="fill: #2765ad; stroke: #2765ad"/>
+     </g>
+    </g>
+    <g id="01-contact-switch-text_27">
+     <text style="font-size: 8px; font-family: 'DejaVu Sans'; text-anchor: start" x="36.8" y="35.596875" transform="rotate(-0 36.8 35.596875)">Attacker leg 0</text>
+    </g>
+    <g id="01-contact-switch-line2d_31">
+     <path d="M 14.4 44.539375 
+L 22.4 44.539375 
+L 30.4 44.539375 
+" style="fill: none; stroke: #b34839; stroke-width: 2; stroke-linecap: square"/>
+     <g>
+      <use xlink:href="#01-contact-switch-m4841f0781e" x="22.4" y="44.539375" style="fill: #b34839; stroke: #b34839"/>
+     </g>
+    </g>
+    <g id="01-contact-switch-text_28">
+     <text style="font-size: 8px; font-family: 'DejaVu Sans'; text-anchor: start" x="36.8" y="47.339375" transform="rotate(-0 36.8 47.339375)">Victim leg 0</text>
+    </g>
+   </g>
+  </g>
+  <g id="01-contact-switch-axes_2">
+   <g id="01-contact-switch-patch_7">
+    <path d="M 370.16104 293.974125 
+L 665.139013 293.974125 
+L 665.139013 22.318125 
+L 370.16104 22.318125 
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="01-contact-switch-matplotlib.axis_1">
+    <g id="01-contact-switch-xtick_23">
+     <g id="01-contact-switch-line2d_32">
+      <defs>
+       <path id="01-contact-switch-m317efccfe0" d="M 0 0 
+L 0 3.5 
+" style="stroke: #000000; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#01-contact-switch-m317efccfe0" x="383.569129" y="293.974125" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="01-contact-switch-text_29">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="383.569129" y="308.572563" transform="rotate(-0 383.569129 308.572563)">−100</text>
+     </g>
+    </g>
+    <g id="01-contact-switch-xtick_24">
+     <g id="01-contact-switch-line2d_33">
+      <g>
+       <use xlink:href="#01-contact-switch-m317efccfe0" x="417.089354" y="293.974125" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="01-contact-switch-text_30">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="417.089354" y="308.572563" transform="rotate(-0 417.089354 308.572563)">−75</text>
+     </g>
+    </g>
+    <g id="01-contact-switch-xtick_25">
+     <g id="01-contact-switch-line2d_34">
+      <g>
+       <use xlink:href="#01-contact-switch-m317efccfe0" x="450.609578" y="293.974125" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="01-contact-switch-text_31">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="450.609578" y="308.572563" transform="rotate(-0 450.609578 308.572563)">−50</text>
+     </g>
+    </g>
+    <g id="01-contact-switch-xtick_26">
+     <g id="01-contact-switch-line2d_35">
+      <g>
+       <use xlink:href="#01-contact-switch-m317efccfe0" x="484.129802" y="293.974125" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="01-contact-switch-text_32">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="484.129802" y="308.572563" transform="rotate(-0 484.129802 308.572563)">−25</text>
+     </g>
+    </g>
+    <g id="01-contact-switch-xtick_27">
+     <g id="01-contact-switch-line2d_36">
+      <g>
+       <use xlink:href="#01-contact-switch-m317efccfe0" x="517.650026" y="293.974125" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="01-contact-switch-text_33">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="517.650026" y="308.572563" transform="rotate(-0 517.650026 308.572563)">0</text>
+     </g>
+    </g>
+    <g id="01-contact-switch-xtick_28">
+     <g id="01-contact-switch-line2d_37">
+      <g>
+       <use xlink:href="#01-contact-switch-m317efccfe0" x="551.170251" y="293.974125" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="01-contact-switch-text_34">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="551.170251" y="308.572563" transform="rotate(-0 551.170251 308.572563)">25</text>
+     </g>
+    </g>
+    <g id="01-contact-switch-xtick_29">
+     <g id="01-contact-switch-line2d_38">
+      <g>
+       <use xlink:href="#01-contact-switch-m317efccfe0" x="584.690475" y="293.974125" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="01-contact-switch-text_35">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="584.690475" y="308.572563" transform="rotate(-0 584.690475 308.572563)">50</text>
+     </g>
+    </g>
+    <g id="01-contact-switch-xtick_30">
+     <g id="01-contact-switch-line2d_39">
+      <g>
+       <use xlink:href="#01-contact-switch-m317efccfe0" x="618.210699" y="293.974125" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="01-contact-switch-text_36">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="618.210699" y="308.572563" transform="rotate(-0 618.210699 308.572563)">75</text>
+     </g>
+    </g>
+    <g id="01-contact-switch-xtick_31">
+     <g id="01-contact-switch-line2d_40">
+      <g>
+       <use xlink:href="#01-contact-switch-m317efccfe0" x="651.730924" y="293.974125" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="01-contact-switch-text_37">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="651.730924" y="308.572563" transform="rotate(-0 651.730924 308.572563)">100</text>
+     </g>
+    </g>
+    <g id="01-contact-switch-text_38">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="517.650026" y="322.250687" transform="rotate(-0 517.650026 322.250687)">Victim x offset from tie (millionths of u)</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-matplotlib.axis_2">
+    <g id="01-contact-switch-ytick_1">
+     <g id="01-contact-switch-line2d_41">
+      <defs>
+       <path id="01-contact-switch-m8c0963b7ef" d="M 0 0 
+L -3.5 0 
+" style="stroke: #000000; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#01-contact-switch-m8c0963b7ef" x="370.16104" y="266.465788" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="01-contact-switch-text_39">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="363.16104" y="270.265007" transform="rotate(-0 363.16104 270.265007)">−82</text>
+     </g>
+    </g>
+    <g id="01-contact-switch-ytick_2">
+     <g id="01-contact-switch-line2d_42">
+      <g>
+       <use xlink:href="#01-contact-switch-m8c0963b7ef" x="370.16104" y="219.757537" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="01-contact-switch-text_40">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="363.16104" y="223.556755" transform="rotate(-0 363.16104 223.556755)">−80</text>
+     </g>
+    </g>
+    <g id="01-contact-switch-ytick_3">
+     <g id="01-contact-switch-line2d_43">
+      <g>
+       <use xlink:href="#01-contact-switch-m8c0963b7ef" x="370.16104" y="173.049285" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="01-contact-switch-text_41">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="363.16104" y="176.848504" transform="rotate(-0 363.16104 176.848504)">−78</text>
+     </g>
+    </g>
+    <g id="01-contact-switch-ytick_4">
+     <g id="01-contact-switch-line2d_44">
+      <g>
+       <use xlink:href="#01-contact-switch-m8c0963b7ef" x="370.16104" y="126.341034" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="01-contact-switch-text_42">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="363.16104" y="130.140253" transform="rotate(-0 363.16104 130.140253)">−76</text>
+     </g>
+    </g>
+    <g id="01-contact-switch-ytick_5">
+     <g id="01-contact-switch-line2d_45">
+      <g>
+       <use xlink:href="#01-contact-switch-m8c0963b7ef" x="370.16104" y="79.632782" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="01-contact-switch-text_43">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="363.16104" y="83.432001" transform="rotate(-0 363.16104 83.432001)">−74</text>
+     </g>
+    </g>
+    <g id="01-contact-switch-ytick_6">
+     <g id="01-contact-switch-line2d_46">
+      <g>
+       <use xlink:href="#01-contact-switch-m8c0963b7ef" x="370.16104" y="32.924531" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="01-contact-switch-text_44">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="363.16104" y="36.72375" transform="rotate(-0 363.16104 36.72375)">−72</text>
+     </g>
+    </g>
+    <g id="01-contact-switch-text_45">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="335.976665" y="158.146125" transform="rotate(-90 335.976665 158.146125)">Horizontal normal bearing (degrees)</text>
+    </g>
+   </g>
+   <g id="01-contact-switch-line2d_47">
+    <path d="M 383.569129 34.666125 
+L 517.650026 34.666125 
+" clip-path="url(#01-contact-switch-p1ba82b9704)" style="fill: none; stroke: #2765ad; stroke-width: 3; stroke-linecap: square"/>
+   </g>
+   <g id="01-contact-switch-line2d_48">
+    <path d="M 517.650026 281.626125 
+L 651.730924 281.626125 
+" clip-path="url(#01-contact-switch-p1ba82b9704)" style="fill: none; stroke: #2765ad; stroke-width: 3; stroke-linecap: square"/>
+   </g>
+   <g id="01-contact-switch-line2d_49">
+    <path d="M 517.650026 293.974125 
+L 517.650026 22.318125 
+" clip-path="url(#01-contact-switch-p1ba82b9704)" style="fill: none; stroke-dasharray: 1.5,2.475; stroke-dashoffset: 0; stroke: #98a5b4; stroke-width: 1.5"/>
+   </g>
+   <g id="01-contact-switch-patch_8">
+    <path d="M 370.16104 293.974125 
+L 370.16104 22.318125 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="01-contact-switch-patch_9">
+    <path d="M 370.16104 293.974125 
+L 665.139013 293.974125 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="01-contact-switch-text_46">
+    <g id="01-contact-switch-patch_10">
+     <path d="M 377.859718 278.888213 
+L 558.605031 278.888213 
+L 558.605031 238.012275 
+L 377.859718 238.012275 
+z
+" style="fill: #edf2f7"/>
+    </g>
+    <text style="font-size: 10px; font-family: 'DejaVu Sans'" transform="translate(387.859718 255.610712)">Unit-normal jump: 0.119185</text>
+    <text style="font-size: 10px; font-family: 'DejaVu Sans'" transform="translate(387.859718 266.808525)">Both gaps: 2.870742 u &lt; 2.88 u</text>
+   </g>
+   <g id="01-contact-switch-text_47">
+    <text style="font-size: 12px; font-family: 'DejaVu Sans'; text-anchor: middle" x="517.650026" y="16.318125" transform="rotate(-0 517.650026 16.318125)">The normal has a finite jump</text>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="01-contact-switch-p5b3d823e87">
+   <rect x="7.2" y="22.318125" width="271.656" height="271.656"/>
+  </clipPath>
+  <clipPath id="01-contact-switch-p1ba82b9704">
+   <rect x="370.16104" y="22.318125" width="294.977974" height="271.656"/>
+  </clipPath>
+ </defs>
+</svg>
+</div><figcaption>Two competing interior contacts and their normal discontinuity</figcaption></figure>
+<p>The game&#39;s actual <code>resolvePush</code> produces a <strong>0.00246518 u</strong> difference in final hub positions from those two inputs. Exposing and running that function in memory gives exactly the same poses as the reproduced contact loop. Its final gap difference is <code>4.46364×10⁻⁷ u</code>, whereas the initial gap difference is <code>2.64805×10⁻⁸ u</code>, a ratio of about <strong>16.86</strong>. This also contradicts D&#39;s proposed universal scalar contraction for the engine&#39;s contact-solver stage.</p>
+<p>This example does not say that the initial ±0.01 u box in the brief reaches this tie. It says that H1&#39;s “one leg pair, interior contact, safe hf” assumptions do not exclude the failure. The checker must establish a stronger feature condition or retain both branches.</p>
+<p><a id="lemma-c"></a></p>
+<h2>5. C — the shell contractor</h2>
+<h3>Coordinate change and hypotheses</h3>
+<p>Let <code>n_c</code> be a fixed horizontal unit vector and <code>t_c = J n_c</code>. Carry coordinates</p>
+<pre><code class="language-text">hub = hub_c + z n_c + y t_c,
+θ   = θ_c + ϑ,
+(z,y,ϑ) ∈ Z × Y × T.
+</code></pre>
+<p>Let <code>d(z,y,ϑ)</code> be the actual selected curve/segment distance. Throughout this convex comparison box, require all active contact normals to lie within horizontal angle β of <code>n_c</code>, <code>hf ≥ h₋ &gt; 0</code>, <code>β &lt; π/2</code>, and <code>|rn| ≤ L</code>. At a tie, either use separate branches or establish these bounds for <strong>every</strong> active minimizing branch.</p>
+<p>Suppose the reachable post-update states are known to satisfy</p>
+<pre><code class="language-text">d ∈ [D−ε₋, D+ε₊].
+</code></pre>
+<p>These are residual bounds on shortest distance, not the displacement error of an old contact point.</p>
+<h3>Exact width bound</h3>
+<p>If <code>w_y,w_θ</code> are full widths, with <code>w_θ</code> in radians, then the feasible set&#39;s full normal width is at most</p>
+<pre><code class="language-text">w_z ≤ (ε₋+ε₊)/(h₋ cos β)
+      + w_y tan β
+      + L sec β · w_θ.                                  (C1)
+</code></pre>
+<p>Always intersect this with the width already available in Z. One may take <code>L=R</code>; a verified lever bound near 8 u is much better.</p>
+<h3>Proof</h3>
+<p>The envelope theorem gives, at differentiable points, with γ the horizontal normal&#39;s angle relative to <code>n_c</code>,</p>
+<pre><code class="language-text">d_z = hf cos γ ≥ h₋ cos β,
+d_y = hf sin γ,
+d_θ = hf rn.
+</code></pre>
+<p>Hence <code>|d_y/d_z| ≤ tan β</code> and <code>|d_θ/d_z| ≤ L sec β</code>. Compare any two feasible poses by their straight segment in the enclosing box and integrate these derivatives. If <code>A = ∫d_z</code>, then</p>
+<pre><code class="language-text">|Δz| ≤ |Δd|/A + tan β |Δy| + L sec β |Δθ|,
+A ≥ h₋ cos β.
+</code></pre>
+<p>Their distances differ by at most <code>ε₋+ε₊</code>, proving C1. A minimum of finitely many branch distances is locally Lipschitz; the same argument works almost everywhere if the same inequalities hold for every active branch on that segment.</p>
+<p>No extra <code>d/R</code> term is needed: the cone and lever bounds already account for their variation. The factor <code>cos β</code> missing from the proposed residual term is needed. Bounds checked only on the unknown shell, rather than throughout the comparison paths, do not suffice for this proof.</p>
+<h3>A formula that actually locates the reduced interval</h3>
+<p>A width alone does not locate Z. Use an interval-Newton contractor. For <code>m=mid(Z)</code>, interval evaluation of distance on the slice <code>z=m</code>, and a positive enclosure <code>J_z</code> for the z derivative on the whole box,</p>
+<pre><code class="language-text">S = [D−ε₋, D+ε₊],
+J_z ⊇ d_z(Z,Y,T),        inf J_z &gt; 0,
+
+Z_new = Z ∩ { m − [d(m,Y,T) − S]/J_z }.                  (C2)
+</code></pre>
+<p>For example, <code>J_z=[h₋ cos β,h₊]</code> is safe when <code>hf ≤ h₊</code>. Empty intersection eliminates that branch. Keep Y and T unchanged unless other constraints reduce them. All arithmetic used as a certificate must enclose roundoff.</p>
+<p>Alternatively, if a centre root <code>d(z₀,y₀,θ₀)=D</code> has been enclosed with normal-position error δ₀ inside the comparison box, take</p>
+<pre><code class="language-text">Z_new = Z ∩ [ z₀ − δ₀ − ε₋/(h₋ cos β)
+                    − halfwidth(Y) tan β − L sec β halfwidth(T),
+              z₀ + δ₀ + ε₊/(h₋ cos β)
+                    + halfwidth(Y) tan β + L sec β halfwidth(T) ].   (C3)
+</code></pre>
+<p>Preserve this normal/tangent/rotation box or its correlated image. Converting it to an x/y box after every pass discards some of the benefit. Split touched and untouched states before imposing a contact shell; untouched states are not constrained to that shell.</p>
+<p><a id="numbers"></a></p>
+<h2>6. Numerical predictions for the small box</h2>
+<p>For hub half-widths 0.01 u and rotation half-width 0.05°, <code>P=0.0342963252 u</code>. The finite pad is <code>0.0342963245 u</code>.</p>
+<p>The following is a <strong>conditional prediction</strong>, inserting uniform <code>χ≥73°</code> (with the absolute tangent-dot convention), <code>d₊=2.88</code>, and, where needed, <code>d₋=2.88−P</code>. The centre normal has <code>hf=0.63</code>. A centre measurement alone does not certify these interval inputs or exclude another minimizing branch.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Bound</th>
+<th align="right">Smooth isolated interior</th>
+<th align="right">Fixed chord pair, clamping allowed</th>
+<th align="right">Fixed chord pair, both interior</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Contact-parameter half-width on each leg</td>
+<td align="right">0.046872 u</td>
+<td align="right">0.038612 u</td>
+<td align="right">0.038612 u</td>
+</tr>
+<tr>
+<td>Full contact-parameter width</td>
+<td align="right">0.093743 u</td>
+<td align="right">0.077223 u</td>
+<td align="right">0.077223 u</td>
+</tr>
+<tr>
+<td>Victim contact point: world-space enclosing radius</td>
+<td align="right">0.081168 u</td>
+<td align="right">0.072908 u</td>
+<td align="right">0.072908 u</td>
+</tr>
+<tr>
+<td>Unit-normal error ε</td>
+<td align="right">0.005157</td>
+<td align="right">0.012965</td>
+<td align="right">0.000913</td>
+</tr>
+<tr>
+<td>Horizontal cone half-angle</td>
+<td align="right">0.472880°</td>
+<td align="right">1.203839°</td>
+<td align="right">0.083112°</td>
+</tr>
+<tr>
+<td>Lower horizontal fraction</td>
+<td align="right">0.624843</td>
+<td align="right">0.617035</td>
+<td align="right">0.629087</td>
+</tr>
+</tbody></table></div>
+<p>These parameter widths replace the broad distance-sublevel portions. The world-space enclosing <em>diameter</em> is twice the radius in the table. Lever estimation should use the relative contact vector, where hub translation cancels, rather than that entire world-space diameter.</p>
+<p>For C, suppose the <strong>post-update contractor inputs</strong> still have <code>w_y=0.0282843 u</code> and <code>w_θ=0.1°</code>. These transverse widths themselves must be enclosed through the update; C does not prove that they stay unchanged. The normal-width predictions are:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Verified shell total thickness</th>
+<th>Lever bound</th>
+<th align="right">Smooth</th>
+<th align="right">Chords with clamping</th>
+<th align="right">Interior chords</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0.005 u</td>
+<td>L=R</td>
+<td align="right">0.048545 u</td>
+<td align="right">0.049017 u</td>
+<td align="right">0.048297 u</td>
+</tr>
+<tr>
+<td>0.005 u</td>
+<td>L=8.5 u</td>
+<td align="right">0.023072 u</td>
+<td align="right">0.023538 u</td>
+<td align="right">0.022824 u</td>
+</tr>
+<tr>
+<td>0.001 u</td>
+<td>L=8.5 u</td>
+<td align="right">0.016670 u</td>
+<td align="right">0.017054 u</td>
+<td align="right">0.016466 u</td>
+</tr>
+</tbody></table></div>
+<p>The central lever is around −8 u, so the tighter row is plausible; it must be bounded, not assumed. If the shell is instead ±0.005 u, its total thickness is 0.010 u and the residual term doubles. This distinction matters because the old point-displacement error was two-sided.</p>
+<p>The engine&#39;s actual chord data immediately before substep 11 are <code>χ=73.6430°</code>, <code>d=2.834490 u</code>, chord pair <code>(3,4)</code>, with segment fractions <code>(0.461718,0.882485)</code>. The brief&#39;s 73° and 2.88 are suitable illustrative values, not that exact pre-correction state. Isolating the interior chord pair would make the ±0.083° cone the relevant scale. It is not justified to apply that cone through a later tie.</p>
+<p><a id="lemma-d"></a></p>
+<h2>7. D — contraction, shell residuals, and the barrier</h2>
+<h3>What the projection interpretation really proves</h3>
+<p>Use mass coordinates <code>z=(hub_x,hub_y,√I θ)</code>, contact gap <code>G(z)=d(z)−D</code>, and gradient <code>a=∇G</code>. On a fixed regular branch, with no floor or cap,</p>
+<pre><code class="language-text">a = hf (n_x,n_y,rn/√I),
+Φ(z) = z − G(z) a(z)/|a(z)|².                            (D1)
+</code></pre>
+<p>This is exactly the engine&#39;s one-contact pose update, expressed as a Newton correction in the mass metric. On <code>G=0</code>,</p>
+<pre><code class="language-text">DΦ = Id − uuᵀ,             u=a/|a|.
+</code></pre>
+<p>It kills the normal component to first order and preserves the two tangent components. At penetration <code>p=|G|</code>, differentiating D1 gives</p>
+<pre><code class="language-text">DΦ = (Id−uuᵀ) − G (Id−2uuᵀ) Hess(G)/|a|².
+</code></pre>
+<p>If <code>||Hess(G)|| ≤ M</code> and <code>|a| ≥ m</code>, then</p>
+<pre><code class="language-text">||DΦ − (Id−uuᵀ)|| ≤ pM/m²,
+||DΦ u|| ≤ pM/m²,
+||DΦ v|| ≤ (1+pM/m²)|v|       for v perpendicular to u.   (D2)
+</code></pre>
+<p>Thus a <strong>pointwise derivative</strong> in the current mass-normal direction is contracting when <code>pM&lt;m²</code>. The normal changes between poses and steps; this is not a bound on arbitrary pairs of states solely in terms of their previous scalar distances. Tangent directions can expand, and branch switches need separate handling. The exact engine counterexample in section 4 rules out the global statement.</p>
+<p>The supplied spread table also does not establish nonexpansion: x grows from 0.193 to 0.244 u at step 20 in the larger box, and rotation grows from 0.09° to 0.11° in the small-box example. The y contraction is useful evidence for choosing coordinates, not a proof of the stronger property.</p>
+<h3>An explicit Hessian bound for a fixed chord pair</h3>
+<p>The previous lemmas give a usable, conservative M without numerical finite differences. Put</p>
+<pre><code class="language-text">α = R/√I,                         p₀ = √(1+α²),
+b₀ = p₀/σ + d₊/(√I σ²).
+
+k_n = 1/(√I σ)                    if both chord points stay interior;
+k_n = p₀/d₋ + 1/(√I σ)            if clamping may change.
+
+M = √{ k_n² + [α k_n + α/√I + b₀/√I]² }.                (D3)
+</code></pre>
+<p>Proof: for a unit mass-coordinate displacement, <code>P≤p₀</code>, <code>Θ≤1/√I</code>, and the victim contact parameter changes by at most <code>b₀</code>. The relative horizontal contact vector therefore changes by at most <code>α+b₀</code>. The xy part of <code>∇G</code> changes at rate at most <code>k_n</code>; its last component, <code>n₃,xy·Jr/√I</code>, changes at rate at most <code>αk_n+(α+b₀)/√I</code>. Combining the components yields D3. At clamping transitions it is an almost-everywhere Hessian bound for the C¹ fixed-pair distance, which is sufficient for the integrated estimates.</p>
+<p>Using the numerical inputs above gives <code>M≤0.2259/u</code> for interior chords and <code>M≤1.0610/u</code> when clamping is allowed. With <code>p≤0.06 u</code> and <code>m≥0.60</code>, D2&#39;s normal derivative bounds are 0.03765 and 0.17684. These are conditional branch bounds, not observed full-sweep contraction factors.</p>
+<h3>Establishing a shell, rather than assuming one</h3>
+<p>If the same distance branch remains valid along the update segment, Taylor&#39;s theorem applied to D1 gives</p>
+<pre><code class="language-text">|G(Φ(z))| ≤ M G(z)²/(2|a(z)|²) ≤ M p²/(2m²).           (D4)
+</code></pre>
+<p>The linear term cancels exactly. For the illustrative numbers this gives a two-sided distance residual of 0.001130 u on interior chords, or 0.005305 u with possible clamping. The bound must cover the whole update segment, and a different globally shorter pair cannot be ignored. When branches can change, enclose the actual post-update distances of the retained candidates and split or continue the loop as necessary.</p>
+<p>This supplies a route to the shell that C needs. It is distinct from the brief&#39;s <code>|η|≤0.005</code> statement about an old material point. Overshoot can be positive, and the solver then stops correcting; ten allowed passes do not force that overshoot to zero.</p>
+<h3>Two remaining repairs to the barrier statement</h3>
+<p>The earlier numerical <code>5.1×10⁻⁴ u</code> example was a counterexample to a proposed <code>10⁻⁴ u</code> bound, <strong>not a proved global maximum</strong>. It should not be promoted to a universal Lemma 3 constant. The brief itself reports a larger worst substep difference, 0.009 u, which also mixes potentially multiple contact updates.</p>
+<p>A conservative explicit error for one update is available. For a foot at radius at least <code>r_min</code>, spin e, and <code>B_f=λ+R|e|&lt;r_min</code>,</p>
+<pre><code class="language-text">|actual radial gain − [λ n·u + e (Jr_foot)·u]|
+  ≤ R e²/2 + B_f²/[2(r_min−B_f)].                        (D5)
+</code></pre>
+<p>The first term bounds the finite rotation&#39;s departure from its tangent. The second follows by integrating the Hessian of the radius function along the foot displacement. A signed or geometry-specific bound can be sharper, but D5 is a proof, not an empirical worst case.</p>
+<p>Also, <code>s=a</code> remains a first-order approximation. The barrier must sum <strong>proved lower bounds on applied separation</strong>, or use a proved integrated response law. It cannot replace them with attacker advance without an error bound. For the discrete engine, a valid update-wise lower estimate has the form</p>
+<pre><code class="language-text">total radial gain ≥ Σ_updates [λ_min g_min − E_foot],
+λ_min ≥ s_min/(1+L²/I),       with s_min actually enclosed.
+</code></pre>
+<p>Charge errors per contact update, including multiple solver passes. The 0.005 material-point error is not automatically a per-substep radial-gain error.</p>
+<h3>The practical proof shape</h3>
+<p>Carry a moving reference trajectory with a small set of transverse error coordinates, a contact-shell constraint, and an outward-foot-radius lower bound. On each retained contact branch, bound the update and apply C. Keep the finite union through feature changes; merge only after proving the resulting enclosure.</p>
+<p>A single stationary small pose box cannot contain this trajectory: the victim hub&#39;s y coordinate changes by over 5 u by the throw. A large stationary invariant set is a different problem and does not follow from the local projection calculation. A moving tube is the natural H4 replacement.</p>
+<p>If every possible update has nonnegative radial gain after its error bound, accumulate only the useful positive lower gains; this can reduce work. It still requires enclosing the states that reach those later steps. Discarding early uncertainty because sampled gains were positive would leave the later geometric hypotheses unproved.</p>
+<p><a id="cells"></a></p>
+<h2>8. Explicit curved cells and their grids</h2>
+<h3>Circle in a physical-foot plane: no implicit inversion</h3>
+<p>For a start-side wall <code>|F_j−C|=D₀</code>, choose a local reference angle φ₀ and let</p>
+<pre><code class="language-text">F_j(u,v) = C + (D₀+v) e(φ₀+u/D₀),
+θ(t)     = θ₀+t/R,
+hub      = F_j(u,v) − R e(θ(t)+2πj/3).                   (W1)
+</code></pre>
+<p>Here <code>v</code> is exact signed radial distance to the circle and u is tangential arc length on the wall. A box <code>U×V×T</code>, with V wholly on the chosen side, maps to a curved cell. Restrict the angular range to a single chart and require <code>D₀+v&gt;0</code>. Intersect its image with the original pose domain and all other necessary constraints; W1 alone does not preserve the original hub box.</p>
+<p>For a pivot-plane tangency <code>|P−C|=L₀</code>, use exactly W1 with the pivot index and radius L₀. For two circles of radii ρ and D, the tangency radii are <code>ρ+D</code> and <code>|ρ−D|</code>; a corner-disc tangency has <code>D=0.81</code>. Tangency creates or removes continuous event roots. It does not alone identify the sampled program transition.</p>
+<p>These are curved surfaces in pose space with an orientation-dependent centre in hub coordinates. A single circle at fixed orientation should not be confused with its whole lifted surface.</p>
+<h3>Event-order curve</h3>
+<p>On fixed, unwrapped event branches, write</p>
+<pre><code class="language-text">H(P) = g₁(P)−g₂(P).
+</code></pre>
+<p>Choose unit tangent τ and normal ν at a regular wall point P₀. Let <code>a₀=|∇H(P₀)|</code> and solve for w in</p>
+<pre><code class="language-text">H(P₀+uτ+wν) = a₀ v,
+P(u,v) = P₀+uτ+w(u,v)ν.                                (W2)
+</code></pre>
+<p>A positive interval lower bound on <code>∂H/∂ν</code>, plus boundary brackets, proves existence and uniqueness. Use scalar interval Newton or bisection. Then recover hub from the chosen pivot and θ as in W1. Here <code>v=H/a₀</code> is a scaled event gap, <strong>not exact Euclidean signed distance</strong>, except to first order at the reference point.</p>
+<p>For an inexpensive prototype, use the affine frame <code>(τ,ν,t)</code> and clip by the exact nonlinear inequalities. It becomes inefficient when its enclosing boxes retain too much volume across the wall; W2 then pays for itself.</p>
+<h3>Sampling, gaps, and the reply domain</h3>
+<p>Place the 3×3×3 grid in parameter coordinates and map it into physical poses. Neighbour links follow mapped parameter segments, not straight chords through an excluded side. For a clipped cell, a Cartesian parameter segment may leave the feasible portion: decompose it, trim it with verified intersections, or use a further chart whose rectangular domain is entirely feasible.</p>
+<p>The gap rule must use a proved physical displacement bound. For W1,</p>
+<pre><code class="language-text">|dF_j|² = (1+v/D₀)² du² + dv²,
+|dhub| ≤ |dF_j| + |dt|,
+R|dθ| = |dt|.
+</code></pre>
+<p>These give a simple path-length bound in <code>(hub_x,hub_y,Rθ)</code>; tighter Jacobian or interval images are preferable. A certificate using only a sampled finite-difference slope remains empirical, even on a better-shaped cell. The new contact bounds are intended to replace that missing guarantee.</p>
+<p>Preserve the joint reply domain</p>
+<pre><code class="language-text">{ (q,s) : q in the cell, 2° ≤ s ≤ L(q) }.
+</code></pre>
+<p>Taking the longest limit anywhere and attaching it to every pose introduces artificial replies. On a continuous fixed program one may use <code>s=2°+z[L(q)−2°]</code>, <code>0≤z≤1</code>. For the engine&#39;s floored limit, retain the relevant phase guards or discrete bins too. A shorter-limit region and its far side need separate evidence for their different reply domains.</p>
+<h3>The sampling phase is part of the cell</h3>
+<p>For one arm and one unwrapped event,</p>
+<pre><code class="language-text">s_e(P,θ) = dir [g_e(P)−θ] + 2πℓ,
+k_e = floor(s_e/Δ)+1,          Δ=π/540.
+</code></pre>
+<p>Although <code>g₁−g₂</code> is independent of θ, the event bins are not. Within a fixed bin assignment include its guarded inequalities, with the boundary convention matching the actual code:</p>
+<pre><code class="language-text">(k_e−1)Δ ≤ s_e(P,θ) &lt; k_eΔ.                             (W3)
+</code></pre>
+<p>Then evaluate the state machine at the relevant sample indices over the whole cell. Simultaneous-bin events must be processed by that machine, not by imposing an arbitrary continuous order. A useful third coordinate is <code>ζ=θ−g_ref(P)</code>, which straightens one event&#39;s phase surfaces. Other phases depend on <code>g_e−g_ref</code> and ζ.</p>
+<p>The safe treatments of a phase strip are: certify its possible guarded programs separately, or leave it explicitly unresolved. Shrinking the strip below a sampling resolution does not prove it. Certifying both programs on an unrestricted union is safe only as a deliberately conservative overapproximation and can recreate the phantom-reply problem. Near a tangency, a short contact episode can be missed altogether between samples.</p>
+<p><a id="seeds"></a></p>
+<h2>9. The three seeds: verified geometry and program changes</h2>
+<h3>Recomputed circle quantities</h3>
+<p>For <code>F=|F_j−C|−D₀</code>, its gradient in <code>(dx,dy,t=R dθ)</code> is</p>
+<pre><code class="language-text">∇F = (n_x,n_y,n·J e(θ+2πj/3)),     n=(F_j−C)/|F_j−C|.
+</code></pre>
+<p>The seed value divided by <code>|∇F|</code> is a tangent-plane distance in pose space. It is not the radial distance in the foot plane and not the exact nearest distance to the curved surface.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Candidate</th>
+<th align="right">Seed signed radial residual in its foot plane</th>
+<th align="right">Signed linearized pose distance</th>
+<th>Unit pose normal</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>6dgqa1fd8: K6 outer tangency</td>
+<td align="right">+1.600811 u</td>
+<td align="right">+1.132563 u</td>
+<td>(0.696669, −0.123283, 0.706720)</td>
+</tr>
+<tr>
+<td>0r8c3cohc C: foot 0 on r1 centreline</td>
+<td align="right">+1.374054 u</td>
+<td align="right">+1.146165 u</td>
+<td>(0.096570, −0.828539, 0.551541)</td>
+</tr>
+<tr>
+<td>0r8c3cohc D: a1 band tangency</td>
+<td align="right">+0.365754 u</td>
+<td align="right">+0.356486 u</td>
+<td>(−0.724443, −0.652033, −0.223687)</td>
+</tr>
+<tr>
+<td>0r8c3cohc E: K8 outer tangency</td>
+<td align="right">+1.813706 u</td>
+<td align="right">+1.683131 u</td>
+<td>(−0.790522, −0.486077, −0.372564)</td>
+</tr>
+<tr>
+<td>l5807vazg A: foot 2 on a1 centreline</td>
+<td align="right">−0.585641 u</td>
+<td align="right">−0.554637 u</td>
+<td>(−0.935314, 0.148696, −0.321057)</td>
+</tr>
+</tbody></table></div>
+<p>Thus the brief&#39;s 1.13 u at K6 is a pose-space linearized distance, not a distance in the pivot plane. These numbers validate the geometric candidates. They do not validate the asserted one-to-one correspondence with all program changes.</p>
+<h3>6dgqa1fd8: K6 is not the whole boundary</h3>
+<p>At victim offset <code>(dx,dy,t)=(-0.66,0,-0.66)</code>, arm <code>(0,+)</code> runs to <strong>95⅓°</strong> and reports <code>a0,r1</code>, but</p>
+<pre><code class="language-text">|P₀−K6| = 41.103941 u &gt; ρ+0.81 = 40.811713 u.
+</code></pre>
+<p>The moving foot&#39;s circle cannot touch the corner disc at all. This long program is therefore not a corner-disc tangency crossing. The engine can hand contact from one line to another in one sampled step, while its whole-piece crossing episode remains charged.</p>
+<p>A stronger test holds P₀ fixed at <code>(-2.158446313719631,24.74125961918767)</code> and changes θ, adjusting the hub so that pivot stays fixed:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="right">Victim hub x</th>
+<th align="right">Victim hub y</th>
+<th align="right">θ in radians</th>
+<th align="right">Actual engine limit</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">3.621167321272143</td>
+<td align="right">47.101382410223884</td>
+<td align="right">4.459446497865713</td>
+<td align="right">95⅓°</td>
+</tr>
+<tr>
+<td align="right">3.584301808338408</td>
+<td align="right">47.110878950025620</td>
+<td align="right">4.461094864381486</td>
+<td align="right">63⅔°</td>
+</tr>
+<tr>
+<td align="right">3.536570349498783</td>
+<td align="right">47.123078361319970</td>
+<td align="right">4.463228044578368</td>
+<td align="right">95⅓°</td>
+</tr>
+</tbody></table></div>
+<p>All have exactly the same pivot-plane geometric event-order and tangency tests. The full <code>limitLadder</code> engine, not just the closed-form event oracle, reproduces these limits.</p>
+<p>For a genuine sampled corner entry at index k, the applicable conditions include: the new line is newly present at <code>f_i(kΔ)</code>; a freshly entered sponsor is still retained there; and <code>|f_i(kΔ)−K|≤0.81</code>. The start state and episode budget also matter. That is the condition to bound. A corner tangency is a useful event-existence boundary, but cannot replace these tests.</p>
+<p>There is a subtle continuous-limit issue too: the radius-0.81 disc about a line intersection is contained in each line&#39;s 0.81 band. At the first continuous entry onto the second band, being in the corner disc generally requires a special tangent point. A finite step can land farther into both sets. This is one reason not to infer the discrete merge boundary from the continuous circle alone.</p>
+<h3>0r8c3cohc: C, D and E share foot 0</h3>
+<p>Contrary to the brief&#39;s “two different pivots” description, all three named equations use <strong>the same physical point</strong>: C&#39;s foot 0 is D and E&#39;s pivot 0. Use that point as the chart coordinate.</p>
+<pre><code class="language-text">P₀ = hub + R e(θ),
+C: |P₀| = 53.30,
+D: |P₀−(66.667,0)| = 80.8117134008,
+E: |P₀−K8| = 40.8117134008.
+</code></pre>
+<p>The circle portion of a cell is a planar region clipped by these three circles, with θ as the third coordinate. The original hub box, other feet, and phase conditions are pulled back into this chart.</p>
+<figure><button class="zoom" type="button">Enlarge figure</button><div class="drawing"><svg role="img" aria-label="The three circles share one physical-foot plane" xmlns:xlink="http://www.w3.org/1999/xlink" width="512.123437pt" height="373.137533pt" viewBox="0 0 512.123437 373.137533" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-09-18T10:18:16.552019</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.8, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="03-shared-foot-plane-figure_1">
+  <g id="03-shared-foot-plane-patch_1">
+   <path d="M 0 373.137533 
+L 512.123437 373.137533 
+L 512.123437 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="03-shared-foot-plane-axes_1">
+   <g id="03-shared-foot-plane-patch_2">
+    <path d="M 58.523438 335.581283 
+L 504.923437 335.581283 
+L 504.923437 22.318125 
+L 58.523438 22.318125 
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="03-shared-foot-plane-matplotlib.axis_1">
+    <g id="03-shared-foot-plane-xtick_1">
+     <g id="03-shared-foot-plane-line2d_1">
+      <path d="M 82.018174 335.581283 
+L 82.018174 22.318125 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="03-shared-foot-plane-line2d_2">
+      <defs>
+       <path id="03-shared-foot-plane-m09053aa802" d="M 0 0 
+L 0 3.5 
+" style="stroke: #000000; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#03-shared-foot-plane-m09053aa802" x="82.018174" y="335.581283" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="03-shared-foot-plane-text_1">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="82.018174" y="350.17972" transform="rotate(-0 82.018174 350.17972)">4</text>
+     </g>
+    </g>
+    <g id="03-shared-foot-plane-xtick_2">
+     <g id="03-shared-foot-plane-line2d_3">
+      <path d="M 160.333964 335.581283 
+L 160.333964 22.318125 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="03-shared-foot-plane-line2d_4">
+      <g>
+       <use xlink:href="#03-shared-foot-plane-m09053aa802" x="160.333964" y="335.581283" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="03-shared-foot-plane-text_2">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="160.333964" y="350.17972" transform="rotate(-0 160.333964 350.17972)">5</text>
+     </g>
+    </g>
+    <g id="03-shared-foot-plane-xtick_3">
+     <g id="03-shared-foot-plane-line2d_5">
+      <path d="M 238.649753 335.581283 
+L 238.649753 22.318125 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="03-shared-foot-plane-line2d_6">
+      <g>
+       <use xlink:href="#03-shared-foot-plane-m09053aa802" x="238.649753" y="335.581283" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="03-shared-foot-plane-text_3">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="238.649753" y="350.17972" transform="rotate(-0 238.649753 350.17972)">6</text>
+     </g>
+    </g>
+    <g id="03-shared-foot-plane-xtick_4">
+     <g id="03-shared-foot-plane-line2d_7">
+      <path d="M 316.965543 335.581283 
+L 316.965543 22.318125 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="03-shared-foot-plane-line2d_8">
+      <g>
+       <use xlink:href="#03-shared-foot-plane-m09053aa802" x="316.965543" y="335.581283" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="03-shared-foot-plane-text_4">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="316.965543" y="350.17972" transform="rotate(-0 316.965543 350.17972)">7</text>
+     </g>
+    </g>
+    <g id="03-shared-foot-plane-xtick_5">
+     <g id="03-shared-foot-plane-line2d_9">
+      <path d="M 395.281332 335.581283 
+L 395.281332 22.318125 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="03-shared-foot-plane-line2d_10">
+      <g>
+       <use xlink:href="#03-shared-foot-plane-m09053aa802" x="395.281332" y="335.581283" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="03-shared-foot-plane-text_5">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="395.281332" y="350.17972" transform="rotate(-0 395.281332 350.17972)">8</text>
+     </g>
+    </g>
+    <g id="03-shared-foot-plane-xtick_6">
+     <g id="03-shared-foot-plane-line2d_11">
+      <path d="M 473.597122 335.581283 
+L 473.597122 22.318125 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="03-shared-foot-plane-line2d_12">
+      <g>
+       <use xlink:href="#03-shared-foot-plane-m09053aa802" x="473.597122" y="335.581283" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="03-shared-foot-plane-text_6">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="473.597122" y="350.17972" transform="rotate(-0 473.597122 350.17972)">9</text>
+     </g>
+    </g>
+    <g id="03-shared-foot-plane-text_7">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="281.723437" y="363.857845" transform="rotate(-0 281.723437 363.857845)">Foot-0 / pivot-0 x (u)</text>
+    </g>
+   </g>
+   <g id="03-shared-foot-plane-matplotlib.axis_2">
+    <g id="03-shared-foot-plane-ytick_1">
+     <g id="03-shared-foot-plane-line2d_13">
+      <path d="M 58.523438 327.749704 
+L 504.923437 327.749704 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="03-shared-foot-plane-line2d_14">
+      <defs>
+       <path id="03-shared-foot-plane-m08944d1e03" d="M 0 0 
+L -3.5 0 
+" style="stroke: #000000; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#03-shared-foot-plane-m08944d1e03" x="58.523438" y="327.749704" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="03-shared-foot-plane-text_8">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="51.523438" y="331.548923" transform="rotate(-0 51.523438 331.548923)">−56.0</text>
+     </g>
+    </g>
+    <g id="03-shared-foot-plane-ytick_2">
+     <g id="03-shared-foot-plane-line2d_15">
+      <path d="M 58.523438 288.591809 
+L 504.923437 288.591809 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="03-shared-foot-plane-line2d_16">
+      <g>
+       <use xlink:href="#03-shared-foot-plane-m08944d1e03" x="58.523438" y="288.591809" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="03-shared-foot-plane-text_9">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="51.523438" y="292.391028" transform="rotate(-0 51.523438 292.391028)">−55.5</text>
+     </g>
+    </g>
+    <g id="03-shared-foot-plane-ytick_3">
+     <g id="03-shared-foot-plane-line2d_17">
+      <path d="M 58.523438 249.433914 
+L 504.923437 249.433914 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="03-shared-foot-plane-line2d_18">
+      <g>
+       <use xlink:href="#03-shared-foot-plane-m08944d1e03" x="58.523438" y="249.433914" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="03-shared-foot-plane-text_10">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="51.523438" y="253.233133" transform="rotate(-0 51.523438 253.233133)">−55.0</text>
+     </g>
+    </g>
+    <g id="03-shared-foot-plane-ytick_4">
+     <g id="03-shared-foot-plane-line2d_19">
+      <path d="M 58.523438 210.27602 
+L 504.923437 210.27602 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="03-shared-foot-plane-line2d_20">
+      <g>
+       <use xlink:href="#03-shared-foot-plane-m08944d1e03" x="58.523438" y="210.27602" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="03-shared-foot-plane-text_11">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="51.523438" y="214.075238" transform="rotate(-0 51.523438 214.075238)">−54.5</text>
+     </g>
+    </g>
+    <g id="03-shared-foot-plane-ytick_5">
+     <g id="03-shared-foot-plane-line2d_21">
+      <path d="M 58.523438 171.118125 
+L 504.923437 171.118125 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="03-shared-foot-plane-line2d_22">
+      <g>
+       <use xlink:href="#03-shared-foot-plane-m08944d1e03" x="58.523438" y="171.118125" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="03-shared-foot-plane-text_12">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="51.523438" y="174.917344" transform="rotate(-0 51.523438 174.917344)">−54.0</text>
+     </g>
+    </g>
+    <g id="03-shared-foot-plane-ytick_6">
+     <g id="03-shared-foot-plane-line2d_23">
+      <path d="M 58.523438 131.96023 
+L 504.923437 131.96023 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="03-shared-foot-plane-line2d_24">
+      <g>
+       <use xlink:href="#03-shared-foot-plane-m08944d1e03" x="58.523438" y="131.96023" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="03-shared-foot-plane-text_13">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="51.523438" y="135.759449" transform="rotate(-0 51.523438 135.759449)">−53.5</text>
+     </g>
+    </g>
+    <g id="03-shared-foot-plane-ytick_7">
+     <g id="03-shared-foot-plane-line2d_25">
+      <path d="M 58.523438 92.802336 
+L 504.923437 92.802336 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="03-shared-foot-plane-line2d_26">
+      <g>
+       <use xlink:href="#03-shared-foot-plane-m08944d1e03" x="58.523438" y="92.802336" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="03-shared-foot-plane-text_14">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="51.523438" y="96.601554" transform="rotate(-0 51.523438 96.601554)">−53.0</text>
+     </g>
+    </g>
+    <g id="03-shared-foot-plane-ytick_8">
+     <g id="03-shared-foot-plane-line2d_27">
+      <path d="M 58.523438 53.644441 
+L 504.923437 53.644441 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="03-shared-foot-plane-line2d_28">
+      <g>
+       <use xlink:href="#03-shared-foot-plane-m08944d1e03" x="58.523438" y="53.644441" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="03-shared-foot-plane-text_15">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="51.523438" y="57.44366" transform="rotate(-0 51.523438 57.44366)">−52.5</text>
+     </g>
+    </g>
+    <g id="03-shared-foot-plane-text_16">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="14.798438" y="178.949704" transform="rotate(-90 14.798438 178.949704)">Foot-0 / pivot-0 y (u)</text>
+    </g>
+   </g>
+   <g id="03-shared-foot-plane-line2d_29">
+    <path d="M -1 109.940016 
+L 28.762397 108.191444 
+L 63.666551 105.866216 
+L 98.549994 103.248564 
+L 133.410275 100.338671 
+L 168.244946 97.136741 
+L 203.051561 93.642999 
+L 237.827675 89.857691 
+L 272.570846 85.781083 
+L 307.278633 81.41346 
+L 341.948601 76.75513 
+L 376.578312 71.806419 
+L 411.165336 66.567676 
+L 445.707244 61.039268 
+L 480.201609 55.221583 
+L 513.123437 49.389901 
+L 513.123437 49.389901 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #2765ad; stroke-width: 2; stroke-linecap: square"/>
+   </g>
+   <g id="03-shared-foot-plane-line2d_30">
+    <path d="M 132.327189 -1 
+L 152.574211 23.125277 
+L 178.320194 53.447999 
+L 204.256254 83.608302 
+L 230.381367 113.604996 
+L 256.6945 143.436894 
+L 283.194614 173.102819 
+L 309.880662 202.601598 
+L 336.75159 231.932066 
+L 363.806335 261.093065 
+L 391.043831 290.083442 
+L 418.463 318.902053 
+L 446.062759 347.547758 
+L 471.998179 374.137533 
+L 471.998179 374.137533 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #ad6c22; stroke-width: 2; stroke-linecap: square"/>
+   </g>
+   <g id="03-shared-foot-plane-line2d_31">
+    <path d="M 314.278512 -1 
+L 325.489559 19.010612 
+L 338.764582 42.274861 
+L 352.2341 65.427045 
+L 365.897167 88.465537 
+L 379.752823 111.38872 
+L 393.800094 134.194984 
+L 408.037996 156.882728 
+L 422.465527 179.450357 
+L 437.081674 201.896286 
+L 451.885411 224.218941 
+L 466.875698 246.416752 
+L 482.051483 268.48816 
+L 497.411699 290.431617 
+L 513.123437 312.478994 
+L 513.123437 312.478994 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #8f5699; stroke-width: 2; stroke-linecap: square"/>
+   </g>
+   <g id="03-shared-foot-plane-line2d_32">
+    <path d="M 122.785431 227.420102 
+L 279.41701 227.420102 
+L 279.41701 70.788523 
+L 122.785431 70.788523 
+L 122.785431 227.420102 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #aab5c1; stroke-opacity: 0.35; stroke-width: 0.8; stroke-linecap: square"/>
+   </g>
+   <g id="03-shared-foot-plane-line2d_33">
+    <path d="M 138.439406 239.179547 
+L 295.070985 239.179547 
+L 295.070985 82.547968 
+L 138.439406 82.547968 
+L 138.439406 239.179547 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #aab5c1; stroke-opacity: 0.35; stroke-width: 0.8; stroke-linecap: square"/>
+   </g>
+   <g id="03-shared-foot-plane-line2d_34">
+    <path d="M 154.219754 250.768853 
+L 310.851333 250.768853 
+L 310.851333 94.137274 
+L 154.219754 94.137274 
+L 154.219754 250.768853 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #aab5c1; stroke-opacity: 0.35; stroke-width: 0.8; stroke-linecap: square"/>
+   </g>
+   <g id="03-shared-foot-plane-line2d_35">
+    <path d="M 170.124629 262.186664 
+L 326.756208 262.186664 
+L 326.756208 105.555085 
+L 170.124629 105.555085 
+L 170.124629 262.186664 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #aab5c1; stroke-opacity: 0.35; stroke-width: 0.8; stroke-linecap: square"/>
+   </g>
+   <g id="03-shared-foot-plane-line2d_36">
+    <path d="M 186.152165 273.431642 
+L 342.783744 273.431642 
+L 342.783744 116.800063 
+L 186.152165 116.800063 
+L 186.152165 273.431642 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #aab5c1; stroke-opacity: 0.35; stroke-width: 0.8; stroke-linecap: square"/>
+   </g>
+   <g id="03-shared-foot-plane-line2d_37">
+    <path d="M 202.300485 284.502468 
+L 358.932064 284.502468 
+L 358.932064 127.870889 
+L 202.300485 127.870889 
+L 202.300485 284.502468 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #aab5c1; stroke-opacity: 0.35; stroke-width: 0.8; stroke-linecap: square"/>
+   </g>
+   <g id="03-shared-foot-plane-line2d_38">
+    <path d="M 218.567697 295.397846 
+L 375.199276 295.397846 
+L 375.199276 138.766267 
+L 218.567697 138.766267 
+L 218.567697 295.397846 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #aab5c1; stroke-opacity: 0.35; stroke-width: 0.8; stroke-linecap: square"/>
+   </g>
+   <g id="03-shared-foot-plane-line2d_39">
+    <path d="M 234.951894 306.116499 
+L 391.583473 306.116499 
+L 391.583473 149.48492 
+L 234.951894 149.48492 
+L 234.951894 306.116499 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #aab5c1; stroke-opacity: 0.35; stroke-width: 0.8; stroke-linecap: square"/>
+   </g>
+   <g id="03-shared-foot-plane-line2d_40">
+    <path d="M 251.451157 316.65717 
+L 408.082736 316.65717 
+L 408.082736 160.025591 
+L 251.451157 160.025591 
+L 251.451157 316.65717 
+" clip-path="url(#03-shared-foot-plane-pc265d14544)" style="fill: none; stroke: #aab5c1; stroke-opacity: 0.35; stroke-width: 0.8; stroke-linecap: square"/>
+   </g>
+   <g id="03-shared-foot-plane-patch_3">
+    <path d="M 58.523438 335.581283 
+L 58.523438 22.318125 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="03-shared-foot-plane-patch_4">
+    <path d="M 58.523438 335.581283 
+L 504.923437 335.581283 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="03-shared-foot-plane-patch_5">
+    <path d="M 144.08433 308.945904 
+Q 203.549645 252.717826 263.01496 196.489747 
+" style="fill: none; stroke: #657386; stroke-linecap: round"/>
+   </g>
+   <g id="03-shared-foot-plane-text_17">
+    <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: start" x="82.018174" y="319.918125" transform="rotate(-0 82.018174 319.918125)">Seed foot 0 = pivot 0</text>
+   </g>
+   <g id="03-shared-foot-plane-text_18">
+    <text style="font-size: 12px; font-family: 'DejaVu Sans'; text-anchor: middle" x="281.723437" y="16.318125" transform="rotate(-0 281.723437 16.318125)">C, D and E share the same physical foot plane</text>
+   </g>
+   <g id="03-shared-foot-plane-PathCollection_1">
+    <defs>
+     <path id="03-shared-foot-plane-mdbf18e0081" d="M 0 3 
+C 0.795609 3 1.55874 2.683901 2.12132 2.12132 
+C 2.683901 1.55874 3 0.795609 3 0 
+C 3 -0.795609 2.683901 -1.55874 2.12132 -2.12132 
+C 1.55874 -2.683901 0.795609 -3 0 -3 
+C -0.795609 -3 -1.55874 -2.683901 -2.12132 -2.12132 
+C -2.683901 -1.55874 -3 -0.795609 -3 0 
+C -3 0.795609 -2.683901 1.55874 -2.12132 2.12132 
+C -1.55874 2.683901 -0.795609 3 0 3 
+z
+" style="stroke: #202c3d"/>
+    </defs>
+    <g clip-path="url(#03-shared-foot-plane-pc265d14544)">
+     <use xlink:href="#03-shared-foot-plane-mdbf18e0081" x="264.467955" y="195.115852" style="fill: #202c3d; stroke: #202c3d"/>
+    </g>
+   </g>
+   <g id="03-shared-foot-plane-PathCollection_2">
+    <defs>
+     <path id="03-shared-foot-plane-mf1c696bba6" d="M -4.031129 4.031129 
+L 4.031129 -4.031129 
+M -4.031129 -4.031129 
+L 4.031129 4.031129 
+" style="stroke: #b34839; stroke-width: 1.5"/>
+    </defs>
+    <g clip-path="url(#03-shared-foot-plane-pc265d14544)">
+     <use xlink:href="#03-shared-foot-plane-mf1c696bba6" x="379.211024" y="151.607332" style="fill: #b34839; stroke: #b34839; stroke-width: 1.5"/>
+    </g>
+   </g>
+   <g id="03-shared-foot-plane-legend_1">
+    <g id="03-shared-foot-plane-patch_6">
+     <path d="M 64.123437 75.688125 
+L 263.573437 75.688125 
+Q 265.173437 75.688125 265.173437 74.088125 
+L 265.173437 27.918125 
+Q 265.173437 26.318125 263.573437 26.318125 
+L 64.123437 26.318125 
+Q 62.523438 26.318125 62.523438 27.918125 
+L 62.523438 74.088125 
+Q 62.523438 75.688125 64.123437 75.688125 
+z
+" style="fill: #ffffff; opacity: 0.8; stroke: #cccccc; stroke-linejoin: miter"/>
+    </g>
+    <g id="03-shared-foot-plane-line2d_41">
+     <path d="M 65.723438 32.796875 
+L 73.723438 32.796875 
+L 81.723438 32.796875 
+" style="fill: none; stroke: #2765ad; stroke-width: 2; stroke-linecap: square"/>
+    </g>
+    <g id="03-shared-foot-plane-text_19">
+     <text style="font-size: 8px; font-family: 'DejaVu Sans'; text-anchor: start" x="88.123437" y="35.596875" transform="rotate(-0 88.123437 35.596875)">C: start-side circle</text>
+    </g>
+    <g id="03-shared-foot-plane-line2d_42">
+     <path d="M 65.723438 44.539375 
+L 73.723438 44.539375 
+L 81.723438 44.539375 
+" style="fill: none; stroke: #ad6c22; stroke-width: 2; stroke-linecap: square"/>
+    </g>
+    <g id="03-shared-foot-plane-text_20">
+     <text style="font-size: 8px; font-family: 'DejaVu Sans'; text-anchor: start" x="88.123437" y="47.339375" transform="rotate(-0 88.123437 47.339375)">D: band tangency</text>
+    </g>
+    <g id="03-shared-foot-plane-line2d_43">
+     <path d="M 65.723438 56.281875 
+L 73.723438 56.281875 
+L 81.723438 56.281875 
+" style="fill: none; stroke: #8f5699; stroke-width: 2; stroke-linecap: square"/>
+    </g>
+    <g id="03-shared-foot-plane-text_21">
+     <text style="font-size: 8px; font-family: 'DejaVu Sans'; text-anchor: start" x="88.123437" y="59.081875" transform="rotate(-0 88.123437 59.081875)">E: corner tangency candidate</text>
+    </g>
+    <g id="03-shared-foot-plane-PathCollection_3">
+     <g>
+      <use xlink:href="#03-shared-foot-plane-mf1c696bba6" x="73.723438" y="68.724375" style="fill: #b34839; stroke: #b34839; stroke-width: 1.5"/>
+     </g>
+    </g>
+    <g id="03-shared-foot-plane-text_22">
+     <text style="font-size: 8px; font-family: 'DejaVu Sans'; text-anchor: start" x="88.123437" y="70.824375" transform="rotate(-0 88.123437 70.824375)">Long a1/r1 program; no corner-disc contact</text>
+    </g>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="03-shared-foot-plane-pc265d14544">
+   <rect x="58.523438" y="22.318125" width="446.4" height="313.263158"/>
+  </clipPath>
+ </defs>
+</svg>
+</div><figcaption>The three circles share one physical-foot plane</figcaption></figure>
+<p>A particularly explicit chart flattens C and D simultaneously. Let <code>a=66.667</code>, <code>r=|P₀|</code>, <code>s=|P₀−(a,0)|</code>; on this lower-half-plane branch,</p>
+<pre><code class="language-text">P₀,x = (r²−s²+a²)/(2a),
+P₀,y = −√(r²−P₀,x²),
+hub  = P₀−R e(θ).
+</code></pre>
+<p>Use <code>r−53.30</code>, <code>s−80.8117134008</code>, and a rotation or phase coordinate. At the seed <code>(r,s)=(54.67405445,81.17746720)</code>; the absolute 2-D Jacobian determinant of <code>(P₀,x,P₀,y)→(r,s)</code> is about 0.816. It is well conditioned locally. Require a positive lower bound on the square-root argument. E is then one explicit inequality in r and s. The unclassified arm <code>(2,+)</code> introduces P₂, which depends on θ in this P₀ chart.</p>
+<p>For an affine prototype, two nearly orthogonal <em>pose</em> normals can be orthogonalized, rather than pretending arbitrary normals form an orthonormal basis. Use <code>e₁=n_C</code>, <code>e₂=normalize(n_D−(n_C·n_D)n_C)</code>, <code>e₃=e₁×e₂</code>, and clip by the original nonlinear inequalities. The distance chart above avoids the circle approximation entirely for C and D.</p>
+<p><strong>E also fails as an exact merge identification.</strong> At offset <code>(0.8,1,0.8)</code>, arm <code>(0,+)</code> crosses <code>a1,r1</code> and reaches 22⅓°, while <code>|P₀−K8|=41.087408&gt;40.811713</code>. The full engine confirms the longer program without any corner-disc intersection.</p>
+<p><strong>The reported unidentified region has a sampled handoff.</strong> At offset <code>(-0.9,0.8,0.9)</code>, arm <code>(2,+)</code> changes foot 1 from a1 contact to r1 contact in one step at 6⅓°. At that sample it is 1.225243 u from K8, outside the 0.81 disc. The sponsor has dropped out of <code>kept</code>, so the one-foot fresh-line check does not invoke the corner exception; the whole-piece episode is still charged, so the new entry does not start a second charged episode.</p>
+<p>The relevant geometric organizing equality is the order of foot 1 leaving the a1 inner band (<code>39.19</code>) and entering the r1 outer band (<code>54.11</code>), together with their <strong>bin indices</strong>. For their coincident continuous event, the common foot position is</p>
+<pre><code class="language-text">Q ≈ (43.77371779891101, −31.808076491062796),
+|Q−(66.667,0)|=39.19,       |Q|=54.11,
+|P₂−Q|=ρ.
+</code></pre>
+<p>That circle is an organizing event-order curve, not a complete replacement for the phase conditions. I cannot identify all 43 fitted boundary pairs without the map itself. The provided representative region is demonstrably not explained solely by a corner merge.</p>
+<p>At fixed <code>P₂=(7.931356990148707,−14.041485656602546)</code>, varying θ by less than ⅓° produces actual limits of 63⅔°, 5⅔°, and 63⅓°. The narrow short interval persists in the full engine.</p>
+<figure><button class="zoom" type="button">Enlarge figure</button><div class="drawing"><svg role="img" aria-label="Limits change at fixed pivots as the sampling phase changes" xmlns:xlink="http://www.w3.org/1999/xlink" width="856.433125pt" height="309.80425pt" viewBox="0 0 856.433125 309.80425" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-09-18T10:18:16.343645</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.8, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="02-phase-limits-figure_1">
+  <g id="02-phase-limits-patch_1">
+   <path d="M -0 309.80425 
+L 856.433125 309.80425 
+L 856.433125 0 
+L -0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="02-phase-limits-axes_1">
+   <g id="02-phase-limits-patch_2">
+    <path d="M 40.603125 272.248 
+L 422.633125 272.248 
+L 422.633125 69.648 
+L 40.603125 69.648 
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="02-phase-limits-matplotlib.axis_1">
+    <g id="02-phase-limits-xtick_1">
+     <g id="02-phase-limits-line2d_1">
+      <path d="M 75.333125 272.248 
+L 75.333125 69.648 
+" clip-path="url(#02-phase-limits-pffacb44485)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_2">
+      <defs>
+       <path id="02-phase-limits-m19daec6766" d="M 0 0 
+L 0 3.5 
+" style="stroke: #000000; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#02-phase-limits-m19daec6766" x="75.333125" y="272.248" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_1">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="75.333125" y="286.846437" transform="rotate(-0 75.333125 286.846437)">−0.15</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-xtick_2">
+     <g id="02-phase-limits-line2d_3">
+      <path d="M 127.428125 272.248 
+L 127.428125 69.648 
+" clip-path="url(#02-phase-limits-pffacb44485)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_4">
+      <g>
+       <use xlink:href="#02-phase-limits-m19daec6766" x="127.428125" y="272.248" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_2">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="127.428125" y="286.846437" transform="rotate(-0 127.428125 286.846437)">−0.10</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-xtick_3">
+     <g id="02-phase-limits-line2d_5">
+      <path d="M 179.523125 272.248 
+L 179.523125 69.648 
+" clip-path="url(#02-phase-limits-pffacb44485)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_6">
+      <g>
+       <use xlink:href="#02-phase-limits-m19daec6766" x="179.523125" y="272.248" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_3">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="179.523125" y="286.846437" transform="rotate(-0 179.523125 286.846437)">−0.05</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-xtick_4">
+     <g id="02-phase-limits-line2d_7">
+      <path d="M 231.618125 272.248 
+L 231.618125 69.648 
+" clip-path="url(#02-phase-limits-pffacb44485)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_8">
+      <g>
+       <use xlink:href="#02-phase-limits-m19daec6766" x="231.618125" y="272.248" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_4">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="231.618125" y="286.846437" transform="rotate(-0 231.618125 286.846437)">0.00</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-xtick_5">
+     <g id="02-phase-limits-line2d_9">
+      <path d="M 283.713125 272.248 
+L 283.713125 69.648 
+" clip-path="url(#02-phase-limits-pffacb44485)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_10">
+      <g>
+       <use xlink:href="#02-phase-limits-m19daec6766" x="283.713125" y="272.248" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_5">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="283.713125" y="286.846437" transform="rotate(-0 283.713125 286.846437)">0.05</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-xtick_6">
+     <g id="02-phase-limits-line2d_11">
+      <path d="M 335.808125 272.248 
+L 335.808125 69.648 
+" clip-path="url(#02-phase-limits-pffacb44485)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_12">
+      <g>
+       <use xlink:href="#02-phase-limits-m19daec6766" x="335.808125" y="272.248" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_6">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="335.808125" y="286.846437" transform="rotate(-0 335.808125 286.846437)">0.10</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-xtick_7">
+     <g id="02-phase-limits-line2d_13">
+      <path d="M 387.903125 272.248 
+L 387.903125 69.648 
+" clip-path="url(#02-phase-limits-pffacb44485)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_14">
+      <g>
+       <use xlink:href="#02-phase-limits-m19daec6766" x="387.903125" y="272.248" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_7">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="387.903125" y="286.846437" transform="rotate(-0 387.903125 286.846437)">0.15</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-text_8">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="231.618125" y="300.524562" transform="rotate(-0 231.618125 300.524562)">Rotation offset with pivot held fixed (degrees)</text>
+    </g>
+   </g>
+   <g id="02-phase-limits-matplotlib.axis_2">
+    <g id="02-phase-limits-ytick_1">
+     <g id="02-phase-limits-line2d_15">
+      <path d="M 40.603125 255.283885 
+L 422.633125 255.283885 
+" clip-path="url(#02-phase-limits-pffacb44485)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_16">
+      <defs>
+       <path id="02-phase-limits-me5fb0f7af6" d="M 0 0 
+L -3.5 0 
+" style="stroke: #000000; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#02-phase-limits-me5fb0f7af6" x="40.603125" y="255.283885" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_9">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="33.603125" y="259.083104" transform="rotate(-0 33.603125 259.083104)">65</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-ytick_2">
+     <g id="02-phase-limits-line2d_17">
+      <path d="M 40.603125 226.202545 
+L 422.633125 226.202545 
+" clip-path="url(#02-phase-limits-pffacb44485)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_18">
+      <g>
+       <use xlink:href="#02-phase-limits-me5fb0f7af6" x="40.603125" y="226.202545" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_10">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="33.603125" y="230.001764" transform="rotate(-0 33.603125 230.001764)">70</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-ytick_3">
+     <g id="02-phase-limits-line2d_19">
+      <path d="M 40.603125 197.121206 
+L 422.633125 197.121206 
+" clip-path="url(#02-phase-limits-pffacb44485)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_20">
+      <g>
+       <use xlink:href="#02-phase-limits-me5fb0f7af6" x="40.603125" y="197.121206" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_11">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="33.603125" y="200.920424" transform="rotate(-0 33.603125 200.920424)">75</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-ytick_4">
+     <g id="02-phase-limits-line2d_21">
+      <path d="M 40.603125 168.039866 
+L 422.633125 168.039866 
+" clip-path="url(#02-phase-limits-pffacb44485)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_22">
+      <g>
+       <use xlink:href="#02-phase-limits-me5fb0f7af6" x="40.603125" y="168.039866" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_12">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="33.603125" y="171.839085" transform="rotate(-0 33.603125 171.839085)">80</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-ytick_5">
+     <g id="02-phase-limits-line2d_23">
+      <path d="M 40.603125 138.958526 
+L 422.633125 138.958526 
+" clip-path="url(#02-phase-limits-pffacb44485)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_24">
+      <g>
+       <use xlink:href="#02-phase-limits-me5fb0f7af6" x="40.603125" y="138.958526" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_13">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="33.603125" y="142.757745" transform="rotate(-0 33.603125 142.757745)">85</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-ytick_6">
+     <g id="02-phase-limits-line2d_25">
+      <path d="M 40.603125 109.877187 
+L 422.633125 109.877187 
+" clip-path="url(#02-phase-limits-pffacb44485)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_26">
+      <g>
+       <use xlink:href="#02-phase-limits-me5fb0f7af6" x="40.603125" y="109.877187" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_14">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="33.603125" y="113.676405" transform="rotate(-0 33.603125 113.676405)">90</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-ytick_7">
+     <g id="02-phase-limits-line2d_27">
+      <path d="M 40.603125 80.795847 
+L 422.633125 80.795847 
+" clip-path="url(#02-phase-limits-pffacb44485)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_28">
+      <g>
+       <use xlink:href="#02-phase-limits-me5fb0f7af6" x="40.603125" y="80.795847" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_15">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="33.603125" y="84.595066" transform="rotate(-0 33.603125 84.595066)">95</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-text_16">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="14.798438" y="170.948" transform="rotate(-90 14.798438 170.948)">Accepted arm limit (degrees)</text>
+    </g>
+   </g>
+   <g id="02-phase-limits-line2d_29">
+    <path d="M 57.968125 78.857091 
+L 154.922708 78.857091 
+L 154.922708 263.038909 
+L 282.266042 263.038909 
+L 282.266042 78.857091 
+L 328.572708 78.857091 
+L 328.572708 80.795847 
+L 405.268125 80.795847 
+L 405.268125 80.795847 
+" clip-path="url(#02-phase-limits-pffacb44485)" style="fill: none; stroke: #2765ad; stroke-width: 2; stroke-linecap: square"/>
+   </g>
+   <g id="02-phase-limits-patch_3">
+    <path d="M 40.603125 272.248 
+L 40.603125 69.648 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="02-phase-limits-patch_4">
+    <path d="M 40.603125 272.248 
+L 422.633125 272.248 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="02-phase-limits-text_17">
+    <text style="font-size: 12px; font-family: 'DejaVu Sans'; text-anchor: middle" x="231.618125" y="63.648" transform="rotate(-0 231.618125 63.648)">6dgqa1fd8 · pivot 0 fixed</text>
+   </g>
+  </g>
+  <g id="02-phase-limits-axes_2">
+   <g id="02-phase-limits-patch_5">
+    <path d="M 467.203125 272.248 
+L 849.233125 272.248 
+L 849.233125 69.648 
+L 467.203125 69.648 
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="02-phase-limits-matplotlib.axis_3">
+    <g id="02-phase-limits-xtick_8">
+     <g id="02-phase-limits-line2d_30">
+      <path d="M 501.933125 272.248 
+L 501.933125 69.648 
+" clip-path="url(#02-phase-limits-p3ba7011bdc)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_31">
+      <g>
+       <use xlink:href="#02-phase-limits-m19daec6766" x="501.933125" y="272.248" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_18">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="501.933125" y="286.846437" transform="rotate(-0 501.933125 286.846437)">−0.15</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-xtick_9">
+     <g id="02-phase-limits-line2d_32">
+      <path d="M 554.028125 272.248 
+L 554.028125 69.648 
+" clip-path="url(#02-phase-limits-p3ba7011bdc)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_33">
+      <g>
+       <use xlink:href="#02-phase-limits-m19daec6766" x="554.028125" y="272.248" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_19">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="554.028125" y="286.846437" transform="rotate(-0 554.028125 286.846437)">−0.10</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-xtick_10">
+     <g id="02-phase-limits-line2d_34">
+      <path d="M 606.123125 272.248 
+L 606.123125 69.648 
+" clip-path="url(#02-phase-limits-p3ba7011bdc)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_35">
+      <g>
+       <use xlink:href="#02-phase-limits-m19daec6766" x="606.123125" y="272.248" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_20">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="606.123125" y="286.846437" transform="rotate(-0 606.123125 286.846437)">−0.05</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-xtick_11">
+     <g id="02-phase-limits-line2d_36">
+      <path d="M 658.218125 272.248 
+L 658.218125 69.648 
+" clip-path="url(#02-phase-limits-p3ba7011bdc)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_37">
+      <g>
+       <use xlink:href="#02-phase-limits-m19daec6766" x="658.218125" y="272.248" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_21">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="658.218125" y="286.846437" transform="rotate(-0 658.218125 286.846437)">0.00</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-xtick_12">
+     <g id="02-phase-limits-line2d_38">
+      <path d="M 710.313125 272.248 
+L 710.313125 69.648 
+" clip-path="url(#02-phase-limits-p3ba7011bdc)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_39">
+      <g>
+       <use xlink:href="#02-phase-limits-m19daec6766" x="710.313125" y="272.248" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_22">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="710.313125" y="286.846437" transform="rotate(-0 710.313125 286.846437)">0.05</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-xtick_13">
+     <g id="02-phase-limits-line2d_40">
+      <path d="M 762.408125 272.248 
+L 762.408125 69.648 
+" clip-path="url(#02-phase-limits-p3ba7011bdc)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_41">
+      <g>
+       <use xlink:href="#02-phase-limits-m19daec6766" x="762.408125" y="272.248" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_23">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="762.408125" y="286.846437" transform="rotate(-0 762.408125 286.846437)">0.10</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-xtick_14">
+     <g id="02-phase-limits-line2d_42">
+      <path d="M 814.503125 272.248 
+L 814.503125 69.648 
+" clip-path="url(#02-phase-limits-p3ba7011bdc)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_43">
+      <g>
+       <use xlink:href="#02-phase-limits-m19daec6766" x="814.503125" y="272.248" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_24">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="814.503125" y="286.846437" transform="rotate(-0 814.503125 286.846437)">0.15</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-text_25">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="658.218125" y="300.524562" transform="rotate(-0 658.218125 300.524562)">Rotation offset with pivot held fixed (degrees)</text>
+    </g>
+   </g>
+   <g id="02-phase-limits-matplotlib.axis_4">
+    <g id="02-phase-limits-ytick_8">
+     <g id="02-phase-limits-line2d_44">
+      <path d="M 467.203125 249.278199 
+L 849.233125 249.278199 
+" clip-path="url(#02-phase-limits-p3ba7011bdc)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_45">
+      <g>
+       <use xlink:href="#02-phase-limits-me5fb0f7af6" x="467.203125" y="249.278199" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_26">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="460.203125" y="253.077417" transform="rotate(-0 460.203125 253.077417)">10</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-ytick_9">
+     <g id="02-phase-limits-line2d_46">
+      <path d="M 467.203125 217.522713 
+L 849.233125 217.522713 
+" clip-path="url(#02-phase-limits-p3ba7011bdc)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_47">
+      <g>
+       <use xlink:href="#02-phase-limits-me5fb0f7af6" x="467.203125" y="217.522713" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_27">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="460.203125" y="221.321931" transform="rotate(-0 460.203125 221.321931)">20</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-ytick_10">
+     <g id="02-phase-limits-line2d_48">
+      <path d="M 467.203125 185.767227 
+L 849.233125 185.767227 
+" clip-path="url(#02-phase-limits-p3ba7011bdc)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_49">
+      <g>
+       <use xlink:href="#02-phase-limits-me5fb0f7af6" x="467.203125" y="185.767227" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_28">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="460.203125" y="189.566446" transform="rotate(-0 460.203125 189.566446)">30</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-ytick_11">
+     <g id="02-phase-limits-line2d_50">
+      <path d="M 467.203125 154.011741 
+L 849.233125 154.011741 
+" clip-path="url(#02-phase-limits-p3ba7011bdc)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_51">
+      <g>
+       <use xlink:href="#02-phase-limits-me5fb0f7af6" x="467.203125" y="154.011741" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_29">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="460.203125" y="157.81096" transform="rotate(-0 460.203125 157.81096)">40</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-ytick_12">
+     <g id="02-phase-limits-line2d_52">
+      <path d="M 467.203125 122.256255 
+L 849.233125 122.256255 
+" clip-path="url(#02-phase-limits-p3ba7011bdc)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_53">
+      <g>
+       <use xlink:href="#02-phase-limits-me5fb0f7af6" x="467.203125" y="122.256255" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_30">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="460.203125" y="126.055474" transform="rotate(-0 460.203125 126.055474)">50</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-ytick_13">
+     <g id="02-phase-limits-line2d_54">
+      <path d="M 467.203125 90.500769 
+L 849.233125 90.500769 
+" clip-path="url(#02-phase-limits-p3ba7011bdc)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.2; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="02-phase-limits-line2d_55">
+      <g>
+       <use xlink:href="#02-phase-limits-me5fb0f7af6" x="467.203125" y="90.500769" style="stroke: #000000; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="02-phase-limits-text_31">
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end" x="460.203125" y="94.299988" transform="rotate(-0 460.203125 94.299988)">60</text>
+     </g>
+    </g>
+    <g id="02-phase-limits-text_32">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle" x="441.398438" y="170.948" transform="rotate(-90 441.398438 170.948)">Accepted arm limit (degrees)</text>
+    </g>
+   </g>
+   <g id="02-phase-limits-line2d_56">
+    <path d="M 484.568125 78.857091 
+L 787.008542 78.857091 
+L 787.008542 263.038909 
+L 807.267708 263.038909 
+L 807.267708 79.915607 
+L 831.868125 79.915607 
+L 831.868125 79.915607 
+" clip-path="url(#02-phase-limits-p3ba7011bdc)" style="fill: none; stroke: #2765ad; stroke-width: 2; stroke-linecap: square"/>
+   </g>
+   <g id="02-phase-limits-patch_6">
+    <path d="M 467.203125 272.248 
+L 467.203125 69.648 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="02-phase-limits-patch_7">
+    <path d="M 467.203125 272.248 
+L 849.233125 272.248 
+" style="fill: none; stroke: #000000; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="02-phase-limits-text_33">
+    <text style="font-size: 12px; font-family: 'DejaVu Sans'; text-anchor: middle" x="658.218125" y="63.648" transform="rotate(-0 658.218125 63.648)">0r8c3cohc · pivot 2 fixed</text>
+   </g>
+  </g>
+  <g id="02-phase-limits-text_34">
+   <text style="font-weight: 700; font-size: 12px; font-family: 'DejaVu Sans'; text-anchor: middle" x="428.033125" y="16.318125" transform="rotate(-0 428.033125 16.318125)">The sampling phase can change the stopping program</text>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="02-phase-limits-pffacb44485">
+   <rect x="40.603125" y="69.648" width="382.03" height="202.6"/>
+  </clipPath>
+  <clipPath id="02-phase-limits-p3ba7011bdc">
+   <rect x="467.203125" y="69.648" width="382.03" height="202.6"/>
+  </clipPath>
+ </defs>
+</svg>
+</div><figcaption>Limits change at fixed pivots as the sampling phase changes</figcaption></figure>
+<h3>l5807vazg: clip the domain, then subdivide the programs</h3>
+<p>The start-side circle A is correctly identified geometrically. Use W1 with <code>j=2</code>, <code>C=(66.667,0)</code>, <code>D₀=40</code>. With <code>ψ=φ₀+u/40</code>,</p>
+<pre><code class="language-text">F₂ = (66.667,0)+(40+v)e(ψ),
+hub = F₂−R e(θ+4π/3),
+F₀ = F₂+R[e(θ)−e(θ+4π/3)],
+F₁ = F₂+R[e(θ+2π/3)−e(θ+4π/3)].
+</code></pre>
+<p>The cell is the image of a parameter region satisfying the chosen sign of v, the original pose box, <code>|F₀|≤67.167</code>, <code>|F₁|≤67.167</code>, the foot-2 rim condition when not already redundant, and the relevant program/phase inequalities. Wall B pulls back as <code>H(P₀(u,v,θ))=0</code>. Split on B only where its program change matters; its equality itself has the stated continuous rotation-independence at fixed P₀, while its sampled handoff still needs W3.</p>
+<p>An arm proved to have limit below 2° throughout a cell has an empty legal-reply set. Accept that fact. Off-board starting poses are outside the position domain. This gives a clipped, generally curved wedge or sliver, rather than a full axis-aligned box.</p>
+<p>Whether a particular rim/A sliver is worth certifying is not decided by its geometry. The extra 20° of reply can contain an escape or remain punishable. First test legal interior representatives and the newly available stops; if promising, certify that sliver as a separate cell with its own reply domain. Report its on-board volume, not an apparent loss caused by including invalid starting poses.</p>
+<h3>Far sides and the completeness question</h3>
+<p>The far side of a genuine program change is a separate candidate region with its own grid and extra replies. A proved near-side cell may end at the wall while that far side remains unresolved. If a sampled escape is found, bracket its boundary against accepted evidence <strong>within a fixed guarded program cell</strong>; a sign-change bracket alone does not prove that the margin is monotone or has only one zero.</p>
+<p>The proposed short family list is not exhaustive for the discrete rule. Even for continuous event geometry it needs side-arc span boundaries/rays, ray tangencies, endpoint gates, and branch/wrap cases. For the sampled engine it additionally needs phase surfaces and the actual guard tests at fixed sample times:</p>
+<pre><code class="language-text">f_i(kΔ;q) = P_p(q) + Rot(dir·kΔ)[F_i(q)−P_p(q)].
+</code></pre>
+<p>Equalities such as <code>|f_i(kΔ;q)−C|=D₀</code>, ray-side equalities, corner-disc equalities, and the corresponding turn-start tests generate the finite state machine&#39;s geometric guard boundaries. These points are rotated offsets of the hub; they need not be a physical starting foot. Their surfaces generally depend on θ even with P_p fixed.</p>
+<p>A splitter based on foot-plane circles and pivot-plane curves is therefore a useful geometric foundation, not a complete exact classifier of this engine. Add the phase/state guards or leave the ambiguous parts unresolved.</p>
+<p>One source detail also differs from section 2.1 of the brief: in the pinned <code>crossingSubstep</code>, <code>newPending</code> is initialized and later iterated but never populated. The deferred-validation loop exists, but the fresh corner-entry path does not schedule new pending validations. The counterexamples above use the function actually executed by the engine. A future rule change should receive its own analysis rather than inherit these program labels.</p>
+<p><a id="implementation"></a></p>
+<h2>10. Implementation order and reproducibility</h2>
+<ol>
+<li><strong>Replace the single polyline cone with candidate chord-pair branches.</strong> Anchor each branch at its own centre-pose solution. Use A3; use B3 when both parameters are verified interior, otherwise B4. Remove a branch only when its distance lower bound exceeds a proved upper bound for another candidate. Keep distance-comparison guards when applying a branch&#39;s push.</li>
+<li><strong>Preserve correlation through the update.</strong> Use an oriented box, affine enclosure, or Taylor model in normal/tangent/rotation coordinates. Bound each actual solver pass, including caps or floors whenever they are not excluded. On the one-leg-pair regime, rebuilding geometry per pass matches the engine; multiple pairs also require preserving its actual within-pass evaluation order.</li>
+<li><strong>Prove shell residuals, then apply C2.</strong> D4 is one branch-local route; direct interval enclosure of post-update distances is another. Keep untouched states separate. Compute the lever from relative contact coordinates so hub translation cancels.</li>
+<li><strong>Accumulate a radial lower bound with per-update errors.</strong> D5 gives a conservative starting point. A moving tube replaces the unsupported small stationary invariant box.</li>
+<li><strong>For legal-reply cells, start with the common-foot chart at 0r8c3cohc.</strong> Clip l5807vazg to the board and start-side chart. Around K6 and the purported corner regions, retain phase bins and the state machine rather than relying on the fitted tangency planes.</li>
+</ol>
+<p>All this can be validated against samples, but the certificate&#39;s justification is the interval enclosures and branch coverage. Zero sampled violations do not establish missing hypotheses.</p>
+<p>The companion reproduction bundle includes the exact counterexample poses, per-step geometry, normal/point jumps, full-engine push comparisons, fixed-pivot program checks, numerical-bound calculations, and the three figures. It includes a fetch script pinned to the source revision rather than duplicating the repository. Run the scripts as described in its README.</p>
+<p>The optional all-events swing figure was completed in the preceding dead-region report; it is unchanged by these contact lemmas. The new figures here address the two assumptions that materially change this brief&#39;s proof strategy.</p>
+<p>Source references: <a href="https://github.com/liaminhawai-cmd/Tau/blob/e32f09d5be9600212c3d5294b70a3835f0517427/nn/contact-law.js">pinned contact-law.js</a>, <a href="https://github.com/liaminhawai-cmd/Tau/blob/e32f09d5be9600212c3d5294b70a3835f0517427/nn/forced-win.js">pinned forced-win.js</a>, <a href="https://github.com/liaminhawai-cmd/Tau/blob/e32f09d5be9600212c3d5294b70a3835f0517427/index.html">pinned game and crossingSubstep</a>. The later <a href="https://github.com/liaminhawai-cmd/Tau/pull/23">PR 23</a> contains the minimum-of-events work described in the brief; the counterexamples and formulas here target the specified PR 18 engine revision.</p>
+<footer>Original derivations and reproducible numerical checks. Theorems, conditional predictions, and empirical counterexamples are distinguished throughout.</footer></main><dialog aria-label="Enlarged figure"><div class="dialog-top"><span>Scroll to inspect the figure.</span><button class="close" type="button">Close</button></div><div class="zoom-content"></div></dialog><script>const d=document.querySelector('dialog');document.querySelectorAll('.zoom').forEach(b=>b.addEventListener('click',()=>{document.querySelector('.zoom-content').replaceChildren(b.closest('figure').querySelector('svg').cloneNode(true));d.showModal();}));document.querySelector('.close').addEventListener('click',()=>d.close());d.addEventListener('click',e=>{if(e.target===d)d.close();});</script></body></html>

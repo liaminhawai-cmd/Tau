@@ -1,0 +1,23 @@
+proper: 84 seeds (of 84) {"escape":75,"unresolved":8,"dead":1} resolved seconds: median 356.1, mean 1055, max 9265
+extra: 16 seeds (of -) {"escape":15,"timeout":1} resolved seconds: median 243.3, mean 619, max 3369
+
+certified:
+  retro-0-0 retro-pw0dv6b4-2026-08-21T13-08-06-498Z.jsonl mover 0 worst 0.105 engine 20/20 1694.3s
+
+unresolved:
+  retro-0-0 retro-pw0dv6b4-2026-08-17T13-12-09-135Z.jsonl 2582.3s -- reply (0,1) 35.7-36.1deg: thrown/witness ends, no common certificate even at the engine's substep (min end value 0.92u)
+  retro-ratchet-20260818211659-9mw-w1-j1-0-0 retro-ratchet-20260818211659-9mw-w01-j00001.jsonl 1148.1s -- reply (0,1) 41.9-42.3deg: witness/witness ends, no common certificate even at the engine's substep (min end value 0.20u)
+  retro-ratchet-20260818211659-9mw-w1-j14-0-0 retro-ratchet-20260818211659-9mw-w01-j00014.jsonl 628.2s -- reply (1,1) 24.9-25.3deg: witness/witness ends, no common certificate even at the engine's substep (min end value 1.22u)
+  retro-ratchet-20260819111253-ikg-w1-j2-0-0 retro-ratchet-20260819111253-ikg-w01-j00002.jsonl 3183s -- reply (1,-1) 32.5-32.9deg: thrown/thrown ends, no common certificate even at the engine's substep (min end value 2.57u)
+  retro-ratchet-20260819111253-ikg-w1-j11-0-0 retro-ratchet-20260819111253-ikg-w01-j00011.jsonl 9265s -- reply (2,1) 38.2-38.6deg: witness/witness ends, no common certificate even at the engine's substep (min end value 0.18u)
+  retro-ratchet-20260819111253-ikg-w1-j12-0-0 retro-ratchet-20260819111253-ikg-w01-j00012.jsonl 6842.2s -- reply (0,-1) 29.5-29.9deg: witness/witness ends, no common certificate even at the engine's substep (min end value 0.24u)
+  retro-ratchet-20260907094725-8w4-w1-j6-0-0 retro-ratchet-20260907094725-8w4-w01-j00006.jsonl 5408.1s -- reply (0,-1) 32.6-33.0deg: witness/witness ends, no common certificate even at the engine's substep (min end value 0.20u)
+  retro-ratchet-20260908070057-2ug-w1-j36-0-0 retro-ratchet-20260908070057-2ug-w01-j00036.jsonl 1818.2s -- reply (0,-1) 26.3-26.7deg: witness/witness ends, no common certificate even at the engine's substep (min end value 0.84u)
+
+timeout (never resolved):
+  retro-0-0 retro-pw0dv6b4-2026-08-22T20-58-55-151Z.jsonl
+
+escapes: 90; why samples:
+  reply (0,1) to 2.0deg: no attacker reply leads to a certified dead position (level-1 best margin -11.07u, 0 candidates, best child margin none)
+  reply (0,1) to 2.4deg: no attacker reply leads to a certified dead position (level-1 best margin -0.15u, 0 candidates, best child margin none)
+  reply (0,1) to 14.2deg: no attacker reply leads to a certified dead position (level-1 best margin -1.26u, 4 candidates, best child margin -0.72u)
