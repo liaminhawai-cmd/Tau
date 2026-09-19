@@ -1131,13 +1131,52 @@ test('on a phone the home panel stays anchored under the board, not lifted into 
   assert.doesNotMatch(home.style.transform,/translateY/,'no centring translate on the bottom-anchored layout');
   assert.equal(home.style.transform,'scale(1.0000)','it fits under the board at natural size');
   assert.equal(home.style.transformOrigin,'0 100%','and scales from its anchored bottom edge');
-  // A phone too short for the panel still shrinks it rather than running it up over the board.
+  // A phone too short for the panel takes the room out of the BOARD TILE first, and only shrinks
+  // the panel once the tile is down to a third of the screen -- then stops at a floor. Scaling a
+  // touch menu shrinks its tap targets with it, and the old behaviour (0.5375 here) turned a 44px
+  // row into a 24px one. Past the floor the panel sits slightly over the tile, into the gradient.
   g.w.innerHeight=500; g.read('tauDesktop.resize()');
-  assert.equal(home.style.transform,'scale(0.5375)');
+  assert.equal(home.style.transform,'scale(0.8200)','the panel stops shrinking at its floor');
   // A desktop-width window keeps the centred behaviour untouched.
   g.w.innerWidth=1280; g.w.innerHeight=1000; g.read('tauDesktop.resize()');
   assert.equal(home.style.transform,'translateY(-50%) scale(1.0000)');
   assert.equal(home.style.transformOrigin,'0 50%');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('Low graphics cuts the passes and the pixels, not the board',async t=>{
+  // What costs on a phone GPU is passes over the screen and pixels in each. Low drops the shadow
+  // pass, the two-pass glass render and the device-pixel-ratio headroom, and quarters the board
+  // bake (a per-pixel JS loop, and the reason a board takes a moment to appear).
+  const g=await game();t.after(g.close);
+  g.read(`window.__dpr=null;
+    renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(v){window.__dpr=v;},getPixelRatio:()=>1,
+      setSize(){},shadowMap:{},
+      getDrawingBufferSize(v){v.set(640,480);return v;},setRenderTarget(){},render(){}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(); camera.position.set(0,120,150);
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)]; tripods.forEach(t=>scene.add(t));
+    tripods[0].position.set(0,0,40); tripods[1].position.set(0,0,-40);
+    window.devicePixelRatio=3; localStorage.setItem('tauDesktopTestBoards','1');`);
+  // Low is offered in the picker, below Balanced, and says out loud what it gives up.
+  g.$('desktopSettings').click();
+  const q=g.$('desktopQuality');
+  assert.deepEqual([...q.options].map(o=>o.value),['low','balanced','high','ultra'],'Low is the first tier');
+  q.value='low'; q.onchange({target:q});
+  assert.equal(g.read('tauDesktop.quality'),'low');
+  assert.match(g.$('desktopQualityNote').textContent,/no shadows/,'and it says what it is doing');
+  assert.equal(g.read('window.__dpr'),1,'a 3x screen is drawn at 1x');
+  assert.equal(g.read('renderer.shadowMap.enabled'),false,'no shadow pass');
+  // Glass still draws -- as one plain frame, not two.
+  g.read("tauDesktop.board='marble'");
+  assert.equal(g.read('tauDesktop.renderFrame()'),false,'the two-pass glass render is off');
+  // ...and Balanced puts all three back.
+  q.value='balanced'; q.onchange({target:q});
+  assert.equal(g.read('window.__dpr'),1.5,'Balanced takes the pixel-ratio headroom back');
+  assert.equal(g.read('renderer.shadowMap.enabled'),true);
+  assert.equal(g.read('tauDesktop.renderFrame()'),true,'and the near piece is drawn through the far one again');
   assert.deepEqual(g.errors,[]);
 });
 

@@ -311,3 +311,54 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
   .desktop-pick-actions { gap:8px; margin-top:18px; }
   .desktop-pick-actions button { padding:11px 16px; font-size:13px; }
 }
+
+/* ---- Phones -----------------------------------------------------------------------------------
+   The premium layer is the Android app as well as the Steam build, and everything above it was
+   drawn for a mouse: hover states that a finger never sees, and rows of 26px-tall text buttons.
+   These are the two fixes a touchscreen actually needs -- something big enough to hit, and some
+   response when you hit it -- plus the room a notch and a home indicator take out of the screen.
+
+   Keyed on the POINTER, not the width: a desktop window dragged narrow is still a desktop, and a
+   tablet held in landscape is still a touchscreen. */
+@media (pointer:coarse) {
+  /* Nothing on the menu smaller than a fingertip. 44px is the smallest target that does not need
+     aiming, and every one of these was under it. */
+  .desktop-links button { padding:14px 0; font-size:17px; }
+  .desktop-home-bottom { gap:10px 18px; flex-wrap:wrap; margin-top:18px; padding-top:14px; }
+  .desktop-home-bottom button { min-height:44px; padding:10px 2px; font-size:15px; }
+  .desktop-choices select { padding:14px 14px; font-size:15px; }
+  .desktop-opponent { padding:10px 12px 10px 10px; }
+  .desktop-opponent img, .desktop-opponent .noicon { width:40px; height:40px; }
+  .desktop-rung { padding:14px 8px; gap:6px; }
+  .desktop-setting select { padding:13px 14px; }
+  .desktop-setting input[type="checkbox"] { width:26px; height:26px; }
+  .tau-desktop #modalX { top:6px; right:8px; min-width:44px; min-height:44px; font-size:22px; }
+  .tau-desktop #modalBtns>button { min-height:50px; }
+  /* A finger gets no hover, so the press itself has to answer. The transforms hover uses would
+     fight the scale fitHome() puts on the panel, so this is colour and dimming only. */
+  .desktop-links button:hover, .desktop-home-bottom button:hover,
+  .desktop-opponent:hover, .desktop-rung:hover:not([disabled]) { color:inherit; transform:none; }
+  .desktop-primary:hover { filter:none; transform:none; }
+  .desktop-links button:active, .desktop-home-bottom button:active { color:var(--gold); }
+  .desktop-primary:active { filter:brightness(.92); }
+  .desktop-opponent:active, .desktop-rung:active:not([disabled]) { filter:brightness(1.35); }
+  /* Eleven rungs on a phone: smaller tiles so the ladder reads as a ladder and not as a column. */
+  .desktop-ladder { grid-template-columns:repeat(auto-fill,minmax(98px,1fr)); gap:8px; }
+  .desktop-rung img, .desktop-rung .noicon { width:52px; height:52px; }
+}
+/* A notch at the top and a home indicator at the bottom are not screen. The panel is anchored to
+   the bottom edge in this layout, so it is the one that has to move. */
+@media (max-width:600px) {
+  .desktop-home { bottom:calc(46px + env(safe-area-inset-bottom)); width:calc(100% - 40px); left:20px; }
+  .tau-desktop #acctStatus { left:20px; bottom:calc(14px + env(safe-area-inset-bottom)); }
+  .tau-desktop #modalBackdrop { padding:14px; }
+  .tau-desktop #modalBox { padding:24px 20px; max-height:calc(100dvh - 28px); }
+  .tau-desktop #modalTitle { font-size:26px; margin-bottom:16px; }
+  /* A label beside its control leaves each of them half of a 280px sheet, which is not enough for
+     "Maple · Lily · beat Sifu". Stacked, the control gets the whole width. */
+  .desktop-setting { grid-template-columns:1fr; gap:8px; margin:16px 0; }
+  .desktop-setting select { width:100%; }
+  .desktop-setting input[type="checkbox"] { justify-self:start; }
+  /* The opponent tile and the colour picker each want a full line at this width. */
+  .desktop-choices { grid-template-columns:1fr; gap:10px; }
+}

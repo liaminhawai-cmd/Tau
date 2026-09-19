@@ -339,6 +339,21 @@
   // left and right turn the piece. Keeping the turn on left/right matters -- it is the control that
   // is held rather than tapped, and it is the one whose direction is already written on the key.
   // 1 · 2 · 3 still go straight to a foot for anyone who would rather not step round to it.
+  // ---- Graphics tiers --------------------------------------------------------------------------
+  // Low, Balanced, High, Ultra. What actually costs on a phone GPU is the number of PASSES over the
+  // screen and the number of PIXELS in each, so those are what Low cuts, rather than shaving detail
+  // nobody would miss anyway: no shadow maps, no two-pass glass, no device-pixel-ratio headroom.
+  // It also quarters the board bake, which is a per-pixel loop in JavaScript on the main thread --
+  // not a frame cost at all, but the reason a board takes a moment to appear when you pick it.
+  const QUALITIES = ['low','balanced','high','ultra'];
+  const lowGfx = () => settings.quality === 'low';
+  // A phone starts on Low. Not "a small window" -- a desktop dragged narrow is still a desktop --
+  // but a coarse pointer with no hover, which is the pair of things a touchscreen answers to. Only
+  // the DEFAULT: the setting is a setting, and a saved one always wins.
+  function phoneClass() {
+    try { return matchMedia('(pointer:coarse)').matches && matchMedia('(hover:none)').matches; }
+    catch (_) { return false; }
+  }
   const DEFAULT_KEYS = { pin1:'1', pin2:'2', pin3:'3', footPrev:'ArrowUp', footNext:'ArrowDown',
     swingLeft:'ArrowLeft', swingRight:'ArrowRight',
     commit:'Enter', cancel:'Backspace', shrink:'[', grow:']', board:'b' };
@@ -346,7 +361,7 @@
   // a new player is pointed at Level 1 and walked up. levelSkipped remembers that the player chose
   // a rung that was NOT the one being suggested -- from then on the menu leaves their choice alone
   // instead of steering them back down after every match.
-  const settings = { level:1, levelSkipped:false, colour:0, quality:'balanced', board:'walnut', padScheme:'triggers', padBrand:'auto',
+  const settings = { level:1, levelSkipped:false, colour:0, quality:phoneClass()?'low':'balanced', board:'walnut', padScheme:'triggers', padBrand:'auto',
     invertCamY:false, keys:{...DEFAULT_KEYS}, rayTrace:false,
     reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches, haptics:true, fullscreen:true };
   settings.level = ladderStep();   // outside the try: a corrupt settings blob must not lose the route
@@ -359,7 +374,7 @@
       settings.levelSkipped = true;
     }
     if (saved.colour === 0 || saved.colour === 1) settings.colour = saved.colour;
-    if (['balanced','high','ultra'].includes(saved.quality)) settings.quality = saved.quality;
+    if (QUALITIES.includes(saved.quality)) settings.quality = saved.quality;
     if (BOARD_FINISHES.some(b => b.id === saved.board) && isUnlocked(saved.board)) settings.board = saved.board;
     if (PAD_SCHEMES.includes(saved.padScheme)) settings.padScheme = saved.padScheme;
     if (['auto','xbox','playstation','nintendo','generic'].includes(saved.padBrand)) settings.padBrand = saved.padBrand;
@@ -965,6 +980,8 @@
   // the board holds still -- so it says out loud what it is doing.
   function drawQualityNote() {
     const el = $('desktopQualityNote'); if (!el) return;
+    // Low says what it gives up, because it is the one tier a player picks to fix something.
+    if (lowGfx()) { el.textContent = t('Low: no shadows and fewer pixels — for phones and older machines.'); return; }
     if (settings.quality !== 'ultra') { el.textContent = ''; return; }
     el.textContent = ptPhase === 'failed'
         ? t(ptFailReason === 'slow' ? 'Ray tracing runs too slowly on this GPU — drawing normally.'
@@ -1215,7 +1232,7 @@
       <label class="desktop-setting">${esc(t('Mute'))}<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
       <label class="desktop-setting">${esc(t('Board'))}<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${esc(boardLabel(b))}</option>`:boardRevealed(b.id)?`<option value="${b.id}" disabled>${esc(boardLabel(b))} · ${esc(unlockText(b.id))}</option>`:`<option value="${b.id}" disabled>${esc(SECRET_NAME)} · ${esc(t('keep climbing'))}</option>`).join('')}</select></label>
       ${testBoards ? '<p class="desktop-result-detail">All boards are open for testing. Type <b>ALLBOARDS</b> on the main menu to restore locks.</p>' : ''}
-      <label class="desktop-setting">${esc(t('Graphics'))}<select id="desktopQuality"><option value="balanced">${esc(t('Balanced'))}</option><option value="high">${esc(t('High'))}</option><option value="ultra">${esc(t('Ultra · ray tracing'))}</option></select></label>
+      <label class="desktop-setting">${esc(t('Graphics'))}<select id="desktopQuality"><option value="low">${esc(t('Low'))}</option><option value="balanced">${esc(t('Balanced'))}</option><option value="high">${esc(t('High'))}</option><option value="ultra">${esc(t('Ultra · ray tracing'))}</option></select></label>
       <p class="desktop-controls-note" id="desktopQualityNote" style="margin:0"></p>
       <label class="desktop-setting">${esc(t('Language'))}<select id="desktopLanguage" aria-label="${esc(t('Language'))}">${LANG_NAMES.map(([code,label])=>`<option value="${code}">${esc(label)}</option>`).join('')}</select></label>
       <label class="desktop-setting">${esc(t('Invert camera Y'))}<input id="desktopInvertY" type="checkbox" ${settings.invertCamY?'checked':''}></label>
@@ -1250,9 +1267,13 @@
     };
     $('desktopMute').onchange = e => { setSoundOn(!e.target.checked); if(paused && masterGain && audioCtx) masterGain.gain.setTargetAtTime(0,audioCtx.currentTime,.03); };
     $('desktopQuality').onchange = e => {
+      const wasLow = lowGfx();
       settings.quality = e.target.value;
       settings.rayTrace = settings.quality === 'ultra';
       saveSettings(); configureQuality(); resize();
+      // Crossing into or out of Low changes the bake's size, and the bake is cached by board id --
+      // so the cache has to be dropped or the new tier keeps the old tier's surface.
+      if (wasLow !== lowGfx()) { texturesFor = null; applyMaterials(); }
       if (settings.rayTrace) rayTraceLoad();
       drawQualityNote();
     };
@@ -1349,7 +1370,7 @@
     const hex = h => [1,3,5].map(i => parseInt(h.slice(i,i+2),16));
     const zones = wood.zones ? wood.zones
                 : skin && skin.shadeByZoneValue ? [skin.v1, skin.v2, skin.v3, skin.v4].map(hex) : null;
-    const S=window.TAU_TEST_BAKE_SIZE || 1536, cv=document.createElement('canvas'); cv.width=cv.height=S;
+    const S=window.TAU_TEST_BAKE_SIZE || (lowGfx() ? 768 : 1536), cv=document.createElement('canvas'); cv.width=cv.height=S;
     const c=cv.getContext('2d'), pixels=c.createImageData(S,S), d=pixels.data;
     const sc=S/(CFG.edgeU*2), O=S/2, fr={x:0,y:0,zone:4};
     for(let y=0;y<S;y++) for(let x=0;x<S;x++) {
@@ -1386,11 +1407,17 @@
   }
   function configureQuality() {
     if(!renderer) return;
-    renderer.setPixelRatio(Math.min(devicePixelRatio||1, settings.quality==='balanced'?1.5:2));
+    // A phone's screen is three device pixels to one CSS pixel: capping at 1 rather than 1.5 is
+    // 2.25x fewer pixels to shade every frame, and on a small screen held at arm's length it is
+    // also the cut nobody sees.
+    renderer.setPixelRatio(Math.min(devicePixelRatio||1, lowGfx()?1:settings.quality==='balanced'?1.5:2));
     renderer.toneMappingExposure=1.03;
-    renderer.shadowMap.enabled=true;
+    // Shadow maps are a whole extra pass over the scene per casting light. Low draws the board and
+    // the pieces lit but unshadowed -- the ambient occlusion baked into the surface still gives the
+    // pieces their seat on the board, so they do not float.
+    renderer.shadowMap.enabled=!lowGfx();
     scene.traverse(o=>{ if(!o.isLight || !o.castShadow) return;
-      const size=settings.quality==='balanced'?1024:2048;
+      const size=lowGfx()?512:settings.quality==='balanced'?1024:2048;
       if(o.shadow.mapSize.x!==size){ o.shadow.mapSize.set(size,size); if(o.shadow.map){o.shadow.map.dispose();o.shadow.map=null;} }
       o.shadow.normalBias=.16; o.shadow.bias=-.0002;
     });
@@ -1629,7 +1656,7 @@
   }
   // A multisampled colour+depth target is both the expensive and the least portable part of the
   // pass (the depth resolve is where drivers differ), so the cheap tier does without it.
-  function gpSampleWant() { return settings.quality === 'balanced' ? 0 : 4; }
+  function gpSampleWant() { return settings.quality === 'balanced' || lowGfx() ? 0 : 4; }
   function gpDispose() {
     if (!gpTarget) return;
     gpTarget.depthTexture.dispose(); gpTarget.dispose(); gpTarget = null;
@@ -1658,7 +1685,8 @@
     scene.traverse(o => { if (o.isLight) { const c = o.clone(); gpLights.push([o, c]); gpScene.add(c); if (c.target) gpScene.add(c.target); } });
   }
   function renderGlassFrame() {
-    if (!renderer || !camera || gpFailed) return false;
+    // Two full renders of the scene for one frame. Low draws the near piece the plain way.
+    if (!renderer || !camera || gpFailed || lowGfx()) return false;
     const pieces = glassPieces();
     if (pieces.length < 2) return false;
     try {
@@ -2112,17 +2140,37 @@
   // behind it. The centring translate must not come back with the scale there: an inline transform
   // beats the stylesheet's transform:none, which lifted the whole menu half its own height up into
   // the board and left the bottom of the phone empty.
+  // On a phone the screen is split in two: the board tile on top, the menu panel under it. ONE
+  // number decides where the line falls, and both halves read it -- the tile's height in layout()
+  // and the room fitHome() fits the panel into. The BOARD gives way first. The panel used to be
+  // scaled down to whatever was left under a fixed 53% tile, and scaling a menu on a touchscreen
+  // shrinks its tap targets with it: a 44px row at 0.7 is a 31px row, which is a row you have to
+  // aim at. So the tile hands over its own height, down to a third of the screen, before the panel
+  // starts shrinking -- and even then the panel stops at a floor and sits slightly over the tile's
+  // bottom edge, which the gradient behind it already fades out.
+  const PHONE_BOARD_MAX = 0.53, PHONE_BOARD_MIN = 0.34, PHONE_PANEL_MIN_SCALE = 0.82;
+  let phoneBoardFrac = PHONE_BOARD_MAX;
   function fitHome() {
     home.style.transform = '';
     const natural = home.offsetHeight;
     if (!natural) return;
     const centred = !matchMedia('(max-width:600px)').matches;
-    // Centred: the panel owns the window's height. Bottom-anchored: it owns what is under the
-    // board (the 53% tile in layout(), plus the gradient's fade, which it may sit slightly over).
-    const room = centred ? innerHeight - 110 : innerHeight * 0.55 - 60;
-    const s = Math.min(1, room / natural);
-    home.style.transformOrigin = centred ? '0 50%' : '0 100%';
-    home.style.transform = centred ? `translateY(-50%) scale(${s.toFixed(4)})` : `scale(${s.toFixed(4)})`;
+    if (centred) {   // the panel owns the window's height
+      phoneBoardFrac = PHONE_BOARD_MAX;
+      const s = Math.min(1, (innerHeight - 110) / natural);
+      home.style.transformOrigin = '0 50%';
+      home.style.transform = `translateY(-50%) scale(${s.toFixed(4)})`;
+      return;
+    }
+    // What the panel wants, as a share of the screen: its natural height plus the margin it sits
+    // on. Whatever is left of the screen after that is the tile's, between the two bounds.
+    const want = (natural + 70) / Math.max(1, innerHeight);
+    phoneBoardFrac = Math.max(PHONE_BOARD_MIN, Math.min(PHONE_BOARD_MAX, 1 - want));
+    // +2% of the screen: the panel may sit that far up over the tile's bottom edge, into the fade.
+    const room = innerHeight * (1.02 - phoneBoardFrac) - 60;
+    const s = Math.max(PHONE_PANEL_MIN_SCALE, Math.min(1, room / natural));
+    home.style.transformOrigin = '0 100%';
+    home.style.transform = `scale(${s.toFixed(4)})`;
   }
   function layout() {
     root.classList.toggle('desktop-watching', inMatch() && passiveView());
@@ -2144,7 +2192,7 @@
     // the view past the window's edge -- the home screen with scrollbars -- so they go here.
     cv.style.left=cv.style.top=cv.style.right=cv.style.bottom='';
     const w=Math.max(1,Math.round(innerWidth>600?innerWidth*.76:innerWidth));
-    const h=Math.max(1,Math.round(innerWidth<=600?innerHeight*.53:innerHeight));
+    const h=Math.max(1,Math.round(innerWidth<=600?innerHeight*phoneBoardFrac:innerHeight));
     cv.style.width=w+'px'; cv.style.height=h+'px'; cv.style.display='block';
     const dpr=renderer.getPixelRatio();
     if(cv.width!==Math.floor(w*dpr)||cv.height!==Math.floor(h*dpr)) renderer.setSize(w,h,false);
@@ -2663,6 +2711,7 @@
     debugDetailMode(){ return detailMode; },
     debugDrift(){ return driftAmt; },
     resize:layout, updateCamera, orbitCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, fallGravity, renderFrame,
+    get quality(){return settings.quality;},   // read-only: the picker is the way to change it
     get rayTrace(){return settings.rayTrace;},
     set rayTrace(v){ settings.rayTrace=!!v; settings.quality = settings.rayTrace ? 'ultra' : (settings.quality==='ultra'?'high':settings.quality);
       saveSettings(); if($('desktopQuality')) $('desktopQuality').value=settings.quality;
