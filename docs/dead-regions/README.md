@@ -112,6 +112,21 @@ on the ladder is sitting on or beside an event wall, and those are exactly the
 places where a moving tube -- not a fixed box -- is the construction that will
 be needed. See the closing section.
 
+### How big is all of this, really? — `nn/dead-corpus-geometry.js`
+
+Merged on pose (each ball was grown from one of the points), the corpus is **261
+distinct certified dead positions, 63 of them carrying a certified radius** of
+0.009-0.350u. Measured in the metric the certificates are issued in, the closest
+any two same-mover certified positions come to each other is **5.57u** (median
+30.07u); **none** is within 1u of another and **no two balls overlap**. The
+certified 6-volume, on `Vol6 = (pi^2/45) * eps^6`, is `1.845593e-3 u^6` — which
+independently reproduces Astra's `0.00184559`. Run `node nn/dead-corpus-geometry.js`.
+
+The consequence is recorded in [`l11-dead-measured.md`](l11-dead-measured.md): the
+set is 261 isolated needles, so a lookup table over it cannot be a playing-strength
+mechanism, and the corpus's value is as the input to a *rule* — Brief 5's classes
+and regions — not as an enumeration to ship.
+
 ### Recorded misses — `screened-not-dead.jsonl`
 
 All 1045 non-dead seeds, with the reason. 909 escape (865 of them from the

@@ -111,3 +111,90 @@ node nn/arena.js --a L17 --b L11 --games 16 --openingPlies 2 --deadStats
 
 `--deadStats` prints the counters above; they are the reason this question could
 be answered rather than guessed at.
+
+---
+
+# Settling it properly: the corpus itself, measured (2026-09-19)
+
+The correction above withdrew the sparsity conclusion because the experiment had
+tested the wrong table. The question can be answered without any game at all, and
+without the shipped table, by measuring the corpus in the metric its own
+certificates are issued in. That measurement is below, and it reaches the same
+verdict on evidence that actually supports it.
+
+## The certified dead set is 261 isolated needles
+
+Merging `dead-points-mined.jsonl` and `dead-balls.jsonl` (each ball was grown from
+one of the points, so they are the same position and are counted once) gives **261
+distinct certified dead positions, 63 of which carry a certified radius**. Nearest
+same-mover neighbour, joint L1 distance over both pieces with rotation as arc
+length (`R = 23.095u`) — the metric `forced-win.js` certifies in:
+
+| min | p05 | median | p95 | max |
+| --- | --- | --- | --- | --- |
+| **5.57u** | 10.83u | 30.07u | 58.05u | 87.93u |
+
+Against that, the certified radii: **min 0.009u, median 0.095u, max 0.350u.**
+
+- Entries whose nearest same-mover neighbour lies within 1.0u: **0 of 261.**
+- Entries within 5.0u of another: **0 of 261.**
+- Pairs of certified balls that overlap, or even come within twice the sum of
+  their radii: **0.**
+
+The closest any two certified dead positions come to each other is **sixteen times
+the largest ball radius in the corpus**, and about sixty times the median one. The
+set is not a region with gaps in it. It is 261 needles.
+
+## So the table cannot fire, and that is geometry, not sample size
+
+A crude box for the reachable joint pose space — each hub over a disc of radius
+66.667u, each rotation over its full 2*pi*R = 145.1u of arc — is about
+`4.1e12 u^6`. The 63 balls' ambient volume, by Astra's own
+`Vol6 = (pi^2/45) * eps^6`, totals `0.00184559 u^6`. That is a coverage ratio of
+order **1e-16**. The box is crude and mixes a Euclidean disc with an L1 ball, so
+treat it as an order of magnitude only; the 5.57u-vs-0.35u separation above needs
+no modelling and says the same thing exactly.
+
+As a check against real play, the 1,045 positions in `screened-not-dead.jsonl` —
+genuine self-play positions taken one loser-move before a throw, i.e. the most
+throw-adjacent sample the project has — were measured against the corpus:
+
+```
+nearest joint distance to any same-mover certified entry
+  min 5.22u   p05 18.09u   median 42.75u   p95 75.82u
+inside a certified ball (eps 0.009-0.35u):        0 / 1045
+inside even the shipped over-claimed eps = 1.0u:  0 / 1045
+```
+
+(Those 1,045 were screened and found *not* dead, so finding none of them dead is
+expected and is not the point; the distances are. Nothing in real play comes
+within an order of magnitude of a certified region.)
+
+## What this does and does not now establish
+
+It **does** establish that a lookup table over this corpus cannot be a playing
+strength mechanism, for a reason that does not depend on which table the L17 rung
+happens to carry, on 96 games, or on any counter. The certified regions are too
+small and too far apart for play to land in one. Shipping all 261 points and 63
+balls into `DEAD_CERTS` would change the L17 result by nothing, and shipping them
+at the current `DEAD_CERT_EPS = 1.0` would additionally claim a radius **three
+times larger than the largest one ever certified**, on 198 points that carry no
+certified radius at all (`"ball": null`). That is not a code change worth making.
+
+It **does not** say the corpus is worthless, or that dead knowledge cannot help.
+It says enumeration is the wrong shape. 261 points at 30u spacing is a **training
+set for finding the rule**, not the rule — which is exactly what Brief 5's region
+criterion asks for, and exactly what "find classes and regions that are dead, not
+just points" means. The corpus earns its keep as the input to that, and as the
+falsification set any candidate rule must survive.
+
+It also leaves the reframing above untouched and still worth doing: the dense test
+(1,005 calls, 265 confirmed) and the guard (285 calls, 232 declines) are the parts
+of L17 that actually ran, they do not consult the table, and whether they are worth
+their ~81s/game belongs in its own equal-time measurement.
+
+## Reproducing
+
+```
+node nn/dead-corpus-geometry.js
+```

@@ -48,4 +48,27 @@ still sampling. Proof needs the endpoint margins and enclosure bounds of Brief 5
 section 5, and those 135 also each need their other five arms' full legal ranges
 carried the same way before the position itself is certified.
 
+## Why the cover rule's bar is flat, not a Lipschitz allowance
+
+The single-arc rule that refused these 136 uses a *Lipschitz allowance*: the margin
+has to clear `max(1, 3 × |Δm| / d) × d / 2`, a requirement that scales with the
+sample spacing `d`, so a finer grid earns a smaller bar. The obvious next move was
+to apply the same allowance inside the cover, at the cover's own ~13× finer spacing.
+
+**That would have been false rigour, and it is not what the rule does.** Every gap
+that reaches the cover has already been halved by the subdivision loop until it is
+at most 1.5 engine substeps wide, and measured across all 136 it is one substep or
+less — 131 at exactly 0.4°, one at 0.3°, four degenerate at 0.0°, none wider. The
+cover's 13 samples therefore sit about 0.03° apart, **twelve times finer than the
+integrator's own step**. Scaling an allowance to that spacing divides the
+requirement by twelve on a separation the physics cannot resolve: a smaller number
+that means less, not more.
+
+So `COVER_BAR` is `PROBE_BAR`, flat, and the cover sits in the same tier as the
+sliver and the engine probe — the two rules already in `forced-win.js` that are
+explicitly *relative to the engine's resolution* and say so. A cover asserts "one
+arm throws robustly at every sub-substep sample we can ask for", not a theorem
+about the interval, and `covers` is counted separately from `slivers` and
+`probedSlivers` so a certificate always says how it was obtained.
+
 Reproduce: `node nn/gap-cover.js docs/dead-regions/screened-not-dead.jsonl out.jsonl 25`

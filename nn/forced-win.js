@@ -87,6 +87,19 @@ const SLIVER_BAR = 5;
 const PROBE_BAR = 1.5, PROBE_N = 12;
 // Brief 5's region criterion at gap scale. COVER_BAR is PROBE_BAR on purpose: a cover confirms a
 // robust throw at every sample, it never rescues a marginal one.
+//
+// The bar is FLAT and not a Lipschitz allowance, and that is deliberate. Every gap that reaches
+// this rule has already survived the subdivision loop above, which stops halving at
+// minStepRad * 1.5, so by construction it is at most 1.5 engine substeps wide -- and in practice
+// it is one or less: over the 136 unresolved seeds in docs/dead-regions/gap-cover.jsonl, 131 gaps
+// are exactly 0.4deg (the substep), one is 0.3deg, four are zero width, and none are wider.
+// COVER_N samples inside that span sit ~0.03deg apart, twelve times finer than the integrator's
+// own step, so a Lipschitz allowance scaled to THAT spacing would divide the requirement by
+// twelve on a separation the physics cannot resolve -- a smaller number that means less, not
+// more. This rule therefore belongs with the sliver and the engine
+// probe, which are also resolution-relative and say so: it is "one arm throws robustly at every
+// sub-substep sample we can ask for", not a theorem about the interval. `covers` is counted apart
+// from `slivers`/`probedSlivers` for exactly that reason.
 const COVER_BAR = 1.5, COVER_N = 12;
 // Cover [A,B] with finitely many patches, each one arm holding a positive margin over a run of
 // samples. Greedy: keep the held arm while it still clears the bar, otherwise open a new patch on

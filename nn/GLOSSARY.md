@@ -63,6 +63,22 @@ only in chat history and commit messages.
   0.625 (`eloweight.js`'s "neutral" value), full-trust net search = 1.
 - **pool-slot-NN** — checkpoints kept in the rating pool specifically for Elo-calibration
   diversity, distinct from the flagship `best.json`.
+- **committee** (`committee.js`) — one brain built from several others. Members PROPOSE moves in
+  parallel worker threads, every member then JUDGES every proposal, an engine-proven loss VETOes a
+  proposal outright, and the survivors are ranked by log-pooled probability (or Borda with
+  `,borda`). Spec: `committee:L11;nn:0:a.json;nn:0:b.json@d2`, where the `@` suffix carries
+  depth (`d1`..`d4`) and options.
+- **`@posw` / the `d2w` variant** — position-aware member weighting inside a committee: a net
+  member's vote counts 1.35× and a ladder member's 0.75× while the **mover's hub sits within 10u
+  of the board centre**, ramping linearly back to 1.0 at 21.5u and flat outside it. The one axis
+  with unbiased evidence behind it: 432 positions × 4 movers = 1,728 playoff games
+  (`nn/playoff/`, 2026-09-18) where a net at depth 2 beat L11 by 12 points of win rate inside
+  21.5u and was level further out. The advantage axis ("trust L11 when losing") showed nothing
+  outside its error bar and is deliberately NOT encoded. The league fields `d2` and `d2w` over the same
+  members *as a mandatory pair*, because the weighting is only answerable as a DIFFERENCE —
+  `d2w` minus `d2` — and a lone rating for either answers nothing. A stale
+  `TAU_COMMITTEE_VARIANTS=d1,d2,d3` on a training box did exactly that for weeks: `d1`/`d2`/`d3`
+  accumulated 64-88 rated games each while the weighted committee never played one.
 
 ## Data pipeline
 
@@ -247,6 +263,9 @@ made that legible.
 | `arena.js` | head-to-head match runner; reports W-L-D and the 2-sigma band |
 | `menu.bat` | the Windows console front-end wrapping all of the above |
 | `promote-mutant.js` | manually promotes `policy-mutant.json` → `policy-champ.json` |
+| `committee.js` | the committee brain: propose in parallel, judge each other, veto proven losses, pool the votes |
+| `committee-weight-match.js` | plays `d2` vs `d2w` over the same members -- `@posw` measured as a difference, not as two pool ratings |
+| `dead-corpus-geometry.js` | measures the certified dead corpus in its own metric: separation, radii, 6-volume, distance from real play |
 | `l11-clock.js` | measures L11's own median per-move think time on the local machine |
 | `l11-clock-match.js` | multi-lane `leL11 vs L11` run at that budget -- menu 38's actual entry point |
 | `digest.js` → `claude-digest.md` | crunches local-only files into one pushable summary |
