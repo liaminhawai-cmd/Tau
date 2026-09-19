@@ -363,22 +363,26 @@
   // missing API is never held against a device: iOS Safari does not report deviceMemory at all,
   // and that is not evidence of a slow phone.
   //
-  // A desktop or a laptop starts where it always did, on Balanced. A touchscreen is GRADED rather
-  // than assumed slow -- a current phone carries Balanced perfectly well and it is the older one
-  // that needs Low. Almost every Android reports eight cores whatever silicon is behind them, so
-  // on a phone it is the memory that actually separates them.
+  // A desktop or a laptop is GRADED too, the same way a phone is -- a strong machine can start on
+  // High rather than waiting for a player to find the picker, and the frame-rate check below is
+  // what catches a wrong guess either way, so there is no need to be conservative here. A
+  // touchscreen tops out at Balanced regardless: core count and memory are a poor proxy for a
+  // mobile GPU's actual path-tracing weight, and Ultra is not worth offering there at all -- the
+  // picker below leaves it out entirely on a phone, whatever this guesses.
   //
-  // Nothing is ever started on Ultra. It path-traces the still frame, which is a thing somebody
-  // turns on knowing what GPU they have -- and on a phone it is not worth offering at all, so the
-  // picker below leaves it out there entirely.
+  // Almost every Android reports eight cores whatever silicon is behind them, so on a phone it is
+  // the memory that actually separates a current one from an older one; a missing API is never
+  // held against a device -- iOS Safari does not report deviceMemory at all, and that is not
+  // evidence of a slow phone.
   function detectQuality() {
-    if (!phoneClass()) return 'balanced';
     let cores = 0, mem;
     try {
       if (typeof navigator.hardwareConcurrency === 'number') cores = navigator.hardwareConcurrency;
       mem = navigator.deviceMemory;
     } catch (_) {}
-    return (cores >= 8 && (mem === undefined || mem >= 6)) ? 'balanced' : 'low';
+    const strong = cores >= 8 && (mem === undefined || mem >= 6);
+    if (phoneClass()) return strong ? 'balanced' : 'low';
+    return strong ? 'high' : 'balanced';
   }
   const DEFAULT_KEYS = { pin1:'1', pin2:'2', pin3:'3', footPrev:'ArrowUp', footNext:'ArrowDown',
     swingLeft:'ArrowLeft', swingRight:'ArrowRight',

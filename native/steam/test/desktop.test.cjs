@@ -1193,8 +1193,8 @@ function touch(g, {cores, mem} = {}) {
 
 test('the tier is guessed from the device, and only until somebody picks one',async t=>{
   const g=await game();t.after(g.close);
-  // A desktop starts where it always did.
-  assert.equal(g.read('tauDesktop.quality'),'balanced','a machine with a mouse gets Balanced');
+  // A weak machine (the harness's default core count) starts modestly.
+  assert.equal(g.read('tauDesktop.quality'),'balanced','a mouse with a weak machine behind it gets Balanced');
   assert.equal(g.read('tauDesktop.qualityPicked'),false,'and nobody chose it');
   g.$('desktopSettings').click();
   assert.match(g.$('desktopQualityNote').textContent,/Chosen for this device/,'which the note says out loud');
@@ -1203,6 +1203,16 @@ test('the tier is guessed from the device, and only until somebody picks one',as
   assert.equal(g.read('tauDesktop.qualityPicked'),true);
   assert.doesNotMatch(g.$('desktopQualityNote').textContent,/Chosen for this device/);
   assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).qualityPicked,true,'and survives a relaunch');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a mouse machine is graded too: a strong one can start on High',async t=>{
+  const g=await game();t.after(g.close);
+  Object.defineProperty(g.w.navigator,'hardwareConcurrency',{value:8,configurable:true});
+  Object.defineProperty(g.w.navigator,'deviceMemory',{value:8,configurable:true});
+  assert.equal(g.read('tauDesktop.debugDetectQuality()'),'high','a fancy PC does not have to find the picker first');
+  Object.defineProperty(g.w.navigator,'deviceMemory',{value:4,configurable:true});
+  assert.equal(g.read('tauDesktop.debugDetectQuality()'),'balanced','and a modest one still starts modestly');
   assert.deepEqual(g.errors,[]);
 });
 
