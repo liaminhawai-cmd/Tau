@@ -767,21 +767,21 @@ test('a legal ring-out reaches the result and rematch through keyboard controls'
   assert.deepEqual(g.errors,[]);
 });
 
-test('a board is an opponent: the next one opens when this one is beaten as Blue and as Red',async t=>{
+test('a board is an opponent: the next one opens the moment this one is beaten, on either colour',async t=>{
   const g=await game();t.after(g.close);
   const D=g.w.tauDesktop;
   const by=id=>D.boards.find(b=>b.id===id);
   assert.equal(D.board,'walnut','you start on Walnut, which is rung 1');
   assert.ok(by('walnut').unlocked && !by('dojo').unlocked && !by('marble').unlocked && !by('alien').unlocked,'the rest waits');
-  assert.match(by('dojo').unlock,/beat Hazel as Blue and as Red/);
-  // Half the job is not the job: beating Walnut as Blue names the half that is left.
+  assert.match(by('dojo').unlock,/beat Hazel/);
+  // The web game's own reveal rule, off the same save: EITHER colour opens the next board, so a
+  // player is never further up the ladder in the browser than in the app.
   g.read('markLadderCleared(1,0)');
-  assert.ok(!by('dojo').unlocked,'one colour is not enough');
-  assert.match(by('dojo').unlock,/beat Hazel as Red/,'and it says which half is missing');
-  g.read('markLadderCleared(1,1)');
-  assert.ok(by('dojo').unlocked,'both colours opens the next board');
+  assert.ok(by('dojo').unlocked,'one colour is enough to open the next board');
   assert.ok(!by('slate').unlocked,'and only the next one');
-  assert.match(by('slate').unlock,/beat Sifu as Blue and as Red/,'which names ITS opponent, not a game count');
+  assert.match(by('slate').unlock,/beat Sifu/,'which names ITS opponent, not a game count');
+  g.read('markLadderCleared(1,1)');
+  assert.ok(by('dojo').unlocked,'and finishing the other colour never closes it again');
   // The three boards still waiting for a rung of their own keep the old counters.
   assert.match(by('yellow').unlock,/20 games/);
   // Nobody loses a board they already had: the old counters are still a way in.
@@ -796,10 +796,14 @@ test('a board is an opponent: the next one opens when this one is beaten as Blue
   const sel=g.w.document.getElementById('desktopBoard');
   const opt=id=>[...sel.options].find(o=>o.value===id);
   assert.ok(opt('walnut') && !opt('walnut').disabled,'Walnut is selectable');
-  assert.ok(opt('marble').disabled && /Marble · Alabaster · beat Chorus as Blue and as Red/.test(opt('marble').textContent),
-    'Marble is listed with who lives there and what opens it');
+  assert.ok(opt('maple').disabled && /Maple · Lily · beat Sifu/.test(opt('maple').textContent),
+    'a board within sight is listed with who lives there and what opens it');
+  // ...and one still far above is a secret: no face, no name, no finish.
+  assert.ok(opt('marble').disabled && /^\?\?\? · /.test(opt('marble').textContent),
+    'a board you are nowhere near gives nothing away');
+  const was=D.board;
   sel.value='marble'; sel.onchange({target:sel});
-  assert.equal(D.board,'walnut','a locked pick is refused');
+  assert.equal(D.board,was,'a locked pick is refused');
   assert.deepEqual(g.errors,[]);
 });
 
@@ -810,7 +814,8 @@ test('choosing the opponent chooses the board, and choosing the board chooses th
   // Every rung wears its board's name, and the ones you have not reached are greyed rather than
   // hidden: you can see who is waiting two boards up, you just cannot skip to them.
   assert.match([...lv.options][0].textContent,/Level 1 · Hazel/);
-  assert.match([...lv.options][4].textContent,/Level 5 · Vesper/);
+  assert.match([...lv.options][3].textContent,/Level 4 · Lily/,'you can see a few rungs ahead of what is open');
+  assert.match([...lv.options][6].textContent,/Level 7 · \?\?\?/,'and the ones past that keep their names');
   assert.ok([...lv.options][1].disabled,'a rung whose board is locked cannot be picked');
   assert.equal(lv.value,'1','and a fresh player is on rung 1, whatever the saved level said');
   // Open two rungs, then pick the second: the board comes with it.
@@ -839,8 +844,12 @@ test('the opponent is a board with somebody on it, and the sheet shows the whole
   tile.click();
   const rungs=[...g.w.document.querySelectorAll('.desktop-ladder .desktop-rung')];
   assert.equal(rungs.length,11,'every rung of the ladder is on the sheet');
-  assert.match(rungs[10].textContent,/Titan/);
-  assert.match(rungs[10].textContent,/Level 11 · Colossus/);
+  assert.match(rungs[3].textContent,/Lily/,'the rungs within sight wear their faces');
+  assert.match(rungs[3].textContent,/Level 4 · Maple/);
+  // The top of the ladder keeps its slot -- so it still reads as eleven boards -- and nothing else.
+  assert.ok(rungs[10].classList.contains('secret'),'a rung you are nowhere near is a silhouette');
+  assert.match(rungs[10].textContent,/Level 11/,'which still says where it sits');
+  assert.ok(!/Titan|Colossus/.test(rungs[10].textContent),'and gives away neither the face nor the name');
   assert.equal(rungs[0].getAttribute('aria-current'),'true','the one you are on is marked');
   // A locked rung is shown greyed with what it is waiting for, never hidden.
   assert.ok(rungs[1].disabled,'a rung whose board is locked cannot be picked');
@@ -881,6 +890,34 @@ test('the result sheet\'s own Next level moves the board and the colour with it'
   const saved=JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1'));
   assert.equal(saved.board,'dojo','so a relaunch does not pull the level back to the board\'s rung');
   assert.equal(saved.level,2);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the default route walks the ladder a rung at a time, and a manual pick turns it off',async t=>{
+  // The catalogue opens GENEROUSLY (either colour) but the menu points you STRICTLY (Blue then Red
+  // on the same board). Without the second half, opening a board would also move you onto it, and
+  // a player who beat Level 1 as Blue would be sent straight to Level 2 having never played Red.
+  const g=await game();t.after(g.close);
+  const D=g.w.tauDesktop, lv=g.$('desktopLevel');
+  assert.equal(lv.value,'1','a first launch starts at the bottom, not at a fixed rung');
+  g.read('markLadderCleared(1,0)');
+  D.recordResult({humanWon:true,vsAI:true,online:false,lab:false,level:0});
+  assert.ok(D.boards.find(b=>b.id==='dojo').unlocked,'Dojo is open on one colour...');
+  assert.equal(lv.value,'1','...but the route still wants Walnut as Red first');
+  assert.equal(D.board,'walnut');
+  g.read('markLadderCleared(1,1)');
+  D.recordResult({humanWon:true,vsAI:true,online:false,lab:false,level:0});
+  assert.equal(lv.value,'2','rung finished on both colours -- now it steps up');
+  assert.equal(D.board,'dojo','and the board steps up with it');
+  // A pick that is NOT the suggestion is a skip: from here the menu leaves the player alone.
+  g.read('markLadderCleared(2,0);markLadderCleared(2,1);markLadderCleared(3,0);');
+  D.recordResult({humanWon:true,vsAI:true,online:false,lab:false,level:2});
+  assert.equal(lv.value,'3','still stepping, one rung at a time');
+  lv.value='1'; lv.dispatchEvent(new g.w.Event('change'));
+  assert.equal(D.board,'walnut','free play: back down to an earlier board on purpose');
+  D.recordResult({humanWon:true,vsAI:true,online:false,lab:false,level:0});
+  assert.equal(lv.value,'1','and the route no longer drags them back to the frontier');
+  assert.equal(JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1')).levelSkipped,true,'which survives a relaunch');
   assert.deepEqual(g.errors,[]);
 });
 

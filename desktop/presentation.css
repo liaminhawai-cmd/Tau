@@ -53,6 +53,11 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .desktop-rung .name { font-size:15px; }
 .desktop-rung .rung, .desktop-rung .need { font-size:11px; color:var(--muted); text-align:center; }
 .desktop-rung .marks svg { width:15px; height:15px; }
+/* A rung you have not got near yet: the slot and the shape stay so the ladder is visibly as long
+   as it is, and the face goes. The disc is already drawn flat and dark by the icon itself; this
+   just takes the shine off it and puts the ??? in the same muted grey as the line beneath it. */
+.desktop-rung.secret img { box-shadow:none; opacity:.7; }
+.desktop-rung.secret .name { color:var(--muted); letter-spacing:.14em; }
 .desktop-choices select { width:100%; min-width:0; border:0; border-bottom:1px solid var(--edge); background:#151a15; color:var(--paper); padding:10px 6px; font-size:14px; border-radius:0; }
 .desktop-links { display:grid; gap:3px; }
 .desktop-links button { border:0; padding:11px 0; text-align:left; background:transparent; color:#d1c8b7; font-size:16px; transition:color .15s,transform .15s; }
