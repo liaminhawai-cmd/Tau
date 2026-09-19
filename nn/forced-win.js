@@ -1,0 +1,2371 @@
+// Forced wins as REGIONS, certified rather than sampled.
+//
+// The contact law (contact-law.js) makes the outcome of a swing a continuous function of the pose
+// except across grazing surfaces (contact vs no contact), and measured over 200 events its throw
+// margin -- the furthest any victim foot gets past the rim, negative if none does -- moves less than
+// 1u per 1u of victim pose for 90% of contacts (median 0.4, p90 0.85, max ~9) and flips sign by
+// ordinary zero-crossing 47 times in 48. So a BOX of victim poses can be certified as thrown by one
+// attacker swing from a grid of samples: every sample's margin must clear the box's cell diagonal
+// times a Lipschitz allowance, the allowance itself taken from the steepest finite difference the
+// grid shows (times a safety factor, never below 1), and every sample must share a contact history
+// (same leg pairs touched, first touch within a step of its neighbours) so no grazing surface can
+// hide inside. Falsifiable: certify() is always followed by simCheck(), the engine on random poses
+// in the box, and a claim the engine contradicts is a bug here, not a rounding.
+//
+// Level 1 here: throw-in-1 boxes. Level 2 (forced in two: my move, every reply, my throw) is the
+// same certificate walked along each of the victim's six reply arcs.
+//
+// THE GRAPH (nn/family-graph.jsonl, one JSON row per node, immutable once appended). Deeper
+// results are regions in the JOINT space of both poses, measured in one metric, d(p, q) = the sum
+// over the two pieces of hypot(dx, dy) + R*|drot| (L1 across the pieces and across position and
+// rotation; with an L1 metric a max-over-axes finite difference is a valid Lipschitz constant,
+// which is what lets a star of probes certify a ball). Two node kinds:
+//   point (even plies): the side to move LOSES; region = the L1 ball of radius eps around pose,
+//     eps from certifyStar (13 dead certificates, the reply families swept to a reach ENVELOPE of
+//     the victim's box rather than each sample's own limit, so no stop reachable anywhere in the
+//     ball goes uncertified);
+//   arc (odd plies): the side to move WINS by one contact-free swing that lands inside a point
+//     node's ball. The attacker's pinned foot w is the coordinate (its swing is an exact rigid
+//     rotation about w, so a start with the foot at w and rotation rot_D - dir*s passes through
+//     rot_D - dir*sigma for every sigma in [0, s], nothing pushed, nothing to rewind); a FIBRE is
+//     one (w, victim pose), scanned in the residual angle sigma for its contact-free run and its
+//     landing WINDOW (the sigmas at which the landing is inside the child's ball); the tube is a
+//     disc of w, a metric ball of victim poses and a range of s, certified across 63 fibres by the
+//     same sampled-Lipschitz pattern as the stars (unwindArcs / makeArc).
+// Level 1 is never stored: "throws now" is bestThrow, "thrown for a box" is certifyThrowBox.
+// Every certificate is followed by the engine playing random positions of the claim, and a
+// contradiction halts the run: it is a bug here, never a rounding.
+'use strict';
+const fs = require('fs'), path = require('path');
+const { swing, minGapOf, sampleEvent, IDEAL, REPLICA, feetOf, anyOff, R, EDGE, MIND, eng } = require('./contact-law.js');
+
+const MIN_MOVE = eng.CFG.minMoveDeg * Math.PI / 180;
+const DEG = Math.PI / 180, SUBSTEP = eng.CFG.substepDeg * DEG;
+// The clearance (minGapOf - MIND) along a rigid rotation about a pinned foot changes by at most
+// R*sqrt(3) = 40u per radian: no point of the swinging piece is farther than R*sqrt(3) from the
+// pivot foot (the two far feet; a leg point s along its chord is sqrt(R^2 + s^2 + R*s) <= that
+// away), and a closest-approach distance is 1-Lipschitz in the points it is taken over. So a
+// sample whose clearance is >= GAP_LIP * step is contact-free for a full step either side of it:
+// 0.0070u at the fibre scan's 0.01-degree step, 0.070u at its 0.1-degree step. A proof, not a fit.
+const GAP_LIP = R * Math.sqrt(3);
+// The fibre scan of the residual angle: 0.01-degree samples over [-1, 6] degrees (the contact side
+// of a real dead point ends 0.02-0.06 degrees in at the seed, and the landing window is under a
+// degree wide), 0.1 degrees beyond, to a full turn or the board's edge.
+const FIBRE_FINE = 0.01 * DEG, FIBRE_COARSE = 0.1 * DEG, FIBRE_FROM = -1 * DEG, FIBRE_FINE_TO = 6 * DEG;
+// A tube start's limit must reach the landing window by a substep plus this: the limit the engine
+// reaches under a human drag (random-size applySwing calls) sits 0.10 degrees from limitAt's
+// 1-degree ladder at the median (phase-tol.json limMedianDeg); the 21-degree outliers there are
+// multi-line corner-merge episodes, which makeArc refuses by their signature.
+const LIM_PHASE = 0.3 * DEG;
+// A landing window narrower than this is no window (0.02 degrees is 0.016u of hub travel); a
+// contact-free run shorter than 3 degrees cannot hold a MIN_MOVE swing, a window and a substep.
+const MIN_WINDOW = 0.02 * DEG, MIN_RUN = 3 * DEG;
+// A non-pivot foot travels R*sqrt(3) * (1/3 degree) = 0.23u in one substep of a 1-degree applySwing
+// call, so the line a foot was stopped short of is within touchEps + 0.25u of it after the rollback
+// (measured at the four dead points: 0.81-1.01u).
+const STOP_BAND = eng.CFG.touchEps + 0.25;
+// The engine lands a played-forward arc on its target within this (the --back-from tolerance,
+// 0.05u and 1e-3 rad per piece), in the metric.
+const LAND_TOL = 2 * (0.05 + R * 1e-3);
+const GRAPH_PATH = path.join(__dirname, 'family-graph.jsonl');
+// PHASE_TOL: how far the law's fixed 0.4-degree record can sit from an engine turn of arbitrary
+// phase (applySwing splits each call into EQUAL substeps, so a human drag integrates a different
+// ladder). Measured by --phase-tol and read here; null until it has been measured, and level 3
+// (pushed landings) must not run without it.
+const PHASE_TOL = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'phase-tol.json'), 'utf8')).phaseTol; } catch (e) { return null; } })();
+// An ESCAPE claim needs the best throw margin below -ESC_TOL, not merely below zero: the law and the
+// engine differ by up to ~0.6u on a push (contact-law.js), and three thin "escapes" mined from real
+// games were contradicted by the engine before this existed. Between -ESC_TOL and 0 is unresolved.
+const ESC_TOL = 0.75;
+// A gap at the engine's substep whose ends both clear this margin (on any arm) is accepted as a
+// sliver -- see verifyAllReplies.
+const SLIVER_BAR = 5;
+// A substep gap that fails SLIVER_BAR but whose two ends clear this margin on a COMMON arc is
+// probed with the engine itself (probeGap): PROBE_N random stops inside it, every one must be
+// thrown. Measured on 44 retro seeds: 18 refusals were arm-change gaps at the substep, 11 of them
+// with best-min margins 2.4-4.95u, refused only because SLIVER_BAR is 5u.
+const PROBE_BAR = 1.5, PROBE_N = 12;
+// BIN_GUARD: how close two events may come before the engine's sampling phase decides the
+// programme. The rule is asked only at the substep grid, so two events inside ONE substep are
+// seen together, and for two events of the SAME foot on DIFFERENT lines that is the corner
+// merge: contact is handed from one line to the other inside a single sampled step, the episode
+// stays charged, and the swing runs on instead of stopping. Measured at 6dgqa1fd8 (brief 2's
+// counterexample, reproduced by limitLadder in nn/dead-region-check/phase1.js): foot 2 leaving
+// r1's inner edge and reaching a0's outer edge are 0.1215 degrees apart at every pose of that
+// family, and the arm's limit is 63.67 degrees when they land in different bins and 95.33 when
+// they land in the same one -- with the pivot foot held fixed, so no pivot-plane geometry
+// distinguishes them. Two events of DIFFERENT feet in one bin are safe: whichever the engine
+// sees first stops the arm, so the minimum of their enclosures still bounds the limit (that is
+// ndpxhts24's arm (0,-1), 1.8% of its box).
+const BIN_GUARD = 1.1 * DEG / 3;
+
+// Put a position on the engine's board (G is rebuilt per game, so fetch it afterwards).
+function load(pieces, active) {
+  eng.newGame(); const g = eng.getG();
+  g.pieces.forEach((p, i) => { p.x = pieces[i].x; p.y = pieces[i].y; p.rot = pieces[i].rot; });
+  g.active = active; return g;
+}
+// How far the mover may swing (pv, dir): its own crossing budget and rim, nothing else -- the mover
+// is kinematic, contact never stops it -- so this is a property of the mover's pose alone.
+function swingLimit(pieces, active, pv, dir) {
+  const g = load(pieces, active); const snap = eng.takeSnap();
+  const lim = Math.abs(eng.simMoveToLimit(pv, dir)); eng.restoreSnap(snap); return lim;
+}
+// The mover's TRUE limit: what applySwing looped a degree at a time would reach before the engine
+// stops it or a full turn is done. Not simMoveToLimit: that is the AI's move generator and stops at
+// its own 170-degree safety cap (index.html AI_SAFETY_CAP_RAD) which a human drag does not have;
+// applySwing itself stops only for 'selfoff' (an own foot past the rim) or 'cross' (the
+// one-crossing rule).
+//
+// Computed from CLOSED-FORM EVENTS rather than by running the ladder (limitLadder below is the
+// ladder, kept as the oracle for --limit-check). Every input the crossing rule reads is a distance
+// from a moving foot to a fixed circle centre: the ring and side-arc bands (|d - R| < touchEps,
+// the centreline R for the side flips), the side arcs' span rays, the printed corners (cornerEps)
+// and the rim (EDGE). A non-pivot foot moves on a circle of radius rho about the pivot P, so with
+// u = P - C its distance to C is d^2 = |u|^2 + rho^2 + 2 rho |u| cos(phi + theta - psi), and d = D
+// is an acos, a ray crossing an asin: about 44 events per arm over a full turn. Between two
+// events the rule's inputs are constant and crossingSubstep is idempotent on constant inputs, so
+// evaluating the engine's own crossingSubstep at the first substep past each event reaches
+// exactly the state the full ladder would, on the same substep grid (applySwing splits each
+// one-degree call into ceil(1 / substepDeg) equal substeps; the stop is that grid's floor of the
+// analytic event, which is what every certificate, LIM_PHASE and phase-tol.json are built on).
+// Pushes never enter: the mover is kinematic, resolvePush moves only the other piece.
+// Measured (2026-09-18): 0 mismatches against the ladder on 1440 arms of 120 real poses (limit,
+// reason, lines crossed, stopping foot and line; |lim| within 2e-14 rad), 0.13 ms per arm against
+// 80 ms, which took a depth-2 dead certificate from 1974 s to 247 s with the same verdict and the
+// same search path (identical memo and screen counts).
+// Also says WHAT stopped it -- the reason, the lines crossed on the way, the foot that was stopped
+// and the line (or rim) it was stopped at -- as a signature: a reach envelope refuses a box whose
+// grid neighbours stop on different events, since the limit is only continuous between events.
+const LIM_SUBSTEPS = Math.ceil(1 / eng.CFG.substepDeg), LIM_SUB = DEG / LIM_SUBSTEPS, LIM_KMAX = 360 * LIM_SUBSTEPS;
+const LIM_EDGE = eng.CFG.edgeU + eng.CFG.edgeEps, LIM_EPS = eng.CFG.touchEps;
+// the circles whose level sets are the rule's inputs, fixed once from CFG
+const LIM_CIRCLES = (() => {
+  const out = [];
+  eng.CFG.rings.forEach(R => out.push({ cx: 0, cy: 0, levels: [R - LIM_EPS, R, R + LIM_EPS] }));
+  eng.CFG.sideArcs.forEach(a => out.push({ cx: a.cx, cy: a.cy, levels: [a.r - LIM_EPS, a.r, a.r + LIM_EPS], rays: [a.a0 * DEG, a.a1 * DEG] }));
+  out.push({ cx: 0, cy: 0, levels: [LIM_EDGE] });
+  eng.LINE_INTERSECTIONS.forEach(P => out.push({ cx: P.x, cy: P.y, levels: [eng.CFG.cornerEps] }));
+  return out;
+})();
+const wrapS = s => { s %= 2 * Math.PI; if (s < 0) s += 2 * Math.PI; return s === 0 ? 2 * Math.PI : s; };
+// swing magnitudes s in (0, 2pi] at which the foot (rho, phi about P) is at distance D from C
+// Each event is tagged with what produced it (the foot, the circle, the level or ray, which of
+// the two roots), so that limitEnclosure can follow ONE event across a box of poses.
+function limitLevelEvents(P, rho, phi, dir, C, D, out, tag) {
+  const ux = P.x - C.cx, uy = P.y - C.cy, u = Math.hypot(ux, uy);
+  if (u < 1e-12) return;                                   // pivot on the centre: constant distance
+  const c = (D * D - u * u - rho * rho) / (2 * rho * u);
+  if (c <= -1 || c >= 1) return;
+  const psi = Math.atan2(uy, ux), a = Math.acos(c);
+  out.push({ s: wrapS(dir * (psi + a - phi)), kind: 'level', D, sign: 1, ...tag }, { s: wrapS(dir * (psi - a - phi)), kind: 'level', D, sign: -1, ...tag });
+}
+// ... and at which it is on the ray from C at angle A: (f - C) x e(A) = 0
+function limitRayEvents(P, rho, phi, dir, C, A, out, tag) {
+  const ux = P.x - C.cx, uy = P.y - C.cy, v = -(ux * Math.sin(A) - uy * Math.cos(A)) / rho;
+  if (v <= -1 || v >= 1) return;
+  const b = Math.asin(v);
+  out.push({ s: wrapS(dir * (A - b - phi)), kind: 'ray', A, sign: 1, ...tag }, { s: wrapS(dir * (A - (Math.PI - b) - phi)), kind: 'ray', A, sign: -1, ...tag });
+}
+// The tagged event list of one arm at one pose, sorted by swing angle.
+function limitEvents(feet0, pv, dir) {
+  const P = { x: feet0[pv].x, y: feet0[pv].y }, ev = [];
+  for (let i = 0; i < 3; i++) {
+    if (i === pv) continue;
+    const rho = Math.hypot(feet0[i].x - P.x, feet0[i].y - P.y), phi = Math.atan2(feet0[i].y - P.y, feet0[i].x - P.x);
+    LIM_CIRCLES.forEach((C, ci) => { for (const D of C.levels) limitLevelEvents(P, rho, phi, dir, C, D, ev, { foot: i, circle: ci }); if (C.rays) for (const A of C.rays) limitRayEvents(P, rho, phi, dir, C, A, ev, { foot: i, circle: ci }); });
+  }
+  ev.sort((a, b) => a.s - b.s);
+  return ev;
+}
+function describeStop(g, active, pv) {
+  const feet = g.pieces[active].feet(), reason = g.limitReason || 'full';
+  let foot = null, line = null, best = Infinity;
+  if (reason === 'selfoff') { for (let i = 0; i < 3; i++) if (i !== pv) { const r = -Math.hypot(feet[i].x, feet[i].y); if (r < best) { best = r; foot = i; line = 'rim'; } } }
+  else for (let i = 0; i < 3; i++) { if (i === pv) continue; for (const id of eng.nearLineIds(feet[i], STOP_BAND)) { const d = eng.lineDistOf(feet[i], id); if (d < best) { best = d; foot = i; line = id; } } }
+  const crossed = [...new Set(g.justCrossed || [])].sort();
+  return { lim: Math.abs(g.netRad), reason, crossed, foot, line, sig: `${reason}|${crossed.join(',')}|${foot == null ? '-' : foot + ':' + line}` };
+}
+function limitAt(pieces, active, pv, dir) {
+  const g = load(pieces, active); eng.pinFoot(pv);
+  const mover = g.pieces[active], feet0 = mover.feet(), P = { x: feet0[pv].x, y: feet0[pv].y }, h0 = { x: mover.x, y: mover.y, rot: mover.rot };
+  const ev = limitEvents(feet0, pv, dir);
+  // the substeps to ask the rule at: the first one (it seeds the turn-start contact from the
+  // start pose), then the first substep past each event
+  const ks = [1]; for (const { s } of ev) { const k = Math.floor(s / LIM_SUB) + 1; if (k <= LIM_KMAX && k !== ks[ks.length - 1]) ks.push(k); }
+  const poseAt = k => { const th = dir * k * LIM_SUB, c = Math.cos(th), s = Math.sin(th), rx = h0.x - P.x, ry = h0.y - P.y; mover.x = P.x + rx * c - ry * s; mover.y = P.y + rx * s + ry * c; mover.rot = h0.rot + th; };
+  let before = feet0, kPrev = 0, stopped = false;
+  for (const k of ks) {
+    if (k > kPrev + 1) { poseAt(k - 1); before = mover.feet(); }
+    poseAt(k); const after = mover.feet();
+    // the same two checks, in the same order, as applySwing's substep
+    if (mover.anyFootOff()) { g.limitReason = 'selfoff'; stopped = true; }
+    else if (eng.crossingSubstep(before, after, g)) { g.limitReason = 'cross'; stopped = true; }
+    if (stopped) { g.atLimit = true; poseAt(k - 1); g.netRad = dir * (k - 1) * LIM_SUB; break; }
+    g.netRad = dir * k * LIM_SUB; before = after; kPrev = k;
+  }
+  if (!stopped) { poseAt(LIM_KMAX); g.netRad = dir * LIM_KMAX * LIM_SUB; }
+  const out = describeStop(g, active, pv);
+  // the events that fall in the stopping substep (usually one): what limitEnclosure follows
+  if (stopped) { const kStop = Math.round(Math.abs(g.netRad) / LIM_SUB) + 1; out.events = ev.filter(e => Math.floor(e.s / LIM_SUB) + 1 === kStop); }
+  return out;
+}
+// ---- The limit over a BOX of the mover's poses, by interval arithmetic on the stopping event ----
+// Between walls, the arm stops at the same event everywhere in the box, and that event's angle is
+// the closed form s = dir * (psi +- acos(c) - phi) (a level) or dir * (A - b - phi) (a ray), with
+// psi the bearing of the pivot foot P from the circle centre, |u| its distance, c = (D^2 - |u|^2 -
+// rho^2) / (2 rho |u|), phi = rot + a constant (the other foot's bearing from P). Over a box
+// x, y, rot of the hub, P lies in a box (the hub box plus R times the cos/sin ranges), |u| and
+// psi in intervals read off that box, phi in [rot0, rot1] + const; c is monotone in |u| except at
+// |u| = sqrt(rho^2 - D^2), acos and asin are monotone, and the sum is an interval. Every step is
+// an enclosure, so [lo, hi] CONTAINS the event angle at every pose of the box: no slope, no
+// safety factor, no grid. Refused when the enclosure cannot be formed (the pivot box contains the
+// centre, |c| or |v| reaches 1 inside the box, i.e. a tangency wall runs through it, or the
+// angle wraps past a full turn). The engine's limit is that angle floored to the 1/3-degree
+// substep, so the limit lies in [floor(lo), floor(hi)] on that grid. Which event stops the arm,
+// and that it is the same one everywhere, is still read from the pose grid's signatures
+// (reachEnvelope): the enclosure is exact inside a cell, the cell itself is sampled.
+const IV = {
+  cosRange(a0, a1) { let lo = Math.min(Math.cos(a0), Math.cos(a1)), hi = Math.max(Math.cos(a0), Math.cos(a1)); for (let k = Math.ceil(a0 / Math.PI); k * Math.PI <= a1; k++) { const v = Math.cos(k * Math.PI); lo = Math.min(lo, v); hi = Math.max(hi, v); } return [lo, hi]; },
+  sinRange(a0, a1) { return IV.cosRange(a0 - Math.PI / 2, a1 - Math.PI / 2); },
+};
+// One tagged event's angle over a box of the mover's pose, as an interval; null when the
+// enclosure cannot be formed. `near` is the angle to unwrap towards (the event's value at a
+// nearby pose), so the branch of the full turn is the one the centre sits on.
+function eventInterval(e, pv, dir, box, near) {
+  const C = LIM_CIRCLES[e.circle], rho = R * Math.sqrt(3);
+  const tp0 = box.rot[0] + pv * 2 * Math.PI / 3, tp1 = box.rot[1] + pv * 2 * Math.PI / 3, cr = IV.cosRange(tp0, tp1), sr = IV.sinRange(tp0, tp1);
+  const Px = [box.x[0] + R * cr[0] - C.cx, box.x[1] + R * cr[1] - C.cx], Py = [box.y[0] + R * sr[0] - C.cy, box.y[1] + R * sr[1] - C.cy];
+  if (Px[0] <= 0 && Px[1] >= 0 && Py[0] <= 0 && Py[1] >= 0) return { refused: 'the pivot\'s box contains the circle centre' };
+  const f0 = feetOf({ x: 0, y: 0, rot: 0 }), phi0 = Math.atan2(f0[e.foot].y - f0[pv].y, f0[e.foot].x - f0[pv].x), phi = [box.rot[0] + phi0, box.rot[1] + phi0];
+  const corners = [[Px[0], Py[0]], [Px[0], Py[1]], [Px[1], Py[0]], [Px[1], Py[1]]];
+  let sI;
+  if (e.kind === 'level') {
+    const dx = Px[0] > 0 ? Px[0] : Px[1] < 0 ? -Px[1] : 0, dy = Py[0] > 0 ? Py[0] : Py[1] < 0 ? -Py[1] : 0;
+    const u = [Math.hypot(dx, dy), Math.max(...corners.map(([x, y]) => Math.hypot(x, y)))];
+    // bearing: the box excludes the centre, so the corner bearings span less than a half turn
+    const cb = Math.atan2((Py[0] + Py[1]) / 2, (Px[0] + Px[1]) / 2), angs = corners.map(([x, y]) => { let a = Math.atan2(y, x) - cb; a = Math.atan2(Math.sin(a), Math.cos(a)); return cb + a; });
+    const psi = [Math.min(...angs), Math.max(...angs)];
+    const cOf = v => (e.D * e.D - v * v - rho * rho) / (2 * rho * v), cs = [cOf(u[0]), cOf(u[1])];
+    if (e.D < rho) { const us = Math.sqrt(rho * rho - e.D * e.D); if (us > u[0] && us < u[1]) cs.push(cOf(us)); }
+    const c = [Math.min(...cs), Math.max(...cs)];
+    if (c[0] <= -1 + 1e-9 || c[1] >= 1 - 1e-9) return { refused: `the stopping event (foot ${e.foot}, level ${e.D.toFixed(2)}u of circle ${e.circle}) is tangent somewhere in the box` };
+    const a = [Math.acos(c[1]), Math.acos(c[0])];
+    sI = e.sign > 0 ? [psi[0] + a[0] - phi[1], psi[1] + a[1] - phi[0]] : [psi[0] - a[1] - phi[1], psi[1] - a[0] - phi[0]];
+  } else {
+    const vs = corners.map(([x, y]) => -(x * Math.sin(e.A) - y * Math.cos(e.A)) / rho), v = [Math.min(...vs), Math.max(...vs)];
+    if (v[0] <= -1 + 1e-9 || v[1] >= 1 - 1e-9) return { refused: 'the stopping ray event is tangent somewhere in the box' };
+    const b = [Math.asin(v[0]), Math.asin(v[1])];
+    sI = e.sign > 0 ? [e.A - b[1] - phi[1], e.A - b[0] - phi[0]] : [e.A - (Math.PI - b[0]) - phi[1], e.A - (Math.PI - b[1]) - phi[0]];
+  }
+  if (dir < 0) sI = [-sI[1], -sI[0]];
+  // `near` at an off-board sub-box centre reads a rim crossing that is already behind the start
+  // as an angle just under a full turn; for the rim event unwrap it towards zero instead
+  const isRim = C.levels.length === 1 && C.levels[0] === LIM_EDGE, near0 = isRim && near > Math.PI ? near - 2 * Math.PI : near;
+  const cx = (sI[0] + sI[1]) / 2, shift = Math.round((near0 - cx) / (2 * Math.PI)) * 2 * Math.PI; let lo = sI[0] + shift; const hi = sI[1] + shift;
+  // A rim event whose enclosure reaches down to zero: the poses where the foot's outward crossing
+  // of the rim would come at or before the start are poses with that foot already over the rim,
+  // which are not positions (the cell is claimed for on-board poses only, see limitEnclosure), so
+  // the enclosure for the poses that count is (0, hi]. A foot 0.74u from the rim (l5807vazg) has
+  // its rim-stopped arms here, with limits of 0 to 1.3 degrees across the box.
+  if (lo <= 0 && hi > 0 && isRim) lo = 0;
+  if (lo < 0 || hi > 2 * Math.PI) return { refused: 'the stopping event\'s angle wraps a full turn inside the box' };
+  return { lo, hi };
+}
+// The stopping event's angle at one pose, by the same formula (for unwrapping sub-boxes).
+function eventAngleAt(e, pv, dir, pose) {
+  const f = feetOf(pose), P = f[pv], C = LIM_CIRCLES[e.circle], rho = R * Math.sqrt(3), phi = Math.atan2(f[e.foot].y - P.y, f[e.foot].x - P.x);
+  const ux = P.x - C.cx, uy = P.y - C.cy, u = Math.hypot(ux, uy);
+  if (e.kind === 'level') { const c = (e.D * e.D - u * u - rho * rho) / (2 * rho * u); if (c <= -1 || c >= 1) return null; return wrapS(dir * (Math.atan2(uy, ux) + e.sign * Math.acos(c) - phi)); }
+  const v = -(ux * Math.sin(e.A) - uy * Math.cos(e.A)) / rho; if (v <= -1 || v >= 1) return null;
+  const b = Math.asin(v); return wrapS(dir * (e.A - (e.sign > 0 ? b : Math.PI - b) - phi));
+}
+// The enclosure over the box: the box is cut into m^3 sub-boxes (the interval overestimate from
+// psi and phi both depending on rot shrinks with the sub-box, so m = 8 leaves under a degree of
+// slack on a 0.4u box) and the sub-box intervals are united. Returns the engine's limit range
+// [lo, hi] on the substep grid, the event followed, and the exact angle range [sLo, sHi].
+function limitEnclosure(pieces, mover, pv, dir, box, m, ev) {
+  m = m || 8;
+  const centre = pieces.map(q => ({ ...q })); centre[mover] = { x: (box.x[0] + box.x[1]) / 2, y: (box.y[0] + box.y[1]) / 2, rot: (box.rot[0] + box.rot[1]) / 2 };
+  if (!ev && feetOf(centre[mover]).some(f => Math.hypot(f.x, f.y) > LIM_EDGE)) return { lo: null, hi: null, event: null, centre: null, refused: `arm (${pv},${dir}): the box's centre is off the board` };
+  const L = limitAt(centre, mover, pv, dir);
+  if (L.reason === 'full') return { lo: 2 * Math.PI, hi: 2 * Math.PI, sLo: 2 * Math.PI, sHi: 2 * Math.PI, event: null, centre: L, refused: null };
+  if (!ev && (!L.events || L.events.length !== 1)) return { lo: null, hi: null, event: null, centre: L, refused: `arm (${pv},${dir}): ${L.events ? L.events.length : 0} events share the stopping substep at the centre` };
+  const e = ev || L.events[0];
+  // A start pose with a foot already over the rim stops at once, event or no event, but such a
+  // pose is not a position (the game ended when the foot went over), so the enclosure below is
+  // claimed for the ON-BOARD poses of the box only; `rim` says the rim runs through the box
+  // (each foot's box is the hub box plus R times the cos/sin ranges), and certifyDeadCell then
+  // clips its grid and its pairs to the board.
+  let rim = null;
+  for (let i = 0; i < 3; i++) {
+    const t0 = box.rot[0] + i * 2 * Math.PI / 3, t1 = box.rot[1] + i * 2 * Math.PI / 3, cr = IV.cosRange(t0, t1), sr = IV.sinRange(t0, t1);
+    const fx = [box.x[0] + R * cr[0], box.x[1] + R * cr[1]], fy = [box.y[0] + R * sr[0], box.y[1] + R * sr[1]];
+    const far = Math.max(Math.hypot(fx[0], fy[0]), Math.hypot(fx[0], fy[1]), Math.hypot(fx[1], fy[0]), Math.hypot(fx[1], fy[1]));
+    if (far >= LIM_EDGE) rim = rim || `foot ${i} reaches the rim somewhere in the box (${far.toFixed(2)}u >= ${LIM_EDGE}u)`;
+  }
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < m; i++) for (let j = 0; j < m; j++) for (let k = 0; k < m; k++) {
+    const sub = { x: [box.x[0] + (box.x[1] - box.x[0]) * i / m, box.x[0] + (box.x[1] - box.x[0]) * (i + 1) / m], y: [box.y[0] + (box.y[1] - box.y[0]) * j / m, box.y[0] + (box.y[1] - box.y[0]) * (j + 1) / m], rot: [box.rot[0] + (box.rot[1] - box.rot[0]) * k / m, box.rot[0] + (box.rot[1] - box.rot[0]) * (k + 1) / m] };
+    const near = eventAngleAt(e, pv, dir, { x: (sub.x[0] + sub.x[1]) / 2, y: (sub.y[0] + sub.y[1]) / 2, rot: (sub.rot[0] + sub.rot[1]) / 2 });
+    if (near == null) return { lo: null, hi: null, event: e, centre: L, refused: `arm (${pv},${dir}): the stopping event does not exist at sub-box (${i},${j},${k})` };
+    const I = eventInterval(e, pv, dir, sub, near);
+    if (I.refused) return { lo: null, hi: null, event: e, centre: L, refused: `arm (${pv},${dir}): ${I.refused} (sub-box ${i},${j},${k})` };
+    lo = Math.min(lo, I.lo); hi = Math.max(hi, I.hi);
+  }
+  const eS = ev ? eventAngleAt(e, pv, dir, centre[mover]) : e.s;
+  if (eS == null || eS < lo - 1e-9 || eS > hi + 1e-9) return { lo: null, hi: null, event: e, centre: L, refused: `arm (${pv},${dir}): the centre's event is outside its own enclosure (bug)` };
+  return { lo: Math.floor(lo / LIM_SUB) * LIM_SUB, hi: Math.floor(hi / LIM_SUB) * LIM_SUB, sLo: lo, sHi: hi, event: e, centre: L, refused: null, rim };
+}
+// The ladder itself: applySwing looped a degree at a time, pushes and all. The oracle limitAt is
+// checked against (--limit-check); 80 ms per arm against limitAt's 0.13.
+function limitLadder(pieces, active, pv, dir) {
+  const g = load(pieces, active); eng.pinFoot(pv); let guard = 0;
+  while (!g.atLimit && Math.abs(g.netRad) < 2 * Math.PI - 1e-9 && guard++ < 1200) eng.applySwing(dir * Math.min(DEG, 2 * Math.PI - Math.abs(g.netRad)));
+  return describeStop(g, active, pv);
+}
+// The limit is a function of the mover's own pose alone (pinFoot and crossingSubstep read only the
+// active piece; resolvePush moves only the other one), so it is memoised on that pose. Along a
+// contact-free reply the pushed attacker never moves and its six throw limits repeat at every stop;
+// measured hit rate 44% at the dead points, verifyAllReplies 44-70 s -> ~30-40 s. Keyed at 1e-7:
+// a pose that differs by less is the same pose to the engine's substep.
+const limitMemo = new Map(), memoStats = { hits: 0, misses: 0 };
+function swingLimitMemo(pieces, active, pv, dir) {
+  const p = pieces[active], key = `${p.x.toFixed(7)},${p.y.toFixed(7)},${p.rot.toFixed(7)},${pv},${dir}`;
+  const hit = limitMemo.get(key); if (hit !== undefined) { memoStats.hits++; return hit; }
+  memoStats.misses++; if (limitMemo.size > 500000) limitMemo.clear();
+  const lim = limitAt(pieces, active, pv, dir).lim; limitMemo.set(key, lim); return lim;
+}
+// Throw margin of one swing swept to its limit: furthest any victim foot gets beyond the rim.
+function throwMargin(pieces, active, pv, dir, K) {
+  const rad = swingLimitMemo(pieces, active, pv, dir);
+  if (rad < MIN_MOVE) return { margin: -Infinity, rad, out: null };
+  const out = swing(pieces, active, pv, dir, rad, { ...K, trace: true });
+  return { margin: out.maxFootR - EDGE, rad, out };
+}
+function bestThrow(pieces, active, K) {
+  let best = null;
+  for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) { const t = throwMargin(pieces, active, pv, dir, K); if (!best || t.margin > best.margin) best = { ...t, pv, dir }; }
+  return best;
+}
+// A contact history's signature: which leg pairs touched, and when the first touch came.
+function signature(out) {
+  if (!out || !out.trace || !out.trace.length) return { pairs: '', onset: null };
+  // only the contacts BEFORE the foot leaves: nothing after a throw can un-throw it, and a late,
+  // irrelevant leg pair was breaking the consistency check between neighbouring stops
+  const upto = out.offAt != null ? out.trace.filter(t => t.alpha <= out.offAt + 1e-9) : out.trace;
+  const pairs = [...new Set(upto.map(t => t.i * 3 + t.j))].sort().join(',');
+  return { pairs, onset: upto.length ? upto[0].alpha : out.trace[0].alpha };
+}
+
+// Certify: every victim pose in `box` ({x:[lo,hi], y:[lo,hi], rot:[lo,hi]}) is thrown by the
+// attacker's swing (pv, dir). Grid spacing h in u (rotation spacing h/R). Returns the verdict and
+// the evidence.
+function certifyThrowBox(pieces, active, pv, dir, box, h, K, opts) {
+  const safety = (opts && opts.safety) || 3, lipFloor = (opts && opts.lipFloor) || 1;
+  const axis = (lo, hi, step) => { const n = Math.max(1, Math.ceil((hi - lo) / step)); return Array.from({ length: n + 1 }, (_, i) => lo + (hi - lo) * i / n); };
+  const xs = axis(box.x[0], box.x[1], h), ys = axis(box.y[0], box.y[1], h), rs = axis(box.rot[0], box.rot[1], h / R);
+  const grid = new Map(); let minMargin = Infinity, worstLip = 0, graze = null;
+  const key = (i, j, k) => `${i},${j},${k}`;
+  for (let i = 0; i < xs.length; i++) for (let j = 0; j < ys.length; j++) for (let k = 0; k < rs.length; k++) {
+    const p = pieces.map(q => ({ ...q })); const v = p[1 - active]; v.x = xs[i]; v.y = ys[j]; v.rot = rs[k];
+    const t = throwMargin(p, active, pv, dir, K);
+    grid.set(key(i, j, k), { m: t.margin, sig: signature(t.out) });
+    if (t.margin < minMargin) minMargin = t.margin;
+  }
+  // finite differences along each axis, in margin per u (rotation distance measured as R*dtheta)
+  const dx = xs.length > 1 ? xs[1] - xs[0] : 1, dy = ys.length > 1 ? ys[1] - ys[0] : 1, dr = rs.length > 1 ? (rs[1] - rs[0]) * R : 1;
+  const sig0 = grid.get(key(0, 0, 0)).sig;
+  for (let i = 0; i < xs.length; i++) for (let j = 0; j < ys.length; j++) for (let k = 0; k < rs.length; k++) {
+    const a = grid.get(key(i, j, k));
+    if (a.sig.pairs !== sig0.pairs) graze = graze || `leg pairs differ: [${sig0.pairs}] vs [${a.sig.pairs}] at (${i},${j},${k})`;
+    for (const [n, d] of [[key(i + 1, j, k), dx], [key(i, j + 1, k), dy], [key(i, j, k + 1), dr]]) {
+      const b = grid.get(n); if (!b) continue;
+      if (Number.isFinite(a.m) && Number.isFinite(b.m)) worstLip = Math.max(worstLip, Math.abs(a.m - b.m) / d);
+      if (a.sig.onset != null && b.sig.onset != null && Math.abs(a.sig.onset - b.sig.onset) > 5 * Math.PI / 180) graze = graze || `first touch jumps ${(Math.abs(a.sig.onset - b.sig.onset) * 180 / Math.PI).toFixed(1)}deg between neighbours`;
+    }
+  }
+  const lip = Math.max(lipFloor, safety * worstLip);
+  const diag = Math.hypot(dx, dy, dr) / 2;                 // furthest any pose in a cell is from a sample
+  const need = lip * diag;
+  const certified = !graze && Number.isFinite(minMargin) && minMargin > need;
+  return { certified, minMargin, need, lip, worstLip, graze, samples: grid.size };
+}
+
+// The engine's own answer on random poses in the box: is the victim thrown at any point of the
+// sweep to the limit? Returns how many of n agree with `expect`.
+function simCheck(pieces, active, pv, dir, box, n, expect) {
+  let agree = 0; const fails = [];
+  for (let t = 0; t < n; t++) {
+    const p = pieces.map(q => ({ ...q })); const v = p[1 - active];
+    v.x = box.x[0] + Math.random() * (box.x[1] - box.x[0]); v.y = box.y[0] + Math.random() * (box.y[1] - box.y[0]); v.rot = box.rot[0] + Math.random() * (box.rot[1] - box.rot[0]);
+    const g = load(p, active); eng.pinFoot(pv);
+    let thrown = false, guard = 0;
+    while (!g.atLimit && guard++ < 400) { eng.applySwing(dir * Math.PI / 180); if (g.pieces[1 - active].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) { thrown = true; break; } }
+    if (thrown === expect) agree++; else fails.push({ x: v.x, y: v.y, rot: v.rot });
+  }
+  return { agree, n, fails };
+}
+
+
+// ---- Level 2: forced in two ---------------------------------------------------------------
+// A witness is one attacker move M = (arc, stop). It is certified when, along EVERY victim reply
+// arc, every stop leaves the attacker a throw: the reply family is ONE sweep of the law (the
+// pushed attacker's pose is recorded at every step, and a stop at s is a prefix of the sweep to
+// the limit), sampled every `stepDeg`; at each sample the attacker's six throw margins are taken
+// and the max must clear a Lipschitz allowance over the gap to the next sample, with the chosen
+// arc's contact history consistent between neighbours (else a grazing surface could hide). The
+// reply must not throw the attacker either -- the pushed piece's furthest foot is monotone in the
+// stop, so the full sweep answers that for every stop at once.
+//
+// The mover's own pose where a swing is rotated: the law's `swing` moves `active` about its pivot
+// but returns only the pushed piece, so the mover's pose at a stop is recomputed here.
+function moverAt(piece, pv, dir, rad) {
+  const f = feetOf(piece)[pv], c = Math.cos(dir * rad), sn = Math.sin(dir * rad), rx = piece.x - f.x, ry = piece.y - f.y;
+  return { x: f.x + rx * c - ry * sn, y: f.y + rx * sn + ry * c, rot: piece.rot + dir * rad };
+}
+// limOverride: sweep to this angle instead of the mover's own limit -- a reach envelope's hi, so
+// that a certificate over a region covers every stop reachable from anywhere in it. Stops past the
+// mover's own limit are then certified too (a superset of its replies; past a 'selfoff' limit the
+// mover has thrown itself, which the throw margin reads as won at once).
+function replyFamily(pieces, mover, pv, dir, K, limOverride) {
+  const lim = limOverride != null ? Math.min(limOverride, 2 * Math.PI) : swingLimitMemo(pieces, mover, pv, dir);
+  if (lim < MIN_MOVE) return null;
+  const out = swing(pieces, mover, pv, dir, lim, { ...K, record: true });
+  return { lim, out };
+}
+function certifyForcedIn2(pieces, attacker, K, opts) {
+  const stepDeg = (opts && opts.stepDeg) || 3, replyStepDeg = (opts && opts.replyStepDeg) || 2;
+  const safety = (opts && opts.safety) || 3, lipFloor = (opts && opts.lipFloor) || 1;
+  const victim = 1 - attacker;
+  const candidates = [];
+  for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
+    const fam = replyFamily(pieces, attacker, pv, dir, K); if (!fam) continue;
+    // a candidate is a stop; the victim's pose there comes from the recorded family
+    const stepRad = stepDeg * Math.PI / 180;
+    for (let s = MIN_MOVE; s <= fam.lim + 1e-9; s += stepRad) {
+      const rec = fam.out.record.find(r => r.alpha >= s - 1e-9) || fam.out.record[fam.out.record.length - 1];
+      if (rec.maxFootR > EDGE) { candidates.push({ pv, dir, stop: s, winsNow: true }); break; }   // a throw in one: done
+      const p = pieces.map(q => ({ ...q })); p[attacker] = moverAt(pieces[attacker], pv, dir, rec.alpha); p[victim] = { x: rec.x, y: rec.y, rot: rec.rot };
+      candidates.push({ pv, dir, stop: rec.alpha, after: p });
+    }
+  }
+  const win1 = candidates.find(c => c.winsNow);
+  if (win1) return { level: 1, witness: win1, certified: true };
+  let best = null, refuted = 0, unresolvedN = 0;
+  for (const c of candidates) {
+    const v = verifyAllReplies(c.after, victim, K, replyStepDeg, safety, lipFloor);
+    if (v.certified) return { level: 2, witness: c, certified: true, detail: v };
+    if (v.status === 'escape') refuted++; else unresolvedN++;
+    if (!best || v.worstMargin > best.v.worstMargin) best = { c, v };
+  }
+  return { level: 2, certified: false, closest: best, refuted, unresolvedN, tried: candidates.length };
+}
+// For a position with `mover` to reply: does every reply leave the other side a throw? Three
+// verdicts, never a bare "no": DEAD (certified along every arc), ESCAPE (a sampled stop at which
+// no attacker arc has a positive margin -- a real position, checkable), or UNRESOLVED (margins
+// positive everywhere sampled but too small for the allowance even at the engine's own substep).
+// Gaps that fail the allowance with positive margins at both ends are subdivided before giving up.
+function verifyAllReplies(pieces, mover, K, replyStepDeg, safety, lipFloor) {
+  return deadCertificate(pieces, mover, K, { replyStepDeg, safety, lipFloor });
+}
+// The same certificate with what a REGION needs of it. opts.reach: the six per-arm reach
+// envelopes of the victim's box (index pv*2 + (dir < 0)); each reply family is swept to its hi
+// instead of this sample's own limit. opts.screen: stops every 8 degrees and no gap loop, ~6 s,
+// returning only the smallest best margin seen (minBest) -- a cheap first look at a candidate
+// child before its certificate is paid for. And every verdict carries a PROFILE: per reply arm,
+// the certified gaps with the SET of attacker arcs that certify each (a bitmask over apv*2 +
+// (adir < 0)); two profiles are consistent when every pair of overlapping gaps shares a certifying
+// arc, i.e. the same throw answers the same reply across the region -- the grazing guard the star
+// needs between its probes, tolerant of the ties that a "first arc" rule would break on.
+// worstMargin is computed exactly as before this existed (the running best over arcs up to and
+// including the first certifying one), so verifyAllReplies' verdicts and margins are unchanged.
+function deadCertificate(pieces, mover, K, opts) {
+  opts = opts || {};
+  const replyStepDeg = opts.replyStepDeg || 2, safety = opts.safety || 3, lipFloor = opts.lipFloor || 1, reach = opts.reach || null, screen = !!opts.screen;
+  const other = 1 - mover; let worstMargin = Infinity, acceptMargin = Infinity, legalArcs = 0, unresolved = null, slivers = 0, probedSlivers = 0, minBest = Infinity;
+  const minStepRad = SUBSTEP, profile = [], samples = opts.keepSamples ? [] : null;
+  for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
+    const env = reach ? reach[pv * 2 + (dir < 0 ? 1 : 0)] : null;
+    const fam = replyFamily(pieces, mover, pv, dir, K, env ? env.hi : undefined); if (!fam) { profile.push({ pv, dir, legal: false }); continue; }
+    legalArcs++;
+    if (fam.out.maxFootR > EDGE) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) throws the attacker`, escape: { pv, dir, stop: fam.out.offAt, throws: true }, worstMargin: -Infinity, profile };
+    const rec = fam.out.record;
+    const sampleAt = a => {
+      const r = rec.find(q => q.alpha >= a - 1e-9) || rec[rec.length - 1];
+      const p = pieces.map(q => ({ ...q })); p[mover] = moverAt(pieces[mover], pv, dir, r.alpha); p[other] = { x: r.x, y: r.y, rot: r.rot };
+      const arcs = [];
+      for (let apv = 0; apv < 3; apv++) for (const adir of [1, -1]) { const t = throwMargin(p, other, apv, adir, K); arcs.push({ apv, adir, m: t.margin, sig: signature(t.out) }); }
+      return { alpha: r.alpha, arcs, best: Math.max(...arcs.map(x => x.m)) };
+    };
+    const stepRad = (screen ? (opts.screenStepDeg || 8) : replyStepDeg) * Math.PI / 180, first = [];
+    for (let a = MIN_MOVE; ; a += stepRad) { const last = a >= fam.lim - 1e-9; first.push(sampleAt(last ? fam.lim : a)); if (last) break; }
+    if (samples) samples.push({ pv, dir, lim: fam.lim, first: first.map(smp => ({ alpha: smp.alpha, best: smp.best, arcs: smp.arcs.map(x => ({ m: x.m, pairs: x.sig.pairs, onset: x.sig.onset })) })) });
+    for (const smp of first) { minBest = Math.min(minBest, smp.best); if (smp.best <= -ESC_TOL) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) to ${(smp.alpha * 180 / Math.PI).toFixed(1)}deg leaves no throw (best margin ${smp.best.toFixed(2)}u)`, escape: { pv, dir, stop: smp.alpha, bestMargin: smp.best }, worstMargin: Math.min(worstMargin, smp.best), minBest, profile, samples }; }
+    if (screen) { profile.push({ pv, dir, legal: true, lim: fam.lim, stops: first.map(s => ({ alpha: s.alpha, best: s.best })) }); continue; }
+    // certify each gap, subdividing while it fails with positive ends
+    const gaps = [], done = []; for (let k = 0; k + 1 < first.length; k++) gaps.push([first[k], first[k + 1]]);
+    while (gaps.length) {
+      const [A, B] = gaps.pop(); const gapU = (B.alpha - A.alpha) * 2 * R;
+      let ok = false, bestM = -Infinity, acceptM = -Infinity, mask = 0, firstArc = -1;
+      for (let i = 0; i < 6; i++) {
+        const a = A.arcs[i], b = B.arcs[i];
+        if (!Number.isFinite(a.m) || !Number.isFinite(b.m)) continue;
+        const lip = Math.max(lipFloor, safety * Math.abs(a.m - b.m) / Math.max(gapU, 1e-9)), need = lip * gapU / 2;
+        const consistent = a.sig.pairs === b.sig.pairs && (a.sig.onset == null || b.sig.onset == null || Math.abs(a.sig.onset - b.sig.onset) < 5 * Math.PI / 180);
+        if (!ok) bestM = Math.max(bestM, Math.min(a.m, b.m));
+        if (a.m > need && b.m > need && consistent) { mask |= 1 << i; acceptM = Math.max(acceptM, Math.min(a.m, b.m)); if (!ok) { ok = true; firstArc = i; } }
+      }
+      // worstMargin keeps its historical bookkeeping (the running best over arcs up to the first
+      // accepting one, so a non-accepting arc can set it); acceptMargin is the strict number, the
+      // best margin among the arcs that actually accept the gap, reported beside it
+      if (ok) { worstMargin = Math.min(worstMargin, bestM); acceptMargin = Math.min(acceptMargin, acceptM); done.push({ from: A.alpha, to: B.alpha, arcs: mask, arc: firstArc, pairs: A.arcs[firstArc].sig.pairs, m: bestM, accept: acceptM }); continue; }
+      if (B.alpha - A.alpha > minStepRad * 1.5) {                       // subdivide
+        const M = sampleAt((A.alpha + B.alpha) / 2);
+        minBest = Math.min(minBest, M.best);
+        if (M.best <= -ESC_TOL) return { certified: false, status: 'escape', why: `reply (${pv},${dir}) to ${(M.alpha * 180 / Math.PI).toFixed(1)}deg leaves no throw (best margin ${M.best.toFixed(2)}u)`, escape: { pv, dir, stop: M.alpha, bestMargin: M.best }, worstMargin: Math.min(worstMargin, M.best), minBest, profile };
+        gaps.push([A, M], [M, B]); continue;
+      }
+      // At the engine's own substep, a gap whose two ends both clear a high bar on SOME arm (not
+      // necessarily the same one) is accepted as a sliver: for the throw to vanish inside it, the
+      // margin would have to fall from over SLIVER_BAR to zero and back within one substep, which
+      // the engine itself cannot resolve. Counted and reported, so the certificate says
+      // "relative to the engine's resolution" in so many words.
+      if (A.best > SLIVER_BAR && B.best > SLIVER_BAR) { slivers++; worstMargin = Math.min(worstMargin, Math.min(A.best, B.best)); acceptMargin = Math.min(acceptMargin, Math.min(A.best, B.best)); done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, sliver: true, m: Math.min(A.best, B.best) }); continue; }
+      // The empirical sliver: at the substep, with both ends' margins over PROBE_BAR on a COMMON
+      // arc (the probe confirms a robust throw, never rescues a marginal one), the shipped engine
+      // is asked directly -- PROBE_N random stops inside the gap, each reached by a human-style
+      // drag, then the attacker's six arms swept to their limits. All thrown: accepted, counted
+      // apart (probedSlivers) and carried into worstMargin like a sliver. Any stop not thrown:
+      // the gap stays unresolved and the verdict names that stop.
+      let probeNote = '';
+      if (A.arcs.some((a, i) => Number.isFinite(a.m) && a.m > PROBE_BAR && B.arcs[i].m > PROBE_BAR)) {
+        const pr = probeGap(pieces, mover, pv, dir, A.alpha, B.alpha, PROBE_N);
+        if (pr.ok) { probedSlivers++; worstMargin = Math.min(worstMargin, Math.min(A.best, B.best)); acceptMargin = Math.min(acceptMargin, Math.min(A.best, B.best)); done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, probed: true, m: Math.min(A.best, B.best) }); continue; }
+        probeNote = `; engine probe: stop ${(pr.stop * 180 / Math.PI).toFixed(2)}deg ${pr.why}`;
+      }
+      unresolved = unresolved || `reply (${pv},${dir}) ${(A.alpha * 180 / Math.PI).toFixed(1)}-${(B.alpha * 180 / Math.PI).toFixed(1)}deg: no single arc certifies the gap (best min margin ${bestM.toFixed(2)}u) even at the engine's substep -- the throw changes arm here${probeNote}`;
+      worstMargin = Math.min(worstMargin, bestM);
+      done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, unresolved: true, m: bestM });
+    }
+    done.sort((a, b) => a.from - b.from);
+    // segments: runs of gaps certified by the same set of arcs, as the arm reads to a person
+    const segments = []; for (const gp of done) { const L = segments[segments.length - 1]; if (L && L.arcs === gp.arcs) { L.to = gp.to; L.n++; } else segments.push({ from: gp.from, to: gp.to, arcs: gp.arcs, arc: gp.arc, n: 1 }); }
+    profile.push({ pv, dir, legal: true, lim: fam.lim, gaps: done, segments });
+  }
+  if (screen) return { certified: false, status: 'screen', minBest, legalArcs, profile };
+  if (!legalArcs) return { certified: false, status: 'escape', why: 'victim has no legal reply', worstMargin: -Infinity, profile, samples };
+  if (unresolved) return { certified: false, status: 'unresolved', why: unresolved, worstMargin, acceptMargin, slivers, probedSlivers, minBest, profile, samples };
+  return { certified: true, status: 'dead', worstMargin, acceptMargin, slivers, probedSlivers, minBest, profile, samples };
+}
+// Two dead profiles agree when they have the same set of legal reply arms and every gap of both is
+// certified (or a sliver). A switch of the certifying attacker arc between overlapping gaps -- the
+// argmax of the throw margin changing from one sample to the other -- is NOT a refusal: W is the
+// min over victim stops of the max over attacker arcs of a margin, and a max of continuous
+// functions is continuous where its argmax switches, so W stays Lipschitz across the switch and
+// the star's slope reads it. It used to refuse (the h = 0.4 star at the seed: 13/13 dead, 10 such
+// switches at 41-44 and 6-8 degrees, refused); now counted and returned as `switches`.
+function profilesConsistent(a, b) {
+  const bad = [], switches = [], deg = x => (x * 180 / Math.PI).toFixed(1), arcsOf = m => [0, 1, 2, 3, 4, 5].filter(i => m & (1 << i)).map(i => `(${i >> 1},${i & 1 ? -1 : 1})`).join('');
+  for (let k = 0; k < 6; k++) {
+    const A = a[k], B = b[k]; if (!A || !B) { bad.push({ arm: k, why: 'missing arm' }); continue; }
+    if (!!A.legal !== !!B.legal) { bad.push({ arm: k, why: `arm (${A.pv},${A.dir}) legal at one sample only` }); continue; }
+    if (!A.legal) continue;
+    const open = [...A.gaps, ...B.gaps].find(g => g.unresolved);
+    if (open) { bad.push({ arm: k, why: `arm (${A.pv},${A.dir}) ${deg(open.from)}-${deg(open.to)}deg is not certified dead` }); continue; }
+    for (const ga of A.gaps) for (const gb of B.gaps) {
+      const lo = Math.max(ga.from, gb.from), hi = Math.min(ga.to, gb.to);
+      if (hi - lo <= 1e-9 || !ga.arcs || !gb.arcs) continue;
+      if (!(ga.arcs & gb.arcs)) switches.push(`arm (${A.pv},${A.dir}) ${deg(lo)}-${deg(hi)}deg certified by ${arcsOf(ga.arcs)} at one sample and ${arcsOf(gb.arcs)} at the other`);
+    }
+  }
+  return { ok: bad.length === 0, bad, switches };
+}
+// The family profile: from a parent position with `mover` to move, every reply arm sampled every
+// `stepDeg`, and at each stop the other side's best throw margin -- so an arm reads as segments,
+// "stops 2-14 degrees dead, 14-43 alive". This is the class description: every position in a
+// dead segment is one you reach from the same parent by the same arm, and is lost.
+function familyProfile(pieces, mover, K, stepDeg) {
+  const other = 1 - mover, arms = [];
+  for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
+    const fam = replyFamily(pieces, mover, pv, dir, K); if (!fam) { arms.push({ pv, dir, legal: false }); continue; }
+    const stepRad = (stepDeg || 2) * Math.PI / 180, stops = [];
+    for (let a = MIN_MOVE; ; a += stepRad) {
+      const last = a >= fam.lim - 1e-9, at = last ? fam.lim : a;
+      const rec = fam.out.record.find(q => q.alpha >= at - 1e-9) || fam.out.record[fam.out.record.length - 1];
+      const p = pieces.map(q => ({ ...q })); p[mover] = moverAt(pieces[mover], pv, dir, rec.alpha); p[other] = { x: rec.x, y: rec.y, rot: rec.rot };
+      const thrown = rec.maxFootR > EDGE;                                       // the reply itself throws the other side
+      const bt = thrown ? null : bestThrow(p, other, K);
+      stops.push({ deg: +(rec.alpha * 180 / Math.PI).toFixed(1), margin: thrown ? -Infinity : +bt.margin.toFixed(2), wins: thrown });
+      if (last) break;
+    }
+    // segments of equal fate
+    const segs = []; for (const st of stops) { const fate = st.wins ? 'WINS' : st.margin > 0 ? 'dead' : 'alive'; const L = segs[segs.length - 1]; if (L && L.fate === fate) { L.to = st.deg; L.n++; } else segs.push({ fate, from: st.deg, to: st.deg, n: 1 }); }
+    arms.push({ pv, dir, legal: true, limitDeg: +(fam.lim * 180 / Math.PI).toFixed(1), stops, segments: segs });
+  }
+  return arms;
+}
+// A DEAD verdict over a box of the victim's poses (the attacker held): every grid sample must
+// certify dead with its worst margin clearing the cell diagonal times a Lipschitz allowance taken
+// from the grid's steepest finite difference (never under 1). Sample verdicts other than dead
+// refuse the box outright. This is what turns a dead POINT into a dead REGION -- and a region is
+// what the next rung needs, because "every victim move lands in a forced win in two" can only be
+// tested against regions, never against the curves a single dead point unwinds into.
+function certifyDeadBox(pieces, victim, box, h, K, opts) {
+  const safety = (opts && opts.safety) || 3, lipFloor = (opts && opts.lipFloor) || 1;
+  const axis = (lo, hi, step) => { const n = Math.max(1, Math.ceil((hi - lo) / step)); return Array.from({ length: n + 1 }, (_, i) => lo + (hi - lo) * i / n); };
+  const xs = axis(box.x[0], box.x[1], h), ys = axis(box.y[0], box.y[1], h), rs = axis(box.rot[0], box.rot[1], h / R);
+  const grid = new Map(), key = (i, j, k) => `${i},${j},${k}`; let minMargin = Infinity, worstLip = 0, refuse = null;
+  for (let i = 0; i < xs.length && !refuse; i++) for (let j = 0; j < ys.length && !refuse; j++) for (let k = 0; k < rs.length && !refuse; k++) {
+    const p = pieces.map(q => ({ ...q })); const v = p[victim]; v.x = xs[i]; v.y = ys[j]; v.rot = rs[k];
+    const r = verifyAllReplies(p, victim, K, 2, 3, 1);
+    if (r.status !== 'dead') { refuse = `sample (${i},${j},${k}) is ${r.status}: ${r.why}`; break; }
+    grid.set(key(i, j, k), r.worstMargin); minMargin = Math.min(minMargin, r.worstMargin);
+  }
+  if (refuse) return { certified: false, why: refuse, samples: grid.size };
+  const dx = xs.length > 1 ? xs[1] - xs[0] : 1, dy = ys.length > 1 ? ys[1] - ys[0] : 1, dr = rs.length > 1 ? (rs[1] - rs[0]) * R : 1;
+  for (let i = 0; i < xs.length; i++) for (let j = 0; j < ys.length; j++) for (let k = 0; k < rs.length; k++) {
+    const a = grid.get(key(i, j, k));
+    for (const [n, d] of [[key(i + 1, j, k), dx], [key(i, j + 1, k), dy], [key(i, j, k + 1), dr]]) { const b = grid.get(n); if (b != null) worstLip = Math.max(worstLip, Math.abs(a - b) / d); }
+  }
+  const lip = Math.max(lipFloor, safety * worstLip), need = lip * Math.hypot(dx, dy, dr) / 2;
+  return { certified: minMargin > need, minMargin, need, lip, samples: grid.size, why: minMargin > need ? null : `min worst-margin ${minMargin.toFixed(2)}u under the allowance ${need.toFixed(2)}u` };
+}
+// The engine's check of an ESCAPE claim: play the escaping reply, then sweep every attacker arc;
+// the attacker must find no throw.
+function simCheckEscape(pieces, victim, esc) {
+  const attacker = 1 - victim; let g = load(pieces, victim); eng.pinFoot(esc.pv); let guard = 0;
+  while (!g.atLimit && Math.abs(g.netRad) < esc.stop - 1e-9 && guard++ < 2000) { eng.applySwing(esc.dir * Math.min(Math.PI / 180, esc.stop - Math.abs(g.netRad))); if (g.pieces[attacker].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) return { agree: !!esc.throws }; }
+  const after = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+  for (let apv = 0; apv < 3; apv++) for (const adir of [1, -1]) {
+    g = load(after, attacker); eng.pinFoot(apv); guard = 0;
+    while (!g.atLimit && guard++ < 400) { eng.applySwing(adir * Math.PI / 180); if (g.pieces[victim].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) return { agree: false, thrownBy: [apv, adir] }; }
+  }
+  return { agree: true };
+}
+// The engine's check of a level-2 claim: random replies (arc, stop) played by the engine, then
+// the engine sweeps each attacker arc to its limit looking for a throw.
+function simCheckForcedIn2(pieces, attacker, witness, n) {
+  const victim = 1 - attacker; let agree = 0; const fails = [];
+  for (let t = 0; t < n; t++) {
+    let g = load(pieces, attacker); eng.pinFoot(witness.pv);
+    let guard = 0; while (!g.atLimit && Math.abs(g.netRad) < witness.stop - 1e-9 && guard++ < 2000) eng.applySwing(witness.dir * Math.min(Math.PI / 180, witness.stop - Math.abs(g.netRad)));
+    const after = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+    // a random legal reply
+    const pv = Math.floor(Math.random() * 3), dir = Math.random() < 0.5 ? 1 : -1;
+    g = load(after, victim); const snap = eng.takeSnap(); const lim = Math.abs(eng.simMoveToLimit(pv, dir)); eng.restoreSnap(snap);
+    if (lim < MIN_MOVE) { t--; continue; }
+    const stop = MIN_MOVE + Math.random() * (lim - MIN_MOVE);
+    eng.pinFoot(pv); guard = 0; let attackerThrown = false;
+    while (!g.atLimit && Math.abs(g.netRad) < stop - 1e-9 && guard++ < 2000) { eng.applySwing(dir * Math.min(Math.PI / 180, stop - Math.abs(g.netRad))); if (g.pieces[attacker].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) { attackerThrown = true; break; } }
+    const after2 = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+    let thrown = false;
+    if (!attackerThrown) for (let apv = 0; apv < 3 && !thrown; apv++) for (const adir of [1, -1]) {
+      g = load(after2, attacker); eng.pinFoot(apv); guard = 0;
+      while (!g.atLimit && guard++ < 400) { eng.applySwing(adir * Math.PI / 180); if (g.pieces[victim].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) { thrown = true; break; } }
+      if (thrown) break;
+    }
+    if (thrown && !attackerThrown) agree++; else fails.push({ pv, dir, stop, attackerThrown });
+  }
+  return { agree, n, fails };
+}
+
+// The engine's check of a "dead" claim (victim to move, every move loses to a throw): random
+// legal victim moves played by the engine, then the engine sweeps each attacker arc for the throw.
+function simCheckDead(pieces, victim, n) {
+  const attacker = 1 - victim; let agree = 0; const fails = [];
+  for (let t = 0; t < n; t++) {
+    const pv = Math.floor(Math.random() * 3), dir = Math.random() < 0.5 ? 1 : -1;
+    let g = load(pieces, victim); const snap = eng.takeSnap(); const lim = Math.abs(eng.simMoveToLimit(pv, dir)); eng.restoreSnap(snap);
+    if (lim < MIN_MOVE) { t--; continue; }
+    const stop = MIN_MOVE + Math.random() * (lim - MIN_MOVE);
+    eng.pinFoot(pv); let guard = 0, attackerThrown = false;
+    while (!g.atLimit && Math.abs(g.netRad) < stop - 1e-9 && guard++ < 2000) { eng.applySwing(dir * Math.min(Math.PI / 180, stop - Math.abs(g.netRad))); if (g.pieces[attacker].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) { attackerThrown = true; break; } }
+    const after = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+    let thrown = false;
+    if (!attackerThrown) for (let apv = 0; apv < 3 && !thrown; apv++) for (const adir of [1, -1]) {
+      g = load(after, attacker); eng.pinFoot(apv); guard = 0;
+      while (!g.atLimit && guard++ < 400) { eng.applySwing(adir * Math.PI / 180); if (g.pieces[victim].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) { thrown = true; break; } }
+      if (thrown) break;
+    }
+    if (thrown && !attackerThrown) agree++; else fails.push({ pv, dir, stop, attackerThrown });
+  }
+  return { agree, n, fails };
+}
+
+// ---- Engine probes: a human-style drag, an arm swept to its limit, a gap probed -----------------
+// A drag to `stop` about the pinned foot: applySwing calls of random size in [0.3, maxDeg] degrees
+// (a human drag integrates a different ladder from the law's fixed record), the last call exact.
+// Returns true when the other piece went off the rim on the way.
+function dragTo(g, other, dir, stop, maxDeg) {
+  let guard = 0;
+  while (!g.atLimit && Math.abs(g.netRad) < stop - 1e-9 && guard++ < 5000) {
+    eng.applySwing(dir * Math.min((0.3 + (maxDeg - 0.3) * Math.random()) * DEG, stop - Math.abs(g.netRad)));
+    if (g.pieces[other].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) return true;
+  }
+  return false;
+}
+// The attacker's arm swept to its limit by the engine (limitAt's loop, a degree at a time): does a
+// victim foot pass the rim on the way?
+function sweepThrows(pieces, attacker, apv, adir) {
+  const g = load(pieces, attacker); eng.pinFoot(apv); let guard = 0;
+  while (!g.atLimit && Math.abs(g.netRad) < 2 * Math.PI - 1e-9 && guard++ < 1200) {
+    eng.applySwing(adir * Math.min(DEG, 2 * Math.PI - Math.abs(g.netRad)));
+    if (g.pieces[1 - attacker].feet().some(f => Math.hypot(f.x, f.y) > EDGE)) return true;
+  }
+  return false;
+}
+// The empirical sliver's probe: n random stops of the victim's reply (pv, dir) inside [lo, hi],
+// each reached by a drag from `pieces`, then the attacker's six arms swept. ok when every stop is
+// thrown; otherwise the first stop that was not and why.
+function probeGap(pieces, victim, pv, dir, lo, hi, n) {
+  const attacker = 1 - victim;
+  for (let t = 0; t < n; t++) {
+    const stop = lo + Math.random() * (hi - lo), g = load(pieces, victim); eng.pinFoot(pv);
+    if (dragTo(g, attacker, dir, stop, 3)) return { ok: false, stop, why: 'the reply threw the attacker' };
+    const after = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+    if (!ARMS.some(([apv, adir]) => sweepThrows(after, attacker, apv, adir))) return { ok: false, stop, why: 'no attacker arm throws' };
+  }
+  return { ok: true };
+}
+
+// ---- Dead-deep: certified forced losses more than one move before the end -------------------
+// Victim V to move, attacker A. Dead at d moves (2d-1 plies): for every reply r of V (every arm,
+// every stop) EITHER A has a throw now (the level-1 case, deadCertificate's rule) OR A has a
+// WITNESS reply a(r) -- a concrete swing (arm, stop) recorded in the certificate -- after which the
+// position is dead at d-1 moves for V. Sampled along each reply arm exactly as deadCertificate
+// samples it (the recorded family, stops every stepDeg, the last at the limit), each sample
+// resolved 'thrown' (best level-1 margin over ESC_TOL) or 'witness' (the attacker's candidate
+// swings every attStepDeg, each screened by the cheap deadCertificate screen, the survivors tried
+// in order of their screen margin with the full deadDeep at d-1, at most maxWitnessTries per
+// sample), and the gap between neighbouring samples certified by the same sampled-slope rule:
+//   thrown-thrown on a common arc with the same contact signature: today's rule;
+//   witness-witness with the SAME attacker arm and stops within 2*attStepDeg: the child margins
+//     take the place of the throw margins. Along such a run the child's margin W_{d-1}(Q_{a(s)})
+//     is a composition of the victim's swing (Lipschitz in the stop, Jacobian <= 1+sqrt2), the
+//     attacker's swing (the same) and W_{d-1} itself (Lipschitz where it is certified, by the same
+//     sampled-slope standard), so the finite difference between the two ends, times the safety
+//     factor, bounds it over the gap. Sampled, not a proof, like everything else here;
+//   mixed (or witness arms differ): subdivide to the substep; there a thrown-thrown gap is a
+//     sliver by today's rules, and a mixed gap gets one more chance -- the thrown end is searched
+//     for a witness too (on the arm the other end uses), so that the boundary between a thrown
+//     region and a witnessed one, where the level-1 margin passes ESC_TOL and can never certify a
+//     gap on its own, is bridged by the witness rule; failing that the gap is unresolved.
+// A sample with no witness is an ESCAPE at this depth and ends the run. Full results and screens
+// are memoised by pose key (six values to six decimals, the victim, the depth). opts.deadline (ms
+// epoch) stops the run cleanly with status 'timeout'.
+const poseKey = (pieces, victim, tag) => pieces.map(q => `${q.x.toFixed(6)},${q.y.toFixed(6)},${q.rot.toFixed(6)}`).join(',') + '|' + victim + '|' + tag;
+const armsOf = m => [0, 1, 2, 3, 4, 5].filter(i => m & (1 << i)).map(i => `(${i >> 1},${i & 1 ? -1 : 1})`).join('');
+const degOf = x => (x * 180 / Math.PI).toFixed(1);
+class DeadlineHit extends Error {}
+// A screen's smallest best margin: the escape's own margin when it ended early, -Infinity when
+// the victim cannot move at all (deadCertificate calls that an escape).
+const screenMin = scr => scr.status === 'escape' ? (Number.isFinite(scr.minBest) ? scr.minBest : -Infinity) : (!scr.legalArcs ? -Infinity : scr.minBest);
+// The move that took `mover` from pose pA to pose pB (six numbers each): the pivot is the foot
+// that did not move, dir and rad from the change of rotation (wrapped to a half turn). footErr is
+// how far the pivot foot drifted -- a real swing leaves it within the engine's rounding.
+function moveBetween(pA, pB, mover) {
+  const A = { x: pA[mover * 3], y: pA[mover * 3 + 1], rot: pA[mover * 3 + 2] }, B = { x: pB[mover * 3], y: pB[mover * 3 + 1], rot: pB[mover * 3 + 2] };
+  const fa = feetOf(A), fb = feetOf(B); let pv = 0, best = Infinity;
+  for (let i = 0; i < 3; i++) { const d = Math.hypot(fa[i].x - fb[i].x, fa[i].y - fb[i].y); if (d < best) { best = d; pv = i; } }
+  let d = B.rot - A.rot; d = Math.atan2(Math.sin(d), Math.cos(d));
+  return { pv, dir: d < 0 ? -1 : 1, rad: Math.abs(d), footErr: best };
+}
+// How a certified gap reads to a person (both deadCertificate's gaps and deadDeep's).
+function gapLabel(g) {
+  if (g.witness) return `witness (${g.witness.apv},${g.witness.adir}) stop ${degOf(g.witness.aFrom)}..${degOf(g.witness.aTo)}deg`;
+  if (g.sliver) return 'sliver'; if (g.probed) return 'engine-probed sliver'; if (g.unresolved) return 'UNRESOLVED';
+  return `thrown by ${armsOf(g.arcs)}`;
+}
+// Runs of consecutive gaps with the same label kind (thrown by the same set of arcs / witness on
+// the same arm / sliver / probed / unresolved); a witness run carries the span of its stops.
+function segmentsOf(gaps) {
+  const kind = g => g.witness ? `w${g.witness.apv},${g.witness.adir}` : g.sliver ? 'sliver' : g.probed ? 'probed' : g.unresolved ? 'unres' : `t${g.arcs}`;
+  const segs = [];
+  for (const g of gaps) {
+    const L = segs[segs.length - 1];
+    if (L && L.kind === kind(g)) { L.to = g.to; L.n++; L.m = Math.min(L.m, g.m); if (g.witness) { L.witness.aFrom = Math.min(L.witness.aFrom, g.witness.aFrom, g.witness.aTo); L.witness.aTo = Math.max(L.witness.aTo, g.witness.aFrom, g.witness.aTo); } }
+    else segs.push({ kind: kind(g), from: g.from, to: g.to, n: 1, m: g.m, arcs: g.arcs, arc: g.arc, sliver: !!g.sliver, probed: !!g.probed, unresolved: !!g.unresolved, witness: g.witness ? { apv: g.witness.apv, adir: g.witness.adir, aFrom: Math.min(g.witness.aFrom, g.witness.aTo), aTo: Math.max(g.witness.aFrom, g.witness.aTo) } : null });
+  }
+  return segs;
+}
+function deadDeep(pieces, victim, K, depth, opts, ctx) {
+  opts = opts || {};
+  const stepDeg = opts.stepDeg || 2, attStepDeg = opts.attStepDeg || 3, maxTries = opts.maxWitnessTries || 4, safety = opts.safety || 3, lipFloor = opts.lipFloor || 1;
+  const top = !ctx;
+  ctx = ctx || { full: opts.memo || new Map(), screens: new Map(), stats: { samples: 0, screens: 0, coarseScreens: 0, fullChildren: 0, memoHits: 0, continued: 0, searched: 0, seconds: 0 }, t0: Date.now(), deadline: opts.deadline || Infinity };
+  const hint = top && opts.hint && opts.hint.attacker ? opts.hint.attacker : null;   // the seed game's own attacker reply: tried first
+  const finish = v => { if (top) v.stats = { ...ctx.stats, seconds: +((Date.now() - ctx.t0) / 1000).toFixed(1) }; return v; };
+  if (depth <= 1) return finish({ ...deadCertificate(pieces, victim, K, { replyStepDeg: stepDeg, safety, lipFloor }), plies: 1 });
+  const attacker = 1 - victim, plies = 2 * depth - 1, stepRad = stepDeg * DEG, attStepRad = attStepDeg * DEG;
+  let worstMargin = Infinity, legalArcs = 0, unresolved = null, slivers = 0, probedSlivers = 0;
+  const profile = [], witnesses = [], arms = [];
+  const tick = () => { if (Date.now() > ctx.deadline) throw new DeadlineHit('deadline'); };
+  const fail = (status, why, extra) => finish({ certified: false, status, why, plies, worstMargin, profile, witnesses, ...extra });
+  // the level-1 view of a stop: the six attacker margins with signatures (deadCertificate's sampleAt)
+  const sampleAt = (fam, pv, dir, a) => {
+    tick();
+    const rec = fam.out.record, r = rec.find(q => q.alpha >= a - 1e-9) || rec[rec.length - 1];
+    const p = pieces.map(q => ({ ...q })); p[victim] = moverAt(pieces[victim], pv, dir, r.alpha); p[attacker] = { x: r.x, y: r.y, rot: r.rot };
+    const arcs = [];
+    for (let apv = 0; apv < 3; apv++) for (const adir of [1, -1]) { const t = throwMargin(p, attacker, apv, adir, K); arcs.push({ apv, adir, m: t.margin, sig: signature(t.out) }); }
+    ctx.stats.samples++;
+    return { alpha: r.alpha, pose: p, arcs, best: Math.max(...arcs.map(x => x.m)), kind: null, w: null, searched: false, bestChild: null };
+  };
+  // the witness search at a sample: candidates on every attacker arm (preferArm first), screened,
+  // then the full certificate at d-1 in screen order. Sets smp.w on success.
+  const findWitness = (smp, preferArm) => {
+    smp.searched = true; smp.candidates = 0;
+    const screenAt = (Q, deg) => {
+      const key = poseKey(Q, victim, 'screen' + deg); let scr = ctx.screens.get(key);
+      if (scr) ctx.stats.memoHits++; else { scr = deadCertificate(Q, victim, K, { screen: true, screenStepDeg: deg }); if (deg === 8) ctx.stats.screens++; else ctx.stats.coarseScreens++; ctx.screens.set(key, scr); }
+      return screenMin(scr);
+    };
+    // one arm's candidates: every attStepDeg to the limit (plus the hinted stop itself), the
+    // 16-degree screen on each, the 8-degree screen on the best three, then the full certificate
+    // in that order; true at the first certified child
+    const tryArms = (armList, nearStop, budget) => {
+      const cands = [];
+      for (const [apv, adir] of armList) {
+        const afam = replyFamily(smp.pose, attacker, apv, adir, K); if (!afam) continue;
+        const rec = afam.out.record, stops = [];
+        for (let a = MIN_MOVE; ; a += attStepRad) { const last = a >= afam.lim - 1e-9; stops.push(last ? afam.lim : a); if (last) break; }
+        if (nearStop != null && nearStop >= MIN_MOVE && nearStop <= afam.lim) stops.push(nearStop);
+        if (nearStop != null) stops.sort((x, y) => Math.abs(x - nearStop) - Math.abs(y - nearStop));
+        const seen = new Set();
+        for (const at of stops) {
+          tick();
+          const r = rec.find(q => q.alpha >= at - 1e-9) || rec[rec.length - 1];
+          if (r.maxFootR > EDGE || seen.has(r.alpha)) continue;                   // a thin throw is not a position; a ladder step once
+          seen.add(r.alpha);
+          const Q = smp.pose.map(q => ({ ...q })); Q[attacker] = moverAt(smp.pose[attacker], apv, adir, r.alpha); Q[victim] = { x: r.x, y: r.y, rot: r.rot };
+          const full = ctx.full.get(poseKey(Q, victim, depth - 1));
+          const minBest = full ? (full.certified ? Infinity : -Infinity) : screenAt(Q, 16);
+          // a level-1 escape is rejected outright when the child is judged at depth 1; deeper
+          // children may still be dead past it, so the screen only orders them (the batch's rule)
+          if (depth - 1 >= 2 || minBest > -ESC_TOL) cands.push({ apv, adir, a: r.alpha, Q, minBest, rank: nearStop != null ? Math.abs(r.alpha - nearStop) : 0 });
+        }
+      }
+      smp.candidates += cands.length;
+      cands.sort((x, y) => y.minBest - x.minBest || x.rank - y.rank);
+      for (const c of cands.slice(0, 3)) if (Number.isFinite(c.minBest)) c.minBest = screenAt(c.Q, 8);
+      cands.sort((x, y) => y.minBest - x.minBest || x.rank - y.rank);
+      let tries = 0;
+      for (const c of cands) {
+        if (tries >= budget) break;
+        if (depth - 1 < 2 && c.minBest <= -ESC_TOL) continue;
+        const key = poseKey(c.Q, victim, depth - 1); let child = ctx.full.get(key);
+        if (child) ctx.stats.memoHits++; else { child = deadDeep(c.Q, victim, K, depth - 1, opts, ctx); ctx.stats.fullChildren++; ctx.full.set(key, child); tries++; }
+        if (Number.isFinite(child.worstMargin) && (smp.bestChild == null || child.worstMargin > smp.bestChild)) smp.bestChild = child.worstMargin;
+        if (child.certified) { smp.w = { apv: c.apv, adir: c.adir, a: c.a, childMargin: child.worstMargin, childPlies: child.plies, child }; return true; }
+      }
+      return false;
+    };
+    // CONTINUATION: the previous witness on this arm (or the played line's reply when there is
+    // none yet) is tried first -- its arm, candidate stops nearest its stop first, two full tries
+    // -- since neighbouring stops of one victim arm are answered by neighbouring attacker swings
+    // wherever the witness rule can certify the gap at all. Only then the full order: the hinted
+    // arm, then every other arm, maxTries full children each.
+    const prev = preferArm || hint, prevArm = prev ? [prev.apv != null ? prev.apv : prev.pv, prev.adir != null ? prev.adir : prev.dir] : null, prevStop = prev && prev.rad != null ? prev.rad : (prev && prev.a != null ? prev.a : null);
+    if (prev && tryArms([prevArm], prevStop, 2)) { ctx.stats.continued++; return true; }
+    const hintArm = hint ? [hint.pv, hint.dir] : null;
+    let found = false;
+    if (hintArm && !(prevArm && prevArm[0] === hintArm[0] && prevArm[1] === hintArm[1])) found = tryArms([hintArm], hint.rad, maxTries);
+    if (!found) found = tryArms(ARMS.filter(([p, d]) => !(hintArm && p === hintArm[0] && d === hintArm[1])), null, maxTries);
+    if (found) ctx.stats.searched++;
+    return found;
+  };
+  // resolve: 'thrown' when the best margin clears ESC_TOL, else a witness or an escape descriptor
+  const resolve = (smp, pv, dir, prev) => {
+    if (smp.best > ESC_TOL) { smp.kind = 'thrown'; return null; }
+    if (findWitness(smp, prev ? { apv: prev.apv, adir: prev.adir, a: prev.a } : null)) { smp.kind = 'witness'; return null; }
+    return { pv, dir, stop: smp.alpha, level: depth, m1: smp.best, candidates: smp.candidates, bestChild: smp.bestChild };
+  };
+  const escapeFrom = e => fail('escape', `reply (${e.pv},${e.dir}) to ${degOf(e.stop)}deg: no attacker reply leads to a certified dead position (level-1 best margin ${e.m1.toFixed(2)}u, ${e.candidates} candidates, best child margin ${e.bestChild == null ? 'none' : e.bestChild.toFixed(2) + 'u'})`, { escape: { pv: e.pv, dir: e.dir, stop: e.stop, level: e.level, bestMargin: e.m1, bestChild: e.bestChild } });
+  const gapOf = (A, B, gapU) => {
+    // thrown-thrown: today's rule over the six arcs
+    if (A.kind === 'thrown' && B.kind === 'thrown') {
+      let ok = false, bestM = -Infinity, mask = 0, firstArc = -1;
+      for (let i = 0; i < 6; i++) {
+        const a = A.arcs[i], b = B.arcs[i];
+        if (!Number.isFinite(a.m) || !Number.isFinite(b.m)) continue;
+        const lip = Math.max(lipFloor, safety * Math.abs(a.m - b.m) / Math.max(gapU, 1e-9)), need = lip * gapU / 2;
+        const consistent = a.sig.pairs === b.sig.pairs && (a.sig.onset == null || b.sig.onset == null || Math.abs(a.sig.onset - b.sig.onset) < 5 * Math.PI / 180);
+        if (!ok) bestM = Math.max(bestM, Math.min(a.m, b.m));
+        if (a.m > need && b.m > need && consistent) { mask |= 1 << i; if (!ok) { ok = true; firstArc = i; } }
+      }
+      if (ok) return { from: A.alpha, to: B.alpha, arcs: mask, arc: firstArc, pairs: A.arcs[firstArc].sig.pairs, m: bestM };
+    }
+    // witness-witness on the same attacker arm with stops within 2*attStepDeg: the child margins
+    if (A.w && B.w && A.w.apv === B.w.apv && A.w.adir === B.w.adir && Math.abs(A.w.a - B.w.a) <= 2 * attStepRad + 1e-9) {
+      const mA = A.w.childMargin, mB = B.w.childMargin;
+      const lip = Math.max(lipFloor, safety * Math.abs(mA - mB) / Math.max(gapU, 1e-9)), need = lip * gapU / 2;
+      if (mA > need && mB > need) return { from: A.alpha, to: B.alpha, arcs: 0, arc: -1, witness: { apv: A.w.apv, adir: A.w.adir, aFrom: A.w.a, aTo: B.w.a }, child: A.w.child, m: Math.min(mA, mB) };
+    }
+    return null;
+  };
+  const valueOf = s => s.kind === 'witness' ? s.w.childMargin : s.best;
+  try {
+    // 1. every arm's family and its level-1 samples (cheap); an attacker-throwing reply is an escape
+    for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
+      const fam = replyFamily(pieces, victim, pv, dir, K); if (!fam) { profile.push({ pv, dir, legal: false }); continue; }
+      legalArcs++;
+      if (fam.out.maxFootR > EDGE) return fail('escape', `reply (${pv},${dir}) throws the attacker`, { escape: { pv, dir, stop: fam.out.offAt, throws: true, level: 1 }, worstMargin: -Infinity });
+      const first = [];
+      for (let a = MIN_MOVE; ; a += stepRad) { const last = a >= fam.lim - 1e-9; first.push(sampleAt(fam, pv, dir, last ? fam.lim : a)); if (last) break; }
+      const entry = { pv, dir, legal: true, lim: fam.lim }; profile.push(entry); arms.push({ pv, dir, fam, first, entry });
+    }
+    if (!legalArcs) return fail('escape', 'victim has no legal reply', { worstMargin: -Infinity });
+    // 2. the cheap level-1 pass: every sample whose best margin clears ESC_TOL is 'thrown' now,
+    //    no witness search here (the only level-1 escapes that end a deep run, replies that throw
+    //    the attacker, were caught above)
+    for (const arm of arms) for (const s of arm.first) if (s.best > ESC_TOL) s.kind = 'thrown';
+    // 3. per arm, in order of increasing stop: the witness searches with continuation from the
+    //    previous witness on the arm, then the gap rule, subdividing to the substep
+    for (const { pv, dir, fam, first, entry } of arms) {
+      let last = null;
+      for (const s of first) { if (s.kind) continue; const e = resolve(s, pv, dir, last); if (e) return escapeFrom(e); last = s.w; }
+      const gaps = [], done = []; for (let k = 0; k + 1 < first.length; k++) gaps.push([first[k], first[k + 1]]);
+      while (gaps.length) {
+        const [A, B] = gaps.pop(); const gapU = (B.alpha - A.alpha) * 2 * R;
+        let g = gapOf(A, B, gapU);
+        if (g) { worstMargin = Math.min(worstMargin, g.m); done.push(g); continue; }
+        if (B.alpha - A.alpha > SUBSTEP * 1.5) {
+          const M = sampleAt(fam, pv, dir, (A.alpha + B.alpha) / 2); const e = resolve(M, pv, dir, A.w || B.w); if (e) return escapeFrom(e);
+          gaps.push([A, M], [M, B]); continue;
+        }
+        if (A.kind === 'thrown' && B.kind === 'thrown') {
+          if (A.best > SLIVER_BAR && B.best > SLIVER_BAR) { slivers++; worstMargin = Math.min(worstMargin, Math.min(A.best, B.best)); done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, sliver: true, m: Math.min(A.best, B.best) }); continue; }
+          if (A.arcs.some((a, i) => Number.isFinite(a.m) && a.m > PROBE_BAR && B.arcs[i].m > PROBE_BAR) && probeGap(pieces, victim, pv, dir, A.alpha, B.alpha, PROBE_N).ok) { probedSlivers++; worstMargin = Math.min(worstMargin, Math.min(A.best, B.best)); done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, probed: true, m: Math.min(A.best, B.best) }); continue; }
+        } else if (A.kind !== B.kind) {
+          // the thrown end gets a witness search on the other end's arm, then the witness rule
+          const T = A.kind === 'thrown' ? A : B, W = T === A ? B : A;
+          if (!T.searched) findWitness(T, { apv: W.w.apv, adir: W.w.adir });
+          g = gapOf(A, B, gapU); if (g) { worstMargin = Math.min(worstMargin, g.m); done.push(g); continue; }
+        }
+        const bestM = Math.min(valueOf(A), valueOf(B));
+        unresolved = unresolved || `reply (${pv},${dir}) ${degOf(A.alpha)}-${degOf(B.alpha)}deg: ${A.kind}/${B.kind} ends, no common certificate even at the engine's substep (min end value ${bestM.toFixed(2)}u)`;
+        worstMargin = Math.min(worstMargin, bestM);
+        done.push({ from: A.alpha, to: B.alpha, arcs: 0, arc: -1, unresolved: true, m: bestM });
+      }
+      done.sort((a, b) => a.from - b.from);
+      const segments = segmentsOf(done);
+      for (const sg of segments) if (sg.witness) witnesses.push({ pv, dir, from: sg.from, to: sg.to, apv: sg.witness.apv, adir: sg.witness.adir, aFrom: sg.witness.aFrom, aTo: sg.witness.aTo, m: sg.m });
+      entry.gaps = done; entry.segments = segments;
+    }
+  } catch (e) {
+    if (!(e instanceof DeadlineHit)) throw e;
+    if (!top) throw e;
+    return fail('timeout', 'deadline reached', { worstMargin: Number.isFinite(worstMargin) ? worstMargin : null });
+  }
+  if (unresolved) return fail('unresolved', unresolved, { slivers, probedSlivers });
+  return finish({ certified: true, status: 'dead', plies, worstMargin, slivers, probedSlivers, profile, witnesses });
+}
+// The engine's check of a deep claim: n random legal victim moves (random arm, uniform stop),
+// played by random-size drags; the certificate's gap containing the stop says what happens next:
+// 'thrown' -- the attacker sweeps the certifying arc (all six for a sliver) and the victim must go
+// off; 'witness' -- the attacker plays the witness swing, its stop interpolated across the gap,
+// then the child is checked recursively (at depth 1, simCheckDead 8/8). A fail records the stop,
+// the segment and what happened.
+function simCheckDeadDeep(pieces, victim, n, depth, verdict) {
+  const attacker = 1 - victim; let pass = 0; const fails = [];
+  for (let t = 0; t < n; t++) {
+    const pv = Math.floor(Math.random() * 3), dir = Math.random() < 0.5 ? 1 : -1;
+    let g = load(pieces, victim); const snap = eng.takeSnap(); const lim = Math.abs(eng.simMoveToLimit(pv, dir)); eng.restoreSnap(snap);
+    if (lim < MIN_MOVE) { t--; continue; }
+    const stop = MIN_MOVE + Math.random() * (lim - MIN_MOVE), rec = { pv, dir, stopDeg: +degOf(stop) };
+    const arm = (verdict.profile || []).find(a => a.pv === pv && a.dir === dir);
+    const gaps = arm && arm.legal && arm.gaps ? arm.gaps : [];
+    // a stop under the first sample (the record's first ladder step at or past MIN_MOVE) or past
+    // the last belongs to the end gap, as the certificate's own coverage reads
+    const gap = gaps.find(q => stop >= q.from - 1e-9 && stop <= q.to + 1e-9) || (gaps.length ? (stop > gaps[gaps.length - 1].to ? gaps[gaps.length - 1] : gaps[0]) : null);
+    if (!gap) { fails.push({ ...rec, why: 'no certified gap contains this stop' }); continue; }
+    rec.seg = gapLabel(gap);
+    eng.pinFoot(pv);
+    if (dragTo(g, attacker, dir, stop, 6)) { fails.push({ ...rec, why: 'the reply threw the attacker' }); continue; }
+    const after = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+    if (!gap.witness) {
+      if (gap.unresolved) { fails.push({ ...rec, why: 'the stop lies in an unresolved gap' }); continue; }
+      const arcs = gap.arc >= 0 ? [ARMS[gap.arc]] : ARMS;
+      if (arcs.some(([apv, adir]) => sweepThrows(after, attacker, apv, adir))) pass++; else fails.push({ ...rec, why: 'the attacker sweep did not throw' });
+      continue;
+    }
+    const f = (stop - gap.from) / Math.max(gap.to - gap.from, 1e-12), a = gap.witness.aFrom + Math.min(1, Math.max(0, f)) * (gap.witness.aTo - gap.witness.aFrom);
+    g = load(after, attacker); eng.pinFoot(gap.witness.apv);
+    if (dragTo(g, victim, gap.witness.adir, a, 6)) { pass++; continue; }                     // the witness swing threw the victim outright
+    const child = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+    if (depth - 1 <= 1) { const c = simCheckDead(child, victim, 8); if (c.agree === c.n) pass++; else fails.push({ ...rec, witnessStopDeg: +degOf(a), why: `child not dead: ${c.agree}/${c.n}`, childFails: c.fails.slice(0, 2) }); }
+    else { const c = simCheckDeadDeep(child, victim, 8, depth - 1, gap.child || { profile: [] }); if (c.pass === c.n) pass++; else fails.push({ ...rec, witnessStopDeg: +degOf(a), why: `child not dead at ${2 * depth - 3} plies: ${c.pass}/${c.n}`, childFails: c.fails.slice(0, 2) }); }
+  }
+  return { n, pass, fails };
+}
+
+// One --dead-batch seed, in whichever thread: the depth-1 screen (which at depth 1 may settle it),
+// deadDeep under the run's deadline with the memo and the played-line hint, and for a certified
+// deep verdict the per-arm table and the engine's playouts. Returns the JSON row and the lines
+// to print; memoRows are depth-1 verdict rows (dead -> certified) to seed the child memo.
+function batchSeed(r, depth, o) {
+  const K = REPLICA, ts = Date.now(), hint = o.hint || null, pieces = [{ x: r.p[0], y: r.p[1], rot: r.p[2] }, { x: r.p[3], y: r.p[4], rot: r.p[5] }];
+  const memo = new Map(); for (const m of o.memoRows || []) if (m.p && m.mover != null && m.status) memo.set(poseKey([{ x: m.p[0], y: m.p[1], rot: m.p[2] }, { x: m.p[3], y: m.p[4], rot: m.p[5] }], m.mover, 1), { certified: m.status === 'dead', status: m.status, plies: 1, worstMargin: m.worstMargin != null ? m.worstMargin : -Infinity, why: m.why || null, profile: [], seeded: true });
+  const scr = deadCertificate(pieces, r.mover, K, { screen: true }), scrMin = screenMin(scr), scrEsc = scrMin <= -ESC_TOL;
+  let v;
+  if (depth === 1 && scrEsc) v = { certified: false, status: 'escape', plies: 1, why: scr.why || `screen: best margin ${scrMin.toFixed(2)}u`, worstMargin: scrMin, screenOnly: true, escape: scr.escape || null };
+  else v = deadDeep(pieces, r.mover, K, depth, { deadline: o.deadline || Infinity, memo, hint });
+  const status = v.certified ? 'certified' : v.status, seconds = +((Date.now() - ts) / 1000).toFixed(1), lines = [];
+  const row = { kind: 'batch', p: r.p, mover: r.mover, k: r.k, g: r.g, file: r.file, depth, plies: v.plies, hint: hint ? { victim: { pv: hint.victim.pv, dir: hint.victim.dir, deg: +degOf(hint.victim.rad) }, attacker: { pv: hint.attacker.pv, dir: hint.attacker.dir, deg: +degOf(hint.attacker.rad) } } : null, certified: !!v.certified, status: v.status, worstMargin: Number.isFinite(v.worstMargin) ? +v.worstMargin.toFixed(3) : null, why: v.why || null, escape: v.escape || null, screenMinBest: Number.isFinite(scrMin) ? +scrMin.toFixed(3) : null, screenOnly: !!v.screenOnly, slivers: v.slivers || 0, probedSlivers: v.probedSlivers || 0, seconds, stats: v.stats || null, stamp: new Date().toISOString() };
+  if (v.certified) row.witnesses = v.witnesses || [];
+  lines.push(`${status.padEnd(10)} ${String(seconds).padStart(7)}s  worst ${row.worstMargin == null ? '   -' : row.worstMargin.toFixed(2).padStart(6)}  screen ${row.screenMinBest == null ? '-' : row.screenMinBest.toFixed(2)}  ${r.g}${hint ? `  played: victim (${hint.victim.pv},${hint.victim.dir}) ${degOf(hint.victim.rad)}deg, attacker (${hint.attacker.pv},${hint.attacker.dir}) ${degOf(hint.attacker.rad)}deg` : ''}${v.stats ? `  [${v.stats.samples} samples, ${v.stats.coarseScreens} coarse + ${v.stats.screens} screens, ${v.stats.fullChildren} full children, ${v.stats.memoHits} memo hits, ${v.stats.continued} continued / ${v.stats.searched} searched]` : ''}${v.why ? '  -- ' + v.why : ''}`);
+  if (v.certified && depth >= 2) {
+    for (const arm of v.profile || []) lines.push(`  arm (${arm.pv},${arm.dir}): ` + (arm.legal ? `to ${degOf(arm.lim)}deg  ` + (arm.segments || []).map(sg => `${degOf(sg.from)}-${degOf(sg.to)} ${gapLabel(sg)}`).join(' | ') : 'no legal move'));
+    const engine = simCheckDeadDeep(pieces, r.mover, 20, depth, v); row.engine = { n: engine.n, pass: engine.pass, fails: engine.fails.slice(0, 3) };
+    lines.push(`  engine: ${engine.pass}/${engine.n} random moves lose${engine.fails.length ? '; fails: ' + JSON.stringify(engine.fails.slice(0, 3)) : ''}`);
+  }
+  return { row, lines, status };
+}
+
+// ---- The graph: metric, reach envelopes, stars, arcs, lookup, the file ------------------------
+// Poses travel as the game's own six numbers [bx, by, brot, rx, ry, rrot], rotations raw.
+const pose6 = p => typeof p[0] === 'number' ? p : [p[0].x, p[0].y, p[0].rot, p[1].x, p[1].y, p[1].rot];
+const piecesOf = p => typeof p[0] === 'number' ? [{ x: p[0], y: p[1], rot: p[2] }, { x: p[3], y: p[4], rot: p[5] }] : p.map(q => ({ ...q }));
+const ARMS = [[0, 1], [0, -1], [1, 1], [1, -1], [2, 1], [2, -1]];
+const armIndex = (pv, dir) => pv * 2 + (dir < 0 ? 1 : 0);
+// The metric: L1 across the pieces and across position and rotation, rotation weighted by R so a
+// unit is a unit of foot travel either way. Rotations compared raw: the tripod's 120-degree
+// relabelling is a symmetry of the geometry but not of the game's numbers, and the dedupe key is
+// where symmetries live.
+function dist6(p, q) {
+  const a = pose6(p), b = pose6(q);
+  return Math.hypot(a[0] - b[0], a[1] - b[1]) + R * Math.abs(a[2] - b[2]) + Math.hypot(a[3] - b[3], a[4] - b[4]) + R * Math.abs(a[5] - b[5]);
+}
+// A random point inside the L1 ball of radius eps around a pose: the length split over the six
+// axes by normalised exponentials with random signs (uniform on the L1 sphere), the radius drawn
+// as eps * U^(1/6) (uniform in the ball). The xy axes are entered as |dx| + |dy| >= hypot(dx, dy),
+// so every sample is inside the metric ball, biased slightly inward on those axes.
+function randomInBall(pose, eps) {
+  const p = pose6(pose).slice(); if (!(eps > 0)) return p;
+  const e = Array.from({ length: 6 }, () => -Math.log(1 - Math.random())), s = e.reduce((a, b) => a + b, 0), r = eps * Math.pow(Math.random(), 1 / 6);
+  for (let k = 0; k < 6; k++) { const v = (Math.random() < 0.5 ? -1 : 1) * r * e[k] / s; p[k] += k % 3 === 2 ? v / R : v; }
+  return p;
+}
+
+// The reach ENVELOPE of one reply arm over a box of the mover's pose: the limit on an n^3 grid, the
+// steepest finite difference between grid neighbours times the standing safety factor 3 (floor 1
+// degree per u: a foot 40u from the pivot meets a line ~1.4 degrees later per unit of hub shift,
+// so the floor is below the natural slope; the throw certificates' floor of 1 is margin-u per u,
+// and a floor of 1 radian per u here would be a 20-degree allowance on a 0.375u half-cell), times
+// the half cell diagonal in L1, plus one substep (0.4 degrees: applySwing splits each call into
+// EQUAL substeps, so the ladder's phase depends on the caller and the limit with it, measured at
+// 0.1-0.3 degrees between 3-degree and 1-degree steps). Refused when two grid neighbours stop on
+// different events -- the limit is continuous only between events, and a box straddling a
+// tangency (a foot's arc grazing a line's band, a corner merge flipping) is two regions, to be
+// split along the named axis, never averaged. D-claims (the victim's replies) use hi; W-claims
+// (the attacker's witness legality) use lo.
+// Then the PHASE PROBE: at the 8 corner cells and the centre, three ladders of random-size
+// applySwing calls (0.3-6 degrees, a human drag) to the limit; one that lands more than
+// max(0.5 degrees, allow) from the 1-degree ladder's limit at that cell refuses the envelope
+// (phase-tol.json: the median difference is 0.10 degrees, but outliers of 21-32 degrees were
+// measured in multi-line corner-merge episodes, where which substep crosses the corner's second
+// line decides the whole stop).
+// opts.exact: lo and hi come from limitEnclosure (the stopping event's angle enclosed over the
+// box by interval arithmetic, floored to the substep) plus one substep, instead of the grid's
+// range plus the slope allowance; the grid still supplies the signature check and the phase probe
+// still runs. The enclosure's refusals (a tangency, a wrap, a foot at the rim, two events in the
+// stopping substep) refuse the envelope like a signature change does.
+function reachEnvelope(pieces, mover, pv, dir, box, n, opts) {
+  n = n || 5; opts = opts || {};
+  const ax = (lo, hi) => Array.from({ length: n }, (_, i) => n === 1 ? (lo + hi) / 2 : lo + (hi - lo) * i / (n - 1));
+  const xs = ax(box.x[0], box.x[1]), ys = ax(box.y[0], box.y[1]), rs = ax(box.rot[0], box.rot[1]);
+  const L = new Map(), key = (i, j, k) => `${i},${j},${k}`;
+  let lo = Infinity, hi = -Infinity, offBoard = 0;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) {
+    const p = pieces.map(q => ({ ...q })); p[mover] = { x: xs[i], y: ys[j], rot: rs[k] };
+    if (feetOf(p[mover]).some(f => Math.hypot(f.x, f.y) > LIM_EDGE)) { offBoard++; continue; }   // not a position: the game ended when that foot went over
+    const l = limitAt(p, mover, pv, dir); L.set(key(i, j, k), l); lo = Math.min(lo, l.lim); hi = Math.max(hi, l.lim);
+  }
+  if (!L.size) return { pv, dir, refused: `arm (${pv},${dir}): every grid pose has a victim foot off the board`, offBoard, lo: null, hi: null, sig: null, reason: null, crossed: [], foot: null, line: null, min: null, max: null, slope: 0, lip: 0, allow: 0, n, phase: null, exact: null };
+  const dx = n > 1 ? xs[1] - xs[0] : 0, dy = n > 1 ? ys[1] - ys[0] : 0, dr = n > 1 ? (rs[1] - rs[0]) * R : 0;
+  // The stopping PROGRAM of a grid pose: why it stopped and which lines it crossed on the way. Two
+  // neighbours with different programs are a wall the cell must be split on (the limit jumps
+  // there, by tens of degrees at 6dgqa1fd8 and 0r8c3cohc). Two neighbours with the same program
+  // but different stopping EVENTS (the event-order wall at ndpxhts24: foot 2 reaching a0's band
+  // on one side, foot 1 reaching r1's on the other) are not: both events stop the arm, so the
+  // limit is the minimum of two continuous functions and is continuous across the wall (the 21^3
+  // map in nn/dead-region-check shows jumps of at most two substeps), and the envelope below
+  // encloses every event seen and takes the minimum. Events are compared by TAG; describeStop's
+  // line label is the nearest line within STOP_BAND and flips between two lines for one and the
+  // same event (arm (2,-1) at ndpxhts24), which used to read as a wall.
+  const evKey = e => [e.kind, e.foot, e.circle, e.kind === 'level' ? e.D : e.A, e.sign].join(':');
+  const progOf = l => l.reason + '|' + (l.reason === 'cross' ? l.crossed.join(',') : '');
+  let slope = 0, refused = null, wall = false;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) {
+    const a = L.get(key(i, j, k)); if (!a) continue;
+    for (const [nb, d] of [[[i + 1, j, k], dx], [[i, j + 1, k], dy], [[i, j, k + 1], dr]]) {
+      const b = L.get(key(...nb)); if (!b) continue;
+      if (progOf(a) !== progOf(b)) refused = refused || `arm (${pv},${dir}): stopping event changes between cells (${i},${j},${k})-(${nb}): ${a.sig} vs ${b.sig}`;
+      else if (a.sig !== b.sig) wall = true;
+      slope = Math.max(slope, Math.abs(a.lim - b.lim) / d);
+    }
+  }
+  const all = [...L.values()];
+  if (!refused && all.some(l => l.reason === 'full')) refused = `arm (${pv},${dir}): a grid pose swings a full turn`;
+  if (!refused && all.some(l => !l.events || !l.events.length)) refused = `arm (${pv},${dir}): a grid pose stops on no closed-form event`;
+  // The events to enclose: those that stop the arm ALONE at some grid pose. An event that only
+  // ever shares the stopping substep with another (a co-event) is not known to be a stop at all
+  // (a band entered as the turn's first, free crossing lands in the same substep as the rim), and
+  // enclosing it would pull the minimum below the true limit; a co-event pose whose events include
+  // no known stop is refused instead.
+  let union = null;
+  if (!refused) {
+    const known = new Map(all.filter(l => l.events.length === 1).map(l => [evKey(l.events[0]), l.events[0]]));
+    const orphan = all.find(l => l.events.length > 1 && !l.events.some(e => known.has(evKey(e))));
+    if (!known.size || orphan) refused = `arm (${pv},${dir}): a grid pose stops on ${(orphan || all[0]).events.length} events in one substep, none known to stop the arm alone`;
+    else union = [...known.values()];
+  }
+  let lip = Math.max(DEG, 3 * slope), allow = lip * (dx + dy + dr) / 2 + SUBSTEP; const c = L.get(key(n >> 1, n >> 1, n >> 1)) || all[0];
+  let exact = null;
+  if (opts.exact && !refused) {
+    // one enclosure per stopping event seen on the grid, each over the whole box; the limit at
+    // any pose is the floor of the smallest event angle there, so [min lo_e, min hi_e] contains it
+    const parts = union.map(e => limitEnclosure(pieces, mover, pv, dir, box, opts.subdiv || 8, e)), bad = parts.find(p => p.refused);
+    if (bad) refused = bad.refused;
+    else {
+      exact = { lo: Math.min(...parts.map(p => p.lo)), hi: Math.min(...parts.map(p => p.hi)), sLo: Math.min(...parts.map(p => p.sLo)), sHi: Math.min(...parts.map(p => p.sHi)), event: parts[0].event, events: union.map(evKey), rim: parts[0].rim, refused: null };
+      if (lo < exact.lo - 1e-9 || hi > exact.hi + 1e-9) refused = `arm (${pv},${dir}): a grid limit lies outside the enclosure ${(exact.lo / DEG).toFixed(2)}-${(exact.hi / DEG).toFixed(2)} deg (bug)`;
+      else { lip = 0; allow = SUBSTEP; }
+    }
+  } else if (!refused && wall) refused = `arm (${pv},${dir}): two stopping events in the box (an exact envelope is needed to unite them)`;
+  // the phase probe (skipped once the envelope is refused: nothing it finds could rescue it)
+  const phase = { cells: 0, ladders: 3, maxDiff: 0, tol: Math.max(0.5 * DEG, allow) };
+  if (!refused) {
+    const ends = n > 1 ? [0, n - 1] : [0], cells = [[n >> 1, n >> 1, n >> 1]];
+    for (const i of ends) for (const j of ends) for (const k of ends) cells.push([i, j, k]);
+    for (const [i, j, k] of cells) {
+      if (!L.has(key(i, j, k))) continue;
+      const lim1 = L.get(key(i, j, k)).lim; phase.cells++;
+      for (let t = 0; t < phase.ladders && !refused; t++) {
+        const p = pieces.map(q => ({ ...q })); p[mover] = { x: xs[i], y: ys[j], rot: rs[k] };
+        const g = load(p, mover); eng.pinFoot(pv); let guard = 0;
+        while (!g.atLimit && Math.abs(g.netRad) < 2 * Math.PI - 1e-9 && guard++ < 5000) eng.applySwing(dir * Math.min((0.3 + 5.7 * Math.random()) * DEG, 2 * Math.PI - Math.abs(g.netRad)));
+        const diff = Math.abs(Math.abs(g.netRad) - lim1); phase.maxDiff = Math.max(phase.maxDiff, diff);
+        if (diff > phase.tol) refused = `arm (${pv},${dir}): phase-sensitive limit at cell (${i},${j},${k}): a random-size ladder stops at ${(Math.abs(g.netRad) / DEG).toFixed(1)}deg [${g.limitReason || 'full'}] against the 1-degree ladder's ${(lim1 / DEG).toFixed(1)}deg`;
+      }
+    }
+  }
+  // the substep-bin guard: scan the box (the grid's x, y and a dense sweep of rot, since the
+  // strips are thin in rot) for a same-foot two-line pair that can share a substep
+  if (exact && !refused) {
+    const nT = opts.phaseScan || 41, t0 = box.rot[0], t1 = box.rot[1];
+    scan: for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let t = 0; t < nT; t++) {
+      const pose = { x: xs[i], y: ys[j], rot: nT > 1 ? t0 + (t1 - t0) * t / (nT - 1) : (t0 + t1) / 2 }, ft = feetOf(pose);
+      if (ft.some(f => Math.hypot(f.x, f.y) > LIM_EDGE)) continue;
+      const ev = limitEvents(ft, pv, dir).filter(e => e.s <= exact.hi + LIM_SUB);
+      for (let a = 0; a < ev.length; a++) for (let b = a + 1; b < ev.length; b++) {
+        if (ev[a].foot !== ev[b].foot || ev[a].circle === ev[b].circle) continue;
+        const gap = Math.abs(ev[a].s - ev[b].s);
+        if (gap >= BIN_GUARD) continue;
+        refused = `arm (${pv},${dir}): foot ${ev[a].foot} meets two lines ${(gap / DEG).toFixed(4)} deg apart inside the box (circles ${ev[a].circle} and ${ev[b].circle}), within one ${(LIM_SUB / DEG).toFixed(3)}-degree substep: the sampling phase, not the geometry, decides whether the swing stops there`;
+        break scan;
+      }
+    }
+  }
+  if (exact && !refused) { lo = exact.lo; hi = exact.hi; }
+  return { pv, dir, lo: lo - allow, hi: hi + allow, sig: c.sig, reason: c.reason, crossed: c.crossed, foot: c.foot, line: c.line, min: lo, max: hi, slope, lip, allow, n, phase, refused, offBoard, wall, union: union ? union.map(evKey) : null, rim: exact && exact.rim || null, exact: exact && !exact.refused ? { lo: exact.lo, hi: exact.hi, sLo: exact.sLo, sHi: exact.sHi, event: exact.event ? { kind: exact.event.kind, foot: exact.event.foot, circle: exact.event.circle, D: exact.event.D, A: exact.event.A, sign: exact.event.sign } : null } : null };
+}
+const envText = e => `(${e.pv},${e.dir}) ${(e.lo * 180 / Math.PI).toFixed(1)}-${(e.hi * 180 / Math.PI).toFixed(1)} deg [${e.reason}${e.crossed.length ? ' ' + e.crossed.join(',') : ''}${e.foot != null ? ' foot ' + e.foot + (e.reason === 'selfoff' ? '' : ' at ' + e.line) : ''}]`;
+
+// certifyStar: a dead POINT becomes a dead BALL. Six reach envelopes over the victim's box (+-h,
+// rotation +-h/R); the certificate at the centre and at +-h on each of the six axes, every one
+// with the families swept to the envelopes; all 13 dead and every probe's profile consistent with
+// the centre's; lipStar = max(1, 3 * the steepest ONE-SIDED slope |W(probe) - W(centre)| / h over
+// the 12 probes); then every q with d(q, pose) <= eps has W(q) >= W_centre - lipStar * eps > 0, so
+// eps = min(h, W_centre / lipStar). One-sided, not the central difference over 2h: at the seed
+// (h 0.4) the V.rot- probe has W 0.465 against 2.207 at the centre and 2.169 at V.rot+, a central
+// slope of 2.13/u but 4.36/u on the rot- side, and by the central estimate the ball would have
+// reached W = 0 at its boundary on that side. Both slopes are kept in node.star. Falsified by
+// simCheckDeadBall right after.
+function certifyStar(node, h, K, opts) {
+  const log = (opts && opts.log) || (() => {}), V = node.side, A = 1 - V, base = piecesOf(node.pose), v = base[V];
+  const box = { x: [v.x - h, v.x + h], y: [v.y - h, v.y + h], rot: [v.rot - h / R, v.rot + h / R] };
+  node.reach = []; const refused = [];
+  for (const [pv, dir] of ARMS) { const t = Date.now(); const e = reachEnvelope(base, V, pv, dir, box, 5); node.reach.push(e); log(`  reach: arm ${envText(e)}  grid ${e.min === Infinity ? '-' : (e.min * 180 / Math.PI).toFixed(1)}-${(e.max * 180 / Math.PI).toFixed(1)}, slope ${(e.slope / DEG).toFixed(2)} deg/u, allow ${(e.allow / DEG).toFixed(2)} deg, phase probe ${e.phase.cells ? `${e.phase.cells}x${e.phase.ladders} ladders within ${(e.phase.maxDiff / DEG).toFixed(2)} deg` : 'skipped'} (${((Date.now() - t) / 1000).toFixed(0)}s)${e.refused ? '  REFUSED: ' + e.refused : ''}`); if (e.refused) refused.push(e.refused); }
+  if (refused.length) { node.star = { h, refused, certified: false }; return node; }
+  const axes = [[V, 'x', h], [V, 'y', h], [V, 'rot', h / R], [A, 'x', h], [A, 'y', h], [A, 'rot', h / R]];
+  const run = (p, tag, axis, sign) => {
+    const t = Date.now(), r = deadCertificate(p, V, K, { reach: node.reach }), secs = +((Date.now() - t) / 1000).toFixed(0);
+    log(`  ${tag}: ${r.status} worst ${Number.isFinite(r.worstMargin) ? r.worstMargin.toFixed(3) : r.worstMargin} (${secs}s)${r.why ? ' ' + r.why : ''}`);
+    return { axis, sign, tag, status: r.status, W: r.worstMargin, why: r.why || null, slivers: r.slivers || 0, secs, profile: r.profile };
+  };
+  const centre = run(base, 'centre', -1, 0), probes = [];
+  for (let i = 0; i < 6; i++) for (const sign of [1, -1]) { const p = base.map(q => ({ ...q })); p[axes[i][0]][axes[i][1]] += sign * axes[i][2]; probes.push(run(p, `${axes[i][0] === V ? 'V' : 'A'}.${axes[i][1]}${sign > 0 ? '+' : '-'}`, i, sign)); }
+  let allDead = centre.status === 'dead', minW = centre.W; const badArms = new Set(), whys = [], switchNotes = [];
+  for (const pr of probes) {
+    if (pr.status !== 'dead') { allDead = false; pr.profileOK = null; continue; }
+    minW = Math.min(minW, pr.W);
+    const c = centre.status === 'dead' ? profilesConsistent(centre.profile, pr.profile) : { ok: false, bad: [], switches: [] };
+    pr.profileOK = c.ok; pr.argmaxSwitches = c.switches.length; for (const s of c.switches) switchNotes.push(`${pr.tag}: ${s}`);
+    if (!c.ok) { pr.profileWhy = c.bad.map(b => b.why); for (const b of c.bad) { badArms.add(b.arm); whys.push(`${pr.tag}: ${b.why}`); } }
+  }
+  // one-sided slopes, one per probe; the central differences are kept beside them for the record
+  let maxSlope = 0, maxCentral = 0; const slopesOneSided = [], slopesCentral = [];
+  for (const pr of probes) { const s = pr.status === 'dead' && centre.status === 'dead' ? Math.abs(pr.W - centre.W) / h : null; slopesOneSided.push(s); if (s != null) maxSlope = Math.max(maxSlope, s); }
+  for (let i = 0; i < 6; i++) { const plus = probes[2 * i], minus = probes[2 * i + 1]; const s = plus.status === 'dead' && minus.status === 'dead' ? Math.abs(plus.W - minus.W) / (2 * h) : null; slopesCentral.push(s); if (s != null) maxCentral = Math.max(maxCentral, s); }
+  const lipStar = Math.max(1, 3 * maxSlope), certified = allDead && badArms.size === 0;
+  const strip = pr => ({ ...pr, profile: pr.profile ? pr.profile.map(a => a.legal ? { pv: a.pv, dir: a.dir, lim: a.lim, segments: a.segments } : a) : null });
+  node.star = { h, probes: [strip(centre), ...probes.map(strip)], lipStar, maxSlope, maxSlopeCentral: maxCentral, slopesOneSided, slopesCentral, consistentArms: 6 - badArms.size, inconsistent: whys, argmaxSwitches: switchNotes.length, argmaxNotes: switchNotes, minW, certified };
+  node.margin = centre.W; node.lip = lipStar; node.eps = certified ? Math.min(h, centre.W / lipStar) : 0; node.need = lipStar * node.eps;
+  return node;
+}
+// The engine on the ball: random poses inside it, each played through random legal victim moves
+// (the engine's own limits, random stops), then the six attacker sweeps: every trial must end in a
+// throw of the victim.
+function simCheckDeadBall(node, nPoses, nMoves) {
+  let agree = 0; const fails = [];
+  for (let t = 0; t < nPoses; t++) {
+    const q = piecesOf(randomInBall(node.pose, node.eps)), s = simCheckDead(q, node.side, nMoves);
+    if (s.agree === s.n) agree++; else fails.push({ pose: pose6(q).map(x => +x.toFixed(4)), fails: s.fails.slice(0, 2) });
+  }
+  return { trials: nPoses, moves: nMoves, agree, n: nPoses, fails };
+}
+
+// The position on an arc at unwound angle s: the child's pose with its attacker rotated back about
+// its own foot pv. Playing (pv, dir) forward by s from here lands exactly on the child (the same
+// rigid rotation, inverted) when nothing is touched on the way.
+function arcPose(node, s) { const p = piecesOf(node.pose); p[node.side] = moverAt(p[node.side], node.arc.pv, -node.arc.dir, s); return p; }
+// The attacker's hub from its foot pv at w with rotation rot: feetOf's convention (foot i at
+// rot + i*2pi/3, R from the hub) inverted, not rederived. Round-trips hub -> foot -> hub to 1e-14,
+// and for the child's own foot hubFromFoot(w_D, rot_D - dir*sigma, pv) is arcPose(sigma) to 4e-14.
+function hubFromFoot(w, rot, pv) { const a = rot + pv * 2 * Math.PI / 3; return { x: w.x - Math.cos(a) * R, y: w.y - Math.sin(a) * R, rot }; }
+const dVic = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) + R * Math.abs(a.rot - b.rot);
+// One FIBRE of arm (pv, dir) into a child ball: the attacker's foot pv pinned at w, the victim at
+// Vp, everything a function of the residual angle sigma (the attacker at sigma has rotation
+// rot_D - dir*sigma; a forward swing from a start at s passes through every sigma in [0, s], an
+// exact rigid rotation about w, nothing pushed, no phase, nothing to rewind).
+//   gap(sigma) = minGapOf(A(sigma), Vp) - MIND, sampled at FIBRE_FINE over [-1, 6] degrees and
+//     FIBRE_COARSE beyond, to scanTo (a full turn) or off the board; a sample is contact-free iff
+//     gap >= GAP_LIP * its step, which covers the interval to its neighbours rigorously (GAP_LIP);
+//   runs: the maximal contact-free stretches [c, far) of samples; far is the first sample past the
+//     run that touches, leaves the board (hub beyond edgeU - R - edgeEps, or a foot off) or ends
+//     the scan (farWhy says which);
+//   window of a run: the sigmas in it whose landing is inside the child's ball, d_att(sigma) +
+//     d_vic(Vp, V_D) <= eps_D, d_att = hypot(hub(sigma) - hub_D) + R*|sigma| (the graph metric;
+//     |sigma|, since a landing may sit past the child pose). d_att is non-decreasing in sigma on
+//     sigma >= 0 for every w (the hub term's derivative is at most R in magnitude, the rotation
+//     term's is R), so the window is one interval [lo, hi] of samples, lo the first inside.
+// A run further back (after the next contact) has no window -- its landing is degrees from the
+// child, tens of units in the metric -- so in practice the tube is built on the first run.
+function fibre(node, pv, dir, w, Vp, scanTo) {
+  const att = 1 - node.side, D = piecesOf(node.pose), cD = D[att], hubMax = eng.CFG.edgeU - R - eng.CFG.edgeEps;
+  const budget = (node.eps || 0) - dVic(Vp, D[node.side]), end = Math.min(scanTo == null ? 2 * Math.PI : scanTo, 2 * Math.PI);
+  const sigmas = []; for (let k = 0; ; k++) { const s = FIBRE_FROM + k * FIBRE_FINE; if (s > FIBRE_FINE_TO + 1e-12) break; sigmas.push(s); }
+  for (let s = FIBRE_FINE_TO + FIBRE_COARSE; s <= end + 1e-12; s += FIBRE_COARSE) sigmas.push(s);
+  const runs = []; let run = null;
+  const close = (far, why) => { if (run) { run.far = far; run.farWhy = why; delete run.broken; runs.push(run); run = null; } };
+  for (let k = 0; k < sigmas.length; k++) {
+    const sigma = sigmas[k], a = hubFromFoot(w, cD.rot - dir * sigma, pv);
+    if (Math.hypot(a.x, a.y) > hubMax || anyOff(a)) { close(sigma, 'off'); break; }
+    const step = Math.max(k ? sigma - sigmas[k - 1] : 0, k + 1 < sigmas.length ? sigmas[k + 1] - sigma : 0);
+    const gap = minGapOf(a, Vp) - MIND;
+    if (gap < GAP_LIP * step) { close(sigma, 'contact'); continue; }
+    if (!run) run = { c: sigma, far: null, farWhy: null, lo: null, hi: null, n: 0, gapAtC: gap };
+    run.n++;
+    const inside = Math.hypot(a.x - cD.x, a.y - cD.y) + R * Math.abs(sigma) <= budget;
+    if (inside && run.lo == null) { run.lo = sigma; run.hi = sigma; } else if (inside && !run.broken) run.hi = sigma; else if (!inside && run.lo != null) run.broken = true;
+  }
+  close(end, 'scan');
+  return { runs, budget };
+}
+// The 63 fibres of one tube round: w on the 3x3 lattice of spacing rW over the disc (9), the
+// victim at the 7-point star (centre, +-rV on x, on y and on R*rot); each fibre read at the run
+// whose start is nearest the centre run's (within 2 degrees, at least 0.1 degrees long), scanned
+// to 3 degrees past the centre run's end. Then the standing sampled-Lipschitz transport: lo* =
+// max lo + 3 * slope_lo * half, hi* = min hi - 3 * slope_hi * half, far* = min far - 3 *
+// slope_far * half, slope_x the steepest finite difference of x between neighbouring fibres per
+// unit of the metric (lattice neighbours over rW, each victim probe against the centre over rV;
+// floor 1 degree per u), half = half the grid spacing. NOT a proof: a value between two fibres is
+// assumed to lie within the slope its neighbours show, as the stars assume of W.
+function tubeGrid(node, pv, dir, run0, rW, rV) {
+  const att = 1 - node.side, D = piecesOf(node.pose), wD = feetOf(D[att])[pv], VD = D[node.side], scanTo = run0.far + 3 * DEG;
+  const wPts = [], vPts = [{ ...VD, tag: 'c' }];
+  for (const i of [-1, 0, 1]) for (const j of [-1, 0, 1]) wPts.push({ x: wD.x + i * rW, y: wD.y + j * rW, i, j });
+  for (const [axis, d, tag] of [['x', rV, 'x'], ['y', rV, 'y'], ['rot', rV / R, 'rot']]) for (const sign of [1, -1]) { const v = { ...VD }; v[axis] += sign * d; vPts.push({ ...v, tag: tag + (sign > 0 ? '+' : '-') }); }
+  const cells = [];
+  for (let wi = 0; wi < wPts.length; wi++) {
+    cells.push([]);
+    for (let vi = 0; vi < vPts.length; vi++) {
+      const f = fibre(node, pv, dir, wPts[wi], vPts[vi], scanTo); let best = null;
+      for (const r of f.runs) if (r.n >= 10 && (!best || Math.abs(r.c - run0.c) < Math.abs(best.c - run0.c))) best = r;
+      if (!best || Math.abs(best.c - run0.c) > 2 * DEG) return { ok: false, why: `fibre w(${wPts[wi].i},${wPts[wi].j}) V.${vPts[vi].tag}: no contact-free run within 2 degrees of the centre's (starts ${f.runs.map(r => (r.c / DEG).toFixed(2)).join(', ') || 'none'})` };
+      if (best.lo == null) return { ok: false, why: `fibre w(${wPts[wi].i},${wPts[wi].j}) V.${vPts[vi].tag}: run ${(best.c / DEG).toFixed(2)}-${(best.far / DEG).toFixed(1)}deg has no landing window (budget ${f.budget.toFixed(3)}u)` };
+      cells[wi].push({ lo: best.lo, hi: best.hi, far: best.far });
+    }
+  }
+  const slope = q => {
+    let s = DEG;
+    for (let wi = 0; wi < wPts.length; wi++) for (let vi = 0; vi < vPts.length; vi++) {
+      for (let wj = wi + 1; wj < wPts.length; wj++) if (Math.abs(wPts[wi].i - wPts[wj].i) + Math.abs(wPts[wi].j - wPts[wj].j) === 1) s = Math.max(s, Math.abs(cells[wi][vi][q] - cells[wj][vi][q]) / rW);
+      if (vi > 0) s = Math.max(s, Math.abs(cells[wi][vi][q] - cells[wi][0][q]) / rV);
+    }
+    return s;
+  };
+  const half = Math.max(rW, rV) / 2, slopes = { lo: slope('lo'), hi: slope('hi'), far: slope('far') }, all = cells.flat();
+  const lo = Math.max(...all.map(c => c.lo)) + 3 * slopes.lo * half, hi = Math.min(...all.map(c => c.hi)) - 3 * slopes.hi * half, far = Math.min(...all.map(c => c.far)) - 3 * slopes.far * half;
+  const spread = { lo: [Math.min(...all.map(c => c.lo)), Math.max(...all.map(c => c.lo))], hi: [Math.min(...all.map(c => c.hi)), Math.max(...all.map(c => c.hi))], far: [Math.min(...all.map(c => c.far)), Math.max(...all.map(c => c.far))] };
+  const window = hi - lo;
+  return { ok: window >= MIN_WINDOW, why: window >= MIN_WINDOW ? null : `window* ${(window / DEG).toFixed(3)} deg (lo* ${(lo / DEG).toFixed(3)}, hi* ${(hi / DEG).toFixed(3)}; slopes lo ${(slopes.lo / DEG).toFixed(1)} hi ${(slopes.hi / DEG).toFixed(1)} deg/u)`, lo, hi, far, window, slopes, spread, fibres: wPts.length * vPts.length };
+}
+// unwindArcs: from a point node with eps > 0, the six arms of the side that moved in. Per arm the
+// centre fibre (w = the child's own foot, the child's victim) is scanned in full, then a
+// DIAGNOSTIC engine pass at every degree of unwound angle -- the forward swing played by the
+// engine from arcPose(deg) in 1-degree calls, landing on the child within 0.05u / 1e-3 rad with
+// the victim untouched, or stopped by a limit, or pushed -- is compared with the fibre's runs to
+// within a degree of their ends and logged, never failed on (the engine cannot land past a push,
+// so the pass stops once it and the fibre agree on contact with no run further back). Then one
+// node per run of at least MIN_RUN with a landing window (makeArc); the first degree the engine
+// stopped at a limit inside a run caps that node's sHi before the legality check.
+function unwindArcs(node, K, opts) {
+  const log = (opts && opts.log) || (() => {}), att = 1 - node.side, D = piecesOf(node.pose), hubMax = eng.CFG.edgeU - R - eng.CFG.edgeEps, arcs = [], deg = x => (x / DEG).toFixed(2);
+  if (!(node.eps > 0)) { log(`  ${node.id} has eps 0: a tube lands inside the child's ball, so the child must be starred first`); return arcs; }
+  for (const [pv, dir] of ARMS) {
+    const t0 = Date.now(), wD = feetOf(D[att])[pv], f0 = fibre(node, pv, dir, wD, D[node.side]), runs = f0.runs;
+    // the fibre predicts a landing from s iff s lies in the run through the child pose (the one
+    // containing sigma 0, or starting within a degree past it): a run further back is contact-free
+    // in itself but every swing from it passes the contact in between and pushes
+    const landRun = runs.find(r => r.c <= DEG && r.far > 0) || null, predicted = s => !!landRun && landRun.c <= s && s < landRun.far, nearEnd = s => !!landRun && (Math.abs(s - landRun.c) <= DEG || Math.abs(s - landRun.far) <= DEG);
+    const tally = { lands: 0, limit: 0, pushed: 0, off: 0 }, disagree = []; let limCap = null;
+    for (let d = 2; d <= 359; d++) {
+      const s = d * DEG, prev = arcPose({ ...node, side: att, arc: { pv, dir } }, s);
+      if (!landRun || s > landRun.far + DEG) break;
+      if (anyOff(prev[att]) || Math.hypot(prev[att].x, prev[att].y) > hubMax) { tally.off++; continue; }
+      const g = load(prev, att); eng.pinFoot(pv); let guard = 0;
+      while (!g.atLimit && Math.abs(g.netRad) < s - 1e-9 && guard++ < 3000) eng.applySwing(dir * Math.min(DEG, s - Math.abs(g.netRad)));
+      const a = g.pieces[att], m = g.pieces[node.side];
+      const lands = !g.atLimit && Math.abs(g.netRad) >= s - 1e-6 && Math.hypot(a.x - D[att].x, a.y - D[att].y) < 0.05 && Math.abs(a.rot - D[att].rot) < 1e-3 && Math.hypot(m.x - D[node.side].x, m.y - D[node.side].y) < 0.05 && Math.abs(m.rot - D[node.side].rot) < 1e-3;
+      const verdict = lands ? 'lands' : g.atLimit ? 'limit' : 'pushed'; tally[verdict]++;
+      if (verdict === 'limit') { if (limCap == null && predicted(s)) limCap = s; }
+      else if (lands !== predicted(s) && !nearEnd(s)) disagree.push(`${d}deg engine ${verdict}, fibre ${predicted(s) ? 'free' : 'contact'}`);
+    }
+    log(`  ${att === 0 ? 'blue' : 'red'} arm (${pv},${dir}): contact-free runs ${runs.length ? runs.map(r => `${deg(r.c)}-${deg(r.far)}deg (${r.farWhy}${r.lo != null ? `, window ${deg(r.lo)}-${deg(r.hi)}` : ', no window'})`).join(', ') : 'none'}; engine per degree${landRun ? ` to ${deg(landRun.far)}` : ''}: lands ${tally.lands}, limit ${tally.limit}${limCap != null ? ` (from ${deg(limCap)}deg)` : ''}, pushed ${tally.pushed}, off board ${tally.off}${disagree.length ? `; DISAGREES at ${disagree.length}: ${disagree.slice(0, 3).join('; ')}` : landRun ? '; agrees with the fibre to a degree' : '; no run through the child pose'} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+    for (const r of runs) {
+      if (r.far - r.c < MIN_RUN) { log(`    run ${deg(r.c)}-${deg(r.far)}deg: shorter than 3 degrees, skipped`); continue; }
+      if (r.lo == null) { const a = hubFromFoot(wD, D[att].rot - dir * r.c, pv); log(`    run ${deg(r.c)}-${deg(r.far)}deg: no landing window (the landing at ${deg(r.c)}deg is ${(Math.hypot(a.x - D[att].x, a.y - D[att].y) + R * Math.abs(r.c)).toFixed(2)}u from the child, its ball ${node.eps.toFixed(3)}u)`); continue; }
+      if (r.hi - r.lo < MIN_WINDOW) { log(`    run ${deg(r.c)}-${deg(r.far)}deg: window ${deg(r.lo)}-${deg(r.hi)}deg narrower than ${deg(MIN_WINDOW)} degrees, no node`); continue; }
+      const arc = makeArc(node, pv, dir, r, K, log, r === landRun ? limCap : null); if (arc) arcs.push(arc);
+    }
+  }
+  return arcs;
+}
+// makeArc: the tube on one contact-free run of the centre fibre, spec "tube v2".
+//   rounds: rW = rV = min(eps_D / 4, 0.25), the 63-fibre grid transported (tubeGrid); if the
+//     window* is under MIN_WINDOW halve both and retry, at most 4 rounds, else the node has eps 0
+//     (the centre fibre alone, still a certified curve) with the centre window reported;
+//   s: sLo = hi* + MIN_MOVE (the landing nearest the start is the window's far end, and the swing
+//     must be a move), sHi = far* - SUBSTEP, capped at the degree the engine's diagnostic pass first
+//     hit a limit;
+//   legality: limitAt from the start at s at the 9 w-cells (the limit is a function of the mover's
+//     pose alone -- measured: identical limit and signature at 7 victim poses -- so victim probes
+//     would repeat the centre's answers): every limit must reach the window, lim >= s - lo* +
+//     SUBSTEP + LIM_PHASE, with no multi-line episode and ONE signature across the cells at that s.
+//     Along s the signature may change: a start further back crosses a line on its way that a
+//     nearer start begins past (at the seed's arm (0,-1), 'cross|r0|1:r1' from 68 degrees back
+//     against 'selfoff|r1|1:rim' from 2.5, both reaching the window by 40+ degrees), and between
+//     two crossings legality is constant in s, so it is probed at sLo (must pass), sHi and the
+//     midpoint, and where it fails sHi is bisected down to the largest passing s (5 rounds): a
+//     shorter swing is a suffix of a longer one on the same path and bills no more crossings;
+//   then simCheckArc, 30 random starts in the tube played by the engine.
+function makeArc(node, pv, dir, run0, K, log, limCap) {
+  const att = 1 - node.side, D = piecesOf(node.pose), wD = feetOf(D[att])[pv], t0 = Date.now(), deg = x => (x / DEG).toFixed(2);
+  const window0 = run0.hi - run0.lo, rounds = []; let rW = Math.min((node.eps || 0) / 4, 0.25), rV = rW, tube = null;
+  for (let round = 0; round < 4 && !tube; round++) {
+    const g = tubeGrid(node, pv, dir, run0, rW, rV);
+    rounds.push({ rW, rV, ok: g.ok, windowDeg: g.window != null ? +(g.window / DEG).toFixed(4) : null, why: g.why });
+    if (g.ok) tube = { rW, rV, lo: g.lo, hi: g.hi, far: g.far, window: g.window, slopes: g.slopes, spread: g.spread, fibres: g.fibres }; else { rW /= 2; rV /= 2; }
+  }
+  if (!tube) tube = { rW: 0, rV: 0, lo: run0.lo, hi: run0.hi, far: run0.far, window: window0, slopes: null, spread: null, fibres: 1 };
+  const sLo = tube.hi + MIN_MOVE; let sHi = tube.far - SUBSTEP;
+  if (limCap != null && limCap - DEG < sHi) sHi = limCap - DEG;
+  const head = `    run ${deg(run0.c)}-${deg(run0.far)}deg, centre window ${deg(run0.lo)}-${deg(run0.hi)} (${deg(window0)} deg): tube ${tube.rW > 0 ? `rW ${tube.rW.toFixed(4)}u rV ${tube.rV.toFixed(4)}u` : 'NONE (eps 0, the centre fibre alone)'} after ${rounds.length} round${rounds.length === 1 ? '' : 's'} [${rounds.map(r => `${r.ok ? 'ok' : 'no'}@${r.rW.toFixed(4)}${r.windowDeg != null ? ':' + r.windowDeg : ''}`).join(' ')}], window* ${deg(tube.lo)}-${deg(tube.hi)} (${deg(tube.window)} deg), far* ${deg(tube.far)}`;
+  if (sHi < sLo) { log(`${head}; NO NODE: s ${deg(sLo)}-${deg(sHi)}deg is empty${limCap != null ? ` (engine limit from ${deg(limCap)}deg)` : ''} (${((Date.now() - t0) / 1000).toFixed(0)}s)`); return null; }
+  const wCells = []; if (tube.rW > 0) { for (const i of [-1, 0, 1]) for (const j of [-1, 0, 1]) wCells.push({ x: wD.x + i * tube.rW, y: wD.y + j * tube.rW, tag: `(${i},${j})` }); } else wCells.push({ ...wD, tag: '(0,0)' });
+  const probe = s => {
+    const sigs = new Set(); let bad = null, minSlack = Infinity;
+    for (const w of wCells) {
+      const p = D.map(q => ({ ...q })); p[att] = hubFromFoot(w, D[att].rot - dir * s, pv);
+      const ls = limitAt(p, att, pv, dir), need = s - tube.lo + SUBSTEP + LIM_PHASE; sigs.add(ls.sig); minSlack = Math.min(minSlack, ls.lim - need);
+      if (ls.crossed.length > 1) bad = `at s ${deg(s)}deg w${w.tag}: multi-line episode [${ls.sig}]`;
+      else if (ls.lim < need) bad = `at s ${deg(s)}deg w${w.tag}: limit ${deg(ls.lim)}deg [${ls.sig}] short of the window (needs ${deg(need)})`;
+      if (bad) break;
+    }
+    if (!bad && sigs.size > 1) bad = `at s ${deg(s)}deg: stopping event changes across the w-cells: ${[...sigs].join(' / ')}`;
+    return { s, ok: !bad, bad, sig: [...sigs][0], slackDeg: +(minSlack / DEG).toFixed(2) };
+  };
+  const limProbes = [probe(sLo)];
+  if (!limProbes[0].ok) { log(`${head}; NO NODE: illegal at sLo: ${limProbes[0].bad} (${((Date.now() - t0) / 1000).toFixed(0)}s)`); return null; }
+  const sHi0 = sHi; let lo = sLo, hi = null, top = probe(sHi); limProbes.push(top);
+  if (top.ok) { const mid = probe((sLo + sHi) / 2); limProbes.push(mid); if (mid.ok) lo = sHi; else hi = mid.s; } else hi = sHi;
+  if (hi != null) for (let round = 0; round < 5; round++) { const p = probe((lo + hi) / 2); limProbes.push(p); if (p.ok) lo = p.s; else hi = p.s; }
+  sHi = lo;
+  if (sHi - sLo < 0.1 * DEG) { log(`${head}; NO NODE: no legal start above sLo ${deg(sLo)}deg: ${limProbes.find(p => !p.ok).bad} (${((Date.now() - t0) / 1000).toFixed(0)}s)`); return null; }
+  const legal = { sigs: [...new Set(limProbes.filter(p => p.ok).sort((a, b) => a.s - b.s).map(p => p.sig))], cut: hi != null ? limProbes.find(p => !p.ok).bad : null };
+  const arc = { id: null, plies: node.plies + 1, side: att, kind: 'arc', pose: pose6(node.pose).slice(), eps: tube.rW, margin: tube.window, lip: null, need: MIN_WINDOW, reach: null, star: null,
+    arc: { pv, dir, wD: [wD.x, wD.y], rW: tube.rW, rV: tube.rV, sLo, sHi, window: { centreDeg: window0 / DEG, minDeg: tube.window / DEG, sigmaC: tube.lo, sigmaMax: tube.hi, sigmaFar: tube.far, centre: { c: run0.c, lo: run0.lo, hi: run0.hi, far: run0.far, farWhy: run0.farWhy } },
+      gapStep: [0.01, 0.1], gapAllow: [GAP_LIP * FIBRE_FINE, GAP_LIP * FIBRE_COARSE], fibres: tube.fibres, rounds, slopes: tube.slopes, spread: tube.spread, limSig: legal.sigs.join(' / '), limSigs: legal.sigs, limProbes, limCap: limCap == null ? null : limCap, sHi0, limPhaseDeg: 0.3, sampled: true,
+      claim: 'from every start with the attacker foot pv within rW of wD, rotation rot_D - dir*s, s in [sLo, sHi], and the victim within rV of the child victim (hypot + R|drot|), the forward swing (pv, dir) is legal and contact-free down to the window [sigmaC, sigmaMax] of residual angle, where the landing is inside the child ball; sampled-Lipschitz across the fibre grid (3 x the steepest finite difference over half a grid spacing), not a proof; the contact-free bound between angle samples is exact' },
+    child: node.id, samples: null, engine: null, koProof: false, seed: node.seed || null, key: dedupeKey(node.pose) };
+  arc.engine = simCheckArc(arc, node, 30);
+  log(`${head}; s ${deg(sLo)}-${deg(sHi)}deg [${legal.sigs.join(' / ')}]${legal.cut ? ` (bisected from ${deg(sHi0)}: ${legal.cut})` : ''}${limCap != null ? ` (capped by the engine limit at ${deg(limCap)}deg)` : ''}, ${limProbes.length} limit probes x ${wCells.length} cells; engine: ${arc.engine.agree}/${arc.engine.n} random starts in the tube land inside ${node.id}'s ball, victim untouched, and lose 8/8 replies${arc.engine.fails.length ? ' -- FAILS ' + JSON.stringify(arc.engine.fails.slice(0, 2)) : ''} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+  return arc;
+}
+// The engine on a tube: a random start (w uniform in the disc, the victim uniform in its metric
+// ball, s uniform in [sLo, sHi]), the forward swing played in random-size calls (0.3-3 degrees,
+// a human drag) until the residual is within 3 degrees of THIS fibre's own window, then one call
+// to the middle of that window. Passes iff no limit, the victim's pose unchanged to 1e-9, the
+// landing inside the child's ball, and 8 random replies from the landing all lost to a throw.
+function simCheckArc(arc, child, n) {
+  const att = arc.side, { pv, dir, rW, rV, sLo, sHi } = arc.arc, wD = { x: arc.arc.wD[0], y: arc.arc.wD[1] }, D = piecesOf(child.pose), VD = D[child.side];
+  let agree = 0; const fails = [];
+  for (let t = 0; t < n; t++) {
+    const r = rW * Math.sqrt(Math.random()), th = Math.random() * 2 * Math.PI, w = { x: wD.x + r * Math.cos(th), y: wD.y + r * Math.sin(th) };
+    let Vp; for (;;) { const dx = (2 * Math.random() - 1) * rV, dy = (2 * Math.random() - 1) * rV, dr = (2 * Math.random() - 1) * rV; if (Math.hypot(dx, dy) + Math.abs(dr) <= rV) { Vp = { x: VD.x + dx, y: VD.y + dy, rot: VD.rot + dr / R }; break; } }
+    const s = sLo + Math.random() * (sHi - sLo), f = fibre(child, pv, dir, w, Vp, FIBRE_FINE_TO), run = f.runs.find(q => q.lo != null);
+    const rec = { s: +(s / DEG).toFixed(3), w: [+(w.x - wD.x).toFixed(4), +(w.y - wD.y).toFixed(4)], vic: [+(Vp.x - VD.x).toFixed(4), +(Vp.y - VD.y).toFixed(4), +((Vp.rot - VD.rot) * R).toFixed(4)] };
+    if (!run) { fails.push({ ...rec, why: 'no window on this fibre' }); continue; }
+    const target = (run.lo + run.hi) / 2, start = D.map(q => ({ ...q })); start[att] = hubFromFoot(w, D[att].rot - dir * s, pv); start[child.side] = Vp;
+    const g = load(start, att); eng.pinFoot(pv); let guard = 0;
+    while (!g.atLimit && s - Math.abs(g.netRad) > run.hi + 3 * DEG && guard++ < 5000) eng.applySwing(dir * Math.min((0.3 + 2.7 * Math.random()) * DEG, s - Math.abs(g.netRad) - target));
+    if (!g.atLimit) eng.applySwing(dir * (s - Math.abs(g.netRad) - target));
+    const landing = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot })), moved = dVic(landing[child.side], Vp), d = dist6(landing, child.pose);
+    const inside = !g.atLimit && moved <= 1e-9 && d <= child.eps + 1e-6, dead = inside ? simCheckDead(landing, child.side, 8) : null;
+    if (inside && dead.agree === dead.n) agree++;
+    else fails.push({ ...rec, window: [+(run.lo / DEG).toFixed(3), +(run.hi / DEG).toFixed(3)], atLimit: g.atLimit, limitReason: g.limitReason || null, moved: +moved.toExponential(2), d: +d.toFixed(4), dead: dead ? `${dead.agree}/${dead.n}` : null });
+  }
+  return { trials: n, agree, n, fails };
+}
+
+// lookup: is q inside a node of the given plies and side? Points: depth = eps - d(q, pose). Arcs:
+// w = the foot pv of q's attacker, s = dir * (rot_D - rot_q) reduced to [0, 2pi), d_vic = q's
+// victim against the child's; inside iff |w - wD| <= rW, d_vic <= rV and sLo <= s <= sHi, depth =
+// the least of the four slacks (the s slacks scaled by R, units of foot travel). Returns the
+// deepest hit with depth > 0, or null. No canonicalisation: the graph is a tree of real positions
+// and a hit is a coincidence of positions, not a symmetry.
+function lookup(q, plies, side, graph) {
+  let best = null; const q6 = pose6(q);
+  for (const node of graph) {
+    if (node.plies !== plies || node.side !== side || !(node.eps > 0)) continue;
+    let depth;
+    if (node.kind === 'point') depth = node.eps - dist6(q6, node.pose);
+    else {
+      const { pv, dir, rW, rV, sLo, sHi, wD } = node.arc, P = piecesOf(node.pose), Q = piecesOf(q6), a = Q[node.side], w = feetOf(a)[pv];
+      let s = (dir * (P[node.side].rot - a.rot)) % (2 * Math.PI); if (s < 0) s += 2 * Math.PI;
+      depth = Math.min(rW - Math.hypot(w.x - wD[0], w.y - wD[1]), rV - dVic(Q[1 - node.side], P[1 - node.side]), R * (s - sLo), R * (sHi - s));
+    }
+    if (depth > 0 && (!best || depth > best.depth)) best = { node, depth };
+  }
+  return best;
+}
+// The board's symmetries, used ONLY to recognise a seed already certified: x -> -x (feet renumbered,
+// rot -> pi - rot), y -> -y (rot -> -rot), their product (the 180-degree rotation) and the tripod's
+// own 120-degree relabelling (rot folded into [0, 2pi/3)); the smallest image, rounded to 0.1u (0.1
+// u/R in rotation). No certificate is ever transported across these: resolvePush is Gauss-Seidel
+// in a fixed (i, j) order, so a reflected or relabelled multi-contact push is not bit-identical.
+function dedupeKey(pose) {
+  const p = pose6(pose), fold = r => { const t = 2 * Math.PI / 3; r = r % t; return r < 0 ? r + t : r; }, imgs = [];
+  for (const sx of [1, -1]) for (const sy of [1, -1]) {
+    const im = [];
+    for (let i = 0; i < 6; i += 3) { let rot = p[i + 2]; if (sx < 0) rot = Math.PI - rot; if (sy < 0) rot = -rot; im.push(Math.round(p[i] * sx * 10), Math.round(p[i + 1] * sy * 10), Math.round(fold(rot) * R * 10)); }
+    imgs.push(im.join(','));
+  }
+  return imgs.sort()[0];
+}
+// The file. One JSON row per node, appended whole in one write under a directory lock (mkdir is
+// atomic on every filesystem this runs on) so that several processes -- the level-3 program runs
+// one per seed -- never interleave rows or hand out the same id. Ids are P2-0001, A3-0001, P4-,
+// A5-: kind letter, plies, a counter per prefix taken from the rows already there. Nodes are
+// immutable once appended: a lookup that hits another process's node is reading a finished
+// certificate. (Not the tmp-and-rename writer used for the trainer's state files: that replaces
+// the whole file, which would drop rows another process appended meanwhile.)
+function sleepSync(ms) { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch (e) { const end = Date.now() + ms; while (Date.now() < end); } }
+function loadGraph(file) {
+  file = file || GRAPH_PATH;
+  let text; try { text = fs.readFileSync(file, 'utf8'); } catch (e) { return []; }
+  const rows = [];
+  for (const line of text.split('\n')) { if (!line.startsWith('{')) continue; try { rows.push(JSON.parse(line)); } catch (e) { /* a row still being written by another process */ } }
+  return rows;
+}
+function appendNode(node, file) {
+  file = file || GRAPH_PATH;
+  const lock = file + '.lock', t0 = Date.now();
+  for (;;) {
+    try { fs.mkdirSync(lock); break; }
+    catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      try { if (Date.now() - fs.statSync(lock).mtimeMs > 120000) { fs.rmdirSync(lock); continue; } } catch (e2) { /* the holder just released it */ }
+      if (Date.now() - t0 > 60000) throw new Error(`could not lock ${file} in 60 s (stale ${lock}?)`);
+      sleepSync(50);
+    }
+  }
+  try {
+    const prefix = `${node.kind === 'point' ? 'P' : 'A'}${node.plies}-`; let n = 0;
+    for (const r of loadGraph(file)) if (r.id && r.id.startsWith(prefix)) n = Math.max(n, +r.id.slice(prefix.length) || 0);
+    node.id = prefix + String(n + 1).padStart(4, '0'); node.written = new Date().toISOString(); node.host = require('os').hostname();
+    if (!fs.existsSync(file)) fs.writeFileSync(file, '# the family graph (nn/forced-win.js --star / --unwind / --lost4): one node per row, immutable. point = the side to move loses within `plies` plies everywhere in the L1 ball of radius eps (u, both pieces) around pose; arc = the side to move wins by one contact-free swing (arc.pv, arc.dir) from any start with its foot arc.pv within arc.rW of arc.wD, rotation rot_D - dir*s for s in [arc.sLo, arc.sHi], the other piece within arc.rV of the child\'s, stopping in the residual window [arc.window.sigmaC, arc.window.sigmaMax] where the landing is inside the child\'s ball (eps = rW). pose = [bx,by,brot,rx,ry,rrot].\n');
+    fs.appendFileSync(file, JSON.stringify(node) + '\n');
+    return node.id;
+  } finally { try { fs.rmdirSync(lock); } catch (e) { /* released */ } }
+}
+
+// PHASE_TOL: the engine stopped at random angles by applySwing calls of random size (0.3-6
+// degrees, like a human drag) against the law's fixed-ladder record read as the certificates read
+// it (the first recorded step at or past the angle). The pushed piece's pose differs by the phase
+// of the substep ladder AND by the record's rounding up to the next step; both are in every
+// pushed-landing claim at level 3, so the p100 of this is what those claims must absorb. Also the
+// limit reached by the random-size calls against limitAt's 1-degree ladder.
+function phaseTol(events, stopsPer) {
+  const dPose = [], dLim = []; let early = 0;
+  for (const ev of events) {
+    const rec = swing(ev.pieces, ev.active, ev.pv, ev.dir, ev.rad, { ...REPLICA, record: true }).record;
+    const stops = Array.from({ length: stopsPer }, () => MIN_MOVE + Math.random() * (ev.rad - MIN_MOVE)).sort((a, b) => a - b);
+    const g = load(ev.pieces, ev.active); eng.pinFoot(ev.pv); let guard = 0;
+    for (const a of stops) {
+      while (!g.atLimit && Math.abs(g.netRad) < a - 1e-9 && guard++ < 5000) eng.applySwing(ev.dir * Math.min((0.3 + 5.7 * Math.random()) * DEG, a - Math.abs(g.netRad)));
+      if (g.atLimit) { early++; break; }
+      const o = g.pieces[1 - ev.active], r = rec.find(q => q.alpha >= a - 1e-9) || rec[rec.length - 1];
+      dPose.push(Math.hypot(o.x - r.x, o.y - r.y) + R * Math.abs(o.rot - r.rot));
+    }
+    while (!g.atLimit && Math.abs(g.netRad) < 2 * Math.PI && guard++ < 5000) eng.applySwing(ev.dir * (0.3 + 5.7 * Math.random()) * DEG);
+    dLim.push(Math.abs(Math.abs(g.netRad) - limitAt(ev.pieces, ev.active, ev.pv, ev.dir).lim) / DEG);
+  }
+  const q = (arr, p) => { const s = [...arr].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : NaN; };
+  return { events: events.length, stops: dPose.length, stopsPerEvent: stopsPer, median: q(dPose, .5), p90: q(dPose, .9), max: q(dPose, 1), limMedianDeg: q(dLim, .5), limMaxDeg: q(dLim, 1), stoppedEarly: early };
+}
+
+
+// ---- A dead CELL: a box of the joint pose space certified by a grid, not by a star -------------
+// The star transports W, the certificate's margin, by a finite-difference slope; but W is the
+// margin of whichever arc happens to accept each gap, it switches with the pose, and its slope is
+// switching, not physics (measured 2026-09-18: a dead set over 3u wide on every axis certified as
+// a 0.17u ball). The cell does not transport W at all. Over a box of both poses (half-widths per
+// axis, rotations in u, i.e. divided by R) it takes:
+//   1. the six reach envelopes of the victim's box from the closed-form enclosure (exact per
+//      cell, refused at a wall), every pose's families swept to the same hi, so every grid pose
+//      samples the same stops;
+//   2. the full dead certificate at every grid pose (all must be dead: each one closes its own
+//      arm along the stop axis exactly as today);
+//   3. between grid neighbours along each pose axis, at every first-level stop of every arm, the
+//      same gap rule the certificate applies between neighbouring stops: some attacker arc whose
+//      margins at both poses clear max(lipFloor, safety * |dm| / d) * d / 2 with consistent
+//      contact signatures, d the neighbours' distance in the L1 metric.
+// Sampled, not a proof, at the file's standard; every axis of the (pose, stop) lattice is now
+// covered by the same rule, and nothing is inferred from an aggregate. Falsified afterwards by
+// simCheckDeadBox: random poses in the box, random engine moves, the six attacker sweeps.
+// `half` and `n` are six-vectors in pose6 order (blue x, y, rot, red x, y, rot), half in u; an
+// axis with n = 1 is collapsed to the centre. opts.threads runs the grid certificates in worker
+// threads (each requires this module afresh and answers cellSample requests).
+const offBoardPose = (pose, victim) => feetOf(piecesOf(pose)[victim]).some(f => Math.hypot(f.x, f.y) > EDGE);
+function cellSample(w) {
+  const pieces = piecesOf(w.pose), K = REPLICA;
+  if (offBoardPose(w.pose, w.victim)) return { status: 'offboard', worstMargin: null, acceptMargin: null, why: 'a victim foot is over the rim at the start: not a position', slivers: 0, probedSlivers: 0, samples: [] };
+  const c = deadCertificate(pieces, w.victim, K, { reach: w.reach, keepSamples: true, replyStepDeg: w.stepDeg || 2 });
+  return { status: c.status, worstMargin: Number.isFinite(c.worstMargin) ? c.worstMargin : null, acceptMargin: Number.isFinite(c.acceptMargin) ? c.acceptMargin : null, why: c.why || null, slivers: c.slivers || 0, probedSlivers: c.probedSlivers || 0, samples: c.samples };
+}
+// The empirical probe of a POSE gap: n random poses on the segment between a and b (rotation
+// interpolated), the victim's reply (pv, dir) dragged to `stop` by the engine, then the attacker's
+// six arms swept; ok when every on-board probe is thrown. The pose-axis counterpart of probeGap,
+// used where the gap rule refuses a pair at the pose step only because the throwing arm's contact
+// signature switches between two poses 0.05u apart while both ends clear PROBE_BAR (the arm-(2,-1)
+// sheet at ndpxhts24: margins 2.8-3.5u on both sides, 11 of 92344 gaps).
+function probePosePair(a, b, victim, pv, dir, stop, n) {
+  const attacker = 1 - victim; let probed = 0;
+  for (let t = 0; t < n; t++) {
+    const u = Math.random(), pose = a.map((x, i) => x + u * (b[i] - x));
+    if (offBoardPose(pose, victim)) continue;
+    probed++; const g = load(piecesOf(pose), victim); eng.pinFoot(pv);
+    if (dragTo(g, attacker, dir, stop, 3)) return { ok: false, u, why: 'the reply threw the attacker' };
+    const after = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+    if (!ARMS.some(([apv, adir]) => sweepThrows(after, attacker, apv, adir))) return { ok: false, u, why: 'no attacker arm throws' };
+  }
+  return { ok: true, probed };
+}
+// The rim's counterpart: a pair with one end off the board, at the pose step. The on-board end's
+// certificate stands; the on-board part of the segment is probed with the engine (random pose,
+// random legal reply, six sweeps).
+function probeRimPair(a, b, victim, n) {
+  let probed = 0;
+  for (let t = 0; t < n; t++) {
+    const u = Math.random(), pose = a.map((x, i) => x + u * (b[i] - x));
+    if (offBoardPose(pose, victim)) continue;
+    probed++; const s = simCheckDead(piecesOf(pose), victim, 1);
+    if (s.agree < s.n) return { ok: false, u, why: JSON.stringify(s.fails[0]).slice(0, 120) };
+  }
+  return { ok: true, probed };
+}
+async function certifyDeadCell(pieces, victim, half, n, K, opts) {
+  opts = opts || {}; const log = opts.log || (() => {}), safety = opts.safety || 3, lipFloor = opts.lipFloor || 1, stepDeg = opts.stepDeg || 2, threads = Math.max(1, opts.threads || 1), minStep = opts.minStep || 0.05;
+  // A single grid point on an axis certifies only that coordinate: the box is flat there.
+  half = half.map((h, d) => (n[d] > 1 ? h : 0));
+  const t0 = Date.now(), centre = pose6(pieces).slice(), v = pieces[victim], off = victim * 3;
+  const box = { x: [v.x - half[off], v.x + half[off]], y: [v.y - half[off + 1], v.y + half[off + 1]], rot: [v.rot - half[off + 2] / R, v.rot + half[off + 2] / R] };
+  // 0. a box whose whole grid is off the board is not a set of positions
+  {
+    const ax0 = [0, 1, 2, 3, 4, 5].map(d => ({ n: Math.max(1, n[d] | 0), step: n[d] > 1 ? 2 * half[d] / (n[d] - 1) : 0 }));
+    let anyOn = false; const walk = (d, cur) => { if (anyOn) return; if (d === 6) { anyOn = !offBoardPose(cur, victim); return; } for (let i = 0; i < ax0[d].n; i++) { cur.push(centre[d] + (ax0[d].n > 1 ? ((d % 3 === 2 ? 1 / R : 1) * (-half[d] + i * ax0[d].step)) : 0)); walk(d + 1, cur); cur.pop(); } }; walk(0, []);
+    if (!anyOn) return { certified: false, status: 'offboard', why: 'every grid pose has a victim foot over the rim at the start', poses: 0, reach: [], seconds: (Date.now() - t0) / 1000 };
+  }
+  // 1. exact envelopes
+  const reach = []; const refusedEnv = [];
+  for (const [pv, dir] of ARMS) { const e = reachEnvelope(pieces, victim, pv, dir, box, 5, { exact: true }); reach.push(e); log(`  reach: arm (${pv},${dir}) ${e.refused ? '' : (e.lo / DEG).toFixed(1) + '-' + (e.hi / DEG).toFixed(1) + ' deg [' + e.reason + (e.crossed.length ? ' ' + e.crossed.join(',') : '') + (e.foot != null ? ' foot ' + e.foot + (e.reason === 'selfoff' ? '' : ' at ' + e.line) : '') + ']  '}grid ${e.min === Infinity ? '-' : (e.min / DEG).toFixed(2)}-${(e.max / DEG).toFixed(2)}, enclosure ${e.exact ? (e.exact.lo / DEG).toFixed(2) + '-' + (e.exact.hi / DEG).toFixed(2) : '-'} deg${e.refused ? '  REFUSED: ' + e.refused : ''}`); if (e.refused) refusedEnv.push(e.refused); }
+  if (refusedEnv.length) return { certified: false, status: 'refused', why: 'reach envelope: ' + refusedEnv.join('; '), reach, seconds: (Date.now() - t0) / 1000 };
+  // the pool: certificates by pose key, computed in rounds through the workers
+  const results = new Map(), keyOf = pose => pose.map(x => x.toFixed(7)).join(','), stats = { certificates: 0, rounds: 0, midpoints: 0 };
+  let pool = null;
+  const run = async poses => {
+    const jobs = poses.filter(pose => !results.has(keyOf(pose))).map((pose, i) => ({ id: i, pose, victim, reach, stepDeg }));
+    if (!jobs.length) return;
+    stats.certificates += jobs.length; let doneN = 0;
+    const note = (j, r) => { doneN++; if (doneN % Math.max(1, Math.floor(jobs.length / 8)) === 0 || r.status !== 'dead') log(`  ${doneN}/${jobs.length}: [${j.pose.map(x => +x.toFixed(3)).join(',')}] ${r.status}${r.worstMargin != null ? ' W=' + r.worstMargin.toFixed(2) + ' accept=' + (r.acceptMargin == null ? '-' : r.acceptMargin.toFixed(2)) : ''}${r.why ? ' ' + r.why.slice(0, 100) : ''}  (${((Date.now() - t0) / 1000).toFixed(0)}s)`); };
+    if (threads === 1) { for (const j of jobs) { const r = cellSample(j); results.set(keyOf(j.pose), r); note(j, r); } return; }
+    if (!pool) {
+      const { Worker } = require('worker_threads');
+      const script = `const { parentPort, workerData: w } = require('worker_threads'); const FW = require(w.file); parentPort.on('message', j => parentPort.postMessage({ id: j.id, res: FW.cellSample(j) }));`;
+      pool = Array.from({ length: Math.min(threads, jobs.length) }, () => new Worker(script, { eval: true, workerData: { file: __filename } }));
+    }
+    await new Promise((resolve, reject) => {
+      let next = 0, active = 0;
+      const feed = w => { if (next >= jobs.length) return; active++; w.postMessage(jobs[next++]); };
+      for (const w of pool) {
+        w.removeAllListeners('message'); w.removeAllListeners('error');
+        w.on('message', m => { const j = jobs[m.id]; results.set(keyOf(j.pose), m.res); note(j, m.res); active--; feed(w); if (!active && next >= jobs.length) resolve(); });
+        w.on('error', reject);
+        feed(w);
+      }
+    });
+  };
+  // 2. the grid
+  const axes = [0, 1, 2, 3, 4, 5].map(d => ({ d, n: Math.max(1, n[d] | 0), step: n[d] > 1 ? 2 * half[d] / (n[d] - 1) : 0 }));
+  const idx = []; const rec = (d, cur) => { if (d === 6) { idx.push(cur.slice()); return; } for (let i = 0; i < axes[d].n; i++) { cur.push(i); rec(d + 1, cur); cur.pop(); } }; rec(0, []);
+  const poseOf = ix => centre.map((c0, d) => { const u = axes[d].n > 1 ? -half[d] + ix[d] * axes[d].step : 0; return c0 + (d % 3 === 2 ? u / R : u); });
+  const gridPoses = idx.map(poseOf);
+  if (gridPoses.every(pose => offBoardPose(pose, victim))) return { certified: false, status: 'offboard', why: 'every grid pose has a victim foot over the rim at the start', poses: 0, reach, stats, seconds: (Date.now() - t0) / 1000 };
+  await run(gridPoses);
+  const notDead = gridPoses.filter(pose => !['dead', 'offboard'].includes(results.get(keyOf(pose)).status));
+  if (notDead.length) { const pose = notDead[0], r = results.get(keyOf(pose)); if (pool) pool.forEach(w => w.terminate()); return { certified: false, status: r.status, why: `grid pose [${pose.map(x => +x.toFixed(4)).join(',')}] is ${r.status}: ${r.why}`, atPose: pose, notDead: notDead.length, poses: gridPoses.length, reach, stats, seconds: (Date.now() - t0) / 1000 }; }
+  // 3. the gap rule between neighbours along each pose axis, per arm and stop; a refused pair is
+  //    subdivided at its midpoint (a new full certificate) down to minStep, where a pair whose two
+  //    ends both clear SLIVER_BAR on some arc at that stop is accepted as a sliver, as along an arm
+  const armKey = a => `${a.pv},${a.dir}`;
+  const pairCheck = (A, B, d) => {
+    const armsB = new Map(B.samples.map(a => [armKey(a), a])); const bad = []; let minAccept = Infinity, checked = 0;
+    for (const arm of A.samples) {
+      const armB = armsB.get(armKey(arm)); if (!armB || armB.first.length !== arm.first.length) { bad.push({ arm: armKey(arm), why: 'stop sets differ' }); continue; }
+      for (let k = 0; k < arm.first.length; k++) {
+        const sa = arm.first[k], sb = armB.first[k]; let best = -Infinity, accepted = false, why = 'no finite arc';
+        for (let i = 0; i < 6; i++) {
+          const a = sa.arcs[i], b = sb.arcs[i]; if (!Number.isFinite(a.m) || !Number.isFinite(b.m)) continue;
+          const lip = Math.max(lipFloor, safety * Math.abs(a.m - b.m) / Math.max(d, 1e-9)), need = lip * d / 2;
+          const consistent = a.pairs === b.pairs && (a.onset == null || b.onset == null || Math.abs(a.onset - b.onset) < 5 * DEG);
+          if (Math.min(a.m, b.m) > best) { best = Math.min(a.m, b.m); why = !consistent ? `signature differs (${a.pairs}|${b.pairs})` : `need ${need.toFixed(2)}u over ${Math.min(a.m, b.m).toFixed(2)}u`; }
+          if (a.m > need && b.m > need && consistent) { accepted = true; minAccept = Math.min(minAccept, Math.min(a.m, b.m)); }
+        }
+        checked++;
+        if (!accepted) bad.push({ arm: armKey(arm), stopDeg: +(sa.alpha / DEG).toFixed(2), bestMin: +best.toFixed(2), why, sliver: sa.best > SLIVER_BAR && sb.best > SLIVER_BAR });
+      }
+    }
+    return { bad, minAccept, checked };
+  };
+  let pending = [];
+  for (const ix of idx) for (const ax of axes) { if (ax.n < 2 || ix[ax.d] + 1 >= ax.n) continue; const nb = ix.slice(); nb[ax.d]++; pending.push({ a: poseOf(ix), b: poseOf(nb), axis: ax.d, d: ax.step }); }
+  let minAccept = Infinity, pairs = 0, slivers = 0, probedGaps = 0, rimPairs = 0; const refusals = [];
+  const subdivide = (pr, next, mids) => { const m = pr.a.map((x, i) => (x + pr.b[i]) / 2); mids.push(m); next.push({ a: pr.a, b: m, axis: pr.axis, d: pr.d / 2 }, { a: m, b: pr.b, axis: pr.axis, d: pr.d / 2 }); };
+  while (pending.length) {
+    stats.rounds++;
+    const next = [], mids = [];
+    for (const pr of pending) {
+      const A = results.get(keyOf(pr.a)), B = results.get(keyOf(pr.b));
+      if (A.status === 'offboard' || B.status === 'offboard') {
+        // the rim runs through this pair: halve towards it, then probe the on-board part
+        if (pr.d > minStep * 1.5) { subdivide(pr, next, mids); continue; }
+        if (A.status === 'offboard' && B.status === 'offboard') continue;
+        const on = A.status === 'offboard' ? B : A, lowest = Math.min(...on.samples.flatMap(arm => arm.first.map(sm => sm.best)));
+        const probe = lowest > PROBE_BAR ? probeRimPair(pr.a, pr.b, victim, PROBE_N) : { ok: false, why: `the on-board end's lowest best margin ${lowest.toFixed(2)}u is under PROBE_BAR` };
+        if (probe.ok) rimPairs++; else refusals.push({ axis: pr.axis, d: +pr.d.toFixed(4), from: pr.a.map(x => +x.toFixed(4)), arm: 'rim', why: 'rim probe: ' + probe.why, sliver: false });
+        continue;
+      }
+      const c = pairCheck(A, B, pr.d);
+      pairs += c.checked; minAccept = Math.min(minAccept, c.minAccept);
+      if (!c.bad.length) continue;
+      if (pr.d > minStep * 1.5) { subdivide(pr, next, mids); continue; }
+      for (const b of c.bad) {
+        if (b.sliver) { slivers++; continue; }
+        if (Number.isFinite(b.bestMin) && b.bestMin > PROBE_BAR && b.stopDeg != null) {
+          const [pv, dir] = b.arm.split(',').map(Number), probe = probePosePair(pr.a, pr.b, victim, pv, dir, b.stopDeg * DEG, PROBE_N);
+          if (probe.ok) { probedGaps++; continue; }
+          refusals.push({ axis: pr.axis, d: +pr.d.toFixed(4), from: pr.a.map(x => +x.toFixed(4)), ...b, why: b.why + '; probe: ' + probe.why }); continue;
+        }
+        refusals.push({ axis: pr.axis, d: +pr.d.toFixed(4), from: pr.a.map(x => +x.toFixed(4)), ...b });
+      }
+    }
+    if (mids.length) { stats.midpoints += mids.length; log(`  round ${stats.rounds}: ${next.length / 2} pairs refused, ${mids.length} midpoints to certify (step ${(next[0].d).toFixed(3)}u)`); await run(mids); }
+    const bad = mids.filter(m => !['dead', 'offboard'].includes(results.get(keyOf(m)).status));
+    if (bad.length) { const r = results.get(keyOf(bad[0])); if (pool) pool.forEach(w => w.terminate()); return { certified: false, status: r.status, why: `midpoint pose [${bad[0].map(x => +x.toFixed(4)).join(',')}] is ${r.status}: ${r.why}`, atPose: bad[0], poses: results.size, reach, stats, seconds: (Date.now() - t0) / 1000 }; }
+    pending = next;
+  }
+  if (pool) pool.forEach(w => w.terminate());
+  const all = [...results.values()].filter(r => r.status !== 'offboard'), offBoardPoses = results.size - all.length, W = Math.min(...all.map(r => r.worstMargin)), Wa = Math.min(...all.map(r => r.acceptMargin == null ? Infinity : r.acceptMargin));
+  const certified = refusals.length === 0;
+  return { certified, status: certified ? 'dead' : 'unresolved', atPose: certified ? null : refusals[0].from, atAxis: certified ? null : refusals[0].axis, why: certified ? null : `${refusals.length} (pose pair, arm, stop) gaps unresolved at the ${minStep}u pose step; first: ${JSON.stringify(refusals.slice(0, 3))}`, poses: all.length, offBoardPoses, gridPoses: gridPoses.length, pairs, slivers, probedGaps, rimPairs, refusals: refusals.slice(0, 50), refusedN: refusals.length, minAccept, worstMargin: W, acceptMargin: Wa, reach, half, n, stats, seconds: (Date.now() - t0) / 1000 };
+}
+// The box cut along its walls: a cell whose envelope is refused (a stopping program changes
+// between two grid cells, a tangency, a wrap, a co-event) is split in half on the axis the
+// refusal names (the axis on which the two cells differ; the longest victim axis otherwise), and
+// the halves are certified as cells of their own with their own envelopes, down to opts.minHalf.
+// A cell that FAILS -- a grid or midpoint pose that escapes, or a gap left unresolved at the pose
+// step -- is split too, on the axis that puts the offending pose furthest from the centre, so the
+// escape (a real position, and a real hole in the dead set) is cut off from the dead part around
+// it rather than taking the whole box with it. Before the envelope united event-order walls the
+// splitting on refusals did this incidentally; now that a box survives such a wall whole, a single
+// escape inside it would otherwise cost the lot. A cell whose failure sits at its own centre is
+// not split: there is nothing to cut off.
+// Returns the leaves and the fraction of the box's volume that certified.
+// The fraction of a box (six half-widths in pose6 order, rotation as arc length) whose poses have
+// every victim foot on the board, by uniform sampling.
+function onBoardFraction(centre, half, victim, nSamples) {
+  let on = 0;
+  for (let t = 0; t < nSamples; t++) { const q = centre.map((c0, d) => { const u = (2 * Math.random() - 1) * half[d]; return c0 + (d % 3 === 2 ? u / R : u); }); if (!offBoardPose(q, victim)) on++; }
+  return on / nSamples;
+}
+async function certifyDeadCells(pieces, victim, half, n, K, opts) {
+  opts = opts || {}; const log = opts.log || (() => {}), minHalf = opts.minHalf || 0.1, off = victim * 3, t0 = Date.now();
+  const queue = [{ centre: pose6(pieces).slice(), half: half.slice(), depth: 0 }], leaves = []; let seen = 0;
+  const vol = h => [0, 1, 2].reduce((a, d) => a * 2 * h[off + d], 1), total = vol(half);
+  while (queue.length) {
+    const cell = queue.shift(), tag = `cell ${++seen} (depth ${cell.depth}, victim half-widths ${[0, 1, 2].map(d => cell.half[off + d].toFixed(3)).join('/')}u)`;
+    log(`${tag}: centre [${cell.centre.map(x => +x.toFixed(4)).join(',')}]`);
+    const v = await certifyDeadCell(piecesOf(cell.centre), victim, cell.half, n, K, { ...opts, log: m => log('  ' + m) });
+    let axis = null;
+    if (v.status === 'refused' && v.why.startsWith('reach envelope')) {
+      const m = /between cells \((\d+),(\d+),(\d+)\)-\((\d+),(\d+),(\d+)\)/.exec(v.why);
+      if (m) axis = [0, 1, 2].find(d => m[1 + d] !== m[4 + d]);
+      if (axis == null) axis = [0, 1, 2].reduce((b, d) => cell.half[off + d] > cell.half[off + b] ? d : b, 0);
+    } else if ((v.status === 'escape' || v.status === 'unresolved') && v.atPose) {
+      // cut on the axis along which the failing pose is furthest from this cell's centre
+      const away = [0, 1, 2].map(d => Math.abs(v.atPose[off + d] - cell.centre[off + d]) * (d === 2 ? R : 1));
+      if (v.atAxis != null && v.atAxis - off >= 0 && v.atAxis - off < 3 && away[v.atAxis - off] > 1e-9) axis = v.atAxis - off;
+      else if (Math.max(...away) > 1e-9) axis = away.indexOf(Math.max(...away));
+    }
+    if (axis != null && cell.half[off + axis] / 2 >= minHalf - 1e-12) {
+      for (const sgn of [-1, 1]) { const c = cell.centre.slice(), h = cell.half.slice(); h[off + axis] /= 2; c[off + axis] += sgn * (axis === 2 ? h[off + axis] / R : h[off + axis]); queue.push({ centre: c, half: h, depth: cell.depth + 1 }); }
+      log(`${tag}: split on the victim's ${['x', 'y', 'rot'][axis]} axis (${v.status}: ${v.why.slice(0, 110)})`);
+      continue;
+    }
+    const onBoard = onBoardFraction(cell.centre, cell.half, victim, 4000);
+    leaves.push({ centre: cell.centre, half: cell.half, depth: cell.depth, status: v.status, certified: v.certified, why: v.why, poses: v.poses, offBoardPoses: v.offBoardPoses || 0, pairs: v.pairs, slivers: v.slivers, probedGaps: v.probedGaps || 0, rimPairs: v.rimPairs || 0, onBoard, minAccept: v.minAccept, worstMargin: v.worstMargin, acceptMargin: v.acceptMargin, engine: null, seconds: v.seconds });
+    log(`${tag}: ${v.status}${v.certified ? ` (${v.poses} poses, ${v.pairs} gaps, ${v.slivers} slivers, ${v.probedGaps || 0} probed gaps${v.rimPairs ? ', ' + v.rimPairs + ' rim pairs, ' + (100 * onBoard).toFixed(0) + '% of the leaf on the board' : ''}, min accepted ${v.minAccept.toFixed(2)}u)` : ' -- ' + v.why.slice(0, 160)}`);
+  }
+  // volume on the board only: a pose with a victim foot over the rim is not a position
+  const onBoardTotal = onBoardFraction(pose6(pieces).slice(), half, victim, 20000);
+  const certifiedVol = leaves.filter(l => l.certified).reduce((a, l) => a + vol(l.half) * l.onBoard, 0);
+  return { leaves, certified: leaves.filter(l => l.certified).length, of: leaves.length, offboard: leaves.filter(l => l.status === 'offboard').length, fraction: certifiedVol / total, onBoard: onBoardTotal, fractionOnBoard: onBoardTotal > 0 ? certifiedVol / (total * onBoardTotal) : 0, seconds: (Date.now() - t0) / 1000 };
+}
+// The engine on the cell: random poses uniform in the box, each played through random legal
+// victim moves (the engine's own limits, random stops), then the six attacker sweeps.
+function simCheckDeadBox(pieces, victim, half, nPoses, nMoves) {
+  const centre = pose6(pieces); let agree = 0; const fails = [];
+  for (let t = 0; t < nPoses; t++) {
+    const q = centre.map((c0, d) => { const u = (2 * Math.random() - 1) * half[d]; return c0 + (d % 3 === 2 ? u / R : u); });
+    if (offBoardPose(q, victim)) { t--; continue; }   // not a position
+    const s = simCheckDead(piecesOf(q), victim, nMoves);
+    if (s.agree === s.n) agree++; else fails.push({ pose: q.map(x => +x.toFixed(4)), fails: s.fails.slice(0, 2) });
+  }
+  return { trials: nPoses, moves: nMoves, agree, n: nPoses, fails };
+}
+// ---- Azimuth: a dead point rotated about the board centre ----------------------------------
+// The push law is invariant under rotating both pieces about the centre (rigid rotations, closest
+// points, distances to the centre only; measured to 4e-13u), so every throw a certificate found
+// transports exactly; only the crossing rule changes (the side arcs sit on the x axis), i.e. the
+// limits, which are the closed form. The scan rotates the position in steps of stepDeg, records
+// the six limits and their signatures, and runs the full certificate at each azimuth; the
+// signature changes are the walls of the dead arc, and any failure sits on the stops the rotated
+// limits opened up.
+function azimuthScan(pieces, victim, K, stepDeg, opts) {
+  opts = opts || {}; const log = opts.log || (() => {}), pts = [];
+  const rot = th => pieces.map(q => ({ x: q.x * Math.cos(th) - q.y * Math.sin(th), y: q.x * Math.sin(th) + q.y * Math.cos(th), rot: q.rot + th }));
+  for (let deg = 0; deg < 360 - 1e-9; deg += stepDeg) {
+    const p = rot(deg * DEG), t0 = Date.now();
+    const lims = ARMS.map(([pv, dir]) => { const L = limitAt(p, victim, pv, dir); return { pv, dir, lim: L.lim, sig: L.sig }; });
+    const v = deadCertificate(p, victim, K, { replyStepDeg: opts.stepDeg || 2 });
+    const pt = { deg, status: v.status, W: Number.isFinite(v.worstMargin) ? v.worstMargin : null, accept: Number.isFinite(v.acceptMargin) ? v.acceptMargin : null, why: v.why || null, lims, secs: (Date.now() - t0) / 1000 };
+    pts.push(pt);
+    log(`  az ${deg}: ${v.status}${pt.W != null ? ' W=' + pt.W.toFixed(2) : ''} lims ${lims.map(l => (l.lim / DEG).toFixed(1)).join('/')} (${pt.secs.toFixed(1)}s)${v.why ? ' ' + v.why.slice(0, 90) : ''}`);
+  }
+  const runs = []; for (const pt of pts) { const L = runs[runs.length - 1]; if (L && L.status === pt.status) { L.to = pt.deg; L.n++; L.minW = Math.min(L.minW, pt.W == null ? Infinity : pt.W); } else runs.push({ status: pt.status, from: pt.deg, to: pt.deg, n: 1, minW: pt.W == null ? Infinity : pt.W, why: pt.why }); }
+  const sigs = new Set(pts.map(pt => pt.lims.map(l => l.sig).join('|')));
+  return { stepDeg, pts, runs, dead: pts.filter(pt => pt.status === 'dead').length, signatures: sigs.size };
+}
+
+module.exports = { load, swingLimit, limitAt, limitLadder, limitEvents, limitEnclosure, swingLimitMemo, memoStats, throwMargin, bestThrow, certifyThrowBox, simCheck, signature, certifyForcedIn2, verifyAllReplies, deadCertificate, profilesConsistent, simCheckForcedIn2, simCheckDead, simCheckEscape, familyProfile, certifyDeadBox, deadDeep, simCheckDeadDeep, probeGap, dragTo, sweepThrows, segmentsOf, gapLabel, moveBetween, batchSeed,
+  moverAt, replyFamily, dist6, pose6, piecesOf, randomInBall, reachEnvelope, certifyStar, simCheckDeadBall, cellSample, certifyDeadCell, certifyDeadCells, simCheckDeadBox, azimuthScan, arcPose, hubFromFoot, fibre, tubeGrid, unwindArcs, makeArc, simCheckArc, lookup, dedupeKey, loadGraph, appendNode, phaseTol,
+  MIN_MOVE, SUBSTEP, GAP_LIP, LIM_PHASE, MIN_WINDOW, MIN_RUN, LAND_TOL, GRAPH_PATH, PHASE_TOL, ARMS, armIndex };
+
+// A victim with one foot `inside` u from the rim and the attacker 26-44u from that foot on the
+// inward side, not touching.
+function exposedPose(insideLo, insideHi) {
+  const hubMax = eng.CFG.edgeU - R - eng.CFG.edgeEps;
+  for (let t = 0; t < 200; t++) {
+    eng.newGame(); const g = eng.getG();
+    const victim = Math.random() < 0.5 ? 0 : 1, attacker = 1 - victim, v = g.pieces[victim], a = g.pieces[attacker];
+    const inside = insideLo + (insideHi - insideLo) * Math.random(), fr = eng.CFG.edgeU - inside, fa = Math.random() * 2 * Math.PI;
+    v.rot = Math.random() * 2 * Math.PI; v.x = fr * Math.cos(fa) - Math.cos(v.rot) * R; v.y = fr * Math.sin(fa) - Math.sin(v.rot) * R;
+    if (Math.hypot(v.x, v.y) > hubMax || anyOff(v)) continue;
+    const d = 26 + 18 * Math.random(), aa = fa + Math.PI + (Math.random() - 0.5) * 1.6;
+    a.x = fr * Math.cos(fa) + d * Math.cos(aa); a.y = fr * Math.sin(fa) + d * Math.sin(aa); a.rot = Math.random() * 2 * Math.PI;
+    if (Math.hypot(a.x, a.y) > hubMax || anyOff(a)) continue;
+    const pieces = g.pieces.map(p => ({ x: p.x, y: p.y, rot: p.rot }));
+    const b1 = bestThrow(pieces, attacker, REPLICA); if (!Number.isFinite(b1.margin)) continue;   // touching / no legal arc
+    return { pieces, victim, attacker, inside, win1: b1.margin > 0 };
+  }
+  return null;
+}
+
+// The engine's own depth-2 verdict on a position at several search widths, as "keep/sweep:dead|ok".
+function searchVerdicts(pieces, mover, rung) {
+  const { nnPlanFor } = require('./nnai.js');
+  const w = eng.AI_LADDER[(rung || eng.AI_LADDER.length) - 1].w, evalFn = (e, side) => e.ladderEval(side, w);
+  const out = [];
+  for (const [keep, sweep, diverse] of [[2, 9, false], [2, 9, true], [4, 9, true], [12, 9, false], [12, 3, false], [12, 3, true], [12, 1, false], [12, 1, true]]) {
+    load(pieces, mover); const top = [];
+    const plan = nnPlanFor(eng, null, mover, { temperature: 0, depth: 2, keepForDepth: keep, rawRoot: true, evalFn, sweepDeg: sweep, keepDiverse: diverse, captureTop: top, captureTopN: 1 });
+    const v = plan && top.length ? top[0].score : NaN;
+    out.push(`${keep}/${sweep}${diverse ? 'd' : ''}:${v <= -1e5 ? 'DEAD' : v >= 1e5 ? 'win' : Number.isFinite(v) ? 'ok' : '?'}`);
+  }
+  return out;
+}
+// Shared reporting for a verifyAllReplies verdict, with the engine's check of whichever claim it is.
+const T = { dead: 0, deadOK: 0, deadBad: 0, escape: 0, escapeOK: 0, escapeBad: 0, unresolved: 0 };
+function report(v, pieces, victim, label) {
+  if (v.status === 'dead') {
+    T.dead++; const c = simCheckDead(pieces, victim, 30);
+    if (c.agree === c.n) T.deadOK++; else { T.deadBad++; console.log(`  CONTRADICTED: engine found an escape ${c.n - c.agree}/${c.n}: ${JSON.stringify(c.fails.slice(0, 2))}`); }
+    console.log(`  DEAD: ${label} -- every reply certified lost, worst margin ${v.worstMargin.toFixed(2)}u; engine agrees ${c.agree}/${c.n}`);
+  } else if (v.status === 'escape') {
+    T.escape++; const c = simCheckEscape(pieces, victim, v.escape);
+    if (c.agree) T.escapeOK++; else { T.escapeBad++; console.log(`  CONTRADICTED: engine still throws after the escape (arc ${JSON.stringify(c.thrownBy)})`); }
+    console.log(`  escape: ${label} -- ${v.why}; engine agrees ${c.agree}`);
+  } else { T.unresolved++; console.log(`  unresolved: ${label} -- ${v.why}`); }
+}
+
+if (require.main === module && process.argv[2] === '--dead-box') {
+  // node nn/forced-win.js --dead-box bx,..,rrot --mover m [--half 0.5] [--h 0.5]: the dead verdict
+  // over a box of the mover's poses, then the engine on random poses in the box (every move lost).
+  const K = REPLICA, nums = process.argv[3].split(',').map(Number);
+  const mover = process.argv.includes('--mover') ? +process.argv[process.argv.indexOf('--mover') + 1] : 0;
+  const half = process.argv.includes('--half') ? +process.argv[process.argv.indexOf('--half') + 1] : 0.5, h = process.argv.includes('--h') ? +process.argv[process.argv.indexOf('--h') + 1] : 0.5;
+  const D = [{ x: nums[0], y: nums[1], rot: nums[2] }, { x: nums[3], y: nums[4], rot: nums[5] }], v = D[mover];
+  const box = { x: [v.x - half, v.x + half], y: [v.y - half, v.y + half], rot: [v.rot - half / R, v.rot + half / R] }, t0 = Date.now();
+  const c = certifyDeadBox(D, mover, box, h, K);
+  console.log(`dead box +-${half}u around ${mover === 0 ? 'blue' : 'red'} (grid ${h}u, ${c.samples} samples, ${((Date.now() - t0) / 60).toFixed(0)}s): ${c.certified ? `CERTIFIED -- min worst-margin ${c.minMargin.toFixed(2)}u > ${c.need.toFixed(2)}u (lip ${c.lip.toFixed(2)})` : 'refused -- ' + c.why}`);
+  if (c.certified) { let agree = 0, n = 25; for (let t = 0; t < n; t++) { const p = D.map(q => ({ ...q })); const w = p[mover]; w.x = box.x[0] + Math.random() * 2 * half; w.y = box.y[0] + Math.random() * 2 * half; w.rot = box.rot[0] + Math.random() * 2 * half / R; const s = simCheckDead(p, mover, 8); if (s.agree === s.n) agree++; } console.log(`  engine: ${agree}/${n} random poses in the box lose every one of 8 random moves to a throw`); }
+} else if (require.main === module && process.argv[2] === '--back-from') {
+  // Backward families from a certified DEAD position: node nn/forced-win.js --back-from bx,..,rrot --mover m
+  // `mover` is the side to move in D (the dead side); the OTHER side just swung into D. Unwinding
+  // each of its six arms gives the positions it could have come from; wherever the forward swing
+  // is legal (reaches the unwound angle before any limit) and touches nothing on the way (else the
+  // victim would have been pushed and the predecessor's victim pose differs), that predecessor is
+  // a certified forced win in two: the move lands exactly on D. Each family is checked in the
+  // engine at random points: play the forward swing, confirm it lands on D.
+  const K = REPLICA, nums = process.argv[3].split(',').map(Number);
+  const mover = process.argv.includes('--mover') ? +process.argv[process.argv.indexOf('--mover') + 1] : 0, att = 1 - mover;
+  const D = [{ x: nums[0], y: nums[1], rot: nums[2] }, { x: nums[3], y: nums[4], rot: nums[5] }];
+  const v = verifyAllReplies(D, mover, K, 2, 3, 1);
+  console.log(`D: ${mover === 0 ? 'blue' : 'red'} to move -- ${v.status}${v.status === 'dead' ? ` (worst margin ${v.worstMargin.toFixed(2)}u)` : ': ' + v.why}`);
+  if (v.status !== 'dead') { console.log('not a dead position; nothing to unwind'); process.exit(0); }
+  let total = 0;
+  for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
+    // unwind: the attacker rotated about its foot pv by +dir*s to arrive at D, so before it sat at -dir*s
+    const foot = feetOf(D[att])[pv]; const segs = []; let cur = null;
+    for (let deg = 2; deg <= 170; deg += 1) {
+      const sRad = deg * Math.PI / 180;
+      const prev = D.map(q => ({ ...q })); prev[att] = moverAt(D[att], pv, -dir, sRad);
+      let ok = !anyOff(prev[att]) && Math.hypot(prev[att].x, prev[att].y) <= eng.CFG.edgeU - R - eng.CFG.edgeEps;
+      if (ok) {
+        // the engine plays the forward swing itself: legal iff it reaches s without a limit, and a
+        // valid predecessor iff BOTH pieces land on D (a push on the way would have moved the victim)
+        const g = load(prev, att); eng.pinFoot(pv); let guard = 0;
+        while (!g.atLimit && Math.abs(g.netRad) < sRad - 1e-9 && guard++ < 3000) eng.applySwing(dir * Math.min(Math.PI / 180, sRad - Math.abs(g.netRad)));
+        const a = g.pieces[att], m = g.pieces[mover];
+        ok = !g.atLimit && Math.abs(g.netRad) >= sRad - 1e-6 && Math.hypot(a.x - D[att].x, a.y - D[att].y) < 0.05 && Math.abs(a.rot - D[att].rot) < 1e-3 && Math.hypot(m.x - D[mover].x, m.y - D[mover].y) < 0.05 && Math.abs(m.rot - D[mover].rot) < 1e-3;
+      }
+      if (ok) { if (!cur) cur = { from: deg, to: deg }; else cur.to = deg; } else if (cur) { segs.push(cur); cur = null; }
+    }
+    if (cur) segs.push(cur);
+    for (const sg of segs) {
+      total += sg.to - sg.from + 1;
+      console.log(`  ${att === 0 ? 'blue' : 'red'} came by arm (${pv},${dir}) from ${sg.from}-${sg.to}deg back: ${sg.to - sg.from + 1} degrees of forced-win-in-two positions (each played forward by the engine, landing on D)`);
+    }
+  }
+  console.log(`\n${total} degrees of predecessor arc certified as forced win in two for ${att === 0 ? 'blue' : 'red'} (each degree ~0.4-0.8u of hub travel). Contact-free arrivals only: a predecessor that PUSHED its way in has a different victim pose, and the game record is where those come from (the row before a mined dead position).`);
+} else if (require.main === module && process.argv[2] === '--throw-map') {
+  // The picture: node nn/forced-win.js --throw-map bx,..,rrot --mover m [--half 20] [--res 64] [--out base]
+  // The other side's throw region over the MOVER's hub positions (mover's rotation held, other side
+  // held), as a margin field, with the mover's six reachable arcs drawn on it (hub trajectories,
+  // stops where the arc touches the other side skipped, since there the other side would have
+  // moved). If the mover is dead, every arc lies inside the positive region.
+  const K = REPLICA, nums = process.argv[3].split(',').map(Number);
+  const mover = process.argv.includes('--mover') ? +process.argv[process.argv.indexOf('--mover') + 1] : 0, other = 1 - mover;
+  const half = process.argv.includes('--half') ? +process.argv[process.argv.indexOf('--half') + 1] : 20, res = process.argv.includes('--res') ? +process.argv[process.argv.indexOf('--res') + 1] : 64;
+  const base = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : 'nn/brain-maps/throw-map';
+  const D = [{ x: nums[0], y: nums[1], rot: nums[2] }, { x: nums[3], y: nums[4], rot: nums[5] }];
+  const cx = D[mover].x, cy = D[mover].y, cell = 2 * half / res, field = new Float32Array(res * res), t0 = Date.now();
+  const hubMax = eng.CFG.edgeU - R - eng.CFG.edgeEps;
+  for (let j = 0; j < res; j++) { for (let i = 0; i < res; i++) {
+    const x = cx - half + (i + 0.5) * cell, y = cy - half + (j + 0.5) * cell, p = D.map(q => ({ ...q })); p[mover] = { x, y, rot: D[mover].rot };
+    if (Math.hypot(x, y) > hubMax || anyOff(p[mover])) { field[j * res + i] = NaN; continue; }
+    const bt = bestThrow(p, other, K); field[j * res + i] = Number.isFinite(bt.margin) ? bt.margin : NaN;   // NaN where the pieces overlap
+  } if (j % 8 === 7) process.stdout.write(`\r  ${Math.round(100 * (j + 1) / res)}%  ${((Date.now() - t0) / 1000).toFixed(0)}s  `); }
+  // The mover's reachable arcs, each stop coloured by the other side's TRUE throw margin at that
+  // stop's actual pose (the mover's rotation changes along an arc and the other side moves where the
+  // arc touches it, so the background slice -- rotation held, other side held -- is not the margin
+  // at the arc's own points). Dead reads literally: every arc point in the positive colour.
+  const arcs = [];
+  for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) { const fam = replyFamily(D, mover, pv, dir, K); if (!fam) continue;
+    const rec = fam.out.record; let insideArc = 0;
+    for (let k = 0; k < rec.length; k += 3) { const r = rec[k]; const h = moverAt(D[mover], pv, dir, r.alpha);
+      const p = D.map(q => ({ ...q })); p[mover] = h; p[other] = { x: r.x, y: r.y, rot: r.rot };
+      const m = r.maxFootR > EDGE ? -Infinity : bestThrow(p, other, K).margin;         // the reply itself throws: no margin
+      arcs.push({ x: h.x, y: h.y, margin: m }); }
+  }
+  require('fs').writeFileSync(base + '.bin', Buffer.from(field.buffer));
+  require('fs').writeFileSync(base + '.json', JSON.stringify({ tag: 'throw-map', res, cx, cy, half, cell, extent: half, mover, D, live: [...field].filter(Number.isFinite).length }));
+  // render: map-png's ramp for the margin, arcs punched through as index 0 (page background)
+  const P = require('./map-png.js'); const A = require('./map-analyze.js');
+  const m = A.loadMap(base); let { lo, hi } = P.limits(m.field); const a = Math.max(Math.abs(lo), Math.abs(hi)); lo = -a; hi = a;   // symmetric: zero = the boundary
+  const idx = P.render(m.field, res, lo, hi), scale = 8, W = res * scale, big = new Uint8Array(W * W);
+  for (let j = 0; j < res; j++) for (let i = 0; i < res; i++) for (let b = 0; b < scale; b++) big.fill(idx[j * res + i], (j * scale + b) * W + i * scale, (j * scale + b) * W + i * scale + scale);
+  const px = (x, y) => [Math.round((x - (cx - half)) / cell * scale), Math.round((y - (cy - half)) / cell * scale)];
+  // arc points: a black-bordered dot whose fill is the ramp colour of the TRUE margin
+  const rampIdx = m => !Number.isFinite(m) ? 0 : Math.max(1, Math.min(255, 1 + Math.round(254 * (Math.max(lo, Math.min(hi, m)) - lo) / (hi - lo))));
+  for (const q of arcs) { const [X, Y] = px(q.x, q.y); for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const X2 = X + dx, Y2 = Y + dy; if (X2 < 0 || Y2 < 0 || X2 >= W || Y2 >= W) continue; const d = Math.abs(dx) + Math.abs(dy); if (d > 4) continue; big[Y2 * W + X2] = d >= 3 ? 0 : rampIdx(q.margin); } }
+  { const [X, Y] = px(D[mover].x, D[mover].y); for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) if (Math.abs(dx) + Math.abs(dy) > 3 && Math.abs(dx) + Math.abs(dy) < 6) { const X2 = X + dx, Y2 = Y + dy; if (X2 >= 0 && Y2 >= 0 && X2 < W && Y2 < W) big[Y2 * W + X2] = 0; } }
+  require('fs').writeFileSync(base + '.png', P.pngIndexed(big, W, W, P.palette()));
+  const inside = arcs.filter(q => q.margin > 0).length, thrown = arcs.filter(q => q.margin === -Infinity).length;
+  console.log(`\n${base}.png: ${other === 0 ? 'blue' : 'red'}'s throw margin over ${mover === 0 ? 'blue' : 'red'}'s hub (background: rotation held), ${res}x${res} over +-${half}u; range [${lo.toFixed(1)}, ${hi.toFixed(1)}]u; ${mover === 0 ? 'blue' : 'red'}'s arcs as dots coloured by the true margin at each stop: ${inside}/${arcs.length} stops lost to a throw${thrown ? `, ${thrown} stops where the move itself throws` : ''}`);
+} else if (require.main === module && process.argv[2] === '--catalog') {
+  // A catalogue of the obvious families: a victim with one foot `inside` u from the rim at the
+  // 12 o'clock rim point, turned `vrot` from radial; the attacker `dist` from that foot at approach
+  // angle `approach` (0 = straight inward of the foot), turned `arot`. Each grid point is tagged
+  // win-in-1 (attacker to move) and, when the attacker has a throw, whether the VICTIM to move is
+  // dead or has an escape. Rows go to --out (default nn/catalog-rim.jsonl); classes are the
+  // contiguous runs of equal verdict along each parameter.
+  const fs = require('fs'), K = REPLICA, outPath = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : 'nn/catalog-rim.jsonl';
+  const hubMax = eng.CFG.edgeU - R - eng.CFG.edgeEps, t0 = Date.now();
+  const insides = [1, 2, 3, 4.5, 6], vrots = [0, 45, 90, 135], dists = [26, 30, 34, 38, 42], approaches = [-60, -30, 0, 30, 60], arots = [0, 40, 80];
+  const T = { skipped: 0, win1: 0, dead: 0, escape: 0, unresolved: 0, safe: 0 }; let n = 0;
+  for (const inside of insides) for (const vrot of vrots) for (const dist of dists) for (const approach of approaches) for (const arot of arots) {
+    const fr = eng.CFG.edgeU - inside, fx = 0, fy = fr;                         // exposed foot at 12 o'clock
+    const v = { rot: (90 + vrot) * Math.PI / 180 }; v.x = fx - Math.cos(v.rot) * R; v.y = fy - Math.sin(v.rot) * R;   // foot 0 is the exposed one
+    const aa = (-90 + approach) * Math.PI / 180, a = { x: fx + dist * Math.cos(aa), y: fy + dist * Math.sin(aa), rot: arot * Math.PI / 180 };
+    const pieces = [v, a];                                                       // blue = victim, red = attacker
+    if (Math.hypot(v.x, v.y) > hubMax || Math.hypot(a.x, a.y) > hubMax || anyOff(v) || anyOff(a)) { T.skipped++; continue; }
+    const bt = bestThrow(pieces, 1, K); if (!Number.isFinite(bt.margin)) { T.skipped++; continue; }   // touching
+    const row = { inside, vrot, dist, approach, arot, p: [v.x, v.y, v.rot, a.x, a.y, a.rot], win1: bt.margin > 0, win1Margin: +bt.margin.toFixed(2), win1Arc: [bt.pv, bt.dir] };
+    if (bt.margin > 0) {
+      T.win1++;
+      const vv = verifyAllReplies(pieces, 0, K, 2, 3, 1);                        // victim to move: can it get out?
+      row.victimToMove = vv.status; row.victimMargin = Number.isFinite(vv.worstMargin) ? +vv.worstMargin.toFixed(2) : null; if (vv.escape) row.escape = vv.escape;
+      T[vv.status]++;
+    } else T.safe++;
+    fs.appendFileSync(outPath, JSON.stringify(row) + '\n'); n++;
+    if (n % 50 === 0) console.log(`  ${n} rows, ${((Date.now() - t0) / 60000).toFixed(1)} min: ${JSON.stringify(T)}`);
+  }
+  console.log(`\ncatalogue: ${n} positions -> ${outPath}\n  attacker to move: win in one ${T.win1}, no throw ${T.safe}, skipped (off-board/touching) ${T.skipped}\n  of the win-in-one positions, victim to move: dead ${T.dead}, escape ${T.escape}, unresolved ${T.unresolved}`);
+} else if (require.main === module && process.argv[2] === '--dead-deep') {
+  // node nn/forced-win.js --dead-deep bx,by,brot,rx,ry,rrot --mover m [--depth 2] [--step 2] [--attStep 3]
+  //   [--tries 4] [--engine 20] [--out file]
+  // The dead-deep verdict for the mover (dead at `depth` moves = 2*depth-1 plies), the per-arm
+  // segment table, the stats, then the engine's playouts of the certificate; one JSON row to --out.
+  const K = REPLICA, nums = process.argv[3].split(',').map(Number), arg = (name, def) => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : def;
+  const mover = +arg('--mover', 0), depth = +arg('--depth', 2), stepDeg = +arg('--step', 2), attStepDeg = +arg('--attStep', 3), maxWitnessTries = +arg('--tries', 4), engineN = +arg('--engine', 20), outPath = arg('--out', null);
+  const pieces = [{ x: nums[0], y: nums[1], rot: nums[2] }, { x: nums[3], y: nums[4], rot: nums[5] }], t0 = Date.now();
+  const v = deadDeep(pieces, mover, K, depth, { stepDeg, attStepDeg, maxWitnessTries });
+  console.log(`${mover === 0 ? 'BLUE' : 'RED'} TO MOVE, depth ${depth} (${v.plies} plies): ${v.status.toUpperCase()} -- ${v.why || `every move certified lost, worst margin ${v.worstMargin.toFixed(2)}u`}${v.slivers ? `, ${v.slivers} sliver${v.slivers === 1 ? '' : 's'}` : ''}${v.probedSlivers ? `, ${v.probedSlivers} engine-probed` : ''}`);
+  for (const arm of v.profile || []) console.log(`  arm (${arm.pv},${arm.dir}): ` + (arm.legal ? (arm.gaps ? `to ${degOf(arm.lim)}deg  ` + segmentsOf(arm.gaps).map(sg => `${degOf(sg.from)}-${degOf(sg.to)} ${gapLabel(sg)}`).join(' | ') : `to ${degOf(arm.lim)}deg (not certified: the run ended first)`) : 'no legal move'));
+  const st = v.stats || {}; console.log(`  stats: ${st.samples || 0} samples, ${st.screens || 0} screens, ${st.fullChildren || 0} full children, ${st.memoHits || 0} memo hits, ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  let engine = null;
+  if (v.certified && engineN > 0) { engine = simCheckDeadDeep(pieces, mover, engineN, depth, v); console.log(`  engine: ${engine.pass}/${engine.n} random moves lose${engine.fails.length ? '; fails: ' + JSON.stringify(engine.fails.slice(0, 3)) : ''}`); }
+  if (outPath) fs.appendFileSync(outPath, JSON.stringify({ kind: 'deep', plies: v.plies, pose: nums, mover, certified: v.certified, status: v.status, worstMargin: Number.isFinite(v.worstMargin) ? +v.worstMargin.toFixed(3) : null, why: v.why || null, witnesses: v.witnesses || [], engine: engine ? { n: engine.n, pass: engine.pass } : null, stats: v.stats || null, stamp: new Date().toISOString() }) + '\n');
+} else if (require.main === module && process.argv[2] === '--limit-check') {
+  // node nn/forced-win.js --limit-check [poses=100] [--seed n]: limitAt (closed-form events) against
+  // limitLadder (the engine's applySwing ladder) on real poses -- nn/dead-positions.jsonl, the
+  // certified positions, plus random rows of the nn/data games -- both movers, all six arms. Any
+  // mismatch in limit, reason, lines crossed or the stopping foot and line is a bug in limitAt.
+  const n = +(process.argv[3] && !process.argv[3].startsWith('--') ? process.argv[3] : 100);
+  let seed = process.argv.includes('--seed') ? +process.argv[process.argv.indexOf('--seed') + 1] : 12345;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const poses = [];
+  for (const l of fs.readFileSync(path.join(__dirname, 'dead-positions.jsonl'), 'utf8').split('\n')) if (l[0] === '{') { const r = JSON.parse(l); if (Array.isArray(r.p) && r.p.length === 6) poses.push({ p: r.p, tag: 'dead-positions:' + r.g }); }
+  const dataDir = path.join(__dirname, 'data'), files = fs.existsSync(dataDir) ? fs.readdirSync(dataDir).filter(f => /^(batch|retro).*\.jsonl$/.test(f)).sort() : [];
+  while (poses.length < n && files.length) {
+    const f = files[Math.floor(rnd() * files.length)], lines = fs.readFileSync(path.join(dataDir, f), 'utf8').split('\n').filter(l => l[0] === '{');
+    if (!lines.length) continue;
+    const r = JSON.parse(lines[Math.floor(rnd() * lines.length)]); if (Array.isArray(r.p) && r.p.length === 6) poses.push({ p: r.p, tag: f + ':' + r.g });
+  }
+  let arms = 0, bad = 0, tEv = 0, tLad = 0, maxD = 0; const reasons = {};
+  const same = (a, b) => a.reason === b.reason && a.foot === b.foot && a.line === b.line && a.crossed.join() === b.crossed.join() && Math.abs(a.lim - b.lim) < 1e-9;
+  for (const q of poses) for (const mover of [0, 1]) for (const [pv, dir] of ARMS) {
+    const pieces = piecesOf(q.p);
+    let t = process.hrtime.bigint(); const a = limitAt(pieces, mover, pv, dir); tEv += Number(process.hrtime.bigint() - t);
+    t = process.hrtime.bigint(); const b = limitLadder(pieces, mover, pv, dir); tLad += Number(process.hrtime.bigint() - t);
+    arms++; reasons[b.reason] = (reasons[b.reason] || 0) + 1; maxD = Math.max(maxD, Math.abs(a.lim - b.lim));
+    if (!same(a, b)) { bad++; if (bad <= 20) console.log(`MISMATCH ${q.tag} mover ${mover} arm (${pv},${dir}): events ${(a.lim / DEG).toFixed(3)}deg ${a.sig} | ladder ${(b.lim / DEG).toFixed(3)}deg ${b.sig}`); }
+  }
+  console.log(`${arms} arms over ${poses.length} poses, ladder reasons ${JSON.stringify(reasons)}: ${bad} mismatch${bad === 1 ? '' : 'es'}, max |lim| difference ${maxD.toExponential(2)} rad; ${(tEv / 1e6 / arms).toFixed(3)} ms/arm events vs ${(tLad / 1e6 / arms).toFixed(3)} ms/arm ladder (${(tLad / tEv).toFixed(0)}x)`);
+  if (bad) process.exit(1);
+} else if (require.main === module && process.argv[2] === '--dead-batch') {
+  // node nn/forced-win.js --dead-batch seeds.jsonl --depth d [--out results.jsonl] [--maxSeconds S] [--only k]
+  // Rows { p, mover, k, g, file }. Resumable: rows whose (p, mover, depth) already appear in --out
+  // are skipped (a 'timeout' row is retried). Depth 1: the screen, then the full certificate;
+  // depth >= 2: the screen is recorded but never rejects (a level-1 escape is still a candidate at
+  // depth 2), then deadDeep under the run's deadline. One row per seed; stops cleanly at --maxSeconds.
+  const K = REPLICA, arg = (name, def) => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : def;
+  const seedsPath = process.argv[3], depth = +arg('--depth', 1), outPath = arg('--out', null), maxSeconds = +arg('--maxSeconds', Infinity), only = process.argv.includes('--only') ? +arg('--only') : null;
+  // --games <dirs or files...>: the seed games, for the played line as a witness hint; --memo f:
+  // depth-1 verdicts preloaded into the child memo; --childDead f: only seeds whose game's k=2
+  // row is certified dead there
+  const gameArgs = []; if (process.argv.includes('--games')) for (let i = process.argv.indexOf('--games') + 1; i < process.argv.length && !process.argv[i].startsWith('--'); i++) gameArgs.push(process.argv[i]);
+  const gameFiles = new Map(); for (const a of gameArgs) { if (!fs.existsSync(a)) continue; if (fs.statSync(a).isDirectory()) { for (const n of fs.readdirSync(a)) if (n.endsWith('.jsonl')) gameFiles.set(n, path.join(a, n)); } else gameFiles.set(path.basename(a), a); }
+  const gameCache = new Map(), loadGame = (file, g) => { if (!gameFiles.has(file)) return null; if (!gameCache.has(file)) gameCache.set(file, fs.readFileSync(gameFiles.get(file), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l))); return gameCache.get(file).filter(r => r.g === g && r.p); };
+  const memoRows = arg('--memo', null) ? fs.readFileSync(arg('--memo'), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)).filter(r => r.p && r.mover != null && r.status) : [];
+  const childDead = arg('--childDead', null) ? new Set(fs.readFileSync(arg('--childDead'), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)).filter(r => r.status === 'dead' && r.g).map(r => r.g)) : null;
+  const threads = Math.max(1, +arg('--threads', 1));
+  const keyOf = (p, mover) => p.map(x => (+x).toFixed(6)).join(',') + '|' + mover + '|' + depth;
+  let seeds = fs.readFileSync(seedsPath, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)).filter(r => r.p && r.mover != null);
+  if (only != null) seeds = seeds.filter(r => r.k === only);
+  if (childDead) seeds = seeds.filter(r => childDead.has(r.g));
+  const done = new Set(outPath && fs.existsSync(outPath) ? fs.readFileSync(outPath, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)).filter(r => r.status !== 'timeout' && r.depth === depth).map(r => keyOf(r.p, r.mover)) : []);
+  const todo = seeds.filter(r => !done.has(keyOf(r.p, r.mover)));
+  const tally = { certified: 0, escape: 0, unresolved: 0, timeout: 0 }, t0 = Date.now(), deadline = t0 + maxSeconds * 1000;
+  console.log(`${seeds.length} seeds${only != null ? ` with k=${only}` : ''}${childDead ? ` whose k=2 row is dead in ${arg('--childDead')}` : ''}, ${done.size} done, ${todo.length} to do, depth ${depth}, budget ${Number.isFinite(maxSeconds) ? maxSeconds + 's' : 'none'}${memoRows.length ? `, memo seeded with ${memoRows.length} depth-1 verdicts` : ''}${gameFiles.size ? `, ${gameFiles.size} game files` : ''}${threads > 1 ? `, ${threads} threads` : ''}`);
+  // the played line: the seed's row in its game, the victim's move to the next row, the attacker's to the one after
+  const hintOf = r => {
+    if (!gameFiles.size || !r.g || !r.file) return null;
+    const rows = loadGame(r.file, r.g) || [], i = rows.findIndex(q => q.p.every((x, n) => Math.abs(x - r.p[n]) < 1e-3));
+    if (i < 0 || i + 2 >= rows.length) return null;
+    return { victim: moveBetween(rows[i].p, rows[i + 1].p, r.mover), attacker: moveBetween(rows[i + 1].p, rows[i + 2].p, 1 - r.mover), childPose: rows[i + 2].p };
+  };
+  const record = res => {
+    tally[res.status] = (tally[res.status] || 0) + 1;
+    if (outPath) fs.appendFileSync(outPath, JSON.stringify(res.row) + '\n');
+    for (const l of res.lines) console.log(l);
+    console.log(`  tally: certified ${tally.certified} / escape ${tally.escape} / unresolved ${tally.unresolved} / timeout ${tally.timeout}   ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+  };
+  const budgetNote = () => console.log(`budget of ${maxSeconds}s reached; ${todo.length - Object.values(tally).reduce((a, b) => a + b, 0)} seeds left for the next run (a timed-out seed is retried)`);
+  if (threads === 1) {
+    for (const r of todo) {
+      if (Date.now() > deadline) { budgetNote(); break; }
+      const res = batchSeed(r, depth, { deadline, memoRows, hint: hintOf(r) }); record(res);
+      if (res.status === 'timeout') { budgetNote(); break; }
+    }
+  } else {
+    // worker threads: each requires this module afresh and runs batchSeed on one seed; the seed
+    // row, the options, the hint and the memo rows travel by workerData, the result by postMessage
+    const { Worker } = require('worker_threads'); let next = 0, active = 0;
+    const script = `const { parentPort, workerData: w } = require('worker_threads'); const FW = require(w.file); parentPort.postMessage(FW.batchSeed(w.seed, w.depth, { deadline: w.deadline, memoRows: w.memoRows, hint: w.hint }));`;
+    const launch = () => {
+      if (next >= todo.length || Date.now() > deadline) { if (!active) budgetNote(); return; }
+      const r = todo[next++]; active++;
+      const w = new Worker(script, { eval: true, workerData: { file: __filename, seed: r, depth, deadline, memoRows, hint: hintOf(r) } });
+      w.on('message', res => { res.row.thread = w.threadId; record(res); });
+      w.on('error', e => console.log(`worker error on ${r.g}: ${e.message}`));
+      w.on('exit', () => { active--; launch(); });
+    };
+    for (let i = 0; i < threads; i++) launch();
+  }
+} else if (require.main === module && process.argv[2] === '--pos') {
+  // One position, pasted from the lab: node nn/forced-win.js --pos bx,by,brot,rx,ry,rrot --mover 0|1 [--deep]
+  // Reports the mover's verdict (dead / escape / unresolved) with the engine's check, the other
+  // side's best throw if it were their move instead, and with --deep, whether the escape only leads
+  // into a forced loss in two (level 2 from the post-escape position, the other side attacking).
+  const K = REPLICA, nums = process.argv[3].split(',').map(Number);
+  const mover = process.argv.includes('--mover') ? +process.argv[process.argv.indexOf('--mover') + 1] : 0, other = 1 - mover;
+  const pieces = [{ x: nums[0], y: nums[1], rot: nums[2] }, { x: nums[3], y: nums[4], rot: nums[5] }];
+  const g = load(pieces, mover);
+  for (const i of [0, 1]) console.log(`${i === 0 ? 'blue' : 'red '} hub (${pieces[i].x.toFixed(1)},${pieces[i].y.toFixed(1)}) feet ` + g.pieces[i].feet().map((f, k) => `${k}:(${f.x.toFixed(1)},${f.y.toFixed(1)}) r=${Math.hypot(f.x, f.y).toFixed(1)}`).join('  '));
+  const ob = bestThrow(pieces, other, K); console.log(`if it were ${other === 0 ? 'blue' : 'red'}'s move: best throw arc (${ob.pv},${ob.dir}) margin ${ob.margin.toFixed(2)}u ${ob.margin > 0 ? '-- a throw' : '-- none'}`);
+  const mb = bestThrow(pieces, mover, K); console.log(`${mover === 0 ? 'blue' : 'red'} (to move) best throw now: arc (${mb.pv},${mb.dir}) margin ${mb.margin.toFixed(2)}u ${mb.margin > 0 ? '-- wins in one' : '-- none'}`);
+  if (process.argv.includes('--profile')) for (const arm of familyProfile(pieces, mover, K, 2)) console.log(`  arm (${arm.pv},${arm.dir}): ` + (arm.legal ? `to ${arm.limitDeg}deg  ` + arm.segments.map(sg => `${sg.fate} ${sg.from}-${sg.to}`).join(' | ') : 'no legal move'));
+  const v = verifyAllReplies(pieces, mover, K, 2, 3, 1);
+  console.log(`${mover === 0 ? 'BLUE' : 'RED'} TO MOVE: ${v.status.toUpperCase()} -- ${v.why || `every move certified lost, worst margin ${v.worstMargin.toFixed(2)}u`}`);
+  if (v.status === 'dead') { const c = simCheckDead(pieces, mover, 40); console.log(`  engine: ${c.agree}/${c.n} random moves lose to a throw`); }
+  if (v.status === 'escape' && v.escape) {
+    const c = simCheckEscape(pieces, mover, v.escape); console.log(`  engine confirms the escape: ${c.agree}${c.thrownBy ? ' (NO: still thrown by arc ' + c.thrownBy + ')' : ''}`);
+    if (process.argv.includes('--deep') && !v.escape.throws) {
+      const esc = v.escape, fam = replyFamily(pieces, mover, esc.pv, esc.dir, K);
+      const rec = fam.out.record.find(r => r.alpha >= esc.stop - 1e-9) || fam.out.record[fam.out.record.length - 1];
+      const after = pieces.map(q => ({ ...q })); after[mover] = moverAt(pieces[mover], esc.pv, esc.dir, rec.alpha); after[other] = { x: rec.x, y: rec.y, rot: rec.rot };
+      console.log(`  after the escape: [${after.map(q => `${q.x.toFixed(2)},${q.y.toFixed(2)},${q.rot.toFixed(4)}`).join(',')}] -- does ${other === 0 ? 'blue' : 'red'} have a forced win in two from here?`);
+      const r2 = certifyForcedIn2(after, other, K);
+      if (r2.certified) console.log(`  YES: level ${r2.level} -- ${other === 0 ? 'blue' : 'red'} plays (${r2.witness.pv},${r2.witness.dir}) to ${(r2.witness.stop * 180 / Math.PI).toFixed(1)}deg${r2.detail ? `; every reply certified lost, worst margin ${r2.detail.worstMargin.toFixed(2)}u` : ' and throws'}`);
+      else console.log(`  NO forced win in two certified: ${r2.refuted}/${r2.tried} attacking moves refuted by an escape, ${r2.unresolvedN}/${r2.tried} unresolved`);
+    }
+  }
+} else if (require.main === module && process.argv[2] === '--mine') {
+  // Real dead positions from real games. Every recorded row carries the raw pose (p = blue x,y,rot,
+  // red x,y,rot) and the mover (m); a game's rows are contiguous under one tag (g), and a decided
+  // game's last row is the winner's position before the throw (z ~ +1). The row before it is the
+  // LOSER to move, one move from being thrown: was every move already lost there (dead), or did an
+  // escape exist that the loser missed (a blunder)? Either is an exact label. Certified verdicts are
+  // appended to the --out file (default nn/dead-positions.jsonl) with the pose, the mover, the
+  // verdict, the margin and the game.
+  //   node nn/forced-win.js --mine <files.jsonl...> [--out f] [--max N] [--back K]
+  // --back K also looks K loser-moves earlier (2K rows back), to see how deep the point of no return
+  // lies in play.
+  const fs = require('fs'), K = REPLICA;
+  const files = process.argv.slice(3).filter(a => !a.startsWith('--') && a !== process.argv[process.argv.indexOf('--out') + 1] && a !== process.argv[process.argv.indexOf('--max') + 1] && a !== process.argv[process.argv.indexOf('--back') + 1]);
+  const outPath = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : 'nn/dead-positions.jsonl';
+  const maxGames = process.argv.includes('--max') ? +process.argv[process.argv.indexOf('--max') + 1] : Infinity;
+  const back = process.argv.includes('--back') ? +process.argv[process.argv.indexOf('--back') + 1] : 0;
+  const tally = {}; let games = 0; const t0 = Date.now();
+  const bump = k => { tally[k] = (tally[k] || 0) + 1; };
+  for (const file of files) {
+    const rows = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
+    const byGame = new Map(); rows.forEach(r => { if (r.g && r.p) { if (!byGame.has(r.g)) byGame.set(r.g, []); byGame.get(r.g).push(r); } });
+    for (const [g, gr] of byGame) {
+      if (games >= maxGames) break;
+      const last = gr[gr.length - 1];
+      if (!(Math.abs(last.z) >= 0.98) || gr.length < 2) continue;          // not a decided game ending in a throw
+      games++;
+      for (let k = 0; k <= back; k++) {
+        const i = gr.length - 2 - 2 * k; if (i < 0) break;
+        const r = gr[i], victim = r.m;
+        const pieces = [{ x: r.p[0], y: r.p[1], rot: r.p[2] }, { x: r.p[3], y: r.p[4], rot: r.p[5] }];
+        const v = verifyAllReplies(pieces, victim, K, 2, 3, 1);
+        let check = null;
+        if (v.status === 'dead') check = simCheckDead(pieces, victim, 20);
+        else if (v.status === 'escape') check = simCheckEscape(pieces, victim, v.escape);
+        const agreed = check ? (check.n != null ? check.agree === check.n : check.agree) : null;
+        const key = `${k === 0 ? 'one move before the throw' : k + ' loser-moves earlier'}: ${v.status}${agreed === false ? ' (ENGINE DISAGREED)' : ''}`;
+        bump(key);
+        fs.appendFileSync(outPath, JSON.stringify({ g, file: require('path').basename(file), row: i, back: k, mover: victim, p: r.p, mv: r.mv, verdict: v.status, worstMargin: Number.isFinite(v.worstMargin) ? +v.worstMargin.toFixed(3) : null, escape: v.escape || null, why: v.why || null, engineAgreed: agreed }) + '\n');
+        if (v.status === 'dead') {
+          console.log(`  DEAD ${g} (${k} back): every move of ${victim === 0 ? 'blue' : 'red'} loses to a throw, worst margin ${v.worstMargin.toFixed(2)}u; engine ${check.agree}/${check.n}`);
+          // and the position before it -- the winner to move, whose played move led here -- is a
+          // certified forced win in two, with the played move as the witness
+          if (i >= 1) { const w = gr[i - 1]; fs.appendFileSync(outPath, JSON.stringify({ g, file: require('path').basename(file), row: i - 1, back: k, mover: w.m, p: w.p, mv: w.mv, verdict: 'win-in-2', witness: 'the move played', leadsTo: { row: i } }) + '\n'); bump('the position before it: win in two (certified by the dead position)'); }
+        }
+      }
+      if (games % 10 === 0) console.log(`  ${games} games, ${((Date.now() - t0) / 60000).toFixed(1)} min`);
+    }
+  }
+  console.log(`\n${games} decided games:`); for (const k of Object.keys(tally).sort()) console.log(`  ${k}: ${tally[k]}`);
+  console.log(`verdicts appended to ${outPath}`);
+} else if (require.main === module && process.argv[2] === '--dead-map') {
+  // Real dead positions: the cells a searched danger map marked forced-lost at ply 2 (the mover has
+  // no move that escapes a throw). Reconstruct each cell's position and certify it.
+  // A finished map (.json + .bin, losses clamped to the map's min) or a map still being swept
+  // (.part.json + .part.bin, losses still at the raw -1e6, the pose taken from a sibling map's json
+  // given as the 5th argument -- every swing1 map shares it).
+  const fs = require('fs'), base = process.argv[3], N = +(process.argv[4] || 30), K = REPLICA;
+  let j, field, isLoss;
+  if (fs.existsSync(base + '.json')) {
+    j = JSON.parse(fs.readFileSync(base + '.json', 'utf8')); const buf = fs.readFileSync(base + '.bin');
+    field = new Float32Array(buf.buffer, buf.byteOffset, j.res * j.res); const lossVal = j.min; isLoss = v => Math.abs(v - lossVal) < 1e-4;
+  } else {
+    const part = JSON.parse(fs.readFileSync(base + '.part.json', 'utf8')), stamp = JSON.parse(part.stamp);
+    j = { ...JSON.parse(fs.readFileSync(process.argv[5], 'utf8')), res: stamp.res, cx: stamp.cx, cy: stamp.cy, half: stamp.half, decidedLoss: '?' };
+    const buf = fs.readFileSync(base + '.part.bin'); field = new Float32Array(buf.buffer, buf.byteOffset, j.res * j.res);
+    const done = new Set(part.rows); isLoss = (v, k) => done.has(Math.floor(k / j.res)) && v <= -1e5;
+    console.log(`partial map: ${part.rows.length}/${j.res} rows swept`);
+  }
+  const cells = [];
+  for (let k = 0; k < field.length; k++) if (Number.isFinite(field[k]) && isLoss(field[k], k)) cells.push(k);
+  console.log(`${base}: ${j.decidedLoss} forced-loss cells recorded, ${cells.length} found; certifying ${Math.min(N, cells.length)} of them`);
+  const half = j.half != null ? j.half : j.extent, cx = j.cx || 0, cy = j.cy || 0, cell = 2 * half / j.res;
+  for (let t = 0; t < N && cells.length; t++) {
+    const k = cells.splice(Math.floor(Math.random() * cells.length), 1)[0], i = k % j.res, row = Math.floor(k / j.res);
+    const x = cx - half + (i + 0.5) * cell, y = cy - half + (row + 0.5) * cell;
+    const pieces = [null, null]; pieces[j.active] = { x, y, rot: j.meRot }; pieces[1 - j.active] = { x: j.opponent.x, y: j.opponent.y, rot: j.opponent.rot };
+    const v = verifyAllReplies(pieces, j.active, K, 2, 3, 1);
+    report(v, pieces, j.active, `cell (${x.toFixed(1)},${y.toFixed(1)})`);
+    if (process.argv.includes('--search')) console.log('      engine depth-2 search says dead at (keep,sweep): ' + searchVerdicts(pieces, j.active, j.rung).join('  '));
+  }
+  console.log(`\ndead certified ${T.dead} (engine agreed on every move in ${T.deadOK}, contradicted ${T.deadBad}); escapes ${T.escape} (engine agreed ${T.escapeOK}, contradicted ${T.escapeBad}); unresolved ${T.unresolved}`);
+} else if (require.main === module && process.argv[2] === '--win-map') {
+  // The cells a searched map marked forced-WON at ply 2: replay the engine's own chosen move (the
+  // same search settings the map used), then ask whether every reply really leaves a throw.
+  const fs = require('fs'), base = process.argv[3], N = +(process.argv[4] || 20), K = REPLICA;
+  const { nnPlanFor } = require('./nnai.js');
+  let j, field, isWin;
+  if (fs.existsSync(base + '.json')) { j = JSON.parse(fs.readFileSync(base + '.json', 'utf8')); const buf = fs.readFileSync(base + '.bin'); field = new Float32Array(buf.buffer, buf.byteOffset, j.res * j.res); isWin = v => Math.abs(v - j.max) < 1e-4; }
+  else { const part = JSON.parse(fs.readFileSync(base + '.part.json', 'utf8')), stamp = JSON.parse(part.stamp); j = { ...JSON.parse(fs.readFileSync(process.argv[5], 'utf8')), res: stamp.res, cx: stamp.cx, cy: stamp.cy, half: stamp.half, rung: stamp.rung }; const buf = fs.readFileSync(base + '.part.bin'); field = new Float32Array(buf.buffer, buf.byteOffset, j.res * j.res); const done = new Set(part.rows); isWin = (v, k) => done.has(Math.floor(k / j.res)) && v >= 1e5; }
+  const cells = []; for (let k = 0; k < field.length; k++) if (Number.isFinite(field[k]) && isWin(field[k], k)) cells.push(k);
+  console.log(`${base}: ${cells.length} forced-win cells found; checking ${Math.min(N, cells.length)}`);
+  const half = j.half != null ? j.half : j.extent, cx = j.cx || 0, cy = j.cy || 0, cell = 2 * half / j.res;
+  const w = eng.AI_LADDER[(j.rung || eng.AI_LADDER.length) - 1].w, evalFn = (e, side) => e.ladderEval(side, w);
+  let holds = 0, broken = 0, unres = 0, win1 = 0;
+  for (let t = 0; t < N && cells.length; t++) {
+    const k = cells.splice(Math.floor(Math.random() * cells.length), 1)[0], i = k % j.res, row = Math.floor(k / j.res);
+    const x = cx - half + (i + 0.5) * cell, y = cy - half + (row + 0.5) * cell;
+    const pieces = [null, null]; pieces[j.active] = { x, y, rot: j.meRot }; pieces[1 - j.active] = { x: j.opponent.x, y: j.opponent.y, rot: j.opponent.rot };
+    load(pieces, j.active); const top = [];
+    const plan = nnPlanFor(eng, null, j.active, { temperature: 0, depth: 2, keepForDepth: 2, rawRoot: true, evalFn, sweepDeg: 9, captureTop: top, captureTopN: 1 });
+    if (!plan) { console.log('  no plan'); continue; }
+    // play it on the law and see whether it is a throw outright or a forced-in-2 claim
+    const lim = swingLimit(pieces, j.active, plan.pivotIdx, plan.dir), rad = Math.min(Math.abs(plan.targetRad), lim);
+    const out = swing(pieces, j.active, plan.pivotIdx, plan.dir, rad, { ...K, record: true });
+    if (out.maxFootR > EDGE) { win1++; console.log(`  cell (${x.toFixed(1)},${y.toFixed(1)}): the move throws outright`); continue; }
+    const after = pieces.map(q => ({ ...q })); after[j.active] = moverAt(pieces[j.active], plan.pivotIdx, plan.dir, rad); after[1 - j.active] = { x: out.opp.x, y: out.opp.y, rot: out.opp.rot };
+    const v = verifyAllReplies(after, 1 - j.active, K, 2, 3, 1);
+    if (v.status === 'dead') { holds++; const c = simCheckDead(after, 1 - j.active, 30); console.log(`  cell (${x.toFixed(1)},${y.toFixed(1)}): forced win HOLDS -- every reply certified lost (worst ${v.worstMargin.toFixed(2)}u); engine agrees ${c.agree}/${c.n}`); }
+    else if (v.status === 'escape') { broken++; const c = simCheckEscape(after, 1 - j.active, v.escape); console.log(`  cell (${x.toFixed(1)},${y.toFixed(1)}): forced win BROKEN -- ${v.why}; engine agrees ${c.agree}`); }
+    else { unres++; console.log(`  cell (${x.toFixed(1)},${y.toFixed(1)}): unresolved -- ${v.why}`); }
+  }
+  console.log(`\nforced-win cells: throws outright ${win1}, forced-in-2 holds ${holds}, broken (a reply escapes) ${broken}, unresolved ${unres}`);
+} else if (require.main === module && process.argv[2] === '--dead') {
+  // The victim to move: is every move answered by a throw? Certified along the six reply arcs,
+  // then checked by the engine on random moves.
+  const N = +(process.argv[3] || 20), K = REPLICA; let tried = 0, win1 = 0; const t0 = Date.now();
+  while (tried < N) {
+    const s = exposedPose(4, 12); if (!s) continue; tried++;
+    if (s.win1) win1++;                                             // the attacker could throw now; the question is whether the victim can fix that
+    const v = verifyAllReplies(s.pieces, s.victim, K, 2, 3, 1);
+    report(v, s.pieces, s.victim, `victim ${s.victim} (foot ${s.inside.toFixed(1)}u inside)`);
+  }
+  console.log(`\n${tried} positions (victim to move, foot 4-12u inside): dead certified ${T.dead} (engine agreed on every move in ${T.deadOK}, contradicted ${T.deadBad}); escapes ${T.escape} (engine agreed ${T.escapeOK}, contradicted ${T.escapeBad}); unresolved ${T.unresolved}; attacker had a throw available in ${win1}   ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+} else if (require.main === module && process.argv[2] === '--in2') {
+  // Sample positions with a victim foot a few units inside the rim and the attacker in reach,
+  // skip those the attacker wins in one, try to certify a forced win in two, check each in the engine.
+  const N = +(process.argv[3] || 20), K = REPLICA;
+  let tried = 0, win1 = 0, cert2 = 0, cert2ok = 0, cert2bad = 0, refused = 0; const t0 = Date.now();
+  while (tried < N) {
+    const s = exposedPose(6, 14); if (!s) continue; tried++;
+    if (s.win1) { win1++; continue; }
+    const { pieces, attacker } = s, fr = eng.CFG.edgeU - s.inside;
+    const r = certifyForcedIn2(pieces, attacker, K);
+    if (r.certified) {
+      cert2++;
+      const s = simCheckForcedIn2(pieces, attacker, r.witness, 30);
+      if (s.agree === s.n) cert2ok++; else { cert2bad++; console.log(`  CONTRADICTED: engine disagreed on ${s.n - s.agree}/${s.n}: ${JSON.stringify(s.fails.slice(0, 2))}`); }
+      console.log(`  forced in 2: attacker ${attacker} plays (${r.witness.pv},${r.witness.dir}) to ${(r.witness.stop * 180 / Math.PI).toFixed(1)}deg; worst certified margin ${r.detail.worstMargin.toFixed(2)}u; engine agrees ${s.agree}/${s.n}   [victim foot ${(eng.CFG.edgeU - fr).toFixed(1)}u inside]`);
+    } else { refused++; if (r.closest) console.log(`  no certificate (closest candidate (${r.closest.c.pv},${r.closest.c.dir})@${(r.closest.c.stop * 180 / Math.PI).toFixed(0)}deg: ${r.closest.v.status} -- ${r.closest.v.why}); refuted by an escape: ${r.refuted}/${r.tried}, unresolved: ${r.unresolvedN}/${r.tried}`); }
+  }
+  console.log(`\n${tried} positions (victim foot 3-10u inside the rim): win-in-1 ${win1}, forced-in-2 certified ${cert2} (engine agreed on every reply in ${cert2ok}, contradicted ${cert2bad}), no certificate ${refused}   ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+} else if (require.main === module && process.argv[2] === '--phase-tol') {
+  // node nn/forced-win.js --phase-tol [n=200] [--events events.json] [--stops 5]
+  // Step 0 of the graph: the constant every pushed-landing claim absorbs, measured before any
+  // level-3 claim is trusted. Events are the law's own sampleEvent set (regenerated -- Math.random
+  // has no seed here -- or a saved set from `node nn/contact-law.js 200 events.json`). Writes
+  // nn/phase-tol.json; forced-win.js reads it at load as PHASE_TOL.
+  const n = /^\d+$/.test(process.argv[3] || '') ? +process.argv[3] : 200, stopsPer = process.argv.includes('--stops') ? +process.argv[process.argv.indexOf('--stops') + 1] : 5;
+  const evPath = process.argv.includes('--events') ? process.argv[process.argv.indexOf('--events') + 1] : null, t0 = Date.now();
+  let events;
+  if (evPath) events = JSON.parse(fs.readFileSync(evPath, 'utf8')).slice(0, n);
+  else { events = []; let tries = 0; while (events.length < n && tries++ < n * 50) { const ev = sampleEvent(); if (ev) events.push(ev); } }
+  console.log(`${events.length} contact events${evPath ? ' from ' + evPath : ' sampled'}; the engine stopped at ${stopsPer} random angles each by random-size (0.3-6 degree) applySwing calls, against the law's 0.4-degree record`);
+  const r = phaseTol(events, stopsPer);
+  console.log(`PHASE_TOL: pushed-pose difference (L1) median ${r.median.toFixed(3)}u p90 ${r.p90.toFixed(3)}u max ${r.max.toFixed(3)}u over ${r.stops} stops; limit difference median ${r.limMedianDeg.toFixed(2)} max ${r.limMaxDeg.toFixed(2)} deg (${r.events} events, ${r.stoppedEarly} stopped early by the engine)   ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+  const out = { phaseTol: r.max, ...r, measured: new Date().toISOString(), events: evPath || 'sampled' };
+  require('./atomic-write.js').atomicWrite(path.join(__dirname, 'phase-tol.json'), JSON.stringify(out, null, 1) + '\n');
+  console.log(`written to nn/phase-tol.json (phaseTol = ${r.max.toFixed(3)}u)${r.max > 0.5 ? ' -- above 0.5u: level-3 gaps on pushing arms will need the record re-swept at the gap\'s own phase' : ''}`);
+} else if (require.main === module && process.argv[2] === '--star') {
+  // node nn/forced-win.js --star bx,..,rrot --mover m [--h 0.5] [--out nn/family-graph.jsonl] [--seed tag]
+  // Step 1: a dead point (the mover to move loses every move to a throw) becomes a dead BALL in the
+  // joint space, node P2-xxxx. Six reach envelopes over the mover's box, 13 dead certificates swept
+  // to them, the star's Lipschitz radius, the engine on random poses in the ball, then the row.
+  const K = REPLICA, nums = process.argv[3].split(',').map(Number);
+  const mover = process.argv.includes('--mover') ? +process.argv[process.argv.indexOf('--mover') + 1] : 0;
+  const h = process.argv.includes('--h') ? +process.argv[process.argv.indexOf('--h') + 1] : 0.5;
+  const outPath = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : GRAPH_PATH;
+  const seed = process.argv.includes('--seed') ? process.argv[process.argv.indexOf('--seed') + 1] : null;
+  const node = { id: null, plies: 2, side: mover, kind: 'point', pose: nums, eps: 0, margin: null, lip: null, need: null, reach: null, star: null, arc: null, child: null, samples: null, engine: null, koProof: false, seed, key: dedupeKey(nums) };
+  const dup = loadGraph(outPath).find(r => r.kind === 'point' && r.plies === 2 && r.key === node.key && r.eps > 0);
+  if (dup) { console.log(`a dead ball with this seed's key is already in ${outPath}: ${dup.id} (eps ${dup.eps.toFixed(3)}u, h ${dup.star && dup.star.h}); nothing to do`); process.exit(0); }
+  console.log(`star on ${mover === 0 ? 'blue' : 'red'} to move at [${nums.join(',')}], h ${h}u (rotation ${(h / R).toFixed(4)} rad)`);
+  const t0 = Date.now();
+  certifyStar(node, h, K, { log: console.log });
+  const st = node.star;
+  if (st.refused) { console.log(`refused: a reach envelope changes stopping event inside the box -- split the box along the named axis and rerun\n  ${st.refused.join('\n  ')}`); process.exit(1); }
+  const dead = st.probes.filter(p => p.status === 'dead').length;
+  console.log(`star h=${h}u: ${dead}/13 dead, profiles consistent ${st.consistentArms}/6 arms (${st.argmaxSwitches} argmax switches, a diagnostic); W centre ${node.margin.toFixed(2)}, min ${st.minW.toFixed(2)}; max one-sided |dW|/h ${st.maxSlope.toFixed(2)}/u (central ${st.maxSlopeCentral.toFixed(2)}/u) -> lipStar ${st.lipStar.toFixed(2)} -> eps = min(${h}, ${(node.margin / st.lipStar).toFixed(2)}) = ${node.eps.toFixed(2)}u (L1, both pieces)   (${((Date.now() - t0) / 60000).toFixed(1)} min, limit memo ${memoStats.hits}/${memoStats.hits + memoStats.misses} hits)`);
+  if (st.argmaxSwitches) console.log(`  argmax switches: ${st.argmaxNotes.slice(0, 4).join('; ')}${st.argmaxSwitches > 4 ? `; ... (${st.argmaxSwitches} in all)` : ''}`);
+  if (!st.certified) { console.log(`refused: ${dead < 13 ? st.probes.filter(p => p.status !== 'dead').map(p => `${p.tag} is ${p.status}: ${p.why}`).join('; ') : st.inconsistent.join('; ')}`); process.exit(1); }
+  node.engine = simCheckDeadBall(node, 25, 8);
+  console.log(`engine: ${node.engine.agree}/${node.engine.n} random poses in the ball lose every one of ${node.engine.moves} random moves to a throw`);
+  if (node.engine.agree < node.engine.n) { console.log(`CONTRADICTED -- the engine escaped from inside a certified ball: ${JSON.stringify(node.engine.fails.slice(0, 3))}\nhalting: this is a bug in the certificate, not a rounding; nothing appended`); process.exit(2); }
+  const id = appendNode(node, outPath);
+  console.log(`appended ${id} (plies 2, side ${mover}, eps ${node.eps.toFixed(3)}u, W ${node.margin.toFixed(3)}u) to ${outPath}`);
+} else if (require.main === module && process.argv[2] === '--dead-cell') {
+  // node nn/forced-win.js --dead-cell bx,..,rrot --mover m [--h 1.0] [--hA h] [--n 3] [--nA n] [--threads t] [--engine 25] [--out f]
+  // A dead point becomes a dead CELL: the victim's box +-h (rotation +-h/R), the attacker's +-hA,
+  // n grid points per victim axis and nA per attacker axis; exact envelopes, every grid pose
+  // certified, the gap rule between grid neighbours, then the engine on random poses in the box.
+  const nums = process.argv[3].split(',').map(Number), arg = (name, def) => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : def;
+  const mover = +arg('--mover', 0), h = +arg('--h', 1), hA = +arg('--hA', h), n = +arg('--n', 3), nA = +arg('--nA', n), threads = +arg('--threads', 1), engineN = +arg('--engine', 25), outPath = arg('--out', null), minStep = +arg('--minStep', 0.05);
+  const grid = [0, 1, 2, 3, 4, 5].map(d => (d < 3) === (mover === 0) ? n : nA), half = [0, 1, 2, 3, 4, 5].map(d => grid[d] > 1 ? ((d < 3) === (mover === 0) ? h : hA) : 0);
+  if (nA === 1 && hA > 0) console.log(`attacker grid has one point, so the attacker is held fixed (--hA ignored)`);
+  console.log(`dead cell on ${mover === 0 ? 'blue' : 'red'} to move at [${nums.join(',')}]: victim +-${h}u x ${n}, attacker +-${hA}u x ${nA} (${grid.reduce((a, b) => a * b, 1)} grid poses${threads > 1 ? `, ${threads} threads` : ''})`);
+  const minHalf = +arg('--minHalf', 0.1);
+  certifyDeadCells(piecesOf(nums), mover, half, grid, REPLICA, { threads, minStep, minHalf, log: console.log }).then(v => {
+    console.log(`cells: ${v.certified}/${v.of} leaves certified, ${(100 * v.fraction).toFixed(0)}% of the box's volume${v.onBoard < 0.999 ? ` (${(100 * v.fractionOnBoard).toFixed(0)}% of its on-board part; ${(100 * v.onBoard).toFixed(0)}% of the box is on the board, ${v.offboard} leaves entirely off it)` : ''}   (${(v.seconds / 60).toFixed(1)} min)`);
+    for (const l of v.leaves) {
+      if (!l.certified || engineN <= 0) continue;
+      l.engine = simCheckDeadBox(piecesOf(l.centre), mover, l.half, engineN, 8);
+      console.log(`engine on leaf at [${l.centre.map(x => +x.toFixed(3)).join(',')}] +-${[0, 1, 2].map(d => l.half[(mover * 3) + d].toFixed(2)).join('/')}u: ${l.engine.agree}/${l.engine.n} random poses lose every one of ${l.engine.moves} random moves${l.engine.fails.length ? '; CONTRADICTED: ' + JSON.stringify(l.engine.fails.slice(0, 3)) : ''}`);
+    }
+    if (outPath) fs.appendFileSync(outPath, JSON.stringify({ kind: 'cells', pose: nums, mover, half, n: grid, minStep, minHalf, certified: v.certified, of: v.of, fraction: +v.fraction.toFixed(4), leaves: v.leaves.map(l => ({ ...l, minAccept: Number.isFinite(l.minAccept) ? +l.minAccept.toFixed(3) : null, worstMargin: l.worstMargin != null && Number.isFinite(l.worstMargin) ? +l.worstMargin.toFixed(3) : null, acceptMargin: l.acceptMargin != null && Number.isFinite(l.acceptMargin) ? +l.acceptMargin.toFixed(3) : null, engine: l.engine ? { n: l.engine.n, agree: l.engine.agree, fails: l.engine.fails.slice(0, 3) } : null, seconds: +l.seconds.toFixed(1) })), seconds: +v.seconds.toFixed(1), stamp: new Date().toISOString() }) + '\n');
+    if (v.leaves.some(l => l.engine && l.engine.agree < l.engine.n)) process.exit(2);
+    if (!v.certified) process.exit(1);
+  });
+} else if (require.main === module && process.argv[2] === '--azimuth') {
+  // node nn/forced-win.js --azimuth bx,..,rrot --mover m [--step 5] [--out f]
+  // The position rotated about the board centre in steps, the full certificate at each azimuth:
+  // the dead arcs around the circle and the signature changes that bound them.
+  const nums = process.argv[3].split(',').map(Number), arg = (name, def) => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : def;
+  const mover = +arg('--mover', 0), step = +arg('--step', 5), outPath = arg('--out', null);
+  console.log(`azimuth scan of ${mover === 0 ? 'blue' : 'red'} to move at [${nums.join(',')}], every ${step} degrees`);
+  const t0 = Date.now(), a = azimuthScan(piecesOf(nums), mover, REPLICA, step, { log: console.log });
+  for (const r of a.runs) console.log(`  ${r.status} ${r.from}-${r.to} deg (${r.n} azimuths)${Number.isFinite(r.minW) ? ' min W ' + r.minW.toFixed(2) : ''}${r.status !== 'dead' && r.why ? ': ' + r.why.slice(0, 100) : ''}`);
+  console.log(`dead at ${a.dead}/${a.pts.length} azimuths, ${a.signatures} distinct stopping-event signatures around the circle (${((Date.now() - t0) / 60000).toFixed(1)} min)`);
+  if (outPath) fs.appendFileSync(outPath, JSON.stringify({ kind: 'azimuth', pose: nums, mover, step, dead: a.dead, of: a.pts.length, signatures: a.signatures, runs: a.runs, pts: a.pts.map(p => ({ deg: p.deg, status: p.status, W: p.W, lims: p.lims.map(l => +(l.lim / DEG).toFixed(2)), sigs: p.lims.map(l => l.sig) })), stamp: new Date().toISOString() }) + '\n');
+} else if (require.main === module && process.argv[2] === '--unwind') {
+  // node nn/forced-win.js --unwind <nodeId> [--graph nn/family-graph.jsonl]
+  // Step 2: the WIN(plies+1) tubes of the side that moved into a point node, one per arm and
+  // contact-free run of its centre fibre, each engine-checked, appended as A3-xxxx (A5- from a
+  // plies-4 point). The child must have eps > 0: the landing window is its ball.
+  const K = REPLICA, id = process.argv[3], graphPath = process.argv.includes('--graph') ? process.argv[process.argv.indexOf('--graph') + 1] : GRAPH_PATH;
+  const graph = loadGraph(graphPath), node = graph.find(r => r.id === id);
+  if (!node) { console.log(`no node ${id} in ${graphPath}`); process.exit(1); }
+  if (node.kind !== 'point') { console.log(`${id} is an arc; only point nodes unwind`); process.exit(1); }
+  if (!(node.eps > 0)) { console.log(`${id} has eps 0: a tube lands inside the child's ball, so the child must be starred first`); process.exit(1); }
+  const have = graph.filter(r => r.kind === 'arc' && r.child === id);
+  if (have.length) console.log(`note: ${have.length} arc${have.length === 1 ? '' : 's'} already unwound from ${id} (${have.map(r => r.id).join(', ')}); nodes are immutable, so new ones are appended`);
+  console.log(`unwinding ${id}: ${node.side === 0 ? 'blue' : 'red'} to move loses (plies ${node.plies}, eps ${(node.eps || 0).toFixed(3)}u, W ${node.margin != null ? node.margin.toFixed(3) : '-'}u); ${node.side === 0 ? 'red' : 'blue'}'s six arms as pivot fibres, the centre fibre's contact-free runs and landing windows, a tube per run`);
+  const t0 = Date.now(), arcs = unwindArcs(node, K, { log: console.log });
+  let written = 0;
+  const armText = a => `arm (${a.arc.pv},${a.arc.dir}) s ${(a.arc.sLo / DEG).toFixed(2)}-${(a.arc.sHi / DEG).toFixed(2)}deg`;
+  for (const arc of arcs) {
+    if (arc.engine.agree < arc.engine.n) { console.log(`CONTRADICTED on ${armText(arc)}: ${JSON.stringify(arc.engine.fails.slice(0, 3))}\nhalting: this is a bug; ${written} arcs appended before it`); process.exit(2); }
+    const aid = appendNode(arc, graphPath); written++;
+    console.log(`  appended ${aid}: ${armText(arc)}, tube rW ${arc.arc.rW.toFixed(4)}u rV ${arc.arc.rV.toFixed(4)}u, window ${arc.arc.window.minDeg.toFixed(3)} deg, child ${id}`);
+  }
+  console.log(`\n${written} WIN(${node.plies + 1}) arc${written === 1 ? '' : 's'} for ${node.side === 0 ? 'red' : 'blue'} into ${id}, ${arcs.reduce((a, r) => a + (r.arc.sHi - r.arc.sLo) / DEG, 0).toFixed(1)} degrees of start angle in all, ${arcs.filter(a => a.eps > 0).length} with a positive tube radius   (${((Date.now() - t0) / 60000).toFixed(1)} min)`);
+} else if (require.main === module) {
+  // Demo on recorded contact events: around every engine throw, try to certify a box of victim
+  // poses of half-width `half` and check the claim against the engine.
+  const rows = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));
+  const half = +(process.argv[3] || 0.5), h = +(process.argv[4] || 0.25);
+  const K = REPLICA;                                           // certify in the engine's own metric
+  let tried = 0, cert = 0, certOK = 0, certBad = 0, refusedGraze = 0, refusedMargin = 0;
+  for (const r of rows) {
+    if (!r.engine.off) continue;
+    const v = r.pieces[1 - r.active];
+    const box = { x: [v.x - half, v.x + half], y: [v.y - half, v.y + half], rot: [v.rot - half / R, v.rot + half / R] };
+    const c = certifyThrowBox(r.pieces, r.active, r.pv, r.dir, box, h, K);
+    tried++;
+    if (c.certified) {
+      cert++;
+      const s = simCheck(r.pieces, r.active, r.pv, r.dir, box, 40, true);
+      if (s.agree === s.n) certOK++; else { certBad++; console.log(`  CONTRADICTED: event ${rows.indexOf(r)} min margin ${c.minMargin.toFixed(2)} need ${c.need.toFixed(2)} -- engine disagreed on ${s.n - s.agree}/${s.n}`); }
+      console.log(`  certified: min margin ${c.minMargin.toFixed(2)}u > ${c.need.toFixed(2)}u (lip ${c.lip.toFixed(2)}), ${c.samples} samples; engine agrees ${s.agree}/${s.n}`);
+    } else if (c.graze) { refusedGraze++; console.log(`  refused (grazing): ${c.graze}`); }
+    else { refusedMargin++; console.log(`  refused (margin): min ${c.minMargin.toFixed(2)}u vs need ${c.need.toFixed(2)}u (lip ${c.lip.toFixed(2)})`); }
+  }
+  console.log(`\nboxes of half-width ${half}u around ${tried} engine throws: certified ${cert} (engine agreed on every pose in ${certOK}, contradicted ${certBad}); refused ${refusedGraze} for grazing, ${refusedMargin} for margin`);
+}
