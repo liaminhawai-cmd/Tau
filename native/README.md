@@ -595,7 +595,11 @@ npm run test:steam
 The tests execute the shipped game and desktop presentation offline in JSDOM,
 with simulated input, timers and a CPU canvas. They cover fallback launch,
 keyboard/controller turns, pause/AI resume, settings, results and rematch. They
-do not certify rendering, audio, real controller hardware or the Steam overlay.
+also check every custom shader uniform's declaration and runtime binding. Linux
+compiles and links the shared board shader hooks with Mesa's OpenGL ES compiler
+(`libegl1` and `libgl1-mesa-dri`, installed by CI); this catches shader errors that
+a CPU canvas cannot show. These checks do not certify final GPU appearance,
+audio, real controller hardware or the Steam overlay.
 Before a release, play a complete match in the packaged application on the target
 GPU, check a physical controller, and test the overlay with the real Steam app ID.
 
