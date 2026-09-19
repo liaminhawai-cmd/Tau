@@ -1,11 +1,11 @@
 # Tau NN training status
-_Last updated: 2026-09-19T07:23:02.720Z_
+_Last updated: 2026-09-19T07:23:05.893Z_
 
 **Self-play batch:** 158
-**Stage:** mutant 007 training (scratch, 30 epochs, started 2026-09-19T07:23:02.720Z)
+**Stage:** dual 008 training (policy+scratch, 40 epochs, started 2026-09-19T07:23:05.893Z)
 **mix:** (see selfplay log: fixed-rung training reference)
 
-**Dual pool:** (not initialized yet)
+**Dual pool:** disabled
 
 **Last gate result:** (none yet)
 
