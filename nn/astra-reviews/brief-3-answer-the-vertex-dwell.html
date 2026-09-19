@@ -1,0 +1,1294 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tau — the vertex dwell and the missing throw proof</title><style>*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#faf9f6;color:#202c3d;font:17px/1.7 system-ui,-apple-system,Segoe UI,sans-serif}main{max-width:1120px;margin:auto;padding:50px 32px 100px}h1{font:600 clamp(36px,5.4vw,62px)/1.12 Georgia,serif;letter-spacing:-.025em;max-width:950px;margin:20px 0 28px}h2{font:600 31px/1.25 Georgia,serif;border-top:1px solid #dce1e6;margin:62px 0 24px;padding-top:34px}h3{font:650 20px/1.4 system-ui;margin:34px 0 12px}p,li{max-width:940px}a{color:#145ba1;text-underline-offset:3px}a[id]{scroll-margin-top:24px}code{font: .86em/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;background:#edf0f3;padding:1px 4px;border-radius:3px;overflow-wrap:anywhere}pre{background:#edf2f7;border-left:3px solid #3974a8;padding:20px 22px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;margin:22px 0}pre code{font-size:14px;background:none;padding:0;border-radius:0}.table-wrap{overflow-x:auto;margin:24px 0}table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.5;background:#fff;min-width:620px}th,td{padding:12px 15px;text-align:left;vertical-align:top;border-bottom:1px solid #e5e9ee}th{background:#eaf0f5}nav{background:#edf2f6;border:1px solid #d6e0ea;padding:16px 26px 22px;margin:35px 0;border-radius:8px}nav h2{font:650 17px system-ui;border:0;margin:0;padding:0}nav ol{columns:2;column-gap:40px;padding-left:21px;margin:10px 0 0}nav li{break-inside:avoid;font-size:15px;margin:6px 0}li{padding-left:4px;margin:10px 0}figure{margin:28px 0;background:#fff;border:1px solid #dce1e6;padding:13px 8px;border-radius:8px}.drawing svg{width:100%;max-width:100%;height:auto;display:block}figcaption{font-size:13px;color:#657386;padding:12px 18px 4px}button{cursor:pointer;font:600 12px system-ui;color:#145ba1;background:#f3f7fa;border:1px solid #c6d4e2;padding:7px 12px;border-radius:5px}.zoom{display:block;margin:0 10px 8px auto}dialog{width:96vw;height:94vh;max-width:none;max-height:none;border:1px solid #b3bdc9;border-radius:8px;padding:0}dialog::backdrop{background:#132234bb}.dialog-top{position:sticky;top:0;background:#eaf0f5;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;z-index:5;font-size:13px}.zoom-content{overflow:auto;padding:15px}.zoom-content svg{width:1550px;height:auto}footer{font-size:13px;color:#657386;margin-top:50px;border-top:1px solid #dce1e6;padding-top:15px}@media(max-width:660px){body{font-size:16px}main{padding:25px 17px 70px}h2{font-size:26px}h3{font-size:19px}nav{padding:18px}nav ol{columns:1}pre{padding:12px}pre code{font-size:12px}th,td{padding:10px 12px}figure{padding:8px 2px}}@media print{body{background:white;font-size:10pt}main{padding:0;max-width:none}h2{font-size:20pt}h3{font-size:13pt}h2,h3{break-after:avoid}pre,figure{break-inside:avoid}pre code{font-size:8pt}.zoom,dialog{display:none}table{min-width:0;font-size:8pt}nav{break-after:page}a{color:inherit}}</style></head><body><main><h1>Tau: the vertex dwell and the missing throw proof</h1>
+<p>Review of Brief 3 · 18 September 2026 · PR #18 at <code>2d39d4d53855a9a1aeb86e2674a35ec0aef0e8da</code></p>
+<p><strong>The vertex really does simplify the contact calculation. There is also a concrete source of avoidable width in the checker: it retains interior-contact normals even when only the vertex contact is possible. But the proposed shortcut—one parked regime from step 74 through the rest of the sweep—is false on the nominal trajectory.</strong> Some pushes start at the vertex and finish off it.</p>
+<p>The practical next step is to make contact regimes conditional on their geometric feasibility, use the exact vertex projection where those conditions hold, and retain the possible transitions during a push. This review supplies the formulas and tests for that change. It does <strong>not</strong> claim a completed interval certificate for the initial pose box.</p>
+<nav aria-label="Report index"><h2>Index</h2>
+<ol>
+<li><a href="#source">Which source and which claims</a></li>
+<li><a href="#crossing">Why the second crossing inflates the enclosure</a></li>
+<li><a href="#formula">Exact vertex contact and its uncertainty</a></li>
+<li><a href="#guards">When the park is valid</a></li>
+<li><a href="#persistence">Persistence across a push and through a sweep</a></li>
+<li><a href="#smooth">What changes on the true arc</a></li>
+<li><a href="#implementation">Implementation order and reproduction</a></li>
+</ol></nav>
+<p><a id="source"></a></p>
+<h2>1. Which source and which claims</h2>
+<p>I inspected the actual <a href="https://github.com/liaminhawai-cmd/Tau/blob/2d39d4d53855a9a1aeb86e2674a35ec0aef0e8da/nn/throw-cert.js">616-line checker on PR #18</a>, its contact-law module, and the game code extracted from <code>index.html</code>. All eleven downloaded source files were checked against their Git blob hashes. The diagnostic scripts add exports and observation callbacks in memory; the repository was not changed.</p>
+<p>The original seed is:</p>
+<pre><code class="language-text">blue: (-27.3934, -36.4088, 1.2052)
+red:  (-11.7593, -23.2838, 2.9442)
+</code></pre>
+<p>First apply blue&#39;s 8° swing about foot 0 in direction +1. Then red attacks about foot 0 in direction −1, with a 46° limit. Angles in poses are radians; reported sweep angles are degrees. This report uses <strong>138 substeps of exactly ⅓°</strong>, matching <code>throw-cert.js</code>. “Before” means after advancing the attacker for that substep but before pushing the victim. “After” means after the full push solver.</p>
+<p>I accept the corrections to the earlier review: Lemmas A and B are branch-local, the checker already retains both tied chord rectangles, and the enclosure basis does not degenerate at <code>rn = 0</code>. The earlier tied-branch counterexample remains a warning about global smoothness; it does not establish that this checker drops the other branch. The obsolete material-point overshoot estimate has been replaced in the inspected source.</p>
+<p>The new explainer update concerns a different branch, <a href="https://github.com/liaminhawai-cmd/Tau/tree/claude/nn-arena-matches-tm1hi9"><code>claude/nn-arena-matches-tm1hi9</code></a>. I confirmed that <code>nn/forced-win.js</code> and <code>nn/contact-law.js</code> exist there and were absent from <code>main</code> when checked. They also exist on PR #18. The named branch currently resolves to <a href="https://github.com/liaminhawai-cmd/Tau/commit/5217e4b89272c93ec55226d1ea1ee3f553cecba0"><code>5217e4b8</code></a>, whose latest change saves playoff training rows; it has advanced beyond the commit described in the message. The Claude artifact could not be retrieved, so this review checks the code and the pasted update, not the artifact&#39;s full wording. Explaining a search verdict does not discharge the remaining interval-proof obligations.</p>
+<p><a id="crossing"></a></p>
+<h2>2. Why the second crossing inflates the enclosure</h2>
+<p><strong>The near-simultaneous feature changes matter, but approaching a chord endpoint does not make Lemma A&#39;s strong-convexity constant blow up.</strong> For two nonparallel fixed chords parameterized by arclength, the squared-distance Hessian is constant:</p>
+<pre><code class="language-text">H = 2 [[1, −a·b], [−a·b, 1]]
+μ = 2(1 − |a·b|) &gt; 0.
+</code></pre>
+<p>The same strong-convexity/variational-inequality argument applies on the closed parameter rectangle, including its boundary. What changes near a corner is which constraints are active. The bound becomes poor when the chords approach parallelism or its input uncertainty is large, not merely because the minimizer reaches an endpoint.</p>
+<p>At the first attacker crossing, the victim contact is well inside its chord. At the second, attacker-branch competition and the victim&#39;s endpoint condition enter the same small neighborhood. In the checker&#39;s actual ⅓° trace, step 73 already has victim angle <strong>30.0124178°</strong>, only <strong>0.005002u</strong> along the chord from the 30° vertex. This agrees with the later coordinator correction. Comparing it with step 73 of a 139-step trace mixes different physical angles; the discrepancy is material at this transition.</p>
+<h3>A source-level cause that survives shrinking the box</h3>
+<p>In <code>analyse()</code>, each retained chord rectangle contributes candidate vertex regimes when an endpoint might be active. But the code then <strong>unconditionally appends the interior/interior regime</strong>, using the normal perpendicular to both chord tangents. It does so twice; the duplicate does not widen the hull further, but the impossible interior regime does.</p>
+<p>A rectangle can remain a valid candidate because its minimum is at its endpoint. That does not make its unconstrained interior normal feasible. At a strict vertex minimum, the two adjacent victim rectangles describe the same physical contact, with one normal.</p>
+<p>For the <strong>single exact pose before step 74</strong>, the result is:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Quantity</th>
+<th align="right">Actual vertex geometry</th>
+<th align="right">Current <code>analyse()</code> enclosure</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Horizontal normal bearing</td>
+<td align="right">−108.5113656°</td>
+<td align="right">−108.6817498° to −102.2341703°</td>
+</tr>
+<tr>
+<td>Horizontal fraction <code>hf</code></td>
+<td align="right">0.5524476</td>
+<td align="right">0.4429345 to 0.5560959</td>
+</tr>
+<tr>
+<td>Lever scalar <code>rn</code></td>
+<td align="right">+0.5694232u</td>
+<td align="right">−0.6950432u to +0.6037184u</td>
+</tr>
+</tbody></table></div>
+<p>There is <strong>zero pose uncertainty</strong> in this test. The 6.4476° bearing width is therefore an avoidable overestimate, not unavoidable variation across that pose set. The true normal is included, so this is a tightness defect, not an under-enclosure demonstrated by this example.</p>
+<figure><button class="zoom" type="button">Enlarge figure</button><div class="drawing"><svg role="img" aria-label="The current checker retains a roughly 6.5-degree normal interval at three exact parked poses. The blue dot is the unique geometric normal." xmlns:xlink="http://www.w3.org/1999/xlink" width="792pt" height="252pt" viewBox="0 0 792 252" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-09-18T11:49:07.523451</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.8, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="singleton-cones-figure_1">
+  <g id="singleton-cones-patch_1">
+   <path d="M 0 252 
+L 792 252 
+L 792 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="singleton-cones-axes_1">
+   <g id="singleton-cones-patch_2">
+    <path d="M 52.541021 189.588278 
+L 788.99976 189.588278 
+L 788.99976 30.878209 
+L 52.541021 30.878209 
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="singleton-cones-matplotlib.axis_1">
+    <g id="singleton-cones-xtick_1">
+     <g id="singleton-cones-line2d_1">
+      <path d="M 110.529898 189.588278 
+L 110.529898 30.878209 
+" clip-path="url(#singleton-cones-pdd1059f3b1)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="singleton-cones-line2d_2">
+      <defs>
+       <path id="singleton-cones-med4c2497fc" d="M 0 0 
+L 0 3.5 
+" style="stroke: #526174; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#singleton-cones-med4c2497fc" x="110.529898" y="189.588278" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="singleton-cones-text_1">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="110.529898" y="204.94656" transform="rotate(-0 110.529898 204.94656)">−112</text>
+     </g>
+    </g>
+    <g id="singleton-cones-xtick_2">
+     <g id="singleton-cones-line2d_3">
+      <path d="M 226.507652 189.588278 
+L 226.507652 30.878209 
+" clip-path="url(#singleton-cones-pdd1059f3b1)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="singleton-cones-line2d_4">
+      <g>
+       <use xlink:href="#singleton-cones-med4c2497fc" x="226.507652" y="189.588278" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="singleton-cones-text_2">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="226.507652" y="204.94656" transform="rotate(-0 226.507652 204.94656)">−110</text>
+     </g>
+    </g>
+    <g id="singleton-cones-xtick_3">
+     <g id="singleton-cones-line2d_5">
+      <path d="M 342.485407 189.588278 
+L 342.485407 30.878209 
+" clip-path="url(#singleton-cones-pdd1059f3b1)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="singleton-cones-line2d_6">
+      <g>
+       <use xlink:href="#singleton-cones-med4c2497fc" x="342.485407" y="189.588278" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="singleton-cones-text_3">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="342.485407" y="204.94656" transform="rotate(-0 342.485407 204.94656)">−108</text>
+     </g>
+    </g>
+    <g id="singleton-cones-xtick_4">
+     <g id="singleton-cones-line2d_7">
+      <path d="M 458.463161 189.588278 
+L 458.463161 30.878209 
+" clip-path="url(#singleton-cones-pdd1059f3b1)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="singleton-cones-line2d_8">
+      <g>
+       <use xlink:href="#singleton-cones-med4c2497fc" x="458.463161" y="189.588278" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="singleton-cones-text_4">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="458.463161" y="204.94656" transform="rotate(-0 458.463161 204.94656)">−106</text>
+     </g>
+    </g>
+    <g id="singleton-cones-xtick_5">
+     <g id="singleton-cones-line2d_9">
+      <path d="M 574.440915 189.588278 
+L 574.440915 30.878209 
+" clip-path="url(#singleton-cones-pdd1059f3b1)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="singleton-cones-line2d_10">
+      <g>
+       <use xlink:href="#singleton-cones-med4c2497fc" x="574.440915" y="189.588278" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="singleton-cones-text_5">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="574.440915" y="204.94656" transform="rotate(-0 574.440915 204.94656)">−104</text>
+     </g>
+    </g>
+    <g id="singleton-cones-xtick_6">
+     <g id="singleton-cones-line2d_11">
+      <path d="M 690.418669 189.588278 
+L 690.418669 30.878209 
+" clip-path="url(#singleton-cones-pdd1059f3b1)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="singleton-cones-line2d_12">
+      <g>
+       <use xlink:href="#singleton-cones-med4c2497fc" x="690.418669" y="189.588278" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="singleton-cones-text_6">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="690.418669" y="204.94656" transform="rotate(-0 690.418669 204.94656)">−102</text>
+     </g>
+    </g>
+    <g id="singleton-cones-text_7">
+     <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #334155" x="420.770391" y="219.592497" transform="rotate(-0 420.770391 219.592497)">Horizontal contact-normal bearing (degrees)</text>
+    </g>
+   </g>
+   <g id="singleton-cones-matplotlib.axis_2">
+    <g id="singleton-cones-ytick_1">
+     <g id="singleton-cones-line2d_13">
+      <defs>
+       <path id="singleton-cones-m3a788cb451" d="M 0 0 
+L -3.5 0 
+" style="stroke: #526174; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#singleton-cones-m3a788cb451" x="52.541021" y="57.329887" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="singleton-cones-text_8">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #526174" x="45.541021" y="61.509028" transform="rotate(-0 45.541021 61.509028)">Step 74</text>
+     </g>
+    </g>
+    <g id="singleton-cones-ytick_2">
+     <g id="singleton-cones-line2d_14">
+      <g>
+       <use xlink:href="#singleton-cones-m3a788cb451" x="52.541021" y="110.233244" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="singleton-cones-text_9">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #526174" x="45.541021" y="114.412384" transform="rotate(-0 45.541021 114.412384)">Step 80</text>
+     </g>
+    </g>
+    <g id="singleton-cones-ytick_3">
+     <g id="singleton-cones-line2d_15">
+      <g>
+       <use xlink:href="#singleton-cones-m3a788cb451" x="52.541021" y="163.1366" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="singleton-cones-text_10">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #526174" x="45.541021" y="167.315741" transform="rotate(-0 45.541021 167.315741)">Step 84</text>
+     </g>
+    </g>
+   </g>
+   <g id="singleton-cones-line2d_16">
+    <path d="M 302.951502 57.329887 
+L 676.839395 57.329887 
+" clip-path="url(#singleton-cones-pdd1059f3b1)" style="fill: none; stroke: #c06532; stroke-opacity: 0.65; stroke-width: 8; stroke-linecap: round"/>
+   </g>
+   <g id="singleton-cones-line2d_17">
+    <path d="M 184.287079 110.233244 
+L 563.060279 110.233244 
+" clip-path="url(#singleton-cones-pdd1059f3b1)" style="fill: none; stroke: #c06532; stroke-opacity: 0.65; stroke-width: 8; stroke-linecap: round"/>
+   </g>
+   <g id="singleton-cones-line2d_18">
+    <path d="M 104.356009 163.1366 
+L 486.197324 163.1366 
+" clip-path="url(#singleton-cones-pdd1059f3b1)" style="fill: none; stroke: #c06532; stroke-opacity: 0.65; stroke-width: 8; stroke-linecap: round"/>
+   </g>
+   <g id="singleton-cones-line2d_19"/>
+   <g id="singleton-cones-line2d_20"/>
+   <g id="singleton-cones-patch_3">
+    <path d="M 52.541021 189.588278 
+L 52.541021 30.878209 
+" style="fill: none; stroke: #cbd5e1; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="singleton-cones-patch_4">
+    <path d="M 52.541021 189.588278 
+L 788.99976 189.588278 
+" style="fill: none; stroke: #cbd5e1; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="singleton-cones-text_11">
+    <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #243247" x="686.117615" y="60.089262" transform="rotate(-0 686.117615 60.089262)">6.45° width</text>
+   </g>
+   <g id="singleton-cones-text_12">
+    <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #243247" x="572.338499" y="112.992619" transform="rotate(-0 572.338499 112.992619)">6.53° width</text>
+   </g>
+   <g id="singleton-cones-text_13">
+    <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #243247" x="495.475545" y="165.895975" transform="rotate(-0 495.475545 165.895975)">6.58° width</text>
+   </g>
+   <g id="singleton-cones-text_14">
+    <text style="font-size: 13px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #243247" x="52.541021" y="12.878209" transform="rotate(-0 52.541021 12.878209)">An artificial cone remains even when the pose set is a single point</text>
+   </g>
+   <g id="singleton-cones-line2d_21">
+    <defs>
+     <path id="singleton-cones-m8d3c85c598" d="M 0 5 
+C 1.326016 5 2.597899 4.473168 3.535534 3.535534 
+C 4.473168 2.597899 5 1.326016 5 0 
+C 5 -1.326016 4.473168 -2.597899 3.535534 -3.535534 
+C 2.597899 -4.473168 1.326016 -5 0 -5 
+C -1.326016 -5 -2.597899 -4.473168 -3.535534 -3.535534 
+C -4.473168 -2.597899 -5 -1.326016 -5 0 
+C -5 1.326016 -4.473168 2.597899 -3.535534 3.535534 
+C -2.597899 4.473168 -1.326016 5 0 5 
+z
+" style="stroke: #156f95"/>
+    </defs>
+    <g clip-path="url(#singleton-cones-pdd1059f3b1)">
+     <use xlink:href="#singleton-cones-m8d3c85c598" x="312.831891" y="57.329887" style="fill: #156f95; stroke: #156f95"/>
+    </g>
+   </g>
+   <g id="singleton-cones-line2d_22">
+    <g clip-path="url(#singleton-cones-pdd1059f3b1)">
+     <use xlink:href="#singleton-cones-m8d3c85c598" x="259.931742" y="110.233244" style="fill: #156f95; stroke: #156f95"/>
+    </g>
+   </g>
+   <g id="singleton-cones-line2d_23">
+    <g clip-path="url(#singleton-cones-pdd1059f3b1)">
+     <use xlink:href="#singleton-cones-m8d3c85c598" x="230.678216" y="163.1366" style="fill: #156f95; stroke: #156f95"/>
+    </g>
+   </g>
+   <g id="singleton-cones-legend_1">
+    <g id="singleton-cones-line2d_24">
+     <path d="M 191.911797 242.364233 
+L 201.911797 242.364233 
+L 211.911797 242.364233 
+" style="fill: none; stroke: #c06532; stroke-opacity: 0.65; stroke-width: 7; stroke-linecap: square"/>
+    </g>
+    <g id="singleton-cones-text_15">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #243247" x="219.911797" y="245.864233" transform="rotate(-0 219.911797 245.864233)">Current analyse() enclosure, zero pose uncertainty</text>
+    </g>
+    <g id="singleton-cones-line2d_25">
+     <defs>
+      <path id="singleton-cones-m68f8bb1a80" d="M 0 4 
+C 1.060812 4 2.078319 3.578535 2.828427 2.828427 
+C 3.578535 2.078319 4 1.060812 4 0 
+C 4 -1.060812 3.578535 -2.078319 2.828427 -2.828427 
+C 2.078319 -3.578535 1.060812 -4 0 -4 
+C -1.060812 -4 -2.078319 -3.578535 -2.828427 -2.828427 
+C -3.578535 -2.078319 -4 -1.060812 -4 0 
+C -4 1.060812 -3.578535 2.078319 -2.828427 2.828427 
+C -2.078319 3.578535 -1.060812 4 0 4 
+z
+" style="stroke: #156f95"/>
+     </defs>
+     <g>
+      <use xlink:href="#singleton-cones-m68f8bb1a80" x="504.138359" y="242.364233" style="fill: #156f95; stroke: #156f95"/>
+     </g>
+    </g>
+    <g id="singleton-cones-text_16">
+     <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #243247" x="522.138359" y="245.864233" transform="rotate(-0 522.138359 245.864233)">Unique geometric normal</text>
+    </g>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="singleton-cones-pdd1059f3b1">
+   <rect x="52.541021" y="30.878209" width="736.458739" height="158.71007"/>
+  </clipPath>
+ </defs>
+</svg>
+</div><figcaption>The current checker retains a roughly 6.5-degree normal interval at three exact parked poses. The blue dot is the unique geometric normal.</figcaption></figure>
+<p>The ±0.001u run reproduces the failure at step 73, “push cone did not settle.” Its incoming analysis already has eight regime entries and a bearing interval about 14.82° wide. During attempted closure the geometric padding grows from about 0.0271u to more than 0.14u. The fictitious interior choices feed this feedback. This identifies a concrete contributor; it does not prove that removing it alone closes the full run.</p>
+<p><strong>Entering the park regime early is valid only on the subset satisfying its endpoint inequalities.</strong> At the nominal pre-step-73 pose, those inequalities fail. Replacing the whole set by a parked contact would exclude a real trajectory. Introduce the vertex candidate early, but keep the feasible interior candidates and their guards.</p>
+<p><a id="formula"></a></p>
+<h2>3. Exact vertex contact and its uncertainty</h2>
+<p>Let the attacker chord have endpoints <code>A₀, A₁</code>, length <code>ℓ</code>, and unit direction <code>a</code>. Let <code>Id</code> denote the 3×3 identity, reserving <code>I</code> for the body&#39;s rotational inertia. For victim leg 0 at vertex angle <code>φᵥ = 30°</code>, define:</p>
+<pre><code class="language-text">ρ = R sin φᵥ = R/2 = 11.5475u
+p(q) = (x + ρ cos θ, y + ρ sin θ, R cos φᵥ)
+a = (A₁ − A₀)/ℓ
+s(q) = a·(p(q) − A₀)
+Q = Id − aaᵀ.
+</code></pre>
+<p>When <code>0 &lt; s &lt; ℓ</code>, the attacker contact is interior and everything follows directly:</p>
+<pre><code class="language-text">pₐ = A₀ + s a
+w = p − pₐ = Q(p − A₀)
+d = |w|                         closest-point distance
+n₃ = w/d                        3-D unit normal, attacker → victim
+hf = |w_xy|/d
+nₕ = w_xy/|w_xy|                horizontal unit normal
+r = ρ(cos θ, sin θ)
+rn = rₓ nₕ,y − rᵧ nₕ,x.
+</code></pre>
+<p>These are exact functions of the pose. They eliminate the victim contact-location unknown and solve the attacker&#39;s projection explicitly. <strong>They do not eliminate pose uncertainty:</strong> <code>r</code> still rotates with <code>θ</code>, and <code>rn</code> varies with both <code>r</code> and the normal. Keeping <code>r = ρ eθ</code> directly avoids the artificial translation uncertainty produced by subtracting independent contact-point and hub boxes.</p>
+<p>For an attacker endpoint, replace <code>s</code> by <code>clamp(s,0,ℓ)</code>. That remains an exact point-to-segment formula, with a different active constraint to track.</p>
+<h3>Replacement for Lemma B</h3>
+<p>Hold the attacker chord fixed during the solver substep. Suppose the material vertex lies within distance <code>δᵥ</code> of its reference location. For a pose box with half-widths <code>hₓ, hᵧ, Θ</code>, one sufficient radius is:</p>
+<pre><code class="language-text">δᵥ = √(hₓ² + hᵧ²) + 2ρ sin(Θ/2),     0 ≤ Θ ≤ π.
+</code></pre>
+<p>Because <code>Q</code> is an orthogonal projection,</p>
+<pre><code class="language-text">|Δs| ≤ δᵥ,
+|Δw| = |Q Δp| ≤ δᵥ.
+</code></pre>
+<p><strong>The vector error is δᵥ, not 2δᵥ.</strong> The displacement of the projected point is correlated with the vertex displacement. For a clamped projection onto a fixed segment, the residual map <code>p − projection(p)</code> is also nonexpansive. One proof uses the projection inequality <code>Δp·Δprojection ≥ |Δprojection|²</code> and expands the squared residual difference.</p>
+<p>Let <code>d₀ = |w₀|</code> and <code>h₀ = |w₀,xy| = d₀ hf₀</code>. A ball of radius <code>δᵥ &lt; d₀</code> around <code>w₀</code> subtends a 3-D angular half-width <code>α</code>; its horizontal projection subtends half-width <code>β</code> when <code>δᵥ &lt; h₀</code>:</p>
+<pre><code class="language-text">α ≤ asin(δᵥ/d₀)
+β ≤ asin(δᵥ/h₀)
+|n₃ − n₃,₀| ≤ 2 sin(α/2)
+|hf − hf₀| ≤ 2 sin(α/2).
+</code></pre>
+<p>These follow by the tangent from the origin to the respective displacement ball. Evaluate the exact projected interval or use an ellipsoid if the carried set is anisotropic; the ball formulas are simple sufficient bounds.</p>
+<p>For the question&#39;s <strong>radius</strong> <code>δᵥ = 0.024u</code>, <code>d₀ = 2.88u</code>, and <code>hf₀ = 0.554</code>:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Bound</th>
+<th align="right">Half-width</th>
+<th align="right">Full width</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>3-D normal angle</td>
+<td align="right">0.4775°</td>
+<td align="right">0.9549°</td>
+</tr>
+<tr>
+<td>Horizontal bearing</td>
+<td align="right">0.8619°</td>
+<td align="right">1.7238°</td>
+</tr>
+</tbody></table></div>
+<p>At the actual pre-step-74 distance 2.82646u, the bearing half-width is about 0.881°. These bounds are conditional on the vertex being the selected contact. If 0.024u denotes a diameter rather than a radius, use 0.012u instead. As the set shrinks to a point, these widths go to zero.</p>
+<p>For <code>|Δθ| ≤ Θ</code>, a convenient lever bound is:</p>
+<pre><code class="language-text">|Δrn| ≤ ρ(Θ + β).
+</code></pre>
+<p>It follows by adding the change in <code>r</code> at fixed horizontal normal and the change in the normal at fixed <code>r</code>; each unit-vector chord is at most its angle. The exact joint expression for <code>rn</code> will often give a tighter interval.</p>
+<h3>A sharper vertex overshoot estimate</h3>
+<p>The same simplification removes the crossing-angle denominator from the Hessian estimate. Use mass coordinates <code>z = (x, y, √I θ)</code> and let <code>dᵥ(z)</code> be the distance from this material vertex to the fixed attacker segment. Put:</p>
+<pre><code class="language-text">pᵥ = √(1 + ρ²/I)
+Mᵥ = pᵥ²/d_min + ρ/I,
+</code></pre>
+<p>where <code>dᵥ ≥ d_min &gt; 0</code> along the update path. Then <code>|∇²_z dᵥ| ≤ Mᵥ</code> on smooth pieces, with the same gradient-Lipschitz bound through segment endpoint clamping.</p>
+<p>To see this for an interior projection, write <code>w = Q(p − A₀)</code>. The Hessian is the sum of <code>Dpᵀ Q(Id − n₃n₃ᵀ)Q Dp / d</code> and the contraction of <code>n₃</code> with the second derivative of <code>p</code>. Their norms are at most <code>pᵥ²/d_min</code> and <code>ρ/I</code>. On a clamped piece use <code>Q = Id</code>; at the clamping boundary the distance gradient agrees from either side. This gives the same bound along a path that crosses that boundary.</p>
+<p>If a solver update starts at a genuine vertex contact and uses the uncapped Newton law, with penetration <code>p₀ = D − dᵥ</code> and mass-gradient norm <code>m</code>, the first-order term cancels:</p>
+<pre><code class="language-text">m = hf √(1 + rn²/I)
+|dᵥ(z_next) − D| ≤ Mᵥ p₀²/(2m²).
+</code></pre>
+<p><strong>For the upper overshoot bound, the victim need not remain the closest vertex after this update.</strong> The global curve distance at the new pose is at most <code>dᵥ(z_next)</code>, because this material vertex is still an available point on the curve. Consequently the displayed right side bounds the global distance above <code>D</code>. A lower bound of <code>D</code> still needs the solver&#39;s termination condition; this argument supplies no lower separation guarantee and no total displacement bound by itself.</p>
+<p>For example, step 74 has <code>m ≈ 0.55269</code>, mass-step length 0.09688u, and the self-contained lower bound <code>d_min = d₀ − pᵥ p₀/m ≈ 2.71360u</code>. This gives <code>Mᵥ ≈ 0.53105/u</code> and a one-update upper overshoot bound of <strong>0.002492u</strong>. The measured global overshoot after that substep is 0.00032549u. This is a branch-specific improvement, not a substitute for treating every later solver update and competing contact correctly.</p>
+<p><a id="guards"></a></p>
+<h2>4. When the park is valid</h2>
+<p>Let <code>b₋</code> and <code>b₊</code> be the unit victim-chord directions immediately before and after the vertex, both pointing toward increasing arc angle. With <code>w</code> pointing from attacker to victim, the local vertex conditions are:</p>
+<pre><code class="language-text">0 ≤ s ≤ ℓ,
+w·b₋ ≤ 0,
+w·b₊ ≥ 0.
+</code></pre>
+<p>If the vector is defined in the opposite direction, <code>v = −w</code>, this is exactly the brief&#39;s <code>v·b₋ ≥ 0 ≥ v·b₊</code>.</p>
+<p><strong>Why sufficient locally:</strong> squared distance is a convex quadratic on each of the two chord rectangles. The attacker derivative is zero at its interior projection. On the preceding victim chord, the vertex is the upper endpoint, so its derivative must be nonpositive. On the following chord it is the lower endpoint, so its derivative must be nonnegative. These are the convex constrained-minimum conditions on both rectangles.</p>
+<p>For a whole pose set, compute outward-rounded interval enclosures and require:</p>
+<pre><code class="language-text">lower(s) ≥ 0,       upper(s) ≤ ℓ,
+upper(w·b₋) ≤ 0,    lower(w·b₊) ≥ 0.
+</code></pre>
+<p>Use strict projection margins to certify an interior attacker point. Equality at a victim inequality can be included in both adjacent regimes without losing coverage.</p>
+<p>These tests establish the winner on the two adjacent rectangles, <strong>not over the entire nonconvex polyline</strong>. Other attacker/victim chord rectangles still need exclusion or comparison. Other leg pairs and hub contacts still need the checker&#39;s usual treatment.</p>
+<p>A simple global comparison is available when every victim material point moves by at most <code>δ_all</code>: every fixed chord-pair distance changes by at most <code>δ_all</code>. If a competing pair has reference distance <code>dⱼ,₀</code>, then</p>
+<pre><code class="language-text">dⱼ,₀ − dᵥ,₀ &gt; δ_all + δᵥ
+</code></pre>
+<p>excludes it throughout the set. Exclude the two representations of the same vertex from this competitor test. Near the attacker crossing this test can be too weak; a correlated difference-of-distances enclosure or subdivision may be needed.</p>
+<h3>A cheap sufficient margin test</h3>
+<p>If <code>|Δp| ≤ δᵥ</code> and <code>|Δθ| ≤ Θ</code>, put:</p>
+<pre><code class="language-text">ν = 2 sin(Θ/2)
+e = δᵥ + d₀ν.
+</code></pre>
+<p>Then <code>|Δ(w·b)| ≤ e</code>: expand the difference as <code>Δw·b(q) + w₀·Δb</code>. Thus these four scalar checks suffice locally:</p>
+<pre><code class="language-text">s₀ − δᵥ ≥ 0,                 s₀ + δᵥ ≤ ℓ,
+w₀·b₋,₀ + e ≤ 0,            w₀·b₊,₀ − e ≥ 0.
+</code></pre>
+<p>At pre-step 74 the positive-side normalized margin is only <code>n₃·b₊ = 0.00430967</code>, or <strong>0.01218u</strong> before normalization. A generic 0.024u displacement radius does not certify that inequality. This test&#39;s failure is inconclusive about a thinner, suitably oriented set; it is not evidence that every such set contains nonparked poses.</p>
+<p>Later the margins improve. For the illustrative bounds <code>δᵥ ≤ 0.024u</code>, <code>δ_all ≤ 0.024u</code>, and <code>Θ ≤ 0.024/R</code>, the scalar tests and all other <strong>leg-0/chord-pair</strong> distance comparisons are positive at both the before and after poses of steps 82–84. This is a useful local check. Those endpoint neighborhoods have not been proved to contain all intermediate solver states or all trajectories from the initial box.</p>
+<p><a id="persistence"></a></p>
+<h2>5. Persistence across a push and through a sweep</h2>
+<p><strong>“Parked before the push” and “parked throughout the push” are different statements.</strong> The nominal trace already separates them:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="right">Step</th>
+<th align="right">Sweep</th>
+<th align="right">Victim contact before push</th>
+<th align="right">Victim contact after push</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">73</td>
+<td align="right">24.3333°</td>
+<td align="right">30.0124178°</td>
+<td align="right">30.2045873°</td>
+</tr>
+<tr>
+<td align="right">74</td>
+<td align="right">24.6667°</td>
+<td align="right"><strong>30.0000000°</strong></td>
+<td align="right">30.1691077°</td>
+</tr>
+<tr>
+<td align="right">76</td>
+<td align="right">25.3333°</td>
+<td align="right"><strong>30.0000000°</strong></td>
+<td align="right">30.0961108°</td>
+</tr>
+<tr>
+<td align="right">78</td>
+<td align="right">26.0000°</td>
+<td align="right"><strong>30.0000000°</strong></td>
+<td align="right">30.0201996°</td>
+</tr>
+<tr>
+<td align="right">79</td>
+<td align="right">26.3333°</td>
+<td align="right"><strong>30.0000000°</strong></td>
+<td align="right"><strong>30.0000000°</strong></td>
+</tr>
+<tr>
+<td align="right">84</td>
+<td align="right">28.0000°</td>
+<td align="right"><strong>30.0000000°</strong></td>
+<td align="right"><strong>30.0000000°</strong></td>
+</tr>
+<tr>
+<td align="right">98</td>
+<td align="right">32.6667°</td>
+<td align="right"><strong>30.0000000°</strong></td>
+<td align="right"><strong>30.0000000°</strong></td>
+</tr>
+<tr>
+<td align="right">99</td>
+<td align="right">33.0000°</td>
+<td align="right">29.9894468°</td>
+<td align="right"><strong>30.0000000°</strong></td>
+</tr>
+<tr>
+<td align="right">105</td>
+<td align="right">35.0000°</td>
+<td align="right">29.7498725°</td>
+<td align="right">29.9945994°</td>
+</tr>
+</tbody></table></div>
+<p>The before-push vertex run lasts steps <strong>74–98</strong>, while the after-push run lasts <strong>79–104</strong>. There are later reentries in the extended diagnostic sweep. It is not one park through 46°. The game would already end at the first nominal throw, step <strong>84 = 28°</strong>, where the exposed foot reaches radius 67.193435u against the 67.167u rim. Values after that are a continued geometry diagnostic, not additional legal game play.</p>
+<figure><button class="zoom" type="button">Enlarge figure</button><div class="drawing"><svg role="img" aria-label="Before-push and after-push contact angles differ around the start of the park. The extended diagnostic sweep also leaves the vertex after the nominal throw." xmlns:xlink="http://www.w3.org/1999/xlink" width="864pt" height="324pt" viewBox="0 0 864 324" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-09-18T11:49:07.267029</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.8, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="park-timing-figure_1">
+  <g id="park-timing-patch_1">
+   <path d="M 0 324 
+L 864 324 
+L 864 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="park-timing-axes_1">
+   <g id="park-timing-patch_2">
+    <path d="M 49.138365 263.261467 
+L 449.711462 263.261467 
+L 449.711462 28.118365 
+L 49.138365 28.118365 
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="park-timing-matplotlib.axis_1">
+    <g id="park-timing-xtick_1">
+     <g id="park-timing-line2d_1">
+      <defs>
+       <path id="park-timing-m0b328b3f22" d="M 0 0 
+L 0 3.5 
+" style="stroke: #526174; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#park-timing-m0b328b3f22" x="49.138365" y="263.261467" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_1">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="49.138365" y="278.619749" transform="rotate(-0 49.138365 278.619749)">23</text>
+     </g>
+    </g>
+    <g id="park-timing-xtick_2">
+     <g id="park-timing-line2d_2">
+      <g>
+       <use xlink:href="#park-timing-m0b328b3f22" x="123.318568" y="263.261467" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_2">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="123.318568" y="278.619749" transform="rotate(-0 123.318568 278.619749)">24</text>
+     </g>
+    </g>
+    <g id="park-timing-xtick_3">
+     <g id="park-timing-line2d_3">
+      <g>
+       <use xlink:href="#park-timing-m0b328b3f22" x="197.498771" y="263.261467" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_3">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="197.498771" y="278.619749" transform="rotate(-0 197.498771 278.619749)">25</text>
+     </g>
+    </g>
+    <g id="park-timing-xtick_4">
+     <g id="park-timing-line2d_4">
+      <g>
+       <use xlink:href="#park-timing-m0b328b3f22" x="271.678974" y="263.261467" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_4">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="271.678974" y="278.619749" transform="rotate(-0 271.678974 278.619749)">26</text>
+     </g>
+    </g>
+    <g id="park-timing-xtick_5">
+     <g id="park-timing-line2d_5">
+      <g>
+       <use xlink:href="#park-timing-m0b328b3f22" x="345.859177" y="263.261467" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_5">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="345.859177" y="278.619749" transform="rotate(-0 345.859177 278.619749)">27</text>
+     </g>
+    </g>
+    <g id="park-timing-xtick_6">
+     <g id="park-timing-line2d_6">
+      <g>
+       <use xlink:href="#park-timing-m0b328b3f22" x="420.039381" y="263.261467" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_6">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="420.039381" y="278.619749" transform="rotate(-0 420.039381 278.619749)">28</text>
+     </g>
+    </g>
+    <g id="park-timing-text_7">
+     <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #334155" x="249.424913" y="293.265686" transform="rotate(-0 249.424913 293.265686)">Attacker sweep (degrees)</text>
+    </g>
+   </g>
+   <g id="park-timing-matplotlib.axis_2">
+    <g id="park-timing-ytick_1">
+     <g id="park-timing-line2d_7">
+      <path d="M 49.138365 252.573145 
+L 449.711462 252.573145 
+" clip-path="url(#park-timing-p22cf700540)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="park-timing-line2d_8">
+      <defs>
+       <path id="park-timing-mb10b02abca" d="M 0 0 
+L -3.5 0 
+" style="stroke: #526174; stroke-width: 0.8"/>
+      </defs>
+      <g>
+       <use xlink:href="#park-timing-mb10b02abca" x="49.138365" y="252.573145" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_8">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #526174" x="42.138365" y="256.752285" transform="rotate(-0 42.138365 256.752285)">30.0</text>
+     </g>
+    </g>
+    <g id="park-timing-ytick_2">
+     <g id="park-timing-line2d_9">
+      <path d="M 49.138365 207.426602 
+L 449.711462 207.426602 
+" clip-path="url(#park-timing-p22cf700540)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="park-timing-line2d_10">
+      <g>
+       <use xlink:href="#park-timing-mb10b02abca" x="49.138365" y="207.426602" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_9">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #526174" x="42.138365" y="211.605742" transform="rotate(-0 42.138365 211.605742)">30.2</text>
+     </g>
+    </g>
+    <g id="park-timing-ytick_3">
+     <g id="park-timing-line2d_11">
+      <path d="M 49.138365 162.280059 
+L 449.711462 162.280059 
+" clip-path="url(#park-timing-p22cf700540)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="park-timing-line2d_12">
+      <g>
+       <use xlink:href="#park-timing-mb10b02abca" x="49.138365" y="162.280059" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_10">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #526174" x="42.138365" y="166.4592" transform="rotate(-0 42.138365 166.4592)">30.4</text>
+     </g>
+    </g>
+    <g id="park-timing-ytick_4">
+     <g id="park-timing-line2d_13">
+      <path d="M 49.138365 117.133516 
+L 449.711462 117.133516 
+" clip-path="url(#park-timing-p22cf700540)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="park-timing-line2d_14">
+      <g>
+       <use xlink:href="#park-timing-mb10b02abca" x="49.138365" y="117.133516" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_11">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #526174" x="42.138365" y="121.312657" transform="rotate(-0 42.138365 121.312657)">30.6</text>
+     </g>
+    </g>
+    <g id="park-timing-ytick_5">
+     <g id="park-timing-line2d_15">
+      <path d="M 49.138365 71.986973 
+L 449.711462 71.986973 
+" clip-path="url(#park-timing-p22cf700540)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="park-timing-line2d_16">
+      <g>
+       <use xlink:href="#park-timing-mb10b02abca" x="49.138365" y="71.986973" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_12">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #526174" x="42.138365" y="76.166114" transform="rotate(-0 42.138365 76.166114)">30.8</text>
+     </g>
+    </g>
+    <g id="park-timing-text_13">
+     <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #334155" x="11.358521" y="145.689916" transform="rotate(-90 11.358521 145.689916)">Victim contact angle (degrees)</text>
+    </g>
+   </g>
+   <g id="park-timing-line2d_17">
+    <path d="M 49.138365 252.573145 
+L 449.711462 252.573145 
+" clip-path="url(#park-timing-p22cf700540)" style="fill: none; stroke-dasharray: 3.7,1.6; stroke-dashoffset: 0; stroke: #78909c"/>
+   </g>
+   <g id="park-timing-line2d_18">
+    <path d="M 49.138365 72.066978 
+L 73.865099 93.938443 
+L 98.591834 115.92227 
+L 123.318568 138.019208 
+L 148.045302 249.770038 
+L 172.772037 252.573145 
+L 197.498771 252.573145 
+L 222.225506 252.573145 
+L 246.95224 252.573145 
+L 271.678974 252.573145 
+L 296.405709 252.573145 
+L 321.132443 252.573145 
+L 345.859177 252.573145 
+L 370.585912 252.573145 
+L 395.312646 252.573145 
+L 420.039381 252.573145 
+L 444.766115 252.573145 
+" clip-path="url(#park-timing-p22cf700540)" style="fill: none; stroke: #156f95; stroke-width: 2; stroke-linecap: square"/>
+    <defs>
+     <path id="park-timing-m8075b9bd78" d="M 0 2 
+C 0.530406 2 1.03916 1.789267 1.414214 1.414214 
+C 1.789267 1.03916 2 0.530406 2 0 
+C 2 -0.530406 1.789267 -1.03916 1.414214 -1.414214 
+C 1.03916 -1.789267 0.530406 -2 0 -2 
+C -0.530406 -2 -1.03916 -1.789267 -1.414214 -1.414214 
+C -1.789267 -1.03916 -2 -0.530406 -2 0 
+C -2 0.530406 -1.789267 1.03916 -1.414214 1.414214 
+C -1.03916 1.789267 -0.530406 2 0 2 
+z
+" style="stroke: #156f95"/>
+    </defs>
+    <g clip-path="url(#park-timing-p22cf700540)">
+     <use xlink:href="#park-timing-m8075b9bd78" x="49.138365" y="72.066978" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="73.865099" y="93.938443" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="98.591834" y="115.92227" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="123.318568" y="138.019208" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="148.045302" y="249.770038" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="172.772037" y="252.573145" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="197.498771" y="252.573145" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="222.225506" y="252.573145" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="246.95224" y="252.573145" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="271.678974" y="252.573145" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="296.405709" y="252.573145" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="321.132443" y="252.573145" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="345.859177" y="252.573145" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="370.585912" y="252.573145" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="395.312646" y="252.573145" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="420.039381" y="252.573145" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="444.766115" y="252.573145" style="fill: #156f95; stroke: #156f95"/>
+    </g>
+   </g>
+   <g id="park-timing-line2d_19">
+    <path d="M 49.138365 38.806688 
+L 73.865099 60.426541 
+L 98.591834 82.155742 
+L 123.318568 103.995 
+L 148.045302 206.391105 
+L 172.772037 214.400003 
+L 197.498771 222.559598 
+L 222.225506 230.877792 
+L 246.95224 239.360347 
+L 271.678974 248.013427 
+L 296.405709 252.573145 
+L 321.132443 252.573145 
+L 345.859177 252.573145 
+L 370.585912 252.573145 
+L 395.312646 252.573145 
+L 420.039381 252.573145 
+L 444.766115 252.573145 
+" clip-path="url(#park-timing-p22cf700540)" style="fill: none; stroke: #c06532; stroke-width: 2; stroke-linecap: square"/>
+    <defs>
+     <path id="park-timing-m6fcbadd8bb" d="M -2 2 
+L 2 2 
+L 2 -2 
+L -2 -2 
+z
+" style="stroke: #c06532; stroke-linejoin: miter"/>
+    </defs>
+    <g clip-path="url(#park-timing-p22cf700540)">
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="49.138365" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="73.865099" y="60.426541" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="98.591834" y="82.155742" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="123.318568" y="103.995" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="148.045302" y="206.391105" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="172.772037" y="214.400003" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="197.498771" y="222.559598" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="222.225506" y="230.877792" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="246.95224" y="239.360347" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="271.678974" y="248.013427" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="296.405709" y="252.573145" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="321.132443" y="252.573145" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="345.859177" y="252.573145" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="370.585912" y="252.573145" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="395.312646" y="252.573145" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="420.039381" y="252.573145" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="444.766115" y="252.573145" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+    </g>
+   </g>
+   <g id="park-timing-line2d_20">
+    <path d="M 420.039381 263.261467 
+L 420.039381 28.118365 
+" clip-path="url(#park-timing-p22cf700540)" style="fill: none; stroke-dasharray: 1.3,2.145; stroke-dashoffset: 0; stroke: #374151; stroke-width: 1.3"/>
+   </g>
+   <g id="park-timing-patch_3">
+    <path d="M 49.138365 263.261468 
+L 49.138365 28.118365 
+" style="fill: none; stroke: #cbd5e1; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="park-timing-patch_4">
+    <path d="M 49.138365 263.261467 
+L 449.711462 263.261467 
+" style="fill: none; stroke: #cbd5e1; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="park-timing-patch_5">
+    <path d="M 336.171656 167.69963 
+Q 377.364561 204.951662 417.728225 241.453786 
+" style="fill: none; stroke: #526174; stroke-linecap: round"/>
+    <path d="M 416.102922 237.287446 
+L 417.728225 241.453786 
+L 413.419971 240.254225 
+" style="fill: none; stroke: #526174; stroke-linecap: round"/>
+   </g>
+   <g id="park-timing-text_14">
+    <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #243247" x="279.096995" y="162.280059" transform="rotate(-0 279.096995 162.280059)">First nominal throw</text>
+   </g>
+   <g id="park-timing-text_15">
+    <text style="font-size: 12px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #243247" x="49.138365" y="12.118365" transform="rotate(-0 49.138365 12.118365)">A park at the start can end during the push</text>
+   </g>
+  </g>
+  <g id="park-timing-axes_2">
+   <g id="park-timing-patch_6">
+    <path d="M 496.842399 263.261467 
+L 860.99976 263.261467 
+L 860.99976 28.118365 
+L 496.842399 28.118365 
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="park-timing-matplotlib.axis_3">
+    <g id="park-timing-xtick_7">
+     <g id="park-timing-line2d_21">
+      <g>
+       <use xlink:href="#park-timing-m0b328b3f22" x="496.842399" y="263.261467" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_16">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="496.842399" y="278.619749" transform="rotate(-0 496.842399 278.619749)">28</text>
+     </g>
+    </g>
+    <g id="park-timing-xtick_8">
+     <g id="park-timing-line2d_22">
+      <g>
+       <use xlink:href="#park-timing-m0b328b3f22" x="546.052853" y="263.261467" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_17">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="546.052853" y="278.619749" transform="rotate(-0 546.052853 278.619749)">29</text>
+     </g>
+    </g>
+    <g id="park-timing-xtick_9">
+     <g id="park-timing-line2d_23">
+      <g>
+       <use xlink:href="#park-timing-m0b328b3f22" x="595.263308" y="263.261467" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_18">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="595.263308" y="278.619749" transform="rotate(-0 595.263308 278.619749)">30</text>
+     </g>
+    </g>
+    <g id="park-timing-xtick_10">
+     <g id="park-timing-line2d_24">
+      <g>
+       <use xlink:href="#park-timing-m0b328b3f22" x="644.473762" y="263.261467" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_19">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="644.473762" y="278.619749" transform="rotate(-0 644.473762 278.619749)">31</text>
+     </g>
+    </g>
+    <g id="park-timing-xtick_11">
+     <g id="park-timing-line2d_25">
+      <g>
+       <use xlink:href="#park-timing-m0b328b3f22" x="693.684216" y="263.261467" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_20">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="693.684216" y="278.619749" transform="rotate(-0 693.684216 278.619749)">32</text>
+     </g>
+    </g>
+    <g id="park-timing-xtick_12">
+     <g id="park-timing-line2d_26">
+      <g>
+       <use xlink:href="#park-timing-m0b328b3f22" x="742.89467" y="263.261467" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_21">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="742.89467" y="278.619749" transform="rotate(-0 742.89467 278.619749)">33</text>
+     </g>
+    </g>
+    <g id="park-timing-xtick_13">
+     <g id="park-timing-line2d_27">
+      <g>
+       <use xlink:href="#park-timing-m0b328b3f22" x="792.105124" y="263.261467" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_22">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="792.105124" y="278.619749" transform="rotate(-0 792.105124 278.619749)">34</text>
+     </g>
+    </g>
+    <g id="park-timing-xtick_14">
+     <g id="park-timing-line2d_28">
+      <g>
+       <use xlink:href="#park-timing-m0b328b3f22" x="841.315578" y="263.261467" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_23">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #526174" x="841.315578" y="278.619749" transform="rotate(-0 841.315578 278.619749)">35</text>
+     </g>
+    </g>
+    <g id="park-timing-text_24">
+     <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #334155" x="678.92108" y="293.265686" transform="rotate(-0 678.92108 293.265686)">Attacker sweep (degrees)</text>
+    </g>
+   </g>
+   <g id="park-timing-matplotlib.axis_4">
+    <g id="park-timing-ytick_6">
+     <g id="park-timing-line2d_29">
+      <path d="M 496.842399 245.007745 
+L 860.99976 245.007745 
+" clip-path="url(#park-timing-pea19f2a4bb)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="park-timing-line2d_30">
+      <g>
+       <use xlink:href="#park-timing-mb10b02abca" x="496.842399" y="245.007745" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_25">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #526174" x="489.842399" y="249.186886" transform="rotate(-0 489.842399 249.186886)">29.70</text>
+     </g>
+    </g>
+    <g id="park-timing-ytick_7">
+     <g id="park-timing-line2d_31">
+      <path d="M 496.842399 210.640903 
+L 860.99976 210.640903 
+" clip-path="url(#park-timing-pea19f2a4bb)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="park-timing-line2d_32">
+      <g>
+       <use xlink:href="#park-timing-mb10b02abca" x="496.842399" y="210.640903" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_26">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #526174" x="489.842399" y="214.820043" transform="rotate(-0 489.842399 214.820043)">29.75</text>
+     </g>
+    </g>
+    <g id="park-timing-ytick_8">
+     <g id="park-timing-line2d_33">
+      <path d="M 496.842399 176.27406 
+L 860.99976 176.27406 
+" clip-path="url(#park-timing-pea19f2a4bb)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="park-timing-line2d_34">
+      <g>
+       <use xlink:href="#park-timing-mb10b02abca" x="496.842399" y="176.27406" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_27">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #526174" x="489.842399" y="180.4532" transform="rotate(-0 489.842399 180.4532)">29.80</text>
+     </g>
+    </g>
+    <g id="park-timing-ytick_9">
+     <g id="park-timing-line2d_35">
+      <path d="M 496.842399 141.907217 
+L 860.99976 141.907217 
+" clip-path="url(#park-timing-pea19f2a4bb)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="park-timing-line2d_36">
+      <g>
+       <use xlink:href="#park-timing-mb10b02abca" x="496.842399" y="141.907217" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_28">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #526174" x="489.842399" y="146.086357" transform="rotate(-0 489.842399 146.086357)">29.85</text>
+     </g>
+    </g>
+    <g id="park-timing-ytick_10">
+     <g id="park-timing-line2d_37">
+      <path d="M 496.842399 107.540374 
+L 860.99976 107.540374 
+" clip-path="url(#park-timing-pea19f2a4bb)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="park-timing-line2d_38">
+      <g>
+       <use xlink:href="#park-timing-mb10b02abca" x="496.842399" y="107.540374" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_29">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #526174" x="489.842399" y="111.719514" transform="rotate(-0 489.842399 111.719514)">29.90</text>
+     </g>
+    </g>
+    <g id="park-timing-ytick_11">
+     <g id="park-timing-line2d_39">
+      <path d="M 496.842399 73.173531 
+L 860.99976 73.173531 
+" clip-path="url(#park-timing-pea19f2a4bb)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="park-timing-line2d_40">
+      <g>
+       <use xlink:href="#park-timing-mb10b02abca" x="496.842399" y="73.173531" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_30">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #526174" x="489.842399" y="77.352671" transform="rotate(-0 489.842399 77.352671)">29.95</text>
+     </g>
+    </g>
+    <g id="park-timing-ytick_12">
+     <g id="park-timing-line2d_41">
+      <path d="M 496.842399 38.806688 
+L 860.99976 38.806688 
+" clip-path="url(#park-timing-pea19f2a4bb)" style="fill: none; stroke: #b0b0b0; stroke-opacity: 0.15; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="park-timing-line2d_42">
+      <g>
+       <use xlink:href="#park-timing-mb10b02abca" x="496.842399" y="38.806688" style="fill: #526174; stroke: #526174; stroke-width: 0.8"/>
+      </g>
+     </g>
+     <g id="park-timing-text_31">
+      <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #526174" x="489.842399" y="42.985828" transform="rotate(-0 489.842399 42.985828)">30.00</text>
+     </g>
+    </g>
+   </g>
+   <g id="park-timing-line2d_43">
+    <path d="M 496.842399 38.806688 
+L 860.99976 38.806688 
+" clip-path="url(#park-timing-pea19f2a4bb)" style="fill: none; stroke-dasharray: 3.7,1.6; stroke-dashoffset: 0; stroke: #78909c"/>
+   </g>
+   <g id="park-timing-line2d_44">
+    <path d="M 496.842399 38.806688 
+L 513.245884 38.806688 
+L 529.649369 38.806688 
+L 546.052853 38.806688 
+L 562.456338 38.806688 
+L 578.859823 38.806688 
+L 595.263308 38.806688 
+L 611.666792 38.806688 
+L 628.070277 38.806688 
+L 644.473762 38.806688 
+L 660.877246 38.806688 
+L 677.280731 38.806688 
+L 693.684216 38.806688 
+L 710.087701 38.806688 
+L 726.491185 38.806688 
+L 742.89467 46.060258 
+L 759.298155 87.578329 
+L 775.701639 97.28561 
+L 792.105124 121.845537 
+L 808.508609 144.970126 
+L 824.912094 179.539496 
+L 841.315578 210.728546 
+L 857.719063 252.573145 
+" clip-path="url(#park-timing-pea19f2a4bb)" style="fill: none; stroke: #156f95; stroke-width: 2; stroke-linecap: square"/>
+    <g clip-path="url(#park-timing-pea19f2a4bb)">
+     <use xlink:href="#park-timing-m8075b9bd78" x="496.842399" y="38.806688" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="513.245884" y="38.806688" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="529.649369" y="38.806688" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="546.052853" y="38.806688" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="562.456338" y="38.806688" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="578.859823" y="38.806688" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="595.263308" y="38.806688" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="611.666792" y="38.806688" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="628.070277" y="38.806688" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="644.473762" y="38.806688" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="660.877246" y="38.806688" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="677.280731" y="38.806688" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="693.684216" y="38.806688" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="710.087701" y="38.806688" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="726.491185" y="38.806688" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="742.89467" y="46.060258" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="759.298155" y="87.578329" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="775.701639" y="97.28561" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="792.105124" y="121.845537" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="808.508609" y="144.970126" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="824.912094" y="179.539496" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="841.315578" y="210.728546" style="fill: #156f95; stroke: #156f95"/>
+     <use xlink:href="#park-timing-m8075b9bd78" x="857.719063" y="252.573145" style="fill: #156f95; stroke: #156f95"/>
+    </g>
+   </g>
+   <g id="park-timing-line2d_45">
+    <path d="M 496.842399 38.806688 
+L 513.245884 38.806688 
+L 529.649369 38.806688 
+L 546.052853 38.806688 
+L 562.456338 38.806688 
+L 578.859823 38.806688 
+L 595.263308 38.806688 
+L 611.666792 38.806688 
+L 628.070277 38.806688 
+L 644.473762 38.806688 
+L 660.877246 38.806688 
+L 677.280731 38.806688 
+L 693.684216 38.806688 
+L 710.087701 38.806688 
+L 726.491185 38.806688 
+L 742.89467 38.806688 
+L 759.298155 38.806688 
+L 775.701639 38.806688 
+L 792.105124 38.806688 
+L 808.508609 38.806688 
+L 824.912094 38.806688 
+L 841.315578 42.518751 
+L 857.719063 79.72411 
+" clip-path="url(#park-timing-pea19f2a4bb)" style="fill: none; stroke: #c06532; stroke-width: 2; stroke-linecap: square"/>
+    <g clip-path="url(#park-timing-pea19f2a4bb)">
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="496.842399" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="513.245884" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="529.649369" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="546.052853" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="562.456338" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="578.859823" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="595.263308" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="611.666792" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="628.070277" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="644.473762" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="660.877246" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="677.280731" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="693.684216" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="710.087701" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="726.491185" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="742.89467" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="759.298155" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="775.701639" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="792.105124" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="808.508609" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="824.912094" y="38.806688" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="841.315578" y="42.518751" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="857.719063" y="79.72411" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+    </g>
+   </g>
+   <g id="park-timing-patch_7">
+    <path d="M 496.842399 263.261468 
+L 496.842399 28.118365 
+" style="fill: none; stroke: #cbd5e1; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="park-timing-patch_8">
+    <path d="M 496.842399 263.261467 
+L 860.99976 263.261467 
+" style="fill: none; stroke: #cbd5e1; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="park-timing-text_32">
+    <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #637386" x="507.76712" y="251.504312" transform="rotate(-0 507.76712 251.504312)">After the game would already have ended</text>
+   </g>
+   <g id="park-timing-text_33">
+    <text style="font-size: 12px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #243247" x="496.842399" y="12.118365" transform="rotate(-0 496.842399 12.118365)">The continued diagnostic sweep leaves the vertex</text>
+   </g>
+  </g>
+  <g id="park-timing-legend_1">
+   <g id="park-timing-line2d_46">
+    <path d="M 265.882812 307.962344 
+L 276.882812 307.962344 
+L 287.882812 307.962344 
+" style="fill: none; stroke-dasharray: 3.7,1.6; stroke-dashoffset: 0; stroke: #78909c"/>
+   </g>
+   <g id="park-timing-text_34">
+    <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #243247" x="296.682813" y="311.812344" transform="rotate(-0 296.682813 311.812344)">Victim vertex</text>
+   </g>
+   <g id="park-timing-line2d_47">
+    <path d="M 391.843125 307.962344 
+L 402.843125 307.962344 
+L 413.843125 307.962344 
+" style="fill: none; stroke: #156f95; stroke-width: 2; stroke-linecap: square"/>
+    <g>
+     <use xlink:href="#park-timing-m8075b9bd78" x="402.843125" y="307.962344" style="fill: #156f95; stroke: #156f95"/>
+    </g>
+   </g>
+   <g id="park-timing-text_35">
+    <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #243247" x="422.643125" y="311.812344" transform="rotate(-0 422.643125 311.812344)">Before push</text>
+   </g>
+   <g id="park-timing-line2d_48">
+    <path d="M 510.756562 307.962344 
+L 521.756562 307.962344 
+L 532.756562 307.962344 
+" style="fill: none; stroke: #c06532; stroke-width: 2; stroke-linecap: square"/>
+    <g>
+     <use xlink:href="#park-timing-m6fcbadd8bb" x="521.756562" y="307.962344" style="fill: #c06532; stroke: #c06532; stroke-linejoin: miter"/>
+    </g>
+   </g>
+   <g id="park-timing-text_36">
+    <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #243247" x="541.556562" y="311.812344" transform="rotate(-0 541.556562 311.812344)">After push</text>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="park-timing-p22cf700540">
+   <rect x="49.138365" y="28.118365" width="400.573097" height="235.143102"/>
+  </clipPath>
+  <clipPath id="park-timing-pea19f2a4bb">
+   <rect x="496.842399" y="28.118365" width="364.157361" height="235.143102"/>
+  </clipPath>
+ </defs>
+</svg>
+</div><figcaption>Before-push and after-push contact angles differ around the start of the park. The extended diagnostic sweep also leaves the vertex after the nominal throw.</figcaption></figure>
+<p>This was checked against <code>resolvePush</code> extracted from the pinned game&#39;s <code>index.html</code>, not only the checker replica: across all 138 supplied attacker poses and corresponding incoming victim poses, the largest discrepancy in <code>(x,y,Rθ)</code> was <strong>8.8 × 10⁻¹⁵u</strong>.</p>
+<p>The sign test exposes the first departure directly. At step 74:</p>
+<pre><code class="language-text">before:  n₃·b₋ = −0.1262037,    n₃·b₊ = +0.0043097
+after:   n₃·b₋ = −0.1502589,    n₃·b₊ = −0.0200228
+</code></pre>
+<p>The after values here evaluate the vertex-projection candidate; its second inequality fails, so the true closest point moves into the following victim chord.</p>
+<h3>A sufficient persistence certificate</h3>
+<p>For one fixed-attacker update, enclose the pose path</p>
+<pre><code class="language-text">c(t) = c + t λ nₕ,
+θ(t) = θ + t λ rn/I,           0 ≤ t ≤ 1,
+</code></pre>
+<p>for every incoming pose and every allowed update value. Certify the projection, both vertex inequalities, and all competing-pair exclusions on that entire enclosure. This ensures the vertex model holds along the update, and supplies the domain needed for any derivative bound using that model. If the checker only needs to identify discrete contact queries, test their complete reachable sets; endpoint checks still cannot justify an unstated derivative bound between them.</p>
+<p>Across multiple updates and attacker substeps, the domain must include attacker angle too: <code>A₀(α)</code>, <code>a(α)</code>, the victim tube of reachable poses, and all Gauss–Seidel intermediate states. A single interval certificate on that joint domain is sufficient. If too wide, subdivide the sweep parameter or carry a tube around its reference trajectory. An endpoint-only argument is possible if the required sign monotonicity has itself been proved; observing that <code>hf</code> decreases and <code>rn</code> increases does not prove the two endpoint inequalities stay valid.</p>
+<p>For this seed, a certificate asserting persistence from step 74 across its first push cannot succeed because the assertion is false even at the center. Treat the vertex-to-interior transition there. The favorable sustained park later in the approach may still be exploitable.</p>
+<p>There is no need to prove a park until 46° to prove this throw. Once the <strong>lower bound over every surviving reachable set</strong> puts an exposed foot beyond the rim, the throw proof can stop. The nominal crossing at 28° identifies where to look; its 0.0264u margin alone does not certify the whole box.</p>
+<p><a id="smooth"></a></p>
+<h2>6. What changes on the true arc</h2>
+<p>An interior point on a smooth quarter circle has one tangent, so it has no finite vertex normal wedge. Under a unique nondegenerate closest-pair solution, its contact parameters vary smoothly with pose. The generic polyline dwell at exactly 30° disappears. Special symmetric configurations could keep the same smooth material point active, but the vertex mechanism is absent.</p>
+<p>The approximation scale is unfavorable for a transfer based only on sagitta:</p>
+<pre><code class="language-text">Δφ = π/24                     one of 12 chord spans
+ℓ = 2R sin(Δφ/2) = 3.02097054u
+h = R(1 − cos(Δφ/2)) = 0.04944817u.
+</code></pre>
+<p>Each arc/polyline pair is within Hausdorff distance <code>h</code>. By the triangle inequality, the minimum distance between two curves changes by at most <strong>2h = 0.09889634u</strong> when both are replaced. This bound exceeds the 0.024u set radius by a factor of about 4.1. Comparing a shared material vertex against only the attacker&#39;s arc improves the distance bound to <code>h</code>; it still exceeds that radius.</p>
+<p>Small distance error also does not imply comparably small normal or push error. A numerical smooth-arc minimization at the <strong>same fixed poses</strong> illustrates this:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th align="right">Before step</th>
+<th align="right">Polyline victim angle</th>
+<th align="right">Smooth victim angle</th>
+<th align="right">3-D normal difference</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="right">74</td>
+<td align="right">30.0000°</td>
+<td align="right">30.6096°</td>
+<td align="right">5.6787°</td>
+</tr>
+<tr>
+<td align="right">80</td>
+<td align="right">30.0000°</td>
+<td align="right">30.3858°</td>
+<td align="right">4.0741°</td>
+</tr>
+<tr>
+<td align="right">84</td>
+<td align="right">30.0000°</td>
+<td align="right">30.2205°</td>
+<td align="right">2.9691°</td>
+</tr>
+</tbody></table></div>
+<p>These are numerical stationary minima found from a 7×7 start grid; they are illustrative computations, not certified global root isolation or a simulation of the smooth game&#39;s trajectory. At step 74 the distance differs by only about 0.000507u while the normal differs by 5.68°. That is why a distance-only transfer is insufficient for the push law.</p>
+<p>A rigorous transfer needs contact-branch isolation, derivative/conditioning bounds, and a bound on the accumulated pose error under the two update maps. For example, on domains where a suitable map Lipschitz bound and one-step model discrepancy have been established:</p>
+<pre><code class="language-text">Eₖ₊₁ ≤ Lₖ Eₖ + εₖ.
+</code></pre>
+<p>Here <code>E</code> can use the pose norm <code>√(|Δc|² + R²Δθ²)</code>. A foot&#39;s displacement is then at most <code>|Δc| + R|Δθ| ≤ √2 E</code>. A terminal radial margin larger than <code>√2 E</code> transfers a throw. The earlier tied-branch example prevents assuming one finite global <code>Lₖ</code> for the implemented contact selector across every tie; such locations need separate treatment or set-valued enclosures.</p>
+<p>The available data do not yet give an error budget closing that argument. Increasing the discretization to 24 or 48 chords would reduce <code>h</code> to 0.0123654u or 0.00309154u respectively, but would change the engine being certified. For the existing 12-chord game, the exact vertex calculation and guarded transitions are the more direct route.</p>
+<p><a id="implementation"></a></p>
+<h2>7. Implementation order and reproduction</h2>
+<p>The next checker revision has a concrete order:</p>
+<ol>
+<li><strong>Distinguish candidate rectangles from feasible contact regimes.</strong> Keep both tied rectangles where required. Add interval tests for their interior and endpoint conditions; omit an interior/interior normal only after excluding that regime throughout the relevant set.</li>
+<li><strong>Give a physical vertex one identity.</strong> The end of victim chord 3 and start of chord 4 are the same vertex. Merge duplicate representations of that contact, retaining the proper attacker-segment identity.</li>
+<li><strong>Use the exact projection and rotating lever.</strong> Replace the victim-vertex <code>2*pad</code> estimate with the projected displacement bound. Avoid independently subtracting the uncertain hub from the uncertain material-point location.</li>
+<li><strong>Retain actual transitions.</strong> Steps 73–78 require interior/vertex possibilities during updates. If distinct branches survive, carry their guarded reachable sets until a common enclosure is tight enough. The current code branches inside a substep and then takes a hull again; merely adding more candidate entries can reproduce the inflation.</li>
+<li><strong>Stop at a certified throw.</strong> Test the foot-radius lower bound after each completed enclosure, rather than demanding successful propagation to the entire 46° limit.</li>
+</ol>
+<p>Those are implementation recommendations, not a claim that a particular unfinished variant passes. Directed rounding, finite solver termination over the whole set, and coverage of all surviving regimes remain proof obligations. The attached diagnostic formula code uses ordinary floating point and is deliberately not presented as a formal interval implementation.</p>
+<p>The reproduction package includes the seed, all 138 before/after geometries, the failing closure diagnostics, engine comparisons, vertex formula checks, smooth-arc comparison, and plotting code. Source files can be obtained from a local checkout or GitHub using the pinned manifest. Nothing needs to be merged or deployed to reproduce these results.</p>
+<pre><code class="language-sh">python fetch-sources.py --checkout /path/to/Tau
+node diagnose.js
+node checks.js
+python smooth-arc.py
+python figures.py
+</code></pre>
+<p><code>checks.js</code> also exercises the projection and angular bounds on three 9×9×9 pose grids, 2,187 poses total, with no numerical violations. The inequalities above are supported by the derivations; the grids check the implementation rather than proving unsampled containment.</p>
+<p><strong>Result:</strong> a reproducible enclosure defect, exact vertex formulas, sufficient local and global branch tests, and a counterexample to the proposed persistence shortcut. A full machine-checked throw from a nonzero initial box remains unfinished.</p>
+<footer>Original derivations and reproducible numerical checks. Theorems, conditional predictions, and empirical counterexamples are distinguished throughout.</footer></main><dialog aria-label="Enlarged figure"><div class="dialog-top"><span>Scroll to inspect the figure.</span><button class="close" type="button">Close</button></div><div class="zoom-content"></div></dialog><script>const d=document.querySelector('dialog');document.querySelectorAll('.zoom').forEach(b=>b.addEventListener('click',()=>{document.querySelector('.zoom-content').replaceChildren(b.closest('figure').querySelector('svg').cloneNode(true));d.showModal();}));document.querySelector('.close').addEventListener('click',()=>d.close());d.addEventListener('click',e=>{if(e.target===d)d.close();});</script></body></html>
