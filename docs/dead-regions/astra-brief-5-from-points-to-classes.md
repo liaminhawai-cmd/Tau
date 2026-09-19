@@ -1,5 +1,24 @@
 # Brief 5 — from 261 dead points to dead classes
 
+> ## ANSWERED, AND PARTLY WRONG (2026-09-19)
+>
+> Astra's reply is at `docs/geometry-reviews/brief5/` on `main`. It corrects two
+> claims made below before answering the question.
+>
+> 1. The "certificates fired zero times" evidence **does not test this corpus**:
+>    the shipped L17 rung never loads `dead-points-mined.jsonl` or
+>    `dead-balls.jsonl`; it carries an older hand-embedded 4-point table at a 1.0-1.5u
+>    lookup radius. Verified independently.
+> 2. The "zero 6-dimensional volume" argument below is **false for the balls**.
+>    It holds only for a fixed-attacker slice; `certifyStar` moves all six
+>    coordinates, and a radius-eps ball has volume `(pi^2/45) eps^6 > 0`.
+>
+> So the premise of the framing below -- that generalisation is the *only* path
+> because lookup provably cannot work -- is not established. Lookup was never
+> actually tried on this corpus. The generalisation request remains the more
+> valuable one, and Astra answered it constructively; see the review.
+
+
 **For:** the outside mathematical model (Astra).
 **From:** the Tau project, 2026-09-19.
 **Question in one line:** we have 261 certified dead positions and 63 small
