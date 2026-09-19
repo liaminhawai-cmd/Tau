@@ -1,0 +1,67 @@
+--- forced-win.orig.js	2026-09-18 12:16:19.944901889 +0000
++++ ../pr18/nn/forced-win.js	2026-09-18 12:16:56.988969626 +0000
+@@ -262,13 +262,13 @@
+ // psi and phi both depending on rot shrinks with the sub-box, so m = 8 leaves under a degree of
+ // slack on a 0.4u box) and the sub-box intervals are united. Returns the engine's limit range
+ // [lo, hi] on the substep grid, the event followed, and the exact angle range [sLo, sHi].
+-function limitEnclosure(pieces, mover, pv, dir, box, m) {
++function limitEnclosure(pieces, mover, pv, dir, box, m, ev) {
+   m = m || 8;
+   const centre = pieces.map(q => ({ ...q })); centre[mover] = { x: (box.x[0] + box.x[1]) / 2, y: (box.y[0] + box.y[1]) / 2, rot: (box.rot[0] + box.rot[1]) / 2 };
+   const L = limitAt(centre, mover, pv, dir);
+   if (L.reason === 'full') return { lo: 2 * Math.PI, hi: 2 * Math.PI, sLo: 2 * Math.PI, sHi: 2 * Math.PI, event: null, centre: L, refused: null };
+-  if (!L.events || L.events.length !== 1) return { lo: null, hi: null, event: null, centre: L, refused: `arm (${pv},${dir}): ${L.events ? L.events.length : 0} events share the stopping substep at the centre` };
+-  const e = L.events[0];
++  if (!ev && (!L.events || L.events.length !== 1)) return { lo: null, hi: null, event: null, centre: L, refused: `arm (${pv},${dir}): ${L.events ? L.events.length : 0} events share the stopping substep at the centre` };
++  const e = ev || L.events[0];
+   // a start pose with a foot already over the rim stops at once, event or no event: the whole
+   // box must be on the board (each foot's box, the hub box plus R times the cos/sin ranges)
+   for (let i = 0; i < 3; i++) {
+@@ -286,7 +286,8 @@
+     if (I.refused) return { lo: null, hi: null, event: e, centre: L, refused: `arm (${pv},${dir}): ${I.refused} (sub-box ${i},${j},${k})` };
+     lo = Math.min(lo, I.lo); hi = Math.max(hi, I.hi);
+   }
+-  if (e.s < lo - 1e-9 || e.s > hi + 1e-9) return { lo: null, hi: null, event: e, centre: L, refused: `arm (${pv},${dir}): the centre's event is outside its own enclosure (bug)` };
++  const eS = ev ? eventAngleAt(e, pv, dir, centre[mover]) : e.s;
++  if (eS == null || eS < lo - 1e-9 || eS > hi + 1e-9) return { lo: null, hi: null, event: e, centre: L, refused: `arm (${pv},${dir}): the centre's event is outside its own enclosure (bug)` };
+   return { lo: Math.floor(lo / LIM_SUB) * LIM_SUB, hi: Math.floor(hi / LIM_SUB) * LIM_SUB, sLo: lo, sHi: hi, event: e, centre: L, refused: null };
+ }
+ // The ladder itself: applySwing looped a degree at a time, pushes and all. The oracle limitAt is
+@@ -1054,18 +1055,34 @@
+     const l = limitAt(p, mover, pv, dir); L.set(key(i, j, k), l); lo = Math.min(lo, l.lim); hi = Math.max(hi, l.lim);
+   }
+   const dx = n > 1 ? xs[1] - xs[0] : 0, dy = n > 1 ? ys[1] - ys[0] : 0, dr = n > 1 ? (rs[1] - rs[0]) * R : 0;
+-  let slope = 0, refused = null;
++  let slope = 0, refused = null, wall = false, wallMsg = null, union = null;
+   for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) {
+     const a = L.get(key(i, j, k));
+     for (const [nb, d] of [[[i + 1, j, k], dx], [[i, j + 1, k], dy], [[i, j, k + 1], dr]]) {
+       const b = L.get(key(...nb)); if (!b) continue;
+-      if (a.sig !== b.sig) refused = refused || `arm (${pv},${dir}): stopping event changes between cells (${i},${j},${k})-(${nb}): ${a.sig} vs ${b.sig}`;
++      if (a.sig !== b.sig) { wall = true; wallMsg = wallMsg || `arm (${pv},${dir}): stopping event changes between cells (${i},${j},${k})-(${nb}): ${a.sig} vs ${b.sig}`; }
+       slope = Math.max(slope, Math.abs(a.lim - b.lim) / d);
+     }
+   }
++  const evKey = e => [e.kind, e.foot, e.circle, e.kind === 'level' ? e.D : e.A, e.sign].join(':');
++  if (wall) {
++    const all = [...L.values()];
++    const ok = opts.exact && all.every(l => l.reason !== 'full' && l.events && l.events.length >= 1) && new Set(all.map(l => l.reason + '|' + l.crossed.join(','))).size === 1;
++    if (!ok) refused = wallMsg;
++    else { const m = new Map(); for (const l of all) for (const e of l.events) m.set(evKey(e), e); union = [...m.values()]; }
++  }
+   let lip = Math.max(DEG, 3 * slope), allow = lip * (dx + dy + dr) / 2 + SUBSTEP; const c = L.get(key(n >> 1, n >> 1, n >> 1));
+   let exact = null;
+-  if (opts.exact && !refused) {
++  if (union && !refused) {
++    const parts = union.map(e => limitEnclosure(pieces, mover, pv, dir, box, opts.subdiv || 8, e));
++    const bad = parts.find(p => p.refused);
++    if (bad) refused = bad.refused + ' [union]';
++    else {
++      exact = { lo: Math.min(...parts.map(p => p.lo)), hi: Math.min(...parts.map(p => p.hi)), sLo: Math.min(...parts.map(p => p.sLo)), sHi: Math.min(...parts.map(p => p.sHi)), event: parts[0].event, union: union.map(evKey), refused: null };
++      if (lo < exact.lo - 1e-9 || hi > exact.hi + 1e-9) refused = `arm (${pv},${dir}): a grid limit lies outside the UNION enclosure ${(exact.lo / DEG).toFixed(2)}-${(exact.hi / DEG).toFixed(2)} deg`;
++      else { lip = 0; allow = SUBSTEP; if (opts.log) opts.log(`  union envelope on arm (${pv},${dir}): ${union.length} stopping events ${exact.union.join(' ; ')} -> ${(exact.lo / DEG).toFixed(2)}-${(exact.hi / DEG).toFixed(2)} deg`); }
++    }
++  } else if (opts.exact && !refused) {
+     exact = limitEnclosure(pieces, mover, pv, dir, box, opts.subdiv || 8);
+     if (exact.refused) refused = exact.refused;
+     else if (lo < exact.lo - 1e-9 || hi > exact.hi + 1e-9) refused = `arm (${pv},${dir}): a grid limit lies outside the enclosure ${(exact.lo / DEG).toFixed(2)}-${(exact.hi / DEG).toFixed(2)} deg (bug)`;
