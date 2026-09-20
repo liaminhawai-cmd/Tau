@@ -244,3 +244,29 @@ from Brief 4 remain in the unchanged checker and were rechecked here. Do not
 cite `CERTIFIED` or random containment agreement as a completed enclosure proof.
 The [package](docs/geometry-reviews/brief6/README.md) includes exact source pins,
 commands, an engine replay of the missing reply and all diagnostic outputs.
+
+
+## Brief 7: repaired checker and contact chart — 2026-09-20
+
+The [Brief 7 response](docs/geometry-reviews/brief7/response.md) verifies that the
+two earlier repair hunks are now present at research snapshot
+`18efad5398798b65b477f9af4be17947a358d3ce` (checker blob
+`e321f0ab70e729874f61d5dba17b30959ea38ae7`). Treat the Brief 4/6 defects as
+historical findings whose specified hunks have been repaired, not unchanged
+current-code findings. All six widths reproduce: the first arm refuses even
+at zero width, while the second returns k112. Neither is a completed proof.
+
+The new positive result is an outward-rounded local real-geometry bound on
+`dG/dr = h_f n·u` over 31 candidate slabs covering k74–104. The lower bound is
+0.1253727544 through k84 and 0.0254047880 through k104. This establishes radial
+transversality for leg pair (0,0), not root existence, reachable-set containment,
+other-contact exclusion or floating-point correspondence. The response supplies
+an explicit vertex/chord shell formula and a centred full-map route to reduce
+artificial width, which already appears at k13 before the park.
+
+The frame repair is algebraically correct, but the nonlinear fallback retains
+a latent third-column assumption. No mismatched fallback above 1e-10 was seen
+in the twelve reproduced runs. Arm (2,-1) is the recommended first proof target
+for this post-reply box; its attacker-vertex transition and uniform finite-pass
+residual still require verification. Reproduction scripts, bounds and the
+original brief are committed alongside the response.
