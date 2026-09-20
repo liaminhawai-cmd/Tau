@@ -1,6 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {game} = require('./game-harness.cjs');
+const {game, root} = require('./game-harness.cjs');
+const fs = require('node:fs');
+const path = require('node:path');
 
 // A tiny, valid (but meaningless) value net -- enough shape for nnForwardGame to run without
 // throwing, standing in for the real ~45MB gold/bronze checkpoints so these tests never touch the
@@ -40,6 +42,34 @@ test('a save written under the old 11-rung numbering is migrated once, not read 
   assert.equal(g.read('ladderCleared(1,0)'),false,'rung 1 (Yellow) starts uncleared -- nobody has played the new rung yet');
   assert.equal(g.read("localStorage.getItem('tauRankedLevel')"),'11','ranked subrank shifts by +2 (one full level) with it');
   assert.equal(g.read("localStorage.getItem('tauLadderRenumberedV1')"),'1','and the migration is marked done');
+  // The old rung 1's clear carries DOWN onto Yellow as well as up onto Walnut, because both rungs
+  // are the same opponent (RUNG_TO_AI_LADDER sends each to AI_LADDER[0]).
+  assert.equal(g.read('ladderCleared(1,1)'),true,'the old rung-1 Red clear also lands on Yellow, the same opponent');
+});
+
+test('a returning player is pointed at the rung they were actually on, not back at the pushover',async t=>{
+  // The regression this exists to stop: ladderFrontier is the first rung NOT cleared on both
+  // colours, and a brand-new rung 1 has no clears on it -- so inserting Yellow at the bottom sent
+  // EVERY returning player's suggested rung back to 1, however far up they had climbed. On the
+  // pushover the opponent answers instantly, which also meant the between-moves camera drift
+  // (easeDrift, which needs a second or so of someone thinking) never had time to show at all.
+  const storage = { tauLadder: '{"b":{"1":1,"2":1,"3":1,"4":1,"5":1},"r":{"1":1,"2":1,"3":1,"4":1}}' };
+  const g=await game('?steam=1&premium=1', storage);t.after(g.close);
+  assert.equal(g.read('ladderFrontier()'),6,'mid-way through the old Level 5 is mid-way through the new Level 6');
+  assert.equal(g.$('desktopLevel').value,'6','and that is the rung the menu comes up on');
+  assert.equal(g.read('tauDesktop.board'),'cosy','wearing the same board and opponent as before the renumber');
+  assert.notEqual(g.read('RUNG_TO_AI_LADDER[5]'),0,'which is emphatically not the pushover');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the Committee\'s weights are bundled into a wrapper app, not left to a web server',async t=>{
+  // A native build has no origin to lazily fetch from; committeeEnsureLoaded asks for
+  // committee/gold.bin against the bundle itself. Left out of sync-www, the top rung silently
+  // falls back to L11 -- a Committee that is not a committee.
+  const src = fs.readFileSync(path.join(root,'native/scripts/sync-www.mjs'),'utf8');
+  assert.match(src,/cpSync\(join\(repoRoot, 'committee'\)/,'sync-www copies committee/ for a premium bundle');
+  for (const f of ['committee/gold.meta.json','committee/gold.bin','committee/bronze.meta.json','committee/bronze.bin'])
+    assert.ok(fs.existsSync(path.join(root,f)), f + ' is in the repo for it to copy');
 });
 
 test('the renumbering migration never runs twice on the same save',async t=>{

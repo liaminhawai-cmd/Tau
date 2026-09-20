@@ -16,6 +16,7 @@ on:
       - 'steam.html'
       - 'desktop/**'
       - 'vendor/**'
+      - 'committee/**'
       - 'sw.js'
       - 'manifest.webmanifest'
       - 'apple-touch-icon.png'
