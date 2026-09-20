@@ -39,6 +39,16 @@ Degrees, radians and Rθ: poses in the data files carry **radians** in
 Lipschitz metric is L1 over both pieces with rotation weighted by R = 23.095u,
 so a ball radius `eps` is in **units of foot travel (u)**.
 
+## Guides in this directory
+
+- [`SEARCH-GUIDE.md`](SEARCH-GUIDE.md) — how `forced-win.js` and `contact-law.js` work:
+  what a certificate claims, the depth and screening options, how a batch run is seeded
+  and resumed, and what the four outcomes mean. Start here if the code is new to you.
+- [`astra-brief-6-throw-certificate-reproduction.md`](astra-brief-6-throw-certificate-reproduction.md)
+  — an open question sent for outside review: `nn/THROW-CONTACT-LEMMAS.md` section 8
+  claims an enclosure *proof* that closes, and its recorded numbers do not reproduce on
+  the code committed with it. Do not cite section 8's figures until that resolves.
+
 ## Provenance and pinning
 
 `nn/forced-win.js` and `nn/contact-law.js` were copied verbatim onto this
