@@ -207,7 +207,7 @@ __exports = {
   pinFoot, applySwing, clearTurn, endTurn, commitTurn, takeSnap, restoreSnap,
   koLegalizePlan, koViolation, koReset, adjudicate, outermostRadU,
   directionToward, aiChoosePlan, simMoveToLimit, searchedPlanFor,
-  AI_LADDER, ladderPlanFor, ladderEval,
+  AI_LADDER, ladderPlanFor, ladderEval, markCheapNet,
   angInSpan, nearLineIds, lineDistOf, lineSideOf, LINE_INTERSECTIONS,
   newGame: __newGame, applyPlan: __applyPlan, applyPlanSearch: __applyPlanSearch,
   getG: () => G, setActive: a => { G.active = a; },

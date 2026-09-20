@@ -15,18 +15,26 @@ function fakeNet(seed) {
   return { sizes, fanIns, topology: null, W, b };
 }
 
-test('the ladder is thirteen rungs: Yellow at 1 through Colossus at 12, Committee at 13, and every existing board keeps its own difficulty',async t=>{
+test('the ladder is thirteen rungs, and the top two carry the trained brains',async t=>{
   const g=await game('');t.after(g.close);
-  assert.deepEqual(g.errors,[],'loads clean with the new AI_LADDER entry and rung mapping');
+  assert.deepEqual(g.errors,[],'loads clean with the new AI_LADDER entries and rung mapping');
   assert.equal(g.read('LADDER_N'),13);
-  // RUNG_TO_AI_LADDER is the one seam between "menu position" and "which AI plays there" -- every
-  // board that already existed keeps the exact AI_LADDER index it always had.
-  assert.equal(g.read('JSON.stringify(RUNG_TO_AI_LADDER)'),'[0,0,1,2,3,4,5,6,7,8,9,10,14]');
-  assert.equal(g.read('AI_LADDER[14].kind'),'committee','the new rung 13 -- appended, not inserted, so L1-L14\'s own indices never moved');
-  assert.equal(g.read('AI_LADDER.length'),15);
-  // Rung 12 (0-based ladderLevel 11, old Level 11 = Colossus) must still resolve to AI_LADDER[10]
-  // (L11) -- the same opponent it always was, just wearing a different number in the menu.
-  assert.equal(g.read('RUNG_TO_AI_LADDER[11]'),10);
+  // RUNG_TO_AI_LADDER is the one seam between "menu position" and "which AI plays there". Rungs
+  // 1-11 still point at exactly the AI_LADDER indices they always did; only the top two moved.
+  assert.equal(g.read('JSON.stringify(RUNG_TO_AI_LADDER)'),'[0,0,1,2,3,4,5,6,7,8,9,15,14]');
+  assert.equal(g.read('AI_LADDER.length'),16);
+  assert.equal(g.read('AI_LADDER[14].kind'),'committee','rung 13 -- appended, not inserted, so L1-L14\'s own indices never moved');
+  assert.equal(g.read('AI_LADDER[15].kind'),'net','rung 12 -- likewise appended');
+  assert.equal(g.read('RUNG_TO_AI_LADDER[11]'),15,'rung 12 is the champion net, not the hand-tuned rung it replaced');
+  assert.equal(g.read('RUNG_TO_AI_LADDER[12]'),14,'and the Committee still sits above it');
+  // Both top rungs keep their weights out of line and fetch them on demand. The Committee votes
+  // with the champion as one of its members, so climbing 12 then 13 fetches that file once.
+  assert.equal(g.read('JSON.stringify(AI_LADDER[15].nets)'),'["champion"]');
+  assert.equal(g.read('JSON.stringify(AI_LADDER[14].nets)'),'["champion","second","lean"]');
+  // Rungs 1-11 must still be the plain in-line brains -- nothing below the top two may depend on
+  // a download, or a mid-ladder rung could silently fall back on a bad deploy.
+  for (let r = 0; r <= 10; r++)
+    assert.equal(g.read(`!!AI_LADDER[RUNG_TO_AI_LADDER[${r}]].nets`),false,`rung ${r+1} needs no download`);
 });
 
 test('a save written under the old 11-rung numbering is migrated once, not read back under the wrong rung',async t=>{
@@ -62,14 +70,24 @@ test('a returning player is pointed at the rung they were actually on, not back 
   assert.deepEqual(g.errors,[]);
 });
 
-test('the Committee\'s weights are bundled into a wrapper app, not left to a web server',async t=>{
-  // A native build has no origin to lazily fetch from; committeeEnsureLoaded asks for
-  // committee/gold.bin against the bundle itself. Left out of sync-www, the top rung silently
-  // falls back to L11 -- a Committee that is not a committee.
+test('the top rungs\' weights are bundled into a wrapper app, not left to a web server',async t=>{
+  // A native build has no origin to lazily fetch from; ladderNetsEnsureLoaded asks for
+  // committee/<name>.bin against the bundle itself. Left out of sync-www, the top rungs silently
+  // fall back to L11 -- a Committee that is not a committee, and a Champion that is not one.
   const src = fs.readFileSync(path.join(root,'native/scripts/sync-www.mjs'),'utf8');
   assert.match(src,/cpSync\(join\(repoRoot, 'committee'\)/,'sync-www copies committee/ for a premium bundle');
-  for (const f of ['committee/gold.meta.json','committee/gold.bin','committee/bronze.meta.json','committee/bronze.bin'])
-    assert.ok(fs.existsSync(path.join(root,f)), f + ' is in the repo for it to copy');
+  // Read the names off the shipped ladder rather than repeating them here, so renaming a net or
+  // reseating a member can never leave this check quietly guarding files nobody fetches any more.
+  const g=await game('');t.after(g.close);
+  const names = new Set(JSON.parse(g.read('JSON.stringify(AI_LADDER.flatMap(d => (d && d.nets) || []))')));
+  assert.ok(names.size, 'at least one rung declares weights');
+  for (const n of names) for (const ext of ['.meta.json','.bin'])
+    assert.ok(fs.existsSync(path.join(root,'committee',n+ext)), 'committee/'+n+ext+' is in the repo for it to copy');
+  // ...and nothing is carried that no rung asks for: these are multi-megabyte files, and a native
+  // wrapper pays for every one of them whether or not anything ever fetches it.
+  const orphans = fs.readdirSync(path.join(root,'committee'))
+    .filter(f => !names.has(f.replace(/\.(meta\.json|bin)$/,'')));
+  assert.deepEqual(orphans, [], 'committee/ carries no weights the ladder never asks for');
 });
 
 test('no board opens out of order, whatever else the profile has done',async t=>{
@@ -116,7 +134,7 @@ test('the renumbering migration never runs twice on the same save',async t=>{
   assert.equal(g.read('ladderCleared(6,0)'),false);
 });
 
-test('a failed fetch rejects committeeEnsureLoaded rather than resolving with nothing',async t=>{
+test('a failed fetch rejects ladderNetsEnsureLoaded rather than resolving with nothing',async t=>{
   // The harness's own fetch always rejects ("Offline test" -- see game-harness.cjs), standing in
   // for a real network failure. This is committeePlanGen's actual escape hatch: it races the wait
   // loop against this promise settling and falls back to L11's own move the moment `failed` flips.
@@ -127,8 +145,10 @@ test('a failed fetch rejects committeeEnsureLoaded rather than resolving with no
   // something worth faking here. What IS testable without a real clock is that the promise this
   // relies on genuinely rejects, and does so again on a fresh attempt rather than staying broken.
   const g=await game('');t.after(g.close);
-  await assert.rejects(() => g.w.committeeEnsureLoaded());
-  await assert.rejects(() => g.w.committeeEnsureLoaded(), 'a retried attempt after a failure tries again, not remembered as permanently broken');
+  for (const rung of [14, 15]) {
+    await assert.rejects(() => g.w.ladderNetsEnsureLoaded(rung), `rung ${rung} reports the failure`);
+    await assert.rejects(() => g.w.ladderNetsEnsureLoaded(rung), 'a retried attempt after a failure tries again, not remembered as permanently broken');
+  }
   assert.deepEqual(g.errors,[]);
 });
 
@@ -155,6 +175,39 @@ test('committeePlanFor: three members pooling their votes never crashes and retu
   const p = JSON.parse(plan);
   assert.ok([0,1,2].includes(p.pivotIdx));
   assert.ok(p.dir === 1 || p.dir === -1);
+  assert.ok(Number.isFinite(p.targetRad) && p.targetRad > 0);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a net member is read from the side whose turn it actually is',async t=>{
+  // The bug this exists to stop, and the reason the top rung measured WEAKER than the rung below
+  // it: nnFeaturesGame builds all 94 inputs relative to G.active, so a value net answers "how good
+  // is this for the side to move". The first Committee parked G.active on itself and read the
+  // value straight, at leaves where the opponent was actually to play -- quietly awarding itself a
+  // free tempo in every single evaluation. nnPlanForGame has always negated instead; this is the
+  // same convention, made explicit.
+  const g=await game('');t.after(g.close);
+  g.read(`__n = ${JSON.stringify(fakeNet(7))};`);
+  const idx = g.read('G.active');
+  // Read straight, with the opponent genuinely to move...
+  const raw = g.read(`(function(){ G.active = ${1-idx}; const v = nnForwardGame(nnFeaturesGame(), __n); G.active = ${idx}; return v; })()`);
+  const viaHelper = g.read(`committeeNetEval(__n, ${idx}, ${1-idx})`);
+  assert.ok(Math.abs(viaHelper - (-raw)) < 1e-12, 'a leaf with the opponent to move is negated, not taken at face value');
+  assert.equal(g.read('G.active'), idx, 'and G.active is handed back exactly as it was found');
+  // ...and when it really is our turn, the value stands as the net gives it.
+  const ours = g.read(`(function(){ G.active = ${idx}; return nnForwardGame(nnFeaturesGame(), __n); })()`);
+  assert.ok(Math.abs(g.read(`committeeNetEval(__n, ${idx}, ${idx})`) - ours) < 1e-12);
+  // The two readings must genuinely differ, or this test would pass on a net that ignores the
+  // board and the whole convention would be untested.
+  assert.ok(Math.abs(raw - ours) > 1e-9, 'the fake net does depend on which side is to move');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the Champion rung searches with its own net, and falls back rather than crashing without one',async t=>{
+  const g=await game('');t.after(g.close);
+  g.read(`AI_LADDER[15]._nets = [${JSON.stringify(fakeNet(9))}];`);
+  const p = JSON.parse(g.read('JSON.stringify(ladderPlanRung(AI_LADDER[15], G.active))'));
+  assert.ok(p && [0,1,2].includes(p.pivotIdx) && (p.dir === 1 || p.dir === -1), 'plays a legal plan');
   assert.ok(Number.isFinite(p.targetRad) && p.targetRad > 0);
   assert.deepEqual(g.errors,[]);
 });

@@ -46,11 +46,24 @@ function arg(name, dflt) {
 // arm is still swept); without it, the policy hard-prunes to its top arms, the original wiring.
 // Default stays pruning so the existing menu A/Bs keep testing what they say they test.
 function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, abCut, policyArms, stopStride, sweepDeg, parkStops, dualPolicy) {
-  const m = /^L(\d+)$/i.exec(spec);
+  // "L<n>" -- a ladder rung exactly as shipped. "L<n>:a,b" overrides which committee/ nets that
+  // rung votes with, which is how the seats were chosen rather than guessed: hold the funnel fixed,
+  // vary only the membership, and let the results say who sits. The name carries the override so
+  // two memberships can never pool as one brain in a tournament's results.
+  const m = /^L(\d+)(?::([\w.,-]+))?$/i.exec(spec);
   if (m) {
     const lvl = +m[1];
     if (lvl < 1 || lvl > eng.AI_LADDER.length) throw new Error('no such ladder level: ' + spec);
-    return { name: 'L' + lvl, fn: idx => eng.ladderPlanFor(lvl - 1, idx) };
+    const def = eng.AI_LADDER[lvl - 1];
+    if (m[2]) {
+      if (!def.nets) throw new Error('ladder level ' + lvl + ' has no nets to override: ' + spec);
+      def.nets = m[2].split(','); def._nets = null;
+    }
+    // The top rungs keep their weights in committee/ rather than inline, and reach for them by
+    // fetch in the browser. No fetch here, so read them off disk before the rung is ever asked for
+    // a move -- otherwise it silently falls back to the chair and the arena measures the wrong brain.
+    if (def.nets) require('./committee-nets.js').equipLadderNets(eng);
+    return { name: 'L' + lvl + (m[2] ? '(' + m[2] + ')' : ''), fn: idx => eng.ladderPlanFor(lvl - 1, idx) };
   }
   const parts = spec.split(':');
   // "le:L11[:temperature]" -- L11's hand-tuned EVAL inside nnai.js's search, so it gets a real

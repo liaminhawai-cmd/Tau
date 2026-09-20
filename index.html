@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 283</div>
+<div id="buildTag">build 284</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -4131,15 +4131,48 @@ const AI_LADDER = [
     { kind:'p3', experimental:'hub-leverage', label:'Leverage',
       w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2,hubAttack:2,hubExpose:-2},
       o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },
-    // L15: the committee. Three real trained/hand-tuned players sharing one move -- L11 as the
-    // chair, plus two value nets (COMMITTEE_GOLD and COMMITTEE_SECOND, below) picked like
-    // committee.js's own pickAuto for having genuinely different blind spots. Appended here rather
-    // than slotted in among L1-L14 so every existing index into this array keeps meaning exactly
-    // what it always has -- old arena logs, the corner-opening threshold below, and every other
-    // AI_LADDER[n] lookup in this file or nn/ are untouched by a rung being added at the top of
-    // the player ladder. Its own weights are not inline here (see committeeEnsureLoaded): they are
-    // fetched lazily, the one rung whose brain is not simply sitting in this array already.
-    { kind:'committee', label:'Committee' },
+    // L15: the committee. Four real trained/hand-tuned players sharing one move -- L11's own
+    // hand-tuned judgement as chair, plus the three value nets named in `nets` below.
+    //
+    // committee.js's pickAuto picks members for having different blind spots; these were picked by
+    // measurement. Every checkpoint in nn/models and nn/medals was played against L11 through
+    // nn/arena.js, and the seats went to the strongest two (+86 and +69 Elo over 40 games each)
+    // plus the best of the small nets -- which is worth a seat on two counts: it is a genuinely
+    // different architecture (a plain 167K MLP beside two 2.06M dense-memory nets, so it does not
+    // share their family's blind spots) and at 0.155ms a call it votes on every stop of the sweep
+    // for almost nothing.
+    //
+    // Appended here rather than slotted in among L1-L14 so every existing index into this array
+    // keeps meaning exactly what it always has -- old arena logs, the corner-opening threshold
+    // below, and every other AI_LADDER[n] lookup in this file or nn/ are untouched by a rung being
+    // added at the top of the player ladder. Its weights are not inline (see ladderNetsEnsureLoaded):
+    // they are fetched lazily, like the Champion rung below it.
+    //
+    // `nets` names the committee/ basenames those weights come from -- plain string literals, so
+    // this array literal stays free of any reference to a const declared further down the file
+    // (which is a temporal-dead-zone crash at load, not a lint nit). Both loaders read this one
+    // list: the browser's ladderNetsEnsureLoaded fetches them, nn/committee-nets.js reads them off
+    // disk so the arena can measure the real thing.
+    { kind:'committee', label:'Committee', nets:['champion','second','lean'] },
+    // L16 -> the player ladder's rung 12: the strongest single value net we have, searching on its
+    // own instead of voting. Which net is not a guess. Every checkpoint was first screened over 12
+    // games against L11, then the top four were re-run over 40 games each -- worth doing, because
+    // the 12-game screen was almost pure noise (two BYTE-IDENTICAL nets scored +0 and +173 in it).
+    // On the 40-game run this one (pool-slot-08) came top at +86 +/- 113 Elo.
+    //
+    // depth 1, and not because depth was too expensive: this net at depth 2 LOSES to itself at
+    // depth 1 (8-9 over 17 arena games, and 1161ms a move against ~260ms). Its value head does not
+    // sharpen with look-ahead, so a second ply bought noise at four times the price. The Committee
+    // above it found the same thing -- see the AGREE step in committeePlanFor.
+    //
+    // temperature is the rung knob, the same idea as `noise` on the rungs below: it rolls over the
+    // net's own ranking, so it nearly always plays its best move and occasionally takes one a hair
+    // behind. Set deliberately low. It is NOT load-bearing for the ladder's ordering -- rung 13
+    // measured 21-19 (+17 +/- 110 Elo) against this rung even with it, which is a tie, and no
+    // arrangement of these nets beat that. A vote by three evaluators is simply not reliably
+    // stronger than the best one of them alone. What the Committee has over this rung is that it
+    // always plays its considered best; this rung, by a hair, does not.
+    { kind:'net', label:'Champion', nets:['champion'], o:{ depth:1, keepStops:3, temperature:0.04 } },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 // The player-visible ladder's rung NUMBER and the AI it plays are deliberately two different axes.
@@ -4149,7 +4182,7 @@ let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder
 // into AI_LADDER's own numbering -- every existing board keeps the exact opponent it always had,
 // however its position in the menu moves. New rung 1 (Yellow) reuses L1's pushover outright: it is
 // a new SLOT in the menu, not a new difficulty tier nobody asked for or tuned.
-const RUNG_TO_AI_LADDER = [0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14];
+const RUNG_TO_AI_LADDER = [0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 14];
 // One-time migration for a save written under the old 11-rung numbering (Walnut at rung 1 ...
 // Colossus at rung 11), now that Yellow has taken rung 1 and everything else shifted up by one.
 // Left un-migrated, a player's own saved clears would be read back under the WRONG rung the moment
@@ -4771,9 +4804,10 @@ function* ladderPlanRungGen(def, idx){
     if (def.kind==='opp') return yield* ladderPlanOppModelGen(idx, def.w, def.o);
     if (def.kind==='opp2') return yield* ladderPlan13Gen(idx, def.w, def.o);
     if (def.kind==='committee') return yield* committeePlanGen(idx, def);
+    if (def.kind==='net') return yield* ladderNetPlanGen(idx, def);
     return yield* ladderSampledPlanGen(idx, def.w, def.o);
 }
-// Waits out the lazy fetch (see committeeEnsureLoaded) inside the same generator/yield scheme
+// Waits out the lazy fetch (see ladderNetsEnsureLoaded) inside the same generator/yield scheme
 // every other ladder brain already uses, so the frame-slicing driver (stepAiSearch) keeps pausing
 // and resuming around the wait exactly as it would around a slow search -- the player sees the
 // board and can still look around while Committee's weights come down, not a frozen tab.
@@ -4781,18 +4815,27 @@ function* ladderPlanRungGen(def, idx){
 // times inside one 6ms search slice, so counting steps would exhaust the budget before even one
 // animation frame had passed for the fetch to have a chance to finish.
 const COMMITTEE_LOAD_TIMEOUT_MS = 20000;
+// Returns true once def._nets is populated, false if the weights could not be had -- in which case
+// every caller falls back to L11's own rung rather than stalling the match or crashing on a missing
+// net. A 404 on a mis-deployed build therefore costs strength, never a broken game.
+function* ladderNetsWaitGen(i, def) {
+    if (def._nets) return true;
+    let failed = false;
+    ladderNetsEnsureLoaded(i).catch(() => { failed = true; });
+    const t0 = performance.now();
+    while (!def._nets && !failed && performance.now() - t0 < COMMITTEE_LOAD_TIMEOUT_MS) yield;
+    return !!def._nets;
+}
 function* committeePlanGen(idx, def) {
-    if (!def._nets) {
-        let failed = false;
-        committeeEnsureLoaded().catch(() => { failed = true; });
-        const t0 = performance.now();
-        while (!def._nets && !failed && performance.now() - t0 < COMMITTEE_LOAD_TIMEOUT_MS) yield;
-        // The fetch failed, or a hidden tab's hard search guard forced this through synchronously
-        // before it could resolve -- either way, play the chair's own move rather than stall the
-        // match or crash on a still-missing net.
-        if (!def._nets) return yield* ladderPlanForGen(10, idx);
-    }
+    if (!(yield* ladderNetsWaitGen(14, def))) return yield* ladderPlanForGen(10, idx);
     return committeePlanFor(idx, def);
+}
+// L12: one trained value net searching on its own, rather than a vote. Same lazy-weight machinery
+// as the Committee above, and a rung below it in both strength and cost -- one net reading one
+// leaf, where the Committee has three members reading it and a second ply behind a real reply.
+function* ladderNetPlanGen(idx, def) {
+    if (!(yield* ladderNetsWaitGen(15, def))) return yield* ladderPlanForGen(10, idx);
+    return nnPlanForGame(idx, def.o.temperature || 0, def.o.depth, def.o.keepStops, def._nets[0], null);
 }
 // ===================== The Committee: three real players share one move by voting =====================
 // Ported from nn/committee.js's real algorithm (the offline training arena's own multi-brain
@@ -4801,22 +4844,26 @@ function* committeePlanGen(idx, def) {
 // each member's win probability, summed -- a member that reads a move as nearly dead drags the
 // total toward -Infinity by itself, and an engine-proven throw needs no vote at all).
 //
-// ONE deliberate simplification from the original: committee.js's judge() step also lets each
-// member search a full reply for every candidate before scoring it, and runs the three members on
-// separate worker THREADS -- both of which are what make an offline arena's thousands of games
-// affordable across many cores over hours. A single live move in one browser tab, on whatever
-// device is in someone's hand, does not have that budget. So here every legal waypoint is judged
-// directly (one leaf per member, no nested reply search, no threads) rather than staged through
-// committee.js's funnel. The vote itself -- the POOL/VETO/AGREE math, and the three real players
-// casting it (L11's own hand-tuned judgement as chair, plus the two trained nets) -- is unchanged.
+// Two things about the first port of this were simply wrong, and together they made the top rung of
+// the ladder measurably WEAKER than the rung below it (5-7 against L11, -54 Elo):
+//
+//   1. It voted with committee/gold, which is byte-identical to nn/models/pool-slot-01 -- a net
+//      that measures +0 Elo against L11 over 12 games. The "experts" were no stronger than the
+//      hand-tuned rung they were supposed to tower over. The seats are now filled by playing every
+//      checkpoint in nn/models and nn/medals against L11 (see committee/ and the nets list above).
+//   2. It read those nets from the wrong side of the move -- see committeeNetEval, which is where
+//      that is explained and fixed.
+//
+// What is NOT kept from committee.js is its deepening funnel. That was ported too, measured, and
+// removed again: see the AGREE step in committeePlanFor for the numbers. committee.js can afford
+// depth because it runs its members on separate worker THREADS across an offline arena's many
+// cores; one browser tab has one thread, so the members here vote in sequence, and the budget is
+// better spent on a fine sweep than on look-ahead this net does not benefit from.
+//
+// The vote itself -- POOL/VETO/AGREE, and the real players casting it (L11's own hand-tuned
+// judgement as chair, plus the trained nets) -- is committee.js's, unchanged.
 const COMMITTEE_BASE = 'committee/';
-// gold is fixed; the third seat is whichever of silver/bronze reads a position LEAST like L11 does
-// -- measured, not guessed (nn/scratch-pick-committee-member.js, over L11-vs-L11 self-play using
-// disagree.js's own real net-vs-L11 divergence probe): bronze disagreed with L11's favourite move
-// 90.0% of the time (33 sampled positions) against silver's 81.8% (40 sampled positions), and by a
-// wider margin when it did (2.616 vs 2.338 sd-units) -- bronze brings the more different judgement.
-const COMMITTEE_GOLD = 'gold', COMMITTEE_SECOND = 'bronze';
-let committeeLoadPromise = null;
+let ladderNetPromises = {};
 // {sizes,fanIns,topology,W,b} rebuilt from the compact export (nn/export-committee-net.js) -- same
 // shape nnForwardGame already reads for a #nn/#lab model, so scoring a candidate through it is the
 // exact same call as every other net-backed brain in this file already makes.
@@ -4834,15 +4881,31 @@ function committeeLoadNet(name) {
         return { sizes, fanIns, topology: meta.topology, W, b };
     });
 }
-// Fetched once, lazily, the moment a player actually reaches the Committee rung -- exactly the
-// on-demand pattern the desktop Ultra tier's ray-trace bundle already uses (see rayTraceLoad in
-// desktop/presentation.js), so nobody who never plays Committee downloads its ~16MB of weights.
-function committeeEnsureLoaded() {
-    if (committeeLoadPromise) return committeeLoadPromise;
-    committeeLoadPromise = Promise.all([committeeLoadNet(COMMITTEE_GOLD), committeeLoadNet(COMMITTEE_SECOND)])
-        .then(([gold, second]) => { AI_LADDER[14]._nets = [gold, second]; return AI_LADDER[14]._nets; })
-        .catch(e => { committeeLoadPromise = null; throw e; });   // a failed fetch is retried on the next attempt, not remembered as permanent
-    return committeeLoadPromise;
+// A net is "cheap" if one forward pass is small enough to afford ~60 of them per walk ply. Decided
+// by counting weights rather than by name, so reseating a member cannot silently make the walk cost
+// ten times what it did: the champion-class nets here are ~2.06M parameters and measure ~4.4ms a
+// call, the small ones ~167K and ~0.155ms. Anything under this line can drive the look-ahead walk;
+// anything over it only ever votes on a leaf.
+const COMMITTEE_CHEAP_PARAMS = 5e5;
+function markCheapNet(net) {
+    let n = 0;
+    for (let l = 0; l < net.W.length; l++) n += net.W[l].length + net.b[l].length;
+    net.__cheap = n <= COMMITTEE_CHEAP_PARAMS;
+    return net;
+}
+// Fetched once, lazily, the moment a player actually reaches a rung whose brain keeps its weights
+// out of line -- exactly the on-demand pattern the desktop Ultra tier's ray-trace bundle already
+// uses (see rayTraceLoad in desktop/presentation.js), so nobody who never climbs that far downloads
+// them. Keyed by rung so the two top rungs load independently: reaching L12 must not drag the
+// Committee's much larger weights down with it.
+function ladderNetsEnsureLoaded(i) {
+    if (ladderNetPromises[i]) return ladderNetPromises[i];
+    const def = AI_LADDER[i];
+    if (!def || !def.nets) return Promise.reject(new Error('rung ' + i + ' declares no nets'));
+    ladderNetPromises[i] = Promise.all(def.nets.map(committeeLoadNet))
+        .then(nets => { nets.forEach(markCheapNet); def._nets = nets; return nets; })
+        .catch(e => { ladderNetPromises[i] = null; throw e; });   // a failed fetch is retried on the next attempt, not remembered as permanent
+    return ladderNetPromises[i];
 }
 function committeeMemberProb(kind, s) {
     // The same two conversions committee.js's real members use: the chair's eval is tens-to-
@@ -4856,12 +4919,23 @@ function committeeMemberProb(kind, s) {
 // same generate-once/score-many split frankai.js's genCandidates/scoreCandidates use offline, for
 // the same reason: the physics walk is cheap, a net's forward pass is the real cost here (these
 // two nets are unusually large, ~1.3M parameters each -- measured ~4-5ms/call, not the sub-
-// millisecond a ladder-scale net would cost). Sampled every COMMITTEE_SAMPLE_DEG rather than every
-// physics step -- a full 3deg dense sweep (nnPlanForGame's own resolution) would run each net
-// several hundred times a move; three players judging a few dozen well-spread stops each vote as
-// meaningfully as they would judging every single degree, for a fraction of the wait.
-const COMMITTEE_SAMPLE_DEG = 9;
-function committeeSweep(idx) {
+// millisecond a ladder-scale net would cost).
+//
+// This used to sample every 9deg to keep the net calls down, which quietly made the top rung look
+// at the board through a COARSER lens than the single net on the rung below it: nnPlanForGame
+// sweeps every physics step (3deg) and can therefore find a stop the 9deg grid steps straight over.
+// A committee that cannot even see the champion's own best move cannot reliably beat it, and rung
+// 13 being easier than rung 12 is the one thing a final boss must never be. So the grid now matches
+// the search it has to outrank, and the extra ~45 stops are paid for by only putting a shortlist of
+// them in front of the expensive members (see committeePlanFor).
+const COMMITTEE_SAMPLE_DEG = 3;
+// ...but the look-ahead WALK keeps the old coarse grid. The fine grid exists so the Committee can
+// see every stop of the move it is about to play; the walk is only a guess at how the game carries
+// on from there, and guessing the opponent's answer to within three degrees buys nothing a nine
+// degree guess does not. It costs roughly three times as much, though, and the walk is 17 plies a
+// move -- at 3deg throughout, one Committee move measured 1322ms instead of ~500ms.
+function committeeSweep(idx, sampleDeg) {
+    sampleDeg = sampleDeg || COMMITTEE_SAMPLE_DEG;
     const snap0 = takeSnap();
     const restore = () => { G.pieces.forEach((p,i)=>{p.x=snap0[i].x;p.y=snap0[i].y;p.rot=snap0[i].rot;});
         G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null; G.pinned=null; G.pivot=null; G.active=idx; G.over=false; G.winner=null; };
@@ -4874,9 +4948,12 @@ function committeeSweep(idx) {
             const rad = G.netRad, a = Math.abs(rad);
             if (a < HARD_MIN_MOVE_RAD) { if (G.atLimit) break; continue; }
             const isThrow = G.pieces[1-idx].anyFootOff();
-            if (!isThrow && !G.atLimit && a - lastMark < COMMITTEE_SAMPLE_DEG*Math.PI/180) continue;
+            if (!isThrow && !G.atLimit && a - lastMark < sampleDeg*Math.PI/180) continue;
             lastMark = a;
-            cands.push({ pivotIdx: pv, dir, targetRad: a, isThrow, snap: takeSnap() });
+            // `arm` tags which (pivot, direction) sweep a stop came from, so the smoothing below
+            // only ever averages stops that really are neighbours along one swing -- consecutive
+            // entries in this array jump to a different arm six times a move.
+            cands.push({ pivotIdx: pv, dir, targetRad: a, isThrow, arm: pv*2 + (dir > 0 ? 1 : 0), snap: takeSnap() });
             if (isThrow) break;   // nothing past a throw is worth sweeping further on this arm
         }
     }
@@ -4897,21 +4974,99 @@ function committeeScore(cands, idx, evalFn) {
     G.pieces.forEach((p,i)=>{p.x=snap0[i].x;p.y=snap0[i].y;p.rot=snap0[i].rot;}); G.active = idx;
     return scores;
 }
+// One net member's read of whatever position G is parked on, ALWAYS expressed as "how good is this
+// for idx" -- which is not what the net returns on its own.
+//
+// nnFeaturesGame builds every one of its 94 inputs relative to G.active: "me" is G.pieces[G.active].
+// So a value net answers "how good is this for the side to move", and reading it from the wrong
+// side does not merely flip a sign, it hands whoever is asking a free tempo in every evaluation.
+// nnPlanForGame has always known this -- it sets G.active to the opponent and negates. The first
+// port of the Committee did not: it parked G.active on idx and read the value straight, at leaves
+// where the opponent was actually to play. That is why a rung voting with million-parameter nets
+// was measurably WEAKER than the hand-tuned rung below it. toMove says whose turn the position
+// really is, and the sign follows from that rather than from whichever stage is calling.
+function committeeNetEval(net, idx, toMove) {
+    G.active = toMove;
+    const v = nnForwardGame(nnFeaturesGame(), net);
+    G.active = idx;
+    return toMove === idx ? v : -v;
+}
+// Replaces each stop's score with the mean of itself and its immediate neighbours ALONG THE SAME
+// ARM -- nnPlanForGame does exactly this to its own sweep, and for the same reason: at 3deg
+// resolution a single stop can score well by luck, and a move whose neighbours are all bad is a
+// move that punishes the slightest misjudgement of the swing. Averaging prefers stops that sit in
+// a broad good region. Throws are left alone: they are engine-proven, not estimated.
+function committeeSmooth(cands, row) {
+    const out = row.slice();
+    for (let j = 0; j < cands.length; j++) {
+        if (row[j] == null) continue;   // a throw -- nothing to smooth
+        let sum = row[j], n = 1;
+        for (const d of [-1, 1]) {
+            const k = j + d;
+            if (k >= 0 && k < cands.length && cands[k].arm === cands[j].arm && row[k] != null) { sum += row[k]; n++; }
+        }
+        out[j] = sum/n;
+    }
+    return out;
+}
+// The pooled vote on one candidate: every member's win probability, logged and summed. Separated
+// out because BOTH funnel stages below take exactly the same vote, just over different leaves.
+function committeePool(chairRow, netRows, j) {
+    let total = Math.log(committeeMemberProb('chair', chairRow[j]));
+    for (const row of netRows) total += Math.log(committeeMemberProb('net', row[j]));
+    return total;
+}
+// How many stops the expensive members are asked about at all -- see the shortlist in
+// committeePlanFor. Wide enough that every arm still gets a real look (six arms, up to five stops
+// each), narrow enough that a 2.06M-parameter net costs ~80ms a move instead of ~206ms.
+const COMMITTEE_SHORTLIST = 24, COMMITTEE_SHORTLIST_PER_ARM = 5;
 function committeePlanFor(idx, def) {
     const nets = def._nets;   // guaranteed ready by committeePlanGen before this is ever called
     const cands = committeeSweep(idx);
     if (!cands.length) return null;
-    const chairRow = committeeScore(cands, idx, () => ladderEval(idx, AI_LADDER[10].w));
-    const netRows = nets.map(net => committeeScore(cands, idx, () => nnForwardGame(nnFeaturesGame(), net)));
-    let best = -1, bestTotal = -Infinity;
-    for (let j = 0; j < cands.length; j++) {
-        if (cands[j].isThrow) { best = j; break; }   // a proven win -- nothing left to vote on
-        let total = Math.log(committeeMemberProb('chair', chairRow[j]));
-        for (const row of netRows) total += Math.log(committeeMemberProb('net', row[j]));
-        if (total > bestTotal) { bestTotal = total; best = j; }
+
+    // ---- PROPOSE: an engine-proven throw needs no vote at all.
+    for (const c of cands)
+        if (c.isThrow) return { pivotIdx: c.pivotIdx, dir: c.dir, targetRad: c.targetRad };
+
+    // ---- JUDGE. The cheap members (the chair's eval and the small net) read every stop; the big
+    // nets, at ~4.4ms a call each, read only a shortlist of what the cheap ones rank highest.
+    // Scoring all ~62 stops with both of them measured 206ms a move, most of it spent separating
+    // moves the cheap members already agree are hopeless. The shortlist is capped per ARM rather
+    // than taken straight off the top, so every idea on the board still reaches them -- just not
+    // every third degree of the bad ones.
+    const chairRow = committeeSmooth(cands, committeeScore(cands, idx, () => ladderEval(idx, AI_LADDER[10].w)));
+    const cheap = nets.filter(n => n.__cheap), dear = nets.filter(n => !n.__cheap);
+    const cheapRows = cheap.map(net => committeeSmooth(cands, committeeScore(cands, idx, () => committeeNetEval(net, idx, 1 - idx))));
+    const order = cands.map((c, j) => j).sort((a, b) => committeePool(chairRow, cheapRows, b) - committeePool(chairRow, cheapRows, a));
+    const shortPerArm = new Map(), picked = [];
+    for (const j of order) {
+        if (picked.length >= COMMITTEE_SHORTLIST) break;
+        const n = shortPerArm.get(cands[j].arm) || 0;
+        if (n >= COMMITTEE_SHORTLIST_PER_ARM) continue;
+        shortPerArm.set(cands[j].arm, n + 1); picked.push(j);
     }
-    if (best < 0) return null;
-    const c = cands[best];
+    // Sorted back into sweep order, and smoothed across the shortlist's OWN neighbours rather than
+    // the full sweep's: a stop the champion never looked at has no score to average in.
+    picked.sort((a, b) => a - b);
+    const shortCands = picked.map(j => cands[j]);
+    const dearRows = dear.map(net => committeeSmooth(shortCands, committeeScore(shortCands, idx, () => committeeNetEval(net, idx, 1 - idx))));
+    const ranked = shortCands.map((c, m) => ({
+        c,
+        s: committeePool([chairRow[picked[m]]],
+                         cheapRows.map(r => [r[picked[m]]]).concat(dearRows.map(r => [r[m]])), 0),
+    }));
+    if (!ranked.length) return null;
+    // ---- AGREE: the pooled vote's own answer. There is deliberately no second, deeper stage
+    // here. One was built and measured, and it did not pay: walking the line on with the cheap
+    // members, then re-voting, came out 16-14 against the single-net rung below (+22 +/- 127 Elo),
+    // which is a tie. The reason showed up in a separate run -- this net at search depth 2 LOSES
+    // to itself at depth 1 (8-9 over 17 games). Its value head simply does not get sharper with
+    // look-ahead, so paying 400ms a move for depth bought noise. What the Committee is for is the
+    // vote itself: three independently-trained evaluators, pooled in log space, so a move any one
+    // of them reads as nearly lost is dragged down however much the others like it.
+    ranked.sort((a, b) => b.s - a.s);
+    const c = ranked[0].c;
     return { pivotIdx: c.pivotIdx, dir: c.dir, targetRad: c.targetRad };
 }
 
@@ -6117,10 +6272,13 @@ function startGame(aiMode, humanColorIdx, difficulty) {
 function startLadderLevel(levelIdx, humanColorIdx) {
     ladderLevel = levelIdx;
     rankedMode = false;   // plain Freeplay unless startRankedMatch() overrides this right after
-    // Kicked off here rather than waited on: Committee's weights start downloading the moment the
+    // Kicked off here rather than waited on: a top rung's weights start downloading the moment the
     // rung is chosen, not the moment the AI first needs to move (which, if the player is Red, is
     // the very first ply -- there would be no head start left to give it).
-    if (RUNG_TO_AI_LADDER[levelIdx] === 14) committeeEnsureLoaded();
+    {
+        const ai = RUNG_TO_AI_LADDER[levelIdx];
+        if (AI_LADDER[ai] && AI_LADDER[ai].nets) ladderNetsEnsureLoaded(ai).catch(() => {});
+    }
     startGame(true, humanColorIdx===undefined ? 0 : humanColorIdx, 'ladder');
 }
 

@@ -42,10 +42,10 @@ if (premium) {
   cpSync(join(repoRoot, 'steam.html'), join(www, 'steam.html'));
   cpSync(join(repoRoot, 'desktop'), join(www, 'desktop'), { recursive: true });
   cpSync(join(repoRoot, 'vendor'), join(www, 'vendor'), { recursive: true });
-  // The Committee rung's two value nets (~16MB). A wrapper app has no web server to lazily fetch
-  // them from -- index.html's committeeEnsureLoaded asks for committee/gold.bin against its own
-  // origin, which here is the bundle itself. Left out, that fetch 404s and the top of the ladder
-  // quietly falls back to playing as L11, which is not what it says on the tile.
+  // The value nets the top two rungs play with (~8.6MB). A wrapper app has no web server to lazily
+  // fetch them from -- index.html's ladderNetsEnsureLoaded asks for committee/<name>.bin against
+  // its own origin, which here is the bundle itself. Left out, that fetch 404s and the top of the
+  // ladder quietly falls back to playing as L11, which is not what it says on the tile.
   cpSync(join(repoRoot, 'committee'), join(www, 'committee'), { recursive: true });
 }
 console.log(`Synced ${FILES.length}${premium ? ' + steam.html + desktop/ + vendor/ + committee/' : ''} files into ${www}`);
