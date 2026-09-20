@@ -76,6 +76,28 @@ test('every file the shells ship is a file the native builds trigger on', async 
     + 'filter in .github/workflows/native-builds.yml');
 });
 
+// The Steam jobs check out SPARSELY (cone mode), so a directory sync-www reads is only there if
+// this list names it. Root-level files always come along in cone mode; anything under a directory
+// does not. Parsed from the workflow for the same reason pushPaths is.
+function sparseCheckout() {
+  const yml = fs.readFileSync(path.join(root, '.github/workflows/native-builds.yml'), 'utf8');
+  const block = /\n {10}sparse-checkout: \|\n((?: {12}\S.*\n)+)/.exec(yml);
+  assert.ok(block, 'the Steam job still has a sparse-checkout list');
+  return block[1].trim().split('\n').map(line => line.trim());
+}
+
+test('every directory the shells ship from is one the Steam job actually checks out', async t => {
+  // The other half of the same trap, and the one that bit: committee/ was added to sync-www and to
+  // the paths: filter, but not to the sparse-checkout, so every Steam job died on an ENOENT from
+  // the sync script while Android and iOS (which check out in full) sailed through.
+  const cone = sparseCheckout();
+  const dirs = [...new Set(shippedFiles().filter(f => f.includes('/')).map(f => f.split('/')[0]))];
+  const missing = dirs.filter(d => !cone.includes(d));
+  assert.deepEqual(missing, [],
+    'sync-www reads these directories but the Steam job does not check them out -- add them to the '
+    + 'sparse-checkout: list in .github/workflows/native-builds.yml');
+});
+
 test('the wrappers and the workflow itself also trigger a build', async t => {
   const paths = pushPaths();
   // Not shipped into www/, but a change to either plainly needs building: the wrapper source is the
