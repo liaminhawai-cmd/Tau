@@ -229,3 +229,18 @@ The saved audit confirms 261 points, 63 balls, 1,045 controls, 10,440/10,440
 point falsification agreement and 1,575 recorded ball trials. Controls remain
 screen-biased and sampled labels are not universal negatives. The user reported
 that both trainers were stopped; no trainer was restarted for this update.
+
+
+## Brief 6 resolution — 2026-09-20
+
+[Brief 6 review](docs/geometry-reviews/brief6/response.md) resolves the recorded
+throw-certificate discrepancy: the numerical claims start **after blue's
+(0,+1) reply to 8 degrees**, not at the original `ndpxhts24` seed. The current
+committed stack returns k85 / 67.192689u and k112 / 67.204663u using the exact
+post-reply pose and a **0.002-degree** rotation half-width. The document's
+0.002-radian box is a unit error. These outputs reproduce without recovering
+uncommitted code, but the wrong-chord Jacobian and missing carried-frame term
+from Brief 4 remain in the unchanged checker and were rechecked here. Do not
+cite `CERTIFIED` or random containment agreement as a completed enclosure proof.
+The [package](docs/geometry-reviews/brief6/README.md) includes exact source pins,
+commands, an engine replay of the missing reply and all diagnostic outputs.
