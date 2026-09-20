@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-09-20T16:57:52.289Z_
+_Last updated: 2026-09-20T16:58:01.604Z_
 
 **Self-play batch:** 186
-**Stage:** self-play batch 186 running (started 2026-09-20T16:10:22.378Z)
+**Stage:** self-play batch 186 running, next check in 5 min
 **mix:** (no model yet — pure ladder)
 
 **Dual pool:** (not initialized yet)
