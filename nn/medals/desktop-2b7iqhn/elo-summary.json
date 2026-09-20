@@ -1273,20 +1273,20 @@
    "machine": "desktop-2b7iqhn",
    "sourceId": "mutant-013@D2"
   },
-  "medal-silver@D1": {
-   "id": "resume-353@D1",
+  "medal-silver@D3": {
+   "id": "ultra-m5-373@D3",
    "kind": "nn",
-   "elo": 91.3,
-   "eloLo": 47.1,
-   "eloHi": 135.5,
-   "games": 46,
+   "elo": 181.8,
+   "eloLo": 44,
+   "eloHi": 319.6,
+   "games": 18,
    "model": "nn\\medals\\desktop-2b7iqhn\\silver.json",
-   "depth": 1,
+   "depth": 3,
    "brain": "nn",
    "dualPolicy": false,
-   "rank": 0.913,
-   "rankLo": 0.471,
-   "rankHi": 1.355,
+   "rank": 1.818,
+   "rankLo": 0.44,
+   "rankHi": 3.196,
    "rankLoEdge": null,
    "rankHiEdge": null,
    "extrapRank": null,
@@ -1294,7 +1294,7 @@
    "extrapRankHi": null,
    "medal": "silver",
    "machine": "desktop-2b7iqhn",
-   "sourceId": "resume-353@D1"
+   "sourceId": "ultra-m5-373@D3"
   },
   "medal-bronze@D1": {
    "id": "resume-357@D1",
