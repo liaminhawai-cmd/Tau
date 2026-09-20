@@ -132,17 +132,14 @@
     { board:'colossus', opponent:'Titan' },      // the arena, formerly last
     { board:'ebony',    opponent:'The Committee' },   // three real players sharing one move -- see index.html's committeePlanFor
   ];
-  // The counters the boards used to be gated on. Kept for Dark, the one board still reserved, and
-  // kept as a SECOND way in for every other board (Yellow and Ebony included, now that both are
-  // ladder rungs too): a player who earned Marble by playing a hundred games, or Ebony by winning
-  // five, must not lose it because the rule changed under them. Nothing here ever takes a board away.
-  const UNLOCKS = {
-    yellow:  null,   // Yellow holds rung 1 now -- the free ride Walnut used to have when it was rung 1
-    dojo:    { wins: 1 },   slate: { played: 3 },  maple: { wins: 3 },   dark: { played: 10 },
-    ebony:   { wins: 5 },
-    cosy:    { level: 5 },  sumo:  { level: 7 },   colossus: { played: 50 },
-    noir:    { level: 9 },  math:  { level: 10 },  marble: { played: 100 }, alien: { level: LADDER_N },
-  };
+  // A BOARD WITH A RUNG IS EARNED BY CLIMBING TO THAT RUNG, AND BY NOTHING ELSE. Every board used
+  // to carry a play-count or win-count as a second way in as well, kept so nobody lost a board the
+  // rule change caught them mid-way through. Running both at once opened boards out of ORDER, which
+  // is the one thing a ladder is for: five wins anywhere handed over Ebony -- and Ebony is the
+  // Committee's own board at the very top -- so a player could walk straight past eleven rungs to
+  // the hardest opponent in the game, on a board the ladder had not given them.
+  // Dark is the only board with no rung of its own, so it is the only one still counted for.
+  const UNLOCKS = { dark: { played: 10 } };
   function boardRung(id) { const i = LADDER_BOARDS.findIndex(r => r.board === id); return i < 0 ? 0 : i + 1; }
   function rungBoard(n) { return (LADDER_BOARDS[n-1] || LADDER_BOARDS[0]).board; }
   function rungName(n) { return (LADDER_BOARDS[n-1] || LADDER_BOARDS[0]).opponent; }
@@ -200,10 +197,8 @@
         for (const k in progress) if (Number.isInteger(p[k]) && p[k] >= 0) progress[k] = p[k]; } catch (_) {}
   function unlockNeed(id) { return UNLOCKS[id] === undefined ? null : UNLOCKS[id]; }
   function earnedTheOldWay(id) {
-    // Absent from the table at all (Walnut, now that Yellow holds rung 1's old free ride) means
-    // there is no old-style path in the first place -- false, not the vacuous true a missing
-    // requirement would otherwise read as. An EXPLICIT null (only Yellow today) is the one board
-    // that has genuinely never needed one, same as Walnut before this rung was added below it.
+    // Only Dark is in the table now. Anything else reaching here has no count-based path at all,
+    // which is false -- not the vacuous true a missing requirement would otherwise read as.
     if (!(id in UNLOCKS)) return false;
     const n = UNLOCKS[id]; if (!n) return true;
     return (n.wins ? progress.wins >= n.wins : true) && (n.played ? progress.played >= n.played : true)
@@ -211,10 +206,8 @@
   }
   function isEarned(id) {
     const rung = boardRung(id);
-    // Inside the ladder's reach -- or whatever the old counters asked for, so nobody loses a board
-    // they already had.
-    if (rung) return rung <= ladderReach() || earnedTheOldWay(id);
-    return earnedTheOldWay(id);
+    if (rung) return rung <= ladderReach();   // the rung IS the unlock; nothing opens it early
+    return earnedTheOldWay(id);               // Dark alone -- no rung, so still a count
   }
   function isUnlocked(id) { return testBoards || isEarned(id); }
   function unlockText(id) {
@@ -2316,6 +2309,38 @@
       distance = menu ? Math.max(222, fitWide) : Math.max(205, 148/ratio);
     }
     let yaw=menu && !settings.reducedMotion ? .18+Math.sin(performance.now()*.000055)*.045 : 0;
+    // A GENTLE TUG TOWARDS THE SHOT, not a camera operator. The web build frames a live game
+    // EQUIDISTANTLY (index.html's computeFullFrame): it looks at the midpoint of the two pieces
+    // and stands PERPENDICULAR to the line joining them, which is what puts both the same distance
+    // from the lens. This layer did none of that -- it pointed at the board's centre from a fixed
+    // bearing at a fixed distance, so both pieces stayed in shot only because it was far enough
+    // back to cover the whole board, and the composition never answered the game at all.
+    //
+    // It leans that way now, but only part of the way, and for a reason: on Steam the camera is the
+    // player's to move, and a view that swings itself all the way round to the perfect angle takes
+    // the shot off whoever placed it. So the target leans a little off centre toward the action and
+    // the bearing leans a little off north toward square-on -- the same "most of the way home"
+    // idiom computeWatchFrame already uses in the web build, just with the blend the other way up.
+    // Everything after this only softens it further: a player-placed view keeps 80% of its own
+    // heading (MANUAL_PULL), and the whole thing arrives on a spring rather than a cut.
+    const CINE_TARGET = 0.45;   // 0 = board centre (the old fixed shot), 1 = the pieces' own midpoint
+    const CINE_HEADING = 0.5;   // 0 = due north, 1 = fully square-on to the line between the pieces
+    const CINE_SPREAD = 26;     // extra standing-back once they are all the way apart
+    if (!menu && !falling && !corner && !settings.reducedMotion
+        && typeof G !== 'undefined' && G && !G.over && G.pieces && G.pieces.length === 2) {
+      const p0 = G.pieces[0], p1 = G.pieces[1];
+      tx = (p0.x + p1.x)/2 * CINE_TARGET;
+      tz = (p0.y + p1.y)/2 * CINE_TARGET;
+      let dx = p1.x - p0.x, dz = p1.y - p0.y;
+      const len = Math.hypot(dx, dz);
+      if (len < 1e-6) { dx = 1; dz = 0; } else { dx /= len; dz /= len; }
+      let hx = -dz, hz = dx;                       // perpendicular: the equidistant bearing
+      if (hz < 0) { hx = -hx; hz = -hz; }          // of the two, the one on the 2D map's side
+      hx *= CINE_HEADING; hz = hz*CINE_HEADING + (1 - CINE_HEADING);
+      yaw = Math.atan2(hx, hz);
+      // Far apart, the pair needs more room than the pair nose to nose does.
+      distance += Math.min(1, len/(CFG.edgeU*2)) * CINE_SPREAD;
+    }
     if(falling && !settings.reducedMotion && G.winner!=null){
       // WATCH THE PIECE, not the board it left. The target used to barely move off centre and stay
       // at board height while the loser dropped thirty-odd units below it and rolled out past the
@@ -2831,6 +2856,9 @@
     // closure, so tests (and anything else outside this file) read it through here.
     get ladderRungs(){return LADDER_BOARDS.map(r=>({board:r.board, opponent:r.opponent}));},
     boardRung,
+    // Who lives on rung n. index.html's in-match labels ask through this, so a Steam player is
+    // told whose turn it is rather than which number they picked out of a menu.
+    opponentName(n){ return rungName(n); },
     get progress(){return {...progress};},
     recordResult,
     debugDetailMode(){ return detailMode; },

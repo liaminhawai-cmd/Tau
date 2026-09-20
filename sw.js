@@ -3,7 +3,7 @@
 // network-first (so an online player always gets the newest build), with the cached copy as the
 // offline fallback; static assets are cache-first. Cross-origin requests (Supabase auth/realtime)
 // are never touched — they always go straight to the network.
-const CACHE = 'tau-v122';  // bump on asset changes so clients drop the old cache (v122: the renumbering migration now carries an old rung-1 clear onto Yellow too, so a returning player is not pointed back at the pushover -- index.html)
+const CACHE = 'tau-v123';  // bump on asset changes so clients drop the old cache (v123: boards open by climbing to their rung and nothing else, the match names the opponent instead of a number, and the desktop camera leans toward the web's equidistant framing -- index.html, desktop/presentation.js)
 const ASSETS = [
   './', './index.html', './tau-logo.png',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon-32.png',

@@ -72,6 +72,43 @@ test('the Committee\'s weights are bundled into a wrapper app, not left to a web
     assert.ok(fs.existsSync(path.join(root,f)), f + ' is in the repo for it to copy');
 });
 
+test('no board opens out of order, whatever else the profile has done',async t=>{
+  // The report: "some of the boards were unlocked prematurely... i skipped ahead to committee
+  // level cos that was unlocked for some reason". Ebony carried an old {wins:5} counter, and
+  // Ebony is now the Committee's board at rung 13 -- so five wins anywhere walked a player past
+  // eleven rungs to the hardest opponent in the game.
+  const storage = { tauDesktopProgress: '{"played":200,"wins":150,"topLevel":11}',
+                    tauLadder: '{"b":{},"r":{}}', tauLadderRenumberedV1: '1' };
+  const g=await game('?steam=1&premium=1', storage);t.after(g.close);
+  const D=g.w.tauDesktop, by=id=>D.boards.find(b=>b.id===id);
+  assert.ok(by('yellow').unlocked,'rung 1 is always open');
+  for (const id of ['walnut','dojo','ebony','colossus','marble'])
+    assert.ok(!by(id).unlocked, id + ' stays shut on a profile that has climbed nothing');
+  assert.equal(g.$('desktopLevel').options[12].disabled, true, 'and the Committee cannot be picked');
+  // Dark is the one board with no rung of its own, so it is still the one board with a count.
+  assert.ok(by('dark').unlocked,'Dark has no rung, so it keeps its play count');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a match says WHO you are playing, not which number you picked',async t=>{
+  const storage = { tauLadder: '{"b":{"1":1,"2":1},"r":{"1":1,"2":1}}', tauLadderRenumberedV1: '1' };
+  const g=await game('?steam=1&premium=1', storage);t.after(g.close);
+  g.read('startLadderLevel(2, 0)');   // 0-based 2 = rung 3 = Dojo, where Sifu lives
+  assert.equal(g.read('ladderOpponentName()'),'Sifu');
+  assert.equal(g.read('vsAiOpponentLabel()'),'Sifu','the turn indicator names them');
+  assert.match(g.read('vsAiTurnLabel(1 - humanIdx)'),/Sifu/);
+  assert.equal(g.read('vsAiTurnLabel(humanIdx)'),'You');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the plain web build, which has no names for its rungs, still says the number',async t=>{
+  const g=await game('');t.after(g.close);   // no desktop layer at all
+  g.read('startLadderLevel(2, 0)');
+  assert.equal(g.read('ladderOpponentName()'),'','nothing to ask');
+  assert.equal(g.read('vsAiOpponentLabel()'),'Level 3 AI','so it falls back to the rung');
+  assert.deepEqual(g.errors,[]);
+});
+
 test('the renumbering migration never runs twice on the same save',async t=>{
   const storage = { tauLadder: '{"b":{"5":1},"r":{}}', tauLadderRenumberedV1: '1' };
   const g=await game('', storage);t.after(g.close);

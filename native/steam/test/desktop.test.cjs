@@ -632,7 +632,10 @@ test('desktop materials use the production meshes and survive theme refresh',asy
 
 test('ALLBOARDS opens every finish, survives restart and restores earned locks without changing progress',async t=>{
   const earned=JSON.stringify({played:3,wins:1,topLevel:1});
-  const g=await game(undefined,{tauDesktopProgress:earned});t.after(g.close);
+  // Boards are earned by CLIMBING now, so the clears are what opens the first few -- the play
+  // counters below are only here to prove the cheat leaves recorded progress untouched.
+  const g=await game(undefined,{tauDesktopProgress:earned,
+    tauLadder:'{"b":{"1":1,"2":1,"3":1},"r":{"1":1,"2":1,"3":1}}', tauLadderRenumberedV1:'1'});t.after(g.close);
   const type=word=>{for(const key of word)g.key(key);};
   const D=g.w.tauDesktop;
   assert.ok(D.boards.some(b=>!b.unlocked));
@@ -785,10 +788,12 @@ test('a board is an opponent: the next one opens the moment this one is beaten, 
   assert.ok(by('walnut').unlocked,'and finishing the other colour never closes it again');
   // The one board still waiting for a rung of its own keeps the old counter.
   assert.match(by('dark').unlock,/10 games/);
-  // Nobody loses a board they already had: the old counters are still a way in.
+  // A pile of wins somewhere else is NOT a way in any more: the rung is the unlock, full stop.
+  // This is what let a player walk past eleven rungs onto Ebony -- the Committee's own board.
   D.recordResult({humanWon:true,vsAI:true,online:false,lab:false,level:8});
-  assert.ok(by('noir').unlocked,'a player who got here the old way keeps Noir');
-  assert.equal(g.read("JSON.parse(localStorage.getItem('tauDesktopProgress')).topLevel"),9,'progress persists');
+  assert.ok(!by('noir').unlocked,'winning games elsewhere does not open a rung you have not climbed to');
+  assert.ok(!by('ebony').unlocked,'and emphatically does not hand over the Committee\'s board');
+  assert.equal(g.read("JSON.parse(localStorage.getItem('tauDesktopProgress')).topLevel"),9,'progress is still recorded, it just does not unlock');
   // The lab is never a game.
   D.recordResult({humanWon:true,vsAI:true,online:false,lab:true,level:10});
   assert.equal(D.progress.played,1,'the lab is not a game');
@@ -3210,7 +3215,9 @@ test('the arrows walk round the feet and still turn the piece',async t=>{
 });
 
 test('one key and one pad button walk the boards already earned',async t=>{
-  const g=await game(undefined,{tauDesktopProgress:JSON.stringify({played:3,wins:1,topLevel:1})});
+  // Three rungs cleared, so three boards are open to walk between -- climbing is the only way in.
+  const g=await game(undefined,{tauDesktopProgress:JSON.stringify({played:3,wins:1,topLevel:1}),
+    tauLadder:'{"b":{"1":1,"2":1,"3":1},"r":{"1":1,"2":1,"3":1}}', tauLadderRenumberedV1:'1'});
   t.after(g.close);
   const D=g.w.tauDesktop;
   const open=()=>D.boards.filter(b=>b.unlocked).map(b=>b.id);

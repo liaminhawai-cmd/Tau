@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 282</div>
+<div id="buildTag">build 283</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -3620,7 +3620,7 @@ function replayCollectionTitle() {
         return onlineMatch.myColor === 'blue' ? me + ' vs ' + onlineMatch.opponentName
                                               : onlineMatch.opponentName + ' vs ' + me;
     }
-    if (vsAI) return ladderLevel != null ? tf('Level {n} Computer', { n: ladderLevel+1 })
+    if (vsAI) return ladderLevel != null ? (ladderOpponentName() || tf('Level {n} Computer', { n: ladderLevel+1 }))
                                          : t('vs AI') + ' · ' + t(AI_DIFF_LABEL[aiDifficulty] || aiDifficulty);
     return t('Local 1v1');
 }
@@ -3658,7 +3658,7 @@ function replayPlayerNames() {
                                               : [onlineMatch.opponentName, meName()];
     }
     if (vsAI) {
-        const ai = ladderLevel != null ? tf('Level {n} Computer', { n: ladderLevel+1 })
+        const ai = ladderLevel != null ? (ladderOpponentName() || tf('Level {n} Computer', { n: ladderLevel+1 }))
                                        : t(AI_DIFF_LABEL[aiDifficulty] || aiDifficulty) + ' AI';
         return humanIdx === 0 ? [meName(), ai] : [ai, meName()];
     }
@@ -6375,9 +6375,17 @@ const AI_DIFF_LABEL = { dumb:'Easy', easy:'Medium', zone:'Hard', hard:'Very hard
 // In-game turn/win labels for a vsAI game: "Level N AI" (Freeplay/Ranked, ladderLevel set) or the
 // difficulty name + "AI" otherwise, and "You" for the human side -- clearer than raw Blue/Red once
 // one side is always the computer.
+// Every rung of the desktop ladder has somebody living on it (desktop/presentation.js's
+// LADDER_BOARDS). A number is what you PICK; a name is who you are playing, and it is the name
+// that belongs on a turn indicator. The plain web build has no such names and keeps the number.
+function ladderOpponentName(){
+    if (ladderLevel == null) return '';
+    try { const d = window.tauDesktop; return (d && d.opponentName && d.opponentName(ladderLevel + 1)) || ''; }
+    catch (e) { return ''; }
+}
 function vsAiOpponentLabel(){
-    return ladderLevel != null ? tf('Level {n} AI', { n: ladderLevel + 1 })
-                                : t(AI_DIFF_LABEL[aiDifficulty] || aiDifficulty) + ' ' + t('AI');
+    if (ladderLevel != null) return ladderOpponentName() || tf('Level {n} AI', { n: ladderLevel + 1 });
+    return t(AI_DIFF_LABEL[aiDifficulty] || aiDifficulty) + ' ' + t('AI');
 }
 function vsAiTurnLabel(idx){ return idx === humanIdx ? t('You') : vsAiOpponentLabel(); }
 function openAiDifficultyMenu() {
