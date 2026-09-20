@@ -637,7 +637,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 279</div>
+<div id="buildTag">build 280</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -4131,8 +4131,45 @@ const AI_LADDER = [
     { kind:'p3', experimental:'hub-leverage', label:'Leverage',
       w:{margin:1,zone:12,park:8,oppFree:-1.1,triMe:.2,hubAttack:2,hubExpose:-2},
       o:{sampleDeg:9,depth:3,keepStops:4,maxCands:28} },
+    // L15: the committee. Three real trained/hand-tuned players sharing one move -- L11 as the
+    // chair, plus two value nets (COMMITTEE_GOLD and COMMITTEE_SECOND, below) picked like
+    // committee.js's own pickAuto for having genuinely different blind spots. Appended here rather
+    // than slotted in among L1-L14 so every existing index into this array keeps meaning exactly
+    // what it always has -- old arena logs, the corner-opening threshold below, and every other
+    // AI_LADDER[n] lookup in this file or nn/ are untouched by a rung being added at the top of
+    // the player ladder. Its own weights are not inline here (see committeeEnsureLoaded): they are
+    // fetched lazily, the one rung whose brain is not simply sitting in this array already.
+    { kind:'committee', label:'Committee' },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
+// The player-visible ladder's rung NUMBER and the AI it plays are deliberately two different axes.
+// A rung number is a place in the menu; an AI_LADDER index is a fixed difficulty definition other
+// code (corner-opening, arena logs, nn/'s own tooling) already keys by position. RUNG_TO_AI_LADDER
+// is the only place that connects them, so inserting, removing or reordering a rung NEVER reaches
+// into AI_LADDER's own numbering -- every existing board keeps the exact opponent it always had,
+// however its position in the menu moves. New rung 1 (Yellow) reuses L1's pushover outright: it is
+// a new SLOT in the menu, not a new difficulty tier nobody asked for or tuned.
+const RUNG_TO_AI_LADDER = [0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14];
+// One-time migration for a save written under the old 11-rung numbering (Walnut at rung 1 ...
+// Colossus at rung 11), now that Yellow has taken rung 1 and everything else shifted up by one.
+// Left un-migrated, a player's own saved clears would be read back under the WRONG rung the moment
+// this ships -- rung 5 used to mean Cosy/Vesper and now means Slate/Flint, so an unmigrated save
+// would show Slate cleared (never played) while Cosy (actually beaten) reads as not. Runs once,
+// guarded by its own flag so a second load never double-shifts an already-migrated save.
+const LADDER_RENUMBER_MIGRATED_KEY = 'tauLadderRenumberedV1';
+function migrateLadderRenumbering() {
+    try {
+        if (localStorage.getItem(LADDER_RENUMBER_MIGRATED_KEY) === '1') return;
+        const p = ladderProgress();
+        const shift = obj => { const out = {}; for (const k in obj) { const n = +k; if (Number.isInteger(n) && n >= 1) out[n + 1] = obj[k]; } return out; };
+        saveLadderProgress({ b: shift(p.b), r: shift(p.r) });
+        try {
+            const r = localStorage.getItem('tauRankedLevel');
+            if (r != null) { const v = +r; if (Number.isFinite(v)) localStorage.setItem('tauRankedLevel', String(Math.min(26, v + 2))); }
+        } catch (e) {}
+        localStorage.setItem(LADDER_RENUMBER_MIGRATED_KEY, '1');
+    } catch (e) {}
+}
 
 function ladderRestore(s){ G.pieces.forEach((p,i)=>{p.x=s[i].x;p.y=s[i].y;p.rot=s[i].rot;}); G.turnDir=0;G.crossings=0;G.atLimit=false;G.netRad=0;G.contact=null; }
 function ladderEval(idx, w){
@@ -4722,7 +4759,149 @@ function* ladderPlanRungGen(def, idx){
     if (def.kind==='p3') return yield* ladderPlan3Gen(idx, def.w, def.o);
     if (def.kind==='opp') return yield* ladderPlanOppModelGen(idx, def.w, def.o);
     if (def.kind==='opp2') return yield* ladderPlan13Gen(idx, def.w, def.o);
+    if (def.kind==='committee') return yield* committeePlanGen(idx, def);
     return yield* ladderSampledPlanGen(idx, def.w, def.o);
+}
+// Waits out the lazy fetch (see committeeEnsureLoaded) inside the same generator/yield scheme
+// every other ladder brain already uses, so the frame-slicing driver (stepAiSearch) keeps pausing
+// and resuming around the wait exactly as it would around a slow search -- the player sees the
+// board and can still look around while Committee's weights come down, not a frozen tab.
+// Wall-clock bounded, not step-bounded: a `yield` with nothing to do can execute thousands of
+// times inside one 6ms search slice, so counting steps would exhaust the budget before even one
+// animation frame had passed for the fetch to have a chance to finish.
+const COMMITTEE_LOAD_TIMEOUT_MS = 20000;
+function* committeePlanGen(idx, def) {
+    if (!def._nets) {
+        let failed = false;
+        committeeEnsureLoaded().catch(() => { failed = true; });
+        const t0 = performance.now();
+        while (!def._nets && !failed && performance.now() - t0 < COMMITTEE_LOAD_TIMEOUT_MS) yield;
+        // The fetch failed, or a hidden tab's hard search guard forced this through synchronously
+        // before it could resolve -- either way, play the chair's own move rather than stall the
+        // match or crash on a still-missing net.
+        if (!def._nets) return yield* ladderPlanForGen(10, idx);
+    }
+    return committeePlanFor(idx, def);
+}
+// ===================== The Committee: three real players share one move by voting =====================
+// Ported from nn/committee.js's real algorithm (the offline training arena's own multi-brain
+// ensemble, not a new design) -- pickAuto()'s idea of a chair (the strongest hand-tuned rung) plus
+// nets picked for having genuinely different blind spots, and committee.js's own POOL step (log of
+// each member's win probability, summed -- a member that reads a move as nearly dead drags the
+// total toward -Infinity by itself, and an engine-proven throw needs no vote at all).
+//
+// ONE deliberate simplification from the original: committee.js's judge() step also lets each
+// member search a full reply for every candidate before scoring it, and runs the three members on
+// separate worker THREADS -- both of which are what make an offline arena's thousands of games
+// affordable across many cores over hours. A single live move in one browser tab, on whatever
+// device is in someone's hand, does not have that budget. So here every legal waypoint is judged
+// directly (one leaf per member, no nested reply search, no threads) rather than staged through
+// committee.js's funnel. The vote itself -- the POOL/VETO/AGREE math, and the three real players
+// casting it (L11's own hand-tuned judgement as chair, plus the two trained nets) -- is unchanged.
+const COMMITTEE_BASE = 'committee/';
+// gold is fixed; the third seat is whichever of silver/bronze reads a position LEAST like L11 does
+// -- measured, not guessed (nn/scratch-pick-committee-member.js, over L11-vs-L11 self-play using
+// disagree.js's own real net-vs-L11 divergence probe): bronze disagreed with L11's favourite move
+// 90.0% of the time (33 sampled positions) against silver's 81.8% (40 sampled positions), and by a
+// wider margin when it did (2.616 vs 2.338 sd-units) -- bronze brings the more different judgement.
+const COMMITTEE_GOLD = 'gold', COMMITTEE_SECOND = 'bronze';
+let committeeLoadPromise = null;
+// {sizes,fanIns,topology,W,b} rebuilt from the compact export (nn/export-committee-net.js) -- same
+// shape nnForwardGame already reads for a #nn/#lab model, so scoring a candidate through it is the
+// exact same call as every other net-backed brain in this file already makes.
+function committeeLoadNet(name) {
+    const base = COMMITTEE_BASE + name;
+    return Promise.all([
+        fetch(base + '.meta.json').then(r => { if (!r.ok) throw new Error(base + '.meta.json: ' + r.status); return r.json(); }),
+        fetch(base + '.bin').then(r => { if (!r.ok) throw new Error(base + '.bin: ' + r.status); return r.arrayBuffer(); }),
+    ]).then(([meta, buf]) => {
+        const flat = new Float32Array(buf), sizes = meta.sizes, fanIns = meta.fanIns, layers = sizes.length - 1;
+        const W = [], b = [];
+        let at = 0;
+        for (let l = 0; l < layers; l++) { const n = fanIns[l]*sizes[l+1]; W.push(Array.from(flat.subarray(at, at+n))); at += n; }
+        for (let l = 0; l < layers; l++) { const n = sizes[l+1]; b.push(Array.from(flat.subarray(at, at+n))); at += n; }
+        return { sizes, fanIns, topology: meta.topology, W, b };
+    });
+}
+// Fetched once, lazily, the moment a player actually reaches the Committee rung -- exactly the
+// on-demand pattern the desktop Ultra tier's ray-trace bundle already uses (see rayTraceLoad in
+// desktop/presentation.js), so nobody who never plays Committee downloads its ~16MB of weights.
+function committeeEnsureLoaded() {
+    if (committeeLoadPromise) return committeeLoadPromise;
+    committeeLoadPromise = Promise.all([committeeLoadNet(COMMITTEE_GOLD), committeeLoadNet(COMMITTEE_SECOND)])
+        .then(([gold, second]) => { AI_LADDER[14]._nets = [gold, second]; return AI_LADDER[14]._nets; })
+        .catch(e => { committeeLoadPromise = null; throw e; });   // a failed fetch is retried on the next attempt, not remembered as permanent
+    return committeeLoadPromise;
+}
+function committeeMemberProb(kind, s) {
+    // The same two conversions committee.js's real members use: the chair's eval is tens-to-
+    // hundreds of points (laddereval.js's observed range is roughly +-400) and needs a logistic
+    // squash (T=100) onto a probability; a trained value net already speaks in [-1,1] expected
+    // outcome and is just remapped onto [0,1] linearly.
+    const p = kind === 'chair' ? 1/(1 + Math.exp(-s/100)) : (s + 1)/2;
+    return Math.min(1 - 1e-3, Math.max(1e-3, p));
+}
+// One sweep of the swing, shared across all three judges rather than repeated per member -- the
+// same generate-once/score-many split frankai.js's genCandidates/scoreCandidates use offline, for
+// the same reason: the physics walk is cheap, a net's forward pass is the real cost here (these
+// two nets are unusually large, ~1.3M parameters each -- measured ~4-5ms/call, not the sub-
+// millisecond a ladder-scale net would cost). Sampled every COMMITTEE_SAMPLE_DEG rather than every
+// physics step -- a full 3deg dense sweep (nnPlanForGame's own resolution) would run each net
+// several hundred times a move; three players judging a few dozen well-spread stops each vote as
+// meaningfully as they would judging every single degree, for a fraction of the wait.
+const COMMITTEE_SAMPLE_DEG = 9;
+function committeeSweep(idx) {
+    const snap0 = takeSnap();
+    const restore = () => { G.pieces.forEach((p,i)=>{p.x=snap0[i].x;p.y=snap0[i].y;p.rot=snap0[i].rot;});
+        G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null; G.pinned=null; G.pivot=null; G.active=idx; G.over=false; G.winner=null; };
+    const cands = [];
+    for (let pv = 0; pv < 3; pv++) for (const dir of [1, -1]) {
+        restore(); pinFoot(pv);
+        let guard = 0, lastMark = 0;
+        while (!G.atLimit && Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && guard++ < 200) {
+            applySwing(dir*AI_STEP_RAD);
+            const rad = G.netRad, a = Math.abs(rad);
+            if (a < HARD_MIN_MOVE_RAD) { if (G.atLimit) break; continue; }
+            const isThrow = G.pieces[1-idx].anyFootOff();
+            if (!isThrow && !G.atLimit && a - lastMark < COMMITTEE_SAMPLE_DEG*Math.PI/180) continue;
+            lastMark = a;
+            cands.push({ pivotIdx: pv, dir, targetRad: a, isThrow, snap: takeSnap() });
+            if (isThrow) break;   // nothing past a throw is worth sweeping further on this arm
+        }
+    }
+    restore();
+    return cands;
+}
+// Scores every candidate from idx's own perspective through one evaluator, restoring the true turn
+// position when done. evalFn reads whatever G is currently parked on (matching nnForwardGame's own
+// "set G.active, read the value" convention throughout this file).
+function committeeScore(cands, idx, evalFn) {
+    const snap0 = takeSnap();
+    const scores = cands.map(c => {
+        if (c.isThrow) return null;   // engine-proven, never asked to guess
+        G.pieces.forEach((p,i)=>{p.x=c.snap[i].x;p.y=c.snap[i].y;p.rot=c.snap[i].rot;});
+        G.active = idx;
+        return evalFn();
+    });
+    G.pieces.forEach((p,i)=>{p.x=snap0[i].x;p.y=snap0[i].y;p.rot=snap0[i].rot;}); G.active = idx;
+    return scores;
+}
+function committeePlanFor(idx, def) {
+    const nets = def._nets;   // guaranteed ready by committeePlanGen before this is ever called
+    const cands = committeeSweep(idx);
+    if (!cands.length) return null;
+    const chairRow = committeeScore(cands, idx, () => ladderEval(idx, AI_LADDER[10].w));
+    const netRows = nets.map(net => committeeScore(cands, idx, () => nnForwardGame(nnFeaturesGame(), net)));
+    let best = -1, bestTotal = -Infinity;
+    for (let j = 0; j < cands.length; j++) {
+        if (cands[j].isThrow) { best = j; break; }   // a proven win -- nothing left to vote on
+        let total = Math.log(committeeMemberProb('chair', chairRow[j]));
+        for (const row of netRows) total += Math.log(committeeMemberProb('net', row[j]));
+        if (total > bestTotal) { bestTotal = total; best = j; }
+    }
+    if (best < 0) return null;
+    const c = cands[best];
+    return { pivotIdx: c.pivotIdx, dir: c.dir, targetRad: c.targetRad };
 }
 
 // ===================== Hidden mode (#nn): a trained checkpoint as the AI brain =====================
@@ -5247,7 +5426,7 @@ function startAiTurn() {
     const gen = (aiDifficulty === 'nn' && nnModel)
                  ? (function*(){ return nnDynamic ? nnPlanForGameTimed(aiIdx, nnTemperature, nnTimeMs)
                                                   : nnPlanForGame(aiIdx, nnTemperature, nnDepth); })()
-             : (ladderLevel!=null) ? ladderPlanForGen(ladderLevel, aiIdx) : searchedPlanForGen(aiDifficulty, aiIdx);
+             : (ladderLevel!=null) ? ladderPlanForGen(RUNG_TO_AI_LADDER[ladderLevel], aiIdx) : searchedPlanForGen(aiDifficulty, aiIdx);
     // The lab runs hundreds of turns behind a menu with nobody watching the board, so it thinks in
     // one breath as it always has; a real match spreads the think across frames.
     if (labMode || typeof requestAnimationFrame !== 'function') { aiPlayPlan(drainPlan(gen)); return; }
@@ -5927,6 +6106,10 @@ function startGame(aiMode, humanColorIdx, difficulty) {
 function startLadderLevel(levelIdx, humanColorIdx) {
     ladderLevel = levelIdx;
     rankedMode = false;   // plain Freeplay unless startRankedMatch() overrides this right after
+    // Kicked off here rather than waited on: Committee's weights start downloading the moment the
+    // rung is chosen, not the moment the AI first needs to move (which, if the player is Red, is
+    // the very first ply -- there would be no head start left to give it).
+    if (RUNG_TO_AI_LADDER[levelIdx] === 14) committeeEnsureLoaded();
     startGame(true, humanColorIdx===undefined ? 0 : humanColorIdx, 'ladder');
 }
 
@@ -6229,13 +6412,16 @@ function chooseAiColour(difficulty) {
 // ===================== AI Ladder UI (vs Computer) =====================
 // Progress is per level AND per colour: beating a rung as Blue and as Red are separate clears.
 // The tripods carry the state (faint = not yet, lit = beaten) — no status text, per the design.
-// The shipped player ladder ends at proven L11. L12/L13 are retained internally only so old
-// arena logs remain reproducible; L14 is an explicit experiment reached through the NN toolkit.
-const LADDER_N = 11;
+// The shipped player ladder runs Yellow at rung 1 through Colossus at rung 12 (L1-L11's own
+// difficulties, unmoved -- see RUNG_TO_AI_LADDER), plus the Committee at rung 13. L12/L13 in
+// AI_LADDER's own numbering are retained internally only so old arena logs remain reproducible;
+// L14 is an explicit experiment reached through the NN toolkit; neither is a player-visible rung.
+const LADDER_N = 13;
 function ladderProgress(){ try { return JSON.parse(localStorage.getItem('tauLadder')||'{"b":{},"r":{}}'); } catch(e){ return {b:{},r:{}}; } }
 function saveLadderProgress(p){ try { localStorage.setItem('tauLadder', JSON.stringify(p)); } catch(e){} }
 function ladderCleared(n, color){ const p=ladderProgress(); return !!(color===0?p.b:p.r)[n]; }
 function markLadderCleared(n, color){ const p=ladderProgress(); (color===0?p.b:p.r)[n]=1; saveLadderProgress(p); }
+migrateLadderRenumbering();   // right after progress is readable, before anything below reads it
 // ---------- Ranked: no level picker, just your current rank, stepping on every result ----------
 // rankedMode distinguishes a Ranked game from a plain Freeplay ladder game -- both route through
 // startLadderLevel/ladderLevel, but only Ranked adjusts rank on game-over. Reset to false at the

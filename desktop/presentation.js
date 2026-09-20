@@ -106,16 +106,19 @@
   // instead of the old mixture of "win 3 games" and "play 20 games" counters, which had nothing to
   // do with who you were playing.
   //
-  // Eleven boards for the eleven proven rungs, in order. Yellow, Ebony and Dark are deliberately NOT
-  // in the list: they are the reserved seats for the three rungs above the shipped ladder -- L11
-  // searched to depth 4, the strongest trained model, and the committee -- and they keep their old
-  // count-based unlocks until those rungs exist. (See index.html's LADDER_N comment.)
+  // Thirteen boards for thirteen rungs, in order: Yellow opens the ladder, Walnut through Colossus
+  // are the eleven proven L1-L11 rungs unmoved (see index.html's RUNG_TO_AI_LADDER -- every board's
+  // actual opponent DIFFICULTY is unchanged by where it sits in this list), and Ebony closes it as
+  // the Committee. Dark is the one board still deliberately NOT in this list -- the last reserved
+  // seat, for whichever future rung claims it -- and it keeps its old count-based unlock until then.
+  // (See index.html's LADDER_N comment.)
   // Each rung has a board and somebody who lives on it. The opponent is a CHARACTER on the board
   // rather than a new name for it: in the ladder you are challenging Sifu, in Settings you are
   // picking the Dojo, and the Dojo never stops being called the Dojo. That is what keeps the two
   // from disagreeing the moment somebody goes back to play an earlier board again.
   // Names are names -- they are not routed through t(), the same as the board names beside them.
   const LADDER_BOARDS = [
+    { board:'yellow',   opponent:'Wren' },       // the plain classic: nothing to read but the rules themselves
     { board:'walnut',   opponent:'Hazel' },      // the club set: a first, patient opponent
     { board:'dojo',     opponent:'Sifu' },
     { board:'slate',    opponent:'Flint' },
@@ -126,15 +129,17 @@
     { board:'math',     opponent:'Escher' },
     { board:'alien',    opponent:'Chorus' },     // it is not one of anything
     { board:'marble',   opponent:'Alabaster' },
-    { board:'colossus', opponent:'Titan' },      // the arena, last
+    { board:'colossus', opponent:'Titan' },      // the arena, formerly last
+    { board:'ebony',    opponent:'The Committee' },   // three real players sharing one move -- see index.html's committeePlanFor
   ];
-  // The counters the boards used to be gated on. Kept for the three reserved boards, and kept as a
-  // SECOND way in for every other board: a player who earned Marble by playing a hundred games must
-  // not lose it because the rule changed under them. Nothing here ever takes a board away.
+  // The counters the boards used to be gated on. Kept for Dark, the one board still reserved, and
+  // kept as a SECOND way in for every other board (Yellow and Ebony included, now that both are
+  // ladder rungs too): a player who earned Marble by playing a hundred games, or Ebony by winning
+  // five, must not lose it because the rule changed under them. Nothing here ever takes a board away.
   const UNLOCKS = {
-    walnut:  null,
+    yellow:  null,   // Yellow holds rung 1 now -- the free ride Walnut used to have when it was rung 1
     dojo:    { wins: 1 },   slate: { played: 3 },  maple: { wins: 3 },   dark: { played: 10 },
-    ebony:   { wins: 5 },   yellow: { played: 20 },
+    ebony:   { wins: 5 },
     cosy:    { level: 5 },  sumo:  { level: 7 },   colossus: { played: 50 },
     noir:    { level: 9 },  math:  { level: 10 },  marble: { played: 100 }, alien: { level: LADDER_N },
   };
@@ -195,7 +200,12 @@
         for (const k in progress) if (Number.isInteger(p[k]) && p[k] >= 0) progress[k] = p[k]; } catch (_) {}
   function unlockNeed(id) { return UNLOCKS[id] === undefined ? null : UNLOCKS[id]; }
   function earnedTheOldWay(id) {
-    const n = unlockNeed(id); if (!n) return true;
+    // Absent from the table at all (Walnut, now that Yellow holds rung 1's old free ride) means
+    // there is no old-style path in the first place -- false, not the vacuous true a missing
+    // requirement would otherwise read as. An EXPLICIT null (only Yellow today) is the one board
+    // that has genuinely never needed one, same as Walnut before this rung was added below it.
+    if (!(id in UNLOCKS)) return false;
+    const n = UNLOCKS[id]; if (!n) return true;
     return (n.wins ? progress.wins >= n.wins : true) && (n.played ? progress.played >= n.played : true)
         && (n.level ? progress.topLevel >= n.level : true);
   }
@@ -400,9 +410,19 @@
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     if (saved.keys && typeof saved.keys === 'object')
       for (const [action] of KEY_ACTIONS) if (typeof saved.keys[action] === 'string' && saved.keys[action]) settings.keys[action] = saved.keys[action];
-    if (saved.levelSkipped === true && Number.isInteger(saved.level) && saved.level >= 1 && saved.level <= LADDER_N) {
-      settings.level = Math.min(saved.level, ladderReach());   // their own pick, never above what is open
+    if (BOARD_FINISHES.some(b => b.id === saved.board) && isUnlocked(saved.board)) settings.board = saved.board;
+    if (saved.levelSkipped === true) {
       settings.levelSkipped = true;
+      // Re-derived from the BOARD they actually chose, not the raw saved number: a board's id
+      // means the same thing across any ladder reorder, but its rung NUMBER does not -- Yellow
+      // taking rung 1 shifted every other board's number by one, and a saved "5" read literally
+      // would silently reattach to a DIFFERENT board than the one the player actually picked
+      // (the same failure mode index.html's own migrateLadderRenumbering exists to avoid for
+      // ladderCleared). A board that isn't a ladder rung at all (boardRung returns 0) has no
+      // number to derive, so that rare case keeps the old saved value as a fallback.
+      const rung = boardRung(settings.board);
+      settings.level = rung ? Math.min(rung, ladderReach())
+        : (Number.isInteger(saved.level) && saved.level >= 1 && saved.level <= LADDER_N ? Math.min(saved.level, ladderReach()) : ladderStep());
     }
     if (saved.colour === 0 || saved.colour === 1) settings.colour = saved.colour;
     // qualityPicked did not exist before this build, so a save from before it has to be read for
@@ -413,7 +433,6 @@
         && (saved.qualityPicked === true || saved.quality === 'high' || saved.quality === 'ultra')) {
       settings.quality = saved.quality; settings.qualityPicked = true;
     }
-    if (BOARD_FINISHES.some(b => b.id === saved.board) && isUnlocked(saved.board)) settings.board = saved.board;
     if (PAD_SCHEMES.includes(saved.padScheme)) settings.padScheme = saved.padScheme;
     if (['auto','xbox','playstation','nintendo','generic'].includes(saved.padBrand)) settings.padBrand = saved.padBrand;
     for (const k of ['reducedMotion','haptics','invertCamY','rayTrace','fullscreen']) if (typeof saved[k] === 'boolean') settings[k] = saved[k];
@@ -2808,6 +2827,10 @@
     get board(){return settings.board;},
     set board(v){ if(BOARD_FINISHES.some(b=>b.id===v)){ settings.board=v; saveSettings(); applyMaterials(); applyTheme(); render(); } },
     get boards(){return BOARD_FINISHES.map(b=>({id:b.id,name:b.name,unlocked:isUnlocked(b.id),unlock:unlockText(b.id)}));},
+    // The ladder in menu order, one entry per rung -- LADDER_BOARDS itself is private to this
+    // closure, so tests (and anything else outside this file) read it through here.
+    get ladderRungs(){return LADDER_BOARDS.map(r=>({board:r.board, opponent:r.opponent}));},
+    boardRung,
     get progress(){return {...progress};},
     recordResult,
     debugDetailMode(){ return detailMode; },
