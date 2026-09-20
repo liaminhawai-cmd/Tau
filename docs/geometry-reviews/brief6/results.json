@@ -1,0 +1,133 @@
+{
+  "seed": [
+    -27.3934,
+    -36.4088,
+    1.2052,
+    -11.7593,
+    -23.2838,
+    2.9442
+  ],
+  "reply": {
+    "side": 0,
+    "pivot": 0,
+    "direction": 1,
+    "degrees": 8,
+    "schedule": "Eight one-degree applySwing calls"
+  },
+  "currentEnginePostReply": [
+    -24.311268790779366,
+    -37.34799285619338,
+    1.3448263401595448,
+    -11.7593,
+    -23.2838,
+    2.9442
+  ],
+  "referencePostReply": [
+    -24.31126879077936,
+    -37.34799285619334,
+    1.3448263401595464,
+    -11.7593,
+    -23.2838,
+    2.9442
+  ],
+  "maxCoordinateDifference": 3.552713678800501e-14,
+  "scope": "Unmodified checker outputs and finite random diagnostics; not endorsed proof certificates.",
+  "outputs": [
+    {
+      "label": "seed-degrees",
+      "pose": [
+        -27.3934,
+        -36.4088,
+        1.2052,
+        -11.7593,
+        -23.2838,
+        2.9442
+      ],
+      "arm": 0,
+      "rotationHalfWidthDegrees": 0.002,
+      "exitCode": 0,
+      "stdout": "throw arm (0,-1) limit 46.00 deg = 138 substeps of 0.3333 deg; centre thrown 98\n  first possible contact at substep 1 (0.33 deg): legs (0,0), centre distance 2.835, pad 0.001\nREFUSED: substep 47 (15.67 deg): the push cone did not settle   (0.1s)\n",
+      "stderr": ""
+    },
+    {
+      "label": "seed-degrees",
+      "pose": [
+        -27.3934,
+        -36.4088,
+        1.2052,
+        -11.7593,
+        -23.2838,
+        2.9442
+      ],
+      "arm": 2,
+      "rotationHalfWidthDegrees": 0.002,
+      "exitCode": 0,
+      "stdout": "throw arm (2,-1) limit 110.33 deg = 331 substeps of 0.3333 deg; centre thrown 118\n  first possible contact at substep 86 (28.67 deg): legs (1,0), centre distance 2.804, pad 0.001\n  thrown at substep 118 (39.33 deg): foot 1 radius >= 67.1975u over the whole set (centre 67.2191u), rim 67.167\nCERTIFIED: every pose thrown by 39.33 deg (substep 118 of 331)   (0.1s)\n",
+      "stderr": ""
+    },
+    {
+      "label": "post-reply-degrees",
+      "pose": [
+        -24.31126879077936,
+        -37.34799285619334,
+        1.3448263401595464,
+        -11.7593,
+        -23.2838,
+        2.9442
+      ],
+      "arm": 0,
+      "rotationHalfWidthDegrees": 0.002,
+      "exitCode": 0,
+      "stdout": "throw arm (0,-1) limit 46.00 deg = 138 substeps of 0.3333 deg; centre thrown 84\n  first possible contact at substep 12 (4.00 deg): legs (0,0), centre distance 2.878, pad 0.001\n  thrown at substep 85 (28.33 deg): foot 1 radius >= 67.1927u over the whole set (centre 67.2857u), rim 67.167\nCERTIFIED: every pose thrown by 28.33 deg (substep 85 of 138)   (0.2s)\nengine check: victim after the swing -29.984213,-46.700479,1.278596 vs replica -29.984213,-46.700479,1.278596; engine netRad 46.000 deg, thrown true\nvalidate: 200 poses, 200 thrown by the replica, 0 violations; final foot radius min 67.285 (bound 67.193); post-push pair distance in [2.88000, 2.88108] (D 2.88)\n",
+      "stderr": ""
+    },
+    {
+      "label": "post-reply-degrees",
+      "pose": [
+        -24.31126879077936,
+        -37.34799285619334,
+        1.3448263401595464,
+        -11.7593,
+        -23.2838,
+        2.9442
+      ],
+      "arm": 2,
+      "rotationHalfWidthDegrees": 0.002,
+      "exitCode": 0,
+      "stdout": "throw arm (2,-1) limit 110.33 deg = 331 substeps of 0.3333 deg; centre thrown 112\n  first possible contact at substep 75 (25.00 deg): legs (1,0), centre distance 2.838, pad 0.001\n  thrown at substep 112 (37.33 deg): foot 1 radius >= 67.2047u over the whole set (centre 67.2133u), rim 67.167\nCERTIFIED: every pose thrown by 37.33 deg (substep 112 of 331)   (0.1s)\nengine check: victim after the swing -34.433303,-34.922963,1.766463 vs replica -34.433303,-34.922963,1.766463; engine netRad 110.333 deg, thrown true\nvalidate: 200 poses, 200 thrown by the replica, 0 violations; final foot radius min 67.213 (bound 67.205); post-push pair distance in [2.88000, 2.88002] (D 2.88)\n",
+      "stderr": ""
+    },
+    {
+      "label": "post-reply-radians",
+      "pose": [
+        -24.31126879077936,
+        -37.34799285619334,
+        1.3448263401595464,
+        -11.7593,
+        -23.2838,
+        2.9442
+      ],
+      "arm": 0,
+      "rotationHalfWidthDegrees": 0.11459155902616464,
+      "exitCode": 1,
+      "stdout": "throw arm (0,-1) limit 46.00 deg = 138 substeps of 0.3333 deg; centre thrown 84\n  first possible contact at substep 11 (3.67 deg): legs (0,0), centre distance 2.916, pad 0.046\n",
+      "stderr": "/workspace/scratch/afc142e9599c/brief6/repo/nn/throw-cert.js:933\n    rows.push({ k, deg: +(k * LIM_SUB / DEG).toFixed(2), pad: +post.pad.toFixed(3), psiN: post.psiN.map(v => +(v / DEG).toFixed(2)), hf: post.hf.map(v => +v.toFixed(3)), rn: post.rn.map(v => +v.toFixed(2)), fPre: fPre.map(v => +v.toFixed(4)), LamC: +LamC.toFixed(4), U: U.map(u => u.map(v => +v.toFixed(5))), Mlen: [0, 1, 2].map(j => +Math.hypot(M[0][j], M[1][j], M[2][j] * R).toFixed(3)), box: { x: bb.x.map(v => +v.toFixed(3)), y: bb.y.map(v => +v.toFixed(3)), rot: bb.rot.map(v => +(v / DEG).toFixed(3)) }, bbRaw: bb, footR: +t.maxFootR.toFixed(3), segs: post.segPairs.map(s => `${s.a},${s.b}`).join(' ') });\n                                                                    ^\n\nTypeError: Cannot read properties of null (reading 'pad')\n    at certify (/workspace/scratch/afc142e9599c/brief6/repo/nn/throw-cert.js:933:69)\n    at Object.<anonymous> (/workspace/scratch/afc142e9599c/brief6/repo/nn/throw-cert.js:953:15)\n    at Module._compile (node:internal/modules/cjs/loader:1872:14)\n    at Object..js (node:internal/modules/cjs/loader:2003:10)\n    at Module.load (node:internal/modules/cjs/loader:1594:32)\n    at Module._load (node:internal/modules/cjs/loader:1396:12)\n    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)\n    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)\n    at node:internal/main/run_main_module:33:47\n\nNode.js v24.19.0\n"
+    },
+    {
+      "label": "post-reply-radians",
+      "pose": [
+        -24.31126879077936,
+        -37.34799285619334,
+        1.3448263401595464,
+        -11.7593,
+        -23.2838,
+        2.9442
+      ],
+      "arm": 2,
+      "rotationHalfWidthDegrees": 0.11459155902616464,
+      "exitCode": 0,
+      "stdout": "throw arm (2,-1) limit 110.33 deg = 331 substeps of 0.3333 deg; centre thrown 112\n  first possible contact at substep 75 (25.00 deg): legs (1,0), centre distance 2.838, pad 0.046\nREFUSED: substep 78 (26.00 deg): after the push: contact point not localised on segments (3,3) (slack 3.422u of 3.02u)   (0.1s)\n",
+      "stderr": ""
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "scope": "Read-only instrumentation: exports and callbacks added in memory; no checker formula changed.",
+  "certifiedOutput": true,
+  "minR": 67.19268927114672,
+  "chords": [
+    {
+      "k": 74,
+      "selected": 2,
+      "correct": 1
+    },
+    {
+      "k": 79,
+      "selected": 2,
+      "correct": 1
+    },
+    {
+      "k": 80,
+      "selected": 2,
+      "correct": 1
+    },
+    {
+      "k": 84,
+      "selected": 2,
+      "correct": 1
+    },
+    {
+      "k": 85,
+      "selected": 2,
+      "correct": 1
+    },
+    {
+      "k": 95,
+      "selected": 2,
+      "correct": 1
+    }
+  ],
+  "frames": [
+    {
+      "k": 73,
+      "keep": false,
+      "frameError": 0
+    },
+    {
+      "k": 74,
+      "keep": true,
+      "frameError": 0.023613489437855576
+    },
+    {
+      "k": 75,
+      "keep": true,
+      "frameError": 0.05022306264415926
+    },
+    {
+      "k": 76,
+      "keep": true,
+      "frameError": 0.0780260052095253
+    },
+    {
+      "k": 77,
+      "keep": true,
+      "frameError": 0.10708765685521585
+    },
+    {
+      "k": 78,
+      "keep": true,
+      "frameError": 0.13747869878504204
+    },
+    {
+      "k": 79,
+      "keep": true,
+      "frameError": 0.16927492855606852
+    },
+    {
+      "k": 80,
+      "keep": true,
+      "frameError": 0.20255774443849292
+    },
+    {
+      "k": 81,
+      "keep": true,
+      "frameError": 0.2374146516827881
+    },
+    {
+      "k": 82,
+      "keep": true,
+      "frameError": 0.27393982495254515
+    },
+    {
+      "k": 83,
+      "keep": true,
+      "frameError": 0.31223473272053937
+    },
+    {
+      "k": 84,
+      "keep": true,
+      "frameError": 0.35240883166169645
+    },
+    {
+      "k": 85,
+      "keep": true,
+      "frameError": 0.3945803402058799
+    }
+  ],
+  "maxFrameError": 0.3945803402058799
+}

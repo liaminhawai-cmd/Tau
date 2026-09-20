@@ -84,3 +84,12 @@ positive six-dimensional volume, while the deadness labels remain sampled. The
 next rigorous object is a finite cover of legal replies by verified winning
 responses, propagated through guarded event cells or a phase-indexed moving
  tube. No new nonempty proved dead region has been claimed here.
+
+
+## Brief 6: the missing 8-degree reply
+
+[Read the Brief 6 response](brief6/response.md). Both historical small-box
+outputs reproduce from the **post-reply** pose on committed code. The unit
+correction and two enclosure defects remain. The [reproduction package](brief6/README.md)
+records the seed/post-reply comparison, current-engine replay, degree/radian
+runs and the repeated chord/frame audit at `431f13129d57fb41dd17e0844b3bd55624e2c3b4`.
