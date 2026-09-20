@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-09-20T21:37:44.365Z_
+_Last updated: 2026-09-20T21:37:56.621Z_
 
 **Self-play batch:** 186
-**Stage:** self-play batch 186 running (started 2026-09-20T20:48:48.425Z)
+**Stage:** self-play batch 186 running, next check in 5 min
 **mix:** (see selfplay log: fixed-rung training reference)
 
 **Dual pool:** 4 active (minimum 4) (dual-pop-010-e20, dual-pop-017-e40, dual-pop-022-e20, dual-pop-032-e40)
