@@ -274,9 +274,15 @@ function footOnFixedSeg(pB, q0, q1) {
 function parkJacobian(att, q, pair, vk, box) {
   const A = arcPts(att, pair[0]), V = arcPts(q, pair[1]);
   const p = V[vk];
-  // the attacker chord holding the perpendicular foot
+  // the attacker chord holding the perpendicular foot.
+  // The degenerate point segment goes FIRST -- see the note at the bottom of this file:
+  // segClosest3 solves for the SECOND segment's parameter, so passing the point second returns
+  // the first segment's start, not the perpendicular foot, and this loop then picks the nearest
+  // chord START. Over the studied park that selected chord 2 where the perpendicular foot is on
+  // chord 1, and a derivative interval for the wrong chord cannot justify the mean-value
+  // enclosure for the real contact direction (Brief 4 section 2.1).
   let seg = null, bestd = Infinity;
-  for (let a = 0; a < NSEG; a++) { const c = segClosest3(A[a], A[a + 1], p, p); if (c.dist < bestd) { bestd = c.dist; seg = a; } }
+  for (let a = 0; a < NSEG; a++) { const c = segClosest3(p, p, A[a], A[a + 1]); if (c.dist < bestd) { bestd = c.dist; seg = a; } }
   const e = [A[seg + 1].x - A[seg].x, A[seg + 1].y - A[seg].y, A[seg + 1].h - A[seg].h], eL = Math.hypot(...e), u = e.map(v => v / eL);
   const Pp = [0, 1, 2].map(i => [0, 1, 2].map(j => (i === j ? 1 : 0) - u[i] * u[j]));
   // ONE builder, evaluated in interval arithmetic throughout. Degenerate intervals give the centre's
@@ -823,15 +829,25 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
               // magnitude's variation was exactly the third coefficient and cost nothing. Sending
               // lambda a_c through Mp^-1 instead smears it over all three, and that alone made the
               // linearised step WORSE than the interval one it replaces -- 76 substeps against 82.
-              // Recover the structure from a_c = m3 and N m3 = m3 + Lam_c B m3:
-              //     lambda a_c = lambda N m3 - lambda Lam_c B m3,
-              // so lambda still lands on the third axis of the NEW basis and all that is left in the
-              // remainder is the second-order lambda Lam_c B m3.
+              // Recover the structure from N m3 = m3 + Lam_c B m3:
+              //     lambda a_c = lambda N m3 + lambda (a_c - m3 - Lam_c B m3),
+              // so lambda still lands on the third axis of the NEW basis and what is left in the
+              // remainder is the second-order lambda Lam_c B m3 PLUS lambda (a_c - m3).
+              //
+              // That last term used to be dropped, on the premise a_c = m3. The premise holds only
+              // while the basis is rebuilt from the current contact; `st.keep` carries a
+              // well-conditioned frame across substeps instead, and then the third column is the
+              // direction of an EARLIER substep. Measured in (x,y,Rtheta) over the studied park,
+              // ||m3 - a_c|| is 0 at k73, 0.0236 at k74, 0.0502 at k75, 0.1693 at k79 and reaches
+              // about 0.39 before the reported certificate, so the dropped term is not small
+              // (Brief 4 section 2.2). Carrying it makes the identity frame-independent.
               const Bm3 = [0, 1, 2].map(i => JB.Bc[i][0] * m3[0] + JB.Bc[i][1] * m3[1] + JB.Bc[i][2] * m3[2]);
+              const dm3 = [0, 1, 2].map(i => a_c[i] - m3[i]);
               const Rv = [0, 1, 2].map(i => {
                 let acc = [-vC[i], -vC[i]];
                 for (let j = 0; j < 3; j++) acc = add(acc, scale(mul(dB[i][j], dev2[j]), LamC));
-                return add(add(acc, mul(lam, da[i])), scale(mul(lam, [-Bm3[i], -Bm3[i]]), LamC));
+                acc = add(add(acc, mul(lam, da[i])), scale(mul(lam, [-Bm3[i], -Bm3[i]]), LamC));
+                return add(acc, mul(lam, [dm3[i], dm3[i]]));
               });
               if (process.env.DBGR) {
                 const t1 = [0,1,2].map(i => { let a=[0,0]; for (let j=0;j<3;j++) a=add(a, scale(mul(dB[i][j], dev2[j]), LamC)); return wid(a); });
