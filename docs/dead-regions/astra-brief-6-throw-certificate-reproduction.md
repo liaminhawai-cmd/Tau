@@ -1,3 +1,57 @@
+> ## CORRECTION (2026-09-20) — this brief's main finding was wrong
+>
+> **The numbers reproduce. This brief ran the certificate from the wrong pose.**
+>
+> `ndpxhts24` is a dead position with BLUE to move. The historical example is not
+> the seed: it is the position after **blue's (0,+1) reply to 8 degrees**, from
+> which red then throws. Section 8 and section 9 describe that post-reply pose.
+> This brief certified from the seed, before blue's reply, and so measured a
+> different geometry.
+>
+> With the post-reply pose, both recorded results reproduce exactly on committed
+> code:
+>
+> ```
+> POSE=-24.31126879077936,-37.34799285619334,1.3448263401595464,-11.7593,-23.2838,2.9442
+>
+> node nn/throw-cert.js 1 0 -1 1 0.0002 0.0002 0.002 --validate 200
+>   thrown at substep 85 (28.33 deg): foot 1 radius >= 67.1927u   [doc: 28.33 deg, 67.193u]
+>   CERTIFIED; 200 poses, 200 thrown, 0 violations
+>
+> node nn/throw-cert.js 1 2 -1 1 0.0002 0.0002 0.002 --validate 200
+>   thrown at substep 112 (37.33 deg): foot 1 radius >= 67.2047u  [doc: substep 112, 67.205u]
+>   CERTIFIED; 200 poses, 200 thrown, 0 violations
+> ```
+>
+> Sections 4(a) and 4(b) below are therefore void, as is section 5's claim to have
+> ruled out an invocation error -- the error was exactly that. The post-reply pose
+> was in `nn/throw-audit/README.md` the whole time, as "the POSE used throughout",
+> and this brief's author had already run the audit scripts with it.
+>
+> **Two findings survive.**
+>
+> * **The unit slip is real** (section 4(c)). The successful rotation half-width is
+>   **0.002 degrees**. The document's stated +-0.002 **radian** box fails. Any
+>   citation of section 8's box is 57x too wide.
+> * **`CERTIFIED` is still not a proof**, for reasons that predate this brief.
+>   Brief 4 documents two live defects in the enclosure, neither repaired:
+>   `parkJacobian` differentiates the **wrong attacker chord** (`segClosest3` with
+>   the degenerate point second returns the segment start, not the perpendicular
+>   foot -- it selects chord 2 where the perpendicular foot is on chord 1, giving
+>   dn_x/dx = 0.2035 against the real chord's 0.1249 at substep 74), and the
+>   carried basis no longer satisfies m3 = a_c, so the identity used omits the
+>   term lambda*(a_c - m3) -- with ||m3 - a_c|| reaching about 0.39 before the
+>   reported certificate. Brief 4's ablation is the decisive part: fixing only the
+>   chord selection still certifies, but **adding the missing frame term makes the
+>   run refuse at k83**. The reported result depends on the disputed bookkeeping.
+>
+> So section 8's headline -- *"Update, later the same day: it closes"* -- is not
+> established. The numbers are real and reproducible; the proof is not yet a proof.
+>
+> Resolved in PR #31 (merged to `main`), which carries the exact invocations, six
+> seed/post-reply and degree/radian runs, an independent engine replay and two
+> 200-pose validations.
+
 # Brief 6: the throw certificate's recorded numbers do not reproduce
 
 **Ask:** either produce the invocation that reproduces `nn/THROW-CONTACT-LEMMAS.md`

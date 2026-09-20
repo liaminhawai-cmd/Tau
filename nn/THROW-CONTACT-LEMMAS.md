@@ -11,6 +11,23 @@ new and specific, so it is written down here too.
 
 `nn/throw-cert.js` is the checker, `nn/throw-spread.js` the measurement tool.
 
+> **STATUS, 2026-09-20 — "it closes" is not established.** The numbers in sections 8
+> and 9 reproduce exactly on committed code, but only from the pose **after blue's
+> (0,+1) reply to 8 degrees**, not from the `ndpxhts24` seed:
+> `POSE=-24.31126879077936,-37.34799285619334,1.3448263401595464,-11.7593,-23.2838,2.9442`.
+> Two corrections to what is written below:
+>
+> * **The box is +-0.002 DEGREES, not radians.** The stated radian box fails. Anything
+>   citing this section's box is otherwise 57x too wide.
+> * **`CERTIFIED` is not yet a proof.** Brief 4 (`docs/geometry-reviews/brief4/`)
+>   documents two unrepaired defects in this enclosure: `parkJacobian` differentiates
+>   the wrong attacker chord, and the carried basis no longer satisfies m3 = a_c so the
+>   identity used omits lambda*(a_c - m3). Fixing only the chord still certifies;
+>   **adding the missing frame term makes the run refuse at k83.** The result below
+>   depends on the disputed bookkeeping.
+>
+> See `docs/dead-regions/astra-brief-6-throw-certificate-reproduction.md` and PR #31.
+
 **Update, later the same day: it closes.** Sections 1 to 7 below are the state
 before that, and they still describe the lemmas the certificate rests on. Section
 8 is what finally made it a proof. At a victim box of +-0.0002u in position and

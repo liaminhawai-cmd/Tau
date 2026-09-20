@@ -45,9 +45,12 @@ so a ball radius `eps` is in **units of foot travel (u)**.
   what a certificate claims, the depth and screening options, how a batch run is seeded
   and resumed, and what the four outcomes mean. Start here if the code is new to you.
 - [`astra-brief-6-throw-certificate-reproduction.md`](astra-brief-6-throw-certificate-reproduction.md)
-  — an open question sent for outside review: `nn/THROW-CONTACT-LEMMAS.md` section 8
-  claims an enclosure *proof* that closes, and its recorded numbers do not reproduce on
-  the code committed with it. Do not cite section 8's figures until that resolves.
+  — **resolved, and the brief was wrong.** Its numbers DO reproduce; the brief ran the
+  certificate from the seed instead of the pose after blue's 8-degree reply. Two things
+  survive: the stated `+-0.002 rad` box is a unit slip for `+-0.002 deg` (57x), and
+  `CERTIFIED` is still not a justified proof, because Brief 4's two enclosure defects are
+  unrepaired — fixing them makes the run refuse. Read the correction block at the top
+  before citing section 8 of `nn/THROW-CONTACT-LEMMAS.md`.
 
 ## Provenance and pinning
 
