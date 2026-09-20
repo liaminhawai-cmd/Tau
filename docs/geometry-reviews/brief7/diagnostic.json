@@ -1,0 +1,236 @@
+[
+  {
+    "h": 0.0002,
+    "deg": 0.002,
+    "pv": 0,
+    "certified": false,
+    "k": 83,
+    "why": "substep 83 (27.67 deg): after the push: two leg pairs can touch: (0,0) 3.15, (1,2) 3.56",
+    "firstPositivePad": {
+      "k": 1,
+      "pad": 0.0010890102939271106,
+      "states": 1
+    },
+    "lastPre": {
+      "k": 83,
+      "pad": 0.24702443930146775,
+      "states": 1
+    },
+    "fallbacks": []
+  },
+  {
+    "h": 0.0002,
+    "deg": 0.002,
+    "pv": 2,
+    "certified": true,
+    "k": 112,
+    "minR": 67.20466254700395,
+    "why": null,
+    "firstPositivePad": {
+      "k": 1,
+      "pad": 0.0010890102939271106,
+      "states": 1
+    },
+    "lastPre": {
+      "k": 112,
+      "pad": 0.040302478407014446,
+      "states": 1
+    },
+    "fallbacks": []
+  },
+  {
+    "h": 0.00005,
+    "deg": 0.0005,
+    "pv": 0,
+    "certified": false,
+    "k": 84,
+    "why": "substep 84 (28.00 deg): after the push: hub-leg contact possible (7.26 - pad 11.83 < 4.18)",
+    "firstPositivePad": {
+      "k": 1,
+      "pad": 0.00027225257349644647,
+      "states": 1
+    },
+    "lastPre": {
+      "k": 84,
+      "pad": 0.3265679218236937,
+      "states": 1
+    },
+    "fallbacks": []
+  },
+  {
+    "h": 0.00005,
+    "deg": 0.0005,
+    "pv": 2,
+    "certified": true,
+    "k": 112,
+    "minR": 67.20691851697308,
+    "why": null,
+    "firstPositivePad": {
+      "k": 1,
+      "pad": 0.00027225257349644647,
+      "states": 1
+    },
+    "lastPre": {
+      "k": 112,
+      "pad": 0.030956569028716747,
+      "states": 1
+    },
+    "fallbacks": []
+  },
+  {
+    "h": 0.00001,
+    "deg": 0.0001,
+    "pv": 0,
+    "certified": false,
+    "k": 84,
+    "why": "substep 84 (28.00 deg): after the push: hub-leg contact possible (6.26 - pad 5.43 < 4.18)",
+    "firstPositivePad": {
+      "k": 1,
+      "pad": 0.00005445051470091937,
+      "states": 1
+    },
+    "lastPre": {
+      "k": 84,
+      "pad": 0.30725612686266124,
+      "states": 1
+    },
+    "fallbacks": []
+  },
+  {
+    "h": 0.00001,
+    "deg": 0.0001,
+    "pv": 2,
+    "certified": true,
+    "k": 112,
+    "minR": 67.21010224149369,
+    "why": null,
+    "firstPositivePad": {
+      "k": 1,
+      "pad": 0.00005445051470091937,
+      "states": 1
+    },
+    "lastPre": {
+      "k": 112,
+      "pad": 0.026319722616605108,
+      "states": 1
+    },
+    "fallbacks": []
+  },
+  {
+    "h": 0.000001,
+    "deg": 0.00001,
+    "pv": 0,
+    "certified": false,
+    "k": 84,
+    "why": "substep 84 (28.00 deg): after the push: two leg pairs can touch: (0,0) 2.94, (1,2) 3.33",
+    "firstPositivePad": {
+      "k": 1,
+      "pad": 0.000005445051469349182,
+      "states": 1
+    },
+    "lastPre": {
+      "k": 84,
+      "pad": 0.14538509136280692,
+      "states": 1
+    },
+    "fallbacks": []
+  },
+  {
+    "h": 0.000001,
+    "deg": 0.00001,
+    "pv": 2,
+    "certified": true,
+    "k": 112,
+    "minR": 67.2101921339363,
+    "why": null,
+    "firstPositivePad": {
+      "k": 1,
+      "pad": 0.000005445051469349182,
+      "states": 1
+    },
+    "lastPre": {
+      "k": 112,
+      "pad": 0.025833543855625304,
+      "states": 1
+    },
+    "fallbacks": []
+  },
+  {
+    "h": 1e-7,
+    "deg": 0.000001,
+    "pv": 0,
+    "certified": false,
+    "k": 84,
+    "why": "substep 84 (28.00 deg): after the push: two leg pairs can touch: (0,0) 2.94, (1,2) 3.33",
+    "firstPositivePad": {
+      "k": 1,
+      "pad": 5.445051502318583e-7,
+      "states": 1
+    },
+    "lastPre": {
+      "k": 84,
+      "pad": 0.14526003788885272,
+      "states": 1
+    },
+    "fallbacks": []
+  },
+  {
+    "h": 1e-7,
+    "deg": 0.000001,
+    "pv": 2,
+    "certified": true,
+    "k": 112,
+    "minR": 67.21020115623644,
+    "why": null,
+    "firstPositivePad": {
+      "k": 1,
+      "pad": 5.445051502318583e-7,
+      "states": 1
+    },
+    "lastPre": {
+      "k": 112,
+      "pad": 0.025784642375174707,
+      "states": 1
+    },
+    "fallbacks": []
+  },
+  {
+    "h": 0,
+    "deg": 0,
+    "pv": 0,
+    "certified": false,
+    "k": 84,
+    "why": "substep 84 (28.00 deg): after the push: two leg pairs can touch: (0,0) 2.94, (1,2) 3.33",
+    "firstPositivePad": {
+      "k": 13,
+      "pad": 0.0000012490447784668827,
+      "states": 1
+    },
+    "lastPre": {
+      "k": 84,
+      "pad": 0.1452461212024366,
+      "states": 1
+    },
+    "fallbacks": []
+  },
+  {
+    "h": 0,
+    "deg": 0,
+    "pv": 2,
+    "certified": true,
+    "k": 112,
+    "minR": 67.21020218071746,
+    "why": null,
+    "firstPositivePad": {
+      "k": 76,
+      "pad": 0.00010578193316781545,
+      "states": 1
+    },
+    "lastPre": {
+      "k": 112,
+      "pad": 0.0257790815882879,
+      "states": 1
+    },
+    "fallbacks": []
+  }
+]

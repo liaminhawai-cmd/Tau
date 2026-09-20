@@ -93,3 +93,14 @@ outputs reproduce from the **post-reply** pose on committed code. The unit
 correction and two enclosure defects remain. The [reproduction package](brief6/README.md)
 records the seed/post-reply comparison, current-engine replay, degree/radian
 runs and the repeated chord/frame audit at `431f13129d57fb41dd17e0844b3bd55624e2c3b4`.
+
+
+## Brief 7: repaired checker, positive contact-chart bound
+
+[Read the response](brief7/response.md) and [reproduce the checks](brief7/README.md).
+The two prior repair hunks are present at `18efad5398798b65b477f9af4be17947a358d3ce`.
+The singleton failure reproduces, with artificial width appearing before the
+park. A new interval calculation verifies positive radial contact derivatives
+across candidate park domains; full tube inclusion remains open. The report
+gives an explicit contact-shell chart, audits the repaired identity and fallback,
+and recommends the surviving second arm as the first complete-proof target.
