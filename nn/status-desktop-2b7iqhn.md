@@ -1,11 +1,11 @@
 # Tau NN training status
-_Last updated: 2026-09-20T00:16:59.843Z_
+_Last updated: 2026-09-20T00:21:19.081Z_
 
 **Self-play batch:** 165
-**Stage:** self-play batch 165 running, next check in 5 min
+**Stage:** rating pool placement (started 2026-09-20T00:21:19.081Z)
 **mix:** (see selfplay log: fixed-rung training reference)
 
-**Dual pool:** 4 active (minimum 4) (dual-pop-010-e20, dual-pop-017-e40, dual-pop-022-e20, dual-pop-025-e20); pending dual-pop-025-e20.json -> dual-pop-026-e40.json
+**Dual pool:** 4 active (minimum 4) (dual-pop-010-e20, dual-pop-017-e40, dual-pop-022-e20, dual-pop-026-e40)
 
 **Last gate result:** pool cycle 430 — no candidate provably beats ckpt-417 (closest resume-327: 51-17-0, +60 +/- 67 Elo); keeping best.json
 
