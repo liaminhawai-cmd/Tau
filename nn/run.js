@@ -58,6 +58,7 @@ const { planMint, stripPolicyHead } = require('./mint-plan.js');
 const evo = require('./evolution-roster.js');
 const gate = require('./promotion-gate.js');
 const { fmtEloRange } = require('./elo.js');
+const { withGitLock, isBusy } = require('./git-lock.js');
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
@@ -1266,24 +1267,35 @@ function writeStatus(stage, extraPaths) {
     }
     const gitExe = found === 'git' ? 'git' : q(found);
     const git = (args) => execFileSync(gitExe, args.map(q), { cwd: repoRoot, shell: true, encoding: 'utf8' });
-    git(['add', `nn/${statusFile}`]);
-    // Each extra path is added separately and softly: a missing file must never take down the
-    // status push, which is the one thing that has to keep working for a many-hour run to stay
-    // observable.
-    // -f is REQUIRED, not belt-and-braces: nn/.gitignore excludes data/ and models/ wholesale, so
-    // a plain `git add` on these paths fails outright. -f names the specific exceptions worth
-    // keeping rather than punching holes in .gitignore, which is still right for everything else
-    // under those directories (checkpoints, log.txt, scratch models).
-    if (pushArtifacts && extraPaths) {
-      for (const p of extraPaths) {
-        try { git(['add', '-f', p]); } catch (e) { log(`could not stage ${p} (${errText(e)})`); }
-      }
-    }
-    try { git(['commit', '-m', 'nn: status update']); } catch (e) { /* nothing changed -- fine */ }
-    try { git(['push']); }
-    catch (e) {
-      try { git(['pull', '--no-edit', '--no-rebase']); git(['push']); }
-      catch (e2) { log(`status push skipped (${errText(e2)})`); }
+    // The whole sequence under ONE lock, not one git call at a time: the damage comes from
+    // another process slipping in BETWEEN our commit and our push, so a per-call lock would
+    // prevent nothing. Short wait -- this fires at every stage transition and the file is
+    // purely observational, so skipping an update costs nothing while stalling training for
+    // minutes would cost a lot. The next transition writes the same thing again.
+    try {
+      withGitLock(repoRoot, 'status push', () => {
+        git(['add', `nn/${statusFile}`]);
+        // Each extra path is added separately and softly: a missing file must never take down the
+        // status push, which is the one thing that has to keep working for a many-hour run to stay
+        // observable.
+        // -f is REQUIRED, not belt-and-braces: nn/.gitignore excludes data/ and models/ wholesale, so
+        // a plain `git add` on these paths fails outright. -f names the specific exceptions worth
+        // keeping rather than punching holes in .gitignore, which is still right for everything else
+        // under those directories (checkpoints, log.txt, scratch models).
+        if (pushArtifacts && extraPaths) {
+          for (const p of extraPaths) {
+            try { git(['add', '-f', p]); } catch (e) { log(`could not stage ${p} (${errText(e)})`); }
+          }
+        }
+        try { git(['commit', '-m', 'nn: status update']); } catch (e) { /* nothing changed -- fine */ }
+        try { git(['push']); }
+        catch (e) {
+          try { git(['pull', '--no-edit', '--no-rebase']); git(['push']); }
+          catch (e2) { log(`status push skipped (${errText(e2)})`); }
+        }
+      }, { waitMs: 30000, onWait: m => log(`status push: ${m}`) });
+    } catch (e) {
+      if (isBusy(e)) log(`status push skipped (${e.message})`); else throw e;
     }
   } catch (e) { log(`WARNING: status write failed (${errText(e)}) — continuing`); }
 }
@@ -1305,14 +1317,25 @@ function pullWorkers() {
   const errText = e => String((e && (e.stderr || e.stdout)) || (e && e.message) || e).trim().split('\n').slice(0, 3).join(' | ');
   try {
     const gitExe = found === 'git' ? 'git' : q(found);
-    const before = execFileSync(gitExe, ['rev-parse', 'HEAD'].map(q),
-                                { cwd: repoRoot, shell: true, encoding: 'utf8' }).trim();
-    execFileSync(gitExe, ['pull', '--no-edit', '--no-rebase'].map(q),
-                { cwd: repoRoot, shell: true, encoding: 'utf8' });
-    const after = execFileSync(gitExe, ['rev-parse', 'HEAD'].map(q),
-                               { cwd: repoRoot, shell: true, encoding: 'utf8' }).trim();
-    if (before !== after) log(`pulled new commits (worker games, most likely) from origin`);
-  } catch (e) { log(`WARNING: periodic pull failed (${errText(e)}) — continuing`); }
+    // A pull is a fetch plus a merge, and BOTH halves collide: two concurrent fetches write the
+    // same .git/FETCH_HEAD (seen live as a truncated ref name with a stray quote), and a merge
+    // that lands while another process holds the worktree produces "fetch updated the current
+    // branch head ... Cannot fast-forward your working tree". Longer wait than the status push
+    // because this one is the whole point of the schedule -- skipping it means a worker's games
+    // sit unmerged until the next tick.
+    withGitLock(repoRoot, 'periodic pull', () => {
+      const before = execFileSync(gitExe, ['rev-parse', 'HEAD'].map(q),
+                                  { cwd: repoRoot, shell: true, encoding: 'utf8' }).trim();
+      execFileSync(gitExe, ['pull', '--no-edit', '--no-rebase'].map(q),
+                  { cwd: repoRoot, shell: true, encoding: 'utf8' });
+      const after = execFileSync(gitExe, ['rev-parse', 'HEAD'].map(q),
+                                 { cwd: repoRoot, shell: true, encoding: 'utf8' }).trim();
+      if (before !== after) log(`pulled new commits (worker games, most likely) from origin`);
+    }, { waitMs: 180000, onWait: m => log(`periodic pull: ${m}`) });
+  } catch (e) {
+    if (isBusy(e)) log(`periodic pull skipped (${e.message}) — continuing`);
+    else log(`WARNING: periodic pull failed (${errText(e)}) — continuing`);
+  }
 }
 
 // One-time reseed: the fresh-vs-best gate used to always promote regardless of the arena result

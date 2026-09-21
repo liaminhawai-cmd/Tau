@@ -22,6 +22,7 @@
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { withGitLock, isBusy } = require('./git-lock.js');
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
@@ -69,15 +70,22 @@ function pushData() {
   const git = a => execFileSync('git', a.map(q), { cwd: path.join(dir, '..'), shell: true,
                                                   encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   try {
-    git(['add', '-f', rel]);
-    git(['commit', '-m', `nn: policy-fight arena games from ${machine}`]);
-    for (const wait of [0, 2000, 4000, 8000]) {
-      if (wait) execFileSync('node', ['-e', `setTimeout(()=>{},${wait})`]);
-      try { git(['pull', '--no-edit', '--no-rebase']); git(['push']); note(`arena games pushed: ${rel}`); return; }
-      catch (e) {}
-    }
-    note(`arena games committed locally but push failed -- they will ride along next push: ${rel}`);
+    // The retry ladder below is what a collision USED to cost: four attempts, each one a fresh
+    // pull+push that could itself collide, so a busy repo generated more contention the busier it
+    // got. Taking the lock first means the retries are there for genuine remote races (another
+    // machine pushed the same branch) rather than for the five local processes, which now queue.
+    withGitLock(path.join(dir, '..'), 'policy-fight push', () => {
+      git(['add', '-f', rel]);
+      git(['commit', '-m', `nn: policy-fight arena games from ${machine}`]);
+      for (const wait of [0, 2000, 4000, 8000]) {
+        if (wait) execFileSync('node', ['-e', `setTimeout(()=>{},${wait})`]);
+        try { git(['pull', '--no-edit', '--no-rebase']); git(['push']); note(`arena games pushed: ${rel}`); return; }
+        catch (e) {}
+      }
+      note(`arena games committed locally but push failed -- they will ride along next push: ${rel}`);
+    }, { waitMs: 300000, onWait: m => note(m) });
   } catch (e) {
+    if (isBusy(e)) { note(`arena games saved to ${rel} but the repo was busy (${e.message}) -- push by hand`); return; }
     note(`arena games saved to ${rel} but could not be committed (${String(e.message).split('\n')[0]}) -- push by hand`);
   }
 }

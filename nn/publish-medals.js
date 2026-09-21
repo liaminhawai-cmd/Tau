@@ -6,6 +6,7 @@ const path=require('path');
 const {execFileSync}=require('child_process');
 const evo=require('./evolution-roster.js');
 const mach=require('./machine-id.js');
+const {withGitLock,isBusy}=require('./git-lock.js');
 // Filed under THIS machine's name, not the shared three filenames. Every trainer on this repo
 // publishes to the same branch, so a flat nn/medals/gold.json is not a medal set -- it is whichever
 // machine pushed last, silently overwriting what the others found. Per-machine directories turn
@@ -18,7 +19,11 @@ const {atomicWrite}=require('./atomic-write.js');
 const atomic=(p,s)=>atomicWrite(p,s,{mkdir:true});
 const copy=(a,b)=>{fs.mkdirSync(path.dirname(b),{recursive:true});const t=`${b}.tmp-${process.pid}-${Date.now()}`;fs.copyFileSync(a,t);fs.renameSync(t,b);};
 function findGit(){const q=['git'];try{const b=path.join(process.env.LOCALAPPDATA||'','GitHubDesktop');for(const a of fs.readdirSync(b).filter(x=>/^app-/.test(x)).sort().reverse())q.push(path.join(b,a,'resources','app','git','cmd','git.exe'));}catch(_){}q.push('C:\\Program Files\\Git\\cmd\\git.exe','C:\\Program Files (x86)\\Git\\cmd\\git.exe');for(const g of q)try{execFileSync(g,['--version'],{stdio:'ignore'});return g;}catch(_){}return null;}
-function publish(paths,machineLabel){const g=findGit();if(!g){log('git not found; aliases refreshed locally only');return;}const run=a=>execFileSync(g,a,{cwd:root,stdio:'inherit'});try{for(const p of paths)run(['add','-f',p]);try{execFileSync(g,['diff','--cached','--quiet','--',...paths],{cwd:root});return;}catch(_){}run(['commit','-m',`nn: refresh ${machineLabel} gold silver bronze`,'--',...paths]);try{run(['pull','--no-edit','--no-rebase']);}catch(_){}run(['push']);log('aliases pushed');}catch(e){log(`git publish deferred: ${e.message}`);}}
+// Locked like every other writer here (git-lock.js): this stages, commits, pulls and pushes, and
+// it runs on a machine where the trainer and the mining lanes are doing the same thing on their own
+// timers. The `diff --cached --quiet` check in the middle is exactly the kind of read that another
+// process's commit invalidates halfway through.
+function publish(paths,machineLabel){const g=findGit();if(!g){log('git not found; aliases refreshed locally only');return;}const run=a=>execFileSync(g,a,{cwd:root,stdio:'inherit'});try{withGitLock(root,'medal publish',()=>{for(const p of paths)run(['add','-f',p]);try{execFileSync(g,['diff','--cached','--quiet','--',...paths],{cwd:root});return;}catch(_){}run(['commit','-m',`nn: refresh ${machineLabel} gold silver bronze`,'--',...paths]);try{run(['pull','--no-edit','--no-rebase']);}catch(_){}run(['push']);log('aliases pushed');},{waitMs:300000,onWait:m=>log(m)});}catch(e){log(isBusy(e)?`git publish deferred (${e.message})`:`git publish deferred: ${e.message}`);}}
 function ordinary(src){try{const j=read(src,{});return j&&j.dual!==true&&j.policyEntrant!==true&&Array.isArray(j.sizes)&&+j.sizes[j.sizes.length-1]===1;}catch(_){return false;}}
 function main(){
   const sum=read(summaryPath,{players:{}}),active=new Set(evo.activeModelNames(dir)),best={};

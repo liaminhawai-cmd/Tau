@@ -38,6 +38,7 @@ const { execFileSync, spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { withGitLock, withGitLockAsync, isBusy } = require('./git-lock.js');
 const { PolicyMLP } = require('./policy.js');
 const { DualMLP } = require('./dualnet.js');
 const { eloFromScore, fmtElo } = require('./elo.js');
@@ -457,7 +458,14 @@ async function runCycle(num) {
   const t0 = Date.now();
   const budgetMs = budgetHours*3600000;
   log(`policy cycle ${num}: pulling latest`);
-  gitSoft(['pull', '--no-edit', '--no-rebase'], 'pull');
+  // Under the repo lock: a fetch racing another process's fetch is what corrupts .git/FETCH_HEAD.
+  try {
+    withGitLock(repoRoot, `policy cycle ${num} pull`, () => {
+      gitSoft(['pull', '--no-edit', '--no-rebase'], 'pull');
+    }, { waitMs: 180000, onWait: m => log(`policy cycle ${num}: ${m}`) });
+  } catch (e) {
+    if (isBusy(e)) log(`policy cycle ${num}: pull skipped (${e.message})`); else throw e;
+  }
 
   const value = pickValueNet();
   if (!value) { log('no value net yet (need nn/models/best.json or a ckpt) — waiting 10 min'); await sleep(600000); return; }
@@ -986,18 +994,26 @@ async function runCycle(num) {
   const rel = p => path.relative(repoRoot, p).replace(/\\/g, '/');
   const toPush = [saveData, historyFile].filter(fs.existsSync).map(rel);
   if (toPush.length) {
-    let staged = false;
-    for (const f of toPush) staged = gitSoft(['add', '-f', f], 'add') || staged;
-    if (staged) {
-      gitSoft(['commit', '-m', `nn: policy loop cycle ${num} from ${machine} (${rows} rows)`], 'commit');
-      let pushed = false;
-      for (const wait of [0, 2000, 4000, 8000, 16000]) {
-        if (wait) await sleep(wait);
-        gitSoft(['pull', '--no-edit', '--no-rebase'], 'pre-push pull');
-        if (gitSoft(['push'], 'push')) { pushed = true; break; }
-      }
-      log(`policy cycle ${num}: ${rows} training rows ` +
-          (pushed ? 'pushed' : 'committed locally — will ride along next cycle'));
+    // withGitLockAsync, not withGitLock: the retry ladder awaits between attempts, and a lock
+    // released at the first await would be guarding nothing at all.
+    try {
+      await withGitLockAsync(repoRoot, `policy cycle ${num} push`, async () => {
+        let staged = false;
+        for (const f of toPush) staged = gitSoft(['add', '-f', f], 'add') || staged;
+        if (!staged) return;
+        gitSoft(['commit', '-m', `nn: policy loop cycle ${num} from ${machine} (${rows} rows)`], 'commit');
+        let pushed = false;
+        for (const wait of [0, 2000, 4000, 8000, 16000]) {
+          if (wait) await sleep(wait);
+          gitSoft(['pull', '--no-edit', '--no-rebase'], 'pre-push pull');
+          if (gitSoft(['push'], 'push')) { pushed = true; break; }
+        }
+        log(`policy cycle ${num}: ${rows} training rows ` +
+            (pushed ? 'pushed' : 'committed locally — will ride along next cycle'));
+      }, { waitMs: 300000, onWait: m => log(`policy cycle ${num}: ${m}`) });
+    } catch (e) {
+      if (isBusy(e)) log(`policy cycle ${num}: push skipped (${e.message}) — rides along next cycle`);
+      else throw e;
     }
   }
   log(`policy cycle ${num} done in ${((Date.now() - t0)/60000).toFixed(0)}m`);

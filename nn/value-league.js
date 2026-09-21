@@ -15,6 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { withGitLock, isBusy } = require('./git-lock.js');
 const os = require('os');
 const { spawn, spawnSync, execFileSync } = require('child_process');
 const { createEngine } = require('./engine.js');
@@ -163,16 +164,25 @@ fs.mkdirSync(path.dirname(dataPath), { recursive: true });
 let lastPushGames = -1;
 function pushResults(tag) {
   if (!findGit()) return;
-  gitSoft(['pull', '--no-edit', '--no-rebase'], 'pull before push');
-  const rel = p => path.relative(ROOT, p).replace(/\\/g, '/');
-  const targets = [standingsPath, summaryPath, dataPath].filter(fs.existsSync).map(rel);
-  if (!targets.length) return;
-  gitSoft(['add', '-f', ...targets], 'stage league results');
-  let staged;
-  try { staged = git(['diff', '--cached', '--stat']).trim(); } catch (e) { return; }
-  if (!staged) return;                       // nothing new since the last push
-  if (!gitSoft(['commit', '-m', `value-league: ${tag} (${HOST})`], 'commit')) return;
-  if (gitSoft(['push'], 'push')) console.log(`  pushed league results (${tag})`);
+  // One lock for the whole sequence -- see git-lock.js. This loop shares the worktree with the
+  // trainer and the mining lanes, and its commit landing between theirs is what produced the
+  // rejected pushes and the FETCH_HEAD corruption.
+  try {
+    withGitLock(ROOT, `value-league push (${tag})`, () => {
+      gitSoft(['pull', '--no-edit', '--no-rebase'], 'pull before push');
+      const rel = p => path.relative(ROOT, p).replace(/\\/g, '/');
+      const targets = [standingsPath, summaryPath, dataPath].filter(fs.existsSync).map(rel);
+      if (!targets.length) return;
+      gitSoft(['add', '-f', ...targets], 'stage league results');
+      let staged;
+      try { staged = git(['diff', '--cached', '--stat']).trim(); } catch (e) { return; }
+      if (!staged) return;                       // nothing new since the last push
+      if (!gitSoft(['commit', '-m', `value-league: ${tag} (${HOST})`], 'commit')) return;
+      if (gitSoft(['push'], 'push')) console.log(`  pushed league results (${tag})`);
+    }, { waitMs: 300000, onWait: m => console.log(`  ${m}`) });
+  } catch (e) {
+    if (isBusy(e)) console.log(`  push skipped (${e.message}) -- retrying next tick`); else throw e;
+  }
 }
 
 function sourceCandidates(kind, hidden) {
