@@ -1,0 +1,22 @@
+{
+  "source": "18efad5398798b65b477f9af4be17947a358d3ce",
+  "arm": [
+    2,
+    -1
+  ],
+  "substeps": 112,
+  "pushes": 140,
+  "substepsWithMultipleContactsPerPass": 0,
+  "firstPush": 75,
+  "kinds": [
+    "leg"
+  ],
+  "pairs": [
+    "1,0"
+  ],
+  "maxIdentityError": 4.109936441853106e-15,
+  "maxGap": 0.13887101426186277,
+  "minHf": 0.9879536332340944,
+  "flags": [],
+  "maxAbsResidual": 0.000060013286864446513
+}
