@@ -15,7 +15,10 @@ for Astra on the two questions at the end.
   position, recorded at the line each search commits to a reply, against a 0.25° ground-truth escape
   set under both call schedules.
 - **A3** `ladderDeadEscape`'s stride, budget and early exits audited; a dropped-mark defect found,
-  quantified, and traced to three further sites that are on production `main`.
+  quantified, and traced to three further sites that are on production `main`. On 150 frozen dev
+  positions the defect accounts for **more than half of the dense test's false-dead rate** (3.5% →
+  1.4% with the epsilon). The budget was never binding — 160 stops was not reached once — so
+  "budget exhausted" and "no counterexample found" are cleanly separable in this corpus.
 - **A4** Certificate table and loader audited. There is no loader.
 - **A5** Development and held-out sets frozen by game family, with source hashes.
 - **Equal-time gate** settled: ladder rungs ignore every `--timeMs` flag.

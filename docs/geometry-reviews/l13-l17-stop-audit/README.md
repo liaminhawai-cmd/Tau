@@ -159,21 +159,32 @@ not punished, and returns the stop it stopped at when `maxStops` runs out.
 
 `dense-stride.js` measures what that costs in verdicts, on the frozen development set only:
 
-**Preliminary, 12 positions, whole corpus (not the frozen split).** A 150-position run on the
-frozen development set is in flight; this is the smoke run that sized it, and 12 positions is far
-too few to put a rate on.
+**150 positions from the frozen development set**, each run twice through the same build, the two
+runs differing only by the subtracted epsilon:
 
 | | shipped | 1e-9 tolerance |
 | --- | --- | --- |
-| positions sampled | 12 | 12 |
-| positions that have an escape at 0.25° | 11 | 11 |
-| escape found | 9 | 10 |
-| escape missed (certified dead when it is not) | **2** | **1** |
-| dense-grid marks taken | 104 | 118 |
-| budget exhausted | 0 | 0 |
+| positions sampled | 150 | 150 |
+| positions with an escape at 0.25° | 142 | 142 |
+| escape found | 137 | **140** |
+| **escape missed — certified dead when it is not** | **5 (3.5%)** | **2 (1.4%)** |
+| dense-grid marks taken | 1318 | 1636 (+24%) |
+| budget (`deadStops:160`) exhausted | 0 | 0 |
 
-One verdict in twelve flipped on the tolerance alone. Read that as "the defect reaches verdicts,
-not only counters"; do not read a rate off it.
+Five of L17's verdicts in 150 flip on the epsilon alone. The dropped marks are **more than half of
+the dense test's total false-dead rate**: restoring the configured grid takes it from 3.5% to 1.4%.
+
+The residual 1.4% is the 6° grid itself, not the defect — two positions have escapes that a correct
+6° grid still steps over. That is the honest ceiling on what `deadDeg:6` can detect, and it is the
+number a "dense check only" ablation row should be compared against, not zero.
+
+The budget was never the binding constraint: 160 stops across six arms was not reached once in 150
+positions, because the first-escape early exit fires long before. Budget exhaustion and "no
+counterexample found" are therefore cleanly separable in this corpus — every non-null return here
+was a real counterexample, and every null was a genuine exhaustion of the grid.
+
+(A 12-position smoke run on the whole corpus, kept in `results/dense-stride-smoke-12.json`, sized
+this one. It showed 2 missed vs 1; the rate above supersedes it.)
 
 ## Step 4 — the certificate table and its loader
 
