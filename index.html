@@ -4797,7 +4797,7 @@ function ladderSampledPlan(idx, w, o){
         let guard=0, lastMark=0; const local=[];
         while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && guard++ < 500){
             applySwing(dir*AI_STEP_RAD); const a=Math.abs(G.netRad);
-            if (o.sampleDeg && a-lastMark >= o.sampleDeg*Math.PI/180 && a >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()){
+            if (o.sampleDeg && a-lastMark >= o.sampleDeg*Math.PI/180 - (o.markEps||0) && a >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()){
                 lastMark=a; local.push({pivotIdx:pv,dir,targetRad:a,snap:takeSnap(),q:ladderEval(idx,w)+(G.pieces[1-idx].anyFootOff()?HARD_WIN_BONUS:0)}); }
         }
         if (Math.abs(G.netRad) >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff())
@@ -4840,7 +4840,7 @@ function ladderRoots3(idx, w, o, snap0){
         let guard=0, lastMark=0, parksHere=0; const local=[]; const seenPark={};
         while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && guard++ < 500){
             applySwing(dir*AI_STEP_RAD); const a=Math.abs(G.netRad);
-            if (o.sampleDeg && a-lastMark >= o.sampleDeg*Math.PI/180 && a >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()){
+            if (o.sampleDeg && a-lastMark >= o.sampleDeg*Math.PI/180 - (o.markEps||0) && a >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()){
                 lastMark=a; local.push({pivotIdx:pv,dir,targetRad:a,snap:takeSnap(),q:ladderEval(idx,w)+(G.pieces[1-idx].anyFootOff()?HARD_WIN_BONUS:0)}); }
             // PARK stops, same as Master's recorder: since the turn-start grace went magnet-scale
             // (build 130), the coarse sampleDeg stops almost never land a foot genuinely ON a line,
@@ -5332,9 +5332,9 @@ function deadCertVerdict(mover){
 // every `stepDeg` along each arm plus the arm's own endpoint (the six ladderScore3 reads), so the
 // test strictly contains L11's and can only ever refuse a claim, never invent one. `maxStops` is a
 // hard budget: running out returns the stop it stopped at, i.e. refuses to certify.
-function ladderDeadEscape(victim, stepDeg, maxStops){
+function ladderDeadEscape(victim, stepDeg, maxStops, markEps){
     const att = 1-victim, s0 = takeSnap(), origActive = G.active;
-    const step = (stepDeg||6)*Math.PI/180;
+    const step = (stepDeg||6)*Math.PI/180, eps = markEps||0;
     let budget = maxStops || 160;
     const give = st => { ladderRestore(s0); G.active=origActive; return st; };
     for (let pv=0; pv<3; pv++) for (const dir of [1,-1]){
@@ -5342,7 +5342,7 @@ function ladderDeadEscape(victim, stepDeg, maxStops){
         let guard=0, lastMark=0; const stops=[];
         while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && guard++ < 500){
             applySwing(dir*AI_STEP_RAD); const a=Math.abs(G.netRad);
-            if (a-lastMark >= step && a >= HARD_MIN_MOVE_RAD && !G.pieces[victim].anyFootOff()){
+            if (a-lastMark >= step-eps && a >= HARD_MIN_MOVE_RAD && !G.pieces[victim].anyFootOff()){
                 lastMark=a; stops.push({pivotIdx:pv,dir,targetRad:a,snap:takeSnap()}); }
         }
         if (Math.abs(G.netRad) >= HARD_MIN_MOVE_RAD && !G.pieces[victim].anyFootOff())
@@ -5415,7 +5415,7 @@ function ladderDeadGuard(me, o){
         if (G.pieces[opp].anyFootOff()) continue;
         if (G.pieces[me].anyFootOff()){ ladderRestore(s0); G.active=origActive; DEAD_STATS.guardHits++; return r; }
         if (outermostRadU(G.pieces[me]) < DEAD_GUARD_RIM) continue;
-        if (!ladderDeadEscape(me, o.deadDeg||6, o.deadStops||160)){
+        if (!ladderDeadEscape(me, o.deadDeg||6, o.deadStops||160, o.markEps||0)){
             ladderRestore(s0); G.active=origActive; DEAD_STATS.guardHits++; return r; }
     }
     ladderRestore(s0); G.active=origActive; return null;
@@ -5430,7 +5430,13 @@ function ladderDeadGuard(me, o){
 //       that leaves this rung dead, in score order, and the first one that survives is played. If
 //       every checked move walks into one, L11's own pick stands -- the guard can decline a move
 //       but never invents one, so a rung wearing it is still recognisably L11.
+// COMPONENT SWITCHES, for the ablation matrix in docs/geometry-reviews/l13-l17-stop-audit. Each of
+// the three halves can be turned off independently; all default ON, so a bare AI_LADDER['dead'] rung
+// is exactly the rung that shipped. With all three off this function reduces to ladderPlan3 -- the
+// runner asserts that against L11 move for move, which is what makes the other rows trustworthy.
 function ladderPlanDead(idx, w, o){
+    const deadTable = o.deadTable !== false, deadDense = o.deadDense !== false,
+          deadGuard = o.deadGuard !== false;
     const origActive=G.active, snap0=takeSnap();
     const roots = ladderRoots3(idx, w, o, snap0);
     if (!roots.length){ ladderRestore(snap0); G.active=origActive; return null; }
@@ -5438,14 +5444,14 @@ function ladderPlanDead(idx, w, o){
     for (const c of roots.slice(0, o.maxCands||10)){
         ladderRestore(c.snap); let score;
         if (G.pieces[1-idx].anyFootOff()) score = HARD_WIN_BONUS + c.q;
-        else if (deadCertVerdict(1-idx) === 'dead') score = HARD_WIN_BONUS/2 + c.q;
+        else if (deadTable && deadCertVerdict(1-idx) === 'dead') score = HARD_WIN_BONUS/2 + c.q;
         else {
             const worst = ladderScore3(idx, w, c.snap, best ? best.score : undefined);
             score = worst===Infinity ? c.q : worst;
-            if (score >= HARD_WIN_BONUS/2){                 // L11 claims a forced win -- test it
+            if (deadDense && score >= HARD_WIN_BONUS/2){    // L11 claims a forced win -- test it
                 DEAD_STATS.dense++;
                 ladderRestore(c.snap); G.active=idx;
-                const esc = ladderDeadEscape(1-idx, o.deadDeg||6, o.deadStops||160);
+                const esc = ladderDeadEscape(1-idx, o.deadDeg||6, o.deadStops||160, o.markEps||0);
                 if (esc){ DEAD_STATS.refuted++; score = ladderDeadRescore(idx, w, esc); }
                 else DEAD_STATS.confirmed++;
             }
@@ -5454,7 +5460,7 @@ function ladderPlanDead(idx, w, o){
         scored.push({c, score});
     }
     scored.sort((a,b)=>b.score-a.score);
-    for (const sc of scored.slice(0, o.guardCands||6)){
+    for (const sc of (deadGuard ? scored.slice(0, o.guardCands||6) : [])){
         if (sc.score >= HARD_WIN_BONUS/2) break;             // already winning: nothing to guard
         ladderRestore(sc.c.snap); G.active=idx;
         if (!ladderDeadGuard(idx, o)){
@@ -5760,8 +5766,13 @@ function ladderRandomPlan(idx){
 // first move (G is rebuilt every game); a caller that has already set G.cornerOpening[idx] (the
 // trainer's --cornerOpening dial) keeps its choice. L1-L6 never know the line.
 const CORNER_OPENING_MIN_LEVEL = 7, CORNER_OPENING_P = 0.5;
-function ladderPlanFor(levelIdx, idx){
-    const def=AI_LADDER[levelIdx]; if (!def) return null;
+// `oOverride` is the LAB's door in (nn/arena.js's "L<n>+cfg:..."): it merges into this rung's
+// options for THIS CALL only. AI_LADDER itself is never touched, so an ablation can neither leak
+// into the player's ladder nor into another brain that shares the same rung in the same process --
+// which matters here because both sides of an arena match run in one engine.
+function ladderPlanFor(levelIdx, idx, oOverride){
+    let def=AI_LADDER[levelIdx]; if (!def) return null;
+    if (oOverride) def = { ...def, o: { ...(def.o||{}), ...oOverride } };
     if (!G.cornerOpening) G.cornerOpening=[null,null];
     if (G.cornerOpening[idx]==null) G.cornerOpening[idx] = levelIdx+1 >= CORNER_OPENING_MIN_LEVEL && Math.random() < CORNER_OPENING_P;
     if (G.cornerOpening[idx] && !(G.cornerDone && G.cornerDone[idx]))

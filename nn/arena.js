@@ -16,7 +16,7 @@ const { createEngine } = require('./engine.js');
 const { features } = require('./features.js');
 const { MLP } = require('./net.js');
 const { nnPlanFor, nnPlanForTimed } = require('./nnai.js');
-const { playRandomOpening, randomStartPose } = require('./opening.js');
+const { playRandomOpening, randomOpeningPlan, randomStartPose } = require('./opening.js');
 const { eloFromScore, fmtElo } = require('./elo.js');
 const { makeLadderEval } = require('./laddereval.js');
 
@@ -53,14 +53,43 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
   // "+veto" additionally wears the corner-crossing veto (index.html's ladderPlanVeto): the rung
   // picks its move as usual, then the stop is nudged off any angle that would hand the opponent a
   // corner crossing on their reply. Optional step size, e.g. "L11+veto:2" for 2-degree nudges.
-  const m = /^L(\d+)(\+corner)?(\+veto(?::([\d.]+))?)?$/i.exec(spec);
+  // "+cfg:k=v,k=v" overrides that rung's OPTIONS for this brain only -- the ablation door. It exists
+  // because the honest component test for a compound rung is the rung itself with one half switched
+  // off, not a re-implementation of it that might differ elsewhere. index.html's ladderPlanFor
+  // merges the overrides per call, so AI_LADDER is never mutated and the two sides of a match cannot
+  // contaminate each other even though they share one engine. Values parse as numbers; bare `k` is
+  // 1 and `k=0`/`k=false` is false, because `deadTable=0` has to mean OFF and not "falsy number".
+  //   L17+cfg:deadTable=0                 dense + guard, table off
+  //   L17+cfg:deadGuard=0,deadTable=0     dense only
+  //   L17+cfg:deadDense=0,deadGuard=0,deadTable=0   must equal plain L11 -- the runner asserts it
+  //   L11+cfg:markEps=1e-9                L11 with the dropped stop marks restored
+  // The tag rides in the brain NAME for the same reason the committee membership does: two option
+  // sets are two brains and must never pool as one row in a results table.
+  const m = /^L(\d+)(\+corner)?(\+veto(?::([\d.]+))?)?(\+cfg:([\w.,=+-]+))?$/i.exec(spec);
   if (m) {
     const lvl = +m[1], corner = !!m[2], veto = !!m[3], vetoStep = m[4] ? +m[4] : 3;
     if (lvl < 1 || lvl > eng.AI_LADDER.length) throw new Error('no such ladder level: ' + spec);
     const vTag = veto ? '+veto' + (m[4] ? ':' + m[4] : '') : '';
-    return { name: 'L' + lvl + (corner ? '+corner' : '') + vTag, fn: idx => {
+    let cfg = null;
+    if (m[6]) {
+      cfg = {};
+      for (const kv of m[6].split(',')) {
+        const [k, v] = kv.split('=');
+        if (!k) continue;
+        if (v === undefined) cfg[k] = 1;
+        else if (v === '0' || /^false$/i.test(v)) cfg[k] = false;
+        else if (/^true$/i.test(v)) cfg[k] = true;
+        else {
+          const n = Number(v);
+          if (!Number.isFinite(n)) throw new Error(`bad --a/--b cfg value in ${spec}: ${kv}`);
+          cfg[k] = n;
+        }
+      }
+    }
+    const cTag = m[6] ? '+cfg:' + m[6] : '';
+    return { name: 'L' + lvl + (corner ? '+corner' : '') + vTag + cTag, fn: idx => {
       const G = eng.getG(); (G.cornerOpening || (G.cornerOpening = [null, null]))[idx] = corner;
-      const plan = eng.ladderPlanFor(lvl - 1, idx);
+      const plan = eng.ladderPlanFor(lvl - 1, idx, cfg);
       return veto ? eng.ladderPlanVeto(idx, plan, vetoStep) : plan;
     } };
   }
@@ -285,6 +314,38 @@ function main() {
   // pair; the promotion gate spreads over a panel) instead of scrambling the opening.
   const openingPlies = +arg('openingPlies', 0);
   const randomStartFrac = +arg('randomStartFrac', 0);
+  // --openingSeed <n> / --openings <file> / --openingsOut <file>: a SHARED, REPRODUCIBLE opening
+  // list, and the pairing that makes an opening the resampling unit.
+  //
+  // opening.js's header already says what happens without forced opening plies: two deterministic
+  // brains replay the same two games (one per colour) N times, and the printed interval is computed
+  // from the inflated game count. Demonstrated on this build -- L4 vs L5, six games at defaults,
+  // produced exactly two distinct games, alternating 30-ply and 120-ply, three times each, and
+  // reported "3-3, +0 +/- 284 Elo" off n=6. openingPlies defaults to 0, so that guard is OFF unless
+  // asked for, and even when asked for it draws from an unseeded Math.random, so two configurations
+  // never meet the same openings and no run can be replayed.
+  //
+  // With a list in play, game 2i and 2i+1 are the SAME opening with the seats swapped (aIsBlue is
+  // already g%2), so an opening pair is one unit and a paired-opening interval has something real
+  // to resample. Every configuration in an ablation matrix must be given the same --openings file.
+  const openingSeed = arg('openingSeed', null);
+  const openingsIn = arg('openings', null), openingsOut = arg('openingsOut', null);
+  // mulberry32: small, exactly reproducible, and good enough to shuffle an opening -- this draws
+  // starting positions, it does not need cryptographic quality.
+  const mulberry32 = a => () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const withSeededRandom = (seed, fn) => {
+    const real = Math.random;
+    let a = seed >>> 0;
+    // the sandbox shares this Math object with the engine, which is what we want: the whole opening
+    // phase, plan draw and ko legalising alike, comes off the seeded stream
+    Math.random = () => { a = (a + 0x9E3779B9) | 0; return mulberry32(a)(); };
+    try { return fn(); } finally { Math.random = real; }
+  };
 
   // --saveData <file>: append training rows as the games are played (see the header note).
   // Appended per game rather than buffered to the end, for the same reason the score log is
@@ -361,6 +422,34 @@ function main() {
   const kw = 0.5 + eng.CFG.komiLoss/2;
   const scores = (aw, bw, ak, bk) => ({ a: aw + kw*ak + (1 - kw)*bk,
                                         b: bw + kw*bk + (1 - kw)*ak });
+  // Build (or load) the opening list before any game is played, so every configuration in a matrix
+  // sees byte-identical openings and a run can be replayed from the file alone.
+  let openings = null;
+  if (openingsIn) {
+    openings = fs.readFileSync(openingsIn, 'utf8').split('\n').filter(l => l.trim()).map(l => JSON.parse(l));
+    console.log(`openings: ${openings.length} loaded from ${openingsIn} (paired: game 2i and 2i+1 share one)`);
+  } else if (openingPlies > 0 && openingSeed !== null) {
+    const need = Math.ceil(games / 2);
+    openings = [];
+    withSeededRandom(+openingSeed, () => {
+      for (let i = 0; i < need; i++) {
+        eng.newGame();
+        const plans = [];
+        for (let k = 0; k < openingPlies; k++) {
+          const plan = randomOpeningPlan(eng);
+          if (!plan) break;
+          plans.push(plan); eng.applyPlan(plan);
+        }
+        openings.push(plans);
+      }
+    });
+    console.log(`openings: ${openings.length} generated from seed ${openingSeed}, ${openingPlies} plies each`);
+  }
+  if (openings && openingsOut) {
+    fs.writeFileSync(openingsOut, openings.map(o => JSON.stringify(o)).join('\n') + '\n');
+    console.log(`openings saved to ${openingsOut}`);
+  }
+
   const t0 = Date.now();
   for (let g = 0; g < games; g++) {
     const aIsBlue = g % 2 === 0;
@@ -374,6 +463,7 @@ function main() {
     const gameMs = drawClock();
     const randomStart = Math.random() < randomStartFrac;
     if (randomStart) { randomStartPose(eng); eng.setActive(Math.random() < 0.5 ? 0 : 1); }
+    else if (openings) { for (const plan of openings[Math.floor(g / 2) % openings.length]) eng.applyPlan(plan); }
     else playRandomOpening(eng, openingPlies);
     let plies = 0, nulls = 0;
     const rows = [];
