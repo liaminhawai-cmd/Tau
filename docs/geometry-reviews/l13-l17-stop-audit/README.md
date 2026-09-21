@@ -137,8 +137,25 @@ not punished, and returns the stop it stopped at when `maxStops` runs out.
   | `ladderDeadEscape` | internal L17 only | `deadDeg` 6 |
 
   So the shipped game's own ladder loses roughly **10.9%** of the root stop candidates it is
-  configured to generate, on every rung from L3 up. Whether that changes chosen moves is measured
-  separately below; the loss itself is not in doubt.
+  configured to generate, on every rung from L3 up.
+
+  **It changes the move.** `root-stride.js`, 60 frozen dev positions, each rung called through
+  `ladderPlanRung` so the corner-opening coin is never tossed and nothing is random:
+
+  | Rung | `sampleDeg` | moves changed by a 1e-9 mark tolerance |
+  | --- | --- | --- |
+  | **L11** (`p3`, on the public ladder as rung 12) | 9 | **34 of 60 — 56.7%** |
+  | internal L13 (`opp2`) | 9 | **32 of 60 — 53.3%** |
+
+  Most changes are a neighbouring stop on the same arm (`2+@51°` → `2+@54°`, `0+@42°` → `0+@36°`),
+  which is what inserting grid points into a `keepStops`-truncated candidate list should do. Some are
+  a different arm entirely (`1+@3°` → `0+@27°`). **Whether the restored grid plays better is not
+  measured here and is not claimed** — task A runs no matches. What is established is that this is
+  not a cosmetic defect: on these positions it decides over half the rung's moves.
+
+  Caveat on the population: these are mined mid/late-game contact-heavy poses from
+  `screened-not-dead.jsonl`, chosen because they are where stop coverage matters. They are not a
+  sample of ordinary play, and the rate on opening positions will differ.
 
 `dense-stride.js` measures what that costs in verdicts, on the frozen development set only:
 

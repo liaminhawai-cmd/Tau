@@ -28,9 +28,14 @@ for Astra on the two questions at the end.
   searches are audited. That audit is this document; the challenger is the next patch.
 - **No trainer restarted**, per the request.
 - **The stride fix is supplied as a patch, not applied.** It changes how every rung from L3 up
-  generates root candidates in the shipped game. "Preserve existing game rules and public ladder
-  until an evidence-backed change is reviewed" applies to it, so it sits in `patches/` with its
-  measured move-change rate attached and waits for a decision.
+  generates root candidates in the shipped game, and on 60 frozen dev positions it changes **56.7%
+  of L11's moves** and 53.3% of internal L13's. Whether those moves are better is unmeasured — that
+  needs an arena match, which task A does not run. "Preserve existing game rules and public ladder
+  until an evidence-backed change is reviewed" applies squarely, so it sits in `patches/` with the
+  move-change rate attached and waits for a decision. **It should be the first thing task B
+  measures**, ahead of the L17 ablations: it is a bigger effect on the shipped ladder than anything
+  the ablation matrix is designed to detect, and every ablation run before it is measuring a grid
+  that is not the configured one.
 
 ## Failed checks and blockers for task B
 

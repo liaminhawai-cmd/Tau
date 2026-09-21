@@ -1,0 +1,128 @@
+{
+ "checkout": "/tmp/claude-0/-home-user-Tau/fe0b5237-cc45-5aea-9508-41f6a56c60fe/scratchpad/l17",
+ "patchedSites": 2,
+ "split": "dev",
+ "positions": 60,
+ "rungs": [
+  {
+   "internal": "L11",
+   "kind": "p3",
+   "label": null,
+   "sampleDeg": 9,
+   "movesChangedByFix": 34,
+   "changeRate": 0.5667,
+   "examples": [
+    {
+     "g": "id6v8pw0o-17",
+     "shipped": "2+@51.0000",
+     "tolerant": "2+@54.0000"
+    },
+    {
+     "g": "zrzwomka4-0",
+     "shipped": "0+@42.0000",
+     "tolerant": "0+@36.0000"
+    },
+    {
+     "g": "w57776by4-10",
+     "shipped": "2-@60.0000",
+     "tolerant": "2-@63.0000"
+    },
+    {
+     "g": "g7q7k3wbs-3",
+     "shipped": "1+@3.0000",
+     "tolerant": "0+@27.0000"
+    },
+    {
+     "g": "u2zoct4ms-13",
+     "shipped": "2+@33.0000",
+     "tolerant": "2+@27.0000"
+    },
+    {
+     "g": "ad7ii3p48-3",
+     "shipped": "1+@21.0000",
+     "tolerant": "1+@18.0000"
+    },
+    {
+     "g": "cl6nmdun0-11",
+     "shipped": "1+@21.0000",
+     "tolerant": "1+@18.0000"
+    },
+    {
+     "g": "h4herpfc4-12",
+     "shipped": "0-@6.0000",
+     "tolerant": "2+@63.0000"
+    },
+    {
+     "g": "gwfn51daw-0",
+     "shipped": "0-@42.0000",
+     "tolerant": "0-@45.0000"
+    },
+    {
+     "g": "hqp95vt34-2",
+     "shipped": "2+@34.8750",
+     "tolerant": "2+@27.0000"
+    }
+   ]
+  },
+  {
+   "internal": "L13",
+   "kind": "opp2",
+   "label": "Retired L13",
+   "sampleDeg": 9,
+   "movesChangedByFix": 32,
+   "changeRate": 0.5333,
+   "examples": [
+    {
+     "g": "id6v8pw0o-17",
+     "shipped": "2+@51.0000",
+     "tolerant": "2+@54.0000"
+    },
+    {
+     "g": "zrzwomka4-0",
+     "shipped": "0+@42.0000",
+     "tolerant": "0+@36.0000"
+    },
+    {
+     "g": "w57776by4-10",
+     "shipped": "2-@60.0000",
+     "tolerant": "2-@63.0000"
+    },
+    {
+     "g": "g7q7k3wbs-3",
+     "shipped": "1+@19.5000",
+     "tolerant": "0+@27.0000"
+    },
+    {
+     "g": "u2zoct4ms-13",
+     "shipped": "2+@33.0000",
+     "tolerant": "2+@18.0000"
+    },
+    {
+     "g": "ad7ii3p48-3",
+     "shipped": "1+@21.0000",
+     "tolerant": "1+@18.0000"
+    },
+    {
+     "g": "h4herpfc4-12",
+     "shipped": "0-@9.0000",
+     "tolerant": "2+@63.0000"
+    },
+    {
+     "g": "gwfn51daw-0",
+     "shipped": "0-@42.0000",
+     "tolerant": "0-@45.0000"
+    },
+    {
+     "g": "hqp95vt34-2",
+     "shipped": "2+@34.8750",
+     "tolerant": "2+@27.0000"
+    },
+    {
+     "g": "8oxp2vfb0-0",
+     "shipped": "1+@21.0000",
+     "tolerant": "1+@18.0000"
+    }
+   ]
+  }
+ ]
+}
