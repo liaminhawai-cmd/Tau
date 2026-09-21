@@ -60,6 +60,21 @@ for Astra on the two questions at the end.
 5. **The historical 96-game L17 result cannot be re-run against the advertised corpus** without
    writing a loader. Its "no hits" number is about 8 hard-coded poses.
 
+## Independent replay of the arm-2 propagation
+
+[`verify-arm2-propagation.md`](verify-arm2-propagation.md). The composed enclosure at
+`codex/l11-stop-audit` `e65124f9d` reproduces bit-for-bit on a different machine and a different
+Node major version: across ~31,800 lines the only differences are two timing fields, one runtime
+string, and the hashes those change. Clearance `0.03513881297003251u`, 380 corrections, 41 engine
+cases with 4,592 containment checks and no failures — all identical.
+
+It also discharges part of one of that package's own open obligations: the 112 recorded attacker
+poses are byte-identical on Node v22.22.2 and v24.19.0, so the path is not a v24 artefact. Two
+runtimes is not the uniform floating-point bound obligation 1 asks for, and the note says so.
+
+Also recorded there: the geometry proof's pinned source and internal L17 are **the same revision**,
+`claude/board-game-video-adaptation-cf8a93`, and it is not `main`.
+
 ## Questions for Astra
 
 1. **Is the escape band a fact about this position or about the punishment test?** At the audited
@@ -82,4 +97,5 @@ for Astra on the two questions at the end.
 ## Files in this packet
 
 `README.md`, `HANDOFF.md`, `stop-coverage.js`, `dense-stride.js`, `root-stride.js`, `move-cost.js`,
-`freeze-sets.js`, `frozen-sets.json`, `results/` (raw JSON from each run), `patches/`.
+`freeze-sets.js`, `frozen-sets.json`, `verify-arm2-propagation.md`, `results/` (raw JSON from each
+run), `patches/`.
