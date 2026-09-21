@@ -244,3 +244,8 @@ from Brief 4 remain in the unchanged checker and were rechecked here. Do not
 cite `CERTIFIED` or random containment agreement as a completed enclosure proof.
 The [package](docs/geometry-reviews/brief6/README.md) includes exact source pins,
 commands, an engine replay of the missing reply and all diagnostic outputs.
+
+
+## New request — L13/L17 experiments and model allocation (2026-09-21)
+
+Liam requests explicit L13/L17 tests and a token-efficient division of work with no Fable. Start with [the Claude task request](docs/geometry-reviews/l11-stop-audit/CLAUDE-TASKS.md): Astra owns proof work, Opus owns search/experiment design, and Sonnet (if available) owns bounded implementation and batch execution. These tasks are requested, not completed. The known 2-degree counterexample and reproducible audit are in the same folder. Verify internal arena L13/L17 rather than public difficulty labels; verify ladder clock enforcement before claiming equal-time results. The latest mathematical review is PR #32 / Brief 7, which supersedes older statements above about the two repaired checker defects.
