@@ -57,7 +57,7 @@ const crypto = require('crypto');
 const { planMint, stripPolicyHead } = require('./mint-plan.js');
 const evo = require('./evolution-roster.js');
 const gate = require('./promotion-gate.js');
-const { fmtElo } = require('./elo.js');
+const { fmtEloRange } = require('./elo.js');
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
@@ -2066,11 +2066,11 @@ async function runPoolCycle() {
         atomicCopy(best, path.join(dir, 'models', `best.pre-pool-${Date.now()}.json`));
         atomicCopy(winner.path, best);
         gateLine = `promoted ${winner.name}: ${winner.w}-${winner.l}-${winner.d} vs ${incumbentName}, ` +
-                   `${fmtElo(winner.rating)} (lower bound clears +${gateMargin})`;
+                   `${fmtEloRange(winner.rating)} (lower bound clears +${gateMargin})`;
       } else {
         const top = verdict.results[0];
         gateLine = `no candidate provably beats ${incumbentName}` +
-          (top && top.rating.elo != null ? ` (closest ${top.name}: ${top.w}-${top.l}-${top.d}, ${fmtElo(top.rating)})` : '') +
+          (top && top.rating.elo != null ? ` (closest ${top.name}: ${top.w}-${top.l}-${top.d}, ${fmtEloRange(top.rating)})` : '') +
           '; keeping best.json';
       }
       log(`pool cycle ${num} — ${gateLine}`);
