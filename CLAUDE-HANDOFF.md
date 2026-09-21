@@ -249,3 +249,8 @@ commands, an engine replay of the missing reply and all diagnostic outputs.
 ## New request — L13/L17 experiments and model allocation (2026-09-21)
 
 Liam requests explicit L13/L17 tests and a token-efficient division of work with no Fable. Start with [the Claude task request](docs/geometry-reviews/l11-stop-audit/CLAUDE-TASKS.md): Astra owns proof work, Opus owns search/experiment design, and Sonnet (if available) owns bounded implementation and batch execution. These tasks are requested, not completed. The known 2-degree counterexample and reproducible audit are in the same folder. Verify internal arena L13/L17 rather than public difficulty labels; verify ladder clock enforcement before claiming equal-time results. The latest mathematical review is PR #32 / Brief 7, which supersedes older statements above about the two repaired checker defects.
+
+
+## Full contact-map lemma — 2026-09-21
+
+Astra completed a conditional real-map derivative and centred enclosure bound, with source-pinned arm-2 diagnostics. Read [the contact-map note](docs/geometry-reviews/contact-map/README.md) before implementing the next enclosure proposal. It preserves the Newton update's tangent projection and gives a remainder that vanishes at zero input width. The 140-correction nominal trace and 35 numerical derivative checks are diagnostics, not uniform certificates. Uniform guards, derivative bounds, solver-path inclusion and floating-point correspondence remain required. No new dead region or L13/L17 match result is claimed. The L13/L17 task request remains active and independent.
