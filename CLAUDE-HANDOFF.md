@@ -16,6 +16,8 @@ this project, with different standards of evidence.
 
 **Working branch:** `codex/l11-stop-audit`, [PR #33](https://github.com/liaminhawai-cmd/Tau/pull/33). At this handoff check, PR #33 and [PR #32](https://github.com/liaminhawai-cmd/Tau/pull/32) are both open, unmerged and individually mergeable. Recheck before integrating; neither is assumed to be on main.
 
+**Latest completed maths:** [Composed arm-2 enclosure](docs/geometry-reviews/arm2-propagation/README.md) now covers all 380 contact/no-contact passes, the initial 74 free substeps and other-contact exclusions. It proves a local throw for the stated real-arithmetic model driven by the pinned engine attacker path. Uniform floating-contact correspondence remains open; no dead region is claimed.
+
 Read only this short route first:
 
 1. [Claude task request](docs/geometry-reviews/l11-stop-audit/CLAUDE-TASKS.md): Opus starts task A; Sonnet, if available, handles prescribed instrumentation/runs; Astra owns the abstract proof work. No Fable dependency.
@@ -274,3 +276,8 @@ Astra completed a conditional real-map derivative and centred enclosure bound, w
 ## k111–112 resolved by shared-endpoint dominance (2026-09-21)
 
 [The dominance proof](docs/geometry-reviews/arm2-bounds/DOMINANCE.md) closes the two remaining FIRST-correction input boxes. The competing branch is a shared endpoint of the already selected chord; completing the squared-distance quadratic proves it strictly farther away throughout each box. Combined input-domain coverage is now 38/38, with conservative common constants m=1.1632, G=1.2062, B=0.035561. Earlier 36/38 statuses are superseded. This does not change the 26/38 larger-hull result or prove a composed tube. Next: propagate uncertainty through all internal corrections, with activation, other-contact, solver-state and numerical guards.
+
+
+## Composed arm-2 enclosure completed — 2026-09-21
+
+Astra completed the requested propagation task for the [stated real contact model](docs/geometry-reviews/arm2-propagation/README.md). The initial box is propagated through 380 passes with contact activation and up to three closest-feature branches. Other legs/hubs and the 74 early free substeps are verified separately. Final foot radius is at least 67.20213881297005u against edge upper bound 67.16700000000002u. Forty-one floating-engine diagnostics pass all 4,592 substep containment checks. The fixed attacker path was extracted from the pinned engine and is independent of victim pose. Uniform floating-contact error, cross-runtime path portability, all-reply coverage and both-piece variation remain open. Scripts, full logs, hashes and a summary are saved. Earlier 'next: compose the tube' instructions are superseded for this real model; do not label this as a completed floating-engine/dead-region certificate.

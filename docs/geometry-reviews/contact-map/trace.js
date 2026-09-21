@@ -18,4 +18,4 @@ for(let k=1;k<=tr.length;k++){
  }
 }
 const summary={source:'18efad5398798b65b477f9af4be17947a358d3ce',arm:[2,-1],substeps:112,pushes:rows.length,substepsWithMultipleContactsPerPass:multi,firstPush:rows[0]?.k,kinds:[...new Set(rows.map(r=>r.kind))],pairs:[...new Set(rows.map(r=>r.i+','+r.j))],maxIdentityError:Math.max(...rows.map(r=>r.identityError)),maxGap:Math.max(...rows.map(r=>r.gap)),minHf:Math.min(...rows.map(r=>r.hf)),flags:tr.filter(r=>r.flags.hub||r.flags.deep||r.flags.cap||r.flags.hfFloor).map(r=>r.flags),maxAbsResidual:Math.max(...rows.map(r=>Math.abs(r.residual)))};
-fs.writeFileSync(path.join(__dirname,'trace.json'),JSON.stringify({summary,rows},null,2)+'\n');fs.writeFileSync(path.join(__dirname,'trace-summary.json'),JSON.stringify(summary,null,2)+'\n');console.log(JSON.stringify(summary,null,2));
+fs.writeFileSync(path.join(__dirname,'trace.json'),JSON.stringify({summary,rows,steps:tr.map((r,i)=>({k:r.k,att:r.att,before:i?tr[i-1].pose:pieces[0],after:r.pose}))},null,2)+'\n');fs.writeFileSync(path.join(__dirname,'trace-summary.json'),JSON.stringify(summary,null,2)+'\n');console.log(JSON.stringify(summary,null,2));

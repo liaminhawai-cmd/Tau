@@ -37,7 +37,7 @@ def candidates(row,box):
  if not kept:raise ValueError('Empty closest-feature cover')
  return kept,A,upper
 
-def jet_branch(box,A,key):
+def jet_branch(box,A,key,raw=False):
  x,y,th=box;a,b,sa,tb=key
  X=J(x,[V(1),V(0),V(0)]);Y=J(y,[V(0),V(1),V(0)]);T=J(th,[V(0),V(0),1/I.sqrt()])
  # Compute the attacker unit direction from its endpoints and the common real chord length.
@@ -58,6 +58,7 @@ def jet_branch(box,A,key):
   s=J(0) if sa<0 else J(ELL);t=J(0) if tb<0 else J(ELL)
   W=[W[i]+VJ[i]*t-U[i]*s for i in range(3)];d=jdot(W,W).sqrt()
  if d.v.lo<=0:raise ValueError('No positive distance bound')
+ if raw:return d
  m=norm([V(minabs(q)) for q in d.g]).lo;G=norm([V(maxabs(q)) for q in d.g]).hi
  if sa==0 and tb==0:
   aa=V(maxabs(d.h[0][2]));bb=V(maxabs(d.h[1][2]));cc=V(maxabs(d.h[2][2]));H=((cc+(cc.sq()+4*(aa.sq()+bb.sq())).sqrt())/2).hi
