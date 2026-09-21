@@ -12,16 +12,25 @@ Depth explainer: **https://tau-game.com/depth**. The game, self-play/training
 system, public explanation and mathematical research are connected parts of
 this project, with different standards of evidence.
 
-Read these in order:
+### Current work — start here (21 September 2026)
 
-1. This handoff for the user's intent and the state of the work.
-2. [Review index](docs/geometry-reviews/README.md) for all findings and source pins.
-3. [Brief 4 review](docs/geometry-reviews/brief4/tau-box-size-review.md) for the
-   latest throw-checker audit and remaining mathematical obligations.
-4. [Supplied context and briefs](docs/project-context/README.md), especially
-   Brief 4, the original theorem, and Claude's response to Brief 2.
-5. [Earlier trainer/league decisions](docs/project-context/training-history.md)
-   before changing those systems. Those decisions evolved; read their dates.
+**Working branch:** `codex/l11-stop-audit`, [PR #33](https://github.com/liaminhawai-cmd/Tau/pull/33). At this handoff check, PR #33 and [PR #32](https://github.com/liaminhawai-cmd/Tau/pull/32) are both open, unmerged and individually mergeable. Recheck before integrating; neither is assumed to be on main.
+
+Read only this short route first:
+
+1. [Claude task request](docs/geometry-reviews/l11-stop-audit/CLAUDE-TASKS.md): Opus starts task A; Sonnet, if available, handles prescribed instrumentation/runs; Astra owns the abstract proof work. No Fable dependency.
+2. [L11 stop audit](docs/geometry-reviews/l11-stop-audit/README.md): reproduced 2-degree defence against the endpoint continuation scorer. This is not a full-game escape proof.
+3. [Full contact-map lemma](docs/geometry-reviews/contact-map/README.md): the latest completed mathematical work, its assumptions and the next implementation request.
+4. For the underlying geometry, read [Brief 7 on its own branch](https://github.com/liaminhawai-cmd/Tau/blob/codex/brief7-park-contact-chart/docs/geometry-reviews/brief7/response.md). Its package is in PR #32, not yet in this branch. Both PRs append to this handoff; preserve both updates if integration needs conflict resolution.
+5. Consult the [review index](docs/geometry-reviews/README.md), [original briefs](docs/project-context/README.md) and [trainer history](docs/project-context/training-history.md) only as needed.
+
+**Completed:** L11 tactical reproduction; L13/L17 test specification and task split; conditional full contact-map derivative/enclosure lemma; 140-correction nominal arm-2 replay and 35 numerical derivative checks.
+
+**Pending:** new L13/L17 ablation matches, their equal-time runner verification, uniform derivative/branch bounds for a complete throw certificate, and all-reply coverage for a dead region. No separate Claude session has been launched and no trainer has been restarted by this handoff work.
+
+**First action for Opus:** verify current internal L13/L17 mappings and replay the 2-degree fixture at the same post-root position. Report which stops each search actually examines before redesigning anything. Public difficulty 13 is not automatically internal experimental L13.
+
+**Do not inherit these obsolete conclusions:** Brief 4 is not the latest checker audit; Brief 7 confirms the two specific repairs. The historical 96-game L17 run did not test the new 261-point/63-ball corpus. Sampled labels and a program's CERTIFIED output are not substitutes for a checked proof. Later dated updates below supersede earlier status statements.
 
 ## The user's purpose for `/depth`
 
