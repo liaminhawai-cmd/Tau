@@ -21,7 +21,7 @@ Read only this short route first:
 1. [Claude task request](docs/geometry-reviews/l11-stop-audit/CLAUDE-TASKS.md): Opus starts task A; Sonnet, if available, handles prescribed instrumentation/runs; Astra owns the abstract proof work. No Fable dependency.
 2. [L11 stop audit](docs/geometry-reviews/l11-stop-audit/README.md): reproduced 2-degree defence against the endpoint continuation scorer. This is not a full-game escape proof.
 3. [Full contact-map lemma](docs/geometry-reviews/contact-map/README.md): the latest completed mathematical work, its assumptions and the next implementation request.
-4. [Arm-2 uniform derivative bounds](docs/geometry-reviews/arm2-bounds/README.md): the newest maths; 36/38 proposed input boxes bounded, plus a contact/no-contact enclosure lemma. Read this before implementing the full-map proposal.
+4. [Arm-2 uniform derivative bounds](docs/geometry-reviews/arm2-bounds/README.md): the newest maths; 38/38 proposed first-correction input boxes bounded after the shared-endpoint dominance lemma, plus a contact/no-contact enclosure lemma. Read this before implementing the full-map proposal.
 5. For the underlying geometry, read [Brief 7 on its own branch](https://github.com/liaminhawai-cmd/Tau/blob/codex/brief7-park-contact-chart/docs/geometry-reviews/brief7/response.md). Its package is in PR #32, not yet in this branch. Both PRs append to this handoff; preserve both updates if integration needs conflict resolution.
 6. Consult the [review index](docs/geometry-reviews/README.md), [original briefs](docs/project-context/README.md) and [trainer history](docs/project-context/training-history.md) only as needed.
 
@@ -269,3 +269,8 @@ Astra completed a conditional real-map derivative and centred enclosure bound, w
 ## Further maths — uniform bounds and contact activation (2026-09-21)
 
 [Arm-2 bounds](docs/geometry-reviews/arm2-bounds/README.md) now verifies uniform gradient/Hessian constants on 36 of 38 proposed first-correction input neighborhoods (k75–110), and 26 larger correction-hull boxes. k111–112 remain unresolved. The package adds second-order interval differentiation, explicit competing-chord guards and a proved activation-aware enclosure lemma. These independently proposed neighborhoods are not a propagated tube; other contacts, all internal corrections, stopping states and numerical correspondence remain open. Updated trace.js records before/after correction poses. The scripts and result JSON are committed; no new complete dead region or ladder matches are claimed.
+
+
+## k111–112 resolved by shared-endpoint dominance (2026-09-21)
+
+[The dominance proof](docs/geometry-reviews/arm2-bounds/DOMINANCE.md) closes the two remaining FIRST-correction input boxes. The competing branch is a shared endpoint of the already selected chord; completing the squared-distance quadratic proves it strictly farther away throughout each box. Combined input-domain coverage is now 38/38, with conservative common constants m=1.1632, G=1.2062, B=0.035561. Earlier 36/38 statuses are superseded. This does not change the 26/38 larger-hull result or prove a composed tube. Next: propagate uncertainty through all internal corrections, with activation, other-contact, solver-state and numerical guards.
