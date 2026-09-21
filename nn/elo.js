@@ -52,4 +52,18 @@ function fmtElo(r, digits) {
   return `${s}${r.elo.toFixed(d)} +/- ${(2*r.sigma).toFixed(d)} Elo`;
 }
 
-module.exports = { eloFromScore, fmtElo };
+// "+135 [+4, +266] Elo" -- the interval itself, for callers that DECIDE on a bound rather than on
+// the point estimate. fmtElo's "+/- 2 sigma" is only the same statement when the interval is
+// symmetric about elo. The promotion gate's is not: pairedElo takes elo from the full sample and
+// lo/hi from bootstrap percentiles, then back-fills sigma as (hi - lo)/4, so reconstructing the
+// bound as elo minus the printed half-width is wrong by however much the interval is skewed -- and
+// the bound is exactly what clears() gates on. Print what the decision is made of.
+function fmtEloRange(r, digits) {
+  if (r.elo == null) return 'no data';
+  const d = digits == null ? 0 : digits;
+  const sg = v => `${v >= 0 ? '+' : ''}${v.toFixed(d)}`;
+  if (r.lo == null || r.hi == null) return `${sg(r.elo)} Elo`;
+  return `${sg(r.elo)} [${sg(r.lo)}, ${sg(r.hi)}] Elo`;
+}
+
+module.exports = { eloFromScore, fmtElo, fmtEloRange };

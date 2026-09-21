@@ -21,7 +21,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
-const { eloFromScore, fmtElo } = require('./elo.js');
+const { eloFromScore, fmtEloRange } = require('./elo.js');
 const { createEngine } = require('./engine.js');
 const dir = __dirname;
 
@@ -120,7 +120,7 @@ function describe(result, margin = 0) {
     (result.komiW + result.komiL ? ` (komi ${result.komiW}-${result.komiL})` : '');
   const call = e.elo == null ? 'no data' : clears(result, margin) ? 'CLEARS' : e.hi < 0 ? 'weaker' : 'undecided';
   const inc = result.incumbent ? ` vs ${result.incumbent.name}'s ${result.incumbent.w}-${result.incumbent.l}${result.incumbent.d ? '-' + result.incumbent.d : ''} on the same panel` : '';
-  return `${result.name}: ${score}${inc}, ${fmtElo(e)} -- ${call}`;
+  return `${result.name}: ${score}${inc}, ${fmtEloRange(e)} -- ${call}`;
 }
 
 

@@ -12,6 +12,7 @@ const {execFileSync, spawn}=require('child_process');
 const fs=require('fs');
 const os=require('os');
 const path=require('path');
+const { withGitLock, withGitLockAsync, isBusy } = require('./git-lock.js');
 const crypto=require('crypto');
 const ladderSampling=require('./ladder-sampling.js');
 const {loadSeedPoses}=require('./selfplay.js');
@@ -96,16 +97,24 @@ function laneDepths(n){
 async function pushProgress(files,label){
   const present=files.filter(f=>fs.existsSync(f)); if(!present.length)return;
   let rows=0; for(const f of present)try{rows+=fs.readFileSync(f,'utf8').split('\n').filter(Boolean).length;}catch(_){}
-  let staged=false;
-  for(const f of present)staged=gitSoft(['add','-f',path.relative(repoRoot,f).replace(/\\/g,'/')],'add')||staged;
-  if(!staged)return;
-  gitSoft(['commit','-m',`nn: strong worker ${name} ${label} (${rows} rows)`],'commit');
-  for(const wait of [0,2000,5000,10000]){
-    if(wait)await sleep(wait);
-    gitSoft(['pull','--no-edit','--no-rebase'],'pre-push pull');
-    if(gitSoft(['push'],'push')){log(`${label}: ${rows} rows pushed`);return;}
+  // Async lock: the retry ladder awaits between attempts, so a sync lock would be released at the
+  // first await and guard nothing. See git-lock.js for what the interleaves cost.
+  try{
+    await withGitLockAsync(repoRoot,`worker ${name} push (${label})`,async()=>{
+      let staged=false;
+      for(const f of present)staged=gitSoft(['add','-f',path.relative(repoRoot,f).replace(/\\/g,'/')],'add')||staged;
+      if(!staged)return;
+      gitSoft(['commit','-m',`nn: strong worker ${name} ${label} (${rows} rows)`],'commit');
+      for(const wait of [0,2000,5000,10000]){
+        if(wait)await sleep(wait);
+        gitSoft(['pull','--no-edit','--no-rebase'],'pre-push pull');
+        if(gitSoft(['push'],'push')){log(`${label}: ${rows} rows pushed`);return;}
+      }
+      log(`${label}: ${rows} rows committed locally; push will retry next pass`);
+    },{waitMs:300000,onWait:m=>log(m)});
+  }catch(e){
+    if(isBusy(e))log(`${label}: push skipped (${e.message}); retries next pass`); else throw e;
   }
-  log(`${label}: ${rows} rows committed locally; push will retry next pass`);
 }
 
 function championPool(){
@@ -188,7 +197,11 @@ async function main(){
   log(`strong worker "${name}" up: ${workers} lanes; strength-only gold/silver/bronze at earned depths; `+
       `${Math.round(ladderShare*100)}% top-rung reference games; no ladder-v-ladder; rescue ${rescue?'on':'off'}`);
   for(let chunk=1;;chunk++){
-    gitSoft(['pull','--no-edit','--no-rebase'],'pull');
+    try{
+      withGitLock(repoRoot,`worker ${name} chunk ${chunk} pull`,()=>{
+        gitSoft(['pull','--no-edit','--no-rebase'],'pull');
+      },{waitMs:180000,onWait:m=>log(m)});
+    }catch(e){ if(isBusy(e))log(`chunk ${chunk}: pull skipped (${e.message})`); else throw e; }
     const {files,done,stamp}=playChunk(chunk); let finished=false; done.then(()=>finished=true);
     while(!finished){await Promise.race([sleep(pushEveryMin*60000),done]);if(!finished)await pushProgress(files,`chunk ${chunk} running`);}
     const retro=await runTinyRescue(stamp); if(retro)files.push(retro);

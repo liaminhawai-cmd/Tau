@@ -14,6 +14,7 @@ const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { withGitLock, isBusy } = require('./git-lock.js');
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
@@ -88,29 +89,40 @@ function gitSoft(args, what) {
 // conflicts over files it never authored.
 function pushData(tag) {
   if (!gitPushMin || !findGit()) return;
-  gitSoft(['pull', '--no-edit'], 'pull before push');
-  // -f is REQUIRED, not belt-and-braces: nn/.gitignore excludes data/ wholesale, so a plain
-  // `git add nn/data` matches only ignored paths, prints "The following paths are ignored by one of
-  // your .gitignore files", and exits non-zero having staged NOTHING. gitSoft swallows that as a
-  // warning and the loop keeps mining, so the failure is silent -- lanes run for hours writing rows
-  // that never leave the machine. Observed live: 14 workers, ~20 jobs done, zero retro-ratchet-*
-  // files on the remote. run.js's status push hit this same trap and already documents it.
-  // Scoped to THIS loop's own output, not the whole directory. `nn/data` swept up everything any
-  // other process happened to have written there -- run.js's batch-NNN.jsonl above all, which is a
-  // shared filename every trainer produces, so two machines pushed conflicting batch-106 files
-  // while the operator had explicitly answered "another machine is running" to avoid exactly that.
-  // --no-push-artifacts turns run.js's own artefact push off; it cannot turn off a second process
-  // pushing the same files on run.js's behalf. The -Af also forced past .gitignore, which meant the
-  // per-worker .jsonl.wNN shards -- untracked on purpose, 307 of them removed from history -- were
-  // silently re-added on the next tick. Observed live: shards reappearing in a pull minutes after
-  // being deleted.
-  gitSoft(['add', '-Af', 'nn/data/retro-*.jsonl'], 'git add');
+  // Under the repo lock for the whole pull -> add -> commit -> push run. The mining lanes and
+  // the trainer push on independent timers into one worktree, and the failure that motivated
+  // this was exactly an interleave: retromine's commit landing between run.js's commit and its
+  // push. The early returns below simply end the locked section; the lock is released either
+  // way. A busy skip is free -- the next tick pushes the same rows plus whatever arrived since.
   try {
-    const staged = git(['diff', '--cached', '--stat']).trim();
-    if (!staged) return;                      // nothing new since last push
-  } catch (e) { return; }
-  if (!gitSoft(['commit', '-m', `retromine: ${tag}`], 'commit')) return;
-  if (gitSoft(['push'], 'push')) console.log(`  pushed mined rows (${tag})`);
+    withGitLock(repoRoot, `retromine push (${tag})`, () => {
+      gitSoft(['pull', '--no-edit'], 'pull before push');
+      // -f is REQUIRED, not belt-and-braces: nn/.gitignore excludes data/ wholesale, so a plain
+      // `git add nn/data` matches only ignored paths, prints "The following paths are ignored by one of
+      // your .gitignore files", and exits non-zero having staged NOTHING. gitSoft swallows that as a
+      // warning and the loop keeps mining, so the failure is silent -- lanes run for hours writing rows
+      // that never leave the machine. Observed live: 14 workers, ~20 jobs done, zero retro-ratchet-*
+      // files on the remote. run.js's status push hit this same trap and already documents it.
+      // Scoped to THIS loop's own output, not the whole directory. `nn/data` swept up everything any
+      // other process happened to have written there -- run.js's batch-NNN.jsonl above all, which is a
+      // shared filename every trainer produces, so two machines pushed conflicting batch-106 files
+      // while the operator had explicitly answered "another machine is running" to avoid exactly that.
+      // --no-push-artifacts turns run.js's own artefact push off; it cannot turn off a second process
+      // pushing the same files on run.js's behalf. The -Af also forced past .gitignore, which meant the
+      // per-worker .jsonl.wNN shards -- untracked on purpose, 307 of them removed from history -- were
+      // silently re-added on the next tick. Observed live: shards reappearing in a pull minutes after
+      // being deleted.
+      gitSoft(['add', '-Af', 'nn/data/retro-*.jsonl'], 'git add');
+      try {
+        const staged = git(['diff', '--cached', '--stat']).trim();
+        if (!staged) return;                      // nothing new since last push
+      } catch (e) { return; }
+      if (!gitSoft(['commit', '-m', `retromine: ${tag}`], 'commit')) return;
+      if (gitSoft(['push'], 'push')) console.log(`  pushed mined rows (${tag})`);
+    }, { waitMs: 300000, onWait: m => console.log(`  ${m}`) });
+  } catch (e) {
+    if (isBusy(e)) console.log(`  push skipped (${e.message}) -- retrying next tick`); else throw e;
+  }
 }
 
 const dir = __dirname;
@@ -259,7 +271,14 @@ function launch(lane) {
   // has to land before the child exists or the job runs the whole seed against a stale axis. Lane 1
   // only -- 14 lanes each pulling on their own schedule would just be 14 racing pulls of the same
   // commits, and every lane's next job picks the result up anyway.
-  if (gitPullOn && lane.id === 1 && findGit()) gitSoft(['pull', '--no-edit'], 'pull');
+  // Locked: this fires once per job on lane 1, i.e. often, straight into a repo the trainer is
+  // also fetching. Two fetches sharing .git/FETCH_HEAD is the corruption seen live.
+  if (gitPullOn && lane.id === 1 && findGit()) {
+    try {
+      withGitLock(repoRoot, 'retromine pull', () => gitSoft(['pull', '--no-edit'], 'pull'),
+                  { waitMs: 120000 });
+    } catch (e) { if (!isBusy(e)) throw e; }
+  }
   console.log(`\n[w${lane.id}] starting ratchet job ${job} -> ${path.basename(lane.output)}`);
   const child = spawn(process.execPath, args, { cwd: dir, stdio: 'inherit', windowsHide: false });
   lane.child = child;
