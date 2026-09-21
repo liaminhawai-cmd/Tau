@@ -40,6 +40,35 @@ for Astra on the two questions at the end.
   the ablation matrix is designed to detect, and every ablation run before it is measuring a grid
   that is not the configured one.
 
+## The component tests are now implemented
+
+`claude/l17-ablations`, commit `d36c22548`, branched off the pinned revision. It closes blockers 2
+and 4 below and adds one that was not on the list.
+
+- **Switches.** `ladderPlanFor` takes a per-call options override; `nn/arena.js` reaches it as
+  `L<n>+cfg:k=v`; `ladderPlanDead` honours `deadTable` / `deadDense` / `deadGuard`. All default on,
+  `AI_LADDER` is never mutated, and the cfg string rides in the brain name so two option sets cannot
+  pool as one row. The stride tolerance is exposed the same way as `markEps`, default 0 — so it is a
+  measurable row rather than an unreviewed change to shipped play.
+- **Self-test.** With all three off, `ladderPlanDead` must reduce to `ladderPlan3`.
+  `ablation-matrix.js` asserts it against L11 move for move and aborts if it fails. It passes, and a
+  bare `L17` reproduces this packet's pre-change numbers exactly.
+- **A blocker that was not on the list: the arena had no shared openings.** `opening.js`'s header
+  already says deterministic brains replay one game per colour without forced opening plies — but
+  `openingPlies` defaults to 0 and a bare `L<n>` spec pins the corner coin off, so nothing varies.
+  Measured: **L4 vs L5 over six games produced exactly two distinct games** (30 and 120 plies, three
+  times each) and printed "3-3, +0 +/- 284 Elo" from an n of 6 when the real n was 2. `--openingSeed`
+  / `--openings` / `--openingsOut` now give a seeded, saved, shared list, paired so that games `2i`
+  and `2i+1` are one opening with the seats swapped. `paired-elo.js` resamples those pairs.
+- **First readings** (10 dev positions, smoke): the **guard is the only component of L17 that
+  changes a move**; the dense test never fired, because it only runs on a child L11 has already
+  scored as a forced win; the certificate table was consulted 216 times with no hits. A 60-position
+  run is in flight. Rows whose `moves != L11` is 0 cannot differ in a game either and should not be
+  bought matches.
+
+The frozen protocol for the match stage is `docs/geometry-reviews/l17-ablations/PROTOCOL.md` on that
+branch.
+
 ## Failed checks and blockers for task B
 
 1. **The L17 ablation matrix cannot run on `main`.** Four of the eight rows in the task's table
@@ -47,13 +76,14 @@ for Astra on the two questions at the end.
    nor the Champion rung, so "the best challenger against the strongest rung we have" has no
    revision to run on. Someone has to decide whether to port L17 forward onto `main` or to port the
    Committee back; porting L17 forward is the smaller diff and is what the rest of this assumes.
-2. **The ablation switches do not exist.** `deadDeg`, `deadStops`, `guardCands` and `guardReplies`
+2. **~~The ablation switches do not exist.~~ Done — see above.** Originally: `deadDeg`, `deadStops`, `guardCands` and `guardReplies`
    are already per-rung options, so "dense only" and "guard only" are option values — but there is
    no flag that bypasses `deadCertVerdict`, so the "table off" rows need one line in
    `ladderPlanDead`. That is the first patch task B needs.
 3. **The 2° fixture cannot be the L13/L17 regression example.** Both already refute it. It remains
    a valid L11 regression example and nothing more.
-4. **No equal-time comparison is possible for ladder rungs today.** Either the first comparison is
+4. **No equal-time comparison is possible for ladder rungs today** (the protocol now labels every
+   comparison "fixed search plus measured runtime" instead). Either the first comparison is
    labelled fixed search plus measured runtime, or someone adds a real clock to the ladder path —
    which means a budgeted search with a legal completed fallback, i.e. a change to how the rungs
    play, not a flag.
