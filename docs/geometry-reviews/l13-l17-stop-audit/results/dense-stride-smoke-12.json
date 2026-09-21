@@ -1,0 +1,381 @@
+{
+ "checkout": "/tmp/claude-0/-home-user-Tau/fe0b5237-cc45-5aea-9508-41f6a56c60fe/scratchpad/l17",
+ "corpus": "/tmp/claude-0/-home-user-Tau/fe0b5237-cc45-5aea-9508-41f6a56c60fe/scratchpad/l17/docs/dead-regions/screened-not-dead.jsonl",
+ "sampled": 12,
+ "positions": [
+  {
+   "g": "retro-ratchet-20260918170052-jks-w1-j18-0-75",
+   "k": 0,
+   "mover": 1,
+   "status": "escape",
+   "truthEscapes": 163,
+   "firstTruth": {
+    "pivotIdx": 0,
+    "dir": 1,
+    "deg": 17.75
+   },
+   "shipped": {
+    "marks": 2,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 0,
+     "dir": 1,
+     "deg": 20.24999999999999
+    }
+   },
+   "tolerant": {
+    "marks": 3,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 0,
+     "dir": 1,
+     "deg": 20.24999999999999
+    }
+   }
+  },
+  {
+   "g": "retro-ratchet-20260808073457-fic-w5-j1-0-42",
+   "k": 2,
+   "mover": 0,
+   "status": "escape",
+   "truthEscapes": 589,
+   "firstTruth": {
+    "pivotIdx": 0,
+    "dir": 1,
+    "deg": 2
+   },
+   "shipped": {
+    "marks": 6,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 0,
+     "dir": 1,
+     "deg": 9
+    }
+   },
+   "tolerant": {
+    "marks": 7,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 0,
+     "dir": 1,
+     "deg": 5.999999999999999
+    }
+   }
+  },
+  {
+   "g": "dp1li4nyo-5",
+   "k": 1,
+   "mover": 1,
+   "status": "escape",
+   "truthEscapes": 623,
+   "firstTruth": {
+    "pivotIdx": 0,
+    "dir": 1,
+    "deg": 2
+   },
+   "shipped": {
+    "marks": 3,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 0,
+     "dir": 1,
+     "deg": 9
+    }
+   },
+   "tolerant": {
+    "marks": 4,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 0,
+     "dir": 1,
+     "deg": 5.999999999999999
+    }
+   }
+  },
+  {
+   "g": "wwwinvlgc-0",
+   "k": 1,
+   "mover": 0,
+   "status": "escape",
+   "truthEscapes": 17,
+   "firstTruth": {
+    "pivotIdx": 1,
+    "dir": -1,
+    "deg": 41.25
+   },
+   "shipped": {
+    "marks": 13,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 1,
+     "dir": -1,
+     "deg": 44.62500000000006
+    }
+   },
+   "tolerant": {
+    "marks": 16,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 1,
+     "dir": -1,
+     "deg": 42.00000000000004
+    }
+   }
+  },
+  {
+   "g": "arenaoatqvdng-2",
+   "k": 0,
+   "mover": 1,
+   "status": "escape",
+   "truthEscapes": 124,
+   "firstTruth": {
+    "pivotIdx": 0,
+    "dir": -1,
+    "deg": 9.5
+   },
+   "shipped": {
+    "marks": 4,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 0,
+     "dir": -1,
+     "deg": 15.000000000000005
+    }
+   },
+   "tolerant": {
+    "marks": 6,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 0,
+     "dir": -1,
+     "deg": 12.000000000000004
+    }
+   }
+  },
+  {
+   "g": "ijwdiw65g-12",
+   "k": 0,
+   "mover": 1,
+   "status": "escape",
+   "truthEscapes": 42,
+   "firstTruth": {
+    "pivotIdx": 0,
+    "dir": -1,
+    "deg": 31.75
+   },
+   "shipped": {
+    "marks": 22,
+    "budgetOut": 0,
+    "found": false,
+    "at": null
+   },
+   "tolerant": {
+    "marks": 18,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 1,
+     "dir": 1,
+     "deg": 17.999999999999996
+    }
+   }
+  },
+  {
+   "g": "bnv7itikc-0",
+   "k": 0,
+   "mover": 0,
+   "status": "escape",
+   "truthEscapes": 9,
+   "firstTruth": {
+    "pivotIdx": 1,
+    "dir": 1,
+    "deg": 22.75
+   },
+   "shipped": {
+    "marks": 14,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 2,
+     "dir": 1,
+     "deg": 23.99999999999998
+    }
+   },
+   "tolerant": {
+    "marks": 18,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 2,
+     "dir": 1,
+     "deg": 23.99999999999998
+    }
+   }
+  },
+  {
+   "g": "vwyj9dk8c-7",
+   "k": 0,
+   "mover": 1,
+   "status": "unresolved",
+   "truthEscapes": 0,
+   "firstTruth": null,
+   "shipped": {
+    "marks": 10,
+    "budgetOut": 0,
+    "found": false,
+    "at": null
+   },
+   "tolerant": {
+    "marks": 11,
+    "budgetOut": 0,
+    "found": false,
+    "at": null
+   }
+  },
+  {
+   "g": "7v4ixb8mo-6",
+   "k": 0,
+   "mover": 1,
+   "status": "escape",
+   "truthEscapes": 330,
+   "firstTruth": {
+    "pivotIdx": 0,
+    "dir": 1,
+    "deg": 30.25
+   },
+   "shipped": {
+    "marks": 7,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 0,
+     "dir": 1,
+     "deg": 32.999999999999986
+    }
+   },
+   "tolerant": {
+    "marks": 8,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 0,
+     "dir": 1,
+     "deg": 36.00000000000001
+    }
+   }
+  },
+  {
+   "g": "arenadty40lv8-1",
+   "k": 0,
+   "mover": 1,
+   "status": "escape",
+   "truthEscapes": 1,
+   "firstTruth": {
+    "pivotIdx": 0,
+    "dir": -1,
+    "deg": 11.75
+   },
+   "shipped": {
+    "marks": 11,
+    "budgetOut": 0,
+    "found": false,
+    "at": null
+   },
+   "tolerant": {
+    "marks": 12,
+    "budgetOut": 0,
+    "found": false,
+    "at": null
+   }
+  },
+  {
+   "g": "retro-ratchet-20260804131941-8uw-w7-j3-0-8",
+   "k": 0,
+   "mover": 0,
+   "status": "escape",
+   "truthEscapes": 35,
+   "firstTruth": {
+    "pivotIdx": 0,
+    "dir": -1,
+    "deg": 20.5
+   },
+   "shipped": {
+    "marks": 7,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 0,
+     "dir": -1,
+     "deg": 22.124999999999986
+    }
+   },
+   "tolerant": {
+    "marks": 9,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 0,
+     "dir": -1,
+     "deg": 22.124999999999986
+    }
+   }
+  },
+  {
+   "g": "arenaef5dv86k-0",
+   "k": 0,
+   "mover": 1,
+   "status": "escape",
+   "truthEscapes": 45,
+   "firstTruth": {
+    "pivotIdx": 0,
+    "dir": -1,
+    "deg": 25.75
+   },
+   "shipped": {
+    "marks": 5,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 0,
+     "dir": -1,
+     "deg": 26.99999999999997
+    }
+   },
+   "tolerant": {
+    "marks": 6,
+    "budgetOut": 0,
+    "found": true,
+    "at": {
+     "pivotIdx": 0,
+     "dir": -1,
+     "deg": 26.99999999999997
+    }
+   }
+  }
+ ],
+ "summary": {
+  "sampled": 12,
+  "withEscapes": 11,
+  "shippedFound": 9,
+  "tolerantFound": 10,
+  "shippedMissed": 2,
+  "tolerantMissed": 1,
+  "verdictDiffers": 1,
+  "marksShipped": 104,
+  "marksTolerant": 118,
+  "falseDeadRateShipped": 0.18181818181818182,
+  "falseDeadRateTolerant": 0.09090909090909091,
+  "budgetOutShipped": 0
+ }
+}

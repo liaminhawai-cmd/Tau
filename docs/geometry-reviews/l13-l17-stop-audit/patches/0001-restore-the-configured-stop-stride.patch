@@ -1,0 +1,45 @@
+diff --git a/index.html b/index.html
+index 2fbb3e401..66f578013 100644
+--- a/index.html
++++ b/index.html
+@@ -2697,6 +2697,13 @@ function koLegalizePlan(plan){
+ // "As far as it can" = keep swinging that one direction until the line-crossing
+ // limit stops it (or a generous safety cap) — no attempt to find a better stopping point.
+ const AI_STEP_RAD = 3 * Math.PI/180;
++// Every stop sampler below marks a stop when the sweep has advanced a configured stride since the
++// last mark. |netRad| is ACCUMULATED through applySwing's substep loop, so after k calls it lands a
++// few ULPs either side of k*AI_STEP_RAD -- and an exact `>=` against the stride then drops the mark
++// to the next call, silently turning a 6-degree stride into 9. Measured over 200 mined positions x
++// 6 arms: 20.7% of a 6-degree grid and 10.9% of a 9-degree grid lost that way. This tolerance is on
++// the MARK only -- it changes which reachable stops get examined, never which stops exist.
++const MARK_EPS_RAD = 1e-9;
+ const AI_SAFETY_CAP_RAD = 170 * Math.PI/180;
+ function directionToward(pivot, footPos, targetPos) {
+     const aFoot=Math.atan2(footPos.y-pivot.y, footPos.x-pivot.x);
+@@ -4257,7 +4264,7 @@ function* ladderSampledPlanGen(idx, w, o){
+         let guard=0, lastMark=0; const local=[];
+         while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && guard++ < 500){
+             applySwing(dir*AI_STEP_RAD); const a=Math.abs(G.netRad);
+-            if (o.sampleDeg && a-lastMark >= o.sampleDeg*Math.PI/180 && a >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()){
++            if (o.sampleDeg && a-lastMark >= o.sampleDeg*Math.PI/180 - MARK_EPS_RAD && a >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()){
+                 lastMark=a; local.push({pivotIdx:pv,dir,targetRad:a,snap:takeSnap(),q:ladderEval(idx,w)+(G.pieces[1-idx].anyFootOff()?HARD_WIN_BONUS:0)}); }
+         }
+         if (Math.abs(G.netRad) >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff())
+@@ -4302,7 +4309,7 @@ function ladderRoots3(idx, w, o, snap0){
+         let guard=0, lastMark=0, parksHere=0; const local=[]; const seenPark={};
+         while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && guard++ < 500){
+             applySwing(dir*AI_STEP_RAD); const a=Math.abs(G.netRad);
+-            if (o.sampleDeg && a-lastMark >= o.sampleDeg*Math.PI/180 && a >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()){
++            if (o.sampleDeg && a-lastMark >= o.sampleDeg*Math.PI/180 - MARK_EPS_RAD && a >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()){
+                 lastMark=a; local.push({pivotIdx:pv,dir,targetRad:a,snap:takeSnap(),q:ladderEval(idx,w)+(G.pieces[1-idx].anyFootOff()?HARD_WIN_BONUS:0)}); }
+             // PARK stops, same as Master's recorder: since the turn-start grace went magnet-scale
+             // (build 130), the coarse sampleDeg stops almost never land a foot genuinely ON a line,
+@@ -4705,7 +4712,7 @@ function* ladderPlanCornerGen(idx, w, o, fallback){
+         let g3=0, lastMark=0;
+         while (Math.abs(G.netRad) < AI_SAFETY_CAP_RAD && !G.atLimit && g3++ < 500){
+             applySwing(d3*AI_STEP_RAD); const a=Math.abs(G.netRad);
+-            if (a-lastMark >= step && a >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()){ lastMark=a; consider(a); }
++            if (a-lastMark >= step - MARK_EPS_RAD && a >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()){ lastMark=a; consider(a); }
+         }
+         if (Math.abs(G.netRad) >= HARD_MIN_MOVE_RAD && !G.pieces[idx].anyFootOff()) consider(Math.abs(G.netRad));
+         ladderRestore(snap0); G.active=origActive;
