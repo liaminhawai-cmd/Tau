@@ -1,0 +1,64 @@
+{
+  "source": "ce0e61d1e7482e3d1252aadadf97bd4269f71e29",
+  "pose": [
+    -40.2848,
+    3.7263,
+    1.8209,
+    -30.2905,
+    12.3529,
+    1.5755
+  ],
+  "victim": 0,
+  "score": 1000015.513212251,
+  "actualStopDeg": 2,
+  "afterPose": [
+    {
+      "x": -39.50735561217501,
+      "y": 3.9394206349970666,
+      "rot": 1.8558065850398862
+    },
+    {
+      "x": -29.64089671557676,
+      "y": 12.597080563395435,
+      "rot": 1.5784282279213264
+    }
+  ],
+  "responses": [
+    {
+      "pv": 0,
+      "dir": 1,
+      "legal": true,
+      "victimOff": false
+    },
+    {
+      "pv": 0,
+      "dir": -1,
+      "legal": true,
+      "victimOff": false
+    },
+    {
+      "pv": 1,
+      "dir": 1,
+      "legal": true,
+      "victimOff": false
+    },
+    {
+      "pv": 1,
+      "dir": -1,
+      "legal": true,
+      "victimOff": false
+    },
+    {
+      "pv": 2,
+      "dir": 1,
+      "legal": true,
+      "victimOff": false
+    },
+    {
+      "pv": 2,
+      "dir": -1,
+      "legal": true,
+      "victimOff": false
+    }
+  ]
+}
