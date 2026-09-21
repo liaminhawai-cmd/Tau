@@ -1,14 +1,14 @@
 # Tau NN training status
-_Last updated: 2026-09-21T20:46:15.785Z_
+_Last updated: 2026-09-21T20:48:37.095Z_
 
-**Self-play batch:** 205
-**Stage:** self-play batch 205 running, next check in 5 min
-**mix:** (no model yet — pure ladder)
+**Self-play batch:** 206
+**Stage:** mutant 009 training (scratch, 30 epochs, started 2026-09-21T20:48:37.095Z)
+**mix:** (see selfplay log: fixed-rung training reference)
 
 **Dual pool:** (not initialized yet)
 
 **Last gate result:** (none yet)
 
-**Last checkpoint:** (none yet)
+**Last checkpoint:** ckpt-045.json at 2026-09-21T20:48:34.805Z
 
 **Last ladder sweep:** (none yet)
