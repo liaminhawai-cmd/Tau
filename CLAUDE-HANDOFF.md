@@ -21,8 +21,9 @@ Read only this short route first:
 1. [Claude task request](docs/geometry-reviews/l11-stop-audit/CLAUDE-TASKS.md): Opus starts task A; Sonnet, if available, handles prescribed instrumentation/runs; Astra owns the abstract proof work. No Fable dependency.
 2. [L11 stop audit](docs/geometry-reviews/l11-stop-audit/README.md): reproduced 2-degree defence against the endpoint continuation scorer. This is not a full-game escape proof.
 3. [Full contact-map lemma](docs/geometry-reviews/contact-map/README.md): the latest completed mathematical work, its assumptions and the next implementation request.
-4. For the underlying geometry, read [Brief 7 on its own branch](https://github.com/liaminhawai-cmd/Tau/blob/codex/brief7-park-contact-chart/docs/geometry-reviews/brief7/response.md). Its package is in PR #32, not yet in this branch. Both PRs append to this handoff; preserve both updates if integration needs conflict resolution.
-5. Consult the [review index](docs/geometry-reviews/README.md), [original briefs](docs/project-context/README.md) and [trainer history](docs/project-context/training-history.md) only as needed.
+4. [Arm-2 uniform derivative bounds](docs/geometry-reviews/arm2-bounds/README.md): the newest maths; 36/38 proposed input boxes bounded, plus a contact/no-contact enclosure lemma. Read this before implementing the full-map proposal.
+5. For the underlying geometry, read [Brief 7 on its own branch](https://github.com/liaminhawai-cmd/Tau/blob/codex/brief7-park-contact-chart/docs/geometry-reviews/brief7/response.md). Its package is in PR #32, not yet in this branch. Both PRs append to this handoff; preserve both updates if integration needs conflict resolution.
+6. Consult the [review index](docs/geometry-reviews/README.md), [original briefs](docs/project-context/README.md) and [trainer history](docs/project-context/training-history.md) only as needed.
 
 **Completed:** L11 tactical reproduction; L13/L17 test specification and task split; conditional full contact-map derivative/enclosure lemma; 140-correction nominal arm-2 replay and 35 numerical derivative checks.
 
@@ -263,3 +264,8 @@ Liam requests explicit L13/L17 tests and a token-efficient division of work with
 ## Full contact-map lemma — 2026-09-21
 
 Astra completed a conditional real-map derivative and centred enclosure bound, with source-pinned arm-2 diagnostics. Read [the contact-map note](docs/geometry-reviews/contact-map/README.md) before implementing the next enclosure proposal. It preserves the Newton update's tangent projection and gives a remainder that vanishes at zero input width. The 140-correction nominal trace and 35 numerical derivative checks are diagnostics, not uniform certificates. Uniform guards, derivative bounds, solver-path inclusion and floating-point correspondence remain required. No new dead region or L13/L17 match result is claimed. The L13/L17 task request remains active and independent.
+
+
+## Further maths — uniform bounds and contact activation (2026-09-21)
+
+[Arm-2 bounds](docs/geometry-reviews/arm2-bounds/README.md) now verifies uniform gradient/Hessian constants on 36 of 38 proposed first-correction input neighborhoods (k75–110), and 26 larger correction-hull boxes. k111–112 remain unresolved. The package adds second-order interval differentiation, explicit competing-chord guards and a proved activation-aware enclosure lemma. These independently proposed neighborhoods are not a propagated tube; other contacts, all internal corrections, stopping states and numerical correspondence remain open. Updated trace.js records before/after correction poses. The scripts and result JSON are committed; no new complete dead region or ladder matches are claimed.

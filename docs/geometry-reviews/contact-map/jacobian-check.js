@@ -19,7 +19,7 @@ for(const row of data.rows.filter(r=>r.iter===0&&Math.min(r.s,1-r.s,r.t,1-r.t)>.
   let rh=0;for(let k=0;k<3;k++)rh+=((i===k?1:0)-2*un[i]*un[k])*H[k][j];
   return (i===j?1:0)-un[i]*un[j]+c.p*rh/c.s;}));
  const error=norm(JF.flatMap((r,i)=>r.map((v,j)=>v-pred[i][j])));
- assert(error<2e-6);out.push({k:row.k,error});
+ assert(error<2e-6);const aa=H[0][2],bb=H[1][2],cc=H[2][2],hessianNorm=(Math.abs(cc)+Math.sqrt(cc*cc+4*(aa*aa+bb*bb)))/2;out.push({k:row.k,error,gradientNorm:Math.sqrt(c.s),hessianNorm});
 }
 const result={description:'Central-difference check on nominal interior/interior chord branches; not an interval proof',h,cases:out.length,maxFrobeniusError:Math.max(...out.map(r=>r.error)),rows:out};
 fs.writeFileSync(path.join(__dirname,'jacobian-check.json'),JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify({...result,rows:undefined},null,2));
