@@ -135,3 +135,7 @@ See [cross-run verification](REPLAY.md) for metadata-independent archive fingerp
 ## Conditional numerical robustness — 22 September 2026
 
 [The floating-point budget note](FLOATING-BUDGET.md) proves an exact local perturbation lemma and adds a disturbed-map enclosure. Arbitrary errors up to 1e-8u per mass coordinate after each of 380 passes still leave at least 0.025962128186932883u terminal clearance, with 454 exclusions rechecked. This supplies a sufficient target for engine-error bounds; it does not establish those bounds. The zero-disturbance wrapper is looser because of additional generator repacking. A 1e-7 run becomes unresolved, not an escape.
+
+## Near-minimum branch coverage — 22 September 2026
+
+[The selection cover](SELECTION-COVER.md) checks all 380 disturbed input boxes. Every exact segment-minimum feature within 2e-6u of the true minimum is already covered by the recorded branch images. Sixty dominance exclusions have distance gaps at least 1.1563511855528839e-5u; ten multi-feature passes retain their unions. This establishes a conditional approximate-selection bridge. Engine segment arithmetic, pruning and contact-cutoff correspondence remain open.

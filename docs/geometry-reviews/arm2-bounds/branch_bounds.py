@@ -5,13 +5,18 @@ from bounds import J,jdot,cross,vertex,tangent,clip,maxabs,minabs
 from interval_core import V,R,I,PI,ELL,SP,CP,SM,CM,up,down,dot,sub,add,scale,norm
 HERE=Path(__file__).resolve().parent
 
-def candidates(row,box):
+def candidates(row,box,distance_slack=0):
  x,y,th=box;at=row['att'];ta=V(at['rot'])+2*PI/3
  A=[vertex([V(at['x']),V(at['y'])],ta,k) for k in range(13)];B=[vertex([x,y],th,k) for k in range(13)]
  ua=[tangent(ta,k) for k in range(12)];vb=[tangent(th,k) for k in range(12)]
  a,b=row['a'],row['b']
+ if not (0<=row['s']<=1 and 0<=row['t']<=1):raise ValueError('witness outside segment')
  ap=add(A[a],scale(sub(A[a+1],A[a]),V(row['s'])));bp=add(B[b],scale(sub(B[b+1],B[b]),V(row['t'])))
  upper=norm(sub(bp,ap)).hi
+ # Keep every exact branch within distance_slack of the true minimum.
+ # The feasible witness upper bounds that minimum, so this threshold is conservative.
+ if distance_slack<0 or not math.isfinite(distance_slack):raise ValueError('invalid distance slack')
+ if distance_slack:upper=(V(upper)+V(distance_slack)).hi
  kept=[]
  for ai,bi in itertools.product(range(12),repeat=2):
   low=[]

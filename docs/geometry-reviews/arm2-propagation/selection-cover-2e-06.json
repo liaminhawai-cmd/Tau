@@ -1,0 +1,9574 @@
+{
+  "scope": "Conditional exact-segment near-minimum cover on the previously certified disturbed input boxes; floating segment-solver and pruning correspondence remain open.",
+  "distanceSlack": 2e-06,
+  "robustnessSHA256": "280acf6042407b32c8d63d13652c53e9d5408cb9fbb3389adbfd0b4c2128fd9b",
+  "checkedPasses": 380,
+  "failure": null,
+  "extraBranchesExcludedByGap": 60,
+  "minimumExcludedDistanceGap": 1.1563511855528839e-05,
+  "passesWithMultipleCoveredBranches": 10,
+  "unresolved": [],
+  "conditionalSuccess": true,
+  "records": [
+    {
+      "k": 75,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 75,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 75,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 75,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 75,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 75,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 75,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 75,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 75,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 75,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 76,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 76,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 76,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 76,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 76,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 76,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 76,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 76,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 76,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 76,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 77,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 77,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 77,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 77,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 77,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 77,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 77,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 77,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 77,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 77,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 78,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0008264449145235786
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 78,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0009250090806630073
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 78,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0009250069758262512
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 78,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0009250048708324442
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 78,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0009250027656814796
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 78,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0009250006603732292
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 78,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0009249985549079299
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 78,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0009249964492853071
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 78,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0009249943435053315
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 78,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          3,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0009249922375677779
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 79,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          1,
+          0
+        ],
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            3,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 0.0003291021437971873
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 79,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          1,
+          0
+        ],
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            3,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 0.00024710569152723935
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 79,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          1,
+          0
+        ],
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            3,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 0.00024710473640678884
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 79,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          1,
+          0
+        ],
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            3,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 0.0002471037812023366
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 79,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          1,
+          0
+        ],
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            3,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 0.0002471028259136094
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 79,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          1,
+          0
+        ],
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            3,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 0.00024710187054087436
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 79,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          1,
+          0
+        ],
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            3,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 0.0002471009150839147
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 79,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          1,
+          0
+        ],
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            3,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 0.000247099959542825
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 79,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          1,
+          0
+        ],
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            3,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 0.0002470990039174917
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 79,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          3,
+          4,
+          1,
+          0
+        ],
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            3,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 0.00024709804820805616
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 80,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 80,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 80,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 80,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 80,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 80,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 80,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 80,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 80,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 80,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 81,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 81,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 81,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 81,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 81,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 81,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 81,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 81,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 81,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 81,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 82,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 82,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 82,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 82,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 82,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 82,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 82,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 82,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 82,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 82,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 83,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 83,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 83,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 83,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 83,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 83,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 83,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 83,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 83,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 83,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 84,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 84,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 84,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 84,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 84,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 84,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 84,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 84,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 84,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 84,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 85,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 85,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 85,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 85,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 85,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 85,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 85,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 85,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 85,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 85,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 86,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 86,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 86,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 86,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 86,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 86,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 86,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 86,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 86,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 86,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 87,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 87,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 87,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 87,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 87,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 87,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 87,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 87,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 87,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 87,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 88,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 88,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 88,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 88,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 88,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 88,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 88,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 88,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 88,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 88,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 89,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 89,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 89,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 89,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 89,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 89,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 89,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 89,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 89,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 89,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 90,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 90,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 90,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 90,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 90,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 90,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 90,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 90,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 90,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 90,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 91,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 91,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 91,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 91,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 91,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 91,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 91,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 91,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 91,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 91,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 92,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 92,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 92,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 92,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 92,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 92,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 92,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 92,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 92,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 92,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 93,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 93,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 93,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 93,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 93,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 93,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 93,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 93,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 93,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 93,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 94,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 94,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 94,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 94,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 94,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 94,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 94,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 94,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 94,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 94,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 95,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 95,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 95,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 95,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 95,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 95,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 95,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 95,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 95,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 95,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 96,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 96,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 96,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 96,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 96,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 96,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 96,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 96,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 96,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 96,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 97,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 97,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 97,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 97,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 97,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 97,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 97,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 97,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 97,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 97,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 98,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 98,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 98,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 98,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 98,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 98,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 98,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 98,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 98,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 98,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 99,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 99,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 99,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 99,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 99,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 99,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 99,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 99,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 99,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 99,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 100,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 100,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 100,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 100,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 100,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 100,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 100,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 100,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 100,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 100,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 101,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 101,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 101,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 101,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 101,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 101,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 101,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 101,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 101,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 101,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 102,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 102,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 102,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 102,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 102,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 102,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 102,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 102,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 102,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 102,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 103,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 103,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 103,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 103,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 103,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 103,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 103,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 103,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 103,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 103,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 104,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 104,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 104,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 104,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 104,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 104,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 104,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 104,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 104,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 104,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 105,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 105,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 105,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 105,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 105,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 105,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 105,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 105,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 105,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 105,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 106,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 106,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 106,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 106,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 106,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 106,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 106,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 106,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 106,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 106,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 107,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 107,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 107,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 107,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 107,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 107,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 107,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 107,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 107,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 107,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 108,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.015137147225639786
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 108,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.012468704861916268
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 108,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.01246118260470286
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 108,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.012451993464503609
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 108,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.012440777840024893
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 108,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.012427566737150966
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 108,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.012407285725099063
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 108,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.012387198420577753
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 108,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.012362942178845872
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 108,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.012335050855045951
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 109,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.006927916445154379
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 109,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0052666344028920046
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 109,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.005263153838387499
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 109,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.005256998574489175
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 109,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.005249892115825297
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 109,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.005234662377948907
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 109,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.005215988574091948
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 109,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.005194168053703079
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 109,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0051735041391585
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 109,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.00515491016452721
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 110,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0018556001665896204
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 110,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0010986381097913649
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 110,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0010979338350158574
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 110,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.001097254106974746
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 110,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0010964409237373567
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 110,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.001095461719142388
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 110,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0010942761372321455
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 110,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.00109244267138614
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 110,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0010892439894841848
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 110,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 0.0010846321026569583
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 111,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            5,
+            4,
+            -1,
+            0
+          ],
+          "distanceGapLower": 1.1563511855528839e-05
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 111,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 111,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 111,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 111,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 111,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 111,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 111,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 111,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 111,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 112,
+      "iteration": 0,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ],
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          -1,
+          0
+        ],
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [],
+      "unresolved": []
+    },
+    {
+      "k": 112,
+      "iteration": 1,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 2.820880678445996e-05
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 112,
+      "iteration": 2,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 2.73861836953537e-05
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 112,
+      "iteration": 3,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 2.614133273682651e-05
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 112,
+      "iteration": 4,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 2.47595120505691e-05
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 112,
+      "iteration": 5,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 2.317477185673111e-05
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 112,
+      "iteration": 6,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 2.169199310460279e-05
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 112,
+      "iteration": 7,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 2.0402651957696426e-05
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 112,
+      "iteration": 8,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 1.915944420174951e-05
+        }
+      ],
+      "unresolved": []
+    },
+    {
+      "k": 112,
+      "iteration": 9,
+      "nearCandidates": [
+        [
+          4,
+          4,
+          1,
+          0
+        ],
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "coveredBranches": [
+        [
+          5,
+          4,
+          0,
+          0
+        ]
+      ],
+      "excludedByGap": [
+        {
+          "branch": [
+            4,
+            4,
+            1,
+            0
+          ],
+          "distanceGapLower": 1.7884709533009763e-05
+        }
+      ],
+      "unresolved": []
+    }
+  ]
+}
