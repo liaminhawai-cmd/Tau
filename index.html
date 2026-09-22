@@ -140,7 +140,11 @@ if (window.TAU_DESKTOP) {
     .tau-setting select { max-width:60%; min-width:140px; padding:9px; font:inherit; color:#e6ecf2; background:#252b33; border:1px solid #46505c; border-radius:7px; }
     .tau-setting > span { max-width:60%; display:flex; align-items:center; gap:6px; }
     .tau-setting input[type="range"] { width:120px; max-width:70%; }
-    #boardQuickToggle { position:fixed; top:calc(9px + env(safe-area-inset-top)); right:118px; z-index:60; padding:6px 7px; font-size:19px; background:none; border:0; color:#9aa4ad; }
+    #boardQuickToggle { position:fixed; top:calc(9px + env(safe-area-inset-top)); right:118px; z-index:60; padding:6px 7px; font-size:19px; background:none; border:0; color:#9aa4ad; line-height:1; margin:0; opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
+    #boardQuickToggle:hover { opacity:0.95; }
+    #boardQuickToggle:active { background:none; }
+    /* Keep the different-sized corner icons on one centre line. */
+    #boardQuickToggle, #settingsToggle, #soundToggle, #langToggle { height:31px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; }
     body.ingame #boardQuickToggle, .tau-desktop #boardQuickToggle, body.dirHideUI #boardQuickToggle { display:none; }
     .tau-settings-note { font-size:13px; color:#9aa4ad; text-align:left; }
     /* Turn controls. Centred rather than corner-parked like Surrender/Menu: while a swing is
@@ -644,7 +648,7 @@ if (window.TAU_DESKTOP) {
 </style>
 </head>
 <body>
-<button id="boardQuickToggle" title="Switch board style" aria-label="Switch board style">◐</button>
+<button id="boardQuickToggle" title="Switch board style" aria-label="Switch board style"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.4"/><path d="M12 2.6v2.6M12 18.8v2.6M2.6 12h2.6M18.8 12h2.6M5.4 5.4l1.8 1.8M16.8 16.8l1.8 1.8M18.6 5.4l-1.8 1.8M7.2 16.8l-1.8 1.8"/></svg></button>
 <button id="settingsToggle" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m9.5 3-.5 2-2 1.2-2-.6-2.5 4.3L4 11.3v2.4l-1.5 1.4L5 19.4l2-.6 2 1.2.5 2h5l.5-2 2-1.2 2 .6 2.5-4.3-1.5-1.4v-2.4l1.5-1.4L19 5.6l-2 .6L15 5l-.5-2z"/></svg></button>
 <button id="soundToggle" title="Sound volume" aria-label="Sound volume"></button>
 <div id="volPopover">
@@ -660,7 +664,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 290</div>
+<div id="buildTag">build 291</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
