@@ -649,7 +649,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 285</div>
+<div id="buildTag">build 287</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -12412,7 +12412,7 @@ surfaceAuthRedirectError();
 if (sbConfigured()) {
     ensureSupabase().catch(() => {
         document.getElementById('acctMsg').textContent = 'Could not reach the login service. You can still play as a guest.';
-    }).then(() => { checkJoinLink(); joinPresence(); });
+    }).then(() => { checkJoinLink(); checkResumeMatch(); joinPresence(); });
 } else {
     document.getElementById('acctMsg').textContent = 'Online accounts aren’t set up yet on this build. Play as a guest.';
     document.getElementById('acctSendLink').disabled = true;
@@ -12916,28 +12916,52 @@ function myOnlineTurnNow() {
 // mid-swing working out which foot to hold and whether the line you are about to ride is your one
 // crossing -- the clock was cutting turns off during the thinking the game is made of.
 const TURN_CLOCK_MS = 60000;
+// No-clock private matches are not on a clock against each other -- but they ARE asked, every ten
+// minutes, whether anyone is still there. "No clock" means the pair are not racing; it cannot mean
+// a match sits open for ever, because an abandoned game holds a live row and a realtime
+// subscription on the server until something closes it, and nothing else would.
+//
+// So the ten minutes is a question, not a deadline: answer it and you get another ten, as many
+// times as you like, which is what makes the promise on the tin true for two people genuinely
+// playing slowly. Ignore it and the turn times out like any other, so a walked-away-from board
+// passes and then surrenders and settles its own row.
+const UNTIMED_PING_MS = 10*60*1000;      // how long before we ask
+const UNTIMED_ANSWER_MS = 90*1000;       // how long the answer is waited for before timing out
+// True when this match asked for no turn clock. `untimed` rides on the match row, so both clients
+// read the same answer -- and a row without the column (a server that has not run
+// untimed_private_matches.sql) is simply timed, exactly as before.
+function turnClockUntimed() { return !!(onlineMatch && onlineMatch.untimed); }
+// How long the side to move actually gets.
+function turnClockLimitMs() { return turnClockUntimed() ? UNTIMED_PING_MS : TURN_CLOCK_MS; }
 // Returns 'online' / 'local' / null (no clock this mode -- vs AI, or no game showing at all).
 function turnClockMode() {
     if (window.tauDesktop && window.tauDesktop.untimedLocal()) return false;
-    // A private match is two people who chose each other; if they asked for no clock when the
-    // invite was made, there is nobody to stall for and nothing to abuse. `untimed` rides on the
-    // match row, so both clients read the same answer -- and a row without the column (a server
-    // that has not run the migration yet) is simply timed, exactly as before.
-    if (onlineMatch && onlineMatch.untimed) return null;
     if (document.getElementById('game').style.display !== 'flex') return null;
     if (onlineMatch) return 'online';                               // a real opponent is waiting: always clocked
     if (labMode || labSetup || labAuto || labActive) return null;   // bench/setup/watch: analysis, not a timed match
     if (!vsAI) return 'local';
     return null;
 }
-function startOnlineTurnClock() { onlineTurnDeadline = turnClockMode() ? performance.now() + TURN_CLOCK_MS : null; }
+function startOnlineTurnClock() {
+    // A new turn is proof of life on its own, so any outstanding "still playing?" is answered.
+    if (stillHereAskedAt) stillHereHeard();
+    stillHereAskedAt = 0;
+    onlineTurnDeadline = turnClockMode() ? performance.now() + turnClockLimitMs() : null;
+}
 function drawTurnTimer() {
     const cv = document.getElementById('turnTimer');
     if (!turnClockMode() || G.over || !onlineTurnDeadline) { cv.style.display = 'none'; return; }
+    // A no-clock match hides the dial -- a ring creeping round over twenty minutes is a clock, and
+    // these two asked not to have one. It appears only once the backstop is genuinely close, so
+    // the warning is a warning rather than a permanent presence.
+    const left = onlineTurnDeadline - performance.now();
+    if (turnClockUntimed() && left > TURN_CLOCK_MS) { cv.style.display = 'none'; return; }
     cv.style.display = 'block';
     const tctx = cv.getContext('2d'), w = cv.width, o = w/2, rad = w/2 - 2;
     tctx.clearRect(0, 0, w, w);
-    const frac = Math.max(0, Math.min(1, (performance.now() - (onlineTurnDeadline - TURN_CLOCK_MS)) / TURN_CLOCK_MS));
+    // Once it is showing, the dial always reads over the last TURN_CLOCK_MS, whatever the limit --
+    // so the final minute of a backstop sweeps at the same rate as an ordinary clocked turn.
+    const frac = Math.max(0, Math.min(1, 1 - left/TURN_CLOCK_MS));
     const activeColor = G.active===0 ? '#6b9eff' : '#ff6b6b', waitingColor = G.active===0 ? '#ff6b6b' : '#6b9eff';
     // Base circle is the CURRENT (active/moving) side's colour; the growing wedge is the WAITING
     // side's colour, sweeping clockwise as if it's "reclaiming" the clock while it waits.
@@ -12950,9 +12974,50 @@ function drawTurnTimer() {
         tctx.fillStyle = waitingColor; tctx.fill();
     }
 }
+// The "are you still there?" beat on a no-clock match. Two clocks, not one: the side to move is
+// ASKED (and answering buys another ten minutes), while their opponent simply waits out the same
+// ten plus the answering window before concluding nobody is home. Both sides therefore agree about
+// when the match has been abandoned without needing to agree about anything else.
+let stillHereAskedAt = 0;
+function askStillHere() {
+    if (stillHereAskedAt) return;                       // already asking
+    stillHereAskedAt = performance.now();
+    showModal(t('Still playing?'),
+        t('This match has no turn clock, so nobody is rushing you — we just check in every ten minutes. Say you are here and the board stays open.'),
+        [ { label: t('Yes, I am here'), onClick: stillHere } ], false, { dismiss: false });
+}
+// Another ten minutes, and tell the other side so their own patience resets too. The broadcast
+// rides the match channel that is already open (see moveChannel) rather than writing a row: this
+// is a sign of life, not a game event, and it should cost the server nothing to say.
+function stillHere() {
+    stillHereAskedAt = 0;
+    onlineTurnDeadline = performance.now() + turnClockLimitMs();
+    if (moveChannel && onlineMatch) {
+        try { moveChannel.send({ type:'broadcast', event:'still-here',
+                                 payload:{ color: onlineMatch.myColor } }); } catch (e) {}
+    }
+}
+// Their sign of life, or a move arriving, means the question is moot -- clear it either way.
+function stillHereHeard() {
+    stillHereAskedAt = 0;
+    if (document.getElementById('modalBackdrop').style.display === 'flex'
+        && /still playing/i.test(document.getElementById('modalTitle').textContent || '')) hideModal();
+    if (!G.over && turnClockMode()) onlineTurnDeadline = performance.now() + turnClockLimitMs();
+}
 function checkOnlineTimeout() {
     const mode = turnClockMode();
     if (!mode || G.over || !onlineTurnDeadline || performance.now() < onlineTurnDeadline) return;
+    // No-clock match: the deadline is the question, not the verdict.
+    if (mode === 'online' && turnClockUntimed()) {
+        // My turn: I am the one being asked. The clock stays where it is -- answering moves it,
+        // and not answering lets my opponent's client below decide I have gone.
+        if (!onlineMatch.spectator && myOnlineTurnNow()) { askStillHere(); return; }
+        // Their turn: give them the answering window on top before calling it.
+        if (performance.now() < onlineTurnDeadline + UNTIMED_ANSWER_MS) return;
+        onlineTurnDeadline = null;
+        if (!onlineMatch.spectator) onlineResolveOpponentTimeout();
+        return;
+    }
     onlineTurnDeadline = null;
     // Online: a timed-out turn PASSES -- but a player who misses TWICE in a row surrenders (which
     // also cleanly handles a disconnect: a closed tab just misses every turn -> loses one cycle
@@ -13145,6 +13210,7 @@ async function enterOnlineMatch(row) {
 }
 async function finishEnterOnlineMatch(row) {
     setPresenceStatus('match');
+    setMatchUrl(row.id);   // so a refresh comes back to this board instead of losing it
     clearTimeout(aiTimer); clearTimeout(aiGapTimer); cancelAiSearch(); aiAnim = null; ladderLevel = null;   // a pending AI-while-you-wait move must not fire into the online match
     hideModal();
     demoStop();
@@ -13167,6 +13233,12 @@ async function finishEnterOnlineMatch(row) {
     moveChannel = sb.channel('match-moves-'+row.id)
         .on('postgres_changes', { event:'INSERT', schema:'public', table:'match_moves', filter:'match_id=eq.'+row.id },
             payload => { if (onlineMatch && (onlineMatch.spectator || payload.new.mover_color !== onlineMatch.myColor)) replayOpponentMove(payload.new); })
+        // A no-clock match's sign of life (see stillHere) -- realtime only, no row written.
+        .on('broadcast', { event: 'still-here' }, msg => {
+            if (!onlineMatch) return;
+            if (msg && msg.payload && msg.payload.color === onlineMatch.myColor) return;   // my own echo
+            stillHereHeard();
+        })
         .subscribe();
     await catchUpOnlineMatch();   // pick up any moves already played before we subscribed (rematch/reconnect)
     startOnlineMovePoll();
@@ -13180,6 +13252,8 @@ function exitOnlineMatch() {
     onlineTurnDeadline = null;
     document.getElementById('turnTimer').style.display = 'none';   // animate() stops drawing it once onlineMatch is null, so hide it explicitly rather than leaving the last frame on screen
     pendingKeyframes = []; lastKeyframeT = 0;
+    stillHereAskedAt = 0;
+    setMatchUrl(null);
 }
 // Realtime backstop for mid-match sync, same reasoning as matchmaking's: if the
 // match_moves-INSERT event is dropped or delayed, poll directly for the specific next move
@@ -13571,7 +13645,7 @@ function openPrivateMatchMenu() {
         // The clock exists to stop a stranger in the ranked queue holding your evening hostage.
         // Two people who swapped a code are not strangers, so they get to turn it off -- for a
         // postal-paced game, or just to think properly.
-        { label: t('Create a match — no clock'), onClick: () => createPrivateMatch(true) },
+        { label: t('Create a match — no clock'), onClick: () => createPrivateMatch(true) },   // checks in every 10 min -- see UNTIMED_PING_MS
         { label: t('Join with a code'), onClick: joinPrivateMatchPrompt },
         { label: 'Cancel', onClick: () => {} },
     ], false, { dismiss: true });
@@ -13621,7 +13695,7 @@ async function createPrivateMatch(untimed) {
 }
 function showPrivateWaitScreen(matchId, code, untimed) {
     const link = location.origin + location.pathname + '?join=' + encodeURIComponent(code);
-    const body = `${untimed ? `<p class="msg" style="margin:0 0 8px;">${t('No turn clock in this match.')}</p>` : ''}
+    const body = `${untimed ? `<p class="msg" style="margin:0 0 8px;">${t('No turn clock — take as long as you like. We will just ask every ten minutes whether you are still there.')}</p>` : ''}
         <p style="margin:0 0 10px;">${t('Share this code, or send the link:')}</p>
         <p style="font-size:28px; font-weight:bold; letter-spacing:4px; color:#ffd23f; margin:0 0 12px;">${escapeHtml(code)}</p>
         <div class="row" style="justify-content:center;"><button id="privCopyLink">${t('Copy invite link')}</button></div>
@@ -14132,6 +14206,43 @@ async function spectateMatch(row, names) {
     startOnlineMovePoll();
     if (!G.over) startOnlineTurnClock();
     render();
+}
+// ---------- ?match=<id>: a refresh should not cost you the game ----------
+// A live match lived only in memory, so a reload -- a stray swipe, a phone rotating, a browser
+// deciding to reclaim the tab -- dropped the player back on the menu while their opponent's clock
+// ran down on them, and they lost a game they were in the middle of winning. The match id goes in
+// the URL while one is open, which makes the board a place you can come back to (and a link you
+// can move between your own tabs). The state itself is not in the URL -- only the id; the moves
+// are re-read from the server, exactly as a reconnect already did.
+//
+// replaceState, not pushState: a match is not a place in the back-button's history, and pushing
+// would make Back mean "leave the game" halfway through a turn. Query params are edited in place
+// rather than rebuilt, so the wrapper's own ?steam/?premium survive a match starting and ending.
+function setMatchUrl(id) {
+    try {
+        const u = new URL(location.href);
+        if (id) u.searchParams.set('match', id); else u.searchParams.delete('match');
+        history.replaceState(null, '', u.pathname + u.search + u.hash);
+    } catch (e) {}
+}
+async function resumeOnlineMatch(id) {
+    let row, error;
+    try { ({ data: row, error } = await sb.from('matches').select('*').eq('id', id).single()); }
+    catch (e) { setMatchUrl(null); return; }
+    // Anything other than a live match of mine: drop the parameter and carry on to the menu. A
+    // finished game, someone else's link, a match the row-level policy will not show me -- none of
+    // them is an error worth a dialog, and all of them look the same from here.
+    if (error || !row || row.status !== 'active'
+        || !sbUser || (row.blue_id !== sbUser.id && row.red_id !== sbUser.id)) { setMatchUrl(null); return; }
+    enterOnlineMatch(row);
+}
+function checkResumeMatch() {
+    const id = new URLSearchParams(location.search).get('match');
+    // No identity means no match to be in -- ensureSupabase has already awaited the restored
+    // session by the time this runs, so this is "signed out", not "not signed in yet".
+    if (!id) return;
+    if (!sbUser) { setMatchUrl(null); return; }
+    resumeOnlineMatch(id);
 }
 // A shared invite link (?join=CODE) auto-joins once an identity (real or guest) is ready. The code
 // is stashed in localStorage (not just a closure) because signing in with Google/magic-link

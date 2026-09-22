@@ -65,3 +65,48 @@ test('a swing too small to count is not a turn', async t => {
   assert.equal(g.read('turnCommittable()'), false);
   assert.deepEqual(g.errors, []);
 });
+
+test('a no-clock match checks in rather than running for ever', async t => {
+  // "No clock" must not mean a match can sit open indefinitely: an abandoned game holds a live row
+  // and a realtime subscription server-side until a timeout settles it. So the ten minutes is a
+  // question -- answer it and you get another ten, ignore it and the turn times out as usual.
+  const g = await game(); t.after(g.close);
+  assert.equal(g.read('turnClockLimitMs()'), 60000, 'an ordinary match gets the ordinary minute');
+  g.read(`onlineMatch = { untimed:true, myColor:'blue', spectator:false };
+          document.getElementById('game').style.display = 'flex';`);
+  assert.equal(g.read('turnClockUntimed()'), true);
+  assert.equal(g.read('turnClockLimitMs()'), 10*60*1000, 'a no-clock one gets ten minutes at a time');
+  assert.equal(g.read('turnClockMode()'), 'online',
+    'still clocked, so checkOnlineTimeout runs and a walked-away-from match settles itself');
+
+  // My turn, ten minutes up: I am ASKED. My own clock is not resolved by me.
+  g.read(`G.active = 0; onlineTurnDeadline = performance.now() - 1; checkOnlineTimeout();`);
+  assert.equal(g.read("document.getElementById('modalTitle').textContent"), 'Still playing?');
+  assert.notEqual(g.read('onlineTurnDeadline'), null, 'and nothing is forfeited while it is asked');
+
+  // Saying yes buys another ten and closes the question.
+  g.read('stillHere()');
+  assert.equal(g.read('stillHereAskedAt'), 0);
+  assert.ok(g.read('onlineTurnDeadline - performance.now()') > 9*60*1000, 'ten more minutes');
+  assert.deepEqual(g.errors, []);
+});
+
+test('an open match is in the URL, so a refresh does not lose it', async t => {
+  const g = await game('?steam=1&premium=1'); t.after(g.close);
+  g.read(`setMatchUrl('abc-123')`);
+  let q = g.read('location.search');
+  assert.match(q, /match=abc-123/, 'the match id is there to come back to');
+  assert.ok(/steam=1/.test(q) && /premium=1/.test(q), 'and the wrapper params survived it: ' + q);
+  g.read(`setMatchUrl(null)`);
+  q = g.read('location.search');
+  assert.doesNotMatch(q, /match=/, 'it goes when the match ends');
+  assert.ok(/steam=1/.test(q) && /premium=1/.test(q), 'without taking the others with it: ' + q);
+  assert.deepEqual(g.errors, []);
+});
+
+test('a ?match= that is not mine to resume is dropped, not argued with', async t => {
+  const g = await game('?match=nope'); t.after(g.close);
+  g.read('sbUser = null; checkResumeMatch();');
+  assert.doesNotMatch(g.read('location.search'), /match=/);
+  assert.deepEqual(g.errors, []);
+});

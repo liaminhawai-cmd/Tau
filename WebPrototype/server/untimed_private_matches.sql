@@ -7,6 +7,13 @@
 -- clients have to agree, or one would pass the other's turn out from under
 -- them, so the flag lives on the match row that both of them already read.
 --
+-- It is not literally no clock. An abandoned match holds a live row and a
+-- realtime subscription until something settles it, and nothing else would, so
+-- the client asks "still playing?" every ten minutes (UNTIMED_PING_MS in
+-- index.html). Answering buys another ten, as many times as the pair like;
+-- ignoring it lets the turn time out as usual, so a walked-away-from board
+-- passes, then surrenders, and settles its own row.
+--
 -- Written through an RPC rather than a client UPDATE on purpose: schema_matches
 -- revokes insert/update/delete on public.matches from authenticated outright,
 -- so that a client can never fabricate a match or edit its result. That stance
