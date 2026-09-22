@@ -1,0 +1,51 @@
+{
+  "claim": "Composed local throw enclosure for the real-arithmetic contact program with the fixed recorded attacker poses. NOT a universal floating-engine or dead-region certificate.",
+  "source": "18efad5398798b65b477f9af4be17947a358d3ce",
+  "initialVictimBox": [
+    [
+      -24.31146879077936,
+      -24.311068790779355
+    ],
+    [
+      -37.34819285619335,
+      -37.34779285619334
+    ],
+    [
+      1.3447914335745053,
+      1.3448612467445875
+    ]
+  ],
+  "freeSubsteps": 74,
+  "substepsTotal": 112,
+  "correctionPassesEnclosed": 380,
+  "finalFootRadiusLower": 67.20213881297005,
+  "edgeUpper": 67.16700000000002,
+  "clearanceLower": 0.03513881297003251,
+  "maxEnclosureMassRadius": 0.006219371650946094,
+  "maxFeatureBranches": 3,
+  "excludedContacts": {
+    "minimumOtherLegDistance": 2.9054727690578344,
+    "minimumHubLegDistance": 7.3492798384006015,
+    "minimumHubHubDistance": 18.85038002015257
+  },
+  "engineDiagnostics": {
+    "scope": "Deterministic point diagnostics only; not uniform floating-engine correspondence",
+    "propagationSHA256": "b2cece0ef7d18f2af2f383e52233bdf1b6d7707911b7660fec57317a1ebd7c2c",
+    "cases": 41,
+    "substepContainmentChecks": 4592,
+    "failures": [],
+    "minFinalFootRadius": 67.2130762624424,
+    "maxScaledAttackerPoseDifference": 1.7435608512528234e-13
+  },
+  "openObligations": [
+    "Uniform correspondence to floating contact calculations; portability of the pinned-runtime attacker path",
+    "All legal defender replies from the original seed",
+    "Variation of both pieces for a six-dimensional dead region"
+  ],
+  "artifactSHA256": {
+    "propagation-1.0.json": "b2cece0ef7d18f2af2f383e52233bdf1b6d7707911b7660fec57317a1ebd7c2c",
+    "contact-exclusions.json": "340f4b2ca4719ed3bb24b6fa272c59418843bea0f466a96d1060deb40ace6a7d",
+    "engine-check.json": "9b824d7330c99d523d6fd53e1c3edef514651488f90f63e0eb5534f1c975e021",
+    "engine-attacker-path.json": "f3eacf096e5da4cdc4c194833a88143c3898185898a0f11f39827f2464a7c164"
+  }
+}

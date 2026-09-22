@@ -3,7 +3,11 @@
 21 September 2026. Continuation of the [full contact-map lemma](../contact-map/README.md).
 This package adds outward-rounded local geometry bounds and an activation-aware enclosure lemma. It does not certify the complete throw or a dead region.
 
-## Main result
+## Subsequent result: the final two input boxes are closed
+
+[Shared-endpoint dominance](DOMINANCE.md) now closes k111–112: all **38/38 proposed first-correction input boxes** have uniform derivative bounds. The 36/38 and unresolved statements below record the preceding calculation and are superseded for the input boxes. The larger correction-hull result remains 26/38. Neither result is a composed trajectory certificate.
+
+## Original result
 
 For the first correction at each of the 38 contact-bearing substeps k75–112, construct a proposed input box centred on the recorded pre-correction pose, with half-widths 0.0002u in x/y and 0.002 DEGREES in rotation. These are independently proposed local boxes, not a propagated reachable tube.
 

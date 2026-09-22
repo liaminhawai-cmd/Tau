@@ -1,0 +1,16 @@
+{
+  "format": "tau-replay-binary64-v1",
+  "archiveCommit": "e65124f9db127f3e5b475e7a2b7f5c8e905e7f73",
+  "ignoredRootFields": {
+    "propagation-1.0.json": ["seconds"],
+    "contact-exclusions.json": ["seconds", "propagationSHA256"],
+    "engine-check.json": ["propagationSHA256"],
+    "engine-attacker-path.json": ["runtime"]
+  },
+  "files": {
+    "propagation-1.0.json": "0329e1fa10e0a1cf25ebb3e6ee9ae374b513efa00ed52acda0ab8cd95df2229f",
+    "contact-exclusions.json": "899acc4eb5ebd979429d9d5f0d6acb2e4a25de131c4f8754c9a90f8e608dbbd5",
+    "engine-check.json": "d246507ace85121184d36fb000e24d7696b39d86e0ada9d132bc2e6a1c6ed702",
+    "engine-attacker-path.json": "01339a462dfc5dbf28da48deadf94294e2c3fc0649271a1ff17083b07cc9c74a"
+  }
+}
