@@ -1,0 +1,111 @@
+[
+  {
+    "file": "robustness-0e+00.json",
+    "scope": "Conditional real-map robustness with arbitrary per-pass coordinate disturbances in mass coordinates. No floating arithmetic, feature-selection or runtime correspondence claim.",
+    "epsilonPerMassCoordinate": 0.0,
+    "traceSHA256": "b94c60bd37022f7538eab4a0d6603baa556e2954a429394e8bdd870bcf146ea7",
+    "attackerPathSHA256": "f3eacf096e5da4cdc4c194833a88143c3898185898a0f11f39827f2464a7c164",
+    "initialBox": [
+      [
+        -24.31146879077936,
+        -24.311068790779355
+      ],
+      [
+        -37.34819285619335,
+        -37.34779285619334
+      ],
+      [
+        1.3447914335745053,
+        1.3448612467445875
+      ]
+    ],
+    "completedCorrections": 380,
+    "checkedExclusions": 454,
+    "failure": null,
+    "finalExposedFootRadiusLower": 67.19735686042863,
+    "edgeUpper": 67.16700000000002,
+    "clearanceLower": 0.030356860428611295,
+    "finalRadius": 0.009263168833996204,
+    "minimumGradientLower": 1.163218842254502,
+    "maximumPenetrationUpper": 0.14234941688603844,
+    "minimumOtherLegDistance": 2.9054727690578344,
+    "minimumHubLegDistance": 7.3492798384006015,
+    "minimumHubHubDistance": 18.85038002015257,
+    "conditionalSuccess": true,
+    "seconds": 8.146410703659058
+  },
+  {
+    "file": "robustness-1e-08.json",
+    "scope": "Conditional real-map robustness with arbitrary per-pass coordinate disturbances in mass coordinates. No floating arithmetic, feature-selection or runtime correspondence claim.",
+    "epsilonPerMassCoordinate": 1e-08,
+    "traceSHA256": "b94c60bd37022f7538eab4a0d6603baa556e2954a429394e8bdd870bcf146ea7",
+    "attackerPathSHA256": "f3eacf096e5da4cdc4c194833a88143c3898185898a0f11f39827f2464a7c164",
+    "initialBox": [
+      [
+        -24.31146879077936,
+        -24.311068790779355
+      ],
+      [
+        -37.34819285619335,
+        -37.34779285619334
+      ],
+      [
+        1.3447914335745053,
+        1.3448612467445875
+      ]
+    ],
+    "completedCorrections": 380,
+    "checkedExclusions": 454,
+    "failure": null,
+    "finalExposedFootRadiusLower": 67.19296212818695,
+    "edgeUpper": 67.16700000000002,
+    "clearanceLower": 0.025962128186932883,
+    "finalRadius": 0.0117614441210013,
+    "minimumGradientLower": 1.163218842254502,
+    "maximumPenetrationUpper": 0.14481296702833737,
+    "minimumOtherLegDistance": 2.9054727690578344,
+    "minimumHubLegDistance": 7.3492798384006015,
+    "minimumHubHubDistance": 18.85038002015257,
+    "conditionalSuccess": true,
+    "seconds": 7.737451553344727
+  },
+  {
+    "file": "robustness-1e-07.json",
+    "scope": "Conditional real-map robustness with arbitrary per-pass coordinate disturbances in mass coordinates. No floating arithmetic, feature-selection or runtime correspondence claim.",
+    "epsilonPerMassCoordinate": 1e-07,
+    "traceSHA256": "b94c60bd37022f7538eab4a0d6603baa556e2954a429394e8bdd870bcf146ea7",
+    "attackerPathSHA256": "f3eacf096e5da4cdc4c194833a88143c3898185898a0f11f39827f2464a7c164",
+    "initialBox": [
+      [
+        -24.31146879077936,
+        -24.311068790779355
+      ],
+      [
+        -37.34819285619335,
+        -37.34779285619334
+      ],
+      [
+        1.3447914335745053,
+        1.3448612467445875
+      ]
+    ],
+    "completedCorrections": 378,
+    "checkedExclusions": 452,
+    "failure": {
+      "k": 112,
+      "iteration": 8,
+      "reason": "enclosure radius exceeds exploration limit"
+    },
+    "finalExposedFootRadiusLower": 66.94758666001671,
+    "edgeUpper": 67.16700000000002,
+    "clearanceLower": -0.21941333998330495,
+    "finalRadius": 0.14852477559495927,
+    "minimumGradientLower": 1.1013712394817514,
+    "maximumPenetrationUpper": 0.15017509284205846,
+    "minimumOtherLegDistance": 2.9054727690578344,
+    "minimumHubLegDistance": 7.3492798384006015,
+    "minimumHubHubDistance": 18.85038002015257,
+    "conditionalSuccess": false,
+    "seconds": 7.959060430526733
+  }
+]

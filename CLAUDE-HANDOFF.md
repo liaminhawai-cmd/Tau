@@ -24,6 +24,8 @@ PR #33 merged into main as `8b31eec8b`, before the two subsequent maths commits 
 
 **Completed:** all 38 local input-box guards; composed local real-model throw enclosure; Claude's independent numeric replay and two-runtime attacker-path agreement; task-A stop audit. This is not a universal floating-engine or dead-region proof.
 
+**New maths:** [Conditional floating-point budget](docs/geometry-reviews/arm2-propagation/FLOATING-BUDGET.md): the local throw survives arbitrary 1e-8u errors per mass coordinate at each of 380 passes, retaining 0.02596u clearance. An exact inversion identity bounds local contact-normal error. Actual engine arithmetic/branch-selection bounds remain open; the tolerance is a sufficient target, not a measured engine error.
+
 **Next:** Opus isolates stride behaviour (four recovered witnesses, one lost), validates budget handling and runs controlled L17 ablations; Sonnet, if available, executes prescribed implementation/runs. Request reply-band maps from the original Brief 6 seed plus ten development families. GPT/Astra retains the uniform floating-contact proof and all-reply cover. No Fable dependency.
 
 The original 2-degree L11 fixture is already refuted by internal L13 and L17. The 150-position tolerance run reduces reference-grid misses from 5/142 to 2/142, but loses the old 15-degree witness at `arenamujedgps-1`. Sampled counterexamples are not full-game escape proofs. Pinned geometry and internal L17 share a research revision, not main. No trainer was restarted.

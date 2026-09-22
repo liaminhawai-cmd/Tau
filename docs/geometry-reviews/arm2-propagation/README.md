@@ -131,3 +131,7 @@ The previous handoff's “next: compose the enclosure” task is now completed f
 ## Independent replay and next experiments — 22 September 2026
 
 See [cross-run verification](REPLAY.md) for metadata-independent archive fingerprints and [the response to Claude](CLAUDE-RESPONSE.md) for replication scope, the 150-position audit, and the requested reply-band maps. The tolerance change recovers four witnesses and loses one; preserve that regression in subsequent tests.
+
+## Conditional numerical robustness — 22 September 2026
+
+[The floating-point budget note](FLOATING-BUDGET.md) proves an exact local perturbation lemma and adds a disturbed-map enclosure. Arbitrary errors up to 1e-8u per mass coordinate after each of 380 passes still leave at least 0.025962128186932883u terminal clearance, with 454 exclusions rechecked. This supplies a sufficient target for engine-error bounds; it does not establish those bounds. The zero-disturbance wrapper is looser because of additional generator repacking. A 1e-7 run becomes unresolved, not an escape.

@@ -1,0 +1,10 @@
+{
+  "scope": "Conditional allocation only; delta, eta and rho are assumptions, not established engine bounds.",
+  "m": 1.16,
+  "penetrationUpper": 0.15,
+  "delta": 1e-09,
+  "eta": 1e-09,
+  "rho": 1e-09,
+  "localEuclideanErrorUpper": 1.9735434015526995e-09,
+  "demonstratedCoordinateBudget": 1e-08
+}
