@@ -1,0 +1,9 @@
+{
+  "scope": "Deterministic point diagnostics only; not uniform floating-engine correspondence",
+  "propagationSHA256": "b2cece0ef7d18f2af2f383e52233bdf1b6d7707911b7660fec57317a1ebd7c2c",
+  "cases": 41,
+  "substepContainmentChecks": 4592,
+  "failures": [],
+  "minFinalFootRadius": 67.2130762624424,
+  "maxScaledAttackerPoseDifference": 1.7435608512528234e-13
+}

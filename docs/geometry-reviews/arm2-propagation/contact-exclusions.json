@@ -1,0 +1,3651 @@
+{
+  "scope": "Real-geometry exclusions on the proposed propagated enclosures, with fixed recorded attacker poses; no floating execution or crossing-rule correspondence proof.",
+  "propagationSHA256": "b2cece0ef7d18f2af2f383e52233bdf1b6d7707911b7660fec57317a1ebd7c2c",
+  "checked": 454,
+  "failure": null,
+  "minimumOtherLegDistance": 2.9054727690578344,
+  "minimumHubLegDistance": 7.3492798384006015,
+  "minimumHubHubDistance": 18.85038002015257,
+  "maximumAttackerFootRadius": 45.347124161033236,
+  "thresholds": {
+    "leg": 2.8800000000000003,
+    "hubLeg": 4.176000000000001,
+    "hubHub": 5.472000000000001,
+    "edge": 67.16700000000002
+  },
+  "seconds": 4.124562740325928,
+  "rows": [
+    {
+      "k": 1,
+      "iteration": null,
+      "otherLegDistanceLower": 3.0175419408024284,
+      "hubLegDistanceLower": 9.812120167322819,
+      "hubHubDistanceLower": 18.85038002015257,
+      "attackerFootRadiusUpper": 45.347124161033236
+    },
+    {
+      "k": 2,
+      "iteration": null,
+      "otherLegDistanceLower": 3.014850023791204,
+      "hubLegDistanceLower": 9.72181096603765,
+      "hubHubDistanceLower": 18.85196101956962,
+      "attackerFootRadiusUpper": 45.32336990576186
+    },
+    {
+      "k": 3,
+      "iteration": null,
+      "otherLegDistanceLower": 3.014502409321944,
+      "hubLegDistanceLower": 9.633061217676545,
+      "hubHubDistanceLower": 18.85528082411841,
+      "attackerFootRadiusUpper": 45.29945126528619
+    },
+    {
+      "k": 4,
+      "iteration": null,
+      "otherLegDistanceLower": 3.014502409321944,
+      "hubLegDistanceLower": 9.545917462952586,
+      "hubHubDistanceLower": 18.86033840328033,
+      "attackerFootRadiusUpper": 45.27536878927799
+    },
+    {
+      "k": 5,
+      "iteration": null,
+      "otherLegDistanceLower": 3.014502409321944,
+      "hubLegDistanceLower": 9.460427072052184,
+      "hubHubDistanceLower": 18.867132188460797,
+      "attackerFootRadiusUpper": 45.2511230319157
+    },
+    {
+      "k": 6,
+      "iteration": null,
+      "otherLegDistanceLower": 2.9388817868330843,
+      "hubLegDistanceLower": 9.376638200726097,
+      "hubHubDistanceLower": 18.875660075159093,
+      "attackerFootRadiusUpper": 45.22671455188755
+    },
+    {
+      "k": 7,
+      "iteration": null,
+      "otherLegDistanceLower": 2.9298423218321705,
+      "hubLegDistanceLower": 9.294599739387465,
+      "hubHubDistanceLower": 18.885919425873308,
+      "attackerFootRadiusUpper": 45.202143912399194
+    },
+    {
+      "k": 8,
+      "iteration": null,
+      "otherLegDistanceLower": 3.0314122080825423,
+      "hubLegDistanceLower": 9.21436125481886,
+      "hubHubDistanceLower": 18.897907073730675,
+      "attackerFootRadiusUpper": 45.17741168117617
+    },
+    {
+      "k": 9,
+      "iteration": null,
+      "otherLegDistanceLower": 2.9773138766289775,
+      "hubLegDistanceLower": 9.135972924113664,
+      "hubHubDistanceLower": 18.911619326831556,
+      "attackerFootRadiusUpper": 45.15251843046787
+    },
+    {
+      "k": 10,
+      "iteration": null,
+      "otherLegDistanceLower": 3.0688227386569267,
+      "hubLegDistanceLower": 9.059485460508908,
+      "hubHubDistanceLower": 18.927051973292908,
+      "attackerFootRadiusUpper": 45.12746473705344
+    },
+    {
+      "k": 11,
+      "iteration": null,
+      "otherLegDistanceLower": 3.095424977382833,
+      "hubLegDistanceLower": 8.984950030807747,
+      "hubHubDistanceLower": 18.944200286974908,
+      "attackerFootRadiusUpper": 45.10225118224583
+    },
+    {
+      "k": 12,
+      "iteration": null,
+      "otherLegDistanceLower": 3.1272030907690604,
+      "hubLegDistanceLower": 8.91241816414094,
+      "hubHubDistanceLower": 18.963059033872355,
+      "attackerFootRadiusUpper": 45.076878351896006
+    },
+    {
+      "k": 13,
+      "iteration": null,
+      "otherLegDistanceLower": 3.1640609538645434,
+      "hubLegDistanceLower": 8.841941651878576,
+      "hubHubDistanceLower": 18.983622479150466,
+      "attackerFootRadiusUpper": 45.05134683639724
+    },
+    {
+      "k": 14,
+      "iteration": null,
+      "otherLegDistanceLower": 3.2058819308627258,
+      "hubLegDistanceLower": 8.773572438576148,
+      "hubHubDistanceLower": 19.005884394802838,
+      "attackerFootRadiusUpper": 45.02565723069049
+    },
+    {
+      "k": 15,
+      "iteration": null,
+      "otherLegDistanceLower": 3.2525318243290027,
+      "hubLegDistanceLower": 8.707362503923601,
+      "hubHubDistanceLower": 19.029838067907594,
+      "attackerFootRadiusUpper": 44.999810134267946
+    },
+    {
+      "k": 16,
+      "iteration": null,
+      "otherLegDistanceLower": 3.3038619620880656,
+      "hubLegDistanceLower": 8.643363735761742,
+      "hubHubDistanceLower": 19.055476309456086,
+      "attackerFootRadiusUpper": 44.97380615117865
+    },
+    {
+      "k": 17,
+      "iteration": null,
+      "otherLegDistanceLower": 2.9440365590355904,
+      "hubLegDistanceLower": 8.581627794337539,
+      "hubHubDistanceLower": 19.08279146372718,
+      "attackerFootRadiusUpper": 44.94764589003264
+    },
+    {
+      "k": 18,
+      "iteration": null,
+      "otherLegDistanceLower": 3.079700565246718,
+      "hubLegDistanceLower": 8.522205968087487,
+      "hubHubDistanceLower": 19.11177541817866,
+      "attackerFootRadiusUpper": 44.92132996400427
+    },
+    {
+      "k": 19,
+      "iteration": null,
+      "otherLegDistanceLower": 3.218358213709912,
+      "hubLegDistanceLower": 8.46514902136562,
+      "hubHubDistanceLower": 19.142419613826288,
+      "attackerFootRadiusUpper": 44.89485899083969
+    },
+    {
+      "k": 20,
+      "iteration": null,
+      "otherLegDistanceLower": 3.3596344688636424,
+      "hubLegDistanceLower": 8.410507034668422,
+      "hubHubDistanceLower": 19.1747150560799,
+      "attackerFootRadiusUpper": 44.86823359285833
+    },
+    {
+      "k": 21,
+      "iteration": null,
+      "otherLegDistanceLower": 3.5032080491482,
+      "hubLegDistanceLower": 8.358329238051095,
+      "hubHubDistanceLower": 19.208652326005186,
+      "attackerFootRadiusUpper": 44.84145439695965
+    },
+    {
+      "k": 22,
+      "iteration": null,
+      "otherLegDistanceLower": 3.6488032087187268,
+      "hubLegDistanceLower": 8.308663838576104,
+      "hubHubDistanceLower": 19.244221591978956,
+      "attackerFootRadiusUpper": 44.81452203462648
+    },
+    {
+      "k": 23,
+      "iteration": null,
+      "otherLegDistanceLower": 3.780050009904611,
+      "hubLegDistanceLower": 8.244444498445562,
+      "hubHubDistanceLower": 19.281412621705314,
+      "attackerFootRadiusUpper": 44.787437141930496
+    },
+    {
+      "k": 24,
+      "iteration": null,
+      "otherLegDistanceLower": 3.862674812963682,
+      "hubLegDistanceLower": 8.177842632286822,
+      "hubHubDistanceLower": 19.320214794559632,
+      "attackerFootRadiusUpper": 44.76020035953659
+    },
+    {
+      "k": 25,
+      "iteration": null,
+      "otherLegDistanceLower": 3.9484377359541045,
+      "hubLegDistanceLower": 8.113431017096103,
+      "hubHubDistanceLower": 19.360617114227047,
+      "attackerFootRadiusUpper": 44.7328123327075
+    },
+    {
+      "k": 26,
+      "iteration": null,
+      "otherLegDistanceLower": 4.037180139489621,
+      "hubLegDistanceLower": 8.051264425954633,
+      "hubHubDistanceLower": 19.402608221602126,
+      "attackerFootRadiusUpper": 44.70527371130752
+    },
+    {
+      "k": 27,
+      "iteration": null,
+      "otherLegDistanceLower": 4.12874986932133,
+      "hubLegDistanceLower": 7.991397380503079,
+      "hubHubDistanceLower": 19.44617640791636,
+      "attackerFootRadiusUpper": 44.67758514980887
+    },
+    {
+      "k": 28,
+      "iteration": null,
+      "otherLegDistanceLower": 4.22300161520692,
+      "hubLegDistanceLower": 7.933883984875325,
+      "hubHubDistanceLower": 19.491309628060407,
+      "attackerFootRadiusUpper": 44.649747307295364
+    },
+    {
+      "k": 29,
+      "iteration": null,
+      "otherLegDistanceLower": 4.319797106514493,
+      "hubLegDistanceLower": 7.878777750011695,
+      "hubHubDistanceLower": 19.537995514068218,
+      "attackerFootRadiusUpper": 44.62176084746682
+    },
+    {
+      "k": 30,
+      "iteration": null,
+      "otherLegDistanceLower": 4.419005173589036,
+      "hubLegDistanceLower": 7.826131409056109,
+      "hubHubDistanceLower": 19.58622138873085,
+      "attackerFootRadiusUpper": 44.59362643864381
+    },
+    {
+      "k": 31,
+      "iteration": null,
+      "otherLegDistanceLower": 4.520501701238419,
+      "hubLegDistanceLower": 7.775996724727831,
+      "hubHubDistanceLower": 19.635974279308083,
+      "attackerFootRadiusUpper": 44.56534475377319
+    },
+    {
+      "k": 32,
+      "iteration": null,
+      "otherLegDistanceLower": 4.624169497656772,
+      "hubLegDistanceLower": 7.728424289749897,
+      "hubHubDistanceLower": 19.687240931306924,
+      "attackerFootRadiusUpper": 44.536916470431514
+    },
+    {
+      "k": 33,
+      "iteration": null,
+      "otherLegDistanceLower": 4.7271326051718,
+      "hubLegDistanceLower": 7.683463321609302,
+      "hubHubDistanceLower": 19.740007822296622,
+      "attackerFootRadiusUpper": 44.50834227083002
+    },
+    {
+      "k": 34,
+      "iteration": null,
+      "otherLegDistanceLower": 4.789442808804974,
+      "hubLegDistanceLower": 7.641161453114071,
+      "hubHubDistanceLower": 19.794261175730927,
+      "attackerFootRadiusUpper": 44.47962284181988
+    },
+    {
+      "k": 35,
+      "iteration": null,
+      "otherLegDistanceLower": 4.855306862218409,
+      "hubLegDistanceLower": 7.601564520394475,
+      "hubHubDistanceLower": 19.849986974749108,
+      "attackerFootRadiusUpper": 44.450758874896295
+    },
+    {
+      "k": 36,
+      "iteration": null,
+      "otherLegDistanceLower": 4.92457909455646,
+      "hubLegDistanceLower": 7.564716350164493,
+      "hubHubDistanceLower": 19.907170975928537,
+      "attackerFootRadiusUpper": 44.421751066202425
+    },
+    {
+      "k": 37,
+      "iteration": null,
+      "otherLegDistanceLower": 4.997114697018479,
+      "hubLegDistanceLower": 7.5306585482094475,
+      "hubHubDistanceLower": 19.96579872296245,
+      "attackerFootRadiusUpper": 44.39260011653596
+    },
+    {
+      "k": 38,
+      "iteration": null,
+      "otherLegDistanceLower": 5.0727700838628405,
+      "hubLegDistanceLower": 7.499430291191089,
+      "hubHubDistanceLower": 20.02585556023801,
+      "attackerFootRadiusUpper": 44.36330673135147
+    },
+    {
+      "k": 39,
+      "iteration": null,
+      "otherLegDistanceLower": 5.150973129054786,
+      "hubLegDistanceLower": 7.471068123956512,
+      "hubHubDistanceLower": 20.087326646290784,
+      "attackerFootRadiusUpper": 44.33387162076645
+    },
+    {
+      "k": 40,
+      "iteration": null,
+      "otherLegDistanceLower": 5.231257796321945,
+      "hubLegDistanceLower": 7.445605764597228,
+      "hubHubDistanceLower": 20.15019696711313,
+      "attackerFootRadiusUpper": 44.30429549956551
+    },
+    {
+      "k": 41,
+      "iteration": null,
+      "otherLegDistanceLower": 5.31355621836406,
+      "hubLegDistanceLower": 7.423073919524885,
+      "hubHubDistanceLower": 20.2144513492953,
+      "attackerFootRadiusUpper": 44.27457908720431
+    },
+    {
+      "k": 42,
+      "iteration": null,
+      "otherLegDistanceLower": 5.3978020510365115,
+      "hubLegDistanceLower": 7.403500110807151,
+      "hubHubDistanceLower": 20.280074472979308,
+      "attackerFootRadiusUpper": 44.24472310781554
+    },
+    {
+      "k": 43,
+      "iteration": null,
+      "otherLegDistanceLower": 5.4839305941060275,
+      "hubLegDistanceLower": 7.386908517938476,
+      "hubHubDistanceLower": 20.347050884607057,
+      "attackerFootRadiusUpper": 44.2147282902118
+    },
+    {
+      "k": 44,
+      "iteration": null,
+      "otherLegDistanceLower": 5.571878884899966,
+      "hubLegDistanceLower": 7.373319836105017,
+      "hubHubDistanceLower": 20.415365009445534,
+      "attackerFootRadiusUpper": 44.18459536789167
+    },
+    {
+      "k": 45,
+      "iteration": null,
+      "otherLegDistanceLower": 5.66158576767913,
+      "hubLegDistanceLower": 7.362751152841116,
+      "hubHubDistanceLower": 20.485001163873157,
+      "attackerFootRadiusUpper": 44.15432507904224
+    },
+    {
+      "k": 46,
+      "iteration": null,
+      "otherLegDistanceLower": 5.752991941484708,
+      "hubLegDistanceLower": 7.355215844768398,
+      "hubHubDistanceLower": 20.555943567412918,
+      "attackerFootRadiusUpper": 44.12391816654605
+    },
+    {
+      "k": 47,
+      "iteration": null,
+      "otherLegDistanceLower": 5.755559511388245,
+      "hubLegDistanceLower": 7.350723495861402,
+      "hubHubDistanceLower": 20.628176354498983,
+      "attackerFootRadiusUpper": 44.09337537798353
+    },
+    {
+      "k": 48,
+      "iteration": null,
+      "otherLegDistanceLower": 5.650926503720876,
+      "hubLegDistanceLower": 7.3492798384006015,
+      "hubHubDistanceLower": 20.701683585965064,
+      "attackerFootRadiusUpper": 44.06269746563861
+    },
+    {
+      "k": 49,
+      "iteration": null,
+      "otherLegDistanceLower": 5.547037414705599,
+      "hubLegDistanceLower": 7.350886717461254,
+      "hubHubDistanceLower": 20.776449260243936,
+      "attackerFootRadiusUpper": 44.03188518650222
+    },
+    {
+      "k": 50,
+      "iteration": null,
+      "otherLegDistanceLower": 5.443900120340092,
+      "hubLegDistanceLower": 7.355542079452247,
+      "hubHubDistanceLower": 20.852457324268784,
+      "attackerFootRadiusUpper": 44.00093930227762
+    },
+    {
+      "k": 51,
+      "iteration": null,
+      "otherLegDistanceLower": 5.317820980566207,
+      "hubLegDistanceLower": 7.363239984871553,
+      "hubHubDistanceLower": 20.929691684068434,
+      "attackerFootRadiusUpper": 43.96986057938386
+    },
+    {
+      "k": 52,
+      "iteration": null,
+      "otherLegDistanceLower": 5.181231159564971,
+      "hubLegDistanceLower": 7.373970645092882,
+      "hubHubDistanceLower": 21.008136215049515,
+      "attackerFootRadiusUpper": 43.93864978896093
+    },
+    {
+      "k": 53,
+      "iteration": null,
+      "otherLegDistanceLower": 5.046989618987691,
+      "hubLegDistanceLower": 7.387720482651068,
+      "hubHubDistanceLower": 21.087774771959882,
+      "attackerFootRadiusUpper": 43.90730770687355
+    },
+    {
+      "k": 54,
+      "iteration": null,
+      "otherLegDistanceLower": 4.915293491749162,
+      "hubLegDistanceLower": 7.404472214160424,
+      "hubHubDistanceLower": 21.16859119852872,
+      "attackerFootRadiusUpper": 43.87583511371514
+    },
+    {
+      "k": 55,
+      "iteration": null,
+      "otherLegDistanceLower": 4.786357531835488,
+      "hubLegDistanceLower": 7.424204954689204,
+      "hubHubDistanceLower": 21.250569336779797,
+      "attackerFootRadiusUpper": 43.8442327948136
+    },
+    {
+      "k": 56,
+      "iteration": null,
+      "otherLegDistanceLower": 4.660415377387049,
+      "hubLegDistanceLower": 7.446894342132158,
+      "hubHubDistanceLower": 21.33369303601534,
+      "attackerFootRadiusUpper": 43.812501540233065
+    },
+    {
+      "k": 57,
+      "iteration": null,
+      "otherLegDistanceLower": 4.523077486004107,
+      "hubLegDistanceLower": 7.47251267987789,
+      "hubHubDistanceLower": 21.41794616146905,
+      "attackerFootRadiusUpper": 43.78064214478048
+    },
+    {
+      "k": 58,
+      "iteration": null,
+      "otherLegDistanceLower": 4.388138003643402,
+      "hubLegDistanceLower": 7.50102909586393,
+      "hubHubDistanceLower": 21.503312602627556,
+      "attackerFootRadiusUpper": 43.74865540800784
+    },
+    {
+      "k": 59,
+      "iteration": null,
+      "otherLegDistanceLower": 4.255434685312938,
+      "hubLegDistanceLower": 7.5324097159527925,
+      "hubHubDistanceLower": 21.589776281220644,
+      "attackerFootRadiusUpper": 43.71654213421804
+    },
+    {
+      "k": 60,
+      "iteration": null,
+      "otherLegDistanceLower": 4.123421679155705,
+      "hubLegDistanceLower": 7.566617849449471,
+      "hubHubDistanceLower": 21.677321158881245,
+      "attackerFootRadiusUpper": 43.68430313246696
+    },
+    {
+      "k": 61,
+      "iteration": null,
+      "otherLegDistanceLower": 3.992103318250157,
+      "hubLegDistanceLower": 7.603614184514488,
+      "hubHubDistanceLower": 21.76593124447704,
+      "attackerFootRadiusUpper": 43.65193921656926
+    },
+    {
+      "k": 62,
+      "iteration": null,
+      "otherLegDistanceLower": 3.8614840472352068,
+      "hubLegDistanceLower": 7.643356991206023,
+      "hubHubDistanceLower": 21.855590601116234,
+      "attackerFootRadiusUpper": 43.61945120510145
+    },
+    {
+      "k": 63,
+      "iteration": null,
+      "otherLegDistanceLower": 3.7315682870875566,
+      "hubLegDistanceLower": 7.685802329907012,
+      "hubHubDistanceLower": 21.94628335283064,
+      "attackerFootRadiusUpper": 43.58683992140548
+    },
+    {
+      "k": 64,
+      "iteration": null,
+      "otherLegDistanceLower": 3.6023604349731553,
+      "hubLegDistanceLower": 7.730904262955084,
+      "hubHubDistanceLower": 22.03799369093991,
+      "attackerFootRadiusUpper": 43.55410619359392
+    },
+    {
+      "k": 65,
+      "iteration": null,
+      "otherLegDistanceLower": 3.4738648640976297,
+      "hubLegDistanceLower": 7.778615067390069,
+      "hubHubDistanceLower": 22.13070588010125,
+      "attackerFootRadiusUpper": 43.52125085455197
+    },
+    {
+      "k": 66,
+      "iteration": null,
+      "otherLegDistanceLower": 3.346085923558638,
+      "hubLegDistanceLower": 7.828885446860588,
+      "hubHubDistanceLower": 22.22440426404954,
+      "attackerFootRadiusUpper": 43.488274741942874
+    },
+    {
+      "k": 67,
+      "iteration": null,
+      "otherLegDistanceLower": 3.219027938198552,
+      "hubLegDistanceLower": 7.881664740882191,
+      "hubHubDistanceLower": 22.31907327103305,
+      "attackerFootRadiusUpper": 43.45517869821077
+    },
+    {
+      "k": 68,
+      "iteration": null,
+      "otherLegDistanceLower": 3.092695208458172,
+      "hubLegDistanceLower": 7.936901129809292,
+      "hubHubDistanceLower": 22.414697418950677,
+      "attackerFootRadiusUpper": 43.4219635705846
+    },
+    {
+      "k": 69,
+      "iteration": null,
+      "otherLegDistanceLower": 2.967092010231004,
+      "hubLegDistanceLower": 7.994541834065785,
+      "hubHubDistanceLower": 22.511261320196645,
+      "attackerFootRadiusUpper": 43.38863021108144
+    },
+    {
+      "k": 70,
+      "iteration": null,
+      "otherLegDistanceLower": 2.916325810682566,
+      "hubLegDistanceLower": 8.054533306369528,
+      "hubHubDistanceLower": 22.60874968621923,
+      "attackerFootRadiusUpper": 43.35517947651027
+    },
+    {
+      "k": 71,
+      "iteration": null,
+      "otherLegDistanceLower": 2.9054727690578344,
+      "hubLegDistanceLower": 8.116821415878928,
+      "hubHubDistanceLower": 22.707147331800165,
+      "attackerFootRadiusUpper": 43.32161222847542
+    },
+    {
+      "k": 72,
+      "iteration": null,
+      "otherLegDistanceLower": 2.9251261744879655,
+      "hubLegDistanceLower": 8.181351623381152,
+      "hubHubDistanceLower": 22.806439179061734,
+      "attackerFootRadiusUpper": 43.287929333380085
+    },
+    {
+      "k": 73,
+      "iteration": null,
+      "otherLegDistanceLower": 3.034930287710258,
+      "hubLegDistanceLower": 8.248069146827126,
+      "hubHubDistanceLower": 22.906610261208687,
+      "attackerFootRadiusUpper": 43.25413166242955
+    },
+    {
+      "k": 74,
+      "iteration": null,
+      "otherLegDistanceLower": 2.9130380162156846,
+      "hubLegDistanceLower": 8.316919116695459,
+      "hubHubDistanceLower": 23.00764572601242,
+      "attackerFootRadiusUpper": 43.22022009163425
+    },
+    {
+      "k": 75,
+      "iteration": 0,
+      "otherLegDistanceLower": 7.738703141685594,
+      "hubLegDistanceLower": 8.387846720832963,
+      "hubHubDistanceLower": 23.109530839044833,
+      "attackerFootRadiusUpper": 43.1861955018136
+    },
+    {
+      "k": 75,
+      "iteration": 1,
+      "otherLegDistanceLower": 7.7353865244056745,
+      "hubLegDistanceLower": 8.398020317501238,
+      "hubHubDistanceLower": 23.113509879053055,
+      "attackerFootRadiusUpper": 43.1861955018136
+    },
+    {
+      "k": 75,
+      "iteration": 2,
+      "otherLegDistanceLower": 7.735386497091074,
+      "hubLegDistanceLower": 8.398020283372269,
+      "hubHubDistanceLower": 23.113509858106404,
+      "attackerFootRadiusUpper": 43.1861955018136
+    },
+    {
+      "k": 75,
+      "iteration": 3,
+      "otherLegDistanceLower": 7.735386469774465,
+      "hubLegDistanceLower": 8.39802024924079,
+      "hubHubDistanceLower": 23.113509837158215,
+      "attackerFootRadiusUpper": 43.1861955018136
+    },
+    {
+      "k": 75,
+      "iteration": 4,
+      "otherLegDistanceLower": 7.735386442455849,
+      "hubLegDistanceLower": 8.398020215106804,
+      "hubHubDistanceLower": 23.113509816208495,
+      "attackerFootRadiusUpper": 43.1861955018136
+    },
+    {
+      "k": 75,
+      "iteration": 5,
+      "otherLegDistanceLower": 7.73538641513523,
+      "hubLegDistanceLower": 8.398020180970315,
+      "hubHubDistanceLower": 23.11350979525723,
+      "attackerFootRadiusUpper": 43.1861955018136
+    },
+    {
+      "k": 75,
+      "iteration": 6,
+      "otherLegDistanceLower": 7.735386387812604,
+      "hubLegDistanceLower": 8.398020146831316,
+      "hubHubDistanceLower": 23.11350977430443,
+      "attackerFootRadiusUpper": 43.1861955018136
+    },
+    {
+      "k": 75,
+      "iteration": 7,
+      "otherLegDistanceLower": 7.735386360487968,
+      "hubLegDistanceLower": 8.39802011268981,
+      "hubHubDistanceLower": 23.113509753350083,
+      "attackerFootRadiusUpper": 43.1861955018136
+    },
+    {
+      "k": 75,
+      "iteration": 8,
+      "otherLegDistanceLower": 7.7353863331613235,
+      "hubLegDistanceLower": 8.398020078545791,
+      "hubHubDistanceLower": 23.1135097323942,
+      "attackerFootRadiusUpper": 43.1861955018136
+    },
+    {
+      "k": 75,
+      "iteration": 9,
+      "otherLegDistanceLower": 7.735386305832676,
+      "hubLegDistanceLower": 8.398020044399269,
+      "hubHubDistanceLower": 23.113509711436784,
+      "attackerFootRadiusUpper": 43.1861955018136
+    },
+    {
+      "k": 76,
+      "iteration": 0,
+      "otherLegDistanceLower": 7.831379279979099,
+      "hubLegDistanceLower": 8.453379476952808,
+      "hubHubDistanceLower": 23.216116029168234,
+      "attackerFootRadiusUpper": 43.15205877859796
+    },
+    {
+      "k": 76,
+      "iteration": 1,
+      "otherLegDistanceLower": 7.821187303074577,
+      "hubLegDistanceLower": 8.486528426930521,
+      "hubHubDistanceLower": 23.22911966859237,
+      "attackerFootRadiusUpper": 43.15205877859796
+    },
+    {
+      "k": 76,
+      "iteration": 2,
+      "otherLegDistanceLower": 7.8211872752380645,
+      "hubLegDistanceLower": 8.48652839969908,
+      "hubHubDistanceLower": 23.229119647624543,
+      "attackerFootRadiusUpper": 43.15205877859796
+    },
+    {
+      "k": 76,
+      "iteration": 3,
+      "otherLegDistanceLower": 7.8211872473995,
+      "hubLegDistanceLower": 8.486528372465626,
+      "hubHubDistanceLower": 23.229119626655176,
+      "attackerFootRadiusUpper": 43.15205877859796
+    },
+    {
+      "k": 76,
+      "iteration": 4,
+      "otherLegDistanceLower": 7.821187219558879,
+      "hubLegDistanceLower": 8.486528345230163,
+      "hubHubDistanceLower": 23.229119605684257,
+      "attackerFootRadiusUpper": 43.15205877859796
+    },
+    {
+      "k": 76,
+      "iteration": 5,
+      "otherLegDistanceLower": 7.821187191716207,
+      "hubLegDistanceLower": 8.486528317992693,
+      "hubHubDistanceLower": 23.229119584711796,
+      "attackerFootRadiusUpper": 43.15205877859796
+    },
+    {
+      "k": 76,
+      "iteration": 6,
+      "otherLegDistanceLower": 7.8211871638714845,
+      "hubLegDistanceLower": 8.486528290753217,
+      "hubHubDistanceLower": 23.22911956373778,
+      "attackerFootRadiusUpper": 43.15205877859796
+    },
+    {
+      "k": 76,
+      "iteration": 7,
+      "otherLegDistanceLower": 7.821187136024698,
+      "hubLegDistanceLower": 8.486528263511724,
+      "hubHubDistanceLower": 23.229119542762227,
+      "attackerFootRadiusUpper": 43.15205877859796
+    },
+    {
+      "k": 76,
+      "iteration": 8,
+      "otherLegDistanceLower": 7.821187108175871,
+      "hubLegDistanceLower": 8.486528236268231,
+      "hubHubDistanceLower": 23.229119521785115,
+      "attackerFootRadiusUpper": 43.15205877859796
+    },
+    {
+      "k": 76,
+      "iteration": 9,
+      "otherLegDistanceLower": 7.82118708032498,
+      "hubLegDistanceLower": 8.486528209022724,
+      "hubHubDistanceLower": 23.229119500806462,
+      "attackerFootRadiusUpper": 43.15205877859796
+    },
+    {
+      "k": 77,
+      "iteration": 0,
+      "otherLegDistanceLower": 7.917361049009963,
+      "hubLegDistanceLower": 8.53412505631654,
+      "hubHubDistanceLower": 23.332178477606824,
+      "attackerFootRadiusUpper": 43.117810812433305
+    },
+    {
+      "k": 77,
+      "iteration": 1,
+      "otherLegDistanceLower": 7.908950320673141,
+      "hubLegDistanceLower": 8.56850599388593,
+      "hubHubDistanceLower": 23.345025233974198,
+      "attackerFootRadiusUpper": 43.117810812433305
+    },
+    {
+      "k": 77,
+      "iteration": 2,
+      "otherLegDistanceLower": 7.9089502918057635,
+      "hubLegDistanceLower": 8.568505965628853,
+      "hubHubDistanceLower": 23.345025212598383,
+      "attackerFootRadiusUpper": 43.117810812433305
+    },
+    {
+      "k": 77,
+      "iteration": 3,
+      "otherLegDistanceLower": 7.908950262936226,
+      "hubLegDistanceLower": 8.568505937369663,
+      "hubHubDistanceLower": 23.345025191220977,
+      "attackerFootRadiusUpper": 43.117810812433305
+    },
+    {
+      "k": 77,
+      "iteration": 4,
+      "otherLegDistanceLower": 7.9089502340645375,
+      "hubLegDistanceLower": 8.568505909108367,
+      "hubHubDistanceLower": 23.345025169841968,
+      "attackerFootRadiusUpper": 43.117810812433305
+    },
+    {
+      "k": 77,
+      "iteration": 5,
+      "otherLegDistanceLower": 7.908950205190684,
+      "hubLegDistanceLower": 8.568505880844954,
+      "hubHubDistanceLower": 23.34502514846137,
+      "attackerFootRadiusUpper": 43.117810812433305
+    },
+    {
+      "k": 77,
+      "iteration": 6,
+      "otherLegDistanceLower": 7.908950176314678,
+      "hubLegDistanceLower": 8.568505852579433,
+      "hubHubDistanceLower": 23.345025127079165,
+      "attackerFootRadiusUpper": 43.117810812433305
+    },
+    {
+      "k": 77,
+      "iteration": 7,
+      "otherLegDistanceLower": 7.908950147436505,
+      "hubLegDistanceLower": 8.56850582431179,
+      "hubHubDistanceLower": 23.345025105695363,
+      "attackerFootRadiusUpper": 43.117810812433305
+    },
+    {
+      "k": 77,
+      "iteration": 8,
+      "otherLegDistanceLower": 7.908950118556179,
+      "hubLegDistanceLower": 8.56850579604204,
+      "hubHubDistanceLower": 23.34502508430997,
+      "attackerFootRadiusUpper": 43.117810812433305
+    },
+    {
+      "k": 77,
+      "iteration": 9,
+      "otherLegDistanceLower": 7.9089500896736995,
+      "hubLegDistanceLower": 8.56850576777018,
+      "hubHubDistanceLower": 23.34502506292297,
+      "attackerFootRadiusUpper": 43.117810812433305
+    },
+    {
+      "k": 78,
+      "iteration": 0,
+      "otherLegDistanceLower": 8.005303294746389,
+      "hubLegDistanceLower": 8.616759266986184,
+      "hubHubDistanceLower": 23.44853251856409,
+      "attackerFootRadiusUpper": 43.08345249858267
+    },
+    {
+      "k": 78,
+      "iteration": 1,
+      "otherLegDistanceLower": 7.998649306720568,
+      "hubLegDistanceLower": 8.652359275557421,
+      "hubHubDistanceLower": 23.461226915324385,
+      "attackerFootRadiusUpper": 43.08345249858267
+    },
+    {
+      "k": 78,
+      "iteration": 2,
+      "otherLegDistanceLower": 7.998649276795275,
+      "hubLegDistanceLower": 8.652359246245897,
+      "hubHubDistanceLower": 23.4612268935238,
+      "attackerFootRadiusUpper": 43.08345249858267
+    },
+    {
+      "k": 78,
+      "iteration": 3,
+      "otherLegDistanceLower": 7.998649246867723,
+      "hubLegDistanceLower": 8.652359216932155,
+      "hubHubDistanceLower": 23.461226871721568,
+      "attackerFootRadiusUpper": 43.08345249858267
+    },
+    {
+      "k": 78,
+      "iteration": 4,
+      "otherLegDistanceLower": 7.998649216937903,
+      "hubLegDistanceLower": 8.652359187616192,
+      "hubHubDistanceLower": 23.46122684991768,
+      "attackerFootRadiusUpper": 43.08345249858267
+    },
+    {
+      "k": 78,
+      "iteration": 5,
+      "otherLegDistanceLower": 7.998649187005812,
+      "hubLegDistanceLower": 8.652359158298008,
+      "hubHubDistanceLower": 23.46122682811214,
+      "attackerFootRadiusUpper": 43.08345249858267
+    },
+    {
+      "k": 78,
+      "iteration": 6,
+      "otherLegDistanceLower": 7.998649157071454,
+      "hubLegDistanceLower": 8.6523591289776,
+      "hubHubDistanceLower": 23.46122680630495,
+      "attackerFootRadiusUpper": 43.08345249858267
+    },
+    {
+      "k": 78,
+      "iteration": 7,
+      "otherLegDistanceLower": 7.998649127134832,
+      "hubLegDistanceLower": 8.652359099654973,
+      "hubHubDistanceLower": 23.461226784496105,
+      "attackerFootRadiusUpper": 43.08345249858267
+    },
+    {
+      "k": 78,
+      "iteration": 8,
+      "otherLegDistanceLower": 7.998649097195934,
+      "hubLegDistanceLower": 8.652359070330125,
+      "hubHubDistanceLower": 23.461226762685612,
+      "attackerFootRadiusUpper": 43.08345249858267
+    },
+    {
+      "k": 78,
+      "iteration": 9,
+      "otherLegDistanceLower": 7.998649067254777,
+      "hubLegDistanceLower": 8.652359041003056,
+      "hubHubDistanceLower": 23.46122674087346,
+      "attackerFootRadiusUpper": 43.08345249858267
+    },
+    {
+      "k": 79,
+      "iteration": 0,
+      "otherLegDistanceLower": 8.073173764759476,
+      "hubLegDistanceLower": 8.701268027134578,
+      "hubHubDistanceLower": 23.565178460834577,
+      "attackerFootRadiusUpper": 43.04898473713001
+    },
+    {
+      "k": 79,
+      "iteration": 1,
+      "otherLegDistanceLower": 8.066374008124324,
+      "hubLegDistanceLower": 8.737771461726641,
+      "hubHubDistanceLower": 23.577127968178978,
+      "attackerFootRadiusUpper": 43.04898473713001
+    },
+    {
+      "k": 79,
+      "iteration": 2,
+      "otherLegDistanceLower": 8.066373981529184,
+      "hubLegDistanceLower": 8.737771426036801,
+      "hubHubDistanceLower": 23.57712794206114,
+      "attackerFootRadiusUpper": 43.04898473713001
+    },
+    {
+      "k": 79,
+      "iteration": 3,
+      "otherLegDistanceLower": 8.066373954931654,
+      "hubLegDistanceLower": 8.737771390343754,
+      "hubHubDistanceLower": 23.57712791594096,
+      "attackerFootRadiusUpper": 43.04898473713001
+    },
+    {
+      "k": 79,
+      "iteration": 4,
+      "otherLegDistanceLower": 8.066373928331732,
+      "hubLegDistanceLower": 8.737771354647501,
+      "hubHubDistanceLower": 23.577127889818428,
+      "attackerFootRadiusUpper": 43.04898473713001
+    },
+    {
+      "k": 79,
+      "iteration": 5,
+      "otherLegDistanceLower": 8.06637390172942,
+      "hubLegDistanceLower": 8.737771318948035,
+      "hubHubDistanceLower": 23.577127863693544,
+      "attackerFootRadiusUpper": 43.04898473713001
+    },
+    {
+      "k": 79,
+      "iteration": 6,
+      "otherLegDistanceLower": 8.066373875124716,
+      "hubLegDistanceLower": 8.737771283245362,
+      "hubHubDistanceLower": 23.57712783756632,
+      "attackerFootRadiusUpper": 43.04898473713001
+    },
+    {
+      "k": 79,
+      "iteration": 7,
+      "otherLegDistanceLower": 8.066373848517621,
+      "hubLegDistanceLower": 8.737771247539479,
+      "hubHubDistanceLower": 23.57712781143674,
+      "attackerFootRadiusUpper": 43.04898473713001
+    },
+    {
+      "k": 79,
+      "iteration": 8,
+      "otherLegDistanceLower": 8.066373821908135,
+      "hubLegDistanceLower": 8.737771211830385,
+      "hubHubDistanceLower": 23.577127785304803,
+      "attackerFootRadiusUpper": 43.04898473713001
+    },
+    {
+      "k": 79,
+      "iteration": 9,
+      "otherLegDistanceLower": 8.066373795296252,
+      "hubLegDistanceLower": 8.737771176118075,
+      "hubHubDistanceLower": 23.577127759170526,
+      "attackerFootRadiusUpper": 43.04898473713001
+    },
+    {
+      "k": 80,
+      "iteration": 0,
+      "otherLegDistanceLower": 8.135687137553187,
+      "hubLegDistanceLower": 8.787325594353826,
+      "hubHubDistanceLower": 23.681518604904387,
+      "attackerFootRadiusUpper": 43.01440843298269
+    },
+    {
+      "k": 80,
+      "iteration": 1,
+      "otherLegDistanceLower": 8.130846817980869,
+      "hubLegDistanceLower": 8.825198357281604,
+      "hubHubDistanceLower": 23.69342934432447,
+      "attackerFootRadiusUpper": 43.01440843298269
+    },
+    {
+      "k": 80,
+      "iteration": 2,
+      "otherLegDistanceLower": 8.130846790042552,
+      "hubLegDistanceLower": 8.825198320365562,
+      "hubHubDistanceLower": 23.69342931772715,
+      "attackerFootRadiusUpper": 43.01440843298269
+    },
+    {
+      "k": 80,
+      "iteration": 3,
+      "otherLegDistanceLower": 8.130846762101699,
+      "hubLegDistanceLower": 8.825198283446168,
+      "hubHubDistanceLower": 23.6934292911274,
+      "attackerFootRadiusUpper": 43.01440843298269
+    },
+    {
+      "k": 80,
+      "iteration": 4,
+      "otherLegDistanceLower": 8.130846734158293,
+      "hubLegDistanceLower": 8.825198246523401,
+      "hubHubDistanceLower": 23.69342926452524,
+      "attackerFootRadiusUpper": 43.01440843298269
+    },
+    {
+      "k": 80,
+      "iteration": 5,
+      "otherLegDistanceLower": 8.130846706212347,
+      "hubLegDistanceLower": 8.82519820959728,
+      "hubHubDistanceLower": 23.693429237920668,
+      "attackerFootRadiusUpper": 43.01440843298269
+    },
+    {
+      "k": 80,
+      "iteration": 6,
+      "otherLegDistanceLower": 8.130846678263866,
+      "hubLegDistanceLower": 8.825198172667807,
+      "hubHubDistanceLower": 23.693429211313664,
+      "attackerFootRadiusUpper": 43.01440843298269
+    },
+    {
+      "k": 80,
+      "iteration": 7,
+      "otherLegDistanceLower": 8.130846650312836,
+      "hubLegDistanceLower": 8.825198135734965,
+      "hubHubDistanceLower": 23.69342918470424,
+      "attackerFootRadiusUpper": 43.01440843298269
+    },
+    {
+      "k": 80,
+      "iteration": 8,
+      "otherLegDistanceLower": 8.130846622359263,
+      "hubLegDistanceLower": 8.825198098798765,
+      "hubHubDistanceLower": 23.693429158092393,
+      "attackerFootRadiusUpper": 43.01440843298269
+    },
+    {
+      "k": 80,
+      "iteration": 9,
+      "otherLegDistanceLower": 8.130846594403149,
+      "hubLegDistanceLower": 8.825198061859206,
+      "hubHubDistanceLower": 23.693429131478123,
+      "attackerFootRadiusUpper": 43.01440843298269
+    },
+    {
+      "k": 81,
+      "iteration": 0,
+      "otherLegDistanceLower": 8.200719695108154,
+      "hubLegDistanceLower": 8.875391721214845,
+      "hubHubDistanceLower": 23.79825382695053,
+      "attackerFootRadiusUpper": 42.97972449587423
+    },
+    {
+      "k": 81,
+      "iteration": 1,
+      "otherLegDistanceLower": 8.19785876507313,
+      "hubLegDistanceLower": 8.914434222694071,
+      "hubHubDistanceLower": 23.810069570816218,
+      "attackerFootRadiusUpper": 42.97972449587423
+    },
+    {
+      "k": 81,
+      "iteration": 2,
+      "otherLegDistanceLower": 8.197858553763249,
+      "hubLegDistanceLower": 8.914433931188158,
+      "hubHubDistanceLower": 23.810069376698888,
+      "attackerFootRadiusUpper": 42.97972449587423
+    },
+    {
+      "k": 81,
+      "iteration": 3,
+      "otherLegDistanceLower": 8.197858281400709,
+      "hubLegDistanceLower": 8.914433560125904,
+      "hubHubDistanceLower": 23.81006919443069,
+      "attackerFootRadiusUpper": 42.97972449587423
+    },
+    {
+      "k": 81,
+      "iteration": 4,
+      "otherLegDistanceLower": 8.197858023861814,
+      "hubLegDistanceLower": 8.914433210719027,
+      "hubHubDistanceLower": 23.810069026851668,
+      "attackerFootRadiusUpper": 42.97972449587423
+    },
+    {
+      "k": 81,
+      "iteration": 5,
+      "otherLegDistanceLower": 8.197857786248965,
+      "hubLegDistanceLower": 8.914432889670696,
+      "hubHubDistanceLower": 23.810068862404048,
+      "attackerFootRadiusUpper": 42.97972449587423
+    },
+    {
+      "k": 81,
+      "iteration": 6,
+      "otherLegDistanceLower": 8.197857553040548,
+      "hubLegDistanceLower": 8.914432577135361,
+      "hubHubDistanceLower": 23.810068680627285,
+      "attackerFootRadiusUpper": 42.97972449587423
+    },
+    {
+      "k": 81,
+      "iteration": 7,
+      "otherLegDistanceLower": 8.197857296123928,
+      "hubLegDistanceLower": 8.914432238818694,
+      "hubHubDistanceLower": 23.81006850560563,
+      "attackerFootRadiusUpper": 42.97972449587423
+    },
+    {
+      "k": 81,
+      "iteration": 8,
+      "otherLegDistanceLower": 8.197857048718049,
+      "hubLegDistanceLower": 8.914431916834406,
+      "hubHubDistanceLower": 23.81006833063193,
+      "attackerFootRadiusUpper": 42.97972449587423
+    },
+    {
+      "k": 81,
+      "iteration": 9,
+      "otherLegDistanceLower": 8.197856800770444,
+      "hubLegDistanceLower": 8.91443159747943,
+      "hubHubDistanceLower": 23.81006817710708,
+      "attackerFootRadiusUpper": 42.97972449587423
+    },
+    {
+      "k": 82,
+      "iteration": 0,
+      "otherLegDistanceLower": 8.268289151944566,
+      "hubLegDistanceLower": 8.965265550423045,
+      "hubHubDistanceLower": 23.91532325870962,
+      "attackerFootRadiusUpper": 42.94493384036694
+    },
+    {
+      "k": 82,
+      "iteration": 1,
+      "otherLegDistanceLower": 8.267385771478,
+      "hubLegDistanceLower": 9.005454621229648,
+      "hubHubDistanceLower": 23.927046232285885,
+      "attackerFootRadiusUpper": 42.94493384036694
+    },
+    {
+      "k": 82,
+      "iteration": 2,
+      "otherLegDistanceLower": 8.267385152272936,
+      "hubLegDistanceLower": 9.005453901013412,
+      "hubHubDistanceLower": 23.927046015960094,
+      "attackerFootRadiusUpper": 42.94493384036694
+    },
+    {
+      "k": 82,
+      "iteration": 3,
+      "otherLegDistanceLower": 8.267384801603752,
+      "hubLegDistanceLower": 9.005453492157095,
+      "hubHubDistanceLower": 23.927045865755563,
+      "attackerFootRadiusUpper": 42.94493384036694
+    },
+    {
+      "k": 82,
+      "iteration": 4,
+      "otherLegDistanceLower": 8.267384562195703,
+      "hubLegDistanceLower": 9.00545321233099,
+      "hubHubDistanceLower": 23.927045740908405,
+      "attackerFootRadiusUpper": 42.94493384036694
+    },
+    {
+      "k": 82,
+      "iteration": 5,
+      "otherLegDistanceLower": 8.267384367434824,
+      "hubLegDistanceLower": 9.00545298599275,
+      "hubHubDistanceLower": 23.927045634805005,
+      "attackerFootRadiusUpper": 42.94493384036694
+    },
+    {
+      "k": 82,
+      "iteration": 6,
+      "otherLegDistanceLower": 8.267384202817029,
+      "hubLegDistanceLower": 9.005452794503329,
+      "hubHubDistanceLower": 23.92704551275557,
+      "attackerFootRadiusUpper": 42.94493384036694
+    },
+    {
+      "k": 82,
+      "iteration": 7,
+      "otherLegDistanceLower": 8.267384016040944,
+      "hubLegDistanceLower": 9.005452582505889,
+      "hubHubDistanceLower": 23.927045373164802,
+      "attackerFootRadiusUpper": 42.94493384036694
+    },
+    {
+      "k": 82,
+      "iteration": 8,
+      "otherLegDistanceLower": 8.267383807402904,
+      "hubLegDistanceLower": 9.005452351036183,
+      "hubHubDistanceLower": 23.927045194664398,
+      "attackerFootRadiusUpper": 42.94493384036694
+    },
+    {
+      "k": 82,
+      "iteration": 9,
+      "otherLegDistanceLower": 8.267383531683274,
+      "hubLegDistanceLower": 9.005452024244384,
+      "hubHubDistanceLower": 23.927045021553432,
+      "attackerFootRadiusUpper": 42.94493384036694
+    },
+    {
+      "k": 83,
+      "iteration": 0,
+      "otherLegDistanceLower": 8.33837474874621,
+      "hubLegDistanceLower": 9.05692751773794,
+      "hubHubDistanceLower": 24.032727022512514,
+      "attackerFootRadiusUpper": 42.91003738585427
+    },
+    {
+      "k": 83,
+      "iteration": 1,
+      "otherLegDistanceLower": 8.339402280493294,
+      "hubLegDistanceLower": 9.098234994116112,
+      "hubHubDistanceLower": 24.044357169238527,
+      "attackerFootRadiusUpper": 42.91003738585427
+    },
+    {
+      "k": 83,
+      "iteration": 2,
+      "otherLegDistanceLower": 8.339401369671204,
+      "hubLegDistanceLower": 9.098234263479256,
+      "hubHubDistanceLower": 24.044356964837792,
+      "attackerFootRadiusUpper": 42.91003738585427
+    },
+    {
+      "k": 83,
+      "iteration": 3,
+      "otherLegDistanceLower": 8.339401003316738,
+      "hubLegDistanceLower": 9.098233944250547,
+      "hubHubDistanceLower": 24.044356804078326,
+      "attackerFootRadiusUpper": 42.91003738585427
+    },
+    {
+      "k": 83,
+      "iteration": 4,
+      "otherLegDistanceLower": 8.339400725959063,
+      "hubLegDistanceLower": 9.098233683510438,
+      "hubHubDistanceLower": 24.044356603995304,
+      "attackerFootRadiusUpper": 42.91003738585427
+    },
+    {
+      "k": 83,
+      "iteration": 5,
+      "otherLegDistanceLower": 8.339400424336766,
+      "hubLegDistanceLower": 9.098233396497802,
+      "hubHubDistanceLower": 24.044356396765146,
+      "attackerFootRadiusUpper": 42.91003738585427
+    },
+    {
+      "k": 83,
+      "iteration": 6,
+      "otherLegDistanceLower": 8.339400109527935,
+      "hubLegDistanceLower": 9.098233068781282,
+      "hubHubDistanceLower": 24.04435620543281,
+      "attackerFootRadiusUpper": 42.91003738585427
+    },
+    {
+      "k": 83,
+      "iteration": 7,
+      "otherLegDistanceLower": 8.33939980837541,
+      "hubLegDistanceLower": 9.098232737481363,
+      "hubHubDistanceLower": 24.04435601299471,
+      "attackerFootRadiusUpper": 42.91003738585427
+    },
+    {
+      "k": 83,
+      "iteration": 8,
+      "otherLegDistanceLower": 8.339399500142838,
+      "hubLegDistanceLower": 9.098232388122431,
+      "hubHubDistanceLower": 24.044355776781934,
+      "attackerFootRadiusUpper": 42.91003738585427
+    },
+    {
+      "k": 83,
+      "iteration": 9,
+      "otherLegDistanceLower": 8.339399117955242,
+      "hubLegDistanceLower": 9.09823194966923,
+      "hubHubDistanceLower": 24.04435553935249,
+      "attackerFootRadiusUpper": 42.91003738585427
+    },
+    {
+      "k": 84,
+      "iteration": 0,
+      "otherLegDistanceLower": 8.410948404065437,
+      "hubLegDistanceLower": 9.150349720302668,
+      "hubHubDistanceLower": 24.150461006958142,
+      "attackerFootRadiusUpper": 42.875036056563594
+    },
+    {
+      "k": 84,
+      "iteration": 1,
+      "otherLegDistanceLower": 8.4138808629036,
+      "hubLegDistanceLower": 9.192750098842037,
+      "hubHubDistanceLower": 24.161999696581038,
+      "attackerFootRadiusUpper": 42.875036056563594
+    },
+    {
+      "k": 84,
+      "iteration": 2,
+      "otherLegDistanceLower": 8.413879886829642,
+      "hubLegDistanceLower": 9.192749810652384,
+      "hubHubDistanceLower": 24.161999402223824,
+      "attackerFootRadiusUpper": 42.875036056563594
+    },
+    {
+      "k": 84,
+      "iteration": 3,
+      "otherLegDistanceLower": 8.413879425184842,
+      "hubLegDistanceLower": 9.19274946570092,
+      "hubHubDistanceLower": 24.161999120460585,
+      "attackerFootRadiusUpper": 42.875036056563594
+    },
+    {
+      "k": 84,
+      "iteration": 4,
+      "otherLegDistanceLower": 8.413878959456282,
+      "hubLegDistanceLower": 9.192748997400399,
+      "hubHubDistanceLower": 24.161998755166564,
+      "attackerFootRadiusUpper": 42.875036056563594
+    },
+    {
+      "k": 84,
+      "iteration": 5,
+      "otherLegDistanceLower": 8.413878409596885,
+      "hubLegDistanceLower": 9.192748449511948,
+      "hubHubDistanceLower": 24.161998351446552,
+      "attackerFootRadiusUpper": 42.875036056563594
+    },
+    {
+      "k": 84,
+      "iteration": 6,
+      "otherLegDistanceLower": 8.413877777317955,
+      "hubLegDistanceLower": 9.192747751468593,
+      "hubHubDistanceLower": 24.161997961289057,
+      "attackerFootRadiusUpper": 42.875036056563594
+    },
+    {
+      "k": 84,
+      "iteration": 7,
+      "otherLegDistanceLower": 8.413877175229569,
+      "hubLegDistanceLower": 9.192747101890694,
+      "hubHubDistanceLower": 24.16199754876465,
+      "attackerFootRadiusUpper": 42.875036056563594
+    },
+    {
+      "k": 84,
+      "iteration": 8,
+      "otherLegDistanceLower": 8.413876521086118,
+      "hubLegDistanceLower": 9.192746374770946,
+      "hubHubDistanceLower": 24.16199717083661,
+      "attackerFootRadiusUpper": 42.875036056563594
+    },
+    {
+      "k": 84,
+      "iteration": 9,
+      "otherLegDistanceLower": 8.413875889283126,
+      "hubLegDistanceLower": 9.192745649870165,
+      "hubHubDistanceLower": 24.16199668028677,
+      "attackerFootRadiusUpper": 42.875036056563594
+    },
+    {
+      "k": 85,
+      "iteration": 0,
+      "otherLegDistanceLower": 8.485982079430348,
+      "hubLegDistanceLower": 9.245506001882854,
+      "hubHubDistanceLower": 24.268522172814187,
+      "attackerFootRadiusUpper": 42.83993078155836
+    },
+    {
+      "k": 85,
+      "iteration": 1,
+      "otherLegDistanceLower": 8.490793075320111,
+      "hubLegDistanceLower": 9.288975081017238,
+      "hubHubDistanceLower": 24.279970791384947,
+      "attackerFootRadiusUpper": 42.83993078155836
+    },
+    {
+      "k": 85,
+      "iteration": 2,
+      "otherLegDistanceLower": 8.490792104723727,
+      "hubLegDistanceLower": 9.288975396290455,
+      "hubHubDistanceLower": 24.279970379696497,
+      "attackerFootRadiusUpper": 42.83993078155836
+    },
+    {
+      "k": 85,
+      "iteration": 3,
+      "otherLegDistanceLower": 8.490791389788493,
+      "hubLegDistanceLower": 9.288974692514822,
+      "hubHubDistanceLower": 24.279969808739803,
+      "attackerFootRadiusUpper": 42.83993078155836
+    },
+    {
+      "k": 85,
+      "iteration": 4,
+      "otherLegDistanceLower": 8.49079042642853,
+      "hubLegDistanceLower": 9.288973658096634,
+      "hubHubDistanceLower": 24.279969029907758,
+      "attackerFootRadiusUpper": 42.83993078155836
+    },
+    {
+      "k": 85,
+      "iteration": 5,
+      "otherLegDistanceLower": 8.49078918838931,
+      "hubLegDistanceLower": 9.288972302784938,
+      "hubHubDistanceLower": 24.27996833395248,
+      "attackerFootRadiusUpper": 42.83993078155836
+    },
+    {
+      "k": 85,
+      "iteration": 6,
+      "otherLegDistanceLower": 8.490788117590977,
+      "hubLegDistanceLower": 9.288971164320522,
+      "hubHubDistanceLower": 24.27996759611918,
+      "attackerFootRadiusUpper": 42.83993078155836
+    },
+    {
+      "k": 85,
+      "iteration": 7,
+      "otherLegDistanceLower": 8.49078697584032,
+      "hubLegDistanceLower": 9.288969921859001,
+      "hubHubDistanceLower": 24.27996677944616,
+      "attackerFootRadiusUpper": 42.83993078155836
+    },
+    {
+      "k": 85,
+      "iteration": 8,
+      "otherLegDistanceLower": 8.490785750474116,
+      "hubLegDistanceLower": 9.288968646198002,
+      "hubHubDistanceLower": 24.279965825398005,
+      "attackerFootRadiusUpper": 42.83993078155836
+    },
+    {
+      "k": 85,
+      "iteration": 9,
+      "otherLegDistanceLower": 8.490784304357284,
+      "hubLegDistanceLower": 9.288967127058328,
+      "hubHubDistanceLower": 24.27996491247918,
+      "attackerFootRadiusUpper": 42.83993078155836
+    },
+    {
+      "k": 86,
+      "iteration": 0,
+      "otherLegDistanceLower": 8.563446144336357,
+      "hubLegDistanceLower": 9.342370305664039,
+      "hubHubDistanceLower": 24.38690699542243,
+      "attackerFootRadiusUpper": 42.804722494740496
+    },
+    {
+      "k": 86,
+      "iteration": 1,
+      "otherLegDistanceLower": 8.570108302099,
+      "hubLegDistanceLower": 9.38688385812572,
+      "hubHubDistanceLower": 24.398266587163334,
+      "attackerFootRadiusUpper": 42.804722494740496
+    },
+    {
+      "k": 86,
+      "iteration": 2,
+      "otherLegDistanceLower": 8.570107249119769,
+      "hubLegDistanceLower": 9.386884674001955,
+      "hubHubDistanceLower": 24.398265864488494,
+      "attackerFootRadiusUpper": 42.804722494740496
+    },
+    {
+      "k": 86,
+      "iteration": 3,
+      "otherLegDistanceLower": 8.570106135533122,
+      "hubLegDistanceLower": 9.386883619961035,
+      "hubHubDistanceLower": 24.398264978401034,
+      "attackerFootRadiusUpper": 42.804722494740496
+    },
+    {
+      "k": 86,
+      "iteration": 4,
+      "otherLegDistanceLower": 8.570104734341024,
+      "hubLegDistanceLower": 9.386882140863001,
+      "hubHubDistanceLower": 24.398264265138412,
+      "attackerFootRadiusUpper": 42.804722494740496
+    },
+    {
+      "k": 86,
+      "iteration": 5,
+      "otherLegDistanceLower": 8.570103551372952,
+      "hubLegDistanceLower": 9.38688088766087,
+      "hubHubDistanceLower": 24.398263491935836,
+      "attackerFootRadiusUpper": 42.804722494740496
+    },
+    {
+      "k": 86,
+      "iteration": 6,
+      "otherLegDistanceLower": 8.570102285712126,
+      "hubLegDistanceLower": 9.38687951595186,
+      "hubHubDistanceLower": 24.398262573863857,
+      "attackerFootRadiusUpper": 42.804722494740496
+    },
+    {
+      "k": 86,
+      "iteration": 7,
+      "otherLegDistanceLower": 8.570100779332282,
+      "hubLegDistanceLower": 9.386877863613089,
+      "hubHubDistanceLower": 24.398261620911345,
+      "attackerFootRadiusUpper": 42.804722494740496
+    },
+    {
+      "k": 86,
+      "iteration": 8,
+      "otherLegDistanceLower": 8.570099169808454,
+      "hubLegDistanceLower": 9.386876057248244,
+      "hubHubDistanceLower": 24.398260547688167,
+      "attackerFootRadiusUpper": 42.804722494740496
+    },
+    {
+      "k": 86,
+      "iteration": 9,
+      "otherLegDistanceLower": 8.570097294878716,
+      "hubLegDistanceLower": 9.386873918164545,
+      "hubHubDistanceLower": 24.398259424682756,
+      "attackerFootRadiusUpper": 42.804722494740496
+    },
+    {
+      "k": 87,
+      "iteration": 0,
+      "otherLegDistanceLower": 8.643313766189257,
+      "hubLegDistanceLower": 9.44092018186858,
+      "hubHubDistanceLower": 24.50561467411321,
+      "attackerFootRadiusUpper": 42.769412134852615
+    },
+    {
+      "k": 87,
+      "iteration": 1,
+      "otherLegDistanceLower": 8.651796936313639,
+      "hubLegDistanceLower": 9.486452439327094,
+      "hubHubDistanceLower": 24.516886198877547,
+      "attackerFootRadiusUpper": 42.769412134852615
+    },
+    {
+      "k": 87,
+      "iteration": 2,
+      "otherLegDistanceLower": 8.651795939584476,
+      "hubLegDistanceLower": 9.48645389761505,
+      "hubHubDistanceLower": 24.516885379528915,
+      "attackerFootRadiusUpper": 42.769412134852615
+    },
+    {
+      "k": 87,
+      "iteration": 3,
+      "otherLegDistanceLower": 8.65179470822039,
+      "hubLegDistanceLower": 9.486452737929225,
+      "hubHubDistanceLower": 24.51688433132743,
+      "attackerFootRadiusUpper": 42.769412134852615
+    },
+    {
+      "k": 87,
+      "iteration": 4,
+      "otherLegDistanceLower": 8.651793057583825,
+      "hubLegDistanceLower": 9.486451011158126,
+      "hubHubDistanceLower": 24.51688330167032,
+      "attackerFootRadiusUpper": 42.769412134852615
+    },
+    {
+      "k": 87,
+      "iteration": 5,
+      "otherLegDistanceLower": 8.651791440209951,
+      "hubLegDistanceLower": 9.486449354666103,
+      "hubHubDistanceLower": 24.516882106416436,
+      "attackerFootRadiusUpper": 42.769412134852615
+    },
+    {
+      "k": 87,
+      "iteration": 6,
+      "otherLegDistanceLower": 8.651789602763765,
+      "hubLegDistanceLower": 9.486447434376483,
+      "hubHubDistanceLower": 24.51688086950196,
+      "attackerFootRadiusUpper": 42.769412134852615
+    },
+    {
+      "k": 87,
+      "iteration": 7,
+      "otherLegDistanceLower": 8.651787652218655,
+      "hubLegDistanceLower": 9.486445337197582,
+      "hubHubDistanceLower": 24.516879491261026,
+      "attackerFootRadiusUpper": 42.769412134852615
+    },
+    {
+      "k": 87,
+      "iteration": 8,
+      "otherLegDistanceLower": 8.651785588995315,
+      "hubLegDistanceLower": 9.486443206906433,
+      "hubHubDistanceLower": 24.516878218434268,
+      "attackerFootRadiusUpper": 42.769412134852615
+    },
+    {
+      "k": 87,
+      "iteration": 9,
+      "otherLegDistanceLower": 8.65178353096938,
+      "hubLegDistanceLower": 9.486440994847179,
+      "hubHubDistanceLower": 24.516877114252154,
+      "attackerFootRadiusUpper": 42.769412134852615
+    },
+    {
+      "k": 88,
+      "iteration": 0,
+      "otherLegDistanceLower": 8.725553760943109,
+      "hubLegDistanceLower": 9.541130827951369,
+      "hubHubDistanceLower": 24.624642110278867,
+      "attackerFootRadiusUpper": 42.73400064547922
+    },
+    {
+      "k": 88,
+      "iteration": 1,
+      "otherLegDistanceLower": 8.732118303353019,
+      "hubLegDistanceLower": 9.574592592170745,
+      "hubHubDistanceLower": 24.63582851003821,
+      "attackerFootRadiusUpper": 42.73400064547922
+    },
+    {
+      "k": 88,
+      "iteration": 2,
+      "otherLegDistanceLower": 8.73211836790368,
+      "hubLegDistanceLower": 9.574594921486163,
+      "hubHubDistanceLower": 24.63582838541709,
+      "attackerFootRadiusUpper": 42.73400064547922
+    },
+    {
+      "k": 88,
+      "iteration": 3,
+      "otherLegDistanceLower": 8.732117989126499,
+      "hubLegDistanceLower": 9.574594587649909,
+      "hubHubDistanceLower": 24.635827669370176,
+      "attackerFootRadiusUpper": 42.73400064547922
+    },
+    {
+      "k": 88,
+      "iteration": 4,
+      "otherLegDistanceLower": 8.732117484021188,
+      "hubLegDistanceLower": 9.574594097290682,
+      "hubHubDistanceLower": 24.63582676505774,
+      "attackerFootRadiusUpper": 42.73400064547922
+    },
+    {
+      "k": 88,
+      "iteration": 5,
+      "otherLegDistanceLower": 8.73211684341313,
+      "hubLegDistanceLower": 9.574593439057576,
+      "hubHubDistanceLower": 24.635825793884308,
+      "attackerFootRadiusUpper": 42.73400064547922
+    },
+    {
+      "k": 88,
+      "iteration": 6,
+      "otherLegDistanceLower": 8.732116154060568,
+      "hubLegDistanceLower": 9.574592707493048,
+      "hubHubDistanceLower": 24.635824322533747,
+      "attackerFootRadiusUpper": 42.73400064547922
+    },
+    {
+      "k": 88,
+      "iteration": 7,
+      "otherLegDistanceLower": 8.732115113343315,
+      "hubLegDistanceLower": 9.57459163260782,
+      "hubHubDistanceLower": 24.63582316419324,
+      "attackerFootRadiusUpper": 42.73400064547922
+    },
+    {
+      "k": 88,
+      "iteration": 8,
+      "otherLegDistanceLower": 8.732114289062844,
+      "hubLegDistanceLower": 9.57459079010797,
+      "hubHubDistanceLower": 24.635822125858773,
+      "attackerFootRadiusUpper": 42.73400064547922
+    },
+    {
+      "k": 88,
+      "iteration": 9,
+      "otherLegDistanceLower": 8.732113550893095,
+      "hubLegDistanceLower": 9.57459000303285,
+      "hubHubDistanceLower": 24.63582062955523,
+      "attackerFootRadiusUpper": 42.73400064547922
+    },
+    {
+      "k": 89,
+      "iteration": 0,
+      "otherLegDistanceLower": 8.799130478115014,
+      "hubLegDistanceLower": 9.600267979262112,
+      "hubHubDistanceLower": 24.743991964446238,
+      "attackerFootRadiusUpper": 42.69848897505007
+    },
+    {
+      "k": 89,
+      "iteration": 1,
+      "otherLegDistanceLower": 8.80315861745611,
+      "hubLegDistanceLower": 9.628068001767495,
+      "hubHubDistanceLower": 24.755090015185445,
+      "attackerFootRadiusUpper": 42.69848897505007
+    },
+    {
+      "k": 89,
+      "iteration": 2,
+      "otherLegDistanceLower": 8.803157918028734,
+      "hubLegDistanceLower": 9.628069930625903,
+      "hubHubDistanceLower": 24.755089528485787,
+      "attackerFootRadiusUpper": 42.69848897505007
+    },
+    {
+      "k": 89,
+      "iteration": 3,
+      "otherLegDistanceLower": 8.80315756006563,
+      "hubLegDistanceLower": 9.628069614178647,
+      "hubHubDistanceLower": 24.755088685019473,
+      "attackerFootRadiusUpper": 42.69848897505007
+    },
+    {
+      "k": 89,
+      "iteration": 4,
+      "otherLegDistanceLower": 8.803156955334533,
+      "hubLegDistanceLower": 9.628069039143568,
+      "hubHubDistanceLower": 24.755087378113213,
+      "attackerFootRadiusUpper": 42.69848897505007
+    },
+    {
+      "k": 89,
+      "iteration": 5,
+      "otherLegDistanceLower": 8.803156025078806,
+      "hubLegDistanceLower": 9.62806812497002,
+      "hubHubDistanceLower": 24.755086141392226,
+      "attackerFootRadiusUpper": 42.69848897505007
+    },
+    {
+      "k": 89,
+      "iteration": 6,
+      "otherLegDistanceLower": 8.80315514649564,
+      "hubLegDistanceLower": 9.628067196269388,
+      "hubHubDistanceLower": 24.75508452214841,
+      "attackerFootRadiusUpper": 42.69848897505007
+    },
+    {
+      "k": 89,
+      "iteration": 7,
+      "otherLegDistanceLower": 8.803153998113586,
+      "hubLegDistanceLower": 9.628065995529148,
+      "hubHubDistanceLower": 24.755082855453065,
+      "attackerFootRadiusUpper": 42.69848897505007
+    },
+    {
+      "k": 89,
+      "iteration": 8,
+      "otherLegDistanceLower": 8.803152812207925,
+      "hubLegDistanceLower": 9.628064804103653,
+      "hubHubDistanceLower": 24.755081351548085,
+      "attackerFootRadiusUpper": 42.69848897505007
+    },
+    {
+      "k": 89,
+      "iteration": 9,
+      "otherLegDistanceLower": 8.803151742842001,
+      "hubLegDistanceLower": 9.628063697106136,
+      "hubHubDistanceLower": 24.755079121913315,
+      "attackerFootRadiusUpper": 42.69848897505007
+    },
+    {
+      "k": 90,
+      "iteration": 0,
+      "otherLegDistanceLower": 8.873442835342605,
+      "hubLegDistanceLower": 9.657207403545444,
+      "hubHubDistanceLower": 24.863653392972626,
+      "attackerFootRadiusUpper": 42.66287807684141
+    },
+    {
+      "k": 90,
+      "iteration": 1,
+      "otherLegDistanceLower": 8.876488011442873,
+      "hubLegDistanceLower": 9.683925263744145,
+      "hubHubDistanceLower": 24.874667583588447,
+      "attackerFootRadiusUpper": 42.66287807684141
+    },
+    {
+      "k": 90,
+      "iteration": 2,
+      "otherLegDistanceLower": 8.876487893624667,
+      "hubLegDistanceLower": 9.683928182158203,
+      "hubHubDistanceLower": 24.874667302311583,
+      "attackerFootRadiusUpper": 42.66287807684141
+    },
+    {
+      "k": 90,
+      "iteration": 3,
+      "otherLegDistanceLower": 8.876487245568585,
+      "hubLegDistanceLower": 9.683927584733734,
+      "hubHubDistanceLower": 24.874665778102308,
+      "attackerFootRadiusUpper": 42.66287807684141
+    },
+    {
+      "k": 90,
+      "iteration": 4,
+      "otherLegDistanceLower": 8.876486153926285,
+      "hubLegDistanceLower": 9.683926535366622,
+      "hubHubDistanceLower": 24.874664186523017,
+      "attackerFootRadiusUpper": 42.66287807684141
+    },
+    {
+      "k": 90,
+      "iteration": 5,
+      "otherLegDistanceLower": 8.876485019764381,
+      "hubLegDistanceLower": 9.68392536277264,
+      "hubHubDistanceLower": 24.874661998718796,
+      "attackerFootRadiusUpper": 42.66287807684141
+    },
+    {
+      "k": 90,
+      "iteration": 6,
+      "otherLegDistanceLower": 8.87648346563006,
+      "hubLegDistanceLower": 9.683923736248818,
+      "hubHubDistanceLower": 24.87465943851361,
+      "attackerFootRadiusUpper": 42.66287807684141
+    },
+    {
+      "k": 90,
+      "iteration": 7,
+      "otherLegDistanceLower": 8.876481637614424,
+      "hubLegDistanceLower": 9.683921946974012,
+      "hubHubDistanceLower": 24.874657295066292,
+      "attackerFootRadiusUpper": 42.66287807684141
+    },
+    {
+      "k": 90,
+      "iteration": 8,
+      "otherLegDistanceLower": 8.876480109806481,
+      "hubLegDistanceLower": 9.68392039493299,
+      "hubHubDistanceLower": 24.874655043240196,
+      "attackerFootRadiusUpper": 42.66287807684141
+    },
+    {
+      "k": 90,
+      "iteration": 9,
+      "otherLegDistanceLower": 8.876478494473357,
+      "hubLegDistanceLower": 9.683918797241024,
+      "hubHubDistanceLower": 24.87465264029953,
+      "attackerFootRadiusUpper": 42.66287807684141
+    },
+    {
+      "k": 91,
+      "iteration": 0,
+      "otherLegDistanceLower": 8.949987014064371,
+      "hubLegDistanceLower": 9.71649732482201,
+      "hubHubDistanceLower": 24.983626453758678,
+      "attackerFootRadiusUpper": 42.62716890897667
+    },
+    {
+      "k": 91,
+      "iteration": 1,
+      "otherLegDistanceLower": 8.952072160714613,
+      "hubLegDistanceLower": 9.742145805445569,
+      "hubHubDistanceLower": 24.99455856939308,
+      "attackerFootRadiusUpper": 42.62716890897667
+    },
+    {
+      "k": 91,
+      "iteration": 2,
+      "otherLegDistanceLower": 8.95207221147157,
+      "hubLegDistanceLower": 9.742149276732352,
+      "hubHubDistanceLower": 24.99455896680471,
+      "attackerFootRadiusUpper": 42.62716890897667
+    },
+    {
+      "k": 91,
+      "iteration": 3,
+      "otherLegDistanceLower": 8.952071652325865,
+      "hubLegDistanceLower": 9.742148747387098,
+      "hubHubDistanceLower": 24.994557611774955,
+      "attackerFootRadiusUpper": 42.62716890897667
+    },
+    {
+      "k": 91,
+      "iteration": 4,
+      "otherLegDistanceLower": 8.952070679518233,
+      "hubLegDistanceLower": 9.742147795487629,
+      "hubHubDistanceLower": 24.994556009451085,
+      "attackerFootRadiusUpper": 42.62716890897667
+    },
+    {
+      "k": 91,
+      "iteration": 5,
+      "otherLegDistanceLower": 8.95206953800051,
+      "hubLegDistanceLower": 9.742146606437686,
+      "hubHubDistanceLower": 24.994553894277633,
+      "attackerFootRadiusUpper": 42.62716890897667
+    },
+    {
+      "k": 91,
+      "iteration": 6,
+      "otherLegDistanceLower": 8.952068029967199,
+      "hubLegDistanceLower": 9.742145049290484,
+      "hubHubDistanceLower": 24.994551622062986,
+      "attackerFootRadiusUpper": 42.62716890897667
+    },
+    {
+      "k": 91,
+      "iteration": 7,
+      "otherLegDistanceLower": 8.95206641975476,
+      "hubLegDistanceLower": 9.742143318175838,
+      "hubHubDistanceLower": 24.99454842428488,
+      "attackerFootRadiusUpper": 42.62716890897667
+    },
+    {
+      "k": 91,
+      "iteration": 8,
+      "otherLegDistanceLower": 8.95206412662826,
+      "hubLegDistanceLower": 9.74214105009726,
+      "hubHubDistanceLower": 24.994545734246273,
+      "attackerFootRadiusUpper": 42.62716890897667
+    },
+    {
+      "k": 91,
+      "iteration": 9,
+      "otherLegDistanceLower": 8.952062204941784,
+      "hubLegDistanceLower": 9.742139109680744,
+      "hubHubDistanceLower": 24.994543454450696,
+      "attackerFootRadiusUpper": 42.62716890897667
+    },
+    {
+      "k": 92,
+      "iteration": 0,
+      "otherLegDistanceLower": 9.028730452388647,
+      "hubLegDistanceLower": 9.778119700759001,
+      "hubHubDistanceLower": 25.10391342620951,
+      "attackerFootRadiusUpper": 42.59136243442972
+    },
+    {
+      "k": 92,
+      "iteration": 1,
+      "otherLegDistanceLower": 9.029876726435651,
+      "hubLegDistanceLower": 9.802710562493365,
+      "hubHubDistanceLower": 25.114763156345095,
+      "attackerFootRadiusUpper": 42.59136243442972
+    },
+    {
+      "k": 92,
+      "iteration": 2,
+      "otherLegDistanceLower": 9.029876680839111,
+      "hubLegDistanceLower": 9.802714345999457,
+      "hubHubDistanceLower": 25.11476374841628,
+      "attackerFootRadiusUpper": 42.59136243442972
+    },
+    {
+      "k": 92,
+      "iteration": 3,
+      "otherLegDistanceLower": 9.029876113812692,
+      "hubLegDistanceLower": 9.802713803543917,
+      "hubHubDistanceLower": 25.114762317240054,
+      "attackerFootRadiusUpper": 42.59136243442972
+    },
+    {
+      "k": 92,
+      "iteration": 4,
+      "otherLegDistanceLower": 9.029875075526562,
+      "hubLegDistanceLower": 9.802712798969575,
+      "hubHubDistanceLower": 25.114760988730367,
+      "attackerFootRadiusUpper": 42.59136243442972
+    },
+    {
+      "k": 92,
+      "iteration": 5,
+      "otherLegDistanceLower": 9.029874129881923,
+      "hubLegDistanceLower": 9.802711764863277,
+      "hubHubDistanceLower": 25.114759493710682,
+      "attackerFootRadiusUpper": 42.59136243442972
+    },
+    {
+      "k": 92,
+      "iteration": 6,
+      "otherLegDistanceLower": 9.029873069504715,
+      "hubLegDistanceLower": 9.802710611036275,
+      "hubHubDistanceLower": 25.114757055064786,
+      "attackerFootRadiusUpper": 42.59136243442972
+    },
+    {
+      "k": 92,
+      "iteration": 7,
+      "otherLegDistanceLower": 9.029871330320265,
+      "hubLegDistanceLower": 9.80270878807226,
+      "hubHubDistanceLower": 25.11475443891579,
+      "attackerFootRadiusUpper": 42.59136243442972
+    },
+    {
+      "k": 92,
+      "iteration": 8,
+      "otherLegDistanceLower": 9.029869446659855,
+      "hubLegDistanceLower": 9.802706893413811,
+      "hubHubDistanceLower": 25.114751890156537,
+      "attackerFootRadiusUpper": 42.59136243442972
+    },
+    {
+      "k": 92,
+      "iteration": 9,
+      "otherLegDistanceLower": 9.029867617818596,
+      "hubLegDistanceLower": 9.802705014316702,
+      "hubHubDistanceLower": 25.114749312821154,
+      "attackerFootRadiusUpper": 42.59136243442972
+    },
+    {
+      "k": 93,
+      "iteration": 0,
+      "otherLegDistanceLower": 9.109636792180389,
+      "hubLegDistanceLower": 9.842052412014256,
+      "hubHubDistanceLower": 25.22451206538983,
+      "attackerFootRadiusUpper": 42.55545962102537
+    },
+    {
+      "k": 93,
+      "iteration": 1,
+      "otherLegDistanceLower": 9.10986445240143,
+      "hubLegDistanceLower": 9.86559653107801,
+      "hubHubDistanceLower": 25.235277451492323,
+      "attackerFootRadiusUpper": 42.55545962102537
+    },
+    {
+      "k": 93,
+      "iteration": 2,
+      "otherLegDistanceLower": 9.109863776578605,
+      "hubLegDistanceLower": 9.865600046407316,
+      "hubHubDistanceLower": 25.235276453930744,
+      "attackerFootRadiusUpper": 42.55545962102537
+    },
+    {
+      "k": 93,
+      "iteration": 3,
+      "otherLegDistanceLower": 9.109862407147837,
+      "hubLegDistanceLower": 9.865598838148529,
+      "hubHubDistanceLower": 25.23527387545193,
+      "attackerFootRadiusUpper": 42.55545962102537
+    },
+    {
+      "k": 93,
+      "iteration": 4,
+      "otherLegDistanceLower": 9.109860531418585,
+      "hubLegDistanceLower": 9.865597004529162,
+      "hubHubDistanceLower": 25.23527141805385,
+      "attackerFootRadiusUpper": 42.55545962102537
+    },
+    {
+      "k": 93,
+      "iteration": 5,
+      "otherLegDistanceLower": 9.10985877799396,
+      "hubLegDistanceLower": 9.865595138853955,
+      "hubHubDistanceLower": 25.235268736998325,
+      "attackerFootRadiusUpper": 42.55545962102537
+    },
+    {
+      "k": 93,
+      "iteration": 6,
+      "otherLegDistanceLower": 9.109856878673872,
+      "hubLegDistanceLower": 9.865593063151808,
+      "hubHubDistanceLower": 25.235264269955735,
+      "attackerFootRadiusUpper": 42.55545962102537
+    },
+    {
+      "k": 93,
+      "iteration": 7,
+      "otherLegDistanceLower": 9.109853696058062,
+      "hubLegDistanceLower": 9.865589699927062,
+      "hubHubDistanceLower": 25.235260642398234,
+      "attackerFootRadiusUpper": 42.55545962102537
+    },
+    {
+      "k": 93,
+      "iteration": 8,
+      "otherLegDistanceLower": 9.10985108730804,
+      "hubLegDistanceLower": 9.865587024013731,
+      "hubHubDistanceLower": 25.23525639425982,
+      "attackerFootRadiusUpper": 42.55545962102537
+    },
+    {
+      "k": 93,
+      "iteration": 9,
+      "otherLegDistanceLower": 9.109848040106314,
+      "hubLegDistanceLower": 9.865583857623813,
+      "hubHubDistanceLower": 25.235252681272094,
+      "attackerFootRadiusUpper": 42.55545962102537
+    },
+    {
+      "k": 94,
+      "iteration": 0,
+      "otherLegDistanceLower": 9.192658536915646,
+      "hubLegDistanceLower": 9.908260981547128,
+      "hubHubDistanceLower": 25.345404850359518,
+      "attackerFootRadiusUpper": 42.51946144144075
+    },
+    {
+      "k": 94,
+      "iteration": 1,
+      "otherLegDistanceLower": 9.191994366167195,
+      "hubLegDistanceLower": 9.930776285416913,
+      "hubHubDistanceLower": 25.356092735168723,
+      "attackerFootRadiusUpper": 42.51946144144075
+    },
+    {
+      "k": 94,
+      "iteration": 2,
+      "otherLegDistanceLower": 9.191993452398469,
+      "hubLegDistanceLower": 9.930780022291291,
+      "hubHubDistanceLower": 25.35609212255005,
+      "attackerFootRadiusUpper": 42.51946144144075
+    },
+    {
+      "k": 94,
+      "iteration": 3,
+      "otherLegDistanceLower": 9.191992291640318,
+      "hubLegDistanceLower": 9.930778933277367,
+      "hubHubDistanceLower": 25.35608995009401,
+      "attackerFootRadiusUpper": 42.51946144144075
+    },
+    {
+      "k": 94,
+      "iteration": 4,
+      "otherLegDistanceLower": 9.19199071607467,
+      "hubLegDistanceLower": 9.930777342554864,
+      "hubHubDistanceLower": 25.356086443385372,
+      "attackerFootRadiusUpper": 42.51946144144075
+    },
+    {
+      "k": 94,
+      "iteration": 5,
+      "otherLegDistanceLower": 9.191988181168853,
+      "hubLegDistanceLower": 9.930774749427355,
+      "hubHubDistanceLower": 25.356082319945116,
+      "attackerFootRadiusUpper": 42.51946144144075
+    },
+    {
+      "k": 94,
+      "iteration": 6,
+      "otherLegDistanceLower": 9.191985233977563,
+      "hubLegDistanceLower": 9.930771624254724,
+      "hubHubDistanceLower": 25.356077449551247,
+      "attackerFootRadiusUpper": 42.51946144144075
+    },
+    {
+      "k": 94,
+      "iteration": 7,
+      "otherLegDistanceLower": 9.191981687971602,
+      "hubLegDistanceLower": 9.930768082101807,
+      "hubHubDistanceLower": 25.35607214754919,
+      "attackerFootRadiusUpper": 42.51946144144075
+    },
+    {
+      "k": 94,
+      "iteration": 8,
+      "otherLegDistanceLower": 9.19197783509523,
+      "hubLegDistanceLower": 9.930764221900537,
+      "hubHubDistanceLower": 25.35606759853609,
+      "attackerFootRadiusUpper": 42.51946144144075
+    },
+    {
+      "k": 94,
+      "iteration": 9,
+      "otherLegDistanceLower": 9.191974513895808,
+      "hubLegDistanceLower": 9.930760939542454,
+      "hubHubDistanceLower": 25.356062739405715,
+      "attackerFootRadiusUpper": 42.51946144144075
+    },
+    {
+      "k": 95,
+      "iteration": 0,
+      "otherLegDistanceLower": 9.277766988789915,
+      "hubLegDistanceLower": 9.976729577802995,
+      "hubHubDistanceLower": 25.46660095854097,
+      "attackerFootRadiusUpper": 42.48336887320735
+    },
+    {
+      "k": 95,
+      "iteration": 1,
+      "otherLegDistanceLower": 9.276231939643987,
+      "hubLegDistanceLower": 9.998228703933725,
+      "hubHubDistanceLower": 25.47721009422209,
+      "attackerFootRadiusUpper": 42.48336887320735
+    },
+    {
+      "k": 95,
+      "iteration": 2,
+      "otherLegDistanceLower": 9.276230787534576,
+      "hubLegDistanceLower": 9.998232575342506,
+      "hubHubDistanceLower": 25.477209484774786,
+      "attackerFootRadiusUpper": 42.48336887320735
+    },
+    {
+      "k": 95,
+      "iteration": 3,
+      "otherLegDistanceLower": 9.276229519114358,
+      "hubLegDistanceLower": 9.998231404194406,
+      "hubHubDistanceLower": 25.477206205593284,
+      "attackerFootRadiusUpper": 42.48336887320735
+    },
+    {
+      "k": 95,
+      "iteration": 4,
+      "otherLegDistanceLower": 9.276227107151156,
+      "hubLegDistanceLower": 9.998229044201656,
+      "hubHubDistanceLower": 25.47720351529197,
+      "attackerFootRadiusUpper": 42.48336887320735
+    },
+    {
+      "k": 95,
+      "iteration": 5,
+      "otherLegDistanceLower": 9.276225201995768,
+      "hubLegDistanceLower": 9.998226947104788,
+      "hubHubDistanceLower": 25.47720027677434,
+      "attackerFootRadiusUpper": 42.48336887320735
+    },
+    {
+      "k": 95,
+      "iteration": 6,
+      "otherLegDistanceLower": 9.276222909657418,
+      "hubLegDistanceLower": 9.998224437805316,
+      "hubHubDistanceLower": 25.47719560097589,
+      "attackerFootRadiusUpper": 42.48336887320735
+    },
+    {
+      "k": 95,
+      "iteration": 7,
+      "otherLegDistanceLower": 9.276219574506579,
+      "hubLegDistanceLower": 9.998220870421886,
+      "hubHubDistanceLower": 25.47719009807636,
+      "attackerFootRadiusUpper": 42.48336887320735
+    },
+    {
+      "k": 95,
+      "iteration": 8,
+      "otherLegDistanceLower": 9.276215561386795,
+      "hubLegDistanceLower": 9.998216841486775,
+      "hubHubDistanceLower": 25.477185389451865,
+      "attackerFootRadiusUpper": 42.48336887320735
+    },
+    {
+      "k": 95,
+      "iteration": 9,
+      "otherLegDistanceLower": 9.276212172772189,
+      "hubLegDistanceLower": 9.998213282713545,
+      "hubHubDistanceLower": 25.477180606136695,
+      "attackerFootRadiusUpper": 42.48336887320735
+    },
+    {
+      "k": 96,
+      "iteration": 0,
+      "otherLegDistanceLower": 9.364928097864514,
+      "hubLegDistanceLower": 10.047434734530553,
+      "hubHubDistanceLower": 25.58810153074777,
+      "attackerFootRadiusUpper": 42.44718289871036
+    },
+    {
+      "k": 96,
+      "iteration": 1,
+      "otherLegDistanceLower": 9.362542964816381,
+      "hubLegDistanceLower": 10.067931514891123,
+      "hubHubDistanceLower": 25.598631092716836,
+      "attackerFootRadiusUpper": 42.44718289871036
+    },
+    {
+      "k": 96,
+      "iteration": 2,
+      "otherLegDistanceLower": 9.36254136826995,
+      "hubLegDistanceLower": 10.06793532205952,
+      "hubHubDistanceLower": 25.59863003837616,
+      "attackerFootRadiusUpper": 42.44718289871036
+    },
+    {
+      "k": 96,
+      "iteration": 3,
+      "otherLegDistanceLower": 9.362539846697208,
+      "hubLegDistanceLower": 10.06793391305562,
+      "hubHubDistanceLower": 25.59862713298135,
+      "attackerFootRadiusUpper": 42.44718289871036
+    },
+    {
+      "k": 96,
+      "iteration": 4,
+      "otherLegDistanceLower": 9.362537718340457,
+      "hubLegDistanceLower": 10.067931762917338,
+      "hubHubDistanceLower": 25.598621429584817,
+      "attackerFootRadiusUpper": 42.44718289871036
+    },
+    {
+      "k": 96,
+      "iteration": 5,
+      "otherLegDistanceLower": 9.362533532692071,
+      "hubLegDistanceLower": 10.067927573360496,
+      "hubHubDistanceLower": 25.598616831316274,
+      "attackerFootRadiusUpper": 42.44718289871036
+    },
+    {
+      "k": 96,
+      "iteration": 6,
+      "otherLegDistanceLower": 9.36253013246169,
+      "hubLegDistanceLower": 10.067924221258778,
+      "hubHubDistanceLower": 25.598611293267286,
+      "attackerFootRadiusUpper": 42.44718289871036
+    },
+    {
+      "k": 96,
+      "iteration": 7,
+      "otherLegDistanceLower": 9.362526101791374,
+      "hubLegDistanceLower": 10.06792008765687,
+      "hubHubDistanceLower": 25.598605486581093,
+      "attackerFootRadiusUpper": 42.44718289871036
+    },
+    {
+      "k": 96,
+      "iteration": 8,
+      "otherLegDistanceLower": 9.362521911154358,
+      "hubLegDistanceLower": 10.067915690088574,
+      "hubHubDistanceLower": 25.598599463641857,
+      "attackerFootRadiusUpper": 42.44718289871036
+    },
+    {
+      "k": 96,
+      "iteration": 9,
+      "otherLegDistanceLower": 9.362517628514906,
+      "hubLegDistanceLower": 10.067911020066658,
+      "hubHubDistanceLower": 25.598592552892047,
+      "attackerFootRadiusUpper": 42.44718289871036
+    },
+    {
+      "k": 97,
+      "iteration": 0,
+      "otherLegDistanceLower": 9.45409589185359,
+      "hubLegDistanceLower": 10.120342641017162,
+      "hubHubDistanceLower": 25.70989283205236,
+      "attackerFootRadiusUpper": 42.41090450519228
+    },
+    {
+      "k": 97,
+      "iteration": 1,
+      "otherLegDistanceLower": 9.450883364855223,
+      "hubLegDistanceLower": 10.139851416912151,
+      "hubHubDistanceLower": 25.72034335656436,
+      "attackerFootRadiusUpper": 42.41090450519228
+    },
+    {
+      "k": 97,
+      "iteration": 2,
+      "otherLegDistanceLower": 9.450882213484965,
+      "hubLegDistanceLower": 10.13985590234081,
+      "hubHubDistanceLower": 25.72034413583834,
+      "attackerFootRadiusUpper": 42.41090450519228
+    },
+    {
+      "k": 97,
+      "iteration": 3,
+      "otherLegDistanceLower": 9.45088129580306,
+      "hubLegDistanceLower": 10.139854990304736,
+      "hubHubDistanceLower": 25.720341621320774,
+      "attackerFootRadiusUpper": 42.41090450519228
+    },
+    {
+      "k": 97,
+      "iteration": 4,
+      "otherLegDistanceLower": 9.450879422784405,
+      "hubLegDistanceLower": 10.139853148533591,
+      "hubHubDistanceLower": 25.720339244186952,
+      "attackerFootRadiusUpper": 42.41090450519228
+    },
+    {
+      "k": 97,
+      "iteration": 5,
+      "otherLegDistanceLower": 9.450877721556449,
+      "hubLegDistanceLower": 10.139851312014516,
+      "hubHubDistanceLower": 25.720335366302265,
+      "attackerFootRadiusUpper": 42.41090450519228
+    },
+    {
+      "k": 97,
+      "iteration": 6,
+      "otherLegDistanceLower": 9.450874906466447,
+      "hubLegDistanceLower": 10.139848376684238,
+      "hubHubDistanceLower": 25.720330538971048,
+      "attackerFootRadiusUpper": 42.41090450519228
+    },
+    {
+      "k": 97,
+      "iteration": 7,
+      "otherLegDistanceLower": 9.450871444925166,
+      "hubLegDistanceLower": 10.139844658034542,
+      "hubHubDistanceLower": 25.720324567852963,
+      "attackerFootRadiusUpper": 42.41090450519228
+    },
+    {
+      "k": 97,
+      "iteration": 8,
+      "otherLegDistanceLower": 9.450867199631249,
+      "hubLegDistanceLower": 10.139840016469563,
+      "hubHubDistanceLower": 25.720317547885845,
+      "attackerFootRadiusUpper": 42.41090450519228
+    },
+    {
+      "k": 97,
+      "iteration": 9,
+      "otherLegDistanceLower": 9.45086226338408,
+      "hubLegDistanceLower": 10.139834481406735,
+      "hubHubDistanceLower": 25.72030965571095,
+      "attackerFootRadiusUpper": 42.41090450519228
+    },
+    {
+      "k": 98,
+      "iteration": 0,
+      "otherLegDistanceLower": 9.545244406352971,
+      "hubLegDistanceLower": 10.195435178819263,
+      "hubHubDistanceLower": 25.831985971715632,
+      "attackerFootRadiusUpper": 42.37453468475103
+    },
+    {
+      "k": 98,
+      "iteration": 1,
+      "otherLegDistanceLower": 9.541224147638967,
+      "hubLegDistanceLower": 10.213969970382205,
+      "hubHubDistanceLower": 25.84235569720631,
+      "attackerFootRadiusUpper": 42.37453468475103
+    },
+    {
+      "k": 98,
+      "iteration": 2,
+      "otherLegDistanceLower": 9.541221608415151,
+      "hubLegDistanceLower": 10.213973434796317,
+      "hubHubDistanceLower": 25.842352161626636,
+      "attackerFootRadiusUpper": 42.37453468475103
+    },
+    {
+      "k": 98,
+      "iteration": 3,
+      "otherLegDistanceLower": 9.54121836486208,
+      "hubLegDistanceLower": 10.213970461465886,
+      "hubHubDistanceLower": 25.842347075669206,
+      "attackerFootRadiusUpper": 42.37453468475103
+    },
+    {
+      "k": 98,
+      "iteration": 4,
+      "otherLegDistanceLower": 9.541214609032384,
+      "hubLegDistanceLower": 10.21396666249003,
+      "hubHubDistanceLower": 25.84234242939325,
+      "attackerFootRadiusUpper": 42.37453468475103
+    },
+    {
+      "k": 98,
+      "iteration": 5,
+      "otherLegDistanceLower": 9.541211338590296,
+      "hubLegDistanceLower": 10.213962992511174,
+      "hubHubDistanceLower": 25.842337800066385,
+      "attackerFootRadiusUpper": 42.37453468475103
+    },
+    {
+      "k": 98,
+      "iteration": 6,
+      "otherLegDistanceLower": 9.541208126715613,
+      "hubLegDistanceLower": 10.213959286377117,
+      "hubHubDistanceLower": 25.842329915640438,
+      "attackerFootRadiusUpper": 42.37453468475103
+    },
+    {
+      "k": 98,
+      "iteration": 7,
+      "otherLegDistanceLower": 9.541202546529542,
+      "hubLegDistanceLower": 10.213953110081157,
+      "hubHubDistanceLower": 25.84232119554425,
+      "attackerFootRadiusUpper": 42.37453468475103
+    },
+    {
+      "k": 98,
+      "iteration": 8,
+      "otherLegDistanceLower": 9.541196181829045,
+      "hubLegDistanceLower": 10.213946489731342,
+      "hubHubDistanceLower": 25.842312481861168,
+      "attackerFootRadiusUpper": 42.37453468475103
+    },
+    {
+      "k": 98,
+      "iteration": 9,
+      "otherLegDistanceLower": 9.541189874332794,
+      "hubLegDistanceLower": 10.213939819004493,
+      "hubHubDistanceLower": 25.84230336375621,
+      "attackerFootRadiusUpper": 42.37453468475103
+    },
+    {
+      "k": 99,
+      "iteration": 0,
+      "otherLegDistanceLower": 9.638316351725223,
+      "hubLegDistanceLower": 10.272666280190514,
+      "hubHubDistanceLower": 25.954352384171496,
+      "attackerFootRadiusUpper": 42.33807443434264
+    },
+    {
+      "k": 99,
+      "iteration": 1,
+      "otherLegDistanceLower": 9.633519154833388,
+      "hubLegDistanceLower": 10.290250493363008,
+      "hubHubDistanceLower": 25.964652893984432,
+      "attackerFootRadiusUpper": 42.33807443434264
+    },
+    {
+      "k": 99,
+      "iteration": 2,
+      "otherLegDistanceLower": 9.63351726789949,
+      "hubLegDistanceLower": 10.29025478715021,
+      "hubHubDistanceLower": 25.964651513513648,
+      "attackerFootRadiusUpper": 42.33807443434264
+    },
+    {
+      "k": 99,
+      "iteration": 3,
+      "otherLegDistanceLower": 9.633514663355477,
+      "hubLegDistanceLower": 10.290252345655997,
+      "hubHubDistanceLower": 25.964646791204565,
+      "attackerFootRadiusUpper": 42.33807443434264
+    },
+    {
+      "k": 99,
+      "iteration": 4,
+      "otherLegDistanceLower": 9.633511154731616,
+      "hubLegDistanceLower": 10.290248806082081,
+      "hubHubDistanceLower": 25.9646392946863,
+      "attackerFootRadiusUpper": 42.33807443434264
+    },
+    {
+      "k": 99,
+      "iteration": 5,
+      "otherLegDistanceLower": 9.633505620594809,
+      "hubLegDistanceLower": 10.29024314878811,
+      "hubHubDistanceLower": 25.964632202345967,
+      "attackerFootRadiusUpper": 42.33807443434264
+    },
+    {
+      "k": 99,
+      "iteration": 6,
+      "otherLegDistanceLower": 9.633500571187248,
+      "hubLegDistanceLower": 10.290237610649303,
+      "hubHubDistanceLower": 25.964623463286635,
+      "attackerFootRadiusUpper": 42.33807443434264
+    },
+    {
+      "k": 99,
+      "iteration": 7,
+      "otherLegDistanceLower": 9.633494391880502,
+      "hubLegDistanceLower": 10.290230749670405,
+      "hubHubDistanceLower": 25.964611494516166,
+      "attackerFootRadiusUpper": 42.33807443434264
+    },
+    {
+      "k": 99,
+      "iteration": 8,
+      "otherLegDistanceLower": 9.633485561719974,
+      "hubLegDistanceLower": 10.290221706545264,
+      "hubHubDistanceLower": 25.964600462702453,
+      "attackerFootRadiusUpper": 42.33807443434264
+    },
+    {
+      "k": 99,
+      "iteration": 9,
+      "otherLegDistanceLower": 9.633477487333327,
+      "hubLegDistanceLower": 10.290213317573631,
+      "hubHubDistanceLower": 25.964591390079352,
+      "attackerFootRadiusUpper": 42.33807443434264
+    },
+    {
+      "k": 100,
+      "iteration": 0,
+      "otherLegDistanceLower": 9.73329038178743,
+      "hubLegDistanceLower": 10.3520223155129,
+      "hubHubDistanceLower": 26.077009795971886,
+      "attackerFootRadiusUpper": 42.30152475578067
+    },
+    {
+      "k": 100,
+      "iteration": 1,
+      "otherLegDistanceLower": 9.727732959976333,
+      "hubLegDistanceLower": 10.368667029179454,
+      "hubHubDistanceLower": 26.08723488458017,
+      "attackerFootRadiusUpper": 42.30152475578067
+    },
+    {
+      "k": 100,
+      "iteration": 2,
+      "otherLegDistanceLower": 9.727729392209648,
+      "hubLegDistanceLower": 10.368670320137788,
+      "hubHubDistanceLower": 26.087232024973897,
+      "attackerFootRadiusUpper": 42.30152475578067
+    },
+    {
+      "k": 100,
+      "iteration": 3,
+      "otherLegDistanceLower": 9.727726770417584,
+      "hubLegDistanceLower": 10.36866780350612,
+      "hubHubDistanceLower": 26.08722694291402,
+      "attackerFootRadiusUpper": 42.30152475578067
+    },
+    {
+      "k": 100,
+      "iteration": 4,
+      "otherLegDistanceLower": 9.727723000438173,
+      "hubLegDistanceLower": 10.368663944755271,
+      "hubHubDistanceLower": 26.087219467742187,
+      "attackerFootRadiusUpper": 42.30152475578067
+    },
+    {
+      "k": 100,
+      "iteration": 5,
+      "otherLegDistanceLower": 9.727717505164456,
+      "hubLegDistanceLower": 10.368658229042081,
+      "hubHubDistanceLower": 26.08720834157883,
+      "attackerFootRadiusUpper": 42.30152475578067
+    },
+    {
+      "k": 100,
+      "iteration": 6,
+      "otherLegDistanceLower": 9.727709330340543,
+      "hubLegDistanceLower": 10.368649723266113,
+      "hubHubDistanceLower": 26.087199711919737,
+      "attackerFootRadiusUpper": 42.30152475578067
+    },
+    {
+      "k": 100,
+      "iteration": 7,
+      "otherLegDistanceLower": 9.727702926019319,
+      "hubLegDistanceLower": 10.368643165953268,
+      "hubHubDistanceLower": 26.087187030075196,
+      "attackerFootRadiusUpper": 42.30152475578067
+    },
+    {
+      "k": 100,
+      "iteration": 8,
+      "otherLegDistanceLower": 9.727693515598885,
+      "hubLegDistanceLower": 10.368633537100834,
+      "hubHubDistanceLower": 26.087175514163885,
+      "attackerFootRadiusUpper": 42.30152475578067
+    },
+    {
+      "k": 100,
+      "iteration": 9,
+      "otherLegDistanceLower": 9.727685102360448,
+      "hubLegDistanceLower": 10.368624694392185,
+      "hubHubDistanceLower": 26.087166635296533,
+      "attackerFootRadiusUpper": 42.30152475578067
+    },
+    {
+      "k": 101,
+      "iteration": 0,
+      "otherLegDistanceLower": 9.830126162992746,
+      "hubLegDistanceLower": 10.433471209657155,
+      "hubHubDistanceLower": 26.199951110234327,
+      "attackerFootRadiusUpper": 42.264886655737065
+    },
+    {
+      "k": 101,
+      "iteration": 1,
+      "otherLegDistanceLower": 9.823833125285459,
+      "hubLegDistanceLower": 10.44919528313269,
+      "hubHubDistanceLower": 26.210105011580623,
+      "attackerFootRadiusUpper": 42.264886655737065
+    },
+    {
+      "k": 101,
+      "iteration": 2,
+      "otherLegDistanceLower": 9.823830574085825,
+      "hubLegDistanceLower": 10.449199707150656,
+      "hubHubDistanceLower": 26.21010553251377,
+      "attackerFootRadiusUpper": 42.264886655737065
+    },
+    {
+      "k": 101,
+      "iteration": 3,
+      "otherLegDistanceLower": 9.823829190919186,
+      "hubLegDistanceLower": 10.449198302618566,
+      "hubHubDistanceLower": 26.210103284123026,
+      "attackerFootRadiusUpper": 42.264886655737065
+    },
+    {
+      "k": 101,
+      "iteration": 4,
+      "otherLegDistanceLower": 9.82382756774109,
+      "hubLegDistanceLower": 10.449196547439097,
+      "hubHubDistanceLower": 26.210100550626265,
+      "attackerFootRadiusUpper": 42.264886655737065
+    },
+    {
+      "k": 101,
+      "iteration": 5,
+      "otherLegDistanceLower": 9.823825621488169,
+      "hubLegDistanceLower": 10.449194397522081,
+      "hubHubDistanceLower": 26.2100972235281,
+      "attackerFootRadiusUpper": 42.264886655737065
+    },
+    {
+      "k": 101,
+      "iteration": 6,
+      "otherLegDistanceLower": 9.823823267153921,
+      "hubLegDistanceLower": 10.44919177246284,
+      "hubHubDistanceLower": 26.210092661152395,
+      "attackerFootRadiusUpper": 42.264886655737065
+    },
+    {
+      "k": 101,
+      "iteration": 7,
+      "otherLegDistanceLower": 9.823820058499036,
+      "hubLegDistanceLower": 10.44918815588164,
+      "hubHubDistanceLower": 26.21008528779232,
+      "attackerFootRadiusUpper": 42.264886655737065
+    },
+    {
+      "k": 101,
+      "iteration": 8,
+      "otherLegDistanceLower": 9.823814845257454,
+      "hubLegDistanceLower": 10.449182328127778,
+      "hubHubDistanceLower": 26.21007730772904,
+      "attackerFootRadiusUpper": 42.264886655737065
+    },
+    {
+      "k": 101,
+      "iteration": 9,
+      "otherLegDistanceLower": 9.823809266526489,
+      "hubLegDistanceLower": 10.449175980298508,
+      "hubHubDistanceLower": 26.21006693332336,
+      "attackerFootRadiusUpper": 42.264886655737065
+    },
+    {
+      "k": 102,
+      "iteration": 0,
+      "otherLegDistanceLower": 9.928819478726574,
+      "hubLegDistanceLower": 10.517013534297664,
+      "hubHubDistanceLower": 26.323214203148765,
+      "attackerFootRadiusUpper": 42.22816114574278
+    },
+    {
+      "k": 102,
+      "iteration": 1,
+      "otherLegDistanceLower": 9.921802193731896,
+      "hubLegDistanceLower": 10.531826132163376,
+      "hubHubDistanceLower": 26.33328503402843,
+      "attackerFootRadiusUpper": 42.22816114574278
+    },
+    {
+      "k": 102,
+      "iteration": 2,
+      "otherLegDistanceLower": 9.921796125178973,
+      "hubLegDistanceLower": 10.531827583346923,
+      "hubHubDistanceLower": 26.33327955861183,
+      "attackerFootRadiusUpper": 42.22816114574278
+    },
+    {
+      "k": 102,
+      "iteration": 3,
+      "otherLegDistanceLower": 9.92179184122083,
+      "hubLegDistanceLower": 10.531823480344201,
+      "hubHubDistanceLower": 26.33327202979762,
+      "attackerFootRadiusUpper": 42.22816114574278
+    },
+    {
+      "k": 102,
+      "iteration": 4,
+      "otherLegDistanceLower": 9.921786231114785,
+      "hubLegDistanceLower": 10.531817688111248,
+      "hubHubDistanceLower": 26.333260020138887,
+      "attackerFootRadiusUpper": 42.22816114574278
+    },
+    {
+      "k": 102,
+      "iteration": 5,
+      "otherLegDistanceLower": 9.921777420220735,
+      "hubLegDistanceLower": 10.531808372923246,
+      "hubHubDistanceLower": 26.333245417746298,
+      "attackerFootRadiusUpper": 42.22816114574278
+    },
+    {
+      "k": 102,
+      "iteration": 6,
+      "otherLegDistanceLower": 9.921766305213486,
+      "hubLegDistanceLower": 10.531797261594464,
+      "hubHubDistanceLower": 26.333233626120517,
+      "attackerFootRadiusUpper": 42.22816114574278
+    },
+    {
+      "k": 102,
+      "iteration": 7,
+      "otherLegDistanceLower": 9.921757620401808,
+      "hubLegDistanceLower": 10.531788119240536,
+      "hubHubDistanceLower": 26.33321961771515,
+      "attackerFootRadiusUpper": 42.22816114574278
+    },
+    {
+      "k": 102,
+      "iteration": 8,
+      "otherLegDistanceLower": 9.92174695164174,
+      "hubLegDistanceLower": 10.531777461317178,
+      "hubHubDistanceLower": 26.333206603864323,
+      "attackerFootRadiusUpper": 42.22816114574278
+    },
+    {
+      "k": 102,
+      "iteration": 9,
+      "otherLegDistanceLower": 9.921737609577676,
+      "hubLegDistanceLower": 10.531767251839204,
+      "hubHubDistanceLower": 26.33319412783889,
+      "attackerFootRadiusUpper": 42.22816114574278
+    },
+    {
+      "k": 103,
+      "iteration": 0,
+      "otherLegDistanceLower": 10.029258480719502,
+      "hubLegDistanceLower": 10.602548799421726,
+      "hubHubDistanceLower": 26.446700853535134,
+      "attackerFootRadiusUpper": 42.19134924218666
+    },
+    {
+      "k": 103,
+      "iteration": 1,
+      "otherLegDistanceLower": 10.021553540133187,
+      "hubLegDistanceLower": 10.616476614288342,
+      "hubHubDistanceLower": 26.45670737087549,
+      "attackerFootRadiusUpper": 42.19134924218666
+    },
+    {
+      "k": 103,
+      "iteration": 2,
+      "otherLegDistanceLower": 10.021550125136375,
+      "hubLegDistanceLower": 10.61648078316216,
+      "hubHubDistanceLower": 26.456707533627934,
+      "attackerFootRadiusUpper": 42.19134924218666
+    },
+    {
+      "k": 103,
+      "iteration": 3,
+      "otherLegDistanceLower": 10.021548401368289,
+      "hubLegDistanceLower": 10.616479014552896,
+      "hubHubDistanceLower": 26.456704729719057,
+      "attackerFootRadiusUpper": 42.19134924218666
+    },
+    {
+      "k": 103,
+      "iteration": 4,
+      "otherLegDistanceLower": 10.021546377351818,
+      "hubLegDistanceLower": 10.616476809256445,
+      "hubHubDistanceLower": 26.45670131257704,
+      "attackerFootRadiusUpper": 42.19134924218666
+    },
+    {
+      "k": 103,
+      "iteration": 5,
+      "otherLegDistanceLower": 10.021543946513281,
+      "hubLegDistanceLower": 10.616474106542674,
+      "hubHubDistanceLower": 26.456697145387455,
+      "attackerFootRadiusUpper": 42.19134924218666
+    },
+    {
+      "k": 103,
+      "iteration": 6,
+      "otherLegDistanceLower": 10.021541001018013,
+      "hubLegDistanceLower": 10.616470802908491,
+      "hubHubDistanceLower": 26.456692059766237,
+      "attackerFootRadiusUpper": 42.19134924218666
+    },
+    {
+      "k": 103,
+      "iteration": 7,
+      "otherLegDistanceLower": 10.021537417347,
+      "hubLegDistanceLower": 10.616466766927974,
+      "hubHubDistanceLower": 26.456680303792034,
+      "attackerFootRadiusUpper": 42.19134924218666
+    },
+    {
+      "k": 103,
+      "iteration": 8,
+      "otherLegDistanceLower": 10.021528742923143,
+      "hubLegDistanceLower": 10.616457626712421,
+      "hubHubDistanceLower": 26.45666482385546,
+      "attackerFootRadiusUpper": 42.19134924218666
+    },
+    {
+      "k": 103,
+      "iteration": 9,
+      "otherLegDistanceLower": 10.021517454761597,
+      "hubLegDistanceLower": 10.616445532659844,
+      "hubHubDistanceLower": 26.456648181536714,
+      "attackerFootRadiusUpper": 42.19134924218666
+    },
+    {
+      "k": 104,
+      "iteration": 0,
+      "otherLegDistanceLower": 10.131490521106343,
+      "hubLegDistanceLower": 10.6901233570516,
+      "hubHubDistanceLower": 26.570511117788914,
+      "attackerFootRadiusUpper": 42.154451966317
+    },
+    {
+      "k": 104,
+      "iteration": 1,
+      "otherLegDistanceLower": 10.123101278749623,
+      "hubLegDistanceLower": 10.703172759912578,
+      "hubHubDistanceLower": 26.5804307251218,
+      "attackerFootRadiusUpper": 42.154451966317
+    },
+    {
+      "k": 104,
+      "iteration": 2,
+      "otherLegDistanceLower": 10.12309188707378,
+      "hubLegDistanceLower": 10.703170628053572,
+      "hubHubDistanceLower": 26.58042496039439,
+      "attackerFootRadiusUpper": 42.154451966317
+    },
+    {
+      "k": 104,
+      "iteration": 3,
+      "otherLegDistanceLower": 10.123087343483506,
+      "hubLegDistanceLower": 10.703166213502362,
+      "hubHubDistanceLower": 26.580415343353238,
+      "attackerFootRadiusUpper": 42.154451966317
+    },
+    {
+      "k": 104,
+      "iteration": 4,
+      "otherLegDistanceLower": 10.123080007622377,
+      "hubLegDistanceLower": 10.703158776813932,
+      "hubHubDistanceLower": 26.58040377781938,
+      "attackerFootRadiusUpper": 42.154451966317
+    },
+    {
+      "k": 104,
+      "iteration": 5,
+      "otherLegDistanceLower": 10.123071566461041,
+      "hubLegDistanceLower": 10.703149686926269,
+      "hubHubDistanceLower": 26.580389412994567,
+      "attackerFootRadiusUpper": 42.154451966317
+    },
+    {
+      "k": 104,
+      "iteration": 6,
+      "otherLegDistanceLower": 10.123061235617847,
+      "hubLegDistanceLower": 10.70313834004926,
+      "hubHubDistanceLower": 26.58037036220746,
+      "attackerFootRadiusUpper": 42.154451966317
+    },
+    {
+      "k": 104,
+      "iteration": 7,
+      "otherLegDistanceLower": 10.123046888806687,
+      "hubLegDistanceLower": 10.70312354125431,
+      "hubHubDistanceLower": 26.580349866041473,
+      "attackerFootRadiusUpper": 42.154451966317
+    },
+    {
+      "k": 104,
+      "iteration": 8,
+      "otherLegDistanceLower": 10.123031488425749,
+      "hubLegDistanceLower": 10.703107615529722,
+      "hubHubDistanceLower": 26.58032796161977,
+      "attackerFootRadiusUpper": 42.154451966317
+    },
+    {
+      "k": 104,
+      "iteration": 9,
+      "otherLegDistanceLower": 10.123015353488512,
+      "hubLegDistanceLower": 10.703090478524638,
+      "hubHubDistanceLower": 26.580307363366998,
+      "attackerFootRadiusUpper": 42.154451966317
+    },
+    {
+      "k": 105,
+      "iteration": 0,
+      "otherLegDistanceLower": 10.235385048010134,
+      "hubLegDistanceLower": 10.779616737425403,
+      "hubHubDistanceLower": 26.694523197849005,
+      "attackerFootRadiusUpper": 42.11747034424011
+    },
+    {
+      "k": 105,
+      "iteration": 1,
+      "otherLegDistanceLower": 10.22635213749937,
+      "hubLegDistanceLower": 10.791818039644088,
+      "hubHubDistanceLower": 26.70438652439214,
+      "attackerFootRadiusUpper": 42.11747034424011
+    },
+    {
+      "k": 105,
+      "iteration": 2,
+      "otherLegDistanceLower": 10.22634767570845,
+      "hubLegDistanceLower": 10.791821647204012,
+      "hubHubDistanceLower": 26.70438558908813,
+      "attackerFootRadiusUpper": 42.11747034424011
+    },
+    {
+      "k": 105,
+      "iteration": 3,
+      "otherLegDistanceLower": 10.226345253388311,
+      "hubLegDistanceLower": 10.791819118126996,
+      "hubHubDistanceLower": 26.704381583253046,
+      "attackerFootRadiusUpper": 42.11747034424011
+    },
+    {
+      "k": 105,
+      "iteration": 4,
+      "otherLegDistanceLower": 10.226342373943348,
+      "hubLegDistanceLower": 10.791815942724984,
+      "hubHubDistanceLower": 26.70437666392857,
+      "attackerFootRadiusUpper": 42.11747034424011
+    },
+    {
+      "k": 105,
+      "iteration": 5,
+      "otherLegDistanceLower": 10.226338887313538,
+      "hubLegDistanceLower": 10.791812029364918,
+      "hubHubDistanceLower": 26.70436977874146,
+      "attackerFootRadiusUpper": 42.11747034424011
+    },
+    {
+      "k": 105,
+      "iteration": 6,
+      "otherLegDistanceLower": 10.226334063025911,
+      "hubLegDistanceLower": 10.791806532986026,
+      "hubHubDistanceLower": 26.70435741138897,
+      "attackerFootRadiusUpper": 42.11747034424011
+    },
+    {
+      "k": 105,
+      "iteration": 7,
+      "otherLegDistanceLower": 10.226325036180674,
+      "hubLegDistanceLower": 10.791796781939993,
+      "hubHubDistanceLower": 26.70434599464807,
+      "attackerFootRadiusUpper": 42.11747034424011
+    },
+    {
+      "k": 105,
+      "iteration": 8,
+      "otherLegDistanceLower": 10.226317193950454,
+      "hubLegDistanceLower": 10.791787621898822,
+      "hubHubDistanceLower": 26.70433093756452,
+      "attackerFootRadiusUpper": 42.11747034424011
+    },
+    {
+      "k": 105,
+      "iteration": 9,
+      "otherLegDistanceLower": 10.226306569866477,
+      "hubLegDistanceLower": 10.791775633492941,
+      "hubHubDistanceLower": 26.704312955348485,
+      "attackerFootRadiusUpper": 42.11747034424011
+    },
+    {
+      "k": 106,
+      "iteration": 0,
+      "otherLegDistanceLower": 10.34102344575339,
+      "hubLegDistanceLower": 10.87110856279686,
+      "hubHubDistanceLower": 26.818878476863823,
+      "attackerFootRadiusUpper": 42.08040540692057
+    },
+    {
+      "k": 106,
+      "iteration": 1,
+      "otherLegDistanceLower": 10.331342995761648,
+      "hubLegDistanceLower": 10.882460016865656,
+      "hubHubDistanceLower": 26.828646884006425,
+      "attackerFootRadiusUpper": 42.08040540692057
+    },
+    {
+      "k": 106,
+      "iteration": 2,
+      "otherLegDistanceLower": 10.33133051823569,
+      "hubLegDistanceLower": 10.882455066092831,
+      "hubHubDistanceLower": 26.828634618615617,
+      "attackerFootRadiusUpper": 42.08040540692057
+    },
+    {
+      "k": 106,
+      "iteration": 3,
+      "otherLegDistanceLower": 10.331320439865085,
+      "hubLegDistanceLower": 10.882445625464198,
+      "hubHubDistanceLower": 26.8286186338179,
+      "attackerFootRadiusUpper": 42.08040540692057
+    },
+    {
+      "k": 106,
+      "iteration": 4,
+      "otherLegDistanceLower": 10.33130855600417,
+      "hubLegDistanceLower": 10.882433014311347,
+      "hubHubDistanceLower": 26.828593754426027,
+      "attackerFootRadiusUpper": 42.08040540692057
+    },
+    {
+      "k": 106,
+      "iteration": 5,
+      "otherLegDistanceLower": 10.331290000653683,
+      "hubLegDistanceLower": 10.8824134153279,
+      "hubHubDistanceLower": 26.82856995627095,
+      "attackerFootRadiusUpper": 42.08040540692057
+    },
+    {
+      "k": 106,
+      "iteration": 6,
+      "otherLegDistanceLower": 10.331271623435345,
+      "hubLegDistanceLower": 10.882394823471587,
+      "hubHubDistanceLower": 26.828547038610502,
+      "attackerFootRadiusUpper": 42.08040540692057
+    },
+    {
+      "k": 106,
+      "iteration": 7,
+      "otherLegDistanceLower": 10.331254721211236,
+      "hubLegDistanceLower": 10.882376721831635,
+      "hubHubDistanceLower": 26.828519693242654,
+      "attackerFootRadiusUpper": 42.08040540692057
+    },
+    {
+      "k": 106,
+      "iteration": 8,
+      "otherLegDistanceLower": 10.331233972004599,
+      "hubLegDistanceLower": 10.882355268482302,
+      "hubHubDistanceLower": 26.828497718067354,
+      "attackerFootRadiusUpper": 42.08040540692057
+    },
+    {
+      "k": 106,
+      "iteration": 9,
+      "otherLegDistanceLower": 10.331217875000306,
+      "hubLegDistanceLower": 10.882337882815897,
+      "hubHubDistanceLower": 26.82847091885057,
+      "attackerFootRadiusUpper": 42.08040540692057
+    },
+    {
+      "k": 107,
+      "iteration": 0,
+      "otherLegDistanceLower": 10.448217423586074,
+      "hubLegDistanceLower": 10.964420508393438,
+      "hubHubDistanceLower": 26.943382815365236,
+      "attackerFootRadiusUpper": 42.04325819018032
+    },
+    {
+      "k": 107,
+      "iteration": 1,
+      "otherLegDistanceLower": 10.437951331788959,
+      "hubLegDistanceLower": 10.974974950256,
+      "hubHubDistanceLower": 26.953120050150556,
+      "attackerFootRadiusUpper": 42.04325819018032
+    },
+    {
+      "k": 107,
+      "iteration": 2,
+      "otherLegDistanceLower": 10.437945832818261,
+      "hubLegDistanceLower": 10.974978444643467,
+      "hubHubDistanceLower": 26.95312000777551,
+      "attackerFootRadiusUpper": 42.04325819018032
+    },
+    {
+      "k": 107,
+      "iteration": 3,
+      "otherLegDistanceLower": 10.437943706392492,
+      "hubLegDistanceLower": 10.974976287311009,
+      "hubHubDistanceLower": 26.95311675217656,
+      "attackerFootRadiusUpper": 42.04325819018032
+    },
+    {
+      "k": 107,
+      "iteration": 4,
+      "otherLegDistanceLower": 10.437941317861759,
+      "hubLegDistanceLower": 10.974973703607185,
+      "hubHubDistanceLower": 26.953112855432455,
+      "attackerFootRadiusUpper": 42.04325819018032
+    },
+    {
+      "k": 107,
+      "iteration": 5,
+      "otherLegDistanceLower": 10.437938516948634,
+      "hubLegDistanceLower": 10.974970600375617,
+      "hubHubDistanceLower": 26.953108157744396,
+      "attackerFootRadiusUpper": 42.04325819018032
+    },
+    {
+      "k": 107,
+      "iteration": 6,
+      "otherLegDistanceLower": 10.43793517336735,
+      "hubLegDistanceLower": 10.974966853205842,
+      "hubHubDistanceLower": 26.953102468753535,
+      "attackerFootRadiusUpper": 42.04325819018032
+    },
+    {
+      "k": 107,
+      "iteration": 7,
+      "otherLegDistanceLower": 10.437931145516743,
+      "hubLegDistanceLower": 10.974962311385521,
+      "hubHubDistanceLower": 26.95309555984257,
+      "attackerFootRadiusUpper": 42.04325819018032
+    },
+    {
+      "k": 107,
+      "iteration": 8,
+      "otherLegDistanceLower": 10.437926268625644,
+      "hubLegDistanceLower": 10.974956792936927,
+      "hubHubDistanceLower": 26.95308409036309,
+      "attackerFootRadiusUpper": 42.04325819018032
+    },
+    {
+      "k": 107,
+      "iteration": 9,
+      "otherLegDistanceLower": 10.437917905365673,
+      "hubLegDistanceLower": 10.974947680899936,
+      "hubHubDistanceLower": 26.953070593733784,
+      "attackerFootRadiusUpper": 42.04325819018032
+    },
+    {
+      "k": 108,
+      "iteration": 0,
+      "otherLegDistanceLower": 10.557163378806427,
+      "hubLegDistanceLower": 11.059750467286126,
+      "hubHubDistanceLower": 27.06832563468925,
+      "attackerFootRadiusUpper": 42.006029734698224
+    },
+    {
+      "k": 108,
+      "iteration": 1,
+      "otherLegDistanceLower": 10.546271386602843,
+      "hubLegDistanceLower": 11.069475135096567,
+      "hubHubDistanceLower": 27.077946499470013,
+      "attackerFootRadiusUpper": 42.006029734698224
+    },
+    {
+      "k": 108,
+      "iteration": 2,
+      "otherLegDistanceLower": 10.546255419038756,
+      "hubLegDistanceLower": 11.069466458061255,
+      "hubHubDistanceLower": 27.07792447877291,
+      "attackerFootRadiusUpper": 42.006029734698224
+    },
+    {
+      "k": 108,
+      "iteration": 3,
+      "otherLegDistanceLower": 10.546237227781049,
+      "hubLegDistanceLower": 11.069449193099953,
+      "hubHubDistanceLower": 27.077901578797647,
+      "attackerFootRadiusUpper": 42.006029734698224
+    },
+    {
+      "k": 108,
+      "iteration": 4,
+      "otherLegDistanceLower": 10.546220216652507,
+      "hubLegDistanceLower": 11.069430981841387,
+      "hubHubDistanceLower": 27.077870019934515,
+      "attackerFootRadiusUpper": 42.006029734698224
+    },
+    {
+      "k": 108,
+      "iteration": 5,
+      "otherLegDistanceLower": 10.546197230152412,
+      "hubLegDistanceLower": 11.069405825327104,
+      "hubHubDistanceLower": 27.077837833334936,
+      "attackerFootRadiusUpper": 42.006029734698224
+    },
+    {
+      "k": 108,
+      "iteration": 6,
+      "otherLegDistanceLower": 10.546172888507439,
+      "hubLegDistanceLower": 11.069380289294742,
+      "hubHubDistanceLower": 27.077802352454434,
+      "attackerFootRadiusUpper": 42.006029734698224
+    },
+    {
+      "k": 108,
+      "iteration": 7,
+      "otherLegDistanceLower": 10.546146556376435,
+      "hubLegDistanceLower": 11.069352073022795,
+      "hubHubDistanceLower": 27.077771931355425,
+      "attackerFootRadiusUpper": 42.006029734698224
+    },
+    {
+      "k": 108,
+      "iteration": 8,
+      "otherLegDistanceLower": 10.546124050374036,
+      "hubLegDistanceLower": 11.069327865078431,
+      "hubHubDistanceLower": 27.077742827366265,
+      "attackerFootRadiusUpper": 42.006029734698224
+    },
+    {
+      "k": 108,
+      "iteration": 9,
+      "otherLegDistanceLower": 10.546102728026352,
+      "hubLegDistanceLower": 11.069304680847278,
+      "hubHubDistanceLower": 27.077708740057123,
+      "attackerFootRadiusUpper": 42.006029734698224
+    },
+    {
+      "k": 109,
+      "iteration": 0,
+      "otherLegDistanceLower": 10.667516383943543,
+      "hubLegDistanceLower": 11.156752037673513,
+      "hubHubDistanceLower": 27.193303667215595,
+      "attackerFootRadiusUpper": 41.968721086009474
+    },
+    {
+      "k": 109,
+      "iteration": 1,
+      "otherLegDistanceLower": 10.656073987889277,
+      "hubLegDistanceLower": 11.165702155404487,
+      "hubHubDistanceLower": 27.202876410120574,
+      "attackerFootRadiusUpper": 41.968721086009474
+    },
+    {
+      "k": 109,
+      "iteration": 2,
+      "otherLegDistanceLower": 10.656060603184708,
+      "hubLegDistanceLower": 11.165697319352102,
+      "hubHubDistanceLower": 27.20286395013709,
+      "attackerFootRadiusUpper": 41.968721086009474
+    },
+    {
+      "k": 109,
+      "iteration": 3,
+      "otherLegDistanceLower": 10.65605036250147,
+      "hubLegDistanceLower": 11.165687458706032,
+      "hubHubDistanceLower": 27.202849306135718,
+      "attackerFootRadiusUpper": 41.968721086009474
+    },
+    {
+      "k": 109,
+      "iteration": 4,
+      "otherLegDistanceLower": 10.656039312819493,
+      "hubLegDistanceLower": 11.165675784398188,
+      "hubHubDistanceLower": 27.202827612162,
+      "attackerFootRadiusUpper": 41.968721086009474
+    },
+    {
+      "k": 109,
+      "iteration": 5,
+      "otherLegDistanceLower": 10.656023055905123,
+      "hubLegDistanceLower": 11.165658479808483,
+      "hubHubDistanceLower": 27.20278742180909,
+      "attackerFootRadiusUpper": 41.968721086009474
+    },
+    {
+      "k": 109,
+      "iteration": 6,
+      "otherLegDistanceLower": 10.655992296959399,
+      "hubLegDistanceLower": 11.165626478170186,
+      "hubHubDistanceLower": 27.20275076018019,
+      "attackerFootRadiusUpper": 41.968721086009474
+    },
+    {
+      "k": 109,
+      "iteration": 7,
+      "otherLegDistanceLower": 10.65596392799322,
+      "hubLegDistanceLower": 11.165597312835226,
+      "hubHubDistanceLower": 27.202714636616122,
+      "attackerFootRadiusUpper": 41.968721086009474
+    },
+    {
+      "k": 109,
+      "iteration": 8,
+      "otherLegDistanceLower": 10.65593704812779,
+      "hubLegDistanceLower": 11.1655684817574,
+      "hubHubDistanceLower": 27.202671385068964,
+      "attackerFootRadiusUpper": 41.968721086009474
+    },
+    {
+      "k": 109,
+      "iteration": 9,
+      "otherLegDistanceLower": 10.655903756131272,
+      "hubLegDistanceLower": 11.16553405862524,
+      "hubHubDistanceLower": 27.202625963465625,
+      "attackerFootRadiusUpper": 41.968721086009474
+    },
+    {
+      "k": 110,
+      "iteration": 0,
+      "otherLegDistanceLower": 10.779439863083839,
+      "hubLegDistanceLower": 11.255586240183565,
+      "hubHubDistanceLower": 27.318557616390777,
+      "attackerFootRadiusUpper": 41.931333294503325
+    },
+    {
+      "k": 110,
+      "iteration": 1,
+      "otherLegDistanceLower": 10.767439535873194,
+      "hubLegDistanceLower": 11.26376785837327,
+      "hubHubDistanceLower": 27.328068678800538,
+      "attackerFootRadiusUpper": 41.931333294503325
+    },
+    {
+      "k": 110,
+      "iteration": 2,
+      "otherLegDistanceLower": 10.767431741987684,
+      "hubLegDistanceLower": 11.263769158272735,
+      "hubHubDistanceLower": 27.328062934560176,
+      "attackerFootRadiusUpper": 41.931333294503325
+    },
+    {
+      "k": 110,
+      "iteration": 3,
+      "otherLegDistanceLower": 10.767426579776524,
+      "hubLegDistanceLower": 11.263763630708691,
+      "hubHubDistanceLower": 27.328054276493752,
+      "attackerFootRadiusUpper": 41.931333294503325
+    },
+    {
+      "k": 110,
+      "iteration": 4,
+      "otherLegDistanceLower": 10.76742038850239,
+      "hubLegDistanceLower": 11.263756683827035,
+      "hubHubDistanceLower": 27.328035590762696,
+      "attackerFootRadiusUpper": 41.931333294503325
+    },
+    {
+      "k": 110,
+      "iteration": 5,
+      "otherLegDistanceLower": 10.767406092533221,
+      "hubLegDistanceLower": 11.263741733735523,
+      "hubHubDistanceLower": 27.328009883803144,
+      "attackerFootRadiusUpper": 41.931333294503325
+    },
+    {
+      "k": 110,
+      "iteration": 6,
+      "otherLegDistanceLower": 10.767386719965165,
+      "hubLegDistanceLower": 11.263721153265994,
+      "hubHubDistanceLower": 27.327978634360253,
+      "attackerFootRadiusUpper": 41.931333294503325
+    },
+    {
+      "k": 110,
+      "iteration": 7,
+      "otherLegDistanceLower": 10.767364159459186,
+      "hubLegDistanceLower": 11.263696091631784,
+      "hubHubDistanceLower": 27.32794694393119,
+      "attackerFootRadiusUpper": 41.931333294503325
+    },
+    {
+      "k": 110,
+      "iteration": 8,
+      "otherLegDistanceLower": 10.76734244018282,
+      "hubLegDistanceLower": 11.263670623727453,
+      "hubHubDistanceLower": 27.327900040316553,
+      "attackerFootRadiusUpper": 41.931333294503325
+    },
+    {
+      "k": 110,
+      "iteration": 9,
+      "otherLegDistanceLower": 10.767309030429784,
+      "hubLegDistanceLower": 11.263632987909189,
+      "hubHubDistanceLower": 27.327860587055767,
+      "attackerFootRadiusUpper": 41.931333294503325
+    },
+    {
+      "k": 111,
+      "iteration": 0,
+      "otherLegDistanceLower": 10.892932107925056,
+      "hubLegDistanceLower": 11.356256645429994,
+      "hubHubDistanceLower": 27.44412579254483,
+      "attackerFootRadiusUpper": 41.89386741542346
+    },
+    {
+      "k": 111,
+      "iteration": 1,
+      "otherLegDistanceLower": 10.880391703218457,
+      "hubLegDistanceLower": 11.363680396841868,
+      "hubHubDistanceLower": 27.453534151482625,
+      "attackerFootRadiusUpper": 41.89386741542346
+    },
+    {
+      "k": 111,
+      "iteration": 2,
+      "otherLegDistanceLower": 10.880363552898837,
+      "hubLegDistanceLower": 11.363658844465917,
+      "hubHubDistanceLower": 27.45348736273538,
+      "attackerFootRadiusUpper": 41.89386741542346
+    },
+    {
+      "k": 111,
+      "iteration": 3,
+      "otherLegDistanceLower": 10.880326494978458,
+      "hubLegDistanceLower": 11.36362125111668,
+      "hubHubDistanceLower": 27.45343309686541,
+      "attackerFootRadiusUpper": 41.89386741542346
+    },
+    {
+      "k": 111,
+      "iteration": 4,
+      "otherLegDistanceLower": 10.880286099457878,
+      "hubLegDistanceLower": 11.363577638118898,
+      "hubHubDistanceLower": 27.453373034312612,
+      "attackerFootRadiusUpper": 41.89386741542346
+    },
+    {
+      "k": 111,
+      "iteration": 5,
+      "otherLegDistanceLower": 10.880239705930443,
+      "hubLegDistanceLower": 11.363529374391343,
+      "hubHubDistanceLower": 27.453305421159484,
+      "attackerFootRadiusUpper": 41.89386741542346
+    },
+    {
+      "k": 111,
+      "iteration": 6,
+      "otherLegDistanceLower": 10.880188476008511,
+      "hubLegDistanceLower": 11.363475038856306,
+      "hubHubDistanceLower": 27.45322856590241,
+      "attackerFootRadiusUpper": 41.89386741542346
+    },
+    {
+      "k": 111,
+      "iteration": 7,
+      "otherLegDistanceLower": 10.880128047444476,
+      "hubLegDistanceLower": 11.363413286708198,
+      "hubHubDistanceLower": 27.453029261828657,
+      "attackerFootRadiusUpper": 41.89386741542346
+    },
+    {
+      "k": 111,
+      "iteration": 8,
+      "otherLegDistanceLower": 10.87998749235545,
+      "hubLegDistanceLower": 11.363253079097095,
+      "hubHubDistanceLower": 27.452915964815325,
+      "attackerFootRadiusUpper": 41.89386741542346
+    },
+    {
+      "k": 111,
+      "iteration": 9,
+      "otherLegDistanceLower": 10.879899319171567,
+      "hubLegDistanceLower": 11.363162042661312,
+      "hubHubDistanceLower": 27.45281178532754,
+      "attackerFootRadiusUpper": 41.89386741542346
+    },
+    {
+      "k": 112,
+      "iteration": 0,
+      "otherLegDistanceLower": 11.00750180140118,
+      "hubLegDistanceLower": 11.458251875972858,
+      "hubHubDistanceLower": 27.569407419669744,
+      "attackerFootRadiusUpper": 41.85632450886531
+    },
+    {
+      "k": 112,
+      "iteration": 1,
+      "otherLegDistanceLower": 10.995665178056157,
+      "hubLegDistanceLower": 11.465900140778693,
+      "hubHubDistanceLower": 27.57991282715973,
+      "attackerFootRadiusUpper": 41.85632450886531
+    },
+    {
+      "k": 112,
+      "iteration": 2,
+      "otherLegDistanceLower": 10.99562636422971,
+      "hubLegDistanceLower": 11.465869164145227,
+      "hubHubDistanceLower": 27.579869049590705,
+      "attackerFootRadiusUpper": 41.85632450886531
+    },
+    {
+      "k": 112,
+      "iteration": 3,
+      "otherLegDistanceLower": 10.99559179616436,
+      "hubLegDistanceLower": 11.465833808241472,
+      "hubHubDistanceLower": 27.579803112058073,
+      "attackerFootRadiusUpper": 41.85632450886531
+    },
+    {
+      "k": 112,
+      "iteration": 4,
+      "otherLegDistanceLower": 10.995541548601047,
+      "hubLegDistanceLower": 11.465780611271537,
+      "hubHubDistanceLower": 27.57974074606795,
+      "attackerFootRadiusUpper": 41.85632450886531
+    },
+    {
+      "k": 112,
+      "iteration": 5,
+      "otherLegDistanceLower": 10.995492172424528,
+      "hubLegDistanceLower": 11.465730236141574,
+      "hubHubDistanceLower": 27.579673711893037,
+      "attackerFootRadiusUpper": 41.85632450886531
+    },
+    {
+      "k": 112,
+      "iteration": 6,
+      "otherLegDistanceLower": 10.995440884478034,
+      "hubLegDistanceLower": 11.465676147699277,
+      "hubHubDistanceLower": 27.579586584575665,
+      "attackerFootRadiusUpper": 41.85632450886531
+    },
+    {
+      "k": 112,
+      "iteration": 7,
+      "otherLegDistanceLower": 10.995375157357481,
+      "hubLegDistanceLower": 11.465605876059724,
+      "hubHubDistanceLower": 27.579519039932357,
+      "attackerFootRadiusUpper": 41.85632450886531
+    },
+    {
+      "k": 112,
+      "iteration": 8,
+      "otherLegDistanceLower": 10.995324342824917,
+      "hubLegDistanceLower": 11.465551404685863,
+      "hubHubDistanceLower": 27.579453743636115,
+      "attackerFootRadiusUpper": 41.85632450886531
+    },
+    {
+      "k": 112,
+      "iteration": 9,
+      "otherLegDistanceLower": 10.995276079905313,
+      "hubLegDistanceLower": 11.465498773531303,
+      "hubHubDistanceLower": 27.579385504663907,
+      "attackerFootRadiusUpper": 41.85632450886531
+    }
+  ]
+}

@@ -12,26 +12,23 @@ Depth explainer: **https://tau-game.com/depth**. The game, self-play/training
 system, public explanation and mathematical research are connected parts of
 this project, with different standards of evidence.
 
-### Current work — start here (21 September 2026)
+### Current work — start here (22 September 2026)
 
-**Working branch:** `codex/l11-stop-audit`, [PR #33](https://github.com/liaminhawai-cmd/Tau/pull/33). At this handoff check, PR #33 and [PR #32](https://github.com/liaminhawai-cmd/Tau/pull/32) are both open, unmerged and individually mergeable. Recheck before integrating; neither is assumed to be on main.
+PR #33 merged into main as `8b31eec8b`, before the two subsequent maths commits `76c3e2d8b` and `e65124f9d`. This fresh continuation carries those files forward on a main-based branch, `codex/arm2-replay-continuation`. Recheck PR state before integrating.
 
-Read only this short route first:
+1. [Response to Claude's replay and audit](docs/geometry-reviews/arm2-propagation/CLAUDE-RESPONSE.md): latest evidence, revised task order and requested reply-band maps.
+2. [Composed arm-2 enclosure](docs/geometry-reviews/arm2-propagation/README.md): 380 composed contact maps and positive uniform throw margin in the stated real-arithmetic model.
+3. [Replay verification](docs/geometry-reviews/arm2-propagation/REPLAY.md): compare independent numeric output while retaining within-run hash checks.
+4. [Dominance argument](docs/geometry-reviews/arm2-bounds/DOMINANCE.md): closes all 38 proposed first-correction input boxes.
+5. [Original Claude task request](docs/geometry-reviews/l11-stop-audit/CLAUDE-TASKS.md) for background; the response above supersedes its completed tasks. Consult the review index and historical notes below as needed.
 
-1. [Claude task request](docs/geometry-reviews/l11-stop-audit/CLAUDE-TASKS.md): Opus starts task A; Sonnet, if available, handles prescribed instrumentation/runs; Astra owns the abstract proof work. No Fable dependency.
-2. [L11 stop audit](docs/geometry-reviews/l11-stop-audit/README.md): reproduced 2-degree defence against the endpoint continuation scorer. This is not a full-game escape proof.
-3. [Full contact-map lemma](docs/geometry-reviews/contact-map/README.md): the latest completed mathematical work, its assumptions and the next implementation request.
-4. [Arm-2 uniform derivative bounds](docs/geometry-reviews/arm2-bounds/README.md): the newest maths; 36/38 proposed input boxes bounded, plus a contact/no-contact enclosure lemma. Read this before implementing the full-map proposal.
-5. For the underlying geometry, read [Brief 7 on its own branch](https://github.com/liaminhawai-cmd/Tau/blob/codex/brief7-park-contact-chart/docs/geometry-reviews/brief7/response.md). Its package is in PR #32, not yet in this branch. Both PRs append to this handoff; preserve both updates if integration needs conflict resolution.
-6. Consult the [review index](docs/geometry-reviews/README.md), [original briefs](docs/project-context/README.md) and [trainer history](docs/project-context/training-history.md) only as needed.
+**Completed:** all 38 local input-box guards; composed local real-model throw enclosure; Claude's independent numeric replay and two-runtime attacker-path agreement; task-A stop audit. This is not a universal floating-engine or dead-region proof.
 
-**Completed:** L11 tactical reproduction; L13/L17 test specification and task split; conditional full contact-map derivative/enclosure lemma; 140-correction nominal arm-2 replay and 35 numerical derivative checks.
+**Next:** Opus isolates stride behaviour (four recovered witnesses, one lost), validates budget handling and runs controlled L17 ablations; Sonnet, if available, executes prescribed implementation/runs. Request reply-band maps from the original Brief 6 seed plus ten development families. GPT/Astra retains the uniform floating-contact proof and all-reply cover. No Fable dependency.
 
-**Pending:** new L13/L17 ablation matches, their equal-time runner verification, uniform derivative/branch bounds for a complete throw certificate, and all-reply coverage for a dead region. No separate Claude session has been launched and no trainer has been restarted by this handoff work.
+The original 2-degree L11 fixture is already refuted by internal L13 and L17. The 150-position tolerance run reduces reference-grid misses from 5/142 to 2/142, but loses the old 15-degree witness at `arenamujedgps-1`. Sampled counterexamples are not full-game escape proofs. Pinned geometry and internal L17 share a research revision, not main. No trainer was restarted.
 
-**First action for Opus:** verify current internal L13/L17 mappings and replay the 2-degree fixture at the same post-root position. Report which stops each search actually examines before redesigning anything. Public difficulty 13 is not automatically internal experimental L13.
-
-**Do not inherit these obsolete conclusions:** Brief 4 is not the latest checker audit; Brief 7 confirms the two specific repairs. The historical 96-game L17 run did not test the new 261-point/63-ball corpus. Sampled labels and a program's CERTIFIED output are not substitutes for a checked proof. Later dated updates below supersede earlier status statements.
+Later dated updates supersede historical status below; do not repeat the older 36/38 count or treat composition as unattempted.
 
 ## The user's purpose for `/depth`
 
