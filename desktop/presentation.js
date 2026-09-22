@@ -1105,6 +1105,7 @@
         ? `<div class="desktop-controls-head">${esc(t('Touch'))}</div><p class="desktop-controls-note" style="margin:0 0 16px">${esc(t('Tap a foot to pin it, then drag another foot to swing. Drag the 3D view to look around. Drag the flat board\'s rim knob to resize it.'))}</p>`
         : ''}
       <div class="desktop-controls-head">${esc(touch ? t('Keyboard (if one is connected)') : t('Keyboard and mouse'))}</div>
+      <label class="desktop-setting">${esc(t('End turn after dragging'))}<select id="desktopMoveCommitMode"><option value="release">${esc(t('Release mouse'))}</option><option value="enter">${esc(t('Press {key}', {key:keyName(settings.keys.commit)}))}</option></select></label>
       <div id="desktopKeyboardDiagram" class="desktop-diagram-wrap">${keyboard()}</div>
       ${touch ? '' : `<p class="desktop-controls-note" style="margin:0">${esc(t('Click a foot to pin it, then drag another foot to swing. Right-drag to look around. Scroll the flat board, or drag its rim knob, to resize it.'))}</p>`}
       ${canRebind() ? `<p class="desktop-controls-note">${esc(t('Click a key to change it, then press the new one. Esc and F1 stay as they are.'))}${window.tauSteam ? ' ' + esc(t('Controllers are remapped in Steam’s own controller settings.')) : ''} <button type="button" id="desktopKeysReset">${esc(t('Reset keys'))}</button></p>` : ''}
@@ -1119,6 +1120,8 @@
       { label:t('Done'), onClick:() => { stopRebind(); if (inMatch()) focusBoard(); } },
     ], true, {dismiss:stopRebind});
     $('modalBox').classList.add('desktop-sheet');
+    $('desktopMoveCommitMode').value = getMoveCommitMode();
+    $('desktopMoveCommitMode').onchange = e => setMoveCommitMode(e.target.value);
     $('desktopPadBrand').value = settings.padBrand;
     $('desktopPadBrand').onchange = e => { settings.padBrand = e.target.value; saveSettings(); drawPad(); };
     $('desktopPadScheme').value = settings.padScheme;
