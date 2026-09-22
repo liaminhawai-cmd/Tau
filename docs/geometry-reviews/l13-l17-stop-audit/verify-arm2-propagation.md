@@ -102,3 +102,30 @@ From `docs/geometry-reviews/arm2-propagation/`, with `$PINNED` a checkout whose 
 
 Run here on Node v22.22.2 and Python 3.11.15; the archive was produced on Node v24.19.0. Whole chain
 under 15 seconds.
+
+## Addendum, 22 September 2026 — the disturbance/robustness result
+
+`codex/arm2-replay-continuation` `62cb75ac2` ("Bound per-pass disturbance tolerance for the arm-2
+throw") adds a conditional robustness result on top of the propagation package verified above:
+survives an arbitrary **1e-8u disturbance per mass coordinate at every one of the 380 passes**
+(inactive passes included), retaining a final exposed-foot radius lower bound of
+**67.19296212818695u** against the same 67.16700000000002u edge — clearance **0.025962128186932883u**.
+
+Reproduced independently (fresh `trace.json`, same pinned checkout as before):
+
+| Run | Passes | Clearance lower (u) | Match |
+| --- | ---: | ---: | --- |
+| Zero disturbance (robustness wrapper) | 380 | 0.030356860428611295 | exact |
+| 1e-8 per coordinate/pass | 380 | 0.025962128186932883 | exact |
+| 1e-7 per coordinate/pass | — | `conditionalSuccess: false`, negative clearance | matches "not a completed throw bound" |
+| `check_budget.py` | — | `localEuclideanErrorUpper: 1.9735434015526995e-09` | exact, matches the "less than 2e-9u" claim |
+
+Also reproduced exactly: `minimumGradientLower: 1.163218842254502` and
+`maximumPenetrationUpper: 0.14481296702833737` at the 1e-8 disturbance level, both cited directly in
+the sharper local error lemma's worked example (`m=1.16`, `p_+<=0.15`).
+
+Not independently re-derived here: the inversion-identity proof, the local error lemma itself, or
+the "IF a runtime proof establishes delta/eta/rho <= 1e-9" conditional — those are the mathematical
+content the document explicitly flags as not yet closed (geometry/closest-point error, branch
+selection, pruning guards, early solver exit, terminal correspondence). This addendum verifies the
+numbers the document reports, not the argument connecting them to the engine's actual arithmetic.
