@@ -1,0 +1,114 @@
+{
+  "label": "nfng6zslk",
+  "pose": [
+    -41.4621,
+    10.8997,
+    3.1266,
+    -27.5349,
+    8.5679,
+    4.6837
+  ],
+  "victim": 0,
+  "arms": {
+    "oneDegPlusFinal": [
+      {
+        "pivotIdx": 0,
+        "dir": 1,
+        "limitDeg": 35.666667,
+        "stopCount": 26,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 0,
+        "dir": -1,
+        "limitDeg": 12.666667,
+        "stopCount": 11,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 1,
+        "dir": 1,
+        "limitDeg": 7,
+        "stopCount": 29,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 1,
+        "dir": -1,
+        "limitDeg": 34.333333,
+        "stopCount": 15,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 2,
+        "dir": 1,
+        "limitDeg": 23,
+        "stopCount": 32,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 2,
+        "dir": -1,
+        "limitDeg": 3.666667,
+        "stopCount": 6,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      }
+    ],
+    "quarterDeg": [
+      {
+        "pivotIdx": 0,
+        "dir": 1,
+        "limitDeg": 35.5,
+        "stopCount": 102,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 0,
+        "dir": -1,
+        "limitDeg": 12.75,
+        "stopCount": 39,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 1,
+        "dir": 1,
+        "limitDeg": 7,
+        "stopCount": 112,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 1,
+        "dir": -1,
+        "limitDeg": 34.5,
+        "stopCount": 54,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 2,
+        "dir": 1,
+        "limitDeg": 23,
+        "stopCount": 123,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 2,
+        "dir": -1,
+        "limitDeg": 3.75,
+        "stopCount": 18,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      }
+    ]
+  }
+}

@@ -1,0 +1,115 @@
+wrote full map to results/positive-control/certdead-1.json
+{
+  "label": "certdead-1",
+  "pose": [
+    12.2497,
+    -27.3335,
+    -1.4624,
+    28.0624,
+    -36.109,
+    -0.1425
+  ],
+  "victim": 1,
+  "arms": {
+    "oneDegPlusFinal": [
+      {
+        "pivotIdx": 0,
+        "dir": 1,
+        "limitDeg": 16.333333,
+        "stopCount": 15,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 0,
+        "dir": -1,
+        "limitDeg": 14.333333,
+        "stopCount": 10,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 1,
+        "dir": 1,
+        "limitDeg": 62.333333,
+        "stopCount": 11,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 1,
+        "dir": -1,
+        "limitDeg": 44.333333,
+        "stopCount": 10,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 2,
+        "dir": 1,
+        "limitDeg": 16,
+        "stopCount": 9,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 2,
+        "dir": -1,
+        "limitDeg": 4.666667,
+        "stopCount": 6,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      }
+    ],
+    "quarterDeg": [
+      {
+        "pivotIdx": 0,
+        "dir": 1,
+        "limitDeg": 16.5,
+        "stopCount": 54,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 0,
+        "dir": -1,
+        "limitDeg": 14.25,
+        "stopCount": 35,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 1,
+        "dir": 1,
+        "limitDeg": 62.25,
+        "stopCount": 40,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 1,
+        "dir": -1,
+        "limitDeg": 44.5,
+        "stopCount": 35,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 2,
+        "dir": 1,
+        "limitDeg": 16,
+        "stopCount": 33,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 2,
+        "dir": -1,
+        "limitDeg": 4.5,
+        "stopCount": 20,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      }
+    ]
+  }
+}

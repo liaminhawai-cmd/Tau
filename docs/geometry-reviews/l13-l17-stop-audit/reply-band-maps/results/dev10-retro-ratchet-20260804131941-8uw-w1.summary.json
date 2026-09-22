@@ -1,0 +1,114 @@
+{
+  "label": "retro-ratchet-20260804131941-8uw-w1",
+  "pose": [
+    -42.9017,
+    -2.5741,
+    6.2534,
+    -30.0915,
+    -5.4246,
+    5.9748
+  ],
+  "victim": 0,
+  "arms": {
+    "oneDegPlusFinal": [
+      {
+        "pivotIdx": 0,
+        "dir": 1,
+        "limitDeg": 35.666667,
+        "stopCount": 20,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 0,
+        "dir": -1,
+        "limitDeg": 25,
+        "stopCount": 24,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 1,
+        "dir": 1,
+        "limitDeg": 27.333333,
+        "stopCount": 21,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 1,
+        "dir": -1,
+        "limitDeg": 12.666667,
+        "stopCount": 25,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 2,
+        "dir": 1,
+        "limitDeg": 16,
+        "stopCount": 18,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 2,
+        "dir": -1,
+        "limitDeg": 23,
+        "stopCount": 23,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      }
+    ],
+    "quarterDeg": [
+      {
+        "pivotIdx": 0,
+        "dir": 1,
+        "limitDeg": 35.75,
+        "stopCount": 75,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 0,
+        "dir": -1,
+        "limitDeg": 25,
+        "stopCount": 93,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 1,
+        "dir": 1,
+        "limitDeg": 27.25,
+        "stopCount": 77,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 1,
+        "dir": -1,
+        "limitDeg": 12.5,
+        "stopCount": 95,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 2,
+        "dir": 1,
+        "limitDeg": 16.25,
+        "stopCount": 66,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      },
+      {
+        "pivotIdx": 2,
+        "dir": -1,
+        "limitDeg": 23,
+        "stopCount": 87,
+        "counterexampleBands": [],
+        "isolatedCounterexamples": []
+      }
+    ]
+  }
+}
