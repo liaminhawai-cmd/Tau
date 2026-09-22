@@ -138,6 +138,10 @@ if (window.TAU_DESKTOP) {
     #btns { display:flex; gap:10px; flex-wrap:wrap; }
     .tau-setting { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:18px 0; text-align:left; }
     .tau-setting select { max-width:60%; min-width:140px; padding:9px; font:inherit; color:#e6ecf2; background:#252b33; border:1px solid #46505c; border-radius:7px; }
+    .tau-setting > span { max-width:60%; display:flex; align-items:center; gap:6px; }
+    .tau-setting input[type="range"] { width:120px; max-width:70%; }
+    #boardQuickToggle { position:fixed; top:calc(9px + env(safe-area-inset-top)); right:118px; z-index:60; padding:6px 7px; font-size:19px; background:none; border:0; color:#9aa4ad; }
+    body.ingame #boardQuickToggle, .tau-desktop #boardQuickToggle, body.dirHideUI #boardQuickToggle { display:none; }
     .tau-settings-note { font-size:13px; color:#9aa4ad; text-align:left; }
     /* Turn controls. Centred rather than corner-parked like Surrender/Menu: while a swing is
        parked, ending the turn is the main thing on screen, and it must not read as a menu chore. */
@@ -640,6 +644,7 @@ if (window.TAU_DESKTOP) {
 </style>
 </head>
 <body>
+<button id="boardQuickToggle" title="Switch board style" aria-label="Switch board style">◐</button>
 <button id="settingsToggle" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m9.5 3-.5 2-2 1.2-2-.6-2.5 4.3L4 11.3v2.4l-1.5 1.4L5 19.4l2-.6 2 1.2.5 2h5l.5-2 2-1.2 2 .6 2.5-4.3-1.5-1.4v-2.4l1.5-1.4L19 5.6l-2 .6L15 5l-.5-2z"/></svg></button>
 <button id="soundToggle" title="Sound volume" aria-label="Sound volume"></button>
 <div id="volPopover">
@@ -655,7 +660,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 289</div>
+<div id="buildTag">build 290</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -7515,6 +7520,18 @@ const HTP_STEPS = [
 ];
 let htpRaf=null, htpFullIdx=0, htpKeyHandler=null, htpResizeHandler=null, htpT0=0;
 let htpOnDone = null;   // what the walkthrough was standing in front of (see offerHowToFirst)
+// Offer preferences only after completing the tutorial, preserving any queued game start.
+function finishTutorialPreferences() {
+    markOnboarded('howto');
+    const after = htpOnDone; htpOnDone = null;
+    stopHowToPlayAnim();
+    let continued = false;
+    const resume = () => { if (continued) return; continued = true; if (typeof after === 'function') after(); };
+    showModal(t('Make Tau feel right for you'),
+        t('Open Settings to choose how you end a turn, your board style, language and volume. You can change these later from the menu.'),
+        [{label:t('Open Settings'), onClick:() => openGameSettings(resume)},
+         {label:t('Keep playing'), onClick:resume}], false, {dismiss:resume});
+}
 function stopHowToPlayAnim() {
     if (htpRaf) cancelAnimationFrame(htpRaf); htpRaf=null;
     if (htpKeyHandler) { removeEventListener('keydown', htpKeyHandler); htpKeyHandler=null; }
@@ -7713,7 +7730,7 @@ function openHowToPlay() {
     document.querySelectorAll('#htpFull .htpDot').forEach(d =>
         d.addEventListener('click', () => htpShowStep(+d.dataset.idx)));
     document.getElementById('htpDoneBtn').addEventListener('click', () => {
-        markOnboarded('howto'); stopHowToPlayAnim();
+        finishTutorialPreferences();
     });
     htpKeyHandler = e => {
         if (e.key === 'Escape') stopHowToPlayAnim();
@@ -7980,6 +7997,17 @@ addEventListener('keydown', e => {
 var moveCommitMode = 'release';
 try { if (localStorage.getItem('tauMoveCommitMode') === 'enter') moveCommitMode = 'enter'; } catch(e) {}
 function getMoveCommitMode() { return moveCommitMode === 'enter' ? 'enter' : 'release'; }
+function turnCommitLabels(commitKey = 'Enter') {
+    const touch = (typeof isNativeApp === 'function' && isNativeApp()) ||
+        (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
+    return touch ? {
+        release: t('Lift finger'), confirm: t('Tap End turn'),
+        note: t('Lift finger ends the turn when you stop dragging. Tap End turn lets you pause, continue dragging or undo before passing.')
+    } : {
+        release: t('Release mouse'), confirm: tf('Press {key}', {key:commitKey}),
+        note: t('Release mouse ends the turn when you let go. Explicit confirmation lets you pause, continue dragging or undo before passing.')
+    };
+}
 function setMoveCommitMode(mode) {
     if (mode !== 'release' && mode !== 'enter') return;
     moveCommitMode = mode;
@@ -7987,6 +8015,7 @@ function setMoveCommitMode(mode) {
     for (const id of ['moveCommitMode', 'desktopMoveCommitMode']) {
         const el = document.getElementById(id); if (el) el.value = mode;
     }
+    updateTurnControls();
 }
 // The picker is created when Settings opens; the saved preference also applies before opening it.
 // Shows/hides the pair and keeps them honest about what they would actually do. Called from every
@@ -7994,11 +8023,18 @@ function setMoveCommitMode(mode) {
 function updateTurnControls() {
     const wrap = document.getElementById('turnBtns');
     if (!wrap) return;
-    const canEnd = turnCommittable(), canUndo = turnUndoable();
+    const explicit = getMoveCommitMode() === 'enter';
+    const canEnd = explicit && turnCommittable(), canUndo = explicit && turnUndoable();
     wrap.style.display = (canEnd || canUndo) ? 'flex' : 'none';
     const u = document.getElementById('undoTurnBtn'), en = document.getElementById('endTurnBtn');
     if (u) u.disabled = !canUndo;
-    if (en) en.disabled = !canEnd;
+    if (en) {
+        en.disabled = !canEnd;
+        const touch = (typeof isNativeApp === 'function' && isNativeApp()) ||
+            (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
+        en.textContent = t('End turn') + (touch ? '' : ' ⏎');
+        en.title = touch ? t('End turn') : t('Hand the turn over (Enter)');
+    }
 }
 document.getElementById('undoTurnBtn').addEventListener('click', undoTurn);
 document.getElementById('endTurnBtn').addEventListener('click', commitPlayerTurn);
@@ -8203,19 +8239,32 @@ function applyBoardSkin() {
 }
 function cycleBoardSkin() { skinIdx = (skinIdx + 1) % BOARD_SKINS.length; applyBoardSkin(); }
 // A single settings entry keeps preferences off the game HUD.
-function openGameSettings() {
+function openGameSettings(onDone) {
+    const done = typeof onDone === 'function' ? onDone : () => document.getElementById('settingsToggle').focus();
     closeTopPopouts();
     if (window.tauDesktop && window.tauDesktop.openSettings) {
-        window.tauDesktop.openSettings(); return;
+        window.tauDesktop.openSettings(done); return;
     }
     const escSetting = value => String(value).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const label = text => escSetting(t(text));
+    const turnLabels = turnCommitLabels();
     showModal(t('Settings'), `
+        <label class="tau-setting">${label('Language')}<select id="settingsLanguage">${LANG_NAMES.map(([code,name]) => '<option value="'+escSetting(code)+'">'+escSetting(name)+'</option>').join('')}</select></label>
+        <label class="tau-setting">${label('Volume')}<span><input id="settingsVolume" aria-label="${label('Volume')}" type="range" min="0" max="200" step="5" value="${userVol}"><output id="settingsVolumeValue">${userVol}%</output></span></label>
+        <label class="tau-setting">${label('Mute')}<input id="settingsMute" type="checkbox" ${soundOn?'':'checked'}></label>
         <label class="tau-setting">${label('Board style')}<select id="settingsBoardStyle">${BOARD_SKINS.map(s => '<option value="'+escSetting(s.id)+'">'+label(s.name)+'</option>').join('')}</select></label>
-        <label class="tau-setting">${label('End turn after dragging')}<select id="moveCommitMode"><option value="release">${label('Release mouse')}</option><option value="enter">${label('Press Enter')}</option></select></label>
-        <p class="tau-settings-note">${label('Release mouse ends the turn when you let go. Press Enter lets you pause, continue dragging or undo before passing.')}</p>`,
-        [{label:t('Done'), onClick:() => document.getElementById('settingsToggle').focus()}], true,
-        {dismiss:() => document.getElementById('settingsToggle').focus()});
+        <label class="tau-setting">${label('End turn after dragging')}<select id="moveCommitMode"><option value="release">${escSetting(turnLabels.release)}</option><option value="enter">${escSetting(turnLabels.confirm)}</option></select></label>
+        <p class="tau-settings-note">${escSetting(turnLabels.note)}</p>`,
+        [{label:t('Done'), onClick:done}], true, {dismiss:done});
+    const language = document.getElementById('settingsLanguage');
+    language.value = LANG;
+    language.onchange = e => { setLang(e.target.value); openGameSettings(done); };
+    document.getElementById('settingsVolume').oninput = e => {
+        setUserVol(Number(e.target.value));
+        document.getElementById('settingsVolumeValue').textContent = userVol + '%';
+        document.getElementById('settingsMute').checked = !soundOn;
+    };
+    document.getElementById('settingsMute').onchange = e => setSoundOn(!e.target.checked);
     const board = document.getElementById('settingsBoardStyle');
     board.value = BOARD_SKINS[skinIdx].id;
     board.onchange = e => {
@@ -8228,6 +8277,7 @@ function openGameSettings() {
     board.focus();
 }
 document.getElementById('settingsToggle').addEventListener('click', openGameSettings);
+document.getElementById('boardQuickToggle').addEventListener('click', cycleBoardSkin);
 
 // ---------- Sound: white noise through a pitch-tracking EQ peak, driven by movement speed --------
 // A single looping white-noise source runs through a sharp bandpass (the "voice"). Its centre
@@ -14514,3 +14564,4 @@ if (window.TAU_DESKTOP) {
 </script>
 </body>
 </html>
+

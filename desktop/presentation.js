@@ -1297,13 +1297,15 @@
       {label:t('Leave match'),onClick:backToMenu},
     ], false, {dismiss:true});
   }
-  function openSettings() {
+  function openSettings(onDone) {
+    const done = typeof onDone === 'function' ? onDone : () => { if(inMatch()) focusBoard(); };
+    const turnLabels = turnCommitLabels(keyName(settings.keys.commit));
     const fullscreen = window.tauSteam?.setFullscreen;
     showModal(t('Settings'), `<label class="desktop-setting desktop-volume">${esc(t('Sound'))} <output id="desktopVolumeValue">${userVol}%</output><input id="desktopVolume" aria-label="${esc(t('Sound volume'))}" type="range" min="0" max="200" step="5" value="${userVol}"></label>
       <label class="desktop-setting">${esc(t('Mute'))}<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
       <label class="desktop-setting">${esc(t('Board'))}<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${esc(boardLabel(b))}</option>`:boardRevealed(b.id)?`<option value="${b.id}" disabled>${esc(boardLabel(b))} · ${esc(unlockText(b.id))}</option>`:`<option value="${b.id}" disabled>${esc(SECRET_NAME)} · ${esc(t('keep climbing'))}</option>`).join('')}</select></label>
       ${testBoards ? '<p class="desktop-result-detail">All boards are open for testing. Type <b>ALLBOARDS</b> on the main menu to restore locks.</p>' : ''}
-      <label class="desktop-setting">${esc(t('End turn after dragging'))}<select id="desktopMoveCommitMode"><option value="release">${esc(t('Release mouse'))}</option><option value="enter">${esc(t('Press {key}', {key:keyName(settings.keys.commit)}))}</option></select></label>
+      <label class="desktop-setting">${esc(t('End turn after dragging'))}<select id="desktopMoveCommitMode"><option value="release">${esc(turnLabels.release)}</option><option value="enter">${esc(turnLabels.confirm)}</option></select></label>
       <label class="desktop-setting">${esc(t('Graphics'))}<select id="desktopQuality">${qualityOptions()}</select></label>
       <p class="desktop-controls-note" id="desktopQualityNote" style="margin:0"></p>
       <label class="desktop-setting">${esc(t('Language'))}<select id="desktopLanguage" aria-label="${esc(t('Language'))}">${LANG_NAMES.map(([code,label])=>`<option value="${code}">${esc(label)}</option>`).join('')}</select></label>
@@ -1313,14 +1315,14 @@
       ${fullscreen ? `<label class="desktop-setting">${esc(t('Fullscreen'))}<input id="desktopFullscreen" type="checkbox"></label>` : ''}
       ${inMatch() ? '' : `<p class="desktop-controls-note"><button type="button" id="desktopResetProgress">${esc(t('Reset progress'))}</button> ${esc(t('Puts this profile back to a first launch.'))}</p>`}
       <p class="desktop-controls-note" style="text-align:center">${esc(buildTagText())}</p>`,
-      [{label:t('Done'),onClick:() => { if(inMatch()) focusBoard(); }}], true, {dismiss:true});
+      [{label:t('Done'),onClick:done}], true, {dismiss:done});
     $('desktopMoveCommitMode').value = getMoveCommitMode();
     $('desktopMoveCommitMode').onchange = e => setMoveCommitMode(e.target.value);
     $('desktopQuality').value = settings.quality;
     $('desktopLanguage').value = LANG;
     // setLang repaints the page (this layer included, via onLangChange); the sheet itself is
     // rebuilt right after so the player is not left reading the old language's Settings.
-    $('desktopLanguage').onchange = e => { setLang(e.target.value); openSettings(); };
+    $('desktopLanguage').onchange = e => { setLang(e.target.value); openSettings(done); };
     $('desktopBoard').value = settings.board;
     $('desktopBoard').onchange = e => {
       if (!isUnlocked(e.target.value)) { e.target.value = settings.board; return; }
@@ -2994,3 +2996,4 @@
   if(settings.rayTrace) rayTraceLoad();
   if(!inMatch())$('desktopPlay').focus({preventScroll:true});
 })();
+
