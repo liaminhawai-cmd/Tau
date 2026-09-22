@@ -135,7 +135,9 @@ if (window.TAU_DESKTOP) {
     /* When resize() decides the boards stack (portrait), the 3D view goes on top — same rule the
        old width-only media query applied, but now driven by the actual layout decision. */
     #views.stacked #view3d { order: -1; }
-    #btns { display:flex; gap:10px; }
+    #btns { display:flex; gap:10px; flex-wrap:wrap; }
+    #moveCommitLabel { display:flex; align-items:center; gap:6px; font-size:12px; }
+    #moveCommitMode { max-width:170px; font:inherit; padding:7px; border-radius:6px; }
     /* Turn controls. Centred rather than corner-parked like Surrender/Menu: while a swing is
        parked, ending the turn is the main thing on screen, and it must not read as a menu chore. */
     #turnBtns { display:flex; gap:10px; }
@@ -763,7 +765,7 @@ if (window.TAU_DESKTOP) {
             <!-- Turn controls: a turn is committed deliberately now (see commitPlayerTurn), so the
                  board needs somewhere to say so. Both are hidden until they would do something. -->
             <div id="turnBtns" style="display:none;"><button id="undoTurnBtn" title="Take the swing back (Ctrl+Z)">↶ Undo</button><button id="endTurnBtn" title="Hand the turn over (Enter)">End turn ⏎</button></div>
-            <div id="btns"><button id="reset">Surrender</button><button id="menuBtn">Menu</button></div>
+            <div id="btns"><button id="reset">Surrender</button><button id="menuBtn">Menu</button><label id="moveCommitLabel">End turn: <select id="moveCommitMode"><option value="release">Release mouse</option><option value="enter">Press Enter</option></select></label></div>
             <!-- replaces Surrender/Menu while a replay is playing: share the game or skip to the end -->
             <div id="replayBtns" style="display:none;gap:10px;"><button id="replayShare">Share this game</button><button id="replaySave">Save this game</button><button id="replayPlayOn" title="Take over this position">Play on from here</button><button id="replaySpeed" title="Playback speed">1×</button><button id="replaySkip">Skip ⏭</button></div>
         </div>
@@ -3964,7 +3966,7 @@ function boardMove(a) {
     applySwing(dA); render();
     if (onlineMatch) recordKeyframe();
 }
-function onUp() {
+function onUp(e) {
     if (G.handle===null) return;
     G.handle=null; G.ptrAngle=null;
     if (coachGuided) {
@@ -3977,16 +3979,14 @@ function onUp() {
         return;
     }
     if (Math.abs(G.netRad) >= CFG.minMoveDeg*Math.PI/180) {
-        // No rest-pose reset any more: the swing already stops itself just short of mounting a
-        // second line (see applySwing), so wherever the player lets go is a position they were
-        // allowed to reach -- it simply stays there.
-        //
-        // Letting go no longer HANDS THE TURN OVER, though. A turn is now committed deliberately
-        // (Enter, or the End turn button): release just parks the swing where it is, so the player
-        // can look at it, push it further, or take it back and try a different foot entirely. The
-        // turn state (direction lock, crossing budget, contacts) is untouched by a release, so
-        // carrying on after one continues the SAME turn -- which is what the one-direction and
-        // one-line rules always meant, and what releasing used to quietly end.
+        // Only a completed pointer gesture auto-commits. Cancellation parks the move;
+        // keyboard/controller callers omit the event and retain their explicit commit action.
+        if (getMoveCommitMode() === 'release' && e &&
+            ['mouseup', 'pointerup', 'touchend'].includes(e.type)) {
+            commitPlayerTurn();
+            return;
+        }
+        // Explicit mode parks the same turn so it can be continued or undone.
         render(); updateTurnControls();
     } else {
         restoreSnap(); render();   // too small to count — undo it (incl. any nudge), keep the pivot
@@ -7976,6 +7976,20 @@ addEventListener('keydown', e => {
     }
 });
 // ---------- Turn controls: take it back, or hand it over ----------
+var moveCommitMode = 'release';
+try { if (localStorage.getItem('tauMoveCommitMode') === 'enter') moveCommitMode = 'enter'; } catch(e) {}
+function getMoveCommitMode() { return moveCommitMode === 'enter' ? 'enter' : 'release'; }
+function setMoveCommitMode(mode) {
+    if (mode !== 'release' && mode !== 'enter') return;
+    moveCommitMode = mode;
+    try { localStorage.setItem('tauMoveCommitMode', mode); } catch(e) {}
+    for (const id of ['moveCommitMode', 'desktopMoveCommitMode']) {
+        const el = document.getElementById(id); if (el) el.value = mode;
+    }
+}
+const moveCommitPicker = document.getElementById('moveCommitMode');
+moveCommitPicker.value = getMoveCommitMode();
+moveCommitPicker.addEventListener('change', e => setMoveCommitMode(e.target.value));
 // Shows/hides the pair and keeps them honest about what they would actually do. Called from every
 // place the turn state moves: a release, an undo, a commit, and each render of a fresh turn.
 function updateTurnControls() {
@@ -9047,16 +9061,16 @@ function v3InputOpen() {
             v3.style.cursor = idx >= 0 ? 'pointer' : '';
         });
         v3.addEventListener('pointerleave', () => { v3HoverIdx = -1; v3.style.cursor = ''; });
-        const release = () => {
+        const release = (ev) => {
             if (!v3Grabbing) return;
             v3Grabbing = false; controls.enabled = true;
-            onUp();
+            onUp(ev);
         };
         v3.addEventListener('pointerup', release);
         v3.addEventListener('pointercancel', release);
         // A pointer released outside the canvas (capture lost, or the cursor left mid-swing) still
-        // has to commit the move — otherwise the piece stays stuck to a pointer that isn't there.
-        window.addEventListener('pointerup', () => { if (v3Grabbing) release(); });
+        // has to release the handle — the selected end-turn mode decides whether to commit.
+        window.addEventListener('pointerup', ev => { if (v3Grabbing) release(ev); });
     }
 }
 // Mobile browsers throw away a 2D canvas's backing store while the tab is backgrounded (e.g. you
