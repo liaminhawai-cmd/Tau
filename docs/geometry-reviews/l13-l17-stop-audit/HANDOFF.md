@@ -16,9 +16,13 @@ for Astra on the two questions at the end.
   set under both call schedules.
 - **A3** `ladderDeadEscape`'s stride, budget and early exits audited; a dropped-mark defect found,
   quantified, and traced to three further sites that are on production `main`. On 150 frozen dev
-  positions the defect accounts for **more than half of the dense test's false-dead rate** (3.5% →
-  1.4% with the epsilon). The budget was never binding — 160 stops was not reached once — so
-  "budget exhausted" and "no counterexample found" are cleanly separable in this corpus.
+  positions the aggregate false-dead rate falls from 3.5% to 1.4% with the epsilon — **but this is
+  not a monotonic recovery**: the changed verdicts are four recovered counterexamples and one lost
+  one (`arenamujedgps-1`, k=0 — flagged by Astra/GPT, verified: shipped marks land at 9°/15°/24° and
+  catch a counterexample at 15°; tolerant marks land at 6°/12°/18°/24° and miss the same window
+  entirely, because accepting one mark earlier resets `lastMark` and shifts every later one). See
+  README.md's correction. The budget was never binding — 160 stops was not reached once — so "budget
+  exhausted" and "no counterexample found" are cleanly separable in this corpus.
 - **A4** Certificate table and loader audited. There is no loader.
 - **A5** Development and held-out sets frozen by game family, with source hashes.
 - **Equal-time gate** settled: ladder rungs ignore every `--timeMs` flag.

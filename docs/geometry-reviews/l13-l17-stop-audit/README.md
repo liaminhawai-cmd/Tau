@@ -165,18 +165,39 @@ runs differing only by the subtracted epsilon:
 | | shipped | 1e-9 tolerance |
 | --- | --- | --- |
 | positions sampled | 150 | 150 |
-| positions with an escape at 0.25° | 142 | 142 |
-| escape found | 137 | **140** |
-| **escape missed — certified dead when it is not** | **5 (3.5%)** | **2 (1.4%)** |
+| positions with an endpoint-response counterexample at 0.25° | 142 | 142 |
+| counterexample found | 137 | **140** |
+| **counterexample missed — certified dead when it is not** | **5 (3.5%)** | **2 (1.4%)** |
 | dense-grid marks taken | 1318 | 1636 (+24%) |
 | budget (`deadStops:160`) exhausted | 0 | 0 |
 
-Five of L17's verdicts in 150 flip on the epsilon alone. The dropped marks are **more than half of
-the dense test's total false-dead rate**: restoring the configured grid takes it from 3.5% to 1.4%.
+**Correction, 22 September 2026 — this table's own framing was wrong.** I originally described the
+tolerant grid as "restoring" the configured stride, implying it is a superset of the shipped grid's
+coverage. It is not, and the 5-vs-2 count hides that: **the changed verdicts are four recovered
+counterexamples and one *lost* one**, not five gained. Astra/GPT caught this and supplied the
+fixture: `arenamujedgps-1`, k=0. Verified directly —
 
-The residual 1.4% is the 6° grid itself, not the defect — two positions have escapes that a correct
-6° grid still steps over. That is the honest ceiling on what `deadDeg:6` can detect, and it is the
-number a "dense check only" ablation row should be compared against, not zero.
+| | mark sequence on the escaping arm (pivot 1, dir −1) | verdict |
+| --- | --- | --- |
+| shipped (eps=0) | interior marks at 9°, 15°, 24° | **finds** the counterexample at 15.000000000° |
+| tolerant (eps=1e-9) | interior marks at 6°, 12°, 18°, 24° | **misses** it — no mark within [12°, 18°] |
+
+The mechanism: `lastMark` is reset to whatever value gets accepted, so accepting one mark *earlier*
+shifts every later mark's anchor. The two grids are not nested — they are two different sample paths
+through the same sweep, and which one lands closer to a given counterexample is not predictable from
+"more total marks." (State restoration was also checked directly here: `ladderDeadEscape` leaves the
+pose and active side byte-identical to before the call, in both modes — the substep sequence any
+individual retained stop stands on is unaffected by `eps`; only which stops get retained changes.)
+
+The net effect over the 150-position sample is still an improvement — 5 misses drop to 2 — but it is
+an improvement in aggregate over this corpus, not a proof that the tolerant grid dominates the
+shipped one pointwise. Any future comparison should keep both mark sequences as regression fixtures
+(`arenamujedgps-1` for the loss, any of the four recovered cases for the gain) rather than describing
+the change as monotonic.
+
+The residual 1.4% is the 6° grid itself, not the defect — two positions have counterexamples that a
+correct 6° grid still steps over. That is the honest ceiling on what `deadDeg:6` can detect, and it
+is the number a "dense check only" ablation row should be compared against, not zero.
 
 The budget was never the binding constraint: 160 stops across six arms was not reached once in 150
 positions, because the first-escape early exit fires long before. Budget exhaustion and "no
@@ -185,6 +206,14 @@ was a real counterexample, and every null was a genuine exhaustion of the grid.
 
 (A 12-position smoke run on the whole corpus, kept in `results/dense-stride-smoke-12.json`, sized
 this one. It showed 2 missed vs 1; the rate above supersedes it.)
+
+**Terminology, per Astra's formalization:** what this section calls an "escape" is precisely a
+refutation of D_E(q) — every legal defender move admits an immediate winning response *among the
+tested endpoint set* — not of D_1(q), the same statement over *every* legal attacker move. D_E
+implies D_1, so a stop with no winning endpoint reply refutes D_E but says nothing about D_1: an
+interior attacker stop might still win. Everywhere above, read "escape" / "counterexample" as
+endpoint-response counterexample, and "no counterexample found on the grid" as exactly that — not as
+a certified-safe or certified-dead claim beyond this search's own vocabulary.
 
 ## Step 4 — the certificate table and its loader
 
