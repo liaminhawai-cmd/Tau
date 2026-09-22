@@ -136,6 +136,12 @@ if (window.TAU_DESKTOP) {
        old width-only media query applied, but now driven by the actual layout decision. */
     #views.stacked #view3d { order: -1; }
     #btns { display:flex; gap:10px; }
+    /* Turn controls. Centred rather than corner-parked like Surrender/Menu: while a swing is
+       parked, ending the turn is the main thing on screen, and it must not read as a menu chore. */
+    #turnBtns { display:flex; gap:10px; }
+    body.ingame #turnBtns { pointer-events:auto; align-self:center; text-shadow:none; }
+    #turnBtns #endTurnBtn { background:#2f4bd6; border-color:#3d5afe; color:#fff; font-weight:bold; }
+    #turnBtns #endTurnBtn:active { background:#3a57e0; }
     #status { font-size:18px; font-weight:bold; margin:6px 0 2px; height:22px; }
     #statusRow { display:flex; align-items:center; justify-content:center; gap:6px; }
     #turnTimer { width:18px; height:18px; }
@@ -468,6 +474,12 @@ if (window.TAU_DESKTOP) {
         padding:7px 8px; font-size:12.5px; color:#9aa4ad;
         opacity:0; transition:opacity .26s ease, transform .26s ease; pointer-events:none; }
     #fsHint.show { opacity:1; transform:translate(-50%, 0); pointer-events:auto; }
+    /* ...but in a game the top centre is already spoken for: #topHud sits at top:2px with whose
+       turn it is and the meta line under it, and this pill (z-index 62 against the HUD's 55) was
+       landing squarely on top of them -- hiding the single most important readout on the screen
+       behind an optional nudge. In a game it drops clear of the HUD instead: 2px inset + ~30px of
+       #status (22px tall, 6px/2px margins) + 15px of #meta, plus a little air. */
+    body.ingame #fsHint { top:calc(56px + env(safe-area-inset-top)); }
     #fsHint button { margin:0; padding:5px 12px; font-size:12px; border-radius:999px; }
     #fsHint #fsNo { padding:5px 9px; border:none; background:none; color:#69727b; }
     #fsHint #fsNo:hover { color:#e6e6e6; }
@@ -637,7 +649,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 284</div>
+<div id="buildTag">build 285</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -745,6 +757,9 @@ if (window.TAU_DESKTOP) {
              in the corner where the square canvas has no board on it. -->
         <div id="bottomHud">
             <p id="help"></p>
+            <!-- Turn controls: a turn is committed deliberately now (see commitPlayerTurn), so the
+                 board needs somewhere to say so. Both are hidden until they would do something. -->
+            <div id="turnBtns" style="display:none;"><button id="undoTurnBtn" title="Take the swing back (Ctrl+Z)">↶ Undo</button><button id="endTurnBtn" title="Hand the turn over (Enter)">End turn ⏎</button></div>
             <div id="btns"><button id="reset">Surrender</button><button id="menuBtn">Menu</button></div>
             <!-- replaces Surrender/Menu while a replay is playing: share the game or skip to the end -->
             <div id="replayBtns" style="display:none;gap:10px;"><button id="replayShare">Share this game</button><button id="replaySave">Save this game</button><button id="replayPlayOn" title="Take over this position">Play on from here</button><button id="replaySpeed" title="Playback speed">1×</button><button id="replaySkip">Skip ⏭</button></div>
@@ -3916,11 +3931,13 @@ function boardDown(v) {
             // A null angle (3D press inside the pivot dead zone) is fine: boardMove adopts the
             // first usable sample as the reference instead, exactly as it does mid-swing.
             G.handle=i; G.ptrAngle=v.angle(); playMoveBass();   // grabbing a foot to swing = move begins
+            if (typeof updateTurnControls === 'function') updateTurnControls();
         } else if (dPin<v.hitR && Math.abs(G.netRad) < CFG.minMoveDeg*Math.PI/180){
             restoreSnap(); G.pinned=null; G.pivot=null; coachFreeArc=null;   // unpinned — drop the cached rail
         }
     }
     render();
+    if (typeof updateTurnControls === 'function') updateTurnControls();
 }
 function onMove(e) {
     if (G.handle===null || G.over || aiAnim || inputBlocked()) return; e.preventDefault();
@@ -3960,23 +3977,62 @@ function onUp() {
         // No rest-pose reset any more: the swing already stops itself just short of mounting a
         // second line (see applySwing), so wherever the player lets go is a position they were
         // allowed to reach -- it simply stays there.
-        // Ko: you may not put the board back where it has already been unless something touched in
-        // between. The swing itself was legal — only this stopping point is barred — so it undoes
-        // exactly like a too-small move: the pivot stays pinned and the player carries on to a
-        // different stop. (Checked here rather than inside finishTurn so it covers the online path
-        // too, and so the AI — whose plan was already legalised in startAiTurn — never hits it.)
-        if (koViolation()) {
-            restoreSnap(); render();
-            if (typeof showPassToast === 'function')
-                showPassToast(t("Ko — the board has been here before. Stop somewhere else."));
-            if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; }
-            return;
-        }
-        if (onlineMatch) finishOnlineTurn(); else finishTurn();
+        //
+        // Letting go no longer HANDS THE TURN OVER, though. A turn is now committed deliberately
+        // (Enter, or the End turn button): release just parks the swing where it is, so the player
+        // can look at it, push it further, or take it back and try a different foot entirely. The
+        // turn state (direction lock, crossing budget, contacts) is untouched by a release, so
+        // carrying on after one continues the SAME turn -- which is what the one-direction and
+        // one-line rules always meant, and what releasing used to quietly end.
+        render(); updateTurnControls();
     } else {
         restoreSnap(); render();   // too small to count — undo it (incl. any nudge), keep the pivot
+        updateTurnControls();
         if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; }
     }
+}
+// Is there a parked, committable swing on the board right now? (A turn the local player owns,
+// swung far enough to count, with nothing else driving the board.)
+function turnCommittable() {
+    if (!G || G.over || aiAnim || typeof inputBlocked === 'function' && inputBlocked()) return false;
+    if (coachGuided) return false;                       // the coached beat commits its own way
+    if (onlineMatch && !myOnlineTurnNow()) return false;  // not your turn to end
+    return G.handle === null && Math.abs(G.netRad) >= CFG.minMoveDeg*Math.PI/180;
+}
+// Anything to take back? Either a swing in progress, or a pivot chosen and not yet swung.
+function turnUndoable() {
+    if (!G || G.over || aiAnim || typeof inputBlocked === 'function' && inputBlocked()) return false;
+    if (coachGuided) return false;
+    if (onlineMatch && !myOnlineTurnNow()) return false;
+    return G.handle === null && G.pinned !== null;
+}
+// Take the turn back to where it started: the pose as it was when the pivot was pinned, and no
+// pivot, so a different foot can be tried. This is not a take-back of a PLAYED move -- nothing has
+// been committed yet -- so it costs the opponent nothing and is legal online too. The opponent has
+// been watching the swing stream in, so the rewind is streamed as well (clearing the keyframe
+// buffer and re-sending from the restored pose).
+function undoTurn() {
+    if (!turnUndoable()) return;
+    restoreSnap();
+    G.pinned = null; G.pivot = null; G.handle = null; G.ptrAngle = null;
+    if (typeof coachFreeArc !== 'undefined') coachFreeArc = null;
+    if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; if (typeof recordKeyframe==='function') recordKeyframe(); }
+    render(); updateTurnControls();
+}
+// Hand the turn over. Everything the old release-to-commit did, including the ko check -- kept
+// here rather than inside finishTurn so it covers the online path too, and so the AI (whose plan
+// was already legalised in startAiTurn) never hits it.
+function commitPlayerTurn() {
+    if (!turnCommittable()) return;
+    if (koViolation()) {
+        restoreSnap(); render(); updateTurnControls();
+        if (typeof showPassToast === 'function')
+            showPassToast(t("Ko — the board has been here before. Stop somewhere else."));
+        if (onlineMatch) { pendingKeyframes=[]; lastKeyframeT=0; }
+        return;
+    }
+    if (onlineMatch) finishOnlineTurn(); else finishTurn();
+    updateTurnControls();
 }
 // endTurn()/clearTurn() (win check, active swap, turn-state reset) live in game.js and are
 // pure — no DOM, testable headlessly. This wraps them with the visual/UI side effects
@@ -6825,36 +6881,6 @@ function htpPiece(c,piece,b,pin,t){
 }
 const htpCache = {};
 // ---------- The goal, shown as a whole game ----------
-// A real game recorded from the menu demo's own brain (same capture as COACH_R): every substep of
-// 15 turns, ending with Red pushed over the rim. Played back sped up it answers "what am I trying
-// to do?" in a few seconds, which no amount of rule text does.
-const TUTOR_GAME = {"turnMeta":[{"s":1,"e":5,"mover":0},{"s":6,"e":10,"mover":1},{"s":11,"e":14,"mover":0},{"s":15,"e":28,"mover":1},{"s":29,"e":47,"mover":0},{"s":48,"e":55,"mover":1},{"s":56,"e":112,"mover":0},{"s":113,"e":132,"mover":1},{"s":133,"e":156,"mover":0},{"s":157,"e":173,"mover":1},{"s":174,"e":184,"mover":0},{"s":185,"e":203,"mover":1},{"s":204,"e":218,"mover":0},{"s":219,"e":227,"mover":1},{"s":228,"e":242,"mover":0}],"frames":[[-30.6,0,0,30.6,0,3.142],[-29.57,0.63,0.052,30.6,0,3.142],[-28.57,1.32,0.105,30.6,0,3.142],[-27.61,2.05,0.157,30.6,0,3.142],[-26.69,2.84,0.209,30.6,0,3.142],[-26.03,3.46,0.249,30.6,0,3.142],[-26.03,3.46,0.249,29.57,-0.63,3.194],[-26.03,3.46,0.249,28.57,-1.32,3.246],[-26.03,3.46,0.249,27.61,-2.05,3.299],[-26.03,3.46,0.249,26.69,-2.84,3.351],[-26.03,3.46,0.249,26.03,-3.46,3.39],[-24.87,3.1,0.196,26.03,-3.46,3.39],[-23.74,2.68,0.144,26.03,-3.46,3.39],[-22.63,2.2,0.092,26.03,-3.46,3.39],[-21.54,1.67,0.039,26.03,-3.46,3.39],[-21.54,1.67,0.039,25.7,-2.29,3.443],[-21.54,1.67,0.039,25.31,-1.15,3.495],[-21.54,1.67,0.039,24.86,-0.03,3.547],[-21.54,1.67,0.039,24.36,1.07,3.6],[-21.54,1.67,0.039,23.79,2.14,3.652],[-21.54,1.67,0.039,23.18,3.18,3.704],[-21.54,1.67,0.039,22.5,4.19,3.757],[-21.54,1.67,0.039,21.78,5.16,3.809],[-21.54,1.67,0.039,21.01,6.08,3.862],[-21.54,1.67,0.039,20.19,6.97,3.914],[-21.54,1.67,0.039,19.32,7.82,3.966],[-21.54,1.67,0.039,18.41,8.61,4.019],[-21.54,1.67,0.039,17.46,9.36,4.071],[-21.54,1.67,0.039,17.22,9.54,4.084],[-20.54,2.34,0.092,17.22,9.54,4.084],[-19.57,3.06,0.144,17.22,9.54,4.084],[-18.64,3.84,0.196,17.22,9.54,4.084],[-17.75,4.66,0.249,17.22,9.54,4.084],[-16.91,5.52,0.301,17.22,9.54,4.084],[-16.11,6.43,0.353,17.22,9.54,4.084],[-15.36,7.38,0.406,17.22,9.54,4.084],[-14.67,8.37,0.458,17.22,9.54,4.084],[-14.02,9.39,0.511,17.22,9.54,4.084],[-13.43,10.45,0.563,17.22,9.54,4.084],[-12.89,11.53,0.615,17.22,9.54,4.084],[-12.42,12.64,0.668,17.22,9.54,4.084],[-12,13.78,0.72,17.22,9.54,4.084],[-11.64,14.93,0.772,17.27,9.56,4.081],[-11.34,16.1,0.825,17.27,9.56,4.081],[-11.11,17.29,0.877,17.27,9.56,4.081],[-10.93,18.49,0.929,17.27,9.56,4.081],[-10.82,19.69,0.982,17.27,9.56,4.081],[-10.81,19.84,0.988,17.27,9.56,4.081],[-10.81,19.84,0.988,16.15,9.1,4.028],[-10.81,19.84,0.988,15.01,8.7,3.976],[-10.81,19.84,0.988,13.85,8.36,3.924],[-10.81,19.84,0.988,12.67,8.09,3.871],[-10.81,19.84,0.988,11.48,7.87,3.819],[-10.81,19.84,0.988,10.29,7.72,3.766],[-10.81,19.84,0.988,9.08,7.62,3.714],[-10.81,19.84,0.988,7.87,7.6,3.662],[-9.72,20.35,0.936,7.87,7.6,3.662],[-8.6,20.81,0.884,7.87,7.6,3.662],[-7.46,21.21,0.831,7.87,7.6,3.662],[-6.29,21.54,0.779,7.87,7.6,3.662],[-5.12,21.82,0.726,7.87,7.6,3.662],[-3.93,22.03,0.674,7.87,7.6,3.662],[-2.73,22.18,0.622,7.87,7.6,3.662],[-1.52,22.27,0.569,7.87,7.6,3.662],[-0.31,22.29,0.517,7.87,7.6,3.662],[0.9,22.25,0.465,7.87,7.6,3.662],[2.1,22.15,0.412,7.87,7.6,3.662],[3.3,21.98,0.36,7.87,7.6,3.662],[4.49,21.75,0.308,7.87,7.6,3.662],[5.66,21.46,0.255,7.87,7.6,3.662],[6.82,21.11,0.203,8.17,7.18,3.652],[7.95,20.7,0.151,8.54,6.44,3.64],[9.07,20.23,0.098,9.12,5.83,3.625],[10.16,19.7,0.046,9.77,5.27,3.607],[11.21,19.12,-0.007,10.4,4.69,3.591],[12.24,18.48,-0.059,11.01,4.07,3.574],[13.23,17.79,-0.111,11.59,3.43,3.557],[14.19,17.05,-0.164,12.15,2.75,3.541],[15.1,16.26,-0.216,12.68,2.04,3.525],[15.97,15.42,-0.268,13.19,1.3,3.51],[16.8,14.54,-0.321,13.66,0.54,3.495],[17.58,13.61,-0.373,14.1,-0.26,3.48],[18.31,12.65,-0.425,14.51,-1.09,3.466],[18.99,11.65,-0.478,14.88,-1.94,3.452],[19.61,10.61,-0.53,15.21,-2.82,3.438],[20.18,9.55,-0.583,15.51,-3.73,3.425],[20.7,8.45,-0.635,15.76,-4.66,3.413],[21.15,7.33,-0.687,15.97,-5.6,3.402],[21.55,6.19,-0.74,16.14,-6.57,3.391],[21.88,5.03,-0.792,16.27,-7.55,3.38],[22.16,3.85,-0.844,16.35,-8.55,3.371],[22.37,2.66,-0.897,16.39,-9.55,3.362],[22.52,1.46,-0.949,16.39,-10.57,3.355],[22.61,0.25,-1.001,16.34,-11.59,3.348],[22.63,-0.96,-1.054,16.25,-12.62,3.342],[22.59,-2.16,-1.106,16.12,-13.65,3.337],[22.49,-3.37,-1.158,15.93,-14.67,3.333],[22.32,-4.57,-1.211,15.71,-15.7,3.33],[22.09,-5.75,-1.263,15.43,-16.72,3.328],[21.81,-6.93,-1.316,15.11,-17.73,3.327],[21.45,-8.09,-1.368,14.75,-18.73,3.328],[21.04,-9.22,-1.42,14.34,-19.71,3.33],[20.57,-10.34,-1.473,13.88,-20.67,3.333],[20.05,-11.42,-1.525,13.38,-21.61,3.337],[19.46,-12.48,-1.577,12.84,-22.53,3.343],[18.82,-13.51,-1.63,12.26,-23.41,3.351],[18.13,-14.5,-1.682,11.64,-24.26,3.359],[17.39,-15.46,-1.734,10.98,-25.07,3.37],[16.6,-16.37,-1.787,10.29,-25.83,3.381],[15.76,-17.24,-1.839,9.54,-26.58,3.394],[14.88,-18.07,-1.892,8.23,-27.24,3.39],[13.95,-18.85,-1.944,6.83,-27.83,3.384],[12.99,-19.58,-1.996,5.39,-28.34,3.379],[13.39,-18.53,-1.998,5.08,-27.17,3.431],[13.76,-17.41,-2.002,4.7,-26.02,3.483],[14.13,-16.3,-2.006,4.26,-24.89,3.536],[14.33,-15.08,-2.017,3.77,-23.79,3.588],[14.43,-13.82,-2.031,3.22,-22.71,3.641],[14.48,-12.56,-2.048,2.61,-21.67,3.693],[14.48,-11.32,-2.067,1.95,-20.65,3.745],[14.43,-10.09,-2.088,1.24,-19.68,3.798],[14.35,-8.89,-2.11,0.48,-18.74,3.85],[14.22,-7.71,-2.134,-0.33,-17.84,3.902],[14.02,-6.57,-2.161,-1.19,-16.99,3.955],[13.7,-5.47,-2.191,-2.09,-16.18,4.007],[13.36,-4.39,-2.222,-3.03,-15.42,4.059],[13.02,-3.35,-2.253,-4.01,-14.71,4.112],[12.66,-2.33,-2.285,-5.02,-14.06,4.164],[12.29,-1.34,-2.317,-6.07,-13.45,4.217],[11.91,-0.38,-2.35,-7.15,-12.9,4.269],[11.52,0.56,-2.384,-8.25,-12.41,4.321],[11.1,1.47,-2.418,-9.38,-11.98,4.374],[10.77,2.14,-2.444,-10.24,-11.7,4.413],[10.38,1,-2.391,-9.73,-12.71,4.378],[10.06,-0.17,-2.339,-9.22,-13.78,4.343],[9.8,-1.35,-2.287,-8.7,-14.9,4.308],[9.6,-2.54,-2.234,-8.17,-16.06,4.273],[9.46,-3.74,-2.182,-7.62,-17.25,4.238],[9.39,-4.95,-2.13,-7.06,-18.45,4.204],[9.38,-6.16,-2.077,-6.49,-19.68,4.17],[9.43,-7.37,-2.025,-5.92,-20.92,4.136],[9.54,-8.57,-1.973,-5.34,-22.17,4.102],[9.72,-9.77,-1.92,-4.75,-23.43,4.069],[9.96,-10.95,-1.868,-4.19,-24.67,4.035],[10.26,-12.12,-1.816,-3.75,-25.88,4.002],[10.63,-13.27,-1.763,-3.18,-27.09,3.967],[11.05,-14.41,-1.711,-2.62,-28.28,3.933],[11.53,-15.52,-1.658,-2.07,-29.45,3.898],[12.07,-16.6,-1.606,-1.5,-30.58,3.863],[12.67,-17.65,-1.554,-1,-31.67,3.828],[13.32,-18.67,-1.501,-0.37,-32.75,3.793],[14.02,-19.66,-1.449,0.3,-33.93,3.757],[14.77,-20.6,-1.397,0.94,-35.33,3.73],[15.57,-21.51,-1.344,1.7,-36.54,3.696],[16.42,-22.37,-1.292,2.43,-37.85,3.663],[17.31,-23.19,-1.24,3.14,-39.12,3.629],[18,-23.77,-1.2,3.68,-40.04,3.604],[17.93,-23.64,-1.205,2.48,-39.93,3.551],[17.86,-23.52,-1.209,1.28,-39.76,3.499],[17.8,-23.39,-1.214,0.09,-39.53,3.446],[17.73,-23.26,-1.219,-1.08,-39.24,3.394],[17.67,-23.13,-1.224,-2.24,-38.89,3.342],[17.61,-23,-1.229,-3.37,-38.47,3.289],[17.56,-22.86,-1.234,-4.48,-38,3.237],[17.51,-22.73,-1.239,-5.57,-37.47,3.185],[17.45,-22.59,-1.245,-6.63,-36.88,3.132],[17.39,-22.44,-1.251,-7.65,-36.24,3.08],[17.33,-22.3,-1.256,-8.64,-35.55,3.028],[17.28,-22.16,-1.262,-9.6,-34.8,2.975],[17.23,-22.01,-1.268,-10.51,-34.01,2.923],[17.19,-21.87,-1.274,-11.38,-33.17,2.871],[17.15,-21.73,-1.28,-12.2,-32.28,2.818],[17.12,-21.58,-1.286,-12.98,-31.36,2.766],[17.1,-21.51,-1.289,-13.35,-30.88,2.74],[15.95,-21.88,-1.237,-13.24,-31.42,2.716],[14.82,-22.3,-1.184,-13.13,-32.03,2.691],[13.71,-22.79,-1.132,-12.99,-32.6,2.668],[12.63,-23.33,-1.08,-12.85,-33.23,2.643],[11.58,-23.93,-1.027,-12.69,-33.88,2.618],[10.56,-24.58,-0.975,-12.51,-34.52,2.595],[9.58,-25.28,-0.922,-12.31,-35.19,2.571],[8.63,-26.04,-0.87,-12.1,-35.9,2.547],[7.73,-26.84,-0.818,-11.86,-36.64,2.523],[6.87,-27.69,-0.765,-11.6,-37.38,2.5],[6.26,-28.36,-0.726,-11.39,-37.97,2.482],[6.08,-27.85,-0.74,-11.81,-36.84,2.43],[5.91,-27.32,-0.755,-12.18,-35.68,2.378],[5.77,-26.79,-0.77,-12.49,-34.52,2.325],[5.64,-26.25,-0.784,-12.74,-33.33,2.273],[5.52,-25.7,-0.8,-12.92,-32.14,2.221],[5.43,-25.13,-0.815,-13.04,-30.93,2.168],[5.35,-24.56,-0.83,-13.1,-29.73,2.116],[5.3,-23.97,-0.846,-13.09,-28.52,2.064],[5.27,-23.37,-0.862,-13.02,-27.31,2.011],[5.27,-22.77,-0.879,-12.89,-26.11,1.959],[5.29,-22.15,-0.896,-12.7,-24.91,1.906],[5.33,-21.52,-0.913,-12.44,-23.73,1.854],[5.4,-20.89,-0.93,-12.12,-22.57,1.802],[5.5,-20.24,-0.947,-11.74,-21.42,1.749],[5.62,-19.59,-0.965,-11.3,-20.29,1.697],[5.77,-18.93,-0.982,-10.81,-19.19,1.645],[5.95,-18.27,-1,-10.25,-18.11,1.592],[6.2,-17.59,-1.018,-9.64,-17.07,1.54],[6.24,-17.5,-1.021,-9.56,-16.94,1.533],[5.23,-18.16,-0.968,-10.1,-18.23,1.514],[4.25,-18.87,-0.916,-10.64,-19.54,1.496],[3.31,-19.63,-0.864,-11.2,-20.89,1.479],[2.41,-20.44,-0.811,-11.77,-22.26,1.463],[1.56,-21.3,-0.759,-12.33,-23.64,1.447],[0.75,-22.2,-0.706,-12.91,-25.04,1.432],[-0.01,-23.14,-0.654,-13.48,-26.44,1.417],[-0.72,-24.11,-0.602,-14.05,-27.84,1.402],[-1.38,-25.13,-0.549,-14.62,-29.23,1.387],[-1.99,-26.18,-0.497,-15.18,-30.61,1.371],[-2.53,-27.25,-0.445,-15.75,-31.97,1.354],[-3.03,-28.36,-0.392,-16.3,-33.3,1.337],[-3.46,-29.49,-0.34,-16.85,-34.58,1.318],[-3.83,-30.64,-0.288,-17.33,-35.82,1.299],[-4.11,-31.66,-0.242,-17.71,-36.94,1.28],[-3.86,-30.98,-0.251,-16.81,-36.13,1.228],[-3.45,-30.28,-0.257,-15.87,-35.38,1.175],[-2.95,-29.56,-0.262,-14.89,-34.67,1.123],[-2.45,-28.84,-0.267,-13.87,-34.01,1.07],[-1.91,-28.13,-0.271,-12.83,-33.41,1.018],[-1.33,-27.42,-0.274,-11.75,-32.86,0.966],[-0.44,-26.95,-0.266,-10.64,-32.38,0.913],[0.53,-26.61,-0.254,-9.51,-31.95,0.861],[1.26,-26.39,-0.245,-8.65,-31.66,0.822],[1,-27.57,-0.192,-9.45,-32.37,0.821],[0.8,-28.76,-0.14,-10.32,-33.15,0.824],[0.66,-29.96,-0.088,-11.11,-34.14,0.821],[0.59,-31.17,-0.035,-11.85,-35.25,0.814],[0.58,-32.38,0.017,-12.53,-36.41,0.804],[0.63,-33.58,0.069,-13.16,-37.59,0.792],[0.75,-34.79,0.122,-13.74,-38.79,0.777],[0.93,-35.98,0.174,-14.26,-40,0.76],[1.17,-37.17,0.227,-14.73,-41.21,0.741],[1.47,-38.34,0.279,-14.99,-42.45,0.715],[1.83,-39.49,0.331,-15.17,-43.66,0.688],[2.25,-40.63,0.384,-15.33,-44.87,0.659],[2.74,-41.73,0.436,-15.45,-46.05,0.629],[3.28,-42.82,0.488,-15.55,-47.2,0.599],[3.87,-43.87,0.541,-15.63,-48.33,0.568]]};
-const TUTOR_SPEED = 0.3;        // frames consumed per rendered frame — the whole game in ~13s (0.5 still rushed it; 2.4 was a blur)
-const TUTOR_HOLD  = 2.2;        // seconds held on the finish — long enough for the real rim-pivot tumble to read
-let tutorPlayT = 0;
-function htpSlideGoal(c,w,h,t){
-    const m = htpMap(w,h); htpBoard(c,m.b,m.sc);
-    const F = TUTOR_GAME.frames, last = F.length - 1;
-    const span = last / TUTOR_SPEED / 60;                 // seconds of playback at 60fps
-    const cyc = (t - tutorPlayT) % (span + TUTOR_HOLD);
-    const done = cyc > span;
-    const f = F[Math.min(last, Math.floor(cyc * 60 * TUTOR_SPEED))];
-    const blue = mkP(0, f[0], f[1], f[2]), red = mkP(1, f[3], f[4], f[5]);
-    // Once the last frame lands, the ending takes over: the 3D pane runs the REAL match fall on
-    // the mirrored tripod (see htp3DMirror — same slide → rim-pivot → tumble as a live game),
-    // while this flat top-down view slides the loser out and fades it, which is what a fall
-    // looks like from straight above.
-    let alpha = 1, k = 0;
-    if (done) {
-        k = Math.min(1, (cyc - span) / TUTOR_HOLD);
-        const d = Math.hypot(red.x, red.y) || 1;
-        red.x += (red.x/d) * 26 * k; red.y += (red.y/d) * 26 * k;
-        alpha = 1 - k*0.85;
-    }
-    htpMark(blue, red, k);
-    htpPiece(c, blue, m.b, -1, t);
-    c.globalAlpha = alpha; htpPiece(c, red, m.b, -1, t); c.globalAlpha = 1;
-}
 // ---------- Try-it layer: EVERY rule slide is played, not watched ----------
 // No attract-loop "answers": each slide states the rule, and the board is live from the first
 // frame — tap a foot to hold it (that's the pivot), drag to swing. It's the REAL engine
@@ -6866,7 +6892,6 @@ function htpSlideGoal(c,w,h,t){
 const HTP_TRY = {
     pivot:   { make: () => ({ p: mkP(0,2,3,-0.5) }) },
     swing:   { make: () => ({ p: mkP(0,16,10,-0.4) }) },                 // close enough to a ring to meet it mid-trace
-    push:    { make: () => ({ p: mkP(0,-20,0,0.3), red: mkP(1,20,0,Math.PI), red0:{x:20,y:0} }) },
     cross:   { make: () => ({ p: mkP(0,-24,12,0.5) }) },
     // A GENUINE corner round, found by search: holding foot 0, a neighbouring foot's swing arc
     // passes dead through the printed r0∩a0 intersection — it crosses the first line, rides it
@@ -6997,8 +7022,42 @@ function htpGuide3D() {
     }
     for (; li < coachArcs.length; li++) coachArcs[li].visible = false;
 }
+// A swing has to be worth calling a turn before it counts as one -- a stray two-degree twitch
+// while re-gripping is not an attempt, and counting it would burn one of the cross slide's three
+// feet or fire a "good try" the player never made.
+const HTP_TURN_MIN_RAD = 8*Math.PI/180;
+// Called once per completed turn (release after a real swing). Slides whose lesson is spread over
+// several turns live here: the cross slide wants the same position tried from each of the three
+// feet, and the finale wants a shove that only MOVED the opponent to reset and be tried again.
+function htpTurnOver(key, st) {
+    if (st.done || st.locked) return;
+    if (key === 'cross') {
+        st.feetTried = st.feetTried || [];
+        if (st.pinned !== null && !st.feetTried.includes(st.pinned)) st.feetTried.push(st.pinned);
+        if (st.feetTried.length >= 3) { htpGoalDone(key, st, st.p.feet()[(st.pinned+1)%3]); return; }
+        st.sayT = st.lastT; st.say = t('Good — now hold a different foot.');
+        st.rewindAt = st.lastT + 0.45;   // back to the same start pose, so each foot is tried from it
+        htpHintSync();
+        return;
+    }
+    if (key === 'off' && st.red) {
+        // Bumping Red is easy and is NOT the goal; only a shove that puts a foot over the rim is.
+        // (Going off-board is caught in htp3DStep, which owns the fall -- if we are still here the
+        // turn ended with Red merely shifted.)
+        const moved = Math.hypot(st.red.x - st.red0.x, st.red.y - st.red0.y);
+        if (moved >= 2) {
+            st.sayT = st.lastT; st.say = t('Good try — but they are still on. Try another way.');
+            st.rewindAt = st.lastT + 0.6;
+            htpHintSync();
+        }
+    }
+}
 function htpGoalDone(key, st, at) {
     st.done = true;
+    // The goal is the end of the slide's playable part: freeze the board so a won position cannot
+    // be shuffled back into a lost one while the player reads the text. Reset re-arms it.
+    st.locked = true;
+    st.say = null; st.rewindAt = 0;
     st.burst = { x: at.x, y: at.y, t: st.lastT };
     st.parts = Array.from({length:26}, () => ({ a: Math.random()*Math.PI*2, v: 22+Math.random()*46,
         life: 0.8+Math.random()*0.5, col: ['#ffd23f','#6b9eff','#ff6b6b','#78dc8c'][Math.floor(Math.random()*4)] }));
@@ -7011,6 +7070,7 @@ function htpGoalDone(key, st, at) {
 // every slide, byte-identically to a real game. Own feet never leave the board (the push-OFF
 // slide's red piece is the only thing that ever goes over the rim).
 function htpTrySwing(st, key, dA) {
+    if (st.locked) return;                                      // goal already landed -- the board is frozen
     if (key === 'off' && htpPhase !== 'push') return;          // hands off while the fall plays out
     if (st.turnDir !== 0 && Math.sign(dA) !== st.turnDir) { st.lockFlashT = st.lastT; return; }
     const pv = st.p.feet()[st.pinned], stepMax = 1.5*Math.PI/180;
@@ -7036,8 +7096,10 @@ function htpTrySwing(st, key, dA) {
             // dots no longer lead anywhere from. Let the red flash land first, then put the board
             // back, rather than leaving the player stuck against a line they cannot cross.
             if (st.guide && !st.done) st.rewindAt = st.lastT + 0.9;
-            // Being refused by a printed line IS these slides' lesson landing:
-            if ((key === 'cross' || key === 'swing') && blockId !== 'edge' && !st.done)
+            // Being refused by a printed line IS the swing slide's lesson landing. The cross
+            // slide used to finish here too; its goal is now all three feet (htpTurnOver), so a
+            // refusal there is just the rule doing its job mid-turn.
+            if (key === 'swing' && blockId !== 'edge' && !st.done)
                 htpGoalDone(key, st, st.p.feet()[(st.pinned+1)%3]);
             break;
         }
@@ -7058,12 +7120,6 @@ function htpTrySwing(st, key, dA) {
     if (st.turnDir === 0 && Math.abs(st.netAng) > 4*Math.PI/180) st.turnDir = Math.sign(st.netAng);
     if (key === 'swing' && !st.done && Math.abs(st.netAng) >= 40*Math.PI/180)
         htpGoalDone(key, st, st.p.feet()[(st.pinned+1)%3]);
-    if (key === 'push' && !st.done) {
-        const moved = Math.hypot(st.red.x - st.red0.x, st.red.y - st.red0.y);
-        const offBoard = st.red.feet().some(f => Math.hypot(f.x,f.y) > CFG.edgeU + CFG.edgeEps);
-        if (moved >= 5 || offBoard)
-            htpGoalDone(key, st, { x: st.red.x, y: st.red.y });
-    }
     // 'double'/'twofeet' complete inside the substep loop (they read live contact sets);
     // 'off' completes in htp3DStep, the moment a red foot leaves the board
 }
@@ -7088,6 +7144,7 @@ function htpAttachTry(canvas, key, currentKey, toBoardIn) {
         if (ev.button !== undefined && ev.button > 0) return;  // right button belongs to the camera orbit
         if (key === 'off' && htpPhase !== 'push') return;      // the fall owns the finale until it resets
         const st = htpState(key), m = toBoard(ev);
+        if (st.locked) return;                                 // goal already landed -- Reset to play on
         if (!st.touched) { st.touched = true; if (typeof htpHintSync === 'function') htpHintSync(); }
         let best = -1, bd = 100;   // 10u grab radius (squared)
         st.p.feet().forEach((f,i) => { const d = (f.x-m.x)**2 + (f.y-m.y)**2; if (d < bd) { bd = d; best = i; } });
@@ -7110,7 +7167,7 @@ function htpAttachTry(canvas, key, currentKey, toBoardIn) {
     canvas.addEventListener('pointermove', ev => {
         if (!active()) return;
         const st = htpState(key);
-        if (st.pinned === null) return;
+        if (st.locked || st.pinned === null) return;
         const m = toBoard(ev), pv = st.p.feet()[st.pinned];
         if (!st.dragging) {   // movement past the tap threshold turns the gesture into a swing
             if (st.armFrom && Math.hypot(m.x-st.armFrom.x, m.y-st.armFrom.y) > 3
@@ -7131,9 +7188,11 @@ function htpAttachTry(canvas, key, currentKey, toBoardIn) {
             st.pinned = st.pendingPin;
             if (key === 'pivot' && !st.done) htpGoalDone(key, st, st.p.feet()[st.pinned]);
         }
+        const swung = st.dragging && Math.abs(st.netAng) >= HTP_TURN_MIN_RAD;
         st.pendingPin = null; st.dragging = false; st.armFrom = null;
         st.turnDir = 0; st.netAng = 0;
-        st.crossings = 0; st.contact = null; st.justCrossed = []; };   // release = turn over
+        st.crossings = 0; st.contact = null; st.justCrossed = [];   // release = turn over
+        if (swung) htpTurnOver(key, st); };
     canvas.addEventListener('pointerup', endTurnUp);
     canvas.addEventListener('pointercancel', endTurnUp);
 }
@@ -7141,6 +7200,7 @@ function htpAttachTry(canvas, key, currentKey, toBoardIn) {
 function htpDrawTry(c,w,h,t,key) {
     const st = htpState(key); st.lastT = t;
     if (st.rewindAt && t > st.rewindAt) { htpRewind(key); return htpDrawTry(c,w,h,t,key); }
+    if (st.say && t - st.sayT > 2.6) { st.say = null; htpHintSync(); }
     htpMark(st.p, st.red);
     const m = htpMap(w,h); htpBoard(c,m.b,m.sc);
     if (st.red) htpPiece(c, st.red, m.b, -1, t);
@@ -7204,6 +7264,9 @@ const htpTryDraw = key => (c,w,h,t) => htpDrawTry(c,w,h,t,key);
 // triggerFall/stepFall (slide out, gravity accel, tumble) — it falls off naturally because it's
 // the same physics, not a re-drawn approximation of it.
 let htp3DActive=false, htpFallState=null, htpPhase='push', htpPhaseT=0;
+// How long the finale's fall is watched before the walkthrough is allowed to close: at least this
+// much tumble, then this much of the piece lying there beaten. See the 'fall' phase below.
+const HTP_FALL_MIN_S = 1.6, HTP_WIN_HOLD_S = 2.0;
 // Camera in the 3D pane: framed automatically until the player orbits it (right-drag / two
 // fingers), then it's theirs for the rest of the slide. Each new slide reclaims the framing.
 let htpCamManual=false, htpCtrlSaved=null;
@@ -7216,12 +7279,22 @@ function htp3DReset() {
     const prev = htpCache.try_off;
     delete htpCache.try_off;
     const st = htpState('off');
-    if (prev) { st.done = prev.done; st.touched = prev.touched; }
+    // lastT rides across the reset with say/sayT: the finale's clock is its own running total, and
+    // restarting it at 0 under a stale sayT would leave the last line up for good.
+    if (prev) { st.done = prev.done; st.touched = prev.touched;
+                st.say = prev.say; st.sayT = prev.sayT || -9; st.lastT = prev.lastT || 0; }
+    st.locked = !!st.done;   // a finale already won stays frozen behind its fall; a retry is live
     htpFallState = null; htpPhase='push'; htpPhaseT=0;
 }
 function htp3DStep(dt) {
     htpPhaseT += dt;
     const st = htpState('off');
+    // The finale has no 2D draw pass, so it keeps its own clock and runs the two things htpDrawTry
+    // would otherwise do for it: expire the spoken line, and honour a pending rewind (which here
+    // is a shove that moved Red without putting them off -- see htpTurnOver).
+    st.lastT = (st.lastT || 0) + dt;
+    if (st.say && st.lastT - st.sayT > 2.6) { st.say = null; htpHintSync(); }
+    if (st.rewindAt && st.lastT > st.rewindAt && htpPhase === 'push') { htp3DReset(); return; }
     if (htpPhase==='push') {   // player-driven: the tripods just mirror the try-state's pieces
         htpTripods[0].position.set(st.p.x, 0, st.p.y);
         htpTripods[0].rotation.set(0, -st.p.rot, 0);
@@ -7239,8 +7312,14 @@ function htp3DStep(dt) {
         // one-off, framed by the "You win!" popup). Same physics here: cut to "done" once it's
         // landed and had a moment to settle. The safety timer covers a fall state that somehow
         // never lands (it shouldn't, but a stuck finale would soft-lock the loop).
-        if (htpFallState.landed || htpPhaseT > 5) { htpPhase='done'; htpPhaseT=0; }
-    } else if (htpPhase==='done' && htpPhaseT > 1.1) {
+        //
+        // The minimum is not decoration. Winning used to read as the walkthrough snapping shut the
+        // instant the last shove landed: the goal fires when a foot crosses the rim, and from there
+        // it was landed-plus-a-beat to the menu, which on a clean push is barely long enough to see
+        // the piece leave the board at all. The tumble over the rim IS the thing the whole
+        // walkthrough has been building to -- it gets watched before anything closes.
+        if ((htpFallState.landed && htpPhaseT > HTP_FALL_MIN_S) || htpPhaseT > 5) { htpPhase='done'; htpPhaseT=0; }
+    } else if (htpPhase==='done' && htpPhaseT > HTP_WIN_HOLD_S) {
         // Pushing them off IS the end of the walkthrough. Once that goal is actually earned the
         // rules are over, so finish -- exactly as the Done button does -- instead of resetting the
         // pieces and asking for it again. (Not earned, e.g. the piece went over on its own: loop.)
@@ -7401,21 +7480,24 @@ function htp3DExit(dropEl) {
 // Wording taken from the designer's own rules (Written elements.docx). Every rule slide is a
 // do-it slide: the text states the rule, the hint states the goal, and Next stays greyed until
 // the goal is done — the board never plays the answer for you.
+// Order is the order the rules actually build on each other: hold a foot, swing around it, then
+// what the printed lines do to that swing (one line, corners, two feet), and only then the thing
+// all of it is for -- putting the other piece over the edge. The old list opened with a
+// non-interactive "here is a whole game" slide and taught a bare "shove Red" a third of the way
+// in; both are gone. Shoving Red is not a rule of its own, it is the win condition, so it is the
+// finale and nothing else.
 const HTP_STEPS = [
-    { title:t('The goal'), text:t('Push your opponent off the board. Here is a whole game.'), draw:htpSlideGoal },
     { title:t('Hold one foot'), text:t('Hold one foot still and rotate the other two.'), draw:htpTryDraw('pivot'), tryKey:'pivot',
       hint:t('tap a foot to hold it') },
-    { title:t('Move in circles'), text:t('The moving feet trace an arc. You may only move in one direction per turn — and the printed lines are live from your very first move.'), draw:htpTryDraw('swing'), tryKey:'swing',
+    { title:t('Move in circles'), text:t('The moving feet trace an arc. You may only swing one way per turn: once you have started, the piece will not go back the other way until you let go.'), draw:htpTryDraw('swing'), tryKey:'swing',
       hint:t('hold a foot, then drag to trace an arc') },
-    { title:t('Push your opponent'), text:t('Push your opponent by moving into their legs.'), draw:htpTryDraw('push'), tryKey:'push',
-      hint:t('swing into Red and shove them') },
-    { title:t('One line per turn'), text:t('You may cross only one line per turn. A foot that starts on a line leaves it for free.'), draw:htpTryDraw('cross'), tryKey:'cross',
-      hint:t('keep swinging until a line refuses you') },
+    { title:t('One line per turn'), text:t('You may cross only one line per turn. A foot that starts on a line leaves it for free. Try it from all three feet — the board resets after each turn.'), draw:htpTryDraw('cross'), tryKey:'cross',
+      hint:t('hold a foot and swing, then try the next one') },
     { title:t('Corners count once'), text:t('A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.'), draw:htpTryDraw('double'), tryKey:'double',
       hint:t('hold the glowing foot and swing along the dots, through the corner') },
     { title:t('Two feet at once'), text:t('Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.'), draw:htpTryDraw('twofeet'), tryKey:'twofeet',
       hint:t('hold the glowing foot and swing along the dots: two feet, two lines') },
-    { title:t('Push them off'), text:t('Push your opponent off the edge. When one of their feet leaves the board, you win.'), is3D:true, tryKey:'off',
+    { title:t('Push them off the board'), text:t('Push your opponent off the edge. Bumping them is easy; only one line of attack actually puts a foot over the rim — if a shove only moves them, the board resets and you try another way.'), is3D:true, tryKey:'off',
       hint:t('pin a foot and shove Red over the edge') },
 ];
 let htpRaf=null, htpFullIdx=0, htpKeyHandler=null, htpResizeHandler=null, htpT0=0;
@@ -7452,7 +7534,14 @@ function htpHintSync() {
     const done = !s || !s.tryKey || !!(st && st.done);
     const hint = document.getElementById('htpHint');
     if (hint) {
-        hint.textContent = done ? '✓ ' + t('got it') : (s && s.hint) || t('drag the board to try it');
+        // A slide that takes several turns talks back between them: `say` is what the last turn
+        // earned ("good, now a different foot", "good try, they are still on"), and it outranks the
+        // standing hint until the next turn replaces it. htpDrawTry clears it when it times out.
+        let line = done ? '✓ ' + t('got it') : (s && s.hint) || t('drag the board to try it');
+        if (!done && st && st.say) line = st.say;
+        else if (!done && s && s.tryKey === 'cross' && st && st.feetTried && st.feetTried.length)
+            line = tf('{n} of 3 feet tried', { n: st.feetTried.length });
+        hint.textContent = line;
         hint.style.visibility = (s && s.tryKey) ? 'visible' : 'hidden';
         hint.classList.toggle('done', done);
     }
@@ -7510,7 +7599,6 @@ function htpShowStep(idx) {
     document.getElementById('htpText').innerHTML = s.text;
     // The flat board is hidden on the finale, where the 3D push-off IS the slide.
     document.getElementById('htpBigCanvas').style.display = s.is3D ? 'none' : 'block';
-    if (s.draw === htpSlideGoal) tutorPlayT = (performance.now() - htpT0) / 1000;
     htpFallMode = !!s.is3D;
     if (htpFallMode) htp3DReset();
     // Measure AFTER the head/foot have their real content (an empty head measures ~0 tall and
@@ -7533,20 +7621,27 @@ function htpResetSlide() {
     const s = HTP_STEPS[htpFullIdx];
     if (!s.tryKey) return;
     if (s.tryKey === 'off') { htp3DReset(); htpHintSync(); return; }
-    htpRewind(s.tryKey);
+    htpRewind(s.tryKey, true);   // the button is the full reset: start the slide's own count over
 }
 // The same rewind, for one named slide -- so a guided slide can put itself back when the attempt
 // has gone somewhere the lesson can't be learned from, not only when the player presses Reset.
-function htpRewind(key) {
+function htpRewind(key, full) {
     const st = htpCache['try_'+key];
     if (!st) return;
     const keepDone = st.done, keepTouched = st.touched, keepGuide = st.guide;
+    // The cross slide's tally of which feet have been tried survives a rewind -- the rewind IS its
+    // loop, one turn per foot from the same start pose, so clearing it would make the goal
+    // unreachable. `full` (the Reset button) starts that count over and unfreezes a won slide.
+    const keepFeet = full ? [] : (st.feetTried || []);
+    const keepSay = full ? null : st.say, keepSayT = full ? -9 : st.sayT;
     Object.assign(st,
         { touched:false, pinned:null, dragging:false, armFrom:null, lastAng:0, turnDir:0,
-          netAng:0, crossings:0, contact:null, done:false, burst:null, parts:[],
-          lockFlashT:-9, blockFlashT:-9, blockId:null, pendingPin:null, rewindAt:0 },
+          netAng:0, crossings:0, contact:null, done:false, locked:false, burst:null, parts:[],
+          lockFlashT:-9, blockFlashT:-9, blockId:null, pendingPin:null, rewindAt:0,
+          say:null, sayT:-9, feetTried:[] },
         HTP_TRY[key].make());
     st.done = keepDone; st.touched = keepTouched; st.guide = keepGuide;
+    st.feetTried = keepFeet; st.say = keepSay; st.sayT = keepSayT;
     htpHintSync();
 }
 function openHowToPlay() {
@@ -7866,6 +7961,39 @@ function labBenchRender() {
 addEventListener('keydown', e => {
     if (e.key === 'l' && labMode && !/input|select|textarea/i.test((e.target.tagName||''))) {
         const el = document.getElementById('labBench'); if (el) el.classList.toggle('lbMin');
+    }
+});
+// ---------- Turn controls: take it back, or hand it over ----------
+// Shows/hides the pair and keeps them honest about what they would actually do. Called from every
+// place the turn state moves: a release, an undo, a commit, and each render of a fresh turn.
+function updateTurnControls() {
+    const wrap = document.getElementById('turnBtns');
+    if (!wrap) return;
+    const canEnd = turnCommittable(), canUndo = turnUndoable();
+    wrap.style.display = (canEnd || canUndo) ? 'flex' : 'none';
+    const u = document.getElementById('undoTurnBtn'), en = document.getElementById('endTurnBtn');
+    if (u) u.disabled = !canUndo;
+    if (en) en.disabled = !canEnd;
+}
+document.getElementById('undoTurnBtn').addEventListener('click', undoTurn);
+document.getElementById('endTurnBtn').addEventListener('click', commitPlayerTurn);
+addEventListener('keydown', e => {
+    // Never steal a key from a text field, and never from a modal that is up (the walkthrough runs
+    // its own Enter handling, and Enter in a sign-in box must submit the box).
+    if (/input|select|textarea/i.test((e.target && e.target.tagName) || '')) return;
+    if (e.target && e.target.isContentEditable) return;
+    if (document.getElementById('htpFull')) return;
+    if (document.getElementById('modalBackdrop').style.display === 'flex') return;
+    // The Steam build binds its own commit key (and lets the player rebind it -- see
+    // desktop/presentation.js's K.commit), so it owns Enter there and this must not second-guess
+    // it. Ctrl+Z is nobody else's, so it works in both builds.
+    if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (window.tauDesktop) return;
+        if (!turnCommittable()) return;
+        e.preventDefault(); commitPlayerTurn();
+    } else if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        if (!turnUndoable()) return;
+        e.preventDefault(); undoTurn();
     }
 });
 // ---------- Play on from a position ----------
@@ -9105,6 +9233,10 @@ function atLimitSuffix(){
 }
 function render() {
     if (!G) return;
+    // The turn controls are a function of turn state, and turn state changes from a dozen places
+    // (a swing, a commit, the AI moving, an online turn arriving, a game ending). Deriving them
+    // here means none of those has to remember to -- render() already runs after all of them.
+    if (typeof updateTurnControls === 'function') updateTurnControls();
     if (tutorOn) tutorTick();
     // Pick up any lines a foot touched since the last render (crossingSubstep fills this in) and
     // turn them into fading flashes; drained here so a rollback never gets flashed twice.
@@ -12780,10 +12912,18 @@ function myOnlineTurnNow() {
 // catch it) -- and this doubles as disconnect handling: a closed tab just never moves, so its
 // opponent's own clock eventually calls the same timeout.
 // (onlineTurnDeadline itself is declared earlier alongside onlineMatch -- see that comment.)
-const TURN_CLOCK_MS = 30000;
+// 60s, not the 30s this shipped with. Half a minute reads as generous until you are actually
+// mid-swing working out which foot to hold and whether the line you are about to ride is your one
+// crossing -- the clock was cutting turns off during the thinking the game is made of.
+const TURN_CLOCK_MS = 60000;
 // Returns 'online' / 'local' / null (no clock this mode -- vs AI, or no game showing at all).
 function turnClockMode() {
     if (window.tauDesktop && window.tauDesktop.untimedLocal()) return false;
+    // A private match is two people who chose each other; if they asked for no clock when the
+    // invite was made, there is nobody to stall for and nothing to abuse. `untimed` rides on the
+    // match row, so both clients read the same answer -- and a row without the column (a server
+    // that has not run the migration yet) is simply timed, exactly as before.
+    if (onlineMatch && onlineMatch.untimed) return null;
     if (document.getElementById('game').style.display !== 'flex') return null;
     if (onlineMatch) return 'online';                               // a real opponent is waiting: always clocked
     if (labMode || labSetup || labAuto || labActive) return null;   // bench/setup/watch: analysis, not a timed match
@@ -13427,7 +13567,11 @@ document.getElementById('leaderboardBtn').addEventListener('click', openLeaderbo
 // (Entry point is the "Online Private" option inside the "1v1" sub-menu; see choose1v1Mode.)
 function openPrivateMatchMenu() {
     showModal(t('Private match'), t('Play a casual 1v1 against someone specific instead of the random queue.'), [
-        { label: t('Create a match'), onClick: createPrivateMatch },
+        { label: t('Create a match'), onClick: () => createPrivateMatch(false) },
+        // The clock exists to stop a stranger in the ranked queue holding your evening hostage.
+        // Two people who swapped a code are not strangers, so they get to turn it off -- for a
+        // postal-paced game, or just to think properly.
+        { label: t('Create a match — no clock'), onClick: () => createPrivateMatch(true) },
         { label: t('Join with a code'), onClick: joinPrivateMatchPrompt },
         { label: 'Cancel', onClick: () => {} },
     ], false, { dismiss: true });
@@ -13437,7 +13581,7 @@ let privateWaitChannel = null;
 function cleanupPrivateWait() {
     if (privateWaitChannel) { sb.removeChannel(privateWaitChannel); privateWaitChannel = null; }
 }
-async function createPrivateMatch() {
+async function createPrivateMatch(untimed) {
     showModal(t('Private match'), t('Creating your invite…'), []);
     // Wrapped in try/catch: like startOnlineMatchmaking()'s tryOnce(), a genuine network-level
     // failure here can reject the promise outright rather than resolving to {error} -- without
@@ -13454,7 +13598,17 @@ async function createPrivateMatch() {
         showModal('Private match', 'Could not create an invite: ' + (error ? error.message : 'unknown error'), [ { label: 'OK', onClick: () => {} } ]);
         return;
     }
-    showPrivateWaitScreen(row0.match_id, row0.code);
+    // A separate call rather than an argument to create_private_match, deliberately: an extra RPC
+    // parameter against a server that has not run untimed_private_matches.sql fails the whole call
+    // and private matches stop working until it does. A follow-up the server rejects costs nothing
+    // -- the match is already made, and it is simply a timed one.
+    if (untimed) {
+        try {
+            const { error: uErr } = await sb.rpc('set_private_match_untimed', { p_match_id: row0.match_id });
+            if (uErr) { untimed = false; console.warn('no-clock private match: server kept the clock', uErr.message); }
+        } catch (e) { untimed = false; console.warn('no-clock private match: server kept the clock', e); }
+    }
+    showPrivateWaitScreen(row0.match_id, row0.code, untimed);
     privateWaitChannel = sb.channel('private-wait-'+row0.match_id)
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'matches', filter:'id=eq.'+row0.match_id }, payload => {
             if (payload.new.status !== 'active') return;
@@ -13465,9 +13619,10 @@ async function createPrivateMatch() {
         })
         .subscribe();
 }
-function showPrivateWaitScreen(matchId, code) {
+function showPrivateWaitScreen(matchId, code, untimed) {
     const link = location.origin + location.pathname + '?join=' + encodeURIComponent(code);
-    const body = `<p style="margin:0 0 10px;">${t('Share this code, or send the link:')}</p>
+    const body = `${untimed ? `<p class="msg" style="margin:0 0 8px;">${t('No turn clock in this match.')}</p>` : ''}
+        <p style="margin:0 0 10px;">${t('Share this code, or send the link:')}</p>
         <p style="font-size:28px; font-weight:bold; letter-spacing:4px; color:#ffd23f; margin:0 0 12px;">${escapeHtml(code)}</p>
         <div class="row" style="justify-content:center;"><button id="privCopyLink">${t('Copy invite link')}</button></div>
         <p class="msg" id="privWaitMsg" style="margin-top:10px;">${t('Waiting for them to join…')}</p>`;

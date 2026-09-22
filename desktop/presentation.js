@@ -69,7 +69,9 @@
     { id:'math', name:'Math', showcase:'math',
       skin:{ shadeByZoneValue:false, flat:'#111826', lines:'#dcecff', rim:'#14171d', bg:'#0d1017', pb:'#2f6fd8', pr:'#d8442f' } },
     { id:'sumo', grade:true, name:'Sumo', showcase:'sumo',
-      skin:{ shadeByZoneValue:false, flat:'#6e4a2c', lines:'#c89a54', rim:'#46351f', bg:'#17120d', pb:'#31488f', pr:'#b03220' } },
+      // flat matches the darker ground the sumo bake now lays its sand grain over (boards.js), so
+      // the 2D board and the low tier do not read a shade lighter than the 3D one beside them.
+      skin:{ shadeByZoneValue:false, flat:'#5d3d22', lines:'#c89a54', rim:'#46351f', bg:'#17120d', pb:'#31488f', pr:'#b03220' } },
     { id:'cosy', grade:true, name:'Cosy', showcase:'cosy', detail:'wood',
       skin:{ shadeByZoneValue:false, flat:'#4a3220', lines:'#e8c778', rim:'#2e1f12', bg:'#1a120c', pb:'#3a4a66', pr:'#5e2a22' } },
     { id:'alien', name:'Alien', showcase:'alien', detail:'alien',
@@ -810,6 +812,7 @@
   $('desktopColour').addEventListener('change', e => { settings.colour = Number(e.target.value); saveSettings(); });
 
   function startMatch(local = false) {
+    sandClear();   // the ring is swept between bouts -- last game's scuffs do not carry over
     // Two people at one screen say who holds what before the board appears; every other match has
     // one human and starts straight away.
     if (local) chooseDevices(() => beginMatch(true));
@@ -2543,7 +2546,10 @@
   function pinOrCommit() {
     if(!canPlay()) return;
     if(G.pinned===null){ pinFoot(chosenFoot); playSelectClick(); rumble(); wasAtLimit=false; if(onlineMatch){pendingKeyframes=[];lastKeyframeT=0;} render(); }
-    else if(G.handle!==null){ onUp(); rumble(.12); }
+    // Letting go of the trigger no longer hands the turn over (see commitPlayerTurn) -- it parks
+    // the swing. So this drops the handle if one is still held and then commits, which also means
+    // the pad can now do what a mouse can: stop, look at the position, and THEN end the turn.
+    else { if(G.handle!==null) onUp(); if(typeof commitPlayerTurn==='function') commitPlayerTurn(); rumble(.12); }
   }
   function cancelSwing() {
     if(!canPlay() || G.pinned===null) return;
@@ -2686,8 +2692,84 @@
     showToast(`<p class="desktop-unlock">${esc(tf('Graphics set to {name} to keep the board moving — Settings has the full range.',
       { name: qualityName(settings.quality) }))}</p>`);
   }
+  // ---------- Sumo: the dohyo is sand, and sand remembers ----------
+  // The ring is swept smooth before a bout and scuffed to bits during one, so a board that stays
+  // pristine while two heavy pieces are dragged across it reads as painted, not as ground.
+  //
+  // Drawn as decals rather than by painting into the board's albedo canvas: that bake is 2048² or
+  // 4096², and re-uploading it every time a foot moves would cost tens of megabytes a frame. A
+  // pooled ring of flat quads laid a hair above the surface costs nothing and fades on its own.
+  // Sumo only -- every other board is wood, stone or glass, none of which take a footprint.
+  const SAND_MAX = 56;            // pool size; the oldest mark is recycled, so scuffs never pile up
+  const SAND_LIFE = 26;           // seconds for a mark to fade out completely -- a long bout's worth
+  const SAND_MIN_STEP = 0.9;      // board units a foot must travel before it leaves another mark
+  let sandMarks = null, sandLast = null;
+  function sandEnabled() { return settings.board === 'sumo' && !lowGfx(); }
+  function sandPool() {
+    if (sandMarks) return sandMarks;
+    const SH = showcase();
+    if (!SH || typeof THREE === 'undefined' || typeof scene === 'undefined' || !scene) return null;
+    const geo = new THREE.PlaneGeometry(1, 1);
+    const map = SH.softDiscTexture();
+    sandMarks = [];
+    for (let i = 0; i < SAND_MAX; i++) {
+      // Lighter than the board on purpose: a scrape turns dry surface sand over and the fresh
+      // stuff under it is paler. Additive would glow; plain transparency just lightens.
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map, color: 0xd8b98a,
+        transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
+      m.rotation.x = -Math.PI/2;
+      m.position.y = -0.04;        // boardTop sits at -0.05; this lies just on top of it
+      m.visible = false; m.renderOrder = 2;
+      scene.add(m); sandMarks.push({ mesh: m, age: 1e9, peak: 0 });
+    }
+    return sandMarks;
+  }
+  function sandClear() {
+    if (!sandMarks) return;
+    for (const s of sandMarks) { s.age = 1e9; s.peak = 0; s.mesh.visible = false; }
+    sandLast = null;
+  }
+  // One mark, laid between where the foot was and where it is, stretched along that travel so a
+  // drag reads as a streak rather than a row of dots.
+  function sandMark(pool, x0, z0, x1, z1) {
+    let oldest = pool[0];
+    for (const s of pool) if (s.age > oldest.age) oldest = s;
+    const dx = x1 - x0, dz = z1 - z0, len = Math.hypot(dx, dz);
+    oldest.age = 0;
+    oldest.peak = 0.16 + Math.min(0.14, len*0.05);   // a harder scrape leaves a stronger mark
+    const m = oldest.mesh;
+    m.position.set((x0+x1)/2, -0.04, (z0+z1)/2);
+    m.scale.set(Math.max(3.2, len*1.5 + 3.2), 3.0, 1);
+    m.rotation.z = -Math.atan2(dz, dx);   // the plane is already laid flat; z is its in-plane spin
+    m.visible = true;
+  }
+  function sandTick(dt) {
+    if (!sandEnabled()) { if (sandMarks) sandClear(); return; }
+    const pool = sandPool();
+    if (!pool) return;
+    if (typeof G !== 'undefined' && G && G.pieces && !G.over) {
+      const now = G.pieces.map(p => p.feet().map(f => ({ x: f.x, y: f.y })));
+      if (sandLast && sandLast.length === now.length) {
+        for (let pi = 0; pi < now.length; pi++)
+          for (let fi = 0; fi < now[pi].length; fi++) {
+            const a = sandLast[pi][fi], b = now[pi][fi];
+            if (!a) continue;
+            if (Math.hypot(b.x-a.x, b.y-a.y) < SAND_MIN_STEP) continue;
+            if (Math.hypot(b.x, b.y) > CFG.edgeU) continue;    // already over the rim: no sand there
+            sandMark(pool, a.x, a.y, b.x, b.y);
+            sandLast[pi][fi] = b;
+          }
+      } else sandLast = now;
+    }
+    for (const s of pool) {
+      if (s.age > SAND_LIFE) { if (s.mesh.visible) s.mesh.visible = false; continue; }
+      s.age += dt;
+      s.mesh.material.opacity = s.peak * Math.max(0, 1 - s.age/SAND_LIFE);
+    }
+  }
   function pollInput(dt) {
     watchFrameRate();
+    sandTick(dt);
     if (detail && detail.uniforms) {
       const u = detail.uniforms, now = performance.now()/1000;
       u.uDetail.value = detailMode === 3 ? 0 : detailMode;   // the membrane is its own pass below

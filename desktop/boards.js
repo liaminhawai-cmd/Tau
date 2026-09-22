@@ -57,6 +57,31 @@ function shadeZones(c, amt) {
     c.restore();
   }
 }
+// Loose sand: thousands of individual pale grains over a darker ground, which is what makes a
+// dohyo read as sand rather than as brown paint -- each grain catches the key light on its own.
+// Built once at 2048 and upscaled (exactly noiseCanvas's reasoning): the per-pixel loop is the
+// expensive part, and at a 4096 bake this would otherwise mean two 67MB ImageData round trips.
+// Transparent everywhere but the grains, so it can be lightened onto whatever it is laid over --
+// the albedo for the look of sand, the height map so the tooth is really there.
+let sandGrainCv = null;
+function sandGrainCanvas() {
+  if (sandGrainCv) return sandGrainCv;
+  const NS = 2048;
+  const cv = document.createElement('canvas'); cv.width = cv.height = NS;
+  const c = cv.getContext('2d');
+  const img = c.createImageData(NS, NS), d = img.data;
+  let g = 20250921; const rnd = () => (g = (g*16807)%2147483647)/2147483647;
+  const N = Math.round(NS*NS*0.055);          // ~5.5% of pixels carry a grain
+  for (let i = 0; i < N; i++) {
+    const o = (((rnd()*NS)|0)*NS + ((rnd()*NS)|0))*4;
+    // Most grains are a gentle lift; a few catch properly and glint.
+    const lift = rnd() > 0.94 ? 46 + rnd()*40 : 10 + rnd()*22;
+    d[o] = 255; d[o+1] = 242; d[o+2] = 214;   // warm: sand, not ash
+    d[o+3] = Math.min(255, d[o+3] + lift);
+  }
+  c.putImageData(img, 0, 0);
+  return (sandGrainCv = cv);
+}
 function noiseCanvas(amp, seed) {
   // always generated at 2048 (the per-pixel grain loop is the slow part) and upscaled to S —
   // the noise is low-frequency mood, the crispness lives in the vector linework drawn at S
@@ -285,10 +310,14 @@ const THEMES = {
     boardEnv: 0.4, bumpScale: 0.9, boardReflect: 0.05, guide: 0xf6dfae,
     paint() {
       const [al, a] = canvas2d();
-      a.fillStyle = '#6e4a2c'; a.fillRect(0, 0, S, S);          // deep earth
-      a.globalCompositeOperation = 'soft-light'; a.globalAlpha = 1;
-      a.drawImage(noiseCanvas(0.14), 0, 0);
+      a.fillStyle = '#5d3d22'; a.fillRect(0, 0, S, S);          // deep earth, a shade darker than
+      a.globalCompositeOperation = 'soft-light'; a.globalAlpha = 1;   // it was, so the grain reads
+      a.drawImage(noiseCanvas(0.14), 0, 0);                          // as pale sand lying ON it
       a.globalCompositeOperation = 'source-over';
+      // A dohyo is clay under a layer of loose sand -- see sandGrainCanvas.
+      a.globalCompositeOperation = 'lighter'; a.globalAlpha = 0.85;
+      a.drawImage(sandGrainCanvas(), 0, 0, S, S);
+      a.globalCompositeOperation = 'source-over'; a.globalAlpha = 1;
       // faint worn patches — the ring has been fought on
       let rng = 424242; const rnd = () => (rng = (rng*16807)%2147483647)/2147483647;
       for (let i = 0; i < 40; i++) {
@@ -315,6 +344,12 @@ const THEMES = {
       const [bu, b] = canvas2d();
       b.fillStyle = '#808080'; b.fillRect(0, 0, S, S);
       b.globalAlpha = 0.6; b.drawImage(noiseCanvas(0.12, 313), 0, 0); b.globalAlpha = 1;
+      // ...and the same grain layer in the height map, so the tooth is really there for the key
+      // light to catch rather than speckle painted on a smooth slab. Same canvas, so every pale
+      // grain up there is a raised grain down here.
+      b.globalCompositeOperation = 'lighter'; b.globalAlpha = 0.5;
+      b.drawImage(sandGrainCanvas(), 0, 0, S, S);
+      b.globalCompositeOperation = 'source-over'; b.globalAlpha = 1;
       strokeLines(b, '#b4b4b4', LW*1.8);                          // bands gently raised
       return { albedo: al, rough: ro, bump: bu };
     },

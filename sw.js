@@ -3,7 +3,7 @@
 // network-first (so an online player always gets the newest build), with the cached copy as the
 // offline fallback; static assets are cache-first. Cross-origin requests (Supabase auth/realtime)
 // are never touched — they always go straight to the network.
-const CACHE = 'tau-v124';  // bump on asset changes so clients drop the old cache (v124: the top two rungs get real trained brains -- rung 12 is the strongest net in nn/models given its own search, and the Committee's vote now runs a two-stage funnel with a real opponent reply instead of judging one ply -- index.html, committee/)
+const CACHE = 'tau-v125';  // bump on asset changes so clients drop the old cache (v125: a turn is handed over deliberately (Enter) and can be taken back (Ctrl+Z), the walkthrough teaches the rules in the order they build and freezes each slide once its goal lands, the turn clock is 60s with a no-clock option for private matches, and the sumo dohyo is sand that scuffs -- index.html, desktop/)
 const ASSETS = [
   './', './index.html', './tau-logo.png',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon-32.png',

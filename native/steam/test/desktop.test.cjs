@@ -1065,14 +1065,13 @@ test('the ambient demo simulates its next endgame behind a flag the render loop 
 
 test('the walkthrough draws the match\'s own tripod: tube-width legs in the skin\'s colours',async t=>{
   const g=await game();t.after(g.close);
-  assert.ok(g.read('TUTOR_SPEED')<=0.3,'the whole-game preview plays at a pace that can be followed');
   // Record what the walkthrough's flat board asks its context to draw.
   g.read(`(()=>{ const orig=HTMLCanvasElement.prototype.getContext; const rec=window.__rec={widths:new Set(),strokes:new Set()};
     HTMLCanvasElement.prototype.getContext=function(type){ const c=orig.call(this,type); if(!c||this.id!=='htpBigCanvas')return c;
       return this.__rec||(this.__rec=new Proxy(c,{set(o,k,v){ if(k==='lineWidth')rec.widths.add(v); if(k==='strokeStyle')rec.strokes.add(v); o[k]=v; return true; }, get:(o,k)=>o[k]})); }; })()`);
   g.$('desktopLearn').click();g.tick();
   assert.ok(g.$('htpFull'),'the walkthrough is open');
-  g.$('htpNext').click();g.tick(80);   // the first rule slide: a live piece on the flat board
+  g.tick(80);   // slide 0 IS the first rule slide now: a live piece on the flat board
   const cv="document.getElementById('htpBigCanvas')";
   const legW=g.read(`Math.max(2, 2*CFG.legRadius*htpMap(${cv}.width, ${cv}.height).sc)`);
   assert.ok(g.read(`[...window.__rec.widths].some(w=>Math.abs(w-${legW})<1e-9)`),'legs are the tube\'s diameter through the slide\'s own scale, as Piece.prototype.draw draws them');
@@ -1546,16 +1545,15 @@ test('legs meeting legs get a short contact tick, once per squeeze not once per 
 test('a stuck walkthrough slide can be reset without losing earned progress',async t=>{
   const g=await game();t.after(g.close);
   g.$('desktopLearn').click();g.tick();
-  g.read(`for (const k of Object.keys(HTP_TRY)) { const st=htpState(k); st.done=true; st.touched=true; } htpShowStep(1)`);   // 'pivot' slide, already earned
+  g.read(`for (const k of Object.keys(HTP_TRY)) { const st=htpState(k); st.done=true; st.touched=true; }
+    htpShowStep(HTP_STEPS.findIndex(s=>s.tryKey==='pivot'))`);   // already earned
   g.read(`const st=htpState('pivot'); st.pinned=0; st.p.rot=1.4;`);   // messed-up live pose
   assert.equal(g.read("document.getElementById('htpReset').style.display"),'','Reset shows on a try-it slide');
   g.$('htpReset').click();g.tick();
   const st=JSON.parse(g.read(`JSON.stringify({pinned:htpState('pivot').pinned, rot:+htpState('pivot').p.rot.toFixed(3), done:htpState('pivot').done})`));
   assert.equal(st.pinned,null,'the live pose is back to the start');
   assert.equal(st.done,true,'but the earned goal is not lost');
-  // the goal slide (no tryKey) never shows Reset
-  g.read('htpShowStep(0)');
-  assert.equal(g.read("document.getElementById('htpReset').style.display"),'none');
+  assert.equal(g.read("htpState('pivot').locked"),false,'and Reset unfreezes a slide whose goal already landed');
   assert.deepEqual(g.errors,[]);
 });
 

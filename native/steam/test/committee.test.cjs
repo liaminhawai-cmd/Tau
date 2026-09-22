@@ -236,3 +236,68 @@ test('the desktop premium ladder carries Yellow and The Committee at the new end
   assert.equal(D.boardRung('colossus'),12);
   assert.deepEqual(g.errors,[]);
 });
+
+// ---------- the walkthrough, after the reshape ----------
+test('the walkthrough teaches the rules in the order they build on each other', async t => {
+  const g = await game(''); t.after(g.close);
+  assert.deepEqual(g.errors, []);
+  // Hold a foot, swing around it, then what the printed lines do to that swing, then the win.
+  assert.equal(g.read('JSON.stringify(HTP_STEPS.map(s=>s.tryKey))'),
+    '["pivot","swing","cross","double","twofeet","off"]');
+  // Every slide is a do-it slide now -- the watch-a-recorded-game opener is gone, and so is the
+  // bare "shove Red", which was never a rule of its own.
+  assert.equal(g.read('HTP_STEPS.every(s=>!!s.tryKey)'), true, 'nothing is just watched');
+  assert.equal(g.read("JSON.stringify(HTP_STEPS.map(s=>s.tryKey)).includes('push')"), false);
+  assert.equal(g.read("typeof TUTOR_GAME"), 'undefined', 'and the recorded game it played is gone with it');
+  // The clause that read as nonsense is not in the swing slide any more.
+  assert.equal(g.read("HTP_STEPS[1].text.includes('live from your very first move')"), false);
+});
+
+test('a walkthrough slide freezes once its goal lands, and Reset re-arms it', async t => {
+  const g = await game(''); t.after(g.close);
+  // Earn the slide before it: htpShowStep clamps to the furthest slide whose goal is outstanding,
+  // so without this, Reset would land on the pivot slide instead of the one under test.
+  g.read(`openHowToPlay(); const p = htpState('pivot'); p.done = true; p.touched = true;`);
+  const rot0 = g.read("htpState('swing').p.rot");
+  g.read(`const st = htpState('swing'); st.pinned = 0; st.lastT = 1; htpGoalDone('swing', st, {x:0,y:0});`);
+  assert.equal(g.read("htpState('swing').locked"), true, 'the goal freezes the board');
+  g.read(`htpTrySwing(htpState('swing'), 'swing', 0.4);`);
+  assert.equal(g.read("htpState('swing').p.rot"), rot0, 'a frozen slide cannot be shuffled about');
+  g.read(`htpShowStep(HTP_STEPS.findIndex(s=>s.tryKey==='swing')); htpResetSlide();`);
+  assert.equal(g.read("htpState('swing').locked"), false, 'Reset gives it back');
+  assert.equal(g.read("htpState('swing').done"), true, 'without taking the earned goal away');
+  assert.deepEqual(g.errors, []);
+});
+
+test('the one-line slide wants the same position tried from all three feet', async t => {
+  const g = await game(''); t.after(g.close);
+  const st = `htpState('cross')`;
+  for (const foot of [0, 1, 2]) {
+    assert.equal(g.read(`${st}.done`), false, 'not finished before all three');
+    g.read(`(()=>{ const s = ${st}; s.pinned = ${foot}; s.lastT = 1; s.netAng = 20*Math.PI/180;
+      s.dragging = true; htpTurnOver('cross', s); })()`);
+  }
+  assert.equal(g.read(`${st}.done`), true, 'the third foot completes it');
+  assert.deepEqual(g.errors, []);
+});
+
+test('the same foot twice does not count as two of the three', async t => {
+  const g = await game(''); t.after(g.close);
+  for (let i = 0; i < 3; i++)
+    g.read(`(()=>{ const s = htpState('cross'); s.pinned = 0; s.lastT = 1; s.netAng = 20*Math.PI/180;
+      s.dragging = true; htpTurnOver('cross', s); })()`);
+  assert.equal(g.read("htpState('cross').done"), false);
+  assert.equal(g.read("JSON.stringify(htpState('cross').feetTried)"), '[0]');
+  assert.deepEqual(g.errors, []);
+});
+
+test('a shove that only moves the opponent is a good try, not a win', async t => {
+  const g = await game(''); t.after(g.close);
+  g.read(`(()=>{ const s = htpState('off'); s.lastT = 1; s.pinned = 0;
+    s.red.x = s.red0.x - 6;            // moved, but nowhere near the rim
+    s.netAng = 20*Math.PI/180; s.dragging = true; htpTurnOver('off', s); })()`);
+  assert.equal(g.read("htpState('off').done"), false, 'bumping them is not the goal');
+  assert.ok(/another way/i.test(g.read("htpState('off').say") || ''), 'it says so, and invites another try');
+  assert.ok(g.read("htpState('off').rewindAt") > 0, 'and puts the board back to try it from');
+  assert.deepEqual(g.errors, []);
+});
