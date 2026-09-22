@@ -136,8 +136,9 @@ if (window.TAU_DESKTOP) {
        old width-only media query applied, but now driven by the actual layout decision. */
     #views.stacked #view3d { order: -1; }
     #btns { display:flex; gap:10px; flex-wrap:wrap; }
-    #moveCommitLabel { display:flex; align-items:center; gap:6px; font-size:12px; }
-    #moveCommitMode { max-width:170px; font:inherit; padding:7px; border-radius:6px; }
+    .tau-setting { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:18px 0; text-align:left; }
+    .tau-setting select { max-width:60%; min-width:140px; padding:9px; font:inherit; color:#e6ecf2; background:#252b33; border:1px solid #46505c; border-radius:7px; }
+    .tau-settings-note { font-size:13px; color:#9aa4ad; text-align:left; }
     /* Turn controls. Centred rather than corner-parked like Surrender/Menu: while a swing is
        parked, ending the turn is the main thing on screen, and it must not read as a menu chore. */
     #turnBtns { display:flex; gap:10px; }
@@ -283,11 +284,11 @@ if (window.TAU_DESKTOP) {
     /* Inline line-art icons: stroked, no fill, inheriting the button's own colour. */
     button svg { width:1em; height:1em; display:block; fill:none; stroke:currentColor;
                  stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
-    #themeToggle { position:fixed; top:calc(9px + env(safe-area-inset-top)); right:12px; z-index:60; background:none; border:none;
+    #settingsToggle { position:fixed; top:calc(9px + env(safe-area-inset-top)); right:12px; z-index:60; background:none; border:none;
                    color:#9aa4ad; font-size:19px; line-height:1; padding:6px 7px; margin:0;
                    opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
-    #themeToggle:hover { opacity:0.95; }
-    #themeToggle:active { background:none; }
+    #settingsToggle:hover { opacity:0.95; }
+    #settingsToggle:active { background:none; }
     #soundToggle { position:fixed; top:calc(9px + env(safe-area-inset-top)); right:46px; z-index:60; background:none; border:none;
                    color:#9aa4ad; font-size:17px; line-height:1; padding:6px 7px; margin:0;
                    opacity:0.4; cursor:pointer; transition:opacity 0.15s; }
@@ -408,7 +409,7 @@ if (window.TAU_DESKTOP) {
     #dirSafeBox.land { width:min(94vw, 94vh*16/9, 167vh); aspect-ratio:16/9; }
     #dirSafeBox.port { width:min(94vh*9/16, 94vw, 52.9vh); aspect-ratio:9/16; }
     /* Clean board-only shot: everything that isn't the boards or the (opted-in) logo watermark. */
-    body.dirHideUI #themeToggle, body.dirHideUI #soundToggle, body.dirHideUI #langToggle, body.dirHideUI #bopomofoToggle,
+    body.dirHideUI #settingsToggle, body.dirHideUI #soundToggle, body.dirHideUI #langToggle, body.dirHideUI #bopomofoToggle,
     body.dirHideUI #volPopover, body.dirHideUI #langMenu, body.dirHideUI #buildTag, body.dirHideUI #statusRow,
     body.dirHideUI #meta, body.dirHideUI #help, body.dirHideUI #btns,
     body.dirHideUI #replayBtns, body.dirHideUI #passToast, body.dirHideUI #waitBanner { display:none !important; }
@@ -639,7 +640,7 @@ if (window.TAU_DESKTOP) {
 </style>
 </head>
 <body>
-<button id="themeToggle" title="Switch board theme" aria-label="Switch board theme"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.4"/><path d="M12 2.6v2.6M12 18.8v2.6M2.6 12h2.6M18.8 12h2.6M5.4 5.4l1.8 1.8M16.8 16.8l1.8 1.8M18.6 5.4l-1.8 1.8M7.2 16.8l-1.8 1.8"/></svg></button>
+<button id="settingsToggle" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m9.5 3-.5 2-2 1.2-2-.6-2.5 4.3L4 11.3v2.4l-1.5 1.4L5 19.4l2-.6 2 1.2.5 2h5l.5-2 2-1.2 2 .6 2.5-4.3-1.5-1.4v-2.4l1.5-1.4L19 5.6l-2 .6L15 5l-.5-2z"/></svg></button>
 <button id="soundToggle" title="Sound volume" aria-label="Sound volume"></button>
 <div id="volPopover">
     <canvas id="volDial" width="112" height="100" title="Drag to set volume"></canvas>
@@ -654,7 +655,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 288</div>
+<div id="buildTag">build 289</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -765,7 +766,7 @@ if (window.TAU_DESKTOP) {
             <!-- Turn controls: a turn is committed deliberately now (see commitPlayerTurn), so the
                  board needs somewhere to say so. Both are hidden until they would do something. -->
             <div id="turnBtns" style="display:none;"><button id="undoTurnBtn" title="Take the swing back (Ctrl+Z)">↶ Undo</button><button id="endTurnBtn" title="Hand the turn over (Enter)">End turn ⏎</button></div>
-            <div id="btns"><button id="reset">Surrender</button><button id="menuBtn">Menu</button><label id="moveCommitLabel">End turn: <select id="moveCommitMode"><option value="release">Release mouse</option><option value="enter">Press Enter</option></select></label></div>
+            <div id="btns"><button id="reset">Surrender</button><button id="menuBtn">Menu</button></div>
             <!-- replaces Surrender/Menu while a replay is playing: share the game or skip to the end -->
             <div id="replayBtns" style="display:none;gap:10px;"><button id="replayShare">Share this game</button><button id="replaySave">Save this game</button><button id="replayPlayOn" title="Take over this position">Play on from here</button><button id="replaySpeed" title="Playback speed">1×</button><button id="replaySkip">Skip ⏭</button></div>
         </div>
@@ -7987,9 +7988,7 @@ function setMoveCommitMode(mode) {
         const el = document.getElementById(id); if (el) el.value = mode;
     }
 }
-const moveCommitPicker = document.getElementById('moveCommitMode');
-moveCommitPicker.value = getMoveCommitMode();
-moveCommitPicker.addEventListener('change', e => setMoveCommitMode(e.target.value));
+// The picker is created when Settings opens; the saved preference also applies before opening it.
 // Shows/hides the pair and keeps them honest about what they would actually do. Called from every
 // place the turn state moves: a release, an undo, a commit, and each render of a fresh turn.
 function updateTurnControls() {
@@ -8196,23 +8195,39 @@ function applyBoardSkin() {
     currentTheme = skinIdx === 0 ? 'dark' : 'light';
     try { localStorage.setItem('tauSkin', BOARD_SKINS[skinIdx].id); } catch(e) {}
     applyTheme();
-    updateThemeToggleIcon();
+
     // Repaint every visible 2D surface right away so the switch is instant (the in-game board AND
     // the landing demo board, which otherwise only redraws mid-animation). Both are guarded.
     render();
     demoDraw();
 }
 function cycleBoardSkin() { skinIdx = (skinIdx + 1) % BOARD_SKINS.length; applyBoardSkin(); }
-// The corner button always shows a sun — each tap steps one shade lighter and loops; the tooltip
-// names the board you'll switch TO.
-function updateThemeToggleIcon() {
-    const btn = document.getElementById('themeToggle');
-    if (btn) btn.title = 'Board: ' + BOARD_SKINS[(skinIdx + 1) % BOARD_SKINS.length].name;
+// A single settings entry keeps preferences off the game HUD.
+function openGameSettings() {
+    closeTopPopouts();
+    if (window.tauDesktop && window.tauDesktop.openSettings) {
+        window.tauDesktop.openSettings(); return;
+    }
+    const escSetting = value => String(value).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const label = text => escSetting(t(text));
+    showModal(t('Settings'), `
+        <label class="tau-setting">${label('Board style')}<select id="settingsBoardStyle">${BOARD_SKINS.map(s => '<option value="'+escSetting(s.id)+'">'+label(s.name)+'</option>').join('')}</select></label>
+        <label class="tau-setting">${label('End turn after dragging')}<select id="moveCommitMode"><option value="release">${label('Release mouse')}</option><option value="enter">${label('Press Enter')}</option></select></label>
+        <p class="tau-settings-note">${label('Release mouse ends the turn when you let go. Press Enter lets you pause, continue dragging or undo before passing.')}</p>`,
+        [{label:t('Done'), onClick:() => document.getElementById('settingsToggle').focus()}], true,
+        {dismiss:() => document.getElementById('settingsToggle').focus()});
+    const board = document.getElementById('settingsBoardStyle');
+    board.value = BOARD_SKINS[skinIdx].id;
+    board.onchange = e => {
+        const i = BOARD_SKINS.findIndex(s => s.id === e.target.value);
+        if (i >= 0) { skinIdx = i; applyBoardSkin(); }
+    };
+    const mode = document.getElementById('moveCommitMode');
+    mode.value = getMoveCommitMode();
+    mode.onchange = e => setMoveCommitMode(e.target.value);
+    board.focus();
 }
-document.getElementById('themeToggle').addEventListener('click', cycleBoardSkin);
-updateThemeToggleIcon();
-// (The old Settings panel only held the theme switch, which now lives in the always-visible
-// corner toggle above — so Settings was removed as redundant.)
+document.getElementById('settingsToggle').addEventListener('click', openGameSettings);
 
 // ---------- Sound: white noise through a pitch-tracking EQ peak, driven by movement speed --------
 // A single looping white-noise source runs through a sharp bandpass (the "voice"). Its centre

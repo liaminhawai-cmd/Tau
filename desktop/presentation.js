@@ -1105,7 +1105,6 @@
         ? `<div class="desktop-controls-head">${esc(t('Touch'))}</div><p class="desktop-controls-note" style="margin:0 0 16px">${esc(t('Tap a foot to pin it, then drag another foot to swing. Drag the 3D view to look around. Drag the flat board\'s rim knob to resize it.'))}</p>`
         : ''}
       <div class="desktop-controls-head">${esc(touch ? t('Keyboard (if one is connected)') : t('Keyboard and mouse'))}</div>
-      <label class="desktop-setting">${esc(t('End turn after dragging'))}<select id="desktopMoveCommitMode"><option value="release">${esc(t('Release mouse'))}</option><option value="enter">${esc(t('Press {key}', {key:keyName(settings.keys.commit)}))}</option></select></label>
       <div id="desktopKeyboardDiagram" class="desktop-diagram-wrap">${keyboard()}</div>
       ${touch ? '' : `<p class="desktop-controls-note" style="margin:0">${esc(t('Click a foot to pin it, then drag another foot to swing. Right-drag to look around. Scroll the flat board, or drag its rim knob, to resize it.'))}</p>`}
       ${canRebind() ? `<p class="desktop-controls-note">${esc(t('Click a key to change it, then press the new one. Esc and F1 stay as they are.'))}${window.tauSteam ? ' ' + esc(t('Controllers are remapped in Steam’s own controller settings.')) : ''} <button type="button" id="desktopKeysReset">${esc(t('Reset keys'))}</button></p>` : ''}
@@ -1120,8 +1119,6 @@
       { label:t('Done'), onClick:() => { stopRebind(); if (inMatch()) focusBoard(); } },
     ], true, {dismiss:stopRebind});
     $('modalBox').classList.add('desktop-sheet');
-    $('desktopMoveCommitMode').value = getMoveCommitMode();
-    $('desktopMoveCommitMode').onchange = e => setMoveCommitMode(e.target.value);
     $('desktopPadBrand').value = settings.padBrand;
     $('desktopPadBrand').onchange = e => { settings.padBrand = e.target.value; saveSettings(); drawPad(); };
     $('desktopPadScheme').value = settings.padScheme;
@@ -1306,6 +1303,7 @@
       <label class="desktop-setting">${esc(t('Mute'))}<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
       <label class="desktop-setting">${esc(t('Board'))}<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${esc(boardLabel(b))}</option>`:boardRevealed(b.id)?`<option value="${b.id}" disabled>${esc(boardLabel(b))} · ${esc(unlockText(b.id))}</option>`:`<option value="${b.id}" disabled>${esc(SECRET_NAME)} · ${esc(t('keep climbing'))}</option>`).join('')}</select></label>
       ${testBoards ? '<p class="desktop-result-detail">All boards are open for testing. Type <b>ALLBOARDS</b> on the main menu to restore locks.</p>' : ''}
+      <label class="desktop-setting">${esc(t('End turn after dragging'))}<select id="desktopMoveCommitMode"><option value="release">${esc(t('Release mouse'))}</option><option value="enter">${esc(t('Press {key}', {key:keyName(settings.keys.commit)}))}</option></select></label>
       <label class="desktop-setting">${esc(t('Graphics'))}<select id="desktopQuality">${qualityOptions()}</select></label>
       <p class="desktop-controls-note" id="desktopQualityNote" style="margin:0"></p>
       <label class="desktop-setting">${esc(t('Language'))}<select id="desktopLanguage" aria-label="${esc(t('Language'))}">${LANG_NAMES.map(([code,label])=>`<option value="${code}">${esc(label)}</option>`).join('')}</select></label>
@@ -1316,6 +1314,8 @@
       ${inMatch() ? '' : `<p class="desktop-controls-note"><button type="button" id="desktopResetProgress">${esc(t('Reset progress'))}</button> ${esc(t('Puts this profile back to a first launch.'))}</p>`}
       <p class="desktop-controls-note" style="text-align:center">${esc(buildTagText())}</p>`,
       [{label:t('Done'),onClick:() => { if(inMatch()) focusBoard(); }}], true, {dismiss:true});
+    $('desktopMoveCommitMode').value = getMoveCommitMode();
+    $('desktopMoveCommitMode').onchange = e => setMoveCommitMode(e.target.value);
     $('desktopQuality').value = settings.quality;
     $('desktopLanguage').value = LANG;
     // setLang repaints the page (this layer included, via onLangChange); the sheet itself is
@@ -2920,6 +2920,7 @@
   $('modalBox').setAttribute('aria-labelledby','modalTitle');
 
   window.tauDesktop={
+    openSettings,
     get paused(){return paused;},
     get menuOpen(){return dialogOpen();},
     startMatch, chooseDevices, seatBlocks,
