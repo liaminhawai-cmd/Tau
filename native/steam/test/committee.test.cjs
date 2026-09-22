@@ -301,3 +301,22 @@ test('a shove that only moves the opponent is a good try, not a win', async t =>
   assert.ok(g.read("htpState('off').rewindAt") > 0, 'and puts the board back to try it from');
   assert.deepEqual(g.errors, []);
 });
+
+test('winning a slide mid-swing does not stop the piece dead in the corner', async t => {
+  // The corner and two-feet goals fire from inside the substep loop, the instant the contact sets
+  // show the right pattern -- which is halfway through the very motion being rewarded. Freezing
+  // the board on `locked` alone stopped the piece there, so the player never got to ride through
+  // the corner they had just been congratulated for finding.
+  const g = await game(''); t.after(g.close);
+  g.read(`(()=>{ const s = htpState('double'); s.pinned = 0; s.lastT = 1; s.dragging = true;
+    htpGoalDone('double', s, {x:0,y:0}); window.__r0 = s.p.rot; })()`);
+  assert.equal(g.read("htpState('double').locked"), true, 'the goal does arm the lock');
+  g.read(`htpTrySwing(htpState('double'), 'double', 0.25)`);
+  assert.notEqual(g.read("htpState('double').p.rot"), g.read('window.__r0'),
+    'but the stroke already in hand carries on through');
+  // Once the finger is up, the lock bites and a fresh swing is refused.
+  g.read(`htpState('double').dragging = false; window.__r1 = htpState('double').p.rot;`);
+  g.read(`htpTrySwing(htpState('double'), 'double', 0.25)`);
+  assert.equal(g.read("htpState('double').p.rot"), g.read('window.__r1'), 'a new swing is not');
+  assert.deepEqual(g.errors, []);
+});

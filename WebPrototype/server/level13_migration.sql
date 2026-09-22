@@ -41,17 +41,35 @@ alter table public.level_clears
 
 -- 2) renumber the existing rows, exactly once.
 do $$
+declare
+  lvl integer;
 begin
   if exists (select 1 from public.applied_migrations where name = 'level13_renumber') then
     raise notice 'level13_renumber already applied; leaving level_clears alone';
     return;
   end if;
 
-  -- One statement, not a row-at-a-time walk: Postgres evaluates the whole UPDATE
-  -- against the old values and checks the (user_id, level, colour) unique index
-  -- at statement end, by which point every row has moved up one and no two
-  -- collide. A loop would need to go descending to avoid a momentary clash.
-  update public.level_clears set level = level + 1 where level between 1 and 12;
+  -- Nothing should sit above the old cap of 11. If something does, either this has already
+  -- half-run or the data is not what this migration was written against -- stop rather than
+  -- shuffle rows into each other.
+  if exists (select 1 from public.level_clears where level > 11) then
+    raise exception 'level_clears already has rows above level 11; refusing to renumber';
+  end if;
+
+  -- Highest rung first, one rung per statement.
+  --
+  -- This was originally a single "set level = level + 1 where level between 1 and 12", on the
+  -- reasoning that Postgres would check the (user_id, level, colour) key once the whole statement
+  -- had finished, by which point nothing collides. That is only true of a DEFERRABLE constraint.
+  -- level_clears_pkey is an ordinary primary key, so the check happens per ROW, as each row moves:
+  -- the statement lifts a level-1 row onto a level-2 row that has not moved yet and dies with
+  -- 23505. It did exactly that against the live database.
+  --
+  -- Walking down from the top instead means the rung being moved into was vacated by the previous
+  -- step, so no two rows are ever on the same one.
+  for lvl in reverse 11..1 loop
+    update public.level_clears set level = lvl + 1 where level = lvl;
+  end loop;
 
   -- ...and leave a copy of the old rung 1 on the new rung 1 (Yellow), which is
   -- the same opponent under a different board.

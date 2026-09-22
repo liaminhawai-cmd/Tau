@@ -139,6 +139,9 @@ if (window.TAU_DESKTOP) {
     /* Turn controls. Centred rather than corner-parked like Surrender/Menu: while a swing is
        parked, ending the turn is the main thing on screen, and it must not read as a menu chore. */
     #turnBtns { display:flex; gap:10px; }
+    /* Private match clock picker: a segmented choice, so the one in force is obvious at a glance. */
+    #privClocks .privClock { margin:2px; }
+    #privClocks .privClock.on { background:#2f4bd6; border-color:#3d5afe; color:#fff; font-weight:bold; }
     body.ingame #turnBtns { pointer-events:auto; align-self:center; text-shadow:none; }
     #turnBtns #endTurnBtn { background:#2f4bd6; border-color:#3d5afe; color:#fff; font-weight:bold; }
     #turnBtns #endTurnBtn:active { background:#3a57e0; }
@@ -649,7 +652,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 287</div>
+<div id="buildTag">build 288</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -6564,6 +6567,8 @@ function coachArc3DUpdate() {
 }
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
+    // Leaving a game is the cheapest possible moment to take a pending update (see swReloadIfIdle).
+    if (swReloadPending) { swReloadIfIdle(); return; }
     labMode = false; labAuto = false; labHist = []; labBenchRender();
     tutorJustPlayed = false; if (typeof tutorEnd === 'function') tutorEnd();
     if (window.tauSteam) window.tauSteam.setStatus('In the menus');   // Steam friends-list presence
@@ -7054,8 +7059,9 @@ function htpTurnOver(key, st) {
 }
 function htpGoalDone(key, st, at) {
     st.done = true;
-    // The goal is the end of the slide's playable part: freeze the board so a won position cannot
-    // be shuffled back into a lost one while the player reads the text. Reset re-arms it.
+    // The goal ends the slide's playable part: the board freezes so a won position cannot be
+    // shuffled back into a lost one while the player reads the text. Reset re-arms it. Armed
+    // rather than applied, because several goals fire mid-swing -- see htpTrySwing.
     st.locked = true;
     st.say = null; st.rewindAt = 0;
     st.burst = { x: at.x, y: at.y, t: st.lastT };
@@ -7070,7 +7076,13 @@ function htpGoalDone(key, st, at) {
 // every slide, byte-identically to a real game. Own feet never leave the board (the push-OFF
 // slide's red piece is the only thing that ever goes over the rim).
 function htpTrySwing(st, key, dA) {
-    if (st.locked) return;                                      // goal already landed -- the board is frozen
+    // A locked slide refuses a NEW swing, never the one in your hand. The corner and two-feet
+    // goals land in the middle of the substep loop below -- the moment the contact sets show the
+    // right pattern -- so freezing on `locked` alone stopped the piece dead halfway through the
+    // corner it was being congratulated for rounding. Let the stroke finish; the lock takes hold
+    // when the finger comes up (htpTurnOver), which is when "the goal is done" actually means
+    // something.
+    if (st.locked && !st.dragging) return;
     if (key === 'off' && htpPhase !== 'push') return;          // hands off while the fall plays out
     if (st.turnDir !== 0 && Math.sign(dA) !== st.turnDir) { st.lockFlashT = st.lastT; return; }
     const pv = st.p.feet()[st.pinned], stepMax = 1.5*Math.PI/180;
@@ -12927,12 +12939,24 @@ const TURN_CLOCK_MS = 60000;
 // passes and then surrenders and settles its own row.
 const UNTIMED_PING_MS = 10*60*1000;      // how long before we ask
 const UNTIMED_ANSWER_MS = 90*1000;       // how long the answer is waited for before timing out
-// True when this match asked for no turn clock. `untimed` rides on the match row, so both clients
-// read the same answer -- and a row without the column (a server that has not run
-// untimed_private_matches.sql) is simply timed, exactly as before.
-function turnClockUntimed() { return !!(onlineMatch && onlineMatch.untimed); }
+// A private match carries its own clock on the match row -- `turn_seconds`, which both clients
+// read, because a clock only one side believed in would have it passing the other's turn out from
+// under them. NULL there means no clock.
+//
+// The distinction that matters below is null (chosen: no clock) versus UNDEFINED (the column is
+// not there at all, because the server has not run untimed_private_matches.sql). Undefined must
+// mean the ordinary clock, or every ranked match on an un-migrated server would silently become
+// untimed -- which is why this asks whether the key exists rather than just testing falsiness.
+function turnClockUntimed() {
+    return !!(onlineMatch && 'turn_seconds' in onlineMatch && onlineMatch.turn_seconds === null);
+}
 // How long the side to move actually gets.
-function turnClockLimitMs() { return turnClockUntimed() ? UNTIMED_PING_MS : TURN_CLOCK_MS; }
+function turnClockLimitMs() {
+    if (!onlineMatch) return TURN_CLOCK_MS;
+    if (turnClockUntimed()) return UNTIMED_PING_MS;
+    const s = onlineMatch.turn_seconds;
+    return (typeof s === 'number' && s > 0) ? s*1000 : TURN_CLOCK_MS;
+}
 // Returns 'online' / 'local' / null (no clock this mode -- vs AI, or no game showing at all).
 function turnClockMode() {
     if (window.tauDesktop && window.tauDesktop.untimedLocal()) return false;
@@ -13640,12 +13664,11 @@ document.getElementById('leaderboardBtn').addEventListener('click', openLeaderbo
 // ---------- Private matches: invite a specific person by code or link ----------
 // (Entry point is the "Online Private" option inside the "1v1" sub-menu; see choose1v1Mode.)
 function openPrivateMatchMenu() {
+    // One way to make a match. The clock is chosen on the waiting screen instead of here: it is a
+    // setting on the match, not a different kind of match, and putting it in this list made the
+    // menu read as two products.
     showModal(t('Private match'), t('Play a casual 1v1 against someone specific instead of the random queue.'), [
-        { label: t('Create a match'), onClick: () => createPrivateMatch(false) },
-        // The clock exists to stop a stranger in the ranked queue holding your evening hostage.
-        // Two people who swapped a code are not strangers, so they get to turn it off -- for a
-        // postal-paced game, or just to think properly.
-        { label: t('Create a match — no clock'), onClick: () => createPrivateMatch(true) },   // checks in every 10 min -- see UNTIMED_PING_MS
+        { label: t('Create a match'), onClick: createPrivateMatch },
         { label: t('Join with a code'), onClick: joinPrivateMatchPrompt },
         { label: 'Cancel', onClick: () => {} },
     ], false, { dismiss: true });
@@ -13655,7 +13678,7 @@ let privateWaitChannel = null;
 function cleanupPrivateWait() {
     if (privateWaitChannel) { sb.removeChannel(privateWaitChannel); privateWaitChannel = null; }
 }
-async function createPrivateMatch(untimed) {
+async function createPrivateMatch() {
     showModal(t('Private match'), t('Creating your invite…'), []);
     // Wrapped in try/catch: like startOnlineMatchmaking()'s tryOnce(), a genuine network-level
     // failure here can reject the promise outright rather than resolving to {error} -- without
@@ -13672,17 +13695,7 @@ async function createPrivateMatch(untimed) {
         showModal('Private match', 'Could not create an invite: ' + (error ? error.message : 'unknown error'), [ { label: 'OK', onClick: () => {} } ]);
         return;
     }
-    // A separate call rather than an argument to create_private_match, deliberately: an extra RPC
-    // parameter against a server that has not run untimed_private_matches.sql fails the whole call
-    // and private matches stop working until it does. A follow-up the server rejects costs nothing
-    // -- the match is already made, and it is simply a timed one.
-    if (untimed) {
-        try {
-            const { error: uErr } = await sb.rpc('set_private_match_untimed', { p_match_id: row0.match_id });
-            if (uErr) { untimed = false; console.warn('no-clock private match: server kept the clock', uErr.message); }
-        } catch (e) { untimed = false; console.warn('no-clock private match: server kept the clock', e); }
-    }
-    showPrivateWaitScreen(row0.match_id, row0.code, untimed);
+    showPrivateWaitScreen(row0.match_id, row0.code);
     privateWaitChannel = sb.channel('private-wait-'+row0.match_id)
         .on('postgres_changes', { event:'UPDATE', schema:'public', table:'matches', filter:'id=eq.'+row0.match_id }, payload => {
             if (payload.new.status !== 'active') return;
@@ -13693,18 +13706,54 @@ async function createPrivateMatch(untimed) {
         })
         .subscribe();
 }
-function showPrivateWaitScreen(matchId, code, untimed) {
+// What a private match's turn clock may be set to. `null` is no clock -- which is not unlimited;
+// it checks in every ten minutes (see UNTIMED_PING_MS) so an abandoned board still settles itself.
+// The server validates against this same list, so a doctored client cannot invent a clock.
+const PRIVATE_CLOCKS = [
+    { secs: 60,   label: '1 min'   },
+    { secs: 120,  label: '2 min'   },
+    { secs: null, label: 'No timer' },
+];
+function showPrivateWaitScreen(matchId, code) {
     const link = location.origin + location.pathname + '?join=' + encodeURIComponent(code);
-    const body = `${untimed ? `<p class="msg" style="margin:0 0 8px;">${t('No turn clock — take as long as you like. We will just ask every ten minutes whether you are still there.')}</p>` : ''}
-        <p style="margin:0 0 10px;">${t('Share this code, or send the link:')}</p>
+    const opts = PRIVATE_CLOCKS.map((c, i) =>
+        `<button class="privClock${i === 0 ? ' on' : ''}" data-i="${i}">${escapeHtml(t(c.label))}</button>`).join('');
+    const body = `<p style="margin:0 0 10px;">${t('Share this code, or send the link:')}</p>
         <p style="font-size:28px; font-weight:bold; letter-spacing:4px; color:#ffd23f; margin:0 0 12px;">${escapeHtml(code)}</p>
         <div class="row" style="justify-content:center;"><button id="privCopyLink">${t('Copy invite link')}</button></div>
+        <p class="msg" style="margin:14px 0 4px;">${t('Turn clock')}</p>
+        <div class="row" id="privClocks" style="justify-content:center;">${opts}</div>
+        <p class="msg" id="privClockNote" style="margin:6px 0 0;"></p>
         <p class="msg" id="privWaitMsg" style="margin-top:10px;">${t('Waiting for them to join…')}</p>`;
     showModal(t('Private match'), body, [ { label: t('Cancel'), onClick: () => cancelPrivateMatchWait(matchId) } ], true);
     document.getElementById('privCopyLink').addEventListener('click', () => {
         navigator.clipboard.writeText(link)
             .then(() => { document.getElementById('privWaitMsg').textContent = t('Link copied! Waiting for them to join…'); })
             .catch(() => { document.getElementById('privWaitMsg').textContent = t('Could not copy. The code above still works.'); });
+    });
+    // The clock can be changed right up until someone joins; the server refuses it after that
+    // (status is no longer 'waiting'), so neither side can take the clock away mid-match.
+    document.getElementById('privClocks').addEventListener('click', async ev => {
+        const btn = ev.target.closest('.privClock');
+        if (!btn) return;
+        const pick = PRIVATE_CLOCKS[+btn.dataset.i], note = document.getElementById('privClockNote');
+        document.querySelectorAll('#privClocks .privClock').forEach(b => b.classList.toggle('on', b === btn));
+        // Written to the match row, which is what both clients read -- a clock only one side
+        // believes in would have one of them passing the other's turn out from under them.
+        try {
+            const { error } = await sb.rpc('set_private_match_clock',
+                                           { p_match_id: matchId, p_turn_seconds: pick.secs });
+            if (error) throw error;
+            note.textContent = pick.secs === null
+                ? t('No clock. We will ask every ten minutes whether you are still there.')
+                : '';
+        } catch (e) {
+            // The server has not run untimed_private_matches.sql. Say so rather than letting the
+            // highlighted button imply a setting that did not take.
+            console.warn('private match clock not set', e && e.message);
+            note.textContent = t('Could not change the clock — this match keeps the standard one.');
+            document.querySelectorAll('#privClocks .privClock').forEach((b, i) => b.classList.toggle('on', i === 0));
+        }
     });
 }
 function cancelPrivateMatchWait(matchId) {
@@ -14282,7 +14331,21 @@ function checkJoinLink() {
 // every open tab is fully closed, which on a tab someone keeps pinned/open for weeks can mean never.
 // So: actively ask for an update check (a stale sw.js can otherwise go unnoticed for a long time,
 // especially behind a caching proxy), and the moment a new worker actually takes control, reload
-// once so the update applies immediately instead of silently waiting.
+// once so the update applies immediately instead of silently waiting -- but the reload itself
+// waits for a moment when nothing is in progress (see swReloadIfIdle).
+let swReloadPending = false;
+function swReloadIfIdle() {
+    if (!swReloadPending) return;
+    // A board on screen is somebody's turn. Anything else -- the menu, a finished game, the
+    // walkthrough closed -- costs nothing to reload through.
+    try {
+        if (document.getElementById('game').style.display === 'flex'
+            && typeof G !== 'undefined' && G && !G.over) return;
+        if (document.getElementById('htpFull')) return;   // mid-walkthrough is in progress too
+    } catch (e) {}
+    swReloadPending = false;
+    location.reload();
+}
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js').then(reg => {
@@ -14297,7 +14360,14 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
         navigator.serviceWorker.addEventListener('controllerchange', () => {
             if (refreshedOnce) return;   // guard against a reload loop
             refreshedOnce = true;
-            location.reload();
+            // NOT immediately. sw.js calls skipWaiting() on install and clients.claim() on
+            // activate, so a build shipped since the last visit takes over THIS page about a
+            // second after it loads -- and this used to reload on the spot, throwing away
+            // whatever was on the board. That is the "it refreshes a second after I open it,
+            // but only sometimes" report: only sometimes, because only after a deploy.
+            // The update is real and worth taking; it just waits for a moment that costs nothing.
+            swReloadPending = true;
+            swReloadIfIdle();
         });
     });
 }
