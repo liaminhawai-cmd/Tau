@@ -215,7 +215,8 @@ const poolBudgetHours = +arg('poolBudgetHours', 0.25);
 const poolDepths = arg('poolDepths', '1,2');
 const poolGames = arg('poolGames', '4');
 // The promotion gate is a direct match against the incumbent (see promotion-gate.js for why the
-// pool cannot make this call). --gateGames per candidate at D1, colour-balanced; --gateCandidates
+// pool cannot make this call). --gateGames per candidate at its strongest rated depth;
+// --gateCandidates
 // caps how many standing league members join whatever was trained this cycle; a candidate is
 // promoted when its Elo LOWER bound over best.json exceeds --gateMargin.
 const gateGames = Math.max(2, +arg('gateGames', 80) & ~1);
@@ -1970,12 +1971,13 @@ async function runPoolCycle() {
     // ordinary value nets compete for the ordinary best.json seat.
     const rated = allRated.filter(r => r.brain !== 'dual');
     if (!rated.length) { log(`pool cycle ${num} — nothing rated yet, keeping best.json`); return; }
-    // one entry per MODEL (best depth), since depth is a search setting rather than a property of
-    // the weights being promoted
+    // One face per model. Use the same conservative 90% lower bound as the global medals:
+    // the model's strongest supported depth is its actual playing configuration for the gate.
     const byModel = {};
     for (const r of rated) {
       const k = path.basename(r.model, '.json');
-      if (!byModel[k] || r.elo > byModel[k].elo) byModel[k] = r;
+      if (!byModel[k] || (r.eloLo ?? -Infinity) > (byModel[k].eloLo ?? -Infinity) ||
+          (r.eloLo === byModel[k].eloLo && r.elo > byModel[k].elo)) byModel[k] = r;
     }
     // The variant lineage's champion marker, updated with THIS cycle's own placement results (if a
     // lineage step ran this cycle and its checkpoint got enough games to be in byModel already).
@@ -2003,6 +2005,7 @@ async function runPoolCycle() {
 
     const ranked = Object.values(byModel).sort((a, b) => b.elo - a.elo);
     const incumbentName = path.basename(ckpt, '.json');
+    const incumbentDepth = byModel[incumbentName]?.depth || 1;
     const line = ranked.slice(0, 5)
       .map(r => `${path.basename(r.model, '.json')} ${Math.round(r.elo)}`).join(', ');
     log(`pool cycle ${num} — ratings: ${line}`);
@@ -2043,8 +2046,8 @@ async function runPoolCycle() {
       log(`pool cycle ${num} — ${gateLine}`);
     } else {
       // The panel (promotion-gate.js has the argument): games start from the true start and every
-      // brain is deterministic, so candidate-vs-incumbent is two games, not eighty. Candidate and
-      // incumbent each play the same gateGames/2 panel members both colours: the production ladder
+      // brain is deterministic, so a pairing has two games, not eighty. Each model plays at its
+      // strongest rated depth against the same gateGames/2 panel members, both colours: the ladder
       // rungs, then the strongest live faces by Elo that are neither a candidate nor the incumbent.
       const panelN = Math.max(2, Math.floor(gateGames/2));
       const rungs = require('./ladder-sampling.js').productionTop(6);
@@ -2062,24 +2065,26 @@ async function runPoolCycle() {
         const p = livePath(r);
         if (!fs.existsSync(p) || excluded.has(p) || isBestTwin(p)) continue;
         if (pool.some(m => m.spec === `nn:0:${p}`)) continue;
-        pool.push({ id: `${path.basename(p, '.json')}@D1`, spec: `nn:0:${p}`, depth: 1 });
+        pool.push({ id: `${path.basename(p, '.json')}@D${r.depth}`, spec: `nn:0:${p}`, depth: r.depth });
       }
-      for (const m of gate.orderPanelPool(incumbentName, 1, pool)) {
+      for (const m of gate.orderPanelPool(incumbentName, incumbentDepth, pool)) {
         if (panel.length >= panelN) break;
         panel.push(m);
       }
       writeStatus(`promotion gate: ${candidates.length} candidate(s) vs ${incumbentName} over a ${panel.length}-member panel ` +
                   `(started ${new Date().toISOString()})`);
       const verdict = await gate.runPanelGate({
-        incumbent: ckpt, candidates, panel, lanes: gateLanes, depth: 1,
+        incumbent: ckpt, incumbentDepth,
+        candidates: candidates.map(p => ({ path: p, depth: byModel[path.basename(p, '.json')]?.depth || 1 })),
+        panel, lanes: gateLanes,
         dataPrefix: path.join(dir, 'data', `gate-${String(num).padStart(3, '0')}`),
         log: m => log(`pool cycle ${num} — ${m}`),
       });
       for (const r of verdict.results) log(`pool cycle ${num} — gate ${gate.describe(r, gateMargin)}`);
       try {
         fs.appendFileSync(gateHistFile, JSON.stringify({
-          cycle: num, incumbent: incumbentName, games: gateGames, margin: gateMargin, at: new Date().toISOString(),
-          results: verdict.results.map(r => ({ name: r.name, w: r.w, l: r.l, d: r.d, komiW: r.komiW, komiL: r.komiL,
+          cycle: num, incumbent: incumbentName, incumbentDepth, games: gateGames, margin: gateMargin, at: new Date().toISOString(),
+          results: verdict.results.map(r => ({ name: r.name, depth: r.depth, w: r.w, l: r.l, d: r.d, komiW: r.komiW, komiL: r.komiL,
                                                elo: r.rating.elo, lo: r.rating.lo, hi: r.rating.hi })),
         }) + '\n');
       } catch (e) {}
@@ -2088,12 +2093,12 @@ async function runPoolCycle() {
       if (winner && fs.existsSync(winner.path)) {
         atomicCopy(best, path.join(dir, 'models', `best.pre-pool-${Date.now()}.json`));
         atomicCopy(winner.path, best);
-        gateLine = `promoted ${winner.name}: ${winner.w}-${winner.l}-${winner.d} vs ${incumbentName}, ` +
+        gateLine = `promoted ${winner.name}@D${winner.depth}: ${winner.w}-${winner.l}-${winner.d} vs ${incumbentName}@D${incumbentDepth}, ` +
                    `${fmtEloRange(winner.rating)} (lower bound clears +${gateMargin})`;
       } else {
         const top = verdict.results[0];
         gateLine = `no candidate provably beats ${incumbentName}` +
-          (top && top.rating.elo != null ? ` (closest ${top.name}: ${top.w}-${top.l}-${top.d}, ${fmtEloRange(top.rating)})` : '') +
+          (top && top.rating.elo != null ? ` (closest ${top.name}@D${top.depth}: ${top.w}-${top.l}-${top.d}, ${fmtEloRange(top.rating)})` : '') +
           '; keeping best.json';
       }
       log(`pool cycle ${num} — ${gateLine}`);

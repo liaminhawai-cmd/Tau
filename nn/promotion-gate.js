@@ -119,8 +119,8 @@ function describe(result, margin = 0) {
   const score = `${result.w}-${result.l}${result.d ? '-' + result.d : ''}` +
     (result.komiW + result.komiL ? ` (komi ${result.komiW}-${result.komiL})` : '');
   const call = e.elo == null ? 'no data' : clears(result, margin) ? 'CLEARS' : e.hi < 0 ? 'weaker' : 'undecided';
-  const inc = result.incumbent ? ` vs ${result.incumbent.name}'s ${result.incumbent.w}-${result.incumbent.l}${result.incumbent.d ? '-' + result.incumbent.d : ''} on the same panel` : '';
-  return `${result.name}: ${score}${inc}, ${fmtEloRange(e)} -- ${call}`;
+  const inc = result.incumbent ? ` vs ${result.incumbent.name}@D${result.incumbent.depth}'s ${result.incumbent.w}-${result.incumbent.l}${result.incumbent.d ? '-' + result.incumbent.d : ''} on the same panel` : '';
+  return `${result.name}${result.depth ? `@D${result.depth}` : ''}: ${score}${inc}, ${fmtEloRange(e)} -- ${call}`;
 }
 
 
@@ -140,10 +140,10 @@ function describe(result, margin = 0) {
 //
 // panel: [{ id, spec, depth? }] -- arena --b specs ('L11', 'nn:0:<path>' with depth).
 const PANEL_CACHE = path.join(dir, '.gate-panel-cache.json');
-function readCache() { try { return JSON.parse(fs.readFileSync(PANEL_CACHE, 'utf8')); } catch (e) { return {}; } }
-function writeCache(c) {
-  const tmp = PANEL_CACHE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(c, null, 1)); fs.renameSync(tmp, PANEL_CACHE);
+function readCache(file = PANEL_CACHE) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return {}; } }
+function writeCache(c, file = PANEL_CACHE) {
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(c, null, 1)); fs.renameSync(tmp, file);
 }
 function playCell(job) {
   const args = [path.join(dir, 'arena.js'),
@@ -229,27 +229,32 @@ function orderPanelPool(incumbentName, depth, pool, keepUnknown = 0.25) {
   return out;
 }
 async function runPanelGate(opts) {
-  const { incumbent, candidates, panel, lanes = 4, depth = 1, dataPrefix = null, log = console.log } = opts;
-  const cands = [...new Set(candidates)].filter(p => p && fs.existsSync(p) && p !== incumbent);
+  const { incumbent, candidates, panel, lanes = 4, depth = 1, incumbentDepth = depth, cachePath = PANEL_CACHE,
+    dataPrefix = null, log = console.log } = opts;
+  const cands = [...new Map(candidates.map(c => {
+    const p = typeof c === 'string' ? c : c.path;
+    return [p, { path: p, depth: typeof c === 'string' ? depth : c.depth }];
+  })).values()].filter(c => c.path && fs.existsSync(c.path) && c.path !== incumbent);
   if (!cands.length || !fs.existsSync(incumbent) || !panel || !panel.length) return { results: [], played: 0 };
-  const cache = readCache(), kw = komiWinValue();
-  const players = [{ name: path.basename(incumbent, '.json'), path: incumbent, inc: true },
-                   ...cands.map(p => ({ name: path.basename(p, '.json'), path: p, inc: false }))];
+  const cache = readCache(cachePath), kw = komiWinValue();
+  const players = [{ name: path.basename(incumbent, '.json'), path: incumbent, depth: incumbentDepth, inc: true },
+                   ...cands.map(c => ({ name: path.basename(c.path, '.json'), ...c, inc: false }))];
   const jobs = [];
   players.forEach((pl, pi) => panel.forEach((member, mi) => {
-    const key = `${pl.name}@D${depth}|${member.id}`;
+    const key = `${pl.name}@D${pl.depth}|${member.id}`;
     if (cache[key]) return;
-    jobs.push({ name: pl.name, path: pl.path, depth, member, key,
+    jobs.push({ name: pl.name, path: pl.path, depth: pl.depth, member, key,
                 saveData: dataPrefix ? `${dataPrefix}-${String(pi).padStart(2, '0')}-${String(mi).padStart(2, '0')}.jsonl` : null });
   }));
   log(`gate: ${cands.length} candidate(s) vs ${path.basename(incumbent, '.json')} over a ${panel.length}-member panel ` +
-      `at D${depth}: ${jobs.length} cell(s) to play (${players.length*panel.length - jobs.length} cached), ${Math.min(lanes, jobs.length) || 0} lane(s)`);
+      `(incumbent D${incumbentDepth}; candidates ${players.slice(1).map(p => `${p.name}@D${p.depth}`).join(', ')}): ` +
+      `${jobs.length} cell(s) to play (${players.length*panel.length - jobs.length} cached), ${Math.min(lanes, jobs.length) || 0} lane(s)`);
   let next = 0, played = 0;
   const lane = async () => {
     while (next < jobs.length) {
       const job = jobs[next++];
       const r = await playCell(job);
-      if (r) { cache[job.key] = r; played += 2; writeCache(cache); }
+      if (r) { cache[job.key] = r; played += 2; writeCache(cache, cachePath); }
       else log(`gate: no result for ${job.name} vs ${job.member.id} -- arena produced no summary`);
     }
   };
@@ -259,12 +264,12 @@ async function runPanelGate(opts) {
   for (const pl of players.slice(1)) {
     const fc = [], fi = [], tot = { games: 0, w: 0, l: 0, d: 0, komiW: 0, komiL: 0 }, inc = { games: 0, w: 0, l: 0, d: 0, komiW: 0, komiL: 0 };
     for (const member of panel) {
-      const c = cache[`${pl.name}@D${depth}|${member.id}`], i = cache[`${incName}@D${depth}|${member.id}`];
+      const c = cache[`${pl.name}@D${pl.depth}|${member.id}`], i = cache[`${incName}@D${incumbentDepth}|${member.id}`];
       if (!c || !i) continue;   // a member both sides have played is a pair; anything else is dropped
       fc.push(cellFrac(c, kw)); fi.push(cellFrac(i, kw));
       for (const [t, x] of [[tot, c], [inc, i]]) { t.games += 2; t.w += x.w; t.l += x.l; t.d += x.d; t.komiW += x.komiW; t.komiL += x.komiL; }
     }
-    results.push({ name: pl.name, path: pl.path, ...tot, incumbent: { name: incName, ...inc },
+    results.push({ name: pl.name, path: pl.path, depth: pl.depth, ...tot, incumbent: { name: incName, depth: incumbentDepth, ...inc },
                    scoreA: fc.reduce((a, b) => a + b, 0), scoreB: fi.reduce((a, b) => a + b, 0), rating: pairedElo(fc, fi) });
   }
   results.sort((a, b) => (b.rating.lo ?? -Infinity) - (a.rating.lo ?? -Infinity));
