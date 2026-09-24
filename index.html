@@ -664,7 +664,7 @@ if (window.TAU_DESKTOP) {
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 291</div>
+<div id="buildTag">build 292</div>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->
@@ -884,11 +884,11 @@ if (window.TAU_DESKTOP) {
 <div id="watchScreen">
     <div id="wsHead"><h2 id="wsTitle">Watch</h2><button id="wsClose">✕</button></div>
     <div id="wsBody">
+        <div class="wsSec" id="wsLive"><h3></h3><div class="wsList"></div></div>
         <div class="wsSec" id="wsSaved"><h3></h3><div class="wsList"></div></div>
         <div class="wsSec" id="wsRanked"><h3></h3><div class="wsList"></div></div>
         <div class="wsSec" id="wsTopPlayers"><h3></h3><div class="wsList"></div></div>
         <div class="wsSec" id="wsWatched"><h3></h3><div class="wsList"></div></div>
-        <div class="wsSec" id="wsLive"><h3></h3><div class="wsList"></div></div>
     </div>
 </div>
 
@@ -3791,66 +3791,75 @@ const bx2px = (mx, my) => ({ x: cx + mx * scale, y: cy + my * scale });
 const px2b  = (px, py) => ({ x: (px - cx) / scale, y: (py - cy) / scale });
 
 // ---------- Piece drawing (2D top view) ----------
-Piece.prototype.draw = function(activeIdx) {
-    const feet = this.feet().map(f => bx2px(f.x, f.y));
-    const c = bx2px(this.x, this.y);
-    const col = pieceHex(this.id);
-    // Slim legs + small feet, matching the real tripod (a thin arm ending in a small magnet foot),
-    // instead of the old fat flared pad. The drawn foot tracks the real foot's board size
-    // (footPadRadius) so what you SEE is close to what actually crosses a line — the earlier 9px
-    // pad drew the foot ~5× wider than its magnet, so a corner the fat pad "covered" was often well
-    // short of the true contact point and read as an unfair block. A small px floor keeps it visible
-    // and the separate (larger) hitRadius keeps it easy to tap on a phone.
-    // Leg and hub are sized from the board's scale, not in fixed pixels. A fixed width is a
-    // different piece at every board size — fat and stubby on a small board, spindly on a large one
-    // — so the flat board and the 3D view stopped agreeing about how thick a tripod is, and the
-    // desktop's corner board showed it worst. Tied to the foot pad (the one measurement both views
-    // already share), the drawn piece keeps the real tripod's proportions at any size.
-    // The legs are the real tube's diameter (2 x legRadius through the board's scale), the crown
-    // is the tubes meeting plus the weld bead, and each foot is the tube's rounded end seen from
-    // above with the magnet pin at its centre. That is the 3D piece in plan, so the flat board and
-    // the 3D view agree about how fat a tripod is -- the old stick figure was a quarter of it.
-    const legW = Math.max(2, 2*CFG.legRadius*scale);
-    ctx.strokeStyle=col; ctx.lineWidth=legW; ctx.lineCap='round';
-    for (const f of feet){ ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.lineTo(f.x,f.y); ctx.stroke(); }
-    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(c.x,c.y,Math.max(legW*0.6, CFG.legRadius*1.2*scale),0,2*Math.PI); ctx.fill();
-    // Pointy magnet feet: drawn at the MAGNET/dot size (padRadius ≈ 0.55u), which makes the visual
-    // honest against the crossing rule — the drawn dot touches the drawn line stroke at almost
-    // exactly the distance the engine registers contact (0.55 + half line width ≈ touchEps). The
-    // engine's release band is a whisker wider (lineStick) — the feet act a tiny bit stickier than
-    // they look, by design. Floored in px so they stay visible/tappable-looking on small boards.
-    const fr = Math.max(3.5, CFG.padRadius*scale);
-    // While the coached game is waiting for a pin, this piece's feet breathe and sit a little
-    // washed out — an invitation, not a selection. The moment one is held it goes full colour.
-    const inviting = typeof tutorOn !== 'undefined' && tutorOn && G && !G.over
-                     && G.pinned === null && this.id === G.active && this.id === humanIdx;
-    if (inviting) {
-        const pulse = 0.55 + 0.35*Math.abs(Math.sin(performance.now()*0.0042));
-        for (const f of feet) {
-            const R = fr*5.2;
-            const g = ctx.createRadialGradient(f.x,f.y,fr*0.6,f.x,f.y,R);
-            g.addColorStop(0, hexA(col, pulse)); g.addColorStop(0.45, hexA(col, pulse*0.32));
-            g.addColorStop(1, hexA(col, 0));
-            ctx.fillStyle = g; ctx.beginPath(); ctx.arc(f.x,f.y,R,0,7); ctx.fill();
-            ctx.strokeStyle = hexA(col, pulse*0.75); ctx.lineWidth = 1.4;
-            ctx.beginPath(); ctx.arc(f.x,f.y,fr*2.1,0,7); ctx.stroke();
+// Draw the two tripods in physical height order, using the same quarter-circle
+// centreline as the 3D mesh. A whole-colour draw order always put Red over Blue,
+// even where Blue's arch passes above Red's foot. Segmenting the curved legs and
+// sorting ALL parts together lets either colour pass over the other locally.
+function drawTripods2D(c, entries, project, sc, t, tutorial) {
+    const layers = [], fr = Math.max(3.5, CFG.padRadius*sc);
+    const base = TRIPOD_PIN_LIFT + TRIPOD_FOOT_LEN;
+    const N = CFG.legSegs * 2;
+    for (const entry of entries) {
+        const piece = entry.piece, pin = entry.pin, feet = piece.feet();
+        const col = pieceHex(piece.id), hub = project(piece.x, piece.y);
+        const legW = Math.max(2, 2*CFG.legRadius*sc);
+        const inviting = !tutorial && typeof tutorOn !== 'undefined' && tutorOn && G && !G.over
+                         && G.pinned === null && piece.id === G.active && piece.id === humanIdx;
+        if (inviting) {
+            const pulse = 0.55 + 0.35*Math.abs(Math.sin(t*4.2));
+            for (const foot of feet) {
+                const f = project(foot.x, foot.y), R = fr*5.2;
+                const g = c.createRadialGradient(f.x,f.y,fr*0.6,f.x,f.y,R);
+                g.addColorStop(0, hexA(col,pulse)); g.addColorStop(0.45,hexA(col,pulse*0.32));
+                g.addColorStop(1,hexA(col,0));
+                c.fillStyle=g; c.beginPath(); c.arc(f.x,f.y,R,0,7); c.fill();
+                c.strokeStyle=hexA(col,pulse*0.75); c.lineWidth=1.4;
+                c.beginPath(); c.arc(f.x,f.y,fr*2.1,0,7); c.stroke();
+            }
         }
+        if (tutorial && pin >= 0) {
+            const f = project(feet[pin].x,feet[pin].y), pulse=0.55+Math.sin(t*6)*0.25;
+            const R=Math.max(13*htpScale,legW*1.6);
+            const g=c.createRadialGradient(f.x,f.y,0,f.x,f.y,R);
+            g.addColorStop(0,'rgba(255,225,140,'+pulse+')');
+            g.addColorStop(0.5,'rgba(255,210,63,'+(pulse*0.55)+')');
+            g.addColorStop(1,'rgba(255,210,63,0)');
+            c.fillStyle=g; c.beginPath(); c.arc(f.x,f.y,R,0,7); c.fill();
+        }
+        for (let i=0; i<3; i++) {
+            const angle=piece.rot+i*2*Math.PI/3, dx=Math.cos(angle), dy=Math.sin(angle);
+            for (let k=0; k<N; k++) {
+                const a=k*Math.PI/(2*N), b=(k+1)*Math.PI/(2*N);
+                const pa=project(piece.x+dx*Math.sin(a)*CFG.footR,
+                                 piece.y+dy*Math.sin(a)*CFG.footR);
+                const pb=project(piece.x+dx*Math.sin(b)*CFG.footR,
+                                 piece.y+dy*Math.sin(b)*CFG.footR);
+                const height=base+CFG.footR*(Math.cos(a)+Math.cos(b))/2;
+                layers.push({ height, draw: () => {
+                    c.strokeStyle=col; c.lineWidth=legW; c.lineCap='round';
+                    c.beginPath(); c.moveTo(pa.x,pa.y); c.lineTo(pb.x,pb.y); c.stroke();
+                } });
+            }
+            const f=project(feet[i].x,feet[i].y), selected=pin===i;
+            layers.push({ height:TRIPOD_PIN_LIFT, draw: () => {
+                c.beginPath(); c.arc(f.x,f.y,legW/2,0,2*Math.PI);
+                if (selected) { c.fillStyle='#ffd23f'; c.fill(); }
+                c.lineWidth=1; c.strokeStyle='rgba(12,14,17,0.35)'; c.stroke();
+                c.beginPath(); c.arc(f.x,f.y,selected?fr+1.5:fr,0,2*Math.PI);
+                c.fillStyle=selected?'#ffd23f':(inviting?hexA(col,0.55):col); c.fill();
+                c.lineWidth=selected && boardIsPale()?2.2:1;
+                c.strokeStyle=selected && boardIsPale()?'rgba(44,52,66,0.9)':'rgba(12,14,17,0.6)';
+                c.stroke();
+            } });
+        }
+        layers.push({ height:base+CFG.footR, draw: () => {
+            c.fillStyle=col; c.beginPath();
+            c.arc(hub.x,hub.y,Math.max(legW*0.6,CFG.legRadius*1.2*sc),0,2*Math.PI); c.fill();
+        } });
     }
-    for (let i=0;i<3;i++){ const f=feet[i];
-        // The foot pad: the tube end's edge, so a foot reads as a foot and not a stroke's cap; the
-        // pinned one is the whole pad in highlighter yellow, not just the pin.
-        ctx.beginPath(); ctx.arc(f.x,f.y, legW/2, 0, 2*Math.PI);
-        if (activeIdx===i) { ctx.fillStyle='#ffd23f'; ctx.fill(); }
-        ctx.lineWidth=1; ctx.strokeStyle='rgba(12,14,17,0.35)'; ctx.stroke();
-        ctx.beginPath(); ctx.arc(f.x,f.y, activeIdx===i ? fr+1.5 : fr, 0, 2*Math.PI);
-        ctx.fillStyle=(activeIdx===i)?'#ffd23f':(inviting ? hexA(col,0.55) : col); ctx.fill();
-        // The yellow pivot pad is tonally flat against the pale boards (Dojo/Yellow), so there it
-        // gets a real ink ring — a highlighter mark with a pen circle. Everything else keeps the
-        // ordinary hairline.
-        if (activeIdx===i && boardIsPale()) { ctx.lineWidth=2.2; ctx.strokeStyle='rgba(44,52,66,0.9)'; }
-        else { ctx.lineWidth=1; ctx.strokeStyle='rgba(12,14,17,0.6)'; }
-        ctx.stroke(); }
-};
+    layers.sort((a,b) => a.height-b.height);
+    layers.forEach(layer => layer.draw());
+}
 
 // ---------- Input ----------
 function pointerPos(e) {
@@ -6871,29 +6880,7 @@ let htpScale = 1;
 // the slide's own scale, the crown where they meet, each foot the tube's rounded end with the pin
 // at its centre, in the board skin's piece colours -- so the walkthrough's flat board shows the
 // tripod the match will, not a stick figure in stock colours beside a 3D view of the real thing.
-function htpPiece(c,piece,b,pin,t){
-    const k=htpScale, sc=b(1,0).x-b(0,0).x;   // px per board unit, from the slide's own mapping
-    const feet=piece.feet().map(f=>b(f.x,f.y)), hub=b(piece.x,piece.y);
-    const col=pieceHex(piece.id);
-    const legW=Math.max(2, 2*CFG.legRadius*sc), fr=Math.max(3.5, CFG.padRadius*sc);
-    c.strokeStyle=col; c.lineWidth=legW; c.lineCap='round';
-    feet.forEach(f=>{ c.beginPath(); c.moveTo(hub.x,hub.y); c.lineTo(f.x,f.y); c.stroke(); });
-    c.fillStyle=col; c.beginPath(); c.arc(hub.x,hub.y,Math.max(legW*0.6, CFG.legRadius*1.2*sc),0,7); c.fill();
-    feet.forEach((f,i)=>{
-        if(i===pin){ const pulse=0.55+Math.sin(t*6)*0.25, R=Math.max(13*k, legW*1.6);
-            const g=c.createRadialGradient(f.x,f.y,0,f.x,f.y,R);
-            g.addColorStop(0,`rgba(255,225,140,${pulse})`); g.addColorStop(0.5,`rgba(255,210,63,${pulse*0.55})`); g.addColorStop(1,'rgba(255,210,63,0)');
-            c.fillStyle=g; c.beginPath(); c.arc(f.x,f.y,R,0,7); c.fill(); }
-        c.beginPath(); c.arc(f.x,f.y, legW/2, 0, 7);
-        if(i===pin){ c.fillStyle='#ffd23f'; c.fill(); }
-        c.lineWidth=1; c.strokeStyle='rgba(12,14,17,0.35)'; c.stroke();
-        c.beginPath(); c.arc(f.x,f.y, i===pin ? fr+1.5 : fr, 0, 7);
-        c.fillStyle=(i===pin)?'#ffd23f':col; c.fill();
-        if(i===pin && boardIsPale()){ c.lineWidth=2.2; c.strokeStyle='rgba(44,52,66,0.9)'; }
-        else { c.lineWidth=1; c.strokeStyle='rgba(12,14,17,0.6)'; }
-        c.stroke();
-    });
-}
+
 const htpCache = {};
 // ---------- The goal, shown as a whole game ----------
 // ---------- Try-it layer: EVERY rule slide is played, not watched ----------
@@ -6930,7 +6917,7 @@ function htpState(key) {
     if (!htpCache['try_'+key]) {
         htpCache['try_'+key] = Object.assign(
             { key, touched:false, pinned:null, dragging:false, armFrom:null, lastAng:0, turnDir:0,
-              netAng:0, crossings:0, contact:null, done:false, burst:null, parts:[], lastT:0,
+              netAng:0, crossings:0, contact:null, passedLines:null, goalReached:false, done:false, burst:null, parts:[], lastT:0,
               lockFlashT:-9, blockFlashT:-9, blockId:null }, HTP_TRY[key].make());
         if (HTP_GUIDED[key]) htpCache['try_'+key].guide = htpFindGuide(key);
     }
@@ -6945,10 +6932,9 @@ function htpState(key) {
 // points the way, on the flat board and the 3D one -- and still makes you do it.
 const HTP_GUIDED = { double: true, twofeet: true };
 function htpGoalMet(key, st) {
-    if (!st.contact || st.pinned === null) return false;
-    const fresh = i => (st.contact[i] || []).filter(id => !(st.turnStartContact && st.turnStartContact[i] || []).includes(id));
-    if (key === 'double') return [0,1,2].some(i => i !== st.pinned && fresh(i).length >= 2);
-    if (key === 'twofeet') return [0,1,2].filter(i => i !== st.pinned && fresh(i).length > 0).length >= 2;
+    if (!st.passedLines || st.pinned === null) return false;
+    if (key === 'double') return [0,1,2].some(i => i !== st.pinned && st.passedLines[i].length >= 2);
+    if (key === 'twofeet') return [0,1,2].filter(i => i !== st.pinned && st.passedLines[i].length > 0).length >= 2;
     return false;
 }
 function htpFindGuide(key) {
@@ -7069,9 +7055,8 @@ function htpTurnOver(key, st) {
 }
 function htpGoalDone(key, st, at) {
     st.done = true;
-    // The goal ends the slide's playable part: the board freezes so a won position cannot be
-    // shuffled back into a lost one while the player reads the text. Reset re-arms it. Armed
-    // rather than applied, because several goals fire mid-swing -- see htpTrySwing.
+    // Called on release for the crossing lessons: the board locks at the completed
+    // position, after the foot has passed through the strokes. Reset re-arms it.
     st.locked = true;
     st.say = null; st.rewindAt = 0;
     st.burst = { x: at.x, y: at.y, t: st.lastT };
@@ -7086,12 +7071,8 @@ function htpGoalDone(key, st, at) {
 // every slide, byte-identically to a real game. Own feet never leave the board (the push-OFF
 // slide's red piece is the only thing that ever goes over the rim).
 function htpTrySwing(st, key, dA) {
-    // A locked slide refuses a NEW swing, never the one in your hand. The corner and two-feet
-    // goals land in the middle of the substep loop below -- the moment the contact sets show the
-    // right pattern -- so freezing on `locked` alone stopped the piece dead halfway through the
-    // corner it was being congratulated for rounding. Let the stroke finish; the lock takes hold
-    // when the finger comes up (htpTurnOver), which is when "the goal is done" actually means
-    // something.
+    // A finished slide refuses a new swing. Corner and two-feet progress stays live
+    // until release, so the player can actually pass through both strokes before it locks.
     if (st.locked && !st.dragging) return;
     if (key === 'off' && htpPhase !== 'push') return;          // hands off while the fall plays out
     if (st.turnDir !== 0 && Math.sign(dA) !== st.turnDir) { st.lockFlashT = st.lastT; return; }
@@ -7117,7 +7098,7 @@ function htpTrySwing(st, key, dA) {
             // On a guided slide a refusal means this attempt is over -- the piece is somewhere the
             // dots no longer lead anywhere from. Let the red flash land first, then put the board
             // back, rather than leaving the player stuck against a line they cannot cross.
-            if (st.guide && !st.done) st.rewindAt = st.lastT + 0.9;
+            if (st.guide && !st.done && !st.goalReached) st.rewindAt = st.lastT + 0.9;
             // Being refused by a printed line IS the swing slide's lesson landing. The cross
             // slide used to finish here too; its goal is now all three feet (htpTurnOver), so a
             // refusal there is just the rule doing its job mid-turn.
@@ -7127,17 +7108,22 @@ function htpTrySwing(st, key, dA) {
         }
         st.netAng += step;
         if (st.red) resolvePush(st.p, st.red);
-        // The corner / two-feet goals read the engine's own contact sets, which crossingSubstep
-        // just updated — counting ONLY lines freshly taken this turn (beyond turnStartContact):
-        // a line a foot merely started the turn parked on wasn't crossed, so it must not count
-        // toward "two feet crossed two lines" or "one foot rounded a corner".
-        const fresh = i => (st.contact[i] || []).filter(id => !(st.turnStartContact && st.turnStartContact[i] || []).includes(id));
-        if (key === 'double' && !st.done && st.contact
-            && [0,1,2].some(i => i !== st.pinned && fresh(i).length >= 2))
-            htpGoalDone(key, st, st.p.feet()[(st.pinned+1)%3]);
-        if (key === 'twofeet' && !st.done && st.contact
-            && [0,1,2].filter(i => i !== st.pinned && fresh(i).length > 0).length >= 2)
-            htpGoalDone(key, st, st.p.feet()[(st.pinned+1)%3]);
+        // Touching a line opens the game rule's crossing budget, but the lesson is only
+        // complete once the pad has passed right through the printed stroke. Track each
+        // newly entered line only when the pad has cleared its far edge. The real referee
+        // above still stops the swing before any subsequent forbidden crossing.
+        if (key === 'double' || key === 'twofeet') {
+            if (!st.passedLines) st.passedLines = [[],[],[]];
+            for (let i = 0; i < 3; i++) {
+                if (i === st.pinned) continue;
+                for (const id in st.entrySide[i]) {
+                    if (lineSideOf(after[i], id) !== st.entrySide[i][id]
+                        && lineDistOf(after[i], id) > CFG.touchEps
+                        && !st.passedLines[i].includes(id)) st.passedLines[i].push(id);
+                }
+            }
+            if (htpGoalMet(key, st)) st.goalReached = true;
+        }
     }
     if (st.turnDir === 0 && Math.abs(st.netAng) > 4*Math.PI/180) st.turnDir = Math.sign(st.netAng);
     if (key === 'swing' && !st.done && Math.abs(st.netAng) >= 40*Math.PI/180)
@@ -7156,7 +7142,8 @@ function htpAttachTry(canvas, key, currentKey, toBoardIn) {
     const startDrag = (st, m, pv) => {
         st.lastAng = Math.atan2(m.y-pv.y, m.x-pv.x);
         st.dragging = true; st.turnDir = 0; st.netAng = 0; st.blockId = null;
-        st.crossings = 0; st.contact = null; st.justCrossed = [];   // a drag is a fresh turn
+        st.crossings = 0; st.contact = null; st.justCrossed = [];
+        st.passedLines = [[],[],[]]; st.goalReached = false;   // a drag is a fresh turn
     };
     // Gestures mirror the real game: tap a foot to hold it (the pivot), then drag a DIFFERENT
     // foot — or open space — around it to swing. A motionless tap on another foot re-pins to it
@@ -7189,7 +7176,7 @@ function htpAttachTry(canvas, key, currentKey, toBoardIn) {
     canvas.addEventListener('pointermove', ev => {
         if (!active()) return;
         const st = htpState(key);
-        if (st.locked || st.pinned === null) return;
+        if ((st.locked && !st.dragging) || st.pinned === null) return;
         const m = toBoard(ev), pv = st.p.feet()[st.pinned];
         if (!st.dragging) {   // movement past the tap threshold turns the gesture into a swing
             if (st.armFrom && Math.hypot(m.x-st.armFrom.x, m.y-st.armFrom.y) > 3
@@ -7214,7 +7201,9 @@ function htpAttachTry(canvas, key, currentKey, toBoardIn) {
         st.pendingPin = null; st.dragging = false; st.armFrom = null;
         st.turnDir = 0; st.netAng = 0;
         st.crossings = 0; st.contact = null; st.justCrossed = [];   // release = turn over
-        if (swung) htpTurnOver(key, st); };
+        if (swung && st.goalReached && (key === 'double' || key === 'twofeet'))
+            htpGoalDone(key, st, st.p.feet()[(st.pinned+1)%3]);
+        else if (swung) htpTurnOver(key, st); };
     canvas.addEventListener('pointerup', endTurnUp);
     canvas.addEventListener('pointercancel', endTurnUp);
 }
@@ -7225,8 +7214,10 @@ function htpDrawTry(c,w,h,t,key) {
     if (st.say && t - st.sayT > 2.6) { st.say = null; htpHintSync(); }
     htpMark(st.p, st.red);
     const m = htpMap(w,h); htpBoard(c,m.b,m.sc);
-    if (st.red) htpPiece(c, st.red, m.b, -1, t);
-    htpPiece(c, st.p, m.b, st.pinned === null ? -1 : st.pinned, t);
+    drawTripods2D(c, [
+        ...(st.red ? [{ piece:st.red, pin:-1 }] : []),
+        { piece:st.p, pin:st.pinned === null ? -1 : st.pinned },
+    ], m.b, m.sc, t, true);
     const guide = st.guide && !st.done ? st.guide : null;
     if (guide) htpDrawGuide(c, m, st, guide, t);
     if (st.pinned === null && !guide) {   // nothing held yet: every foot invites the tap
@@ -7670,7 +7661,7 @@ function htpRewind(key, full) {
     const keepSay = full ? null : st.say, keepSayT = full ? -9 : st.sayT;
     Object.assign(st,
         { touched:false, pinned:null, dragging:false, armFrom:null, lastAng:0, turnDir:0,
-          netAng:0, crossings:0, contact:null, done:false, locked:false, burst:null, parts:[],
+          netAng:0, crossings:0, contact:null, passedLines:null, goalReached:false, done:false, locked:false, burst:null, parts:[],
           lockFlashT:-9, blockFlashT:-9, blockId:null, pendingPin:null, rewindAt:0,
           say:null, sayT:-9, feetTried:[] },
         HTP_TRY[key].make());
@@ -9361,8 +9352,10 @@ function render() {
         ctx.beginPath(); ctx.arc(p.x,p.y,2.5,0,2*Math.PI);
         ctx.fillStyle = k<3 ? col.dotBlue : col.dotRed; ctx.fill(); }
 
-    G.pieces[0].draw(G.active===0?G.pinned:null);
-    G.pieces[1].draw(G.active===1?G.pinned:null);
+    drawTripods2D(ctx, [
+        { piece:G.pieces[0], pin:G.active===0?G.pinned:null },
+        { piece:G.pieces[1], pin:G.active===1?G.pinned:null },
+    ], bx2px, scale, performance.now()/1000, false);
 
     if (G.pinned!==null && !G.over) {
         const feet=G.pieces[G.active].feet();
