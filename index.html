@@ -6913,7 +6913,7 @@ function htpMark(blue, red, fallK) { htpNow = { blue, red: red || null, fallK: f
 function htpState(key) {
     if (!htpCache['try_'+key]) {
         htpCache['try_'+key] = Object.assign(
-            { key, touched:false, pinned:null, dragging:false, armFrom:null, lastAng:0, turnDir:0,
+            { key, touched:false, pinned:null, handle:null, pointerId:null, dragging:false, armFrom:null, lastAng:0, turnDir:0,
               netAng:0, crossings:0, contact:null, passedLines:null, goalReached:false, done:false, burst:null, parts:[], lastT:0,
               lockFlashT:-9, blockFlashT:-9, blockId:null }, HTP_TRY[key].make());
         if (HTP_GUIDED[key]) htpCache['try_'+key].guide = htpFindGuide(key);
@@ -7142,9 +7142,8 @@ function htpAttachTry(canvas, key, currentKey, toBoardIn) {
         st.crossings = 0; st.contact = null; st.justCrossed = [];
         st.passedLines = [[],[],[]]; st.goalReached = false;   // a drag is a fresh turn
     };
-    // Gestures mirror the real game: tap a foot to hold it (the pivot), then drag a DIFFERENT
-    // foot — or open space — around it to swing. A motionless tap on another foot re-pins to it
-    // instead; a pull-away from the just-pinned foot also swings, so pin+swing works one-handed.
+    // Match the real board: press a foot to pin it, then press and drag a DIFFERENT foot
+    // to swing. Press the pivot again to release it and choose another one.
     canvas.addEventListener('pointerdown', ev => {
         if (!active()) return;
         if (ev.button !== undefined && ev.button > 0) return;  // right button belongs to the camera orbit
@@ -7163,21 +7162,21 @@ function htpAttachTry(canvas, key, currentKey, toBoardIn) {
             if (wrongFoot(i)) { st.lockFlashT = st.lastT; htpRewind(key); return; }
             st.pinned = i; if (key === 'pivot' && !st.done) htpGoalDone(key, st, st.p.feet()[i]);
         };
-        st.armFrom = m; st.pendingPin = null;
+        st.armFrom = null; st.handle = null; st.pointerId = ev.pointerId;
         if (st.pinned === null) { if (best >= 0) pin(best); }
-        else if (best === st.pinned || best < 0) { /* pull-away (or open-space drag) swings — see move */ }
-        else st.pendingPin = best;   // another foot: drag = swing around the pivot, plain tap = re-pin
+        else if (best === st.pinned && !st.dragging) st.pinned = null;
+        else if (best >= 0 && best !== st.pinned) { st.handle = best; st.armFrom = m; }
         try { canvas.setPointerCapture(ev.pointerId); } catch(e) {}
         ev.preventDefault();
     });
     canvas.addEventListener('pointermove', ev => {
         if (!active()) return;
         const st = htpState(key);
-        if ((st.locked && !st.dragging) || st.pinned === null) return;
+        if ((st.locked && !st.dragging) || st.pinned === null || st.handle === null || st.pointerId !== ev.pointerId) return;
         const m = toBoard(ev), pv = st.p.feet()[st.pinned];
-        if (!st.dragging) {   // movement past the tap threshold turns the gesture into a swing
+        if (!st.dragging) {   // only dragging the second foot can begin a swing
             if (st.armFrom && Math.hypot(m.x-st.armFrom.x, m.y-st.armFrom.y) > 3
-                           && Math.hypot(m.x-pv.x, m.y-pv.y) > 6) { st.pendingPin = null; startDrag(st, m, pv); }
+                           && Math.hypot(m.x-pv.x, m.y-pv.y) > 6) startDrag(st, m, pv);
             return;
         }
         const a = Math.atan2(m.y-pv.y, m.x-pv.x);
@@ -7186,16 +7185,10 @@ function htpAttachTry(canvas, key, currentKey, toBoardIn) {
         dA = Math.max(-0.45, Math.min(0.45, dA));   // a wild pointer jump can't tunnel through the rules
         htpTrySwing(st, key, dA);
     });
-    const endTurnUp = () => { const st = htpState(key);
-        if (!st.dragging && st.pendingPin !== null && st.pendingPin !== undefined) {
-            if (st.guide && !st.done && st.pendingPin !== st.guide.pivot) {
-                st.lockFlashT = st.lastT; st.pendingPin = null; htpRewind(key); return;
-            }
-            st.pinned = st.pendingPin;
-            if (key === 'pivot' && !st.done) htpGoalDone(key, st, st.p.feet()[st.pinned]);
-        }
+    const endTurnUp = ev => { const st = htpState(key);
+        if (st.pointerId !== ev.pointerId) return;
         const swung = st.dragging && Math.abs(st.netAng) >= HTP_TURN_MIN_RAD;
-        st.pendingPin = null; st.dragging = false; st.armFrom = null;
+        st.pointerId = null; st.handle = null; st.dragging = false; st.armFrom = null;
         st.turnDir = 0; st.netAng = 0;
         st.crossings = 0; st.contact = null; st.justCrossed = [];   // release = turn over
         if (swung && st.goalReached && (key === 'double' || key === 'twofeet'))
@@ -7500,13 +7493,13 @@ const HTP_STEPS = [
     { title:t('Hold one foot'), text:t('Hold one foot still and rotate the other two.'), draw:htpTryDraw('pivot'), tryKey:'pivot',
       hint:t('tap a foot to hold it') },
     { title:t('Move in circles'), text:t('The moving feet trace an arc. You may only swing one way per turn: once you have started, the piece will not go back the other way until you let go.'), draw:htpTryDraw('swing'), tryKey:'swing',
-      hint:t('hold a foot, then drag to trace an arc') },
+      hint:t('tap a foot, then drag a different foot to trace an arc') },
     { title:t('One line per turn'), text:t('You may cross only one line per turn. A foot that starts on a line leaves it for free. Try it from all three feet — the board resets after each turn.'), draw:htpTryDraw('cross'), tryKey:'cross',
-      hint:t('hold a foot and swing, then try the next one') },
+      hint:t('tap a foot, then drag another foot; try all three pivots') },
     { title:t('Corners count once'), text:t('A crossing lasts as long as the piece stays on a line. Rounding a corner where two lines meet still counts as <b>one</b> crossing.'), draw:htpTryDraw('double'), tryKey:'double',
-      hint:t('hold the glowing foot and swing along the dots, through the corner') },
+      hint:t('tap the glowing foot, then drag another foot along the dots') },
     { title:t('Two feet at once'), text:t('Two feet can cross two different lines in the same slide. As long as the piece never leaves a line, that is still <b>one</b> crossing.'), draw:htpTryDraw('twofeet'), tryKey:'twofeet',
-      hint:t('hold the glowing foot and swing along the dots: two feet, two lines') },
+      hint:t('tap the glowing foot, then drag another foot along the dots') },
     { title:t('Push them off the board'), text:t('Push your opponent off the edge. Bumping them is easy; only one line of attack actually puts a foot over the rim — if a shove only moves them, the board resets and you try another way.'), is3D:true, tryKey:'off',
       hint:t('pin a foot and shove Red over the edge') },
 ];
@@ -7657,9 +7650,9 @@ function htpRewind(key, full) {
     const keepFeet = full ? [] : (st.feetTried || []);
     const keepSay = full ? null : st.say, keepSayT = full ? -9 : st.sayT;
     Object.assign(st,
-        { touched:false, pinned:null, dragging:false, armFrom:null, lastAng:0, turnDir:0,
+        { touched:false, pinned:null, handle:null, pointerId:null, dragging:false, armFrom:null, lastAng:0, turnDir:0,
           netAng:0, crossings:0, contact:null, passedLines:null, goalReached:false, done:false, locked:false, burst:null, parts:[],
-          lockFlashT:-9, blockFlashT:-9, blockId:null, pendingPin:null, rewindAt:0,
+          lockFlashT:-9, blockFlashT:-9, blockId:null, rewindAt:0,
           say:null, sayT:-9, feetTried:[] },
         HTP_TRY[key].make());
     st.done = keepDone; st.touched = keepTouched; st.guide = keepGuide;
@@ -14558,4 +14551,3 @@ if (window.TAU_DESKTOP) {
 </script>
 </body>
 </html>
-
