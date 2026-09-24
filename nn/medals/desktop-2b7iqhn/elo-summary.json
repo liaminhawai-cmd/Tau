@@ -1310,14 +1310,37 @@
    "machine": "desktop-2b7iqhn",
    "sourceId": "ultra-m10-476@D2"
   },
-  "medal-silver@D1": {
+  "medal-silver@D2": {
+   "id": "ultra-m13-495@D2",
+   "kind": "nn",
+   "elo": 85.7,
+   "eloLo": 27.9,
+   "eloHi": 143.5,
+   "games": 34,
+   "model": "nn\\medals\\desktop-2b7iqhn\\silver.json",
+   "depth": 2,
+   "brain": "nn",
+   "dualPolicy": false,
+   "rank": 0.857,
+   "rankLo": 0.279,
+   "rankHi": 1.435,
+   "rankLoEdge": null,
+   "rankHiEdge": null,
+   "extrapRank": null,
+   "extrapRankLo": null,
+   "extrapRankHi": null,
+   "medal": "silver",
+   "machine": "desktop-2b7iqhn",
+   "sourceId": "ultra-m13-495@D2"
+  },
+  "medal-bronze@D1": {
    "id": "ultra-m11-501@D1",
    "kind": "nn",
    "elo": 88.3,
    "eloLo": 27.7,
    "eloHi": 148.8,
    "games": 24,
-   "model": "nn\\medals\\desktop-2b7iqhn\\silver.json",
+   "model": "nn\\medals\\desktop-2b7iqhn\\bronze.json",
    "depth": 1,
    "brain": "nn",
    "dualPolicy": false,
@@ -1329,32 +1352,9 @@
    "extrapRank": null,
    "extrapRankLo": null,
    "extrapRankHi": null,
-   "medal": "silver",
-   "machine": "desktop-2b7iqhn",
-   "sourceId": "ultra-m11-501@D1"
-  },
-  "medal-bronze@D1": {
-   "id": "scratch-041@D1",
-   "kind": "nn",
-   "elo": 61.8,
-   "eloLo": 19.3,
-   "eloHi": 104.4,
-   "games": 78,
-   "model": "nn\\medals\\desktop-2b7iqhn\\bronze.json",
-   "depth": 1,
-   "brain": "nn",
-   "dualPolicy": false,
-   "rank": 0.618,
-   "rankLo": 0.193,
-   "rankHi": 1.044,
-   "rankLoEdge": null,
-   "rankHiEdge": null,
-   "extrapRank": null,
-   "extrapRankLo": null,
-   "extrapRankHi": null,
    "medal": "bronze",
    "machine": "desktop-2b7iqhn",
-   "sourceId": "scratch-041@D1"
+   "sourceId": "ultra-m11-501@D1"
   }
  }
 }
