@@ -1338,19 +1338,19 @@
    "sourceId": "scratch-041@D1"
   },
   "medal-bronze@D2": {
-   "id": "resume-430@D2",
+   "id": "resume-434@D2",
    "kind": "nn",
-   "elo": 185.5,
-   "eloLo": 109.3,
-   "eloHi": 261.7,
-   "games": 28,
+   "elo": 193.7,
+   "eloLo": 100.6,
+   "eloHi": 286.9,
+   "games": 26,
    "model": "nn\\medals\\desktop-2b7iqhn\\bronze.json",
    "depth": 2,
    "brain": "nn",
    "dualPolicy": false,
-   "rank": 1.855,
-   "rankLo": 1.093,
-   "rankHi": 2.617,
+   "rank": 1.937,
+   "rankLo": 1.006,
+   "rankHi": 2.869,
    "rankLoEdge": null,
    "rankHiEdge": null,
    "extrapRank": null,
@@ -1358,7 +1358,7 @@
    "extrapRankHi": null,
    "medal": "bronze",
    "machine": "desktop-2b7iqhn",
-   "sourceId": "resume-430@D2"
+   "sourceId": "resume-434@D2"
   }
  }
 }
