@@ -1087,8 +1087,13 @@ test('the corner and two-feet slides show a guide, and following it meets the go
     // Do exactly what the guide shows: hold that foot, swing that way, that far.
     const done=g.read(`(()=>{ const st=htpState('${key}'); st.pinned=${guide.pivot}; st.dragging=true;
       const step=1.5*Math.PI/180; for (let a=0; a<${guide.angle}+1e-9; a+=step) htpTrySwing(st,'${key}',${guide.dir}*step);
-      return st.done; })()`);
-    assert.equal(done,true,`${key}: the guide leads to the goal`);
+      const beforeRelease={goal:st.goalReached,done:st.done};
+      const cv=document.createElement('canvas'); htpAttachTry(cv,'${key}');
+      st.pointerId=7; cv.dispatchEvent(Object.assign(new window.Event('pointerup'),{pointerId:7}));
+      return {...beforeRelease,finished:st.done}; })()`);
+    assert.equal(done.goal,true,`${key}: the guide passes through the crossings`);
+    assert.equal(done.done,false,`${key}: touching or crossing does not lock the drag`);
+    assert.equal(done.finished,true,`${key}: releasing completes the goal`);
     // and the rails are drawn from the held foot, one per free foot
     const rails=g.read(`(()=>{ const st=htpState('${key}'); return htpGuideRails(st, st.guide); })()`);
     assert.equal(rails.rails.length,2);
@@ -1948,7 +1953,7 @@ test('a pad each: the screen names both makes, and then only the seated pad may 
   assert.equal(g.w.document.querySelector('.desktop-pick'),null,'confirming Red starts the match');
   assert.equal(g.read("document.getElementById('game').style.display"),'flex');
   // Blue to move: only the pad seated to Blue moves the piece, and the keyboard is nobody's here.
-  const foot=()=>g.read('v3HoverIdx');
+  const foot=()=>g.read('tauDesktop.focusedFoot');
   assert.equal(g.read('G.active'),0);
   press(g,red,15); assert.equal(foot(),0,"the pad seated to Red is ignored on Blue's turn");
   press(g,blue,15); assert.equal(foot(),1,'the pad seated to Blue picks the foot');
@@ -2069,7 +2074,7 @@ test('a controller the browser has no mapping table for is still a controller',a
   localMatch(g);
   const press=i=>{odd.buttons[i].pressed=true;g.tick();odd.buttons[i].pressed=false;g.tick();};
   press(15);
-  assert.equal(g.read('v3HoverIdx'),1,'a non-standard pad still plays');
+  assert.equal(g.read('tauDesktop.focusedFoot'),1,'a non-standard pad still plays');
   assert.deepEqual(g.errors,[]);
 });
 
@@ -2113,15 +2118,15 @@ test('a pad that sends directions on a hat or a stick drives the menus, and the 
   pad.axes[1]=1;g.tick();pad.axes[1]=0;g.tick();  // left stick down
   assert.notEqual(focus(),second,'and so does the left stick');
   localMatch(g);
-  assert.equal(g.read('v3HoverIdx'),0);
+  assert.equal(g.read('tauDesktop.focusedFoot'),0);
   hat(-0.428);                                   // right
-  assert.equal(g.read('v3HoverIdx'),1,'the hat changes which foot is chosen, visibly, with no button press');
+  assert.equal(g.read('tauDesktop.focusedFoot'),1,'the hat changes which foot is chosen, visibly, with no button press');
   // ...but in a MATCH the left stick is the camera and only the camera. Such a pad still has its
   // hat for the foot, and looking around must not walk the choice along under the player.
   pad.axes[0]=-1;g.tick(300);pad.axes[0]=0;g.tick(); // stick left, held
-  assert.equal(g.read('v3HoverIdx'),1,'the stick leaves the foot where the hat put it');
+  assert.equal(g.read('tauDesktop.focusedFoot'),1,'the stick leaves the foot where the hat put it');
   hat(0.714);                                    // left
-  assert.equal(g.read('v3HoverIdx'),0,'and the hat still walks it back');
+  assert.equal(g.read('tauDesktop.focusedFoot'),0,'and the hat still walks it back');
   assert.deepEqual(g.errors,[]);
 });
 
@@ -2618,8 +2623,12 @@ test('a guided slide rewinds when you take the foot it did not point at',async t
   g.read(`htpState('double').p.rot=0.9;`);   // a pose the rewind must undo
   // Now pin the WRONG foot through the same path the pointer uses.
   const wrong=(pivot+1)%3;
-  g.read(`(() => { const st=htpState('double'); st.pinned=null; st.pendingPin=${wrong}; st.dragging=false;
-    document.getElementById('htpBigCanvas').dispatchEvent(new window.Event('pointerup',{bubbles:true})); })()`);
+  g.read(`(() => { const st=htpState('double'); st.pinned=null; st.dragging=false; st.locked=false;
+    const cv=document.getElementById('htpBigCanvas'); cv.width=cv.height=600;
+    cv.getBoundingClientRect=()=>({left:0,top:0,width:600,height:600});
+    const f=st.p.feet()[${wrong}], sc=htpMap(600,600).sc;
+    cv.dispatchEvent(new window.MouseEvent('pointerdown',{bubbles:true,button:0,
+      clientX:300+f.x*sc,clientY:300+f.y*sc})); })()`);
   const after=JSON.parse(g.read(`JSON.stringify({pinned:htpState('double').pinned,
     rot:+htpState('double').p.rot.toFixed(3), done:htpState('double').done})`));
   assert.equal(after.pinned,null,'the wrong foot is not taken');

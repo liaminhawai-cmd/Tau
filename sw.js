@@ -3,7 +3,7 @@
 // network-first (so an online player always gets the newest build), with the cached copy as the
 // offline fallback; static assets are cache-first. Cross-origin requests (Supabase auth/realtime)
 // are never touched — they always go straight to the network.
-const CACHE = 'tau-v128';  // bump on asset changes so clients drop the old cache (v128: a new build no longer reloads the page out from under a game in progress, and winning a walkthrough slide mid-swing lets the stroke finish instead of freezing the piece in the corner -- index.html) and can be taken back (Ctrl+Z), the walkthrough teaches the rules in the order they build and freezes each slide once its goal lands, the turn clock is 60s with a no-clock option for private matches, and the sumo dohyo is sand that scuffs -- index.html, desktop/)
+const CACHE = 'tau-v129';  // build 293: shared controller selection and persistent cosmetic clay
 const ASSETS = [
   './', './index.html', './tau-logo.png',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon-32.png',

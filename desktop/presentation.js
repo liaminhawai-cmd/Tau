@@ -69,9 +69,8 @@
     { id:'math', name:'Math', showcase:'math',
       skin:{ shadeByZoneValue:false, flat:'#111826', lines:'#dcecff', rim:'#14171d', bg:'#0d1017', pb:'#2f6fd8', pr:'#d8442f' } },
     { id:'sumo', grade:true, name:'Sumo', showcase:'sumo',
-      // flat matches the darker ground the sumo bake now lays its sand grain over (boards.js), so
-      // the 2D board and the low tier do not read a shade lighter than the 3D one beside them.
-      skin:{ shadeByZoneValue:false, flat:'#5d3d22', lines:'#c89a54', rim:'#46351f', bg:'#17120d', pb:'#31488f', pr:'#b03220' } },
+      // Compacted umber clay, with a slightly darker surface than the dry substrate.
+      skin:{ shadeByZoneValue:false, flat:'#79654e', lines:'#c3ac81', rim:'#46351f', bg:'#17120d', pb:'#31488f', pr:'#b03220' } },
     { id:'cosy', grade:true, name:'Cosy', showcase:'cosy', detail:'wood',
       skin:{ shadeByZoneValue:false, flat:'#4a3220', lines:'#e8c778', rim:'#2e1f12', bg:'#1a120c', pb:'#3a4a66', pr:'#5e2a22' } },
     { id:'alien', name:'Alien', showcase:'alien', detail:'alien',
@@ -557,6 +556,7 @@
     if (!s) return currentPad;
     return s.kind === 'pad' ? padList.find(p => p.index === s.index) || null : null;
   }
+  let selectionOwner = null, lastSelectionCue = -1;
   let chosenFoot = 0, heldLeft = false, heldRight = false, lastActive = -1;
   let textures = null, texturesFor = null, artInstalled = false, lastRumble = -Infinity;
   // The shared board art (desktop/boards.js), made on first use so the menu opens without baking.
@@ -812,7 +812,6 @@
   $('desktopColour').addEventListener('change', e => { settings.colour = Number(e.target.value); saveSettings(); });
 
   function startMatch(local = false) {
-    sandClear();   // the ring is swept between bouts -- last game's scuffs do not carry over
     // Two people at one screen say who holds what before the board appears; every other match has
     // one human and starts straight away.
     if (local) chooseDevices(() => beginMatch(true));
@@ -1858,7 +1857,7 @@
   function rayTraceKey(s) {
     const mat = m => m ? Array.from(m, ptRound).join(',') : '-';
     return [mat(s.camera), mat(s.proj), s.size, (s.pieces || []).map(mat).join(';'), s.board,
-      s.rev, s.fall ? 1 : 0, s.shards || 0, s.ai ? 1 : 0, s.replay ? 1 : 0, s.pinned, ptRound(s.netRad || 0),
+      s.rev, s.clay || 0, s.fall ? 1 : 0, s.shards || 0, s.ai ? 1 : 0, s.replay ? 1 : 0, s.pinned, ptRound(s.netRad || 0),
       ptRound(s.lift || 0), s.modal ? 1 : 0, s.hidden ? 1 : 0].join('|');
   }
   function rayTraceMotion(prev, next) { return prev && rayTraceKey(prev) === rayTraceKey(next) ? 'still' : 'moving'; }
@@ -1871,6 +1870,7 @@
       camera: camera.matrixWorld.elements, proj: camera.projectionMatrix.elements,
       size: renderer.domElement.width + 'x' + renderer.domElement.height,
       pieces, board: settings.board, rev: ptWorldRev,
+      clay: settings.board === 'sumo' && clay ? clay.field.revision : 0,
       fall: typeof fall !== 'undefined' && fall.active,
       // Glass in the air is still motion: the shards of a shattered piece keep flying for a few
       // seconds after the fall itself has finished. Their age (not their count, which holds steady
@@ -2122,6 +2122,7 @@
     // mode uniform selects grain / marble / membrane / nothing per frame (see pollInput), and the
     // Math board's live construction rides on the same program.
     if (SH && !detail) detail = SH.installDetailShader(bm);
+    clayAttach();
     if (T) {
       // A showcase look: its own bake, three or four maps, as the showcase page applies them. Baked
       // once per look and disposed on the way out -- each is a full-size canvas set.
@@ -2545,11 +2546,28 @@
   function chooseFoot(i) {
     if(!canPlay()) return;
     if(G.pinned!==null && Math.abs(G.netRad)>1e-6) return;
-    chosenFoot=(i+3)%3; v3HoverIdx=chosenFoot;
-    if(G.pinned!==null) { G.handle=null; G.ptrAngle=null; pinFoot(chosenFoot); render(); }
+    chosenFoot=(i+3)%3; selectionOwner=inputDevice;
+    if(G.pinned!==null) { G.handle=null; G.ptrAngle=null; pinFoot(chosenFoot); }
+    render();
   }
+  // Both board views read this cue. Input gating must use the selecting device: polling
+  // restores inputDevice to kbm, which would otherwise hide the cue on a controller-only seat.
+  function focusedFoot() {
+    if (!selectionOwner || (selectionOwner === 'pad' && !actingPad())) return -1;
+    const previous = inputDevice;
+    inputDevice = selectionOwner;
+    try { return canPlay() && G.handle === null ? (G.pinned === null ? chosenFoot : G.pinned) : -1; }
+    finally { inputDevice = previous; }
+  }
+  function pointerTakesSelection(e) {
+    if (!selectionOwner || !['canvas', 'view3d'].includes(e.target.id)) return;
+    selectionOwner = null; render();
+  }
+  addEventListener('pointermove', pointerTakesSelection, {passive:true});
+  addEventListener('pointerdown', pointerTakesSelection, {passive:true});
   function pinOrCommit() {
     if(!canPlay()) return;
+    selectionOwner=inputDevice;
     if(G.pinned===null){ pinFoot(chosenFoot); playSelectClick(); rumble(); wasAtLimit=false; if(onlineMatch){pendingKeyframes=[];lastKeyframeT=0;} render(); }
     // Letting go of the trigger no longer hands the turn over (see commitPlayerTurn) -- it parks
     // the swing. So this drops the handle if one is still held and then commits, which also means
@@ -2697,84 +2715,91 @@
     showToast(`<p class="desktop-unlock">${esc(tf('Graphics set to {name} to keep the board moving — Settings has the full range.',
       { name: qualityName(settings.quality) }))}</p>`);
   }
-  // ---------- Sumo: the dohyo is sand, and sand remembers ----------
-  // The ring is swept smooth before a bout and scuffed to bits during one, so a board that stays
-  // pristine while two heavy pieces are dragged across it reads as painted, not as ground.
-  //
-  // Drawn as decals rather than by painting into the board's albedo canvas: that bake is 2048² or
-  // 4096², and re-uploading it every time a foot moves would cost tens of megabytes a frame. A
-  // pooled ring of flat quads laid a hair above the surface costs nothing and fades on its own.
-  // Sumo only -- every other board is wood, stone or glass, none of which take a footprint.
-  const SAND_MAX = 56;            // pool size; the oldest mark is recycled, so scuffs never pile up
-  const SAND_LIFE = 26;           // seconds for a mark to fade out completely -- a long bout's worth
-  const SAND_MIN_STEP = 0.9;      // board units a foot must travel before it leaves another mark
-  let sandMarks = null, sandLast = null;
-  function sandEnabled() { return settings.board === 'sumo' && !lowGfx(); }
-  function sandPool() {
-    if (sandMarks) return sandMarks;
-    const SH = showcase();
-    if (!SH || typeof THREE === 'undefined' || typeof scene === 'undefined' || !scene) return null;
-    const geo = new THREE.PlaneGeometry(1, 1);
-    const map = SH.softDiscTexture();
-    sandMarks = [];
-    for (let i = 0; i < SAND_MAX; i++) {
-      // Lighter than the board on purpose: a scrape turns dry surface sand over and the fresh
-      // stuff under it is paler. Additive would glow; plain transparency just lightens.
-      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map, color: 0xd8b98a,
-        transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
-      m.rotation.x = -Math.PI/2;
-      m.position.y = -0.04;        // boardTop sits at -0.05; this lies just on top of it
-      m.visible = false; m.renderOrder = 2;
-      scene.add(m); sandMarks.push({ mesh: m, age: 1e9, peak: 0 });
+  // ---------- Persistent cosmetic clay: one fixed-size surface, no growing decal pool ----------
+  let clay = null, clayBaseGeometry = null, clayLast = null, clayElapsed = 0, claySettling = 0;
+  function clayAttach() {
+    if (typeof boardTop === 'undefined' || !boardTop) return;
+    if (!clayBaseGeometry) clayBaseGeometry = boardTop.geometry;
+    if (settings.board !== 'sumo' || !window.TauClaySurface) {
+      boardTop.geometry = clayBaseGeometry; boardTop.material.vertexColors = false; return;
     }
-    return sandMarks;
-  }
-  function sandClear() {
-    if (!sandMarks) return;
-    for (const s of sandMarks) { s.age = 1e9; s.peak = 0; s.mesh.visible = false; }
-    sandLast = null;
-  }
-  // One mark, laid between where the foot was and where it is, stretched along that travel so a
-  // drag reads as a streak rather than a row of dots.
-  function sandMark(pool, x0, z0, x1, z1) {
-    let oldest = pool[0];
-    for (const s of pool) if (s.age > oldest.age) oldest = s;
-    const dx = x1 - x0, dz = z1 - z0, len = Math.hypot(dx, dz);
-    oldest.age = 0;
-    oldest.peak = 0.16 + Math.min(0.14, len*0.05);   // a harder scrape leaves a stronger mark
-    const m = oldest.mesh;
-    m.position.set((x0+x1)/2, -0.04, (z0+z1)/2);
-    m.scale.set(Math.max(3.2, len*1.5 + 3.2), 3.0, 1);
-    m.rotation.z = -Math.atan2(dz, dx);   // the plane is already laid flat; z is its in-plane spin
-    m.visible = true;
-  }
-  function sandTick(dt) {
-    if (!sandEnabled()) { if (sandMarks) sandClear(); return; }
-    const pool = sandPool();
-    if (!pool) return;
-    if (typeof G !== 'undefined' && G && G.pieces && !G.over) {
-      const now = G.pieces.map(p => p.feet().map(f => ({ x: f.x, y: f.y })));
-      if (sandLast && sandLast.length === now.length) {
-        for (let pi = 0; pi < now.length; pi++)
-          for (let fi = 0; fi < now[pi].length; fi++) {
-            const a = sandLast[pi][fi], b = now[pi][fi];
-            if (!a) continue;
-            if (Math.hypot(b.x-a.x, b.y-a.y) < SAND_MIN_STEP) continue;
-            if (Math.hypot(b.x, b.y) > CFG.edgeU) continue;    // already over the rim: no sand there
-            sandMark(pool, a.x, a.y, b.x, b.y);
-            sandLast[pi][fi] = b;
+    if (!clay) {
+      const field = new window.TauClaySurface(CFG.edgeU, lowGfx() ? 65 : 129);
+      const n = field.size, r = field.radius, positions = [], uv = [], colors = [], indices = [];
+      for (let z = 0; z < n; z++) for (let x = 0; x < n; x++) {
+        let px = x * field.cell - r, pz = z * field.cell - r;
+        const d = Math.hypot(px, pz); if (d > r) { px *= r / d; pz *= r / d; }
+        // boardTop's local XY plane rotates to world XZ. UVs match CircleGeometry exactly.
+        positions.push(px, -pz, 0); uv.push((px/r+1)/2, (1-pz/r)/2); colors.push(1,1,1);
+        if (x + 1 < n && z + 1 < n) {
+          const nearX = Math.max(0, Math.abs((x+0.5)*field.cell-r)-field.cell/2);
+          const nearZ = Math.max(0, Math.abs((z+0.5)*field.cell-r)-field.cell/2);
+          if (Math.hypot(nearX, nearZ) <= r) {
+            const i = z*n+x; indices.push(i, i+n, i+1, i+1, i+n, i+n+1);
           }
-      } else sandLast = now;
+        }
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
+      geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3).setUsage(THREE.DynamicDrawUsage));
+      geometry.setIndex(indices); geometry.computeVertexNormals(); geometry.computeBoundingSphere();
+      geometry.attributes.normal.setUsage(THREE.DynamicDrawUsage);
+      geometry.boundingSphere.radius += 1;
+      clay = {field, geometry, renderedRevision:-1};
     }
-    for (const s of pool) {
-      if (s.age > SAND_LIFE) { if (s.mesh.visible) s.mesh.visible = false; continue; }
-      s.age += dt;
-      s.mesh.material.opacity = s.peak * Math.max(0, 1 - s.age/SAND_LIFE);
+    boardTop.geometry = clay.geometry; boardTop.material.vertexColors = true;
+  }
+  function clayClear() {
+    if (clay) clay.field.reset();
+    clayLast = null; clayElapsed = 0; claySettling = 0;
+  }
+  function clayUpload() {
+    if (!clay || clay.renderedRevision === clay.field.revision) return;
+    const {field, geometry} = clay, p = geometry.attributes.position, c = geometry.attributes.color;
+    for (let i = 0; i < field.height.length; i++) {
+      const h = field.height[i]; p.setZ(i, h);
+      // A scraped patch exposes paler dry clay. Gathered clay retains its darker top layer.
+      const tone = 1 + Math.min(0.22, Math.max(0, -h)*1.1) - Math.min(0.2, Math.max(0, h)*0.34);
+      c.setXYZ(i, tone, tone * (1 - field.wear[i]*0.015), tone * (1 - field.wear[i]*0.03));
     }
+    p.needsUpdate = c.needsUpdate = true;
+    geometry.computeVertexNormals();
+    clay.renderedRevision = field.revision;
+  }
+  function clayTick(dt) {
+    if (settings.board !== 'sumo' || !inMatch() || paused || typeof htp3DActive !== 'undefined' && htp3DActive) {
+      clayLast = null; return;   // changing the look never erases this bout's surface
+    }
+    if (!clay) clayAttach();
+    if (!clay) return;
+    clayElapsed += dt;
+    if (clayElapsed < 1/30) return;
+    const elapsed = clayElapsed; clayElapsed = 0;
+    // Sample the visible feet, including pushed opponents and the grounded part of a tumble.
+    // Airborne feet never carve a trail. The simulation never writes back into the game.
+    const now = [];
+    for (const t of typeof tripods !== 'undefined' ? tripods : []) {
+      t.updateMatrixWorld();
+      for (let k = 0; k < 3; k++) {
+        footTmp.set(Math.cos(k*2*Math.PI/3)*CFG.footR, 0, Math.sin(k*2*Math.PI/3)*CFG.footR);
+        t.localToWorld(footTmp);
+        now.push(t.visible && Math.abs(footTmp.y) < 0.85 ? {x:footTmp.x, z:footTmp.z} : null);
+      }
+    }
+    let disturbed = false;
+    if (clayLast) for (let i = 0; i < now.length; i++) {
+      const a = clayLast[i], b = now[i];
+      if (a && b) disturbed = clay.field.scrape(a.x, a.z, b.x, b.z) || disturbed;
+    }
+    clayLast = now;
+    if (disturbed) claySettling = 0.8;
+    if (claySettling > 0) { clay.field.settle(); claySettling -= elapsed; }
+    clayUpload();
   }
   function pollInput(dt) {
     watchFrameRate();
-    sandTick(dt);
+    clayTick(dt);
     if (detail && detail.uniforms) {
       const u = detail.uniforms, now = performance.now()/1000;
       u.uDetail.value = detailMode === 3 ? 0 : detailMode;   // the membrane is its own pass below
@@ -2805,7 +2830,7 @@
     if(padBrandShown && $('desktopPadDiagram') && padBrand()!==padBrandShown) drawPad();   // the sheet follows the pad that is plugged in
     if($('desktopPadSeen')) drawPadSeen();
     if($('desktopQualityNote')) drawQualityNote();
-    if(lastActive!==G.active){lastActive=G.active;chosenFoot=0;heldLeft=heldRight=false;lastCrossings=0;wasAtLimit=false;}
+    if(lastActive!==G.active){if(lastActive===-1 && actingPad())selectionOwner='pad';lastActive=G.active;chosenFoot=0;heldLeft=heldRight=false;lastCrossings=0;wasAtLimit=false;}
     // The seats belong to the match that chose them, and nothing else: back on the menu (or in any
     // match that never asked) they are empty and every input is one player's.
     if(!inMatch() && (seats[0]||seats[1])) seats=[null,null];
@@ -2865,7 +2890,7 @@
           if(G.crossings>lastCrossings) rumble(.34);
           lastCrossings=G.crossings;
         }
-        if(canPlay())v3HoverIdx=G.pinned===null?chosenFoot:G.pinned;
+        // Selection stays owned by the last real action, not by an idle connected pad.
       }
       inputDevice='kbm';
     }
@@ -2873,6 +2898,8 @@
     // for its turn would fire everything it was holding the moment the turn passed to it.
     padPrev=padList.map(p=>padSnapshot(p));
     if(heldLeft||heldRight)swing((heldRight?1:0)-(heldLeft?1:0),dt);
+    const cue = focusedFoot();
+    if (cue !== lastSelectionCue) { lastSelectionCue = cue; render(); }
     tickEffects(dt);
   }
   document.addEventListener('keydown',e=>{
@@ -2926,6 +2953,7 @@
     get paused(){return paused;},
     get menuOpen(){return dialogOpen();},
     startMatch, chooseDevices, seatBlocks,
+    get focusedFoot(){return focusedFoot();},
     get inputDevice(){return inputDevice;},
     set inputDevice(v){ inputDevice = v === 'pad' ? 'pad' : 'kbm'; },
     get keys(){return {...settings.keys};},
@@ -2977,7 +3005,7 @@
     // The corner layout keys off flags (#game's display, body.ingame) that the start sequence sets
     // across several steps, so the first resize can still be reading the menu's world. Settle it on
     // the next frame, once every flag for this match is actually in place.
-    onMatchStart(){ ownMatch=false; paused=false; heldLeft=heldRight=false; lastActive=-1; lastCrossings=0;
+    onMatchStart(){ clayClear(); selectionOwner=null; lastSelectionCue=-1; ownMatch=false; paused=false; heldLeft=heldRight=false; lastActive=-1; lastCrossings=0;
       focusBoard(); resize(); requestAnimationFrame(()=>resize()); },
     onMenu(){ ownMatch=false; paused=false; heldLeft=heldRight=false; camManualSet=false; routeToMenuBoard(); resize(); $('desktopPlay').focus({preventScroll:true}); },
     // index.html's setLang, after a switch from the corner picker or this layer's own Settings row.
