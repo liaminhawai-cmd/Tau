@@ -50,7 +50,19 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
   // rung votes with, which is how the seats were chosen rather than guessed: hold the funnel fixed,
   // vary only the membership, and let the results say who sits. The name carries the override so
   // two memberships can never pool as one brain in a tournament's results.
-  const m = /^L(\d+)(?::([\w.,-]+))?$/i.exec(spec);
+  // "L<n>:a,b" overrides which committee/ nets that rung votes with (unchanged). "L<n>+cfg:k=v,k=v"
+  // is the ablation door ported from claude/board-game-video-adaptation-cf8a93 (per-call OPTIONS
+  // override on that rung only -- see index.html's ladderPlanFor, which merges it in per call so
+  // AI_LADDER is never mutated and the two sides of a match cannot contaminate each other even
+  // though they share one engine):
+  //   L17+cfg:deadTable=0                 dense + guard, table off
+  //   L17+cfg:deadGuard=0,deadTable=0     dense only
+  //   L17+cfg:deadDense=0,deadGuard=0,deadTable=0   must equal plain L11 -- the runner asserts it
+  //   L11+cfg:markEps=1e-9                L11 with the dropped stop marks restored
+  // Values parse as numbers; bare `k` is 1 and `k=0`/`k=false` is false, because `deadTable=0` has
+  // to mean OFF and not "falsy number". The cfg string rides in the brain NAME, same reason the
+  // committee membership does: two option sets are two brains and must never pool as one row.
+  const m = /^L(\d+)(?::([\w.,-]+))?(\+cfg:([\w.,=+-]+))?$/i.exec(spec);
   if (m) {
     const lvl = +m[1];
     if (lvl < 1 || lvl > eng.AI_LADDER.length) throw new Error('no such ladder level: ' + spec);
@@ -63,7 +75,35 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
     // fetch in the browser. No fetch here, so read them off disk before the rung is ever asked for
     // a move -- otherwise it silently falls back to the chair and the arena measures the wrong brain.
     if (def.nets) require('./committee-nets.js').equipLadderNets(eng);
-    return { name: 'L' + lvl + (m[2] ? '(' + m[2] + ')' : ''), fn: idx => eng.ladderPlanFor(lvl - 1, idx) };
+    let cfg = null;
+    if (m[4]) {
+      cfg = {};
+      for (const kv of m[4].split(',')) {
+        const [k, v] = kv.split('=');
+        if (!k) continue;
+        if (v === undefined) cfg[k] = 1;
+        else if (v === '0' || /^false$/i.test(v)) cfg[k] = false;
+        else if (/^true$/i.test(v)) cfg[k] = true;
+        else {
+          const n = Number(v);
+          if (!Number.isFinite(n)) throw new Error(`bad --a/--b cfg value in ${spec}: ${kv}`);
+          cfg[k] = n;
+        }
+      }
+    }
+    // A ladder rung's move function takes no clock and never calls nnPlanForTimed -- only the
+    // le:/dual:/nn: branches below do. --timeMs/--timeMsA/--timeMsB/--timeMsLo+Hi therefore used to
+    // be silently inert here: the flag parsed, the brain built, the rung played its fixed-depth
+    // search for as long as that took, and nothing said so. Fail loudly instead of quietly
+    // measuring the wrong thing. `timeMs` is this side's fully-resolved clock (a number, a
+    // {ms,lo,hi} box from --timeMsLo/Hi, or null), so a truthy value here means the CALLER actually
+    // asked for one.
+    if (timeMs) throw new Error(
+      `${spec}: a ladder rung ignores its clock -- --timeMs/--timeMsA/--timeMsB/--timeMsLo+Hi do ` +
+      `nothing here (only le:/dual:/nn: brains read it). Drop the flag and report this as a fixed-` +
+      `search comparison with measured runtime.`);
+    return { name: 'L' + lvl + (m[2] ? '(' + m[2] + ')' : '') + (m[4] ? '+cfg:' + m[4] : ''),
+             fn: idx => eng.ladderPlanFor(lvl - 1, idx, cfg) };
   }
   const parts = spec.split(':');
   // "le:L11[:temperature]" -- L11's hand-tuned EVAL inside nnai.js's search, so it gets a real
