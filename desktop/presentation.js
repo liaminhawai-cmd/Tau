@@ -581,20 +581,20 @@
   // The words are left out of the markup and painted by relabelHome: this menu is built once, at
   // load, and has to answer a language change that happens while it is on screen.
   home.innerHTML = `<img class="desktop-logo" src="tau-logo.png" alt="Tau" width="220" height="62">
-    <button class="desktop-primary" id="desktopPlay"></button>
+    <button class="desktop-primary" id="desktopPlay">Play</button>
     <div class="desktop-choices">
-      <div class="desktop-choice"><span id="desktopLevelLabel"></span>
-        <button type="button" id="desktopOpponent" class="desktop-opponent"></button>
+      <div class="desktop-choice"><span id="desktopLevelLabel">Opponent</span>
+        <button type="button" id="desktopOpponent" class="desktop-opponent">Level 1</button>
         <select id="desktopLevel"></select></div>
-      <label><span id="desktopColourLabel"></span><select id="desktopColour"><option value="0"></option><option value="1"></option></select></label>
+      <label><span id="desktopColourLabel">You play</span><select id="desktopColour"><option value="0">Blue · first</option><option value="1">Red · second</option></select></label>
     </div>
     <nav class="desktop-links" id="desktopLinks">
       <button id="desktopOnline">1v1</button>
-      <button id="desktopWatch"></button>
-      <button id="desktopLearn"></button>
-      <button id="desktopLeaderboard"></button>
+      <button id="desktopWatch">Watch</button>
+      <button id="desktopLearn">How to play</button>
+      <button id="desktopLeaderboard">Leaderboard</button>
     </nav>
-    <div class="desktop-home-bottom"><button id="desktopSettings"></button><button id="desktopControls"></button><button id="desktopLab"></button><button id="desktopQuit" hidden></button></div>`;
+    <div class="desktop-home-bottom"><button id="desktopSettings">Settings</button><button id="desktopControls">Controls</button><button id="desktopLab">Lab</button><button id="desktopQuit" hidden>Quit</button></div>`;
   $('menu').appendChild(home);
   if (!renderer) root.classList.add('desktop-overhead');
   const toolbar = document.createElement('div');
@@ -3024,4 +3024,3 @@
   if(settings.rayTrace) rayTraceLoad();
   if(!inMatch())$('desktopPlay').focus({preventScroll:true});
 })();
-
