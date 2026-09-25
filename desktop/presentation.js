@@ -2717,14 +2717,56 @@
   }
   // ---------- Persistent cosmetic clay: one fixed-size surface, no growing decal pool ----------
   let clay = null, clayBaseGeometry = null, clayLast = null, clayElapsed = 0, claySettling = 0;
+  // The board body under boardTop (index.html's boardRim) is a solid cylinder whose top cap sits at
+  // y = -0.2, just 0.15 under the playing surface -- deliberately, so it never pokes through a flat
+  // board. But any trench deeper than that 0.15 dips BEHIND the cap, and the camera sees the cap
+  // instead of the clay: on sumo the cap wears the band colour, a near-black brown, so a real trench
+  // rendered as a black gash. (It is also why the first version capped its bed at -0.18.)
+  //
+  // So while clay is on, the body wears the same cylinder with its top cap lowered below the
+  // deepest trench: the side wall is untouched, so the board looks identical from every side, and a
+  // cap still sits inside it to cast the board's shadow onto the floor below. Every other board --
+  // and the web build, which never loads this file -- keeps the original body.
+  let clayRimOriginal = null, clayRimCaps = null;
+  function clayRim(on) {
+    if (typeof boardRim === 'undefined' || !boardRim) return;
+    if (on && !clayRimOriginal && clay) {
+      const g = boardRim.geometry.parameters || {};
+      if (!(g.radiusTop > 0)) return;   // not the cylinder this was written against: leave it alone
+      clayRimOriginal = boardRim.geometry;
+      boardRim.geometry = new THREE.CylinderGeometry(g.radiusTop, g.radiusBottom, g.height,
+                                                      g.radialSegments, 1, true);   // side wall only
+      // Cap just under the deepest the clay can go, in the rim's own frame.
+      const capWorldY = boardTop.position.y + clay.field.bed - 0.15;
+      const capLocalY = capWorldY - boardRim.position.y;
+      const k = (g.height / 2 - capLocalY) / g.height;                 // 0 at the top, 1 at the bottom
+      const capR = g.radiusTop + (g.radiusBottom - g.radiusTop) * k;   // meet the tapered wall
+      const top = new THREE.Mesh(new THREE.CircleGeometry(capR, g.radialSegments), boardRim.material);
+      top.rotation.x = -Math.PI / 2; top.position.y = capLocalY;
+      const bottom = new THREE.Mesh(new THREE.CircleGeometry(g.radiusBottom, g.radialSegments), boardRim.material);
+      bottom.rotation.x = Math.PI / 2; bottom.position.y = -g.height / 2;
+      for (const c of [top, bottom]) { c.castShadow = boardRim.castShadow; boardRim.add(c); }
+      clayRimCaps = [top, bottom];
+    } else if (!on && clayRimOriginal) {
+      boardRim.geometry.dispose();
+      boardRim.geometry = clayRimOriginal; clayRimOriginal = null;
+      for (const c of clayRimCaps || []) { boardRim.remove(c); c.geometry.dispose(); }
+      clayRimCaps = null;
+    }
+  }
   function clayAttach() {
     if (typeof boardTop === 'undefined' || !boardTop) return;
     if (!clayBaseGeometry) clayBaseGeometry = boardTop.geometry;
     if (settings.board !== 'sumo' || !window.TauClaySurface) {
-      boardTop.geometry = clayBaseGeometry; boardTop.material.vertexColors = false; return;
+      boardTop.geometry = clayBaseGeometry; boardTop.material.vertexColors = false; clayRim(false); return;
     }
     if (!clay) {
-      const field = new window.TauClaySurface(CFG.edgeU, lowGfx() ? 65 : 129);
+      // A groove is ~4.8 units across (the foot's scrape width), so the cell size decides whether
+      // it renders as a trench with walls or a soft dimple. 129 gave a cell of ~1 unit -- four or
+      // five vertices across a groove, which is the dimple. 257 halves it. The physics is written
+      // per board unit, so every tier digs the same trench; the finer ones just show it sharper.
+      const n0 = lowGfx() ? 97 : settings.quality === 'balanced' ? 193 : 257;
+      const field = new window.TauClaySurface(CFG.edgeU, n0);
       const n = field.size, r = field.radius, positions = [], uv = [], colors = [], indices = [];
       for (let z = 0; z < n; z++) for (let x = 0; x < n; x++) {
         let px = x * field.cell - r, pz = z * field.cell - r;
@@ -2749,22 +2791,58 @@
       clay = {field, geometry, renderedRevision:-1};
     }
     boardTop.geometry = clay.geometry; boardTop.material.vertexColors = true;
+    clayRim(true);
   }
   function clayClear() {
-    if (clay) clay.field.reset();
+    if (clay) { clay.field.reset(); clay.settleRegion = null; }
     clayLast = null; clayElapsed = 0; claySettling = 0;
   }
+  // Rebuilds only the rows the last strokes touched. At 257 the grid is 66k vertices, and the old
+  // whole-mesh rebuild (every height, every colour, then computeVertexNormals over 130k triangles)
+  // ran on every disturbed tick. A foot moves a patch a few units across; the rest is at rest.
   function clayUpload() {
     if (!clay || clay.renderedRevision === clay.field.revision) return;
-    const {field, geometry} = clay, p = geometry.attributes.position, c = geometry.attributes.color;
-    for (let i = 0; i < field.height.length; i++) {
-      const h = field.height[i]; p.setZ(i, h);
-      // A scraped patch exposes paler dry clay. Gathered clay retains its darker top layer.
-      const tone = 1 + Math.min(0.22, Math.max(0, -h)*1.1) - Math.min(0.2, Math.max(0, h)*0.34);
-      c.setXYZ(i, tone, tone * (1 - field.wear[i]*0.015), tone * (1 - field.wear[i]*0.03));
+    const {field, geometry} = clay, n = field.size, h = field.height, cell = field.cell;
+    const d = field.takeDirty() || { x0: 0, z0: 0, x1: n - 1, z1: n - 1 };
+    // Two extra rings: a changed height moves its neighbours' normals and cavity shading too.
+    const x0 = Math.max(0, d.x0 - 2), z0 = Math.max(0, d.z0 - 2);
+    const x1 = Math.min(n - 1, d.x1 + 2), z1 = Math.min(n - 1, d.z1 + 2);
+    const P = geometry.attributes.position, C = geometry.attributes.color, N = geometry.attributes.normal;
+    const pa = P.array, ca = C.array, na = N.array;
+    const H = (x, z) => h[Math.min(n - 1, Math.max(0, z)) * n + Math.min(n - 1, Math.max(0, x))];
+    for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+      const i = z * n + x, hi = h[i];
+      pa[i*3 + 2] = hi;
+      // Normals straight off the heightfield, local so a partial rebuild is possible at all. A Sobel
+      // stencil rather than plain central differences: a trench wall is only a couple of cells
+      // wide, and with the tighter stencil its light followed each triangle's diagonal and drew a
+      // saw-tooth along any wall not square to the grid. The mesh's local XY becomes world XZ with
+      // local y = -world z (see the geometry above), which is where the sign on dhdz comes from.
+      const dhdx = ((H(x + 1, z) - H(x - 1, z)) * 2 + (H(x + 1, z + 1) - H(x - 1, z + 1)) + (H(x + 1, z - 1) - H(x - 1, z - 1))) / (8 * cell);
+      const dhdz = ((H(x, z + 1) - H(x, z - 1)) * 2 + (H(x + 1, z + 1) - H(x + 1, z - 1)) + (H(x - 1, z + 1) - H(x - 1, z - 1))) / (8 * cell);
+      const inv = 1 / Math.hypot(dhdx, dhdz, 1);
+      na[i*3] = -dhdx * inv; na[i*3 + 1] = dhdz * inv; na[i*3 + 2] = inv;
+      // Tone. A scraped patch exposes paler dry clay; gathered clay keeps its darker top layer.
+      let tone = 1 + Math.min(0.2, Math.max(0, -hi) * 0.5) - Math.min(0.18, Math.max(0, hi) * 0.28);
+      // Cavity: the inside of a trench corner and the foot of a ridge get less light than an open
+      // crest, and that difference -- not the height itself -- is most of what makes relief read as
+      // relief in a photograph. Concave darkens, convex lightens, scaled per unit of board.
+      // Read two cells out, all eight ways round, not from the four touching cells: a crest only
+      // a cell wide, running at an angle to the grid, lit and darkened cell by cell under the tight
+      // stencil and drew a zipper along every diagonal ridge.
+      const lap = (H(x + 2, z) + H(x - 2, z) + H(x, z + 2) + H(x, z - 2)
+        + H(x + 2, z + 2) + H(x - 2, z - 2) + H(x + 2, z - 2) + H(x - 2, z + 2)) / 8 - hi;
+      tone *= 1 - Math.max(-0.14, Math.min(0.26, lap / cell * 0.35));
+      const w = field.wear[i];
+      ca[i*3] = tone; ca[i*3 + 1] = tone * (1 - w * 0.015); ca[i*3 + 2] = tone * (1 - w * 0.03);
     }
-    p.needsUpdate = c.needsUpdate = true;
-    geometry.computeVertexNormals();
+    // Rows are contiguous in the buffers, so the changed band uploads as one range per attribute.
+    const start = z0 * n * 3, count = (z1 - z0 + 1) * n * 3;
+    for (const A of [P, C, N]) {
+      if (A.clearUpdateRanges) A.clearUpdateRanges();
+      if (A.addUpdateRange) A.addUpdateRange(start, count);
+      A.needsUpdate = true;
+    }
     clay.renderedRevision = field.revision;
   }
   function clayTick(dt) {
@@ -2793,8 +2871,22 @@
       if (a && b) disturbed = clay.field.scrape(a.x, a.z, b.x, b.z) || disturbed;
     }
     clayLast = now;
-    if (disturbed) claySettling = 0.8;
-    if (claySettling > 0) { clay.field.settle(); claySettling -= elapsed; }
+    // Settling gets its own region, separate from the renderer's dirty rectangle: clayUpload
+    // consumes that one every tick, but a slump takes several passes over ~0.8s to come to rest,
+    // so the area it works on has to outlive a single frame. Grows with each stroke, and is
+    // forgotten once the clay has been left alone long enough to settle.
+    if (disturbed) {
+      const d = clay.field.dirty, r = clay.settleRegion;
+      if (d) clay.settleRegion = r
+        ? { x0: Math.min(r.x0, d.x0), z0: Math.min(r.z0, d.z0), x1: Math.max(r.x1, d.x1), z1: Math.max(r.z1, d.z1) }
+        : { x0: d.x0, z0: d.z0, x1: d.x1, z1: d.z1 };
+      claySettling = 0.8;
+    }
+    if (claySettling > 0 && clay.settleRegion) {
+      clay.field.settle(clay.settleRegion);
+      claySettling -= elapsed;
+      if (claySettling <= 0) clay.settleRegion = null;
+    }
     clayUpload();
   }
   function pollInput(dt) {
