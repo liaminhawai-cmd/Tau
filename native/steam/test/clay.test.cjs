@@ -42,17 +42,18 @@ test('edge strokes stay in the ring; airborne/reset-sized jumps make no trench',
 });
 
 test('the same line dug again goes deeper, and levels off at the bed', () => {
-  // What the look depends on: a single pass has to cut a trench that reads (not a 0.08 dimple),
-  // and going over it again has to keep cutting rather than stop dead after one stroke.
+  // What the look depends on: a single pass scuffs a shallow groove -- not a trench cut in one go --
+  // and going over it again keeps cutting rather than stopping dead after one stroke.
   const f = new Clay(66.667), n = f.size;
   const floor = () => f.height[Math.round(f.radius / f.cell) * n + Math.round((-5 + f.radius) / f.cell)];
   const stroke = () => { for (let s = 0; s < 30; s++) f.scrape(-15 + s * 0.6, 0, -15 + (s + 1) * 0.6, 0); };
   const depths = [];
   for (let k = 0; k < 4; k++) { stroke(); depths.push(floor()); }
-  assert.ok(depths[0] < -0.35, 'one pass cuts a real trench: ' + depths[0]);
+  assert.ok(depths[0] < -0.05 && depths[0] > -0.2, 'one pass scuffs a shallow groove: ' + depths[0]);
+  assert.ok(depths[3] < depths[0] * 1.8, 'and working it digs well past that: ' + depths);
   for (let k = 1; k < 4; k++) assert.ok(depths[k] < depths[k - 1], 'each pass goes deeper: ' + depths);
   assert.ok(depths[3] >= f.bed, 'and never past the bed');
-  assert.ok(Math.max(...f.height) > 0.4, 'the clay it moved stands up as a lip');
+  assert.ok(Math.max(...f.height) > 0.3, 'the clay it moved stands up as a lip');
 });
 
 test('clay holds a steep wall instead of melting into a hump', () => {

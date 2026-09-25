@@ -30,14 +30,31 @@
       this.height = new Float64Array(size * size);
       this.wear = new Float32Array(size * size);
       this.inside = new Uint8Array(size * size);
-      // Half a leg's thickness down (legRadius is 1.44), and a lip that can stand about as high.
-      this.bed = -0.75; this.ceiling = 0.9; this.revision = 0;
+      // A third of a leg's thickness down (legRadius is 1.44) at most, reached only by working the
+      // same line over and over; a single pass scuffs a shallow groove.
+      this.bed = -0.45; this.ceiling = 0.6; this.revision = 0;
       // Steepest slope settle() leaves standing, as rise over run. ~48 degrees: wet cohesive clay
       // keeps a cut wall, and only a lip pushed up past this slumps back.
       this.repose = 1.1;
       this.dirty = null;   // {x0, z0, x1, z1} in grid cells, since the renderer last cleared it
       for (let z = 0; z < size; z++) for (let x = 0; x < size; x++)
         this.inside[z * size + x] = Math.hypot(x * this.cell - radius, z * this.cell - radius) <= radius;
+      // Fixed per-cell texture of the clay itself, 0..1. `clod` is raw, cell to cell: which cells
+      // catch a lump and which a foot bites harder into, so lips come out clumpy and floors rough
+      // rather than machined. `grain` is the same blurred over a few cells: how thick the dry crust
+      // is and how damp a patch is underneath, read by the renderer (see presentation.js).
+      this.clod = new Float32Array(size * size); this.grain = new Float32Array(size * size);
+      let seed = 0x9e3779b9;
+      const rnd = () => { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return (seed >>> 0) / 4294967296; };
+      for (let i = 0; i < this.clod.length; i++) this.clod[i] = rnd();
+      for (let z = 0; z < size; z++) for (let x = 0; x < size; x++) {
+        let sum = 0, k = 0;
+        for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+          const xx = x + dx, zz = z + dz;
+          if (xx >= 0 && zz >= 0 && xx < size && zz < size) { sum += this.clod[zz * size + xx]; k++; }
+        }
+        this.grain[z * size + x] = Math.min(1, Math.max(0, (sum / k - 0.5) * 3.5 + 0.5));
+      }
     }
     reset() {
       this.height.fill(0); this.wear.fill(0); this.revision++;
@@ -82,7 +99,8 @@
         // steps scale as 1/cell and so does this. A single pass takes a good share of what is left
         // above the bed; the same line again takes a share of what remains, so repeat passes dig
         // deeper and deeper and level off at the bed rather than stopping dead after one.
-        const pressure = Math.min(0.6, len / steps / width * 0.9);
+        // Gentle: a single pass takes about a quarter of the depth there is to take.
+        const pressure = Math.min(0.3, len / steps / width * 0.28);
         for (let iz = loZ; iz <= hiZ; iz++) for (let ix = loX; ix <= hiX; ix++) {
           const i = iz * this.size + ix;
           if (!this.inside[i]) continue;
@@ -92,7 +110,7 @@
             // Flat floor, steep walls: (1 - d^4) is nearly 1 across the foot and drops fast at its
             // rim, where (1 - d^2) sloped all the way from the centre and made a dimple.
             const d2 = d * d;
-            const take = (this.height[i] - this.bed) * (1 - d2 * d2) * pressure;
+            const take = (this.height[i] - this.bed) * (1 - d2 * d2) * pressure * (0.6 + 0.8 * this.clod[i]);
             if (take > 0) { sources.push([i, take]); amount += take; }
           } else if (d < LIP_OUT && ahead > -0.4) {
             // The bulldozer lip: most of the clay goes ahead of the foot, the rest to levees at
@@ -100,7 +118,10 @@
             const capacity = Math.max(0, this.ceiling - this.height[i]);
             const u = (d - LIP_PEAK) / LIP_W, band = Math.exp(-u * u);
             const inner = Math.min(1, (d - LIP_IN) / (LIP_PEAK - LIP_IN)), rear = Math.min(1, (ahead + 0.4) / 0.4);
-            const weight = capacity * band * inner * inner * rear * (0.35 + Math.max(0, ahead) * 1.4);
+            // Clumped: some cells catch a lump, their neighbours little, so the lip is a heap of
+            // clods rather than an extruded bead.
+            const weight = capacity * band * inner * inner * rear * (0.35 + Math.max(0, ahead) * 1.4)
+              * (0.25 + 1.5 * this.clod[i] * this.clod[i]);
             if (weight > 0) { targets.push([i, weight, capacity]); room += weight; }
           }
         }
@@ -111,9 +132,14 @@
         for (const [i, take] of sources) {
           const removed = take * transfer / amount;
           this.height[i] -= removed;
-          this.wear[i] = Math.min(1, this.wear[i] + removed * 1.5);
+          this.wear[i] = Math.min(1, this.wear[i] + removed * 4);
         }
-        for (const [i, weight] of targets) this.height[i] += transfer * weight / room;
+        for (const [i, weight] of targets) {
+          const added = transfer * weight / room;
+          this.height[i] += added;
+          // Turned-over clay: the damp layer underneath, thrown up on top of the dry crust.
+          this.wear[i] = Math.min(1, this.wear[i] + added * 4);
+        }
         if (loX < bx0) bx0 = loX; if (loZ < bz0) bz0 = loZ;
         if (hiX > bx1) bx1 = hiX; if (hiZ > bz1) bz1 = hiZ;
         changed = true;

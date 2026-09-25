@@ -2822,8 +2822,22 @@
       const dhdz = ((H(x, z + 1) - H(x, z - 1)) * 2 + (H(x + 1, z + 1) - H(x + 1, z - 1)) + (H(x - 1, z + 1) - H(x - 1, z - 1))) / (8 * cell);
       const inv = 1 / Math.hypot(dhdx, dhdz, 1);
       na[i*3] = -dhdx * inv; na[i*3 + 1] = dhdz * inv; na[i*3 + 2] = inv;
-      // Tone. A scraped patch exposes paler dry clay; gathered clay keeps its darker top layer.
-      let tone = 1 + Math.min(0.2, Math.max(0, -hi) * 0.5) - Math.min(0.18, Math.max(0, hi) * 0.28);
+      // Layers, the way a dohyo reads from above: a thin pale crust of dry dust on top, damp darker
+      // clay under it, and a firmer, slightly lighter packed base below that. A scuff takes the
+      // crust off and shows the dark layer; working a line down reaches the paler base; clay thrown
+      // up by a foot is the damp layer lying on top of the crust, so lips and spatter are dark too.
+      // The crust's thickness and how damp the clay is vary patch to patch (grain), so a scrape's
+      // edge breaks up raggedly instead of following the stroke like a pen line.
+      const g = field.grain[i], k = field.clod[i], dig = Math.max(0, -hi);
+      const crust = 0.025 + 0.06 * g;
+      const smooth = (a, b, v) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
+      const base = smooth(0.2 + 0.08 * g, 0.34 + 0.08 * g, dig);
+      let damp = smooth(crust, crust + 0.05, dig) * (1 - 0.55 * base);
+      // Turned-over clay, clumpy: some clods damp and dark, some that dried pale on the way.
+      damp = Math.max(damp, Math.min(1, field.wear[i] * 1.6) * (hi > 0.005 ? 0.35 + 0.65 * k : 0.6 + 0.4 * g));
+      damp *= 0.8 + 0.4 * g;
+      // Undisturbed dust is mottled a little, and speckled at the cell scale -- the particles.
+      let tone = (1 + (g - 0.5) * 0.06) * (1 + (k - 0.5) * 0.05);
       // Cavity: the inside of a trench corner and the foot of a ridge get less light than an open
       // crest, and that difference -- not the height itself -- is most of what makes relief read as
       // relief in a photograph. Concave darkens, convex lightens, scaled per unit of board.
@@ -2833,8 +2847,8 @@
       const lap = (H(x + 2, z) + H(x - 2, z) + H(x, z + 2) + H(x, z - 2)
         + H(x + 2, z + 2) + H(x - 2, z - 2) + H(x + 2, z - 2) + H(x - 2, z + 2)) / 8 - hi;
       tone *= 1 - Math.max(-0.14, Math.min(0.26, lap / cell * 0.35));
-      const w = field.wear[i];
-      ca[i*3] = tone; ca[i*3 + 1] = tone * (1 - w * 0.015); ca[i*3 + 2] = tone * (1 - w * 0.03);
+      // Damp clay is darker and warmer: blue drops fastest, red slowest.
+      ca[i*3] = tone * (1 - 0.2 * damp); ca[i*3 + 1] = tone * (1 - 0.26 * damp); ca[i*3 + 2] = tone * (1 - 0.34 * damp);
     }
     // Rows are contiguous in the buffers, so the changed band uploads as one range per attribute.
     const start = z0 * n * 3, count = (z1 - z0 + 1) * n * 3;
