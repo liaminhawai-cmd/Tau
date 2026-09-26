@@ -3493,3 +3493,17 @@ test('below High the glass legs are plain see-through glass, with nothing left r
   }
   assert.deepEqual(g.errors,[]);
 });
+
+test('the lab\'s Level N is the menu\'s Level N, nets and all',async t=>{
+  const g=await game('');t.after(g.close);
+  // Level 13 in the lab picker is option value 12 -- the player's rung, not an AI_LADDER index.
+  g.read('labBrains[0].level=12; labBrains[1].level=8; labBrains[0].model=labBrains[1].model=null; labBrains[0].human=labBrains[1].human=false;');
+  assert.equal(g.read('labAiIndex(0)'),g.read('RUNG_TO_AI_LADDER[12]'),'Level 13 is the Committee');
+  assert.equal(g.read("AI_LADDER[labAiIndex(0)].kind"),'committee');
+  assert.equal(g.read('labAiIndex(1)'),g.read('RUNG_TO_AI_LADDER[8]'),'Level 9 is the menu\'s Level 9');
+  // The sim waits for the Committee's nets rather than playing its chair alone.
+  g.read(`window.__asked=[]; ladderNetsEnsureLoaded=i=>{ window.__asked.push(i); return Promise.resolve([]); };`);
+  await g.w.labNetsReady();
+  assert.deepEqual(JSON.parse(g.read('JSON.stringify(window.__asked)')),[g.read('RUNG_TO_AI_LADDER[12]')]);
+  assert.deepEqual(g.errors,[]);
+});

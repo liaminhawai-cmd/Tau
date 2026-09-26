@@ -11784,11 +11784,25 @@ function labSideLabel(side) {
     if (!b.model) return 'L' + (b.level + 1);
     return b.name + (b.dynamic ? ' (' + (b.timeMs/1000) + 's)' : (b.depth > 1 ? ' D' + b.depth : ''));
 }
+// A lab "Level N" is the menu's Level N: b.level is the player's rung (0-based), exactly as the
+// Play and bench paths treat it (startLadderLevel, labApplyBrainFor). The watch path used to hand
+// it straight to ladderPlanFor, which indexes AI_LADDER itself -- so the lab's "Level 13" was a
+// retired internal brain rather than the Committee, "Level 12" another instead of the Champion,
+// and every other rung sat one difficulty above the menu level of the same number.
+function labAiIndex(side) { return RUNG_TO_AI_LADDER[labBrains[side].level]; }
 function labMakeBrainFn(side) {
     const b = labBrains[side];
     if (b.model) return idx => b.dynamic ? nnPlanForGameTimed(idx, b.temperature, b.timeMs, b.model, 4, b.policy)
                                 : nnPlanForGame(idx, b.temperature, b.depth, 4, b.model, b.policy);
-    return idx => ladderPlanFor(b.level, idx);
+    const ai = labAiIndex(side);
+    return idx => ladderPlanFor(ai, idx);
+}
+// The top rungs' nets arrive by fetch. The sim is synchronous and never waits on one, so without
+// this a net rung would quietly play its fallback -- the chair alone -- and lose to rungs far below it.
+function labNetsReady() {
+    const want = [0, 1].filter(s => !labBrains[s].model && !labBrains[s].human)
+        .map(labAiIndex).filter(i => AI_LADDER[i] && AI_LADDER[i].nets && !AI_LADDER[i]._nets);
+    return Promise.all(want.map(ladderNetsEnsureLoaded));
 }
 // Fast-forward a full game between two brains using the same primitives as every real turn (pin,
 // step to target, endTurn) but with no animation delay -- collects a sparse pose per turn.
@@ -11860,8 +11874,13 @@ function labWatchGame() {
         }
         return;
     }
-    msg.textContent = 'Simulating…'; msg.className = '';
-    setTimeout(() => {
+    msg.textContent = 'Loading…'; msg.className = '';
+    labNetsReady().then(() => { msg.textContent = 'Simulating…'; setTimeout(labSimulateNow, 30); },
+                        e => { msg.textContent = 'Could not load that level\u2019s nets: ' + (e && e.message || e); });
+}
+function labSimulateNow() {
+    const msg = document.getElementById('labMsg');
+    {
         try {
             const brainBlue = labMakeBrainFn(0), brainRed = labMakeBrainFn(1);
             const frames = labSimulateGame(brainBlue, brainRed);
@@ -11886,7 +11905,7 @@ function labWatchGame() {
             else badge.style.display = 'none';
             if (replayFrames.length > 1) startReplay();
         } catch (e) { msg.textContent = 'Simulation failed: ' + e.message; }
-    }, 30);   // let the "Simulating…" label paint before the (synchronous) search blocks the thread
+    }   // (called on a 30ms delay: the "Simulating…" label paints before the synchronous search blocks)
 }
 // A brain choice landed on a side (from the dropdown OR the #nn boot preset). Updates state and
 // the model-settings row; never auto-opens the file picker (the user-initiated change handler
