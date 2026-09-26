@@ -3444,3 +3444,23 @@ test('a camera the player just let go of stays put, and the lean back comes in s
   assert.ok(worst<0.05,'speed changes smoothly (worst frame-to-frame change '+worst.toFixed(4)+')');
   assert.deepEqual(g.errors,[]);
 });
+
+test('on the sumo board the lines are straw bales, and they go when the board does',async t=>{
+  const g=await game('?steam=1&premium=1',{tauDesktopSettingsV1:'{"board":"sumo","levelSkipped":true}',
+    tauLadder:'{"b":{"1":1,"2":1,"3":1,"4":1,"5":1,"6":1,"7":1,"8":1},"r":{}}', tauLadderRenumberedV1:'1'});t.after(g.close);
+  const D=g.w.tauDesktop;
+  g.read(`if (!scene) scene = new THREE.Scene();`);
+  D.tick(1/60);
+  assert.equal(D.board,'sumo');
+  assert.ok(D.tawara,'the bales are laid');
+  assert.equal(D.tawara.children.length, g.read('CFG.rings.length + CFG.sideArcs.length'),'one run of bales per printed line');
+  // Every bale sits on its line: averaged round the straw, the first ring is at radius rings[0].
+  const r0=g.read(`(()=>{ const p=tauDesktop.tawara.children[0].geometry.attributes.position; let s=0,n=0;
+    for (let i=0;i<p.count;i++){ s+=Math.hypot(p.getX(i),p.getZ(i)); n++; } return s/n; })()`);
+  assert.ok(Math.abs(r0-g.read('CFG.rings[0]'))<0.5,'bale centre follows the ring: '+r0.toFixed(2));
+  g.$('desktopSettings').click(); g.tick();
+  const sel=g.$('desktopBoard'); sel.value='yellow'; sel.onchange({target:sel});
+  D.tick(1/60);
+  assert.equal(D.tawara,null,'and they are gone on any other board');
+  assert.deepEqual(g.errors,[]);
+});

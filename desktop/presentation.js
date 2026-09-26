@@ -2727,6 +2727,84 @@
   // Drawn as decals rather than by painting into the board's albedo canvas: that bake is 2048² or
   // 4096², and re-uploading it every time a foot moves would cost tens of megabytes a frame. A
   // pooled ring of flat quads laid a hair above the surface costs nothing and fades on its own.
+  // ---- Sumo: the lines are TAWARA -- straw bales, as a dohyo's ring is ------------------------
+  // A real ring's edge is rice-straw bales, bound with rope and half sunk into the clay. Here every
+  // printed line is one: a flattened straw tube along the ring or arc, broken into bales a few units
+  // long with a rope binding pinching each join, straw fibres twisted along it. The line underneath
+  // (boards.js's sumo paint) is only the bed they sit in. Built once per visit to the board, from
+  // the same CFG geometry the rules read, so a bale sits exactly where the line it stands for is.
+  let tawara = null;
+  function tawaraPath(line) {
+    // Points along one printed line, in board units, ~0.35u apart.
+    const pts = [];
+    if (line.ring) {
+      const n = Math.ceil(2*Math.PI*line.r / 0.35);
+      for (let i = 0; i <= n; i++) { const a = i/n*2*Math.PI; pts.push([line.r*Math.cos(a), line.r*Math.sin(a)]); }
+    } else {
+      const a0 = line.a0*Math.PI/180, a1 = line.a1*Math.PI/180, n = Math.ceil(Math.abs(a1-a0)*line.r / 0.35);
+      for (let i = 0; i <= n; i++) { const a = a0 + (a1-a0)*i/n; pts.push([line.cx + line.r*Math.cos(a), line.cy + line.r*Math.sin(a)]); }
+    }
+    return pts;
+  }
+  function tawaraGeometry(pts, closed) {
+    const RW = 0.8, RH = 0.52, SIDES = 14, BALE = 8.5, y0 = (typeof boardTop !== 'undefined' && boardTop ? boardTop.position.y : -0.05) + 0.12;
+    const len = [0]; for (let i = 1; i < pts.length; i++) len.push(len[i-1] + Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]));
+    const total = len[len.length-1], bales = Math.max(1, Math.round(total / BALE)), bl = total / bales;
+    const pos = [], nor = [], col = [], idx = [];
+    for (let i = 0; i < pts.length; i++) {
+      const j0 = Math.max(0, i-1), j1 = Math.min(pts.length-1, i+1);
+      let tx = pts[j1][0]-pts[j0][0], tz = pts[j1][1]-pts[j0][1]; const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
+      const sx = -tz, sz = tx;                         // sideways, in the board plane
+      const u = (len[i] % bl) / bl;                    // 0..1 along this bale
+      const joint = Math.min(u, 1-u) * bl;             // distance to the nearest join, in units
+      // Each bale is rounded off into its binding: full girth in the middle, pinched at the join.
+      const girth = 1 - 0.22*Math.exp(-joint*joint/0.12) - 0.08*Math.exp(-joint*joint/2.2);
+      const rope = Math.exp(-joint*joint/0.04);        // the rope itself: a darker band at the join
+      for (let k = 0; k <= SIDES; k++) {
+        const th = k/SIDES*Math.PI*2, c = Math.cos(th), sn = Math.sin(th);
+        // Straw: fibres twisted along the bale, catching light as small ridges.
+        const twist = th*3 + len[i]*1.9;
+        const fibre = 1 + 0.045*Math.sin(twist) + 0.02*Math.sin(twist*3.7 + 1.3);
+        const w = RW*girth*fibre, h = RH*girth*fibre;
+        pos.push(pts[i][0] + sx*c*w, y0 + sn*h, pts[i][1] + sz*c*w);
+        // Normal of the ellipse (c*w, s*h) is (c/w, s/h), laid into the frame.
+        let nx = c/w, ny = sn/h; const nl = Math.hypot(nx, ny); nx /= nl; ny /= nl;
+        nor.push(sx*nx, ny, sz*nx);
+        const lit = 0.84 + 0.16*Math.sin(twist) + 0.06*Math.sin(len[i]*7.3 + th*5.0);
+        const cr = (0.50*lit)*(1-rope) + 0.20*rope, cg = (0.38*lit)*(1-rope) + 0.14*rope, cb = (0.19*lit)*(1-rope) + 0.07*rope;
+        col.push(cr, cg, cb);
+      }
+    }
+    const ring = SIDES + 1;
+    for (let i = 0; i < pts.length-1; i++) for (let k = 0; k < SIDES; k++) {
+      const a = i*ring + k, b = a + ring;
+      idx.push(a, b, a+1, a+1, b, b+1);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.setIndex(idx);
+    return g;
+  }
+  function tawaraSync() {
+    const want = settings.board === 'sumo' && typeof scene !== 'undefined' && !!scene && typeof THREE !== 'undefined';
+    if (want === !!tawara) return;
+    if (!want) {
+      tawara.parent && tawara.parent.remove(tawara);
+      tawara.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+      tawara = null; return;
+    }
+    tawara = new THREE.Group(); tawara.name = 'tawara';
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, envMapIntensity: 0.35 });
+    const lines = CFG.rings.map(r => ({ ring: true, r })).concat(CFG.sideArcs.map(a => ({ ...a })));
+    for (const line of lines) {
+      const m = new THREE.Mesh(tawaraGeometry(tawaraPath(line), !!line.ring), mat);
+      m.castShadow = !lowGfx(); m.receiveShadow = !lowGfx();
+      tawara.add(m);
+    }
+    scene.add(tawara);
+  }
   // Sumo only -- every other board is wood, stone or glass, none of which take a footprint.
   const SAND_MAX = 56;            // pool size; the oldest mark is recycled, so scuffs never pile up
   const SAND_LIFE = 26;           // seconds for a mark to fade out completely -- a long bout's worth
@@ -2828,6 +2906,7 @@
   }
   function pollInput(dt) {
     watchFrameRate();
+    tawaraSync();
     sandTick(dt);
     if (detail && detail.uniforms) {
       const u = detail.uniforms, now = performance.now()/1000;
@@ -3016,6 +3095,7 @@
     recordResult,
     debugDetailMode(){ return detailMode; },
     debugDrift(){ return driftAmt; },
+    get tawara(){ return tawara; },
     debugAlienSeek(g){ if (g != null) for (const s of alienSeek) s.g = g; return alienSeek.map(s => ({...s})); },
     debugFrame(ms){ noteFrame(ms); },   // feed the frame-rate watcher a measured frame
     debugDetectQuality(){ return detectQuality(); },   // what this device would be started on now

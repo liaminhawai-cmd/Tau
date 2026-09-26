@@ -327,10 +327,13 @@ const THEMES = {
         a.fillStyle = g; a.beginPath(); a.arc(x, y, r, 0, 7); a.fill();
       }
       vignette(a, 0.42);
-      // the lines as broad, calm bands of burnished sand — weight, not rope
-      strokeLines(a, 'rgba(28,16,6,0.55)', LW*2.6);
-      strokeLines(a, '#c89a54', LW*1.8);
-      strokeLines(a, 'rgba(240,206,138,0.5)', LW*0.7);
+      // The lines are straw bales in 3D (presentation.js's tawara), half sunk into the ring; what
+      // is painted here is the trench they are bedded in -- a dark seat, and loose straw-coloured
+      // sand thrown up along its sides. The flat board and anywhere without the 3D bales (the
+      // showcase) still read the line from the pale core.
+      strokeLines(a, 'rgba(22,13,5,0.6)', LW*3.0);
+      strokeLines(a, 'rgba(200,160,90,0.35)', LW*1.9);
+      strokeLines(a, 'rgba(236,200,132,0.45)', LW*0.6);
       // start dots: plain warm marks
       const dotR = Math.max(5, px(CFG.edgeU * CFG.padRadiusFrac * 2.0));
       for (const [dx,dy] of DOTS) {
