@@ -58,7 +58,7 @@ const { planMint, stripPolicyHead } = require('./mint-plan.js');
 const evo = require('./evolution-roster.js');
 const gate = require('./promotion-gate.js');
 const { fmtEloRange } = require('./elo.js');
-const { withGitLock, isBusy } = require('./git-lock.js');
+const { withGitLock, isBusy, pushWithRetry, sleepSync } = require('./git-lock.js');
 
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
@@ -1289,11 +1289,8 @@ function writeStatus(stage, extraPaths) {
           }
         }
         try { git(['commit', '-m', 'nn: status update']); } catch (e) { /* nothing changed -- fine */ }
-        try { git(['push']); }
-        catch (e) {
-          try { git(['pull', '--no-edit', '--no-rebase']); git(['push']); }
-          catch (e2) { log(`status push skipped (${errText(e2)})`); }
-        }
+        const failed = pushWithRetry(git, [0, 2000, 5000]);
+        if (failed) log(`status push skipped (${errText(failed)})`);
       }, { waitMs: 30000, onWait: m => log(`status push: ${m}`) });
     } catch (e) {
       if (isBusy(e)) log(`status push skipped (${e.message})`); else throw e;
@@ -1327,8 +1324,17 @@ function pullWorkers() {
     withGitLock(repoRoot, 'periodic pull', () => {
       const before = execFileSync(gitExe, ['rev-parse', 'HEAD'].map(q),
                                   { cwd: repoRoot, shell: true, encoding: 'utf8' }).trim();
-      execFileSync(gitExe, ['pull', '--no-edit', '--no-rebase'].map(q),
-                  { cwd: repoRoot, shell: true, encoding: 'utf8' });
+      // Retried: something on this machine fetches outside the lock (a truncated FETCH_HEAD, "cannot
+      // lock ref 'refs/remotes/origin/...'" and "fetch updated the current branch head" all show up
+      // in log.txt), and a pull a few seconds later, once that fetch has finished, goes through.
+      for (const wait of [0, 3000, 8000]) {
+        if (wait) sleepSync(wait);
+        try {
+          execFileSync(gitExe, ['pull', '--no-edit', '--no-rebase'].map(q),
+                       { cwd: repoRoot, shell: true, encoding: 'utf8' });
+          break;
+        } catch (e) { if (wait === 8000) throw e; }
+      }
       const after = execFileSync(gitExe, ['rev-parse', 'HEAD'].map(q),
                                  { cwd: repoRoot, shell: true, encoding: 'utf8' }).trim();
       if (before !== after) log(`pulled new commits (worker games, most likely) from origin`);

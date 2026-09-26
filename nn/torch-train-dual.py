@@ -148,27 +148,100 @@ def make_elo_weighter(summary_path, scale=250.0, floor=0.25):
     return weight, f"{len(rated)} rated brains, median {mid:.0f} Elo, weights {floor:.2f}..1.00 (scale {scale})"
 
 
+def fit_store(results_path):
+    """Bradley-Terry over the WHOLE raw results store (elo-results.json), seedElo as one-match priors:
+    the same MM fit as elorank-legacy.js's fitBT and live-ladder.js's fit, but over every id the store
+    has ever rated rather than the standing pool alone. Returns {id: elo}, or {} if there is no store."""
+    try:
+        with open(results_path, 'r', encoding='utf-8') as fh:
+            store = json.load(fh)
+    except Exception:
+        return {}
+    seed = store.get('seedElo') or {}
+    ids, pairs = set(seed), []
+    for key, r in (store.get('results') or {}).items():
+        z = key.find('|')
+        if z < 1:
+            continue
+        a, b = key[:z], key[z + 1:]
+        w, l, d = (float(r.get(k) or 0) for k in ('w', 'l', 'd'))
+        if w + l + d <= 0:
+            continue
+        ids.update((a, b))
+        pairs.append((a, b, w, l, d))
+    if not ids:
+        return {}
+    order = sorted(ids)
+    ix = {pid: i for i, pid in enumerate(order)}
+    wins = [0.0] * len(order)
+    edges = []
+    for a, b, w, l, d in pairs:
+        i, j = ix[a], ix[b]
+        wins[i] += w + d / 2
+        wins[j] += l + d / 2
+        edges.append((i, j, w + l + d))
+    W = max(0.01, float(store.get('seedWeightMatches') or 1))
+    p = [10 ** (float(seed.get(pid, 0) or 0) / 400) for pid in order]
+    prior = [W * q / (q + 1) for q in p]
+    for _ in range(300):
+        den = [W / (v + 1) for v in p]
+        for i, j, n in edges:
+            q = n / max(1e-12, p[i] + p[j])
+            den[i] += q
+            den[j] += q
+        nxt = [(wins[i] + prior[i]) / max(1e-12, den[i]) for i in range(len(p))]
+        delta = max(abs(x - y) for x, y in zip(nxt, p))
+        p = nxt
+        if delta < 1e-8:
+            break
+    return {pid: 400 * math.log10(max(p[i], 1e-12)) for i, pid in enumerate(order)}
+
+
 def make_elo_gate(summary_path, top_frac):
-    """A HARD gate on who the policy head imitates: only movers in the top `top_frac` of rated brains
-    keep a policy weight; everyone else -- and every unrated or unstamped mover -- contributes to the
-    value head only. Measured 2026-09-11 over 46 dual models: the +P face averaged -24 Elo against
-    its own plain face with the logistic weighting alone, i.e. the head was imitating too much of
-    the field. The value side is untouched: a weak mover's position is still a real position."""
+    """A HARD gate on who the policy head imitates: only movers rated at or above the top `top_frac`
+    of the standing pool keep a policy weight; everyone else -- and every mover the league has never
+    rated -- contributes to the value head only. Measured 2026-09-11 over 46 dual models: the +P face
+    averaged -24 Elo against its own plain face with the logistic weighting alone, i.e. the head was
+    imitating too much of the field. The value side is untouched: a weak mover's position is still a
+    real position.
+
+    Movers are looked up in a fit of the whole results store, not in the summary: the summary holds
+    only the ~75 brains standing today, and most training rows were played by brains since retired.
+    Looked up in the summary alone, 99% of rows had no rating and lost their policy weight, and the
+    ~1% left carried ~100x weight after the mean-1 normalisation below."""
     if not top_frac or top_frac <= 0 or top_frac >= 1:
         return lambda mv: 1.0, "policy gate off (all rated movers imitated)"
-    elo, resolve = load_ratings(summary_path)
-    if not elo:
+    import re
+    active, _ = load_ratings(summary_path)
+    if not active:
         return lambda mv: 1.0, f"policy gate off: no ratings at {summary_path}"
-    rated = sorted(elo.values(), reverse=True)
+    results_path = os.path.join(os.path.dirname(os.path.abspath(summary_path)), 'elo-results.json')
+    full = fit_store(results_path)
+    if full and all(pid in full for pid in active):
+        rating, source = full, f"full-store fit of {len(full)} ids"
+    else:
+        rating, source = active, f"standing pool only -- no usable store at {results_path}"
+    newest_ckpt = {}
+    for pid in rating:
+        m = re.match(r'^ckpt-(\d+)@D(\d+)$', pid)
+        if m and (m.group(2) not in newest_ckpt or int(m.group(1)) > newest_ckpt[m.group(2)][0]):
+            newest_ckpt[m.group(2)] = (int(m.group(1)), pid)
+    rated = sorted((rating[pid] for pid in active), reverse=True)
     k = max(1, int(round(len(rated) * top_frac)))
     cut = rated[k - 1]
-    keep = {pid for pid, e in elo.items() if e >= cut}
 
     def gate(mv):
-        r = resolve(mv) if mv else None
-        return 1.0 if (r and r in keep) else 0.0
+        if not mv:
+            return 0.0
+        e = rating.get(mv)
+        if e is None:
+            m = re.match(r'^best@D(\d+)$', mv)
+            if m and m.group(1) in newest_ckpt:
+                e = rating[newest_ckpt[m.group(1)][1]]
+        return 1.0 if (e is not None and e >= cut) else 0.0
 
-    return gate, f"policy gate: top {top_frac:.0%} of {len(rated)} rated brains = {len(keep)} movers at >= {cut:.0f} Elo; other movers train the value head only"
+    return gate, (f"policy gate: movers at >= {cut:.0f} Elo (top {top_frac:.0%} of {len(rated)} standing brains, "
+                  f"{source}); other movers train the value head only")
 
 
 def split_and_weight(rows, seed, gw_mode, value_draw_w, loser_w, policy_draw_w, elo_weight_fn, no_source_weight, elo_gate_fn=None):
@@ -228,7 +301,7 @@ def train_one(torch, nn, device, hidden, data, args, epochs, verbose=True):
     so a swept shape is trained by EXACTLY the same code, on the same split, with the same seed --
     anything else would make the ranking a comparison of training conditions, not of shapes."""
     import time
-    xtr, ztr, armtr, bintr, vwtr, pwtr, xva, zva, armva, binva = data
+    xtr, ztr, armtr, bintr, vwtr, pwtr, xva, zva, armva, binva, pwva = data
     torch.manual_seed(args.seed)          # re-seeded per shape: same init stream for every candidate
     sizes = [N_FEATURES] + hidden + [OUT]
     linears = [nn.Linear(sizes[i], sizes[i + 1]) for i in range(len(sizes) - 1)]
@@ -309,11 +382,16 @@ def train_one(torch, nn, device, hidden, data, args, epochs, verbose=True):
             out = model(xva)
             value_pred, arm_logits, bin_logits = out[:, :1], out[:, 1:1 + N_ARMS], out[:, 1 + N_ARMS:]
             vmse = float(((value_pred - zva) ** 2).mean())
-            a1 = float((arm_logits.argmax(dim=1) == armva).float().mean())
-            b1 = float((bin_logits.argmax(dim=1) == binva).float().mean())
-            vce = torch.nn.functional.cross_entropy(arm_logits, armva).item() + \
-                  torch.nn.functional.cross_entropy(bin_logits, binva).item()
-        score = vmse + args.policyWeight * vce   # same combined objective the training loop optimises
+            # Policy metrics on held-out games carry the same row weights the policy loss trains with,
+            # so the epoch kept is the one that best imitates the movers training imitates -- with the
+            # gate on, an unweighted CE would pick the epoch that best imitates the whole field.
+            pv = pwva if float(pwva.sum()) > 0 else torch.ones_like(pwva)
+            pv = pv / pv.sum()
+            a1 = float(((arm_logits.argmax(dim=1) == armva).float() * pv).sum())
+            b1 = float(((bin_logits.argmax(dim=1) == binva).float() * pv).sum())
+            vce = float(((torch.nn.functional.cross_entropy(arm_logits, armva, reduction='none') +
+                          torch.nn.functional.cross_entropy(bin_logits, binva, reduction='none')) * pv).sum())
+        score = vmse + args.policyWeight * vce   # value mse + policy-weighted ce on held-out games
         flag = ''
         if score < best['score']:
             best = {'score': score, 'vmse': vmse, 'vce': vce, 'a1': a1, 'b1': b1, 'epoch': ep}
@@ -418,8 +496,8 @@ def main():
         return x, z, arm, bin_, vw, pw
 
     xtr, ztr, armtr, bintr, vwtr, pwtr = tens(train)
-    xva, zva, armva, binva, _, _ = tens(val)
-    data = (xtr, ztr, armtr, bintr, vwtr, pwtr, xva, zva, armva, binva)
+    xva, zva, armva, binva, _, pwva = tens(val)
+    data = (xtr, ztr, armtr, bintr, vwtr, pwtr, xva, zva, armva, binva, pwva)
 
     # --- SHAPE SWEEP: rank candidate trunks cheaply, train nothing to keep -----------------------
     # The data above is loaded and split ONCE and reused for every candidate, so the sweep's cost is

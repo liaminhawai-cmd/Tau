@@ -39,8 +39,9 @@
 //   best-effort and retry on their next tick. Timing out throws a tagged error (code EGITLOCK)
 //   that the existing catch at each site logs and continues past.
 //
-// Not covered, deliberately: a second MACHINE pushing the same branch. That is a different problem
-// with a different fix (per-machine filenames, machine-id.js) and no local lock can touch it.
+// Not covered by the lock: a second MACHINE pushing the same branch. No local lock can touch that;
+// per-machine filenames (machine-id.js) keep the two from conflicting, and pushWithRetry below
+// retries the push that loses the race.
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -211,4 +212,22 @@ async function withGitLockAsync(repoRoot, what, fn, opts) {
 
 const isBusy = e => !!(e && e.code === 'EGITLOCK');
 
-module.exports = { withGitLock, withGitLockAsync, isBusy, lockFileFor };
+// The cross-machine race the lock above cannot touch: the other machine's push lands between our
+// fetch and our push ("fetch first", "non-fast-forward", or GitHub's "cannot lock ref ... is at X
+// but expected Y"). Push, and on failure pull and push again after a jittered wait, so two machines
+// on the same schedule stop colliding on the same beat. `git(args)` runs one git command and throws
+// on failure. Returns null once a push lands, else the last error. Call it inside withGitLock.
+function pushWithRetry(git, waits = [0, 2000, 4000, 8000]) {
+  let last = null;
+  for (let i = 0; i < waits.length; i++) {
+    if (waits[i]) sleepSync(waits[i] + Math.floor(Math.random() * waits[i]));
+    try {
+      if (i > 0) git(['pull', '--no-edit', '--no-rebase']);
+      git(['push']);
+      return null;
+    } catch (e) { last = e; }
+  }
+  return last;
+}
+
+module.exports = { withGitLock, withGitLockAsync, isBusy, lockFileFor, pushWithRetry, sleepSync };
