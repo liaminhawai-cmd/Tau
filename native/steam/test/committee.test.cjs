@@ -30,7 +30,7 @@ test('the ladder is thirteen rungs, and the top two carry the trained brains',as
   // Both top rungs keep their weights out of line and fetch them on demand. The Committee votes
   // with the champion as one of its members, so climbing 12 then 13 fetches that file once.
   assert.equal(g.read('JSON.stringify(AI_LADDER[15].nets)'),'["champion"]');
-  assert.equal(g.read('JSON.stringify(AI_LADDER[14].nets)'),'["champion","second","lean"]');
+  assert.equal(g.read('JSON.stringify(AI_LADDER[14].nets)'),'["pw-silver","pw-gold","lean"]');
   // Rungs 1-11 must still be the plain in-line brains -- nothing below the top two may depend on
   // a download, or a mid-ladder rung could silently fall back on a bad deploy.
   for (let r = 0; r <= 10; r++)

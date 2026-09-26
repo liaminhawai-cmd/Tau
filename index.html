@@ -4218,9 +4218,11 @@ const AI_LADDER = [
     // hand-tuned judgement as chair, plus the three value nets named in `nets` below.
     //
     // committee.js's pickAuto picks members for having different blind spots; these were picked by
-    // measurement. Every checkpoint in nn/models and nn/medals was played against L11 through
-    // nn/arena.js, and the seats went to the strongest two (+86 and +69 Elo over 40 games each)
-    // plus the best of the small nets -- which is worth a seat on two counts: it is a genuinely
+    // measurement, through nn/arena.js. Reseated 26 Sep 2026 from the trainers' newest medals: the
+    // six fresh gold/silver/bronze nets were screened one at a time against the Champion rung, and
+    // the best two (pw0dv6b4's silver and gold) voting with the small net beat the previous
+    // Committee 88-72 over 160 games (+35 Elo) -- the arrangement that kept the old champion as a
+    // member managed only 83-77. The small net keeps its seat on two counts: it is a genuinely
     // different architecture (a plain 167K MLP beside two 2.06M dense-memory nets, so it does not
     // share their family's blind spots) and at 0.155ms a call it votes on every stop of the sweep
     // for almost nothing.
@@ -4236,7 +4238,7 @@ const AI_LADDER = [
     // (which is a temporal-dead-zone crash at load, not a lint nit). Both loaders read this one
     // list: the browser's ladderNetsEnsureLoaded fetches them, nn/committee-nets.js reads them off
     // disk so the arena can measure the real thing.
-    { kind:'committee', label:'Committee', nets:['champion','second','lean'] },
+    { kind:'committee', label:'Committee', nets:['pw-silver','pw-gold','lean'] },
     // L16 -> the player ladder's rung 12: the strongest single value net we have, searching on its
     // own instead of voting. Which net is not a guess. Every checkpoint was first screened over 12
     // games against L11, then the top four were re-run over 40 games each -- worth doing, because
