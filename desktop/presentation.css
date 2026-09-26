@@ -355,7 +355,7 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
   .tau-desktop #modalBox { padding:24px 20px; max-height:calc(100dvh - 28px); }
   .tau-desktop #modalTitle { font-size:26px; margin-bottom:16px; }
   /* A label beside its control leaves each of them half of a 280px sheet, which is not enough for
-     "Maple · Lily · beat Sifu". Stacked, the control gets the whole width. */
+     "Maple · Lily · beat Sensei". Stacked, the control gets the whole width. */
   .desktop-setting { grid-template-columns:1fr; gap:8px; margin:16px 0; }
   .desktop-setting select { width:100%; }
   .desktop-setting input[type="checkbox"] { justify-self:start; }

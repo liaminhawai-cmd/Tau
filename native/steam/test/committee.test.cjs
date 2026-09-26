@@ -102,7 +102,7 @@ test('no board opens out of order, whatever else the profile has done',async t=>
   assert.ok(by('yellow').unlocked,'rung 1 is always open');
   for (const id of ['walnut','dojo','ebony','colossus','marble'])
     assert.ok(!by(id).unlocked, id + ' stays shut on a profile that has climbed nothing');
-  assert.equal(g.$('desktopLevel').options[12].disabled, true, 'and the Committee cannot be picked');
+  assert.equal(g.$('desktopLevel').options[12].disabled, true, 'and the top rung cannot be picked');
   // Dark is the one board with no rung of its own, so it is still the one board with a count.
   assert.ok(by('dark').unlocked,'Dark has no rung, so it keeps its play count');
   assert.deepEqual(g.errors,[]);
@@ -111,10 +111,10 @@ test('no board opens out of order, whatever else the profile has done',async t=>
 test('a match says WHO you are playing, not which number you picked',async t=>{
   const storage = { tauLadder: '{"b":{"1":1,"2":1},"r":{"1":1,"2":1}}', tauLadderRenumberedV1: '1' };
   const g=await game('?steam=1&premium=1', storage);t.after(g.close);
-  g.read('startLadderLevel(2, 0)');   // 0-based 2 = rung 3 = Dojo, where Sifu lives
-  assert.equal(g.read('ladderOpponentName()'),'Sifu');
-  assert.equal(g.read('vsAiOpponentLabel()'),'Sifu','the turn indicator names them');
-  assert.match(g.read('vsAiTurnLabel(1 - humanIdx)'),/Sifu/);
+  g.read('startLadderLevel(6, 0)');   // 0-based 6 = rung 7 = Dojo, where Sensei lives
+  assert.equal(g.read('ladderOpponentName()'),'Sensei');
+  assert.equal(g.read('vsAiOpponentLabel()'),'Sensei','the turn indicator names them');
+  assert.match(g.read('vsAiTurnLabel(1 - humanIdx)'),/Sensei/);
   assert.equal(g.read('vsAiTurnLabel(humanIdx)'),'You');
   assert.deepEqual(g.errors,[]);
 });
@@ -223,17 +223,19 @@ test('committeeMemberProb matches committee.js\'s own two conversions',async t=>
   assert.ok(Math.abs(g.read("committeeMemberProb('net', -1)") - 1e-3) < 1e-9);
 });
 
-test('the desktop premium ladder carries Yellow and The Committee at the new ends, everyone else\'s difficulty unmoved',async t=>{
+test('the desktop premium ladder puts its faces in the chosen order, easiest to hardest by rung',async t=>{
   const g=await game();t.after(g.close);
   const D=g.w.tauDesktop;
   assert.equal(D.boards.length,14,'every finish, including Dark -- still the one board held in reserve');
   const rungs = D.ladderRungs;
   assert.equal(rungs.length,13,'and thirteen of those fourteen are ladder rungs now');
   assert.equal(rungs[0].board,'yellow'); assert.equal(rungs[0].opponent,'Wren');
-  assert.equal(rungs[12].board,'ebony'); assert.equal(rungs[12].opponent,'The Committee');
-  assert.equal(rungs[11].board,'colossus','Colossus is rung 12 now, one place up, same board as always');
-  assert.equal(D.boardRung('walnut'),2,'and Walnut -- the old rung 1 -- reads as rung 2');
-  assert.equal(D.boardRung('colossus'),12);
+  const faces = rungs.map(r => r.opponent + '@' + r.board).join(' ');
+  assert.equal(faces, 'Wren@yellow Lily@maple The Committee@ebony Hazel@walnut Flint@slate Vesper@cosy '
+    + 'Sensei@dojo Marlowe@noir Rikishi@sumo Alabaster@marble Euclid@math Chorus@alien Titan@colossus');
+  assert.equal(D.boardRung('colossus'),13,'Titan\'s arena is the top rung');
+  // The faces moved; the brains did not. Rung n is still the nth difficulty, whoever wears it.
+  assert.equal(g.read('JSON.stringify(RUNG_TO_AI_LADDER)'), JSON.stringify([0,0,1,2,3,4,5,6,7,8,9,15,14]));
   assert.deepEqual(g.errors,[]);
 });
 

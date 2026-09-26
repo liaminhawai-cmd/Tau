@@ -108,32 +108,37 @@
   // instead of the old mixture of "win 3 games" and "play 20 games" counters, which had nothing to
   // do with who you were playing.
   //
-  // Thirteen boards for thirteen rungs, in order: Yellow opens the ladder, Walnut through Colossus
-  // are the eleven proven L1-L11 rungs unmoved (see index.html's RUNG_TO_AI_LADDER -- every board's
-  // actual opponent DIFFICULTY is unchanged by where it sits in this list), and Ebony closes it as
-  // the Committee. Dark is the one board still deliberately NOT in this list -- the last reserved
-  // seat, for whichever future rung claims it -- and it keeps its old count-based unlock until then.
+  // Thirteen boards for thirteen rungs, Yellow first and Colossus last. Where a board sits is a
+  // choice of scenery: every rung's actual opponent DIFFICULTY is set by its number alone (see
+  // index.html's RUNG_TO_AI_LADDER), so moving a board up or down this list never makes anyone
+  // easier or harder. Dark is the one board still deliberately NOT in this list -- the last
+  // reserved seat, for whichever future rung claims it -- and it keeps its old count-based unlock.
   // (See index.html's LADDER_N comment.)
   // Each rung has a board and somebody who lives on it. The opponent is a CHARACTER on the board
-  // rather than a new name for it: in the ladder you are challenging Sifu, in Settings you are
+  // rather than a new name for it: in the ladder you are challenging Sensei, in Settings you are
   // picking the Dojo, and the Dojo never stops being called the Dojo. That is what keeps the two
   // from disagreeing the moment somebody goes back to play an earlier board again.
   // Names are names -- they are not routed through t(), the same as the board names beside them.
+  // The order is the FACES only. Rung n always plays RUNG_TO_AI_LADDER[n-1], easiest at 1 and
+  // hardest at 13, whatever board and name sit on it -- this list decides who you meet where, not
+  // how hard they are. The Committee's name is a character on Ebony here, not the voting AI (which
+  // is still the top rung's brain, now wearing Titan's arena).
   const LADDER_BOARDS = [
     { board:'yellow',   opponent:'Wren' },       // the plain classic: nothing to read but the rules themselves
-    { board:'walnut',   opponent:'Hazel' },      // the club set: a first, patient opponent
-    { board:'dojo',     opponent:'Sifu' },
+    { board:'maple',    opponent:'Lily' },
+    { board:'ebony',    opponent:'The Committee' },
+    { board:'walnut',   opponent:'Hazel' },      // the club set
     { board:'slate',    opponent:'Flint' },
-    { board:'maple',    opponent:'Lily' },       // the bright board straight after the dark one
     { board:'cosy',     opponent:'Vesper' },     // whoever has owned this heirloom table for forty years
-    { board:'sumo',     opponent:'Rikishi' },    // 力士
+    { board:'dojo',     opponent:'Sensei' },
     { board:'noir',     opponent:'Marlowe' },
-    { board:'math',     opponent:'Escher' },
-    { board:'alien',    opponent:'Chorus' },     // it is not one of anything
+    { board:'sumo',     opponent:'Rikishi' },    // 力士
     { board:'marble',   opponent:'Alabaster' },
-    { board:'colossus', opponent:'Titan' },      // the arena, formerly last
-    { board:'ebony',    opponent:'The Committee' },   // three real players sharing one move -- see index.html's committeePlanFor
+    { board:'math',     opponent:'Euclid' },     // compass and straightedge
+    { board:'alien',    opponent:'Chorus' },     // it is not one of anything
+    { board:'colossus', opponent:'Titan' },      // the arena, at the top
   ];
+
   // A BOARD WITH A RUNG IS EARNED BY CLIMBING TO THAT RUNG, AND BY NOTHING ELSE. Every board used
   // to carry a play-count or win-count as a second way in as well, kept so nobody lost a board the
   // rule change caught them mid-way through. Running both at once opened boards out of ORDER, which
@@ -145,8 +150,8 @@
   function boardRung(id) { const i = LADDER_BOARDS.findIndex(r => r.board === id); return i < 0 ? 0 : i + 1; }
   function rungBoard(n) { return (LADDER_BOARDS[n-1] || LADDER_BOARDS[0]).board; }
   function rungName(n) { return (LADDER_BOARDS[n-1] || LADDER_BOARDS[0]).opponent; }
-  // "Dojo · Sifu" wherever the BOARD is what is being picked, so the name in an unlock line
-  // ("beat Sifu as Red") is never a person the player cannot place.
+  // "Dojo · Sensei" wherever the BOARD is what is being picked, so the name in an unlock line
+  // ("beat Sensei as Red") is never a person the player cannot place.
   function boardLabel(b) { const r = boardRung(b.id); return r ? b.name + ' · ' + rungName(r) : b.name; }
   function rungClearedOn(n, colour) {
     return typeof ladderCleared === 'function' && !!ladderCleared(n, colour);
@@ -217,7 +222,7 @@
     if (rung > 1) {
       // What is actually being waited on is the rung below on EITHER colour, so that is what the
       // line asks for. It names the nearest locked rung's opponent, not this one's neighbour, when
-      // the player is looking further up than one board: "beat Sifu" is a thing to go and do,
+      // the player is looking further up than one board: "beat Sensei" is a thing to go and do,
       // "beat Titan" three boards before you can reach him is not.
       const below = Math.min(rung - 1, ladderReach());
       return tf('beat {name}', { name: rungName(below) });
