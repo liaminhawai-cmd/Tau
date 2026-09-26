@@ -16,7 +16,7 @@ const { createEngine } = require('./engine.js');
 const { features } = require('./features.js');
 const { MLP } = require('./net.js');
 const { nnPlanFor, nnPlanForTimed } = require('./nnai.js');
-const { playRandomOpening, randomStartPose } = require('./opening.js');
+const { playRandomOpening, randomOpeningPlan, randomStartPose } = require('./opening.js');
 const { eloFromScore, fmtElo } = require('./elo.js');
 const { makeLadderEval } = require('./laddereval.js');
 
@@ -319,6 +319,28 @@ function main() {
   // sample size. See opening.js.
   const openingPlies = +arg('openingPlies', 2);
   const randomStartFrac = +arg('randomStartFrac', 0);
+  // --openingSeed <n> / --openings <file> / --openingsOut <file>: a SHARED, REPRODUCIBLE opening
+  // list. With a list in play, games 2i and 2i+1 are the same opening with the seats swapped
+  // (aIsBlue is g%2), so an opening pair is one resampling unit, and every configuration in a
+  // comparison can be handed byte-identical openings. Without it the opening plies come off an
+  // unseeded Math.random, so two configurations never meet the same positions.
+  const openingSeed = arg('openingSeed', null);
+  const openingsIn = arg('openings', null), openingsOut = arg('openingsOut', null);
+  // --noCorner: pin both sides' corner-opening coin off. Ladder rungs from L7 up flip it per game
+  // off an unseeded Math.random (ladderPlanFor), which adds noise no opening list can pair.
+  const noCorner = process.argv.includes('--noCorner');
+  const mulberry32 = a => () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const withSeededRandom = (seed, fn) => {
+    const real = Math.random;
+    let a = seed >>> 0;
+    Math.random = () => { a = (a + 0x9E3779B9) | 0; return mulberry32(a)(); };
+    try { return fn(); } finally { Math.random = real; }
+  };
 
   // --saveData <file>: append training rows as the games are played (see the header note).
   // Appended per game rather than buffered to the end, for the same reason the score log is
@@ -336,13 +358,15 @@ function main() {
   let resultsStream = null;
   if (resultsPath) {
     fs.mkdirSync(path.dirname(resultsPath), { recursive: true });
-    resultsStream = fs.createWriteStream(resultsPath, { flags: 'a' });
+    // Appended synchronously: main() never yields to the event loop, so a write stream would not
+    // even open until the last game ended, and a run killed part-way would keep nothing.
+    resultsStream = { write: line => fs.appendFileSync(resultsPath, line) };
     console.log(`saving per-game results to ${resultsPath}`);
   }
   let dataStream = null, savedRows = 0;
   if (saveData) {
     fs.mkdirSync(path.dirname(saveData), { recursive: true });
-    dataStream = fs.createWriteStream(saveData, { flags: 'a' });
+    dataStream = { write: line => fs.appendFileSync(saveData, line), end() {} };
     console.log(`saving training rows to ${saveData}`);
   }
 
@@ -395,6 +419,32 @@ function main() {
   const kw = 0.5 + eng.CFG.komiLoss/2;
   const scores = (aw, bw, ak, bk) => ({ a: aw + kw*ak + (1 - kw)*bk,
                                         b: bw + kw*bk + (1 - kw)*ak });
+  let openings = null;
+  if (openingsIn) {
+    openings = fs.readFileSync(openingsIn, 'utf8').split('\n').filter(l => l.trim()).map(l => JSON.parse(l));
+    console.log(`openings: ${openings.length} loaded from ${openingsIn} (paired: game 2i and 2i+1 share one)`);
+  } else if (openingPlies > 0 && openingSeed !== null) {
+    const need = Math.ceil(games / 2);
+    openings = [];
+    withSeededRandom(+openingSeed, () => {
+      for (let i = 0; i < need; i++) {
+        eng.newGame();
+        const plans = [];
+        for (let k = 0; k < openingPlies; k++) {
+          const plan = randomOpeningPlan(eng);
+          if (!plan) break;
+          plans.push(plan); eng.applyPlan(plan);
+        }
+        openings.push(plans);
+      }
+    });
+    console.log(`openings: ${openings.length} generated from seed ${openingSeed}, ${openingPlies} plies each`);
+  }
+  if (openings && openingsOut) {
+    fs.writeFileSync(openingsOut, openings.map(o => JSON.stringify(o)).join('\n') + '\n');
+    console.log(`openings saved to ${openingsOut}`);
+  }
+
   const t0 = Date.now();
   for (let g = 0; g < games; g++) {
     const aIsBlue = g % 2 === 0;
@@ -407,7 +457,9 @@ function main() {
     // Fresh clock per game, both sides matched (see --timeMsLo/--timeMsHi above).
     const gameMs = drawClock();
     const randomStart = Math.random() < randomStartFrac;
+    if (noCorner) eng.getG().cornerOpening = [false, false];
     if (randomStart) { randomStartPose(eng); eng.setActive(Math.random() < 0.5 ? 0 : 1); }
+    else if (openings) { for (const plan of openings[Math.floor(g / 2) % openings.length]) eng.applyPlan(plan); }
     else playRandomOpening(eng, openingPlies);
     let plies = 0, nulls = 0;
     const rows = [];
