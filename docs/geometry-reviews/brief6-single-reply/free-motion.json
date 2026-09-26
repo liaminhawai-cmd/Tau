@@ -1,0 +1,507 @@
+{
+  "scope": "Continuous real-geometry contact exclusion only; exact real rotations and ideal quarter-circle polylines with 12 segments; does not certify floating execution, legality limits or a winning reply.",
+  "pose": [
+    -27.3934,
+    -36.4088,
+    1.2052,
+    -11.7593,
+    -23.2838,
+    2.9442
+  ],
+  "thresholdUpper": {
+    "leg": 2.8800000000000003,
+    "hubLeg": 4.176000000000001,
+    "hubHub": 5.472000000000001
+  },
+  "arms": [
+    {
+      "pivotIdx": 1,
+      "dir": -1,
+      "domainDeg": [
+        0.0,
+        18.0
+      ],
+      "attackerBox": [
+        [
+          -11.7593,
+          -11.7593
+        ],
+        [
+          -23.2838,
+          -23.2838
+        ],
+        [
+          2.9442,
+          2.9442
+        ]
+      ],
+      "complete": true,
+      "unresolved": [],
+      "unchecked": [],
+      "cells": 15,
+      "minimumLegLower": 2.880005863643269,
+      "minimumHubLegLower": 6.500950166640525,
+      "minimumHubHubLower": 20.412950033530652,
+      "cover": [
+        {
+          "loDeg": 0.0,
+          "hiDeg": 0.0010986328125,
+          "legLower": 2.880005863643269,
+          "hubLegLower": 10.896199374965695,
+          "hubHubLower": 20.412950033530652
+        },
+        {
+          "loDeg": 0.0010986328125,
+          "hiDeg": 0.002197265625,
+          "legLower": 2.880450012183399,
+          "hubLegLower": 10.895873632331117,
+          "hubHubLower": 20.41317785919914
+        },
+        {
+          "loDeg": 0.002197265625,
+          "hiDeg": 0.00439453125,
+          "legLower": 2.8807686607337337,
+          "hubLegLower": 10.895212901272458,
+          "hubHubLower": 20.413352327189646
+        },
+        {
+          "loDeg": 0.00439453125,
+          "hiDeg": 0.0087890625,
+          "legLower": 2.8814059816982964,
+          "hubLegLower": 10.893891869788094,
+          "hubHubLower": 20.413701289655997
+        },
+        {
+          "loDeg": 0.0087890625,
+          "hiDeg": 0.017578125,
+          "legLower": 2.8826807190850823,
+          "hubLegLower": 10.891250666357797,
+          "hubHubLower": 20.414399320515784
+        },
+        {
+          "loDeg": 0.017578125,
+          "hiDeg": 0.03515625,
+          "legLower": 2.885230575706755,
+          "hubLegLower": 10.88596894080462,
+          "hubHubLower": 20.415795805829607
+        },
+        {
+          "loDeg": 0.03515625,
+          "hiDeg": 0.0703125,
+          "legLower": 2.890331816481564,
+          "hubLegLower": 10.875408154286237,
+          "hubHubLower": 20.418590469920787
+        },
+        {
+          "loDeg": 0.0703125,
+          "hiDeg": 0.140625,
+          "legLower": 2.900540409270777,
+          "hubLegLower": 10.854297267596962,
+          "hubHubLower": 20.424186564640667
+        },
+        {
+          "loDeg": 0.140625,
+          "hiDeg": 0.28125,
+          "legLower": 2.9209820487363864,
+          "hubLegLower": 10.812118464617999,
+          "hubHubLower": 20.435405761550506
+        },
+        {
+          "loDeg": 0.28125,
+          "hiDeg": 0.5625,
+          "legLower": 2.961963214929968,
+          "hubLegLower": 10.72793455724028,
+          "hubHubLower": 20.45795171347102
+        },
+        {
+          "loDeg": 0.5625,
+          "hiDeg": 1.125,
+          "legLower": 3.044317674529139,
+          "hubLegLower": 10.560276349433845,
+          "hubHubLower": 20.503470038423785
+        },
+        {
+          "loDeg": 1.125,
+          "hiDeg": 2.25,
+          "legLower": 3.038326622105553,
+          "hubLegLower": 10.227921500561122,
+          "hubHubLower": 20.59618130160894
+        },
+        {
+          "loDeg": 2.25,
+          "hiDeg": 4.5,
+          "legLower": 3.014502409321944,
+          "hubLegLower": 9.576124637958788,
+          "hubHubLower": 20.78804480700612
+        },
+        {
+          "loDeg": 4.5,
+          "hiDeg": 9.0,
+          "legLower": 3.170295254345687,
+          "hubLegLower": 8.33428779330574,
+          "hubHubLower": 21.195345993117535
+        },
+        {
+          "loDeg": 9.0,
+          "hiDeg": 18.0,
+          "legLower": 3.576397278282794,
+          "hubLegLower": 6.500950166640525,
+          "hubHubLower": 22.085045061530355
+        }
+      ]
+    },
+    {
+      "pivotIdx": 2,
+      "dir": -1,
+      "domainDeg": [
+        2.0,
+        16.0
+      ],
+      "attackerBox": [
+        [
+          -11.762,
+          -11.76
+        ],
+        [
+          -23.279,
+          -23.276
+        ],
+        [
+          2.944,
+          2.9441
+        ]
+      ],
+      "complete": true,
+      "unresolved": [],
+      "unchecked": [],
+      "cells": 46,
+      "minimumLegLower": 2.8814935987643704,
+      "minimumHubLegLower": 4.212925981092005,
+      "minimumHubHubLower": 14.00707194314844,
+      "cover": [
+        {
+          "loDeg": 2.0,
+          "hiDeg": 2.0546875,
+          "legLower": 2.8890489541813404,
+          "hubLegLower": 9.83139793722408,
+          "hubHubLower": 19.57554380238877
+        },
+        {
+          "loDeg": 2.0546875,
+          "hiDeg": 2.109375,
+          "legLower": 2.891136216034684,
+          "hubLegLower": 9.80373341845102,
+          "hubHubLower": 19.55353262540187
+        },
+        {
+          "loDeg": 2.109375,
+          "hiDeg": 2.1640625,
+          "legLower": 2.893229281347373,
+          "hubLegLower": 9.776094772651723,
+          "hubHubLower": 19.53152267513258
+        },
+        {
+          "loDeg": 2.1640625,
+          "hiDeg": 2.21875,
+          "legLower": 2.8953281491140914,
+          "hubLegLower": 9.748482241888881,
+          "hubHubLower": 19.50951397581829
+        },
+        {
+          "loDeg": 2.21875,
+          "hiDeg": 2.328125,
+          "legLower": 2.8814935987643704,
+          "hubLegLower": 9.686120375370436,
+          "hubHubLower": 19.4565921171113
+        },
+        {
+          "loDeg": 2.328125,
+          "hiDeg": 2.4375,
+          "legLower": 2.8845638906424322,
+          "hubLegLower": 9.631053401572364,
+          "hubHubLower": 19.411686192318243
+        },
+        {
+          "loDeg": 2.4375,
+          "hiDeg": 2.546875,
+          "legLower": 2.8876021325317485,
+          "hubLegLower": 9.576095919248033,
+          "hubHubLower": 19.366743385902737
+        },
+        {
+          "loDeg": 2.546875,
+          "hiDeg": 2.65625,
+          "legLower": 2.89174638264833,
+          "hubLegLower": 9.521249997581998,
+          "hubHubLower": 19.322644766603798
+        },
+        {
+          "loDeg": 2.65625,
+          "hiDeg": 2.765625,
+          "legLower": 2.8960427787986087,
+          "hubLegLower": 9.466517747615619,
+          "hubHubLower": 19.278651824311055
+        },
+        {
+          "loDeg": 2.765625,
+          "hiDeg": 2.875,
+          "legLower": 2.9003623459927574,
+          "hubLegLower": 9.411901323213792,
+          "hubHubLower": 19.234664916042114
+        },
+        {
+          "loDeg": 2.875,
+          "hiDeg": 2.984375,
+          "legLower": 2.904705077023326,
+          "hubLegLower": 9.357402922053017,
+          "hubHubLower": 19.1906842441326
+        },
+        {
+          "loDeg": 2.984375,
+          "hiDeg": 3.09375,
+          "legLower": 2.909070964810425,
+          "hubLegLower": 9.30302478663096,
+          "hubHubLower": 19.146710012380233
+        },
+        {
+          "loDeg": 3.09375,
+          "hiDeg": 3.3125,
+          "legLower": 2.8817736344236082,
+          "hubLegLower": 9.17990718925151,
+          "hubHubLower": 19.041077968649272
+        },
+        {
+          "loDeg": 3.3125,
+          "hiDeg": 3.53125,
+          "legLower": 2.8873207207915668,
+          "hubLegLower": 9.071918846796066,
+          "hubHubLower": 18.95061670793746
+        },
+        {
+          "loDeg": 3.53125,
+          "hiDeg": 3.75,
+          "legLower": 2.8943726227902014,
+          "hubLegLower": 8.96445997458518,
+          "hubHubLower": 18.861278036906924
+        },
+        {
+          "loDeg": 3.75,
+          "hiDeg": 3.96875,
+          "legLower": 2.903405499978943,
+          "hubLegLower": 8.85755113661008,
+          "hubHubLower": 18.773429988849625
+        },
+        {
+          "loDeg": 3.96875,
+          "hiDeg": 4.1875,
+          "legLower": 2.912530799200638,
+          "hubLegLower": 8.75121376242179,
+          "hubHubLower": 18.685614805984706
+        },
+        {
+          "loDeg": 4.1875,
+          "hiDeg": 4.40625,
+          "legLower": 2.9217484743275577,
+          "hubLegLower": 8.64547018673809,
+          "hubHubLower": 18.597834242953535
+        },
+        {
+          "loDeg": 4.40625,
+          "hiDeg": 4.625,
+          "legLower": 2.9310584810752887,
+          "hubLegLower": 8.54034369054769,
+          "hubHubLower": 18.510090080914114
+        },
+        {
+          "loDeg": 4.625,
+          "hiDeg": 4.84375,
+          "legLower": 2.9404607769673703,
+          "hubLegLower": 8.435858543698453,
+          "hubHubLower": 18.42238412811962
+        },
+        {
+          "loDeg": 4.84375,
+          "hiDeg": 5.0625,
+          "legLower": 2.9499553212998966,
+          "hubLegLower": 8.332040048941435,
+          "hubHubLower": 18.334718220511057
+        },
+        {
+          "loDeg": 5.0625,
+          "hiDeg": 5.5,
+          "legLower": 2.8857814193542666,
+          "hubLegLower": 8.09582160560806,
+          "hubHubLower": 18.115878970820464
+        },
+        {
+          "loDeg": 5.5,
+          "hiDeg": 5.9375,
+          "legLower": 2.905233264149058,
+          "hubLegLower": 7.892905043805135,
+          "hubHubLower": 17.940802365934942
+        },
+        {
+          "loDeg": 5.9375,
+          "hiDeg": 6.375,
+          "legLower": 2.911580895868592,
+          "hubLegLower": 7.690915794563276,
+          "hubHubLower": 17.765919910468778
+        },
+        {
+          "loDeg": 6.375,
+          "hiDeg": 6.8125,
+          "legLower": 2.904649549520885,
+          "hubLegLower": 7.468347553136571,
+          "hubHubLower": 17.591247743329774
+        },
+        {
+          "loDeg": 6.8125,
+          "hiDeg": 7.25,
+          "legLower": 2.910109137317247,
+          "hubLegLower": 7.246835919900305,
+          "hubHubLower": 17.416802528840655
+        },
+        {
+          "loDeg": 7.25,
+          "hiDeg": 7.6875,
+          "legLower": 2.9101998115635155,
+          "hubLegLower": 7.02652943163527,
+          "hubHubLower": 17.242601480627695
+        },
+        {
+          "loDeg": 7.6875,
+          "hiDeg": 8.125,
+          "legLower": 2.9108413533532356,
+          "hubLegLower": 6.807593283472661,
+          "hubHubLower": 17.068662386704265
+        },
+        {
+          "loDeg": 8.125,
+          "hiDeg": 8.5625,
+          "legLower": 2.912033721937828,
+          "hubLegLower": 6.590211777132479,
+          "hubHubLower": 16.895003635807864
+        },
+        {
+          "loDeg": 8.5625,
+          "hiDeg": 9.0,
+          "legLower": 2.9137769434392458,
+          "hubLegLower": 6.3745911652658105,
+          "hubHubLower": 16.721644245052182
+        },
+        {
+          "loDeg": 9.0,
+          "hiDeg": 9.4375,
+          "legLower": 2.9160711096684655,
+          "hubLegLower": 6.1609629543297935,
+          "hubHubLower": 16.54860388895722
+        },
+        {
+          "loDeg": 9.4375,
+          "hiDeg": 9.875,
+          "legLower": 2.918916376939125,
+          "hubLegLower": 5.949587734717804,
+          "hubHubLower": 16.375902929923036
+        },
+        {
+          "loDeg": 9.875,
+          "hiDeg": 10.3125,
+          "legLower": 2.9223129648748993,
+          "hubLegLower": 5.740759611323249,
+          "hubHubLower": 16.203562450214193
+        },
+        {
+          "loDeg": 10.3125,
+          "hiDeg": 10.75,
+          "legLower": 2.926261155209291,
+          "hubLegLower": 5.534811308404528,
+          "hubHubLower": 16.03160428552417
+        },
+        {
+          "loDeg": 10.75,
+          "hiDeg": 11.1875,
+          "legLower": 2.9307612905761555,
+          "hubLegLower": 5.332120016494931,
+          "hubHubLower": 15.86005106019015
+        },
+        {
+          "loDeg": 11.1875,
+          "hiDeg": 11.625,
+          "legLower": 2.892171731292186,
+          "hubLegLower": 5.133114031520448,
+          "hubHubLower": 15.68892622412998
+        },
+        {
+          "loDeg": 11.625,
+          "hiDeg": 12.0625,
+          "legLower": 2.900127069860576,
+          "hubLegLower": 4.938280200367152,
+          "hubHubLower": 15.51825409157415
+        },
+        {
+          "loDeg": 12.0625,
+          "hiDeg": 12.5,
+          "legLower": 2.939479354302733,
+          "hubLegLower": 4.748172123045603,
+          "hubHubLower": 15.348059881665566
+        },
+        {
+          "loDeg": 12.5,
+          "hiDeg": 12.9375,
+          "legLower": 2.923809948515879,
+          "hubLegLower": 4.563418955893366,
+          "hubHubLower": 15.178369761000567
+        },
+        {
+          "loDeg": 12.9375,
+          "hiDeg": 13.375,
+          "legLower": 2.900483519024972,
+          "hubLegLower": 4.38473449568954,
+          "hubHubLower": 15.009210888182961
+        },
+        {
+          "loDeg": 13.375,
+          "hiDeg": 13.8125,
+          "legLower": 2.896562373026408,
+          "hubLegLower": 4.212925981092005,
+          "hubHubLower": 14.840611460462236
+        },
+        {
+          "loDeg": 13.8125,
+          "hiDeg": 14.25,
+          "legLower": 2.896562373026408,
+          "hubLegLower": 4.454207505250156,
+          "hubHubLower": 14.67260076252387
+        },
+        {
+          "loDeg": 14.25,
+          "hiDeg": 14.6875,
+          "legLower": 2.896562373026408,
+          "hubLegLower": 4.240928201110222,
+          "hubHubLower": 14.505209217496715
+        },
+        {
+          "loDeg": 14.6875,
+          "hiDeg": 15.125,
+          "legLower": 2.896562373026408,
+          "hubLegLower": 4.746873324526052,
+          "hubHubLower": 14.338468440237193
+        },
+        {
+          "loDeg": 15.125,
+          "hiDeg": 15.5625,
+          "legLower": 2.896562373026408,
+          "hubLegLower": 4.578594028936756,
+          "hubHubLower": 14.172411292943965
+        },
+        {
+          "loDeg": 15.5625,
+          "hiDeg": 16.0,
+          "legLower": 2.896562373026408,
+          "hubLegLower": 4.413545425133265,
+          "hubHubLower": 14.00707194314844
+        }
+      ]
+    }
+  ]
+}

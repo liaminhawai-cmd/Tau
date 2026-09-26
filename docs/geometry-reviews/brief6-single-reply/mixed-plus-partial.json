@@ -1,0 +1,385 @@
+{
+  "scope": "sampled diagnostics only; defender patterns plus a final residual call; attacker (0,-) to its limit",
+  "sourcePin": {
+    "rev": "ce0e61d1e7482e3d1252aadadf97bd4269f71e29",
+    "indexHtmlSha256": "3cee71df1f26afd79cbbc83a5c208780e29e170cd7111fabaafb4ab75bc479c4",
+    "engineJsSha256": "106b90e0a6981c817c2789f88b175a546f9a7fc229af20f50218495533af443e"
+  },
+  "label": "mixed-plus-partial",
+  "node": "v24.19.0",
+  "pose": [
+    -27.3934,
+    -36.4088,
+    1.2052,
+    -11.7593,
+    -23.2838,
+    2.9442
+  ],
+  "gridDeg": 0.125,
+  "defenderPatternDeg": [
+    0.17,
+    0.83,
+    1.7,
+    2.9
+  ],
+  "replyCallDeg": 3,
+  "arms": [
+    {
+      "pivotIdx": 0,
+      "dir": 1,
+      "limitDeg": 44.07500000000002,
+      "tested": 338,
+      "terminalEscapes": 0,
+      "illegalDefender": 0,
+      "failedReplies": [],
+      "worst": {
+        "targetDeg": 2,
+        "defender": {
+          "snap": [
+            {
+              "x": -26.63563462395265,
+              "y": -36.68381239260429,
+              "rot": 1.2401065850398867
+            },
+            {
+              "x": -11.7593,
+              "y": -23.2838,
+              "rot": 2.9442
+            }
+          ],
+          "netDeg": 2,
+          "atLimit": false,
+          "reason": null,
+          "terminal": false,
+          "selfOff": false,
+          "commands": [
+            0.17,
+            0.83,
+            1
+          ]
+        },
+        "reply": {
+          "margin": 4.852998756061481,
+          "legal": true,
+          "netDeg": 46.125000000000064,
+          "atLimit": true,
+          "reason": "selfoff",
+          "snap": [
+            {
+              "x": -29.995878235128703,
+              "y": -46.3015519929864,
+              "rot": 1.1561844246261281
+            },
+            {
+              "x": -21.9747206643212,
+              "y": -38.21854831733482,
+              "rot": 2.139166882517611
+            }
+          ],
+          "calls": 16
+        }
+      }
+    },
+    {
+      "pivotIdx": 0,
+      "dir": -1,
+      "limitDeg": 63.6200000000001,
+      "tested": 494,
+      "terminalEscapes": 0,
+      "illegalDefender": 0,
+      "failedReplies": [],
+      "worst": {
+        "targetDeg": 8.375,
+        "defender": {
+          "snap": [
+            {
+              "x": -30.446857333470764,
+              "y": -34.976205155281065,
+              "rot": 1.0590286751454732
+            },
+            {
+              "x": -11.994568737432122,
+              "y": -22.63128462478283,
+              "rot": 2.925305311656921
+            }
+          ],
+          "netDeg": 8.375,
+          "atLimit": false,
+          "reason": null,
+          "terminal": false,
+          "selfOff": false,
+          "commands": [
+            0.17,
+            0.83,
+            1.7,
+            2.9,
+            0.17,
+            0.83,
+            1.7,
+            0.07500000000000329
+          ]
+        },
+        "reply": {
+          "margin": 2.183202134600279,
+          "legal": true,
+          "netDeg": 47.25000000000007,
+          "atLimit": true,
+          "reason": "selfoff",
+          "snap": [
+            {
+              "x": -32.531560321084626,
+              "y": -44.161548147425506,
+              "rot": 0.935547735039608
+            },
+            {
+              "x": -22.879354478469438,
+              "y": -37.60336964085342,
+              "rot": 2.1006372400895956
+            }
+          ],
+          "calls": 16
+        }
+      }
+    },
+    {
+      "pivotIdx": 1,
+      "dir": 1,
+      "limitDeg": 14.62499999999999,
+      "tested": 102,
+      "terminalEscapes": 0,
+      "illegalDefender": 0,
+      "failedReplies": [],
+      "worst": {
+        "targetDeg": 2,
+        "defender": {
+          "snap": [
+            {
+              "x": -27.534114969672828,
+              "y": -35.61504973793258,
+              "rot": 1.2401065850398867
+            },
+            {
+              "x": -12.090397145923049,
+              "y": -22.459184161381344,
+              "rot": 2.920949447540081
+            }
+          ],
+          "netDeg": 2,
+          "atLimit": false,
+          "reason": null,
+          "terminal": false,
+          "selfOff": false,
+          "commands": [
+            0.17,
+            0.83,
+            1
+          ]
+        },
+        "reply": {
+          "margin": 5.267008734936141,
+          "legal": true,
+          "netDeg": 47.62500000000007,
+          "atLimit": true,
+          "reason": "selfoff",
+          "snap": [
+            {
+              "x": -31.60922635152038,
+              "y": -45.2813777705272,
+              "rot": 1.1483441017398939
+            },
+            {
+              "x": -23.171305496525353,
+              "y": -37.45911118340993,
+              "rot": 2.0897363912777767
+            }
+          ],
+          "calls": 16
+        }
+      }
+    },
+    {
+      "pivotIdx": 1,
+      "dir": -1,
+      "limitDeg": 16.79999999999999,
+      "tested": 120,
+      "terminalEscapes": 0,
+      "illegalDefender": 0,
+      "failedReplies": [],
+      "worst": {
+        "targetDeg": 15.375,
+        "defender": {
+          "snap": [
+            {
+              "x": -27.24617066285531,
+              "y": -42.58588118574711,
+              "rot": 0.9368556275058698
+            },
+            {
+              "x": -11.7593,
+              "y": -23.2838,
+              "rot": 2.9442
+            }
+          ],
+          "netDeg": 15.375,
+          "atLimit": false,
+          "reason": null,
+          "terminal": false,
+          "selfOff": false,
+          "commands": [
+            0.17,
+            0.83,
+            1.7,
+            2.9,
+            0.17,
+            0.83,
+            1.7,
+            2.9,
+            0.17,
+            0.83,
+            1.7,
+            1.47500000000001
+          ]
+        },
+        "reply": {
+          "margin": 2.3043940595793515,
+          "legal": true,
+          "netDeg": 46.125000000000064,
+          "atLimit": true,
+          "reason": "selfoff",
+          "snap": [
+            {
+              "x": -30.943720399098844,
+              "y": -45.44619202170534,
+              "rot": 0.9729008093203794
+            },
+            {
+              "x": -21.9747206643212,
+              "y": -38.21854831733482,
+              "rot": 2.139166882517611
+            }
+          ],
+          "calls": 16
+        }
+      }
+    },
+    {
+      "pivotIdx": 2,
+      "dir": 1,
+      "limitDeg": 4.874999999999999,
+      "tested": 24,
+      "terminalEscapes": 0,
+      "illegalDefender": 0,
+      "failedReplies": [],
+      "worst": {
+        "targetDeg": 2,
+        "defender": {
+          "snap": [
+            {
+              "x": -28.01045040637452,
+              "y": -36.92753786946314,
+              "rot": 1.2401065850398867
+            },
+            {
+              "x": -11.787904088662572,
+              "y": -23.215789697414326,
+              "rot": 2.942214909760098
+            }
+          ],
+          "netDeg": 2,
+          "atLimit": false,
+          "reason": null,
+          "terminal": false,
+          "selfOff": false,
+          "commands": [
+            0.17,
+            0.83,
+            1
+          ]
+        },
+        "reply": {
+          "margin": 4.6607815092383476,
+          "legal": true,
+          "netDeg": 46.125000000000064,
+          "atLimit": true,
+          "reason": "selfoff",
+          "snap": [
+            {
+              "x": -30.0672848567964,
+              "y": -46.16229855387441,
+              "rot": 1.1452391942954534
+            },
+            {
+              "x": -22.0329514292817,
+              "y": -38.13023007041018,
+              "rot": 2.1371817922777088
+            }
+          ],
+          "calls": 16
+        }
+      }
+    },
+    {
+      "pivotIdx": 2,
+      "dir": -1,
+      "limitDeg": 15.71249999999999,
+      "tested": 111,
+      "terminalEscapes": 0,
+      "illegalDefender": 0,
+      "failedReplies": [],
+      "worst": {
+        "targetDeg": 11.875,
+        "defender": {
+          "snap": [
+            {
+              "x": -23.39143215503802,
+              "y": -33.79841959210975,
+              "rot": 0.9979421513256713
+            },
+            {
+              "x": -11.760968827473725,
+              "y": -23.277797516716323,
+              "rot": 2.9440345725303336
+            }
+          ],
+          "netDeg": 11.875000000000002,
+          "atLimit": false,
+          "reason": null,
+          "terminal": false,
+          "selfOff": false,
+          "commands": [
+            0.17,
+            0.83,
+            1.7,
+            2.9,
+            0.17,
+            0.83,
+            1.7,
+            2.9,
+            0.17,
+            0.5050000000000051
+          ]
+        },
+        "reply": {
+          "margin": 2.2996004617105825,
+          "legal": true,
+          "netDeg": 46.125000000000064,
+          "atLimit": true,
+          "reason": "selfoff",
+          "snap": [
+            {
+              "x": -30.947185978704663,
+              "y": -45.438308871819025,
+              "rot": 0.9729665286305174
+            },
+            {
+              "x": -21.97885996962899,
+              "y": -38.210855718512775,
+              "rot": 2.1390014550479446
+            }
+          ],
+          "calls": 16
+        }
+      }
+    }
+  ]
+}
