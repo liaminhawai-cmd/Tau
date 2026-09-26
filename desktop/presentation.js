@@ -121,12 +121,11 @@
   // Names are names -- they are not routed through t(), the same as the board names beside them.
   // The order is the FACES only. Rung n always plays RUNG_TO_AI_LADDER[n-1], easiest at 1 and
   // hardest at 13, whatever board and name sit on it -- this list decides who you meet where, not
-  // how hard they are. The Committee's name is a character on Ebony here, not the voting AI (which
-  // is still the top rung's brain, now wearing Titan's arena).
+  // how hard they are. (The voting Committee AI is still the top rung's brain, now Titan's.)
   const LADDER_BOARDS = [
     { board:'yellow',   opponent:'Wren' },       // the plain classic: nothing to read but the rules themselves
     { board:'maple',    opponent:'Lily' },
-    { board:'ebony',    opponent:'The Committee' },
+    { board:'ebony',    opponent:'Corvin' },       // corvus: the raven, black as the board
     { board:'walnut',   opponent:'Hazel' },      // the club set
     { board:'slate',    opponent:'Flint' },
     { board:'cosy',     opponent:'Vesper' },     // whoever has owned this heirloom table for forty years

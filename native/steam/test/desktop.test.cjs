@@ -879,7 +879,7 @@ test('the opponent is a board with somebody on it, and the sheet shows the whole
   open[2].click();
   assert.equal(D.board,'ebony','picking a face on the sheet put us on their board');
   assert.equal(g.$('desktopLevel').value,'3','and moved the control underneath');
-  assert.match(g.$('desktopOpponent').textContent,/The Committee/,'and the tile now wears the new opponent');
+  assert.match(g.$('desktopOpponent').textContent,/Corvin/,'and the tile now wears the new opponent');
   assert.deepEqual(g.errors,[]);
 });
 
@@ -2863,7 +2863,7 @@ test('a win or loss on Steam routes exactly where the web one does',async t=>{
   const norm=ls=>ls.map(l=>l.replace(/: .+ as /,': _ as '));
   assert.deepEqual(norm(onSteam),norm(onWeb),`Steam offers what the web offers (steam ${onSteam.join('/')} vs web ${onWeb.join('/')})`);
   assert.ok(onSteam.some(l=>/Up a level: Hazel as Blue/.test(l)),'a whole step, to whoever is next');
-  assert.ok(onSteam.some(l=>/Half step up: The Committee as Red/.test(l)),'or half of one: the other colour here');
+  assert.ok(onSteam.some(l=>/Half step up: Corvin as Red/.test(l)),'or half of one: the other colour here');
   // Which for a cleared level means the mode's real routing, not a hand-rolled short list.
   assert.ok(onSteam.some(l=>/Red/.test(l)),'including playing the level again as the other colour');
   assert.ok(onSteam.some(l=>/Level/i.test(l)),'and the levels screen');
@@ -3355,7 +3355,7 @@ test('the Levels list shows who is on each rung and their board, and picking one
   const rungs=[...g.w.document.querySelectorAll('#ladderList .ladderRung')];
   const r=n=>rungs.find(e=>e.dataset.n===String(n));
   assert.match(r(1).textContent,/Wren/,'a name, not just a number');
-  assert.match(r(3).textContent,/The Committee.*Level 3 · Ebony/,'with the rung and the board under it');
+  assert.match(r(3).textContent,/Corvin.*Level 3 · Ebony/,'with the rung and the board under it');
   assert.ok(r(3).querySelector('img.lboard'),'and the board itself');
   // Mid-match, from the list: the board follows the level.
   g.read('startLadderLevel(0,0)'); g.tick();
@@ -3404,7 +3404,7 @@ test('a ladder loss drops half a step, with the rematch beside it',async t=>{
     renderGameOverSheet();`);
     return [...g.w.document.querySelectorAll('#modalBtns button')].map(b=>b.textContent.trim()); };
   let b=sheet(3,0,false);   // lost Level 4 as Blue
-  assert.equal(b[0],'Half step down: The Committee as Red','half a step down is Level 3 as Red');
+  assert.equal(b[0],'Half step down: Corvin as Red','half a step down is Level 3 as Red');
   assert.ok(b.includes('Rematch'));
   b=sheet(3,1,false);       // lost Level 4 as Red
   assert.equal(b[0],'Half step down: Hazel as Blue','from Red it is the same level as Blue');

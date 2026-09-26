@@ -231,7 +231,7 @@ test('the desktop premium ladder puts its faces in the chosen order, easiest to 
   assert.equal(rungs.length,13,'and thirteen of those fourteen are ladder rungs now');
   assert.equal(rungs[0].board,'yellow'); assert.equal(rungs[0].opponent,'Wren');
   const faces = rungs.map(r => r.opponent + '@' + r.board).join(' ');
-  assert.equal(faces, 'Wren@yellow Lily@maple The Committee@ebony Hazel@walnut Flint@slate Vesper@cosy '
+  assert.equal(faces, 'Wren@yellow Lily@maple Corvin@ebony Hazel@walnut Flint@slate Vesper@cosy '
     + 'Sensei@dojo Marlowe@noir Rikishi@sumo Alabaster@marble Euclid@math Chorus@alien Titan@colossus');
   assert.equal(D.boardRung('colossus'),13,'Titan\'s arena is the top rung');
   // The faces moved; the brains did not. Rung n is still the nth difficulty, whoever wears it.
