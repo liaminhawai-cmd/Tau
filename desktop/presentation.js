@@ -1352,7 +1352,7 @@
     };
     $('desktopMute').onchange = e => { setSoundOn(!e.target.checked); if(paused && masterGain && audioCtx) masterGain.gain.setTargetAtTime(0,audioCtx.currentTime,.03); };
     $('desktopQuality').onchange = e => {
-      const wasLow = lowGfx();
+      const wasLow = lowGfx(), wasGlass = fullGlass();
       settings.quality = e.target.value;
       settings.qualityPicked = true;   // their choice from here on; the device guess is finished
       settings.rayTrace = settings.quality === 'ultra';
@@ -1360,6 +1360,7 @@
       // Crossing into or out of Low changes the bake's size, and the bake is cached by board id --
       // so the cache has to be dropped or the new tier keeps the old tier's surface.
       if (wasLow !== lowGfx()) { texturesFor = null; applyMaterials(); }
+      else if (wasGlass !== fullGlass()) applyMaterials();   // the glass legs change kind at High
       if (settings.rayTrace) rayTraceLoad();
       drawQualityNote();
     };
@@ -2057,12 +2058,25 @@
     if (settings.rayTrace && rayTraceFrame()) return true;
     return renderGlassFrame();
   }
+  // REFRACTING GLASS ONLY WHERE IT HOLDS UP. three's transmission renders the whole opaque scene a
+  // second time into a half-float buffer, mipmaps it, and samples it through every glass pixel. On
+  // laptop graphics that pass was the most expensive thing in the frame, and on some of them it
+  // came back with dead pixels that the mip chain spread into black squares over the legs (seen on
+  // Marble at Balanced and at Low). So below High the glass legs are drawn as plain see-through
+  // glass instead: the same colour running into the foot, the middle clear, no refraction.
+  function fullGlass() { return !lowGfx() && settings.quality !== 'balanced'; }
+  function plainGlass(m) {
+    if (!m || !(m.transmission > 0)) return;
+    m.transmission = 0; m.transparent = true; m.depthWrite = true;
+    m.userData.plainGlass = true; m.needsUpdate = true;
+  }
   function applyShowcasePieces(T) {
     for (const pair of [tripods, htpTripods]) pair.forEach((piece, i) => {
       const body = piece.children[0], side = i===0 ? 'blue' : 'red';
       if (!piece.userData.origMat) piece.userData.origMat = body.material;
       (piece.userData.showMats || []).forEach(m => m.dispose());
       const mats = T.pieces(side);
+      if (!fullGlass()) plainGlass(mats.leg);
       const hub = ensureHub(piece, T.hubBall || 1.9);
       body.material = mats.leg; hub.material = mats.hub; hub.visible = true;
       piece.children.forEach(c => { if (c !== body && c !== hub) c.material = mats.foot || mats.leg; });
@@ -2727,11 +2741,12 @@
     const at = QUALITIES.indexOf(settings.quality);
     if (at <= 0) return;
     fpsStepped = true;
-    const wasLow = lowGfx();
+    const wasLow = lowGfx(), wasGlass = fullGlass();
     settings.quality = QUALITIES[at - 1];
     settings.rayTrace = false;                     // nothing below Ultra traces
     saveSettings(); configureQuality(); layout();
     if (wasLow !== lowGfx()) { texturesFor = null; applyMaterials(); }
+    else if (wasGlass !== fullGlass()) applyMaterials();
     if ($('desktopQuality')) $('desktopQuality').value = settings.quality;
     drawQualityNote();
     showToast(`<p class="desktop-unlock">${esc(tf('Graphics set to {name} to keep the board moving — Settings has the full range.',

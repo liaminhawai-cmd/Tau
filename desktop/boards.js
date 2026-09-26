@@ -959,7 +959,10 @@ function installLegGradient(material, tint) {
       .replace('#include <color_fragment>', '#include <color_fragment>\n' +
         'float legG = smoothstep(0.25, 1.0, vLegT);\n' +
         'legG = max(legG, 1.0 - smoothstep(0.0, 0.28, vLegT));\n' +
-        'diffuseColor.rgb = mix(diffuseColor.rgb, uLegTint, legG);')
+        'diffuseColor.rgb = mix(diffuseColor.rgb, uLegTint, legG);\n' +
+        // Without transmission (the game's Balanced and Low tiers, see plainGlass in presentation.js)
+        // the glass is drawn as plain see-through: clear through the middle, solid at the ends.
+        '#ifndef USE_TRANSMISSION\n diffuseColor.a *= mix(0.3, 1.0, legG);\n#endif')
       .replace('material.transmission = transmission;', 'material.transmission = transmission * (1.0 - 0.7*legG*legG);')
       .replace('material.attenuationColor = attenuationColor;', 'material.attenuationColor = mix(attenuationColor, uLegTint, legG);')
       .replace('material.attenuationDistance = attenuationDistance;', 'material.attenuationDistance = mix(attenuationDistance, 0.8, legG);')

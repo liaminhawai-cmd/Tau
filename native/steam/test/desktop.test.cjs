@@ -467,7 +467,7 @@ test('the controls sheet lists the live bindings and the pad can resize the boar
 });
 
 test('every board in the catalogue paints the flat board, the 3D board and the pieces',async t=>{
-  const g=await game();t.after(g.close);
+  const g=await game(undefined,{tauDesktopSettingsV1:'{"quality":"high","qualityPicked":true}'});t.after(g.close);
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
     scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
     controls={mouseButtons:{},target:new THREE.Vector3()};
@@ -512,7 +512,7 @@ test('every board in the catalogue paints the flat board, the 3D board and the p
 });
 
 test('the showcase looks bring their own bakes and per-part piece materials into the game',async t=>{
-  const g=await game();t.after(g.close);
+  const g=await game(undefined,{tauDesktopSettingsV1:'{"quality":"high","qualityPicked":true}'});t.after(g.close);
   g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
     scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
     controls={mouseButtons:{},target:new THREE.Vector3()};
@@ -1197,10 +1197,15 @@ test('Low graphics cuts the passes and the pixels, not the board',async t=>{
   // Glass still draws -- as one plain frame, not two.
   g.read("tauDesktop.board='marble'");
   assert.equal(g.read('tauDesktop.renderFrame()'),false,'the two-pass glass render is off');
-  // ...and Balanced puts all three back.
+  // ...and Balanced puts the pixels and the shadows back, with the glass still plain...
   q.value='balanced'; q.onchange({target:q});
   assert.equal(g.read('window.__dpr'),1.5,'Balanced takes the pixel-ratio headroom back');
   assert.equal(g.read('renderer.shadowMap.enabled'),true);
+  assert.equal(g.read('tripods[0].userData.mat.transmission'),0,'Balanced draws the glass legs plainly');
+  assert.equal(g.read('tauDesktop.renderFrame()'),false,'so there is no second pass to make');
+  // ...and High brings the refracting glass, and the near piece drawn through the far one.
+  q.value='high'; q.onchange({target:q});
+  assert.ok(g.read('tripods[0].userData.mat.transmission')>0,'High refracts');
   assert.equal(g.read('tauDesktop.renderFrame()'),true,'and the near piece is drawn through the far one again');
   assert.deepEqual(g.errors,[]);
 });
@@ -1293,7 +1298,7 @@ test('a tier nobody chose steps down when the frames say it should',async t=>{
 });
 
 test('two glass pieces are drawn in two passes: the near one over a picture of the far one',async t=>{
-  const g=await game();t.after(g.close);
+  const g=await game(undefined,{tauDesktopSettingsV1:'{"quality":"high","qualityPicked":true}'});t.after(g.close);
   g.read(`window.__calls=[];
     renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},getDrawingBufferSize(v){v.set(640,480);return v;},
       setRenderTarget(t){window.__calls.push(['target',t?'offscreen':'screen']);},
@@ -3467,5 +3472,24 @@ test('on the sumo board the lines are straw bales, and they go when the board do
   const sel=g.$('desktopBoard'); sel.value='yellow'; sel.onchange({target:sel});
   D.tick(1/60);
   assert.equal(D.tawara,null,'and they are gone on any other board');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('below High the glass legs are plain see-through glass, with nothing left refracting',async t=>{
+  // three's transmission pass came back with black squares over the Marble legs on laptop
+  // graphics at Balanced and at Low; below High the legs do not use it at all.
+  const g=await game(undefined,{tauDesktopSettingsV1:'{"quality":"balanced","qualityPicked":true}'});t.after(g.close);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{}};
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+    controls={mouseButtons:{},target:new THREE.Vector3()};
+    boardTop=new THREE.Mesh(new THREE.CircleGeometry(CFG.edgeU),new THREE.MeshStandardMaterial());
+    boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
+    tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)]; localStorage.setItem('tauDesktopTestBoards','1');
+    tauDesktop.applyMaterials();`);
+  for (const b of ['marble','noir']) {
+    g.w.tauDesktop.board=b;
+    assert.equal(g.read('tripods[0].children[0].material.transmission'),0,b+': no transmission pass below High');
+    assert.equal(g.read('tripods[0].children[0].material.transparent'),true,b+': but still see-through');
+  }
   assert.deepEqual(g.errors,[]);
 });
