@@ -1043,6 +1043,9 @@ const MATH_PASS =
   '}\n';
 const ALIEN_GLSL = `
 uniform float uAlien; uniform float uAlienTime; varying vec3 vWPos;
+// Where the membrane is being drawn to: each foot and each piece's hub (xz), and how long it has
+// been sitting there (z, 0..1). See alienSeekTick in presentation.js.
+uniform vec3 uSeek[8];
 float ahash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453123); }
 float anoise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
   return mix(mix(ahash(i),ahash(i+vec2(1.0,0.0)),u.x), mix(ahash(i+vec2(0.0,1.0)),ahash(i+vec2(1.0,1.0)),u.x), u.y); }
@@ -1164,6 +1167,7 @@ function installDetailShader(material) {
     shader.uniforms.uMath = { value: 0 };
     shader.uniforms.uRingR = { value: CFG.footR*Math.sqrt(3) };
     shader.uniforms.uFeet = { value: Array.from({ length: 6 }, () => new THREE.Vector2(1e4, 1e4)) };
+    shader.uniforms.uSeek = { value: Array.from({ length: 8 }, () => new THREE.Vector3(1e4, 1e4, 0)) };
     const rings = CFG.rings || [40, 53.3], arc = (CFG.sideArcs && CFG.sideArcs[0]) || { cx: -CFG.edgeU, r: 40 };
     shader.uniforms.uBoardGeom = { value: new THREE.Vector4(rings[0], rings[1], Math.abs(arc.cx), arc.r) };
     shader.vertexShader = shader.vertexShader
@@ -1188,7 +1192,14 @@ function installDetailShader(material) {
       .replace(finalHook,
         MATH_PASS +
         'if (uAlien > 0.5) {\n' +
-        '  vec2 p = vWPos.xz * 0.06;\n' +
+        // THE MEMBRANE LEANS TOWARDS WHAT RESTS ON IT, the way moss grows towards its light: near a
+        // piece that has been standing still a while its veins are drawn in a little towards it
+        // and it does not darken as deeply. Built up over tens of seconds (alienSeekTick), so it is
+        // only there to be noticed by somebody who has been looking at one position a long time.
+        '  float reach = 0.0; vec2 lean = vec2(0.0);\n' +
+        '  for (int i = 0; i < 8; i++) { vec2 d = uSeek[i].xy - vWPos.xz; float w = uSeek[i].z * exp(-dot(d, d) / 150.0); reach += w; lean += d * w; }\n' +
+        '  reach = min(reach, 1.0);\n' +
+        '  vec2 p = (vWPos.xz + lean * 0.22) * 0.06;\n' +
         '  vec2 q = vec2(afbm3(p), afbm3(p + vec2(5.2, 1.3)));\n' +
         // three layers of the same living noise, each an order finer than the last, so whatever
         // distance you look from there is structure at that size and it is moving
@@ -1200,8 +1211,8 @@ function installDetailShader(material) {
         '  vein += 0.30 * pow(1.0 - abs(finer*2.0 - 1.0), 11.0);\n' +
         '  float pulse = 0.65 + 0.35*sin(uAlienTime*0.7 + warp*6.28);\n' +
         '  float blotch = smoothstep(0.32, 0.72, q.x);\n' +
-        '  outgoingLight *= (1.0 - blotch*0.3);\n' +
-        '  outgoingLight += vec3(0.10, 0.95, 0.80) * vein * 0.55 * pulse;\n' +
+        '  outgoingLight *= (1.0 - blotch*0.3*(1.0 - 0.55*reach)) * (1.0 + 0.10*reach);\n' +
+        '  outgoingLight += vec3(0.10, 0.95, 0.80) * vein * 0.55 * pulse * (1.0 + 0.55*reach);\n' +
         '}\n' + finalHook);
     holder.uniforms = shader.uniforms;
   };

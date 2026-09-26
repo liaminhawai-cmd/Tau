@@ -2795,6 +2795,37 @@
       s.mesh.material.opacity = s.peak * Math.max(0, 1 - s.age/SAND_LIFE);
     }
   }
+  // What the alien membrane is drawn towards (uSeek in boards.js): every foot and each piece's hub.
+  // A point that has stood still grows its pull slowly -- about two thirds of the way in forty
+  // seconds -- and one that moves lets go faster than that and follows at a creep, so a swing
+  // leaves the membrane still reaching for where the piece WAS, for a while.
+  const alienSeek = Array.from({ length: 8 }, () => ({ x: 1e4, z: 1e4, g: 0 }));
+  const seekTmp = new THREE.Vector3();
+  let alienSeekAt = 0;
+  function alienSeekTick(_dt, u) {
+    if (!u.uSeek || typeof tripods === 'undefined') return;
+    // Its own clock: this is measured in tens of seconds of wall time, and must stay so however
+    // the frame rate or the caller's step behaves.
+    const now = performance.now() / 1000, dt = alienSeekAt ? Math.min(1, now - alienSeekAt) : 0;
+    alienSeekAt = now;
+    tripods.forEach((t, pi) => {
+      t.updateMatrixWorld();
+      for (let k = 0; k < 4; k++) {
+        const s = alienSeek[pi*4 + k];
+        if (!t.visible) { s.g *= Math.exp(-dt/3); u.uSeek.value[pi*4 + k].set(s.x, s.z, s.g); continue; }
+        if (k < 3) seekTmp.set(Math.cos(k*2*Math.PI/3)*CFG.footR, 0, Math.sin(k*2*Math.PI/3)*CFG.footR);
+        else seekTmp.set(0, 0, 0);
+        t.localToWorld(seekTmp);
+        if (s.x > 1e3) { s.x = seekTmp.x; s.z = seekTmp.z; }
+        const away = Math.hypot(seekTmp.x - s.x, seekTmp.z - s.z);
+        if (away > 1.5) s.g *= Math.exp(-dt/10);            // it moved: let go
+        else s.g += (1 - s.g) * (1 - Math.exp(-dt/40));     // it rests: grow towards it
+        const follow = 1 - Math.exp(-dt/6);
+        s.x += (seekTmp.x - s.x) * follow; s.z += (seekTmp.z - s.z) * follow;
+        u.uSeek.value[pi*4 + k].set(s.x, s.z, s.g);
+      }
+    });
+  }
   function pollInput(dt) {
     watchFrameRate();
     sandTick(dt);
@@ -2803,7 +2834,7 @@
       u.uDetail.value = detailMode === 3 ? 0 : detailMode;   // the membrane is its own pass below
       u.uDetailTime.value = now;
       u.uAlien.value = detailMode === 3 ? 1 : 0; u.uAlienTime.value = now;
-      if (detailMode === 3) alienBreath(now);   // the pieces are of this place too, so they breathe
+      if (detailMode === 3) { alienBreath(now); alienSeekTick(dt, u); }   // the pieces are of this place too, so they breathe
       // Math: every foot's pivot-sweep circle, read off the RENDERED pieces (local foot positions
       // through the mesh's own transform), so the construction glides with the eased swing rather
       // than jumping to the rule engine's end pose.
@@ -2985,6 +3016,7 @@
     recordResult,
     debugDetailMode(){ return detailMode; },
     debugDrift(){ return driftAmt; },
+    debugAlienSeek(g){ if (g != null) for (const s of alienSeek) s.g = g; return alienSeek.map(s => ({...s})); },
     debugFrame(ms){ noteFrame(ms); },   // feed the frame-rate watcher a measured frame
     debugDetectQuality(){ return detectQuality(); },   // what this device would be started on now
     resize:layout, updateCamera, orbitCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, fallGravity, renderFrame,
