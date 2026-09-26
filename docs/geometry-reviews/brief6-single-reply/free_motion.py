@@ -33,10 +33,18 @@ def pose_at(pivot, direction, lo, hi):
     rx=q[0]-px; ry=q[1]-py
     return [px+rx*c-ry*s,py+rx*s+ry*c,q[2]+a]
 
+def fixed_dot(p,q):
+    # Python 3.12 changed float sum() to compensated summation. Keep proposal
+    # arithmetic explicitly left-to-right so certificate bytes are reproducible.
+    total=0.0
+    for x,y in zip(p,q):
+        total=total+x*y
+    return total
+
 def proposed_axis(A0,A1,B0,B1):
     a,b,c,d=[[mid(x) for x in p] for p in [A0,A1,B0,B1]]
     u=[b[i]-a[i] for i in range(3)];v=[d[i]-c[i] for i in range(3)];w=[a[i]-c[i] for i in range(3)]
-    dp=lambda p,q:sum(x*y for x,y in zip(p,q))
+    dp=fixed_dot
     aa=dp(u,u);bb=dp(u,v);cc=dp(v,v);dd=dp(u,w);ee=dp(v,w)
     clamp=lambda x:max(0,min(1,x))
     den=aa*cc-bb*bb

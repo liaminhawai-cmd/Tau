@@ -3,6 +3,10 @@ import json
 from pathlib import Path
 import free_motion as f
 
+# Cancellation distinguishes explicit left-to-right addition from compensated
+# float sum(). Only the proposal uses this; interval proof arithmetic is separate.
+assert f.fixed_dot([1e16,1.0,-1e16],[1.0,1.0,1.0])==0.0
+
 data=json.loads(Path(__file__).with_name('free-motion.json').read_text())
 assert data['pose']==f.POSE
 assert data['thresholdUpper']=={'leg':f.LEG,'hubLeg':f.HUBLEG,'hubHub':f.HUBHUB}

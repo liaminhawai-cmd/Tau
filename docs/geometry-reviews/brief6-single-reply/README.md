@@ -56,13 +56,20 @@ leg, radius/height 23.095, leg tube radius 1.44 and hub radius 1.9 times that.
 The numerical seed coordinates and shape constants are treated as their exact
 binary64 values; the trigonometric formulas use real pi enclosed by `PI`.
 
+This is a claim about `ndpxhts24` **as stored**, not about an uncertainty box
+around the unrounded original position. The initial leg clearance on arm (1,-)
+is only about 1.3e-4u. Rounding a rotation to four decimal places can hide
+5e-5 radians, or about 1.15e-3u at a foot, before accounting for coordinate
+rounding. No tolerance for that recording uncertainty is included in this
+certificate; extending it to the original trajectory requires a separate bound.
+
 All nine leg-pair distances, six hub-leg distances and the hub-hub distance are
 bounded throughout every accepted angle cell. The cells are checked to form a
 contiguous cover, with shared endpoints and no gaps.
 
 | Defender arm | Angle domain | Attacker assumption | Cells | Leg distance lower, u | Hub-leg lower, u | Hub-hub lower, u |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
-| (1,-) | 0 to 18 degrees | Original attacker pose, fixed | 15 | 2.880005863643269 | 6.500950166640525 | 20.412950033530652 |
+| (1,-) | 0 to 18 degrees | Original attacker pose, fixed | 15 | 2.88000586364327 | 6.500950166640525 | 20.412950033530652 |
 | (2,-) | 2 to 16 degrees | Any fixed pose in the box below | 46 | 2.8814935987643704 | 4.212925981092005 | 14.00707194314844 |
 
 Every bound strictly exceeds its corresponding contact threshold (approximately
@@ -108,6 +115,15 @@ closest-point routine is a proposal mechanism, not a trusted minimizer.
 Subdividing the angle cell tightens the vertex boxes. Failure to find a
 separating projection returns unresolved rather than asserting contact or
 non-contact.
+
+The independent Node v22.22.2 / Python 3.11.15 replay reported identical probe
+numbers (apart from the Node version field) and the same 61 certified cells,
+but exposed a byte-reproducibility bug: Python 3.12 changed floating `sum()`
+to compensated summation. The approximate proposal dot products now use
+explicit left-to-right addition, and `free-motion.json` has been regenerated.
+The verifier includes a cancellation regression. This change affects the
+proposed separating axes and numerical bounds, not the separating-axis
+argument or the outward interval arithmetic, whose sums operate on `V` objects.
 
 `interval_core.py` is copied from the prior propagation package, Git blob
 `9dbd3027d5e78ed3ce60bee08622aad6ae6a495a`, with no arithmetic changes. Its
