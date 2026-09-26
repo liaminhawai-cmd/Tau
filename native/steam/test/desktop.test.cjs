@@ -883,7 +883,7 @@ test('the opponent is a board with somebody on it, and the sheet shows the whole
   assert.deepEqual(g.errors,[]);
 });
 
-test('the result sheet\'s own Next level moves the board and the colour with it',async t=>{
+test('the result sheet\'s own Up a level moves the board and the colour with it',async t=>{
   // The Steam build\'s picker is "which opponent", and every opponent is a board. When the level
   // moved on its own -- from the result sheet\'s Next level, not from the dropdown -- the board
   // stayed behind, so the next match looked identical to the one just won. Worse, the board is the
@@ -897,11 +897,12 @@ test('the result sheet\'s own Next level moves the board and the colour with it'
   assert.equal(D.board,'yellow');
   g.read('G.over=true; G.winner=1; showGameOverModal()'); g.tick(3200);
   assert.equal(g.$('modalTitle').textContent,'Level 1 cleared!');
-  [...g.$('modalBtns').children].find(b=>/Next level/.test(b.textContent)).click(); g.tick();
+  [...g.$('modalBtns').children].find(b=>/Up a level/.test(b.textContent)).click(); g.tick();
   assert.equal(g.read('ladderLevel'),1,'Level 2');
   assert.equal(D.board,'maple','and Lily\'s board came with her');
   assert.equal(g.$('desktopLevel').value,'2');
-  assert.equal(g.$('desktopColour').value,'0','the picker follows the colour actually being played');
+  assert.equal(g.read('humanIdx'),1,'a whole step keeps the colour: Level 2 as Red');
+  assert.equal(g.$('desktopColour').value,'1','and the picker follows the colour actually being played');
   const saved=JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1'));
   assert.equal(saved.board,'maple','so a relaunch does not pull the level back to the board\'s rung');
   assert.equal(saved.level,2);
@@ -2858,7 +2859,11 @@ test('a win or loss on Steam routes exactly where the web one does',async t=>{
   g.read("window.__desk=window.tauDesktop; window.tauDesktop=null; renderGameOverSheet();");
   const onWeb=labels();
   g.read("window.tauDesktop=window.__desk;");
-  assert.deepEqual(onSteam,onWeb,`Steam offers what the web offers (steam ${onSteam.join('/')} vs web ${onWeb.join('/')})`);
+  // (Steam names who is on the next rung where the web says its number, so compare past the name.)
+  const norm=ls=>ls.map(l=>l.replace(/: .+ as /,': _ as '));
+  assert.deepEqual(norm(onSteam),norm(onWeb),`Steam offers what the web offers (steam ${onSteam.join('/')} vs web ${onWeb.join('/')})`);
+  assert.ok(onSteam.some(l=>/Up a level: Hazel as Blue/.test(l)),'a whole step, to whoever is next');
+  assert.ok(onSteam.some(l=>/Half step up: The Committee as Red/.test(l)),'or half of one: the other colour here');
   // Which for a cleared level means the mode's real routing, not a hand-rolled short list.
   assert.ok(onSteam.some(l=>/Red/.test(l)),'including playing the level again as the other colour');
   assert.ok(onSteam.some(l=>/Level/i.test(l)),'and the levels screen');
@@ -3389,4 +3394,27 @@ test('a board chosen over the opponent\'s own survives a relaunch, and the next 
   again.read('backToMenu(); startLadderLevel(2,0)'); again.tick();
   assert.equal(again.w.tauDesktop.board,'ebony','a different opponent comes with their own board');
   assert.deepEqual(g.errors,[]); assert.deepEqual(again.errors,[]);
+});
+
+test('a ladder loss drops half a step, with the rematch beside it',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  const sheet=(lvl,colour,won)=>{ g.read(`ladderLevel=${lvl}; humanIdx=${colour}; vsAI=true; rankedMode=false; labActive=false;
+    G.over=true; G.winner=${won?colour:1-colour}; replayFrames=[]; document.getElementById('game').style.display='flex';
+    renderGameOverSheet();`);
+    return [...g.w.document.querySelectorAll('#modalBtns button')].map(b=>b.textContent.trim()); };
+  let b=sheet(3,0,false);   // lost Level 4 as Blue
+  assert.equal(b[0],'Half step down: The Committee as Red','half a step down is Level 3 as Red');
+  assert.ok(b.includes('Rematch'));
+  b=sheet(3,1,false);       // lost Level 4 as Red
+  assert.equal(b[0],'Half step down: Hazel as Blue','from Red it is the same level as Blue');
+  b=sheet(0,0,false);
+  assert.ok(!b.some(l=>/Half step down/.test(l)),'Level 1 as Blue is the floor');
+  b=sheet(12,1,true);
+  assert.ok(!b.some(l=>/Up a level|Half step up/.test(l)),'and the top has nowhere higher to go');
+  // The step actually starts that rung and colour.
+  sheet(3,0,false);
+  [...g.w.document.querySelectorAll('#modalBtns button')][0].click(); g.tick();
+  assert.equal(g.read('ladderLevel'),2); assert.equal(g.read('humanIdx'),1);
+  assert.deepEqual(g.errors,[]);
 });
