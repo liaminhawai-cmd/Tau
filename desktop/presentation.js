@@ -2434,6 +2434,7 @@
     pos.copy(target).add(driftOff);
   }
   const MANUAL_PULL = 0.2;   // how far a player-placed view leans towards the game's own framing
+  const CAM_LEAN_RAMP = 4;   // seconds over which that lean fades in, once the player has let go
   // SPRINGY BETWEEN MOVES. The settle was a plain exponential ease -- each frame the camera closed
   // a fixed FRACTION of its remaining distance to the goal. That makes the position smooth and the
   // SPEED a direct function of the gap, so the instant the goal moves at all (the turn changes
@@ -2512,10 +2513,21 @@
     easeFallYaw(dt, falling);   // where the camera is walking round to, if something is going over
     const manual = inMatch() && camManualSet && !falling;
     if (manual && settings.reducedMotion) { releaseCamSpring(); return true; }   // asked for no drift: then none
+    // HANDS OFF WHILE THE PLAYER IS STILL AT IT. The lean below used to start the frame the mouse
+    // came up: the camera set off towards the game's framing while OrbitControls was still coasting
+    // it the other way, and it read as the view bouncing back from wherever it was let go. So a
+    // placed view is left completely alone for CAM_SETTLE_T after the last touch, and the lean then
+    // fades in over a few seconds rather than arriving all at once -- the "recentre delay" a
+    // third-person game uses: input always wins, and the automatic camera only returns once you
+    // have stopped, starting from rest.
+    const idle = typeof camIdleT === 'number' ? camIdleT : 1e9;
+    if (manual && idle < CAM_SETTLE_T) { releaseCamSpring(); return true; }
     desiredPose(falling, cameraGoal, targetGoal);
     if (manual) {
-      cameraGoal.lerp(camManualPos, 1 - MANUAL_PULL);
-      targetGoal.lerp(camManualTgt, 1 - MANUAL_PULL);
+      const u = Math.min(1, Math.max(0, (idle - CAM_SETTLE_T) / CAM_LEAN_RAMP)), ease = u * u * (3 - 2 * u);
+      const pull = MANUAL_PULL * ease;
+      cameraGoal.lerp(camManualPos, 1 - pull);
+      targetGoal.lerp(camManualTgt, 1 - pull);
     }
     // ...and then the whole settled pose turns, at full strength whether the view is the game's or
     // the player's own. Applied here rather than inside desiredPose so a manual view drifts too:
@@ -2612,7 +2624,7 @@
     // on a pad that has never been touched by a mouse is the middle of the board. The stick nudged
     // and the pull undid it, over and over, and the camera sat there not moving at all.
     camManualPos.copy(camera.position); camManualTgt.copy(controls.target);
-    camManualSet=true;
+    camManualSet=true; camIdleT=0;
     releaseCamSpring();   // the player has the reins; whatever the settle was doing is over
   }
   // Both input styles need the same preamble: the first movement of a turn adopts a foot as the

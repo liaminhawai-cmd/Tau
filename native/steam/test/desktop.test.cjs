@@ -3418,3 +3418,29 @@ test('a ladder loss drops half a step, with the rematch beside it',async t=>{
   assert.equal(g.read('ladderLevel'),2); assert.equal(g.read('humanIdx'),1);
   assert.deepEqual(g.errors,[]);
 });
+
+test('a camera the player just let go of stays put, and the lean back comes in slowly',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},render(){},
+      setRenderTarget(){},getRenderTarget(){return null;}};
+    scene=new THREE.Scene();
+    camera=new THREE.PerspectiveCamera(38,1.6,1,2000);
+    controls={mouseButtons:{},target:new THREE.Vector3(),update(){},addEventListener(){}};
+    camManualSet=false; for(let i=0;i<400;i++) tauDesktop.updateCamera(1/60);`);
+  // The player drags it well off the game's framing and lets go: camIdleT restarts, as 'end' does.
+  const trace=JSON.parse(g.read(`(()=>{
+    camManualPos.copy(camera.position).add(new THREE.Vector3(200,80,-150)); camManualTgt.copy(controls.target);
+    camera.position.copy(camManualPos); camManualSet=true; camDragging=false; camIdleT=0;
+    const start=camera.position.clone(), out=[];
+    for(let i=1;i<=600;i++){ camIdleT+=1/60; tauDesktop.updateCamera(1/60); out.push(camera.position.distanceTo(start)); }
+    return JSON.stringify(out); })()`));
+  const at=s=>trace[Math.round(s*60)-1];
+  assert.ok(at(1.1)<1e-9,'not a hair of movement while it is still settling: '+at(1.1));
+  assert.ok(at(1.5)<0.5,'and only a creep just after: '+at(1.5).toFixed(3));
+  assert.ok(at(10)>5,'but it does lean towards the game in the end: '+at(10).toFixed(1));
+  // No jolt anywhere: the step from one frame to the next never jumps.
+  let worst=0; for(let i=2;i<trace.length;i++) worst=Math.max(worst,Math.abs((trace[i]-trace[i-1])-(trace[i-1]-trace[i-2])));
+  assert.ok(worst<0.05,'speed changes smoothly (worst frame-to-frame change '+worst.toFixed(4)+')');
+  assert.deepEqual(g.errors,[]);
+});

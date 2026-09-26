@@ -9832,10 +9832,17 @@ function init3D() {
     // ('start'→'end'). On release we remember that view as the "0% centred" reference and reset
     // the progressive-centring counter, so the camera drifts back toward centre only gradually,
     // a quarter of the remaining gap per subsequent move (see updateGentleCam).
-    controls.addEventListener('start', () => { camDragging = true; });
-    controls.addEventListener('end',   () => { camDragging = false;
+    controls.addEventListener('start', () => { camDragging = true; camIdleT = 0; });
+    controls.addEventListener('end',   () => { camDragging = false; camIdleT = 0;
         camManualPos.copy(camera.position); camManualTgt.copy(controls.target);
         camManualSet = true; camCenterFrac = 0; });
+    // ...and where it actually comes to rest: the coast after release, and a wheel zoom, which
+    // OrbitControls applies on its next update -- AFTER 'end' has already fired. Recording only at
+    // 'end' kept the pre-zoom distance, and the camera was pulled straight back out of every zoom.
+    controls.addEventListener('change', () => {
+        if (!camDragging && camIdleT >= CAM_SETTLE_T) return;   // our own framing moved it, not the player
+        camManualPos.copy(camera.position); camManualTgt.copy(controls.target);
+    });
     // Light intensities carry a ×π: three r155+ dropped the legacy 1/π that used to be folded into
     // directional and hemisphere lights, so the values below are the r128-era ones scaled to keep
     // the same exposure rather than re-lit from scratch.
@@ -10578,6 +10585,13 @@ function fallReportImpact(t, fall, speed, x, y, z, MAT) {
 let camCenterFrac = 1;                 // 0 = leave it where the player put it; 1 = fully centred/framed
 let camDragging = false;               // true between OrbitControls 'start' and 'end'
 let camManualSet = false;              // has the player ever set a manual view this game?
+// Seconds since the player last touched the camera (drag, wheel, stick). Nothing automatic moves a
+// camera the player is still settling: OrbitControls keeps coasting after the button comes up
+// (damping) and applies a wheel zoom on the NEXT update, so the pose at 'end' is not where the
+// camera stops. For CAM_SETTLE_T after the last touch, every pose the controls move the camera to
+// becomes the player's pose, and the auto framing waits (see the desktop's updateCamera).
+let camIdleT = 1e9;
+const CAM_SETTLE_T = 1.2;
 const camManualPos = new THREE.Vector3(), camManualTgt = new THREE.Vector3();
 const camFullPos = new THREE.Vector3(), camFullTgt = new THREE.Vector3();
 const camWantPos = new THREE.Vector3(), camWantTgt = new THREE.Vector3();
@@ -10832,6 +10846,7 @@ function feetFitAt(pos, tgt) {
     return true;
 }
 function updateGentleCam(dt) {
+    if (!camDragging) camIdleT += dt;
     if (window.tauDesktop && window.tauDesktop.updateCamera(dt)) return;
     // While the player is steering by hand the composition is theirs — unwind the lens shift so the
     // board sits where they aimed it, and let it return as the auto frame takes back over.
