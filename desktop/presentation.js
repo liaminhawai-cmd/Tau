@@ -721,7 +721,7 @@
         + `<span class="name">${esc(seen ? r.opponent : SECRET_NAME)}</span>`
         + `<span class="rung">${esc(tf('Level {n}', { n }))}${seen ? ' · ' + esc(fin.name) : ''}</span>`
         + clearMarks(n)
-        + (open ? '' : `<span class="need">${esc(seen ? unlockText(r.board) : t('keep climbing'))}</span>`)
+        + (open || !seen ? '' : `<span class="need">${esc(unlockText(r.board))}</span>`)
         + `</button>`;
     }).join('');
     showModal(t('Opponent'), `<div class="desktop-ladder">${tiles}</div>`,
@@ -1313,7 +1313,7 @@
       <label class="desktop-setting">${esc(t('Mute'))}<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
       <label class="desktop-setting">${esc(t('Opponent'))}<select id="desktopSettingsOpponent"${inMatch() ? ` disabled title="${esc(t('Pick a new opponent from the menu or Levels'))}"` : ''}>${LADDER_BOARDS.map((r, i) => { const n = i + 1;
         return `<option value="${n}"${isUnlocked(r.board) ? '' : ' disabled'}>${esc(tf('Level {n} · {name}', { n, name: rungRevealed(n) ? r.opponent : SECRET_NAME }))}</option>`; }).join('')}</select></label>
-      <label class="desktop-setting">${esc(t('Board'))}<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${esc(b.name)}</option>`:boardRevealed(b.id)?`<option value="${b.id}" disabled>${esc(boardLabel(b))} · ${esc(unlockText(b.id))}</option>`:`<option value="${b.id}" disabled>${esc(SECRET_NAME)} · ${esc(t('keep climbing'))}</option>`).join('')}</select></label>
+      <label class="desktop-setting">${esc(t('Board'))}<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${esc(b.name)}</option>`:boardRevealed(b.id)?`<option value="${b.id}" disabled>${esc(boardLabel(b))} · ${esc(unlockText(b.id))}</option>`:`<option value="${b.id}" disabled>${esc(SECRET_NAME)}</option>`).join('')}</select></label>
       ${testBoards ? '<p class="desktop-result-detail">All boards are open for testing. Type <b>ALLBOARDS</b> on the main menu to restore locks.</p>' : ''}
       <label class="desktop-setting">${esc(t('End turn after dragging'))}<select id="desktopMoveCommitMode"><option value="release">${esc(turnLabels.release)}</option><option value="enter">${esc(turnLabels.confirm)}</option></select></label>
       <label class="desktop-setting">${esc(t('Graphics'))}<select id="desktopQuality">${qualityOptions()}</select></label>

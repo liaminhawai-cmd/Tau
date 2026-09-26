@@ -804,7 +804,7 @@ test('a board is an opponent: the next one opens the moment this one is beaten, 
   assert.ok(opt('walnut').disabled && /Walnut · Hazel · beat Lily/.test(opt('walnut').textContent),
     'a board within sight is listed with who lives there and what opens it');
   // ...and one still far above is a secret: no face, no name, no finish.
-  assert.ok(opt('marble').disabled && /^\?\?\? · /.test(opt('marble').textContent),
+  assert.ok(opt('marble').disabled && opt('marble').textContent === '???',
     'a board you are nowhere near gives nothing away');
   const was=D.board;
   sel.value='marble'; sel.onchange({target:sel});

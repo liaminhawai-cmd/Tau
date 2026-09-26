@@ -8651,12 +8651,74 @@ function playPushContact() {
 // The loser's tumble ends on the floor below the board, not in blank space: one dull, material-keyed
 // thump the instant it lands (rising-edge gated by fall.landed in stepFallOn, so this fires once per
 // fall, not once per frame while it rests there).
+// A partial that SWELLS in rather than striking: for the long low layers of a collapse, where an
+// instant attack would click and the weight should arrive over a fraction of a second.
+function swell(dest, f0, f1, amp, attack, len) {
+    const o = audioCtx.createOscillator(); o.type = 'sine'; const t0 = audioCtx.currentTime;
+    o.frequency.setValueAtTime(f0, t0); if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t0 + len*0.8);
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(amp, t0 + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+    o.connect(g); g.connect(dest); o.start(t0); o.stop(t0 + len + 0.05);
+    setTimeout(() => { try { g.disconnect(); } catch(e){} }, (len + 0.2)*1000);
+}
+// THE FLOOR IS THE BOARD'S, SO THE LANDING IS TOO. It used to be keyed on the PIECE's material --
+// and nearly every board's pieces are metal, so the warm wooden sets, the dohyo and the stone arena
+// all landed on the same deep boom. Now the board decides where it has something to say:
+//   wood   -- a hollow wooden knock, two body modes and a bright contact, with one small bounce
+//   clay   -- the sumo ring keeps the deep boom: a heavy body hitting packed earth
+//   sand   -- Colossus: a building coming down. A cracked transient, a sub that sweeps down under
+//             30Hz and holds for seconds, a long rolling rumble, and rubble settling after it.
+//             Laptop speakers cannot play 25Hz, so the sub carries harmonics an octave up.
+// Anything else keeps the piece-material landing it always had.
 function playLandingSound(strength) {
     if (!audioReady || !soundOn || !gameVisible()) return;
     const pp = pieceAcoustics();
     const g = audioCtx.createGain();
-    g.gain.value = 0.8 * Math.max(0.12, Math.min(1, strength === undefined ? 1 : strength));
+    const vol = Math.max(0.12, Math.min(1, strength === undefined ? 1 : strength));
+    g.gain.value = 0.8 * vol;
     g.connect(toneLP);
+    const surface = acoustics.surface;
+    if (surface === 'wood') {
+        const knock = (amp) => {
+            noiseTick(g, 'bandpass', 1900, 2.2, 0.035*1.0);         // the contact: dry and bright
+            tone(g, 'triangle', 210, 185, 0.55*amp, 0.22);          // the plank's body
+            tone(g, 'sine', 470, 440, 0.28*amp, 0.14);              // a hollow upper mode
+            tone(g, 'sine', 118, 108, 0.30*amp, 0.18);
+        };
+        knock(1);
+        setTimeout(() => { if (audioReady && soundOn) knock(0.32); }, 120 + 60*vol);   // one small bounce
+        setTimeout(() => { try { g.disconnect(); } catch(e){} }, 1200);
+        return;
+    }
+    if (surface === 'clay') {
+        tone(g, 'sine', 78, 34, 1.0, 1.1);                          // the boom
+        tone(g, 'sine', 156, 70, 0.35, 0.5);
+        noiseTick(g, 'lowpass', 420, 0.6, 0.45);                    // packed earth giving under it
+        setTimeout(() => { try { g.disconnect(); } catch(e){} }, 1600);
+        return;
+    }
+    if (surface === 'sand') {
+        g.gain.value = 0.95 * vol;
+        noiseTick(g, 'lowpass', 1400, 0.7, 0.18);                   // the crack of it hitting
+        tone(g, 'sine', 90, 40, 0.8, 0.5);
+        swell(g, 48, 23, 1.0, 0.06, 3.6);                           // the sub, sweeping down and holding
+        swell(g, 96, 46, 0.32, 0.08, 2.4);                          //   ...an octave up, so small speakers hear it
+        swell(g, 62, 31, 0.45, 0.25, 3.0);
+        noiseTick(g, 'lowpass', 180, 0.5, 3.2);                     // the long rumble rolling out
+        noiseTick(g, 'lowpass', 90, 0.7, 4.0);
+        // rubble: heavy pieces still coming down for a second and a half, thinning out
+        for (let i = 0; i < 7; i++) {
+            const at = 260 + i*190 + Math.random()*160, fade = 1 - i/8;
+            setTimeout(() => {
+                if (!audioReady || !soundOn) return;
+                noiseTick(g, 'lowpass', 500 + Math.random()*500, 0.8, 0.25*fade + 0.08);
+                tone(g, 'sine', 70 + Math.random()*40, 40, 0.25*fade, 0.35);
+            }, at);
+        }
+        setTimeout(() => { try { g.disconnect(); } catch(e){} }, 5200);
+        return;
+    }
     switch (pp.impact) {
         case 'thud':    // stone: heavy and dusty
             tone(g, 'sine', 52, 22, 1.0, 0.9);
