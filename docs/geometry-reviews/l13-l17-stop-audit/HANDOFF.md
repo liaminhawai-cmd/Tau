@@ -43,6 +43,11 @@ for Astra on the two questions at the end.
   measures**, ahead of the L17 ablations: it is a bigger effect on the shipped ladder than anything
   the ablation matrix is designed to detect, and every ablation run before it is measuring a grid
   that is not the configured one.
+  **Measured 26 September, pre-registered: no measurable difference.** 300 games, L11 vs
+  `L11+cfg:markEps=1e-9` on 150 shared seat-swapped openings: 146–154, +9 Elo for the restored
+  grid, 95% paired interval −16 to +35. The patch stays out, and ablations on the shipped grid are
+  measuring the rung as it plays. See `claude/l17-on-main`,
+  `docs/geometry-reviews/l17-ablations/stride-match/`.
 
 ## The component tests are now implemented
 
