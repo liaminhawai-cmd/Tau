@@ -1,0 +1,30 @@
+{
+  "files": [
+    "res-00.jsonl",
+    "res-01.jsonl",
+    "res-02.jsonl",
+    "res-03.jsonl"
+  ],
+  "games": 300,
+  "openingPairs": 150,
+  "unpairedUnits": 0,
+  "pairsMissingASeatSwap": 0,
+  "draws": 0,
+  "adjudicated": 0,
+  "matchDefinition": "one unit = one opening played twice with the seats swapped; a unit scores the mean of its two games on 0..1; cap-decided games weighted 0.75 / 0.25",
+  "rawScoreForA": 0.4867,
+  "smoothedScoreForA": 0.4868,
+  "elo": -9.2,
+  "ci95": [
+    -34.6,
+    16.1
+  ],
+  "bootstrapUnit": "opening pair",
+  "boots": 4000,
+  "arenaWouldPrint": {
+    "fromDecidedGamesOnly": "146-154",
+    "elo": -9.2,
+    "plusMinus2Sigma": 40.1,
+    "note": "per-game, pairing ignored -- shown only for contrast"
+  }
+}

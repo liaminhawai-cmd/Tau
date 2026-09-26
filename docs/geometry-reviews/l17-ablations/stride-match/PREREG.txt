@@ -1,0 +1,12 @@
+Stride-fix match, pre-registered 2026-09-26T01:01:57Z before any counted game.
+A = L11 (as shipped)   B = L11+cfg:markEps=1e-9 (stop marks restored)
+openings: openings-150.jsonl sha256 593e31d1796ad1208dfce3608351a8b3f8c060b0ca64e3b9a6fa62e2e49f34ee, seed 20260926, 2 plies
+games: 300 = 150 opening pairs, seats swapped within each pair; 4 shards, one per core
+corner coin pinned off both sides (--noCorner); fixed search, no clock
+source: claude/l17-on-main 382b03f5f + uncommitted arena openings port
+  index.html blob 6b1c32b70fc17ed983202b574c4b75401b5e75e9  nn/arena.js blob a62d79a4802ffef5750ed3b385ba466f41821e61
+analysis: paired-elo.js over all four shard files, 4000 boots, pair = resampling unit
+decision rule: ship the stride patch only if the 95% paired interval lies above 0; drop it if it lies
+below 0; if it straddles 0, report "no measurable difference" and do not ship (default is no change).
+No early stopping.
+restart 2026-09-26T01:08:10Z: shards relaunched after switching --resultsJsonl to synchronous appends (arena.js blob c2775fd6fea115443a26adf9f068c22dd8fe9fdb); same openings, games are deterministic so the restart replays the same games
