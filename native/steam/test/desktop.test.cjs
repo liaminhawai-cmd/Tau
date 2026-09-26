@@ -662,7 +662,7 @@ test('ALLBOARDS opens every finish, survives restart and restores earned locks w
   assert.ok(restored.w.tauDesktop.boards.every(b=>b.unlocked));
   for(const key of 'ALLBOARDS')restored.key(key);
   const boards=restored.w.tauDesktop.boards;
-  assert.ok(boards.find(b=>b.id==='dojo').unlocked && boards.find(b=>b.id==='slate').unlocked,'earned boards stay open');
+  assert.ok(boards.find(b=>b.id==='maple').unlocked && boards.find(b=>b.id==='ebony').unlocked,'earned boards stay open');
   assert.ok(!boards.find(b=>b.id==='alien').unlocked);
   assert.equal(restored.w.tauDesktop.board,'walnut','a testing-only selection returns to an available board');
   assert.equal(restored.w.localStorage.getItem('tauDesktopProgress'),earned);
@@ -776,23 +776,22 @@ test('a board is an opponent: the next one opens the moment this one is beaten, 
   const D=g.w.tauDesktop;
   const by=id=>D.boards.find(b=>b.id===id);
   assert.equal(D.board,'yellow','you start on Yellow, which is rung 1 now');
-  assert.ok(by('yellow').unlocked && !by('walnut').unlocked && !by('marble').unlocked && !by('alien').unlocked,'the rest waits');
-  assert.match(by('walnut').unlock,/beat Wren/);
+  assert.ok(by('yellow').unlocked && !by('maple').unlocked && !by('marble').unlocked && !by('alien').unlocked,'the rest waits');
+  assert.match(by('maple').unlock,/beat Wren/);
   // The web game's own reveal rule, off the same save: EITHER colour opens the next board, so a
   // player is never further up the ladder in the browser than in the app.
   g.read('markLadderCleared(1,0)');
-  assert.ok(by('walnut').unlocked,'one colour is enough to open the next board');
-  assert.ok(!by('dojo').unlocked,'and only the next one');
-  assert.match(by('dojo').unlock,/beat Hazel/,'which names ITS opponent, not a game count');
+  assert.ok(by('maple').unlocked,'one colour is enough to open the next board');
+  assert.ok(!by('ebony').unlocked,'and only the next one');
+  assert.match(by('ebony').unlock,/beat Lily/,'which names ITS opponent, not a game count');
   g.read('markLadderCleared(1,1)');
-  assert.ok(by('walnut').unlocked,'and finishing the other colour never closes it again');
+  assert.ok(by('maple').unlocked,'and finishing the other colour never closes it again');
   // The one board still waiting for a rung of its own keeps the old counter.
   assert.match(by('dark').unlock,/10 games/);
   // A pile of wins somewhere else is NOT a way in any more: the rung is the unlock, full stop.
-  // This is what let a player walk past eleven rungs onto Ebony -- the Committee's own board.
   D.recordResult({humanWon:true,vsAI:true,online:false,lab:false,level:8});
   assert.ok(!by('noir').unlocked,'winning games elsewhere does not open a rung you have not climbed to');
-  assert.ok(!by('ebony').unlocked,'and emphatically does not hand over the Committee\'s board');
+  assert.ok(!by('colossus').unlocked,'and emphatically does not hand over the top rung\'s board');
   assert.equal(g.read("JSON.parse(localStorage.getItem('tauDesktopProgress')).topLevel"),9,'progress is still recorded, it just does not unlock');
   // The lab is never a game.
   D.recordResult({humanWon:true,vsAI:true,online:false,lab:true,level:10});
@@ -802,7 +801,7 @@ test('a board is an opponent: the next one opens the moment this one is beaten, 
   const sel=g.w.document.getElementById('desktopBoard');
   const opt=id=>[...sel.options].find(o=>o.value===id);
   assert.ok(opt('yellow') && !opt('yellow').disabled,'Yellow is selectable');
-  assert.ok(opt('maple').disabled && /Maple · Lily · beat Hazel/.test(opt('maple').textContent),
+  assert.ok(opt('walnut').disabled && /Walnut · Hazel · beat Lily/.test(opt('walnut').textContent),
     'a board within sight is listed with who lives there and what opens it');
   // ...and one still far above is a secret: no face, no name, no finish.
   assert.ok(opt('marble').disabled && /^\?\?\? · /.test(opt('marble').textContent),
@@ -820,22 +819,32 @@ test('choosing the opponent chooses the board, and choosing the board chooses th
   // Every rung wears its board's name, and the ones you have not reached are greyed rather than
   // hidden: you can see who is waiting two boards up, you just cannot skip to them.
   assert.match([...lv.options][0].textContent,/Level 1 · Wren/);
-  assert.match([...lv.options][3].textContent,/Level 4 · Flint/,'you can see a few rungs ahead of what is open');
+  assert.match([...lv.options][3].textContent,/Level 4 · Hazel/,'you can see a few rungs ahead of what is open');
   assert.match([...lv.options][7].textContent,/Level 8 · \?\?\?/,'and the ones past that keep their names');
   assert.ok([...lv.options][1].disabled,'a rung whose board is locked cannot be picked');
   assert.equal(lv.value,'1','and a fresh player is on rung 1, whatever the saved level said');
   // Open two rungs, then pick the second: the board comes with it.
   g.read('markLadderCleared(1,0);markLadderCleared(1,1);markLadderCleared(2,0);markLadderCleared(2,1);');
   D.recordResult({humanWon:false,vsAI:true,online:false,lab:false,level:0});   // repaints the picker
-  assert.ok(!lv.options[2].disabled,'Dojo is reachable now');
+  assert.ok(!lv.options[2].disabled,'Ebony is reachable now');
   lv.value='3'; lv.dispatchEvent(new g.w.Event('change'));
-  assert.equal(D.board,'dojo','picking the opponent put us on their board');
-  // ...and the other way round, from Settings.
+  assert.equal(D.board,'ebony','picking the opponent put us on their board');
+  // Settings has both: the opponent (who brings their board) and the board on its own, which is
+  // an override -- the opponent stays who they were.
   D.openSettings ? D.openSettings() : g.w.document.getElementById('desktopSettings').click();
+  const opp=g.w.document.getElementById('desktopSettingsOpponent');
+  assert.equal(opp.value,'3','Settings shows who you are playing');
   const sel=g.w.document.getElementById('desktopBoard');
-  sel.value='walnut'; sel.onchange({target:sel});
-  assert.equal(D.board,'walnut');
-  assert.equal(lv.value,'2','and the opponent followed the board');
+  sel.value='maple'; sel.onchange({target:sel});
+  assert.equal(D.board,'maple');
+  assert.equal(lv.value,'3','a board picked by hand does not change the opponent');
+  const saved=()=>JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1'));
+  assert.equal(saved().boardOverride,true);
+  opp.value='2'; opp.onchange({target:opp});
+  assert.equal(lv.value,'2'); assert.equal(D.board,'maple','Lily brings her own board');
+  opp.value='3'; opp.onchange({target:opp});
+  assert.equal(D.board,'ebony','and picking an opponent always brings theirs, dropping the override');
+  assert.equal(saved().boardOverride,false);
   assert.deepEqual(g.errors,[]);
 });
 
@@ -850,12 +859,12 @@ test('the opponent is a board with somebody on it, and the sheet shows the whole
   tile.click();
   const rungs=[...g.w.document.querySelectorAll('.desktop-ladder .desktop-rung')];
   assert.equal(rungs.length,13,'every rung of the ladder is on the sheet');
-  assert.match(rungs[3].textContent,/Flint/,'the rungs within sight wear their faces');
-  assert.match(rungs[3].textContent,/Level 4 · Slate/);
+  assert.match(rungs[3].textContent,/Hazel/,'the rungs within sight wear their faces');
+  assert.match(rungs[3].textContent,/Level 4 · Walnut/);
   // The top of the ladder keeps its slot -- so it still reads as thirteen boards -- and nothing else.
   assert.ok(rungs[12].classList.contains('secret'),'a rung you are nowhere near is a silhouette');
   assert.match(rungs[12].textContent,/Level 13/,'which still says where it sits');
-  assert.ok(!/The Committee|Ebony/.test(rungs[12].textContent),'and gives away neither the face nor the name');
+  assert.ok(!/Titan|Colossus/.test(rungs[12].textContent),'and gives away neither the face nor the name');
   assert.equal(rungs[0].getAttribute('aria-current'),'true','the one you are on is marked');
   // A locked rung is shown greyed with what it is waiting for, never hidden.
   assert.ok(rungs[1].disabled,'a rung whose board is locked cannot be picked');
@@ -866,15 +875,15 @@ test('the opponent is a board with somebody on it, and the sheet shows the whole
   D.recordResult({humanWon:false,vsAI:true,online:false,lab:false,level:0});
   tile.click();
   const open=[...g.w.document.querySelectorAll('.desktop-ladder .desktop-rung')];
-  assert.ok(!open[2].disabled,'Dojo is reachable now');
+  assert.ok(!open[2].disabled,'Ebony is reachable now');
   open[2].click();
-  assert.equal(D.board,'dojo','picking a face on the sheet put us on their board');
+  assert.equal(D.board,'ebony','picking a face on the sheet put us on their board');
   assert.equal(g.$('desktopLevel').value,'3','and moved the control underneath');
-  assert.match(g.$('desktopOpponent').textContent,/Sifu/,'and the tile now wears the new opponent');
+  assert.match(g.$('desktopOpponent').textContent,/Corvin/,'and the tile now wears the new opponent');
   assert.deepEqual(g.errors,[]);
 });
 
-test('the result sheet\'s own Next level moves the board and the colour with it',async t=>{
+test('the result sheet\'s own Up a level moves the board and the colour with it',async t=>{
   // The Steam build\'s picker is "which opponent", and every opponent is a board. When the level
   // moved on its own -- from the result sheet\'s Next level, not from the dropdown -- the board
   // stayed behind, so the next match looked identical to the one just won. Worse, the board is the
@@ -888,13 +897,14 @@ test('the result sheet\'s own Next level moves the board and the colour with it'
   assert.equal(D.board,'yellow');
   g.read('G.over=true; G.winner=1; showGameOverModal()'); g.tick(3200);
   assert.equal(g.$('modalTitle').textContent,'Level 1 cleared!');
-  [...g.$('modalBtns').children].find(b=>/Next level/.test(b.textContent)).click(); g.tick();
+  [...g.$('modalBtns').children].find(b=>/Up a level/.test(b.textContent)).click(); g.tick();
   assert.equal(g.read('ladderLevel'),1,'Level 2');
-  assert.equal(D.board,'walnut','and Hazel\'s board came with her');
+  assert.equal(D.board,'maple','and Lily\'s board came with her');
   assert.equal(g.$('desktopLevel').value,'2');
-  assert.equal(g.$('desktopColour').value,'0','the picker follows the colour actually being played');
+  assert.equal(g.read('humanIdx'),1,'a whole step keeps the colour: Level 2 as Red');
+  assert.equal(g.$('desktopColour').value,'1','and the picker follows the colour actually being played');
   const saved=JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1'));
-  assert.equal(saved.board,'walnut','so a relaunch does not pull the level back to the board\'s rung');
+  assert.equal(saved.board,'maple','so a relaunch does not pull the level back to the board\'s rung');
   assert.equal(saved.level,2);
   assert.deepEqual(g.errors,[]);
 });
@@ -908,13 +918,13 @@ test('the default route walks the ladder a rung at a time, and a manual pick tur
   assert.equal(lv.value,'1','a first launch starts at the bottom, not at a fixed rung');
   g.read('markLadderCleared(1,0)');
   D.recordResult({humanWon:true,vsAI:true,online:false,lab:false,level:0});
-  assert.ok(D.boards.find(b=>b.id==='walnut').unlocked,'Walnut is open on one colour...');
+  assert.ok(D.boards.find(b=>b.id==='maple').unlocked,'Maple is open on one colour...');
   assert.equal(lv.value,'1','...but the route still wants Yellow as Red first');
   assert.equal(D.board,'yellow');
   g.read('markLadderCleared(1,1)');
   D.recordResult({humanWon:true,vsAI:true,online:false,lab:false,level:0});
   assert.equal(lv.value,'2','rung finished on both colours -- now it steps up');
-  assert.equal(D.board,'walnut','and the board steps up with it');
+  assert.equal(D.board,'maple','and the board steps up with it');
   // A pick that is NOT the suggestion is a skip: from here the menu leaves the player alone.
   g.read('markLadderCleared(2,0);markLadderCleared(2,1);markLadderCleared(3,0);');
   D.recordResult({humanWon:true,vsAI:true,online:false,lab:false,level:2});
@@ -935,13 +945,13 @@ test('Reset progress puts the profile back to a first launch and keeps the prefe
     tauLadderRenumberedV1: '1',
     tauRankedLevel: '6',
     tauDesktopProgress: '{"played":14,"wins":9,"topLevel":3}',
-    tauDesktopSettingsV1: '{"level":3,"colour":1,"board":"dojo","quality":"high","keys":{"pin1":"q"}}',
+    tauDesktopSettingsV1: '{"level":3,"colour":1,"board":"ebony","quality":"high","keys":{"pin1":"q"}}',
     tauSavedReplays: '[{"id":"x"}]',
   };
   const g=await game('?steam=1&premium=1', storage);t.after(g.close);
   const D=g.w.tauDesktop;
   const by=id=>D.boards.find(b=>b.id===id);
-  assert.ok(by('slate').unlocked,'three rungs in, Flint\'s board is open');
+  assert.ok(by('walnut').unlocked,'three rungs in, Hazel\'s board is open');
   assert.equal(g.$('desktopLevel').value,'3');
   g.$('desktopSettings').click(); g.tick();
   g.$('desktopResetProgress').click(); g.tick();
@@ -955,7 +965,7 @@ test('Reset progress puts the profile back to a first launch and keeps the prefe
   assert.equal(g.w.localStorage.getItem('tauRankedLevel'),null,'and the rank with it');
   assert.equal(g.w.localStorage.getItem('tauSavedReplays'),null,'and the saved games');
   assert.equal(D.progress.played,0); assert.equal(D.progress.wins,0); assert.equal(D.progress.topLevel,0);
-  assert.ok(by('yellow').unlocked && !by('walnut').unlocked,'back to one board');
+  assert.ok(by('yellow').unlocked && !by('maple').unlocked,'back to one board');
   assert.equal(D.board,'yellow');
   assert.equal(g.$('desktopLevel').value,'1','and to Level 1, as Blue');
   assert.equal(g.$('desktopColour').value,'0');
@@ -1085,6 +1095,8 @@ test('the corner and two-feet slides show a guide, and following it meets the go
     const guide=g.read(`htpState('${key}').guide`);
     assert.ok(guide && guide.pivot>=0 && Math.abs(guide.dir)===1 && guide.angle>0, `${key}: a foot to hold and a way to swing`);
     // Do exactly what the guide shows: hold that foot, swing that way, that far.
+    // (The slide only COMPLETES when the swing is let go -- see endTurnUp -- so what the swing
+    // itself has to reach is the goal.)
     const done=g.read(`(()=>{ const st=htpState('${key}'); st.pinned=${guide.pivot}; st.dragging=true;
       const step=1.5*Math.PI/180; for (let a=0; a<${guide.angle}+1e-9; a+=step) htpTrySwing(st,'${key}',${guide.dir}*step);
       const beforeRelease={goal:st.goalReached,done:st.done};
@@ -2456,7 +2468,7 @@ test('Settings offers the languages in their own names and applies one straight 
   assert.equal(g.$('desktopLanguage').value,'de','with the choice still showing');
   assert.equal(g.$('desktopPlay').textContent,'Spielen','and the menu behind it is re-labelled');
   assert.equal(g.$('desktopSettings').textContent,'Einstellungen');
-  assert.equal(g.$('desktopLevel').options[3].textContent,'Stufe 4 · Flint',
+  assert.equal(g.$('desktopLevel').options[3].textContent,'Stufe 4 · Hazel',
     'including the opponent list, built once at load -- the rung is translated, the name is a name');
   assert.equal(g.w.localStorage.getItem('tauLang'),'de','stored under the web app\'s own key');
   assert.deepEqual(g.errors,[]);
@@ -2621,14 +2633,13 @@ test('a guided slide rewinds when you take the foot it did not point at',async t
   assert.equal(typeof pivot,'number','the slide points at a foot');
   g.read(`const st=htpState('double'); st.lastT=1; st.pinned=null;`);
   g.read(`htpState('double').p.rot=0.9;`);   // a pose the rewind must undo
-  // Now pin the WRONG foot through the same path the pointer uses.
+  // Now press the WRONG foot through the same path the pointer uses.
   const wrong=(pivot+1)%3;
-  g.read(`(() => { const st=htpState('double'); st.pinned=null; st.dragging=false; st.locked=false;
-    const cv=document.getElementById('htpBigCanvas'); cv.width=cv.height=600;
-    cv.getBoundingClientRect=()=>({left:0,top:0,width:600,height:600});
-    const f=st.p.feet()[${wrong}], sc=htpMap(600,600).sc;
-    cv.dispatchEvent(new window.MouseEvent('pointerdown',{bubbles:true,button:0,
-      clientX:300+f.x*sc,clientY:300+f.y*sc})); })()`);
+  g.read(`(() => { const cv=document.getElementById('htpBigCanvas'), st=htpState('double');
+    cv.getBoundingClientRect = () => ({ left:0, top:0, width:cv.width, height:cv.height });
+    const sc=htpMap(cv.width, cv.height).sc, f=st.p.feet()[${wrong}];
+    const ev=new window.MouseEvent('pointerdown',{bubbles:true, button:0, clientX:f.x*sc+cv.width/2, clientY:f.y*sc+cv.height/2});
+    ev.pointerId=1; cv.dispatchEvent(ev); })()`);
   const after=JSON.parse(g.read(`JSON.stringify({pinned:htpState('double').pinned,
     rot:+htpState('double').p.rot.toFixed(3), done:htpState('double').done})`));
   assert.equal(after.pinned,null,'the wrong foot is not taken');
@@ -2853,7 +2864,11 @@ test('a win or loss on Steam routes exactly where the web one does',async t=>{
   g.read("window.__desk=window.tauDesktop; window.tauDesktop=null; renderGameOverSheet();");
   const onWeb=labels();
   g.read("window.tauDesktop=window.__desk;");
-  assert.deepEqual(onSteam,onWeb,`Steam offers what the web offers (steam ${onSteam.join('/')} vs web ${onWeb.join('/')})`);
+  // (Steam names who is on the next rung where the web says its number, so compare past the name.)
+  const norm=ls=>ls.map(l=>l.replace(/: .+ as /,': _ as '));
+  assert.deepEqual(norm(onSteam),norm(onWeb),`Steam offers what the web offers (steam ${onSteam.join('/')} vs web ${onWeb.join('/')})`);
+  assert.ok(onSteam.some(l=>/Up a level: Hazel as Blue/.test(l)),'a whole step, to whoever is next');
+  assert.ok(onSteam.some(l=>/Half step up: Corvin as Red/.test(l)),'or half of one: the other colour here');
   // Which for a cleared level means the mode's real routing, not a hand-rolled short list.
   assert.ok(onSteam.some(l=>/Red/.test(l)),'including playing the level again as the other colour');
   assert.ok(onSteam.some(l=>/Level/i.test(l)),'and the levels screen');
@@ -3335,5 +3350,122 @@ test('a hand on the camera clears the settle, and a long frame does not fling it
   assert.ok(Number.isFinite(apart)&&apart<6,
     `one long frame lands where fifteen short ones do (${apart.toFixed(2)} apart)`);
   assert.ok(Number.isFinite(step(1/60)),'and the frame after the hitch is still a number');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the Levels list shows who is on each rung and their board, and picking one brings the board',async t=>{
+  const g=await game(undefined,{tauLadder:'{"b":{"1":1,"2":1,"3":1},"r":{"1":1,"2":1}}', tauLadderRenumberedV1:'1'});t.after(g.close);
+  const D=g.w.tauDesktop;
+  g.read('openLadderMenu()');
+  const rungs=[...g.w.document.querySelectorAll('#ladderList .ladderRung')];
+  const r=n=>rungs.find(e=>e.dataset.n===String(n));
+  assert.match(r(1).textContent,/Wren/,'a name, not just a number');
+  assert.match(r(3).textContent,/Corvin.*Level 3 · Ebony/,'with the rung and the board under it');
+  assert.ok(r(3).querySelector('img.lboard'),'and the board itself');
+  // Mid-match, from the list: the board follows the level.
+  g.read('startLadderLevel(0,0)'); g.tick();
+  assert.equal(D.board,'yellow');
+  g.read('openLadderMenu()');
+  [...g.w.document.querySelectorAll('#ladderList .ladderRung')].find(e=>e.dataset.n==='4').click(); g.tick();
+  assert.equal(g.read('ladderLevel'),3);
+  assert.equal(D.board,'walnut','Hazel\'s board came with her');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the plain web Levels list, with nobody on its rungs, still reads by number',async t=>{
+  const g=await game('');t.after(g.close);
+  g.read('openLadderMenu()');
+  const first=g.w.document.querySelector('#ladderList .ladderRung');
+  assert.match(first.textContent,/Level \d+/);
+  assert.ok(!first.querySelector('img.lboard'));
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a board chosen over the opponent\'s own survives a relaunch, and the next opponent brings theirs back',async t=>{
+  const ladder='{"b":{"1":1,"2":1,"3":1},"r":{"1":1,"2":1,"3":1}}';
+  const g=await game(undefined,{tauLadder:ladder, tauLadderRenumberedV1:'1'});t.after(g.close);
+  const D=g.w.tauDesktop, lv=g.$('desktopLevel');
+  lv.value='2'; lv.dispatchEvent(new g.w.Event('change'));
+  g.$('desktopSettings').click(); g.tick();
+  const sel=g.$('desktopBoard'); sel.value='walnut'; sel.onchange({target:sel});
+  assert.equal(D.board,'walnut'); assert.equal(lv.value,'2','still Lily');
+  const storage=Object.fromEntries(Object.keys(g.w.localStorage).map(k=>[k,g.w.localStorage.getItem(k)]));
+  const again=await game(undefined,storage);t.after(again.close);
+  assert.equal(again.w.tauDesktop.board,'walnut','the chosen board comes back');
+  assert.equal(again.$('desktopLevel').value,'2','and so does the opponent -- the board does not re-pick them');
+  // Starting that opponent keeps the override; moving to a different one brings their board.
+  again.read('startLadderLevel(1,0)'); again.tick();
+  assert.equal(again.w.tauDesktop.board,'walnut','Lily, on Walnut, as chosen');
+  again.read('backToMenu(); startLadderLevel(2,0)'); again.tick();
+  assert.equal(again.w.tauDesktop.board,'ebony','a different opponent comes with their own board');
+  assert.deepEqual(g.errors,[]); assert.deepEqual(again.errors,[]);
+});
+
+test('a ladder loss drops half a step, with the rematch beside it',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  const sheet=(lvl,colour,won)=>{ g.read(`ladderLevel=${lvl}; humanIdx=${colour}; vsAI=true; rankedMode=false; labActive=false;
+    G.over=true; G.winner=${won?colour:1-colour}; replayFrames=[]; document.getElementById('game').style.display='flex';
+    renderGameOverSheet();`);
+    return [...g.w.document.querySelectorAll('#modalBtns button')].map(b=>b.textContent.trim()); };
+  let b=sheet(3,0,false);   // lost Level 4 as Blue
+  assert.equal(b[0],'Half step down: Corvin as Red','half a step down is Level 3 as Red');
+  assert.ok(b.includes('Rematch'));
+  b=sheet(3,1,false);       // lost Level 4 as Red
+  assert.equal(b[0],'Half step down: Hazel as Blue','from Red it is the same level as Blue');
+  b=sheet(0,0,false);
+  assert.ok(!b.some(l=>/Half step down/.test(l)),'Level 1 as Blue is the floor');
+  b=sheet(12,1,true);
+  assert.ok(!b.some(l=>/Up a level|Half step up/.test(l)),'and the top has nowhere higher to go');
+  // The step actually starts that rung and colour.
+  sheet(3,0,false);
+  [...g.w.document.querySelectorAll('#modalBtns button')][0].click(); g.tick();
+  assert.equal(g.read('ladderLevel'),2); assert.equal(g.read('humanIdx'),1);
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a camera the player just let go of stays put, and the lean back comes in slowly',async t=>{
+  const g=await game();t.after(g.close);
+  localMatch(g);
+  g.read(`renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio(){},shadowMap:{},render(){},
+      setRenderTarget(){},getRenderTarget(){return null;}};
+    scene=new THREE.Scene();
+    camera=new THREE.PerspectiveCamera(38,1.6,1,2000);
+    controls={mouseButtons:{},target:new THREE.Vector3(),update(){},addEventListener(){}};
+    camManualSet=false; for(let i=0;i<400;i++) tauDesktop.updateCamera(1/60);`);
+  // The player drags it well off the game's framing and lets go: camIdleT restarts, as 'end' does.
+  const trace=JSON.parse(g.read(`(()=>{
+    camManualPos.copy(camera.position).add(new THREE.Vector3(200,80,-150)); camManualTgt.copy(controls.target);
+    camera.position.copy(camManualPos); camManualSet=true; camDragging=false; camIdleT=0;
+    const start=camera.position.clone(), out=[];
+    for(let i=1;i<=600;i++){ camIdleT+=1/60; tauDesktop.updateCamera(1/60); out.push(camera.position.distanceTo(start)); }
+    return JSON.stringify(out); })()`));
+  const at=s=>trace[Math.round(s*60)-1];
+  assert.ok(at(1.1)<1e-9,'not a hair of movement while it is still settling: '+at(1.1));
+  assert.ok(at(1.5)<0.5,'and only a creep just after: '+at(1.5).toFixed(3));
+  assert.ok(at(10)>5,'but it does lean towards the game in the end: '+at(10).toFixed(1));
+  // No jolt anywhere: the step from one frame to the next never jumps.
+  let worst=0; for(let i=2;i<trace.length;i++) worst=Math.max(worst,Math.abs((trace[i]-trace[i-1])-(trace[i-1]-trace[i-2])));
+  assert.ok(worst<0.05,'speed changes smoothly (worst frame-to-frame change '+worst.toFixed(4)+')');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('on the sumo board the lines are straw bales, and they go when the board does',async t=>{
+  const g=await game('?steam=1&premium=1',{tauDesktopSettingsV1:'{"board":"sumo","levelSkipped":true}',
+    tauLadder:'{"b":{"1":1,"2":1,"3":1,"4":1,"5":1,"6":1,"7":1,"8":1},"r":{}}', tauLadderRenumberedV1:'1'});t.after(g.close);
+  const D=g.w.tauDesktop;
+  g.read(`if (!scene) scene = new THREE.Scene();`);
+  D.tick(1/60);
+  assert.equal(D.board,'sumo');
+  assert.ok(D.tawara,'the bales are laid');
+  assert.equal(D.tawara.children.length, g.read('CFG.rings.length + CFG.sideArcs.length'),'one run of bales per printed line');
+  // Every bale sits on its line: averaged round the straw, the first ring is at radius rings[0].
+  const r0=g.read(`(()=>{ const p=tauDesktop.tawara.children[0].geometry.attributes.position; let s=0,n=0;
+    for (let i=0;i<p.count;i++){ s+=Math.hypot(p.getX(i),p.getZ(i)); n++; } return s/n; })()`);
+  assert.ok(Math.abs(r0-g.read('CFG.rings[0]'))<0.5,'bale centre follows the ring: '+r0.toFixed(2));
+  g.$('desktopSettings').click(); g.tick();
+  const sel=g.$('desktopBoard'); sel.value='yellow'; sel.onchange({target:sel});
+  D.tick(1/60);
+  assert.equal(D.tawara,null,'and they are gone on any other board');
   assert.deepEqual(g.errors,[]);
 });

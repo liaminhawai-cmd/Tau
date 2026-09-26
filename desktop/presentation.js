@@ -107,32 +107,36 @@
   // instead of the old mixture of "win 3 games" and "play 20 games" counters, which had nothing to
   // do with who you were playing.
   //
-  // Thirteen boards for thirteen rungs, in order: Yellow opens the ladder, Walnut through Colossus
-  // are the eleven proven L1-L11 rungs unmoved (see index.html's RUNG_TO_AI_LADDER -- every board's
-  // actual opponent DIFFICULTY is unchanged by where it sits in this list), and Ebony closes it as
-  // the Committee. Dark is the one board still deliberately NOT in this list -- the last reserved
-  // seat, for whichever future rung claims it -- and it keeps its old count-based unlock until then.
+  // Thirteen boards for thirteen rungs, Yellow first and Colossus last. Where a board sits is a
+  // choice of scenery: every rung's actual opponent DIFFICULTY is set by its number alone (see
+  // index.html's RUNG_TO_AI_LADDER), so moving a board up or down this list never makes anyone
+  // easier or harder. Dark is the one board still deliberately NOT in this list -- the last
+  // reserved seat, for whichever future rung claims it -- and it keeps its old count-based unlock.
   // (See index.html's LADDER_N comment.)
   // Each rung has a board and somebody who lives on it. The opponent is a CHARACTER on the board
-  // rather than a new name for it: in the ladder you are challenging Sifu, in Settings you are
+  // rather than a new name for it: in the ladder you are challenging Sensei, in Settings you are
   // picking the Dojo, and the Dojo never stops being called the Dojo. That is what keeps the two
   // from disagreeing the moment somebody goes back to play an earlier board again.
   // Names are names -- they are not routed through t(), the same as the board names beside them.
+  // The order is the FACES only. Rung n always plays RUNG_TO_AI_LADDER[n-1], easiest at 1 and
+  // hardest at 13, whatever board and name sit on it -- this list decides who you meet where, not
+  // how hard they are. (The voting Committee AI is still the top rung's brain, now Titan's.)
   const LADDER_BOARDS = [
     { board:'yellow',   opponent:'Wren' },       // the plain classic: nothing to read but the rules themselves
-    { board:'walnut',   opponent:'Hazel' },      // the club set: a first, patient opponent
-    { board:'dojo',     opponent:'Sifu' },
+    { board:'maple',    opponent:'Lily' },
+    { board:'ebony',    opponent:'Corvin' },       // corvus: the raven, black as the board
+    { board:'walnut',   opponent:'Hazel' },      // the club set
     { board:'slate',    opponent:'Flint' },
-    { board:'maple',    opponent:'Lily' },       // the bright board straight after the dark one
     { board:'cosy',     opponent:'Vesper' },     // whoever has owned this heirloom table for forty years
-    { board:'sumo',     opponent:'Rikishi' },    // 力士
+    { board:'dojo',     opponent:'Sensei' },
     { board:'noir',     opponent:'Marlowe' },
-    { board:'math',     opponent:'Escher' },
-    { board:'alien',    opponent:'Chorus' },     // it is not one of anything
+    { board:'sumo',     opponent:'Rikishi' },    // 力士
     { board:'marble',   opponent:'Alabaster' },
-    { board:'colossus', opponent:'Titan' },      // the arena, formerly last
-    { board:'ebony',    opponent:'The Committee' },   // three real players sharing one move -- see index.html's committeePlanFor
+    { board:'math',     opponent:'Euclid' },     // compass and straightedge
+    { board:'alien',    opponent:'Chorus' },     // it is not one of anything
+    { board:'colossus', opponent:'Titan' },      // the arena, at the top
   ];
+
   // A BOARD WITH A RUNG IS EARNED BY CLIMBING TO THAT RUNG, AND BY NOTHING ELSE. Every board used
   // to carry a play-count or win-count as a second way in as well, kept so nobody lost a board the
   // rule change caught them mid-way through. Running both at once opened boards out of ORDER, which
@@ -144,8 +148,8 @@
   function boardRung(id) { const i = LADDER_BOARDS.findIndex(r => r.board === id); return i < 0 ? 0 : i + 1; }
   function rungBoard(n) { return (LADDER_BOARDS[n-1] || LADDER_BOARDS[0]).board; }
   function rungName(n) { return (LADDER_BOARDS[n-1] || LADDER_BOARDS[0]).opponent; }
-  // "Dojo · Sifu" wherever the BOARD is what is being picked, so the name in an unlock line
-  // ("beat Sifu as Red") is never a person the player cannot place.
+  // "Dojo · Sensei" wherever the BOARD is what is being picked, so the name in an unlock line
+  // ("beat Sensei as Red") is never a person the player cannot place.
   function boardLabel(b) { const r = boardRung(b.id); return r ? b.name + ' · ' + rungName(r) : b.name; }
   function rungClearedOn(n, colour) {
     return typeof ladderCleared === 'function' && !!ladderCleared(n, colour);
@@ -216,7 +220,7 @@
     if (rung > 1) {
       // What is actually being waited on is the rung below on EITHER colour, so that is what the
       // line asks for. It names the nearest locked rung's opponent, not this one's neighbour, when
-      // the player is looking further up than one board: "beat Sifu" is a thing to go and do,
+      // the player is looking further up than one board: "beat Sensei" is a thing to go and do,
       // "beat Titan" three boards before you can reach him is not.
       const below = Math.min(rung - 1, ladderReach());
       return tf('beat {name}', { name: rungName(below) });
@@ -310,6 +314,7 @@
     settings.colour = 0;
     if ($('desktopColour')) $('desktopColour').value = '0';
     settings.levelSkipped = false;   // back on the default route too
+    settings.boardOverride = false;
     setLadderLevel(1, true);   // rung 1, its board, and the picker -- all three, as ever
     drawLadderPicker();        // every other rung is locked again
     showToast(`<p class="desktop-unlock">${esc(t('Progress reset.'))}</p>`);
@@ -395,7 +400,7 @@
   // a new player is pointed at Level 1 and walked up. levelSkipped remembers that the player chose
   // a rung that was NOT the one being suggested -- from then on the menu leaves their choice alone
   // instead of steering them back down after every match.
-  const settings = { level:1, levelSkipped:false, colour:0, quality:'balanced', qualityPicked:false, board:'walnut', padScheme:'triggers', padBrand:'auto',
+  const settings = { level:1, levelSkipped:false, boardOverride:false, colour:0, quality:'balanced', qualityPicked:false, board:'walnut', padScheme:'triggers', padBrand:'auto',
     invertCamY:false, keys:{...DEFAULT_KEYS}, rayTrace:false,
     reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches, haptics:true, fullscreen:true };
   settings.level = ladderStep();   // outside the try: a corrupt settings blob must not lose the route
@@ -418,6 +423,10 @@
       settings.level = rung ? Math.min(rung, ladderReach())
         : (Number.isInteger(saved.level) && saved.level >= 1 && saved.level <= LADDER_N ? Math.min(saved.level, ladderReach()) : ladderStep());
     }
+    // A board chosen over the opponent's own: the opponent is then the saved rung, not the board's.
+    if (saved.boardOverride === true && Number.isInteger(saved.level) && saved.level >= 1 && saved.level <= ladderReach()) {
+      settings.boardOverride = true; settings.level = saved.level;
+    }
     if (saved.colour === 0 || saved.colour === 1) settings.colour = saved.colour;
     // qualityPicked did not exist before this build, so a save from before it has to be read for
     // intent. 'high' and 'ultra' are tiers the guess never produces on its own, so a save holding
@@ -437,7 +446,7 @@
   settings.rayTrace = settings.quality === 'ultra';   // one switch, not two that can disagree
   // A player on the default route gets the board that goes with the rung they are being pointed at.
   // One who has skipped keeps whatever board they last chose -- that is the free-play half.
-  if (!settings.levelSkipped && isUnlocked(rungBoard(settings.level))) settings.board = rungBoard(settings.level);
+  if (!settings.levelSkipped && !settings.boardOverride && isUnlocked(rungBoard(settings.level))) settings.board = rungBoard(settings.level);
   const finish = () => BOARD_FINISHES.find(b => b.id === settings.board) || BOARD_FINISHES[0];
   const finishOf = id => BOARD_FINISHES.find(b => b.id === id) || BOARD_FINISHES[0];
   const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -692,8 +701,8 @@
   function drawOpponentTile() {
     const el = $('desktopOpponent'); if (!el) return;
     const n = settings.level, fin = finishOf(rungBoard(n));
-    const icon = boardIconURL(fin, 68);
-    el.innerHTML = (icon ? `<img src="${icon}" alt="" width="34" height="34">` : '<span class="noicon"></span>')
+    const icon = boardIconURL(fin, 112);
+    el.innerHTML = (icon ? `<img src="${icon}" alt="" width="56" height="56">` : '<span class="noicon"></span>')
       + `<span class="who"><span class="name">${esc(rungName(n))}${clearMarks(n)}</span>`
       + `<span class="rung">${esc(tf('Level {n}', { n }))} · ${esc(fin.name)}</span></span>`;
     el.setAttribute('aria-label', tf('Level {n} · {name}', { n, name: rungName(n) }));
@@ -705,10 +714,10 @@
       const n = i + 1, open = isUnlocked(r.board), seen = rungRevealed(n);
       // A rung you cannot see yet keeps its slot and its shape -- so the ladder is still visibly
       // eleven boards long -- and gives up everything else: the face, the finish, the name.
-      const fin = seen ? finishOf(r.board) : SECRET_FIN, icon = boardIconURL(fin, 120);
+      const fin = seen ? finishOf(r.board) : SECRET_FIN, icon = boardIconURL(fin, 168);
       return `<button type="button" class="desktop-rung${seen ? '' : ' secret'}" data-n="${n}"${open ? '' : ' disabled'}`
         + `${n === settings.level ? ' aria-current="true"' : ''}>`
-        + (icon ? `<img src="${icon}" alt="" width="60" height="60">` : '<span class="noicon"></span>')
+        + (icon ? `<img src="${icon}" alt="" width="84" height="84">` : '<span class="noicon"></span>')
         + `<span class="name">${esc(seen ? r.opponent : SECRET_NAME)}</span>`
         + `<span class="rung">${esc(tf('Level {n}', { n }))}${seen ? ' · ' + esc(fin.name) : ''}</span>`
         + clearMarks(n)
@@ -743,32 +752,45 @@
     $('desktopLevel').value = String(settings.level);
     drawOpponentTile();
   }
-  // One choice, two places to make it: the home menu names the opponent, Settings names the board,
-  // and picking either moves the other. They can never disagree, which is what stops a player from
-  // free-playing an unlocked board against an opponent who does not live on it.
+  // Picking an opponent brings their board. Picking a BOARD is an override on top of that: the
+  // opponent stays who they were and plays on the board you chose (settings.boardOverride), until
+  // you pick an opponent again or the ladder moves you to a different one -- at which point their
+  // own board comes back with them.
   // manual: the PLAYER moved the picker, as opposed to this layer mirroring where the game's own
   // result sheet just sent them. Only a player's pick can turn the default route off, and only by
   // landing somewhere other than the rung they were already being pointed at -- choosing the
-  // suggestion is agreeing with it, not skipping.
+  // suggestion is agreeing with it, not skipping. A player's pick of an opponent also drops any
+  // board override, even picking the same opponent again: that is how you get their board back.
   function setLadderLevel(n, repaint, manual) {
     if (manual && n !== ladderStep()) settings.levelSkipped = true;
+    if (manual || n !== settings.level) settings.boardOverride = false;
     settings.level = n;
     const id = rungBoard(n);
-    if (isUnlocked(id) && settings.board !== id) {
+    if (!settings.boardOverride && isUnlocked(id) && settings.board !== id) {
       settings.board = id;
       if (repaint) { applyMaterials(); applyTheme(); render(); }
       if ($('desktopBoard')) $('desktopBoard').value = id;
     }
     saveSettings();
     $('desktopLevel').value = String(settings.level);
+    if ($('desktopSettingsOpponent')) $('desktopSettingsOpponent').value = String(settings.level);
     drawOpponentTile();
+  }
+  // A board picked by hand, from Settings or the board key. Only the board: whoever you are
+  // playing keeps playing, now on this. Picking their own board again is simply no override.
+  function pickBoard(id) {
+    settings.board = id;
+    settings.boardOverride = boardRung(id) !== settings.level;
+    saveSettings();
+    if ($('desktopBoard')) $('desktopBoard').value = id;
+    applyMaterials(); applyTheme(); render();
   }
   // Back on the menu, show the board the route is pointing at. recordResult moved the rung while
   // the result sheet was still up and deliberately did not repaint; this is where that catches up,
   // over the menu, where a board changing is what the menu is for. A player who has skipped keeps
   // the board they chose -- this never overrides a free-play pick.
   function routeToMenuBoard() {
-    if (settings.levelSkipped) return;
+    if (settings.levelSkipped || settings.boardOverride) return;
     const id = rungBoard(settings.level);
     if (settings.board === id || !isUnlocked(id)) return;
     settings.board = id; saveSettings();
@@ -777,34 +799,21 @@
   }
   // WALK THE BOARDS YOU HAVE EARNED, without leaving the board to do it. Settings still has the
   // full list with its unlock lines, which is where you go to see what is still shut; this is the
-  // quick way round the ones already open, on a key and on a controller button.
-  // On the menu the opponent comes with the board, exactly as picking one in Settings does -- a
-  // ladder board is somebody's board. Inside a match it does not: you are already playing a named
-  // opponent, and re-pointing the ladder underneath a game in progress would be a change nobody
-  // asked for. There the look changes and the match carries on.
+  // quick way round the ones already open, on a key and on a controller button. A board picked
+  // this way is an override like one picked in Settings: the opponent stays who they were.
   function cycleBoard(step) {
     const open = BOARD_FINISHES.filter(b => isUnlocked(b.id));
     if (open.length < 2) return;
     const at = open.findIndex(b => b.id === settings.board);
     const next = open[((at < 0 ? 0 : at + step) % open.length + open.length) % open.length];
     if (!next || next.id === settings.board) return;
-    settings.board = next.id;
-    if (!inMatch()) {
-      const rung = boardRung(next.id);
-      // Walking the boards by hand is a free-play pick like any other, so it switches the default
-      // route off rather than being quietly undone after the next match.
-      if (rung) { if (rung !== ladderStep()) settings.levelSkipped = true;
-                  settings.level = rung; if ($('desktopLevel')) $('desktopLevel').value = String(rung); drawOpponentTile(); }
-    }
-    saveSettings();
-    if ($('desktopBoard')) $('desktopBoard').value = next.id;
-    applyMaterials(); applyTheme(); render();
-    showToast(`<p class="desktop-unlock">${esc(boardLabel(next))}</p>`);
+    pickBoard(next.id);
+    showToast(`<p class="desktop-unlock">${esc(next.name)}</p>`);
   }
   // On boot the BOARD is the more specific choice: a ladder board names its opponent, so the
   // opponent follows it. A reserved board (one still waiting for its rung) names nobody, and the
   // opponent stays whatever it was.
-  if (boardRung(settings.board)) settings.level = boardRung(settings.board);
+  if (!settings.boardOverride && boardRung(settings.board)) settings.level = boardRung(settings.board);
   drawLadderPicker();
   $('desktopColour').value = String(settings.colour);
   $('desktopLevel').addEventListener('change', e => setLadderLevel(Number(e.target.value), true, true));
@@ -1302,7 +1311,9 @@
     const fullscreen = window.tauSteam?.setFullscreen;
     showModal(t('Settings'), `<label class="desktop-setting desktop-volume">${esc(t('Sound'))} <output id="desktopVolumeValue">${userVol}%</output><input id="desktopVolume" aria-label="${esc(t('Sound volume'))}" type="range" min="0" max="200" step="5" value="${userVol}"></label>
       <label class="desktop-setting">${esc(t('Mute'))}<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
-      <label class="desktop-setting">${esc(t('Board'))}<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${esc(boardLabel(b))}</option>`:boardRevealed(b.id)?`<option value="${b.id}" disabled>${esc(boardLabel(b))} · ${esc(unlockText(b.id))}</option>`:`<option value="${b.id}" disabled>${esc(SECRET_NAME)} · ${esc(t('keep climbing'))}</option>`).join('')}</select></label>
+      <label class="desktop-setting">${esc(t('Opponent'))}<select id="desktopSettingsOpponent"${inMatch() ? ` disabled title="${esc(t('Pick a new opponent from the menu or Levels'))}"` : ''}>${LADDER_BOARDS.map((r, i) => { const n = i + 1;
+        return `<option value="${n}"${isUnlocked(r.board) ? '' : ' disabled'}>${esc(tf('Level {n} · {name}', { n, name: rungRevealed(n) ? r.opponent : SECRET_NAME }))}</option>`; }).join('')}</select></label>
+      <label class="desktop-setting">${esc(t('Board'))}<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${esc(b.name)}</option>`:boardRevealed(b.id)?`<option value="${b.id}" disabled>${esc(boardLabel(b))} · ${esc(unlockText(b.id))}</option>`:`<option value="${b.id}" disabled>${esc(SECRET_NAME)} · ${esc(t('keep climbing'))}</option>`).join('')}</select></label>
       ${testBoards ? '<p class="desktop-result-detail">All boards are open for testing. Type <b>ALLBOARDS</b> on the main menu to restore locks.</p>' : ''}
       <label class="desktop-setting">${esc(t('End turn after dragging'))}<select id="desktopMoveCommitMode"><option value="release">${esc(turnLabels.release)}</option><option value="enter">${esc(turnLabels.confirm)}</option></select></label>
       <label class="desktop-setting">${esc(t('Graphics'))}<select id="desktopQuality">${qualityOptions()}</select></label>
@@ -1323,16 +1334,15 @@
     // rebuilt right after so the player is not left reading the old language's Settings.
     $('desktopLanguage').onchange = e => { setLang(e.target.value); openSettings(done); };
     $('desktopBoard').value = settings.board;
+    $('desktopSettingsOpponent').value = String(settings.level);
+    $('desktopSettingsOpponent').onchange = e => {
+      const n = Number(e.target.value);
+      if (!isUnlocked(rungBoard(n))) { e.target.value = String(settings.level); return; }
+      setLadderLevel(n, true, true);   // their board comes with them
+    };
     $('desktopBoard').onchange = e => {
       if (!isUnlocked(e.target.value)) { e.target.value = settings.board; return; }
-      settings.board=e.target.value; saveSettings();
-      // ...and the opponent comes with it: a ladder board is somebody's board.
-      const rung = boardRung(settings.board);
-      if (rung) { if (rung !== ladderStep()) settings.levelSkipped = true;   // a free-play pick, kept
-                  settings.level = rung; saveSettings(); if ($('desktopLevel')) $('desktopLevel').value = String(rung); drawOpponentTile(); }
-      applyMaterials();   // rebakes the 3D surface for the new finish
-      applyTheme();       // repaints the flat board from the same entry's palette
-      render();
+      pickBoard(e.target.value);       // just the board: the opponent stays
     };
     if ($('desktopResetProgress')) $('desktopResetProgress').onclick = confirmResetProgress;
     $('desktopInvertY').onchange = e => { settings.invertCamY=e.target.checked; saveSettings(); };
@@ -2424,6 +2434,7 @@
     pos.copy(target).add(driftOff);
   }
   const MANUAL_PULL = 0.2;   // how far a player-placed view leans towards the game's own framing
+  const CAM_LEAN_RAMP = 4;   // seconds over which that lean fades in, once the player has let go
   // SPRINGY BETWEEN MOVES. The settle was a plain exponential ease -- each frame the camera closed
   // a fixed FRACTION of its remaining distance to the goal. That makes the position smooth and the
   // SPEED a direct function of the gap, so the instant the goal moves at all (the turn changes
@@ -2502,10 +2513,21 @@
     easeFallYaw(dt, falling);   // where the camera is walking round to, if something is going over
     const manual = inMatch() && camManualSet && !falling;
     if (manual && settings.reducedMotion) { releaseCamSpring(); return true; }   // asked for no drift: then none
+    // HANDS OFF WHILE THE PLAYER IS STILL AT IT. The lean below used to start the frame the mouse
+    // came up: the camera set off towards the game's framing while OrbitControls was still coasting
+    // it the other way, and it read as the view bouncing back from wherever it was let go. So a
+    // placed view is left completely alone for CAM_SETTLE_T after the last touch, and the lean then
+    // fades in over a few seconds rather than arriving all at once -- the "recentre delay" a
+    // third-person game uses: input always wins, and the automatic camera only returns once you
+    // have stopped, starting from rest.
+    const idle = typeof camIdleT === 'number' ? camIdleT : 1e9;
+    if (manual && idle < CAM_SETTLE_T) { releaseCamSpring(); return true; }
     desiredPose(falling, cameraGoal, targetGoal);
     if (manual) {
-      cameraGoal.lerp(camManualPos, 1 - MANUAL_PULL);
-      targetGoal.lerp(camManualTgt, 1 - MANUAL_PULL);
+      const u = Math.min(1, Math.max(0, (idle - CAM_SETTLE_T) / CAM_LEAN_RAMP)), ease = u * u * (3 - 2 * u);
+      const pull = MANUAL_PULL * ease;
+      cameraGoal.lerp(camManualPos, 1 - pull);
+      targetGoal.lerp(camManualTgt, 1 - pull);
     }
     // ...and then the whole settled pose turns, at full strength whether the view is the game's or
     // the player's own. Applied here rather than inside desiredPose so a manual view drifts too:
@@ -2619,7 +2641,7 @@
     // on a pad that has never been touched by a mouse is the middle of the board. The stick nudged
     // and the pull undid it, over and over, and the camera sat there not moving at all.
     camManualPos.copy(camera.position); camManualTgt.copy(controls.target);
-    camManualSet=true;
+    camManualSet=true; camIdleT=0;
     releaseCamSpring();   // the player has the reins; whatever the settle was doing is over
   }
   // Both input styles need the same preamble: the first movement of a turn adopts a foot as the
@@ -2753,6 +2775,84 @@
       for (const c of clayRimCaps || []) { boardRim.remove(c); c.geometry.dispose(); }
       clayRimCaps = null;
     }
+  }
+  // ---- Sumo: the lines are TAWARA -- straw bales, as a dohyo's ring is ------------------------
+  // A real ring's edge is rice-straw bales, bound with rope and half sunk into the clay. Here every
+  // printed line is one: a flattened straw tube along the ring or arc, broken into bales a few units
+  // long with a rope binding pinching each join, straw fibres twisted along it. The line underneath
+  // (boards.js's sumo paint) is only the bed they sit in. Built once per visit to the board, from
+  // the same CFG geometry the rules read, so a bale sits exactly where the line it stands for is.
+  let tawara = null;
+  function tawaraPath(line) {
+    // Points along one printed line, in board units, ~0.35u apart.
+    const pts = [];
+    if (line.ring) {
+      const n = Math.ceil(2*Math.PI*line.r / 0.35);
+      for (let i = 0; i <= n; i++) { const a = i/n*2*Math.PI; pts.push([line.r*Math.cos(a), line.r*Math.sin(a)]); }
+    } else {
+      const a0 = line.a0*Math.PI/180, a1 = line.a1*Math.PI/180, n = Math.ceil(Math.abs(a1-a0)*line.r / 0.35);
+      for (let i = 0; i <= n; i++) { const a = a0 + (a1-a0)*i/n; pts.push([line.cx + line.r*Math.cos(a), line.cy + line.r*Math.sin(a)]); }
+    }
+    return pts;
+  }
+  function tawaraGeometry(pts, closed) {
+    const RW = 0.8, RH = 0.52, SIDES = 14, BALE = 8.5, y0 = (typeof boardTop !== 'undefined' && boardTop ? boardTop.position.y : -0.05) + 0.12;
+    const len = [0]; for (let i = 1; i < pts.length; i++) len.push(len[i-1] + Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]));
+    const total = len[len.length-1], bales = Math.max(1, Math.round(total / BALE)), bl = total / bales;
+    const pos = [], nor = [], col = [], idx = [];
+    for (let i = 0; i < pts.length; i++) {
+      const j0 = Math.max(0, i-1), j1 = Math.min(pts.length-1, i+1);
+      let tx = pts[j1][0]-pts[j0][0], tz = pts[j1][1]-pts[j0][1]; const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
+      const sx = -tz, sz = tx;                         // sideways, in the board plane
+      const u = (len[i] % bl) / bl;                    // 0..1 along this bale
+      const joint = Math.min(u, 1-u) * bl;             // distance to the nearest join, in units
+      // Each bale is rounded off into its binding: full girth in the middle, pinched at the join.
+      const girth = 1 - 0.22*Math.exp(-joint*joint/0.12) - 0.08*Math.exp(-joint*joint/2.2);
+      const rope = Math.exp(-joint*joint/0.04);        // the rope itself: a darker band at the join
+      for (let k = 0; k <= SIDES; k++) {
+        const th = k/SIDES*Math.PI*2, c = Math.cos(th), sn = Math.sin(th);
+        // Straw: fibres twisted along the bale, catching light as small ridges.
+        const twist = th*3 + len[i]*1.9;
+        const fibre = 1 + 0.045*Math.sin(twist) + 0.02*Math.sin(twist*3.7 + 1.3);
+        const w = RW*girth*fibre, h = RH*girth*fibre;
+        pos.push(pts[i][0] + sx*c*w, y0 + sn*h, pts[i][1] + sz*c*w);
+        // Normal of the ellipse (c*w, s*h) is (c/w, s/h), laid into the frame.
+        let nx = c/w, ny = sn/h; const nl = Math.hypot(nx, ny); nx /= nl; ny /= nl;
+        nor.push(sx*nx, ny, sz*nx);
+        const lit = 0.84 + 0.16*Math.sin(twist) + 0.06*Math.sin(len[i]*7.3 + th*5.0);
+        const cr = (0.50*lit)*(1-rope) + 0.20*rope, cg = (0.38*lit)*(1-rope) + 0.14*rope, cb = (0.19*lit)*(1-rope) + 0.07*rope;
+        col.push(cr, cg, cb);
+      }
+    }
+    const ring = SIDES + 1;
+    for (let i = 0; i < pts.length-1; i++) for (let k = 0; k < SIDES; k++) {
+      const a = i*ring + k, b = a + ring;
+      idx.push(a, b, a+1, a+1, b, b+1);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.setIndex(idx);
+    return g;
+  }
+  function tawaraSync() {
+    const want = settings.board === 'sumo' && typeof scene !== 'undefined' && !!scene && typeof THREE !== 'undefined';
+    if (want === !!tawara) return;
+    if (!want) {
+      tawara.parent && tawara.parent.remove(tawara);
+      tawara.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+      tawara = null; return;
+    }
+    tawara = new THREE.Group(); tawara.name = 'tawara';
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, envMapIntensity: 0.35 });
+    const lines = CFG.rings.map(r => ({ ring: true, r })).concat(CFG.sideArcs.map(a => ({ ...a })));
+    for (const line of lines) {
+      const m = new THREE.Mesh(tawaraGeometry(tawaraPath(line), !!line.ring), mat);
+      m.castShadow = !lowGfx(); m.receiveShadow = !lowGfx();
+      tawara.add(m);
+    }
+    scene.add(tawara);
   }
   function clayAttach() {
     if (typeof boardTop === 'undefined' || !boardTop) return;
@@ -2903,15 +3003,47 @@
     }
     clayUpload();
   }
+  // What the alien membrane is drawn towards (uSeek in boards.js): every foot and each piece's hub.
+  // A point that has stood still grows its pull slowly -- about two thirds of the way in forty
+  // seconds -- and one that moves lets go faster than that and follows at a creep, so a swing
+  // leaves the membrane still reaching for where the piece WAS, for a while.
+  const alienSeek = Array.from({ length: 8 }, () => ({ x: 1e4, z: 1e4, g: 0 }));
+  const seekTmp = new THREE.Vector3();
+  let alienSeekAt = 0;
+  function alienSeekTick(_dt, u) {
+    if (!u.uSeek || typeof tripods === 'undefined') return;
+    // Its own clock: this is measured in tens of seconds of wall time, and must stay so however
+    // the frame rate or the caller's step behaves.
+    const now = performance.now() / 1000, dt = alienSeekAt ? Math.min(1, now - alienSeekAt) : 0;
+    alienSeekAt = now;
+    tripods.forEach((t, pi) => {
+      t.updateMatrixWorld();
+      for (let k = 0; k < 4; k++) {
+        const s = alienSeek[pi*4 + k];
+        if (!t.visible) { s.g *= Math.exp(-dt/3); u.uSeek.value[pi*4 + k].set(s.x, s.z, s.g); continue; }
+        if (k < 3) seekTmp.set(Math.cos(k*2*Math.PI/3)*CFG.footR, 0, Math.sin(k*2*Math.PI/3)*CFG.footR);
+        else seekTmp.set(0, 0, 0);
+        t.localToWorld(seekTmp);
+        if (s.x > 1e3) { s.x = seekTmp.x; s.z = seekTmp.z; }
+        const away = Math.hypot(seekTmp.x - s.x, seekTmp.z - s.z);
+        if (away > 1.5) s.g *= Math.exp(-dt/10);            // it moved: let go
+        else s.g += (1 - s.g) * (1 - Math.exp(-dt/40));     // it rests: grow towards it
+        const follow = 1 - Math.exp(-dt/6);
+        s.x += (seekTmp.x - s.x) * follow; s.z += (seekTmp.z - s.z) * follow;
+        u.uSeek.value[pi*4 + k].set(s.x, s.z, s.g);
+      }
+    });
+  }
   function pollInput(dt) {
     watchFrameRate();
+    tawaraSync();
     clayTick(dt);
     if (detail && detail.uniforms) {
       const u = detail.uniforms, now = performance.now()/1000;
       u.uDetail.value = detailMode === 3 ? 0 : detailMode;   // the membrane is its own pass below
       u.uDetailTime.value = now;
       u.uAlien.value = detailMode === 3 ? 1 : 0; u.uAlienTime.value = now;
-      if (detailMode === 3) alienBreath(now);   // the pieces are of this place too, so they breathe
+      if (detailMode === 3) { alienBreath(now); alienSeekTick(dt, u); }   // the pieces are of this place too, so they breathe
       // Math: every foot's pivot-sweep circle, read off the RENDERED pieces (local foot positions
       // through the mesh's own transform), so the construction glides with the eased swing rather
       // than jumping to the rule engine's end pose.
@@ -3081,10 +3213,23 @@
     // Who lives on rung n. index.html's in-match labels ask through this, so a Steam player is
     // told whose turn it is rather than which number they picked out of a menu.
     opponentName(n){ return rungName(n); },
+    // Rung n as the game's own Levels list draws it: who, on which board, and the board's face.
+    // A rung still out of sight gives nothing away, the same as the opponent sheet.
+    rungFace(n, size){
+      const seen = rungRevealed(n), fin = seen ? finishOf(rungBoard(n)) : SECRET_FIN;
+      return { name: seen ? rungName(n) : SECRET_NAME, board: seen ? fin.name : '', icon: boardIconURL(fin, size || 96) };
+    },
+    // index.html's startLadderLevel calls this for EVERY route into a rung -- the Levels list, the
+    // result sheet, Ranked -- so the board always comes with the opponent. It used to follow only
+    // the routes this layer wrapped itself, and a level picked from the Levels list mid-match
+    // started on whatever board was already down.
+    onLadderLevel(n){ if ($('desktopLevel')) setLadderLevel(n, true); },
     get progress(){return {...progress};},
     recordResult,
     debugDetailMode(){ return detailMode; },
     debugDrift(){ return driftAmt; },
+    get tawara(){ return tawara; },
+    debugAlienSeek(g){ if (g != null) for (const s of alienSeek) s.g = g; return alienSeek.map(s => ({...s})); },
     debugFrame(ms){ noteFrame(ms); },   // feed the frame-rate watcher a measured frame
     debugDetectQuality(){ return detectQuality(); },   // what this device would be started on now
     resize:layout, updateCamera, orbitCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, fallGravity, renderFrame,

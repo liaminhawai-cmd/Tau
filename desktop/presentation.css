@@ -31,7 +31,7 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
   align-items:center; gap:9px; border:0; border-bottom:1px solid var(--edge); background:#151a15;
   color:var(--paper); padding:6px 7px; text-align:left; border-radius:0; transition:color .15s; }
 .desktop-opponent:hover { color:var(--gold); }
-.desktop-opponent img, .desktop-opponent .noicon { width:34px; height:34px; border-radius:50%;
+.desktop-opponent img, .desktop-opponent .noicon { width:56px; height:56px; border-radius:50%;
   display:block; box-shadow:0 1px 5px #0007; background:#222; }
 .desktop-opponent .who { display:grid; gap:1px; min-width:0; }
 .desktop-opponent .name { font-size:14px; display:flex; align-items:center; gap:5px;
@@ -41,14 +41,14 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
 .marks { display:inline-flex; gap:2px; flex:none; }
 .marks svg { width:13px; height:13px; }
 /* The whole ladder, as boards with people on them. */
-.desktop-ladder { display:grid; grid-template-columns:repeat(auto-fill,minmax(116px,1fr)); gap:10px; }
+.desktop-ladder { display:grid; grid-template-columns:repeat(auto-fill,minmax(128px,1fr)); gap:10px; }
 .desktop-rung { display:grid; justify-items:center; align-content:start; gap:5px; padding:11px 6px;
   border:1px solid var(--edge); border-radius:3px; background:#151a15; color:var(--paper);
   transition:border-color .15s,transform .15s; }
 .desktop-rung:hover:not([disabled]) { border-color:var(--gold); transform:translateY(-2px); }
 .desktop-rung[aria-current="true"] { border-color:var(--gold); }
 .desktop-rung[disabled] { opacity:.42; }
-.desktop-rung img, .desktop-rung .noicon { width:60px; height:60px; border-radius:50%; display:block;
+.desktop-rung img, .desktop-rung .noicon { width:84px; height:84px; border-radius:50%; display:block;
   box-shadow:0 2px 8px #0007; background:#222; }
 .desktop-rung .name { font-size:15px; }
 .desktop-rung .rung, .desktop-rung .need { font-size:11px; color:var(--muted); text-align:center; }
@@ -328,7 +328,7 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
   .desktop-home-bottom button { min-height:44px; padding:10px 2px; font-size:15px; }
   .desktop-choices select { padding:14px 14px; font-size:15px; }
   .desktop-opponent { padding:10px 12px 10px 10px; }
-  .desktop-opponent img, .desktop-opponent .noicon { width:40px; height:40px; }
+  .desktop-opponent img, .desktop-opponent .noicon { width:60px; height:60px; }
   .desktop-rung { padding:14px 8px; gap:6px; }
   .desktop-setting select { padding:13px 14px; }
   .desktop-setting input[type="checkbox"] { width:26px; height:26px; }
@@ -344,7 +344,7 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
   .desktop-opponent:active, .desktop-rung:active:not([disabled]) { filter:brightness(1.35); }
   /* Eleven rungs on a phone: smaller tiles so the ladder reads as a ladder and not as a column. */
   .desktop-ladder { grid-template-columns:repeat(auto-fill,minmax(98px,1fr)); gap:8px; }
-  .desktop-rung img, .desktop-rung .noicon { width:52px; height:52px; }
+  .desktop-rung img, .desktop-rung .noicon { width:72px; height:72px; }
 }
 /* A notch at the top and a home indicator at the bottom are not screen. The panel is anchored to
    the bottom edge in this layout, so it is the one that has to move. */
@@ -355,7 +355,7 @@ html.tau-desktop body { background:var(--desk-bg,#101410); color:var(--paper); f
   .tau-desktop #modalBox { padding:24px 20px; max-height:calc(100dvh - 28px); }
   .tau-desktop #modalTitle { font-size:26px; margin-bottom:16px; }
   /* A label beside its control leaves each of them half of a 280px sheet, which is not enough for
-     "Maple · Lily · beat Sifu". Stacked, the control gets the whole width. */
+     "Maple · Lily · beat Sensei". Stacked, the control gets the whole width. */
   .desktop-setting { grid-template-columns:1fr; gap:8px; margin:16px 0; }
   .desktop-setting select { width:100%; }
   .desktop-setting input[type="checkbox"] { justify-self:start; }
