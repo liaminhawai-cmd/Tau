@@ -316,6 +316,7 @@
     settings.colour = 0;
     if ($('desktopColour')) $('desktopColour').value = '0';
     settings.levelSkipped = false;   // back on the default route too
+    settings.boardOverride = false;
     setLadderLevel(1, true);   // rung 1, its board, and the picker -- all three, as ever
     drawLadderPicker();        // every other rung is locked again
     showToast(`<p class="desktop-unlock">${esc(t('Progress reset.'))}</p>`);
@@ -401,7 +402,7 @@
   // a new player is pointed at Level 1 and walked up. levelSkipped remembers that the player chose
   // a rung that was NOT the one being suggested -- from then on the menu leaves their choice alone
   // instead of steering them back down after every match.
-  const settings = { level:1, levelSkipped:false, colour:0, quality:'balanced', qualityPicked:false, board:'walnut', padScheme:'triggers', padBrand:'auto',
+  const settings = { level:1, levelSkipped:false, boardOverride:false, colour:0, quality:'balanced', qualityPicked:false, board:'walnut', padScheme:'triggers', padBrand:'auto',
     invertCamY:false, keys:{...DEFAULT_KEYS}, rayTrace:false,
     reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches, haptics:true, fullscreen:true };
   settings.level = ladderStep();   // outside the try: a corrupt settings blob must not lose the route
@@ -424,6 +425,10 @@
       settings.level = rung ? Math.min(rung, ladderReach())
         : (Number.isInteger(saved.level) && saved.level >= 1 && saved.level <= LADDER_N ? Math.min(saved.level, ladderReach()) : ladderStep());
     }
+    // A board chosen over the opponent's own: the opponent is then the saved rung, not the board's.
+    if (saved.boardOverride === true && Number.isInteger(saved.level) && saved.level >= 1 && saved.level <= ladderReach()) {
+      settings.boardOverride = true; settings.level = saved.level;
+    }
     if (saved.colour === 0 || saved.colour === 1) settings.colour = saved.colour;
     // qualityPicked did not exist before this build, so a save from before it has to be read for
     // intent. 'high' and 'ultra' are tiers the guess never produces on its own, so a save holding
@@ -443,7 +448,7 @@
   settings.rayTrace = settings.quality === 'ultra';   // one switch, not two that can disagree
   // A player on the default route gets the board that goes with the rung they are being pointed at.
   // One who has skipped keeps whatever board they last chose -- that is the free-play half.
-  if (!settings.levelSkipped && isUnlocked(rungBoard(settings.level))) settings.board = rungBoard(settings.level);
+  if (!settings.levelSkipped && !settings.boardOverride && isUnlocked(rungBoard(settings.level))) settings.board = rungBoard(settings.level);
   const finish = () => BOARD_FINISHES.find(b => b.id === settings.board) || BOARD_FINISHES[0];
   const finishOf = id => BOARD_FINISHES.find(b => b.id === id) || BOARD_FINISHES[0];
   const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -697,8 +702,8 @@
   function drawOpponentTile() {
     const el = $('desktopOpponent'); if (!el) return;
     const n = settings.level, fin = finishOf(rungBoard(n));
-    const icon = boardIconURL(fin, 68);
-    el.innerHTML = (icon ? `<img src="${icon}" alt="" width="34" height="34">` : '<span class="noicon"></span>')
+    const icon = boardIconURL(fin, 112);
+    el.innerHTML = (icon ? `<img src="${icon}" alt="" width="56" height="56">` : '<span class="noicon"></span>')
       + `<span class="who"><span class="name">${esc(rungName(n))}${clearMarks(n)}</span>`
       + `<span class="rung">${esc(tf('Level {n}', { n }))} · ${esc(fin.name)}</span></span>`;
     el.setAttribute('aria-label', tf('Level {n} · {name}', { n, name: rungName(n) }));
@@ -710,10 +715,10 @@
       const n = i + 1, open = isUnlocked(r.board), seen = rungRevealed(n);
       // A rung you cannot see yet keeps its slot and its shape -- so the ladder is still visibly
       // eleven boards long -- and gives up everything else: the face, the finish, the name.
-      const fin = seen ? finishOf(r.board) : SECRET_FIN, icon = boardIconURL(fin, 120);
+      const fin = seen ? finishOf(r.board) : SECRET_FIN, icon = boardIconURL(fin, 168);
       return `<button type="button" class="desktop-rung${seen ? '' : ' secret'}" data-n="${n}"${open ? '' : ' disabled'}`
         + `${n === settings.level ? ' aria-current="true"' : ''}>`
-        + (icon ? `<img src="${icon}" alt="" width="60" height="60">` : '<span class="noicon"></span>')
+        + (icon ? `<img src="${icon}" alt="" width="84" height="84">` : '<span class="noicon"></span>')
         + `<span class="name">${esc(seen ? r.opponent : SECRET_NAME)}</span>`
         + `<span class="rung">${esc(tf('Level {n}', { n }))}${seen ? ' · ' + esc(fin.name) : ''}</span>`
         + clearMarks(n)
@@ -748,32 +753,45 @@
     $('desktopLevel').value = String(settings.level);
     drawOpponentTile();
   }
-  // One choice, two places to make it: the home menu names the opponent, Settings names the board,
-  // and picking either moves the other. They can never disagree, which is what stops a player from
-  // free-playing an unlocked board against an opponent who does not live on it.
+  // Picking an opponent brings their board. Picking a BOARD is an override on top of that: the
+  // opponent stays who they were and plays on the board you chose (settings.boardOverride), until
+  // you pick an opponent again or the ladder moves you to a different one -- at which point their
+  // own board comes back with them.
   // manual: the PLAYER moved the picker, as opposed to this layer mirroring where the game's own
   // result sheet just sent them. Only a player's pick can turn the default route off, and only by
   // landing somewhere other than the rung they were already being pointed at -- choosing the
-  // suggestion is agreeing with it, not skipping.
+  // suggestion is agreeing with it, not skipping. A player's pick of an opponent also drops any
+  // board override, even picking the same opponent again: that is how you get their board back.
   function setLadderLevel(n, repaint, manual) {
     if (manual && n !== ladderStep()) settings.levelSkipped = true;
+    if (manual || n !== settings.level) settings.boardOverride = false;
     settings.level = n;
     const id = rungBoard(n);
-    if (isUnlocked(id) && settings.board !== id) {
+    if (!settings.boardOverride && isUnlocked(id) && settings.board !== id) {
       settings.board = id;
       if (repaint) { applyMaterials(); applyTheme(); render(); }
       if ($('desktopBoard')) $('desktopBoard').value = id;
     }
     saveSettings();
     $('desktopLevel').value = String(settings.level);
+    if ($('desktopSettingsOpponent')) $('desktopSettingsOpponent').value = String(settings.level);
     drawOpponentTile();
+  }
+  // A board picked by hand, from Settings or the board key. Only the board: whoever you are
+  // playing keeps playing, now on this. Picking their own board again is simply no override.
+  function pickBoard(id) {
+    settings.board = id;
+    settings.boardOverride = boardRung(id) !== settings.level;
+    saveSettings();
+    if ($('desktopBoard')) $('desktopBoard').value = id;
+    applyMaterials(); applyTheme(); render();
   }
   // Back on the menu, show the board the route is pointing at. recordResult moved the rung while
   // the result sheet was still up and deliberately did not repaint; this is where that catches up,
   // over the menu, where a board changing is what the menu is for. A player who has skipped keeps
   // the board they chose -- this never overrides a free-play pick.
   function routeToMenuBoard() {
-    if (settings.levelSkipped) return;
+    if (settings.levelSkipped || settings.boardOverride) return;
     const id = rungBoard(settings.level);
     if (settings.board === id || !isUnlocked(id)) return;
     settings.board = id; saveSettings();
@@ -782,34 +800,21 @@
   }
   // WALK THE BOARDS YOU HAVE EARNED, without leaving the board to do it. Settings still has the
   // full list with its unlock lines, which is where you go to see what is still shut; this is the
-  // quick way round the ones already open, on a key and on a controller button.
-  // On the menu the opponent comes with the board, exactly as picking one in Settings does -- a
-  // ladder board is somebody's board. Inside a match it does not: you are already playing a named
-  // opponent, and re-pointing the ladder underneath a game in progress would be a change nobody
-  // asked for. There the look changes and the match carries on.
+  // quick way round the ones already open, on a key and on a controller button. A board picked
+  // this way is an override like one picked in Settings: the opponent stays who they were.
   function cycleBoard(step) {
     const open = BOARD_FINISHES.filter(b => isUnlocked(b.id));
     if (open.length < 2) return;
     const at = open.findIndex(b => b.id === settings.board);
     const next = open[((at < 0 ? 0 : at + step) % open.length + open.length) % open.length];
     if (!next || next.id === settings.board) return;
-    settings.board = next.id;
-    if (!inMatch()) {
-      const rung = boardRung(next.id);
-      // Walking the boards by hand is a free-play pick like any other, so it switches the default
-      // route off rather than being quietly undone after the next match.
-      if (rung) { if (rung !== ladderStep()) settings.levelSkipped = true;
-                  settings.level = rung; if ($('desktopLevel')) $('desktopLevel').value = String(rung); drawOpponentTile(); }
-    }
-    saveSettings();
-    if ($('desktopBoard')) $('desktopBoard').value = next.id;
-    applyMaterials(); applyTheme(); render();
-    showToast(`<p class="desktop-unlock">${esc(boardLabel(next))}</p>`);
+    pickBoard(next.id);
+    showToast(`<p class="desktop-unlock">${esc(next.name)}</p>`);
   }
   // On boot the BOARD is the more specific choice: a ladder board names its opponent, so the
   // opponent follows it. A reserved board (one still waiting for its rung) names nobody, and the
   // opponent stays whatever it was.
-  if (boardRung(settings.board)) settings.level = boardRung(settings.board);
+  if (!settings.boardOverride && boardRung(settings.board)) settings.level = boardRung(settings.board);
   drawLadderPicker();
   $('desktopColour').value = String(settings.colour);
   $('desktopLevel').addEventListener('change', e => setLadderLevel(Number(e.target.value), true, true));
@@ -1308,7 +1313,9 @@
     const fullscreen = window.tauSteam?.setFullscreen;
     showModal(t('Settings'), `<label class="desktop-setting desktop-volume">${esc(t('Sound'))} <output id="desktopVolumeValue">${userVol}%</output><input id="desktopVolume" aria-label="${esc(t('Sound volume'))}" type="range" min="0" max="200" step="5" value="${userVol}"></label>
       <label class="desktop-setting">${esc(t('Mute'))}<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
-      <label class="desktop-setting">${esc(t('Board'))}<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${esc(boardLabel(b))}</option>`:boardRevealed(b.id)?`<option value="${b.id}" disabled>${esc(boardLabel(b))} · ${esc(unlockText(b.id))}</option>`:`<option value="${b.id}" disabled>${esc(SECRET_NAME)} · ${esc(t('keep climbing'))}</option>`).join('')}</select></label>
+      <label class="desktop-setting">${esc(t('Opponent'))}<select id="desktopSettingsOpponent"${inMatch() ? ` disabled title="${esc(t('Pick a new opponent from the menu or Levels'))}"` : ''}>${LADDER_BOARDS.map((r, i) => { const n = i + 1;
+        return `<option value="${n}"${isUnlocked(r.board) ? '' : ' disabled'}>${esc(tf('Level {n} · {name}', { n, name: rungRevealed(n) ? r.opponent : SECRET_NAME }))}</option>`; }).join('')}</select></label>
+      <label class="desktop-setting">${esc(t('Board'))}<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${esc(b.name)}</option>`:boardRevealed(b.id)?`<option value="${b.id}" disabled>${esc(boardLabel(b))} · ${esc(unlockText(b.id))}</option>`:`<option value="${b.id}" disabled>${esc(SECRET_NAME)} · ${esc(t('keep climbing'))}</option>`).join('')}</select></label>
       ${testBoards ? '<p class="desktop-result-detail">All boards are open for testing. Type <b>ALLBOARDS</b> on the main menu to restore locks.</p>' : ''}
       <label class="desktop-setting">${esc(t('End turn after dragging'))}<select id="desktopMoveCommitMode"><option value="release">${esc(turnLabels.release)}</option><option value="enter">${esc(turnLabels.confirm)}</option></select></label>
       <label class="desktop-setting">${esc(t('Graphics'))}<select id="desktopQuality">${qualityOptions()}</select></label>
@@ -1329,16 +1336,15 @@
     // rebuilt right after so the player is not left reading the old language's Settings.
     $('desktopLanguage').onchange = e => { setLang(e.target.value); openSettings(done); };
     $('desktopBoard').value = settings.board;
+    $('desktopSettingsOpponent').value = String(settings.level);
+    $('desktopSettingsOpponent').onchange = e => {
+      const n = Number(e.target.value);
+      if (!isUnlocked(rungBoard(n))) { e.target.value = String(settings.level); return; }
+      setLadderLevel(n, true, true);   // their board comes with them
+    };
     $('desktopBoard').onchange = e => {
       if (!isUnlocked(e.target.value)) { e.target.value = settings.board; return; }
-      settings.board=e.target.value; saveSettings();
-      // ...and the opponent comes with it: a ladder board is somebody's board.
-      const rung = boardRung(settings.board);
-      if (rung) { if (rung !== ladderStep()) settings.levelSkipped = true;   // a free-play pick, kept
-                  settings.level = rung; saveSettings(); if ($('desktopLevel')) $('desktopLevel').value = String(rung); drawOpponentTile(); }
-      applyMaterials();   // rebakes the 3D surface for the new finish
-      applyTheme();       // repaints the flat board from the same entry's palette
-      render();
+      pickBoard(e.target.value);       // just the board: the opponent stays
     };
     if ($('desktopResetProgress')) $('desktopResetProgress').onclick = confirmResetProgress;
     $('desktopInvertY').onchange = e => { settings.invertCamY=e.target.checked; saveSettings(); };
@@ -2952,6 +2958,17 @@
     // Who lives on rung n. index.html's in-match labels ask through this, so a Steam player is
     // told whose turn it is rather than which number they picked out of a menu.
     opponentName(n){ return rungName(n); },
+    // Rung n as the game's own Levels list draws it: who, on which board, and the board's face.
+    // A rung still out of sight gives nothing away, the same as the opponent sheet.
+    rungFace(n, size){
+      const seen = rungRevealed(n), fin = seen ? finishOf(rungBoard(n)) : SECRET_FIN;
+      return { name: seen ? rungName(n) : SECRET_NAME, board: seen ? fin.name : '', icon: boardIconURL(fin, size || 96) };
+    },
+    // index.html's startLadderLevel calls this for EVERY route into a rung -- the Levels list, the
+    // result sheet, Ranked -- so the board always comes with the opponent. It used to follow only
+    // the routes this layer wrapped itself, and a level picked from the Levels list mid-match
+    // started on whatever board was already down.
+    onLadderLevel(n){ if ($('desktopLevel')) setLadderLevel(n, true); },
     get progress(){return {...progress};},
     recordResult,
     debugDetailMode(){ return detailMode; },

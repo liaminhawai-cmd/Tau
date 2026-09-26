@@ -829,12 +829,22 @@ test('choosing the opponent chooses the board, and choosing the board chooses th
   assert.ok(!lv.options[2].disabled,'Ebony is reachable now');
   lv.value='3'; lv.dispatchEvent(new g.w.Event('change'));
   assert.equal(D.board,'ebony','picking the opponent put us on their board');
-  // ...and the other way round, from Settings.
+  // Settings has both: the opponent (who brings their board) and the board on its own, which is
+  // an override -- the opponent stays who they were.
   D.openSettings ? D.openSettings() : g.w.document.getElementById('desktopSettings').click();
+  const opp=g.w.document.getElementById('desktopSettingsOpponent');
+  assert.equal(opp.value,'3','Settings shows who you are playing');
   const sel=g.w.document.getElementById('desktopBoard');
   sel.value='maple'; sel.onchange({target:sel});
   assert.equal(D.board,'maple');
-  assert.equal(lv.value,'2','and the opponent followed the board');
+  assert.equal(lv.value,'3','a board picked by hand does not change the opponent');
+  const saved=()=>JSON.parse(g.w.localStorage.getItem('tauDesktopSettingsV1'));
+  assert.equal(saved().boardOverride,true);
+  opp.value='2'; opp.onchange({target:opp});
+  assert.equal(lv.value,'2'); assert.equal(D.board,'maple','Lily brings her own board');
+  opp.value='3'; opp.onchange({target:opp});
+  assert.equal(D.board,'ebony','and picking an opponent always brings theirs, dropping the override');
+  assert.equal(saved().boardOverride,false);
   assert.deepEqual(g.errors,[]);
 });
 
@@ -3331,4 +3341,52 @@ test('a hand on the camera clears the settle, and a long frame does not fling it
     `one long frame lands where fifteen short ones do (${apart.toFixed(2)} apart)`);
   assert.ok(Number.isFinite(step(1/60)),'and the frame after the hitch is still a number');
   assert.deepEqual(g.errors,[]);
+});
+
+test('the Levels list shows who is on each rung and their board, and picking one brings the board',async t=>{
+  const g=await game(undefined,{tauLadder:'{"b":{"1":1,"2":1,"3":1},"r":{"1":1,"2":1}}', tauLadderRenumberedV1:'1'});t.after(g.close);
+  const D=g.w.tauDesktop;
+  g.read('openLadderMenu()');
+  const rungs=[...g.w.document.querySelectorAll('#ladderList .ladderRung')];
+  const r=n=>rungs.find(e=>e.dataset.n===String(n));
+  assert.match(r(1).textContent,/Wren/,'a name, not just a number');
+  assert.match(r(3).textContent,/The Committee.*Level 3 · Ebony/,'with the rung and the board under it');
+  assert.ok(r(3).querySelector('img.lboard'),'and the board itself');
+  // Mid-match, from the list: the board follows the level.
+  g.read('startLadderLevel(0,0)'); g.tick();
+  assert.equal(D.board,'yellow');
+  g.read('openLadderMenu()');
+  [...g.w.document.querySelectorAll('#ladderList .ladderRung')].find(e=>e.dataset.n==='4').click(); g.tick();
+  assert.equal(g.read('ladderLevel'),3);
+  assert.equal(D.board,'walnut','Hazel\'s board came with her');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('the plain web Levels list, with nobody on its rungs, still reads by number',async t=>{
+  const g=await game('');t.after(g.close);
+  g.read('openLadderMenu()');
+  const first=g.w.document.querySelector('#ladderList .ladderRung');
+  assert.match(first.textContent,/Level \d+/);
+  assert.ok(!first.querySelector('img.lboard'));
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a board chosen over the opponent\'s own survives a relaunch, and the next opponent brings theirs back',async t=>{
+  const ladder='{"b":{"1":1,"2":1,"3":1},"r":{"1":1,"2":1,"3":1}}';
+  const g=await game(undefined,{tauLadder:ladder, tauLadderRenumberedV1:'1'});t.after(g.close);
+  const D=g.w.tauDesktop, lv=g.$('desktopLevel');
+  lv.value='2'; lv.dispatchEvent(new g.w.Event('change'));
+  g.$('desktopSettings').click(); g.tick();
+  const sel=g.$('desktopBoard'); sel.value='walnut'; sel.onchange({target:sel});
+  assert.equal(D.board,'walnut'); assert.equal(lv.value,'2','still Lily');
+  const storage=Object.fromEntries(Object.keys(g.w.localStorage).map(k=>[k,g.w.localStorage.getItem(k)]));
+  const again=await game(undefined,storage);t.after(again.close);
+  assert.equal(again.w.tauDesktop.board,'walnut','the chosen board comes back');
+  assert.equal(again.$('desktopLevel').value,'2','and so does the opponent -- the board does not re-pick them');
+  // Starting that opponent keeps the override; moving to a different one brings their board.
+  again.read('startLadderLevel(1,0)'); again.tick();
+  assert.equal(again.w.tauDesktop.board,'walnut','Lily, on Walnut, as chosen');
+  again.read('backToMenu(); startLadderLevel(2,0)'); again.tick();
+  assert.equal(again.w.tauDesktop.board,'ebony','a different opponent comes with their own board');
+  assert.deepEqual(g.errors,[]); assert.deepEqual(again.errors,[]);
 });
