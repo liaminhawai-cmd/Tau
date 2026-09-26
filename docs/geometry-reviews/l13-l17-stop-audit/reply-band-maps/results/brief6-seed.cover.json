@@ -1,0 +1,59 @@
+{
+ "label": "brief6-seed",
+ "sourcePin": {
+  "rev": "ce0e61d1e7482e3d1252aadadf97bd4269f71e29",
+  "indexHtmlSha256": "3cee71df1f26afd79cbbc83a5c208780e29e170cd7111fabaafb4ab75bc479c4",
+  "engineJsSha256": "106b90e0a6981c817c2789f88b175a546f9a7fc229af20f50218495533af443e"
+ },
+ "schedule": "quarterDeg",
+ "arms": [
+  {
+   "arm": "(0,+)",
+   "limitDeg": 44.25,
+   "stops": 171,
+   "cover": [
+    "2.00-44.25 (0,-)"
+   ]
+  },
+  {
+   "arm": "(0,-)",
+   "limitDeg": 63.5,
+   "stops": 248,
+   "cover": [
+    "2.00-63.50 (0,-)"
+   ]
+  },
+  {
+   "arm": "(1,+)",
+   "limitDeg": 14.75,
+   "stops": 53,
+   "cover": [
+    "2.00-14.75 (0,-)"
+   ]
+  },
+  {
+   "arm": "(1,-)",
+   "limitDeg": 16.75,
+   "stops": 61,
+   "cover": [
+    "2.00-16.75 (0,-)"
+   ]
+  },
+  {
+   "arm": "(2,+)",
+   "limitDeg": 4.75,
+   "stops": 13,
+   "cover": [
+    "2.00-4.75 (0,-)"
+   ]
+  },
+  {
+   "arm": "(2,-)",
+   "limitDeg": 15.75,
+   "stops": 57,
+   "cover": [
+    "2.00-15.75 (0,-)"
+   ]
+  }
+ ]
+}

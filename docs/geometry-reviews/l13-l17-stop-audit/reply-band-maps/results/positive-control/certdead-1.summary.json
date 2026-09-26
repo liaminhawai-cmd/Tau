@@ -1,6 +1,10 @@
-wrote full map to results/positive-control/certdead-1.json
 {
   "label": "certdead-1",
+  "sourcePin": {
+    "rev": "ce0e61d1e7482e3d1252aadadf97bd4269f71e29",
+    "indexHtmlSha256": "3cee71df1f26afd79cbbc83a5c208780e29e170cd7111fabaafb4ab75bc479c4",
+    "engineJsSha256": "106b90e0a6981c817c2789f88b175a546f9a7fc229af20f50218495533af443e"
+  },
   "pose": [
     12.2497,
     -27.3335,
@@ -10,106 +14,120 @@ wrote full map to results/positive-control/certdead-1.json
     -0.1425
   ],
   "victim": 1,
-  "arms": {
-    "oneDegPlusFinal": [
-      {
-        "pivotIdx": 0,
-        "dir": 1,
-        "limitDeg": 16.333333,
-        "stopCount": 15,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 0,
-        "dir": -1,
-        "limitDeg": 14.333333,
-        "stopCount": 10,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 1,
-        "dir": 1,
-        "limitDeg": 62.333333,
-        "stopCount": 11,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 1,
-        "dir": -1,
-        "limitDeg": 44.333333,
-        "stopCount": 10,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 2,
-        "dir": 1,
-        "limitDeg": 16,
-        "stopCount": 9,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 2,
-        "dir": -1,
-        "limitDeg": 4.666667,
-        "stopCount": 6,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      }
-    ],
-    "quarterDeg": [
-      {
-        "pivotIdx": 0,
-        "dir": 1,
-        "limitDeg": 16.5,
-        "stopCount": 54,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 0,
-        "dir": -1,
-        "limitDeg": 14.25,
-        "stopCount": 35,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 1,
-        "dir": 1,
-        "limitDeg": 62.25,
-        "stopCount": 40,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 1,
-        "dir": -1,
-        "limitDeg": 44.5,
-        "stopCount": 35,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 2,
-        "dir": 1,
-        "limitDeg": 16,
-        "stopCount": 33,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 2,
-        "dir": -1,
-        "limitDeg": 4.5,
-        "stopCount": 20,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      }
-    ]
+  "schedules": {
+    "oneDegPlusFinal": {
+      "stops": 156,
+      "punished": 156,
+      "counterexamples": 0,
+      "terminalEscapes": 0,
+      "verdictOnThisGrid": "no endpoint counterexample on this grid",
+      "arms": [
+        {
+          "pivotIdx": 0,
+          "dir": 1,
+          "limitDeg": 16.333333,
+          "stops": 16,
+          "punished": 16,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 0,
+          "dir": -1,
+          "limitDeg": 14.333333,
+          "stops": 14,
+          "punished": 14,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 1,
+          "dir": 1,
+          "limitDeg": 62.333333,
+          "stops": 62,
+          "punished": 62,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 1,
+          "dir": -1,
+          "limitDeg": 44.333333,
+          "stops": 44,
+          "punished": 44,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 2,
+          "dir": 1,
+          "limitDeg": 16,
+          "stops": 16,
+          "punished": 16,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 2,
+          "dir": -1,
+          "limitDeg": 4.666667,
+          "stops": 4,
+          "punished": 4,
+          "escapeBands": []
+        }
+      ]
+    },
+    "quarterDeg": {
+      "stops": 596,
+      "punished": 596,
+      "counterexamples": 0,
+      "terminalEscapes": 0,
+      "verdictOnThisGrid": "no endpoint counterexample on this grid",
+      "arms": [
+        {
+          "pivotIdx": 0,
+          "dir": 1,
+          "limitDeg": 16.5,
+          "stops": 60,
+          "punished": 60,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 0,
+          "dir": -1,
+          "limitDeg": 14.25,
+          "stops": 51,
+          "punished": 51,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 1,
+          "dir": 1,
+          "limitDeg": 62.25,
+          "stops": 243,
+          "punished": 243,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 1,
+          "dir": -1,
+          "limitDeg": 44.5,
+          "stops": 172,
+          "punished": 172,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 2,
+          "dir": 1,
+          "limitDeg": 16,
+          "stops": 58,
+          "punished": 58,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 2,
+          "dir": -1,
+          "limitDeg": 4.5,
+          "stops": 12,
+          "punished": 12,
+          "escapeBands": []
+        }
+      ]
+    }
   }
 }

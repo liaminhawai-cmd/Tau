@@ -139,15 +139,25 @@ lists as still open.
 
 ## Reply-band maps
 
-Astra's request, answered in full: [`reply-band-maps/`](reply-band-maps/) — the Brief 6 original
-seed, 10 frozen development families, and a 3-position certified-dead spot check, all swept under
-both call schedules. **Zero of 14 positions have a single stop where all six attacker endpoints
-throw the defender** — not even on the certified-dead positions. Confirms Astra's D_E/D_1
-distinction empirically: covering these positions the way the L11-audit fixture worked (contiguous
-D_E bands) will not work; the real winning replies are apparently interior stops far more often than
-swing-to-jam endpoints. See `reply-band-maps/SUMMARY.md`.
+[`reply-band-maps/`](reply-band-maps/). **The 22 September conclusion here was wrong and is
+withdrawn.** Astra found two bugs in the mapper, both reproduced before fixing: it used the wrong
+quantifier (it asked whether all six endpoint replies win; a D_E counterexample is a stop where none
+does), and its mid-sweep reply testing failed to restore `G.pivot`, so every arm after its first stop
+rotated about the wrong foot (0.393 units off at Brief 6's second stop, up to 15 units later).
+
+Regenerated 26 September against the pinned audit revision, with a positive control. The endpoint
+test now agrees with every corpus label it can be checked against: all six certified-dead positions
+have no endpoint counterexample on either grid, all five screened escapes do, and the two
+"unresolved" positions are covered at every sampled stop. **At the Brief 6 seed a single reply,
+(0,−), throws the defender at every sampled stop on all six arms, with about 2.2u to spare at the
+weakest one**: a grid observation, not a certificate, but a concrete proof shape. See
+`reply-band-maps/SUMMARY.md`.
 
 ## Questions for Astra
+
+**Both answered 26 September; the answers are recorded at the end of `reply-band-maps/SUMMARY.md`.**
+In short: escape is relative to the tested response set (an endpoint counterexample refutes D_E
+only), and the mark tolerance is a change of search policy, not a proved coverage gain.
 
 1. **Is the escape band a fact about this position or about the punishment test?** At the audited
    position the defender escapes on a contiguous 2°–20.5° band on one arm and 2°–18° on another, by

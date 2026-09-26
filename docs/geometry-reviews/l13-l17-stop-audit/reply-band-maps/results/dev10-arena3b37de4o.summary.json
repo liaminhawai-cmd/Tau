@@ -1,5 +1,10 @@
 {
   "label": "arena3b37de4o",
+  "sourcePin": {
+    "rev": "ce0e61d1e7482e3d1252aadadf97bd4269f71e29",
+    "indexHtmlSha256": "3cee71df1f26afd79cbbc83a5c208780e29e170cd7111fabaafb4ab75bc479c4",
+    "engineJsSha256": "106b90e0a6981c817c2789f88b175a546f9a7fc229af20f50218495533af443e"
+  },
   "pose": [
     -28.5475,
     16.4953,
@@ -9,106 +14,128 @@
     1.9284
   ],
   "victim": 0,
-  "arms": {
-    "oneDegPlusFinal": [
-      {
-        "pivotIdx": 0,
-        "dir": 1,
-        "limitDeg": 21.666667,
-        "stopCount": 5,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 0,
-        "dir": -1,
-        "limitDeg": 28.333333,
-        "stopCount": 40,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 1,
-        "dir": 1,
-        "limitDeg": 39.666667,
-        "stopCount": 29,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 1,
-        "dir": -1,
-        "limitDeg": 34,
-        "stopCount": 19,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 2,
-        "dir": 1,
-        "limitDeg": 51.333333,
-        "stopCount": 28,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 2,
-        "dir": -1,
-        "limitDeg": 26.333333,
-        "stopCount": 42,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      }
-    ],
-    "quarterDeg": [
-      {
-        "pivotIdx": 0,
-        "dir": 1,
-        "limitDeg": 21.75,
-        "stopCount": 16,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 0,
-        "dir": -1,
-        "limitDeg": 28.5,
-        "stopCount": 155,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 1,
-        "dir": 1,
-        "limitDeg": 39.75,
-        "stopCount": 112,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 1,
-        "dir": -1,
-        "limitDeg": 34,
-        "stopCount": 70,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 2,
-        "dir": 1,
-        "limitDeg": 51.5,
-        "stopCount": 106,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 2,
-        "dir": -1,
-        "limitDeg": 26.5,
-        "stopCount": 165,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      }
-    ]
+  "schedules": {
+    "oneDegPlusFinal": {
+      "stops": 199,
+      "punished": 174,
+      "counterexamples": 25,
+      "terminalEscapes": 0,
+      "verdictOnThisGrid": "endpoint counterexample found (refutes D_E only)",
+      "arms": [
+        {
+          "pivotIdx": 0,
+          "dir": 1,
+          "limitDeg": 21.666667,
+          "stops": 21,
+          "punished": 11,
+          "escapeBands": [
+            "13.000-21.667 (10 stops)"
+          ]
+        },
+        {
+          "pivotIdx": 0,
+          "dir": -1,
+          "limitDeg": 28.333333,
+          "stops": 28,
+          "punished": 13,
+          "escapeBands": [
+            "13.000-27.000 (15 stops)"
+          ]
+        },
+        {
+          "pivotIdx": 1,
+          "dir": 1,
+          "limitDeg": 39.666667,
+          "stops": 39,
+          "punished": 39,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 1,
+          "dir": -1,
+          "limitDeg": 34,
+          "stops": 34,
+          "punished": 34,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 2,
+          "dir": 1,
+          "limitDeg": 51.333333,
+          "stops": 51,
+          "punished": 51,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 2,
+          "dir": -1,
+          "limitDeg": 26.333333,
+          "stops": 26,
+          "punished": 26,
+          "escapeBands": []
+        }
+      ]
+    },
+    "quarterDeg": {
+      "stops": 772,
+      "punished": 674,
+      "counterexamples": 98,
+      "terminalEscapes": 0,
+      "verdictOnThisGrid": "endpoint counterexample found (refutes D_E only)",
+      "arms": [
+        {
+          "pivotIdx": 0,
+          "dir": 1,
+          "limitDeg": 21.75,
+          "stops": 81,
+          "punished": 43,
+          "escapeBands": [
+            "12.750-21.750 (38 stops)"
+          ]
+        },
+        {
+          "pivotIdx": 0,
+          "dir": -1,
+          "limitDeg": 28.5,
+          "stops": 108,
+          "punished": 48,
+          "escapeBands": [
+            "12.500-27.250 (60 stops)"
+          ]
+        },
+        {
+          "pivotIdx": 1,
+          "dir": 1,
+          "limitDeg": 39.75,
+          "stops": 153,
+          "punished": 153,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 1,
+          "dir": -1,
+          "limitDeg": 34,
+          "stops": 130,
+          "punished": 130,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 2,
+          "dir": 1,
+          "limitDeg": 51.5,
+          "stops": 200,
+          "punished": 200,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 2,
+          "dir": -1,
+          "limitDeg": 26.5,
+          "stops": 100,
+          "punished": 100,
+          "escapeBands": []
+        }
+      ]
+    }
   }
 }

@@ -1,23 +1,23 @@
 {
-  "label": "06l76agzc",
+  "label": "brief6-seed",
   "sourcePin": {
     "rev": "ce0e61d1e7482e3d1252aadadf97bd4269f71e29",
     "indexHtmlSha256": "3cee71df1f26afd79cbbc83a5c208780e29e170cd7111fabaafb4ab75bc479c4",
     "engineJsSha256": "106b90e0a6981c817c2789f88b175a546f9a7fc229af20f50218495533af443e"
   },
   "pose": [
-    -21.3689,
-    33.441,
-    1.0927,
-    -6.5697,
-    31.1401,
-    4.5004
+    -27.3934,
+    -36.4088,
+    1.2052,
+    -11.7593,
+    -23.2838,
+    2.9442
   ],
   "victim": 0,
   "schedules": {
     "oneDegPlusFinal": {
-      "stops": 142,
-      "punished": 142,
+      "stops": 156,
+      "punished": 156,
       "counterexamples": 0,
       "terminalEscapes": 0,
       "verdictOnThisGrid": "no endpoint counterexample on this grid",
@@ -25,56 +25,56 @@
         {
           "pivotIdx": 0,
           "dir": 1,
-          "limitDeg": 20.666667,
-          "stops": 20,
-          "punished": 20,
+          "limitDeg": 44.333333,
+          "stops": 44,
+          "punished": 44,
           "escapeBands": []
         },
         {
           "pivotIdx": 0,
           "dir": -1,
-          "limitDeg": 19.666667,
-          "stops": 19,
-          "punished": 19,
+          "limitDeg": 63.666667,
+          "stops": 63,
+          "punished": 63,
           "escapeBands": []
         },
         {
           "pivotIdx": 1,
           "dir": 1,
-          "limitDeg": 19.666667,
-          "stops": 19,
-          "punished": 19,
+          "limitDeg": 14.666667,
+          "stops": 14,
+          "punished": 14,
           "escapeBands": []
         },
         {
           "pivotIdx": 1,
           "dir": -1,
-          "limitDeg": 20.666667,
-          "stops": 20,
-          "punished": 20,
+          "limitDeg": 16.666667,
+          "stops": 16,
+          "punished": 16,
           "escapeBands": []
         },
         {
           "pivotIdx": 2,
           "dir": 1,
-          "limitDeg": 57.666667,
-          "stops": 57,
-          "punished": 57,
+          "limitDeg": 4.666667,
+          "stops": 4,
+          "punished": 4,
           "escapeBands": []
         },
         {
           "pivotIdx": 2,
           "dir": -1,
-          "limitDeg": 7.333333,
-          "stops": 7,
-          "punished": 7,
+          "limitDeg": 15.666667,
+          "stops": 15,
+          "punished": 15,
           "escapeBands": []
         }
       ]
     },
     "quarterDeg": {
-      "stops": 549,
-      "punished": 549,
+      "stops": 603,
+      "punished": 603,
       "counterexamples": 0,
       "terminalEscapes": 0,
       "verdictOnThisGrid": "no endpoint counterexample on this grid",
@@ -82,49 +82,49 @@
         {
           "pivotIdx": 0,
           "dir": 1,
-          "limitDeg": 20.75,
-          "stops": 77,
-          "punished": 77,
+          "limitDeg": 44.25,
+          "stops": 171,
+          "punished": 171,
           "escapeBands": []
         },
         {
           "pivotIdx": 0,
           "dir": -1,
-          "limitDeg": 19.75,
-          "stops": 73,
-          "punished": 73,
+          "limitDeg": 63.5,
+          "stops": 248,
+          "punished": 248,
           "escapeBands": []
         },
         {
           "pivotIdx": 1,
           "dir": 1,
-          "limitDeg": 19.75,
-          "stops": 73,
-          "punished": 73,
+          "limitDeg": 14.75,
+          "stops": 53,
+          "punished": 53,
           "escapeBands": []
         },
         {
           "pivotIdx": 1,
           "dir": -1,
-          "limitDeg": 20.75,
-          "stops": 77,
-          "punished": 77,
+          "limitDeg": 16.75,
+          "stops": 61,
+          "punished": 61,
           "escapeBands": []
         },
         {
           "pivotIdx": 2,
           "dir": 1,
-          "limitDeg": 57.75,
-          "stops": 225,
-          "punished": 225,
+          "limitDeg": 4.75,
+          "stops": 13,
+          "punished": 13,
           "escapeBands": []
         },
         {
           "pivotIdx": 2,
           "dir": -1,
-          "limitDeg": 7.5,
-          "stops": 24,
-          "punished": 24,
+          "limitDeg": 15.75,
+          "stops": 57,
+          "punished": 57,
           "escapeBands": []
         }
       ]

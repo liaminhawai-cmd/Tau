@@ -1,0 +1,16 @@
+# out	label	victim	pose	source
+results/brief6-seed	brief6-seed	0	-27.3934,-36.4088,1.2052,-11.7593,-23.2838,2.9442	Brief 6 original seed (defender piece 0, before the 8 deg reply)
+results/dev10-06l76agzc	06l76agzc	0	-21.3689,33.441,1.0927,-6.5697,31.1401,4.5004	dead-points-mined.jsonl@24e3a985b (certified dead) g=06l76agzc-0 k=0
+results/dev10-6j41r1r00	6j41r1r00	1	22.1747,9.1992,0.6397,39.5691,0.7778,3.2577	brief5/data/screened-not-dead.jsonl status=escape g=6j41r1r00-14 k=0
+results/dev10-arena3b37de4o	arena3b37de4o	0	-28.5475,16.4953,1.1361,-7.93,12.1639,1.9284	brief5/data/screened-not-dead.jsonl status=escape g=arena3b37de4o-2 k=0
+results/dev10-arenaf9soeap4	arenaf9soeap4	1	-0.9495,-30.1853,-1.2362,11.9902,-38.0296,3.8985	dead-points-mined.jsonl@24e3a985b (certified dead) g=arenaf9soeap4-0 k=0
+results/dev10-arenaprqx8ixk	arenaprqx8ixk	0	21.9588,29.4151,-5.4802,3.7109,28.3679,4.216	brief5/data/screened-not-dead.jsonl status=escape g=arenaprqx8ixk-1 k=1
+results/dev10-e0c37qmjk	e0c37qmjk	1	-6.1862,16.6105,-2.2478,14.5972,-25.7015,1.9247	brief5/data/screened-not-dead.jsonl status=escape g=e0c37qmjk-0 k=2
+results/dev10-ifcrtdvdw	ifcrtdvdw	1	16.5434,-23.7505,-1.3401,40.0238,-24.0882,2.6648	brief5/data/screened-not-dead.jsonl status=escape g=ifcrtdvdw-5 k=0
+results/dev10-nfng6zslk	nfng6zslk	0	-41.4621,10.8997,3.1266,-27.5349,8.5679,4.6837	dead-points-mined.jsonl@24e3a985b (certified dead) g=nfng6zslk-17 k=0
+results/dev10-retro-ratchet-20260804131941-8uw-w1	retro-ratchet-20260804131941-8uw-w1	0	-42.9017,-2.5741,6.2534,-30.0915,-5.4246,5.9748	brief5/data/screened-not-dead.jsonl status=unresolved g=retro-ratchet-20260804131941-8uw-w1-j2-0-26 k=0
+results/dev10-tnj56agko	tnj56agko	1	-28.3332,-13.8929,-4.2032,-41.6028,-13.2675,-0.2251	brief5/data/screened-not-dead.jsonl status=unresolved g=tnj56agko-9 k=0
+results/positive-control/certdead-0	certdead-0	0	-15.462,37.2119,2.9257,-15.915,25.9033,8.1213	dead-points-mined.jsonl@24e3a985b (certified dead) g=k38jclibo-14 k=0
+results/positive-control/certdead-1	certdead-1	1	12.2497,-27.3335,-1.4624,28.0624,-36.109,-0.1425	dead-points-mined.jsonl@24e3a985b (certified dead) g=retro-ratchet-20260804131941-8uw-w4-j1-0-34 k=0
+results/positive-control/certdead-2	certdead-2	0	-26.9797,-28.6715,5.2576,-12.7015,-24.972,3.9954	dead-points-mined.jsonl@24e3a985b (certified dead) g=kn5bbhs78-9 k=0
+results/positive-control/l11-audit-node	l11-audit-node	0	-40.2848,3.7263,1.8209,-30.2905,12.3529,1.5755	L11 stop audit post-root node (stop-coverage.js POSE); positive control with known escape bands

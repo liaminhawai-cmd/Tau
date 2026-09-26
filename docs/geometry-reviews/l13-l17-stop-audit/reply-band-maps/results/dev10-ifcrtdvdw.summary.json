@@ -1,5 +1,10 @@
 {
   "label": "ifcrtdvdw",
+  "sourcePin": {
+    "rev": "ce0e61d1e7482e3d1252aadadf97bd4269f71e29",
+    "indexHtmlSha256": "3cee71df1f26afd79cbbc83a5c208780e29e170cd7111fabaafb4ab75bc479c4",
+    "engineJsSha256": "106b90e0a6981c817c2789f88b175a546f9a7fc229af20f50218495533af443e"
+  },
   "pose": [
     16.5434,
     -23.7505,
@@ -9,106 +14,127 @@
     2.6648
   ],
   "victim": 1,
-  "arms": {
-    "oneDegPlusFinal": [
-      {
-        "pivotIdx": 0,
-        "dir": 1,
-        "limitDeg": 28.666667,
-        "stopCount": 24,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 0,
-        "dir": -1,
-        "limitDeg": 43.333333,
-        "stopCount": 22,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 1,
-        "dir": 1,
-        "limitDeg": 28.333333,
-        "stopCount": 20,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 1,
-        "dir": -1,
-        "limitDeg": 10,
-        "stopCount": 18,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 2,
-        "dir": 1,
-        "limitDeg": 7,
-        "stopCount": 25,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 2,
-        "dir": -1,
-        "limitDeg": 31.666667,
-        "stopCount": 23,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      }
-    ],
-    "quarterDeg": [
-      {
-        "pivotIdx": 0,
-        "dir": 1,
-        "limitDeg": 28.75,
-        "stopCount": 93,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 0,
-        "dir": -1,
-        "limitDeg": 43.5,
-        "stopCount": 82,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 1,
-        "dir": 1,
-        "limitDeg": 28.5,
-        "stopCount": 74,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 1,
-        "dir": -1,
-        "limitDeg": 10,
-        "stopCount": 69,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 2,
-        "dir": 1,
-        "limitDeg": 7,
-        "stopCount": 96,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      },
-      {
-        "pivotIdx": 2,
-        "dir": -1,
-        "limitDeg": 31.75,
-        "stopCount": 87,
-        "counterexampleBands": [],
-        "isolatedCounterexamples": []
-      }
-    ]
+  "schedules": {
+    "oneDegPlusFinal": {
+      "stops": 147,
+      "punished": 136,
+      "counterexamples": 11,
+      "terminalEscapes": 0,
+      "verdictOnThisGrid": "endpoint counterexample found (refutes D_E only)",
+      "arms": [
+        {
+          "pivotIdx": 0,
+          "dir": 1,
+          "limitDeg": 28.666667,
+          "stops": 28,
+          "punished": 28,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 0,
+          "dir": -1,
+          "limitDeg": 43.333333,
+          "stops": 43,
+          "punished": 43,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 1,
+          "dir": 1,
+          "limitDeg": 28.333333,
+          "stops": 28,
+          "punished": 28,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 1,
+          "dir": -1,
+          "limitDeg": 10,
+          "stops": 10,
+          "punished": 10,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 2,
+          "dir": 1,
+          "limitDeg": 7,
+          "stops": 7,
+          "punished": 7,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 2,
+          "dir": -1,
+          "limitDeg": 31.666667,
+          "stops": 31,
+          "punished": 20,
+          "escapeBands": [
+            "21.000-21.000 (1 stop)",
+            "23.000-31.667 (10 stops)"
+          ]
+        }
+      ]
+    },
+    "quarterDeg": {
+      "stops": 562,
+      "punished": 519,
+      "counterexamples": 43,
+      "terminalEscapes": 0,
+      "verdictOnThisGrid": "endpoint counterexample found (refutes D_E only)",
+      "arms": [
+        {
+          "pivotIdx": 0,
+          "dir": 1,
+          "limitDeg": 28.75,
+          "stops": 109,
+          "punished": 109,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 0,
+          "dir": -1,
+          "limitDeg": 43.5,
+          "stops": 168,
+          "punished": 168,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 1,
+          "dir": 1,
+          "limitDeg": 28.5,
+          "stops": 108,
+          "punished": 108,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 1,
+          "dir": -1,
+          "limitDeg": 10,
+          "stops": 34,
+          "punished": 34,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 2,
+          "dir": 1,
+          "limitDeg": 7,
+          "stops": 22,
+          "punished": 22,
+          "escapeBands": []
+        },
+        {
+          "pivotIdx": 2,
+          "dir": -1,
+          "limitDeg": 31.75,
+          "stops": 121,
+          "punished": 78,
+          "escapeBands": [
+            "20.750-21.500 (4 stops)",
+            "22.250-22.250 (1 stop)",
+            "22.750-31.750 (38 stops)"
+          ]
+        }
+      ]
+    }
   }
 }
