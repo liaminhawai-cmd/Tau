@@ -302,13 +302,15 @@ function main() {
   let resultsStream = null;
   if (resultsPath) {
     fs.mkdirSync(path.dirname(resultsPath), { recursive: true });
-    resultsStream = fs.createWriteStream(resultsPath, { flags: 'a' });
+    // Appended synchronously: main() never yields to the event loop, so a write stream would not
+    // even open until the last game ended, and a run killed part-way would keep nothing.
+    resultsStream = { write: line => fs.appendFileSync(resultsPath, line) };
     console.log(`saving per-game results to ${resultsPath}`);
   }
   let dataStream = null, savedRows = 0;
   if (saveData) {
     fs.mkdirSync(path.dirname(saveData), { recursive: true });
-    dataStream = fs.createWriteStream(saveData, { flags: 'a' });
+    dataStream = { write: line => fs.appendFileSync(saveData, line), end() {} };
     console.log(`saving training rows to ${saveData}`);
   }
 
