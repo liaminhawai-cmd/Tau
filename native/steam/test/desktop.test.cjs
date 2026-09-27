@@ -3522,3 +3522,15 @@ test('climbing by whole steps as Blue does not send the board back to Yellow',as
   assert.equal(D.board,'maple','and the menu keeps Lily\'s board');
   assert.deepEqual(g.errors,[]);
 });
+
+test('"Show me how" on the first-launch offer opens the rules WITHOUT starting the game underneath',async t=>{
+  const g=await game();t.after(g.close);
+  g.read(`localStorage.removeItem('tauOnboard'); window.__started=0; offerHowToFirst(()=>{ window.__started++; });`);
+  const btn=[...g.$('modalBtns').children].find(b=>/Show me how/.test(b.textContent));
+  btn.click(); g.tick();
+  assert.ok(g.$('htpFull'),'the walkthrough is open');
+  assert.equal(g.read('window.__started'),0,'and the game it stands in front of has not started yet');
+  g.read('stopHowToPlayAnim()'); g.tick();
+  assert.equal(g.read('window.__started'),1,'closing it starts the game, once');
+  assert.deepEqual(g.errors,[]);
+});

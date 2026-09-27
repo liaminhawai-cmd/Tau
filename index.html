@@ -7787,7 +7787,14 @@ function htpRewind(key, full) {
     htpHintSync();
 }
 function openHowToPlay() {
+    // stopHowToPlayAnim tidies up a walkthrough that is already open -- and runs whatever was
+    // queued to happen when it CLOSES (htpOnDone). Opening straight from the "New to Tau?" offer,
+    // that queued thing is the game the player asked for: it started underneath the walkthrough
+    // the moment it opened, and the match's layout squashed the first slide's 3D board. Held back
+    // across the tidy-up, it runs when the walkthrough really does close.
+    const pending = htpOnDone; htpOnDone = null;
     stopHowToPlayAnim();
+    htpOnDone = pending;
     const wrap = document.createElement('div');
     wrap.id = 'htpFull';
     wrap.innerHTML = `
