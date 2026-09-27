@@ -21,12 +21,14 @@ test('the ladder is thirteen rungs, and the top two carry the trained brains',as
   assert.equal(g.read('LADDER_N'),13);
   // RUNG_TO_AI_LADDER is the one seam between "menu position" and "which AI plays there". Rungs
   // 1-11 still point at exactly the AI_LADDER indices they always did; only the top two moved.
-  assert.equal(g.read('JSON.stringify(RUNG_TO_AI_LADDER)'),'[0,0,1,2,3,4,5,6,7,8,9,15,14]');
-  assert.equal(g.read('AI_LADDER.length'),16);
+  assert.equal(g.read('JSON.stringify(RUNG_TO_AI_LADDER)'),'[0,0,1,2,3,4,5,6,7,8,9,15,16]');
+  assert.equal(g.read('AI_LADDER.length'),17);
   assert.equal(g.read('AI_LADDER[14].kind'),'committee','rung 13 -- appended, not inserted, so L1-L14\'s own indices never moved');
   assert.equal(g.read('AI_LADDER[15].kind'),'net','rung 12 -- likewise appended');
   assert.equal(g.read('RUNG_TO_AI_LADDER[11]'),15,'rung 12 is the champion net, not the hand-tuned rung it replaced');
-  assert.equal(g.read('RUNG_TO_AI_LADDER[12]'),14,'and the Committee still sits above it');
+  assert.equal(g.read('RUNG_TO_AI_LADDER[12]'),16,'rung 13 is the champion searching three plies');
+  assert.equal(g.read('AI_LADDER[16].o.depth'),3);
+  assert.equal(g.read('JSON.stringify(AI_LADDER[16].nets)'),'["champion"]');
   // Both top rungs keep their weights out of line and fetch them on demand. The Committee votes
   // with the champion as one of its members, so climbing 12 then 13 fetches that file once.
   assert.equal(g.read('JSON.stringify(AI_LADDER[15].nets)'),'["champion"]');
@@ -203,6 +205,18 @@ test('a net member is read from the side whose turn it actually is',async t=>{
   assert.deepEqual(g.errors,[]);
 });
 
+test('the depth-3 Champion rung thinks in slices, and plays the same move sliced or drained',async t=>{
+  const g=await game('');t.after(g.close);
+  g.read(`AI_LADDER[16]._nets = [${JSON.stringify(fakeNet(9))}];`);
+  const once = g.read('JSON.stringify(ladderPlanRung(AI_LADDER[16], G.active))');
+  const slices = g.read('(()=>{ const gen = ladderPlanRungGen(AI_LADDER[16], G.active); let n=0, r; do { r = gen.next(); n++; } while (!r.done); window.__p = r.value; return n; })()');
+  assert.ok(slices > 50, 'yields all through the search, not once at the end ('+slices+')');
+  assert.equal(g.read('JSON.stringify(window.__p)'), once);
+  const p = JSON.parse(once);
+  assert.ok(p && [0,1,2].includes(p.pivotIdx) && Number.isFinite(p.targetRad));
+  assert.deepEqual(g.errors,[]);
+});
+
 test('the Champion rung searches with its own net, and falls back rather than crashing without one',async t=>{
   const g=await game('');t.after(g.close);
   g.read(`AI_LADDER[15]._nets = [${JSON.stringify(fakeNet(9))}];`);
@@ -235,7 +249,7 @@ test('the desktop premium ladder puts its faces in the chosen order, easiest to 
     + 'Sensei@dojo Marlowe@noir Rikishi@sumo Alabaster@marble Euclid@math Chorus@alien Titan@colossus');
   assert.equal(D.boardRung('colossus'),13,'Titan\'s arena is the top rung');
   // The faces moved; the brains did not. Rung n is still the nth difficulty, whoever wears it.
-  assert.equal(g.read('JSON.stringify(RUNG_TO_AI_LADDER)'), JSON.stringify([0,0,1,2,3,4,5,6,7,8,9,15,14]));
+  assert.equal(g.read('JSON.stringify(RUNG_TO_AI_LADDER)'), JSON.stringify([0,0,1,2,3,4,5,6,7,8,9,15,16]));
   assert.deepEqual(g.errors,[]);
 });
 

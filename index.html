@@ -4258,6 +4258,13 @@ const AI_LADDER = [
     // stronger than the best one of them alone. What the Committee has over this rung is that it
     // always plays its considered best; this rung, by a hair, does not.
     { kind:'net', label:'Champion', nets:['champion'], o:{ depth:1, keepStops:3, temperature:0.04 } },
+    // L17 -> the player ladder's rung 13, on trial: the same champion net, searching three plies
+    // (its best 3 stops, each opponent reply's best 3, and the answer to that). It topped the
+    // 4-round L13 round robin (nn/l13-roundrobin.js): 34 points, 20-4 as Blue and 14-10 as Red --
+    // the only brain in the field with a winning record as Red -- ahead of the Committee's 26.
+    // It plays its considered best every move (temperature 0). The Committee stays at L15 for the
+    // lab and the arena; putting it back on rung 13 is one number in RUNG_TO_AI_LADDER.
+    { kind:'net', label:'Champion d3', nets:['champion'], o:{ depth:3, keepStops:3, temperature:0, sliceMs:12, guardMs:45000 } },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 // The player-visible ladder's rung NUMBER and the AI it plays are deliberately two different axes.
@@ -4267,7 +4274,7 @@ let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder
 // into AI_LADDER's own numbering -- every existing board keeps the exact opponent it always had,
 // however its position in the menu moves. New rung 1 (Yellow) reuses L1's pushover outright: it is
 // a new SLOT in the menu, not a new difficulty tier nobody asked for or tuned.
-const RUNG_TO_AI_LADDER = [0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 14];
+const RUNG_TO_AI_LADDER = [0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16];
 // One-time migration for a save written under the old 11-rung numbering (Walnut at rung 1 ...
 // Colossus at rung 11), now that Yellow has taken rung 1 and everything else shifted up by one.
 // Left un-migrated, a player's own saved clears would be read back under the WRONG rung the moment
@@ -4919,8 +4926,8 @@ function* committeePlanGen(idx, def) {
 // as the Committee above, and a rung below it in both strength and cost -- one net reading one
 // leaf, where the Committee has three members reading it and a second ply behind a real reply.
 function* ladderNetPlanGen(idx, def) {
-    if (!(yield* ladderNetsWaitGen(15, def))) return yield* ladderPlanForGen(10, idx);
-    return nnPlanForGame(idx, def.o.temperature || 0, def.o.depth, def.o.keepStops, def._nets[0], null);
+    if (!(yield* ladderNetsWaitGen(AI_LADDER.indexOf(def), def))) return yield* ladderPlanForGen(10, idx);
+    return yield* nnPlanForGameGen(idx, def.o.temperature || 0, def.o.depth, def.o.keepStops, def._nets[0], null);
 }
 // ===================== The Committee: three real players share one move by voting =====================
 // Ported from nn/committee.js's real algorithm (the offline training arena's own multi-brain
@@ -5613,6 +5620,11 @@ function nnPolicyPredictGame(x, model) {
 // minimax `depth` on top of the same trained net) so a #nn game is testing the SAME search the
 // net is actually trained and gated with -- not a separate, silently-stale implementation.
 function nnPlanForGame(idx, temperature, depth, keepForDepth, model, policyModel) {
+    return drainPlan(nnPlanForGameGen(idx, temperature, depth, keepForDepth, model, policyModel));
+}
+// The same search as a generator, yielding after every net call, so a rung that searches it three
+// plies deep (several seconds) is spread across frames by stepAiSearch instead of freezing the page.
+function* nnPlanForGameGen(idx, temperature, depth, keepForDepth, model, policyModel) {
     model = model || nnModel;
     if (policyModel === undefined) policyModel = (model === nnModel ? nnPolicyModel : null);
     const snap = takeSnap();
@@ -5652,6 +5664,7 @@ function nnPlanForGame(idx, temperature, depth, keepForDepth, model, policyModel
             if (G.pieces[1 - idx].anyFootOff()) v = 1e6 - Math.abs(rad)*1e-3;   // a throw -- shortest wins
             else { G.active = 1 - idx; v = -nnForwardGame(nnFeaturesGame(), model); G.active = idx; }
             arm.push({ pivotIdx: pv, dir, targetRad: Math.abs(rad), v });
+            yield;
         }
         roll();
         for (let i = 0; i < arm.length; i++) {
@@ -5684,7 +5697,7 @@ function nnPlanForGame(idx, temperature, depth, keepForDepth, model, policyModel
             let deep;
             if (G.over) deep = G.winner === idx ? 1e6 : -1e6;
             else {
-                const oppPlan = nnPlanForGame(1 - idx, 0, depth - 1, keepForDepth, model, policyModel);
+                const oppPlan = yield* nnPlanForGameGen(1 - idx, 0, depth - 1, keepForDepth, model, policyModel);
                 if (!oppPlan) deep = nnForwardGame(nnFeaturesGame(), model);
                 else {
                     commit(oppPlan);
@@ -5777,7 +5790,7 @@ function stepAiSearch(){
     if (job.mid) aiSearchRestore(job.mid);            // back onto the board the search was standing on
     const t0 = performance.now();
     let r;
-    do { r = job.gen.next(); } while (!r.done && performance.now() - t0 < AI_SLICE_MS);
+    do { r = job.gen.next(); } while (!r.done && performance.now() - t0 < job.sliceMs);
     if (!r.done) { job.mid = aiSearchState(); aiSearchRestore(job.truth); return; }
     aiSearch = null; clearTimeout(aiSearchGuard); aiSearchGuard = null;
     aiSearchRestore(job.truth);
@@ -5793,7 +5806,7 @@ function finishAiSearchNow(){
     if (!aiSearch) return;
     // A paused match is not a stalled one -- wait it out rather than playing a move into a menu.
     if (window.tauDesktop && window.tauDesktop.paused) {
-        aiSearchGuard = setTimeout(finishAiSearchNow, AI_SEARCH_GUARD_MS); return;
+        aiSearchGuard = setTimeout(finishAiSearchNow, job.guardMs); return;
     }
     const job = aiSearch; aiSearch = null; aiSearchGuard = null;
     if (job.mid) aiSearchRestore(job.mid);
@@ -5817,9 +5830,14 @@ function startAiTurn() {
     // The lab runs hundreds of turns behind a menu with nobody watching the board, so it thinks in
     // one breath as it always has; a real match spreads the think across frames.
     if (labMode || typeof requestAnimationFrame !== 'function') { aiPlayPlan(drainPlan(gen)); return; }
-    aiSearch = { gen, truth: aiSearchState(), mid: null, done: aiPlayPlan };
+    // A rung whose think runs to seconds (the depth-3 champion) may take a bigger share of each
+    // frame and a longer guard -- at 6ms a frame its ~7s search would stretch past 20s, and the
+    // 8s guard would then finish it in one frozen gulp.
+    const rungO = (ladderLevel!=null && !(aiDifficulty === 'nn' && nnModel)) ? (AI_LADDER[RUNG_TO_AI_LADDER[ladderLevel]].o || {}) : {};
+    aiSearch = { gen, truth: aiSearchState(), mid: null, done: aiPlayPlan,
+                 sliceMs: rungO.sliceMs || AI_SLICE_MS, guardMs: rungO.guardMs || AI_SEARCH_GUARD_MS };
     clearTimeout(aiSearchGuard);
-    aiSearchGuard = setTimeout(finishAiSearchNow, AI_SEARCH_GUARD_MS);
+    aiSearchGuard = setTimeout(finishAiSearchNow, aiSearch.guardMs);
     stepAiSearch();
 }
 function aiPlayPlan(sp) {
