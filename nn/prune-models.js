@@ -1,30 +1,38 @@
 'use strict';
-// Deletes model files the rating store has PROVEN weak, so nn/models stops growing without bound.
+// Deletes model files nothing will use again, so nn/models stops growing without bound (it had
+// reached 1,522 files and 28.5 GB on the desktop, and every roster sync reads the directory).
 //
 //   node nn/prune-models.js                         # dry run: what would go, and the space it frees
 //   node nn/prune-models.js --apply                 # delete them
 //   node nn/prune-models.js --apply --everyHours 6  # keep running (league-trainer.js starts this)
 //
-// Nothing else ever deletes a model. The elastic cull only takes a face's SEAT, and says so: it
-// judges on as little as two games, "roughly a quarter of genuinely average faces lose their first
-// match and are retired for it", and that is accepted because "the model FILE survives on disk
-// either way" (evolution-roster.js). So a culled model is not a weak one, and this does not delete on
-// the cull's verdict. It refits the whole results store (elo-results.json, every id ever rated) and
-// deletes a model only when EVERY face it has played is confidently below the median of today's
-// standing field: its Bradley-Terry rating plus --z standard errors (1.28: 90% one-sided per face),
-// with at least --minMatches matches on its best-measured face. Unmeasured is not weak.
+// Two reasons to delete, either one enough:
 //
-// Never deleted, whatever the rating says:
+// REDUNDANT: older than the newest --keepNewest (12) of its line -- resume-NNN, ckpt-NNN, scratch-NNN,
+// each variant lineage (ultra-m13-NNN, deep-m11-NNN, ...), dual-pop-NNN -- and at least --minAgeHours
+// (48) old, whatever its rating. The training data is all kept, and a line's newer models, trained on
+// more of it, usually beat its older ones; an old model the league still wants is seated and so kept
+// below. This is where the space is: the resume/ckpt line alone is hundreds of 44 MB nets.
+//
+// PROVEN WEAK: any age, any family. Not the elastic cull's verdict -- that takes a face's SEAT on as
+// little as two games and relies on "the model FILE survives on disk either way" (evolution-
+// roster.js). This refits the whole results store (elo-results.json, every id ever rated) and needs
+// EVERY face the model has played to sit confidently below the median of today's standing field:
+// Bradley-Terry rating plus --z standard errors (1.28: 90% one-sided per face), with at least
+// --minMatches matches on its best-measured face, and never an undefeated face (the cull reinstates
+// those). Unmeasured is not weak.
+//
+// Never deleted, for either reason:
 //   - anything seated in the roster's face pools (active, trial or waiting, at any depth);
 //   - any model named in a live state file: the dual/mutant populations and their lineage roots,
-//     lineage champions, committee members, medals, the gate panel, every machine's standing summary
-//     (history logs and the results store are skipped -- they name everything ever rated);
-//   - byte-for-byte twins of an alias, pool slot or medal (seed-population.js would re-import them);
-//   - the newest file of each numbered family: run.js numbers resume-NNN as the highest file on disk
-//     plus one, so deleting the newest would hand its name, and its ratings, to the next net;
-//   - any model with an undefeated face (the cull reinstates those);
+//     lineage champions, committee members, medals, every machine's standing summary (history logs,
+//     the results store and the gate's cell cache are skipped -- they name everything ever played);
+//   - byte-for-byte twins of an alias, pool slot or medal (seed-population.js would re-import them,
+//     and the gate finds best.json's checkpoint by its bytes);
+//   - the newest file of each plainly numbered family: run.js numbers resume-NNN as the highest file
+//     on disk plus one, so deleting the newest would hand its name, and its ratings, to the next net;
 //   - the aliases themselves (best.json, value.json, ...), pool slots, backups and partial files.
-// Every deletion is appended to models/.pruned.jsonl with the evidence behind it.
+// Every deletion is appended to models/.pruned.jsonl with the reason and evidence behind it.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -37,7 +45,13 @@ const everyHours = Math.max(0, +arg('everyHours', 0));
 const firstDelayMin = Math.max(0, +arg('firstDelayMin', everyHours ? 10 : 0));
 const Z = Math.max(0, +arg('z', 1.28));
 const MIN_MATCHES = Math.max(1, +arg('minMatches', 4));
+// 12, not 10: tournament.js fields the newest --tournamentRecent (12) checkpoints. 0 turns this rule off.
+const KEEP_NEWEST = Math.max(0, +arg('keepNewest', 12));
+const MIN_AGE_MS = Math.max(0, +arg('minAgeHours', 48)) * 3600000;
 const MIN_FIELD = 10;
+// A model's line and its place in it: resume-452 -> resume #452, ultra-m13-532 -> ultra-m13 #532,
+// dual-pop-056-e40 -> dual-pop #56. Names without a trailing serial (seed-deep, wild shapes) have none.
+const lineOf = name => { const m = /^([A-Za-z][A-Za-z0-9_]*(?:-[A-Za-z][A-Za-z0-9_]*)*)-(\d+)(?:-e\d+)?$/.exec(name); return m ? { line: m[1], serial: +m[2] } : null; };
 
 const ALIASES = new Set(['best.json', 'value.json', 'scratch.json', 'wide.json', 'ultra.json', 'deep.json',
   'l15_value.json', 'policy-joint-base.json', 'dual.json', 'policy.json', 'policy-fight.json']);
@@ -106,10 +120,11 @@ function protectedNames(files) {
       mark(faceModel(typeof id === 'string' ? id : id && id.id), 'seated');
 
   // State files that name live models. The roster is handled above (its `latest` and `retired`
-  // name everything it has ever seen). Records of past games would protect everything ever played:
+  // name everything it has ever seen), and so does the roster's model-meta cache. Records of past
+  // games would protect everything ever played:
   // history logs, the results store, and the gate's cell cache (promotion-gate.js is handed its
   // panel by run.js; the cache only saves replaying a cell it has already played).
-  const skip = f => f === '.evolution-roster.json' || f === '.pruned.jsonl' || /history/i.test(f) ||
+  const skip = f => f === '.evolution-roster.json' || f === '.pruned.jsonl' || f === '.model-meta-cache.json' || /history/i.test(f) ||
     f === 'elo-results.json' || f === '.gate-panel-cache.json' || !/\.(json|jsonl)$/.test(f);
   const stateFiles = [
     ...listFiles(modelsDir).filter(f => f.startsWith('.') && !skip(f)).map(f => path.join(modelsDir, f)),
@@ -188,47 +203,60 @@ function pass() {
   const { keep, why } = protectedNames(files);
   const twins = twinsOfAliases(files.filter(f => !keep.has(f.replace(/\.json$/, ''))));
 
+  // Each line's files, newest first.
+  const lines = new Map(), place = new Map();
+  for (const f of files) { const l = lineOf(f.replace(/\.json$/, '')); if (l) (lines.get(l.line) || lines.set(l.line, []).get(l.line)).push({ f, serial: l.serial }); }
+  for (const [line, xs] of lines) { xs.sort((a, b) => b.serial - a.serial); xs.forEach((x, i) => place.set(x.f, { line, rank: i + 1 })); }
+
   const doomed = [], kept = { protected: 0, undefeated: 0, unmeasured: 0, notWeak: 0, unrated: 0 };
   for (const f of files) {
     const name = f.replace(/\.json$/, '');
     if (keep.has(name) || twins.has(name)) { kept.protected++; continue; }
+    let st; try { st = fs.statSync(path.join(modelsDir, f)); } catch (e) { continue; }
+    const at = place.get(f);
+    if (KEEP_NEWEST && at && at.rank > KEEP_NEWEST && t0 - st.mtimeMs >= MIN_AGE_MS) {
+      doomed.push({ file: f, bytes: st.size, reason: 'redundant', line: at.line, rank: at.rank }); continue;
+    }
     const played = (faces.get(name) || []).filter(x => x.matches > 0);
     if (!played.length) { kept.unrated++; continue; }
     if (played.some(x => !x.beaten)) { kept.undefeated++; continue; }
     if (Math.max(...played.map(x => x.matches)) < MIN_MATCHES) { kept.unmeasured++; continue; }
     const upper = Math.max(...played.map(x => x.elo + Z * x.se));
     if (upper >= bar) { kept.notWeak++; continue; }
-    let bytes = 0; try { bytes = fs.statSync(path.join(modelsDir, f)).size; } catch (e) { continue; }
     const best = played.reduce((a, b) => (a.elo + Z * a.se >= b.elo + Z * b.se ? a : b));
-    doomed.push({ file: f, bytes, upper, best: { id: best.id, elo: best.elo, se: best.se, matches: best.matches }, faces: played.length });
+    doomed.push({ file: f, bytes: st.size, reason: 'weak', upper, best: { id: best.id, elo: best.elo, se: best.se, matches: best.matches }, faces: played.length });
   }
 
   const gb = b => (b / 2**30).toFixed(2);
   const total = doomed.reduce((a, d) => a + d.bytes, 0);
-  const head = `[prune] field median ${bar.toFixed(0)} Elo over ${field.length} standing faces; rule: every played face's ` +
-    `rating + ${Z} SE below it, ${MIN_MATCHES}+ matches on the best-measured face`;
+  const nOf = r => doomed.filter(d => d.reason === r).length;
+  const head = `[prune] redundant: past the newest ${KEEP_NEWEST} of its line and ${MIN_AGE_MS / 3600000}h+ old; weak: every played ` +
+    `face's rating + ${Z} SE below the field median (${bar.toFixed(0)} Elo over ${field.length} standing faces), ${MIN_MATCHES}+ matches`;
   const keptLine = `kept ${files.length - doomed.length} of ${files.length} (protected ${kept.protected}, undefeated ${kept.undefeated}, ` +
     `under ${MIN_MATCHES} matches ${kept.unmeasured}, not proven weak ${kept.notWeak}, never rated ${kept.unrated})`;
+  const describe = d => d.reason === 'redundant' ? `redundant: #${d.rank} newest of ${d.line}` :
+    `weak: strongest face ${d.best.id} ${d.best.elo.toFixed(0)} +/- ${d.best.se.toFixed(0)} over ${d.best.matches} matches (upper ${d.upper.toFixed(0)})`;
   if (!apply) {
-    console.log(`${head}\n[prune] DRY RUN -- would delete ${doomed.length} model(s), ${gb(total)} GB; ${keptLine}`);
+    console.log(`${head}\n[prune] DRY RUN -- would delete ${nOf('redundant')} redundant + ${nOf('weak')} proven-weak model(s), ${gb(total)} GB; ${keptLine}`);
     const reasons = {};
     for (const f of files) { const n = f.replace(/\.json$/, ''); const r = keep.has(n) ? why.get(n) : twins.has(n) ? 'twin of an alias, slot or medal' : null; if (r) reasons[r] = (reasons[r] || 0) + 1; }
     console.log('[prune] protected because: ' + Object.entries(reasons).sort((a, b) => b[1] - a[1]).map(([r, n]) => `${r} ${n}`).join('; '));
     for (const d of doomed.sort((a, b) => b.bytes - a.bytes).slice(0, +arg('show', 25)))
-      console.log(`  ${d.file.padEnd(40)} ${(d.bytes / 2**20).toFixed(1).padStart(7)} MB  strongest face ${d.best.id} ` +
-                  `${d.best.elo.toFixed(0)} +/- ${d.best.se.toFixed(0)} over ${d.best.matches} matches (upper ${d.upper.toFixed(0)})`);
+      console.log(`  ${d.file.padEnd(40)} ${(d.bytes / 2**20).toFixed(1).padStart(7)} MB  ${describe(d)}`);
     return;
   }
-  let freed = 0, deleted = 0;
+  let freed = 0;
+  const deleted = { redundant: 0, weak: 0 };
   const log = fs.openSync(path.join(modelsDir, '.pruned.jsonl'), 'a');
   try {
     for (const d of doomed) {
       try { fs.unlinkSync(path.join(modelsDir, d.file)); } catch (e) { continue; }   // in use or already gone
-      deleted++; freed += d.bytes;
-      fs.writeSync(log, JSON.stringify({ at: new Date().toISOString(), ...d, bar, z: Z }) + '\n');
+      deleted[d.reason]++; freed += d.bytes;
+      fs.writeSync(log, JSON.stringify({ at: new Date().toISOString(), ...d, ...(d.reason === 'weak' ? { bar, z: Z } : { keepNewest: KEEP_NEWEST }) }) + '\n');
     }
   } finally { fs.closeSync(log); }
-  console.log(`${head}\n[prune] deleted ${deleted} proven-weak model(s), freed ${gb(freed)} GB; ${keptLine} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+  console.log(`${head}\n[prune] deleted ${deleted.redundant} redundant + ${deleted.weak} proven-weak model(s), freed ${gb(freed)} GB; ` +
+              `${keptLine} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
 }
 
 function loop() {

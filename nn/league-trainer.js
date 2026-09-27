@@ -30,7 +30,7 @@ const leagueWorkers=Math.max(1,+arg('leagueWorkers',Math.max(4,cores-1-sideLanes
 // which is the point; novelStartFrac 1 means every one of them opens where the data is thinnest.
 const exploreGames=Math.max(1,+arg('exploreGames',60));
 const novelStartFrac=arg('novelStartFrac','1');
-// Model cleanup: every N hours, delete the model files the rating store has proven weak (see
+// Model cleanup: every N hours, delete redundant and proven-weak model files (see
 // prune-models.js for what that means and what it never touches). 0 turns it off.
 const pruneEveryHours=Math.max(0,+arg('pruneEveryHours',6));
 const children=[];
@@ -66,7 +66,7 @@ else console.log(`[trainer] exploration: ${exploreGames}-game batches, top-rated
 start('PRIMARY OFFICIAL LEAGUE','league-loop.js',['--workers',String(leagueWorkers),'--budgetHours','.25']);
 if(retroWorkers) start('SMALL RETROMINE STREAM','retroloop.js',
   ['--workers',String(retroWorkers),'--seedsPerJob','1','--maxReplaysPerSeed','80']);
-if(pruneEveryHours) start(`MODEL CLEANUP (every ${pruneEveryHours}h, proven-weak models only)`,'prune-models.js',
+if(pruneEveryHours) start(`MODEL CLEANUP (every ${pruneEveryHours}h, redundant and proven-weak models)`,'prune-models.js',
   ['--apply','--everyHours',String(pruneEveryHours)]);
 
 // Keep run.js's mature mutation/training machinery, but make its ordinary self-play a minority
