@@ -64,6 +64,7 @@ THE TWO THINGS THAT SILENTLY GO WRONG (see torch-train-core.py's header -- same 
    error, exactly the failure verify-dual-export.js's __probe exists to catch.
 """
 import argparse, json, math, os, random, socket, sys
+from array import array
 import tau_paths
 
 N_FEATURES = 94
@@ -72,11 +73,53 @@ N_BINS = 16
 OUT = 1 + N_ARMS + N_BINS
 
 
+class Rows:
+    """policy-targets rows held column-wise in flat arrays: features as float32 (exactly what the
+    tensors hold anyway), game and mover ids as indices into lists of the distinct values.
+
+    Holding one parsed dict per row cost ~5 KB a row, kept alive through every epoch: 5.9 GB peak at
+    1.05M rows, and on 27 September the desktop's 4.6M-row dual step sat at 8.4 GB resident with the
+    16 GB machine at 95%. Column-wise it is ~0.6 KB a row (1.3 GB peak at 1.05M, most of it torch
+    itself), and main() frees the columns once the tensors exist. Row order, and so the split,
+    weights and tensors, is unchanged: the exported model is byte-identical."""
+
+    def __init__(self):
+        self.f = array('f')
+        self.z, self.sw = array('d'), array('d')
+        self.arm, self.bin, self.g, self.mv = array('i'), array('i'), array('i'), array('i')
+        self.gids, self.gix = [], {}
+        self.mvs, self.mvix = [], {}
+
+    def __len__(self):
+        return len(self.z)
+
+    def nbytes(self):
+        cols = (self.f, self.z, self.sw, self.arm, self.bin, self.g, self.mv)
+        return sum(len(c) * c.itemsize for c in cols)
+
+    @staticmethod
+    def _index(value, values, ix):
+        i = ix.get(value)
+        if i is None:
+            i = ix[value] = len(values)
+            values.append(value)
+        return i
+
+    def add(self, j):
+        self.f.extend(j['f'])
+        self.z.append(float(j.get('z', 0.0)))
+        self.sw.append(float(j.get('sw', 1.0)))
+        self.arm.append(int(j['arm']))
+        self.bin.append(int(j['bin']))
+        self.g.append(self._index(j['g'], self.gids, self.gix))
+        self.mv.append(self._index(j.get('mv'), self.mvs, self.mvix))
+
+
 def load_rows(targets_path):
     """Read policy-targets.jsonl rows: each already carries f, z, arm, bin, g, and optionally
     sw (source weight) / mv (mover pool id) / thrown (reconstructed-throw flag, ignored here --
     it's still a real move target, just approximate in the swing distance, per policy-targets.js)."""
-    rows = []
+    rows = Rows()
     stale = 0
     with open(targets_path, 'r', encoding='utf-8', errors='replace') as fh:
         for line in fh:
@@ -93,7 +136,7 @@ def load_rows(targets_path):
                 continue
             if j.get('arm') is None or j.get('bin') is None:
                 continue
-            rows.append(j)
+            rows.add(j)
     if stale:
         print(f"skipped {stale} row(s) with a missing/wrong-length feature vector", file=sys.stderr)
     return rows
@@ -244,40 +287,83 @@ def make_elo_gate(summary_path, top_frac):
                   f"{source}); other movers train the value head only")
 
 
+class Part:
+    """One side of the split: row indices into a Rows, in training order, with their weights."""
+
+    def __init__(self):
+        self.order, self.vw, self.pw = array('i'), array('d'), array('d')
+
+    def __len__(self):
+        return len(self.order)
+
+
 def split_and_weight(rows, seed, gw_mode, value_draw_w, loser_w, policy_draw_w, elo_weight_fn, no_source_weight, elo_gate_fn=None):
-    by_game = {}
-    for j in rows:
-        by_game.setdefault(j['g'], []).append(j)
-    ids = sorted(by_game.keys())
+    by_game = [array('i') for _ in rows.gids]
+    for i, gi in enumerate(rows.g):
+        by_game[gi].append(i)
+    ids = sorted(rows.gids)
     random.Random(seed).shuffle(ids)
     n_val = max(1, len(ids) // 10)
+    # Both weight functions depend on the mover alone, so each distinct mover is asked once.
+    elo_w = [elo_weight_fn(mv) for mv in rows.mvs]
+    gate_w = [elo_gate_fn(mv) for mv in rows.mvs] if elo_gate_fn is not None else None
     out = {}
     for part, subset in (('val', ids[:n_val]), ('train', ids[n_val:])):
-        part_rows = []
+        p = Part()
         for gid in subset:
-            g = by_game[gid]
+            g = by_game[rows.gix[gid]]
             n = len(g)
             gbase = 1.0 / math.sqrt(n) if gw_mode == 'sqrt' else (1.0 / n if gw_mode == 'game' else 1.0)
-            for j in g:
-                z = float(j.get('z', 0.0))
+            for i in g:
+                z = rows.z[i]
                 vw = gbase * (value_draw_w if z == 0.0 else 1.0)
-                pw = (1.0 if z > 0 else (loser_w if z < 0 else policy_draw_w)) * elo_weight_fn(j.get('mv'))
-                if elo_gate_fn is not None:
-                    pw *= elo_gate_fn(j.get('mv'))
+                m = rows.mv[i]
+                pw = (1.0 if z > 0 else (loser_w if z < 0 else policy_draw_w)) * elo_w[m]
+                if gate_w is not None:
+                    pw *= gate_w[m]
                 if not no_source_weight:
-                    pw *= float(j.get('sw', 1.0))
-                part_rows.append({'f': j['f'], 'z': z, 'arm': int(j['arm']), 'bin': int(j['bin']),
-                                   'vw': vw, 'pw': pw})
-        out[part] = part_rows
+                    pw *= rows.sw[i]
+                p.order.append(i)
+                p.vw.append(vw)
+                p.pw.append(pw)
+        out[part] = p
     for part in ('train',):
-        rs = out[part]
-        if rs:
-            mv = sum(r['vw'] for r in rs) / len(rs)
-            mp = sum(r['pw'] for r in rs) / len(rs)
-            for r in rs:
-                if mv > 0: r['vw'] /= mv
-                if mp > 0: r['pw'] /= mp
+        p = out[part]
+        if len(p):
+            mv = sum(p.vw) / len(p)
+            mp = sum(p.pw) / len(p)
+            for k in range(len(p)):
+                if mv > 0: p.vw[k] /= mv
+                if mp > 0: p.pw[k] /= mp
     return out['train'], out['val']
+
+
+def peak_memory_gb():
+    """This process's peak memory, for the log. Windows reports peak committed private bytes, which
+    counts anything pushed out to the pagefile; elsewhere, peak resident size. None if unavailable."""
+    try:
+        if os.name == 'nt':
+            import ctypes
+            from ctypes import wintypes
+            class Counters(ctypes.Structure):
+                _fields_ = [('cb', wintypes.DWORD), ('PageFaultCount', wintypes.DWORD)] + \
+                           [(k, ctypes.c_size_t) for k in (
+                               'PeakWorkingSetSize', 'WorkingSetSize', 'QuotaPeakPagedPoolUsage',
+                               'QuotaPagedPoolUsage', 'QuotaPeakNonPagedPoolUsage',
+                               'QuotaNonPagedPoolUsage', 'PagefileUsage', 'PeakPagefileUsage')]
+            k32, psapi = ctypes.WinDLL('kernel32'), ctypes.WinDLL('psapi')
+            k32.GetCurrentProcess.restype = wintypes.HANDLE
+            psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(Counters), wintypes.DWORD]
+            psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+            c = Counters()
+            c.cb = ctypes.sizeof(Counters)
+            if not psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(c), c.cb):
+                return None
+            return c.PeakPagefileUsage / 2**30
+        import resource
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20   # KiB on Linux
+    except Exception:
+        return None
 
 
 def export_for_netjs(linears, probe_inputs=None, probe_fn=None):
@@ -480,24 +566,29 @@ def main():
                                    args.loserW, args.policyDrawWeight, elo_weight_fn, args.noSourceWeight,
                                    elo_gate_fn)
     if args.policyTopFrac:
-        kept = sum(1 for r in train if r['pw'] > 0)
+        kept = sum(1 for w in train.pw if w > 0)
         print(f"policy gate: {kept} of {len(train)} training moves keep a policy weight ({kept / max(1, len(train)):.1%})")
-    n_games = len({j['g'] for j in rows})
+    n_games = len(rows.gids)
     print(f"data: {len(train)} train / {len(val)} val moves "
           f"({n_games - max(1, n_games // 10)} / {max(1, n_games // 10)} games, game-level split)")
 
-    def tens(rs):
-        x = torch.tensor([r['f'] for r in rs], dtype=torch.float32, device=device)
-        z = torch.tensor([[r['z']] for r in rs], dtype=torch.float32, device=device)
-        arm = torch.tensor([r['arm'] for r in rs], dtype=torch.long, device=device)
-        bin_ = torch.tensor([r['bin'] for r in rs], dtype=torch.long, device=device)
-        vw = torch.tensor([[r['vw']] for r in rs], dtype=torch.float32, device=device)
-        pw = torch.tensor([r['pw'] for r in rs], dtype=torch.float32, device=device)
+    def tens(p):
+        idx = torch.frombuffer(p.order, dtype=torch.int32).long()
+        col = lambda a, dt: torch.frombuffer(a, dtype=dt).index_select(0, idx)
+        x = torch.frombuffer(rows.f, dtype=torch.float32).view(-1, N_FEATURES).index_select(0, idx).to(device)
+        z = col(rows.z, torch.float64).to(torch.float32).view(-1, 1).to(device)
+        arm = col(rows.arm, torch.int32).long().to(device)
+        bin_ = col(rows.bin, torch.int32).long().to(device)
+        vw = torch.frombuffer(p.vw, dtype=torch.float64).to(torch.float32).view(-1, 1).to(device)
+        pw = torch.frombuffer(p.pw, dtype=torch.float64).to(torch.float32).to(device)
         return x, z, arm, bin_, vw, pw
 
     xtr, ztr, armtr, bintr, vwtr, pwtr = tens(train)
     xva, zva, armva, binva, _, pwva = tens(val)
     data = (xtr, ztr, armtr, bintr, vwtr, pwtr, xva, zva, armva, binva, pwva)
+    host_gb = (rows.nbytes() + sum(len(a) * a.itemsize for p in (train, val) for a in (p.order, p.vw, p.pw))) / 2**30
+    del rows, train, val   # every tensor above is a copy; nothing reads the host columns again
+    print(f"host copy of the training data: {host_gb:.2f} GB, freed before training")
 
     # --- SHAPE SWEEP: rank candidate trunks cheaply, train nothing to keep -----------------------
     # The data above is loaded and split ONCE and reused for every candidate, so the sweep's cost is
@@ -565,6 +656,9 @@ def main():
         json.dump(doc, fh)
     os.replace(tmp_out, args.out)
     print(f"\nsaved {args.out} (sizes {doc['sizes']}, best combined val score {best_val:.5f})")
+    peak = peak_memory_gb()
+    if peak is not None:
+        print(f"peak memory of this training run: {peak:.2f} GB")
     print(f"NOW VERIFY:  node nn/verify-dual-export.js {args.out}")
 
 
