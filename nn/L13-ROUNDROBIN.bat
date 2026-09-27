@@ -62,14 +62,26 @@ if errorlevel 1 ( echo   could not check main out into %RR%. & pause & exit /b 1
 set /a WORKERS=%NUMBER_OF_PROCESSORS%-1
 if %WORKERS% LSS 1 set WORKERS=1
 echo.
-echo   %WORKERS% workers, 72 games. The depth-3 games take the longest -- expect most of an hour
-echo   on a few cores, much less on many. Every game's positions are saved as training data.
+echo   Brains: L10 L11 L13-old L13 L13-d2 L13-d3 Champion-d1 Champion-d2 Champion-d3
+echo   Round 1 is the real start; every extra round starts each pairing from its own seeded
+echo   two-move opening, so more rounds = more (still repeatable) games per pairing.
+echo.
+set "ROUNDS="
+set /p ROUNDS="How many rounds? Enter for 1: "
+if "!ROUNDS!"=="" set "ROUNDS=1"
+set "ONLY="
+set /p ONLY="Which brains, comma separated? Enter for all nine: "
+set "ONLYARG="
+if not "!ONLY!"=="" set "ONLYARG=--only !ONLY!"
+echo.
+echo   %WORKERS% workers, !ROUNDS! round^(s^). Depth-3 brains are by far the slowest.
+echo   Every game's positions are saved as training data.
 echo.
 
 if not exist "%HERE%\nn\data" mkdir "%HERE%\nn\data"
 if not exist "%HERE%\nn\arena-logs" mkdir "%HERE%\nn\arena-logs"
 pushd "%RR%"
-node nn\l13-roundrobin.js --workers %WORKERS% --saveData "%HERE%\nn\data\l13-roundrobin-%COMPUTERNAME%.jsonl"
+node nn\l13-roundrobin.js --workers %WORKERS% --rounds !ROUNDS! !ONLYARG! --saveData "%HERE%\nn\data\l13-roundrobin-%COMPUTERNAME%.jsonl"
 copy /y "nn\arena-logs\l13-roundrobin-*.*" "%HERE%\nn\arena-logs\" >nul 2>nul
 popd
 
