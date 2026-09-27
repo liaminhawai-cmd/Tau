@@ -9,10 +9,15 @@
 // Two reasons to delete, either one enough:
 //
 // REDUNDANT: older than the newest --keepNewest (12) of its line -- resume-NNN, ckpt-NNN, scratch-NNN,
-// each variant lineage (ultra-m13-NNN, deep-m11-NNN, ...), dual-pop-NNN -- and at least --minAgeHours
-// (48) old, whatever its rating. The training data is all kept, and a line's newer models, trained on
-// more of it, usually beat its older ones; an old model the league still wants is seated and so kept
-// below. This is where the space is: the resume/ckpt line alone is hundreds of 44 MB nets.
+// each variant lineage (ultra-m13-NNN, deep-m11-NNN, ...), dual-pop-NNN -- whatever its rating. The
+// training data is all kept, and a line's newer models, trained on more of it, usually beat its older
+// ones; an old model the league still wants is seated and so kept below. This is where the space is:
+// the resume/ckpt line alone is hundreds of 44 MB nets.
+// Age is counted in trainer progress, not wall time -- the trainer does not run around the clock.
+// resume, ckpt, the variant lineages and dual-pop births each gain at most one model per pool cycle,
+// so a model outside its line's newest 12 has had 12 cycles of actual running to be rated and seated.
+// Mutant/scratch spawns can come several to a cycle, but every live member of that population is
+// named in .mutant-pop.json and so kept below whatever its rank.
 //
 // PROVEN WEAK: any age, any family. Not the elastic cull's verdict -- that takes a face's SEAT on as
 // little as two games and relies on "the model FILE survives on disk either way" (evolution-
@@ -47,7 +52,6 @@ const Z = Math.max(0, +arg('z', 1.28));
 const MIN_MATCHES = Math.max(1, +arg('minMatches', 4));
 // 12, not 10: tournament.js fields the newest --tournamentRecent (12) checkpoints. 0 turns this rule off.
 const KEEP_NEWEST = Math.max(0, +arg('keepNewest', 12));
-const MIN_AGE_MS = Math.max(0, +arg('minAgeHours', 48)) * 3600000;
 const MIN_FIELD = 10;
 // A model's line and its place in it: resume-452 -> resume #452, ultra-m13-532 -> ultra-m13 #532,
 // dual-pop-056-e40 -> dual-pop #56. Names without a trailing serial (seed-deep, wild shapes) have none.
@@ -217,7 +221,7 @@ function pass() {
     if (keep.has(name) || twins.has(name)) { kept.protected++; continue; }
     let st; try { st = fs.statSync(path.join(modelsDir, f)); } catch (e) { continue; }
     const at = place.get(f);
-    if (KEEP_NEWEST && at && at.rank > KEEP_NEWEST && t0 - st.mtimeMs >= MIN_AGE_MS) {
+    if (KEEP_NEWEST && at && at.rank > KEEP_NEWEST) {
       doomed.push({ file: f, bytes: st.size, reason: 'redundant', line: at.line, rank: at.rank }); continue;
     }
     const played = (faces.get(name) || []).filter(x => x.matches > 0);
@@ -233,7 +237,7 @@ function pass() {
   const gb = b => (b / 2**30).toFixed(2);
   const total = doomed.reduce((a, d) => a + d.bytes, 0);
   const nOf = r => doomed.filter(d => d.reason === r).length;
-  const head = `[prune] redundant: past the newest ${KEEP_NEWEST} of its line and ${MIN_AGE_MS / 3600000}h+ old; weak: every played ` +
+  const head = `[prune] redundant: past the newest ${KEEP_NEWEST} of its line; weak: every played ` +
     `face's rating + ${Z} SE below the field median (${bar.toFixed(0)} Elo over ${field.length} standing faces), ${MIN_MATCHES}+ matches`;
   const keptLine = `kept ${files.length - doomed.length} of ${files.length} (protected ${kept.protected}, undefeated ${kept.undefeated}, ` +
     `under ${MIN_MATCHES} matches ${kept.unmeasured}, not proven weak ${kept.notWeak}, never rated ${kept.unrated})`;
