@@ -165,13 +165,16 @@ function protectedNames(files) {
   return { keep, why };
 }
 
-// Byte-for-byte twins of the files seed-population.js and the pool slots copy models from.
+// Byte-for-byte twins of a copy that outlives the prune. seed-population.js re-imports, under a new
+// unrated name, any medal or models/ file whose bytes the roster can no longer see -- so deleting
+// the twin of one would only buy a re-import and a fresh measurement. The sources are exactly what
+// it reads: every medal directory machine-id.js lists (each machine's, and the legacy flat files
+// published before machines had names), and the models/ files this never deletes itself (aliases,
+// pool slots, best.* backups).
 function twinsOfAliases(files) {
-  const refs = [...[...ALIASES].map(f => path.join(modelsDir, f)),
-    ...listFiles(modelsDir).filter(f => /^pool-slot-\d+\.json$/.test(f)).map(f => path.join(modelsDir, f))];
-  const medalsDir = path.join(dir, 'medals');
-  for (const m of fs.existsSync(medalsDir) ? fs.readdirSync(medalsDir, { withFileTypes: true }) : [])
-    if (m.isDirectory()) refs.push(...listFiles(path.join(medalsDir, m.name)).filter(f => f.endsWith('.json')).map(f => path.join(medalsDir, m.name, f)));
+  const refs = listFiles(modelsDir).filter(f => f.endsWith('.json') && !f.startsWith('.') && neverCandidate(f)).map(f => path.join(modelsDir, f));
+  for (const m of require('./machine-id.js').medalDirs(dir))
+    refs.push(...listFiles(m.dir).filter(f => f.endsWith('.json') && f !== 'medals.json' && f !== 'elo-summary.json').map(f => path.join(m.dir, f)));
   const bySize = new Map();
   for (const p of refs) { try { const s = fs.statSync(p).size; (bySize.get(s) || bySize.set(s, []).get(s)).push(p); } catch (e) {} }
   const hash = p => crypto.createHash('sha1').update(fs.readFileSync(p)).digest('hex');
