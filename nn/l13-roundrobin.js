@@ -1,12 +1,18 @@
 // Round robin for the top rung: which way of running the Committee is actually strongest?
 //
-//   node nn/l13-roundrobin.js [--workers N] [--only L13,L13-d2,...] [--saveData file.jsonl]
+//   node nn/l13-roundrobin.js [--workers N] [--only L13,L13-d2,...] [--rounds R] [--saveData file.jsonl]
 //
 // Every brain plays every other brain twice -- once as Blue, once as Red -- from the real starting
 // position, the way the game plays them. The brains are deterministic except for one coin: from
 // rung 7 up, each flips one at the start of a game to decide whether to open in the corner. That
 // coin is SEEDED here from the pairing and the colours, so a run is exactly repeatable and a result
 // can be replayed. Nothing here touches the live league, the Elo pool or any model file.
+//
+// --rounds R plays every pairing R times over. Round 1 is the real start. Each further round starts
+// both of a pairing's games from a different two-move opening, picked by the same seeded generator,
+// so the extra games are still exactly repeatable -- they just are not all the same few lines. (From
+// the real start alone there are only a handful of distinct games, and none at all between two
+// brains that never flip the corner coin: every round of Champion-vs-Champion would be identical.)
 //
 // The brains:
 //   L10, L11          the menu's Level 10 and 11, as shipped
@@ -51,6 +57,7 @@ function worker() {
   const { MLP } = require('./net.js');
   const { nnPlanFor } = require('./nnai.js');
   const { loadCommitteeNet, equipLadderNets } = require('./committee-nets.js');
+  const { playRandomOpening } = require('./opening.js');
   const eng = createEngine();
   // The shipped Committee is AI_LADDER[14]; the variants are copies of it with a flag, appended so
   // no existing index moves. They share its nets (equipLadderNets loads each file once).
@@ -76,9 +83,18 @@ function worker() {
   };
   process.on('message', job => {
     if (job === 'stop') process.exit(0);
-    const { a, b, aIsBlue, save } = job;
-    Math.random = mulberry32(seedOf(a + '|' + b + '|' + aIsBlue));   // the engine shares this Math
+    const { a, b, aIsBlue, save, round } = job;
+    // The engine shares this Math, so this seeds the corner coin too. Round 0 keeps the original
+    // seed so a one-round run replays the first round robin exactly.
+    Math.random = mulberry32(seedOf(a + '|' + b + '|' + aIsBlue + (round ? '|' + round : '')));
     eng.newGame();
+    if (round) {
+      // Both colours of a pairing start from the SAME opening: seeded by the pair and the round only.
+      const keep = Math.random;
+      Math.random = mulberry32(seedOf([a, b].sort().join('|') + '|opening|' + round));
+      playRandomOpening(eng, 2);
+      Math.random = keep;
+    }
     const rows = [], ms = { A: 0, B: 0 }, moves = { A: 0, B: 0 };
     let plies = 0, nulls = 0;
     while (!eng.getG().over && plies < MAX_PLIES) {
@@ -113,9 +129,11 @@ function master() {
   for (const b of brains) if (!ALL_BRAINS.includes(b)) { console.error('unknown brain: ' + b + '  (know: ' + ALL_BRAINS.join(', ') + ')'); process.exit(1); }
   const saveData = arg('saveData', null);
   const nWorkers = Math.max(1, +arg('workers', Math.max(1, os.cpus().length - 1)));
+  const rounds = Math.max(1, +arg('rounds', 1) || 1);
   const jobs = [];
-  for (let i = 0; i < brains.length; i++) for (let j = i + 1; j < brains.length; j++)
-    for (const aIsBlue of [true, false]) jobs.push({ a: brains[i], b: brains[j], aIsBlue, save: !!saveData });
+  for (let round = 0; round < rounds; round++)
+    for (let i = 0; i < brains.length; i++) for (let j = i + 1; j < brains.length; j++)
+      for (const aIsBlue of [true, false]) jobs.push({ a: brains[i], b: brains[j], aIsBlue, save: !!saveData, round });
   const cost = j => (COST[j.a] || 1) + (COST[j.b] || 1);
   jobs.sort((x, y) => cost(y) - cost(x));
   const total = jobs.length, results = [];
@@ -124,7 +142,7 @@ function master() {
   fs.mkdirSync(logDir, { recursive: true });
   let dataStream = null, savedRows = 0;
   if (saveData) { fs.mkdirSync(path.dirname(path.resolve(saveData)), { recursive: true }); dataStream = fs.createWriteStream(saveData, { flags: 'a' }); }
-  console.log(`${brains.length} brains, ${total} games (each pair once as Blue, once as Red), ${nWorkers} workers`);
+  console.log(`${brains.length} brains, ${rounds} round${rounds > 1 ? 's' : ''}, ${total} games (each pair once as Blue and once as Red per round), ${nWorkers} workers`);
   if (saveData) console.log(`saving training rows to ${saveData}`);
   const t0 = Date.now();
   let next = 0, done = 0, live = 0;
@@ -146,7 +164,7 @@ function master() {
       done++;
       const { job } = m;
       if (dataStream) for (const r of m.rows) { dataStream.write(JSON.stringify(r) + '\n'); savedRows++; }
-      results.push({ a: job.a, b: job.b, aIsBlue: job.aIsBlue, winnerIsA: m.winnerIsA, adjudicated: m.adjudicated,
+      results.push({ a: job.a, b: job.b, aIsBlue: job.aIsBlue, round: job.round || 0, winnerIsA: m.winnerIsA, adjudicated: m.adjudicated,
                      plies: m.plies, msA: m.ms.A, msB: m.ms.B, movesA: m.moves.A, movesB: m.moves.B, komiLoss: m.komiLoss });
       const w = m.winnerIsA === null ? 'draw' : (m.winnerIsA ? job.a : job.b) + (m.adjudicated ? ' (komi)' : '');
       const blue = job.aIsBlue ? job.a : job.b, red = job.aIsBlue ? job.b : job.a;
@@ -161,8 +179,10 @@ function summarise(brains, results, secs) {
   const kw = r => 0.5 + (r.komiLoss || 0)/2;
   const pts = {}, wl = {}, colour = {}, speed = {};
   for (const b of brains) { pts[b] = 0; wl[b] = [0, 0, 0]; colour[b] = { Blue: [0, 0], Red: [0, 0] }; speed[b] = [0, 0]; }
-  const cell = {};   // cell[a][b] = "WL" string from a's view: Blue result then Red result
-  for (const b of brains) { cell[b] = {}; for (const c of brains) cell[b][c] = ['.', '.']; }
+  // cell[a][b] = a's record against b: [Blue wins, Blue games, Red wins, Red games]
+  const cell = {};
+  for (const b of brains) { cell[b] = {}; for (const c of brains) cell[b][c] = [0, 0, 0, 0]; }
+  const oneRound = results.every(r => !r.round);
   for (const r of results) {
     const add = (me, won, asBlue) => {
       const s = won === null ? 0.5 : won ? (r.adjudicated ? kw(r) : 1) : (r.adjudicated ? 1 - kw(r) : 0);
@@ -171,9 +191,9 @@ function summarise(brains, results, secs) {
     };
     add(r.a, r.winnerIsA, r.aIsBlue);
     add(r.b, r.winnerIsA === null ? null : !r.winnerIsA, !r.aIsBlue);
-    const ch = won => won === null ? 'D' : won ? 'W' : 'L';
-    cell[r.a][r.b][r.aIsBlue ? 0 : 1] = ch(r.winnerIsA);
-    cell[r.b][r.a][r.aIsBlue ? 1 : 0] = ch(r.winnerIsA === null ? null : !r.winnerIsA);
+    const put = (me, them, won, asBlue) => { const c = cell[me][them], k = asBlue ? 0 : 2; c[k + 1]++; if (won) c[k]++; };
+    put(r.a, r.b, r.winnerIsA === true, r.aIsBlue);
+    put(r.b, r.a, r.winnerIsA === false, !r.aIsBlue);
     speed[r.a][0] += r.msA; speed[r.a][1] += r.movesA; speed[r.b][0] += r.msB; speed[r.b][1] += r.movesB;
   }
   const order = brains.slice().sort((x, y) => pts[y] - pts[x]);
@@ -184,11 +204,14 @@ function summarise(brains, results, secs) {
     out += `${String(i + 1).padStart(3)}.  ${b.padEnd(12)}  ${pts[b].toFixed(1).padStart(5)}   ${`${w}-${l}-${d}`.padEnd(8)}  ` +
            `${`${colour[b].Blue[0]}-${colour[b].Blue[1]}`.padEnd(7)}  ${`${colour[b].Red[0]}-${colour[b].Red[1]}`.padEnd(7)}  ${String(sp).padStart(6)}\n`;
   });
-  out += '\nhead to head (row brain\'s result: as Blue / as Red; W win, L loss, D draw)\n';
+  const fmt = c => oneRound ? [c[1] ? (c[0] ? 'W' : 'L') : '.', c[3] ? (c[2] ? 'W' : 'L') : '.'].join('/')
+                            : `${c[0]}-${c[1] - c[0]}/${c[2]}-${c[3] - c[2]}`;
+  out += oneRound ? '\nhead to head (row brain\'s result: as Blue / as Red; W win, L loss)\n'
+                  : '\nhead to head (row brain\'s record: as Blue W-L / as Red W-L, across all rounds)\n';
   const w = 13;
   out += ''.padEnd(w) + order.map(b => b.slice(0, 11).padEnd(w)).join('') + '\n';
-  for (const a of order) out += a.slice(0, 11).padEnd(w) + order.map(b => (a === b ? '--' : cell[a][b].join('/')).padEnd(w)).join('') + '\n';
-  out += '\nOne game per colour per pairing is a fact about that pairing from the starting position, not a\n' +
+  for (const a of order) out += a.slice(0, 11).padEnd(w) + order.map(b => (a === b ? '--' : fmt(cell[a][b])).padEnd(w)).join('') + '\n';
+  if (oneRound) out += '\nOne game per colour per pairing is a fact about that pairing from the starting position, not a\n' +
          'rating: two brains can meet in a line one of them happens to know. Read the points column\n' +
          'across the whole field, and the as-Red column for the weakness this was built to find.\n';
   return out;
