@@ -3507,3 +3507,18 @@ test('the lab\'s Level N is the menu\'s Level N, nets and all',async t=>{
   assert.deepEqual(JSON.parse(g.read('JSON.stringify(window.__asked)')),[g.read('RUNG_TO_AI_LADDER[12]')]);
   assert.deepEqual(g.errors,[]);
 });
+
+test('climbing by whole steps as Blue does not send the board back to Yellow',async t=>{
+  const g=await game();t.after(g.close);
+  const D=g.w.tauDesktop, lv=g.$('desktopLevel');
+  g.read('markLadderCleared(1,0)');
+  D.recordResult({humanWon:true,vsAI:true,online:false,lab:false,level:0});
+  g.read('startLadderLevel(1,0)'); g.tick();          // "Up a level: Lily as Blue"
+  assert.equal(D.board,'maple');
+  g.read('markLadderCleared(2,0)');
+  D.recordResult({humanWon:true,vsAI:true,online:false,lab:false,level:1});
+  assert.equal(lv.value,'2','the route stays on the rung just played, not Level 1 as Red');
+  g.read('backToMenu()'); g.tick();
+  assert.equal(D.board,'maple','and the menu keeps Lily\'s board');
+  assert.deepEqual(g.errors,[]);
+});

@@ -242,13 +242,18 @@
     if (humanWon && vsAI && Number.isInteger(level)) progress.topLevel = Math.max(progress.topLevel, level + 1);
     try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress)); } catch (_) {}
     pendingUnlocks = BOARD_FINISHES.filter(b => isEarned(b.id) && !before.includes(b.id));
-    // Step the default route on. Blue then Red on the same board before the next one, one rung at a
-    // time -- never a jump to the top of what is open, which is what the generous reach would do if
-    // the menu followed it. A player who has skipped keeps the rung they chose.
+    // Step the default route on -- but never BELOW the rung that was just played. The route's own
+    // answer is the first rung not yet beaten on both colours, and with the result sheet offering a
+    // whole step up (same colour, next rung) a player climbing as Blue leaves Level 1 as Red behind
+    // them: the route then sent them, and their board, all the way back to Yellow after every win.
+    // A player who has skipped keeps the rung they chose.
     // Through the one path, so the board, the select and the tile move with it. No repaint here:
     // the result sheet is still up over the board that was just played on (and Watch replay plays
     // it back on that board), so the swap is left to routeToMenuBoard on the way out.
-    if (!settings.levelSkipped && $('desktopLevel')) setLadderLevel(ladderStep(), false);
+    if (!settings.levelSkipped && $('desktopLevel')) {
+      const played = Number.isInteger(level) && vsAI ? level + 1 : 0;
+      setLadderLevel(Math.max(ladderStep(), Math.min(played, ladderReach())), false);
+    }
     if ($('desktopLevel')) drawLadderPicker();   // the rung that just opened is selectable now
     if (pendingUnlocks.length && !showResultSoon()) toastUnlocks();
   }
