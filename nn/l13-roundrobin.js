@@ -22,6 +22,9 @@
 //                     answers each as the opponent would, (at d3, each net answers THOSE again),
 //                     every leaf judged by the whole Committee's pooled vote. Worst-case reply wins.
 //                     See committeePlanDeep in index.html.
+//   L13-d2-wide       the same depth-2 worst-reply check, run on the Committee's own top 8 voted moves
+//                     instead of each net's single favourite (committeePlanWide) -- the nets mostly
+//                     agree, so the narrow version usually had only one or two moves to choose from.
 //   Champion-d1..d3   the strongest single net (Level 12's), searching 1, 2 and 3 plies
 //
 // d3 is slow: seconds a move, where the others take a fraction of one. The games are spread over
@@ -36,9 +39,9 @@ const path = require('path');
 const os = require('os');
 const { fork } = require('child_process');
 
-const ALL_BRAINS = ['L10', 'L11', 'L13-old', 'L13', 'L13-d2', 'L13-d3', 'Champion-d1', 'Champion-d2', 'Champion-d3'];
+const ALL_BRAINS = ['L10', 'L11', 'L13-old', 'L13', 'L13-d2', 'L13-d2-wide', 'L13-d3', 'Champion-d1', 'Champion-d2', 'Champion-d3'];
 // Rough relative cost per move, only used to start the slow games first.
-const COST = { 'L13-d3': 40, 'L13-d2': 12, 'Champion-d3': 10, 'Champion-d2': 3, 'L13': 2, 'L13-old': 2 };
+const COST = { 'L13-d3': 40, 'L13-d2': 12, 'L13-d2-wide': 25, 'Champion-d3': 10, 'Champion-d2': 3, 'L13': 2, 'L13-old': 2 };
 const MAX_PLIES = 300, DISCOUNT = 0.995;
 
 function arg(name, dflt) { const i = process.argv.indexOf('--' + name); return i >= 0 ? process.argv[i + 1] : dflt; }
@@ -65,7 +68,7 @@ function worker() {
   const base = eng.AI_LADDER[COMMITTEE];
   if (!base || base.kind !== 'committee') throw new Error('AI_LADDER[14] is not the Committee any more -- update this script');
   const variant = o => { eng.AI_LADDER.push(Object.assign({}, base, { o: Object.assign({}, base.o || {}, o), _nets: null })); return eng.AI_LADDER.length - 1; };
-  const idxOld = variant({ noSafety: true }), idxD2 = variant({ deep: 2 }), idxD3 = variant({ deep: 3 });
+  const idxOld = variant({ noSafety: true }), idxD2 = variant({ deep: 2 }), idxD3 = variant({ deep: 3 }), idxWide = variant({ deep: 2, wide: 8 });
   equipLadderNets(eng);
   let champ = null;
   const champion = () => champ || (champ = MLP.fromJSON(loadCommitteeNet('champion')));
@@ -77,6 +80,7 @@ function worker() {
     'L13-old': idx => eng.ladderPlanFor(idxOld, idx),
     'L13-d2': idx => eng.ladderPlanFor(idxD2, idx),
     'L13-d3': idx => eng.ladderPlanFor(idxD3, idx),
+    'L13-d2-wide': idx => eng.ladderPlanFor(idxWide, idx),
     'Champion-d1': idx => nnPlanFor(eng, champion(), idx, { temperature: 0, depth: 1, keepForDepth: 4 }),
     'Champion-d2': idx => nnPlanFor(eng, champion(), idx, { temperature: 0, depth: 2, keepForDepth: 4 }),
     'Champion-d3': idx => nnPlanFor(eng, champion(), idx, { temperature: 0, depth: 3, keepForDepth: 4 }),

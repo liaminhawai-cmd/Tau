@@ -5105,15 +5105,17 @@ function committeePool(chairRow, netRows, j) {
 // committeePlanFor. Wide enough that every arm still gets a real look (six arms, up to five stops
 // each), narrow enough that a 2.06M-parameter net costs ~80ms a move instead of ~206ms.
 const COMMITTEE_SHORTLIST = 24, COMMITTEE_SHORTLIST_PER_ARM = 5;
-function committeePlanFor(idx, def) {
+// The Committee's vote on every move it can make, best first: [{ c, s }] with c a sweep stop and s
+// its pooled score. Or { plan } when a move is an engine-proven throw, or null when there is no
+// move at all. Shared by the shipped rung (committeePlanFor) and the wide search experiment.
+function committeeRank(idx, def) {
     const nets = def._nets;   // guaranteed ready by committeePlanGen before this is ever called
-    if (def.o && def.o.deep >= 2) return committeePlanDeep(idx, def, def.o.deep);
     const cands = committeeSweep(idx);
     if (!cands.length) return null;
 
     // ---- PROPOSE: an engine-proven throw needs no vote at all.
     for (const c of cands)
-        if (c.isThrow) return { pivotIdx: c.pivotIdx, dir: c.dir, targetRad: c.targetRad };
+        if (c.isThrow) return { plan: { pivotIdx: c.pivotIdx, dir: c.dir, targetRad: c.targetRad } };
 
     // ---- JUDGE. The cheap members (the chair's eval and the small net) read every stop; the big
     // nets, at ~4.4ms a call each, read only a shortlist of what the cheap ones rank highest.
@@ -5152,6 +5154,15 @@ function committeePlanFor(idx, def) {
     // vote itself: three independently-trained evaluators, pooled in log space, so a move any one
     // of them reads as nearly lost is dragged down however much the others like it.
     ranked.sort((a, b) => b.s - a.s);
+    return { ranked };
+}
+function committeePlanFor(idx, def) {
+    if (def.o && def.o.deep >= 2 && !def.o.wide) return committeePlanDeep(idx, def, def.o.deep);
+    const rk = committeeRank(idx, def);
+    if (!rk) return null;
+    if (rk.plan) return rk.plan;
+    const ranked = rk.ranked;
+    if (def.o && def.o.wide) { const w = committeePlanWide(idx, def, ranked, def.o.wide); if (w) return w; }
     // ---- CHECK: do not hand the opponent a throw. The vote reads positions, and a position that
     // looks fine can still leave a foot where the reply pushes it off -- which is exactly how this
     // rung lost the short lines it lost as Red (to rung 10 in eleven and fifteen plies). Whether the
@@ -5216,6 +5227,30 @@ function committeeLeafValue(nets, idx, snap, toMove) {
     let total = Math.log(committeeMemberProb('chair', ladderEval(idx, AI_LADDER[10].w)));
     for (const net of nets) total += Math.log(committeeMemberProb('net', committeeNetEval(net, idx, toMove)));
     return total;
+}
+// The wide variant: the same worst-reply check as committeePlanDeep at depth 2, but run on the
+// Committee's own top N voted moves instead of each net's single favourite. The nets mostly agree on
+// their favourite, so the narrow version usually weighed one or two moves in all -- and when every
+// one of those allowed a throw, it had nothing else to play. Here the vote supplies the breadth and
+// the search checks each candidate against every net's best reply; ties fall back to the vote's
+// order. If every candidate allows a throw it returns null and the caller's throw check looks further.
+function committeePlanWide(idx, def, ranked, n) {
+    const nets = def._nets, root = takeSnap(), opp = 1 - idx;
+    let best = null, bestV = -Infinity;
+    for (const { c } of ranked.slice(0, n)) {
+        let worst = Infinity;
+        for (const net of nets) {
+            const r = committeeNetPick(net, opp, c.snap, COMMITTEE_DEEP_INNER_DEG);
+            const v = !r ? committeeLeafValue(nets, idx, c.snap, opp)
+                    : r.isThrow ? -Infinity : committeeLeafValue(nets, idx, r.snap, idx);
+            if (v < worst) worst = v;
+            if (worst === -Infinity) break;
+        }
+        if (!best || worst > bestV) { best = c; bestV = worst; }
+    }
+    committeeSetPos(root, idx);
+    if (!best || bestV === -Infinity) return null;
+    return { pivotIdx: best.pivotIdx, dir: best.dir, targetRad: best.targetRad };
 }
 function committeePlanDeep(idx, def, depth) {
     const nets = def._nets, root = takeSnap(), opp = 1 - idx;
