@@ -30,6 +30,9 @@ const leagueWorkers=Math.max(1,+arg('leagueWorkers',Math.max(4,cores-1-sideLanes
 // which is the point; novelStartFrac 1 means every one of them opens where the data is thinnest.
 const exploreGames=Math.max(1,+arg('exploreGames',60));
 const novelStartFrac=arg('novelStartFrac','1');
+// Model cleanup: every N hours, delete the model files the rating store has proven weak (see
+// prune-models.js for what that means and what it never touches). 0 turns it off.
+const pruneEveryHours=Math.max(0,+arg('pruneEveryHours',6));
 const children=[];
 let stopping=false;
 function start(label,script,args){
@@ -48,7 +51,7 @@ process.on('exit',stopAll);
 
 // Leftovers from an earlier trainer (its loops, its rating pass, its retromine lanes) hold the Elo
 // writer lock and half the cores; the new trainer would spend hours standing down behind them.
-const ORPHAN_SCRIPTS=['league-trainer.js','league-loop.js','run.js','retroloop.js','policyloop.js','elorank.js','elorank-legacy.js'];
+const ORPHAN_SCRIPTS=['league-trainer.js','league-loop.js','run.js','retroloop.js','policyloop.js','elorank.js','elorank-legacy.js','prune-models.js'];
 const reaped=proc.reapOrphans(ORPHAN_SCRIPTS);
 if(reaped==null)console.log('[trainer] could not list processes; if an older trainer is still running, close it by hand');
 else if(reaped.length)console.log(`[trainer] closed ${reaped.length} leftover process tree(s) from an earlier trainer: ${reaped.map(r=>`${r.script} (pid ${r.pid})`).join(', ')}`);
@@ -63,13 +66,15 @@ else console.log(`[trainer] exploration: ${exploreGames}-game batches, top-rated
 start('PRIMARY OFFICIAL LEAGUE','league-loop.js',['--workers',String(leagueWorkers),'--budgetHours','.25']);
 if(retroWorkers) start('SMALL RETROMINE STREAM','retroloop.js',
   ['--workers',String(retroWorkers),'--seedsPerJob','1','--maxReplaysPerSeed','80']);
+if(pruneEveryHours) start(`MODEL CLEANUP (every ${pruneEveryHours}h, proven-weak models only)`,'prune-models.js',
+  ['--apply','--everyHours',String(pruneEveryHours)]);
 
 // Keep run.js's mature mutation/training machinery, but make its ordinary self-play a minority
 // exploration stream. Its own scheduled placement call gets only a token budget; normally it sees
 // the Elo writer lock and exits immediately because league-loop is already the sole rating writer.
 // Bench sweeps are effectively disabled here: fixed ladder brains already live in the universal
 // league, so a separate expensive sweep is diagnostic duplication rather than useful game supply.
-const OWN_ARGS=['--leagueWorkers','--exploreWorkers','--retroWorkers','--exploreGames','--novelStartFrac'];
+const OWN_ARGS=['--leagueWorkers','--exploreWorkers','--retroWorkers','--exploreGames','--novelStartFrac','--pruneEveryHours'];
 const forwarded=process.argv.slice(2).filter((x,i,a)=>{
   if(OWN_ARGS.includes(x))return false;
   if(i>0&&OWN_ARGS.includes(a[i-1]))return false;
