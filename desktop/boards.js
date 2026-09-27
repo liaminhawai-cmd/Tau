@@ -119,20 +119,33 @@ const PHYS = params => {
 // ---- themes ----------------------------------------------------------------------------------
 const THEMES = {
 
-  // ============ NOIR — glass on brass-inlaid slate (the original spike) ============
+  // ============ NOIR — anodised metal on brushed steel, brass inlay ============
   noir: {
     bg: 0x0a0c10, exposure: 1.05, bloom: [0.22, 0.5, 0.9],
     key: { color: 0xfff1dc, intensity: 2.6, pos: [70,130,45], shadow: 0.55 },
     fill:{ color: 0x8fb4ff, intensity: 0.5 },
     band: { color: 0x353a42, rough: 0.35, metal: 0.85 }, slabColor: 0x17191d, tableColor: 0x0d0f13,
-    boardEnv: 0.7, bumpScale: 0.9, boardReflect: 0.34, guide: 0xf3e3c0,
+    boardEnv: 1.1, bumpScale: 0.35, boardReflect: 0.34, boardMetal: 0.85, guide: 0xf3e3c0,
     paint() {
+      // Brushed steel, turned on a lathe: fine concentric scratches round the centre, which is what
+      // makes a metal disc catch the light in a moving ring as the camera goes round it. They go in
+      // the colour AND the roughness, so the scratches are really there for the reflections.
+      const brushed = (c, base, lo, hi, seed) => {
+        c.fillStyle = base; c.fillRect(0, 0, S, S);
+        let rng = seed; const rnd = () => (rng = (rng*16807)%2147483647)/2147483647;
+        c.lineWidth = Math.max(1, S/1400);
+        for (let r = 2; r < S*0.72; r += Math.max(1, S/1100)) {
+          const v = lo + rnd()*(hi - lo);
+          c.strokeStyle = `rgba(${v},${v},${v},${0.10 + rnd()*0.22})`;
+          c.beginPath(); c.arc(ox, oy, r, 0, 7); c.stroke();
+        }
+      };
       const [al, a] = canvas2d();
-      a.fillStyle = '#23262c'; a.fillRect(0, 0, S, S);
-      a.globalCompositeOperation = 'soft-light'; a.globalAlpha = 0.85;
+      brushed(a, '#3b3f47', 30, 120, 4711);
+      a.globalCompositeOperation = 'soft-light'; a.globalAlpha = 0.35;
       a.drawImage(noiseCanvas(0.12), 0, 0);
       a.globalCompositeOperation = 'source-over'; a.globalAlpha = 1;
-      vignette(a, 0.34);
+      vignette(a, 0.22);
       strokeLines(a, 'rgba(0,0,0,0.55)', LW*1.9);
       const brass = a.createLinearGradient(0, 0, S, S);
       brass.addColorStop(0,'#a8843c'); brass.addColorStop(0.5,'#d6b567'); brass.addColorStop(1,'#a8843c');
@@ -143,8 +156,7 @@ const THEMES = {
         a.fillStyle=brass; a.beginPath(); a.arc(ox+px(dx), oy+px(dy), dotR, 0, 7); a.fill();
       }
       const [ro, r] = canvas2d();
-      r.fillStyle='#9a9a9a'; r.fillRect(0,0,S,S);
-      r.globalAlpha=0.5; r.drawImage(noiseCanvas(0.12, 777), 0, 0); r.globalAlpha=1;
+      brushed(r, '#6a6a6a', 70, 150, 919);                         // satin, streaked along the brushing
       strokeLines(r, '#3a3a3a', LW);
       for (const [dx,dy] of DOTS) { r.fillStyle='#3a3a3a'; r.beginPath(); r.arc(ox+px(dx), oy+px(dy), dotR, 0, 7); r.fill(); }
       const [bu, b] = canvas2d();
@@ -153,25 +165,15 @@ const THEMES = {
       strokeLines(b, '#5a5a5a', LW*1.6);
       return { albedo: al, rough: ro, bump: bu };
     },
-    pieces(which) {   // glass — transmission (the expensive material; this theme is the GPU test)
-      const c = which === 'blue' ? { tint:0x7aa4ee, att:0x3b74e8 } : { tint:0xee7a6f, att:0xe8483b };
-      const mk = o => PHYS(Object.assign({
-        color: c.tint, metalness: 0, transmission: 1.0, ior: 1.5,
-        attenuationColor: new THREE.Color(c.att), emissive: new THREE.Color(c.att),
-      }, o));
-      return {
-        // legs at grazing angles are all Fresnel: with full clearcoat/env they washed to colourless
-        // chrome (phone photo) — so the legs run the attenuation much harder and the reflective
-        // terms much softer, and you see INTO the glass the way you do on the face-on bead.
-        // Thickness 11 through a 2.4-unit attenuation distance absorbed nearly everything -- the legs
-        // read as opaque coloured plastic. Thinner glass, gentler absorption: still deeply tinted at
-        // the grazing angles, but you see the board and the other piece through them.
-        leg: mk({ thickness: 6.0, attenuationDistance: 6.0, roughness: 0.12, emissiveIntensity: 0.18,
-                  clearcoat: 0.45, clearcoatRoughness: 0.14, specularIntensity: 0.4, envMapIntensity: 0.3 }),
-        // the bead — untouched, it reads as real glass
-        hub: mk({ thickness: 5.0, attenuationDistance: 6.5, roughness: 0.12, emissiveIntensity: 0.06,
-                  clearcoat: 1.0, clearcoatRoughness: 0.06, specularIntensity: 0.9, envMapIntensity: 0.8 }),
-      };
+    pieces(which) {   // anodised metal -- coloured aluminium, polished, lacquered over
+      // Metal takes its colour from what it reflects, so the tint rides in the base colour at full
+      // metalness and the clearcoat gives the lacquer's sharp highlight over the satin anodising.
+      const col = which === 'blue' ? 0x3d6fe0 : 0xe0483a;
+      const leg = PHYS({ color: col, metalness: 1, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.08,
+                         envMapIntensity: 1.25, specularIntensity: 1 });
+      const hub = PHYS({ color: col, metalness: 1, roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.04,
+                         envMapIntensity: 1.5, specularIntensity: 1 });
+      return { leg, hub };
     },
   },
 

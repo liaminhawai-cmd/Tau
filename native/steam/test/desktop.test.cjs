@@ -497,12 +497,15 @@ test('every board in the catalogue paints the flat board, the 3D board and the p
     seen.add(key);
   }
   // Exotic materials must not leak into the next board: glass and thin film are switched ON by the
-  // finishes that ask for them and back OFF by the ones that do not, or leaving Noir would hand the
+  // finishes that ask for them and back OFF by the ones that do not, or leaving Marble would hand the
   // next set see-through legs.
+  g.w.tauDesktop.board='marble';
+  assert.ok(g.read('tripods[0].userData.mat.transmission')>0,'Marble legs are glass');
   g.w.tauDesktop.board='noir';
-  assert.ok(g.read('tripods[0].userData.mat.transmission')>0,'Noir pieces are glass');
+  assert.equal(g.read('tripods[0].userData.mat.transmission'),0,'Noir is metal now, not glass');
+  assert.equal(g.read('tripods[0].userData.mat.metalness'),1,'anodised metal');
   g.w.tauDesktop.board='alien';
-  assert.equal(g.read('tripods[0].userData.mat.transmission'),0,'leaving Noir clears the glass');
+  assert.equal(g.read('tripods[0].userData.mat.transmission'),0,'leaving Marble clears the glass');
   // (The showcase's thin-film iridescence needs a newer THREE than the game embeds -- r128 has no
   // such term -- so what Alien keeps here is its internal glow. The board's membrane is the shader.)
   assert.ok(g.read('tripods[0].userData.mat.emissiveIntensity')>0,'Alien pieces keep their glow');
@@ -542,9 +545,10 @@ test('the showcase looks bring their own bakes and per-part piece materials into
   const srgb = g.read('THREE.SRGBColorSpace !== undefined ? boardTop.material.map.colorSpace === THREE.SRGBColorSpace : boardTop.material.map.encoding === THREE.sRGBEncoding');
   const dataLinear = g.read('THREE.SRGBColorSpace !== undefined ? boardTop.material.roughnessMap.colorSpace !== THREE.SRGBColorSpace : boardTop.material.roughnessMap.encoding !== THREE.sRGBEncoding');
   assert.ok(srgb && dataLinear, 'albedo is sRGB, data maps are not');
-  // Noir's glass comes from the showcase's own materials now, not an approximation of them.
+  // Noir's pieces come from the showcase's own materials too: anodised metal, with its own hub.
   g.w.tauDesktop.board='noir';
-  assert.ok(bodyMat().transmission > 0.5, 'noir legs are the showcase glass');   // capped for body on r128
+  assert.equal(bodyMat().metalness, 1, 'noir legs are metal');
+  assert.equal(bodyMat().transmission || 0, 0, 'and not glass any more');
   assert.ok(g.read('tripods[0].userData.hub').visible, 'noir has a distinct hub bead too');
   // Alien keeps its membrane: the board material carries the detail shader with the alien mode on.
   g.w.tauDesktop.board='alien';
@@ -1475,7 +1479,7 @@ test('the web build\'s skins name their materials too',async t=>{
   const is=(p,su)=>JSON.stringify({piece:p,surface:su});
   assert.equal(at('dojo'),is('metal','wood'));
   assert.equal(at('yellow'),is('metal','paper'));
-  assert.equal(at('slate'),is('metal','slate'));
+  assert.equal(at('slate'),is('stone','slate'),'slate sounds like stone');
   assert.deepEqual(g.errors,[]);
 });
 
@@ -3486,7 +3490,7 @@ test('below High the glass legs are plain see-through glass, with nothing left r
     boardRim=new THREE.Mesh(new THREE.CylinderGeometry(CFG.edgeU,CFG.edgeU,4),new THREE.MeshStandardMaterial());
     tripods=[buildTripod(0x6b9eff),buildTripod(0xff6b6b)]; localStorage.setItem('tauDesktopTestBoards','1');
     tauDesktop.applyMaterials();`);
-  for (const b of ['marble','noir']) {
+  for (const b of ['marble']) {
     g.w.tauDesktop.board=b;
     assert.equal(g.read('tripods[0].children[0].material.transmission'),0,b+': no transmission pass below High');
     assert.equal(g.read('tripods[0].children[0].material.transparent'),true,b+': but still see-through');

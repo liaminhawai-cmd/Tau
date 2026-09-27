@@ -2136,8 +2136,8 @@
   // thump and the rim impact; the surface bakes the sweep's own noise and sets the room.
   const ACOUSTICS_BY_BOARD = {
     walnut:['metal','wood'], ebony:['metal','wood'], maple:['metal','wood'], cosy:['metal','wood'],
-    dark:['metal','slate'], slate:['metal','slate'], dojo:['metal','wood'], yellow:['metal','paper'],
-    noir:['glass','slate'], math:['graphite','paper'], sumo:['wood','clay'], alien:['chitin','membrane'],
+    dark:['metal','slate'], slate:['stone','slate'], dojo:['metal','wood'], yellow:['metal','paper'],
+    noir:['metal','steel'], math:['graphite','paper'], sumo:['wood','clay'], alien:['chitin','membrane'],
     colossus:['stone','sand'], marble:['glass','marble'],
   };
   function applyMaterials() {
@@ -2168,7 +2168,7 @@
       bm.emissiveMap = showMaps.emissiveMap;
       if (showMaps.emissiveMap) { bm.emissive.set(0xffffff); bm.emissiveIntensity = (T.emissiveIntensity || 1) * (T.gameEmissive || 1); }
       else { bm.emissive.set(0x000000); bm.emissiveIntensity = 1; }
-      bm.roughness = 1; bm.metalness = 0.03; bm.bumpScale = T.bumpScale; bm.envMapIntensity = T.boardEnv; bm.needsUpdate = true;
+      bm.roughness = 1; bm.metalness = T.boardMetal != null ? T.boardMetal : 0.03; bm.bumpScale = T.bumpScale; bm.envMapIntensity = T.boardEnv; bm.needsUpdate = true;
       boardRim.material.color.set(T.band.color); boardRim.material.metalness = T.band.metal; boardRim.material.roughness = T.band.rough;
       applyShowcasePieces(T);
     } else {

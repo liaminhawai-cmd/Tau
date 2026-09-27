@@ -8328,7 +8328,7 @@ addEventListener('load', () => {
 // the old one), and recolours the rim, both piece materials, the scene backdrop and the 2D pieces.
 // The web build's four skins, as materials: the same steel-and-lacquer pieces on a dark matte
 // slate, on slate, on a pale lacquered wood, on a printed paper board. The desktop names its own.
-const SKIN_ACOUSTICS = { dark:['metal','slate'], slate:['metal','slate'], dojo:['metal','wood'], yellow:['metal','paper'] };
+const SKIN_ACOUSTICS = { dark:['metal','slate'], slate:['stone','slate'], dojo:['metal','wood'], yellow:['metal','paper'] };
 function applyTheme() {
     if (!window.tauDesktop && typeof setAcoustics === 'function') {
         const a = SKIN_ACOUSTICS[BOARD_SKINS[skinIdx].id] || SKIN_ACOUSTICS.dark; setAcoustics(a[0], a[1]);
@@ -8444,6 +8444,8 @@ const SURFACE_ACOUSTICS = {
     wood:     { tilt:-0.35, grainRate:90,  grainDepth:0.55, crackle:14,  ring:0,  q:1.0,  scrapeHz:1.0,  highCut:0.8,  reverb:0.02, reverbEnd:0.85, reverbTilt:0 },
     slate:    { tilt:-0.10, grainRate:260, grainDepth:0.45, crackle:60,  ring:0,  q:0.8,  scrapeHz:0.9,  highCut:0.9,  reverb:0.04, reverbEnd:0.95, reverbTilt:0 },
     marble:   { tilt:+0.35, grainRate:40,  grainDepth:0.25, crackle:6,   ring:18, q:1.6,  scrapeHz:1.4,  highCut:1.4,  reverb:0.12, reverbEnd:1.1,  reverbTilt:0 },
+    // Brushed steel (Noir): smooth, bright and ringing -- a foot drawn over it sings more than it grits.
+    steel:    { tilt:+0.45, grainRate:30,  grainDepth:0.18, crackle:3,   ring:34, q:2.0,  scrapeHz:1.6,  highCut:1.6,  reverb:0.10, reverbEnd:1.2,  reverbTilt:2 },
     // A stone bowl open to the sky rings bright and long -- the opposite of the dry, muffled sand
     // underfoot (highCut stays low; only the ROOM gets the lift).
     sand:     { tilt:-0.70, grainRate:400, grainDepth:0.70, crackle:220, ring:0,  q:0.55, scrapeHz:0.55, highCut:0.55, reverb:0.08, reverbEnd:0.9,  reverbTilt:9 },
@@ -8799,6 +8801,26 @@ function playLandingSound(strength) {
         setTimeout(() => { try { g.disconnect(); } catch(e){} }, 1200);
         return;
     }
+    if (surface === 'slate') {
+        // stone on stone: a hard, short knock with grit in it -- dense, not deep, and no ring
+        noiseTick(g, 'bandpass', 2600, 1.6, 0.03);                  // the hard contact
+        tone(g, 'sine', 160, 118, 0.75, 0.16);                      // the slab's weight, cut short
+        tone(g, 'triangle', 340, 300, 0.22, 0.07);
+        noiseTick(g, 'bandpass', 900, 0.9, 0.12);                   // grit
+        setTimeout(() => { if (audioReady && soundOn) { noiseTick(g, 'bandpass', 2200, 1.4, 0.025); tone(g, 'sine', 150, 120, 0.22, 0.08); } }, 95 + 40*vol);
+        setTimeout(() => { try { g.disconnect(); } catch(e){} }, 900);
+        return;
+    }
+    if (surface === 'steel') {
+        // a metal body landing on steel: the clank, then the plate ringing on inharmonic partials
+        noiseTick(g, 'highpass', 2800, 0.8, 0.04);
+        tone(g, 'sine', 140, 110, 0.45, 0.2);
+        const ring = [[523, 0.30, 1.4], [1391, 0.18, 1.0], [2437, 0.10, 0.7], [3710, 0.05, 0.5]];
+        for (const [hz, a, len] of ring) tone(g, 'sine', hz, hz*0.998, a, len);
+        setTimeout(() => { if (audioReady && soundOn) { noiseTick(g, 'highpass', 3200, 0.8, 0.03); tone(g, 'sine', 1391, 1389, 0.08, 0.5); } }, 110 + 50*vol);
+        setTimeout(() => { try { g.disconnect(); } catch(e){} }, 2000);
+        return;
+    }
     if (surface === 'clay') {
         tone(g, 'sine', 78, 34, 1.0, 1.1);                          // the boom
         tone(g, 'sine', 156, 70, 0.35, 0.5);
@@ -8854,20 +8876,22 @@ function playShatterSound(strength) {
     if (!audioReady || !soundOn || !gameVisible()) return;
     const vol = Math.max(0.15, Math.min(1, strength === undefined ? 1 : strength));
     const g = audioCtx.createGain();
-    g.gain.value = 0.85*vol;
+    g.gain.value = 1.0*vol;
     g.connect(toneLP);
-    noiseTick(g, 'highpass', 2600, 0.7, 0.16);        // the fracture: a bright broadband crack
-    noiseTick(g, 'bandpass', 5200, 1.4, 0.1);
-    tone(g, 'square', 2400, 900, 0.1, 0.07);          // the body of the piece letting go
-    tone(g, 'sine', 180, 110, 0.22, 0.2);             // the dull weight of it hitting at the same instant
+    // Pitched up from the first version, which read as something duller than glass: the fracture
+    // is higher and brighter, the dull weight under it lighter, and the chips smaller (higher).
+    noiseTick(g, 'highpass', 3600, 0.7, 0.14);        // the fracture: a bright broadband crack
+    noiseTick(g, 'bandpass', 6800, 1.4, 0.09);
+    tone(g, 'square', 3400, 1500, 0.09, 0.06);        // the body of the piece letting go
+    tone(g, 'sine', 300, 190, 0.12, 0.14);            // the weight of it hitting, kept light
     // The scatter: chips landing over the next quarter second, thinning out as they settle.
-    for (let i = 0; i < 9; i++) {
-        const at = 40 + i*22 + Math.random()*45, fade = 1 - i/11;
+    for (let i = 0; i < 11; i++) {
+        const at = 35 + i*20 + Math.random()*45, fade = 1 - i/13;
         setTimeout(() => {
             if (!audioReady || !soundOn) return;
-            const hz = 1700 + Math.random()*3200;
-            tone(g, 'triangle', hz, hz*0.72, 0.075*fade*vol, 0.05 + Math.random()*0.05);
-            if (i % 3 === 0) noiseTick(g, 'highpass', 4200, 0.9, 0.05);
+            const hz = 2800 + Math.random()*4600;
+            tone(g, 'triangle', hz, hz*0.75, 0.08*fade*vol, 0.04 + Math.random()*0.05);
+            if (i % 3 === 0) noiseTick(g, 'highpass', 5200, 0.9, 0.045);
         }, at);
     }
     setTimeout(() => { try { g.disconnect(); } catch(e){} }, 1400);
