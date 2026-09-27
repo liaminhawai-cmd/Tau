@@ -5107,6 +5107,7 @@ function committeePool(chairRow, netRows, j) {
 const COMMITTEE_SHORTLIST = 24, COMMITTEE_SHORTLIST_PER_ARM = 5;
 function committeePlanFor(idx, def) {
     const nets = def._nets;   // guaranteed ready by committeePlanGen before this is ever called
+    if (def.o && def.o.deep >= 2) return committeePlanDeep(idx, def, def.o.deep);
     const cands = committeeSweep(idx);
     if (!cands.length) return null;
 
@@ -5151,8 +5152,108 @@ function committeePlanFor(idx, def) {
     // vote itself: three independently-trained evaluators, pooled in log space, so a move any one
     // of them reads as nearly lost is dragged down however much the others like it.
     ranked.sort((a, b) => b.s - a.s);
+    // ---- CHECK: do not hand the opponent a throw. The vote reads positions, and a position that
+    // looks fine can still leave a foot where the reply pushes it off -- which is exactly how this
+    // rung lost the short lines it lost as Red (to rung 10 in eleven and fifteen plies). Whether the
+    // opponent HAS a throw is not a judgement, it is a fact the engine can check, so the best-voted
+    // move that leaves none is played. If every move tried leaves one, the vote's own pick stands.
+    if (!(def.o && def.o.noSafety)) {
+        for (let k = 0; k < Math.min(ranked.length, COMMITTEE_SAFETY_TRIES); k++) {
+            if (!committeeHangsThrow(idx, ranked[k].c)) {
+                const c = ranked[k].c;
+                return { pivotIdx: c.pivotIdx, dir: c.dir, targetRad: c.targetRad };
+            }
+        }
+    }
     const c = ranked[0].c;
     return { pivotIdx: c.pivotIdx, dir: c.dir, targetRad: c.targetRad };
+}
+// How many of the vote's best moves the throw check will try before giving up and playing the top
+// one anyway. Each try is one physics sweep of the opponent's replies -- no net calls -- so it is
+// cheap, but a position where the first dozen all hang a throw is lost whatever is played.
+const COMMITTEE_SAFETY_TRIES = 12;
+// Parks the game on one position, whoever is to move, with no turn in progress.
+function committeeSetPos(snap, active) {
+    G.pieces.forEach((p,i)=>{p.x=snap[i].x;p.y=snap[i].y;p.rot=snap[i].rot;});
+    G.turnDir=0; G.crossings=0; G.atLimit=false; G.netRad=0; G.contact=null; G.pinned=null; G.pivot=null;
+    G.over=false; G.winner=null; G.active=active;
+}
+// After idx plays candidate c, can the opponent throw idx straight away? committeeSweep checks for
+// a throw at every physics step whatever its sampling grid, so a coarse grid finds every throw a
+// fine one would -- the grid only thins out the non-throw stops, which are not wanted here.
+function committeeHangsThrow(idx, c) {
+    const root = takeSnap();
+    committeeSetPos(c.snap, 1 - idx);
+    const replies = committeeSweep(1 - idx, 45);
+    committeeSetPos(root, idx);
+    return replies.some(r => r.isThrow);
+}
+// ===== An experiment, not the shipped rung: the Committee searching two or three plies =====
+// Reached only when a rung's def says o.deep (nn/l13-roundrobin.js builds such rungs for the
+// round robin; the game ships none). Each NET picks its own favourite move; each net then answers
+// each of those as the opponent would, with its own favourite reply; at depth 3 each net answers
+// each of those in turn. A leaf is judged by the whole Committee's pooled vote. A move is worth
+// the WORST of the replies it allows (the opponent is assumed to find the one that hurts), and at
+// depth 3 each reply is worth the BEST answer to it. The move worth most is played.
+// A net's favourite is found by sweeping every legal stop and scoring each with that net, so this
+// costs many net calls per branch, not one. The inner sweeps use a coarser grid to keep a move
+// inside a few seconds.
+const COMMITTEE_DEEP_INNER_DEG = 6;
+function committeeNetPick(net, side, snap, deg) {
+    committeeSetPos(snap, side);
+    const cands = committeeSweep(side, deg);
+    if (!cands.length) return null;
+    const thr = cands.find(c => c.isThrow);
+    if (thr) return thr;
+    const row = committeeSmooth(cands, committeeScore(cands, side, () => committeeNetEval(net, side, 1 - side)));
+    let best = 0;
+    for (let j = 1; j < row.length; j++) if (row[j] > row[best]) best = j;
+    return cands[best];
+}
+// The whole Committee's pooled read of a position, for idx, with toMove to play there.
+function committeeLeafValue(nets, idx, snap, toMove) {
+    committeeSetPos(snap, idx);
+    let total = Math.log(committeeMemberProb('chair', ladderEval(idx, AI_LADDER[10].w)));
+    for (const net of nets) total += Math.log(committeeMemberProb('net', committeeNetEval(net, idx, toMove)));
+    return total;
+}
+function committeePlanDeep(idx, def, depth) {
+    const nets = def._nets, root = takeSnap(), opp = 1 - idx;
+    const all = committeeSweep(idx);
+    if (!all.length) return null;
+    const win = all.find(c => c.isThrow);
+    if (win) return { pivotIdx: win.pivotIdx, dir: win.dir, targetRad: win.targetRad };
+    // Each net's own favourite first move, duplicates dropped.
+    const firsts = [];
+    for (const net of nets) {
+        const m = committeeNetPick(net, idx, root, COMMITTEE_SAMPLE_DEG);
+        if (m && !firsts.some(f => f.arm === m.arm && Math.abs(f.targetRad - m.targetRad) < 1e-6)) firsts.push(m);
+    }
+    let best = null, bestV = -Infinity;
+    for (const m of firsts) {
+        let worst = Infinity;
+        for (const net of nets) {
+            const r = committeeNetPick(net, opp, m.snap, COMMITTEE_DEEP_INNER_DEG);
+            let v;
+            if (!r) v = committeeLeafValue(nets, idx, m.snap, opp);
+            else if (r.isThrow) v = -Infinity;
+            else if (depth <= 2) v = committeeLeafValue(nets, idx, r.snap, idx);
+            else {
+                v = -Infinity;
+                for (const net2 of nets) {
+                    const a = committeeNetPick(net2, idx, r.snap, COMMITTEE_DEEP_INNER_DEG);
+                    const w = !a ? committeeLeafValue(nets, idx, r.snap, idx)
+                            : a.isThrow ? Infinity : committeeLeafValue(nets, idx, a.snap, opp);
+                    if (w > v) v = w;
+                }
+            }
+            if (v < worst) worst = v;
+            if (worst === -Infinity) break;
+        }
+        if (!best || worst > bestV) { best = m; bestV = worst; }
+    }
+    committeeSetPos(root, idx);
+    return best ? { pivotIdx: best.pivotIdx, dir: best.dir, targetRad: best.targetRad } : null;
 }
 
 // ===================== Hidden mode (#nn): a trained checkpoint as the AI brain =====================
