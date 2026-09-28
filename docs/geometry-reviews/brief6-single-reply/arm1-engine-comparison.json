@@ -1,0 +1,45 @@
+{
+  "scope": "Diagnostic mismatch between exact-rotation real initial family and floating quarter-degree engine path. No numerical tolerance or engine certificate is inferred. Only completed experimental substeps compared.",
+  "results": [
+    {
+      "domain": [
+        8,
+        8
+      ],
+      "coordinatesCompared": 183,
+      "noncontained": 56,
+      "maxExcess": 1.3322676295501878e-15,
+      "byCoordinate": {
+        "rot": 56
+      },
+      "firstNoncontainment": {
+        "step": 1,
+        "coordinate": "rot",
+        "lower": 1.0655736598404533,
+        "engine": 1.0655736598404553,
+        "upper": 1.065573659840454,
+        "excess": 1.3322676295501878e-15
+      }
+    },
+    {
+      "domain": [
+        8,
+        8.000001
+      ],
+      "coordinatesCompared": 171,
+      "noncontained": 56,
+      "maxExcess": 1.3322676295501878e-15,
+      "byCoordinate": {
+        "rot": 56
+      },
+      "firstNoncontainment": {
+        "step": 1,
+        "coordinate": "rot",
+        "lower": 1.065573642387161,
+        "engine": 1.0655736598404553,
+        "upper": 1.065573659840454,
+        "excess": 1.3322676295501878e-15
+      }
+    }
+  ]
+}

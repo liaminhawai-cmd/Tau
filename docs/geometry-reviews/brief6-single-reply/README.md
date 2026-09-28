@@ -1,5 +1,10 @@
 # Brief 6: single-reply proof attempt
 
+28 September continuation: [defender arm (1,−)](ARM1-PROGRESS.md) adds a
+continuous no-contact reply prefix, a full-path attacker rim bound, a certified
+contact witness, and an explicit failed attempt at complete contact propagation.
+The one-arm and whole-position throw theorems remain open.
+
 26 September 2026. This continues the corrected reply maps at
 `aa02f0b51b0d4c08da34fc5cf868cecbeda63b2b`.
 
