@@ -288,7 +288,7 @@ canvas.board{cursor:crosshair}
             <option value="1" selected>1° — a full map at every degree of each swing</option>
             <option value="2">2°</option>
             <option value="5">5°</option>
-            <option value="0">Stops only — the swing plays between maps</option>
+            <option value="0">Stops only — the swing plays 1° a frame between maps</option>
           </select>
         </div>
         <button class="btn" id="animateBtn" style="width:100%;margin-top:8px" disabled>Animate through moves</button>
@@ -2406,12 +2406,13 @@ function animateSwing(mv, fromPose, toPose, onFrame) {
     G.pieces[1].x = fromPose.x; G.pieces[1].y = fromPose.y; G.pieces[1].rot = fromPose.rot;
     Engine.setActive(1); Engine.pinFoot(mv.pivotIdx);
     // A move's PHYSICAL step size stays whatever the engine needs for accuracy, but the ANIMATION
-    // step is separately capped so a small swing still takes a perceptible minimum number of real
-    // frames (~25, ~400ms at 60fps) instead of finishing in 2-3 frames and reading as a jump cut.
-    // Never coarser than 3deg either way, so a large swing isn't slowed down from how it already
-    // played -- this only ever makes a fast swing take LONGER, never a slow one shorter.
+    // step is 1deg a frame, so every swing turns at the same steady speed and each captured frame
+    // is one degree on from the last. (It used to be a flat 25 frames per swing, which crammed a
+    // 68deg turn into 2.7deg jumps next to a 38deg turn's 1.5deg ones -- the big turn read as
+    // skipping degrees.) A small swing still gets a floor of ~25 frames (~400ms at 60fps) instead
+    // of finishing in 2-3 frames and reading as a jump cut.
     const MIN_FRAMES = 25;
-    const stepRad = Math.min(3*Math.PI/180, Math.max(mv.targetRad/MIN_FRAMES, 0.05*Math.PI/180));
+    const stepRad = Math.min(Math.PI/180, Math.max(mv.targetRad/MIN_FRAMES, 0.05*Math.PI/180));
     function step() {
       if (mode !== 'running') { resolve(); return; }
       if (globalPaused) { requestAnimationFrame(step); return; }
