@@ -2,9 +2,10 @@
 
 Usage:
     python detect.py fight.mp4            # writes fight.pose.json next to the clip
+    python detect.py fight.mp4 --start 12 --end 18   # only 0:12 to 0:18
     python detect.py fight.mp4 --people 1 # single-person clip
 
-The first run downloads MediaPipe's pose model (~9 MB) into this folder.
+The first run downloads MediaPipe's pose model (~30 MB for heavy) into this folder.
 """
 import argparse
 import json
@@ -18,9 +19,9 @@ import mediapipe as mp
 from mediapipe.tasks import python as mp_tasks
 from mediapipe.tasks.python import vision
 
+HERE = os.path.dirname(os.path.abspath(__file__))
 MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-             "pose_landmarker_full/float16/latest/pose_landmarker_full.task")
-MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pose_landmarker_full.task")
+             "pose_landmarker_{0}/float16/latest/pose_landmarker_{0}.task")
 
 # Subset of MediaPipe's 33 landmarks that we keep (face detail is dropped).
 JOINTS = {
@@ -37,10 +38,12 @@ JOINTS = {
 NAMES = list(JOINTS)
 
 
-def ensure_model():
-    if not os.path.exists(MODEL_PATH):
-        print("Downloading pose model...")
-        urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
+def ensure_model(name):
+    path = os.path.join(HERE, f"pose_landmarker_{name}.task")
+    if not os.path.exists(path):
+        print(f"Downloading the {name} pose model (one time only)...")
+        urllib.request.urlretrieve(MODEL_URL.format(name), path)
+    return path
 
 
 def centroid(pose):
@@ -87,14 +90,26 @@ def assign(tracks, detections, people):
     return out
 
 
+def timestamp(text):
+    """Seconds from '83', '83.5', '1:23' or '0:01:23'."""
+    secs = 0.0
+    for part in str(text).strip().split(":"):
+        secs = secs * 60 + float(part)
+    return secs
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("video")
     ap.add_argument("--people", type=int, default=2)
     ap.add_argument("--out", help="output JSON path (default: <video>.pose.json)")
+    ap.add_argument("--start", type=timestamp, default=0, help="start time, e.g. 83 or 1:23")
+    ap.add_argument("--end", type=timestamp, help="end time (default: end of video)")
+    ap.add_argument("--model", choices=["heavy", "full", "lite"], default="heavy",
+                    help="heavy is slowest and most accurate (default)")
     args = ap.parse_args()
 
-    ensure_model()
+    model_path = ensure_model(args.model)
     cap = cv2.VideoCapture(args.video)
     if not cap.isOpened():
         sys.exit(f"Can't open {args.video}")
@@ -102,19 +117,25 @@ def main():
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    start = max(0, int(round(args.start * fps)))
+    end = min(total, int(round(args.end * fps))) if args.end else total
+    if end <= start:
+        sys.exit("The end time has to be after the start time.")
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start)
+    total = end - start
 
     options = vision.PoseLandmarkerOptions(
-        base_options=mp_tasks.BaseOptions(model_asset_path=MODEL_PATH),
+        base_options=mp_tasks.BaseOptions(model_asset_path=model_path),
         running_mode=vision.RunningMode.VIDEO,
         num_poses=args.people,
-        min_pose_detection_confidence=0.4,
-        min_tracking_confidence=0.4,
+        min_pose_detection_confidence=0.3,
+        min_tracking_confidence=0.3,
     )
     frames = []
     tracks = [None] * args.people
     with vision.PoseLandmarker.create_from_options(options) as lm:
         i = 0
-        while True:
+        while i < total:
             ok, img = cap.read()
             if not ok:
                 break
@@ -140,7 +161,7 @@ def main():
     out = args.out or os.path.splitext(args.video)[0] + ".pose.json"
     with open(out, "w") as f:
         json.dump({"version": 1, "video": os.path.basename(args.video), "fps": fps,
-                   "width": w, "height": h, "people": args.people,
+                   "start_frame": start, "width": w, "height": h, "people": args.people,
                    "joints": NAMES, "frames": frames}, f, separators=(",", ":"))
     missing = sum(1 for fr in frames for p in fr if p is None)
     print(f"Saved {out} ({len(frames)} frames, {missing} person-frames not detected)")

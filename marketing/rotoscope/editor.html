@@ -34,6 +34,8 @@
   <label class="file">Open video<input type="file" id="videoFile" accept="video/*"></label>
   <label class="file">Open .pose.json<input type="file" id="poseFile" accept=".json,application/json"></label>
   <button id="btnPlay">Play</button>
+  <button id="btnIn" title="Start the clip here (I)">Set in</button>
+  <button id="btnOut" title="End the clip here (O)">Set out</button>
   <button id="btnSwap" title="Swap red and blue from this frame onwards (S)">Swap from here</button>
   <button id="btnStyle" title="Toggle stylised preview (V)">Stylised</button>
   <button id="btnSave" title="Save edits to keep working later">Save edits</button>
@@ -52,7 +54,9 @@
   <kbd>K</kbd> lock selected joint here ·
   <kbd>Del</kbd> remove selected joint's keyframe here ·
   <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo ·
-  <kbd>V</kbd> stylised preview.
+  <kbd>V</kbd> stylised preview ·
+  <kbd>I</kbd>/<kbd>O</kbd> set in/out (trim the clip), <kbd>X</kbd> clear.
+  Export and Record only use the part between in and out.
   Timeline: <span style="color:var(--flag)">orange</span> = suspicious jump, white = keyframe, <span style="color:var(--swap)">purple</span> = swap.
 </div>
 <video id="video" muted playsinline preload="auto"></video>
@@ -73,7 +77,7 @@ const BONES = [
 ];
 const GAP_FILL = 15;       // fill detection gaps up to this many frames
 const FALLOFF = 6;       // a lone correction fades out over this many frames either side
-const JUMP_RATIO = 0.35;   // flag moves bigger than this fraction of torso length per frame
+const JUMP_RATIO = 0.2;    // flag moves bigger than this fraction of body size per frame
 
 let pose = null;           // loaded pose.json
 let raw = null;            // gap-filled detections [f][p][j] -> [x,y] | null
@@ -142,13 +146,13 @@ function point(p, j, f) {
 }
 function skeleton(p, f) { return pose.joints.map((_, j) => point(p, j, f)); }
 
-function torso(sk) {
-  const ls = sk[J.l_shoulder], rs = sk[J.r_shoulder], lh = sk[J.l_hip], rh = sk[J.r_hip];
-  if (!ls || !rs || !lh || !rh) return null;
+function bodySize(sk) {
+  // Size of the whole figure in pixels (its bounding box diagonal). Unlike torso
+  // length this doesn't shrink when a fighter crouches or leans at the camera.
   const W = pose.width, H = pose.height;
-  const sx = (ls[0] + rs[0]) / 2 * W, sy = (ls[1] + rs[1]) / 2 * H;
-  const hx = (lh[0] + rh[0]) / 2 * W, hy = (lh[1] + rh[1]) / 2 * H;
-  return Math.hypot(sx - hx, sy - hy);
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, n = 0;
+  for (const q of sk) if (q) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); n++; }
+  return n >= 4 ? Math.hypot((x1 - x0) * W, (y1 - y0) * H) : null;
 }
 function computeFlags() {
   flags = [];
@@ -161,11 +165,14 @@ function computeFlags() {
       const sk = skeleton(p, f); cur.push(sk);
       const pk = prev[p];
       if (!pk) continue;
-      const lim = (torso(sk) || 0.15 * H) * JUMP_RATIO;
-      for (let j = 0; j < sk.length && !bad; j++) {
+      const lim = Math.max((bodySize(sk) || 0.4 * H) * JUMP_RATIO, 0.02 * H);
+      // One flailing, motion-blurred joint is normal; flag when several jump at once.
+      let jumped = 0;
+      for (let j = 0; j < sk.length; j++) {
         const a = sk[j], b = pk[j];
-        if (a && b && Math.hypot((a[0] - b[0]) * W, (a[1] - b[1]) * H) > lim) bad = true;
+        if (a && b && Math.hypot((a[0] - b[0]) * W, (a[1] - b[1]) * H) > lim) jumped++;
       }
+      if (jumped >= 2) bad = true;
     }
     if (bad) flags.push(f);
     prev = cur;
@@ -219,6 +226,13 @@ function drawTimeline() {
   tctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   tctx.clearRect(0, 0, w, h);
   const x = f => (f + 0.5) / nFrames * w;
+  const [lo, hi] = range();
+  tctx.fillStyle = "rgba(0,0,0,0.55)";   // dim what's trimmed off
+  if (lo > 0) tctx.fillRect(0, 0, x(lo) - 0.5 * w / nFrames, h);
+  if (hi < nFrames - 1) tctx.fillRect(x(hi) + 0.5 * w / nFrames, 0, w, h);
+  tctx.fillStyle = "#78dc8c";
+  if (edits.inPt != null) tctx.fillRect(x(lo) - 1, 0, 3, h);
+  if (edits.outPt != null) tctx.fillRect(x(hi) - 1, 0, 3, h);
   tctx.fillStyle = "#e07a5f"; for (const f of flags) tctx.fillRect(x(f) - 1, 4, 2, 12);
   tctx.fillStyle = "#e6e6e6";
   for (const k in edits.keyframes) for (const f in edits.keyframes[k]) tctx.fillRect(x(+f) - 1, 18, 2, 10);
@@ -229,31 +243,41 @@ function drawStatus() {
   const sel = selected ? `${selected.p ? "blue" : "red"} ${pose.joints[selected.j]}` : "none";
   const nKeys = Object.values(edits.keyframes).reduce((n, k) => n + Object.keys(k).length, 0);
   $("status").innerHTML =
-    `<span>Frame <b>${frame + 1}</b> / ${nFrames}</span><span>Time <b>${(frame / fps).toFixed(2)}s</b></span>` +
+    `<span>Frame <b>${frame + 1}</b> / ${nFrames}</span><span>Video time <b>${((offset() + frame) / fps).toFixed(2)}s</b></span>` +
+    `<span>Clip <b>${((range()[1] - range()[0] + 1) / fps).toFixed(1)}s</b></span>` +
     `<span>Selected <b>${sel}</b></span><span>Flagged jumps <b>${flags.length}</b></span>` +
     `<span>Keyframes <b>${nKeys}</b></span><span>Swaps <b>${edits.swaps.length}</b></span>`;
 }
 
 // ---------- navigation ----------
+// Frame 0 of the pose data is this frame of the video (detect.py --start).
+function offset() { return (pose && pose.start_frame) || 0; }
+// The part being kept: in/out points if set, else everything.
+function range() {
+  const lo = edits.inPt != null ? edits.inPt : 0, hi = edits.outPt != null ? edits.outPt : nFrames - 1;
+  return lo <= hi ? [lo, hi] : [hi, lo];
+}
 function seek(f) {
   frame = Math.max(0, Math.min(nFrames - 1, f));
   if (video.src && !styled) {
     pendingSeek = true;
-    video.currentTime = (frame + 0.5) / fps;
+    video.currentTime = (offset() + frame + 0.5) / fps;
   } else draw();
 }
 video.addEventListener("seeked", () => { pendingSeek = false; draw(); });
 function play() {
   playing = !playing; $("btnPlay").textContent = playing ? "Pause" : "Play";
   if (!playing) { video.pause(); seek(frame); return; }
-  if (video.src && !styled) { video.currentTime = (frame + 0.5) / fps; video.play(); }
+  const [lo, hi] = range();
+  if (frame < lo || frame >= hi) frame = lo;
+  if (video.src && !styled) { video.currentTime = (offset() + frame + 0.5) / fps; video.play(); }
   let last = performance.now();
   const tick = now => {
     if (!playing) return;
-    if (video.src && !styled) frame = Math.min(nFrames - 1, Math.floor(video.currentTime * fps));
-    else if (now - last >= 1000 / fps) { frame = (frame + 1) % nFrames; last = now; }
+    if (video.src && !styled) frame = Math.min(nFrames - 1, Math.floor(video.currentTime * fps) - offset());
+    else if (now - last >= 1000 / fps) { frame++; last = now; }
+    if (frame >= hi || (video.src && !styled && video.ended)) { frame = Math.min(frame, hi); play(); return; }
     draw();
-    if (video.src && !styled && video.ended) { play(); return; }
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
@@ -331,6 +355,9 @@ document.addEventListener("keydown", e => {
   else if (e.key === "p" || e.key === "P") { const f = [...flags].reverse().find(x => x < frame); if (f !== undefined) seek(f); }
   else if (e.key === "s" || e.key === "S") swapHere();
   else if (e.key === "v" || e.key === "V") toggleStyle();
+  else if (e.key === "i" || e.key === "I") setIn();
+  else if (e.key === "o" || e.key === "O") setOut();
+  else if (e.key === "x" || e.key === "X") clearTrim();
   else if ((e.key === "k" || e.key === "K") && selected) {
     const q = point(selected.p, selected.j, frame);
     if (q) { snapshot(); setKey(selected.p, selected.j, frame, q); changed(); }
@@ -388,14 +415,14 @@ const stem = () => (pose.video || "clip").replace(/\.[^.]+$/, "");
 $("btnSave").onclick = () => pose && download(stem() + ".pose.json", JSON.stringify({ ...pose, edits }), "application/json");
 $("btnExport").onclick = () => {
   if (!pose) return;
-  const frames = [];
-  for (let f = 0; f < nFrames; f++) {
+  const frames = [], [lo, hi] = range();
+  for (let f = lo; f <= hi; f++) {
     const fr = [];
     for (let p = 0; p < pose.people; p++) fr.push(skeleton(p, f).map(q => q ? [+q[0].toFixed(5), +q[1].toFixed(5)] : null));
     frames.push(fr);
   }
   const { edits: _, ...meta } = pose;
-  download(stem() + ".corrected.json", JSON.stringify({ ...meta, corrected: true, frames }), "application/json");
+  download(stem() + ".corrected.json", JSON.stringify({ ...meta, start_frame: offset() + lo, corrected: true, frames }), "application/json");
 };
 $("btnRecord").onclick = async () => {
   if (!pose || playing) return;
@@ -411,12 +438,18 @@ $("btnRecord").onclick = async () => {
     styled = wasStyled; seek(frame);
   };
   rec.start();
-  for (let f = 0; f < nFrames; f++) {
+  const [lo, hi] = range();
+  for (let f = lo; f <= hi; f++) {
     frame = f; draw();
     await new Promise(r => setTimeout(r, 1000 / fps));
   }
   rec.stop();
 };
+function setIn() { snapshot(); edits.inPt = frame; changed(); }
+function setOut() { snapshot(); edits.outPt = frame; changed(); }
+function clearTrim() { snapshot(); delete edits.inPt; delete edits.outPt; changed(); }
+$("btnIn").onclick = () => pose && setIn();
+$("btnOut").onclick = () => pose && setOut();
 $("btnPlay").onclick = play;
 $("btnSwap").onclick = () => pose && swapHere();
 $("btnStyle").onclick = () => pose && toggleStyle();
