@@ -187,22 +187,6 @@ canvas.board{cursor:crosshair}
         </div>
         <div class="estimate" id="rotEstimate">Pick a source to estimate the spin.</div>
         <button class="btn small" id="animateRotBtn" style="width:100%;margin-top:8px" disabled>Spin &amp; capture a full turn</button>
-        <div id="playback" style="display:none;margin-top:10px">
-          <div class="row3">
-            <button class="btn small primary" id="playBtn">Play</button>
-            <button class="btn small ghost" id="saveGif">Save as GIF</button>
-            <button class="btn small ghost" id="saveFrames">Save frames (.zip)</button>
-          </div>
-          <div class="field">
-            <label>Frame <small id="frameLbl">1 / 1</small></label>
-            <input id="frameSlider" type="range" min="0" max="0" step="1" value="0">
-          </div>
-          <div class="field">
-            <label>Playback <small id="fpsLbl">24 fps</small></label>
-            <input id="fps" type="range" min="4" max="60" step="1" value="24">
-          </div>
-          <div class="hint">Frames are the finished map at each step, captured from the board on the left. GIF plays the spin back as one looping file; the zip keeps every frame as a separate full-resolution PNG.</div>
-        </div>
         <button class="btn ghost small" id="swap" style="width:100%;margin-top:6px">Swap mover ↔ opponent</button>
       </div>
 
@@ -302,6 +286,22 @@ canvas.board{cursor:crosshair}
         <div class="row2" style="margin-top:8px">
           <button class="btn" id="pauseBtn" disabled>Pause</button>
           <button class="btn ghost" id="editBtn">Edit pose</button>
+        </div>
+        <div id="playback" style="display:none;margin-top:10px">
+          <div class="row3">
+            <button class="btn small primary" id="playBtn">Play</button>
+            <button class="btn small ghost" id="saveGif">Save as GIF</button>
+            <button class="btn small ghost" id="saveFrames">Save frames (.zip)</button>
+          </div>
+          <div class="field">
+            <label>Frame <small id="frameLbl">1 / 1</small></label>
+            <input id="frameSlider" type="range" min="0" max="0" step="1" value="0">
+          </div>
+          <div class="field">
+            <label>Playback <small id="fpsLbl">24 fps</small></label>
+            <input id="fps" type="range" min="4" max="60" step="1" value="24">
+          </div>
+          <div class="hint">Captured from the board on the left by "Animate through moves" (the swing, then each finished map held for a beat) or "Spin &amp; capture a full turn" (the finished map at each step). GIF plays it back as one looping file; the zip keeps every frame as a separate full-resolution PNG.</div>
         </div>
       </div>
 
@@ -1918,25 +1918,43 @@ async function startRun() {
   if (mode === 'running') { mode = 'done'; activePanels().forEach(finishPanel); }
   updateButtons();
 }
+// How long a finished map stays on screen in playback/GIF before the next swing starts --
+// long enough to read, since the swing frames between stops go by at the playback fps.
+const STOP_HOLD_MS = 1200;
 async function animateThroughMoves() {
   if (!panels.some(p => p.source) || !state.moves.length) return;
+  captureReset();
   beginRun();
   const savedOp = { ...state.op };
   const frames = [{ ...state.opStart }];
   for (let i = 0; i < state.moves.length; i++) { replayMovesTo(i+1); frames.push({ ...state.op }); }
+  // canvas.toBlob copies the bitmap when it is called, so each pending PNG is the picture as it
+  // stood at that moment even though the encode finishes later.
+  const shots = [];
+  const shoot = (label, holdMs) => shots.push({ label, holdMs, blob: canvasToPng(panels[0].canvas) });
   for (let f = 0; f < frames.length && mode === 'running'; f++) {
     if (f > 0) {
       setPhase(`Playing move ${f} of ${state.moves.length}…`);
-      await animateSwing(state.moves[f-1], frames[f-1], frames[f]);
+      await animateSwing(state.moves[f-1], frames[f-1], frames[f], () => shoot(`move ${f} — swinging`, 0));
     }
     state.op = { ...frames[f] };
     setPhase(`Sweeping position ${f+1} of ${frames.length}…`);
     activePanels().forEach(resetPanelSweep);
     await runPanelsToCompletion();
+    if (mode !== 'running') break;
+    activePanels().forEach(finishPanel);        // capture the same picture a finished run shows
+    shoot(f === 0 ? 'start' : `after move ${f}`, STOP_HOLD_MS);
   }
   if (mode !== 'running') { state.op = savedOp; enterSetup(); return; }
   mode = 'done'; setPhase('');
   activePanels().forEach(finishPanel);
+  const captured = [];
+  for (let i = 0; i < shots.length; i++) {
+    const s = shots[i];
+    captured.push({ label: s.label, holdMs: s.holdMs, blob: await s.blob,
+                    slug: `${String(i).padStart(4, '0')}-${s.label.replace(/[^\w]+/g, '-').replace(/-+$/, '')}` });
+  }
+  showCapture('moves', captured);
   updateButtons();
 }
 // Spins the mover's own rotation smoothly to `target` (radians), redrawing the stage and the
@@ -1974,7 +1992,9 @@ function spinMeTo(target) {
  * a fraction of that, are exactly what the zip needs anyway, and decode fast enough that
  * playback can turn one into a bitmap on demand with a frame of lookahead.
  * =================================================================================== */
-const capture = { frames: [], playing: false, idx: 0, raf: null, cache: new Map(), lastAt: 0 };
+// Each frame is { label, slug, blob, holdMs? }: label for the readout, slug for its filename in
+// the zip, holdMs when that frame should stay up longer than the playback fps gives it.
+const capture = { frames: [], kind: 'spin', playing: false, idx: 0, raf: null, cache: new Map(), lastAt: 0 };
 function rotStepDeg() { return +$('rotStep').value || 1; }
 function rotFrameCount() { return Math.round(360/rotStepDeg()); }
 function captureReset() {
@@ -2010,20 +2030,24 @@ async function animateThroughRotations() {
     await runPanelsToCompletion();
     if (mode !== 'running') break;
     activePanels().forEach(finishPanel);        // capture the same picture a finished run shows
-    frames.push({ deg, blob: await canvasToPng(panels[0].canvas) });
+    frames.push({ label: `${Math.round(deg)}°`, slug: `${String(Math.round(deg)).padStart(3, '0')}deg`,
+                  blob: await canvasToPng(panels[0].canvas) });
   }
   if (mode !== 'running') { state.me.rot = savedRot; syncPoseInputs(); enterSetup(); return; }
   mode = 'done'; setPhase('');
-  capture.frames = frames;
   activePanels().forEach(finishPanel);
-  if (frames.length) {
-    $('playback').style.display = '';
-    $('frameSlider').max = String(frames.length - 1);
-    $('frameSlider').value = '0';
-    showFrame(0);
-    startPlayback();
-  }
+  showCapture('spin', frames);
   updateButtons();
+}
+function showCapture(kind, frames) {
+  capture.kind = kind;
+  capture.frames = frames;
+  if (!frames.length) return;
+  $('playback').style.display = '';
+  $('frameSlider').max = String(frames.length - 1);
+  $('frameSlider').value = '0';
+  showFrame(0);
+  startPlayback();
 }
 
 /* Playback ------------------------------------------------------------------------ */
@@ -2052,16 +2076,17 @@ async function showFrame(i) {
   ctx.drawImage(bmp, 0, 0, CSS_SIZE, CSS_SIZE);
   capture.idx = i;
   $('frameSlider').value = String(i);
-  $('frameLbl').textContent = `${i+1} / ${capture.frames.length} — ${Math.round(capture.frames[i].deg)}°`;
+  $('frameLbl').textContent = `${i+1} / ${capture.frames.length} — ${capture.frames[i].label}`;
   frameBitmap((i + 1) % capture.frames.length);      // one frame of lookahead
 }
 function startPlayback() {
   if (!capture.frames.length || capture.playing) return;
   capture.playing = true; capture.lastAt = 0;
-  $('playBtn').textContent = 'Pause';
+  $('playBtn').textContent = 'Stop';
   const tick = async now => {
     if (!capture.playing) return;
-    const interval = 1000/(+$('fps').value || 24);
+    const shown = capture.frames[capture.idx];
+    const interval = Math.max(1000/(+$('fps').value || 24), (shown && shown.holdMs) || 0);
     if (!capture.lastAt || now - capture.lastAt >= interval) {
       capture.lastAt = now;
       await showFrame((capture.idx + 1) % capture.frames.length);
@@ -2141,11 +2166,11 @@ $('saveFrames').addEventListener('click', async () => {
     const tag = (panels[0].source ? panels[0].source.name : 'map').replace(/[^\w.-]+/g, '_');
     const files = [];
     for (const f of capture.frames)
-      files.push({ name: `${tag}-${String(Math.round(f.deg)).padStart(3, '0')}deg.png`,
+      files.push({ name: `${tag}-${f.slug}.png`,
                    data: new Uint8Array(await f.blob.arrayBuffer()) });
     const url = URL.createObjectURL(zipStore(files));
     const a = document.createElement('a');
-    a.href = url; a.download = `tau-danger-map-spin-${tag}-${files.length}frames.zip`;
+    a.href = url; a.download = `tau-danger-map-${capture.kind}-${tag}-${files.length}frames.zip`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 8000);
   } finally { btn.disabled = false; btn.textContent = 'Save frames (.zip)'; }
@@ -2268,7 +2293,8 @@ async function framesToGif(frames, delayCs, onProgress) {
     const data = (await blobToImageData(frames[i].blob)).data;
     const indexed = new Uint8Array(width*height);
     for (let p = 0, j = 0; p < data.length; p += 4, j++) indexed[j] = nearestIndex(data[p], data[p+1], data[p+2]);
-    bytes.push(0x21, 0xF9, 4, 0x04); push16(delayCs); bytes.push(0, 0);
+    const holdCs = frames[i].holdMs ? Math.round(frames[i].holdMs/10) : 0;
+    bytes.push(0x21, 0xF9, 4, 0x04); push16(Math.max(delayCs, holdCs)); bytes.push(0, 0);
     bytes.push(0x2C); push16(0); push16(0); push16(width); push16(height); bytes.push(0);
     bytes.push(minCodeSize);
     const lzwBytes = lzwEncode(minCodeSize, indexed);
@@ -2295,7 +2321,7 @@ $('saveGif').addEventListener('click', async () => {
     const tag = (panels[0].source ? panels[0].source.name : 'map').replace(/[^\w.-]+/g, '_');
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `tau-danger-map-spin-${tag}-${capture.frames.length}frames.gif`;
+    a.href = url; a.download = `tau-danger-map-${capture.kind}-${tag}-${capture.frames.length}frames.gif`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 8000);
   } finally { btn.disabled = false; btn.textContent = original; }
@@ -2320,7 +2346,7 @@ function updateRotEstimate() {
 }
 function setPhase(text) { $('status').querySelector('.phase')?.remove();
   if (text) $('status').insertAdjacentHTML('beforeend', ` <span class="phase" style="color:var(--accent)">${esc(text)}</span>`); }
-function animateSwing(mv, fromPose, toPose) {
+function animateSwing(mv, fromPose, toPose, onFrame) {
   return new Promise(resolve => {
     const G = Engine.getG();
     G.pieces[0].x = state.me.x; G.pieces[0].y = state.me.y; G.pieces[0].rot = state.me.rot;
@@ -2345,6 +2371,7 @@ function animateSwing(mv, fromPose, toPose) {
       const g3 = Engine.getG();
       state.op = { x: g3.pieces[1].x, y: g3.pieces[1].y, rot: g3.pieces[1].rot };
       drawStaticBackground(panels[0].ctx); drawBoardLines(panels[0].ctx); drawStagePieces(panels[0].ctx);
+      if (onFrame) onFrame();
       requestAnimationFrame(step);
     }
     step();
