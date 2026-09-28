@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tau Rotoscope</title>
+<style>
+  :root {
+    --bg: #0c0e11; --panel: #15181c; --line: #2c3138; --text: #e6e6e6; --muted: #9aa4ad;
+    --red: #ff6b6b; --blue: #6b9eff; --gold: #ffd23f; --flag: #e07a5f; --swap: #b48cff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
+  header { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0 12px 0 0; }
+  label.file, button { background: #22262b; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; font: inherit; }
+  button:hover, label.file:hover { border-color: var(--muted); }
+  button.on { border-color: var(--gold); color: var(--gold); }
+  label.file input { display: none; }
+  #stage { position: relative; display: flex; justify-content: center; padding: 12px; }
+  #view { background: #000; max-width: 100%; max-height: 70vh; cursor: crosshair; }
+  #timeline { display: block; width: calc(100% - 32px); margin: 0 16px; height: 44px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+  #status { padding: 8px 16px; color: var(--muted); display: flex; gap: 18px; flex-wrap: wrap; }
+  #status b { color: var(--text); font-weight: 600; }
+  #help { padding: 4px 16px 16px; color: var(--muted); font-size: 13px; }
+  kbd { background: #22262b; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 12px; color: var(--text); }
+  #drop { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(12,14,17,.85); font-size: 20px; border: 3px dashed var(--gold); }
+  video { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Tau Rotoscope</h1>
+  <label class="file">Open video<input type="file" id="videoFile" accept="video/*"></label>
+  <label class="file">Open .pose.json<input type="file" id="poseFile" accept=".json,application/json"></label>
+  <button id="btnPlay">Play</button>
+  <button id="btnSwap" title="Swap red and blue from this frame onwards (S)">Swap from here</button>
+  <button id="btnStyle" title="Toggle stylised preview (V)">Stylised</button>
+  <button id="btnSave" title="Save edits to keep working later">Save edits</button>
+  <button id="btnExport" title="Save the corrected skeletons for render.py">Export corrected</button>
+  <button id="btnRecord" title="Record the stylised version as a .webm video">Record video</button>
+</header>
+<div id="stage"><canvas id="view" width="1280" height="720"></canvas></div>
+<canvas id="timeline"></canvas>
+<div id="status"></div>
+<div id="help">
+  Drag a joint to fix it. That frame becomes a keyframe: nearby frames ease into the fix, and frames between two keyframes follow both smoothly.
+  <kbd>←</kbd>/<kbd>→</kbd> step, <kbd>Shift</kbd> ×10 ·
+  <kbd>Space</kbd> play ·
+  <kbd>N</kbd>/<kbd>P</kbd> next/previous flagged jump ·
+  <kbd>S</kbd> swap red/blue from here ·
+  <kbd>K</kbd> lock selected joint here ·
+  <kbd>Del</kbd> remove selected joint's keyframe here ·
+  <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo ·
+  <kbd>V</kbd> stylised preview.
+  Timeline: <span style="color:var(--flag)">orange</span> = suspicious jump, white = keyframe, <span style="color:var(--swap)">purple</span> = swap.
+</div>
+<video id="video" muted playsinline preload="auto"></video>
+<div id="drop">Drop a video and its .pose.json</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const video = $("video"), view = $("view"), ctx = view.getContext("2d");
+const tl = $("timeline"), tctx = tl.getContext("2d");
+const COLORS = ["#ff6b6b", "#6b9eff"];
+const BONES = [
+  ["l_shoulder","r_shoulder"],["l_hip","r_hip"],["l_shoulder","l_hip"],["r_shoulder","r_hip"],
+  ["l_shoulder","l_elbow"],["l_elbow","l_wrist"],["r_shoulder","r_elbow"],["r_elbow","r_wrist"],
+  ["l_hip","l_knee"],["l_knee","l_ankle"],["r_hip","r_knee"],["r_knee","r_ankle"],
+  ["l_ankle","l_heel"],["l_heel","l_toe"],["l_ankle","l_toe"],
+  ["r_ankle","r_heel"],["r_heel","r_toe"],["r_ankle","r_toe"],
+];
+const GAP_FILL = 15;       // fill detection gaps up to this many frames
+const FALLOFF = 6;       // a lone correction fades out over this many frames either side
+const JUMP_RATIO = 0.35;   // flag moves bigger than this fraction of torso length per frame
+
+let pose = null;           // loaded pose.json
+let raw = null;            // gap-filled detections [f][p][j] -> [x,y] | null
+let edits = { keyframes: {}, swaps: [] }; // keyframes["p:j"] = {f: [x,y]}
+let J = {};                // joint name -> index
+let frame = 0, nFrames = 0, fps = 30;
+let styled = false, playing = false, selected = null, dragging = false;
+let flags = [], undoStack = [], videoURL = null, pendingSeek = false;
+
+// ---------- data ----------
+function fillGaps(frames, people, nj) {
+  const out = frames.map(fr => fr.map(p => p ? p.map(q => q ? q.slice() : null) : null));
+  for (let p = 0; p < people; p++) for (let j = 0; j < nj; j++) {
+    let last = -1;
+    for (let f = 0; f < out.length; f++) {
+      const v = out[f][p] && out[f][p][j];
+      if (!v) continue;
+      if (last >= 0 && f - last > 1 && f - last <= GAP_FILL) {
+        const a = out[last][p][j];
+        for (let g = last + 1; g < f; g++) {
+          const t = (g - last) / (f - last);
+          if (!out[g][p]) out[g][p] = new Array(nj).fill(null);
+          out[g][p][j] = [a[0] + (v[0] - a[0]) * t, a[1] + (v[1] - a[1]) * t];
+        }
+      }
+      last = f;
+    }
+  }
+  return out;
+}
+
+function swappedAt(f) { let s = 0; for (const x of edits.swaps) if (x <= f) s ^= 1; return s; }
+function base(p, j, f) {
+  const src = pose.people === 2 ? p ^ swappedAt(f) : p;
+  const person = raw[f] && raw[f][src];
+  return person ? person[j] : null;
+}
+function kfList(p, j) {
+  const k = edits.keyframes[p + ":" + j];
+  return k ? Object.keys(k).map(Number).sort((a, b) => a - b) : [];
+}
+function point(p, j, f) {
+  const key = p + ":" + j, K = edits.keyframes[key];
+  const b = base(p, j, f);
+  if (!K) return b;
+  if (K[f]) return K[f];
+  const ks = kfList(p, j);
+  let k1 = -1, k2 = -1;
+  for (const k of ks) { if (k < f) k1 = k; else if (k > f) { k2 = k; break; } }
+  if (k1 < 0 || k2 < 0) {
+    // Past the outermost keyframe: fade the correction out so there's no jump.
+    const k = k1 >= 0 ? k1 : k2, d = Math.abs(f - k), bk = base(p, j, k);
+    if (!b || !bk || d > FALLOFF) return b;
+    const w = 1 - d / (FALLOFF + 1);
+    return [b[0] + (K[k][0] - bk[0]) * w, b[1] + (K[k][1] - bk[1]) * w];
+  }
+  const t = (f - k1) / (k2 - k1);
+  const b1 = base(p, j, k1), b2 = base(p, j, k2);
+  if (b && b1 && b2) {
+    // Spread the correction: interpolate the offset from the detection.
+    const o1 = [K[k1][0] - b1[0], K[k1][1] - b1[1]], o2 = [K[k2][0] - b2[0], K[k2][1] - b2[1]];
+    return [b[0] + o1[0] + (o2[0] - o1[0]) * t, b[1] + o1[1] + (o2[1] - o1[1]) * t];
+  }
+  // Detection missing somewhere: interpolate the keyframes directly.
+  return [K[k1][0] + (K[k2][0] - K[k1][0]) * t, K[k1][1] + (K[k2][1] - K[k1][1]) * t];
+}
+function skeleton(p, f) { return pose.joints.map((_, j) => point(p, j, f)); }
+
+function torso(sk) {
+  const ls = sk[J.l_shoulder], rs = sk[J.r_shoulder], lh = sk[J.l_hip], rh = sk[J.r_hip];
+  if (!ls || !rs || !lh || !rh) return null;
+  const W = pose.width, H = pose.height;
+  const sx = (ls[0] + rs[0]) / 2 * W, sy = (ls[1] + rs[1]) / 2 * H;
+  const hx = (lh[0] + rh[0]) / 2 * W, hy = (lh[1] + rh[1]) / 2 * H;
+  return Math.hypot(sx - hx, sy - hy);
+}
+function computeFlags() {
+  flags = [];
+  const W = pose.width, H = pose.height;
+  let prev = [];
+  for (let f = 0; f < nFrames; f++) {
+    let bad = false;
+    const cur = [];
+    for (let p = 0; p < pose.people; p++) {
+      const sk = skeleton(p, f); cur.push(sk);
+      const pk = prev[p];
+      if (!pk) continue;
+      const lim = (torso(sk) || 0.15 * H) * JUMP_RATIO;
+      for (let j = 0; j < sk.length && !bad; j++) {
+        const a = sk[j], b = pk[j];
+        if (a && b && Math.hypot((a[0] - b[0]) * W, (a[1] - b[1]) * H) > lim) bad = true;
+      }
+    }
+    if (bad) flags.push(f);
+    prev = cur;
+  }
+}
+
+// ---------- drawing ----------
+function toPx(q) { return [q[0] * view.width, q[1] * view.height]; }
+function drawSkeleton(p, f, stylised) {
+  const sk = skeleton(p, f), c = COLORS[p % 2];
+  const scale = view.height / 720;
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.strokeStyle = c; ctx.lineWidth = (stylised ? 10 : 3) * scale;
+  for (const [a, b] of BONES) {
+    const qa = sk[J[a]], qb = sk[J[b]];
+    if (!qa || !qb) continue;
+    const [x1, y1] = toPx(qa), [x2, y2] = toPx(qb);
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  }
+  // head
+  const n = sk[J.nose], ls = sk[J.l_shoulder], rs = sk[J.r_shoulder];
+  if (n) {
+    const r = ls && rs ? Math.hypot((ls[0] - rs[0]) * view.width, (ls[1] - rs[1]) * view.height) * 0.3 : 14 * scale;
+    const [x, y] = toPx(n);
+    ctx.beginPath(); ctx.arc(x, y, Math.max(r, 6 * scale), 0, Math.PI * 2);
+    if (stylised) { ctx.fillStyle = c; ctx.fill(); } else ctx.stroke();
+  }
+  if (stylised) return;
+  const K = edits.keyframes;
+  sk.forEach((q, j) => {
+    if (!q) return;
+    const [x, y] = toPx(q);
+    const isSel = selected && selected.p === p && selected.j === j;
+    const isKey = K[p + ":" + j] && K[p + ":" + j][f];
+    ctx.beginPath(); ctx.arc(x, y, (isSel ? 7 : 4.5) * scale, 0, Math.PI * 2);
+    ctx.fillStyle = isKey ? "#ffffff" : c; ctx.fill();
+    if (isSel) { ctx.lineWidth = 2 * scale; ctx.strokeStyle = "#ffd23f"; ctx.stroke(); }
+  });
+}
+function draw() {
+  if (!pose) return;
+  if (styled) { ctx.fillStyle = "#0c0e11"; ctx.fillRect(0, 0, view.width, view.height); }
+  else if (video.readyState >= 2) ctx.drawImage(video, 0, 0, view.width, view.height);
+  else { ctx.fillStyle = "#111"; ctx.fillRect(0, 0, view.width, view.height); }
+  for (let p = 0; p < pose.people; p++) drawSkeleton(p, frame, styled);
+  drawTimeline(); drawStatus();
+}
+function drawTimeline() {
+  const w = tl.clientWidth, h = tl.clientHeight, dpr = devicePixelRatio || 1;
+  if (tl.width !== w * dpr) { tl.width = w * dpr; tl.height = h * dpr; }
+  tctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  tctx.clearRect(0, 0, w, h);
+  const x = f => (f + 0.5) / nFrames * w;
+  tctx.fillStyle = "#e07a5f"; for (const f of flags) tctx.fillRect(x(f) - 1, 4, 2, 12);
+  tctx.fillStyle = "#e6e6e6";
+  for (const k in edits.keyframes) for (const f in edits.keyframes[k]) tctx.fillRect(x(+f) - 1, 18, 2, 10);
+  tctx.fillStyle = "#b48cff"; for (const f of edits.swaps) tctx.fillRect(x(f) - 1.5, 30, 3, 10);
+  tctx.fillStyle = "#ffd23f"; tctx.fillRect(x(frame) - 1, 0, 2, h);
+}
+function drawStatus() {
+  const sel = selected ? `${selected.p ? "blue" : "red"} ${pose.joints[selected.j]}` : "none";
+  const nKeys = Object.values(edits.keyframes).reduce((n, k) => n + Object.keys(k).length, 0);
+  $("status").innerHTML =
+    `<span>Frame <b>${frame + 1}</b> / ${nFrames}</span><span>Time <b>${(frame / fps).toFixed(2)}s</b></span>` +
+    `<span>Selected <b>${sel}</b></span><span>Flagged jumps <b>${flags.length}</b></span>` +
+    `<span>Keyframes <b>${nKeys}</b></span><span>Swaps <b>${edits.swaps.length}</b></span>`;
+}
+
+// ---------- navigation ----------
+function seek(f) {
+  frame = Math.max(0, Math.min(nFrames - 1, f));
+  if (video.src && !styled) {
+    pendingSeek = true;
+    video.currentTime = (frame + 0.5) / fps;
+  } else draw();
+}
+video.addEventListener("seeked", () => { pendingSeek = false; draw(); });
+function play() {
+  playing = !playing; $("btnPlay").textContent = playing ? "Pause" : "Play";
+  if (!playing) { video.pause(); seek(frame); return; }
+  if (video.src && !styled) { video.currentTime = (frame + 0.5) / fps; video.play(); }
+  let last = performance.now();
+  const tick = now => {
+    if (!playing) return;
+    if (video.src && !styled) frame = Math.min(nFrames - 1, Math.floor(video.currentTime * fps));
+    else if (now - last >= 1000 / fps) { frame = (frame + 1) % nFrames; last = now; }
+    draw();
+    if (video.src && !styled && video.ended) { play(); return; }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+// ---------- editing ----------
+function snapshot() { undoStack.push(JSON.stringify(edits)); if (undoStack.length > 200) undoStack.shift(); }
+function changed() { computeFlags(); autosave(); draw(); }
+function setKey(p, j, f, q) {
+  const k = p + ":" + j;
+  (edits.keyframes[k] = edits.keyframes[k] || {})[f] = [+q[0].toFixed(5), +q[1].toFixed(5)];
+}
+function swapHere() {
+  snapshot();
+  const i = edits.swaps.indexOf(frame);
+  if (i >= 0) edits.swaps.splice(i, 1); else edits.swaps.push(frame);
+  edits.swaps.sort((a, b) => a - b);
+  // Keyframes from here on were placed on the old identities: swap them too.
+  const moved = {};
+  for (const k in edits.keyframes) {
+    const [p, j] = k.split(":").map(Number);
+    for (const f in edits.keyframes[k]) {
+      const target = +f >= frame && pose.people === 2 ? (p ^ 1) + ":" + j : k;
+      (moved[target] = moved[target] || {})[f] = edits.keyframes[k][f];
+    }
+  }
+  edits.keyframes = moved;
+  changed();
+}
+function hit(mx, my) {
+  let best = null, bd = 14 * view.height / 720;
+  for (let p = 0; p < pose.people; p++) skeleton(p, frame).forEach((q, j) => {
+    if (!q) return;
+    const [x, y] = toPx(q), d = Math.hypot(x - mx, y - my);
+    if (d < bd) { bd = d; best = { p, j }; }
+  });
+  return best;
+}
+function mouse(e) {
+  const r = view.getBoundingClientRect();
+  return [(e.clientX - r.left) * view.width / r.width, (e.clientY - r.top) * view.height / r.height];
+}
+view.addEventListener("pointerdown", e => {
+  if (!pose || styled) return;
+  const [mx, my] = mouse(e);
+  selected = hit(mx, my);
+  if (selected) { snapshot(); dragging = true; view.setPointerCapture(e.pointerId); }
+  draw();
+});
+view.addEventListener("pointermove", e => {
+  if (!dragging) return;
+  const [mx, my] = mouse(e);
+  setKey(selected.p, selected.j, frame, [mx / view.width, my / view.height]);
+  draw();
+});
+view.addEventListener("pointerup", () => { if (dragging) { dragging = false; changed(); } });
+
+tl.addEventListener("pointerdown", e => {
+  if (!pose) return;
+  const r = tl.getBoundingClientRect();
+  const go = ev => seek(Math.floor((ev.clientX - r.left) / r.width * nFrames));
+  go(e);
+  const move = ev => go(ev);
+  tl.addEventListener("pointermove", move);
+  tl.addEventListener("pointerup", () => tl.removeEventListener("pointermove", move), { once: true });
+});
+
+document.addEventListener("keydown", e => {
+  if (!pose) return;
+  const step = e.shiftKey ? 10 : 1;
+  if (e.key === "ArrowRight") seek(frame + step);
+  else if (e.key === "ArrowLeft") seek(frame - step);
+  else if (e.key === " ") play();
+  else if (e.key === "n" || e.key === "N") { const f = flags.find(x => x > frame); if (f !== undefined) seek(f); }
+  else if (e.key === "p" || e.key === "P") { const f = [...flags].reverse().find(x => x < frame); if (f !== undefined) seek(f); }
+  else if (e.key === "s" || e.key === "S") swapHere();
+  else if (e.key === "v" || e.key === "V") toggleStyle();
+  else if ((e.key === "k" || e.key === "K") && selected) {
+    const q = point(selected.p, selected.j, frame);
+    if (q) { snapshot(); setKey(selected.p, selected.j, frame, q); changed(); }
+  }
+  else if ((e.key === "Delete" || e.key === "Backspace") && selected) {
+    const K = edits.keyframes[selected.p + ":" + selected.j];
+    if (K && K[frame]) { snapshot(); delete K[frame]; changed(); }
+  }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+    if (undoStack.length) { edits = JSON.parse(undoStack.pop()); changed(); }
+  }
+  else return;
+  e.preventDefault();
+});
+function toggleStyle() {
+  styled = !styled; $("btnStyle").classList.toggle("on", styled);
+  seek(frame);
+}
+
+// ---------- files ----------
+function storageKey() { return "tau-rotoscope:" + (pose && pose.video); }
+function autosave() { try { localStorage.setItem(storageKey(), JSON.stringify(edits)); } catch (e) {} }
+function loadPose(data) {
+  if (!data.frames || !data.joints) { alert("That doesn't look like a .pose.json from detect.py"); return; }
+  pose = data; fps = data.fps || 30; nFrames = data.frames.length; frame = 0;
+  J = {}; data.joints.forEach((n, i) => J[n] = i);
+  raw = fillGaps(data.frames, data.people, data.joints.length);
+  edits = data.edits ? JSON.parse(JSON.stringify(data.edits)) : { keyframes: {}, swaps: [] };
+  if (!data.edits) {
+    try {
+      const saved = localStorage.getItem(storageKey());
+      if (saved && confirm("Restore unsaved edits from your last session on this clip?")) edits = JSON.parse(saved);
+    } catch (e) {}
+  }
+  undoStack = []; selected = null;
+  view.width = data.width; view.height = data.height;
+  computeFlags(); seek(0);
+}
+function loadVideo(file) {
+  if (videoURL) URL.revokeObjectURL(videoURL);
+  videoURL = URL.createObjectURL(file);
+  video.src = videoURL;
+  video.addEventListener("loadeddata", () => seek(frame), { once: true });
+}
+function readJSON(file) { file.text().then(t => loadPose(JSON.parse(t))).catch(err => alert("Couldn't read JSON: " + err)); }
+$("videoFile").onchange = e => e.target.files[0] && loadVideo(e.target.files[0]);
+$("poseFile").onchange = e => e.target.files[0] && readJSON(e.target.files[0]);
+function download(name, text, type) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const stem = () => (pose.video || "clip").replace(/\.[^.]+$/, "");
+$("btnSave").onclick = () => pose && download(stem() + ".pose.json", JSON.stringify({ ...pose, edits }), "application/json");
+$("btnExport").onclick = () => {
+  if (!pose) return;
+  const frames = [];
+  for (let f = 0; f < nFrames; f++) {
+    const fr = [];
+    for (let p = 0; p < pose.people; p++) fr.push(skeleton(p, f).map(q => q ? [+q[0].toFixed(5), +q[1].toFixed(5)] : null));
+    frames.push(fr);
+  }
+  const { edits: _, ...meta } = pose;
+  download(stem() + ".corrected.json", JSON.stringify({ ...meta, corrected: true, frames }), "application/json");
+};
+$("btnRecord").onclick = async () => {
+  if (!pose || playing) return;
+  if (!view.captureStream || !window.MediaRecorder) { alert("This browser can't record canvas video. Use render.py instead."); return; }
+  const wasStyled = styled; styled = true;
+  const stream = view.captureStream(fps), chunks = [];
+  const rec = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm" });
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  rec.onstop = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(chunks, { type: "video/webm" }));
+    a.download = stem() + "_tau.webm"; a.click();
+    styled = wasStyled; seek(frame);
+  };
+  rec.start();
+  for (let f = 0; f < nFrames; f++) {
+    frame = f; draw();
+    await new Promise(r => setTimeout(r, 1000 / fps));
+  }
+  rec.stop();
+};
+$("btnPlay").onclick = play;
+$("btnSwap").onclick = () => pose && swapHere();
+$("btnStyle").onclick = () => pose && toggleStyle();
+
+// drag and drop both files at once
+addEventListener("dragover", e => { e.preventDefault(); $("drop").style.display = "flex"; });
+addEventListener("dragleave", e => { if (e.target === $("drop")) $("drop").style.display = "none"; });
+addEventListener("drop", e => {
+  e.preventDefault(); $("drop").style.display = "none";
+  for (const f of e.dataTransfer.files) {
+    if (f.name.endsWith(".json")) readJSON(f);
+    else if (f.type.startsWith("video/")) loadVideo(f);
+  }
+});
+addEventListener("resize", () => pose && drawTimeline());
+</script>
+</body>
+</html>
