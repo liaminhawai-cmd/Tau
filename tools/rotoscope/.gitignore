@@ -1,0 +1,4 @@
+pose_landmarker_full.task
+*.pose.json
+*.corrected.json
+*_tau.mp4
