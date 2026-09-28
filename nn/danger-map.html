@@ -188,8 +188,9 @@ canvas.board{cursor:crosshair}
         <div class="estimate" id="rotEstimate">Pick a source to estimate the spin.</div>
         <button class="btn small" id="animateRotBtn" style="width:100%;margin-top:8px" disabled>Spin &amp; capture a full turn</button>
         <div id="playback" style="display:none;margin-top:10px">
-          <div class="row2">
+          <div class="row3">
             <button class="btn small primary" id="playBtn">Play</button>
+            <button class="btn small ghost" id="saveGif">Save as GIF</button>
             <button class="btn small ghost" id="saveFrames">Save frames (.zip)</button>
           </div>
           <div class="field">
@@ -200,7 +201,7 @@ canvas.board{cursor:crosshair}
             <label>Playback <small id="fpsLbl">24 fps</small></label>
             <input id="fps" type="range" min="4" max="60" step="1" value="24">
           </div>
-          <div class="hint">Frames are the finished map at each step, captured from the board on the left. Saving writes them all as one zip rather than several hundred separate downloads.</div>
+          <div class="hint">Frames are the finished map at each step, captured from the board on the left. GIF plays the spin back as one looping file; the zip keeps every frame as a separate full-resolution PNG.</div>
         </div>
         <button class="btn ghost small" id="swap" style="width:100%;margin-top:6px">Swap mover ↔ opponent</button>
       </div>
@@ -2148,6 +2149,156 @@ $('saveFrames').addEventListener('click', async () => {
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 8000);
   } finally { btn.disabled = false; btn.textContent = 'Save frames (.zip)'; }
+});
+
+/* ===================================================================================
+ * GIF export: a self-contained median-cut quantizer + GIF89a/LZW writer (no external
+ * deps, same as everything else on this page). Frames are decoded from their PNG blobs
+ * ONE AT A TIME in both passes below -- holding all of them as raw RGBA at once is
+ * exactly the ~390MB-for-360-frames blowup capture.frames was designed to avoid, so
+ * this only ever keeps a single decoded frame alive at a time, same as playback does.
+ * =================================================================================== */
+function blobToImageData(blob) {
+  return createImageBitmap(blob).then(bmp => {
+    const c = document.createElement('canvas');
+    c.width = bmp.width; c.height = bmp.height;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(bmp, 0, 0);
+    const data = ctx.getImageData(0, 0, bmp.width, bmp.height);
+    if (bmp.close) bmp.close();
+    return data;
+  });
+}
+function medianCutPalette(samples, maxColors) {
+  let boxes = [samples];
+  while (boxes.length < maxColors) {
+    let boxIdx = -1, bestRange = -1, bestChannel = 0;
+    boxes.forEach((box, i) => {
+      if (box.length < 2) return;
+      for (let c = 0; c < 3; c++) {
+        let lo = Infinity, hi = -Infinity;
+        for (const px of box) { if (px[c] < lo) lo = px[c]; if (px[c] > hi) hi = px[c]; }
+        if (hi - lo > bestRange) { bestRange = hi - lo; boxIdx = i; bestChannel = c; }
+      }
+    });
+    if (boxIdx === -1 || bestRange <= 0) break;
+    const box = boxes[boxIdx];
+    box.sort((a, b) => a[bestChannel] - b[bestChannel]);
+    const mid = box.length >> 1;
+    boxes.splice(boxIdx, 1, box.slice(0, mid), box.slice(mid));
+  }
+  return boxes.filter(b => b.length).map(box => {
+    let r = 0, g = 0, b2 = 0;
+    for (const px of box) { r += px[0]; g += px[1]; b2 += px[2]; }
+    return [Math.round(r/box.length), Math.round(g/box.length), Math.round(b2/box.length)];
+  });
+}
+function lzwEncode(minCodeSize, indices) {
+  const clearCode = 1 << minCodeSize, eoiCode = clearCode + 1;
+  let codeSize, dict, nextCode;
+  function reset() {
+    dict = new Map();
+    for (let i = 0; i < clearCode; i++) dict.set(String(i), i);
+    nextCode = eoiCode + 1; codeSize = minCodeSize + 1;
+  }
+  reset();
+  const bytes = []; let bitBuf = 0, bitCount = 0;
+  function emit(code) {
+    bitBuf |= code << bitCount; bitCount += codeSize;
+    while (bitCount >= 8) { bytes.push(bitBuf & 0xFF); bitBuf >>= 8; bitCount -= 8; }
+  }
+  emit(clearCode);
+  let w = String(indices[0]);
+  for (let i = 1; i < indices.length; i++) {
+    const k = indices[i], wk = w + ',' + k;
+    if (dict.has(wk)) { w = wk; continue; }
+    emit(dict.get(w));
+    if (nextCode < 4096) {
+      dict.set(wk, nextCode++);
+      if (nextCode > (1 << codeSize) && codeSize < 12) codeSize++;
+    } else { emit(clearCode); reset(); }
+    w = String(k);
+  }
+  emit(dict.get(w)); emit(eoiCode);
+  if (bitCount > 0) bytes.push(bitBuf & 0xFF);
+  return bytes;
+}
+async function framesToGif(frames, delayCs, onProgress) {
+  if (!frames.length) return null;
+  const first = await blobToImageData(frames[0].blob);
+  const width = first.width, height = first.height;
+  // Pass 1: sample a bounded number of pixels across every frame to build one shared palette.
+  const totalPixels = width*height*frames.length;
+  const stride = Math.max(1, Math.floor(totalPixels/20000))*4;
+  const samples = [];
+  for (let i = 0; i < frames.length; i++) {
+    const data = (i === 0 ? first : await blobToImageData(frames[i].blob)).data;
+    for (let p = 0; p < data.length; p += stride) samples.push([data[p], data[p+1], data[p+2]]);
+    if (onProgress) onProgress('Sampling', i, frames.length);
+  }
+  const palette = medianCutPalette(samples, 256);
+  let palSize = 2; while (palSize < palette.length) palSize <<= 1;
+  const paddedPalette = palette.slice(0, palSize);
+  while (paddedPalette.length < palSize) paddedPalette.push([0, 0, 0]);
+  const cache = new Map();
+  function nearestIndex(r, g, b) {
+    const key = (r << 16) | (g << 8) | b;
+    let idx = cache.get(key);
+    if (idx !== undefined) return idx;
+    let best = 0, bestDist = Infinity;
+    for (let i = 0; i < paddedPalette.length; i++) {
+      const [pr, pg, pb] = paddedPalette[i];
+      const dr = pr-r, dg = pg-g, db = pb-b, d = dr*dr + dg*dg + db*db;
+      if (d < bestDist) { bestDist = d; best = i; }
+    }
+    cache.set(key, best);
+    return best;
+  }
+  const colorTableSizeField = Math.log2(palSize) - 1;
+  const minCodeSize = Math.max(2, Math.log2(palSize));
+  const bytes = [];
+  const pushStr = s => { for (let i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i)); };
+  const push16 = v => { bytes.push(v & 0xFF, (v >> 8) & 0xFF); };
+  pushStr('GIF89a'); push16(width); push16(height);
+  bytes.push(0x80 | (7 << 4) | colorTableSizeField, 0, 0);
+  for (const [r, g, b] of paddedPalette) bytes.push(r, g, b);
+  bytes.push(0x21, 0xFF, 0x0B); pushStr('NETSCAPE2.0'); bytes.push(3, 1, 0, 0, 0);
+  // Pass 2: decode each frame again, one at a time, straight into its GIF sub-blocks.
+  for (let i = 0; i < frames.length; i++) {
+    const data = (await blobToImageData(frames[i].blob)).data;
+    const indexed = new Uint8Array(width*height);
+    for (let p = 0, j = 0; p < data.length; p += 4, j++) indexed[j] = nearestIndex(data[p], data[p+1], data[p+2]);
+    bytes.push(0x21, 0xF9, 4, 0x04); push16(delayCs); bytes.push(0, 0);
+    bytes.push(0x2C); push16(0); push16(0); push16(width); push16(height); bytes.push(0);
+    bytes.push(minCodeSize);
+    const lzwBytes = lzwEncode(minCodeSize, indexed);
+    for (let pos = 0; pos < lzwBytes.length; pos += 255) {
+      const chunk = lzwBytes.slice(pos, pos + 255);
+      bytes.push(chunk.length, ...chunk);
+    }
+    bytes.push(0);
+    if (onProgress) onProgress('Encoding', i, frames.length);
+  }
+  bytes.push(0x3B);
+  return new Blob([new Uint8Array(bytes)], { type: 'image/gif' });
+}
+$('saveGif').addEventListener('click', async () => {
+  if (!capture.frames.length) return;
+  const btn = $('saveGif');
+  btn.disabled = true;
+  const original = btn.textContent;
+  try {
+    const fps = +$('fps').value || 24;
+    const delayCs = Math.max(2, Math.round(100/fps));
+    const blob = await framesToGif(capture.frames, delayCs,
+      (phase, i, n) => { btn.textContent = `${phase} ${i+1}/${n}…`; });
+    const tag = (panels[0].source ? panels[0].source.name : 'map').replace(/[^\w.-]+/g, '_');
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `tau-danger-map-spin-${tag}-${capture.frames.length}frames.gif`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+  } finally { btn.disabled = false; btn.textContent = original; }
 });
 
 function updateRotEstimate() {
