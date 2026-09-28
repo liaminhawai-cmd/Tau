@@ -6818,8 +6818,6 @@ function coachArc3DUpdate() {
 }
 function backToMenu() {
     hideModal(); clearTimeout(gameOverTimer);
-    // Leaving a game is the cheapest possible moment to take a pending update (see swReloadIfIdle).
-    if (swReloadPending) { swReloadIfIdle(); return; }
     labMode = false; labAuto = false; labHist = []; labBenchRender();
     tutorJustPlayed = false; if (typeof tutorEnd === 'function') tutorEnd();
     if (window.tauSteam) window.tauSteam.setStatus('In the menus');   // Steam friends-list presence
@@ -14824,6 +14822,12 @@ function checkJoinLink() {
 let swReloadPending = false;
 function swReloadIfIdle() {
     if (!swReloadPending) return;
+    // Only ever while nobody is looking. A reload on the menu is not free: the player watches the
+    // menu vanish behind the loading screen a second after it appeared, which reads as the game
+    // starting twice. Nothing is urgent about it either -- the page itself is always fetched from
+    // the network first (see sw.js), so what is running IS the new build; the reload only swaps
+    // cached assets. So it waits for the tab to be hidden.
+    if (document.visibilityState !== 'hidden') return;
     // A board on screen is somebody's turn. Anything else -- the menu, a finished game, the
     // walkthrough closed -- costs nothing to reload through.
     try {
@@ -14835,6 +14839,10 @@ function swReloadIfIdle() {
     location.reload();
 }
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    // No controller at load = a first visit, served straight from the network: the worker that is
+    // about to claim this page has nothing newer to offer it, so its takeover is no reason to reload.
+    const swHadController = !!navigator.serviceWorker.controller;
+    document.addEventListener('visibilitychange', swReloadIfIdle);
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js').then(reg => {
             reg.update().catch(() => {});
@@ -14846,7 +14854,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
         }).catch(() => {});
         let refreshedOnce = false;
         navigator.serviceWorker.addEventListener('controllerchange', () => {
-            if (refreshedOnce) return;   // guard against a reload loop
+            if (refreshedOnce || !swHadController) return;   // guard against a reload loop; see swHadController
             refreshedOnce = true;
             // NOT immediately. sw.js calls skipWaiting() on install and clients.claim() on
             // activate, so a build shipped since the last visit takes over THIS page about a
