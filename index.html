@@ -682,7 +682,8 @@ if (window.TAU_DESKTOP) {
                   align-items:center; justify-content:center; transition:opacity .45s ease; }
     #bootSplash.gone { opacity:0; pointer-events:none; }
     #bootStage { position:relative; width:240px; height:240px; animation:bootLoop 2.8s linear infinite; }
-    #bootStage > div { position:absolute; width:0; height:0; }
+    #bootShake { position:absolute; inset:0; animation:bootJolt 2.8s infinite; }
+    #bootShake > div { position:absolute; width:0; height:0; }
     #bootStage svg { position:absolute; overflow:visible; }
     /* The blue piece's box has its origin ON the pinned foot, so rotating the box is the swing. */
     #bootBlue, .bootGhost { left:100px; top:130px; transform-origin:0 0; animation:bootSwing 2.8s infinite; }
@@ -694,25 +695,33 @@ if (window.TAU_DESKTOP) {
     #bootHint { margin-top:22px; font:12px Arial,sans-serif; letter-spacing:5px; color:#6d7680;
                 animation:bootHint 1.4s ease-in-out infinite alternate; }
     @keyframes bootLoop  { 0% { opacity:0; } 6% { opacity:1; } 86% { opacity:1; } 100% { opacity:0; } }
+    /* Wound right back, then nearly a full turn about the pinned foot, gathering speed until its
+       leading foot slams into red -- 260deg of swing before contact, then a short follow-through. */
     @keyframes bootSwing {
-        0%, 12% { transform:rotate(0deg); animation-timing-function:cubic-bezier(.55,0,.85,.45); }
-        46%     { transform:rotate(210deg); animation-timing-function:cubic-bezier(.2,.6,.4,1); }
-        54%, 100% { transform:rotate(236deg); } }
+        0%, 4%  { transform:rotate(-110deg); animation-timing-function:cubic-bezier(.6,0,.9,.5); }
+        44%     { transform:rotate(150deg); animation-timing-function:cubic-bezier(.2,.6,.4,1); }
+        53%, 100% { transform:rotate(178deg); } }
+    /* Struck on its near foot by a blow moving down-screen, red goes off the board's lower right. */
     @keyframes bootFly {
-        0%, 46% { transform:translate(0,0) rotate(0deg) scale(1); opacity:1; animation-timing-function:cubic-bezier(.15,.7,.35,1); }
-        60%     { opacity:1; }
-        72%, 100% { transform:translate(128px,26px) rotate(320deg) scale(.55); opacity:0; } }
+        0%, 44% { transform:translate(0,0) rotate(0deg) scale(1); opacity:1; animation-timing-function:cubic-bezier(.12,.75,.35,1); }
+        58%     { opacity:1; }
+        72%, 100% { transform:translate(118px,74px) rotate(340deg) scale(.5); opacity:0; } }
     @keyframes bootHit {
-        0%, 45% { transform:scale(.2); opacity:0; }
-        47%     { transform:scale(.5); opacity:.9; }
-        60%, 100% { transform:scale(1.9); opacity:0; } }
+        0%, 43% { transform:scale(.2); opacity:0; }
+        45%     { transform:scale(.6); opacity:1; }
+        58%, 100% { transform:scale(2.2); opacity:0; } }
+    /* The whole board jolts on the hit. */
+    @keyframes bootJolt {
+        0%, 44% { transform:translate(0,0); }
+        45.5%   { transform:translate(5px,4px); }
+        47%     { transform:translate(-4px,-2px); }
+        48.5%   { transform:translate(3px,1px); }
+        50%     { transform:translate(-1px,1px); }
+        52%, 100% { transform:translate(0,0); } }
     @keyframes bootHint { from { opacity:.35; } to { opacity:.9; } }
-    @media (prefers-reduced-motion: reduce) {
-        #bootStage, #bootBlue, .bootGhost, #bootRed, #bootHit, #bootHint { animation:none; }
-        .bootGhost, #bootHit { display:none; } }
 </style>
 <div id="bootSplash" aria-hidden="true">
-    <div id="bootStage">
+    <div id="bootStage"><div id="bootShake">
         <svg width="240" height="240" viewBox="0 0 240 240" style="left:0;top:0">
             <circle cx="120" cy="120" r="112" fill="#c9ad7a"/>
             <circle cx="120" cy="120" r="89.6" fill="#d8c294" stroke="#4a3622" stroke-width="1.2"/>
@@ -728,7 +737,7 @@ if (window.TAU_DESKTOP) {
             <g id="bootTripod"><g stroke="#6b9cf5" stroke-width="4" stroke-linecap="round"><line x1="-26" y1="0" x2="0" y2="0"/><line x1="-26" y1="0" x2="-39" y2="22.5"/><line x1="-26" y1="0" x2="-39" y2="-22.5"/></g>
             <g fill="#6b9cf5"><circle cx="-39" cy="22.5" r="5"/><circle cx="-39" cy="-22.5" r="5"/><circle cx="-26" cy="0" r="3.5"/></g></g>
             <circle r="5" fill="#6b9cf5"/><circle r="8.5" fill="none" stroke="#6b9cf5" stroke-width="1.6" opacity=".7"/></svg></div>
-    </div>
+    </div></div>
     <div id="bootHint">LOADING</div>
 </div>
 <script>
